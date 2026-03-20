@@ -97,6 +97,8 @@ set(ROTS_TEST_SOURCES
     tests/ObjFlagDataBuilder.cpp
     tests/gtest_main.cpp
     tests/obj_flag_data_tests.cpp
+    tests/object_utils_tests.cpp
+    tests/weapon_master_handler_tests.cpp
 )
 
 add_executable(ageland ${ROTS_SERVER_SOURCES})
@@ -114,6 +116,7 @@ set_target_properties(ageland PROPERTIES
 )
 
 find_package(GTest REQUIRED)
+include(GoogleTest)
 
 add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_TEST_SOURCES})
 target_include_directories(ageland_tests PRIVATE
@@ -132,7 +135,10 @@ set_target_properties(ageland_tests PROPERTIES
 )
 
 if(BUILD_TESTING)
-    add_test(NAME ageland_unit_tests COMMAND "${BIN_DIR}/tests")
+    gtest_discover_tests(ageland_tests
+        DISCOVERY_MODE PRE_TEST
+        WORKING_DIRECTORY "${REPO_ROOT}"
+    )
 endif()
 
 add_custom_target(setup

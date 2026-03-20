@@ -9,26 +9,33 @@
 - release-notes/, game design docs/, code documentation/: Docs and release history.
 
 ## Build, Test, and Development Commands
-- Bootstrap data: `cd src && make setup` — creates required runtime directories/files under `lib/`, `log/`, and `bin/`.
-- Build (Make): `cd src && make all` — compiles C/C++ sources to `bin/ageland`.
-- Test (Make): `cd src && make test` — builds and runs the GoogleTest-based C++ unit tests via `src/tests/Makefile`.
-- Run: `cd src && make run` or `./bin/ageland -p &` — starts server in background.
-- Clean: `cd src && make clean` — removes `*.o` objects.
-- CMake setup/build: `cmake -S src -B build && cmake --build build --target setup && cmake --build build --target ageland`.
-- CMake tests: `cmake --build build --target ageland_tests && ctest --test-dir build --output-on-failure`.
+- Configure: `cmake -S src -B build -DCMAKE_CXX_COMPILER=g++` — generates the CMake build tree in `build/`.
+- Bootstrap data: `cmake --build build --target setup` — creates required runtime directories/files under `lib/`, `log/`, and `bin/`.
+- Build: `cmake --build build --target ageland` — compiles C/C++ sources to `bin/ageland`.
+- Test: `cmake --build build --target ageland_tests && ctest --test-dir build --output-on-failure` — builds and runs the GoogleTest-based C++ unit tests.
+- Run: `./bin/ageland -p &` — starts server in background.
+- Clean: `cmake --build build --target clean` — removes build outputs from the configured tree.
 - Rust proxy: `cargo build -p proxy` | `cargo test -p proxy` | `cargo run -p proxy -- --help`.
 
 ## Coding Style & Naming Conventions
-- Formatter: run `cd src && make format` (WebKit style). Prefer this over local defaults; CI expects formatted diffs.
+- Formatter: run `cmake --build build --target format` (or `cd src && make format`) using WebKit style. Prefer the repo-provided target over local defaults; CI expects formatted diffs.
 - .clang-format: present for IDEs; indentation 4 spaces; column limit ~100.
 - Filenames: lower_snake_case for `.cpp`/`.h` (e.g., `act_comm.cpp`, `protocol.h`).
 - C/C++: functions/variables lower_snake_case; constants UPPER_SNAKE_CASE; types TitleCase where applicable.
 - Rust (proxy): follow `rustfmt` defaults; module/file lowercase with underscores.
 
 ## Testing Guidelines
-- C/C++: add or update unit tests in `src/tests/` when working in covered areas, run them via `cd src && make test`, and also perform smoke tests by building and running locally. Verify server boots, accepts connections, and changed features behave as expected.
+- C/C++: add or update unit tests in `src/tests/` when working in covered areas, run them via `cmake --build build --target ageland_tests && ctest --test-dir build --output-on-failure`, and also perform smoke tests by building and running locally. Verify server boots, accepts connections, and changed features behave as expected.
+- C/C++ test style: prefer behavior-oriented GoogleTest names that read clearly in CTest output, such as `ReturnsConfiguredWeaponType` instead of terse names like `WeaponType`. Use readable assertions like `EXPECT_TRUE` when appropriate, and add concise failure messages that explain the expectation and include important domain values when a failure would otherwise be cryptic.
 - New code: add unit tests for newly written code when the surrounding module supports them, and document any gaps when tests are not practical.
 - Rust: write unit/integration tests in `proxy/`; run with `cargo test -p proxy` and keep coverage reasonable.
+
+## Review Workflow
+- Before finalizing any non-trivial change set, spawn two subagents to review the current worktree changes in parallel: one quality engineer review and one security engineer review.
+- The quality engineer should focus on regressions, correctness, maintainability, test quality, developer ergonomics, and documentation gaps.
+- The security engineer should focus on trust boundaries, unsafe execution paths, secrets or data exposure, command safety, and build/test workflow risks.
+- Give both reviewers the relevant changed files or diff context, ask for findings first with severity, file references, and concrete recommendations, and do not treat the work as complete until their feedback has been reviewed.
+- Address their findings in code or docs when appropriate, or explicitly document why a recommendation is being deferred.
 
 ## Commit & Pull Request Guidelines
 - Commits: concise, imperative subject (<=72 chars). Reference issues/PRs, e.g., "ranger: fix stun timing (#255)".

@@ -168,7 +168,7 @@ protocol.o: ../protocol.cpp ../protocol.h
 	$(CXX) -c $(CXXFLAGS) ../protocol.cpp
 
 
-SRCS = CharPlayerDataBuilder.cpp ObjFlagDataBuilder.cpp obj_flag_data_tests.cpp gtest_main.cpp
+SRCS = CharPlayerDataBuilder.cpp ObjFlagDataBuilder.cpp obj_flag_data_tests.cpp object_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 EXECUTABLE = ../../bin/tests

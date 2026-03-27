@@ -227,6 +227,12 @@ setup:
 		../lib/accounts/P-T \
 		../lib/accounts/U-Z \
 		../lib/accounts/ZZZ \
+		../lib/account_characters/A-E \
+		../lib/account_characters/F-J \
+		../lib/account_characters/K-O \
+		../lib/account_characters/P-T \
+		../lib/account_characters/U-Z \
+		../lib/account_characters/ZZZ \
 		../lib/plrobjs/A-E \
 		../lib/plrobjs/F-J \
 		../lib/plrobjs/K-O \

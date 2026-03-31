@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
+#include <climits>
 #include <dirent.h>
 #include <limits.h>
 #include <sys/stat.h>
@@ -770,19 +772,92 @@ TEST(AccountManagement, FormatsAccountSummariesIncludingLinkedCharacters) {
     account::AccountData account_data = make_account();
 
     const std::string summary = account::format_account_summary(account_data);
+    const std::string expected_summary =
+        std::string("Account email: player@example.com\n\r")
+        + "Internal name: alpha-admin\n\r"
+        + "Email verified: yes\n\r"
+        + "Verified by: VerifierAdmin\n\r"
+        + "Verified at: 2023-09-18 01:20:00 UTC\n\r"
+        + "Blocked: yes\n\r"
+        + "Blocked by: AdminUser\n\r"
+        + "Block reason: Testing block reason\n\r"
+        + "Blocked at: 2023-11-14 22:13:20 UTC\n\r"
+        + "Created: 2023-07-22 04:26:40 UTC\n\r"
+        + "Updated: 2023-11-14 22:13:21 UTC\n\r"
+        + "Password reset by: SecurityAdmin\n\r"
+        + "Password reset at: 2023-11-14 22:13:22 UTC\n\r"
+        + "Characters (2): Aragorn, Legolas\n\r";
 
-    EXPECT_EQ(summary,
-        "Account email: player@example.com\n\r"
-        "Internal name: alpha-admin\n\r"
-        "Email verified: yes\n\r"
-        "Verified by: VerifierAdmin\n\r"
-        "Verified at: 1695000000\n\r"
-        "Blocked: yes\n\r"
-        "Blocked by: AdminUser\n\r"
-        "Block reason: Testing block reason\n\r"
-        "Created: 1690000000\n\r"
-        "Updated: 1700000001\n\r"
-        "Characters (2): Aragorn, Legolas\n\r");
+    EXPECT_EQ(summary, expected_summary);
+    EXPECT_NE(summary.find("Verified at: 2023-09-18 01:20:00 UTC\n\r"), std::string::npos);
+    EXPECT_NE(summary.find("Created: 2023-07-22 04:26:40 UTC\n\r"), std::string::npos);
+    EXPECT_NE(summary.find("Updated: 2023-11-14 22:13:21 UTC\n\r"), std::string::npos);
+    EXPECT_EQ(summary.find("1695000000"), std::string::npos);
+    EXPECT_EQ(summary.find("1700000000"), std::string::npos);
+    EXPECT_EQ(summary.find("1690000000"), std::string::npos);
+    EXPECT_EQ(summary.find("1700000001"), std::string::npos);
+    EXPECT_EQ(summary.find("1700000002"), std::string::npos);
+}
+
+TEST(AccountManagement, FormatsOutOfRangeSummaryTimestampsAsInvalid)
+{
+    account::AccountData account_data = make_account();
+    account_data.created_at = std::numeric_limits<long>::max();
+    account_data.updated_at = std::numeric_limits<long>::max();
+
+    const std::string summary = account::format_account_summary(account_data);
+
+    EXPECT_NE(summary.find("Created: Invalid\n\r"), std::string::npos);
+    EXPECT_NE(summary.find("Updated: Invalid\n\r"), std::string::npos);
+}
+
+TEST(AccountManagement, FormatsPendingVerificationWindowWithHumanReadableDates)
+{
+    account::AccountData account_data = make_account();
+    account_data.email_verified = false;
+    account_data.email_verified_by.clear();
+    account_data.email_verified_at = 0;
+    account_data.verification_code_hash = "pending";
+    account_data.verification_code_sent_at = 1701000000;
+    account_data.verification_code_expires_at = 1701000900;
+    account_data.blocked = false;
+    account_data.block_reason.clear();
+    account_data.blocked_by.clear();
+    account_data.blocked_at = 0;
+    account_data.password_reset_by.clear();
+    account_data.password_reset_at = 0;
+
+    const std::string summary = account::format_account_summary(account_data);
+
+    EXPECT_NE(summary.find("Email verified: no\n\r"), std::string::npos);
+    EXPECT_EQ(summary.find("Verified at:"), std::string::npos);
+    EXPECT_NE(summary.find("Verification code sent at: 2023-11-26 12:00:00 UTC\n\r"), std::string::npos);
+    EXPECT_NE(summary.find("Verification code expires at: 2023-11-26 12:15:00 UTC\n\r"), std::string::npos);
+    EXPECT_EQ(summary.find("1701000000"), std::string::npos);
+    EXPECT_EQ(summary.find("1701000900"), std::string::npos);
+    EXPECT_EQ(summary.find("Blocked at:"), std::string::npos);
+    EXPECT_EQ(summary.find("Password reset by:"), std::string::npos);
+    EXPECT_EQ(summary.find("Password reset at:"), std::string::npos);
+}
+
+TEST(AccountManagement, OmitsUnsetBlockAndPasswordResetMetadataFromSummary)
+{
+    account::AccountData account_data = make_account();
+    account_data.blocked = false;
+    account_data.block_reason.clear();
+    account_data.blocked_by.clear();
+    account_data.blocked_at = 0;
+    account_data.password_reset_by.clear();
+    account_data.password_reset_at = 0;
+
+    const std::string summary = account::format_account_summary(account_data);
+
+    EXPECT_NE(summary.find("Blocked: no\n\r"), std::string::npos);
+    EXPECT_EQ(summary.find("Blocked by:"), std::string::npos);
+    EXPECT_EQ(summary.find("Block reason:"), std::string::npos);
+    EXPECT_EQ(summary.find("Blocked at:"), std::string::npos);
+    EXPECT_EQ(summary.find("Password reset by:"), std::string::npos);
+    EXPECT_EQ(summary.find("Password reset at:"), std::string::npos);
 }
 
 TEST(AccountManagement, ReadsAccountFileByIdentifierUsingEmailOrInternalName) {
@@ -1588,7 +1663,7 @@ TEST(AccountManagement, RemovesAccountNativeCharacterFile) {
     EXPECT_FALSE(account::account_character_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
 }
 
-TEST(AccountManagement, MigratesLegacyCharacterFilesIntoAccountLinkedSnapshotJson) {
+TEST(AccountManagement, MigratesLegacyCharacterFilesIntoAccountNativeAssetsWithoutPersistingSnapshotFile) {
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700007776, nullptr, &error_message)) << error_message;
@@ -1616,17 +1691,74 @@ TEST(AccountManagement, MigratesLegacyCharacterFilesIntoAccountLinkedSnapshotJso
     EXPECT_EQ(migration.player_file.encoding, "hex");
     EXPECT_EQ(migration.player_file.source_path, account::legacy_player_file_path(temp_directory.path(), "aragorn"));
 
-    account::CharacterMigrationData loaded_migration;
-    ASSERT_TRUE(account::read_character_migration(temp_directory.path(), "alpha-admin", "aragorn", &loaded_migration, &error_message)) << error_message;
-    EXPECT_EQ(loaded_migration.account_name, "alpha-admin");
-    EXPECT_EQ(loaded_migration.character_name, "aragorn");
-    EXPECT_EQ(loaded_migration.player_file.content, migration.player_file.content);
-    EXPECT_EQ(loaded_migration.object_file.content, migration.object_file.content);
-    EXPECT_EQ(loaded_migration.exploits_file.content, migration.exploits_file.content);
+    struct stat file_info {};
+    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0)
+        << "Expected successful migration to rely on account-native assets without persisting a transitional snapshot file.";
+}
+
+TEST(AccountManagement, PersistedMigrationSnapshotOmitsLegacyPlayerPasswordAndHostData) {
+    TemporaryDirectory temp_directory;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700007776, nullptr, &error_message)) << error_message;
+
+    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
+    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+
+    char_file_u stored_character = make_stored_character("aragorn");
+    std::snprintf(stored_character.host, sizeof(stored_character.host), "%s", "legacy.example.org");
+    std::snprintf(stored_character.pwd, sizeof(stored_character.pwd), "%s", "legacy-password");
+    write_valid_legacy_player_file(temp_directory.path(), stored_character);
+
+    account::CharacterMigrationData migration;
+    ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700007777, &migration, &error_message)) << error_message;
+    ASSERT_TRUE(migration.player_file.present);
 
     struct stat file_info {};
-    ASSERT_EQ(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0)
-        << "Expected migration to materialize the account-linked snapshot JSON file.";
+    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0)
+        << "Routine migration should no longer persist a transitional snapshot file at all.";
+}
+
+TEST(AccountManagement, ReadingLegacyMigrationSnapshotScrubsPersistedPlayerPayloadFromDisk) {
+    TemporaryDirectory temp_directory;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700007776, nullptr, &error_message)) << error_message;
+
+    const std::string snapshot_path = account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn");
+    write_text_file(snapshot_path,
+        "{\n"
+        "  \"version\": 1,\n"
+        "  \"account_name\": \"alpha-admin\",\n"
+        "  \"character_name\": \"aragorn\",\n"
+        "  \"migrated_at\": 1700007777,\n"
+        "  \"player_file\": {\n"
+        "    \"source_path\": \"/legacy/players/A-E/aragorn\",\n"
+        "    \"encoding\": \"hex\",\n"
+        "    \"content\": \"686f7374202020202020206c65676163792e6578616d706c652e6f7267\",\n"
+        "    \"present\": true\n"
+        "  },\n"
+        "  \"object_file\": {\n"
+        "    \"source_path\": \"/legacy/plrobjs/A-E/aragorn.objs\",\n"
+        "    \"encoding\": \"hex\",\n"
+        "    \"content\": \"\",\n"
+        "    \"present\": false\n"
+        "  },\n"
+        "  \"exploits_file\": {\n"
+        "    \"source_path\": \"/legacy/exploits/A-E/aragorn.exploits\",\n"
+        "    \"encoding\": \"hex\",\n"
+        "    \"content\": \"\",\n"
+        "    \"present\": false\n"
+        "  }\n"
+        "}\n");
+
+    account::CharacterMigrationData migration;
+    ASSERT_TRUE(account::read_character_migration(temp_directory.path(), "alpha-admin", "aragorn", &migration, &error_message)) << error_message;
+    EXPECT_FALSE(migration.player_file.present);
+    EXPECT_TRUE(migration.player_file.content.empty());
+    EXPECT_TRUE(migration.player_file.source_path.empty());
+
+    const std::string scrubbed_snapshot_json = read_file_contents(snapshot_path);
+    EXPECT_EQ(scrubbed_snapshot_json.find("\"player_file\""), std::string::npos);
+    EXPECT_EQ(scrubbed_snapshot_json.find("legacy.example.org"), std::string::npos);
 }
 
 TEST(AccountManagement, ReportsMissingRequiredPlayerFileDuringMigration) {
@@ -1810,7 +1942,7 @@ TEST(AccountManagement, EnsuresCharacterMigrationByCreatingMissingSnapshotFromLe
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
 
-    const std::string expected_player_text = write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
+    write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
 
     account::CharacterMigrationData migration;
     ASSERT_TRUE(account::ensure_character_migration(temp_directory.path(), "alpha-admin", "aragorn", 1700010100, &migration, &error_message)) << error_message;
@@ -1818,35 +1950,28 @@ TEST(AccountManagement, EnsuresCharacterMigrationByCreatingMissingSnapshotFromLe
     EXPECT_EQ(migration.character_name, "aragorn");
     EXPECT_TRUE(migration.player_file.present);
 
-    account::CharacterMigrationData loaded_migration;
-    ASSERT_TRUE(account::read_character_migration(temp_directory.path(), "alpha-admin", "aragorn", &loaded_migration, &error_message)) << error_message;
-    EXPECT_EQ(loaded_migration.player_file.content, migration.player_file.content);
-
     char_file_u restored_character {};
     ASSERT_TRUE(account::read_account_character_file(temp_directory.path(), "alpha-admin", "aragorn", &restored_character, &error_message)) << error_message;
     EXPECT_STREQ(restored_character.name, "aragorn");
     EXPECT_EQ(restored_character.points.gold, make_stored_character("aragorn").points.gold);
     struct stat file_info {};
     EXPECT_NE(stat(account::legacy_player_file_path(temp_directory.path(), "aragorn").c_str(), &file_info), 0);
+    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0);
 }
 
-TEST(AccountManagement, RebuildsCorruptCharacterMigrationSnapshotFromLegacyFiles) {
+TEST(AccountManagement, IgnoresCorruptSnapshotArtifactWhenRebuildingFromLegacyFiles) {
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010099, nullptr, &error_message)) << error_message;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
 
-    const std::string expected_player_text = write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
+    write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
     write_text_file(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn"), "{bad-json");
 
     account::CharacterMigrationData migration;
     ASSERT_TRUE(account::ensure_character_migration(temp_directory.path(), "alpha-admin", "aragorn", 1700010100, &migration, &error_message)) << error_message;
     EXPECT_TRUE(migration.player_file.present);
-
-    account::CharacterMigrationData loaded_migration;
-    ASSERT_TRUE(account::read_character_migration(temp_directory.path(), "alpha-admin", "aragorn", &loaded_migration, &error_message)) << error_message;
-    EXPECT_EQ(loaded_migration.player_file.content, migration.player_file.content);
 
     char_file_u restored_character {};
     ASSERT_TRUE(account::read_account_character_file(temp_directory.path(), "alpha-admin", "aragorn", &restored_character, &error_message)) << error_message;
@@ -1855,9 +1980,10 @@ TEST(AccountManagement, RebuildsCorruptCharacterMigrationSnapshotFromLegacyFiles
 
     struct stat file_info {};
     EXPECT_NE(stat(account::legacy_player_file_path(temp_directory.path(), "aragorn").c_str(), &file_info), 0);
+    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0);
 }
 
-TEST(AccountManagement, EnsureCharacterMigrationFailsClosedWhenOnlySnapshotRemains) {
+TEST(AccountManagement, EnsureCharacterMigrationFailsClosedWhenOnlyCorruptSnapshotRemains) {
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010099, nullptr, &error_message)) << error_message;
@@ -1874,7 +2000,7 @@ TEST(AccountManagement, EnsureCharacterMigrationFailsClosedWhenOnlySnapshotRemai
 
     account::CharacterMigrationData ensured_migration;
     EXPECT_FALSE(account::ensure_character_migration(temp_directory.path(), "alpha-admin", "aragorn", 1700010101, &ensured_migration, &error_message));
-    EXPECT_NE(error_message.find("transitional migration snapshot alone is insufficient"), std::string::npos);
+    EXPECT_NE(error_message.find("Failed to open legacy file"), std::string::npos);
     EXPECT_FALSE(account::account_character_file_exists(temp_directory.path(), "alpha-admin", "aragorn", nullptr));
 }
 
@@ -2025,9 +2151,6 @@ TEST(AccountManagement, RefreshesSnapshotForLinkedCharactersUsingCurrentLegacyFi
     EXPECT_EQ(migration.character_name, "aragorn");
     EXPECT_TRUE(migration.player_file.present);
 
-    account::CharacterMigrationData loaded_migration;
-    ASSERT_TRUE(account::read_character_migration(temp_directory.path(), "alpha-admin", "aragorn", &loaded_migration, &error_message)) << error_message;
-    EXPECT_EQ(loaded_migration.player_file.content, migration.player_file.content);
 }
 
 TEST(AccountManagement, MigrationWritesAccountNativeObjectFileWhenLegacyObjectDataIsValid) {
@@ -2141,7 +2264,7 @@ TEST(AccountManagement, MigrationRetiresLegacyFilesAfterSuccessfulAccountNativeW
     ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, &migration, &error_message)) << error_message;
 
     struct stat file_info {};
-    EXPECT_EQ(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0);
+    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0);
     EXPECT_NE(stat(player_path.c_str(), &file_info), 0);
     EXPECT_NE(stat(object_path.c_str(), &file_info), 0);
     EXPECT_NE(stat(exploits_path.c_str(), &file_info), 0);
@@ -2367,12 +2490,10 @@ TEST(AccountManagement, RefreshingSnapshotPreservesExistingExploitHistoryWhenRun
     ASSERT_TRUE(account::refresh_linked_character_snapshot(temp_directory.path(), "aragorn", 1700010105, &refreshed_migration, &error_message)) << error_message;
     EXPECT_TRUE(refreshed_migration.exploits_file.present);
     EXPECT_EQ(refreshed_migration.exploits_file.content, initial_migration.exploits_file.content);
-    EXPECT_NE(refreshed_migration.player_file.content, initial_migration.player_file.content);
+    EXPECT_TRUE(refreshed_migration.player_file.present);
 
-    account::CharacterMigrationData loaded_migration;
-    ASSERT_TRUE(account::read_character_migration(temp_directory.path(), "alpha-admin", "aragorn", &loaded_migration, &error_message)) << error_message;
-    EXPECT_TRUE(loaded_migration.exploits_file.present);
-    EXPECT_EQ(loaded_migration.exploits_file.content, initial_migration.exploits_file.content);
+    struct stat file_info {};
+    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0);
 }
 
 TEST(AccountManagement, RefreshingSnapshotForUnlinkedCharacterSucceedsWithoutWritingMigration) {

@@ -1045,6 +1045,114 @@ TEST(DbLoader, AccountNativeCharacterAndObjectsJsonSupportEquippedLoginWithoutMi
     EXPECT_EQ(obj_index[character.carrying->item_number].virt, 1002);
 }
 
+TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallbackSucceeds) {
+    ScopedObjectPrototypeTable object_prototypes;
+    ensure_test_world_room(3001);
+
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(mkdir("plrobjs", 0700), 0);
+    ASSERT_EQ(mkdir("plrobjs/A-E", 0700), 0);
+
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+
+    char_file_u stored_character = make_stored_character("aragorn");
+    stored_character.specials2.load_room = 3001;
+    ASSERT_TRUE(account::write_account_character_file(".", "alpha-admin", stored_character, &error_message)) << error_message;
+
+    objects_json::ObjectSaveData object_data;
+    object_data.rent.rentcode = RENT_CRASH;
+    object_data.objects.push_back(objects_json::ObjectRecord {});
+    object_data.objects[0].item_number = 1001;
+    object_data.objects[0].wear_pos = WEAR_HEAD;
+    object_data.objects[0].weight = 7;
+    object_data.objects[0].values = { 0, 0, 2, 0, 0 };
+
+    std::string object_bytes;
+    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_file(".", "alpha-admin", "aragorn", object_bytes, &error_message)) << error_message;
+
+    char_file_u loaded_store {};
+    ASSERT_TRUE(account::read_account_character_file(".", "alpha-admin", "aragorn", &loaded_store, &error_message)) << error_message;
+
+    char_data character {};
+    clear_char(&character, MOB_VOID);
+    store_to_char(&loaded_store, &character);
+
+    stage_account_backed_object_bytes_for_character(&character, object_bytes.data(), object_bytes.size());
+
+    const std::string stderr_path = temp_directory.path() + "/account-native-crash-load.stderr";
+    FILE* fp = nullptr;
+    std::string stderr_output;
+    {
+        ScopedStderrRedirect stderr_redirect(stderr_path);
+        fp = Crash_load(&character);
+        ASSERT_NE(fp, nullptr);
+        stderr_output = stderr_redirect.read_contents();
+    }
+    ASSERT_EQ(std::fclose(fp), 0);
+
+    EXPECT_EQ(stderr_output.find("crashsave: mark0"), std::string::npos) << stderr_output;
+    EXPECT_EQ(stderr_output.find("SYSERR: unable to open crashsave file"), std::string::npos) << stderr_output;
+    ASSERT_NE(character.equipment[WEAR_HEAD], nullptr);
+    EXPECT_EQ(obj_index[character.equipment[WEAR_HEAD]->item_number].virt, 1001);
+}
+
+TEST(DbLoader, AccountNativeCrashLoadStillLogsNonMissingLegacyObjectOpenFailures) {
+    ScopedObjectPrototypeTable object_prototypes;
+    ensure_test_world_room(3001);
+
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(mkdir("plrobjs", 0700), 0);
+    ASSERT_EQ(mkdir("plrobjs/A-E", 0700), 0);
+
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+
+    char_file_u stored_character = make_stored_character("aragorn");
+    stored_character.specials2.load_room = 3001;
+    ASSERT_TRUE(account::write_account_character_file(".", "alpha-admin", stored_character, &error_message)) << error_message;
+
+    objects_json::ObjectSaveData object_data;
+    object_data.rent.rentcode = RENT_CRASH;
+    std::string object_bytes;
+    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_file(".", "alpha-admin", "aragorn", object_bytes, &error_message)) << error_message;
+
+    ASSERT_EQ(mkdir("plrobjs/A-E/aragorn.obj", 0700), 0);
+
+    char_file_u loaded_store {};
+    ASSERT_TRUE(account::read_account_character_file(".", "alpha-admin", "aragorn", &loaded_store, &error_message)) << error_message;
+
+    char_data character {};
+    clear_char(&character, MOB_VOID);
+    store_to_char(&loaded_store, &character);
+
+    stage_account_backed_object_bytes_for_character(&character, object_bytes.data(), object_bytes.size());
+
+    const std::string stderr_path = temp_directory.path() + "/account-native-crash-load-open-failure.stderr";
+    FILE* fp = nullptr;
+    std::string stderr_output;
+    {
+        ScopedStderrRedirect stderr_redirect(stderr_path);
+        fp = Crash_load(&character);
+        ASSERT_NE(fp, nullptr);
+        stderr_output = stderr_redirect.read_contents();
+    }
+    ASSERT_EQ(std::fclose(fp), 0);
+
+    EXPECT_NE(stderr_output.find("SYSERR: unable to open crashsave file"), std::string::npos) << stderr_output;
+    EXPECT_NE(stderr_output.find("aragorn"), std::string::npos) << stderr_output;
+}
+
 TEST(DbLoader, AccountNativeCharacterLoadDoesNotPropagateGarbageColorStateIntoLiveCharacter) {
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
@@ -1162,7 +1270,8 @@ TEST(DbLoader, SavingLinkedCharacterRepairsMissingAccountNativeCharacterFileDire
 
     struct stat file_info {};
     EXPECT_NE(stat(account::legacy_player_file_path(".", "aragorn").c_str(), &file_info), 0);
-    EXPECT_EQ(stat(account::account_character_snapshot_path(".", "alpha-admin", "aragorn").c_str(), &file_info), 0);
+    EXPECT_EQ(stat(account::account_character_snapshot_path(".", "alpha-admin", "aragorn").c_str(), &file_info), 0)
+        << "Existing transitional snapshot artifacts are tolerated on the repair path, but should not be required.";
 
     const std::string stderr_output = read_file_contents(stderr_path);
     EXPECT_EQ(stderr_output.find("failed to refresh account snapshot"), std::string::npos);

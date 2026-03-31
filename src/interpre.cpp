@@ -278,6 +278,7 @@ ACMD(do_namechange);
 ACMD(do_retire);
 ACMD(do_top);
 ACMD(do_account);
+ACMD(do_whoacct);
 ACMD(do_linkaccount);
 ACMD(do_grouproll);
 ACMD(do_shoot);
@@ -526,7 +527,7 @@ const char* command[] = {
     "trap", /* "trap",   */
     "account", /* 221 */
     "linkaccount",
-    "",
+    "whoacct",
     "obj2html",
     "delete",
     "world",
@@ -2181,6 +2182,8 @@ void assign_command_pointers(void)
         FULL_TARGET, FULL_TARGET, 0);
     COMMANDO(222, POSITION_DEAD, do_linkaccount, 0, FALSE, 0,
         FULL_TARGET, FULL_TARGET, CMD_MASK_NO_UNHIDE);
+    COMMANDO(223, POSITION_DEAD, do_whoacct, LEVEL_GRGOD, FALSE, 0,
+        FULL_TARGET, FULL_TARGET, 0);
     COMMANDO(224, POSITION_DEAD, do_obj2html, LEVEL_GRGOD, FALSE, 0,
         FULL_TARGET, FULL_TARGET, 0);
     COMMANDO(225, POSITION_DEAD, do_delete, LEVEL_GRGOD, FALSE, 0,
@@ -2321,6 +2324,18 @@ std::string format_account_character_name_for_display(const char* character_name
         return "";
 
     return account::format_character_name_for_display(character_name);
+}
+
+void mudlog_account_event(struct descriptor_data* d, const char* action, const char* email_override = nullptr)
+{
+    const char* account_email = email_override;
+    if ((account_email == nullptr || !*account_email) && d != nullptr)
+        account_email = d->account_email;
+    if (account_email == nullptr || !*account_email)
+        account_email = "<unknown-account>";
+
+    const char* host = (d != nullptr && *d->host) ? d->host : "<unknown-host>";
+    vmudlog(BRF, "%s for %s [%s]", const_cast<char*>(action), const_cast<char*>(account_email), const_cast<char*>(host));
 }
 
 void show_character_menu_impl(struct descriptor_data* d)
@@ -2475,6 +2490,7 @@ void handle_account_authenticated(struct descriptor_data* d, const account::Acco
     set_account_login_name(d, account_data.account_name);
     set_account_login_email(d, account_data.normalized_email);
     d->bad_pws = 0;
+    mudlog_account_event(d, "Account login", account_data.normalized_email.c_str());
     show_account_menu(d, account_data);
     STATE(d) = CON_ACCTMENU;
 }
@@ -2709,6 +2725,7 @@ void nanny(struct descriptor_data* d, char* arg)
                     return;
                 }
 
+                mudlog_account_event(d, "Bad account password");
                 if (++(d->bad_pws) >= 5) {
                     SEND_TO_Q("Invalid account credentials... disconnecting.\n\r", d);
                     STATE(d) = CON_CLOSE;
@@ -3028,6 +3045,7 @@ void nanny(struct descriptor_data* d, char* arg)
 
             switch (*arg) {
             case '0':
+                mudlog_account_event(d, "Account logout");
                 clear_account_login_state(d);
                 show_account_email_prompt(d);
                 STATE(d) = CON_NME;
@@ -3158,6 +3176,7 @@ void nanny(struct descriptor_data* d, char* arg)
             account::AccountData account_data;
             std::string error_message;
             if (!account::authenticate_account(kAccountStorageRoot, d->account_name, arg, &account_data, &error_message)) {
+                mudlog_account_event(d, "Bad account password");
                 SEND_TO_Q("Incorrect account password.\n\r", d);
                 if (account::read_account_file(kAccountStorageRoot, d->account_name, &account_data, nullptr))
                     show_account_menu(d, account_data);
@@ -3225,6 +3244,7 @@ void nanny(struct descriptor_data* d, char* arg)
                     STATE(d) = CON_NME;
                 }
             } else {
+                mudlog_account_event(d, "Account password reset", account_data.normalized_email.c_str());
                 SEND_TO_Q("Account password updated.\n\r", d);
                 show_account_menu(d, account_data);
                 STATE(d) = CON_ACCTMENU;

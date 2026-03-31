@@ -245,6 +245,20 @@ std::string write_valid_legacy_player_file(const std::string& root_directory, co
     return generated_path;
 }
 
+size_t count_occurrences(const std::string& haystack, const std::string& needle)
+{
+    if (needle.empty())
+        return 0;
+
+    size_t count = 0;
+    size_t position = 0;
+    while ((position = haystack.find(needle, position)) != std::string::npos) {
+        ++count;
+        position += needle.size();
+    }
+    return count;
+}
+
 void ensure_test_world_room(int room_number)
 {
     if (room_data::BASE_WORLD == nullptr)
@@ -668,6 +682,131 @@ TEST(InterpreAccountMenu, CharacterMenuPasswordOptionRoutesAccountBackedCharacte
     EXPECT_EQ(std::string(descriptor.output), "Current account password: ");
 }
 
+TEST(InterpreAccountMenu, SuccessfulAccountLoginLogsEmailAndHost)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_verify_email(".", "acct", "test", 1700010201, &stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTPWD;
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
+
+    const std::string stderr_path = temp_directory.path() + "/account-login.stderr";
+    char password[] = "ValidPass1";
+    std::string stderr_output;
+    {
+        ScopedStderrRedirect stderr_redirect(stderr_path);
+        nanny(&descriptor, password);
+        stderr_output = stderr_redirect.read_contents();
+    }
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTMENU);
+    EXPECT_NE(stderr_output.find("Account login for player@example.com [127.0.0.1]"), std::string::npos) << stderr_output;
+    EXPECT_EQ(count_occurrences(stderr_output, "Account login for player@example.com [127.0.0.1]"), 1u) << stderr_output;
+}
+
+TEST(InterpreAccountMenu, AccountLogoutLogsEmailAndHostExactlyOnce)
+{
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTMENU;
+    std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
+
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+
+    const std::string stderr_path = temp_directory.path() + "/account-logout.stderr";
+    char choice[] = "0";
+    std::string stderr_output;
+    {
+        ScopedStderrRedirect stderr_redirect(stderr_path);
+        nanny(&descriptor, choice);
+        stderr_output = stderr_redirect.read_contents();
+    }
+
+    EXPECT_EQ(descriptor.connected, CON_NME);
+    EXPECT_EQ(std::string(descriptor.output), "Account email: ");
+    EXPECT_NE(stderr_output.find("Account logout for player@example.com [127.0.0.1]"), std::string::npos) << stderr_output;
+    EXPECT_EQ(count_occurrences(stderr_output, "Account logout for player@example.com [127.0.0.1]"), 1u) << stderr_output;
+}
+
+TEST(InterpreAccountMenu, InvalidAccountPasswordAttemptLogsEmailAndHost)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_verify_email(".", "acct", "test", 1700010201, &stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTPWD;
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
+
+    const std::string stderr_path = temp_directory.path() + "/bad-account-password.stderr";
+    char password[] = "WrongPass1";
+    std::string stderr_output;
+    {
+        ScopedStderrRedirect stderr_redirect(stderr_path);
+        nanny(&descriptor, password);
+        stderr_output = stderr_redirect.read_contents();
+    }
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTPWD);
+    EXPECT_NE(std::string(descriptor.output).find("Invalid account credentials.\n\r"), std::string::npos);
+    EXPECT_NE(stderr_output.find("Bad account password for player@example.com [127.0.0.1]"), std::string::npos) << stderr_output;
+    EXPECT_EQ(stderr_output.find("WrongPass1"), std::string::npos) << stderr_output;
+}
+
+TEST(InterpreAccountMenu, PendingVerificationAccountDoesNotLogBadPasswordAttempt)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTPWD;
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
+
+    const std::string stderr_path = temp_directory.path() + "/pending-verification.stderr";
+    char password[] = "ValidPass1";
+    std::string stderr_output;
+    {
+        ScopedStderrRedirect stderr_redirect(stderr_path);
+        nanny(&descriptor, password);
+        stderr_output = stderr_redirect.read_contents();
+    }
+
+    EXPECT_NE(descriptor.connected, CON_ACCTPWD);
+    EXPECT_EQ(std::string(descriptor.output).find("Invalid account credentials."), std::string::npos);
+    EXPECT_EQ(stderr_output.find("Bad account password"), std::string::npos) << stderr_output;
+}
+
 TEST(InterpreAccountMenu, CharacterMenuDeleteOptionRoutesAccountBackedCharactersToAccountPasswordVerification)
 {
     descriptor_data descriptor = make_descriptor();
@@ -687,6 +826,77 @@ TEST(InterpreAccountMenu, CharacterMenuDeleteOptionRoutesAccountBackedCharacters
 
     free_char(descriptor.character);
     descriptor.character = nullptr;
+}
+
+TEST(InterpreAccountMenu, AccountPasswordResetRejectsIncorrectCurrentPasswordAndLogsAttemptWithoutLeakingSecret)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_verify_email(".", "acct", "test", 1700010201, &stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTRESETOLD;
+    std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
+
+    const std::string stderr_path = temp_directory.path() + "/account-reset-old-failure.stderr";
+    char password[] = "WrongPass1";
+    std::string stderr_output;
+    {
+        ScopedStderrRedirect stderr_redirect(stderr_path);
+        nanny(&descriptor, password);
+        stderr_output = stderr_redirect.read_contents();
+    }
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTMENU);
+    EXPECT_NE(std::string(descriptor.output).find("Incorrect account password.\n\r"), std::string::npos);
+    EXPECT_NE(stderr_output.find("Bad account password for player@example.com [127.0.0.1]"), std::string::npos) << stderr_output;
+    EXPECT_EQ(stderr_output.find("WrongPass1"), std::string::npos) << stderr_output;
+    EXPECT_EQ(stderr_output.find("Account password reset for player@example.com [127.0.0.1]"), std::string::npos) << stderr_output;
+}
+
+TEST(InterpreAccountMenu, AccountPasswordResetLogsEmailAndHost)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_verify_email(".", "acct", "test", 1700010201, &stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTRESETCNF;
+    std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.account_password, sizeof(descriptor.account_password), "%s", "ChangedPass2");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
+
+    const std::string stderr_path = temp_directory.path() + "/account-reset.stderr";
+    char confirmation[] = "ChangedPass2";
+    std::string stderr_output;
+    {
+        ScopedStderrRedirect stderr_redirect(stderr_path);
+        nanny(&descriptor, confirmation);
+        stderr_output = stderr_redirect.read_contents();
+    }
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message)) << error_message;
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTMENU);
+    EXPECT_TRUE(account::verify_password("ChangedPass2", reloaded_account.password_hash));
+    EXPECT_NE(stderr_output.find("Account password reset for player@example.com [127.0.0.1]"), std::string::npos) << stderr_output;
+    EXPECT_EQ(stderr_output.find("ChangedPass2"), std::string::npos) << stderr_output;
 }
 
 TEST(InterpreAccountMenu, AccountBackedDeleteVerificationRejectsIncorrectAccountPasswordAndReturnsToCharacterMenu)

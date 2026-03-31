@@ -111,6 +111,7 @@ void print_exploits(char_data* sendto, char* name);
 
 ACMD(do_look);
 ACMD(do_account);
+ACMD(do_whoacct);
 int Check_zone_authority(int zonenum, char_data* ch);
 
 ACMD(do_emote)
@@ -3322,6 +3323,141 @@ ACMD(do_account)
     }
 
     send_to_char("Unknown account subcommand.\n\r", ch);
+}
+
+namespace {
+
+std::string sanitize_whoacct_field(const char* value)
+{
+    if (value == nullptr)
+        return "";
+
+    std::string sanitized;
+    sanitized.reserve(strlen(value));
+
+    for (const unsigned char* cursor = reinterpret_cast<const unsigned char*>(value); *cursor != '\0'; ++cursor) {
+        if (*cursor == '\r' || *cursor == '\n' || *cursor == '\t') {
+            sanitized += ' ';
+            continue;
+        }
+
+        if (isprint(*cursor))
+            sanitized += static_cast<char>(*cursor);
+        else
+            sanitized += '?';
+    }
+
+    return sanitized;
+}
+
+bool is_live_authenticated_account_session(const descriptor_data* descriptor)
+{
+    if (descriptor == nullptr || !*descriptor->account_name)
+        return false;
+
+    switch (descriptor->connected) {
+    case CON_PLYNG:
+    case CON_SLCT:
+    case CON_ACCTMENU:
+    case CON_ACCTSLCT:
+    case CON_ACCTLINKPWD:
+    case CON_ACCTLINKNAME:
+    case CON_ACCTRESETOLD:
+    case CON_ACCTRESETNEW:
+    case CON_ACCTRESETCNF:
+    case CON_ACCTLEGPWD:
+    case CON_ACCTDELCNF1:
+        return true;
+    default:
+        return false;
+    }
+}
+
+const char* whoacct_session_label(const descriptor_data* descriptor)
+{
+    if (descriptor == nullptr)
+        return "Unknown";
+
+    switch (descriptor->connected) {
+    case CON_PLYNG:
+        return nullptr;
+    case CON_SLCT:
+        return "Character Menu";
+    case CON_ACCTMENU:
+        return "Account Menu";
+    case CON_ACCTSLCT:
+        return "Character Select";
+    case CON_ACCTRESETOLD:
+    case CON_ACCTRESETNEW:
+    case CON_ACCTRESETCNF:
+        return "Password Reset";
+    case CON_ACCTLINKNAME:
+    case CON_ACCTLEGPWD:
+    case CON_ACCTLINKPWD:
+        return "Linking Character";
+    case CON_ACCTNEWCNF:
+    case CON_ACCTNEWPWD:
+    case CON_ACCTNEWPWDCNF:
+    case CON_ACCTNEWCHAR:
+        return "Creating Character";
+    case CON_ACCTDELCNF1:
+        return "Delete Confirm";
+    default:
+        return "Account Session";
+    }
+}
+
+} // namespace
+
+ACMD(do_whoacct)
+{
+    int displayed_sessions = 0;
+    char line[256];
+
+    strcpy(line, "Num   Account                    Character    State            Site\n\r");
+    strcat(line, "--- -------------------------- ------------ ---------------- ------------------------\n\r");
+
+    for (descriptor_data* descriptor = descriptor_list; descriptor; descriptor = descriptor->next) {
+        if (!is_live_authenticated_account_session(descriptor))
+            continue;
+
+        if (displayed_sessions == 0)
+            send_to_char(line, ch);
+
+        std::string account_identifier = sanitize_whoacct_field(
+            *descriptor->account_email ? descriptor->account_email : descriptor->account_name);
+        const char* session_label = whoacct_session_label(descriptor);
+        std::string character_display;
+        const char* state_display = "Playing";
+        if (descriptor->character != nullptr && GET_NAME(descriptor->character) != nullptr)
+            character_display = account::format_character_name_for_display(GET_NAME(descriptor->character));
+        else
+            character_display = "-";
+
+        if (session_label != nullptr)
+            state_display = session_label;
+
+        if (account_identifier.empty())
+            account_identifier = "invalid";
+
+        std::string host_display = sanitize_whoacct_field(*descriptor->host ? descriptor->host : "Hostname unknown");
+        if (host_display.empty())
+            host_display = "Hostname unknown";
+
+        snprintf(buf, sizeof(buf), "%3d %-26.26s %-12.12s %-16.16s %s\n\r", descriptor->desc_num,
+            account_identifier.c_str(), character_display.c_str(), state_display, host_display.c_str());
+        send_to_char(buf, ch);
+        ++displayed_sessions;
+    }
+
+    if (displayed_sessions == 0) {
+        send_to_char("No visible account sessions connected.\n\r", ch);
+        return;
+    }
+
+    snprintf(buf, sizeof(buf), "\n\r%d visible account session%s connected.\n\r",
+        displayed_sessions, displayed_sessions == 1 ? "" : "s");
+    send_to_char(buf, ch);
 }
 
 extern int top_of_world;

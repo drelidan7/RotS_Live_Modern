@@ -26,10 +26,10 @@ setup: $(CMAKE_CACHE)
 	+$(CMAKE) --build $(BUILD_DIR) --target setup
 
 build: $(CMAKE_CACHE)
-	+$(CMAKE) --build $(BUILD_DIR) --target ageland
+	+$(CMAKE) --build $(BUILD_DIR) --target ageland -j16
 
 test: $(CMAKE_CACHE)
-	+$(CMAKE) --build $(BUILD_DIR) --target ageland ageland_tests
+	+$(CMAKE) --build $(BUILD_DIR) --target ageland ageland_tests -j16
 	ctest --test-dir $(BUILD_DIR) --output-on-failure
 
 run: build

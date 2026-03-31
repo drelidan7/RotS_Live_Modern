@@ -17,7 +17,9 @@
 #include <unistd.h>
 
 ACMD(do_account);
+ACMD(do_whoacct);
 extern struct player_index_element* player_table;
+extern struct descriptor_data* descriptor_list;
 extern int top_of_p_table;
 void clear_char(struct char_data* ch, int mode);
 void save_player(struct char_data* ch, int load_room, int index_pos);
@@ -105,6 +107,23 @@ public:
 private:
     player_index_element* m_previous_player_table;
     int m_previous_top_of_p_table;
+};
+
+class ScopedDescriptorList {
+public:
+    ScopedDescriptorList()
+        : m_previous_descriptor_list(descriptor_list)
+    {
+        descriptor_list = nullptr;
+    }
+
+    ~ScopedDescriptorList()
+    {
+        descriptor_list = m_previous_descriptor_list;
+    }
+
+private:
+    descriptor_data* m_previous_descriptor_list;
 };
 
 descriptor_data make_descriptor()
@@ -418,6 +437,285 @@ TEST(ActWiz, AccountCommandAcceptsEmailForMigrateChar)
     EXPECT_EQ(stat(account::legacy_player_file_path(".", "boromir").c_str(), &file_info), -1);
     EXPECT_EQ(stat(account::legacy_object_file_path(".", "boromir").c_str(), &file_info), -1);
     EXPECT_EQ(stat(account::legacy_exploits_file_path(".", "boromir").c_str(), &file_info), -1);
+
+    free(admin.player.name);
+}
+
+TEST(ActWiz, WhoAcctShowsAuthenticatedAccountsAndCurrentCharacterOrMenuState)
+{
+    ScopedDescriptorList descriptor_list_scope;
+
+    descriptor_data admin_descriptor = make_descriptor();
+    char_data admin {};
+    admin.desc = &admin_descriptor;
+    admin.player.name = strdup("tester");
+
+    descriptor_data playing_descriptor {};
+    playing_descriptor.desc_num = 12;
+    playing_descriptor.connected = CON_PLYNG;
+    std::snprintf(playing_descriptor.account_name, sizeof(playing_descriptor.account_name), "%s", "acct-one");
+    std::snprintf(playing_descriptor.account_email, sizeof(playing_descriptor.account_email), "%s", "player1@example.com");
+    std::snprintf(playing_descriptor.host, sizeof(playing_descriptor.host), "%s", "127.0.0.1");
+    playing_descriptor.next = descriptor_list;
+    descriptor_list = &playing_descriptor;
+
+    char_data playing_character {};
+    clear_char(&playing_character, MOB_VOID);
+    playing_character.player.name = strdup("aragorn");
+    playing_descriptor.character = &playing_character;
+
+    descriptor_data account_menu_descriptor {};
+    account_menu_descriptor.desc_num = 13;
+    account_menu_descriptor.connected = CON_ACCTMENU;
+    std::snprintf(account_menu_descriptor.account_name, sizeof(account_menu_descriptor.account_name), "%s", "acct-two");
+    std::snprintf(account_menu_descriptor.account_email, sizeof(account_menu_descriptor.account_email), "%s", "player2@example.com");
+    std::snprintf(account_menu_descriptor.host, sizeof(account_menu_descriptor.host), "%s", "127.0.0.2");
+    account_menu_descriptor.next = descriptor_list;
+    descriptor_list = &account_menu_descriptor;
+
+    descriptor_data character_menu_descriptor {};
+    character_menu_descriptor.desc_num = 14;
+    character_menu_descriptor.connected = CON_SLCT;
+    std::snprintf(character_menu_descriptor.account_name, sizeof(character_menu_descriptor.account_name), "%s", "acct-three");
+    std::snprintf(character_menu_descriptor.account_email, sizeof(character_menu_descriptor.account_email), "%s", "player3@example.com");
+    std::snprintf(character_menu_descriptor.host, sizeof(character_menu_descriptor.host), "%s", "127.0.0.3");
+    character_menu_descriptor.next = descriptor_list;
+    descriptor_list = &character_menu_descriptor;
+
+    char_data character_menu_character {};
+    clear_char(&character_menu_character, MOB_VOID);
+    character_menu_character.player.name = strdup("legolas");
+    character_menu_descriptor.character = &character_menu_character;
+
+    descriptor_data legacy_descriptor {};
+    legacy_descriptor.desc_num = 15;
+    legacy_descriptor.connected = CON_PLYNG;
+    std::snprintf(legacy_descriptor.host, sizeof(legacy_descriptor.host), "%s", "127.0.0.4");
+    legacy_descriptor.next = descriptor_list;
+    descriptor_list = &legacy_descriptor;
+
+    char_data legacy_character {};
+    clear_char(&legacy_character, MOB_VOID);
+    legacy_character.player.name = strdup("boromir");
+    legacy_descriptor.character = &legacy_character;
+
+    char empty_argument[] = "";
+    do_whoacct(&admin, empty_argument, nullptr, 0, 0);
+
+    const std::string output = admin_descriptor.output;
+    char expected_playing_row[128];
+    char expected_account_menu_row[128];
+    char expected_character_menu_row[128];
+    std::string expected_output;
+    std::snprintf(expected_playing_row, sizeof(expected_playing_row), "%3d %-26.26s %-12.12s %-16.16s %s\n\r",
+        12, "player1@example.com", "Aragorn", "Playing", "127.0.0.1");
+    std::snprintf(expected_account_menu_row, sizeof(expected_account_menu_row), "%3d %-26.26s %-12.12s %-16.16s %s\n\r",
+        13, "player2@example.com", "-", "Account Menu", "127.0.0.2");
+    std::snprintf(expected_character_menu_row, sizeof(expected_character_menu_row),
+        "%3d %-26.26s %-12.12s %-16.16s %s\n\r", 14, "player3@example.com", "Legolas",
+        "Character Menu", "127.0.0.3");
+    EXPECT_NE(output.find("Num "), std::string::npos);
+    EXPECT_NE(output.find("Account"), std::string::npos);
+    EXPECT_NE(output.find("Character"), std::string::npos);
+    EXPECT_NE(output.find("State"), std::string::npos);
+    EXPECT_NE(output.find("Site"), std::string::npos);
+    EXPECT_NE(output.find(expected_playing_row), std::string::npos) << output;
+    EXPECT_NE(output.find(expected_account_menu_row), std::string::npos) << output;
+    EXPECT_NE(output.find(expected_character_menu_row), std::string::npos) << output;
+    EXPECT_EQ(output.find("->"), std::string::npos);
+    EXPECT_EQ(output.find("("), std::string::npos);
+    EXPECT_EQ(output.find(")"), std::string::npos);
+    EXPECT_EQ(output.find("boromir"), std::string::npos);
+    EXPECT_NE(output.find("3 visible account sessions connected."), std::string::npos);
+    expected_output += "Num   Account                    Character    State            Site\n\r";
+    expected_output += "--- -------------------------- ------------ ---------------- ------------------------\n\r";
+    expected_output += expected_character_menu_row;
+    expected_output += expected_account_menu_row;
+    expected_output += expected_playing_row;
+    expected_output += "\n\r3 visible account sessions connected.\n\r";
+    EXPECT_EQ(output, expected_output);
+
+    free(admin.player.name);
+    free(playing_character.player.name);
+    free(character_menu_character.player.name);
+    free(legacy_character.player.name);
+}
+
+TEST(ActWiz, WhoAcctReportsWhenNoAuthenticatedAccountsAreConnected)
+{
+    ScopedDescriptorList descriptor_list_scope;
+
+    descriptor_data admin_descriptor = make_descriptor();
+    char_data admin {};
+    admin.desc = &admin_descriptor;
+    admin.player.name = strdup("tester");
+
+    descriptor_data legacy_descriptor {};
+    legacy_descriptor.connected = CON_PLYNG;
+    descriptor_list = &legacy_descriptor;
+
+    char_data legacy_character {};
+    clear_char(&legacy_character, MOB_VOID);
+    legacy_character.player.name = strdup("boromir");
+    legacy_descriptor.character = &legacy_character;
+
+    char empty_argument[] = "";
+    do_whoacct(&admin, empty_argument, nullptr, 0, 0);
+
+    EXPECT_EQ(std::string(admin_descriptor.output), "No visible account sessions connected.\n\r");
+
+    free(admin.player.name);
+    free(legacy_character.player.name);
+}
+
+TEST(ActWiz, WhoAcctListsDuplicateAuthenticatedSessionsSeparatelyAndSkipsClosingDescriptors)
+{
+    ScopedDescriptorList descriptor_list_scope;
+
+    descriptor_data admin_descriptor = make_descriptor();
+    char_data admin {};
+    admin.desc = &admin_descriptor;
+    admin.player.name = strdup("tester");
+
+    descriptor_data closing_descriptor {};
+    closing_descriptor.desc_num = 21;
+    closing_descriptor.connected = CON_CLOSE;
+    std::snprintf(closing_descriptor.account_name, sizeof(closing_descriptor.account_name), "%s", "acct-one");
+    std::snprintf(closing_descriptor.account_email, sizeof(closing_descriptor.account_email), "%s", "player1@example.com");
+    descriptor_list = &closing_descriptor;
+
+    descriptor_data menu_descriptor {};
+    menu_descriptor.desc_num = 22;
+    menu_descriptor.connected = CON_ACCTMENU;
+    std::snprintf(menu_descriptor.account_name, sizeof(menu_descriptor.account_name), "%s", "acct-one");
+    std::snprintf(menu_descriptor.account_email, sizeof(menu_descriptor.account_email), "%s", "player1@example.com");
+    menu_descriptor.next = descriptor_list;
+    descriptor_list = &menu_descriptor;
+
+    descriptor_data playing_descriptor {};
+    playing_descriptor.desc_num = 23;
+    playing_descriptor.connected = CON_PLYNG;
+    std::snprintf(playing_descriptor.account_name, sizeof(playing_descriptor.account_name), "%s", "acct-one");
+    std::snprintf(playing_descriptor.account_email, sizeof(playing_descriptor.account_email), "%s", "player1@example.com");
+    playing_descriptor.next = descriptor_list;
+    descriptor_list = &playing_descriptor;
+
+    char_data playing_character {};
+    clear_char(&playing_character, MOB_VOID);
+    playing_character.player.name = strdup("aragorn");
+    playing_descriptor.character = &playing_character;
+
+    char empty_argument[] = "";
+    do_whoacct(&admin, empty_argument, nullptr, 0, 0);
+
+    const std::string output = admin_descriptor.output;
+    EXPECT_NE(output.find(" 23 player1@example.com"), std::string::npos);
+    EXPECT_NE(output.find(" 22 player1@example.com"), std::string::npos);
+    EXPECT_NE(output.find("Aragorn"), std::string::npos);
+    EXPECT_NE(output.find("Account Menu"), std::string::npos);
+    EXPECT_EQ(output.find(" 21 player1@example.com"), std::string::npos);
+    EXPECT_NE(output.find("2 visible account sessions connected."), std::string::npos);
+
+    free(admin.player.name);
+    free(playing_character.player.name);
+}
+
+TEST(ActWiz, WhoAcctShowsCharacterSelectStateAndSkipsPendingVerificationSessions)
+{
+    ScopedDescriptorList descriptor_list_scope;
+
+    descriptor_data admin_descriptor = make_descriptor();
+    char_data admin {};
+    admin.desc = &admin_descriptor;
+    admin.player.name = strdup("tester");
+
+    descriptor_data pending_verification_descriptor {};
+    pending_verification_descriptor.desc_num = 31;
+    pending_verification_descriptor.connected = CON_ACCTVERIFY;
+    std::snprintf(pending_verification_descriptor.account_name, sizeof(pending_verification_descriptor.account_name), "%s", "acct-one");
+    std::snprintf(pending_verification_descriptor.account_email, sizeof(pending_verification_descriptor.account_email), "%s", "player1@example.com");
+    descriptor_list = &pending_verification_descriptor;
+
+    descriptor_data select_descriptor {};
+    select_descriptor.desc_num = 32;
+    select_descriptor.connected = CON_ACCTSLCT;
+    std::snprintf(select_descriptor.account_name, sizeof(select_descriptor.account_name), "%s", "acct-two");
+    std::snprintf(select_descriptor.account_email, sizeof(select_descriptor.account_email), "%s", "player2@example.com");
+    select_descriptor.next = descriptor_list;
+    descriptor_list = &select_descriptor;
+
+    char empty_argument[] = "";
+    do_whoacct(&admin, empty_argument, nullptr, 0, 0);
+
+    const std::string output = admin_descriptor.output;
+    EXPECT_NE(output.find(" 32 player2@example.com"), std::string::npos);
+    EXPECT_NE(output.find("Character Select"), std::string::npos);
+    EXPECT_EQ(output.find("player1@example.com"), std::string::npos);
+    EXPECT_NE(output.find("1 visible account session connected.\n\r"), std::string::npos);
+
+    free(admin.player.name);
+}
+
+TEST(ActWiz, WhoAcctSanitizesDisplayedAccountAndHostFields)
+{
+    ScopedDescriptorList descriptor_list_scope;
+
+    descriptor_data admin_descriptor = make_descriptor();
+    char_data admin {};
+    admin.desc = &admin_descriptor;
+    admin.player.name = strdup("tester");
+
+    descriptor_data hostile_descriptor {};
+    hostile_descriptor.desc_num = 40;
+    hostile_descriptor.connected = CON_ACCTMENU;
+    std::snprintf(hostile_descriptor.account_name, sizeof(hostile_descriptor.account_name), "%s", "acct-one");
+    std::snprintf(hostile_descriptor.account_email, sizeof(hostile_descriptor.account_email), "%s",
+        "player@example.com\r\nFAKE");
+    std::snprintf(hostile_descriptor.host, sizeof(hostile_descriptor.host), "%s", "127.0.0.1\t\x1b[31m");
+    descriptor_list = &hostile_descriptor;
+
+    char empty_argument[] = "";
+    do_whoacct(&admin, empty_argument, nullptr, 0, 0);
+
+    const std::string output = admin_descriptor.output;
+    EXPECT_EQ(output.find("\x1b"), std::string::npos);
+    EXPECT_EQ(output.find("player@example.com\r\nFAKE"), std::string::npos);
+    EXPECT_EQ(output.find("\n\rFAKE"), std::string::npos);
+    EXPECT_NE(output.find("player@example.com  FAKE"), std::string::npos);
+    EXPECT_NE(output.find("127.0.0.1 ?[31m"), std::string::npos);
+
+    free(admin.player.name);
+}
+
+TEST(ActWiz, WhoAcctFormatsLongFieldsIntoStableColumns)
+{
+    ScopedDescriptorList descriptor_list_scope;
+
+    descriptor_data admin_descriptor = make_descriptor();
+    char_data admin {};
+    admin.desc = &admin_descriptor;
+    admin.player.name = strdup("tester");
+
+    descriptor_data linking_descriptor {};
+    linking_descriptor.desc_num = 41;
+    linking_descriptor.connected = CON_ACCTLINKPWD;
+    std::snprintf(linking_descriptor.account_name, sizeof(linking_descriptor.account_name), "%s", "acct-one");
+    std::snprintf(linking_descriptor.account_email, sizeof(linking_descriptor.account_email), "%s",
+        "verylongplayeremailaddress@example.com");
+    std::snprintf(linking_descriptor.host, sizeof(linking_descriptor.host), "%s",
+        "proxy-host-name-with-many-segments.example.net");
+    descriptor_list = &linking_descriptor;
+
+    char empty_argument[] = "";
+    do_whoacct(&admin, empty_argument, nullptr, 0, 0);
+
+    char expected_row[160];
+    std::snprintf(expected_row, sizeof(expected_row), "%3d %-26.26s %-12.12s %-16.16s %s\n\r", 41,
+        "verylongplayeremailaddress@example.com", "-", "Linking Character",
+        "proxy-host-name-with-many-segments.example.net");
+
+    const std::string output = admin_descriptor.output;
+    EXPECT_NE(output.find(expected_row), std::string::npos) << output;
 
     free(admin.player.name);
 }

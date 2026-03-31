@@ -167,6 +167,12 @@ namespace {
 
     bool write_character_migration_snapshot(const std::string& root_directory, const CharacterMigrationData& snapshot_data, CharacterMigrationData* migration, std::string* error_message)
     {
+        CharacterMigrationData persisted_snapshot = snapshot_data;
+        // The authoritative migrated player state lives in character.json. Keep
+        // raw legacy player bytes in-memory for the current rollback path, but
+        // do not persist them into the transitional migration artifact.
+        persisted_snapshot.player_file = LegacyAssetSnapshot {};
+
         const std::string account_storage_key = resolve_account_storage_key(root_directory, snapshot_data.account_name);
         const std::string account_root = root_directory + "/accounts";
         const std::string bucket_directory = account_root + "/" + account_bucket_for_name(account_storage_key);
@@ -185,7 +191,7 @@ namespace {
         if (file == nullptr)
             return false;
 
-        const std::string json = serialize_character_migration_to_json(snapshot_data);
+        const std::string json = serialize_character_migration_to_json(persisted_snapshot);
         const size_t written_length = std::fwrite(json.data(), sizeof(char), json.size(), file);
         const int close_result = std::fclose(file);
         if (written_length != json.size() || close_result != 0) {
@@ -202,6 +208,18 @@ namespace {
 
         if (migration)
             *migration = snapshot_data;
+
+        set_error(error_message, "");
+        return true;
+    }
+
+    bool retire_character_migration_snapshot_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::string* error_message)
+    {
+        const std::string path = account_character_snapshot_path(root_directory, account_name, character_name);
+        if (std::remove(path.c_str()) != 0 && errno != ENOENT) {
+            set_error(error_message, "Failed to retire transitional migration file '" + path + "': " + std::strerror(errno));
+            return false;
+        }
 
         set_error(error_message, "");
         return true;
@@ -498,15 +516,18 @@ namespace {
             cleanup_account_native_migration_outputs(root_directory, account_name, character_name);
             return false;
         }
-        if (!write_character_migration_snapshot(root_directory, snapshot_data, migration, error_message)) {
-            cleanup_account_native_migration_outputs(root_directory, account_name, character_name);
-            return false;
-        }
-
         if (!retire_legacy_character_files_after_migration(player_file_path, stale_flat_player_file_path, object_file_path, exploits_file_path, snapshot_data, error_message)) {
             cleanup_account_native_migration_outputs(root_directory, account_name, character_name);
             return false;
         }
+
+        if (!retire_character_migration_snapshot_file(root_directory, account_name, character_name, error_message)) {
+            cleanup_account_native_migration_outputs(root_directory, account_name, character_name);
+            return false;
+        }
+
+        if (migration)
+            *migration = snapshot_data;
 
         return true;
     }

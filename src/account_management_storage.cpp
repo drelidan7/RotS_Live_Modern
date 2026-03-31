@@ -319,8 +319,8 @@ std::string serialize_character_migration_to_json(const CharacterMigrationData& 
     output << "  \"account_name\": \"" << json_utils::escape_json_string(migration.account_name) << "\",\n";
     output << "  \"character_name\": \"" << json_utils::escape_json_string(migration.character_name) << "\",\n";
     output << "  \"migrated_at\": " << migration.migrated_at << ",\n";
-    write_snapshot(output, "player_file", migration.player_file);
-    output << ",\n";
+    // The on-disk migration artifact is transitional only. Do not persist raw
+    // legacy player bytes that still carry legacy password/host state.
     write_snapshot(output, "object_file", migration.object_file);
     output << ",\n";
     write_snapshot(output, "exploits_file", migration.exploits_file);

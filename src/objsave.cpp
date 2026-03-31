@@ -309,7 +309,12 @@ FILE* Crash_get_file_by_name(char* name, char* mode)
     if (!Crash_get_filename(name, buf))
         return 0;
     if (!(fp = fopen(buf, mode))) {
-        log("crashsave: mark0");
+        const bool suppress_missing_read_side_file = (errno == ENOENT) && (mode != nullptr) && (mode[0] == 'r');
+        if (!suppress_missing_read_side_file) {
+            snprintf(buf1, sizeof(buf1), "SYSERR: unable to open crashsave file '%s' for %s: %s",
+                buf, name, strerror(errno));
+            log(buf1);
+        }
         return 0;
     }
     return fp;

@@ -1,3 +1,19 @@
+namespace {
+
+bool migration_snapshot_has_persisted_player_payload(const CharacterMigrationData& migration)
+{
+    return migration.player_file.present || !migration.player_file.content.empty() || !migration.player_file.source_path.empty();
+}
+
+CharacterMigrationData sanitized_migration_for_persistence(const CharacterMigrationData& migration)
+{
+    CharacterMigrationData sanitized = migration;
+    sanitized.player_file = LegacyAssetSnapshot {};
+    return sanitized;
+}
+
+} // namespace
+
 bool migrate_legacy_character_by_name(const std::string& root_directory, const std::string& account_name, const std::string& character_name, long migrated_at, CharacterMigrationData* migration, std::string* error_message)
 {
     std::string player_file_path;
@@ -49,7 +65,21 @@ bool read_character_migration(const std::string& root_directory, const std::stri
     }
 
     std::fclose(file);
-    return deserialize_character_migration_from_json(json, migration, error_message);
+
+    CharacterMigrationData parsed_migration;
+    if (!deserialize_character_migration_from_json(json, &parsed_migration, error_message))
+        return false;
+
+    if (migration_snapshot_has_persisted_player_payload(parsed_migration)) {
+        CharacterMigrationData sanitized_migration = sanitized_migration_for_persistence(parsed_migration);
+        if (!write_character_migration_snapshot(root_directory, sanitized_migration, nullptr, error_message))
+            return false;
+        parsed_migration = std::move(sanitized_migration);
+    }
+
+    *migration = std::move(parsed_migration);
+    set_error(error_message, "");
+    return true;
 }
 
 bool ensure_character_migration(const std::string& root_directory, const std::string& account_name, const std::string& character_name, long migrated_at, CharacterMigrationData* migration, std::string* error_message)
@@ -59,20 +89,6 @@ bool ensure_character_migration(const std::string& root_directory, const std::st
         return false;
     if (account_character_exists)
         return true;
-
-    const std::string path = account_character_snapshot_path(root_directory, account_name, character_name);
-    struct stat file_info {};
-    if (stat(path.c_str(), &file_info) == 0) {
-        CharacterMigrationData loaded_migration;
-        CharacterMigrationData* migration_target = migration != nullptr ? migration : &loaded_migration;
-        if (read_character_migration(root_directory, account_name, character_name, migration_target, error_message)) {
-            set_error(error_message, "Authoritative character.json is missing for '" + character_name + "'; the transitional migration snapshot alone is insufficient.");
-            return false;
-        }
-    } else if (errno != ENOENT) {
-        set_error(error_message, "Failed to inspect migration file '" + path + "': " + std::strerror(errno));
-        return false;
-    }
 
     return migrate_legacy_character_by_name(root_directory, account_name, character_name, migrated_at, migration, error_message);
 }
@@ -114,17 +130,31 @@ bool refresh_linked_character_snapshot(const std::string& root_directory, const 
         return true;
     }
 
-    CharacterMigrationData existing_migration;
-    const bool had_existing_snapshot = read_character_migration(root_directory, owner_account_name, character_name, &existing_migration, nullptr);
+    bool had_existing_account_exploit_file = false;
+    if (!inspect_account_exploit_file(root_directory, owner_account_name, character_name, &had_existing_account_exploit_file, error_message))
+        return false;
+
+    std::vector<exploit_record> existing_account_records;
+    if (had_existing_account_exploit_file && !read_account_exploit_file(root_directory, owner_account_name, character_name, &existing_account_records, error_message))
+        return false;
+    const bool had_existing_account_exploit_history = had_existing_account_exploit_file && !existing_account_records.empty();
 
     CharacterMigrationData refreshed_migration;
     if (!migrate_legacy_character_by_name(root_directory, owner_account_name, character_name, migrated_at, &refreshed_migration, error_message))
         return false;
 
-    if (!refreshed_migration.exploits_file.present && had_existing_snapshot && existing_migration.exploits_file.present) {
-        refreshed_migration.exploits_file = existing_migration.exploits_file;
-        if (!write_character_migration_snapshot(root_directory, refreshed_migration, &refreshed_migration, error_message))
+    if (!refreshed_migration.exploits_file.present && had_existing_account_exploit_history) {
+        if (!write_account_exploit_file(root_directory, owner_account_name, character_name, existing_account_records, error_message))
             return false;
+
+        std::string exploit_bytes;
+        if (!exploits_json::exploit_records_to_binary(existing_account_records, &exploit_bytes, error_message))
+            return false;
+
+        refreshed_migration.exploits_file.source_path = account_character_exploits_path(root_directory, owner_account_name, character_name);
+        refreshed_migration.exploits_file.encoding = "hex";
+        refreshed_migration.exploits_file.content = hex_encode(exploit_bytes);
+        refreshed_migration.exploits_file.present = true;
     }
 
     if (migration)

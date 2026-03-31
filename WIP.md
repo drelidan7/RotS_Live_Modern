@@ -2,9 +2,66 @@
 
 ## Current Status
 - In progress.
+- Active slice: immortal account-session visibility via a new `whoacct` command plus matching `wizh_tbl` documentation.
+- The command should show currently connected authenticated accounts and the character each is playing, while also making authenticated account-menu sessions visible instead of silently skipping them.
+- `whoacct` now uses a plain `users`-style column layout with no arrow or parenthesized state markers, so the output is easier to scan and matches the rest of the immortal visibility tooling more closely.
+- `whoacct` now also sanitizes account and host fields to printable single-line text before rendering, so hostile email/host values cannot inject extra rows or terminal control sequences into immortal output.
+- The immediate plan is:
+  - add focused `ActWiz` regressions around mixed descriptor/account states
+  - wire `whoacct` into the command table
+  - document it in `lib/text/wizh_tbl` in the same style as the existing immortal command entries
+- `whoacct` is now wired into the command table as an immortal command. It lists authenticated account sessions by email, shows the currently played character when the session is in game, and shows account-side session labels like `Account Menu` when the account is connected but not yet playing a character.
+- `whoacct` now renders with `Num / Account / Character / State / Site` columns similar to `users`, and account-side states are displayed as plain labels like `Account Menu` and `Character Select`.
+- `whoacct` is now gated to the same higher-trust staff tier as `account`, and it only reports live post-auth account states instead of exposing pending-verification sessions.
+- Added focused `ActWiz` regressions proving `whoacct`:
+  - lists only authenticated account sessions
+  - shows the live character name for account-backed in-game sessions
+  - shows `Account Menu` for authenticated account-menu sessions
+  - shows `Character Menu` for authenticated character-menu sessions without mislabeling them as `Playing`
+  - lists duplicate live sessions for the same account separately
+  - skips stale `CON_CLOSE` descriptors even if they still have account state set
+  - shows `Character Select` for authenticated character-selection sessions
+  - skips pending-verification sessions that have not reached the authenticated account menu/character flow yet
+  - sanitizes hostile email/host values before rendering them in the immortal-visible table
+  - keeps the rendered table stable for long email/host values and exact mixed-state output
+  - reports the no-sessions case cleanly
+- Updated `lib/text/wizh_tbl` with a new `WHOACCT` immortal help entry and refreshed the `ACCOUNT` entry so both account-management commands are documented in the same table.
+- `account show` now renders human-readable UTC timestamps instead of raw epoch values, including verification, verification-window, blocked, created, updated, and password-reset metadata where applicable.
+- Added focused `AccountManagement` regressions proving the account summary:
+  - renders fixed UTC timestamps for the normal verified/blocked/reset happy path
+  - renders human-readable verification-window timestamps for pending-verification accounts
+  - omits unset blocked/password-reset metadata cleanly
+  - reports out-of-range persisted timestamps as `Invalid`
+- Updated `lib/text/wizh_tbl` so the immortal `account show` help notes that timestamps are shown in UTC.
+- Validation for this slice: focused `ActWiz` and `AccountManagement` regressions pass and `make test` passes at `436/436`.
+- Recent completed slice:
+  - account-authentication observability in `nanny()` now mudlogs successful login, logout, invalid password attempts, and self-service password resets with focused regression coverage
+- Added mudlogs for:
+  - successful account login
+  - account logout from the authenticated account menu
+  - invalid account password attempts
+  - self-service account password reset
+- The immediate follow-up is account logout observability from the authenticated account menu.
+- Added focused `InterpreAccountMenu` regressions that capture stderr and prove:
+  - login and reset logs include the account email plus host
+  - logout logs include the account email plus host exactly once
+  - invalid-password logs do not leak the attempted password
+  - pending-verification accounts are not mislabeled as bad-password attempts
+  - bad current-password attempts in the self-service reset flow log exactly once, leak no secret, and do not emit a reset-success event
+- Validation for this slice:
+  - focused `InterpreAccountMenu` logging regressions pass
+  - `make test` passes at `427/427`
+  - `make smoke-account` still hit the known early prompt-detection flake before reaching the account menu, so there is no clean smoke confirmation for this observability-only change yet
+- Durable repo state:
+  - successful migration no longer writes a routine `.migration.json` file, and normal account-native play/save paths no longer depend on that artifact
+  - account-native `character.json`, `objects.json`, and `exploits.json` are the intended authorities for linked characters
+  - the recent `Crash_load()` bugfix keeps missing legacy `plrobjs/...` files quiet on account-backed fallback while still logging real open failures
+- `make test` now suppresses compiler warnings by default through the CMake test-target flags, so the build output stays focused on actual test failures instead of warning noise.
 - The oversized `account_management` module is being split into smaller responsibility-based headers and implementation fragments so future account/auth/storage work is easier to navigate without changing the compiled entry point layout.
 - `src/account_management.cpp` now keeps the shared helper/private logic while the public surface is broken out into focused identity, storage, assets, migration, and presentation fragments.
 - Added compile-only test translation units so each new public `account_management_*` header has to compile on its own instead of only through the umbrella header.
+- The transitional on-disk `.migration.json` artifact is now sanitized: it no longer persists raw legacy player-file bytes, so legacy password/host data is not carried forward at rest in migration metadata. In-memory migration data still keeps the player bytes long enough for the current rollback/restore helpers.
+- Added focused regressions in `src/tests/account_management_tests.cpp` proving the persisted migration file omits legacy player password/host content while still preserving in-memory rollback data and the object/exploit migration payloads that remain in the transitional artifact.
 - The account-backed play selector no longer exposes the generated internal account name in player-facing copy; it now says `Linked characters for your account:` instead.
 - The immortal `account` command now accepts either an email address or the internal account name for lookup, so admins no longer need to know the generated internal name just to inspect or manage an account.
 - Added a shared `read_account_file_by_identifier(...)` helper in `account_management` and wired `show`, `verify`, `unverify`, `block`, `unblock`, `passwd`, `addchar`, and `migratechar` in `src/act_wiz.cpp` through it.
@@ -403,20 +460,24 @@
 - Re-ran `make smoke-account`, but this pass still did not produce a trustworthy login-flow verdict because the harness timed out waiting for `127.0.0.1:4001` to accept connections and kept artifacts under `/tmp/rots-account-smoke-*`.
 
 ## Next Step
-- Re-run the reviewer pass on the account-backed menu / rollback / birth-persistence follow-up once the next coding slice is ready.
-- Decide whether the next code step is the remaining migration-policy cleanup or hardening `tools/account_smoke.py` enough to make manual account smoke runs trustworthy again.
+- Continue the remaining migration-policy cleanup now that persisted `.migration.json` no longer carries raw legacy player bytes.
+- Decide whether the next code step is more migration-policy cleanup or another pass on `tools/account_smoke.py` to reduce the intermittent first-prompt timeout.
 - Keep removing the remaining transitional migration-file dependency once the player-data path is fully authoritative on `character.json`.
-- Before production use, replace the current raw legacy snapshot capture with structured/sanitized migration for player data so legacy password/host fields are not carried forward verbatim.
 
 ## Last Validation
-- `python3 tools/account_smoke_tests.py`
 - `cmake --build build --target ageland_tests -j16`
-- `./bin/tests '--gtest_filter=InterpreAccountMenu*'`
+- `/home/seth/repos/RotS_Live/bin/tests '--gtest_filter=AccountManagement.*Migration*:*Snapshot*'`
 - `make test`
 - `make smoke-account`
-- Result: the Python smoke-unit suite passes at `21` tests, the full unit suite passes at `410/410`, and the manual proxy-backed account smoke flow passes with the numbered character-selection path after one bounded retry.
+- Result: the focused migration regression suite passes, the full unit suite now passes at `419/419`, and the latest `make smoke-account` rerun still hit an intermittent first-prompt timeout before the migration/play path (`Timed out waiting for markers ...`), so that smoke failure is currently tracked as a separate harness/runtime issue rather than a regression in the migration sanitization slice.
 
 ## Reviewer Status
+- `Bazarat`: clear on the current migration-sanitization direction and regression coverage; no test-design blockers on the new “do not persist raw legacy player payloads” contract.
+- `Magus`: clear on the current migration-sanitization slice; no findings.
+- `Vincent`: clear on the current migration-sanitization slice after the backward-compatible read-time scrub for older persisted player payloads.
+- `Bazarat`: clear on the follow-up migration-policy direction; no test-design blockers on removing routine `.migration.json` writes while keeping in-memory migration data for active rollback helpers.
+- `Magus`: clear on the latest migration-policy cleanup; no findings.
+- `Vincent`: clear on the latest migration-policy cleanup; no findings.
 - `Maxwell`: clear on the shared `json_utils` extraction after follow-up hardening for raw control characters and `\u00XX` serializer/parser round-trip coverage.
 - `Rawls`: clear on the shared `json_utils` extraction; no new trust-boundary or parser-safety findings after the control-character follow-up.
 - `Maxwell`: clear on the current `character_json` expansion after follow-up fixes for numeric range validation, exact-size array validation, and fixed-width string-length guards.

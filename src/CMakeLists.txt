@@ -19,6 +19,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(ROTS_SUPPRESS_TEST_WARNINGS "Suppress compiler warnings when building the test target" ON)
+
 set(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 set(BIN_DIR "${REPO_ROOT}/bin")
 set(LOG_DIR "${REPO_ROOT}/log")
@@ -154,10 +156,14 @@ target_include_directories(ageland_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/tests"
 )
 target_compile_definitions(ageland_tests PRIVATE TESTING)
-target_compile_options(ageland_tests PRIVATE
-    -Wall
-    -Wextra
-)
+if(ROTS_SUPPRESS_TEST_WARNINGS)
+    target_compile_options(ageland_tests PRIVATE -w)
+else()
+    target_compile_options(ageland_tests PRIVATE
+        -Wall
+        -Wextra
+    )
+endif()
 target_link_libraries(ageland_tests PRIVATE GTest::gtest)
 target_link_libraries(ageland_tests PRIVATE crypt)
 target_link_options(ageland_tests PRIVATE

@@ -1,6 +1,7 @@
 #include "../account_management.h"
 #include "../exploits_json.h"
 #include "../objects_json.h"
+#include "../utils.h"
 
 #include <gtest/gtest.h>
 
@@ -205,10 +206,16 @@ char_file_u make_stored_character(const char* name = "aragorn")
     stored_character.specials2.alignment = 500;
     stored_character.specials2.act = 0;
     stored_character.specials2.pref = 1L << 5;
+    stored_character.specials2.tactics = TACTICS_CAREFUL;
+    stored_character.specials2.shooting = SHOOTING_SLOW;
+    stored_character.specials2.casting = CASTING_FAST;
+    stored_character.specials2.two_handed = 1;
     stored_character.profs.color_mask = 0x654321;
     stored_character.profs.colors[COLOR_CHAT] = CBLU;
     stored_character.profs.colors[COLOR_ROOM] = CYEL;
     stored_character.profs.colors[COLOR_OBJ] = CCYN;
+    stored_character.profs.colors[COLOR_MAGIC] = CBBLU;
+    stored_character.profs.colors[COLOR_WEATHER] = CBYEL;
     stored_character.profs.prof_level[PROF_WARRIOR] = 12;
     stored_character.profs.prof_coof[PROF_WARRIOR] = 34;
     return stored_character;
@@ -1361,6 +1368,10 @@ TEST(AccountManagement, WritesAndReadsAccountNativeCharacterFile) {
     EXPECT_EQ(loaded.level, original.level);
     EXPECT_EQ(loaded.specials2.idnum, original.specials2.idnum);
     EXPECT_EQ(loaded.specials2.load_room, original.specials2.load_room);
+    EXPECT_EQ(loaded.specials2.tactics, original.specials2.tactics);
+    EXPECT_EQ(loaded.specials2.shooting, original.specials2.shooting);
+    EXPECT_EQ(loaded.specials2.casting, original.specials2.casting);
+    EXPECT_EQ(loaded.specials2.two_handed, original.specials2.two_handed);
     EXPECT_EQ(loaded.points.gold, original.points.gold);
     EXPECT_EQ(loaded.skills[5], original.skills[5]);
     EXPECT_EQ(loaded.talks[2], original.talks[2]);
@@ -1368,6 +1379,8 @@ TEST(AccountManagement, WritesAndReadsAccountNativeCharacterFile) {
     EXPECT_EQ(loaded.profs.colors[COLOR_CHAT], original.profs.colors[COLOR_CHAT]);
     EXPECT_EQ(loaded.profs.colors[COLOR_ROOM], original.profs.colors[COLOR_ROOM]);
     EXPECT_EQ(loaded.profs.colors[COLOR_OBJ], original.profs.colors[COLOR_OBJ]);
+    EXPECT_EQ(loaded.profs.colors[COLOR_MAGIC], original.profs.colors[COLOR_MAGIC]);
+    EXPECT_EQ(loaded.profs.colors[COLOR_WEATHER], original.profs.colors[COLOR_WEATHER]);
     EXPECT_EQ(loaded.profs.prof_level[PROF_WARRIOR], original.profs.prof_level[PROF_WARRIOR]);
     EXPECT_EQ(loaded.profs.prof_coof[PROF_WARRIOR], original.profs.prof_coof[PROF_WARRIOR]);
 }
@@ -1388,6 +1401,8 @@ TEST(AccountManagement, WritesAndReadsAccountNativeCharacterFilePreservesCustomC
     EXPECT_NE(stored_json.find("\"chat\": 4"), std::string::npos);
     EXPECT_NE(stored_json.find("\"roomname\": 3"), std::string::npos);
     EXPECT_NE(stored_json.find("\"object\": 6"), std::string::npos);
+    EXPECT_NE(stored_json.find("\"magic\": 11"), std::string::npos);
+    EXPECT_NE(stored_json.find("\"weather\": 10"), std::string::npos);
 
     char_file_u loaded {};
     ASSERT_TRUE(account::read_account_character_file(temp_directory.path(), "alpha-admin", "aragorn", &loaded, &error_message)) << error_message;
@@ -1396,6 +1411,8 @@ TEST(AccountManagement, WritesAndReadsAccountNativeCharacterFilePreservesCustomC
     EXPECT_EQ(loaded.profs.colors[COLOR_CHAT], original.profs.colors[COLOR_CHAT]);
     EXPECT_EQ(loaded.profs.colors[COLOR_ROOM], original.profs.colors[COLOR_ROOM]);
     EXPECT_EQ(loaded.profs.colors[COLOR_OBJ], original.profs.colors[COLOR_OBJ]);
+    EXPECT_EQ(loaded.profs.colors[COLOR_MAGIC], original.profs.colors[COLOR_MAGIC]);
+    EXPECT_EQ(loaded.profs.colors[COLOR_WEATHER], original.profs.colors[COLOR_WEATHER]);
 }
 
 TEST(AccountManagement, RejectsAccountNativeCharacterFileWithOutOfRangeColorValue) {

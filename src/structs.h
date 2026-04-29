@@ -1220,6 +1220,10 @@ struct char_special2_data {
     int retiredon; /* time of retirement */
     int hide_flags; /* flag set for hide info */
     long will_teach;
+    int tactics;
+    int shooting;
+    int casting;
+    int two_handed;
 };
 
 enum source_type {

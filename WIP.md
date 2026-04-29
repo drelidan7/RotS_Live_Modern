@@ -2,14 +2,61 @@
 
 ## Current Status
 - In progress.
-- Active slice: immortal account-session visibility via a new `whoacct` command plus matching `wizh_tbl` documentation.
-- The command should show currently connected authenticated accounts and the character each is playing, while also making authenticated account-menu sessions visible instead of silently skipping them.
-- `whoacct` now uses a plain `users`-style column layout with no arrow or parenthesized state markers, so the output is easier to scan and matches the rest of the immortal visibility tooling more closely.
-- `whoacct` now also sanitizes account and host fields to printable single-line text before rendering, so hostile email/host values cannot inject extra rows or terminal control sequences into immortal output.
+- Active slice: wiring the new `magic` color slot onto live spellcasting messages so incantations and pre-cast room announcements actually use the configurable magic color.
+- Plan for this slice:
+  - add focused `spell_pa` regressions for room-visible spellcasting text with and without `PRF_COLOR`
+  - route `say_spell(...)` and the delayed-cast muttering line through a shared magic-room-message helper
+  - keep the scope limited to spellcasting announcements, not every spell effect line
+- Spellcasting announcements now use the `magic` color slot in the two main room-visible paths:
+  - `say_spell(...)` incantation lines
+  - the delayed-cast `begins quietly muttering...` room announcement before the spell resolves
+- Added focused `SpellParser` regressions that prove:
+  - color-enabled observers receive magic-colored spell incantation output
+  - observers without `PRF_COLOR` still receive the same spellcasting text without ANSI color codes
+- Validation for this slice:
+  - `./bin/tests '--gtest_filter=SpellParser.*'`
+  - `make test` passed at `445/445`
+- Active slice: adding `magic` and `weather` as the next two configurable player color categories while leaving the final spare persisted color slot unused.
+- Implementation plan for this slice:
+  - add dedicated `COLOR_MAGIC` and `COLOR_WEATHER` indices in the persisted color-slot layout
+  - update `do_color` so player-visible color categories only list real configurable fields instead of conflating the spare persisted slots with `off` / `on` / `default`
+  - persist the new categories cleanly through account-native `character.json` and account character file read/write coverage
+- `magic` and `weather` are now added as real configurable color categories in the runtime color table, with the final sixteenth persisted color slot still left unused/reserved.
+- `do_color` now treats the configurable color list as the real player-facing categories only, so `magic` and `weather` appear alongside the existing categories while `off` / `on` / `default` remain command words instead of being conflated with persisted color slots.
+- Account-native `character.json` color persistence now uses named `magic` and `weather` keys, and the focused account-character read/write regressions now pin those two new categories in addition to the older custom color coverage.
+- Validation for this slice:
+  - `cmake --build build --target ageland_tests -j16`
+  - focused `CharacterJson` and `AccountManagement` color regressions passed
+  - `make test` passed at `443/443`
+- Active slice: fixing the account-backed persistence bug where combat tactics and two-handed weapon stance were lost after renting, returning to the account menu, and selecting the character again.
+- Root cause: those states were runtime-only. `tactics`, `shooting`, `casting`, and two-handed stance were not persisted through the legacy text player save or the account-native `character.json` path, so rent/menu/replay reconstructed the character with default combat state.
+- `src/db.cpp` now persists and restores:
+  - `tactics`
+  - `shooting`
+  - `casting`
+  - `twohanded`
+  through both the legacy text player-file parser/writer and `store_to_char(...)` / `char_to_store(...)`.
+- `src/character_json.cpp` and `src/character_json.h` now carry the same combat-state fields in `character.json`, and older JSON files that omit them still load safely with normal/default values.
+- Legacy/account-native hardening in this slice:
+  - malformed positive combat-state values from legacy saves are normalized back to safe defaults instead of being allowed to poison later account-native reads
+  - account-native export now normalizes unset or out-of-range combat-state values before writing `character.json`
+  - malformed account-native `character.json` combat-state values still fail closed on read by design; normalization is applied to legacy/runtime inputs, not to already-authored JSON files
+  - `Crash_load(...)` now clears persisted two-handed stance if the restored equipment does not actually support it (no wielded weapon or a shield is present)
+- Added focused regressions proving:
+  - legacy text player-file round-trip preserves tactics, shooting, casting, and two-handed state
+  - account-native `character.json` write/read preserves those same values
+  - older `character.json` files that lack the new fields default back to normal tactics/shooting/casting and no two-handed stance
+  - out-of-range combat-state values in legacy text saves and stored characters are normalized back to safe defaults
+- Validation for this slice so far:
+  - focused `CharacterJson`, `AccountManagement`, `DbLoader`, and affected `InterpreAccountMenu` regressions pass after a fresh rebuild
+  - `make test` is not a clean pass in this sandbox because the pre-existing `AcceptPathTest.*` listener tests cannot bind sockets here (`Operation not permitted`), so the full CTest wrapper still fails on those environment-restricted startup tests
+- Broader test note:
+  - a manual run of `./bin/tests --gtest_filter=-AcceptPathTest.*` also exposed unrelated pre-existing `OlogHaiHelpers.*` failures in the current worktree; those are outside this tactics/two-handed persistence slice
+- Follow-up discovered and fixed during this slice:
+  - older fixtures/account-native character records with unset combat-state fields were being serialized as invalid zeroes; `character_data_from_store(...)` now normalizes unset values to the normal tactics/shooting/casting defaults before writing JSON
 - The immediate plan is:
-  - add focused `ActWiz` regressions around mixed descriptor/account states
-  - wire `whoacct` into the command table
-  - document it in `lib/text/wizh_tbl` in the same style as the existing immortal command entries
+  - finish the reviewer pass for the tactics/two-handed persistence fix
+  - decide whether to extend manual smoke coverage specifically for this rent/menu/combat-state scenario
 - `whoacct` is now wired into the command table as an immortal command. It lists authenticated account sessions by email, shows the currently played character when the session is in game, and shows account-side session labels like `Account Menu` when the account is connected but not yet playing a character.
 - `whoacct` now renders with `Num / Account / Character / State / Site` columns similar to `users`, and account-side states are displayed as plain labels like `Account Menu` and `Character Select`.
 - `whoacct` is now gated to the same higher-trust staff tier as `account`, and it only reports live post-auth account states instead of exposing pending-verification sessions.

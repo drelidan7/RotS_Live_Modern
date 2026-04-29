@@ -103,6 +103,10 @@ struct CharacterData {
     int leg_encumbrance = 0;
     int rp_flag = 0;
     long will_teach = 0;
+    int tactics = 3;
+    int shooting = 2;
+    int casting = 2;
+    bool two_handed = false;
 
     ProfessionData mage;
     ProfessionData mystic;

@@ -582,6 +582,10 @@ FILE* Crash_load(char_data* character)
     int cost, orig_rent_code, equip_lost;
     int num_of_hours, tmp, equip_counter;
     struct obj_data dummy_sack;
+    auto fail_closed = [&character]() -> FILE* {
+        REMOVE_BIT(character->specials.affected_by, AFF_TWOHANDED);
+        return nullptr;
+    };
 
     clear_object(&dummy_sack);
 
@@ -597,6 +601,7 @@ FILE* Crash_load(char_data* character)
         fl = open_account_backed_object_stream(character);
 
     if (!fl) {
+        REMOVE_BIT(character->specials.affected_by, AFF_TWOHANDED);
         send_to_char("*** Your equipment was lost! Please contact an immortal. ***\n\r", character);
         sprintf(buf, "%s entering game with no equipment.", GET_NAME(character));
         GET_ALIAS(character) = 0;
@@ -606,7 +611,7 @@ FILE* Crash_load(char_data* character)
     }
     if (!read_crashsave_record(fl, &rent, sizeof(struct rent_info), 1, "reading crash rent data in Crash_load")) {
         std::fclose(fl);
-        return nullptr;
+        return fail_closed();
     }
 
     /* ok, we have a file. now we find out how much to charge them */
@@ -668,7 +673,7 @@ FILE* Crash_load(char_data* character)
     while (true) {
         if (!read_crashsave_record(fl, &object, sizeof(struct obj_file_elem), 1, "reading crash object data in Crash_load")) {
             std::fclose(fl);
-            return nullptr;
+            return fail_closed();
         }
 
         if (object.item_number_deprecated != DEPRECATED_ID_VALUE) {
@@ -725,6 +730,8 @@ FILE* Crash_load(char_data* character)
     }
 
     recalc_worn_weight(character);
+    if (IS_TWOHANDED(character) && (!character->equipment[WIELD] || character->equipment[WEAR_SHIELD]))
+        REMOVE_BIT(character->specials.affected_by, AFF_TWOHANDED);
 
     character->specials2.load_room = calc_load_room(character, rent.rentcode);
 

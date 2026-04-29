@@ -50,6 +50,22 @@ void check_break_prep(struct char_data* ch);
 
 ACMD(do_flee);
 
+void send_magic_room_message(char_data* caster, const char* message)
+{
+    if (caster == nullptr || message == nullptr || caster->in_room < 0)
+        return;
+
+    const room_data& room = world[caster->in_room];
+    for (char_data* receiver = room.people; receiver; receiver = receiver->next_in_room) {
+        if (receiver == caster || GET_POS(receiver) <= POSITION_SLEEPING)
+            continue;
+
+        std::snprintf(buf, sizeof(buf), "%s%s%s",
+            CC_USE(receiver, COLOR_MAGIC), message, CC_NORM(receiver));
+        act(buf, FALSE, caster, 0, receiver, TO_VICT);
+    }
+}
+
 void say_spell(char_data* caster, int spell_index)
 {
     // Validity check.
@@ -72,15 +88,7 @@ void say_spell(char_data* caster, int spell_index)
         sprintf(buf, "$n utters a foreign command, '%s'", spell_name);
     }
 
-    const room_data& room = world[caster->in_room];
-    char_data* receiver = room.people;
-    while (receiver) {
-        if ((receiver != caster) && (GET_POS(receiver) > POSITION_SLEEPING)) {
-            act(buf, FALSE, caster, 0, receiver, TO_VICT);
-        }
-
-        receiver = receiver->next_in_room;
-    }
+    send_magic_room_message(caster, buf);
 }
 
 /*
@@ -744,8 +752,7 @@ ACMD(do_cast)
             ch->delay.targ2 = tmpwtl.targ2;
             tmpwtl.targ1.cleanup();
             tmpwtl.targ2.cleanup();
-            act("$n begins quietly muttering some strange, powerful words.\n\r", FALSE, ch, 0, 0,
-                TO_ROOM);
+            send_magic_room_message(ch, "$n begins quietly muttering some strange, powerful words.\n\r");
             send_to_char("You start to concentrate.\n\r", ch);
             return; /* time delay set, returning */
         } else {

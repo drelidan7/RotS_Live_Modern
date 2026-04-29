@@ -24,6 +24,8 @@ const char* color_fields[] = {
     "enemy",
     "description",
     "group",
+    "magic",
+    "weather",
     "off",
     "on",
     "default",
@@ -31,6 +33,10 @@ const char* color_fields[] = {
 };
 
 int num_of_color_fields = sizeof(color_fields) / sizeof(color_fields[0]);
+static constexpr int kNumConfigurableColorFields = 15;
+static constexpr int kColorCommandOff = kNumConfigurableColorFields;
+static constexpr int kColorCommandOn = kNumConfigurableColorFields + 1;
+static constexpr int kColorCommandDefault = kNumConfigurableColorFields + 2;
 
 const char* color_color[] = {
     "normal",
@@ -121,6 +127,8 @@ void set_colors_default(struct char_data* ch)
     set_colornum(ch, COLOR_ENMY, CBWHT);
     set_colornum(ch, COLOR_DESC, CGRN);
     set_colornum(ch, COLOR_GTELL, CGRN);
+    set_colornum(ch, COLOR_MAGIC, CBMAG);
+    set_colornum(ch, COLOR_WEATHER, CBCYN);
 }
 
 ACMD(do_color)
@@ -137,7 +145,7 @@ ACMD(do_color)
         }
 
         send_to_char("Your colours are:\n\r", ch);
-        for (tmp = 0; tmp < num_of_color_fields - 4; tmp++) {
+        for (tmp = 0; tmp < kNumConfigurableColorFields; tmp++) {
             sprintf(buf, "%11s: %s\n\r",
                 color_fields[tmp], color_color[(int)get_colornum(ch, tmp)]);
             send_to_char(buf, ch);
@@ -150,22 +158,22 @@ ACMD(do_color)
     if (num < 0) {
         send_to_char("Possible arguments are:\n\r", ch);
         buf[0] = 0;
-        for (tmp = 0; tmp < num_of_color_fields; tmp++)
+        for (tmp = 0; tmp < num_of_color_fields - 1; tmp++)
             sprintf(buf, "%s %s", buf, color_fields[tmp]);
         strcat(buf, "\n\r");
         send_to_char(buf, ch);
         return;
     }
 
-    if (num == 15) {
+    if (num == kColorCommandDefault) {
         set_colors_default(ch);
         send_to_char("Ok, you'll use the default colour set.\r\n", ch);
         return;
-    } else if (num == 14) {
+    } else if (num == kColorCommandOn) {
         SET_BIT(PRF_FLAGS(ch), PRF_COLOR);
         send_to_char("Colours turned on.\n\r", ch);
         return;
-    } else if (num == 13) {
+    } else if (num == kColorCommandOff) {
         REMOVE_BIT(PRF_FLAGS(ch), PRF_COLOR);
         send_to_char("Colours turned off.\n\r", ch);
         return;

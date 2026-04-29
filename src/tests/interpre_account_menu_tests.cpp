@@ -4,6 +4,7 @@
 #include "../interpre.h"
 #include "../limits.h"
 #include "../profs.h"
+#include "../spells.h"
 #include "../structs.h"
 #include "../utils.h"
 
@@ -256,6 +257,18 @@ size_t count_occurrences(const std::string& haystack, const std::string& needle)
         ++count;
         position += needle.size();
     }
+    return count;
+}
+
+size_t count_affects(const char_data* character)
+{
+    size_t count = 0;
+    for (const affected_type* affect = character != nullptr ? character->affected : nullptr;
+         affect != nullptr && count < MAX_AFFECT + 1;
+         affect = affect->next) {
+        ++count;
+    }
+
     return count;
 }
 
@@ -1500,6 +1513,136 @@ TEST(InterpreAccountMenu, AccountSelectionLoadsTheSecondNumberedLinkedCharacter)
     EXPECT_STREQ(descriptor.character->player.name, "legolas");
     EXPECT_NE(std::string(descriptor.output).find("0) Back to Account Menu.\n\r"), std::string::npos);
 
+    free_char(descriptor.character);
+    descriptor.character = nullptr;
+}
+
+TEST(InterpreAccountMenu, AccountSelectionReplacesRentedCharacterShellSoStoredAffectsDoNotDouble)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedPlayerTableReset player_table_reset;
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    static char test_motd[] = "Test MOTD\r\n";
+    ScopedMotdOverride motd_override(test_motd);
+
+    std::string error_message;
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+
+    char_file_u stored_character = make_stored_character("aragorn", 50, RACE_WOOD);
+    stored_character.player_index = -1;
+    stored_character.specials2.load_room = 3001;
+    stored_character.affected[0].type = SPELL_SANCTUARY;
+    stored_character.affected[0].duration = 8;
+    stored_character.affected[0].modifier = 11;
+    stored_character.affected[0].location = APPLY_NONE;
+    stored_character.affected[0].bitvector = AFF_SANCTUARY;
+    ASSERT_TRUE(account::write_account_character_file(".", "acct", stored_character, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_default_account_object_file(".", "acct", "aragorn", &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "acct", "aragorn", 1700010201, &stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTSLCT;
+    descriptor.character = new char_data {};
+    clear_char(descriptor.character, MOB_VOID);
+    register_pc_char(descriptor.character);
+    descriptor.character->desc = &descriptor;
+    descriptor.character->player.name = strdup("aragorn");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
+
+    affected_type stale_affect {};
+    stale_affect.type = SPELL_SANCTUARY;
+    stale_affect.duration = 99;
+    stale_affect.modifier = 22;
+    stale_affect.location = APPLY_NONE;
+    stale_affect.bitvector = AFF_SANCTUARY;
+    affect_to_char(descriptor.character, &stale_affect);
+    ASSERT_EQ(count_affects(descriptor.character), 1u);
+
+    char choice[] = "1";
+    nanny(&descriptor, choice);
+
+    ASSERT_EQ(descriptor.connected, CON_SLCT);
+    ASSERT_NE(descriptor.character, nullptr);
+    ASSERT_NE(descriptor.character->affected, nullptr);
+    EXPECT_EQ(count_affects(descriptor.character), 1u);
+    EXPECT_EQ(descriptor.character->affected->type, SPELL_SANCTUARY);
+    EXPECT_EQ(descriptor.character->affected->modifier, 11);
+    EXPECT_EQ(descriptor.character->affected->duration, 8);
+    EXPECT_EQ(descriptor.character->affected->bitvector, AFF_SANCTUARY);
+
+    free_char(descriptor.character);
+    descriptor.character = nullptr;
+}
+
+TEST(InterpreAccountMenu, ReturningToAccountAndReselectingSameCharacterDoesNotDuplicateStoredAffects)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedPlayerTableReset player_table_reset;
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    static char test_motd[] = "Test MOTD\r\n";
+    ScopedMotdOverride motd_override(test_motd);
+
+    std::string error_message;
+    account::AccountData stored_account;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &stored_account, &error_message)) << error_message;
+
+    char_file_u stored_character = make_stored_character("aragorn", 50, RACE_WOOD);
+    stored_character.player_index = -1;
+    stored_character.specials2.load_room = 3001;
+    stored_character.affected[0].type = SPELL_SANCTUARY;
+    stored_character.affected[0].duration = 8;
+    stored_character.affected[0].modifier = 11;
+    stored_character.affected[0].location = APPLY_NONE;
+    stored_character.affected[0].bitvector = AFF_SANCTUARY;
+    ASSERT_TRUE(account::write_account_character_file(".", "acct", stored_character, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_default_account_object_file(".", "acct", "aragorn", &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "acct", "aragorn", 1700010201, &stored_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTSLCT;
+    descriptor.character = new char_data {};
+    clear_char(descriptor.character, MOB_VOID);
+    register_pc_char(descriptor.character);
+    descriptor.character->desc = &descriptor;
+    descriptor.character->player.name = strdup("aragorn");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
+
+    char select_character[] = "1";
+    nanny(&descriptor, select_character);
+    ASSERT_EQ(descriptor.connected, CON_SLCT);
+    ASSERT_NE(descriptor.character, nullptr);
+    ASSERT_NE(descriptor.character->affected, nullptr);
+    EXPECT_EQ(count_affects(descriptor.character), 1u);
+    EXPECT_EQ(descriptor.character->affected->modifier, 11);
+
+    descriptor.output[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    char back_to_account[] = "0";
+    nanny(&descriptor, back_to_account);
+    ASSERT_EQ(descriptor.connected, CON_ACCTMENU);
+
+    descriptor.output[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    char play_choice[] = "2";
+    nanny(&descriptor, play_choice);
+    ASSERT_EQ(descriptor.connected, CON_ACCTSLCT);
+
+    descriptor.output[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    nanny(&descriptor, select_character);
+    ASSERT_EQ(descriptor.connected, CON_SLCT);
+    ASSERT_NE(descriptor.character, nullptr);
+    ASSERT_NE(descriptor.character->affected, nullptr);
+    EXPECT_EQ(count_affects(descriptor.character), 1u);
+    EXPECT_EQ(descriptor.character->affected->modifier, 11);
     free_char(descriptor.character);
     descriptor.character = nullptr;
 }

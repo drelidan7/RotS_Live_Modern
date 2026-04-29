@@ -122,6 +122,7 @@ set(ROTS_TEST_SOURCES
     tests/json_utils_tests.cpp
     tests/objects_json_tests.cpp
     tests/protocol_tests.cpp
+    tests/spell_pa_tests.cpp
     tests/startup_options_tests.cpp
     tests/gtest_main.cpp
     tests/olog_hai_tests.cpp

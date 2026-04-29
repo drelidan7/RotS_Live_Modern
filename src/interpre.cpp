@@ -2520,8 +2520,13 @@ void show_character_menu(struct descriptor_data* d)
 
 static bool ensure_descriptor_character_for_account_selection(struct descriptor_data* d)
 {
-    if (d->character)
-        return false;
+    if (d->character) {
+        clear_account_backed_object_bytes_for_character(d->character);
+        d->character->desc = nullptr;
+        free_char(d->character);
+        d->character = nullptr;
+        d->pos = -1;
+    }
 
     CREATE(d->character, struct char_data, 1);
     clear_char(d->character, MOB_VOID);

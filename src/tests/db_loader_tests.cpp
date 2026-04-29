@@ -1,4 +1,5 @@
 #include "../account_management.h"
+#include "../char_utils.h"
 #include "../color.h"
 #include "../db.h"
 #include "../exploits_json.h"
@@ -109,6 +110,15 @@ std::string read_file_contents(const std::string& path)
     return contents;
 }
 
+std::string replace_once(std::string text, const std::string& from, const std::string& to)
+{
+    const size_t position = text.find(from);
+    if (position == std::string::npos)
+        return text;
+    text.replace(position, from.size(), to);
+    return text;
+}
+
 std::string rooted_account_json_path(const std::string& root_directory, const std::string& normalized_email)
 {
     const char first = normalized_email.empty() ? 'A' : static_cast<char>(std::toupper(static_cast<unsigned char>(normalized_email[0])));
@@ -207,6 +217,10 @@ char_file_u make_stored_character(const char* name = "aragorn")
     stored_character.specials2.load_room = 3001;
     stored_character.specials2.act = 0;
     stored_character.specials2.pref = 1L << 5;
+    stored_character.specials2.tactics = TACTICS_BERSERK;
+    stored_character.specials2.shooting = SHOOTING_FAST;
+    stored_character.specials2.casting = CASTING_SLOW;
+    stored_character.specials2.two_handed = 1;
     stored_character.profs.prof_level[PROF_WARRIOR] = 12;
     stored_character.profs.prof_coof[PROF_WARRIOR] = 34;
     return stored_character;
@@ -459,6 +473,68 @@ TEST(DbLoader, RejectsMalformedPlayerTextWithoutLongStringTerminator) {
         "end\n";
 
     EXPECT_LT(load_char_from_text(player_name, malformed_player_text, &character_data), 0);
+}
+
+TEST(DbLoader, LegacyPlayerTextRoundTripPreservesCombatState)
+{
+    TemporaryDirectory temp_directory;
+    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
+    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+
+    char_file_u original = make_stored_character("aragorn");
+    const std::string player_text = write_valid_legacy_player_file(temp_directory.path(), original);
+
+    char player_name[] = "aragorn";
+    char_file_u loaded {};
+    ScopedPlayerTableEntry player_table_entry("aragorn");
+    ASSERT_EQ(load_player_from_text(player_name, player_text.c_str(), &loaded), 1);
+
+    EXPECT_EQ(loaded.specials2.tactics, original.specials2.tactics);
+    EXPECT_EQ(loaded.specials2.shooting, original.specials2.shooting);
+    EXPECT_EQ(loaded.specials2.casting, original.specials2.casting);
+    EXPECT_EQ(loaded.specials2.two_handed, original.specials2.two_handed);
+
+    char_data live_character {};
+    clear_char(&live_character, MOB_VOID);
+    store_to_char(&loaded, &live_character);
+
+    EXPECT_EQ(utils::get_tactics(live_character), original.specials2.tactics);
+    EXPECT_EQ(utils::get_shooting(live_character), original.specials2.shooting);
+    EXPECT_EQ(utils::get_casting(live_character), original.specials2.casting);
+    EXPECT_TRUE(IS_TWOHANDED(&live_character));
+}
+
+TEST(DbLoader, LegacyPlayerTextNormalizesOutOfRangeCombatStateValues)
+{
+    TemporaryDirectory temp_directory;
+    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
+    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+
+    char_file_u original = make_stored_character("aragorn");
+    std::string player_text = write_valid_legacy_player_file(temp_directory.path(), original);
+    player_text = replace_once(player_text, "tactics     5", "tactics     99");
+    player_text = replace_once(player_text, "shooting    3", "shooting    255");
+    player_text = replace_once(player_text, "casting     1", "casting     7");
+    player_text = replace_once(player_text, "twohanded   1", "twohanded   4");
+
+    char player_name[] = "aragorn";
+    char_file_u loaded {};
+    ScopedPlayerTableEntry player_table_entry("aragorn");
+    ASSERT_EQ(load_player_from_text(player_name, player_text.c_str(), &loaded), 1);
+
+    EXPECT_EQ(loaded.specials2.tactics, TACTICS_NORMAL);
+    EXPECT_EQ(loaded.specials2.shooting, SHOOTING_NORMAL);
+    EXPECT_EQ(loaded.specials2.casting, CASTING_NORMAL);
+    EXPECT_EQ(loaded.specials2.two_handed, 1);
+
+    char_data live_character {};
+    clear_char(&live_character, MOB_VOID);
+    store_to_char(&loaded, &live_character);
+
+    EXPECT_EQ(utils::get_tactics(live_character), TACTICS_NORMAL);
+    EXPECT_EQ(utils::get_shooting(live_character), SHOOTING_NORMAL);
+    EXPECT_EQ(utils::get_casting(live_character), CASTING_NORMAL);
+    EXPECT_TRUE(IS_TWOHANDED(&live_character));
 }
 
 TEST(DbLoader, LoadsExploitRecordsFromAccountNativeJsonWhenRuntimeFileIsMissing) {

@@ -2015,6 +2015,36 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
         break;                                \
     }
 
+namespace {
+
+int normalize_tactics_value(int value)
+{
+    return (value >= TACTICS_DEFENSIVE && value <= TACTICS_BERSERK) ? value : TACTICS_NORMAL;
+}
+
+int normalize_shooting_value(int value)
+{
+    return (value >= SHOOTING_SLOW && value <= SHOOTING_FAST) ? value : SHOOTING_NORMAL;
+}
+
+int normalize_casting_value(int value)
+{
+    return (value >= CASTING_SLOW && value <= CASTING_FAST) ? value : CASTING_NORMAL;
+}
+
+void sanitize_persisted_combat_state(struct char_special2_data* specials2)
+{
+    if (specials2 == nullptr)
+        return;
+
+    specials2->tactics = normalize_tactics_value(specials2->tactics);
+    specials2->shooting = normalize_shooting_value(specials2->shooting);
+    specials2->casting = normalize_casting_value(specials2->casting);
+    specials2->two_handed = specials2->two_handed ? 1 : 0;
+}
+
+} // namespace
+
 int load_player_from_text(char* name, const char* player_text, struct char_file_u* char_element)
 {
     int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, end, return_value;
@@ -2109,6 +2139,7 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
             break;
 
         case 'C':
+            KEY_INT("casting", char_element->specials2.casting);
             KEY_INT("conditions0", char_element->specials2.conditions[0]);
             KEY_INT("conditions1", char_element->specials2.conditions[1]);
             KEY_INT("conditions2", char_element->specials2.conditions[2]);
@@ -2222,14 +2253,17 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
 
         case 'S':
             KEY_INT("sex", char_element->sex);
+            KEY_INT("shooting", char_element->specials2.shooting);
             KEY_INT("sp_to_learn", char_element->specials2.spells_to_learn);
             KEY_INT("spec", char_element->profs.specialization);
             KEY_ARRAY("skills", char_element->skills);
             break;
 
         case 'T':
+            KEY_INT("tactics", char_element->specials2.tactics);
             KEY_STR("title", char_element->title, 80);
             KEY_ARRAY("talks", char_element->talks);
+            KEY_INT("twohanded", char_element->specials2.two_handed);
             KEY_STATS("tmpstats", char_element->tmpabilities.str,
                 char_element->tmpabilities.lea,
                 char_element->tmpabilities.intel,
@@ -2262,6 +2296,7 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
         }
     }
     decrypt_line((unsigned char*)char_element->pwd, MAX_PWD_LENGTH);
+    sanitize_persisted_combat_state(&char_element->specials2);
 
     return 1;
 }
@@ -2390,6 +2425,7 @@ void store_to_char(struct char_file_u* st, struct char_data* ch)
 
     ch->points = st->points;
     ch->specials2 = st->specials2;
+    sanitize_persisted_combat_state(&ch->specials2);
 
     /* New dynamic skill system: only PCs have a skill array allocated. */
 
@@ -2411,12 +2447,13 @@ void store_to_char(struct char_file_u* st, struct char_data* ch)
     ch->specials2.leg_encumb = 0;
     ch->points.ENE_regen = st->points.ENE_regen;
     ch->specials.ENERGY = 1200;
-    SET_SHOOTING(ch, SHOOTING_NORMAL);
+    utils::set_tactics(*ch, ch->specials2.tactics);
+    utils::set_shooting(*ch, ch->specials2.shooting);
 
     utils::set_specialization(*ch, game_types::PS_None);
     int spec = st->profs.specialization;
     utils::set_specialization(*ch, game_types::player_specs(spec));
-    utils::set_casting(*ch, CASTING_NORMAL);
+    utils::set_casting(*ch, ch->specials2.casting);
 
     CREATE(ch->player.name, char, strlen(st->name) + 1);
     strcpy(ch->player.name, st->name);
@@ -2432,6 +2469,11 @@ void store_to_char(struct char_file_u* st, struct char_data* ch)
     ch->in_room = GET_LOADROOM(ch);
 
     affect_total(ch);
+
+    if (ch->specials2.two_handed)
+        SET_BIT(ch->specials.affected_by, AFF_TWOHANDED);
+    else
+        REMOVE_BIT(ch->specials.affected_by, AFF_TWOHANDED);
 
     /* If you're not poisioned and you've been away for more than
       an hour, we'll set your HMV back to full */
@@ -2498,6 +2540,11 @@ void char_to_store(struct char_data* ch, struct char_file_u* st)
     st->points.damage = GET_DAMAGE(ch);
     st->points.parry = GET_PARRY(ch);
     st->points.ENE_regen = GET_ENE_REGEN(ch);
+    st->specials2.tactics = GET_TACTICS(ch);
+    st->specials2.shooting = GET_SHOOTING(ch);
+    st->specials2.casting = GET_CASTING(ch);
+    st->specials2.two_handed = IS_TWOHANDED(ch) ? 1 : 0;
+    sanitize_persisted_combat_state(&st->specials2);
 
     if (GET_TITLE(ch))
         strcpy(st->title, GET_TITLE(ch));
@@ -2786,6 +2833,10 @@ void save_player(struct char_data* ch, int load_room, int index_pos)
     fprintf(pf, "perception  %d\n", chd.specials2.perception);
     fprintf(pf, "rp_flag     %d\n", chd.specials2.rp_flag);
     fprintf(pf, "retiredon   %d\n", chd.specials2.retiredon);
+    fprintf(pf, "tactics     %d\n", chd.specials2.tactics);
+    fprintf(pf, "shooting    %d\n", chd.specials2.shooting);
+    fprintf(pf, "casting     %d\n", chd.specials2.casting);
+    fprintf(pf, "twohanded   %d\n", chd.specials2.two_handed);
     fprintf(pf, "ob          %d\n", chd.points.OB);
     fprintf(pf, "damage      %d\n", chd.points.damage);
     fprintf(pf, "ENE_regen   %d\n", chd.points.ENE_regen);

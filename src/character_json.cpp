@@ -133,9 +133,9 @@ namespace {
         "enemy",
         "description",
         "group",
-        "off",
-        "on",
-        "default",
+        "magic",
+        "weather",
+        "reserved_15",
     };
 
     AbilityData ability_from_store(const char_ability_data& ability)
@@ -305,7 +305,10 @@ namespace {
             && require_byte_range(character.language, "identity.language", error_message)
             && require_short_range(character.hometown, "identity.hometown", error_message)
             && require_byte_range(character.freeze_level, "state.freeze_level", error_message)
-            && require_ubyte_range(character.rerolls, "progression.rerolls", error_message);
+            && require_ubyte_range(character.rerolls, "progression.rerolls", error_message)
+            && require_integer_range(character.tactics, TACTICS_DEFENSIVE, TACTICS_BERSERK, "state.tactics", error_message)
+            && require_integer_range(character.shooting, SHOOTING_SLOW, SHOOTING_FAST, "state.shooting", error_message)
+            && require_integer_range(character.casting, CASTING_SLOW, CASTING_FAST, "state.casting", error_message);
     }
 
     bool validate_ability_data(const AbilityData& ability_data, const char* scope, std::string* error_message)
@@ -455,6 +458,21 @@ namespace {
         stored_character->profs.prof_coof[profession] = (profession_data.coeff != 0) ? profession_data.coeff : profession_data.points;
         stored_character->profs.prof_exp[profession] = profession_data.experience;
         return true;
+    }
+
+    int normalize_tactics_value(int value)
+    {
+        return (value >= TACTICS_DEFENSIVE && value <= TACTICS_BERSERK) ? value : TACTICS_NORMAL;
+    }
+
+    int normalize_shooting_value(int value)
+    {
+        return (value >= SHOOTING_SLOW && value <= SHOOTING_FAST) ? value : SHOOTING_NORMAL;
+    }
+
+    int normalize_casting_value(int value)
+    {
+        return (value >= CASTING_SLOW && value <= CASTING_FAST) ? value : CASTING_NORMAL;
     }
 
     void write_string_array(std::ostringstream& output, const std::vector<std::string>& values)
@@ -1141,6 +1159,14 @@ namespace {
                 return saw_rp_flag = true, nested_reader->parse_integer(&character->rp_flag, nested_error_message);
             if (key == "will_teach")
                 return saw_will_teach = true, nested_reader->parse_long(&character->will_teach, nested_error_message);
+            if (key == "tactics")
+                return nested_reader->parse_integer(&character->tactics, nested_error_message);
+            if (key == "shooting")
+                return nested_reader->parse_integer(&character->shooting, nested_error_message);
+            if (key == "casting")
+                return nested_reader->parse_integer(&character->casting, nested_error_message);
+            if (key == "two_handed")
+                return nested_reader->parse_bool(&character->two_handed, nested_error_message);
             return nested_reader->skip_value(nested_error_message);
         },
             error_message))
@@ -1207,6 +1233,10 @@ CharacterData character_data_from_store(const char_file_u& stored_character)
     character.leg_encumbrance = stored_character.specials2.leg_encumb;
     character.rp_flag = stored_character.specials2.rp_flag;
     character.will_teach = stored_character.specials2.will_teach;
+    character.tactics = normalize_tactics_value(stored_character.specials2.tactics);
+    character.shooting = normalize_shooting_value(stored_character.specials2.shooting);
+    character.casting = normalize_casting_value(stored_character.specials2.casting);
+    character.two_handed = stored_character.specials2.two_handed != 0;
 
     character.mage = profession_from_store(stored_character, PROF_MAGE);
     character.mystic = profession_from_store(stored_character, PROF_CLERIC);
@@ -1344,6 +1374,10 @@ bool apply_character_data_to_store(const CharacterData& json_character, char_fil
     stored_character->specials2.retiredon = json_character.timers.retired_on;
     stored_character->specials2.hide_flags = static_cast<int>(hide_flags);
     stored_character->specials2.will_teach = json_character.will_teach;
+    stored_character->specials2.tactics = json_character.tactics;
+    stored_character->specials2.shooting = json_character.shooting;
+    stored_character->specials2.casting = json_character.casting;
+    stored_character->specials2.two_handed = json_character.two_handed ? 1 : 0;
     stored_character->birth = json_character.timers.birth;
     stored_character->last_logon = json_character.timers.last_logon;
     stored_character->played = json_character.timers.played_seconds;
@@ -1505,7 +1539,11 @@ std::string serialize_character_to_json(const CharacterData& character)
     output << "    \"owner\": " << character.owner << ",\n";
     output << "    \"leg_encumbrance\": " << character.leg_encumbrance << ",\n";
     output << "    \"rp_flag\": " << character.rp_flag << ",\n";
-    output << "    \"will_teach\": " << character.will_teach << "\n";
+    output << "    \"will_teach\": " << character.will_teach << ",\n";
+    output << "    \"tactics\": " << character.tactics << ",\n";
+    output << "    \"shooting\": " << character.shooting << ",\n";
+    output << "    \"casting\": " << character.casting << ",\n";
+    output << "    \"two_handed\": " << (character.two_handed ? "true" : "false") << "\n";
     output << "  },\n";
     output << "  \"talks\": ";
     write_named_integer_object(output, collect_non_zero_named_values(character.talks, MAX_TOUNGE, talk_key_for_index));

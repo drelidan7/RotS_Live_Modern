@@ -2118,7 +2118,7 @@ int check_riposte(struct char_data* ch, struct char_data* victim)
 
     const int ranger_prog = 32;
     if (IS_NPC(victim)) {
-        if (has_alias(victim, "riposter") && has_program(victim, ranger_prog)) {
+        if (has_alias(victim, "p_riposte") && has_program(victim, ranger_prog)) {
             can_riposte = 1;
             prob = 75;
         }

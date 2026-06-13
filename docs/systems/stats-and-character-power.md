@@ -234,10 +234,13 @@ per level, see §4).
 **Movement** (`:745`): `max_move = constMove + CON + 20 + profLevel(Ranger) + travelling/4`
 (+15 Wood/High Elf, +50 Beorning).
 
-**Attack speed / energy regen** (`:757-805`): with a weapon, derived from `GET_BAL_STR`
-and `DEX` against weapon weight×bulk (`str_speed`, `null_speed`), plus the Attack/Stealth
-skills; barehanded it's `60 + 5·DEX`. → **STR** drives weapon swing speed (heavier weapons
-lean on STR), **DEX** helps light weapons and barehanded. Faster energy regen = more attacks.
+**Attack speed / energy regen** (`:757-805`): a harmonic blend of `str_speed`
+(`bal_str` vs weapon weight×bulk) and `null_speed` (`3·DEX` + fast-attack + ½·stealth + 100),
+square-rooted; barehanded it's `60 + 5·DEX`. → **STR** drives swing speed for **heavy/
+two-handed** weapons; **DEX** drives it for **light weapons** — the DEX-for-STR speed blend is
+**only active at bulk < 4** (off for two-handers, *not* capped), and **fast attack** (full) and
+**stealth** (half) raise the baseline. Faster energy regen = more swings. **Full breakdown and
+plain-English explanation: `combat-loop.md` → "Attack speed — the energy loop".**
 
 **Carry** (`utils.h:588`): `weight ≤ 2000 + 1000·STR`; `count ≤ 5 + DEX/2 + level/2`.
 

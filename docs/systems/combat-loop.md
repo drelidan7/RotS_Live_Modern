@@ -3,8 +3,8 @@
 **Source files (live path):** `src/fight.cpp` — `hit:2362` (the whole swing), the round
 driver `:2755-2761`, `damage`, `armor_effect`; OB/PB/DB in `src/utility.cpp`
 (`get_real_OB:647`, `get_real_parry:761`, `get_real_dodge:860`).
-**Status:** 🟡 core swing resolution + damage documented. Round timing/energy, armor
-reduction details, and special attacks are partial (see Open questions).
+**Status:** 🟡 swing resolution, damage, and attack-speed/energy documented. Armor reduction
+details and special attacks are partial (see Open questions).
 
 > ⚠️ **Which combat code is live.** There is a `combat_manager` class
 > (`combat_manager.cpp`: `roll_ob`, `offense_if_weapon_hits`, `calculate_hit_damage`, …) and a
@@ -195,16 +195,115 @@ is ~`+0.5 %` (smaller margin), **and** in example C it could be exactly what fli
 to a 0 and turns a dodge into a glancing hit. That's why STR's value is "more damage when you
 land *and* more landings" — see `combat-stat-examples.md`.
 
+## Attack speed — the energy loop (`profs.cpp:766-805`, `fight.cpp:2750`)
+
+> **Live path confirmed.** The whole chain runs in the real game:
+> `game_loop` (`comm.cpp:471`) → heartbeat → `perform_violence()` every `PULSE_VIOLENCE`
+> (`comm.cpp:822`) → the energy loop below (`fight.cpp:2750`) → `get_energy_regen`
+> (`char_utils.cpp:1359`) → `points.ENE_regen`, which is set by `recalc_abilities`
+> (`profs.cpp:716`, called on equip/affect changes `handler.cpp:563`, level/start
+> `limits.cpp:899`, stat rolls `profs.cpp:710`). None of this touches the unused `combat_manager`.
+
+### How energy becomes swings
+Each combat tick, a fighter in `POSITION_FIGHTING`+ who isn't waiting gains energy
+(`fight.cpp:2750`):
+```
+ENERGY += get_energy_regen(fighter)        # = points.ENE_regen × wild-fighting rage multiplier
+when ENERGY > ENE_TO_HIT (1200):  hit() fires and deducts 1200
+```
+So **`ENE_regen` is your attack speed**: you swing roughly once every `1200 / ENE_regen` ticks.
+A typical `ENE_regen` is ~100–160, i.e. a swing every ~8–12 ticks; double your `ENE_regen` and
+you swing ~twice as often (more swings multiply *all* your damage). `get_energy_regen`
+(`char_utils.cpp:1359`) multiplies the stored value by the Wild-Fighting rage bonus
+(specializations.md); the stored `points.ENE_regen` is computed by `recalc_abilities` whenever
+stats/gear change, and external haste/slow affects add to it directly (e.g. ±40,
+`handler.cpp:994`, `ranger.cpp:1624`).
+
+### How `ENE_regen` is computed (with a weapon)
+```
+null_speed = 3·DEX + 2·(fast_attack + stealth/2)/3 + 100      # "handling" speed
+str_speed  = bal_str · 2,500,000 / (weight · (bulk + 3))      # "heave the weapon" speed
+str_speed ×= 2   if two-handed
+if bulk < 4:                                                  # light / one-handed only
+    dex_speed = DEX · 2,500,000 / (weight · (bulk + 3))
+    str_speed = max(str_speed, str_speed·bulk/5 + dex_speed·(5−bulk)/5)
+combined  = 1,000,000 / (1,000,000/str_speed + 1,000,000/null_speed²)   # harmonic blend
+ENE_regen = 10 · √(combined / 100)                           # do_squareroot(x)=200·√x, ÷20
+```
+Then: Dwarf+axe `+min(regen/10,10)`, Haradrim+spear `+min(regen/20,20)`, Weapon-Master
+piercing/whipping `×1.15` (specializations.md). **Barehanded** uses a flat
+`ENE_regen = 60 + 5·DEX`.
+
+### Plain English
+Your swing speed comes from blending two numbers:
+- **`str_speed` — can you physically heave this weapon?** It's your **Strength** divided by the
+  weapon's **weight × bulk**. A heavy, bulky weapon makes that denominator large, so you need a
+  lot of Strength to swing it quickly — **this is the dominant lever for heavy/two-handed
+  weapons** (and two-handers double `str_speed`, since you put both hands into it).
+- **`null_speed` — your baseline handling speed.** It's `100` + **3·DEX** + your **fast-attack**
+  and **stealth** skills. This is the floor that doesn't depend on the weapon's weight.
+
+The two are merged with a **harmonic blend**, so the **slower of the two limits you** — being
+strong doesn't help if your handling is poor, and vice-versa. Note `null_speed` is **squared**
+in the blend, which makes the handling term (DEX + fast-attack + stealth) count for a lot once
+it's your bottleneck. The whole thing is square-rooted, so each input has **diminishing
+returns** — pushing one number ever higher yields progressively less.
+
+> **What "harmonic blend" means.** A normal (arithmetic) average adds two numbers and halves
+> them, so a big value can offset a small one — average of 10 and 1000 is 505. A **harmonic**
+> combination instead adds their *reciprocals*: `combined = 1 / (1/A + 1/B)`. That result is
+> always **smaller than either input and pulled toward the smaller one** — for 10 and 1000 it's
+> ≈ 9.9, barely above the small value. It's the same math as **two pipes filling a tub** (total
+> flow is limited mostly by the narrower pipe) or **resistors in parallel**. The practical
+> upshot for attack speed: your two speed components (`str_speed` and `null_speed²`) can't cover
+> for each other — whichever is your **bottleneck sets your pace**, and improving the component
+> that's *already* good barely moves your speed. To get faster, raise your *weakest* side: more
+> STR if a heavy weapon is dragging `str_speed` down, or more DEX/fast-attack/stealth if poor
+> handling (`null_speed`) is the limit.
+>
+> *Worked example:* with `str_speed = 55,000` and `null_speed² = 43,000`,
+> `combined = 1/(1/55,000 + 1/43,000) ≈ 24,100` — below both, nearer the smaller (43,000). Push
+> `null_speed²` up to 500,000 and `combined` only rises to ≈ 49,500: the now-much-larger handling
+> term gave almost nothing, because `str_speed` (55,000) had become the bottleneck.
+
+- **Strength → heavy weapons.** For bulk-≥3 / two-handed weapons, `str_speed` is the bottleneck,
+  so STR is what keeps a big weapon swinging at a usable rate.
+- **Dexterity → light weapons.** DEX always feeds `null_speed` (3/pt, any weapon). On top of
+  that, for **bulk < 4** weapons a `dex_speed` term lets DEX *substitute for Strength* on the
+  heave, weighted `(5−bulk)/5` — **80 % at bulk 1, 60 % at bulk 2, 40 % at bulk 3** — and the
+  game takes the better of pure-STR or the DEX-blend. So a nimble fighter can swing a light
+  weapon fast on DEX with little STR. For **bulk ≥ 4 (heavy/two-handed) this blend is off** —
+  DEX then only helps via `null_speed` (there is *no* DEX cap; the substitution is simply
+  disabled — see stats §6).
+- **Fast attack & stealth.** Both raise `null_speed` via `2·(fast_attack + stealth/2)/3` — so
+  **fast-attack counts at full weight and stealth at half**. Yes, stealth speeds you up, but
+  only half as much per point as fast attack. Because `null_speed` is squared in the blend,
+  investing here is most valuable when handling (not strength) is your limiting factor — i.e.
+  for light/fast builds and dexterous fighters.
+
+> **Heavy weapons blunt fast-attack (a harmonic-blend consequence).** Because `combined` can
+> never exceed the smaller input, **`str_speed` is a hard ceiling**: `ENE_regen` tops out at
+> ≈ `10·√(str_speed/100)` no matter how much fast-attack / DEX / stealth you pile on. A heavy
+> weapon makes `str_speed` small, so that ceiling is low and the handling stats saturate against
+> it fast. Isolating fast-attack 0→90 (DEX 14): a **light 1H** (`str_speed ≈ 55,000`) gains
+> ≈ +26 % attack speed (~122→153, ceiling ~234), but a **very heavy 2H** (`str_speed ≈ 12,000`)
+> gains only ≈ +11 % (~87→96, ceiling ~110). So fast-attack is ~2–3× more valuable on light
+> weapons; on a heavy weapon it's already near its low ceiling, and **Strength** (which raises
+> both the bottleneck *and* the ceiling) is what actually speeds you up. The same diminishment
+> applies to DEX's and stealth's speed contributions on heavy weapons.
+
+(Separate multi-swing effects stack on top of raw speed: Light Fighting's ~20 % free double
+strike and Wild-Fighting's rage attack-speed bonus — both in `specializations.md`.)
+
 ## Mobs
-Mobs use simplified OB/PB/DB (`get_real_npc_*` in `char_utils_combat.cpp`): OB/parry/dodge are
-the stored `points.*` plus flat level/stat terms, with weapon damage halved
-(`fight.cpp:2501`). They cannot riposte, and use the simplified NPC OB/PB/DB (`get_real_*` NPC branches in `utility.cpp`).
+Mobs use the **NPC branches** of `get_real_OB`/`get_real_parry`/`get_real_dodge`
+(`utility.cpp`): OB/parry/dodge are the stored `points.*` plus flat level/stat terms, and their
+weapon damage is halved (`fight.cpp:2501`). They cannot riposte. Mob `ENE_regen` is read
+straight from the `.mob` file (data-formats/world-files.md), not computed from stats.
 
 ## Open questions
-- **Round timing / energy:** how `ENERGY`/`ENE_regen` gate the number of swings per round, and
-  multi-attack skills (fast attack, swing, kick/bash) — trace the round driver in `fight.cpp`.
-- **`apply_armor_reduction`** specifics: how AC/armor by hit location and weapon type reduce
-  damage (`combat_manager.cpp:467`).
+- **`armor_effect` / `apply_armor_reduction`** specifics: how AC/armor by hit location and
+  weapon type reduce damage (`fight.cpp armor_effect`).
 - **Resistances/vulnerabilities** and damage-type handling (`check_resistances`, `fight.cpp`).
 - **Special-attack damage paths** (archery `ranger.cpp`, spells → `magic.md`).
 - `points.damage`/`points.OB` base values for players (stance/affect sources, `set_player_ob`).

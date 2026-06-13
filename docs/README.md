@@ -30,9 +30,11 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 ### Gameplay systems (`systems/`) — behavior & formulas
 | Doc | Status | Source of truth |
 |-----|--------|-----------------|
-| [Stats, level & proficiency](systems/stats-and-character-power.md) | ✅ baseline | `profs.cpp`, `limits.cpp`, `utils.h` |
+| [Stats, level & proficiency](systems/stats-and-character-power.md) | ✅ incl. OB/PB/DB derivation (§10) | `profs.cpp`, `limits.cpp`, `char_utils_combat.cpp` |
+| [Combat loop — hit & damage](systems/combat-loop.md) | 🟡 swing resolution + damage; timing/armor pending | `combat_manager.cpp`, `fight.cpp` |
+| [Combat stat examples](systems/combat-stat-examples.md) | ✅ worked grids (W30/W33/W36) | derived from §6/§10 |
 
-⬜ Combat-loop/damage · Magic(spells) · Prayers/mystic · Skills · Classes/specs · Races ·
+⬜ Magic(spells) · Prayers/mystic · Skills · Classes/specs · Races ·
 XP/leveling · Movement/zones · Objects/equipment · Mob AI/specprocs · Shops/economy ·
 PK/fame · Comms/socials · Shapeshift builder · Guardian spirits · Mudlle engine
 

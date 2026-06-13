@@ -215,6 +215,19 @@ max_hit = 10 + min(30, level)
 → **CON** scales HP both directly and as a multiplier on `class_HP·mini_level`; its value
 grows with both your warrior/ranger investment and your progress.
 
+**In plain English:** your hit points come from three stacked pieces. First, a small flat
+floor (10 plus your level, which stops counting at 30). Second, a slowly-accumulating pool of
+*permanent* base HP (`constHit`) that ticks up by roughly 2 points every level you adventure
+through — this piece is multiplied by your Constitution. Third, and by far the largest, your
+**survivability rating `class_HP`** (bought with Warrior, Ranger, and Cleric points — see §2)
+multiplied by both your Constitution and how far you've progressed (mini-level, which maxes out
+at level 30). So a character's HP is essentially *"how many melee/survival class points did I
+buy"* × *"how high is my CON"* × *"how far have I leveled (to 30)."* Constitution multiplies
+almost every term, which is why it's the single most valuable point of HP — and why the same
+CON is worth more to a heavy-Warrior build (big `class_HP`) than to a mage. Past level 30 the
+two level-driven terms freeze, so only the small `constHit` piece keeps growing (≈ CON/10 HP
+per level, see §4).
+
 **Mana** (`:741`): `max_mana = constMana + INT + WILL/2 + 2·profLevel(Mage)`
 → **INT** is worth 2× **WILL** for mana pool.
 
@@ -323,6 +336,158 @@ and the misc racial effects below.
 - **Starting rooms** vary by race (`consts.cpp:2281`), e.g. Human/Dwarf/Hobbit 1160, Wood Elf
   1170, Beorning 1184, Uruk-Hai 10263, Common Orc 14499, Uruk-Lhuth 13626, Olog-Hai 1129,
   Haradrim 6604.
+
+---
+
+## 10. Offensive (OB), Parry (PB) & Dodge (DB) bonuses
+These three derived combat values live here (not in the combat doc) because they are direct
+functions of the stats above. The combat loop (→ `systems/combat-loop.md`) *consumes* them;
+`systems/combat-stat-examples.md` works concrete builds. All player formulas below are from
+`char_utils_combat.cpp` (`get_real_ob:335`, `get_real_parry:205`, `get_real_dodge:179`) at
+**Normal tactics, level 30, no encumbrance**; other tactics apply the multipliers in the
+`*_tactics_modifier` helpers. `points.OB/parry/dodge` are small stored bases (stance/gear/
+affect contributions); treat them as 0 for a clean baseline.
+
+`bal_str` = `get_bal_strength` (= STR below the racial cap of 22, half-rate above;
+`char_utils.cpp:415`). `war`/`ranger` = per-profession levels (§4). `max_war = 30`
+(20 for orcs, `char_utils.cpp:339`).
+
+### OB — offensive bonus (`get_real_ob`)
+```
+ob_bonus = bal_str + 1.5·war + 1.5·max_war·(level/30)          # = bal_str + 1.5·war + 45 at L30
+OB = points.OB − skill_penalty
+   + weapon_term            # 1H: (6 − 2·bulk);  2H: bulk·(200+2h_knowledge)/100 − 15
+   + ob_bonus               # Normal tactics passes ob_bonus through unchanged
+   + weapon_knowledge·(bulk+20)·0.008
+   (− 10 in normal daylight visibility; − confuse effects)
+```
+Then each swing rolls: `OB_roll = (OB + rand(1..55+OB/4) + d35)·7/8 − 40` (+100 on a crit
+roll of 35) — `roll_ob:111`.
+
+**In plain English:** OB ("offensive bonus") measures how well you land a telling blow. Its
+standing value is built mostly from your **Warrior level** (each level ≈ +1.5, on top of a
+fixed ~45 chunk for being level-30) and your **weapon skill** scaled by the weapon's size,
+with **Strength** adding one point each (1:1, half-rate above 22) and your stance (tactics)
+nudging it up or down. That standing number is then *heavily randomized every swing* — a wide
+random spread is added, the total is scaled to ⅞ and shifted down by 40, and a natural top
+roll lands a critical (+100). The crucial part is that OB isn't just hit-or-miss: whatever is
+left after the defender's dodge and parry are subtracted ("remaining OB") **feeds straight
+into damage** (combat-loop), so out-OB'ing your opponent both lands more hits *and* makes each
+one hit harder.
+
+### PB — parry bonus (`get_real_parry`, with a weapon)
+```
+parry_bonus = 2·war + level(≤30) + bal_str
+PB = points.parry
+   + parry_bonus·0.5                                   # Normal tactics ×0.5
+   + parry_knowledge_factor·(weapon.value[1]+20)·0.006 # value[1] = weapon parry rating
+   (+ weapon.value[1]/2 if two-handed; − 10 in daylight)
+parry_knowledge_factor = knowledge(weapon) (+0.5·knowledge(twohanded) if 2H) + 0.75·knowledge(parry)
+```
+
+**In plain English:** PB ("parry bonus") is the Warrior's active defense — deflecting blows
+with the weapon. It scales with your **Warrior level** (≈ +1 per level), your **Strength**
+(+0.5 per point), and — most of all — your **weapon and parry skills multiplied by the
+weapon's parry rating** (`value[1]`), so a parry-built weapon in skilled hands is worth far
+more than raw stats. Two-handers parry better (an extra half of the weapon's parry rating).
+Aggressive stances trade parry away for offense (the tactics multiplier). One important
+limiter: each successful parry **decays to ⅔ strength for the rest of the round**
+(combat-loop), so parry is strong against a single foe but degrades when you're swarmed. You
+need a weapon to parry at all (barehanded gets only half the level/strength bonus).
+
+### DB — dodge bonus (`get_real_dodge`)
+```
+dodge_skill_factor = (dodge + 0.5·stealth + 60)·(0.005·ranger) + (dodge + 0.25·stealth)·0.05
+DB = points.dodge + DEX + (dodge_skill_factor − dodge_penalty + 3)   # Normal tactics adds DEX
+```
+(skills here are the *raw* dodge/stealth skill values.)
+
+**In plain English:** DB ("dodge bonus") is avoiding blows by moving, and it's the **Ranger's**
+defense the way parry is the Warrior's. It's almost entirely **Dexterity** (1:1) plus your
+**Ranger level scaling your Dodge and Stealth skills** — high ranger level turns those skills
+into a large dodge, while a character with no ranger levels barely dodges at all (compare the
+all-in W36 build in `combat-stat-examples.md`, whose DB collapses). **Heavy armor hurts it**
+(the encumbrance `dodge_penalty` is subtracted), and stance shifts it (defensive adds Dex,
+berserk halves it). So the natural defensive split is: Warriors lean on parry (weapon + STR),
+Rangers lean on dodge (DEX + ranger skills), and a balanced fighter gets some of each.
+
+### The marginal value of one stat point (Normal tactics, below caps)
+| +1 to… | Effect |
+|--------|--------|
+| **STR** | **+1 OB** (1:1, via `ob_bonus`; half above STR 22) → **≈ +0.6–0.8 % damage per landed normal hit** (see below) **and** fewer misses vs dodge/parry. **+0.5 PB**. Also raises melee attack speed and lowers encumbrance penalties. |
+| **DEX** | **+1 DB** (1:1, via the tactics term). Raises attack speed (esp. light weapons). No direct OB/PB. |
+| **CON** | HP and HP-regen only (§6) — no OB/PB/DB. |
+| **+1 warrior class level** | **+1.5 OB** and **+1 PB**. |
+| **+1 ranger class level** | scales DB through `dodge_skill_factor` (0.5 %·(dodge+½stealth+60) per level). |
+
+**Why STR ≈ +0.7 %/point of damage.** In a normal (non-accurate) hit, damage scales with
+`ob_factor = remaining_ob + 100` (`calculate_hit_damage:386`, → `systems/combat-loop.md`).
+Each STR point adds +1 raw OB → **+0.875** to `remaining_ob` after `roll_ob`'s ×7/8, i.e.
+`+0.875/(remaining_ob+100)`. At a typical winning margin (`remaining_ob` ≈ 20–60) that's
+**≈ 0.55–0.73 %** more damage **per landed hit**, before counting the extra hits STR buys by
+beating dodge/parry more often. (The explicit `strength_factor` term in the damage formula is
+numerically negligible — STR's damage value flows through OB.)
+
+### Basic example (Normal tactics, L30, STR 20 / CON 18 / DEX 14, no gear bonuses)
+A **default Warrior** (W class level 30): `ob_bonus = 20 + 1.5·30 + 45 = 110`;
+`parry_bonus = 2·30 + 30 + 20 = 110` → PB contribution `55`; DB ≈ `DEX(14) + ranger/skill
+terms`. A **36-warrior** (all 150 points in Warrior → W36) gets `ob_bonus = 20 + 1.5·36 + 45 =
+119` (+9 raw OB ≈ +7.9 after the roll) and `parry_bonus = 2·36+30+20 = 122` → PB `61`, but
+**lower DB** (no ranger levels) and no mana. The full build-vs-build grid — and how each value
+moves when you shift STR/CON/DEX by a point — is in **`systems/combat-stat-examples.md`**.
+
+### The damage value of a Warrior level
+A Warrior class level (bought with warrior points, §2) raises damage through **two channels**;
+a third, "rush," is a spec choice rather than a per-level effect:
+
+1. **OB: +1.5 per warrior level** (`get_ob_bonus`) → ≈ **+1.31 effective remaining-OB** per
+   level after `roll_ob`'s ⅞ scaling. Since a normal hit's damage ∝ `(remaining_OB + 100)`,
+   that's `+1.31/(margin+100)` per level *on hits that land* — **and**, when the fight is
+   close, more OB also makes more swings land at all (it pushes borderline dodges/parries into
+   hits). This second effect is where most of the value lives against tough targets.
+2. **Find-weakness frequency** (`does_find_weakness`, needs the `EXTRA_DAMAGE` skill): a
+   warrior-level-scaled chance to deal **×1.5**. With the skill maxed:
+
+   | Warrior level | Find-weakness chance | Avg damage ×mult (`1 + 0.5·p`) |
+   |--------------:|---------------------:|-------------------------------:|
+   | 24 | 26 % | 1.13 |
+   | 27 | 29 % | 1.145 |
+   | **30** | **33 %** | **1.165** |
+   | 33 | 39 % | 1.195 |
+   | 36 | 45 % | 1.225 |
+
+   Note the **kicker above level 30** (`prob += war − 30`): levels 31→36 add chance faster
+   than 25→30, so high warrior levels are disproportionately rewarded. (With *no* `EXTRA_DAMAGE`
+   skill this channel is zero and a warrior level's damage value is purely the OB channel.)
+3. **Rush** (`does_rush`): a flat 10 % chance of ×1.5, but **only** for the Wild-fighting
+   specialization — it's a build choice worth ~+5 % flat damage *if* you take that spec, and it
+   does **not** scale with warrior level. Don't count it as part of per-level value.
+
+**Putting it together (vs. a level-30, 30-warrior baseline).** Because the OB channel's worth
+depends entirely on the target's defenses, the same warrior levels are worth far more against a
+tough opponent than a soft one:
+
+| Warrior level | vs W30 — **low-defense** target (you out-OB them, ~always hit) | vs W30 — **high-defense** target (evenly matched, lots of borderline swings) |
+|--------------:|:--:|:--:|
+| 24 | ≈ **−6 %** | ≈ **−15 %** |
+| 27 | ≈ **−3 %** | ≈ **−7 %** |
+| 30 | baseline | baseline |
+| 33 | ≈ **+4 %** | ≈ **+9 %** |
+| 36 | ≈ **+8–9 %** | ≈ **+18 %** |
+
+**Why the two columns differ so much.** Against a **low-defense** target you already land
+nearly every swing and your OB margin is large (say ~150), so extra OB is just a small per-hit
+bump (`1.31/250 ≈ +0.5 %/level`) and the find-weakness channel does most of the work — the
+spread is modest. Against a **high-defense** target your margin hovers near zero, so each
+warrior level both (a) is a bigger *fraction* of the small margin (`1.31/100 ≈ +1.3 %/level`)
+*and* (b) converts a meaningful slice of misses into hits — together roughly **doubling** the
+per-level value, and making the gap between a 24- and a 36-warrior swing from a few percent to
+the order of ±15–18 %. The closer the match, the more every warrior level (and every point of
+OB) is worth.
+
+> Assumptions: `EXTRA_DAMAGE` maxed; W30 margins of ~150 (low-defense) and ~0 (high-defense);
+> Normal tactics. Figures are approximate — see `combat-loop.md` for the damage formula and
+> `combat-stat-examples.md` for the build grids.
 
 ---
 

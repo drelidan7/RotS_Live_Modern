@@ -50,14 +50,16 @@ chosen above.
 
 | Change | Max HP | OB | PB | DB | Energy regen | ~damage/hit |
 |--------|-------:|---:|---:|---:|-------------:|------------:|
-| **+1 STR** (20→21) | — | **+1.0** (exact) | **+0.5** (exact) | — | ≈ +1.7 (example) | **≈ +0.7 %** |
+| **+1 STR** (20→21) | — | **+1.0** (exact) | **+0.5** (exact) | — | ≈ +1.7 (example) | **≈ +1.2–1.5 %** |
 | **+1 CON** (18→19) | **≈ +11.7** (≈ constHit/20 + class_HP·0.00214) | — | — | — | — | — |
 | **+1 DEX** (14→15) | — | — | — | **+1.0** (exact) | ≈ +1.3 (example) | tiny (via speed) |
 
 Notes:
-- **STR** is the broad combat stat: +1 OB *and* +0.5 PB *and* faster swings *and* ~+0.7 %
-  damage per landed hit (via `remaining_ob`, see combat-loop) *and* fewer misses against dodge
-  and parry — but **half-rate above STR 22** (`bal_str`). At baseline 20 you're still 1:1.
+- **STR** is the broad combat stat: +1 OB *and* +0.5 PB *and* faster swings *and* ~+1.2–1.5 %
+  damage per landed hit (the OB channel via `remaining_OB` **plus** the direct `133·bal_str`
+  term inside the damage factor, see combat-loop) *and* fewer misses against dodge and parry —
+  but **half-rate above STR 22** (`bal_str`). At baseline 20 you're still 1:1. *(A DEX-based
+  Light Fighter gets the OB/damage channel from DEX instead — see specializations.md.)*
 - **CON** buys ≈ **12 HP per point** here (more for the all-in build: `class_HP` is larger, so
   the `class_HP·0.00214` term grows — ≈ +12.6 HP/CON for W36). It does nothing for OB/PB/DB.
 - **DEX** is the defensive/speed stat: +1 DB per point (1:1) and faster attacks; no direct

@@ -1,11 +1,18 @@
 # Combat loop — hit resolution & damage
 
-**Source files:** `src/combat_manager.cpp` (`roll_ob:111`, `is_hit_accurate:131`,
-`offense_if_weapon_hits:149`, `on_weapon_hit:322`, `calculate_weapon_damage:364`,
-`calculate_hit_damage:384`, `apply_weapon_damage:443`, `apply_armor_reduction:467`),
-`src/fight.cpp` (round driver, `hit`, `damage`), `src/char_utils_combat.cpp` (OB/PB/DB)
+**Source files (live path):** `src/fight.cpp` — `hit:2362` (the whole swing), the round
+driver `:2755-2761`, `damage`, `armor_effect`; OB/PB/DB in `src/utility.cpp`
+(`get_real_OB:647`, `get_real_parry:761`, `get_real_dodge:860`).
 **Status:** 🟡 core swing resolution + damage documented. Round timing/energy, armor
 reduction details, and special attacks are partial (see Open questions).
+
+> ⚠️ **Which combat code is live.** There is a `combat_manager` class
+> (`combat_manager.cpp`: `roll_ob`, `offense_if_weapon_hits`, `calculate_hit_damage`, …) and a
+> matching OB/PB/DB set in `char_utils_combat.cpp`. **None of it is called** — `combat_manager`
+> is compiled but never instantiated. The real combat is `fight.cpp::hit()`. The two are nearly
+> identical in structure (this doc originally referenced the `combat_manager` versions); the
+> formulas below now follow the **live `fight.cpp`/`utility.cpp`** code, which differs in one
+> material way: the strength term sits *inside* the damage random factor (see §3).
 
 > **OB, PB, and DB (offensive / parry / dodge bonuses) are defined in
 > [`stats-and-character-power.md` §10](stats-and-character-power.md#10-offensive-ob-parry-pb--dodge-bonuses)** —
@@ -20,50 +27,57 @@ the stats doc); each swing runs the sequence below.
 
 ## One swing, end to end
 
-### 1. Roll the attacker's OB (`roll_ob:111`)
+### 1. Roll the attacker's OB (`fight.cpp:2407-2414`)
 ```
-roll       = d35 (0..35)
-OB_roll    = get_real_ob + rand(1 .. 55 + OB/4) + roll
+roll       = d35 (1..35)
+OB_roll    = get_real_OB + rand(1 .. 55 + OB/4) + roll
 OB_roll    = OB_roll·7/8 − 40
-if roll > 34 (a natural 35): critical → OB_roll += 100
+if roll == 35 (a natural 35): critical → OB_roll += 100
 ```
 The `·7/8 − 40` is why each point of raw OB is worth ~0.875 of effective margin.
 
-### 2. Compare against the defender (`offense_if_weapon_hits:149`)
+### 2. Compare against the defender (`fight.cpp:2424-2483`)
 Working value starts at the rolled OB, then:
-1. **Position bonus:** if the victim is below `POSITION_FIGHTING`, `+10` per position step
+1. **Dodge + evasion:** subtract `get_real_dodge(victim)` (DB) plus the evasion malus (only vs
+   `AFF_EVASION`, scales with cleric levels). If the result is `< 0` **and** the roll wasn't a
+   natural 35, the swing **misses** — split into an *evade* or a *dodge* message by an
+   evasion-vs-dodge roll.
+2. **Frenzy** (`is_frenzy_active`, `fight.cpp:2449`): if the attacker is in a frenzy, the roll
+   is forced to 35 — i.e. **treated as a critical**, which (per `roll_ob`) can't be dragged
+   below 0 by dodge/parry. This is the live game's "guaranteed-hit" mechanism (there is *no*
+   accuracy/"accurate hit" system in the live code — that exists only in the unused
+   `combat_manager`).
+3. **Position bonus:** if the victim is below `POSITION_FIGHTING`, `+10` per position step
    (helpless targets are easier).
-2. **Accurate hit?** (`is_hit_accurate:131`) Only possible on **Careful** or **Aggressive**
-   tactics; chance = `ranger_level − skill_penalty − dodge_penalty`, scaled by the
-   `ACCURACY` skill. An accurate hit **skips the dodge/evasion checks** ("finds an opening").
-3. **Dodge** (non-accurate only): subtract `get_real_dodge(victim)` (DB). If OB < 0 and not a
-   crit → **dodged (miss)**.
-4. **Evasion** (non-accurate only): subtract the evasion malus (only vs `AFF_EVASION`;
-   scales with cleric levels). If OB < 0 and not a crit → **evaded (miss)**.
-5. **Parry:** subtract `get_real_parry(victim)` (PB) × the victim's current-parry % (which
-   then decays to ⅔ for subsequent swings this round). If OB < 0 → **deflected (miss)**, which
-   can trigger a **riposte** (`does_victim_riposte:249`, dex/ranger/stealth-based) and grip
-   checks on two-handers.
+4. **Parry:** subtract `get_real_parry(victim)` (PB) × the victim's current-parry % (which
+   then decays to ⅔ for subsequent swings this round). A natural 35 is floored at 0 here. If
+   OB < 0 → **deflected (miss)**, which can trigger a **riposte** (`check_riposte`,
+   dex/ranger/stealth-based) and grip checks on two-handers.
 
-Whatever OB **remains** after these subtractions is `remaining_ob`, passed to damage.
+Whatever OB **remains** after these subtractions is `remaining_OB`, passed to damage. (Tactics
+shift OB/PB/DB themselves — full table in
+[stats §10](stats-and-character-power.md#10-offensive-ob-parry-pb--dodge-bonuses).)
 
-### 3. Damage (`on_weapon_hit:322` → `calculate_hit_damage:384`)
+### 3. Damage (`fight.cpp:2509-2516`)
 ```
-weapon_damage = get_weapon_damage(weapon)        # barehanded = BAREHANDED_DAMAGE·10; mobs ×0.5
+weapon_damage = get_weapon_damage(weapon)        # barehanded = natural_attack_dam; mobs ×0.5
 base          = weapon_damage + points.damage·10
-random_factor = d100² + 10000                    # ∈ [10000, 20000]
+F (random factor) = 10000 + d100² + (twohanded ? 266 : 133)·bal_str    # bal_str is INSIDE F
 
-if accurate:   damage = base · random_factor / 100000          # ≈ base × 0.1–0.2
-else:          damage = (base · (remaining_ob+100) · random_factor
-                         + 133·(1+twohanded)·bal_str) / 13300000
+damage = base · (remaining_OB + 100) · F / 13,300,000
 ```
-So a **normal** hit scales with `remaining_ob + 100` — beating the defense by more does more
-damage — which is the channel through which **STR/OB raise damage** (stats §10). The explicit
-`bal_str` term is numerically tiny. Then:
-- **Find weakness** (`does_find_weakness:404`, warrior-level × `EXTRA_DAMAGE` skill): ×1.5.
-- **Rush** (Wild-fighting spec, 10 %): ×1.5.
+Two things drive a hit's size: **`remaining_OB + 100`** (beating the defense by more does more
+damage — the channel through which OB, and the stats feeding it, raise damage) and **`F`**,
+which folds in the `d100²` roll *and* the attacker's **strength** (`133·bal_str`, doubled for
+two-handers). So unlike the unused `combat_manager` — where the strength term was added
+*outside* the product and was negligible — **STR contributes meaningfully here** (≈ +0.8 %/pt
+direct, on top of its OB channel; stats §10). Then:
+- **Find weakness** (`check_find_weakness:2051`, warrior-level × `EXTRA_DAMAGE` skill): ×1.5.
+- **Rush** (Wild-fighting spec only; chance 5/10/15 % by Normal/Aggressive/Berserk tactics):
+  adds +½ the hit's damage. See `specializations.md`.
 - **Armor reduction** (`apply_armor_reduction:467`) is applied per hit location before the
-  final `apply_damage`.
+  final `apply_damage`. Several specs alter this step — Heavy Fighting +10 % absorb, Defender
+  shield block, Weapon Master armor/shield bypass (`specializations.md`).
 
 ### Damage tiers (the message the room sees) — `get_damage_message_number:1406`, `dam_weapons:1367`
 The **final** (post-armor) damage is bucketed into the verb you read on screen. `#w` is the
@@ -112,16 +126,15 @@ edge — but a 91/10 weapon with noticeably higher OB, parry, or attack speed ca
 perform a 97/10 one overall, because OB *multiplies* damage (below) and speed adds whole extra
 swings. Compare the full stat line, not just the damage number.
 
-**The shape of the damage algorithm.** For a normal (non-accurate) hit:
+**The shape of the damage algorithm.**
 ```
-damage = (weapon_damage + points.damage·10) · (remaining_OB + 100) · random / 13,300,000
+damage = (weapon_damage + points.damage·10) · (remaining_OB + 100) · F / 13,300,000
+F = 10000 + d100² + (twohanded ? 266 : 133)·bal_str
 ```
-The `random` factor is `d100² + 10000` (∈ 10000–20000, averaging ≈ 13,333), so the constants
-nearly cancel and the **average normal hit simplifies to**:
-```
-average damage ≈ base · (remaining_OB + 100) / 1000
-```
-From this you can read off the relationships:
+`F` carries the `d100²` roll (averaging ~3,333) **and** the strength term, so
+`F ≈ 13,333 + 133·bal_str` (1H). Ignoring STR, the constants nearly cancel and the
+**average hit simplifies to** `≈ base · (remaining_OB + 100) / 1000` (STR pushes that up ~20 %
+at STR 20). From this you can read off the relationships:
 - **Weapon damage is linear.** Double the weapon's rating → double the damage (all else equal).
   `points.damage` adds linearly too (each point = +10 to `base`).
 - **OB is linear with a +100 floor, so it has diminishing *percentage* returns.** Damage scales
@@ -132,20 +145,19 @@ From this you can read off the relationships:
 - **Weapon damage and OB multiply each other.** They're complementary, not interchangeable: a
   big weapon gains more absolute damage from extra OB, and a high-OB fighter gets more out of a
   big weapon. There's no point stacking one to the exclusion of the other.
-- **Accurate hits ignore the OB margin entirely:** `damage = base · random / 100000`
-  (≈ `base · 0.133` on average). That's a flat ~13 % of base regardless of margin — better than
-  a normal hit only when your OB margin would have been below ~33. Accurate hits trade burst for
-  a guaranteed landing.
+- **Strength rides inside `F`.** Each STR point adds `133` (1H) / `266` (2H) to `F` ≈ +0.8 %/pt
+  per hit, *on top of* STR's OB-channel contribution (stats §10). A DEX-based Light Fighter
+  routes DEX into OB instead (`specializations.md`).
 
 ## Three example swings (plain English)
 One attacker throughout: a level-30 warrior whose **standing OB is 200** (after gear/skills),
 wielding a sword (`base damage = 250` = weapon 200 + `points.damage`·10) on **Normal tactics**.
 Numbers are illustrative — absolute damage depends on weapon/gear scaling — but every step
-follows the real formulas above. The dice each swing are the `d35` accuracy roll and the
+follows the real formulas above. The dice each swing are the `d35` to-hit roll and the
 `d100` damage roll.
 
 ### A) Critical hit → MUTILATE
-The attacker rolls a **natural 35** on the accuracy die — a critical.
+The attacker rolls a **natural 35** on the d35 to-hit roll — a critical.
 - *Roll the OB:* `(200 + 70 random + 35)·7/8 − 40 = 266 − 40 = 226`, then **+100 for the crit
   → 326**.
 - *Defender (mob: DB 40, PB 60):* a crit can't be turned into a miss, so the dodge/parry
@@ -158,7 +170,7 @@ The attacker rolls a **natural 35** on the accuracy die — a critical.
   found weakness pushed the one hit past 90.
 
 ### B) Regular hit → "slash hard"
-A middling accuracy roll, no crit.
+A middling to-hit roll, no crit.
 - *Roll the OB:* `d35 = 16`; `(200 + 45 random + 16)·7/8 − 40 = 229 − 40 = 189`.
 - *Defender:* `189 − 40 dodge − 60 parry = 89` **remaining OB** (still positive → it lands;
   the parry weakens the victim's next parry to ⅔).
@@ -168,7 +180,7 @@ A middling accuracy roll, no crit.
   both defenses, but by a modest margin, so the damage sits in the low/mid tiers.
 
 ### C) A miss (dodged)
-A poor accuracy roll against a very nimble foe (a ranger: **DB 150**, PB 90).
+A poor to-hit roll against a very nimble foe (a ranger: **DB 150**, PB 90).
 - *Roll the OB:* `d35 = 3`, low random; `(200 + 10 random + 3)·7/8 − 40 = 186 − 40 = 146`.
 - *Defender:* subtract dodge — `146 − 150 = −4`. It's **below 0 and not a crit → the attack is
   dodged.** The swing stops here: no parry check, no damage roll.
@@ -186,7 +198,7 @@ land *and* more landings" — see `combat-stat-examples.md`.
 ## Mobs
 Mobs use simplified OB/PB/DB (`get_real_npc_*` in `char_utils_combat.cpp`): OB/parry/dodge are
 the stored `points.*` plus flat level/stat terms, with weapon damage halved
-(`calculate_weapon_damage:377`). They cannot make "accurate" hits or riposte.
+(`fight.cpp:2501`). They cannot riposte, and use the simplified NPC OB/PB/DB (`get_real_*` NPC branches in `utility.cpp`).
 
 ## Open questions
 - **Round timing / energy:** how `ENERGY`/`ENE_regen` gate the number of swings per round, and

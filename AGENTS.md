@@ -37,3 +37,20 @@
 - World files live in a separate repo; keep `lib/world/` and player data out of commits.
 - Never check in PII or live server logs (`log/`). Use local testing accounts and sanitized samples.
 
+## Dead / Unused Code (read before touching combat)
+Some files are compiled but never actually called — changing them has no effect on the running
+game, and reading them to understand mechanics will mislead you. Known cases:
+- **`src/combat_manager.cpp` (the whole `combat_manager` class) is unused.** It is in the
+  Makefile and compiles, but is never instantiated or invoked. The **live** melee path is
+  `src/fight.cpp::hit()` (driven by the round loop around `fight.cpp:2755-2761`).
+- Consequently the OB/PB/DB functions in **`src/char_utils_combat.cpp`**
+  (`get_real_ob`/`get_real_parry`/`get_real_dodge`, which take `weather`/`room` args) are also
+  dead. The **live** OB/PB/DB are in **`src/utility.cpp`**: `get_real_OB`, `get_real_parry`,
+  `get_real_dodge` (all take a single `char_data*`).
+- The two implementations are close but differ materially (e.g., the live damage formula folds
+  the strength term *inside* the random factor; there is no live "accurate hit" system — the
+  guaranteed-hit mechanism is `frenzy`). When documenting or modifying combat, follow the
+  `fight.cpp` / `utility.cpp` versions.
+- Heuristic: before relying on a combat helper, grep for its callers
+  (`grep -rn 'funcname(' src/`). If `combat_manager` is the only caller, it's dead.
+

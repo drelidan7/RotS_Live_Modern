@@ -342,27 +342,37 @@ and the misc racial effects below.
 ## 10. Offensive (OB), Parry (PB) & Dodge (DB) bonuses
 These three derived combat values live here (not in the combat doc) because they are direct
 functions of the stats above. The combat loop (→ `systems/combat-loop.md`) *consumes* them;
-`systems/combat-stat-examples.md` works concrete builds. All player formulas below are from
-`char_utils_combat.cpp` (`get_real_ob:335`, `get_real_parry:205`, `get_real_dodge:179`) at
-**Normal tactics, level 30, no encumbrance**; other tactics apply the multipliers in the
-`*_tactics_modifier` helpers. `points.OB/parry/dodge` are small stored bases (stance/gear/
-affect contributions); treat them as 0 for a clean baseline.
+`systems/combat-stat-examples.md` works concrete builds. The player formulas below are the
+**live** ones called by `fight.cpp::hit()` — `get_real_OB` (`utility.cpp:647`),
+`get_real_parry` (`utility.cpp:761`), `get_real_dodge` (`utility.cpp:860`) — at **Normal
+tactics, level 30, no encumbrance**. `points.OB/parry/dodge` are small stored bases
+(stance/gear/affect contributions); treat them as 0 for a clean baseline.
+
+> ⚠️ **Two implementations exist.** `char_utils_combat.cpp` defines a *parallel* set
+> (`get_real_ob`/`get_real_parry`/`get_real_dodge` taking weather/room args) used by the
+> `combat_manager` class — but `combat_manager` is **not called anywhere** (compiled, never
+> instantiated). The authoritative path is `fight.cpp::hit()` → the `utility.cpp` functions
+> above. The two are very close, but where they differ this doc follows the live `utility.cpp`
+> versions.
 
 `bal_str` = `get_bal_strength` (= STR below the racial cap of 22, half-rate above;
 `char_utils.cpp:415`). `war`/`ranger` = per-profession levels (§4). `max_war = 30`
 (20 for orcs, `char_utils.cpp:339`).
 
-### OB — offensive bonus (`get_real_ob`)
+### OB — offensive bonus (`get_real_OB`, `utility.cpp:647`)
 ```
-ob_bonus = bal_str + 1.5·war + 1.5·max_war·(level/30)          # = bal_str + 1.5·war + 45 at L30
-OB = points.OB − skill_penalty
+offense_stat = bal_str                       # Light Fighting w/ light weapon: max(bal_str, DEX)
+ob_bonus = offense_stat + 1.5·war + 1.5·max_war·(level/30)     # = …+ 1.5·war + 45 at L30
+OB = points.OB − skill_penalty + weapon_master.bonus_OB
    + weapon_term            # 1H: (6 − 2·bulk);  2H: bulk·(200+2h_knowledge)/100 − 15
-   + ob_bonus               # Normal tactics passes ob_bonus through unchanged
+   + ob_bonus               # Normal tactics passes ob_bonus through unchanged (see Tactics)
    + weapon_knowledge·(bulk+20)·0.008
    (− 10 in normal daylight visibility; − confuse effects)
 ```
+**Light Fighting** (with a light weapon) substitutes `offense_stat = max(bal_str, DEX)` *and*
+adds `+ranger/3` to `war` for this calc (`utility.cpp:666-677`) — see `specializations.md`.
 Then each swing rolls: `OB_roll = (OB + rand(1..55+OB/4) + d35)·7/8 − 40` (+100 on a crit
-roll of 35) — `roll_ob:111`.
+roll of 35) — `fight.cpp:2407-2414`.
 
 **In plain English:** OB ("offensive bonus") measures how well you land a telling blow. Its
 standing value is built mostly from your **Warrior level** (each level ≈ +1.5, on top of a
@@ -375,14 +385,15 @@ left after the defender's dodge and parry are subtracted ("remaining OB") **feed
 into damage** (combat-loop), so out-OB'ing your opponent both lands more hits *and* makes each
 one hit harder.
 
-### PB — parry bonus (`get_real_parry`, with a weapon)
+### PB — parry bonus (`get_real_parry`, `utility.cpp:761`, with a weapon)
 ```
 parry_bonus = 2·war + level(≤30) + bal_str
-PB = points.parry
+PB = points.parry + weapon_master.bonus_PB
    + parry_bonus·0.5                                   # Normal tactics ×0.5
-   + parry_knowledge_factor·(weapon.value[1]+20)·0.006 # value[1] = weapon parry rating
+   + parry_knowledge_factor·(weapon.value[1]+20)·0.006 # value[1] = weapon parry rating; ×0.006 = (14−8)/1000 at Normal
    (+ weapon.value[1]/2 if two-handed; − 10 in daylight)
-parry_knowledge_factor = knowledge(weapon) (+0.5·knowledge(twohanded) if 2H) + 0.75·knowledge(parry)
+parry_knowledge_factor = (knowledge(weapon) + 3·knowledge(parry)) / 4   # = ¼ weapon + ¾ parry
+   # two-handed: weapon term is (knowledge(weapon)+knowledge(twohanded))/2 before the /4 blend; Berserk halves the whole factor
 ```
 
 **In plain English:** PB ("parry bonus") is the Warrior's active defense — deflecting blows
@@ -395,9 +406,10 @@ limiter: each successful parry **decays to ⅔ strength for the rest of the roun
 (combat-loop), so parry is strong against a single foe but degrades when you're swarmed. You
 need a weapon to parry at all (barehanded gets only half the level/strength bonus).
 
-### DB — dodge bonus (`get_real_dodge`)
+### DB — dodge bonus (`get_real_dodge`, `utility.cpp:860`)
 ```
 dodge_skill_factor = (dodge + 0.5·stealth + 60)·(0.005·ranger) + (dodge + 0.25·stealth)·0.05
+                     (+20 if Beorning; ÷2 if Berserk)
 DB = points.dodge + DEX + (dodge_skill_factor − dodge_penalty + 3)   # Normal tactics adds DEX
 ```
 (skills here are the *raw* dodge/stealth skill values.)
@@ -411,22 +423,55 @@ all-in W36 build in `combat-stat-examples.md`, whose DB collapses). **Heavy armo
 berserk halves it). So the natural defensive split is: Warriors lean on parry (weapon + STR),
 Rangers lean on dodge (DEX + ranger skills), and a balanced fighter gets some of each.
 
+### Tactics (stance) — the offense ↔ defense dial
+Every fighter picks a **tactic** (`TACTICS_*`, `utils.h:107-111`) that trades offense against
+defense; it's applied inside the live OB/PB/DB formulas above
+(`get_real_OB`/`get_real_parry`/`get_real_dodge` tactics switches, `utility.cpp:708,806,896`).
+The spectrum runs Defensive → Berserk:
+
+| Tactic | OB (standing `ob_bonus` →) | OB weapon-skill ×mult | PB (`parry_bonus` →) | PB weapon-skill ×(14−m) | DB adds |
+|--------|---------------------------|----------------------:|----------------------|------------------------:|---------|
+| **Defensive** | `×0.75 − 8` | ×4 | `×0.6875` | ×10 | **+6 + DEX** |
+| **Careful** | `×0.875 − 4` | ×6 | `×0.625` | ×8 | +4 + DEX |
+| **Normal** | `×1.0` (baseline) | ×8 | `×0.5` | ×6 | + DEX |
+| **Aggressive** | `×1.0625 + 2` | ×10 | `×0.375` | ×4 | −4 + DEX |
+| **Berserk** | `×1.0625 + 5` (+ `⅛·berserk skill`) | ×10 | `×0.375` **and parry-skill ×½** | ×2 | **(−4 + DEX/2) then ×½** |
+
+How to read it: as you move toward Berserk your **OB rises** (both the standing bonus *and*
+the weapon-skill share, 4→10) while your **PB and DB fall** (the parry-skill share drops 10→2,
+and Berserk additionally halves both your parry-skill factor and your whole dodge). Defensive
+is the mirror — big parry/dodge, muted OB. One extra wrinkle:
+- **Rush** (Wild-fighting spec) only fires on Normal/Aggressive/Berserk (5/10/15 %), and
+  **Berserk** unlocks the Wild-fighting rage/attack-speed/wild-swing effects
+  (`specializations.md`). *(There is no "accurate hit" stance bonus in the live code — that
+  belonged to the unused `combat_manager`; the live guaranteed-hit path is frenzy, combat-loop.)*
+
+In short: **Defensive** = turtle (max PB/DB, weak hits), **Careful** = safe with steadier OB,
+**Normal** = balanced baseline, **Aggressive** = harder hits at some defense cost, **Berserk**
+= maximum offense and the gateway to Wild Fighting, with parry and dodge gutted.
+
 ### The marginal value of one stat point (Normal tactics, below caps)
 | +1 to… | Effect |
 |--------|--------|
-| **STR** | **+1 OB** (1:1, via `ob_bonus`; half above STR 22) → **≈ +0.6–0.8 % damage per landed normal hit** (see below) **and** fewer misses vs dodge/parry. **+0.5 PB**. Also raises melee attack speed and lowers encumbrance penalties. |
+| **STR** | **+1 OB** (1:1, via `ob_bonus`; half above STR 22) → **≈ +1.2–1.5 % damage per landed hit** (OB channel + the direct `133·bal_str` term in the damage factor; see below) **and** fewer misses vs dodge/parry. **+0.5 PB**. Also raises melee attack speed and lowers encumbrance penalties. |
 | **DEX** | **+1 DB** (1:1, via the tactics term). Raises attack speed (esp. light weapons). No direct OB/PB. |
 | **CON** | HP and HP-regen only (§6) — no OB/PB/DB. |
 | **+1 warrior class level** | **+1.5 OB** and **+1 PB**. |
 | **+1 ranger class level** | scales DB through `dodge_skill_factor` (0.5 %·(dodge+½stealth+60) per level). |
 
-**Why STR ≈ +0.7 %/point of damage.** In a normal (non-accurate) hit, damage scales with
-`ob_factor = remaining_ob + 100` (`calculate_hit_damage:386`, → `systems/combat-loop.md`).
-Each STR point adds +1 raw OB → **+0.875** to `remaining_ob` after `roll_ob`'s ×7/8, i.e.
-`+0.875/(remaining_ob+100)`. At a typical winning margin (`remaining_ob` ≈ 20–60) that's
-**≈ 0.55–0.73 %** more damage **per landed hit**, before counting the extra hits STR buys by
-beating dodge/parry more often. (The explicit `strength_factor` term in the damage formula is
-numerically negligible — STR's damage value flows through OB.)
+**Why STR ≈ +1.2–1.5 %/point of damage.** The live hit damage is
+`dam = base·(OB+100)·(10000 + d100² + twohanded?266:133·bal_str) / 13,300,000`
+(`fight.cpp:2516`). STR helps through **two** channels:
+1. **Direct term:** `bal_str` sits *inside* the random factor `F = 10000 + d100² + 133·bal_str`
+   (×266 two-handed). With `d100²` averaging ~3333, `F ≈ 13,333 + 133·bal_str` (≈ 15,993 at
+   STR 20), so each STR point adds `+133/F ≈ +0.8 %` per hit (1H). *(This is the term the dead
+   `combat_manager` placed outside the product, making it look negligible — in the live formula
+   it is not.)*
+2. **OB channel:** +1 STR → +1 OB → **+0.875** to the rolled OB → `+0.875/(OB+100)` ≈
+   +0.4–0.7 % on `(OB+100)`, plus it lands more borderline swings.
+
+Together ≈ **+1.2–1.5 % per STR point** on a landed normal hit (half-rate above STR 22). For a
+DEX-based Light Fighter, the OB channel runs on DEX instead (specializations.md).
 
 ### Basic example (Normal tactics, L30, STR 20 / CON 18 / DEX 14, no gear bonuses)
 A **default Warrior** (W class level 30): `ob_bonus = 20 + 1.5·30 + 45 = 110`;
@@ -440,13 +485,13 @@ moves when you shift STR/CON/DEX by a point — is in **`systems/combat-stat-exa
 A Warrior class level (bought with warrior points, §2) raises damage through **two channels**;
 a third, "rush," is a spec choice rather than a per-level effect:
 
-1. **OB: +1.5 per warrior level** (`get_ob_bonus`) → ≈ **+1.31 effective remaining-OB** per
-   level after `roll_ob`'s ⅞ scaling. Since a normal hit's damage ∝ `(remaining_OB + 100)`,
+1. **OB: +1.5 per warrior level** (`get_real_OB`, `utility.cpp:683`) → ≈ **+1.31 effective
+   remaining-OB** per level after the ⅞ OB-roll scaling. Since a hit's damage ∝ `(remaining_OB + 100)`,
    that's `+1.31/(margin+100)` per level *on hits that land* — **and**, when the fight is
    close, more OB also makes more swings land at all (it pushes borderline dodges/parries into
    hits). This second effect is where most of the value lives against tough targets.
-2. **Find-weakness frequency** (`does_find_weakness`, needs the `EXTRA_DAMAGE` skill): a
-   warrior-level-scaled chance to deal **×1.5**. With the skill maxed:
+2. **Find-weakness frequency** (`check_find_weakness`, `fight.cpp:2051`, needs the
+   `EXTRA_DAMAGE` skill): a warrior-level-scaled chance to deal **×1.5**. With the skill maxed:
 
    | Warrior level | Find-weakness chance | Avg damage ×mult (`1 + 0.5·p`) |
    |--------------:|---------------------:|-------------------------------:|
@@ -459,9 +504,10 @@ a third, "rush," is a spec choice rather than a per-level effect:
    Note the **kicker above level 30** (`prob += war − 30`): levels 31→36 add chance faster
    than 25→30, so high warrior levels are disproportionately rewarded. (With *no* `EXTRA_DAMAGE`
    skill this channel is zero and a warrior level's damage value is purely the OB channel.)
-3. **Rush** (`does_rush`): a flat 10 % chance of ×1.5, but **only** for the Wild-fighting
-   specialization — it's a build choice worth ~+5 % flat damage *if* you take that spec, and it
-   does **not** scale with warrior level. Don't count it as part of per-level value.
+3. **Rush** (`wild_fighting_handler`): a chance of bonus damage, but **only** for the Wild-fighting
+   specialization — it's a build choice (and it scales with *tactics*, not warrior level), so
+   don't count it as part of per-level value. See **`systems/specializations.md`** for the full
+   spec breakdown (Wild Fighting, Heavy/Light Fighting, Weapon Master, Protection, Defender).
 
 **Putting it together (vs. a level-30, 30-warrior baseline).** Because the OB channel's worth
 depends entirely on the target's defenses, the same warrior levels are worth far more against a

@@ -239,8 +239,10 @@ per level, see §4).
 square-rooted; barehanded it's `60 + 5·DEX`. → **STR** drives swing speed for **heavy/
 two-handed** weapons; **DEX** drives it for **light weapons** — the DEX-for-STR speed blend is
 **only active at bulk < 4** (off for two-handers, *not* capped), and **fast attack** (full) and
-**stealth** (half) raise the baseline. Faster energy regen = more swings. **Full breakdown and
-plain-English explanation: `combat-loop.md` → "Attack speed — the energy loop".**
+**stealth** (half) raise the baseline. Faster energy regen = more swings. The `score` command's
+**"Speed" = `ENE_regen / 5` = swings per minute** (energy ticks 4×/sec, 1200 per swing), so
+`seconds/swing = 60 / Speed`. **Full breakdown and plain-English explanation: `combat-loop.md`
+→ "Attack speed — the energy loop".**
 
 **Carry** (`utils.h:588`): `weight ≤ 2000 + 1000·STR`; `count ≤ 5 + DEX/2 + level/2`.
 

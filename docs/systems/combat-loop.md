@@ -211,13 +211,38 @@ Each combat tick, a fighter in `POSITION_FIGHTING`+ who isn't waiting gains ener
 ENERGY += get_energy_regen(fighter)        # = points.ENE_regen × wild-fighting rage multiplier
 when ENERGY > ENE_TO_HIT (1200):  hit() fires and deducts 1200
 ```
-So **`ENE_regen` is your attack speed**: you swing roughly once every `1200 / ENE_regen` ticks.
-A typical `ENE_regen` is ~100–160, i.e. a swing every ~8–12 ticks; double your `ENE_regen` and
-you swing ~twice as often (more swings multiply *all* your damage). `get_energy_regen`
-(`char_utils.cpp:1359`) multiplies the stored value by the Wild-Fighting rage bonus
-(specializations.md); the stored `points.ENE_regen` is computed by `recalc_abilities` whenever
-stats/gear change, and external haste/slow affects add to it directly (e.g. ±40,
-`handler.cpp:994`, `ranger.cpp:1624`).
+So **`ENE_regen` is your attack speed**, and `perform_violence` runs **every pulse (¼ second)**
+(`comm.cpp:822`; its `mini_tics` arg is ignored). `get_energy_regen` (`char_utils.cpp:1359`)
+multiplies the stored value by the Wild-Fighting rage bonus (specializations.md); the stored
+`points.ENE_regen` is computed by `recalc_abilities` whenever stats/gear change, and external
+haste/slow affects add to it directly (e.g. ±40, `handler.cpp:994`, `ranger.cpp:1624`).
+
+### Wall-clock: the `score` "Speed" number = hits per minute
+Energy ticks in 4×/second, so over a minute you gain `240 · ENE_regen` energy and spend `1200`
+per swing:
+```
+hits/min = 240 · ENE_regen / 1200 = ENE_regen / 5
+```
+That's exactly the **"Speed" value the `score` command prints** (`get_energy_regen(ch) / 5`,
+`act_info.cpp:1865`) — a 1–2 digit number you can read directly as **swings per minute**. So:
+```
+seconds per swing = 60 / Speed = 300 / ENE_regen
+```
+| `ENE_regen` | `score` Speed (hits/min) | seconds/swing |
+|------------:|-------------------------:|--------------:|
+| 60  | 12 | 5.0 s |
+| 100 | 20 | 3.0 s |
+| 120 | 24 | 2.5 s |
+| 150 | 30 | 2.0 s |
+| 180 | 36 | 1.7 s |
+| 240 | 48 | 1.25 s |
+
+So a `score` Speed of **30 means ~one swing every 2 seconds**; doubling your Speed halves your
+time-per-swing and doubles damage output. `PULSE_VIOLENCE = 12` pulses = **a 3-second "combat
+round,"** so Speed/20 = swings per round (Speed 20 ≈ 1 swing/round). Note the base loop fires at
+most one swing per pulse, so Speed effectively caps near 48 (4/sec) — but Light Fighting's free
+double strike (~20 %) and Wild-Fighting's rage bonus add swings *on top* of the displayed Speed,
+so real output can exceed it.
 
 ### How `ENE_regen` is computed (with a weapon)
 ```
@@ -286,8 +311,9 @@ returns** — pushing one number ever higher yields progressively less.
 > ≈ `10·√(str_speed/100)` no matter how much fast-attack / DEX / stealth you pile on. A heavy
 > weapon makes `str_speed` small, so that ceiling is low and the handling stats saturate against
 > it fast. Isolating fast-attack 0→90 (DEX 14): a **light 1H** (`str_speed ≈ 55,000`) gains
-> ≈ +26 % attack speed (~122→153, ceiling ~234), but a **very heavy 2H** (`str_speed ≈ 12,000`)
-> gains only ≈ +11 % (~87→96, ceiling ~110). So fast-attack is ~2–3× more valuable on light
+> ≈ +26 % attack speed — `ENE_regen` ~122→153, i.e. **score Speed ~24→31 swings/min**, ceiling
+> ~234 (Speed ~47) — but a **very heavy 2H** (`str_speed ≈ 12,000`) gains only ≈ +11 %
+> — `ENE_regen` ~87→96, **Speed ~17→19**, ceiling ~110 (Speed ~22). So fast-attack is ~2–3× more valuable on light
 > weapons; on a heavy weapon it's already near its low ceiling, and **Strength** (which raises
 > both the bottleneck *and* the ceiling) is what actually speeds you up. The same diminishment
 > applies to DEX's and stealth's speed contributions on heavy weapons.

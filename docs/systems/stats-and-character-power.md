@@ -535,6 +535,39 @@ OB) is worth.
 > Normal tactics. Figures are approximate — see `combat-loop.md` for the damage formula and
 > `combat-stat-examples.md` for the build grids.
 
+#### One STR point vs. one Warrior level (for damage)
+At **STR 18, level 30, `EXTRA_DAMAGE` maxed**, the two are nearly tied **per landed hit**:
+a STR point gives a flat **+0.85 %** (its `133·bal_str` term in the damage factor `F`) **plus**
+`+0.875/(margin+100)` from OB; a Warrior level gives `+1.3125/(margin+100)` from OB **plus**
+**~+0.5 %** from find-weakness. Netting out across target defense:
+
+| Target defense | +1 STR | +1 Warrior level |
+|----------------|-------:|-----------------:|
+| High (margin ~20) | ~+1.6 % | ~+1.6 % |
+| Moderate (margin ~100) | ~+1.3 % | ~+1.2 % |
+| Low (margin ~150) | ~+1.2 % | ~+1.0 % |
+
+So **~1 Warrior level ≈ 1 STR point** for raw per-hit damage (3 levels W27→W30 ≈ +3 STR). The
+tie-breakers: **STR** also speeds up swings (more attacks multiply all damage) and adds carry/
+PB — but is **capped at 22**; a **Warrior level** converts more misses→hits against tough
+targets and adds +1 PB.
+
+**The crossover is at class level 30**, driven by the find-weakness kicker (`prob += war − 30`),
+which roughly doubles a Warrior level's find-weakness value above L30. Per-hit value of
+**+1 Warrior level** (Normal tactics, moderate margin) vs a STR point's flat ~+1.3 %:
+
+| Baseline | W27 | W30 | W33 | W36 |
+|----------|----:|----:|----:|----:|
+| find-weakness % | 29 % | 33 % | 39 % | 45 % |
+| +1 Warrior level | ~+1.1 % | ~+1.1 % | ~+1.5 % | ~+1.5 % |
+| winner | STR | STR | **Warrior lvl** | **Warrior lvl** |
+
+**Tactics** scale the **OB channel of both levers equally** (×0.75 Defensive → ×1.0625
+Aggressive/Berserk on `ob_bonus`); the `F` (strength) and find-weakness channels are
+tactics-independent. Since a Warrior level is more OB-weighted, **aggressive stances tilt toward
+the Warrior level** and **Defensive tilts toward STR** — but the L30 crossover holds under every
+tactic. Full tables (by defense, level, and tactic) in `combat-stat-examples.md`.
+
 ---
 
 > **Base seeds:** `do_start` sets the `const*` baselines `hit=10, mana=40, move=80`

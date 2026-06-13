@@ -69,9 +69,115 @@ Notes:
   why W36 leads W30 by ≈ +9 OB / +6 PB. **Ranger class level**: +0.7 DB per level — why the
   all-in build's DB collapses.
 
+## One STR point vs. one Warrior level (for damage)
+A focused comparison: at **STR 18, character level 30, Normal tactics, a 1H weapon,
+`EXTRA_DAMAGE` maxed**, is a point of Strength or a Warrior class level worth more *for
+damage*? Both feed the live per-hit formula
+`dam = base · (remaining_OB + 100) · F / 13.3M`, `F = 10000 + d100² + 133·bal_str`
+(`fight.cpp:2516`, stats §10). Each lever hits different channels:
+
+| Lever | OB channel (→ `remaining_OB`) | Direct damage channel | Find-weakness (×1.5 proc) |
+|-------|-------------------------------|-----------------------|---------------------------|
+| **+1 STR** (18→19) | +1 OB → **+0.875** remaining_OB | **+133 to `F`** ≈ **+0.85 %** (flat, every hit) | — |
+| **+1 Warrior level** | +1.5 OB → **+1.3125** remaining_OB | — | **+~0.5 %** (below L30; ~+1 % above, via the kicker) |
+
+The OB-channel value is `Δremaining_OB / (margin + 100)`, so it shrinks as your margin over the
+target grows. Putting it together — **% extra damage per landed hit**:
+
+| Target defense (remaining_OB) | +1 STR | +1 Warrior level |
+|-------------------------------|-------:|-----------------:|
+| **High** (margin ≈ 20) | 0.85 + 0.875/120 ≈ **+1.6 %** | 1.31/120 + 0.5 ≈ **+1.6 %** |
+| **Moderate** (margin ≈ 100) | 0.85 + 0.875/200 ≈ **+1.3 %** | 1.31/200 + 0.5 ≈ **+1.2 %** |
+| **Low** (margin ≈ 150) | 0.85 + 0.875/250 ≈ **+1.2 %** | 1.31/250 + 0.5 ≈ **+1.0 %** |
+
+So **per landed hit they're remarkably close** — within a few tenths of a percent. STR's flat
+`F`-channel keeps it slightly ahead at low/moderate defense; the Warrior level's larger OB swing
+catches up against high-defense targets (where margin is small).
+
+**Baselines (W30 vs W27).** Dropping to a **27-warrior** baseline barely changes the *marginal*
+values above — it mainly lowers the standing numbers: find-weakness sits at **29 %** (vs 33 % at
+W30) and `ob_bonus` is ~4.5 lower, so a W27's overall damage is a few percent under a W30's. The
+**3-level gap W27→W30** is worth, at moderate defense, ≈ `3·1.31/200` (OB) + `(1.165/1.145 − 1)`
+(find-weakness) ≈ **+3.7 % per hit** — i.e. **about the same as +3 STR** (18→21 ≈ +3.9 %).
+Rule of thumb at moderate defense: **1 Warrior level ≈ 1 STR point** for raw per-hit damage.
+
+**The tie-breakers (why it's not actually a wash):**
+- **STR pulls ahead on throughput** — it also speeds up your swings (energy regen, §6), and
+  *more swings multiply all your damage*; a Warrior level does nothing for attack speed. STR
+  also adds +0.5 PB, carry, and lowers encumbrance. Caveat: STR is **capped at 22** (half-rate
+  above), so this only holds below the cap.
+- **A Warrior level pulls ahead vs. tough targets and at high class levels** — its bigger OB
+  swing converts more *misses into hits* when the fight is close (a total-damage effect not
+  shown in the per-hit table), it adds +1 PB (vs STR's +0.5), and **above class level 30 the
+  find-weakness kicker roughly doubles** its damage value.
+
+**Bottom line:** for a sub-cap warrior beating on ordinary targets, a STR point edges out a
+Warrior level for total damage (mostly via attack speed); against high-defense opponents, or
+once you're past class level 30, the Warrior level is at least its equal and often better.
+
+### Continuing to W33 and W36: the find-weakness kicker
+A Warrior level's *OB channel* is the same at every level (+1.3125 remaining_OB), but its
+*find-weakness* channel **steepens above class level 30** because of the `prob += war − 30`
+kicker (stats §10). Find-weakness chance (skill maxed) and the resulting per-level damage value:
+
+| Class level | Find-weakness % | Find-weakness slope (per level) |
+|------------:|----------------:|---------------------------------|
+| 27 | 29 % | ~+0.5 % (below the kicker) |
+| 30 | 33 % | ~+0.5 % |
+| 33 | 39 % | **~+0.9 %** (kicker active) |
+| 36 | 45 % | **~+0.9 %** |
+
+So the value of **+1 Warrior level** for per-hit damage (Normal tactics, moderate margin ~100):
+
+| Baseline | OB channel | Find-weakness | **+1 Warrior level total** | vs **+1 STR** (~+1.3 %) |
+|----------|-----------:|--------------:|---------------------------:|:-----------------------:|
+| W27 | +0.66 % | +0.5 % | **≈ +1.1 %** | STR wins |
+| W30 | +0.66 % | +0.5 % | **≈ +1.1 %** | STR wins |
+| W33 | +0.66 % | +0.9 % | **≈ +1.5 %** | **Warrior level wins** |
+| W36 | +0.66 % | +0.9 % | **≈ +1.5 %** | **Warrior level wins** |
+
+**The crossover is at class level 30.** Below it, a STR point out-damages a Warrior level per
+hit (STR's flat `F`-channel + OB > the Warrior level's smaller find-weakness + OB). At 31+ the
+kicker roughly doubles the find-weakness contribution and the Warrior level pulls ahead — on top
+of its standing advantages (more misses→hits vs tough targets, +1 PB). STR still wins on
+*throughput* (attack speed) and is the only one of the two that helps below the STR-22 cap.
+
+### Factoring in tactics
+Tactics scale the **OB channel of both levers equally** — the tactic multiplier is applied to
+the whole `ob_bonus` (which contains both the STR/offense term and the `1.5·war` term) before
+the universal ×⅞ (`get_real_OB` switch, `utility.cpp:708`). The **`F` (strength) and
+find-weakness channels are tactics-independent.**
+
+| Tactic | OB ×mult | A STR point's OB Δ | A Warrior level's OB Δ |
+|--------|---------:|-------------------:|-----------------------:|
+| Defensive | ×0.75 | +0.66 | +0.98 |
+| Careful | ×0.875 | +0.77 | +1.15 |
+| Normal | ×1.0 | +0.875 | +1.31 |
+| Aggressive | ×1.0625 | +0.93 | +1.39 |
+| Berserk | ×1.0625 (+5 flat, −defense) | +0.93 | +1.39 |
+
+Per-hit damage value at a **moderate margin (~100)**, STR 18:
+
+| Tactic | +1 STR | +1 War (≤L30) | +1 War (≥L33) |
+|--------|-------:|--------------:|--------------:|
+| Defensive | ~+1.18 % | ~+0.97 % | ~+1.37 % |
+| Careful | ~+1.23 % | ~+1.05 % | ~+1.45 % |
+| Normal | ~+1.29 % | ~+1.14 % | ~+1.54 % |
+| Aggressive | ~+1.32 % | ~+1.18 % | ~+1.58 % |
+| Berserk | ~+1.32 % | ~+1.18 % | ~+1.58 % |
+
+Reading it: because a Warrior level is **more OB-weighted** than a STR point, **aggressive
+stances (which pump the OB channel) tilt toward the Warrior level**, while **Defensive — which
+shrinks OB but leaves STR's flat `F`-channel untouched — tilts toward STR**. The *crossover by
+class level* (≤30 STR, ≥33 Warrior level) holds across every tactic; tactics just widen or
+narrow the gap. (Caveats: a more aggressive stance also raises your own OB → larger margin →
+slightly smaller % per OB point, which this fixed-margin table doesn't show; Berserk's +5 flat
+OB, its halved parry/dodge, and any Wild-Fighting procs are separate.)
+
 ## How to regenerate these numbers
 Plug your real stats, class levels, weapon (`value[1]` parry, bulk, weight), and knowledge
 skills into the §6/§10 formulas. The **deltas** marked "exact" hold for any character below the
-caps on Normal tactics; switch tactics by applying the `*_tactics_modifier` multipliers from
-`char_utils_combat.cpp`. Energy-regen and the absolute OB/PB/DB constants shift with gear and
-skills, so treat the absolute columns as illustrative and the deltas as the durable result.
+caps on Normal tactics; switch tactics by applying the tactics multipliers in the live
+`get_real_OB`/`get_real_parry`/`get_real_dodge` (`utility.cpp`). Energy-regen and the absolute
+OB/PB/DB constants shift with gear and skills, so treat the absolute columns as illustrative and
+the deltas as the durable result.

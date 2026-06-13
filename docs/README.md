@@ -28,9 +28,16 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | [Maze/level files (`.lev`)](data-formats/maze-files.md) | ✅ | `levgen/maz.c` |
 
 ### Gameplay systems (`systems/`) — behavior & formulas
-⬜ Combat/damage · Magic(spells) · Prayers/mystic · Skills · Classes/specs · Races ·
+| Doc | Status | Source of truth |
+|-----|--------|-----------------|
+| [Stats, level & proficiency](systems/stats-and-character-power.md) | ✅ baseline | `profs.cpp`, `limits.cpp`, `utils.h` |
+
+⬜ Combat-loop/damage · Magic(spells) · Prayers/mystic · Skills · Classes/specs · Races ·
 XP/leveling · Movement/zones · Objects/equipment · Mob AI/specprocs · Shops/economy ·
 PK/fame · Comms/socials · Shapeshift builder · Guardian spirits · Mudlle engine
+
+> Note: combat/magic formula docs are best validated against a running server (blocked on
+> missing world files); documented from source meanwhile, with live-only details flagged.
 
 ### Content catalogs (`catalogs/`)
 ⬜ Spell list · Prayer list · Skill list · Race stats · Item types & wear slots · Socials

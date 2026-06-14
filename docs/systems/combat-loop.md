@@ -75,9 +75,15 @@ direct, on top of its OB channel; stats §10). Then:
 - **Find weakness** (`check_find_weakness:2051`, warrior-level × `EXTRA_DAMAGE` skill): ×1.5.
 - **Rush** (Wild-fighting spec only; chance 5/10/15 % by Normal/Aggressive/Berserk tactics):
   adds +½ the hit's damage. See `specializations.md`.
-- **Armor reduction** (`apply_armor_reduction:467`) is applied per hit location before the
-  final `apply_damage`. Several specs alter this step — Heavy Fighting +10 % absorb, Defender
-  shield block, Weapon Master armor/shield bypass (`specializations.md`).
+- **Armor reduction** (`armor_effect`, `fight.cpp:2529`) is applied per hit location **here, in
+  `hit()`** — *before* the call to `damage()`. Several specs alter this step — Heavy Fighting
+  +10 % absorb, Defender shield block, Weapon Master armor/shield bypass (`specializations.md`).
+
+> ⚠️ **Armor is applied only to ordinary weapon swings.** It happens in `hit()` (above), not in
+> `damage()`. **Active skills (kick, bash, bite, …) and *all spells* call `damage()` directly,
+> so they bypass armor entirely.** `damage()` itself (`fight.cpp:1588`) still applies
+> **resistances/vulnerabilities** (`check_resistances`: ×⅔ resisted / ×3⁄2 vulnerable),
+> Beorning/maul reduction, and the PK-fame bonus — but never armor. (See `warrior-skills.md`.)
 
 ### Damage tiers (the message the room sees) — `get_damage_message_number:1406`, `dam_weapons:1367`
 The **final** (post-armor) damage is bucketed into the verb you read on screen. `#w` is the
@@ -328,8 +334,8 @@ weapon damage is halved (`fight.cpp:2501`). They cannot riposte. Mob `ENE_regen`
 straight from the `.mob` file (data-formats/world-files.md), not computed from stats.
 
 ## Open questions
-- **`armor_effect` / `apply_armor_reduction`** specifics: how AC/armor by hit location and
-  weapon type reduce damage (`fight.cpp armor_effect`).
+- **`armor_effect`** specifics (`fight.cpp`): how AC/armor by hit location and weapon type
+  reduce auto-attack damage.
 - **Resistances/vulnerabilities** and damage-type handling (`check_resistances`, `fight.cpp`).
 - **Special-attack damage paths** (archery `ranger.cpp`, spells → `magic.md`).
 - `points.damage`/`points.OB` base values for players (stance/affect sources, `set_player_ob`).

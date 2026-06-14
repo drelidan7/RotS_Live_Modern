@@ -34,8 +34,9 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | [Combat loop — hit & damage](systems/combat-loop.md) | 🟡 swing resolution + damage; timing/armor pending | `fight.cpp::hit` + `utility.cpp` (note: `combat_manager.cpp` is unused) |
 | [Combat stat examples](systems/combat-stat-examples.md) | ✅ worked grids (W30/W33/W36) | derived from §6/§10 |
 | [Specializations](systems/specializations.md) | 🟡 warrior-side detailed; mage/ranger/mystic stubbed | `*_handler.cpp`, `fight.cpp`, `char_utils.cpp` |
+| [Warrior skills](systems/warrior-skills.md) | ✅ incl. spec/race-gated; damage formulas + ranges | `act_offe.cpp`, `fight.cpp`, `olog_hai.cpp` |
 
-⬜ Magic(spells) · Prayers/mystic · Skills · Races ·
+⬜ Magic(spells) · Prayers/mystic · Ranger/Mystic skills · Races ·
 XP/leveling · Movement/zones · Objects/equipment · Mob AI/specprocs · Shops/economy ·
 PK/fame · Comms/socials · Shapeshift builder · Guardian spirits · Mudlle engine
 

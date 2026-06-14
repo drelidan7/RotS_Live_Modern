@@ -1,8 +1,9 @@
 # Combat loop — hit resolution & damage
 
 **Source files (live path):** `src/fight.cpp` — `hit:2362` (the whole swing), the round
-driver `:2755-2761`, `damage`, `armor_effect`; OB/PB/DB in `src/utility.cpp`
-(`get_real_OB:647`, `get_real_parry:761`, `get_real_dodge:860`).
+driver `perform_violence:2716`, the fighting-list plumbing `combat_list:41` /
+`set_fighting:221` / `stop_fighting:257`, plus `damage`, `armor_effect`; OB/PB/DB in
+`src/utility.cpp` (`get_real_OB:647`, `get_real_parry:761`, `get_real_dodge:860`).
 **Status:** 🟡 swing resolution, damage, and attack-speed/energy documented. Armor reduction
 details and special attacks are partial (see Open questions).
 
@@ -200,6 +201,77 @@ In example A, one more point of **STR** would have raised the standing OB by 1 �
 is ~`+0.5 %` (smaller margin), **and** in example C it could be exactly what flips a −1 result
 to a 0 and turns a dodge into a glancing hit. That's why STR's value is "more damage when you
 land *and* more landings" — see `combat-stat-examples.md`.
+
+## The combat list — who is fighting, and in what order
+
+Before the energy loop (below) can give anyone a swing, the engine needs a roster of who is in
+combat. That roster is a single **world-global singly-linked list**, `combat_list`
+(`fight.cpp:41`), threaded through each character's own `next_fighting` pointer
+(`char_data.next_fighting`, `structs.h:1706`). There is **one list for the entire game** — every
+fighting PC and mob in every room is on the same chain; fights are *not* bucketed per-room. A
+second global, `combat_next_dude` (`fight.cpp:42`), is the "next dude trick" that keeps the walk
+safe when nodes are removed mid-iteration (below).
+
+### Adding an entry (`set_fighting`, `fight.cpp:221`)
+When a character starts fighting, `set_fighting`:
+1. **Early-outs if already fighting** — if `ch->specials.fighting` is already set it just bumps
+   the position to `POSITION_FIGHTING` and returns. So `set_fighting` is "*start* fighting," not
+   "switch target"; it does not re-add or re-order an already-engaged character.
+2. **De-dups** — linearly scans `combat_list` for `ch`; if found, skips insertion.
+3. **Prepends to the head** otherwise — `ch->next_fighting = combat_list; combat_list = ch;`.
+
+The insert is therefore **LIFO**: the *most recently engaged* combatant becomes the new head and
+will be the **first** one the round driver visits. Entries are never sorted, shuffled, or ordered
+by initiative/speed/level — list position is purely a function of *when you joined the fight*
+(newest first), as later mutated by removals and target hand-offs.
+
+### Removing an entry (`stop_fighting`, `fight.cpp:257`)
+Removal is deliberately reluctant, because leaving combat usually means "find a new foe," not
+"drop off the list":
+1. It scans the list for **another character who is attacking `ch`** (one `ch` can see and isn't
+   already its direct opponent). If found, `ch` **stays on the list** and simply **switches
+   target** to that attacker ("You turn to face your next enemy").
+2. If none is found but `ch` is alive and still has combat state (energy below the swing
+   threshold, or a mental delay), `ch->specials.fighting` is cleared **but `ch` is left on the
+   list** ("Do not remove from the list yet") to be cleaned up on a later pass.
+3. Only when `ch` is truly done is it **unlinked**. If `ch` happens to be the saved
+   `combat_next_dude`, that global is advanced to `ch->next_fighting` *first* so the in-progress
+   walk doesn't follow a dangling pointer. `stop_fighting_him` (`fight.cpp:325`) is the bulk
+   version — it walks the list and stops everyone who was targeting a now-gone character.
+
+### Is the list walked in order? (`perform_violence`, `fight.cpp:2716`)
+Yes. Every pulse, `perform_violence` walks `combat_list` from the **head to the tail** following
+`next_fighting`, touching each fighter exactly once (`fight.cpp:2723`). The only subtlety is the
+`combat_next_dude` save (`fight.cpp:2729`): the *next* node is captured **before** the current
+fighter acts, so if that fighter — or its victim — dies, flees, or changes rooms and gets
+unlinked during its own `hit()`, the loop still resumes from the right place. The traversal order
+is otherwise a plain, fixed linked-list order.
+
+### Does walking in order make combat deterministic each round?
+**The *order of resolution* is deterministic; the *outcome* is not.** Keep the two apart:
+
+- **Sequencing is deterministic and reproducible for a given list state.** If `A` sits ahead of
+  `B` in the list, `A`'s swing fully resolves before `B`'s this pulse — there is no randomization
+  of turn order. This has real consequences: in a mutual-kill race the fighter **nearer the head
+  acts first** and can drop the other before it ever swings; flees, quaffs, and room-wide effects
+  all resolve in list order. Because it's one global list, this fixed priority even spans
+  *unrelated* fights.
+- **But the order is not a stable "initiative."** New combatants **prepend** (a fighter who joins
+  or re-engages jumps to the front and acts first next pulse), and removals / target hand-offs
+  reshuffle who is present. So the relative order of two fighters is stable only while neither
+  leaves and re-enters the list.
+- **And every action's result is fully stochastic.** Each swing's to-hit (`d35`), damage
+  (`d100²`), and *all* procs — find-weakness, rush, the ~20 % light-fighting double strike,
+  Beorning swipe, weapon-master procs — call the RNG (`number()`). Two rounds replayed from the
+  identical list state produce different damage.
+- **A fighter doesn't even necessarily act each pass.** Whether it swings depends on its
+  `ENERGY` crossing `ENE_TO_HIT` (1200) and on wait-state/position gating (energy loop below), so
+  fighters fire on their *own* cadence, not once per pulse.
+
+So "combat happens in a deterministic fashion each round" is true **only** in the narrow sense
+that, for a fixed snapshot of the list, who-acts-before-whom is fixed (head-first, newest-engaged
+first). It is **not** deterministic in damage or who-wins, and the ordering itself drifts as the
+global list is mutated.
 
 ## Attack speed — the energy loop (`profs.cpp:766-805`, `fight.cpp:2750`)
 

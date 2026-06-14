@@ -405,6 +405,113 @@ Mobs use the **NPC branches** of `get_real_OB`/`get_real_parry`/`get_real_dodge`
 weapon damage is halved (`fight.cpp:2501`). They cannot riposte. Mob `ENE_regen` is read
 straight from the `.mob` file (data-formats/world-files.md), not computed from stats.
 
+## Future / proposed changes (design notes — NOT yet implemented)
+
+> ⚠️ Everything in this section is **prospective design intent**, not current behavior. It is
+> recorded here so the rationale and the risks are captured before any code is written. The live
+> loop today is exactly as documented above: `perform_violence` runs once per pulse, energy gates
+> swings at `ENE_TO_HIT = 1200`, and `hit()` runs `damage()` straight through to death mid-walk.
+
+### 1. Decouple the combat loop from the violence tick (free-running energy)
+**Intent.** Stop pacing combat at the fixed pulse rate and instead let it advance **as fast as it
+can**, so that energy accrues on a finer-grained (ideally real-time) basis and **marginal
+`ENE_regen` gains actually buy more swings.**
+
+**Why today's model wastes those gains.** In `perform_violence` (`fight.cpp:2716`) each fighter
+(a) only *regens* energy while `ENERGY <= ENE_TO_HIT` — regen **pauses** once it's over the
+threshold — and (b) fires **at most one `hit()` per pulse** (it's an `if`, not a `while`). At 4
+pulses/sec that hard-caps raw attack speed at **~4 swings/sec (score Speed ~48)**; any `ENE_regen`
+beyond ~1200/pulse is throttled away. So two builds with very different speed can converge to the
+same real output, and small speed upgrades near the cap do nothing (only Light Fighting's double
+strike and Wild-Fighting rage currently exceed the cap — see §attack-speed).
+
+**What would change.** Drive energy accrual by **elapsed wall-clock time** (the loop already
+computes `time_delta` via `gettimeofday` for `damage_details.tick`) — e.g. `ENERGY += ENE_regen ·
+time_delta`, remove the regen pause and the one-swing-per-pass cap (loop `while (ENERGY >
+ENE_TO_HIT)`), and run the resolver at a high frequency or on demand. The `score` "Speed" readout
+becomes a true, uncapped swings/minute.
+
+**Potential side-effects / risks.**
+- **Damage economy must be re-tuned.** Removing the ~4/sec ceiling makes high-`ENE_regen` builds
+  (DEX / fast-attack / light-weapon / hasted) scale **linearly with no cap** — a large, direct
+  DPS buff. Mob HP, PvP time-to-kill, and the `ENE_regen` formula were all balanced around the
+  current cap; lifting it without re-tuning would make fast builds dominant.
+- **Frame-rate-dependent combat (correctness hazard).** "As fast as it can" makes swing rate a
+  function of **server load** unless accrual is strictly time-scaled. Flat per-call regen on a
+  variable-frequency loop = combat that literally speeds up when the server is idle and slows
+  under load. Time-scaling (`· time_delta`) is mandatory, not optional.
+- **Pulse-denominated timers drift.** Wait-states, mental-delay decrement, skill recovery
+  (`WAIT_STATE_FULL` in pulses), Olog skill cooldowns, and **parry restoration (+3/pulse,
+  `fight.cpp:2723`)** are all measured in pulses tied to `PULSE_VIOLENCE = 12` (the 3 s "round").
+  Decoupling swings from pulses desyncs these from actual swing cadence; each needs re-derivation
+  in seconds.
+- **CPU cost.** A tight free-running resolver walks the **global** `combat_list` far more often;
+  with many simultaneous fights this can peg a core. A higher fixed frequency + time-scaled
+  accrual is cheaper than a true busy loop.
+- **Output spam / bandwidth.** More swings/sec = proportionally more combat messages per client
+  (and to the room). Faster builds could flood scrollback and consume bandwidth; message
+  batching/throttling may be needed.
+- **Energy-as-resource skills shift.** `ENERGY` is also a skill currency — Weapon-Master
+  bludgeon **drains** `10× damage` energy as a stagger, slashing **refunds** `ENE_TO_HIT/2`.
+  Faster regen weakens energy-drain CC and changes the value of the refund.
+
+### 2. Phase combat into hit → damage → resolution (a deferred "dying list")
+**Intent.** Split each round into explicit phases so that two fighters who **both** have the
+energy to swing can land on each other **simultaneously**, each able to kill the other —
+**postponing death** until everyone has acted. Today, because `hit()` runs `damage()` straight
+through to extraction inside the walk, the fighter **nearer the head of `combat_list` resolves
+first and can drop its opponent before that opponent ever swings** (see "The combat list" above).
+Phasing removes that ordering bias for lethal exchanges.
+
+**Proposed phases (per round):**
+1. **Hit phase** — for every fighter with `ENERGY > ENE_TO_HIT`, roll to-hit / compute the swing
+   (hit-or-miss, `remaining_OB`), spending energy. No HP is touched yet.
+2. **Damage phase** — apply each computed swing's damage to its target. A target whose HP crosses
+   the lethal threshold is **added to a new `dying_list`** (mirroring `combat_list`) and **marked
+   dying — but NOT extracted.** It can still take further hits this phase.
+3. **Resolution phase** — *after* all fighting is resolved, walk the `dying_list` once and
+   actually kill/extract each entry (corpse, loot, XP, death triggers, `stop_fighting_him`).
+
+**Relationship to the determinism discussion.** This directly targets the "*who survives a
+mutual-kill race is decided by arbitrary list position*" problem: outcome for simultaneous lethal
+blows becomes **order-independent** (both die). Per-swing results stay stochastic (RNG to-hit /
+damage / procs) — phasing fixes *sequencing fairness*, not randomness.
+
+**Potential side-effects / risks.**
+- **Kill attribution becomes ambiguous.** XP, PK fame/ranking, quest credit, and on-kill procs
+  assume one clear killer at the moment of death. If A and B kill each other, who gets credit?
+  Both? This must be decided per system.
+- **On-kill effects that change the killer's own survival.** Wild-Fighting **bloodlust** heals
+  `10 %` of missing HP on a kill (`wild_fighting_handler::on_unit_killed`). If a dying killer's
+  bloodlust fires in the resolution phase, does the heal **pull them back off the `dying_list`**?
+  That is either an intended skill-expression mechanic or an exploit — it needs an explicit rule,
+  and resolution-phase ordering (heals before deaths?) starts to matter.
+- **"Wasted" overkill / already-dead targets.** A target marked dying in the damage phase can
+  still be struck by other attackers later in the same phase. Those hits hit a corpse-to-be —
+  decide whether they're ignored, counted for credit, or redirected.
+- **Invariant breakage.** Vast amounts of code assume a struck/dead character is *immediately*
+  removed (`hit()` re-checks victim alive/same-room/awake each swing; `stop_fighting`'s reluctant
+  hand-off; the `combat_next_dude` trick). A character that is "dying but still present" for a
+  whole phase violates those assumptions; targeting, rescue, flee, and area effects all need
+  audit. (Upside: deferring removal actually *simplifies* the mid-walk-deletion hazard the
+  `combat_next_dude` trick exists to handle — for deaths specifically.)
+- **Retaliation / new engagements mid-round.** Being hit currently triggers aggro / auto-engage
+  via `set_fighting`, which **prepends** the newcomer to `combat_list`. Phasing must define
+  whether a fighter engaged *during* the hit/damage phase acts this round or next, or ordering
+  artifacts return through the back door.
+- **Transient cross-phase state & crash safety.** A half-applied round (damage dealt, deaths not
+  yet processed) must never be observed by a save/checkpoint. Keep all three phases inside one
+  synchronous pass — no yielding between them.
+- **Player feel.** Simultaneous "trades" (both die) change PvP texture and the on-screen
+  kill/death message ordering; this is a deliberate design choice, not just a mechanical one.
+
+### How the two changes interact
+They are in tension. Change 2 needs a **well-defined round boundary** to batch hit → damage →
+resolution, while Change 1 wants to **dissolve** the fixed tick. The likely reconciliation is to
+keep discrete, phased rounds but **raise their frequency** and make energy/timers **time-scaled**,
+rather than a truly free-running loop — i.e. apply Change 1's time-based accrual *to* Change 2's
+phased round, not instead of it.
+
 ## Open questions
 - **`armor_effect`** specifics (`fight.cpp`): how AC/armor by hit location and weapon type
   reduce auto-attack damage.

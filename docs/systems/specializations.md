@@ -318,10 +318,15 @@ statistics for display; the gameplay lives in the spell functions.
 - **Battle Mage** (`PS_BattleMage`) — melee-capable caster hybrid: tactics-scaled
   spellpower/penetration and resists casting interruption. ✅ see magic-system.md §6
 
-**Ranger / Mystic (utility & support)** — profession mapping to confirm:
-- **Regeneration** (`PS_Regeneration`), **Animals** (`PS_Animals`),
-  **Stealth** (`PS_Stealth`), **Archery** (`PS_Archery`), **Guardian** (`PS_Guardian`),
-  **Illusion** (`PS_Illusion`), **Teleportation** (`PS_Teleportation`). ⬜
+**Mystic (cleric specs)** — detailed in **[cleric-mystic-system.md §5](cleric-mystic-system.md)**:
+- **Regeneration** (`PS_Regeneration`) — +6 healing level on the regen powers. ✅
+- **Protection** (`PS_Protection`) — +1 resist-magic; gates the Protection power. ✅
+- **Illusion** (`PS_Illusion`) — +6 level on haze/fear/terror, +1 hallucinate; gates Confuse. ✅
+- **Guardian** (`PS_Guardian`) — gates the Guardian summon (aggressive/defensive/mystic builds). ✅
+
+**Ranger (utility & support)** — profession mapping to confirm:
+- **Animals** (`PS_Animals`), **Stealth** (`PS_Stealth`), **Archery** (`PS_Archery`),
+  **Teleportation** (`PS_Teleportation`) is a **mage** spec (magic-system.md). ⬜
 
 ## Open questions
 - **How a spec is chosen/changed** (level requirement, command, profession gating) — trace the

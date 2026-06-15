@@ -6,8 +6,8 @@
 application `mage.cpp:98-112` (`apply_spell_damage`) → live `damage()` in `fight.cpp:1588`;
 spell table `consts.cpp:489-572`; spell ids `spells.h:118-155`; Battle-Mage handler
 `battle_mage_handler.cpp`; element resistances `utility.cpp:1792` (`check_resistances`).
-**Status:** ✅ mage offensive + utility spells, scaling, saves, resistance, penetration.
-Cleric/mystic powers (`clerics.cpp`, `mystic.cpp`) are a separate doc.
+**Status:** ✅ mage offensive + utility spells, scaling, saves, resistance, penetration; **mana
+regen** (§12). Cleric/mystic powers live in [cleric-mystic-system.md](cleric-mystic-system.md).
 
 > **Live path note.** Unlike melee (where `combat_manager.cpp` is dead — see AGENTS.md), the mage
 > code in `mage.cpp`/`spell_pa.cpp` *is* the live path. Spell damage is finalized by the **same
@@ -340,3 +340,46 @@ only if the caster out-levels them, and §4 becomes `save = 20 − 48/5 + 30/5 =
 - `get_magic_power` uses `GET_MAX_RACE_PROF_LEVEL(PROF_MAGE,...)`, so a race's mage **cap** (not the
   character's current mage level) drives the `LEVELA` term — confirm this is the intended "level
   ramp" lever.
+
+---
+
+## 12. Mana regeneration
+
+Mana is the **mage** resource (`GET_MANA` = `tmpabilities.mana`); cleric/mystic powers spend
+**spirit** instead (cleric-mystic-system §1). Mana regenerates on a timer via `mana_gain`
+(`limits.cpp:128`), applied each `fast_update` tick.
+
+**Per-MUD-hour gain, PCs** (`limits.cpp:131-170`):
+```
+gain = 8 + INT/2 + WIL/5 + prof_level(MAGE)/5 + prof_level(CLERIC)/5
+gain ×= position:  sleeping ×2 · resting ×1.5 · sitting ×1.25 · (standing/fighting ×1)
+gain ×= 0.25  if poisoned
+gain ×= 0.25  if starving (FULL == 0) or parched (THIRST == 0)
+gain  = adjust_regen_for_level(level, gain)        # level ≤ 10 only: × (2 − 0.1·level); no effect past 10
+gain += points.mana_regen                          # flat bonus from gear (APPLY_MANA_REGEN)
+```
+
+### Mystic level *does* feed mana regen
+Note the **two** profession terms: **`prof_level(MAGE)/5 + prof_level(CLERIC)/5`**. Mage *and*
+mystic levels each contribute `level/5` mana per hour — so a character's **mystic level raises
+their mana regen** exactly as much as an equal mage level would. Because both default builds carry
+**45 total profession levels** (30 + 15), they get the **same** `45/5 = 9` mana/hour from
+professions:
+
+| Build | `MAGE/5` | `CLERIC/5` | prof mana/hr | `INT/2 + WIL/5` tilt |
+|---|---|---|---|---|
+| **Default mage** (30 mage / 15 mystic) | 6 | 3 | **9** | INT-heavy (INT/2 dominates) |
+| **Default mystic** (30 mystic / 15 mage) | 3 | 6 | **9** | WIL-heavy, but WIL only /5 |
+
+The profession contribution is identical; the practical difference is the **stat tilt** — a mage's
+high INT (`INT/2`) regenerates noticeably more mana than a mystic's high WIL (`WIL/5`), which fits
+the mage being the mana-dependent class and the mystic leaning on the (kill-fed) spirit pool.
+
+### Timing — the per-hour number is per real minute
+`fast_update` adds `mana_gain / FAST_UPDATE_RATE` each tick, with fractional **probabilistic
+rounding** (`limits.cpp:1502-1505`), so over a full MUD hour the integer total equals `mana_gain`.
+A **MUD hour is `SECS_PER_MUD_HOUR = 60` real seconds** (`structs.h:95`), so the per-hour figure is
+effectively **mana per real minute**. NPCs use a flat `level`-based gain (×1.5 out of combat).
+Regen can be **negative** (e.g. *restlessness*-style effects on the move/health channels) and the
+same machinery can kill a character at negative health regen.
+

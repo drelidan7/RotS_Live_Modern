@@ -23,7 +23,7 @@ PROFILE = -g -rdynamic
 CFLAGS = $(MYFLAGS) $(PROFILE) $(OSFLAGS)
 
 OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
-	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o char_utils.o char_utils_combat.o clerics.o clock.o color.o combat_manager.o \
+	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o char_utils.o char_utils_combat.o clerics.o clock.o color.o \
 	comm.o config.o consts.o db.o delayed_command_interpreter.o fight.o graph.o handler.o interpre.o environment_utils.o \
 	limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objsave.o olog_hai.o\
 	pkill.o profs.o protocol.o ranger.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
@@ -57,8 +57,10 @@ object_utils.o : object_utils.cpp structs.h object_utils.h
 	$(CC) -c $(CFLAGS) object_utils.cpp
 char_utils_combat.o : char_utils_combat.cpp structs.h base_utils.h char_utils.h object_utils.h  comm.h char_utils_combat.h
 	$(CC) -c $(CFLAGS) char_utils_combat.cpp
-combat_manager.o : combat_manager.cpp combat_manager.h base_utils.h
-	$(CC) -c $(CFLAGS) combat_manager.cpp
+# combat_manager.cpp is dead code (the class is never instantiated/invoked; the live
+# melee path is fight.cpp::hit() — see CLAUDE.md) and is excluded from the build.
+# NOTE: char_utils_combat.cpp stays — it also defines live functions used by
+# fight.cpp/clerics.cpp/ranger.cpp; only its get_real_ob/parry/dodge helpers are dead.
 big_brother.o : big_brother.cpp big_brother.h base_utils.h singleton.h
 	$(CC) -c $(CFLAGS) big_brother.cpp
 battle_mage_handler.o : battle_mage_handler.cpp warrior_spec_handlers.h structs.h

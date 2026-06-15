@@ -4,6 +4,9 @@
 *.o
 *.obj
 
+# Make auto-generated header dependency files (-MMD -MP)
+*.d
+
 # Precompiled Headers
 *.gch
 *.pch

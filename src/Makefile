@@ -13,6 +13,10 @@
 CXX      ?= g++
 BIN       = ../bin/ageland
 
+# Intermediate build artifacts (.o and auto-generated .d) go here, out of the
+# source tree — kept beside ../bin rather than mixed in with the .cpp files.
+OBJDIR    = ../intermediate
+
 # --- Flags -------------------------------------------------------------------
 # REQ_* hold the mandatory flags so an environment override of CXXFLAGS/LDFLAGS
 # can add to, but cannot strip, them (e.g. -m32 is always present).
@@ -34,7 +38,7 @@ ALL_LDFLAGS  = $(REQ_LDFLAGS) $(LDFLAGS)
 # NOTE: char_utils_combat.cpp IS built — it also defines live functions used by
 # fight.cpp / clerics.cpp / ranger.cpp; only its get_real_ob/parry/dodge helpers
 # are dead. Keep this list in sync with the source list in CMakeLists.txt.
-OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
+OBJNAMES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o char_utils.o char_utils_combat.o clerics.o clock.o color.o \
 	comm.o config.o consts.o db.o delayed_command_interpreter.o fight.o graph.o handler.o interpre.o environment_utils.o \
 	limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objsave.o olog_hai.o \
@@ -42,6 +46,8 @@ OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o \
 	wild_fighting_handler.o weather.o zone.o
 
+# Objects (and their .d files) live under $(OBJDIR), not next to the sources.
+OBJFILES = $(addprefix $(OBJDIR)/, $(OBJNAMES))
 DEPFILES = $(OBJFILES:.o=.d)
 
 # --- Targets -----------------------------------------------------------------
@@ -60,12 +66,16 @@ $(BIN): $(OBJFILES)
 	@if [ -f $@ ]; then mv -f $@ $@~; fi
 	$(CXX) $(ALL_LDFLAGS) -o $@ $(OBJFILES) $(LIBS)
 
-# One pattern rule builds every object identically; header prerequisites are
-# supplied by the generated .d files included at the bottom of this file.
-%.o: %.cpp
+# One pattern rule builds every object into $(OBJDIR); the directory is created on
+# demand, and header prerequisites come from the .d files included at the bottom.
+# With -o pointing into $(OBJDIR), -MMD writes each .d alongside its .o there too.
+$(OBJDIR)/%.o: %.cpp
+	@mkdir -p $(@D)
 	$(CXX) $(ALL_CPPFLAGS) $(ALL_CXXFLAGS) -c $< -o $@
 
+# Remove the intermediate dir; also sweep any stray objects an older in-tree build left in src/.
 clean:
+	rm -rf $(OBJDIR)
 	rm -f *.o *.d
 
 format:

@@ -7,6 +7,9 @@
 # Make auto-generated header dependency files (-MMD -MP)
 *.d
 
+# Makefile intermediate build artifacts (.o/.d output dir)
+/intermediate/
+
 # Precompiled Headers
 *.gch
 *.pch

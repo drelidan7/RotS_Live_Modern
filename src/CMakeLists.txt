@@ -3,6 +3,10 @@
 #   Out-of-source build:  cmake -S src -B build && cmake --build build
 #   Produces:             build/ageland   (the Makefile build produces ../bin/ageland)
 #
+# Intermediate objects (.o) already live entirely under the build tree
+# (build/CMakeFiles/ageland.dir/), never beside the sources — this is CMake's
+# out-of-source model, the equivalent of the Makefile's $(OBJDIR) = ../intermediate.
+#
 # This MUST stay flag-compatible with src/Makefile so both build systems produce an
 # equivalent binary — see the "Flag parity" block below. The toolchain (g++/make/
 # cmake) lives in the i386 container; see docs/BUILD.md.

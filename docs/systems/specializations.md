@@ -308,12 +308,15 @@ one that most changes how a *party* fights rather than how *you* fight.
 > Each needs its own pass against the magic / skills systems. Captured here so the set is
 > complete.
 
-**Mage (elemental & hybrid)** — shape the mage's offensive magic; data classes in
-`structs.h:1481-` and `char_utils.cpp:1486+`:
+**Mage (elemental & hybrid)** — shape the mage's offensive magic; the per-spec damage/save/effect
+kickers are documented in detail in **[magic-system.md](magic-system.md)** (§3 save matrix, §6
+Battle-Mage, §7 spell table, §9 scaling). Data classes in `structs.h:1285-1379` mostly track
+statistics for display; the gameplay lives in the spell functions.
 - **Fire** (`PS_Fire`), **Cold** (`PS_Cold`), **Lightning** (`PS_Lightning`),
   **Darkness** (`PS_Darkness`), **Arcane** (`PS_Arcane`) — element-themed spell specialists
-  (e.g. `cold_spec_data` tracks chill/energy-sap state). ⬜
-- **Battle Mage** (`PS_BattleMage`) — melee-capable caster hybrid. ⬜
+  (e.g. `cold_spec_data` tracks chill/energy-sap state). ✅ see magic-system.md
+- **Battle Mage** (`PS_BattleMage`) — melee-capable caster hybrid: tactics-scaled
+  spellpower/penetration and resists casting interruption. ✅ see magic-system.md §6
 
 **Ranger / Mystic (utility & support)** — profession mapping to confirm:
 - **Regeneration** (`PS_Regeneration`), **Animals** (`PS_Animals`),

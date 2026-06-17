@@ -35,10 +35,11 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | [Combat stat examples](systems/combat-stat-examples.md) | ✅ worked grids (W30/W33/W36) | derived from §6/§10 |
 | [Specializations](systems/specializations.md) | 🟡 warrior-side detailed; mage/ranger/mystic stubbed | `*_handler.cpp`, `fight.cpp`, `char_utils.cpp` |
 | [Warrior skills](systems/warrior-skills.md) | ✅ incl. spec/race-gated; damage formulas + ranges | `act_offe.cpp`, `fight.cpp`, `olog_hai.cpp` |
+| [Ranger skills](systems/ranger-skills.md) | ✅ skill catalog + DEX-vs-ranger-level for dodge/skills | `ranger.cpp`, `utility.cpp`, `consts.cpp` |
 | [Magic system — mage spells](systems/magic-system.md) | ✅ damage, saves, resistance, penetration, scaling, mana regen | `mage.cpp`, `spell_pa.cpp`, `consts.cpp` |
 | [Cleric / Mystic system](systems/cleric-mystic-system.md) | ✅ powers, saves, mental combat, spirit, scaling | `mystic.cpp`, `clerics.cpp`, `spell_pa.cpp` |
 
-⬜ Ranger skills · Races ·
+⬜ Races ·
 XP/leveling · Movement/zones · Objects/equipment · Mob AI/specprocs · Shops/economy ·
 PK/fame · Comms/socials · Shapeshift builder · Guardian spirits · Mudlle engine
 

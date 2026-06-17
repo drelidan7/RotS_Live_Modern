@@ -406,6 +406,203 @@ Reading the numbers:
 
 ---
 
+## Illustrative examples: archery (shoot) damage
+
+> **Premise correction (again): archery damage scales with STRENGTH, not DEX.** Despite the
+> function's own doc-comment claiming damage is "based on the archer's ranger level, dexterity
+> modifier, the arrows…", the live `shoot_calculate_damage` (`ranger.cpp:2085`) uses
+> `strength_factor = (get_cur_str() − 10)·0.5` — **`get_cur_dex()` is never read** in the damage,
+> accuracy, hit-location, or success path. DEX touches archery in exactly one place: a gate that
+> stops NPC orc-followers with `dex < 18` from using a bow (`can_ch_shoot`, `ranger.cpp:2270`). So
+> a DEX-breakpoint table would be five identical columns. The table below therefore uses
+> **STRENGTH** on the same 18/20/22/24 breakpoints — that is the stat that actually moves the
+> number. **(Code/comment mismatch worth a ticket: the comment promises DEX scaling the code
+> doesn't implement.)**
+
+### The formula (`ranger.cpp:2085`)
+```
+damage = RangerLevel·0.5·rand(0.5,1.0)                       ← "ranger level factor", E = 0.375·R
+       + ( rand(0 .. (arrowDmg+bowDmg)·1.25) + (STR−10)·0.5 ) · levelMultiplier
+levelMultiplier = 0.8 below 21r, then +0.02 per level (0.88 @24r, 1.0 @30r, 1.12 @36r)
+```
+**Assumptions for the grid:** a strong endgame setup — `bowDmg 19`, `arrowDmg 5` ⇒ random cap
+`(19+5)·1.25 = 30`, so the bow-roll averages **15** (this matches the in-code "~30 absolute max"
+note). Damage shown is **pre-armor**, i.e. against an unarmored hit location *or* on an accurate
+shot (which ignores armor); metal/chain armor on the struck slot subtracts afterward unless the
+accuracy roll — `RangerLevel·0.01 · (Accuracy/100)`, ~30 % at 30r/100-acc — connects.
+
+### Expected per-arrow damage (pre-armor)
+
+| atk ↓ / STR → | STR 18 | STR 20 | STR 22 | STR 24 |
+|---|---:|---:|---:|---:|
+| **24r** | 25 | 26 | 27 | 28 |
+| **27r** | 27 | 28 | 29 | 30 |
+| **30r** | 30 | 31 | 32 | 33 |
+| **33r** | 32 | 33 | 34 | 35 |
+| **36r** | 34 | 35 | 37 | 38 |
+
+### Full roll range (both random terms at their extremes)
+
+| atk ↓ / STR → | STR 18 | STR 20 | STR 22 | STR 24 |
+|---|---:|---:|---:|---:|
+| **24r** | 9–41 | 10–42 | 11–43 | 12–44 |
+| **27r** | 10–45 | 11–46 | 12–47 | 13–48 |
+| **30r** | 11–49 | 12–50 | 13–51 | 14–52 |
+| **33r** | 12–52 | 13–53 | 14–54 | 15–55 |
+| **36r** | 13–56 | 14–57 | 15–58 | 16–59 |
+
+Reading the numbers:
+- **Strength is a weak lever**: +2 STR is `+1·multiplier` ≈ +1 damage. Across the whole 18→24 STR
+  span the expected hit moves only ~3 points — strength is a minor additive term, not a driver.
+- **Ranger level does more, but gently**: each +3 levels adds `+1.1` to the ranger-level factor and
+  `+0.06` to the multiplier, ~+2 expected per step. Its bigger effect on archery is elsewhere —
+  faster shots (`shoot_calculate_wait`) and a higher armor-bypass chance — not raw per-arrow size.
+- **Variance dominates a single arrow**: the bow roll `0..30` swings each shot far more than any
+  stat choice; the spreads above (e.g. 12–50 at 30r/STR20) are mostly that uniform roll. Archery's
+  damage comes from *volume and armor-bypass*, not big individual hits.
+- **Armor**: against an armored slot without an accurate shot, subtract the slot's reduction
+  (chain counts half vs arrows, `ranger.cpp:2042`), floored at 1.
+
+### Damage per second (cadence)
+
+DPS = per-arrow damage ÷ seconds-per-shot. The cadence is set by `shoot_calculate_wait`
+(`ranger.cpp:2120`), in **pulses of 0.25 s** (`OPT_USEC`, `comm.cpp:45`; base 12 beats = one 3.0 s
+round):
+```
+beats = max(4, 24 − ⌊ENE_regen/12⌋ − ⌊RangerLevel/12⌋)        (normal mode)
+        − 1 more for Wood-elf / Haradrim
+fast mode: beats/2 (min 3) ;  slow mode: beats·2 (min 8)       (GET_SHOOTING, ranger.cpp:2131)
+seconds_per_shot = beats · 0.25
+```
+
+> **Where the speed actually comes from — and DEX sneaks back in here.** Within 24→36r the
+> ranger-level term `⌊R/12⌋` only moves from 2 to 3, i.e. **one beat (0.25 s) across the whole
+> range** — ranger level barely changes fire rate. The dominant input is **`ENE_regen`** (energy
+> regen). And `ENE_regen` for a wielded weapon (`profs.cpp:767-799`) is built from
+> `null_speed = 3·DEX + ⅔·(SKILL_ATTACK + SKILL_STEALTH/2) + 100`, a strength/weight term, and a
+> `dex_speed` term scaled by bow weight & bulk. So **DEX — which does nothing to per-arrow damage —
+> *does* raise DPS by shortening the interval between shots.** Exact `ENE_regen` depends on the bow's
+> weight/bulk and your `SKILL_ATTACK`/`SKILL_STEALTH`, so rather than guess it the cadence is
+> treated as a parameter below.
+
+Representative cadence (`seconds(beats)`, normal mode) for a few `ENE_regen` tiers:
+
+| ENE_regen | 24r | 27r | 30r | 33r | 36r |
+|---|---|---|---|---|---|
+| 60 | 4.25s | 4.25s | 4.25s | 4.25s | 4.00s |
+| 120 | 3.00s | 3.00s | 3.00s | 3.00s | 2.75s |
+| 180 | 1.75s | 1.75s | 1.75s | 1.75s | 1.50s |
+| 240+ | 1.00s | 1.00s | 1.00s | 1.00s | 1.00s (4-beat floor) |
+
+**DPS formula (STR floating):**
+```
+DPS(R, STR, t) = [ 0.375·R + (15 + 0.5·(STR−10)) · mult(R) ] / t
+                 mult(R) = 0.8 + 0.02·(R−20)   ;   t = seconds_per_shot
+```
+(the `15` is the average bow roll for the `bowDmg 19 / arrowDmg 5` setup; swap in `cap/2` for other gear.)
+
+**DPS @ 1.0 s/shot** (4-beat floor — a fast endgame archer, high energy regen):
+
+| atk ↓ / STR → | STR 18 | STR 20 | STR 22 | STR 24 |
+|---|---:|---:|---:|---:|
+| **24r** | 25.7 | 26.6 | 27.5 | 28.4 |
+| **27r** | 28.0 | 28.9 | 29.9 | 30.8 |
+| **30r** | 30.2 | 31.2 | 32.2 | 33.2 |
+| **33r** | 32.5 | 33.6 | 34.6 | 35.7 |
+| **36r** | 34.8 | 35.9 | 37.0 | 38.1 |
+
+**DPS @ 2.0 s/shot** (8 beats — mid energy regen):
+
+| atk ↓ / STR → | STR 18 | STR 20 | STR 22 | STR 24 |
+|---|---:|---:|---:|---:|
+| **24r** | 12.9 | 13.3 | 13.7 | 14.2 |
+| **27r** | 14.0 | 14.5 | 14.9 | 15.4 |
+| **30r** | 15.1 | 15.6 | 16.1 | 16.6 |
+| **33r** | 16.3 | 16.8 | 17.3 | 17.8 |
+| **36r** | 17.4 | 18.0 | 18.5 | 19.1 |
+
+**DPS @ 3.0 s/shot** (12 beats — base cadence, low energy regen):
+
+| atk ↓ / STR → | STR 18 | STR 20 | STR 22 | STR 24 |
+|---|---:|---:|---:|---:|
+| **24r** | 8.6 | 8.9 | 9.2 | 9.5 |
+| **27r** | 9.3 | 9.6 | 10.0 | 10.3 |
+| **30r** | 10.1 | 10.4 | 10.8 | 11.1 |
+| **33r** | 10.8 | 11.2 | 11.5 | 11.9 |
+| **36r** | 11.6 | 12.0 | 12.3 | 12.7 |
+
+Reading the DPS numbers:
+- **Cadence dwarfs every stat.** Going from 3.0 s to 1.0 s per shot **triples** DPS — a far bigger
+  swing than the entire 24→36r or 18→24 STR span (each worth only a few points of per-arrow
+  damage). Energy regen (hence DEX, bow weight, `SKILL_ATTACK`/`STEALTH`) and the fast/slow toggle
+  are the real DPS levers.
+- **Strength is marginal for DPS**: ~+0.5–1.0 DPS per +2 STR at a 1 s cadence, less when slower.
+- **Fast/slow mode is ~DPS-neutral** — it trades hit size for frequency, *not* total output (see
+  next). The tables above are **normal mode**.
+- These are **per-arrow, pre-armor, single-target** DPS; armored slots without an accurate shot
+  reduce the numerator, and arrows can break/deplete (`does_arrow_break`, `ranger.cpp:2147`).
+
+### Fast vs. slow shooting (`GET_SHOOTING`)
+
+`GET_SHOOTING` changes **both** the per-shot damage and the cadence, in opposite directions:
+
+| Mode | Per-shot damage (`ranger.cpp:2398`) | Cadence (`ranger.cpp:2131`) | Net DPS |
+|------|-------------------------------------|------------------------------|---------|
+| **slow** | **×2** | beats **×2** (min 8) | ≈ unchanged |
+| normal | ×1 | beats ×1 (min 4) | baseline |
+| **fast** | **÷2** | beats **÷2** (min 3) | ≈ unchanged (slightly *worse* at the floor) |
+
+So **yes — shooting slowly literally doubles the damage of each arrow** (the multiply happens in
+`on_arrow_hit` *after* armor is applied). But because it also doubles the time between shots, your
+**damage per second is essentially the same** as normal; slow shooting does not raise sustained
+output. (At the fast end the floors don't line up — fast bottoms out at 3 beats / 0.75 s while
+normal floors at 4 beats / 1.0 s — so a maxed-cadence archer actually *loses* DPS in fast mode,
+~0.67× baseline, since damage is halved but the interval isn't quite.)
+
+**Real benefits of shooting slowly** (bigger hits at equal DPS):
+- **Arrow economy** — half as many shots for the same total damage means **half the arrows spent**
+  and half the metal/chain break checks (`does_arrow_break`, `ranger.cpp:2150`). Arrows are a
+  foraged/bought consumable, so this is the most concrete win.
+- **Burst per shot** — one large hit races a target's regen/heals/flee better than the same damage
+  dribbled out, and when an **accurate shot** (armor bypass, `check_archery_accuracy`) lands it's a
+  doubled armor-ignoring hit.
+- **Fewer actions / less command spam.**
+
+What slow does **not** buy you: no extra DPS, and **no armor efficiency** — armor is subtracted from
+the 1× damage and the result is then doubled, which is arithmetically identical to two normal shots,
+so flat + percentage mitigation scale right along with the damage.
+
+**Benefits of shooting fast** (the mirror): more independent **accuracy / accurate-shot rolls** and
+more on-target events per unit time, and finer control to retarget — at the cost of **more arrows
+consumed**, more break risk, and the floor-induced DPS dip above.
+
+### Getting hit interrupts the shot (full cancel)
+
+A shot is a two-phase command: `shoot` arms a wait-wheel delay (`AFF_WAITING | AFF_WAITWHEEL`,
+priority **30**), and the arrow only looses when the delay matures. **Taking any damage during that
+wind-up cancels the shot outright** — it does not merely slow it. The chain (`fight.cpp:1733`):
+```
+if (dam > 0 && IS_AFFECTED(victim, AFF_WAITWHEEL) && GET_WAIT_PRIORITY(victim) <= 40)
+    if (battle_mage_handler.does_spell_get_interrupted())   // returns TRUE for any non-battle-mage
+        break_spell(victim);                                // delay.wait_value = 0; delay.subcmd = −1
+```
+`break_spell` forces the queued command to run with `subcmd −1`, and `do_shoot`'s abort branch
+(`ranger.cpp:2521`) prints *"You could not concentrate on shooting anymore!"*, resets the swing
+timer (`ENERGY = min(ENERGY, 0)`), and returns **without firing**. You lose the whole wind-up and
+must re-issue `shoot`. Notes:
+- **Only damaging hits interrupt** (`dam > 0`). A miss, dodge, parry, or fully-absorbed hit deals 0
+  and leaves the shot intact.
+- **Priority gate ≤ 40**, and shoot is 30, so it's always in the interruptible band.
+- **Rangers have no resistance to it.** Despite the `break_spell` / `does_spell_get_interrupted`
+  naming, this is the generic wait-wheel interrupt; the only mitigation is the **Battle-Mage** spec's
+  resist roll (`is_battle_spec`), which a ranger never has — so for a ranger the interrupt is
+  effectively automatic on any damage taken.
+- Practical upshot: **archery is a poor toe-to-toe trade** — you want to shoot before melee is
+  joined, from a pet/ally screen, or while the target can't hit back. A slow shot's longer wind-up
+  is also a *larger* interrupt window, an extra hidden cost of slow mode.
+
+---
+
 ## Cross-references
 - Melee resolution and how OB/PB/DB are consumed: [combat-loop.md](combat-loop.md).
 - Full OB/PB/DB derivation and level/proficiency model: [stats-and-character-power.md](stats-and-character-power.md) §10.

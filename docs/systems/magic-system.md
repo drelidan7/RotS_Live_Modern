@@ -14,6 +14,39 @@ regen** (§12). Cleric/mystic powers live in [cleric-mystic-system.md](cleric-my
 > live `damage()`** used by melee (combat-loop §3), so the "no armor on spells" and
 > resistance/cap rules below are the real ones.
 
+## Quick reference — chance the *target* resists (saves)
+
+Probability the **target saves** against a baseline offensive spell, by **caster mage level** (rows)
+vs. **target mage level** (columns). A "save" is the d20 contest in `new_saves_spell`
+(`spell_pa.cpp:228`); on a save the spell still lands but its damage is **halved** (a few use ×⅔/×⅓)
+— it is *not* negated. Lower % = the caster punches through more often.
+
+| caster ↓ / target → | 0m | 3m | 6m | 9m | 12m | 15m | 21m | 24m | 27m | 30m | 33m | 36m |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| **21m** | 10% | 15% | 20% | 25% | 35% | 40% | 50% | 65% | 70% | 75% | 80% | 85% |
+| **24m** | 0% | 0% | 5% | 10% | 20% | 25% | 35% | 50% | 55% | 60% | 65% | 70% |
+| **27m** | 0% | 0% | 0% | 5% | 15% | 20% | 30% | 45% | 50% | 55% | 60% | 65% |
+| **30m** | 0% | 0% | 0% | 0% | 10% | 15% | 25% | 40% | 45% | 50% | 55% | 60% |
+| **33m** | 0% | 0% | 0% | 0% | 5% | 10% | 20% | 35% | 40% | 45% | 50% | 55% |
+| **36m** | 0% | 0% | 0% | 0% | 0% | 5% | 15% | 30% | 35% | 40% | 45% | 50% |
+
+**Assumptions:** PC vs. PC, no per-spell `save_bonus` (spec matrix = neutral; §3), **no spell-pen
+gear**, not a Battle-Mage, neither is a hobbit. **Intelligence is baselined by mage level** (per the
+build it tends to track): **INT 10** at ≤ 9m, **INT 15** at 10–21m, **INT 20** at > 21m (so 21m uses
+15; 24m+ uses 20).
+
+**Formula** (`spell_pa.cpp:193-247`), all integer division:
+```
+caster_DC   = 10 + casterMageLvl/3 + (casterINT − 8)/4          (+ spell-pen gear / Battle-Mage bonus)
+target_save =      targetMageLvl/3 + (targetINT − 8)/4          (NPCs count as ⅔ their mage level; +1 hobbit)
+target saves if  d20 + target_save > caster_DC
+resist%     = clamp( (20 − (caster_DC − target_save)) × 5 , 0 , 100 )
+```
+Each net point of `DC − save` is a **5%** swing. A per-spell `save_bonus` (the spec matrix in §3,
+or hard-coded values like Chill Ray's extra −4) shifts these cells; `save_bonus ≤ −20` forces a hit,
+`≥ +20` forces a save. Gear (`spell_pen`/`saving_throw` stats) and Battle-Mage tactics move them
+further — this grid is the **stat-free baseline**.
+
 ## How to read this doc
 Every offensive mage spell runs the same four-stage pipeline. Get these four quantities and
 stages straight and every spell below falls out of them:

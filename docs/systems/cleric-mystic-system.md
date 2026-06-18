@@ -218,10 +218,10 @@ on top, §1). `L` = mystic caster level (§1). Grouped by role.
 ### Healing / regeneration *(Regeneration spec: +6 to the healing level)*
 | Power (`id`) | Lvl | Spirit | Effect & scaling |
 |---|---|---|---|
-| **Curing Saturation** (45) | 4 | 1 | bonus HP regen `modifier = L+5` (avg w/ target), dur `~(L+5)·FAST_UPDATE_RATE/2` |
-| **Restlessness** (46) | 6 | 0 | bonus **move** regen (mirror of Curing; can go negative/lethal if dispelled oddly) |
-| **Regeneration** (64) | 15 | 5 | strongest HP-over-time, `regen_level = (L−10)/2·FAST_UPDATE_RATE` |
-| **Vitality** (57) | 11 | 5 | move-regen buff, dur scales `L/3·(SECS_PER_MUD_HOUR·4)/PULSE_FAST_UPDATE` |
+| **Curing Saturation** (45) | 4 | 1 | **flat** +HP / −move converter, `modifier = L+5` (avg w/ target), dur `(L+5)·10` updates — §4.1 |
+| **Restlessness** (46) | 6 | 0 | **flat** +move / −HP converter (mirror of Curing; can go negative/lethal — §7); §4.1 |
+| **Regeneration** (64) | 15 | 5 | strongest HP-over-time, **front-loaded** (∝ remaining duration), dur `(L−10)/2·20` updates — §4.1 |
+| **Vitality** (57) | 11 | 5 | move-regen, **front-loaded** like Regeneration, dur `(L/3)·20` updates — §4.1 |
 | **Mass Regen / Vitality / Insight** (158-160) | 15/11/6 | 50/50/25 | group-wide; **require 100 % skill** in the base power; free to "cast" (Expose-style) |
 | **Resist Poison** (44) | 3 | 2 | suppress active poison |
 | **Remove Poison** (87) | 8 | 2 | cure poison (char or food/drink) |
@@ -252,6 +252,121 @@ on top, §1). `L` = mystic caster level (§1). Grouped by role.
 
 \* Levels marked `*` are spec-gated powers (`learn_type` includes `LEARN_SPEC`); the table `level`
 is nominal.
+
+### 4.1 The regeneration machinery — Curing / Restlessness / Vitality / Regeneration
+
+These four powers all heal by injecting a **bonus** into the per-tick HP/move regen pipeline
+(`hit_gain`/`move_gain`, `limits.cpp:200`/`:273`). None of them heal instantly — they raise your
+regen *rate* for a duration. There are **two distinct mechanisms**, and only two of the four are
+front-loaded.
+
+**The shared plumbing.** Every `PULSE_FAST_UPDATE` (12 pulses = **3 real seconds**, call it one
+*update*; **20 updates per MUD hour** since `FAST_UPDATE_RATE = 20`), `fast_update`
+(`limits.cpp:1483`) credits `HP += hit_gain / 20` and `move += move_gain / 20`, with probabilistic
+integer rounding (so per-update figures below are averages). `hit_gain`/`move_gain` add a bonus from
+the active affects via `get_bonus_hit_gain` (`limits.cpp:173`) / `get_bonus_move_gain`
+(`limits.cpp:251`), and that whole bonus is multiplied by **`perception/100`**
+(`get_perception`, `char_utils.cpp:1293`, **clamped to 0–100**). So:
+- **All four are perception-scaled.** At perception 100 you get the full value; at 50, half; at **≤ 0
+  the spells do nothing** (the function early-outs to gear-only regen). There is **no** benefit above
+  100 (the clamp). A human cleric sits at `30 + 2·level` perception (§1), i.e. ~78 / 90 / 100 at
+  24t / 30t / 36t — so a sub-35 mystic is also losing regen to a sub-100 perception multiplier.
+- **All four stack with your base regen** (CON, position, etc.) and with each other (Curing+Regen
+  both add to HP; Restlessness+Vitality both add to move).
+
+**Mechanism A — flat (`modifier`-based): Curing Saturation & Restlessness.** The bonus is `±modifier`,
+which is **set once at cast and never changes**, so the rate is **constant** for the whole duration
+then stops dead. These two are **HP↔stamina converters**, exact mirrors of each other:
+
+| Power | HP regen | Move regen | Net |
+|---|---|---|---|
+| **Curing Saturation** (`:184`,`:262`) | **+modifier** | **−modifier** | converts stamina → HP, 1:1 |
+| **Restlessness** (`:188`,`:264`) | **−modifier** | **+modifier** | converts HP → stamina, 1:1 |
+
+Both set `modifier = healing_level = L + 5` (self-cast; on an ally it's `(L_caster + L_victim)/2 + 5`),
+`+6` with Regen-spec, and `duration = healing_level · FAST_UPDATE_RATE / 2 = healing_level · 10`
+updates (`mystic.cpp:774`/`:808`). The drain and the boost use the **same `modifier`**, so each
+converts at exactly **1:1**. Because the drained side is subtracted from regen, a converter is
+only a *net* gain if you have the other bar to spare — Restlessness can even push HP regen **negative
+and kill you** (§7). Neither can be refreshed while active (recast prints "could not improve…").
+
+> **Both at once cancel out.** The bonuses are summed before the perception multiplier, so with both
+> active the net is `(Curing.mod − Restlessness.mod)·percep/100` on HP and the negation of that on move.
+> Cast by the **same mystic on the same target with the same spec**, the two modifiers are equal and
+> the effects **cancel exactly on both channels** — you get only base/gear regen, having spent spirit
+> and two dispellable slots for nothing. They diverge (and stop cancelling) with different
+> casters/specs/self-vs-other, the ±1 random WIL rounding in `get_mystic_caster_level`, or once the
+> shorter-lived one expires. The pair is pointless together; the value is choosing the *one* direction
+> to convert.
+
+**Mechanism B — front-loaded (`duration`-based): Regeneration & Vitality.** Here the bonus is
+**`affect->duration · 6 / FAST_UPDATE_RATE`** (`limits.cpp:192` for Regeneration→HP, `:266` for
+Vitality→move). The key: both spells are flagged **`is_fast`** (`consts.cpp`), so `affect_update`
+decrements their `duration` **every update** (every 3 s), and within the same pulse `fast_update`
+runs *first* and reads the **current** duration (`comm.cpp:831-834`). So each update the bonus is
+proportional to the *remaining* duration:
+
+```
+per-update bonus = (duration · 6 / 20) / 20 · perception/100  =  0.015 · duration · (perception/100)
+```
+
+Duration starts at `D`, ticks `D → D−1 → … → 1 → 0` (one per update), and the affect is removed when
+it hits 0. **This is the front-loading you observed, and it's exactly linear:** the bonus is highest
+on the first tick and declines in a straight line to ~0 at expiry. Consequences:
+- **Peak (first-tick) bonus = `0.015 · D · perception/100` per update**; the **average is half the
+  peak**; and the **total HP healed = `0.015 · perception/100 · D(D+1)/2 ≈ 0.0075 · D²`** — i.e.
+  total healing grows with the **square** of duration (and duration grows with level, so total
+  healing is ~quadratic in mystic level).
+- **Refresh window:** recasting only takes effect once current duration has fallen **below half** of
+  a fresh cast (`mystic.cpp:966`/`:869`); otherwise "still regenerating fast enough." So the optimal
+  pattern is to let it decay to ~50 % then re-up — keeping you in the strong upper half of the curve.
+
+Durations from the spell functions (self-cast, `L` = mystic caster level §1; integer division):
+
+| Power | level term | duration `D` (updates) | bonus channel |
+|---|---|--:|---|
+| **Regeneration** (`mystic.cpp:948`) | `RL = L − 10` (+6 spec) | `(RL / 2) · 20` | HP, front-loaded |
+| **Vitality** (`mystic.cpp:852`) | `VL = L` (+6 spec) | `(VL / 3) · 20` | move, front-loaded |
+
+(Regeneration does nothing until `L > 10`, and unlike Curing it does **not** average in the target's
+level — it uses the caster's `L` only, as does Vitality.)
+
+#### Healing per update — 24t / 30t / 36t, at perception 100
+
+**Assumptions:** WIL ability score 22 (→ `L = t + WIL/5 = t + 4`, the doc's house mystic; §1), so
+`L = 28 / 34 / 40`; **perception 100** (multiply every number by `your_perception/100`); self-cast;
+base/CON regen *excluded* (these are the spell bonus only). "+spec" = Regeneration specialization
+(+6 to the level term). One update = 3 s.
+
+**Regeneration (HP) and Vitality (move)** — *peak* (first-tick) bonus; it tapers linearly to 0, so
+the **average is ~half** the peak and the **total** is the lifetime sum:
+
+| | 24t (L28) | 30t (L34) | 36t (L40) |
+|---|---|---|---|
+| **Regeneration** peak HP/upd · dur · total | 2.7 · 9 min · ~244 | 3.6 · 12 min · ~434 | 4.5 · 15 min · ~677 |
+| **Regeneration +spec** | 3.6 · 12 min · ~434 | 4.5 · 15 min · ~677 | 5.4 · 18 min · ~975 |
+| **Vitality** peak mv/upd · dur · total | 2.7 · 9 min · ~244 | 3.3 · 11 min · ~365 | 3.9 · 13 min · ~509 |
+| **Vitality +spec** | 3.3 · 11 min · ~365 | 3.9 · 13 min · ~509 | 4.5 · 15 min · ~677 |
+
+**Curing Saturation (+HP / −move) and Restlessness (+move / −HP)** — *flat* (constant every update for
+the whole duration); `HL = L + 5`:
+
+| | 24t (HL33) | 30t (HL39) | 36t (HL45) |
+|---|---|---|---|
+| **Curing / Restlessness** rate/upd · dur · total | 1.65 · 16.5 min · ~545 | 1.95 · 19.5 min · ~760 | 2.25 · 22.5 min · ~1012 |
+| **+spec** (HL = L+11 → 39/45/51) | 1.95 · 19.5 min · ~760 | 2.25 · 22.5 min · ~1012 | 2.55 · 25.5 min · ~1300 |
+
+(The "total" for the converters is also the amount drained from the *other* bar — 545 HP gained costs
+545 move at 24t, etc.)
+
+**Reading it.** At perception 100, **Regeneration is the heaviest single-target HP power** — it opens
+at 3.6 HP/update (1.2 HP/s) at 30t and rides for 12 minutes, totalling ~434 HP free (no resource
+drained), and Regen-spec bumps every cell up one level-tier. Vitality is the move-side equivalent.
+The two flat converters out-*total* them on paper (~760 HP at 30t) but only by **spending an equal
+amount of the opposite bar**, and they pay it out as a low, steady trickle rather than a front-loaded
+burst — they're stamina/HP management tools, not net healing. Multiply everything by your real
+perception: a human 30-mystic (perception 90) actually sees ~90 % of these figures, a 24-mystic
+(perception 78) ~78 %, and any mystic at/above 100 perception gets the full value.
 
 ---
 

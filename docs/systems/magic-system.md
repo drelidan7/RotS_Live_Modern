@@ -300,6 +300,85 @@ save-halved. Orc casters take **−5** damage and a **10 %** chance to hit thems
 **Sun penalty** (`SUN_PENALTY`, `utils.h:425`): Uruk/Orc/Olog/Magus lose the bonus term on
 Dark Bolt / Black Arrow / Searing Darkness / Spear in daylight outdoors.
 
+### 7.1 Per-cast & per-second damage — 24m / 30m / 36m
+
+**Assumptions.** INT **20**, standard race (mage cap 30), character level 30, **no gear**
+(`spell_power`/`spell_pen` = 0), not Battle-Mage. That fixes the two scalers (§1):
+- **Magic power `P = mageLevel + 38`** → **P = 62 / 68 / 74** at 24m / 30m / 36m.
+- **Caster level `L = mageLevel + 4`** → **L = 28 / 34 / 40**.
+
+All figures are **pre-save** (before the §3 ÷2/×⅔/×⅓) and **pre-resistance** (§4) — i.e. the raw
+rolled damage. "avg (min–max)" is per cast; **DPS = avg ÷ cast-time**, where
+**cast-time = `beats·30/(30+mageLevel)` pulses × 0.25 s** (`CASTING_TIME`, integer pulses; shrinks
+as you out-level the spell). Spells with an outdoor/no-sun bonus term are shown **with** that term
+(the common case). `rand(a,b)` = `number(a,b)`; `/k` is integer division. *(The ± random rounding on
+`P` can shift a column by ~1–2; treat these as typical, not exact.)*
+
+| Spell | Pre-save formula | 24m (cast · avg [range] · DPS) | 30m | 36m |
+|-------|------------------|--------------------------------|-----|-----|
+| **Magic Missile / Word of Pain** | `12 + rand(1, P/6)` | 1.50s · 18 [13–22] · **12/s** | 1.25s · 18 [13–23] · **14/s** | 1.25s · 18 [13–24] · **15/s** |
+| **Chill Ray** | `20 + rand(1,P)/2` | 2.00s · 36 [20–51] · **18/s** | 1.75s · 37 [20–54] · **21/s** | 1.50s · 39 [20–57] · **26/s** |
+| **Leach** | `18 + rand(1, P/4)` (+heals caster ½ dmg) | 2.00s · 26 [19–33] · **13/s** | 1.75s · 27 [19–35] · **15/s** | 1.50s · 28 [19–36] · **18/s** |
+| **Lightning Bolt** | `25 + rand(0,P)/2 + 4 + rand(0,P)/4` | 2.25s · 52 [29–75] · **23/s** | 2.00s · 54 [29–80] · **27/s** | 1.75s · 57 [29–84] · **32/s** |
+| → *Lightning-spec (+10%, works indoors)* | `× 1.10` | 57 [31–82] · **26/s** | 60 [31–88] · **30/s** | 62 [31–92] · **36/s** |
+| **Dark Bolt** | `25 + rand(0,P)/2 + 4 + rand(0,P)/4` | 2.25s · 52 [29–75] · **23/s** | 2.00s · 54 [29–80] · **27/s** | 1.75s · 57 [29–84] · **32/s** |
+| → *Darkness-spec (+10%)* | `× 1.10` | 57 [31–82] · **26/s** | 60 [31–88] · **30/s** | 62 [31–92] · **36/s** |
+| **Firebolt** | `rand(1,65) + rand(1,P/4)·2 + rand(1,P/8)·2 + rand(1,P/16)·2` | 3.00s · 61 [7–115] · **20/s** | 2.75s · 65 [7–123] · **24/s** | 2.50s · 67 [7–127] · **27/s** |
+| → *Fire-spec* | floor at `L` (≈28–40) — negligible at this P | (no meaningful change) | | |
+| **Cone of Cold** | `25 + rand(1,P)/2 + P/4` | 2.75s · 56 [40–71] · **20/s** | 2.50s · 59 [42–76] · **24/s** | 2.25s · 62 [43–80] · **27/s** |
+| **Word of Agony** | `20 + 2·(rand(1,P)/2)` (+Chilled, victim −2 save) | 2.75s · 52 [20–82] · **19/s** | 2.50s · 54 [20–88] · **22/s** | 2.25s · 58 [20–94] · **26/s** |
+| **Black Arrow** | `13 + rand(1,P)/2·2 + rand(0,P/6)+2` (+poison rider) | 3.00s · 52 [15–87] · **17/s** | 2.75s · 55 [15–94] · **20/s** | 2.50s · 58 [15–101] · **23/s** |
+| **Earthquake** (AoE) | `rand(1,30) + L` | 2.75s · 44 [29–58] · **16/s** | 2.50s · 50 [35–64] · **20/s** | 2.25s · 56 [41–70] · **25/s** |
+| **Shout of Pain** (AoE) | `rand(1,50) + P/2` | 2.75s · 56 [32–81] · **21/s** | 2.50s · 60 [35–84] · **24/s** | 2.25s · 62 [38–87] · **28/s** |
+| **Fireball** (AoE splash) | `30 + 3·(rand(1,P)/2)` | 4.25s · 77 [30–123] · **18/s** | 3.75s · 82 [30–132] · **22/s** | 3.50s · 86 [30–141] · **25/s** |
+| **Lightning Strike** | `40 + rand(0,P) + rand(0,P)/2` | 3.75s · 86 [40–133] · **23/s** | 3.25s · 91 [40–142] · **28/s** | 3.00s · 96 [40–151] · **32/s** |
+| **Spear of Darkness** (unsaveable) | `30 + rand(8,P)/2·3 + rand(0,P)/5` | 4.00s · 89 [42–135] · **22/s** | 3.50s · 94 [42–145] · **27/s** | 3.25s · 99 [42–155] · **30/s** |
+| → *Darkness-spec (+5%)* | `× 1.05` | 93 [44–141] · **23/s** | 98 [44–152] · **28/s** | 104 [44–162] · **32/s** |
+| **Searing Darkness** | `dark(15 + rand(0,P)/2 + 5 + rand(0,P/4)) + fire(15 + rand(0,P)/2)` | 4.25s · 74 [35–112] · **17/s** | 3.75s · 78 [35–120] · **21/s** | 3.50s · 81 [35–127] · **23/s** |
+| → *Fire-spec (fire half +50%)* | | 89 [42–135] · **21/s** | 94 [42–144] · **25/s** | 98 [42–153] · **28/s** |
+| → *Darkness-spec (dark half +10%)* | | 78 [37–118] · **18/s** | 82 [37–127] · **22/s** | 86 [37–134] · **24/s** |
+
+**Reading it.** Note how **cast-time scaling flattens the DPS gap** between cheap and expensive
+spells: the big nukes (Spear, Lightning Strike, Searing Darkness Fire-spec) hit hardest *per cast*
+but their long casts pull DPS back toward the spammable mid-tier (Chill Ray, the bolts). At equal
+investment a **specced bolt** (Lightning/Dark +10%, ~36/s at 36m) is the best raw sustained
+single-target DPS among the saveable spells; **Spear of Darkness** is the standout because it's
+**unsaveable** (the table is its *actual* output, while everything else is typically halved by a
+save — see the §-Quick-reference resist odds). Specs add a modest **+5–10% (bolts/spear)** or a
+big **+50% to the fire half of Searing Darkness**; Cold/Fire/Black-Arrow "spec bonuses" are
+**riders** (Chilled, friendly-splash immunity, poison), not damage multipliers, so those rows have
+no spec split.
+
+> **Burst caveat — the DPS column understates the big spells (especially in PvP).** The DPS figures
+> charge the *full cast-time at the moment of use*, which is the sustained, stand-and-cast number.
+> But a mage can **`prepare`** a spell out of combat (§2, `do_prepare`): the wind-up is paid in
+> advance, and casting the held spell then **skips the cast-time wait entirely** and fires almost
+> instantly (`spell_pa.cpp:723`, short after-lag only). So a prepared **Spear of Darkness** or
+> **Lightning Strike** lands its whole ~90–155 hit as an **opening alpha strike** with ~0 visible
+> wind-up — read those as *per-cast*, not *DPS*, for the first shot. This is the core
+> **hit-and-run / PvP** pattern: prep the big nuke safely, engage, unload it instantly, disengage.
+> Caveats: only **one** spell can be held at a time; taking damage *during* the prepare ruins it
+> (`check_break_prep`), so you prep before the fight, not in it; and **Battle-Mages cannot prepare**
+> (`can_prepare_spell` → false) — they trade this burst for in-combat interrupt resistance (§6).
+> Spear of Darkness is the premier pick here: biggest single-cast number *and* **unsaveable**.
+
+### 7.2 Expose Elements — the specialist's free-nuke setup (`spell_expose_elements`, `mage.cpp:2411`)
+
+A **spec-only** spell (one of the six mage specs: Fire / Cold / Lightning / Darkness / Arcane /
+Battle-Mage; `consts.cpp:571`, 70 mana, 5-beat cast). It **cannot target players** — mobs only. On
+cast it **marks** the target (`exposed_target`) and picks the **strongest elemental spell the caster
+can actually cast** (`spell_id`) from a spec/race/skill/weather decision tree (e.g. Fire→Fireball if
+known else Firebolt; Lightning→Lightning Strike if outdoors in a storm else Lightning Bolt;
+Arcane→the best of its whole toolbox; Battle-Mage→Firebolt or Dark Bolt).
+
+The payoff (`spell_pa.cpp:922-934`): while a mob is exposed, casting **that one signature spell at
+that mob is FREE** (`mana_cost = 0`). Cast **fast** → still half mana; cast **slow** → it
+**refunds** mana (`−USE_MANA/3`). The mark persists on the target until you expose a different one.
+Net: a specialist pays 70 mana once to turn their **biggest nuke into a zero-mana (or mana-positive)
+repeat** against a priority mob — it doesn't raise per-hit damage, it removes the **mana** ceiling on
+sustained DPS, letting the §7.1 numbers run indefinitely against that target. (It's PvE-only and
+single-target, so it's a grinding/boss tool, not a PvP one.)
+
 ---
 
 ## 8. Utility & non-damage spells (brief)

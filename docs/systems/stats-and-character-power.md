@@ -41,72 +41,26 @@ Each character carries **three copies** of the ability block (`structs.h:1684-16
 
 ## 2. Class points — the allotment that defines a character
 At creation a player distributes points across the four professions
-(Mage, Cleric/Mystic, Ranger, Warrior). The raw points live in
-`char_prof_data.prof_coof[]` (`structs.h:1268`) — accessed as `GET_PROF_POINTS`.
+(Mage, Mystic, Ranger, Warrior). The raw points live in `char_prof_data.prof_coof[]`
+(`structs.h:1268`) — accessed as `GET_PROF_POINTS`.
 
-**The real budget is 150 points total** (`interpre.cpp:2704,3085`; `points_used:185`). There
-is a separate **per-profession clamp of 165** (`interpre.cpp:3129`), but with only 150 to
-spend that clamp is never the binding limit — even an all-in-one build tops out at **150 in a
-single class**. So treat **150** as both the total and the practical single-class maximum;
-the 165 is just a defensive bound in the allocation code.
+> **The full class-generation system — preset class roster (Swashbuckler, Conjurer, Wizard,
+> Barbarian, Adventurer, …), the custom 150-point builder, and build archetypes — now lives in its
+> own doc: [class-system.md](class-system.md).** This section keeps only the two derivations the rest
+> of *this* doc consumes: the proficiency coefficient and HP.
 
-Players either pick a **preset** class or go custom (`existing_profs:37`), e.g.:
-```
-'m' Mage      {Mage100, Cleric25, Ranger16, Warrior9}
-'w' Warrior   {Mage9,   Cleric16, Ranger25, Warrior100}
-'a' Adventurer{Mage36,  Cleric36, Ranger36, Warrior42}
-```
-The creation prompt warns: *"the more points you spend on any class, the less each
-following point will benefit you."* That diminishing return is literal — see below.
+**Budget: 150 points total** (`interpre.cpp:2704`; `points_used:185`), distributed via preset or
+custom build (`existing_profs:37`). The creation prompt warns *"the more points you spend on any
+class, the less each following point will benefit you"* — literally true, because points convert on
+a **square-root curve**.
 
 ### Points → proficiency coefficient (the sqrt curve)
-`GET_PROF_COOF(prof, ch)` = `square_root[prof_points]`, with race tweaks
-(orc ×≈⅔, uruk mage penalty) (`utils.h:330`). The `square_root` table is
-**`square_root[x] = round(100·√x)`** (`consts.cpp:2100`), so:
-
-| Points | Coefficient | "%" (coef/10) |
-|-------:|------------:|--------------:|
-| 9 | 300 | 30% |
-| 16 | 400 | 40% |
-| 25 | 500 | 50% |
-| 100 | 1000 | 100% |
-| 165 | ~1281 | ~128% |
-
-So **a coefficient of 1000 (= 100 points) is "100% proficiency."** Because it's √-based,
-going 100→121 points (+21) only moves you 100%→110%. This coefficient scales skill caps,
-proficiency-level gain (§4), and class effectiveness.
-
-### Points → class level at level 30 (the `levels` command)
-The in-game `levels` command (`do_levels`, `act_info.cpp:2658`) prints, for each character
-level `i` from 1 to 30, the class level you have in each profession:
-```
-class_level(i) = i · GET_PROF_COOF(prof) / 1000        (integer division)
-```
-At the level-30 row this is `30 · coef / 1000 = 3 · √points` for normal races. Class levels
-are only displayed/earned through character level 30 (the loop stops at `i < 31`), so this is
-your **final** class level in each profession. Mapping for representative point buys
-(non-orc/uruk; `square_root` table values from `consts.cpp:2100`):
-
-| Points | Coef | Class level @ L30 |
-|-------:|-----:|------------------:|
-| 0 | 0 | 0 |
-| 4 | 200 | 6 |
-| 9 | 300 | 9 |
-| 16 | 400 | 12 |
-| 25 | 500 | 15 |
-| 36 | 600 | 18 |
-| 49 | 700 | 21 |
-| 64 | 800 | 24 |
-| 81 | 900 | 27 |
-| 100 | 1000 | 30 |
-| 121 | 1100 | 33 |
-| 144 | 1200 | 36 |
-| **150** | **1224** | **36** |
-
-So with the 150-point budget, the **maximum class level in any single profession is 36** (all
-150 in one class). A balanced 4-way split (~37 each) yields ~`3·√37 ≈ 18` in each. Racial
-class maluses (§9) reduce `coef` and therefore these class levels — e.g. a Common Orc's
-coefficient is ×≈⅔, so the same points give a proportionally lower class level.
+`GET_PROF_COOF(prof, ch)` = `square_root[prof_points]` = **`round(100·√points)`**
+(`utils.h:330`, `consts.cpp:2100`; race tweaks: orc ×≈⅔, uruk mage penalty). A coefficient of
+**1000 (= 100 points) is "100% proficiency."** Because it's √-based, 100→121 points (+21) only moves
+you 100%→110%. This coefficient scales skill caps, proficiency-level gain (§4), and class
+effectiveness, and yields the per-profession **class level** = `charLevel · coef / 1000` (= `3·√points`
+at L30; full table and the 150-point/36-level cap in [class-system.md](class-system.md)).
 
 ### Points → hit points (`class_HP:136`)
 ```

@@ -30,10 +30,11 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 ### Gameplay systems (`systems/`) — behavior & formulas
 | Doc | Status | Source of truth |
 |-----|--------|-----------------|
+| [Class system](systems/class-system.md) | ✅ professions, preset roster, 150-pt custom builds, archetypes | `profs.cpp`, `interpre.cpp`, `consts.cpp` |
 | [Stats, level & proficiency](systems/stats-and-character-power.md) | ✅ incl. OB/PB/DB derivation (§10) | `profs.cpp`, `limits.cpp`, `char_utils_combat.cpp` |
 | [Combat loop — hit & damage](systems/combat-loop.md) | 🟡 swing resolution + damage; timing/armor pending | `fight.cpp::hit` + `utility.cpp` (note: `combat_manager.cpp` is unused) |
 | [Combat stat examples](systems/combat-stat-examples.md) | ✅ worked grids (W30/W33/W36) | derived from §6/§10 |
-| [Specializations](systems/specializations.md) | 🟡 warrior-side detailed; mage/ranger/mystic stubbed | `*_handler.cpp`, `fight.cpp`, `char_utils.cpp` |
+| [Specializations](systems/specializations.md) | ✅ all specs (warrior/ranger in-doc; mage/mystic summarized + cross-ref) incl. selection rules | `*_handler.cpp`, `fight.cpp`, `ranger.cpp`, `mystic.cpp`, `act_othe.cpp` |
 | [Warrior skills](systems/warrior-skills.md) | ✅ incl. spec/race-gated; damage formulas + ranges | `act_offe.cpp`, `fight.cpp`, `olog_hai.cpp` |
 | [Ranger skills](systems/ranger-skills.md) | ✅ skill catalog + DEX-vs-ranger-level for dodge/skills | `ranger.cpp`, `utility.cpp`, `consts.cpp` |
 | [Magic system — mage spells](systems/magic-system.md) | ✅ damage, saves, resistance, penetration, scaling, mana regen | `mage.cpp`, `spell_pa.cpp`, `consts.cpp` |

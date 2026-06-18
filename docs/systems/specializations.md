@@ -6,12 +6,16 @@ warrior handlers `wild_fighting_handler.cpp`, `weapon_master_handler.cpp`,
 `warrior_spec_handlers.h`. **Live** combat hooks live in `fight.cpp` (`heavy_fighting_effect`,
 `defender_effect`, `wild_fighting_effect`, `get_evasion_malus`, `natural_attack_dam`),
 `utility.cpp` (the light-fighting / weapon-master terms inside `get_real_OB`), `char_utils.cpp`
-(encumbrance), `act_offe.cpp` (kick/swing/defend/maul/rescue), and `profs.cpp` (HP). Active spec
-read via `utils::get_specialization`.
+(encumbrance), `act_offe.cpp` (kick/swing/defend/maul/rescue), and `profs.cpp` (HP). Ranger specs live in
+`ranger.cpp`, `utility.cpp`, `act_move.cpp`, `limits.cpp`, `handler.cpp`, `objsave.cpp`; mage in
+`mage.cpp` / `battle_mage_handler.cpp`; mystic in `mystic.cpp`. Active spec read via
+`utils::get_specialization` (modern) or `GET_SPEC(ch)` (legacy `PLRSPEC_*`). Selection command
+`do_specialize` (`act_othe.cpp:1825`).
 > ⚠️ `combat_manager.cpp` also contains spec hooks but is **dead code** — compiled, never
 > invoked (see CLAUDE.md). Earlier drafts cited it for Protection's dodge bonus; the live path
 > is `get_evasion_malus` in `fight.cpp`. Don't trust `combat_manager.cpp` line numbers.
-**Status:** ✅ the five requested warrior-side specs detailed; others stubbed.
+**Status:** ✅ all specializations detailed (warrior in-doc; ranger in-doc; mage/mystic summarized
+here with deep detail cross-referenced to the magic and cleric/mystic docs).
 
 ## What a specialization is
 A character has **one active specialization** — a chosen focus layered on top of their
@@ -20,16 +24,68 @@ It's stored on the character and drives conditional bonuses throughout combat an
 (extra damage, damage mitigation, procs, encumbrance handling, spell shaping). The full set
 (`structs.h:811-832`):
 
+The real enum (`game_types::player_specs`, `structs.h:811`) is ordered by historical accretion,
+**not** by profession — the index is what the `PLRSPEC_*` `#define`s and the `specialize_name[]`
+string table (`consts.cpp:2359`) key on:
+
 ```
-PS_None
-Warrior-side : PS_Defender, PS_WildFighting, PS_HeavyFighting, PS_LightFighting, PS_WeaponMaster
-Defensive    : PS_Protection
-Mage         : PS_Fire, PS_Cold, PS_Lightning, PS_Darkness, PS_Arcane, PS_BattleMage
-Ranger/Mystic: PS_Regeneration, PS_Animals, PS_Stealth, PS_Archery, PS_Guardian,
-               PS_Illusion, PS_Teleportation
+0 PS_None     1 PS_Fire        2 PS_Cold         3 PS_Regeneration  4 PS_Protection
+5 PS_Animals  6 PS_Stealth     7 PS_WildFighting 8 PS_Teleportation 9 PS_Illusion
+10 PS_Lightning 11 PS_Guardian 12 PS_HeavyFighting 13 PS_LightFighting 14 PS_Defender
+15 PS_Archery 16 PS_Darkness   17 PS_Arcane      18 PS_WeaponMaster 19 PS_BattleMage
 ```
-(Profession groupings above are by observed usage; confirm against the spec-selection code
-when documenting the stubbed ones.)
+Grouped by the profession whose mechanics each one actually amplifies:
+
+```
+Warrior  : PS_WildFighting, PS_HeavyFighting, PS_LightFighting, PS_WeaponMaster, PS_Defender
+Ranger   : PS_Animals, PS_Stealth, PS_Archery
+Mage     : PS_Fire, PS_Cold, PS_Lightning, PS_Darkness, PS_Arcane, PS_BattleMage, PS_Teleportation
+Mystic   : PS_Regeneration, PS_Protection, PS_Illusion, PS_Guardian
+```
+These groupings are **descriptive, not enforced** — see the selection rules below.
+
+## How a specialization is chosen
+
+`do_specialize` (`act_othe.cpp:1825`): a player types `specialize <name>` (matched by name prefix
+against `specialize_name[]`). The rules are deliberately thin:
+- **Level 12 minimum** (`GET_LEVEL(ch) < 12` → "too young to specialize").
+- **One pick at a time** — once `get_specialization` is non-`PS_None`, `specialize` refuses to
+  change it ("You are already specialized in *X*."). It is **not** permanent, though: a **prac
+  reset** clears it (see below).
+- **Respec via the Angel — from anywhere.** A player un-/re-specializes with `tell angel pracreset`.
+  The **Angel** is not an NPC you meet in the world — it's a gateway that lets mortals run an
+  approved subset of immortal commands from **anywhere** (`do_tell` resolves it via a global
+  `get_char`, and the "Guardian angel" mob running `SPECIAL(resetter)` is perceivable across rooms,
+  `utility.cpp:1484`). Full mechanism and the command set (`pracreset`, `reroll`) are documented in
+  **[class-system.md → The Angel](class-system.md)**.
+- **It's a full wipe**, not a targeted respec (`do_pracreset`, `spec_pro.cpp:398`): it first drops
+  all your followers, then zeroes **all** `knowledge[]`/`skills[]`, restores your entire practice
+  pool (`level·PRACS_PER_LEVEL + level·LEA/LEA_PRAC_FACTOR + 10`), sets specialization back to
+  `PS_None`, and resets shooting/casting mode to normal. So changing spec means re-learning every
+  skill from scratch — but your **class points are untouched** (a pracreset does not re-roll your
+  profession allotment; see [class-system.md](class-system.md)).
+- **No class/profession gate — by design.** The command does **not** check your profession levels:
+  any character ≥ 12 can pick *any* spec (the only hard restriction is **Orcs cannot pick
+  Guardian**, "Snagas can't specialize in guardian!", `act_othe.cpp:1855`). This is **intentional**
+  and is the payoff of RotS's custom **class-point allotment** at creation (`existing_profs`,
+  `profs.cpp:37`; see **[class-system.md](class-system.md)** for the full roster, the 150-point
+  custom builder, and build archetypes): players distribute 150 points across the four professions —
+  **mage / mystic / ranger / warrior** — and a profession's level scales with the **√** of its
+  points (e.g. a **Swashbuckler** is R24/W24, a **Conjurer** M24/My24). Specs are deliberately
+  left open so a **hybrid build can pick the spec that best leverages whatever mix it invested in.**
+  A spec is only as strong as the profession levels it reads, so the warrior/ranger/mage/mystic
+  groupings above describe *what makes a spec pay off*, not what you're allowed to choose.
+  - **Worked example.** A custom **W24 / T24 / R10 / M9** build (warrior 24, mystic/theurge 24,
+    ranger 10, mage 9) can take **Heavy Fighting** to turn its solid warrior level into front-line
+    durability, *or* a **mystic spec** (e.g. Regeneration / Illusion / Guardian) to make its
+    theurge-24 powers hit harder — same character, two legitimately different builds, because the
+    spec isn't tied to a class.
+  - And note every *default* melee class already carries ranger 25 (= R15 at level 30; see the
+    warrior callout), so the **ranger** specs are live for ostensibly "warrior" characters too.
+- On success it calls `recalc_abilities(ch)` so HP/spec-data hooks re-initialize immediately
+  (`specialization_data::set`, `char_utils.cpp:1480`).
+- `is_mage_spec()` (`structs.h:1477`) groups the six elemental/battle specs for the save matrix
+  (magic-system.md §3); it's a mechanical grouping, not a selection gate.
 
 > **Two names for the same spec.** The codebase carries two parallel identifier sets that map
 > 1:1 by index: the modern `game_types::player_specs` enum (`PS_WildFighting`, used by the live
@@ -303,35 +359,136 @@ one that most changes how a *party* fights rather than how *you* fight.
 
 ---
 
-## Non-warrior specializations (stubs — to be detailed)
+## Ranger specializations (detailed)
 
-> Each needs its own pass against the magic / skills systems. Captured here so the set is
-> complete.
+> **None of the three ranger specs *gate* the core ranger skills.** Any ranger can hide, sneak,
+> tame, calm, or shoot without a spec — the spec **amplifies** those skills and unlocks one extra
+> ability each (Stalking, Whistle, shooting-speed control). The deep per-skill mechanics live in
+> **[ranger-skills.md](ranger-skills.md)**; this section is the spec layer on top of them.
 
-**Mage (elemental & hybrid)** — shape the mage's offensive magic; the per-spec damage/save/effect
-kickers are documented in detail in **[magic-system.md](magic-system.md)** (§3 save matrix, §6
-Battle-Mage, §7 spell table, §9 scaling). Data classes in `structs.h:1285-1379` mostly track
-statistics for display; the gameplay lives in the spell functions.
-- **Fire** (`PS_Fire`), **Cold** (`PS_Cold`), **Lightning** (`PS_Lightning`),
-  **Darkness** (`PS_Darkness`), **Arcane** (`PS_Arcane`) — element-themed spell specialists
-  (e.g. `cold_spec_data` tracks chill/energy-sap state). ✅ see magic-system.md
-- **Battle Mage** (`PS_BattleMage`) — melee-capable caster hybrid: tactics-scaled
-  spellpower/penetration and resists casting interruption. ✅ see magic-system.md §6
+### Stealth (`PS_Stealth` / `PLRSPEC_STLH`, idx 6) — the assassin
+**Role:** maximize concealment and the alpha strike. Turns a ranger's hide/sneak/ambush kit from
+a utility into a kill opener.
+- **+5 to `get_real_stealth`** (`utility.cpp:582`) — the only stealth-skill *spec* bonus. It feeds
+  three things at once (see ranger-skills.md): the **hide concealment ceiling** (`hide_prof` is
+  `SKILL_HIDE + get_real_stealth + RangerLevel − 30`), **ambush success**, and **sneak** success.
+- **Ambush damage ×1.25 vs players / ×1.5 vs NPCs** (`ambush_calculate_damage`, `ranger.cpp:868`):
+  `damage·10/8` (PC) or `damage·3/2` (NPC), applied before the soft cap. This is the single biggest
+  ambush multiplier in the formula.
+- **Room movement cost halved** (`get_room_move_penalty`, `act_move.cpp:74`): per-room move cost is
+  `max(1, penalty/2)` while **not mounted** — a stealth ranger roams/kites for half the move points.
+- **Snuck-in auto-hide wait halved** (`ranger.cpp:1895`): the small automatic hide that fires when
+  you sneak into a room costs 50% of the normal wait, so you re-conceal almost instantly after moving.
+- **+5 to *seeing* hiders** (`see_hiding`, `ranger.cpp:1968`): a stealth-spec seeker adds +5 to
+  `can_see`, i.e. you're also better at **detecting other hidden characters** (counter-stealth).
+- **Unlocks Stalking** (`SKILL_STALK`, `consts.cpp:426`, `learn_type 65`) — the spec-only
+  leave-no-tracks movement skill.
 
-**Mystic (cleric specs)** — detailed in **[cleric-mystic-system.md §5](cleric-mystic-system.md)**:
-- **Regeneration** (`PS_Regeneration`) — +6 healing level on the regen powers. ✅
-- **Protection** (`PS_Protection`) — +1 resist-magic; gates the Protection power. ✅
-- **Illusion** (`PS_Illusion`) — +6 level on haze/fear/terror, +1 hallucinate; gates Confuse. ✅
-- **Guardian** (`PS_Guardian`) — gates the Guardian summon (aggressive/defensive/mystic builds). ✅
+### Animals (`PS_Animals` / `PLRSPEC_PETS`, idx 5) — the beastmaster
+**Role:** field a stable of tamed animal followers and make them meaningfully stronger. The only
+spec whose power is *other creatures*.
+- **Calm +30** (`do_calm`, `ranger.cpp:1327`): `calm_skill += 30` — far more reliable pacification
+  (calm succeeds on `calm_skill > 1d150`).
+- **+1 effective level on calm and tame checks** (`ranger.cpp:1444`, `ranger.cpp:1503`):
+  `levels_over_required += 1`, so you can calm/tame creatures one level higher than a non-spec ranger
+  (on top of the ranger-level/skill terms in ranger-skills.md).
+- **Stronger pets** (`do_tame`, `ranger.cpp:1620`): a successfully tamed pet permanently gains
+  **+2 STR, +40 `ENE_regen`, +2 damage**. The bonus is persisted/re-applied on load
+  (`objsave.cpp:840`) and cleanly removed if the pet stops following (`handler.cpp:990`).
+- **4× pet move regen** (`limits.cpp:321`): every tame already regens move at ×2; if the master is
+  Animals-spec it doubles **again** to ×4 — pets that effectively never tire.
+- **Silent orders** (`do_order`, `act_offe.cpp:301`): commanding your pets isn't broadcast to the
+  room, so you direct a menagerie without telegraphing it.
+- **Unlocks Whistle** (`SKILL_WHISTLE`, `consts.cpp:425`, `learn_type 65`) — the spec-only zone-wide
+  pet recall that also grants pets `AFF_HUNT` speed.
 
-**Ranger (utility & support)** — profession mapping to confirm:
-- **Animals** (`PS_Animals`), **Stealth** (`PS_Stealth`), **Archery** (`PS_Archery`),
-  **Teleportation** (`PS_Teleportation`) is a **mage** spec (magic-system.md). ⬜
+### Archery (`PS_Archery` / `PLRSPEC_ARCH`, idx 15) — the marksman
+**Role:** sustained, efficient ranged DPS. Less about bigger hits, more about controlling cadence
+and conserving ammunition.
+- **Shooting-speed control is spec-only** (`do_shooting`, `act_othe.cpp:1169`): only an archery
+  specialist may set **slow / normal / fast** shooting ("Only players specialized in archery may set
+  their speed."). Non-spec rangers are locked to normal cadence. **This means the entire fast/slow
+  tradeoff documented in [ranger-skills.md](ranger-skills.md) — slow = ×2 damage/×2 time, fast =
+  ÷2/÷2 — is an Archery-spec exclusive.** It's the spec's defining lever: arrow-economy mode (slow)
+  vs. more proc rolls (fast).
+- **Arrow breakage halved** (`does_arrow_break`, `ranger.cpp:2172`): `break_percentage >>= 1` against
+  metal/chain armor. Combined with slow-shooting's fewer shots, an archery specialist burns far
+  fewer arrows — the spec is built around ammo sustainability. (Stacks with the Haradrim crude-arrow
+  halving, `ranger.cpp:2168`.)
+- **Score readout** (`act_info.cpp`): your current shooting mode is shown on `score` only with the
+  spec — a cosmetic tell of the above.
+- Note what archery spec does **not** do: it adds **no** per-arrow damage, accuracy, or armor-bypass
+  bonus (those scale with ranger level + STR + Accuracy skill regardless — ranger-skills.md). Its
+  value is cadence control + ammo economy + (via slow mode) burst.
+
+### Ranger play-styles — at a glance
+| Spec | Engine | Wants | Plays like |
+|------|--------|-------|-----------|
+| **Stealth** | hide → ambush alpha + mobility | light kit, terrain cover | assassin/skirmisher — open from concealment, halve your travel cost, re-hide instantly |
+| **Animals** | tamed follower fleet | calm/tame targets + a zone of beasts | beastmaster — your damage and tankiness are your pets; whistle to mass them |
+| **Archery** | ranged cadence + ammo economy | a good bow, arrow supply, a screen | kiting marksman — control fire rate, never run dry; wants to shoot before melee (shots are interrupt-cancelled — ranger-skills.md) |
+
+---
+
+## Mage specializations (summary)
+
+Full per-spell damage/save numbers live in **[magic-system.md](magic-system.md)** (§3 save matrix,
+§6 Battle-Mage, §7 spell table). Every elemental spec also gets a flat **−2 save bonus** when casting
+its own element (`get_save_bonus`, `mage.cpp:1304`); `is_mage_spec()` (`structs.h:1477`) groups the
+six elemental/battle specs for that matrix. Highlights, verified in `mage.cpp`:
+
+- **Fire** (`PS_Fire`, 1) — Firebolt damage floored at caster level (`mage.cpp:1486`); Searing
+  Darkness fire component **+50%** (`mage.cpp:1785`); spares friendly splash targets (`is_friendly_taget`).
+- **Cold** (`PS_Cold`, 2) — Chill Ray an **extra −4** save (−6 total) (`mage.cpp:1379`); applies the
+  **Chilled** energy-drain effect on a landed hit (failed save) — now on **both Chill Ray**
+  (`mage.cpp:1384`) **and Cone of Cold** (`mage.cpp:1529`), in addition to Word of Agony
+  (`apply_chilled_effect`, `mage.cpp:1348`).
+- **Lightning** (`PS_Lightning`, 10) — Lightning Bolt **+10%** and ignores the indoor penalty
+  (`mage.cpp:1426`); may cast Lightning Strike outside a storm at ×⅘ instead of being blocked
+  (`mage.cpp:1737`).
+- **Darkness** (`PS_Darkness`, 16) — Dark Bolt **+10%** (`mage.cpp:1459`), Spear of Darkness **+5%**
+  (`mage.cpp:2134`), Searing Darkness dark component **+10%** (`mage.cpp:1778`); Black Arrow ignores
+  the sun penalty (`mage.cpp:2035`).
+- **Arcane** (`PS_Arcane`, 17) — the **universal** element: counts as your primary for offensive
+  saves *and* as the opposing element on defense (`mage.cpp:1311`); no flat damage bonus of its own.
+- **Teleportation** (`PS_Teleportation`, 8) — **mage** spec: Blink range **5 vs 3** zones
+  (`mage.cpp:924`), Relocate **+1** zone (`mage.cpp:1016`).
+- **Battle Mage** (`PS_BattleMage`, 19) — melee/caster hybrid (`battle_mage_handler.cpp`): adds
+  **`tactics/2 + mage_level/12`** to **both** `spell_power` and `spell_pen`; **cannot prepare
+  spells** (`return !is_battle_spec`); and while at **≥ Aggressive tactics** rolls to **resist
+  casting interruption** from damage/mental/armor (`base_chance + warrior/100 + mage/100 +
+  tactics·2/100`). ⚠️ The flip side of that interruption check is engine-wide: for **anyone who is
+  not** a battle-mage spec, `does_spell_get_interrupted()` returns **true** — which is exactly why a
+  ranger's `shoot` (and any wait-wheel action) is auto-cancelled by damage (ranger-skills.md). See
+  magic-system.md §6.
+
+---
+
+## Mystic specializations (summary)
+
+Full detail in **[cleric-mystic-system.md §5](cleric-mystic-system.md)**; verified in `mystic.cpp`:
+
+- **Regeneration** (`PS_Regeneration`, 3) — **+6** healing/regen level on Curing Saturation
+  (`mystic.cpp:768`), Restlessness (`:802`), Vitality (`:854`), and the Regeneration power (`:950`),
+  plus **+5** Cure Self (`mystic.cpp:530`) and **+10** Vitalize Self (`:743`).
+- **Protection** (`PS_Protection`, 4) — **+1** Resist-Magic modifier (`mystic.cpp:543`); gates the
+  Protection power; and has a **combat** hook — **+3** to the evasion malus while the target is under
+  `AFF_EVASION` (`get_evasion_malus`, `fight.cpp:2328`). This is the spec listed under the warrior
+  section for completeness, but it is a **mystic/cleric** spec.
+- **Illusion** (`PS_Illusion`, 9) — **+6** effect level on Haze (`mystic.cpp:1136`), Fear (`:1184`),
+  and Terror (`:1291`); **+1** Hallucinate charge (`:1059`); gates **Confuse**.
+- **Guardian** (`PS_Guardian`, 11) — gates the Guardian summon (runtime check, `mystic.cpp:1627`):
+  a charmed guardian in one of three builds — **aggressive** (`OB = 13·L/5`), **defensive**
+  (high parry/dodge, `parry = 8 + 2L`), or **mystic** (high willpower) — all HP-scaling with mystic
+  level (`mystic.cpp:1502`). **Orcs cannot pick this spec** (`act_othe.cpp:1855`).
+
+---
 
 ## Open questions
-- **How a spec is chosen/changed** (level requirement, command, profession gating) — trace the
-  spec-selection code and confirm the warrior/mage/ranger/mystic groupings above.
-- Concrete magnitudes for the **Protection** spell/mitigation bonuses (its combat hook now looks
-  **Cleric-side** — `get_evasion_malus` keys off `PROF_CLERIC` + `AFF_EVASION`) and all
-  **stubbed** specs.
-- Per-slot values in the heavy/light `*_weight_table`/`*_encumb_table` (`char_utils.cpp`).
+- Per-slot values in the heavy/light `*_weight_table`/`*_encumb_table` (`char_utils.cpp`) — exact
+  thresholds for the warrior weight/encumbrance soft caps.
+- The **`IS_VULNERABLE(host, PLRSPEC_STLH)`** path in `see_hidden` (`spec_pro.cpp:2008`) halves a
+  *seeker's* detection — it reads as a per-creature **vulnerability bitvector** keyed by spec index,
+  not a Stealth-spec benefit. Where vulnerabilities are assigned (race? mob flags?) is unconfirmed.
+- Whether any content actually grants/uses **`PS_Teleportation`** in the Expose-Elements spell
+  selection (the case is missing from the selection switch — likely a minor code gap, `mage.cpp`).

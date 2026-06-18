@@ -221,8 +221,10 @@ shrug off low-level casters (`+LEVELA/5`).
    nearly the raw roll.
 3. **Global cap 200** per hit (`dam = min(dam, 200)`), then `max(dam, 0)`.
 4. PK-fame bonus vs. ranked players still applies (combat-loop).
-5. The "Seether's shield" mana-soak block in `damage()` is **commented out** (dead) — `spell_shield`
-   currently only sets `AFF_SHIELD`.
+5. **`AFF_SHIELD` mana-soak (the Shield spell):** just before HP is deducted, `damage()` lets the
+   wearer's **mana** absorb ~40 % of the hit (`fight.cpp:1800-1822` — this block is **live**, *not*
+   the commented-out "Seether's shield" block immediately above it). Bypassed by `AMBUSH`/`BASH`.
+   Full mechanics and examples in §8.1.
 
 ---
 
@@ -386,13 +388,116 @@ single-target, so it's a grinding/boss tool, not a PvP one.)
 `mage.cpp` also implements: **Create Light** (loads obj 7006), **Locate Living** /
 **Reveal Life** / **Word of Sight** (room/area scans vs. hide, scaling with `L`), **Cure Self**
 (`L/2 + 10` HP, **+5 Regen-spec**), **Vitalize Self** (`2L` move, **+10 Regen-spec**),
-**Shield** (`AFF_SHIELD`, absorb `L·5 %`, **+5 levels Protection-spec**), **Flash** /
+**Shield** (`AFF_SHIELD` mana-soak — the wearer's mana eats ~40 % of each hit; **+5 ticks duration
+Protection-spec**; full detail in §8.1), **Flash** /
 **Word of Shock** (AoE disengage + energy burn; Flash grants darkies *Power of Arda* malus),
 **Summon / Blink / Relocate / Beacon** (teleportation; Tele-spec extends range — `dist 5 vs 3`
 blink, +1 zone relocate), **Identify**, **Detect Evil**, **Expose Elements** (spec-only: marks a
 mob so the spec's signature spell is **free/discounted** next cast — `spell_expose_elements`,
 `mage.cpp:2411`), and the room-affect spells **Blaze** / **Mist of Baazunga** (several flagged
 "needs to be removed" in `spells.h`).
+
+### 8.1 Shield — the mana-soak damage absorb (`spell_shield`, `mage.cpp:634`)
+
+`Shield` is the mage's panic-button mitigation: while `AFF_SHIELD` is up, the wearer's **mana** soaks
+part of every incoming hit. It is the one defensive mage spell that actually feeds the live
+`damage()` path — the absorb block at `fight.cpp:1800-1822` is **live**, *not* the commented-out
+"Seether's shield" experiment just above it (§4.5).
+
+**Cast** (spell id 108; `consts.cpp:563`: `PROF_MAGE`, learn-level 2, **5 mana**, 9-beat cast,
+**`TAR_SELF_ONLY`** — `structs.h:290`):
+- **Self-cast only** — you can only shield yourself. (`spell_shield` falls back to the caster if no
+  victim is passed, but the target flag means the wearer is always the caster.) Since the caster is
+  always a mage, the in-combat mana math below never divides by a zero mage level.
+- **Does not stack** — recasting while already shielded prints *"You are already protected by a
+  magical shield."* and does nothing.
+- Sets `AFF_SHIELD` with `duration = L + 5` and `modifier = L·5`, where `L = get_mage_caster_level`
+  (§1; **+5 if the caster is Protection-spec**). ⚠️ **The `modifier` is dead** — the combat code never
+  reads it. The old "absorb `L·5 %` of HP" description was this unused field, *not* the live behavior.
+- Messages: on cast, *"You surround yourself with a magical shield."*; on expiry,
+  *"Your magical shield dissolves."* (`consts.cpp:133`).
+
+**Duration is counted in MUD-hours, not seconds — this is the easy thing to get wrong.**
+`affect_update` runs every `PULSE_FAST_UPDATE` (~3 s), *but* a non-`is_fast` affect only has its
+duration decremented when the current `time_phase` matches the phase it was cast in
+(`affect_update_person`, `limits.cpp:1258`). `get_current_time_phase` (`utility.cpp:161`) cycles
+through **20 phases per 240-pulse loop**, so any one phase comes up **once per 240 pulses = once per
+MUD hour = ~60 real seconds** (`structs.h:95`, `comm.cpp:810`). Shield is **not** `is_fast`
+(`consts.cpp:563`), so **each duration unit ≈ 60 s of real time.** A fresh shield from a 30-mage
+(`L ≈ 34` at INT 20) lasts `L + 5 ≈ 39` units — *tens of minutes* if you are never hit. The
+in-combat truncation below is what actually bounds it in a fight.
+
+**In combat — the absorb** (`fight.cpp:1800-1822`, inside the shared `damage()`, so it runs *after*
+the save/resistance stages §3–§4 have already set `dam`):
+```
+absorb want   i = (dam·2 + 4) / 5                 # ~40 % of the incoming hit
+mana cost  tmp1 = (i·15) / mage_prof(wearer)        # + probabilistic round-up on the remainder
+if tmp1 > current mana:                             # can't afford the full soak
+    i = i · mana / tmp1 ;  mana = 0                 # absorb only what mana covers, then break
+else:
+    mana -= tmp1
+dam -= i                                            # the hit lands minus the absorbed part
+if mana == 0:     drop AFF_SHIELD immediately       # shield breaks when mana hits 0
+elif duration>2:  duration = 2                      # otherwise cap at 2 units (~1–2 min, see Duration)
+```
+Key consequences:
+- **Soaks ~40 % of *every* hit — melee *and* spell** (everything routed through `damage()`),
+  **except `AMBUSH` and `BASH`**, which skip the block entirely (a bash still lands in full and still
+  shows its message — that exemption is deliberate, see the comment at `fight.cpp:1797`).
+- **The absorbed *amount* does not depend on level** — `i ≈ 40 %` of the hit regardless of who casts.
+  Level only sets the **mana price** of that soak.
+- **Mana cost = `(i·15) / mage_prof`** (integer division) **+ a probabilistic ±1**, where `mage_prof`
+  is the caster's **raw mage prof level** — *not* `L` (so INT and the Protection +5 don't help here).
+  It is "×15 then ÷ mage level", **not** ÷15. So damage absorbed per mana ≈ `mage_prof / 15`:
+
+  | Level | dmg/mana | mana to soak a 20-pt absorb (50-dmg hit) |
+  |---|--:|--:|
+  | 12m | ~0.8 | ~25 |
+  | 24m | ~1.6 | ~12–13 |
+  | 30m | ~2.0 | ~10–11 |
+  | 36m | ~2.4 | ~8–9 |
+
+  A 24-mage soaks the same hit for **half the mana** of a 12-mage — efficiency is **linear in level**.
+  Per single hit the cost is whole-mana (quantized); the `±1` (`number(0,level) > (i·15)%level`)
+  smooths the **average** to ≈ `15·i/level`, though it skews slightly toward rounding **up** (when
+  `i·15` divides evenly it rounds up almost every time), so real average cost runs a hair above that.
+- **The first absorbed hit caps duration at 2 units, and the clock starts *then*.** `duration = 2`
+  is set on the hit itself (`fight.cpp:1819`); at ~60 s per unit (see Duration) that is **roughly
+  1–2 minutes** of real time (the exact amount depends on phase alignment), counting down regardless
+  of combat — leaving the fight neither pauses nor restarts it, and later hits don't refresh it (the
+  `> 2` check fails once it's ≤ 2). Mana hitting 0 still drops it instantly. So a shield that *was*
+  going to last tens of minutes is pulled down to a ~1–2 minute window the moment it eats its first
+  hit — but it is **not** a few-seconds buff. In a long fight you refresh it every minute or two; the
+  real cost is the per-hit mana soak, not the 5-mana cast. Soaking ~40 % of nearly every hit for
+  cheap mana, for minutes at a time, is the "very overpowered… IT NEEDS TO BE CHANGED" concern flagged
+  in the source (`mage.cpp:628`).
+
+#### Worked examples (wearer = 30-mage, raw mage prof level 30)
+
+**A — one solid melee hit.** An 80-damage swing lands on a shielded 30-mage at full mana:
+- `i = (80·2 + 4)/5 = 32` → wants to absorb 32.
+- `tmp1 = 32·15 / 30 = 16` mana.
+- Hit reduced to `80 − 32 = 48`; **16 mana spent**; shield survives, duration capped at 2 (~1–2 min left).
+
+**B — a spell nuke (spells route through `damage()` too).** The same mage eats a post-mitigation
+100-damage Lightning Strike:
+- `i = (100·2 + 4)/5 = 40`; `tmp1 = 40·15 / 30 = 20` mana.
+- Takes `100 − 40 = 60`, spends 20 mana. (The §3 save and §4 resistance already happened — the 100
+  here is the damage that reached `damage()`.)
+
+**C — running dry mid-hit.** The same 80 hit, but the mage has only **6 mana** left:
+- wants `i = 32`, `tmp1 = 16` mana, but only 6 available → `16 > 6`.
+- `i = 32·6 / 16 = 12` absorbed; mana → 0.
+- Takes `80 − 12 = 68`, and **the shield drops immediately** (`AFF_SHIELD` removed).
+
+**D — bypass.** A rogue **ambushes** or a warrior **bashes** the shielded mage: the absorb block is
+skipped — full damage, no mana spent, shield untouched.
+
+**Rule of thumb.** Each cast turns ~40 % of nearly every hit into a mana payment at `mage_prof/15`
+damage per mana, and once hit it rides for **~1–2 minutes** before needing a refresh. Pre-cast it
+before engaging and re-up it every minute or two in a long fight; its only hard holes are **mana
+running out** (drops it instantly) and **ambush / bash** (bypass it entirely). Efficiency scales hard
+with mage level, so it is strongest on a high-level mage with mana to spare.
 
 ---
 
@@ -444,8 +549,11 @@ only if the caster out-levels them, and §4 becomes `save = 20 − 48/5 + 30/5 =
   helpers still use the legacy formula keyed off `GET_SAVE`. Decide on one save model.
 - Several spells are tagged **"needs to be removed"** in `spells.h` (Freeze, Mist, Blaze, Shift) —
   Blaze/Mist still have working `ASPELL` bodies.
-- `spell_shield`'s mana-soak ("Seether's shield") is **commented out** in `damage()`; the in-game
-  shield only sets `AFF_SHIELD` with no `damage()` interaction — confirm intended.
+- **Shield's stored `modifier` is dead.** `spell_shield` (`mage.cpp:651`) stores `modifier = L·5`
+  ("% of HP"), but the **live** absorb (`fight.cpp:1800-1822`, §8.1) ignores it and instead soaks
+  ~40 % of each hit paid by mana. (The separate "Seether's shield" block just above it *is* commented
+  out — don't confuse the two.) Decide which model is intended and drop the unused field. (No
+  divide-by-zero risk: Shield is `TAR_SELF_ONLY`, so the wearer is always the casting mage.)
 - Earthquake's fall logic has an operator-precedence quirk: `!saved && (tmpch != caster) ||
   (!number(0,1))` (`mage.cpp:1694`) — the `||` makes ~50 % of everyone (incl. possibly the caster)
   fall regardless of save. Verify intent.

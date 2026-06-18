@@ -348,6 +348,39 @@ the **average is ~half** the peak and the **total** is the lifetime sum:
 | **Vitality** peak mv/upd · dur · total | 2.7 · 9 min · ~244 | 3.3 · 11 min · ~365 | 3.9 · 13 min · ~509 |
 | **Vitality +spec** | 3.3 · 11 min · ~365 | 3.9 · 13 min · ~509 | 4.5 · 15 min · ~677 |
 
+**At the learn floor (15t).** Regeneration unlocks at 15 mystic, but `regen_level = L − 10` makes it
+deliberately feeble right there. At 15t with the house WIL 22 (`L ≈ 19`): `regen_level = 9` →
+duration `(9 / 2) · 20 = 80` updates = **4 minutes**, **peak 1.2 HP/update** tapering linearly to 0,
+for a **total of ~49 HP** (at perception 100; a human 15-mystic's perception ~60 makes it ~29 HP,
+~0.7 HP/update peak). Regeneration-spec (`regen_level = 15`) roughly **triples** it — 140 updates
+≈ 7 min, ~148 HP at perception 100 — and a low-WIL splash (lower `L`) shaves it further. The `−10`
+floor is why Regeneration ramps so hard above its learn level: by 24t (table above) the same spell
+already totals ~244 HP, **~5× the 15t value**. So a 15-mystic splash gets a slow 4-minute trickle,
+not the heavy front-loaded sustain a 24t+ mystic enjoys.
+
+**Yardstick — what multiplier is that, really?** Take the common **regen-warrior archetype:
+30 warrior / 15 ranger / 15 mystic, CON 16, WIL 15**, self-casting and running **Insight** so its
+perception sits at the **100 cap** (human base `30 + cleric·2 = 60`, + Insight 50, clamped — §1).
+Natural regen is `8 + CON/2 + warrior/3 + ranger/5 = 8 + 8 + 10 + 3 = 29 HP per MUD hour`
+(`hit_gain`, `limits.cpp:200`; mystic levels don't feed HP regen, but the 15 ranger does), i.e.
+**~116 HP over 4 minutes standing** (~145 resting). Regeneration at 15t / WIL 15 (`L = 18`,
+`regen_level = 8`) lasts **exactly that 4-minute window** (80 updates) and, at 100 perception, adds
+the **full ~49 HP** front-loaded on top:
+
+| Position | Natural / 4 min | + Regen (100 percep) | Multiplier |
+|---|--:|--:|--:|
+| **Standing** | ~116 HP | +~49 → **~165 HP** | **~1.42×** |
+| **Resting** (×1.25) | ~145 HP | +~49 → ~194 HP | ~1.34× |
+
+Because the bonus is front-loaded it runs **~1.8× in the first updates** and tapers to **1.0×** by the
+4-minute mark (the ~1.42× is the whole-window average; the regen `+49` is added *after* the position
+multiplier, so resting boosts only the natural side). The multiplier is gated by the **recipient's**
+perception (`get_bonus_hit_gain` reads the *regenerating* character's perception, not the caster's):
+this archetype leans on **Insight to cap perception at 100** and bank the full +49 HP — a target
+without it (e.g. a pure warrior at ~30 perception) keeps only ~30 % of the bonus (~15 HP, ~1.14×). So
+even maxed, learn-floor Regeneration is a **~+40 % standing-heal** top-up, not a panic button; its
+heavy sustain comes later as `regen_level = L − 10` climbs with mystic level.
+
 **Curing Saturation (+HP / −move) and Restlessness (+move / −HP)** — *flat* (constant every update for
 the whole duration); `HL = L + 5`:
 

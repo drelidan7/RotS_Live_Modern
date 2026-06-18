@@ -387,7 +387,8 @@ single-target, so it's a grinding/boss tool, not a PvP one.)
 
 `mage.cpp` also implements: **Create Light** (loads obj 7006), **Locate Living** /
 **Reveal Life** / **Word of Sight** (room/area scans vs. hide, scaling with `L`), **Cure Self**
-(`L/2 + 10` HP, **+5 Regen-spec**), **Vitalize Self** (`2L` move, **+10 Regen-spec**),
+(instant self-heal `L/2 + 10` HP, **+5 Regen-spec**; §8.2), **Vitalize Self** (instant self `2L` move,
+**+10 Regen-spec**; §8.2),
 **Shield** (`AFF_SHIELD` mana-soak — the wearer's mana eats ~40 % of each hit; **+5 ticks duration
 Protection-spec**; full detail in §8.1), **Flash** /
 **Word of Shock** (AoE disengage + energy burn; Flash grants darkies *Power of Arda* malus),
@@ -498,6 +499,57 @@ damage per mana, and once hit it rides for **~1–2 minutes** before needing a r
 before engaging and re-up it every minute or two in a long fight; its only hard holes are **mana
 running out** (drops it instantly) and **ambush / bash** (bypass it entirely). Efficiency scales hard
 with mage level, so it is strongest on a high-level mage with mana to spare.
+
+### 8.2 Cure Self & Vitalize Self — the mage's instant self-top-ups
+
+These are the mage line's self-sustain. Unlike the mystic heal-over-time powers
+([cleric-mystic-system.md §4.1](cleric-mystic-system.md)), both are **instant, one-shot, self-only**
+restores: they add a flat amount to your current HP/move **immediately**, capped at your maximum.
+There is **no affect, no duration, no perception scaling, and no way to target an ally** — cast it
+and the effect is done.
+
+**Shared (`consts.cpp:495`/`:504`):** `PROF_MAGE`, **`TAR_SELF_ONLY`**, **12 mana**, **36-beat cast**
+(cast time = `36·30/(30 + mage_level)` pulses × 0.25 s → **~5.0 / 4.5 / 4.0 s** at 24 / 30 / 36m,
+shrinking as you out-level them, §2). Both scale off **`L = get_mage_caster_level`** (mage prof +
+`INT/5`, §1), and **Regeneration-spec** adds a flat bonus. Neither is `is_fast` (moot — they apply
+once, on cast). They can be **prepared** (§2) for an instant out-of-combat top-up.
+
+- **Cure Self** (id 74, learn-level 3, `mage.cpp:507`): restores **`L/2 + 10` HP** (**+5**
+  Regen-spec), capped at max HP → *"You feel better."* At full HP it normally just says *"You are
+  already healthy."* and does nothing — **except** if you're carrying a festering-wound bleed
+  (`SKILL_MARK`), where it instead **tends the wound**, cutting its remaining duration by **30** (or
+  by **20** when it also heals you). So it doubles as partial bleed-removal.
+- **Vitalize Self** (id 79, learn-level 9, `mage.cpp:733`): restores **`2·L` move** (**+10**
+  Regen-spec), capped at max move → *"You feel refreshed."* At full move: *"You are already rested."*
+
+**Per-cast restore** (INT 20 → `L = mage_level + 4`, i.e. `L = 28 / 34 / 40`; "(+spec)" = Regeneration):
+
+| | 24m (L28) | 30m (L34) | 36m (L40) |
+|---|---|---|---|
+| cast time (≈) | ~5.0 s | ~4.5 s | ~4.0 s |
+| **Cure Self** HP/cast (+spec) | 24 (29) | 27 (32) | 30 (35) |
+| **Vitalize Self** move/cast (+spec) | 56 (66) | 68 (78) | 80 (90) |
+
+Both cost **12 mana** flat. Spammed standing, that's ~**6 HP/s** (Cure, 30m) and ~**15 move/s**
+(Vitalize, 30m) of throughput.
+
+**The 12-mage splash.** A very common pick is exactly **12 mage levels** for cheap burst
+self-sustain. There, Cure Self heals about **17 HP per cast** (**~22** with Regeneration-spec) for
+12 mana, on a **~6.3 s** cast — the cast-time divisor is your **mage prof level** (`CASTING_TIME` =
+`beats·30/(30 + mage_prof)`, `spells.h:333`), so it's *slower* the fewer mage levels you carry
+(25 pulses at 12m vs. 18 at 30m). The `L/2` term means INT is nearly irrelevant: at INT 15 (the
+quick-ref baseline for 10–21m) `L ≈ 15` → 17 HP; even INT 20 only nudges it to ~18. So the splash
+buys a repeatable **~17 HP patch at ~2.7 HP/s** — fine for topping off between fights, but far too
+small to sustain *through* one. (A 12-mage also knows Vitalize Self — learn-level 9 — for `2·L ≈ 30`
+move/cast, but the splash is almost always taken for the Cure Self burst.)
+
+**Reading it.** Because they're instant and **capped**, any overheal is wasted — cast after you've
+taken a real chunk, not to top off 5 HP. **Cure Self is a modest emergency patch, not a combat
+heal:** ~27 HP at 30m won't outpace incoming melee, and INT only feeds it weakly (`L/2`). **Vitalize
+Self is the stronger of the two** in raw numbers (~4× Cure, since move pools dwarf the heal) and makes
+a mage genuinely self-sufficient for travel/stamina. For sustained HP-over-time, healing others, or
+perception-scaled regen, that is the **mystic** line (cleric-mystic-system.md §4.1) — these self-only
+mage spells don't replace it, they just keep a solo mage standing.
 
 ---
 

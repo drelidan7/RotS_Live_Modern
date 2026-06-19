@@ -109,8 +109,9 @@ that pushed past 90 damage after armor, often a crit and/or a found weakness sta
 
 ### Plain English: weapon damage and the shape of the formula
 
-**What "97/10" means.** `get_weapon_damage` (`object_utils.cpp:208`) returns the weapon's
-damage rating **already multiplied by 10**, and `identify` prints it as `<value>/10`. So
+**What "97/10" means.** `get_weapon_damage` (the **live** one is `utility.cpp:426`; an unused
+`double` twin sits at `object_utils.cpp:208`, reached only by the dead `combat_manager.cpp`) returns
+the weapon's damage rating **already multiplied by 10**, and `identify` prints it as `<value>/10`. So
 `97/10` is an *average raw weapon damage of 9.7*, `111/10` is 11.1. Inside the formula
 (`base = weapon_damage + points.damage·10`) the engine uses the un-divided number (97, 111),
 so the `/10` is just a "move the decimal" readout for players. Typical weapons land around
@@ -118,13 +119,17 @@ so the `/10` is just a "move the decimal" readout for players. Typical weapons l
 
 **Where that number comes from (and why two weapons differ).** A weapon's damage rating isn't
 free — it's computed as a **trade-off** against the weapon's other properties
-(`damage_coef`, `object_utils.cpp:246`):
+(`dam_coef`, `utility.cpp:503`):
 ```
 damage ∝ (40 + item_level − parry_coef) · (50 − OB_coef) · (20 − |bulk − 3|) / energy_regen
 ```
 In words: a weapon's damage **goes up** with item level and with being bulky/slow, and **goes
 down** the more OB or parry the weapon also grants, and the further its bulk is from ~3. So a
 high-damage weapon has usually *paid for it* with lower OB, lower parry, or slower swings.
+**Weapon *type* also nudges this**: the live formula adds a per-type tweak to `parry_coef`/`OB_coef`
+(`utility.cpp:469`) — whip `+8 parry / −5 OB`, slashing `−2 parry`, bludgeoning `+3 parry` — a small
+**damage-only** adjustment (it does not change your real OB/parry). The separate effects of type on
+your actual OB, parry and speed are documented in [weapons.md](weapons.md).
 
 **Is 91/10 vs 97/10 meaningful?** Yes, but modestly. Those 6 points add directly to `base`, so
 the weapon's damage contribution rises by roughly **+4 % to +7 %** per hit (the exact percent

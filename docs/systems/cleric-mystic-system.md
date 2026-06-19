@@ -208,12 +208,12 @@ on top, §1). `L` = mystic caster level (§1). Grouped by role.
 |---|---|---|---|
 | **Curse** (67) | 1 | 1 | §3 — stat assault, `count = (L+20)·Percep_v/100/10` |
 | **Revive** (68) | 1 | 2 | §3 inverse — **restores** the victim's most-damaged stats, `count ≈ (3·9+L)·Percep_v/100/9`, spends spirit |
-| **Hallucinate** (63) | 3 | 2 | foe "misses" illusions; charges = `cleric/10 + 2 (+1 if cleric>30) (+1 Illusion-spec)`; save `saves_confuse` |
-| **Haze** (52) | 5 | 1 | `AFF_HAZE` disorient; **+6 `L` Illusion-spec**; save `saves_mystic`; can haze a room |
+| **Hallucinate** (63) | 3 | 2 | foe's own physical swings "hit thin air"; charges = `cleric/10 + 2 (+1 if cleric>30) (+1 Illusion-spec)`; save `saves_confuse` — §4.2 |
+| **Haze** (52) | 5 | 1 | `AFF_HAZE` disorient (random moves / dropped command targets); **+6 `L` Illusion-spec**; save `saves_mystic`; can haze a room — §4.2 |
 | **Fear** (53) | 12 | 5 | flee effect, dur `L`; **+6 `L` Illusion-spec**; saves `saves_mystic` **&** `saves_leadership` |
 | **Terror** (58) | 18 | 5 | room-wide Fear; **+6 `L` Illusion-spec** |
 | **Poison** (43) | 14 | 5 | `AFF_POISON` (−2 STR, dur `L+1`) + 5 dmg; save `saves_poison`; can poison a room/food |
-| **Confuse** (111) | 1* | 10 | `AFF_CONFUSE` (scrambles skill knowledge), dur `10+L`; save `saves_confuse`; *Illusion spec-gated* |
+| **Confuse** (111) | 1* | 10 | `AFF_CONFUSE` front-loaded skill/knowledge/OB crush `2·dur−10`, dur `10+L`; save `saves_confuse`; *Illusion spec-gated* — §4.2 |
 
 ### Healing / regeneration *(Regeneration spec: +6 to the healing level)*
 | Power (`id`) | Lvl | Spirit | Effect & scaling |
@@ -401,6 +401,84 @@ burst — they're stamina/HP management tools, not net healing. Multiply everyth
 perception: a human 30-mystic (perception 90) actually sees ~90 % of these figures, a 24-mystic
 (perception 78) ~78 %, and any mystic at/above 100 perception gets the full value.
 
+### 4.2 Disorientation powers — Hallucinate, Haze, Confuse
+
+The three Illusion-school disablers degrade what the target *can do* rather than dealing damage.
+They split across **two** save families (§2): **Hallucinate & Confuse** roll `saves_confuse` (a
+willpower contest), while **Haze** rolls `saves_mystic` (**pure perception** — no willpower, so
+high-perception targets are nearly immune). None stacks with itself (each checks
+`affected_by_spell` first).
+
+#### Hallucinate (id 63, lvl 3, 2 spirit, `spell_hallucinate`, `mystic.cpp:1033`)
+Makes the **target's own physical attacks miss** ("hit thin air"). It does **not** wind down on a
+timer in practice — it's a **charge budget**:
+```
+charges (modifier) = cleric/10 + 2  (+1 if cleric > 30t)  (+1 Illusion-spec)   # ~5 at 30t, 6–7 higher/spec
+duration = charges · 4              # slow-tick backstop only; the swings end it first
+```
+The budget uses the caster's **cleric prof level only** — WIL / `L` don't scale it. On each
+**physical** swing by the hallucinating target (`check_hallucinate`, `fight.cpp:2846`, gated for
+physical attacks at `fight.cpp:1626`, and also for archery/offense), it rolls
+`number(1,100) > 100/(charges + 1)`:
+- **pass** (the common case) → *"You hit thin air!"*, the swing **misses**, one charge is burned; at
+  0 charges the effect clears.
+- **fail** → the swing **connects** and the effect is **removed immediately**.
+
+So the per-swing whiff chance is `charges/(charges + 1)` — **~83 % at 5 charges**, easing to 50 % on
+the last charge as a breakthrough gets likelier. Net: it reliably eats **~3–5 of the target's
+attacks** before fading. Save: `saves_confuse` (a resisted cast does nothing); the cast also fires a
+0-damage `damage()` to engage. **Strong against high-attack-rate melee/archers, useless against a
+caster** (only physical attacks are checked).
+
+#### Haze (id 52, lvl 5, 1 spirit, `spell_haze`, `mystic.cpp:1077`)
+`AFF_HAZE` is dizziness with two **flat** effects (its stored `modifier` doesn't scale them):
+- **Movement** (`act_move.cpp:654`): each move command has a **25 %** chance (`number(1,4)==1`) to send
+  you a **random** direction instead — *"You feel dizzy, and move randomly."*
+- **Command targeting** (`interpre.cpp:1321`): **10 %** chance (`number(0,9)==0`) to **forget your
+  command's target(s)** that round.
+
+Two cast modes:
+- **Single-target** (a victim, or your current fight target): `duration = number(0,1)` and haze is
+  **not `is_fast`**, so it decrements only on the ~60 s slow affect cycle — a **brief, RNG** effect
+  (seconds up to ~2 minutes). `+6` caster level if Illusion-spec (level only feeds the unused char
+  `modifier` here).
+- **Room** (cast `haze` with no target while not fighting): lays a room affect lasting **`level/3`
+  slow-ticks (≈ `level/3` minutes)** at strength `level/2`, disorienting everyone in the room —
+  *"You breathe out a disorienting mist."*
+
+Save: `saves_mystic` → victim resists when `number(0,100) ≤ perception·9/10` (§2). Because it's a
+**pure perception** roll, a High-elf or Insight-buffed target shrugs it off almost every time.
+
+#### Confuse (id 111, lvl 1, 10 spirit, **Illusion spec-gated**, `spell_confuse`, `mystic.cpp:1443`)
+A heavy, **front-loaded** skill/knowledge debuff. Sets `AFF_CONFUSE`, `duration = 10 + L`, and is
+flagged **`is_fast`** so duration ticks down every **~3 s**. Its stored `modifier` (1) is a dummy —
+the real strength is computed live from the **remaining duration**:
+```
+confuse penalty = 2 · duration − 10        # get_confuse_modifier
+```
+That penalty is subtracted from **both `get_skill` and `get_knowledge`** (`char_utils.cpp:886`/`:915`)
+— i.e. essentially **every skill check, every casting-knowledge check, and combat OB/parry/dodge**
+(the live `utility.cpp` `get_real_OB`/`parry`/`dodge` dock `2/3 ·` the penalty, `utility.cpp:651`+).
+Because the penalty is `2·duration − 10` and duration falls 1/update, it is strongly **front-loaded**:
+- **Peak at cast = `2·(10+L) − 10 = 2L + 10`** — e.g. **~78 at `L≈34`**, which all but **zeroes out**
+  skills/knowledge (base knowledge is ~80) — then drops **2 per ~3 s** to nothing once `duration ≤ 5`.
+- So the affect *lingers* for `10+L` updates (minutes), but its bite is gone in the final ~5 ticks.
+- **Concentration clears it fast:** a confused character running `concentrate` (`AFF_CONCENTRATION`,
+  §3) sheds **3 extra duration/update** while `duration ≥ 10` (`limits.cpp:1293`) — ~4× the normal
+  decay, so a focused mystic shakes the fog quickly.
+
+Save: `saves_confuse` (willpower, §2). Cast at `POSITION_FIGHTING` (mid-combat); at **10 spirit** it's
+the priciest of the three. Best against **skill-dependent** opponents — a warrior's OB/parry or a
+rival mystic's knowledge — but cheap to counter by concentrating. **Known trade-off:** for the last
+few ticks `duration ∈ 1–4` makes the penalty *negative* (`2·dur−10` = −8..−2), so as confuse fades it
+briefly hands the victim a small skill/knowledge/OB **bonus**. This is **intentional** — a built-in
+**risk of confusing a target** (the tail end can help them), not a bug; don't clamp it.
+
+**Quick contrast:** Hallucinate = a few guaranteed enemy whiffs (vs melee, willpower save);
+Haze = cheap chip disorientation on movement/commands (perception save, immune-prone); Confuse = a
+big up-front skill/OB crush that decays and is concentration-cleared (willpower save, spec-gated,
+costly).
+
 ---
 
 ## 5. Scaling: specialization, mystic level, willpower
@@ -487,6 +565,10 @@ perception 90.
 - **Restlessness can be lethal** via negative regen (`limits.cpp:1508` notes "characters can die to
   negative regen") — verify the dispel/refresh paths can't strand a victim at lethal negative move
   regen.
+- **Confuse's end-of-duration negative penalty is intentional (confirmed).** `get_confuse_modifier =
+  2·duration − 10` goes negative for the last few ticks (`duration` 1–4 → −8..−2), so as confuse fades
+  it briefly grants the victim a small skill/knowledge/OB **bonus** (§4.2). This is a deliberate,
+  **known risk of confusing a target** — a built-in downside, not a bug. **Do not clamp it.**
 - **`spell_death_ward` ANTI path removes `SPELL_INSIGHT`** (`mystic.cpp:1421`, even tagged
   "What the fuck?") — almost certainly a copy-paste bug (should remove Death Ward).
 - **`spell_protection` leaves a `fprintf(stderr, ...)` debug line** (`mystic.cpp:1736`) — strip.

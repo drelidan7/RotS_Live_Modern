@@ -89,6 +89,88 @@ whether Con or Learning is your 3rd-vs-5th-priority rolled stat — Con is prior
 So your class allocation doesn't just buy proficiency — it **steers your best rolled stats
 toward that class's primary ability**.
 
+### Stat gains after creation — on level-up (`check_stat_increase`, `profs.cpp:280`)
+After creation the six abilities can still climb, **one point at a time**, on level-up.
+`advance_level` runs the roll, but only when you reach a **new high-water mini-level**
+(`GET_MAX_MINI_LEVEL < GET_MINI_LEVEL`, `profs.cpp:421`) — so you can't farm gains by losing and
+re-gaining a level — and the roll itself does nothing below **character level 7**
+(`level <= 6 → return`).
+
+> **The level-6 reroll ("statting") — a one-time event, not a recurring phase.** The first time you
+> reach **level 6**, `advance_level` re-rolls your *whole* stat array once and grants a reroll token
+> — `roll_abilities(ch, 80, 93)` (`profs.cpp:415-418`): the same 4d6-drop-lowest method as creation,
+> but with a higher sum window (80–93). The guard reads `GET_LEVEL > 5 && GET_MAX_MINI_LEVEL < 600`,
+> which fires **exactly once**: mini-level ≈ 600 *coincides* with the level-6 XP threshold
+> (`xp_to_level(6) = 54 000`, and `mini ≈ √(20·XP/3) = 600` at that XP, §4), so the `< 600` window
+> slams shut the moment you hit level 6 — by level 7 mini-level is already ~700, and `max_mini` is a
+> sticky peak, so it never re-opens. `advance_mini_level` even updates `max_mini` *after* calling
+> `advance_level` (`limits.cpp:99` vs `:110`), so the level-6 advance still sees the sub-600 peak.
+> It also **cannot** fire before level 6 (the `level > 5` guard) — **stats are not re-rolled at
+> levels 1–5.** Level 6 is also where you unlock *viewing* your stats and requesting further angel
+> rerolls (`check_for_special_levels`, `profs.cpp:375`) — hence "statting." After this single reroll
+> your rolled stats are fixed; only the incremental gains below apply (from **level 7**, since
+> `check_stat_increase` itself no-ops at level ≤ 6).
+
+**Step 1 — do you gain *any* stat this level?** (`profs.cpp:288-305`)
+```
+statsum = Σ six base abilities − Σ race_modifiers       # your *earned* total, race offset removed
+if statsum > MAX_STATSUM (99):  no gain                 # already at the cap → done growing
+roll    = number(0, 99)                                 # d100
+target  = (99 − statsum)·3/2  +  floor_bonus(statsum)   # all integer math
+gain if roll ≤ target
+```
+So the chance is **~1.5 percentage points per point you sit below the 99 cap**, plus a `floor_bonus`
+(`get_statsum_probability_modifier`) that preserves a minimum chance even near the cap:
+
+| `floor_bonus` | when statsum is… |
+|--:|---|
+| +25 | ≤ 86 |
+| +22 | 87–91 |
+| +19 | 92–93 |
+| +16 | 94–95 |
+| +13 | 96 |
+| +10 | 97 |
+| +7 | 98–99 |
+
+Net per-level chance of *some* gain, by race-adjusted (earned) statsum `S`:
+
+| S | ~80 | 86 | 90 | 94 | 97 | 99 | 100 |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| chance | ~54 % | ~45 % | ~36 % | ~24 % | ~14 % | ~8 % | 0 % |
+
+It is **self-balancing**: stats climb fast while you're well below the cap and crawl to a near-stop as
+you approach 99. Crucially the cap is on the **race-adjusted** sum, so racial modifiers (races.md)
+neither eat into nor pad your growth budget — a net-positive race simply *displays* a higher total at
+the same earned cap (a High-Elf can show ~101, an Orc ~85, for the same "99" of earned stats).
+
+**Step 2 — which stat goes up?** (`profs.cpp:307-368`) The award is a second d100 partitioned into
+per-stat slices (the code subtracts `STAT_CHANCE = 14` in the order STR→DEX→WIL→INT→CON→LEA and takes
+the first slice the roll falls in). Every stat gets a **base 14 %**, and your **primary profession's**
+stat gets a **+hike** on top (`get_hike_bonus`, `profs.cpp:254`):
+
+- Mapping: **Warrior→STR, Ranger→DEX, Cleric/Mystic→WIL, Mage→INT** (CON and LEA map to no class and
+  are never boosted — always 14 %).
+- Your single most-invested profession (highest prof-coefficient) is "primary" and its stat gets
+  **+16** (`LEFTOVER_POINTS`); if professions tie for most-invested, the +16 is **split** evenly
+  (`16 / num_tied`).
+
+With one clear primary the weights are **primary stat ≈ 30 %, each of the other five ≈ 14 %**, summing
+to exactly 100 % — so once Step 1 passes a stat is **always** awarded (the +16 is precisely
+`100 − 6·14`, which closes the gap):
+
+| Build | ~30 % stat | the other five (~14 % each) |
+|---|---|---|
+| Warrior-primary | **STR** | INT · WIL · DEX · CON · LEA |
+| Ranger-primary | **DEX** | … |
+| Cleric / Mystic-primary | **WIL** | … |
+| Mage-primary | **INT** | … |
+
+This mirrors creation (above): at *both* creation and every level-up, your class investment steers
+which abilities grow. A gain raises **both** the permanent (`constabilities`) and current
+(`tmpabilities`) score, prints a flavor line (*"Great strength flows through you!"*, etc.), and is
+recorded as an `EXPLOIT_STAT`. (Base **HP** grows on a separate track — a ~2 % chance per mini-level
+tick, §4 — not through this roll.)
+
 ---
 
 ## 4. Level, mini-level, and proficiency level

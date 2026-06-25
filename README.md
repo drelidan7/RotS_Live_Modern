@@ -19,6 +19,32 @@ On your Unix based system you'll need to install the following packages.
 3. clang-format (We use  this to format all the code base)
 4. make (This is just something you should have in general)
 5. cmake (Used by the root Makefile and the direct CMake workflow)
+6. GoogleTest development files (Needed to configure and build `ageland_tests`)
+7. 32-bit C/C++ development support (The game build uses `-m32`)
+8. 32-bit libcrypt development files (Needed when linking the game)
+9. Rust and Cargo (Needed for the proxy and `make smoke-account`)
+10. python3 (Needed for the account smoke harness)
+
+On Debian or Ubuntu, the missing build prerequisites usually look like this:
+
+```bash
+sudo dpkg --add-architecture i386
+sudo apt update
+sudo apt install \
+  build-essential \
+  clang-format \
+  cmake \
+  g++-multilib \
+  libc6-dev-i386 \
+  libgtest-dev \
+  libcrypt-dev:i386 \
+  python3
+```
+
+Some distributions package the 32-bit crypt development files as
+`libxcrypt-dev:i386` instead of `libcrypt-dev:i386`.
+
+Install Rust and Cargo with rustup or your system package manager.
 
 ### Installing
 
@@ -110,6 +136,11 @@ or character-selection changes.
 ```bash
 make smoke-account
 ```
+
+The smoke harness creates and removes temporary ignored runtime data under
+`lib/accounts`, `lib/players`, `lib/plrobjs`, and `lib/exploits`. Failed runs
+preserve their `/tmp/rots-account-smoke-*` logs for debugging, and
+`--keep-artifacts` also preserves the temporary account files.
 
 ## GitHub Actions
 

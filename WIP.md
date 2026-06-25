@@ -1,7 +1,64 @@
 # Work In Progress
 
 ## Current Status
-- In progress.
+- Active slice complete; expanded smoke e2e coverage and repeated validation are green.
+- Active slice: expanding proxy-backed e2e coverage beyond the current account lifecycle smoke.
+- Planned e2e additions:
+  - account-backed persistence flow: create a character, enter the game, change a persisted player-facing setting, quit through the normal save path, reconnect through the account menu, and prove the setting survived in account-native `character.json` plus the live command surface
+  - legacy link/migration flow: seed a real legacy player/object/exploit fixture, link it through account option `3`, verify account-native `character.json` / `objects.json` / `exploits.json` assets, verify legacy runtime files are retired, and prove the linked character can enter the game through the account menu
+  - keep both flows in the existing proxy-backed smoke harness unless runtime or readability forces a split
+- Completed in this slice:
+  - added account-native `character.json` true-color foreground assertions to the smoke harness
+  - expanded `make smoke-account` so account-backed play now turns colours on, sets `magic` foreground to `#0C2238`, quits through the normal mortal save path, verifies the account-native character JSON, reconnects through the account menu, and verifies the live `color` listing still reports the persisted setting
+  - avoided the immortal-only `save` command after the first live attempt proved it is not available to mortal smoke characters
+  - added a live legacy-character fixture writer that seeds a versioned legacy player file before server boot using the old fixed-width password encoding and sentinel level/race/title/load-room/id values
+  - added legacy object and exploit fixture writers so migration verifies real object/exploit conversion immediately after successful link
+  - expanded `make smoke-account` so it first proves a wrong legacy password does not partially link or migrate assets, then links the legacy character through account option `3`, verifies account-native assets, verifies legacy player/object/exploit files are retired after migration, and enters the game with the migrated character through account-backed selection
+  - limited exact migrated object/exploit fixture assertions to the immediate post-link point because normal account-backed gameplay can rewrite object rent data on quit
+  - added expired verification-code resend handling to the smoke harness after repeated smoke validation exposed a time-window failure mode
+  - hardened smoke cleanup/name selection so generated names skip existing legacy and account-native artifacts, account lookup only scans `account.json`, retry is limited to the initial account-email prompt, child processes get an allowlisted environment, and cleanup removes only exact smoke-created fixture/account paths
+  - added live migrated-character `info` assertions so the e2e proves the account-backed loader uses the migrated sentinel title and level, not just that migration wrote the right JSON file
+  - updated `README.md` to document that `make smoke-account` creates and removes ignored runtime data under `lib/`
+- Validation for this slice:
+  - `python3 -m py_compile tools/account_smoke.py tools/account_smoke_tests.py` passed
+  - `python3 tools/account_smoke_tests.py` passed at `51` tests
+  - `git diff --check` passed
+  - `make smoke-account` passed once with the expanded color-persistence and legacy link/migration/play flow before the expired-code resend patch
+  - a repeated `make smoke-account` run then exposed the expired verification-code path; the resend fix and focused Python regression are in place
+  - post-fix repeated `make smoke-account` passed `3/3` runs with the expanded color-persistence, legacy link/migration/play, and delete lifecycle flow
+  - Cargo still emits the existing workspace resolver warning during proxy builds; it did not affect the smoke result
+- Next in this slice:
+  - no remaining implementation step for this slice
+  - optional cleanup remains for preserved debug artifacts under `/tmp/rots-account-smoke-*` and the kept debug account under `lib/accounts/P-T/smkb393ca001a76@example.com/`
+- Active slice: repeated proxy-backed account smoke validation after the local world files were restored.
+- Completed in this slice:
+  - ran `make smoke-account` three times after world data was present locally
+  - all three runs completed the full create -> verify -> login -> list -> reset password -> re-login -> create play character -> account-backed play -> create delete character -> delete back to account menu -> relogin-roster-check flow successfully
+- Validation for this slice:
+  - `make smoke-account` passed `3/3` repeated runs
+  - Cargo still emits the existing workspace resolver warning during the proxy build; it did not affect the smoke result
+- Active slice: documenting local development prerequisites that blocked setup in this environment.
+- Completed in this slice:
+  - updated `README.md` prerequisites with the concrete applications/packages needed for CMake builds, C++ tests, 32-bit linking, the Rust proxy smoke flow, and the Python smoke harness
+  - documented Debian/Ubuntu package names for CMake, GTest, 32-bit multilib headers, 32-bit libcrypt support, and Python
+  - documented that Rust/Cargo must be installed
+- Validation for this slice:
+  - reviewed the updated `README.md` prerequisite section
+- Active slice: stabilizing the proxy-backed account smoke/e2e harness so prompt waits and startup failures produce deterministic results instead of intermittent `Account email:` / marker timeouts.
+- Completed in this slice:
+  - switched the smoke harness to allocate distinct loopback ports by default instead of sharing fixed ports across runs
+  - kept dynamic game ports in the legacy-safe `20000..32767` range so the 32-bit game does not log/use wrapped negative port values
+  - added process-aware startup waits that fail immediately with game/proxy log tails when a child exits before readiness
+  - changed proxy readiness to wait for the proxy listening log marker instead of opening a throwaway proxied game session
+  - limited automatic retries to prompt-marker timeouts; startup/process exits now fail once with preserved artifacts
+  - cleaned generated repo account/character files, including current flat account-native character assets beside `account.json`, after failed runs by default while preserving `/tmp` logs for debugging
+  - added focused Python regressions for process-death diagnostics, refused-connect diagnostics, proxy log-marker readiness, dynamic port selection, mixed explicit/dynamic ports, flat account-native cleanup, non-retryable startup failures, and per-attempt dynamic port resolution
+- Validation for this slice:
+  - `python3 tools/account_smoke_tests.py` passed at `33` tests
+  - `make test` passed at `459/459`
+  - `python3 tools/account_smoke.py --attempts 2 --startup-timeout 20` now fails fast locally with the real boot blocker, `Error opening index file 'world/scr/index': No such file or directory`, and preserves artifacts under `/tmp/rots-account-smoke-*`
+- Remaining local validation gap resolved:
+  - after the separate world data was restored under `lib/world/`, repeated full `make smoke-account` runs pass locally
 - Active slice completed: the first true-color groundwork pass is now green, with the richer foreground/background color model compiling cleanly and round-tripping through runtime rendering, account-native `character.json`, and legacy text player saves.
 - Completed in this slice:
   - added focused `Color` renderer regressions covering legacy ANSI foreground rendering, true-color foreground rendering, true-color background rendering, background clearing, and nearest-ANSI fallback mapping
@@ -554,18 +611,23 @@
 - Re-ran `make smoke-account`, but this pass still did not produce a trustworthy login-flow verdict because the harness timed out waiting for `127.0.0.1:4001` to accept connections and kept artifacts under `/tmp/rots-account-smoke-*`.
 
 ## Next Step
-- Continue the remaining migration-policy cleanup now that persisted `.migration.json` no longer carries raw legacy player bytes.
-- Decide whether the next code step is more migration-policy cleanup or another pass on `tools/account_smoke.py` to reduce the intermittent first-prompt timeout.
-- Keep removing the remaining transitional migration-file dependency once the player-data path is fully authoritative on `character.json`.
+- No remaining implementation step for this slice.
+- Optional cleanup remains for preserved debug artifacts under `/tmp/rots-account-smoke-*` and the kept debug account under `lib/accounts/P-T/smkb393ca001a76@example.com/`.
 
 ## Last Validation
-- `cmake --build build --target ageland_tests -j16`
-- `/home/seth/repos/RotS_Live/bin/tests '--gtest_filter=AccountManagement.*Migration*:*Snapshot*'`
-- `make test`
-- `make smoke-account`
-- Result: the focused migration regression suite passes, the full unit suite now passes at `419/419`, and the latest `make smoke-account` rerun still hit an intermittent first-prompt timeout before the migration/play path (`Timed out waiting for markers ...`), so that smoke failure is currently tracked as a separate harness/runtime issue rather than a regression in the migration sanitization slice.
+- `python3 -m py_compile tools/account_smoke.py tools/account_smoke_tests.py`
+- `python3 tools/account_smoke_tests.py`
+- `git diff --check`
+- `make smoke-account` repeated three times
+- Result: Python smoke-harness coverage passes at `51/51`, syntax compilation is clean, the diff has no whitespace errors, and the post-fix proxy-backed account smoke passed `3/3` full runs. Cargo still emits the existing workspace resolver warning during proxy builds.
 
 ## Reviewer Status
+- `Magus`: final blocker-only review is clear after retry narrowing, WIP refresh, Python checks, and `3/3` full smoke validation.
+- `Vincent`: final blocker-only review is clear after exact cleanup scoping, account lookup hardening, child-process environment allowlisting, retry scoping, and `3/3` full smoke validation.
+- `Bazarat`: final test-design review is clear after the live migrated-character assertion, pre-delete asset existence check, exploit field assertions, artifact-collision coverage, and `51/51` Python smoke-harness tests.
+- `Magus`: found broad retry behavior could hide late e2e regressions and stale WIP footer content. Follow-up narrowed retries to an explicit initial-account-prompt `RetryableSmokeError` and refreshed the WIP status sections.
+- `Vincent`: found cleanup still used name/glob deletion and child processes inherited the ambient environment. Follow-up changed smoke cleanup to exact fixture/account paths and added an allowlisted child-process environment helper.
+- `Bazarat`: found the migrated play path did not prove the live loader used migrated sentinel data, delete checks did not prove assets existed before delete, and collision coverage missed several artifact classes. Follow-up added live `info` assertions, pre-delete asset existence checks, direct exploit-field assertions, and additional collision tests.
 - `Bazarat`: clear on the current migration-sanitization direction and regression coverage; no test-design blockers on the new “do not persist raw legacy player payloads” contract.
 - `Magus`: clear on the current migration-sanitization slice; no findings.
 - `Vincent`: clear on the current migration-sanitization slice after the backward-compatible read-time scrub for older persisted player payloads.

@@ -182,6 +182,51 @@ TEST(ObjectsJson, SerializesAndDeserializesEmptyObjectSaveData)
     expect_object_save_data_equal(original, parsed_from_json);
 }
 
+TEST(ObjectsJson, DeserializesLegacyBinaryWithoutFollowerSectionAsNoFollowers)
+{
+    objects_json::ObjectSaveData original = make_object_save_data();
+    original.followers.clear();
+
+    std::string bytes;
+    std::string error_message;
+    ASSERT_TRUE(objects_json::object_save_data_to_binary(original, &bytes, &error_message)) << error_message;
+    ASSERT_GT(bytes.size(), sizeof(follower_file_elem));
+    bytes.erase(bytes.size() - sizeof(follower_file_elem));
+
+    objects_json::ObjectSaveData parsed;
+    EXPECT_FALSE(objects_json::object_save_data_from_binary(bytes, &parsed, &error_message));
+    EXPECT_NE(error_message.find("Truncated objects data while reading follower record"), std::string::npos);
+
+    bool accepted_missing_follower_section = false;
+    ASSERT_TRUE(objects_json::legacy_object_save_data_from_binary(bytes, &parsed, &accepted_missing_follower_section, &error_message)) << error_message;
+    EXPECT_TRUE(accepted_missing_follower_section);
+
+    EXPECT_TRUE(parsed.followers.empty())
+        << "Older object saves may end after aliases before follower persistence existed.";
+    ASSERT_EQ(parsed.objects.size(), original.objects.size());
+    EXPECT_EQ(parsed.objects[0].item_number, original.objects[0].item_number);
+    ASSERT_EQ(parsed.aliases.size(), original.aliases.size());
+    EXPECT_EQ(parsed.aliases[0].keyword, original.aliases[0].keyword);
+    EXPECT_EQ(parsed.aliases[0].command, original.aliases[0].command);
+}
+
+TEST(ObjectsJson, LegacyBinaryStillRejectsMissingFollowerSentinelAfterFollowerRecords)
+{
+    objects_json::ObjectSaveData original = make_object_save_data();
+
+    std::string bytes;
+    std::string error_message;
+    ASSERT_TRUE(objects_json::object_save_data_to_binary(original, &bytes, &error_message)) << error_message;
+    ASSERT_GT(bytes.size(), sizeof(follower_file_elem));
+    bytes.erase(bytes.size() - sizeof(follower_file_elem));
+
+    objects_json::ObjectSaveData parsed;
+    bool accepted_missing_follower_section = false;
+    EXPECT_FALSE(objects_json::legacy_object_save_data_from_binary(bytes, &parsed, &accepted_missing_follower_section, &error_message));
+    EXPECT_FALSE(accepted_missing_follower_section);
+    EXPECT_NE(error_message.find("Truncated objects data while reading follower record"), std::string::npos);
+}
+
 TEST(ObjectsJson, RejectsTruncatedBinaryObjectPayload)
 {
     const objects_json::ObjectSaveData original = make_object_save_data();
@@ -218,6 +263,14 @@ TEST(ObjectsJson, RejectsTruncatedBinaryInsideAliasAndFollowerSections)
 
     EXPECT_FALSE(objects_json::object_save_data_from_binary(follower_truncated, &parsed, &error_message));
     EXPECT_FALSE(error_message.empty());
+
+    objects_json::ObjectSaveData no_followers = make_object_save_data();
+    no_followers.followers.clear();
+    ASSERT_TRUE(objects_json::object_save_data_to_binary(no_followers, &bytes, &error_message)) << error_message;
+    std::string partial_follower_sentinel = bytes.substr(0, bytes.size() - sizeof(follower_file_elem) / 2);
+
+    EXPECT_FALSE(objects_json::object_save_data_from_binary(partial_follower_sentinel, &parsed, &error_message));
+    EXPECT_NE(error_message.find("Truncated objects data while reading follower record"), std::string::npos);
 }
 
 TEST(ObjectsJson, RejectsMissingRequiredSectionsInJson)

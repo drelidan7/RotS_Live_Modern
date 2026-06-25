@@ -1495,6 +1495,30 @@ TEST(AccountManagement, WritesAndReadsAccountNativeObjectFile) {
     EXPECT_EQ(loaded.aliases[0].keyword, "assist");
 }
 
+TEST(AccountManagement, AccountNativeObjectWriteRejectsLegacyObjectFileWithoutFollowerSection) {
+    TemporaryDirectory temp_directory;
+    std::string error_message;
+
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700007776, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700007777, nullptr, &error_message)) << error_message;
+
+    objects_json::ObjectSaveData object_data;
+    object_data.rent.rentcode = RENT_CRASH;
+    object_data.objects.push_back(objects_json::ObjectRecord {});
+    object_data.objects[0].item_number = 1234;
+    object_data.objects[0].wear_pos = WEAR_HEAD;
+    object_data.aliases.push_back({ "assist", "kill orc" });
+
+    std::string object_bytes;
+    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
+    ASSERT_GT(object_bytes.size(), sizeof(follower_file_elem));
+    object_bytes.erase(object_bytes.size() - sizeof(follower_file_elem));
+
+    EXPECT_FALSE(account::write_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", object_bytes, &error_message));
+    EXPECT_NE(error_message.find("Truncated objects data while reading follower record"), std::string::npos);
+    EXPECT_FALSE(account::account_object_file_exists(temp_directory.path(), "alpha-admin", "aragorn", nullptr));
+}
+
 TEST(AccountManagement, WritesDefaultAccountNativeObjectFile) {
     TemporaryDirectory temp_directory;
     std::string error_message;
@@ -2234,6 +2258,92 @@ TEST(AccountManagement, MigrationWritesAccountNativeObjectFileWhenLegacyObjectDa
     ASSERT_EQ(loaded.objects.size(), 1u);
     EXPECT_EQ(loaded.objects[0].item_number, 3210);
     EXPECT_EQ(loaded.objects[0].wear_pos, WEAR_BODY);
+}
+
+TEST(AccountManagement, MigrationAcceptsLegacyObjectFileWithoutFollowerSection) {
+    TemporaryDirectory temp_directory;
+    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
+    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
+    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
+
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
+
+    write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
+
+    objects_json::ObjectSaveData object_data;
+    object_data.rent.rentcode = RENT_CRASH;
+    object_data.objects.push_back(objects_json::ObjectRecord {});
+    object_data.objects[0].item_number = 4321;
+    object_data.objects[0].wear_pos = WEAR_BODY;
+    object_data.aliases.push_back({ "assist", "kill orc" });
+
+    std::string object_bytes;
+    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
+    ASSERT_GT(object_bytes.size(), sizeof(follower_file_elem));
+    object_bytes.erase(object_bytes.size() - sizeof(follower_file_elem));
+    write_text_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), object_bytes);
+
+    account::CharacterMigrationData migration;
+    ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, &migration, &error_message)) << error_message;
+    ASSERT_TRUE(account::account_object_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
+
+    std::string loaded_bytes;
+    ASSERT_TRUE(account::read_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", &loaded_bytes, &error_message)) << error_message;
+
+    objects_json::ObjectSaveData loaded;
+    ASSERT_TRUE(objects_json::object_save_data_from_binary(loaded_bytes, &loaded, &error_message)) << error_message;
+    ASSERT_EQ(loaded.objects.size(), 1u);
+    EXPECT_EQ(loaded.objects[0].item_number, 4321);
+    ASSERT_EQ(loaded.aliases.size(), 1u);
+    EXPECT_EQ(loaded.aliases[0].keyword, "assist");
+    EXPECT_EQ(loaded.aliases[0].command, "kill orc");
+    EXPECT_TRUE(loaded.followers.empty());
+}
+
+TEST(AccountManagement, MigrationRejectsPartialFollowerSectionAndCleansUpAccountNativeOutputs) {
+    TemporaryDirectory temp_directory;
+    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
+    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
+    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
+    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
+    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
+
+    const std::string player_path = account::legacy_player_file_path(temp_directory.path(), "aragorn");
+    const std::string object_path = account::legacy_object_file_path(temp_directory.path(), "aragorn");
+    const std::string exploit_path = account::legacy_exploits_file_path(temp_directory.path(), "aragorn");
+    const std::string expected_player_text = write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
+    const std::string expected_exploit_bytes = make_valid_exploit_bytes();
+    write_text_file(exploit_path, expected_exploit_bytes);
+
+    objects_json::ObjectSaveData object_data;
+    object_data.rent.rentcode = RENT_CRASH;
+    object_data.objects.push_back(objects_json::ObjectRecord {});
+    object_data.objects[0].item_number = 4321;
+    object_data.objects[0].wear_pos = WEAR_BODY;
+    object_data.aliases.push_back({ "assist", "kill orc" });
+
+    std::string object_bytes;
+    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
+    ASSERT_GT(object_bytes.size(), sizeof(follower_file_elem));
+    object_bytes.erase(object_bytes.size() - sizeof(follower_file_elem) / 2);
+    write_text_file(object_path, object_bytes);
+
+    account::CharacterMigrationData migration;
+    EXPECT_FALSE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, &migration, &error_message));
+    EXPECT_NE(error_message.find("Truncated objects data while reading follower record"), std::string::npos);
+
+    EXPECT_EQ(read_file_contents(player_path), expected_player_text);
+    EXPECT_EQ(read_file_contents(object_path), object_bytes);
+    EXPECT_EQ(read_file_contents(exploit_path), expected_exploit_bytes);
+    EXPECT_FALSE(account::account_character_file_exists(temp_directory.path(), "alpha-admin", "aragorn", nullptr));
+    EXPECT_FALSE(account::account_object_file_exists(temp_directory.path(), "alpha-admin", "aragorn", nullptr));
+    EXPECT_FALSE(account::account_exploit_file_exists(temp_directory.path(), "alpha-admin", "aragorn", nullptr));
 }
 
 TEST(AccountManagement, MigrationWritesDefaultAccountNativeObjectFileWhenLegacyObjectDataIsMissing) {

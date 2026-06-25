@@ -346,8 +346,16 @@ namespace {
             return false;
 
         objects_json::ObjectSaveData object_data;
-        if (!objects_json::object_save_data_from_binary(object_bytes, &object_data, error_message))
+        bool accepted_missing_follower_section = false;
+        if (!objects_json::legacy_object_save_data_from_binary(object_bytes, &object_data, &accepted_missing_follower_section, error_message))
             return false;
+        if (accepted_missing_follower_section) {
+            char log_buffer[MAX_STRING_LENGTH];
+            std::snprintf(log_buffer, sizeof(log_buffer),
+                "Accepted legacy object file without follower section while migrating %s for account %s.",
+                character_name.c_str(), account_name.c_str());
+            log(log_buffer);
+        }
 
         return write_account_object_json_file(root_directory, account_name, character_name, object_data, error_message);
     }

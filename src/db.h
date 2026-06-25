@@ -108,6 +108,8 @@ void save_char(struct char_data*, int, int);
 int create_entry(char*);
 int ensure_player_index_entry(const char*);
 void update_player_index_entry_from_store(struct char_file_u*);
+bool update_player_index_entry_from_store(
+    struct char_file_u*, const char*, std::string* error_message = nullptr);
 void init_char(struct char_data*);
 void clear_char(struct char_data*, int);
 void clear_object(struct obj_data*);

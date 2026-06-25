@@ -9,8 +9,8 @@
 
 #include <gtest/gtest.h>
 
-#include <cstdlib>
 #include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <limits.h>
@@ -473,16 +473,16 @@ void expect_object_save_data_equal(const objects_json::ObjectSaveData& expected,
 
 } // namespace
 
-TEST(DbLoader, RejectsMalformedPlayerTextWithoutLongStringTerminator) {
+TEST(DbLoader, RejectsMalformedPlayerTextWithoutLongStringTerminator)
+{
     ScopedPlayerTableEntry player_table_entry;
     char player_name[] = "aragorn";
     char_file_u character_data {};
-    const char malformed_player_text[] =
-        "#player\n"
-        "name        aragorn\n"
-        "description \n"
-        "This description never terminates cleanly\n"
-        "end\n";
+    const char malformed_player_text[] = "#player\n"
+                                         "name        aragorn\n"
+                                         "description \n"
+                                         "This description never terminates cleanly\n"
+                                         "end\n";
 
     EXPECT_LT(load_char_from_text(player_name, malformed_player_text, &character_data), 0);
 }
@@ -585,7 +585,8 @@ TEST(DbLoader, LegacyPlayerTextNormalizesOutOfRangeCombatStateValues)
     EXPECT_TRUE(IS_TWOHANDED(&live_character));
 }
 
-TEST(DbLoader, LoadsExploitRecordsFromAccountNativeJsonWhenRuntimeFileIsMissing) {
+TEST(DbLoader, LoadsExploitRecordsFromAccountNativeJsonWhenRuntimeFileIsMissing)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -619,7 +620,8 @@ TEST(DbLoader, LoadsExploitRecordsFromAccountNativeJsonWhenRuntimeFileIsMissing)
     EXPECT_EQ(records[0].iIntParam, expected_record.iIntParam);
 }
 
-TEST(DbLoader, LoadsExploitRecordsFromAccountNativeJsonWhenPresent) {
+TEST(DbLoader, LoadsExploitRecordsFromAccountNativeJsonWhenPresent)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
@@ -639,7 +641,8 @@ TEST(DbLoader, LoadsExploitRecordsFromAccountNativeJsonWhenPresent) {
     EXPECT_EQ(records[0].iIntParam, expected_records[0].iIntParam);
 }
 
-TEST(DbLoader, ReturnsEmptyExploitHistoryForLinkedCharacterWithoutAccountNativeOrRuntimeFile) {
+TEST(DbLoader, ReturnsEmptyExploitHistoryForLinkedCharacterWithoutAccountNativeOrRuntimeFile)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
@@ -655,7 +658,8 @@ TEST(DbLoader, ReturnsEmptyExploitHistoryForLinkedCharacterWithoutAccountNativeO
     EXPECT_TRUE(records.empty());
 }
 
-TEST(DbLoader, LoadsObjectAndExploitDataFromRuntimeLegacyFilesWhenAccountNativeJsonIsAbsent) {
+TEST(DbLoader, LoadsObjectAndExploitDataFromRuntimeLegacyFilesWhenAccountNativeJsonIsAbsent)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
@@ -685,7 +689,8 @@ TEST(DbLoader, LoadsObjectAndExploitDataFromRuntimeLegacyFilesWhenAccountNativeJ
     EXPECT_STREQ(records[0].chtime, runtime_record.chtime);
 }
 
-TEST(DbLoader, PrefersAccountNativeObjectAndExploitJsonOverConflictingRuntimeLegacyFiles) {
+TEST(DbLoader, PrefersAccountNativeObjectAndExploitJsonOverConflictingRuntimeLegacyFiles)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
@@ -726,7 +731,8 @@ TEST(DbLoader, PrefersAccountNativeObjectAndExploitJsonOverConflictingRuntimeLeg
     EXPECT_STREQ(loaded_records[0].chVictimName, account_records[0].chVictimName);
 }
 
-TEST(DbLoader, FailsClosedWhenAccountNativeExploitJsonIsMalformed) {
+TEST(DbLoader, FailsClosedWhenAccountNativeExploitJsonIsMalformed)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
@@ -752,7 +758,8 @@ TEST(DbLoader, FailsClosedWhenAccountNativeExploitJsonIsMalformed) {
         << "Failing closed on authoritative account-native exploit JSON should not silently consume or retire the stale legacy runtime file.";
 }
 
-TEST(DbLoader, BuildPlayerIndexIncludesLegacyAndAccountNativeCharacters) {
+TEST(DbLoader, BuildPlayerIndexIncludesLegacyAndAccountNativeCharacters)
+{
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
@@ -800,7 +807,41 @@ TEST(DbLoader, BuildPlayerIndexIncludesLegacyAndAccountNativeCharacters) {
     EXPECT_EQ(loaded_character.player_index, 1);
 }
 
-TEST(DbLoader, BuildPlayerIndexPrefersVersionedLegacyPlayerSaveOverFlatArtifactBeforeMigration) {
+TEST(DbLoader, BuildPlayerIndexFailsClosedWhenAccountNativePathDoesNotFitPlayerIndex)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedPlayerTableReset player_table_reset;
+
+    ASSERT_EQ(mkdir("players", 0700), 0);
+    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
+    ASSERT_EQ(mkdir("players/F-J", 0700), 0);
+    ASSERT_EQ(mkdir("players/K-O", 0700), 0);
+    ASSERT_EQ(mkdir("players/P-T", 0700), 0);
+    ASSERT_EQ(mkdir("players/U-Z", 0700), 0);
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    const char* account_name = "abcdefghijklmnopqrst";
+    const char* long_email = "abcdefghijklmnopqrst123456789012345678901234567890@example.com";
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", account_name, long_email, "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", account_name, "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+
+    char_file_u stored_character = make_stored_character("aragorn");
+    stored_character.specials2.idnum = 222;
+    ASSERT_TRUE(account::write_account_character_file(".", account_name, stored_character, &error_message)) << error_message;
+    ASSERT_GE(account::account_character_player_path(".", account_name, "aragorn").size(), sizeof(player_table[0].ch_file))
+        << "Test setup must exceed the legacy player index path buffer.";
+
+    EXPECT_EXIT(build_player_index(), ::testing::ExitedWithCode(1),
+        "too long for the live player index");
+    EXPECT_EQ(top_of_p_table, -1)
+        << "Boot index failure should leave the parent test process without a truncated live entry.";
+}
+
+TEST(DbLoader, BuildPlayerIndexPrefersVersionedLegacyPlayerSaveOverFlatArtifactBeforeMigration)
+{
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
@@ -829,7 +870,8 @@ TEST(DbLoader, BuildPlayerIndexPrefersVersionedLegacyPlayerSaveOverFlatArtifactB
     EXPECT_NE(std::string(player_table[0].ch_file).find(".1.1.2222." + std::to_string(recent_log_time) + ".0"), std::string::npos);
 }
 
-TEST(DbLoader, BuildPlayerIndexRemainsConsistentAfterVersionedMigrationRetiresStaleFlatFile) {
+TEST(DbLoader, BuildPlayerIndexRemainsConsistentAfterVersionedMigrationRetiresStaleFlatFile)
+{
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
@@ -868,7 +910,8 @@ TEST(DbLoader, BuildPlayerIndexRemainsConsistentAfterVersionedMigrationRetiresSt
     EXPECT_NE(std::string(player_table[0].ch_file).find("aragorn.character.json"), std::string::npos);
 }
 
-TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenRuntimeFileIsMissing) {
+TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenRuntimeFileIsMissing)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -898,7 +941,8 @@ TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenRuntimeFileIsMissing
     EXPECT_EQ(object_bytes, expected_bytes);
 }
 
-TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenPresent) {
+TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenPresent)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
@@ -924,7 +968,8 @@ TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenPresent) {
     EXPECT_EQ(object_bytes, expected_bytes);
 }
 
-TEST(DbLoader, FailsClosedWhenAccountNativeObjectJsonIsMalformed) {
+TEST(DbLoader, FailsClosedWhenAccountNativeObjectJsonIsMalformed)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
@@ -954,7 +999,8 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectJsonIsMalformed) {
         << "Failing closed on authoritative account-native object JSON should not silently consume the stale runtime object file.";
 }
 
-TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead) {
+TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
@@ -1004,7 +1050,8 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead) {
     EXPECT_EQ(access(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0);
 }
 
-TEST(DbLoader, ReturnsEmptyObjectSaveBytesForLinkedCharacterWithoutAccountNativeOrRuntimeFile) {
+TEST(DbLoader, ReturnsEmptyObjectSaveBytesForLinkedCharacterWithoutAccountNativeOrRuntimeFile)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
@@ -1020,7 +1067,8 @@ TEST(DbLoader, ReturnsEmptyObjectSaveBytesForLinkedCharacterWithoutAccountNative
     EXPECT_TRUE(object_bytes.empty());
 }
 
-TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail) {
+TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
+{
     ensure_test_world_room(3001);
 
     char_data character {};
@@ -1061,7 +1109,8 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
     EXPECT_STREQ(GET_ALIAS(&character)->command, "kill orc");
 }
 
-TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndEquipsWearableItems) {
+TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndEquipsWearableItems)
+{
     ScopedObjectPrototypeTable object_prototypes;
     ensure_test_world_room(3001);
 
@@ -1113,7 +1162,8 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndEquipsWearableI
     EXPECT_EQ(character.carrying->obj_flags.weight, 4);
 }
 
-TEST(DbLoader, AccountNativeCharacterAndObjectsJsonSupportEquippedLoginWithoutMigration) {
+TEST(DbLoader, AccountNativeCharacterAndObjectsJsonSupportEquippedLoginWithoutMigration)
+{
     ScopedObjectPrototypeTable object_prototypes;
     ensure_test_world_room(3001);
 
@@ -1169,7 +1219,8 @@ TEST(DbLoader, AccountNativeCharacterAndObjectsJsonSupportEquippedLoginWithoutMi
     EXPECT_EQ(obj_index[character.carrying->item_number].virt, 1002);
 }
 
-TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallbackSucceeds) {
+TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallbackSucceeds)
+{
     ScopedObjectPrototypeTable object_prototypes;
     ensure_test_world_room(3001);
 
@@ -1226,7 +1277,8 @@ TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallba
     EXPECT_EQ(obj_index[character.equipment[WEAR_HEAD]->item_number].virt, 1001);
 }
 
-TEST(DbLoader, AccountNativeCrashLoadStillLogsNonMissingLegacyObjectOpenFailures) {
+TEST(DbLoader, AccountNativeCrashLoadStillLogsNonMissingLegacyObjectOpenFailures)
+{
     ScopedObjectPrototypeTable object_prototypes;
     ensure_test_world_room(3001);
 
@@ -1277,7 +1329,8 @@ TEST(DbLoader, AccountNativeCrashLoadStillLogsNonMissingLegacyObjectOpenFailures
     EXPECT_NE(stderr_output.find("aragorn"), std::string::npos) << stderr_output;
 }
 
-TEST(DbLoader, AccountNativeCharacterLoadDoesNotPropagateGarbageColorStateIntoLiveCharacter) {
+TEST(DbLoader, AccountNativeCharacterLoadDoesNotPropagateGarbageColorStateIntoLiveCharacter)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
@@ -1303,7 +1356,8 @@ TEST(DbLoader, AccountNativeCharacterLoadDoesNotPropagateGarbageColorStateIntoLi
     EXPECT_EQ(get_colornum(&character, COLOR_ROOM), CNRM);
 }
 
-TEST(DbLoader, SavingAccountNativeCharacterDoesNotAttemptLegacySnapshotRefreshAfterMigrationRetirement) {
+TEST(DbLoader, SavingAccountNativeCharacterDoesNotAttemptLegacySnapshotRefreshAfterMigrationRetirement)
+{
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableEntry player_table_entry("aragorn");
@@ -1347,7 +1401,50 @@ TEST(DbLoader, SavingAccountNativeCharacterDoesNotAttemptLegacySnapshotRefreshAf
     EXPECT_EQ(stderr_output.find("failed to refresh account snapshot"), std::string::npos);
 }
 
-TEST(DbLoader, SavingLinkedCharacterRepairsMissingAccountNativeCharacterFileDirectly) {
+TEST(DbLoader, SavingLinkedCharacterRefreshesStalePlayerIndexToAccountNativePath)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedPlayerTableEntry player_table_entry("aragorn");
+    ensure_test_world_room(3001);
+
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(mkdir("players", 0700), 0);
+    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
+
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+
+    char_file_u stored_character = make_stored_character("aragorn");
+    stored_character.specials2.load_room = 3001;
+    stored_character.points.gold = 321;
+    ASSERT_TRUE(account::write_account_character_file(".", "alpha-admin", stored_character, &error_message)) << error_message;
+    std::snprintf(player_table[0].ch_file, sizeof(player_table[0].ch_file), "%s",
+        account::legacy_player_file_path(".", "aragorn").c_str());
+
+    char_data character {};
+    clear_char(&character, MOB_VOID);
+    store_to_char(&stored_character, &character);
+
+    descriptor_data descriptor {};
+    std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "LegacyPw1");
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "test-host");
+    character.desc = &descriptor;
+
+    save_char(&character, stored_character.specials2.load_room, 0);
+
+    const std::string account_character_path = account::account_character_player_path(".", "alpha-admin", "aragorn");
+    EXPECT_STREQ(player_table[0].ch_file, account_character_path.c_str());
+    struct stat file_info {};
+    EXPECT_EQ(stat(account_character_path.c_str(), &file_info), 0);
+    EXPECT_NE(stat(account::legacy_player_file_path(".", "aragorn").c_str(), &file_info), 0)
+        << "Linked account-native saves should not revive a legacy player file.";
+}
+
+TEST(DbLoader, SavingLinkedCharacterRepairsMissingAccountNativeCharacterFileDirectly)
+{
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableEntry player_table_entry("aragorn");
@@ -1402,7 +1499,8 @@ TEST(DbLoader, SavingLinkedCharacterRepairsMissingAccountNativeCharacterFileDire
     EXPECT_EQ(stderr_output.find("failed to repair missing account-native character file"), std::string::npos);
 }
 
-TEST(DbLoader, SavingAccountNativeCharacterWithUnreadableAccountRecordDoesNotReviveLegacyPlayerFile) {
+TEST(DbLoader, SavingAccountNativeCharacterWithUnreadableAccountRecordDoesNotReviveLegacyPlayerFile)
+{
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableEntry player_table_entry("aragorn");
@@ -1453,7 +1551,8 @@ TEST(DbLoader, SavingAccountNativeCharacterWithUnreadableAccountRecordDoesNotRev
     EXPECT_NE(stderr_output.find("refusing legacy fallback for account-native character"), std::string::npos);
 }
 
-TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacter) {
+TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacter)
+{
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ASSERT_EQ(mkdir("plrobjs", 0700), 0);
@@ -1503,7 +1602,8 @@ TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacte
     clear_account_backed_object_bytes_for_character(&staged_character);
 }
 
-TEST(DbLoader, MigratedLegacyObjectPayloadMatchesAccountNativeObjectsJson) {
+TEST(DbLoader, MigratedLegacyObjectPayloadMatchesAccountNativeObjectsJson)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -1557,7 +1657,8 @@ TEST(DbLoader, MigratedLegacyObjectPayloadMatchesAccountNativeObjectsJson) {
     expect_object_save_data_equal(expected_object_data, migrated_object_data);
 }
 
-TEST(DbLoader, ReturnsEmptyObjectSaveBytesWhenNoRuntimeOrSnapshotExists) {
+TEST(DbLoader, ReturnsEmptyObjectSaveBytesWhenNoRuntimeOrSnapshotExists)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
@@ -1572,7 +1673,8 @@ TEST(DbLoader, ReturnsEmptyObjectSaveBytesWhenNoRuntimeOrSnapshotExists) {
     EXPECT_TRUE(object_bytes.empty());
 }
 
-TEST(DbLoader, SeedsLegacyExploitFileFromAccountSnapshotWhenAppendingNewRecord) {
+TEST(DbLoader, SeedsLegacyExploitFileFromAccountSnapshotWhenAppendingNewRecord)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -1609,7 +1711,8 @@ TEST(DbLoader, SeedsLegacyExploitFileFromAccountSnapshotWhenAppendingNewRecord) 
     EXPECT_STREQ(records[1].chtime, existing_record.chtime);
 }
 
-TEST(DbLoader, WritesExploitRecordsIntoAccountNativeJsonForLinkedCharacters) {
+TEST(DbLoader, WritesExploitRecordsIntoAccountNativeJsonForLinkedCharacters)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
@@ -1636,7 +1739,8 @@ TEST(DbLoader, WritesExploitRecordsIntoAccountNativeJsonForLinkedCharacters) {
     EXPECT_NE(access(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0);
 }
 
-TEST(DbLoader, FallsBackToAccountSnapshotWhenRuntimeExploitFileIsMalformed) {
+TEST(DbLoader, FallsBackToAccountSnapshotWhenRuntimeExploitFileIsMalformed)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -1668,7 +1772,8 @@ TEST(DbLoader, FallsBackToAccountSnapshotWhenRuntimeExploitFileIsMalformed) {
     EXPECT_NE(access(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0);
 }
 
-TEST(DbLoader, FailsClosedWhenTemporaryExploitPathAlreadyExists) {
+TEST(DbLoader, FailsClosedWhenTemporaryExploitPathAlreadyExists)
+{
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);

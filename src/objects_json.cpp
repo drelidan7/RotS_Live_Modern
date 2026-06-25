@@ -297,10 +297,12 @@ namespace {
         output << indent << "}";
     }
 
-} // namespace
-
-bool object_save_data_from_binary(const std::string& bytes, ObjectSaveData* data, std::string* error_message)
+bool object_save_data_from_binary_impl(
+    const std::string& bytes, ObjectSaveData* data, bool allow_missing_follower_section, bool* accepted_missing_follower_section, std::string* error_message)
 {
+    if (accepted_missing_follower_section != nullptr)
+        *accepted_missing_follower_section = false;
+
     if (data == nullptr) {
         set_error(error_message, "Objects data output parameter must not be null.");
         return false;
@@ -388,10 +390,17 @@ bool object_save_data_from_binary(const std::string& bytes, ObjectSaveData* data
         parsed_data.aliases.push_back(std::move(alias));
     }
 
+    bool saw_follower_section = false;
     while (true) {
         follower_file_elem raw_follower {};
+        if (offset == bytes.size() && allow_missing_follower_section && !saw_follower_section) {
+            if (accepted_missing_follower_section != nullptr)
+                *accepted_missing_follower_section = true;
+            break;
+        }
         if (!read_pod(bytes, &offset, &raw_follower, error_message, "follower record"))
             return false;
+        saw_follower_section = true;
 
         if (raw_follower.fol_vnum == SENTINEL_ITEM_ID_VALUE)
             break;
@@ -446,6 +455,19 @@ bool object_save_data_from_binary(const std::string& bytes, ObjectSaveData* data
     *data = std::move(parsed_data);
     set_error(error_message, "");
     return true;
+}
+
+} // namespace
+
+bool object_save_data_from_binary(const std::string& bytes, ObjectSaveData* data, std::string* error_message)
+{
+    return object_save_data_from_binary_impl(bytes, data, false, nullptr, error_message);
+}
+
+bool legacy_object_save_data_from_binary(
+    const std::string& bytes, ObjectSaveData* data, bool* accepted_missing_follower_section, std::string* error_message)
+{
+    return object_save_data_from_binary_impl(bytes, data, true, accepted_missing_follower_section, error_message);
 }
 
 bool object_save_data_to_binary(const ObjectSaveData& data, std::string* bytes, std::string* error_message)

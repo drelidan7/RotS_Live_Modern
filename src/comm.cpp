@@ -360,6 +360,8 @@ bool is_secret_input_state(int connection_state)
     case CON_ACCTRESETCNF:
     case CON_ACCTLEGPWD:
     case CON_ACCTVERIFY:
+    case CON_DELCNF1:
+    case CON_ACCTDELCNF1:
         return true;
     default:
         return false;
@@ -510,7 +512,7 @@ void clean_expose_elements()
 
                 bool found_target = false;
                 for (char_data* person = current_room.people; person;
-                     person = person->next_in_room) {
+                    person = person->next_in_room) {
                     if (person == spec_data->exposed_target) {
                         found_target = true;
                         break;
@@ -1758,13 +1760,15 @@ int process_input(struct descriptor_data* t)
             /* they entered a command, no? so we update their last_input_time */
             t->last_input_time = time(0);
 
+            const bool secret_input = is_secret_input_state(t->connected);
+
             /* if they input !, then we repeat the last input */
-            if (*tmp == '!')
+            if (!secret_input && *tmp == '!')
                 strcpy(tmp, t->last_input);
-            else if (*tmp == '^') {
+            else if (!secret_input && *tmp == '^') {
                 if (!(failed_subst = perform_subst(t, t->last_input, tmp)))
                     strcpy(t->last_input, tmp);
-            } else if (*tmp > ' ')
+            } else if (!secret_input && *tmp > ' ')
                 strcpy(t->last_input, tmp);
 
             // COMMAND LOG
@@ -1783,7 +1787,7 @@ int process_input(struct descriptor_data* t)
             if (!failed_subst)
                 write_to_q(tmp, &t->input);
 
-            if (t->snoop.snoop_by && !is_secret_input_state(t->connected)) {
+            if (t->snoop.snoop_by && !secret_input) {
                 SEND_TO_Q("% ", t->snoop.snoop_by->desc);
                 SEND_TO_Q(tmp, t->snoop.snoop_by->desc);
                 SEND_TO_Q("\n\r", t->snoop.snoop_by->desc);
@@ -1975,7 +1979,7 @@ void send_to_char(const char* message, int character_id)
 {
     if (message && message[0] != 0) {
         for (descriptor_data* connection = descriptor_list; connection;
-             connection = connection->next) {
+            connection = connection->next) {
             char_data* character = connection->character;
             if (character && character->abs_number == character_id && connection->connected == CON_PLYNG) {
                 SEND_TO_Q(message, connection);

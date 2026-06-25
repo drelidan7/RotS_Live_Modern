@@ -1,6 +1,66 @@
 # Work In Progress
 
 ## Current Status
+- Active slice complete: legacy account-link object conversion accepts older save files without follower sections.
+- Completed in this slice:
+  - `maga` legacy linking reaches object migration and fails with `Truncated objects data while reading follower record.`
+  - local inspection shows `lib/plrobjs/K-O/maga.obj` has a valid rent header, object section, board points, and aliases, then ends immediately after the alias terminator with no follower section
+  - kept `objects_json::object_save_data_from_binary(...)` strict by default so current object-save writes still reject missing follower sentinels
+  - added an explicit legacy object parser entry point for migration that accepts EOF immediately after the alias terminator as an older no-follower save shape
+  - logged when migration takes that compatibility path, including the account and character being migrated
+  - added parser coverage proving strict parsing rejects the old shape, legacy parsing accepts it, and partial follower sentinels still fail
+  - added migration coverage proving old no-follower object saves become account-owned `objects.json`, while partial follower data fails closed, preserves legacy files, and cleans up account-native outputs
+  - reviewed with `Magus`, `Vincent`, and `Bazarat`; addressed Vincent's scoped-parser and migration-negative-coverage findings plus Bazarat's follow-up tests for missing final follower sentinels, account-native write strictness, and legacy exploit preservation
+- Validation for this slice:
+  - `cmake --build build --target ageland_tests -j16` passed
+  - `./bin/tests '--gtest_filter=ObjectsJson.*'` passed at `14` tests
+  - `./bin/tests '--gtest_filter=AccountManagement.*Object*:AccountManagement.Migration*'` passed at `19` tests
+  - `git diff --check` passed
+  - `make test` passed unsandboxed at `483/483` tests
+  - `make smoke-account` passed the full proxy-backed account lifecycle, including legacy link and account-backed legacy play
+- Residual note:
+  - accepting EOF at the exact pre-follower boundary can still be indistinguishable from a modern save truncated at that same boundary, so the compatibility behavior is migration-only and logged instead of being enabled for ordinary object-save parsing
+- Active slice complete: removed the remaining legacy-shaped live-index dependency for new account-created characters.
+- Completed in this slice:
+  - updated account-backed character birth so the live `player_table` entry points at the authoritative account-owned `character.json` path immediately after link success
+  - updated account-backed selection and linked-character saves to refresh the live player index with the account-native character path
+  - tightened account-born character introduction coverage so it runs without `players/`, `plrobjs/`, or `exploits/` directories, asserts same-process `load_char()` reads account-native JSON, checks account link metadata, and decodes default account-owned object/exploit assets
+  - added rollback coverage for the later failure case where account-native assets are written but account linking fails because another account already owns the character
+  - addressed review feedback by making the account-native player-index path update a declared `db.h` API, rejecting overlong account-native paths instead of truncating `player_table[].ch_file`, and covering birth/selection fail-closed behavior for long account email storage paths
+  - closed the remaining boot-time truncation path by routing account-native index population through the checked API, added startup fail-closed coverage, covered linked `save_char()` refreshing a stale live index to the account-native path, and strengthened rollback/selection tests to prove existing account-owned assets survive
+- Validation for this slice:
+  - `clang-format -i -style=WebKit src/comm.cpp src/db.cpp src/db.h src/interpre.cpp src/tests/interpre_account_menu_tests.cpp` passed
+  - `git diff --check` passed
+  - `cmake --build build --target ageland_tests -j16` passed
+  - `./bin/tests '--gtest_filter=InterpreAccountMenu.*'` passed at `55` tests
+  - `./bin/tests '--gtest_filter=DbLoader.*:InterpreAccountMenu.*'` passed at `91` tests
+  - `make test` passed unsandboxed at `478/478` tests
+  - `make smoke-account` passed the full proxy-backed account lifecycle smoke flow
+- Active slice complete: extended descriptor-state unit coverage for stale staged password rejection paths and legacy-link migration failure cleanup.
+- Completed in this slice:
+  - added blank and weak-password account creation tests that clear stale staged `account_password` while staying in `CON_ACCTNEWPWD`
+  - added blank and weak-password reset tests that clear stale staged `account_password` while staying in `CON_ACCTRESETNEW` and preserve the stored password hash
+  - added a correct-password malformed-object legacy-link migration failure test that clears `account_character_name` without creating a link or account-native character assets
+  - ran the repo formatter after refreshing CMake so the `format` target detected installed `clang-format`, then scoped formatter churn back to the touched files
+- Validation for this slice:
+  - `make format` passed after regenerating the CMake build tree
+  - `clang-format -i -style=WebKit src/comm.cpp src/interpre.cpp src/tests/interpre_account_menu_tests.cpp` passed
+  - `git diff --check` passed
+  - `cmake --build build --target ageland_tests -j16` passed
+  - `./bin/tests '--gtest_filter=InterpreAccountMenu.*'` passed at `52` tests
+  - `make test` passed unsandboxed at `473/473` tests
+  - `make smoke-account` passed the full proxy-backed account lifecycle smoke flow
+- Active slice complete: added focused descriptor-state unit coverage for account login, verification, account creation, reset, legacy-link cancellation, and delete secret-input behavior.
+- Completed in this slice:
+  - pinned pending-verification login, verification cancel, invalid-code threshold, account creation mismatch/success, reset cancel/success, and legacy-link cancel/wrong-password descriptor transitions
+  - fixed stale transient descriptor state discovered by those tests (`account_password`, `account_character_name`, and verification `bad_pws`)
+  - added regressions around account-backed and legacy delete password input being treated as secret descriptor input, hidden from snoopers, and excluded from `last_input` replay
+- Validation for this slice:
+  - `cmake --build build --target ageland_tests -j16` passed
+  - `./bin/tests '--gtest_filter=InterpreAccountMenu.*'` passed at `47` tests
+  - `git diff --check` passed
+  - sandboxed `make test` hit local socket `Operation not permitted` failures in `AcceptPathTest`; rerun unsandboxed passed at `468/468` tests
+  - `make smoke-account` passed the full proxy-backed account lifecycle smoke flow
 - Active slice complete; expanded smoke e2e coverage and repeated validation are green.
 - Active slice: expanding proxy-backed e2e coverage beyond the current account lifecycle smoke.
 - Planned e2e additions:

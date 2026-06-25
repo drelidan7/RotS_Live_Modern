@@ -27,8 +27,8 @@
 
 #include "account_management.h"
 #include "big_brother.h"
-#include "character_json.h"
 #include "char_utils.h"
+#include "character_json.h"
 #include "exploits_json.h"
 #include "skill_timer.h"
 #include <iostream>
@@ -602,14 +602,16 @@ void populate_player_index_entry_from_store(const char_file_u& stored_character,
     if (find_player_table_index_by_name(stored_character.name) >= 0)
         fail_duplicate_player_index_entry(stored_character.name, "legacy player index", character_path.c_str());
 
-    create_entry(const_cast<char*>(stored_character.name));
-    player_table[top_of_p_table].level = stored_character.level;
-    player_table[top_of_p_table].race = stored_character.race;
-    player_table[top_of_p_table].idnum = stored_character.specials2.idnum;
-    player_table[top_of_p_table].log_time = stored_character.last_logon;
-    player_table[top_of_p_table].flags = stored_character.specials2.act;
-    std::snprintf(player_table[top_of_p_table].ch_file, sizeof(player_table[top_of_p_table].ch_file), "%s", character_path.c_str());
-    top_idnum = MAX(top_idnum, player_table[top_of_p_table].idnum);
+    char_file_u indexed_character = stored_character;
+    std::string error_message;
+    if (!update_player_index_entry_from_store(&indexed_character, character_path.c_str(), &error_message)) {
+        sprintf(buf, "Failed to add account-native character %s to the player index: %s",
+            stored_character.name, error_message.c_str());
+        log(buf);
+        exit(1);
+    }
+
+    top_idnum = MAX(top_idnum, indexed_character.specials2.idnum);
 }
 
 void build_account_native_player_index(void)
@@ -2101,7 +2103,7 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
         /* clear line, then read off a line */
         memset(line, 0, 99);
         for (tmpchar = position, tmp1 = 0; tmpchar < input_end && (*tmpchar != '\n') && (*tmpchar != '\r') && (*tmpchar != '\0');
-             tmpchar++, tmp1++) {
+            tmpchar++, tmp1++) {
             if (tmp1 >= static_cast<int>(sizeof(line) - 1)) {
                 sprintf(buf, "load_player_from_text: malformed player data for %s (line too long)", name);
                 log(buf);
@@ -2623,7 +2625,7 @@ int create_entry(char* name)
     (player_table + top_of_p_table)->rank = PKILL_UNRANKED;
     (player_table + top_of_p_table)->totalrank = PKILL_UNRANKED;
     for (i = 0; (*(player_table[top_of_p_table].name + i) = LOWER(*(name + i)));
-         i++)
+        i++)
         ;
     return (top_of_p_table);
 }
@@ -2645,12 +2647,38 @@ int ensure_player_index_entry(const char* name)
 
 void update_player_index_entry_from_store(struct char_file_u* stored_character)
 {
-    if (stored_character == nullptr || stored_character->name[0] == '\0')
-        return;
+    update_player_index_entry_from_store(stored_character, nullptr, nullptr);
+}
+
+bool update_player_index_entry_from_store(
+    struct char_file_u* stored_character, const char* character_path, std::string* error_message)
+{
+    if (stored_character == nullptr || stored_character->name[0] == '\0') {
+        if (error_message != nullptr)
+            *error_message = "Cannot update player index for an empty stored character.";
+        return false;
+    }
+
+    if (character_path != nullptr && *character_path != '\0') {
+        const size_t path_length = strlen(character_path);
+        const size_t path_capacity = sizeof(player_table[0].ch_file);
+        if (path_length >= path_capacity) {
+            if (error_message != nullptr)
+                *error_message = "Account character storage path is too long for the live player index.";
+            sprintf(buf,
+                "update_player_index_entry_from_store: account-native path for %s is %zu bytes; player index limit is %zu",
+                stored_character->name, path_length, path_capacity - 1);
+            log(buf);
+            return false;
+        }
+    }
 
     const int player_index = ensure_player_index_entry(stored_character->name);
-    if (player_index < 0)
-        return;
+    if (player_index < 0) {
+        if (error_message != nullptr)
+            *error_message = "Could not create a live player index entry.";
+        return false;
+    }
 
     stored_character->player_index = player_index;
     player_table[player_index].level = stored_character->level;
@@ -2658,6 +2686,11 @@ void update_player_index_entry_from_store(struct char_file_u* stored_character)
     player_table[player_index].idnum = stored_character->specials2.idnum;
     player_table[player_index].log_time = stored_character->last_logon;
     player_table[player_index].flags = stored_character->specials2.act;
+    if (character_path != nullptr && *character_path != '\0')
+        std::snprintf(player_table[player_index].ch_file, sizeof(player_table[player_index].ch_file), "%s", character_path);
+    if (error_message != nullptr)
+        error_message->clear();
+    return true;
 }
 
 /* create a new entry in the in-memory index table for the player file */
@@ -3001,6 +3034,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
     const bool account_native_player_entry = has_suffix((player_table + tmp)->ch_file, ".character.json");
     const bool linked_character = account::find_linked_character_owner_account(".", GET_NAME(ch), &owner_account_name, &account_error) && !owner_account_name.empty();
     if (linked_character) {
+        bool wrote_account_character_file = false;
         std::string character_file_error;
         const bool has_account_character_file = account::account_character_file_exists(".", owner_account_name, GET_NAME(ch), &character_file_error);
         if (has_account_character_file) {
@@ -3009,7 +3043,8 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
                 sprintf(buf, "save_char: failed to write account-native character file for %s: %s",
                     GET_NAME(ch), write_error.c_str());
                 log(buf);
-            }
+            } else
+                wrote_account_character_file = true;
         } else if (!character_file_error.empty()) {
             sprintf(buf, "save_char: failed to inspect account-native character file for %s: %s",
                 GET_NAME(ch), character_file_error.c_str());
@@ -3019,6 +3054,16 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
             if (!account::write_account_character_file(".", owner_account_name, chd, &write_error)) {
                 sprintf(buf, "save_char: failed to repair missing account-native character file for %s: %s",
                     GET_NAME(ch), write_error.c_str());
+                log(buf);
+            } else
+                wrote_account_character_file = true;
+        }
+        if (wrote_account_character_file) {
+            const std::string account_character_path = account::account_character_player_path(".", owner_account_name, GET_NAME(ch));
+            std::string player_index_error;
+            if (!update_player_index_entry_from_store(&chd, account_character_path.c_str(), &player_index_error)) {
+                sprintf(buf, "save_char: failed to refresh account-native player index for %s: %s",
+                    GET_NAME(ch), player_index_error.c_str());
                 log(buf);
             }
         }
@@ -3073,7 +3118,7 @@ char* fread_string(FILE* fl, char* error)
             strcat(buf, tmppoint);
 
         for (point = buf + strlen(buf) - 2; point >= buf && isspace(*point);
-             point--)
+            point--)
             continue;
         if ((flag = (*point == '~')))
             *point = 0;
@@ -3635,7 +3680,7 @@ void record_crime(char_data* criminal, char_data* victim, int crime,
     if (IS_NPC(victim) || (GET_LEVEL(victim) >= LEVEL_IMMORT) || (IS_NPC(criminal)))
         return;
     for (tmpchar = world[victim->in_room].people; tmpchar;
-         tmpchar = tmpchar->next_in_room) {
+        tmpchar = tmpchar->next_in_room) {
         if ((tmpchar == criminal) || (IS_NPC(tmpchar)) || (GET_LEVEL(tmpchar) >= LEVEL_IMMORT))
             continue;
         add_crime(criminal->specials2.idnum, victim->specials2.idnum,

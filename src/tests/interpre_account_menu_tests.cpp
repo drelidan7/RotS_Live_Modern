@@ -3,6 +3,7 @@
 #include "../handler.h"
 #include "../interpre.h"
 #include "../limits.h"
+#include "../objects_json.h"
 #include "../profs.h"
 #include "../spells.h"
 #include "../structs.h"
@@ -11,18 +12,22 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <fcntl.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fcntl.h>
 #include <limits.h>
 #include <string>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
 
 extern struct player_index_element* player_table;
 extern struct char_data* character_list;
 extern struct room_data world;
+extern FILE* fpCommand;
+extern int iCommands;
 extern int r_mortal_start_room[];
 extern int top_of_p_table;
 extern int top_of_world;
@@ -33,6 +38,8 @@ int register_pc_char(struct char_data* ch);
 void introduce_char(struct descriptor_data* d);
 int create_entry(char* name);
 void save_player(struct char_data* ch, int load_room, int index_pos);
+int process_input(struct descriptor_data* t);
+int get_from_q(struct txt_q* queue, char* dest);
 
 namespace {
 
@@ -208,6 +215,59 @@ private:
     char* m_previous_motd;
 };
 
+class ScopedCommandLog {
+public:
+    explicit ScopedCommandLog(const std::string& path)
+        : m_previous_command_file(fpCommand)
+        , m_previous_command_count(iCommands)
+    {
+        fpCommand = std::fopen(path.c_str(), "w");
+        EXPECT_NE(fpCommand, nullptr);
+        iCommands = 0;
+    }
+
+    ~ScopedCommandLog()
+    {
+        if (fpCommand != nullptr && fpCommand != m_previous_command_file)
+            std::fclose(fpCommand);
+        fpCommand = m_previous_command_file;
+        iCommands = m_previous_command_count;
+    }
+
+private:
+    FILE* m_previous_command_file;
+    int m_previous_command_count;
+};
+
+class ScopedEnvironmentVariable {
+public:
+    ScopedEnvironmentVariable(const char* name, const std::string& value)
+        : m_name(name)
+    {
+        const char* original_value = std::getenv(name);
+        if (original_value != nullptr) {
+            m_had_original_value = true;
+            m_original_value = original_value;
+        }
+
+        if (setenv(name, value.c_str(), 1) != 0)
+            ADD_FAILURE() << "Expected test helper to set environment variable " << name << ".";
+    }
+
+    ~ScopedEnvironmentVariable()
+    {
+        if (m_had_original_value)
+            setenv(m_name.c_str(), m_original_value.c_str(), 1);
+        else
+            unsetenv(m_name.c_str());
+    }
+
+private:
+    std::string m_name;
+    std::string m_original_value;
+    bool m_had_original_value = false;
+};
+
 std::string write_valid_legacy_player_file(const std::string& root_directory, const char_file_u& stored_character)
 {
     ScopedWorkingDirectory working_directory(root_directory);
@@ -246,6 +306,14 @@ std::string write_valid_legacy_player_file(const std::string& root_directory, co
     return generated_path;
 }
 
+void write_text_file(const std::string& path, const std::string& contents)
+{
+    FILE* file = std::fopen(path.c_str(), "wb");
+    ASSERT_NE(file, nullptr) << "Expected to open " << path << " for writing.";
+    ASSERT_EQ(std::fwrite(contents.data(), sizeof(char), contents.size(), file), contents.size());
+    std::fclose(file);
+}
+
 size_t count_occurrences(const std::string& haystack, const std::string& needle)
 {
     if (needle.empty())
@@ -264,8 +332,8 @@ size_t count_affects(const char_data* character)
 {
     size_t count = 0;
     for (const affected_type* affect = character != nullptr ? character->affected : nullptr;
-         affect != nullptr && count < MAX_AFFECT + 1;
-         affect = affect->next) {
+        affect != nullptr && count < MAX_AFFECT + 1;
+        affect = affect->next) {
         ++count;
     }
 
@@ -294,6 +362,101 @@ descriptor_data make_descriptor()
     descriptor.connected = CON_ACCTMENU;
     std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
     return descriptor;
+}
+
+struct SnoopProbeResult {
+    std::string queued_input;
+    std::string snoop_output;
+    std::string last_input;
+};
+
+void reset_descriptor_output(descriptor_data* descriptor)
+{
+    descriptor->output[0] = '\0';
+    descriptor->bufptr = 0;
+    descriptor->bufspace = SMALL_BUFSIZE - 1;
+}
+
+void write_and_process_snooped_input(
+    descriptor_data* descriptor, int socket_fd, const char* input, std::string* queued_input)
+{
+    const std::string input_line = std::string(input) + "\n";
+    EXPECT_EQ(write(socket_fd, input_line.c_str(), input_line.size()),
+        static_cast<ssize_t>(input_line.size()));
+    EXPECT_EQ(process_input(descriptor), 1);
+
+    char queued[MAX_INPUT_LENGTH] = {};
+    EXPECT_TRUE(get_from_q(&descriptor->input, queued));
+    if (queued_input != nullptr)
+        *queued_input = queued;
+}
+
+SnoopProbeResult snoop_output_for_input_state(int connection_state, const char* input)
+{
+    int sockets[2] = { -1, -1 };
+    EXPECT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);
+    if (sockets[0] < 0 || sockets[1] < 0)
+        return {};
+
+    descriptor_data victim_descriptor = make_descriptor();
+    victim_descriptor.connected = connection_state;
+    victim_descriptor.descriptor = sockets[0];
+
+    descriptor_data snooper_descriptor = make_descriptor();
+    char_data snooper {};
+    snooper.desc = &snooper_descriptor;
+    victim_descriptor.snoop.snoop_by = &snooper;
+
+    std::string queued_input;
+    write_and_process_snooped_input(&victim_descriptor, sockets[1], input, &queued_input);
+
+    close(sockets[0]);
+    close(sockets[1]);
+    return { queued_input, snooper_descriptor.output, victim_descriptor.last_input };
+}
+
+struct SnoopReplayResult {
+    std::string secret_input;
+    std::string replayed_input;
+    std::string snoop_output;
+    std::string last_input;
+};
+
+SnoopReplayResult snoop_replay_after_secret_input_state(int secret_connection_state, const char* secret_input)
+{
+    int sockets[2] = { -1, -1 };
+    EXPECT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);
+    if (sockets[0] < 0 || sockets[1] < 0)
+        return {};
+
+    descriptor_data victim_descriptor = make_descriptor();
+    victim_descriptor.connected = secret_connection_state;
+    victim_descriptor.descriptor = sockets[0];
+    std::snprintf(victim_descriptor.last_input, sizeof(victim_descriptor.last_input), "%s", "look");
+
+    descriptor_data snooper_descriptor = make_descriptor();
+    char_data snooper {};
+    snooper.desc = &snooper_descriptor;
+    victim_descriptor.snoop.snoop_by = &snooper;
+
+    std::string queued_secret_input;
+    write_and_process_snooped_input(
+        &victim_descriptor, sockets[1], secret_input, &queued_secret_input);
+
+    victim_descriptor.connected = CON_DELCNF2;
+    reset_descriptor_output(&snooper_descriptor);
+
+    std::string replayed_input;
+    write_and_process_snooped_input(&victim_descriptor, sockets[1], "!", &replayed_input);
+
+    close(sockets[0]);
+    close(sockets[1]);
+    return {
+        queued_secret_input,
+        replayed_input,
+        snooper_descriptor.output,
+        victim_descriptor.last_input,
+    };
 }
 
 TEST(InterpreAccountMenu, ShowAccountCharacterListCapitalizesFirstLetterOfStoredNames)
@@ -695,6 +858,544 @@ TEST(InterpreAccountMenu, CharacterMenuPasswordOptionRoutesAccountBackedCharacte
     EXPECT_EQ(std::string(descriptor.output), "Current account password: ");
 }
 
+TEST(InterpreAccountMenu, PendingVerificationLoginResetsBadPasswordCounterAndPromptsForCode)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", "/bin/true");
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "Player@Example.COM", "ValidPass1",
+        1700010200, &stored_account, &error_message))
+        << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTPWD;
+    descriptor.bad_pws = 4;
+    std::snprintf(
+        descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(
+        descriptor.account_password, sizeof(descriptor.account_password), "%s", "stale-secret");
+
+    char password[] = "ValidPass1";
+    nanny(&descriptor, password);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTVERIFY);
+    EXPECT_EQ(descriptor.bad_pws, 0);
+    EXPECT_STREQ(descriptor.account_name, "acct");
+    EXPECT_STREQ(descriptor.account_email, "player@example.com");
+    EXPECT_STREQ(descriptor.account_password, "");
+    const std::string output = descriptor.output;
+    EXPECT_NE(output.find("pending verification"), std::string::npos) << output;
+    EXPECT_NE(output.find("Verification code"), std::string::npos) << output;
+    EXPECT_EQ(output.find("Account:"), std::string::npos) << output;
+}
+
+TEST(InterpreAccountMenu, VerificationCancelClearsTransientLoginStateAndReturnsToEmailPrompt)
+{
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTVERIFY;
+    descriptor.bad_pws = 3;
+    std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
+    std::snprintf(
+        descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(
+        descriptor.account_password, sizeof(descriptor.account_password), "%s", "stale-secret");
+    std::snprintf(descriptor.account_character_name,
+        sizeof(descriptor.account_character_name), "%s", "aragorn");
+
+    char cancel[] = "cancel";
+    nanny(&descriptor, cancel);
+
+    EXPECT_EQ(descriptor.connected, CON_NME);
+    EXPECT_STREQ(descriptor.account_name, "");
+    EXPECT_STREQ(descriptor.account_email, "");
+    EXPECT_STREQ(descriptor.account_password, "");
+    EXPECT_STREQ(descriptor.account_character_name, "");
+    EXPECT_EQ(descriptor.bad_pws, 0);
+    EXPECT_EQ(std::string(descriptor.output), "Account email: ");
+}
+
+TEST(InterpreAccountMenu, VerificationBadCodeThresholdKeepsPromptUntilFifthDescriptorFailure)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1",
+        1700010200, &stored_account, &error_message))
+        << error_message;
+    std::string verification_code;
+    ASSERT_TRUE(account::prepare_email_verification_code(
+        &stored_account, 1700010201, &verification_code, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::write_account_file(".", stored_account, &error_message)) << error_message;
+
+    descriptor_data retry_descriptor = make_descriptor();
+    retry_descriptor.connected = CON_ACCTVERIFY;
+    retry_descriptor.bad_pws = 3;
+    std::snprintf(
+        retry_descriptor.account_name, sizeof(retry_descriptor.account_name), "%s", "acct");
+    std::snprintf(retry_descriptor.account_email,
+        sizeof(retry_descriptor.account_email), "%s", "player@example.com");
+
+    char bad_code[] = "000000";
+    nanny(&retry_descriptor, bad_code);
+
+    EXPECT_EQ(retry_descriptor.connected, CON_ACCTVERIFY);
+    EXPECT_EQ(retry_descriptor.bad_pws, 4);
+    EXPECT_STREQ(retry_descriptor.account_name, "acct");
+    EXPECT_STREQ(retry_descriptor.account_email, "player@example.com");
+    EXPECT_NE(std::string(retry_descriptor.output).find("Verification code (or type RESEND/CANCEL): "),
+        std::string::npos);
+    EXPECT_EQ(std::string(retry_descriptor.output).find("Account:"), std::string::npos);
+
+    descriptor_data closing_descriptor = make_descriptor();
+    closing_descriptor.connected = CON_ACCTVERIFY;
+    closing_descriptor.bad_pws = 4;
+    std::snprintf(
+        closing_descriptor.account_name, sizeof(closing_descriptor.account_name), "%s", "acct");
+    std::snprintf(closing_descriptor.account_email,
+        sizeof(closing_descriptor.account_email), "%s", "player@example.com");
+
+    char final_bad_code[] = "000000";
+    nanny(&closing_descriptor, final_bad_code);
+
+    EXPECT_EQ(closing_descriptor.connected, CON_CLOSE);
+    EXPECT_EQ(closing_descriptor.bad_pws, 5);
+    EXPECT_STREQ(closing_descriptor.account_name, "acct");
+    EXPECT_STREQ(closing_descriptor.account_email, "player@example.com");
+    EXPECT_NE(std::string(closing_descriptor.output).find("Too many invalid verification attempts"),
+        std::string::npos);
+    EXPECT_EQ(std::string(closing_descriptor.output).find("Account:"), std::string::npos);
+}
+
+TEST(InterpreAccountMenu, AccountCreationPasswordMismatchClearsStagedPasswordAndCreatesNoAccount)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTNEWPWDCNF;
+    std::snprintf(
+        descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(
+        descriptor.account_password, sizeof(descriptor.account_password), "%s", "ValidPass1");
+
+    char confirmation[] = "DifferentPass1";
+    nanny(&descriptor, confirmation);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTNEWPWD);
+    EXPECT_STREQ(descriptor.account_email, "player@example.com");
+    EXPECT_STREQ(descriptor.account_password, "");
+    EXPECT_NE(std::string(descriptor.output).find("Passwords don't match"), std::string::npos);
+
+    account::AccountData account_data;
+    std::string error_message;
+    EXPECT_FALSE(account::read_account_file_by_email(
+        ".", "player@example.com", &account_data, &error_message));
+}
+
+TEST(InterpreAccountMenu, AccountCreationBlankPasswordClearsStaleStagedPassword)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTNEWPWD;
+    std::snprintf(
+        descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(
+        descriptor.account_password, sizeof(descriptor.account_password), "%s", "stale-secret");
+
+    char password[] = "";
+    nanny(&descriptor, password);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTNEWPWD);
+    EXPECT_STREQ(descriptor.account_email, "player@example.com");
+    EXPECT_STREQ(descriptor.account_password, "");
+    EXPECT_NE(std::string(descriptor.output).find("Illegal password."), std::string::npos);
+
+    account::AccountData account_data;
+    std::string error_message;
+    EXPECT_FALSE(account::read_account_file_by_email(
+        ".", "player@example.com", &account_data, &error_message));
+}
+
+TEST(InterpreAccountMenu, AccountCreationWeakPasswordClearsStaleStagedPassword)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTNEWPWD;
+    std::snprintf(
+        descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(
+        descriptor.account_password, sizeof(descriptor.account_password), "%s", "stale-secret");
+
+    char password[] = "lowercase1";
+    nanny(&descriptor, password);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTNEWPWD);
+    EXPECT_STREQ(descriptor.account_email, "player@example.com");
+    EXPECT_STREQ(descriptor.account_password, "");
+    EXPECT_NE(std::string(descriptor.output).find("Please enter a password: "), std::string::npos);
+
+    account::AccountData account_data;
+    std::string error_message;
+    EXPECT_FALSE(account::read_account_file_by_email(
+        ".", "player@example.com", &account_data, &error_message));
+}
+
+TEST(InterpreAccountMenu, AccountCreationSuccessClearsStagedPasswordAndPromptsForVerification)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", "/bin/true");
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTNEWPWDCNF;
+    std::snprintf(
+        descriptor.account_email, sizeof(descriptor.account_email), "%s", "Player@Example.COM");
+    std::snprintf(
+        descriptor.account_password, sizeof(descriptor.account_password), "%s", "ValidPass1");
+
+    char confirmation[] = "ValidPass1";
+    nanny(&descriptor, confirmation);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTVERIFY);
+    EXPECT_STREQ(descriptor.account_email, "player@example.com");
+    EXPECT_STREQ(descriptor.account_password, "");
+    EXPECT_NE(std::string(descriptor.output).find("Account created."), std::string::npos);
+    EXPECT_NE(std::string(descriptor.output).find("Verification code"), std::string::npos);
+
+    account::AccountData account_data;
+    std::string error_message;
+    ASSERT_TRUE(account::read_account_file_by_email(
+        ".", "player@example.com", &account_data, &error_message))
+        << error_message;
+    EXPECT_EQ(account_data.account_name, descriptor.account_name);
+    EXPECT_TRUE(account::verify_password("ValidPass1", account_data.password_hash));
+}
+
+TEST(InterpreAccountMenu, AccountResetBlankCurrentPasswordCancelsWithoutChangingPassword)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1",
+        1700010200, &stored_account, &error_message))
+        << error_message;
+    const std::string original_hash = stored_account.password_hash;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTRESETOLD;
+    std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
+    std::snprintf(
+        descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.account_password,
+        sizeof(descriptor.account_password), "%s", "stale-reset-secret");
+
+    char blank[] = "";
+    nanny(&descriptor, blank);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message))
+        << error_message;
+    EXPECT_EQ(descriptor.connected, CON_ACCTMENU);
+    EXPECT_STREQ(descriptor.account_name, "acct");
+    EXPECT_STREQ(descriptor.account_email, "player@example.com");
+    EXPECT_STREQ(descriptor.account_password, "");
+    EXPECT_EQ(reloaded_account.password_hash, original_hash);
+    EXPECT_TRUE(account::verify_password("ValidPass1", reloaded_account.password_hash));
+    EXPECT_NE(std::string(descriptor.output).find("Password reset cancelled."), std::string::npos);
+}
+
+TEST(InterpreAccountMenu, AccountResetBlankNewPasswordClearsStaleStagedPassword)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1",
+        1700010200, &stored_account, &error_message))
+        << error_message;
+    const std::string original_hash = stored_account.password_hash;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTRESETNEW;
+    std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
+    std::snprintf(
+        descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.account_password,
+        sizeof(descriptor.account_password), "%s", "stale-reset-secret");
+
+    char password[] = "";
+    nanny(&descriptor, password);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message))
+        << error_message;
+    EXPECT_EQ(descriptor.connected, CON_ACCTRESETNEW);
+    EXPECT_STREQ(descriptor.account_name, "acct");
+    EXPECT_STREQ(descriptor.account_email, "player@example.com");
+    EXPECT_STREQ(descriptor.account_password, "");
+    EXPECT_EQ(reloaded_account.password_hash, original_hash);
+    EXPECT_TRUE(account::verify_password("ValidPass1", reloaded_account.password_hash));
+    EXPECT_NE(std::string(descriptor.output).find("Illegal password."), std::string::npos);
+}
+
+TEST(InterpreAccountMenu, AccountResetWeakNewPasswordClearsStaleStagedPassword)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1",
+        1700010200, &stored_account, &error_message))
+        << error_message;
+    const std::string original_hash = stored_account.password_hash;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTRESETNEW;
+    std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
+    std::snprintf(
+        descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.account_password,
+        sizeof(descriptor.account_password), "%s", "stale-reset-secret");
+
+    char password[] = "lowercase1";
+    nanny(&descriptor, password);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message))
+        << error_message;
+    EXPECT_EQ(descriptor.connected, CON_ACCTRESETNEW);
+    EXPECT_STREQ(descriptor.account_name, "acct");
+    EXPECT_STREQ(descriptor.account_email, "player@example.com");
+    EXPECT_STREQ(descriptor.account_password, "");
+    EXPECT_EQ(reloaded_account.password_hash, original_hash);
+    EXPECT_TRUE(account::verify_password("ValidPass1", reloaded_account.password_hash));
+    EXPECT_NE(std::string(descriptor.output).find("New account password: "), std::string::npos);
+}
+
+TEST(InterpreAccountMenu, LegacyLinkBlankPasswordCancelsWithoutCreatingLink)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1",
+        1700010200, &stored_account, &error_message))
+        << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTLEGPWD;
+    std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
+    std::snprintf(
+        descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.account_character_name,
+        sizeof(descriptor.account_character_name), "%s", "aragorn");
+
+    char blank[] = "";
+    nanny(&descriptor, blank);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message))
+        << error_message;
+    EXPECT_EQ(descriptor.connected, CON_ACCTMENU);
+    EXPECT_STREQ(descriptor.account_name, "acct");
+    EXPECT_STREQ(descriptor.account_email, "player@example.com");
+    EXPECT_STREQ(descriptor.account_character_name, "");
+    EXPECT_FALSE(account::account_has_character(reloaded_account, "aragorn"));
+    EXPECT_TRUE(reloaded_account.character_links.empty());
+    EXPECT_NE(std::string(descriptor.output).find("Character linking cancelled."),
+        std::string::npos);
+}
+
+TEST(InterpreAccountMenu, LegacyLinkWrongPasswordClearsPendingCharacterWithoutCreatingLink)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedPlayerTableReset player_table_reset;
+    ASSERT_EQ(mkdir("players", 0700), 0);
+    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1",
+        1700010200, &stored_account, &error_message))
+        << error_message;
+
+    char_file_u legacy_character = make_stored_character("aragorn", 50, RACE_WOOD);
+    legacy_character.specials2.idnum = 4242;
+    legacy_character.last_logon = 1700010202;
+    const std::string legacy_player_path
+        = write_valid_legacy_player_file(temp_directory.path(), legacy_character);
+    const int legacy_player_index = create_entry(const_cast<char*>("aragorn"));
+    ASSERT_GE(legacy_player_index, 0);
+    std::snprintf(player_table[legacy_player_index].ch_file,
+        sizeof(player_table[legacy_player_index].ch_file), "%s", legacy_player_path.c_str());
+    player_table[legacy_player_index].level = legacy_character.level;
+    player_table[legacy_player_index].race = legacy_character.race;
+    player_table[legacy_player_index].idnum = legacy_character.specials2.idnum;
+    player_table[legacy_player_index].log_time = legacy_character.last_logon;
+    player_table[legacy_player_index].flags = legacy_character.specials2.act;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTLEGPWD;
+    std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
+    std::snprintf(
+        descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.account_character_name,
+        sizeof(descriptor.account_character_name), "%s", "aragorn");
+
+    char wrong_password[] = "WrongLegacy1";
+    nanny(&descriptor, wrong_password);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message))
+        << error_message;
+    EXPECT_EQ(descriptor.connected, CON_ACCTMENU);
+    EXPECT_STREQ(descriptor.account_name, "acct");
+    EXPECT_STREQ(descriptor.account_email, "player@example.com");
+    EXPECT_STREQ(descriptor.account_character_name, "");
+    EXPECT_FALSE(account::account_has_character(reloaded_account, "aragorn"));
+    EXPECT_TRUE(reloaded_account.character_links.empty());
+    EXPECT_NE(std::string(descriptor.output).find("Incorrect legacy character password."),
+        std::string::npos);
+}
+
+TEST(InterpreAccountMenu, LegacyLinkMalformedObjectMigrationFailureClearsPendingCharacterWithoutCreatingLink)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedPlayerTableReset player_table_reset;
+    ASSERT_EQ(mkdir("players", 0700), 0);
+    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
+    ASSERT_EQ(mkdir("plrobjs", 0700), 0);
+    ASSERT_EQ(mkdir("plrobjs/A-E", 0700), 0);
+
+    account::AccountData stored_account;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1",
+        1700010200, &stored_account, &error_message))
+        << error_message;
+
+    char_file_u legacy_character = make_stored_character("aragorn", 50, RACE_WOOD);
+    legacy_character.specials2.idnum = 4242;
+    legacy_character.last_logon = 1700010202;
+    const std::string legacy_player_path
+        = write_valid_legacy_player_file(temp_directory.path(), legacy_character);
+    write_text_file(account::legacy_object_file_path(".", "aragorn"), "bad");
+
+    const int legacy_player_index = create_entry(const_cast<char*>("aragorn"));
+    ASSERT_GE(legacy_player_index, 0);
+    std::snprintf(player_table[legacy_player_index].ch_file,
+        sizeof(player_table[legacy_player_index].ch_file), "%s", legacy_player_path.c_str());
+    player_table[legacy_player_index].level = legacy_character.level;
+    player_table[legacy_player_index].race = legacy_character.race;
+    player_table[legacy_player_index].idnum = legacy_character.specials2.idnum;
+    player_table[legacy_player_index].log_time = legacy_character.last_logon;
+    player_table[legacy_player_index].flags = legacy_character.specials2.act;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTLEGPWD;
+    std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
+    std::snprintf(
+        descriptor.account_email, sizeof(descriptor.account_email), "%s", "player@example.com");
+    std::snprintf(descriptor.account_character_name,
+        sizeof(descriptor.account_character_name), "%s", "aragorn");
+
+    char password[] = "LegacyPw1";
+    nanny(&descriptor, password);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message))
+        << error_message;
+    EXPECT_EQ(descriptor.connected, CON_ACCTMENU);
+    EXPECT_STREQ(descriptor.account_name, "acct");
+    EXPECT_STREQ(descriptor.account_email, "player@example.com");
+    EXPECT_STREQ(descriptor.account_character_name, "");
+    EXPECT_FALSE(account::account_has_character(reloaded_account, "aragorn"));
+    EXPECT_TRUE(reloaded_account.characters.empty());
+    EXPECT_TRUE(reloaded_account.character_links.empty());
+    EXPECT_NE(std::string(descriptor.output).find("Truncated objects data"), std::string::npos);
+
+    struct stat file_info {};
+    EXPECT_EQ(stat(legacy_player_path.c_str(), &file_info), 0);
+    EXPECT_EQ(stat(account::legacy_object_file_path(".", "aragorn").c_str(), &file_info), 0);
+    EXPECT_NE(stat(account::account_character_player_path(".", "acct", "aragorn").c_str(), &file_info), 0);
+    EXPECT_NE(stat(account::account_character_object_path(".", "acct", "aragorn").c_str(), &file_info), 0);
+    EXPECT_NE(stat(account::account_character_exploits_path(".", "acct", "aragorn").c_str(), &file_info), 0);
+}
+
+TEST(InterpreAccountMenu, DeletePasswordInputIsHiddenFromSnoopers)
+{
+    TemporaryDirectory temp_directory;
+    ScopedCommandLog command_log(temp_directory.path() + "/last_cmds");
+
+    const SnoopProbeResult visible_result
+        = snoop_output_for_input_state(CON_ACCTMENU, "visible-input");
+    EXPECT_EQ(visible_result.queued_input, "visible-input");
+    EXPECT_NE(visible_result.snoop_output.find("% visible-input\n\r"), std::string::npos)
+        << visible_result.snoop_output;
+
+    const SnoopProbeResult secret_result
+        = snoop_output_for_input_state(CON_ACCTDELCNF1, "DeletePass1");
+    EXPECT_EQ(secret_result.queued_input, "DeletePass1");
+    EXPECT_EQ(secret_result.last_input, "");
+    EXPECT_EQ(secret_result.snoop_output.find("DeletePass1"), std::string::npos)
+        << secret_result.snoop_output;
+    EXPECT_EQ(secret_result.snoop_output.find("% "), std::string::npos)
+        << secret_result.snoop_output;
+
+    const SnoopProbeResult legacy_secret_result
+        = snoop_output_for_input_state(CON_DELCNF1, "LegacyPass1");
+    EXPECT_EQ(legacy_secret_result.queued_input, "LegacyPass1");
+    EXPECT_EQ(legacy_secret_result.last_input, "");
+    EXPECT_EQ(legacy_secret_result.snoop_output.find("LegacyPass1"), std::string::npos)
+        << legacy_secret_result.snoop_output;
+    EXPECT_EQ(legacy_secret_result.snoop_output.find("% "), std::string::npos)
+        << legacy_secret_result.snoop_output;
+
+    const SnoopReplayResult replay_result
+        = snoop_replay_after_secret_input_state(CON_ACCTDELCNF1, "DeletePass1");
+    EXPECT_EQ(replay_result.secret_input, "DeletePass1");
+    EXPECT_EQ(replay_result.replayed_input, "look");
+    EXPECT_EQ(replay_result.last_input, "look");
+    EXPECT_EQ(replay_result.snoop_output.find("DeletePass1"), std::string::npos)
+        << replay_result.snoop_output;
+    EXPECT_NE(replay_result.snoop_output.find("% look\n\r"), std::string::npos)
+        << replay_result.snoop_output;
+}
+
 TEST(InterpreAccountMenu, SuccessfulAccountLoginLogsEmailAndHost)
 {
     TemporaryDirectory temp_directory;
@@ -907,6 +1608,7 @@ TEST(InterpreAccountMenu, AccountPasswordResetLogsEmailAndHost)
     ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message)) << error_message;
 
     EXPECT_EQ(descriptor.connected, CON_ACCTMENU);
+    EXPECT_STREQ(descriptor.account_password, "");
     EXPECT_TRUE(account::verify_password("ChangedPass2", reloaded_account.password_hash));
     EXPECT_NE(stderr_output.find("Account password reset for player@example.com [127.0.0.1]"), std::string::npos) << stderr_output;
     EXPECT_EQ(stderr_output.find("ChangedPass2"), std::string::npos) << stderr_output;
@@ -1723,6 +2425,9 @@ TEST(InterpreAccountMenu, AccountBackedNewCharactersAreBornWithStartRoomAndNaked
     character->specials2.load_room = NOWHERE;
     character->specials2.rawPerception = 0;
     character->specials2.perception = 0;
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_QSEX;
+    character->desc = &descriptor;
 
     finalize_new_character_start_state(character);
 
@@ -1743,11 +2448,9 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
 
     ASSERT_EQ(mkdir("accounts", 0700), 0);
     ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("players", 0700), 0);
-    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs/A-E", 0700), 0);
     ensure_test_world_room(1200);
+    create_entry(const_cast<char*>("existingplayer"));
+    create_entry(const_cast<char*>("secondplayer"));
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -1776,9 +2479,32 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
     }
 
     struct stat file_info {};
+    EXPECT_NE(stat("players", &file_info), 0)
+        << "Account-born characters should not require a legacy players directory.";
+    EXPECT_NE(stat("plrobjs", &file_info), 0)
+        << "Account-born characters should not require a legacy object-save directory.";
+    EXPECT_NE(stat("exploits", &file_info), 0)
+        << "Account-born characters should not require a legacy exploit-history directory.";
     EXPECT_NE(stat(account::legacy_player_file_path(".", "aragorn").c_str(), &file_info), 0);
     EXPECT_NE(stat(account::legacy_object_file_path(".", "aragorn").c_str(), &file_info), 0);
     EXPECT_NE(stat(account::legacy_exploits_file_path(".", "aragorn").c_str(), &file_info), 0);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message)) << error_message;
+    ASSERT_EQ(reloaded_account.characters.size(), 1u);
+    EXPECT_EQ(reloaded_account.characters[0], "aragorn");
+    ASSERT_EQ(reloaded_account.character_links.size(), 1u);
+    EXPECT_EQ(reloaded_account.character_links[0].character_name, "aragorn");
+    EXPECT_EQ(reloaded_account.character_links[0].character_path, "aragorn.character.json");
+    EXPECT_EQ(reloaded_account.character_links[0].object_path, "aragorn.objects.json");
+    EXPECT_EQ(reloaded_account.character_links[0].exploits_path, "aragorn.exploits.json");
+
+    const std::string account_character_path = account::account_character_player_path(".", "acct", "aragorn");
+    ASSERT_GE(descriptor.pos, 0);
+    EXPECT_STREQ(player_table[descriptor.pos].name, "aragorn");
+    EXPECT_STREQ(player_table[descriptor.pos].ch_file, account_character_path.c_str());
+    EXPECT_EQ(stat(player_table[descriptor.pos].ch_file, &file_info), 0)
+        << "Account-born characters should enter the live player index through their account-native character.json.";
 
     char_file_u stored_character {};
     ASSERT_TRUE(account::read_account_character_file(".", "acct", "aragorn", &stored_character, &error_message)) << error_message;
@@ -1786,13 +2512,36 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
     EXPECT_EQ(stored_character.specials2.rawPerception, descriptor.character->specials2.rawPerception);
     EXPECT_EQ(stored_character.specials2.perception, descriptor.character->specials2.perception);
 
+    char load_name[] = "aragorn";
+    char_file_u loaded_by_name {};
+    ASSERT_GE(load_char(load_name, &loaded_by_name), 0)
+        << "Same-process name loads for account-born characters should use account-native character.json, not a legacy birth file.";
+    EXPECT_STREQ(loaded_by_name.name, "aragorn");
+    EXPECT_EQ(loaded_by_name.specials2.idnum, stored_character.specials2.idnum);
+
     std::string object_bytes;
     ASSERT_TRUE(load_object_save_bytes_for_character(".", "aragorn", &object_bytes, &error_message)) << error_message;
     EXPECT_FALSE(object_bytes.empty());
+    std::string account_object_bytes;
+    ASSERT_TRUE(account::read_account_object_file(".", "acct", "aragorn", &account_object_bytes, &error_message)) << error_message;
+    objects_json::ObjectSaveData account_object_data;
+    ASSERT_TRUE(objects_json::object_save_data_from_binary(account_object_bytes, &account_object_data, &error_message)) << error_message;
+    EXPECT_EQ(account_object_data.rent.rentcode, RENT_CRASH);
+    EXPECT_TRUE(account_object_data.objects.empty());
+    EXPECT_TRUE(account_object_data.aliases.empty());
+    EXPECT_TRUE(account_object_data.followers.empty());
+
+    std::vector<exploit_record> exploit_records;
+    ASSERT_TRUE(account::read_account_exploit_file(".", "acct", "aragorn", &exploit_records, &error_message)) << error_message;
+    ASSERT_EQ(exploit_records.size(), 1u);
+    EXPECT_EQ(exploit_records[0].type, EXPLOIT_BIRTH);
 
     char_data* loaded_character = new char_data {};
     clear_char(loaded_character, MOB_VOID);
     store_to_char(&stored_character, loaded_character);
+    descriptor_data loaded_descriptor = make_descriptor();
+    std::snprintf(loaded_descriptor.account_name, sizeof(loaded_descriptor.account_name), "%s", "acct");
+    loaded_character->desc = &loaded_descriptor;
 
     FILE* fp = nullptr;
     stage_account_backed_object_bytes_for_character(loaded_character, object_bytes.data(), object_bytes.size());
@@ -1803,10 +2552,145 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
     EXPECT_EQ(world[loaded_character->specials2.load_room].number, 1200);
     EXPECT_EQ(loaded_character->specials2.rawPerception, get_naked_perception(loaded_character));
     EXPECT_EQ(loaded_character->specials2.perception, get_naked_perception(loaded_character));
+    EXPECT_NE(stat("players", &file_info), 0);
+    EXPECT_NE(stat("plrobjs", &file_info), 0);
+    EXPECT_NE(stat("exploits", &file_info), 0);
 
     free_char(descriptor.character);
     descriptor.character = nullptr;
     free_char(loaded_character);
+}
+
+TEST(InterpreAccountMenu, IntroduceCharRejectsTooLongAccountNativeIndexPathWithoutTruncation)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedPlayerTableReset player_table_reset;
+    ScopedStartRoomOverride start_room_override(RACE_HUMAN, 0);
+
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ensure_test_world_room(1200);
+    create_entry(const_cast<char*>("existingplayer"));
+    create_entry(const_cast<char*>("secondplayer"));
+    static char test_motd[] = "Test MOTD\r\n";
+    ScopedMotdOverride motd_override(test_motd);
+
+    const char* account_name = "abcdefghijklmnopqrst";
+    const char* long_email = "abcdefghijklmnopqrst123456789012345678901234567890@example.com";
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", account_name, long_email, "ValidPass1", 1700010200, nullptr, &error_message)) << error_message;
+    const std::string account_character_path = account::account_character_player_path(".", account_name, "aragorn");
+    ASSERT_GE(account_character_path.size(), sizeof(player_table[0].ch_file))
+        << "Test setup must exceed the legacy player index path buffer.";
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.character = new char_data {};
+    clear_char(descriptor.character, MOB_VOID);
+    register_pc_char(descriptor.character);
+    descriptor.character->desc = &descriptor;
+    descriptor.connected = CON_QSEX;
+    std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", account_name);
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
+    std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "*ACCOUNT*");
+
+    descriptor.character->player.sex = SEX_MALE;
+    descriptor.character->player.race = RACE_HUMAN;
+    descriptor.character->player.name = strdup("aragorn");
+
+    introduce_char(&descriptor);
+
+    EXPECT_EQ(descriptor.connected, CON_CLOSE);
+    const std::string output = descriptor.output;
+    EXPECT_NE(output.find("rolled back"), std::string::npos) << output;
+
+    struct stat file_info {};
+    EXPECT_NE(stat("players", &file_info), 0);
+    EXPECT_NE(stat("plrobjs", &file_info), 0);
+    EXPECT_NE(stat("exploits", &file_info), 0);
+    EXPECT_NE(stat(account_character_path.c_str(), &file_info), 0);
+    EXPECT_NE(stat(account::account_character_object_path(".", account_name, "aragorn").c_str(), &file_info), 0);
+    EXPECT_NE(stat(account::account_character_exploits_path(".", account_name, "aragorn").c_str(), &file_info), 0);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", account_name, &reloaded_account, &error_message)) << error_message;
+    EXPECT_TRUE(reloaded_account.characters.empty());
+    EXPECT_TRUE(reloaded_account.character_links.empty());
+
+    ASSERT_GE(descriptor.pos, 0);
+    EXPECT_TRUE(IS_SET(player_table[descriptor.pos].flags, PLR_DELETED));
+    EXPECT_EQ(player_table[descriptor.pos].ch_file[0], '\0')
+        << "The live player index must fail closed instead of keeping a truncated account-native path.";
+
+    free_char(descriptor.character);
+    descriptor.character = nullptr;
+}
+
+TEST(InterpreAccountMenu, AccountSelectionRejectsTooLongAccountNativeIndexPathWithoutLegacyFallback)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedPlayerTableReset player_table_reset;
+
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+
+    const char* account_name = "abcdefghijklmnopqrst";
+    const char* long_email = "abcdefghijklmnopqrst123456789012345678901234567890@example.com";
+    std::string error_message;
+    account::AccountData account_data;
+    ASSERT_TRUE(account::create_account(".", account_name, long_email, "ValidPass1", 1700010200, &account_data, &error_message)) << error_message;
+
+    char_file_u stored_character = make_stored_character("aragorn", 1, RACE_HUMAN);
+    stored_character.specials2.idnum = 4242;
+    ASSERT_TRUE(account::write_account_character_file(".", account_name, stored_character, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_default_account_object_file(".", account_name, "aragorn", &error_message)) << error_message;
+    ASSERT_TRUE(account::write_default_account_exploit_file(".", account_name, "aragorn", &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", account_name, "aragorn", 1700010201, &account_data, &error_message)) << error_message;
+    const std::string account_character_path = account::account_character_player_path(".", account_name, "aragorn");
+    ASSERT_GE(account_character_path.size(), sizeof(player_table[0].ch_file))
+        << "Test setup must exceed the legacy player index path buffer.";
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.connected = CON_ACCTSLCT;
+    std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", account_name);
+    std::snprintf(descriptor.account_email, sizeof(descriptor.account_email), "%s", long_email);
+
+    char selection[] = "1";
+    nanny(&descriptor, selection);
+
+    EXPECT_EQ(descriptor.connected, CON_ACCTSLCT);
+    EXPECT_EQ(descriptor.character, nullptr);
+    EXPECT_EQ(top_of_p_table, -1)
+        << "Rejected account-native path should not create a live player index entry.";
+    const std::string output = descriptor.output;
+    EXPECT_NE(output.find("cannot be loaded from account storage"), std::string::npos) << output;
+    EXPECT_NE(output.find("too long for the live player index"), std::string::npos) << output;
+    struct stat file_info {};
+    EXPECT_NE(stat("players", &file_info), 0);
+    EXPECT_NE(stat("plrobjs", &file_info), 0);
+    EXPECT_NE(stat("exploits", &file_info), 0);
+
+    account::AccountData reloaded_account;
+    ASSERT_TRUE(account::read_account_file(".", account_name, &reloaded_account, &error_message)) << error_message;
+    ASSERT_EQ(reloaded_account.characters.size(), 1u);
+    EXPECT_EQ(reloaded_account.characters[0], "aragorn");
+    ASSERT_EQ(reloaded_account.character_links.size(), 1u);
+    EXPECT_EQ(reloaded_account.character_links[0].character_path, "aragorn.character.json");
+
+    char_file_u reloaded_character {};
+    ASSERT_TRUE(account::read_account_character_file(".", account_name, "aragorn", &reloaded_character, &error_message)) << error_message;
+    EXPECT_EQ(reloaded_character.specials2.idnum, stored_character.specials2.idnum);
+
+    std::string account_object_bytes;
+    ASSERT_TRUE(account::read_account_object_file(".", account_name, "aragorn", &account_object_bytes, &error_message)) << error_message;
+    objects_json::ObjectSaveData account_object_data;
+    ASSERT_TRUE(objects_json::object_save_data_from_binary(account_object_bytes, &account_object_data, &error_message)) << error_message;
+    EXPECT_TRUE(account_object_data.objects.empty());
+
+    std::vector<exploit_record> exploit_records;
+    ASSERT_TRUE(account::read_account_exploit_file(".", account_name, "aragorn", &exploit_records, &error_message)) << error_message;
+    EXPECT_TRUE(exploit_records.empty());
 }
 
 TEST(InterpreAccountMenu, IntroduceCharRollbackDoesNotLeaveLegacyOrAccountNativeFiles)
@@ -1866,6 +2750,99 @@ TEST(InterpreAccountMenu, IntroduceCharRollbackDoesNotLeaveLegacyOrAccountNative
     ASSERT_TRUE(account::read_account_file(".", "acct", &account_data, &error_message)) << error_message;
     EXPECT_TRUE(account_data.characters.empty());
     EXPECT_TRUE(account_data.character_links.empty());
+    ASSERT_GE(descriptor.pos, 0);
+    EXPECT_TRUE(IS_SET(player_table[descriptor.pos].flags, PLR_DELETED));
+    EXPECT_EQ(player_table[descriptor.pos].ch_file[0], '\0');
+
+    free_char(descriptor.character);
+    descriptor.character = nullptr;
+}
+
+TEST(InterpreAccountMenu, IntroduceCharRollbackAfterLinkFailureRemovesWrittenAccountNativeFiles)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ScopedPlayerTableReset player_table_reset;
+    ScopedStartRoomOverride start_room_override(RACE_HUMAN, 0);
+
+    ASSERT_EQ(mkdir("accounts", 0700), 0);
+    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ensure_test_world_room(1200);
+    create_entry(const_cast<char*>("existingplayer"));
+    create_entry(const_cast<char*>("secondplayer"));
+    static char test_motd[] = "Test MOTD\r\n";
+    ScopedMotdOverride motd_override(test_motd);
+
+    std::string error_message;
+    account::AccountData target_account;
+    ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, &target_account, &error_message)) << error_message;
+    account::AccountData owner_account;
+    ASSERT_TRUE(account::create_account(".", "other", "owner@example.com", "ValidPass1", 1700010201, &owner_account, &error_message)) << error_message;
+    char_file_u owner_character = make_stored_character("aragorn", 20, RACE_HUMAN);
+    owner_character.specials2.idnum = 9999;
+    ASSERT_TRUE(account::write_account_character_file(".", "other", owner_character, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_default_account_object_file(".", "other", "aragorn", &error_message)) << error_message;
+    exploit_record owner_exploit {};
+    owner_exploit.type = EXPLOIT_LEVEL;
+    owner_exploit.iIntParam = 20;
+    std::snprintf(owner_exploit.chtime, sizeof(owner_exploit.chtime), "%s", "Wed Jan  3 00:00:00 2024");
+    std::vector<exploit_record> owner_exploits;
+    owner_exploits.push_back(owner_exploit);
+    ASSERT_TRUE(account::write_account_exploit_file(".", "other", "aragorn", owner_exploits, &error_message)) << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "other", "aragorn", 1700010202, &owner_account, &error_message)) << error_message;
+
+    descriptor_data descriptor = make_descriptor();
+    descriptor.character = new char_data {};
+    clear_char(descriptor.character, MOB_VOID);
+    register_pc_char(descriptor.character);
+    descriptor.character->desc = &descriptor;
+    descriptor.connected = CON_QSEX;
+    std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
+    std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "*ACCOUNT*");
+
+    descriptor.character->player.sex = SEX_MALE;
+    descriptor.character->player.race = RACE_HUMAN;
+    descriptor.character->player.name = strdup("aragorn");
+
+    introduce_char(&descriptor);
+
+    EXPECT_EQ(descriptor.connected, CON_CLOSE);
+    EXPECT_NE(std::string(descriptor.output).find("rolled back"), std::string::npos);
+
+    struct stat file_info {};
+    EXPECT_NE(stat("players", &file_info), 0);
+    EXPECT_NE(stat("plrobjs", &file_info), 0);
+    EXPECT_NE(stat("exploits", &file_info), 0);
+    EXPECT_NE(stat(account::account_character_player_path(".", "acct", "aragorn").c_str(), &file_info), 0);
+    EXPECT_NE(stat(account::account_character_object_path(".", "acct", "aragorn").c_str(), &file_info), 0);
+    EXPECT_NE(stat(account::account_character_exploits_path(".", "acct", "aragorn").c_str(), &file_info), 0);
+
+    ASSERT_TRUE(account::read_account_file(".", "acct", &target_account, &error_message)) << error_message;
+    EXPECT_TRUE(target_account.characters.empty());
+    EXPECT_TRUE(target_account.character_links.empty());
+
+    ASSERT_TRUE(account::read_account_file(".", "other", &owner_account, &error_message)) << error_message;
+    ASSERT_EQ(owner_account.characters.size(), 1u);
+    EXPECT_EQ(owner_account.characters[0], "aragorn");
+    ASSERT_EQ(owner_account.character_links.size(), 1u);
+    EXPECT_EQ(owner_account.character_links[0].character_path, "aragorn.character.json");
+    EXPECT_EQ(owner_account.character_links[0].object_path, "aragorn.objects.json");
+    EXPECT_EQ(owner_account.character_links[0].exploits_path, "aragorn.exploits.json");
+
+    char_file_u preserved_owner_character {};
+    ASSERT_TRUE(account::read_account_character_file(".", "other", "aragorn", &preserved_owner_character, &error_message)) << error_message;
+    EXPECT_EQ(preserved_owner_character.specials2.idnum, owner_character.specials2.idnum);
+    std::string preserved_owner_object_bytes;
+    ASSERT_TRUE(account::read_account_object_file(".", "other", "aragorn", &preserved_owner_object_bytes, &error_message)) << error_message;
+    objects_json::ObjectSaveData preserved_owner_object_data;
+    ASSERT_TRUE(objects_json::object_save_data_from_binary(preserved_owner_object_bytes, &preserved_owner_object_data, &error_message)) << error_message;
+    EXPECT_TRUE(preserved_owner_object_data.objects.empty());
+    std::vector<exploit_record> preserved_owner_exploits;
+    ASSERT_TRUE(account::read_account_exploit_file(".", "other", "aragorn", &preserved_owner_exploits, &error_message)) << error_message;
+    ASSERT_EQ(preserved_owner_exploits.size(), 1u);
+    EXPECT_EQ(preserved_owner_exploits[0].type, EXPLOIT_LEVEL);
+    EXPECT_EQ(preserved_owner_exploits[0].iIntParam, 20);
+
     ASSERT_GE(descriptor.pos, 0);
     EXPECT_TRUE(IS_SET(player_table[descriptor.pos].flags, PLR_DELETED));
     EXPECT_EQ(player_table[descriptor.pos].ch_file[0], '\0');

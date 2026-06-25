@@ -978,7 +978,7 @@ char* target_from_word(struct char_data* ch, char* argument, int mask, struct ta
 
     if (argument[arg_i] == '\'') {
         for (tmp = 0, arg_i++; argument[arg_i] && (argument[arg_i] != '\'');
-             tmp++, arg_i++)
+            tmp++, arg_i++)
             word[tmp] = argument[arg_i];
         word[tmp] = 0;
 
@@ -986,7 +986,7 @@ char* target_from_word(struct char_data* ch, char* argument, int mask, struct ta
             arg_i++;
     } else {
         for (tmp = 0; argument[arg_i] && (argument[arg_i] > ' ');
-             tmp++, arg_i++)
+            tmp++, arg_i++)
             word[tmp] = argument[arg_i];
         word[tmp] = 0;
     }
@@ -2723,6 +2723,7 @@ void nanny(struct descriptor_data* d, char* arg)
 
                     set_account_login_name(d, account_data.account_name);
                     set_account_login_email(d, account_data.normalized_email);
+                    *d->account_password = '\0';
                     d->bad_pws = 0;
                     SEND_TO_Q("Your account exists but its email address is still pending verification.\n\rA verification code has been emailed to you and is valid for 15 minutes.\n\r", d);
                     show_account_verification_prompt(d);
@@ -2750,6 +2751,7 @@ void nanny(struct descriptor_data* d, char* arg)
 
         if (!*arg || is_abbrev(arg, "cancel")) {
             clear_account_login_state(d);
+            d->bad_pws = 0;
             show_account_email_prompt(d);
             STATE(d) = CON_NME;
             return;
@@ -2846,7 +2848,13 @@ void nanny(struct descriptor_data* d, char* arg)
                     show_account_character_prompt(d, account_data);
                     return;
                 }
-                update_player_index_entry_from_store(&tmp_store);
+                const std::string character_path = account::account_character_player_path(kAccountStorageRoot, d->account_name, selected_character_name);
+                if (!update_player_index_entry_from_store(&tmp_store, character_path.c_str(), &error_message)) {
+                    SEND_TO_Q("That linked character cannot be loaded from account storage.\n\r", d);
+                    SEND_TO_Q((error_message + "\n\r").c_str(), d);
+                    show_account_character_prompt(d, account_data);
+                    return;
+                }
                 player_i = tmp_store.player_index;
             } else {
                 const std::string read_error = error_message;
@@ -2879,7 +2887,13 @@ void nanny(struct descriptor_data* d, char* arg)
                     show_account_character_prompt(d, account_data);
                     return;
                 }
-                update_player_index_entry_from_store(&tmp_store);
+                const std::string character_path = account::account_character_player_path(kAccountStorageRoot, d->account_name, selected_character_name);
+                if (!update_player_index_entry_from_store(&tmp_store, character_path.c_str(), &error_message)) {
+                    SEND_TO_Q("That linked character cannot be loaded from account storage.\n\r", d);
+                    SEND_TO_Q((error_message + "\n\r").c_str(), d);
+                    show_account_character_prompt(d, account_data);
+                    return;
+                }
                 player_i = tmp_store.player_index;
 
                 if (!load_object_save_bytes_for_character(kAccountStorageRoot, selected_character_name, &object_file_bytes, &error_message)) {
@@ -2976,6 +2990,7 @@ void nanny(struct descriptor_data* d, char* arg)
 
         if (!*arg || strlen(arg) > MAX_ACCOUNT_PASSWORD_LENGTH) {
             SEND_TO_Q("\n\rIllegal password.\n\rPlease enter a password: ", d);
+            *d->account_password = '\0';
             return;
         }
 
@@ -2983,6 +2998,7 @@ void nanny(struct descriptor_data* d, char* arg)
             std::string error_message;
             if (!account::is_valid_password(arg, &error_message)) {
                 SEND_TO_Q(("\n\r" + error_message + "\n\rPlease enter a password: ").c_str(), d);
+                *d->account_password = '\0';
                 return;
             }
         }
@@ -3007,7 +3023,10 @@ void nanny(struct descriptor_data* d, char* arg)
         {
             account::AccountData account_data;
             std::string error_message;
-            if (!account::create_account_for_email(kAccountStorageRoot, d->account_email, d->account_password, time(0), &account_data, &error_message)) {
+            const std::string account_password = d->account_password;
+            *d->account_password = '\0';
+            if (!account::create_account_for_email(kAccountStorageRoot, d->account_email,
+                    account_password.c_str(), time(0), &account_data, &error_message)) {
                 SEND_TO_Q((error_message + "\n\rAccount email: ").c_str(), d);
                 clear_account_login_state(d);
                 STATE(d) = CON_NME;
@@ -3117,6 +3136,7 @@ void nanny(struct descriptor_data* d, char* arg)
 
         if (!*arg) {
             SEND_TO_Q("Character linking cancelled.\n\r", d);
+            *d->account_character_name = '\0';
             account::AccountData account_data;
             if (account::read_account_file(kAccountStorageRoot, d->account_name, &account_data, nullptr))
                 show_account_menu(d, account_data);
@@ -3129,6 +3149,7 @@ void nanny(struct descriptor_data* d, char* arg)
 
             if ((player_i = load_char(legacy_name, &tmp_store)) < 0) {
                 SEND_TO_Q("That legacy character could not be found.\n\r", d);
+                *d->account_character_name = '\0';
                 account::AccountData account_data;
                 if (account::read_account_file(kAccountStorageRoot, d->account_name, &account_data, nullptr))
                     show_account_menu(d, account_data);
@@ -3138,6 +3159,7 @@ void nanny(struct descriptor_data* d, char* arg)
 
             if (strncmp(CRYPT(arg, tmp_store.pwd), tmp_store.pwd, MAX_PWD_LENGTH)) {
                 SEND_TO_Q("Incorrect legacy character password.\n\r", d);
+                *d->account_character_name = '\0';
                 account::AccountData account_data;
                 if (account::read_account_file(kAccountStorageRoot, d->account_name, &account_data, nullptr))
                     show_account_menu(d, account_data);
@@ -3150,6 +3172,7 @@ void nanny(struct descriptor_data* d, char* arg)
             std::string error_message;
             if (!account::admin_link_and_migrate_character(kAccountStorageRoot, d->account_name, legacy_name, time(0), &account_data, &migration, &error_message)) {
                 SEND_TO_Q((error_message + "\n\r").c_str(), d);
+                *d->account_character_name = '\0';
                 if (account::read_account_file(kAccountStorageRoot, d->account_name, &account_data, nullptr))
                     show_account_menu(d, account_data);
                 STATE(d) = CON_ACCTMENU;
@@ -3160,6 +3183,7 @@ void nanny(struct descriptor_data* d, char* arg)
                 + format_account_character_name_for_display(legacy_name)
                 + " to your account.\n\r";
             SEND_TO_Q(success_message.c_str(), d);
+            *d->account_character_name = '\0';
             show_account_menu(d, account_data);
             STATE(d) = CON_ACCTMENU;
         }
@@ -3172,6 +3196,7 @@ void nanny(struct descriptor_data* d, char* arg)
 
         if (!*arg) {
             SEND_TO_Q("Password reset cancelled.\n\r", d);
+            *d->account_password = '\0';
             account::AccountData account_data;
             if (account::read_account_file(kAccountStorageRoot, d->account_name, &account_data, nullptr))
                 show_account_menu(d, account_data);
@@ -3207,6 +3232,7 @@ void nanny(struct descriptor_data* d, char* arg)
 
         if (!*arg || strlen(arg) > MAX_ACCOUNT_PASSWORD_LENGTH) {
             SEND_TO_Q("\n\rIllegal password.\n\rNew account password: ", d);
+            *d->account_password = '\0';
             return;
         }
 
@@ -3214,6 +3240,7 @@ void nanny(struct descriptor_data* d, char* arg)
             std::string error_message;
             if (!account::is_valid_password(arg, &error_message)) {
                 SEND_TO_Q(("\n\r" + error_message + "\n\rNew account password: ").c_str(), d);
+                *d->account_password = '\0';
                 return;
             }
         }
@@ -3238,7 +3265,11 @@ void nanny(struct descriptor_data* d, char* arg)
         {
             account::AccountData account_data;
             std::string error_message;
-            if (!account::admin_reset_password(kAccountStorageRoot, d->account_name, d->account_password, d->account_name, time(0), &account_data, &error_message)) {
+            const std::string account_password = d->account_password;
+            *d->account_password = '\0';
+            if (!account::admin_reset_password(kAccountStorageRoot, d->account_name,
+                    account_password.c_str(), d->account_name, time(0), &account_data,
+                    &error_message)) {
                 SEND_TO_Q((error_message + "\n\r").c_str(), d);
                 if (account::read_account_file(kAccountStorageRoot, d->account_name, &account_data, nullptr)) {
                     show_account_menu(d, account_data);
@@ -4043,6 +4074,21 @@ void introduce_char(struct descriptor_data* d)
         char_to_store(d->character, &stored_character);
         const int initial_load_room = d->character->specials2.load_room;
         stored_character.specials2.load_room = initial_load_room;
+        const std::string account_character_path = account::account_character_player_path(kAccountStorageRoot, d->account_name, GET_NAME(d->character));
+
+        if (!update_player_index_entry_from_store(&stored_character, account_character_path.c_str(), &error_message)) {
+            SET_BIT(PLR_FLAGS(d->character), PLR_DELETED);
+            if (d->pos >= 0 && d->pos <= top_of_p_table) {
+                player_table[d->pos].flags |= PLR_DELETED;
+                player_table[d->pos].ch_file[0] = '\0';
+            }
+            SEND_TO_Q("Account linking failed, so the new character was rolled back. Please reconnect and try again.\n\r", d);
+            vmudlog(NRM, "Rolled back new character %s after account link failure for account %s: %s",
+                GET_NAME(d->character), d->account_name, error_message.c_str());
+            STATE(d) = CON_CLOSE;
+            return;
+        }
+        d->pos = stored_character.player_index;
 
         if (!account::write_account_character_file(kAccountStorageRoot, d->account_name, stored_character, &error_message)
             || !account::write_default_account_object_file(kAccountStorageRoot, d->account_name, GET_NAME(d->character), &error_message)

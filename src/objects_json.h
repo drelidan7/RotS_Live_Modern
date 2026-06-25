@@ -70,6 +70,8 @@ struct ObjectSaveData {
 };
 
 bool object_save_data_from_binary(const std::string& bytes, ObjectSaveData* data, std::string* error_message = nullptr);
+bool legacy_object_save_data_from_binary(
+    const std::string& bytes, ObjectSaveData* data, bool* accepted_missing_follower_section = nullptr, std::string* error_message = nullptr);
 bool object_save_data_to_binary(const ObjectSaveData& data, std::string* bytes, std::string* error_message = nullptr);
 std::string serialize_objects_to_json(const ObjectSaveData& data);
 bool deserialize_objects_from_json(const std::string& json, ObjectSaveData* data, std::string* error_message = nullptr);

@@ -3,6 +3,7 @@
 #include "exploits_json.h"
 #include "json_utils.h"
 #include "objects_json.h"
+#include "utils.h"
 
 #include <cerrno>
 #include <crypt.h>

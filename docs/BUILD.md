@@ -20,6 +20,22 @@ build matches how the live game behaves.
    `src/comm.cpp` / `config.cpp:58 DFLT_DIR="lib"` — and reads the `world/...` prefixes from
    `src/db.h`.)
 
+   **If you have an old server backup**, use the importer to populate `lib/` from it:
+
+   ```bash
+   scripts/import-world-data.sh --backup /path/to/old/rots   # world + active players
+   scripts/import-world-data.sh --backup /path/to/old/rots --world-only
+   ```
+
+   It extracts the world from the backup's clean `lib/world-for-6001.tbz` snapshot
+   (whose `world/scr/*.scr` filenames match `world/scr/index` — the loose `lib/world`
+   dir in a backup may contain macOS-munged `*.scr.txt` files that would make
+   `index_boot()` fail), and copies the `A-E … U-Z` player buckets (the only ones the
+   game indexes) into `lib/players`, `lib/plrobjs`, and `lib/exploits`. CVS metadata
+   and `.DS_Store` are stripped; the `players/ZZZ` graveyard is skipped unless you pass
+   `--with-graveyard`. Run `scripts/import-world-data.sh --help` for all options. All of
+   this data stays git-ignored.
+
 ## Commands
 
 A helper script wraps the common flows (`scripts/rots-docker.sh`):

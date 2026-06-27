@@ -560,8 +560,14 @@ void build_player_index(void) {
 
   tt = time(0);
 
+  // Automatic deletion of inactive low-level characters at boot is DISABLED.
+  // Set to true to restore the original pruning (sub-level-20 chars inactive
+  // for > level*7 days had a ~51% chance of deletion on each boot). Kept off
+  // so imported/legacy characters are never auto-removed.
+  const bool enable_auto_delete = false;
+
   for (nr = 0; nr <= top_of_p_table; nr++) {
-    if (player_table[nr].level < 20 &&
+    if (enable_auto_delete && player_table[nr].level < 20 &&
         (!IS_SET(player_table[nr].flags, PLR_DELETED)) &&
         (!IS_SET(player_table[nr].flags, PLR_RETIRED)) &&
         ((tt - player_table[nr].log_time) >

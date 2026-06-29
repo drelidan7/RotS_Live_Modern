@@ -12,8 +12,7 @@
 
 Emote-style commands (`smile`, `wave`, …). Each record:
 ```
-<command>
-<hide> <min_victim_position> <min_actor_position>
+<command> <hide> <min_victim_position> <min_actor_position>
 <char_no_arg>
 <others_no_arg>
 <char_found>
@@ -24,16 +23,18 @@ Emote-style commands (`smile`, `wave`, …). Each record:
 <others_auto>
 ```
 Rules:
-- **Line 1** = the command word (`fscanf " %s "`).
-- **Line 2** = three ints: `hide` (flag), `min_victim_position`, `min_actor_position`
+- **Header line** = the command word **followed by three ints on the *same* physical line**,
+  e.g. `flutter 0 5 5`. The loader reads the command with `fscanf " %s "`, then `fgets` the
+  rest of that line and `sscanf`s `hide` (flag), `min_victim_position`, `min_actor_position`
   (POSITION_* codes — e.g. `POSITION_DEAD 0`, `POSITION_RESTING 5`, `POSITION_FIGHTING 7`,
-  `POSITION_STANDING 8`; `structs.h:892-900`). If only some are present the actor position
-  defaults to `POSITION_RESTING` (`act_soci.cpp:84-86`).
+  `POSITION_STANDING 8`; `structs.h:892-900`). If only some ints are present the actor
+  position defaults to `POSITION_RESTING` (`act_soci.cpp:84-86`).
 - **Message lines** are read by `fread_action` (`:42`): each is **one whole line** (not
   tilde-terminated). A line consisting of `#` means "no message" → stored as `NULL`.
-- **Short-circuit:** if `char_found` (the 6th line) is `#`/NULL, the social has no targeted
-  form and the remaining five lines are **omitted** for that record (`:130-132`). So
-  no-target socials are exactly: command, position line, and the three no-arg/`#` lines.
+- **Short-circuit:** if `char_found` (the 4th line — header, `char_no_arg`, `others_no_arg`,
+  `char_found`) is `#`/NULL, the social has no targeted form and the remaining five lines are
+  **omitted** for that record (`:130-132`). So no-target socials are exactly: the header line
+  plus three message lines (`char_no_arg`, `others_no_arg`, and a `#` for `char_found`).
 - The message roles:
   | Field | Shown when |
   |-------|-----------|
@@ -42,7 +43,8 @@ Rules:
   | `not_found` | an argument was given but no such target |
   | `char_auto` / `others_auto` | the target is the actor themselves |
 - **Termination:** the loop stops when the next command token begins with `-` or at EOF
-  (`:76,87-88`). Socials are sorted by command after load (`:144-158`).
+  (`:76,87-88`); the live `lib/misc/socials` ends with a `-1` sentinel line. Socials are
+  sorted by command after load (`:144-158`).
 
 ---
 
@@ -67,11 +69,14 @@ M
 ```
 Rules:
 - A block starts with the token `M`, then an integer `attack_type` (weapon/skill type
-  index). Reading stops when the next token is not `M` (`:136,199`).
+  index). Reading stops when the next token is not `M` (`:136,199`); the live
+  `lib/misc/messages` ends with a `$~` sentinel token after the final block.
 - **Twelve tilde-terminated strings** (via `fread_string`), in four groups of three —
   `die`, `miss`, `hit`, `self` — each group being `{attacker_msg, victim_msg, room_msg}`
   (to the attacker, the victim, and onlookers). The struct also has a `sanctuary_msg`
-  group, but it is **not read from the file** (`structs.h:1982`; absent in the loader).
+  group, but it is **not read from the file** (`structs.h:1982`; absent in the loader). Any
+  of the twelve may be an **empty string** (a bare `~`); in the live file several
+  natural-attack types (e.g. 55, 113, 115) supply empty `self.*` groups this way.
 - **Auto-colorization** at load (`:156-198`): `$CH` (hit color) is prepended to
   `die.attacker_msg` and `hit.attacker_msg`; `$CD` (damage color) to `die.victim_msg`,
   `hit.victim_msg`, and `self.victim_msg`. Other strings are uncolored. Files should **not**
@@ -93,4 +98,5 @@ Both files use DikuMUD `act()` substitution codes, expanded when the message is 
 - Exact `hide` flag semantics for socials (visibility to blind/can't-see actors).
 - The full `act()` substitution table and RotS-specific additions.
 - The `attack_type` → weapon/skill enumeration (belongs in the combat catalog).
-- Whether `socials` files in the wild use a `$` terminator vs. relying on EOF/`-`.
+- *(Resolved)* `lib/misc/socials` terminates with a `-1` sentinel line (matched by the
+  `*buf == '-'` break), not a `$`; `lib/misc/messages` terminates with a `$~` token.

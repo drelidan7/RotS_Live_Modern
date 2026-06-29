@@ -3,8 +3,9 @@
 **Source files:** `src/db.cpp` (`index_boot:600`, `load_rooms:740`, `setup_dir:867`,
 `load_mobiles:1253`, `load_objects:1469`, `fread_string:2525`), `src/zone.cpp`
 (`load_zones:45`), `src/db.h` (prefixes/struct defs)
-**Status:** 🟡 rooms, mobiles, objects, zones complete. Shop files (`.shp`), Mudlle
-(`.mdl`)/scripts (`.scr`), and full zone-reset-command **semantics** are pending.
+**Status:** ✅ rooms, mobiles, objects, zones — verified against the live world data in
+`lib/world/`. Zone reset-command semantics and `reset_mode` values are now documented (below).
+Shop files (`.shp`) and Mudlle (`.mdl`)/scripts (`.scr`) have their own docs.
 
 ## Purpose
 The persistent game world is a set of plain-text files under `lib/world/`, grouped by type.
@@ -64,6 +65,14 @@ the ceiling and a cold draft comes from the north.
 ~
 ```
 
+### Line endings — not normalized
+Real world files do **not** use a single consistent newline. Mobile/object files terminate lines
+with **`\n\r` (LF then CR)**; room/zone files are **mixed** (`\r\n`, `\r`, and `\n` all occur,
+sometimes within one file). The C loader copes because `fread_string` strips leading control chars
+(`< ' '`) and `fscanf`/`%d` treat any whitespace as a separator. **A from-scratch parser must accept
+any line ending** — treat `\r` and `\n` interchangeably as separators; do not assume `\n`-only or
+`\r\n`.
+
 ### Virtual vs real numbers
 Files reference **virtual numbers** (vnums). After load, `renum_world`/`renum_zone_table`
 convert them to **real** array indices (`db.cpp:926`, `zone.cpp:173`). On-disk = always vnums.
@@ -84,7 +93,10 @@ S
 - **Line 4** is 4 ints. The first (`<zone>`) is a placeholder — the room's zone is derived
   from which zone's `top` vnum range contains this vnum (`load_rooms:770-780`), not from this
   field. The meaningful values are `room_flags` (bitvector), `sector_type`, and **`level`**
-  (a RotS addition — room level). *(Before the zone table exists, only 3 ints are read.)*
+  (a RotS addition — room level). Some **legacy rooms carry only 3 ints** (no `level`): `sscanf`
+  matches 3 and leaves `level = 0` (e.g. `wld/14.wld` `#1401` = `0 8 0`, `wld/100.wld` `#10023` =
+  `0 0 0`). (Separately, a different branch reads only 3 ints when no zone table exists yet —
+  `db.cpp:788`.)
 
 Then zero or more fields, each introduced by a letter token (`load_rooms:814`):
 
@@ -100,6 +112,7 @@ Then zero or more fields, each introduced by a letter token (`load_rooms:814`):
   (`-1`/`NOWHERE` = none), `exit_width` = **RotS** passage width (mounts/large mobs).
 - `F` adds a permanent `affected_type` to the room (`load_rooms:826-851`): `type`,
   `location` (apply), `modifier` (used as spell level), `bitvector` OR'd with `PERMAFFECT`.
+  **No `.wld` file in the live corpus uses `F`** — the parser exists but is dead in practice.
 
 ---
 
@@ -121,8 +134,13 @@ Per record:
 - `M`: the full stat block, no death cries.
 - other (legacy): no stat block.
 
-**Full stat block** (M and N), each line a fixed group of ints (exact order from the
-`fscanf` calls — *file order, not struct order*):
+In the **live world every mob is type `N`** (2,918 / 2,918 across all 321 `.mob` files); the `M`
+and legacy branches are dead code for the current dataset.
+
+**Full stat block** (N — and M historically), a flat sequence of ints in the exact order the
+`fscanf` calls read them (*file order, not struct order*). **`fscanf` ignores line boundaries**, so
+real files pack several of the groups below onto one physical line — the line breaks shown are
+illustrative, not significant:
 ```
 <level> <OB> <parry> <dodge>
 <hp_current> <hp_max>
@@ -133,11 +151,18 @@ Per record:
 <prof> <mana> <move> <bodytype>
 <saving_throw>
 <str> <int> <wil> <dex> <con> <lea>
-<language> <perception> <resistance> <vulnerability> <script_number> <spirit> <will_teach>
+<language> <perception> <resistance> <vulnerability> <script_number> <spirit>
 ```
 Notes:
 - `MOB_ISNPC` is force-set (`:1295`); files needn't include it.
 - `corpse_num` is only consumed for `N` mobs (`:1349`).
+- The loader's `fscanf` reads a **7th** trailing int (`will_teach`) into a variable pre-set to 0,
+  but **no live mob supplies it** — every one of the 2,918 mobs has exactly 6 values on this line,
+  so `will_teach` is always 0. Treat it as absent on disk.
+- Empty death cries are sometimes stored as the literal `(null)~` (parsed as the 4-char string
+  `(null)`), not as an empty `~`.
+- `ignored_owner` (3rd value of the gold/exp line) is read into a temporary but never stored; it is
+  uniformly `17` in the live data (a legacy placeholder).
 - `language` indexes `language_skills[language-1]`; out-of-range → 0 (`:1378`).
 - Most of these (energy/regen, OB/parry/dodge, perception, resistance/vulnerability,
   spirit, prof, languages, script_number, butcher_item, rp_flag) are **RotS additions**;
@@ -178,15 +203,14 @@ Notes:
 
 Per record:
 ```
-#<zone_number>
-<name>~
+#<zone_number> <name>~              (number AND name on ONE line; `#` is space-padded before name)
 <description>~
 <map>~
 <owner_id> <owner_id> ... 0          (owner list, terminated by 0; rest of line ignored)
 <symbol> <x> <y> <level>             (%c %d %d %d)
 <top>                                (highest room vnum belonging to this zone)
 <lifespan>                           (minutes between resets)
-<reset_mode>                         (0=never, 1=empty-only, 2=always — verify)
+<reset_mode>                         (0=never; 1=empty & age≥lifespan; 2=always when age≥lifespan; 3=hybrid — see below)
 <command lines...>
 S
 ```
@@ -205,21 +229,35 @@ Each command is:
 - `S` terminates the command list (`:98`).
 - The trailing text on each line is a human comment (only preserved by the OLC `shapezon`).
 
-The RotS command letters seen in `renum_zone_one` (`zone.cpp:196-`) include at least
-`A`, `L`, `M`, `N`, `X`, `H`, `E`, `K`, `Q`, `P` — a richer set than Diku's
-`M/O/G/E/P/D`. **The db.h:166-174 comment listing M/O/G/P/E/D is stale** and does not match
-this loader.
+Command letters confirmed in the **live** `.zon` files (counts across all 341 files): `M` load
+mobile, `O` load object (×1502), `G` give object to last-loaded mob (×52), `K` equip/kit mob,
+`P` put object in container, `D` set door state (×1722), `A`/`L` attribute-set / condition-check
+(`arg1` = sub-type selector), plus `N`, `X`, `H`, `E`, `Q`, and `.` (a no-op placeholder, ×122).
+The classic Diku `M/O/G/E/P/D` letters are **all live and used** — an earlier note that `O`/`D`/`G`
+were "stale" was wrong; they were simply absent from the (then-unavailable) sample data.
 
 ---
 
+## Zone reset-command semantics (`reset_zone` / `zone.cpp` + live data)
+- `M arg1 arg2 _ arg4 arg5 [arg6 arg7]` — load mob `arg1` into room `arg2`; `arg4` = spawn prob %,
+  `arg5` = max allowed in world.
+- `O arg1 arg2 _ arg4 arg5` — load object `arg1` into room `arg2`.
+- `G arg1` — give object `arg1` to the last-loaded mob.
+- `P _ arg2 arg3 … arg6` — put object `arg2` into container `arg3`; `arg6` = count.
+- `K arg1…arg7` — equip the last-loaded mob with the listed object vnums (wear/wield).
+- `D arg1 arg2 arg3` — set exit `arg2` of room `arg1` to door-state `arg3`.
+- `A` / `L` — `arg1` selects a sub-type; attribute-set / condition-check commands.
+- `.` — no-op placeholder (reads the base 5 args, does nothing at runtime).
+- `if_flag` (2nd field): if nonzero, the command runs only if the previous command executed.
+
+**`reset_mode`** (`zone.cpp:308-327`): `0` never; `1` reset when the zone is empty **and**
+age ≥ lifespan; `2` always when age ≥ lifespan; `3` hybrid — (empty **and** age ≥ lifespan)
+**or** age ≥ 3 × lifespan.
+
+The **object record tail** question is resolved: in the live corpus nothing follows the `A`
+lines but the next `#<vnum>` or `$`.
+
 ## Open questions
-- **Full zone reset-command semantics**: what each letter (`A L M N X H E K Q P`…) and its
-  args actually do at runtime. The executor is `reset_zone` (`zone.cpp:478`) — not yet read.
-  arg1 of `A`/`L` appears to be a sub-type selector (`renum_zone_one:198-214`).
-- **`reset_mode` values** (switch at `zone.cpp:308`) and **`if_flag`** exact semantics —
-  confirm against `reset_zone`.
 - **Bitvector/enum tables**: `room_flags`, `sector_type`, `exit_info`, mob `action`/
   `affected_by`, object `type_flag`/`extra_flags`/`wear_flags`, apply `location` codes —
   to be enumerated (belongs in catalogs + the per-system docs).
-- Object record tail after affects — confirm no other trailing tokens exist in real files
-  (none observed in the loader, but no sample data is available to validate).

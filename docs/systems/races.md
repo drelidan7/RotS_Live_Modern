@@ -41,6 +41,18 @@ rolled 80–85 pool — see §2).
 **NPC / immortal-only:** God (0), **High-Elf (5)** — fully statted (INT+2/DEX+2/CON−2, perception
 100) but not creatable; Harad (12), Easterling (14), Undead (16, breathes underwater), Troll (20).
 
+**Two "UNDEFINED" enum slots are nonetheless used by live NPC mobs.** Race **19** — labelled
+`UNDEFINED` in `pc_races[]` (`consts.cpp:1991`) — is a de-facto NPC catch-all carried by **91 mobs**
+(~3% of the world): goblin scouts, orc slaves, plains wolves, etc. (e.g. `mob/275.mob` #27506,
+`mob/320.mob` #32001, `mob/130.mob` #13062). It has no name, no `race_modifiers`, no `race_affect`
+vision, no alignment band, and perception 0 — every race switch falls through to its `default` (0).
+Race **100** (`PLAYER_RACE_MAX`, `consts.cpp:38`) is used by a single special mob — the huorn
+(`mob/301.mob` #30103) — as a deliberate "non-race" sentinel: being > `MAX_RACES`, all `get_*_mod`
+calls return 0 (`profs.cpp:77`). NPC race **God (0)** is also the single most common race in the
+world (~49% of mobs) — the default for human-scale NPCs that need no race-specific behavior. For the
+record, the historical player database contains **zero** Beorning, Olog-Hai, or Haradrim characters,
+so those three (fully wired) creation paths are untested by legacy play data.
+
 **Two design philosophies jump out of the "Net" column.** Free-peoples races **redistribute** a
 fixed pool (net 0 — they trade one stat for another). Servant races pay a **net stat tax** (−5 to
 −14) that is meant to be repaid by faction mechanics: Orc armies, Uruk's mage discount, Haradrim's

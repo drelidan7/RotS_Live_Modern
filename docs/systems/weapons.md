@@ -28,7 +28,7 @@ An `ITEM_WEAPON` is four numbers plus bulk/weight/level (`structs.h:382-385`):
 |---|---|---|---|
 | `value[0]` | `get_ob_coef()` | **OB bonus** | Added straight to your **OB** when you wield (`handler.cpp:1335`); *also* lowers derived damage (the trade-off below) |
 | `value[1]` | `get_parry_coef()` | **Parry bonus** | Added to your **parry** when you wield (`handler.cpp:1336`) and again in the parry skill term (`get_real_parry`, `utility.cpp:786`); *also* lowers derived damage |
-| `value[2]` | `get_bulk()` | **bulk** (0–5; ~3 neutral) | attack **speed**, OB term, damage, handedness threshold |
+| `value[2]` | `get_bulk()` | **bulk** (0–8 in live data; damage peaks at 3; **no code cap**) | attack **speed**, OB term, damage, handedness threshold |
 | `value[3]` | `get_weapon_type()` | **weapon type** (the enum below) | skill used, damage type/message, and every intrinsic effect in §1 |
 | *weight* | `get_weight()` | physical weight | attack **speed** (with bulk) |
 | *level* | `get_level()` | item level | raises derived damage |
@@ -72,7 +72,10 @@ special-cases in §5), the **handedness**, and an **intrinsic combat tilt**.
 
 (`0`/`1` are unused error types. Note several *types* share one *skill*: whip & flail both train
 **Whip**; bludgeoning & smiting both train **Concussion**; the `_TWO` variants train the same skill
-as their one-handed sibling.)
+as their one-handed sibling. Only slashing, bludgeoning, and cleaving have a dedicated `_TWO` type —
+**whipping and flailing have no two-handed variant** (any `bulk ≥ 4` weapon can still be gripped two
+hands via `twohand`, §3). Builder data note: types **13/14 (bow/crossbow) are documented and coded but
+have *zero* weapon objects in the live world** — the archery path has no deliverable weapon yet.)
 
 **The per-type tilt is a *damage-only* nudge — do not read it as the weapon's role.** The switch in
 the **live** `get_weapon_damage` (`utility.cpp:469-484`) adjusts the parry/OB coefficients **used to
@@ -143,16 +146,21 @@ combat-loop.md):
 - **Attack speed** ≈ `BAL_STR · 2500000 / (weight · (bulk + 3))` — **heavier/bulkier ⇒ slower swings**
   (lower `ENE_regen`). Two-handed **doubles** it; below `bulk 4` a DEX term blends in (so light
   weapons can be DEX-driven — relevant to Light Fighting and low-STR/high-DEX races, races.md).
-- **Per-hit damage rises** as the weapon gets bulky/slow (the `/energy_regen` term) and peaks near
-  **bulk 3** for the `(20 − |bulk − 3|)` term — so very low or very high bulk both shave a little
-  damage off that factor. Net: a heavy weapon hits harder but less often.
+- **Per-hit damage rises** as the weapon gets bulky/slow (the `/energy_regen` term), but the
+  `(20 − |bulk − 3|)` term peaks at **bulk 3** and falls off linearly either side — so very low or very
+  high bulk both shave damage off that factor. The fall-off is **not** trivial at the top: there is no
+  code cap on bulk and live two-handers reach **bulk 8**, where that term keeps only `(20 − 5)/20` ≈
+  **75 %** of its peak. Net: a heavy weapon hits harder but less often.
 - **OB shifts with bulk** in `get_real_OB`: a **one-handed** weapon pays `−(bulk·2 − 6)` (so bulk 1 →
-  **+4 OB**, bulk 3 → 0, bulk 5 → **−4 OB**), while **two-handed/ranged** weapons get a bulk *bonus*
-  `bulk·(200 + skill)/100 − 15`. Weapon-skill knowledge then scales as `skill·(bulk + 20)·tactics/1000`.
+  **+4 OB**, bulk 3 → 0, bulk 5 → **−4 OB**, bulk 8 → **−10 OB**), while **two-handed/ranged** weapons
+  get a bulk *bonus* `bulk·(200 + skill)/100 − 15`. Weapon-skill knowledge then scales as
+  `skill·(bulk + 20)·tactics/1000`.
 
 **Thresholds builders should know:** `bulk ≤ 2` (or `bulk == 3` with weight ≤ `LIGHT_WEAPON_WEIGHT_CUTOFF`)
 = "light" → enables **Light Fighting** bonuses; `bulk ≥ 3` with weight above that cutoff = "heavy" →
-enables **Heavy Fighting** bonuses (§4). `bulk ≥ 4` is the threshold to wield two-handed.
+enables **Heavy Fighting** bonuses (§4). `bulk ≥ 4` is the threshold to wield two-handed. There is **no
+upper cap** — about a quarter of live weapons run **bulk 6–8** (the heaviest two-handers), so don't read
+the "neutral ≈ 3" peak as a ceiling.
 
 ---
 
@@ -169,7 +177,9 @@ enables **Heavy Fighting** bonuses (§4). `bulk ≥ 4` is the threshold to wield
   (ranger-skills.md), and have a **separate, STR-independent damage** formula:
   `min(weapon_level, owner_level)/3 + OB_coef + bulk` (`get_bow_weapon_damage`, `object_utils.cpp:193`).
   Their OB blends weapon-skill with Archery 50/50. They can't parry in melee. **Wood-Elf** and
-  **Haradrim** shoot a beat faster (races.md).
+  **Haradrim** shoot a beat faster (races.md). *(Data caveat: the ranged code paths exist, but **no
+  bow or crossbow weapon object currently ships in the world** — zero `ITEM_WEAPON`s of type 13/14
+  across `lib/world/obj/`. Archery is wired up with no deliverable weapon yet.)*
 
 ---
 
@@ -224,9 +234,11 @@ armor-subtraction step and which swings even reach armor are in combat-loop.md.
 **Pick the *type* for its skill/damage-type/special behavior, then tune offense vs. defense vs. damage
 with the value fields:** raise **`value[0]`** for a high-OB (offensive) weapon, **`value[1]`** for a
 high-parry (defensive) one, and remember both *cost* derived damage. By type: a hard-hitting two-hander
-→ a `*_TWO` type at **bulk 4–5**; an armor-shredder → **stabbing** (spear); an anti-plate weapon →
-**smiting**; a fast DEX weapon → low-bulk **piercing/whipping**; a bow → **bow/crossbow** (set
-`value[0]` + bulk + level; STR is irrelevant). Damage is *derived*, never set directly.
+→ a `*_TWO` type at **bulk 4–8** (live two-handers span that whole range; bulk 6–8 are common for the
+heaviest); an armor-shredder → **stabbing** (spear); an anti-plate weapon → **smiting**; a fast DEX
+weapon → low-bulk **piercing/whipping**; a bow → **bow/crossbow** (set `value[0]` + bulk + level; STR is
+irrelevant — note **no bow/crossbow object exists in the world yet**, so you'd be building the first).
+Damage is *derived*, never set directly.
 
 **Flags / quirks for maintainers:**
 - **`weapon_hit_type` case 13 (bow) is missing a `break`** (`fight.cpp:2033-2037`) — it falls through
@@ -244,5 +256,11 @@ high-parry (defensive) one, and remember both *cost* derived damage. By type: a 
   (`object_utils.cpp:208`, `utils::` namespace) is reached **only** by the dead `combat_manager.cpp`.
   They diverge — **bludgeoning** is `parry_coef += 3` (live) vs. `= −3` (dead), opposite damage signs.
   (`combat-loop.md` currently cites the dead `object_utils.cpp` one — worth reconciling there too.)
-- **`value[4]` is unused**, and `value[0]`/`value[1]` are confusingly *called* "coefficients" while the
-  in-game readout calls them "OB"/"Parry" — a rewrite should align the names.
+- **`value[4]` is unused** by the formula, but it still carries **leftover non-zero legacy data on ~24
+  live weapons** (values 1–57) — a rewrite should zero or repurpose it rather than trust it. And
+  `value[0]`/`value[1]` are confusingly *called* "coefficients" while the in-game readout calls them
+  "OB"/"Parry" — a rewrite should align the names.
+- **Nothing validates `value[3]` (weapon type) on load.** At least one live object (`#5034`, a builder
+  placeholder "tiger's invisible weapon") carries an **out-of-range type 22**, which falls through
+  `weapon_hit_type`'s `default` to `TYPE_HIT` and through `weapon_skill_num` to barehanded — a rewrite
+  should range-check the type against `WT_COUNT` at load.

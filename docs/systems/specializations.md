@@ -44,10 +44,20 @@ Mystic   : PS_Regeneration, PS_Protection, PS_Illusion, PS_Guardian
 ```
 These groupings are **descriptive, not enforced** — see the selection rules below.
 
+> **Data note (player-base vintage).** A tally of the saved `spec` field across the archived player
+> files shows only specs **0–11** in use; the newer warrior/mage additions — indices **12–19**
+> (Heavy Fighting, Light Fighting, Defender, Archery, Darkness, Arcane, Weapon Master, Battle Mage)
+> — have **zero** saved occurrences, i.e. they post-date that population. Wild Fighting (7) is by far
+> the most common historical pick, followed by Stealth (6) and Illusion (9). The spec is stored as a
+> plain integer (the enum index) in each player save's `spec` line.
+
 ## How a specialization is chosen
 
 `do_specialize` (`act_othe.cpp:1825`): a player types `specialize <name>` (matched by name prefix
-against `specialize_name[]`). The rules are deliberately thin:
+against `specialize_name[]`, `consts.cpp:2359`). Note the selectable strings differ slightly from
+the `PS_*` enum names — e.g. `PS_Defender`'s match string is **`"defending"`** (`consts.cpp:2362`),
+and `PS_WeaponMaster`/`PS_BattleMage` match `"weapon mastery"`/`"battle magic"`. The rules are
+deliberately thin:
 - **Level 12 minimum** (`GET_LEVEL(ch) < 12` → "too young to specialize").
 - **One pick at a time** — once `get_specialization` is non-`PS_None`, `specialize` refuses to
   change it ("You are already specialized in *X*."). It is **not** permanent, though: a **prac
@@ -381,8 +391,11 @@ a utility into a kill opener.
   you sneak into a room costs 50% of the normal wait, so you re-conceal almost instantly after moving.
 - **+5 to *seeing* hiders** (`see_hiding`, `ranger.cpp:1968`): a stealth-spec seeker adds +5 to
   `can_see`, i.e. you're also better at **detecting other hidden characters** (counter-stealth).
-- **Unlocks Stalking** (`SKILL_STALK`, `consts.cpp:426`, `learn_type 65`) — the spec-only
-  leave-no-tracks movement skill.
+- **Unlocks Stalking and Cover** (`SKILL_STALK`, `consts.cpp:426`, `learn_type 65`) — **Stalking**
+  is the spec-only leave-no-tracks movement skill; **Cover** (`do_cover`, `ranger.cpp:1755`, command
+  `CMD_COVER`) is a separate action that erases tracks you've *already* left. Cover has no skill of
+  its own — it gates on your `SKILL_STALK` knowledge (`ranger.cpp:1771`), so the Stalking grant
+  unlocks both.
 
 ### Animals (`PS_Animals` / `PLRSPEC_PETS`, idx 5) — the beastmaster
 **Role:** field a stable of tamed animal followers and make them meaningfully stronger. The only
@@ -439,6 +452,8 @@ six elemental/battle specs for that matrix. Highlights, verified in `mage.cpp`:
 
 - **Fire** (`PS_Fire`, 1) — Firebolt damage floored at caster level (`mage.cpp:1486`); Searing
   Darkness fire component **+50%** (`mage.cpp:1785`); spares friendly splash targets (`is_friendly_taget`).
+  (The in-game `spec_tbl` help also claims Fire *increases Fireball damage* — that text is **stale**;
+  the live Fire effect on Fireball is only the friendly-splash exemption, `mage.cpp:1834`-`1854`.)
 - **Cold** (`PS_Cold`, 2) — Chill Ray an **extra −4** save (−6 total) (`mage.cpp:1379`); applies the
   **Chilled** energy-drain effect on a landed hit (failed save) — now on **both Chill Ray**
   (`mage.cpp:1384`) **and Cone of Cold** (`mage.cpp:1529`), in addition to Word of Agony
@@ -451,6 +466,12 @@ six elemental/battle specs for that matrix. Highlights, verified in `mage.cpp`:
   the sun penalty (`mage.cpp:2035`).
 - **Arcane** (`PS_Arcane`, 17) — the **universal** element: counts as your primary for offensive
   saves *and* as the opposing element on defense (`mage.cpp:1311`); no flat damage bonus of its own.
+  **Casting-speed control is spec-only** (`do_casting`, `act_othe.cpp:1103`): only an arcane
+  specialist may `set casting fast | normal | slow` ("Only players specialized in arcane may set
+  their casting speed."). **Fast** halves a spell's cast time but **doubles** its mana cost;
+  **slow** doubles the cast time but **halves** the mana cost; normal is the default. This is the
+  mage mirror of Archery's shooting-speed lever (above) and is Arcane's defining in-combat tool —
+  mana-economy mode (slow) vs. faster spells in a fight (fast).
 - **Teleportation** (`PS_Teleportation`, 8) — **mage** spec: Blink range **5 vs 3** zones
   (`mage.cpp:924`), Relocate **+1** zone (`mage.cpp:1016`).
 - **Battle Mage** (`PS_BattleMage`, 19) — melee/caster hybrid (`battle_mage_handler.cpp`): adds

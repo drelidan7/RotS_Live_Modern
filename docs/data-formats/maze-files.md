@@ -1,9 +1,17 @@
-# Maze / level files (`.lev`)
+# Maze / level files (`.lev` and `.maz`)
 
 **Source files:** `levgen/maz.c` (`MAZloadLevel:381`, `MAZreadNextHall:18`,
 `MAZmakeLevel:~330`, `MAZwriteLevel:369`), `levgen/maz.h`, `levgen/structs.h`,
 `levgen/levgen.c`, `levgen/config.c`
 **Status:** ✅ format complete. Connection-code semantics & assembly algorithm noted as open.
+
+This doc covers **two related-but-distinct formats**, both **offline `levgen` input** — neither
+is read by the game server at runtime (there is no `MAZ_PREFIX` / `DB_BOOT_MAZ` in `src/`):
+- **`levgen/*.lev`** — full maze **blueprints**: grid size, vnum range, source/output paths,
+  external connections, **and** hall definitions, in one file. Detailed in *Purpose* and
+  *File structure* below.
+- **`lib/world/maz/*.maz`** — hall **libraries**: hall definitions **only** (no properties or
+  connection sections, no `~` separators). Detailed in *`.maz` hall-library files* below.
 
 ## Purpose
 `levgen` is a **standalone C tool** (built separately — `cd levgen && make`) that
@@ -73,9 +81,54 @@ Section ends at the next `~`.
 `S\n#99999\n$~\n` (zone-command terminator + file terminator) and the `.wld` ends with
 `#99999\n\r$~\n\r` (`maz.c:355,377`) — i.e. the generated files conform to `world-files.md`.
 
+## `.maz` hall-library files (`lib/world/maz/`)
+The runtime tree ships **hall-library** files under `lib/world/maz/`: `0.maz`, `3.maz`, `4.maz`,
+`5.maz`, plus `index` and `index.min`. Like `.lev`, these are **offline `levgen` input, NOT
+loaded by the game server at runtime** — no `MAZ_PREFIX` / `DB_BOOT_MAZ` exists in `src/`, and
+no `fopen` in `src/` references them. They are ASCII text with **CRLF** line endings.
+
+A `.maz` file is a **hall library only** — *just* the hall-definition section of a `.lev` file
+(section 3 above), with **no** properties section, **no** connection/seed section, and therefore
+**no `~` separators**. It is a flat list of halls ending in a sentinel:
+
+```
+#<N1> <N2> <hall name>
+<rnum> <rx> <ry> <cN> <cE> <cS> <cW> [<symbol>]
+...
+#<N1> <N2> <next hall name>
+...
+#0
+```
+
+- **Hall header** = `#<N1> <N2> <hall name>` — note the **two leading integers** (e.g.
+  `#10 0 Training area 1`, `#40 2 Hummerhorn Cavern`, `#15 2 Moldering Rooms`).
+  `MAZreadNextHall` consumes the whole `#` line as a delimiter and **never parses those two
+  numbers** (`maz.c:26-48`); their meaning is unrecorded (plausibly placement weight /
+  orientation hints — see open questions). The `.lev` halls use bare `#<name>` headers instead.
+- **Room rows** are the **same 7-int format** as `.lev`: `rnum rx ry cN cE cS cW [symbol]`
+  (`maz.c:45`).
+- The file ends with a bare **`#0` sentinel** — a `#` header with no following room rows, which
+  makes `MAZreadNextHall` stop at EOF.
+- Halls draw room vnums from **multiple existing zones** (e.g. `0.maz` references 17xx and 18xx
+  rooms), mirroring the `.lev` `source.wld` room-cloning approach.
+
+### `index` / `index.min`
+Plain text, **one filename per line, terminated by a `$` line** — the same convention as the
+`world/*/index` files consumed by `index_boot` (`db.cpp:648-671`). `index` lists all four maze
+files (`0.maz`, `3.maz`, `4.maz`, `5.maz`); `index.min` lists only `0.maz` (the mini set,
+mirroring `MINDEX_FILE`). No `src/` code currently boots these directories — they follow the
+world-index convention but are inert at runtime.
+
 ## RotS-specific notes
 - Procedural dungeon generation is a RotS feature; stock DikuMUD has only hand-built zones.
 - Generated rooms clone the look/sector of the `source.wld` template zone.
+- **`mortal_maze_room[]` (`db.h:94`) is a rent-rescue map, not a runtime generator.** When a
+  player quits/rents inside a maze zone that is later regenerated (new room vnums), the saved
+  login room no longer exists. On load, `objsave.cpp:606-613` matches the saved room's zone
+  (`old_room / 100`) against `mortal_maze_room[i][0] / 100` and relocates the player to the
+  safe vnum `mortal_maze_room[i][1]` (e.g. 235xx/236xx/237xx → 10700; 231xx/232xx/233xx →
+  6330). The server never regenerates mazes itself; `levgen` runs offline and its `.wld`/`.zon`
+  output loads through the normal world path.
 
 ## Open questions
 - **Connection codes** `cN/cE/cS/cW` exact meaning (0 = no exit; nonzero values appear to
@@ -84,5 +137,5 @@ Section ends at the next `~`.
 - The **assembly algorithm**: how halls are chosen/placed/rotated and how `room.base`/
   `room.max` bound vnum allocation.
 - Exact **config key parser** (`levgen.c`/`config.c`) and the full key list.
-- How generated zones are wired into the live world at runtime (`mortal_maze_room[]`
-  remapping, `db.h:94`).
+- The two leading integers in `.maz` hall headers (`#<N1> <N2> <name>`) — read past by
+  `MAZreadNextHall`, so their meaning (weight? orientation? legacy field?) is unconfirmed.

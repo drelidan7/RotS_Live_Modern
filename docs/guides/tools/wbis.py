@@ -195,7 +195,8 @@ class Char:
     tactics:str='NORMAL'
     # combat knowledges (addendum: weapon skills 100; others maxed)
     k_weapon:int=100; k_parry:int=100; k_twohanded:int=100; k_attack:int=100
-    k_extra:int=100; k_berserk:int=0; k_dodge:int=80; k_stealth:int=0; k_natural:int=0
+    k_extra:int=100; k_berserk:int=100; k_dodge:int=80; k_stealth:int=0; k_natural:int=0
+    k_kick:int=100; k_swing:int=100; k_riposte:int=100; k_bash:int=100
     equip: dict=field(default_factory=dict)  # slot index -> item
 
     # ---- derived ability helpers

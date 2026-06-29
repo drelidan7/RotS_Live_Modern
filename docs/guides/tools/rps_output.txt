@@ -1,0 +1,21 @@
+HP/stats: HV2 OB174 DB-7 HP469 | HV1 OB159 DB15 PB93 HP469 | LTc OB156 DB43 PB95 HP427 | WLb OB186 DB-25 HP469
+  LTd(defensive) OB132 DB45 PB108 HP427 | LTe(WoodElf maxEvade) OB129 DB54 PB108 HP327
+
+=== INTENDED CYCLE  (want: Light>Heavy>Wild>Light) ===
+  Light(careful)  vs  Heavy-2H(normal)           A   0.0% | B 100.0% | draw   0.0%  (B wins, ~40s)
+  Heavy-2H(normal)  vs  Wild(berserk)            A  19.5% | B  80.5% | draw   0.0%  (B wins, ~35s)
+  Wild(berserk)  vs  Light(careful)              A 100.0% | B   0.0% | draw   0.0%  (A wins, ~35s)
+
+=== the three user hypotheses ===
+  Wild(berserk)  vs  Light(careful)   [Wild>Light?] A 100.0% | B   0.0% | draw   0.0%  (A wins, ~35s)
+  Heavy-2H(normal)  vs  Wild(berserk) [Heavy>Wild?] A  19.1% | B  80.9% | draw   0.0%  (B wins, ~35s)
+  Heavy-1H+shield(norm) vs Wild(berserk)         A  32.1% | B  67.9% | draw   0.0%  (B wins, ~42s)
+  Light(careful)  vs  Heavy-2H(normal) [Light>Heavy?] A   0.0% | B 100.0% | draw   0.0%  (B wins, ~40s)
+  Light(defensive) vs Heavy-2H(normal)           A   0.0% | B 100.0% | draw   0.0%  (B wins, ~45s)
+  Light(WoodElf max-evade) vs Heavy-2H           A   0.0% | B 100.0% | draw   0.0%  (B wins, ~39s)
+  Light(WoodElf max-evade) vs Heavy-1H+shield    A   0.0% | B 100.0% | draw   0.0%  (B wins, ~50s)
+
+=== what each mechanic is worth (Light vs Heavy-2H) ===
+  Light(careful, NO riposte) vs Heavy-2H         A   0.0% | B 100.0% | draw   0.0%  (B wins, ~40s)
+  Light(careful) vs Heavy-2H(NO kick)            A  59.7% | B  40.3% | draw   0.0%  (A wins, ~67s)
+  Light(careful, NO kick) vs Heavy-2H            A   0.0% | B 100.0% | draw   0.0%  (B wins, ~40s)

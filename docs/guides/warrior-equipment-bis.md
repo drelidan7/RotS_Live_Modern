@@ -169,9 +169,11 @@ STR build + plate as Heavy; weapon = `#5226` (2H) for the biggest rush procs.
 
 | Build | OB | PB | DB | HP | PvP dps / TTK / TTD | PvE (Kraken) TTK / TTD |
 |---|---:|---:|---:|---:|---|---|
-| **Berserk 2H cleave** | 174 | 24 | **−25** | 469 | **6.3 / 72 / 120** | **180 / 42** |
-| Normal 2H cleave | 156 | 42 | −31* | 469 | 5.5 / 84 / 126 | 196 / 47 |
-| Berserk 1H broadsword | 164 | 52 | −12 | 469 | 4.8 / 95 / 145 | — |
+| **Berserk 2H cleave** | 186 | 24 | **−25** | 469 | **6.8 / 67 / 120** | **170 / 42** |
+| Normal 2H cleave | 156 | 42 | −31* | 469 | 5.5 / 84 / 126 | 207 / 44 |
+| Berserk 1H broadsword | 176 | 52 | −12 | 469 | 5.2 / 88 / 144 | — |
+
+(Berserk OB includes the maxed-`SKILL_BERSERK` `+ob_bonus/16 + 5 + berserk/8` bonus.)
 
 Highest sustained DPS of any warrior (rush + Berserk OB), but **the lowest effective defense** (DB
 gutted, can't flee) → it dies fastest of the bruisers. The comeback curve (rage/heal, not modeled
@@ -241,8 +243,8 @@ Defender's value is **group play** (rescue/peel); solo it just out-lasts. Race: 
 
 | Archetype | OB | PB | DB | HP | spd | DPS | TTK (s) | TTD (s) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Weapon Master (2H cleave) | 156 | 42 | −31 | 469 | 12 | **6.4** | **72** | 125 |
-| Wild (Berserk 2H) | 174 | 24 | −25 | 469 | 12 | 6.3 | 72 | 120 |
+| Wild (Berserk 2H) | 186 | 24 | −25 | 469 | 12 | **6.8** | **67** | 120 |
+| Weapon Master (2H cleave) | 156 | 42 | −31 | 469 | 12 | 6.4 | 72 | 125 |
 | Heavy (2H ice cleave) | 174 | 42 | −7 | 469 | 12 | 6.2 | 74 | 169 |
 | Light (dagger, 30w21r) | 170 | 70 | **39** | 427 | 38 | 4.8 | 96 | 104 |
 | Heavy (1H + golden shield) | 159 | 93 | 15 | 469 | 27 | 4.3 | 105 | **261** |
@@ -258,7 +260,7 @@ by not being hit.**
 |---|---|---|---|---|---|
 | Heavy 2H (ice cleave) | 185 / 57 | 333 / 49 | 349 / 77 | 373 / 48 | 376 / 77 |
 | Heavy 1H + shield | 247 / 76 | 426 / 71 | 491 / 100 | 484 / 66 | 559 / 114 |
-| Wild (Berserk 2H) | **180 / 42** | **324 / 36** | 340 / 58 | 360 / 35 | 366 / 56 |
+| Wild (Berserk 2H) | **170 / 42** | **308 / 36** | 315 / 58 | 342 / 35 | 331 / 56 |
 | Weapon Master (2H cleave) | 179 / 44 | 312 / 38 | 358 / 60 | 353 / 37 | 406 / 59 |
 | Light (dagger) | 220 / 31 | 392 / 28 | 420 / 40 | 441 / 26 | 461 / 45 |
 | Defender (golden) | 311 / 77 | 532 / 68 | 729 / 101 | 608 / 65 | 882 / 112 |
@@ -267,6 +269,110 @@ Same ordering as PvP: **Wild/WM/2H-Heavy kill fastest; Defender/1H-Heavy last lo
 glass.** TTDs are short because these are **group bosses** (OB 150–250, dam 21–32) — the table ranks
 relative durability, not "can I solo a balrog" (you can't, durably). Against the pale lady and drakes
 (HP 5000), even the fastest build needs ~5–6 minutes — bring friends.
+
+---
+
+## Spec matchups — does the intended rock-paper-scissors hold?
+
+The design intent for the three core fighting specs was a cycle: **Light > Heavy > Wild > Light**
+(Light evades and ripostes the armored Heavy; Heavy's armor outlasts the Wild glass cannon; Wild's
+raw offense bursts the squishy Light). To test it I built a **mutual duel simulator**
+([`tools/rps_duel.py`](tools/rps_duel.py)): time-stepped combat with the full energy loop (incl. Wild
+rage attack-speed), the **armor-ignoring active skills** (kick / wild-swing, which are wait-priority
+59 — see below — so they fire *on top of* auto-attacks), **riposte**, defender block, find-weakness,
+the Light double-strike, and per-location armor. Each spec runs its BiS gear in its preferred stance
+(Heavy plate Normal; Light leather Careful; Wild plate Berserk), 3,000 duels per matchup.
+
+**Result: the cycle does NOT hold. It collapses into a power ladder — `Wild ≳ Heavy > Light`.**
+
+| Matchup (A vs B) | A wins | B wins | intended | verdict |
+|---|---:|---:|---|---|
+| Light (careful) vs **Heavy** (2H, normal) | 0 % | **100 %** | Light > Heavy | ❌ **inverted** |
+| **Wild** (berserk) vs Heavy (2H, normal) | **81 %** | 19 % | Heavy > Wild | ❌ **inverted** |
+| **Wild** (berserk) vs Light (careful) | **100 %** | 0 % | Wild > Light | ✅ holds |
+
+Only the **Wild > Light** leg works. The other two invert: **Heavy beats Light**, and **Wild beats
+Heavy** (Heavy 1H+shield does better vs Wild — 32 % — but still loses).
+
+### Why each intended leg breaks
+
+**Light > Heavy fails (Heavy wins 100 %).** Two compounding reasons, both about the math the RPS
+was supposed to exploit:
+1. **Heavy's OB is too high to evade.** A 36-warrior STR-22 Heavy on the ice battleaxe rolls ~171
+   effective OB; even a *maximally* evasive Wood-Elf Light (DB 54 / PB 108, defensive stance) only
+   subtracts ~140 — so Heavy still lands at a ~+30 margin nearly every swing. You cannot dodge your
+   way out.
+2. **Plate neutralizes Light's offense.** Light's dagger does ~14 pre-armor, and plate absorbs
+   60–75 % of it — Light simply can't punch through, while its own HP (427) + leather fold to Heavy's
+   weapon **plus** Heavy's armor-ignoring kick.
+
+Riposte and Light's own kick keep it *in* the fight but aren't enough. The decisive lever is the
+**kick**, and the sensitivity test proves it:
+
+| Variant | Light win % vs Heavy-2H |
+|---|---:|
+| both kick (baseline) | 0 % |
+| **Heavy's kick disabled** | **60 %** ← Light wins |
+| Light's kick disabled | 0 % |
+| Light's riposte disabled | 0 % (no change) |
+
+So **Light's intended counter to armor (evasion + riposte) is real but insufficient; the thing that
+actually decides Light-vs-Heavy is whose *kick* is bigger — and Heavy's is bigger** (Warrior 36 vs 30,
+**plus Heavy Fighting's +20 % skill bonus**). The armor-bypassing skill that was supposed to let
+*light* fighters answer armor is strongest in the *armored* spec's hands.
+
+**Heavy > Wild fails (Wild wins ~81 %).** Heavy's armor only mitigates **auto-attacks**, but Wild's
+damage largely routes *around* armor: **rush** (+50 %) and **rage** attack-speed pump the
+auto-stream, and the **wild-swing** (kick ×1.5, armor-ignoring) is a big chunk of its output. Worse
+for the intent, **Wild can wear the same plate** — Berserk already throws away the dodge that plate
+would cost, so a Wild fighter pays *no meaningful price* for full plate and gets its absorption for
+free. So Wild is *also* armored, hits far harder (OB 186 + procs vs 174), and out-races Heavy's modest
+durability edge. The juggernaut never gets to outlast anything.
+
+**Wild > Light holds (100 %).** As intended: Berserk OB 186 + rush + rage-speed + armor-ignoring
+wild-swing shreds Light's 427 HP in ~35 s, and Light's small, plate-absorbed damage can't punish
+Wild's gutted defense fast enough to matter. Light's evasion delays but doesn't save it.
+
+### How bash / kick / wild-swing factor in (the crux)
+
+- **Kick & wild-swing are "free."** They set a 4–7 s recovery with **wait-priority 59**, and the
+  energy loop explicitly exempts priority 59 (`fight.cpp:2742`: `... || GET_WAIT_PRIORITY==59`), so
+  you **keep auto-attacking and gaining energy during the recovery** — the skill is pure bonus
+  damage, not a trade. And it calls `damage()` directly, so it **ignores armor**. That makes it the
+  game's main answer to heavy armor — but it **scales with Warrior level and OB and gets +20 % for
+  Heavy Fighting**, so the *biggest* armor-bypass belongs to the *most armored* build. This single
+  fact is why the cycle inverts at Light-vs-Heavy.
+- **Wild-swing** (kick ×1.5, ×1.33 more when Berserk ≤ 25 % HP) is Wild's best button and a major
+  reason it beats Heavy.
+- **Bash** deals ~1 damage; its payload is the **knockdown** (`AFF_BASH`: target can't act ~4.5–6 s,
+  and a below-fighting-position target hands attackers +10 OB per position step and enables rend). It
+  is a powerful *lockdown/setup* that favors whoever lands it — again the higher-OB Heavy/Wild — and
+  it **auto-fails while in frenzy** (so an Olog Wild can't bash). Not in the damage sim (≈0 dmg) but
+  it would *widen*, not close, the gaps.
+
+### What would restore the cycle (design levers)
+
+The intent is recoverable, but needs the numbers to stop favoring the armored bruiser on every axis:
+- **Stop the armored spec from also owning the armor-bypass** — e.g. cap kick/wild-swing scaling, or
+  drop Heavy Fighting's +20 % *skill* bonus (keep its weapon/absorb bonuses), so kick is a *light*
+  fighter's equalizer, not a heavy one's finisher.
+- **Make heavy armor cost Wild something** — Berserk (or Wild Fighting) should forfeit some armor
+  absorption, or Wild's full-plate encumbrance should bite OB/speed harder, so Wild can't be a
+  glass cannon *and* a juggernaut.
+- **Let Light actually evade Heavy** — scale dodge effectiveness against very high OB, or make
+  riposte hurt (it's currently a small, ~25 %-on-parry dagger counter), so evasion+riposte can out-
+  attrition plate.
+
+### Caveat — this is a stand-up duel
+
+The sim is two fighters standing toe-to-toe until one dies. It deliberately ignores the things that
+are **Light's real edge** and that the RPS partly lived in: **kiting / disengage** (Light halves move
+cost, re-hides, and can simply *refuse* a fight it can't win — a to-the-death sim scores that as a
+Heavy "win" when in practice it's a stalemate Light controls), **bash-lockdown chains**, **Wild's
+bloodlust heal** (matters across multiple kills, not a single duel), **frenzy** (an Olog Wild is
+stronger still), terrain, and consumables. So read the verdict as: *in a pure stand-up fight the
+intended cycle does not hold — it's a power ladder — and the mechanisms meant to create the cycle
+(armor-bypassing skills, riposte) are real but currently mis-weighted toward the armored specs.*
 
 ---
 
@@ -382,7 +488,8 @@ artifacts of this analysis):
 - **`mine.py`** — surveys the live item pool (per-type weapon leaders, per-slot armor, shields,
   stat-stick accessories).
 - **`warrior_bis.py`** — builds every archetype/combo/race and prints all the tables above.
-- **`analysis_output.txt`** — a captured run.
+- **`rps_duel.py`** — the mutual duel simulator behind the [matchup section](#spec-matchups--does-the-intended-rock-paper-scissors-hold) (auto-attacks + rage, armor-ignoring skills, riposte, block).
+- **`analysis_output.txt`, `rps_output.txt`** — captured runs.
 
 To regenerate after world-data or formula changes: `cd docs/guides/tools && python3 warrior_bis.py`.
 Paths are derived from the repo root, so they work in place. Adjust assumptions (level, stats, skill

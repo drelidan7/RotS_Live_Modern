@@ -8,7 +8,7 @@ from wbis import *
 OBJDIR=os.path.join(_REPO,'lib/world/obj')
 recs=load_all(OBJDIR)
 
-BAD=['godly','immortal','test','gizmo','invisible','dummy','prototype','reserved',
+BAD=['godly','immortal','test','gizmo','invisible','dummy','prototype','reserved','pristine','golem','chitin',
      ' imm','(imm','staff ','builder','do not','aura of','an aura']
 def realistic(it):
     n=it['name'].lower()

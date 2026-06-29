@@ -27,12 +27,12 @@ committed calculator in [`tools/`](tools/).
 
 | Spec | Wants | Best realistic weapon | Armor | PvP role | PvE role |
 |------|-------|-----------------------|-------|----------|----------|
-| **Heavy Fighting (2H)** | heaviest weapon + heaviest armor | `#5226` ice-encrusted battleaxe (2H cleave, d13.3/OB+15) | full plate | top bruiser DPS | fastest boss kills among durable specs |
-| **Heavy Fighting (1H+shield)** | bulk-3 1H + shield + heavy armor | `#5044` gleaming broadsword + `#6510` golden shield | full plate | durable bruiser | best survivability/DPS balance |
+| **Heavy Fighting (2H)** | heaviest weapon + heaviest armor | `#5226` ice-encrusted battleaxe (2H cleave, d11.4/OB+15) | full plate | top bruiser DPS | fastest boss kills among durable specs |
+| **Heavy Fighting (1H+shield)** | bulk-3 1H + shield + heavy armor | `#5044` gleaming broadsword + `#26806` numenorean shield (+HIT 100) | full plate | durable bruiser | best survivability/DPS balance |
 | **Wild Fighting** | any big weapon, Berserk | `#5226` ice battleaxe (2H) | plate (offense from HP, not gear) | highest burst, glass cannon | fastest kills, dies fastest |
-| **Light Fighting** | light 1H (bulk ≤ 2), minimal armor, high DEX + ranger | `#5435` marble dagger / `#5410` quicksilver rapier | leather | evasive duelist | glassy; avoid hard hitters |
+| **Light Fighting** | light 1H (bulk ≤ 2), minimal armor, high DEX + ranger | `#5410` quicksilver rapier (d5.7) / `#5425` twilight dagger | leather | evasive duelist | glassy; avoid hard hitters |
 | **Weapon Master** | the *right* weapon per target | `#5226` cleave (burst) / `#5410` pierce (vs armor) / `#5346` smite | plate | flexible technician | matches Wild vs the right target |
-| **Defender** | shield + warrior/ranger levels | `#5044` broadsword + `#6510` golden shield | full plate | shield-wall tank/peeler | longest survival, slow kills |
+| **Defender** | shield + warrior/ranger levels | `#5044` broadsword + `#26806` numenorean shield (+HIT 100) | full plate | shield-wall tank/peeler | longest survival, slow kills |
 
 Three rules fall out of the math and hold for **every** warrior:
 1. **OB *multiplies* damage** (`dam ∝ remaining_OB + 100`), so out-OB'ing the target both lands more
@@ -76,6 +76,11 @@ omitted (the wielded weapon's own bulk-encumbrance OB penalty, and the flat weap
   snow-troll king** (`#25604`, L48, HP 3500). (Super-bosses like Runyavath `#20811` L94 / "Fluffy"
   `#25902` L90 exist but are off-scale — group content.)
 
+**Data snapshot.** This pass was re-run against the expanded item library (2026-06): **280 weapons,
+~885 armor/worn, 64 shields across 156 obj files** (up from 222 / 591 / 47). The tools read
+`lib/world/{obj,mob}` directly, so re-running them regenerates every number here. Builder/test items
+(`pristine *` at weight 10 000–30 000, `golem` plate at weight 60 000, etc.) are excluded.
+
 **Model limits (be honest about these):** numbers are **average-case, relative** — not exact in-game
 readouts. Parry decay (to ⅔ after the first parry in a round) is approximated as ~0.8 average
 effectiveness; armor is averaged over a humanoid hit-location distribution; procs are expected-value;
@@ -86,49 +91,57 @@ squishiness). DPS/TTK/TTD are for **comparison between builds**, not absolute co
 
 ## The gear landscape (what actually exists)
 
-Mining `lib/world/obj` (realistic pool, test/immortal items excluded): **222 weapons, ~591
-armor/worn pieces, 47 shields.**
+Mining `lib/world/obj` (realistic pool, test/immortal items excluded): **280 weapons, ~885
+armor/worn pieces, 64 shields** (156 obj files).
 
 ### Weapons — the per-type leaders (damage rating shown as in-game `identify`, ÷10)
 
 | Type (skill) | Top damage | Top OB | Notes |
 |---|---|---|---|
-| **2H cleaving** (Axe) | `#5226` ice-encrusted battleaxe **d13.3 / OB+15** bulk7 wt2750 L45 | `#5221` silver battleaxe OB+17 | the single best 2H in the game |
-| **2H bludgeon** (Conc.) | `#5320` Durin's Sceptre d11.7 bulk8; `#5366` warhammer d10.8 | `#1512` dark warhammer OB+10 | |
-| **2H slashing** (Slash) | `#5104` ornate scimitar d10.2 bulk7 | `#5113`/`#5114` OB+14 | balances OB + damage |
-| **Flail** (Whip) | `#5611` iridescent flail d11.3 bulk7 | — | no 2H *type*, but bulk≥4 grips 2H |
-| **Spear** (Spears) | `#5514` enruned mithril spear **d10.1 / OB+12** bulk6 | `#5515` ash spear OB+12 | **÷150 armor pen** (anti-armor) |
-| **1H slashing** (Slash) | `#5044` gleaming broadsword d7.6/OB+4/pa+3 bulk3; `#5033` obsidian d7.3/**OB+10/pa+5** | `#5035` silver shortsword OB+14 | bulk-3 1H = heavy-fighting legal |
-| **1H bludgeon/smite** | `#5362` white mace OB+12; `#5346` steel maul d9.0/OB+12 (smite) | | smite shatters metal armor |
-| **Piercing** (Pierce) | `#5435` marble dagger **d5.4 bulk1**; `#5410` quicksilver rapier **d5.1/OB+6/pa+7 bulk2** | `#5426` sickle OB+12 | the Light-Fighting weapons |
+| **2H cleaving** (Axe) | `#5224` halberd / `#5227` **d12.6** bulk7; `#5226` ice battleaxe d11.4/**OB+15** | `#5221` silver battleaxe OB+17; `#5226` OB+15 | **`#5226` still the best 2H overall** — its OB+15 multiplies damage past the higher-d rivals |
+| **2H bludgeon** (Conc.) | `#5320` Durin's Sceptre d11.7 bulk8; `#5370` jagged cudgel d11.4 | `#1512` dark warhammer OB+10 | |
+| **2H slashing** (Slash) | `#5104`/`#5106` ornate d10.9 bulk7; `#5108` gilded d10.6/OB+12 | `#8121` **blade of essence OB+25** (d7.8) | OB+25 is huge but its low d nets less DPS |
+| **Smite** (Conc.) | `#27425` **The Mighty Grond d15.5** bulk8 **wt5000** | `#27425` OB+13; `#5346` maul OB+12 | highest raw damage in the game, but wt5000 ⇒ ~half speed, so it *loses* on DPS; smite shines only vs metal armor |
+| **Flail** (Whip) | `#5611` iridescent flail d11.3 bulk7 | `#7031` bramblethorn OB+17 | no 2H *type*, but bulk≥4 grips 2H |
+| **Spear** (Spears) | `#5514` enruned mithril spear **d10.1 / OB+12** bulk6 | `#5520` gilded double-bladed OB+15 | **÷150 armor pen** (anti-armor) |
+| **1H slashing** (Slash) | `#5059` basket-hilted **d8.5** bulk3; `#5033` obsidian d7.6/**OB+10/pa+4**; `#5044` broadsword d7.6/OB+4/pa+4 (wt240) | `#10021` serrated scimitar OB+14 | bulk-3 1H = heavy-fighting legal; `#5044` still edges it on OB+speed |
+| **1H bludgeon/smite** | `#5306` dark runed mace d8.0/**OB+12** bulk3; `#5346` steel maul d9.0/OB+12 (smite) | | smite shatters metal armor |
+| **Piercing** (Pierce) | `#5410` quicksilver rapier **d5.7/OB+5/pa+5 bulk2**; `#5425` twilight dagger d5.4 bulk2 wt100 | `#5426` sickle OB+12 | the Light-Fighting weapons (`#5435` marble dagger nerfed to d4.5) |
+| **Bow** (Archery) | `#2703` composite longbow OB+12; `#2706` dragon-horn bow | — | **bows now exist** (`#2700`–`#2706`) — the world previously shipped none; ranged/Archery cross-builds are now possible |
 
 Damage is **derived** (`get_weapon_damage`): it rises with item level and bulk-near-3, and falls the
-more OB/parry the weapon also grants — so the ice battleaxe pairing d13.3 *with* OB+15 is exceptional
-(most high-OB weapons pay in damage).
+more OB/parry the weapon also grants — which is why the new Grond (d15.5 but wt5000) and blade-of-essence
+(OB+25 but d7.8) both *lose* to the ice battleaxe: **`#5226`'s balanced d11.4 + OB+15 beats raw damage
+or raw OB**, because OB multiplies damage *and* speed matters (Grond swings at ~half the rate).
 
 ### Armor — absorption scales with **level + encumbrance** (`armor_absorb`)
 
 Heavy plate (`#6227` body abs62, `#6221` head abs67, `#6244` hands abs75, `#6256` legs abs59,
 `#6246` feet abs61, `#6254` arms abs59) gives the most absorb but at enc 5–7 and 850–2200 weight each
 — crushing dodge/speed for anyone **except a Heavy Fighter** (who soft-caps the weight/encumbrance).
-Chain (`#11002` abs52 enc2) and leather (`#11119` abs40 enc2, lighter pieces enc0–1) trade absorb for
-mobility — the Light Fighter's kit.
+Chain (`#11000` abs48 / `#11020` **light mithril mail abs60** enc3) and leather (`#11119` abs40 enc2,
+lighter pieces enc0–1) trade absorb for mobility — the Light Fighter's kit. (The new expansion adds an
+`abs96` `pristine`/`golem` plate set at weight 10 000–60 000 — clearly builder/test gear, excluded.)
 
 ### Shields — dodge + parry, **not** absorption
 
 Shields are not a hit location, so they give **`value[0]`→dodge, `value[1]`→parry** (+ the Defender
-block layer), never `armor_absorb`. Leaders: `#6510` golden / `#6529` sable targe **(dodge15/parry15,
-enc3)**; `#9080` heater (dodge8/**parry22**, enc5); `#1636` buckler (dodge10/parry18); `#6530` tower
-(**parry40** but **wt4000** → wrecks dodge — only for a Defender who's already abandoned dodge).
+block layer), never `armor_absorb`. **New best:** `#26806` **black numenorean shield (dodge15/parry15
++ HIT 100)** — same block stats as the golden shield but **+100 HP**, so it's now the BiS shield for
+any survivability build. Others: `#6510` golden / `#6529` sable targe / `#33614` spectral
+(dodge15/parry15, enc3); `#9080` heater (dodge8/**parry22**, enc5); `#6530` blackshield
+(dodge10/parry20); `#32809` light leaf shield (dodge16/parry12, **wt250** — for mobile builds).
 
 ### Accessories — small OB sticks, and the artifact cliff
 
 `A`-line stat gear is sparse and small: **waist** `#6040` rainbow belt **OB+8** (best), **about**
-`#6316`/`#6338` werewolf fur / robe **OB+5**, **wrist** `#6647` red bracelet OB+2, **neck** `#6649`
-green amulet OB+1, **hold** `#6955` werewolf heart OB+2, **rings** `#6602` ivory ring OB+2.
-**Damroll (the `points.damage` channel, `base += damroll·10`) effectively does not exist on common
-gear** — the *only* meaningful sources are the artifact rings **Narya `#1610`** and **Nenya `#7936`
-(OB+100, DAMROLL+15 each)**. Those two are a separate [ceiling tier](#the-artifact-ceiling).
+`#6316`/`#6338` werewolf fur / robe **OB+5**, **head** `#26815` thorned crown **OB+5/DR+2** (new — an
+offense head if you trade away absorb), **hands** `#6263` spiked chain gloves OB+2, **wrist** `#6647`
+bracelet OB+2, **neck** `#6649` amulet OB+1, **hold** `#6955` werewolf heart OB+2, **rings** `#6602`
+ivory ring OB+2. **Damroll (`points.damage`, `base += damroll·10`) still barely exists on common gear**
+(the new `#26815`/`#26813` heads add only DR+2) — the *only* big sources remain the artifact rings
+**Vilya `#5065` (OB+150/DR+20)**, **Narya `#1610`** and **Nenya `#7936` (OB+100/DR+15 each)** — now a
+trio. They're a separate [ceiling tier](#the-artifact-ceiling).
 
 ---
 
@@ -149,17 +162,19 @@ over-cap encumbrance is discarded) and gets **+10 % armor absorb**, **+5 % damag
 
 | Build | Weapon (+shield) | OB | PB | DB | HP | spd | PvP dps / TTK / TTD | PvE (Kraken) TTK / TTD |
 |---|---|---:|---:|---:|---:|---:|---|---|
-| **2H** | `#5226` ice battleaxe (gripped 2H) | 174 | 42 | −7 | 469 | 12 | **6.2 / 74 / 169** | **185 / 57** |
-| **1H+shield** | `#5044` broadsword + `#6510` golden | 159 | 93 | 15 | 469 | 27 | 4.3 / 105 / 261 | 247 / 76 |
-| 1H+shield (parry) | `#5033` obsidian (OB+10/pa+5) + `#6510` | 159 | 97 | 15 | 469 | 27 | 4.2 / 110 / 277 | 254 / 76 |
+| **2H** | `#5226` ice battleaxe (gripped 2H) | 174 | 42 | −7 | 469 | 13 | **6.6 / 69 / 164** | **177 / 57** |
+| **1H+shield** | `#5044` broadsword + `#26806` numenorean | 159 | 95 | 16 | **569** | 28 | 4.5 / 101 / 321 | 236 / 95 |
+| 1H+shield (parry) | `#5033` obsidian (OB+10/pa+4) + `#26806` | 159 | 95 | 15 | 569 | 27 | 4.4 / 104 / 323 | 248 / 94 |
 
-**The headline trade:** the **2H deals ≈ 45 % more PvP damage and ≈ 30 % more PvE damage**, but the
-**1H+shield survives ≈ 50 % longer** (TTD 261 vs 169 in PvP; +30 % vs bosses) thanks to **+78 PB and
-+22 DB** from the shield (dodge15/parry15) and the bulk-3 weapon. The 2H wins via the ×2 `str_speed`
-isn't the story here (it's still slow at sp12 because the axe is wt2750) — it wins on **OB+15 on the
-weapon, +6 from the 2H OB term, and ×2 STR inside the damage factor**. Pick **2H to delete things,
-1H+shield to anchor a line / duel attrition.** Avoid the smite-maul/heater combo generically (slow,
-and smite only helps vs metal armor — which bosses don't wear).
+**The headline trade:** the **2H deals ≈ 47 % more PvP damage and ≈ 34 % more PvE damage**, but the
+**1H+shield survives nearly 2× longer** (TTD 321 vs 164 in PvP; 95 vs 57 vs bosses) thanks to **+53 PB
+and +23 DB** from the shield and **+100 HP** from the new numenorean shield. The 2H's ×2 `str_speed`
+isn't the story (it's still slow at sp13 — the axe is wt2500) — it wins on **OB+15 on the weapon, +6
+from the 2H OB term, and ×2 STR inside the damage factor**. Pick **2H to delete things, 1H+shield to
+anchor a line / duel attrition** — the new `#26806` shield (golden's block + 100 HP) widens the
+survivability gap further. Avoid the smite-maul/heater combo generically (slow, and smite only helps
+vs metal armor — which bosses don't wear). *(Grond `#27425` d15.5 is tempting but at wt5000 it swings
+at ~half speed and nets less DPS than the ice battleaxe.)*
 
 ### Wild Fighting — the berserker glass cannon
 
@@ -169,9 +184,9 @@ STR build + plate as Heavy; weapon = `#5226` (2H) for the biggest rush procs.
 
 | Build | OB | PB | DB | HP | PvP dps / TTK / TTD | PvE (Kraken) TTK / TTD |
 |---|---:|---:|---:|---:|---|---|
-| **Berserk 2H cleave** | 186 | 24 | **−25** | 469 | **6.8 / 67 / 120** | **170 / 42** |
-| Normal 2H cleave | 156 | 42 | −31* | 469 | 5.5 / 84 / 126 | 207 / 44 |
-| Berserk 1H broadsword | 176 | 52 | −12 | 469 | 5.2 / 88 / 144 | — |
+| **Berserk 2H cleave** | 187 | 24 | **−25** | 469 | **7.3 / 62 / 117** | **161 / 42** |
+| Normal 2H cleave | 157 | 42 | −30* | 469 | 5.9 / 77 / 123 | 195 / 45 |
+| Berserk 1H broadsword | 176 | 53 | −12 | 469 | 5.5 / 84 / 141 | — |
 
 (Berserk OB includes the maxed-`SKILL_BERSERK` `+ob_bonus/16 + 5 + berserk/8` bonus.)
 
@@ -188,17 +203,18 @@ The only spec that abandons STR: with a **light 1H (bulk ≤ 2)** its offense st
 a free **~20 % double-strike**. Build: **DEX 22 / STR 18 / CON 18, 30w/21r** (ranger pays double:
 OB *and* dodge), **leather** armor.
 
-| Weapon | OB | PB | DB | HP | spd | PvP dps / TTK / TTD | PvE (Kraken) TTK / TTD |
+| Weapon / kit | OB | PB | DB | HP | spd | PvP dps / TTK / TTD | PvE (Kraken) TTK / TTD |
 |---|---:|---:|---:|---:|---:|---|---|
-| `#5435` marble dagger (d5.4 b1) | 170 | 70 | **39** | 427 | 38 | **4.8 / 96 / 104** | 220 / 31 |
-| `#5410` quicksilver rapier (d5.1/OB+6/pa+7 b2) | 179 | 77 | 39 | 427 | 34 | 4.3 / 107 / 111 | 235 / 33 |
+| `#5410` quicksilver rapier (d5.7/OB+5/pa+5 b2) + leather | 176 | 74 | **39** | 427 | 34 | **4.8 / 95 / 106** | 228 / 31 |
+| `#5410` rapier + `#6200–6205` thin-metal **+dodge** kit | 172 | 74 | **40** | 427 | 34 | 4.6 / 99 / 99 | 232 / 30 |
 
-Its DPS rivals Heavy-1H+shield while carrying **DB 39** (vs 15) — in PvP it *dodges* what the bruiser
+Its DPS rivals Heavy-1H+shield while carrying **DB 39** (vs 16) — in PvP it *dodges* what the bruiser
 *tanks*, and the fast light weapon + double-strike keep pressure on. The catch: **low HP + light
 armor make it glassy in PvE** (TTD ~30 s vs the Kraken — worst of the roster) and a 2H/heavy weapon
-*disables both* the DEX-OB substitution and the double-strike. The marble dagger (bulk 1) edges the
-rapier on raw DPS (faster, double-strikes); the rapier gives more parry. Use the `#6200–6205` thin-
-metal **+dodge** kit only if you want DB 40+ over absorption.
+*disables both* the DEX-OB substitution and the double-strike. **The rapier `#5410` (buffed to d5.7)
+is now the clear light pick** — the old marble dagger `#5435` was nerfed to d4.5; the `#5425` twilight
+dagger (d5.4 bulk2 wt100) is a faster, lighter alternative. The thin-metal **+dodge** kit trades a
+little absorption for DB 40+.
 
 ### Weapon Master — the toolbox technician
 
@@ -207,11 +223,11 @@ Mastery of whatever you hold — pick the weapon for the **target**. All-on, no 
 
 | Weapon | What it brings | OB | spd | PvP dps | PvE (Kraken) TTK | Best against |
 |---|---|---:|---:|---:|---:|---|
-| `#5226` 2H cleave | +15 % dmg, 50 % reroll-higher | 156 | 12 | **6.4** | **179** | raw burst (matches Wild, no risk) |
-| `#5346` smite maul | +10 OB, haze proc | 159 | 20 | 4.6 | — | metal-armored targets, control |
-| `#5410` pierce rapier | +15 % speed, 25 % **ignore armor** | 152 | 37 | 3.5 | 220 | **heavily-armored** PvP targets |
+| `#5226` 2H cleave | +15 % dmg, 50 % reroll-higher | 157 | 13 | **6.9** | **169** | raw burst (matches Wild, no risk) |
+| `#5346` smite maul | +10 OB, haze proc | 159 | 20 | 4.7 | — | metal-armored targets, control |
+| `#5410` pierce rapier | +15 % speed, 25 % **ignore armor** | 149 | 37 | 3.9 | 266 | **heavily-armored** PvP targets |
 | `#5514` spear | 50 % **double armor-pen** | 151 | 17 | 4.9 | — | armored targets |
-| `#5044` 1H slash | +5 OB/+5 PB, energy refund | 152 | 27 | 4.1 | — | balanced/duelist |
+| `#5044` 1H slash | +5 OB/+5 PB, energy refund | 152 | 28 | 4.3 | — | balanced/duelist |
 
 Against the light-armored reference duelist, raw cleave wins; the pierce/spear armor-bypass shines
 **when the enemy stacks absorb** (the table understates them vs a plate-wearing PvP opponent, where
@@ -226,14 +242,15 @@ two rolls stack to −60 %), the only **delay-free rescue**, a cheaper/stronger 
 
 | Shield | OB | PB | DB | HP | PvP dps / TTK / TTD | PvE (Kraken) TTK / TTD |
 |---|---:|---:|---:|---:|---|---|
-| `#6510` golden (d15/p15) | 137 | 89 | 0 | **530** | 3.1 / 146 / **265** | 311 / **77** |
-| `#9080` heater (d8/p22) | 135 | 96 | −10 | 530 | 3.1 / 150 / 249 | — |
-| `#6530` tower (p40, wt4000) | 135 | **114** | −21 | 530 | 3.0 / 151 / 262 | — |
+| `#26806` numenorean (d15/p15 **+HIT 100**) | 137 | 91 | 0 | **630** | 3.3 / 139 / **310** | 294 / **93** |
+| `#6510` golden (d15/p15) | 137 | 91 | 0 | 530 | 3.3 / 137 / 258 | 298 / 77 |
+| `#9080` heater (d8/p22) | 135 | 98 | −10 | 530 | 3.2 / 144 / 251 | — |
+| `#6530` blackshield (d10/p20) | 136 | 96 | −6 | 530 | 3.3 / 139 / 251 | — |
 
-Lowest personal damage, **best survival** (TTD 265 PvP; longest boss survival). The **golden shield**
-is the best all-round pick — the tower shield's huge parry is cancelled by the dodge it costs (wt4000).
-Defender's value is **group play** (rescue/peel); solo it just out-lasts. Race: **Beorning** (can
-`brace` to use DEFEND without a shield; +20 innate dodge).
+Lowest personal damage, **best survival** (TTD 310 PvP; longest boss survival). The **new `#26806`
+numenorean shield is the best all-round pick** — it matches the golden shield's block stats and adds
+**+100 HP**, pushing Defender HP to 630 and TTD to 310. Defender's value is **group play** (rescue/peel);
+solo it just out-lasts. Race: **Beorning** (can `brace` to use DEFEND without a shield; +20 innate dodge).
 
 ---
 
@@ -243,14 +260,15 @@ Defender's value is **group play** (rescue/peel); solo it just out-lasts. Race: 
 
 | Archetype | OB | PB | DB | HP | spd | DPS | TTK (s) | TTD (s) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Wild (Berserk 2H) | 186 | 24 | −25 | 469 | 12 | **6.8** | **67** | 120 |
-| Weapon Master (2H cleave) | 156 | 42 | −31 | 469 | 12 | 6.4 | 72 | 125 |
-| Heavy (2H ice cleave) | 174 | 42 | −7 | 469 | 12 | 6.2 | 74 | 169 |
-| Light (dagger, 30w21r) | 170 | 70 | **39** | 427 | 38 | 4.8 | 96 | 104 |
-| Heavy (1H + golden shield) | 159 | 93 | 15 | 469 | 27 | 4.3 | 105 | **261** |
-| Defender (golden shield) | 137 | 89 | 0 | **530** | 27 | 3.1 | 146 | 265* |
+| Wild (Berserk 2H) | 187 | 24 | −25 | 469 | 13 | **7.3** | **62** | 117 |
+| Weapon Master (2H cleave) | 157 | 42 | −30 | 469 | 13 | 6.9 | 67 | 122 |
+| Heavy (2H ice cleave) | 174 | 42 | −7 | 469 | 13 | 6.6 | 69 | 164 |
+| Light (rapier, 30w21r) | 176 | 74 | **39** | 427 | 34 | 4.8 | 95 | 106 |
+| Heavy (1H + numenorean shield) | 159 | 95 | 16 | **569** | 28 | 4.5 | 101 | 321 |
+| Defender (numenorean shield) | 137 | 91 | 0 | **630** | 28 | 3.3 | 139 | **310** |
 
-*Defender TTD ties 1H-Heavy here but pulls ahead in group play (rescue/peel/critical-block variance).
+*The new numenorean shield (+HIT 100) now puts Heavy-1H and Defender clearly ahead on survival (TTD
+321 / 310); Defender still pulls further ahead in group play (rescue/peel/critical-block variance).
 Reading it: **2H specs win the DPS race; 1H+shield and Defender win the war of attrition; Light wins
 by not being hit.**
 
@@ -258,12 +276,12 @@ by not being hit.**
 
 | Archetype | Kraken | pale lady | Nargul (balrog) | cold-drake | snow-troll king |
 |---|---|---|---|---|---|
-| Heavy 2H (ice cleave) | 185 / 57 | 333 / 49 | 349 / 77 | 373 / 48 | 376 / 77 |
-| Heavy 1H + shield | 247 / 76 | 426 / 71 | 491 / 100 | 484 / 66 | 559 / 114 |
-| Wild (Berserk 2H) | **170 / 42** | **308 / 36** | 315 / 58 | 342 / 35 | 331 / 56 |
-| Weapon Master (2H cleave) | 179 / 44 | 312 / 38 | 358 / 60 | 353 / 37 | 406 / 59 |
-| Light (dagger) | 220 / 31 | 392 / 28 | 420 / 40 | 441 / 26 | 461 / 45 |
-| Defender (golden) | 311 / 77 | 532 / 68 | 729 / 101 | 608 / 65 | 882 / 112 |
+| Heavy 2H (ice cleave) | 177 / 57 | 317 / 49 | 330 / 77 | 351 / 47 | 358 / 77 |
+| Heavy 1H + numenorean shield | 236 / 95 | 418 / 87 | 474 / 123 | 468 / 80 | 540 / 143 |
+| Wild (Berserk 2H) | **161 / 42** | **291 / 36** | 294 / 58 | 319 / 35 | 317 / 57 |
+| Weapon Master (2H cleave) | 169 / 44 | 295 / 37 | 328 / 60 | 333 / 37 | 385 / 59 |
+| Light (rapier) | 228 / 31 | 403 / 29 | 423 / 41 | 449 / 27 | 455 / 45 |
+| Defender (numenorean) | 294 / 93 | 501 / 83 | 688 / 122 | 570 / 78 | 869 / 135 |
 
 Same ordering as PvP: **Wild/WM/2H-Heavy kill fastest; Defender/1H-Heavy last longest; Light is the
 glass.** TTDs are short because these are **group bosses** (OB 150–250, dam 21–32) — the table ranks
@@ -283,16 +301,24 @@ rage attack-speed), the **armor-ignoring active skills** (kick / wild-swing, whi
 the Light double-strike, and per-location armor. Each spec runs its BiS gear in its preferred stance
 (Heavy plate Normal; Light leather Careful; Wild plate Berserk), 3,000 duels per matchup.
 
-**Result: the cycle does NOT hold. It collapses into a power ladder — `Wild ≳ Heavy > Light`.**
+**Result: the intended cycle still does NOT hold as a clean stand-up cycle. For the *2H* bruiser it's
+a power ladder `Wild ≳ Heavy(2H) > Light`. But the expansion's new `#26806` numenorean shield (+100 HP)
+materially changes one leg — see the note below the table.**
 
 | Matchup (A vs B) | A wins | B wins | intended | verdict |
 |---|---:|---:|---|---|
 | Light (careful) vs **Heavy** (2H, normal) | 0 % | **100 %** | Light > Heavy | ❌ **inverted** |
-| **Wild** (berserk) vs Heavy (2H, normal) | **81 %** | 19 % | Heavy > Wild | ❌ **inverted** |
+| **Wild** (berserk) vs Heavy (2H, normal) | **80 %** | 20 % | Heavy > Wild | ❌ inverted (2H) |
+| Heavy (**1H + numenorean shield**) vs **Wild** (berserk) | **93 %** | 7 % | Heavy > Wild | ✅ **now holds (shield variant)** |
 | **Wild** (berserk) vs Light (careful) | **100 %** | 0 % | Wild > Light | ✅ holds |
 
-Only the **Wild > Light** leg works. The other two invert: **Heavy beats Light**, and **Wild beats
-Heavy** (Heavy 1H+shield does better vs Wild — 32 % — but still loses).
+**The new shield flips Heavy-vs-Wild for the shield build.** With the golden shield this matchup was a
+~33 % loss for Heavy-1H; the numenorean shield's **+100 HP** tips a knife-edge fight into a **~93 %
+win** — so against Wild the *armored* answer is the 1H+shield bruiser, not the 2H. Wild still beats the
+**2H** Heavy (80 %, since the 2H trades the shield's parry/HP for offense), and still **crushes Light**
+(100 %). And **Heavy still beats Light** (100 %). So the picture is now: **Light loses to both; among
+the bruisers, 1H+shield Heavy > Wild > 2H Heavy** — closer to the intended "Heavy outlasts the glass
+cannon," but only once you give Heavy the new shield, and only for the shield variant.
 
 ### Why each intended leg breaks
 
@@ -312,7 +338,7 @@ Riposte and Light's own kick keep it *in* the fight but aren't enough. The decis
 | Variant | Light win % vs Heavy-2H |
 |---|---:|
 | both kick (baseline) | 0 % |
-| **Heavy's kick disabled** | **60 %** ← Light wins |
+| **Heavy's kick disabled** | **≈ 50 %** ← becomes a coin-flip |
 | Light's kick disabled | 0 % |
 | Light's riposte disabled | 0 % (no change) |
 
@@ -321,16 +347,20 @@ actually decides Light-vs-Heavy is whose *kick* is bigger — and Heavy's is big
 **plus Heavy Fighting's +20 % skill bonus**). The armor-bypassing skill that was supposed to let
 *light* fighters answer armor is strongest in the *armored* spec's hands.
 
-**Heavy > Wild fails (Wild wins ~81 %).** Heavy's armor only mitigates **auto-attacks**, but Wild's
-damage largely routes *around* armor: **rush** (+50 %) and **rage** attack-speed pump the
-auto-stream, and the **wild-swing** (kick ×1.5, armor-ignoring) is a big chunk of its output. Worse
-for the intent, **Wild can wear the same plate** — Berserk already throws away the dodge that plate
-would cost, so a Wild fighter pays *no meaningful price* for full plate and gets its absorption for
-free. So Wild is *also* armored, hits far harder (OB 186 + procs vs 174), and out-races Heavy's modest
-durability edge. The juggernaut never gets to outlast anything.
+**Heavy(2H) > Wild fails (Wild wins ~80 %); Heavy(1H+shield) > Wild now *holds* (~93 %).** Heavy's
+armor only mitigates **auto-attacks**, but Wild's damage largely routes *around* armor: **rush**
+(+50 %) and **rage** attack-speed pump the auto-stream, and the **wild-swing** (kick ×1.5,
+armor-ignoring) is a big chunk of its output. Worse for the intent, **Wild can wear the same plate** —
+Berserk already throws away the dodge that plate would cost, so a Wild fighter pays *no meaningful
+price* for full plate and gets its absorption for free. Against the **2H** Heavy that's enough: Wild
+hits far harder (OB 187 + procs vs 174) and out-races the 2H's modest durability edge. **But the 1H +
+numenorean shield Heavy is a different animal** — the shield's parry/dodge layer *plus* its +100 HP
+(569 vs 469) is the durability the intent assumed, and it tips the knife-edge: Heavy-1H+shield outlasts
+Wild's burst and wins ~93 %. So the intended "armor outlasts the glass cannon" is real — it just needs
+the *shield* build and the new shield's HP, not the raw 2H.
 
-**Wild > Light holds (100 %).** As intended: Berserk OB 186 + rush + rage-speed + armor-ignoring
-wild-swing shreds Light's 427 HP in ~35 s, and Light's small, plate-absorbed damage can't punish
+**Wild > Light holds (100 %).** As intended: Berserk OB 187 + rush + rage-speed + armor-ignoring
+wild-swing shreds Light's 427 HP in ~33 s, and Light's small, plate-absorbed damage can't punish
 Wild's gutted defense fast enough to matter. Light's evasion delays but doesn't save it.
 
 ### How bash / kick / wild-swing factor in (the crux)
@@ -371,8 +401,11 @@ cost, re-hides, and can simply *refuse* a fight it can't win — a to-the-death 
 Heavy "win" when in practice it's a stalemate Light controls), **bash-lockdown chains**, **Wild's
 bloodlust heal** (matters across multiple kills, not a single duel), **frenzy** (an Olog Wild is
 stronger still), terrain, and consumables. So read the verdict as: *in a pure stand-up fight the
-intended cycle does not hold — it's a power ladder — and the mechanisms meant to create the cycle
-(armor-bypassing skills, riposte) are real but currently mis-weighted toward the armored specs.*
+intended cycle does not fully hold — Light still loses to both bruisers, so it's closer to a power
+ladder than a cycle — though the expansion's new numenorean shield (+100 HP) does restore the
+intended **Heavy(1H+shield) > Wild** leg. The mechanisms meant to create the cycle (armor-bypassing
+skills, riposte) are real but still mis-weighted toward the armored specs, and Light remains the odd
+one out.*
 
 ---
 
@@ -416,7 +449,7 @@ Heavy 2H ice-battleaxe set, 36w/6r, vs the Kraken) are:
 
 ### Light side — Human · Dwarf · Wood/High Elf · Hobbit
 The "fair" pool: no class maluses, STR cap 22, alignment can go full-good. **Human** is the flexible
-baseline (`OB 174 / HP 469 / PvP dps 6.2 / Kraken 186-57`). **Dwarf (+2 STR, +4 CON, −3 DEX)** is the
+baseline (`OB 174 / HP 469 / PvP dps 6.7 / Kraken 177-57`). **Dwarf (+2 STR, +4 CON, −3 DEX)** is the
 shaped 2H/Heavy body: the DEX−3 barely dents a high-bulk two-hander's speed, the **+4 CON** adds HP,
 and — key synergy — **a Dwarf wielding an axe gains energy-regen** (`profs.cpp:791`), and *the best 2H
 in the game (`#5226`) is an axe*, so a Dwarf swings the top weapon faster than anyone (use the ice
@@ -429,10 +462,10 @@ Heavy/2H-axe, Elf/Hobbit for Light.*
 ### Dark side — Uruk-Hai · Orc
 Both take the **Power-of-Arda daylight penalty** — in sunlight an Uruk's OB/PB/DB are ×0.8/0.9/0.9 − sun,
 an Orc's ×0.75/0.89/0.89 − sun. **At night / indoors they fight at full** (an Uruk equals a Human:
-`OB 174 / dps 6.2`), but a daytime field fight is a real handicap — dark-side warriors want to pick
+`OB 174 / dps 6.7`), but a daytime field fight is a real handicap — dark-side warriors want to pick
 their ground. **Orc** is additionally the most progression-penalized race: **`max_race_prof_level` is
 20 (not 30)** so its OB level-term and find-weakness ceiling are lower, and **`class_HP` is ×4/7** →
-much less HP (`HP 370 vs 469`, `dps 5.5`, Kraken `209/44`). Orcs pay for it with cheap pets/recruits
+much less HP (`HP 370 vs 469`, `dps 5.7`, Kraken `202/44`). Orcs pay for it with cheap pets/recruits
 and the spec-agnostic class-point system — but as a *pure melee* they're the weakest race. Uruk-Hai is
 the better dark-side warrior by far (only the Mage prof is penalized for them).
 
@@ -441,7 +474,7 @@ The Olog is *not* "a bigger orc." **STR +4 / CON +4 but INT/WIL/DEX −3/−4/�
 STR +4 is wasted at the cap** (`bal_str` tops at 22) — if you're already building STR 22, the racial
 bonus adds nothing to OB/damage; its real value is **(a)** letting you hit STR 22 with fewer rolled
 points (freeing points for CON) and **(b)** the **+4 CON → +50 HP** (`HP 519 vs 469`, Kraken TTD
-44 vs 39). The Olog's actual game-changer isn't in this table: **`frenzy` forces Berserk** (turning on
+62 vs 57). The Olog's actual game-changer isn't in this table: **`frenzy` forces Berserk** (turning on
 Wild Fighting's rush/rage/wild-swing *for free*), adds **+10 % damage and crit auto-attacks**, and
 stacks the Olog smash/cleave/overrun kit — so an Olog **Wild or Heavy** fighter has a burst ceiling no
 other race reaches, at the cost of being a Berserk-locked glass body. **It is the definitive
@@ -461,16 +494,18 @@ opponent it's large). Haradrim also shoots a beat faster (bows) for an archery c
 
 ## The artifact ceiling
 
-The Three Rings are in the world data and are in a class of their own. **Narya `#1610` + Nenya
-`#7936` = OB +100 / DAMROLL +15 each** (+200 OB, +30 damroll for the pair). Because OB *multiplies*
-damage and damroll feeds `base` directly, they don't improve a build — they **break the scale**:
+All Three Rings are now in the world data and are in a class of their own — and the expansion added
+the strongest of them: **Vilya `#5065` = OB +150 / DAMROLL +20**, alongside **Narya `#1610`** and
+**Nenya `#7936` (OB +100 / DAMROLL +15 each)**. Wearing the best pair (Vilya + Narya = **+250 OB,
++35 damroll**) doesn't improve a build — because OB *multiplies* damage and damroll feeds `base`
+directly, it **breaks the scale**:
 
 | Build | rings | OB | PvP dps | PvP TTK |
 |---|---|---:|---:|---:|
-| Light (rapier) | ivory ×2 (OB+4) | 179 | 4.3 | 107 s |
-| Light (rapier) | **Narya + Nenya** | **375** | **71.7** | **6 s** |
+| Light (rapier) | ivory ×2 (OB+4) | 176 | 4.8 | 95 s |
+| Light (rapier) | **Vilya + Narya** | **422** | **95.8** | **5 s** |
 
-A pair of artifacts is worth **~15× the damage** of common rings. If they're in play, they dominate
+The best artifact pair is worth **~20× the damage** of common rings. If they're in play, they dominate
 every slot decision and trivialize the matchup — treat them as a separate (unique, contested) tier,
 not part of a realistic best-in-slot set. They benefit *every* archetype equally (pure OB/damroll), so
 they don't change the *relative* spec ranking — only the absolute numbers.

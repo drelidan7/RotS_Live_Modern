@@ -128,7 +128,7 @@ PVE = {'bruiser':BOSSES['Kraken'], 'hitter':BOSSES['Nargul(balrog)']}
 
 # reference PvP duelist: W33/R15 STR22 DEX16 CON20, chain + golden shield + broadsword, normal
 def chain_set():
-    return {WEAR['BODY']:I(11002),WEAR['HEAD']:I(11104),WEAR['LEGS']:I(11021),
+    return {WEAR['BODY']:I(11000),WEAR['HEAD']:I(11104),WEAR['LEGS']:I(11021),
             WEAR['FEET']:I(11120),WEAR['HANDS']:I(11116),WEAR['ARMS']:I(11124)}
 REF=Char(name='RefDuelist',strength=22,dex=16,con=20,W=33,R=15,level=30,spec='NONE',tactics='NORMAL')
 REF.equip=dict(chain_set()); REF.equip[WEAR['WIELD']]=I(5044); REF.equip[WEAR['SHIELD']]=I(6510)
@@ -157,12 +157,12 @@ print(f"REF detail: OB{REF.get_real_OB()} PB{REF.get_real_parry()} DB{REF.get_re
 #  ARCHETYPE ANALYSIS
 # ============================================================================
 PLATE   = dict(BODY=6227,HEAD=6221,LEGS=6256,FEET=6246,HANDS=6244,ARMS=6254)   # max absorb (heavy)
-CHAIN   = dict(BODY=11002,HEAD=11104,LEGS=11021,FEET=11120,HANDS=11116,ARMS=11124) # mid (enc2-3)
+CHAIN   = dict(BODY=11000,HEAD=11104,LEGS=11021,FEET=11120,HANDS=11116,ARMS=11124) # mid (enc2-3)
 LEATHER = dict(BODY=11119,HEAD=11104,LEGS=11108,FEET=11120,HANDS=11116,ARMS=11124) # light (enc1-2)
 DODGEKIT= dict(BODY=6200,HEAD=6201,LEGS=6203,FEET=6205)                          # +dodge thin metal
 ACC     = dict(ABOUT=6316,WAISTE=6040,WRIST_R=6647,WRIST_L=6667,NECK_1=6649,NECK_2=6954,HOLD=6955) # OB sticks
 RINGS_R = dict(FINGER_R=6602,FINGER_L=6602)        # ivory OB+2 (realistic)
-RINGS_A = dict(FINGER_R=1610,FINGER_L=7936)        # Narya+Nenya OB+100 dr+15 (artifact ceiling)
+RINGS_A = dict(FINGER_R=5065,FINGER_L=1610)        # Vilya(OB150/DR20)+Narya(OB100/DR15) artifact ceiling
 
 def build(spec,W,R,strv,dex,con,armor,weapon,shield=None,tactics='NORMAL',race='HUMAN',
           rings=RINGS_R,acc=True,grip2h=False,C=0):
@@ -188,8 +188,8 @@ def report(c,label):
     return dict(ob=ob,pb=pb,db=db,hp=hp,spd=spd,dpvp=dpvp,ttk=ttk,ttd=ttd,dpe=dpe,ttde=ttd_e)
 
 print("\n############ 1. HEAVY FIGHTING: 1H+shield vs 2H (race-agnostic, 36w6r, STR22/DEX14/CON20) ############")
-report(build('HEAVY',36,6,22,14,20,PLATE,5044,shield=6510),"Heavy 1H broadsword + golden shield")
-report(build('HEAVY',36,6,22,14,20,PLATE,5033,shield=6510),"Heavy 1H obsidian(ob10pa5) + shield")
+report(build('HEAVY',36,6,22,14,20,PLATE,5044,shield=26806),"Heavy 1H broadsword + numenorean shield(+HIT100)")
+report(build('HEAVY',36,6,22,14,20,PLATE,5033,shield=26806),"Heavy 1H obsidian + numenorean shield")
 report(build('HEAVY',36,6,22,14,20,PLATE,5346,shield=9080),"Heavy 1H smite-maul + heater shield")
 for wv,wn in [(5226,'2H ice cleave d13 ob15'),(5224,'2H mithril greataxe d12'),(5320,'2H Durin sceptre d11.7 bulk8'),(5104,'2H ornate scimitar d10.2'),(5611,'2H iridescent flail d11.3')]:
     report(build('HEAVY',36,6,22,14,20,PLATE,wv,grip2h=True),f"Heavy {wn}")
@@ -213,16 +213,16 @@ report(build('WM',36,6,22,14,20,PLATE,5044),"WM 1H slash (+5OB/PB)")
 report(build('WM',36,6,22,14,20,PLATE,5514,grip2h=True),"WM spear (armor pierce)")
 
 print("\n############ 5. DEFENDER (33w15r, CON22/STR20) shields ############")
-for sh,sn in [(6510,'golden d15/p15'),(9080,'heater d8/p22'),(6530,'tower p40 wt4000')]:
+for sh,sn in [(26806,'numenorean d15/p15 +HIT100'),(6510,'golden d15/p15'),(9080,'heater d8/p22'),(6530,'blackshield d10/p20')]:
     report(build('DEFENDER',33,15,20,14,22,PLATE,5044,shield=sh),f"Defender broadsword + {sn}")
-report(build('DEFENDER',30,21,20,14,22,PLATE,5044,shield=6510),"Defender 30w21r (more block) + golden")
+report(build('DEFENDER',30,21,20,14,22,PLATE,5044,shield=26806),"Defender 30w21r (more block) + numenorean")
 
 print("\n############ 6. CLASS-COMBO sensitivity (Light Fighting, rapier+leather) ############")
 for W,R in [(36,6),(33,15),(30,21),(27,9),(20,9)]:
     report(build('LIGHT',W,R,18,22,18,LEATHER,5410),f"Light {W}w/{R}r")
 print("   -- Defender block scales with min(W,R):")
 for W,R in [(36,6),(33,15),(30,21),(27,9),(20,9)]:
-    report(build('DEFENDER',W,R,20,14,22,PLATE,5044,shield=6510),f"Defender {W}w/{R}r")
+    report(build('DEFENDER',W,R,20,14,22,PLATE,5044,shield=26806),f"Defender {W}w/{R}r")
 
 print("\n############ 7. RACIAL BUCKETS (Heavy 2H cleave #5226, 36w6r base; spear set for Haradrim) ############")
 report(build('HEAVY',36,6,22,14,20,PLATE,5226,grip2h=True,race='HUMAN'),"Light-side baseline (Human) 2H cleave")
@@ -235,11 +235,11 @@ report(build('HEAVY',36,6,21,14,19,PLATE,5226,grip2h=True,race='ORC'),"Orc 2H cl
 print("\n############ 8. PvE vs NAMED BOSSES — TTK (kill) / TTD (survive), seconds ############")
 champs = {
  'Heavy-2H (ice cleave)':  build('HEAVY',36,6,22,14,20,PLATE,5226,grip2h=True),
- 'Heavy-1H+shield':        build('HEAVY',36,6,22,14,20,PLATE,5044,shield=6510),
+ 'Heavy-1H+shield':        build('HEAVY',36,6,22,14,20,PLATE,5044,shield=26806),
  'Wild (berserk 2H)':      build('WILD',36,6,22,14,20,PLATE,5226,grip2h=True,tactics='BERSERK'),
  'WeaponMaster (2H cleave)':build('WM',36,6,22,14,20,PLATE,5226,grip2h=True),
- 'Light (dagger)':         build('LIGHT',30,21,18,22,18,LEATHER,5435),
- 'Defender (golden)':      build('DEFENDER',33,15,20,14,22,PLATE,5044,shield=6510),
+ 'Light (rapier)':         build('LIGHT',30,21,18,22,18,LEATHER,5410),
+ 'Defender (numen.)':      build('DEFENDER',33,15,20,14,22,PLATE,5044,shield=26806),
 }
 hdr="%-26s"%"archetype"
 for bn in BOSS_STATS: hdr+=f"| {bn[:13]:>13} "

@@ -128,7 +128,7 @@ def duel(A,B,nsim=3000,maxT=300.0):
 
 # ---- duelists ----
 HV2=build('HEAVY',36,6,22,14,20,PLATE,5226,grip2h=True,tactics='NORMAL')      # heavy 2H
-HV1=build('HEAVY',36,6,22,14,20,PLATE,5044,shield=6510,tactics='NORMAL')      # heavy 1H+shield
+HV1=build('HEAVY',36,6,22,14,20,PLATE,5044,shield=26806,tactics='NORMAL')      # heavy 1H+shield
 LTc=build('LIGHT',30,21,18,22,18,LEATHER,5410,tactics='CAREFUL')              # light careful
 LTn=build('LIGHT',30,21,18,22,18,LEATHER,5410,tactics='NORMAL')               # light normal
 WLb=build('WILD',36,6,22,14,20,PLATE,5226,grip2h=True,tactics='BERSERK')      # wild berserk

@@ -1,0 +1,80 @@
+=== candidate PvE reference mobs (lvl20-35, hp>200) ===
+#28419 L20 OB300 parry10 dodge10 HP450 dam15 ene200 (284.mob)
+#32114 L30 OB250 parry20 dodge0 HP3000 dam33 ene80 (321.mob)
+#27530 L30 OB251 parry75 dodge75 HP1999 dam16 ene130 (275.mob)
+#26700 L35 OB220 parry30 dodge90 HP3000 dam25 ene200 (267.mob)
+#26715 L28 OB218 parry10 dodge40 HP1500 dam24 ene140 (267.mob)
+#14808 L20 OB225 parry10 dodge10 HP355 dam15 ene200 (148.mob)
+#7706 L30 OB210 parry60 dodge30 HP2300 dam30 ene160 (77.mob)
+#1721 L25 OB225 parry25 dodge25 HP1200 dam14 ene120 (17.mob)
+
+=== reference duelist (the PvP sparring target) ===
+RefDuelist W33/R15 chain+shield    OB 135 PB  90 DB  30 HP  458 spd  28  PvP-dps   3.2 TTK  141s TTD  137s  PvE-dps   7.9
+REF detail: OB135 PB90 DB30 HP458 spd28
+
+############ 1. HEAVY FIGHTING: 1H+shield vs 2H (race-agnostic, 36w6r, STR22/DEX14/CON20) ############
+Heavy 1H broadsword + golden shield      OB 159 PB  93 DB  15 HP  469 sp 27 | PvP dps  4.3 TTK 105 TTD 261 | PvE dps  9.3 TTK 246 TTD  77
+Heavy 1H obsidian(ob10pa5) + shield      OB 159 PB  97 DB  15 HP  469 sp 27 | PvP dps  4.2 TTK 110 TTD 277 | PvE dps  8.9 TTK 259 TTD  78
+Heavy 1H smite-maul + heater shield      OB 159 PB  88 DB   8 HP  469 sp 15 | PvP dps  3.0 TTK 154 TTD 241 | PvE dps  6.2 TTK 368 TTD  73
+Heavy 2H ice cleave d13 ob15             OB 174 PB  42 DB  -7 HP  469 sp 12 | PvP dps  6.2 TTK  74 TTD 169 | PvE dps 12.3 TTK 187 TTD  57
+Heavy 2H mithril greataxe d12            OB 157 PB  57 DB  -7 HP  469 sp 13 | PvP dps  4.1 TTK 111 TTD 183 | PvE dps  8.6 TTK 268 TTD  60
+Heavy 2H Durin sceptre d11.7 bulk8       OB 166 PB  63 DB   3 HP  469 sp 14 | PvP dps  4.5 TTK 101 TTD 200 | PvE dps  9.1 TTK 253 TTD  64
+Heavy 2H ornate scimitar d10.2           OB 166 PB  78 DB   4 HP  469 sp 17 | PvP dps  4.7 TTK  97 TTD 222 | PvE dps  9.7 TTK 237 TTD  68
+Heavy 2H iridescent flail d11.3          OB 169 PB  53 DB   4 HP  469 sp 16 | PvP dps  5.0 TTK  91 TTD 194 | PvE dps 10.2 TTK 225 TTD  61
+
+############ 2. LIGHT FIGHTING weapon + armor (30w21r, DEX22/STR18/CON18) ############
+Light rapier d5.1 ob6 pa7 b2 +leather    OB 179 PB  77 DB  39 HP  427 sp 34 | PvP dps  4.3 TTK 107 TTD 111 | PvE dps  9.2 TTK 249 TTD  32
+Light marble dagger d5.4 b1 +leather     OB 170 PB  70 DB  39 HP  427 sp 38 | PvP dps  4.8 TTK  96 TTD 103 | PvE dps 10.5 TTK 219 TTD  31
+Light sickle ob12 b1 +leather            OB 178 PB  72 DB  39 HP  427 sp 37 | PvP dps  3.3 TTK 141 TTD 104 | PvE dps  7.4 TTK 312 TTD  31
+Light silver dagger ob10 pa10 b1 +leather OB 176 PB  82 DB  39 HP  427 sp 44 | PvP dps  3.4 TTK 134 TTD 117 | PvE dps  8.0 TTK 286 TTD  33
+Light rapier + DODGE thin-metal kit      OB 175 PB  77 DB  40 HP  427 sp 34 | PvP dps  4.1 TTK 112 TTD 104 | PvE dps  9.0 TTK 256 TTD  30
+Light rapier +leather +ARTIFACT rings    OB 375 PB  77 DB  48 HP  427 sp 34 | PvP dps 71.8 TTK   6 TTD 129 | PvE dps129.6 TTK  18 TTD  33
+
+############ 3. WILD FIGHTING (36w6r, STR22) Berserk vs Normal ############
+Wild 2H cleave NORMAL                    OB 156 PB  42 DB -31 HP  469 sp 12 | PvP dps  5.5 TTK  84 TTD 126 | PvE dps 11.1 TTK 207 TTD  44
+Wild 2H cleave BERSERK                   OB 174 PB  24 DB -25 HP  469 sp 12 | PvP dps  6.3 TTK  72 TTD 120 | PvE dps 12.8 TTK 179 TTD  42
+Wild 1H broadsword BERSERK               OB 164 PB  52 DB -12 HP  469 sp 27 | PvP dps  4.8 TTK  95 TTD 144 | PvE dps 10.1 TTK 228 TTD  48
+
+############ 4. WEAPON MASTER (36w6r) by weapon/proc ############
+WM pierce rapier (ignore armor)          OB 152 PB  85 DB -15 HP  469 sp 37 | PvP dps  3.5 TTK 131 TTD 169 | PvE dps  7.8 TTK 295 TTD  54
+WM 2H cleave (reroll +15%)               OB 156 PB  42 DB -31 HP  469 sp 12 | PvP dps  6.3 TTK  72 TTD 125 | PvE dps 12.8 TTK 180 TTD  44
+WM smite maul (+10OB haze)               OB 159 PB  63 DB -17 HP  469 sp 20 | PvP dps  4.6 TTK  99 TTD 148 | PvE dps  9.6 TTK 239 TTD  50
+WM 1H slash (+5OB/PB)                    OB 152 PB  83 DB -15 HP  469 sp 27 | PvP dps  4.1 TTK 112 TTD 168 | PvE dps  8.7 TTK 264 TTD  54
+WM spear (armor pierce)                  OB 151 PB  71 DB -18 HP  469 sp 17 | PvP dps  4.9 TTK  93 TTD 154 | PvE dps  8.3 TTK 276 TTD  51
+
+############ 5. DEFENDER (33w15r, CON22/STR20) shields ############
+Defender broadsword + golden d15/p15     OB 137 PB  89 DB   0 HP  530 sp 27 | PvP dps  3.1 TTK 147 TTD 266 | PvE dps  7.4 TTK 312 TTD  77
+Defender broadsword + heater d8/p22      OB 135 PB  96 DB -10 HP  530 sp 27 | PvP dps  3.1 TTK 149 TTD 252 | PvE dps  7.2 TTK 319 TTD  75
+Defender broadsword + tower p40 wt4000   OB 135 PB 114 DB -21 HP  530 sp 27 | PvP dps  3.0 TTK 152 TTD 262 | PvE dps  7.3 TTK 315 TTD  79
+Defender 30w21r (more block) + golden    OB 133 PB  86 DB   4 HP  523 sp 27 | PvP dps  2.9 TTK 158 TTD 260 | PvE dps  7.1 TTK 325 TTD  76
+
+############ 6. CLASS-COMBO sensitivity (Light Fighting, rapier+leather) ############
+Light 36w/6r                             OB 181 PB  83 DB  29 HP  444 sp 34 | PvP dps  4.5 TTK 102 TTD 108 | PvE dps  9.7 TTK 238 TTD  33
+Light 33w/15r                            OB 181 PB  80 DB  35 HP  433 sp 34 | PvP dps  4.5 TTK 103 TTD 110 | PvE dps  9.5 TTK 242 TTD  32
+Light 30w/21r                            OB 179 PB  77 DB  39 HP  427 sp 34 | PvP dps  4.2 TTK 108 TTD 111 | PvE dps  9.2 TTK 250 TTD  32
+Light 27w/9r                             OB 169 PB  74 DB  31 HP  366 sp 34 | PvP dps  3.9 TTK 117 TTD  83 | PvE dps  8.6 TTK 268 TTD  26
+Light 20w/9r                             OB 158 PB  67 DB  31 HP  303 sp 34 | PvP dps  3.5 TTK 131 TTD  66 | PvE dps  7.8 TTK 293 TTD  21
+   -- Defender block scales with min(W,R):
+Defender 36w/6r                          OB 142 PB  92 DB  -6 HP  543 sp 27 | PvP dps  3.5 TTK 132 TTD 261 | PvE dps  7.9 TTK 292 TTD  76
+Defender 33w/15r                         OB 137 PB  89 DB   0 HP  530 sp 27 | PvP dps  3.1 TTK 146 TTD 264 | PvE dps  7.4 TTK 312 TTD  77
+Defender 30w/21r                         OB 133 PB  86 DB   4 HP  523 sp 27 | PvP dps  2.9 TTK 157 TTD 261 | PvE dps  7.1 TTK 325 TTD  76
+Defender 27w/9r                          OB 128 PB  83 DB  -4 HP  447 sp 27 | PvP dps  2.6 TTK 173 TTD 196 | PvE dps  6.7 TTK 342 TTD  60
+Defender 20w/9r                          OB 118 PB  76 DB  -4 HP  371 sp 27 | PvP dps  2.0 TTK 225 TTD 151 | PvE dps  5.9 TTK 389 TTD  47
+
+############ 7. RACIAL BUCKETS (Heavy 2H cleave #5226, 36w6r base; spear set for Haradrim) ############
+Light-side baseline (Human) 2H cleave    OB 174 PB  42 DB  -7 HP  469 sp 12 | PvP dps  6.2 TTK  73 TTD 171 | PvE dps 12.4 TTK 186 TTD  57
+Olog-Hai (STR+4eff,CON+4) 2H cleave      OB 174 PB  42 DB  -7 HP  519 sp 12 | PvP dps  6.2 TTK  73 TTD 190 | PvE dps 12.3 TTK 188 TTD  63
+Dwarf + 2H mithril greataxe (axe regen)  OB 157 PB  57 DB  -7 HP  469 sp 14 | PvP dps  4.6 TTK 101 TTD 184 | PvE dps  9.2 TTK 249 TTD  60
+Haradrim + 2H spear (spear regen)        OB 168 PB  61 DB   6 HP  469 sp 17 | PvP dps  6.1 TTK  75 TTD 201 | PvE dps 10.0 TTK 229 TTD  64
+Uruk-Hai 2H cleave (no daylight)         OB 174 PB  42 DB  -7 HP  469 sp 12 | PvP dps  6.2 TTK  73 TTD 169 | PvE dps 12.3 TTK 187 TTD  57
+Orc 2H cleave (maxwar20,no daylight)     OB 158 PB  41 DB  -8 HP  370 sp 12 | PvP dps  5.5 TTK  84 TTD 132 | PvE dps 11.0 TTK 209 TTD  44
+
+############ 8. PvE vs NAMED BOSSES — TTK (kill) / TTD (survive), seconds ############
+archetype                 |        Kraken |      PaleLady | Nargul(balrog |    cold-drake | snow-troll ki 
+Heavy-2H (ice cleave)     |   185/  57  |   333/  49  |   349/  77  |   373/  48  |   376/  77  
+Heavy-1H+shield           |   247/  76  |   426/  71  |   491/ 100  |   484/  66  |   559/ 114  
+Wild (berserk 2H)         |   180/  42  |   324/  36  |   340/  58  |   360/  35  |   366/  56  
+WeaponMaster (2H cleave)  |   179/  44  |   312/  38  |   358/  60  |   353/  37  |   406/  59  
+Light (dagger)            |   220/  31  |   392/  28  |   420/  40  |   441/  26  |   461/  45  
+Defender (golden)         |   311/  77  |   532/  68  |   729/ 101  |   608/  65  |   882/ 112  
+(cell = TTK / TTD in seconds; TTK=time to kill boss, TTD=time boss takes to kill you)

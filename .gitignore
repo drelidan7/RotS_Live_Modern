@@ -1,3 +1,6 @@
+# macOS Finder metadata
+.DS_Store
+
 # Compiled Object files
 *.slo
 *.lo
@@ -72,6 +75,7 @@ lib/misc/mudlle.keys
 lib/misc/oldcrimelist
 lib/misc/pk*
 lib/misc/repair*
+lib/misc/xnames*
 core/
 *~
 autorun4000

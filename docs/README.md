@@ -33,7 +33,7 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 |-----|--------|-----------------|
 | [Class system](systems/class-system.md) | ✅ professions, preset roster, 150-pt custom builds, archetypes | `profs.cpp`, `interpre.cpp`, `consts.cpp` |
 | [Stats, level & proficiency](systems/stats-and-character-power.md) | ✅ incl. OB/PB/DB derivation (§10) | `profs.cpp`, `limits.cpp`, `char_utils_combat.cpp` |
-| [Combat loop — hit & damage](systems/combat-loop.md) | 🟡 swing resolution + damage; timing/armor pending | `fight.cpp::hit` + `utility.cpp` (note: `combat_manager.cpp` is unused) |
+| [Combat loop — hit & damage](systems/combat-loop.md) | ✅ swing resolution, damage, hit locations, armor absorption, resists, special-attack funnel | `fight.cpp::hit` + `utility.cpp` (note: `combat_manager.cpp` is unused) |
 | [Combat stat examples](systems/combat-stat-examples.md) | ✅ worked grids (W30/W33/W36) | derived from §6/§10 |
 | [Specializations](systems/specializations.md) | ✅ all specs incl. selection rules; enum/order/count + spec-field storage cross-checked vs live player files | `*_handler.cpp`, `fight.cpp`, `ranger.cpp`, `mystic.cpp`, `act_othe.cpp` |
 | [Races](systems/races.md) | ✅ channels, per-race tables, vision/perception/alignment; IDs + `race_modifiers` cross-checked vs live mob/player data | `consts.cpp`, `profs.cpp`, `utility.cpp` |
@@ -42,14 +42,22 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 | [Ranger skills](systems/ranger-skills.md) | ✅ skill catalog + DEX-vs-ranger-level for dodge/skills | `ranger.cpp`, `utility.cpp`, `consts.cpp` |
 | [Magic system — mage spells](systems/magic-system.md) | ✅ damage, saves, resistance, penetration, scaling, mana regen | `mage.cpp`, `spell_pa.cpp`, `consts.cpp` |
 | [Cleric / Mystic system](systems/cleric-mystic-system.md) | ✅ powers, saves, mental combat, spirit, scaling | `mystic.cpp`, `clerics.cpp`, `spell_pa.cpp` |
+| [XP & leveling](systems/xp-and-leveling.md) | ✅ kill/chip XP, level curve, death loss, advance_level; verified vs live mob + player saves | `fight.cpp`, `limits.cpp`, `profs.cpp` |
+| [Movement & zones](systems/movement-and-zones.md) | ✅ move costs, doors, tracking BFS, mounts, ferries, zone-reset runtime; verified vs live `.wld` | `act_move.cpp`, `graph.cpp`, `limits.cpp` |
+| [Objects & equipment](systems/objects-and-equipment.md) | ✅ item types, wear slots, `APPLY_*`, encumbrance, containers, decay; verified vs live `.obj` | `structs.h`, `handler.cpp`, `act_obj1/2.cpp` |
+| [Mob AI & specprocs](systems/mob-ai-and-specprocs.md) | ✅ activity loop, `MOB_*` catalog (freq. vs 3,723 live mobs), combat AI, specproc catalog | `mobact.cpp`, `spec_pro.cpp`, `interpre.cpp` |
+| [Shops & economy](systems/shops-and-economy.md) | ✅ price formulas, money, rent (free), corpse economics; verified vs live `.shp`/`.obj` | `shop.cpp`, `objsave.cpp`, `fight.cpp` |
+| [PK & fame (Big Brother)](systems/pk-and-fame.md) | ✅ race-war gates, protection rules, warpoint formulas; `pklist` binary decoded byte-for-byte | `big_brother.cpp`, `pkill.cpp`, `act_offe.cpp` |
+| [Communication & socials](systems/communication-and-socials.md) | ✅ languages/garbling, channels, `act()` $-codes, boards, mail; verified vs live `plrmail`/socials | `act_comm.cpp`, `comm.cpp`, `boards.cpp`, `mail.cpp` |
+| [Shape OLC builder](systems/shape-olc-builder.md) | ✅ all six `shape` editors, permission model, save/implement semantics + known bugs | `shapemob/rom/obj/zon/script/mdl.cpp` |
+| [Guardian spirits](systems/guardian-spirits.md) | ✅ summon path, scaling formulas, AI/lifecycle; verified vs live guardian mob prototypes | `mystic.cpp`, `consts.cpp`, `mobact.cpp` |
+| [Mudlle engine (runtime)](systems/mudlle-engine.md) | ✅ trigger model, opcode semantics, suspension/state; worked examples traced vs live `.scr`/`.mdl` | `script.cpp`, `mudlle.cpp`, `mudlle2.cpp` |
 
-⬜ XP/leveling · Movement/zones · Objects/equipment · Mob AI/specprocs · Shops/economy ·
-PK/fame · Comms/socials · Shapeshift builder · Guardian spirits · Mudlle engine
-
-> Note: world/player/object **data is now available** and every data-format doc plus the
-> data-checkable systems docs (races, weapons, specializations) have been verified against it
-> (2026-06). Combat/magic *formula* docs still need a running server for full validation;
-> pure-runtime claims remain flagged in-doc.
+> Note: world/player/object **data is available** and every data-format doc plus all systems docs
+> have been verified against it. The eleven docs added 2026-07 each passed a three-stage pipeline:
+> writer → independent adversarial verifier (every doc had errors found and fixed; all citations,
+> formulas, and worked examples re-derived) → final spot-check of all contested claims against
+> source. Genuinely unresolved items live in each doc's **Open questions** section.
 
 ### Content catalogs (`catalogs/`)
 ⬜ Spell list · Prayer list · Skill list · Race stats · Item types & wear slots · Socials

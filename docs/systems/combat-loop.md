@@ -2,10 +2,13 @@
 
 **Source files (live path):** `src/fight.cpp` — `hit:2362` (the whole swing), the round
 driver `perform_violence:2716`, the fighting-list plumbing `combat_list:41` /
-`set_fighting:221` / `stop_fighting:257`, plus `damage`, `armor_effect`; OB/PB/DB in
-`src/utility.cpp` (`get_real_OB:647`, `get_real_parry:761`, `get_real_dodge:860`).
-**Status:** 🟡 swing resolution, damage, and attack-speed/energy documented. Armor reduction
-details and special attacks are partial (see Open questions).
+`set_fighting:221` / `stop_fighting:257`, plus `damage:1588`, `armor_effect:2144`,
+`check_resistances` (`utility.cpp:1792`); hit-location tables `bodyparts[]`
+(`consts.cpp:1621`, `structs.h:1728`); OB/PB/DB in `src/utility.cpp` (`get_real_OB:647`,
+`get_real_parry:761`, `get_real_dodge:860`).
+**Status:** ✅ swing resolution, damage, attack-speed/energy, hit locations, armor
+reduction, resistances/vulnerabilities, and the special-attack damage funnel are all
+documented below (one non-blocking item remains, see Open questions).
 
 > ⚠️ **Which combat code is live.** There is a `combat_manager` class
 > (`combat_manager.cpp`: `roll_ob`, `offense_if_weapon_hits`, `calculate_hit_damage`, …) and a
@@ -79,12 +82,18 @@ direct, on top of its OB channel; stats §10). Then:
 - **Armor reduction** (`armor_effect`, `fight.cpp:2529`) is applied per hit location **here, in
   `hit()`** — *before* the call to `damage()`. Several specs alter this step — Heavy Fighting
   +10 % absorb, Defender shield block, Weapon Master armor/shield bypass (`specializations.md`).
+  Full algorithm, the hit-location table it depends on, and how each entry point differs are in
+  **"Hit locations," "Armor: how absorption reduces damage,"** and **"Special-attack damage
+  paths"** below.
 
-> ⚠️ **Armor is applied only to ordinary weapon swings.** It happens in `hit()` (above), not in
-> `damage()`. **Active skills (kick, bash, bite, …) and *all spells* call `damage()` directly,
-> so they bypass armor entirely.** `damage()` itself (`fight.cpp:1588`) still applies
-> **resistances/vulnerabilities** (`check_resistances`: ×⅔ resisted / ×3⁄2 vulnerable),
-> Beorning/maul reduction, and the PK-fame bonus — but never armor. (See `warrior-skills.md`.)
+> ⚠️ **Melee's `armor_effect` only runs for ordinary weapon swings.** It happens in `hit()`
+> (above), not in `damage()`. **Active skills (kick, bash, bite, …) and *all spells* call
+> `damage()` directly, so they skip `armor_effect` entirely** — but **archery is a partial
+> exception**: it has its *own*, simpler armor calculation (`apply_armor_to_arrow_damage`,
+> `ranger.cpp:2016`) that only reduces damage against chain/metal armor. See "Special-attack
+> damage paths" below for the full comparison. `damage()` itself (`fight.cpp:1588`) always
+> applies **resistances/vulnerabilities** (`check_resistances`: ×⅔ resisted / ×3⁄2 vulnerable),
+> Beorning/maul reduction, and the PK-fame bonus — regardless of entry point.
 
 ### Damage tiers (the message the room sees) — `get_damage_message_number:1406`, `dam_weapons:1367`
 The **final** (post-armor) damage is bucketed into the verb you read on screen. `#w` is the
@@ -206,6 +215,321 @@ In example A, one more point of **STR** would have raised the standing OB by 1 �
 is ~`+0.5 %` (smaller margin), **and** in example C it could be exactly what flips a −1 result
 to a 0 and turns a dodge into a glancing hit. That's why STR's value is "more damage when you
 land *and* more landings" — see `combat-stat-examples.md`.
+
+## Hit locations — where a swing lands
+
+Every melee swing (and, separately, every arrow — see "Special-attack damage paths") rolls a
+**body part**, and each body part maps to an **armor slot**. Both live in one table,
+`bodyparts[MAX_BODYTYPES]` (`consts.cpp:1621`, type `race_bodypart_data` at `structs.h:1728`),
+indexed by the victim's `GET_BODYTYPE` (`ch->player.bodytype`, `utils.h:346`). `MAX_BODYTYPES =
+16`, `MAX_BODYPARTS = 11` (`structs.h:72-73`). Each row has:
+- `parts[11]` — the body-part name shown in messages ("head", "left leg", …).
+- `percent[11]` — the % chance that part is hit (must sum to ≤ 100).
+- `bodyparts` — how many of the 11 slots this body type actually uses (0 = "no locations at
+  all," see below).
+- `armor_location[11]` — which **equipment slot** (a `WEAR_*` constant, `structs.h:670-698`)
+  armor for that body part lives in.
+
+### Rolling the location (`hit()`, `fight.cpp:2490-2499`)
+```
+location = 0
+if bodyparts[victim.bodytype].bodyparts != 0:
+    roll = number(1, 100)
+    while roll > 0 and location < MAX_BODYPARTS:
+        roll -= percent[location]
+        location += 1          # increment happens even on the iteration that zeroes roll
+if location > 0:
+    location -= 1              # undo that last increment
+tmp = armor_location[location]      # the WEAR_* slot to check for armor
+```
+So it's a straightforward **weighted die roll down the `percent[]` list** — no aiming, no skill
+influence. The increment-then-correct shape matters: the loop body always advances `location`
+*before* re-testing, even on the pass that drives `roll` to ≤0, so the final `-1` is undoing that
+extra step, not applying a second one. (An earlier draft of this doc modelled it as "loop with an
+explicit `break`, then always subtract 1," which double-corrects and lands one slot short — e.g.
+for bodytype 1 a roll of 50 should hit `body` at index 2, not `head` at index 1. The pseudocode
+above matches the live `for` loop's actual post-increment semantics, confirmed against the
+independent archery implementation below, which uses the equivalent `while (...) percent[hit_location++]`
+form.) If `percent[]` doesn't sum to 100, the last part absorbs the remainder (rolls that exceed
+the running total simply land on the last iterated slot). If `bodyparts == 0` for this body type,
+`location` never advances past `0`, and `armor_location[0]` is always `0` (`WEAR_LIGHT` — i.e.
+**no armor slot at all**, so `armor_effect` finds nothing to reduce). Archery uses the identical
+roll independently (`get_hit_location`, `ranger.cpp:1997-2014`).
+
+### The live table (`consts.cpp:1621-1699`)
+| Bodytype | Who uses it | Parts (`percent`%) | Armor slot per part |
+|---:|---|---|---|
+| 0 | Default/blank (fresh `char_data`, memset zero; some mobs whose `.mob` file omits `bodytype`) | none (`bodyparts=0`) | n/a — **no hit locations, no armor ever absorbs** |
+| **1** | **Player characters (non-Beorning)**, most humanlike mobs | head 15, body 35, L/R leg 8/8, L/R foot 2/2, L/R arm 10/10, L/R hand 5/5 | head→`WEAR_HEAD`, body→`WEAR_BODY`, legs→`WEAR_LEGS`, feet→`WEAR_FEET`, arms→`WEAR_ARMS`, hands→`WEAR_HANDS` |
+| 2 | Quadrupeds (hind/foreleg mobs, e.g. horses, wolves) | head 15, body 37, hindlegs 7/7, hindfeet 2/2, forelegs 11/11, forefeet 4/4 | **all 0 — quadrupeds have no armor slots** |
+| 3 | Many-legged / limbless-armor mobs | head 10, body 10, then 8 identical "leg" slots at 10 each | head→`WEAR_HEAD`, two of the leg slots→`WEAR_FEET`, rest→0 |
+| 4 | Winged mobs (birds, small dragons) | head 20, body 30, L/R leg 8/8, L/R wing 15/15, L/R claw 2/2 | **all 0 — no armor slots** |
+| **15** | **Beorning PCs** (claws instead of hands) | head 15, body 35, L/R **hindleg** 8/8, L/R **hindfoot** 2/2, L/R **foreleg** 10/10, L/R **claw** 5/5 — *same 11 percentages as bodytype 1* | identical `armor_location[]` to bodytype 1 (head→`WEAR_HEAD`, body→`WEAR_BODY`, "hindleg"→`WEAR_LEGS`, "hindfoot"→`WEAR_FEET`, "foreleg"→`WEAR_ARMS`, "claw"→`WEAR_HANDS`) |
+| 5–14 | Unused (all-blank rows, "can easily be added" per source comment) | — | — |
+
+(Percentages verified directly from the live table; e.g. bodytype 1's `body` slot at 35% plus
+`head` at 15% account for half of all hits landing center-mass or the head.)
+
+> ⚠️ **Bodytype 15's `parts[]` names are quadruped-styled, not "identical to bodytype 1."** The
+> live `bodyparts[15]` row (`consts.cpp:1694-1698`) reuses bodytype 1's exact `percent[]` and
+> `armor_location[]` arrays — so a Beorning's hit distribution and which `WEAR_*` slot absorbs
+> which hit are numerically identical to any other PC — but its *display strings* are copy-pasted
+> from the quadruped layout: `"left hindleg"/"right hindleg"/"left hindfoot"/"right hindfoot"/
+> "left foreleg"/"right foreleg"/"left claw"/"right claw"` instead of bodytype 1's `"left leg"/
+> "right leg"/"left foot"/"right foot"/"left arm"/"right arm"/"left hand"/"right hand"`. In
+> practice this means combat messages describe a Beorning's own limbs with quadruped terminology
+> (e.g. "$n's hindfoot") even though the character is bipedal and uses ordinary `WEAR_LEGS`/
+> `WEAR_FEET`/`WEAR_ARMS`/`WEAR_HANDS` gear slots underneath. This looks like a copy/paste
+> artifact in the source data table, not an intentional design choice — flagged here rather than
+> "fixed," since it's live data, not something this doc should silently paper over.
+
+### How a character gets a bodytype
+- **PCs:** set once at character creation, `do_start` (`limits.cpp:872-876`):
+  `GET_BODYTYPE(ch) = 15` for `RACE_BEORNING`, else `1` for everyone else — persisted to the
+  player file thereafter (`bodytype` field, `db.cpp:1817/2008/2376`) and never recomputed from
+  race again. Every other playable race (Human, Elf, Dwarf, Orc, Uruk, Haradrim, Woodman, …) is
+  bodytype 1.
+- **Mobs:** read directly from the `.mob` file's stat block, the `<bodytype>` field
+  (`../data-formats/world-files.md`, `db.cpp:1365`). This is **hand-authored per mob**, not derived
+  from `race`. Verified against live data: `lib/world/mob/268.mob` (`mewlip guard`, vnum 26800)
+  has stat-block tail `... 0 44 98 1 ...` → `prof=0 mana=44 move=98 bodytype=1` — a bipedal
+  humanoid correctly tagged bodytype 1. A `.mob` file that simply omits/zeroes this field leaves
+  the mob at **bodytype 0 — meaning that mob's own armor never reduces damage against it**,
+  regardless of what it's wearing. This is a real, data-dependent gotcha (not a bug): any mob
+  authored without an explicit bodytype falls into this "armor inert" bucket.
+- **Shapeshifting** (Olog-hai / ranger forms, `shapemob.cpp`) can swap `player.bodytype` at
+  runtime to match the new form's hit-location table.
+
+## Armor: how absorption reduces damage
+
+Armor absorption is **not** part of `damage()` — it is a step inside `hit()` (`fight.cpp:2528-
+2529`) that runs *before* the melee formula's result is handed to `damage()`, using the hit
+location rolled above:
+```
+tmp = bodyparts[victim.bodytype].armor_location[location]
+dam = armor_effect(ch, victim, dam, tmp, w_type)
+```
+
+### `armor_effect` (`fight.cpp:2144-2219`)
+```
+if location is out of range: return 0                      # no reduction, no crash
+armor = victim.equipment[location]
+if armor exists:
+    damage_reduction = armor.value[1]                       # "min absorb" — flat floor
+    divisor = 100
+    if w_type == TYPE_SPEARS:
+        divisor += 50                                       # spears punch partway through armor
+        if weapon-master spear proc fires: divisor *= 2      # (spec bonus, doubles the punch-through)
+    damage_reduction += ((dam − damage_reduction)·armor_absorb(armor) + 50) / divisor
+    if weapon-master "ignores_armor" proc fires (daggers):    # bypass proc
+        damage_reduction = armor.value[1]                     # only the flat floor applies
+    if victim is Heavy Fighting spec:
+        damage_reduction += damage_reduction / 10             # +10% absorb for the defender
+    dam -= damage_reduction
+    if w_type == TYPE_SMITE and armor.material == 4 (rigid metal):   # "bone-crunch"
+        20% chance: dam += damage_reduction * 2                # armor recoil hurts MORE than bare skin
+return dam
+```
+Plain English:
+- **No armor in that slot → no reduction at all** (not even 0 — the whole block is skipped).
+- The weapon's damage is split into a **flat floor** (`value[1]`, "min absorb" — always
+  subtracted) plus a **percentage cut** of the *remainder* above that floor
+  (`armor_absorb(armor)%`), so heavier hits still get a meaningful percentage taken off, not just
+  a fixed chip.
+- **Spears are designed to defeat armor**: their divisor (150, or 300 with a Weapon-Master proc)
+  shrinks the percentage term to ⅔ (or ⅓) of normal — spears "hit the armor, but then go right
+  through it," per the source comment.
+- **Weapon Master** can proc a **dagger bypass** (only the flat floor applies — the % term is
+  discarded) or a **spear double-punch** (halves the effective absorb again).
+- **Heavy Fighting** (the *victim's* spec) adds a flat **+10 %** to whatever was absorbed —
+  independent of, and stacking with, the attacker's own procs.
+- **Smiting weapons vs. rigid (`material == 4`) armor** ("werewolf skull helm"-style rigid
+  plate) have a **20 % chance** to turn the armor against its wearer — the flat+percent reduction
+  that was subtracted is added back **twice**, i.e. the armor itself becomes a damage source.
+  (The check is `if (number() >= 0.80)`, and `number()` with no args returns a uniform double in
+  `[0.0, 1.0)` — `utility.cpp:928-933` — so the *condition* covers the top 20 % of the range, a
+  20 % chance, not 80 %; easy to misread the literal `0.80` as "80 % chance," but it's a threshold
+  the roll must clear from above, not a probability.) This does *not* trigger against chain
+  (`material == 3`) or softer materials (`object_materials[]`, `consts.cpp:1726`:
+  cloth/leather/chain/metal/wood/…).
+
+### `armor_absorb` — the underlying % (`utility.cpp:540-563`)
+```
+if armor.value[0] == -1: return 0             # "not real armor" flag (decorative/robe pieces)
+weight_coef = 3 if BODY-slot, 2 if ARMS or LEGS, else 1     # (weight_coof, utility.cpp:527-537)
+encumb_points = value[2]·6 + weight / weight_coef / 20
+points = level + encumb_points
+if encumb_points < 30:
+    points += encumb_points·(60 − encumb_points) / 90       # bell-curve bonus, peaks ~+15 at encumb=30
+if value[2] != 0:
+    points += 3                                              # flat kicker for any encumbering piece
+absorb = points − value[1]·9                                 # min-absorb TRADES OFF against % absorb
+absorb = max(absorb, 0)
+if absorb > 50:
+    absorb = 100 − 2500 / absorb                              # asymptotic curve, approaches but never hits 100%
+return absorb
+```
+Reading the shape: **item level and weight both raise the %**, but weight is discounted for
+torso/arm/leg pieces (`weight_coef` 2–3) versus everything else (helms, boots, gloves — coef 1),
+so a heavy piece "costs" less encumbrance on the body than the same weight on the head or hands.
+`value[2]` ("encumberance," the value the game shows builders, `act_info.cpp:4320-4324`) is a
+small integer knob, not the item's weight — most live armor uses `0` or `1` (see data check
+below). **`value[1]` ("min absorb") is a genuine trade-off, not a pure bonus**: every point adds
+1 flat damage-reduction point in `armor_effect` but *removes 9 points* of the % absorb here — a
+"chip damage" piece (high min-absorb) is a different design than a "big hits only" piece (high %,
+low min-absorb).
+
+### Field semantics, verified against live data
+`value[0..3]` for `ITEM_ARMOR` (type 9) are labelled for builders as
+`"", "Min Absorbtion", "Encumberance", "Dodge"` (`act_info.cpp:4319-4323`); `value[3]` is a
+straight DB modifier added/removed on wear (`SET_DODGE(character) += item.value[3]`,
+`handler.cpp:1330-1331` / `-=` on remove, `handler.cpp:1409-1410`) — independent of
+`armor_effect`. Parsing all 903 `ITEM_ARMOR` records in `lib/world/obj/*.obj` confirms this
+matches real data:
+- `value[0] == -1` items exist and are common for robe/cloth-style "armor" (e.g. vnum `6300`,
+  `6305`, `2060`, `26260`, all `value = [-1, 0, 0, 1, 0]`; vnum `10703` is the same pattern with a
+  0 DB instead, `value = [-1, 0, 0, 0, 0]`) — these compute `armor_absorb() == 0` regardless of
+  the other fields, i.e. **they occupy an armor slot but absorb nothing**, matching the
+  "decorative/robe" reading of the flag.
+- A concrete worked example, vnum `27000` — "a werewolf skull helm" (`lib/world/obj/270.obj`):
+  `type=ITEM_ARMOR(9)`, `wear=17` (`WEAR_HEAD | ITEM_TAKE`), `value=[31, 1, 1, -3, 0]`,
+  `weight=65`, `level=20`. Head slot → `weight_coef=1` → `encumb_points = 1·6 + 65/1/20 = 9`;
+  `points = 20 + 9 = 29`; since `9 < 30`, bonus `= 9·(60−9)/90 = 5` → `points = 34`; `value[2]=1`
+  nonzero → `+3` → `37`; `absorb = 37 − 1·9 = 28` (≤ 50, no asymptotic clamp). So this level-20
+  helm gives **~28 % absorb, 1 flat point, and −3 DB** — internally consistent with the formula
+  and with its `A 18 3` apply line (a separate stat bonus, unrelated to absorb).
+- Scanning heavy `ITEM_ARMOR` body pieces (`wear & WEAR_BODY`) across the same data set produces
+  a realistic spread: ordinary plate/mail bodies land **~55–60 %** absorb (e.g. vnums `6227`,
+  `6220`, `6243` at level 27–30), and the single highest-weight (80,000) body piece in the data
+  set hits **99 %** — confirming the `100 − 2500/absorb` curve does approach, but never reach,
+  100 % even for extreme items.
+
+### The `score` "armor %" readout is a simplified estimate, not the combat formula
+`get_percent_absorb` (`act_info.cpp:1577-1599`, surfaced as "Your armour absorbs about N% damage"
+in `score`, `act_info.cpp:1715-1717`) walks **every** hit location for the player's own bodytype,
+computes each slot's absorb the same way (`value[1]` + `armor_absorb()%`, with the same Heavy
+Fighting +10 % bonus), and averages the results **weighted by `percent[]`** — i.e. "if you got hit
+in every location proportionally to how often it happens, how much would armor take off a 10-point
+hit, on average." It intentionally **omits** the spear/smite/weapon-master modifiers from
+`armor_effect` (those are per-swing procs, not steady-state armor), so treat the `score` number as
+a directional average, not a per-hit guarantee.
+
+## Resistances and vulnerabilities
+
+`check_resistances(victim, attacktype)` (`utility.cpp:1792-1811`) is **not** an elemental
+race-based lookup table — it tests a **per-character bitvector** (`specials.resistance` /
+`specials.vulnerability`, `sh_int` fields, `structs.h:1095-1096`), one bit per **specialization /
+attack-group id** (`PLRSPEC_*`, `structs.h:836-855`: `NONE, FIRE, COLD, REGN, PROT, PETS, STLH,
+WILD, TELE, ILLU, LGHT, GRDN, HFGT, LFGT, DFND, ARCH, DARK, ARCANE, WMSR, BTLEMS`), via
+`IS_RESISTANT`/`IS_VULNERABLE` (`bitvector & (1 << group)`, `utils.h:687-691`).
+```
+if attacktype < MAX_SKILLS(256):
+    group = skills[attacktype].skill_spec         # the attack's own spec group (e.g. a fire spell → PLRSPEC_FIRE)
+    if IS_RESISTANT(victim, group):  return  1
+    if IS_VULNERABLE(victim, group): return -1
+if attacktype in [TYPE_HIT..TYPE_CRUSH] or attacktype == SKILL_ARCHERY:
+    if IS_RESISTANT(victim, PLRSPEC_WILD):  return  1     # plain weapon damage / arrows -> the "physical" bucket
+    if IS_VULNERABLE(victim, PLRSPEC_WILD): return -1
+return 0
+```
+So a **skill or spell's own `skill_spec`** column (set per-skill in the `skills[]` table,
+`consts.cpp` skill list) decides which resistance bit it checks — e.g. a fire-type spell checks
+`PLRSPEC_FIRE`. **Plain weapon swings and arrows** aren't individually tagged in that table, so
+they're explicitly routed to the generic **`PLRSPEC_WILD`** ("physical") bucket instead — the
+`resistance_name[]` display array literally labels it `"WILD-F"` with the comment "also
+resistance to hit-crush" (`consts.cpp:2365-2390`).
+
+### How the result is applied (`damage`, `fight.cpp:1743-1761`)
+```
+tmp = check_resistances(victim, attacktype)
+if number(0,2) == 0 and IS_PHYSICAL(attacktype):   # IS_PHYSICAL = TYPE_HIT..TYPE_CRUSH only (fight.cpp:37-38)
+    tmp = 0                                         # 1-in-3 chance to void a resist/vuln — plain weapon swings ONLY
+if tmp > 0: dam = dam * 2 / 3        # "You resist a lot." / "$n resists a lot."
+if tmp < 0: dam = dam * 3 / 2        # "You feel it a lot."
+```
+The **⅓-chance override that discards the resist/vulnerability result** only fires for
+`IS_PHYSICAL` attack types (the same `TYPE_HIT..TYPE_CRUSH` range used above) — **archery, active
+skills, and spells always apply their resist/vuln result**; only bare weapon swings have a chance
+to ignore it. This scaling happens in `damage()` for every entry point (see the funnel below), so
+it stacks with — and runs independently of — armor (which only exists on the melee path) and the
+Beorning/maul and PK-fame adjustments immediately above it in the same function
+(`fight.cpp:1626-1640`).
+
+### Where the bits actually get set
+Resistance/vulnerability is **data- and affect-driven, not computed from race**:
+- **Mobs** read `resistance`/`vulnerability` straight out of the `.mob` file's stat block
+  (`db.cpp:1391-1392`; see `../data-formats/world-files.md`'s `<resistance> <vulnerability>` fields)
+  — a flat, hand-authored bitmask per mob, independent of its `race` field.
+- **Items and spell affects** flip the bits via `affect_modify`'s `APPLY_RESIST` / `APPLY_VULN`
+  cases (`handler.cpp:476-487`): applying an affect with `location = APPLY_RESIST` and
+  `modifier = <PLRSPEC id>` sets that bit; removing it (or un-equipping the item) clears it.
+  Any item `A` apply line, or any spell affect, using those constants grants the effect — this is
+  how gear can grant elemental resistance.
+- **Concrete spell example:** the mystic "Protection" spell (`mystic.cpp:1761-1824`) lets a
+  caster choose fire / cold / lightning / "physical," applying `APPLY_RESIST` with
+  `modifier = PLRSPEC_FIRE / PLRSPEC_COLD / PLRSPEC_LGHT / PLRSPEC_WILD` respectively — i.e. the
+  in-game "resist fire" effect is exactly this bit being set for the spell's duration.
+- **No race formula.** There is no `get_race_resistance()`-style function; if a race consistently
+  resists something, it's because its mobs were hand-authored with the bit set, not because of a
+  race → resistance rule in code.
+
+## Special-attack damage paths — the shared `damage()` funnel
+
+Every damage-dealing action in the game — melee swings, arrows, active skills (kick, bash, rend,
+bite, maul, …), and every damage spell — ultimately calls the same function,
+**`damage(attacker, victim, dam, attacktype, hit_location)`** (`fight.cpp:1588`). What differs is
+everything *upstream* of that call: how much damage is computed, whether armor is checked, and
+what `attacktype`/`hit_location` are passed in.
+
+| Path | Entry point | To-hit / accuracy | Damage formula | Armor? | `attacktype` passed | `hit_location` passed |
+|---|---|---|---|---|---|---|
+| **Melee weapon swing** | `hit()` (`fight.cpp:2362`) | OB vs. dodge/parry, §1–2 above | §3 above (`base·(OB+100)·F/13.3M`) | **Yes** — full `armor_effect` (this doc) | `w_type` (`TYPE_HIT..TYPE_CRUSH`/`TYPE_SPEARS`/`TYPE_SMITE`) | rolled body part (this doc) |
+| **Archery** | `on_arrow_hit` → `shoot_calculate_damage` (`ranger.cpp:2085-2118, 2392-2407`) | separate hit/miss + `check_archery_accuracy` roll (`ranger.cpp:1975-1987`) — see `ranger-skills.md` | ranger-level/DEX/bow/arrow formula — see `ranger-skills.md` | **Partial** — its own `apply_armor_to_arrow_damage` (`ranger.cpp:2016-2054`): only reduces damage if the armor's `material` is chain (3) or metal (4); chain is halved-effective vs. arrows; a successful accuracy roll **bypasses armor entirely**; no spear/smite/weapon-master interactions | `SKILL_ARCHERY` | independently-rolled body part (`get_hit_location`, same `bodyparts[]` table) |
+| **Active skills** (kick/bash/rend/bite/maul/olog-hai skills, …) | `act_offe.cpp`, `olog_hai.cpp` call `damage()` directly | skill-specific success roll — see `warrior-skills.md` | skill-specific — see `warrior-skills.md` | **No** — `armor_effect` is never called on this path | the skill's own `SKILL_*` id (e.g. `SKILL_KICK=12`, `SKILL_BASH=13`, `SKILL_REND=55`, `SKILL_BITE=113`) | `0` (no location roll — always the "no part" slot) |
+| **Spells** | `mage.cpp`'s `apply_spell_damage` wrapper (`mage.cpp:98-112`) → `damage()`; `mystic.cpp` calls `damage()` directly (2 sites: `SPELL_HALLUCINATE`, `SPELL_POISON`) | spell hit is typically unconditional once cast succeeds; damage is scaled by the **victim's saving throw** (`get_victim_saving_throw`, `mage.cpp:80-96`): `×20/(20+save)` if positive, `×(2 − 20/(20−save))` if negative — see `magic-system.md` | spell-specific — see `magic-system.md` | **No** — spells never call `armor_effect` | the `SPELL_*` id | `0` |
+
+> **`clerics.cpp` currently has zero `damage()` call sites.** Despite `PROF_CLERIC` being a real,
+> compiled profession, the live cleric spell set (`clerics.cpp`, 580 lines) is support/utility
+> only (mind-block, concentrate, …) — there is no cleric damage spell in the current code to
+> route through this funnel. If that changes, it would presumably follow the same
+> "call `damage()` directly" pattern as `mystic.cpp`.
+
+What every path shares, inside `damage()` itself (`fight.cpp:1588` onward), regardless of which
+row above got it there:
+1. Hallucination check (`IS_PHYSICAL` types only, `fight.cpp:1626-1627`).
+2. Beorning "maul" damage reduction (`maul_damage_reduction`, `fight.cpp:1632-1634`) — **the
+   source comment above this call claims "physical weapons only... spell damage is still at its
+   full amount,"** but `maul_damage_reduction(char_data* ch, int damage)` takes no `attacktype`
+   parameter at all and the call site's only guard is `GET_RACE(victim) == RACE_BEORNING && dam >
+   1` — there is no `IS_PHYSICAL` check anywhere on this path. As written, the 10%+ reduction
+   applies to **all** damage a Beorning takes, spells included; the comment appears stale relative
+   to the code. Flagged here rather than silently "corrected," since it may be an intentional gap
+   nobody has closed rather than a deliberate design choice.
+3. PK-fame bonus for outranked opponents (`fight.cpp:1636-1640`).
+4. Aggro/engagement bookkeeping (`set_fighting`, group/follower breaks).
+5. **Resistances/vulnerabilities** (`check_resistances`, previous section) — applies to *every*
+   row in the table above, including skills and spells.
+6. A hard **200-damage overflow clamp** (`fight.cpp:1759-1762`), **except for `SKILL_AMBUSH`**
+   (`if (dam > 200 && attacktype != SKILL_AMBUSH)`) — so it is the near-universal damage cap in
+   the live game (applied after everything above, to every other path), not a literally
+   exception-free one; an ambush hit can exceed 200.
+7. HP subtraction, death/extraction.
+
+**Messages also diverge by path** (`generate_damage_message`, `fight.cpp:1467-1547`):
+`IS_PHYSICAL` types use the generic weapon-tier table (`dam_weapons`/`get_damage_message_number`,
+this doc's "Damage tiers" section); `SKILL_ARCHERY` reuses that same tier table but rewrites the
+verb to "shoot/shot" (`fight.cpp:1485-1509`); everything else (skills and spells) looks up a
+**dedicated message set** from `fight_messages[]`, loaded at boot from `lib/misc/messages`
+(`db.cpp:61,164,375`) and keyed by the exact `attacktype`/`SKILL_*`/`SPELL_*` number
+(`fight.cpp:1511-1546`). This is verified against the live data file: `lib/misc/messages` opens
+with `M / 12` (kick), `M / 13` (bash), `M / 18` (swing), `M / 55` (rend), `M / 113` (bite) blocks
+— matching `SKILL_KICK=12`, `SKILL_BASH=13`, `SKILL_SWING=18`, `SKILL_REND=55`, `SKILL_BITE=113`
+(`spells.h:49-159`) exactly, each with its own self/hit/miss/die message variants.
+
+For the actual to-hit and damage *formulas* of each specific skill/spell, see
+**`ranger-skills.md`** (archery), **`warrior-skills.md`** (kick/bash/rend/maul and other active
+skills), and **`magic-system.md`** (spell damage and saving throws) — this section only maps
+which pipeline each path uses and what it skips.
 
 ## The combat list — who is fighting, and in what order
 
@@ -408,7 +732,7 @@ strike and Wild-Fighting's rage attack-speed bonus — both in `specializations.
 Mobs use the **NPC branches** of `get_real_OB`/`get_real_parry`/`get_real_dodge`
 (`utility.cpp`): OB/parry/dodge are the stored `points.*` plus flat level/stat terms, and their
 weapon damage is halved (`fight.cpp:2501`). They cannot riposte. Mob `ENE_regen` is read
-straight from the `.mob` file (data-formats/world-files.md), not computed from stats.
+straight from the `.mob` file (`../data-formats/world-files.md`), not computed from stats.
 
 ## Future / proposed changes (design notes — NOT yet implemented)
 
@@ -518,8 +842,8 @@ rather than a truly free-running loop — i.e. apply Change 1's time-based accru
 phased round, not instead of it.
 
 ## Open questions
-- **`armor_effect`** specifics (`fight.cpp`): how AC/armor by hit location and weapon type
-  reduce auto-attack damage.
-- **Resistances/vulnerabilities** and damage-type handling (`check_resistances`, `fight.cpp`).
-- **Special-attack damage paths** (archery `ranger.cpp`, spells → `magic.md`).
-- `points.damage`/`points.OB` base values for players (stance/affect sources, `set_player_ob`).
+- `points.damage`/`points.OB` **base values** for players — where the un-modified numbers that
+  feed the OB roll (§1) and the damage formula (§3) originate before tactics/spec/affect
+  modifiers are layered on (`set_player_ob`, `limits.cpp:972` and callers at `:1068-1108`, which
+  is tactics-stance-driven — full stance table is stats-and-character-power.md territory, but the
+  *base* pre-stance value's source wasn't traced as part of this pass).

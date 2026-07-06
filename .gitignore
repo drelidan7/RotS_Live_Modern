@@ -103,9 +103,6 @@ target/
 # cmake
 .cache
 
-# macOS Finder junk
-.DS_Store
-
 # Local data backups
 lib-backup-*.tar.gz
 
@@ -113,3 +110,6 @@ lib-backup-*.tar.gz
 .superpowers/
 
 cmake_test_discovery*.json
+
+# ctags index (regenerate locally with `ctags -R`; not checked in)
+tags

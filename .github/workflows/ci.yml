@@ -1,12 +1,12 @@
+# Imported from upstream; cannot pass without world files. GitHub Actions has no
+# lib/world/ (it lives in a separate repo, see CLAUDE.md), so `make test` /
+# `make smoke-account` below can only be red on push/pull_request. Trigger is
+# manual-only until Phase 1 of the modernization plan replaces this with the
+# real multi-platform CI matrix.
 name: CI
 
 on:
-  push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
+  workflow_dispatch:
 
 permissions:
   contents: read

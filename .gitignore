@@ -102,6 +102,7 @@ target/
 
 # cmake
 .cache
+CMakeUserPresets.json
 
 # Local data backups
 lib-backup-*.tar.gz

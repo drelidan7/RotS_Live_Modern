@@ -15,6 +15,12 @@
 - Clean: `cd src && make clean` — removes `*.o` objects.
 - CMake alt build: `cmake -S src -B build && cmake --build build` (C++17).
 - Rust proxy: `cargo build -p proxy` | `cargo test -p proxy` | `cargo run -p proxy -- --help`.
+- Root Makefile wrappers (from the account-management merge; run inside the
+  32-bit container): `make configure` (CMake tree), `make build`, `make test`
+  (GoogleTest unit tests), `make smoke-account` (proxy-backed account smoke flow).
+- Account/login/authentication changes REQUIRE `make smoke-account` (or
+  `tools/account_smoke.py`) as a separate validation step — `make test` is
+  intentionally unit-test-only.
 
 ## Coding Style & Naming Conventions
 - Formatter: run `cd src && make format` (WebKit style). Prefer this over local defaults; CI expects formatted diffs.

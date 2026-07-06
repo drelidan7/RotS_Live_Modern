@@ -14,3 +14,7 @@ Team conventions (build/test/style/commit/security) live in AGENTS.md. Read it:
 - **First character created becomes a level-100 Implementor** on a fresh `make setup` install — expected for local dev.
 - **Running C/C++ tests** (Google Test): `cd src/tests && make tests`, then run the produced binary at `bin/tests`. Coverage is minimal; primary verification is a build + boot smoke test (see `/build-and-smoke`).
 - **Proxy IP header:** `proxy/` (Rust) prepends a 4-byte client IP to the game connection before forwarding. Relevant when touching connection/auth/logging code. `--cloudflare` reads the IP from the `CF-Connecting-IP` header instead.
+- **Characterization goldens gate refactors.** `src/tests/goldens/` +
+  `scripts/boot-golden.sh` pin behavior under seed 42; run them after any
+  combat/persistence/boot change. RNG is owned (`src/rots_rng.*`) — libc
+  `rand()`/`random()` are banned.

@@ -32,6 +32,13 @@
 ## Testing Guidelines
 - C/C++: no formal unit tests; perform smoke tests by building and running locally. Verify server boots, accepts connections, and changed features behave as expected.
 - Rust: write unit/integration tests in `proxy/`; run with `cargo test -p proxy` and keep coverage reasonable.
+- Characterization goldens pin current behavior: gtest suites `CharacterizationCombat.*`
+  / `CharacterizationJson.*` (goldens in `src/tests/goldens/`) and
+  `scripts/boot-golden.sh verify`. If a change intentionally alters behavior,
+  regenerate with `UPDATE_GOLDENS=1` (or `boot-golden.sh capture`) and say so
+  in the commit message. Unintentional drift = a bug in your change.
+- All game randomness flows through `rots_rng` (mt19937, platform-independent).
+  Never call `rand()`/`random()` directly.
 
 ## Commit & Pull Request Guidelines
 - Commits: concise, imperative subject (<=72 chars). Reference issues/PRs, e.g., "ranger: fix stun timing (#255)".

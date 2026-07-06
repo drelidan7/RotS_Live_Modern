@@ -303,13 +303,23 @@ bool JsonReader::parse_long(long* value, std::string* error_message)
     std::string number_text = m_input.substr(start, m_position - start);
     char* end_ptr = nullptr;
     errno = 0;
-    long parsed = std::strtol(number_text.c_str(), &end_ptr, 10);
-    if (errno != 0 || end_ptr == nullptr || *end_ptr != '\0') {
+    // Parse as long long so 32-bit builds (long == 32 bits) can still detect and
+    // report values beyond the platform's long range instead of strtol silently
+    // saturating with ERANGE and being reported as "invalid".
+    long long parsed = std::strtoll(number_text.c_str(), &end_ptr, 10);
+    if (end_ptr == nullptr || *end_ptr != '\0') {
         set_error(error_message, "Invalid integer value.");
         return false;
     }
 
-    *value = parsed;
+    if (errno == ERANGE
+        || parsed < static_cast<long long>(std::numeric_limits<long>::min())
+        || parsed > static_cast<long long>(std::numeric_limits<long>::max())) {
+        set_error(error_message, "Integer value is out of range.");
+        return false;
+    }
+
+    *value = static_cast<long>(parsed);
     return true;
 }
 

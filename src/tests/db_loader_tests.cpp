@@ -1001,6 +1001,12 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectJsonIsMalformed)
 
 TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead)
 {
+    // This test injects read failures via chmod(0000)/chmod(0500); root bypasses
+    // file permissions, so the failure path is unreachable when running as root
+    // (e.g. inside the build container).
+    if (geteuid() == 0)
+        GTEST_SKIP() << "chmod-based failure injection does not work as root.";
+
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);

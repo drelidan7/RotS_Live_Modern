@@ -66,7 +66,12 @@ set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 #   -w               warnings intentionally suppressed (legacy tree)
 #   -g               debug symbols (always on, like the Makefile)
 #   -rdynamic        export symbols for runtime backtraces (link)
-target_compile_options(ageland PRIVATE -m32 -funsigned-char -fstrict-aliasing -w -g)
+#   -D_FILE_OFFSET_BITS=64  32-bit glibc's legacy readdir()/stat() use a 32-bit
+#     ino_t/off_t; against modern filesystems with 64-bit inode numbers (ext4,
+#     overlay2) readdir() fails with EOVERFLOW. Switches libc to the 64-bit-safe
+#     variants transparently — does not change any of the game's own on-disk
+#     structs, so save-file format is unaffected.
+target_compile_options(ageland PRIVATE -m32 -funsigned-char -fstrict-aliasing -w -g -D_FILE_OFFSET_BITS=64)
 target_link_options(ageland PRIVATE -m32 -rdynamic)
 
 # Per-configuration optimization (the common flags above apply to every config).
@@ -138,12 +143,20 @@ target_include_directories(ageland_tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/tests"
 )
-target_compile_definitions(ageland_tests PRIVATE TESTING)
+# _FILE_OFFSET_BITS=64: same EOVERFLOW-avoidance rationale as the ageland target
+# above — account-management tests do real opendir/readdir bucket scans under
+# TemporaryDirectory fixtures, so they need the 64-bit-safe libc variants too.
+target_compile_definitions(ageland_tests PRIVATE TESTING _FILE_OFFSET_BITS=64)
 if(ROTS_SUPPRESS_TEST_WARNINGS)
     target_compile_options(ageland_tests PRIVATE -w)
 else()
     target_compile_options(ageland_tests PRIVATE -Wall -Wextra)
 endif()
+# SSE float math for the tests (mirrors src/tests/Makefile): i386 g++ defaults to
+# x87 extended-precision FP, which rounds differently from the SSE math of every
+# x86-64 build; several tests pin exact FP thresholds authored under SSE semantics.
+# No-op on x86-64 hosts (SSE is already the default there).
+target_compile_options(ageland_tests PRIVATE -msse2 -mfpmath=sse)
 target_link_libraries(ageland_tests PRIVATE GTest::gtest crypt)
 # test_random_utils.cpp wraps number() for deterministic RNG in tests.
 target_link_options(ageland_tests PRIVATE
@@ -155,5 +168,72 @@ if(BUILD_TESTING)
     gtest_discover_tests(ageland_tests
         DISCOVERY_MODE PRE_TEST
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    )
+endif()
+
+# --- Utility targets (ported from upstream/account-management) ----------------
+# `setup` mirrors the src/Makefile `setup` target (which the upstream branch
+# extended with the accounts/account_characters buckets): creates the runtime
+# directory tree and placeholder files the server expects at boot. Invoked by
+# the root Makefile as `cmake --build build --target setup`.
+set(ROTS_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
+set(ROTS_LIB_DIR "${ROTS_REPO_ROOT}/lib")
+add_custom_target(setup
+    COMMAND "${CMAKE_COMMAND}" -E make_directory
+        "${ROTS_REPO_ROOT}/bin"
+        "${ROTS_REPO_ROOT}/log"
+        "${ROTS_LIB_DIR}/misc"
+        "${ROTS_LIB_DIR}/players/A-E"
+        "${ROTS_LIB_DIR}/players/F-J"
+        "${ROTS_LIB_DIR}/players/K-O"
+        "${ROTS_LIB_DIR}/players/P-T"
+        "${ROTS_LIB_DIR}/players/U-Z"
+        "${ROTS_LIB_DIR}/players/ZZZ"
+        "${ROTS_LIB_DIR}/accounts/A-E"
+        "${ROTS_LIB_DIR}/accounts/F-J"
+        "${ROTS_LIB_DIR}/accounts/K-O"
+        "${ROTS_LIB_DIR}/accounts/P-T"
+        "${ROTS_LIB_DIR}/accounts/U-Z"
+        "${ROTS_LIB_DIR}/accounts/ZZZ"
+        "${ROTS_LIB_DIR}/account_characters/A-E"
+        "${ROTS_LIB_DIR}/account_characters/F-J"
+        "${ROTS_LIB_DIR}/account_characters/K-O"
+        "${ROTS_LIB_DIR}/account_characters/P-T"
+        "${ROTS_LIB_DIR}/account_characters/U-Z"
+        "${ROTS_LIB_DIR}/account_characters/ZZZ"
+        "${ROTS_LIB_DIR}/plrobjs/A-E"
+        "${ROTS_LIB_DIR}/plrobjs/F-J"
+        "${ROTS_LIB_DIR}/plrobjs/K-O"
+        "${ROTS_LIB_DIR}/plrobjs/P-T"
+        "${ROTS_LIB_DIR}/plrobjs/U-Z"
+        "${ROTS_LIB_DIR}/plrobjs/ZZZ"
+        "${ROTS_LIB_DIR}/exploits/A-E"
+        "${ROTS_LIB_DIR}/exploits/F-J"
+        "${ROTS_LIB_DIR}/exploits/K-O"
+        "${ROTS_LIB_DIR}/exploits/P-T"
+        "${ROTS_LIB_DIR}/exploits/U-Z"
+        "${ROTS_LIB_DIR}/exploits/ZZZ"
+        "${ROTS_REPO_ROOT}/mobs"
+    COMMAND "${CMAKE_COMMAND}" -E touch
+        "${ROTS_REPO_ROOT}/log/lastdeath"
+        "${ROTS_LIB_DIR}/last_cmds"
+        "${ROTS_LIB_DIR}/misc/pklist"
+    COMMENT "Creating runtime directories and placeholder files"
+)
+
+# `format` mirrors the src/Makefile `format` target: WebKit-style clang-format
+# over the server sources. Only defined when clang-format is available (the
+# i386 container image does not install it; run via the root `make format`
+# on a host that has it).
+find_program(CLANG_FORMAT_EXECUTABLE clang-format)
+if(CLANG_FORMAT_EXECUTABLE)
+    file(GLOB ROTS_FORMAT_FILES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
+    )
+    add_custom_target(format
+        COMMAND "${CLANG_FORMAT_EXECUTABLE}" -i -style=WebKit ${ROTS_FORMAT_FILES}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        COMMENT "Formatting source files with clang-format"
     )
 endif()

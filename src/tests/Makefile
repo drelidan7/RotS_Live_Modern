@@ -1,6 +1,23 @@
 CXX = g++
-CXXFLAGS = -std=c++1z -Wall -Wextra -D TESTING
-LDFLAGS = -lgtest -lcrypt
+# -I.. lets the account_management_*_header_compile.cpp probes use bare
+# #include "account_management_assets.h" (etc.) to verify each header is
+# self-contained; mirrors target_include_directories(... ${CMAKE_CURRENT_SOURCE_DIR})
+# in src/CMakeLists.txt for the ageland_tests target.
+# -D_FILE_OFFSET_BITS=64: without it, this 32-bit test binary's opendir/readdir
+# calls fail with EOVERFLOW against directories containing 64-bit inode numbers
+# (routine on the container's filesystem) — see the matching comment in
+# src/Makefile. Account-management tests exercise real opendir/readdir bucket
+# scans (TemporaryDirectory fixtures under /tmp), so they need this too.
+# -msse2 -mfpmath=sse: i386 g++ defaults to x87 (80-bit extended) float math,
+# which rounds float/double expressions differently from the SSE math every
+# x86-64 build uses. Several tests pin exact FP thresholds (RNG-seam scaling in
+# test_random_utils.cpp, battle-mage interrupt chances) that were authored under
+# SSE semantics, so the test build must use SSE too. Tests-only: the game binary
+# (src/Makefile) intentionally keeps the historical x87 behavior.
+CXXFLAGS = -std=c++1z -Wall -Wextra -D TESTING -I.. -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse
+# -lpthread: libgtest.a's ThreadLocal support needs pthread_{get,set}specific/key_*;
+# the static lib doesn't pull it in transitively on this toolchain, so link it explicitly.
+LDFLAGS = -lgtest -lcrypt -lpthread
 
 OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o char_utils.o char_utils_combat.o clerics.o clock.o color.o combat_manager.o \

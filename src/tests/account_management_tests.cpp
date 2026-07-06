@@ -818,6 +818,13 @@ TEST(AccountManagement, FormatsAccountSummariesIncludingLinkedCharacters) {
 
 TEST(AccountManagement, FormatsOutOfRangeSummaryTimestampsAsInvalid)
 {
+    // On 32-bit builds long == time_t == 32 bits, so LONG_MAX is 2038-01-19 —
+    // a perfectly representable date; the "Invalid" out-of-range path is
+    // unreachable by construction. Only meaningful where long outranges what
+    // gmtime_r can format (64-bit builds).
+    if (sizeof(long) == 4)
+        GTEST_SKIP() << "All positive 32-bit long timestamps are valid time_t values.";
+
     account::AccountData account_data = make_account();
     account_data.created_at = std::numeric_limits<long>::max();
     account_data.updated_at = std::numeric_limits<long>::max();
@@ -1646,6 +1653,12 @@ TEST(AccountManagement, WritesCanonicalObjectPathWhenSafeLegacyRelativePathIsSto
 }
 
 TEST(AccountManagement, LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteFails) {
+    // This test injects a write failure via chmod(0500); root bypasses file
+    // permissions, so the failure path is unreachable when running as root
+    // (e.g. inside the build container).
+    if (geteuid() == 0)
+        GTEST_SKIP() << "chmod-based failure injection does not work as root.";
+
     TemporaryDirectory temp_directory;
     std::string error_message;
 
@@ -2431,6 +2444,11 @@ TEST(AccountManagement, MigrationRetiresLegacyFilesAfterSuccessfulAccountNativeW
 }
 
 TEST(AccountManagement, MigrationFailsClosedWhenLegacyFileRetirementFails) {
+    // chmod(0500)-based failure injection; unreachable as root (see
+    // LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteFails).
+    if (geteuid() == 0)
+        GTEST_SKIP() << "chmod-based failure injection does not work as root.";
+
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -2505,6 +2523,11 @@ TEST(AccountManagement, MigrationCleansUpAccountNativeOutputsWhenStaleFlatRetire
 }
 
 TEST(AccountManagement, MigrationRestoresRetiredFilesWhenExploitRetirementFails) {
+    // chmod(0500)-based failure injection; unreachable as root (see
+    // LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteFails).
+    if (geteuid() == 0)
+        GTEST_SKIP() << "chmod-based failure injection does not work as root.";
+
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);

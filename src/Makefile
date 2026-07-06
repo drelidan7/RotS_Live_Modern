@@ -6,6 +6,13 @@
 #   -funsigned-char  the code assumes `char` is unsigned
 #   -fstrict-aliasing  matches the historical build
 #   -std=c++17       (formerly spelled -std=c++1z; identical under GCC)
+#   -D_FILE_OFFSET_BITS=64  32-bit glibc's legacy readdir()/stat() use a 32-bit
+#     ino_t/off_t; against modern filesystems with 64-bit inode numbers (ext4,
+#     overlay2 — e.g. the Docker container's own /tmp and lib/ trees) readdir()
+#     fails with EOVERFLOW on any directory containing such an inode. This macro
+#     switches libc to the 64-bit-safe variants transparently; it only affects
+#     libc's own struct stat/dirent, not any of the game's own on-disk structs
+#     (char_file_u, obj_file_elem, ...), so it does not change save-file format.
 # Warnings are intentionally suppressed (-w): the legacy tree is not warning-clean
 # (append -Wall to CXXFLAGS to see them). User CPPFLAGS/CXXFLAGS/LDFLAGS/LIBS are
 # appended to — never replace — the required flags.
@@ -20,7 +27,7 @@ OBJDIR    = ../intermediate
 # --- Flags -------------------------------------------------------------------
 # REQ_* hold the mandatory flags so an environment override of CXXFLAGS/LDFLAGS
 # can add to, but cannot strip, them (e.g. -m32 is always present).
-REQ_CXXFLAGS = -m32 -std=c++17 -w -fstrict-aliasing -funsigned-char -g
+REQ_CXXFLAGS = -m32 -std=c++17 -w -fstrict-aliasing -funsigned-char -g -D_FILE_OFFSET_BITS=64
 REQ_LDFLAGS  = -m32 -rdynamic
 
 # account_management*.cpp calls libc crypt() for password hashing; link libcrypt.
@@ -93,6 +100,18 @@ setup:
 		../lib/players/P-T \
 		../lib/players/U-Z \
 		../lib/players/ZZZ \
+		../lib/accounts/A-E \
+		../lib/accounts/F-J \
+		../lib/accounts/K-O \
+		../lib/accounts/P-T \
+		../lib/accounts/U-Z \
+		../lib/accounts/ZZZ \
+		../lib/account_characters/A-E \
+		../lib/account_characters/F-J \
+		../lib/account_characters/K-O \
+		../lib/account_characters/P-T \
+		../lib/account_characters/U-Z \
+		../lib/account_characters/ZZZ \
 		../lib/plrobjs/A-E \
 		../lib/plrobjs/F-J \
 		../lib/plrobjs/K-O \

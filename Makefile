@@ -30,7 +30,10 @@ build: $(CMAKE_CACHE)
 
 test: $(CMAKE_CACHE)
 	+$(CMAKE) --build $(BUILD_DIR) --target ageland ageland_tests -j16
-	ctest --test-dir $(BUILD_DIR) --output-on-failure
+	# cd + bare ctest, NOT `ctest --test-dir`: --test-dir needs CMake >= 3.20, and the
+	# i386 container ships ctest 3.18, which silently ignores the flag, looks for tests
+	# in the repo root, and reports "No tests were found!!!" with exit code 0.
+	cd $(BUILD_DIR) && ctest --output-on-failure
 
 run: build
 	./bin/ageland -p 3791

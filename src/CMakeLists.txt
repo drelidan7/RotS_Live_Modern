@@ -106,6 +106,8 @@ set(ROTS_TEST_SOURCES
     tests/battle_mage_handler_tests.cpp
     tests/char_utils_tests.cpp
     tests/character_json_tests.cpp
+    tests/characterization_combat_tests.cpp
+    tests/characterization_json_tests.cpp
     tests/CharPlayerDataBuilder.cpp
     tests/color_tests.cpp
     tests/damage_tests.cpp
@@ -122,6 +124,7 @@ set(ROTS_TEST_SOURCES
     tests/objects_json_tests.cpp
     tests/olog_hai_tests.cpp
     tests/protocol_tests.cpp
+    tests/rots_rng_tests.cpp
     tests/spell_pa_tests.cpp
     tests/startup_options_tests.cpp
     tests/test_random_utils.cpp
@@ -147,6 +150,13 @@ target_include_directories(ageland_tests PRIVATE
 # above — account-management tests do real opendir/readdir bucket scans under
 # TemporaryDirectory fixtures, so they need the 64-bit-safe libc variants too.
 target_compile_definitions(ageland_tests PRIVATE TESTING _FILE_OFFSET_BITS=64)
+# gtest_discover_tests (below) runs the binary with WORKING_DIRECTORY set to the
+# repo root, not src/tests/ — so the characterization tests' plain relative
+# "goldens/..." lookups (src/tests/Makefile's cwd) would miss under ctest. Anchor
+# them to an absolute path instead; characterization_combat_tests.cpp /
+# characterization_json_tests.cpp fall back to the relative path when this is
+# undefined (the Makefile build, which runs with cwd already at src/tests/).
+target_compile_definitions(ageland_tests PRIVATE ROTS_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/goldens")
 if(ROTS_SUPPRESS_TEST_WARNINGS)
     target_compile_options(ageland_tests PRIVATE -w)
 else()

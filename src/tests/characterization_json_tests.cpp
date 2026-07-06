@@ -11,7 +11,17 @@
 
 namespace {
 
+// ROTS_GOLDEN_DIR (set by src/CMakeLists.txt on the ageland_tests target) anchors
+// this to an absolute path so the compare works under ctest, whose
+// gtest_discover_tests runs the binary with WORKING_DIRECTORY at the repo root
+// rather than src/tests/. The src/tests/Makefile build doesn't define it, so it
+// falls back to the plain relative path it has always used (cwd is src/tests/
+// there).
+#ifdef ROTS_GOLDEN_DIR
+const char* const kGoldenPath = ROTS_GOLDEN_DIR "/character_seed_fixture.json";
+#else
 const char* const kGoldenPath = "goldens/character_seed_fixture.json";
+#endif
 
 std::string read_file(const char* path)
 {

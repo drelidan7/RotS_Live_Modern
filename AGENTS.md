@@ -32,7 +32,7 @@
 ## Testing Guidelines
 - C/C++: no formal unit tests; perform smoke tests by building and running locally. Verify server boots, accepts connections, and changed features behave as expected.
 - Rust: write unit/integration tests in `proxy/`; run with `cargo test -p proxy` and keep coverage reasonable.
-- Characterization goldens pin current behavior: gtest suites `CharacterizationCombat.*`
+- Characterization goldens pin current behavior: gtest suites `CharacterizationCombatTest.*`
   / `CharacterizationJson.*` (goldens in `src/tests/goldens/`) and
   `scripts/boot-golden.sh verify`. If a change intentionally alters behavior,
   regenerate with `UPDATE_GOLDENS=1` (or `boot-golden.sh capture`) and say so

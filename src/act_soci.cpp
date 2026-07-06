@@ -17,6 +17,7 @@
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
+#include "rots_rng.h"
 #include "spells.h"
 #include "structs.h"
 #include "utils.h"
@@ -329,7 +330,7 @@ ACMD(do_insult)
                 sprintf(buf, "You insult %s.\n\r", PERS(victim, ch, FALSE, FALSE));
                 send_to_char(buf, ch);
 
-                switch (random() % 3) {
+                switch (rots_rng::next() % 3) {
                 case 0:
                     if (GET_SEX(ch) == SEX_MALE) {
                         if (GET_SEX(victim) == SEX_MALE)

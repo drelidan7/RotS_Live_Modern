@@ -45,7 +45,7 @@ set(ROTS_SERVER_SOURCES
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     mystic.cpp obj2html.cpp object_utils.cpp objects_json.cpp objsave.cpp
     olog_hai.cpp pkill.cpp profs.cpp protocol.cpp
-    ranger.cpp script.cpp shapemdl.cpp shapemob.cpp
+    ranger.cpp rots_rng.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp

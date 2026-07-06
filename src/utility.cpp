@@ -40,6 +40,7 @@
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
+#include "rots_rng.h"
 #include "spells.h"
 #include "structs.h"
 #include "utils.h"
@@ -928,9 +929,8 @@ int get_followers_level(char_data* ch) /* summ of levels of mobs/players charmed
 // returns a random number from 0.0 to 1.0
 double number()
 {
-    double roll = std::rand();
-    double max = RAND_MAX;
-    return roll / max;
+    // 2^32 as double; next() is a full 32-bit draw, so this is uniform [0,1).
+    return rots_rng::next() / 4294967296.0;
 }
 
 // returns a random number from 0.0 to max
@@ -966,7 +966,7 @@ int number(int from, int to)
         to = from;
     }
 
-    return (std::rand() % upper_end) + from;
+    return (rots_rng::next() % upper_end) + from;
 }
 
 /* simulates dice roll */
@@ -982,7 +982,7 @@ int dice(int number, int size)
     }
 
     for (r = 1; r <= number; r++) {
-        sum += (std::rand() % size) + 1;
+        sum += (rots_rng::next() % size) + 1;
     }
 
     return (sum);

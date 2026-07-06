@@ -25,7 +25,7 @@ OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objsave.o olog_hai.o\
 	pkill.o profs.o protocol.o ranger.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o  \
-	wild_fighting_handler.o weather.o zone.o
+	wild_fighting_handler.o weather.o zone.o rots_rng.o
 
 
 # Dependencies for the main mud
@@ -198,9 +198,11 @@ pkill.o: ../pkill.cpp ../pkill.h
 	$(CXX) -c $(CXXFLAGS) ../pkill.cpp
 protocol.o: ../protocol.cpp ../protocol.h
 	$(CXX) -c $(CXXFLAGS) ../protocol.cpp
+rots_rng.o : ../rots_rng.cpp ../rots_rng.h
+	$(CXX) -c $(CXXFLAGS) ../rots_rng.cpp
 
 
-SRCS = account_management_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp character_json_tests.cpp char_utils_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_utils_tests.cpp mage_tests.cpp ObjFlagDataBuilder.cpp objects_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp protocol_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
+SRCS = account_management_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp character_json_tests.cpp char_utils_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_utils_tests.cpp mage_tests.cpp ObjFlagDataBuilder.cpp objects_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp protocol_tests.cpp rots_rng_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 EXECUTABLE = ../../bin/tests

@@ -29,6 +29,7 @@
 #include "interpre.h"
 #include "limits.h"
 #include "protocol.h"
+#include "rots_rng.h"
 #include "script.h"
 #include "skill_timer.h"
 #include "spells.h"
@@ -397,7 +398,7 @@ int main(int argc, char** argv)
     signal(SIGSEGV, sigsegv_handler);
 
     // initialize the random number generator
-    std::srand(std::time(0));
+    rots_rng::seed(static_cast<unsigned int>(std::time(0)));
 
     char buf[512];
     StartupOptions startup_options {};
@@ -454,7 +455,7 @@ int main(int argc, char** argv)
     // Open command log
     system("mv -f last_cmds crash_cmds");
     fpCommand = fopen("last_cmds", "w");
-    srandom(time(0));
+    rots_rng::seed(static_cast<unsigned int>(time(0)));
     run_the_game(startup_options.port);
     return (0);
 }

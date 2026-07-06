@@ -93,6 +93,7 @@ case "$mode" in
     trap 'rm -f "$tmp"' EXIT
     capture_to "$tmp" || exit 2
     mv "$tmp" "$GOLDEN"
+    chmod 644 "$GOLDEN" # mktemp made $tmp 600; keep the committed golden world-readable.
     trap - EXIT
     echo "captured $(wc -l < "$GOLDEN") lines to $GOLDEN"
     ;;

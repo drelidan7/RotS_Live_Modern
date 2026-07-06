@@ -1,0 +1,51 @@
+# Imported from upstream; cannot pass without world files. GitHub Actions has no
+# lib/world/ (it lives in a separate repo, see CLAUDE.md), so `make test` /
+# `make smoke-account` below can only be red on push/pull_request. Trigger is
+# manual-only until Phase 1 of the modernization plan replaces this with the
+# real multi-platform CI matrix.
+name: CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-smoke:
+    name: Build, Unit Tests, and Smoke Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            clang-format \
+            cmake \
+            cargo \
+            gcc-multilib \
+            g++-multilib \
+            libc6-dev-i386 \
+            libcrypt-dev \
+            libgtest-dev \
+            make \
+            pkg-config \
+            python3 \
+            rustc
+
+      - name: Configure build tree
+        run: make configure
+
+      - name: Run C++ unit tests
+        run: make test
+
+      - name: Run account smoke flow
+        run: make smoke-account

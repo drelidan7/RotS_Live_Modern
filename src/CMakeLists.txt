@@ -28,24 +28,31 @@ endif()
 # invoked; the live melee path is fight.cpp::hit(), see CLAUDE.md).
 # char_utils_combat.cpp IS listed: it also defines live functions used by
 # fight.cpp / clerics.cpp / ranger.cpp; only its get_real_ob/parry/dodge helpers are dead.
-add_executable(ageland
-    act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
+#
+# account_management.cpp / character_json.cpp / exploits_json.cpp / json_utils.cpp /
+# objects_json.cpp arrive with the account-management merge (JSON persistence +
+# accounts); the other account_management_*.cpp files are #included into
+# account_management.cpp, not compiled separately.
+set(ROTS_SERVER_SOURCES
+    account_management.cpp act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
-    boards.cpp char_utils.cpp char_utils_combat.cpp clerics.cpp
+    boards.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
     clock.cpp color.cpp comm.cpp config.cpp
-    consts.cpp db.cpp delayed_command_interpreter.cpp environment_utils.cpp
+    consts.cpp db.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
-    limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
+    json_utils.cpp limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
-    mystic.cpp obj2html.cpp object_utils.cpp objsave.cpp
+    mystic.cpp obj2html.cpp object_utils.cpp objects_json.cpp objsave.cpp
     olog_hai.cpp pkill.cpp profs.cpp protocol.cpp
-    ranger.cpp script.cpp shapemdl.cpp shapemob.cpp
+    ranger.cpp rots_rng.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
     weapon_master_handler.cpp weather.cpp wild_fighting_handler.cpp zone.cpp
 )
+
+add_executable(ageland ${ROTS_SERVER_SOURCES})
 
 # C++17, ISO dialect (-std=c++17, not gnu++17) to match the Makefile's -std=c++1z.
 target_compile_features(ageland PRIVATE cxx_std_17)
@@ -59,7 +66,12 @@ set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 #   -w               warnings intentionally suppressed (legacy tree)
 #   -g               debug symbols (always on, like the Makefile)
 #   -rdynamic        export symbols for runtime backtraces (link)
-target_compile_options(ageland PRIVATE -m32 -funsigned-char -fstrict-aliasing -w -g)
+#   -D_FILE_OFFSET_BITS=64  32-bit glibc's legacy readdir()/stat() use a 32-bit
+#     ino_t/off_t; against modern filesystems with 64-bit inode numbers (ext4,
+#     overlay2) readdir() fails with EOVERFLOW. Switches libc to the 64-bit-safe
+#     variants transparently — does not change any of the game's own on-disk
+#     structs, so save-file format is unaffected.
+target_compile_options(ageland PRIVATE -m32 -funsigned-char -fstrict-aliasing -w -g -D_FILE_OFFSET_BITS=64)
 target_link_options(ageland PRIVATE -m32 -rdynamic)
 
 # Per-configuration optimization (the common flags above apply to every config).
@@ -67,3 +79,171 @@ target_compile_options(ageland PRIVATE
     $<$<CONFIG:Debug>:-O0 -DDEBUG>
     $<$<CONFIG:Release>:-O2 -DNDEBUG>
 )
+
+# account_management*.cpp calls libc crypt() for password hashing; link libcrypt
+# (mirrors LIBS += -lcrypt in src/Makefile).
+target_link_libraries(ageland PRIVATE crypt)
+
+# --- Tests (ported from upstream/account-management) --------------------------
+# GoogleTest suite, discovered via CTest so `ctest --test-dir build` (or the root
+# `make test`) runs it. This is IN ADDITION to the older src/tests/Makefile entry
+# point (see CLAUDE.md / AGENTS.md) — both build the same test sources against
+# GoogleTest; use whichever fits the workflow.
+include(CTest)
+
+option(ROTS_SUPPRESS_TEST_WARNINGS "Suppress compiler warnings when building the ageland_tests target" ON)
+
+# Explicit list, matching the style above — no file(GLOB).
+set(ROTS_TEST_SOURCES
+    tests/account_management_assets_header_compile.cpp
+    tests/account_management_identity_header_compile.cpp
+    tests/account_management_migration_header_compile.cpp
+    tests/account_management_presentation_header_compile.cpp
+    tests/account_management_storage_header_compile.cpp
+    tests/account_management_tests.cpp
+    tests/account_management_types_header_compile.cpp
+    tests/act_wiz_tests.cpp
+    tests/battle_mage_handler_tests.cpp
+    tests/char_utils_tests.cpp
+    tests/character_json_tests.cpp
+    tests/characterization_combat_tests.cpp
+    tests/characterization_json_tests.cpp
+    tests/CharPlayerDataBuilder.cpp
+    tests/color_tests.cpp
+    tests/damage_tests.cpp
+    tests/db_loader_tests.cpp
+    tests/exploits_json_tests.cpp
+    tests/fight_proc_tests.cpp
+    tests/gtest_main.cpp
+    tests/interpre_account_menu_tests.cpp
+    tests/json_utils_tests.cpp
+    tests/mage_tests.cpp
+    tests/obj_flag_data_tests.cpp
+    tests/ObjFlagDataBuilder.cpp
+    tests/object_utils_tests.cpp
+    tests/objects_json_tests.cpp
+    tests/olog_hai_tests.cpp
+    tests/protocol_tests.cpp
+    tests/rots_rng_tests.cpp
+    tests/spell_pa_tests.cpp
+    tests/startup_options_tests.cpp
+    tests/test_random_utils.cpp
+    tests/test_random_utils_tests.cpp
+    tests/weapon_master_handler_tests.cpp
+)
+
+find_package(GTest REQUIRED)
+include(GoogleTest)
+
+add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_TEST_SOURCES})
+
+# Same C++ standard as ageland (see above) — required because these targets are
+# defined per-target here rather than via a project-wide CMAKE_CXX_STANDARD.
+target_compile_features(ageland_tests PRIVATE cxx_std_17)
+set_target_properties(ageland_tests PROPERTIES CXX_EXTENSIONS OFF)
+
+target_include_directories(ageland_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+)
+# _FILE_OFFSET_BITS=64: same EOVERFLOW-avoidance rationale as the ageland target
+# above — account-management tests do real opendir/readdir bucket scans under
+# TemporaryDirectory fixtures, so they need the 64-bit-safe libc variants too.
+target_compile_definitions(ageland_tests PRIVATE TESTING _FILE_OFFSET_BITS=64)
+# gtest_discover_tests (below) runs the binary with WORKING_DIRECTORY set to the
+# repo root, not src/tests/ — so the characterization tests' plain relative
+# "goldens/..." lookups (src/tests/Makefile's cwd) would miss under ctest. Anchor
+# them to an absolute path instead; characterization_combat_tests.cpp /
+# characterization_json_tests.cpp fall back to the relative path when this is
+# undefined (the Makefile build, which runs with cwd already at src/tests/).
+target_compile_definitions(ageland_tests PRIVATE ROTS_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/goldens")
+if(ROTS_SUPPRESS_TEST_WARNINGS)
+    target_compile_options(ageland_tests PRIVATE -w)
+else()
+    target_compile_options(ageland_tests PRIVATE -Wall -Wextra)
+endif()
+# SSE float math for the tests (mirrors src/tests/Makefile): i386 g++ defaults to
+# x87 extended-precision FP, which rounds differently from the SSE math of every
+# x86-64 build; several tests pin exact FP thresholds authored under SSE semantics.
+# No-op on x86-64 hosts (SSE is already the default there).
+target_compile_options(ageland_tests PRIVATE -msse2 -mfpmath=sse)
+target_link_libraries(ageland_tests PRIVATE GTest::gtest crypt)
+# test_random_utils.cpp wraps number() for deterministic RNG in tests.
+target_link_options(ageland_tests PRIVATE
+    -Wl,--wrap=_Z6numberv
+    -Wl,--wrap=_Z6numberii
+)
+
+if(BUILD_TESTING)
+    gtest_discover_tests(ageland_tests
+        DISCOVERY_MODE PRE_TEST
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+    )
+endif()
+
+# --- Utility targets (ported from upstream/account-management) ----------------
+# `setup` mirrors the src/Makefile `setup` target (which the upstream branch
+# extended with the accounts/account_characters buckets): creates the runtime
+# directory tree and placeholder files the server expects at boot. Invoked by
+# the root Makefile as `cmake --build build --target setup`.
+set(ROTS_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
+set(ROTS_LIB_DIR "${ROTS_REPO_ROOT}/lib")
+add_custom_target(setup
+    COMMAND "${CMAKE_COMMAND}" -E make_directory
+        "${ROTS_REPO_ROOT}/bin"
+        "${ROTS_REPO_ROOT}/log"
+        "${ROTS_LIB_DIR}/misc"
+        "${ROTS_LIB_DIR}/players/A-E"
+        "${ROTS_LIB_DIR}/players/F-J"
+        "${ROTS_LIB_DIR}/players/K-O"
+        "${ROTS_LIB_DIR}/players/P-T"
+        "${ROTS_LIB_DIR}/players/U-Z"
+        "${ROTS_LIB_DIR}/players/ZZZ"
+        "${ROTS_LIB_DIR}/accounts/A-E"
+        "${ROTS_LIB_DIR}/accounts/F-J"
+        "${ROTS_LIB_DIR}/accounts/K-O"
+        "${ROTS_LIB_DIR}/accounts/P-T"
+        "${ROTS_LIB_DIR}/accounts/U-Z"
+        "${ROTS_LIB_DIR}/accounts/ZZZ"
+        "${ROTS_LIB_DIR}/account_characters/A-E"
+        "${ROTS_LIB_DIR}/account_characters/F-J"
+        "${ROTS_LIB_DIR}/account_characters/K-O"
+        "${ROTS_LIB_DIR}/account_characters/P-T"
+        "${ROTS_LIB_DIR}/account_characters/U-Z"
+        "${ROTS_LIB_DIR}/account_characters/ZZZ"
+        "${ROTS_LIB_DIR}/plrobjs/A-E"
+        "${ROTS_LIB_DIR}/plrobjs/F-J"
+        "${ROTS_LIB_DIR}/plrobjs/K-O"
+        "${ROTS_LIB_DIR}/plrobjs/P-T"
+        "${ROTS_LIB_DIR}/plrobjs/U-Z"
+        "${ROTS_LIB_DIR}/plrobjs/ZZZ"
+        "${ROTS_LIB_DIR}/exploits/A-E"
+        "${ROTS_LIB_DIR}/exploits/F-J"
+        "${ROTS_LIB_DIR}/exploits/K-O"
+        "${ROTS_LIB_DIR}/exploits/P-T"
+        "${ROTS_LIB_DIR}/exploits/U-Z"
+        "${ROTS_LIB_DIR}/exploits/ZZZ"
+        "${ROTS_REPO_ROOT}/mobs"
+    COMMAND "${CMAKE_COMMAND}" -E touch
+        "${ROTS_REPO_ROOT}/log/lastdeath"
+        "${ROTS_LIB_DIR}/last_cmds"
+        "${ROTS_LIB_DIR}/misc/pklist"
+    COMMENT "Creating runtime directories and placeholder files"
+)
+
+# `format` mirrors the src/Makefile `format` target: WebKit-style clang-format
+# over the server sources. Only defined when clang-format is available (the
+# i386 container image does not install it; run via the root `make format`
+# on a host that has it).
+find_program(CLANG_FORMAT_EXECUTABLE clang-format)
+if(CLANG_FORMAT_EXECUTABLE)
+    file(GLOB ROTS_FORMAT_FILES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
+    )
+    add_custom_target(format
+        COMMAND "${CLANG_FORMAT_EXECUTABLE}" -i -style=WebKit ${ROTS_FORMAT_FILES}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        COMMENT "Formatting source files with clang-format"
+    )
+endif()

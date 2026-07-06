@@ -27,19 +27,20 @@
 #endif
 
 #include <assert.h>
+#include <cstring>
 #include <ctype.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <cstring>
 
 #include "color.h"
 #include "comm.h"
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
+#include "rots_rng.h"
 #include "spells.h"
 #include "structs.h"
 #include "utils.h"
@@ -50,6 +51,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 
 extern struct time_data time_info;
 extern struct room_data world;
@@ -927,9 +929,8 @@ int get_followers_level(char_data* ch) /* summ of levels of mobs/players charmed
 // returns a random number from 0.0 to 1.0
 double number()
 {
-    double roll = std::rand();
-    double max = RAND_MAX;
-    return roll / max;
+    // 2^32 as double; next() is a full 32-bit draw, so this is uniform [0,1).
+    return rots_rng::next() / 4294967296.0;
 }
 
 // returns a random number from 0.0 to max
@@ -965,7 +966,7 @@ int number(int from, int to)
         to = from;
     }
 
-    return (std::rand() % upper_end) + from;
+    return (rots_rng::next() % upper_end) + from;
 }
 
 /* simulates dice roll */
@@ -981,7 +982,7 @@ int dice(int number, int size)
     }
 
     for (r = 1; r <= number; r++) {
-        sum += (std::rand() % size) + 1;
+        sum += (rots_rng::next() % size) + 1;
     }
 
     return (sum);
@@ -1102,12 +1103,14 @@ void mudlog(char* str, char type, sh_int level, byte file)
     return;
 }
 
-void mudlog_debug_mob(char *buf, char_data *ch) {
+void mudlog_debug_mob(char* buf, char_data* ch)
+{
     mudlog_aliased_mob(buf, ch, "debug");
 }
 
-void mudlog_aliased_mob(char *buf, char_data *ch, char *mob_alias) {
-    if(strstr(ch->player.name, mob_alias)) {
+void mudlog_aliased_mob(char* buf, char_data* ch, char* mob_alias)
+{
+    if (strstr(ch->player.name, mob_alias)) {
         mudlog(buf, SPL, LEVEL_GOD, FALSE);
     }
 }
@@ -2202,8 +2205,18 @@ char* PERS(struct char_data* target, struct char_data* observer,
     return name;
 }
 
-int has_alias(char_data* host, char *keyword) {
-    if(strstr(host->player.name, keyword)) {
+int has_alias(char_data* host, char* keyword)
+{
+    if (strstr(host->player.name, keyword)) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+int has_program(char_data* host, int num)
+{
+    if ((int)host->specials.store_prog_number == num) {
         return 1;
     } else {
         return 0;

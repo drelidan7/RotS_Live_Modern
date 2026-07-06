@@ -1,17 +1,49 @@
 CXX = g++
-CXXFLAGS = -std=c++1z -Wall -Wextra -D TESTING
-LDFLAGS = -lgtest -lgtest_main
+# -I.. lets the account_management_*_header_compile.cpp probes use bare
+# #include "account_management_assets.h" (etc.) to verify each header is
+# self-contained; mirrors target_include_directories(... ${CMAKE_CURRENT_SOURCE_DIR})
+# in src/CMakeLists.txt for the ageland_tests target.
+# -D_FILE_OFFSET_BITS=64: without it, this 32-bit test binary's opendir/readdir
+# calls fail with EOVERFLOW against directories containing 64-bit inode numbers
+# (routine on the container's filesystem) — see the matching comment in
+# src/Makefile. Account-management tests exercise real opendir/readdir bucket
+# scans (TemporaryDirectory fixtures under /tmp), so they need this too.
+# -msse2 -mfpmath=sse: i386 g++ defaults to x87 (80-bit extended) float math,
+# which rounds float/double expressions differently from the SSE math every
+# x86-64 build uses. Several tests pin exact FP thresholds (RNG-seam scaling in
+# test_random_utils.cpp, battle-mage interrupt chances) that were authored under
+# SSE semantics, so the test build must use SSE too. Tests-only: the game binary
+# (src/Makefile) intentionally keeps the historical x87 behavior.
+CXXFLAGS = -std=c++1z -Wall -Wextra -D TESTING -I.. -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse
+# -lpthread: libgtest.a's ThreadLocal support needs pthread_{get,set}specific/key_*;
+# the static lib doesn't pull it in transitively on this toolchain, so link it explicitly.
+LDFLAGS = -lgtest -lcrypt -lpthread
 
 OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o char_utils.o char_utils_combat.o clerics.o clock.o color.o combat_manager.o \
-	comm.o config.o consts.o db.o delayed_command_interpreter.o fight.o graph.o handler.o interpre.o environment_utils.o \
-	limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o obj2html.o object_utils.o objsave.o olog_hai.o\
-	pkill.o profs.o ranger.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
+	comm.o config.o consts.o db.o delayed_command_interpreter.o fight.o graph.o handler.o interpre.o environment_utils.o account_management.o character_json.o exploits_json.o json_utils.o objects_json.o \
+	limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objsave.o olog_hai.o\
+	pkill.o profs.o protocol.o ranger.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o  \
-	wild_fighting_handler.o weather.o zone.o
+	wild_fighting_handler.o weather.o zone.o rots_rng.o
 
 
 # Dependencies for the main mud
+
+account_management.o : ../account_management.cpp ../account_management.h ../account_management_types.h ../account_management_identity.h ../account_management_storage.h ../account_management_assets.h ../account_management_migration.h ../account_management_presentation.h ../account_management_internal.cpp ../account_management_identity.cpp ../account_management_storage.cpp ../account_management_assets.cpp ../account_management_migration.cpp ../account_management_presentation.cpp ../json_utils.h
+	$(CXX) -c $(CXXFLAGS) ../account_management.cpp
+
+character_json.o : ../character_json.cpp ../character_json.h ../json_utils.h ../structs.h
+	$(CXX) -c $(CXXFLAGS) ../character_json.cpp
+
+exploits_json.o : ../exploits_json.cpp ../exploits_json.h ../json_utils.h ../db.h
+	$(CXX) -c $(CXXFLAGS) ../exploits_json.cpp
+
+json_utils.o : ../json_utils.cpp ../json_utils.h
+	$(CXX) -c $(CXXFLAGS) ../json_utils.cpp
+
+objects_json.o : ../objects_json.cpp ../objects_json.h ../json_utils.h ../structs.h
+	$(CXX) -c $(CXXFLAGS) ../objects_json.cpp
 
 clock.o : ../clock.cpp ../clock.h
 	$(CXX) -c $(CXXFLAGS) ../clock.cpp
@@ -160,20 +192,32 @@ color.o: ../color.cpp ../color.h
 	$(CXX) -c $(CXXFLAGS) ../color.cpp
 obj2html.o: ../obj2html.cpp
 	$(CXX) -c $(CXXFLAGS) ../obj2html.cpp
+mob_csv_extract.o: ../mob_csv_extract.cpp ../mob_csv_extract.h
+	$(CXX) -c $(CXXFLAGS) ../mob_csv_extract.cpp
 pkill.o: ../pkill.cpp ../pkill.h
 	$(CXX) -c $(CXXFLAGS) ../pkill.cpp
+protocol.o: ../protocol.cpp ../protocol.h
+	$(CXX) -c $(CXXFLAGS) ../protocol.cpp
+rots_rng.o : ../rots_rng.cpp ../rots_rng.h
+	$(CXX) -c $(CXXFLAGS) ../rots_rng.cpp
 
 
-SRCS = CharPlayerDataBuilder.h CharPlayerDataBuilder.cpp ObjFlagDataBuilder.h ObjFlagDataBuilder.cpp \
- 	   obj_flag_data_tests.cpp gtest_main.cpp
+SRCS = account_management_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp color_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_utils_tests.cpp mage_tests.cpp ObjFlagDataBuilder.cpp objects_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp protocol_tests.cpp rots_rng_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 EXECUTABLE = ../../bin/tests
 
+# Test TUs build via the generic .cpp.o rule, which knows nothing about
+# headers; without this line, editing the shared fixture header leaves stale
+# objects behind (make considers the .o up to date) and the two suites can
+# silently run different fixture code.
+characterization_combat_tests.o damage_tests.o : damage_test_context.h
+characterization_json_tests.o : ../character_json.h
+
 tests: $(EXECUTABLE)
 
-$(EXECUTABLE): $(OBJS)
-	$(CXX) $(CXX_FLAGS) $(OBJFILES) $(OBJS) -o $(EXECUTABLE) $(LDFLAGS)
+$(EXECUTABLE): $(OBJFILES) $(OBJS)
+	$(CXX) $(CXXFLAGS) $(OBJFILES) $(OBJS) -o $(EXECUTABLE) $(LDFLAGS) -Wl,--wrap=_Z6numberv -Wl,--wrap=_Z6numberii
 
 .cpp.o:
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -187,7 +231,5 @@ ageland: ../bin/ageland
 
 all: ageland $(EXECUTABLE)
 
-../bin/tests:
-	../../bin/tests
-
-run: ../bin/tests
+run: $(EXECUTABLE)
+	$(EXECUTABLE)

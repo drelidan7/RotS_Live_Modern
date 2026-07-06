@@ -69,6 +69,7 @@ CVS/
 old/
 backup/
 lib/misc/plrmail
+lib/accounts/
 lib/misc/maze.dat
 lib/misc/mdl
 lib/misc/mudlle.keys
@@ -76,6 +77,7 @@ lib/misc/oldcrimelist
 lib/misc/pk*
 lib/misc/repair*
 lib/misc/xnames*
+tools/__pycache__/
 core/
 *~
 autorun4000
@@ -100,3 +102,14 @@ target/
 
 # cmake
 .cache
+
+# Local data backups
+lib-backup-*.tar.gz
+
+# Superpowers scratch directory
+.superpowers/
+
+cmake_test_discovery*.json
+
+# ctags index (regenerate locally with `ctags -R`; not checked in)
+tags

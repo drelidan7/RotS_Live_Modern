@@ -15,6 +15,12 @@
 - Clean: `cd src && make clean` — removes `*.o` objects.
 - CMake alt build: `cmake -S src -B build && cmake --build build` (C++17).
 - Rust proxy: `cargo build -p proxy` | `cargo test -p proxy` | `cargo run -p proxy -- --help`.
+- Root Makefile wrappers (from the account-management merge; run inside the
+  32-bit container): `make configure` (CMake tree), `make build`, `make test`
+  (GoogleTest unit tests), `make smoke-account` (proxy-backed account smoke flow).
+- Account/login/authentication changes REQUIRE `make smoke-account` (or
+  `tools/account_smoke.py`) as a separate validation step — `make test` is
+  intentionally unit-test-only.
 
 ## Coding Style & Naming Conventions
 - Formatter: run `cd src && make format` (WebKit style). Prefer this over local defaults; CI expects formatted diffs.
@@ -24,8 +30,15 @@
 - Rust (proxy): follow `rustfmt` defaults; module/file lowercase with underscores.
 
 ## Testing Guidelines
-- C/C++: no formal unit tests; perform smoke tests by building and running locally. Verify server boots, accepts connections, and changed features behave as expected.
+- C/C++: a GoogleTest suite (`cd src/tests && make tests && ../../bin/tests`, or `ctest --test-dir build`) covers ~500 tests, including characterization goldens (`src/tests/goldens/`, `docs/superpowers/goldens/`) that pin existing behavior byte-for-byte. Smoke tests (build + boot, see `/build-and-smoke`) remain the final gate — verify server boots, accepts connections, and changed features behave as expected.
 - Rust: write unit/integration tests in `proxy/`; run with `cargo test -p proxy` and keep coverage reasonable.
+- Characterization goldens pin current behavior: gtest suites `CharacterizationCombatTest.*`
+  / `CharacterizationJson.*` (goldens in `src/tests/goldens/`) and
+  `scripts/boot-golden.sh verify`. If a change intentionally alters behavior,
+  regenerate with `UPDATE_GOLDENS=1` (or `boot-golden.sh capture`) and say so
+  in the commit message. Unintentional drift = a bug in your change.
+- All game randomness flows through `rots_rng` (mt19937, platform-independent).
+  Never call `rand()`/`random()` directly.
 
 ## Commit & Pull Request Guidelines
 - Commits: concise, imperative subject (<=72 chars). Reference issues/PRs, e.g., "ranger: fix stun timing (#255)".

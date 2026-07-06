@@ -1,0 +1,14 @@
+# Provenance for boot-log.golden — captured 2026-07-06.
+#
+# World data source: https://github.com/Noobinabox/RotS-WorldFiles (see CLAUDE.md
+# "World files and player data are not in this repo"). The local lib/world/
+# checkout used to capture this golden has no .git/ (imported as a plain
+# snapshot, not a clone), so there is no commit hash to pin — instead we record
+# a file-count + byte-size fingerprint of lib/world/ at capture time:
+#
+#   files: 1887
+#   bytes: 25290200
+#
+# Regenerate this golden (scripts/boot-golden.sh capture) whenever lib/world/
+# changes — a different world snapshot will boot-load different
+# zones/mobs/objects and legitimately shift the normalized boot log.

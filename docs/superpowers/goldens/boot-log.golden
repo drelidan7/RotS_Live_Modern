@@ -1,0 +1,1752 @@
+Boot db -- BEGIN.
+Resetting the game time:
+Loading script table.
+Loading zone table.
+opened file world/zon/11.zon.
+opened file world/zon/13.zon.
+opened file world/zon/14.zon.
+opened file world/zon/15.zon.
+opened file world/zon/16.zon.
+opened file world/zon/17.zon.
+opened file world/zon/18.zon.
+opened file world/zon/20.zon.
+opened file world/zon/21.zon.
+opened file world/zon/22.zon.
+opened file world/zon/23.zon.
+opened file world/zon/24.zon.
+opened file world/zon/25.zon.
+opened file world/zon/26.zon.
+opened file world/zon/27.zon.
+opened file world/zon/28.zon.
+opened file world/zon/29.zon.
+opened file world/zon/30.zon.
+opened file world/zon/31.zon.
+opened file world/zon/32.zon.
+opened file world/zon/33.zon.
+opened file world/zon/34.zon.
+opened file world/zon/35.zon.
+opened file world/zon/36.zon.
+opened file world/zon/37.zon.
+opened file world/zon/38.zon.
+opened file world/zon/39.zon.
+opened file world/zon/40.zon.
+opened file world/zon/41.zon.
+opened file world/zon/42.zon.
+opened file world/zon/43.zon.
+opened file world/zon/44.zon.
+opened file world/zon/45.zon.
+opened file world/zon/46.zon.
+opened file world/zon/47.zon.
+opened file world/zon/48.zon.
+opened file world/zon/49.zon.
+opened file world/zon/50.zon.
+opened file world/zon/51.zon.
+opened file world/zon/52.zon.
+opened file world/zon/53.zon.
+opened file world/zon/54.zon.
+opened file world/zon/55.zon.
+opened file world/zon/56.zon.
+opened file world/zon/57.zon.
+opened file world/zon/58.zon.
+opened file world/zon/59.zon.
+opened file world/zon/60.zon.
+opened file world/zon/61.zon.
+opened file world/zon/62.zon.
+opened file world/zon/63.zon.
+opened file world/zon/64.zon.
+opened file world/zon/65.zon.
+opened file world/zon/66.zon.
+opened file world/zon/67.zon.
+opened file world/zon/68.zon.
+opened file world/zon/69.zon.
+opened file world/zon/70.zon.
+opened file world/zon/71.zon.
+opened file world/zon/72.zon.
+opened file world/zon/73.zon.
+opened file world/zon/74.zon.
+opened file world/zon/75.zon.
+opened file world/zon/76.zon.
+opened file world/zon/77.zon.
+opened file world/zon/78.zon.
+opened file world/zon/79.zon.
+opened file world/zon/80.zon.
+opened file world/zon/81.zon.
+opened file world/zon/82.zon.
+opened file world/zon/83.zon.
+opened file world/zon/84.zon.
+opened file world/zon/85.zon.
+opened file world/zon/86.zon.
+opened file world/zon/87.zon.
+opened file world/zon/88.zon.
+opened file world/zon/89.zon.
+opened file world/zon/90.zon.
+opened file world/zon/91.zon.
+opened file world/zon/92.zon.
+opened file world/zon/93.zon.
+opened file world/zon/94.zon.
+opened file world/zon/95.zon.
+opened file world/zon/96.zon.
+opened file world/zon/97.zon.
+opened file world/zon/98.zon.
+opened file world/zon/99.zon.
+opened file world/zon/100.zon.
+opened file world/zon/101.zon.
+opened file world/zon/102.zon.
+opened file world/zon/103.zon.
+opened file world/zon/104.zon.
+opened file world/zon/105.zon.
+opened file world/zon/106.zon.
+opened file world/zon/107.zon.
+opened file world/zon/108.zon.
+opened file world/zon/109.zon.
+opened file world/zon/110.zon.
+opened file world/zon/111.zon.
+opened file world/zon/112.zon.
+opened file world/zon/113.zon.
+opened file world/zon/114.zon.
+opened file world/zon/115.zon.
+opened file world/zon/116.zon.
+opened file world/zon/117.zon.
+opened file world/zon/118.zon.
+opened file world/zon/119.zon.
+opened file world/zon/120.zon.
+opened file world/zon/121.zon.
+opened file world/zon/122.zon.
+opened file world/zon/123.zon.
+opened file world/zon/124.zon.
+opened file world/zon/125.zon.
+opened file world/zon/126.zon.
+opened file world/zon/127.zon.
+opened file world/zon/128.zon.
+opened file world/zon/129.zon.
+opened file world/zon/130.zon.
+opened file world/zon/131.zon.
+opened file world/zon/132.zon.
+opened file world/zon/133.zon.
+opened file world/zon/134.zon.
+opened file world/zon/135.zon.
+opened file world/zon/136.zon.
+opened file world/zon/137.zon.
+opened file world/zon/138.zon.
+opened file world/zon/139.zon.
+opened file world/zon/140.zon.
+opened file world/zon/141.zon.
+opened file world/zon/142.zon.
+opened file world/zon/143.zon.
+opened file world/zon/144.zon.
+opened file world/zon/145.zon.
+opened file world/zon/146.zon.
+opened file world/zon/147.zon.
+opened file world/zon/148.zon.
+opened file world/zon/149.zon.
+opened file world/zon/150.zon.
+opened file world/zon/151.zon.
+opened file world/zon/152.zon.
+opened file world/zon/153.zon.
+opened file world/zon/154.zon.
+opened file world/zon/155.zon.
+opened file world/zon/156.zon.
+opened file world/zon/157.zon.
+opened file world/zon/158.zon.
+opened file world/zon/159.zon.
+opened file world/zon/160.zon.
+opened file world/zon/161.zon.
+opened file world/zon/162.zon.
+opened file world/zon/163.zon.
+opened file world/zon/164.zon.
+opened file world/zon/165.zon.
+opened file world/zon/166.zon.
+opened file world/zon/167.zon.
+opened file world/zon/168.zon.
+opened file world/zon/169.zon.
+opened file world/zon/170.zon.
+opened file world/zon/171.zon.
+opened file world/zon/172.zon.
+opened file world/zon/173.zon.
+opened file world/zon/174.zon.
+opened file world/zon/175.zon.
+opened file world/zon/176.zon.
+opened file world/zon/177.zon.
+opened file world/zon/178.zon.
+opened file world/zon/179.zon.
+opened file world/zon/180.zon.
+opened file world/zon/181.zon.
+opened file world/zon/182.zon.
+opened file world/zon/183.zon.
+opened file world/zon/184.zon.
+opened file world/zon/185.zon.
+opened file world/zon/186.zon.
+opened file world/zon/187.zon.
+opened file world/zon/188.zon.
+opened file world/zon/189.zon.
+opened file world/zon/190.zon.
+opened file world/zon/191.zon.
+opened file world/zon/192.zon.
+opened file world/zon/193.zon.
+opened file world/zon/194.zon.
+opened file world/zon/195.zon.
+opened file world/zon/196.zon.
+opened file world/zon/197.zon.
+opened file world/zon/198.zon.
+opened file world/zon/199.zon.
+opened file world/zon/200.zon.
+opened file world/zon/201.zon.
+opened file world/zon/202.zon.
+opened file world/zon/203.zon.
+opened file world/zon/204.zon.
+opened file world/zon/205.zon.
+opened file world/zon/206.zon.
+opened file world/zon/207.zon.
+opened file world/zon/208.zon.
+opened file world/zon/209.zon.
+opened file world/zon/210.zon.
+opened file world/zon/211.zon.
+opened file world/zon/212.zon.
+opened file world/zon/213.zon.
+opened file world/zon/214.zon.
+opened file world/zon/215.zon.
+opened file world/zon/216.zon.
+opened file world/zon/217.zon.
+opened file world/zon/218.zon.
+opened file world/zon/219.zon.
+opened file world/zon/220.zon.
+opened file world/zon/221.zon.
+opened file world/zon/222.zon.
+opened file world/zon/223.zon.
+opened file world/zon/224.zon.
+opened file world/zon/225.zon.
+opened file world/zon/226.zon.
+opened file world/zon/227.zon.
+opened file world/zon/228.zon.
+opened file world/zon/229.zon.
+opened file world/zon/230.zon.
+opened file world/zon/231.zon.
+opened file world/zon/232.zon.
+opened file world/zon/233.zon.
+opened file world/zon/234.zon.
+opened file world/zon/235.zon.
+opened file world/zon/236.zon.
+opened file world/zon/237.zon.
+opened file world/zon/238.zon.
+opened file world/zon/239.zon.
+opened file world/zon/240.zon.
+opened file world/zon/241.zon.
+opened file world/zon/242.zon.
+opened file world/zon/243.zon.
+opened file world/zon/244.zon.
+opened file world/zon/245.zon.
+opened file world/zon/246.zon.
+opened file world/zon/247.zon.
+opened file world/zon/248.zon.
+opened file world/zon/249.zon.
+opened file world/zon/250.zon.
+opened file world/zon/251.zon.
+opened file world/zon/252.zon.
+opened file world/zon/253.zon.
+opened file world/zon/254.zon.
+opened file world/zon/255.zon.
+opened file world/zon/256.zon.
+opened file world/zon/257.zon.
+opened file world/zon/258.zon.
+opened file world/zon/259.zon.
+opened file world/zon/260.zon.
+opened file world/zon/261.zon.
+opened file world/zon/262.zon.
+opened file world/zon/263.zon.
+opened file world/zon/264.zon.
+opened file world/zon/265.zon.
+opened file world/zon/266.zon.
+opened file world/zon/267.zon.
+opened file world/zon/268.zon.
+opened file world/zon/269.zon.
+opened file world/zon/270.zon.
+opened file world/zon/271.zon.
+opened file world/zon/272.zon.
+opened file world/zon/273.zon.
+opened file world/zon/274.zon.
+opened file world/zon/275.zon.
+opened file world/zon/276.zon.
+opened file world/zon/277.zon.
+opened file world/zon/278.zon.
+opened file world/zon/279.zon.
+opened file world/zon/280.zon.
+opened file world/zon/281.zon.
+opened file world/zon/282.zon.
+opened file world/zon/283.zon.
+opened file world/zon/284.zon.
+opened file world/zon/285.zon.
+opened file world/zon/286.zon.
+opened file world/zon/287.zon.
+opened file world/zon/288.zon.
+opened file world/zon/289.zon.
+opened file world/zon/290.zon.
+opened file world/zon/291.zon.
+opened file world/zon/292.zon.
+opened file world/zon/293.zon.
+opened file world/zon/294.zon.
+opened file world/zon/295.zon.
+opened file world/zon/296.zon.
+opened file world/zon/297.zon.
+opened file world/zon/298.zon.
+opened file world/zon/299.zon.
+opened file world/zon/300.zon.
+opened file world/zon/301.zon.
+opened file world/zon/302.zon.
+opened file world/zon/303.zon.
+opened file world/zon/304.zon.
+opened file world/zon/305.zon.
+opened file world/zon/306.zon.
+opened file world/zon/307.zon.
+opened file world/zon/308.zon.
+opened file world/zon/309.zon.
+opened file world/zon/310.zon.
+opened file world/zon/311.zon.
+opened file world/zon/312.zon.
+opened file world/zon/313.zon.
+opened file world/zon/314.zon.
+opened file world/zon/315.zon.
+opened file world/zon/316.zon.
+opened file world/zon/317.zon.
+opened file world/zon/318.zon.
+opened file world/zon/319.zon.
+opened file world/zon/320.zon.
+opened file world/zon/321.zon.
+opened file world/zon/322.zon.
+opened file world/zon/323.zon.
+opened file world/zon/324.zon.
+opened file world/zon/325.zon.
+opened file world/zon/326.zon.
+opened file world/zon/327.zon.
+opened file world/zon/328.zon.
+opened file world/zon/329.zon.
+opened file world/zon/330.zon.
+opened file world/zon/331.zon.
+opened file world/zon/332.zon.
+opened file world/zon/333.zon.
+opened file world/zon/334.zon.
+opened file world/zon/335.zon.
+opened file world/zon/336.zon.
+opened file world/zon/337.zon.
+opened file world/zon/338.zon.
+opened file world/zon/339.zon.
+opened file world/zon/340.zon.
+opened file world/zon/341.zon.
+opened file world/zon/342.zon.
+opened file world/zon/343.zon.
+opened file world/zon/344.zon.
+opened file world/zon/345.zon.
+opened file world/zon/346.zon.
+opened file world/zon/347.zon.
+opened file world/zon/348.zon.
+opened file world/zon/349.zon.
+Loading mudlle programs.
+Loading rooms.
+opened file world/wld/11.wld.
+opened file world/wld/13.wld.
+opened file world/wld/14.wld.
+opened file world/wld/15.wld.
+opened file world/wld/16.wld.
+opened file world/wld/17.wld.
+opened file world/wld/18.wld.
+opened file world/wld/20.wld.
+opened file world/wld/21.wld.
+opened file world/wld/22.wld.
+opened file world/wld/23.wld.
+opened file world/wld/24.wld.
+opened file world/wld/25.wld.
+opened file world/wld/26.wld.
+opened file world/wld/27.wld.
+opened file world/wld/28.wld.
+opened file world/wld/29.wld.
+opened file world/wld/30.wld.
+opened file world/wld/31.wld.
+opened file world/wld/32.wld.
+opened file world/wld/33.wld.
+opened file world/wld/34.wld.
+opened file world/wld/35.wld.
+opened file world/wld/36.wld.
+opened file world/wld/37.wld.
+opened file world/wld/38.wld.
+opened file world/wld/39.wld.
+opened file world/wld/40.wld.
+opened file world/wld/41.wld.
+opened file world/wld/42.wld.
+opened file world/wld/43.wld.
+opened file world/wld/44.wld.
+opened file world/wld/45.wld.
+opened file world/wld/46.wld.
+opened file world/wld/47.wld.
+opened file world/wld/48.wld.
+opened file world/wld/49.wld.
+opened file world/wld/50.wld.
+opened file world/wld/51.wld.
+opened file world/wld/52.wld.
+opened file world/wld/53.wld.
+opened file world/wld/54.wld.
+opened file world/wld/55.wld.
+opened file world/wld/56.wld.
+opened file world/wld/57.wld.
+opened file world/wld/58.wld.
+opened file world/wld/59.wld.
+opened file world/wld/60.wld.
+opened file world/wld/61.wld.
+opened file world/wld/62.wld.
+opened file world/wld/63.wld.
+opened file world/wld/64.wld.
+opened file world/wld/65.wld.
+opened file world/wld/66.wld.
+opened file world/wld/67.wld.
+opened file world/wld/68.wld.
+opened file world/wld/69.wld.
+opened file world/wld/70.wld.
+opened file world/wld/71.wld.
+opened file world/wld/72.wld.
+opened file world/wld/73.wld.
+opened file world/wld/74.wld.
+opened file world/wld/75.wld.
+opened file world/wld/76.wld.
+opened file world/wld/77.wld.
+opened file world/wld/78.wld.
+opened file world/wld/79.wld.
+opened file world/wld/80.wld.
+opened file world/wld/81.wld.
+opened file world/wld/82.wld.
+opened file world/wld/83.wld.
+opened file world/wld/84.wld.
+opened file world/wld/85.wld.
+opened file world/wld/86.wld.
+opened file world/wld/87.wld.
+opened file world/wld/88.wld.
+opened file world/wld/89.wld.
+opened file world/wld/90.wld.
+opened file world/wld/91.wld.
+opened file world/wld/92.wld.
+opened file world/wld/93.wld.
+opened file world/wld/94.wld.
+opened file world/wld/95.wld.
+opened file world/wld/96.wld.
+opened file world/wld/97.wld.
+opened file world/wld/98.wld.
+opened file world/wld/99.wld.
+opened file world/wld/100.wld.
+opened file world/wld/101.wld.
+opened file world/wld/102.wld.
+opened file world/wld/103.wld.
+opened file world/wld/104.wld.
+opened file world/wld/105.wld.
+opened file world/wld/106.wld.
+opened file world/wld/107.wld.
+opened file world/wld/108.wld.
+opened file world/wld/109.wld.
+opened file world/wld/110.wld.
+opened file world/wld/111.wld.
+opened file world/wld/112.wld.
+opened file world/wld/113.wld.
+opened file world/wld/114.wld.
+opened file world/wld/115.wld.
+opened file world/wld/116.wld.
+opened file world/wld/117.wld.
+opened file world/wld/118.wld.
+opened file world/wld/119.wld.
+opened file world/wld/120.wld.
+opened file world/wld/121.wld.
+opened file world/wld/122.wld.
+opened file world/wld/123.wld.
+opened file world/wld/124.wld.
+opened file world/wld/125.wld.
+opened file world/wld/126.wld.
+opened file world/wld/127.wld.
+opened file world/wld/128.wld.
+opened file world/wld/129.wld.
+opened file world/wld/130.wld.
+opened file world/wld/131.wld.
+opened file world/wld/132.wld.
+opened file world/wld/133.wld.
+opened file world/wld/134.wld.
+opened file world/wld/135.wld.
+opened file world/wld/136.wld.
+opened file world/wld/137.wld.
+opened file world/wld/138.wld.
+opened file world/wld/139.wld.
+opened file world/wld/140.wld.
+opened file world/wld/141.wld.
+opened file world/wld/142.wld.
+opened file world/wld/143.wld.
+opened file world/wld/144.wld.
+opened file world/wld/145.wld.
+opened file world/wld/146.wld.
+opened file world/wld/147.wld.
+opened file world/wld/148.wld.
+opened file world/wld/149.wld.
+opened file world/wld/150.wld.
+opened file world/wld/151.wld.
+opened file world/wld/152.wld.
+opened file world/wld/153.wld.
+opened file world/wld/154.wld.
+opened file world/wld/155.wld.
+opened file world/wld/156.wld.
+opened file world/wld/157.wld.
+opened file world/wld/158.wld.
+opened file world/wld/159.wld.
+opened file world/wld/160.wld.
+opened file world/wld/161.wld.
+opened file world/wld/162.wld.
+opened file world/wld/163.wld.
+opened file world/wld/164.wld.
+opened file world/wld/165.wld.
+opened file world/wld/166.wld.
+opened file world/wld/167.wld.
+opened file world/wld/168.wld.
+opened file world/wld/169.wld.
+opened file world/wld/170.wld.
+opened file world/wld/171.wld.
+opened file world/wld/172.wld.
+opened file world/wld/173.wld.
+opened file world/wld/174.wld.
+opened file world/wld/175.wld.
+opened file world/wld/176.wld.
+opened file world/wld/177.wld.
+opened file world/wld/178.wld.
+opened file world/wld/179.wld.
+opened file world/wld/180.wld.
+opened file world/wld/181.wld.
+opened file world/wld/182.wld.
+opened file world/wld/183.wld.
+opened file world/wld/184.wld.
+opened file world/wld/185.wld.
+opened file world/wld/186.wld.
+opened file world/wld/187.wld.
+opened file world/wld/188.wld.
+opened file world/wld/189.wld.
+opened file world/wld/190.wld.
+opened file world/wld/191.wld.
+opened file world/wld/192.wld.
+opened file world/wld/193.wld.
+opened file world/wld/194.wld.
+opened file world/wld/195.wld.
+opened file world/wld/196.wld.
+opened file world/wld/197.wld.
+opened file world/wld/198.wld.
+opened file world/wld/199.wld.
+opened file world/wld/200.wld.
+opened file world/wld/201.wld.
+opened file world/wld/202.wld.
+opened file world/wld/203.wld.
+opened file world/wld/204.wld.
+opened file world/wld/205.wld.
+opened file world/wld/206.wld.
+opened file world/wld/207.wld.
+opened file world/wld/208.wld.
+opened file world/wld/209.wld.
+opened file world/wld/210.wld.
+opened file world/wld/211.wld.
+opened file world/wld/212.wld.
+opened file world/wld/213.wld.
+opened file world/wld/214.wld.
+opened file world/wld/215.wld.
+opened file world/wld/216.wld.
+opened file world/wld/217.wld.
+opened file world/wld/218.wld.
+opened file world/wld/219.wld.
+opened file world/wld/220.wld.
+opened file world/wld/221.wld.
+opened file world/wld/222.wld.
+opened file world/wld/223.wld.
+opened file world/wld/224.wld.
+opened file world/wld/225.wld.
+opened file world/wld/226.wld.
+opened file world/wld/227.wld.
+opened file world/wld/228.wld.
+opened file world/wld/229.wld.
+opened file world/wld/230.wld.
+opened file world/wld/231.wld.
+opened file world/wld/232.wld.
+opened file world/wld/233.wld.
+opened file world/wld/234.wld.
+opened file world/wld/235.wld.
+opened file world/wld/236.wld.
+opened file world/wld/237.wld.
+opened file world/wld/238.wld.
+opened file world/wld/239.wld.
+opened file world/wld/240.wld.
+opened file world/wld/241.wld.
+opened file world/wld/242.wld.
+opened file world/wld/243.wld.
+opened file world/wld/244.wld.
+opened file world/wld/245.wld.
+opened file world/wld/246.wld.
+opened file world/wld/247.wld.
+opened file world/wld/248.wld.
+opened file world/wld/249.wld.
+opened file world/wld/250.wld.
+opened file world/wld/251.wld.
+opened file world/wld/252.wld.
+opened file world/wld/253.wld.
+opened file world/wld/254.wld.
+opened file world/wld/255.wld.
+opened file world/wld/256.wld.
+opened file world/wld/257.wld.
+opened file world/wld/258.wld.
+opened file world/wld/259.wld.
+opened file world/wld/260.wld.
+opened file world/wld/261.wld.
+opened file world/wld/262.wld.
+opened file world/wld/263.wld.
+opened file world/wld/264.wld.
+opened file world/wld/265.wld.
+opened file world/wld/266.wld.
+opened file world/wld/267.wld.
+opened file world/wld/268.wld.
+opened file world/wld/269.wld.
+opened file world/wld/270.wld.
+opened file world/wld/271.wld.
+opened file world/wld/272.wld.
+opened file world/wld/273.wld.
+opened file world/wld/274.wld.
+opened file world/wld/275.wld.
+opened file world/wld/276.wld.
+opened file world/wld/277.wld.
+opened file world/wld/278.wld.
+opened file world/wld/279.wld.
+opened file world/wld/280.wld.
+opened file world/wld/281.wld.
+opened file world/wld/282.wld.
+opened file world/wld/283.wld.
+opened file world/wld/284.wld.
+opened file world/wld/285.wld.
+opened file world/wld/286.wld.
+opened file world/wld/287.wld.
+opened file world/wld/288.wld.
+opened file world/wld/289.wld.
+opened file world/wld/290.wld.
+opened file world/wld/291.wld.
+opened file world/wld/292.wld.
+opened file world/wld/293.wld.
+opened file world/wld/294.wld.
+opened file world/wld/295.wld.
+opened file world/wld/296.wld.
+opened file world/wld/297.wld.
+opened file world/wld/298.wld.
+opened file world/wld/299.wld.
+opened file world/wld/300.wld.
+opened file world/wld/301.wld.
+opened file world/wld/302.wld.
+opened file world/wld/303.wld.
+opened file world/wld/304.wld.
+opened file world/wld/305.wld.
+opened file world/wld/306.wld.
+opened file world/wld/307.wld.
+opened file world/wld/308.wld.
+opened file world/wld/309.wld.
+opened file world/wld/310.wld.
+opened file world/wld/311.wld.
+opened file world/wld/312.wld.
+opened file world/wld/313.wld.
+opened file world/wld/314.wld.
+opened file world/wld/315.wld.
+opened file world/wld/316.wld.
+opened file world/wld/317.wld.
+opened file world/wld/318.wld.
+opened file world/wld/319.wld.
+opened file world/wld/320.wld.
+opened file world/wld/321.wld.
+opened file world/wld/322.wld.
+opened file world/wld/323.wld.
+opened file world/wld/324.wld.
+opened file world/wld/325.wld.
+opened file world/wld/326.wld.
+opened file world/wld/327.wld.
+opened file world/wld/328.wld.
+opened file world/wld/329.wld.
+opened file world/wld/330.wld.
+opened file world/wld/331.wld.
+opened file world/wld/332.wld.
+opened file world/wld/333.wld.
+opened file world/wld/334.wld.
+opened file world/wld/335.wld.
+opened file world/wld/336.wld.
+opened file world/wld/337.wld.
+opened file world/wld/338.wld.
+opened file world/wld/339.wld.
+opened file world/wld/340.wld.
+opened file world/wld/341.wld.
+opened file world/wld/342.wld.
+opened file world/wld/343.wld.
+opened file world/wld/344.wld.
+opened file world/wld/345.wld.
+opened file world/wld/346.wld.
+opened file world/wld/347.wld.
+opened file world/wld/348.wld.
+opened file world/wld/349.wld.
+Renumbering rooms.
+Room 4671 does not exist in database
+Room 4671 does not exist in database
+Room 5518 does not exist in database
+Room 3215 does not exist in database
+Room 7099 does not exist in database
+Room 5 does not exist in database
+Room 10465 does not exist in database
+Room 1 does not exist in database
+Room 10583 does not exist in database
+Room 10841 does not exist in database
+Room 11776 does not exist in database
+Room 16495 does not exist in database
+Room 16988 does not exist in database
+Room 7 does not exist in database
+Room 20779 does not exist in database
+Room 20772 does not exist in database
+Room 222 does not exist in database
+Room 24581 does not exist in database
+Room 3 does not exist in database
+Room 7 does not exist in database
+Room 38338 does not exist in database
+Room 29397 does not exist in database
+Room 29384 does not exist in database
+Room 29388 does not exist in database
+Room 30019 does not exist in database
+Room 30387 does not exist in database
+Room 30380 does not exist in database
+Room 4096 does not exist in database
+Room 4096 does not exist in database
+Room 4096 does not exist in database
+Room 2 does not exist in database
+Checking start rooms.
+Loading mobs and generating index.
+opened file world/mob/11.mob.
+opened file world/mob/13.mob.
+opened file world/mob/14.mob.
+opened file world/mob/15.mob.
+opened file world/mob/16.mob.
+opened file world/mob/17.mob.
+opened file world/mob/18.mob.
+opened file world/mob/20.mob.
+opened file world/mob/21.mob.
+opened file world/mob/22.mob.
+opened file world/mob/23.mob.
+opened file world/mob/24.mob.
+opened file world/mob/25.mob.
+opened file world/mob/26.mob.
+opened file world/mob/27.mob.
+opened file world/mob/28.mob.
+opened file world/mob/29.mob.
+opened file world/mob/30.mob.
+opened file world/mob/31.mob.
+opened file world/mob/32.mob.
+opened file world/mob/33.mob.
+opened file world/mob/34.mob.
+opened file world/mob/35.mob.
+opened file world/mob/36.mob.
+opened file world/mob/37.mob.
+opened file world/mob/38.mob.
+opened file world/mob/39.mob.
+opened file world/mob/40.mob.
+opened file world/mob/41.mob.
+opened file world/mob/42.mob.
+opened file world/mob/43.mob.
+opened file world/mob/44.mob.
+opened file world/mob/45.mob.
+opened file world/mob/46.mob.
+opened file world/mob/47.mob.
+opened file world/mob/48.mob.
+opened file world/mob/49.mob.
+opened file world/mob/50.mob.
+opened file world/mob/51.mob.
+opened file world/mob/52.mob.
+opened file world/mob/53.mob.
+opened file world/mob/54.mob.
+opened file world/mob/55.mob.
+opened file world/mob/56.mob.
+opened file world/mob/57.mob.
+opened file world/mob/58.mob.
+opened file world/mob/59.mob.
+opened file world/mob/60.mob.
+opened file world/mob/61.mob.
+opened file world/mob/62.mob.
+opened file world/mob/63.mob.
+opened file world/mob/64.mob.
+opened file world/mob/65.mob.
+opened file world/mob/66.mob.
+opened file world/mob/67.mob.
+opened file world/mob/68.mob.
+opened file world/mob/69.mob.
+opened file world/mob/70.mob.
+opened file world/mob/71.mob.
+opened file world/mob/72.mob.
+opened file world/mob/73.mob.
+opened file world/mob/74.mob.
+opened file world/mob/75.mob.
+opened file world/mob/76.mob.
+opened file world/mob/77.mob.
+opened file world/mob/78.mob.
+opened file world/mob/79.mob.
+opened file world/mob/80.mob.
+opened file world/mob/81.mob.
+opened file world/mob/82.mob.
+opened file world/mob/83.mob.
+opened file world/mob/84.mob.
+opened file world/mob/85.mob.
+opened file world/mob/86.mob.
+opened file world/mob/87.mob.
+opened file world/mob/88.mob.
+opened file world/mob/89.mob.
+opened file world/mob/90.mob.
+opened file world/mob/91.mob.
+opened file world/mob/92.mob.
+opened file world/mob/93.mob.
+opened file world/mob/94.mob.
+opened file world/mob/95.mob.
+opened file world/mob/96.mob.
+opened file world/mob/97.mob.
+opened file world/mob/98.mob.
+opened file world/mob/99.mob.
+opened file world/mob/100.mob.
+opened file world/mob/101.mob.
+opened file world/mob/102.mob.
+opened file world/mob/103.mob.
+opened file world/mob/104.mob.
+opened file world/mob/105.mob.
+opened file world/mob/106.mob.
+opened file world/mob/107.mob.
+opened file world/mob/108.mob.
+opened file world/mob/109.mob.
+opened file world/mob/110.mob.
+opened file world/mob/111.mob.
+opened file world/mob/112.mob.
+opened file world/mob/113.mob.
+opened file world/mob/114.mob.
+opened file world/mob/115.mob.
+opened file world/mob/116.mob.
+opened file world/mob/117.mob.
+opened file world/mob/118.mob.
+opened file world/mob/119.mob.
+opened file world/mob/120.mob.
+opened file world/mob/121.mob.
+opened file world/mob/122.mob.
+opened file world/mob/123.mob.
+opened file world/mob/124.mob.
+opened file world/mob/125.mob.
+opened file world/mob/126.mob.
+opened file world/mob/127.mob.
+opened file world/mob/128.mob.
+opened file world/mob/129.mob.
+opened file world/mob/130.mob.
+opened file world/mob/131.mob.
+opened file world/mob/132.mob.
+opened file world/mob/133.mob.
+opened file world/mob/134.mob.
+opened file world/mob/135.mob.
+opened file world/mob/136.mob.
+opened file world/mob/137.mob.
+opened file world/mob/138.mob.
+opened file world/mob/139.mob.
+opened file world/mob/140.mob.
+opened file world/mob/141.mob.
+opened file world/mob/142.mob.
+opened file world/mob/143.mob.
+opened file world/mob/144.mob.
+opened file world/mob/145.mob.
+opened file world/mob/146.mob.
+opened file world/mob/147.mob.
+opened file world/mob/148.mob.
+opened file world/mob/149.mob.
+opened file world/mob/150.mob.
+opened file world/mob/151.mob.
+opened file world/mob/152.mob.
+opened file world/mob/153.mob.
+opened file world/mob/154.mob.
+opened file world/mob/155.mob.
+opened file world/mob/156.mob.
+opened file world/mob/157.mob.
+opened file world/mob/158.mob.
+opened file world/mob/159.mob.
+opened file world/mob/160.mob.
+opened file world/mob/161.mob.
+opened file world/mob/162.mob.
+opened file world/mob/163.mob.
+opened file world/mob/164.mob.
+opened file world/mob/165.mob.
+opened file world/mob/166.mob.
+opened file world/mob/167.mob.
+opened file world/mob/168.mob.
+opened file world/mob/169.mob.
+opened file world/mob/170.mob.
+opened file world/mob/171.mob.
+opened file world/mob/172.mob.
+opened file world/mob/173.mob.
+opened file world/mob/174.mob.
+opened file world/mob/175.mob.
+opened file world/mob/176.mob.
+opened file world/mob/177.mob.
+opened file world/mob/178.mob.
+opened file world/mob/179.mob.
+opened file world/mob/180.mob.
+opened file world/mob/181.mob.
+opened file world/mob/182.mob.
+opened file world/mob/183.mob.
+opened file world/mob/184.mob.
+opened file world/mob/185.mob.
+opened file world/mob/186.mob.
+opened file world/mob/187.mob.
+opened file world/mob/188.mob.
+opened file world/mob/189.mob.
+opened file world/mob/190.mob.
+opened file world/mob/191.mob.
+opened file world/mob/192.mob.
+opened file world/mob/193.mob.
+opened file world/mob/194.mob.
+opened file world/mob/195.mob.
+opened file world/mob/196.mob.
+opened file world/mob/197.mob.
+opened file world/mob/198.mob.
+opened file world/mob/199.mob.
+opened file world/mob/200.mob.
+opened file world/mob/201.mob.
+opened file world/mob/202.mob.
+opened file world/mob/203.mob.
+opened file world/mob/204.mob.
+opened file world/mob/205.mob.
+opened file world/mob/206.mob.
+opened file world/mob/207.mob.
+opened file world/mob/208.mob.
+opened file world/mob/209.mob.
+opened file world/mob/210.mob.
+opened file world/mob/211.mob.
+opened file world/mob/212.mob.
+opened file world/mob/213.mob.
+opened file world/mob/214.mob.
+opened file world/mob/215.mob.
+opened file world/mob/216.mob.
+opened file world/mob/217.mob.
+opened file world/mob/218.mob.
+opened file world/mob/219.mob.
+opened file world/mob/220.mob.
+opened file world/mob/221.mob.
+opened file world/mob/222.mob.
+opened file world/mob/223.mob.
+opened file world/mob/224.mob.
+opened file world/mob/225.mob.
+opened file world/mob/226.mob.
+opened file world/mob/227.mob.
+opened file world/mob/228.mob.
+opened file world/mob/229.mob.
+opened file world/mob/249.mob.
+opened file world/mob/250.mob.
+opened file world/mob/251.mob.
+opened file world/mob/252.mob.
+opened file world/mob/253.mob.
+opened file world/mob/254.mob.
+opened file world/mob/255.mob.
+opened file world/mob/256.mob.
+opened file world/mob/257.mob.
+opened file world/mob/258.mob.
+opened file world/mob/259.mob.
+opened file world/mob/260.mob.
+opened file world/mob/261.mob.
+opened file world/mob/262.mob.
+opened file world/mob/263.mob.
+opened file world/mob/264.mob.
+opened file world/mob/265.mob.
+opened file world/mob/266.mob.
+opened file world/mob/267.mob.
+opened file world/mob/268.mob.
+opened file world/mob/269.mob.
+opened file world/mob/270.mob.
+opened file world/mob/271.mob.
+opened file world/mob/272.mob.
+opened file world/mob/273.mob.
+opened file world/mob/274.mob.
+opened file world/mob/275.mob.
+opened file world/mob/276.mob.
+opened file world/mob/277.mob.
+opened file world/mob/278.mob.
+opened file world/mob/279.mob.
+opened file world/mob/280.mob.
+opened file world/mob/281.mob.
+opened file world/mob/282.mob.
+opened file world/mob/283.mob.
+opened file world/mob/284.mob.
+opened file world/mob/285.mob.
+opened file world/mob/286.mob.
+opened file world/mob/287.mob.
+opened file world/mob/288.mob.
+opened file world/mob/289.mob.
+opened file world/mob/290.mob.
+opened file world/mob/291.mob.
+opened file world/mob/292.mob.
+opened file world/mob/293.mob.
+opened file world/mob/294.mob.
+opened file world/mob/295.mob.
+opened file world/mob/296.mob.
+opened file world/mob/297.mob.
+opened file world/mob/298.mob.
+opened file world/mob/299.mob.
+opened file world/mob/300.mob.
+opened file world/mob/301.mob.
+opened file world/mob/302.mob.
+opened file world/mob/303.mob.
+opened file world/mob/304.mob.
+opened file world/mob/305.mob.
+opened file world/mob/306.mob.
+opened file world/mob/307.mob.
+opened file world/mob/308.mob.
+opened file world/mob/309.mob.
+opened file world/mob/310.mob.
+opened file world/mob/311.mob.
+opened file world/mob/312.mob.
+opened file world/mob/313.mob.
+opened file world/mob/314.mob.
+opened file world/mob/315.mob.
+opened file world/mob/316.mob.
+opened file world/mob/317.mob.
+opened file world/mob/318.mob.
+opened file world/mob/319.mob.
+opened file world/mob/320.mob.
+opened file world/mob/321.mob.
+opened file world/mob/322.mob.
+opened file world/mob/323.mob.
+opened file world/mob/324.mob.
+opened file world/mob/325.mob.
+opened file world/mob/326.mob.
+opened file world/mob/327.mob.
+opened file world/mob/328.mob.
+opened file world/mob/329.mob.
+opened file world/mob/330.mob.
+opened file world/mob/331.mob.
+opened file world/mob/332.mob.
+opened file world/mob/333.mob.
+opened file world/mob/334.mob.
+opened file world/mob/335.mob.
+opened file world/mob/336.mob.
+opened file world/mob/337.mob.
+opened file world/mob/338.mob.
+opened file world/mob/339.mob.
+opened file world/mob/340.mob.
+opened file world/mob/341.mob.
+opened file world/mob/342.mob.
+opened file world/mob/343.mob.
+opened file world/mob/344.mob.
+opened file world/mob/345.mob.
+opened file world/mob/346.mob.
+opened file world/mob/347.mob.
+opened file world/mob/348.mob.
+opened file world/mob/349.mob.
+Loading objs and generating index.
+opened file world/obj/11.obj.
+opened file world/obj/13.obj.
+opened file world/obj/14.obj.
+opened file world/obj/15.obj.
+opened file world/obj/16.obj.
+opened file world/obj/17.obj.
+opened file world/obj/18.obj.
+opened file world/obj/20.obj.
+opened file world/obj/21.obj.
+opened file world/obj/22.obj.
+opened file world/obj/23.obj.
+opened file world/obj/24.obj.
+opened file world/obj/25.obj.
+opened file world/obj/26.obj.
+opened file world/obj/27.obj.
+opened file world/obj/28.obj.
+opened file world/obj/29.obj.
+opened file world/obj/30.obj.
+opened file world/obj/31.obj.
+opened file world/obj/32.obj.
+opened file world/obj/33.obj.
+opened file world/obj/34.obj.
+opened file world/obj/35.obj.
+opened file world/obj/36.obj.
+opened file world/obj/37.obj.
+opened file world/obj/38.obj.
+opened file world/obj/39.obj.
+opened file world/obj/40.obj.
+opened file world/obj/41.obj.
+opened file world/obj/42.obj.
+opened file world/obj/43.obj.
+opened file world/obj/44.obj.
+opened file world/obj/45.obj.
+opened file world/obj/46.obj.
+opened file world/obj/47.obj.
+opened file world/obj/48.obj.
+opened file world/obj/49.obj.
+opened file world/obj/50.obj.
+opened file world/obj/51.obj.
+opened file world/obj/52.obj.
+opened file world/obj/53.obj.
+opened file world/obj/54.obj.
+opened file world/obj/55.obj.
+opened file world/obj/56.obj.
+opened file world/obj/57.obj.
+opened file world/obj/58.obj.
+opened file world/obj/59.obj.
+opened file world/obj/60.obj.
+opened file world/obj/61.obj.
+opened file world/obj/62.obj.
+opened file world/obj/63.obj.
+opened file world/obj/64.obj.
+opened file world/obj/65.obj.
+opened file world/obj/66.obj.
+opened file world/obj/67.obj.
+opened file world/obj/68.obj.
+opened file world/obj/69.obj.
+opened file world/obj/70.obj.
+opened file world/obj/71.obj.
+opened file world/obj/72.obj.
+opened file world/obj/73.obj.
+opened file world/obj/74.obj.
+opened file world/obj/75.obj.
+opened file world/obj/76.obj.
+opened file world/obj/77.obj.
+opened file world/obj/78.obj.
+opened file world/obj/79.obj.
+opened file world/obj/80.obj.
+opened file world/obj/81.obj.
+opened file world/obj/82.obj.
+opened file world/obj/83.obj.
+opened file world/obj/84.obj.
+opened file world/obj/85.obj.
+opened file world/obj/86.obj.
+opened file world/obj/87.obj.
+opened file world/obj/88.obj.
+opened file world/obj/89.obj.
+opened file world/obj/90.obj.
+opened file world/obj/91.obj.
+opened file world/obj/92.obj.
+opened file world/obj/93.obj.
+opened file world/obj/94.obj.
+opened file world/obj/95.obj.
+opened file world/obj/96.obj.
+opened file world/obj/97.obj.
+opened file world/obj/98.obj.
+opened file world/obj/99.obj.
+opened file world/obj/100.obj.
+opened file world/obj/101.obj.
+opened file world/obj/102.obj.
+opened file world/obj/103.obj.
+opened file world/obj/104.obj.
+opened file world/obj/105.obj.
+opened file world/obj/106.obj.
+opened file world/obj/107.obj.
+opened file world/obj/108.obj.
+opened file world/obj/109.obj.
+opened file world/obj/110.obj.
+opened file world/obj/111.obj.
+opened file world/obj/112.obj.
+opened file world/obj/113.obj.
+opened file world/obj/114.obj.
+opened file world/obj/115.obj.
+opened file world/obj/116.obj.
+opened file world/obj/117.obj.
+opened file world/obj/118.obj.
+opened file world/obj/119.obj.
+opened file world/obj/120.obj.
+opened file world/obj/121.obj.
+opened file world/obj/122.obj.
+opened file world/obj/123.obj.
+opened file world/obj/124.obj.
+opened file world/obj/125.obj.
+opened file world/obj/126.obj.
+opened file world/obj/127.obj.
+opened file world/obj/128.obj.
+opened file world/obj/129.obj.
+opened file world/obj/130.obj.
+opened file world/obj/131.obj.
+opened file world/obj/132.obj.
+opened file world/obj/133.obj.
+opened file world/obj/134.obj.
+opened file world/obj/135.obj.
+opened file world/obj/136.obj.
+opened file world/obj/137.obj.
+opened file world/obj/138.obj.
+opened file world/obj/139.obj.
+opened file world/obj/140.obj.
+opened file world/obj/141.obj.
+opened file world/obj/142.obj.
+opened file world/obj/143.obj.
+opened file world/obj/144.obj.
+opened file world/obj/145.obj.
+opened file world/obj/146.obj.
+opened file world/obj/147.obj.
+opened file world/obj/148.obj.
+opened file world/obj/149.obj.
+opened file world/obj/150.obj.
+opened file world/obj/163.obj.
+opened file world/obj/174.obj.
+opened file world/obj/186.obj.
+opened file world/obj/249.obj.
+opened file world/obj/250.obj.
+opened file world/obj/251.obj.
+opened file world/obj/262.obj.
+opened file world/obj/268.obj.
+opened file world/obj/270.obj.
+opened file world/obj/274.obj.
+opened file world/obj/300.obj.
+opened file world/obj/315.obj.
+opened file world/obj/319.obj.
+opened file world/obj/328.obj.
+opened file world/obj/329.obj.
+opened file world/obj/336.obj.
+Renumbering zone table.
+Invalid virtual number in zone reset command: zone #23, command 39.  Command disabled.
+Invalid virtual number in zone reset command: zone #23, command 40.  Command disabled.
+Invalid virtual number in zone reset command: zone #23, command 41.  Command disabled.
+Invalid virtual number in zone reset command: zone #29, command 31.  Command disabled.
+Room 65535 does not exist in database
+Invalid virtual number in zone reset command: zone #33, command 40.  Command disabled.
+Invalid virtual number in zone reset command: zone #34, command 4.  Command disabled.
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Invalid virtual number in zone reset command: zone #58, command 4.  Command disabled.
+Invalid virtual number in zone reset command: zone #58, command 21.  Command disabled.
+Room 7355 does not exist in database
+Invalid virtual number in zone reset command: zone #73, command 60.  Command disabled.
+Invalid virtual number in zone reset command: zone #76, command 18.  Command disabled.
+Invalid virtual number in zone reset command: zone #92, command 61.  Command disabled.
+Invalid virtual number in zone reset command: zone #117, command 44.  Command disabled.
+Invalid virtual number in zone reset command: zone #124, command 101.  Command disabled.
+Invalid virtual number in zone reset command: zone #124, command 148.  Command disabled.
+Room 13069 does not exist in database
+Invalid virtual number in zone reset command: zone #130, command 19.  Command disabled.
+Room 13068 does not exist in database
+Invalid virtual number in zone reset command: zone #130, command 25.  Command disabled.
+Room 13068 does not exist in database
+Invalid virtual number in zone reset command: zone #130, command 26.  Command disabled.
+Room 13068 does not exist in database
+Invalid virtual number in zone reset command: zone #130, command 27.  Command disabled.
+Room 13047 does not exist in database
+Invalid virtual number in zone reset command: zone #130, command 48.  Command disabled.
+Room 13053 does not exist in database
+Invalid virtual number in zone reset command: zone #130, command 53.  Command disabled.
+Room 13064 does not exist in database
+Invalid virtual number in zone reset command: zone #130, command 54.  Command disabled.
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Invalid virtual number in zone reset command: zone #148, command 137.  Command disabled.
+Room 14383 does not exist in database
+Invalid virtual number in zone reset command: zone #154, command 21.  Command disabled.
+Invalid virtual number in zone reset command: zone #156, command 65.  Command disabled.
+Invalid virtual number in zone reset command: zone #159, command 54.  Command disabled.
+Room 16285 does not exist in database
+Invalid virtual number in zone reset command: zone #162, command 4.  Command disabled.
+Room 16284 does not exist in database
+Invalid virtual number in zone reset command: zone #162, command 10.  Command disabled.
+Room 16280 does not exist in database
+Invalid virtual number in zone reset command: zone #162, command 14.  Command disabled.
+Room 16285 does not exist in database
+Invalid virtual number in zone reset command: zone #162, command 20.  Command disabled.
+Room 16281 does not exist in database
+Invalid virtual number in zone reset command: zone #162, command 29.  Command disabled.
+Room 16284 does not exist in database
+Invalid virtual number in zone reset command: zone #162, command 33.  Command disabled.
+Room 16288 does not exist in database
+Invalid virtual number in zone reset command: zone #162, command 36.  Command disabled.
+Room 16284 does not exist in database
+Invalid virtual number in zone reset command: zone #162, command 43.  Command disabled.
+Invalid virtual number in zone reset command: zone #166, command 133.  Command disabled.
+Invalid virtual number in zone reset command: zone #175, command 35.  Command disabled.
+Invalid virtual number in zone reset command: zone #185, command 15.  Command disabled.
+Invalid virtual number in zone reset command: zone #185, command 16.  Command disabled.
+Invalid virtual number in zone reset command: zone #185, command 17.  Command disabled.
+Room 20777 does not exist in database
+Invalid virtual number in zone reset command: zone #207, command 37.  Command disabled.
+Room 20775 does not exist in database
+Invalid virtual number in zone reset command: zone #207, command 38.  Command disabled.
+Invalid virtual number in zone reset command: zone #218, command 14.  Command disabled.
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Invalid virtual number in zone reset command: zone #230, command 37.  Command disabled.
+Invalid virtual number in zone reset command: zone #230, command 40.  Command disabled.
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Invalid virtual number in zone reset command: zone #230, command 73.  Command disabled.
+Invalid virtual number in zone reset command: zone #231, command 10.  Command disabled.
+Invalid virtual number in zone reset command: zone #231, command 33.  Command disabled.
+Invalid virtual number in zone reset command: zone #231, command 57.  Command disabled.
+Invalid virtual number in zone reset command: zone #231, command 89.  Command disabled.
+Invalid virtual number in zone reset command: zone #233, command 14.  Command disabled.
+Invalid virtual number in zone reset command: zone #233, command 28.  Command disabled.
+Invalid virtual number in zone reset command: zone #233, command 70.  Command disabled.
+Invalid virtual number in zone reset command: zone #233, command 104.  Command disabled.
+Invalid virtual number in zone reset command: zone #233, command 123.  Command disabled.
+Invalid virtual number in zone reset command: zone #234, command 12.  Command disabled.
+Invalid virtual number in zone reset command: zone #239, command 37.  Command disabled.
+Invalid virtual number in zone reset command: zone #241, command 5.  Command disabled.
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Room 65535 does not exist in database
+Invalid virtual number in zone reset command: zone #249, command 104.  Command disabled.
+Invalid virtual number in zone reset command: zone #249, command 111.  Command disabled.
+Invalid virtual number in zone reset command: zone #250, command 15.  Command disabled.
+Invalid virtual number in zone reset command: zone #254, command 50.  Command disabled.
+Invalid virtual number in zone reset command: zone #268, command 1.  Command disabled.
+Room 38520 does not exist in database
+Invalid virtual number in zone reset command: zone #285, command 10.  Command disabled.
+Invalid virtual number in zone reset command: zone #288, command 25.  Command disabled.
+Invalid virtual number in zone reset command: zone #293, command 14.  Command disabled.
+Room 29578 does not exist in database
+Invalid virtual number in zone reset command: zone #295, command 23.  Command disabled.
+Room 29578 does not exist in database
+Invalid virtual number in zone reset command: zone #295, command 51.  Command disabled.
+Room 30013 does not exist in database
+Invalid virtual number in zone reset command: zone #300, command 1.  Command disabled.
+Room 30014 does not exist in database
+Invalid virtual number in zone reset command: zone #300, command 3.  Command disabled.
+Room 30013 does not exist in database
+Invalid virtual number in zone reset command: zone #300, command 4.  Command disabled.
+Invalid virtual number in zone reset command: zone #300, command 17.  Command disabled.
+Invalid virtual number in zone reset command: zone #302, command 16.  Command disabled.
+Invalid virtual number in zone reset command: zone #318, command 1.  Command disabled.
+Invalid virtual number in zone reset command: zone #323, command 1.  Command disabled.
+Invalid virtual number in zone reset command: zone #338, command 1.  Command disabled.
+Loading pkill list.
+Loading crime list.
+Loading fight messages.
+Loading social messages.
+Loading shops.
+opened file world/shp/11.shp.
+opened file world/shp/15.shp.
+opened file world/shp/46.shp.
+opened file world/shp/30.shp.
+opened file world/shp/60.shp.
+opened file world/shp/72.shp.
+opened file world/shp/88.shp.
+opened file world/shp/100.shp.
+opened file world/shp/102.shp.
+opened file world/shp/103.shp.
+opened file world/shp/113.shp.
+opened file world/shp/137.shp.
+opened file world/shp/144.shp.
+opened file world/shp/156.shp.
+opened file world/shp/166.shp.
+opened file world/shp/168.shp.
+opened file world/shp/187.shp.
+opened file world/shp/213.shp.
+opened file world/shp/214.shp.
+opened file world/shp/277.shp.
+opened file world/shp/299.shp.
+opened file world/shp/319.shp.
+opened file world/shp/325.shp.
+opened file world/shp/328.shp.
+Booting mail system.
+Loading boards and mail.
+Resetting Aman (rooms 0-1199).
+Resetting Zone 13 (rooms 1200-1399).
+Resetting River Anduin - owner Prami. do NOT fuck with my zone (rooms 1400-1499).
+Resetting Vinyanost (rooms 1500-1599).
+Resetting Road to the Gladden Fields (rooms 1600-1699).
+Resetting The Gladden Fields (rooms 1700-1799).
+Resetting Ingolemo's Road to Gladden (rooms 1800-1899).
+Resetting Gundabad +1, Azriya's (rooms 1900-2099).
+Resetting Bandit Camp - Ashere 11/26/96; taken over by Prami 7/20/97 (rooms 2100-2199).
+Resetting This is a dullsville zone for small and medium mobs for small and medium PCs. (rooms 2200-2299).
+Resetting Zone NW of Haunted Manor by Mickey (rooms 2300-2399).
+Resetting End/Beginning of Trail to Orc Caves (rooms 2400-2499).
+Resetting Deep Mirkwood (rooms 2500-2599).
+Resetting Eastern Road with surroundings (rooms 2600-2699).
+Resetting Raziel's Boring Exp Zone (rooms 2700-2799).
+Resetting zone28 (rooms 2800-2899).
+Resetting Low Hills, Light Forest (rooms 2900-2999).
+Resetting Mouth and innards for Lonely Mountain. (rooms 3000-3099).
+Resetting zone31 (rooms 3100-3199).
+Resetting Reclaimed by Felagund (rooms 3200-3299).
+Resetting Norach's zone. (rooms 3300-3399).
+Resetting Little Filler Zone, by Death (rooms 3400-3499).
+Resetting Vaitya's Reclaimed Zone (rooms 3500-3599).
+Resetting Carach Ungol (Fingolfin) (rooms 3600-3699).
+Resetting The Ruined Cabin Zone (rooms 3700-3799).
+Resetting Thog's keep (rooms 3800-3899).
+Resetting This is a mirkwood zone, western edge sorta, by Allanon  (rooms 3900-3999).
+Mobile 3919 had its stats fixed.
+Mobile 3921 had its stats fixed.
+Mobile 3922 had its stats fixed.
+Mobile 3923 had its stats fixed.
+Mobile 3924 had its stats fixed.
+Mobile 3925 had its stats fixed.
+Mobile 3926 had its stats fixed.
+Mobile 3927 had its stats fixed.
+Mobile 3928 had its stats fixed.
+Mobile 3929 had its stats fixed.
+Mobile 3930 had its stats fixed.
+Mobile 3931 had its stats fixed.
+Mobile 3932 had its stats fixed.
+Mobile 3933 had its stats fixed.
+Resetting The Old Ford (rooms 4000-4099).
+Resetting Southern Crossing - West Bank - Entrance to Stoorton (rooms 4100-4199).
+Resetting Stoorton - Hobbit Holes (rooms 4200-4299).
+Mobile 4208 had its stats fixed.
+Resetting Maethelburg Farm (Giles) (rooms 4300-4399).
+Resetting North of the Garanon Lake (rooms 4400-4499).
+Resetting zone45, connected to 41 (rooms 4500-4599).
+Resetting Frozen Zone (rooms 4600-4699).
+Resetting Gundabad +3 - Azriya (rooms 4700-4799).
+Resetting Old Forest Road, w/ swamp and spiders (rooms 4800-4899).
+Resetting Mirkwood (rooms 4900-4999).
+Resetting Used for Felagund Miscellaneous (rooms 5000-5099).
+Resetting Dim Forest Path (rooms 5100-5199).
+Resetting Deep in the Mirkwood (rooms 5200-5299).
+Resetting Swampy forest and river (rooms 5300-5399).
+Resetting Deep into the Mirkwood Forest (rooms 5400-5499).
+Resetting Foothills Before the Misty Mountains (rooms 5500-5599).
+Resetting Eastern Ferry Dock (rooms 5600-5699).
+Resetting Woods of the Interloper (rooms 5700-5799).
+Resetting zone58 (rooms 5800-5899).
+Resetting West Mirkwood (rooms 5900-5999).
+Resetting Ranger Outpost, by Death (rooms 6000-6099).
+Resetting Ancient Spider (rooms 6100-6199).
+Resetting The Modular mirkwood zone by Allanon (rooms 6200-6299).
+Resetting Above Maze Zone (rooms 6300-6399).
+Resetting Subterranean River & The Decrepit Shack, Mirkwood (rooms 6400-6499).
+Resetting Above Orc Caves (Melkor) (rooms 6500-6599).
+Resetting Haradrim starting location (rooms 6600-6699).
+Resetting Fields and woodland west of Vinyanost (Fingolfin) (rooms 6700-6799).
+Resetting Start o the Misties (rooms 6800-6899).
+Resetting Beaver Plains (rooms 6900-6999).
+Resetting Vaitya's Reclaimed Zone (rooms 7000-7099).
+Resetting Central western Mirkwood (rooms 7100-7199).
+Resetting Loggers/Outer Road (rooms 7200-7299).
+Resetting Northern Road just north of Vinyanost (rooms 7300-7399).
+Resetting Barbican and Causeway before Dol-Guldur (rooms 7400-7499).
+Resetting Tilion, road to elven halls (rooms 7500-7599).
+Resetting zone76 (rooms 7600-7699).
+Resetting Underground river (rooms 7700-7799).
+Resetting Area of the Risen Rock (rooms 7800-7899).
+Resetting Eastern Farm (rooms 7900-7999).
+Resetting Ornendil's (rooms 8000-8099).
+Resetting Sunken Temple - Forge (rooms 8100-8199).
+Mobile 8148 had its stats fixed.
+Resetting Pablo's zone above relocated orc caves (rooms 8200-8299).
+Resetting Pan's Forest :) (rooms 8300-8399).
+Resetting Centre of the Dark Lake (Fingolfin) (rooms 8400-8499).
+Resetting Southwestern Mirkwood (rooms 8500-8599).
+Resetting MB Road at Vogir (rooms 8600-8699).
+Resetting Valley Project III: Sunken Tower (rooms 8700-8799).
+Resetting More Northern Road (rooms 8800-8899).
+Resetting Abandoned settlement, by Death (rooms 8900-8999).
+Mobile 8900 had its stats fixed.
+Resetting Vast and Boring Plains. ;) (Ravyn) (rooms 9000-9099).
+Resetting Old Forest Road through Mirkwood (rooms 9100-9199).
+Resetting Valley Project Part II (rooms 9200-9299).
+Resetting zone93 (rooms 9300-9399).
+Resetting Zone 94, Radagast's Summer home or somthing. (rooms 9400-9499).
+Resetting Yet More Northern Road (rooms 9500-9599).
+Resetting Felagund's Mirkwood Zone (rooms 9600-9699).
+Resetting Lost Valley (rooms 9700-9799).
+Resetting Newbie-ish zone on N Road by Mickey (rooms 9800-9899).
+Resetting zone 99, by Death, hills west of 69 (rooms 9900-9999).
+Resetting Lake-town I (rooms 10000-10099).
+Resetting Lake-town II (rooms 10100-10199).
+Resetting Ungorod (rooms 10200-10299).
+Resetting Carrock on the River Anduin (rooms 10300-10399).
+Resetting Road to Esergoth Meets Road to Dale (rooms 10400-10499).
+Resetting Old Forest Road nr. Milestone. (rooms 10500-10599).
+Resetting zone106 (rooms 10600-10699).
+Resetting Maze Hall Prototypes II (rooms 10700-10799).
+Resetting Ornendil's Zone (rooms 10800-10899).
+Resetting Northwest of Vinya (rooms 10900-10999).
+Resetting Lower Mountains of Mirkwood (rooms 11000-11099).
+Resetting zone111 (rooms 11100-11199).
+Resetting Into MOM (Loman) (rooms 11200-11299).
+Resetting Village in MoM (rooms 11300-11399).
+Resetting Creepy Mountains (rooms 11400-11499).
+Resetting Old Forest Road Becomes the Road to Dale (rooms 11500-11599).
+Resetting Mountains/Hills on the Way out. (rooms 11600-11699).
+Resetting zone117 (rooms 11700-11799).
+Resetting Elven Halls Exterior (rooms 11800-11899).
+Resetting Cabins on the edge of Dark Lake (rooms 11900-11999).
+Resetting El - Thick 2 story Forest (rooms 12000-12099).
+Resetting zone121 (rooms 12100-12199).
+Resetting Road to the Elven Halls (rooms 12200-12299).
+Resetting Grasslands and small forest west of the Northern Road (rooms 12300-12399).
+Resetting Plains and Hills nr. Dale (rooms 12400-12499).
+Resetting Mountain Maze (rooms 12500-12599).
+Resetting The Mauglir Zone (rooms 12600-12699).
+Resetting Felagund's Road to Dale Zone (rooms 12700-12799).
+Resetting Old Fores Road  (rooms 12800-12899).
+Resetting The Fill-in forest road (rooms 12900-12999).
+Resetting Old Roundtop (Fringes of Mirkwood) (rooms 13000-13099).
+Resetting Road to Dale (Old Fort) (rooms 13100-13199).
+Resetting The Basement of Durgurth Keep (rooms 13200-13299).
+Resetting Fel's "Poetic Plains" Zone (rooms 13300-13399).
+Resetting More of that damned road (rooms 13400-13499).
+Mobile 4616 had its stats fixed.
+Resetting Road to Dale - Fiddlers' Inn (rooms 13500-13599).
+Resetting Magus (rooms 13600-13699).
+Resetting Maethelburg (rooms 13700-13799).
+Resetting Path to new uruk home (rooms 13800-13899).
+Resetting Path to Ungorod (rooms 13900-13999).
+Resetting Ghostship (rooms 14000-14099).
+Resetting Eastern Mirkwood, Uruks' River (rooms 14100-14199).
+Resetting Road to Dale - cemetary (rooms 14200-14299).
+Resetting the secret river part one (rooms 14300-14399).
+Resetting Common Orc Zone (rooms 14400-14499).
+Resetting Warg Breeding Grounds (rooms 14500-14599).
+Resetting Path to orc camp (Fingolfin) (rooms 14600-14699).
+Resetting Leadin Outta the MoM (rooms 14700-14799).
+Resetting Shaded Warpath (Fringes of Mirkwood) (rooms 14800-14899).
+Resetting More north road, north of MB. (rooms 14900-14999).
+Resetting Allanon's Extra Wide (10 rooms by 8 rooms) zone for southern Mirkwood. (rooms 15000-15099).
+Resetting Incanus' Hills (rooms 15100-15199).
+Resetting Eastern Dark Lake (rooms 15200-15299).
+Resetting South of dark lake - vampires (rooms 15300-15399).
+Resetting Friendly Forest (rooms 15400-15499).
+Resetting Elagor's Plains (rooms 15500-15599).
+Resetting Road to Dale - Hunters Inn (rooms 15600-15699).
+Resetting Underground Streambed (rooms 15700-15799).
+Resetting The Massive SW Project (rooms 15800-15899).
+Resetting erno's little plain zone (rooms 15900-15999).
+Resetting Zone for S mirkwood east of 39 (rooms 16000-16099).
+Resetting East Anduin plains (rooms 16100-16199).
+Resetting Grasslands West of Road to MB (rooms 16200-16299).
+Resetting A Misty Mountain (rooms 16300-16399).
+Resetting A Wood Belonging to the Creatures (rooms 16400-16499).
+Resetting Old Forest Road Expansion (rooms 16500-16599).
+Resetting The Merry Town of Dale (version 2) (rooms 16600-16699).
+Resetting Taur-e-Ndaedelas (rooms 16700-16799).
+Resetting The Grand Halls of Thranduil (rooms 16800-16899).
+Resetting Friendly Forest (rooms 16900-16999).
+Resetting Connecting Uruk River to Road to Dale (rooms 17000-17099).
+Resetting Path through Mirkwood (rooms 17100-17199).
+Resetting Rabbit Holes, White Wolves and Waterfalls (rooms 17200-17299).
+Resetting Ornendil/Jowy (rooms 17300-17399).
+Resetting Aggrippa's Temple Zone (rooms 17400-17499).
+Resetting Angmacar's fort and the Southern Road (rooms 17500-17599).
+Mobile 20347 had its stats fixed.
+Resetting Additional River (rooms 17600-17699).
+Resetting Avar/Seed/Abzighal Half-Orc Caves II (rooms 17700-17799).
+Resetting S.Mirkwood (rooms 17800-17899).
+Resetting S. Mirk Chalk Path I. (rooms 17900-17999).
+Resetting Shaded Warpath to Dol Guldur (rooms 18000-18099).
+Mobile 4616 had its stats fixed.
+Resetting Shaded Path Going South (rooms 18100-18199).
+Resetting Mirkwood with Shaded Path (rooms 18200-18299).
+Resetting S.Mirkwood (rooms 18300-18399).
+Resetting Shaded Path to Dol-Guldur (rooms 18400-18499).
+Resetting Plains (rooms 18500-18599).
+Resetting Incanus & Thanatos' (rooms 18600-18699).
+Resetting Plains along the eastern Anduin (rooms 18700-18799).
+Resetting Start of the Road to Gladden Fields (rooms 18800-18899).
+Resetting SE Mirkwood Project (rooms 18900-18999).
+Resetting Ruins in Swampy Forest (rooms 19000-19099).
+Resetting More Enchanted Path (rooms 19100-19199).
+Resetting Small-time trapper zone SW of Gile (rooms 19200-19299).
+Resetting S.Mirkwood (rooms 19300-19399).
+Resetting Enchanted Path (rooms 19400-19499).
+Resetting Forest by Enchanted Path (rooms 19500-19599).
+Resetting zone196 (rooms 19600-19699).
+Resetting zone197 (rooms 19700-19799).
+Resetting The Enchanted Path (rooms 19800-19899).
+Resetting Midbie forest along Enchanted Path (rooms 19900-19999).
+Resetting Incanus' S Mirk Zone (rooms 20000-20099).
+Resetting Incanus' Enchanted Path (rooms 20100-20199).
+Resetting SE Mirk Forest (rooms 20200-20299).
+Resetting Avar/Seed/Abzighal Half-Orc Caves I (rooms 20300-20399).
+Resetting Tiny zone N of MB (rooms 20400-20499).
+Resetting Western Grasslands (rooms 20500-20599).
+Resetting More Enchanted Path (rooms 20600-20699).
+Resetting S. Mirk zone east of 200 (rooms 20700-20799).
+Resetting Incanus' Enchanted Forest (rooms 20800-20899).
+Resetting Felagund's Misties Zone (rooms 20900-20999).
+Resetting Incanus' Flooded Forest (rooms 21000-21099).
+Resetting Incanus' Enchanted Path (rooms 21100-21199).
+Resetting zone212 (rooms 21200-21299).
+Resetting Naneth's Woodsman Settlement (rooms 21300-21399).
+Resetting The Road to Dol-Guldur (rooms 21400-21499).
+Resetting Mirkwood at Edge of Plains (rooms 21500-21599).
+Resetting Dei and Incanus' Enchanted Path (rooms 21600-21699).
+Resetting End of Enchanted Path (rooms 21700-21799).
+Resetting Ingolemo's Forest on Anduin (rooms 21800-21899).
+Resetting Incanus' Enchanted Plains (rooms 21900-21999).
+Resetting Incanus' Forest (rooms 22000-22099).
+Resetting Incanus' Enchanted Forest (rooms 22100-22199).
+Resetting Dark Woods in South East Mirk (rooms 22200-22299).
+Resetting Southeast Mirkwood Project I (rooms 22300-22399).
+Resetting Southeast Mirkwood Project II (rooms 22400-22499).
+Resetting Southeast Mirkwood Project III (rooms 22500-22599).
+Resetting Southeast Mirkwood Project IV (rooms 22600-22699).
+Resetting Southeast Mirkwood Project V (rooms 22700-22799).
+Resetting Plains in SE Mirk (rooms 22800-22899).
+Resetting Dark Forest West of the Southern Road (rooms 22900-22999).
+Resetting Maze Halls Prototypes - New Old Maze (rooms 23000-23099).
+Resetting Old maze level 1~ (rooms 23100-23199).
+Resetting Old maze level 2~ (rooms 23200-23299).
+Resetting Old maze level 3 ~ (rooms 23300-23399).
+Resetting Old maze level 4~ (rooms 23400-23499).
+Resetting Orcish maze level 1~ (rooms 23500-23599).
+Resetting Orcish maze level 2~ (rooms 23600-23699).
+Resetting Orcish maze level 3~ (rooms 23700-23799).
+Resetting The Mewlip Caves (rooms 23800-23899).
+Resetting Cultist Camp (rooms 23900-23999).
+Resetting Southern Road through SE Mirk (rooms 24000-24099).
+Resetting SE Mirk (rooms 24100-24199).
+Resetting Old South Road Leaves Mirkwood (rooms 24200-24299).
+Resetting SE Mirk (rooms 24300-24399).
+Resetting Ingolemo's Southern Road (rooms 24400-24499).
+Resetting Gladro's SE Mirkwood Zone (rooms 24500-24599).
+Resetting Incanus's Plains in SE Mirkwood (rooms 24600-24699).
+Resetting Zone NW of GG (rooms 24700-24799).
+Resetting Ingolemo's Vinyanost Tomb (rooms 24800-24899).
+Resetting The Goblin Mines (rooms 24900-24999).
+Resetting Connects Vale and Enchanted Path (rooms 25000-25099).
+Resetting Rhimdath River Cavern (rooms 25100-25199).
+Resetting Vaitya's Old maze Halls Second Edition (rooms 25200-25299).
+Resetting Khronos/Ornendil South Mirkwood (rooms 25300-25399).
+Resetting Thanatos' Cool Warlock Zone (rooms 25400-25499).
+Resetting Ingolemo's SE Path (rooms 25500-25599).
+Resetting Raz zone 3 (rooms 25600-25699).
+Resetting Bandit Camp (rooms 25700-25799).
+Resetting Plains Zone Near Dale (rooms 25800-25899).
+Resetting Ingolemo's SE Mirk (rooms 25900-25999).
+Resetting Between Dale and Lake-town (rooms 26000-26099).
+Resetting Woodland Path and Lake Guldulin (rooms 26100-26199).
+Resetting The Ancient Mine/The Underground Current/The Ancient Clutter of Spiders (rooms 26200-26299).
+Resetting zone263 (rooms 26300-26399).
+Resetting Lowbie Zone with Farm West of Dale (rooms 26400-26499).
+Resetting More Road to Gladden, Start of Stoorling Road (rooms 26500-26599).
+Resetting Ornendil's Mirkwood Template Zone (rooms 26600-26699).
+Resetting Eagle's Eyrie (rooms 26700-26799).
+Resetting Vaitya's (rooms 26800-26899).
+Resetting Zuldauthi I (rooms 26900-26999).
+Resetting Valley in the Mountains (rooms 27000-27099).
+Resetting Ingolemos (rooms 27100-27199).
+Resetting Newbie Training Grounds (rooms 27200-27299).
+Resetting Ingolemo's SE-S Mirk Connection (rooms 27300-27399).
+Resetting Fel's - No touchie! (rooms 27400-27499).
+Resetting Dol Guldur I. (rooms 27500-27599).
+Mobile 27607 had its stats fixed.
+Mobile 27607 had its stats fixed.
+Mobile 27607 had its stats fixed.
+Mobile 27608 had its stats fixed.
+Resetting Dol Guldur II. (rooms 27600-27699).
+Mobile 27608 had its stats fixed.
+Resetting Dol Guldur III. (rooms 27700-27799).
+Resetting Lalaith's Misty Mountains' zone (rooms 27800-27899).
+Resetting The Bog (rooms 27900-27999).
+Resetting Mirk Maze 280~ (rooms 28000-28099).
+Resetting Mirk Maze 281~ (rooms 28100-28199).
+Resetting Western MoM III (rooms 28200-28299).
+Resetting Western MoM II (rooms 28300-28399).
+Resetting Western MoM I (rooms 28400-28499).
+Resetting Ingolemo's SE Mirk Project (rooms 28500-28599).
+Resetting Ingolemo's SE Path (rooms 28600-28699).
+Resetting Ingolemo's SE Path (rooms 28700-28799).
+Resetting Ingolemo SE Path (rooms 28800-28899).
+Resetting Ingolemo's SE Path (rooms 28900-28999).
+Resetting Enchanted River (south of the Path) (rooms 29000-29099).
+Resetting Mirk Maze 291~ (rooms 29100-29199).
+Resetting Mirk Maze 292~ (rooms 29200-29299).
+Resetting Northern Mirkwood Path I (rooms 29300-29399).
+Resetting Mirk Maze 294~ (rooms 29400-29499).
+Resetting S. Mirk Chalk Path II. (rooms 29500-29599).
+Resetting S. Mirk Chalk Path III. (rooms 29600-29699).
+Resetting The Crossroads and Bridge at Osterin (rooms 29700-29799).
+Mobile 28417 had its stats fixed.
+Resetting S. Mirk Paved Pathway (rooms 29800-29899).
+Resetting Shaded Warpath Going South (rooms 29900-29999).
+Resetting New Testzone, started March 2002 (rooms 30000-30099).
+Resetting Bregalad the Ent's Zone (rooms 30100-30199).
+Mobile 30107 had its stats fixed.
+Resetting East Anduin Plains (rooms 30200-30299).
+Resetting Shaded Warpath and Mor Erlond (rooms 30300-30399).
+Resetting Shaded Warpath (Fringes of Mirkwood) (rooms 30400-30499).
+Resetting Shaded Warpath and Mor Erlond Go South (rooms 30500-30599).
+Resetting Naneth's Zone (rooms 30600-30699).
+Resetting Naneth's Zone II (rooms 30700-30799).
+Resetting Shaded Warpath Going South (rooms 30800-30899).
+Resetting Zuldauthi Zone II - Kadarakhas (rooms 30900-30999).
+Resetting Taur-en-Faroth (rooms 31000-31099).
+Resetting Gwalin Maze 311~ (rooms 31100-31199).
+Resetting Taur-en-Faroth (rooms 31200-31299).
+Resetting Misty Moutains Underground (rooms 31300-31399).
+Resetting Yard of Lost Souls (rooms 31400-31499).
+Resetting Elagor and Zorlan's Castle (rooms 31500-31599).
+Resetting Raging River Above a Mine (rooms 31600-31699).
+Resetting Norach's Underwater Maze (rooms 31700-31799).
+Resetting Ingolemo's Extra Zone (rooms 31800-31899).
+Resetting Azaroths Caves (rooms 31900-31999).
+Resetting South GG Surface (rooms 32000-32099).
+Mobile 4616 had its stats fixed.
+Resetting North/Main GG Surface (rooms 32100-32199).
+Resetting GG (rooms 32200-32299).
+Resetting Undeeps Part I (rooms 32300-32399).
+Resetting zone324 (rooms 32400-32499).
+Resetting GG Part II (rooms 32500-32599).
+Resetting SEMirk Project (rooms 32600-32699).
+Resetting Ingolemo's SEMirk (rooms 32700-32799).
+Resetting Troll starting area/warrens (rooms 32800-32899).
+Resetting Fel's (rooms 32900-32999).
+Resetting Maze sections for Dark Rider/Hunter area (rooms 33000-33099).
+Resetting Wheel section/Dark Riders Section (rooms 33100-33199).
+Resetting Hunters area/Wheel area (rooms 33200-33299).
+Resetting Norach's Underwater Maze II (rooms 33300-33399).
+Resetting Azriya's playground, probably somewhere in the misties. (rooms 33400-33499).
+Resetting Azriya's Playground IV (rooms 33500-33599).
+Resetting Dwarven Ruins - Forge (rooms 33600-33699).
+Resetting Anadune's New Lhuth Caves (rooms 33700-33799).
+Resetting Reserved for Felagund (rooms 33800-33899).
+Resetting Reserved for Felagund (rooms 33900-33999).
+Resetting Reserved for Felagund (rooms 34000-34099).
+Resetting zone341 (rooms 34100-34199).
+Resetting zone342 (rooms 34200-34299).
+Resetting zone343 (rooms 34300-34399).
+Resetting zone344 (rooms 34400-34499).
+Resetting zone345 (rooms 34500-34599).
+Resetting zone346 (rooms 34600-34699).
+Resetting zone347 (rooms 34700-34799).
+Resetting zone348 (rooms 34800-34899).
+Resetting Vaitya's (rooms 34900-34999).
+Assigning function pointers:
+   Shopkeepers.
+   Mobiles.
+   Objects.
+   Rooms.
+Recounting zone powers.
+Boot db -- DONE.
+Entering game loop.

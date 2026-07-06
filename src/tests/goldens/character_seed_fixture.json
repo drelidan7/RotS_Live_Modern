@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "character_name": "Goldenfix",
+  "title": "the \"Characterization\" Fixture",
+  "description": "Line one.\nLine two with a tab:\t.",
+  "identity": {
+    "idnum": 424242,
+    "race": 3,
+    "sex": 1,
+    "bodytype": 2,
+    "language": 4,
+    "hometown": 1200,
+    "weight": 205,
+    "height": 71
+  },
+  "progression": {
+    "level": 42,
+    "alignment": -350,
+    "mini_level": 3,
+    "max_mini_level": 5,
+    "spells_to_learn": 7,
+    "rerolls": 4
+  },
+  "abilities": {
+    "temporary": {
+      "str": 15,
+      "lea": 9,
+      "intel": 10,
+      "wil": 11,
+      "dex": 14,
+      "con": 13,
+      "hit": 350,
+      "mana": 70,
+      "move": 95
+    },
+    "rolled": {
+      "str": 16,
+      "lea": 8,
+      "intel": 9,
+      "wil": 10,
+      "dex": 13,
+      "con": 12,
+      "hit": 300,
+      "mana": 60,
+      "move": 85
+    }
+  },
+  "points": {
+    "bodypart_hit": [100, 95, 90, 85, 80, 75, 70, 65, 60, 55, 50],
+    "gold": 5000,
+    "experience": 987654,
+    "spirit": 45,
+    "mana_regen": 11,
+    "health_regen": 9,
+    "move_regen": 8,
+    "ob": 110,
+    "damage": 18,
+    "energy_regen": 14,
+    "parry": 38,
+    "dodge": 31,
+    "encumbrance": 22,
+    "willpower": 50,
+    "spell_pen": 6,
+    "spell_power": 9
+  },
+  "professions": {
+    "mage": {
+      "level": 5,
+      "points": 20,
+      "coeff": 20,
+      "experience": 10000
+    },
+    "mystic": {
+      "level": 8,
+      "points": 30,
+      "coeff": 30,
+      "experience": 20000
+    },
+    "ranger": {
+      "level": 12,
+      "points": 40,
+      "coeff": 40,
+      "experience": 30000
+    },
+    "warrior": {
+      "level": 42,
+      "points": 99,
+      "coeff": 99,
+      "experience": 99999
+    }
+  },
+  "flags": {
+    "player": ["writing", "frozen"],
+    "preferences": ["brief", "color"],
+    "affected": ["sanctuary", "invisible"],
+    "hide": ["hiding_well", "snuck_in"]
+  },
+  "conditions": {
+    "drunk": 2,
+    "full": 18,
+    "thirst": 21
+  },
+  "color_mask": 11259375,
+  "colors": {"narrate": {"foreground": {"mode": "ansi16", "value": 1}, "background": {"mode": "default"}}, "chat": {"foreground": {"mode": "ansi16", "value": 2}, "background": {"mode": "default"}}, "yell": {"foreground": {"mode": "ansi16", "value": 3}, "background": {"mode": "default"}}, "tell": {"foreground": {"mode": "ansi16", "value": 4}, "background": {"mode": "default"}}, "say": {"foreground": {"mode": "ansi16", "value": 5}, "background": {"mode": "default"}}, "roomname": {"foreground": {"mode": "ansi16", "value": 6}, "background": {"mode": "default"}}, "hit": {"foreground": {"mode": "ansi16", "value": 7}, "background": {"mode": "default"}}, "damage": {"foreground": {"mode": "ansi16", "value": 8}, "background": {"mode": "default"}}, "character": {"foreground": {"mode": "ansi16", "value": 9}, "background": {"mode": "default"}}, "object": {"foreground": {"mode": "ansi16", "value": 10}, "background": {"mode": "default"}}, "enemy": {"foreground": {"mode": "ansi16", "value": 11}, "background": {"mode": "default"}}, "description": {"foreground": {"mode": "ansi16", "value": 12}, "background": {"mode": "default"}}, "group": {"foreground": {"mode": "ansi16", "value": 13}, "background": {"mode": "default"}}, "magic": {"foreground": {"mode": "truecolor", "value": 12, "r": 180, "g": 80, "b": 255}, "background": {"mode": "default"}}, "weather": {"foreground": {"mode": "ansi16", "value": 1}, "background": {"mode": "truecolor", "value": 11, "r": 10, "g": 20, "b": 35}}, "reserved_15": {"foreground": {"mode": "ansi16", "value": 2}, "background": {"mode": "default"}}},
+  "timers": {
+    "birth": 1700000001,
+    "last_logon": 1720000000,
+    "played_seconds": 54321,
+    "retired_on": 1706000000
+  },
+  "perception": {
+    "raw": 82,
+    "current": 88
+  },
+  "state": {
+    "load_room": 3054,
+    "wimp_level": 15,
+    "freeze_level": 6,
+    "morale": 61,
+    "owner": 777,
+    "leg_encumbrance": 9,
+    "rp_flag": 21,
+    "will_teach": 555555,
+    "tactics": 5,
+    "shooting": 3,
+    "casting": 3,
+    "two_handed": true
+  },
+  "talks": {"animal_language": 50, "human_language": 75, "orcish_language": 100},
+  "skills": {"barehanded": 12, "slashing": 34, "concussion": 56, "whips_flails": 78, "piercing": 90},
+  "affects": [{"type": 101, "duration": 6, "time_phase": 1, "modifier": 3, "location": 18, "counter": 7, "flags": ["detect_magic", "curse"]}, {"type": 202, "duration": 12, "time_phase": 2, "modifier": 5, "location": 4, "counter": 3, "flags": ["poison"]}]
+}

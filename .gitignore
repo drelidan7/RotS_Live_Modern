@@ -100,3 +100,15 @@ target/
 
 # cmake
 .cache
+
+# macOS Finder junk
+.DS_Store
+
+# Local data backups
+lib-backup-*.tar.gz
+
+# Account runtime data (never commit)
+lib/accounts/
+
+# Superpowers scratch directory
+.superpowers/

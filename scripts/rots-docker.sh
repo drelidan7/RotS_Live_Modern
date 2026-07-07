@@ -11,9 +11,16 @@
 # Connect to a running server from the host with:  telnet localhost 1024
 #
 # NOTE: booting requires world files at lib/world/ (see docs/BUILD.md). Compiling does not.
+#
+# `shell` also honors ROTS_SERVICE (default `rots`) to drop into the 64-bit
+# `rots64` container instead (see docker-compose.yml / Dockerfile.x64) — e.g.
+# `ROTS_SERVICE=rots64 scripts/rots-docker.sh shell`. `build`/`compile`/`boot`
+# are unchanged (32-bit-specific Makefile flow); the 64-bit build uses the
+# linux-x64 CMake preset directly inside a `shell` session instead.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+SERVICE="${ROTS_SERVICE:-rots}"
 cmd="${1:-boot}"
 case "$cmd" in
   build)
@@ -33,7 +40,7 @@ case "$cmd" in
       'cd /rots/src && make setup && make all && cd /rots && exec ./bin/ageland'
     ;;
   shell)
-    docker compose run --rm --service-ports rots bash
+    docker compose run --rm --service-ports "$SERVICE" bash
     ;;
   *)
     echo "Unknown command: $cmd (use build|compile|boot|shell)" >&2

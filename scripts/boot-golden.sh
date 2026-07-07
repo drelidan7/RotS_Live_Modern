@@ -1,14 +1,24 @@
 #!/usr/bin/env bash
 # Boot-log characterization golden.
 #
-#   scripts/boot-golden.sh capture   Boot in the container, save normalized boot
-#                                    log to docs/superpowers/goldens/boot-log.golden
-#   scripts/boot-golden.sh verify    Boot the same way and diff against the golden.
-#                                    Exit 0 = identical, 1 = drift, 2 = setup/boot error.
+#   scripts/boot-golden.sh capture             Boot in the container, save normalized
+#                                               boot log to docs/superpowers/goldens/boot-log.golden
+#   scripts/boot-golden.sh verify               Boot the same way and diff against the golden.
+#                                               Exit 0 = identical, 1 = drift, 2 = setup/boot error.
+#   scripts/boot-golden.sh --service rots64 verify
+#                                               Same, but boot the 64-bit container/binary instead
+#                                               of the default 32-bit `rots` one. Also settable via
+#                                               the ROTS_SERVICE env var. Both boot the SAME bind-
+#                                               mounted lib/ data — normalization/compare logic is
+#                                               identical either way, which is the point: the golden
+#                                               is ABI-neutral text, so a diff here is a real
+#                                               cross-ABI behavior difference, not noise.
 #
-# Requires lib/world/ (see docs/BUILD.md) and a prebuilt bin/ageland (see
-# `scripts/rots-docker.sh compile`). The server is booted just long enough to
-# finish world load, then killed — this script never rebuilds the binary.
+# Requires lib/world/ (see docs/BUILD.md) and a prebuilt server binary for the chosen
+# service (see `scripts/rots-docker.sh compile` for `rots`; for `rots64`, `cd src &&
+# cmake --preset linux-x64 && cmake --build --preset linux-x64` inside the rots64
+# container). The server is booted just long enough to finish world load, then
+# killed — this script never rebuilds the binary.
 #
 # The launch mirrors the launch half of `scripts/rots-docker.sh boot`: same
 # working dir (/rots) and same flags (no -p, matching the plain-telnet dev
@@ -18,35 +28,70 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 GOLDEN=docs/superpowers/goldens/boot-log.golden
-mode="${1:-verify}"
+
+# `--service <name>` selects the compose service to boot in (default `rots`, the
+# 32-bit i386 container; `rots64` is the 64-bit sibling from Task 6). Also
+# settable via ROTS_SERVICE so callers that already export it don't need the
+# flag. The mode (capture/verify) is the first remaining positional arg.
+SERVICE="${ROTS_SERVICE:-rots}"
+args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --service)
+      SERVICE="$2"
+      shift 2
+      ;;
+    --service=*)
+      SERVICE="${1#--service=}"
+      shift
+      ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
+  esac
+done
+mode="${args[0]:-verify}"
+
+# Each service builds its binary at a different path relative to the /rots bind
+# mount: the 32-bit Makefile build produces ./bin/ageland; the 64-bit CMake
+# linux-x64 preset (binaryDir "${sourceDir}/../build/${presetName}" in
+# CMakePresets.json) puts it at ./build/linux-x64/ageland. Both paths are bind-
+# mounted, so they're visible identically from the host and from inside either
+# container.
+case "$SERVICE" in
+  rots) BINARY_PATH=bin/ageland ;;
+  rots64) BINARY_PATH=build/linux-x64/ageland ;;
+  *) echo "ERROR: unknown --service '$SERVICE' (expected 'rots' or 'rots64')" >&2; exit 2 ;;
+esac
 
 [ -d lib/world ] || { echo "ERROR: lib/world/ missing — cannot boot." >&2; exit 2; }
-[ -f bin/ageland ] || { echo "ERROR: bin/ageland missing — run 'scripts/rots-docker.sh compile' first." >&2; exit 2; }
+[ -f "$BINARY_PATH" ] || { echo "ERROR: $BINARY_PATH missing — build it first (see script header)." >&2; exit 2; }
 
 # Boot exactly as `scripts/rots-docker.sh boot` launches the binary (cd /rots,
-# ./bin/ageland, no -p). Poll the growing log for "Entering game loop." (the
-# line the live code logs once world load finishes, per comm.cpp) instead of a
-# fixed sleep, so capture time tracks real boot speed under QEMU emulation.
-# Exits non-zero (without emitting a partial log) if boot doesn't reach that
-# line within 60s, so callers can distinguish boot failure from log drift.
+# ./<binary>, no -p). Poll the growing log for "Entering game loop." (the line
+# the live code logs once world load finishes, per comm.cpp) instead of a fixed
+# sleep, so capture time tracks real boot speed under QEMU emulation. Exits
+# non-zero (without emitting a partial log) if boot doesn't reach that line
+# within 60s, so callers can distinguish boot failure from log drift.
 capture_log() {
-  docker compose run --rm rots bash -lc '
+  docker compose run --rm "$SERVICE" bash -lc "
     cd /rots
-    ./bin/ageland > /tmp/boot-golden.raw 2>&1 &
-    pid=$!
-    for i in $(seq 1 60); do
+    ./$BINARY_PATH > /tmp/boot-golden.raw 2>&1 &
+    pid=\$!
+    for i in \$(seq 1 60); do
       sleep 1
-      grep -q "Entering game loop" /tmp/boot-golden.raw 2>/dev/null && break
+      grep -q 'Entering game loop' /tmp/boot-golden.raw 2>/dev/null && break
     done
-    if ! grep -q "Entering game loop" /tmp/boot-golden.raw 2>/dev/null; then
-      echo "ERROR: server did not reach \"Entering game loop\" within 60s" >&2
-      kill "$pid" 2>/dev/null || true
+    if ! grep -q 'Entering game loop' /tmp/boot-golden.raw 2>/dev/null; then
+      echo 'ERROR: server did not reach \"Entering game loop\" within 60s' >&2
+      kill \"\$pid\" 2>/dev/null || true
       exit 1
     fi
-    kill "$pid" 2>/dev/null || true
+    kill \"\$pid\" 2>/dev/null || true
     sleep 1
     cat /tmp/boot-golden.raw
-  ' | normalize
+  " | normalize
 }
 
 # Normalize in two steps:
@@ -109,5 +154,5 @@ case "$mode" in
       exit 1
     fi
     ;;
-  *) echo "usage: $0 capture|verify" >&2; exit 2 ;;
+  *) echo "usage: $0 [--service rots|rots64] capture|verify" >&2; exit 2 ;;
 esac

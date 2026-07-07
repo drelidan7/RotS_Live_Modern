@@ -5,6 +5,12 @@
 #
 # The repo is bind-mounted at /rots, so build artifacts (bin/ageland, *.o) and any
 # source edits are shared with the host. The game listens on port 1024.
+#
+# `rots64` is the 64-bit sibling (native ABI, linux-x64 CMake preset) used to
+# verify cross-ABI compatibility of the JSON persistence layer against the SAME
+# bind-mounted lib/ data. It maps host port 1064 (not 1024) so both containers
+# CAN run at once without a port collision — in practice only one is booted
+# against live lib/ data at a time (see scripts/boot-golden.sh --service).
 services:
   rots:
     build:
@@ -18,6 +24,22 @@ services:
       - .:/rots
     ports:
       - "1024:1024"
+    stdin_open: true
+    tty: true
+    command: bash
+
+  rots64:
+    build:
+      context: .
+      dockerfile: Dockerfile.x64
+    platform: linux/amd64
+    image: rots-dev:bookworm-x64
+    container_name: rots64
+    working_dir: /rots
+    volumes:
+      - .:/rots
+    ports:
+      - "1064:1024"
     stdin_open: true
     tty: true
     command: bash

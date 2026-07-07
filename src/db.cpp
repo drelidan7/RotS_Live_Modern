@@ -36,6 +36,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <new>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -1415,6 +1416,13 @@ struct char_data* read_mobile(int nr, int type)
         i = nr;
 
     CREATE(mob, struct char_data, 1);
+
+    /* mob is raw calloc'd storage (CREATE == calloc, no ctor runs). Construct it
+     * before the struct-copy below runs std::map/other non-trivial member
+     * copy-assignment operators on it — see clear_char() for the full rationale.
+     * mob_proto[i] (the source) is itself constructed via clear_char() in
+     * load_mobiles(), so both operands of the assignment are valid by this point. */
+    new (mob) char_data();
 
     *mob = mob_proto[i];
 
@@ -3432,7 +3440,17 @@ void reset_char(struct char_data* ch)
  * alloc'ed*/
 void clear_char(struct char_data* ch, int mode)
 {
-    memset((char*)ch, (char)'\0', (int)sizeof(struct char_data));
+    /* ch always points to memory obtained via CREATE()/calloc (raw, unconstructed
+     * storage) at every call site — never to a char_data that has already run its
+     * constructor. Placement-new value-initializes it in place: this zeroes every
+     * POD member exactly like the old memset did, but also properly constructs
+     * the non-trivial members (player_damage_details::damage_map is a std::map;
+     * specialization_data has a user destructor) instead of leaving them as
+     * zeroed-but-never-constructed memory, which is undefined behavior the moment
+     * those members are used (deterministic SIGSEGV under libc++/macOS; silently
+     * tolerated by libstdc++/Linux). See db.cpp read_mobile() for the other call
+     * path that needs the same treatment. */
+    new (ch) char_data();
     CREATE1(ch->profs, char_prof_data);
     memset(ch->profs->colors, CNRM,
         sizeof(ch->profs->colors[0]) * MAX_COLOR_FIELDS);

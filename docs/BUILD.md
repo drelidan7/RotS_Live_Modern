@@ -22,6 +22,8 @@ build matches how the live game behaves.
 
 1. **Docker Desktop for Mac** (Apple Silicon build) — https://www.docker.com/products/docker-desktop/
    Verify with `docker --version`. Make sure Docker Desktop is running before the commands below.
+   Required only for the container flows below (the 32-bit legacy-format guard and the
+   `rots64` container); the native macOS flow ("Native macOS arm64 build" below) needs none.
 2. **World files** at `lib/world/` — required to **boot** (not to compile). These are *not*
    in this repo; `lib/world/` is git-ignored and the upstream `Noobinabox/RotS-WorldFiles`
    repo is no longer publicly available. You need to obtain the world data and place it so

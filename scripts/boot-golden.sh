@@ -92,7 +92,11 @@ else
 fi
 
 [ -d lib/world ] || { echo "ERROR: lib/world/ missing — cannot boot." >&2; exit 2; }
-[ -f "$BINARY_PATH" ] || { echo "ERROR: $BINARY_PATH missing — build it first (see script header)." >&2; exit 2; }
+if [ -n "$NATIVE_BINARY" ]; then
+  [ -x "$BINARY_PATH" ] || { echo "ERROR: $BINARY_PATH is not executable — build it first (see script header)." >&2; exit 2; }
+else
+  [ -f "$BINARY_PATH" ] || { echo "ERROR: $BINARY_PATH missing — build it first (see script header)." >&2; exit 2; }
+fi
 
 # Boot exactly as `scripts/rots-docker.sh boot` launches the binary (cd /rots,
 # ./<binary>, no -p). Poll the growing log for "Entering game loop." (the line
@@ -130,6 +134,7 @@ capture_log_native() {
   ( "$BINARY_PATH" > "$raw" 2>&1 & echo $! > "$raw.pid" )
   local pid
   pid="$(cat "$raw.pid")"
+  trap 'kill "$pid" 2>/dev/null || true' EXIT INT TERM
   local i
   for i in $(seq 1 60); do
     sleep 1
@@ -137,10 +142,12 @@ capture_log_native() {
   done
   if ! grep -q 'Entering game loop' "$raw" 2>/dev/null; then
     echo "ERROR: server did not reach \"Entering game loop\" within 60s" >&2
+    trap - EXIT INT TERM
     kill "$pid" 2>/dev/null || true
     rm -f "$raw" "$raw.pid"
     return 1
   fi
+  trap - EXIT INT TERM
   kill "$pid" 2>/dev/null || true
   sleep 1
   cat "$raw" | normalize

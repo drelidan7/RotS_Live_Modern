@@ -4553,7 +4553,6 @@ enum class LegacyExploitConversionOutcome {
 // but load_exploit_history_bytes (defined above that point) needs to call
 // them.
 std::string exploits_json_path_for_legacy(const std::string& legacy_path);
-bool exploit_records_equal(const std::vector<exploit_record>& a, const std::vector<exploit_record>& b);
 LegacyExploitConversionOutcome convert_legacy_runtime_exploit_file(const std::string& legacy_path, std::vector<exploit_record>* decoded_records, std::string* error_message);
 
 bool read_binary_file_contents(const std::string& path, std::string* contents, std::string* error_message)
@@ -4748,27 +4747,6 @@ std::string exploits_json_path_for_legacy(const std::string& legacy_path)
     return legacy_path + ".json";
 }
 
-bool exploit_record_equal(const exploit_record& a, const exploit_record& b)
-{
-    return a.type == b.type
-        && strcmp(a.chtime, b.chtime) == 0
-        && a.shintVictimID == b.shintVictimID
-        && strcmp(a.chVictimName, b.chVictimName) == 0
-        && a.iVictimLevel == b.iVictimLevel
-        && a.iKillerLevel == b.iKillerLevel
-        && a.iIntParam == b.iIntParam;
-}
-
-bool exploit_records_equal(const std::vector<exploit_record>& a, const std::vector<exploit_record>& b)
-{
-    if (a.size() != b.size())
-        return false;
-    for (size_t index = 0; index < a.size(); ++index)
-        if (!exploit_record_equal(a[index], b[index]))
-            return false;
-    return true;
-}
-
 // Generalizes open_secure_temp_output_file's temp+rename write for text
 // (JSON) content, rather than exploit_record binary bytes.
 bool write_text_file_atomically(const std::string& path, const std::string& contents, std::string* error_message)
@@ -4866,7 +4844,7 @@ LegacyExploitConversionOutcome convert_legacy_runtime_exploit_file(const std::st
         set_db_error(error_message, "Verify-decode of freshly serialized JSON failed: " + verify_error);
         return LegacyExploitConversionOutcome::kInfraFailure;
     }
-    if (!exploit_records_equal(*decoded_records, reparsed.records)) {
+    if (!exploits_json::exploit_records_equal(*decoded_records, reparsed.records)) {
         set_db_error(error_message, "Verify mismatch: re-decoded JSON does not equal the original legacy decode.");
         return LegacyExploitConversionOutcome::kInfraFailure;
     }

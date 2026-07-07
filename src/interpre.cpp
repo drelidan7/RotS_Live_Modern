@@ -21,6 +21,7 @@
 #include "comm.h"
 #include "db.h"
 #include "handler.h"
+#include "convert_exploits.h"
 #include "convert_plrobjs.h"
 #include "interpre.h"
 #include "limits.h"
@@ -557,6 +558,7 @@ const char* command[] = {
     "renounce",
     "mob2csv",
     "convertplrobjs", // 249
+    "convertexploits", // 250
     "\n"
 };
 
@@ -2239,6 +2241,8 @@ void assign_command_pointers(void)
     COMMANDO(248, POSITION_DEAD, do_mob_csv_extract, LEVEL_IMPL, FALSE, 0,
         FULL_TARGET, FULL_TARGET, 0);
     COMMANDO(249, POSITION_DEAD, do_convert_plrobjs, LEVEL_IMPL, FALSE, 0,
+        FULL_TARGET, FULL_TARGET, 0);
+    COMMANDO(250, POSITION_DEAD, do_convert_exploits, LEVEL_IMPL, FALSE, 0,
         FULL_TARGET, FULL_TARGET, 0);
 }
 

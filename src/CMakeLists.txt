@@ -49,7 +49,7 @@ set(ROTS_SERVER_SOURCES
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
     boards.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
-    clock.cpp color.cpp comm.cpp config.cpp convert_plrobjs.cpp
+    clock.cpp color.cpp comm.cpp config.cpp convert_exploits.cpp convert_plrobjs.cpp
     consts.cpp db.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
     json_utils.cpp limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
@@ -144,6 +144,7 @@ if(ROTS_BUILD_TESTS)
         tests/characterization_json_tests.cpp
         tests/CharPlayerDataBuilder.cpp
         tests/color_tests.cpp
+        tests/convert_exploits_tests.cpp
         tests/convert_plrobjs_tests.cpp
         tests/damage_tests.cpp
         tests/db_loader_tests.cpp

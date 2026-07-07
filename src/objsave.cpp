@@ -27,11 +27,16 @@
 #include "structs.h"
 #include "utils.h"
 #include "account_management.h"
+#include "objects_json.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 /* these factors should be unique integers */
 #define RENT_FACTOR 1
@@ -66,8 +71,8 @@ ACMD(do_tell);
 SPECIAL(receptionist);
 SPECIAL(cryogenicist);
 
-int Crash_alias_load(struct char_data* ch, FILE* fp);
-void Crash_follower_load(struct char_data* ch, FILE* fp);
+void Crash_alias_load(struct char_data* ch, const objects_json::ObjectSaveData& data);
+void Crash_follower_load(struct char_data* ch, const objects_json::ObjectSaveData& data);
 int calc_load_room(struct char_data* ch, int load_result);
 int Crash_get_filename(char* orig_name, char* filename);
 
@@ -76,7 +81,12 @@ int Crash_is_unrentable(struct obj_data* obj);
 
 namespace {
 
-std::unordered_map<std::string, std::string> g_staged_account_backed_object_bytes;
+// Keyed by lowercased character name. Populated once at account-linked login
+// (interpre.cpp's login-staging call, which decodes whatever bytes account
+// storage/the legacy runtime file produced into an ObjectSaveData before
+// staging it -- Crash_load never has to touch a binary decoder for this
+// source) and consumed exactly once by Crash_load's account-staged fallback.
+std::unordered_map<std::string, objects_json::ObjectSaveData> g_staged_account_backed_object_data;
 
 std::string account_backed_object_stage_key(const char_data* character)
 {
@@ -89,87 +99,45 @@ std::string account_backed_object_stage_key(const char_data* character)
     return key;
 }
 
-std::string build_empty_account_backed_object_bytes()
-{
-    std::string bytes;
-
-    rent_info rent {};
-    rent.rentcode = RENT_CRASH;
-    const follower_file_elem follower_sentinel { -17, 0, 0, 0, 0, 0, 0 };
-
-    obj_file_elem object_sentinel {};
-    object_sentinel.item_number = SENTINEL_ITEM_ID_VALUE;
-    object_sentinel.item_number_deprecated = DEPRECATED_ID_VALUE;
-
-    const sh_int board_points[MAX_MAXBOARD] = {};
-    const char alias_terminator[20] = {};
-
-    bytes.append(reinterpret_cast<const char*>(&rent), sizeof(rent));
-    bytes.append(reinterpret_cast<const char*>(&object_sentinel), sizeof(object_sentinel));
-    bytes.append(reinterpret_cast<const char*>(board_points), sizeof(board_points));
-    bytes.append(alias_terminator, sizeof(alias_terminator));
-    bytes.append(reinterpret_cast<const char*>(&follower_sentinel), sizeof(follower_sentinel));
-    return bytes;
-}
-
-bool read_crashsave_record(FILE* file, void* buffer, size_t size, size_t count, const char* context)
-{
-    if (std::fread(buffer, size, count, file) == count)
-        return true;
-
-    if (std::ferror(file))
-        perror(context);
-    else {
-        sprintf(buf1, "SYSERR: truncated crashsave data while %s.", context);
-        log(buf1);
-    }
-
-    return false;
-}
-
-bool take_staged_account_backed_object_bytes_for_character(const char_data* character, std::string* bytes)
+bool take_staged_account_backed_object_data_for_character(const char_data* character, objects_json::ObjectSaveData* data)
 {
     const std::string stage_key = account_backed_object_stage_key(character);
     if (stage_key.empty())
         return false;
 
-    const auto it = g_staged_account_backed_object_bytes.find(stage_key);
-    if (it == g_staged_account_backed_object_bytes.end())
+    const auto it = g_staged_account_backed_object_data.find(stage_key);
+    if (it == g_staged_account_backed_object_data.end())
         return false;
 
-    *bytes = it->second.empty() ? build_empty_account_backed_object_bytes() : it->second;
-    g_staged_account_backed_object_bytes.erase(it);
+    *data = std::move(it->second);
+    g_staged_account_backed_object_data.erase(it);
     return true;
 }
 
-FILE* open_account_backed_object_stream(const char_data* character)
+// Reads the remainder of an already-open stream into `bytes`. Does not close
+// `file` -- the caller owns that (it may need the handle for other reasons,
+// e.g. Crash_get_file_by_name's diagnostic-logging-on-open-failure contract).
+bool read_open_file_contents(FILE* file, std::string* bytes)
 {
-    std::string object_bytes;
-    if (!take_staged_account_backed_object_bytes_for_character(character, &object_bytes))
-        return nullptr;
+    if (file == nullptr || bytes == nullptr)
+        return false;
 
-    FILE* stream = tmpfile();
-    if (stream == nullptr) {
-        sprintf(buf1, "SYSERR: unable to create temporary object stream for %s: %s", GET_NAME(character), strerror(errno));
-        log(buf1);
-        return nullptr;
+    std::string loaded_bytes;
+    char buffer[1024];
+    while (true) {
+        const size_t bytes_read = std::fread(buffer, sizeof(char), sizeof(buffer), file);
+        if (bytes_read > 0)
+            loaded_bytes.append(buffer, bytes_read);
+
+        if (bytes_read < sizeof(buffer)) {
+            if (std::ferror(file))
+                return false;
+            break;
+        }
     }
 
-    if (std::fwrite(object_bytes.data(), sizeof(char), object_bytes.size(), stream) != object_bytes.size()) {
-        sprintf(buf1, "SYSERR: unable to stage account-backed object data for %s.", GET_NAME(character));
-        log(buf1);
-        std::fclose(stream);
-        return nullptr;
-    }
-
-    if (std::fflush(stream) != 0 || std::fseek(stream, 0, SEEK_SET) != 0) {
-        sprintf(buf1, "SYSERR: unable to rewind account-backed object stream for %s.", GET_NAME(character));
-        log(buf1);
-        std::fclose(stream);
-        return nullptr;
-    }
-
-    return stream;
+    *bytes = std::move(loaded_bytes);
+    return true;
 }
 
 bool read_binary_file_contents(const char* path, std::string* bytes)
@@ -181,61 +149,31 @@ bool read_binary_file_contents(const char* path, std::string* bytes)
     if (file == nullptr)
         return false;
 
-    std::string loaded_bytes;
-    char buffer[1024];
-    while (true) {
-        const size_t bytes_read = std::fread(buffer, sizeof(char), sizeof(buffer), file);
-        if (bytes_read > 0)
-            loaded_bytes.append(buffer, bytes_read);
-
-        if (bytes_read < sizeof(buffer)) {
-            const bool had_error = std::ferror(file) != 0;
-            std::fclose(file);
-            if (had_error)
-                return false;
-            break;
-        }
-    }
-
-    *bytes = std::move(loaded_bytes);
-    return true;
-}
-
-void refresh_account_backed_object_file(const char_data* character)
-{
-    if (character == nullptr || IS_NPC(character))
-        return;
-
-    char path[MAX_INPUT_LENGTH];
-    if (!Crash_get_filename(const_cast<char*>(GET_NAME(character)), path))
-        return;
-
-    std::string object_bytes;
-    if (!read_binary_file_contents(path, &object_bytes))
-        return;
-
-    std::string error_message;
-    if (!account::write_linked_character_object_file(".", GET_NAME(character), object_bytes, &error_message) && !error_message.empty()) {
-        sprintf(buf1, "SYSERR: failed to refresh account-native object file for %s: %s",
-            GET_NAME(character), error_message.c_str());
-        log(buf1);
-    }
+    const bool read_ok = read_open_file_contents(file, bytes);
+    std::fclose(file);
+    return read_ok;
 }
 
 } // namespace
 
-void stage_account_backed_object_bytes_for_character(const struct char_data* ch, const char* bytes, size_t length)
+// Builds a fresh, empty save (an RENT_CRASH header with no objects/board
+// points/aliases/followers) -- the JSON-era equivalent of what the old
+// build_empty_account_backed_object_bytes() produced in binary, used when an
+// account-linked character has no object-save data yet.
+objects_json::ObjectSaveData build_default_account_backed_object_data()
+{
+    objects_json::ObjectSaveData data;
+    data.rent.rentcode = RENT_CRASH;
+    return data;
+}
+
+void stage_account_backed_object_data_for_character(const struct char_data* ch, const objects_json::ObjectSaveData& data)
 {
     const std::string stage_key = account_backed_object_stage_key(ch);
     if (stage_key.empty())
         return;
 
-    if (bytes == nullptr || length == 0) {
-        g_staged_account_backed_object_bytes[stage_key] = std::string();
-        return;
-    }
-
-    g_staged_account_backed_object_bytes[stage_key] = std::string(bytes, length);
+    g_staged_account_backed_object_data[stage_key] = data;
 }
 
 void clear_account_backed_object_bytes_for_character(const struct char_data* ch)
@@ -244,48 +182,56 @@ void clear_account_backed_object_bytes_for_character(const struct char_data* ch)
     if (stage_key.empty())
         return;
 
-    g_staged_account_backed_object_bytes.erase(stage_key);
+    g_staged_account_backed_object_data.erase(stage_key);
 }
 
-int Crash_get_filename(char* orig_name, char* filename)
+namespace {
+
+// Shared bucket-directory + lowercased-name resolution, factored out of
+// Crash_get_filename so player_objects_json_path (the JSON writer/reader's
+// path helper, added in this task) doesn't duplicate the bucket switch.
+// Returns "" for an empty name; otherwise "plrobjs/<BUCKET>/<lowercased-name>"
+// with no extension.
+std::string player_object_bucket_path(const char* orig_name)
 {
+    if (orig_name == nullptr || !*orig_name)
+        return std::string();
 
-    char *ptr, name[30];
+    char name[30];
+    strncpy(name, orig_name, sizeof(name) - 1);
+    name[sizeof(name) - 1] = '\0';
+    for (char* ptr = name; *ptr; ptr++)
+        *ptr = static_cast<char>(tolower(static_cast<unsigned char>(*ptr)));
 
-    if (!*orig_name)
-        return 0;
-    strcpy(name, orig_name);
-    for (ptr = name; *ptr; ptr++)
-        *ptr = tolower(*ptr);
-
-    switch (tolower(*name)) {
+    const char* bucket;
+    switch (name[0]) {
     case 'a':
     case 'b':
     case 'c':
     case 'd':
     case 'e':
-        sprintf(filename, "plrobjs/A-E/%s.obj", name);
+        bucket = "A-E";
         break;
     case 'f':
     case 'g':
     case 'h':
     case 'i':
     case 'j':
-        sprintf(filename, "plrobjs/F-J/%s.obj", name);
+        bucket = "F-J";
         break;
     case 'k':
     case 'l':
     case 'm':
     case 'n':
     case 'o':
-        sprintf(filename, "plrobjs/K-O/%s.obj", name);
+        bucket = "K-O";
         break;
     case 'p':
     case 'q':
     case 'r':
     case 's':
     case 't':
-        sprintf(filename, "plrobjs/P-T/%s.obj", name);
+        bucket = "P-T";
         break;
     case 'u':
     case 'v':
@@ -293,13 +239,101 @@ int Crash_get_filename(char* orig_name, char* filename)
     case 'x':
     case 'y':
     case 'z':
-        sprintf(filename, "plrobjs/U-Z/%s.obj", name);
+        bucket = "U-Z";
         break;
     default:
-        sprintf(filename, "plrobjs/ZZZ/%s.obj", name);
+        bucket = "ZZZ";
         break;
     }
+
+    return std::string("plrobjs/") + bucket + "/" + name;
+}
+
+} // namespace
+
+int Crash_get_filename(char* orig_name, char* filename)
+{
+    const std::string base = player_object_bucket_path(orig_name);
+    if (base.empty())
+        return 0;
+
+    strcpy(filename, (base + ".obj").c_str());
     return 1;
+}
+
+// The on-disk convention player objects live at now that JSON is primary:
+// same bucket directory as the legacy .obj file, ".objs.json" extension.
+// Shared by write_player_objects_json (the sole writer) and Crash_load's
+// reader-order-first check.
+std::string player_objects_json_path(const char* player_name)
+{
+    const std::string base = player_object_bucket_path(player_name);
+    if (base.empty())
+        return std::string();
+
+    return base + ".objs.json";
+}
+
+// Single serialization point (design constraint 1): serializes `data`, writes
+// it to a temp file in the player's bucket directory, and renames it over the
+// target so a reader never observes a partially-written file. Also mirrors
+// the same JSON string through the account-refresh path for linked
+// characters (best-effort -- a mirror failure is logged but does not fail
+// the primary save, matching the old refresh_account_backed_object_file's
+// best-effort semantics).
+bool write_player_objects_json(const char* player_name, const objects_json::ObjectSaveData& data, std::string* error)
+{
+    if (player_name == nullptr || !*player_name) {
+        if (error)
+            *error = "Player name must not be empty.";
+        return false;
+    }
+
+    const std::string path = player_objects_json_path(player_name);
+    if (path.empty()) {
+        if (error)
+            *error = "Unable to resolve objects JSON path.";
+        return false;
+    }
+
+    const std::string json = objects_json::serialize_objects_to_json(data);
+    const std::string temp_path = path + ".tmp";
+
+    FILE* temp_file = std::fopen(temp_path.c_str(), "wb");
+    if (temp_file == nullptr) {
+        if (error)
+            *error = std::string("Unable to open temporary objects file '") + temp_path + "': " + strerror(errno);
+        return false;
+    }
+
+    const size_t bytes_written = json.empty() ? 0 : std::fwrite(json.data(), sizeof(char), json.size(), temp_file);
+    const int flush_result = std::fflush(temp_file);
+    const int close_result = std::fclose(temp_file);
+
+    if (bytes_written != json.size() || flush_result != 0 || close_result != 0) {
+        std::remove(temp_path.c_str());
+        if (error)
+            *error = std::string("Failed to write temporary objects file '") + temp_path + "'.";
+        return false;
+    }
+
+    if (std::rename(temp_path.c_str(), path.c_str()) != 0) {
+        const std::string rename_error = strerror(errno);
+        std::remove(temp_path.c_str());
+        if (error)
+            *error = "Failed to move temporary objects file into place: " + rename_error;
+        return false;
+    }
+
+    std::string mirror_error;
+    if (!account::write_linked_character_object_json_file(".", player_name, data, &mirror_error) && !mirror_error.empty()) {
+        sprintf(buf1, "SYSERR: failed to refresh account-native object file for %s: %s", player_name, mirror_error.c_str());
+        log(buf1);
+    }
+
+    if (error)
+        error->clear();
+    return true;
 }
 
 FILE* Crash_get_file_by_name(char* name, char* mode)
@@ -325,26 +359,42 @@ int Crash_delete_file(char* name)
 
     char filename[50];
     FILE* fl;
+    int deleted_something = 0;
 
     if (!Crash_get_filename(name, filename))
         return 0;
-    if (!(fl = fopen(filename, "rb"))) {
-        if (errno != ENOENT) { /* if it fails but NOT because of no file */
-            sprintf(buf1, "SYSERR: deleting crash file %s (1)", filename);
+    if ((fl = fopen(filename, "rb"))) {
+        fclose(fl);
+
+        if (unlink(filename) < 0) {
+            if (errno != ENOENT) { /* if it fails, NOT because of no file */
+                sprintf(buf1, "SYSERR: deleting crash file %s (2)", filename);
+                perror(buf1);
+            }
+        } else {
+            deleted_something = 1;
+        }
+    } else if (errno != ENOENT) { /* if it fails but NOT because of no file */
+        sprintf(buf1, "SYSERR: deleting crash file %s (1)", filename);
+        perror(buf1);
+    }
+
+    // JSON is now the primary format (this task): a deleted character's
+    // .objs.json must go too, or a later player who takes the same name
+    // would silently inherit the old character's rent contents on first
+    // load (Crash_load's JSON-first check has no other way to know the
+    // file is stale).
+    const std::string json_path = player_objects_json_path(name);
+    if (!json_path.empty()) {
+        if (std::remove(json_path.c_str()) == 0)
+            deleted_something = 1;
+        else if (errno != ENOENT) {
+            sprintf(buf1, "SYSERR: deleting crash file %s (json)", json_path.c_str());
             perror(buf1);
         }
-        return 0;
-    }
-    fclose(fl);
-
-    if (unlink(filename) < 0) {
-        if (errno != ENOENT) { /* if it fails, NOT because of no file */
-            sprintf(buf1, "SYSERR: deleting crash file %s (2)", filename);
-            perror(buf1);
-        }
     }
 
-    return (1);
+    return deleted_something;
 }
 
 int Crash_delete_crashfile(struct char_data* ch)
@@ -416,49 +466,49 @@ obj_data* load_scalp(int number);
 
 struct obj_data*
 
-Crash_obj2char(struct char_data* ch, struct obj_file_elem* object)
+// Loads an object with a virtual number of `object.item_number' and stores
+// it in `obj'. `obj' is then the object "prototype." we modify that
+// prototype with what is stored in `object' -- the in-memory ObjectSaveData
+// counterpart of the old obj_file_elem, populated identically regardless of
+// whether it came from JSON, a legacy .obj file, or account-staged data.
+Crash_obj2char(struct char_data* ch, const objects_json::ObjectRecord& object)
 {
-    /*
-     * this function loads an object with a virtual number of
-     * `object->item_number', and stores it in `obj'.  `obj'
-     * is then the object "prototype."  we modify that prototype
-     * with what is stored in the obj_file_elem `object'.
-     */
-    int j;
     struct obj_data* obj;
 
-    if (real_object(object->item_number) > -1) {
+    if (real_object(object.item_number) > -1) {
         /* somewhat awkward, accounting for scalps... */
-        if (object->item_number == generic_scalp) {
+        if (object.item_number == generic_scalp) {
 
             /* player id numbers exceed sh_int size, so we started stashing the id in extra_flags.
              * scalp items don't use them, and load scalp knows where to put it. */
-            int head_number = object->value[4];
-            if (object->extra_flags != 0) {
-                head_number = object->extra_flags;
+            int head_number = object.values[4];
+            if (object.extra_flags != 0) {
+                head_number = object.extra_flags;
             }
             obj = load_scalp(head_number);
         } else {
-            obj = read_object(object->item_number, VIRT);
-            obj->obj_flags.extra_flags = object->extra_flags;
-            obj->obj_flags.timer = object->timer;
-            obj->obj_flags.bitvector = object->bitvector;
-            obj->loaded_by = object->loaded_by;
+            obj = read_object(object.item_number, VIRT);
+            obj->obj_flags.extra_flags = object.extra_flags;
+            obj->obj_flags.timer = object.timer;
+            obj->obj_flags.bitvector = object.bitvector;
+            obj->loaded_by = object.loaded_by;
 
             /*
              * drink containers and light sources are the only types of items
              * that should be different in the obj_file_elem than our prototypes
              */
             if (obj->obj_flags.type_flag == ITEM_LIGHT || obj->obj_flags.type_flag == ITEM_DRINKCON) {
-                obj->obj_flags.value[0] = object->value[0];
-                obj->obj_flags.value[1] = object->value[1];
-                obj->obj_flags.value[2] = object->value[2];
-                obj->obj_flags.value[3] = object->value[3];
-                obj->obj_flags.value[4] = object->value[4];
+                obj->obj_flags.value[0] = object.values[0];
+                obj->obj_flags.value[1] = object.values[1];
+                obj->obj_flags.value[2] = object.values[2];
+                obj->obj_flags.value[3] = object.values[3];
+                obj->obj_flags.value[4] = object.values[4];
             }
 
-            for (j = 0; j < MAX_OBJ_AFFECT; j++)
-                obj->affected[j] = object->affected[j];
+            for (int j = 0; j < MAX_OBJ_AFFECT; j++) {
+                obj->affected[j].location = static_cast<byte>(object.affects[j].location);
+                obj->affected[j].modifier = object.affects[j].modifier;
+            }
         }
         return obj;
     }
@@ -527,15 +577,6 @@ void Crash_listrent(struct char_data* ch, char* name)
     fclose(fl);
 }
 
-int Crash_write_rentcode(struct char_data* ch, FILE* fl, struct rent_info* rent)
-{
-    if (fwrite(rent, sizeof(struct rent_info), 1, fl) < 1) {
-        perror("Writing rent code.");
-        return 0;
-    }
-    return 1;
-}
-
 //============================================================================
 // This function fixes the fact that we add containers to characters before we
 // add items to them, so the item is being added to the character at 0 weight.
@@ -574,12 +615,9 @@ void recalc_worn_weight(char_data* character)
 
 FILE* Crash_load(char_data* character)
 {
-    FILE* fl;
     struct obj_data* equip_array[11];
     struct obj_data* obj;
-    struct obj_file_elem object;
-    struct rent_info rent;
-    int cost, orig_rent_code, equip_lost;
+    int cost, equip_lost;
     int num_of_hours, tmp, equip_counter;
     struct obj_data dummy_sack;
     auto fail_closed = [&character]() -> FILE* {
@@ -595,36 +633,75 @@ FILE* Crash_load(char_data* character)
     for (tmp = 0; tmp < 11; tmp++)
         equip_array[tmp] = 0;
 
-    /* ok. is their rent file intact? */
-    fl = Crash_get_file_by_name(GET_NAME(character), "r+b");
-    if (!fl)
-        fl = open_account_backed_object_stream(character);
+    // Reader order (design constraint 2): <name>.objs.json first (a corrupt
+    // JSON file is a hard error -- refuse the load, do NOT fall through to a
+    // stale binary); then the legacy <name>.obj via the Task 1 portable
+    // decoder; then account-staged bytes (already decoded to an
+    // ObjectSaveData at login-staging time -- see interpre.cpp).
+    objects_json::ObjectSaveData data;
+    bool have_data = false;
 
-    if (!fl) {
+    const std::string json_path = player_objects_json_path(GET_NAME(character));
+    std::string json_contents;
+    if (!json_path.empty() && read_binary_file_contents(json_path.c_str(), &json_contents)) {
+        std::string error_message;
+        if (!objects_json::deserialize_objects_from_json(json_contents, &data, &error_message)) {
+            sprintf(buf1, "SYSERR: corrupt objects JSON '%s' for %s: %s", json_path.c_str(), GET_NAME(character), error_message.c_str());
+            log(buf1);
+            return fail_closed();
+        }
+        have_data = true;
+    } else {
+        // Crash_get_file_by_name (not a bare fopen) so we keep its existing
+        // diagnostic contract: it logs "SYSERR: unable to open crashsave
+        // file..." for a genuine open failure but stays silent for the
+        // ordinary "no .obj yet" (ENOENT) case, matching what this reader
+        // order did before this task.
+        FILE* legacy_file = Crash_get_file_by_name(const_cast<char*>(GET_NAME(character)), "r+b");
+        std::string legacy_bytes;
+        if (legacy_file != nullptr) {
+            const bool read_ok = read_open_file_contents(legacy_file, &legacy_bytes);
+            std::fclose(legacy_file);
+            if (!read_ok) {
+                sprintf(buf1, "SYSERR: unable to read legacy object file for %s.", GET_NAME(character));
+                log(buf1);
+                return fail_closed();
+            }
+
+            bool accepted_missing_follower_section = false;
+            std::string error_message;
+            if (!objects_json::legacy_object_save_data_from_binary(legacy_bytes, &data, &accepted_missing_follower_section, &error_message)) {
+                sprintf(buf1, "SYSERR: corrupt legacy object file for %s: %s", GET_NAME(character), error_message.c_str());
+                log(buf1);
+                return fail_closed();
+            }
+            have_data = true;
+        } else if (take_staged_account_backed_object_data_for_character(character, &data)) {
+            have_data = true;
+        }
+    }
+
+    if (!have_data) {
         REMOVE_BIT(character->specials.affected_by, AFF_TWOHANDED);
         send_to_char("*** Your equipment was lost! Please contact an immortal. ***\n\r", character);
         sprintf(buf, "%s entering game with no equipment.", GET_NAME(character));
         GET_ALIAS(character) = 0;
         mudlog(buf, NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(character)), TRUE);
         character->specials2.load_room = calc_load_room(character, RENT_UNDEF);
-        return fl;
-    }
-    if (!read_crashsave_record(fl, &rent, sizeof(struct rent_info), 1, "reading crash rent data in Crash_load")) {
-        std::fclose(fl);
-        return fail_closed();
+        return nullptr;
     }
 
-    /* ok, we have a file. now we find out how much to charge them */
-    cost = (rent.net_cost_per_hour * RENT_HALFTIME * num_of_hours / (RENT_HALFTIME + num_of_hours));
+    /* ok, we have data. now we find out how much to charge them */
+    cost = (data.rent.net_cost_per_hour * RENT_HALFTIME * num_of_hours / (RENT_HALFTIME + num_of_hours));
 
     /* now we're finding out how long we need to charge them */
-    if ((rent.rentcode == RENT_RENTED) || (rent.rentcode == RENT_TIMEDOUT) || (rent.rentcode == RENT_FORCED)) {
-        num_of_hours = (time(0) - rent.time) / SECS_PER_REAL_HOUR;
+    if ((data.rent.rentcode == RENT_RENTED) || (data.rent.rentcode == RENT_TIMEDOUT) || (data.rent.rentcode == RENT_FORCED)) {
+        num_of_hours = (time(0) - data.rent.time) / SECS_PER_REAL_HOUR;
         /* RENT FORMULA */
-        cost = (rent.net_cost_per_hour * RENT_HALFTIME * num_of_hours / (RENT_HALFTIME + num_of_hours));
+        cost = (data.rent.net_cost_per_hour * RENT_HALFTIME * num_of_hours / (RENT_HALFTIME + num_of_hours));
 
         /* extra charging for timeouts and link-renters */
-        if ((rent.rentcode == RENT_TIMEDOUT) || (rent.rentcode == RENT_FORCED))
+        if ((data.rent.rentcode == RENT_TIMEDOUT) || (data.rent.rentcode == RENT_FORCED))
             cost *= FORCERENT_FACTOR;
 
         cost /= 100; /* TEMPORARY fix for high rent. should be looked into */
@@ -641,7 +718,7 @@ FILE* Crash_load(char_data* character)
         }
     }
 
-    switch (orig_rent_code = rent.rentcode) {
+    switch (data.rent.rentcode) {
     case RENT_RENTED:
         sprintf(buf, "%s un-renting and entering game.", GET_NAME(character));
         mudlog(buf, NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(character)), TRUE);
@@ -670,25 +747,14 @@ FILE* Crash_load(char_data* character)
     }
 
     equip_counter = 1;
-    while (true) {
-        if (!read_crashsave_record(fl, &object, sizeof(struct obj_file_elem), 1, "reading crash object data in Crash_load")) {
-            std::fclose(fl);
-            return fail_closed();
-        }
-
-        if (object.item_number_deprecated != DEPRECATED_ID_VALUE) {
-            object.item_number = object.item_number_deprecated;
-            object.item_number_deprecated = DEPRECATED_ID_VALUE;
-        }
-
-        if (object.item_number == SENTINEL_ITEM_ID_VALUE) /* the alias marker */
-            break;
-
+    for (const objects_json::ObjectRecord& object : data.objects) {
         if (!equip_lost) {
+            int wear_pos = object.wear_pos;
+
             if (object.item_number < 0)
                 obj = &dummy_sack;
             else
-                obj = Crash_obj2char(character, &object);
+                obj = Crash_obj2char(character, object);
 
             if (!obj) {
                 sprintf(buf, "LOAD ERROR, equipment lost for %s.", GET_NAME(character));
@@ -699,20 +765,20 @@ FILE* Crash_load(char_data* character)
             // We have an object, set the "player touched this" variable to 1.
             obj->touched = 1;
 
-            if (object.wear_pos < 0)
-                object.wear_pos = MAX_WEAR;
-            if (object.wear_pos < MAX_WEAR) {
+            if (wear_pos < 0)
+                wear_pos = MAX_WEAR;
+            if (wear_pos < MAX_WEAR) {
                 if (obj != &dummy_sack)
-                    equip_char(character, obj, object.wear_pos);
+                    equip_char(character, obj, wear_pos);
                 equip_array[0] = obj;
-            } else if ((object.wear_pos == MAX_WEAR) || !equip_array[0]) {
+            } else if ((wear_pos == MAX_WEAR) || !equip_array[0]) {
                 if (obj != &dummy_sack)
                     obj_to_char(obj, character);
                 equip_array[0] = obj;
             } else {
                 if (obj != &dummy_sack)
-                    obj_to_obj(obj, equip_array[object.wear_pos - MAX_WEAR - 1], TRUE);
-                equip_array[object.wear_pos - MAX_WEAR] = obj;
+                    obj_to_obj(obj, equip_array[wear_pos - MAX_WEAR - 1], TRUE);
+                equip_array[wear_pos - MAX_WEAR] = obj;
             }
         }
     }
@@ -733,9 +799,25 @@ FILE* Crash_load(char_data* character)
     if (IS_TWOHANDED(character) && (!character->equipment[WIELD] || character->equipment[WEAR_SHIELD]))
         REMOVE_BIT(character->specials.affected_by, AFF_TWOHANDED);
 
-    character->specials2.load_room = calc_load_room(character, rent.rentcode);
+    character->specials2.load_room = calc_load_room(character, data.rent.rentcode);
 
-    return fl;
+    // Board points/aliases/followers are applied directly from the in-memory
+    // ObjectSaveData now (regardless of source) -- there's no FILE* stream
+    // left to keep reading from, unlike the old Crash_alias_load/
+    // Crash_follower_load(ch, fp) calls load_character used to make after
+    // Crash_load returned.
+    Crash_alias_load(character, data);
+    Crash_follower_load(character, data);
+
+    // The return value is only ever used truthy by load_character (to decide
+    // whether to fclose() it); the real payload is already fully applied to
+    // `character` above.
+    FILE* success_handle = std::tmpfile();
+    if (success_handle == nullptr) {
+        sprintf(buf1, "SYSERR: unable to create success handle for %s after a successful load.", GET_NAME(character));
+        log(buf1);
+    }
+    return success_handle;
 }
 
 void load_character(struct char_data* ch)
@@ -754,13 +836,11 @@ void load_character(struct char_data* ch)
     char_to_room(ch, ch->specials2.load_room);
     act("$n has entered the game.", TRUE, ch, 0, 0, TO_ROOM);
 
-    if (fp) {
-        if (!(feof(fp))) {
-            Crash_alias_load(ch, fp);
-            Crash_follower_load(ch, fp);
-        }
+    // Crash_load already applied board points/aliases/followers directly from
+    // its in-memory ObjectSaveData; `fp` (when non-null) is now only a
+    // truthy "the load succeeded" signal, not a stream to keep reading from.
+    if (fp)
         fclose(fp);
-    }
 }
 
 int calc_load_room(struct char_data* ch, int load_result)
@@ -825,166 +905,149 @@ int calc_load_room(struct char_data* ch, int load_result)
     return load_room;
 }
 
-int Crash_obj2store(obj_data* obj, char_data* ch,
-    int pos, FILE* fl)
+// Converts one live obj_data into the in-memory record the JSON writer
+// stores -- the exact same fields the old Crash_obj2store fwrote as an
+// obj_file_elem, just appended to a vector instead of streamed to a FILE*.
+objects_json::ObjectRecord Crash_obj2record(obj_data* obj, int pos)
 {
-    obj_file_elem object;
-
-    // Assign this the deprecation value so we know that this is a new save.
-    object.item_number_deprecated = DEPRECATED_ID_VALUE;
+    objects_json::ObjectRecord record;
 
     if (obj->item_number >= 0) {
-        object.item_number = obj_index[obj->item_number].virt;
+        record.item_number = obj_index[obj->item_number].virt;
     } else {
-        object.item_number = obj->item_number;
+        record.item_number = obj->item_number;
     }
 
-    object.value[0] = obj->obj_flags.value[0];
-    object.value[1] = obj->obj_flags.value[1];
-    object.value[2] = obj->obj_flags.value[2];
-    object.value[3] = obj->obj_flags.value[3];
-    object.value[4] = obj->obj_flags.value[4];
-    object.extra_flags = obj->obj_flags.extra_flags;
-    object.weight = obj->obj_flags.weight;
-    object.timer = obj->obj_flags.timer;
-    object.bitvector = obj->obj_flags.bitvector;
-    object.loaded_by = obj->loaded_by;
-    for (int index = 0; index < MAX_OBJ_AFFECT; index++)
-        object.affected[index] = obj->affected[index];
-    object.wear_pos = pos;
+    record.values[0] = obj->obj_flags.value[0];
+    record.values[1] = obj->obj_flags.value[1];
+    record.values[2] = obj->obj_flags.value[2];
+    record.values[3] = obj->obj_flags.value[3];
+    record.values[4] = obj->obj_flags.value[4];
+    record.extra_flags = obj->obj_flags.extra_flags;
+    record.weight = obj->obj_flags.weight;
+    record.timer = obj->obj_flags.timer;
+    record.bitvector = obj->obj_flags.bitvector;
+    record.loaded_by = obj->loaded_by;
+    for (int index = 0; index < MAX_OBJ_AFFECT; index++) {
+        record.affects[index].location = obj->affected[index].location;
+        record.affects[index].modifier = obj->affected[index].modifier;
+    }
+    record.wear_pos = pos;
 
     // Stash the player_id in extra_flags for scalps, since we have an array of shorts and player
     // ids can exceed that.  Scalp loading knows how to interpret this, and assigns the in-game object
     // an extra_flags of 0.
-    if (object.item_number == generic_scalp) {
-        object.extra_flags = obj->obj_flags.value[4];
+    if (record.item_number == generic_scalp) {
+        record.extra_flags = obj->obj_flags.value[4];
     }
 
-    if (fwrite(&object, sizeof(obj_file_elem), 1, fl) < 1) {
-        perror("Writing crash data Crash_obj2store");
-        return 0;
-    }
-
-    return 1;
+    return record;
 }
 
-int Crash_save(struct obj_data* obj, struct char_data* ch, int pos, FILE* fp);
+// Recursive collector mirroring the old Crash_save: appends `obj` and
+// everything it contains/its siblings to `records`, in the same order the
+// old FILE*-based writer streamed them in (top-level object first, then its
+// contents, then the next sibling). Also carries over the same
+// contained-object weight bookkeeping Crash_save performed (undone
+// afterward by Crash_restore_weight for saves that keep the objects alive).
+void Crash_collect_objects(struct obj_data* obj, int pos, std::vector<objects_json::ObjectRecord>* records)
+{
+    if (!obj)
+        return;
 
-void Crash_follower_save(struct char_data* ch, FILE* fp)
+    records->push_back(Crash_obj2record(obj, pos));
+
+    const int tmpos = (pos < MAX_WEAR) ? MAX_WEAR : pos;
+    Crash_collect_objects(obj->contains, tmpos + 1, records);
+    Crash_collect_objects(obj->next_content, pos, records);
+
+    for (struct obj_data* tmp = obj->in_obj; tmp; tmp = tmp->in_obj)
+        GET_OBJ_WEIGHT(tmp) -= GET_OBJ_WEIGHT(obj);
+}
+
+// Builds the follower list mirroring the old Crash_follower_save, appending
+// each NPC follower (and its rentable equipment) plus a ridden mount, if
+// any, to `followers` instead of streaming follower_file_elem records to a
+// FILE*.
+void Crash_collect_followers(struct char_data* ch, std::vector<objects_json::FollowerData>* followers)
 {
     extern struct index_data* mob_index;
     struct follow_type *k, *next_fol;
-    struct follower_file_elem fol_elem, dummy_fol;
-    int x;
-    struct obj_file_elem dummy_object;
 
-    dummy_object.item_number = SENTINEL_ITEM_ID_VALUE;
-    dummy_object.item_number_deprecated = DEPRECATED_ID_VALUE;
     for (k = ch->followers; k; k = next_fol) {
         next_fol = k->next;
         if (!IS_NPC(k->follower))
             continue;
         if (k->follower->in_room != ch->in_room)
             continue;
-        fol_elem.fol_vnum = mob_index[k->follower->nr].virt;
-        fol_elem.mount_vnum = 0;
+
+        objects_json::FollowerData follower;
+        follower.fol_vnum = mob_index[k->follower->nr].virt;
+        follower.mount_vnum = 0;
         if (IS_RIDING(k->follower))
             if ((k->follower->mount_data.mount)->mount_data.rider == k->follower)
-                fol_elem.mount_vnum = mob_index[k->follower->mount_data.mount->nr].virt;
+                follower.mount_vnum = mob_index[k->follower->mount_data.mount->nr].virt;
         if (k->follower->followers)
             if (IS_NPC(k->follower->followers->follower))
-                fol_elem.mount_vnum = mob_index[k->follower->followers->follower->nr].virt;
-        fol_elem.wimpy = k->follower->specials2.wimp_level;
-        fol_elem.exp = k->follower->points.exp;
+                follower.mount_vnum = mob_index[k->follower->followers->follower->nr].virt;
+        follower.wimpy = k->follower->specials2.wimp_level;
+        follower.exp = k->follower->points.exp;
         if (MOB_FLAGGED(k->follower, MOB_ORC_FRIEND))
-            fol_elem.flag_config = FOL_ORC_FRIEND;
+            follower.flag_config = FOL_ORC_FRIEND;
         else if (affected_by_spell(k->follower, SKILL_TAME))
-            fol_elem.flag_config = FOL_TAMED;
+            follower.flag_config = FOL_TAMED;
         else if (MOB_FLAGGED(k->follower, MOB_PET))
-            fol_elem.flag_config = FOL_GUARDIAN;
+            follower.flag_config = FOL_GUARDIAN;
         else
-            fol_elem.flag_config = FOL_MOUNT;
-        fol_elem.spare1 = 0;
-        fol_elem.spare2 = 0;
-        if (fwrite(&fol_elem, sizeof(struct follower_file_elem), 1, fp) < 1) {
-            perror("Writing crash data Crash_follower_save");
-            return;
-        }
-        for (x = 0; x < MAX_WEAR; x++)
+            follower.flag_config = FOL_MOUNT;
+        follower.spare1 = 0;
+        follower.spare2 = 0;
+
+        for (int x = 0; x < MAX_WEAR; x++)
             if (k->follower->equipment[x])
                 if (!Crash_is_unrentable(k->follower->equipment[x]))
-                    if (!Crash_save(k->follower->equipment[x], k->follower, x, fp)) {
-                        fclose(fp);
-                        return;
-                    }
-        if (fwrite(&dummy_object, sizeof(struct obj_file_elem), 1, fp) < 1) {
-            perror("Writing dummy_object Crash_follower_save");
-            return;
-        }
+                    Crash_collect_objects(k->follower->equipment[x], x, &follower.objects);
+
+        followers->push_back(std::move(follower));
     }
+
     if (IS_RIDING(ch)) {
-        fol_elem.fol_vnum = mob_index[ch->mount_data.mount->nr].virt;
-        fol_elem.mount_vnum = 0;
-        fol_elem.wimpy = 0;
-        fol_elem.exp = 0;
-        fol_elem.spare1 = 0;
-        fol_elem.spare2 = 0;
-        fol_elem.flag_config = 0;
-        if (fwrite(&fol_elem, sizeof(struct follower_file_elem), 1, fp) < 1) {
-            perror("Writing crash data Crash_follower_save ch->mount");
-            return;
-        }
-        if (fwrite(&dummy_object, sizeof(struct obj_file_elem), 1, fp) < 1) {
-            perror("Writing crash data Crash_follower_save mount dummy_object");
-            return;
-        }
-    }
-    dummy_fol.fol_vnum = -17;
-    if (fwrite(&dummy_fol, sizeof(struct follower_file_elem), 1, fp) < 1) {
-        perror("Writing crash data Crash_follower_save");
-        return;
+        objects_json::FollowerData mount;
+        mount.fol_vnum = mob_index[ch->mount_data.mount->nr].virt;
+        mount.mount_vnum = 0;
+        mount.wimpy = 0;
+        mount.exp = 0;
+        mount.spare1 = 0;
+        mount.spare2 = 0;
+        mount.flag_config = 0;
+        followers->push_back(std::move(mount));
     }
 }
 
-void Crash_follower_load(struct char_data* ch, FILE* fp)
+// Applies decoded follower data (from JSON, legacy binary, or account-staged
+// data -- source no longer matters by this point) to the character,
+// spawning each follower mob and its equipment. Mirrors the old
+// Crash_follower_load(ch, fp) body exactly, just iterating
+// `data.followers`/`follower.objects` vectors instead of reading a FILE*
+// stream.
+void Crash_follower_load(struct char_data* ch, const objects_json::ObjectSaveData& data)
 {
-    struct follower_file_elem fol_elem;
     struct char_data *mob, *mount;
     struct affected_type af;
-    struct obj_file_elem object;
     struct obj_data* obj;
     int tmp;
 
-    do {
-        if (!read_crashsave_record(fp, &fol_elem, sizeof(struct follower_file_elem), 1, "reading follower data in Crash_follower_load")) {
-            fclose(fp);
-            return;
-        }
-        if (fol_elem.fol_vnum == -17)
-            break;
+    for (const objects_json::FollowerData& fol_elem : data.followers) {
         if ((tmp = real_mobile(fol_elem.fol_vnum)) < 0)
             break;
         mob = read_mobile(tmp, REAL);
         char_to_room(mob, ch->in_room);
 
-        while (true) {
-            if (!read_crashsave_record(fp, &object, sizeof(struct obj_file_elem), 1, "reading follower object data in Crash_follower_load")) {
-                fclose(fp);
-                return;
-            }
-
-            if (object.item_number_deprecated != DEPRECATED_ID_VALUE) {
-                object.item_number = object.item_number_deprecated;
-                object.item_number_deprecated = DEPRECATED_ID_VALUE;
-            }
-
-            if (object.item_number == SENTINEL_ITEM_ID_VALUE)
-                break;
-
+        for (const objects_json::ObjectRecord& object : fol_elem.objects) {
             if (object.wear_pos > MAX_WEAR || object.wear_pos < 0)
                 continue;
 
-            obj = Crash_obj2char(mob, &object);
+            obj = Crash_obj2char(mob, object);
             if (!obj) {
                 sprintf(buf, "LOAD ERROR, equipment lost for follower of %s.", GET_NAME(ch));
                 log(buf);
@@ -1070,7 +1133,7 @@ void Crash_follower_load(struct char_data* ch, FILE* fp)
             char_to_room(mount, ch->in_room);
             add_follower(mount, mob, FOLLOW_MOVE);
         }
-    } while (1);
+    }
 }
 
 void extract_followers(struct char_data* ch)
@@ -1096,42 +1159,32 @@ void extract_followers(struct char_data* ch)
     }
 }
 
-int Crash_alias_load(struct char_data* ch, FILE* fp)
+// Applies decoded board points and aliases to the character. Mirrors the
+// old Crash_alias_load(ch, fp) body -- including its MAX_ALIAS overflow quirk
+// (once `count` exceeds MAX_ALIAS it never grows again, since the increment
+// is skipped for every dropped entry, so all aliases past the limit are
+// read-and-discarded rather than stored) -- just iterating `data.aliases`
+// instead of reading a FILE* stream.
+void Crash_alias_load(struct char_data* ch, const objects_json::ObjectSaveData& data)
 {
     struct alias_list *list = NULL, *list2;
-    int tmp, count;
+    int count = 0;
 
     GET_ALIAS(ch) = 0;
-    count = 0;
-    tmp = 0;
-    if (!read_crashsave_record(fp, ch->specials.board_point, sizeof(sh_int), MAX_MAXBOARD, "reading board points in Crash_alias_load"))
-        return FALSE;
-    do {
+
+    for (size_t index = 0; index < MAX_MAXBOARD; ++index)
+        ch->specials.board_point[index] = (index < data.board_points.size()) ? data.board_points[index] : 0;
+
+    for (const objects_json::AliasData& alias_data : data.aliases) {
         CREATE1(list2, alias_list);
-        if (!read_crashsave_record(fp, &(list2->keyword), 20, 1, "reading alias keyword in Crash_alias_load")) {
-            RELEASE(list2);
-            return FALSE;
-        }
-        if (!*(list2->keyword)) {
-            RELEASE(list2);
-            return TRUE;
-        }
-        if (!read_crashsave_record(fp, &tmp, sizeof(int), 1, "reading alias length in Crash_alias_load")) {
-            RELEASE(list2);
-            return FALSE;
-        }
-        if (tmp <= 0) {
-            log("Alias_load error!");
-            RELEASE(list2);
-            return FALSE;
-        }
-        CREATE(list2->command, char, tmp + 1);
-        if (!read_crashsave_record(fp, list2->command, tmp, 1, "reading alias command in Crash_alias_load")) {
-            RELEASE(list2->command);
-            RELEASE(list2);
-            return FALSE;
-        }
-        list2->command[tmp] = '\0';
+        std::memset(list2->keyword, 0, sizeof(list2->keyword));
+        std::memcpy(list2->keyword, alias_data.keyword.data(), std::min(alias_data.keyword.size(), sizeof(list2->keyword) - 1));
+
+        const size_t command_length = alias_data.command.size();
+        CREATE(list2->command, char, command_length + 1);
+        std::memcpy(list2->command, alias_data.command.data(), command_length);
+        list2->command[command_length] = '\0';
+
         if (count > MAX_ALIAS) { // We should have a create_alias function
             RELEASE(list2->command);
             RELEASE(list2); // to take care of this stuff
@@ -1144,80 +1197,24 @@ int Crash_alias_load(struct char_data* ch, FILE* fp)
             list = list->next;
         }
         count++;
-    } while (1);
+    }
 }
 
-int Crash_alias_save(struct char_data* ch, FILE* fp)
+// Builds the board-points/alias section of the save. Mirrors the old
+// Crash_alias_save's game-observable behavior: every in-memory alias
+// (do_alias never leaves one with an empty command -- removing an alias
+// unlinks it from the list instead) is carried over verbatim.
+void Crash_collect_alias_data(struct char_data* ch, objects_json::ObjectSaveData* data)
 {
-    static struct obj_data dummy_obj;
-    struct alias_list* list;
-    int tmp, tmp2;
+    for (int index = 0; index < MAX_MAXBOARD; ++index)
+        data->board_points[index] = ch->specials.board_point[index];
 
-    dummy_obj.item_number = -17;
-
-    if (!Crash_obj2store(&dummy_obj, ch, -1, fp))
-        return FALSE;
-
-    fwrite(ch->specials.board_point, sizeof(sh_int), MAX_MAXBOARD, fp);
-
-    if (ch->specials.alias) {
-
-        for (list = ch->specials.alias; list; list = list->next) {
-            if (fwrite(&(list->keyword), 20, 1, fp) < 1) {
-                perror("Writing crash data Crash_alias_save 1");
-                return FALSE;
-            }
-            tmp = strlen(list->command);
-
-            if (tmp <= 0)
-                continue;
-
-            if (fwrite(&(tmp), sizeof(int), 1, fp) < 1) {
-                perror("Writing crash data Crash_alias_save 2");
-                return FALSE;
-            }
-
-            if (fwrite(list->command, tmp, 1, fp) < 1) {
-                perror("Writing crash data Crash_alias_save 3");
-                return FALSE;
-            }
-        }
+    for (struct alias_list* list = ch->specials.alias; list; list = list->next) {
+        objects_json::AliasData alias;
+        alias.keyword.assign(list->keyword, strnlen(list->keyword, sizeof(list->keyword)));
+        alias.command = list->command ? list->command : "";
+        data->aliases.push_back(std::move(alias));
     }
-
-    tmp2 = 0;
-    for (tmp = 0; tmp < 20; tmp++) {
-        if (fwrite(&tmp2, 1, 1, fp) < 1) {
-            perror("Writing crash data Crash_alias_save 4");
-            return FALSE;
-        }
-    }
-    return TRUE;
-}
-
-int Crash_save(struct obj_data* obj, struct char_data* ch, int pos, FILE* fp)
-{
-    struct obj_data* tmp;
-    int result, tmpos;
-
-    if (!obj)
-        return TRUE;
-
-    if (obj) {
-        result = Crash_obj2store(obj, ch, pos, fp);
-        if (!result) {
-            printf("could not store.\n");
-            return 0;
-        }
-
-        tmpos = (pos < MAX_WEAR) ? MAX_WEAR : pos;
-        Crash_save(obj->contains, ch, tmpos + 1, fp);
-        Crash_save(obj->next_content, ch, pos, fp);
-
-        for (tmp = obj->in_obj; tmp; tmp = tmp->in_obj)
-            GET_OBJ_WEIGHT(tmp) -= GET_OBJ_WEIGHT(obj);
-    }
-
-    return TRUE;
 }
 
 void Crash_restore_weight(struct obj_data* obj)
@@ -1282,61 +1279,42 @@ void Crash_calculate_rent(struct obj_data* obj, int* cost)
 
 void Crash_crashsave(struct char_data* ch, int rent_code)
 {
-    struct rent_info rent;
     int j;
-    FILE* fp;
 
     if (IS_NPC(ch))
         return;
 
-    if (!(fp = Crash_get_file_by_name(GET_NAME(ch), "wb"))) {
-        log("Couldn't open save file.");
-        return;
-    }
-    rent.rentcode = rent_code;
+    objects_json::ObjectSaveData data;
+    data.rent.rentcode = rent_code;
+    data.rent.time = time(0);
 
-    rent.time = time(0);
-    if (!Crash_write_rentcode(ch, fp, &rent)) {
-        log("crashsave: mark1");
-        fclose(fp);
-        return;
-    }
-    if (!Crash_save(ch->carrying, ch, MAX_WEAR, fp)) {
-        fclose(fp);
-        log("crashsave: mark2");
-        return;
-    }
+    Crash_collect_objects(ch->carrying, MAX_WEAR, &data.objects);
     Crash_restore_weight(ch->carrying);
 
     for (j = 0; j < MAX_WEAR; j++)
         if (ch->equipment[j]) {
-            if (!Crash_save(ch->equipment[j], ch, j, fp)) {
-                fclose(fp);
-                return;
-            }
+            Crash_collect_objects(ch->equipment[j], j, &data.objects);
             Crash_restore_weight(ch->equipment[j]);
         }
-    Crash_alias_save(ch, fp);
-    Crash_follower_save(ch, fp);
-    fclose(fp);
-    refresh_account_backed_object_file(ch);
+
+    Crash_collect_alias_data(ch, &data);
+    Crash_collect_followers(ch, &data.followers);
+
+    std::string error_message;
+    if (!write_player_objects_json(GET_NAME(ch), data, &error_message)) {
+        sprintf(buf1, "SYSERR: crashsave: failed to write player objects for %s: %s", GET_NAME(ch), error_message.c_str());
+        log(buf1);
+        return;
+    }
+
     REMOVE_BIT(PLR_FLAGS(ch), PLR_CRASH);
 }
 
 void Crash_idlesave(struct char_data* ch)
 {
-    char buf[MAX_INPUT_LENGTH];
-    struct rent_info rent;
     int j;
-    int cost;
-    FILE* fp;
 
     if (IS_NPC(ch))
-        return;
-
-    if (!Crash_get_filename(GET_NAME(ch), buf))
-        return;
-    if (!(fp = fopen(buf, "w+b")))
         return;
 
     Crash_extract_norents(ch->carrying);
@@ -1344,50 +1322,35 @@ void Crash_idlesave(struct char_data* ch)
         if (ch->equipment[j])
             Crash_extract_norents(ch->equipment[j]);
 
-    cost = 0;
+    objects_json::ObjectSaveData data;
+    data.rent.net_cost_per_hour = 0;
+    data.rent.rentcode = RENT_TIMEDOUT;
+    data.rent.time = time(0);
+    data.rent.gold = GET_GOLD(ch);
 
-    rent.net_cost_per_hour = cost;
-
-    rent.rentcode = RENT_TIMEDOUT;
-    rent.time = time(0);
-    rent.gold = GET_GOLD(ch);
-    if (!Crash_write_rentcode(ch, fp, &rent)) {
-        fclose(fp);
-        return;
-    }
-
-    if (!Crash_save(ch->carrying, ch, MAX_WEAR, fp)) {
-        fclose(fp);
-        return;
-    }
+    Crash_collect_objects(ch->carrying, MAX_WEAR, &data.objects);
     for (j = 0; j < MAX_WEAR; j++)
-        if (ch->equipment[j]) {
-            if (!Crash_save(ch->equipment[j], ch, j, fp)) {
-                fclose(fp);
-                return;
-            }
+        if (ch->equipment[j])
+            Crash_collect_objects(ch->equipment[j], j, &data.objects);
+
+    Crash_collect_alias_data(ch, &data);
+
+    std::string error_message;
+    if (!write_player_objects_json(GET_NAME(ch), data, &error_message)) {
+        sprintf(buf1, "SYSERR: idlesave: failed to write player objects for %s: %s", GET_NAME(ch), error_message.c_str());
+        log(buf1);
+        return;
     }
-    Crash_alias_save(ch, fp);
-    fclose(fp);
-    refresh_account_backed_object_file(ch);
 
     Crash_extract_objs(ch->carrying);
 }
 
 void Crash_rentsave(struct char_data* ch, int cost)
 {
-    char buf[MAX_INPUT_LENGTH];
-    struct rent_info rent;
     struct obj_data* tmpobj;
     int j;
-    FILE* fp;
 
     if (IS_NPC(ch))
-        return;
-
-    if (!Crash_get_filename(GET_NAME(ch), buf))
-        return;
-    if (!(fp = fopen(buf, "w+b")))
         return;
 
     Crash_extract_norents(ch->carrying);
@@ -1396,30 +1359,31 @@ void Crash_rentsave(struct char_data* ch, int cost)
         if (ch->equipment[j])
             Crash_extract_norents(ch->equipment[j]);
 
-    rent.net_cost_per_hour = cost;
-    rent.rentcode = RENT_RENTED;
-    rent.time = time(0);
-    rent.gold = GET_GOLD(ch);
-    if (!Crash_write_rentcode(ch, fp, &rent)) {
-        fclose(fp);
-        return;
-    }
-    if (!Crash_save(ch->carrying, ch, MAX_WEAR, fp)) {
-        fclose(fp);
-        return;
-    }
+    objects_json::ObjectSaveData data;
+    data.rent.net_cost_per_hour = cost;
+    data.rent.rentcode = RENT_RENTED;
+    data.rent.time = time(0);
+    data.rent.gold = GET_GOLD(ch);
+
+    Crash_collect_objects(ch->carrying, MAX_WEAR, &data.objects);
     for (j = 0; j < MAX_WEAR; j++)
         if (ch->equipment[j]) {
             tmpobj = unequip_char(ch, j);
-            Crash_save(tmpobj, ch, j, fp);
+            Crash_collect_objects(tmpobj, j, &data.objects);
             Crash_extract_objs(tmpobj);
             ch->equipment[j] = 0;
         }
-    Crash_alias_save(ch, fp);
-    Crash_follower_save(ch, fp);
+
+    Crash_collect_alias_data(ch, &data);
+    Crash_collect_followers(ch, &data.followers);
     extract_followers(ch);
-    fclose(fp);
-    refresh_account_backed_object_file(ch);
+
+    std::string error_message;
+    if (!write_player_objects_json(GET_NAME(ch), data, &error_message)) {
+        sprintf(buf1, "SYSERR: rentsave: failed to write player objects for %s: %s", GET_NAME(ch), error_message.c_str());
+        log(buf1);
+        return;
+    }
 
     Crash_extract_objs(ch->carrying);
 }

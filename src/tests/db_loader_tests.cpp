@@ -31,9 +31,26 @@ void build_player_index(void);
 void clear_char(struct char_data* ch, int mode);
 void save_player(struct char_data* ch, int load_room, int index_pos);
 void store_to_char(struct char_file_u* st, struct char_data* ch);
-int Crash_alias_load(struct char_data* ch, FILE* fp);
 
 namespace {
+
+// Phase 2a Task 2 moved the login-staging call (interpre.cpp) to decode
+// legacy/account object bytes into an ObjectSaveData once, up front, instead
+// of staging raw bytes for Crash_load to decode later -- Crash_load now
+// applies board points/aliases/followers directly from that structured data
+// as part of the same call, so there's no FILE* left afterward to keep
+// reading from. These tests build binary bytes (object_save_data_to_binary
+// is still test-only, per the brief) to exercise the same account-storage
+// shapes as before; this helper performs the same decode interpre.cpp does
+// before staging.
+void stage_legacy_object_bytes_for_character(const char_data* character, const std::string& object_bytes)
+{
+    objects_json::ObjectSaveData data;
+    bool accepted_missing_follower_section = false;
+    std::string error_message;
+    ASSERT_TRUE(objects_json::legacy_object_save_data_from_binary(object_bytes, &data, &accepted_missing_follower_section, &error_message)) << error_message;
+    stage_account_backed_object_data_for_character(character, data);
+}
 
 class ScopedPlayerTableEntry {
 public:
@@ -1103,10 +1120,12 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
     std::string error_message;
     ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
 
-    stage_account_backed_object_bytes_for_character(&character, object_bytes.data(), object_bytes.size());
+    stage_legacy_object_bytes_for_character(&character, object_bytes);
     FILE* fp = Crash_load(&character);
     ASSERT_NE(fp, nullptr);
-    ASSERT_TRUE(Crash_alias_load(&character, fp));
+    // Crash_load now applies board points/aliases directly from its
+    // in-memory ObjectSaveData -- there's no separate Crash_alias_load(ch,
+    // fp) pass needed (or possible: `fp` is just a success handle now).
     ASSERT_EQ(std::fclose(fp), 0);
 
     EXPECT_EQ(character.specials.board_point[0], 77);
@@ -1155,7 +1174,7 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndEquipsWearableI
     std::string error_message;
     ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
 
-    stage_account_backed_object_bytes_for_character(&character, object_bytes.data(), object_bytes.size());
+    stage_legacy_object_bytes_for_character(&character, object_bytes);
     FILE* fp = Crash_load(&character);
     ASSERT_NE(fp, nullptr);
     ASSERT_EQ(std::fclose(fp), 0);
@@ -1214,7 +1233,7 @@ TEST(DbLoader, AccountNativeCharacterAndObjectsJsonSupportEquippedLoginWithoutMi
     clear_char(&character, MOB_VOID);
     store_to_char(&loaded_store, &character);
 
-    stage_account_backed_object_bytes_for_character(&character, loaded_object_bytes.data(), loaded_object_bytes.size());
+    stage_legacy_object_bytes_for_character(&character, loaded_object_bytes);
     FILE* fp = Crash_load(&character);
     ASSERT_NE(fp, nullptr);
     ASSERT_EQ(std::fclose(fp), 0);
@@ -1264,7 +1283,7 @@ TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallba
     clear_char(&character, MOB_VOID);
     store_to_char(&loaded_store, &character);
 
-    stage_account_backed_object_bytes_for_character(&character, object_bytes.data(), object_bytes.size());
+    stage_legacy_object_bytes_for_character(&character, object_bytes);
 
     const std::string stderr_path = temp_directory.path() + "/account-native-crash-load.stderr";
     FILE* fp = nullptr;
@@ -1318,7 +1337,7 @@ TEST(DbLoader, AccountNativeCrashLoadStillLogsNonMissingLegacyObjectOpenFailures
     clear_char(&character, MOB_VOID);
     store_to_char(&loaded_store, &character);
 
-    stage_account_backed_object_bytes_for_character(&character, object_bytes.data(), object_bytes.size());
+    stage_legacy_object_bytes_for_character(&character, object_bytes);
 
     const std::string stderr_path = temp_directory.path() + "/account-native-crash-load-open-failure.stderr";
     FILE* fp = nullptr;
@@ -1588,7 +1607,7 @@ TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacte
     std::string object_bytes;
     std::string error_message;
     ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
-    stage_account_backed_object_bytes_for_character(&staged_character, object_bytes.data(), object_bytes.size());
+    stage_legacy_object_bytes_for_character(&staged_character, object_bytes);
 
     char_data later_character {};
     clear_char(&later_character, MOB_VOID);

@@ -3073,7 +3073,26 @@ void nanny(struct descriptor_data* d, char* arg)
             load_result = d->character->specials2.bad_pws;
             d->character->specials2.bad_pws = 0;
             save_char(d->character, d->character->specials2.load_room, 0);
-            stage_account_backed_object_bytes_for_character(d->character, object_file_bytes.data(), object_file_bytes.size());
+            // Decode once, here, into an ObjectSaveData and stage that directly --
+            // Crash_load's account-staged fallback never touches a binary decoder
+            // (object_save_data_to_binary is never called anywhere in this path;
+            // only the legacy *decoder*, which is fine to keep using since old
+            // account/runtime storage still hands back legacy-shaped bytes).
+            {
+                objects_json::ObjectSaveData staged_object_data;
+                if (object_file_bytes.empty()) {
+                    staged_object_data = build_default_account_backed_object_data();
+                } else {
+                    bool accepted_missing_follower_section = false;
+                    std::string decode_error;
+                    if (!objects_json::legacy_object_save_data_from_binary(object_file_bytes, &staged_object_data, &accepted_missing_follower_section, &decode_error)) {
+                        sprintf(buf1, "SYSERR: unable to decode account-staged object data for %s: %s", selected_character_name.c_str(), decode_error.c_str());
+                        log(buf1);
+                        staged_object_data = build_default_account_backed_object_data();
+                    }
+                }
+                stage_account_backed_object_data_for_character(d->character, staged_object_data);
+            }
             if (!account::clear_account_character_runtime_support_files(kAccountStorageRoot, selected_character_name, &error_message)) {
                 clear_account_backed_object_bytes_for_character(d->character);
                 if (created_selection_character) {

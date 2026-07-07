@@ -2,6 +2,7 @@
 #include "json_utils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <sstream>
@@ -15,6 +16,12 @@ namespace {
             *error_message = message;
     }
 
+    // read_pod remains valid for single scalars (sh_int board points, the alias
+    // command-length int) and fixed char arrays (the 20-byte alias keyword
+    // buffers): those have no compiler-dependent padding or width, unlike
+    // rent_info / obj_file_elem / follower_file_elem below, which mix `long`
+    // (changes size on LP64) with structure padding baked into the on-disk
+    // format. Those three are decoded by the explicit-offset readers instead.
     template <typename T>
     bool read_pod(const std::string& bytes, size_t* offset, T* value, std::string* error_message, const char* label)
     {
@@ -30,6 +37,216 @@ namespace {
 
         std::memcpy(value, bytes.data() + *offset, sizeof(T));
         *offset += sizeof(T);
+        return true;
+    }
+
+    // ------------------------------------------------------------------
+    // Explicit-offset little-endian readers for the legacy 32-bit on-disk
+    // layout of rent_info / obj_file_elem / follower_file_elem. These
+    // deliberately do NOT memcpy into the native structs: on a 64-bit build
+    // sizeof(long) and struct padding change, but the bytes in lib/plrobjs
+    // were written by the 32-bit game and never change. Offsets and sizes
+    // are from docs/data-formats/object-rent-files.md, cross-checked against
+    // structs.h and confirmed with a container-side sizeof/offsetof probe.
+    // ------------------------------------------------------------------
+
+    constexpr size_t kRentInfoDiskSize = 48;
+    constexpr size_t kObjFileElemDiskSize = 56;
+    constexpr size_t kFollowerFileElemDiskSize = 28;
+
+    // These native-struct sizes only match the documented on-disk layout on
+    // the 32-bit build (4-byte long, default alignment/padding); a 64-bit
+    // build changes sizeof(long) and would trip this guard, so it is
+    // compiled away there rather than firing a false alarm — the explicit
+    // offsets above are what actually decode the on-disk bytes on any ABI.
+#if !defined(__LP64__) && !defined(_WIN64)
+    static_assert(sizeof(rent_info) == kRentInfoDiskSize, "rent_info on-disk layout doc drift");
+    static_assert(sizeof(obj_file_elem) == kObjFileElemDiskSize, "obj_file_elem on-disk layout doc drift");
+    static_assert(sizeof(follower_file_elem) == kFollowerFileElemDiskSize, "follower_file_elem on-disk layout doc drift");
+#endif
+
+    uint32_t read_u32le(const std::string& bytes, size_t offset)
+    {
+        return static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset]))
+            | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8)
+            | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 2])) << 16)
+            | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 3])) << 24);
+    }
+
+    int32_t read_s32le(const std::string& bytes, size_t offset)
+    {
+        return static_cast<int32_t>(read_u32le(bytes, offset));
+    }
+
+    int16_t read_s16le(const std::string& bytes, size_t offset)
+    {
+        return static_cast<int16_t>(static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset]))
+            | (static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8));
+    }
+
+    bool check_bounds(const std::string& bytes, size_t offset, size_t length, std::string* error_message, const char* label)
+    {
+        if (offset + length > bytes.size()) {
+            set_error(error_message, std::string("Truncated objects data while reading ") + label + ".");
+            return false;
+        }
+        return true;
+    }
+
+    // Portable in-memory mirror of `rent_info` (structs.h), populated by
+    // explicit-offset reads instead of a struct-shaped memcpy.
+    struct DecodedRentInfo {
+        int32_t time = 0;
+        int32_t rentcode = 0;
+        int32_t net_cost_per_hour = 0;
+        int32_t gold = 0;
+        int32_t nitems = 0;
+        int16_t spare0 = 0;
+        int16_t spare1 = 0;
+        int16_t spare2 = 0;
+        int32_t spare3 = 0;
+        int32_t spare4 = 0;
+        int32_t spare5 = 0;
+        int32_t spare6 = 0;
+        int32_t spare7 = 0;
+    };
+
+    // Offsets: docs/data-formats/object-rent-files.md "rent_info" table.
+    bool read_rent_info(const std::string& bytes, size_t* offset, DecodedRentInfo* rent, std::string* error_message)
+    {
+        if (!check_bounds(bytes, *offset, kRentInfoDiskSize, error_message, "rent data"))
+            return false;
+
+        const size_t base = *offset;
+        rent->time = read_s32le(bytes, base + 0);
+        rent->rentcode = read_s32le(bytes, base + 4);
+        rent->net_cost_per_hour = read_s32le(bytes, base + 8);
+        rent->gold = read_s32le(bytes, base + 12);
+        rent->nitems = read_s32le(bytes, base + 16);
+        rent->spare0 = read_s16le(bytes, base + 20);
+        rent->spare1 = read_s16le(bytes, base + 22);
+        rent->spare2 = read_s16le(bytes, base + 24);
+        // Offsets 26-27: 2 bytes of compiler padding aligning spare3; not read.
+        rent->spare3 = read_s32le(bytes, base + 28);
+        rent->spare4 = read_s32le(bytes, base + 32);
+        rent->spare5 = read_s32le(bytes, base + 36);
+        rent->spare6 = read_s32le(bytes, base + 40);
+        rent->spare7 = read_s32le(bytes, base + 44);
+        *offset += kRentInfoDiskSize;
+        return true;
+    }
+
+    // Portable in-memory mirror of `obj_file_elem` (structs.h). `bitvector`
+    // is read as a 32-bit value: the documented on-disk field is the 32-bit
+    // build's 4-byte `long`, not whatever width `long` has on the reading ABI.
+    struct DecodedObjFileElem {
+        int16_t item_number_deprecated = 0;
+        int16_t value[5] = { 0, 0, 0, 0, 0 };
+        int32_t extra_flags = 0;
+        int32_t weight = 0;
+        int32_t timer = 0;
+        int32_t bitvector = 0;
+        struct {
+            uint8_t location = 0;
+            int32_t modifier = 0;
+        } affected[MAX_OBJ_AFFECT];
+        int16_t wear_pos = 0;
+        int32_t loaded_by = 0;
+        int32_t item_number = 0;
+    };
+
+    // Offsets: docs/data-formats/object-rent-files.md "obj_file_elem" table.
+    bool read_obj_file_elem(const std::string& bytes, size_t* offset, DecodedObjFileElem* elem, std::string* error_message, const char* label)
+    {
+        if (!check_bounds(bytes, *offset, kObjFileElemDiskSize, error_message, label))
+            return false;
+
+        const size_t base = *offset;
+        elem->item_number_deprecated = read_s16le(bytes, base + 0);
+        for (size_t index = 0; index < 5; ++index)
+            elem->value[index] = read_s16le(bytes, base + 2 + index * 2);
+        elem->extra_flags = read_s32le(bytes, base + 12);
+        elem->weight = read_s32le(bytes, base + 16);
+        elem->timer = read_s32le(bytes, base + 20);
+        elem->bitvector = read_s32le(bytes, base + 24);
+        for (size_t index = 0; index < MAX_OBJ_AFFECT; ++index) {
+            const size_t affect_base = base + 28 + index * 8;
+            elem->affected[index].location = static_cast<uint8_t>(bytes[affect_base]);
+            // Bytes affect_base+1..+3: 3 bytes of compiler padding; not read.
+            elem->affected[index].modifier = read_s32le(bytes, affect_base + 4);
+        }
+        elem->wear_pos = read_s16le(bytes, base + 44);
+        // Bytes base+46..+47: 2 bytes of compiler padding aligning loaded_by; not read.
+        elem->loaded_by = read_s32le(bytes, base + 48);
+        elem->item_number = read_s32le(bytes, base + 52);
+        *offset += kObjFileElemDiskSize;
+        return true;
+    }
+
+    // Portable in-memory mirror of `follower_file_elem` (structs.h) — seven
+    // ints with no padding, but still read explicitly for ABI portability
+    // and consistency with the two structs above.
+    struct DecodedFollowerFileElem {
+        int32_t fol_vnum = 0;
+        int32_t mount_vnum = 0;
+        int32_t wimpy = 0;
+        int32_t exp = 0;
+        int32_t flag_config = 0;
+        int32_t spare1 = 0;
+        int32_t spare2 = 0;
+    };
+
+    // Offsets: docs/data-formats/object-rent-files.md "follower_file_elem" table.
+    bool read_follower_file_elem(const std::string& bytes, size_t* offset, DecodedFollowerFileElem* follower, std::string* error_message)
+    {
+        if (!check_bounds(bytes, *offset, kFollowerFileElemDiskSize, error_message, "follower record"))
+            return false;
+
+        const size_t base = *offset;
+        follower->fol_vnum = read_s32le(bytes, base + 0);
+        follower->mount_vnum = read_s32le(bytes, base + 4);
+        follower->wimpy = read_s32le(bytes, base + 8);
+        follower->exp = read_s32le(bytes, base + 12);
+        follower->flag_config = read_s32le(bytes, base + 16);
+        follower->spare1 = read_s32le(bytes, base + 20);
+        follower->spare2 = read_s32le(bytes, base + 24);
+        *offset += kFollowerFileElemDiskSize;
+        return true;
+    }
+
+    // Reads one obj_file_elem record and converts it to an ObjectRecord,
+    // applying the legacy item-number fallback (old-format saves stored the
+    // vnum in the narrower item_number_deprecated field and left the later,
+    // widened item_number field as stack garbage). Sets *is_sentinel and
+    // leaves *record untouched when the record is the -17 list terminator.
+    bool read_object_record_or_sentinel(const std::string& bytes, size_t* offset, ObjectRecord* record, bool* is_sentinel, std::string* error_message, const char* label)
+    {
+        DecodedObjFileElem raw_object {};
+        if (!read_obj_file_elem(bytes, offset, &raw_object, error_message, label))
+            return false;
+
+        if (raw_object.item_number_deprecated != DEPRECATED_ID_VALUE)
+            raw_object.item_number = raw_object.item_number_deprecated;
+
+        if (raw_object.item_number == SENTINEL_ITEM_ID_VALUE) {
+            *is_sentinel = true;
+            return true;
+        }
+
+        *is_sentinel = false;
+        record->item_number = raw_object.item_number;
+        for (size_t index = 0; index < record->values.size(); ++index)
+            record->values[index] = raw_object.value[index];
+        record->extra_flags = raw_object.extra_flags;
+        record->weight = raw_object.weight;
+        record->timer = raw_object.timer;
+        record->bitvector = raw_object.bitvector;
+        for (size_t index = 0; index < record->affects.size(); ++index) {
+            record->affects[index].location = raw_object.affected[index].location;
+            record->affects[index].modifier = raw_object.affected[index].modifier;
+        }
+        record->wear_pos = raw_object.wear_pos;
+        record->loaded_by = raw_object.loaded_by;
         return true;
     }
 
@@ -311,8 +528,8 @@ bool object_save_data_from_binary_impl(
     ObjectSaveData parsed_data;
     size_t offset = 0;
 
-    rent_info raw_rent {};
-    if (!read_pod(bytes, &offset, &raw_rent, error_message, "rent data"))
+    DecodedRentInfo raw_rent {};
+    if (!read_rent_info(bytes, &offset, &raw_rent, error_message))
         return false;
 
     parsed_data.rent.time = raw_rent.time;
@@ -330,33 +547,15 @@ bool object_save_data_from_binary_impl(
     parsed_data.rent.spare7 = raw_rent.spare7;
 
     while (true) {
-        obj_file_elem raw_object {};
-        if (!read_pod(bytes, &offset, &raw_object, error_message, "top-level object record"))
+        ObjectRecord record;
+        bool is_sentinel = false;
+        if (!read_object_record_or_sentinel(bytes, &offset, &record, &is_sentinel, error_message, "top-level object record"))
             return false;
 
-        if (raw_object.item_number_deprecated != DEPRECATED_ID_VALUE) {
-            raw_object.item_number = raw_object.item_number_deprecated;
-            raw_object.item_number_deprecated = DEPRECATED_ID_VALUE;
-        }
-
-        if (raw_object.item_number == SENTINEL_ITEM_ID_VALUE)
+        if (is_sentinel)
             break;
 
-        ObjectRecord record;
-        record.item_number = raw_object.item_number;
-        for (size_t index = 0; index < record.values.size(); ++index)
-            record.values[index] = raw_object.value[index];
-        record.extra_flags = raw_object.extra_flags;
-        record.weight = raw_object.weight;
-        record.timer = raw_object.timer;
-        record.bitvector = raw_object.bitvector;
-        for (size_t index = 0; index < record.affects.size(); ++index) {
-            record.affects[index].location = raw_object.affected[index].location;
-            record.affects[index].modifier = raw_object.affected[index].modifier;
-        }
-        record.wear_pos = raw_object.wear_pos;
-        record.loaded_by = raw_object.loaded_by;
-        parsed_data.objects.push_back(record);
+        parsed_data.objects.push_back(std::move(record));
     }
 
     for (size_t index = 0; index < parsed_data.board_points.size(); ++index) {
@@ -392,13 +591,13 @@ bool object_save_data_from_binary_impl(
 
     bool saw_follower_section = false;
     while (true) {
-        follower_file_elem raw_follower {};
+        DecodedFollowerFileElem raw_follower {};
         if (offset == bytes.size() && allow_missing_follower_section && !saw_follower_section) {
             if (accepted_missing_follower_section != nullptr)
                 *accepted_missing_follower_section = true;
             break;
         }
-        if (!read_pod(bytes, &offset, &raw_follower, error_message, "follower record"))
+        if (!read_follower_file_elem(bytes, &offset, &raw_follower, error_message))
             return false;
         saw_follower_section = true;
 
@@ -415,33 +614,15 @@ bool object_save_data_from_binary_impl(
         follower.spare2 = raw_follower.spare2;
 
         while (true) {
-            obj_file_elem raw_object {};
-            if (!read_pod(bytes, &offset, &raw_object, error_message, "follower object record"))
+            ObjectRecord record;
+            bool is_sentinel = false;
+            if (!read_object_record_or_sentinel(bytes, &offset, &record, &is_sentinel, error_message, "follower object record"))
                 return false;
 
-            if (raw_object.item_number_deprecated != DEPRECATED_ID_VALUE) {
-                raw_object.item_number = raw_object.item_number_deprecated;
-                raw_object.item_number_deprecated = DEPRECATED_ID_VALUE;
-            }
-
-            if (raw_object.item_number == SENTINEL_ITEM_ID_VALUE)
+            if (is_sentinel)
                 break;
 
-            ObjectRecord record;
-            record.item_number = raw_object.item_number;
-            for (size_t index = 0; index < record.values.size(); ++index)
-                record.values[index] = raw_object.value[index];
-            record.extra_flags = raw_object.extra_flags;
-            record.weight = raw_object.weight;
-            record.timer = raw_object.timer;
-            record.bitvector = raw_object.bitvector;
-            for (size_t index = 0; index < record.affects.size(); ++index) {
-                record.affects[index].location = raw_object.affected[index].location;
-                record.affects[index].modifier = raw_object.affected[index].modifier;
-            }
-            record.wear_pos = raw_object.wear_pos;
-            record.loaded_by = raw_object.loaded_by;
-            follower.objects.push_back(record);
+            follower.objects.push_back(std::move(record));
         }
 
         parsed_data.followers.push_back(std::move(follower));

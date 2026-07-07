@@ -154,6 +154,7 @@ if(ROTS_BUILD_TESTS)
         tests/obj_flag_data_tests.cpp
         tests/ObjFlagDataBuilder.cpp
         tests/object_utils_tests.cpp
+        tests/objects_json_layout_tests.cpp
         tests/objects_json_tests.cpp
         tests/olog_hai_tests.cpp
         tests/protocol_tests.cpp

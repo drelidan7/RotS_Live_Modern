@@ -184,6 +184,193 @@ TEST(ConvertPlrobjs, DeleteAfterDefaultsFalseAndOnlyRemovesMigratedFilesWhenRequ
     }
 }
 
+// Corrupt Legacy File Recovery (2026-07-07), Step 1 fixture matrix, rent
+// files: (a) truncated mid-record -- salvage the header plus every complete
+// leading object record, drop the trailing partial one.
+TEST(ConvertPlrobjs, RecoverySalvagesHeaderAndCompleteLeadingObjectRecordsWhenTruncatedMidRecord)
+{
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
+    TemporaryDirectory root;
+
+    const std::string full_bytes = legacy_rent_fixture::build_full_fixture_bytes();
+    // rent header (48) + 2 real items (56 each) + 30 of the would-be
+    // sentinel record's 56 bytes -- a genuine truncated-mid-record cut,
+    // never reaching the sentinel that would end the object list cleanly.
+    const size_t truncated_length = sizeof(rent_info) + 2 * sizeof(obj_file_elem) + 30;
+    ASSERT_LT(truncated_length, full_bytes.size());
+    const std::string truncated_bytes = full_bytes.substr(0, truncated_length);
+
+    const std::string legacy_path = root.path() + "/midrecord.obj";
+    write_file(legacy_path, truncated_bytes);
+
+    // Sanity: strict conversion must reject this file untouched -- otherwise
+    // this fixture isn't exercising the recovery path.
+    std::string strict_report;
+    EXPECT_EQ(0, convert_all_legacy_plrobjs(root.path().c_str(), /*delete_after=*/false, &strict_report));
+    ASSERT_TRUE(file_exists(legacy_path));
+
+    std::string report;
+    const int salvaged = recover_all_legacy_plrobjs(root.path().c_str(), &report);
+
+    EXPECT_EQ(1, salvaged);
+    EXPECT_FALSE(file_exists(legacy_path)) << "legacy .obj should have been renamed away";
+    const std::string salvaged_from_path = legacy_path + ".salvaged-from";
+    ASSERT_TRUE(file_exists(salvaged_from_path)) << "original must be preserved, never deleted";
+    EXPECT_EQ(truncated_bytes, read_file(salvaged_from_path)) << "the preserved original must be byte-identical to what was on disk";
+
+    const std::string json_path = root.path() + "/midrecord.objs.json";
+    ASSERT_TRUE(file_exists(json_path));
+
+    objects_json::ObjectSaveData salvaged_data;
+    std::string decode_error;
+    ASSERT_TRUE(objects_json::deserialize_objects_from_json(read_file(json_path), &salvaged_data, &decode_error)) << decode_error;
+
+    EXPECT_EQ(1234567890, salvaged_data.rent.time);
+    ASSERT_EQ(2u, salvaged_data.objects.size()) << "both complete leading records must be kept";
+    legacy_rent_fixture::expect_object_record_matches(salvaged_data.objects[0], 3001, WEAR_HEAD);
+    legacy_rent_fixture::expect_object_record_matches(salvaged_data.objects[1], 3002, MAX_WEAR);
+
+    // The object list never reached a sentinel, so nothing after it is
+    // salvageable -- board/alias/follower sections must all be empty/default,
+    // not half-included.
+    for (int index = 0; index < MAX_MAXBOARD; ++index)
+        EXPECT_EQ(0, salvaged_data.board_points[index]);
+    EXPECT_TRUE(salvaged_data.aliases.empty());
+    EXPECT_TRUE(salvaged_data.followers.empty());
+
+    EXPECT_NE(report.find("SALVAGED"), std::string::npos);
+    EXPECT_NE(report.find("2 top-level object(s)"), std::string::npos);
+    EXPECT_NE(report.find("1 partial trailing object record(s) dropped"), std::string::npos);
+}
+
+// (b) empty file: nothing to salvage -- report-only, untouched.
+TEST(ConvertPlrobjs, RecoveryLeavesEmptyFileUntouchedAndReportsIt)
+{
+    TemporaryDirectory root;
+
+    const std::string legacy_path = root.path() + "/empty.obj";
+    write_file(legacy_path, "");
+
+    std::string report;
+    const int salvaged = recover_all_legacy_plrobjs(root.path().c_str(), &report);
+
+    EXPECT_EQ(0, salvaged);
+    ASSERT_TRUE(file_exists(legacy_path));
+    EXPECT_EQ("", read_file(legacy_path));
+    EXPECT_FALSE(file_exists(legacy_path + ".salvaged-from"));
+    EXPECT_FALSE(file_exists(root.path() + "/empty.objs.json"));
+    EXPECT_NE(report.find("UNSALVAGEABLE"), std::string::npos);
+    EXPECT_NE(report.find("empty file"), std::string::npos);
+}
+
+// (c) garbage header: fewer than 48 bytes present at all -- "salvage
+// requires at least a valid rent header" -- untouched, reported (distinct
+// message from the empty-file case).
+TEST(ConvertPlrobjs, RecoveryLeavesGarbageHeaderUntouchedAndReportsIt)
+{
+    TemporaryDirectory root;
+
+    const std::string garbage_bytes(10, '\xAB'); // nonzero, but far short of the 48-byte rent_info header
+    const std::string legacy_path = root.path() + "/garbageheader.obj";
+    write_file(legacy_path, garbage_bytes);
+
+    std::string report;
+    const int salvaged = recover_all_legacy_plrobjs(root.path().c_str(), &report);
+
+    EXPECT_EQ(0, salvaged);
+    ASSERT_TRUE(file_exists(legacy_path));
+    EXPECT_EQ(garbage_bytes, read_file(legacy_path));
+    EXPECT_FALSE(file_exists(legacy_path + ".salvaged-from"));
+    EXPECT_FALSE(file_exists(root.path() + "/garbageheader.objs.json"));
+    EXPECT_NE(report.find("UNSALVAGEABLE"), std::string::npos);
+    EXPECT_NE(report.find("No valid rent header"), std::string::npos);
+}
+
+// (d) valid file: recovery mode must REFUSE it -- recovery only ever runs on
+// files strict conversion rejects, so lossless conversion can never degrade
+// to lossy salvage. This is THE load-bearing invariant for this feature.
+TEST(ConvertPlrobjs, RecoveryRefusesFileThatStrictConversionWouldAlreadyAccept)
+{
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
+    TemporaryDirectory root;
+
+    const std::string valid_bytes = legacy_rent_fixture::build_full_fixture_bytes();
+    const std::string legacy_path = root.path() + "/wholesome.obj";
+    write_file(legacy_path, valid_bytes);
+
+    std::string report;
+    const int salvaged = recover_all_legacy_plrobjs(root.path().c_str(), &report);
+
+    EXPECT_EQ(0, salvaged);
+    ASSERT_TRUE(file_exists(legacy_path)) << "recovery must never touch a file strict conversion would accept";
+    EXPECT_EQ(valid_bytes, read_file(legacy_path));
+    EXPECT_FALSE(file_exists(legacy_path + ".salvaged-from"));
+    EXPECT_FALSE(file_exists(root.path() + "/wholesome.objs.json"));
+    EXPECT_NE(report.find("REFUSED"), std::string::npos);
+    EXPECT_NE(report.find("wholesome.obj"), std::string::npos);
+}
+
+// Board+alias sections are fully intact (and the alias section's no-NUL
+// 20-byte keyword is sanitized per the locked policy) even though the
+// follower section trails off mid-header -- "sections included only if
+// fully intact" is per-section, not all-or-nothing for the whole file.
+TEST(ConvertPlrobjs, RecoveryKeepsIntactBoardAndSanitizedAliasSectionsWhileDroppingIncompleteFollowerSection)
+{
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
+    TemporaryDirectory root;
+
+    const std::string full_length_keyword(20, 'k'); // exactly 20 bytes, no NUL anywhere
+    const std::string full_bytes = legacy_rent_fixture::build_full_fixture_bytes_with_alias(full_length_keyword, "kill orc");
+
+    // Keep everything through the alias section's terminator, then replace
+    // the (complete) follower section with a short garbage tail -- too few
+    // bytes for even one follower_file_elem header. Strict conversion's
+    // "missing follower section" tolerance only covers EOF landing exactly
+    // at the start of the follower section (zero trailing bytes); a nonzero
+    // but incomplete trailing chunk is a genuine decode failure for strict.
+    const size_t prefix_length = sizeof(rent_info) + 3 * sizeof(obj_file_elem)
+        + static_cast<size_t>(MAX_MAXBOARD) * sizeof(sh_int) + 20 + sizeof(int) + 8 /* "kill orc" */ + 20;
+    ASSERT_LT(prefix_length, full_bytes.size());
+    const std::string truncated_bytes = full_bytes.substr(0, prefix_length) + std::string(10, '\x7F');
+
+    const std::string legacy_path = root.path() + "/partialfollower.obj";
+    write_file(legacy_path, truncated_bytes);
+
+    std::string strict_report;
+    EXPECT_EQ(0, convert_all_legacy_plrobjs(root.path().c_str(), /*delete_after=*/false, &strict_report));
+    ASSERT_TRUE(file_exists(legacy_path));
+
+    std::string report;
+    const int salvaged = recover_all_legacy_plrobjs(root.path().c_str(), &report);
+
+    EXPECT_EQ(1, salvaged);
+    const std::string json_path = root.path() + "/partialfollower.objs.json";
+    ASSERT_TRUE(file_exists(json_path));
+
+    objects_json::ObjectSaveData salvaged_data;
+    std::string decode_error;
+    ASSERT_TRUE(objects_json::deserialize_objects_from_json(read_file(json_path), &salvaged_data, &decode_error)) << decode_error;
+
+    ASSERT_EQ(2u, salvaged_data.objects.size());
+    for (int index = 0; index < MAX_MAXBOARD; ++index)
+        EXPECT_EQ(100 + index, salvaged_data.board_points[index]);
+
+    ASSERT_EQ(1u, salvaged_data.aliases.size());
+    EXPECT_EQ(std::string(19, 'k'), salvaged_data.aliases[0].keyword) << "20-byte no-NUL keyword sanitized to the 19-byte printable prefix";
+    EXPECT_EQ("kill orc", salvaged_data.aliases[0].command);
+
+    EXPECT_TRUE(salvaged_data.followers.empty()) << "the incomplete follower section must be dropped wholesale, not half-included";
+
+    EXPECT_NE(report.find("1 alias(es)"), std::string::npos);
+    EXPECT_NE(report.find("0 follower(s)"), std::string::npos);
+}
+
 TEST(ConvertPlrobjs, IgnoresNonObjFilesAndEmptyRoot)
 {
     TemporaryDirectory root;

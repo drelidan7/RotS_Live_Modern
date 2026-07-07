@@ -1,5 +1,6 @@
 #include "objects_json.h"
 #include "json_utils.h"
+#include "legacy_salvage.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -646,6 +647,214 @@ bool object_save_data_from_binary_impl(
     return true;
 }
 
+// Attempts to read one complete object list (repeated obj_file_elem records
+// through the -17 sentinel) starting at `*offset`, entirely within bounds.
+// On success, advances `*offset` past the sentinel and returns the records
+// read (possibly empty). On any truncation/failure, `*offset` is left
+// UNCHANGED (the caller's local scan offset, not the real cursor) and false
+// is returned -- used by recovery's "fully intact or dropped wholesale"
+// sections (a follower's own object list).
+bool try_read_complete_object_list(const std::string& bytes, size_t* offset, std::vector<ObjectRecord>* records, const char* label)
+{
+    size_t local_offset = *offset;
+    std::vector<ObjectRecord> parsed_records;
+    while (true) {
+        ObjectRecord record;
+        bool is_sentinel = false;
+        if (!read_object_record_or_sentinel(bytes, &local_offset, &record, &is_sentinel, nullptr, label))
+            return false;
+        if (is_sentinel)
+            break;
+        parsed_records.push_back(std::move(record));
+    }
+    *offset = local_offset;
+    *records = std::move(parsed_records);
+    return true;
+}
+
+// Corrupt Legacy File Recovery (2026-07-07): lenient structural salvage --
+// see the full contract in objects_json.h. Lives in this anonymous
+// namespace (not object_save_data_from_binary_impl's single linear pass)
+// because unlike the strict decoders, each section here can independently
+// stop the parse without failing the whole file.
+bool recover_object_save_data_from_binary_impl(
+    const std::string& bytes, ObjectSaveData* data, int* dropped_partial_record_count, std::string* error_message)
+{
+    if (dropped_partial_record_count != nullptr)
+        *dropped_partial_record_count = 0;
+
+    if (data == nullptr) {
+        set_error(error_message, "Objects data output parameter must not be null.");
+        return false;
+    }
+
+    if (bytes.size() < kRentInfoDiskSize) {
+        set_error(error_message, "No valid rent header: fewer than 48 bytes available.");
+        return false;
+    }
+
+    ObjectSaveData parsed_data;
+    size_t offset = 0;
+
+    DecodedRentInfo raw_rent {};
+    if (!read_rent_info(bytes, &offset, &raw_rent, error_message)) {
+        // Unreachable given the size check above, but defensive: a header
+        // that can't even be read is not a valid header.
+        return false;
+    }
+    parsed_data.rent.time = raw_rent.time;
+    parsed_data.rent.rentcode = raw_rent.rentcode;
+    parsed_data.rent.net_cost_per_hour = raw_rent.net_cost_per_hour;
+    parsed_data.rent.gold = raw_rent.gold;
+    parsed_data.rent.nitems = raw_rent.nitems;
+    parsed_data.rent.spare0 = raw_rent.spare0;
+    parsed_data.rent.spare1 = raw_rent.spare1;
+    parsed_data.rent.spare2 = raw_rent.spare2;
+    parsed_data.rent.spare3 = raw_rent.spare3;
+    parsed_data.rent.spare4 = raw_rent.spare4;
+    parsed_data.rent.spare5 = raw_rent.spare5;
+    parsed_data.rent.spare6 = raw_rent.spare6;
+    parsed_data.rent.spare7 = raw_rent.spare7;
+
+    // Top-level object records: keep every COMPLETE record while there is
+    // room for one; a trailing partial record's bytes are dropped (counted,
+    // not fatal) and salvage stops there.
+    bool object_list_ended_cleanly = false;
+    while (true) {
+        if (offset + kObjFileElemDiskSize > bytes.size()) {
+            if (offset != bytes.size() && dropped_partial_record_count != nullptr)
+                ++(*dropped_partial_record_count);
+            offset = bytes.size();
+            break;
+        }
+        ObjectRecord record;
+        bool is_sentinel = false;
+        if (!read_object_record_or_sentinel(bytes, &offset, &record, &is_sentinel, nullptr, "top-level object record")) {
+            // Unreachable given the bounds check just above; defensive stop.
+            break;
+        }
+        if (is_sentinel) {
+            object_list_ended_cleanly = true;
+            break;
+        }
+        parsed_data.objects.push_back(std::move(record));
+    }
+
+    // Everything after the object list is only included if the list itself
+    // ended cleanly (real sentinel, not "ran out of bytes") AND each
+    // subsequent section parses fully intact -- a partial section is
+    // dropped wholesale rather than half-included, and salvage stops there.
+    if (!object_list_ended_cleanly) {
+        *data = std::move(parsed_data);
+        set_error(error_message, "");
+        return true;
+    }
+
+    const size_t board_bytes = parsed_data.board_points.size() * sizeof(sh_int);
+    if (offset + board_bytes > bytes.size()) {
+        *data = std::move(parsed_data);
+        set_error(error_message, "");
+        return true;
+    }
+    for (size_t index = 0; index < parsed_data.board_points.size(); ++index) {
+        sh_int point = 0;
+        read_pod(bytes, &offset, &point, nullptr, "board point"); // cannot fail: bounds already checked above
+        parsed_data.board_points[index] = point;
+    }
+
+    // Aliases: fully intact only if the whole list (through its 20-byte
+    // all-zero terminator) is present without truncation. Sanitize each
+    // keyword per the locked policy iff it has no NUL within its 20-byte
+    // width (same treatment exploits recovery applies to chtime/chVictimName).
+    std::vector<AliasData> parsed_aliases;
+    size_t alias_scan_offset = offset;
+    bool alias_section_intact = true;
+    while (true) {
+        char keyword_bytes[20] {};
+        if (!read_pod(bytes, &alias_scan_offset, &keyword_bytes, nullptr, "alias keyword")) {
+            alias_section_intact = false;
+            break;
+        }
+        if (keyword_bytes[0] == '\0')
+            break; // clean terminator
+
+        int command_length = 0;
+        if (!read_pod(bytes, &alias_scan_offset, &command_length, nullptr, "alias command length")) {
+            alias_section_intact = false;
+            break;
+        }
+        if (command_length < 0 || alias_scan_offset + static_cast<size_t>(command_length) > bytes.size()) {
+            alias_section_intact = false;
+            break;
+        }
+
+        AliasData alias;
+        if (legacy_salvage::fixed_width_field_has_no_nul(keyword_bytes, sizeof(keyword_bytes)))
+            alias.keyword = legacy_salvage::sanitize_fixed_width_field(keyword_bytes, sizeof(keyword_bytes));
+        else
+            alias.keyword.assign(keyword_bytes, std::find(keyword_bytes, keyword_bytes + sizeof(keyword_bytes), '\0'));
+        alias.command.assign(bytes.data() + alias_scan_offset, static_cast<size_t>(command_length));
+        alias_scan_offset += static_cast<size_t>(command_length);
+        parsed_aliases.push_back(std::move(alias));
+    }
+
+    if (!alias_section_intact) {
+        *data = std::move(parsed_data);
+        set_error(error_message, "");
+        return true;
+    }
+    offset = alias_scan_offset;
+    parsed_data.aliases = std::move(parsed_aliases);
+
+    // Followers: fully intact only if the whole follower section (each
+    // follower's fixed header plus its own complete object list, repeated
+    // through the top-level follower-list terminator) is present. As with
+    // the strict legacy decoder, a completely absent follower section (EOF
+    // right here, before any follower has been read) is tolerated, not an
+    // error -- older saves predate follower persistence.
+    std::vector<FollowerData> parsed_followers;
+    size_t follower_scan_offset = offset;
+    bool follower_section_intact = true;
+    while (true) {
+        if (follower_scan_offset == bytes.size() && parsed_followers.empty())
+            break; // legacy tolerance: no follower section at all
+
+        DecodedFollowerFileElem raw_follower {};
+        if (!read_follower_file_elem(bytes, &follower_scan_offset, &raw_follower, nullptr)) {
+            follower_section_intact = false;
+            break;
+        }
+        if (raw_follower.fol_vnum == SENTINEL_ITEM_ID_VALUE)
+            break; // clean end of follower list
+
+        FollowerData follower;
+        follower.fol_vnum = raw_follower.fol_vnum;
+        follower.mount_vnum = raw_follower.mount_vnum;
+        follower.wimpy = raw_follower.wimpy;
+        follower.exp = raw_follower.exp;
+        follower.flag_config = raw_follower.flag_config;
+        follower.spare1 = raw_follower.spare1;
+        follower.spare2 = raw_follower.spare2;
+
+        std::vector<ObjectRecord> follower_objects;
+        if (!try_read_complete_object_list(bytes, &follower_scan_offset, &follower_objects, "follower object record")) {
+            follower_section_intact = false;
+            break;
+        }
+        follower.objects = std::move(follower_objects);
+        parsed_followers.push_back(std::move(follower));
+    }
+
+    if (follower_section_intact)
+        parsed_data.followers = std::move(parsed_followers);
+    // else: leave parsed_data.followers empty -- a partial follower section
+    // is dropped wholesale, same as an incomplete alias/board section above.
+
+    *data = std::move(parsed_data);
+    set_error(error_message, "");
+    return true;
+}
+
 } // namespace
 
 bool object_save_data_from_binary(const std::string& bytes, ObjectSaveData* data, std::string* error_message)
@@ -657,6 +866,12 @@ bool legacy_object_save_data_from_binary(
     const std::string& bytes, ObjectSaveData* data, bool* accepted_missing_follower_section, std::string* error_message)
 {
     return object_save_data_from_binary_impl(bytes, data, true, accepted_missing_follower_section, error_message);
+}
+
+bool recover_object_save_data_from_binary(
+    const std::string& bytes, ObjectSaveData* data, int* dropped_partial_record_count, std::string* error_message)
+{
+    return recover_object_save_data_from_binary_impl(bytes, data, dropped_partial_record_count, error_message);
 }
 
 bool object_save_data_to_binary(const ObjectSaveData& data, std::string* bytes, std::string* error_message)

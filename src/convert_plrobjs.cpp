@@ -198,6 +198,106 @@ bool convert_one_legacy_plrobj_file(const std::string& legacy_path, std::ostring
     return true;
 }
 
+// True iff STRICT conversion (legacy decode -> serialize -> verify-decode ->
+// field-compare, without the file I/O) would accept `legacy_bytes` as-is.
+// Shared by recovery's binding refuse-if-already-valid check so it can never
+// diverge from what the strict sweep itself would decide.
+bool legacy_plrobj_bytes_round_trip_losslessly(const std::string& legacy_bytes)
+{
+    objects_json::ObjectSaveData strict_decoded;
+    bool accepted_missing_follower_section = false;
+    std::string strict_decode_error;
+    if (!objects_json::legacy_object_save_data_from_binary(legacy_bytes, &strict_decoded, &accepted_missing_follower_section, &strict_decode_error))
+        return false;
+
+    const std::string strict_json = objects_json::serialize_objects_to_json(strict_decoded);
+
+    objects_json::ObjectSaveData strict_reparsed;
+    std::string strict_verify_error;
+    if (!objects_json::deserialize_objects_from_json(strict_json, &strict_reparsed, &strict_verify_error))
+        return false;
+
+    return objects_json::object_save_data_equal(strict_decoded, strict_reparsed);
+}
+
+// Recovery counterpart to convert_one_legacy_plrobj_file: attempts a lossy
+// structural salvage of one legacy `.obj` file that STRICT conversion
+// rejects. See convert_plrobjs.h for the full contract. Appends exactly one
+// line to `*report`. Returns true iff a file was actually salvaged (JSON
+// written and legacy file renamed to `.obj.salvaged-from`).
+bool recover_one_legacy_plrobj_file(const std::string& legacy_path, std::ostringstream* report)
+{
+    std::string legacy_bytes;
+    if (!read_binary_file_contents(legacy_path.c_str(), &legacy_bytes)) {
+        *report << "SKIP (recovery) " << legacy_path << ": failed to read file: " << std::strerror(errno) << "\n";
+        return false;
+    }
+
+    if (legacy_bytes.empty()) {
+        *report << "UNSALVAGEABLE (recovery) " << legacy_path << ": empty file, nothing to salvage\n";
+        return false;
+    }
+
+    // Binding invariant: recovery never runs on a file STRICT conversion
+    // would already accept.
+    if (legacy_plrobj_bytes_round_trip_losslessly(legacy_bytes)) {
+        *report << "REFUSED (recovery) " << legacy_path
+                << ": file already round-trips losslessly under strict conversion; run convertplrobjs (no recover argument) instead\n";
+        return false;
+    }
+
+    objects_json::ObjectSaveData salvaged;
+    int dropped_partial_record_count = 0;
+    std::string salvage_error;
+    if (!objects_json::recover_object_save_data_from_binary(legacy_bytes, &salvaged, &dropped_partial_record_count, &salvage_error)) {
+        *report << "UNSALVAGEABLE (recovery) " << legacy_path << ": " << salvage_error << "\n";
+        return false;
+    }
+
+    const std::string json = objects_json::serialize_objects_to_json(salvaged);
+
+    objects_json::ObjectSaveData reparsed;
+    std::string verify_decode_error;
+    if (!objects_json::deserialize_objects_from_json(json, &reparsed, &verify_decode_error)) {
+        *report << "SKIP (recovery) " << legacy_path << ": verify-decode of freshly serialized salvage JSON failed: " << verify_decode_error << "\n";
+        return false;
+    }
+
+    if (!objects_json::object_save_data_equal(salvaged, reparsed)) {
+        *report << "SKIP (recovery) " << legacy_path << ": verify mismatch -- re-decoded salvage JSON does not equal the salvaged decode\n";
+        return false;
+    }
+
+    // legacy_path ends in ".obj" (guaranteed by the caller's collection
+    // filter), same JSON-path convention as the strict sweep.
+    const std::string base_path = legacy_path.substr(0, legacy_path.size() - 4);
+    const std::string json_path = base_path + ".objs.json";
+
+    std::string write_error;
+    if (!write_file_contents_atomically(json_path, json, &write_error)) {
+        *report << "SKIP (recovery) " << legacy_path << ": " << write_error << "\n";
+        return false;
+    }
+
+    const std::string salvaged_from_path = legacy_path + ".salvaged-from";
+    if (std::rename(legacy_path.c_str(), salvaged_from_path.c_str()) != 0) {
+        // Same partial-success handling as the strict path: the JSON is
+        // written and verified -- data is safe -- but the legacy file
+        // couldn't be retired, so it's left in place rather than treated as
+        // a failure.
+        *report << "SALVAGED (legacy rename failed) " << legacy_path << " -> " << json_path << " (" << salvaged.objects.size()
+                << " top-level object(s), " << salvaged.aliases.size() << " alias(es), " << salvaged.followers.size()
+                << " follower(s) recovered; " << dropped_partial_record_count
+                << " partial trailing object record(s) dropped; legacy file left in place: " << std::strerror(errno) << ")\n";
+        return true;
+    }
+
+    *report << "SALVAGED " << legacy_path << " -> " << json_path << " (" << salvaged.objects.size() << " top-level object(s), "
+            << salvaged.aliases.size() << " alias(es), " << salvaged.followers.size() << " follower(s) recovered; "
+            << dropped_partial_record_count << " partial trailing object record(s) dropped; legacy renamed to " << salvaged_from_path << ")\n";
+    return true;
+}
+
 } // namespace
 
 int convert_all_legacy_plrobjs(const char* plrobjs_root, bool delete_after, std::string* report)
@@ -240,6 +340,33 @@ int convert_all_legacy_plrobjs(const char* plrobjs_root, bool delete_after, std:
     return converted_count;
 }
 
+int recover_all_legacy_plrobjs(const char* plrobjs_root, std::string* report)
+{
+    std::ostringstream report_stream;
+
+    if (plrobjs_root == nullptr || !*plrobjs_root) {
+        if (report)
+            *report = "SKIP: plrobjs_root must not be empty.\n";
+        return 0;
+    }
+
+    std::vector<std::string> legacy_paths;
+    collect_files_with_suffix(plrobjs_root, ".obj", &legacy_paths);
+    std::sort(legacy_paths.begin(), legacy_paths.end());
+
+    int salvaged_count = 0;
+    for (const std::string& legacy_path : legacy_paths) {
+        if (recover_one_legacy_plrobj_file(legacy_path, &report_stream))
+            ++salvaged_count;
+    }
+
+    report_stream << salvaged_count << " file(s) salvaged out of " << legacy_paths.size() << " legacy .obj file(s) examined.\n";
+
+    if (report)
+        *report = report_stream.str();
+    return salvaged_count;
+}
+
 ACMD(do_convert_plrobjs)
 {
     if (GET_LEVEL(ch) < LEVEL_IMPL) {
@@ -247,13 +374,31 @@ ACMD(do_convert_plrobjs)
         return;
     }
 
-    bool delete_after = false;
+    std::string argument_lower;
     if (argument != nullptr) {
-        std::string argument_lower = argument;
+        argument_lower = argument;
         std::transform(argument_lower.begin(), argument_lower.end(), argument_lower.begin(),
             [](unsigned char character) { return static_cast<char>(tolower(character)); });
-        delete_after = argument_lower.find("delete") != std::string::npos;
     }
+
+    if (argument_lower.find("recover") != std::string::npos) {
+        std::string report;
+        const int salvaged = recover_all_legacy_plrobjs("plrobjs", &report);
+
+        // Distinct filename from the strict sweep's own report -- a
+        // recovery run must never clobber convert_report.txt.
+        const char* report_path = "plrobjs/recovery_report.txt";
+        std::string write_error;
+        write_file_contents_atomically(report_path, report, &write_error);
+
+        char buf[MAX_STRING_LENGTH];
+        snprintf(buf, sizeof(buf),
+            "Plrobjs recovery sweep complete: %d file(s) salvaged. Full report: %s\r\n", salvaged, report_path);
+        send_to_char(buf, ch);
+        return;
+    }
+
+    const bool delete_after = argument_lower.find("delete") != std::string::npos;
 
     std::string report;
     const int converted = convert_all_legacy_plrobjs("plrobjs", delete_after, &report);

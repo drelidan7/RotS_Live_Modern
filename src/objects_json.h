@@ -72,6 +72,41 @@ struct ObjectSaveData {
 bool object_save_data_from_binary(const std::string& bytes, ObjectSaveData* data, std::string* error_message = nullptr);
 bool legacy_object_save_data_from_binary(
     const std::string& bytes, ObjectSaveData* data, bool* accepted_missing_follower_section = nullptr, std::string* error_message = nullptr);
+
+// Corrupt Legacy File Recovery (2026-07-07): a lenient, lossy structural
+// decode for `.obj` rent files that fail even legacy_object_save_data_from_binary
+// (empty, truncated, or otherwise garbled). Parses as much as is genuinely
+// salvageable from the front of `bytes` and stops at the first
+// truncated/invalid section rather than failing the whole file:
+//
+//   - rent header (48 bytes): required. Returns false (data untouched, an
+//     error set) if fewer than 48 bytes are available at all -- "salvage
+//     requires at least a valid rent header."
+//   - top-level object records: kept one obj_file_elem at a time while a
+//     complete 56-byte record is present; stops at the first
+//     truncated/incomplete trailing record (that partial record's bytes are
+//     dropped, counted in `*dropped_partial_record_count`, not an error).
+//   - board points / aliases / followers: each subsequent section is
+//     included ONLY if it parses fully intact (through its own terminator);
+//     an incomplete section is dropped in its entirety (not partially
+//     included), and no later section is attempted. Alias keywords are
+//     sanitized per legacy_salvage::sanitize_fixed_width_field when (and
+//     only when) they have no NUL within their 20-byte width, matching the
+//     same policy exploits recovery applies to chtime/chVictimName.
+//
+// Trailing bytes after a fully-intact parse are silently ignored (unlike the
+// strict decoders, which treat them as a hard error) -- recovery only ever
+// adds tolerance, never new rejection modes.
+//
+// Returns true whenever a rent header was present (even if everything after
+// it had to be dropped) so the caller can distinguish "no header, nothing to
+// salvage" from "header salvaged, rest was empty/garbage."
+// `dropped_partial_record_count`, if non-null, is set to the number of
+// trailing partial top-level object records discarded (0 or 1; recovery
+// stops at the first one).
+bool recover_object_save_data_from_binary(
+    const std::string& bytes, ObjectSaveData* data, int* dropped_partial_record_count = nullptr, std::string* error_message = nullptr);
+
 bool object_save_data_to_binary(const ObjectSaveData& data, std::string* bytes, std::string* error_message = nullptr);
 std::string serialize_objects_to_json(const ObjectSaveData& data);
 bool deserialize_objects_from_json(const std::string& json, ObjectSaveData* data, std::string* error_message = nullptr);

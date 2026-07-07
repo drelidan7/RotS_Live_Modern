@@ -40,6 +40,13 @@
   in the commit message. Unintentional drift = a bug in your change.
 - All game randomness flows through `rots_rng` (mt19937, platform-independent).
   Never call `rand()`/`random()` directly.
+- **`legacy_*_fixture.bin` goldens are 32-bit-only; never regenerate them on a 64-bit build.**
+  `src/tests/goldens/legacy_{rent,board,mail,pkill,crime,exploits}_fixture.bin` encode the
+  historical 32-bit compiler struct layout (padding, `long`/`int` sizes) that the legacy
+  binary decoders read. `UPDATE_GOLDENS=1` against these is only valid from inside the
+  32-bit i386 container (`scripts/rots-docker.sh` / `docker compose run rots`); running it
+  on a 64-bit host or the `linux-x64`/`macos-arm64` CMake presets would silently bake in the
+  wrong (64-bit) layout and defeat the fixture's entire purpose.
 
 ## Commit & Pull Request Guidelines
 - Commits: concise, imperative subject (<=72 chars). Reference issues/PRs, e.g., "ranger: fix stun timing (#255)".

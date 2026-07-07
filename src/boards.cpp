@@ -958,6 +958,14 @@ bool legacy_board_file_from_binary(const std::string& bytes, BoardSaveData* data
         parsed.messages.push_back(std::move(message));
     }
 
+    // Deliberate post-legacy hardening (Phase 2a Task 4 review finding): the
+    // original loader trusted num_of_msgs and never checked for leftover
+    // bytes after the last record, so a truncated/appended-to legacy file
+    // could silently under- or over-read. This decoder is stricter and
+    // rejects any trailing bytes outright. Verified harmless against all 25
+    // real legacy .boa files on disk at the time this check was added (none
+    // had trailing bytes) -- this is a one-time migration-path guard, not a
+    // behavior change to the live JSON format.
     if (offset != bytes.size()) {
         set_error(error_message, "Board file corrupt: trailing bytes after the last message record.");
         return false;

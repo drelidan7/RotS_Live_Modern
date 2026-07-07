@@ -1,5 +1,11 @@
 # Player save files
 
+> **LEGACY — retired 2026-07; live format is JSON** (see `src/objects_json.cpp` /
+> `boards.cpp` / `mail.cpp`). This document describes the frozen 32-bit layout that the
+> migration decoders read; it is no longer written by the live game. See CLAUDE.md's
+> persistence gotcha for the current JSON-first save/load path and the one-time
+> legacy-to-JSON converters.
+
 **Source files:** `src/db.cpp` (`save_player:2302`, `load_player:1736`,
 `char_to_store:2099`, `store_to_char:1995`, `save_char:2475`, `load_char:1979`);
 `struct char_file_u` (`structs.h:1783`)

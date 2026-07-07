@@ -1,11 +1,11 @@
-# Phase 1 CI matrix (modernization plan).
+# Phase 2b CI matrix (modernization plan).
 #
-# legacy-32bit is the REQUIRED job: it builds and tests the shipping 32-bit
-# binary in the same i386 container used locally. The three 64-bit jobs run
-# allowed-to-fail (continue-on-error) until their enabling phase lands:
-# linux-x64 is already green (kept allowed-to-fail until Phase 2 blesses the
-# 64-bit runtime); macos-arm64 turns green in Phase 2, windows-msvc in Phase 3.
-# Their logs are the porting work-list, not noise.
+# legacy-32bit, linux-x64, and macos-arm64 are all REQUIRED jobs: Phase 2b
+# verified the 64-bit Linux and native macOS arm64 builds boot, pass tests,
+# and match the Phase 0 characterization goldens, so their continue-on-error
+# escape hatches are gone. Only windows-msvc still runs allowed-to-fail
+# (continue-on-error) until Phase 3 lands the Windows platform layer; its log
+# is the porting work-list, not noise.
 #
 # CI deliberately has NO boot smoke and NO account_smoke.py: both need
 # lib/world/ (separate repo, git-ignored) and the Rust proxy. Unit tests and
@@ -48,9 +48,8 @@ jobs:
             grep -E "\[  PASSED  \] [1-9][0-9]* tests" /tmp/tests.out'
 
   linux-x64:
-    name: Linux x64 (allowed to fail until Phase 2)
+    name: Linux x64 (required)
     runs-on: ubuntu-24.04
-    continue-on-error: true
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -66,9 +65,8 @@ jobs:
         run: cd src && ctest --preset linux-x64
 
   macos-arm64:
-    name: macOS arm64 (allowed to fail until Phase 2)
+    name: macOS arm64 (required)
     runs-on: macos-14
-    continue-on-error: true
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4

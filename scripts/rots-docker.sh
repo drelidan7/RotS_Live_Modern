@@ -2,7 +2,7 @@
 # Helper for building and running RotS in the 32-bit Linux container.
 #
 # Usage:
-#   scripts/rots-docker.sh build      Build the i386 toolchain image.
+#   scripts/rots-docker.sh build      Build the i386 toolchain image (or `docker compose build rots64` for 64-bit).
 #   scripts/rots-docker.sh compile    Run `make setup` + `make all` in the container.
 #   scripts/rots-docker.sh boot       Compile (if needed) and start the server on :1024.
 #                                     Runs WITHOUT -p, so you can connect by plain telnet.
@@ -24,7 +24,7 @@ SERVICE="${ROTS_SERVICE:-rots}"
 cmd="${1:-boot}"
 case "$cmd" in
   build)
-    docker compose build
+    docker compose build rots
     ;;
   compile)
     docker compose run --rm rots bash -lc 'cd /rots/src && make setup && make all'

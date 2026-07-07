@@ -1,6 +1,8 @@
 # Dockerized 32-bit build/run for RotS. See docs/BUILD.md.
 #
-#   docker compose build                       # build the i386 toolchain image
+#   docker compose build                       # build both i386 and x64 images
+#   docker compose build rots                  # build the i386 toolchain image
+#   docker compose build rots64                # build the x64 runtime image
 #   docker compose run --rm --service-ports rots   # interactive shell in the repo
 #
 # The repo is bind-mounted at /rots, so build artifacts (bin/ageland, *.o) and any

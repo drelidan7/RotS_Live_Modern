@@ -3440,16 +3440,23 @@ void reset_char(struct char_data* ch)
  * alloc'ed*/
 void clear_char(struct char_data* ch, int mode)
 {
-    /* ch always points to memory obtained via CREATE()/calloc (raw, unconstructed
-     * storage) at every call site — never to a char_data that has already run its
-     * constructor. Placement-new value-initializes it in place: this zeroes every
-     * POD member exactly like the old memset did, but also properly constructs
-     * the non-trivial members (player_damage_details::damage_map is a std::map;
-     * specialization_data has a user destructor) instead of leaving them as
-     * zeroed-but-never-constructed memory, which is undefined behavior the moment
-     * those members are used (deterministic SIGSEGV under libc++/macOS; silently
-     * tolerated by libstdc++/Linux). See db.cpp read_mobile() for the other call
-     * path that needs the same treatment. */
+    /* At every production call site, ch points to memory obtained via
+     * CREATE()/calloc (raw, unconstructed storage), never to a char_data that has
+     * already run its constructor. Placement-new value-initializes it in place:
+     * this zeroes every POD member exactly like the old memset did, but also
+     * properly constructs the non-trivial members (player_damage_details::damage_map
+     * is a std::map; specialization_data has a user destructor) instead of leaving
+     * them as zeroed-but-never-constructed memory, which is undefined behavior the
+     * moment those members are used (deterministic SIGSEGV under libc++/macOS;
+     * silently tolerated by libstdc++/Linux). See db.cpp read_mobile() for the
+     * other call path that needs the same treatment.
+     * (Test code also calls clear_char() directly on already-constructed stack
+     * `char_data` objects to reset them between cases; that's safe in practice here
+     * because the non-trivial members are always empty at that point, so
+     * re-running their default constructors via this placement-new has nothing to
+     * leak — but it's not the shape this function's placement-new was written for,
+     * and isn't a pattern to extend to types where re-construction over a live
+     * object could leak or double-free.) */
     new (ch) char_data();
     CREATE1(ch->profs, char_prof_data);
     memset(ch->profs->colors, CNRM,

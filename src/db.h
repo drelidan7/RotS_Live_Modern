@@ -159,6 +159,30 @@ struct crime_record_type {
     sh_int witness_type;
 };
 
+// Phase 2a Task 6: crime-record persistence as JSON (see db.cpp for the
+// implementation, next to record_crime/read_crime_file/add_crime/
+// forget_crimes). Declared here (rather than kept file-local) so the
+// pod_persistence_json_tests.cpp TU can exercise the codec + converter
+// directly against synthesized legacy fixtures, matching pkill_json's
+// (pkill.h) precedent.
+namespace crime_json {
+
+constexpr int CRIME_SCHEMA_VERSION = 1;
+
+struct CrimeStoreData {
+    int version = CRIME_SCHEMA_VERSION;
+    std::vector<crime_record_type> records;
+};
+
+bool legacy_crime_file_from_binary(const std::string& bytes, std::vector<crime_record_type>* records, std::string* error_message = nullptr);
+std::string serialize_crime_to_json(const CrimeStoreData& data);
+bool deserialize_crime_from_json(const std::string& json, CrimeStoreData* data, std::string* error_message = nullptr);
+bool crime_records_equal(const std::vector<crime_record_type>& a, const std::vector<crime_record_type>& b);
+std::string crime_json_path(const std::string& legacy_path);
+bool convert_legacy_crime_file(const char* legacy_path, std::string* error_message = nullptr);
+
+} // namespace crime_json
+
 /* structure for the reset commands */
 struct reset_com {
     char command; /* current command */

@@ -161,6 +161,7 @@ if(ROTS_BUILD_TESTS)
         tests/objects_json_tests.cpp
         tests/objsave_json_tests.cpp
         tests/olog_hai_tests.cpp
+        tests/pod_persistence_json_tests.cpp
         tests/protocol_tests.cpp
         tests/rots_rng_tests.cpp
         tests/spell_pa_tests.cpp

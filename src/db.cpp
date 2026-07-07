@@ -30,7 +30,10 @@
 #include "char_utils.h"
 #include "character_json.h"
 #include "exploits_json.h"
+#include "json_utils.h"
 #include "skill_timer.h"
+#include <cstddef>
+#include <cstdint>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -3678,6 +3681,379 @@ void read_crime_file();
 
 void boot_crimes() { read_crime_file(); }
 
+// ---------------------------------------------------------------------------
+// Phase 2a Task 6: crime-record persistence as JSON, plus a one-time legacy
+// struct-dump file converter. Follows the mail_json/boards_json/pkill_json
+// precedent (Tasks 4/5/6): JSON-first load, legacy binary as a one-time
+// fallback, atomic temp+rename writes, legacy file renamed '.migrated'
+// after a verified convert. See db.h for the crime_record_type layout this
+// decodes, and for the crime_json::CrimeStoreData/CRIME_SCHEMA_VERSION
+// declarations (exposed there so pod_persistence_json_tests.cpp can call
+// this namespace's codec/converter directly).
+// ---------------------------------------------------------------------------
+namespace crime_json {
+namespace {
+
+    void set_error(std::string* error_message, const std::string& message)
+    {
+        if (error_message)
+            *error_message = message;
+    }
+
+    // Legacy on-disk format: CRIME_FILE (misc/crimelist) is a raw
+    // concatenation of fwrite(crime_record + i, sizeof(crime_record_type), 1,
+    // f) records (add_crime/forget_crimes, below). crime_record_type (db.h)
+    // holds only int/sh_int fields, so its layout -- including any compiler-
+    // inserted padding -- is identical on 32-bit and 64-bit x86 builds.
+    // These offsetof-derived offsets therefore describe the real on-disk
+    // bytes regardless of which ABI compiles this reader (the Task 1 ABI-
+    // portability convention, applied via offsetof since crime_record_type is
+    // a real, already-declared struct rather than a hand-reconstructed
+    // historical format).
+    constexpr size_t kCrimeTimeOffset = offsetof(crime_record_type, crime_time);
+    constexpr size_t kCriminalOffset = offsetof(crime_record_type, criminal);
+    constexpr size_t kVictimOffset = offsetof(crime_record_type, victim);
+    constexpr size_t kCrimeOffset = offsetof(crime_record_type, crime);
+    constexpr size_t kWitnessOffset = offsetof(crime_record_type, witness);
+    constexpr size_t kWitnessTypeOffset = offsetof(crime_record_type, witness_type);
+    constexpr size_t kRecordSize = sizeof(crime_record_type);
+
+    bool read_i32_at(const std::string& bytes, size_t record_offset, size_t field_offset, int* value, std::string* error_message, const char* label)
+    {
+        const size_t offset = record_offset + field_offset;
+        if (offset + 4 > bytes.size()) {
+            set_error(error_message, std::string("Truncated crime file while reading ") + label + ".");
+            return false;
+        }
+        const uint32_t raw = static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset]))
+            | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8)
+            | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 2])) << 16)
+            | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 3])) << 24);
+        *value = static_cast<int>(raw);
+        return true;
+    }
+
+    bool read_i16_at(const std::string& bytes, size_t record_offset, size_t field_offset, sh_int* value, std::string* error_message, const char* label)
+    {
+        const size_t offset = record_offset + field_offset;
+        if (offset + 2 > bytes.size()) {
+            set_error(error_message, std::string("Truncated crime file while reading ") + label + ".");
+            return false;
+        }
+        const uint16_t raw = static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset]))
+            | (static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8);
+        *value = static_cast<sh_int>(static_cast<int16_t>(raw));
+        return true;
+    }
+
+    bool read_whole_file_contents(const char* path, std::string* bytes)
+    {
+        FILE* file = std::fopen(path, "rb");
+        if (file == nullptr)
+            return false;
+
+        std::string loaded_bytes;
+        char buffer[4096];
+        bool read_ok = true;
+        while (true) {
+            const size_t bytes_read = std::fread(buffer, sizeof(char), sizeof(buffer), file);
+            if (bytes_read > 0)
+                loaded_bytes.append(buffer, bytes_read);
+            if (bytes_read < sizeof(buffer)) {
+                if (std::ferror(file))
+                    read_ok = false;
+                break;
+            }
+        }
+        std::fclose(file);
+
+        if (!read_ok)
+            return false;
+
+        *bytes = std::move(loaded_bytes);
+        return true;
+    }
+
+    // Temp-file + rename atomic write, matching mail.cpp/boards.cpp/pkill.cpp's pattern.
+    bool write_file_contents_atomically(const std::string& path, const std::string& contents, std::string* error_message)
+    {
+        const std::string temp_path = path + ".tmp";
+
+        FILE* temp_file = std::fopen(temp_path.c_str(), "wb");
+        if (temp_file == nullptr) {
+            set_error(error_message, std::string("Unable to open temporary crime file '") + temp_path + "': " + strerror(errno));
+            return false;
+        }
+
+        const size_t bytes_written = contents.empty() ? 0 : std::fwrite(contents.data(), sizeof(char), contents.size(), temp_file);
+        const int flush_result = std::fflush(temp_file);
+        const int close_result = std::fclose(temp_file);
+
+        if (bytes_written != contents.size() || flush_result != 0 || close_result != 0) {
+            std::remove(temp_path.c_str());
+            set_error(error_message, std::string("Failed to write temporary crime file '") + temp_path + "'.");
+            return false;
+        }
+
+        if (std::rename(temp_path.c_str(), path.c_str()) != 0) {
+            const std::string rename_error = strerror(errno);
+            std::remove(temp_path.c_str());
+            set_error(error_message, "Failed to move temporary crime file into place: " + rename_error);
+            return false;
+        }
+
+        return true;
+    }
+
+} // namespace
+
+bool legacy_crime_file_from_binary(const std::string& bytes, std::vector<crime_record_type>* records, std::string* error_message)
+{
+    if (records == nullptr) {
+        set_error(error_message, "Crime records output parameter must not be null.");
+        return false;
+    }
+
+    if (bytes.size() % kRecordSize != 0) {
+        set_error(error_message, "Crime file corrupt: size is not a multiple of the record size.");
+        return false;
+    }
+
+    std::vector<crime_record_type> parsed;
+    const size_t num_records = bytes.size() / kRecordSize;
+    parsed.reserve(num_records);
+    for (size_t index = 0; index < num_records; ++index) {
+        const size_t record_offset = index * kRecordSize;
+        crime_record_type record {};
+        int crime_time = 0, crime = 0;
+        sh_int criminal = 0, victim = 0, witness = 0, witness_type = 0;
+        if (!read_i32_at(bytes, record_offset, kCrimeTimeOffset, &crime_time, error_message, "crime_time"))
+            return false;
+        if (!read_i16_at(bytes, record_offset, kCriminalOffset, &criminal, error_message, "criminal"))
+            return false;
+        if (!read_i16_at(bytes, record_offset, kVictimOffset, &victim, error_message, "victim"))
+            return false;
+        if (!read_i32_at(bytes, record_offset, kCrimeOffset, &crime, error_message, "crime"))
+            return false;
+        if (!read_i16_at(bytes, record_offset, kWitnessOffset, &witness, error_message, "witness"))
+            return false;
+        if (!read_i16_at(bytes, record_offset, kWitnessTypeOffset, &witness_type, error_message, "witness_type"))
+            return false;
+
+        record.crime_time = crime_time;
+        record.criminal = criminal;
+        record.victim = victim;
+        record.crime = crime;
+        record.witness = witness;
+        record.witness_type = witness_type;
+        parsed.push_back(record);
+    }
+
+    *records = std::move(parsed);
+    set_error(error_message, "");
+    return true;
+}
+
+std::string serialize_crime_to_json(const CrimeStoreData& data)
+{
+    std::ostringstream output;
+    output << "{\n";
+    output << "  \"version\": " << data.version << ",\n";
+    output << "  \"records\": [\n";
+    for (size_t index = 0; index < data.records.size(); ++index) {
+        const crime_record_type& record = data.records[index];
+        output << "    {\n";
+        output << "      \"crime_time\": " << record.crime_time << ",\n";
+        output << "      \"criminal\": " << record.criminal << ",\n";
+        output << "      \"victim\": " << record.victim << ",\n";
+        output << "      \"crime\": " << record.crime << ",\n";
+        output << "      \"witness\": " << record.witness << ",\n";
+        output << "      \"witness_type\": " << record.witness_type << "\n";
+        output << "    }";
+        if (index + 1 < data.records.size())
+            output << ",";
+        output << "\n";
+    }
+    output << "  ]\n";
+    output << "}\n";
+    return output.str();
+}
+
+bool deserialize_crime_from_json(const std::string& json, CrimeStoreData* data, std::string* error_message)
+{
+    if (data == nullptr) {
+        set_error(error_message, "Crime store output parameter must not be null.");
+        return false;
+    }
+
+    CrimeStoreData parsed;
+    const bool ok = json_utils::JsonReader(json).parse_root_object(
+        [&](const std::string& key, json_utils::JsonReader* reader, std::string* nested_error) {
+            if (key == "version")
+                return reader->parse_integer(&parsed.version, nested_error);
+            if (key == "records") {
+                return reader->parse_array(
+                    [&](json_utils::JsonReader* record_reader, std::string* record_error) {
+                        crime_record_type record {};
+                        int criminal = 0, victim = 0, witness = 0, witness_type = 0;
+                        const bool record_ok = record_reader->parse_object(
+                            [&](const std::string& record_key, json_utils::JsonReader* nested_reader, std::string* nested_record_error) {
+                                if (record_key == "crime_time")
+                                    return nested_reader->parse_integer(&record.crime_time, nested_record_error);
+                                if (record_key == "criminal")
+                                    return nested_reader->parse_integer(&criminal, nested_record_error);
+                                if (record_key == "victim")
+                                    return nested_reader->parse_integer(&victim, nested_record_error);
+                                if (record_key == "crime")
+                                    return nested_reader->parse_integer(&record.crime, nested_record_error);
+                                if (record_key == "witness")
+                                    return nested_reader->parse_integer(&witness, nested_record_error);
+                                if (record_key == "witness_type")
+                                    return nested_reader->parse_integer(&witness_type, nested_record_error);
+                                return nested_reader->skip_value(nested_record_error);
+                            },
+                            record_error);
+                        if (!record_ok)
+                            return false;
+                        for (int narrow_value : { criminal, victim, witness, witness_type }) {
+                            if (narrow_value < -32768 || narrow_value > 32767) {
+                                set_error(record_error, "criminal/victim/witness/witness_type must fit in a signed 16-bit field.");
+                                return false;
+                            }
+                        }
+                        record.criminal = static_cast<sh_int>(criminal);
+                        record.victim = static_cast<sh_int>(victim);
+                        record.witness = static_cast<sh_int>(witness);
+                        record.witness_type = static_cast<sh_int>(witness_type);
+                        parsed.records.push_back(record);
+                        return true;
+                    },
+                    nested_error);
+            }
+            return reader->skip_value(nested_error);
+        },
+        error_message);
+
+    if (!ok)
+        return false;
+
+    if (parsed.version != CRIME_SCHEMA_VERSION) {
+        set_error(error_message, "Unsupported crime schema version.");
+        return false;
+    }
+
+    *data = std::move(parsed);
+    set_error(error_message, "");
+    return true;
+}
+
+bool crime_record_equal(const crime_record_type& a, const crime_record_type& b)
+{
+    return a.crime_time == b.crime_time
+        && a.criminal == b.criminal
+        && a.victim == b.victim
+        && a.crime == b.crime
+        && a.witness == b.witness
+        && a.witness_type == b.witness_type;
+}
+
+bool crime_records_equal(const std::vector<crime_record_type>& a, const std::vector<crime_record_type>& b)
+{
+    if (a.size() != b.size())
+        return false;
+    for (size_t index = 0; index < a.size(); ++index)
+        if (!crime_record_equal(a[index], b[index]))
+            return false;
+    return true;
+}
+
+std::string crime_json_path(const std::string& legacy_path)
+{
+    return legacy_path + ".json";
+}
+
+bool load_crime_json_store(const std::string& json_path, std::vector<crime_record_type>* records, std::string* error_message)
+{
+    std::string json_text;
+    if (!read_whole_file_contents(json_path.c_str(), &json_text))
+        return false;
+
+    CrimeStoreData data;
+    if (!deserialize_crime_from_json(json_text, &data, error_message))
+        return false;
+
+    *records = std::move(data.records);
+    return true;
+}
+
+bool write_crime_json_store(const std::string& json_path, const std::vector<crime_record_type>& records, std::string* error_message)
+{
+    CrimeStoreData data;
+    data.records = records;
+    return write_file_contents_atomically(json_path, serialize_crime_to_json(data), error_message);
+}
+
+bool convert_legacy_crime_file(const char* legacy_path, std::string* error_message)
+{
+    if (legacy_path == nullptr || !*legacy_path) {
+        set_error(error_message, "Legacy crime path must not be empty.");
+        return false;
+    }
+
+    std::string legacy_bytes;
+    if (!read_whole_file_contents(legacy_path, &legacy_bytes)) {
+        set_error(error_message, std::string("Failed to read legacy crime file '") + legacy_path + "': " + strerror(errno));
+        return false;
+    }
+
+    std::vector<crime_record_type> decoded;
+    std::string decode_error;
+    if (!legacy_crime_file_from_binary(legacy_bytes, &decoded, &decode_error)) {
+        set_error(error_message, "Decode failed: " + decode_error);
+        return false;
+    }
+
+    CrimeStoreData store;
+    store.records = decoded;
+    const std::string json = serialize_crime_to_json(store);
+
+    // Verify (binding conversion contract): re-decode the freshly serialized
+    // JSON and compare it field-for-field to the original decode.
+    CrimeStoreData reparsed;
+    std::string verify_error;
+    if (!deserialize_crime_from_json(json, &reparsed, &verify_error)) {
+        set_error(error_message, "Verify-decode of freshly serialized JSON failed: " + verify_error);
+        return false;
+    }
+
+    if (!crime_records_equal(decoded, reparsed.records)) {
+        set_error(error_message, "Verify mismatch: re-decoded JSON does not equal the original legacy decode.");
+        return false;
+    }
+
+    const std::string json_path = crime_json_path(legacy_path);
+    std::string write_error;
+    if (!write_file_contents_atomically(json_path, json, &write_error)) {
+        set_error(error_message, write_error);
+        return false;
+    }
+
+    const std::string migrated_path = std::string(legacy_path) + ".migrated";
+    if (std::rename(legacy_path, migrated_path.c_str()) != 0) {
+        // JSON is written and verified; the legacy file simply couldn't be
+        // retired (matches mail_json/boards_json/pkill_json's "partial
+        // success" contract -- report but don't fail, nothing is at risk).
+        set_error(error_message,
+            std::string("Crime file converted but legacy rename to '") + migrated_path + "' failed: " + strerror(errno));
+        return true;
+    }
+
+    set_error(error_message, "");
+    return true;
+}
+
+} // namespace crime_json
+
 void record_crime(char_data* criminal, char_data* victim, int crime,
     int wit_type)
 {
@@ -3697,30 +4073,61 @@ void record_crime(char_data* criminal, char_data* victim, int crime,
 
 void read_crime_file()
 {
-    crime_record_type tmprecord;
     int tmp, count;
 
     num_of_crimes = 0;
-    if (!(crime_file = fopen(CRIME_FILE, "rb"))) {
-        log("Crime file does not exist, creating it.");
-        num_of_crimes = 0;
-        crime_file = 0;
+    const std::string json_path = crime_json::crime_json_path(CRIME_FILE);
+    std::vector<crime_record_type> loaded_records;
+
+    FILE* json_probe = fopen(json_path.c_str(), "rb");
+    if (json_probe != NULL) {
+        fclose(json_probe);
+        std::string error_message;
+        if (!crime_json::load_crime_json_store(json_path, &loaded_records, &error_message)) {
+            log(("SYSERR: Crime JSON file '" + json_path + "' is malformed: " + error_message).c_str());
+            CREATE1(crime_record, crime_record_type);
+            return;
+        }
+    } else {
+        /* No JSON store yet -- either a fresh install (no legacy file
+         * either) or a legacy binary file waiting for its one-time
+         * conversion. */
+        FILE* legacy_probe = fopen(CRIME_FILE, "rb");
+        if (legacy_probe == NULL) {
+            log("Crime file does not exist, creating it.");
+            CREATE1(crime_record, crime_record_type);
+            return;
+        }
+        fclose(legacy_probe);
+
+        std::string convert_error;
+        if (!crime_json::convert_legacy_crime_file(CRIME_FILE, &convert_error)) {
+            log(("SYSERR: Failed converting legacy crime file '" + std::string(CRIME_FILE) + "' to JSON: " + convert_error).c_str());
+            CREATE1(crime_record, crime_record_type);
+            return;
+        }
+        if (!convert_error.empty())
+            log(("Converted legacy crime file to JSON (warning: " + convert_error + ").").c_str());
+        else
+            log("Converted legacy crime file to JSON.");
+
+        std::string load_error;
+        if (!crime_json::load_crime_json_store(json_path, &loaded_records, &load_error)) {
+            log(("SYSERR: Crime JSON file missing or malformed immediately after conversion: " + load_error).c_str());
+            CREATE1(crime_record, crime_record_type);
+            return;
+        }
+    }
+
+    num_of_crimes = static_cast<int>(loaded_records.size());
+    if (num_of_crimes == 0) {
         CREATE1(crime_record, crime_record_type);
     } else {
-        while (!feof(crime_file)) {
-            if (fread(&tmprecord, sizeof(crime_record_type), 1, crime_file))
-                num_of_crimes++;
-        }
         CREATE(crime_record, crime_record_type, num_of_crimes);
-        fseek(crime_file, 0, SEEK_SET);
-        tmp = 0;
-        while (!feof(crime_file) && (tmp < num_of_crimes)) {
-            fread(crime_record + tmp, sizeof(crime_record_type), 1, crime_file);
-            tmp++;
-        }
-        fclose(crime_file);
-        crime_file = 0;
+        for (tmp = 0; tmp < num_of_crimes; tmp++)
+            crime_record[tmp] = loaded_records[tmp];
     }
+
     for (tmp = 0, count = 0; tmp < num_of_crimes; tmp++) {
         crime_record[tmp].criminal = find_player_in_table("", crime_record[tmp].criminal);
         crime_record[tmp].victim = find_player_in_table("", crime_record[tmp].victim);
@@ -3754,13 +4161,26 @@ void add_crime(int criminal, int victim, int witness, int crime, int wit_type)
         witness);
     log(buf);
 
-    crime_file = fopen(CRIME_FILE, "ab");
+    /* Persist the whole live crime set as JSON (idnum-keyed, matching the
+     * legacy on-disk format) -- the mail_json/boards_json/pkill_json
+     * "rewrite the whole store on each mutation" pattern, since JSON has no
+     * append mode. crime_record[0, num_of_crimes) currently holds
+     * player-table INDEXES (translated at boot / after each prior
+     * add_crime, below); crime_record[num_of_crimes] is still idnum-valued
+     * (set just above), matching what the legacy file always stored. */
+    std::vector<crime_record_type> to_write;
+    to_write.reserve(num_of_crimes + 1);
+    for (int i = 0; i < num_of_crimes; ++i) {
+        crime_record_type record = crime_record[i];
+        record.criminal = (player_table + crime_record[i].criminal)->idnum;
+        record.victim = (player_table + crime_record[i].victim)->idnum;
+        record.witness = (player_table + crime_record[i].witness)->idnum;
+        to_write.push_back(record);
+    }
+    to_write.push_back(crime_record[num_of_crimes]);
 
-    if (crime_file) {
-        fwrite(crime_record + num_of_crimes, sizeof(crime_record_type), 1,
-            crime_file);
-        fclose(crime_file);
-    } else
+    std::string write_error;
+    if (!crime_json::write_crime_json_store(crime_json::crime_json_path(CRIME_FILE), to_write, &write_error))
         mudlog("Could not open crime_file for writing.", NRM, LEVEL_IMMORT, TRUE);
 
     crime_record[num_of_crimes].criminal = find_player_in_table("", criminal);
@@ -3782,7 +4202,6 @@ int know_of_crime(int criminal, int victim, int witness)
 
 void forget_crimes(char_data* ch, int criminal)
 {
-    crime_record_type* tmprecord;
     int tmp, count, not_write;
 
     if (IS_NPC(ch) || !RACE_GOOD(ch))
@@ -3799,10 +4218,7 @@ void forget_crimes(char_data* ch, int criminal)
     if (!count)
         return;
 
-    crime_file = fopen(CRIME_FILE, "wb");
-    if (!crime_file)
-        return;
-    CREATE1(tmprecord, crime_record_type);
+    std::vector<crime_record_type> to_write;
     count = 0;
 
     for (tmp = 0; tmp < num_of_crimes; tmp++) {
@@ -3811,20 +4227,24 @@ void forget_crimes(char_data* ch, int criminal)
         else
             not_write = !((crime_record[tmp].witness == find_player_in_table("", ch->specials2.idnum)) && (crime_record[tmp].criminal == find_player_in_table("", criminal)));
         if (not_write) {
-            tmprecord[0].crime_time = crime_record[tmp].crime_time;
-            tmprecord[0].criminal = (player_table + crime_record[tmp].criminal)->idnum;
-            tmprecord[0].victim = (player_table + crime_record[tmp].victim)->idnum;
-            tmprecord[0].witness = (player_table + crime_record[tmp].witness)->idnum;
-            tmprecord[0].crime = crime_record[tmp].crime;
-            tmprecord[0].witness_type = crime_record[tmp].witness_type;
-            fwrite(tmprecord, sizeof(crime_record_type), 1, crime_file);
+            crime_record_type record {};
+            record.crime_time = crime_record[tmp].crime_time;
+            record.criminal = (player_table + crime_record[tmp].criminal)->idnum;
+            record.victim = (player_table + crime_record[tmp].victim)->idnum;
+            record.witness = (player_table + crime_record[tmp].witness)->idnum;
+            record.crime = crime_record[tmp].crime;
+            record.witness_type = crime_record[tmp].witness_type;
+            to_write.push_back(record);
             count++;
         }
     }
-    fclose(crime_file);
+
+    std::string write_error;
+    if (!crime_json::write_crime_json_store(crime_json::crime_json_path(CRIME_FILE), to_write, &write_error))
+        return;
+
     sprintf(buf, "Crimes rewritten:%d.", count);
     log(buf);
-    RELEASE(tmprecord);
     RELEASE(crime_record);
     read_crime_file();
 }
@@ -4074,6 +4494,14 @@ void set_db_error(std::string* error_message, const std::string& message)
         *error_message = message;
 }
 
+// Forward declarations: Task 6's runtime-exploit-file JSON helpers are
+// defined below (near open_secure_temp_output_file, which they build on),
+// but load_exploit_history_bytes (defined above that point) needs to call
+// them.
+std::string exploits_json_path_for_legacy(const std::string& legacy_path);
+bool exploit_records_equal(const std::vector<exploit_record>& a, const std::vector<exploit_record>& b);
+bool convert_legacy_runtime_exploit_file(const std::string& legacy_path, std::vector<exploit_record>* decoded_records, std::string* error_message);
+
 bool read_binary_file_contents(const std::string& path, std::string* contents, std::string* error_message)
 {
     if (contents == nullptr) {
@@ -4150,18 +4578,60 @@ bool load_exploit_history_bytes(const std::string& root_directory, const std::st
         set_db_error(error_message, "");
     }
 
+    // Phase 2a Task 6: this runtime/non-account-native path now prefers
+    // '<name>.exploits.json'; a legacy '<name>.exploits' binary file is a
+    // one-time conversion fallback. This is reached both by truly
+    // non-linked characters and by linked-but-not-yet-account-native
+    // characters (see the fall-through above) -- both cases share the same
+    // on-disk runtime file, so both benefit from the same JSON storage.
     const std::string runtime_path = account::legacy_exploits_file_path(root_directory, character_name);
+    const std::string runtime_json_path = exploits_json_path_for_legacy(runtime_path);
+
+    FILE* json_file = std::fopen(runtime_json_path.c_str(), "rb");
+    if (json_file != nullptr) {
+        std::fclose(json_file);
+        std::string json_text;
+        if (!read_binary_file_contents(runtime_json_path, &json_text, error_message))
+            return false;
+
+        exploits_json::ExploitHistoryData history;
+        std::string json_error;
+        if (!exploits_json::deserialize_exploits_from_json(json_text, &history, &json_error)) {
+            // Fail closed on malformed authoritative JSON: don't silently
+            // discard runtime exploit history (matches the account-native
+            // JSON handling above).
+            set_db_error(error_message, "Exploit JSON file '" + runtime_json_path + "' is malformed: " + json_error);
+            return false;
+        }
+
+        if (!exploits_json::exploit_records_to_binary(history.records, bytes, error_message))
+            return false;
+
+        set_db_error(error_message, "");
+        return true;
+    }
+    if (errno != ENOENT) {
+        set_db_error(error_message, "Failed to open exploit file '" + runtime_json_path + "': " + std::string(strerror(errno)));
+        return false;
+    }
+
     FILE* runtime_file = std::fopen(runtime_path.c_str(), "rb");
     if (runtime_file != nullptr) {
         std::fclose(runtime_file);
-        if (!read_binary_file_contents(runtime_path, bytes, error_message))
-            return false;
 
-        if (bytes->size() % sizeof(exploit_record) == 0) {
+        std::vector<exploit_record> decoded_records;
+        std::string convert_error;
+        if (convert_legacy_runtime_exploit_file(runtime_path, &decoded_records, &convert_error)) {
+            if (!exploits_json::exploit_records_to_binary(decoded_records, bytes, error_message))
+                return false;
             set_db_error(error_message, "");
             return true;
         }
 
+        // Unconvertible legacy binary (malformed size/content): matches the
+        // pre-existing behavior of discarding a corrupt runtime file rather
+        // than blocking forever -- there is no authoritative alternative to
+        // fail closed to, for a character with no account-native history.
         if (std::remove(runtime_path.c_str()) != 0 && errno != ENOENT) {
             set_db_error(error_message, "Failed to remove malformed exploit file '" + runtime_path + "': " + std::string(strerror(errno)));
             return false;
@@ -4169,12 +4639,6 @@ bool load_exploit_history_bytes(const std::string& root_directory, const std::st
     } else if (errno != ENOENT) {
         set_db_error(error_message, "Failed to open exploit file '" + runtime_path + "': " + std::string(strerror(errno)));
         return false;
-    }
-
-    if (owner_account_name.empty()) {
-        bytes->clear();
-        set_db_error(error_message, "");
-        return true;
     }
 
     bytes->clear();
@@ -4200,6 +4664,122 @@ FILE* open_secure_temp_output_file(const std::string& path, std::string* error_m
 
     set_db_error(error_message, "");
     return file;
+}
+
+// Phase 2a Task 6: the runtime (non-account-linked) exploit history file
+// moves from a raw exploit_record binary dump to JSON, reusing
+// exploits_json's existing serialization (already used by the
+// account-linked storage path). '<name>.exploits.json' is the live store;
+// a legacy '<name>.exploits' binary file is a one-time conversion fallback
+// (decode -> serialize -> re-decode -> field-equality verify -> write JSON
+// -> rename legacy to '.migrated'), mirroring the mail_json/boards_json/
+// pkill_json/crime_json converters. Account-linked behavior (the
+// `!owner_account_name.empty()` branches above/below) is unchanged.
+std::string exploits_json_path_for_legacy(const std::string& legacy_path)
+{
+    return legacy_path + ".json";
+}
+
+bool exploit_record_equal(const exploit_record& a, const exploit_record& b)
+{
+    return a.type == b.type
+        && strcmp(a.chtime, b.chtime) == 0
+        && a.shintVictimID == b.shintVictimID
+        && strcmp(a.chVictimName, b.chVictimName) == 0
+        && a.iVictimLevel == b.iVictimLevel
+        && a.iKillerLevel == b.iKillerLevel
+        && a.iIntParam == b.iIntParam;
+}
+
+bool exploit_records_equal(const std::vector<exploit_record>& a, const std::vector<exploit_record>& b)
+{
+    if (a.size() != b.size())
+        return false;
+    for (size_t index = 0; index < a.size(); ++index)
+        if (!exploit_record_equal(a[index], b[index]))
+            return false;
+    return true;
+}
+
+// Generalizes open_secure_temp_output_file's temp+rename write for text
+// (JSON) content, rather than exploit_record binary bytes.
+bool write_text_file_atomically(const std::string& path, const std::string& contents, std::string* error_message)
+{
+    const std::string temp_path = path + ".tmp";
+
+    FILE* file = open_secure_temp_output_file(temp_path, error_message);
+    if (file == nullptr)
+        return false;
+
+    const size_t bytes_written = contents.empty() ? 0 : std::fwrite(contents.data(), sizeof(char), contents.size(), file);
+    const int close_result = std::fclose(file);
+
+    if (bytes_written != contents.size() || close_result != 0) {
+        std::remove(temp_path.c_str());
+        set_db_error(error_message, "Failed to write temporary exploit file '" + temp_path + "'.");
+        return false;
+    }
+
+    if (std::rename(temp_path.c_str(), path.c_str()) != 0) {
+        std::remove(temp_path.c_str());
+        set_db_error(error_message, "Failed to move temporary exploit file into place: " + std::string(strerror(errno)));
+        return false;
+    }
+
+    set_db_error(error_message, "");
+    return true;
+}
+
+// One-time conversion of a legacy '<name>.exploits' binary file to
+// '<name>.exploits.json'. Returns the decoded records on success (the
+// caller already has the bytes decoded once here, no need to re-read).
+bool convert_legacy_runtime_exploit_file(const std::string& legacy_path, std::vector<exploit_record>* decoded_records, std::string* error_message)
+{
+    std::string legacy_bytes;
+    if (!read_binary_file_contents(legacy_path, &legacy_bytes, error_message))
+        return false;
+
+    if (!exploits_json::exploit_records_from_binary(legacy_bytes, decoded_records, error_message)) {
+        set_db_error(error_message, "Decode failed: " + (error_message ? *error_message : std::string()));
+        return false;
+    }
+
+    exploits_json::ExploitHistoryData history;
+    history.records = *decoded_records;
+    const std::string json = exploits_json::serialize_exploits_to_json(history);
+
+    // Verify (binding conversion contract): re-decode the freshly serialized
+    // JSON and compare it field-for-field to the original decode.
+    exploits_json::ExploitHistoryData reparsed;
+    std::string verify_error;
+    if (!exploits_json::deserialize_exploits_from_json(json, &reparsed, &verify_error)) {
+        set_db_error(error_message, "Verify-decode of freshly serialized JSON failed: " + verify_error);
+        return false;
+    }
+    if (!exploit_records_equal(*decoded_records, reparsed.records)) {
+        set_db_error(error_message, "Verify mismatch: re-decoded JSON does not equal the original legacy decode.");
+        return false;
+    }
+
+    const std::string json_path = exploits_json_path_for_legacy(legacy_path);
+    std::string write_error;
+    if (!write_text_file_atomically(json_path, json, &write_error)) {
+        set_db_error(error_message, write_error);
+        return false;
+    }
+
+    const std::string migrated_path = legacy_path + ".migrated";
+    if (std::rename(legacy_path.c_str(), migrated_path.c_str()) != 0) {
+        // JSON is written and verified; the legacy file simply couldn't be
+        // retired (matches the other Task 6 converters' "partial success"
+        // contract -- report but don't fail, nothing is at risk).
+        set_db_error(error_message,
+            "Exploit file converted but legacy rename to '" + migrated_path + "' failed: " + std::string(strerror(errno)));
+        return true;
+    }
+
+    set_db_error(error_message, "");
+    return true;
 }
 
 } // namespace
@@ -4249,31 +4829,24 @@ bool write_exploit_record_for_character(const std::string& root_directory, const
         return true;
     }
 
-    std::string existing_history_bytes;
-    if (!exploits_json::exploit_records_to_binary(records, &existing_history_bytes, error_message))
-        return false;
+    // Phase 2a Task 6: the non-linked runtime store is JSON now (reusing
+    // exploits_json's serialization), written atomically to
+    // '<name>.exploits.json'.
+    exploits_json::ExploitHistoryData history;
+    history.records = records;
+    const std::string json = exploits_json::serialize_exploits_to_json(history);
 
     const std::string runtime_path = account::legacy_exploits_file_path(root_directory, character_name);
-    const std::string temp_path = runtime_path + ".tmp";
+    const std::string runtime_json_path = exploits_json_path_for_legacy(runtime_path);
 
-    FILE* file = open_secure_temp_output_file(temp_path, error_message);
-    if (file == nullptr)
+    if (!write_text_file_atomically(runtime_json_path, json, error_message))
         return false;
 
-    const size_t bytes_written = existing_history_bytes.empty()
-        ? 0
-        : std::fwrite(existing_history_bytes.data(), sizeof(char), existing_history_bytes.size(), file);
-    const int close_result = std::fclose(file);
-
-    if (bytes_written != existing_history_bytes.size() || close_result != 0) {
-        std::remove(temp_path.c_str());
-        set_db_error(error_message, "Failed to write temporary exploit file '" + temp_path + "'.");
-        return false;
-    }
-
-    if (std::rename(temp_path.c_str(), runtime_path.c_str()) != 0) {
-        std::remove(temp_path.c_str());
-        set_db_error(error_message, "Failed to move temporary exploit file into place: " + std::string(strerror(errno)));
+    // Defensive cleanup: load_exploit_records_for_character (called above)
+    // will already have migrated/retired any legacy binary file it found,
+    // but remove it here too in case one reappeared since then.
+    if (std::remove(runtime_path.c_str()) != 0 && errno != ENOENT) {
+        set_db_error(error_message, "Failed to retire legacy exploit file '" + runtime_path + "': " + std::string(strerror(errno)));
         return false;
     }
 

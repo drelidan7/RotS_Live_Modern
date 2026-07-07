@@ -196,7 +196,7 @@ mob_csv_extract.o: ../mob_csv_extract.cpp ../mob_csv_extract.h
 	$(CXX) -c $(CXXFLAGS) ../mob_csv_extract.cpp
 convert_plrobjs.o: ../convert_plrobjs.cpp ../convert_plrobjs.h ../objects_json.h
 	$(CXX) -c $(CXXFLAGS) ../convert_plrobjs.cpp
-pkill.o: ../pkill.cpp ../pkill.h
+pkill.o: ../pkill.cpp ../pkill.h ../json_utils.h
 	$(CXX) -c $(CXXFLAGS) ../pkill.cpp
 protocol.o: ../protocol.cpp ../protocol.h
 	$(CXX) -c $(CXXFLAGS) ../protocol.cpp
@@ -204,7 +204,7 @@ rots_rng.o : ../rots_rng.cpp ../rots_rng.h
 	$(CXX) -c $(CXXFLAGS) ../rots_rng.cpp
 
 
-SRCS = account_management_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp color_tests.cpp convert_plrobjs_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_utils_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp protocol_tests.cpp rots_rng_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
+SRCS = account_management_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp color_tests.cpp convert_plrobjs_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_utils_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_rng_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 EXECUTABLE = ../../bin/tests
@@ -220,6 +220,7 @@ objsave_json_tests.o : ../objects_json.h
 convert_plrobjs_tests.o : ../convert_plrobjs.h
 boards_json_tests.o : ../boards.h
 mail_json_tests.o : ../mail.h
+pod_persistence_json_tests.o : ../pkill.h ../db.h ../exploits_json.h ../account_management.h
 
 tests: $(EXECUTABLE)
 

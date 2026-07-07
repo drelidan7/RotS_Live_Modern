@@ -1803,7 +1803,10 @@ TEST(DbLoader, FailsClosedWhenTemporaryExploitPathAlreadyExists)
     ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
 
-    const std::string temp_path = account::legacy_exploits_file_path(temp_directory.path(), "aragorn") + ".tmp";
+    // Phase 2a Task 6: the non-linked runtime exploit store moved from
+    // '<name>.exploits' (binary) to '<name>.exploits.json'; the O_EXCL temp
+    // path write_exploit_record_for_character now writes through moved with it.
+    const std::string temp_path = account::legacy_exploits_file_path(temp_directory.path(), "aragorn") + ".json.tmp";
     write_file(temp_path, "occupied");
 
     const exploit_record new_record = make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "Won a battle", 11, 0, 0);

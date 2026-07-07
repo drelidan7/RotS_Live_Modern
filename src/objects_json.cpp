@@ -419,8 +419,16 @@ namespace {
             return false;
         }
 
-        if (parsed_alias.keyword.size() >= 20) {
-            set_error(error_message, "Alias keyword must fit within 19 characters.");
+        // Legacy alias_list::keyword is char[20] with no guaranteed NUL
+        // terminator: a keyword that fills all 20 bytes leaves no room for a
+        // trailing NUL (docs/data-formats/object-rent-files.md "Alias on-disk
+        // format"), and object_save_data_from_binary's std::find(...,'\0')
+        // then decodes the full 20 bytes as the keyword (objects_json.cpp
+        // ~line 586). serialize_objects_to_json writes such a keyword
+        // unconditionally, so JSON must accept it back losslessly -- reject
+        // only keywords that could never have come from that 20-byte field.
+        if (parsed_alias.keyword.size() > 20) {
+            set_error(error_message, "Alias keyword must not exceed 20 characters.");
             return false;
         }
 
@@ -726,8 +734,14 @@ bool object_save_data_to_binary(const ObjectSaveData& data, std::string* bytes, 
     }
 
     for (const AliasData& alias : data.aliases) {
-        if (alias.keyword.size() >= 20) {
-            set_error(error_message, "Alias keyword must fit within 19 characters.");
+        // Mirrors the read-side cap in parse_alias_record: a 20-byte keyword
+        // with no embedded NUL is a legitimate legacy value (see comment
+        // there), so only reject what could never fit in the on-disk
+        // char[20] field. When alias.keyword.size() == 20, keyword_bytes
+        // below is fully overwritten with no trailing NUL -- exactly what
+        // Crash_alias_save wrote for such a keyword.
+        if (alias.keyword.size() > 20) {
+            set_error(error_message, "Alias keyword must not exceed 20 characters.");
             return false;
         }
 

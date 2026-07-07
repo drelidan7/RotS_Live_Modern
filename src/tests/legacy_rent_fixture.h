@@ -19,6 +19,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 
@@ -105,7 +106,13 @@ inline follower_file_elem make_follower_terminator()
 // array, one alias plus its terminator, one follower with one equipped item,
 // and the follower-list terminator. Mirrors Crash_rentsave's write order
 // (docs/data-formats/object-rent-files.md "File layout").
-inline std::string build_full_fixture_bytes()
+//
+// `alias_keyword_bytes` is copied verbatim (up to 20 bytes) into the on-disk
+// char[20] field with no forced NUL terminator, so a caller can reproduce the
+// legacy "keyword fills all 20 bytes, no embedded NUL" edge case that
+// std::strcpy-based construction cannot: strcpy always leaves the source's
+// terminating NUL in the copy, so it can never write all 20 bytes non-NUL.
+inline std::string build_full_fixture_bytes_with_alias(const std::string& alias_keyword_bytes, const std::string& alias_command)
 {
     std::string bytes;
     append_pod(&bytes, make_rent_info());
@@ -119,11 +126,11 @@ inline std::string build_full_fixture_bytes()
     }
 
     char alias_keyword[20] {};
-    std::strcpy(alias_keyword, "assist");
+    std::memcpy(alias_keyword, alias_keyword_bytes.data(), std::min<size_t>(sizeof(alias_keyword), alias_keyword_bytes.size()));
     append_pod(&bytes, alias_keyword);
-    const int command_length = 8;
+    const int command_length = static_cast<int>(alias_command.size());
     append_pod(&bytes, command_length);
-    bytes.append("kill orc");
+    bytes.append(alias_command);
 
     char alias_terminator[20] {};
     append_pod(&bytes, alias_terminator);
@@ -134,6 +141,11 @@ inline std::string build_full_fixture_bytes()
     append_pod(&bytes, make_follower_terminator());
 
     return bytes;
+}
+
+inline std::string build_full_fixture_bytes()
+{
+    return build_full_fixture_bytes_with_alias("assist", "kill orc");
 }
 
 inline void expect_object_record_matches(const objects_json::ObjectRecord& record, int expected_item_number, int expected_wear_pos)

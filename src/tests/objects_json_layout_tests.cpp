@@ -30,6 +30,7 @@
 
 using legacy_rent_fixture::append_pod;
 using legacy_rent_fixture::build_full_fixture_bytes;
+using legacy_rent_fixture::build_full_fixture_bytes_with_alias;
 using legacy_rent_fixture::expect_full_fixture_decoded;
 using legacy_rent_fixture::make_follower_terminator;
 using legacy_rent_fixture::make_obj_file_elem;
@@ -130,6 +131,49 @@ TEST(ObjectsJsonLayout, DecodesOldFormatItemNumberFromDeprecatedField)
     ASSERT_TRUE(objects_json::object_save_data_from_binary(bytes, &data, &error)) << error;
     ASSERT_EQ(1u, data.objects.size());
     EXPECT_EQ(1500, data.objects[0].item_number);
+}
+
+// Characterizes the "keyword fills all 20 bytes, no embedded NUL" edge case
+// documented in object-rent-files.md's "Alias on-disk format" / "Latent bug"
+// notes: alias_list::keyword is char[20] with no guaranteed NUL terminator,
+// so a legacy keyword exactly 20 bytes long decodes as a full 20-character
+// std::string (object_save_data_from_binary's std::find(...,'\0') finds
+// nothing and keeps every byte). serialize_objects_to_json writes such a
+// keyword unconditionally, so the JSON round trip must accept it back
+// losslessly, and object_save_data_to_binary (the test/shim-only
+// re-encoder) must reproduce the original 20-byte, no-trailing-NUL layout.
+TEST(ObjectsJsonLayout, TwentyByteAliasKeywordWithNoEmbeddedNulRoundTripsLosslessly)
+{
+    const std::string full_length_keyword(20, 'k'); // exactly 20 bytes, no NUL anywhere
+    const std::string bytes = build_full_fixture_bytes_with_alias(full_length_keyword, "kill orc");
+
+    objects_json::ObjectSaveData decoded;
+    std::string decode_error;
+    ASSERT_TRUE(objects_json::object_save_data_from_binary(bytes, &decoded, &decode_error)) << decode_error;
+    ASSERT_EQ(1u, decoded.aliases.size());
+    EXPECT_EQ(20u, decoded.aliases[0].keyword.size());
+    EXPECT_EQ(full_length_keyword, decoded.aliases[0].keyword);
+    EXPECT_EQ("kill orc", decoded.aliases[0].command);
+
+    const std::string json = objects_json::serialize_objects_to_json(decoded);
+
+    objects_json::ObjectSaveData roundtripped;
+    std::string json_error;
+    ASSERT_TRUE(objects_json::deserialize_objects_from_json(json, &roundtripped, &json_error)) << json_error;
+    ASSERT_EQ(1u, roundtripped.aliases.size());
+    EXPECT_EQ(full_length_keyword, roundtripped.aliases[0].keyword);
+    EXPECT_EQ(decoded.aliases[0].command, roundtripped.aliases[0].command);
+
+    // The binary re-encoder must also accept the 20-byte keyword and lay it
+    // out exactly like the original legacy file: all 20 bytes, no trailing NUL.
+    std::string reencoded_bytes;
+    std::string reencode_error;
+    ASSERT_TRUE(objects_json::object_save_data_to_binary(roundtripped, &reencoded_bytes, &reencode_error)) << reencode_error;
+
+    const size_t alias_keyword_offset = sizeof(rent_info) + 3 * sizeof(obj_file_elem)
+        + static_cast<size_t>(MAX_MAXBOARD) * sizeof(sh_int);
+    ASSERT_LE(alias_keyword_offset + 20, reencoded_bytes.size());
+    EXPECT_EQ(full_length_keyword, reencoded_bytes.substr(alias_keyword_offset, 20));
 }
 
 // Freezes build_full_fixture_bytes()'s output as a permanent on-disk

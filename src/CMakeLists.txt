@@ -44,6 +44,10 @@ endif()
 # objects_json.cpp arrive with the account-management merge (JSON persistence +
 # accounts); the other account_management_*.cpp files are #included into
 # account_management.cpp, not compiled separately.
+#
+# rots_crypt.cpp is a vendored, portable SHA-512-crypt ($6$) — account_management*.cpp
+# call rots_crypt() instead of libc crypt() so credential hashes are byte-identical
+# on every platform, not just glibc.
 set(ROTS_SERVER_SOURCES
     account_management.cpp act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -56,7 +60,7 @@ set(ROTS_SERVER_SOURCES
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     mystic.cpp obj2html.cpp object_utils.cpp objects_json.cpp objsave.cpp
     olog_hai.cpp pkill.cpp profs.cpp protocol.cpp
-    ranger.cpp rots_rng.cpp script.cpp shapemdl.cpp shapemob.cpp
+    ranger.cpp rots_crypt.cpp rots_rng.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
@@ -104,13 +108,6 @@ target_compile_options(ageland PRIVATE
     $<${ROTS_GNULIKE}:$<$<CONFIG:Debug>:-O0 -DDEBUG>>
     $<${ROTS_GNULIKE}:$<$<CONFIG:Release>:-O2 -DNDEBUG>>
 )
-
-# account_management*.cpp calls libc crypt(): a separate libcrypt on Linux,
-# inside libc on macOS (no -lcrypt exists there), absent on Windows (the
-# Windows build stays red on this symbol until Phase 3 replaces crypt()).
-if(UNIX AND NOT APPLE)
-    target_link_libraries(ageland PRIVATE crypt)
-endif()
 
 # --- Tests (ported from upstream/account-management) --------------------------
 # GoogleTest suite, discovered via CTest so `ctest --test-dir build` (or the root
@@ -164,6 +161,7 @@ if(ROTS_BUILD_TESTS)
         tests/olog_hai_tests.cpp
         tests/pod_persistence_json_tests.cpp
         tests/protocol_tests.cpp
+        tests/rots_crypt_tests.cpp
         tests/rots_rng_tests.cpp
         tests/spell_pa_tests.cpp
         tests/startup_options_tests.cpp
@@ -215,9 +213,6 @@ if(ROTS_BUILD_TESTS)
     # No-op on x86-64 hosts (SSE is already the default there).
     target_compile_options(ageland_tests PRIVATE $<${ROTS_GNULIKE}:-msse2 -mfpmath=sse>)
     target_link_libraries(ageland_tests PRIVATE GTest::gtest)
-    if(UNIX AND NOT APPLE)
-        target_link_libraries(ageland_tests PRIVATE crypt)
-    endif()
     # Mirror the compile-time -m32 so a multilib host building legacy tests links 32-bit too.
     target_link_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>

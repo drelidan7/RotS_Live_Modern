@@ -171,7 +171,7 @@ bool verify_password(const std::string& password, const std::string& password_ha
     if (password_hash.empty())
         return false;
 
-    char* hashed_password = crypt(password.c_str(), password_hash.c_str());
+    const char* hashed_password = rots_crypt(password.c_str(), password_hash.c_str());
     if (hashed_password == nullptr)
         return false;
 

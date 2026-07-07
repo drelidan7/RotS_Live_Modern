@@ -85,3 +85,28 @@ proxy in front of the game.
 - "deprecated function" warnings during `make all` are expected and harmless.
 - The Rust proxy (`proxy/`) is not needed for telnet play; it builds natively on macOS
   with `cargo build -p proxy` if you later want browser-client access.
+
+## Build matrix (Phase 1)
+
+The authoritative build is CMake. Presets live in `src/CMakePresets.json`
+(CMake ≥ 3.23 to use presets; the i386 container's CMake 3.18 uses the root
+`Makefile` flow instead).
+
+| Preset / path | Platform | Status |
+|---|---|---|
+| container + root `Makefile` (`make configure/build/test`) | Linux i386 (`-m32`) | **green — the shipping ABI; CI-required** |
+| `linux-x86-legacy` | Linux i386 via multilib | builds the game; tests stay in the container path |
+| `linux-x64` | Linux x86-64 | builds + 503/503 tests green in CI already; NOT yet the blessed runtime (Phase 2 must verify boot/behavior + retire binary saves before it ships) |
+| `macos-arm64` | macOS arm64 | red until Phase 2 (64-bit port) |
+| `windows-msvc` | Windows x64 MSVC | red until Phase 3 (platform layer) |
+
+Per-platform (from `src/`): `cmake --preset <name>`, `cmake --build --preset <name>`,
+`ctest --preset <name>`. `cmake --list-presets` shows what runs on this host.
+
+CI (`.github/workflows/ci.yml`): the `legacy-32bit` job is required; the three
+64-bit jobs run allowed-to-fail until their enabling phase lands — their logs are the
+porting work-list. `linux-x64` is the exception to watch: it's already green (503/503
+tests passing on 64-bit Linux/GCC, including the characterization goldens), so Phase 2's
+Linux work is mostly runtime verification (boot/behavior + retiring binary saves) rather
+than a from-scratch port — the remaining porting effort is concentrated on macOS and
+Windows.

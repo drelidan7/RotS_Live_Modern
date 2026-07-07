@@ -21,6 +21,7 @@
 - Account/login/authentication changes REQUIRE `make smoke-account` (or
   `tools/account_smoke.py`) as a separate validation step — `make test` is
   intentionally unit-test-only.
+- Per-platform CMake presets (host, CMake ≥3.23): from `src/`, `cmake --preset <linux-x64|macos-arm64|windows-msvc|linux-x86-legacy>` then `cmake --build --preset <name>`; `linux-x64` already builds and passes tests in CI (not yet the blessed runtime), while `macos-arm64`/`windows-msvc` stay red until Phases 2–3 (see docs/BUILD.md "Build matrix").
 
 ## Coding Style & Naming Conventions
 - Formatter: run `cd src && make format` (WebKit style). Prefer this over local defaults; CI expects formatted diffs.

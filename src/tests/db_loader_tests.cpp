@@ -35,20 +35,16 @@ void store_to_char(struct char_file_u* st, struct char_data* ch);
 namespace {
 
 // Phase 2a Task 2 moved the login-staging call (interpre.cpp) to decode
-// legacy/account object bytes into an ObjectSaveData once, up front, instead
+// legacy/account object data into an ObjectSaveData once, up front, instead
 // of staging raw bytes for Crash_load to decode later -- Crash_load now
 // applies board points/aliases/followers directly from that structured data
 // as part of the same call, so there's no FILE* left afterward to keep
-// reading from. These tests build binary bytes (object_save_data_to_binary
-// is still test-only, per the brief) to exercise the same account-storage
-// shapes as before; this helper performs the same decode interpre.cpp does
-// before staging.
-void stage_legacy_object_bytes_for_character(const char_data* character, const std::string& object_bytes)
+// reading from. Phase 2b Task 1 retired the account-staged binary bridge
+// entirely: staging just forwards an already-decoded ObjectSaveData, so this
+// helper (renamed from stage_legacy_object_bytes_for_character) no longer
+// needs a binary decode step of its own either.
+void stage_object_data_for_character(const char_data* character, const objects_json::ObjectSaveData& data)
 {
-    objects_json::ObjectSaveData data;
-    bool accepted_missing_follower_section = false;
-    std::string error_message;
-    ASSERT_TRUE(objects_json::legacy_object_save_data_from_binary(object_bytes, &data, &accepted_missing_follower_section, &error_message)) << error_message;
     stage_account_backed_object_data_for_character(character, data);
 }
 
@@ -677,6 +673,9 @@ TEST(DbLoader, ReturnsEmptyExploitHistoryForLinkedCharacterWithoutAccountNativeO
 
 TEST(DbLoader, LoadsObjectAndExploitDataFromRuntimeLegacyFilesWhenAccountNativeJsonIsAbsent)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
@@ -695,9 +694,13 @@ TEST(DbLoader, LoadsObjectAndExploitDataFromRuntimeLegacyFilesWhenAccountNativeJ
     const exploit_record runtime_record = make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20);
     write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"), serialize_record(runtime_record));
 
-    std::string object_bytes;
-    ASSERT_TRUE(load_object_save_bytes_for_character(temp_directory.path(), "aragorn", &object_bytes, &error_message)) << error_message;
-    EXPECT_EQ(object_bytes, runtime_object_bytes);
+    objects_json::ObjectSaveData expected_object_data;
+    bool accepted_missing_follower_section = false;
+    ASSERT_TRUE(objects_json::legacy_object_save_data_from_binary(runtime_object_bytes, &expected_object_data, &accepted_missing_follower_section, &error_message)) << error_message;
+
+    objects_json::ObjectSaveData object_data;
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message)) << error_message;
+    expect_object_save_data_equal(expected_object_data, object_data);
 
     std::vector<exploit_record> records;
     ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records, &error_message)) << error_message;
@@ -726,10 +729,11 @@ TEST(DbLoader, PrefersAccountNativeObjectAndExploitJsonOverConflictingRuntimeLeg
     account_object_data.objects[0].item_number = 4321;
     account_object_data.objects[0].wear_pos = WEAR_HEAD;
 
-    std::string account_object_bytes;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(account_object_data, &account_object_bytes, &error_message)) << error_message;
-    ASSERT_TRUE(account::write_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", account_object_bytes, &error_message)) << error_message;
-    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), make_valid_object_bytes());
+    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", account_object_data, &error_message)) << error_message;
+    // Stale legacy .obj bytes: written only to prove the account-native JSON
+    // takes precedence and this file is never opened/decoded, so its
+    // contents don't need to be a real (32-bit-only) legacy encode.
+    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), "stale-legacy-object-data");
 
     std::vector<exploit_record> account_records;
     account_records.push_back(make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "authoritative", 10, 0, 20));
@@ -737,9 +741,9 @@ TEST(DbLoader, PrefersAccountNativeObjectAndExploitJsonOverConflictingRuntimeLeg
     const exploit_record stale_runtime_record = make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "stale", 11, 0, 0);
     write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"), serialize_record(stale_runtime_record));
 
-    std::string object_bytes;
-    ASSERT_TRUE(load_object_save_bytes_for_character(temp_directory.path(), "aragorn", &object_bytes, &error_message)) << error_message;
-    EXPECT_EQ(object_bytes, account_object_bytes);
+    objects_json::ObjectSaveData object_data;
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message)) << error_message;
+    expect_object_save_data_equal(account_object_data, object_data);
 
     std::vector<exploit_record> loaded_records;
     ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &loaded_records, &error_message)) << error_message;
@@ -929,6 +933,9 @@ TEST(DbLoader, BuildPlayerIndexRemainsConsistentAfterVersionedMigrationRetiresSt
 
 TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenRuntimeFileIsMissing)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -953,9 +960,13 @@ TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenRuntimeFileIsMissing
     ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message)) << error_message;
     EXPECT_NE(access(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0);
 
-    std::string object_bytes;
-    ASSERT_TRUE(load_object_save_bytes_for_character(temp_directory.path(), "aragorn", &object_bytes, &error_message)) << error_message;
-    EXPECT_EQ(object_bytes, expected_bytes);
+    objects_json::ObjectSaveData expected_object_data;
+    bool accepted_missing_follower_section = false;
+    ASSERT_TRUE(objects_json::legacy_object_save_data_from_binary(expected_bytes, &expected_object_data, &accepted_missing_follower_section, &error_message)) << error_message;
+
+    objects_json::ObjectSaveData object_data;
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message)) << error_message;
+    expect_object_save_data_equal(expected_object_data, object_data);
 }
 
 TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenPresent)
@@ -970,19 +981,17 @@ TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenPresent)
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
     ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
 
+    objects_json::ObjectSaveData expected_object_data;
+    expected_object_data.rent.rentcode = RENT_CRASH;
+    expected_object_data.objects.push_back(objects_json::ObjectRecord {});
+    expected_object_data.objects[0].item_number = 4321;
+    expected_object_data.objects[0].wear_pos = WEAR_HEAD;
+
+    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", expected_object_data, &error_message)) << error_message;
+
     objects_json::ObjectSaveData object_data;
-    object_data.rent.rentcode = RENT_CRASH;
-    object_data.objects.push_back(objects_json::ObjectRecord {});
-    object_data.objects[0].item_number = 4321;
-    object_data.objects[0].wear_pos = WEAR_HEAD;
-
-    std::string expected_bytes;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &expected_bytes, &error_message)) << error_message;
-    ASSERT_TRUE(account::write_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", expected_bytes, &error_message)) << error_message;
-
-    std::string object_bytes;
-    ASSERT_TRUE(load_object_save_bytes_for_character(temp_directory.path(), "aragorn", &object_bytes, &error_message)) << error_message;
-    EXPECT_EQ(object_bytes, expected_bytes);
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message)) << error_message;
+    expect_object_save_data_equal(expected_object_data, object_data);
 }
 
 TEST(DbLoader, FailsClosedWhenAccountNativeObjectJsonIsMalformed)
@@ -1003,14 +1012,15 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectJsonIsMalformed)
     account_object_data.objects[0].item_number = 4321;
     account_object_data.objects[0].wear_pos = WEAR_HEAD;
 
-    std::string account_object_bytes;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(account_object_data, &account_object_bytes, &error_message)) << error_message;
-    ASSERT_TRUE(account::write_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", account_object_bytes, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", account_object_data, &error_message)) << error_message;
     write_file(account::account_character_object_path(temp_directory.path(), "alpha-admin", "aragorn"), "{bad-json");
-    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), make_valid_object_bytes());
+    // Stale legacy .obj bytes: failing closed on the (corrupt) authoritative
+    // account-native JSON must never fall through to this file, so its
+    // contents don't need to be a real (32-bit-only) legacy encode.
+    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), "stale-legacy-object-data");
 
-    std::string object_bytes;
-    EXPECT_FALSE(load_object_save_bytes_for_character(temp_directory.path(), "aragorn", &object_bytes, &error_message));
+    objects_json::ObjectSaveData object_data;
+    EXPECT_FALSE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message));
     EXPECT_FALSE(error_message.empty());
     EXPECT_EQ(access(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0)
         << "Failing closed on authoritative account-native object JSON should not silently consume the stale runtime object file.";
@@ -1042,15 +1052,16 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead)
     object_data.objects[0].item_number = 4321;
     object_data.objects[0].wear_pos = WEAR_HEAD;
 
-    std::string account_object_bytes;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &account_object_bytes, &error_message)) << error_message;
-    ASSERT_TRUE(account::write_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", account_object_bytes, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", object_data, &error_message)) << error_message;
 
     std::vector<exploit_record> account_records;
     account_records.push_back(make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "authoritative", 10, 0, 20));
     ASSERT_TRUE(account::write_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn", account_records, &error_message)) << error_message;
 
-    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), make_valid_object_bytes());
+    // Stale legacy .obj/.exploits bytes: the chmod(0000) below fails closed on
+    // the authoritative account-native files before either stale file is ever
+    // opened, so their contents don't need to be a real (32-bit-only) encode.
+    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), "stale-legacy-object-data");
     const exploit_record stale_runtime_record = make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "stale", 11, 0, 0);
     write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"), serialize_record(stale_runtime_record));
 
@@ -1059,8 +1070,8 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead)
     ASSERT_EQ(chmod(account_object_path.c_str(), 0000), 0);
     ASSERT_EQ(chmod(account_exploits_path.c_str(), 0000), 0);
 
-    std::string object_bytes;
-    EXPECT_FALSE(load_object_save_bytes_for_character(temp_directory.path(), "aragorn", &object_bytes, &error_message));
+    objects_json::ObjectSaveData loaded_object_data;
+    EXPECT_FALSE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &loaded_object_data, &error_message));
     EXPECT_NE(error_message.find("Failed to open file"), std::string::npos);
 
     std::vector<exploit_record> loaded_records;
@@ -1085,9 +1096,9 @@ TEST(DbLoader, ReturnsEmptyObjectSaveBytesForLinkedCharacterWithoutAccountNative
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
     ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
 
-    std::string object_bytes;
-    ASSERT_TRUE(load_object_save_bytes_for_character(temp_directory.path(), "aragorn", &object_bytes, &error_message)) << error_message;
-    EXPECT_TRUE(object_bytes.empty());
+    objects_json::ObjectSaveData object_data;
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message)) << error_message;
+    expect_object_save_data_equal(build_default_account_backed_object_data(), object_data);
 }
 
 TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
@@ -1116,11 +1127,7 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
     object_data.board_points[0] = 77;
     object_data.aliases.push_back({ "assist", "kill orc" });
 
-    std::string object_bytes;
-    std::string error_message;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
-
-    stage_legacy_object_bytes_for_character(&character, object_bytes);
+    stage_object_data_for_character(&character, object_data);
     FILE* fp = Crash_load(&character);
     ASSERT_NE(fp, nullptr);
     // Crash_load now applies board points/aliases directly from its
@@ -1170,11 +1177,7 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndEquipsWearableI
     object_data.objects[1].weight = 4;
     object_data.objects[1].values = { 0, 0, 1, 0, 0 };
 
-    std::string object_bytes;
-    std::string error_message;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
-
-    stage_legacy_object_bytes_for_character(&character, object_bytes);
+    stage_object_data_for_character(&character, object_data);
     FILE* fp = Crash_load(&character);
     ASSERT_NE(fp, nullptr);
     ASSERT_EQ(std::fclose(fp), 0);
@@ -1218,22 +1221,20 @@ TEST(DbLoader, AccountNativeCharacterAndObjectsJsonSupportEquippedLoginWithoutMi
     object_data.objects[1].weight = 4;
     object_data.objects[1].values = { 0, 0, 1, 0, 0 };
 
-    std::string expected_object_bytes;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &expected_object_bytes, &error_message)) << error_message;
-    ASSERT_TRUE(account::write_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", expected_object_bytes, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", object_data, &error_message)) << error_message;
 
     char_file_u loaded_store {};
     ASSERT_TRUE(account::read_account_character_file(temp_directory.path(), "alpha-admin", "aragorn", &loaded_store, &error_message)) << error_message;
 
-    std::string loaded_object_bytes;
-    ASSERT_TRUE(load_object_save_bytes_for_character(temp_directory.path(), "aragorn", &loaded_object_bytes, &error_message)) << error_message;
-    EXPECT_EQ(loaded_object_bytes, expected_object_bytes);
+    objects_json::ObjectSaveData loaded_object_data;
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &loaded_object_data, &error_message)) << error_message;
+    expect_object_save_data_equal(object_data, loaded_object_data);
 
     char_data character {};
     clear_char(&character, MOB_VOID);
     store_to_char(&loaded_store, &character);
 
-    stage_legacy_object_bytes_for_character(&character, loaded_object_bytes);
+    stage_object_data_for_character(&character, loaded_object_data);
     FILE* fp = Crash_load(&character);
     ASSERT_NE(fp, nullptr);
     ASSERT_EQ(std::fclose(fp), 0);
@@ -1272,9 +1273,7 @@ TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallba
     object_data.objects[0].weight = 7;
     object_data.objects[0].values = { 0, 0, 2, 0, 0 };
 
-    std::string object_bytes;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
-    ASSERT_TRUE(account::write_account_object_file(".", "alpha-admin", "aragorn", object_bytes, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_data(".", "alpha-admin", "aragorn", object_data, &error_message)) << error_message;
 
     char_file_u loaded_store {};
     ASSERT_TRUE(account::read_account_character_file(".", "alpha-admin", "aragorn", &loaded_store, &error_message)) << error_message;
@@ -1283,7 +1282,7 @@ TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallba
     clear_char(&character, MOB_VOID);
     store_to_char(&loaded_store, &character);
 
-    stage_legacy_object_bytes_for_character(&character, object_bytes);
+    stage_object_data_for_character(&character, object_data);
 
     const std::string stderr_path = temp_directory.path() + "/account-native-crash-load.stderr";
     FILE* fp = nullptr;
@@ -1324,9 +1323,7 @@ TEST(DbLoader, AccountNativeCrashLoadStillLogsNonMissingLegacyObjectOpenFailures
 
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
-    std::string object_bytes;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
-    ASSERT_TRUE(account::write_account_object_file(".", "alpha-admin", "aragorn", object_bytes, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_data(".", "alpha-admin", "aragorn", object_data, &error_message)) << error_message;
 
     ASSERT_EQ(mkdir("plrobjs/A-E/aragorn.obj", 0700), 0);
 
@@ -1337,7 +1334,7 @@ TEST(DbLoader, AccountNativeCrashLoadStillLogsNonMissingLegacyObjectOpenFailures
     clear_char(&character, MOB_VOID);
     store_to_char(&loaded_store, &character);
 
-    stage_legacy_object_bytes_for_character(&character, object_bytes);
+    stage_object_data_for_character(&character, object_data);
 
     const std::string stderr_path = temp_directory.path() + "/account-native-crash-load-open-failure.stderr";
     FILE* fp = nullptr;
@@ -1604,10 +1601,7 @@ TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacte
     object_data.objects[0].item_number = 1001;
     object_data.objects[0].wear_pos = WEAR_HEAD;
 
-    std::string object_bytes;
-    std::string error_message;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
-    stage_legacy_object_bytes_for_character(&staged_character, object_bytes);
+    stage_object_data_for_character(&staged_character, object_data);
 
     char_data later_character {};
     clear_char(&later_character, MOB_VOID);
@@ -1629,6 +1623,9 @@ TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacte
 
 TEST(DbLoader, MigratedLegacyObjectPayloadMatchesAccountNativeObjectsJson)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -1674,11 +1671,8 @@ TEST(DbLoader, MigratedLegacyObjectPayloadMatchesAccountNativeObjectsJson)
     account::CharacterMigrationData migration;
     ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message)) << error_message;
 
-    std::string migrated_object_bytes;
-    ASSERT_TRUE(account::read_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", &migrated_object_bytes, &error_message)) << error_message;
-
     objects_json::ObjectSaveData migrated_object_data;
-    ASSERT_TRUE(objects_json::object_save_data_from_binary(migrated_object_bytes, &migrated_object_data, &error_message)) << error_message;
+    ASSERT_TRUE(account::read_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", &migrated_object_data, &error_message)) << error_message;
     expect_object_save_data_equal(expected_object_data, migrated_object_data);
 }
 
@@ -1692,10 +1686,10 @@ TEST(DbLoader, ReturnsEmptyObjectSaveBytesWhenNoRuntimeOrSnapshotExists)
     ASSERT_EQ(mkdir((temp_directory.path() + "/account_characters").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/account_characters/A-E").c_str(), 0700), 0);
 
-    std::string object_bytes;
+    objects_json::ObjectSaveData object_data;
     std::string error_message;
-    ASSERT_TRUE(load_object_save_bytes_for_character(temp_directory.path(), "aragorn", &object_bytes, &error_message)) << error_message;
-    EXPECT_TRUE(object_bytes.empty());
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message)) << error_message;
+    expect_object_save_data_equal(build_default_account_backed_object_data(), object_data);
 }
 
 TEST(DbLoader, SeedsLegacyExploitFileFromAccountSnapshotWhenAppendingNewRecord)

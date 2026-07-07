@@ -4968,10 +4968,10 @@ bool write_exploit_record_for_character(const std::string& root_directory, const
     return true;
 }
 
-bool load_object_save_bytes_for_character(const std::string& root_directory, const std::string& character_name, std::string* bytes, std::string* error_message)
+bool load_object_save_data_for_character(const std::string& root_directory, const std::string& character_name, objects_json::ObjectSaveData* data, std::string* error_message)
 {
-    if (bytes == nullptr) {
-        set_db_error(error_message, "Object-save output buffer must not be null.");
+    if (data == nullptr) {
+        set_db_error(error_message, "Object-save output parameter must not be null.");
         return false;
     }
 
@@ -4980,7 +4980,7 @@ bool load_object_save_bytes_for_character(const std::string& root_directory, con
         return false;
 
     if (!owner_account_name.empty()) {
-        if (account::read_account_object_file(root_directory, owner_account_name, character_name, bytes, error_message))
+        if (account::read_account_object_data(root_directory, owner_account_name, character_name, data, error_message))
             return true;
 
         const std::string read_error = error_message ? *error_message : "";
@@ -5000,7 +5000,34 @@ bool load_object_save_bytes_for_character(const std::string& root_directory, con
     FILE* runtime_file = std::fopen(runtime_path.c_str(), "rb");
     if (runtime_file != nullptr) {
         std::fclose(runtime_file);
-        return read_binary_file_contents(runtime_path, bytes, error_message);
+
+        std::string legacy_bytes;
+        if (!read_binary_file_contents(runtime_path, &legacy_bytes, error_message))
+            return false;
+
+        // The one-time legacy decode this bridge retires everything else in
+        // favor of: real .obj files on disk were written by the 32-bit game
+        // and never change, so the portable explicit-offset decoder (not a
+        // native-struct memcpy) is what actually reads them correctly on any
+        // ABI. A decode failure here is a soft failure -- log and hand back a
+        // fresh default so a corrupt legacy file degrades an account-backed
+        // login to an empty inventory instead of rejecting it outright
+        // (matches the pre-Task-1 interpre.cpp staging behavior).
+        objects_json::ObjectSaveData decoded;
+        bool accepted_missing_follower_section = false;
+        std::string decode_error;
+        if (!objects_json::legacy_object_save_data_from_binary(legacy_bytes, &decoded, &accepted_missing_follower_section, &decode_error)) {
+            char log_buffer[MAX_STRING_LENGTH];
+            std::snprintf(log_buffer, sizeof(log_buffer), "SYSERR: unable to decode account-staged object data for %s: %s", character_name.c_str(), decode_error.c_str());
+            log(log_buffer);
+            *data = build_default_account_backed_object_data();
+            set_db_error(error_message, "");
+            return true;
+        }
+
+        *data = std::move(decoded);
+        set_db_error(error_message, "");
+        return true;
     }
 
     if (errno != ENOENT) {
@@ -5008,7 +5035,7 @@ bool load_object_save_bytes_for_character(const std::string& root_directory, con
         return false;
     }
 
-    bytes->clear();
+    *data = build_default_account_backed_object_data();
     set_db_error(error_message, "");
     return true;
 }

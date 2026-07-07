@@ -1486,44 +1486,44 @@ TEST(AccountManagement, WritesAndReadsAccountNativeObjectFile) {
     object_data.objects[0].wear_pos = WEAR_HEAD;
     object_data.aliases.push_back({ "assist", "kill orc" });
 
-    std::string object_bytes;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
-    ASSERT_TRUE(account::write_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", object_bytes, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", object_data, &error_message)) << error_message;
     ASSERT_TRUE(account::account_object_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
 
-    std::string loaded_bytes;
-    ASSERT_TRUE(account::read_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", &loaded_bytes, &error_message)) << error_message;
-
     objects_json::ObjectSaveData loaded;
-    ASSERT_TRUE(objects_json::object_save_data_from_binary(loaded_bytes, &loaded, &error_message)) << error_message;
+    ASSERT_TRUE(account::read_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", &loaded, &error_message)) << error_message;
     ASSERT_EQ(loaded.objects.size(), 1u);
     EXPECT_EQ(loaded.objects[0].item_number, 1234);
     ASSERT_EQ(loaded.aliases.size(), 1u);
     EXPECT_EQ(loaded.aliases[0].keyword, "assist");
 }
 
+// The struct API has no binary decode step left on write to reject malformed
+// bytes -- write_account_object_data takes an already-valid ObjectSaveData,
+// so there is nothing to "truncate". The equivalent failure mode now lives on
+// read: a hand-edited/corrupted account object JSON missing a required
+// section (here: "followers", the JSON analogue of the legacy binary's
+// follower section) must fail closed instead of silently defaulting it.
 TEST(AccountManagement, AccountNativeObjectWriteRejectsLegacyObjectFileWithoutFollowerSection) {
     TemporaryDirectory temp_directory;
     std::string error_message;
 
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700007776, nullptr, &error_message)) << error_message;
     ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700007777, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_default_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", &error_message)) << error_message;
 
-    objects_json::ObjectSaveData object_data;
-    object_data.rent.rentcode = RENT_CRASH;
-    object_data.objects.push_back(objects_json::ObjectRecord {});
-    object_data.objects[0].item_number = 1234;
-    object_data.objects[0].wear_pos = WEAR_HEAD;
-    object_data.aliases.push_back({ "assist", "kill orc" });
+    std::string json = objects_json::serialize_objects_to_json(objects_json::ObjectSaveData {});
+    const std::string followers_field = ",\n  \"followers\":";
+    const size_t followers_pos = json.find(followers_field);
+    ASSERT_NE(followers_pos, std::string::npos);
+    json.erase(followers_pos);
+    json += "\n}\n";
 
-    std::string object_bytes;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
-    ASSERT_GT(object_bytes.size(), sizeof(follower_file_elem));
-    object_bytes.erase(object_bytes.size() - sizeof(follower_file_elem));
+    const std::string object_path = account::account_character_object_path(temp_directory.path(), "alpha-admin", "aragorn");
+    write_text_file(object_path, json);
 
-    EXPECT_FALSE(account::write_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", object_bytes, &error_message));
-    EXPECT_NE(error_message.find("Truncated objects data while reading follower record"), std::string::npos);
-    EXPECT_FALSE(account::account_object_file_exists(temp_directory.path(), "alpha-admin", "aragorn", nullptr));
+    objects_json::ObjectSaveData loaded;
+    EXPECT_FALSE(account::read_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", &loaded, &error_message));
+    EXPECT_NE(error_message.find("missing one or more required sections"), std::string::npos);
 }
 
 TEST(AccountManagement, WritesDefaultAccountNativeObjectFile) {
@@ -1535,11 +1535,8 @@ TEST(AccountManagement, WritesDefaultAccountNativeObjectFile) {
     ASSERT_TRUE(account::write_default_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", &error_message)) << error_message;
     ASSERT_TRUE(account::account_object_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
 
-    std::string loaded_bytes;
-    ASSERT_TRUE(account::read_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", &loaded_bytes, &error_message)) << error_message;
-
     objects_json::ObjectSaveData loaded;
-    ASSERT_TRUE(objects_json::object_save_data_from_binary(loaded_bytes, &loaded, &error_message)) << error_message;
+    ASSERT_TRUE(account::read_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", &loaded, &error_message)) << error_message;
     EXPECT_TRUE(loaded.objects.empty());
     EXPECT_TRUE(loaded.aliases.empty());
     EXPECT_TRUE(loaded.followers.empty());
@@ -1596,8 +1593,8 @@ TEST(AccountManagement, RejectsStoredObjectPathThatDoesNotMatchExpectedCharacter
     account_json.replace(account_json.find(original_fragment), original_fragment.size(), malicious_fragment);
     write_text_file(account_path, account_json);
 
-    std::string object_bytes;
-    EXPECT_FALSE(account::read_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", &object_bytes, &error_message));
+    objects_json::ObjectSaveData object_data;
+    EXPECT_FALSE(account::read_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", &object_data, &error_message));
     EXPECT_NE(error_message.find("expected account-owned object filename"), std::string::npos);
 }
 
@@ -1616,8 +1613,8 @@ TEST(AccountManagement, RejectsStoredObjectPathWithAbsolutePath) {
     account_json.replace(account_json.find(original_fragment), original_fragment.size(), malicious_fragment);
     write_text_file(account_path, account_json);
 
-    std::string object_bytes;
-    EXPECT_FALSE(account::read_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", &object_bytes, &error_message));
+    objects_json::ObjectSaveData object_data;
+    EXPECT_FALSE(account::read_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", &object_data, &error_message));
     EXPECT_NE(error_message.find("expected account-owned object filename"), std::string::npos);
 }
 
@@ -1643,9 +1640,7 @@ TEST(AccountManagement, WritesCanonicalObjectPathWhenSafeLegacyRelativePathIsSto
     object_data.objects.push_back(objects_json::ObjectRecord {});
     object_data.objects[0].item_number = 1234;
 
-    std::string object_bytes;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
-    ASSERT_TRUE(account::write_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", object_bytes, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", object_data, &error_message)) << error_message;
 
     const std::string updated_account_json = read_file_contents(account_path);
     EXPECT_NE(updated_account_json.find(original_fragment), std::string::npos);
@@ -1682,9 +1677,7 @@ TEST(AccountManagement, LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteF
     object_data.objects.push_back(objects_json::ObjectRecord {});
     object_data.objects[0].item_number = 1234;
 
-    std::string object_bytes;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
-    EXPECT_FALSE(account::write_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", object_bytes, &error_message));
+    EXPECT_FALSE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", object_data, &error_message));
 
     ASSERT_EQ(chmod(account_directory.c_str(), 0700), 0);
 
@@ -1748,6 +1741,9 @@ TEST(AccountManagement, RemovesAccountNativeCharacterFile) {
 }
 
 TEST(AccountManagement, MigratesLegacyCharacterFilesIntoAccountNativeAssetsWithoutPersistingSnapshotFile) {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700007776, nullptr, &error_message)) << error_message;
@@ -1856,6 +1852,9 @@ TEST(AccountManagement, ReportsMissingRequiredPlayerFileDuringMigration) {
 }
 
 TEST(AccountManagement, MigratesLegacyCharacterByDefaultFileLayout) {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700009998, nullptr, &error_message)) << error_message;
@@ -2120,6 +2119,9 @@ TEST(AccountManagement, DecodesSnapshotContentBackIntoOriginalBytes) {
 }
 
 TEST(AccountManagement, RestoresLegacyFilesFromCharacterMigrationSnapshot) {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -2152,6 +2154,9 @@ TEST(AccountManagement, RestoresLegacyFilesFromCharacterMigrationSnapshot) {
 }
 
 TEST(AccountManagement, RejectsMismatchedRestoreRequestWithoutTouchingLegacyFiles) {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -2238,6 +2243,9 @@ TEST(AccountManagement, RefreshesSnapshotForLinkedCharactersUsingCurrentLegacyFi
 }
 
 TEST(AccountManagement, MigrationWritesAccountNativeObjectFileWhenLegacyObjectDataIsValid) {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -2263,17 +2271,17 @@ TEST(AccountManagement, MigrationWritesAccountNativeObjectFileWhenLegacyObjectDa
     ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, &migration, &error_message)) << error_message;
     ASSERT_TRUE(account::account_object_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
 
-    std::string loaded_bytes;
-    ASSERT_TRUE(account::read_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", &loaded_bytes, &error_message)) << error_message;
-
     objects_json::ObjectSaveData loaded;
-    ASSERT_TRUE(objects_json::object_save_data_from_binary(loaded_bytes, &loaded, &error_message)) << error_message;
+    ASSERT_TRUE(account::read_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", &loaded, &error_message)) << error_message;
     ASSERT_EQ(loaded.objects.size(), 1u);
     EXPECT_EQ(loaded.objects[0].item_number, 3210);
     EXPECT_EQ(loaded.objects[0].wear_pos, WEAR_BODY);
 }
 
 TEST(AccountManagement, MigrationAcceptsLegacyObjectFileWithoutFollowerSection) {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -2302,11 +2310,8 @@ TEST(AccountManagement, MigrationAcceptsLegacyObjectFileWithoutFollowerSection) 
     ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, &migration, &error_message)) << error_message;
     ASSERT_TRUE(account::account_object_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
 
-    std::string loaded_bytes;
-    ASSERT_TRUE(account::read_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", &loaded_bytes, &error_message)) << error_message;
-
     objects_json::ObjectSaveData loaded;
-    ASSERT_TRUE(objects_json::object_save_data_from_binary(loaded_bytes, &loaded, &error_message)) << error_message;
+    ASSERT_TRUE(account::read_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", &loaded, &error_message)) << error_message;
     ASSERT_EQ(loaded.objects.size(), 1u);
     EXPECT_EQ(loaded.objects[0].item_number, 4321);
     ASSERT_EQ(loaded.aliases.size(), 1u);
@@ -2316,6 +2321,9 @@ TEST(AccountManagement, MigrationAcceptsLegacyObjectFileWithoutFollowerSection) 
 }
 
 TEST(AccountManagement, MigrationRejectsPartialFollowerSectionAndCleansUpAccountNativeOutputs) {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -2373,11 +2381,8 @@ TEST(AccountManagement, MigrationWritesDefaultAccountNativeObjectFileWhenLegacyO
     ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, &migration, &error_message)) << error_message;
     ASSERT_TRUE(account::account_object_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
 
-    std::string loaded_bytes;
-    ASSERT_TRUE(account::read_account_object_file(temp_directory.path(), "alpha-admin", "aragorn", &loaded_bytes, &error_message)) << error_message;
-
     objects_json::ObjectSaveData loaded;
-    ASSERT_TRUE(objects_json::object_save_data_from_binary(loaded_bytes, &loaded, &error_message)) << error_message;
+    ASSERT_TRUE(account::read_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", &loaded, &error_message)) << error_message;
     EXPECT_TRUE(loaded.objects.empty());
     EXPECT_TRUE(loaded.aliases.empty());
     EXPECT_TRUE(loaded.followers.empty());
@@ -2412,6 +2417,9 @@ TEST(AccountManagement, MigrationWritesAccountNativeExploitFileWhenLegacyExploit
 }
 
 TEST(AccountManagement, MigrationRetiresLegacyFilesAfterSuccessfulAccountNativeWrite) {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
@@ -2448,6 +2456,8 @@ TEST(AccountManagement, MigrationFailsClosedWhenLegacyFileRetirementFails) {
     // LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteFails).
     if (geteuid() == 0)
         GTEST_SKIP() << "chmod-based failure injection does not work as root.";
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
@@ -2483,6 +2493,9 @@ TEST(AccountManagement, MigrationFailsClosedWhenLegacyFileRetirementFails) {
 }
 
 TEST(AccountManagement, MigrationCleansUpAccountNativeOutputsWhenStaleFlatRetirementFails) {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010100, nullptr, &error_message)) << error_message;
@@ -2527,6 +2540,8 @@ TEST(AccountManagement, MigrationRestoresRetiredFilesWhenExploitRetirementFails)
     // LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteFails).
     if (geteuid() == 0)
         GTEST_SKIP() << "chmod-based failure injection does not work as root.";
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);

@@ -926,9 +926,28 @@ int get_followers_level(char_data* ch) /* summ of levels of mobs/players charmed
     return levels;
 }
 
+#ifdef TESTING
+// Test seam: when non-null, number()/number(int,int) consult this hook
+// before drawing from the PRNG. Installed only by test_random_utils.cpp,
+// which pops a queued value (clamped to [0.0, 1.0)) per call and returns a
+// negative sentinel when the queue is empty, telling the caller to fall
+// through to the real PRNG below — the same fallthrough the old
+// __wrap__Z6numberv/__wrap__Z6numberii linker-wrap seam provided. The symbol
+// does not exist in production builds (no -DTESTING there).
+double (*rots_test_random_hook)() = nullptr;
+#endif
+
 // returns a random number from 0.0 to 1.0
 double number()
 {
+#ifdef TESTING
+    if (rots_test_random_hook) {
+        double hooked_value = rots_test_random_hook();
+        if (hooked_value >= 0.0) {
+            return hooked_value;
+        }
+    }
+#endif
     // 2^32 as double; next() is a full 32-bit draw, so this is uniform [0,1).
     return rots_rng::next() / 4294967296.0;
 }
@@ -965,6 +984,15 @@ int number(int from, int to)
         //       fprintf(stderr, "SYSERR: number(%d, %d)\n",from,to);
         to = from;
     }
+
+#ifdef TESTING
+    if (rots_test_random_hook) {
+        double hooked_value = rots_test_random_hook();
+        if (hooked_value >= 0.0) {
+            return from + static_cast<int>(hooked_value * upper_end);
+        }
+    }
+#endif
 
     return (rots_rng::next() % upper_end) + from;
 }

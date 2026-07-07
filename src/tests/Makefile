@@ -228,7 +228,7 @@ pod_persistence_json_tests.o : ../pkill.h ../db.h ../exploits_json.h ../account_
 tests: $(EXECUTABLE)
 
 $(EXECUTABLE): $(OBJFILES) $(OBJS)
-	$(CXX) $(CXXFLAGS) $(OBJFILES) $(OBJS) -o $(EXECUTABLE) $(LDFLAGS) -Wl,--wrap=_Z6numberv -Wl,--wrap=_Z6numberii
+	$(CXX) $(CXXFLAGS) $(OBJFILES) $(OBJS) -o $(EXECUTABLE) $(LDFLAGS)
 
 .cpp.o:
 	$(CXX) $(CXXFLAGS) -c $< -o $@

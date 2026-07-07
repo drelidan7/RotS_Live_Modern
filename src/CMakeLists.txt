@@ -222,16 +222,11 @@ if(ROTS_BUILD_TESTS)
     target_link_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
     )
-    # test_random_utils.cpp wraps number() for deterministic RNG in tests.
-    # -Wl,--wrap is GNU ld only: ld64 (macOS) and MSVC link.exe have no
-    # equivalent, so the RNG seam does not exist off Linux yet — Phase 2 must
-    # replace it (e.g. a link-time indirection) before macOS tests can pass.
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        target_link_options(ageland_tests PRIVATE
-            -Wl,--wrap=_Z6numberv
-            -Wl,--wrap=_Z6numberii
-        )
-    endif()
+    # test_random_utils.cpp installs a TESTING-only function-pointer hook
+    # (rots_test_random_hook, defined in utility.cpp) that number()/
+    # number(int,int) consult before drawing from the PRNG. This replaced a
+    # GNU-ld-only `-Wl,--wrap` seam so the RNG queue works on every platform
+    # (ld64/macOS and MSVC link.exe have no --wrap equivalent).
 
     if(BUILD_TESTING)
         gtest_discover_tests(ageland_tests

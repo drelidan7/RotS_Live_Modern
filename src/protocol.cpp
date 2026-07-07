@@ -20,8 +20,10 @@
 #include <alloca.h>
 #include <arpa/telnet.h>
 #include <ctype.h>
-#include <malloc.h>
 #include <stdio.h>
+// <malloc.h> (glibc-specific, no macOS equivalent) is dropped: the only libc
+// facilities this file uses are malloc()/free(), already declared by <stdlib.h>
+// below on every platform.
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>

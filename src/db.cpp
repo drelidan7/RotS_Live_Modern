@@ -1202,7 +1202,7 @@ void check_start_rooms(void)
 
 void renum_world(void)
 {
-    register int room, door;
+    int room, door;
 
     for (room = 0; room <= top_of_world; room++)
         for (door = 0; door <= 5; door++)
@@ -3097,7 +3097,7 @@ char* fread_string(FILE* fl, char* error)
 {
     char buf[MAX_STRING_LENGTH], tmp[MAX_STRING_LENGTH];
     char* rslt;
-    register char *point, *tmppoint;
+    char *point, *tmppoint;
     int flag, markfirst;
 
     bzero(buf, MAX_STRING_LENGTH);

@@ -88,6 +88,16 @@ set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 #     variants transparently — does not change any of the game's own on-disk
 #     structs, so save-file format is unaffected.
 set(ROTS_GNULIKE "$<CXX_COMPILER_ID:GNU,Clang,AppleClang>")
+# True on x86/x86-64 targets (32-bit legacy ABI and any 64-bit x86 host); false on
+# arm64 (Apple Silicon, etc.), where x86-only flags like -msse2/-mfpmath=sse don't
+# exist and the compiler errors out rather than ignoring them. Computed once at
+# configure time (CMAKE_SYSTEM_PROCESSOR doesn't vary per-build-config), then used
+# as a plain 0/1 inside generator expressions below.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86|x86)$")
+    set(ROTS_X86 1)
+else()
+    set(ROTS_X86 0)
+endif()
 target_compile_options(ageland PRIVATE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
     $<${ROTS_GNULIKE}:-funsigned-char -fstrict-aliasing -w -g>
@@ -180,9 +190,24 @@ if(ROTS_BUILD_TESTS)
     target_compile_features(ageland_tests PRIVATE cxx_std_17)
     set_target_properties(ageland_tests PROPERTIES CXX_EXTENSIONS OFF)
 
-    target_include_directories(ageland_tests PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+    # Quote-only search paths (-iquote), NOT target_include_directories()'s default
+    # -I: tests/*.cpp reach headers one level up via quoted includes ("act_info.h",
+    # etc.), so both directories need to be quote-searchable. -I would ALSO add them
+    # to the angle-bracket <...> search path, and src/limits.h (a project header —
+    # player rank constants — unrelated to the standard C <limits.h>) would then
+    # shadow the real system <limits.h> ahead of the toolchain's own path. That's
+    # invisible under glibc/libstdc++ (CHAR_BIT etc. come from compiler builtins),
+    # but AppleClang's libc++ headers (<climits>, <string>, <bitset>, ...) do a bare
+    # `#include <limits.h>` and break with "use of undeclared identifier 'CHAR_BIT'"
+    # the moment src/ shadows it. -iquote never affects angle-bracket lookups, so
+    # this is a strict improvement with no behavior change on the GCC/32-bit path
+    # (quote-form resolution finds the identical file either way).
+    # NOTE: no embedded quotes around the paths below — target_compile_options()
+    # doesn't shell-parse a genex's expansion, so a literal `"` would travel through
+    # as part of the token (e.g. an -iquote argument of literal `"/path"`, quote
+    # characters included) instead of being stripped as shell-style grouping.
+    target_compile_options(ageland_tests PRIVATE
+        $<${ROTS_GNULIKE}:-iquote ${CMAKE_CURRENT_SOURCE_DIR} -iquote ${CMAKE_CURRENT_SOURCE_DIR}/tests>
     )
     target_compile_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
@@ -211,7 +236,13 @@ if(ROTS_BUILD_TESTS)
     # x87 extended-precision FP, which rounds differently from the SSE math of every
     # x86-64 build; several tests pin exact FP thresholds authored under SSE semantics.
     # No-op on x86-64 hosts (SSE is already the default there).
-    target_compile_options(ageland_tests PRIVATE $<${ROTS_GNULIKE}:-msse2 -mfpmath=sse>)
+    # -msse2/-mfpmath=sse are x86-only spellings — gcc/clang reject them outright on
+    # arm64 ("unknown FP unit 'sse'"), so gate on the target processor too. The
+    # Linux-container src/tests/Makefile path stays x86-only already (it's the -m32
+    # legacy ABI), so it doesn't need — and doesn't get — this guard.
+    target_compile_options(ageland_tests PRIVATE
+        $<$<AND:${ROTS_GNULIKE},${ROTS_X86}>:-msse2 -mfpmath=sse>
+    )
     target_link_libraries(ageland_tests PRIVATE GTest::gtest)
     # Mirror the compile-time -m32 so a multilib host building legacy tests links 32-bit too.
     target_link_options(ageland_tests PRIVATE

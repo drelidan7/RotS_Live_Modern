@@ -22,14 +22,17 @@ public:
                 on_instance_not_created();
             }
         }
-        return m_pInstance;
+        return *m_pInstance;
     }
 
 protected:
     virtual ~singleton() { }
 
-    virtual void on_instance_destroyed() {};
-    virtual void on_instance_not_created() {};
+    // Empty stubs with no overriders anywhere in the codebase (see AGENTS.md: this
+    // whole class template is unused/dead code) — plain static functions, not virtual
+    // dispatch, since instance() (also static) has no object to dispatch through.
+    static void on_instance_destroyed() {};
+    static void on_instance_not_created() {};
 
 private:
     // Deleted functions.

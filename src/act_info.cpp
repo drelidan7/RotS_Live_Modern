@@ -2521,8 +2521,8 @@ ACMD(do_gen_ps)
 void perform_mortal_where(struct char_data* ch, char* arg)
 {
     int tmploc;
-    register struct char_data* i;
-    register struct descriptor_data* d;
+    struct char_data* i;
+    struct descriptor_data* d;
 
     if (!*arg) {
         send_to_char("Players in your Zone\n\r--------------------\n\r", ch);
@@ -2556,8 +2556,8 @@ void perform_mortal_where(struct char_data* ch, char* arg)
 void perform_immort_where(struct char_data* ch, char* arg)
 {
     int num = 0, found = 0, tmp;
-    register struct char_data* i;
-    register struct obj_data* k;
+    struct char_data* i;
+    struct obj_data* k;
     struct obj_data* tmpobj;
     struct descriptor_data* d;
 

@@ -578,7 +578,7 @@ char* fill[] = {
 
 int search_block(char* arg, char** list, char exact)
 {
-    register int i, l;
+    int i, l;
 
     /* Make into lower case, and get length of string */
     for (l = 0; *(arg + l); l++)
@@ -1619,8 +1619,8 @@ int activate_obj_special(struct obj_data* host, struct char_data* ch, int cmd,
 int special(struct char_data* ch, int cmd, char* arg, int callflag,
     struct waiting_type* wtl, int in_room)
 {
-    register struct obj_data* i;
-    register struct char_data* k;
+    struct obj_data* i;
+    struct char_data* k;
     int j, remote_mode;
     struct char_data* tmpch;
 

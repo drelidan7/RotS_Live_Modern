@@ -23,6 +23,17 @@
 #include <unistd.h>
 #include <vector>
 
+// A real, always-executable, zero-argument, always-succeeds binary used to stand in
+// for `sendmail` in tests (via ROTS_SENDMAIL_COMMAND) without actually sending mail.
+// The path differs by platform: the Debian container this project's -m32 build
+// targets predates the merged-/usr layout, so `true` lives only at /bin/true there
+// (no /usr/bin/true); macOS has the opposite — only /usr/bin/true, no /bin/true.
+#if defined(__APPLE__)
+static constexpr const char* kTrueCommandPath = "/usr/bin/true";
+#else
+static constexpr const char* kTrueCommandPath = "/bin/true";
+#endif
+
 extern struct player_index_element* player_table;
 extern struct char_data* character_list;
 extern struct descriptor_data* descriptor_list;
@@ -1564,7 +1575,7 @@ TEST(InterpreAccountMenu, PendingVerificationLoginResetsBadPasswordCounterAndPro
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", "/bin/true");
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", kTrueCommandPath);
     ASSERT_EQ(mkdir("accounts", 0700), 0);
     ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
 
@@ -1766,7 +1777,7 @@ TEST(InterpreAccountMenu, AccountCreationSuccessClearsStagedPasswordAndPromptsFo
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", "/bin/true");
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", kTrueCommandPath);
 
     descriptor_data descriptor = make_descriptor();
     descriptor.connected = CON_ACCTNEWPWDCNF;

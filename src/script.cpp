@@ -829,7 +829,14 @@ int run_script(struct info_script* info, struct script_data* position)
             if (curr->param[0] && curr->param[2]) {
                 tmprm = get_room_param(curr->param[0], info);
                 tmpint = real_room(curr->param[2]);
-                if (tmprm && (tmpint != NOWHERE) && (-1 < curr->param[1] < 6))
+                // NOTE: (-1 < curr->param[1] < 6) is a pre-existing legacy bug (parses as
+                // ((-1 < curr->param[1]) < 6), which is a bool compared to 6 and is thus
+                // always true, regardless of curr->param[1]) — AppleClang 21 makes this a
+                // hard error ([-Wparentheses]) rather than a warning, unlike GCC. Adding the
+                // parens explicitly is portability-only: it keeps the exact original
+                // (always-true) evaluation on every platform. Do not "fix" this into a real
+                // range check here — that would change 32-bit behavior; see task-5 report.
+                if (tmprm && (tmpint != NOWHERE) && ((-1 < curr->param[1]) < 6))
                     tmprm->dir_option[curr->param[1]]->to_room = tmpint;
             }
             curr = curr->next;
@@ -911,7 +918,10 @@ int run_script(struct info_script* info, struct script_data* position)
         case SCRIPT_DO_REMOVE:
             if (curr->param[0] && curr->param[1]) {
                 tmpch = get_char_param(curr->param[0], info);
-                if (tmpch && (-1 < curr->param[1] < MAX_WEAR))
+                // NOTE: same pre-existing chained-comparison bug as SCRIPT_CHANGE_EXIT_TO
+                // above (always true; see the comment there) — parens added for AppleClang
+                // portability only, behavior is unchanged on every platform.
+                if (tmpch && ((-1 < curr->param[1]) < MAX_WEAR))
                     if (tmpch->equipment[curr->param[1]])
                         perform_remove(tmpch, curr->param[1]);
             }

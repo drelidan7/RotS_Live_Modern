@@ -146,6 +146,18 @@ int has_program(char_data* host, int num);
  #define MAX(a,b) (((a) > (b)) ? (a) : (b))
  #define MIN(a,b) (((a) < (b)) ? (a) : (b)) */
 
+/* glibc's sys/param.h leaks MIN/MAX transitively via other system headers, which is
+ * why every platform historically "had" them without this file defining them. Non-glibc
+ * platforms (macOS/BSD libc, MSVC) don't leak them the same way, so define them here,
+ * guarded so a system header that DOES provide them (and is included first) wins. */
+#ifndef MIN
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+
+#ifndef MAX
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#endif
+
 #define ISNEWL(ch) ((ch) == '\n' || (ch) == '\r')
 
 #define IF_STR(st) ((st) ? (st) : "\0")

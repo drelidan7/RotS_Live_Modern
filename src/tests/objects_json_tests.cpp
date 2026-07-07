@@ -112,6 +112,9 @@ void expect_object_save_data_equal(const objects_json::ObjectSaveData& expected,
 
 TEST(ObjectsJson, SerializesAndDeserializesBinaryRoundTrip)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "object_save_data_to_binary is a native-struct encode valid only on the 32-bit ABI; run in the i386 container";
+
     const objects_json::ObjectSaveData original = make_object_save_data();
 
     std::string bytes;
@@ -166,6 +169,9 @@ TEST(ObjectsJson, PreservesObjectAliasAndFollowerOrderingAcrossJsonRoundTrip)
 
 TEST(ObjectsJson, SerializesAndDeserializesEmptyObjectSaveData)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "object_save_data_to_binary is a native-struct encode valid only on the 32-bit ABI; run in the i386 container";
+
     objects_json::ObjectSaveData original;
     std::string error_message;
 
@@ -184,6 +190,9 @@ TEST(ObjectsJson, SerializesAndDeserializesEmptyObjectSaveData)
 
 TEST(ObjectsJson, DeserializesLegacyBinaryWithoutFollowerSectionAsNoFollowers)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "object_save_data_to_binary is a native-struct encode valid only on the 32-bit ABI; run in the i386 container";
+
     objects_json::ObjectSaveData original = make_object_save_data();
     original.followers.clear();
 
@@ -212,6 +221,9 @@ TEST(ObjectsJson, DeserializesLegacyBinaryWithoutFollowerSectionAsNoFollowers)
 
 TEST(ObjectsJson, LegacyBinaryStillRejectsMissingFollowerSentinelAfterFollowerRecords)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "object_save_data_to_binary is a native-struct encode valid only on the 32-bit ABI; run in the i386 container";
+
     objects_json::ObjectSaveData original = make_object_save_data();
 
     std::string bytes;
@@ -229,6 +241,9 @@ TEST(ObjectsJson, LegacyBinaryStillRejectsMissingFollowerSentinelAfterFollowerRe
 
 TEST(ObjectsJson, RejectsTruncatedBinaryObjectPayload)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "object_save_data_to_binary is a native-struct encode valid only on the 32-bit ABI; run in the i386 container";
+
     const objects_json::ObjectSaveData original = make_object_save_data();
 
     std::string bytes;
@@ -243,6 +258,9 @@ TEST(ObjectsJson, RejectsTruncatedBinaryObjectPayload)
 
 TEST(ObjectsJson, RejectsTruncatedBinaryInsideAliasAndFollowerSections)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "object_save_data_to_binary is a native-struct encode valid only on the 32-bit ABI; run in the i386 container";
+
     const objects_json::ObjectSaveData original = make_object_save_data();
 
     std::string bytes;

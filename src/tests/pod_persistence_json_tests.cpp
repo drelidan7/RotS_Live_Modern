@@ -641,4 +641,40 @@ TEST(ExploitsRuntimeJson, GoldenRoundTripsByteStable)
     EXPECT_TRUE(path_exists(legacy_path + ".migrated"));
 }
 
+// Phase 2b Task 2: direct field-by-field check that the explicit-offset
+// decoder (exploits_json.cpp's exploit_records_from_binary) reads the frozen
+// on-disk fixture correctly -- independent of GoldenRoundTripsByteStable
+// above, which only round-trips through the encoder and checks `type`.
+// Every field of both records is checked here against the values known to
+// have produced this exact golden (build_exploits_fixture_bytes()).
+TEST(ExploitsRuntimeJson, GoldenFixtureDecodesToKnownFieldValuesExactly)
+{
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
+    const std::string golden = read_file_contents(kExploitsGoldenPath);
+    ASSERT_FALSE(golden.empty()) << "run GoldenRoundTripsByteStable with UPDATE_GOLDENS=1 first, from src/tests/";
+
+    std::vector<exploit_record> records;
+    std::string error;
+    ASSERT_TRUE(exploits_json::exploit_records_from_binary(golden, &records, &error)) << error;
+    ASSERT_EQ(records.size(), 2u);
+
+    EXPECT_EQ(records[0].type, EXPLOIT_LEVEL);
+    EXPECT_STREQ(records[0].chtime, "Mon Jan  1 00:00:00 2024");
+    EXPECT_EQ(records[0].shintVictimID, 42);
+    EXPECT_STREQ(records[0].chVictimName, "level");
+    EXPECT_EQ(records[0].iVictimLevel, 10);
+    EXPECT_EQ(records[0].iKillerLevel, 0);
+    EXPECT_EQ(records[0].iIntParam, 20);
+
+    EXPECT_EQ(records[1].type, EXPLOIT_ACHIEVEMENT);
+    EXPECT_STREQ(records[1].chtime, "Tue Jan  2 00:00:00 2024");
+    EXPECT_EQ(records[1].shintVictimID, 43);
+    EXPECT_STREQ(records[1].chVictimName, "Won a battle");
+    EXPECT_EQ(records[1].iVictimLevel, 11);
+    EXPECT_EQ(records[1].iKillerLevel, 0);
+    EXPECT_EQ(records[1].iIntParam, 0);
+}
+
 } // namespace

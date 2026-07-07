@@ -2,6 +2,7 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <new>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -224,6 +225,13 @@ void list_simple_help(struct char_data* ch);
 void new_mob(struct char_data* ch)
 {
     CREATE1(SHAPE_PROTO(ch)->proto, char_data);
+    /* proto is raw calloc'd storage (CREATE1 == calloc, no ctor runs). Placement-new
+     * value-initializes it in place before any member is touched below, so its
+     * non-trivial members (player_damage_details::damage_map is a std::map;
+     * specialization_data has a user destructor) are properly constructed instead
+     * of being left as zeroed-but-never-constructed memory — see db.cpp
+     * clear_char()/read_mobile() for the same pattern and its full rationale. */
+    new (SHAPE_PROTO(ch)->proto) char_data();
     SHAPE_PROTO(ch)
         ->proto->player.time.birth
         = time(0);
@@ -1299,6 +1307,10 @@ int load_proto(struct char_data* ch, char* arg)
             = number;
         room_number = ch->in_room;
         CREATE1(SHAPE_PROTO(ch)->proto, char_data);
+        /* Same unconstructed-storage hazard as new_mob() above — placement-new
+         * value-initializes proto before any member is touched below. See db.cpp
+         * clear_char()/read_mobile() for the full rationale. */
+        new (SHAPE_PROTO(ch)->proto) char_data();
         SHAPE_PROTO(ch)
             ->proto->player.time.birth
             = time(0);
@@ -1824,7 +1836,14 @@ void implement_proto(struct char_data* ch)
     }
 
     proto = mob_proto + number;
-    memcpy(proto, SHAPE_PROTO(ch)->proto, sizeof(struct char_data));
+    /* proto (mob_proto + number) is a CONSTRUCTED char_data (mob_proto is built via
+     * clear_char() in load_mobiles()); SHAPE_PROTO(ch)->proto is now also constructed
+     * (see new_mob()/the mob-file load path above). A raw memcpy here would bulk-copy
+     * bytes over proto's live std::map header, corrupting its constructed-empty-tree
+     * invariant instead of properly copying it — copy-assignment invokes each
+     * member's own operator=, which for damage_details/extra_specialization_data
+     * performs a well-defined deep copy instead of a byte-for-byte stomp. */
+    *proto = *SHAPE_PROTO(ch)->proto;
     /*    if(proto->player.name) RELEASE(proto->player.name);
   if(proto->player.short_descr) RELEASE(proto->player.short_descr);
   if(proto->player.long_descr) RELEASE(proto->player.long_descr);

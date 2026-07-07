@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "interpre.h" /* For the SPECIAL macro */
+#include "objects_json.h" /* For objects_json::ObjectSaveData */
 #include "platdef.h" /* For sh_int, ush_int, byte, etc. */
 #include "structs.h" /* For MAX_NAME_LENGTH and MAX_STRING_LENGTH */
 
@@ -265,7 +266,13 @@ struct exploit_record {
 };
 bool load_exploit_records_for_character(const std::string& root_directory, const std::string& character_name, std::vector<exploit_record>* records, std::string* error_message = nullptr);
 bool write_exploit_record_for_character(const std::string& root_directory, const std::string& character_name, const exploit_record& record, std::string* error_message = nullptr);
-bool load_object_save_bytes_for_character(const std::string& root_directory, const std::string& character_name, std::string* bytes, std::string* error_message = nullptr);
+// Resolves object-save data for a character: account-native JSON first (via
+// account::read_account_object_data, no binary hop), else the legacy runtime
+// .obj file decoded once via the portable legacy_object_save_data_from_binary
+// decoder, else a fresh default (RENT_CRASH, nothing staged). The returned
+// ObjectSaveData is always usable directly -- callers never see raw bytes or
+// perform their own decode.
+bool load_object_save_data_for_character(const std::string& root_directory, const std::string& character_name, objects_json::ObjectSaveData* data, std::string* error_message = nullptr);
 
 struct social_messg {
     int hide;

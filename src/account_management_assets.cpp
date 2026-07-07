@@ -102,12 +102,8 @@ bool remove_account_character_file(const std::string& root_directory, const std:
     return true;
 }
 
-bool write_account_object_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, const std::string& object_bytes, std::string* error_message)
+bool write_account_object_data(const std::string& root_directory, const std::string& account_name, const std::string& character_name, const objects_json::ObjectSaveData& object_data, std::string* error_message)
 {
-    objects_json::ObjectSaveData object_data;
-    if (!objects_json::object_save_data_from_binary(object_bytes, &object_data, error_message))
-        return false;
-
     return write_account_object_json_file(root_directory, account_name, character_name, object_data, error_message);
 }
 
@@ -116,19 +112,6 @@ bool write_default_account_object_file(const std::string& root_directory, const 
     objects_json::ObjectSaveData empty_object_data;
     empty_object_data.rent.rentcode = RENT_CRASH;
     return write_account_object_json_file(root_directory, account_name, character_name, empty_object_data, error_message);
-}
-
-bool write_linked_character_object_file(const std::string& root_directory, const std::string& character_name, const std::string& object_bytes, std::string* error_message)
-{
-    std::string owner_account_name;
-    if (!find_linked_character_owner_account(root_directory, character_name, &owner_account_name, error_message))
-        return false;
-    if (owner_account_name.empty()) {
-        set_error(error_message, "");
-        return true;
-    }
-
-    return write_account_object_file(root_directory, owner_account_name, character_name, object_bytes, error_message);
 }
 
 bool write_linked_character_object_json_file(const std::string& root_directory, const std::string& character_name, const objects_json::ObjectSaveData& object_data, std::string* error_message)
@@ -144,10 +127,10 @@ bool write_linked_character_object_json_file(const std::string& root_directory, 
     return write_account_object_json_file(root_directory, owner_account_name, character_name, object_data, error_message);
 }
 
-bool read_account_object_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::string* object_bytes, std::string* error_message)
+bool read_account_object_data(const std::string& root_directory, const std::string& account_name, const std::string& character_name, objects_json::ObjectSaveData* data, std::string* error_message)
 {
-    if (object_bytes == nullptr) {
-        set_error(error_message, "Object-bytes output parameter must not be null.");
+    if (data == nullptr) {
+        set_error(error_message, "Objects data output parameter must not be null.");
         return false;
     }
 
@@ -162,10 +145,7 @@ bool read_account_object_file(const std::string& root_directory, const std::stri
     if (!read_text_file(path, &json, error_message))
         return false;
 
-    objects_json::ObjectSaveData object_data;
-    if (!objects_json::deserialize_objects_from_json(json, &object_data, error_message))
-        return false;
-    if (!objects_json::object_save_data_to_binary(object_data, object_bytes, error_message))
+    if (!objects_json::deserialize_objects_from_json(json, data, error_message))
         return false;
 
     set_error(error_message, "");

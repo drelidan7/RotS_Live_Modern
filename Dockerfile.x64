@@ -1,0 +1,25 @@
+# 64-bit Linux build/run environment for RotS (native ABI, no -m32).
+#
+# Verifies the linux-x64 CMake preset (ROTS_LEGACY_32BIT=OFF) actually builds and
+# boots against the SAME lib/ data the 32-bit container uses, proving the JSON
+# persistence layer (Phase 2a/2b) is ABI-neutral end to end. On arm64 hosts Docker
+# runs this image via QEMU (linux/amd64 emulation), same mechanism as the i386
+# image in Dockerfile runs via linux/386 emulation.
+#
+# Build/run with docker compose (see docker-compose.yml, service `rots64`).
+FROM --platform=linux/amd64 debian:bookworm
+
+# g++/make/cmake for the CMake build (cmake --preset linux-x64); libgtest-dev for
+# the GoogleTest suite. NOTE: libcrypt-dev is intentionally NOT installed here —
+# Phase 2b Task 4 replaced the libc crypt() dependency with a vendored, portable
+# SHA-512-crypt (src/rots_crypt.cpp); confirmed via `grep -rn 'lcrypt\|crypt.h'
+# src/CMakeLists.txt src/*.cpp src/*.h` that nothing in the tree still links or
+# includes it. python3 is for tools/account_smoke.py when run in-container;
+# telnet/procps are dev conveniences; ca-certificates for any TLS fetches.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        g++ make cmake telnet procps ca-certificates \
+        libgtest-dev python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /rots
+CMD ["bash"]

@@ -36,6 +36,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <new>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -1202,7 +1203,7 @@ void check_start_rooms(void)
 
 void renum_world(void)
 {
-    register int room, door;
+    int room, door;
 
     for (room = 0; room <= top_of_world; room++)
         for (door = 0; door <= 5; door++)
@@ -1415,6 +1416,13 @@ struct char_data* read_mobile(int nr, int type)
         i = nr;
 
     CREATE(mob, struct char_data, 1);
+
+    /* mob is raw calloc'd storage (CREATE == calloc, no ctor runs). Construct it
+     * before the struct-copy below runs std::map/other non-trivial member
+     * copy-assignment operators on it — see clear_char() for the full rationale.
+     * mob_proto[i] (the source) is itself constructed via clear_char() in
+     * load_mobiles(), so both operands of the assignment are valid by this point. */
+    new (mob) char_data();
 
     *mob = mob_proto[i];
 
@@ -3097,7 +3105,7 @@ char* fread_string(FILE* fl, char* error)
 {
     char buf[MAX_STRING_LENGTH], tmp[MAX_STRING_LENGTH];
     char* rslt;
-    register char *point, *tmppoint;
+    char *point, *tmppoint;
     int flag, markfirst;
 
     bzero(buf, MAX_STRING_LENGTH);
@@ -3432,7 +3440,24 @@ void reset_char(struct char_data* ch)
  * alloc'ed*/
 void clear_char(struct char_data* ch, int mode)
 {
-    memset((char*)ch, (char)'\0', (int)sizeof(struct char_data));
+    /* At every production call site, ch points to memory obtained via
+     * CREATE()/calloc (raw, unconstructed storage), never to a char_data that has
+     * already run its constructor. Placement-new value-initializes it in place:
+     * this zeroes every POD member exactly like the old memset did, but also
+     * properly constructs the non-trivial members (player_damage_details::damage_map
+     * is a std::map; specialization_data has a user destructor) instead of leaving
+     * them as zeroed-but-never-constructed memory, which is undefined behavior the
+     * moment those members are used (deterministic SIGSEGV under libc++/macOS;
+     * silently tolerated by libstdc++/Linux). See db.cpp read_mobile() for the
+     * other call path that needs the same treatment.
+     * (Test code also calls clear_char() directly on already-constructed stack
+     * `char_data` objects to reset them between cases; that's safe in practice here
+     * because the non-trivial members are always empty at that point, so
+     * re-running their default constructors via this placement-new has nothing to
+     * leak — but it's not the shape this function's placement-new was written for,
+     * and isn't a pattern to extend to types where re-construction over a live
+     * object could leak or double-free.) */
+    new (ch) char_data();
     CREATE1(ch->profs, char_prof_data);
     memset(ch->profs->colors, CNRM,
         sizeof(ch->profs->colors[0]) * MAX_COLOR_FIELDS);
@@ -4475,8 +4500,15 @@ room_data& room_data::operator[](int i)
     room_data_extension* ext;
 
     if (!BASE_WORLD) {
-        printf("room_data called, but not allocated\n");
-        exit(0);
+        // Was exit(0): a filtered/subset gtest run that reaches world[]
+        // before the world is allocated would exit the whole test process
+        // with a *success* code, silently truncating the run instead of
+        // failing it. abort() keeps the same protective intent (this is an
+        // unrecoverable invariant violation, not something to try to limp
+        // past) but reports as a crash -- non-zero exit, test-visible --
+        // instead of a false-green success.
+        fprintf(stderr, "SYSERR: room_data::operator[] called, but BASE_WORLD is not allocated\n");
+        abort();
     }
 
     if (i < 0) {
@@ -4553,7 +4585,6 @@ enum class LegacyExploitConversionOutcome {
 // but load_exploit_history_bytes (defined above that point) needs to call
 // them.
 std::string exploits_json_path_for_legacy(const std::string& legacy_path);
-bool exploit_records_equal(const std::vector<exploit_record>& a, const std::vector<exploit_record>& b);
 LegacyExploitConversionOutcome convert_legacy_runtime_exploit_file(const std::string& legacy_path, std::vector<exploit_record>* decoded_records, std::string* error_message);
 
 bool read_binary_file_contents(const std::string& path, std::string* contents, std::string* error_message)
@@ -4748,27 +4779,6 @@ std::string exploits_json_path_for_legacy(const std::string& legacy_path)
     return legacy_path + ".json";
 }
 
-bool exploit_record_equal(const exploit_record& a, const exploit_record& b)
-{
-    return a.type == b.type
-        && strcmp(a.chtime, b.chtime) == 0
-        && a.shintVictimID == b.shintVictimID
-        && strcmp(a.chVictimName, b.chVictimName) == 0
-        && a.iVictimLevel == b.iVictimLevel
-        && a.iKillerLevel == b.iKillerLevel
-        && a.iIntParam == b.iIntParam;
-}
-
-bool exploit_records_equal(const std::vector<exploit_record>& a, const std::vector<exploit_record>& b)
-{
-    if (a.size() != b.size())
-        return false;
-    for (size_t index = 0; index < a.size(); ++index)
-        if (!exploit_record_equal(a[index], b[index]))
-            return false;
-    return true;
-}
-
 // Generalizes open_secure_temp_output_file's temp+rename write for text
 // (JSON) content, rather than exploit_record binary bytes.
 bool write_text_file_atomically(const std::string& path, const std::string& contents, std::string* error_message)
@@ -4866,7 +4876,7 @@ LegacyExploitConversionOutcome convert_legacy_runtime_exploit_file(const std::st
         set_db_error(error_message, "Verify-decode of freshly serialized JSON failed: " + verify_error);
         return LegacyExploitConversionOutcome::kInfraFailure;
     }
-    if (!exploit_records_equal(*decoded_records, reparsed.records)) {
+    if (!exploits_json::exploit_records_equal(*decoded_records, reparsed.records)) {
         set_db_error(error_message, "Verify mismatch: re-decoded JSON does not equal the original legacy decode.");
         return LegacyExploitConversionOutcome::kInfraFailure;
     }
@@ -4968,10 +4978,10 @@ bool write_exploit_record_for_character(const std::string& root_directory, const
     return true;
 }
 
-bool load_object_save_bytes_for_character(const std::string& root_directory, const std::string& character_name, std::string* bytes, std::string* error_message)
+bool load_object_save_data_for_character(const std::string& root_directory, const std::string& character_name, objects_json::ObjectSaveData* data, std::string* error_message)
 {
-    if (bytes == nullptr) {
-        set_db_error(error_message, "Object-save output buffer must not be null.");
+    if (data == nullptr) {
+        set_db_error(error_message, "Object-save output parameter must not be null.");
         return false;
     }
 
@@ -4980,7 +4990,7 @@ bool load_object_save_bytes_for_character(const std::string& root_directory, con
         return false;
 
     if (!owner_account_name.empty()) {
-        if (account::read_account_object_file(root_directory, owner_account_name, character_name, bytes, error_message))
+        if (account::read_account_object_data(root_directory, owner_account_name, character_name, data, error_message))
             return true;
 
         const std::string read_error = error_message ? *error_message : "";
@@ -5000,7 +5010,34 @@ bool load_object_save_bytes_for_character(const std::string& root_directory, con
     FILE* runtime_file = std::fopen(runtime_path.c_str(), "rb");
     if (runtime_file != nullptr) {
         std::fclose(runtime_file);
-        return read_binary_file_contents(runtime_path, bytes, error_message);
+
+        std::string legacy_bytes;
+        if (!read_binary_file_contents(runtime_path, &legacy_bytes, error_message))
+            return false;
+
+        // The one-time legacy decode this bridge retires everything else in
+        // favor of: real .obj files on disk were written by the 32-bit game
+        // and never change, so the portable explicit-offset decoder (not a
+        // native-struct memcpy) is what actually reads them correctly on any
+        // ABI. A decode failure here is a soft failure -- log and hand back a
+        // fresh default so a corrupt legacy file degrades an account-backed
+        // login to an empty inventory instead of rejecting it outright
+        // (matches the pre-Task-1 interpre.cpp staging behavior).
+        objects_json::ObjectSaveData decoded;
+        bool accepted_missing_follower_section = false;
+        std::string decode_error;
+        if (!objects_json::legacy_object_save_data_from_binary(legacy_bytes, &decoded, &accepted_missing_follower_section, &decode_error)) {
+            char log_buffer[MAX_STRING_LENGTH];
+            std::snprintf(log_buffer, sizeof(log_buffer), "SYSERR: unable to decode account-staged object data for %s: %s", character_name.c_str(), decode_error.c_str());
+            log(log_buffer);
+            *data = build_default_account_backed_object_data();
+            set_db_error(error_message, "");
+            return true;
+        }
+
+        *data = std::move(decoded);
+        set_db_error(error_message, "");
+        return true;
     }
 
     if (errno != ENOENT) {
@@ -5008,7 +5045,7 @@ bool load_object_save_bytes_for_character(const std::string& root_directory, con
         return false;
     }
 
-    bytes->clear();
+    *data = build_default_account_backed_object_data();
     set_db_error(error_message, "");
     return true;
 }

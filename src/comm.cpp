@@ -1484,7 +1484,7 @@ extern sh_int screen_width; /* config.cpp */
 
 void append_lines(char* target, char* source, int* len)
 {
-    register sh_int i, tmp;
+    sh_int i, tmp;
     int sourcelen;
 
     tmp = *len;
@@ -2121,8 +2121,8 @@ void convert_string(const char* str, int hide_invisible, struct char_data* ch, s
 {
     int clobbered_color;
     char* used_color;
-    register char *strp, *point;
-    register const char* i;
+    char *strp, *point;
+    const char* i;
 
     i = NULL;
     used_color = NULL;

@@ -370,6 +370,9 @@ TEST(ActWiz, AccountCommandUsesIdentifierLookupForAdditionalMutatingSubcommands)
 
 TEST(ActWiz, AccountCommandAcceptsEmailForMigrateChar)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ASSERT_EQ(mkdir("accounts", 0700), 0);

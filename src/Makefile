@@ -30,9 +30,6 @@ OBJDIR    = ../intermediate
 REQ_CXXFLAGS = -m32 -std=c++17 -w -fstrict-aliasing -funsigned-char -g -D_FILE_OFFSET_BITS=64
 REQ_LDFLAGS  = -m32 -rdynamic
 
-# account_management*.cpp calls libc crypt() for password hashing; link libcrypt.
-LIBS += -lcrypt
-
 # -MMD -MP: emit a per-object header-dependency file (.d) plus phony targets for
 # each header, so editing a header rebuilds exactly the objects that include it and
 # deleting/renaming one never breaks the build.
@@ -50,9 +47,9 @@ ALL_LDFLAGS  = $(REQ_LDFLAGS) $(LDFLAGS)
 # are dead. Keep this list in sync with the source list in CMakeLists.txt.
 OBJNAMES = account_management.o act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o char_utils.o char_utils_combat.o character_json.o clerics.o clock.o color.o \
-	comm.o config.o consts.o convert_plrobjs.o db.o delayed_command_interpreter.o exploits_json.o fight.o graph.o handler.o interpre.o environment_utils.o \
+	comm.o config.o consts.o convert_exploits.o convert_plrobjs.o db.o delayed_command_interpreter.o exploits_json.o fight.o graph.o handler.o interpre.o environment_utils.o \
 	json_utils.o limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objects_json.o objsave.o olog_hai.o \
-	pkill.o profs.o protocol.o ranger.o rots_rng.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
+	pkill.o profs.o protocol.o ranger.o rots_crypt.o rots_rng.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o \
 	wild_fighting_handler.o weather.o zone.o
 

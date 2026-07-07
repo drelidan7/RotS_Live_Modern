@@ -3,10 +3,10 @@
 #include "exploits_json.h"
 #include "json_utils.h"
 #include "objects_json.h"
+#include "rots_crypt.h"
 #include "utils.h"
 
 #include <cerrno>
-#include <crypt.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -173,7 +173,7 @@ namespace {
 
         *secret_salt = encode_salt(random_bytes);
         const std::string salt_spec = "$6$" + *secret_salt + "$";
-        char* hashed_secret = crypt(secret.c_str(), salt_spec.c_str());
+        const char* hashed_secret = rots_crypt(secret.c_str(), salt_spec.c_str());
         if (hashed_secret == nullptr) {
             set_error(error_message, "Failed to hash credential.");
             return false;

@@ -109,16 +109,43 @@ protected:
         return client;
     }
 
+    // The server may hand the greeting to the kernel as more than one write()
+    // (telnet negotiation, then the greeting text, then "Account email: "), and
+    // those can arrive at the client as separate TCP segments instead of being
+    // coalesced into one. A single recv() only has to return whatever is
+    // available so far, so read once (same blocking wait as before), then drain
+    // any further segments that show up within the client's existing
+    // SO_RCVTIMEO window instead of returning a partial read. This is test-only
+    // socket-plumbing robustness — it does not touch any production code path.
     std::string read_client_data(int client)
     {
+        std::string result;
         char buffer[2048];
-        const ssize_t bytes_read = recv(client, buffer, sizeof(buffer) - 1, 0);
+
+        ssize_t bytes_read = recv(client, buffer, sizeof(buffer), 0);
         EXPECT_GT(bytes_read, 0) << strerror(errno);
         if (bytes_read <= 0)
-            return std::string();
+            return result;
+        result.append(buffer, static_cast<size_t>(bytes_read));
 
-        buffer[bytes_read] = '\0';
-        return std::string(buffer, static_cast<size_t>(bytes_read));
+        // Shorten the timeout just for the drain loop: the first recv() above
+        // already proved the server is done writing "for now", so any remaining
+        // segments are already in flight over loopback and arrive within
+        // milliseconds — no need to wait a full second to conclude there's
+        // nothing more.
+        timeval drain_timeout {};
+        drain_timeout.tv_sec = 0;
+        drain_timeout.tv_usec = 100000; // 100ms
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &drain_timeout, sizeof(drain_timeout));
+
+        for (;;) {
+            bytes_read = recv(client, buffer, sizeof(buffer), 0);
+            if (bytes_read <= 0)
+                break;
+            result.append(buffer, static_cast<size_t>(bytes_read));
+        }
+
+        return result;
     }
 
     void expect_no_client_data_yet(int client)
@@ -128,6 +155,28 @@ protected:
         const ssize_t bytes_read = recv(client, buffer, sizeof(buffer), 0);
         EXPECT_EQ(bytes_read, -1);
         EXPECT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK) << strerror(errno);
+    }
+
+    // Waits (bounded) for the server-side accepted socket to have data queued
+    // before the test drives process_input(). On Linux, a client-side send()
+    // that has already returned is reliably visible to an immediately-following
+    // read() on the loopback peer within the same thread of execution; macOS's
+    // network stack can dispatch loopback delivery asynchronously, so a
+    // process_input() call issued right after send() can race ahead of the data
+    // and see EWOULDBLOCK. select() blocks only until the data actually shows up
+    // (or the bound elapses), so this doesn't slow down platforms that don't
+    // need it and doesn't change process_input()'s own return-value contract.
+    void wait_until_readable(int fd, int timeout_ms)
+    {
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(fd, &read_fds);
+
+        timeval timeout {};
+        timeout.tv_sec = timeout_ms / 1000;
+        timeout.tv_usec = (timeout_ms % 1000) * 1000;
+
+        select(fd + 1, &read_fds, nullptr, nullptr, &timeout);
     }
 
 private:
@@ -279,9 +328,11 @@ TEST_F(AcceptPathTest, ProxyConnectionsWaitForCompleteSplitHeaderBeforeSendingGr
     const in_addr_t proxy_header = htonl(INADDR_LOOPBACK);
     const unsigned char* header_bytes = reinterpret_cast<const unsigned char*>(&proxy_header);
     ASSERT_EQ(send(client, header_bytes, 2, 0), 2);
+    wait_until_readable(descriptor_list->descriptor, 500);
     ASSERT_EQ(process_input(descriptor_list), 0);
     expect_no_client_data_yet(client);
     ASSERT_EQ(send(client, header_bytes + 2, 2, 0), 2);
+    wait_until_readable(descriptor_list->descriptor, 500);
     ASSERT_EQ(process_input(descriptor_list), 0);
 
     const std::string initial_output = read_client_data(client);
@@ -307,6 +358,7 @@ TEST_F(AcceptPathTest, ProxyConnectionsWaitForHeaderBeforeSendingGreeting)
 
     const in_addr_t proxy_header = htonl(INADDR_LOOPBACK);
     ASSERT_EQ(send(client, &proxy_header, sizeof(proxy_header), 0), static_cast<ssize_t>(sizeof(proxy_header)));
+    wait_until_readable(descriptor_list->descriptor, 500);
     ASSERT_EQ(process_input(descriptor_list), 0);
 
     const std::string initial_output = read_client_data(client);
@@ -336,6 +388,7 @@ TEST_F(AcceptPathTest, ProxyConnectionsRejectBannedHostsBeforeGreeting)
 
     const in_addr_t proxy_header = htonl(INADDR_LOOPBACK);
     ASSERT_EQ(send(client, &proxy_header, sizeof(proxy_header), 0), static_cast<ssize_t>(sizeof(proxy_header)));
+    wait_until_readable(descriptor_list->descriptor, 500);
     EXPECT_EQ(process_input(descriptor_list), -1);
     expect_no_client_data_yet(client);
 

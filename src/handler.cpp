@@ -103,7 +103,7 @@ char fname_nameholder[100];
 char* fname(char* namelist)
 {
     //   char	holder[30];
-    register char* point;
+    char* point;
 
     for (point = fname_nameholder; isalpha(*namelist); namelist++, point++)
         *point = *namelist;
@@ -194,7 +194,7 @@ void recount_light_room(int room)
 
 int isname(const char* str, const char* namelist, char full)
 {
-    register char *curname, *curstr;
+    char *curname, *curstr;
     int tmp;
 
     while (*str && (*str <= ' '))

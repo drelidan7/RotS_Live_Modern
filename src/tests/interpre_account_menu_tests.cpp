@@ -23,6 +23,17 @@
 #include <unistd.h>
 #include <vector>
 
+// A real, always-executable, zero-argument, always-succeeds binary used to stand in
+// for `sendmail` in tests (via ROTS_SENDMAIL_COMMAND) without actually sending mail.
+// The path differs by platform: the Debian container this project's -m32 build
+// targets predates the merged-/usr layout, so `true` lives only at /bin/true there
+// (no /usr/bin/true); macOS has the opposite — only /usr/bin/true, no /bin/true.
+#if defined(__APPLE__)
+static constexpr const char* kTrueCommandPath = "/usr/bin/true";
+#else
+static constexpr const char* kTrueCommandPath = "/bin/true";
+#endif
+
 extern struct player_index_element* player_table;
 extern struct char_data* character_list;
 extern struct descriptor_data* descriptor_list;
@@ -1564,7 +1575,7 @@ TEST(InterpreAccountMenu, PendingVerificationLoginResetsBadPasswordCounterAndPro
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", "/bin/true");
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", kTrueCommandPath);
     ASSERT_EQ(mkdir("accounts", 0700), 0);
     ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
 
@@ -1766,7 +1777,7 @@ TEST(InterpreAccountMenu, AccountCreationSuccessClearsStagedPasswordAndPromptsFo
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", "/bin/true");
+    ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", kTrueCommandPath);
 
     descriptor_data descriptor = make_descriptor();
     descriptor.connected = CON_ACCTNEWPWDCNF;
@@ -3221,13 +3232,10 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
     EXPECT_STREQ(loaded_by_name.name, "aragorn");
     EXPECT_EQ(loaded_by_name.specials2.idnum, stored_character.specials2.idnum);
 
-    std::string object_bytes;
-    ASSERT_TRUE(load_object_save_bytes_for_character(".", "aragorn", &object_bytes, &error_message)) << error_message;
-    EXPECT_FALSE(object_bytes.empty());
-    std::string account_object_bytes;
-    ASSERT_TRUE(account::read_account_object_file(".", "acct", "aragorn", &account_object_bytes, &error_message)) << error_message;
+    objects_json::ObjectSaveData object_data;
+    ASSERT_TRUE(load_object_save_data_for_character(".", "aragorn", &object_data, &error_message)) << error_message;
     objects_json::ObjectSaveData account_object_data;
-    ASSERT_TRUE(objects_json::object_save_data_from_binary(account_object_bytes, &account_object_data, &error_message)) << error_message;
+    ASSERT_TRUE(account::read_account_object_data(".", "acct", "aragorn", &account_object_data, &error_message)) << error_message;
     EXPECT_EQ(account_object_data.rent.rentcode, RENT_CRASH);
     EXPECT_TRUE(account_object_data.objects.empty());
     EXPECT_TRUE(account_object_data.aliases.empty());
@@ -3248,19 +3256,11 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
     // Phase 2a Task 2: the login-staging call now decodes once into an
     // ObjectSaveData up front (mirroring interpre.cpp's account-linked login
     // path) instead of staging raw bytes for Crash_load to decode later.
-    FILE* fp = nullptr;
-    {
-        objects_json::ObjectSaveData staged_object_data;
-        if (object_bytes.empty()) {
-            staged_object_data = build_default_account_backed_object_data();
-        } else {
-            bool accepted_missing_follower_section = false;
-            std::string decode_error;
-            ASSERT_TRUE(objects_json::legacy_object_save_data_from_binary(object_bytes, &staged_object_data, &accepted_missing_follower_section, &decode_error)) << decode_error;
-        }
-        stage_account_backed_object_data_for_character(loaded_character, staged_object_data);
-    }
-    fp = Crash_load(loaded_character);
+    // Phase 2b Task 1 moved that one-time decode inside
+    // load_object_save_data_for_character itself, so object_data above is
+    // already the struct to stage -- no separate empty/decode branch here.
+    stage_account_backed_object_data_for_character(loaded_character, object_data);
+    FILE* fp = Crash_load(loaded_character);
     ASSERT_NE(fp, nullptr);
     EXPECT_EQ(std::fclose(fp), 0);
     EXPECT_EQ(loaded_character->specials2.load_room, 0);
@@ -3397,10 +3397,8 @@ TEST(InterpreAccountMenu, AccountSelectionRejectsTooLongAccountNativeIndexPathWi
     ASSERT_TRUE(account::read_account_character_file(".", account_name, "aragorn", &reloaded_character, &error_message)) << error_message;
     EXPECT_EQ(reloaded_character.specials2.idnum, stored_character.specials2.idnum);
 
-    std::string account_object_bytes;
-    ASSERT_TRUE(account::read_account_object_file(".", account_name, "aragorn", &account_object_bytes, &error_message)) << error_message;
     objects_json::ObjectSaveData account_object_data;
-    ASSERT_TRUE(objects_json::object_save_data_from_binary(account_object_bytes, &account_object_data, &error_message)) << error_message;
+    ASSERT_TRUE(account::read_account_object_data(".", account_name, "aragorn", &account_object_data, &error_message)) << error_message;
     EXPECT_TRUE(account_object_data.objects.empty());
 
     std::vector<exploit_record> exploit_records;
@@ -3554,10 +3552,8 @@ TEST(InterpreAccountMenu, IntroduceCharRejectsNameLinkedToAnotherAccountBeforeWr
     char_file_u preserved_owner_character {};
     ASSERT_TRUE(account::read_account_character_file(".", "other", "aragorn", &preserved_owner_character, &error_message)) << error_message;
     EXPECT_EQ(preserved_owner_character.specials2.idnum, owner_character.specials2.idnum);
-    std::string preserved_owner_object_bytes;
-    ASSERT_TRUE(account::read_account_object_file(".", "other", "aragorn", &preserved_owner_object_bytes, &error_message)) << error_message;
     objects_json::ObjectSaveData preserved_owner_object_data;
-    ASSERT_TRUE(objects_json::object_save_data_from_binary(preserved_owner_object_bytes, &preserved_owner_object_data, &error_message)) << error_message;
+    ASSERT_TRUE(account::read_account_object_data(".", "other", "aragorn", &preserved_owner_object_data, &error_message)) << error_message;
     EXPECT_TRUE(preserved_owner_object_data.objects.empty());
     std::vector<exploit_record> preserved_owner_exploits;
     ASSERT_TRUE(account::read_account_exploit_file(".", "other", "aragorn", &preserved_owner_exploits, &error_message)) << error_message;

@@ -144,7 +144,14 @@ TEST(BoardsJson, NativeRecordStructIs28BytesOn32Bit)
 {
     // Pins the assumption the decoder's explicit-offset reads are built on --
     // confirmed against a real board file's hexdump before any decoder code
-    // was written (see the file header comment above).
+    // was written (see the file header comment above). board_msginfo's
+    // native layout only matches that 32-bit on-disk size on the 32-bit ABI
+    // (a 64-bit build changes pointer/long width); pre-existing gap noticed
+    // and closed incidentally while chasing full linux-x64 green for Phase
+    // 2b Task 1 -- unrelated to the account-staged binary bridge itself.
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "board_msginfo's native size only matches the 32-bit on-disk layout; run in the i386 container";
+
     ASSERT_EQ(28u, sizeof(board_msginfo));
 }
 

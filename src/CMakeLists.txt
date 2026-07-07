@@ -44,19 +44,23 @@ endif()
 # objects_json.cpp arrive with the account-management merge (JSON persistence +
 # accounts); the other account_management_*.cpp files are #included into
 # account_management.cpp, not compiled separately.
+#
+# rots_crypt.cpp is a vendored, portable SHA-512-crypt ($6$) — account_management*.cpp
+# call rots_crypt() instead of libc crypt() so credential hashes are byte-identical
+# on every platform, not just glibc.
 set(ROTS_SERVER_SOURCES
     account_management.cpp act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
     boards.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
-    clock.cpp color.cpp comm.cpp config.cpp convert_plrobjs.cpp
+    clock.cpp color.cpp comm.cpp config.cpp convert_exploits.cpp convert_plrobjs.cpp
     consts.cpp db.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
     json_utils.cpp limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     mystic.cpp obj2html.cpp object_utils.cpp objects_json.cpp objsave.cpp
     olog_hai.cpp pkill.cpp profs.cpp protocol.cpp
-    ranger.cpp rots_rng.cpp script.cpp shapemdl.cpp shapemob.cpp
+    ranger.cpp rots_crypt.cpp rots_rng.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
@@ -84,6 +88,16 @@ set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 #     variants transparently — does not change any of the game's own on-disk
 #     structs, so save-file format is unaffected.
 set(ROTS_GNULIKE "$<CXX_COMPILER_ID:GNU,Clang,AppleClang>")
+# True on x86/x86-64 targets (32-bit legacy ABI and any 64-bit x86 host); false on
+# arm64 (Apple Silicon, etc.), where x86-only flags like -msse2/-mfpmath=sse don't
+# exist and the compiler errors out rather than ignoring them. Computed once at
+# configure time (CMAKE_SYSTEM_PROCESSOR doesn't vary per-build-config), then used
+# as a plain 0/1 inside generator expressions below.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86|x86)$")
+    set(ROTS_X86 1)
+else()
+    set(ROTS_X86 0)
+endif()
 target_compile_options(ageland PRIVATE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
     $<${ROTS_GNULIKE}:-funsigned-char -fstrict-aliasing -w -g>
@@ -104,13 +118,6 @@ target_compile_options(ageland PRIVATE
     $<${ROTS_GNULIKE}:$<$<CONFIG:Debug>:-O0 -DDEBUG>>
     $<${ROTS_GNULIKE}:$<$<CONFIG:Release>:-O2 -DNDEBUG>>
 )
-
-# account_management*.cpp calls libc crypt(): a separate libcrypt on Linux,
-# inside libc on macOS (no -lcrypt exists there), absent on Windows (the
-# Windows build stays red on this symbol until Phase 3 replaces crypt()).
-if(UNIX AND NOT APPLE)
-    target_link_libraries(ageland PRIVATE crypt)
-endif()
 
 # --- Tests (ported from upstream/account-management) --------------------------
 # GoogleTest suite, discovered via CTest so `ctest --test-dir build` (or the root
@@ -144,6 +151,7 @@ if(ROTS_BUILD_TESTS)
         tests/characterization_json_tests.cpp
         tests/CharPlayerDataBuilder.cpp
         tests/color_tests.cpp
+        tests/convert_exploits_tests.cpp
         tests/convert_plrobjs_tests.cpp
         tests/damage_tests.cpp
         tests/db_loader_tests.cpp
@@ -163,7 +171,9 @@ if(ROTS_BUILD_TESTS)
         tests/olog_hai_tests.cpp
         tests/pod_persistence_json_tests.cpp
         tests/protocol_tests.cpp
+        tests/rots_crypt_tests.cpp
         tests/rots_rng_tests.cpp
+        tests/shapemob_tests.cpp
         tests/spell_pa_tests.cpp
         tests/startup_options_tests.cpp
         tests/test_random_utils.cpp
@@ -181,12 +191,36 @@ if(ROTS_BUILD_TESTS)
     target_compile_features(ageland_tests PRIVATE cxx_std_17)
     set_target_properties(ageland_tests PROPERTIES CXX_EXTENSIONS OFF)
 
-    target_include_directories(ageland_tests PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests"
+    # Quote-only search paths (-iquote), NOT target_include_directories()'s default
+    # -I: tests/*.cpp reach headers one level up via quoted includes ("act_info.h",
+    # etc.), so both directories need to be quote-searchable. -I would ALSO add them
+    # to the angle-bracket <...> search path, and src/limits.h (a project header —
+    # player rank constants — unrelated to the standard C <limits.h>) would then
+    # shadow the real system <limits.h> ahead of the toolchain's own path. That's
+    # invisible under glibc/libstdc++ (CHAR_BIT etc. come from compiler builtins),
+    # but AppleClang's libc++ headers (<climits>, <string>, <bitset>, ...) do a bare
+    # `#include <limits.h>` and break with "use of undeclared identifier 'CHAR_BIT'"
+    # the moment src/ shadows it. -iquote never affects angle-bracket lookups, so
+    # this is a strict improvement with no behavior change on the GCC/32-bit path
+    # (quote-form resolution finds the identical file either way).
+    # NOTE: no embedded quotes around the paths below — target_compile_options()
+    # doesn't shell-parse a genex's expansion, so a literal `"` would travel through
+    # as part of the token (e.g. an -iquote argument of literal `"/path"`, quote
+    # characters included) instead of being stripped as shell-style grouping.
+    target_compile_options(ageland_tests PRIVATE
+        $<${ROTS_GNULIKE}:-iquote ${CMAKE_CURRENT_SOURCE_DIR} -iquote ${CMAKE_CURRENT_SOURCE_DIR}/tests>
     )
     target_compile_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
+    )
+    # -funsigned-char: same parity rationale as the ageland target above (char
+    # signedness is a load-bearing behavior assumption the live game pins on every
+    # compiler). Without this, product .cpp files compiled into ageland_tests get
+    # the platform-default signedness (signed on x86 GCC/Clang) instead of the
+    # game's pinned unsigned, which can silently diverge on any char-comparison /
+    # sign-extension test that exercises high-bit (>=0x80) byte values.
+    target_compile_options(ageland_tests PRIVATE
+        $<${ROTS_GNULIKE}:-funsigned-char>
     )
     # _FILE_OFFSET_BITS=64: same EOVERFLOW-avoidance rationale as the ageland target
     # above — account-management tests do real opendir/readdir bucket scans under
@@ -212,25 +246,23 @@ if(ROTS_BUILD_TESTS)
     # x87 extended-precision FP, which rounds differently from the SSE math of every
     # x86-64 build; several tests pin exact FP thresholds authored under SSE semantics.
     # No-op on x86-64 hosts (SSE is already the default there).
-    target_compile_options(ageland_tests PRIVATE $<${ROTS_GNULIKE}:-msse2 -mfpmath=sse>)
+    # -msse2/-mfpmath=sse are x86-only spellings — gcc/clang reject them outright on
+    # arm64 ("unknown FP unit 'sse'"), so gate on the target processor too. The
+    # Linux-container src/tests/Makefile path stays x86-only already (it's the -m32
+    # legacy ABI), so it doesn't need — and doesn't get — this guard.
+    target_compile_options(ageland_tests PRIVATE
+        $<$<AND:${ROTS_GNULIKE},${ROTS_X86}>:-msse2 -mfpmath=sse>
+    )
     target_link_libraries(ageland_tests PRIVATE GTest::gtest)
-    if(UNIX AND NOT APPLE)
-        target_link_libraries(ageland_tests PRIVATE crypt)
-    endif()
     # Mirror the compile-time -m32 so a multilib host building legacy tests links 32-bit too.
     target_link_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
     )
-    # test_random_utils.cpp wraps number() for deterministic RNG in tests.
-    # -Wl,--wrap is GNU ld only: ld64 (macOS) and MSVC link.exe have no
-    # equivalent, so the RNG seam does not exist off Linux yet — Phase 2 must
-    # replace it (e.g. a link-time indirection) before macOS tests can pass.
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        target_link_options(ageland_tests PRIVATE
-            -Wl,--wrap=_Z6numberv
-            -Wl,--wrap=_Z6numberii
-        )
-    endif()
+    # test_random_utils.cpp installs a TESTING-only function-pointer hook
+    # (rots_test_random_hook, defined in utility.cpp) that number()/
+    # number(int,int) consult before drawing from the PRNG. This replaced a
+    # GNU-ld-only `-Wl,--wrap` seam so the RNG queue works on every platform
+    # (ld64/macOS and MSVC link.exe have no --wrap equivalent).
 
     if(BUILD_TESTING)
         gtest_discover_tests(ageland_tests

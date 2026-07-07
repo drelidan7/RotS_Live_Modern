@@ -211,6 +211,10 @@ if(ROTS_BUILD_TESTS)
     if(UNIX AND NOT APPLE)
         target_link_libraries(ageland_tests PRIVATE crypt)
     endif()
+    # Mirror the compile-time -m32 so a multilib host building legacy tests links 32-bit too.
+    target_link_options(ageland_tests PRIVATE
+        $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
+    )
     # test_random_utils.cpp wraps number() for deterministic RNG in tests.
     # -Wl,--wrap is GNU ld only: ld64 (macOS) and MSVC link.exe have no
     # equivalent, so the RNG seam does not exist off Linux yet — Phase 2 must

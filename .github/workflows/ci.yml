@@ -3,7 +3,8 @@
 # legacy-32bit is the REQUIRED job: it builds and tests the shipping 32-bit
 # binary in the same i386 container used locally. The three 64-bit jobs run
 # allowed-to-fail (continue-on-error) until their enabling phase lands:
-# linux-x64 / macos-arm64 turn green in Phase 2, windows-msvc in Phase 3.
+# linux-x64 is already green (kept allowed-to-fail until Phase 2 blesses the
+# 64-bit runtime); macos-arm64 turns green in Phase 2, windows-msvc in Phase 3.
 # Their logs are the porting work-list, not noise.
 #
 # CI deliberately has NO boot smoke and NO account_smoke.py: both need

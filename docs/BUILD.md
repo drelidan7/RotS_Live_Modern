@@ -1,9 +1,19 @@
-# Building & running RotS locally (32-bit Linux via Docker)
+# Building & running RotS locally
 
-RotS compiles **32-bit** (`-m32` in `src/Makefile`). That cannot build or run natively
-on Apple Silicon / modern macOS (Apple removed 32-bit support in 2019). We build and run
-it **unchanged** inside a 32-bit Linux (i386) container. On arm64 Macs, Docker runs the
-i386 image via QEMU emulation — slower than native, but fine for development.
+RotS's **shipping** binary compiles **32-bit** (`-m32` in `src/Makefile`). That cannot
+build or run natively on Apple Silicon / modern macOS (Apple removed 32-bit support in
+2019), so the 32-bit binary is built and run **unchanged** inside a 32-bit Linux (i386)
+container. On arm64 Macs, Docker runs the i386 image via QEMU emulation — slower than
+native, but fine for development.
+
+As of Phase 2b, **Docker is no longer required for Mac dev.** The `macos-arm64` CMake
+preset now builds, boots, and passes tests (including the characterization goldens)
+natively on Apple Silicon — see "Native macOS arm64 build" below, which is the primary
+day-to-day flow. The i386 container remains the **32-bit legacy-format guard**: it's
+still how the *shipping* 32-bit binary is built, and it stays load-bearing until the
+live server's player/world data is confirmed fully migrated off the legacy binary
+formats (planned Phase 5) — at that point the 32-bit preset itself gets retired. Until
+then, keep using it whenever you need to reproduce the exact shipping ABI.
 
 This keeps the original binary save-file format intact (no code changes), so a Docker
 build matches how the live game behaves.
@@ -86,7 +96,42 @@ proxy in front of the game.
 - The Rust proxy (`proxy/`) is not needed for telnet play; it builds natively on macOS
   with `cargo build -p proxy` if you later want browser-client access.
 
-## Build matrix (Phase 1)
+## Native macOS arm64 build (Phase 2b, primary Mac dev flow)
+
+No Docker needed. Requires CMake ≥ 3.23 and GoogleTest (`brew install googletest`).
+
+```bash
+cd src
+cmake --preset macos-arm64
+cmake --build --preset macos-arm64 -j4
+ctest --preset macos-arm64                                  # unit tests + goldens
+scripts/boot-golden.sh --native build/macos-arm64/ageland verify   # boot vs. Phase 0 golden
+```
+
+The built binary lands at `build/macos-arm64/ageland`. `boot-golden.sh --native` runs it
+directly on the host (no container) against the repo's real `lib/` data — same
+poll/normalize/compare as the container flow, so a diff here is a real native-vs-container
+behavior difference, not noise. This preset is 64-bit (native ABI, JSON-only persistence
+from Phase 2a) — it is not the shipping 32-bit binary; use the i386 container (above) when
+you need that exact ABI.
+
+## The `rots64` container (64-bit Linux sibling)
+
+`docker-compose.yml` also defines `rots64` — a 64-bit (Bookworm x64, `Dockerfile.x64`)
+sibling of the `rots` i386 container, running the `linux-x64` CMake preset against the
+SAME bind-mounted `lib/` data. It exists to verify cross-ABI compatibility of the JSON
+persistence layer (Phase 2a) independent of the macOS toolchain, and maps host port
+**1064** (not 1024) so it can run alongside `rots` without a port collision — in practice
+only one is booted against live `lib/` data at a time.
+
+```bash
+docker compose build rots64
+docker compose run --rm rots64 bash -lc 'cd /rots/src && cmake --preset linux-x64 && cmake --build --preset linux-x64 -j"$(nproc)"'
+docker compose run --rm rots64 bash -lc 'cd /rots/src && ctest --preset linux-x64'
+scripts/boot-golden.sh --service rots64 verify
+```
+
+## Build matrix (Phase 2b)
 
 The authoritative build is CMake. Presets live in `src/CMakePresets.json`
 (CMake ≥ 3.23 to use presets; the i386 container's CMake 3.18 uses the root
@@ -96,17 +141,13 @@ The authoritative build is CMake. Presets live in `src/CMakePresets.json`
 |---|---|---|
 | container + root `Makefile` (`make configure/build/test`) | Linux i386 (`-m32`) | **green — the shipping ABI; CI-required** |
 | `linux-x86-legacy` | Linux i386 via multilib | builds the game; tests stay in the container path |
-| `linux-x64` | Linux x86-64 | builds + 503/503 tests green in CI already; NOT yet the blessed runtime (Phase 2 must verify boot/behavior + retire binary saves before it ships) |
-| `macos-arm64` | macOS arm64 | red until Phase 2 (64-bit port) |
+| `linux-x64` (native or `rots64` container) | Linux x86-64 | **green — boots, passes tests, matches the Phase 0 goldens; CI-required** |
+| `macos-arm64` (native) | macOS arm64 | **green — boots, passes tests, matches the Phase 0 goldens; CI-required** |
 | `windows-msvc` | Windows x64 MSVC | red until Phase 3 (platform layer) |
 
 Per-platform (from `src/`): `cmake --preset <name>`, `cmake --build --preset <name>`,
 `ctest --preset <name>`. `cmake --list-presets` shows what runs on this host.
 
-CI (`.github/workflows/ci.yml`): the `legacy-32bit` job is required; the three
-64-bit jobs run allowed-to-fail until their enabling phase lands — their logs are the
-porting work-list. `linux-x64` is the exception to watch: it's already green (503/503
-tests passing on 64-bit Linux/GCC, including the characterization goldens), so Phase 2's
-Linux work is mostly runtime verification (boot/behavior + retiring binary saves) rather
-than a from-scratch port — the remaining porting effort is concentrated on macOS and
-Windows.
+CI (`.github/workflows/ci.yml`): `legacy-32bit`, `linux-x64`, and `macos-arm64` are all
+required jobs. Only `windows-msvc` still runs allowed-to-fail, until Phase 3 lands the
+Windows platform layer — its log is the porting work-list.

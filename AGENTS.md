@@ -21,7 +21,9 @@
 - Account/login/authentication changes REQUIRE `make smoke-account` (or
   `tools/account_smoke.py`) as a separate validation step — `make test` is
   intentionally unit-test-only.
-- Per-platform CMake presets (host, CMake ≥3.23): from `src/`, `cmake --preset <linux-x64|macos-arm64|windows-msvc|linux-x86-legacy>` then `cmake --build --preset <name>`; `linux-x64` already builds and passes tests in CI (not yet the blessed runtime), while `macos-arm64`/`windows-msvc` stay red until Phases 2–3 (see docs/BUILD.md "Build matrix").
+- Per-platform CMake presets (host, CMake ≥3.23): from `src/`, `cmake --preset <linux-x64|macos-arm64|windows-msvc|linux-x86-legacy>` then `cmake --build --preset <name>`; as of Phase 2b, `linux-x64` and `macos-arm64` both build, boot, and pass tests (incl. characterization goldens) and are CI-required, while `windows-msvc` stays red until Phase 3 (see docs/BUILD.md "Build matrix").
+- Native macOS arm64 (no Docker needed, Phase 2b primary Mac dev flow): `cd src && cmake --preset macos-arm64 && cmake --build --preset macos-arm64 -j4 && ctest --preset macos-arm64`; binary at `build/macos-arm64/ageland`; boot-check with `scripts/boot-golden.sh --native build/macos-arm64/ageland verify`.
+- `rots64` container (64-bit Linux sibling of the i386 `rots` container, same bind-mounted `lib/`, host port 1064): `docker compose run --rm rots64 bash -lc 'cd /rots/src && cmake --preset linux-x64 && cmake --build --preset linux-x64 -j"$(nproc)" && ctest --preset linux-x64'`; boot-check with `scripts/boot-golden.sh --service rots64 verify`.
 
 ## Coding Style & Naming Conventions
 - Formatter: run `cd src && make format` (WebKit style). Prefer this over local defaults; CI expects formatted diffs.

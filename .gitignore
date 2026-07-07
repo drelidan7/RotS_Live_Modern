@@ -68,7 +68,7 @@ log/
 CVS/
 old/
 backup/
-lib/misc/plrmail
+lib/misc/plrmail*
 lib/misc/crimelist*
 lib/accounts/
 lib/misc/maze.dat

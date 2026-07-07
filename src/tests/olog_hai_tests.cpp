@@ -359,15 +359,6 @@ TEST(OlogHaiHelpers, ComputesBaseSkillDamageFromWarriorLevelProbabilityAndTactic
 }
 
 TEST(OlogHaiHelpers, TwoHandedStyleAppliesCurrentBaseDamageMultiplier) {
-    // KNOWN-RED (pre-existing upstream): olog_hai.cpp computes
-    // `base_damage *= 3 / 2;`, where `3 / 2` is integer 1 — the two-handed
-    // multiplier is a no-op, so this returns 13, not the 19 the test expects.
-    // Never caught upstream because CI ran each test in its own process, where
-    // the fixture's world[] access exit(0)'d before the assertion (an exit code
-    // ctest counts as a pass). Fixing the formula is a game-balance change that
-    // needs an explicit decision; see .superpowers/sdd/task-4-report.md.
-    GTEST_SKIP() << "Documents intended behavior the code does not implement (base_damage *= 3/2 is a no-op).";
-
     OlogHaiTestContext context;
     context.profs.prof_level[PROF_WARRIOR] = 20;
     context.attacker.specials.tactics = TACTICS_AGGRESSIVE;

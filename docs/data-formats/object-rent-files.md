@@ -1,5 +1,11 @@
 # Object / rent files (`.obj` — player inventory & equipment)
 
+> **LEGACY — retired 2026-07; live format is JSON** (see `src/objects_json.cpp` /
+> `boards.cpp` / `mail.cpp`). This document describes the frozen 32-bit layout that the
+> migration decoders read; it is no longer written by the live game. See CLAUDE.md's
+> persistence gotcha for the current JSON-first save/load path and the one-time
+> legacy-to-JSON converters.
+
 **Source files:** `src/objsave.cpp` (`Crash_get_filename:73`, `Crash_write_rentcode:348`,
 `Crash_obj2store:635`, `Crash_save:999`, `Crash_rentsave:1177`, `Crash_follower_save:680`,
 `Crash_alias_save:952`, loaders `load_character:548`/`Crash_*_load`); structs

@@ -131,6 +131,19 @@ bool write_linked_character_object_file(const std::string& root_directory, const
     return write_account_object_file(root_directory, owner_account_name, character_name, object_bytes, error_message);
 }
 
+bool write_linked_character_object_json_file(const std::string& root_directory, const std::string& character_name, const objects_json::ObjectSaveData& object_data, std::string* error_message)
+{
+    std::string owner_account_name;
+    if (!find_linked_character_owner_account(root_directory, character_name, &owner_account_name, error_message))
+        return false;
+    if (owner_account_name.empty()) {
+        set_error(error_message, "");
+        return true;
+    }
+
+    return write_account_object_json_file(root_directory, owner_account_name, character_name, object_data, error_message);
+}
+
 bool read_account_object_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::string* object_bytes, std::string* error_message)
 {
     if (object_bytes == nullptr) {

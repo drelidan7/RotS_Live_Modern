@@ -49,7 +49,7 @@ set(ROTS_SERVER_SOURCES
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
     boards.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
-    clock.cpp color.cpp comm.cpp config.cpp
+    clock.cpp color.cpp comm.cpp config.cpp convert_plrobjs.cpp
     consts.cpp db.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
     json_utils.cpp limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
@@ -137,12 +137,14 @@ if(ROTS_BUILD_TESTS)
         tests/account_management_types_header_compile.cpp
         tests/act_wiz_tests.cpp
         tests/battle_mage_handler_tests.cpp
+        tests/boards_json_tests.cpp
         tests/char_utils_tests.cpp
         tests/character_json_tests.cpp
         tests/characterization_combat_tests.cpp
         tests/characterization_json_tests.cpp
         tests/CharPlayerDataBuilder.cpp
         tests/color_tests.cpp
+        tests/convert_plrobjs_tests.cpp
         tests/damage_tests.cpp
         tests/db_loader_tests.cpp
         tests/exploits_json_tests.cpp
@@ -151,11 +153,15 @@ if(ROTS_BUILD_TESTS)
         tests/interpre_account_menu_tests.cpp
         tests/json_utils_tests.cpp
         tests/mage_tests.cpp
+        tests/mail_json_tests.cpp
         tests/obj_flag_data_tests.cpp
         tests/ObjFlagDataBuilder.cpp
         tests/object_utils_tests.cpp
+        tests/objects_json_layout_tests.cpp
         tests/objects_json_tests.cpp
+        tests/objsave_json_tests.cpp
         tests/olog_hai_tests.cpp
+        tests/pod_persistence_json_tests.cpp
         tests/protocol_tests.cpp
         tests/rots_rng_tests.cpp
         tests/spell_pa_tests.cpp

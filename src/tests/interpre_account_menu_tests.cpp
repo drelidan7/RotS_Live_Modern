@@ -3245,8 +3245,21 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
     std::snprintf(loaded_descriptor.account_name, sizeof(loaded_descriptor.account_name), "%s", "acct");
     loaded_character->desc = &loaded_descriptor;
 
+    // Phase 2a Task 2: the login-staging call now decodes once into an
+    // ObjectSaveData up front (mirroring interpre.cpp's account-linked login
+    // path) instead of staging raw bytes for Crash_load to decode later.
     FILE* fp = nullptr;
-    stage_account_backed_object_bytes_for_character(loaded_character, object_bytes.data(), object_bytes.size());
+    {
+        objects_json::ObjectSaveData staged_object_data;
+        if (object_bytes.empty()) {
+            staged_object_data = build_default_account_backed_object_data();
+        } else {
+            bool accepted_missing_follower_section = false;
+            std::string decode_error;
+            ASSERT_TRUE(objects_json::legacy_object_save_data_from_binary(object_bytes, &staged_object_data, &accepted_missing_follower_section, &decode_error)) << decode_error;
+        }
+        stage_account_backed_object_data_for_character(loaded_character, staged_object_data);
+    }
     fp = Crash_load(loaded_character);
     ASSERT_NE(fp, nullptr);
     EXPECT_EQ(std::fclose(fp), 0);

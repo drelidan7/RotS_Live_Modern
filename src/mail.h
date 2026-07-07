@@ -11,6 +11,9 @@
 #ifndef MAIL_H
 #define MAIL_H
 
+#include <string>
+#include <vector>
+
 /******* MUD MAIL SYSTEM HEADER FILE ****************************
  ***     written by Jeremy Elson (jelson@server.cs.jhu.edu)   ***
  ****   compliments of CircleMUD (circle.cs.jhu.edu 4000)    ****
@@ -39,20 +42,6 @@
 /* Max size of player names			*/
 #define NAME_SIZE 15
 
-/* size of mail file allocation blocks		*/
-#define BLOCK_SIZE 100
-
-/* NOTE:  Make sure that your block size is big enough -- if not,
-   HEADER_BLOCK_DATASIZE will end up negative.  This is a bad thing.
-   Check the define below to make sure it is >0 when choosing values
-   for NAME_SIZE and BLOCK_SIZE.  100 is a nice round number for
-   BLOCK_SIZE and is the default ... why bother trying to change it
-   anyway?
-
-   The mail system will always allocate disk space in chunks of size
-   BLOCK_SIZE.
-*/
-
 /* USER CHANGABLE DEFINES ABOVE **
 ***************************************************************************
 **   DON'T TOUCH DEFINES BELOW  */
@@ -60,61 +49,75 @@
 int scan_file(void);
 int has_mail(char* recipient);
 void store_mail(char* to, char* from, char* message_pointer);
-char* read_delete(char* recipient, char* recipient_formatted);
+char* read_delete(char* recipient, char* recipient_formatted, int is_good);
 
-#define INT_SIZE sizeof(int)
 #define CHAR_SIZE sizeof(char)
-#define LONG_SIZE sizeof(long)
 
-#define HEADER_BLOCK_DATASIZE (BLOCK_SIZE - 1 - ((CHAR_SIZE * (NAME_SIZE + 1) * 2) + (3 * LONG_SIZE)))
-/* size of the data part of a header block */
+// ---------------------------------------------------------------------------
+// Phase 2a Task 5: mail persistence as JSON, plus a one-time legacy converter.
+//
+// Replaces the historical 100-byte block-chain file (`lib/misc/plrmail`,
+// `header_block_type`/`data_block_type` structs -- see git history for
+// mail.h prior to this task) with one JSON file, `<mailfile>.json`, holding
+// every live message flat: `{"messages": [{"to","from","mail_time","body"}]}`.
+// The legacy block structs/constants (BLOCK_SIZE, HEADER_BLOCK_DATASIZE,
+// DATA_BLOCK_DATASIZE, HEADER_BLOCK/LAST_BLOCK/DELETED_BLOCK, and the two
+// on-disk structs) are now converter-local (mail.cpp, mail_json namespace)
+// since nothing outside mail.cpp ever referenced them.
+//
+// Public mail API (scan_file/has_mail/store_mail/read_delete) keeps its
+// exact signatures and game-visible behavior. Written atomically (temp file
+// + rename, the write_player_objects_json pattern in objsave.cpp).
+namespace mail_json {
 
-#define DATA_BLOCK_DATASIZE (BLOCK_SIZE - LONG_SIZE - 1)
-/* size of the data part of a data block */
-
-/* note that an extra space is allowed in all string fields for the
-   terminating null character.  */
-
-#define HEADER_BLOCK -1
-#define LAST_BLOCK -2
-#define DELETED_BLOCK -3
-
-/* note: next_block is part of header_blk in a data block; we can't combine
-   them here because we have to be able to differentiate a data block from a
-   header block when booting mail system.
-*/
-
-struct header_block_type_d {
-    long block_type; /* is this a header block or data block? */
-    long next_block; /* if header block, link to next block   */
-    char from[NAME_SIZE + 1]; /* who is this letter from?		 */
-    char to[NAME_SIZE + 1]; /* who is this letter to?		 */
-    long mail_time; /* when was the letter mailed?		 */
-    char txt[HEADER_BLOCK_DATASIZE + 1]; /* the actual text	*/
+// One live message. mail_time is the historical `time(0)` value (seconds
+// since epoch) store_mail always recorded; read_delete renders it via
+// asctime(localtime(...)), unchanged.
+struct MailMessageData {
+    std::string to;
+    std::string from;
+    long mail_time = 0;
+    std::string body;
 };
 
-struct data_block_type_d {
-    long block_type; /* -1 if header block, -2 if last data block
-                                   in mail, otherwise a link to the next */
-    char txt[DATA_BLOCK_DATASIZE + 1]; /* the actual text		 */
+struct MailStoreData {
+    std::vector<MailMessageData> messages;
 };
 
-typedef struct header_block_type_d header_block_type;
-typedef struct data_block_type_d data_block_type;
+// Decodes the legacy 32-bit on-disk block-chain file: fixed 100-byte blocks;
+// a block's leading 4-byte little-endian `block_type` is -1 (header, starts
+// a message), -2 (last block of a chain), -3 (deleted), or a byte offset
+// (multiple of 100) linking to the next block in a chain. Only scans for
+// header blocks and walks each one's chain to reconstruct to/from/mail_time
+// and the concatenated body -- exactly mirroring the legacy scan_file's own
+// tolerance of ignoring anything that isn't a header block (deleted blocks,
+// and any other stray on-disk value, are silently skipped, never treated as
+// an error). Verified byte-for-byte against the real
+// 171,400-byte lib/misc/plrmail (1,714 blocks; one pre-existing, already-
+// orphaned garbage block was already silently ignored by the live
+// scan_file, and remains so here) -- see
+// docs/superpowers/sdd/p2a-task-5-report.md.
+bool legacy_mail_file_from_binary(const std::string& bytes, MailStoreData* data, std::string* error_message = nullptr);
 
-struct position_list_type_d {
-    long position;
-    struct position_list_type_d* next;
-};
+std::string serialize_mail_to_json(const MailStoreData& data);
+bool deserialize_mail_from_json(const std::string& json, MailStoreData* data, std::string* error_message = nullptr);
 
-typedef struct position_list_type_d position_list_type;
+// Field-for-field structural equality (not a re-serialization/string
+// compare) -- used by the converter's decode/serialize/re-decode/verify
+// contract before it ever renames a legacy file away.
+bool mail_store_data_equal(const MailStoreData& a, const MailStoreData& b);
 
-struct mail_index_type_d {
-    char recipient[NAME_SIZE + 1]; /* who the mail is for */
-    position_list_type* list_start; /* list of mail positions    */
-    struct mail_index_type_d* next;
-};
+// Path convention: "<path>.json" for the JSON file, "<path>.migrated" for
+// the legacy file once safely converted.
+std::string mail_json_path(const std::string& legacy_path);
 
-typedef struct mail_index_type_d mail_index_type;
+// Converts one legacy mail file at `legacy_path`: decode -> serialize ->
+// re-decode -> field-equality verify -> write JSON (atomic temp+rename) ->
+// rename legacy to `<legacy_path>.migrated`. Never destroys the legacy
+// file: any failure at any step returns false (with `*error_message` set)
+// and leaves the legacy file exactly as found.
+bool convert_legacy_mail_file(const char* legacy_path, std::string* error_message = nullptr);
+
+} // namespace mail_json
 
 #endif /* MAIL_H */

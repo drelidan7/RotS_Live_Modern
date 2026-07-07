@@ -13,6 +13,7 @@
 
 #include "platdef.h" /* For sh_int, ush_int, byte, etc. */
 #include "structs.h" /* For the RENT_CRASH macro */
+#include "objects_json.h" /* For ObjectSaveData (account-backed object staging) */
 
 /* handling the affected-structures */
 #define AFFECT_TOTAL_UPDATE 3
@@ -148,8 +149,9 @@ void Crash_idlesave(struct char_data* ch);
 void Crash_save_all(void);
 FILE* Crash_get_file_by_name(char* name, char* mode);
 FILE* Crash_load(struct char_data* ch);
-void stage_account_backed_object_bytes_for_character(const struct char_data* ch, const char* bytes, size_t length);
+void stage_account_backed_object_data_for_character(const struct char_data* ch, const objects_json::ObjectSaveData& data);
 void clear_account_backed_object_bytes_for_character(const struct char_data* ch);
+objects_json::ObjectSaveData build_default_account_backed_object_data();
 
 /* prototypes from fight.c */
 void set_fighting(struct char_data* ch, struct char_data* victim);

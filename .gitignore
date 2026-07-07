@@ -69,6 +69,7 @@ CVS/
 old/
 backup/
 lib/misc/plrmail
+lib/misc/crimelist*
 lib/accounts/
 lib/misc/maze.dat
 lib/misc/mdl

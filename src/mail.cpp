@@ -85,17 +85,25 @@ Send comments, bug reports, etc. to jelson@server.cs.jhu.edu
 */
 
 #include "platdef.h"
-#include <assert.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
+#include <cerrno>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <sstream>
+#include <string>
+#include <vector>
+
 #include "comm.h"
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
+#include "json_utils.h"
 #include "mail.h"
 #include "structs.h"
 #include "utils.h"
@@ -111,33 +119,437 @@ extern int no_mail;
 int find_name(char* name);
 int _parse_name(char* arg, char* name);
 
+// ---------------------------------------------------------------------------
+// Phase 2a Task 5: mail persistence as JSON, plus a one-time legacy
+// block-file converter. See mail.h for the mail_json namespace's
+// schema/contract doc comments.
+// ---------------------------------------------------------------------------
+namespace mail_json {
+namespace {
+
+    void set_error(std::string* error_message, const std::string& message)
+    {
+        if (error_message)
+            *error_message = message;
+    }
+
+    // --- Legacy on-disk block-chain format -----------------------------
+    //
+    // Frozen forever: these describe bytes already written to disk by every
+    // historical build of this mud, so they are literal, hardcoded 32-bit
+    // values -- never derived from sizeof(long) or mail.h's (mutable, live-
+    // format) NAME_SIZE -- so this decoder can never silently misread old
+    // files if some future change alters those for newly-written data.
+    // Verified byte-for-byte against the real 171,400-byte
+    // lib/misc/plrmail (1,714 100-byte blocks; see
+    // docs/superpowers/sdd/p2a-task-5-report.md for the hexdump walkthrough).
+    constexpr size_t kBlockSize = 100; // historical BLOCK_SIZE
+    constexpr size_t kLongSize = 4; // sizeof(long) on the 32-bit build that wrote these files
+    constexpr size_t kNameFieldSize = 16; // NAME_SIZE(15) + 1 for the NUL
+    constexpr size_t kHeaderBlockDataSize = kBlockSize - 1 - (kNameFieldSize * 2 + 3 * kLongSize); // 55
+    constexpr size_t kHeaderTextFieldSize = kHeaderBlockDataSize + 1; // 56
+    constexpr size_t kDataBlockDataSize = kBlockSize - kLongSize - 1; // 95
+    constexpr size_t kDataTextFieldSize = kDataBlockDataSize + 1; // 96
+    constexpr long kHeaderBlock = -1;
+    constexpr long kLastBlock = -2;
+    // kDeletedBlock (-3) is intentionally not referenced: the converter's
+    // top-level scan only ever acts on kHeaderBlock, silently skipping
+    // everything else (deleted blocks, chain-interior data blocks, and any
+    // other stray on-disk value) -- exactly mirroring the live scan_file's
+    // own tolerance. See legacy_mail_file_from_binary below.
+
+    // Little-endian 4-byte int read at an explicit offset -- portable
+    // regardless of the reading process's own endianness/ABI (this repo's
+    // established convention, see boards.cpp/objects_json.cpp).
+    bool read_i32(const std::string& bytes, size_t* offset, long* value, std::string* error_message, const char* label)
+    {
+        if (*offset + 4 > bytes.size()) {
+            set_error(error_message, std::string("Truncated mail file while reading ") + label + ".");
+            return false;
+        }
+
+        const uint32_t raw = static_cast<uint32_t>(static_cast<unsigned char>(bytes[*offset]))
+            | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[*offset + 1])) << 8)
+            | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[*offset + 2])) << 16)
+            | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[*offset + 3])) << 24);
+        *value = static_cast<long>(static_cast<int32_t>(raw));
+        *offset += 4;
+        return true;
+    }
+
+    // Reads a fixed-size field and takes the C-string up to its first NUL
+    // (or the whole field, if none) -- matches how from/to/txt were always
+    // written (strncpy + explicit trailing NUL), regardless of how much of
+    // the field is actually used.
+    bool read_fixed_cstring(const std::string& bytes, size_t* offset, size_t field_size, std::string* out, std::string* error_message, const char* label)
+    {
+        if (*offset + field_size > bytes.size()) {
+            set_error(error_message, std::string("Truncated mail file while reading ") + label + ".");
+            return false;
+        }
+        const char* field_start = bytes.data() + *offset;
+        const void* nul = memchr(field_start, '\0', field_size);
+        const size_t string_len = nul ? (static_cast<const char*>(nul) - field_start) : field_size;
+        out->assign(field_start, string_len);
+        *offset += field_size;
+        return true;
+    }
+
+    // Decodes one message rooted at a header block (bytes[header_offset] is
+    // already known to be block_type == kHeaderBlock): the header's
+    // from/to/mail_time/txt, then walks the next_block chain (following
+    // each data block's own block_type-as-link field) until kLastBlock,
+    // concatenating each block's text. Defensively rejects out-of-range or
+    // cyclic links (the legacy read_delete had no such protection and could
+    // in principle spin/misbehave on a corrupt chain; the real file has
+    // zero such cases -- see the task report).
+    bool decode_message_at(const std::string& bytes, size_t header_offset, MailMessageData* message, std::string* error_message)
+    {
+        size_t offset = header_offset;
+        long block_type = 0, next_block = 0, mail_time = 0;
+        if (!read_i32(bytes, &offset, &block_type, error_message, "header block_type"))
+            return false;
+        if (!read_i32(bytes, &offset, &next_block, error_message, "header next_block"))
+            return false;
+
+        std::string from, to;
+        if (!read_fixed_cstring(bytes, &offset, kNameFieldSize, &from, error_message, "header from"))
+            return false;
+        if (!read_fixed_cstring(bytes, &offset, kNameFieldSize, &to, error_message, "header to"))
+            return false;
+        if (!read_i32(bytes, &offset, &mail_time, error_message, "header mail_time"))
+            return false;
+
+        std::string body;
+        if (!read_fixed_cstring(bytes, &offset, kHeaderTextFieldSize, &body, error_message, "header txt"))
+            return false;
+
+        std::vector<long> visited_links;
+        visited_links.push_back(static_cast<long>(header_offset));
+        long chain_link = next_block;
+        while (chain_link != kLastBlock) {
+            if (chain_link < 0 || static_cast<size_t>(chain_link) % kBlockSize != 0
+                || static_cast<size_t>(chain_link) + kBlockSize > bytes.size()) {
+                set_error(error_message, "Mail file corrupt: message chain links to an invalid block.");
+                return false;
+            }
+            for (long visited : visited_links) {
+                if (visited == chain_link) {
+                    set_error(error_message, "Mail file corrupt: message chain contains a cycle.");
+                    return false;
+                }
+            }
+            visited_links.push_back(chain_link);
+
+            size_t data_offset = static_cast<size_t>(chain_link);
+            long data_block_type = 0;
+            if (!read_i32(bytes, &data_offset, &data_block_type, error_message, "data block_type"))
+                return false;
+            std::string data_text;
+            if (!read_fixed_cstring(bytes, &data_offset, kDataTextFieldSize, &data_text, error_message, "data txt"))
+                return false;
+
+            body += data_text;
+            chain_link = data_block_type;
+        }
+
+        message->to = std::move(to);
+        message->from = std::move(from);
+        message->mail_time = mail_time;
+        message->body = std::move(body);
+        return true;
+    }
+
+    bool read_whole_file_contents(const char* path, std::string* bytes)
+    {
+        FILE* file = std::fopen(path, "rb");
+        if (file == nullptr)
+            return false;
+
+        std::string loaded_bytes;
+        char buffer[4096];
+        bool read_ok = true;
+        while (true) {
+            const size_t bytes_read = std::fread(buffer, sizeof(char), sizeof(buffer), file);
+            if (bytes_read > 0)
+                loaded_bytes.append(buffer, bytes_read);
+            if (bytes_read < sizeof(buffer)) {
+                if (std::ferror(file))
+                    read_ok = false;
+                break;
+            }
+        }
+        std::fclose(file);
+
+        if (!read_ok)
+            return false;
+
+        *bytes = std::move(loaded_bytes);
+        return true;
+    }
+
+    // Temp-file + rename atomic write, matching write_player_objects_json's
+    // pattern in objsave.cpp.
+    bool write_file_contents_atomically(const std::string& path, const std::string& contents, std::string* error_message)
+    {
+        const std::string temp_path = path + ".tmp";
+
+        FILE* temp_file = std::fopen(temp_path.c_str(), "wb");
+        if (temp_file == nullptr) {
+            set_error(error_message, std::string("Unable to open temporary mail file '") + temp_path + "': " + std::strerror(errno));
+            return false;
+        }
+
+        const size_t bytes_written = contents.empty() ? 0 : std::fwrite(contents.data(), sizeof(char), contents.size(), temp_file);
+        const int flush_result = std::fflush(temp_file);
+        const int close_result = std::fclose(temp_file);
+
+        if (bytes_written != contents.size() || flush_result != 0 || close_result != 0) {
+            std::remove(temp_path.c_str());
+            set_error(error_message, std::string("Failed to write temporary mail file '") + temp_path + "'.");
+            return false;
+        }
+
+        if (std::rename(temp_path.c_str(), path.c_str()) != 0) {
+            const std::string rename_error = std::strerror(errno);
+            std::remove(temp_path.c_str());
+            set_error(error_message, "Failed to move temporary mail file into place: " + rename_error);
+            return false;
+        }
+
+        return true;
+    }
+
+} // namespace
+
+bool legacy_mail_file_from_binary(const std::string& bytes, MailStoreData* data, std::string* error_message)
+{
+    if (data == nullptr) {
+        set_error(error_message, "Mail data output parameter must not be null.");
+        return false;
+    }
+
+    if (bytes.size() % kBlockSize != 0) {
+        set_error(error_message, "Mail file corrupt: size is not a multiple of the 100-byte block size.");
+        return false;
+    }
+
+    MailStoreData parsed;
+    const size_t num_blocks = bytes.size() / kBlockSize;
+    for (size_t block_index = 0; block_index < num_blocks; ++block_index) {
+        const size_t block_offset = block_index * kBlockSize;
+        size_t peek_offset = block_offset;
+        long block_type = 0;
+        if (!read_i32(bytes, &peek_offset, &block_type, error_message, "block_type"))
+            return false;
+
+        if (block_type != kHeaderBlock)
+            continue; // Deleted/interior/stray blocks: silently skipped, matching
+                       // the live scan_file's own tolerance (see the file header
+                       // comment on kDeletedBlock above).
+
+        MailMessageData message;
+        std::string decode_error;
+        if (!decode_message_at(bytes, block_offset, &message, &decode_error)) {
+            set_error(error_message, decode_error);
+            return false;
+        }
+        parsed.messages.push_back(std::move(message));
+    }
+
+    *data = std::move(parsed);
+    set_error(error_message, "");
+    return true;
+}
+
+std::string serialize_mail_to_json(const MailStoreData& data)
+{
+    std::ostringstream output;
+    output << "{\n";
+    output << "  \"messages\": [\n";
+    for (size_t index = 0; index < data.messages.size(); ++index) {
+        const MailMessageData& message = data.messages[index];
+        output << "    {\n";
+        output << "      \"to\": \"" << json_utils::escape_json_string(message.to) << "\",\n";
+        output << "      \"from\": \"" << json_utils::escape_json_string(message.from) << "\",\n";
+        output << "      \"mail_time\": " << message.mail_time << ",\n";
+        output << "      \"body\": \"" << json_utils::escape_json_string(message.body) << "\"\n";
+        output << "    }";
+        if (index + 1 < data.messages.size())
+            output << ",";
+        output << "\n";
+    }
+    output << "  ]\n";
+    output << "}\n";
+    return output.str();
+}
+
+bool deserialize_mail_from_json(const std::string& json, MailStoreData* data, std::string* error_message)
+{
+    if (data == nullptr) {
+        set_error(error_message, "Mail data output parameter must not be null.");
+        return false;
+    }
+
+    MailStoreData parsed;
+    const bool ok = json_utils::JsonReader(json).parse_root_object(
+        [&](const std::string& key, json_utils::JsonReader* reader, std::string* nested_error) {
+            if (key == "messages") {
+                return reader->parse_array(
+                    [&](json_utils::JsonReader* message_reader, std::string* message_error) {
+                        MailMessageData message;
+                        const bool message_ok = message_reader->parse_object(
+                            [&](const std::string& message_key, json_utils::JsonReader* nested_reader, std::string* nested_message_error) {
+                                if (message_key == "to")
+                                    return nested_reader->parse_string(&message.to, nested_message_error);
+                                if (message_key == "from")
+                                    return nested_reader->parse_string(&message.from, nested_message_error);
+                                if (message_key == "mail_time")
+                                    return nested_reader->parse_long(&message.mail_time, nested_message_error);
+                                if (message_key == "body")
+                                    return nested_reader->parse_string(&message.body, nested_message_error);
+                                return nested_reader->skip_value(nested_message_error);
+                            },
+                            message_error);
+                        if (!message_ok)
+                            return false;
+                        parsed.messages.push_back(std::move(message));
+                        return true;
+                    },
+                    nested_error);
+            }
+            return reader->skip_value(nested_error);
+        },
+        error_message);
+
+    if (!ok)
+        return false;
+
+    *data = std::move(parsed);
+    set_error(error_message, "");
+    return true;
+}
+
+bool mail_store_data_equal(const MailStoreData& a, const MailStoreData& b)
+{
+    if (a.messages.size() != b.messages.size())
+        return false;
+
+    for (size_t index = 0; index < a.messages.size(); ++index) {
+        const MailMessageData& m1 = a.messages[index];
+        const MailMessageData& m2 = b.messages[index];
+        if (m1.to != m2.to || m1.from != m2.from || m1.mail_time != m2.mail_time || m1.body != m2.body)
+            return false;
+    }
+
+    return true;
+}
+
+std::string mail_json_path(const std::string& legacy_path)
+{
+    return legacy_path + ".json";
+}
+
+bool convert_legacy_mail_file(const char* legacy_path, std::string* error_message)
+{
+    if (legacy_path == nullptr || !*legacy_path) {
+        set_error(error_message, "Legacy mail path must not be empty.");
+        return false;
+    }
+
+    std::string legacy_bytes;
+    if (!read_whole_file_contents(legacy_path, &legacy_bytes)) {
+        set_error(error_message, std::string("Failed to read legacy mail file '") + legacy_path + "': " + std::strerror(errno));
+        return false;
+    }
+
+    MailStoreData decoded;
+    std::string decode_error;
+    if (!legacy_mail_file_from_binary(legacy_bytes, &decoded, &decode_error)) {
+        set_error(error_message, "Decode failed: " + decode_error);
+        return false;
+    }
+
+    const std::string json = serialize_mail_to_json(decoded);
+
+    // Verify (binding conversion contract): re-decode the freshly serialized
+    // JSON and compare it field-for-field to the original decode -- not a
+    // re-serialization/string comparison.
+    MailStoreData reparsed;
+    std::string verify_error;
+    if (!deserialize_mail_from_json(json, &reparsed, &verify_error)) {
+        set_error(error_message, "Verify-decode of freshly serialized JSON failed: " + verify_error);
+        return false;
+    }
+
+    if (!mail_store_data_equal(decoded, reparsed)) {
+        set_error(error_message, "Verify mismatch: re-decoded JSON does not equal the original legacy decode.");
+        return false;
+    }
+
+    const std::string json_path = mail_json_path(legacy_path);
+    std::string write_error;
+    if (!write_file_contents_atomically(json_path, json, &write_error)) {
+        set_error(error_message, write_error);
+        return false;
+    }
+
+    const std::string migrated_path = std::string(legacy_path) + ".migrated";
+    if (std::rename(legacy_path, migrated_path.c_str()) != 0) {
+        // The JSON is written and verified at this point -- data is not at
+        // risk -- but the legacy file could not be retired. Matches
+        // boards.cpp/convert_plrobjs.cpp's "partial success" contract:
+        // report it (via a non-empty, non-fatal error_message) but still
+        // return true, since the thing that matters for subsequent loads
+        // (the JSON file) is safely in place; the legacy file is simply
+        // left behind for a future retry.
+        set_error(error_message,
+            std::string("Mail converted but legacy rename to '") + migrated_path + "' failed: " + std::strerror(errno));
+        return true;
+    }
+
+    set_error(error_message, "");
+    return true;
+}
+
+} // namespace mail_json
+
+// ---------------------------------------------------------------------------
+// Runtime in-memory mail store + index (unchanged in spirit from the legacy
+// implementation, but the "position" a position_list_type node carries is
+// now an index into g_mail_messages rather than a legacy file byte offset --
+// deletions tombstone the slot (RuntimeMailMessage::deleted) instead of
+// erasing it, so positions recorded by other still-live index entries never
+// dangle. JSON serialization always skips tombstoned entries, so they never
+// reappear after a reboot.
+// ---------------------------------------------------------------------------
+
+// In-memory position list / recipient index. Pure bookkeeping (never part
+// of the on-disk format either legacy or JSON) -- moved out of mail.h since
+// nothing outside mail.cpp ever referenced these types. `position` used to
+// be a legacy file byte offset; it is now an index into g_mail_messages
+// (see below).
+struct position_list_type_d {
+    long position;
+    struct position_list_type_d* next;
+};
+typedef struct position_list_type_d position_list_type;
+
+struct mail_index_type_d {
+    char recipient[NAME_SIZE + 1]; /* who the mail is for */
+    position_list_type* list_start; /* list of mail positions    */
+    struct mail_index_type_d* next;
+};
+typedef struct mail_index_type_d mail_index_type;
+
+struct RuntimeMailMessage {
+    mail_json::MailMessageData data;
+    bool deleted = false;
+};
+
+static std::vector<RuntimeMailMessage> g_mail_messages; /* all messages loaded this boot, plus any stored since; tombstoned (not erased) on delete so recorded positions stay valid */
+
 mail_index_type* mail_index = 0; /* list of recs in the mail file  */
-position_list_type* free_list = 0; /* list of free positions in file */
-long file_end_pos = 0; /* length of file */
-
-void push_free_list(long pos)
-{
-    position_list_type* new_pos;
-
-    new_pos = (position_list_type*)malloc(sizeof(position_list_type));
-    new_pos->position = pos;
-    new_pos->next = free_list;
-    free_list = new_pos;
-}
-
-long pop_free_list(void)
-{
-    position_list_type* old_pos;
-    long return_value;
-
-    if ((old_pos = free_list) != 0) {
-        return_value = free_list->position;
-        free_list = old_pos->next;
-        RELEASE(old_pos);
-        return return_value;
-    } else
-        return file_end_pos;
-}
 
 mail_index_type*
 find_char_in_index(char* searchee)
@@ -157,44 +569,29 @@ find_char_in_index(char* searchee)
     return temp_rec;
 }
 
-void write_to_file(void* buf, int size, long filepos)
+// Writes the whole in-memory g_mail_messages set (skipping tombstoned
+// entries) to <MAIL_FILE>.json atomically. Called after every store_mail/
+// read_delete mutation, mirroring the legacy write_to_file's synchronous-
+// to-disk semantics (each legacy mutation landed on disk immediately too).
+// A write failure is logged but not otherwise fatal -- the in-memory state
+// (and thus game-visible behavior) is unaffected either way.
+static void persist_mail_or_log(void)
 {
-    FILE* mail_file;
-
-    mail_file = fopen(MAIL_FILE, "r+b");
-
-    if (filepos % BLOCK_SIZE) {
-        log("SYSERR: Mail system -- fatal error #2!!!");
-        no_mail = 1;
-        return;
+    mail_json::MailStoreData data;
+    data.messages.reserve(g_mail_messages.size());
+    for (const RuntimeMailMessage& message : g_mail_messages) {
+        if (!message.deleted)
+            data.messages.push_back(message.data);
     }
 
-    fseek(mail_file, filepos, SEEK_SET);
-    fwrite(buf, size, 1, mail_file);
-
-    /* find end of file */
-    fseek(mail_file, 0L, SEEK_END);
-    file_end_pos = ftell(mail_file);
-    fclose(mail_file);
-    return;
-}
-
-void read_from_file(void* buf, int size, long filepos)
-{
-    FILE* mail_file;
-
-    mail_file = fopen(MAIL_FILE, "r+b");
-
-    if (filepos % BLOCK_SIZE) {
-        log("SYSERR: Mail system -- fatal error #3!!!");
-        no_mail = 1;
-        return;
+    const std::string json = mail_json::serialize_mail_to_json(data);
+    const std::string json_path = mail_json::mail_json_path(MAIL_FILE);
+    std::string write_error;
+    if (!mail_json::write_file_contents_atomically(json_path, json, &write_error)) {
+        char errbuf[512];
+        snprintf(errbuf, sizeof(errbuf), "SYSERR: failed to write mail JSON file '%s': %s", json_path.c_str(), write_error.c_str());
+        log(errbuf);
     }
-
-    fseek(mail_file, filepos, SEEK_SET);
-    fread(buf, size, 1, mail_file);
-    fclose(mail_file);
-    return;
 }
 
 void index_mail(char* raw_name_to_index, long pos)
@@ -234,44 +631,80 @@ void index_mail(char* raw_name_to_index, long pos)
 }
 
 /* SCAN_FILE */
-/* scan_file is called once during boot-up.  It scans through the mail file
-   and indexes all entries currently in the mail file. */
+/* scan_file is called once during boot-up.  It loads/converts the mail
+   store and indexes all entries currently in it. */
 int scan_file(void)
 {
-    FILE* mail_file;
-    header_block_type next_block;
-    int total_messages = 0, block_num = 0;
-    char buf[100];
+    const std::string json_path = mail_json::mail_json_path(MAIL_FILE);
 
-    if (!(mail_file = fopen(MAIL_FILE, "r"))) {
+    auto load_json_bytes_into_index = [&](const std::string& json_bytes) -> bool {
+        mail_json::MailStoreData data;
+        std::string error;
+        if (!mail_json::deserialize_mail_from_json(json_bytes, &data, &error)) {
+            char errbuf[512];
+            snprintf(errbuf, sizeof(errbuf), "SYSERR: Mail JSON file '%s' corrupt: %s", json_path.c_str(), error.c_str());
+            log(errbuf);
+            return false;
+        }
+
+        g_mail_messages.clear();
+        g_mail_messages.reserve(data.messages.size());
+        int total_messages = 0;
+        for (mail_json::MailMessageData& message : data.messages) {
+            const long position = static_cast<long>(g_mail_messages.size());
+            std::string to_copy = message.to; // index_mail lower-cases its own scratch copy; keep the stored value untouched.
+            g_mail_messages.push_back(RuntimeMailMessage { std::move(message), false });
+            index_mail(const_cast<char*>(to_copy.c_str()), position);
+            total_messages++;
+        }
+
+        char buf[128];
+        snprintf(buf, sizeof(buf), "   Mail file read -- %d messages.", total_messages);
+        log(buf);
+        return true;
+    };
+
+    std::string json_bytes;
+    if (mail_json::read_whole_file_contents(json_path.c_str(), &json_bytes))
+        return load_json_bytes_into_index(json_bytes) ? 1 : 0;
+
+    /* No JSON store yet -- either a fresh install (no legacy file either) or
+       a legacy block-chain file needs one-time conversion. */
+    FILE* legacy_probe = fopen(MAIL_FILE, "rb");
+    if (!legacy_probe) {
         log("Mail file non-existant... creating new file.");
-        mail_file = fopen(MAIL_FILE, "w");
-        fclose(mail_file);
+        std::string write_error;
+        if (!mail_json::write_file_contents_atomically(json_path, mail_json::serialize_mail_to_json({}), &write_error)) {
+            char errbuf[512];
+            snprintf(errbuf, sizeof(errbuf), "SYSERR: Failed creating empty mail JSON file '%s': %s", json_path.c_str(), write_error.c_str());
+            log(errbuf);
+            return 0;
+        }
+        g_mail_messages.clear();
         return 1;
     }
+    fclose(legacy_probe);
 
-    while (fread(&next_block, sizeof(header_block_type), 1, mail_file)) {
-        if (next_block.block_type == HEADER_BLOCK) {
-
-            index_mail(next_block.to, block_num * BLOCK_SIZE);
-            total_messages++;
-        } else if (next_block.block_type == DELETED_BLOCK)
-            push_free_list(block_num * BLOCK_SIZE);
-        block_num++;
-    }
-
-    file_end_pos = ftell(mail_file);
-    fclose(mail_file);
-    sprintf(buf, "   %ld bytes read.", file_end_pos);
-    log(buf);
-    if (file_end_pos % BLOCK_SIZE) {
-        log("SYSERR: Error booting mail system -- Mail file corrupt!");
-        log("SYSERR: Mail disabled!");
+    std::string convert_error;
+    if (!mail_json::convert_legacy_mail_file(MAIL_FILE, &convert_error)) {
+        char errbuf[512];
+        snprintf(errbuf, sizeof(errbuf), "SYSERR: Failed converting legacy mail file '%s' to JSON: %s", MAIL_FILE, convert_error.c_str());
+        log(errbuf);
         return 0;
     }
-    sprintf(buf, "   Mail file read -- %d messages.", total_messages);
-    log(buf);
-    return 1;
+
+    char logbuf[512];
+    if (!convert_error.empty())
+        snprintf(logbuf, sizeof(logbuf), "Converted legacy mail file '%s' to JSON (warning: %s).", MAIL_FILE, convert_error.c_str());
+    else
+        snprintf(logbuf, sizeof(logbuf), "Converted legacy mail file '%s' to JSON.", MAIL_FILE);
+    log(logbuf);
+
+    if (!mail_json::read_whole_file_contents(json_path.c_str(), &json_bytes)) {
+        log("SYSERR: Mail JSON file missing immediately after conversion.");
+        return 0;
+    }
+    return load_json_bytes_into_index(json_bytes) ? 1 : 0;
 } /* end of scan_file */
 
 /* HAS_MAIL */
@@ -290,93 +723,38 @@ int has_mail(char* recipient)
 
 void store_mail(char* to, char* from, char* message_pointer)
 {
-    header_block_type header;
-    data_block_type data;
-    long last_address, target_address;
-    char* msg_txt = message_pointer;
-    char* tmp;
-    int bytes_written = 0;
-    int total_length = 0;
-
     if (!message_pointer) // sender probably aborted
         return;
-
-    total_length = strlen(message_pointer);
-    assert(sizeof(header_block_type) == sizeof(data_block_type));
-    assert(sizeof(header_block_type) == BLOCK_SIZE);
 
     if (!*from || !*to || !*message_pointer) {
         log("SYSERR: Mail system -- non-fatal error #5.");
         return;
     }
-    memset(&header, 0, sizeof(header)); /* clear the record */
-    header.block_type = HEADER_BLOCK;
-    header.next_block = LAST_BLOCK;
-    strncpy(header.txt, msg_txt, HEADER_BLOCK_DATASIZE);
-    strncpy(header.from, from, NAME_SIZE);
-    strncpy(header.to, to, NAME_SIZE);
-    for (tmp = header.to; *tmp; tmp++)
+
+    mail_json::MailMessageData message;
+
+    char to_buf[NAME_SIZE + 1];
+    memset(to_buf, 0, sizeof(to_buf));
+    strncpy(to_buf, to, NAME_SIZE);
+    for (char* tmp = to_buf; *tmp; tmp++)
         *tmp = tolower(*tmp);
-    header.mail_time = time(0);
-    header.txt[HEADER_BLOCK_DATASIZE] = header.from[NAME_SIZE] = header.to[NAME_SIZE] = '\0';
+    to_buf[NAME_SIZE] = '\0';
+    message.to = to_buf;
 
-    target_address = pop_free_list(); /* find next free block */
-    index_mail(to, target_address); /* add it to mail index in memory */
-    write_to_file(&header, BLOCK_SIZE, target_address);
+    char from_buf[NAME_SIZE + 1];
+    memset(from_buf, 0, sizeof(from_buf));
+    strncpy(from_buf, from, NAME_SIZE);
+    from_buf[NAME_SIZE] = '\0';
+    message.from = from_buf;
 
-    if (strlen(msg_txt) <= HEADER_BLOCK_DATASIZE)
-        return; /* that was the whole message */
+    message.mail_time = time(0);
+    message.body = message_pointer;
 
-    bytes_written = HEADER_BLOCK_DATASIZE;
-    msg_txt += HEADER_BLOCK_DATASIZE; /* move pointer to next bit of text */
+    const long position = static_cast<long>(g_mail_messages.size());
+    g_mail_messages.push_back(RuntimeMailMessage { std::move(message), false });
+    index_mail(to_buf, position); /* add it to mail index in memory */
 
-    /* find the next block address, then rewrite the header
-           to reflect where the next block is.	*/
-    last_address = target_address;
-    target_address = pop_free_list();
-    header.next_block = target_address;
-    write_to_file(&header, BLOCK_SIZE, last_address);
-
-    /* now write the current data block */
-    memset(&data, 0, sizeof(data)); /* clear the record */
-    data.block_type = LAST_BLOCK;
-    strncpy(data.txt, msg_txt, DATA_BLOCK_DATASIZE);
-    data.txt[DATA_BLOCK_DATASIZE] = '\0';
-    write_to_file(&data, BLOCK_SIZE, target_address);
-    bytes_written += strlen(data.txt);
-    msg_txt += strlen(data.txt);
-
-    /* if, after 1 header block and 1 data block there is STILL
-           part of the message left to write to the file, keep writing
-           the new data blocks and rewriting the old data blocks to reflect
-           where the next block is.  Yes, this is kind of a hack, but if
-           the block size is big enough it won't matter anyway.  Hopefully,
-           MUD players won't pour their life stories out into the Mud Mail
-           System anyway.
-
-           Note that the block_type data field in data blocks is either
-           a number >=0, meaning a link to the next block, or LAST_BLOCK
-           flag (-2) meaning the last block in the current message.  This
-           works much like DOS' FAT.
-        */
-
-    while (bytes_written < total_length) {
-        last_address = target_address;
-        target_address = pop_free_list();
-
-        /* rewrite the previous block to link it to the next */
-        data.block_type = target_address;
-        write_to_file(&data, BLOCK_SIZE, last_address);
-
-        /* now write the next block, assuming it's the last.  */
-        data.block_type = LAST_BLOCK;
-        strncpy(data.txt, msg_txt, DATA_BLOCK_DATASIZE);
-        data.txt[DATA_BLOCK_DATASIZE] = '\0';
-        write_to_file(&data, BLOCK_SIZE, target_address);
-
-        bytes_written += strlen(data.txt);
-        msg_txt += strlen(data.txt);
-    }
+    persist_mail_or_log();
 } /* store mail */
 
 /* READ_DELETE */
@@ -389,11 +767,9 @@ char* read_delete(char* recipient, char* recipient_formatted, int is_good)
      recipient_formatted is the name as it should appear on the mail
      header (i.e. the text handed to the player) */
 {
-    header_block_type header;
-    data_block_type data;
     mail_index_type *mail_pointer, *prev_mail;
     position_list_type* position_pointer;
-    long mail_address, following_block;
+    long mail_address;
     char *message, *tmstr, buf[200];
     size_t string_size;
 
@@ -439,16 +815,18 @@ char* read_delete(char* recipient, char* recipient_formatted, int is_good)
     }
 
     /* ok, now lets do some readin'! */
-    read_from_file(&header, BLOCK_SIZE, mail_address);
-
-    if (header.block_type != HEADER_BLOCK) {
+    if (mail_address < 0 || static_cast<size_t>(mail_address) >= g_mail_messages.size()
+        || g_mail_messages[static_cast<size_t>(mail_address)].deleted) {
         log("SYSERR: Oh dear.");
         no_mail = 1;
         log("SYSERR: Mail system disabled!  -- Error #9.");
         return 0;
     }
 
-    tmstr = asctime(localtime(&header.mail_time));
+    RuntimeMailMessage& stored = g_mail_messages[static_cast<size_t>(mail_address)];
+
+    time_t mail_time_value = static_cast<time_t>(stored.data.mail_time);
+    tmstr = asctime(localtime(&mail_time_value));
     *(tmstr + strlen(tmstr) - 1) = '\0';
 
     if (is_good)
@@ -456,41 +834,25 @@ char* read_delete(char* recipient, char* recipient_formatted, int is_good)
                      "Date: %s\n\r"
                      "  To: %s\n\r"
                      "From: %s\n\r\n\r",
-            tmstr, recipient_formatted, header.from);
+            tmstr, recipient_formatted, stored.data.from.c_str());
     else
         sprintf(buf, " !!! Subversive Messaging System !!!\n\r"
                      "Date: %s\n\r"
                      "  To: %s\n\r"
                      "From: %s\n\r\n\r",
-            tmstr, recipient_formatted, header.from);
+            tmstr, recipient_formatted, stored.data.from.c_str());
 
-    string_size = (CHAR_SIZE * (strlen(buf) + strlen(header.txt) + 1));
+    string_size = strlen(buf) + stored.data.body.size() + 1;
     message = (char*)malloc(string_size);
     strcpy(message, buf);
     message[strlen(buf)] = '\0';
-    strcat(message, header.txt);
+    strcat(message, stored.data.body.c_str());
     message[string_size - 1] = '\0';
-    following_block = header.next_block;
 
-    /* mark the block as deleted */
-    header.block_type = DELETED_BLOCK;
-    write_to_file(&header, BLOCK_SIZE, mail_address);
-
-    push_free_list(mail_address);
-
-    while (following_block != LAST_BLOCK) {
-        read_from_file(&data, BLOCK_SIZE, following_block);
-
-        string_size = (CHAR_SIZE * (strlen(message) + strlen(data.txt) + 1));
-        message = (char*)realloc(message, string_size);
-        strcat(message, data.txt);
-        message[string_size - 1] = '\0';
-        mail_address = following_block;
-        following_block = data.block_type;
-        data.block_type = DELETED_BLOCK;
-        write_to_file(&data, BLOCK_SIZE, mail_address);
-        push_free_list(mail_address);
-    }
+    /* mark the message as deleted (tombstoned, not erased -- see
+       g_mail_messages' declaration comment) and persist. */
+    stored.deleted = true;
+    persist_mail_or_log();
 
     return message;
 }

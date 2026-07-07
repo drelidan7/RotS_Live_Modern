@@ -21,7 +21,7 @@ LDFLAGS = -lgtest -lcrypt -lpthread
 
 OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o char_utils.o char_utils_combat.o clerics.o clock.o color.o combat_manager.o \
-	comm.o config.o consts.o db.o delayed_command_interpreter.o fight.o graph.o handler.o interpre.o environment_utils.o account_management.o character_json.o exploits_json.o json_utils.o objects_json.o \
+	comm.o config.o consts.o convert_plrobjs.o db.o delayed_command_interpreter.o fight.o graph.o handler.o interpre.o environment_utils.o account_management.o character_json.o exploits_json.o json_utils.o objects_json.o \
 	limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objsave.o olog_hai.o\
 	pkill.o profs.o protocol.o ranger.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o  \
@@ -150,7 +150,7 @@ objsave.o : ../objsave.cpp ../structs.h ../comm.h ../handler.h ../db.h ../interp
 	../utils.h ../spells.h
 	$(CXX) -c $(CXXFLAGS) ../objsave.cpp
 boards.o : ../boards.cpp ../structs.h ../utils.h ../comm.h ../db.h ../boards.h ../interpre.h \
-	../handler.h
+	../handler.h ../json_utils.h
 	$(CXX) -c $(CXXFLAGS) ../boards.cpp
 signals.o : ../signals.cpp ../utils.h ../structs.h
 	$(CXX) -c $(CXXFLAGS) ../signals.cpp
@@ -184,7 +184,7 @@ profs.o   : ../profs.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../limi
 	$(CXX) -c $(CXXFLAGS) ../profs.cpp
 clerics.o : ../clerics.cpp ../structs.h ../utils.h ../comm.h ../handler.h ../interpre.h ../db.h ../spells.h ../limits.h
 	$(CXX) -c $(CXXFLAGS) ../clerics.cpp
-mail.o    : ../mail.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../db.h ../handler.h
+mail.o    : ../mail.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../db.h ../handler.h ../mail.h ../json_utils.h
 	$(CXX) -c $(CXXFLAGS) ../mail.cpp
 zone.o: ../zone.cpp ../zone.h ../structs.h ../utils.h
 	$(CXX) -c $(CXXFLAGS) ../zone.cpp
@@ -194,7 +194,9 @@ obj2html.o: ../obj2html.cpp
 	$(CXX) -c $(CXXFLAGS) ../obj2html.cpp
 mob_csv_extract.o: ../mob_csv_extract.cpp ../mob_csv_extract.h
 	$(CXX) -c $(CXXFLAGS) ../mob_csv_extract.cpp
-pkill.o: ../pkill.cpp ../pkill.h
+convert_plrobjs.o: ../convert_plrobjs.cpp ../convert_plrobjs.h ../objects_json.h
+	$(CXX) -c $(CXXFLAGS) ../convert_plrobjs.cpp
+pkill.o: ../pkill.cpp ../pkill.h ../json_utils.h
 	$(CXX) -c $(CXXFLAGS) ../pkill.cpp
 protocol.o: ../protocol.cpp ../protocol.h
 	$(CXX) -c $(CXXFLAGS) ../protocol.cpp
@@ -202,7 +204,7 @@ rots_rng.o : ../rots_rng.cpp ../rots_rng.h
 	$(CXX) -c $(CXXFLAGS) ../rots_rng.cpp
 
 
-SRCS = account_management_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp color_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_utils_tests.cpp mage_tests.cpp ObjFlagDataBuilder.cpp objects_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp protocol_tests.cpp rots_rng_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
+SRCS = account_management_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp color_tests.cpp convert_plrobjs_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_utils_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_rng_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 EXECUTABLE = ../../bin/tests
@@ -213,6 +215,12 @@ EXECUTABLE = ../../bin/tests
 # silently run different fixture code.
 characterization_combat_tests.o damage_tests.o : damage_test_context.h
 characterization_json_tests.o : ../character_json.h
+objects_json_layout_tests.o convert_plrobjs_tests.o : ../objects_json.h legacy_rent_fixture.h
+objsave_json_tests.o : ../objects_json.h
+convert_plrobjs_tests.o : ../convert_plrobjs.h
+boards_json_tests.o : ../boards.h
+mail_json_tests.o : ../mail.h
+pod_persistence_json_tests.o : ../pkill.h ../db.h ../exploits_json.h ../account_management.h
 
 tests: $(EXECUTABLE)
 

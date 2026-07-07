@@ -50,7 +50,7 @@ ALL_LDFLAGS  = $(REQ_LDFLAGS) $(LDFLAGS)
 # are dead. Keep this list in sync with the source list in CMakeLists.txt.
 OBJNAMES = account_management.o act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o char_utils.o char_utils_combat.o character_json.o clerics.o clock.o color.o \
-	comm.o config.o consts.o db.o delayed_command_interpreter.o exploits_json.o fight.o graph.o handler.o interpre.o environment_utils.o \
+	comm.o config.o consts.o convert_plrobjs.o db.o delayed_command_interpreter.o exploits_json.o fight.o graph.o handler.o interpre.o environment_utils.o \
 	json_utils.o limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objects_json.o objsave.o olog_hai.o \
 	pkill.o profs.o protocol.o ranger.o rots_rng.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o \
@@ -131,7 +131,7 @@ setup:
 		../lib/misc/pklist
 
 run: $(BIN) setup
-	@cd .. && ./bin/ageland -p
+	@cd .. && ./bin/ageland -p 3791
 
 # Auto-generated header dependencies (silently ignored when absent, e.g. first build).
 -include $(DEPFILES)

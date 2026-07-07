@@ -75,8 +75,16 @@ Send comments, bug reports, help requests, etc. to Jeremy Elson
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
+#include "json_utils.h"
 #include "structs.h"
 #include "utils.h"
+
+#include <cerrno>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <sstream>
+#include <utility>
 
 extern struct room_data world;
 extern struct obj_data* obj_proto;
@@ -736,43 +744,443 @@ void board_info_type::flush_board()
     }
 }
 
+// ---------------------------------------------------------------------------
+// Phase 2a Task 4: board persistence as JSON, plus a one-time legacy
+// converter. See boards.h for the schema/contract doc comments.
+// ---------------------------------------------------------------------------
+namespace boards_json {
+namespace {
+
+    void set_error(std::string* error_message, const std::string& message)
+    {
+        if (error_message)
+            *error_message = message;
+    }
+
+    // Little-endian 4-byte int read at an explicit offset -- portable
+    // regardless of the reading process's own endianness/ABI (this repo's
+    // established convention, see objects_json.cpp's read_pod/read_u32le).
+    bool read_i32(const std::string& bytes, size_t* offset, int* value, std::string* error_message, const char* label)
+    {
+        if (*offset + 4 > bytes.size()) {
+            set_error(error_message, std::string("Truncated board file while reading ") + label + ".");
+            return false;
+        }
+
+        const uint32_t raw = static_cast<uint32_t>(static_cast<unsigned char>(bytes[*offset]))
+            | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[*offset + 1])) << 8)
+            | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[*offset + 2])) << 16)
+            | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[*offset + 3])) << 24);
+        *value = static_cast<int>(static_cast<int32_t>(raw));
+        *offset += 4;
+        return true;
+    }
+
+    bool skip_bytes(const std::string& bytes, size_t* offset, size_t length, std::string* error_message, const char* label)
+    {
+        if (*offset + length > bytes.size()) {
+            set_error(error_message, std::string("Truncated board file while reading ") + label + ".");
+            return false;
+        }
+        *offset += length;
+        return true;
+    }
+
+    // Reads `length_including_nul` bytes of text starting at `*offset` and
+    // strips the trailing NUL byte the legacy writer always included (it
+    // wrote strlen(text)+1 bytes -- see save_board's heading_len/message_len
+    // computation below).
+    bool read_text(const std::string& bytes, size_t* offset, size_t length_including_nul, std::string* out, std::string* error_message, const char* label)
+    {
+        if (*offset + length_including_nul > bytes.size()) {
+            set_error(error_message, std::string("Truncated board file while reading ") + label + ".");
+            return false;
+        }
+        if (length_including_nul == 0) {
+            out->clear();
+            return true;
+        }
+        out->assign(bytes, *offset, length_including_nul - 1);
+        *offset += length_including_nul;
+        return true;
+    }
+
+    // Decodes one 28-byte `board_msginfo` record (slot_num, msg_num, the
+    // `char*` heading pointer -- read past and discarded, level, post_time,
+    // heading_len, message_len) plus its adjacent heading/message text.
+    bool read_legacy_record(const std::string& bytes, size_t* offset, BoardMessageData* message, std::string* error_message)
+    {
+        int slot_num = 0, msg_num = 0, level = 0, post_time = 0, heading_len = 0, message_len = 0;
+        if (!read_i32(bytes, offset, &slot_num, error_message, "message slot_num"))
+            return false;
+        if (!read_i32(bytes, offset, &msg_num, error_message, "message msg_num"))
+            return false;
+        if (!skip_bytes(bytes, offset, 4, error_message, "message heading pointer"))
+            return false;
+        if (!read_i32(bytes, offset, &level, error_message, "message level"))
+            return false;
+        if (!read_i32(bytes, offset, &post_time, error_message, "message post_time"))
+            return false;
+        if (!read_i32(bytes, offset, &heading_len, error_message, "message heading_len"))
+            return false;
+        if (!read_i32(bytes, offset, &message_len, error_message, "message message_len"))
+            return false;
+
+        if (heading_len < 1) {
+            set_error(error_message, "Board file corrupt: message heading_len must be >= 1.");
+            return false;
+        }
+        if (message_len < 0) {
+            set_error(error_message, "Board file corrupt: message message_len must be >= 0.");
+            return false;
+        }
+
+        std::string heading;
+        if (!read_text(bytes, offset, static_cast<size_t>(heading_len), &heading, error_message, "message heading"))
+            return false;
+
+        const bool has_message = message_len > 0;
+        std::string text;
+        if (has_message && !read_text(bytes, offset, static_cast<size_t>(message_len), &text, error_message, "message body"))
+            return false;
+
+        message->slot_num = slot_num;
+        message->msg_num = msg_num;
+        message->level = level;
+        message->post_time = post_time;
+        message->heading = std::move(heading);
+        message->has_message = has_message;
+        message->message = has_message ? std::move(text) : std::string();
+        return true;
+    }
+
+    bool read_binary_file_contents(const char* path, std::string* bytes)
+    {
+        FILE* file = std::fopen(path, "rb");
+        if (file == nullptr)
+            return false;
+
+        std::string loaded_bytes;
+        char buffer[4096];
+        bool read_ok = true;
+        while (true) {
+            const size_t bytes_read = std::fread(buffer, sizeof(char), sizeof(buffer), file);
+            if (bytes_read > 0)
+                loaded_bytes.append(buffer, bytes_read);
+            if (bytes_read < sizeof(buffer)) {
+                if (std::ferror(file))
+                    read_ok = false;
+                break;
+            }
+        }
+        std::fclose(file);
+
+        if (!read_ok)
+            return false;
+
+        *bytes = std::move(loaded_bytes);
+        return true;
+    }
+
+    // Temp-file + rename atomic write, matching write_player_objects_json's
+    // pattern in objsave.cpp.
+    bool write_file_contents_atomically(const std::string& path, const std::string& contents, std::string* error_message)
+    {
+        const std::string temp_path = path + ".tmp";
+
+        FILE* temp_file = std::fopen(temp_path.c_str(), "wb");
+        if (temp_file == nullptr) {
+            set_error(error_message, std::string("Unable to open temporary board file '") + temp_path + "': " + std::strerror(errno));
+            return false;
+        }
+
+        const size_t bytes_written = contents.empty() ? 0 : std::fwrite(contents.data(), sizeof(char), contents.size(), temp_file);
+        const int flush_result = std::fflush(temp_file);
+        const int close_result = std::fclose(temp_file);
+
+        if (bytes_written != contents.size() || flush_result != 0 || close_result != 0) {
+            std::remove(temp_path.c_str());
+            set_error(error_message, std::string("Failed to write temporary board file '") + temp_path + "'.");
+            return false;
+        }
+
+        if (std::rename(temp_path.c_str(), path.c_str()) != 0) {
+            const std::string rename_error = std::strerror(errno);
+            std::remove(temp_path.c_str());
+            set_error(error_message, "Failed to move temporary board file into place: " + rename_error);
+            return false;
+        }
+
+        return true;
+    }
+
+    // Defensive consistency check for deserialized JSON: `has_message` and
+    // `message` must agree (a hand-edited or corrupted JSON file could set
+    // them inconsistently, which apply_board_save_data below has no sane way
+    // to interpret).
+    bool message_len_invariant_holds(const BoardSaveData& data)
+    {
+        for (const BoardMessageData& message : data.messages) {
+            if (!message.has_message && !message.message.empty())
+                return false;
+        }
+        return true;
+    }
+
+} // namespace
+
+bool legacy_board_file_from_binary(const std::string& bytes, BoardSaveData* data, std::string* error_message)
+{
+    if (data == nullptr) {
+        set_error(error_message, "Board data output parameter must not be null.");
+        return false;
+    }
+
+    size_t offset = 0;
+    int num_of_msgs = 0, last_message = 0;
+    if (!read_i32(bytes, &offset, &num_of_msgs, error_message, "num_of_msgs"))
+        return false;
+    if (!read_i32(bytes, &offset, &last_message, error_message, "last_message"))
+        return false;
+
+    if (num_of_msgs < 1) {
+        set_error(error_message, "Board file corrupt: num_of_msgs must be >= 1.");
+        return false;
+    }
+
+    BoardSaveData parsed;
+    parsed.last_message = last_message;
+    parsed.messages.reserve(static_cast<size_t>(num_of_msgs));
+    for (int i = 0; i < num_of_msgs; ++i) {
+        BoardMessageData message;
+        if (!read_legacy_record(bytes, &offset, &message, error_message))
+            return false;
+        parsed.messages.push_back(std::move(message));
+    }
+
+    // Deliberate post-legacy hardening (Phase 2a Task 4 review finding): the
+    // original loader trusted num_of_msgs and never checked for leftover
+    // bytes after the last record, so a truncated/appended-to legacy file
+    // could silently under- or over-read. This decoder is stricter and
+    // rejects any trailing bytes outright. Verified harmless against all 25
+    // real legacy .boa files on disk at the time this check was added (none
+    // had trailing bytes) -- this is a one-time migration-path guard, not a
+    // behavior change to the live JSON format.
+    if (offset != bytes.size()) {
+        set_error(error_message, "Board file corrupt: trailing bytes after the last message record.");
+        return false;
+    }
+
+    *data = std::move(parsed);
+    set_error(error_message, "");
+    return true;
+}
+
+std::string serialize_board_to_json(const BoardSaveData& data)
+{
+    std::ostringstream output;
+    output << "{\n";
+    output << "  \"version\": " << data.version << ",\n";
+    output << "  \"last_message\": " << data.last_message << ",\n";
+    output << "  \"messages\": [\n";
+    for (size_t index = 0; index < data.messages.size(); ++index) {
+        const BoardMessageData& message = data.messages[index];
+        output << "    {\n";
+        output << "      \"slot_num\": " << message.slot_num << ",\n";
+        output << "      \"msg_num\": " << message.msg_num << ",\n";
+        output << "      \"heading\": \"" << json_utils::escape_json_string(message.heading) << "\",\n";
+        output << "      \"level\": " << message.level << ",\n";
+        output << "      \"post_time\": " << message.post_time << ",\n";
+        output << "      \"has_message\": " << (message.has_message ? "true" : "false") << ",\n";
+        output << "      \"message\": \"" << json_utils::escape_json_string(message.message) << "\"\n";
+        output << "    }";
+        if (index + 1 < data.messages.size())
+            output << ",";
+        output << "\n";
+    }
+    output << "  ]\n";
+    output << "}\n";
+    return output.str();
+}
+
+bool deserialize_board_from_json(const std::string& json, BoardSaveData* data, std::string* error_message)
+{
+    if (data == nullptr) {
+        set_error(error_message, "Board data output parameter must not be null.");
+        return false;
+    }
+
+    BoardSaveData parsed;
+    const bool ok = json_utils::JsonReader(json).parse_root_object(
+        [&](const std::string& key, json_utils::JsonReader* reader, std::string* nested_error) {
+            if (key == "version")
+                return reader->parse_integer(&parsed.version, nested_error);
+            if (key == "last_message")
+                return reader->parse_integer(&parsed.last_message, nested_error);
+            if (key == "messages") {
+                return reader->parse_array(
+                    [&](json_utils::JsonReader* message_reader, std::string* message_error) {
+                        BoardMessageData message;
+                        const bool message_ok = message_reader->parse_object(
+                            [&](const std::string& message_key, json_utils::JsonReader* nested_reader, std::string* nested_message_error) {
+                                if (message_key == "slot_num")
+                                    return nested_reader->parse_integer(&message.slot_num, nested_message_error);
+                                if (message_key == "msg_num")
+                                    return nested_reader->parse_integer(&message.msg_num, nested_message_error);
+                                if (message_key == "heading")
+                                    return nested_reader->parse_string(&message.heading, nested_message_error);
+                                if (message_key == "level")
+                                    return nested_reader->parse_integer(&message.level, nested_message_error);
+                                if (message_key == "post_time")
+                                    return nested_reader->parse_integer(&message.post_time, nested_message_error);
+                                if (message_key == "has_message")
+                                    return nested_reader->parse_bool(&message.has_message, nested_message_error);
+                                if (message_key == "message")
+                                    return nested_reader->parse_string(&message.message, nested_message_error);
+                                return nested_reader->skip_value(nested_message_error);
+                            },
+                            message_error);
+                        if (!message_ok)
+                            return false;
+                        parsed.messages.push_back(std::move(message));
+                        return true;
+                    },
+                    nested_error);
+            }
+            return reader->skip_value(nested_error);
+        },
+        error_message);
+
+    if (!ok)
+        return false;
+
+    if (!message_len_invariant_holds(parsed)) {
+        set_error(error_message, "Board JSON message is inconsistent: has_message=false but message is non-empty.");
+        return false;
+    }
+
+    *data = std::move(parsed);
+    set_error(error_message, "");
+    return true;
+}
+
+bool board_save_data_equal(const BoardSaveData& a, const BoardSaveData& b)
+{
+    if (a.version != b.version || a.last_message != b.last_message)
+        return false;
+    if (a.messages.size() != b.messages.size())
+        return false;
+
+    for (size_t index = 0; index < a.messages.size(); ++index) {
+        const BoardMessageData& m1 = a.messages[index];
+        const BoardMessageData& m2 = b.messages[index];
+        if (m1.slot_num != m2.slot_num || m1.msg_num != m2.msg_num || m1.level != m2.level
+            || m1.post_time != m2.post_time || m1.heading != m2.heading
+            || m1.has_message != m2.has_message || m1.message != m2.message)
+            return false;
+    }
+
+    return true;
+}
+
+std::string board_json_path(const std::string& legacy_path)
+{
+    return legacy_path + ".json";
+}
+
+bool convert_legacy_board_file(const char* legacy_path, std::string* error_message)
+{
+    if (legacy_path == nullptr || !*legacy_path) {
+        set_error(error_message, "Legacy board path must not be empty.");
+        return false;
+    }
+
+    std::string legacy_bytes;
+    if (!read_binary_file_contents(legacy_path, &legacy_bytes)) {
+        set_error(error_message, std::string("Failed to read legacy board file '") + legacy_path + "': " + std::strerror(errno));
+        return false;
+    }
+
+    BoardSaveData decoded;
+    std::string decode_error;
+    if (!legacy_board_file_from_binary(legacy_bytes, &decoded, &decode_error)) {
+        set_error(error_message, "Decode failed: " + decode_error);
+        return false;
+    }
+
+    const std::string json = serialize_board_to_json(decoded);
+
+    // Verify (binding conversion contract): re-decode the freshly serialized
+    // JSON and compare it field-for-field to the original decode -- not a
+    // re-serialization/string comparison.
+    BoardSaveData reparsed;
+    std::string verify_error;
+    if (!deserialize_board_from_json(json, &reparsed, &verify_error)) {
+        set_error(error_message, "Verify-decode of freshly serialized JSON failed: " + verify_error);
+        return false;
+    }
+
+    if (!board_save_data_equal(decoded, reparsed)) {
+        set_error(error_message, "Verify mismatch: re-decoded JSON does not equal the original legacy decode.");
+        return false;
+    }
+
+    const std::string json_path = board_json_path(legacy_path);
+    std::string write_error;
+    if (!write_file_contents_atomically(json_path, json, &write_error)) {
+        set_error(error_message, write_error);
+        return false;
+    }
+
+    const std::string migrated_path = std::string(legacy_path) + ".migrated";
+    if (std::rename(legacy_path, migrated_path.c_str()) != 0) {
+        // The JSON is written and verified at this point -- data is not at
+        // risk -- but the legacy file could not be retired. Matches
+        // convert_plrobjs.cpp's "partial success" contract: report it (via
+        // a non-empty, non-fatal error_message) but still return true, since
+        // the thing that matters for subsequent loads (the JSON file) is
+        // safely in place; the legacy file is simply left behind for a
+        // future retry.
+        set_error(error_message,
+            std::string("Board converted but legacy rename to '") + migrated_path + "' failed: " + std::strerror(errno));
+        return true;
+    }
+
+    set_error(error_message, "");
+    return true;
+}
+
+} // namespace boards_json
+
 static char html_message_line[MAX_STRING_LENGTH + 200];
 void board_info_type::save_board()
 {
-    FILE* fl;
     FILE *ht_fl, *ind_fl;
     int i, j1, j2, no_html;
     char *tmp1 = 0, *tmp2 = 0;
     char ht_name[100];
 
+    const std::string legacy_path = FILENAME;
+    const std::string json_path = boards_json::board_json_path(legacy_path);
+
     if (!num_of_msgs) {
-        unlink(FILENAME);
+        unlink(legacy_path.c_str());
+        unlink(json_path.c_str());
         return;
     }
 
-    if (!(fl = fopen(FILENAME, "wb"))) {
-        perror("Error writing board");
-        return;
-    }
     no_html = 0;
 
-    //   strcpy(ht_name, FILENAME);
     sprintf(ht_name, "%s/%s.index", BOARD_HTML_DIR, short_name);
-    //   strcat(ht_name, ".index");
 
     if (!(ind_fl = fopen(ht_name, "w+")))
         no_html = 1;
 
-    //   strcpy(ht_name, FILENAME);
-    //   strcat(ht_name, ".html");
     sprintf(ht_name, "%s/%s.html", BOARD_HTML_DIR, short_name);
     if (!(ht_fl = fopen(ht_name, "w+"))) {
         no_html = 1;
         fclose(ind_fl);
     }
-
-    fwrite(&(num_of_msgs), sizeof(int), 1, fl);
-    fwrite(&(last_message), sizeof(int), 1, fl);
 
     if (!no_html) {
         fprintf(ind_fl, "<HTML>\n\r<BODY>\n\r<head>\n\r<title>%s</title></head><br>\n\r",
@@ -780,6 +1188,11 @@ void board_info_type::save_board()
         fprintf(ht_fl, "<HTML>\n\r<BODY>\n\r<head>\n\r<title>%s</title></head><br>\n\r<dt>%s</dt><br><hr><br>",
             title, title);
     }
+
+    boards_json::BoardSaveData data;
+    data.last_message = last_message;
+    data.messages.reserve(static_cast<size_t>(num_of_msgs));
+
     for (i = 0; i < num_of_msgs; i++) {
         if ((tmp1 = MSG_HEADING(i)))
             msg_index[i].heading_len = strlen(tmp1) + 1;
@@ -791,7 +1204,15 @@ void board_info_type::save_board()
         else
             msg_index[i].message_len = strlen(tmp2) + 1;
 
-        fwrite(&(msg_index[i]), sizeof(struct board_msginfo), 1, fl);
+        boards_json::BoardMessageData message;
+        message.slot_num = msg_index[i].slot_num;
+        message.msg_num = msg_index[i].msg_num;
+        message.heading = tmp1 ? std::string(tmp1) : std::string();
+        message.level = msg_index[i].level;
+        message.post_time = msg_index[i].post_time;
+        message.has_message = (tmp2 != 0);
+        message.message = tmp2 ? std::string(tmp2) : std::string();
+        data.messages.push_back(std::move(message));
 
         if (!no_html) {
 
@@ -821,72 +1242,168 @@ void board_info_type::save_board()
                 fwrite(html_message_line, sizeof(char), j2, ht_fl);
             fprintf(ht_fl, "<br><br>");
         }
-
-        if (tmp1)
-            fwrite(tmp1, sizeof(char), msg_index[i].heading_len, fl);
-        if (tmp2)
-            fwrite(tmp2, sizeof(char), msg_index[i].message_len, fl);
     }
-
-    fclose(fl);
 
     if (!no_html) {
         fclose(ind_fl);
         fclose(ht_fl);
     }
+
+    const std::string json = boards_json::serialize_board_to_json(data);
+    std::string write_error;
+    if (!boards_json::write_file_contents_atomically(json_path, json, &write_error)) {
+        char errbuf[512];
+        snprintf(errbuf, sizeof(errbuf), "SYSERR: failed to write board JSON file '%s': %s", json_path.c_str(), write_error.c_str());
+        log(errbuf);
+    }
+
+    // The legacy binary format is never written again -- JSON is the sole
+    // write format going forward. A stale legacy file (e.g. one that hasn't
+    // been converted yet because this board was never loaded this boot) is
+    // left untouched here; load_board's boot-time converter is what retires
+    // it.
 }
+
+namespace {
+
+    bool read_whole_file(const char* path, std::string* out)
+    {
+        FILE* file = fopen(path, "rb");
+        if (!file)
+            return false;
+
+        std::string bytes;
+        char buffer[4096];
+        size_t bytes_read;
+        while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0)
+            bytes.append(buffer, bytes_read);
+        fclose(file);
+        *out = std::move(bytes);
+        return true;
+    }
+
+    // Applies decoded/deserialized board data into `board`'s runtime state
+    // (the msg_index array plus the shared msg_storage/find_slot() pool),
+    // mirroring the legacy load loop's semantics exactly -- including the
+    // historical quirk where a message with no body (has_message == false)
+    // keeps whatever slot_num was on disk instead of getting a freshly
+    // allocated slot (the legacy loader's own `if ((len2 =
+    // msg_index[i].message_len))` gate only assigns via find_slot() when a
+    // body is present).
+    bool apply_board_save_data(board_info_type* board, const boards_json::BoardSaveData& data)
+    {
+        const int num_of_msgs = static_cast<int>(data.messages.size());
+        if (num_of_msgs < 1 || num_of_msgs > board->max_of_msgs) {
+            log("SYSERR: Board file corrupt (load).  Resetting.");
+            board->reset_board();
+            return false;
+        }
+
+        board->last_message = data.last_message;
+
+        for (int i = 0; i < num_of_msgs; ++i) {
+            const boards_json::BoardMessageData& message = data.messages[i];
+
+            board->msg_index[i].slot_num = message.slot_num;
+            board->msg_index[i].msg_num = message.msg_num;
+            board->msg_index[i].level = message.level;
+            board->msg_index[i].post_time = message.post_time;
+
+            char* heading = 0;
+            CREATE(heading, char, message.heading.size() + 1);
+            memcpy(heading, message.heading.c_str(), message.heading.size() + 1);
+            board->msg_index[i].heading = heading;
+            board->msg_index[i].heading_len = static_cast<int>(message.heading.size()) + 1;
+
+            if (message.has_message) {
+                const int slot = find_slot();
+                if (slot == -1) {
+                    log("SYSERR: Out of slots booting board!  Resetting..");
+                    board->reset_board();
+                    return false;
+                }
+                board->msg_index[i].slot_num = slot;
+                board->msg_index[i].message_len = static_cast<int>(message.message.size()) + 1;
+
+                char* text = 0;
+                CREATE(text, char, message.message.size() + 1);
+                memcpy(text, message.message.c_str(), message.message.size() + 1);
+                msg_storage[slot] = text;
+            } else {
+                board->msg_index[i].message_len = 0;
+            }
+        }
+
+        board->num_of_msgs = num_of_msgs;
+        return true;
+    }
+
+} // namespace
 
 void board_info_type::load_board()
 {
-    FILE* fl;
-    int i, len1 = 0, len2 = 0;
-    char *tmp1 = 0, *tmp2 = 0;
+    const std::string legacy_path = FILENAME;
+    const std::string json_path = boards_json::board_json_path(legacy_path);
 
-    if (!(fl = fopen(FILENAME, "rb"))) {
-        perror("Error reading board");
-        return;
-    }
-    fread(&(num_of_msgs), sizeof(int), 1, fl);
-    fread(&(last_message), sizeof(int), 1, fl);
-    if (num_of_msgs < 1 || num_of_msgs > max_of_msgs) {
-        log("SYSERR: Board file corrupt (load).  Resetting.");
-        reset_board();
-        return;
-    }
-
-    for (i = 0; i < num_of_msgs; i++) {
-        fread(&(msg_index[i]), sizeof(struct board_msginfo), 1, fl);
-        if (!(len1 = msg_index[i].heading_len)) {
-            log("SYSERR: Board file corrupt!(load)  Resetting.");
+    std::string json_bytes;
+    if (read_whole_file(json_path.c_str(), &json_bytes)) {
+        boards_json::BoardSaveData data;
+        std::string error;
+        if (!boards_json::deserialize_board_from_json(json_bytes, &data, &error)) {
+            char errbuf[512];
+            snprintf(errbuf, sizeof(errbuf), "SYSERR: Board JSON file '%s' corrupt (load): %s  Resetting.", json_path.c_str(), error.c_str());
+            log(errbuf);
             reset_board();
             return;
         }
-        CREATE(tmp1, char, len1);
-        if (!tmp1) {
-            log("SYSERR: Error - malloc failed for board header");
-            exit(1);
-        }
-
-        fread(tmp1, sizeof(char), len1, fl);
-        MSG_HEADING(i) = tmp1;
-
-        if ((len2 = msg_index[i].message_len)) {
-            if ((MSG_SLOTNUM(i) = find_slot()) == -1) {
-                log("SYSERR: Out of slots booting board!  Resetting..");
-                reset_board();
-                return;
-            }
-            CREATE(tmp2, char, len2);
-            if (!tmp2) {
-                log("SYSERR: malloc failed for board text");
-                exit(1);
-            }
-            fread(tmp2, sizeof(char), len2, fl);
-            msg_storage[MSG_SLOTNUM(i)] = tmp2;
-        }
+        apply_board_save_data(this, data);
+        return;
     }
 
-    fclose(fl);
+    // No JSON file yet -- if a legacy binary file exists, convert it once.
+    FILE* legacy_probe = fopen(legacy_path.c_str(), "rb");
+    if (legacy_probe) {
+        fclose(legacy_probe);
+
+        std::string convert_error;
+        if (!boards_json::convert_legacy_board_file(legacy_path.c_str(), &convert_error)) {
+            char errbuf[512];
+            snprintf(errbuf, sizeof(errbuf), "SYSERR: Failed converting legacy board file '%s' to JSON: %s", legacy_path.c_str(), convert_error.c_str());
+            log(errbuf);
+            reset_board();
+            return;
+        }
+
+        char logbuf[512];
+        if (!convert_error.empty())
+            snprintf(logbuf, sizeof(logbuf), "Converted legacy board file '%s' to JSON (warning: %s).", legacy_path.c_str(), convert_error.c_str());
+        else
+            snprintf(logbuf, sizeof(logbuf), "Converted legacy board file '%s' to JSON.", legacy_path.c_str());
+        log(logbuf);
+
+        if (!read_whole_file(json_path.c_str(), &json_bytes)) {
+            log("SYSERR: Board JSON file missing immediately after conversion.  Resetting.");
+            reset_board();
+            return;
+        }
+
+        boards_json::BoardSaveData data;
+        std::string error;
+        if (!boards_json::deserialize_board_from_json(json_bytes, &data, &error)) {
+            char errbuf[512];
+            snprintf(errbuf, sizeof(errbuf), "SYSERR: Board JSON file '%s' corrupt immediately after conversion: %s  Resetting.", json_path.c_str(), error.c_str());
+            log(errbuf);
+            reset_board();
+            return;
+        }
+
+        apply_board_save_data(this, data);
+        return;
+    }
+
+    // Neither a JSON file nor a legacy file exists -- a fresh board with no
+    // messages posted yet. Matches the legacy loader's own silent-no-op here.
+    perror("Error reading board");
 }
 
 void board_info_type::reset_board()
@@ -906,6 +1423,7 @@ void board_info_type::reset_board()
     }
     num_of_msgs = 0;
     unlink(FILENAME);
+    unlink(boards_json::board_json_path(FILENAME).c_str());
 }
 board_info_type::board_info_type(int objnum, int l_read, int l_write, int l_rem,
     int max_msg, char* file, char* titlename)

@@ -13,6 +13,9 @@
 
 #include "platdef.h" /* For byte typedefs */
 
+#include <string>
+#include <vector>
+
 #define NUM_OF_BOARDS 24
 // #define NUM_OF_BOARDS      (board_info_type::num_of_boards)
 #define MAX_BOARD_MESSAGES 100 /* arbitrary */
@@ -105,5 +108,70 @@ struct mail_info_type : board_info_type {
 #define MSG_POSTTIME(j) (msg_index[j].post_time)
 #define MSG_LEVEL(j) (msg_index[j].level)
 #define MSG_CURMSG(ch) (ch->specials.board_point[lnum])
+
+// JSON persistence for board files (Phase 2a Task 4). Replaces the legacy
+// fwrite of `board_msginfo` (which includes a raw `char*` heading pointer,
+// meaningless once reloaded) plus its adjacent heading/message text blobs.
+// One JSON file per board, `<boardfile>.json` (e.g. "boards/boa11.boa.json"),
+// written atomically (temp file + rename, see write_player_objects_json in
+// objsave.cpp for the established pattern this follows). The legacy decoder
+// stays only to support the one-time boot conversion of pre-existing
+// `<boardfile>.boa` files; nothing ever writes that binary format again.
+namespace boards_json {
+
+static constexpr int BOARD_SCHEMA_VERSION = 1;
+
+// One posted message. `has_message` distinguishes "no body was ever posted
+// slot" (legacy on-disk message_len == 0 -- the slot_num on disk was already
+// invalid/stale at save time) from "an empty-but-present body" (message_len
+// == 1, i.e. just the NUL terminator) -- load_board() only calls find_slot()
+// to allocate runtime storage when has_message is true, mirroring the legacy
+// loader's own `if ((len2 = msg_index[i].message_len))` gate exactly.
+struct BoardMessageData {
+    int slot_num = 0;
+    int msg_num = 0;
+    int level = 0;
+    int post_time = 0;
+    std::string heading;
+    bool has_message = false;
+    std::string message;
+};
+
+struct BoardSaveData {
+    int version = BOARD_SCHEMA_VERSION;
+    int last_message = 0;
+    std::vector<BoardMessageData> messages;
+};
+
+// Decodes the legacy 32-bit on-disk `<boardfile>.boa` layout: a header of
+// two ints (num_of_msgs, last_message), followed by num_of_msgs records of
+// exactly 28 bytes each (slot_num, msg_num, a `char*` heading pointer that is
+// read-and-discarded, level, post_time, heading_len, message_len -- 7 x
+// 4-byte fields; verified against a hexdump of a real board file, see
+// docs/superpowers/sdd/p2a-task-4-report.md), each immediately followed by
+// heading_len bytes of heading text and (iff message_len > 0) message_len
+// bytes of message text -- both including their own trailing NUL byte.
+bool legacy_board_file_from_binary(const std::string& bytes, BoardSaveData* data, std::string* error_message = nullptr);
+
+std::string serialize_board_to_json(const BoardSaveData& data);
+bool deserialize_board_from_json(const std::string& json, BoardSaveData* data, std::string* error_message = nullptr);
+
+// Field-for-field structural equality (not a re-serialization/string
+// compare) -- used by the converter's decode/serialize/re-decode/verify
+// contract before it ever renames a legacy file away.
+bool board_save_data_equal(const BoardSaveData& a, const BoardSaveData& b);
+
+// Path convention: "<path>.json" for the JSON file, "<path>.migrated" for
+// the legacy file once safely converted.
+std::string board_json_path(const std::string& legacy_path);
+
+// Converts one legacy `<boardfile>.boa` file at `legacy_path`: decode ->
+// serialize -> re-decode -> field-equality verify -> write JSON (atomic
+// temp+rename) -> rename legacy to `<legacy_path>.migrated`. Never destroys
+// the legacy file: any failure at any step returns false (with
+// `*error_message` set) and leaves the legacy file exactly as found.
+bool convert_legacy_board_file(const char* legacy_path, std::string* error_message = nullptr);
+
+} // namespace boards_json
 
 #endif /* BOARDS_H */

@@ -3971,20 +3971,42 @@ void print_exploits(struct char_data* sendto, char* name)
     for (const exploit_record& loaded_record : records) {
         exploitrec = loaded_record;
 
+        // exploitrec.chtime/chVictimName are fixed-width, 30-byte legacy fields
+        // with no guaranteed NUL termination -- a number of legacy .exploits
+        // records on disk are corrupt and hold no NUL anywhere within these
+        // fields (see exploits_json.cpp's bounded_field_length/the P2b Task 8
+        // hardening for the full story; the kInfraFailure path serves these
+        // records in-memory as-is). An unbounded strcpy/%s here would read
+        // past the field -- and potentially past exploitrec's own storage --
+        // pulling garbage into these 255-byte stack buffers. Bound every read
+        // to the field's declared width so display of a well-formed record is
+        // unchanged (strnlen finds the real NUL well within bounds) while a
+        // corrupt record is safely truncated instead of over-read.
+        size_t victim_name_len = strnlen(exploitrec.chVictimName, sizeof(exploitrec.chVictimName));
+        char bounded_victim_name[sizeof(exploitrec.chVictimName) + 1];
+        memcpy(bounded_victim_name, exploitrec.chVictimName, victim_name_len);
+        bounded_victim_name[victim_name_len] = '\0';
+
         // this entry - date
-        strcpy(str2, exploitrec.chtime + 4);
-        str2[6] = '\0';
+        size_t month_day_len = strnlen(exploitrec.chtime + 4, sizeof(exploitrec.chtime) - 4);
+        if (month_day_len > 6)
+            month_day_len = 6;
+        memcpy(str2, exploitrec.chtime + 4, month_day_len);
+        str2[month_day_len] = '\0';
 
         // year - yeahyeah, it cuts off the first two digits. deal.
-        strcpy(str3, exploitrec.chtime + 22);
-        str3[2] = '\0';
+        size_t year_len = strnlen(exploitrec.chtime + 22, sizeof(exploitrec.chtime) - 22);
+        if (year_len > 2)
+            year_len = 2;
+        memcpy(str3, exploitrec.chtime + 22, year_len);
+        str3[year_len] = '\0';
         i++;
 
         sprintf(str5, "Unknown record type");
 
         switch (exploitrec.type) {
         case EXPLOIT_PK: // it's a pk type
-            sprintf(str5, "%s, %s: Killed %s (%d,%d)", str2, str3, exploitrec.chVictimName,
+            sprintf(str5, "%s, %s: Killed %s (%d,%d)", str2, str3, bounded_victim_name,
                 exploitrec.iKillerLevel, exploitrec.iVictimLevel);
             iTotalPk++;
             break;
@@ -3992,11 +4014,11 @@ void print_exploits(struct char_data* sendto, char* name)
         case EXPLOIT_DEATH: // it's a death type
             // chvictimname used to store killer name here
             if (exploitrec.iIntParam == 1) {
-                sprintf(str5, "%s, %s: * Died to %s (%d,%d)", str2, str3, exploitrec.chVictimName,
+                sprintf(str5, "%s, %s: * Died to %s (%d,%d)", str2, str3, bounded_victim_name,
                     exploitrec.iVictimLevel, exploitrec.iKillerLevel);
                 iDeaths++;
             } else
-                sprintf(str5, "%s, %s: Died to %s (%d,%d)", str2, str3, exploitrec.chVictimName,
+                sprintf(str5, "%s, %s: Died to %s (%d,%d)", str2, str3, bounded_victim_name,
                     exploitrec.iVictimLevel, exploitrec.iKillerLevel);
             break;
 
@@ -4006,7 +4028,7 @@ void print_exploits(struct char_data* sendto, char* name)
 
         case EXPLOIT_STAT:
             sprintf(str5, "%s, %s: L%d: Stat inc (%s)", str2, str3, exploitrec.iIntParam,
-                exploitrec.chVictimName);
+                bounded_victim_name);
             break;
 
         case EXPLOIT_BIRTH:
@@ -4014,7 +4036,7 @@ void print_exploits(struct char_data* sendto, char* name)
             break;
 
         case EXPLOIT_MOBDEATH:
-            sprintf(str5, "%s, %s: Mobdied: %s", str2, str3, exploitrec.chVictimName);
+            sprintf(str5, "%s, %s: Mobdied: %s", str2, str3, bounded_victim_name);
             iMobDeaths++;
             break;
 
@@ -4023,11 +4045,11 @@ void print_exploits(struct char_data* sendto, char* name)
             break;
 
         case EXPLOIT_ACHIEVEMENT:
-            sprintf(str5, "%s, %s: %s", str2, str3, exploitrec.chVictimName);
+            sprintf(str5, "%s, %s: %s", str2, str3, bounded_victim_name);
             break;
 
         case EXPLOIT_NOTE:
-            sprintf(str5, "%s, %s: !%s", str2, str3, exploitrec.chVictimName);
+            sprintf(str5, "%s, %s: !%s", str2, str3, bounded_victim_name);
             iNotes++;
             break;
 

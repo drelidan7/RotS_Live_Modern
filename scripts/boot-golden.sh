@@ -13,17 +13,27 @@
 #                                               identical either way, which is the point: the golden
 #                                               is ABI-neutral text, so a diff here is a real
 #                                               cross-ABI behavior difference, not noise.
+#   scripts/boot-golden.sh --native <binary-path> verify
+#                                               Boot <binary-path> directly on THIS host — no
+#                                               docker/compose involved — against the repo's real
+#                                               lib/ (cwd is the repo root, same as the container's
+#                                               /rots; the binary's own -d default is "lib", so a
+#                                               relative chdir("lib") resolves the same way). Used
+#                                               for the macOS-native runtime (Task 7): same poll/
+#                                               normalize/compare, so a diff here is a real native-
+#                                               vs-container behavior difference, not noise.
 #
 # Requires lib/world/ (see docs/BUILD.md) and a prebuilt server binary for the chosen
 # service (see `scripts/rots-docker.sh compile` for `rots`; for `rots64`, `cd src &&
 # cmake --preset linux-x64 && cmake --build --preset linux-x64` inside the rots64
-# container). The server is booted just long enough to finish world load, then
-# killed — this script never rebuilds the binary.
+# container; for `--native`, `cd src && cmake --preset macos-arm64 && cmake --build
+# --preset macos-arm64` on the host). The server is booted just long enough to finish
+# world load, then killed — this script never rebuilds the binary.
 #
 # The launch mirrors the launch half of `scripts/rots-docker.sh boot`: same
-# working dir (/rots) and same flags (no -p, matching the plain-telnet dev
-# boot) — but skips that script's `make setup && make all`, since this script
-# characterizes the boot *log*, not the build.
+# working dir (/rots, or the repo root for --native) and same flags (no -p,
+# matching the plain-telnet dev boot) — but skips that script's `make setup &&
+# make all`, since this script characterizes the boot *log*, not the build.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -32,11 +42,23 @@ GOLDEN=docs/superpowers/goldens/boot-log.golden
 # `--service <name>` selects the compose service to boot in (default `rots`, the
 # 32-bit i386 container; `rots64` is the 64-bit sibling from Task 6). Also
 # settable via ROTS_SERVICE so callers that already export it don't need the
-# flag. The mode (capture/verify) is the first remaining positional arg.
+# flag. `--native <binary-path>` bypasses docker/compose entirely and runs that
+# binary directly on the host instead (mutually exclusive with --service in
+# spirit; --native simply takes priority below if both are given). The mode
+# (capture/verify) is the first remaining positional arg.
 SERVICE="${ROTS_SERVICE:-rots}"
+NATIVE_BINARY=""
 args=()
 while [ $# -gt 0 ]; do
   case "$1" in
+    --native)
+      NATIVE_BINARY="$2"
+      shift 2
+      ;;
+    --native=*)
+      NATIVE_BINARY="${1#--native=}"
+      shift
+      ;;
     --service)
       SERVICE="$2"
       shift 2
@@ -53,17 +75,21 @@ while [ $# -gt 0 ]; do
 done
 mode="${args[0]:-verify}"
 
-# Each service builds its binary at a different path relative to the /rots bind
-# mount: the 32-bit Makefile build produces ./bin/ageland; the 64-bit CMake
-# linux-x64 preset (binaryDir "${sourceDir}/../build/${presetName}" in
-# CMakePresets.json) puts it at ./build/linux-x64/ageland. Both paths are bind-
-# mounted, so they're visible identically from the host and from inside either
-# container.
-case "$SERVICE" in
-  rots) BINARY_PATH=bin/ageland ;;
-  rots64) BINARY_PATH=build/linux-x64/ageland ;;
-  *) echo "ERROR: unknown --service '$SERVICE' (expected 'rots' or 'rots64')" >&2; exit 2 ;;
-esac
+if [ -n "$NATIVE_BINARY" ]; then
+  BINARY_PATH="$NATIVE_BINARY"
+else
+  # Each service builds its binary at a different path relative to the /rots bind
+  # mount: the 32-bit Makefile build produces ./bin/ageland; the 64-bit CMake
+  # linux-x64 preset (binaryDir "${sourceDir}/../build/${presetName}" in
+  # CMakePresets.json) puts it at ./build/linux-x64/ageland. Both paths are bind-
+  # mounted, so they're visible identically from the host and from inside either
+  # container.
+  case "$SERVICE" in
+    rots) BINARY_PATH=bin/ageland ;;
+    rots64) BINARY_PATH=build/linux-x64/ageland ;;
+    *) echo "ERROR: unknown --service '$SERVICE' (expected 'rots' or 'rots64')" >&2; exit 2 ;;
+  esac
+fi
 
 [ -d lib/world ] || { echo "ERROR: lib/world/ missing — cannot boot." >&2; exit 2; }
 [ -f "$BINARY_PATH" ] || { echo "ERROR: $BINARY_PATH missing — build it first (see script header)." >&2; exit 2; }
@@ -92,6 +118,33 @@ capture_log() {
     sleep 1
     cat /tmp/boot-golden.raw
   " | normalize
+}
+
+# Same boot/poll/kill sequence as capture_log, but runs the binary directly on
+# the host (no docker) for --native. Uses a private tmp raw-log path (PID-
+# suffixed) rather than /tmp/boot-golden.raw so a concurrent container run
+# can't collide with it.
+capture_log_native() {
+  local raw
+  raw="$(mktemp /tmp/boot-golden-native.XXXXXX)"
+  ( "$BINARY_PATH" > "$raw" 2>&1 & echo $! > "$raw.pid" )
+  local pid
+  pid="$(cat "$raw.pid")"
+  local i
+  for i in $(seq 1 60); do
+    sleep 1
+    grep -q 'Entering game loop' "$raw" 2>/dev/null && break
+  done
+  if ! grep -q 'Entering game loop' "$raw" 2>/dev/null; then
+    echo "ERROR: server did not reach \"Entering game loop\" within 60s" >&2
+    kill "$pid" 2>/dev/null || true
+    rm -f "$raw" "$raw.pid"
+    return 1
+  fi
+  kill "$pid" 2>/dev/null || true
+  sleep 1
+  cat "$raw" | normalize
+  rm -f "$raw" "$raw.pid"
 }
 
 # Normalize in two steps:
@@ -125,7 +178,9 @@ normalize() {
 # printing why) if the boot never reached the game loop, so verify can report
 # "boot failed" (exit 2) instead of misreporting it as golden drift (exit 1).
 capture_to() {
-  if ! capture_log > "$1"; then
+  local capture_fn=capture_log
+  [ -n "$NATIVE_BINARY" ] && capture_fn=capture_log_native
+  if ! "$capture_fn" > "$1"; then
     echo "ERROR: boot capture failed — server did not reach \"Entering game loop\" (see message above). This is a boot failure, not golden drift." >&2
     return 1
   fi
@@ -154,5 +209,5 @@ case "$mode" in
       exit 1
     fi
     ;;
-  *) echo "usage: $0 [--service rots|rots64] capture|verify" >&2; exit 2 ;;
+  *) echo "usage: $0 [--service rots|rots64 | --native <binary-path>] capture|verify" >&2; exit 2 ;;
 esac

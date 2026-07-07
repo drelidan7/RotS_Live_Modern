@@ -13,7 +13,7 @@
     },
     {
       "name": "linux-x64",
-      "displayName": "Linux x86-64 (64-bit; red until Phase 2)",
+      "displayName": "Linux x86-64 (64-bit; required in CI)",
       "inherits": "base",
       "generator": "Unix Makefiles",
       "cacheVariables": { "ROTS_LEGACY_32BIT": "OFF" },
@@ -32,7 +32,7 @@
     },
     {
       "name": "macos-arm64",
-      "displayName": "macOS arm64 (64-bit; red until Phase 2)",
+      "displayName": "macOS arm64 (64-bit; required in CI)",
       "inherits": "base",
       "generator": "Unix Makefiles",
       "cacheVariables": { "ROTS_LEGACY_32BIT": "OFF" },

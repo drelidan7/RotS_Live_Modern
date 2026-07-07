@@ -173,6 +173,7 @@ if(ROTS_BUILD_TESTS)
         tests/protocol_tests.cpp
         tests/rots_crypt_tests.cpp
         tests/rots_rng_tests.cpp
+        tests/shapemob_tests.cpp
         tests/spell_pa_tests.cpp
         tests/startup_options_tests.cpp
         tests/test_random_utils.cpp
@@ -211,6 +212,15 @@ if(ROTS_BUILD_TESTS)
     )
     target_compile_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
+    )
+    # -funsigned-char: same parity rationale as the ageland target above (char
+    # signedness is a load-bearing behavior assumption the live game pins on every
+    # compiler). Without this, product .cpp files compiled into ageland_tests get
+    # the platform-default signedness (signed on x86 GCC/Clang) instead of the
+    # game's pinned unsigned, which can silently diverge on any char-comparison /
+    # sign-extension test that exercises high-bit (>=0x80) byte values.
+    target_compile_options(ageland_tests PRIVATE
+        $<${ROTS_GNULIKE}:-funsigned-char>
     )
     # _FILE_OFFSET_BITS=64: same EOVERFLOW-avoidance rationale as the ageland target
     # above — account-management tests do real opendir/readdir bucket scans under

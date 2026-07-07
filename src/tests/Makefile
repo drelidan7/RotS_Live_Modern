@@ -14,7 +14,10 @@ CXX = g++
 # test_random_utils.cpp, battle-mage interrupt chances) that were authored under
 # SSE semantics, so the test build must use SSE too. Tests-only: the game binary
 # (src/Makefile) intentionally keeps the historical x87 behavior.
-CXXFLAGS = -std=c++1z -Wall -Wextra -D TESTING -I.. -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse
+# -funsigned-char: parity with src/Makefile's GAMEC flags (the live game pins
+# char as unsigned on every build); without it, product .cpp files compiled
+# into this test binary get the platform-default (signed) char instead.
+CXXFLAGS = -std=c++1z -Wall -Wextra -D TESTING -I.. -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -funsigned-char
 # -lpthread: libgtest.a's ThreadLocal support needs pthread_{get,set}specific/key_*;
 # the static lib doesn't pull it in transitively on this toolchain, so link it explicitly.
 LDFLAGS = -lgtest -lpthread
@@ -208,7 +211,7 @@ rots_crypt.o : ../rots_crypt.cpp ../rots_crypt.h
 	$(CXX) -c $(CXXFLAGS) ../rots_crypt.cpp
 
 
-SRCS = account_management_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp color_tests.cpp convert_exploits_tests.cpp convert_plrobjs_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_utils_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_crypt_tests.cpp rots_rng_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
+SRCS = account_management_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp color_tests.cpp convert_exploits_tests.cpp convert_plrobjs_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_utils_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_crypt_tests.cpp rots_rng_tests.cpp shapemob_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 EXECUTABLE = ../../bin/tests

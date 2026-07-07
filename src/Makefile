@@ -131,7 +131,7 @@ setup:
 		../lib/misc/pklist
 
 run: $(BIN) setup
-	@cd .. && ./bin/ageland -p
+	@cd .. && ./bin/ageland -p 3791
 
 # Auto-generated header dependencies (silently ignored when absent, e.g. first build).
 -include $(DEPFILES)

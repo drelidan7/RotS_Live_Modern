@@ -520,9 +520,11 @@ const size_t overflow_len = strlen(overflow_str) + 1;
 
 // Reader order mirrors Crash_load (design constraint carried over from Task
 // 2): <name>.objs.json first (deserialize -- a corrupt JSON file is reported
-// and this falls through to "no rent file", matching Crash_load's refusal to
-// fall back to a stale binary on a hard JSON error) -> legacy <name>.obj via
-// the same portable decoder Crash_load uses. Both paths render from the same
+// and this falls through to the legacy <name>.obj file below, unlike
+// Crash_load, which refuses to fall back to a stale binary on a hard JSON
+// error) -> legacy <name>.obj via the same portable decoder Crash_load uses.
+// Only when both attempts leave have_data false does listrent report "no
+// rent file". Both paths render from the same
 // ObjectSaveData.objects list, so the output format is identical regardless
 // of which storage format backs it.
 //

@@ -1503,7 +1503,7 @@ TEST(AccountManagement, WritesAndReadsAccountNativeObjectFile) {
 // read: a hand-edited/corrupted account object JSON missing a required
 // section (here: "followers", the JSON analogue of the legacy binary's
 // follower section) must fail closed instead of silently defaulting it.
-TEST(AccountManagement, AccountNativeObjectWriteRejectsLegacyObjectFileWithoutFollowerSection) {
+TEST(AccountManagement, AccountNativeObjectReadRejectsJsonWithoutFollowerSection) {
     TemporaryDirectory temp_directory;
     std::string error_message;
 

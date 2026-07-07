@@ -76,6 +76,12 @@ bool object_save_data_to_binary(const ObjectSaveData& data, std::string* bytes, 
 std::string serialize_objects_to_json(const ObjectSaveData& data);
 bool deserialize_objects_from_json(const std::string& json, ObjectSaveData* data, std::string* error_message = nullptr);
 
+// Field-for-field structural equality (not a re-serialization/string compare):
+// used by the plrobjs conversion sweep (convert_plrobjs.cpp) to verify a
+// freshly-written .objs.json decodes back to the exact same data as the
+// legacy .obj it was converted from, before the legacy file is ever touched.
+bool object_save_data_equal(const ObjectSaveData& a, const ObjectSaveData& b);
+
 } // namespace objects_json
 
 #endif

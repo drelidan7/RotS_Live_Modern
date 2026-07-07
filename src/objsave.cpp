@@ -518,45 +518,75 @@ Crash_obj2char(struct char_data* ch, const objects_json::ObjectRecord& object)
 const char* overflow_str = "The buffer was overflowed, aborting.\r\n";
 const size_t overflow_len = strlen(overflow_str) + 1;
 
+// Reader order mirrors Crash_load (design constraint carried over from Task
+// 2): <name>.objs.json first (deserialize -- a corrupt JSON file is reported
+// and this falls through to "no rent file", matching Crash_load's refusal to
+// fall back to a stale binary on a hard JSON error) -> legacy <name>.obj via
+// the same portable decoder Crash_load uses. Both paths render from the same
+// ObjectSaveData.objects list, so the output format is identical regardless
+// of which storage format backs it.
+//
+// This also fixes a latent quirk in the old binary-only implementation: it
+// looped `fread`ing raw obj_file_elem-sized chunks until EOF with no sentinel
+// check, so on files with more than the sentinel-terminated top-level object
+// list (i.e. every real rent file -- board points/aliases/followers follow),
+// it kept "reading objects" out of that trailing binary data. Those bogus
+// reads were usually harmless (real_object() rejects the garbage item
+// numbers), but not guaranteed to be. Decoding through
+// legacy_object_save_data_from_binary (as Crash_load already does) stops at
+// the real sentinel, so this can no longer happen.
 void Crash_listrent(struct char_data* ch, char* name)
 {
-    FILE* fl;
     char buf[MAX_STRING_LENGTH];
     size_t bufpt, max_space;
-    struct obj_file_elem object;
-    struct obj_data* obj;
-    struct rent_info rent;
 
-    /* Get the file by the player's name */
-    if (!(fl = Crash_get_file_by_name(name, "rb"))) {
+    objects_json::ObjectSaveData data;
+    bool have_data = false;
+
+    const std::string json_path = player_objects_json_path(name);
+    std::string json_contents;
+    if (!json_path.empty() && read_binary_file_contents(json_path.c_str(), &json_contents)) {
+        std::string error_message;
+        if (objects_json::deserialize_objects_from_json(json_contents, &data, &error_message)) {
+            have_data = true;
+        } else {
+            sprintf(buf1, "SYSERR: corrupt objects JSON '%s' for listrent %s: %s", json_path.c_str(), name, error_message.c_str());
+            log(buf1);
+        }
+    }
+
+    if (!have_data) {
+        FILE* legacy_file = Crash_get_file_by_name(name, "rb");
+        if (legacy_file != nullptr) {
+            std::string legacy_bytes;
+            const bool read_ok = read_open_file_contents(legacy_file, &legacy_bytes);
+            fclose(legacy_file);
+            if (read_ok) {
+                bool accepted_missing_follower_section = false;
+                std::string decode_error;
+                if (objects_json::legacy_object_save_data_from_binary(legacy_bytes, &data, &accepted_missing_follower_section, &decode_error)) {
+                    have_data = true;
+                } else {
+                    sprintf(buf1, "SYSERR: corrupt legacy object file for listrent %s: %s", name, decode_error.c_str());
+                    log(buf1);
+                }
+            }
+        }
+    }
+
+    if (!have_data) {
         sprintf(buf, "%s has no rent file.\n\r", name);
         log(buf);
         send_to_char(buf, ch);
         return;
     }
 
-    /* Read in a rent_info struct in binary format */
-    if (!feof(fl))
-        fread(&rent, sizeof(struct rent_info), 1, fl);
-
     max_space = MAX_STRING_LENGTH - overflow_len;
 
     bufpt = snprintf(buf, max_space, "%s rents with:\n\r", name);
-    while (!feof(fl)) {
-        fread(&object, sizeof(struct obj_file_elem), 1, fl);
-        if (ferror(fl)) {
-            fclose(fl);
-            return;
-        }
-        if (!feof(fl))
-
-            if (object.item_number_deprecated != DEPRECATED_ID_VALUE) {
-                object.item_number = object.item_number_deprecated;
-                object.item_number_deprecated = DEPRECATED_ID_VALUE;
-            }
-
+    for (const objects_json::ObjectRecord& object : data.objects) {
         if (real_object(object.item_number) > -1) {
-            obj = read_object(object.item_number, VIRT);
+            struct obj_data* obj = read_object(object.item_number, VIRT);
 
             /* If we would overflow the buffer, don't add anymore */
 
@@ -564,7 +594,6 @@ void Crash_listrent(struct char_data* ch, char* name)
                 snprintf(buf + bufpt, overflow_len, overflow_str);
                 send_to_char(buf, ch);
                 extract_obj(obj);
-                fclose(fl);
                 return;
             }
 
@@ -574,7 +603,6 @@ void Crash_listrent(struct char_data* ch, char* name)
         }
     }
     send_to_char(buf, ch);
-    fclose(fl);
 }
 
 //============================================================================

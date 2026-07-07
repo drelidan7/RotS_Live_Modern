@@ -968,4 +968,67 @@ bool deserialize_objects_from_json(const std::string& json, ObjectSaveData* data
     return true;
 }
 
+namespace {
+
+bool object_affect_data_equal(const ObjectAffectData& a, const ObjectAffectData& b)
+{
+    return a.location == b.location && a.modifier == b.modifier;
+}
+
+bool object_record_equal(const ObjectRecord& a, const ObjectRecord& b)
+{
+    return a.item_number == b.item_number && a.values == b.values && a.extra_flags == b.extra_flags
+        && a.weight == b.weight && a.timer == b.timer && a.bitvector == b.bitvector
+        && std::equal(a.affects.begin(), a.affects.end(), b.affects.begin(), object_affect_data_equal)
+        && a.wear_pos == b.wear_pos && a.loaded_by == b.loaded_by;
+}
+
+bool object_record_vector_equal(const std::vector<ObjectRecord>& a, const std::vector<ObjectRecord>& b)
+{
+    return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), object_record_equal);
+}
+
+bool rent_data_equal(const RentData& a, const RentData& b)
+{
+    return a.time == b.time && a.rentcode == b.rentcode && a.net_cost_per_hour == b.net_cost_per_hour
+        && a.gold == b.gold && a.nitems == b.nitems && a.spare0 == b.spare0 && a.spare1 == b.spare1
+        && a.spare2 == b.spare2 && a.spare3 == b.spare3 && a.spare4 == b.spare4 && a.spare5 == b.spare5
+        && a.spare6 == b.spare6 && a.spare7 == b.spare7;
+}
+
+bool alias_data_equal(const AliasData& a, const AliasData& b)
+{
+    return a.keyword == b.keyword && a.command == b.command;
+}
+
+bool follower_data_equal(const FollowerData& a, const FollowerData& b)
+{
+    return a.fol_vnum == b.fol_vnum && a.mount_vnum == b.mount_vnum && a.wimpy == b.wimpy && a.exp == b.exp
+        && a.flag_config == b.flag_config && a.spare1 == b.spare1 && a.spare2 == b.spare2
+        && object_record_vector_equal(a.objects, b.objects);
+}
+
+} // namespace
+
+bool object_save_data_equal(const ObjectSaveData& a, const ObjectSaveData& b)
+{
+    if (a.version != b.version)
+        return false;
+    if (!rent_data_equal(a.rent, b.rent))
+        return false;
+    if (!object_record_vector_equal(a.objects, b.objects))
+        return false;
+    if (a.board_points != b.board_points)
+        return false;
+    if (a.aliases.size() != b.aliases.size())
+        return false;
+    if (!std::equal(a.aliases.begin(), a.aliases.end(), b.aliases.begin(), alias_data_equal))
+        return false;
+    if (a.followers.size() != b.followers.size())
+        return false;
+    if (!std::equal(a.followers.begin(), a.followers.end(), b.followers.begin(), follower_data_equal))
+        return false;
+    return true;
+}
+
 } // namespace objects_json

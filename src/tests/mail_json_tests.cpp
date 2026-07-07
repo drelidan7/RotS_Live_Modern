@@ -185,6 +185,9 @@ const char* const kGoldenPath = "goldens/legacy_mail_fixture.bin";
 
 TEST(MailJson, DecodesLegacyRecordsSingleAndChainedMessages)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string bytes = build_two_message_mail_bytes();
 
     mail_json::MailStoreData data;
@@ -208,6 +211,9 @@ TEST(MailJson, DecodesLegacyRecordsSingleAndChainedMessages)
 
 TEST(MailJson, RejectsFileSizeNotMultipleOfBlockSize)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     std::string bytes = build_two_message_mail_bytes();
     bytes.push_back('\0'); // 301 bytes, not a multiple of 100
 
@@ -219,6 +225,9 @@ TEST(MailJson, RejectsFileSizeNotMultipleOfBlockSize)
 
 TEST(MailJson, RejectsTruncatedFile)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     std::string bytes = build_two_message_mail_bytes();
     bytes.resize(50); // well before even one full 100-byte block
 
@@ -230,6 +239,9 @@ TEST(MailJson, RejectsTruncatedFile)
 
 TEST(MailJson, RejectsChainWithInvalidLink)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     std::string bytes;
     append_header_block(&bytes, /*next_block=*/12345, "Gandalf", "frodo", 987654321,
         std::string(kChainedBody).substr(0, 55));
@@ -242,6 +254,9 @@ TEST(MailJson, RejectsChainWithInvalidLink)
 
 TEST(MailJson, RejectsChainWithCycle)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     // Header at block 0 links to block 1; block 1 (a data block) links
     // right back to block 0 -- a cycle that must never be walked forever.
     const std::string body_b = kChainedBody;
@@ -259,6 +274,9 @@ TEST(MailJson, RejectsChainWithCycle)
 
 TEST(MailJson, JsonRoundTripPreservesAllFields)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string bytes = build_two_message_mail_bytes();
 
     mail_json::MailStoreData decoded;
@@ -284,6 +302,9 @@ TEST(MailJson, DeserializeMissingMessagesFieldYieldsEmptyStore)
 
 TEST(MailJson, ConvertLegacyMailFileWritesJsonVerifiesAndRenamesLegacyToMigrated)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory root;
     const std::string legacy_path = root.path() + "/plrmail";
     write_file(legacy_path, build_two_message_mail_bytes());
@@ -310,6 +331,9 @@ TEST(MailJson, ConvertLegacyMailFileWritesJsonVerifiesAndRenamesLegacyToMigrated
 
 TEST(MailJson, ConvertLegacyMailFileSkipsCorruptFileLeavingItUntouched)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory root;
     const std::string legacy_path = root.path() + "/plrmail";
     const std::string corrupt_bytes = build_two_message_mail_bytes().substr(0, 50);
@@ -341,9 +365,13 @@ TEST(MailJson, ConvertLegacyMailFileFailsCleanlyWhenFileMissing)
 // converting correctly).
 TEST(MailJson, GoldenRoundTripsByteStable)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string bytes = build_two_message_mail_bytes();
 
     if (std::getenv("UPDATE_GOLDENS") != nullptr) {
+        ASSERT_EQ(sizeof(long), 4u) << "refusing to regenerate a 32-bit-ABI golden on a non-32-bit host; run in the i386 container";
         std::ofstream out(kGoldenPath, std::ios::binary);
         out << bytes;
         ASSERT_TRUE(out.good()) << "failed to write golden " << kGoldenPath;

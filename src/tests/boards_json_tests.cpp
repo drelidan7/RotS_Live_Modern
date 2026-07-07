@@ -150,6 +150,9 @@ TEST(BoardsJson, NativeRecordStructIs28BytesOn32Bit)
 
 TEST(BoardsJson, DecodesLegacyRecordsFieldForFieldAndDiscardsHeadingPointer)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string bytes = build_two_message_board_bytes();
 
     boards_json::BoardSaveData data;
@@ -178,6 +181,9 @@ TEST(BoardsJson, DecodesLegacyRecordsFieldForFieldAndDiscardsHeadingPointer)
 
 TEST(BoardsJson, RejectsTruncatedFile)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     std::string bytes = build_two_message_board_bytes();
     bytes.resize(10); // well before even the first full record
 
@@ -189,6 +195,9 @@ TEST(BoardsJson, RejectsTruncatedFile)
 
 TEST(BoardsJson, RejectsZeroHeadingLenAsCorrupt)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     // Matches the legacy loader's own corruption check: heading_len == 0 was
     // treated as "Board file corrupt!(load) Resetting." -- never a valid
     // on-disk state (save_board only ever writes heading_len == 0 when
@@ -214,6 +223,9 @@ TEST(BoardsJson, RejectsZeroHeadingLenAsCorrupt)
 
 TEST(BoardsJson, JsonRoundTripPreservesAllFieldsIncludingAbsentMessage)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string bytes = build_two_message_board_bytes();
 
     boards_json::BoardSaveData decoded;
@@ -254,6 +266,9 @@ TEST(BoardsJson, DeserializeRejectsInconsistentHasMessageFalseWithNonEmptyMessag
 
 TEST(BoardsJson, ConvertLegacyBoardFileWritesJsonVerifiesAndRenamesLegacyToMigrated)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory root;
     const std::string legacy_path = root.path() + "/general.boa";
     write_file(legacy_path, build_two_message_board_bytes());
@@ -280,6 +295,9 @@ TEST(BoardsJson, ConvertLegacyBoardFileWritesJsonVerifiesAndRenamesLegacyToMigra
 
 TEST(BoardsJson, ConvertLegacyBoardFileSkipsCorruptFileLeavingItUntouched)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory root;
     const std::string legacy_path = root.path() + "/corrupt.boa";
     const std::string corrupt_bytes = build_two_message_board_bytes().substr(0, 10);
@@ -311,9 +329,13 @@ TEST(BoardsJson, ConvertLegacyBoardFileFailsCleanlyWhenFileMissing)
 // converting correctly).
 TEST(BoardsJson, GoldenRoundTripsByteStable)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string bytes = build_two_message_board_bytes();
 
     if (std::getenv("UPDATE_GOLDENS") != nullptr) {
+        ASSERT_EQ(sizeof(long), 4u) << "refusing to regenerate a 32-bit-ABI golden on a non-32-bit host; run in the i386 container";
         std::ofstream out(kGoldenPath, std::ios::binary);
         out << bytes;
         ASSERT_TRUE(out.good()) << "failed to write golden " << kGoldenPath;

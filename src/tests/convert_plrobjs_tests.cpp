@@ -76,6 +76,9 @@ std::string read_file(const std::string& path)
 
 TEST(ConvertPlrobjs, ConvertsValidFileAndSkipsCorruptFileLeavingItUntouched)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory root;
 
     const std::string valid_bytes = legacy_rent_fixture::build_full_fixture_bytes();
@@ -126,6 +129,9 @@ TEST(ConvertPlrobjs, ConvertsValidFileAndSkipsCorruptFileLeavingItUntouched)
 
 TEST(ConvertPlrobjs, RecursesIntoBucketSubdirectoriesLikeRealPlrobjsLayout)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory root;
 
     // Mirrors the real lib/plrobjs/ layout: bucket subdirectories one level
@@ -150,6 +156,9 @@ TEST(ConvertPlrobjs, RecursesIntoBucketSubdirectoriesLikeRealPlrobjsLayout)
 
 TEST(ConvertPlrobjs, DeleteAfterDefaultsFalseAndOnlyRemovesMigratedFilesWhenRequested)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     {
         TemporaryDirectory root;
         const std::string obj_path = root.path() + "/keepsit.obj";

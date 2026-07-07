@@ -63,6 +63,9 @@ std::string read_binary_file(const char* path)
 
 TEST(ObjectsJsonLayout, DecodesRentObjectBoardAliasAndFollowerRecordsFieldForField)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string bytes = build_full_fixture_bytes();
 
     objects_json::ObjectSaveData data;
@@ -73,6 +76,9 @@ TEST(ObjectsJsonLayout, DecodesRentObjectBoardAliasAndFollowerRecordsFieldForFie
 
 TEST(ObjectsJsonLayout, LegacyDecoderToleratesMissingFollowerSectionAndSetsFlag)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     std::string bytes = build_full_fixture_bytes();
     // Trim everything from the follower section onward: rent(48) + 2 items +
     // sentinel (3 * 56) + board (MAX_MAXBOARD * 2) + one alias record
@@ -105,6 +111,9 @@ TEST(ObjectsJsonLayout, LegacyDecoderToleratesMissingFollowerSectionAndSetsFlag)
 
 TEST(ObjectsJsonLayout, DecodesOldFormatItemNumberFromDeprecatedField)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     // Pre-widening saves stored the vnum in item_number_deprecated (sh_int)
     // and left the later-added, widened `item_number` (originally spare2) as
     // stack garbage. The decoder detects this by item_number_deprecated !=
@@ -144,6 +153,9 @@ TEST(ObjectsJsonLayout, DecodesOldFormatItemNumberFromDeprecatedField)
 // re-encoder) must reproduce the original 20-byte, no-trailing-NUL layout.
 TEST(ObjectsJsonLayout, TwentyByteAliasKeywordWithNoEmbeddedNulRoundTripsLosslessly)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string full_length_keyword(20, 'k'); // exactly 20 bytes, no NUL anywhere
     const std::string bytes = build_full_fixture_bytes_with_alias(full_length_keyword, "kill orc");
 
@@ -187,9 +199,13 @@ TEST(ObjectsJsonLayout, TwentyByteAliasKeywordWithNoEmbeddedNulRoundTripsLossles
 // the native structs) is retired.
 TEST(ObjectsJsonLayout, GoldenRoundTripsByteStable)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string bytes = build_full_fixture_bytes();
 
     if (std::getenv("UPDATE_GOLDENS") != nullptr) {
+        ASSERT_EQ(sizeof(long), 4u) << "refusing to regenerate a 32-bit-ABI golden on a non-32-bit host; run in the i386 container";
         std::ofstream out(kGoldenPath, std::ios::binary);
         out << bytes;
         ASSERT_TRUE(out.good()) << "failed to write golden " << kGoldenPath;

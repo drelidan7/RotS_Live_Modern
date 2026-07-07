@@ -5,19 +5,22 @@
 
 #include <cstring>
 
-// Reference vectors A/B/C were captured directly from glibc crypt() in the
-// project's i386 container (Debian 11, glibc 2.31):
+// Reference vectors were captured directly from crypt() in the project's
+// i386 container (Debian 11; libcrypt is libxcrypt 4.4.18 — the library that
+// produced every existing stored account hash):
 //
 //   #define _GNU_SOURCE
 //   #include <crypt.h>
 //   crypt("password123", "$6$abcdefghijklmnop$");
 //   crypt("Tr0ub4dor&3", "$6$rounds=10000$saltsalt12345678$");
 //   crypt("hunter2", "$6$abcd$");
+//   crypt(<130 x 'a'..'z' repeating>, "$6$longkeysalt16ch$");
 //
-// Vectors D/E are Ulrich Drepper's published reference vectors from the
-// SHA-crypt spec (https://www.akkadia.org/drepper/SHA-crypt.txt); they were
-// re-verified against the same in-container glibc crypt() before being
-// trusted here, matching byte-for-byte.
+// The two "Hello world!" vectors are Ulrich Drepper's published reference
+// vectors from the SHA-crypt spec
+// (https://www.akkadia.org/drepper/SHA-crypt.txt); they were re-verified
+// against the same in-container crypt() before being trusted here, matching
+// byte-for-byte.
 
 TEST(RotsCrypt, MatchesGlibcVectorImplicitRounds)
 {
@@ -60,10 +63,44 @@ TEST(RotsCrypt, MatchesDrepperPublishedVectorWithRounds)
         "$6$rounds=10000$saltstringsaltst$OW1/O6BYHV6BcXZu8QVeXbDWra3Oeqh0sbHbbMCVNSnCM/UrjmM0Dp8vOuZeHBy/YTBmSK6H9qs/y3RnOaw5v.");
 }
 
+// Exercises Sha512Context's multi-block bulk path: a 130-character password
+// exceeds the 128-byte SHA-512 block, so every process(key, key_len) call
+// crosses a block boundary and the P-sequence construction (key repeated 130
+// times = 16,900 bytes) streams through the `while (length >= kShaBlockBytes)`
+// loop that no short-password vector reaches. Reference output captured from
+// the in-container crypt() with the same 130-char input.
+TEST(RotsCrypt, MatchesGlibcVectorMultiBlockPassword)
+{
+    std::string long_password;
+    long_password.reserve(130);
+    for (int i = 0; i < 130; ++i)
+        long_password += static_cast<char>('a' + (i % 26));
+
+    const char* result = rots_crypt(long_password.c_str(), "$6$longkeysalt16ch$");
+    ASSERT_NE(result, nullptr);
+    EXPECT_STREQ(result,
+        "$6$longkeysalt16ch$VS24p3IpC0d1VwWh1kjP5ofogbvsricGp/CjZj.OYZMCSp0Hi14T8.NKY1e/HduJy6Zns/JaoFeDqe4oyfOnG1");
+}
+
 TEST(RotsCrypt, NonSha512SettingReturnsNull)
 {
     EXPECT_EQ(rots_crypt("whatever", "$1$abcdefgh$"), nullptr);
     EXPECT_EQ(rots_crypt("whatever", "plainDESsalt"), nullptr);
+}
+
+// The reference libcrypt (libxcrypt — Debian's libcrypt, which produced every
+// existing stored hash) REJECTS malformed or out-of-range "rounds=" specs
+// rather than clamping: in-container probes show crypt() returning its "*0"
+// failure token for each of these settings. rots_crypt mirrors that as
+// nullptr. (Historical glibc clamped out-of-range values instead; stored
+// hashes only ever echo canonical in-range values, so the difference cannot
+// surface through real account data.)
+TEST(RotsCrypt, MalformedOrOutOfRangeRoundsReturnNull)
+{
+    EXPECT_EQ(rots_crypt("password123", "$6$rounds=$abcdefghijklmnop$"), nullptr);
+    EXPECT_EQ(rots_crypt("password123", "$6$rounds=abc$saltsalt$"), nullptr);
+    EXPECT_EQ(rots_crypt("password123", "$6$rounds=999$abcdefghijklmnop$"), nullptr);
+    EXPECT_EQ(rots_crypt("password123", "$6$rounds=1000000000$abcdefghijklmnop$"), nullptr);
 }
 
 TEST(RotsCrypt, NullArgumentsReturnNull)

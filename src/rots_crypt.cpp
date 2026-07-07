@@ -1,6 +1,7 @@
 #include "rots_crypt.h"
 
-#include <algorithm>
+#include <cctype>
+#include <cerrno>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -237,14 +238,28 @@ const char* rots_crypt(const char* key, const char* setting)
     unsigned long rounds = kRoundsDefault;
     bool rounds_custom = false;
     if (std::strncmp(cursor, kRoundsPrefix, sizeof(kRoundsPrefix) - 1) == 0) {
+        // A malformed "rounds=" spec REJECTS the whole setting rather than
+        // clamping or falling back: empty/non-numeric digits, a missing '$'
+        // terminator, and values outside [kRoundsMin, kRoundsMax] all return
+        // nullptr. This matches the project's reference implementation —
+        // libxcrypt (Debian's libcrypt, which produced every existing stored
+        // hash), verified by in-container probes: crypt() returns its "*0"
+        // failure token for "$6$rounds=$...", "$6$rounds=abc$...",
+        // "$6$rounds=999$...", and "$6$rounds=1000000000$...". (Historical
+        // glibc clamped out-of-range values instead; stored hashes only ever
+        // echo canonical in-range values, so the difference is unreachable
+        // through real account data.)
         const char* num_start = cursor + (sizeof(kRoundsPrefix) - 1);
+        if (!std::isdigit(static_cast<unsigned char>(*num_start)))
+            return nullptr;
         char* end_ptr = nullptr;
+        errno = 0;
         unsigned long parsed_rounds = std::strtoul(num_start, &end_ptr, 10);
-        if (end_ptr != num_start && *end_ptr == '$') {
-            cursor = end_ptr + 1;
-            rounds = std::max(kRoundsMin, std::min(parsed_rounds, kRoundsMax));
-            rounds_custom = true;
-        }
+        if (errno != 0 || *end_ptr != '$' || parsed_rounds < kRoundsMin || parsed_rounds > kRoundsMax)
+            return nullptr;
+        cursor = end_ptr + 1;
+        rounds = parsed_rounds;
+        rounds_custom = true;
     }
 
     const char* salt_start = cursor;

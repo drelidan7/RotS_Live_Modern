@@ -13,10 +13,11 @@
 // full encoded hash (same format libc's crypt() returns: "$6$salt$hash" or
 // "$6$rounds=N$salt$hash").
 //
-// `setting` must begin with "$6$" (optionally "$6$rounds=N$") followed by up
-// to 16 salt characters and a terminating '$'; anything else returns
-// nullptr, mirroring glibc crypt()'s behavior for a scheme it doesn't
-// recognize.
+// `setting` must begin with "$6$" (optionally "$6$rounds=N$" with N in
+// [1000, 999999999]) followed by up to 16 salt characters and a terminating
+// '$'. Anything else — a non-$6$ scheme, or a malformed/out-of-range
+// "rounds=" spec — returns nullptr, mirroring the reference libcrypt's
+// failure behavior (see the rounds-parsing comment in rots_crypt.cpp).
 //
 // Role: single-threaded server (see AGENTS.md/CLAUDE.md) — like libc's
 // crypt(), the result points at a static buffer that the next call

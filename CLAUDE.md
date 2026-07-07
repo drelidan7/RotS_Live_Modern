@@ -18,16 +18,22 @@ Team conventions (build/test/style/commit/security) live in AGENTS.md. Read it:
   `scripts/boot-golden.sh` pin behavior under seed 42; run them after any
   combat/persistence/boot change. RNG is owned (`src/rots_rng.*`) — libc
   `rand()`/`random()` are banned.
-- **Player/object/board/mail/pkill/crime/exploit persistence is JSON end-to-end now (Phase 2a).**
-  Live saves and loads all go through JSON (`objects_json.cpp`, `boards.cpp`, `mail.cpp`,
-  `pkill.cpp`, `db.cpp`'s `crime_json`, `exploits_json.cpp`) — nothing on the live path
-  writes the old binary/text struct dumps anymore. The binary/text decoders documented in
-  `docs/data-formats/object-rent-files.md` and `player-save.md` (now marked LEGACY) still
-  exist, but only as one-time, explicit-offset migration converters: on first load they
-  detect a pre-migration legacy file, decode it, write the JSON equivalent, and rename the
-  legacy file to `.migrated` (never deleted outright). Exploit-history conversion is
-  per-character and lazy (triggered by that character's next login), so `lib/exploits/`
-  can legitimately still contain many un-migrated `.exploits` files at any given time —
-  that is by design, not drift. Don't "simplify" a decoder by making it whole-struct
-  `memcpy`/`fwrite` again — the explicit-offset encoding exists specifically to survive a
-  future 64-bit rebuild's different `long`/padding sizes.
+- **Object/board/mail/pkill/crime/exploit persistence is JSON end-to-end now (Phase 2a).**
+  Live saves and loads for these all go through JSON (`objects_json.cpp`, `boards.cpp`,
+  `mail.cpp`, `pkill.cpp`, `db.cpp`'s `crime_json`, `exploits_json.cpp`) — nothing on the
+  live path writes the old binary struct dumps anymore. The binary decoders documented in
+  `docs/data-formats/object-rent-files.md` (now marked LEGACY) still exist, but only as
+  one-time migration converters: on first load they detect a pre-migration legacy file,
+  decode it, write the JSON equivalent, and rename the legacy file to `.migrated` (never
+  deleted outright). Exploit-history conversion is per-character and lazy (triggered by
+  that character's next login), so `lib/exploits/` can legitimately still contain many
+  un-migrated `.exploits` files at any given time — that is by design, not drift. Don't
+  "simplify" a binary decoder by making it whole-struct `memcpy`/`fwrite` again — the
+  explicit-offset encoding (where already converted; see `crime_json`) exists specifically
+  to survive a future 64-bit rebuild's different `long`/padding sizes. **Player saves are
+  different**: only account-native characters save as JSON
+  (`account::write_account_character_file`); a character not linked to an account still
+  saves through `save_player`'s live line-oriented **text** writer (`db.cpp`, see
+  `player-save.md` — not LEGACY, not a migration converter, still written on every save
+  for that population). Explicit-offset framing applies to the binary decoders above, not
+  to this text format.

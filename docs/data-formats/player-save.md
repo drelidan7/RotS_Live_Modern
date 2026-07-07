@@ -1,10 +1,13 @@
 # Player save files
 
-> **LEGACY — retired 2026-07; live format is JSON** (see `src/objects_json.cpp` /
-> `boards.cpp` / `mail.cpp`). This document describes the frozen 32-bit layout that the
-> migration decoders read; it is no longer written by the live game. See CLAUDE.md's
-> persistence gotcha for the current JSON-first save/load path and the one-time
-> legacy-to-JSON converters.
+> **Legacy-fallback path — still live, not retired.** Account-native characters save as
+> JSON (`account::write_account_character_file`); this line-oriented text format is the
+> live fallback writer `save_player` (`db.cpp:2809`, reached via `save_char`'s fallback at
+> `db.cpp:3086`) still uses for non-account-native characters. Unlike the binary
+> object/board/mail/pkill/crime/exploit formats, this is not a one-time migration decoder
+> for a frozen historical layout — it is written on every save for any character that
+> hasn't been linked to an account. See CLAUDE.md's persistence gotcha for how the two
+> paths (account-native JSON vs. this text fallback) fit together.
 
 **Source files:** `src/db.cpp` (`save_player:2302`, `load_player:1736`,
 `char_to_store:2099`, `store_to_char:1995`, `save_char:2475`, `load_char:1979`);

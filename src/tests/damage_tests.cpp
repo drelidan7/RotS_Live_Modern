@@ -66,7 +66,22 @@ TEST_F(DamageMethodTest, ShieldAbsorptionConsumesManaAndReducesDamage) {
     DamageTestContext context;
     context.add_victim_affect(context.victim_primary_affect, SPELL_SHIELD, 5);
 
-    push_test_random_value(0.0);
+    // damage() (fight.cpp) draws from number() twice before this test's
+    // assertions are reached: once unconditionally at the physical-resist
+    // check ("number(0, 2) == 0 && IS_PHYSICAL(attacktype)" -- the roll
+    // itself always happens even though its *result* is a no-op here since
+    // attacktype is a spell, not a physical hit), and again at the shield
+    // absorption rounding check this test actually means to control. With
+    // only one push_test_random_value() call, the first (irrelevant) draw
+    // silently consumed it, leaving the rounding roll to fall through to
+    // the real PRNG -- passing only by chance, and failing under
+    // --gtest_shuffle whenever some other test left the shared PRNG stream
+    // at a position that rolls a 0 here instead of a nonzero value (Task 8
+    // 64-bit hazard audit: order-dependent test-isolation rot, root-caused
+    // via a `--gtest_shuffle` repro). Push one value per draw so both are
+    // pinned regardless of what ran before this test in the process.
+    push_test_random_value(0.0); // number(0, 2) physical-resist roll -- result is a no-op for a spell attacktype.
+    push_test_random_value(0.5); // number(0, mage_level) shield rounding roll -- nonzero so the "spend 16 mana" rounding-up case below is exercised.
 
     damage(&context.attacker, &context.victim, 50, SPELL_MAGIC_MISSILE, 2);
 

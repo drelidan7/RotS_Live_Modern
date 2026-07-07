@@ -306,6 +306,15 @@ TEST_F(WeaponMasterProcTest, SwordProcRegainsEnergyWhenSlashProcSucceeds) {
     char_data victim{};
     context.character.specials.ENERGY = 10;
     context.character.specials.fighting = &victim;
+    // regain_energy() sends a TO_ROOM message when the character is fighting
+    // (act(..., TO_ROOM, ...), comm.cpp), which walks world[ch->in_room] --
+    // char_data{} value-initializes in_room to 0, not NOWHERE, so without
+    // this the test depends on some *other* test having already allocated
+    // room_data::BASE_WORLD first (true in a monolithic multi-test run, but
+    // not when this test runs alone, e.g. under ctest's one-process-per-test
+    // isolation). Setting NOWHERE makes act()'s TO_ROOM branch a no-op, which
+    // is all this test needs -- it only asserts on the ENERGY side effect.
+    context.character.in_room = NOWHERE;
     player_spec::weapon_master_handler handler(&context.character, &context.weapon);
 
     push_test_random_value(0.0);

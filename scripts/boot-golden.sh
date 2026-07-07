@@ -134,6 +134,19 @@ capture_log_native() {
   ( "$BINARY_PATH" > "$raw" 2>&1 & echo $! > "$raw.pid" )
   local pid
   pid="$(cat "$raw.pid")"
+
+  # Save whatever EXIT/INT/TERM traps the caller already had installed (the
+  # capture/verify case blocks below set `trap 'rm -f "$tmp"' EXIT` before
+  # calling into here) so this function's own kill-the-server trap can be
+  # cleanly layered on top and then unwound back to exactly that, instead of
+  # the old `trap - EXIT INT TERM`, which cleared every handler for those
+  # signals process-wide — wiping out the caller's tmp-file cleanup trap and
+  # leaking the normalized boot log on every --native run.
+  local saved_exit_trap saved_int_trap saved_term_trap
+  saved_exit_trap="$(trap -p EXIT)"
+  saved_int_trap="$(trap -p INT)"
+  saved_term_trap="$(trap -p TERM)"
+
   trap 'kill "$pid" 2>/dev/null || true' EXIT INT TERM
   local i
   for i in $(seq 1 60); do
@@ -142,13 +155,17 @@ capture_log_native() {
   done
   if ! grep -q 'Entering game loop' "$raw" 2>/dev/null; then
     echo "ERROR: server did not reach \"Entering game loop\" within 60s" >&2
-    trap - EXIT INT TERM
     kill "$pid" 2>/dev/null || true
+    eval "${saved_exit_trap:-trap - EXIT}"
+    eval "${saved_int_trap:-trap - INT}"
+    eval "${saved_term_trap:-trap - TERM}"
     rm -f "$raw" "$raw.pid"
     return 1
   fi
-  trap - EXIT INT TERM
   kill "$pid" 2>/dev/null || true
+  eval "${saved_exit_trap:-trap - EXIT}"
+  eval "${saved_int_trap:-trap - INT}"
+  eval "${saved_term_trap:-trap - TERM}"
   sleep 1
   cat "$raw" | normalize
   rm -f "$raw" "$raw.pid"

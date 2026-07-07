@@ -4493,8 +4493,15 @@ room_data& room_data::operator[](int i)
     room_data_extension* ext;
 
     if (!BASE_WORLD) {
-        printf("room_data called, but not allocated\n");
-        exit(0);
+        // Was exit(0): a filtered/subset gtest run that reaches world[]
+        // before the world is allocated would exit the whole test process
+        // with a *success* code, silently truncating the run instead of
+        // failing it. abort() keeps the same protective intent (this is an
+        // unrecoverable invariant violation, not something to try to limp
+        // past) but reports as a crash -- non-zero exit, test-visible --
+        // instead of a false-green success.
+        fprintf(stderr, "SYSERR: room_data::operator[] called, but BASE_WORLD is not allocated\n");
+        abort();
     }
 
     if (i < 0) {

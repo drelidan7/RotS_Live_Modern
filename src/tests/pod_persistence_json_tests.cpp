@@ -153,6 +153,9 @@ std::string build_pkill_fixture_bytes()
 
 TEST(PkillJson, DecodesLegacyRecordsFieldForField)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string bytes = build_pkill_fixture_bytes();
 
     std::vector<PKILL> records;
@@ -174,6 +177,9 @@ TEST(PkillJson, DecodesLegacyRecordsFieldForField)
 
 TEST(PkillJson, RejectsSizeNotMultipleOfRecordSize)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     std::string bytes = build_pkill_fixture_bytes();
     bytes.push_back('\x01'); // one stray trailing byte
 
@@ -185,6 +191,9 @@ TEST(PkillJson, RejectsSizeNotMultipleOfRecordSize)
 
 TEST(PkillJson, JsonRoundTripPreservesAllFields)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     std::vector<PKILL> records;
     std::string error;
     ASSERT_TRUE(pkill_json::legacy_pkill_file_from_binary(build_pkill_fixture_bytes(), &records, &error)) << error;
@@ -216,6 +225,9 @@ TEST(PkillJson, RejectsOutOfRangeLevelInJson)
 
 TEST(PkillJson, ConvertLegacyFileWritesJsonVerifiesAndRenamesLegacyToMigrated)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     const std::string legacy_path = temp_directory.path() + "/pklist";
     write_file(legacy_path, build_pkill_fixture_bytes());
@@ -256,9 +268,13 @@ TEST(PkillJson, ConvertLegacyFileFailsCleanlyWhenFileMissing)
 // historical 32-bit compiler layout, including any struct padding).
 TEST(PkillJson, GoldenRoundTripsByteStable)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string bytes = build_pkill_fixture_bytes();
 
     if (std::getenv("UPDATE_GOLDENS") != nullptr) {
+        ASSERT_EQ(sizeof(long), 4u) << "refusing to regenerate a 32-bit-ABI golden on a non-32-bit host; run in the i386 container";
         std::ofstream out(kPkillGoldenPath, std::ios::binary);
         out << bytes;
         ASSERT_TRUE(out.good()) << "failed to write golden " << kPkillGoldenPath;
@@ -307,6 +323,9 @@ std::string build_crime_fixture_bytes()
 
 TEST(CrimeJson, DecodesLegacyRecordsFieldForField)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string bytes = build_crime_fixture_bytes();
 
     std::vector<crime_record_type> records;
@@ -328,6 +347,9 @@ TEST(CrimeJson, DecodesLegacyRecordsFieldForField)
 
 TEST(CrimeJson, RejectsSizeNotMultipleOfRecordSize)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     std::string bytes = build_crime_fixture_bytes();
     bytes.push_back('\x01');
 
@@ -339,6 +361,9 @@ TEST(CrimeJson, RejectsSizeNotMultipleOfRecordSize)
 
 TEST(CrimeJson, JsonRoundTripPreservesAllFields)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     std::vector<crime_record_type> records;
     std::string error;
     ASSERT_TRUE(crime_json::legacy_crime_file_from_binary(build_crime_fixture_bytes(), &records, &error)) << error;
@@ -370,6 +395,9 @@ TEST(CrimeJson, RejectsOutOfRangeFieldInJson)
 
 TEST(CrimeJson, ConvertLegacyFileWritesJsonVerifiesAndRenamesLegacyToMigrated)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     const std::string legacy_path = temp_directory.path() + "/crimelist";
     write_file(legacy_path, build_crime_fixture_bytes());
@@ -403,11 +431,49 @@ TEST(CrimeJson, ConvertLegacyFileFailsCleanlyWhenFileMissing)
     EXPECT_FALSE(error.empty());
 }
 
+// Phase 2a final-review Important 2: mirrors pkill_update_file's
+// (pkill.cpp) fail-closed overwrite guard, which add_crime/forget_crimes
+// (db.cpp) now call before persisting -- a malformed on-disk store must
+// never be silently crushed by whatever's in memory.
+TEST(CrimeJson, RefusesToOverwriteMalformedOnDiskStore)
+{
+    TemporaryDirectory temp_directory;
+    const std::string json_path = temp_directory.path() + "/crimelist.json";
+    write_file(json_path, "{ this is not valid json");
+
+    std::string error;
+    EXPECT_FALSE(crime_json::crime_store_safe_to_overwrite(json_path, &error));
+    EXPECT_FALSE(error.empty());
+}
+
+TEST(CrimeJson, SafeToOverwriteWhenStoreAbsentOrValid)
+{
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
+    TemporaryDirectory temp_directory;
+    const std::string json_path = temp_directory.path() + "/crimelist.json";
+
+    std::string error;
+    EXPECT_TRUE(crime_json::crime_store_safe_to_overwrite(json_path, &error)) << error;
+
+    std::vector<crime_record_type> records;
+    ASSERT_TRUE(crime_json::legacy_crime_file_from_binary(build_crime_fixture_bytes(), &records, &error)) << error;
+    crime_json::CrimeStoreData store;
+    store.records = records;
+    write_file(json_path, crime_json::serialize_crime_to_json(store));
+    EXPECT_TRUE(crime_json::crime_store_safe_to_overwrite(json_path, &error)) << error;
+}
+
 TEST(CrimeJson, GoldenRoundTripsByteStable)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string bytes = build_crime_fixture_bytes();
 
     if (std::getenv("UPDATE_GOLDENS") != nullptr) {
+        ASSERT_EQ(sizeof(long), 4u) << "refusing to regenerate a 32-bit-ABI golden on a non-32-bit host; run in the i386 container";
         std::ofstream out(kCrimeGoldenPath, std::ios::binary);
         out << bytes;
         ASSERT_TRUE(out.good()) << "failed to write golden " << kCrimeGoldenPath;
@@ -463,6 +529,9 @@ std::string build_exploits_fixture_bytes()
 
 TEST(ExploitsRuntimeJson, LoadsAndConvertsLegacyRuntimeFileToJsonAndMigratesLegacy)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     TemporaryDirectory temp_directory;
     ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
     ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
@@ -539,9 +608,13 @@ TEST(ExploitsRuntimeJson, FailsClosedOnMalformedRuntimeJsonWithoutDestroyingIt)
 //   UPDATE_GOLDENS=1 ./bin/tests --gtest_filter=ExploitsRuntimeJson.GoldenRoundTripsByteStable
 TEST(ExploitsRuntimeJson, GoldenRoundTripsByteStable)
 {
+    if (sizeof(long) != 4)
+        GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
+
     const std::string bytes = build_exploits_fixture_bytes();
 
     if (std::getenv("UPDATE_GOLDENS") != nullptr) {
+        ASSERT_EQ(sizeof(long), 4u) << "refusing to regenerate a 32-bit-ABI golden on a non-32-bit host; run in the i386 container";
         std::ofstream out(kExploitsGoldenPath, std::ios::binary);
         out << bytes;
         ASSERT_TRUE(out.good()) << "failed to write golden " << kExploitsGoldenPath;

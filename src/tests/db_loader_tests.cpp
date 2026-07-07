@@ -1804,8 +1804,10 @@ TEST(DbLoader, FailsClosedWhenTemporaryExploitPathAlreadyExists)
     ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
 
     // Phase 2a Task 6: the non-linked runtime exploit store moved from
-    // '<name>.exploits' (binary) to '<name>.exploits.json'; the O_EXCL temp
-    // path write_exploit_record_for_character now writes through moved with it.
+    // '<name>.exploits' (binary) to '<name>.exploits.json'. The temporary
+    // file that write_exploit_record_for_character writes through via
+    // O_EXCL moved along with it, from '<name>.exploits.tmp' to
+    // '<name>.exploits.json.tmp'.
     const std::string temp_path = account::legacy_exploits_file_path(temp_directory.path(), "aragorn") + ".json.tmp";
     write_file(temp_path, "occupied");
 
@@ -1813,4 +1815,54 @@ TEST(DbLoader, FailsClosedWhenTemporaryExploitPathAlreadyExists)
     std::string error_message;
     EXPECT_FALSE(write_exploit_record_for_character(temp_directory.path(), "aragorn", new_record, &error_message));
     EXPECT_NE(error_message.find("temporary exploit file"), std::string::npos);
+}
+
+// Phase 2a final-review Critical 1: a stale/blocked '.exploits.json.tmp'
+// makes the one-time legacy-conversion write fail (O_EXCL/EEXIST); the
+// legacy '.exploits' binary file must survive that -- it is not evidence of
+// content corruption, just an environmental problem -- and the character
+// must still be able to play this session by decoding the legacy bytes
+// in-memory instead of converting them. Conversion is retried on the next
+// login once the blocking tmp is gone.
+TEST(DbLoader, ConversionWriteFailureLeavesLegacyExploitFileIntact)
+{
+    TemporaryDirectory temp_directory;
+    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
+    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+
+    const std::string legacy_path = account::legacy_exploits_file_path(temp_directory.path(), "aragorn");
+    const exploit_record expected_record = make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20);
+    write_file(legacy_path, serialize_record(expected_record));
+
+    // Pre-create the conversion's temp path as a directory: O_EXCL fails
+    // with EEXIST just like a stale leftover file would, but (unlike a
+    // stale plain file) the fix must not blindly remove an unexpected
+    // directory -- so this reproduces a write failure that survives the
+    // stale-tmp-clearing retry, not just a transient one.
+    const std::string temp_path = legacy_path + ".json.tmp";
+    ASSERT_EQ(mkdir(temp_path.c_str(), 0700), 0);
+
+    std::vector<exploit_record> records;
+    std::string error_message;
+    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records, &error_message)) << error_message;
+    ASSERT_EQ(records.size(), 1u);
+    EXPECT_EQ(records[0].type, expected_record.type);
+    EXPECT_STREQ(records[0].chVictimName, expected_record.chVictimName);
+
+    // The legacy file must still exist, byte-for-byte, and no JSON store
+    // was created (the write never completed).
+    ASSERT_EQ(access(legacy_path.c_str(), F_OK), 0);
+    EXPECT_EQ(read_file_contents(legacy_path), serialize_record(expected_record));
+    EXPECT_NE(access((legacy_path + ".json").c_str(), F_OK), 0);
+
+    // Clear the blocking directory and load again: conversion should now
+    // succeed and retire the legacy file, matching normal behavior.
+    ASSERT_EQ(rmdir(temp_path.c_str()), 0);
+    std::vector<exploit_record> retried_records;
+    std::string retry_error;
+    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &retried_records, &retry_error)) << retry_error;
+    ASSERT_EQ(retried_records.size(), 1u);
+    EXPECT_EQ(retried_records[0].type, expected_record.type);
+    EXPECT_NE(access(legacy_path.c_str(), F_OK), 0);
+    EXPECT_EQ(access((legacy_path + ".json").c_str(), F_OK), 0);
 }

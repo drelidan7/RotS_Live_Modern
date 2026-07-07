@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -3993,6 +3994,19 @@ bool write_crime_json_store(const std::string& json_path, const std::vector<crim
     return write_file_contents_atomically(json_path, serialize_crime_to_json(data), error_message);
 }
 
+bool crime_store_safe_to_overwrite(const std::string& json_path, std::string* error_message)
+{
+    FILE* probe = std::fopen(json_path.c_str(), "rb");
+    if (probe == nullptr) {
+        set_error(error_message, "");
+        return true;
+    }
+    std::fclose(probe);
+
+    std::vector<crime_record_type> existing_records;
+    return load_crime_json_store(json_path, &existing_records, error_message);
+}
+
 bool convert_legacy_crime_file(const char* legacy_path, std::string* error_message)
 {
     if (legacy_path == nullptr || !*legacy_path) {
@@ -4161,27 +4175,42 @@ void add_crime(int criminal, int victim, int witness, int crime, int wit_type)
         witness);
     log(buf);
 
-    /* Persist the whole live crime set as JSON (idnum-keyed, matching the
-     * legacy on-disk format) -- the mail_json/boards_json/pkill_json
-     * "rewrite the whole store on each mutation" pattern, since JSON has no
-     * append mode. crime_record[0, num_of_crimes) currently holds
-     * player-table INDEXES (translated at boot / after each prior
-     * add_crime, below); crime_record[num_of_crimes] is still idnum-valued
-     * (set just above), matching what the legacy file always stored. */
-    std::vector<crime_record_type> to_write;
-    to_write.reserve(num_of_crimes + 1);
-    for (int i = 0; i < num_of_crimes; ++i) {
-        crime_record_type record = crime_record[i];
-        record.criminal = (player_table + crime_record[i].criminal)->idnum;
-        record.victim = (player_table + crime_record[i].victim)->idnum;
-        record.witness = (player_table + crime_record[i].witness)->idnum;
-        to_write.push_back(record);
-    }
-    to_write.push_back(crime_record[num_of_crimes]);
+    // Phase 2a final-review Important 2: mirror pkill_update_file's
+    // (pkill.cpp) fail-closed guard. If the on-disk store is present but
+    // malformed -- notably including the case where boot's read_crime_file
+    // already failed to load it, leaving crime_record as an empty in-memory
+    // list -- refuse to overwrite it: doing so would permanently crush
+    // whatever's salvageable in the real file with just this session's
+    // (possibly near-empty) in-memory records. The crime above is still
+    // recorded in memory for this session either way; only persistence is
+    // skipped.
+    const std::string crime_json_path = crime_json::crime_json_path(CRIME_FILE);
+    std::string safety_error;
+    if (!crime_json::crime_store_safe_to_overwrite(crime_json_path, &safety_error)) {
+        log(("SYSERR: Crime JSON file '" + crime_json_path + "' is malformed, refusing to overwrite: " + safety_error).c_str());
+    } else {
+        /* Persist the whole live crime set as JSON (idnum-keyed, matching the
+         * legacy on-disk format) -- the mail_json/boards_json/pkill_json
+         * "rewrite the whole store on each mutation" pattern, since JSON has no
+         * append mode. crime_record[0, num_of_crimes) currently holds
+         * player-table INDEXES (translated at boot / after each prior
+         * add_crime, below); crime_record[num_of_crimes] is still idnum-valued
+         * (set just above), matching what the legacy file always stored. */
+        std::vector<crime_record_type> to_write;
+        to_write.reserve(num_of_crimes + 1);
+        for (int i = 0; i < num_of_crimes; ++i) {
+            crime_record_type record = crime_record[i];
+            record.criminal = (player_table + crime_record[i].criminal)->idnum;
+            record.victim = (player_table + crime_record[i].victim)->idnum;
+            record.witness = (player_table + crime_record[i].witness)->idnum;
+            to_write.push_back(record);
+        }
+        to_write.push_back(crime_record[num_of_crimes]);
 
-    std::string write_error;
-    if (!crime_json::write_crime_json_store(crime_json::crime_json_path(CRIME_FILE), to_write, &write_error))
-        mudlog("Could not open crime_file for writing.", NRM, LEVEL_IMMORT, TRUE);
+        std::string write_error;
+        if (!crime_json::write_crime_json_store(crime_json_path, to_write, &write_error))
+            mudlog("Could not open crime_file for writing.", NRM, LEVEL_IMMORT, TRUE);
+    }
 
     crime_record[num_of_crimes].criminal = find_player_in_table("", criminal);
     crime_record[num_of_crimes].victim = find_player_in_table("", victim);
@@ -4239,8 +4268,19 @@ void forget_crimes(char_data* ch, int criminal)
         }
     }
 
+    // Phase 2a final-review Important 2: same fail-closed guard as
+    // add_crime -- refuse to overwrite a present-but-malformed on-disk
+    // store (see crime_json::crime_store_safe_to_overwrite's comment in
+    // db.h for the rationale).
+    const std::string crime_json_path = crime_json::crime_json_path(CRIME_FILE);
+    std::string safety_error;
+    if (!crime_json::crime_store_safe_to_overwrite(crime_json_path, &safety_error)) {
+        log(("SYSERR: Crime JSON file '" + crime_json_path + "' is malformed, refusing to overwrite: " + safety_error).c_str());
+        return;
+    }
+
     std::string write_error;
-    if (!crime_json::write_crime_json_store(crime_json::crime_json_path(CRIME_FILE), to_write, &write_error))
+    if (!crime_json::write_crime_json_store(crime_json_path, to_write, &write_error))
         return;
 
     sprintf(buf, "Crimes rewritten:%d.", count);
@@ -4494,13 +4534,27 @@ void set_db_error(std::string* error_message, const std::string& message)
         *error_message = message;
 }
 
+// Outcome of a one-time legacy '<name>.exploits' -> '<name>.exploits.json'
+// conversion attempt (see convert_legacy_runtime_exploit_file below).
+// Distinguishing these matters to the caller: a malformed *legacy file*
+// content) has no authoritative alternative and is safe to discard, but an
+// environmental failure (I/O error reading it, disk full / a stale ".tmp"
+// blocking the write, ...) says nothing about whether the legacy file's
+// content is good -- deleting it in that case would destroy a healthy
+// character's exploit history over a transient problem.
+enum class LegacyExploitConversionOutcome {
+    kSuccess, // Converted (and, unless the trailing rename itself failed, retired the legacy file).
+    kContentCorrupt, // Legacy bytes are malformed (size isn't a multiple of the record size): unrecoverable, safe to discard.
+    kInfraFailure, // Read/verify/write failure unrelated to the legacy file's content: leave the legacy file untouched.
+};
+
 // Forward declarations: Task 6's runtime-exploit-file JSON helpers are
 // defined below (near open_secure_temp_output_file, which they build on),
 // but load_exploit_history_bytes (defined above that point) needs to call
 // them.
 std::string exploits_json_path_for_legacy(const std::string& legacy_path);
 bool exploit_records_equal(const std::vector<exploit_record>& a, const std::vector<exploit_record>& b);
-bool convert_legacy_runtime_exploit_file(const std::string& legacy_path, std::vector<exploit_record>* decoded_records, std::string* error_message);
+LegacyExploitConversionOutcome convert_legacy_runtime_exploit_file(const std::string& legacy_path, std::vector<exploit_record>* decoded_records, std::string* error_message);
 
 bool read_binary_file_contents(const std::string& path, std::string* contents, std::string* error_message)
 {
@@ -4621,17 +4675,31 @@ bool load_exploit_history_bytes(const std::string& root_directory, const std::st
 
         std::vector<exploit_record> decoded_records;
         std::string convert_error;
-        if (convert_legacy_runtime_exploit_file(runtime_path, &decoded_records, &convert_error)) {
+        const LegacyExploitConversionOutcome outcome = convert_legacy_runtime_exploit_file(runtime_path, &decoded_records, &convert_error);
+
+        if (outcome == LegacyExploitConversionOutcome::kSuccess || outcome == LegacyExploitConversionOutcome::kInfraFailure) {
+            // kSuccess: the JSON store now holds this data (converted and,
+            // barring a failed retirement rename, the legacy file is gone).
+            // kInfraFailure: an environmental problem (read I/O error,
+            // verify mismatch, or a write failure such as disk-full or an
+            // unresolvable stale ".tmp") -- NOT evidence the legacy file's
+            // *content* is bad. Leave the legacy file untouched and decode
+            // in-memory for this load only (decoded_records already holds
+            // the legacy content whenever the initial decode succeeded;
+            // it's only empty here if we couldn't even read the file, which
+            // this load treats as "no history yet" without destroying
+            // anything on disk). Conversion is retried on the next login.
             if (!exploits_json::exploit_records_to_binary(decoded_records, bytes, error_message))
                 return false;
             set_db_error(error_message, "");
             return true;
         }
 
-        // Unconvertible legacy binary (malformed size/content): matches the
-        // pre-existing behavior of discarding a corrupt runtime file rather
-        // than blocking forever -- there is no authoritative alternative to
-        // fail closed to, for a character with no account-native history.
+        // kContentCorrupt: unconvertible legacy binary (size isn't a
+        // multiple of the record size). Matches the pre-existing behavior
+        // of discarding a corrupt runtime file rather than blocking
+        // forever -- there is no authoritative alternative to fail closed
+        // to, for a character with no account-native history.
         if (std::remove(runtime_path.c_str()) != 0 && errno != ENOENT) {
             set_db_error(error_message, "Failed to remove malformed exploit file '" + runtime_path + "': " + std::string(strerror(errno)));
             return false;
@@ -4730,18 +4798,56 @@ bool write_text_file_atomically(const std::string& path, const std::string& cont
     return true;
 }
 
+// Writes `contents` to `path` via write_text_file_atomically, retrying once
+// if that fails because a stale '<path>.tmp' is blocking O_EXCL. Only
+// convert_legacy_runtime_exploit_file (below) calls this: it is converting
+// our *own* legacy runtime file as a one-time background step, so a leftover
+// tmp here is almost certainly debris from a previous interrupted conversion
+// attempt, not attacker-controlled input -- safe to clear and retry.
+// write_exploit_record_for_character's write path (the character actually
+// playing right now) must keep failing closed on a pre-existing tmp instead
+// (see DbLoader.FailsClosedWhenTemporaryExploitPathAlreadyExists), so it
+// calls write_text_file_atomically directly rather than through this helper.
+bool write_text_file_atomically_clearing_stale_tmp(const std::string& path, const std::string& contents, std::string* error_message)
+{
+    if (write_text_file_atomically(path, contents, error_message))
+        return true;
+
+    const std::string temp_path = path + ".tmp";
+    struct stat temp_stat {
+    };
+    // lstat (not stat): only clear a stale plain file, never follow/remove a
+    // symlink planted at the tmp path.
+    if (lstat(temp_path.c_str(), &temp_stat) != 0 || !S_ISREG(temp_stat.st_mode))
+        return false;
+
+    if (std::remove(temp_path.c_str()) != 0)
+        return false;
+
+    return write_text_file_atomically(path, contents, error_message);
+}
+
 // One-time conversion of a legacy '<name>.exploits' binary file to
-// '<name>.exploits.json'. Returns the decoded records on success (the
-// caller already has the bytes decoded once here, no need to re-read).
-bool convert_legacy_runtime_exploit_file(const std::string& legacy_path, std::vector<exploit_record>* decoded_records, std::string* error_message)
+// '<name>.exploits.json'. On kSuccess, returns the decoded records (the
+// caller already has the bytes decoded once here, no need to re-read). See
+// LegacyExploitConversionOutcome for what each outcome means to the caller
+// and why they must be handled differently -- in short: kContentCorrupt is
+// the only outcome where it is safe to discard the legacy file.
+LegacyExploitConversionOutcome convert_legacy_runtime_exploit_file(const std::string& legacy_path, std::vector<exploit_record>* decoded_records, std::string* error_message)
 {
     std::string legacy_bytes;
-    if (!read_binary_file_contents(legacy_path, &legacy_bytes, error_message))
-        return false;
+    if (!read_binary_file_contents(legacy_path, &legacy_bytes, error_message)) {
+        // Could not even read the legacy file (I/O error, permissions,
+        // ...): an environmental failure that says nothing about whether
+        // the file's *content* is good. decoded_records is left empty by
+        // the caller's own vector default-construction; don't delete a file
+        // we couldn't read.
+        return LegacyExploitConversionOutcome::kInfraFailure;
+    }
 
     if (!exploits_json::exploit_records_from_binary(legacy_bytes, decoded_records, error_message)) {
         set_db_error(error_message, "Decode failed: " + (error_message ? *error_message : std::string()));
-        return false;
+        return LegacyExploitConversionOutcome::kContentCorrupt;
     }
 
     exploits_json::ExploitHistoryData history;
@@ -4749,23 +4855,31 @@ bool convert_legacy_runtime_exploit_file(const std::string& legacy_path, std::ve
     const std::string json = exploits_json::serialize_exploits_to_json(history);
 
     // Verify (binding conversion contract): re-decode the freshly serialized
-    // JSON and compare it field-for-field to the original decode.
+    // JSON and compare it field-for-field to the original decode. A
+    // mismatch here means our own serializer/deserializer disagree with
+    // themselves -- decoded_records above already holds a successful decode
+    // of the legacy file, so this is an internal/environmental problem, not
+    // evidence the legacy file's content is corrupt.
     exploits_json::ExploitHistoryData reparsed;
     std::string verify_error;
     if (!exploits_json::deserialize_exploits_from_json(json, &reparsed, &verify_error)) {
         set_db_error(error_message, "Verify-decode of freshly serialized JSON failed: " + verify_error);
-        return false;
+        return LegacyExploitConversionOutcome::kInfraFailure;
     }
     if (!exploit_records_equal(*decoded_records, reparsed.records)) {
         set_db_error(error_message, "Verify mismatch: re-decoded JSON does not equal the original legacy decode.");
-        return false;
+        return LegacyExploitConversionOutcome::kInfraFailure;
     }
 
     const std::string json_path = exploits_json_path_for_legacy(legacy_path);
     std::string write_error;
-    if (!write_text_file_atomically(json_path, json, &write_error)) {
+    if (!write_text_file_atomically_clearing_stale_tmp(json_path, json, &write_error)) {
+        // Write failure (disk full, permissions, or a stale '.tmp' that
+        // couldn't be cleared): environmental, not content corruption.
+        // decoded_records already holds this load's data; leave the legacy
+        // file alone and let conversion retry next login.
         set_db_error(error_message, write_error);
-        return false;
+        return LegacyExploitConversionOutcome::kInfraFailure;
     }
 
     const std::string migrated_path = legacy_path + ".migrated";
@@ -4775,11 +4889,11 @@ bool convert_legacy_runtime_exploit_file(const std::string& legacy_path, std::ve
         // contract -- report but don't fail, nothing is at risk).
         set_db_error(error_message,
             "Exploit file converted but legacy rename to '" + migrated_path + "' failed: " + std::string(strerror(errno)));
-        return true;
+        return LegacyExploitConversionOutcome::kSuccess;
     }
 
     set_db_error(error_message, "");
-    return true;
+    return LegacyExploitConversionOutcome::kSuccess;
 }
 
 } // namespace

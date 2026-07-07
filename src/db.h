@@ -181,6 +181,17 @@ bool crime_records_equal(const std::vector<crime_record_type>& a, const std::vec
 std::string crime_json_path(const std::string& legacy_path);
 bool convert_legacy_crime_file(const char* legacy_path, std::string* error_message = nullptr);
 
+// Phase 2a final-review Important 2: mirrors pkill_update_file's
+// (pkill.cpp) fail-closed overwrite guard. A present-but-unparseable
+// on-disk store means something is already wrong (disk corruption, a bad
+// manual edit, ...); returns false (with error_message set) when
+// `json_path` exists but fails to load, so a caller can refuse to write and
+// preserve the file for manual recovery instead of silently crushing it
+// with whatever the (possibly incomplete) in-memory record set happens to
+// be. Returns true -- safe to overwrite -- when the store is absent or
+// loads successfully.
+bool crime_store_safe_to_overwrite(const std::string& json_path, std::string* error_message = nullptr);
+
 } // namespace crime_json
 
 /* structure for the reset commands */

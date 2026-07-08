@@ -1,5 +1,20 @@
 # Work In Progress
 
+## Current Build Task
+- Active slice complete: fixed the raw `src/Makefile` link failure from `make all`.
+- Scope:
+  - reproduce the raw Makefile build failure
+  - align the raw `src/Makefile` object list with source files already included by CMake when they provide linked server symbols
+- Validation:
+  - `cd src && make all` passed
+  - follow-up `cd src && make all` passed after tightening new Makefile header dependencies
+  - manual CMake-vs-Makefile source/object comparison returned no differences after whitespace normalization
+  - `git diff --check -- src/Makefile WIP.md` passed
+- Reviewer status:
+  - `Magus`: clear; noted pre-existing duplication risk between the raw Makefile and CMake source lists
+  - `Vincent`: clear after direct local headers were listed for the new save benchmark Makefile rules
+  - `Bazarat`: clear after the stale-object fix and the recorded source-list alignment validation
+
 ## Current Documentation Task
 - Active slice complete: documented production verification-email setup for operators.
 - Scope:

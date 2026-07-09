@@ -16,10 +16,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <filesystem>
 #include <limits.h>
 #include <string>
 #include <sys/socket.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #include <vector>
 
@@ -520,8 +520,8 @@ TEST(InterpreAccountMenu, ShowAccountCharacterListCapitalizesFirstLetterOfStored
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData account_data;
     account_data.account_name = "acct";
@@ -545,8 +545,8 @@ TEST(InterpreAccountMenu, ShowAccountCharacterListOnlyChangesTheFirstByteOfStore
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData account_data;
     account_data.account_name = "acct";
@@ -579,8 +579,8 @@ TEST(InterpreAccountMenu, ShowAccountCharacterListFallsBackToUnknownWhoStyleEntr
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData account_data;
     account_data.account_name = "acct";
@@ -600,8 +600,8 @@ TEST(InterpreAccountMenu, ShowAccountCharacterListTruncatesVeryLargeRenderedList
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData account_data;
     account_data.account_name = "acct";
@@ -623,8 +623,8 @@ TEST(InterpreAccountMenu, AccountMenuChoiceOneWritesCapitalizedCharacterListToDe
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -663,8 +663,8 @@ TEST(InterpreAccountMenu, AccountMenuPlayChoiceWritesWhoStyleCharacterPromptToDe
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -694,8 +694,8 @@ TEST(InterpreAccountMenu, ActiveAccountSessionShowsPlayingLinkedCharacterInAccou
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -725,8 +725,8 @@ TEST(InterpreAccountMenu, ActiveAccountSessionShowsLinklessLinkedCharacterInAcco
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -756,8 +756,8 @@ TEST(InterpreAccountMenu, ActiveAccountSessionIgnoresOtherAccountUnauthenticated
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -823,8 +823,8 @@ TEST(InterpreAccountMenu, AccountMenuPlayChoiceZeroReturnsToAccountMenu)
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -860,8 +860,8 @@ TEST(InterpreAccountMenu, ActiveLevelNinetyOneBlocksDifferentLinkedCharacterBefo
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -897,10 +897,9 @@ TEST(InterpreAccountMenu, ActiveLevelNinetyOneBlocksDifferentLinkedCharacterBefo
     EXPECT_NE(output.find("You are already connected as Aragorn."), std::string::npos) << output;
     EXPECT_NE(output.find("\n\rCharacter number: "), std::string::npos) << output;
 
-    struct stat file_info {};
-    EXPECT_NE(stat("players", &file_info), 0);
-    EXPECT_NE(stat("plrobjs", &file_info), 0);
-    EXPECT_NE(stat("exploits", &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists("players"));
+    EXPECT_FALSE(std::filesystem::exists("plrobjs"));
+    EXPECT_FALSE(std::filesystem::exists("exploits"));
 
     free_char(active_descriptor.character);
     active_descriptor.character = nullptr;
@@ -912,8 +911,8 @@ TEST(InterpreAccountMenu, UnlockSelectAllowsOneDifferentLinkedCharacterSelection
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     ensure_test_world_room(3001);
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
@@ -999,8 +998,8 @@ TEST(InterpreAccountMenu, UnlockSelectDoesNotApplyToLaterUnrelatedRestriction)
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1054,8 +1053,8 @@ TEST(InterpreAccountMenu, ActiveOverLevelNinetyOneStillShowsActiveCharacterWitho
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1086,8 +1085,8 @@ TEST(InterpreAccountMenu, ActiveOverLevelNinetyOneAllowsDifferentLinkedCharacter
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -1139,8 +1138,8 @@ TEST(InterpreAccountMenu, MultipleActiveSessionsAllowSelectionWhenAnyActiveChara
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -1207,8 +1206,8 @@ TEST(InterpreAccountMenu, MultipleLowActiveSessionsStillRestrictDifferentLinkedC
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1253,8 +1252,8 @@ TEST(InterpreAccountMenu, LinklessActiveCharacterOverLevelNinetyOneAllowsDiffere
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -1301,8 +1300,8 @@ TEST(InterpreAccountMenu, SelectingSameLinklessActiveCharacterReconnectsExisting
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     ensure_test_world_room(1200);
 
     account::AccountData stored_account;
@@ -1349,8 +1348,8 @@ TEST(InterpreAccountMenu, SelectingSameActivePlayingCharacterUsurpsExistingDescr
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     ensure_test_world_room(1200);
 
     account::AccountData stored_account;
@@ -1398,8 +1397,8 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuBlocksDifferentActiveLo
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1444,8 +1443,8 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenAnyA
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     ensure_test_world_room(3001);
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
@@ -1515,8 +1514,8 @@ TEST(InterpreAccountMenu, RestrictedActiveCharacterBlocksNewCharacterCreation)
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1548,8 +1547,8 @@ TEST(InterpreAccountMenu, UnlockSelectDoesNotAllowNewCharacterCreationFromAccoun
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1586,8 +1585,8 @@ TEST(InterpreAccountMenu, StaleAccountCreationWizardBlocksBirthWhenLowLevelChara
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1621,10 +1620,9 @@ TEST(InterpreAccountMenu, StaleAccountCreationWizardBlocksBirthWhenLowLevelChara
     EXPECT_NE(output.find("You are already connected as Aragorn."), std::string::npos) << output;
     EXPECT_NE(output.find("New character creation cancelled."), std::string::npos) << output;
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::account_character_player_path(".", "acct", "legolas").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_object_path(".", "acct", "legolas").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_exploits_path(".", "acct", "legolas").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_player_path(".", "acct", "legolas").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_object_path(".", "acct", "legolas").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_exploits_path(".", "acct", "legolas").c_str()));
 
     free_char(active_descriptor.character);
     active_descriptor.character = nullptr;
@@ -1636,8 +1634,8 @@ TEST(InterpreAccountMenu, UnlockSelectDoesNotAllowStaleAccountCreationWizardBirt
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1674,10 +1672,9 @@ TEST(InterpreAccountMenu, UnlockSelectDoesNotAllowStaleAccountCreationWizardBirt
     EXPECT_NE(output.find("You are already connected as Aragorn."), std::string::npos) << output;
     EXPECT_NE(output.find("New character creation cancelled."), std::string::npos) << output;
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::account_character_player_path(".", "unlock-birth", "legolas").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_object_path(".", "unlock-birth", "legolas").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_exploits_path(".", "unlock-birth", "legolas").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_player_path(".", "unlock-birth", "legolas").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_object_path(".", "unlock-birth", "legolas").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_exploits_path(".", "unlock-birth", "legolas").c_str()));
 
     free_char(active_descriptor.character);
     active_descriptor.character = nullptr;
@@ -1689,8 +1686,8 @@ TEST(InterpreAccountMenu, StaleAccountCreationWizardCannotOverwriteSameNameActiv
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1732,9 +1729,8 @@ TEST(InterpreAccountMenu, StaleAccountCreationWizardCannotOverwriteSameNameActiv
     char_file_u reloaded_aragorn {};
     ASSERT_TRUE(account::read_account_character_file(".", "acct", "aragorn", &reloaded_aragorn, &error_message)) << error_message;
     EXPECT_EQ(reloaded_aragorn.specials2.idnum, stored_aragorn.specials2.idnum);
-    struct stat file_info {};
-    EXPECT_EQ(stat(account::account_character_object_path(".", "acct", "aragorn").c_str(), &file_info), 0);
-    EXPECT_EQ(stat(account::account_character_exploits_path(".", "acct", "aragorn").c_str(), &file_info), 0);
+    EXPECT_TRUE(std::filesystem::exists(account::account_character_object_path(".", "acct", "aragorn").c_str()));
+    EXPECT_TRUE(std::filesystem::exists(account::account_character_exploits_path(".", "acct", "aragorn").c_str()));
 
     free_char(active_descriptor.character);
     active_descriptor.character = nullptr;
@@ -1745,8 +1741,8 @@ TEST(InterpreAccountMenu, RestrictedActiveCharacterStillAllowsListResetAndLogout
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1798,19 +1794,19 @@ TEST(InterpreAccountMenu, AccountMenuLinkChoiceUsesPlayerFacingSuccessMessage)
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("players", 0700), 0);
-    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("players/F-J", 0700), 0);
-    ASSERT_EQ(mkdir("players/K-O", 0700), 0);
-    ASSERT_EQ(mkdir("players/P-T", 0700), 0);
-    ASSERT_EQ(mkdir("players/U-Z", 0700), 0);
-    ASSERT_EQ(mkdir("players/ZZZ", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("exploits", 0700), 0);
-    ASSERT_EQ(mkdir("exploits/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("players"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/F-J"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/K-O"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/P-T"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/U-Z"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/ZZZ"));
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs"));
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("exploits"));
+    ASSERT_TRUE(std::filesystem::create_directory("exploits/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1865,19 +1861,19 @@ TEST(InterpreAccountMenu, InGameLinkChoiceUsesPlayerFacingSuccessMessage)
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("players", 0700), 0);
-    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("players/F-J", 0700), 0);
-    ASSERT_EQ(mkdir("players/K-O", 0700), 0);
-    ASSERT_EQ(mkdir("players/P-T", 0700), 0);
-    ASSERT_EQ(mkdir("players/U-Z", 0700), 0);
-    ASSERT_EQ(mkdir("players/ZZZ", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("exploits", 0700), 0);
-    ASSERT_EQ(mkdir("exploits/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("players"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/F-J"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/K-O"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/P-T"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/U-Z"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/ZZZ"));
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs"));
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("exploits"));
+    ASSERT_TRUE(std::filesystem::create_directory("exploits/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1925,15 +1921,15 @@ TEST(InterpreAccountMenu, AccountMenuNewCharacterConfirmationSkipsLegacyPassword
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("players", 0700), 0);
-    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("players/F-J", 0700), 0);
-    ASSERT_EQ(mkdir("players/K-O", 0700), 0);
-    ASSERT_EQ(mkdir("players/P-T", 0700), 0);
-    ASSERT_EQ(mkdir("players/U-Z", 0700), 0);
-    ASSERT_EQ(mkdir("players/ZZZ", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("players"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/F-J"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/K-O"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/P-T"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/U-Z"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/ZZZ"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1989,8 +1985,8 @@ TEST(InterpreAccountMenu, PendingVerificationLoginResetsBadPasswordCounterAndPro
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", kTrueCommandPath);
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2049,8 +2045,8 @@ TEST(InterpreAccountMenu, VerificationBadCodeThresholdKeepsPromptUntilFifthDescr
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2106,8 +2102,8 @@ TEST(InterpreAccountMenu, AccountCreationPasswordMismatchClearsStagedPasswordAnd
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     descriptor_data descriptor = make_descriptor();
     descriptor.connected = CON_ACCTNEWPWDCNF;
@@ -2134,8 +2130,8 @@ TEST(InterpreAccountMenu, AccountCreationBlankPasswordClearsStaleStagedPassword)
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     descriptor_data descriptor = make_descriptor();
     descriptor.connected = CON_ACCTNEWPWD;
@@ -2162,8 +2158,8 @@ TEST(InterpreAccountMenu, AccountCreationWeakPasswordClearsStaleStagedPassword)
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     descriptor_data descriptor = make_descriptor();
     descriptor.connected = CON_ACCTNEWPWD;
@@ -2221,8 +2217,8 @@ TEST(InterpreAccountMenu, AccountResetBlankCurrentPasswordCancelsWithoutChanging
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2258,8 +2254,8 @@ TEST(InterpreAccountMenu, AccountResetBlankNewPasswordClearsStaleStagedPassword)
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2295,8 +2291,8 @@ TEST(InterpreAccountMenu, AccountResetWeakNewPasswordClearsStaleStagedPassword)
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2332,8 +2328,8 @@ TEST(InterpreAccountMenu, LegacyLinkBlankPasswordCancelsWithoutCreatingLink)
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2370,8 +2366,8 @@ TEST(InterpreAccountMenu, LegacyLinkWrongPasswordClearsPendingCharacterWithoutCr
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("players", 0700), 0);
-    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("players"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2423,10 +2419,10 @@ TEST(InterpreAccountMenu, LegacyLinkMalformedObjectMigrationFailureClearsPending
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("players", 0700), 0);
-    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("players"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs"));
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2474,12 +2470,11 @@ TEST(InterpreAccountMenu, LegacyLinkMalformedObjectMigrationFailureClearsPending
     EXPECT_TRUE(reloaded_account.character_links.empty());
     EXPECT_NE(std::string(descriptor.output).find("Truncated objects data"), std::string::npos);
 
-    struct stat file_info {};
-    EXPECT_EQ(stat(legacy_player_path.c_str(), &file_info), 0);
-    EXPECT_EQ(stat(account::legacy_object_file_path(".", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_player_path(".", "acct", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_object_path(".", "acct", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_exploits_path(".", "acct", "aragorn").c_str(), &file_info), 0);
+    EXPECT_TRUE(std::filesystem::exists(legacy_player_path.c_str()));
+    EXPECT_TRUE(std::filesystem::exists(account::legacy_object_file_path(".", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_player_path(".", "acct", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_object_path(".", "acct", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_exploits_path(".", "acct", "aragorn").c_str()));
 }
 
 TEST(InterpreAccountMenu, DeletePasswordInputIsHiddenFromSnoopers)
@@ -2526,8 +2521,8 @@ TEST(InterpreAccountMenu, SuccessfulAccountLoginLogsEmailAndHost)
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2563,8 +2558,8 @@ TEST(InterpreAccountMenu, AccountLogoutLogsEmailAndHostExactlyOnce)
 
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2589,8 +2584,8 @@ TEST(InterpreAccountMenu, InvalidAccountPasswordAttemptLogsEmailAndHost)
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2621,8 +2616,8 @@ TEST(InterpreAccountMenu, PendingVerificationAccountDoesNotLogBadPasswordAttempt
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2672,8 +2667,8 @@ TEST(InterpreAccountMenu, AccountPasswordResetRejectsIncorrectCurrentPasswordAnd
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2706,8 +2701,8 @@ TEST(InterpreAccountMenu, AccountPasswordResetLogsEmailAndHost)
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2744,8 +2739,8 @@ TEST(InterpreAccountMenu, AccountBackedDeleteVerificationRejectsIncorrectAccount
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2775,8 +2770,8 @@ TEST(InterpreAccountMenu, AccountBackedDeleteVerificationAcceptsCorrectAccountPa
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2808,8 +2803,8 @@ TEST(InterpreAccountMenu, ConfirmedAccountBackedDeleteReturnsToUsableAccountMenu
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2856,7 +2851,6 @@ TEST(InterpreAccountMenu, ConfirmedAccountBackedDeleteReturnsToUsableAccountMenu
     char confirm[] = "yes";
     nanny(&descriptor, confirm);
 
-    struct stat file_info {};
     account::AccountData reloaded_account;
     ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message)) << error_message;
 
@@ -2870,9 +2864,9 @@ TEST(InterpreAccountMenu, ConfirmedAccountBackedDeleteReturnsToUsableAccountMenu
     EXPECT_FALSE(account::account_has_character(reloaded_account, "aragorn"));
     EXPECT_TRUE(reloaded_account.character_links.empty());
     EXPECT_TRUE(reloaded_account.characters.empty());
-    EXPECT_NE(stat(account::account_character_player_path(".", "acct", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_object_path(".", "acct", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_exploits_path(".", "acct", "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_player_path(".", "acct", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_object_path(".", "acct", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_exploits_path(".", "acct", "aragorn").c_str()));
     EXPECT_TRUE(IS_SET(player_table[deleted_player_index].flags, PLR_DELETED));
     EXPECT_EQ(player_table[deleted_player_index].ch_file[0], '\0');
 
@@ -2903,8 +2897,8 @@ TEST(InterpreAccountMenu, SelectingAnotherLinkedCharacterAfterDeleteRecreatesDes
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -3000,8 +2994,8 @@ TEST(InterpreAccountMenu, FailedSelectionAfterDeleteDoesNotLeaveReplacementDescr
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -3088,8 +3082,8 @@ TEST(InterpreAccountMenu, CreatingNewCharacterAfterDeleteRecreatesDescriptorChar
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -3168,8 +3162,8 @@ TEST(InterpreAccountMenu, AccountBackedCharacterMenuChoiceZeroReturnsToAccountMe
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData stored_account;
     std::string error_message;
@@ -3215,8 +3209,8 @@ TEST(InterpreAccountMenu, ExtractCharReturnsAccountBackedCharactersToAccountAwar
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("players", 0700), 0);
-    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("players"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/A-E"));
 
     descriptor_data descriptor = make_descriptor();
     descriptor.connected = CON_PLYNG;
@@ -3252,8 +3246,8 @@ TEST(InterpreAccountMenu, AccountSelectionKeepsAccountSessionForCharacterMenuOpt
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -3301,8 +3295,8 @@ TEST(InterpreAccountMenu, AccountSelectionLoadsTheSecondNumberedLinkedCharacter)
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -3350,8 +3344,8 @@ TEST(InterpreAccountMenu, AccountSelectionReplacesRentedCharacterShellSoStoredAf
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -3410,8 +3404,8 @@ TEST(InterpreAccountMenu, ReturningToAccountAndReselectingSameCharacterDoesNotDu
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -3480,8 +3474,8 @@ TEST(InterpreAccountMenu, AccountSelectionKeepsBackToAccountMenuLabelWhenMenuRer
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -3572,8 +3566,8 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
     ScopedPlayerTableReset player_table_reset;
     ScopedStartRoomOverride start_room_override(RACE_HUMAN, 0);
 
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     ensure_test_world_room(1200);
     create_entry(const_cast<char*>("existingplayer"));
     create_entry(const_cast<char*>("secondplayer"));
@@ -3604,16 +3598,15 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
         EXPECT_EQ(stderr_output.find("cannot remove"), std::string::npos) << stderr_output;
     }
 
-    struct stat file_info {};
-    EXPECT_NE(stat("players", &file_info), 0)
+    EXPECT_FALSE(std::filesystem::exists("players"))
         << "Account-born characters should not require a legacy players directory.";
-    EXPECT_NE(stat("plrobjs", &file_info), 0)
+    EXPECT_FALSE(std::filesystem::exists("plrobjs"))
         << "Account-born characters should not require a legacy object-save directory.";
-    EXPECT_NE(stat("exploits", &file_info), 0)
+    EXPECT_FALSE(std::filesystem::exists("exploits"))
         << "Account-born characters should not require a legacy exploit-history directory.";
-    EXPECT_NE(stat(account::legacy_player_file_path(".", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::legacy_object_file_path(".", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::legacy_exploits_file_path(".", "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_player_file_path(".", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_object_file_path(".", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(".", "aragorn").c_str()));
 
     account::AccountData reloaded_account;
     ASSERT_TRUE(account::read_account_file(".", "acct", &reloaded_account, &error_message)) << error_message;
@@ -3629,7 +3622,7 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
     ASSERT_GE(descriptor.pos, 0);
     EXPECT_STREQ(player_table[descriptor.pos].name, "aragorn");
     EXPECT_STREQ(player_table[descriptor.pos].ch_file, account_character_path.c_str());
-    EXPECT_EQ(stat(player_table[descriptor.pos].ch_file, &file_info), 0)
+    EXPECT_TRUE(std::filesystem::exists(player_table[descriptor.pos].ch_file))
         << "Account-born characters should enter the live player index through their account-native character.json.";
 
     char_file_u stored_character {};
@@ -3680,9 +3673,9 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
     EXPECT_EQ(world[loaded_character->specials2.load_room].number, 1200);
     EXPECT_EQ(loaded_character->specials2.rawPerception, get_naked_perception(loaded_character));
     EXPECT_EQ(loaded_character->specials2.perception, get_naked_perception(loaded_character));
-    EXPECT_NE(stat("players", &file_info), 0);
-    EXPECT_NE(stat("plrobjs", &file_info), 0);
-    EXPECT_NE(stat("exploits", &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists("players"));
+    EXPECT_FALSE(std::filesystem::exists("plrobjs"));
+    EXPECT_FALSE(std::filesystem::exists("exploits"));
 
     free_char(descriptor.character);
     descriptor.character = nullptr;
@@ -3696,8 +3689,8 @@ TEST(InterpreAccountMenu, IntroduceCharRejectsTooLongAccountNativeIndexPathWitho
     ScopedPlayerTableReset player_table_reset;
     ScopedStartRoomOverride start_room_override(RACE_HUMAN, 0);
 
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     ensure_test_world_room(1200);
     create_entry(const_cast<char*>("existingplayer"));
     create_entry(const_cast<char*>("secondplayer"));
@@ -3732,13 +3725,12 @@ TEST(InterpreAccountMenu, IntroduceCharRejectsTooLongAccountNativeIndexPathWitho
     const std::string output = descriptor.output;
     EXPECT_NE(output.find("rolled back"), std::string::npos) << output;
 
-    struct stat file_info {};
-    EXPECT_NE(stat("players", &file_info), 0);
-    EXPECT_NE(stat("plrobjs", &file_info), 0);
-    EXPECT_NE(stat("exploits", &file_info), 0);
-    EXPECT_NE(stat(account_character_path.c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_object_path(".", account_name, "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_exploits_path(".", account_name, "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists("players"));
+    EXPECT_FALSE(std::filesystem::exists("plrobjs"));
+    EXPECT_FALSE(std::filesystem::exists("exploits"));
+    EXPECT_FALSE(std::filesystem::exists(account_character_path.c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_object_path(".", account_name, "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_exploits_path(".", account_name, "aragorn").c_str()));
 
     account::AccountData reloaded_account;
     ASSERT_TRUE(account::read_account_file(".", account_name, &reloaded_account, &error_message)) << error_message;
@@ -3760,8 +3752,8 @@ TEST(InterpreAccountMenu, AccountSelectionRejectsTooLongAccountNativeIndexPathWi
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
 
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     const char* account_name = "abcdefghijklmnopqrst";
     const char* long_email = "abcdefghijklmnopqrst123456789012345678901234567890@example.com";
@@ -3794,10 +3786,9 @@ TEST(InterpreAccountMenu, AccountSelectionRejectsTooLongAccountNativeIndexPathWi
     const std::string output = descriptor.output;
     EXPECT_NE(output.find("cannot be loaded from account storage"), std::string::npos) << output;
     EXPECT_NE(output.find("too long for the live player index"), std::string::npos) << output;
-    struct stat file_info {};
-    EXPECT_NE(stat("players", &file_info), 0);
-    EXPECT_NE(stat("plrobjs", &file_info), 0);
-    EXPECT_NE(stat("exploits", &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists("players"));
+    EXPECT_FALSE(std::filesystem::exists("plrobjs"));
+    EXPECT_FALSE(std::filesystem::exists("exploits"));
 
     account::AccountData reloaded_account;
     ASSERT_TRUE(account::read_account_file(".", account_name, &reloaded_account, &error_message)) << error_message;
@@ -3826,14 +3817,14 @@ TEST(InterpreAccountMenu, IntroduceCharRollbackDoesNotLeaveLegacyOrAccountNative
     ScopedPlayerTableReset player_table_reset;
     ScopedStartRoomOverride start_room_override(RACE_HUMAN, 0);
 
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("players", 0700), 0);
-    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("exploits", 0700), 0);
-    ASSERT_EQ(mkdir("exploits/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("players"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs"));
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("exploits"));
+    ASSERT_TRUE(std::filesystem::create_directory("exploits/A-E"));
     ensure_test_world_room(1200);
     create_entry(const_cast<char*>("existingplayer"));
     create_entry(const_cast<char*>("secondplayer"));
@@ -3844,7 +3835,7 @@ TEST(InterpreAccountMenu, IntroduceCharRollbackDoesNotLeaveLegacyOrAccountNative
     ASSERT_TRUE(account::create_account(".", "acct", "player@example.com", "ValidPass1", 1700010200, nullptr, &error_message)) << error_message;
 
     const std::string blocking_exploit_path = account::account_character_exploits_path(".", "acct", "aragorn");
-    ASSERT_EQ(mkdir(blocking_exploit_path.c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory(blocking_exploit_path.c_str()));
 
     descriptor_data descriptor = make_descriptor();
     descriptor.character = new char_data {};
@@ -3864,13 +3855,12 @@ TEST(InterpreAccountMenu, IntroduceCharRollbackDoesNotLeaveLegacyOrAccountNative
     EXPECT_EQ(descriptor.connected, CON_CLOSE);
     EXPECT_NE(std::string(descriptor.output).find("rolled back"), std::string::npos);
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::legacy_player_file_path(".", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::legacy_object_file_path(".", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::legacy_exploits_file_path(".", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_player_path(".", "acct", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_object_path(".", "acct", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_exploits_path(".", "acct", "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_player_file_path(".", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_object_file_path(".", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(".", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_player_path(".", "acct", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_object_path(".", "acct", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_exploits_path(".", "acct", "aragorn").c_str()));
 
     account::AccountData account_data;
     ASSERT_TRUE(account::read_account_file(".", "acct", &account_data, &error_message)) << error_message;
@@ -3891,8 +3881,8 @@ TEST(InterpreAccountMenu, IntroduceCharRejectsNameLinkedToAnotherAccountBeforeWr
     ScopedPlayerTableReset player_table_reset;
     ScopedStartRoomOverride start_room_override(RACE_HUMAN, 0);
 
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
     ensure_test_world_room(1200);
     create_entry(const_cast<char*>("existingplayer"));
     create_entry(const_cast<char*>("secondplayer"));
@@ -3942,13 +3932,12 @@ TEST(InterpreAccountMenu, IntroduceCharRejectsNameLinkedToAnotherAccountBeforeWr
     EXPECT_NE(output.find("That character name is already linked to an account."), std::string::npos) << output;
     EXPECT_NE(output.find("New character creation cancelled."), std::string::npos) << output;
 
-    struct stat file_info {};
-    EXPECT_NE(stat("players", &file_info), 0);
-    EXPECT_NE(stat("plrobjs", &file_info), 0);
-    EXPECT_NE(stat("exploits", &file_info), 0);
-    EXPECT_NE(stat(account::account_character_player_path(".", "acct", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_object_path(".", "acct", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_exploits_path(".", "acct", "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists("players"));
+    EXPECT_FALSE(std::filesystem::exists("plrobjs"));
+    EXPECT_FALSE(std::filesystem::exists("exploits"));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_player_path(".", "acct", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_object_path(".", "acct", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_exploits_path(".", "acct", "aragorn").c_str()));
 
     ASSERT_TRUE(account::read_account_file(".", "acct", &target_account, &error_message)) << error_message;
     EXPECT_TRUE(target_account.characters.empty());
@@ -3980,13 +3969,13 @@ TEST(InterpreAccountMenu, AdvanceLevelStillPersistsWhenAccountOwnershipLookupFai
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("players", 0700), 0);
-    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("players/F-J", 0700), 0);
-    ASSERT_EQ(mkdir("players/K-O", 0700), 0);
-    ASSERT_EQ(mkdir("players/P-T", 0700), 0);
-    ASSERT_EQ(mkdir("players/U-Z", 0700), 0);
-    ASSERT_EQ(mkdir("players/ZZZ", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("players"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/F-J"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/K-O"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/P-T"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/U-Z"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/ZZZ"));
 
     descriptor_data descriptor = make_descriptor();
     descriptor.output = descriptor.small_outbuf;
@@ -4005,10 +3994,9 @@ TEST(InterpreAccountMenu, AdvanceLevelStillPersistsWhenAccountOwnershipLookupFai
 
     advance_level(descriptor.character);
 
-    struct stat file_info {};
     ASSERT_GE(descriptor.pos, 0);
     EXPECT_NE(player_table[descriptor.pos].ch_file[0], '\0');
-    EXPECT_EQ(stat(player_table[descriptor.pos].ch_file, &file_info), 0);
+    EXPECT_TRUE(std::filesystem::exists(player_table[descriptor.pos].ch_file));
 
     free_char(descriptor.character);
     descriptor.character = nullptr;

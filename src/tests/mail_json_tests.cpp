@@ -6,10 +6,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <sys/stat.h>
 #include <unistd.h>
 
 // TDD coverage for Phase 2a Task 5: mail persistence as JSON, plus the
@@ -155,8 +155,7 @@ private:
 
 bool file_exists(const std::string& path)
 {
-    struct stat info { };
-    return stat(path.c_str(), &info) == 0;
+    return std::filesystem::exists(path.c_str());
 }
 
 void write_file(const std::string& path, const std::string& contents)
@@ -406,7 +405,7 @@ TEST(MailJson, RuntimeStoreHasMailReadDeleteLifecycle)
 {
     TemporaryDirectory root;
     ScopedWorkingDirectory working_directory(root.path());
-    ASSERT_EQ(mkdir("misc", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("misc"));
 
     // Boot with neither a JSON store nor a legacy file present: scan_file
     // creates an empty JSON store and succeeds.

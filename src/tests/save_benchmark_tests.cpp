@@ -13,8 +13,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
-#include <sys/stat.h>
 
 namespace {
 
@@ -100,9 +100,9 @@ void make_account_character_directory(const std::string& root, const std::string
     const std::string bucket_directory = (slash == std::string::npos) ? directory : directory.substr(0, slash);
     const std::size_t accounts_slash = bucket_directory.rfind('/');
     const std::string accounts_directory = (accounts_slash == std::string::npos) ? bucket_directory : bucket_directory.substr(0, accounts_slash);
-    mkdir(accounts_directory.c_str(), 0700);
-    mkdir(bucket_directory.c_str(), 0700);
-    mkdir(directory.c_str(), 0700);
+    std::filesystem::create_directory(accounts_directory.c_str());
+    std::filesystem::create_directory(bucket_directory.c_str());
+    std::filesystem::create_directory(directory.c_str());
 }
 
 // Read an account-owned character.json back into a char_file_u using only direct path I/O

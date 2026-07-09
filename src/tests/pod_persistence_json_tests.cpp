@@ -8,11 +8,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <vector>
 
 // Phase 2a Task 6: the "low-risk POD trio" -- pkill records, crime records,
@@ -105,7 +104,7 @@ std::string read_file_contents(const std::string& path)
 
 bool path_exists(const std::string& path)
 {
-    return access(path.c_str(), F_OK) == 0;
+    return std::filesystem::exists(path);
 }
 
 // ROTS_GOLDEN_DIR (set by src/CMakeLists.txt on the ageland_tests target)
@@ -533,8 +532,8 @@ TEST(ExploitsRuntimeJson, LoadsAndConvertsLegacyRuntimeFileToJsonAndMigratesLega
         GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     const std::string legacy_path = account::legacy_exploits_file_path(temp_directory.path(), "aragorn");
     write_file(legacy_path, build_exploits_fixture_bytes());
@@ -568,8 +567,8 @@ TEST(ExploitsRuntimeJson, LoadsAndConvertsLegacyRuntimeFileToJsonAndMigratesLega
 TEST(ExploitsRuntimeJson, WritesNewRecordsDirectlyAsJsonWithNoLegacyBinaryFile)
 {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/K-O").c_str(), 0700), 0); // "legolas" buckets to K-O
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/K-O").c_str())); // "legolas" buckets to K-O
 
     const exploit_record new_record = make_exploit(EXPLOIT_ACHIEVEMENT, "Wed Jan  3 00:00:00 2024", 1, "first blood", 5, 0, 0);
     std::string error;
@@ -588,8 +587,8 @@ TEST(ExploitsRuntimeJson, WritesNewRecordsDirectlyAsJsonWithNoLegacyBinaryFile)
 TEST(ExploitsRuntimeJson, FailsClosedOnMalformedRuntimeJsonWithoutDestroyingIt)
 {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     const std::string json_path = account::legacy_exploits_file_path(temp_directory.path(), "aragorn") + ".json";
     write_file(json_path, "{bad-json");
@@ -627,8 +626,8 @@ TEST(ExploitsRuntimeJson, GoldenRoundTripsByteStable)
                                  "if it did on purpose, rerun with UPDATE_GOLDENS=1 and commit.";
 
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
     const std::string legacy_path = account::legacy_exploits_file_path(temp_directory.path(), "aragorn");
     write_file(legacy_path, golden);
 

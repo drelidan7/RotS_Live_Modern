@@ -11,9 +11,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <limits.h>
 #include <string>
-#include <sys/stat.h>
 #include <unistd.h>
 
 ACMD(do_account);
@@ -265,8 +265,8 @@ TEST(ActWiz, AccountCommandAcceptsEmailForShowAndMutatingSubcommands)
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData created_account;
     std::string error_message;
@@ -322,8 +322,8 @@ TEST(ActWiz, AccountCommandUsesIdentifierLookupForAdditionalMutatingSubcommands)
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData created_account;
     std::string error_message;
@@ -387,8 +387,8 @@ TEST(ActWiz, AccountUnlockSelectGrantsForRestrictingActiveLinkedSessionByEmail)
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorList descriptor_list_scope;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData created_account;
     std::string error_message;
@@ -425,8 +425,8 @@ TEST(ActWiz, AccountUnlockSelectGrantsForRestrictingLinklessSessionByAccountName
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorList descriptor_list_scope;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData created_account;
     std::string error_message;
@@ -460,8 +460,8 @@ TEST(ActWiz, AccountUnlockSelectRejectsWhenNoRestrictingActiveSessionExists)
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorList descriptor_list_scope;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData created_account;
     std::string error_message;
@@ -538,8 +538,8 @@ TEST(ActWiz, AccountUnlockSelectReplacesStalePendingUnlockForLaterRestriction)
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorList descriptor_list_scope;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData created_account;
     std::string error_message;
@@ -592,14 +592,14 @@ TEST(ActWiz, AccountCommandAcceptsEmailForMigrateChar)
 
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("players", 0700), 0);
-    ASSERT_EQ(mkdir("players/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("exploits", 0700), 0);
-    ASSERT_EQ(mkdir("exploits/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("players"));
+    ASSERT_TRUE(std::filesystem::create_directory("players/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs"));
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs/A-E"));
+    ASSERT_TRUE(std::filesystem::create_directory("exploits"));
+    ASSERT_TRUE(std::filesystem::create_directory("exploits/A-E"));
 
     account::AccountData created_account;
     std::string error_message;
@@ -630,13 +630,12 @@ TEST(ActWiz, AccountCommandAcceptsEmailForMigrateChar)
     ASSERT_TRUE(account::read_account_file(".", "alpha-admin", &migrated_account, &error_message)) << error_message;
     EXPECT_TRUE(account::account_has_character(migrated_account, "aragorn"));
 
-    struct stat file_info {};
-    EXPECT_EQ(stat(account::account_character_player_path(".", "alpha-admin", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_object_path(".", "alpha-admin", "aragorn").c_str(), &file_info), -1);
-    EXPECT_NE(stat(account::account_character_exploits_path(".", "alpha-admin", "aragorn").c_str(), &file_info), -1);
-    EXPECT_EQ(stat(account::legacy_player_file_path(".", "aragorn").c_str(), &file_info), -1);
-    EXPECT_EQ(stat(account::legacy_object_file_path(".", "aragorn").c_str(), &file_info), -1);
-    EXPECT_EQ(stat(account::legacy_exploits_file_path(".", "aragorn").c_str(), &file_info), -1);
+    EXPECT_TRUE(std::filesystem::exists(account::account_character_player_path(".", "alpha-admin", "aragorn").c_str()));
+    EXPECT_TRUE(std::filesystem::exists(account::account_character_object_path(".", "alpha-admin", "aragorn").c_str()));
+    EXPECT_TRUE(std::filesystem::exists(account::account_character_exploits_path(".", "alpha-admin", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_player_file_path(".", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_object_file_path(".", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(".", "aragorn").c_str()));
 
     char_file_u second_legacy_character = make_stored_character("boromir", 10, RACE_HUMAN);
     second_legacy_character.specials2.idnum = 4343;
@@ -654,9 +653,9 @@ TEST(ActWiz, AccountCommandAcceptsEmailForMigrateChar)
 
     ASSERT_TRUE(account::read_account_file(".", "alpha-admin", &migrated_account, &error_message)) << error_message;
     EXPECT_TRUE(account::account_has_character(migrated_account, "boromir"));
-    EXPECT_EQ(stat(account::legacy_player_file_path(".", "boromir").c_str(), &file_info), -1);
-    EXPECT_EQ(stat(account::legacy_object_file_path(".", "boromir").c_str(), &file_info), -1);
-    EXPECT_EQ(stat(account::legacy_exploits_file_path(".", "boromir").c_str(), &file_info), -1);
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_player_file_path(".", "boromir").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_object_file_path(".", "boromir").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(".", "boromir").c_str()));
 
     free(admin.player.name);
 }

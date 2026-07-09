@@ -3,10 +3,10 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <limits.h>
 #include <string>
-#include <sys/stat.h>
 #include <unistd.h>
 
 // Declared in objsave.cpp (new in this task): the single JSON serialization
@@ -90,8 +90,8 @@ TEST(ObjsaveJson, WritesJsonFileAndRoundTrips)
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("plrobjs", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs/F-J", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs"));
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs/F-J"));
 
     objects_json::ObjectSaveData data = make_save_data();
     std::string error;
@@ -128,8 +128,8 @@ TEST(ObjsaveJson, OverwriteReplacesPreviousContentAtomically)
 {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("plrobjs", 0700), 0);
-    ASSERT_EQ(mkdir("plrobjs/F-J", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs"));
+    ASSERT_TRUE(std::filesystem::create_directory("plrobjs/F-J"));
 
     objects_json::ObjectSaveData first = make_save_data();
     std::string error;

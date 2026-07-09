@@ -5,10 +5,10 @@
 #include <gtest/gtest.h>
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <sys/stat.h>
 
 // TDD coverage for the plrobjs conversion sweep (Phase 2a Task 3). Uses
 // legacy_rent_fixture.h's byte builders (shared with objects_json_layout_tests.cpp)
@@ -52,8 +52,7 @@ private:
 
 bool file_exists(const std::string& path)
 {
-    struct stat info { };
-    return stat(path.c_str(), &info) == 0;
+    return std::filesystem::exists(path.c_str());
 }
 
 void write_file(const std::string& path, const std::string& contents)
@@ -137,7 +136,7 @@ TEST(ConvertPlrobjs, RecursesIntoBucketSubdirectoriesLikeRealPlrobjsLayout)
     // Mirrors the real lib/plrobjs/ layout: bucket subdirectories one level
     // down, plus some files directly at the root (lib/plrobjs/*.obj in the
     // live tree has exactly this shape).
-    ASSERT_EQ(0, mkdir((root.path() + "/A-E").c_str(), 0755));
+    ASSERT_TRUE(std::filesystem::create_directory((root.path() + "/A-E").c_str()));
     const std::string bucketed_path = root.path() + "/A-E/aramir.obj";
     write_file(bucketed_path, legacy_rent_fixture::build_full_fixture_bytes());
 

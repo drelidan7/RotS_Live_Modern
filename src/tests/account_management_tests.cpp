@@ -10,7 +10,7 @@
 #include <cstring>
 #include <ctime>
 #include <climits>
-#include <dirent.h>
+#include <filesystem>
 #include <limits.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -45,31 +45,15 @@ public:
     }
 
 private:
+    // Portable stand-in for the old opendir/readdir/stat/rmdir recursive walk (Phase 3
+    // Task 5: POSIX-ism cleanup for MSVC bring-up) -- remove_all recurses and deletes
+    // files and directories on every platform in one call, using error_code so a
+    // missing/already-gone path is silently a no-op like the historical opendir()==
+    // nullptr short-circuit above (which just tried std::remove and returned).
     static void remove_tree(const std::string& path)
     {
-        DIR* directory = opendir(path.c_str());
-        if (directory == nullptr) {
-            std::remove(path.c_str());
-            return;
-        }
-
-        while (dirent* entry = readdir(directory)) {
-            if (std::strcmp(entry->d_name, ".") == 0 || std::strcmp(entry->d_name, "..") == 0)
-                continue;
-
-            const std::string child_path = path + "/" + entry->d_name;
-            struct stat file_info {};
-            if (stat(child_path.c_str(), &file_info) != 0)
-                continue;
-
-            if (S_ISDIR(file_info.st_mode))
-                remove_tree(child_path);
-            else
-                std::remove(child_path.c_str());
-        }
-
-        closedir(directory);
-        rmdir(path.c_str());
+        std::error_code ec;
+        std::filesystem::remove_all(path, ec);
     }
 
     std::string m_path;
@@ -77,25 +61,30 @@ private:
 
 class ScopedWorkingDirectory {
 public:
+    // std::filesystem::current_path() is both the getter and (with a path argument)
+    // the setter -- a direct, portable stand-in for the getcwd()/chdir() pair (Phase 3
+    // Task 5: POSIX-ism cleanup for MSVC bring-up).
     explicit ScopedWorkingDirectory(const std::string& path)
     {
-        char buffer[PATH_MAX];
-        char* current_working_directory = getcwd(buffer, sizeof(buffer));
-        EXPECT_NE(current_working_directory, nullptr);
-        if (current_working_directory != nullptr)
-            m_original_path = buffer;
+        std::error_code ec;
+        m_original_path = std::filesystem::current_path(ec);
+        EXPECT_FALSE(ec) << "Expected current_path() to report this test process's working directory.";
 
-        EXPECT_EQ(chdir(path.c_str()), 0);
+        std::filesystem::current_path(path, ec);
+        EXPECT_FALSE(ec) << "Expected current_path(" << path << ") to succeed.";
     }
 
     ~ScopedWorkingDirectory()
     {
-        if (!m_original_path.empty())
-            EXPECT_EQ(chdir(m_original_path.c_str()), 0);
+        if (!m_original_path.empty()) {
+            std::error_code ec;
+            std::filesystem::current_path(m_original_path, ec);
+            EXPECT_FALSE(ec);
+        }
     }
 
 private:
-    std::string m_original_path;
+    std::filesystem::path m_original_path;
 };
 
 class ScopedPlayerTableEntry {
@@ -925,8 +914,8 @@ TEST(AccountManagement, FormatsCharacterNamesForDisplayByOnlyUppercasingTheFirst
 TEST(AccountManagement, FormatsCharacterPromptWithLinkedCharacterList) {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     account::AccountData account_data = make_account();
     std::string error_message;
@@ -1006,18 +995,17 @@ TEST(AccountManagement, PersistsAccountsToBucketedJsonFilesAndReadsThemBack) {
     EXPECT_EQ(loaded_account.characters, std::vector<std::string>({ "aragorn", "legolas" }));
     EXPECT_EQ(loaded_account.block_reason, original_account.block_reason);
 
-    struct stat file_info {};
-    ASSERT_EQ(stat(account::account_file_path(temp_directory.path(), original_account.normalized_email).c_str(), &file_info), 0)
+    ASSERT_TRUE(std::filesystem::exists(account::account_file_path(temp_directory.path(), original_account.normalized_email).c_str()))
         << "Expected write_account_file() to materialize the final account JSON file.";
 
-    EXPECT_NE(stat((account::account_file_path(temp_directory.path(), original_account.normalized_email) + ".tmp").c_str(), &file_info), 0)
+    EXPECT_FALSE(std::filesystem::exists((account::account_file_path(temp_directory.path(), original_account.normalized_email) + ".tmp").c_str()))
         << "Expected temporary files to be cleaned up after a successful atomic write.";
 }
 
 TEST(AccountManagement, RewritesLegacyFlatAccountFilesIntoEmailRootedLayout) {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
 
     account::AccountData original_account = make_account();
     const std::string legacy_path = temp_directory.path() + "/accounts/A-E/alpha-admin.json";
@@ -1029,9 +1017,8 @@ TEST(AccountManagement, RewritesLegacyFlatAccountFilesIntoEmailRootedLayout) {
     loaded_account.block_reason = "updated reason";
     ASSERT_TRUE(account::write_account_file(temp_directory.path(), loaded_account, &error_message)) << error_message;
 
-    struct stat file_info {};
-    EXPECT_EQ(stat(account::account_file_path(temp_directory.path(), original_account.normalized_email).c_str(), &file_info), 0);
-    EXPECT_NE(stat(legacy_path.c_str(), &file_info), 0);
+    EXPECT_TRUE(std::filesystem::exists(account::account_file_path(temp_directory.path(), original_account.normalized_email).c_str()));
+    EXPECT_FALSE(std::filesystem::exists(legacy_path.c_str()));
 
     account::AccountData looked_up_account;
     ASSERT_TRUE(account::read_account_file_by_email(temp_directory.path(), "player@example.com", &looked_up_account, &error_message)) << error_message;
@@ -1152,8 +1139,8 @@ TEST(AccountManagement, RejectsAmbiguousDuplicateEmailRecords) {
     ASSERT_TRUE(account::read_account_file(temp_directory.path(), "beta-admin", &duplicate_account, &error_message)) << error_message;
     duplicate_account.normalized_email = "player@example.com";
     const std::string duplicate_directory = temp_directory.path() + "/accounts/ZZZ/manual-duplicate";
-    ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/ZZZ").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir(duplicate_directory.c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/ZZZ").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory(duplicate_directory.c_str()));
     write_text_file(duplicate_directory + "/account.json", account::serialize_account_to_json(duplicate_account));
 
     account::AccountData looked_up_account;
@@ -1181,8 +1168,8 @@ TEST(AccountManagement, CreatesAccountForEmailFailsWhenLegacyFlatRecordAlreadyEx
     TemporaryDirectory temp_directory;
     std::string error_message;
 
-    ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
     account::AccountData legacy_account = make_account();
     write_text_file(temp_directory.path() + "/accounts/A-E/alpha-admin.json", account::serialize_account_to_json(legacy_account));
 
@@ -1210,7 +1197,7 @@ TEST(AccountManagement, FindsEmailBackedAccountEvenIfUnrelatedAccountFileIsCorru
     std::string error_message;
     ASSERT_TRUE(account::create_account_for_email(temp_directory.path(), "player@example.com", "ValidPass1", 1700005800, nullptr, &error_message)) << error_message;
 
-    ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/ZZZ").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/ZZZ").c_str()));
     write_text_file(temp_directory.path() + "/accounts/ZZZ/corrupt.json", "{bad-json");
 
     account::AccountData looked_up_account;
@@ -1223,7 +1210,7 @@ TEST(AccountManagement, ReportsMissingEmailEvenIfUnrelatedAccountFileIsCorrupt) 
     std::string error_message;
     ASSERT_TRUE(account::create_account_for_email(temp_directory.path(), "player@example.com", "ValidPass1", 1700005801, nullptr, &error_message)) << error_message;
 
-    ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/ZZZ").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/ZZZ").c_str()));
     write_text_file(temp_directory.path() + "/accounts/ZZZ/corrupt.json", "{bad-json");
 
     account::AccountData looked_up_account;
@@ -1236,7 +1223,7 @@ TEST(AccountManagement, FailsClosedWhenCreatingAccountIfAnyStoredRecordIsUnreada
     std::string error_message;
     ASSERT_TRUE(account::create_account_for_email(temp_directory.path(), "player@example.com", "ValidPass1", 1700005802, nullptr, &error_message)) << error_message;
 
-    ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/ZZZ").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/ZZZ").c_str()));
     write_text_file(temp_directory.path() + "/accounts/ZZZ/corrupt.json", "{bad-json");
 
     account::AccountData created_account;
@@ -1321,8 +1308,8 @@ TEST(AccountManagement, RejectsAmbiguousLinkedCharacterOwnership) {
 
 TEST(AccountManagement, LinksAndMigratesCharacterAfterAuthenticatingAccount) {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
 
     std::string error_message;
@@ -1633,7 +1620,7 @@ TEST(AccountManagement, WritesCanonicalObjectPathWhenSafeLegacyRelativePathIsSto
     account_json.replace(account_json.find(original_fragment), original_fragment.size(), legacy_fragment);
     write_text_file(account_path, account_json);
 
-    ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/P-T/player@example.com/legacy").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/P-T/player@example.com/legacy").c_str()));
 
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
@@ -1669,7 +1656,7 @@ TEST(AccountManagement, LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteF
     write_text_file(account_path, account_json);
 
     const std::string account_directory = temp_directory.path() + "/accounts/P-T/player@example.com";
-    ASSERT_EQ(mkdir((account_directory + "/legacy").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((account_directory + "/legacy").c_str()));
     ASSERT_EQ(chmod(account_directory.c_str(), 0500), 0);
 
     objects_json::ObjectSaveData object_data;
@@ -1749,12 +1736,12 @@ TEST(AccountManagement, MigratesLegacyCharacterFilesIntoAccountNativeAssetsWitho
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700007776, nullptr, &error_message)) << error_message;
 
     account::CharacterMigrationData migration;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
     write_text_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), make_valid_object_bytes());
@@ -1771,8 +1758,7 @@ TEST(AccountManagement, MigratesLegacyCharacterFilesIntoAccountNativeAssetsWitho
     EXPECT_EQ(migration.player_file.encoding, "hex");
     EXPECT_EQ(migration.player_file.source_path, account::legacy_player_file_path(temp_directory.path(), "aragorn"));
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0)
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str()))
         << "Expected successful migration to rely on account-native assets without persisting a transitional snapshot file.";
 }
 
@@ -1781,8 +1767,8 @@ TEST(AccountManagement, PersistedMigrationSnapshotOmitsLegacyPlayerPasswordAndHo
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700007776, nullptr, &error_message)) << error_message;
 
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     char_file_u stored_character = make_stored_character("aragorn");
     std::snprintf(stored_character.host, sizeof(stored_character.host), "%s", "legacy.example.org");
@@ -1793,8 +1779,7 @@ TEST(AccountManagement, PersistedMigrationSnapshotOmitsLegacyPlayerPasswordAndHo
     ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700007777, &migration, &error_message)) << error_message;
     ASSERT_TRUE(migration.player_file.present);
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0)
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str()))
         << "Routine migration should no longer persist a transitional snapshot file at all.";
 }
 
@@ -1858,12 +1843,12 @@ TEST(AccountManagement, MigratesLegacyCharacterByDefaultFileLayout) {
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700009998, nullptr, &error_message)) << error_message;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
     write_text_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), make_valid_object_bytes());
@@ -1879,8 +1864,8 @@ TEST(AccountManagement, MigratesVersionedLegacyPlayerFilesForFreshCharacters) {
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010000, nullptr, &error_message)) << error_message;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     const std::string versioned_player_path = account::legacy_player_file_path(temp_directory.path(), "aragorn") + ".1.1.1234.1700010000.0";
     char_file_u stored_character = make_stored_character("aragorn");
@@ -1900,8 +1885,8 @@ TEST(AccountManagement, PrefersVersionedLegacyPlayerFilesOverStaleFlatFilesDurin
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010000, nullptr, &error_message)) << error_message;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     char_file_u stale_flat_character = make_stored_character("aragorn");
     stale_flat_character.points.gold = 111;
@@ -1928,8 +1913,7 @@ TEST(AccountManagement, PrefersVersionedLegacyPlayerFilesOverStaleFlatFilesDurin
     EXPECT_EQ(restored_character.points.gold, versioned_character.points.gold);
     EXPECT_EQ(restored_character.specials2.idnum, versioned_character.specials2.idnum);
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::legacy_player_file_path(temp_directory.path(), "aragorn").c_str(), &file_info), 0)
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_player_file_path(temp_directory.path(), "aragorn").c_str()))
         << "Expected migration to retire the stale flat legacy player file once the versioned save won precedence.";
 }
 
@@ -1937,8 +1921,8 @@ TEST(AccountManagement, MigratesVersionedLegacyPlayerFileEvenWhenStaleFlatFileIs
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010000, nullptr, &error_message)) << error_message;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     char_file_u stale_flat_character = make_stored_character("aragorn");
     stale_flat_character.points.gold = 111;
@@ -1959,16 +1943,15 @@ TEST(AccountManagement, MigratesVersionedLegacyPlayerFileEvenWhenStaleFlatFileIs
     ASSERT_TRUE(account::read_account_character_file(temp_directory.path(), "alpha-admin", "aragorn", &restored_character, &error_message)) << error_message;
     EXPECT_EQ(restored_character.points.gold, versioned_character.points.gold);
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::legacy_player_file_path(temp_directory.path(), "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_player_file_path(temp_directory.path(), "aragorn").c_str()));
 }
 
 TEST(AccountManagement, RejectsAmbiguousVersionedLegacyPlayerFilesDuringMigration) {
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010001, nullptr, &error_message)) << error_message;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     char_file_u stored_character = make_stored_character("aragorn");
     stored_character.specials2.idnum = 1234;
@@ -1987,8 +1970,8 @@ TEST(AccountManagement, IgnoresStrayNonVersionedPlayerArtifactsWhenResolvingFres
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010002, nullptr, &error_message)) << error_message;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     write_text_file(account::legacy_player_file_path(temp_directory.path(), "aragorn") + ".tmp", "stray-temp-data");
     const std::string versioned_player_path = account::legacy_player_file_path(temp_directory.path(), "aragorn") + ".1.1.1234.1700010000.0";
@@ -2005,8 +1988,8 @@ TEST(AccountManagement, TreatsMissingOptionalLegacyFilesAsAbsentSnapshots) {
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010000, nullptr, &error_message)) << error_message;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
 
@@ -2022,8 +2005,8 @@ TEST(AccountManagement, EnsuresCharacterMigrationByCreatingMissingSnapshotFromLe
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010099, nullptr, &error_message)) << error_message;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
 
@@ -2037,17 +2020,16 @@ TEST(AccountManagement, EnsuresCharacterMigrationByCreatingMissingSnapshotFromLe
     ASSERT_TRUE(account::read_account_character_file(temp_directory.path(), "alpha-admin", "aragorn", &restored_character, &error_message)) << error_message;
     EXPECT_STREQ(restored_character.name, "aragorn");
     EXPECT_EQ(restored_character.points.gold, make_stored_character("aragorn").points.gold);
-    struct stat file_info {};
-    EXPECT_NE(stat(account::legacy_player_file_path(temp_directory.path(), "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_player_file_path(temp_directory.path(), "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str()));
 }
 
 TEST(AccountManagement, IgnoresCorruptSnapshotArtifactWhenRebuildingFromLegacyFiles) {
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010099, nullptr, &error_message)) << error_message;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
     write_text_file(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn"), "{bad-json");
@@ -2061,17 +2043,16 @@ TEST(AccountManagement, IgnoresCorruptSnapshotArtifactWhenRebuildingFromLegacyFi
     EXPECT_STREQ(restored_character.name, "aragorn");
     EXPECT_EQ(restored_character.points.gold, make_stored_character("aragorn").points.gold);
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::legacy_player_file_path(temp_directory.path(), "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_player_file_path(temp_directory.path(), "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str()));
 }
 
 TEST(AccountManagement, EnsureCharacterMigrationFailsClosedWhenOnlyCorruptSnapshotRemains) {
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010099, nullptr, &error_message)) << error_message;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
 
@@ -2091,8 +2072,8 @@ TEST(AccountManagement, EnsureCharacterMigrationSucceedsWhenAuthoritativeCharact
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010102, nullptr, &error_message)) << error_message;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
 
@@ -2123,12 +2104,12 @@ TEST(AccountManagement, RestoresLegacyFilesFromCharacterMigrationSnapshot) {
         GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010100, nullptr, &error_message)) << error_message;
@@ -2149,8 +2130,7 @@ TEST(AccountManagement, RestoresLegacyFilesFromCharacterMigrationSnapshot) {
     EXPECT_EQ(read_file_contents(account::legacy_player_file_path(temp_directory.path(), "aragorn")), expected_player_text);
     EXPECT_EQ(read_file_contents(account::legacy_object_file_path(temp_directory.path(), "aragorn")), expected_object_bytes);
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
 }
 
 TEST(AccountManagement, RejectsMismatchedRestoreRequestWithoutTouchingLegacyFiles) {
@@ -2158,12 +2138,12 @@ TEST(AccountManagement, RejectsMismatchedRestoreRequestWithoutTouchingLegacyFile
         GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010100, nullptr, &error_message)) << error_message;
@@ -2187,12 +2167,12 @@ TEST(AccountManagement, RejectsMismatchedRestoreRequestWithoutTouchingLegacyFile
 
 TEST(AccountManagement, ClearsRuntimeSupportFilesForAccountBackedPlayWithoutRewritingPlayerFile) {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     account::CharacterMigrationData migration;
     migration.account_name = "alpha-admin";
@@ -2206,9 +2186,8 @@ TEST(AccountManagement, ClearsRuntimeSupportFilesForAccountBackedPlayWithoutRewr
     ASSERT_TRUE(account::clear_character_runtime_support_files_for_account_play(temp_directory.path(), "alpha-admin", "aragorn", migration, &error_message)) << error_message;
     EXPECT_EQ(read_file_contents(account::legacy_player_file_path(temp_directory.path(), "aragorn")), "player-stays-put");
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
 }
 
 TEST(AccountManagement, RejectsClearingSupportFilesWhenSnapshotIdentityDoesNotMatchSelection) {
@@ -2224,8 +2203,8 @@ TEST(AccountManagement, RejectsClearingSupportFilesWhenSnapshotIdentityDoesNotMa
 
 TEST(AccountManagement, RefreshesSnapshotForLinkedCharactersUsingCurrentLegacyFiles) {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
@@ -2247,10 +2226,10 @@ TEST(AccountManagement, MigrationWritesAccountNativeObjectFileWhenLegacyObjectDa
         GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
@@ -2283,10 +2262,10 @@ TEST(AccountManagement, MigrationAcceptsLegacyObjectFileWithoutFollowerSection) 
         GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
@@ -2325,12 +2304,12 @@ TEST(AccountManagement, MigrationRejectsPartialFollowerSectionAndCleansUpAccount
         GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
@@ -2369,8 +2348,8 @@ TEST(AccountManagement, MigrationRejectsPartialFollowerSectionAndCleansUpAccount
 
 TEST(AccountManagement, MigrationWritesDefaultAccountNativeObjectFileWhenLegacyObjectDataIsMissing) {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
@@ -2390,10 +2369,10 @@ TEST(AccountManagement, MigrationWritesDefaultAccountNativeObjectFileWhenLegacyO
 
 TEST(AccountManagement, MigrationWritesAccountNativeExploitFileWhenLegacyExploitDataIsValid) {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
@@ -2421,12 +2400,12 @@ TEST(AccountManagement, MigrationRetiresLegacyFilesAfterSuccessfulAccountNativeW
         GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
@@ -2441,11 +2420,10 @@ TEST(AccountManagement, MigrationRetiresLegacyFilesAfterSuccessfulAccountNativeW
     account::CharacterMigrationData migration;
     ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, &migration, &error_message)) << error_message;
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0);
-    EXPECT_NE(stat(player_path.c_str(), &file_info), 0);
-    EXPECT_NE(stat(object_path.c_str(), &file_info), 0);
-    EXPECT_NE(stat(exploits_path.c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(player_path.c_str()));
+    EXPECT_FALSE(std::filesystem::exists(object_path.c_str()));
+    EXPECT_FALSE(std::filesystem::exists(exploits_path.c_str()));
     EXPECT_TRUE(account::account_object_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
     EXPECT_TRUE(account::account_exploit_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
     EXPECT_FALSE(expected_player_text.empty());
@@ -2460,10 +2438,10 @@ TEST(AccountManagement, MigrationFailsClosedWhenLegacyFileRetirementFails) {
         GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
@@ -2482,11 +2460,10 @@ TEST(AccountManagement, MigrationFailsClosedWhenLegacyFileRetirementFails) {
 
     ASSERT_EQ(chmod(object_bucket.c_str(), 0700), 0);
 
-    struct stat file_info {};
-    EXPECT_EQ(stat(player_path.c_str(), &file_info), 0);
-    EXPECT_EQ(stat(object_path.c_str(), &file_info), 0);
+    EXPECT_TRUE(std::filesystem::exists(player_path.c_str()));
+    EXPECT_TRUE(std::filesystem::exists(object_path.c_str()));
     EXPECT_EQ(read_file_contents(player_path), expected_player_text);
-    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str()));
     EXPECT_FALSE(account::account_character_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
     EXPECT_FALSE(account::account_object_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
     EXPECT_FALSE(account::account_exploit_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
@@ -2499,12 +2476,12 @@ TEST(AccountManagement, MigrationCleansUpAccountNativeOutputsWhenStaleFlatRetire
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010100, nullptr, &error_message)) << error_message;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     char_file_u versioned_character = make_stored_character("aragorn");
     versioned_character.specials2.idnum = 2222;
@@ -2516,7 +2493,7 @@ TEST(AccountManagement, MigrationCleansUpAccountNativeOutputsWhenStaleFlatRetire
     write_text_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"), expected_exploit_bytes);
 
     const std::string stale_flat_path = account::legacy_player_file_path(temp_directory.path(), "aragorn");
-    ASSERT_EQ(mkdir(stale_flat_path.c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory(stale_flat_path.c_str()));
     write_text_file(stale_flat_path + "/blocker", "x");
 
     account::CharacterMigrationData migration;
@@ -2527,12 +2504,11 @@ TEST(AccountManagement, MigrationCleansUpAccountNativeOutputsWhenStaleFlatRetire
     EXPECT_FALSE(account::account_object_file_exists(temp_directory.path(), "alpha-admin", "aragorn", nullptr));
     EXPECT_FALSE(account::account_exploit_file_exists(temp_directory.path(), "alpha-admin", "aragorn", nullptr));
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str()));
     EXPECT_EQ(read_file_contents(versioned_player_path), expected_player_text);
     EXPECT_EQ(read_file_contents(account::legacy_object_file_path(temp_directory.path(), "aragorn")), expected_object_bytes);
     EXPECT_EQ(read_file_contents(account::legacy_exploits_file_path(temp_directory.path(), "aragorn")), expected_exploit_bytes);
-    EXPECT_EQ(stat(stale_flat_path.c_str(), &file_info), 0);
+    EXPECT_TRUE(std::filesystem::exists(stale_flat_path.c_str()));
 }
 
 TEST(AccountManagement, MigrationRestoresRetiredFilesWhenExploitRetirementFails) {
@@ -2544,12 +2520,12 @@ TEST(AccountManagement, MigrationRestoresRetiredFilesWhenExploitRetirementFails)
         GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
@@ -2570,12 +2546,11 @@ TEST(AccountManagement, MigrationRestoresRetiredFilesWhenExploitRetirementFails)
 
     ASSERT_EQ(chmod(exploits_bucket.c_str(), 0700), 0);
 
-    struct stat file_info {};
-    EXPECT_EQ(stat(player_path.c_str(), &file_info), 0);
-    EXPECT_EQ(stat(object_path.c_str(), &file_info), 0);
-    EXPECT_EQ(stat(exploits_path.c_str(), &file_info), 0);
+    EXPECT_TRUE(std::filesystem::exists(player_path.c_str()));
+    EXPECT_TRUE(std::filesystem::exists(object_path.c_str()));
+    EXPECT_TRUE(std::filesystem::exists(exploits_path.c_str()));
     EXPECT_EQ(read_file_contents(player_path), expected_player_text);
-    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str()));
     EXPECT_FALSE(account::account_character_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
     EXPECT_FALSE(account::account_object_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
     EXPECT_FALSE(account::account_exploit_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
@@ -2583,8 +2558,8 @@ TEST(AccountManagement, MigrationRestoresRetiredFilesWhenExploitRetirementFails)
 
 TEST(AccountManagement, MigrationWritesDefaultAccountNativeExploitFileWhenLegacyExploitDataIsMissing) {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
@@ -2602,10 +2577,10 @@ TEST(AccountManagement, MigrationWritesDefaultAccountNativeExploitFileWhenLegacy
 
 TEST(AccountManagement, MigrationFailsWhenLegacyExploitDataIsMalformed) {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
@@ -2620,10 +2595,10 @@ TEST(AccountManagement, MigrationFailsWhenLegacyExploitDataIsMalformed) {
 
 TEST(AccountManagement, MigrationFailsWhenLegacyObjectDataIsMalformed) {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/plrobjs/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
@@ -2638,8 +2613,8 @@ TEST(AccountManagement, MigrationFailsWhenLegacyObjectDataIsMalformed) {
 
 TEST(AccountManagement, RestoredSnapshotReflectsRefreshedLinkedCharacterState) {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010102, nullptr, &error_message)) << error_message;
@@ -2658,10 +2633,10 @@ TEST(AccountManagement, RestoredSnapshotReflectsRefreshedLinkedCharacterState) {
 
 TEST(AccountManagement, RefreshingSnapshotPreservesExistingExploitHistoryWhenRuntimeExploitFileIsAbsent) {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/exploits/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010102, nullptr, &error_message)) << error_message;
@@ -2687,14 +2662,13 @@ TEST(AccountManagement, RefreshingSnapshotPreservesExistingExploitHistoryWhenRun
     EXPECT_EQ(refreshed_migration.exploits_file.content, initial_migration.exploits_file.content);
     EXPECT_TRUE(refreshed_migration.player_file.present);
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str()));
 }
 
 TEST(AccountManagement, RefreshingSnapshotForUnlinkedCharacterSucceedsWithoutWritingMigration) {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/players/A-E").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
 
     account::CharacterMigrationData migration;
@@ -2703,15 +2677,14 @@ TEST(AccountManagement, RefreshingSnapshotForUnlinkedCharacterSucceedsWithoutWri
     EXPECT_TRUE(migration.account_name.empty());
     EXPECT_TRUE(migration.character_name.empty());
 
-    struct stat file_info {};
-    EXPECT_NE(stat(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str(), &file_info), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn").c_str()));
 }
 
 TEST(AccountManagement, RefusesToOverwriteCorruptExistingAccountFiles) {
     TemporaryDirectory temp_directory;
-    ASSERT_EQ(mkdir((temp_directory.path() + "/accounts").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/P-T").c_str(), 0700), 0);
-    ASSERT_EQ(mkdir((temp_directory.path() + "/accounts/P-T/player@example.com").c_str(), 0700), 0);
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/P-T").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/P-T/player@example.com").c_str()));
     write_text_file(account::account_file_path(temp_directory.path(), "player@example.com"), "{not-valid-json");
 
     std::string error_message;

@@ -24,11 +24,14 @@ CXX = g++
 # -funsigned-char: parity with src/Makefile's GAMEC flags (the live game pins
 # char as unsigned on every build); without it, product .cpp files compiled
 # into this test binary get the platform-default (signed) char instead.
-# -I../../third_party/asio/include -DASIO_STANDALONE: standalone Asio, vendored
-# under third_party/asio/ (see that directory's README.md for the pinned
-# version/provenance) — same headers as src/Makefile, so asio_smoke_tests.cpp
-# and any future Asio-using product code build identically here.
-CXXFLAGS = -std=c++1z -Wall -Wextra -D TESTING -iquote .. -I../../third_party/asio/include -DASIO_STANDALONE -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -funsigned-char
+# -isystem ../../third_party/asio/include -DASIO_STANDALONE: standalone Asio,
+# vendored under third_party/asio/ (see that directory's README.md for the
+# pinned version/provenance) — same headers as src/Makefile, so
+# asio_smoke_tests.cpp and any future Asio-using product code build
+# identically here. -isystem (not -I) matches the SYSTEM include wiring in
+# src/CMakeLists.txt so Asio's vendored headers aren't held to this project's
+# -Wall/-Wextra.
+CXXFLAGS = -std=c++1z -Wall -Wextra -D TESTING -iquote .. -isystem ../../third_party/asio/include -DASIO_STANDALONE -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -funsigned-char
 # -lpthread: libgtest.a's ThreadLocal support needs pthread_{get,set}specific/key_*;
 # the static lib doesn't pull it in transitively on this toolchain, so link it explicitly.
 LDFLAGS = -lgtest -lpthread

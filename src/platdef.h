@@ -55,6 +55,20 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+// MSVC header hygiene (Phase 3 Task 5): the Linux branch above pulls in <time.h>
+// (needed everywhere time_t/time()/localtime()/asctime() are used, e.g. db.cpp's
+// boot/save-file timestamps and mudlog's log line headers) as part of the platform
+// header set; the Windows branch had no equivalent, so every TU that relied on
+// platdef.h alone to make those visible got "identifier not found" errors under
+// MSVC. <time.h> is the same standard C header on Windows (declared by the
+// Universal CRT) as on POSIX -- no translation needed, just the missing include.
+#include <time.h>
+// signal.h is used directly by product code (signals.cpp's SIGINT/SIGTERM/
+// SIGILL/SIGFPE handling, all ISO C signals MSVC's CRT defines) and, like
+// <time.h>, is part of the Linux branch's platform include set above but was
+// missing here.
+#include <signal.h>
+
 #endif
 
 #if defined PREDEF_PLATFORM_WINDOWS

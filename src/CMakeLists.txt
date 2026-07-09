@@ -109,8 +109,16 @@ target_link_options(ageland PRIVATE
     $<${ROTS_GNULIKE}:-rdynamic>
 )
 # _FILE_OFFSET_BITS is a glibc knob; harmless but meaningless off Linux/MSVC.
+# _CRT_SECURE_NO_WARNINGS (Phase 3 Task 5, MSVC bring-up): the game calls plain
+# localtime()/asctime()/strcpy()-family CRT functions all over (db.cpp, utility.cpp,
+# etc.); MSVC's CRT deprecates those in favor of the *_s() bounds-checked variants
+# and turns the deprecation into a hard warning (effectively an error under /W-heavy
+# configs) without this. A real localtime_s()/strcpy_s() conversion is out of scope
+# for this phase (Phase 5 owns warning hygiene per the plan) -- this only silences
+# the deprecation so the existing, behaviorally-unchanged calls compile.
 target_compile_definitions(ageland PRIVATE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:_FILE_OFFSET_BITS=64>
+    $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
 )
 
 # Per-configuration optimization (the common flags above apply to every config).
@@ -238,6 +246,7 @@ if(ROTS_BUILD_TESTS)
     target_compile_definitions(ageland_tests PRIVATE TESTING)
     target_compile_definitions(ageland_tests PRIVATE
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:_FILE_OFFSET_BITS=64>
+        $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
     )
     # gtest_discover_tests (below) runs the binary with WORKING_DIRECTORY set to the
     # repo root, not src/tests/ — so the characterization tests' plain relative

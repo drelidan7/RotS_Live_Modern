@@ -5,10 +5,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <sys/stat.h>
 
 // TDD coverage for Phase 2a Task 4: board persistence as JSON, plus the
 // one-time legacy-file boot converter.
@@ -30,6 +30,32 @@
 // (legacy_rent_fixture.h). The heading pointer field is filled with an
 // obviously-garbage, non-null value to prove the decoder truly discards it
 // rather than dereferencing it.
+//
+// LLP64 fixture decision (Phase 3 Task 5): every other legacy-fixture TU in this
+// test suite (objects_json_tests.cpp, pod_persistence_json_tests.cpp, etc.) guards
+// its native-struct fixture builders with `if (sizeof(long) != 4) GTEST_SKIP()`
+// alone, and that is CORRECT there -- their fixture structs (obj_file_elem,
+// rent_info, follower_file_elem, exploit_record, PKILL, crime_record_type) contain
+// only int/short/long/char[] members, so `long`'s width is the only thing that can
+// make their native size diverge from the frozen 32-bit on-disk size, and on
+// Windows x64 (LLP64) `long` stays 4 bytes just like on the 32-bit ABI.
+//
+// board_msginfo is different: it has a `char* heading` pointer member. Pointer
+// width is NOT tied to `long`'s width on every 64-bit ABI -- LP64 (Linux/macOS
+// x86-64) has 8-byte long AND 8-byte pointers, but LLP64 (Windows x64) has 4-byte
+// long and STILL 8-byte pointers. So `sizeof(long) != 4` alone under-skips on
+// Windows x64: it would evaluate false (matching the 32-bit case) even though
+// board_msginfo's real size there is 32 bytes, not the frozen 28, because the
+// pointer field alone grows by 4 bytes (plus this struct's field order needs no
+// extra padding on either width). Confirmed structurally (not by running a
+// Windows binary, none is available here): board_msginfo's fields are
+// int,int,ptr,int,int,int,int -- every field before and after the pointer is
+// naturally 4-byte aligned already, so the size delta is exactly (pointer_size -
+// 4) with no extra padding either width introduces. The fix is to check pointer
+// width directly rather than inferring it from `long`: every guard below is
+// `sizeof(long) != 4 || sizeof(void*) != 4`, which is also strictly more precise
+// than special-casing `_WIN64` (it generalizes to any future ABI where the two
+// diverge, and needs no platform macro).
 
 namespace {
 
@@ -112,8 +138,7 @@ private:
 
 bool file_exists(const std::string& path)
 {
-    struct stat info { };
-    return stat(path.c_str(), &info) == 0;
+    return std::filesystem::exists(path.c_str());
 }
 
 void write_file(const std::string& path, const std::string& contents)
@@ -149,7 +174,7 @@ TEST(BoardsJson, NativeRecordStructIs28BytesOn32Bit)
     // (a 64-bit build changes pointer/long width); pre-existing gap noticed
     // and closed incidentally while chasing full linux-x64 green for Phase
     // 2b Task 1 -- unrelated to the account-staged binary bridge itself.
-    if (sizeof(long) != 4)
+    if (sizeof(long) != 4 || sizeof(void*) != 4)
         GTEST_SKIP() << "board_msginfo's native size only matches the 32-bit on-disk layout; run in the i386 container";
 
     ASSERT_EQ(28u, sizeof(board_msginfo));
@@ -157,7 +182,7 @@ TEST(BoardsJson, NativeRecordStructIs28BytesOn32Bit)
 
 TEST(BoardsJson, DecodesLegacyRecordsFieldForFieldAndDiscardsHeadingPointer)
 {
-    if (sizeof(long) != 4)
+    if (sizeof(long) != 4 || sizeof(void*) != 4)
         GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
 
     const std::string bytes = build_two_message_board_bytes();
@@ -188,7 +213,7 @@ TEST(BoardsJson, DecodesLegacyRecordsFieldForFieldAndDiscardsHeadingPointer)
 
 TEST(BoardsJson, RejectsTruncatedFile)
 {
-    if (sizeof(long) != 4)
+    if (sizeof(long) != 4 || sizeof(void*) != 4)
         GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
 
     std::string bytes = build_two_message_board_bytes();
@@ -202,7 +227,7 @@ TEST(BoardsJson, RejectsTruncatedFile)
 
 TEST(BoardsJson, RejectsZeroHeadingLenAsCorrupt)
 {
-    if (sizeof(long) != 4)
+    if (sizeof(long) != 4 || sizeof(void*) != 4)
         GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
 
     // Matches the legacy loader's own corruption check: heading_len == 0 was
@@ -230,7 +255,7 @@ TEST(BoardsJson, RejectsZeroHeadingLenAsCorrupt)
 
 TEST(BoardsJson, JsonRoundTripPreservesAllFieldsIncludingAbsentMessage)
 {
-    if (sizeof(long) != 4)
+    if (sizeof(long) != 4 || sizeof(void*) != 4)
         GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
 
     const std::string bytes = build_two_message_board_bytes();
@@ -273,7 +298,7 @@ TEST(BoardsJson, DeserializeRejectsInconsistentHasMessageFalseWithNonEmptyMessag
 
 TEST(BoardsJson, ConvertLegacyBoardFileWritesJsonVerifiesAndRenamesLegacyToMigrated)
 {
-    if (sizeof(long) != 4)
+    if (sizeof(long) != 4 || sizeof(void*) != 4)
         GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory root;
@@ -302,7 +327,7 @@ TEST(BoardsJson, ConvertLegacyBoardFileWritesJsonVerifiesAndRenamesLegacyToMigra
 
 TEST(BoardsJson, ConvertLegacyBoardFileSkipsCorruptFileLeavingItUntouched)
 {
-    if (sizeof(long) != 4)
+    if (sizeof(long) != 4 || sizeof(void*) != 4)
         GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory root;
@@ -336,7 +361,7 @@ TEST(BoardsJson, ConvertLegacyBoardFileFailsCleanlyWhenFileMissing)
 // converting correctly).
 TEST(BoardsJson, GoldenRoundTripsByteStable)
 {
-    if (sizeof(long) != 4)
+    if (sizeof(long) != 4 || sizeof(void*) != 4)
         GTEST_SKIP() << "legacy fixtures encode the 32-bit ABI; run in the i386 container";
 
     const std::string bytes = build_two_message_board_bytes();

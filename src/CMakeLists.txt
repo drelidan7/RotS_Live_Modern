@@ -198,7 +198,26 @@ if(ROTS_BUILD_TESTS)
         tests/weapon_master_handler_tests.cpp
     )
 
-    find_package(GTest REQUIRED)
+    # GoogleTest provisioning (Phase 3 Task 6): Linux/macOS CI installs GTest
+    # as a system package (apt/brew) ahead of configure, so find_package()
+    # there is a fast no-op. windows-2022 CI has no such package manager entry
+    # for GTest (no system-wide vcpkg baseline in the runner image), so pull
+    # it via FetchContent there instead -- source-built against the exact
+    # same MSVC/CRT the game target uses (avoiding any ABI mismatch a
+    # pre-built binary package could introduce), and cached by the CI
+    # workflow's actions/cache step keyed on this file's hash so a cache hit
+    # skips re-downloading/rebuilding GoogleTest on every run.
+    if(WIN32)
+        include(FetchContent)
+        set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+        FetchContent_Declare(
+            googletest
+            URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+        )
+        FetchContent_MakeAvailable(googletest)
+    else()
+        find_package(GTest REQUIRED)
+    endif()
     include(GoogleTest)
 
     add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_TEST_SOURCES})

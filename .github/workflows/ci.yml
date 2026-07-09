@@ -82,7 +82,7 @@ jobs:
         run: cd src && ctest --preset macos-arm64
 
   windows-msvc:
-    name: Windows MSVC (allowed to fail until Phase 3)
+    name: Windows MSVC (allowed to fail until Phase 3 Task 7)
     runs-on: windows-2022
     continue-on-error: true
     timeout-minutes: 30
@@ -90,7 +90,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      # GoogleTest is fetched from source via CMake FetchContent for this preset
+      # only (see src/CMakeLists.txt) since the windows-2022 runner has no system
+      # GTest package; cache the FetchContent download+build so a cache hit skips
+      # both steps on unchanged CMakeLists.txt.
+      - name: Cache GoogleTest FetchContent
+        uses: actions/cache@v4
+        with:
+          path: build/windows-msvc/_deps
+          key: windows-msvc-gtest-${{ hashFiles('src/CMakeLists.txt') }}
       - name: Configure
         run: cd src; cmake --preset windows-msvc
       - name: Build
         run: cd src; cmake --build --preset windows-msvc
+      - name: Test
+        run: cd src; ctest --preset windows-msvc

@@ -31,12 +31,13 @@
 // in comm.cpp is wired to it yet — the raw BSD-socket calls (init_socket,
 // pnew_connection, nonblock, close_socket, process_input/process_output,
 // write_to_descriptor, the fd_set selects, gethostbyaddr) still assume POSIX
-// and do not compile here. Phase 3 Task 4 (Asio connection layer) replaces
-// those call sites with asio::ip::tcp::{acceptor,socket} and a resolver, at
-// which point Asio — not this header — owns the socket type/handle on every
-// platform, and the winsock includes below become an implementation detail
-// of that layer rather than something the rest of the codebase reaches for
-// directly.
+// and do not compile here. Phase 3 Task 4 (hand-rolled, platform-gated
+// networking layer — no third-party libraries, per the 2026-07-09 plan
+// amendment) gives comm.cpp a thin shim over the BSD-sockets/Winsock split
+// (WSAStartup/WSACleanup lifetime, closesocket vs close, ioctlsocket vs
+// fcntl O_NONBLOCK, send/recv vs read/write on sockets, WSA* error-code
+// mapping); the select() pulse loop itself is portable across both. This
+// header supplies the platform includes and the SocketType handle below.
 //
 // WIN32_LEAN_AND_MEAN keeps <windows.h> (pulled in transitively by
 // <winsock2.h>) from dragging in most of the Win32 API surface; winsock2.h

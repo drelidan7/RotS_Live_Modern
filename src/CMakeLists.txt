@@ -73,14 +73,6 @@ add_executable(ageland ${ROTS_SERVER_SOURCES})
 target_compile_features(ageland PRIVATE cxx_std_17)
 set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 
-# Standalone Asio (vendored under ../third_party/asio — see that directory's
-# README.md for the pinned version/provenance). SYSTEM: Asio's own headers
-# aren't held to this project's -Wall/-Wextra. ASIO_STANDALONE keeps Asio from
-# ever probing for Boost.
-set(ROTS_ASIO_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/asio/include")
-target_include_directories(ageland SYSTEM PRIVATE "${ROTS_ASIO_INCLUDE_DIR}")
-target_compile_definitions(ageland PRIVATE ASIO_STANDALONE)
-
 # --- Flag parity with src/Makefile (behavior-affecting — keep in sync) --------
 # The historical flags, now split along two axes:
 #   * ROTS_LEGACY_32BIT gates -m32 (compile AND link).
@@ -187,7 +179,6 @@ if(ROTS_BUILD_TESTS)
         tests/test_random_utils.cpp
         tests/test_random_utils_tests.cpp
         tests/weapon_master_handler_tests.cpp
-        tests/asio_smoke_tests.cpp
     )
 
     find_package(GTest REQUIRED)
@@ -219,9 +210,6 @@ if(ROTS_BUILD_TESTS)
     target_compile_options(ageland_tests PRIVATE
         $<${ROTS_GNULIKE}:-iquote ${CMAKE_CURRENT_SOURCE_DIR} -iquote ${CMAKE_CURRENT_SOURCE_DIR}/tests>
     )
-    # Standalone Asio, same vendored copy/rationale as the ageland target above.
-    target_include_directories(ageland_tests SYSTEM PRIVATE "${ROTS_ASIO_INCLUDE_DIR}")
-    target_compile_definitions(ageland_tests PRIVATE ASIO_STANDALONE)
     target_compile_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
     )

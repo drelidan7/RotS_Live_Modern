@@ -17,9 +17,6 @@
 # (append -Wall to CXXFLAGS to see them). User CPPFLAGS/CXXFLAGS/LDFLAGS/LIBS are
 # appended to — never replace — the required flags.
 #
-# Asio (standalone, non-Boost) is vendored under ../third_party/asio/include —
-# see that directory's README.md for the pinned version/provenance. -I it and
-# define ASIO_STANDALONE so Asio never probes for Boost headers.
 
 CXX      ?= g++
 BIN       = ../bin/ageland
@@ -39,10 +36,7 @@ REQ_LDFLAGS  = -m32 -rdynamic
 # deleting/renaming one never breaks the build.
 DEPFLAGS = -MMD -MP
 
-# Standalone Asio (vendored; see ../third_party/asio/README.md).
-ASIOFLAGS = -I../third_party/asio/include -DASIO_STANDALONE
-
-ALL_CPPFLAGS = $(DEPFLAGS) $(ASIOFLAGS) $(CPPFLAGS)
+ALL_CPPFLAGS = $(DEPFLAGS) $(CPPFLAGS)
 ALL_CXXFLAGS = $(REQ_CXXFLAGS) $(CXXFLAGS)
 ALL_LDFLAGS  = $(REQ_LDFLAGS) $(LDFLAGS)
 

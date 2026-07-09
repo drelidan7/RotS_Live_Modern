@@ -1130,7 +1130,11 @@ void Crash_follower_load(struct char_data* ch, const objects_json::ObjectSaveDat
 
         case FOL_GUARDIAN: // and guardian
         {
-            extern int scale_guardian(int, const char_data*, char_data*, bool);
+            // void, matching mystic.cpp's definition. The old `extern int`
+            // return type linked anyway on GCC/Clang (Itanium mangling omits
+            // the return type), but MSVC encodes it -- LNK2019 there
+            // (Phase 3 Task 6). The call ignores the result either way.
+            extern void scale_guardian(int, const char_data*, char_data*, bool);
             SET_BIT(mob->specials.affected_by, AFF_CHARM);
             SET_BIT(MOB_FLAGS(mob), MOB_PET);
             int guardian_type = get_guardian_type(ch->player.race, mob);

@@ -230,7 +230,10 @@ void advance_level_prof(int prof, char_data* character)
                 int guardian_number = get_guardian_type(race_number, follower->follower);
                 if (guardian_number != INVALID_GUARDIAN) {
                     bool restore_guardian_health = false;
-                    extern int scale_guardian(int, const char_data*, char_data*, bool);
+                    // void, matching mystic.cpp's definition (see objsave.cpp's
+                    // identical fix -- MSVC mangles the return type, GCC/Clang
+                    // don't; Phase 3 Task 6).
+                    extern void scale_guardian(int, const char_data*, char_data*, bool);
                     scale_guardian(guardian_number, character, follower->follower, restore_guardian_health);
                     break;
                 }

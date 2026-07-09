@@ -54,12 +54,17 @@ extern int r_mortal_start_room[];
 extern int r_immort_start_room;
 extern struct index_data* mob_index;
 extern int armor_absorb(struct obj_data* obj);
-extern const int average_mob_life;
+// Non-const, matching config.cpp's mutable `int average_mob_life = 40`
+// definition exactly. The old `extern const int` declaration linked anyway on
+// GCC/Clang (Itanium ABI variable mangling carries no const qualifier), but
+// MSVC's decorated names do, making the mismatch a hard LNK2001 there
+// (Phase 3 Task 6). Same below for the two corpse-time knobs.
+extern int average_mob_life;
 extern skill_data skills[];
 extern int max_race_str[];
 extern bool weapon_willpower_damage(char_data* ch, char_data* victim);
 extern void check_break_prep(struct char_data*);
-extern const int max_npc_corpse_time, max_pc_corpse_time;
+extern int max_npc_corpse_time, max_pc_corpse_time;
 extern char* pc_star_types[];
 
 /* External procedures */

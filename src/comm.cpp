@@ -722,7 +722,11 @@ void msdp_update()
 
         auto sector_type = world[desc->character->in_room].sector_type;
         auto weather_type = weather_info.sky[sector_type];
-        extern char* weather_messages[8][13];
+        // const char*, matching weather.cpp's definition exactly (MSVC's
+        // decorated names encode the element type, so the old non-const
+        // declaration was a hard LNK2001 there; GCC/Clang linked it silently
+        // -- Phase 3 Task 6).
+        extern const char* weather_messages[8][13];
 
         if (OUTSIDE(desc->character)) {
             MSDPSetString(desc, eMDSP_WEATHER, weather_messages[weather_type + 2][sector_type]);

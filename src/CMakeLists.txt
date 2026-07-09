@@ -108,6 +108,11 @@ target_link_options(ageland PRIVATE
     # -rdynamic: GNU spelling; the clang driver translates it on macOS. MSVC: none.
     $<${ROTS_GNULIKE}:-rdynamic>
 )
+# ws2_32: the Winsock2 import library backing every socket call rots_net.cpp /
+# comm.cpp make on Windows (WSAStartup, socket/bind/listen/accept, send/recv,
+# select, ...). POSIX needs no equivalent (BSD sockets live in libc). Not a
+# third-party library -- it is the OS's own socket API, same standing as libc.
+target_link_libraries(ageland PRIVATE $<$<PLATFORM_ID:Windows>:ws2_32>)
 # _FILE_OFFSET_BITS is a glibc knob; harmless but meaningless off Linux/MSVC.
 # _CRT_SECURE_NO_WARNINGS (Phase 3 Task 5, MSVC bring-up): the game calls plain
 # localtime()/asctime()/strcpy()-family CRT functions all over (db.cpp, utility.cpp,
@@ -290,7 +295,10 @@ if(ROTS_BUILD_TESTS)
     target_compile_options(ageland_tests PRIVATE
         $<$<AND:${ROTS_GNULIKE},${ROTS_X86}>:-msse2 -mfpmath=sse>
     )
-    target_link_libraries(ageland_tests PRIVATE GTest::gtest)
+    # ws2_32: same Winsock2 import library rationale as the ageland target
+    # above (the tests link the full server sources, plus
+    # startup_options_tests.cpp's own loopback socket fixtures).
+    target_link_libraries(ageland_tests PRIVATE GTest::gtest $<$<PLATFORM_ID:Windows>:ws2_32>)
     # Mirror the compile-time -m32 so a multilib host building legacy tests links 32-bit too.
     target_link_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>

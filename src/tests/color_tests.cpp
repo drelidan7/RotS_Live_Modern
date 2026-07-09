@@ -10,7 +10,10 @@
 
 void clear_char(struct char_data* ch, int mode);
 ACMD(do_color);
-extern char* command[];
+// const char*, matching interpre.cpp's definition exactly (MSVC's decorated
+// names encode the element type, so a mismatched extern is a hard LNK2001
+// there; GCC/Clang linked it silently -- Phase 3 Task 6).
+extern const char* command[];
 extern command_info cmd_info[];
 void assign_command_pointers(void);
 int old_search_block(char* argument, int begin, unsigned int length, const char** list, int mode);

@@ -76,7 +76,12 @@ extern char* where[];
 extern char* color_liquid[];
 extern char* fullness[];
 extern char* connected_types[];
-extern char* command[];
+// const char*, matching interpre.cpp's definition exactly. The old
+// `extern char* command[]` mismatch linked anyway on GCC/Clang (Itanium ABI
+// variable mangling carries no type), but MSVC encodes the element type in
+// the decorated name, so the mismatched declaration is a hard LNK2001 there
+// (Phase 3 Task 6).
+extern const char* command[];
 extern char* prof_abbrevs[];
 extern char* race_abbrevs[];
 extern char* room_bits[];

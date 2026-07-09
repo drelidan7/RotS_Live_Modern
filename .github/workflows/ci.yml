@@ -103,5 +103,9 @@ jobs:
         run: cd src; cmake --preset windows-msvc
       - name: Build
         run: cd src; cmake --build --preset windows-msvc
+      # -j4: each gtest_discover_tests case runs as its own isolated process, so
+      # parallel execution is safe (no shared in-process global state) and keeps
+      # the full ~640-test suite comfortably inside the 30-minute job wall on the
+      # 4-core windows-2022 runner.
       - name: Test
-        run: cd src; ctest --preset windows-msvc
+        run: cd src; ctest --preset windows-msvc -j4

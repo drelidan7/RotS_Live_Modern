@@ -115,3 +115,7 @@ cmake_test_discovery*.json
 
 # ctags index (regenerate locally with `ctags -R`; not checked in)
 tags
+
+# macOS
+.DS_Store
+**/.DS_Store

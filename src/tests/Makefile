@@ -24,9 +24,9 @@ LDFLAGS = -lgtest -lpthread
 
 OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o char_utils.o char_utils_combat.o clerics.o clock.o color.o combat_manager.o \
-	comm.o config.o consts.o convert_exploits.o convert_plrobjs.o db.o delayed_command_interpreter.o fight.o graph.o handler.o interpre.o environment_utils.o account_management.o character_json.o exploits_json.o json_utils.o objects_json.o \
+	comm.o config.o consts.o convert_exploits.o convert_plrobjs.o crashsave_schedule.o db.o delayed_command_interpreter.o fight.o graph.o handler.o interpre.o environment_utils.o account_cache.o account_management.o character_json.o exploits_json.o json_utils.o objects_json.o \
 	limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objsave.o olog_hai.o\
-	pkill.o profs.o protocol.o ranger.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
+	pkill.o player_file_finalize.o profs.o protocol.o ranger.o save_benchmark.o savebench.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o  \
 	wild_fighting_handler.o weather.o zone.o rots_rng.o rots_crypt.o
 
@@ -35,6 +35,21 @@ OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 
 account_management.o : ../account_management.cpp ../account_management.h ../account_management_types.h ../account_management_identity.h ../account_management_storage.h ../account_management_assets.h ../account_management_migration.h ../account_management_presentation.h ../account_management_internal.cpp ../account_management_identity.cpp ../account_management_storage.cpp ../account_management_assets.cpp ../account_management_migration.cpp ../account_management_presentation.cpp ../json_utils.h
 	$(CXX) -c $(CXXFLAGS) ../account_management.cpp
+
+account_cache.o : ../account_cache.cpp ../account_cache.h ../account_management.h
+	$(CXX) -c $(CXXFLAGS) ../account_cache.cpp
+
+crashsave_schedule.o : ../crashsave_schedule.cpp ../crashsave_schedule.h
+	$(CXX) -c $(CXXFLAGS) ../crashsave_schedule.cpp
+
+player_file_finalize.o : ../player_file_finalize.cpp ../player_file_finalize.h
+	$(CXX) -c $(CXXFLAGS) ../player_file_finalize.cpp
+
+save_benchmark.o : ../save_benchmark.cpp ../save_benchmark.h ../account_cache.h ../account_management.h ../character_json.h ../db.h ../stopwatch.h ../structs.h
+	$(CXX) -c $(CXXFLAGS) ../save_benchmark.cpp
+
+savebench.o : ../savebench.cpp ../savebench.h ../save_benchmark.h ../account_management.h ../comm.h ../db.h ../structs.h ../utils.h
+	$(CXX) -c $(CXXFLAGS) ../savebench.cpp
 
 character_json.o : ../character_json.cpp ../character_json.h ../json_utils.h ../structs.h
 	$(CXX) -c $(CXXFLAGS) ../character_json.cpp
@@ -211,7 +226,7 @@ rots_crypt.o : ../rots_crypt.cpp ../rots_crypt.h
 	$(CXX) -c $(CXXFLAGS) ../rots_crypt.cpp
 
 
-SRCS = account_management_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp color_tests.cpp convert_exploits_tests.cpp convert_plrobjs_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_utils_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_crypt_tests.cpp rots_rng_tests.cpp shapemob_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
+SRCS = account_management_tests.cpp account_cache_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp color_tests.cpp convert_exploits_tests.cpp convert_plrobjs_tests.cpp crashsave_schedule_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_perf_tests.cpp json_utils_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp player_finalize_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_crypt_tests.cpp rots_rng_tests.cpp save_benchmark_tests.cpp shapemob_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 EXECUTABLE = ../../bin/tests
@@ -229,6 +244,11 @@ convert_exploits_tests.o : ../convert_exploits.h ../exploits_json.h
 boards_json_tests.o : ../boards.h
 mail_json_tests.o : ../mail.h
 pod_persistence_json_tests.o : ../pkill.h ../db.h ../exploits_json.h ../account_management.h
+account_cache_tests.o : ../account_cache.h ../account_management.h
+crashsave_schedule_tests.o : ../crashsave_schedule.h
+json_perf_tests.o : ../json_utils.h ../character_json.h
+player_finalize_tests.o : ../player_file_finalize.h
+save_benchmark_tests.o : ../save_benchmark.h ../account_cache.h ../account_management.h ../character_json.h
 
 tests: $(EXECUTABLE)
 

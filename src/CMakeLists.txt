@@ -49,18 +49,18 @@ endif()
 # call rots_crypt() instead of libc crypt() so credential hashes are byte-identical
 # on every platform, not just glibc.
 set(ROTS_SERVER_SOURCES
-    account_management.cpp act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
+    account_cache.cpp account_management.cpp act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
     boards.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
     clock.cpp color.cpp comm.cpp config.cpp convert_exploits.cpp convert_plrobjs.cpp
-    consts.cpp db.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
+    consts.cpp crashsave_schedule.cpp db.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
     json_utils.cpp limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     mystic.cpp obj2html.cpp object_utils.cpp objects_json.cpp objsave.cpp
-    olog_hai.cpp pkill.cpp profs.cpp protocol.cpp
-    ranger.cpp rots_crypt.cpp rots_rng.cpp script.cpp shapemdl.cpp shapemob.cpp
+    olog_hai.cpp pkill.cpp player_file_finalize.cpp profs.cpp protocol.cpp
+    ranger.cpp rots_crypt.cpp rots_rng.cpp save_benchmark.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
@@ -135,6 +135,7 @@ if(ROTS_BUILD_TESTS)
 
     # Explicit list, matching the style above — no file(GLOB).
     set(ROTS_TEST_SOURCES
+        tests/account_cache_tests.cpp
         tests/account_management_assets_header_compile.cpp
         tests/account_management_identity_header_compile.cpp
         tests/account_management_migration_header_compile.cpp
@@ -153,12 +154,14 @@ if(ROTS_BUILD_TESTS)
         tests/color_tests.cpp
         tests/convert_exploits_tests.cpp
         tests/convert_plrobjs_tests.cpp
+        tests/crashsave_schedule_tests.cpp
         tests/damage_tests.cpp
         tests/db_loader_tests.cpp
         tests/exploits_json_tests.cpp
         tests/fight_proc_tests.cpp
         tests/gtest_main.cpp
         tests/interpre_account_menu_tests.cpp
+        tests/json_perf_tests.cpp
         tests/json_utils_tests.cpp
         tests/mage_tests.cpp
         tests/mail_json_tests.cpp
@@ -169,10 +172,12 @@ if(ROTS_BUILD_TESTS)
         tests/objects_json_tests.cpp
         tests/objsave_json_tests.cpp
         tests/olog_hai_tests.cpp
+        tests/player_finalize_tests.cpp
         tests/pod_persistence_json_tests.cpp
         tests/protocol_tests.cpp
         tests/rots_crypt_tests.cpp
         tests/rots_rng_tests.cpp
+        tests/save_benchmark_tests.cpp
         tests/shapemob_tests.cpp
         tests/spell_pa_tests.cpp
         tests/startup_options_tests.cpp

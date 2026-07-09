@@ -1679,7 +1679,13 @@ int write_to_descriptor(SocketType desc, char* txt)
     total = strlen(txt);
     sofar = 0;
 
-    if (desc <= 0) {
+    // is_valid_socket(), not the historical `desc <= 0`: SocketType is
+    // unsigned (SOCKET) on Windows, where the sentinel INVALID_SOCKET is a
+    // huge all-ones value that a `<= 0` comparison would never catch (Phase 3
+    // Task 4 finding, fixed here in Task 6). POSIX behavior is unchanged --
+    // kInvalidSocket is -1 there, and no real caller ever passes fd 0 (always
+    // already stdin), so this rejects exactly the same descriptors as before.
+    if (!rots_net::is_valid_socket(desc)) {
         return 0;
     }
 

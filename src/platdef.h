@@ -112,6 +112,22 @@
 #define TELOPT_NAWS 31
 #endif
 
+// S_ISDIR/S_ISREG (Phase 3 Task 6): account_management.cpp's directory/bucket
+// scanning uses these POSIX st_mode-testing macros against a plain
+// stat()/struct stat from <sys/stat.h>, which -- unlike the macros themselves
+// -- MSVC's CRT does provide (in reduced form, same precedent as db.cpp's
+// open_secure_temp_output_file). MSVC's <sys/stat.h> defines the underlying
+// _S_IFDIR/_S_IFREG/_S_IFMT bit values (and, via its "oldnames" compatibility
+// layer, S_IFDIR/S_IFREG/S_IFMT aliases for them) but never the ISO-C/POSIX
+// S_ISDIR()/S_ISREG() testing macros that read them -- guarded with #ifndef
+// so this is a no-op if a future CRT/toolchain ever does define them.
+#ifndef S_ISDIR
+#define S_ISDIR(mode) (((mode) & S_IFMT) == S_IFDIR)
+#endif
+#ifndef S_ISREG
+#define S_ISREG(mode) (((mode) & S_IFMT) == S_IFREG)
+#endif
+
 #endif
 
 #if defined PREDEF_PLATFORM_WINDOWS

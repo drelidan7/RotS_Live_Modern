@@ -4,6 +4,7 @@
 #include "exploits_json.h"
 #include "json_utils.h"
 #include "objects_json.h"
+#include "platdef.h"
 #include "rots_crypt.h"
 #include "utils.h"
 
@@ -14,8 +15,20 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+// <sys/wait.h>/<unistd.h> back the fork()/pipe()/waitpid()-based sendmail
+// invocation below (send_email_message) -- POSIX-only, no Windows equivalent
+// (CreateProcess is a fundamentally different process model; see
+// send_email_message's Windows branch). fcntl.h/sys/stat.h above stay
+// unconditional: both exist, in reduced form, on the Windows CRT too (same
+// precedent as db.cpp's open_secure_temp_output_file, Phase 3 Task 5).
+#if defined PREDEF_PLATFORM_LINUX
 #include <sys/wait.h>
 #include <unistd.h>
+#elif defined PREDEF_PLATFORM_WINDOWS
+#include <bcrypt.h>
+#pragma comment(lib, "bcrypt.lib")
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -133,9 +146,27 @@ namespace {
         return output.str();
     }
 
+    // Credential salts and email-verification codes both flow through this --
+    // it must be a real CSPRNG, not merely "looks random" (account::rots_rng is
+    // the game's *gameplay* PRNG, seeded and replayed for characterization
+    // goldens; reusing it here would make credential material predictable from
+    // the same seed, exactly the property a CSPRNG must not have).
     std::string read_secure_random_bytes(size_t byte_count)
     {
         std::string bytes(byte_count, '\0');
+#if defined PREDEF_PLATFORM_WINDOWS
+        // BCryptGenRandom w/ BCRYPT_USE_SYSTEM_PREFERRED_RNG: the modern
+        // (Vista+) Windows CSPRNG entry point, equivalent to reading
+        // /dev/urandom -- no algorithm handle to open/close since the system-
+        // preferred-RNG flag bypasses that (per MSDN, hAlgorithm must be
+        // nullptr when this flag is set).
+        const NTSTATUS status = BCryptGenRandom(nullptr, reinterpret_cast<PUCHAR>(bytes.data()),
+            static_cast<ULONG>(byte_count), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+        if (status != 0) // STATUS_SUCCESS
+            return "";
+
+        return bytes;
+#else
         FILE* file = std::fopen("/dev/urandom", "r");
         if (file == nullptr)
             return "";
@@ -146,6 +177,7 @@ namespace {
             return "";
 
         return bytes;
+#endif
     }
 
     std::string encode_salt(const std::string& random_bytes)
@@ -295,6 +327,26 @@ namespace {
 
     bool send_email_message(const std::string& recipient, const std::string& subject, const std::string& body, std::string* error_message)
     {
+#if defined PREDEF_PLATFORM_WINDOWS
+        // Documented Windows operational gap (Phase 3 Task 6): email delivery
+        // here shells out to `sendmail` via fork()/pipe()/waitpid()/execvp(),
+        // a process model Windows doesn't have -- CreateProcess + anonymous
+        // pipes differs enough (right down to how a child inherits a pipe
+        // handle) that a 1:1 port would be new, unreviewed process-spawning
+        // code, not a mechanical translation. Email delivery cannot work on a
+        // CI runner anyway (no MTA installed anywhere in this repo's CI
+        // matrix), so this mirrors the existing "documented operational gap"
+        // pattern used for USR1/USR2 admin-reload signals (signals.cpp) and
+        // open_secure_temp_output_file (db.cpp): fail cleanly and say why,
+        // rather than rush an unreviewed CreateProcess design. Parameters are
+        // accepted but unused on this branch so every caller's call site
+        // stays identical on every platform.
+        (void)recipient;
+        (void)subject;
+        (void)body;
+        set_error(error_message, "Email delivery via sendmail is not available on Windows in this phase (Phase 3 Task 6 documented gap); a reviewed CreateProcess-based mail-delivery design has not landed yet.");
+        return false;
+#else
         const std::string sendmail_command = configured_sendmail_command();
         std::vector<std::string> sendmail_arguments;
         if (!split_command_arguments(sendmail_command, &sendmail_arguments, error_message))
@@ -384,6 +436,7 @@ namespace {
 
         set_error(error_message, "");
         return true;
+#endif
     }
 
     bool send_verification_email(const AccountData& account, const std::string& verification_code, std::string* error_message)

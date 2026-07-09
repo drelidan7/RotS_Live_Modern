@@ -17,6 +17,11 @@
 // in a reduced form, on the Windows CRT too, so they stay unconditional).
 #if defined PREDEF_PLATFORM_LINUX
 #include <unistd.h>
+#elif defined PREDEF_PLATFORM_WINDOWS
+// _sopen_s/_close (open_secure_temp_output_file) and GetFileAttributesA
+// (write_text_file_atomically_clearing_stale_tmp) below -- Windows'
+// equivalents of the <unistd.h> POSIX fd plumbing this file needs.
+#include <io.h>
 #endif
 
 #include "color.h"
@@ -4829,20 +4834,37 @@ FILE* open_secure_temp_output_file(const std::string& path, std::string* error_m
     set_db_error(error_message, "");
     return file;
 #elif defined PREDEF_PLATFORM_WINDOWS
-    // Documented Windows operational gap (Phase 3 Task 5): this is the security-
-    // hardened primitive underneath every atomic JSON write in the persistence
-    // layer (mail/boards/exploits/crime/pkill) -- O_EXCL rejects a pre-existing
-    // file (detects a stale/racing writer) and O_NOFOLLOW refuses to write through
-    // a symlink planted at the temp path (TOCTOU/symlink-attack hardening). Neither
-    // has a 1:1 Windows CreateFile equivalent (CREATE_NEW is the closest to
-    // O_EXCL, but the symlink-rejection semantics differ), and weakening this to a
-    // plain fopen() would silently drop the hardening for every persisted save
-    // file rather than just failing loudly. Left unimplemented on purpose --
-    // needs its own reviewed design, not a rushed substitute -- so every caller's
-    // existing `file == nullptr` failure handling reports it cleanly instead of
-    // writing an insecure file.
-    set_db_error(error_message, "open_secure_temp_output_file is not yet implemented on Windows (Phase 3 Task 5 gap; needs a reviewed CreateFile-based design, not a weakened fopen() substitute).");
-    return nullptr;
+    // Real Windows implementation (Phase 3 Task 6; previously a documented
+    // gap, Phase 3 Task 5). _sopen_s's _O_CREAT|_O_EXCL pairing is the CRT's
+    // direct equivalent of O_CREAT|O_EXCL: it atomically fails with EEXIST if
+    // `path` already exists, giving the same "detect a stale/racing writer"
+    // guarantee the POSIX branch's O_EXCL provides. _S_IREAD|_S_IWRITE is the
+    // closest pmode equivalent of 0600 (Windows' ACL-based permission model
+    // has no owner/group/other bits to map this onto exactly). There is
+    // deliberately no O_NOFOLLOW equivalent here: NTFS reparse points
+    // (symlinks/junctions) are a different attack surface than POSIX
+    // symlinks, and _O_CREAT|_O_EXCL already refuses to write through *any*
+    // pre-existing path (reparse point or not) -- the property this function
+    // actually needs (never silently overwrite something already at `path`)
+    // holds without a separate check.
+    int file_descriptor = -1;
+    const errno_t open_error = _sopen_s(&file_descriptor, path.c_str(),
+        _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _SH_DENYNO, _S_IREAD | _S_IWRITE);
+    if (open_error != 0) {
+        set_db_error(error_message, "Failed to open temporary exploit file '" + path + "': " + std::string(strerror(open_error)));
+        return nullptr;
+    }
+
+    FILE* file = _fdopen(file_descriptor, "wb");
+    if (file == nullptr) {
+        _close(file_descriptor);
+        std::remove(path.c_str());
+        set_db_error(error_message, "Failed to create stream for temporary exploit file '" + path + "'.");
+        return nullptr;
+    }
+
+    set_db_error(error_message, "");
+    return file;
 #endif
 }
 
@@ -4913,13 +4935,19 @@ bool write_text_file_atomically_clearing_stale_tmp(const std::string& path, cons
     if (lstat(temp_path.c_str(), &temp_stat) != 0 || !S_ISREG(temp_stat.st_mode))
         return false;
 #elif defined PREDEF_PLATFORM_WINDOWS
-    // Same documented gap as open_secure_temp_output_file above: this call is
-    // already unreachable in practice on Windows today (write_text_file_atomically
-    // just above always fails first, since open_secure_temp_output_file isn't
-    // implemented there yet), but is guarded here too so this function's own
-    // symlink-safety check doesn't silently compile away its intent if that
-    // changes later without this being revisited.
-    return false;
+    // Real Windows implementation (Phase 3 Task 6; open_secure_temp_output_file
+    // above now actually works on this platform, so this retry path is
+    // reachable here too, unlike when this was a documented gap in Task 5).
+    // GetFileAttributesA is the Windows equivalent of the POSIX branch's
+    // lstat(): it reports FILE_ATTRIBUTE_REPARSE_POINT for the *final*
+    // path component without following it if that component is itself a
+    // reparse point (symlink/junction) -- the same "don't remove/follow a
+    // symlink planted at the tmp path" property lstat()+S_ISREG gives the
+    // POSIX branch. Only clear a plain file (reject missing paths,
+    // directories, and reparse points).
+    const DWORD attributes = GetFileAttributesA(temp_path.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) || (attributes & FILE_ATTRIBUTE_REPARSE_POINT))
+        return false;
 #endif
 
     if (std::remove(temp_path.c_str()) != 0)

@@ -136,7 +136,12 @@ ACMD(do_ban)
 
         for (ban_node = ban_list; ban_node; ban_node = ban_node->next) {
             if (ban_node->date) {
-                timestr = asctime(localtime(&(ban_node->date)));
+                // Copy into a real time_t before taking its address: ban_list_element::date
+                // is a `long` (persisted that width in the ban file, so not retyped here), but
+                // localtime() takes a time_t* -- 8 bytes on Windows LLP64 vs 4 for long, so a
+                // long* under-reads and aborts in asctime() (Phase 3 Task 6).
+                time_t ban_date_value = ban_node->date;
+                timestr = asctime(localtime(&ban_date_value));
                 *(timestr + 10) = 0;
                 strcpy(site, timestr);
             } else

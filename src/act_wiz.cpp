@@ -1810,9 +1810,11 @@ ACMD(do_wizlock)
 
 ACMD(do_date)
 {
-    long ct;
+    // time_t (not long): localtime() takes a time_t*, 8 bytes on Windows LLP64
+    // vs 4 for long -- a long* under-reads and aborts in asctime() (Phase 3 Task 6).
+    time_t ct;
     char* tmstr;
-    extern long boot_time;
+    extern time_t boot_time;
 
     if (IS_NPC(ch))
         return;
@@ -1832,7 +1834,7 @@ ACMD(do_uptime)
     long uptime;
     int d, h, m;
 
-    extern long boot_time;
+    extern time_t boot_time;
     extern char* lastdeath;
 
     if (IS_NPC(ch))

@@ -346,7 +346,7 @@ void board_info_type::write_message(struct char_data* ch, char* arg, int num)
 {
     char* tmstr;
     int len;
-    long ct;
+    time_t ct; // time_t (not long) for localtime() on Windows LLP64 -- Phase 3 Task 6
     char buf[MAX_INPUT_LENGTH], buf2[MAX_INPUT_LENGTH];
 
     if (GET_LEVEL(ch) < WRITE_LVL) {

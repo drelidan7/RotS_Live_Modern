@@ -1171,7 +1171,13 @@ void log(const char* str)
     //*(time_string + std::strlen(time_string) - 1) = '\0';
     // fprintf(stderr, "%-19.19s :: %s\n", time_string, str);
 
-    long ct;
+    // time_t (not long): localtime()/time() take a time_t*, which is 8 bytes on
+    // Windows LLP64 while `long` is only 4 -- passing a `long*` made localtime()
+    // read 4 bytes of adjacent stack as the high word, yielding an out-of-range
+    // time, a null return, and an asctime(nullptr) abort (Phase 3 Task 6 crash,
+    // STATUS_STACK_BUFFER_OVERRUN). Identical width to the old `long` on both the
+    // 32-bit legacy build and 64-bit POSIX, so this only changes Windows behavior.
+    time_t ct;
     char* tmstr;
     ct = time(0);
     tmstr = asctime(localtime(&ct));
@@ -1185,7 +1191,11 @@ void mudlog(char* str, char type, sh_int level, byte file)
     extern struct descriptor_data* descriptor_list;
     struct descriptor_data* i;
     char* tmp;
-    long ct;
+    // time_t (not long): see log() above -- a `long*` passed to localtime() is
+    // only 4 of the 8 bytes it reads on Windows LLP64, aborting in asctime().
+    // This is the mudlog on nearly every logging path, so the bug crashed ~60
+    // tests (Phase 3 Task 6).
+    time_t ct;
     char tp;
 
     ct = time(0);

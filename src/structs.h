@@ -2029,7 +2029,7 @@ struct descriptor_data {
     int connected; /* mode of 'connectedness'		*/
     //   int	wait;			/* wait for how many loops    	*/
     int desc_num; /* unique num assigned to desc		*/
-    long login_time; /* when the person connected		*/
+    time_t login_time; /* when the person connected; time_t (not long) so &login_time is a valid time_t* for localtime() on Windows LLP64 -- Phase 3 Task 6 */
     char* showstr_head; /* for paging through texts		*/
     char* showstr_point; /*		-			*/
     char** str; /* for the modify-str system		*/

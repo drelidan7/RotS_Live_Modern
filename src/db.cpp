@@ -112,7 +112,7 @@ int no_mail = 0; /* mail disabled?		*/
 int mini_mud = 0; /* mini-mud mode?		*/
 int new_mud = 0;
 int no_rent_check = 0; /* skip rent check on boot?	*/
-long boot_time = 0; /* time of mud boot		*/
+time_t boot_time = 0; /* time of mud boot; time_t (not long) so &boot_time is a valid time_t* for localtime() on Windows LLP64 -- Phase 3 Task 6 */
 int restrict = 0; /* level of game restriction	*/
 int boot_mode = 0; /* local var, to let know that reboot goes on */
 extern int r_mortal_start_room[]; /* rnum of mortal start room	*/
@@ -5176,7 +5176,8 @@ void add_exploit_record(int recordtype, char_data* victim, int iIntParam,
     struct char_data* killer;
     struct exploit_record exploitrec;
     int iFirstDeath = 0;
-    long ct;
+    // time_t (not long) for localtime() on Windows LLP64 -- Phase 3 Task 6.
+    time_t ct;
     char* tmstr;
 
     if (IS_NPC(victim) || (GET_LEVEL(victim) >= LEVEL_IMMORT))

@@ -27,7 +27,9 @@
 #endif
 
 #include <assert.h>
+#include <cerrno>
 #include <cstdarg>
+#include <cstdio>
 #include <cstring>
 #include <ctype.h>
 #include <signal.h>
@@ -1079,6 +1081,43 @@ int rots_asprintf(char** out, const char* fmt, ...)
 
     *out = buffer;
     return written;
+}
+
+// rots_rename_replace: POSIX-replace-semantics rename on every platform (see
+// platform_compat.h for the full rationale -- std::rename() refuses to
+// overwrite an existing destination on Windows, breaking every temp+rename
+// atomic write on the second save of any file).
+int rots_rename_replace(const char* from, const char* to)
+{
+#if defined PREDEF_PLATFORM_WINDOWS
+    // MoveFileExA + MOVEFILE_REPLACE_EXISTING is the Win32 primitive with
+    // exactly POSIX rename()'s replace behavior (atomic on NTFS same-volume
+    // moves, which every persistence-layer temp file is -- the temp lives
+    // next to its final path by construction).
+    if (MoveFileExA(from, to, MOVEFILE_REPLACE_EXISTING)) {
+        return 0;
+    }
+
+    // Map the common failure causes onto errno so the call sites' existing
+    // strerror(errno)-based error messages describe the real problem instead
+    // of whatever stale errno was lying around.
+    switch (GetLastError()) {
+    case ERROR_FILE_NOT_FOUND:
+    case ERROR_PATH_NOT_FOUND:
+        errno = ENOENT;
+        break;
+    case ERROR_ACCESS_DENIED:
+    case ERROR_SHARING_VIOLATION:
+        errno = EACCES;
+        break;
+    default:
+        errno = EIO;
+        break;
+    }
+    return -1;
+#else
+    return std::rename(from, to);
+#endif
 }
 
 /* returns: 0 if equal, 1 if arg1 > arg2, -1 if arg1 < arg2  */

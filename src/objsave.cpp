@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "platform_compat.h"
 #include "char_utils.h"
 #include "comm.h"
 #include "db.h"
@@ -317,7 +318,7 @@ bool write_player_objects_json(const char* player_name, const objects_json::Obje
         return false;
     }
 
-    if (std::rename(temp_path.c_str(), path.c_str()) != 0) {
+    if (rots_rename_replace(temp_path.c_str(), path.c_str()) != 0) {
         const std::string rename_error = strerror(errno);
         std::remove(temp_path.c_str());
         if (error)

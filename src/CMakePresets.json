@@ -75,7 +75,7 @@
       "configurePreset": "windows-msvc",
       "configuration": "Debug",
       "output": { "outputOnFailure": true },
-      "execution": { "noTestsAction": "error" }
+      "execution": { "noTestsAction": "error", "timeout": 120 }
     }
   ]
 }

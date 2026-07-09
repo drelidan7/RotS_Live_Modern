@@ -91,6 +91,7 @@ Send comments, bug reports, etc. to jelson@server.cs.jhu.edu
 #include <string.h>
 #include <time.h>
 
+#include "platform_compat.h"
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
@@ -310,7 +311,7 @@ namespace {
             return false;
         }
 
-        if (std::rename(temp_path.c_str(), path.c_str()) != 0) {
+        if (rots_rename_replace(temp_path.c_str(), path.c_str()) != 0) {
             const std::string rename_error = std::strerror(errno);
             std::remove(temp_path.c_str());
             set_error(error_message, "Failed to move temporary mail file into place: " + rename_error);
@@ -495,7 +496,7 @@ bool convert_legacy_mail_file(const char* legacy_path, std::string* error_messag
     }
 
     const std::string migrated_path = std::string(legacy_path) + ".migrated";
-    if (std::rename(legacy_path, migrated_path.c_str()) != 0) {
+    if (rots_rename_replace(legacy_path, migrated_path.c_str()) != 0) {
         // The JSON is written and verified at this point -- data is not at
         // risk -- but the legacy file could not be retired. Matches
         // boards.cpp/convert_plrobjs.cpp's "partial success" contract:

@@ -4,6 +4,7 @@
 #include "exploits_json.h"
 #include "json_utils.h"
 #include "objects_json.h"
+#include "platform_compat.h"
 #include "platdef.h"
 #include "rots_crypt.h"
 #include "utils.h"
@@ -1294,7 +1295,7 @@ namespace {
             return false;
         }
 
-        if (std::rename(temp_path.c_str(), path.c_str()) != 0) {
+        if (rots_rename_replace(temp_path.c_str(), path.c_str()) != 0) {
             std::remove(temp_path.c_str());
             set_error(error_message, "Failed to move restored legacy file into place '" + path + "': " + std::strerror(errno));
             return false;
@@ -1493,7 +1494,7 @@ bool write_text_file_atomically(const std::string& path, const std::string& text
         return false;
     }
 
-    if (std::rename(temp_path.c_str(), path.c_str()) != 0) {
+    if (rots_rename_replace(temp_path.c_str(), path.c_str()) != 0) {
         std::remove(temp_path.c_str());
         set_error(error_message, "Failed to move temporary file into place: " + std::string(std::strerror(errno)));
         return false;

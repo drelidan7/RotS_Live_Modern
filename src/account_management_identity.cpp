@@ -902,7 +902,7 @@ bool admin_delete_linked_character(const std::string& root_directory, const std:
             return false;
         }
 
-        if (std::rename(staged_removal->original_path.c_str(), staged_removal->staged_path.c_str()) != 0) {
+        if (rots_rename_replace(staged_removal->original_path.c_str(), staged_removal->staged_path.c_str()) != 0) {
             set_error(error_message, std::string("Failed to stage ") + staged_removal->label + " '" + staged_removal->original_path + "' for deletion: " + std::strerror(errno));
             return false;
         }
@@ -914,7 +914,7 @@ bool admin_delete_linked_character(const std::string& root_directory, const std:
         for (auto it = staged_removals.rbegin(); it != staged_removals.rend(); ++it) {
             if (!it->existed)
                 continue;
-            if (std::rename(it->staged_path.c_str(), it->original_path.c_str()) != 0) {
+            if (rots_rename_replace(it->staged_path.c_str(), it->original_path.c_str()) != 0) {
                 std::fprintf(stderr, "SYSERR: Failed to restore staged account deletion path '%s': %s\n",
                     it->original_path.c_str(), std::strerror(errno));
             }

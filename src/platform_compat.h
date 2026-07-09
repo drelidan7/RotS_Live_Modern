@@ -14,3 +14,16 @@
 // nullptr and -1 is returned. The return value on success is the number of characters
 // written, excluding the terminating NUL (same as asprintf(3) / vsnprintf(3)).
 int rots_asprintf(char** out, const char* fmt, ...);
+
+// rots_rename_replace: rename() with POSIX semantics on every platform --
+// atomically replaces an existing destination. std::rename() does this on
+// POSIX, but on Windows it FAILS (EEXIST) when the destination exists, which
+// breaks every temp-file+rename atomic-write path in the persistence layer
+// (account files, boards/mail/pkill/crime/exploits JSON stores) the moment a
+// file is saved for the second time. The Windows branch (utility.cpp) uses
+// MoveFileExA(MOVEFILE_REPLACE_EXISTING), the OS primitive with exactly the
+// POSIX replace semantics, and maps the common failure causes onto errno so
+// existing strerror(errno)-based error messages stay meaningful. Returns 0 on
+// success, nonzero with errno set on failure -- same contract as
+// std::rename(), so call sites are a drop-in rename.
+int rots_rename_replace(const char* from, const char* to);

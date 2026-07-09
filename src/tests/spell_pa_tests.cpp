@@ -70,6 +70,11 @@ TEST(SpellParser, SaySpellUsesMagicColorForColorEnabledObservers)
     char_data caster {};
     char_data observer {};
     descriptor_data observer_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    observer_descriptor.output = observer_descriptor.small_outbuf;
 
     initialize_player_character(&caster, "caster");
     initialize_player_character(&observer, "observer");
@@ -96,6 +101,11 @@ TEST(SpellParser, MagicRoomMessageOmitsColorCodesForObserversWithoutColorEnabled
     char_data caster {};
     char_data observer {};
     descriptor_data observer_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    observer_descriptor.output = observer_descriptor.small_outbuf;
 
     initialize_player_character(&caster, "caster");
     initialize_player_character(&observer, "observer");

@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include "../rots_net.h"
+
 #if defined(_WIN32)
 #include <crtdbg.h>
 #include <windows.h>
@@ -37,7 +39,16 @@ int main(int argc, char* argv[]) {
 #if defined(_WIN32)
     silence_windows_crash_dialogs();
 #endif
+    // Initialize Winsock once for the whole test process (Phase 3 Task 6). The
+    // game does this in comm.cpp's main(), but the test harness has its own
+    // main() -- without it, every socket()/bind()/connect() in the AcceptPathTest
+    // loopback fixtures (startup_options_tests.cpp) fails immediately with
+    // WSANOTINITIALISED and rots_net::is_valid_socket() reports the returned
+    // INVALID_SOCKET. No-op on POSIX (rots_net::startup() is empty there).
+    rots_net::startup();
     ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+    const int result = RUN_ALL_TESTS();
+    rots_net::shutdown();
+    return result;
 }
 #endif

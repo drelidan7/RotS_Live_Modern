@@ -284,6 +284,11 @@ TEST(ActWiz, AccountCommandAcceptsEmailForShowAndMutatingSubcommands)
     ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010200, &created_account, &error_message)) << error_message;
 
     descriptor_data descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    descriptor.output = descriptor.small_outbuf;
     char_data admin {};
     admin.desc = &descriptor;
     admin.player.name = strdup("tester");
@@ -341,6 +346,11 @@ TEST(ActWiz, AccountCommandUsesIdentifierLookupForAdditionalMutatingSubcommands)
     ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010200, &created_account, &error_message)) << error_message;
 
     descriptor_data descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    descriptor.output = descriptor.small_outbuf;
     char_data admin {};
     admin.desc = &descriptor;
     admin.player.name = strdup("tester");
@@ -408,6 +418,11 @@ TEST(ActWiz, AccountUnlockSelectGrantsForRestrictingActiveLinkedSessionByEmail)
     const std::string account_json_before = read_file_contents(account::account_file_path(".", "unlock-email@example.com"));
 
     descriptor_data active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    active_descriptor.output = active_descriptor.small_outbuf;
     active_descriptor.connected = CON_PLYNG;
     std::snprintf(active_descriptor.account_name, sizeof(active_descriptor.account_name), "%s", "alpha-unlock-email");
     std::snprintf(active_descriptor.account_email, sizeof(active_descriptor.account_email), "%s", "unlock-email@example.com");
@@ -415,6 +430,11 @@ TEST(ActWiz, AccountUnlockSelectGrantsForRestrictingActiveLinkedSessionByEmail)
     descriptor_list = &active_descriptor;
 
     descriptor_data admin_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    admin_descriptor.output = admin_descriptor.small_outbuf;
     char_data admin {};
     admin.desc = &admin_descriptor;
     admin.player.name = strdup("tester");
@@ -445,6 +465,11 @@ TEST(ActWiz, AccountUnlockSelectGrantsForRestrictingLinklessSessionByAccountName
     ASSERT_TRUE(account::admin_link_character(".", "alpha-linkless", "aragorn", 1700010201, &created_account, &error_message)) << error_message;
 
     descriptor_data active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    active_descriptor.output = active_descriptor.small_outbuf;
     active_descriptor.connected = CON_LINKLS;
     std::snprintf(active_descriptor.account_name, sizeof(active_descriptor.account_name), "%s", "alpha-linkless");
     std::snprintf(active_descriptor.account_email, sizeof(active_descriptor.account_email), "%s", "unlock-linkless@example.com");
@@ -452,6 +477,11 @@ TEST(ActWiz, AccountUnlockSelectGrantsForRestrictingLinklessSessionByAccountName
     descriptor_list = &active_descriptor;
 
     descriptor_data admin_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    admin_descriptor.output = admin_descriptor.small_outbuf;
     char_data admin {};
     admin.desc = &admin_descriptor;
     admin.player.name = strdup("tester");
@@ -481,6 +511,11 @@ TEST(ActWiz, AccountUnlockSelectRejectsWhenNoRestrictingActiveSessionExists)
     ASSERT_TRUE(account::admin_link_character(".", "alpha-unlock-reject", "boromir", 1700010202, &created_account, &error_message)) << error_message;
 
     descriptor_data admin_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    admin_descriptor.output = admin_descriptor.small_outbuf;
     char_data admin {};
     admin.desc = &admin_descriptor;
     admin.player.name = strdup("tester");
@@ -495,6 +530,11 @@ TEST(ActWiz, AccountUnlockSelectRejectsWhenNoRestrictingActiveSessionExists)
     admin_descriptor.bufspace = SMALL_BUFSIZE - 1;
 
     descriptor_data high_level_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    high_level_descriptor.output = high_level_descriptor.small_outbuf;
     high_level_descriptor.connected = CON_PLYNG;
     std::snprintf(high_level_descriptor.account_name, sizeof(high_level_descriptor.account_name), "%s", "alpha-unlock-reject");
     attach_active_character(&high_level_descriptor, "aragorn", 92, 4242);
@@ -510,6 +550,11 @@ TEST(ActWiz, AccountUnlockSelectRejectsWhenNoRestrictingActiveSessionExists)
     admin_descriptor.bufspace = SMALL_BUFSIZE - 1;
 
     descriptor_data unlinked_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    unlinked_descriptor.output = unlinked_descriptor.small_outbuf;
     unlinked_descriptor.connected = CON_PLYNG;
     std::snprintf(unlinked_descriptor.account_name, sizeof(unlinked_descriptor.account_name), "%s", "alpha-unlock-reject");
     attach_active_character(&unlinked_descriptor, "legolas", 50, 5252);
@@ -525,6 +570,11 @@ TEST(ActWiz, AccountUnlockSelectRejectsWhenNoRestrictingActiveSessionExists)
     admin_descriptor.bufspace = SMALL_BUFSIZE - 1;
 
     descriptor_data other_account_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    other_account_descriptor.output = other_account_descriptor.small_outbuf;
     other_account_descriptor.connected = CON_PLYNG;
     std::snprintf(other_account_descriptor.account_name, sizeof(other_account_descriptor.account_name), "%s", "other");
     attach_active_character(&other_account_descriptor, "aragorn", 50, 6262);
@@ -559,11 +609,21 @@ TEST(ActWiz, AccountUnlockSelectReplacesStalePendingUnlockForLaterRestriction)
     ASSERT_TRUE(account::admin_link_character(".", "alpha-stalegrant", "boromir", 1700010202, &created_account, &error_message)) << error_message;
 
     descriptor_data admin_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    admin_descriptor.output = admin_descriptor.small_outbuf;
     char_data admin {};
     admin.desc = &admin_descriptor;
     admin.player.name = strdup("tester");
 
     descriptor_data original_active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    original_active_descriptor.output = original_active_descriptor.small_outbuf;
     original_active_descriptor.connected = CON_PLYNG;
     std::snprintf(original_active_descriptor.account_name, sizeof(original_active_descriptor.account_name), "%s", "alpha-stalegrant");
     attach_active_character(&original_active_descriptor, "aragorn", 50, 4242);
@@ -582,6 +642,11 @@ TEST(ActWiz, AccountUnlockSelectReplacesStalePendingUnlockForLaterRestriction)
     admin_descriptor.bufspace = SMALL_BUFSIZE - 1;
 
     descriptor_data later_active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    later_active_descriptor.output = later_active_descriptor.small_outbuf;
     later_active_descriptor.connected = CON_PLYNG;
     std::snprintf(later_active_descriptor.account_name, sizeof(later_active_descriptor.account_name), "%s", "alpha-stalegrant");
     attach_active_character(&later_active_descriptor, "boromir", 50, 5252);
@@ -629,6 +694,11 @@ TEST(ActWiz, AccountCommandAcceptsEmailForMigrateChar)
     player_table[0].flags = legacy_character.specials2.act;
 
     descriptor_data descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    descriptor.output = descriptor.small_outbuf;
     char_data admin {};
     admin.desc = &descriptor;
     admin.player.name = strdup("tester");
@@ -676,6 +746,11 @@ TEST(ActWiz, WhoAcctShowsAuthenticatedAccountsAndCurrentCharacterOrMenuState)
     ScopedDescriptorList descriptor_list_scope;
 
     descriptor_data admin_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    admin_descriptor.output = admin_descriptor.small_outbuf;
     char_data admin {};
     admin.desc = &admin_descriptor;
     admin.player.name = strdup("tester");
@@ -776,6 +851,11 @@ TEST(ActWiz, WhoAcctReportsWhenNoAuthenticatedAccountsAreConnected)
     ScopedDescriptorList descriptor_list_scope;
 
     descriptor_data admin_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    admin_descriptor.output = admin_descriptor.small_outbuf;
     char_data admin {};
     admin.desc = &admin_descriptor;
     admin.player.name = strdup("tester");
@@ -803,6 +883,11 @@ TEST(ActWiz, WhoAcctListsDuplicateAuthenticatedSessionsSeparatelyAndSkipsClosing
     ScopedDescriptorList descriptor_list_scope;
 
     descriptor_data admin_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    admin_descriptor.output = admin_descriptor.small_outbuf;
     char_data admin {};
     admin.desc = &admin_descriptor;
     admin.player.name = strdup("tester");
@@ -855,6 +940,11 @@ TEST(ActWiz, WhoAcctShowsCharacterSelectStateAndSkipsPendingVerificationSessions
     ScopedDescriptorList descriptor_list_scope;
 
     descriptor_data admin_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    admin_descriptor.output = admin_descriptor.small_outbuf;
     char_data admin {};
     admin.desc = &admin_descriptor;
     admin.player.name = strdup("tester");
@@ -891,6 +981,11 @@ TEST(ActWiz, WhoAcctSanitizesDisplayedAccountAndHostFields)
     ScopedDescriptorList descriptor_list_scope;
 
     descriptor_data admin_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    admin_descriptor.output = admin_descriptor.small_outbuf;
     char_data admin {};
     admin.desc = &admin_descriptor;
     admin.player.name = strdup("tester");
@@ -922,6 +1017,11 @@ TEST(ActWiz, WhoAcctFormatsLongFieldsIntoStableColumns)
     ScopedDescriptorList descriptor_list_scope;
 
     descriptor_data admin_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    admin_descriptor.output = admin_descriptor.small_outbuf;
     char_data admin {};
     admin.desc = &admin_descriptor;
     admin.player.name = strdup("tester");

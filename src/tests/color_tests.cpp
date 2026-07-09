@@ -93,6 +93,11 @@ TEST(Color, LegacyCommandSyntaxStillSetsAnsiForegroundSelection)
 {
     char_data character {};
     descriptor_data descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
     character.desc = &descriptor;
 
@@ -109,6 +114,11 @@ TEST(Color, CommandSupportsTrueColorForegroundRgbSelection)
 {
     char_data character {};
     descriptor_data descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
     character.desc = &descriptor;
 
@@ -127,6 +137,11 @@ TEST(Color, CommandSupportsTrueColorBackgroundHexSelection)
 {
     char_data character {};
     descriptor_data descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
     character.desc = &descriptor;
 
@@ -145,6 +160,11 @@ TEST(Color, CommandCanClearBackgroundToDefault)
 {
     char_data character {};
     descriptor_data descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
     character.desc = &descriptor;
     set_truecolor_background(&character, COLOR_MAGIC, 10, 20, 35);
@@ -161,6 +181,11 @@ TEST(Color, CommandListsStructuredForegroundAndBackgroundSelections)
 {
     char_data character {};
     descriptor_data descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
     character.desc = &descriptor;
     set_truecolor_foreground(&character, COLOR_MAGIC, 180, 80, 255);
@@ -180,6 +205,11 @@ TEST(Color, CommandRejectsOutOfRangeRgbValues)
 {
     char_data character {};
     descriptor_data descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
     character.desc = &descriptor;
 

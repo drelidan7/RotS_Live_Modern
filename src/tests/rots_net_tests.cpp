@@ -13,7 +13,8 @@ namespace {
 // no POSIX-specific test-only surface, so the pair is assembled locally with
 // raw BSD calls -- this is test scaffolding, not part of the shim itself.
 #if defined(PREDEF_PLATFORM_LINUX)
-struct LoopbackSocketPair {
+struct LoopbackSocketPair
+{
     LoopbackSocketPair()
     {
         int raw_pair[2] = { -1, -1 };
@@ -26,12 +27,21 @@ struct LoopbackSocketPair {
     ~LoopbackSocketPair()
     {
         if (rots_net::is_valid_socket(first))
+        {
             rots_net::close_socket(first);
+        }
         if (rots_net::is_valid_socket(second))
+        {
             rots_net::close_socket(second);
+        }
     }
 
+    // One end of the connected pair; tests read/write/configure this handle and
+    // the destructor closes it unless a test hands ownership away by resetting
+    // it to kInvalidSocket.
     SocketType first;
+    // The opposite end of the same pair, used as the peer for round-trip
+    // traffic; closed by the destructor under the same ownership rule.
     SocketType second;
 };
 #endif
@@ -95,7 +105,8 @@ TEST(RotsNet, WriteThenReadRoundTripsBytes)
 
     char received[sizeof(message)] = { 0 };
     rots_net::ssize_type total_read = 0;
-    while (total_read < static_cast<rots_net::ssize_type>(sizeof(message))) {
+    while (total_read < static_cast<rots_net::ssize_type>(sizeof(message)))
+    {
         const rots_net::ssize_type read_now = rots_net::read_socket(
             pair.second, received + total_read, sizeof(received) - total_read);
         ASSERT_GT(read_now, 0);
@@ -144,7 +155,8 @@ TEST(RotsNet, ResolveHostNameFailsGracefullyOnObviouslyUnroutableAddress)
     // Whether or not the local resolver has an opinion about 0.0.0.0 varies by
     // host, so only assert the contract that matters: on failure the buffer is
     // left alone (no garbage/crash), and the call returns promptly either way.
-    if (!resolved) {
+    if (!resolved)
+    {
         EXPECT_STREQ(host_buffer, "");
     }
 }

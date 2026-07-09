@@ -32,7 +32,8 @@ int close_socket(SocketType socket_handle)
 void set_nonblocking(SocketType socket_handle)
 {
     u_long mode = 1;
-    if (ioctlsocket(socket_handle, FIONBIO, &mode) != 0) {
+    if (ioctlsocket(socket_handle, FIONBIO, &mode) != 0)
+    {
         perror("Fatal error executing nonblock (rots_net)");
         exit(1);
     }
@@ -82,7 +83,8 @@ void set_nonblocking(SocketType socket_handle)
     unsigned long flags = 0;
     flags = fcntl(socket_handle, F_GETFL, flags);
     flags |= O_NONBLOCK;
-    if (fcntl(socket_handle, F_SETFL, flags) < 0) {
+    if (fcntl(socket_handle, F_SETFL, flags) < 0)
+    {
         perror("Fatal error executing nonblock (rots_net)");
         exit(1);
     }

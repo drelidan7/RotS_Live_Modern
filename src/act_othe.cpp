@@ -49,7 +49,7 @@ extern char* dirs[];
 
 /* extern procedures */
 extern int old_search_block(char*, int, unsigned int, const char**, int);
-extern int echo_off(int);
+extern void echo_off(SocketType);
 extern int get_followers_level(struct char_data*);
 extern int get_real_stealth(struct char_data*);
 extern void check_break_prep(struct char_data*);

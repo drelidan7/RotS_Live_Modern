@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "rots_net.h"
 #include "structs.h"
 #include "utils.h"
 
@@ -120,11 +121,16 @@ void badcrash(int fake)
     log("SIGSEGV or SIGBUS received.  Trying to shut down gracefully.");
     Emergency_save();
     if (!graceful_tried) {
-        close(mother_desc);
+        /* Routed through the rots_net shim like every other socket close
+           (close vs closesocket per platform). We are inside a SIGSEGV/SIGBUS
+           handler: the shim is a thin non-allocating wrapper around the raw
+           close call, so it is exactly as async-signal-safe as the close()
+           it replaces. */
+        rots_net::close_socket(mother_desc);
         log("Trying to close all sockets.");
         graceful_tried = 1;
         for (desc = descriptor_list; desc; desc = desc->next)
-            close(desc->descriptor);
+            rots_net::close_socket(desc->descriptor);
     }
     abort();
 }

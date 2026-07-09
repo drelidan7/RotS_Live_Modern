@@ -1,8 +1,15 @@
 CXX = g++
-# -I.. lets the account_management_*_header_compile.cpp probes use bare
+# -iquote .. lets the account_management_*_header_compile.cpp probes use bare
 # #include "account_management_assets.h" (etc.) to verify each header is
-# self-contained; mirrors target_include_directories(... ${CMAKE_CURRENT_SOURCE_DIR})
-# in src/CMakeLists.txt for the ageland_tests target.
+# self-contained; mirrors the -iquote (NOT -I) that src/CMakeLists.txt uses for
+# the ageland_tests target. -iquote adds .. to the QUOTED-include ("...") search
+# path only, never the angle-bracket (<...>) path — so src/limits.h (the game's
+# player-rank-constants header, unrelated to the standard C <limits.h>) can't
+# shadow the real system <limits.h>. That shadowing is invisible for most of the
+# suite, but a bare -I.. breaks any header that does #include <limits.h>: e.g.
+# asio.hpp's thread_info_base.hpp reaches UCHAR_MAX through <climits> → <limits.h>
+# and fails to compile ("'UCHAR_MAX' was not declared") when src/limits.h wins.
+# See the fuller writeup on the same trap in src/CMakeLists.txt.
 # -D_FILE_OFFSET_BITS=64: without it, this 32-bit test binary's opendir/readdir
 # calls fail with EOVERFLOW against directories containing 64-bit inode numbers
 # (routine on the container's filesystem) — see the matching comment in
@@ -17,7 +24,11 @@ CXX = g++
 # -funsigned-char: parity with src/Makefile's GAMEC flags (the live game pins
 # char as unsigned on every build); without it, product .cpp files compiled
 # into this test binary get the platform-default (signed) char instead.
-CXXFLAGS = -std=c++1z -Wall -Wextra -D TESTING -I.. -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -funsigned-char
+# -I../../third_party/asio/include -DASIO_STANDALONE: standalone Asio, vendored
+# under third_party/asio/ (see that directory's README.md for the pinned
+# version/provenance) — same headers as src/Makefile, so asio_smoke_tests.cpp
+# and any future Asio-using product code build identically here.
+CXXFLAGS = -std=c++1z -Wall -Wextra -D TESTING -iquote .. -I../../third_party/asio/include -DASIO_STANDALONE -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -funsigned-char
 # -lpthread: libgtest.a's ThreadLocal support needs pthread_{get,set}specific/key_*;
 # the static lib doesn't pull it in transitively on this toolchain, so link it explicitly.
 LDFLAGS = -lgtest -lpthread
@@ -211,7 +222,7 @@ rots_crypt.o : ../rots_crypt.cpp ../rots_crypt.h
 	$(CXX) -c $(CXXFLAGS) ../rots_crypt.cpp
 
 
-SRCS = account_management_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp color_tests.cpp convert_exploits_tests.cpp convert_plrobjs_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_utils_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_crypt_tests.cpp rots_rng_tests.cpp shapemob_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
+SRCS = account_management_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp asio_smoke_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp color_tests.cpp convert_exploits_tests.cpp convert_plrobjs_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_utils_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_crypt_tests.cpp rots_rng_tests.cpp shapemob_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 EXECUTABLE = ../../bin/tests

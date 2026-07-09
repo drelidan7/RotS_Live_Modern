@@ -27,3 +27,14 @@ int rots_asprintf(char** out, const char* fmt, ...);
 // success, nonzero with errno set on failure -- same contract as
 // std::rename(), so call sites are a drop-in rename.
 int rots_rename_replace(const char* from, const char* to);
+
+// rots_remove: remove() with POSIX semantics on every platform. POSIX
+// remove(3) deletes a file OR an empty directory (it is unlink-then-rmdir);
+// MSVC's CRT remove() refuses directories with EACCES, so cleanup/rollback
+// paths that must guarantee "nothing left at this path" (e.g. interpre.cpp's
+// new-character rollback via the account_management_assets.cpp removers)
+// silently leave directories behind on Windows. The Windows branch
+// (utility.cpp) retries a directory-shaped EACCES failure with _rmdir().
+// Returns 0 on success, nonzero with errno set on failure -- same contract as
+// std::remove(), so call sites are a drop-in rename.
+int rots_remove(const char* path);

@@ -1120,6 +1120,48 @@ int rots_rename_replace(const char* from, const char* to)
 #endif
 }
 
+// rots_remove: POSIX-remove-semantics deletion on every platform (see
+// platform_compat.h -- POSIX remove(3) also deletes empty directories, MSVC's
+// CRT remove() refuses them, leaking directories from rollback paths).
+int rots_remove(const char* path)
+{
+#if defined PREDEF_PLATFORM_WINDOWS
+    if (std::remove(path) == 0) {
+        return 0;
+    }
+
+    // CRT remove() rejects a directory with EACCES; retry as a directory the
+    // way POSIX remove() falls back to rmdir(). RemoveDirectoryA is the Win32
+    // primitive (same header set MoveFileExA above comes from); map its common
+    // failures onto errno so callers' strerror(errno) messages stay meaningful.
+    const DWORD attributes = GetFileAttributesA(path);
+    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+        if (RemoveDirectoryA(path)) {
+            return 0;
+        }
+        switch (GetLastError()) {
+        case ERROR_FILE_NOT_FOUND:
+        case ERROR_PATH_NOT_FOUND:
+            errno = ENOENT;
+            break;
+        case ERROR_DIR_NOT_EMPTY:
+            errno = ENOTEMPTY;
+            break;
+        case ERROR_ACCESS_DENIED:
+        case ERROR_SHARING_VIOLATION:
+            errno = EACCES;
+            break;
+        default:
+            errno = EIO;
+            break;
+        }
+    }
+    return -1;
+#else
+    return std::remove(path);
+#endif
+}
+
 /* returns: 0 if equal, 1 if arg1 > arg2, -1 if arg1 < arg2  */
 /* scan 'till found different or end of both                 */
 int str_cmp(const char* arg1, const char* arg2)

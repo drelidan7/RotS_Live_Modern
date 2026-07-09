@@ -93,7 +93,10 @@ bool remove_account_character_file(const std::string& root_directory, const std:
         return false;
 
     const std::string path = resolved_character_path(account, root_directory, character_name);
-    if (std::remove(path.c_str()) != 0 && errno != ENOENT) {
+    // rots_remove (not std::remove): POSIX remove() also deletes an empty
+    // directory; the CRT one refuses, leaking rollback leftovers on Windows
+    // (see platform_compat.h -- Phase 3 Task 6).
+    if (rots_remove(path.c_str()) != 0 && errno != ENOENT) {
         set_error(error_message, "Failed to remove account character file '" + path + "': " + std::strerror(errno));
         return false;
     }
@@ -180,7 +183,10 @@ bool remove_account_object_file(const std::string& root_directory, const std::st
         return false;
 
     const std::string path = resolved_object_path(account, root_directory, character_name);
-    if (std::remove(path.c_str()) != 0 && errno != ENOENT) {
+    // rots_remove (not std::remove): POSIX remove() also deletes an empty
+    // directory; the CRT one refuses, leaking rollback leftovers on Windows
+    // (see platform_compat.h -- Phase 3 Task 6).
+    if (rots_remove(path.c_str()) != 0 && errno != ENOENT) {
         set_error(error_message, "Failed to remove account object file '" + path + "': " + std::strerror(errno));
         return false;
     }
@@ -269,7 +275,10 @@ bool remove_account_exploit_file(const std::string& root_directory, const std::s
         return false;
 
     const std::string path = resolved_exploits_path(account, root_directory, character_name);
-    if (std::remove(path.c_str()) != 0 && errno != ENOENT) {
+    // rots_remove (not std::remove): POSIX remove() also deletes an empty
+    // directory; the CRT one refuses, leaking rollback leftovers on Windows
+    // (see platform_compat.h -- Phase 3 Task 6).
+    if (rots_remove(path.c_str()) != 0 && errno != ENOENT) {
         set_error(error_message, "Failed to remove account exploits file '" + path + "': " + std::strerror(errno));
         return false;
     }

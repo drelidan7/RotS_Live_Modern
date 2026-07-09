@@ -129,7 +129,7 @@ public:
             m_original_value = original_value;
         }
 
-        if (setenv(name, value.c_str(), 1) != 0) {
+        if (rots_setenv(name, value.c_str()) != 0) {
             ADD_FAILURE() << "Expected test helper to set environment variable " << name << ".";
         }
     }
@@ -137,9 +137,9 @@ public:
     ~ScopedEnvironmentVariable()
     {
         if (m_had_original_value)
-            setenv(m_name.c_str(), m_original_value.c_str(), 1);
+            rots_setenv(m_name.c_str(), m_original_value.c_str());
         else
-            unsetenv(m_name.c_str());
+            rots_unsetenv(m_name.c_str());
     }
 
 private:
@@ -346,7 +346,7 @@ std::string write_valid_legacy_player_file(const std::string& root_directory, co
 
 void make_file_executable(const std::string& path)
 {
-    ASSERT_EQ(chmod(path.c_str(), 0700), 0)
+    ASSERT_EQ(rots_chmod(path.c_str(), 0700), 0)
         << "Expected test helper to mark fixture file executable: " << path;
 }
 
@@ -1653,7 +1653,7 @@ TEST(AccountManagement, WritesCanonicalObjectPathWhenSafeLegacyRelativePathIsSto
 }
 
 TEST(AccountManagement, LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteFails) {
-    // This test injects a write failure via chmod(0500); root bypasses file
+    // This test injects a write failure via rots_chmod(0500); root bypasses file
     // permissions, so the failure path is unreachable when running as root
     // (e.g. inside the build container).
 #if defined(_WIN32)
@@ -1679,7 +1679,7 @@ TEST(AccountManagement, LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteF
 
     const std::string account_directory = temp_directory.path() + "/accounts/P-T/player@example.com";
     ASSERT_TRUE(std::filesystem::create_directory((account_directory + "/legacy").c_str()));
-    ASSERT_EQ(chmod(account_directory.c_str(), 0500), 0);
+    ASSERT_EQ(rots_chmod(account_directory.c_str(), 0500), 0);
 
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
@@ -1688,7 +1688,7 @@ TEST(AccountManagement, LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteF
 
     EXPECT_FALSE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", object_data, &error_message));
 
-    ASSERT_EQ(chmod(account_directory.c_str(), 0700), 0);
+    ASSERT_EQ(rots_chmod(account_directory.c_str(), 0700), 0);
 
     const std::string updated_account_json = read_file_contents(account_path);
     EXPECT_NE(updated_account_json.find(legacy_fragment), std::string::npos);
@@ -1940,6 +1940,15 @@ TEST(AccountManagement, PrefersVersionedLegacyPlayerFilesOverStaleFlatFilesDurin
 }
 
 TEST(AccountManagement, MigratesVersionedLegacyPlayerFileEvenWhenStaleFlatFileIsUnreadable) {
+#if defined(_WIN32)
+    // The rots_chmod(path, 0000) below relies on POSIX permission semantics to
+    // make the stale flat file unreadable; Windows' _chmod can only toggle the
+    // write bit (files are always readable), so the "unreadable stale file"
+    // precondition this test exists to exercise cannot be constructed there.
+    // Same family as the chmod-fault-injection skips (documented gap, Phase 3
+    // Task 6).
+    GTEST_SKIP() << "chmod(0000)-based unreadable-file injection has no Windows equivalent (documented gap, Phase 3 Task 6).";
+#endif
     TemporaryDirectory temp_directory;
     std::string error_message;
     ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010000, nullptr, &error_message)) << error_message;
@@ -1949,7 +1958,7 @@ TEST(AccountManagement, MigratesVersionedLegacyPlayerFileEvenWhenStaleFlatFileIs
     char_file_u stale_flat_character = make_stored_character("aragorn");
     stale_flat_character.points.gold = 111;
     write_valid_legacy_player_file(temp_directory.path(), stale_flat_character);
-    ASSERT_EQ(chmod(account::legacy_player_file_path(temp_directory.path(), "aragorn").c_str(), 0000), 0);
+    ASSERT_EQ(rots_chmod(account::legacy_player_file_path(temp_directory.path(), "aragorn").c_str(), 0000), 0);
 
     char_file_u versioned_character = make_stored_character("aragorn");
     versioned_character.points.gold = 9999;
@@ -2452,7 +2461,7 @@ TEST(AccountManagement, MigrationRetiresLegacyFilesAfterSuccessfulAccountNativeW
 }
 
 TEST(AccountManagement, MigrationFailsClosedWhenLegacyFileRetirementFails) {
-    // chmod(0500)-based failure injection; unreachable as root (see
+    // rots_chmod(0500)-based failure injection; unreachable as root (see
     // LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteFails).
 #if defined(_WIN32)
     GTEST_SKIP() << "chmod-based failure injection has no Windows ACL equivalent (documented gap, Phase 3 Task 6).";
@@ -2478,13 +2487,13 @@ TEST(AccountManagement, MigrationFailsClosedWhenLegacyFileRetirementFails) {
     const std::string expected_player_text = write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
     write_text_file(object_path, make_valid_object_bytes());
 
-    ASSERT_EQ(chmod(object_bucket.c_str(), 0500), 0);
+    ASSERT_EQ(rots_chmod(object_bucket.c_str(), 0500), 0);
 
     account::CharacterMigrationData migration;
     EXPECT_FALSE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, &migration, &error_message));
     EXPECT_NE(error_message.find("Failed to retire legacy object file"), std::string::npos);
 
-    ASSERT_EQ(chmod(object_bucket.c_str(), 0700), 0);
+    ASSERT_EQ(rots_chmod(object_bucket.c_str(), 0700), 0);
 
     EXPECT_TRUE(std::filesystem::exists(player_path.c_str()));
     EXPECT_TRUE(std::filesystem::exists(object_path.c_str()));
@@ -2538,7 +2547,7 @@ TEST(AccountManagement, MigrationCleansUpAccountNativeOutputsWhenStaleFlatRetire
 }
 
 TEST(AccountManagement, MigrationRestoresRetiredFilesWhenExploitRetirementFails) {
-    // chmod(0500)-based failure injection; unreachable as root (see
+    // rots_chmod(0500)-based failure injection; unreachable as root (see
     // LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteFails).
 #if defined(_WIN32)
     GTEST_SKIP() << "chmod-based failure injection has no Windows ACL equivalent (documented gap, Phase 3 Task 6).";
@@ -2568,13 +2577,13 @@ TEST(AccountManagement, MigrationRestoresRetiredFilesWhenExploitRetirementFails)
     write_text_file(object_path, make_valid_object_bytes());
     write_text_file(exploits_path, make_valid_exploit_bytes());
 
-    ASSERT_EQ(chmod(exploits_bucket.c_str(), 0500), 0);
+    ASSERT_EQ(rots_chmod(exploits_bucket.c_str(), 0500), 0);
 
     account::CharacterMigrationData migration;
     EXPECT_FALSE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, &migration, &error_message));
     EXPECT_NE(error_message.find("Failed to retire legacy exploit file"), std::string::npos);
 
-    ASSERT_EQ(chmod(exploits_bucket.c_str(), 0700), 0);
+    ASSERT_EQ(rots_chmod(exploits_bucket.c_str(), 0700), 0);
 
     EXPECT_TRUE(std::filesystem::exists(player_path.c_str()));
     EXPECT_TRUE(std::filesystem::exists(object_path.c_str()));

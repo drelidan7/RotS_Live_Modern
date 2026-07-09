@@ -10,8 +10,16 @@ std::string format_account_timestamp(long timestamp)
 
     time_t raw_time = static_cast<time_t>(timestamp);
     struct tm broken_down_time {};
+    // gmtime_r is POSIX-only; MSVC's CRT spells the same reentrant conversion
+    // gmtime_s, with the argument order swapped and an errno_t (0 = success)
+    // return instead of a struct tm* (Phase 3 Task 6).
+#if defined PREDEF_PLATFORM_WINDOWS
+    if (gmtime_s(&broken_down_time, &raw_time) != 0)
+        return "Invalid";
+#else
     if (gmtime_r(&raw_time, &broken_down_time) == nullptr)
         return "Invalid";
+#endif
 
     char buffer[64];
     size_t formatted_length = strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &broken_down_time);

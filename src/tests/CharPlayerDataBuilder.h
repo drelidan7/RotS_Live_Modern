@@ -2,7 +2,6 @@
 #define CHARPLAYERDATABUILDER_H_
 
 #include "../structs.h"
-#include <strings.h>
 
 namespace builders {
 

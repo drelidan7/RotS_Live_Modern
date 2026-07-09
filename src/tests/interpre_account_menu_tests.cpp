@@ -86,8 +86,11 @@ public:
     ~TemporaryDirectory()
     {
         if (!m_path.empty()) {
-            const std::string command = "rm -rf '" + m_path + "'";
-            std::system(command.c_str());
+            // std::filesystem::remove_all, not system("rm -rf ..."): portable to
+            // Windows (cmd.exe has no rm), and already the pattern
+            // account_management_tests.cpp's fixture uses (Phase 3 Task 5/6).
+            std::error_code ec;
+            std::filesystem::remove_all(m_path, ec);
         }
     }
 
@@ -290,16 +293,16 @@ public:
             m_original_value = original_value;
         }
 
-        if (setenv(name, value.c_str(), 1) != 0)
+        if (rots_setenv(name, value.c_str()) != 0)
             ADD_FAILURE() << "Expected test helper to set environment variable " << name << ".";
     }
 
     ~ScopedEnvironmentVariable()
     {
         if (m_had_original_value)
-            setenv(m_name.c_str(), m_original_value.c_str(), 1);
+            rots_setenv(m_name.c_str(), m_original_value.c_str());
         else
-            unsetenv(m_name.c_str());
+            rots_unsetenv(m_name.c_str());
     }
 
 private:
@@ -2524,8 +2527,12 @@ TEST(InterpreAccountMenu, DeletePasswordInputIsHiddenFromSnoopers)
     // fixtures use an AF_UNIX socketpair() to drive process_input() over a
     // real socket pair -- POSIX-only, no Windows equivalent (documented gap,
     // Phase 3 Task 6; see the comment above write_and_process_snooped_input).
+    // The whole body is preprocessed out (not just runtime-skipped) because
+    // those helper functions themselves only exist on POSIX -- a GTEST_SKIP
+    // alone would still leave their call sites to compile against missing
+    // declarations.
     GTEST_SKIP() << "AF_UNIX socketpair()-based snoop fixture has no Windows equivalent (documented gap, Phase 3 Task 6).";
-#endif
+#else
     TemporaryDirectory temp_directory;
     ScopedCommandLog command_log(temp_directory.path() + "/last_cmds");
 
@@ -2562,6 +2569,7 @@ TEST(InterpreAccountMenu, DeletePasswordInputIsHiddenFromSnoopers)
         << replay_result.snoop_output;
     EXPECT_NE(replay_result.snoop_output.find("% look\n\r"), std::string::npos)
         << replay_result.snoop_output;
+#endif
 }
 
 TEST(InterpreAccountMenu, SuccessfulAccountLoginLogsEmailAndHost)

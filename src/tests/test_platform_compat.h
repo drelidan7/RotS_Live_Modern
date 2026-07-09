@@ -10,13 +10,17 @@
 
 #include <cerrno>
 #include <cstddef>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <random>
 
 #if defined(_WIN32)
 #include <direct.h>
 #include <io.h>
+#include <sys/stat.h>
 #else
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -48,6 +52,24 @@ inline char* rots_mkdtemp(char* path_template)
     if (length < 6 || std::strcmp(path_template + length - 6, "XXXXXX") != 0) {
         errno = EINVAL;
         return nullptr;
+    }
+
+    // Every fixture's template hardcodes a "/tmp/..." prefix; that parent
+    // directory exists on any POSIX host but not on a Windows CI runner
+    // ("/tmp" there resolves to <current drive>:\tmp, which nothing
+    // pre-creates). Creating the missing parent chain here keeps the
+    // fixtures' in-place template-buffer contract (the substituted name must
+    // fit the caller's char array) instead of redirecting to %TEMP%, whose
+    // longer path wouldn't.
+    {
+        const std::filesystem::path parent = std::filesystem::path(path_template).parent_path();
+        std::error_code ec;
+        if (!parent.empty())
+            std::filesystem::create_directories(parent, ec);
+        if (ec) {
+            errno = ENOENT;
+            return nullptr;
+        }
     }
 
     static constexpr char kAlphabet[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -105,5 +127,48 @@ inline int rots_close_fd(int file_descriptor)
     return _close(file_descriptor);
 #else
     return close(file_descriptor);
+#endif
+}
+
+// rots_setenv / rots_unsetenv: portable replacements for POSIX setenv(3)/
+// unsetenv(3), used by the ScopedEnvironmentVariable test fixtures
+// (account_management_tests.cpp / interpre_account_menu_tests.cpp) to
+// override ROTS_SENDMAIL_COMMAND for a test's duration. MSVC's CRT spells
+// both operations _putenv_s (an empty value string removes the variable).
+// The POSIX branch keeps real setenv/unsetenv rather than putenv, matching
+// the call sites' original overwrite semantics exactly.
+inline int rots_setenv(const char* name, const char* value)
+{
+#if defined(_WIN32)
+    return _putenv_s(name, value);
+#else
+    return setenv(name, value, 1);
+#endif
+}
+
+inline int rots_unsetenv(const char* name)
+{
+#if defined(_WIN32)
+    return _putenv_s(name, "");
+#else
+    return unsetenv(name);
+#endif
+}
+
+// rots_chmod: compile-time stand-in for POSIX chmod(2) in test fixtures.
+// On POSIX this is a direct passthrough. On Windows, _chmod only understands
+// _S_IREAD/_S_IWRITE (there are no owner/group/other bits and no execute
+// bit), so POSIX modes like 0500/0000 do NOT reproduce their POSIX meaning
+// there -- every test that relies on chmod's *semantics* (permission-denial
+// fault injection, executability) already GTEST_SKIPs on Windows before its
+// first rots_chmod call; this shim exists so those skipped bodies still
+// *compile* (GTEST_SKIP is a runtime early-return, not conditional
+// compilation).
+inline int rots_chmod(const char* path, int mode)
+{
+#if defined(_WIN32)
+    return _chmod(path, mode);
+#else
+    return chmod(path, static_cast<mode_t>(mode));
 #endif
 }

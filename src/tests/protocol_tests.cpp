@@ -1,7 +1,13 @@
 #include "../protocol.h"
 #include "../structs.h"
 
+// IAC/DO/WILL/TELOPT_TTYPE: from <arpa/telnet.h> on POSIX; that header does
+// not exist on Windows, where platdef.h hand-declares the same fixed RFC
+// 854/1091 byte values instead (Phase 3 Task 5's stand-in, used here in
+// Task 6). structs.h above already pulls in platdef.h.
+#if !defined(_WIN32)
 #include <arpa/telnet.h>
+#endif
 
 #include <gtest/gtest.h>
 

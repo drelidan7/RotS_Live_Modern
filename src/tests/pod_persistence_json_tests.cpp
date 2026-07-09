@@ -62,8 +62,11 @@ public:
     ~TemporaryDirectory()
     {
         if (!m_path.empty()) {
-            const std::string command = "rm -rf '" + m_path + "'";
-            std::system(command.c_str());
+            // std::filesystem::remove_all, not system("rm -rf ..."): portable to
+            // Windows (cmd.exe has no rm), and already the pattern
+            // account_management_tests.cpp's fixture uses (Phase 3 Task 5/6).
+            std::error_code ec;
+            std::filesystem::remove_all(m_path, ec);
         }
     }
 

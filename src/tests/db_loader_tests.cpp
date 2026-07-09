@@ -98,8 +98,11 @@ public:
     ~TemporaryDirectory()
     {
         if (!m_path.empty()) {
-            std::string command = "rm -rf '" + m_path + "'";
-            std::system(command.c_str());
+            // std::filesystem::remove_all, not system("rm -rf ..."): portable to
+            // Windows (cmd.exe has no rm), and already the pattern
+            // account_management_tests.cpp's fixture uses (Phase 3 Task 5/6).
+            std::error_code ec;
+            std::filesystem::remove_all(m_path, ec);
         }
     }
 
@@ -373,7 +376,9 @@ int count_versioned_files_for(const std::string& dir, const std::string& base_na
     const std::string prefix = base_name + ".";
     const fs::directory_iterator end;
     while (it != end) {
-        const std::string filename = it->path().filename().native();
+        // .string(), not .native(): path::native() is std::wstring on Windows
+        // (same portability bug player_file_finalize.cpp hit in Task 5).
+        const std::string filename = it->path().filename().string();
         if (filename.size() >= prefix.size() &&
             std::string_view(filename).substr(0, prefix.size()) == prefix) {
             ++count;
@@ -1083,7 +1088,7 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectJsonIsMalformed)
 
 TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead)
 {
-    // This test injects read failures via chmod(0000)/chmod(0500); root bypasses
+    // This test injects read failures via rots_chmod(0000)/rots_chmod(0500); root bypasses
     // file permissions, so the failure path is unreachable when running as root
     // (e.g. inside the build container).
 #if defined(_WIN32)
@@ -1117,7 +1122,7 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead)
     account_records.push_back(make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "authoritative", 10, 0, 20));
     ASSERT_TRUE(account::write_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn", account_records, &error_message)) << error_message;
 
-    // Stale legacy .obj/.exploits bytes: the chmod(0000) below fails closed on
+    // Stale legacy .obj/.exploits bytes: the rots_chmod(0000) below fails closed on
     // the authoritative account-native files before either stale file is ever
     // opened, so their contents don't need to be a real (32-bit-only) encode.
     write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), "stale-legacy-object-data");
@@ -1126,8 +1131,8 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead)
 
     const std::string account_object_path = account::account_character_object_path(temp_directory.path(), "alpha-admin", "aragorn");
     const std::string account_exploits_path = account::account_character_exploits_path(temp_directory.path(), "alpha-admin", "aragorn");
-    ASSERT_EQ(chmod(account_object_path.c_str(), 0000), 0);
-    ASSERT_EQ(chmod(account_exploits_path.c_str(), 0000), 0);
+    ASSERT_EQ(rots_chmod(account_object_path.c_str(), 0000), 0);
+    ASSERT_EQ(rots_chmod(account_exploits_path.c_str(), 0000), 0);
 
     objects_json::ObjectSaveData loaded_object_data;
     EXPECT_FALSE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &loaded_object_data, &error_message));
@@ -1137,8 +1142,8 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead)
     EXPECT_FALSE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &loaded_records, &error_message));
     EXPECT_NE(error_message.find("Failed to open file"), std::string::npos);
 
-    ASSERT_EQ(chmod(account_object_path.c_str(), 0600), 0);
-    ASSERT_EQ(chmod(account_exploits_path.c_str(), 0600), 0);
+    ASSERT_EQ(rots_chmod(account_object_path.c_str(), 0600), 0);
+    ASSERT_EQ(rots_chmod(account_exploits_path.c_str(), 0600), 0);
     EXPECT_TRUE(std::filesystem::exists(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str()));
     EXPECT_TRUE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
 }

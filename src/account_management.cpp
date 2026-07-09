@@ -26,7 +26,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #elif defined PREDEF_PLATFORM_WINDOWS
+// <bcrypt.h>: BCryptGenRandom (read_secure_random_bytes). <direct.h>/<io.h>:
+// _mkdir/_sopen_s/_fdopen/_close, the CRT spellings of the POSIX directory/fd
+// calls used by create_directory_if_missing/open_secure_output_file below.
 #include <bcrypt.h>
+#include <direct.h>
+#include <io.h>
 #pragma comment(lib, "bcrypt.lib")
 #endif
 
@@ -512,8 +517,17 @@ namespace {
 
     bool create_directory_if_missing(const std::string& path, std::string* error_message)
     {
+        // _mkdir is the CRT's mkdir; it takes no mode argument (Windows has no
+        // owner/group/other permission bits -- the directory inherits its
+        // parent's ACL instead of the POSIX branch's explicit 0700). errno
+        // (EEXIST on an already-present directory) matches POSIX.
+#if defined PREDEF_PLATFORM_WINDOWS
+        if (_mkdir(path.c_str()) == 0 || errno == EEXIST)
+            return true;
+#else
         if (mkdir(path.c_str(), 0700) == 0 || errno == EEXIST)
             return true;
+#endif
 
         set_error(error_message, "Failed to create directory '" + path + "': " + std::strerror(errno));
         return false;
@@ -521,6 +535,26 @@ namespace {
 
     FILE* open_secure_output_file(const std::string& path, std::string* error_message)
     {
+        // _sopen_s with the same create/truncate flags; _S_IREAD|_S_IWRITE is
+        // the closest pmode to 0600 (no group/other bits on Windows). Same
+        // mapping db.cpp's open_secure_temp_output_file uses (Phase 3 Task 6).
+#if defined PREDEF_PLATFORM_WINDOWS
+        int fd = -1;
+        const errno_t open_error = _sopen_s(&fd, path.c_str(), _O_WRONLY | _O_CREAT | _O_TRUNC, _SH_DENYNO, _S_IREAD | _S_IWRITE);
+        if (open_error != 0) {
+            set_error(error_message, "Failed to open output file '" + path + "': " + std::strerror(open_error));
+            return nullptr;
+        }
+
+        FILE* file = _fdopen(fd, "w");
+        if (file == nullptr) {
+            _close(fd);
+            set_error(error_message, "Failed to create stream for output file '" + path + "': " + std::strerror(errno));
+            return nullptr;
+        }
+
+        return file;
+#else
         const int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
         if (fd < 0) {
             set_error(error_message, "Failed to open output file '" + path + "': " + std::strerror(errno));
@@ -535,6 +569,7 @@ namespace {
         }
 
         return file;
+#endif
     }
 
     bool path_exists(const std::string& path)

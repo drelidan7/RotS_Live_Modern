@@ -878,7 +878,7 @@ void raw_kill(char_data* dead_man, char_data* killer, int attack_type)
 {
     waiting_type tmpwtl;
 
-    if ((dead_man->delay.wait_value >= 0) && (dead_man->delay.cmd > 0)) {
+    if ((dead_man->delay.wait_value > 0) && (dead_man->delay.cmd > 0)) {
         dead_man->delay.subcmd = -1;
         complete_delay(dead_man);
     }
@@ -1301,10 +1301,10 @@ void group_gain(char_data* killer, char_data* dead_man)
         player_spec::wild_fighting_handler wild_fighting(character);
         wild_fighting.on_unit_killed(dead_man);
 
-        /* save only 10% of the time to avoid lag in big groups */
-        if (number(0, 9) == 0) {
-            save_char(character, NOWHERE, 1);
-        }
+        // XP persistence is now covered by the point-in-time autosave snapshot (Crash_save_all saves
+        // every connected player each cadence) plus the death/level anti-rollback saves. The former
+        // per-kill 10%-chance save_char here (which also produced a visible "Saving X.") was removed
+        // with the save-all snapshot to avoid redundant saves in large groups.
     }
 }
 
@@ -2118,7 +2118,7 @@ int check_riposte(struct char_data* ch, struct char_data* victim)
 
     const int ranger_prog = 32;
     if (IS_NPC(victim)) {
-        if (has_alias(victim, "riposter") && has_program(victim, ranger_prog)) {
+        if (has_alias(victim, "p_riposte") && has_program(victim, ranger_prog)) {
             can_riposte = 1;
             prob = 75;
         }

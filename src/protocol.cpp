@@ -17,13 +17,29 @@
  Header files.
  ******************************************************************************/
 
+#include "platdef.h"
+
+// alloca(): POSIX declares it in <alloca.h> (glibc/macOS both provide it there);
+// MSVC has no <alloca.h> at all -- its CRT instead declares the identical facility
+// as `_alloca()` in <malloc.h>. `#define alloca _alloca` after including that
+// makes every unmodified `alloca(...)` call site below resolve on both platforms
+// (Phase 3 Task 5: MSVC bring-up).
+#if defined PREDEF_PLATFORM_WINDOWS
+#include <malloc.h>
+#define alloca _alloca
+#else
 #include <alloca.h>
+#endif
+
+#if defined PREDEF_PLATFORM_LINUX
 #include <arpa/telnet.h>
+#endif
 #include <ctype.h>
 #include <stdio.h>
-// <malloc.h> (glibc-specific, no macOS equivalent) is dropped: the only libc
-// facilities this file uses are malloc()/free(), already declared by <stdlib.h>
-// below on every platform.
+// <malloc.h> (glibc-specific, no macOS equivalent) is dropped on POSIX: the only
+// libc facilities this file uses there are malloc()/free(), already declared by
+// <stdlib.h> below on every platform. (Windows pulls <malloc.h> in above, for
+// _alloca() only.)
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>

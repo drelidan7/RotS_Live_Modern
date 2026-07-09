@@ -52,6 +52,20 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+// NOMINMAX (found via the windows-msvc CI bring-up loop, Phase 3 Task 5): without
+// this, <windows.h> (pulled in transitively by <winsock2.h> below) defines `max`/
+// `min` as function-like macros. Every `std::max(...)`/`std::min(...)` call in the
+// codebase (structs.h's get_weight()/get_capped_level()/etc., and many .cpp call
+// sites) then has its `max`/`min` token macro-substituted mid-expression, producing
+// nonsense like `std::(2147483647)()` -- this was the single root cause behind the
+// large majority of the "missing function header" / C2589 "illegal token on right
+// side of '::'" / C2059 syntax-error cascade in the first windows-msvc CI log: one
+// corrupted parse inside structs.h (included by nearly every TU) derails the parser
+// for the rest of that translation unit, manifesting as seemingly unrelated syntax
+// errors dozens of lines later in whatever .cpp file happens to include it.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
@@ -68,6 +82,35 @@
 // <time.h>, is part of the Linux branch's platform include set above but was
 // missing here.
 #include <signal.h>
+
+// <arpa/telnet.h> stand-in (Phase 3 Task 5, found via the windows-msvc CI bring-up
+// loop): protocol.cpp and utility.cpp's telnet negotiation code use the IAC/WILL/
+// WONT/DO/DONT/SB/SE command bytes and a handful of TELOPT_* option numbers.
+// These come from the POSIX/glibc/BSD header <arpa/telnet.h> (guarded to the Linux
+// branch already in both of those .cpp files), which does not exist on Windows --
+// MSVC's CRT has no telnet header at all, since Winsock is a raw byte-stream
+// sockets API with no protocol-specific knowledge. Every one of these is a fixed,
+// RFC 854/855-standardized wire-protocol byte value (not a platform-specific OS
+// concept the way sockets/signals are), so hand-declaring them here is exactly as
+// portable as the system header would be -- just without relying on Windows to
+// ship one. (protocol.h already separately hand-defines the MUD-specific extension
+// options -- TELOPT_MSDP/MSSP/MCCP/MSP/MXP/ATCP/CHARSET -- unconditionally on every
+// platform; only the base RFC854/855/1091/1073 set below was still missing.)
+#if !defined(IAC)
+#define IAC 255
+#define DONT 254
+#define DO 253
+#define WONT 252
+#define WILL 251
+#define SB 250
+#define GA 249
+#define SE 240
+#define TELOPT_ECHO 1
+#define TELOPT_NAOCRD 10
+#define TELOPT_NAOFFD 13
+#define TELOPT_TTYPE 24
+#define TELOPT_NAWS 31
+#endif
 
 #endif
 

@@ -10,12 +10,23 @@
 
 #include <ctype.h>
 #include <errno.h>
-#include <execinfo.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/stat.h>
 
 #include "platdef.h"
+
+// execinfo.h/sys/stat.h (Phase 3 Task 5, MSVC bring-up): both are POSIX/glibc-only
+// -- <execinfo.h> for sigsegv_handler()'s backtrace()/backtrace_symbols_fd() crash
+// dump (Windows has no equivalent API; CaptureStackBackTrace()+SymFromAddr() from
+// dbghelp.lib is a different, much larger facility -- a documented gap below, not
+// implemented here), <sys/stat.h> for main()'s umask() call (Windows has no umask
+// concept at all; file permissions there are ACL-based, not a process-wide creation
+// mask, so there is no drop-in translation -- also a documented gap below).
+#if defined PREDEF_PLATFORM_LINUX
+#include <execinfo.h>
+#include <sys/stat.h>
+#endif
+
 #include <signal.h>
 #include <string.h>
 
@@ -400,15 +411,24 @@ char* wait_wheel[8] = { "\r|\r", "\r\\\r", "\r-\r", "\r/\r", "\r|\r", "\r\\\r", 
 
 void sigsegv_handler(int sig)
 {
-    void* array[10];
-    size_t size;
-
-    // get void*'s for all entries on the stack
-    size = backtrace(array, 10);
-
-    // print out all the frames to stderr
     fprintf(stderr, "Error: signal %d:\n", sig);
+
+#if defined PREDEF_PLATFORM_LINUX
+    void* array[10];
+    // get void*'s for all entries on the stack
+    size_t size = backtrace(array, 10);
+    // print out all the frames to stderr
     backtrace_symbols_fd(array, size, STDERR_FILENO);
+#elif defined PREDEF_PLATFORM_WINDOWS
+    // No backtrace on Windows in this phase -- CaptureStackBackTrace()+SymFromAddr()
+    // (dbghelp.lib) is the real equivalent but is a substantially larger facility
+    // (needs symbol-handler init/cleanup, a .pdb, etc.) than a like-for-like drop-in;
+    // left as a Windows operational gap (crash still exits cleanly, just without a
+    // stack dump) rather than half-implemented here. Phase 5/later-bring-up
+    // candidate.
+    fprintf(stderr, "(stack backtrace unavailable on Windows in this build)\n");
+#endif
+
     exit(1);
 }
 
@@ -431,8 +451,15 @@ int main(int argc, char** argv)
     StartupOptions startup_options {};
     std::string parse_error;
 
+#if defined PREDEF_PLATFORM_LINUX
     /* lets put the rots process in rwxrwx--- file mode */
     umask(S_IRWXO);
+#elif defined PREDEF_PLATFORM_WINDOWS
+    // Windows has no umask()/process-wide creation-mask concept -- file permissions
+    // there are ACL-based, not mode-bit-based, so there is no drop-in translation.
+    // Documented Windows operational gap: files this process creates get whatever
+    // default ACL the OS/filesystem assigns, not an explicit rwxrwx--- equivalent.
+#endif
 
     if (!parse_startup_options(argc, argv, &startup_options, &parse_error)) {
         if (!parse_error.empty())

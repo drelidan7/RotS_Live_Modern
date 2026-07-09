@@ -8,7 +8,16 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+
+// unistd.h doesn't exist on Windows (Phase 3 Task 5); everything this file uses
+// from it (open()/close()/lstat()'s POSIX fd plumbing) lives inside the
+// open_secure_temp_output_file()/write_text_file_atomically_clearing_stale_tmp()
+// PREDEF_PLATFORM_LINUX branches below, which is why this include alone can be
+// platform-gated without also needing to touch fcntl.h/sys/stat.h (both exist,
+// in a reduced form, on the Windows CRT too, so they stay unconditional).
+#if defined PREDEF_PLATFORM_LINUX
 #include <unistd.h>
+#endif
 
 #include "color.h"
 #include "comm.h"
@@ -4802,6 +4811,7 @@ bool load_exploit_history_bytes(const std::string& root_directory, const std::st
 
 FILE* open_secure_temp_output_file(const std::string& path, std::string* error_message)
 {
+#if defined PREDEF_PLATFORM_LINUX
     const int file_descriptor = open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
     if (file_descriptor < 0) {
         set_db_error(error_message, "Failed to open temporary exploit file '" + path + "': " + std::string(strerror(errno)));
@@ -4818,6 +4828,22 @@ FILE* open_secure_temp_output_file(const std::string& path, std::string* error_m
 
     set_db_error(error_message, "");
     return file;
+#elif defined PREDEF_PLATFORM_WINDOWS
+    // Documented Windows operational gap (Phase 3 Task 5): this is the security-
+    // hardened primitive underneath every atomic JSON write in the persistence
+    // layer (mail/boards/exploits/crime/pkill) -- O_EXCL rejects a pre-existing
+    // file (detects a stale/racing writer) and O_NOFOLLOW refuses to write through
+    // a symlink planted at the temp path (TOCTOU/symlink-attack hardening). Neither
+    // has a 1:1 Windows CreateFile equivalent (CREATE_NEW is the closest to
+    // O_EXCL, but the symlink-rejection semantics differ), and weakening this to a
+    // plain fopen() would silently drop the hardening for every persisted save
+    // file rather than just failing loudly. Left unimplemented on purpose --
+    // needs its own reviewed design, not a rushed substitute -- so every caller's
+    // existing `file == nullptr` failure handling reports it cleanly instead of
+    // writing an insecure file.
+    set_db_error(error_message, "open_secure_temp_output_file is not yet implemented on Windows (Phase 3 Task 5 gap; needs a reviewed CreateFile-based design, not a weakened fopen() substitute).");
+    return nullptr;
+#endif
 }
 
 // Phase 2a Task 6: the runtime (non-account-linked) exploit history file
@@ -4879,12 +4905,22 @@ bool write_text_file_atomically_clearing_stale_tmp(const std::string& path, cons
         return true;
 
     const std::string temp_path = path + ".tmp";
+#if defined PREDEF_PLATFORM_LINUX
     struct stat temp_stat {
     };
     // lstat (not stat): only clear a stale plain file, never follow/remove a
     // symlink planted at the tmp path.
     if (lstat(temp_path.c_str(), &temp_stat) != 0 || !S_ISREG(temp_stat.st_mode))
         return false;
+#elif defined PREDEF_PLATFORM_WINDOWS
+    // Same documented gap as open_secure_temp_output_file above: this call is
+    // already unreachable in practice on Windows today (write_text_file_atomically
+    // just above always fails first, since open_secure_temp_output_file isn't
+    // implemented there yet), but is guarded here too so this function's own
+    // symlink-safety check doesn't silently compile away its intent if that
+    // changes later without this being revisited.
+    return false;
+#endif
 
     if (std::remove(temp_path.c_str()) != 0)
         return false;
@@ -5300,7 +5336,10 @@ int delete_exploits_file(char* name)
     mudlog(temp, NRM, LEVEL_IMMORT, TRUE);
 
     // no checks, because file might not even exist
-    if (unlink(filename) < 0) {
+    // std::remove (portable ISO C, <cstdio>) instead of the POSIX-only unlink() --
+    // Phase 3 Task 5: identical semantics for deleting a plain file by path, and
+    // works unchanged on Windows.
+    if (std::remove(filename) < 0) {
         //   if (errno != ENOENT) { /* if it fails, NOT because of no file */
         //      sprintf(buf1, "SYSERR: deleting exploit file %s (2)", filename);
         //      perror(buf1);

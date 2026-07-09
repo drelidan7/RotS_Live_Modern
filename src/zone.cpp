@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h> /* memmove */
-#include <strings.h>
 
 #include "comm.h" /* For TO_ROOM */
 #include "db.h" /* For buf2 and struct reset_com */

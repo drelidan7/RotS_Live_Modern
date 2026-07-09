@@ -47,11 +47,13 @@ bool finalize_player_file_rename(const char* scratch_path, const char* dir_path,
     // Check ec right AFTER each increment: on error libstdc++ resets the iterator to end,
     // so a top-of-loop check would be skipped and the error silently swallowed.
     while (it != end) {
-        const std::string& full = it->path().native();
-        const size_t slash = full.find_last_of('/');
-        const std::string_view name = (slash == std::string::npos)
-                                          ? std::string_view(full)
-                                          : std::string_view(full).substr(slash + 1);
+        // path::filename() is the portable way to get just the last path component --
+        // no manual '/'-splitting needed (which also assumed a POSIX-style separator).
+        // path::string() (not native()) always yields std::string on every platform;
+        // native() is std::wstring on Windows, which doesn't even compile against the
+        // std::string_view usage below (found via the windows-msvc CI log, Phase 3
+        // Task 5 bring-up round 2).
+        const std::string name = it->path().filename().string();
         if (name.size() > base_len && name.compare(0, base_len, base_name) == 0 &&
             name[base_len] == '.' && name != keep_name) {
             victims.push_back(it->path());

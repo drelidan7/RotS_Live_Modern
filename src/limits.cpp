@@ -374,6 +374,14 @@ void set_title(char_data* character)
     *(GET_TITLE(character) + 4) = toupper(*(GET_TITLE(character) + 4));
 }
 
+// Confirmed dead (Phase 3 Task 5, MSVC bring-up round 2): zero callers anywhere in
+// this codebase. Its getpid()/`nice ... &` background-job spawn is inherently
+// POSIX-shell-specific (Windows has neither `nice` nor `&` backgrounding in
+// cmd.exe, and no bare getpid() at all); already flagged out of scope for Task 3's
+// file-op portability sweep ("autowiz system() spawn (process, not file-op)").
+// Guarded rather than deleted, matching this file's convention of keeping
+// superseded/unused historical code around for reference.
+#if defined PREDEF_PLATFORM_LINUX
 void check_autowiz(struct char_data* ch)
 {
     char buf[100];
@@ -386,6 +394,7 @@ void check_autowiz(struct char_data* ch)
         system(buf);
     }
 }
+#endif
 
 /* EXP for a level, is level^2 * 1500 */
 /* EXP for a given min_level is xp_to_level(mini_level)/10000 */

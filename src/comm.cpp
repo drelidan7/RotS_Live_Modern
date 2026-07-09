@@ -500,9 +500,16 @@ int main(int argc, char** argv)
     sprintf(buf, "Running game on port %d.", startup_options.port);
     log(buf);
 
-    if (chdir(startup_options.dir.c_str()) < 0) {
-        perror("Fatal error changing to data directory");
-        exit(0);
+    // std::filesystem::current_path (the setter overload) is the portable stand-in
+    // for chdir() (Phase 3 Task 5, MSVC bring-up round 2 -- found via the
+    // windows-msvc CI log): works identically on POSIX and Windows.
+    {
+        std::error_code chdir_error;
+        std::filesystem::current_path(startup_options.dir, chdir_error);
+        if (chdir_error) {
+            fprintf(stderr, "Fatal error changing to data directory: %s\n", chdir_error.message().c_str());
+            exit(0);
+        }
     }
 
     sprintf(buf, "Using %s as data directory.", startup_options.dir.c_str());
@@ -1621,7 +1628,14 @@ int process_output(struct descriptor_data* t)
 
 // New version (similar to circle ver 3) April 2001 - Fingolfin
 // Not windows compatible (not finished and not working...), but c'est la vie...
-
+//
+// Confirmed dead (Phase 3 Task 5, MSVC bring-up round 2): zero callers anywhere in
+// this codebase -- write_to_descriptor (below) is the one actually used. Its
+// raw POSIX write() doesn't exist on Windows and its own header comment already
+// says it isn't Windows-compatible; guarded to PREDEF_PLATFORM_LINUX rather than
+// deleted, matching this file's existing "old version replaced with above" pattern
+// of keeping a superseded implementation around for reference.
+#if defined PREDEF_PLATFORM_LINUX
 int write_to_descriptor_new(int desc, char* txt)
 {
     int result, length;
@@ -1654,6 +1668,7 @@ int write_to_descriptor_new(int desc, char* txt)
     }
     return (0);
 }
+#endif
 
 // old version replaced with above April 2001 - Fingolfin
 

@@ -689,7 +689,13 @@ void build_output(struct obj2html_type* list, struct obj_data* o)
                         break;
 
                 /* Insert the item */
-                bcopy(list[i].to_output + j, list[i].to_output + j + 1,
+                // memmove(dst, src, n) -- portable ISO C equivalent of the POSIX-only
+                // bcopy(src, dst, n) (Phase 3 Task 5: MSVC bring-up round 2, note the
+                // swapped argument order between the two). memmove (not memcpy) is
+                // required here, not just for portability: src/dst overlap (shifting
+                // the tail of the array right by one slot to open an insertion gap),
+                // which memcpy does not guarantee correctly and bcopy/memmove do.
+                memmove(list[i].to_output + j + 1, list[i].to_output + j,
                     sizeof(struct obj_data*) * (list[i].num_to_output - j));
                 list[i].to_output[j] = o;
                 list[i].num_to_output++;

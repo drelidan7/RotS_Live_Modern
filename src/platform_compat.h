@@ -33,8 +33,10 @@ int rots_rename_replace(const char* from, const char* to);
 // MSVC's CRT remove() refuses directories with EACCES, so cleanup/rollback
 // paths that must guarantee "nothing left at this path" (e.g. interpre.cpp's
 // new-character rollback via the account_management_assets.cpp removers)
-// silently leave directories behind on Windows. The Windows branch
-// (utility.cpp) retries a directory-shaped EACCES failure with _rmdir().
+// silently leave directories behind on Windows. On a std::remove() failure,
+// the Windows branch (utility.cpp) checks GetFileAttributesA() for
+// FILE_ATTRIBUTE_DIRECTORY and retries with RemoveDirectoryA(), mapping
+// GetLastError() onto errno (ENOENT/ENOTEMPTY/EACCES).
 // Returns 0 on success, nonzero with errno set on failure -- same contract as
 // std::remove(), so call sites are a drop-in rename.
 int rots_remove(const char* path);

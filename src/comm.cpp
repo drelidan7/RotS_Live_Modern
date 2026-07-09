@@ -895,7 +895,12 @@ void game_loop(SocketType s)
 
             if (wait_ch->delay.wait_value > 0) {
                 if (!IS_NPC(wait_ch) && IS_AFFECTED(wait_ch, AFF_WAITWHEEL)) {
-                    if (PRF_FLAGGED(wait_ch, PRF_SPINNER)) {
+                    // Guard against a closed-but-still-linked descriptor (0 is
+                    // close_socket()'s closed sentinel; a link-dead player's
+                    // desc stays reachable) -- same `->descriptor` truthiness
+                    // check the three sibling descriptor_list loops below use
+                    // (Phase 3 Task 6 review).
+                    if (PRF_FLAGGED(wait_ch, PRF_SPINNER) && wait_ch->desc && wait_ch->desc->descriptor) {
                         write_to_descriptor(wait_ch->desc->descriptor,
                             wait_wheel[wait_ch->delay.wait_value % 8]);
                     }
@@ -1683,13 +1688,19 @@ int write_to_descriptor(SocketType desc, char* txt)
     total = strlen(txt);
     sofar = 0;
 
-    // is_valid_socket(), not the historical `desc <= 0`: SocketType is
-    // unsigned (SOCKET) on Windows, where the sentinel INVALID_SOCKET is a
-    // huge all-ones value that a `<= 0` comparison would never catch (Phase 3
-    // Task 4 finding, fixed here in Task 6). POSIX behavior is unchanged --
-    // kInvalidSocket is -1 there, and no real caller ever passes fd 0 (always
-    // already stdin), so this rejects exactly the same descriptors as before.
-    if (!rots_net::is_valid_socket(desc)) {
+    // Two sentinels to reject, both load-bearing (Phase 3 Task 6 review):
+    // - 0 is this codebase's own "closed descriptor" marker: close_socket()
+    //   sets conn_descriptor->descriptor = 0 while the descriptor_data can
+    //   stay reachable (e.g. a link-dead player's waitwheel spinner in
+    //   game_loop), so writing here would hit stdin and perror-spam every
+    //   pulse. That pre-existing convention takes precedence over the
+    //   theoretical validity of SOCKET 0 on Windows -- the same tradeoff the
+    //   historical `desc <= 0` guard made.
+    // - is_valid_socket() rejects the platform invalid-handle sentinel:
+    //   kInvalidSocket is -1 on POSIX, while on Windows INVALID_SOCKET is a
+    //   huge unsigned all-ones value that the old `<= 0` comparison could
+    //   never catch (Phase 3 Task 4 finding).
+    if (desc == 0 || !rots_net::is_valid_socket(desc)) {
         return 0;
     }
 

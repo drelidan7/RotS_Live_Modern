@@ -1,3 +1,4 @@
+#include "../comm.h"
 #include "../rots_net.h"
 
 #include <cstring>
@@ -60,6 +61,20 @@ TEST(RotsNet, ZeroIsAValidSocketHandle)
     // own "unset descriptor field" convention -- that is a comm.cpp-level
     // policy, not something rots_net::is_valid_socket should bake in.
     EXPECT_TRUE(rots_net::is_valid_socket(static_cast<SocketType>(0)));
+}
+
+TEST(RotsNet, WriteToDescriptorRejectsClosedAndInvalidSentinelsWithoutWriting)
+{
+    // Pins comm.cpp's write_to_descriptor() guard (Phase 3 Task 6 review):
+    // 0 is the codebase's own "closed descriptor" sentinel (close_socket()
+    // zeroes conn_descriptor->descriptor while the descriptor_data can stay
+    // reachable, e.g. a link-dead player's waitwheel spinner), so writing
+    // through it would hit stdin. Both sentinels must short-circuit to the
+    // benign 0 return -- no send(), no perror, no -1 "write failed" result
+    // that callers treat as a broken connection.
+    char message[] = "x";
+    EXPECT_EQ(write_to_descriptor(static_cast<SocketType>(0), message), 0);
+    EXPECT_EQ(write_to_descriptor(rots_net::kInvalidSocket, message), 0);
 }
 
 TEST(RotsNet, StartupAndShutdownAreIdempotentOnRepeatedCalls)

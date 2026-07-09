@@ -513,7 +513,7 @@ int find_player_table_index_by_name(const char* name)
         return -1;
 
     for (int index = 0; index <= top_of_p_table; ++index) {
-        if (player_table[index].name && strcasecmp(player_table[index].name, name) == 0)
+        if (player_table[index].name && str_cmp(player_table[index].name, name) == 0)
             return index;
     }
 
@@ -2667,7 +2667,7 @@ int ensure_player_index_entry(const char* name)
         return -1;
 
     for (int index = 0; index <= top_of_p_table; ++index) {
-        if (strcasecmp((player_table + index)->name, name) == 0)
+        if (str_cmp((player_table + index)->name, name) == 0)
             return index;
     }
 
@@ -3157,7 +3157,7 @@ char* fread_string(FILE* fl, char* error)
     char *point, *tmppoint;
     int flag, markfirst;
 
-    bzero(buf, MAX_STRING_LENGTH);
+    memset(buf, 0, MAX_STRING_LENGTH);
     markfirst = 0;
     do {
         *tmp = 0;
@@ -3534,7 +3534,7 @@ void clear_char(struct char_data* ch, int mode)
         CREATE(ch->skills, byte, MAX_SKILLS);
         CREATE(ch->knowledge, byte, MAX_SKILLS);
         if (ch->desc)
-            bzero(ch->desc->pwd, MAX_PWD_LENGTH);
+            memset(ch->desc->pwd, 0, MAX_PWD_LENGTH);
     }
 }
 
@@ -3717,7 +3717,7 @@ void load_mudlle(FILE* fp)
         tmpstr++;
     do {
         sscanf(tmpstr + 1, "%d", &tmp);
-        bzero(str, MAX_STRING_LENGTH);
+        memset(str, 0, MAX_STRING_LENGTH);
         if (tmp == 99999)
             break;
         num_of_programs++;

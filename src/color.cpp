@@ -535,8 +535,8 @@ ACMD(do_color)
     }
 
     half_chop(arg, option, remainder);
-    if (!strcasecmp(option, "fg") || !strcasecmp(option, "bg")) {
-        const bool foreground = !strcasecmp(option, "fg");
+    if (!str_cmp(option, "fg") || !str_cmp(option, "bg")) {
+        const bool foreground = !str_cmp(option, "fg");
         char mode[MAX_INPUT_LENGTH];
         char value_arguments[MAX_INPUT_LENGTH];
         half_chop(remainder, mode, value_arguments);
@@ -546,7 +546,7 @@ ACMD(do_color)
             return;
         }
 
-        if (!strcasecmp(mode, "default")) {
+        if (!str_cmp(mode, "default")) {
             if (foreground) {
                 ch->profs->color_settings[num].foreground = color_value_data {};
                 ch->profs->colors[num] = CNRM;
@@ -558,7 +558,7 @@ ACMD(do_color)
             return;
         }
 
-        if (!strcasecmp(mode, "ansi")) {
+        if (!str_cmp(mode, "ansi")) {
             col = old_search_block(value_arguments, 0, strlen(value_arguments), color_color, TRUE) - 1;
             if (col < 0) {
                 send_to_char("Possible colours are:", ch);
@@ -582,7 +582,7 @@ ACMD(do_color)
             return;
         }
 
-        if (!strcasecmp(mode, "rgb")) {
+        if (!str_cmp(mode, "rgb")) {
             int red, green, blue;
             if (!parse_rgb_triplet(value_arguments, &red, &green, &blue)) {
                 send_to_char("RGB colours must be provided as three integers.\n\r", ch);
@@ -603,7 +603,7 @@ ACMD(do_color)
             return;
         }
 
-        if (!strcasecmp(mode, "hex")) {
+        if (!str_cmp(mode, "hex")) {
             int red, green, blue;
             if (!parse_hex_triplet(value_arguments, &red, &green, &blue)) {
                 send_to_char("Hex colours must look like #RRGGBB.\n\r", ch);

@@ -164,6 +164,7 @@ if(ROTS_BUILD_TESTS)
         tests/interpre_account_menu_tests.cpp
         tests/json_perf_tests.cpp
         tests/json_utils_tests.cpp
+        tests/llp64_probe_tests.cpp
         tests/mage_tests.cpp
         tests/mail_json_tests.cpp
         tests/obj_flag_data_tests.cpp
@@ -176,6 +177,7 @@ if(ROTS_BUILD_TESTS)
         tests/player_finalize_tests.cpp
         tests/pod_persistence_json_tests.cpp
         tests/protocol_tests.cpp
+        tests/rots_asprintf_tests.cpp
         tests/rots_crypt_tests.cpp
         tests/rots_net_tests.cpp
         tests/rots_rng_tests.cpp

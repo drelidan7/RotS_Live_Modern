@@ -21,6 +21,7 @@
 #include "interpre.h"
 #include "limits.h"
 #include "pkill.h"
+#include "platform_compat.h"
 #include "script.h"
 #include "spells.h"
 #include "structs.h"
@@ -522,15 +523,15 @@ void get_corpse_desc(struct obj_data* corpse, struct char_data* ch,
         strncpy(condition, "silent", BUF_LEN - 1);
     }
     if (world[ch->in_room].sector_type == SECT_WATER_NOSWIM || world[ch->in_room].sector_type == SECT_WATER_SWIM || world[ch->in_room].sector_type == SECT_UNDERWATER)
-        asprintf(&(corpse->description), "The %s corpse of %s is floating here.",
+        rots_asprintf(&(corpse->description), "The %s corpse of %s is floating here.",
             condition,
             IS_NPC(ch) ? GET_NAME(ch) : pc_star_types[GET_RACE(ch)]);
     else
-        asprintf(&(corpse->description), "The %s corpse of %s is lying here.",
+        rots_asprintf(&(corpse->description), "The %s corpse of %s is lying here.",
             condition,
             IS_NPC(ch) ? GET_NAME(ch) : pc_star_types[GET_RACE(ch)]);
 
-    asprintf(&(corpse->short_description), "the %s corpse of %s", condition,
+    rots_asprintf(&(corpse->short_description), "the %s corpse of %s", condition,
         IS_NPC(ch) ? GET_NAME(ch) : pc_star_types[GET_RACE(ch)]);
 }
 

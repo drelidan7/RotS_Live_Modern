@@ -32,6 +32,7 @@
 #include "handler.h"
 #include "json_utils.h"
 #include "pkill.h"
+#include "platform_compat.h"
 #include "structs.h"
 #include "utils.h"
 
@@ -1064,13 +1065,13 @@ char* pkill_get_string(PKILL* p, int flag)
     day_to_str(&t, day);
 
     if (flag == PKILL_STRING_KILLED)
-        asprintf(&ret, "On %s, %s killed %s.\r\n",
+        rots_asprintf(&ret, "On %s, %s killed %s.\r\n",
             day, killer, victim);
     else if (flag == PKILL_STRING_SLAIN)
-        asprintf(&ret, "On %s, %s was slain by %s.\r\n",
+        rots_asprintf(&ret, "On %s, %s was slain by %s.\r\n",
             day, victim, killer);
     else
-        asprintf(&ret, "ERROR: Unknown pkill string!  Notify an immortal.\r\n");
+        rots_asprintf(&ret, "ERROR: Unknown pkill string!  Notify an immortal.\r\n");
 
     free(killer);
     free(victim);

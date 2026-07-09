@@ -87,7 +87,7 @@ int load_mudlle(char_data* ch, char* arg)
         isnew = 1;
     } else {
         isnew = 0;
-        bzero(str, MAX_STRING_LENGTH);
+        memset(str, 0, MAX_STRING_LENGTH);
         do {
             tmpstr = str + strlen(str);
             fgets(tmpstr, MAX_STRING_LENGTH - strlen(str), fp);

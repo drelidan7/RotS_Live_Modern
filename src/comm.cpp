@@ -1322,7 +1322,7 @@ SocketType init_socket(sh_int port)
     struct sockaddr* saddr;
 
     saddr = (struct sockaddr*)&sa;
-    bzero((char*)saddr, sizeof(struct sockaddr_in));
+    memset((char*)saddr, 0, sizeof(struct sockaddr_in));
     if (gethostname(hostname, MAX_HOSTNAME)) {
         perror("gethostname");
         exit(1);

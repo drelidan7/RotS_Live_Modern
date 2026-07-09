@@ -43,8 +43,8 @@ int hide_prof(struct char_data*);
 int see_hiding(struct char_data*);
 char unaccent(char);
 char* str_dup(const char* source);
-int str_cmp(char* arg1, char* arg2);
-int strn_cmp(char* arg1, char* arg2, int n);
+int str_cmp(const char* arg1, const char* arg2);
+int strn_cmp(const char* arg1, const char* arg2, int n);
 void log(const char* str);
 void mudlog(char* str, char type, sh_int level, byte file);
 void mudlog_debug_mob(char* buf, char_data* ch);
@@ -703,10 +703,14 @@ void set_mental_delay(char_data* ch, int value);
 #define IS_RESISTANT(ch, attackgroup) (GET_RESISTANCES(ch) & (1 << (attackgroup)))
 #define IS_VULNERABLE(ch, attackgroup) (GET_VULNERABILITIES(ch) & (1 << (attackgroup)))
 
+// CLEAR(x) used to expand to bzero() (a BSD-ism absent on MSVC); memset(...,0,...) is
+// the portable, standard-library equivalent and behaves identically here. The
+// SUNPROCESSING bzero() prototype below is inert dead code (that macro is never
+// defined anywhere in this tree) -- left as-is, it declares a call that never happens.
 #ifdef SUNPROCESSING
 void bzero(char*, int);
 #endif
-#define CLEAR(x) bzero((char*)(x), sizeof(x))
+#define CLEAR(x) memset((char*)(x), 0, sizeof(x))
 
 void show_char_to_char(struct char_data* i, struct char_data* ch, int mode,
     char* pos_line = 0);

@@ -27,6 +27,7 @@
 #endif
 
 #include <assert.h>
+#include <cstdarg>
 #include <cstring>
 #include <ctype.h>
 #include <signal.h>
@@ -37,6 +38,7 @@
 
 #include "color.h"
 #include "comm.h"
+#include "platform_compat.h"
 #include "rots_net.h"
 #include "db.h"
 #include "handler.h"
@@ -1036,9 +1038,52 @@ char* str_dup(const char* source)
     return new_string;
 }
 
+// rots_asprintf: portable stand-in for the asprintf() extension (see platform_compat.h
+// for the full ownership-contract writeup). Sizes the formatted output with a
+// zero-length vsnprintf pass (which returns the would-be length, excluding the NUL,
+// per the C99/POSIX contract), allocates exactly that many bytes plus one for the NUL,
+// then formats into it for real. A va_list is invalidated after any va_arg use
+// including the "measure" pass, so it must be va_copy'd before that pass and the
+// original consumed only once, by the final vsnprintf.
+int rots_asprintf(char** out, const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+
+    va_list size_args;
+    va_copy(size_args, args);
+    const int needed = vsnprintf(nullptr, 0, fmt, size_args);
+    va_end(size_args);
+
+    if (needed < 0) {
+        va_end(args);
+        *out = nullptr;
+        return -1;
+    }
+
+    char* buffer = (char*)malloc((size_t)needed + 1);
+    if (buffer == nullptr) {
+        va_end(args);
+        *out = nullptr;
+        return -1;
+    }
+
+    const int written = vsnprintf(buffer, (size_t)needed + 1, fmt, args);
+    va_end(args);
+
+    if (written < 0) {
+        free(buffer);
+        *out = nullptr;
+        return -1;
+    }
+
+    *out = buffer;
+    return written;
+}
+
 /* returns: 0 if equal, 1 if arg1 > arg2, -1 if arg1 < arg2  */
 /* scan 'till found different or end of both                 */
-int str_cmp(char* arg1, char* arg2)
+int str_cmp(const char* arg1, const char* arg2)
 {
     int chk, i;
 
@@ -1053,7 +1098,7 @@ int str_cmp(char* arg1, char* arg2)
 
 /* returns: 0 if equal, 1 if arg1 > arg2, -1 if arg1 < arg2  */
 /* scan 'till found different, end of both, or n reached     */
-int strn_cmp(char* arg1, char* arg2, int n)
+int strn_cmp(const char* arg1, const char* arg2, int n)
 {
     int chk, i;
 
@@ -1698,7 +1743,7 @@ char* nth(int n)
         }
     }
 
-    asprintf(&r, "%d%s", n, s);
+    rots_asprintf(&r, "%d%s", n, s);
 
     return r;
 }

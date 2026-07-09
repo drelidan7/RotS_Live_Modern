@@ -24,6 +24,7 @@
 #include "interpre.h"
 #include "limits.h"
 #include "pkill.h"
+#include "platform_compat.h"
 #include "script.h"
 #include "skill_timer.h"
 #include "spells.h"
@@ -3692,7 +3693,7 @@ ACMD(do_fame)
     }
 
     /* Display the total fame */
-    asprintf(&string, "%s", player_table[idx].name);
+    rots_asprintf(&string, "%s", player_table[idx].name);
     CAP(string);
     sprintf(buf + bufpt,
         "There %s %d record%s found about %s, "

@@ -2756,9 +2756,9 @@ ACMD(do_wizset)
                 send_to_char("Sorry, you can't do that.\n\r", ch);
                 return;
             }
-            bzero(descr.pwd, MAX_PWD_LENGTH);
+            memset(descr.pwd, 0, MAX_PWD_LENGTH);
             strcpy(descr.pwd, tmp_store.pwd);
-            bzero(descr.host, 50);
+            memset(descr.host, 0, 50);
             strcpy(descr.host, tmp_store.host);
             cbuf->desc = &descr;
             vict = cbuf;

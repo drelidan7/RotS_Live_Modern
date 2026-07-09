@@ -20,6 +20,7 @@
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
+#include "platform_compat.h"
 #include "profs.h"
 #include "spells.h"
 #include "structs.h"
@@ -808,7 +809,7 @@ SPECIAL(gatekeeper)
     doordir = host->delay.targ2.ch_num;
 
     if (ch != NULL && IS_AGGR_TO(host, ch)) {
-        asprintf(&msg, "To arms! The enemy is at %s!", world[ch->in_room].name);
+        rots_asprintf(&msg, "To arms! The enemy is at %s!", world[ch->in_room].name);
         do_gen_com(host, msg, 0, 0, SCMD_YELL);
         free(msg);
         host->delay.cmd = host->delay.subcmd = 0;
@@ -1053,7 +1054,7 @@ SPECIAL(gatekeeper2)
     doordir = host->delay.targ2.ch_num;
 
     if (ch && IS_AGGR_TO(host, ch)) {
-        asprintf(&msg, "To arms! The enemy is at %s!", world[ch->in_room].name);
+        rots_asprintf(&msg, "To arms! The enemy is at %s!", world[ch->in_room].name);
         do_gen_com(host, msg, 0, 0, SCMD_YELL);
         free(msg);
         host->delay.cmd = host->delay.subcmd = 0;
@@ -1938,7 +1939,7 @@ SPECIAL(mob_ranger)
     room_data* tmproom;
     int tmp, tmp2, mintime, mintmp;
 
-    bzero((char*)&tmpwtl, sizeof(waiting_type));
+    memset((char*)&tmpwtl, 0, sizeof(waiting_type));
 
     if (host->in_room == NOWHERE)
         return 0;
@@ -2034,7 +2035,7 @@ bool should_attack(char_data* host, char_data* tmpch)
 void do_spec_ambush(char_data* host, char_data* tmpch)
 {
     waiting_type tmpwtl;
-    bzero((char*)&tmpwtl, sizeof(waiting_type));
+    memset((char*)&tmpwtl, 0, sizeof(waiting_type));
     tmpwtl.cmd = CMD_AMBUSH;
     tmpwtl.subcmd = 0;
     tmpwtl.targ1.type = TARGET_CHAR;
@@ -2048,7 +2049,7 @@ void do_spec_ambush(char_data* host, char_data* tmpch)
 void do_spec_hit(char_data* host, char_data* tmpch)
 {
     waiting_type tmpwtl;
-    bzero((char*)&tmpwtl, sizeof(waiting_type));
+    memset((char*)&tmpwtl, 0, sizeof(waiting_type));
     if (GET_INT(host) <= 6) {
         act("$n snarls and lunges at $N!", FALSE, host, 0, tmpch, TO_ROOM);
     } else {
@@ -2084,7 +2085,7 @@ SPECIAL(mob_ranger_new)
     long racial_aggr = host->specials2.pref;
     int is_aggressive = IS_SET(host->specials2.act, MOB_AGGRESSIVE);
 
-    bzero((char*)&tmpwtl, sizeof(waiting_type));
+    memset((char*)&tmpwtl, 0, sizeof(waiting_type));
 
     if (host->in_room == NOWHERE)
         return 0;

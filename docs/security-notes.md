@@ -31,21 +31,41 @@ This is a **separate system** from account credentials: account passwords go thr
 `rots_crypt.cpp`'s SHA-512-crypt (`$6$`) implementation (see `docs/BUILD.md` and
 `.superpowers/sdd/p2b-task-4-report.md`) and are not affected by this finding.
 
-### Where this is actually live (three sites, not one)
+### Where this is actually live (five sites, not one)
 
-An earlier scout pass estimated "1 live strncmp" against a legacy password; a closer audit for
-this task found **three** live comparison sites in `interpre.cpp`, all gated by
-`else if (*d->account_name)` (interpre.cpp:4025/4042) so that account-linked characters are routed
-to the account-password branches instead — these three only ever fire for characters that are
-*not* linked to an account:
+An earlier scout pass estimated "1 live strncmp" against a legacy password; a full audit
+(`grep -n "strncmp(CRYPT" src/interpre.cpp` yields six sites) found **five** live comparison
+sites in `interpre.cpp`, all reachable only for characters that are *not* linked to an account
+(account-linked characters are routed to the account-password branches by `*d->account_name`
+checks at the relevant menu decision points, e.g. interpre.cpp:2904/4025/4042).
+
+Three verify a **stored credential** (typed password vs. the password persisted in the
+character's save file):
 
 - `interpre.cpp:3453` — `CON_ACCTLEGPWD`: linking an existing legacy character to an account
   (account menu option 3) verifies the character's legacy password before migrating it.
-- `interpre.cpp:4068` — `CON_PWDNQO`: "change password" for a non-account character.
-- `interpre.cpp:4118` — `CON_DELCNF1`: "delete character" confirmation for a non-account character.
+- `interpre.cpp:4068` — `CON_PWDNQO`: "change password" for a non-account character (old
+  password check).
+- `interpre.cpp:4118` — `CON_DELCNF1`: "delete character" confirmation for a non-account
+  character.
 
-A fourth site, `interpre.cpp:2948` (`CON_PWDNRM`), is dead code — nothing in the current state
-machine ever transitions a descriptor into `CON_PWDNRM`.
+Two verify a **same-session retype confirmation** (typed password vs. the password typed
+moments earlier into `d->pwd`, not vs. anything on disk) — still live plaintext comparison
+touch-points for a future migration, plus their paired `strncpy(d->pwd, CRYPT(...))` writes
+are where the plaintext first enters the field that later gets persisted:
+
+- `interpre.cpp:3648` — `CON_PWDCNF`: new-character password confirmation. Reachable for a
+  character created *without* an active account session: the new-character branch at
+  interpre.cpp:2913 sets `STATE(d) = CON_PWDGET` (the `else` of the `*d->account_name` check
+  at 2904), `CON_PWDGET` stores the plaintext into `d->pwd` (strncpy at 3638) and
+  transitions to `CON_PWDCNF` (3642).
+- `interpre.cpp:4099` — `CON_PWDNCNF`: password-change confirmation. Reachable from
+  `CON_PWDNQO` above: a correct old password sets `STATE(d) = CON_PWDNEW` (4076), and
+  `CON_PWDNEW` stores the new plaintext into `d->pwd` (strncpy at 4090) and transitions to
+  `CON_PWDNCNF` (4093).
+
+The sixth grep hit, `interpre.cpp:2948` (`CON_PWDNRM`), is dead code — nothing in the current
+state machine ever transitions a descriptor into `CON_PWDNRM`.
 
 The still-active **text** player-save format (`db.cpp`, see `docs/data-formats/player-save.md`)
 reads/writes this same plaintext `pwd` field for every character that saves through it; this is
@@ -57,7 +77,7 @@ Characters created under an active account session never get a real legacy passw
 `interpre.cpp:2293` defines a marker:
 
 ```cpp
-constexpr char kAccountOnlyPasswordMarker[] = "*ACCOUNT*";
+const char* kAccountOnlyPasswordMarker = "*ACCOUNT*";
 ```
 
 `set_account_only_character_password()` (interpre.cpp:2345-2348) stamps a new account-native

@@ -1,5 +1,6 @@
 #include "rots_crypt.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cerrno>
 #include <cstdint>
@@ -140,6 +141,24 @@ public:
         for (int word_index = 0; word_index < 8; ++word_index)
             for (int byte_index = 0; byte_index < 8; ++byte_index)
                 digest_out[word_index * 8 + byte_index] = static_cast<unsigned char>(state_[word_index] >> (56 - 8 * byte_index));
+    }
+
+    // Best-effort clearing of hash-state working memory that transiently holds
+    // key/salt-derived material, on every exit path from every Sha512Context
+    // instance in rots_crypt() below (parked Phase 2b finding, addressed here per
+    // Phase 3 Task 5's crypt-scrubbing item). std::fill on plain memory is not a
+    // dedicated secure-zero primitive -- an aggressive optimizer is, in principle,
+    // still free to treat a write to memory about to go out of scope as dead-store
+    // elimination, so this is defense-in-depth rather than a cryptographic
+    // guarantee. A proper explicit_bzero()/SecureZeroMemory()-based helper (neither
+    // of which is portable across POSIX and MSVC without its own shim) is Phase 5
+    // hardening work.
+    ~Sha512Context()
+    {
+        std::fill(state_, state_ + 8, std::uint64_t { 0 });
+        std::fill(buffer_, buffer_ + kShaBlockBytes, static_cast<unsigned char>(0));
+        buffer_len_ = 0;
+        total_bytes_ = 0;
     }
 
 private:
@@ -388,6 +407,15 @@ const char* rots_crypt(const char* key, const char* setting)
     append_base64_24bit(out, alt_result[40], alt_result[61], alt_result[19], 4);
     append_base64_24bit(out, alt_result[62], alt_result[20], alt_result[41], 4);
     append_base64_24bit(out, 0, 0, alt_result[63], 2);
+
+    // Zeroize the working buffers that held key/salt-derived intermediate digest
+    // material now that they have been fully consumed into `out` -- `out` itself
+    // (g_result_buffer) is the return value and must survive past this point, so it
+    // is deliberately left untouched. Same caveat as the Sha512Context destructor
+    // above: std::fill is best-effort, not a dedicated secure-zero primitive.
+    std::fill(alt_result, alt_result + kShaDigestBytes, static_cast<unsigned char>(0));
+    std::fill(p_bytes.begin(), p_bytes.end(), '\0');
+    std::fill(s_bytes.begin(), s_bytes.end(), '\0');
 
     return out.c_str();
 }

@@ -541,13 +541,18 @@ namespace {
         // mapping db.cpp's open_secure_temp_output_file uses (Phase 3 Task 6).
 #if defined PREDEF_PLATFORM_WINDOWS
         int fd = -1;
-        const errno_t open_error = _sopen_s(&fd, path.c_str(), _O_WRONLY | _O_CREAT | _O_TRUNC, _SH_DENYNO, _S_IREAD | _S_IWRITE);
+        // _O_BINARY is load-bearing: this writer emits byte-exact payloads
+        // (migration snapshot restores of legacy player/object/exploit files,
+        // account JSON) -- CRT text mode would expand every '\n' to "\r\n",
+        // corrupting restored legacy files into "\r\r\n" line endings
+        // (Phase 3 Task 6). Same mapping as db.cpp's open_secure_temp_output_file.
+        const errno_t open_error = _sopen_s(&fd, path.c_str(), _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY, _SH_DENYNO, _S_IREAD | _S_IWRITE);
         if (open_error != 0) {
             set_error(error_message, "Failed to open output file '" + path + "': " + std::strerror(open_error));
             return nullptr;
         }
 
-        FILE* file = _fdopen(fd, "w");
+        FILE* file = _fdopen(fd, "wb");
         if (file == nullptr) {
             _close(fd);
             set_error(error_message, "Failed to create stream for output file '" + path + "': " + std::strerror(errno));

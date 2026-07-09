@@ -8,7 +8,9 @@
 namespace {
 
 void write_file(const char* path, const char* content) {
-    FILE* f = fopen(path, "w");
+    // "wb": the byte-identical assertions below compare against exactly the bytes
+    // written here; text mode on Windows would expand "\n" to "\r\n" (Phase 3 Task 6).
+    FILE* f = fopen(path, "wb");
     ASSERT_NE(f, nullptr);
     fputs(content, f);
     fclose(f);

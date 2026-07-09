@@ -2851,7 +2851,10 @@ bool write_player_text(struct char_data* ch, int load_room, const char* scratch_
     struct char_file_u chd;
     int tmp;
 
-    FILE* pf = fopen(scratch_path, "w");
+    // "wb": this serialization is pinned byte-for-byte (A/B oracle + round-trip
+    // test); CRT text mode on Windows would expand every '\n' to "\r\n" and
+    // silently fork the on-disk format from the POSIX builds (Phase 3 Task 6).
+    FILE* pf = fopen(scratch_path, "wb");
     if (!pf) {
         return false;
     }

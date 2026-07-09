@@ -885,7 +885,12 @@ const int constexpr RACE_HARADRIM = 18;
 #define RACE_UNDEAD 16
 #define RACE_TROLL 20
 
-#define localtime(x) localtime((time_t*)x)
+// A `#define localtime(x) localtime((time_t*)x)` macro used to live here,
+// force-casting any pointer to time_t*. On Windows LLP64 (long = 4 bytes,
+// time_t = 8) that cast made localtime(&some_long) read 4 bytes of adjacent
+// stack, return nullptr for the resulting out-of-range time, and abort inside
+// asctime() (Phase 3 Task 6). It is deliberately removed: every call site now
+// passes a real time_t*, so any new mismatch fails at compile time on MSVC.
 #ifndef CONSTANTSMARK
 extern char* pc_races[];
 extern char* pc_race_types[];

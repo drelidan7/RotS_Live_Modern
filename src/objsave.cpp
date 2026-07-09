@@ -649,7 +649,12 @@ FILE* Crash_load(char_data* character)
     struct obj_data* equip_array[11];
     struct obj_data* obj;
     int cost, equip_lost;
-    int num_of_hours, tmp, equip_counter;
+    // num_of_hours starts at 0: the pre-charge `cost` computation below reads it
+    // before the RENT_RENTED/TIMEDOUT/FORCED branch assigns the real value, and
+    // the historical uninitialized read was UB (MSVC RTC3 aborts on it -- Phase 3
+    // Task 6) with a potential divide-by-zero lurking in (RENT_HALFTIME + garbage).
+    int num_of_hours = 0;
+    int tmp, equip_counter;
     struct obj_data dummy_sack;
     auto fail_closed = [&character]() -> FILE* {
         REMOVE_BIT(character->specials.affected_by, AFF_TWOHANDED);

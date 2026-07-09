@@ -5,7 +5,11 @@ std::string format_account_timestamp(long timestamp)
     if (timestamp <= 0)
         return "Never";
 
-    if (timestamp > static_cast<long>(std::numeric_limits<time_t>::max()))
+    // Compare in long long: casting time_t's max down to long truncates to -1 on
+    // Windows LLP64 (long = 4 bytes, time_t = 8), which made every positive
+    // timestamp "Invalid" (Phase 3 Task 6). Both operands fit in long long on
+    // every supported platform.
+    if (static_cast<long long>(timestamp) > static_cast<long long>(std::numeric_limits<time_t>::max()))
         return "Invalid";
 
     time_t raw_time = static_cast<time_t>(timestamp);

@@ -389,7 +389,8 @@ namespace {
             && require_ubyte_range(character.rerolls, "progression.rerolls", error_message)
             && require_integer_range(character.tactics, TACTICS_DEFENSIVE, TACTICS_BERSERK, "state.tactics", error_message)
             && require_integer_range(character.shooting, SHOOTING_SLOW, SHOOTING_FAST, "state.shooting", error_message)
-            && require_integer_range(character.casting, CASTING_SLOW, CASTING_FAST, "state.casting", error_message);
+            && require_integer_range(character.casting, CASTING_SLOW, CASTING_FAST, "state.casting", error_message)
+            && require_integer_range(character.specialization, PLRSPEC_NONE, game_types::PS_Count - 1, "state.specialization", error_message);
     }
 
     bool validate_ability_data(const AbilityData& ability_data, const char* scope, std::string* error_message)
@@ -1778,6 +1779,8 @@ namespace {
                 return nested_reader->parse_integer(&character->casting, nested_error_message);
             if (key == "two_handed")
                 return nested_reader->parse_bool(&character->two_handed, nested_error_message);
+            if (key == "specialization")
+                return nested_reader->parse_integer(&character->specialization, nested_error_message);
             return nested_reader->skip_value(nested_error_message);
         },
             error_message))
@@ -1848,6 +1851,7 @@ CharacterData character_data_from_store(const char_file_u& stored_character)
     character.shooting = normalize_shooting_value(stored_character.specials2.shooting);
     character.casting = normalize_casting_value(stored_character.specials2.casting);
     character.two_handed = stored_character.specials2.two_handed != 0;
+    character.specialization = stored_character.profs.specialization;
 
     character.mage = profession_from_store(stored_character, PROF_MAGE);
     character.mystic = profession_from_store(stored_character, PROF_CLERIC);
@@ -1997,6 +2001,7 @@ bool apply_character_data_to_store(const CharacterData& json_character, char_fil
     stored_character->specials2.shooting = json_character.shooting;
     stored_character->specials2.casting = json_character.casting;
     stored_character->specials2.two_handed = json_character.two_handed ? 1 : 0;
+    stored_character->profs.specialization = json_character.specialization;
     stored_character->birth = json_character.timers.birth;
     stored_character->last_logon = json_character.timers.last_logon;
     stored_character->played = json_character.timers.played_seconds;
@@ -2183,7 +2188,8 @@ std::string serialize_character_to_json(const CharacterData& character)
     output << "    \"tactics\": " << character.tactics << ",\n";
     output << "    \"shooting\": " << character.shooting << ",\n";
     output << "    \"casting\": " << character.casting << ",\n";
-    output << "    \"two_handed\": " << (character.two_handed ? "true" : "false") << "\n";
+    output << "    \"two_handed\": " << (character.two_handed ? "true" : "false") << ",\n";
+    output << "    \"specialization\": " << character.specialization << "\n";
     output << "  },\n";
     output << "  \"talks\": ";
     write_named_integer_object(output, collect_non_zero_named_values(character.talks, MAX_TOUNGE, talk_key_for_index));
@@ -2435,6 +2441,9 @@ std::string serialize_character_to_json_v2a(const CharacterData& character)
     writer.raw(",\n");
     writer.raw("    \"two_handed\": ");
     writer.raw(character.two_handed ? "true" : "false");
+    writer.raw(",\n");
+    writer.raw("    \"specialization\": ");
+    writer.number(character.specialization);
     writer.raw("\n");
     writer.raw("  },\n");
     writer.raw("  \"talks\": ");
@@ -2687,6 +2696,9 @@ std::string serialize_character_to_json_v2b(const CharacterData& character)
     writer.raw(",\n");
     writer.raw("    \"two_handed\": ");
     writer.raw(character.two_handed ? "true" : "false");
+    writer.raw(",\n");
+    writer.raw("    \"specialization\": ");
+    writer.number(character.specialization);
     writer.raw("\n");
     writer.raw("  },\n");
     writer.raw("  \"talks\": ");

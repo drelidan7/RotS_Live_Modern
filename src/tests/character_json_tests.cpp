@@ -52,6 +52,7 @@ char_file_u make_stored_character()
     stored.specials2.shooting = SHOOTING_FAST;
     stored.specials2.casting = CASTING_SLOW;
     stored.specials2.two_handed = 1;
+    stored.profs.specialization = PLRSPEC_WILD;
     stored.profs.color_mask = 0x123456;
     stored.profs.colors[COLOR_NARR] = CYEL;
     stored.profs.colors[COLOR_CHAT] = CMAG;
@@ -237,6 +238,11 @@ std::string remove_json_field(std::string json, const std::string& key)
     return json;
 }
 
+std::string specialization_fragment(int specialization)
+{
+    return "\"specialization\": " + std::to_string(specialization);
+}
+
 TEST(CharacterJson, EncodesFlagBitvectorsAsReadableNames)
 {
     EXPECT_EQ(character_json::encode_player_flags(PLR_WRITING | PLR_INCOGNITO), (std::vector<std::string> { "writing", "incognito" }));
@@ -274,6 +280,7 @@ TEST(CharacterJson, BuildsCharacterDataFromStoredCharacterUsingMysticProfessionN
     EXPECT_EQ(character.shooting, SHOOTING_FAST);
     EXPECT_EQ(character.casting, CASTING_SLOW);
     EXPECT_TRUE(character.two_handed);
+    EXPECT_EQ(character.specialization, PLRSPEC_WILD);
     EXPECT_EQ(character.color_mask, 0x123456);
     ASSERT_EQ(character.colors.size(), static_cast<size_t>(MAX_COLOR_FIELDS));
     EXPECT_EQ(character.colors[COLOR_NARR], CYEL);
@@ -304,6 +311,7 @@ TEST(CharacterJson, SerializesAndDeserializesCharacterJsonRoundTrip)
 {
     const character_json::CharacterData original = character_json::character_data_from_store(make_stored_character());
     const std::string json = character_json::serialize_character_to_json(original);
+    EXPECT_NE(json.find(specialization_fragment(PLRSPEC_WILD)), std::string::npos);
 
     character_json::CharacterData parsed;
     std::string error_message;
@@ -322,6 +330,7 @@ TEST(CharacterJson, SerializesAndDeserializesCharacterJsonRoundTrip)
     EXPECT_EQ(parsed.shooting, original.shooting);
     EXPECT_EQ(parsed.casting, original.casting);
     EXPECT_EQ(parsed.two_handed, original.two_handed);
+    EXPECT_EQ(parsed.specialization, original.specialization);
     EXPECT_EQ(parsed.color_mask, original.color_mask);
     EXPECT_EQ(parsed.colors, original.colors);
     ASSERT_EQ(parsed.color_settings.size(), original.color_settings.size());
@@ -342,6 +351,19 @@ TEST(CharacterJson, SerializesAndDeserializesCharacterJsonRoundTrip)
     EXPECT_EQ(parsed.preference_flags, original.preference_flags);
     ASSERT_EQ(parsed.affects.size(), original.affects.size());
     EXPECT_EQ(parsed.affects[0].flags, original.affects[0].flags);
+}
+
+TEST(CharacterJson, DefaultsMissingSpecializationToNoneForOlderCharacterJson)
+{
+    const std::string json = replace_once(make_valid_character_json(), ",\n    " + specialization_fragment(PLRSPEC_WILD), "");
+
+    character_json::CharacterData parsed;
+    std::string error_message;
+    ASSERT_TRUE(character_json::deserialize_character_from_json(json, &parsed, &error_message)) << error_message;
+
+    char_file_u stored {};
+    ASSERT_TRUE(character_json::apply_character_data_to_store(parsed, &stored, &error_message)) << error_message;
+    EXPECT_EQ(stored.profs.specialization, PLRSPEC_NONE);
 }
 
 TEST(CharacterJson, AppliesCharacterDataBackToStoredCharacter)
@@ -366,6 +388,7 @@ TEST(CharacterJson, AppliesCharacterDataBackToStoredCharacter)
     EXPECT_EQ(stored.specials2.shooting, SHOOTING_FAST);
     EXPECT_EQ(stored.specials2.casting, CASTING_SLOW);
     EXPECT_EQ(stored.specials2.two_handed, 1);
+    EXPECT_EQ(stored.profs.specialization, PLRSPEC_WILD);
     EXPECT_EQ(stored.last_logon, 1710000000);
     EXPECT_EQ(stored.skills[2], 95);
     EXPECT_TRUE((stored.specials2.act & PLR_WRITING) != 0);
@@ -515,6 +538,30 @@ TEST(CharacterJson, RejectsOutOfRangeNarrowedNumericFields)
 
     EXPECT_FALSE(character_json::apply_character_data_to_store(character, &stored, &error_message));
     EXPECT_NE(error_message.find("abilities.temporary.str"), std::string::npos);
+}
+
+TEST(CharacterJson, RejectsOutOfRangeSpecializations)
+{
+    character_json::CharacterData character = character_json::character_data_from_store(make_stored_character());
+    character.specialization = game_types::PS_Count;
+
+    char_file_u stored {};
+    std::string error_message;
+
+    EXPECT_FALSE(character_json::apply_character_data_to_store(character, &stored, &error_message));
+    EXPECT_NE(error_message.find("state.specialization"), std::string::npos);
+}
+
+TEST(CharacterJson, RejectsOutOfRangeSpecializationsDuringDeserialization)
+{
+    const std::string json = replace_once(make_valid_character_json(),
+        specialization_fragment(PLRSPEC_WILD), specialization_fragment(game_types::PS_Count));
+
+    character_json::CharacterData parsed;
+    std::string error_message;
+
+    EXPECT_FALSE(character_json::deserialize_character_from_json(json, &parsed, &error_message));
+    EXPECT_NE(error_message.find("state.specialization"), std::string::npos);
 }
 
 TEST(CharacterJson, RejectsOutOfRangeNamedColorValuesDuringDeserialization)

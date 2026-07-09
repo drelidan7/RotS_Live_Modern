@@ -1,5 +1,56 @@
 # Work In Progress
 
+## Current Bug Task - Legacy Specialization Smoke Coverage
+- Active slice complete: the proxy-backed legacy-link smoke flow now catches lost specializations with a non-zero legacy fixture and live `info` output assertion.
+- Scope:
+  - add smoke-fixture coverage for a non-zero legacy specialization
+  - assert account-native `character.json` preserves that specialization after live account-menu legacy linking
+  - run the smoke harness with the new failing-first coverage and fix any production gap it exposes
+- Validation:
+  - `python3 tools/account_smoke_tests.py` passed at `54/54` tests
+  - focused `AccountManagement`/`CharacterJson` specialization filters passed
+  - `make test` passed at `554/554` tests
+  - `make smoke-account` first failed on the new live specialization assertion, then passed after the harness waited for the specialization line itself
+  - final `make smoke-account` passed with post-save account JSON and post-save live reload assertions for the migrated legacy specialization
+- Reviewer status:
+  - `Bazarat`: requested post-save and reload coverage; addressed with account-native identity checks after quit and a second account-backed live reload of the migrated legacy character
+  - `Magus`: requested write-side validation and fixture drift clarification; addressed with account-native write validation, malformed-specialization regression coverage, and fixture comments/tests
+  - `Vincent`: requested fail-closed handling for malformed legacy/runtime specializations; addressed before account-native serialization so invalid data cannot create or replace character JSON
+
+## Current Bug Task - Specialization Persistence
+- Active slice complete: specializations now persist in account-native `character.json` and are preserved during legacy account conversion.
+- Scope:
+  - reproduce the missing `char_file_u.profs.specialization` round trip in `character_json`
+  - add focused regression coverage with `Bazarat` pressure on malformed and unknown specialization cases
+  - persist the active specialization through account-native character JSON so legacy migration and account saves keep it
+- Validation:
+  - focused `CharacterJson` specialization and account-native/migration filters passed
+  - `make test` passed at `553/553` tests
+  - `make smoke-account` passed the full proxy-backed account flow, including account-backed legacy play
+  - `git diff --check -- src/character_json.cpp src/character_json.h src/tests/character_json_tests.cpp src/tests/account_management_tests.cpp WIP.md` passed
+- Reviewer status:
+  - `Bazarat`: requested non-zero round-trip, account-native wrapper, legacy migration, missing-field, and malformed-value coverage
+  - `Magus`: clear after review; requested explicit deserialize-time invalid specialization coverage
+  - `Vincent`: clear after review; requested enum-derived JSON fragments and explicit hostile account-file coverage
+
+## Current Bug Task
+- Active slice complete: fixed linked-character selection and new-character creation still being blocked when the account has a level-92+ linked character in its roster.
+- Scope:
+  - reproduce the mismatch between active-session-only level checks and roster-level exception expectations
+  - let a high-level linked character in account storage unlock linked-character selection and new-character creation even when the currently active linked character is lower level
+  - keep the active-session display and same-character reconnect behavior intact
+- Validation:
+  - `clang-format -i -style=WebKit src/interpre.cpp src/tests/interpre_account_menu_tests.cpp` passed
+  - `cmake --build build --target ageland_tests -j16` passed
+  - focused active-session/linked-roster `InterpreAccountMenu` filter passed at `28` tests after duplicate-owner, ambiguous-active-session, and corrupt-file hardening
+  - `./bin/tests '--gtest_filter=InterpreAccountMenu.*'` passed at `88` tests
+  - `make test` passed at `550/550` tests
+  - `make smoke-account` passed the full proxy-backed account flow
+- Reviewer status:
+  - `Magus`: clear after ambiguous active-session precedence and pending-unlock cleanup
+  - `Vincent`: clear after ambiguous ownership and unlockselect trust-boundary review
+  - `Bazarat`: clear after duplicate-active-low, new-character name-confirmation, and unlockselect stale-state coverage
+
 ## Current Build Task
 - Active slice complete: fixed the raw `src/Makefile` link failure from `make all`.
 - Scope:

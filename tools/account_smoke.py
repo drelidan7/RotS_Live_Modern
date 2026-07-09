@@ -27,6 +27,9 @@ LEGACY_FIXTURE_LEVEL = 7
 LEGACY_FIXTURE_RACE = 2
 LEGACY_FIXTURE_LOAD_ROOM = 1170
 LEGACY_FIXTURE_TITLE = "the Migrated Smoke Sentinel"
+# Mirrors PLRSPEC_WMSR / specialize_name[PLRSPEC_WMSR] in the game constants.
+LEGACY_FIXTURE_SPECIALIZATION = 18
+LEGACY_FIXTURE_SPECIALIZATION_NAME = "weapon mastery"
 LEGACY_OBJECT_GOLD = 4321
 LEGACY_EXPLOIT_VICTIM_NAME = "legacy-smoke-victim"
 LEGACY_EXPLOIT_INT_PARAM = 77
@@ -36,6 +39,10 @@ MIN_SMOKE_PORT = 20000
 MAX_GAME_PORT = 32767
 VERIFICATION_CODE_PROMPT = "Verification code (or type RESEND/CANCEL):"
 CHILD_ENV_ALLOWLIST = ("PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "CARGO_HOME", "RUSTUP_HOME")
+
+
+def legacy_fixture_specialization_line() -> str:
+    return f"You are specialized in {LEGACY_FIXTURE_SPECIALIZATION_NAME}."
 
 
 class NonRetryableSmokeError(RuntimeError):
@@ -54,6 +61,7 @@ class LegacyPlayerFixture:
     idnum: int
     load_room: int
     title: str
+    specialization: int
 
 
 @dataclass(frozen=True)
@@ -682,6 +690,7 @@ def expect_account_character_identity(
     expected_idnum: int,
     expected_load_room: int,
     expected_title: str,
+    expected_specialization: int,
 ) -> None:
     character_file = account_native_character_file(account_file, character_name)
     character_data = read_json_file(character_file)
@@ -697,6 +706,7 @@ def expect_account_character_identity(
         "race": identity.get("race") if isinstance(identity, dict) else None,
         "idnum": identity.get("idnum") if isinstance(identity, dict) else None,
         "load_room": state.get("load_room") if isinstance(state, dict) else None,
+        "specialization": state.get("specialization") if isinstance(state, dict) else None,
     }
     expected = {
         "title": expected_title,
@@ -704,6 +714,7 @@ def expect_account_character_identity(
         "race": expected_race,
         "idnum": expected_idnum,
         "load_room": expected_load_room,
+        "specialization": expected_specialization,
     }
     if actual != expected:
         raise RuntimeError(f"Expected migrated character identity {expected} in {character_file}, got {actual}.")
@@ -890,7 +901,7 @@ def write_legacy_player_fixture(repo_root: Path, character_name: str, password: 
         "gold        0\n"
         "exp         0\n"
         "encumb      0\n"
-        "spec        0\n"
+        f"spec        {LEGACY_FIXTURE_SPECIALIZATION}\n"
         "tmpstats    10 10 10 10 10 10\n"
         "tmpabil     20 20 100 0\n"
         "permstats    10 10 10 10 10 10\n"
@@ -920,6 +931,7 @@ def write_legacy_player_fixture(repo_root: Path, character_name: str, password: 
         idnum=idnum,
         load_room=LEGACY_FIXTURE_LOAD_ROOM,
         title=LEGACY_FIXTURE_TITLE,
+        specialization=LEGACY_FIXTURE_SPECIALIZATION,
     )
 
 
@@ -1272,6 +1284,7 @@ def run_smoke_attempt(args: argparse.Namespace, repo_root: Path) -> int:
                 legacy_asset_fixtures.player.idnum,
                 legacy_asset_fixtures.player.load_room,
                 legacy_asset_fixtures.player.title,
+                legacy_asset_fixtures.player.specialization,
             )
             expect_account_object_fixture_data(account_file, legacy_character_name)
             expect_account_exploit_fixture_data(account_file, legacy_character_name)
@@ -1292,10 +1305,15 @@ def run_smoke_attempt(args: argparse.Namespace, repo_root: Path) -> int:
             reader.recv_until(["Here we go..."], 8.0)
 
             send_line(sock, "info")
-            info_output = reader.recv_until([f"You have reached level {LEGACY_FIXTURE_LEVEL}."], 8.0)
+            expected_specialization_line = legacy_fixture_specialization_line()
+            info_output = reader.recv_until([expected_specialization_line], 8.0)
             require_markers(
                 info_output,
-                [LEGACY_FIXTURE_TITLE, f"You have reached level {LEGACY_FIXTURE_LEVEL}."],
+                [
+                    LEGACY_FIXTURE_TITLE,
+                    f"You have reached level {LEGACY_FIXTURE_LEVEL}.",
+                    expected_specialization_line,
+                ],
                 "Migrated character live info",
             )
 
@@ -1305,6 +1323,51 @@ def run_smoke_attempt(args: argparse.Namespace, repo_root: Path) -> int:
         expect_account_character_list(account_file, [play_character_name.lower(), legacy_character_name.lower()])
         expect_account_character_links(account_file, [play_character_name.lower(), legacy_character_name.lower()])
         expect_account_native_character_assets(account_file, legacy_character_name)
+        if legacy_asset_fixtures is None:
+            raise RuntimeError("Legacy asset fixture metadata was not available after migrated character save.")
+        expect_account_character_identity(
+            account_file,
+            legacy_character_name,
+            legacy_asset_fixtures.player.level,
+            legacy_asset_fixtures.player.race,
+            legacy_asset_fixtures.player.idnum,
+            legacy_asset_fixtures.player.load_room,
+            legacy_asset_fixtures.player.title,
+            legacy_asset_fixtures.player.specialization,
+        )
+
+        with socket.create_connection((LOOPBACK_HOST, args.proxy_port), timeout=5) as sock:
+            reader = BufferedPromptReader(sock)
+            reader.recv_until(["Account email:"], 8.0)
+            send_line(sock, account_email)
+
+            reader.recv_until(["Account password:"], 8.0)
+            send_line(sock, DEFAULT_RESET_PASSWORD)
+
+            wait_for_account_menu(reader, 8.0)
+            send_line(sock, "2")
+            reader.recv_until(["Character number:"], 8.0)
+            send_line(sock, "2")
+
+            wait_for_character_menu(reader, 8.0)
+            send_line(sock, "1")
+            reader.recv_until(["Here we go..."], 8.0)
+
+            expected_specialization_line = legacy_fixture_specialization_line()
+            send_line(sock, "info")
+            reloaded_info_output = reader.recv_until([expected_specialization_line], 8.0)
+            require_markers(
+                reloaded_info_output,
+                [
+                    LEGACY_FIXTURE_TITLE,
+                    f"You have reached level {LEGACY_FIXTURE_LEVEL}.",
+                    expected_specialization_line,
+                ],
+                "Reloaded migrated character live info",
+            )
+
+            send_line(sock, "quit")
+            reader.recv_until(["As you quit, all your posessions drop to the ground!", "Goodbye"], 8.0)
 
         with socket.create_connection((LOOPBACK_HOST, args.proxy_port), timeout=5) as active_sock:
             active_reader = BufferedPromptReader(active_sock)

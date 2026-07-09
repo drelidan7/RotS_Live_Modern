@@ -2,6 +2,7 @@
 #include "../db.h"
 #include "../exploits_json.h"
 #include "../pkill.h"
+#include "test_platform_compat.h"
 
 #include <gtest/gtest.h>
 
@@ -52,7 +53,7 @@ public:
     TemporaryDirectory()
     {
         char path_template[] = "/tmp/rots-pod-persistence-XXXXXX";
-        char* created_path = mkdtemp(path_template);
+        char* created_path = rots_mkdtemp(path_template);
         EXPECT_NE(created_path, nullptr);
         if (created_path)
             m_path = created_path;

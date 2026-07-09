@@ -2,6 +2,7 @@
 #include "../exploits_json.h"
 #include "../objects_json.h"
 #include "../utils.h"
+#include "test_platform_compat.h"
 
 #include <gtest/gtest.h>
 
@@ -14,7 +15,13 @@
 #include <limits.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+
+// geteuid() (chmod-based fault-injection tests below) is POSIX-only; those
+// tests skip entirely on Windows before reaching it (no owner/group/other
+// permission bits to bypass-as-root there in the first place).
+#if !defined(_WIN32)
 #include <unistd.h>
+#endif
 
 extern struct player_index_element* player_table;
 extern int top_of_p_table;
@@ -27,7 +34,7 @@ public:
     TemporaryDirectory()
     {
         char directory_template[] = "/tmp/rots-account-tests-XXXXXX";
-        char* created_path = mkdtemp(directory_template);
+        char* created_path = rots_mkdtemp(directory_template);
         EXPECT_NE(created_path, nullptr) << "Expected mkdtemp to create a temporary directory for account-management tests.";
         if (created_path)
             m_path = created_path;
@@ -565,6 +572,17 @@ TEST(AccountManagement, ThrottlesVerificationCodeResendsForRecentlyIssuedCodes) 
 }
 
 TEST(AccountManagement, UsesConfiguredSendmailCommandForVerificationEmailDelivery) {
+#if defined(_WIN32)
+    // send_email_message() is a documented Windows operational gap (Phase 3
+    // Task 6, account_management.cpp): it shells out via fork()/pipe()/
+    // execvp(), which Windows has no equivalent for, so it fails cleanly
+    // rather than actually invoking a delivery command there. This test
+    // exercises real delivery through a captured `#!/bin/sh` script, which
+    // both depends on that POSIX-only mechanism and on shebang-script
+    // execution (not natively supported by CreateProcess either) -- skip
+    // rather than assert a behavior that is not available on this platform.
+    GTEST_SKIP() << "sendmail-based email delivery is a documented Windows gap (Phase 3 Task 6).";
+#endif
     TemporaryDirectory temp_directory;
     const std::string root = temp_directory.path();
     const std::string capture_path = root + "/captured-mail.txt";
@@ -1638,8 +1656,12 @@ TEST(AccountManagement, LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteF
     // This test injects a write failure via chmod(0500); root bypasses file
     // permissions, so the failure path is unreachable when running as root
     // (e.g. inside the build container).
+#if defined(_WIN32)
+    GTEST_SKIP() << "chmod-based failure injection has no Windows ACL equivalent (documented gap, Phase 3 Task 6).";
+#else
     if (geteuid() == 0)
         GTEST_SKIP() << "chmod-based failure injection does not work as root.";
+#endif
 
     TemporaryDirectory temp_directory;
     std::string error_message;
@@ -2432,8 +2454,12 @@ TEST(AccountManagement, MigrationRetiresLegacyFilesAfterSuccessfulAccountNativeW
 TEST(AccountManagement, MigrationFailsClosedWhenLegacyFileRetirementFails) {
     // chmod(0500)-based failure injection; unreachable as root (see
     // LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteFails).
+#if defined(_WIN32)
+    GTEST_SKIP() << "chmod-based failure injection has no Windows ACL equivalent (documented gap, Phase 3 Task 6).";
+#else
     if (geteuid() == 0)
         GTEST_SKIP() << "chmod-based failure injection does not work as root.";
+#endif
     if (sizeof(long) != 4)
         GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
@@ -2514,8 +2540,12 @@ TEST(AccountManagement, MigrationCleansUpAccountNativeOutputsWhenStaleFlatRetire
 TEST(AccountManagement, MigrationRestoresRetiredFilesWhenExploitRetirementFails) {
     // chmod(0500)-based failure injection; unreachable as root (see
     // LeavesStoredObjectPathUnchangedWhenCanonicalObjectWriteFails).
+#if defined(_WIN32)
+    GTEST_SKIP() << "chmod-based failure injection has no Windows ACL equivalent (documented gap, Phase 3 Task 6).";
+#else
     if (geteuid() == 0)
         GTEST_SKIP() << "chmod-based failure injection does not work as root.";
+#endif
     if (sizeof(long) != 4)
         GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 

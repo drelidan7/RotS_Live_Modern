@@ -1,4 +1,5 @@
 #include "../mail.h"
+#include "test_platform_compat.h"
 
 #include <gtest/gtest.h>
 
@@ -10,7 +11,6 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-#include <unistd.h>
 
 // TDD coverage for Phase 2a Task 5: mail persistence as JSON, plus the
 // one-time legacy-block-file boot converter.
@@ -106,7 +106,7 @@ public:
     TemporaryDirectory()
     {
         char path_template[] = "/tmp/rots-mail-json-XXXXXX";
-        char* created_path = mkdtemp(path_template);
+        char* created_path = rots_mkdtemp(path_template);
         EXPECT_NE(created_path, nullptr);
         if (created_path)
             m_path = created_path;
@@ -128,29 +128,32 @@ private:
 
 class ScopedWorkingDirectory {
 public:
+    // std::filesystem::current_path() is both the getter and (with a path argument)
+    // the setter -- a direct, portable stand-in for the getcwd()/chdir() pair (Phase 3
+    // Task 5/6: POSIX-ism cleanup for MSVC bring-up; <unistd.h> -- getcwd()/chdir()'s
+    // POSIX home -- doesn't exist on Windows). Also sidesteps the PATH_MAX
+    // include-order fragility the raw-buffer version above used to work around.
     explicit ScopedWorkingDirectory(const std::string& path)
     {
-        // A literal buffer size rather than PATH_MAX: which headers happen to
-        // define PATH_MAX is include-order-fragile on this toolchain (some
-        // orderings of <string>/<vector>/gtest.h/<limits.h> leave it
-        // undeclared), so this sidesteps the question entirely.
-        char buffer[4096];
-        char* current_working_directory = getcwd(buffer, sizeof(buffer));
-        EXPECT_NE(current_working_directory, nullptr);
-        if (current_working_directory != nullptr)
-            m_original_path = buffer;
+        std::error_code ec;
+        m_original_path = std::filesystem::current_path(ec);
+        EXPECT_FALSE(ec) << "Expected current_path() to report this test process's working directory.";
 
-        EXPECT_EQ(chdir(path.c_str()), 0);
+        std::filesystem::current_path(path, ec);
+        EXPECT_FALSE(ec) << "Expected current_path(" << path << ") to succeed.";
     }
 
     ~ScopedWorkingDirectory()
     {
-        if (!m_original_path.empty())
-            EXPECT_EQ(chdir(m_original_path.c_str()), 0);
+        if (!m_original_path.empty()) {
+            std::error_code ec;
+            std::filesystem::current_path(m_original_path, ec);
+            EXPECT_FALSE(ec);
+        }
     }
 
 private:
-    std::string m_original_path;
+    std::filesystem::path m_original_path;
 };
 
 bool file_exists(const std::string& path)

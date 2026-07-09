@@ -6,6 +6,7 @@
 #include "../handler.h"
 #include "../objects_json.h"
 #include "../utils.h"
+#include "test_platform_compat.h"
 
 #include <gtest/gtest.h>
 
@@ -19,8 +20,13 @@
 #include <string_view>
 #include <sys/stat.h>
 #include <system_error>
-#include <unistd.h>
 #include <vector>
+
+// geteuid() (chmod-based fault-injection test below) is POSIX-only; that
+// test skips entirely on Windows before reaching it.
+#if !defined(_WIN32)
+#include <unistd.h>
+#endif
 
 extern struct player_index_element* player_table;
 extern struct room_data world;
@@ -83,7 +89,7 @@ public:
     TemporaryDirectory()
     {
         char path_template[] = "/tmp/rots-db-loader-XXXXXX";
-        char* created_path = mkdtemp(path_template);
+        char* created_path = rots_mkdtemp(path_template);
         EXPECT_NE(created_path, nullptr);
         if (created_path)
             m_path = created_path;
@@ -152,25 +158,30 @@ std::string rooted_account_json_path(const std::string& root_directory, const st
 
 class ScopedWorkingDirectory {
 public:
+    // std::filesystem::current_path() is both the getter and (with a path argument)
+    // the setter -- a direct, portable stand-in for the getcwd()/chdir() pair (Phase 3
+    // Task 5/6: POSIX-ism cleanup for MSVC bring-up).
     explicit ScopedWorkingDirectory(const std::string& path)
     {
-        char buffer[PATH_MAX];
-        char* current_working_directory = getcwd(buffer, sizeof(buffer));
-        EXPECT_NE(current_working_directory, nullptr);
-        if (current_working_directory != nullptr)
-            m_original_path = buffer;
+        std::error_code ec;
+        m_original_path = std::filesystem::current_path(ec);
+        EXPECT_FALSE(ec) << "Expected current_path() to report this test process's working directory.";
 
-        EXPECT_EQ(chdir(path.c_str()), 0);
+        std::filesystem::current_path(path, ec);
+        EXPECT_FALSE(ec) << "Expected current_path(" << path << ") to succeed.";
     }
 
     ~ScopedWorkingDirectory()
     {
-        if (!m_original_path.empty())
-            EXPECT_EQ(chdir(m_original_path.c_str()), 0);
+        if (!m_original_path.empty()) {
+            std::error_code ec;
+            std::filesystem::current_path(m_original_path, ec);
+            EXPECT_FALSE(ec);
+        }
     }
 
 private:
-    std::string m_original_path;
+    std::filesystem::path m_original_path;
 };
 
 class ScopedStderrRedirect {
@@ -178,24 +189,24 @@ public:
     explicit ScopedStderrRedirect(const std::string& path)
         : m_path(path)
     {
-        m_original_stderr_fd = dup(STDERR_FILENO);
+        m_original_stderr_fd = rots_dup(STDERR_FILENO);
         EXPECT_GE(m_original_stderr_fd, 0);
 
         m_redirect_fd = open(path.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0600);
         EXPECT_GE(m_redirect_fd, 0);
         if (m_redirect_fd >= 0)
-            EXPECT_GE(dup2(m_redirect_fd, STDERR_FILENO), 0);
+            EXPECT_GE(rots_dup2(m_redirect_fd, STDERR_FILENO), 0);
     }
 
     ~ScopedStderrRedirect()
     {
         if (m_original_stderr_fd >= 0) {
             fflush(stderr);
-            EXPECT_GE(dup2(m_original_stderr_fd, STDERR_FILENO), 0);
-            close(m_original_stderr_fd);
+            EXPECT_GE(rots_dup2(m_original_stderr_fd, STDERR_FILENO), 0);
+            rots_close_fd(m_original_stderr_fd);
         }
         if (m_redirect_fd >= 0)
-            close(m_redirect_fd);
+            rots_close_fd(m_redirect_fd);
     }
 
     std::string read_contents() const
@@ -666,7 +677,7 @@ TEST(DbLoader, LoadsExploitRecordsFromAccountNativeJsonWhenRuntimeFileIsMissing)
 
     account::CharacterMigrationData migration;
     ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message)) << error_message;
-    EXPECT_NE(access(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
 
     std::vector<exploit_record> records;
     ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records, &error_message)) << error_message;
@@ -819,7 +830,7 @@ TEST(DbLoader, FailsClosedWhenAccountNativeExploitJsonIsMalformed)
     std::vector<exploit_record> records;
     EXPECT_FALSE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records, &error_message));
     EXPECT_FALSE(error_message.empty());
-    EXPECT_EQ(access(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0)
+    EXPECT_TRUE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()))
         << "Failing closed on authoritative account-native exploit JSON should not silently consume or retire the stale legacy runtime file.";
 }
 
@@ -1002,7 +1013,7 @@ TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenRuntimeFileIsMissing
 
     account::CharacterMigrationData migration;
     ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message)) << error_message;
-    EXPECT_NE(access(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str()));
 
     objects_json::ObjectSaveData expected_object_data;
     bool accepted_missing_follower_section = false;
@@ -1066,7 +1077,7 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectJsonIsMalformed)
     objects_json::ObjectSaveData object_data;
     EXPECT_FALSE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message));
     EXPECT_FALSE(error_message.empty());
-    EXPECT_EQ(access(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0)
+    EXPECT_TRUE(std::filesystem::exists(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str()))
         << "Failing closed on authoritative account-native object JSON should not silently consume the stale runtime object file.";
 }
 
@@ -1075,8 +1086,12 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead)
     // This test injects read failures via chmod(0000)/chmod(0500); root bypasses
     // file permissions, so the failure path is unreachable when running as root
     // (e.g. inside the build container).
+#if defined(_WIN32)
+    GTEST_SKIP() << "chmod-based failure injection has no Windows ACL equivalent (documented gap, Phase 3 Task 6).";
+#else
     if (geteuid() == 0)
         GTEST_SKIP() << "chmod-based failure injection does not work as root.";
+#endif
 
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
@@ -1124,8 +1139,8 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead)
 
     ASSERT_EQ(chmod(account_object_path.c_str(), 0600), 0);
     ASSERT_EQ(chmod(account_exploits_path.c_str(), 0600), 0);
-    EXPECT_EQ(access(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0);
-    EXPECT_EQ(access(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0);
+    EXPECT_TRUE(std::filesystem::exists(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str()));
+    EXPECT_TRUE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
 }
 
 TEST(DbLoader, ReturnsEmptyObjectSaveBytesForLinkedCharacterWithoutAccountNativeOrRuntimeFile)
@@ -1757,7 +1772,7 @@ TEST(DbLoader, SeedsLegacyExploitFileFromAccountSnapshotWhenAppendingNewRecord)
 
     account::CharacterMigrationData migration;
     ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message)) << error_message;
-    EXPECT_NE(access(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
 
     const exploit_record new_record = make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "Won a battle", 11, 0, 0);
     ASSERT_TRUE(write_exploit_record_for_character(temp_directory.path(), "aragorn", new_record, &error_message)) << error_message;
@@ -1796,7 +1811,7 @@ TEST(DbLoader, WritesExploitRecordsIntoAccountNativeJsonForLinkedCharacters)
     ASSERT_EQ(loaded_records.size(), 2u);
     EXPECT_EQ(loaded_records[0].type, EXPLOIT_ACHIEVEMENT);
     EXPECT_EQ(loaded_records[1].type, EXPLOIT_LEVEL);
-    EXPECT_NE(access(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
 }
 
 TEST(DbLoader, FallsBackToAccountSnapshotWhenRuntimeExploitFileIsMalformed)
@@ -1829,7 +1844,7 @@ TEST(DbLoader, FallsBackToAccountSnapshotWhenRuntimeExploitFileIsMalformed)
     ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records, &error_message)) << error_message;
     ASSERT_EQ(records.size(), 1u);
     EXPECT_EQ(records[0].type, expected_record.type);
-    EXPECT_NE(access(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str(), F_OK), 0);
+    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
 }
 
 TEST(DbLoader, FailsClosedWhenTemporaryExploitPathAlreadyExists)
@@ -1886,18 +1901,18 @@ TEST(DbLoader, ConversionWriteFailureLeavesLegacyExploitFileIntact)
 
     // The legacy file must still exist, byte-for-byte, and no JSON store
     // was created (the write never completed).
-    ASSERT_EQ(access(legacy_path.c_str(), F_OK), 0);
+    ASSERT_TRUE(std::filesystem::exists(legacy_path.c_str()));
     EXPECT_EQ(read_file_contents(legacy_path), serialize_record(expected_record));
-    EXPECT_NE(access((legacy_path + ".json").c_str(), F_OK), 0);
+    EXPECT_FALSE(std::filesystem::exists((legacy_path + ".json").c_str()));
 
     // Clear the blocking directory and load again: conversion should now
     // succeed and retire the legacy file, matching normal behavior.
-    ASSERT_EQ(rmdir(temp_path.c_str()), 0);
+    ASSERT_TRUE(std::filesystem::remove(temp_path.c_str()));
     std::vector<exploit_record> retried_records;
     std::string retry_error;
     ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &retried_records, &retry_error)) << retry_error;
     ASSERT_EQ(retried_records.size(), 1u);
     EXPECT_EQ(retried_records[0].type, expected_record.type);
-    EXPECT_NE(access(legacy_path.c_str(), F_OK), 0);
-    EXPECT_EQ(access((legacy_path + ".json").c_str(), F_OK), 0);
+    EXPECT_FALSE(std::filesystem::exists(legacy_path.c_str()));
+    EXPECT_TRUE(std::filesystem::exists((legacy_path + ".json").c_str()));
 }

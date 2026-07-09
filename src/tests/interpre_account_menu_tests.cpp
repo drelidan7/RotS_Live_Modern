@@ -8,6 +8,7 @@
 #include "../spells.h"
 #include "../structs.h"
 #include "../utils.h"
+#include "test_platform_compat.h"
 
 #include <gtest/gtest.h>
 
@@ -19,9 +20,15 @@
 #include <filesystem>
 #include <limits.h>
 #include <string>
+#include <vector>
+
+// <sys/socket.h>/socketpair() (write_and_process_snooped_input's AF_UNIX
+// fixture below) are POSIX-only; the tests that use them skip entirely on
+// Windows before reaching either.
+#if !defined(_WIN32)
 #include <sys/socket.h>
 #include <unistd.h>
-#include <vector>
+#endif
 
 // A real, always-executable, zero-argument, always-succeeds binary used to stand in
 // for `sendmail` in tests (via ROTS_SENDMAIL_COMMAND) without actually sending mail.
@@ -70,7 +77,7 @@ public:
     TemporaryDirectory()
     {
         char directory_template[] = "/tmp/rots-interpre-account-menu-XXXXXX";
-        char* created_path = mkdtemp(directory_template);
+        char* created_path = rots_mkdtemp(directory_template);
         EXPECT_NE(created_path, nullptr);
         if (created_path != nullptr)
             m_path = created_path;
@@ -92,26 +99,30 @@ private:
 
 class ScopedWorkingDirectory {
 public:
+    // std::filesystem::current_path() is both the getter and (with a path argument)
+    // the setter -- a direct, portable stand-in for the getcwd()/chdir() pair (Phase 3
+    // Task 5/6: POSIX-ism cleanup for MSVC bring-up).
     explicit ScopedWorkingDirectory(const std::string& path)
     {
-        char buffer[PATH_MAX];
-        char* current_working_directory = getcwd(buffer, sizeof(buffer));
-        EXPECT_NE(current_working_directory, nullptr);
-        if (current_working_directory != nullptr)
-            m_original_path = buffer;
+        std::error_code ec;
+        m_original_path = std::filesystem::current_path(ec);
+        EXPECT_FALSE(ec) << "Expected current_path() to report this test process's working directory.";
 
-        EXPECT_EQ(chdir(path.c_str()), 0);
+        std::filesystem::current_path(path, ec);
+        EXPECT_FALSE(ec) << "Expected current_path(" << path << ") to succeed.";
     }
 
     ~ScopedWorkingDirectory()
     {
         if (!m_original_path.empty()) {
-            EXPECT_EQ(chdir(m_original_path.c_str()), 0);
+            std::error_code ec;
+            std::filesystem::current_path(m_original_path, ec);
+            EXPECT_FALSE(ec);
         }
     }
 
 private:
-    std::string m_original_path;
+    std::filesystem::path m_original_path;
 };
 
 class ScopedStderrRedirect {
@@ -119,24 +130,24 @@ public:
     explicit ScopedStderrRedirect(const std::string& path)
         : m_path(path)
     {
-        m_original_stderr_fd = dup(STDERR_FILENO);
+        m_original_stderr_fd = rots_dup(STDERR_FILENO);
         EXPECT_GE(m_original_stderr_fd, 0);
 
         m_redirect_fd = open(path.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0600);
         EXPECT_GE(m_redirect_fd, 0);
         if (m_redirect_fd >= 0)
-            EXPECT_GE(dup2(m_redirect_fd, STDERR_FILENO), 0);
+            EXPECT_GE(rots_dup2(m_redirect_fd, STDERR_FILENO), 0);
     }
 
     ~ScopedStderrRedirect()
     {
         if (m_original_stderr_fd >= 0) {
             fflush(stderr);
-            EXPECT_GE(dup2(m_original_stderr_fd, STDERR_FILENO), 0);
-            close(m_original_stderr_fd);
+            EXPECT_GE(rots_dup2(m_original_stderr_fd, STDERR_FILENO), 0);
+            rots_close_fd(m_original_stderr_fd);
         }
         if (m_redirect_fd >= 0)
-            close(m_redirect_fd);
+            rots_close_fd(m_redirect_fd);
     }
 
     std::string read_contents() const
@@ -434,6 +445,16 @@ void reset_descriptor_output(descriptor_data* descriptor)
     descriptor->bufspace = SMALL_BUFSIZE - 1;
 }
 
+// This whole helper trio (through snoop_replay_after_secret_input_state
+// below) drives real production socket I/O (process_input()) over an
+// AF_UNIX socketpair() -- POSIX-only, with no Windows equivalent at all
+// (socketpair() itself doesn't exist there; Windows' newer AF_UNIX support
+// covers named sockets, not this anonymous-pair pattern). Only
+// DeletePasswordInputIsHiddenFromSnoopers calls into this, and that test
+// skips entirely on Windows before reaching it -- documented gap, not a
+// mechanical port (see the brief's guidance against rushing untested
+// process/socket-model translations).
+#if !defined(_WIN32)
 void write_and_process_snooped_input(
     descriptor_data* descriptor, int socket_fd, const char* input, std::string* queued_input)
 {
@@ -515,6 +536,7 @@ SnoopReplayResult snoop_replay_after_secret_input_state(int secret_connection_st
         victim_descriptor.last_input,
     };
 }
+#endif
 
 TEST(InterpreAccountMenu, ShowAccountCharacterListCapitalizesFirstLetterOfStoredNames)
 {
@@ -1982,6 +2004,16 @@ TEST(InterpreAccountMenu, CharacterMenuPasswordOptionRoutesAccountBackedCharacte
 
 TEST(InterpreAccountMenu, PendingVerificationLoginResetsBadPasswordCounterAndPromptsForCode)
 {
+#if defined(_WIN32)
+    // account::start_email_verification() (interpre.cpp's CON_ACCTPWD handler)
+    // fails cleanly on Windows -- send_email_message() is a documented
+    // Windows operational gap (Phase 3 Task 6, account_management.cpp) -- so
+    // this login attempt takes the "email delivery failed" branch (STATE(d)
+    // = CON_NME) instead of reaching CON_ACCTVERIFY. Not something
+    // ROTS_SENDMAIL_COMMAND can work around on this platform: the Windows
+    // branch never shells out to it at all.
+    GTEST_SKIP() << "email-verification delivery is a documented Windows gap (Phase 3 Task 6).";
+#endif
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", kTrueCommandPath);
@@ -2184,6 +2216,14 @@ TEST(InterpreAccountMenu, AccountCreationWeakPasswordClearsStaleStagedPassword)
 
 TEST(InterpreAccountMenu, AccountCreationSuccessClearsStagedPasswordAndPromptsForVerification)
 {
+#if defined(_WIN32)
+    // Same documented Windows gap as PendingVerificationLoginResetsBadPasswordCounterAndPromptsForCode
+    // above: account::start_email_verification() (interpre.cpp's
+    // CON_ACCTNEWPWDCNF handler) always fails on Windows, so this new-account
+    // flow takes the "email delivery failed" branch instead of reaching
+    // CON_ACCTVERIFY.
+    GTEST_SKIP() << "email-verification delivery is a documented Windows gap (Phase 3 Task 6).";
+#endif
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedEnvironmentVariable sendmail_override("ROTS_SENDMAIL_COMMAND", kTrueCommandPath);
@@ -2479,6 +2519,13 @@ TEST(InterpreAccountMenu, LegacyLinkMalformedObjectMigrationFailureClearsPending
 
 TEST(InterpreAccountMenu, DeletePasswordInputIsHiddenFromSnoopers)
 {
+#if defined(_WIN32)
+    // This test's snoop_output_for_input_state()/snoop_replay_after_secret_input_state()
+    // fixtures use an AF_UNIX socketpair() to drive process_input() over a
+    // real socket pair -- POSIX-only, no Windows equivalent (documented gap,
+    // Phase 3 Task 6; see the comment above write_and_process_snooped_input).
+    GTEST_SKIP() << "AF_UNIX socketpair()-based snoop fixture has no Windows equivalent (documented gap, Phase 3 Task 6).";
+#endif
     TemporaryDirectory temp_directory;
     ScopedCommandLog command_log(temp_directory.path() + "/last_cmds");
 

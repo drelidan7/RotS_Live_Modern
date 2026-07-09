@@ -1,19 +1,37 @@
 #include "../comm.h"
 #include "../db.h"
+#include "../rots_net.h"
 #include "../structs.h"
 
 #include <gtest/gtest.h>
 
+// <arpa/inet.h>/<netinet/in.h>/<sys/socket.h>/<sys/time.h>/<unistd.h> are
+// POSIX-only; platdef.h (pulled in transitively by comm.h above) already
+// gives the Windows branch everything these provide instead (winsock2.h +
+// ws2tcpip.h: socket()/bind()/connect()/listen()/getsockname()/send()/recv()/
+// setsockopt()/htonl()/htons()/ntohs()/select()/fd_set/timeval, all with
+// Winsock-compatible signatures).
+#if !defined(_WIN32)
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
+#endif
 
 #include <cerrno>
 #include <cstring>
 #include <string>
 #include <vector>
+
+// in_port_t/in_addr_t (POSIX <netinet/in.h> typedefs) have no Windows
+// equivalent; Winsock's own headers use these underlying types for the same
+// purpose (u_short for a network port, u_long for an IPv4 address), so alias
+// them here rather than touching every call site below.
+#if defined(_WIN32)
+using in_port_t = unsigned short;
+using in_addr_t = unsigned long;
+#endif
 
 SocketType pnew_descriptor(SocketType s);
 int process_input(struct descriptor_data* t);
@@ -68,44 +86,54 @@ protected:
         ban_list = saved_ban_list_;
     }
 
-    int create_listener_socket(in_port_t* port_out)
+    SocketType create_listener_socket(in_port_t* port_out)
     {
-        int listener = socket(AF_INET, SOCK_STREAM, 0);
-        EXPECT_GE(listener, 0) << strerror(errno);
-        if (listener < 0)
-            return -1;
+        SocketType listener = socket(AF_INET, SOCK_STREAM, 0);
+        EXPECT_TRUE(rots_net::is_valid_socket(listener)) << rots_net::last_error();
+        if (!rots_net::is_valid_socket(listener))
+            return rots_net::kInvalidSocket;
 
         sockaddr_in address {};
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         address.sin_port = 0;
 
-        EXPECT_EQ(bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)), 0) << strerror(errno);
+        EXPECT_EQ(bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)), 0) << rots_net::last_error();
         if (getsockname(listener, reinterpret_cast<sockaddr*>(&address), reinterpret_cast<socklen_t*>(&socklen_)) == 0)
             *port_out = ntohs(address.sin_port);
 
-        EXPECT_EQ(listen(listener, 1), 0) << strerror(errno);
+        EXPECT_EQ(listen(listener, 1), 0) << rots_net::last_error();
         return listener;
     }
 
-    int connect_client(in_port_t port)
+    SocketType connect_client(in_port_t port)
     {
-        int client = socket(AF_INET, SOCK_STREAM, 0);
-        EXPECT_GE(client, 0) << strerror(errno);
-        if (client < 0)
-            return -1;
+        SocketType client = socket(AF_INET, SOCK_STREAM, 0);
+        EXPECT_TRUE(rots_net::is_valid_socket(client)) << rots_net::last_error();
+        if (!rots_net::is_valid_socket(client))
+            return rots_net::kInvalidSocket;
 
+        // SO_RCVTIMEO's option-value shape genuinely differs by platform: POSIX
+        // takes a struct timeval (seconds/microseconds), Winsock takes a plain
+        // DWORD count of milliseconds -- passing a timeval there on Windows
+        // would silently misinterpret the byte layout rather than fail to
+        // compile, so this needs a real branch, not just a type rename.
+#if defined(_WIN32)
+        DWORD timeout_ms = 1000;
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout_ms), sizeof(timeout_ms));
+#else
         timeval timeout {};
         timeout.tv_sec = 1;
         timeout.tv_usec = 0;
         setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+#endif
 
         sockaddr_in address {};
         address.sin_family = AF_INET;
         address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         address.sin_port = htons(port);
 
-        EXPECT_EQ(connect(client, reinterpret_cast<sockaddr*>(&address), sizeof(address)), 0) << strerror(errno);
+        EXPECT_EQ(connect(client, reinterpret_cast<sockaddr*>(&address), sizeof(address)), 0) << rots_net::last_error();
         return client;
     }
 
@@ -117,13 +145,13 @@ protected:
     // any further segments that show up within the client's existing
     // SO_RCVTIMEO window instead of returning a partial read. This is test-only
     // socket-plumbing robustness — it does not touch any production code path.
-    std::string read_client_data(int client)
+    std::string read_client_data(SocketType client)
     {
         std::string result;
         char buffer[2048];
 
-        ssize_t bytes_read = recv(client, buffer, sizeof(buffer), 0);
-        EXPECT_GT(bytes_read, 0) << strerror(errno);
+        rots_net::ssize_type bytes_read = recv(client, buffer, sizeof(buffer), 0);
+        EXPECT_GT(bytes_read, 0) << rots_net::last_error();
         if (bytes_read <= 0)
             return result;
         result.append(buffer, static_cast<size_t>(bytes_read));
@@ -133,10 +161,15 @@ protected:
         // segments are already in flight over loopback and arrive within
         // milliseconds — no need to wait a full second to conclude there's
         // nothing more.
+#if defined(_WIN32)
+        DWORD drain_timeout_ms = 100;
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&drain_timeout_ms), sizeof(drain_timeout_ms));
+#else
         timeval drain_timeout {};
         drain_timeout.tv_sec = 0;
         drain_timeout.tv_usec = 100000; // 100ms
         setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &drain_timeout, sizeof(drain_timeout));
+#endif
 
         for (;;) {
             bytes_read = recv(client, buffer, sizeof(buffer), 0);
@@ -148,13 +181,24 @@ protected:
         return result;
     }
 
-    void expect_no_client_data_yet(int client)
+    void expect_no_client_data_yet(SocketType client)
     {
         char buffer[32];
+        // errno/EAGAIN/EWOULDBLOCK aren't how a failed Winsock call reports its
+        // error (that's WSAGetLastError(), which rots_net::last_error() wraps) --
+        // reuse the same last_error()/error_is_would_block() pair comm.cpp's
+        // production code already uses after a fallible socket call.
+#if defined(_WIN32)
+        const rots_net::ssize_type bytes_read = recv(client, buffer, sizeof(buffer), 0);
+        EXPECT_EQ(bytes_read, -1);
+        const int last_error = rots_net::last_error();
+        EXPECT_TRUE(rots_net::error_is_would_block(last_error)) << last_error;
+#else
         errno = 0;
         const ssize_t bytes_read = recv(client, buffer, sizeof(buffer), 0);
         EXPECT_EQ(bytes_read, -1);
         EXPECT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK) << strerror(errno);
+#endif
     }
 
     // Waits (bounded) for the server-side accepted socket to have data queued
@@ -166,7 +210,7 @@ protected:
     // and see EWOULDBLOCK. select() blocks only until the data actually shows up
     // (or the bound elapses), so this doesn't slow down platforms that don't
     // need it and doesn't change process_input()'s own return-value contract.
-    void wait_until_readable(int fd, int timeout_ms)
+    void wait_until_readable(SocketType fd, int timeout_ms)
     {
         fd_set read_fds;
         FD_ZERO(&read_fds);
@@ -176,7 +220,12 @@ protected:
         timeout.tv_sec = timeout_ms / 1000;
         timeout.tv_usec = (timeout_ms % 1000) * 1000;
 
-        select(fd + 1, &read_fds, nullptr, nullptr, &timeout);
+        // nfds (the first argument) is a POSIX-only convention -- Winsock's
+        // select() ignores it entirely, since fd_set there is a small
+        // explicit array of SOCKET handles rather than a bitmask indexed by
+        // fd number -- so the static_cast is only for a clean signed/unsigned
+        // conversion, not because Windows uses the value.
+        select(static_cast<int>(fd) + 1, &read_fds, nullptr, nullptr, &timeout);
     }
 
 private:
@@ -298,10 +347,10 @@ TEST(StartupOptions, AcceptsCompactDashPPortForm)
 TEST_F(AcceptPathTest, DirectConnectionsReceiveGreetingWithoutWaitingForInput)
 {
     in_port_t port = 0;
-    const int listener = create_listener_socket(&port);
-    ASSERT_GE(listener, 0);
-    const int client = connect_client(port);
-    ASSERT_GE(client, 0);
+    const SocketType listener = create_listener_socket(&port);
+    ASSERT_TRUE(rots_net::is_valid_socket(listener));
+    const SocketType client = connect_client(port);
+    ASSERT_TRUE(rots_net::is_valid_socket(client));
 
     has_proxy = 0;
     ASSERT_EQ(pnew_descriptor(listener), 1);
@@ -310,23 +359,28 @@ TEST_F(AcceptPathTest, DirectConnectionsReceiveGreetingWithoutWaitingForInput)
     EXPECT_NE(initial_output.find("RETURN OF THE SHADOW"), std::string::npos);
     EXPECT_NE(initial_output.find("Account email:"), std::string::npos);
 
-    close(client);
-    close(listener);
+    rots_net::close_socket(client);
+    rots_net::close_socket(listener);
 }
 
 TEST_F(AcceptPathTest, ProxyConnectionsWaitForCompleteSplitHeaderBeforeSendingGreeting)
 {
     in_port_t port = 0;
-    const int listener = create_listener_socket(&port);
-    ASSERT_GE(listener, 0);
-    const int client = connect_client(port);
-    ASSERT_GE(client, 0);
+    const SocketType listener = create_listener_socket(&port);
+    ASSERT_TRUE(rots_net::is_valid_socket(listener));
+    const SocketType client = connect_client(port);
+    ASSERT_TRUE(rots_net::is_valid_socket(client));
 
     has_proxy = 1;
     ASSERT_EQ(pnew_descriptor(listener), 1);
 
     const in_addr_t proxy_header = htonl(INADDR_LOOPBACK);
-    const unsigned char* header_bytes = reinterpret_cast<const unsigned char*>(&proxy_header);
+    // char* (not unsigned char*): POSIX send()'s buffer parameter is a
+    // permissive `const void*`, but Winsock's is `const char*` specifically --
+    // an implicit unsigned-char*-to-char* conversion isn't allowed in C++ on
+    // either platform, so this needs to already be the right pointer type
+    // rather than relying on POSIX's laxer signature.
+    const char* header_bytes = reinterpret_cast<const char*>(&proxy_header);
     ASSERT_EQ(send(client, header_bytes, 2, 0), 2);
     wait_until_readable(descriptor_list->descriptor, 500);
     ASSERT_EQ(process_input(descriptor_list), 0);
@@ -339,17 +393,17 @@ TEST_F(AcceptPathTest, ProxyConnectionsWaitForCompleteSplitHeaderBeforeSendingGr
     EXPECT_NE(initial_output.find("RETURN OF THE SHADOW"), std::string::npos);
     EXPECT_NE(initial_output.find("Account email:"), std::string::npos);
 
-    close(client);
-    close(listener);
+    rots_net::close_socket(client);
+    rots_net::close_socket(listener);
 }
 
 TEST_F(AcceptPathTest, ProxyConnectionsWaitForHeaderBeforeSendingGreeting)
 {
     in_port_t port = 0;
-    const int listener = create_listener_socket(&port);
-    ASSERT_GE(listener, 0);
-    const int client = connect_client(port);
-    ASSERT_GE(client, 0);
+    const SocketType listener = create_listener_socket(&port);
+    ASSERT_TRUE(rots_net::is_valid_socket(listener));
+    const SocketType client = connect_client(port);
+    ASSERT_TRUE(rots_net::is_valid_socket(client));
 
     has_proxy = 1;
     ASSERT_EQ(pnew_descriptor(listener), 1);
@@ -357,7 +411,7 @@ TEST_F(AcceptPathTest, ProxyConnectionsWaitForHeaderBeforeSendingGreeting)
     expect_no_client_data_yet(client);
 
     const in_addr_t proxy_header = htonl(INADDR_LOOPBACK);
-    ASSERT_EQ(send(client, &proxy_header, sizeof(proxy_header), 0), static_cast<ssize_t>(sizeof(proxy_header)));
+    ASSERT_EQ(send(client, reinterpret_cast<const char*>(&proxy_header), sizeof(proxy_header), 0), static_cast<rots_net::ssize_type>(sizeof(proxy_header)));
     wait_until_readable(descriptor_list->descriptor, 500);
     ASSERT_EQ(process_input(descriptor_list), 0);
 
@@ -365,8 +419,8 @@ TEST_F(AcceptPathTest, ProxyConnectionsWaitForHeaderBeforeSendingGreeting)
     EXPECT_NE(initial_output.find("RETURN OF THE SHADOW"), std::string::npos);
     EXPECT_NE(initial_output.find("Account email:"), std::string::npos);
 
-    close(client);
-    close(listener);
+    rots_net::close_socket(client);
+    rots_net::close_socket(listener);
 }
 
 TEST_F(AcceptPathTest, ProxyConnectionsRejectBannedHostsBeforeGreeting)
@@ -378,22 +432,22 @@ TEST_F(AcceptPathTest, ProxyConnectionsRejectBannedHostsBeforeGreeting)
     ban_list = &banned;
 
     in_port_t port = 0;
-    const int listener = create_listener_socket(&port);
-    ASSERT_GE(listener, 0);
-    const int client = connect_client(port);
-    ASSERT_GE(client, 0);
+    const SocketType listener = create_listener_socket(&port);
+    ASSERT_TRUE(rots_net::is_valid_socket(listener));
+    const SocketType client = connect_client(port);
+    ASSERT_TRUE(rots_net::is_valid_socket(client));
 
     has_proxy = 1;
     ASSERT_EQ(pnew_descriptor(listener), 1);
 
     const in_addr_t proxy_header = htonl(INADDR_LOOPBACK);
-    ASSERT_EQ(send(client, &proxy_header, sizeof(proxy_header), 0), static_cast<ssize_t>(sizeof(proxy_header)));
+    ASSERT_EQ(send(client, reinterpret_cast<const char*>(&proxy_header), sizeof(proxy_header), 0), static_cast<rots_net::ssize_type>(sizeof(proxy_header)));
     wait_until_readable(descriptor_list->descriptor, 500);
     EXPECT_EQ(process_input(descriptor_list), -1);
     expect_no_client_data_yet(client);
 
-    close(client);
-    close(listener);
+    rots_net::close_socket(client);
+    rots_net::close_socket(listener);
 }
 
 } // namespace

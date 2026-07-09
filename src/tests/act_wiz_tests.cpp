@@ -5,6 +5,7 @@
 #include "../interpre.h"
 #include "../objects_json.h"
 #include "../structs.h"
+#include "test_platform_compat.h"
 
 #include <gtest/gtest.h>
 
@@ -14,7 +15,6 @@
 #include <filesystem>
 #include <limits.h>
 #include <string>
-#include <unistd.h>
 
 ACMD(do_account);
 ACMD(do_whoacct);
@@ -42,7 +42,7 @@ public:
     TemporaryDirectory()
     {
         char directory_template[] = "/tmp/rots-act-wiz-tests-XXXXXX";
-        char* created_path = mkdtemp(directory_template);
+        char* created_path = rots_mkdtemp(directory_template);
         EXPECT_NE(created_path, nullptr);
         if (created_path != nullptr)
             m_path = created_path;
@@ -64,25 +64,33 @@ private:
 
 class ScopedWorkingDirectory {
 public:
+    // std::filesystem::current_path() is both the getter and (with a path argument)
+    // the setter -- a direct, portable stand-in for the getcwd()/chdir() pair (same
+    // conversion account_management_tests.cpp's ScopedWorkingDirectory already made in
+    // Phase 3 Task 5; this file's separate copy of the same helper was missed then and
+    // is converted here in Task 6, since <unistd.h> -- getcwd()/chdir()'s POSIX home --
+    // doesn't exist on Windows).
     explicit ScopedWorkingDirectory(const std::string& path)
     {
-        char buffer[PATH_MAX];
-        char* current_working_directory = getcwd(buffer, sizeof(buffer));
-        EXPECT_NE(current_working_directory, nullptr);
-        if (current_working_directory != nullptr)
-            m_original_path = buffer;
+        std::error_code ec;
+        m_original_path = std::filesystem::current_path(ec);
+        EXPECT_FALSE(ec) << "Expected current_path() to report this test process's working directory.";
 
-        EXPECT_EQ(chdir(path.c_str()), 0);
+        std::filesystem::current_path(path, ec);
+        EXPECT_FALSE(ec) << "Expected current_path(" << path << ") to succeed.";
     }
 
     ~ScopedWorkingDirectory()
     {
-        if (!m_original_path.empty())
-            EXPECT_EQ(chdir(m_original_path.c_str()), 0);
+        if (!m_original_path.empty()) {
+            std::error_code ec;
+            std::filesystem::current_path(m_original_path, ec);
+            EXPECT_FALSE(ec);
+        }
     }
 
 private:
-    std::string m_original_path;
+    std::filesystem::path m_original_path;
 };
 
 class ScopedPlayerTableEntry {

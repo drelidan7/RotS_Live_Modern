@@ -1,6 +1,7 @@
 #include "../convert_plrobjs.h"
 #include "../objects_json.h"
 #include "legacy_rent_fixture.h"
+#include "test_platform_compat.h"
 
 #include <gtest/gtest.h>
 
@@ -30,7 +31,7 @@ public:
     TemporaryDirectory()
     {
         char path_template[] = "/tmp/rots-convert-plrobjs-XXXXXX";
-        char* created_path = mkdtemp(path_template);
+        char* created_path = rots_mkdtemp(path_template);
         EXPECT_NE(created_path, nullptr);
         if (created_path)
             m_path = created_path;

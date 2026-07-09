@@ -31,8 +31,35 @@ void Emergency_save(void);
 
 int graceful_tried = 0;
 
+#if defined PREDEF_PLATFORM_WINDOWS
+// Windows console-close/logoff/shutdown notifications (Phase 3 Task 5: MSVC bring-up).
+// The CRT signal() mechanism only delivers SIGINT/SIGTERM on Windows -- there is no
+// process-wide POSIX signal for "the console window is closing" or "the system is
+// shutting down"; SetConsoleCtrlHandler is the native mechanism for those, so it is
+// registered alongside signal() in signal_setup() below and routed to the exact same
+// hupsig() graceful-shutdown path (Emergency_save + clean exit) that SIGHUP/SIGINT/
+// SIGTERM use on POSIX. The handler runs on its own dedicated thread per the Win32
+// contract, but hupsig() already terminates the process (exit(0)) before returning, so
+// there is no meaningful concurrent-execution window with the game's main thread.
+BOOL WINAPI rots_console_ctrl_handler(DWORD ctrl_type)
+{
+    switch (ctrl_type) {
+    case CTRL_C_EVENT:
+    case CTRL_BREAK_EVENT:
+    case CTRL_CLOSE_EVENT:
+    case CTRL_LOGOFF_EVENT:
+    case CTRL_SHUTDOWN_EVENT:
+        hupsig(0);
+        return TRUE; // unreachable: hupsig() calls exit(0) and never returns
+    default:
+        return FALSE;
+    }
+}
+#endif
+
 void signal_setup(void)
 {
+#if defined PREDEF_PLATFORM_LINUX
     // struct itimerval itime;
     // struct timeval interval;
 
@@ -65,6 +92,29 @@ void signal_setup(void)
     // itime.it_value = interval;
     // setitimer(ITIMER_VIRTUAL, &itime, 0);
     signal(SIGVTALRM, checkpointing);
+#elif defined PREDEF_PLATFORM_WINDOWS
+    // Windows' CRT <signal.h> has no SIGUSR1/SIGUSR2/SIGHUP/SIGBUS/SIGPIPE/SIGALRM/
+    // SIGVTALRM -- those don't exist as a concept on this platform, so wizlist-reload
+    // (SIGUSR1 -> reread_wizlists), unrestrict-game (SIGUSR2 -> unrestrict_game), the
+    // periodic deadlock-checkpoint alarm (SIGVTALRM -> checkpointing), and the
+    // ignore-broken-pipe/log-and-ignore-alarm handlers simply have nothing to bind to
+    // here. This is NOT an operational gap for the first two: `reload wizlist`/
+    // `reload all` (db.cpp's do_reload) and `wizlock 0` (act_wiz.cpp's do_wizlock) are
+    // in-game admin commands that already do the same work the signals used to trigger
+    // remotely. checkpointing()'s deadlock watchdog has no in-game replacement and is
+    // simply unavailable on Windows in this phase (Phase 5 candidate: a
+    // std::chrono-based watchdog thread instead of SIGVTALRM/setitimer).
+    //
+    // SIGINT/SIGTERM are ISO C signals MSVC does define; SetConsoleCtrlHandler
+    // additionally catches console-close/logoff/shutdown (which CRT signal() never
+    // delivers on Windows) and maps every one of them to the same hupsig() graceful-
+    // shutdown path.
+    signal(SIGINT, hupsig);
+    signal(SIGTERM, hupsig);
+    signal(SIGILL, diesig);
+    signal(SIGFPE, diesig);
+    SetConsoleCtrlHandler(rots_console_ctrl_handler, TRUE);
+#endif
 }
 
 void checkpointing(int fake)
@@ -82,7 +132,11 @@ void reread_wizlists(int fake)
 {
     void reboot_wizlists(void);
 
+    // SIGUSR1 doesn't exist on Windows (see signal_setup()); this handler is simply
+    // never registered there, so the re-arm below only needs to compile on POSIX.
+#if defined PREDEF_PLATFORM_LINUX
     signal(SIGUSR1, reread_wizlists);
+#endif
     mudlog("Rereading wizlists.", CMP, LEVEL_IMMORT, FALSE);
     reboot_wizlists();
 }
@@ -92,7 +146,11 @@ void unrestrict_game(int fake)
     extern int restrict;
     extern int num_invalid;
 
+    // SIGUSR2 doesn't exist on Windows (see signal_setup()); this handler is simply
+    // never registered there, so the re-arm below only needs to compile on POSIX.
+#if defined PREDEF_PLATFORM_LINUX
     signal(SIGUSR2, unrestrict_game);
+#endif
     mudlog("Received SIGUSR2 - unrestricting game (emergent)",
         BRF, LEVEL_IMMORT, TRUE);
     int ban_list = 0;

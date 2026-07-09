@@ -192,7 +192,12 @@ protected:
         const rots_net::ssize_type bytes_read = recv(client, buffer, sizeof(buffer), 0);
         EXPECT_EQ(bytes_read, -1);
         const int last_error = rots_net::last_error();
-        EXPECT_TRUE(rots_net::error_is_would_block(last_error)) << last_error;
+        // The client socket carries an SO_RCVTIMEO, so on Windows a recv() that
+        // finds nothing waiting returns WSAETIMEDOUT after the timeout rather
+        // than WSAEWOULDBLOCK (which is what a *non-blocking* socket would
+        // return immediately). Both mean "the server sent nothing", which is
+        // exactly what this check asserts, so accept either (Phase 3 Task 6).
+        EXPECT_TRUE(rots_net::error_is_would_block(last_error) || last_error == WSAETIMEDOUT) << last_error;
 #else
         errno = 0;
         const ssize_t bytes_read = recv(client, buffer, sizeof(buffer), 0);

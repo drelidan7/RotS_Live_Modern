@@ -1,5 +1,119 @@
 # Work In Progress
 
+## Current Feature Planning Task - MSDP Unit Test Coverage
+- Active implementation slice complete: `msdp_update()` game-state emitter coverage now includes descriptor safety, broad character stat emission, weather branches, and opponent branches.
+- User requirement:
+  - add as much unit-test coverage for the game's MSDP features as practical
+  - keep the work unit-test focused instead of relying on live telnet/proxy smoke tests
+- Current implementation surface to cover:
+  - `src/protocol.cpp` / `src/protocol.h`: protocol creation/destruction, telnet MSDP negotiation, MSDP subnegotiation parsing, `SEND`, `REPORT`, `UNREPORT`, `RESET`, `LIST`, configurable variables, dirty/report state, send/update/flush functions, arrays, tables, sanitization, and ATCP fallback
+  - `src/comm.cpp`: `msdp_update()` periodic character/opponent/weather/stat updates
+  - `src/act_move.cpp`: `msdp_room_update()` room name/vnum/exits/terrain table and room-exit array updates
+  - existing test home: `src/tests/protocol_tests.cpp`, which currently covers protocol input fragmentation but not MSDP behavior
+- Work items:
+  - [x] Add test helpers for protocol descriptors:
+    - create/destroy a descriptor with `ProtocolCreate()`
+    - attach a minimal player character where `MSDPSend()` needs `PRF_MSDP`
+    - capture `write_to_descriptor(...)` output without a live network server/client
+    - provide helpers to build MSDP subnegotiation bytes and parse emitted MSDP variable/value packets
+  - [x] Add protocol table/default-state tests:
+    - every enum-backed MSDP variable initializes with the expected type/default/report/dirty state
+    - GUI variables initialize to the expected button/gauge payloads
+    - configurable variables start from documented defaults or `Unknown`
+  - [x] Add MSDP negotiation tests:
+    - `IAC DO MSDP` negotiates MSDP support and emits the server id when re-enabling a previously disabled MSDP session
+    - rejection/disable paths clear negotiated state
+    - fragmented MSDP negotiation and subnegotiation still parse correctly through `ProtocolInput`
+  - [x] Add MSDP output-format tests:
+    - `MSDPSend()` emits correct MSDP bytes for string and numeric variables when MSDP is enabled
+    - `MSDPSendPair()` emits ad hoc variable/value pairs
+    - `MSDPSendList()` emits an MSDP array and converts spaces to `MSDP_VAL`
+    - `MSDPSetTable()` / `MSDPSendTable()` wrap payloads in table markers
+    - `MSDPSetArray()` wraps payloads in array markers
+    - ATCP fallback emits `MSDP.<variable> <value>` when MSDP is unavailable but ATCP is active
+  - [x] Add dirty/report-state tests:
+    - `MSDPSetNumber()` and `MSDPSetString()` mark variables dirty only when values change
+    - `MSDPUpdate()` sends only dirty reported variables and clears dirty flags
+    - `MSDPFlush()` sends a single dirty reported variable and leaves unrelated dirty state alone
+    - unreported variables remain dirty but unsent until reported again
+  - [x] Add command parser tests through MSDP subnegotiation:
+    - `SEND <variable>` sends a single known variable
+    - `REPORT <variable>` enables reporting and marks that variable dirty
+    - `UNREPORT <variable>` disables reporting and clears dirty state
+    - `RESET REPORTABLE_VARIABLES`, `RESET REPORTED_VARIABLES`, and `RESET VARIABLES` clear all reporting state
+    - `LIST COMMANDS`, `LIST LISTS`, `LIST SENDABLE_VARIABLES`, `LIST REPORTABLE_VARIABLES`, `LIST REPORTED_VARIABLES`, `LIST CONFIGURABLE_VARIABLES`, and `LIST GUI_VARIABLES` return the expected arrays
+    - unknown commands and unknown variables are ignored without corrupting protocol state
+  - [x] Add configurable-variable tests:
+    - boolean variables accept only values in range
+    - string variables reject too-short values, trim non-printable characters, and clamp to max length
+    - write-once variables such as `CLIENT_ID` and `CLIENT_VERSION` can be set while `Unknown` and cannot be overwritten afterward
+    - invalid numeric strings and out-of-range numbers are ignored
+  - [x] Add escaping and malformed-input tests:
+    - `MSDPSanitizeValue()` escapes quotes, backslashes, newlines, carriage returns, tabs, and low control characters
+    - string setters store sanitized values
+    - malformed/truncated MSDP payloads do not crash, overrun buffers, or leak control bytes into normal player input
+    - oversized variable names/values are rejected or logged without writing partial protocol data
+  - [ ] Add `msdp_update()` game-state tests:
+    - [x] skips descriptors without characters, NPCs, missing protocol state, and characters in `NOWHERE`
+    - [x] skips corrupted out-of-range negative and high room indexes without emitting stale updates or stopping later descriptors
+    - [x] emits character name, level, race, alignment, experience-to-next-level, health, mana, movement, money, abilities, permanent abilities, wimpy, spirit, tactic, spell save/pen/power, armor absorption, offense/parry/dodge, attack speed, perception/willpower, encumbrance, regeneration, room name/vnum, and weather
+    - [x] emits NPC opponent name/level/health, PC opponent star-name/hidden level, and blank opponent fields when not fighting
+    - [x] validates division-by-zero or invalid max-health guard behavior for health percentage if tests expose a gap
+  - [ ] Add `msdp_room_update()` tests:
+    - skips NPCs and descriptors without protocol state
+    - emits room name/vnum, `ROOM_EXITS`, and `ROOM` table with `VNUM`, sanitized `NAME`, `EXITS`, and `TERRAIN`
+    - includes only valid exits and excludes null, hidden, or `NOWHERE` exits
+    - catches the current suspicious early-return path where normal non-negative rooms appear to skip room updates
+  - [ ] Refactor seams only if needed:
+    - expose a small protocol output sink or test hook instead of using real sockets
+    - keep production behavior unchanged unless tests reveal a clear bug
+    - prefer local helpers over broad rewrites of the KaVir protocol snippet
+  - [ ] Validation targets:
+    - focused `Protocol*` / MSDP test filters
+    - `make test`
+    - `make smoke-account` only if production MSDP behavior or telnet negotiation is changed
+- Notes:
+  - `Bazarat` should be used during test design because this will be a broad non-trivial unit-test feature.
+  - `Magus` and `Vincent` review is required before finalizing the eventual implementation change set.
+- Completed in current implementation slice:
+  - added socketpair-backed MSDP output capture in `src/tests/protocol_tests.cpp`
+  - added core MSDP tests for string sanitization, dirty state, exact MSDP packet output, ATCP fallback, list/table/array markers, update/flush behavior, `SEND` / `REPORT` / `UNREPORT` / `RESET` / `LIST` command parsing, configurable variables, write-once client identity, and unknown command safety
+  - fixed MSDP variable-table metadata macros so configurable string min/max values and GUI-variable flags match the `variable_name_t` field order
+  - fixed configurable string minimum-length validation so a payload containing only filtered control bytes cannot become an accepted empty string
+  - hardened public MSDP send helpers so pre-login or partially initialized descriptors without protocol/character state do not crash when clients send `SEND` or helper calls occur early
+  - hardened client-controlled configurable string filtering to use explicit printable ASCII checks instead of signed-`char` `isprint()` behavior
+  - added protocol default-state coverage for negotiated flags, feature booleans, configurable defaults, and GUI payload defaults
+  - added telnet MSDP/TTYPE negotiation coverage for exact negotiation bytes, disable/re-enable behavior, and server-id emission on MSDP re-enable
+  - added malformed/truncated/oversized MSDP coverage for empty values, oversized values, malformed marker order, oversized outgoing ad hoc payloads, and split subnegotiation across `ProtocolInput()` calls
+  - fixed split MSDP subnegotiation handling by moving the in-progress IAC/subnegotiation buffer onto `protocol_t`, so bytes received before `IAC SE` survive across network reads
+  - fixed the exact split between a subnegotiation terminator's `IAC` and `SE`, so the terminal `IAC` is buffered as control state instead of becoming part of the MSDP value
+  - hardened oversized unterminated subnegotiation recovery so a descriptor leaves IAC mode and accepts later normal input instead of repeatedly logging and returning
+  - hardened public MSDP string/table/array helpers with shared enum bounds checks
+  - added `msdp_update()` tests for descriptor skip behavior, minimal player state, blank opponent state, NPC opponent detail emission, PC opponent masking, and invalid opponent max-health handling
+  - strengthened `msdp_update()` coverage to assert exact emitted MSDP packets, dirty-flag clearing, and empty output from skipped NPC/`NOWHERE` descriptors
+  - tightened `msdp_update()` test fixture isolation by restoring the previous `top_of_world` value after each scoped room test
+  - fixed `msdp_update()` so a character in `NOWHERE` skips only that descriptor instead of returning from the full descriptor update loop
+  - hardened `msdp_update()` so corrupted negative or above-`top_of_world` room indexes skip only that descriptor before `world[...]` is indexed
+  - hardened `get_health_percent()` so invalid or zero max health returns 0 instead of producing an invalid percentage
+  - added broad `msdp_update()` stat coverage for alignment, experience math, mana, movement, money, current/permanent abilities, wimpy, spell values, armor/combat values, attack speed, perception/willpower, encumbrance, and regeneration
+  - added indoor and outdoor weather coverage, including newline-stripped outdoor weather text
+  - tightened weather global test isolation with a scoped weather guard
+  - added assertions that skipped invalid-room descriptors do not mutate stale weather or character-name state before being skipped
+- Validation so far:
+  - `clang-format -i -style=WebKit src/comm.cpp src/protocol.cpp src/protocol.h src/tests/protocol_tests.cpp` passed
+  - focused `./bin/tests '--gtest_filter=MSDPProtocol.MsdpUpdate*'` passed at `9/9` tests after bounds, broad-stat, and weather coverage were added
+  - focused `./bin/tests '--gtest_filter=MSDPProtocol.*:ProtocolInput.*'` passed at `39/39` tests
+  - `make test` passed at `588/588` tests
+  - `make smoke-account` passed the full proxy-backed account flow after the protocol metadata, pre-login hardening, split-subnegotiation, and `msdp_update()` fixes
+- Reviewer status:
+  - `Bazarat`: requested actual packet-output assertions for `msdp_update()` plus skip-output checks; addressed with exact `expected_msdp_pair(...)` assertions and stale opponent state setup for clear-to-empty branches
+  - `Bazarat`: requested room-bounds tests before broad stat expansion, broad character stat coverage, and indoor/outdoor weather coverage; addressed in the follow-up `msdp_update()` slice
+  - `Magus`: requested `top_of_world` fixture restoration; addressed in `ScopedMSDPTestRoom`
+  - `Magus`: requested scoped restoration for weather mutations; addressed with `ScopedSectorWeather`
+  - `Bazarat`: requested stale weather and skipped character-name assertions for invalid-room descriptors; addressed in the bounds regression test
+  - `Vincent`: clear; earlier out-of-range non-`NOWHERE` room-index hardening note has been addressed; longer-term `sprintf` replacement in MSDP packet builders remains a follow-up
+  - `Vincent`: noted future hardening for invalid room `sector_type` / weather index values before indexing `weather_info.sky` and `weather_messages`
+
 ## Current Bug Task - Legacy Specialization Smoke Coverage
 - Active slice complete: the proxy-backed legacy-link smoke flow now catches lost specializations with a non-zero legacy fixture and live `info` output assertion.
 - Scope:

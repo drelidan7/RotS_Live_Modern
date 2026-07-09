@@ -1,5 +1,19 @@
 # Features to Add
 
+## MSDP Unit Test Coverage Requirements
+
+Add broad unit-test coverage for the game's MSDP implementation. The goal is to test as much of the current MSDP behavior as practical without depending on a live server socket, live telnet client, or full interactive smoke flow.
+
+Requirements:
+- Cover the protocol core in `src/protocol.cpp`, including MSDP negotiation, subnegotiation parsing, command handling, configurable variables, reporting state, dirty-state flushing, and output formatting.
+- Cover the game-facing MSDP update paths in `src/comm.cpp` and `src/act_move.cpp`, including periodic character updates and room updates.
+- Prefer focused C++ unit tests in `src/tests/` that can run through `make test`.
+- Build reusable test helpers for descriptors, protocol state, output capture, fake player characters, rooms, and MSDP packet parsing so individual tests are readable and do not require a real network connection.
+- Include negative and boundary coverage for malformed or truncated MSDP packets, unknown commands/variables, oversized values, invalid configurable values, write-once client identity variables, and disabled or missing protocol state.
+- Verify the actual bytes or parsed structure emitted for MSDP arrays, tables, scalar variables, `REPORT` / `UNREPORT` / `RESET` behavior, `LIST` responses, and ATCP fallback where applicable.
+- Include regression coverage for known suspicious or fragile paths as tests expose them, especially room updates and string escaping/sanitization.
+- Keep smoke tests as a complement only; this feature should primarily be unit-test driven.
+
 I'd currently like to add an account management system to the game. Accounts should now be email-first: at login the player is prompted for an account name, and that account name is the player's email address. If the account does not exist yet, the login flow should offer to create it and set a secure password with a minimum of 8 characters, upper and lower case, and a number. After logging into the account, the player should land in an account menu where they can list their characters, add an existing legacy character, create a new character, reset the account password, or play a linked character. When they add a pre-existing character it should verify the legacy character password, transform the character file, character object, and character exploit file to json, and store it in a new directory linked back to the account. The account files should also be in json and stored in the similar fashion of how player files are stored now with the alphabet being split up. New characters should not be born into the legacy file layout at all: their character data, object data, and exploit history should be written directly into the new JSON-backed account storage from the start. Character state should live in `character.json`, while object state and exploit history should each live in their own JSON files so they can be maintained independently, and the account file should reference those separate per-character files so it still shows what is linked. The old single-file character snapshot idea is transitional only and should not be the final design.
 
 ## Desired Login Workflow

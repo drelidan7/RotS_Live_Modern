@@ -570,6 +570,11 @@ int get_health_percent(char_data* character)
 {
     const float current_health = GET_HIT(character);
     const float max_health = GET_MAX_HIT(character);
+    if (max_health <= 0.0f)
+        return 0;
+    if (current_health <= 0.0f)
+        return 0;
+
     const float health_percent = (current_health / max_health) * 100.0f;
 
     return (int)health_percent;
@@ -586,8 +591,8 @@ void msdp_update()
             continue;
         }
 
-        if (desc->character->in_room == NOWHERE) {
-            return;
+        if (desc->character->in_room < 0 || desc->character->in_room > top_of_world) {
+            continue;
         }
 
         MSDPSetString(desc, eMSDP_CHARACTER_NAME, GET_NAME(desc->character));
@@ -651,7 +656,7 @@ void msdp_update()
 
         auto sector_type = world[desc->character->in_room].sector_type;
         auto weather_type = weather_info.sky[sector_type];
-        extern char *weather_messages[8][13];
+        extern char* weather_messages[8][13];
         extern std::string strip_trailing_line_break(const char* text);
 
         if (OUTSIDE(desc->character)) {

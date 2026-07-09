@@ -14,6 +14,7 @@
 
 #include <netdb.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <sys/param.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -66,3 +67,45 @@ using sbyte = signed char;
 using ubyte = unsigned char;
 
 constexpr auto COPY_COMMAND = "cp";
+
+// Shim replacing the BSD-only sigmask()/sigsetmask() pair that comm.cpp's game_loop
+// used to shield its per-pulse timing bookkeeping with: sigsetmask(mask) *set* (not
+// additively blocked, unlike sigprocmask(SIG_BLOCK, ...)) the process signal mask to
+// a fixed set of signals (SIGUSR1/SIGUSR2/SIGALRM/SIGTERM/SIGURG/SIGXCPU/SIGHUP/
+// SIGSEGV/SIGBUS), then sigsetmask(0) reset it back to empty afterward. sigsetmask()
+// is absent from strict POSIX and from Windows entirely; sigprocmask(SIG_SETMASK, ...)
+// is what Linux/glibc and macOS/Darwin actually implement the historical BSD call in
+// terms of, so it reproduces the identical "set, don't just block" semantics. This is
+// now belt-and-braces only: the select()/read() call sites it used to guard are
+// themselves EINTR-tolerant retry loops, so a missed or racy mask no longer corrupts
+// game-loop state the way it would have under the original single-shot error handling.
+#if defined PREDEF_PLATFORM_LINUX
+inline void platform_block_game_loop_signals()
+{
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGUSR1);
+    sigaddset(&mask, SIGUSR2);
+    sigaddset(&mask, SIGALRM);
+    sigaddset(&mask, SIGTERM);
+    sigaddset(&mask, SIGURG);
+    sigaddset(&mask, SIGXCPU);
+    sigaddset(&mask, SIGHUP);
+    sigaddset(&mask, SIGSEGV);
+    sigaddset(&mask, SIGBUS);
+    sigprocmask(SIG_SETMASK, &mask, nullptr);
+}
+
+inline void platform_restore_game_loop_signals()
+{
+    sigset_t empty;
+    sigemptyset(&empty);
+    sigprocmask(SIG_SETMASK, &empty, nullptr);
+}
+#elif defined PREDEF_PLATFORM_WINDOWS
+// Windows has no process-wide POSIX signal mask, and comm.cpp's raw BSD-socket game
+// loop isn't wired up on this platform yet (Phase 3 Task 4). No-op placeholders so the
+// call sites need no #ifdef once that task lands.
+inline void platform_block_game_loop_signals() { }
+inline void platform_restore_game_loop_signals() { }
+#endif

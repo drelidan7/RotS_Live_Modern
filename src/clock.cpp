@@ -4,45 +4,20 @@
 
 //============================================================================
 rots_clock::rots_clock()
+    : current_time(std::chrono::steady_clock::now())
 {
-    gettimeofday(&current_time, NULL);
 }
 
 //============================================================================
 float rots_clock::get_elapsed_seconds()
 {
-    timeval last_time = current_time;
-    gettimeofday(&current_time, NULL);
+    const std::chrono::steady_clock::time_point last_time = current_time;
+    current_time = std::chrono::steady_clock::now();
 
-    return timediff_seconds(current_time, last_time);
-}
-
-//============================================================================
-float rots_clock::timediff_seconds(const timeval& now, const timeval& then)
-{
-    timeval time_passed = timediff(now, then);
-    float time_delta = time_passed.tv_sec + time_passed.tv_usec / 1000000.0f;
-    return time_delta;
-}
-
-//============================================================================
-timeval rots_clock::timediff(const timeval& now, const timeval& then)
-{
-    timeval time_passed;
-
-    timeval temp = now;
-
-    time_passed.tv_usec = temp.tv_usec - then.tv_usec;
-    if (time_passed.tv_usec < 0) {
-        time_passed.tv_usec += 1000000;
-        --temp.tv_sec;
-    }
-
-    time_passed.tv_sec = temp.tv_sec - then.tv_sec;
-    if (time_passed.tv_sec < 0) {
-        time_passed.tv_usec = 0;
-        time_passed.tv_sec = 0;
-    }
-
-    return time_passed;
+    // Same units/rounding as the legacy gettimeofday/timeval implementation this
+    // replaced: truncate to whole microseconds (gettimeofday's native resolution)
+    // before converting to a float seconds value, rather than dividing whatever
+    // finer-grained duration steady_clock happens to report.
+    const auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(current_time - last_time);
+    return elapsed_us.count() / 1000000.0f;
 }

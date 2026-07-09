@@ -151,6 +151,7 @@ if(ROTS_BUILD_TESTS)
         tests/characterization_combat_tests.cpp
         tests/characterization_json_tests.cpp
         tests/CharPlayerDataBuilder.cpp
+        tests/clock_tests.cpp
         tests/color_tests.cpp
         tests/convert_exploits_tests.cpp
         tests/convert_plrobjs_tests.cpp

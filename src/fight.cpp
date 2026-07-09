@@ -32,6 +32,7 @@
 #include "char_utils.h"
 #include "char_utils_combat.h"
 
+#include <chrono>
 #include <ctime>
 
 #define IS_PHYSICAL(_at) \
@@ -2702,25 +2703,8 @@ bool does_beorning_swipe_proc(struct char_data* character)
 }
 
 namespace {
-timeval last_time;
-timeval current_time;
-
-timeval timediff(struct timeval* a, struct timeval* b)
-{
-    struct timeval rslt, tmp;
-
-    tmp = *a;
-
-    if ((rslt.tv_usec = tmp.tv_usec - b->tv_usec) < 0) {
-        rslt.tv_usec += 1000000;
-        --(tmp.tv_sec);
-    }
-    if ((rslt.tv_sec = tmp.tv_sec - b->tv_sec) < 0) {
-        rslt.tv_usec = 0;
-        rslt.tv_sec = 0;
-    }
-    return (rslt);
-}
+std::chrono::steady_clock::time_point last_time;
+std::chrono::steady_clock::time_point current_time;
 }
 
 /*
@@ -2729,10 +2713,14 @@ timeval timediff(struct timeval* a, struct timeval* b)
 void perform_violence(int mini_tics)
 {
     last_time = current_time;
-    gettimeofday(&current_time, NULL);
-    timeval time_difference = timediff(&current_time, &last_time);
+    current_time = std::chrono::steady_clock::now();
 
-    float time_delta = time_difference.tv_sec + time_difference.tv_usec / 1000000.0f;
+    // Same units/rounding as the legacy gettimeofday/timeval implementation this
+    // replaced: truncate to whole microseconds before converting to a float seconds
+    // value. Combat timing here is characterization-golden-covered, so this must stay
+    // bit-for-bit equivalent, not just "close enough".
+    const auto time_difference = std::chrono::duration_cast<std::chrono::microseconds>(current_time - last_time);
+    float time_delta = time_difference.count() / 1000000.0f;
     for (char_data* fighter = combat_list; fighter; fighter = combat_next_dude) {
         fighter->damage_details.tick(time_delta);
         if (fighter->group) {

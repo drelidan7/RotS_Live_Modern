@@ -39,8 +39,10 @@
 #include "warrior_spec_handlers.h"
 #include "zone.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <ctime>
+#include <thread>
 #include <vector>
 
 #define MAX_HOSTNAME 256
@@ -217,7 +219,6 @@ SocketType pnew_descriptor(SocketType s);
 int process_output(struct descriptor_data* t);
 int process_input(struct descriptor_data* t);
 void close_sockets(SocketType s);
-struct timeval timediff(struct timeval* a, struct timeval* b);
 void flush_queues(struct descriptor_data* d);
 void nonblock(SocketType s);
 int perform_subst(struct descriptor_data* t, char* orig, char* subst);
@@ -564,7 +565,6 @@ void untrack_specialized_mage(char_data* mage)
 void add_prompt(char* prompt, struct char_data* ch, long flag);
 
 /* Accept pnew connects, relay commands, and call 'heartbeat-functs' */
-timeval opt_time;
 int pulse = 0; // moved here from being a local variable
 
 int get_health_percent(char_data* character)
@@ -684,13 +684,20 @@ void msdp_update()
 void game_loop(SocketType s)
 {
     fd_set input_set, output_set, exc_set;
-    struct timeval last_time, now, timespent, timeout, null_time;
+    struct timeval null_time;
+    // Target start-of-pulse instant on the monotonic steady_clock (immune to wall-clock
+    // adjustments, unlike the gettimeofday/timeval pair this replaced). Set to "now" at
+    // loop entry, then advanced each iteration to "now + however much of the pulse budget
+    // is left" -- i.e. it always names the earliest instant the *next* pulse may begin.
+    std::chrono::steady_clock::time_point last_time;
+    // Fixed per-pulse time budget (250ms / OPT_USEC), replacing the old global timeval
+    // "opt_time". 4 passes/sec target, same as always.
+    constexpr std::chrono::microseconds pulse_interval(OPT_USEC);
     char comm[MAX_INPUT_LENGTH];
     char prompt[MAX_INPUT_LENGTH];
     char* pptr;
     struct descriptor_data *point, *next_point;
     struct char_data *wait_ch, *wait_tmp;
-    int mask;
     AutosaveTimer autosave_timer;
     int sockets_connected, sockets_playing;
     int tmp, was_updated;
@@ -700,9 +707,7 @@ void game_loop(SocketType s)
     null_time.tv_sec = 0;
     null_time.tv_usec = 0;
 
-    opt_time.tv_usec = OPT_USEC; /* Init time values */
-    opt_time.tv_sec = 0;
-    gettimeofday(&last_time, NULL);
+    last_time = std::chrono::steady_clock::now(); /* Init time values */
 
     maxdesc = s;
 
@@ -727,8 +732,6 @@ void game_loop(SocketType s)
 
     avail_descs = std::min(avail_descs, MAX_PLAYERS);
 
-    mask = sigmask(SIGUSR1) | sigmask(SIGUSR2) | sigmask(SIGALRM) | sigmask(SIGTERM) | sigmask(SIGURG) | sigmask(SIGXCPU) | sigmask(SIGHUP) | sigmask(SIGSEGV) | sigmask(SIGBUS);
-
     /* Main loop */
     while (!circle_shutdown) {
         /* Check what's happening out there */
@@ -743,35 +746,38 @@ void game_loop(SocketType s)
                 FD_SET(point->descriptor, &output_set);
             }
 
-        /* check out the time */
-        gettimeofday(&now, NULL);
-        timespent = timediff(&now, &last_time);
-        timeout = timediff(&opt_time, &timespent);
-        last_time.tv_sec = now.tv_sec + timeout.tv_sec;
-        last_time.tv_usec = now.tv_usec + timeout.tv_usec;
+        /* check out the time: how much of the pulse budget this iteration's work
+           spent, and how much is left to sleep off before the next pulse may start */
+        auto now = std::chrono::steady_clock::now();
+        auto timeout = pulse_interval - std::chrono::duration_cast<std::chrono::microseconds>(now - last_time);
+        if (timeout < std::chrono::microseconds::zero()) {
+            timeout = std::chrono::microseconds::zero();
+        }
+        last_time = now + timeout;
 
-        if (last_time.tv_usec >= 1000000) {
-            last_time.tv_usec -= 1000000;
-            last_time.tv_sec++;
+        platform_block_game_loop_signals();
+
+        /* Poll-select stays a select() (native to both BSD sockets and Winsock; only
+           its fd types diverge, which a later task moves behind a platform shim) --
+           EINTR-tolerant now so the signal mask above is belt-and-braces, not
+           load-bearing. */
+        null_time.tv_sec = 0;
+        null_time.tv_usec = 0;
+        while ((tmp = select(maxdesc + 1, &input_set, &output_set, &exc_set, &null_time)) < 0 && errno == EINTR) {
+            null_time.tv_sec = 0;
+            null_time.tv_usec = 0;
         }
 
-        sigsetmask(mask);
-
-        if ((tmp = select(maxdesc + 1, &input_set, &output_set, &exc_set, &null_time) < 0)) {
-            if (errno != EINTR) {
-                perror("Select poll");
-                return;
-            }
+        if (tmp < 0) {
+            perror("Select poll");
+            platform_restore_game_loop_signals();
+            return;
         }
 
-        if (select(0, (fd_set*)0, (fd_set*)0, (fd_set*)0, &timeout) < 0) {
-            if (errno != EINTR) {
-                perror("Select sleep");
-                exit(1);
-            }
-        }
+        /* Pulse throttle: sleep off whatever's left of the 250ms budget. */
+        std::this_thread::sleep_for(timeout);
 
-        sigsetmask(0);
+        platform_restore_game_loop_signals();
 
         /* Respond to whatever might be happening */
 
@@ -1252,23 +1258,6 @@ void write_to_q_lang(char* txt, struct txt_q* queue, int freq)
         queue->tail = pnew;
         pnew->next = NULL;
     }
-}
-
-struct timeval timediff(struct timeval* a, struct timeval* b)
-{
-    struct timeval rslt, tmp;
-
-    tmp = *a;
-
-    if ((rslt.tv_usec = tmp.tv_usec - b->tv_usec) < 0) {
-        rslt.tv_usec += 1000000;
-        --(tmp.tv_sec);
-    }
-    if ((rslt.tv_sec = tmp.tv_sec - b->tv_sec) < 0) {
-        rslt.tv_usec = 0;
-        rslt.tv_sec = 0;
-    }
-    return (rslt);
 }
 
 /* Empty the queues before closing connection */

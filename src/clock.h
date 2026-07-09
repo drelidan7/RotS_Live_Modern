@@ -5,8 +5,7 @@
 #define CLOCK_H
 #pragma once
 
-#include <ctime>
-#include <sys/time.h>
+#include <chrono>
 
 class rots_clock {
 public:
@@ -17,11 +16,10 @@ public:
     float get_elapsed_seconds();
 
 private:
-    // Returns the amount of time that has passed between "now" and "then".
-    timeval timediff(const timeval& now, const timeval& then);
-    float timediff_seconds(const timeval& now, const timeval& then);
-
-    timeval current_time;
+    // Timestamp of the last measurement point: set at construction and advanced to
+    // "now" on every get_elapsed_seconds() call, which measures elapsed time against
+    // whatever value was stored here before the call.
+    std::chrono::steady_clock::time_point current_time;
 };
 
 #endif /* CLOCK_H */

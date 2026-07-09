@@ -2,7 +2,6 @@
 
 #include "platdef.h"
 #include <ctype.h>
-#include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -603,15 +602,11 @@ bool directory_has_versioned_legacy_player_entry(const char* directory_path, con
         return false;
 
     const fs::directory_iterator end;
-    while (it != end) {
+    for (; it != end; it.increment(ec)) {
         const std::string entry_name = it->path().filename().string();
         if (!entry_name.empty() && entry_name[0] != '.'
             && is_versioned_legacy_player_entry_name(entry_name.c_str(), normalized_name))
             return true;
-
-        it.increment(ec);
-        if (ec)
-            return false;
     }
 
     return false;
@@ -643,12 +638,9 @@ void build_account_native_player_index(void)
         return;
 
     const fs::directory_iterator dir_end;
-    while (accounts_it != dir_end) {
+    for (; accounts_it != dir_end; accounts_it.increment(accounts_ec)) {
         const std::string bucket_name = accounts_it->path().filename().string();
         if (bucket_name.empty() || bucket_name[0] == '.') {
-            accounts_it.increment(accounts_ec);
-            if (accounts_ec)
-                return;
             continue;
         }
 
@@ -656,27 +648,18 @@ void build_account_native_player_index(void)
         std::error_code bucket_ec;
         fs::directory_iterator bucket_it(bucket_path, bucket_ec);
         if (bucket_ec) {
-            accounts_it.increment(accounts_ec);
-            if (accounts_ec)
-                return;
             continue;
         }
 
-        while (bucket_it != dir_end) {
+        for (; bucket_it != dir_end; bucket_it.increment(bucket_ec)) {
             const std::string account_entry_name = bucket_it->path().filename().string();
             if (account_entry_name.empty() || account_entry_name[0] == '.') {
-                bucket_it.increment(bucket_ec);
-                if (bucket_ec)
-                    break;
                 continue;
             }
 
             const std::string account_json_path = bucket_path + "/" + account_entry_name + "/account.json";
             std::string account_json_text;
             if (!read_text_file_contents(account_json_path, &account_json_text)) {
-                bucket_it.increment(bucket_ec);
-                if (bucket_ec)
-                    break;
                 continue;
             }
 
@@ -722,15 +705,7 @@ void build_account_native_player_index(void)
 
                 populate_player_index_entry_from_store(stored_character, character_path);
             }
-
-            bucket_it.increment(bucket_ec);
-            if (bucket_ec)
-                break;
         }
-
-        accounts_it.increment(accounts_ec);
-        if (accounts_ec)
-            return;
     }
 }
 
@@ -809,15 +784,12 @@ void build_directory(char* TheDir)
     fs::directory_iterator it(TheDir, ec);
     const fs::directory_iterator end;
 
-    while (it != end) {
+    for (; it != end; it.increment(ec)) {
         memset(entry_name_buf, 0, sizeof(entry_name_buf));
         const std::string entry_name = it->path().filename().string();
         strncpy(entry_name_buf, entry_name.c_str(), sizeof(entry_name_buf) - 1);
 
         if (entry_name_buf[0] == '.' || !strncmp(entry_name_buf, "CVS", 3)) {
-            it.increment(ec);
-            if (ec)
-                break;
             continue;
         }
 
@@ -825,9 +797,6 @@ void build_directory(char* TheDir)
         tmpch[i] = 0;
         if (!is_versioned_legacy_player_entry_name(entry_name_buf, tmpch)
             && directory_has_versioned_legacy_player_entry(TheDir, tmpch)) {
-            it.increment(ec);
-            if (ec)
-                break;
             continue;
         }
         if (find_player_table_index_by_name(tmpch) >= 0)
@@ -853,11 +822,7 @@ void build_directory(char* TheDir)
             entry_name_buf);
 
         top_idnum = MAX(top_idnum, player_table[top_of_p_table].idnum);
-
-        it.increment(ec);
-        if (ec)
-            break;
-    } // while (it != end)
+    } // for (; it != end; it.increment(ec))
 
     RELEASE(tmpch);
 }

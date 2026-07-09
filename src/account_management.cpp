@@ -652,14 +652,11 @@ namespace {
         bool matched_is_directory = false;
         std::string matched_path;
         const fs::directory_iterator dir_end;
-        while (accounts_it != dir_end) {
+        for (; accounts_it != dir_end; accounts_it.increment(accounts_ec)) {
             const std::string bucket_name = accounts_it->path().filename().string();
             const std::string bucket_path = accounts_directory + "/" + bucket_name;
             struct stat bucket_info { };
             if (stat(bucket_path.c_str(), &bucket_info) != 0 || !S_ISDIR(bucket_info.st_mode)) {
-                accounts_it.increment(accounts_ec);
-                if (accounts_ec)
-                    break;
                 continue;
             }
 
@@ -670,22 +667,16 @@ namespace {
                 return false;
             }
 
-            while (bucket_it != dir_end) {
+            for (; bucket_it != dir_end; bucket_it.increment(bucket_ec)) {
                 const std::string account_entry_name = bucket_it->path().filename().string();
 
                 AccountData stored_account;
                 std::string read_error;
                 if (!read_account_file_from_bucket_entry(bucket_path, account_entry_name, &stored_account, &read_error)) {
-                    bucket_it.increment(bucket_ec);
-                    if (bucket_ec)
-                        break;
                     continue;
                 }
 
                 if (stored_account.account_name != normalized_account_name) {
-                    bucket_it.increment(bucket_ec);
-                    if (bucket_ec)
-                        break;
                     continue;
                 }
 
@@ -705,9 +696,6 @@ namespace {
                             matched_path = candidate_path;
                             matched_is_directory = true;
                         }
-                        bucket_it.increment(bucket_ec);
-                        if (bucket_ec)
-                            break;
                         continue;
                     }
 
@@ -718,15 +706,7 @@ namespace {
                 matched_path = candidate_path;
                 found_match = true;
                 matched_is_directory = candidate_is_directory;
-
-                bucket_it.increment(bucket_ec);
-                if (bucket_ec)
-                    break;
             }
-
-            accounts_it.increment(accounts_ec);
-            if (accounts_ec)
-                break;
         }
 
         if (!found_match) {
@@ -764,14 +744,11 @@ namespace {
 
         bool found_match = false;
         const fs::directory_iterator dir_end;
-        while (accounts_it != dir_end) {
+        for (; accounts_it != dir_end; accounts_it.increment(accounts_ec)) {
             const std::string bucket_name = accounts_it->path().filename().string();
             const std::string bucket_path = accounts_directory + "/" + bucket_name;
             struct stat bucket_info { };
             if (stat(bucket_path.c_str(), &bucket_info) != 0 || !S_ISDIR(bucket_info.st_mode)) {
-                accounts_it.increment(accounts_ec);
-                if (accounts_ec)
-                    break;
                 continue;
             }
 
@@ -782,16 +759,13 @@ namespace {
                 return false;
             }
 
-            while (bucket_it != dir_end) {
+            for (; bucket_it != dir_end; bucket_it.increment(bucket_ec)) {
                 const std::string account_entry_name = bucket_it->path().filename().string();
 
                 AccountData stored_account;
                 std::string read_error;
                 if (!read_account_file_from_bucket_entry(bucket_path, account_entry_name, &stored_account, &read_error)) {
                     if (read_error == "Entry is not an account record.") {
-                        bucket_it.increment(bucket_ec);
-                        if (bucket_ec)
-                            break;
                         continue;
                     }
                     set_error(error_message, read_error);
@@ -807,15 +781,7 @@ namespace {
                     *owner_account_name = stored_account.account_name;
                     found_match = true;
                 }
-
-                bucket_it.increment(bucket_ec);
-                if (bucket_ec)
-                    break;
             }
-
-            accounts_it.increment(accounts_ec);
-            if (accounts_ec)
-                break;
         }
 
         set_error(error_message, "");
@@ -848,14 +814,11 @@ namespace {
         bool matched_is_directory = false;
         AccountData matched_account;
         const fs::directory_iterator dir_end;
-        while (accounts_it != dir_end) {
+        for (; accounts_it != dir_end; accounts_it.increment(accounts_ec)) {
             const std::string bucket_name = accounts_it->path().filename().string();
             const std::string bucket_path = accounts_directory + "/" + bucket_name;
             struct stat bucket_info { };
             if (stat(bucket_path.c_str(), &bucket_info) != 0 || !S_ISDIR(bucket_info.st_mode)) {
-                accounts_it.increment(accounts_ec);
-                if (accounts_ec)
-                    break;
                 continue;
             }
 
@@ -866,15 +829,12 @@ namespace {
                 return false;
             }
 
-            while (bucket_it != dir_end) {
+            for (; bucket_it != dir_end; bucket_it.increment(bucket_ec)) {
                 const std::string account_entry_name = bucket_it->path().filename().string();
 
                 AccountData stored_account;
                 std::string read_error;
                 if (!read_account_file_from_bucket_entry(bucket_path, account_entry_name, &stored_account, &read_error)) {
-                    bucket_it.increment(bucket_ec);
-                    if (bucket_ec)
-                        break;
                     continue;
                 }
 
@@ -886,9 +846,6 @@ namespace {
                                 matched_account = stored_account;
                                 matched_is_directory = true;
                             }
-                            bucket_it.increment(bucket_ec);
-                            if (bucket_ec)
-                                break;
                             continue;
                         }
 
@@ -900,15 +857,7 @@ namespace {
                     found_match = true;
                     matched_is_directory = is_directory_bucket_entry(bucket_path, account_entry_name);
                 }
-
-                bucket_it.increment(bucket_ec);
-                if (bucket_ec)
-                    break;
             }
-
-            accounts_it.increment(accounts_ec);
-            if (accounts_ec)
-                break;
         }
 
         if (found_match) {
@@ -938,14 +887,11 @@ namespace {
         }
 
         const fs::directory_iterator dir_end;
-        while (accounts_it != dir_end) {
+        for (; accounts_it != dir_end; accounts_it.increment(accounts_ec)) {
             const std::string bucket_name = accounts_it->path().filename().string();
             const std::string bucket_path = accounts_directory + "/" + bucket_name;
             struct stat bucket_info { };
             if (stat(bucket_path.c_str(), &bucket_info) != 0 || !S_ISDIR(bucket_info.st_mode)) {
-                accounts_it.increment(accounts_ec);
-                if (accounts_ec)
-                    break;
                 continue;
             }
 
@@ -956,30 +902,19 @@ namespace {
                 return true;
             }
 
-            while (bucket_it != dir_end) {
+            for (; bucket_it != dir_end; bucket_it.increment(bucket_ec)) {
                 const std::string account_entry_name = bucket_it->path().filename().string();
 
                 AccountData stored_account;
                 std::string read_error;
                 if (!read_account_file_from_bucket_entry(bucket_path, account_entry_name, &stored_account, &read_error)) {
                     if (read_error == "Entry is not an account record.") {
-                        bucket_it.increment(bucket_ec);
-                        if (bucket_ec)
-                            break;
                         continue;
                     }
                     set_error(error_message, "Existing account records could not be read safely.");
                     return true;
                 }
-
-                bucket_it.increment(bucket_ec);
-                if (bucket_ec)
-                    break;
             }
-
-            accounts_it.increment(accounts_ec);
-            if (accounts_ec)
-                break;
         }
 
         set_error(error_message, "");
@@ -1098,25 +1033,16 @@ namespace {
         const std::string required_prefix = normalized_name + ".";
         std::string matched_path;
         const fs::directory_iterator dir_end;
-        while (directory_it != dir_end) {
+        for (; directory_it != dir_end; directory_it.increment(directory_ec)) {
             const std::string entry_name_string = directory_it->path().filename().string();
             const char* entry_name = entry_name_string.c_str();
             if (entry_name[0] == '.') {
-                directory_it.increment(directory_ec);
-                if (directory_ec)
-                    break;
                 continue;
             }
             if (std::strncmp(entry_name, required_prefix.c_str(), required_prefix.length()) != 0) {
-                directory_it.increment(directory_ec);
-                if (directory_ec)
-                    break;
                 continue;
             }
             if (std::strchr(entry_name + required_prefix.length(), '.') == nullptr) {
-                directory_it.increment(directory_ec);
-                if (directory_ec)
-                    break;
                 continue;
             }
 
@@ -1149,9 +1075,6 @@ namespace {
             }
 
             if (!valid_versioned_name || *suffix != '\0') {
-                directory_it.increment(directory_ec);
-                if (directory_ec)
-                    break;
                 continue;
             }
 
@@ -1162,10 +1085,6 @@ namespace {
             }
 
             matched_path = candidate_path;
-
-            directory_it.increment(directory_ec);
-            if (directory_ec)
-                break;
         }
 
         if (matched_path.empty()) {

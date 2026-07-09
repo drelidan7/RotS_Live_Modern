@@ -2,11 +2,19 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The `windows-msvc` CI job builds the game and passes the full test suite (characterization goldens included) and becomes a required job — with the networking, filesystem, timing, and signal layers made genuinely cross-platform (Asio, std::filesystem, std::chrono, a signal shim) rather than #ifdef-riddled.
+> **AMENDED 2026-07-09 (user pivot):** NO third-party libraries in the game — including
+> Asio. Task 1's vendoring was implemented, reviewed, then **reverted** (commit 0ebc9a9)
+> keeping its Asio-independent parts (platdef.h Windows scaffold, -iquote/-isystem test
+> include hygiene). Task 4 is rewritten below as a **hand-rolled, platform-gated socket
+> shim**. GoogleTest remains as test-only tooling (not shipped in the game binary);
+> revisit only on explicit user instruction. Also amended: post-upstream-merge baselines
+> (see "Post-merge amendments" at the bottom).
 
-**Architecture:** Spec Phase 3. Order is dependency-driven: portable subsystem migrations that benefit ALL platforms land first, each gated by the full multi-runtime battery + goldens (chrono → filesystem → Asio), then the MSVC-specific shims, then a CI-push-driven Windows bring-up loop (no local Windows machine exists — the windows-2022 runner is the only Windows environment), then CI promotion. The Asio port is a portability move, not a concurrency redesign: the loop stays single-threaded and tick-driven (`io_context::poll()` once per pulse).
+**Goal:** The `windows-msvc` CI job builds the game and passes the full test suite (characterization goldens included) and becomes a required job — with the networking, filesystem, timing, and signal layers made genuinely cross-platform (a hand-rolled platform-gated socket shim, std::filesystem, std::chrono, a signal shim) rather than #ifdef-riddled.
 
-**Tech Stack:** Standalone Asio (header-only, vendored), std::filesystem, std::chrono, GoogleTest, GitHub Actions (windows-2022/MSVC).
+**Architecture:** Spec Phase 3, amended. Order is dependency-driven: portable subsystem migrations that benefit ALL platforms land first, each gated by the full multi-runtime battery + goldens (chrono → filesystem → sockets), then the MSVC-specific shims, then a CI-push-driven Windows bring-up loop (no local Windows machine exists — the windows-2022 runner is the only Windows environment), then CI promotion. The networking work is a portability move, not a redesign: the loop stays single-threaded, select()-driven, and tick-based — select() is the one polling primitive native to BOTH BSD sockets and Winsock, so the existing loop structure survives and only the OS-divergent calls go behind the shim.
+
+**Tech Stack:** Hand-rolled platform layer (no third-party libraries), std::filesystem, std::chrono, GoogleTest (test-only), GitHub Actions (windows-2022/MSVC).
 
 ## Global Constraints
 
@@ -14,7 +22,7 @@
 - Gameplay/network behavior preservation: telnet byte streams (negotiation, MCCP, MXP), the `-x` proxy 4-byte header protocol (comm.cpp:173-205), prompt/output pacing, and disconnect semantics must be indistinguishable to a client. protocol.cpp's single write seam (`write_to_descriptor` call at protocol.cpp:51) must keep working unchanged.
 - USER CONSTRAINT: the legacy→JSON conversion/salvage path stays intact and buildable everywhere (filesystem migration touches the converters — their tests are the gate).
 - Windows-runtime reality: the CI runner has no world data, so the Phase 3 Windows exit is **build + full unit suite + goldens green on CI**; live boot verification on Windows is explicitly deferred until a Windows environment with world data exists (deviation from the spec's "boots" wording — noted in self-review; a committed minimal test world is the future enabler, out of scope here).
-- Dependency policy deviation (justified): the spec said Asio "pinned via FetchContent", but the i386 container builds offline via Make — so Asio is **vendored** at a pinned release under `third_party/asio/` (header-only, one directory, LICENSE included), serving all four build paths identically.
+- Dependency policy (AMENDED 2026-07-09): **no third-party libraries in the game** — the spec's Asio choice is superseded by user decision. Networking is hand-rolled and platform-gated behind `platdef.h`. GoogleTest stays, test-only.
 - Never commit lib/ or log/ content; `.claude/.no-autoformat` before C++ edits; imperative subjects ≤72; backups before any live-data-touching boot.
 
 **Scout anchors (verified 2026-07-07):**
@@ -28,13 +36,13 @@
 
 ---
 
-### Task 1: Vendor Asio + platdef Windows scaffold
+### Task 1: ~~Vendor Asio +~~ platdef Windows scaffold — DONE, then partially reverted (pivot)
 
-**Files:** Create `third_party/asio/` (pinned standalone release, headers + LICENSE + a README noting version/provenance); modify `src/Makefile`, `src/tests/Makefile`, `src/CMakeLists.txt` (include path `-Ithird_party/asio/include` / `target_include_directories ... SYSTEM`); extend `src/platdef.h` with the Windows branch skeleton (winsock2.h/ws2tcpip.h, `SocketType`, and a `rots_platform` note that Asio owns sockets after Task 4).
-
-**Interfaces produced:** `#include <asio.hpp>` compiles in all four build paths (prove with a temporary smoke TU compiled then deleted, or a permanent trivial test asserting `asio::io_context` constructs). `ASIO_STANDALONE` defined project-wide for the affected targets.
-
-Steps: fetch a pinned Asio release (implementer records exact version+sha in the README); wire includes; smoke-compile in 32-bit container, rots64, macOS; full battery; commit `build: vendor standalone Asio for the platform layer`.
+Historical: implemented as specified (25be602 + review fix 7097c8b), review-approved, then
+the Asio vendoring was reverted per the 2026-07-09 no-third-party pivot (0ebc9a9).
+**Surviving deliverables:** `src/platdef.h` Windows branch (WIN32_LEAN_AND_MEAN +
+winsock2.h/ws2tcpip.h, `SocketType = SOCKET`), and the test-build include hygiene
+(`-iquote ..` so src/limits.h can't shadow `<limits.h>`). No action remaining.
 
 ---
 
@@ -42,7 +50,7 @@ Steps: fetch a pinned Asio release (implementer records exact version+sha in the
 
 **Files:** `src/comm.cpp` (game_loop timing :683-772 region), `src/clock.cpp`, `src/fight.cpp:2732` region, plus the BSD `sigmask()` sites.
 
-Replace `gettimeofday`/`timeval` arithmetic with `std::chrono::steady_clock` (identical pulse math: 250ms target per pulse, sleep = target − elapsed, clamped ≥0); the sleep-select (:765) becomes `std::this_thread::sleep_for` (Asio timer arrives in Task 4 — don't pre-couple); the poll-select stays for now (Task 4 removes it). Replace `sigmask()/sigsetmask()` with a small `platdef`-declared shim: POSIX = `sigprocmask` with the equivalent mask set, Windows = no-op — AND make the remaining select/read paths EINTR-tolerant (retry loops) so the mask becomes belt-and-braces rather than load-bearing. `perform_violence`'s delta-time (fight.cpp) converts with EXACT semantics (same units/rounding — combat timing is golden-covered).
+Replace `gettimeofday`/`timeval` arithmetic with `std::chrono::steady_clock` (identical pulse math: 250ms target per pulse, sleep = target − elapsed, clamped ≥0); the sleep-select (:765) becomes `std::this_thread::sleep_for`; the poll-select stays permanently as the readiness poll (Task 4 keeps select(), which is native to both BSD sockets and Winsock — it only moves behind the shim where its fd types diverge). Replace `sigmask()/sigsetmask()` with a small `platdef`-declared shim: POSIX = `sigprocmask` with the equivalent mask set, Windows = no-op — AND make the remaining select/read paths EINTR-tolerant (retry loops) so the mask becomes belt-and-braces rather than load-bearing. `perform_violence`'s delta-time (fight.cpp) converts with EXACT semantics (same units/rounding — combat timing is golden-covered).
 
 TDD where testable (clock.cpp elapsed-seconds has tests? check; add one for the chrono version). Full battery ×3 — the boot golden and combat goldens are the real gate. Commit `refactor: game-loop timing on std::chrono`.
 
@@ -58,22 +66,27 @@ Commit `refactor: directory scans and file ops on std::filesystem`.
 
 ---
 
-### Task 4: Asio connection layer
+### Task 4: Hand-rolled platform-gated socket layer (AMENDED 2026-07-09 — replaces the Asio design)
 
-**Files:** `src/comm.cpp` (the socket surface: init_socket/pnew_connection/nonblock/close_socket/process_input read path/write_to_descriptor/the two selects/populate_descriptor_host/finish_proxy_header_if_ready), `src/platdef.h`; descriptor_data gains an Asio socket handle (structs.h or comm.h — smallest change that compiles everywhere).
+**Files:** New `src/rots_net.h`/`src/rots_net.cpp` (the shim — small, single-responsibility); `src/comm.cpp` (call sites only: init_socket/pnew_connection/nonblock/close_socket/process_input read path/process_output/write_to_descriptor/the two selects/populate_descriptor_host); `src/platdef.h` (already provides the includes + `SocketType`); descriptor_data's fd field becomes `SocketType` (structs.h or comm.h — smallest change that compiles everywhere).
 
-Design (binding):
-- `asio::io_context` owned by comm.cpp; **one `io_context::poll()` per game-loop iteration** replaces the poll-select; the Task-2 sleep_for stays as the pulse throttle (or an asio steady_timer — implementer's choice, semantics identical).
-- Listener: `asio::ip::tcp::acceptor` with async_accept re-armed per accept; SO_REUSEADDR + linger options replicated (:1313/:1324).
-- Per-descriptor: async_read_some into the existing input buffering (feeding `ProtocolInput` exactly as :1686-1699 does); writes stay SYNCHRONOUS non-blocking (`asio::error::would_block` handled like the current EAGAIN path in write_to_descriptor :1604-1617) to preserve output-ordering/pacing semantics — do NOT introduce write queues protocol.cpp can't see.
-- Proxy header: replicate finish_proxy_header_if_ready byte-for-byte semantics (read up to 4 raw bytes pre-protocol, EWOULDBLOCK→try-next-tick) on the Asio socket.
-- DNS: `gethostbyaddr` → `asio::ip::tcp::resolver` SYNCHRONOUS reverse resolve, still guarded by `nameserver_is_slow` (behavior-identical; async DNS is a Phase-4 nicety, YAGNI now).
-- `system("touch ../.killscript")` on bind failure was replaced in Task 3; keep the same failure behavior.
-- Retire: fcntl nonblock (Asio non_blocking(true)), fd_set code, the raw ::read/::write on sockets. platdef's socket includes shrink accordingly.
+Design (binding) — the existing single-threaded select() loop structure is PRESERVED on all platforms; only OS-divergent calls go behind `rots_net`:
+- **Lifetime:** `rots_net::startup()`/`shutdown()` — WSAStartup(2,2)/WSACleanup on Windows, no-ops on POSIX. Called once from main()/comm.cpp init and exit paths.
+- **Handle type:** `SocketType` everywhere comm.cpp holds an fd (int on POSIX, SOCKET on Windows); `rots_net::kInvalidSocket` (-1 / INVALID_SOCKET); comparisons `>= 0` become explicit validity checks.
+- **Close:** `rots_net::close_socket(SocketType)` — ::close vs ::closesocket.
+- **Nonblocking:** `rots_net::set_nonblocking(SocketType)` — fcntl O_NONBLOCK vs ioctlsocket FIONBIO. Replaces `nonblock()` (:1950).
+- **I/O:** `rots_net::read_socket`/`write_socket` — POSIX ::read/::write vs Winsock ::recv/::send (Windows cannot read()/write() a SOCKET). Signatures mirror read/write; return ssize_t-style.
+- **Error mapping:** `rots_net::last_error()` + `rots_net::error_is_would_block(e)` / `error_is_interrupted(e)` — errno/EAGAIN/EWOULDBLOCK/EINTR vs WSAGetLastError()/WSAEWOULDBLOCK/WSAEINTR. Every EAGAIN/EWOULDBLOCK/EINTR test in comm.cpp (write_to_descriptor :1604-1617, process_input :1683, accept, proxy header :173-205) routes through these predicates — semantics per-site identical to today.
+- **select():** stays as THE readiness mechanism (native on Winsock). fd_set fills use SocketType; the nfds first arg is computed on POSIX and ignored by Winsock (pass it anyway — portable). The Task-2 sleep_for stays as the pulse throttle.
+- **DNS:** `gethostbyaddr` → `getnameinfo` (portable POSIX+Winsock, replaces an obsolete API with no new dependency), still synchronous, still guarded by `nameserver_is_slow`.
+- **Listener/options:** setsockopt SO_REUSEADDR/SO_LINGER replicated verbatim (:1313/:1324) — both exist on Winsock (char* cast on the option value, which the shim or a small helper handles).
+- **Proxy header:** finish_proxy_header_if_ready keeps byte-for-byte semantics (read up to 4 raw bytes pre-protocol, would-block→try-next-tick) via rots_net::read_socket + the error predicates.
+- **No behavior change on POSIX:** on Linux/macOS every shim function must compile down to exactly the call it replaced (inline/thin wrappers); the battery + goldens + network smokes prove indistinguishability.
+- **Unit tests:** rots_net gets its own gtest file (loopback socketpair-style tests: nonblocking set, would-block classification, read/write round-trip, close idempotence) — runnable on all three POSIX runtimes now, and on Windows CI when the preset goes green.
 
-Verification: full battery ×3; PLUS live network smokes on macOS native AND 32-bit container: plain telnet session (login, look, quit), a second simultaneous connection, disconnect-mid-session, and the **proxy path**: run the Rust proxy (`cargo run -p proxy` on the host) against a `-x` server and connect through it — the 4-byte header must parse (this is the first end-to-end proxy test since Phase 0; document the invocation). MCCP/MXP negotiation bytes eyeballed via a raw dump against a pre-change capture (the negotiation preamble on connect must be byte-identical).
+Verification: full battery ×3; PLUS live network smokes on macOS native AND 32-bit container: plain telnet session (login, look, quit), a second simultaneous connection, disconnect-mid-session, and the **proxy path**: run the Rust proxy (`cargo run -p proxy` on the host) against a `-x` server and connect through it — the 4-byte header must parse (first end-to-end proxy test since Phase 0; document the invocation). MCCP/MXP negotiation bytes eyeballed via a raw dump against a pre-change capture (the negotiation preamble on connect must be byte-identical).
 
-Commit `refactor: connection layer on standalone Asio`.
+Commit `refactor: platform-gated socket shim (hand-rolled, no third-party)`.
 
 ---
 
@@ -113,7 +126,25 @@ Commit(s): whatever the loop needs, imperative, grouped.
 
 ## Plan Self-Review Notes
 
-- **Spec coverage (Phase 3):** Asio port → Task 4 (single-threaded poll-per-tick, proxy contract preserved); std::filesystem → Task 3; chrono → Task 2; signal shim → Task 5; passwords → reality-adjusted scope (rots_crypt landed in 2b; Phase 3 keeps scrubbing + the documented legacy-check disposition — the spec's "crypt() removal + first-login migration" was written before the account system's real shape was known; the live check at interpre.cpp:3333 is migration-critical and OS-independent, so it stays). Exit criterion adjusted for Windows boot (no environment) — documented as a deviation, not silently dropped.
-- **Order rationale:** chrono/filesystem before Asio so each battery isolates one subsystem; MSVC shims after Asio so the Windows loop starts from the smallest error surface; every task independently battery-gated on the three live runtimes.
-- **Known adaptation points:** the ~19-error syntax hole (find during bring-up); LLP64 fixture decision (explicit either way); wizlist-reload command existence (Task 5 check); Asio version pin (Task 1 records it).
+- **Spec coverage (Phase 3):** networking → Task 4 (hand-rolled platform-gated shim, single-threaded select-per-tick, proxy contract preserved; spec's Asio superseded by the 2026-07-09 no-third-party user decision); std::filesystem → Task 3; chrono → Task 2; signal shim → Task 5; passwords → reality-adjusted scope (rots_crypt landed in 2b; Phase 3 keeps scrubbing + the documented legacy-check disposition — the spec's "crypt() removal + first-login migration" was written before the account system's real shape was known; the live check at interpre.cpp:3333 is migration-critical and OS-independent, so it stays). Exit criterion adjusted for Windows boot (no environment) — documented as a deviation, not silently dropped.
+- **Order rationale:** chrono/filesystem before the socket shim so each battery isolates one subsystem; MSVC shims after so the Windows loop starts from the smallest error surface; every task independently battery-gated on the three live runtimes.
+- **Known adaptation points:** the ~19-error syntax hole (find during bring-up); LLP64 fixture decision (explicit either way); wizlist-reload command existence (Task 5 check).
+
+---
+
+## Post-merge amendments (2026-07-09, upstream account-management merge)
+
+The upstream merge (plan: `2026-07-09-upstream-account-management-merge.md`) lands before
+Task 2 and changes this plan's ground truth:
+- **Task 2 (chrono):** comm.cpp's heartbeat now calls `AutosaveTimer::tick` via new
+  `crashsave_schedule.cpp` (already steady-clock-friendly; `stopwatch.h` is in-repo prior
+  art for steady_clock timing). The plan's comm.cpp scout-anchor line numbers have
+  drifted — re-anchor before dispatching the implementer.
+- **Task 3 (filesystem):** `player_file_finalize.cpp` (rename/remove + readdir sibling
+  cleanup) joins the dirent/file-op migration list.
+- **Task 5 (MSVC/POSIX census):** new POSIX surface from the merge —
+  `player_finalize_tests.cpp`, `save_benchmark_tests.cpp` (`<dirent.h>`, `<unistd.h>`,
+  `<sys/stat.h>`) and `player_file_finalize.cpp` itself.
+- **Battery baselines:** post-merge, post-Asio-revert totals supersede all counts stated
+  above; the ledger records the authoritative numbers after merge task M2.
 - **Type consistency:** `rots_asprintf`/`rots_strcasecmp` naming follows `rots_rng`/`rots_crypt` precedent; battery definitions match the ledger's current numbers (579/7 of 586; macOS 515/71).

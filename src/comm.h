@@ -14,6 +14,7 @@
 #include <string>
 #include <stdarg.h>
 
+#include "platdef.h" /* For SocketType */
 #include "utils.h" /* For the TRUE macro */
 
 struct StartupOptions {
@@ -57,7 +58,7 @@ void act(const char* str, int hide_invisible, struct char_data* ch,
 #define TO_NOTVICT 2
 #define TO_CHAR 3
 
-int write_to_descriptor(int desc, char* txt);
+int write_to_descriptor(SocketType desc, char* txt);
 void write_to_q(char* txt, struct txt_q* queue);
 void write_to_output(const char* txt, struct descriptor_data* d);
 void page_string(struct descriptor_data* d, char* str, int keep_internal);

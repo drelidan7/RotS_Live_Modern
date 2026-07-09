@@ -35,7 +35,7 @@ OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objsave.o olog_hai.o\
 	pkill.o player_file_finalize.o profs.o protocol.o ranger.o save_benchmark.o savebench.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o  \
-	wild_fighting_handler.o weather.o zone.o rots_rng.o rots_crypt.o
+	wild_fighting_handler.o weather.o zone.o rots_rng.o rots_crypt.o rots_net.o
 
 
 # Dependencies for the main mud
@@ -231,9 +231,11 @@ rots_rng.o : ../rots_rng.cpp ../rots_rng.h
 	$(CXX) -c $(CXXFLAGS) ../rots_rng.cpp
 rots_crypt.o : ../rots_crypt.cpp ../rots_crypt.h
 	$(CXX) -c $(CXXFLAGS) ../rots_crypt.cpp
+rots_net.o : ../rots_net.cpp ../rots_net.h ../platdef.h
+	$(CXX) -c $(CXXFLAGS) ../rots_net.cpp
 
 
-SRCS = account_management_tests.cpp account_cache_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp clock_tests.cpp color_tests.cpp convert_exploits_tests.cpp convert_plrobjs_tests.cpp crashsave_schedule_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_perf_tests.cpp json_utils_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp player_finalize_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_crypt_tests.cpp rots_rng_tests.cpp save_benchmark_tests.cpp shapemob_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
+SRCS = account_management_tests.cpp account_cache_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp clock_tests.cpp color_tests.cpp convert_exploits_tests.cpp convert_plrobjs_tests.cpp crashsave_schedule_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_perf_tests.cpp json_utils_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp player_finalize_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_crypt_tests.cpp rots_net_tests.cpp rots_rng_tests.cpp save_benchmark_tests.cpp shapemob_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 EXECUTABLE = ../../bin/tests

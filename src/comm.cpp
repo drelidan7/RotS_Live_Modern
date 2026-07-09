@@ -16,7 +16,6 @@
 #include <sys/stat.h>
 
 #include "platdef.h"
-#include <fcntl.h>
 #include <signal.h>
 #include <string.h>
 
@@ -30,6 +29,7 @@
 #include "interpre.h"
 #include "limits.h"
 #include "protocol.h"
+#include "rots_net.h"
 #include "rots_rng.h"
 #include "script.h"
 #include "skill_timer.h"
@@ -136,20 +136,22 @@ bool parse_port_value(const char* text, sh_int* port, std::string* error_message
     return true;
 }
 
-void populate_descriptor_host(descriptor_data* descriptor, in_addr_t peer_address)
+void populate_descriptor_host(descriptor_data* descriptor, uint32_t peer_address)
 {
-    struct hostent* from;
-
-    if (nameserver_is_slow || !(from = gethostbyaddr((char*)&peer_address, sizeof(peer_address), AF_INET))) {
+    // getnameinfo() replaces the historical gethostbyaddr() call here (portable
+    // POSIX+Winsock, no new dependency) -- see rots_net::resolve_host_name.
+    // Same fallback-to-numeric-IP behavior on any resolution failure.
+    char resolved_host[MAX_HOSTNAME + 1];
+    if (nameserver_is_slow || !rots_net::resolve_host_name(peer_address, resolved_host, sizeof(resolved_host))) {
         if (!nameserver_is_slow)
-            perror("gethostbyaddr");
+            log("Reverse hostname lookup failed; using numeric address.");
         const int i = peer_address;
         sprintf(descriptor->host, "%d.%d.%d.%d", (i & 0x000000FF), (i & 0x0000FF00) >> 8,
             (i & 0x00FF0000) >> 16, (i & 0xFF000000) >> 24);
         return;
     }
 
-    strncpy(descriptor->host, from->h_name, 49);
+    strncpy(descriptor->host, resolved_host, 49);
     *(descriptor->host + 49) = '\0';
 }
 
@@ -183,7 +185,7 @@ int finish_proxy_header_if_ready(descriptor_data* descriptor)
 
     char* buffer = reinterpret_cast<char*>(&descriptor->proxy_peer_address);
     while (descriptor->proxy_peer_bytes_read < sizeof(descriptor->proxy_peer_address)) {
-        const ssize_t bytes_read = read(descriptor->descriptor,
+        const rots_net::ssize_type bytes_read = rots_net::read_socket(descriptor->descriptor,
             buffer + descriptor->proxy_peer_bytes_read,
             sizeof(descriptor->proxy_peer_address) - descriptor->proxy_peer_bytes_read);
         if (bytes_read > 0) {
@@ -196,7 +198,7 @@ int finish_proxy_header_if_ready(descriptor_data* descriptor)
             return -1;
         }
 
-        if (errno == EWOULDBLOCK)
+        if (rots_net::error_is_would_block(rots_net::last_error()))
             return 0;
 
         perror("reading proxy header");
@@ -223,7 +225,6 @@ int process_output(struct descriptor_data* t);
 int process_input(struct descriptor_data* t);
 void close_sockets(SocketType s);
 void flush_queues(struct descriptor_data* d);
-void nonblock(SocketType s);
 int perform_subst(struct descriptor_data* t, char* orig, char* subst);
 void complete_delay(struct char_data* ch);
 void stat_update();
@@ -419,6 +420,10 @@ int main(int argc, char** argv)
 {
     signal(SIGSEGV, sigsegv_handler);
 
+    // WSAStartup/WSACleanup lifetime pairing on Windows; no-op on POSIX. Must
+    // happen before any socket call -- see run_the_game()'s matching shutdown().
+    rots_net::startup();
+
     // initialize the random number generator
     rots_rng::seed(static_cast<unsigned int>(std::time(0)));
 
@@ -498,7 +503,7 @@ std::vector<char_data*> specialized_mages;
 /* Init sockets, run game, and cleanup sockets */
 void run_the_game(sh_int port)
 {
-    int s;
+    SocketType s;
 
     void signal_setup(void);
 
@@ -520,6 +525,8 @@ void run_the_game(sh_int port)
     game_loop(s);
 
     close_sockets(s);
+    // Matches rots_net::startup() in main(); WSACleanup on Windows, no-op on POSIX.
+    rots_net::shutdown();
     // fclose(player_fl);
 
     if (circle_reboot) {
@@ -792,7 +799,7 @@ void game_loop(SocketType s)
            load-bearing. */
         null_time.tv_sec = 0;
         null_time.tv_usec = 0;
-        while ((tmp = select(maxdesc + 1, &input_set, &output_set, &exc_set, &null_time)) < 0 && errno == EINTR) {
+        while ((tmp = select(maxdesc + 1, &input_set, &output_set, &exc_set, &null_time)) < 0 && rots_net::error_is_interrupted(rots_net::last_error())) {
             null_time.tv_sec = 0;
             null_time.tv_usec = 0;
         }
@@ -1325,7 +1332,8 @@ SocketType init_socket(sh_int port)
     sa.sin_family = AF_INET;
     sa.sin_addr.s_addr = 0;
 
-    if ((s = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    s = socket(AF_INET, SOCK_STREAM, 0);
+    if (!rots_net::is_valid_socket(s)) {
         perror("Init-socket");
         exit(1);
     }
@@ -1350,13 +1358,13 @@ SocketType init_socket(sh_int port)
 
     if (bind(s, saddr, sizeof(struct sockaddr)) != 0) {
         perror("bind");
-        close(s);
+        rots_net::close_socket(s);
         touch_file("../.killscript");
         exit(1);
     }
 
-    /* nonblock handles its own problems */
-    nonblock(s);
+    /* set_nonblocking handles its own problems */
+    rots_net::set_nonblocking(s);
 
     listen(s, 3);
 
@@ -1370,7 +1378,8 @@ SocketType pnew_connection(SocketType s)
     SocketType t;
 
     i = sizeof(isa);
-    if ((t = accept(s, (struct sockaddr*)(&isa), &i)) < 0) {
+    t = accept(s, (struct sockaddr*)(&isa), &i);
+    if (!rots_net::is_valid_socket(t)) {
         perror("Accept");
         return (0); // probably incorrect..
     }
@@ -1406,7 +1415,7 @@ SocketType pnew_descriptor(SocketType s)
     /*	if ((maxdesc + 1) >= avail_descs) */
     if (sockets_connected >= avail_descs) {
         write_to_descriptor(desc, "Sorry, RotS is full right now... try again later!  :-)\n\r");
-        close(desc);
+        rots_net::close_socket(desc);
         return (0);
     } else if (desc > maxdesc)
         maxdesc = desc;
@@ -1418,7 +1427,7 @@ SocketType pnew_descriptor(SocketType s)
 
     int err = 0;
 
-    nonblock(desc);
+    rots_net::set_nonblocking(desc);
 
     // The game is running behind a proxy; defer proxy-header intake to the normal
     // descriptor input path so a short header cannot block the whole server loop.
@@ -1436,7 +1445,7 @@ SocketType pnew_descriptor(SocketType s)
     }
 
     if (!has_proxy && reject_banned_descriptor_host(pnewd)) {
-        close(desc);
+        rots_net::close_socket(desc);
         RELEASE(pnewd);
         return (0);
     }
@@ -1621,7 +1630,7 @@ int write_to_descriptor_new(int desc, char* txt)
 
 // old version replaced with above April 2001 - Fingolfin
 
-int write_to_descriptor(int desc, char* txt)
+int write_to_descriptor(SocketType desc, char* txt)
 {
     int sofar, thisround, total;
 
@@ -1634,7 +1643,7 @@ int write_to_descriptor(int desc, char* txt)
 
     try {
         do {
-            thisround = write(desc, txt + sofar, total - sofar);
+            thisround = static_cast<int>(rots_net::write_socket(desc, txt + sofar, total - sofar));
             if (thisround < 0) {
                 perror("Write to socket");
                 return (-1);
@@ -1700,7 +1709,7 @@ int process_input(struct descriptor_data* t)
     /* Read in some stuff */
     do {
         char inbuf[2048];
-        thisround = read(t->descriptor, inbuf, sizeof(inbuf));
+        thisround = static_cast<int>(rots_net::read_socket(t->descriptor, inbuf, sizeof(inbuf)));
         if (thisround > 0) {
             /* Filter out telnet/MSDP negotiation if protocol is active */
             if (t->pProtocol) {
@@ -1731,7 +1740,7 @@ int process_input(struct descriptor_data* t)
             }
         } else {
             if (thisround < 0) {
-                if (errno != EWOULDBLOCK) {
+                if (!rots_net::error_is_would_block(rots_net::last_error())) {
                     perror("Read1 - ERROR");
                     return (-1);
                 } else
@@ -1877,7 +1886,7 @@ void close_sockets(SocketType s)
         close_socket(descriptor_list);
     }
 
-    close(s);
+    rots_net::close_socket(s);
 }
 
 void close_socket(descriptor_data* conn_descriptor, int drop_all)
@@ -1898,7 +1907,7 @@ void close_socket(descriptor_data* conn_descriptor, int drop_all)
         sprintf(buf, "Closing socket %d.", conn_descriptor->descriptor);
         mudlog(buf, NRM, LEVEL_IMPL, TRUE);
 
-        close(conn_descriptor->descriptor);
+        rots_net::close_socket(conn_descriptor->descriptor);
         conn_descriptor->descriptor = 0;
         conn_descriptor->desc_num = -1;
     }
@@ -1969,17 +1978,6 @@ void close_socket(descriptor_data* conn_descriptor, int drop_all)
         }
         RELEASE(conn_descriptor->showstr_head);
         RELEASE(conn_descriptor);
-    }
-}
-
-void nonblock(SocketType s)
-{
-    unsigned long flags = 0;
-    flags = fcntl(s, F_GETFL, flags);
-    flags |= O_NONBLOCK;
-    if (fcntl(s, F_SETFL, flags) < 0) {
-        perror("Fatal error executing nonblock (comm.c)");
-        exit(1);
     }
 }
 

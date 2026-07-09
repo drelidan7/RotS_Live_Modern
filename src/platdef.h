@@ -28,17 +28,21 @@
 
 #if defined PREDEF_PLATFORM_WINDOWS
 
-// Windows branch skeleton (Phase 3 Task 1). This is a scaffold only: nothing
-// in comm.cpp is wired to it yet — the raw BSD-socket calls (init_socket,
-// pnew_connection, nonblock, close_socket, process_input/process_output,
-// write_to_descriptor, the fd_set selects, gethostbyaddr) still assume POSIX
-// and do not compile here. Phase 3 Task 4 (hand-rolled, platform-gated
-// networking layer — no third-party libraries, per the 2026-07-09 plan
-// amendment) gives comm.cpp a thin shim over the BSD-sockets/Winsock split
-// (WSAStartup/WSACleanup lifetime, closesocket vs close, ioctlsocket vs
-// fcntl O_NONBLOCK, send/recv vs read/write on sockets, WSA* error-code
-// mapping); the select() pulse loop itself is portable across both. This
-// header supplies the platform includes and the SocketType handle below.
+// Windows branch scaffold, originally added in Phase 3 Task 1 and wired up by
+// Task 4's hand-rolled, platform-gated networking layer (no third-party
+// libraries, per the 2026-07-09 plan amendment): comm.cpp's OS-divergent
+// socket calls (init_socket, pnew_connection, close_socket,
+// process_input/process_output, write_to_descriptor, populate_descriptor_host)
+// now route through rots_net (rots_net.h/.cpp) instead of raw BSD-socket calls
+// -- WSAStartup/WSACleanup lifetime, closesocket vs close, ioctlsocket vs
+// fcntl O_NONBLOCK, send/recv vs read/write, WSA* error-code mapping, and
+// getnameinfo() for reverse DNS. The select() pulse loop itself is unchanged
+// and portable across both. The POSIX branch is built, tested, and
+// network-smoke-verified (see .superpowers/sdd/p3-task-4-report.md); the
+// Windows branch below is written but NOT locally compiled or verified (no
+// Windows/MSVC environment here) -- windows-msvc stays an allowed-to-fail CI
+// preset until its own bring-up task. This header supplies the platform
+// includes and the SocketType handle below.
 //
 // WIN32_LEAN_AND_MEAN keeps <windows.h> (pulled in transitively by
 // <winsock2.h>) from dragging in most of the Win32 API surface; winsock2.h

@@ -42,6 +42,9 @@
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
+#include <filesystem>
+#include <fstream>
+#include <system_error>
 #include <thread>
 #include <vector>
 
@@ -371,6 +374,23 @@ bool is_secret_input_state(int connection_state)
     }
 }
 
+// Emulates POSIX `touch`: creates `path` empty if it doesn't exist, or bumps
+// its modification time if it does, without disturbing existing content.
+// Replaces the system("touch <path>") site below; that call's return value
+// was never checked, so failures here are equally silent (errors discarded).
+// A duplicate of act_wiz.cpp's helper of the same name -- this codebase's
+// established convention is a private per-TU copy of small file-op helpers
+// rather than new cross-TU coupling (see convert_plrobjs.cpp/convert_exploits.cpp).
+void touch_file(const char* path)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::exists(path, ec))
+        std::ofstream(path, std::ios::out).close();
+
+    fs::last_write_time(path, fs::file_time_type::clock::now(), ec);
+}
+
 } // namespace
 
 ACMD(do_cast);
@@ -438,8 +458,10 @@ int main(int argc, char** argv)
         log("Expecting proxy server.");
 
     /* Create the pidfile and log some info */
-    sprintf(buf, "echo %d > .ageland.pid", getpid());
-    system(buf);
+    // Was system("echo <pid> > .ageland.pid"); the return value was never
+    // checked, so a failed write was already silent -- an unopenable file
+    // is equally silent here (the stream's failure is simply not checked).
+    std::ofstream(".ageland.pid", std::ios::out) << getpid() << "\n";
     sprintf(buf, "Running game as pid %d.", getpid());
     log(buf);
 
@@ -455,7 +477,14 @@ int main(int argc, char** argv)
     log(buf);
 
     // Open command log
-    system("mv -f last_cmds crash_cmds");
+    // Was system("mv -f last_cmds crash_cmds"); the return value was never
+    // checked, so a failed move (e.g. last_cmds missing on first boot) was
+    // already silent -- ec is discarded here to match. fs::rename already
+    // overwrites an existing crash_cmds, matching "-f".
+    {
+        std::error_code rename_ec;
+        std::filesystem::rename("last_cmds", "crash_cmds", rename_ec);
+    }
     fpCommand = fopen("last_cmds", "w");
     rots_rng::seed(static_cast<unsigned int>(time(0)));
     run_the_game(startup_options.port);
@@ -1322,7 +1351,7 @@ SocketType init_socket(sh_int port)
     if (bind(s, saddr, sizeof(struct sockaddr)) != 0) {
         perror("bind");
         close(s);
-        system("touch ../.killscript");
+        touch_file("../.killscript");
         exit(1);
     }
 

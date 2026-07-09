@@ -11,7 +11,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -20,8 +19,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 #include <limits>
 #include <sstream>
+#include <system_error>
 #include <utility>
 
 extern char* race_abbrevs[];
@@ -588,9 +589,14 @@ namespace {
         return "";
     }
 
-    bool read_account_file_from_bucket_entry(const std::string& bucket_path, const dirent& account_entry, AccountData* account, std::string* error_message)
+    // entry_name is the bare filename within bucket_path (formerly a `dirent::d_name`
+    // read straight off a readdir() scan; now the filename part of a
+    // std::filesystem::directory_iterator entry -- everything below still resolves it
+    // via its own stat() call exactly as before, so this signature change alone doesn't
+    // affect behavior).
+    bool read_account_file_from_bucket_entry(const std::string& bucket_path, const std::string& entry_name, AccountData* account, std::string* error_message)
     {
-        const std::string entry_path = bucket_path + "/" + account_entry.d_name;
+        const std::string entry_path = bucket_path + "/" + entry_name;
         struct stat entry_info { };
         if (stat(entry_path.c_str(), &entry_info) != 0)
             return false;
@@ -611,17 +617,16 @@ namespace {
             return read_account_file_from_path(account_json_path, account, error_message);
         }
 
-        const std::string file_name = account_entry.d_name;
-        if (S_ISREG(entry_info.st_mode) && file_name.length() >= 6 && file_name.substr(file_name.length() - 5) == ".json")
+        if (S_ISREG(entry_info.st_mode) && entry_name.length() >= 6 && entry_name.substr(entry_name.length() - 5) == ".json")
             return read_account_file_from_path(entry_path, account, error_message);
 
         set_error(error_message, "Entry is not an account record.");
         return false;
     }
 
-    bool is_directory_bucket_entry(const std::string& bucket_path, const dirent& account_entry)
+    bool is_directory_bucket_entry(const std::string& bucket_path, const std::string& entry_name)
     {
-        const std::string entry_path = bucket_path + "/" + account_entry.d_name;
+        const std::string entry_path = bucket_path + "/" + entry_name;
         struct stat entry_info { };
         return stat(entry_path.c_str(), &entry_info) == 0 && S_ISDIR(entry_info.st_mode);
     }
@@ -635,52 +640,62 @@ namespace {
 
         const std::string normalized_account_name = normalize_account_name(account_name);
         const std::string accounts_directory = root_directory + "/accounts";
-        DIR* accounts_dir = opendir(accounts_directory.c_str());
-        if (accounts_dir == nullptr) {
-            set_error(error_message, "Failed to open account file for account '" + normalized_account_name + "': " + std::strerror(errno));
+        namespace fs = std::filesystem;
+        std::error_code accounts_ec;
+        fs::directory_iterator accounts_it(accounts_directory, accounts_ec);
+        if (accounts_ec) {
+            set_error(error_message, "Failed to open account file for account '" + normalized_account_name + "': " + accounts_ec.message());
             return false;
         }
 
         bool found_match = false;
         bool matched_is_directory = false;
         std::string matched_path;
-        while (dirent* bucket_entry = readdir(accounts_dir)) {
-            if (std::strcmp(bucket_entry->d_name, ".") == 0 || std::strcmp(bucket_entry->d_name, "..") == 0)
-                continue;
-
-            const std::string bucket_path = accounts_directory + "/" + bucket_entry->d_name;
+        const fs::directory_iterator dir_end;
+        while (accounts_it != dir_end) {
+            const std::string bucket_name = accounts_it->path().filename().string();
+            const std::string bucket_path = accounts_directory + "/" + bucket_name;
             struct stat bucket_info { };
-            if (stat(bucket_path.c_str(), &bucket_info) != 0 || !S_ISDIR(bucket_info.st_mode))
+            if (stat(bucket_path.c_str(), &bucket_info) != 0 || !S_ISDIR(bucket_info.st_mode)) {
+                accounts_it.increment(accounts_ec);
+                if (accounts_ec)
+                    break;
                 continue;
+            }
 
-            DIR* bucket_dir = opendir(bucket_path.c_str());
-            if (bucket_dir == nullptr) {
-                closedir(accounts_dir);
-                set_error(error_message, "Failed to open account bucket directory '" + bucket_path + "': " + std::strerror(errno));
+            std::error_code bucket_ec;
+            fs::directory_iterator bucket_it(bucket_path, bucket_ec);
+            if (bucket_ec) {
+                set_error(error_message, "Failed to open account bucket directory '" + bucket_path + "': " + bucket_ec.message());
                 return false;
             }
 
-            while (dirent* account_entry = readdir(bucket_dir)) {
-                if (std::strcmp(account_entry->d_name, ".") == 0 || std::strcmp(account_entry->d_name, "..") == 0)
-                    continue;
+            while (bucket_it != dir_end) {
+                const std::string account_entry_name = bucket_it->path().filename().string();
 
                 AccountData stored_account;
                 std::string read_error;
-                if (!read_account_file_from_bucket_entry(bucket_path, *account_entry, &stored_account, &read_error))
+                if (!read_account_file_from_bucket_entry(bucket_path, account_entry_name, &stored_account, &read_error)) {
+                    bucket_it.increment(bucket_ec);
+                    if (bucket_ec)
+                        break;
                     continue;
+                }
 
-                if (stored_account.account_name != normalized_account_name)
+                if (stored_account.account_name != normalized_account_name) {
+                    bucket_it.increment(bucket_ec);
+                    if (bucket_ec)
+                        break;
                     continue;
+                }
 
-                const std::string entry_path = bucket_path + "/" + account_entry->d_name;
-                const bool candidate_is_directory = is_directory_bucket_entry(bucket_path, *account_entry);
+                const std::string entry_path = bucket_path + "/" + account_entry_name;
+                const bool candidate_is_directory = is_directory_bucket_entry(bucket_path, account_entry_name);
                 const std::string candidate_path = candidate_is_directory ? (entry_path + "/account.json") : entry_path;
                 if (found_match) {
                     AccountData matched_account;
                     std::string matched_read_error;
                     if (!read_account_file_from_path(matched_path, &matched_account, &matched_read_error)) {
-                        closedir(bucket_dir);
-                        closedir(accounts_dir);
                         set_error(error_message, matched_read_error);
                         return false;
                     }
@@ -690,11 +705,12 @@ namespace {
                             matched_path = candidate_path;
                             matched_is_directory = true;
                         }
+                        bucket_it.increment(bucket_ec);
+                        if (bucket_ec)
+                            break;
                         continue;
                     }
 
-                    closedir(bucket_dir);
-                    closedir(accounts_dir);
                     set_error(error_message, "Multiple account records exist for account '" + normalized_account_name + "'.");
                     return false;
                 }
@@ -702,12 +718,17 @@ namespace {
                 matched_path = candidate_path;
                 found_match = true;
                 matched_is_directory = candidate_is_directory;
+
+                bucket_it.increment(bucket_ec);
+                if (bucket_ec)
+                    break;
             }
 
-            closedir(bucket_dir);
+            accounts_it.increment(accounts_ec);
+            if (accounts_ec)
+                break;
         }
 
-        closedir(accounts_dir);
         if (!found_match) {
             set_error(error_message, "Failed to open account file for account '" + normalized_account_name + "': " + std::strerror(ENOENT));
             return false;
@@ -728,53 +749,57 @@ namespace {
         owner_account_name->clear();
 
         const std::string accounts_directory = root_directory + "/accounts";
-        DIR* accounts_dir = opendir(accounts_directory.c_str());
-        if (accounts_dir == nullptr) {
-            if (errno == ENOENT) {
+        namespace fs = std::filesystem;
+        std::error_code accounts_ec;
+        fs::directory_iterator accounts_it(accounts_directory, accounts_ec);
+        if (accounts_ec) {
+            if (accounts_ec == std::errc::no_such_file_or_directory) {
                 set_error(error_message, "");
                 return true;
             }
 
-            set_error(error_message, "Failed to open accounts directory '" + accounts_directory + "': " + std::strerror(errno));
+            set_error(error_message, "Failed to open accounts directory '" + accounts_directory + "': " + accounts_ec.message());
             return false;
         }
 
         bool found_match = false;
-        while (dirent* bucket_entry = readdir(accounts_dir)) {
-            if (std::strcmp(bucket_entry->d_name, ".") == 0 || std::strcmp(bucket_entry->d_name, "..") == 0)
-                continue;
-
-            const std::string bucket_path = accounts_directory + "/" + bucket_entry->d_name;
+        const fs::directory_iterator dir_end;
+        while (accounts_it != dir_end) {
+            const std::string bucket_name = accounts_it->path().filename().string();
+            const std::string bucket_path = accounts_directory + "/" + bucket_name;
             struct stat bucket_info { };
-            if (stat(bucket_path.c_str(), &bucket_info) != 0 || !S_ISDIR(bucket_info.st_mode))
+            if (stat(bucket_path.c_str(), &bucket_info) != 0 || !S_ISDIR(bucket_info.st_mode)) {
+                accounts_it.increment(accounts_ec);
+                if (accounts_ec)
+                    break;
                 continue;
+            }
 
-            DIR* bucket_dir = opendir(bucket_path.c_str());
-            if (bucket_dir == nullptr) {
-                closedir(accounts_dir);
-                set_error(error_message, "Failed to open account bucket directory '" + bucket_path + "': " + std::strerror(errno));
+            std::error_code bucket_ec;
+            fs::directory_iterator bucket_it(bucket_path, bucket_ec);
+            if (bucket_ec) {
+                set_error(error_message, "Failed to open account bucket directory '" + bucket_path + "': " + bucket_ec.message());
                 return false;
             }
 
-            while (dirent* account_entry = readdir(bucket_dir)) {
-                if (std::strcmp(account_entry->d_name, ".") == 0 || std::strcmp(account_entry->d_name, "..") == 0)
-                    continue;
+            while (bucket_it != dir_end) {
+                const std::string account_entry_name = bucket_it->path().filename().string();
 
                 AccountData stored_account;
                 std::string read_error;
-                if (!read_account_file_from_bucket_entry(bucket_path, *account_entry, &stored_account, &read_error)) {
-                    if (read_error == "Entry is not an account record.")
+                if (!read_account_file_from_bucket_entry(bucket_path, account_entry_name, &stored_account, &read_error)) {
+                    if (read_error == "Entry is not an account record.") {
+                        bucket_it.increment(bucket_ec);
+                        if (bucket_ec)
+                            break;
                         continue;
-                    closedir(bucket_dir);
-                    closedir(accounts_dir);
+                    }
                     set_error(error_message, read_error);
                     return false;
                 }
 
                 if (account_has_character(stored_account, character_name)) {
                     if (found_match) {
-                        closedir(bucket_dir);
-                        closedir(accounts_dir);
                         set_error(error_message, "Multiple account records claim that linked character.");
                         return false;
                     }
@@ -782,12 +807,17 @@ namespace {
                     *owner_account_name = stored_account.account_name;
                     found_match = true;
                 }
+
+                bucket_it.increment(bucket_ec);
+                if (bucket_ec)
+                    break;
             }
 
-            closedir(bucket_dir);
+            accounts_it.increment(accounts_ec);
+            if (accounts_ec)
+                break;
         }
 
-        closedir(accounts_dir);
         set_error(error_message, "");
         return true;
     }
@@ -801,75 +831,86 @@ namespace {
 
         const std::string normalized_email = normalize_email(email);
         const std::string accounts_directory = root_directory + "/accounts";
-        DIR* accounts_dir = opendir(accounts_directory.c_str());
-        if (accounts_dir == nullptr) {
-            if (errno == ENOENT) {
+        namespace fs = std::filesystem;
+        std::error_code accounts_ec;
+        fs::directory_iterator accounts_it(accounts_directory, accounts_ec);
+        if (accounts_ec) {
+            if (accounts_ec == std::errc::no_such_file_or_directory) {
                 set_error(error_message, "No account exists for that email address.");
                 return false;
             }
 
-            set_error(error_message, "Failed to open accounts directory '" + accounts_directory + "': " + std::strerror(errno));
+            set_error(error_message, "Failed to open accounts directory '" + accounts_directory + "': " + accounts_ec.message());
             return false;
         }
 
         bool found_match = false;
         bool matched_is_directory = false;
         AccountData matched_account;
-        while (dirent* bucket_entry = readdir(accounts_dir)) {
-            if (std::strcmp(bucket_entry->d_name, ".") == 0 || std::strcmp(bucket_entry->d_name, "..") == 0)
-                continue;
-
-            const std::string bucket_path = accounts_directory + "/" + bucket_entry->d_name;
+        const fs::directory_iterator dir_end;
+        while (accounts_it != dir_end) {
+            const std::string bucket_name = accounts_it->path().filename().string();
+            const std::string bucket_path = accounts_directory + "/" + bucket_name;
             struct stat bucket_info { };
-            if (stat(bucket_path.c_str(), &bucket_info) != 0 || !S_ISDIR(bucket_info.st_mode))
+            if (stat(bucket_path.c_str(), &bucket_info) != 0 || !S_ISDIR(bucket_info.st_mode)) {
+                accounts_it.increment(accounts_ec);
+                if (accounts_ec)
+                    break;
                 continue;
+            }
 
-            DIR* bucket_dir = opendir(bucket_path.c_str());
-            if (bucket_dir == nullptr) {
-                closedir(accounts_dir);
-                set_error(error_message, "Failed to open account bucket directory '" + bucket_path + "': " + std::strerror(errno));
+            std::error_code bucket_ec;
+            fs::directory_iterator bucket_it(bucket_path, bucket_ec);
+            if (bucket_ec) {
+                set_error(error_message, "Failed to open account bucket directory '" + bucket_path + "': " + bucket_ec.message());
                 return false;
             }
 
-            while (dirent* account_entry = readdir(bucket_dir)) {
-                if (std::strcmp(account_entry->d_name, ".") == 0 || std::strcmp(account_entry->d_name, "..") == 0)
-                    continue;
+            while (bucket_it != dir_end) {
+                const std::string account_entry_name = bucket_it->path().filename().string();
 
                 AccountData stored_account;
                 std::string read_error;
-                if (!read_account_file_from_bucket_entry(bucket_path, *account_entry, &stored_account, &read_error)) {
-                    if (read_error == "Entry is not an account record.")
-                        continue;
+                if (!read_account_file_from_bucket_entry(bucket_path, account_entry_name, &stored_account, &read_error)) {
+                    bucket_it.increment(bucket_ec);
+                    if (bucket_ec)
+                        break;
                     continue;
                 }
 
                 if (stored_account.normalized_email == normalized_email) {
                     if (found_match) {
                         if (matched_account.account_name == stored_account.account_name && matched_account.normalized_email == stored_account.normalized_email) {
-                            const bool candidate_is_directory = is_directory_bucket_entry(bucket_path, *account_entry);
+                            const bool candidate_is_directory = is_directory_bucket_entry(bucket_path, account_entry_name);
                             if (candidate_is_directory && !matched_is_directory) {
                                 matched_account = stored_account;
                                 matched_is_directory = true;
                             }
+                            bucket_it.increment(bucket_ec);
+                            if (bucket_ec)
+                                break;
                             continue;
                         }
 
-                        closedir(bucket_dir);
-                        closedir(accounts_dir);
                         set_error(error_message, "Multiple account records exist for that email address.");
                         return false;
                     }
 
                     matched_account = stored_account;
                     found_match = true;
-                    matched_is_directory = is_directory_bucket_entry(bucket_path, *account_entry);
+                    matched_is_directory = is_directory_bucket_entry(bucket_path, account_entry_name);
                 }
+
+                bucket_it.increment(bucket_ec);
+                if (bucket_ec)
+                    break;
             }
 
-            closedir(bucket_dir);
+            accounts_it.increment(accounts_ec);
+            if (accounts_ec)
+                break;
         }
 
-        closedir(accounts_dir);
         if (found_match) {
             *account = matched_account;
             set_error(error_message, "");
@@ -883,53 +924,64 @@ namespace {
     bool account_storage_contains_unreadable_records(const std::string& root_directory, std::string* error_message)
     {
         const std::string accounts_directory = root_directory + "/accounts";
-        DIR* accounts_dir = opendir(accounts_directory.c_str());
-        if (accounts_dir == nullptr) {
-            if (errno == ENOENT) {
+        namespace fs = std::filesystem;
+        std::error_code accounts_ec;
+        fs::directory_iterator accounts_it(accounts_directory, accounts_ec);
+        if (accounts_ec) {
+            if (accounts_ec == std::errc::no_such_file_or_directory) {
                 set_error(error_message, "");
                 return false;
             }
 
-            set_error(error_message, "Failed to open accounts directory '" + accounts_directory + "': " + std::strerror(errno));
+            set_error(error_message, "Failed to open accounts directory '" + accounts_directory + "': " + accounts_ec.message());
             return true;
         }
 
-        while (dirent* bucket_entry = readdir(accounts_dir)) {
-            if (std::strcmp(bucket_entry->d_name, ".") == 0 || std::strcmp(bucket_entry->d_name, "..") == 0)
-                continue;
-
-            const std::string bucket_path = accounts_directory + "/" + bucket_entry->d_name;
+        const fs::directory_iterator dir_end;
+        while (accounts_it != dir_end) {
+            const std::string bucket_name = accounts_it->path().filename().string();
+            const std::string bucket_path = accounts_directory + "/" + bucket_name;
             struct stat bucket_info { };
-            if (stat(bucket_path.c_str(), &bucket_info) != 0 || !S_ISDIR(bucket_info.st_mode))
+            if (stat(bucket_path.c_str(), &bucket_info) != 0 || !S_ISDIR(bucket_info.st_mode)) {
+                accounts_it.increment(accounts_ec);
+                if (accounts_ec)
+                    break;
                 continue;
+            }
 
-            DIR* bucket_dir = opendir(bucket_path.c_str());
-            if (bucket_dir == nullptr) {
-                closedir(accounts_dir);
-                set_error(error_message, "Failed to open account bucket directory '" + bucket_path + "': " + std::strerror(errno));
+            std::error_code bucket_ec;
+            fs::directory_iterator bucket_it(bucket_path, bucket_ec);
+            if (bucket_ec) {
+                set_error(error_message, "Failed to open account bucket directory '" + bucket_path + "': " + bucket_ec.message());
                 return true;
             }
 
-            while (dirent* account_entry = readdir(bucket_dir)) {
-                if (std::strcmp(account_entry->d_name, ".") == 0 || std::strcmp(account_entry->d_name, "..") == 0)
-                    continue;
+            while (bucket_it != dir_end) {
+                const std::string account_entry_name = bucket_it->path().filename().string();
 
                 AccountData stored_account;
                 std::string read_error;
-                if (!read_account_file_from_bucket_entry(bucket_path, *account_entry, &stored_account, &read_error)) {
-                    if (read_error == "Entry is not an account record.")
+                if (!read_account_file_from_bucket_entry(bucket_path, account_entry_name, &stored_account, &read_error)) {
+                    if (read_error == "Entry is not an account record.") {
+                        bucket_it.increment(bucket_ec);
+                        if (bucket_ec)
+                            break;
                         continue;
-                    closedir(bucket_dir);
-                    closedir(accounts_dir);
+                    }
                     set_error(error_message, "Existing account records could not be read safely.");
                     return true;
                 }
+
+                bucket_it.increment(bucket_ec);
+                if (bucket_ec)
+                    break;
             }
 
-            closedir(bucket_dir);
+            accounts_it.increment(accounts_ec);
+            if (accounts_ec)
+                break;
         }
 
-        closedir(accounts_dir);
         set_error(error_message, "");
         return false;
     }
@@ -1031,28 +1083,42 @@ namespace {
 
         const std::string normalized_name = normalize_account_name(character_name);
         const std::string directory_path = root_directory + "/players/" + account_bucket_for_name(normalized_name);
-        DIR* directory = opendir(directory_path.c_str());
-        if (directory == nullptr) {
-            if (errno == ENOENT) {
+        namespace fs = std::filesystem;
+        std::error_code directory_ec;
+        fs::directory_iterator directory_it(directory_path, directory_ec);
+        if (directory_ec) {
+            if (directory_ec == std::errc::no_such_file_or_directory) {
                 set_error(error_message, "");
                 return true;
             }
-            set_error(error_message, "Failed to open legacy player directory '" + directory_path + "': " + std::string(std::strerror(errno)));
+            set_error(error_message, "Failed to open legacy player directory '" + directory_path + "': " + directory_ec.message());
             return false;
         }
 
         const std::string required_prefix = normalized_name + ".";
         std::string matched_path;
-        while (dirent* entry = readdir(directory)) {
-            const char* entry_name = entry->d_name;
-            if (entry_name == nullptr)
+        const fs::directory_iterator dir_end;
+        while (directory_it != dir_end) {
+            const std::string entry_name_string = directory_it->path().filename().string();
+            const char* entry_name = entry_name_string.c_str();
+            if (entry_name[0] == '.') {
+                directory_it.increment(directory_ec);
+                if (directory_ec)
+                    break;
                 continue;
-            if (entry_name[0] == '.')
+            }
+            if (std::strncmp(entry_name, required_prefix.c_str(), required_prefix.length()) != 0) {
+                directory_it.increment(directory_ec);
+                if (directory_ec)
+                    break;
                 continue;
-            if (std::strncmp(entry_name, required_prefix.c_str(), required_prefix.length()) != 0)
+            }
+            if (std::strchr(entry_name + required_prefix.length(), '.') == nullptr) {
+                directory_it.increment(directory_ec);
+                if (directory_ec)
+                    break;
                 continue;
-            if (std::strchr(entry_name + required_prefix.length(), '.') == nullptr)
-                continue;
+            }
 
             const char* suffix = entry_name + required_prefix.length();
             bool valid_versioned_name = true;
@@ -1082,20 +1148,26 @@ namespace {
                 }
             }
 
-            if (!valid_versioned_name || *suffix != '\0')
+            if (!valid_versioned_name || *suffix != '\0') {
+                directory_it.increment(directory_ec);
+                if (directory_ec)
+                    break;
                 continue;
+            }
 
             const std::string candidate_path = directory_path + "/" + entry_name;
             if (!matched_path.empty()) {
-                closedir(directory);
                 set_error(error_message, "Multiple versioned legacy player files matched character '" + normalized_name + "'.");
                 return false;
             }
 
             matched_path = candidate_path;
+
+            directory_it.increment(directory_ec);
+            if (directory_ec)
+                break;
         }
 
-        closedir(directory);
         if (matched_path.empty()) {
             set_error(error_message, "");
             return true;

@@ -16,6 +16,8 @@
 #include "protos.h"
 #include "structs.h"
 #include "utils.h"
+#include <filesystem>
+#include <system_error>
 
 extern struct room_data world;
 extern char** mobile_program;
@@ -146,7 +148,12 @@ int save_mudlle(struct char_data* ch)
     sprintf(str, "%s %s %s", COPY_COMMAND,
         SHAPE_MUDLLE(ch)->f_from, SHAPE_MUDLLE(ch)->f_old);
     fprintf(stderr, str);
-    system(str);
+    // Was system(str) (a shell "cp <f_from> <f_old>"); the return value was
+    // never checked, so a failed copy silently left f_old stale -- preserve
+    // that by ignoring copy_ec here too.
+    std::error_code copy_ec;
+    std::filesystem::copy_file(SHAPE_MUDLLE(ch)->f_from, SHAPE_MUDLLE(ch)->f_old,
+        std::filesystem::copy_options::overwrite_existing, copy_ec);
     fp = fopen(SHAPE_MUDLLE(ch)->f_from, "wb+");
     ofp = fopen(SHAPE_MUDLLE(ch)->f_old, "rb");
 

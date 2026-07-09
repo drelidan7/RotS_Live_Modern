@@ -5,8 +5,10 @@
 #include "handler.h"
 #include "structs.h"
 #include "utils.h"
+#include <filesystem>
 #include <sstream>
 #include <sys/stat.h>
+#include <system_error>
 
 extern struct index_data* mob_index;
 extern int top_of_mobt;
@@ -128,7 +130,9 @@ void mob_csv_extract::create_file(char_data* ch)
         send_to_char("Failed to create file.\r\n", ch);
     }
 
-    chmod("../mobs/mob.csv", S_IRWXU | S_IRWXG | S_IRWXO);
+    // chmod(...) return value was never checked here either -- keep the failure silent.
+    std::error_code permissions_ec;
+    std::filesystem::permissions("../mobs/mob.csv", std::filesystem::perms::all, permissions_ec);
 }
 
 void mob_csv_extract::close_file(char_data* ch) const

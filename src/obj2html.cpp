@@ -3,9 +3,11 @@
 #include <sys/stat.h>
 
 #include <errno.h>
+#include <filesystem>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <system_error>
 
 #include "comm.h" /* For vsend_to_char() */
 #include "db.h" /* For REAL */
@@ -825,7 +827,9 @@ FILE* obj2html_start(void)
     }
 
     /* Shouldn't there be a way to do this on open()? */
-    chmod("../www/objects.html", S_IRWXU | S_IRWXG | S_IRWXO);
+    // chmod(...) return value was never checked here either -- keep the failure silent.
+    std::error_code permissions_ec;
+    std::filesystem::permissions("../www/objects.html", std::filesystem::perms::all, permissions_ec);
 
     fprintf(f, "<HTML>"
                "\n"

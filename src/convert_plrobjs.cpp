@@ -13,9 +13,9 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
-#include <dirent.h>
+#include <filesystem>
 #include <sstream>
-#include <sys/stat.h>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -31,34 +31,40 @@ bool ends_with(const std::string& value, const std::string& suffix)
 }
 
 // Recursively collects every regular file under `dir_path` whose name ends
-// with `suffix` into `*out_paths`. Mirrors the opendir/readdir/stat walking
-// style already used for bucketed directories in account_management.cpp/
-// db.cpp (this codebase's convention; no std::filesystem use here).
+// with `suffix` into `*out_paths`. Ported from the opendir/readdir/stat
+// walking style previously shared with account_management.cpp/db.cpp onto
+// std::filesystem::directory_iterator (Phase 3 filesystem migration); the
+// result is still sorted by every caller immediately after collection, so
+// this recursive walk's enumeration order was never load-bearing.
 // plrobjs/ is shallow in practice (bucket subdirectories one level down, plus
 // a few stray top-level files -- see lib/plrobjs/*.obj) but this recurses to
 // any depth defensively rather than assuming a fixed layout.
 void collect_files_with_suffix(const std::string& dir_path, const std::string& suffix, std::vector<std::string>* out_paths)
 {
-    DIR* dir = opendir(dir_path.c_str());
-    if (dir == nullptr)
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::directory_iterator it(dir_path, ec);
+    if (ec)
         return;
 
-    while (dirent* entry = readdir(dir)) {
-        if (std::strcmp(entry->d_name, ".") == 0 || std::strcmp(entry->d_name, "..") == 0)
-            continue;
+    const fs::directory_iterator end;
+    while (it != end) {
+        const std::string entry_path = it->path().string();
 
-        const std::string entry_path = dir_path + "/" + entry->d_name;
-        struct stat entry_info { };
-        if (stat(entry_path.c_str(), &entry_info) != 0)
-            continue;
-
-        if (S_ISDIR(entry_info.st_mode)) {
-            collect_files_with_suffix(entry_path, suffix, out_paths);
-        } else if (S_ISREG(entry_info.st_mode) && ends_with(entry_path, suffix)) {
-            out_paths->push_back(entry_path);
+        std::error_code status_ec;
+        const fs::file_status entry_status = it->status(status_ec);
+        if (!status_ec) {
+            if (fs::is_directory(entry_status)) {
+                collect_files_with_suffix(entry_path, suffix, out_paths);
+            } else if (fs::is_regular_file(entry_status) && ends_with(entry_path, suffix)) {
+                out_paths->push_back(entry_path);
+            }
         }
+
+        it.increment(ec);
+        if (ec)
+            return;
     }
-    closedir(dir);
 }
 
 // Reads the whole file at `path` into `*bytes`. A local copy of the same

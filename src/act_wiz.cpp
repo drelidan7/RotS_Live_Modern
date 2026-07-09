@@ -14,6 +14,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <filesystem>
+#include <fstream>
+#include <system_error>
+
 #include "account_management.h"
 #include "char_utils.h"
 #include "color.h"
@@ -1135,6 +1139,24 @@ ACMD(do_wizstat)
     }
 }
 
+namespace {
+
+// Emulates POSIX `touch`: creates `path` empty if it doesn't exist, or bumps
+// its modification time if it does, without disturbing existing content.
+// Replaces system("touch <path>") sites below; that call's return value was
+// never checked, so failures here are equally silent (errors discarded).
+void touch_file(const char* path)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::exists(path, ec))
+        std::ofstream(path, std::ios::out).close();
+
+    fs::last_write_time(path, fs::file_time_type::clock::now(), ec);
+}
+
+} // namespace
+
 ACMD(do_shutdown)
 {
     extern int circle_shutdown, circle_reboot;
@@ -1163,13 +1185,13 @@ ACMD(do_shutdown)
         sprintf(buf, "(GC) Shutdown by %s. \n\r", GET_NAME(ch));
         send_to_all(buf);
         log(buf);
-        system("touch ../.killscript");
+        touch_file("../.killscript");
         circle_shutdown = 1;
     } else if (!str_cmp(arg, "pause")) {
         sprintf(buf, "(GC) Shutdown by %s. \n\r", GET_NAME(ch));
         send_to_all(buf);
         log(buf);
-        system("touch ../pause");
+        touch_file("../pause");
         circle_shutdown = 1;
     } else
         send_to_char("Unknown shutdown option.\n\r", ch);

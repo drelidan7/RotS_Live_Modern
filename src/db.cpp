@@ -38,10 +38,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <iostream>
 #include <new>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 /**************************************************************************
@@ -594,22 +596,25 @@ bool is_versioned_legacy_player_entry_name(const char* entry_name, const char* n
 
 bool directory_has_versioned_legacy_player_entry(const char* directory_path, const char* normalized_name)
 {
-    DIR* directory = opendir(directory_path);
-    if (directory == nullptr)
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::directory_iterator it(directory_path, ec);
+    if (ec)
         return false;
 
-    bool found = false;
-    while (dirent* entry = readdir(directory)) {
-        if (entry->d_name[0] == '.')
-            continue;
-        if (is_versioned_legacy_player_entry_name(entry->d_name, normalized_name)) {
-            found = true;
-            break;
-        }
+    const fs::directory_iterator end;
+    while (it != end) {
+        const std::string entry_name = it->path().filename().string();
+        if (!entry_name.empty() && entry_name[0] != '.'
+            && is_versioned_legacy_player_entry_name(entry_name.c_str(), normalized_name))
+            return true;
+
+        it.increment(ec);
+        if (ec)
+            return false;
     }
 
-    closedir(directory);
-    return found;
+    return false;
 }
 
 void populate_player_index_entry_from_store(const char_file_u& stored_character, const std::string& character_path)
@@ -631,27 +636,49 @@ void populate_player_index_entry_from_store(const char_file_u& stored_character,
 
 void build_account_native_player_index(void)
 {
-    DIR* accounts_root = opendir("accounts");
-    if (accounts_root == nullptr)
+    namespace fs = std::filesystem;
+    std::error_code accounts_ec;
+    fs::directory_iterator accounts_it("accounts", accounts_ec);
+    if (accounts_ec)
         return;
 
-    while (dirent* bucket_entry = readdir(accounts_root)) {
-        if (bucket_entry->d_name[0] == '.')
+    const fs::directory_iterator dir_end;
+    while (accounts_it != dir_end) {
+        const std::string bucket_name = accounts_it->path().filename().string();
+        if (bucket_name.empty() || bucket_name[0] == '.') {
+            accounts_it.increment(accounts_ec);
+            if (accounts_ec)
+                return;
             continue;
+        }
 
-        const std::string bucket_path = std::string("accounts/") + bucket_entry->d_name;
-        DIR* bucket_dir = opendir(bucket_path.c_str());
-        if (bucket_dir == nullptr)
+        const std::string bucket_path = std::string("accounts/") + bucket_name;
+        std::error_code bucket_ec;
+        fs::directory_iterator bucket_it(bucket_path, bucket_ec);
+        if (bucket_ec) {
+            accounts_it.increment(accounts_ec);
+            if (accounts_ec)
+                return;
             continue;
+        }
 
-        while (dirent* account_entry = readdir(bucket_dir)) {
-            if (account_entry->d_name[0] == '.')
+        while (bucket_it != dir_end) {
+            const std::string account_entry_name = bucket_it->path().filename().string();
+            if (account_entry_name.empty() || account_entry_name[0] == '.') {
+                bucket_it.increment(bucket_ec);
+                if (bucket_ec)
+                    break;
                 continue;
+            }
 
-            const std::string account_json_path = bucket_path + "/" + account_entry->d_name + "/account.json";
+            const std::string account_json_path = bucket_path + "/" + account_entry_name + "/account.json";
             std::string account_json_text;
-            if (!read_text_file_contents(account_json_path, &account_json_text))
+            if (!read_text_file_contents(account_json_path, &account_json_text)) {
+                bucket_it.increment(bucket_ec);
+                if (bucket_ec)
+                    break;
                 continue;
+            }
 
             account::AccountData account_data;
             std::string error_message;
@@ -659,17 +686,13 @@ void build_account_native_player_index(void)
                 sprintf(buf, "Failed to read account-native index source '%s': %s",
                     account_json_path.c_str(), error_message.c_str());
                 log(buf);
-                closedir(bucket_dir);
-                closedir(accounts_root);
                 exit(1);
             }
 
-            if (account::normalize_email(account_data.normalized_email) != std::string(account_entry->d_name)) {
+            if (account::normalize_email(account_data.normalized_email) != account_entry_name) {
                 sprintf(buf, "Account-native index source '%s' has mismatched normalized email '%s'.",
                     account_json_path.c_str(), account_data.normalized_email.c_str());
                 log(buf);
-                closedir(bucket_dir);
-                closedir(accounts_root);
                 exit(1);
             }
 
@@ -685,8 +708,6 @@ void build_account_native_player_index(void)
                         sprintf(buf, "Failed to inspect account-native character file '%s': %s",
                             character_path.c_str(), inspect_error.c_str());
                         log(buf);
-                        closedir(bucket_dir);
-                        closedir(accounts_root);
                         exit(1);
                     }
 
@@ -696,19 +717,21 @@ void build_account_native_player_index(void)
                     sprintf(buf, "Failed to read account-native character file '%s': %s",
                         character_path.c_str(), read_error.c_str());
                     log(buf);
-                    closedir(bucket_dir);
-                    closedir(accounts_root);
                     exit(1);
                 }
 
                 populate_player_index_entry_from_store(stored_character, character_path);
             }
+
+            bucket_it.increment(bucket_ec);
+            if (bucket_ec)
+                break;
         }
 
-        closedir(bucket_dir);
+        accounts_it.increment(accounts_ec);
+        if (accounts_ec)
+            return;
     }
-
-    closedir(accounts_root);
 }
 
 int load_player_from_account_json_path(char* name, const char* player_path, struct char_file_u* char_element)
@@ -769,58 +792,73 @@ int read_filename_field(int pos, char* field, char* fname)
 /* New index build for the new player files */
 void build_directory(char* TheDir)
 {
-    DIR* dp;
-    struct dirent* dentry;
+    namespace fs = std::filesystem;
     char* tmpch;
     int i;
 
-    CREATE(tmpch, char, 100);
-    dp = opendir(TheDir);
-    if (dp)
-        dentry = readdir(dp);
-    else
-        dentry = 0;
+    // read_filename_field's terminator check is commented out (see above), so
+    // it will scan past a plain '\0' looking for '.' up to pos 79 -- copy the
+    // scanned name into a 256-byte zeroed buffer (matching the historical
+    // dirent::d_name array's size/zero-padding) so that over-scan reads
+    // trailing zero bytes instead of running off a short std::string buffer.
+    char entry_name_buf[256];
 
-    while (dentry) {
-        if (dentry->d_name[0] == '.' || !strncmp(dentry->d_name, "CVS", 3)) {
-            dentry = readdir(dp);
+    CREATE(tmpch, char, 100);
+
+    std::error_code ec;
+    fs::directory_iterator it(TheDir, ec);
+    const fs::directory_iterator end;
+
+    while (it != end) {
+        memset(entry_name_buf, 0, sizeof(entry_name_buf));
+        const std::string entry_name = it->path().filename().string();
+        strncpy(entry_name_buf, entry_name.c_str(), sizeof(entry_name_buf) - 1);
+
+        if (entry_name_buf[0] == '.' || !strncmp(entry_name_buf, "CVS", 3)) {
+            it.increment(ec);
+            if (ec)
+                break;
             continue;
         }
 
-        i = read_filename_field(0, tmpch, dentry->d_name);
+        i = read_filename_field(0, tmpch, entry_name_buf);
         tmpch[i] = 0;
-        if (!is_versioned_legacy_player_entry_name(dentry->d_name, tmpch)
+        if (!is_versioned_legacy_player_entry_name(entry_name_buf, tmpch)
             && directory_has_versioned_legacy_player_entry(TheDir, tmpch)) {
-            dentry = readdir(dp);
+            it.increment(ec);
+            if (ec)
+                break;
             continue;
         }
         if (find_player_table_index_by_name(tmpch) >= 0)
-            fail_duplicate_player_index_entry(tmpch, "legacy player index", dentry->d_name);
+            fail_duplicate_player_index_entry(tmpch, "legacy player index", entry_name_buf);
         create_entry(tmpch);
 
-        i = read_filename_field(i + 1, tmpch, dentry->d_name);
+        i = read_filename_field(i + 1, tmpch, entry_name_buf);
         player_table[top_of_p_table].level = atoi(tmpch);
 
-        i = read_filename_field(i + 1, tmpch, dentry->d_name);
+        i = read_filename_field(i + 1, tmpch, entry_name_buf);
         player_table[top_of_p_table].race = atoi(tmpch);
 
-        i = read_filename_field(i + 1, tmpch, dentry->d_name);
+        i = read_filename_field(i + 1, tmpch, entry_name_buf);
         player_table[top_of_p_table].idnum = atoi(tmpch);
 
-        i = read_filename_field(i + 1, tmpch, dentry->d_name);
+        i = read_filename_field(i + 1, tmpch, entry_name_buf);
         player_table[top_of_p_table].log_time = atoi(tmpch);
 
-        i = read_filename_field(i + 1, tmpch, dentry->d_name);
+        i = read_filename_field(i + 1, tmpch, entry_name_buf);
         player_table[top_of_p_table].flags = atoi(tmpch);
 
         sprintf(player_table[top_of_p_table].ch_file, "%s%s", TheDir,
-            dentry->d_name);
+            entry_name_buf);
 
         top_idnum = MAX(top_idnum, player_table[top_of_p_table].idnum);
 
-        dentry = readdir(dp);
-    } // while (dentry)
-    closedir(dp);
+        it.increment(ec);
+        if (ec)
+            break;
+    } // while (it != end)
+
     RELEASE(tmpch);
 }
 
@@ -2788,11 +2826,12 @@ int old_create_entry(char* name)
 
 void move_char_deleted(int index)
 {
-    char temp[100];
-
-    sprintf(temp, "mv %s players/ZZZ/%s", (player_table + index)->ch_file,
-        (player_table + index)->name);
-    system(temp);
+    // Was system("mv <ch_file> players/ZZZ/<name>"); the return value was
+    // never checked, so a failed move was already silent -- ec is discarded
+    // here to match.
+    std::error_code rename_ec;
+    std::filesystem::rename((player_table + index)->ch_file,
+        std::string("players/ZZZ/") + (player_table + index)->name, rename_ec);
     player_table[index].name[0] = 0;
     player_table[index].idnum = 0;
 }
@@ -5320,8 +5359,12 @@ int rename_char(struct char_data* ch, char* newname)
     add_exploit_record(EXPLOIT_ACHIEVEMENT, ch, 0, namebuf);
 
     /* remove their char file */
-    sprintf(namebuf, "rm %s", buf);
-    system(namebuf);
+    // Was system("rm <buf>"); the return value was never checked, so a
+    // failed remove was already silent -- ec is discarded here to match.
+    {
+        std::error_code remove_ec;
+        std::filesystem::remove(buf, remove_ec);
+    }
 
     /* make the name file-ready */
     for (c = newname; *c; ++c)
@@ -5340,12 +5383,21 @@ int rename_char(struct char_data* ch, char* newname)
     sprintf(old_exploit_file, "exploits%s%s.exploits", namebuf, buf);
 
     /* now move the exploits */
-    sprintf(buf, "mv %s %s", old_exploit_file, new_exploit_file);
-    system(buf);
+    // Was system("mv <old_exploit_file> <new_exploit_file>"); the return
+    // value was never checked, so a failed move was already silent -- ec is
+    // discarded here to match.
+    {
+        std::error_code rename_ec;
+        std::filesystem::rename(old_exploit_file, new_exploit_file, rename_ec);
+    }
 
     /* now remove their ch_file */
-    sprintf(namebuf, "rm %s", player_table[player_i].ch_file);
-    system(namebuf);
+    // Was system("rm <ch_file>"); return value never checked -- same silent
+    // discard as above.
+    {
+        std::error_code remove_ec;
+        std::filesystem::remove(player_table[player_i].ch_file, remove_ec);
+    }
 
     /* release the buffers in the player table and in their personal
      * char_data structure */

@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <cstdio>
+#include <format>
 #include <limits>
 #include <stdlib.h>
 #include <string>
@@ -220,6 +221,24 @@ namespace {
         ch->profs->color_settings[col].background.red = 0;
         ch->profs->color_settings[col].background.green = 0;
         ch->profs->color_settings[col].background.blue = 0;
+    }
+
+    // Builds " name1 name2 ... nameN" (a leading space before every entry, no
+    // trailing separator) for the first `count` entries of `names`. Used when
+    // `do_color` reports the valid field/colour choices back to the player
+    // after a lookup fails. Composing into a local std::string (rather than
+    // the historical `sprintf(buf, "%s %s", buf, names[tmp])` loop) avoids
+    // passing the same buffer as both source and destination of sprintf --
+    // aliasing that happened to produce the intended left-to-right
+    // accumulation under glibc, but is undefined behavior in the general
+    // case (see upstream/sprintf-replacement's incremental-snprintf fix for
+    // the same pattern in an earlier version of this file).
+    std::string join_with_leading_spaces(const char* const* names, int count)
+    {
+        std::string joined;
+        for (int index = 0; index < count; ++index)
+            joined += std::format(" {}", names[index]);
+        return joined;
     }
 
 } // namespace
@@ -506,11 +525,9 @@ ACMD(do_color)
 
     if (num < 0) {
         send_to_char("Possible arguments are:\n\r", ch);
-        buf[0] = 0;
-        for (tmp = 0; tmp < num_of_color_fields - 1; tmp++)
-            sprintf(buf, "%s %s", buf, color_fields[tmp]);
-        strcat(buf, "\n\r");
-        send_to_char(buf, ch);
+        std::string message = join_with_leading_spaces(color_fields, num_of_color_fields - 1);
+        message += "\n\r";
+        send_to_char(message.c_str(), ch);
         show_extended_color_usage(ch);
         return;
     }
@@ -562,12 +579,10 @@ ACMD(do_color)
             col = old_search_block(value_arguments, 0, strlen(value_arguments), color_color, TRUE) - 1;
             if (col < 0) {
                 send_to_char("Possible colours are:", ch);
-                buf[0] = 0;
-                for (tmp = 0; tmp < 8; tmp++)
-                    sprintf(buf, "%s %s", buf, color_color[tmp]);
-                strcat(buf, ".\r\n");
-                strcat(buf, "Additionally, you may prefix any of the above colours with 'bright'.\r\n");
-                send_to_char(buf, ch);
+                std::string message = join_with_leading_spaces(color_color, 8);
+                message += ".\r\n";
+                message += "Additionally, you may prefix any of the above colours with 'bright'.\r\n";
+                send_to_char(message.c_str(), ch);
                 return;
             }
 
@@ -628,13 +643,11 @@ ACMD(do_color)
 
     if (col < 0) {
         send_to_char("Possible colours are:", ch);
-        buf[0] = 0;
-        for (tmp = 0; tmp < 8; tmp++)
-            sprintf(buf, "%s %s", buf, color_color[tmp]);
-        strcat(buf, ".\r\n");
-        strcat(buf, "Additionally, you may prefix any of the above "
-                    "colours with 'bright'.\r\n");
-        send_to_char(buf, ch);
+        std::string message = join_with_leading_spaces(color_color, 8);
+        message += ".\r\n";
+        message += "Additionally, you may prefix any of the above "
+                   "colours with 'bright'.\r\n";
+        send_to_char(message.c_str(), ch);
         return;
     }
 

@@ -220,6 +220,81 @@ TEST(Color, CommandRejectsOutOfRangeRgbValues)
     EXPECT_NE(character.profs->color_settings[COLOR_MAGIC].foreground.mode, COLOR_VALUE_TRUECOLOR);
 }
 
+// Characterization pins for Phase 4 Wave 1 Task 5 (std::format conversion).
+// These pin the exact bytes `do_color` sends for its three "invalid input"
+// listing branches BEFORE the sprintf(buf, "%s %s", buf, ...)/strcat(buf, ...)
+// chains that build them are converted to std::format composition. All three
+// pre-conversion sprintf calls alias `buf` as both source and destination
+// (undefined behavior in the strict sense, though glibc's implementation
+// happens to produce the intended left-to-right accumulation) -- the
+// conversion must reproduce these exact bytes without relying on that
+// aliasing trick.
+TEST(Color, UnknownFieldNameListsAllValidFieldsWithLeadingSpaceAndCrlf)
+{
+    char_data character {};
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    initialize_player_character(&character);
+    character.desc = &descriptor;
+
+    char command[] = "bogus-field";
+    do_color(&character, command, nullptr, 0, 0);
+
+    const std::string output = descriptor.output;
+    EXPECT_EQ(output,
+        "Possible arguments are:\n\r"
+        " narrate chat yell tell say roomname hit damage character object enemy description group magic weather off on default\n\r"
+        "Usage:\n\r"
+        "  color <slot> <ansi colour>\n\r"
+        "  color <slot> fg ansi <ansi colour>\n\r"
+        "  color <slot> fg rgb <red> <green> <blue>\n\r"
+        "  color <slot> fg hex #RRGGBB\n\r"
+        "  color <slot> fg default\n\r"
+        "  color <slot> bg ansi <ansi colour>\n\r"
+        "  color <slot> bg rgb <red> <green> <blue>\n\r"
+        "  color <slot> bg hex #RRGGBB\n\r"
+        "  color <slot> bg default\n\r")
+        << output;
+}
+
+TEST(Color, UnknownAnsiColourNameInsideFgBranchListsEightBaseColours)
+{
+    char_data character {};
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    initialize_player_character(&character);
+    character.desc = &descriptor;
+
+    char command[] = "magic fg ansi bogus-colour";
+    do_color(&character, command, nullptr, 0, 0);
+
+    const std::string output = descriptor.output;
+    EXPECT_EQ(output,
+        "Possible colours are:"
+        " normal red green yellow blue magenta cyan white.\r\n"
+        "Additionally, you may prefix any of the above colours with 'bright'.\r\n")
+        << output;
+}
+
+TEST(Color, UnknownAnsiColourNameAtTopLevelListsEightBaseColours)
+{
+    char_data character {};
+    descriptor_data descriptor = make_descriptor();
+    descriptor.output = descriptor.small_outbuf;
+    initialize_player_character(&character);
+    character.desc = &descriptor;
+
+    char command[] = "magic bogus-colour";
+    do_color(&character, command, nullptr, 0, 0);
+
+    const std::string output = descriptor.output;
+    EXPECT_EQ(output,
+        "Possible colours are:"
+        " normal red green yellow blue magenta cyan white.\r\n"
+        "Additionally, you may prefix any of the above colours with 'bright'.\r\n")
+        << output;
+}
+
 TEST(Color, InterpreterAcceptsColorAsAliasForColour)
 {
     assign_command_pointers();

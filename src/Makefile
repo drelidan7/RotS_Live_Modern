@@ -5,7 +5,8 @@
 #   -m32             32-bit build (save-file format / ABI); built in the i386 container
 #   -funsigned-char  the code assumes `char` is unsigned
 #   -fstrict-aliasing  matches the historical build
-#   -std=c++17       (formerly spelled -std=c++1z; identical under GCC)
+#   -std=c++20       (Phase 4 Wave 1; previously -std=c++17, and before that
+#     the identical-under-GCC -std=c++1z spelling)
 #   -D_FILE_OFFSET_BITS=64  32-bit glibc's legacy readdir()/stat() use a 32-bit
 #     ino_t/off_t; against modern filesystems with 64-bit inode numbers (ext4,
 #     overlay2 — e.g. the Docker container's own /tmp and lib/ trees) readdir()
@@ -94,7 +95,7 @@ clean:
 # the bottom of this file) driven by the single generic pattern rule above.
 # Reintroducing upstream's block verbatim would silently shadow that pattern
 # rule for every object it lists and build them with undefined $(CC)/$(CFLAGS)
-# instead of $(CXX)/$(ALL_CXXFLAGS) — dropping the mandatory -m32/-std=c++17/etc.
+# instead of $(CXX)/$(ALL_CXXFLAGS) — dropping the mandatory -m32/-std=c++20/etc.
 # flags for exactly those objects. Intentionally not carried forward; the new
 # account/savebench/finalize objects get correct dependency tracking for free
 # from the existing pattern rule + auto-generated .d files.

@@ -119,7 +119,7 @@ you need that exact ABI.
 
 ## The `rots64` container (64-bit Linux sibling)
 
-`docker-compose.yml` also defines `rots64` — a 64-bit (Bookworm x64, `Dockerfile.x64`)
+`docker-compose.yml` also defines `rots64` — a 64-bit (Trixie x64, `Dockerfile.x64`)
 sibling of the `rots` i386 container, running the `linux-x64` CMake preset against the
 SAME bind-mounted `lib/` data. It exists to verify cross-ABI compatibility of the JSON
 persistence layer (Phase 2a) independent of the macOS toolchain, and maps host port

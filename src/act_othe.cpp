@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <ctype.h>
+#include <format>
 #include <iostream>
 #include <sstream>
 #include <stdio.h>
@@ -98,7 +99,7 @@ ACMD(do_quit)
 
     act("$n has left the game.", TRUE, ch, 0, 0, TO_ROOM);
 
-    sprintf(buf, "%s has quit the game.", GET_NAME(ch));
+    strcpy(buf, std::format("{} has quit the game.", GET_NAME(ch)).c_str());
 
     mudlog(buf, NRM, (sh_int)MAX(LEVEL_GOD, GET_INVIS_LEV(ch)), TRUE);
 
@@ -129,7 +130,7 @@ ACMD(do_save)
         return;
 
     if (cmd) {
-        sprintf(buf, "Saving %s.\n\r", GET_NAME(ch));
+        strcpy(buf, std::format("Saving {}.\n\r", GET_NAME(ch)).c_str());
         send_to_char(buf, ch);
     }
     save_char(ch, NOWHERE, 0);
@@ -221,7 +222,7 @@ ACMD(do_recruit)
     if (!IS_NPC(victim) || !(MOB_FLAGGED(victim, MOB_ORC_FRIEND))) {
         char buf[1024];
 
-        sprintf(buf, "%s doesn't want to be recruited.\n\r", GET_NAME(victim));
+        strcpy(buf, std::format("{} doesn't want to be recruited.\n\r", GET_NAME(victim)).c_str());
         send_to_char(buf, ch);
         return;
     }
@@ -310,7 +311,7 @@ ACMD(do_title)
     else if (PLR_FLAGGED(ch, PLR_NOTITLE))
         send_to_char("You can't title yourself - you shouldn't have abused it!\n\r", ch);
     else if (!*argument) {
-        sprintf(buf, "Your present title is: %s\n\r", GET_TITLE(ch));
+        strcpy(buf, std::format("Your present title is: {}\n\r", GET_TITLE(ch)).c_str());
         send_to_char(buf, ch);
     } else if (strstr(argument, "(") || strstr(argument, ")"))
         send_to_char("Titles can't contain the ( or ) characters.\n\r", ch);
@@ -322,7 +323,7 @@ ACMD(do_title)
         CREATE(GET_TITLE(ch), char, strlen(argument) + 1);
         strcpy(GET_TITLE(ch), argument);
 
-        sprintf(buf, "OK, you're now %s %s.\n\r", GET_NAME(ch), GET_TITLE(ch));
+        strcpy(buf, std::format("OK, you're now {} {}.\n\r", GET_NAME(ch), GET_TITLE(ch)).c_str());
         send_to_char(buf, ch);
     }
 }
@@ -331,7 +332,7 @@ void roll_for_character(char_data* character, char_data* roll_initiator)
 {
     if (utils::is_pc(*character)) {
         int roll = number(1, 100);
-        sprintf(buf, "%8s -- Rolled: %3d", utils::get_name(*character), roll);
+        strcpy(buf, std::format("{:>8} -- Rolled: {:>3}", utils::get_name(*character), roll).c_str());
         act(buf, FALSE, roll_initiator, 0, 0, TO_CHAR);
         act(buf, FALSE, roll_initiator, 0, 0, TO_ROOM);
     }
@@ -370,7 +371,7 @@ ACMD(do_grouproll)
         std::sort(group_rolls.begin(), group_rolls.end(), compareByValue);
 
         for (const auto& group_roll : group_rolls) {
-            sprintf(buf, "%8s -- Rolled: %3d", group_roll.character_name, group_roll.roll);
+            strcpy(buf, std::format("{:>8} -- Rolled: {:>3}", group_roll.character_name, group_roll.roll).c_str());
             act(buf, FALSE, ch, nullptr, nullptr, TO_CHAR);
             act(buf, FALSE, ch, nullptr, nullptr, TO_ROOM);
         }
@@ -416,13 +417,15 @@ void print_group_leader(const char_data* leader)
          move_prompt_index++)
         ;
 
-    sprintf(
-        buf, "HP:%9s,%11s,%13s -- %s (Head of group)\n\r", prompt_hit[health_prompt_index].message,
-        *prompt_mana[mana_prompt_index].message == '\0' ? "S:Full"
-                                                        : prompt_mana[mana_prompt_index].message,
-        *prompt_move[move_prompt_index].message == '\0' ? "MV:Energetic"
-                                                        : prompt_move[move_prompt_index].message,
-        GET_NAME(leader));
+    strcpy(buf,
+        std::format("HP:{:>9},{:>11},{:>13} -- {} (Head of group)\n\r",
+            prompt_hit[health_prompt_index].message,
+            *prompt_mana[mana_prompt_index].message == '\0' ? "S:Full"
+                                                            : prompt_mana[mana_prompt_index].message,
+            *prompt_move[move_prompt_index].message == '\0' ? "MV:Energetic"
+                                                            : prompt_move[move_prompt_index].message,
+            GET_NAME(leader))
+            .c_str());
 }
 
 void print_group_member(const char_data* group_member)
@@ -455,24 +458,28 @@ void print_group_member(const char_data* group_member)
         ;
 
     if (MOB_FLAGGED(group_member, MOB_ORC_FRIEND)) {
-        sprintf(buf, "HP:%9s,%11s,%13s -- %s (Lvl:%2d)\n\r",
-            prompt_hit[health_prompt_index].message,
-            *prompt_mana[mana_prompt_index].message == '\0'
-                ? "S:Full"
-                : prompt_mana[mana_prompt_index].message,
-            *prompt_move[move_prompt_index].message == '\0'
-                ? "MV:Energetic"
-                : prompt_move[move_prompt_index].message,
-            GET_NAME(group_member), GET_LEVEL(group_member));
+        strcpy(buf,
+            std::format("HP:{:>9},{:>11},{:>13} -- {} (Lvl:{:>2})\n\r",
+                prompt_hit[health_prompt_index].message,
+                *prompt_mana[mana_prompt_index].message == '\0'
+                    ? "S:Full"
+                    : prompt_mana[mana_prompt_index].message,
+                *prompt_move[move_prompt_index].message == '\0'
+                    ? "MV:Energetic"
+                    : prompt_move[move_prompt_index].message,
+                GET_NAME(group_member), GET_LEVEL(group_member))
+                .c_str());
     } else {
-        sprintf(buf, "HP:%9s,%11s,%13s -- %s\n\r", prompt_hit[health_prompt_index].message,
-            *prompt_mana[mana_prompt_index].message == '\0'
-                ? "S:Full"
-                : prompt_mana[mana_prompt_index].message,
-            *prompt_move[move_prompt_index].message == '\0'
-                ? "MV:Energetic"
-                : prompt_move[move_prompt_index].message,
-            GET_NAME(group_member));
+        strcpy(buf,
+            std::format("HP:{:>9},{:>11},{:>13} -- {}\n\r", prompt_hit[health_prompt_index].message,
+                *prompt_mana[mana_prompt_index].message == '\0'
+                    ? "S:Full"
+                    : prompt_mana[mana_prompt_index].message,
+                *prompt_move[move_prompt_index].message == '\0'
+                    ? "MV:Energetic"
+                    : prompt_move[move_prompt_index].message,
+                GET_NAME(group_member))
+                .c_str());
     }
 }
 
@@ -582,8 +589,9 @@ ACMD(do_group)
             if (potential_member == ch) {
                 send_to_char("Eww, who wants to group with that guy?\n\r", ch);
             } else if (other_side(ch, potential_member)) {
-                sprintf(buf, "You wouldn't group with that ugly %s!\n\r",
-                    pc_races[GET_RACE(potential_member)]);
+                strcpy(buf, std::format("You wouldn't group with that ugly {}!\n\r",
+                    pc_races[GET_RACE(potential_member)])
+                                 .c_str());
                 send_to_char(buf, ch);
             } else if (potential_member->group && potential_member->group != group) {
                 act("$N is busy somewhere else already.", FALSE, ch, 0, potential_member, TO_CHAR);
@@ -668,13 +676,14 @@ ACMD(do_report)
     for (tmp3 = 0; (1000 * GET_MOVE(ch)) / GET_MAX_MOVE(ch) > prompt_move[tmp3].value; tmp3++)
         ;
 
-    sprintf(
-        str, "I am %s, my stamina is %s, and I am %s.",
-        prompt_hit[tmp1].message, // No need to add
-        *prompt_mana[tmp2].message == '\0' ? "full"
-                                           : prompt_mana[tmp2].message + 3, // Add 3 because of M:
-        *prompt_move[tmp3].message == '\0' ? "energetic"
-                                           : prompt_move[tmp3].message + 4); // Add 4 because of MV:
+    strcpy(str,
+        std::format("I am {}, my stamina is {}, and I am {}.",
+            prompt_hit[tmp1].message, // No need to add
+            *prompt_mana[tmp2].message == '\0' ? "full"
+                                               : prompt_mana[tmp2].message + 3, // Add 3 because of M:
+            *prompt_move[tmp3].message == '\0' ? "energetic"
+                                               : prompt_move[tmp3].message + 4) // Add 4 because of MV:
+            .c_str());
 
     for (tmpchar = &str[1]; *tmpchar != '\0'; tmpchar++)
         *tmpchar = tolower(*tmpchar);
@@ -725,8 +734,9 @@ int calculate_gold_amount(char* text, char* argument, char_data* character)
 void give_share(char_data* sender, char_data* receiver, int share_amount)
 {
     GET_GOLD(receiver) += share_amount;
-    sprintf(buf, "%s splits some money among the group; you receive %s.\r\n", GET_NAME(sender),
-        money_message(share_amount, 0));
+    strcpy(buf, std::format("{} splits some money among the group; you receive {}.\r\n", GET_NAME(sender),
+        money_message(share_amount, 0))
+                     .c_str());
     send_to_char(buf, receiver);
 }
 
@@ -767,7 +777,7 @@ ACMD(do_split)
         }
     }
 
-    sprintf(buf, "You give %s to each member of your group.\n\r", money_message(share_amount, 0));
+    strcpy(buf, std::format("You give {} to each member of your group.\n\r", money_message(share_amount, 0)).c_str());
     send_to_char(buf, ch);
 }
 
@@ -831,8 +841,9 @@ ACMD(do_wimpy)
 
     if (!*arg) {
         if (WIMP_LEVEL(ch)) {
-            sprintf(buf, "You will flee if your hit points drop below %d.\n\r",
-                ch->specials2.wimp_level);
+            strcpy(buf, std::format("You will flee if your hit points drop below {}.\n\r",
+                ch->specials2.wimp_level)
+                             .c_str());
             send_to_char(buf, ch);
             return;
         } else {
@@ -847,7 +858,7 @@ ACMD(do_wimpy)
                 wimp_lev = 0;
             if (wimp_lev > GET_MAX_HIT(ch))
                 wimp_lev = GET_MAX_HIT(ch);
-            sprintf(buf, "OK, you'll flee if you drop below %d hit points.\n\r", wimp_lev);
+            strcpy(buf, std::format("OK, you'll flee if you drop below {} hit points.\n\r", wimp_lev).c_str());
             send_to_char(buf, ch);
             WIMP_LEVEL(ch) = wimp_lev;
         } else {
@@ -871,7 +882,7 @@ ACMD(do_syslog)
 
     if (!*arg) {
         tp = ((PRF_FLAGGED(ch, PRF_LOG1) ? 1 : 0) + (PRF_FLAGGED(ch, PRF_LOG2) ? 2 : 0) + (PRF_FLAGGED(ch, PRF_LOG3) ? 4 : 0));
-        sprintf(buf, "Your syslog is currently %s.\n\r", logtypes[tp]);
+        strcpy(buf, std::format("Your syslog is currently {}.\n\r", logtypes[tp]).c_str());
         send_to_char(buf, ch);
         return;
     }
@@ -885,7 +896,7 @@ ACMD(do_syslog)
     SET_BIT(PRF_FLAGS(ch),
         (PRF_LOG1 * (tp & 1)) | (PRF_LOG2 * (tp & 2) >> 1) | (PRF_LOG3 * (tp & 4) >> 2));
 
-    sprintf(buf, "Your syslog is now %s.\n\r", logtypes[tp]);
+    strcpy(buf, std::format("Your syslog is now {}.\n\r", logtypes[tp]).c_str());
     send_to_char(buf, ch);
 }
 
@@ -1182,12 +1193,13 @@ ACMD(do_casting)
         }
 
         if (casting[tmp][0] == '\n') {
-            sprintf(buf, "Possible casting modes are:\n\r   ");
+            std::string casting_modes = "Possible casting modes are:\n\r   ";
             for (tmp = 0; casting[tmp][0] != '\n'; tmp++) {
-                strcat(buf, casting[tmp]);
-                strcat(buf, " casting.");
-                strcat(buf, "\n\r    ");
+                casting_modes += casting[tmp];
+                casting_modes += " casting.";
+                casting_modes += "\n\r    ";
             }
+            strcpy(buf, casting_modes.c_str());
             send_to_char(buf, ch);
             return;
         }
@@ -1209,16 +1221,16 @@ ACMD(do_casting)
     }
     switch (GET_CASTING(ch)) {
     case CASTING_SLOW:
-        sprintf(buf, "%s %s casting.\n\r", s, casting[0]);
+        strcpy(buf, std::format("{} {} casting.\n\r", s, casting[0]).c_str());
         break;
     case CASTING_NORMAL:
-        sprintf(buf, "%s %s casting.\n\r", s, casting[1]);
+        strcpy(buf, std::format("{} {} casting.\n\r", s, casting[1]).c_str());
         break;
     case CASTING_FAST:
-        sprintf(buf, "%s %s casting.\n\r", s, casting[2]);
+        strcpy(buf, std::format("{} {} casting.\n\r", s, casting[2]).c_str());
         break;
     default:
-        sprintf(buf, "%s weird.\n\r", s);
+        strcpy(buf, std::format("{} weird.\n\r", s).c_str());
         break;
     }
     send_to_char(buf, ch);
@@ -1249,12 +1261,13 @@ ACMD(do_shooting)
         }
 
         if (shooting[tmp][0] == '\n') {
-            sprintf(buf, "Possible shoot modes are:\n\r   ");
+            std::string shooting_modes = "Possible shoot modes are:\n\r   ";
             for (tmp = 0; shooting[tmp][0] != '\n'; tmp++) {
-                strcat(buf, shooting[tmp]);
-                strcat(buf, " shooting.");
-                strcat(buf, "\n\r    ");
+                shooting_modes += shooting[tmp];
+                shooting_modes += " shooting.";
+                shooting_modes += "\n\r    ";
             }
+            strcpy(buf, shooting_modes.c_str());
             send_to_char(buf, ch);
             return;
         }
@@ -1277,16 +1290,16 @@ ACMD(do_shooting)
 
     switch (GET_SHOOTING(ch)) {
     case SHOOTING_SLOW:
-        sprintf(buf, "%s %s shooting.\n\r", s, shooting[0]);
+        strcpy(buf, std::format("{} {} shooting.\n\r", s, shooting[0]).c_str());
         break;
     case SHOOTING_NORMAL:
-        sprintf(buf, "%s %s shooting.\n\r", s, shooting[1]);
+        strcpy(buf, std::format("{} {} shooting.\n\r", s, shooting[1]).c_str());
         break;
     case SHOOTING_FAST:
-        sprintf(buf, "%s %s shooting.\n\r", s, shooting[2]);
+        strcpy(buf, std::format("{} {} shooting.\n\r", s, shooting[2]).c_str());
         break;
     default:
-        sprintf(buf, "%s weird.\n\r", s);
+        strcpy(buf, std::format("{} weird.\n\r", s).c_str());
         break;
     }
     send_to_char(buf, ch);
@@ -1347,7 +1360,7 @@ void report_inventory_sorting_to(char_data* character, const char* intro_string)
 
     const char* sort_name = inv_sorting[sort_value].data();
 
-    sprintf(buf, "%s %s.\r\n", intro_string, sort_name);
+    strcpy(buf, std::format("{} {}.\r\n", intro_string, sort_name).c_str());
     send_to_char(buf, character);
 }
 } // namespace
@@ -1395,12 +1408,13 @@ ACMD(do_tactics)
                 break;
 
         if (tactics[tmp][0] == '\n') {
-            sprintf(buf, "Possible tactics are:\n\r   ");
+            std::string tactics_modes = "Possible tactics are:\n\r   ";
             for (tmp = 0; tactics[tmp][0] != '\n'; tmp++) {
-                strcat(buf, tactics[tmp]);
-                strcat(buf, " tactics.");
-                strcat(buf, "\n\r    ");
+                tactics_modes += tactics[tmp];
+                tactics_modes += " tactics.";
+                tactics_modes += "\n\r    ";
             }
+            strcpy(buf, tactics_modes.c_str());
             send_to_char(buf, ch);
             return;
         }
@@ -1447,27 +1461,27 @@ ACMD(do_tactics)
 
     switch (GET_TACTICS(ch)) {
     case TACTICS_DEFENSIVE:
-        sprintf(buf, "%s %s tactics.\n\r", s, tactics[0]);
+        strcpy(buf, std::format("{} {} tactics.\n\r", s, tactics[0]).c_str());
         break;
 
     case TACTICS_CAREFUL:
-        sprintf(buf, "%s %s tactics.\n\r", s, tactics[1]);
+        strcpy(buf, std::format("{} {} tactics.\n\r", s, tactics[1]).c_str());
         break;
 
     case TACTICS_NORMAL:
-        sprintf(buf, "%s %s tactics.\n\r", s, tactics[2]);
+        strcpy(buf, std::format("{} {} tactics.\n\r", s, tactics[2]).c_str());
         break;
 
     case TACTICS_AGGRESSIVE:
-        sprintf(buf, "%s %s tactics.\n\r", s, tactics[3]);
+        strcpy(buf, std::format("{} {} tactics.\n\r", s, tactics[3]).c_str());
         break;
 
     case TACTICS_BERSERK:
-        sprintf(buf, "%s %s tactics.\n\r", s, tactics[4]);
+        strcpy(buf, std::format("{} {} tactics.\n\r", s, tactics[4]).c_str());
         break;
 
     default:
-        sprintf(buf, "%s weird.\n\r", s);
+        strcpy(buf, std::format("{} weird.\n\r", s).c_str());
         break;
     }
     send_to_char(buf, ch);
@@ -1479,8 +1493,9 @@ ACMD(do_language)
     int len, tmp;
 
     if (!*argument) {
-        sprintf(str, "You are using %s.\n\r",
-            (ch->player.language) ? skills[ch->player.language].name : "common language");
+        strcpy(str, std::format("You are using {}.\n\r",
+            (ch->player.language) ? skills[ch->player.language].name : "common language")
+                         .c_str());
         send_to_char(str, ch);
         return;
     }
@@ -1501,17 +1516,20 @@ ACMD(do_language)
             break;
 
     if (tmp == language_number) {
-        strcpy(str, "Possible languages are:\n\r");
+        std::string languages_list = "Possible languages are:\n\r";
         for (tmp = 0; tmp < language_number; tmp++) {
-            strcat(str, skills[language_skills[tmp]].name);
-            strcat(str, "\n\r");
+            languages_list += skills[language_skills[tmp]].name;
+            languages_list += "\n\r";
         }
+        strcpy(str, languages_list.c_str());
         send_to_char(str, ch);
         return;
     }
 
     ch->player.language = language_skills[tmp];
-    sprintf(str, "You will now use %s.\n\r", skills[language_skills[tmp]].name);
+    strcpy(str, std::format("You will now use {}.\n\r",
+        static_cast<const char*>(skills[language_skills[tmp]].name))
+                     .c_str());
     send_to_char(str, ch);
     return;
 }
@@ -1561,7 +1579,7 @@ ACMD(do_set)
 
     if (change_comm[change_index][0] == '\n') {
     no_set:
-        sprintf(buf, "Possible arguments are:\n\r");
+        std::string possible_arguments = "Possible arguments are:\n\r";
         /*
          * Such. a. fucking. hack.  This doesn't even really work: slowns
          * is implementor-only, as may be the case for other future
@@ -1570,11 +1588,12 @@ ACMD(do_set)
          */
         auto character_level = (GET_LEVEL(ch) >= LEVEL_IMMORT) ? 27 : 23;
         for (change_index = 0; change_index < character_level; change_index++) {
-            strcat(buf, change_comm[change_index]);
-            strcat(buf, ", ");
+            possible_arguments += change_comm[change_index];
+            possible_arguments += ", ";
         }
-        strcat(buf, "sorting, advancedview, advancedprompt");
-        strcat(buf, ".\n\r");
+        possible_arguments += "sorting, advancedview, advancedprompt";
+        possible_arguments += ".\n\r";
+        strcpy(buf, possible_arguments.c_str());
         send_to_char(buf, ch);
         return;
     }
@@ -1766,9 +1785,9 @@ ACMD(do_knock)
         if (EXIT(ch, tmp))
             if (!strcmp(argument, EXIT(ch, tmp)->keyword)) {
                 if (IS_SET(EXIT(ch, tmp)->exit_info, EX_ISDOOR)) {
-                    sprintf(str, "You knocked on the %s.\n", EXIT(ch, tmp)->keyword);
+                    strcpy(str, std::format("You knocked on the {}.\n", EXIT(ch, tmp)->keyword).c_str());
                     send_to_char(str, ch);
-                    sprintf(str, "$n knocked on the %s.\n", EXIT(ch, tmp)->keyword);
+                    strcpy(str, std::format("$n knocked on the {}.\n", EXIT(ch, tmp)->keyword).c_str());
                     act(str, FALSE, ch, 0, 0, TO_ROOM);
 
                     room = EXIT(ch, tmp)->to_room;
@@ -1777,12 +1796,14 @@ ACMD(do_knock)
                         ch->in_room = room;
                         if (EXIT(ch, rev_dir[tmp])) {
                             if (IS_SET(EXIT(ch, rev_dir[tmp])->exit_info, EX_ISDOOR) && EXIT(ch, rev_dir[tmp])->keyword) {
-                                sprintf(str, "You hear a knock on the %s.\n",
-                                    EXIT(ch, rev_dir[tmp])->keyword);
+                                strcpy(str, std::format("You hear a knock on the {}.\n",
+                                    EXIT(ch, rev_dir[tmp])->keyword)
+                                                 .c_str());
                                 act(str, FALSE, ch, 0, 0, TO_ROOM);
                             } else {
-                                sprintf(str, "You hear a knock sounding %sward.\n\r",
-                                    dirs[rev_dir[tmp]]);
+                                strcpy(str, std::format("You hear a knock sounding {}ward.\n\r",
+                                    dirs[rev_dir[tmp]])
+                                                 .c_str());
                                 act(str, FALSE, ch, 0, 0, TO_ROOM);
                             }
                         } else
@@ -1797,9 +1818,9 @@ ACMD(do_knock)
 
                     return;
                 } else {
-                    sprintf(str, "You waved your hand %sward.\n", dirs[tmp]);
+                    strcpy(str, std::format("You waved your hand {}ward.\n", dirs[tmp]).c_str());
                     send_to_char(str, ch);
-                    sprintf(str, "$n waved $s hand %sward.\n", dirs[tmp]);
+                    strcpy(str, std::format("$n waved $s hand {}ward.\n", dirs[tmp]).c_str());
                     act(str, FALSE, ch, 0, 0, TO_ROOM);
                 }
             }
@@ -1856,7 +1877,7 @@ ACMD(do_block)
             send_to_char("Which way do you want to block?\n\r", ch);
             return;
         } else {
-            sprintf(buf, "You are blocking the way %s.\n\r", dirs[tmp]);
+            strcpy(buf, std::format("You are blocking the way {}.\n\r", dirs[tmp]).c_str());
             send_to_char(buf, ch);
             return;
         }
@@ -1872,9 +1893,9 @@ ACMD(do_block)
     if (tmp < NUM_OF_DIRS) {
         ch->specials.store_prog_number = tmp + FIRST_BLOCK_PROC;
 
-        sprintf(buf, "You start blocking the way %s.\n\r", dirs[tmp]);
+        strcpy(buf, std::format("You start blocking the way {}.\n\r", dirs[tmp]).c_str());
         send_to_char(buf, ch);
-        sprintf(buf, "$n starts blocking the way %s.", dirs[tmp]);
+        strcpy(buf, std::format("$n starts blocking the way {}.", dirs[tmp]).c_str());
         act(buf, TRUE, ch, 0, 0, TO_ROOM);
         return;
     }
@@ -1883,9 +1904,9 @@ ACMD(do_block)
         tmp = ch->specials.store_prog_number - FIRST_BLOCK_PROC;
         if ((tmp >= 0) & (tmp < NUM_OF_DIRS)) {
             ch->specials.store_prog_number = 0;
-            sprintf(buf, "You stop blocking the way %s.\n\r", dirs[tmp]);
+            strcpy(buf, std::format("You stop blocking the way {}.\n\r", dirs[tmp]).c_str());
             send_to_char(buf, ch);
-            sprintf(buf, "$n stops blocking the way %s.", dirs[tmp]);
+            strcpy(buf, std::format("$n stops blocking the way {}.", dirs[tmp]).c_str());
             act(buf, TRUE, ch, 0, 0, TO_ROOM);
         } else
             send_to_char("You are not blocking anything.\n\r", ch);
@@ -1908,7 +1929,7 @@ ACMD(do_specialize)
     if (wtl && (wtl->targ1.type == TARGET_TEXT)) {
         game_types::player_specs current_spec = utils::get_specialization(*ch);
         if (current_spec != game_types::PS_None && current_spec != game_types::PS_Count) {
-            sprintf(buf, "You are already specialized in %s.\n\r", specialize_name[current_spec]);
+            strcpy(buf, std::format("You are already specialized in {}.\n\r", specialize_name[current_spec]).c_str());
             send_to_char(buf, ch);
             return;
         }
@@ -1932,7 +1953,7 @@ ACMD(do_specialize)
                 }
 
                 utils::set_specialization(*ch, spec);
-                sprintf(buf, "You are now specialized in %s.\n\r", specialize_name[index]);
+                strcpy(buf, std::format("You are now specialized in {}.\n\r", specialize_name[index]).c_str());
                 send_to_char(buf, ch);
 
                 // Some abilities may have been changed.  Recalc.
@@ -1944,17 +1965,18 @@ ACMD(do_specialize)
 
     int tmp = GET_SPEC(ch);
     if (tmp == 0 || (tmp >= num_of_specializations)) {
-        strcpy(buf, "You can specialize in ");
+        std::string specializations_list = "You can specialize in ";
         for (tmp = 1; tmp < num_of_specializations; tmp++) {
-            strcat(buf, specialize_name[tmp]);
-            strcat(buf, ", ");
+            specializations_list += specialize_name[tmp];
+            specializations_list += ", ";
         }
 
-        buf[strlen(buf) - 2] = 0;
-        strcat(buf, ".\n\r");
+        specializations_list.resize(specializations_list.size() - 2);
+        specializations_list += ".\n\r";
+        strcpy(buf, specializations_list.c_str());
         send_to_char(buf, ch);
     } else {
-        sprintf(buf, "You are specialized in %s.\n\r", specialize_name[tmp]);
+        strcpy(buf, std::format("You are specialized in {}.\n\r", specialize_name[tmp]).c_str());
         send_to_char(buf, ch);
         return;
     }
@@ -2068,12 +2090,14 @@ ACMD(do_apply)
         }
 
         if ((tmp == num_of_apply)) {
-            strcpy(buf, "The format is 'apply <type> <object>', \n\rPossible fields are:\n\r");
+            std::string apply_fields = "The format is 'apply <type> <object>', \n\rPossible fields are:\n\r";
             for (tmp = 0; tmp < num_of_apply; tmp++) {
-                strcat(buf, apply_options[tmp].field);
-                strcat(buf, ", ");
+                apply_fields += apply_options[tmp].field;
+                apply_fields += ", ";
             }
-            strcpy(buf + strlen(buf) - 2, ".\n\r");
+            apply_fields.resize(apply_fields.size() - 2);
+            apply_fields += ".\n\r";
+            strcpy(buf, apply_fields.c_str());
             send_to_char(buf, ch);
             return;
         }

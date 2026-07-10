@@ -8,6 +8,13 @@ bool can_double_hit(const char_data* character);
 bool does_double_hit_proc(const char_data* character);
 bool can_beorning_swipe(char_data* character);
 bool does_beorning_swipe_proc(char_data* character);
+void perform_violence(int mini_tics);
+#ifdef TESTING
+void reset_perform_violence_timing_for_testing();
+#endif
+
+extern char_data* combat_list;
+extern char_data* combat_next_dude;
 
 namespace {
 
@@ -154,4 +161,42 @@ TEST_F(FightProcTest, BeorningSwipeProcUsesCombinedWarriorSkillAndLevelChance) {
     push_test_random_value(0.18);
     EXPECT_FALSE(does_beorning_swipe_proc(&context.attacker))
         << "Expected swipe procs to fail once the roll exceeds the computed warrior+skill+level chance.";
+}
+
+class PerformViolenceTest : public ::testing::Test {
+  protected:
+    void SetUp() override
+    {
+        combat_list = nullptr;
+        combat_next_dude = nullptr;
+#ifdef TESTING
+        reset_perform_violence_timing_for_testing();
+#endif
+    }
+
+    void TearDown() override
+    {
+        combat_list = nullptr;
+        combat_next_dude = nullptr;
+#ifdef TESTING
+        reset_perform_violence_timing_for_testing();
+#endif
+    }
+};
+
+TEST_F(PerformViolenceTest, FirstCallAfterResetTicksZeroDeltaInsteadOfEpochGarbage) {
+    FightProcTestContext context;
+    // Keep the loop body from reaching hit()/stop_fighting(): a positive mental
+    // delay that stays above 1 after perform_violence's unconditional decrement
+    // makes it `continue` right after the tick() call this test is pinning.
+    context.attacker.specials.mental_delay = 5;
+    context.attacker.next_fighting = nullptr;
+    context.attacker.group = nullptr;
+    combat_list = &context.attacker;
+
+    perform_violence(0);
+
+    EXPECT_FLOAT_EQ(context.attacker.damage_details.get_elapsed_combat_seconds(), 0.0f)
+        << "Expected perform_violence's first call after a timing reset to tick a zero "
+           "delta instead of computing it against the default-constructed steady_clock epoch.";
 }

@@ -2713,6 +2713,19 @@ std::chrono::steady_clock::time_point last_time;
 std::chrono::steady_clock::time_point current_time;
 }
 
+#ifdef TESTING
+// Test seam: resets the file-scope last_time/current_time steady_clock samples
+// perform_violence() uses for its delta computation back to the default-constructed
+// epoch, so a test can exercise the "first call" guard below in isolation instead of
+// inheriting whatever state earlier tests left behind in the same monolithic test
+// binary. Symbol does not exist in production builds (no -DTESTING there).
+void reset_perform_violence_timing_for_testing()
+{
+    last_time = std::chrono::steady_clock::time_point{};
+    current_time = std::chrono::steady_clock::time_point{};
+}
+#endif
+
 /*
  * Control all of the fights going on; works on PULSE_VIOLENCE
  */
@@ -2720,6 +2733,15 @@ void perform_violence(int mini_tics)
 {
     last_time = current_time;
     current_time = std::chrono::steady_clock::now();
+
+    if (last_time == std::chrono::steady_clock::time_point{}) {
+        // First call since process start (last_time was never set by a previous
+        // call): there is no meaningful previous sample yet, so seed last_time
+        // with current_time rather than computing a delta against the default-
+        // constructed epoch, which would otherwise appear as a huge "time since
+        // boot" jump fed straight into combat/damage timers below.
+        last_time = current_time;
+    }
 
     // Same units/rounding as the legacy gettimeofday/timeval implementation this
     // replaced: truncate to whole microseconds before converting to a float seconds

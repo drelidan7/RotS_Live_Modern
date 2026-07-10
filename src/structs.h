@@ -1604,6 +1604,11 @@ public:
         elapsed_combat_seconds = 0;
     }
 
+    // Raw accumulated combat time, as fed by tick(); exposed (alongside the existing
+    // damage-map getters) so callers/tests can observe elapsed time directly instead
+    // of only through the formatted get_damage_report() text.
+    float get_elapsed_combat_seconds() const { return elapsed_combat_seconds; }
+
     std::string get_damage_report(const char_data* character) const;
 
 private:

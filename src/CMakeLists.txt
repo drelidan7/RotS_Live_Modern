@@ -69,8 +69,8 @@ set(ROTS_SERVER_SOURCES
 
 add_executable(ageland ${ROTS_SERVER_SOURCES})
 
-# C++17, ISO dialect (-std=c++17, not gnu++17) to match the Makefile's -std=c++1z.
-target_compile_features(ageland PRIVATE cxx_std_17)
+# C++20, ISO dialect (-std=c++20, not gnu++20) to match the Makefile's -std=c++20.
+target_compile_features(ageland PRIVATE cxx_std_20)
 set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 
 # --- Flag parity with src/Makefile (behavior-affecting — keep in sync) --------
@@ -168,6 +168,7 @@ if(ROTS_BUILD_TESTS)
         tests/color_tests.cpp
         tests/convert_exploits_tests.cpp
         tests/convert_plrobjs_tests.cpp
+        tests/cpp20_format_smoke_tests.cpp
         tests/crashsave_schedule_tests.cpp
         tests/damage_tests.cpp
         tests/db_loader_tests.cpp
@@ -230,27 +231,65 @@ if(ROTS_BUILD_TESTS)
 
     # Same C++ standard as ageland (see above) — required because these targets are
     # defined per-target here rather than via a project-wide CMAKE_CXX_STANDARD.
-    target_compile_features(ageland_tests PRIVATE cxx_std_17)
+    target_compile_features(ageland_tests PRIVATE cxx_std_20)
     set_target_properties(ageland_tests PROPERTIES CXX_EXTENSIONS OFF)
 
-    # Quote-only search paths (-iquote), NOT target_include_directories()'s default
-    # -I: tests/*.cpp reach headers one level up via quoted includes ("act_info.h",
-    # etc.), so both directories need to be quote-searchable. -I would ALSO add them
-    # to the angle-bracket <...> search path, and src/limits.h (a project header —
-    # player rank constants — unrelated to the standard C <limits.h>) would then
-    # shadow the real system <limits.h> ahead of the toolchain's own path. That's
-    # invisible under glibc/libstdc++ (CHAR_BIT etc. come from compiler builtins),
-    # but AppleClang's libc++ headers (<climits>, <string>, <bitset>, ...) do a bare
-    # `#include <limits.h>` and break with "use of undeclared identifier 'CHAR_BIT'"
-    # the moment src/ shadows it. -iquote never affects angle-bracket lookups, so
-    # this is a strict improvement with no behavior change on the GCC/32-bit path
-    # (quote-form resolution finds the identical file either way).
-    # NOTE: no embedded quotes around the paths below — target_compile_options()
-    # doesn't shell-parse a genex's expansion, so a literal `"` would travel through
-    # as part of the token (e.g. an -iquote argument of literal `"/path"`, quote
-    # characters included) instead of being stripped as shell-style grouping.
-    target_compile_options(ageland_tests PRIVATE
-        $<${ROTS_GNULIKE}:-iquote ${CMAKE_CURRENT_SOURCE_DIR} -iquote ${CMAKE_CURRENT_SOURCE_DIR}/tests>
+    # tests/*.cpp reach headers one level up via bare quoted includes
+    # ("act_info.h" etc.), so src/ needs to be on their quote search path; they
+    # also reach shared test fixtures via bare quoted includes ("damage_test_
+    # context.h" etc.), so src/tests/ needs to be too. Never target_include_
+    # directories()'s default -I for src/: that would ALSO add it to the
+    # angle-bracket <...> search path, and src/limits.h (a project header —
+    # player rank constants — unrelated to the standard C <limits.h>) would
+    # then shadow the real system <limits.h> ahead of the toolchain's own path.
+    # That's invisible under glibc/libstdc++ (CHAR_BIT etc. come from compiler
+    # builtins), but AppleClang's libc++ headers (<climits>, <string>,
+    # <bitset>, ...) do a bare `#include <limits.h>` and break with "use of
+    # undeclared identifier 'CHAR_BIT'" the moment src/ shadows it.
+    #
+    # src/tests/ is plain -iquote (no name collision there, so highest quote
+    # priority is fine and simplest). src/ is -idirafter, NOT -iquote (Phase 4
+    # Wave 1 Task 1, trixie/g++14 bump): GCC's #include_next -- used
+    # internally by its own bundled <limits.h>/syslimits.h to chain into
+    # glibc's real <limits.h> -- does NOT respect the quote/angle distinction;
+    # per the GCC manual it just continues down the merged directory list from
+    # wherever the current file was found, and -iquote dirs sit at the FRONT
+    # of that merged list (highest priority), ahead of the standard system
+    # directories glibc's real <limits.h> lives in. Under C++20, gtest's own
+    # gtest-port.h (<condition_variable>) and this project's comm.cpp (<thread>)
+    # both newly pull in <semaphore> (std::counting_semaphore; unreachable
+    # pre-C++20, so this was invisible under the old c++17/c++1z build), whose
+    # libstdc++ implementation needs _POSIX_SEM_VALUE_MAX from glibc's
+    # <bits/posix1_lim.h>. With src/ on the FRONT of the merged list via
+    # -iquote, GCC's #include_next chain for <limits.h> walked into
+    # src/limits.h before ever reaching glibc's real one, so posix1_lim.h
+    # never loaded and every test TU (they all pull in gtest.h) failed with
+    # "'_POSIX_SEM_VALUE_MAX' was not declared". -idirafter instead places
+    # src/ at the very END of the merged list -- after the standard system
+    # directories -- so #include_next resolves glibc's real <limits.h> first
+    # (found earlier, in its normal system-directory position) and only
+    # falls through to src/limits.h for a bare quoted include that nothing
+    # else on the list satisfies (i.e. still works as a same-priority-as-
+    # before fallback for genuine project headers: no other directory on the
+    # list has an "act_info.h", "structs.h", etc., so ordering never mattered
+    # for those). No test source bare-quote-includes "limits.h" relying on
+    # this path specifically (the one test file that reaches the project's
+    # own limits.h -- interpre_account_menu_tests.cpp -- uses the explicit
+    # "../limits.h" relative form, which resolves directly off the including
+    # file's own directory and is unaffected either way); every product .cpp
+    # that bare-quote-includes "limits.h" lives IN src/, so its own implicit
+    # "directory of the including file" quote entry (always first, before any
+    # -iquote/-idirafter path, on every compiler) finds src/limits.h
+    # regardless of this flag. This is a build-flag fix only -- no file's
+    # resolved header set changes -- so it cannot affect runtime behavior or
+    # goldens.
+    # NOTE: no embedded quotes around the paths below — CMake doesn't
+    # shell-parse a genex's expansion, so a literal `"` would travel through
+    # as part of the token (e.g. an -idirafter argument of literal `"/path"`,
+    # quote characters included) instead of being stripped as shell-style
+    # grouping.
+    set_source_files_properties(${ROTS_TEST_SOURCES} PROPERTIES
+        COMPILE_OPTIONS "$<${ROTS_GNULIKE}:-idirafter;${CMAKE_CURRENT_SOURCE_DIR};-iquote;${CMAKE_CURRENT_SOURCE_DIR}/tests>"
     )
     target_compile_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>

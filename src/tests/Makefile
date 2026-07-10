@@ -1,15 +1,4 @@
 CXX = g++
-# -iquote .. lets the account_management_*_header_compile.cpp probes use bare
-# #include "account_management_assets.h" (etc.) to verify each header is
-# self-contained; mirrors the -iquote (NOT -I) that src/CMakeLists.txt uses for
-# the ageland_tests target. -iquote adds .. to the QUOTED-include ("...") search
-# path only, never the angle-bracket (<...>) path — so src/limits.h (the game's
-# player-rank-constants header, unrelated to the standard C <limits.h>) can't
-# shadow the real system <limits.h>. That shadowing is invisible for most of the
-# suite, but a bare -I.. breaks any header that does a bare #include <limits.h>
-# (as libstdc++'s <climits> does on some toolchains): UCHAR_MAX/CHAR_BIT come up
-# undeclared when src/limits.h wins the angle-bracket lookup.
-# See the fuller writeup on the same trap in src/CMakeLists.txt.
 # -D_FILE_OFFSET_BITS=64: without it, this 32-bit test binary's opendir/readdir
 # calls fail with EOVERFLOW against directories containing 64-bit inode numbers
 # (routine on the container's filesystem) — see the matching comment in
@@ -24,7 +13,56 @@ CXX = g++
 # -funsigned-char: parity with src/Makefile's GAMEC flags (the live game pins
 # char as unsigned on every build); without it, product .cpp files compiled
 # into this test binary get the platform-default (signed) char instead.
-CXXFLAGS = -std=c++1z -Wall -Wextra -D TESTING -iquote .. -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -funsigned-char
+CXXFLAGS = -std=c++20 -Wall -Wextra -D TESTING -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -funsigned-char
+# -idirafter .. lets the account_management_*_header_compile.cpp probes (and
+# every other tests/*.cpp) use bare #include "account_management_assets.h" /
+# "structs.h" (etc.) to reach the product headers one directory up; mirrors
+# the -idirafter (NOT -iquote, NOT -I) that src/CMakeLists.txt uses for its
+# ROTS_TEST_SOURCES list. Never a bare -I..: that would ALSO add it to the
+# angle-bracket (<...>) search path, and src/limits.h (the game's player-
+# rank-constants header, unrelated to the standard C <limits.h>) would then
+# shadow the real system <limits.h> ahead of the toolchain's own path:
+# UCHAR_MAX/CHAR_BIT come up undeclared wherever a header does a bare
+# #include <limits.h> (libstdc++'s <climits> on some toolchains).
+#
+# NOT plain -iquote either (Phase 4 Wave 1 Task 1, trixie/g++14 bump): GCC's
+# #include_next -- used internally by its own bundled <limits.h>/syslimits.h
+# to chain into glibc's real <limits.h> -- does NOT respect the quote/angle
+# distinction; per the GCC manual it just continues down the merged
+# directory list from wherever the current file was found, and -iquote dirs
+# sit at the FRONT of that merged list (highest priority), ahead of the
+# standard system directories glibc's real <limits.h> lives in. Under
+# C++20, gtest's own gtest-port.h (<condition_variable>) -- pulled in by
+# every tests/*.cpp via gtest.h -- newly pulls in <semaphore>
+# (std::counting_semaphore; unreachable pre-C++20, so this was invisible
+# under the old c++1z build), whose libstdc++ implementation needs
+# _POSIX_SEM_VALUE_MAX from glibc's <bits/posix1_lim.h>. With -iquote ..
+# (.. containing limits.h) on the FRONT of the merged list, GCC's
+# #include_next chain for <limits.h> walked into ../limits.h before ever
+# reaching glibc's real one, so posix1_lim.h never loaded and every test TU
+# failed with "'_POSIX_SEM_VALUE_MAX' was not declared" -- scoping the flag
+# to test-only compiles (as an earlier version of this comment/fix did)
+# does NOT help, because gtest.h itself is what triggers the chain, and
+# every test file includes it.
+#
+# -idirafter instead places .. at the very END of the merged list -- after
+# the standard system directories -- so #include_next resolves glibc's real
+# <limits.h> first (found earlier, in its normal system-directory position)
+# and only falls through to ../limits.h for a bare quoted include that
+# nothing else on the list satisfies (i.e. still works as a same-priority-
+# as-before fallback for genuine product headers: no other directory on the
+# list has an "account_management_assets.h", "structs.h", etc., so ordering
+# never mattered for those). No test source bare-quote-includes "limits.h"
+# relying on this path (interpre_account_menu_tests.cpp, the one test that
+# needs the project's own limits.h, uses the explicit "../limits.h" relative
+# form, unaffected either way); every product .cpp that bare-quote-includes
+# "limits.h" lives one directory up (in src/, not src/tests/), so it's built
+# via its own explicit OBJFILES rule using plain $(CXXFLAGS) (no -idirafter
+# needed at all -- its implicit "directory of the including file" quote
+# entry, always first on every compiler, already finds ../limits.h). This
+# is a build-flag fix only -- no file's resolved header set changes -- so it
+# cannot affect runtime behavior or goldens.
+TEST_CXXFLAGS = $(CXXFLAGS) -idirafter ..
 # -lpthread: libgtest.a's ThreadLocal support needs pthread_{get,set}specific/key_*;
 # the static lib doesn't pull it in transitively on this toolchain, so link it explicitly.
 LDFLAGS = -lgtest -lpthread
@@ -235,7 +273,7 @@ rots_net.o : ../rots_net.cpp ../rots_net.h ../platdef.h
 	$(CXX) -c $(CXXFLAGS) ../rots_net.cpp
 
 
-SRCS = account_management_tests.cpp account_cache_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp clock_tests.cpp color_tests.cpp convert_exploits_tests.cpp convert_plrobjs_tests.cpp crashsave_schedule_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_perf_tests.cpp json_utils_tests.cpp llp64_probe_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp player_finalize_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_asprintf_tests.cpp rots_crypt_tests.cpp rots_net_tests.cpp rots_rng_tests.cpp save_benchmark_tests.cpp shapemob_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
+SRCS = account_management_tests.cpp account_cache_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp clock_tests.cpp color_tests.cpp convert_exploits_tests.cpp convert_plrobjs_tests.cpp cpp20_format_smoke_tests.cpp crashsave_schedule_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_perf_tests.cpp json_utils_tests.cpp llp64_probe_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp player_finalize_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_asprintf_tests.cpp rots_crypt_tests.cpp rots_net_tests.cpp rots_rng_tests.cpp save_benchmark_tests.cpp shapemob_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp weapon_master_handler_tests.cpp gtest_main.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 EXECUTABLE = ../../bin/tests
@@ -266,7 +304,7 @@ $(EXECUTABLE): $(OBJFILES) $(OBJS)
 	$(CXX) $(CXXFLAGS) $(OBJFILES) $(OBJS) -o $(EXECUTABLE) $(LDFLAGS)
 
 .cpp.o:
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(TEST_CXXFLAGS) -c $< -o $@
 
 clean:
 	rm -f *.o $(EXECUTABLE)

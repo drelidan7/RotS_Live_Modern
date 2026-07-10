@@ -60,6 +60,20 @@ jobs:
           persist-credentials: false
       - name: Install GoogleTest
         run: sudo apt-get update && sudo apt-get install -y libgtest-dev libcrypt-dev
+      # This job builds directly on the runner (no rots64 container), so the
+      # C++20 bump (Phase 4 Wave 1 Task 1) depends on whatever g++ ubuntu-24.04
+      # ships by default. ubuntu-24.04's default g++ is 13.x (the first GCC
+      # with std::format), so this is a verification, not a pin -- fail loudly
+      # here rather than hitting a confusing std::format error deep in the
+      # build if a future runner image ever regresses the default.
+      - name: Verify g++ provides C++20 std::format (>= 13)
+        run: |
+          g++ --version
+          gxx_major=$(g++ -dumpversion | cut -d. -f1)
+          if [ "$gxx_major" -lt 13 ]; then
+            echo "::error::g++ major version $gxx_major < 13; std::format unavailable" >&2
+            exit 1
+          fi
       - name: Configure
         run: cd src && cmake --preset linux-x64
       - name: Build

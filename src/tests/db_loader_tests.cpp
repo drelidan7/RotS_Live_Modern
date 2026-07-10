@@ -7,6 +7,7 @@
 #include "../objects_json.h"
 #include "../utils.h"
 #include "test_platform_compat.h"
+#include "test_world.h"
 
 #include <gtest/gtest.h>
 
@@ -468,15 +469,6 @@ exploit_record make_record(int type, const char* timestamp, const char* victim_n
     record.iKillerLevel = killer_level;
     record.iIntParam = int_param;
     return record;
-}
-
-void ensure_test_world_room(int room_number)
-{
-    if (room_data::BASE_WORLD == nullptr)
-        world.create_bulk(1);
-
-    top_of_world = 0;
-    world[0].number = room_number;
 }
 
 std::string make_valid_object_bytes(int item_number = 1234, int wear_pos = WEAR_HEAD)
@@ -1167,7 +1159,8 @@ TEST(DbLoader, ReturnsEmptyObjectSaveBytesForLinkedCharacterWithoutAccountNative
 
 TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
 {
-    ensure_test_world_room(3001);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3001;
 
     char_data character {};
     clear_char(&character, MOB_VOID);
@@ -1208,7 +1201,8 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
 TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndEquipsWearableItems)
 {
     ScopedObjectPrototypeTable object_prototypes;
-    ensure_test_world_room(3001);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3001;
 
     char_data character {};
     clear_char(&character, MOB_VOID);
@@ -1257,7 +1251,8 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndEquipsWearableI
 TEST(DbLoader, AccountNativeCharacterAndObjectsJsonSupportEquippedLoginWithoutMigration)
 {
     ScopedObjectPrototypeTable object_prototypes;
-    ensure_test_world_room(3001);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3001;
 
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
@@ -1312,7 +1307,8 @@ TEST(DbLoader, AccountNativeCharacterAndObjectsJsonSupportEquippedLoginWithoutMi
 TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallbackSucceeds)
 {
     ScopedObjectPrototypeTable object_prototypes;
-    ensure_test_world_room(3001);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3001;
 
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
@@ -1368,7 +1364,8 @@ TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallba
 TEST(DbLoader, AccountNativeCrashLoadStillLogsNonMissingLegacyObjectOpenFailures)
 {
     ScopedObjectPrototypeTable object_prototypes;
-    ensure_test_world_room(3001);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3001;
 
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
@@ -1447,7 +1444,8 @@ TEST(DbLoader, SavingAccountNativeCharacterDoesNotAttemptLegacySnapshotRefreshAf
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableEntry player_table_entry("aragorn");
-    ensure_test_world_room(3001);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3001;
 
     ASSERT_TRUE(std::filesystem::create_directory("accounts"));
     ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
@@ -1492,7 +1490,8 @@ TEST(DbLoader, SavingLinkedCharacterRefreshesStalePlayerIndexToAccountNativePath
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableEntry player_table_entry("aragorn");
-    ensure_test_world_room(3001);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3001;
 
     ASSERT_TRUE(std::filesystem::create_directory("accounts"));
     ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
@@ -1533,7 +1532,8 @@ TEST(DbLoader, SavingLinkedCharacterRepairsMissingAccountNativeCharacterFileDire
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableEntry player_table_entry("aragorn");
-    ensure_test_world_room(3001);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3001;
 
     ASSERT_TRUE(std::filesystem::create_directory("accounts"));
     ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
@@ -1588,7 +1588,8 @@ TEST(DbLoader, SavingAccountNativeCharacterWithUnreadableAccountRecordDoesNotRev
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableEntry player_table_entry("aragorn");
-    ensure_test_world_room(3001);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3001;
 
     ASSERT_TRUE(std::filesystem::create_directory("accounts"));
     ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
@@ -1640,7 +1641,8 @@ TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacte
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ASSERT_TRUE(std::filesystem::create_directory("plrobjs"));
     ASSERT_TRUE(std::filesystem::create_directory("plrobjs/A-E"));
-    ensure_test_world_room(3001);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3001;
 
     char_data staged_character {};
     clear_char(&staged_character, MOB_VOID);

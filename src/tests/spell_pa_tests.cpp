@@ -2,6 +2,7 @@
 #include "../spells.h"
 #include "../structs.h"
 #include "../utils.h"
+#include "test_world.h"
 
 #include <gtest/gtest.h>
 
@@ -24,16 +25,6 @@ descriptor_data make_descriptor()
     descriptor.bufptr = 0;
     descriptor.bufspace = SMALL_BUFSIZE - 1;
     return descriptor;
-}
-
-void ensure_test_world_room(int room_number)
-{
-    if (room_data::BASE_WORLD == nullptr)
-        world.create_bulk(1);
-
-    top_of_world = 0;
-    world[0].number = room_number;
-    world[0].people = nullptr;
 }
 
 void attach_character_to_room(char_data* character, int room_rnum, char_data* next_in_room)
@@ -65,7 +56,8 @@ TEST(SpellParser, SaySpellUsesMagicColorForColorEnabledObservers)
                     "overlapping snprintf garbles color-enabled output (live bug, "
                     "production frozen in phase 0)";
 
-    ensure_test_world_room(3001);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3001;
 
     char_data caster {};
     char_data observer {};
@@ -96,7 +88,8 @@ TEST(SpellParser, SaySpellUsesMagicColorForColorEnabledObservers)
 
 TEST(SpellParser, MagicRoomMessageOmitsColorCodesForObserversWithoutColorEnabled)
 {
-    ensure_test_world_room(3002);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3002;
 
     char_data caster {};
     char_data observer {};

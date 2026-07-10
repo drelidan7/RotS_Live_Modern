@@ -9,6 +9,7 @@
 #include "../structs.h"
 #include "../utils.h"
 #include "test_platform_compat.h"
+#include "test_world.h"
 
 #include <gtest/gtest.h>
 
@@ -381,17 +382,6 @@ size_t count_affects(const char_data* character)
     }
 
     return count;
-}
-
-void ensure_test_world_room(int room_number)
-{
-    if (room_data::BASE_WORLD == nullptr)
-        world.create_bulk(1);
-
-    top_of_world = 0;
-    world[0].number = room_number;
-    world[0].name = strdup("The Testing Meadow");
-    world[0].description = strdup("A quiet room used for account-menu tests.\n\r");
 }
 
 void initialize_descriptor(descriptor_data* descriptor)
@@ -1043,7 +1033,8 @@ TEST(InterpreAccountMenu, UnlockSelectAllowsOneDifferentLinkedCharacterSelection
     ScopedPlayerTableReset player_table_reset;
     ASSERT_TRUE(std::filesystem::create_directory("accounts"));
     ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
-    ensure_test_world_room(3001);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3001;
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -1527,7 +1518,8 @@ TEST(InterpreAccountMenu, SelectingSameLinklessActiveCharacterReconnectsExisting
     ScopedPlayerTableReset player_table_reset;
     ASSERT_TRUE(std::filesystem::create_directory("accounts"));
     ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
-    ensure_test_world_room(1200);
+    ScopedTestWorld test_world;
+    test_world.room().number = 1200;
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1580,7 +1572,8 @@ TEST(InterpreAccountMenu, SelectingSameActivePlayingCharacterUsurpsExistingDescr
     ScopedPlayerTableReset player_table_reset;
     ASSERT_TRUE(std::filesystem::create_directory("accounts"));
     ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
-    ensure_test_world_room(1200);
+    ScopedTestWorld test_world;
+    test_world.room().number = 1200;
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1695,7 +1688,8 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenAnyA
     ScopedPlayerTableReset player_table_reset;
     ASSERT_TRUE(std::filesystem::create_directory("accounts"));
     ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
-    ensure_test_world_room(3001);
+    ScopedTestWorld test_world;
+    test_world.room().number = 3001;
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -4105,7 +4099,8 @@ TEST(InterpreAccountMenu, AccountBackedNewCharactersAreBornWithStartRoomAndNaked
 {
     ScopedPlayerTableReset player_table_reset;
     ScopedStartRoomOverride start_room_override(RACE_HUMAN, 0);
-    ensure_test_world_room(1200);
+    ScopedTestWorld test_world;
+    test_world.room().number = 1200;
 
     char_data* character = new char_data {};
     clear_char(character, MOB_VOID);
@@ -4143,7 +4138,8 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
 
     ASSERT_TRUE(std::filesystem::create_directory("accounts"));
     ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
-    ensure_test_world_room(1200);
+    ScopedTestWorld test_world;
+    test_world.room().number = 1200;
     create_entry(const_cast<char*>("existingplayer"));
     create_entry(const_cast<char*>("secondplayer"));
     static char test_motd[] = "Test MOTD\r\n";
@@ -4276,7 +4272,8 @@ TEST(InterpreAccountMenu, IntroduceCharRejectsTooLongAccountNativeIndexPathWitho
 
     ASSERT_TRUE(std::filesystem::create_directory("accounts"));
     ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
-    ensure_test_world_room(1200);
+    ScopedTestWorld test_world;
+    test_world.room().number = 1200;
     create_entry(const_cast<char*>("existingplayer"));
     create_entry(const_cast<char*>("secondplayer"));
     static char test_motd[] = "Test MOTD\r\n";
@@ -4420,7 +4417,8 @@ TEST(InterpreAccountMenu, IntroduceCharRollbackDoesNotLeaveLegacyOrAccountNative
     ASSERT_TRUE(std::filesystem::create_directory("plrobjs/A-E"));
     ASSERT_TRUE(std::filesystem::create_directory("exploits"));
     ASSERT_TRUE(std::filesystem::create_directory("exploits/A-E"));
-    ensure_test_world_room(1200);
+    ScopedTestWorld test_world;
+    test_world.room().number = 1200;
     create_entry(const_cast<char*>("existingplayer"));
     create_entry(const_cast<char*>("secondplayer"));
     static char test_motd[] = "Test MOTD\r\n";
@@ -4483,7 +4481,8 @@ TEST(InterpreAccountMenu, IntroduceCharRejectsNameLinkedToAnotherAccountBeforeWr
 
     ASSERT_TRUE(std::filesystem::create_directory("accounts"));
     ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
-    ensure_test_world_room(1200);
+    ScopedTestWorld test_world;
+    test_world.room().number = 1200;
     create_entry(const_cast<char*>("existingplayer"));
     create_entry(const_cast<char*>("secondplayer"));
     const int top_of_p_table_before_birth = top_of_p_table;

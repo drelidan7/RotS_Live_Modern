@@ -6,6 +6,7 @@
 
 #include "../spells.h"
 #include "../utils.h"
+#include "test_world.h"
 
 extern room_data world;
 extern int top_of_world;
@@ -17,11 +18,16 @@ void dummy_room_data(room_data* room);
 
 namespace {
 
+// DamageTestContext needs room `minimum_room_number` (always room_number == 1
+// below) to be a genuinely usable, non-garbage room — not just room 0, which
+// is all ScopedTestWorld's own contract covers. This only extends *that*
+// coverage; room_data::BASE_WORLD itself is guaranteed already allocated by
+// the time this runs, because DamageTestContext constructs a ScopedTestWorld
+// member (test_world, below) before any constructor-body statement executes.
 void ensure_test_world(int minimum_room_number)
 {
-    if (!room_data::BASE_WORLD) {
-        world.create_bulk(minimum_room_number + 2);
-        top_of_world = minimum_room_number + 1;
+    if (top_of_world < minimum_room_number) {
+        top_of_world = minimum_room_number;
 
         // create_bulk() only dummy_room_data()-initializes the trailing
         // EXTENSION_SIZE rooms; the "real" rooms [0, amount-1) get just
@@ -40,22 +46,30 @@ void ensure_test_world(int minimum_room_number)
         // for the corpse, and (c) act(..., TO_ROOM) walking world[0].people
         // from interpre's reconnect path, whose fixture assumes room 0 of
         // a previously-allocated world is usable as-is. Zero every real
-        // room once at allocation. Skip index amount-1: create_bulk()
-        // already dummy'd it and stamped it EXTENSION_ROOM_HEAD, which a
-        // re-run of dummy_room_data() would clobber.
+        // room every time top_of_world needs to grow to cover it (in
+        // practice this is always redundant against ScopedTestWorld's own
+        // single-room create_bulk(1), whose trailing-extension loop already
+        // dummy_room_data()-initializes every index up to EXTENSION_SIZE - 1
+        // as a side effect of amount == 1 — see test_world.h — but this loop
+        // stays independent of that allocation-size coincidence).
         for (int room = 0; room < minimum_room_number + 1; ++room) {
             dummy_room_data(&world[room]);
             world[room].funct = nullptr;
             world[room].bfs_dir = 0;
             world[room].bfs_next = nullptr;
         }
-    } else if (top_of_world < minimum_room_number) {
-        top_of_world = minimum_room_number;
     }
 }
 
 struct DamageTestContext {
     static constexpr int room_number = 1;
+
+    // Owns/normalizes the shared process-wide test world (room 0) with the
+    // same RAII discipline the other test-world clones now use (test_world.h);
+    // constructed first (so BASE_WORLD exists before anything below runs) and
+    // destructed last (after this class's own destructor body below has
+    // released room `room_number`'s occupancy).
+    ScopedTestWorld test_world;
 
     char_data attacker{};
     char_data victim{};

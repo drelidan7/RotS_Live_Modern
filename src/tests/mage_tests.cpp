@@ -28,6 +28,14 @@ int loclife_add_rooms(loclife_coord room, loclife_coord *roomlist, int *roomnum,
 
 extern room_data world;
 extern int top_of_world;
+extern char_data* combat_list;
+extern char_data* combat_next_dude;
+
+// Production room initializer from db.cpp: zeroes people/contents/
+// ex_description/dir_option and resets number/zone/sector_type/room_flags/
+// light. Not exposed in any header, so declared here for test bootstrap use
+// (mirrors damage_test_context.h's identical declaration/use).
+void dummy_room_data(room_data* room);
 
 namespace {
 
@@ -35,6 +43,28 @@ void ensure_test_world(int minimum_room_number) {
     if (!room_data::BASE_WORLD) {
         world.create_bulk(minimum_room_number + 2);
         top_of_world = minimum_room_number + 1;
+
+        // create_bulk() only dummy_room_data()-initializes the trailing
+        // EXTENSION_SIZE rooms; the "real" rooms [0, amount-1) get just
+        // room_data's constructor, which leaves people/contents/
+        // dir_option[]/funct/bfs_*/sector_type/room_flags/light as
+        // whatever heap garbage `new room_data[...]` landed on (see
+        // test_world.h / damage_test_context.h for the long-form
+        // explanation). Previously masked here because nothing in this
+        // process ever freed room_data::BASE_WORLD once any suite first
+        // allocated it, so this branch's un-dummied rooms were never
+        // actually reachable in practice -- ScopedTestWorld (test_world.h)
+        // now properly tears its own allocation down between tests, which
+        // makes this branch reachable for real and exposed stale/garbage
+        // .light/.room_flags/.sector_type readable by later tests (e.g.
+        // CAN_SEE()'s darkness check) once this suite is the one that
+        // happens to (re)allocate the shared world first.
+        for (int room = 0; room < minimum_room_number + 1; ++room) {
+            dummy_room_data(&world[room]);
+            world[room].funct = nullptr;
+            world[room].bfs_dir = 0;
+            world[room].bfs_next = nullptr;
+        }
     } else if (top_of_world < minimum_room_number) {
         top_of_world = minimum_room_number;
     }
@@ -164,7 +194,29 @@ class MageProcTest : public ::testing::Test {
   protected:
     void SetUp() override { ensure_test_world(32); }
 
-    void TearDown() override { clear_test_random_values(); }
+    // prepare_for_spell_damage()/force_spell_save() (above) null out
+    // caster/victim's .specials.fighting before exercising the real spell
+    // functions below (MagicMissile/ChillRay/LightningBolt/DarkBolt/Firebolt/
+    // ConeOfCold), which route through fight.cpp's damage() -- and since
+    // .specials.fighting starts null (unlike DamageTestContext, which
+    // presets it), damage()'s own `if (!ch->specials.fighting)
+    // set_fighting(...)` guard fires for real, pushing this test's
+    // stack-resident caster/victim onto the process-global combat_list.
+    // Without resetting it here, that dangling stack pointer survives past
+    // this test (and this whole suite) into whatever runs next in the same
+    // process -- a second cross-suite-pollution source discovered while
+    // fixing the room_data::BASE_WORLD/world[0] one this task targets (see
+    // test_world.h), landing in fight.cpp's stop_fighting() walking
+    // combat_list from an unrelated later test. Mirrors the existing
+    // combat_list/combat_next_dude reset in damage_tests.cpp's
+    // DamageMethodTest and characterization_combat_tests.cpp's
+    // CharacterizationCombatTest.
+    void TearDown() override
+    {
+        clear_test_random_values();
+        combat_list = nullptr;
+        combat_next_dude = nullptr;
+    }
 };
 
 TEST_F(MageProcTest, MageCasterLevelUsesCurrentIntelRoundingPath) {

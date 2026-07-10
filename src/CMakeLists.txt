@@ -60,7 +60,7 @@ set(ROTS_SERVER_SOURCES
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     mystic.cpp obj2html.cpp object_utils.cpp objects_json.cpp objsave.cpp
     olog_hai.cpp pkill.cpp player_file_finalize.cpp profs.cpp protocol.cpp
-    ranger.cpp rots_crypt.cpp rots_net.cpp rots_rng.cpp save_benchmark.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
+    ranger.cpp rots_crypt.cpp rots_net.cpp rots_rng.cpp safe_template.cpp save_benchmark.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
@@ -205,6 +205,7 @@ if(ROTS_BUILD_TESTS)
         tests/rots_crypt_tests.cpp
         tests/rots_net_tests.cpp
         tests/rots_rng_tests.cpp
+        tests/safe_template_tests.cpp
         tests/save_benchmark_tests.cpp
         tests/shapemob_tests.cpp
         tests/spell_pa_tests.cpp

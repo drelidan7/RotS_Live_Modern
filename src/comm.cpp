@@ -2306,8 +2306,12 @@ void convert_string(const char* str, int hide_invisible, struct char_data* ch, s
     *(++point) = '\r';
     *(++point) = '\0';
 
-    if (used_color)
-        sprintf(point, CC_NORM(to));
+    if (used_color) {
+        // CC_NORM expands to a runtime-selected color-escape string, not a format
+        // string -- pass it through "%s" (non-literal-format-string hygiene; the ANSI
+        // sequences contain no '%' today, but don't treat data as a format).
+        sprintf(point, "%s", CC_NORM(to));
+    }
 
     /* Find the first character in the string, ignoring ANSI colors */
     for (strp = (char*)buf; *strp == '\x1B'; ++strp)

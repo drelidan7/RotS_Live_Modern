@@ -594,7 +594,9 @@ void Crash_listrent(struct char_data* ch, char* name)
             /* If we would overflow the buffer, don't add anymore */
 
             if (bufpt >= max_space - strlen(obj->short_description) - 1) {
-                snprintf(buf + bufpt, overflow_len, overflow_str);
+                // overflow_str is fixed data, not a format string -- "%s" form for
+                // non-literal-format-string hygiene (it contains no '%' today).
+                snprintf(buf + bufpt, overflow_len, "%s", overflow_str);
                 send_to_char(buf, ch);
                 extract_obj(obj);
                 return;

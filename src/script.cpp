@@ -876,7 +876,11 @@ int run_script(struct info_script* info, struct script_data* position)
             if (curr->param[0] && curr->text) {
                 wtxt = get_text_param_writable(curr->param[0], info);
                 CREATE(*wtxt, char, strlen(curr->text) + 1);
-                sprintf(*wtxt, curr->text);
+                // Plain copy, not template expansion (no conversion args here, unlike
+                // the SCRIPT_DO_SAY-family sites below): pass through "%s" so a '%' in
+                // the script text can't be treated as a conversion specifier and write
+                // past the strlen(curr->text)+1 allocation above.
+                sprintf(*wtxt, "%s", curr->text);
             }
             curr = curr->next;
             break;

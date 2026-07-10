@@ -3641,7 +3641,10 @@ ACMD(do_fame)
         bufpt = 0;
         for (i = 0; i < n; ++i) {
             string = pkill_get_string(&pkills[i], PKILL_STRING_KILLED);
-            bufpt += sprintf(buf + bufpt, string);
+            // string interpolates character names -- pass it through "%s" rather than
+            // as the format string itself (a non-literal-format-string bug: any '%'
+            // bytes in a name would previously be interpreted as conversion specifiers).
+            bufpt += sprintf(buf + bufpt, "%s", string);
             free(string);
         }
 
@@ -3681,7 +3684,8 @@ ACMD(do_fame)
     for (i = 0; i < n; ++i) {
         if (pkills[i].killer == idx) {
             string = pkill_get_string(&pkills[i], PKILL_STRING_KILLED);
-            bufpt += sprintf(buf + bufpt, string);
+            // Same non-literal-format-string fix as the "fame all" loop above.
+            bufpt += sprintf(buf + bufpt, "%s", string);
             free(string);
             ++records;
         }
@@ -3691,7 +3695,8 @@ ACMD(do_fame)
     for (i = 0; i < n; ++i) {
         if (pkills[i].victim == idx) {
             string = pkill_get_string(&pkills[i], PKILL_STRING_SLAIN);
-            bufpt += sprintf(buf + bufpt, string);
+            // Same non-literal-format-string fix as the "fame all" loop above.
+            bufpt += sprintf(buf + bufpt, "%s", string);
             free(string);
             ++records;
         }
@@ -4541,7 +4546,10 @@ void do_flag_values_display(struct char_data* ch, struct obj_data* j)
 void do_weapon_display(struct char_data* ch, struct obj_data* j)
 {
 
-    sprintf(buf1, weapon_types[j->obj_flags.value[3]]);
+    // weapon_types[] entries are plain names, not format strings -- same
+    // non-literal-format-string anti-pattern as the pkill sites above (inert
+    // today since no entry contains '%', but route through "%s" regardless).
+    sprintf(buf1, "%s", weapon_types[j->obj_flags.value[3]]);
     sprintf(buf,
         "The weapon you hold is a %s weapon.\r\n"
         "\n\rDamage Rating \t   %d/10.\r\n",

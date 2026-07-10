@@ -1,4 +1,6 @@
+#include "../db.h"
 #include "../protos.h"
+#include "../script.h"
 #include "../structs.h"
 #include "../utils.h"
 #include "../zone.h"
@@ -525,4 +527,54 @@ TEST(ShapeMob, ListProtoRoleplayFlagLinePreservesNonStandardLineEnding)
     EXPECT_NE(output.find("(34) death cry_2    :The golem crumbles to dust!\n\r"), std::string::npos);
     // "\n\4" (EOT), not "\n\r" -- the preserved typo.
     EXPECT_NE(output.find("(39) roleplay flag  :7\n\4"), std::string::npos);
+}
+
+// shapescript.cpp's show_command(char_data*, script_data*) (the script-
+// command disassembler used by /list and /show) -- writes into the global
+// `buf` then sends it in one shared call after the switch. Exercises: a
+// plain single-%s/%d TRIG case, the 4-argument SCRIPT_ASSIGN_EQ case (the
+// widest arg count in the switch), the multi-line-string-literal
+// SCRIPT_DO_SAY case, and SCRIPT_SET_INT_WAR_STATUS's "\r\n" (reversed from
+// this file's usual "\n\r") tail -- a genuine pre-existing quirk, preserved
+// verbatim rather than "fixed".
+extern void show_command(struct char_data* ch, struct script_data* script);
+
+TEST(ShapeScript, ShowCommandFormatsTrigAssignEqSayAndReversedLineEnding)
+{
+    char_data editor {};
+    clear_char(&editor, MOB_VOID);
+    descriptor_data descriptor = make_capturing_descriptor(&editor);
+    editor.desc = &descriptor;
+
+    script_data script {};
+    script.number = 3;
+    script.text = const_cast<char*>("a comment");
+
+    script.command_type = ON_DAMAGE;
+    show_command(&editor, &script);
+    EXPECT_EQ(std::string(descriptor.output), "[3] TRIG ON_DAMAGE       (a comment)\n\r");
+
+    descriptor = make_capturing_descriptor(&editor);
+    script.command_type = SCRIPT_ASSIGN_EQ;
+    script.param[0] = SCRIPT_PARAM_CH1;
+    script.param[1] = SCRIPT_PARAM_OB1;
+    script.param[2] = -1;
+    script.param[3] = SCRIPT_PARAM_INT1;
+    show_command(&editor, &script);
+    EXPECT_EQ(std::string(descriptor.output),
+        "[3] SYS ASSIGN_EQ        character: ch1, object: ob1, position: -1, int true/false: int1\n\r");
+
+    descriptor = make_capturing_descriptor(&editor);
+    script.command_type = SCRIPT_DO_SAY;
+    script.param[0] = SCRIPT_PARAM_CH1;
+    script.param[1] = SCRIPT_PARAM_STR1;
+    show_command(&editor, &script);
+    EXPECT_EQ(std::string(descriptor.output), "[3] ACT DO_SAY           a comment (ch1)(str1)\n\r");
+
+    descriptor = make_capturing_descriptor(&editor);
+    script.command_type = SCRIPT_SET_INT_WAR_STATUS;
+    script.param[0] = SCRIPT_PARAM_INT1;
+    show_command(&editor, &script);
+    // "\r\n", not "\n\r" -- preserved verbatim.
+    EXPECT_EQ(std::string(descriptor.output), "[3] SYS SET_INT_WAR_STATUS integer: int1 (a comment)\r\n");
 }

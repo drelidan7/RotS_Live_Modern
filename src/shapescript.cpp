@@ -52,6 +52,8 @@
 #include "script.h"
 #include "structs.h"
 #include "utils.h"
+#include <format>
+#include <string>
 
 // External declarations
 extern struct room_data world;
@@ -135,8 +137,12 @@ int load_script(struct char_data* ch, char* arg)
 
     // Just checking the script file exists... (not loading commands from file)
 
-    sprintf(fname, "%d", number / 100);
-    sprintf(str, SHAPE_SCRIPT_DIR, fname);
+    // SHAPE_SCRIPT_DIR/SHAPE_SCRIPT_BACKDIR's %s templates inlined as
+    // literal {} paths (matches the other shape*.cpp files' Task 3
+    // conversion); the shared macros stay %-style for any shape*.cpp file
+    // not yet converted.
+    strcpy(fname, std::format("{}", number / 100).c_str());
+    strcpy(str, std::format("world/scr/{}.scr", static_cast<const char*>(fname)).c_str());
 
     send_to_char(str, ch);
     f = fopen(str, "r+");
@@ -148,13 +154,12 @@ int load_script(struct char_data* ch, char* arg)
 
     strcpy(SHAPE_SCRIPT(ch)->f_from, str);
     SET_BIT(SHAPE_SCRIPT(ch)->flags, SHAPE_FILENAME);
-    sprintf(SHAPE_SCRIPT(ch)->f_old, SHAPE_SCRIPT_BACKDIR, fname);
+    strcpy(SHAPE_SCRIPT(ch)->f_old, std::format("world/scr/oldscrs/{}.scr", static_cast<const char*>(fname)).c_str());
 
     // Now to find the index of the script - if we can't then we create an empty script
 
     if ((index = find_script_by_number(number)) == -1) {
-        sprintf(str, " could not find script #%d, created it.\n\r", number);
-        send_to_char(str, ch);
+        send_to_char(std::format(" could not find script #{}, created it.\n\r", number).c_str(), ch);
         SHAPE_SCRIPT(ch)
             ->name
             = 0;
@@ -319,8 +324,8 @@ int append_script(struct char_data* ch, char* arg)
             return -1;
         }
     } else {
-        sprintf(SHAPE_SCRIPT(ch)->f_from, SHAPE_SCRIPT_DIR, fname);
-        sprintf(SHAPE_SCRIPT(ch)->f_old, SHAPE_SCRIPT_BACKDIR, fname);
+        strcpy(SHAPE_SCRIPT(ch)->f_from, std::format("world/scr/{}.scr", static_cast<const char*>(fname)).c_str());
+        strcpy(SHAPE_SCRIPT(ch)->f_old, std::format("world/scr/oldscrs/{}.scr", static_cast<const char*>(fname)).c_str());
         SET_BIT(SHAPE_SCRIPT(ch)->flags, SHAPE_FILENAME);
     }
     if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_SCRIPT_LOADED)) {
@@ -384,8 +389,7 @@ int append_script(struct char_data* ch, char* arg)
     }
     fseek(f2, -1, SEEK_CUR);
     write_script(f2, ch);
-    sprintf(str, "Script added to database as #%d.\n\r", i1 + 1);
-    send_to_char(str, ch);
+    send_to_char(std::format("Script added to database as #{}.\n\r", i1 + 1).c_str(), ch);
     SHAPE_SCRIPT(ch)
         ->number
         = i1 + 1;
@@ -478,8 +482,7 @@ int replace_script(struct char_data* ch, char* arg)
             oldnum = i;
     } while ((i < num) && (check != EOF));
     if (check == EOF) {
-        sprintf(str, "no script #%d in this file\n\r", num);
-        send_to_char(str, ch);
+        send_to_char(std::format("no script #{} in this file\n\r", num).c_str(), ch);
         fclose(f1);
         fclose(f2);
         return -1;
@@ -569,370 +572,370 @@ void show_command(char_data* ch, script_data* script)
     switch (script->command_type) {
 
     case ON_BEFORE_ENTER:
-        sprintf(buf, "[%d] TRIG ON_BEFORE_ENTER (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] TRIG ON_BEFORE_ENTER ({})\n\r", script->number, script->text).c_str());
         break;
 
     case ON_DAMAGE:
-        sprintf(buf, "[%d] TRIG ON_DAMAGE       (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] TRIG ON_DAMAGE       ({})\n\r", script->number, script->text).c_str());
         break;
 
     case ON_DIE:
-        sprintf(buf, "[%d] TRIG ON_DIE          (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] TRIG ON_DIE          ({})\n\r", script->number, script->text).c_str());
         break;
 
     case ON_EAT:
-        sprintf(buf, "[%d] TRIG ON_EAT          (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] TRIG ON_EAT          ({})\n\r", script->number, script->text).c_str());
         break;
 
     case ON_ENTER:
-        sprintf(buf, "[%d] TRIG ON_ENTER        (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] TRIG ON_ENTER        ({})\n\r", script->number, script->text).c_str());
         break;
 
     case ON_EXAMINE_OBJECT:
-        sprintf(buf, "[%d] TRIG ON_EXAMINE_OBJECT (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] TRIG ON_EXAMINE_OBJECT ({})\n\r", script->number, script->text).c_str());
         break;
 
     case ON_DRINK:
-        sprintf(buf, "[%d] TRIG ON_DRINK        (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] TRIG ON_DRINK        ({})\n\r", script->number, script->text).c_str());
         break;
 
     case ON_HEAR_SAY:
-        sprintf(buf, "[%d] TRIG ON_HEAR_SAY     (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] TRIG ON_HEAR_SAY     ({})\n\r", script->number, script->text).c_str());
         break;
 
     case ON_HEAR_YELL:
-        sprintf(buf, "[%d] TRIG ON_HEAR_YELL    (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] TRIG ON_HEAR_YELL    ({})\n\r", script->number, script->text).c_str());
         break;
 
     case ON_PULL:
-        sprintf(buf, "[%d] TRIG ON_PULL         (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] TRIG ON_PULL         ({})\n\r", script->number, script->text).c_str());
         break;
 
     case ON_RECEIVE:
-        sprintf(buf, "[%d] TRIG ON_RECEIVE      (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] TRIG ON_RECEIVE      ({})\n\r", script->number, script->text).c_str());
         break;
 
     case ON_WEAR:
-        sprintf(buf, "[%d] TRIG ON_WEAR         (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] TRIG ON_WEAR         ({})\n\r", script->number, script->text).c_str());
         break;
 
     case SCRIPT_ABORT:
-        sprintf(buf, "[%d] ABORT EXECUTION      (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] ABORT EXECUTION      ({})\n\r", script->number, script->text).c_str());
         break;
 
     case SCRIPT_ASSIGN_EQ:
-        sprintf(buf, "[%d] SYS ASSIGN_EQ        character: %s, object: %s, position: %d, int true/false: %s\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->param[2], get_param_text(script->param[3]));
+        strcpy(buf, std::format( "[{}] SYS ASSIGN_EQ        character: {}, object: {}, position: {}, int true/false: {}\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->param[2], get_param_text(script->param[3])).c_str());
         break;
 
     case SCRIPT_ASSIGN_INV:
-        sprintf(buf, "[%d] SYS ASSIGN_INV       vnum: %d assign to: %s, inv of: %s, int result: %s\n\r",
-            script->number, script->param[0], get_param_text(script->param[1]), get_param_text(script->param[2]), get_param_text(script->param[3]));
+        strcpy(buf, std::format( "[{}] SYS ASSIGN_INV       vnum: {} assign to: {}, inv of: {}, int result: {}\n\r",
+            script->number, script->param[0], get_param_text(script->param[1]), get_param_text(script->param[2]), get_param_text(script->param[3])).c_str());
         break;
 
     case SCRIPT_ASSIGN_ROOM:
-        sprintf(buf, "[%d] SYS ASSIGN_ROOM      vnum: %d assign to: %s, room: %s, int result: %s\n\r",
-            script->number, script->param[0], get_param_text(script->param[1]), get_param_text(script->param[2]), get_param_text(script->param[3]));
+        strcpy(buf, std::format( "[{}] SYS ASSIGN_ROOM      vnum: {} assign to: {}, room: {}, int result: {}\n\r",
+            script->number, script->param[0], get_param_text(script->param[1]), get_param_text(script->param[2]), get_param_text(script->param[3])).c_str());
         break;
 
     case SCRIPT_ASSIGN_STR:
-        sprintf(buf, "[%d] SYS ASSIGN_STR:      %s  to: %s\n\r",
-            script->number, script->text, get_param_text(script->param[0]));
+        strcpy(buf, std::format( "[{}] SYS ASSIGN_STR:      {}  to: {}\n\r",
+            script->number, script->text, get_param_text(script->param[0])).c_str());
         break;
 
     case SCRIPT_BEGIN:
-        sprintf(buf, "[%d] BEGIN                (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] BEGIN                ({})\n\r", script->number, script->text).c_str());
         break;
 
     case SCRIPT_CHANGE_EXIT_TO:
-        sprintf(buf, "[%d] SYS CHANGE_EXIT_TO   room: %s, direction: %d, room to: %d (%s)\n\r", script->number,
-            get_param_text(script->param[0]), script->param[1], script->param[2], script->text);
+        strcpy(buf, std::format( "[{}] SYS CHANGE_EXIT_TO   room: {}, direction: {}, room to: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->param[1], script->param[2], script->text).c_str());
         break;
 
     case SCRIPT_COMMAND_NONE:
-        sprintf(buf, "[%d] *** No command: script will terminate here ***\n\r", script->number);
+        strcpy(buf, std::format( "[{}] *** No command: script will terminate here ***\n\r", script->number).c_str());
         break;
 
     case SCRIPT_DO_DROP:
-        sprintf(buf, "[%d] ACT DO_DROP          character: %s, object: %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] ACT DO_DROP          character: {}, object: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_DO_EMOTE:
-        sprintf(buf, "[%d] ACT DO_EMOTE         %s %s\n\r", script->number,
-            get_param_text(script->param[0]), script->text);
+        strcpy(buf, std::format( "[{}] ACT DO_EMOTE         {} {}\n\r", script->number,
+            get_param_text(script->param[0]), script->text).c_str());
         break;
 
     case SCRIPT_DO_FLEE:
-        sprintf(buf, "[%d] ACT DO_FLEE          character: %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), script->text);
+        strcpy(buf, std::format( "[{}] ACT DO_FLEE          character: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text).c_str());
         break;
 
     case SCRIPT_DO_FOLLOW:
-        sprintf(buf, "[%d] ACT DO_FOLLOW        character: %s to follow: %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] ACT DO_FOLLOW        character: {} to follow: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_DO_GIVE:
-        sprintf(buf, "[%d] ACT  DO_GIVE         from: %s, to: %s, object: %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), get_param_text(script->param[2]), script->text);
+        strcpy(buf, std::format( "[{}] ACT  DO_GIVE         from: {}, to: {}, object: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), get_param_text(script->param[2]), script->text).c_str());
         break;
 
     case SCRIPT_DO_HIT:
-        sprintf(buf, "[%d] ACT  DO_HIT          (%s, %s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]));
+        strcpy(buf, std::format( "[{}] ACT  DO_HIT          ({}, {})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
         break;
 
     case SCRIPT_DO_REMOVE:
-        sprintf(buf, "[%d] ACT DO_REMOVE        character: %s, position: %d (%s)\n\r", script->number,
-            get_param_text(script->param[0]), script->param[1], script->text);
+        strcpy(buf, std::format( "[{}] ACT DO_REMOVE        character: {}, position: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->param[1], script->text).c_str());
         break;
 
     case SCRIPT_DO_SAY:
-        sprintf(buf, "[%d] ACT DO_SAY           "
-                     "%s"
-                     " (%s)(%s)\n\r",
+        strcpy(buf, std::format( "[{}] ACT DO_SAY           "
+                     "{}"
+                     " ({})({})\n\r",
             script->number, script->text,
-            get_param_text(script->param[0]), get_param_text(script->param[1]));
+            get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
         break;
 
     case SCRIPT_DO_SOCIAL:
-        sprintf(buf, "[%d] ACT DO_SOCIAL        social: %s, character: %s, to char (optional): %s.\n\r",
-            script->number, script->text, get_param_text(script->param[0]), get_param_text(script->param[1]));
+        strcpy(buf, std::format( "[{}] ACT DO_SOCIAL        social: {}, character: {}, to char (optional): {}.\n\r",
+            script->number, script->text, get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
         break;
 
     case SCRIPT_DO_WAIT:
-        sprintf(buf, "[%d] SYS DO_WAIT          wait for:%d (%s)\n\r", script->number,
-            script->param[0], script->text);
+        strcpy(buf, std::format( "[{}] SYS DO_WAIT          wait for:{} ({})\n\r", script->number,
+            script->param[0], script->text).c_str());
         break;
 
     case SCRIPT_DO_WEAR:
-        sprintf(buf, "[%d] ACT DO_WEAR          character: %s, object: %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] ACT DO_WEAR          character: {}, object: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_DO_YELL:
-        sprintf(buf, "[%d] ACT DO_YELL          "
-                     "%s"
-                     " %s (%s)\n\r",
+        strcpy(buf, std::format( "[{}] ACT DO_YELL          "
+                     "{}"
+                     " {} ({})\n\r",
             script->number, script->text,
-            get_param_text(script->param[0]), get_param_text(script->param[1]));
+            get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
         break;
 
     case SCRIPT_END:
-        sprintf(buf, "[%d] END                  (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] END                  ({})\n\r", script->number, script->text).c_str());
         break;
 
     case SCRIPT_END_ELSE_BEGIN:
-        sprintf(buf, "[%d] END_ELSE_BEGIN       (%s)\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] END_ELSE_BEGIN       ({})\n\r", script->number, script->text).c_str());
         break;
 
     case SCRIPT_EQUIP_CHAR:
-        sprintf(buf, "[%d] SYS EQUIP_CHAR       Equip: %s with: %d %d %d %d %d\n\r", script->number,
+        strcpy(buf, std::format( "[{}] SYS EQUIP_CHAR       Equip: {} with: {} {} {} {} {}\n\r", script->number,
             get_param_text(script->param[0]), script->param[1], script->param[2], script->param[3],
-            script->param[4], script->param[5]);
+            script->param[4], script->param[5]).c_str());
         break;
 
     case SCRIPT_EXTRACT_CHAR:
-        sprintf(buf, "[%d] SYS EXTRACT_CHAR     Extract: %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), script->text);
+        strcpy(buf, std::format( "[{}] SYS EXTRACT_CHAR     Extract: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text).c_str());
         break;
 
     case SCRIPT_EXTRACT_OBJ:
-        sprintf(buf, "[%d] SYS EXTRACT_OBJ      Extract: %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), script->text);
+        strcpy(buf, std::format( "[{}] SYS EXTRACT_OBJ      Extract: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text).c_str());
         break;
 
     case SCRIPT_GAIN_EXP:
-        sprintf(buf, "[%d] SYS GAIN_EXP         Give %s, %s experience (%s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] SYS GAIN_EXP         Give {}, {} experience ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_IF_INT_EQUAL:
-        sprintf(buf, "[%d] IF_INT_EQUAL:        compare: %s with %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] IF_INT_EQUAL:        compare: {} with {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_IF_INT_LESS:
-        sprintf(buf, "[%d] IF_INT_LESS:         is %s less than %s? (%s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] IF_INT_LESS:         is {} less than {}? ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_IF_INT_GREATER:
-        sprintf(buf, "[%d] IF_INT_GREATER:      is %s greater than %s? (%s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] IF_INT_GREATER:      is {} greater than {}? ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_IF_INT_TRUE:
-        sprintf(buf, "[%d] IF_INT_TRUE:         is %s true? (%s)\n\r", script->number,
-            get_param_text(script->param[0]), script->text);
+        strcpy(buf, std::format( "[{}] IF_INT_TRUE:         is {} true? ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text).c_str());
         break;
 
     case SCRIPT_IF_INT_FALSE:
-        sprintf(buf, "[%d] IF_INT_FALSE:        is %s false? (%s)\n\r", script->number,
-            get_param_text(script->param[0]), script->text);
+        strcpy(buf, std::format( "[{}] IF_INT_FALSE:        is {} false? ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text).c_str());
         break;
 
     case SCRIPT_IF_IS_NPC:
-        sprintf(buf, "[%d] IF_IS_NPC:           is %s a mobile? (%s)\n\r", script->number,
-            get_param_text(script->param[0]), script->text);
+        strcpy(buf, std::format( "[{}] IF_IS_NPC:           is {} a mobile? ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text).c_str());
         break;
 
     case SCRIPT_IF_ROOM_SUNLIT:
-        sprintf(buf, "[%d] IF_ROOM_SUNLIT:      does %s have sun? (%s)\n\r", script->number,
-            get_param_text(script->param[0]), script->text);
+        strcpy(buf, std::format( "[{}] IF_ROOM_SUNLIT:      does {} have sun? ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text).c_str());
         break;
 
     case SCRIPT_IF_STR_CONTAINS:
-        sprintf(buf, "[%d] IF_STR_CONTAINS:     does %s contain "
-                     "%s"
+        strcpy(buf, std::format( "[{}] IF_STR_CONTAINS:     does {} contain "
+                     "{}"
                      "?\n\r",
             script->number,
-            get_param_text(script->param[0]), script->text);
+            get_param_text(script->param[0]), script->text).c_str());
         break;
 
     case SCRIPT_IF_STR_EQUAL:
-        sprintf(buf, "[%d] IF_STR_EQUAL:        is %s the same as "
-                     "%s"
+        strcpy(buf, std::format( "[{}] IF_STR_EQUAL:        is {} the same as "
+                     "{}"
                      "?\n\r",
             script->number,
-            get_param_text(script->param[0]), script->text);
+            get_param_text(script->param[0]), script->text).c_str());
         break;
 
     case SCRIPT_LOAD_MOB:
-        sprintf(buf, "[%d] SYS LOAD_MOB         vnum: %d, char variable: %s (%s)\n\r", script->number,
-            script->param[0], get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] SYS LOAD_MOB         vnum: {}, char variable: {} ({})\n\r", script->number,
+            script->param[0], get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_LOAD_OBJ:
-        sprintf(buf, "[%d] SYS LOAD_OBJ         vnum: %d, obj variable: %s (%s)\n\r", script->number,
-            script->param[0], get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] SYS LOAD_OBJ         vnum: {}, obj variable: {} ({})\n\r", script->number,
+            script->param[0], get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_LOAD_OBJ_X:
-        sprintf(buf, "[%d] SYS LOAD_OBJ_X       object: %s, obj variable: %s (%s)\n\r", script->number,
-            get_param_text(script->param[1]), get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] SYS LOAD_OBJ_X       object: {}, obj variable: {} ({})\n\r", script->number,
+            get_param_text(script->param[1]), get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_OBJ_FROM_CHAR:
-        sprintf(buf, "[%d] SYS OBJ_FROM_CHAR    object: %s, character: %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] SYS OBJ_FROM_CHAR    object: {}, character: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_OBJ_FROM_ROOM:
-        sprintf(buf, "[%d] SYS OBJ_FROM_ROOM    object: %s, room: %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] SYS OBJ_FROM_ROOM    object: {}, room: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_OBJ_TO_CHAR:
-        sprintf(buf, "[%d] SYS OBJ_TO_CHAR      object: %s, character: %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] SYS OBJ_TO_CHAR      object: {}, character: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_OBJ_TO_ROOM:
-        sprintf(buf, "[%d] SYS OBJ_TO_ROOM      object: %s, room: %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] SYS OBJ_TO_ROOM      object: {}, room: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_PAGE_ZONE_MAP:
-        sprintf(buf, "[%d] MSG PAGE_ZONE_MAP    zone: %d, player: %s (%s)\n\r", script->number,
-            script->param[1], get_param_text(script->param[0]), script->text);
+        strcpy(buf, std::format( "[{}] MSG PAGE_ZONE_MAP    zone: {}, player: {} ({})\n\r", script->number,
+            script->param[1], get_param_text(script->param[0]), script->text).c_str());
         break;
 
     case SCRIPT_RAW_KILL:
-        sprintf(buf, "[%d] SYS RAW_KILL         character/player: %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), script->text);
+        strcpy(buf, std::format( "[{}] SYS RAW_KILL         character/player: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text).c_str());
         break;
 
     case SCRIPT_RETURN_FALSE:
-        sprintf(buf, "[%d] SYS RETURN_FALSE     %s\n\r", script->number, script->text);
+        strcpy(buf, std::format( "[{}] SYS RETURN_FALSE     {}\n\r", script->number, script->text).c_str());
         break;
 
     case SCRIPT_SEND_TO_CHAR:
-        sprintf(buf, "[%d] MSG SEND_TO_CHAR     "
-                     "%s"
-                     " to: %s (%s)\n\r",
+        strcpy(buf, std::format( "[{}] MSG SEND_TO_CHAR     "
+                     "{}"
+                     " to: {} ({})\n\r",
             script->number, script->text,
-            get_param_text(script->param[0]), get_param_text(script->param[1]));
+            get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
         break;
 
     case SCRIPT_SEND_TO_ROOM:
-        sprintf(buf, "[%d] MSG SEND_TO_ROOM     "
-                     "%s"
-                     " (%s)(%s)\n\r",
+        strcpy(buf, std::format( "[{}] MSG SEND_TO_ROOM     "
+                     "{}"
+                     " ({})({})\n\r",
             script->number, script->text,
-            get_param_text(script->param[0]), get_param_text(script->param[1]));
+            get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
         break;
 
     case SCRIPT_SEND_TO_ROOM_X:
-        sprintf(buf, "[%d] MSG SEND_TO_ROOM_X   "
-                     "%s"
-                     " (%s, %s)\n\r",
+        strcpy(buf, std::format( "[{}] MSG SEND_TO_ROOM_X   "
+                     "{}"
+                     " ({}, {})\n\r",
             script->number, script->text,
-            get_param_text(script->param[0]), get_param_text(script->param[1]));
+            get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
         break;
 
     case SCRIPT_SET_EXIT_STATE:
-        sprintf(buf, "[%d] SYS SET_EXIT_STATE   room: %s, direction: %d, state: %d\n\r", script->number,
-            get_param_text(script->param[2]), script->param[0], script->param[1]);
+        strcpy(buf, std::format( "[{}] SYS SET_EXIT_STATE   room: {}, direction: {}, state: {}\n\r", script->number,
+            get_param_text(script->param[2]), script->param[0], script->param[1]).c_str());
         break;
 
     case SCRIPT_SET_INT_DIV:
-        sprintf(buf, "[%d] SYS SET_INT_DIV      %s = %s divided by %s (%s)\n\r", script->number,
+        strcpy(buf, std::format( "[{}] SYS SET_INT_DIV      {} = {} divided by {} ({})\n\r", script->number,
             get_param_text(script->param[0]), get_param_text(script->param[1]),
-            get_param_text(script->param[2]), script->text);
+            get_param_text(script->param[2]), script->text).c_str());
         break;
 
     case SCRIPT_SET_INT_MULT:
-        sprintf(buf, "[%d] SYS SET_INT_MULT     %s = %s multiplied by %s (%s)\n\r", script->number,
+        strcpy(buf, std::format( "[{}] SYS SET_INT_MULT     {} = {} multiplied by {} ({})\n\r", script->number,
             get_param_text(script->param[0]), get_param_text(script->param[1]),
-            get_param_text(script->param[2]), script->text);
+            get_param_text(script->param[2]), script->text).c_str());
         break;
 
     case SCRIPT_SET_INT_RANDOM:
-        sprintf(buf, "[%d] SYS SET_INT_RANDOM   %s = random number between %s and %s (%s)\n\r", script->number,
+        strcpy(buf, std::format( "[{}] SYS SET_INT_RANDOM   {} = random number between {} and {} ({})\n\r", script->number,
             get_param_text(script->param[0]), get_param_text(script->param[1]),
-            get_param_text(script->param[2]), script->text);
+            get_param_text(script->param[2]), script->text).c_str());
         break;
 
     case SCRIPT_SET_INT_SUB:
-        sprintf(buf, "[%d] SYS SET_INT_SUB      %s = %s minus %s (%s)\n\r", script->number,
+        strcpy(buf, std::format( "[{}] SYS SET_INT_SUB      {} = {} minus {} ({})\n\r", script->number,
             get_param_text(script->param[0]), get_param_text(script->param[1]),
-            get_param_text(script->param[2]), script->text);
+            get_param_text(script->param[2]), script->text).c_str());
         break;
 
     case SCRIPT_SET_INT_SUM:
-        sprintf(buf, "[%d] SYS SET_INT_SUM      %s = %s plus %s (%s)\n\r", script->number,
+        strcpy(buf, std::format( "[{}] SYS SET_INT_SUM      {} = {} plus {} ({})\n\r", script->number,
             get_param_text(script->param[0]), get_param_text(script->param[1]),
-            get_param_text(script->param[2]), script->text);
+            get_param_text(script->param[2]), script->text).c_str());
         break;
 
     case SCRIPT_SET_INT_WAR_STATUS:
-        sprintf(buf, "[%d] SYS SET_INT_WAR_STATUS integer: %s (%s)\r\n",
-            script->number, get_param_text(script->param[0]), script->text);
+        strcpy(buf, std::format( "[{}] SYS SET_INT_WAR_STATUS integer: {} ({})\r\n",
+            script->number, get_param_text(script->param[0]), script->text).c_str());
         break;
     case SCRIPT_SET_INT_VALUE:
-        sprintf(buf, "[%d] SYS SET_INT_VALUE    integer: %s, value: %d (%s)\n\r", script->number,
-            get_param_text(script->param[1]), script->param[0], script->text);
+        strcpy(buf, std::format( "[{}] SYS SET_INT_VALUE    integer: {}, value: {} ({})\n\r", script->number,
+            get_param_text(script->param[1]), script->param[0], script->text).c_str());
         break;
 
     case SCRIPT_TELEPORT_CHAR:
-        sprintf(buf, "[%d] SYS TELEPORT_CHAR    to room: %d, character: %s (%s)\n\r", script->number,
-            script->param[0], get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] SYS TELEPORT_CHAR    to room: {}, character: {} ({})\n\r", script->number,
+            script->param[0], get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_TELEPORT_CHAR_X:
-        sprintf(buf, "[%d] SYS TELEPORT_CHAR_X  to room: %d, character: %s (%s)\n\r", script->number,
-            script->param[0], get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] SYS TELEPORT_CHAR_X  to room: {}, character: {} ({})\n\r", script->number,
+            script->param[0], get_param_text(script->param[1]), script->text).c_str());
         break;
 
     case SCRIPT_TELEPORT_CHAR_XL:
-        sprintf(buf, "[%d] SYS TELEPORT_CHAR_XL room of: %s, character: %s (%s)\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
+        strcpy(buf, std::format( "[{}] SYS TELEPORT_CHAR_XL room of: {}, character: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
         break;
 
     default:
-        sprintf(buf, "[%d] ERROR: unknown command type\n\r", script->number);
+        strcpy(buf, std::format( "[{}] ERROR: unknown command type\n\r", script->number).c_str());
     } // switch
     send_to_char(buf, ch);
 }
@@ -1100,8 +1103,8 @@ void extra_coms_script(struct char_data* ch, char* argument)
         SHAPE_SCRIPT(ch)
             ->permission
             = get_permission(zonnum, ch);
-        sprintf(SHAPE_SCRIPT(ch)->f_from, SHAPE_SCRIPT_DIR, str2);
-        sprintf(SHAPE_SCRIPT(ch)->f_old, SHAPE_SCRIPT_BACKDIR, str2);
+        strcpy(SHAPE_SCRIPT(ch)->f_from, std::format("world/scr/{}.scr", static_cast<const char*>(str2)).c_str());
+        strcpy(SHAPE_SCRIPT(ch)->f_old, std::format("world/scr/oldscrs/{}.scr", static_cast<const char*>(str2)).c_str());
         SET_BIT(SHAPE_SCRIPT(ch)->flags, SHAPE_FILENAME);
         new_script(ch);
         SET_BIT(SHAPE_SCRIPT(ch)->flags, SHAPE_SCRIPT_LOADED);
@@ -1178,8 +1181,7 @@ void extra_coms_script(struct char_data* ch, char* argument)
 #define SCRIPTDESCRCHANGE(line, addr)                                 \
     do {                                                              \
         if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_SIMPLE_ACTIVE)) {  \
-            sprintf(tmpstr, "You are about to change %s:\n\r", line); \
-            send_to_char(tmpstr, ch);                                 \
+            send_to_char(std::format("You are about to change {}:\n\r", line).c_str(), ch); \
             SHAPE_SCRIPT(ch)                                          \
                 ->position                                            \
                 = shape_standup(ch, POSITION_SHAPING);                \
@@ -1212,8 +1214,7 @@ void extra_coms_script(struct char_data* ch, char* argument)
 #define SCRIPTLINECHANGE(line, addr)                                                        \
     do {                                                                                    \
         if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_DIGIT_ACTIVE)) {                         \
-            sprintf(tmpstr, "Enter line %s:\n\r[%s]\n\r", line, (addr) ? (char*)addr : ""); \
-            send_to_char(tmpstr, ch);                                                       \
+            send_to_char(std::format("Enter line {}:\n\r[{}]\n\r", line, (addr) ? (char*)addr : "").c_str(), ch); \
             SHAPE_SCRIPT(ch)                                                                \
                 ->position                                                                  \
                 = shape_standup(ch, POSITION_SHAPING);                                      \
@@ -1259,8 +1260,7 @@ void extra_coms_script(struct char_data* ch, char* argument)
 #define SCRIPTREALDIGCHANGE(line, addr)                                  \
     do {                                                                 \
         if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_DIGIT_ACTIVE)) {      \
-            sprintf(tmpstr, "Enter %s [%d]:\n\r", line, addr);           \
-            send_to_char(tmpstr, ch);                                    \
+            send_to_char(std::format("Enter {} [{}]:\n\r", line, addr).c_str(), ch); \
             SHAPE_SCRIPT(ch)                                             \
                 ->position                                               \
                 = shape_standup(ch, POSITION_SHAPING);                   \
@@ -1369,7 +1369,6 @@ void shape_center_script(struct char_data* ch, char* arg)
 {
     char str[MAX_STRING_LENGTH * 2];
     struct script_data* script;
-    char tmpstr[1000];
     int tmp, itmp[8], tmp1, tmp2, i;
     char st1[50];
     char* ptr;
@@ -1427,16 +1426,16 @@ void shape_center_script(struct char_data* ch, char* arg)
         case 1: // case 1: show current command
             if (SHAPE_SCRIPT(ch)->script) {
                 if (SHAPE_SCRIPT(ch)->script->prev) {
-                    sprintf(str, "Prev: ");
+                    strcpy(str, "Prev: ");
                     show_command(ch, SHAPE_SCRIPT(ch)->script->prev);
                 } else
                     send_to_char("No previous command.\n\r", ch);
 
-                sprintf(str, "Curr: ");
+                strcpy(str, "Curr: ");
                 show_command(ch, SHAPE_SCRIPT(ch)->script);
 
                 if (SHAPE_SCRIPT(ch)->script->next) {
-                    sprintf(str, "Next: ");
+                    strcpy(str, "Next: ");
                     show_command(ch, SHAPE_SCRIPT(ch)->script->next);
                 } else
                     send_to_char("No next command.\n\r", ch);
@@ -1455,7 +1454,7 @@ void shape_center_script(struct char_data* ch, char* arg)
 
         case 3: // case 3: Set Command
             if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_DIGIT_ACTIVE)) {
-                sprintf(str, "ENTER COMMAND TYPE <>:\n\r");
+                strcpy(str, "ENTER COMMAND TYPE <>:\n\r");
                 send_to_char(str, ch);
                 SET_BIT(SHAPE_SCRIPT(ch)->flags, SHAPE_DIGIT_ACTIVE);
                 ch->specials.prompt_number = 2;
@@ -2254,9 +2253,10 @@ void shape_center_script(struct char_data* ch, char* arg)
             break;
 
         case 51: // case 51: print name and description
-            sprintf(str, "Script #%d: %s\n\r",
-                SHAPE_SCRIPT(ch)->number, SHAPE_SCRIPT(ch)->name);
-            send_to_char(str, ch);
+            send_to_char(std::format("Script #{}: {}\n\r",
+                SHAPE_SCRIPT(ch)->number, SHAPE_SCRIPT(ch)->name)
+                             .c_str(),
+                ch);
             send_to_char(SHAPE_SCRIPT(ch)->description, ch);
             SHAPE_SCRIPT(ch)
                 ->editflag

@@ -9,6 +9,7 @@
  ************************************************************************ */
 
 #include "platdef.h"
+#include <format>
 #include <stdio.h>
 #include <string.h>
 
@@ -296,7 +297,7 @@ ACMD(do_order)
                 return;
             }
 
-            sprintf(buf, "$N orders you to '%s'", message);
+            strcpy(buf, std::format("$N orders you to '{}'", static_cast<const char*>(message)).c_str());
             act(buf, FALSE, victim, 0, ch, TO_CHAR);
 
             if (GET_SPEC(ch) != PLRSPEC_PETS)
@@ -602,15 +603,15 @@ ACMD(do_bash)
 
         tmp = GET_RACE(ch);
         if ((tmp == RACE_WOOD) || (tmp == RACE_HIGH) || (tmp == RACE_HOBBIT)) {
-            sprintf(buf, "You throw your light body on the %s.\n\r", EXIT(ch, door)->keyword);
+            strcpy(buf, std::format("You throw your light body on the {}.\n\r", EXIT(ch, door)->keyword).c_str());
             send_to_char(buf, ch);
-            sprintf(buf, "$n throws $mself on the %s.\n\r", EXIT(ch, door)->keyword);
+            strcpy(buf, std::format("$n throws $mself on the {}.\n\r", EXIT(ch, door)->keyword).c_str());
             act(buf, TRUE, ch, 0, 0, TO_ROOM);
             prob = -1;
         } else {
-            sprintf(buf, "You throw yourself on the %s.\n\r", EXIT(ch, door)->keyword);
+            strcpy(buf, std::format("You throw yourself on the {}.\n\r", EXIT(ch, door)->keyword).c_str());
             send_to_char(buf, ch);
-            sprintf(buf, "$n throws $mself on the %s.\n\r", EXIT(ch, door)->keyword);
+            strcpy(buf, std::format("$n throws $mself on the {}.\n\r", EXIT(ch, door)->keyword).c_str());
             act(buf, TRUE, ch, 0, 0, TO_ROOM);
         }
         if ((tmp == RACE_URUK) || (tmp == RACE_DWARF))
@@ -625,7 +626,7 @@ ACMD(do_bash)
             prob = -1;
 
         if (prob < 0) {
-            sprintf(buf, "The %s would not budge.\n\r", EXIT(ch, door)->keyword);
+            strcpy(buf, std::format("The {} would not budge.\n\r", EXIT(ch, door)->keyword).c_str());
             send_to_char(buf, ch);
             return;
         }
@@ -640,9 +641,9 @@ ACMD(do_bash)
         }
         SET_BIT(EXIT(ch, door)->exit_info, EX_ISBROKEN);
         REMOVE_BIT(EXIT(ch, door)->exit_info, EX_CLOSED | EX_LOCKED);
-        sprintf(buf, "The %s crashes open! You fall through it.\n\r", EXIT(ch, door)->keyword);
+        strcpy(buf, std::format("The {} crashes open! You fall through it.\n\r", EXIT(ch, door)->keyword).c_str());
         send_to_char(buf, ch);
-        sprintf(buf, "The %s crashes open! $n falls through it.\n\r", EXIT(ch, door)->keyword);
+        strcpy(buf, std::format("The {} crashes open! $n falls through it.\n\r", EXIT(ch, door)->keyword).c_str());
         act(buf, TRUE, ch, 0, 0, TO_ROOM);
         if ((other_room = EXIT(ch, door)->to_room) != NOWHERE) {
             if ((back = world[other_room].dir_option[rev_dir[door]]))
@@ -650,7 +651,7 @@ ACMD(do_bash)
                     SET_BIT(back->exit_info, EX_ISBROKEN);
                     REMOVE_BIT(back->exit_info, EX_CLOSED | EX_LOCKED);
                     if (back->keyword) {
-                        sprintf(buf, "The %s suddenly crashes open.\n\r", fname(back->keyword));
+                        strcpy(buf, std::format("The {} suddenly crashes open.\n\r", fname(back->keyword)).c_str());
                         send_to_room(buf, EXIT(ch, door)->to_room);
                     } else
                         send_to_room("The door is opened from the other side.\n\r",

@@ -328,8 +328,19 @@ ACMD(do_insult)
             send_to_char("Can't hear you!\n\r", ch);
         else {
             if (victim != ch) {
-                strcpy(buf, std::format("You insult {}.\n\r", PERS(victim, ch, FALSE, FALSE)).c_str());
+                const char* victim_pers = PERS(victim, ch, FALSE, FALSE);
+                fprintf(stderr, "[TRACE do_insult] ch=%p ch->desc=%p victim=%p victim->desc=%p victim_pers=%p (\"%s\")\n",
+                    (const void*)ch, (const void*)ch->desc, (const void*)victim, (const void*)victim->desc,
+                    (const void*)victim_pers, victim_pers ? victim_pers : "(null-ptr)");
+                fflush(stderr);
+                std::string composed = std::format("You insult {}.\n\r", victim_pers);
+                fprintf(stderr, "[TRACE do_insult] composed=\"%s\"\n", composed.c_str());
+                fflush(stderr);
+                strcpy(buf, composed.c_str());
                 send_to_char(buf, ch);
+                fprintf(stderr, "[TRACE do_insult] after send_to_char: ch->desc->output=\"%s\"\n",
+                    ch->desc ? ch->desc->output : "(no desc)");
+                fflush(stderr);
 
                 switch (rots_rng::next() % 3) {
                 case 0:
@@ -358,6 +369,11 @@ ACMD(do_insult)
                 } /* end switch */
 
                 act("$n insults $N.", TRUE, ch, 0, victim, TO_NOTVICT);
+                fprintf(stderr,
+                    "[TRACE do_insult] END: ch->desc->output=\"%s\" victim->desc->output=\"%s\"\n",
+                    ch->desc ? ch->desc->output : "(no desc)",
+                    victim->desc ? victim->desc->output : "(no desc)");
+                fflush(stderr);
             } else /* ch == victim */
                 send_to_char("You feel insulted.\n\r", ch);
         }

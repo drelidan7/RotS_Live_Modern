@@ -134,15 +134,24 @@ void write_file(const std::string& path, const std::string& contents)
     out.write(contents.data(), static_cast<std::streamsize>(contents.size()));
 }
 
-descriptor_data make_capturing_descriptor(char_data* character)
+// Points descriptor.output back at descriptor's OWN small_outbuf and clears
+// its write cursor. Mutates the object in place rather than building a
+// separate temporary -- see reset_capturing_descriptor()'s doc comment below
+// for why building-and-assigning a whole descriptor_data is unsafe here.
+void reset_capturing_descriptor(descriptor_data& descriptor, char_data* character)
 {
-    descriptor_data descriptor {};
     descriptor.output = descriptor.small_outbuf;
     descriptor.small_outbuf[0] = '\0';
     descriptor.bufptr = 0;
     descriptor.bufspace = SMALL_BUFSIZE - 1;
     descriptor.connected = 0; // CON_PLAYING
     descriptor.character = character;
+}
+
+descriptor_data make_capturing_descriptor(char_data* character)
+{
+    descriptor_data descriptor {};
+    reset_capturing_descriptor(descriptor, character);
     return descriptor;
 }
 
@@ -211,7 +220,7 @@ TEST(ShapeMudlle, LoadThenSaveRoundTripsMdlFileByteForByte)
     // message would land after an unreachable '\0' gap. Re-run the same
     // setup make_capturing_descriptor() uses to get a genuinely empty,
     // freshly-positioned buffer.
-    descriptor = make_capturing_descriptor(&editor);
+    reset_capturing_descriptor(descriptor, &editor);
     int saved = save_mudlle(&editor);
     EXPECT_EQ(saved, 1101);
     EXPECT_NE(std::string(descriptor.output).find("Saved succesfully.\n\r"), std::string::npos);
@@ -554,7 +563,7 @@ TEST(ShapeScript, ShowCommandFormatsTrigAssignEqSayAndReversedLineEnding)
     show_command(&editor, &script);
     EXPECT_EQ(std::string(descriptor.output), "[3] TRIG ON_DAMAGE       (a comment)\n\r");
 
-    descriptor = make_capturing_descriptor(&editor);
+    reset_capturing_descriptor(descriptor, &editor);
     script.command_type = SCRIPT_ASSIGN_EQ;
     script.param[0] = SCRIPT_PARAM_CH1;
     script.param[1] = SCRIPT_PARAM_OB1;
@@ -564,14 +573,14 @@ TEST(ShapeScript, ShowCommandFormatsTrigAssignEqSayAndReversedLineEnding)
     EXPECT_EQ(std::string(descriptor.output),
         "[3] SYS ASSIGN_EQ        character: ch1, object: ob1, position: -1, int true/false: int1\n\r");
 
-    descriptor = make_capturing_descriptor(&editor);
+    reset_capturing_descriptor(descriptor, &editor);
     script.command_type = SCRIPT_DO_SAY;
     script.param[0] = SCRIPT_PARAM_CH1;
     script.param[1] = SCRIPT_PARAM_STR1;
     show_command(&editor, &script);
     EXPECT_EQ(std::string(descriptor.output), "[3] ACT DO_SAY           a comment (ch1)(str1)\n\r");
 
-    descriptor = make_capturing_descriptor(&editor);
+    reset_capturing_descriptor(descriptor, &editor);
     script.command_type = SCRIPT_SET_INT_WAR_STATUS;
     script.param[0] = SCRIPT_PARAM_INT1;
     show_command(&editor, &script);

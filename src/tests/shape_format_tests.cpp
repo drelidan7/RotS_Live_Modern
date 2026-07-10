@@ -417,3 +417,41 @@ TEST(ShapeRoom, ListRoomFormatsAllFieldsWithNoExitsAndNegativeAffection)
     EXPECT_NE(output.find("No extra description exists.\n\r"), std::string::npos);
     EXPECT_NE(output.find("(18) Affection type (1), (unknown)--1, level -5, flags -1\n\r"), std::string::npos);
 }
+
+// shapezon.cpp's show_command() (the OLC zone-reset-command display) writes
+// a formatted line into a caller-supplied buffer -- pure formatting, no
+// permission/zone_table/file dependency. Exercises the '{:>3}'-width zone
+// number field (translated from the original's "%3d") plus the negative-if
+// the task brief calls for isn't directly applicable here (if_flag etc. are
+// builder-supplied non-negative flags in practice), so this instead covers
+// the two structurally-different shapes present in the switch: a normal
+// command ('M') and the "Unrecognized Command" default branch (the widest
+// field list, and the one most likely to reveal a translation-table slip).
+extern void show_command(char* str, struct zone_tree* zon);
+
+TEST(ShapeZone, ShowCommandFormatsKnownAndUnrecognizedCommandsWithRightJustifiedNumber)
+{
+    zone_tree zon {};
+    zon.number = 7;
+    zon.comment = const_cast<char*>("a test comment");
+    zon.comm.command = 'M';
+    zon.comm.if_flag = 1;
+    zon.comm.arg1 = 101;
+    zon.comm.arg2 = 5;
+    zon.comm.arg3 = -1;
+    zon.comm.arg4 = 50;
+    zon.comm.arg5 = 100;
+    zon.comm.arg6 = 3;
+    zon.comm.arg7 = 0;
+
+    char buf[500];
+    show_command(buf, &zon);
+    EXPECT_STREQ(buf,
+        "  7 M:: Ld_flg(1) Mob:101 toRom:5 MxExst:-1 Prb:50 Diff:100 MxLine:3 Tro:0\n\r      a test comment\n\r");
+
+    zon.number = 123;
+    zon.comm.command = 'Z'; // not one of the recognized letters -> default branch
+    show_command(buf, &zon);
+    EXPECT_STREQ(buf,
+        "123 Unrecognized Command (if 1) on 101 by 5 to -1 when 50 with 100, (3 0) \n\r    a test comment.\n\r");
+}

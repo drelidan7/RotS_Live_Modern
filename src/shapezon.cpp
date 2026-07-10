@@ -14,6 +14,8 @@
 #include "structs.h"
 #include "utils.h"
 #include "zone.h"
+#include <format>
+#include <string>
 
 extern struct obj_data* obj_proto;
 extern struct room_data world;
@@ -118,31 +120,35 @@ void show_command(char* str, struct zone_tree* zon)
 
     case 'A': /* Additional command, affects last loaded mobile */
 
-        sprintf(str, "%3d A::Type:%d, Arg1:%d, Arg2:%d\n\r      %s\n\r",
-            zon->number, com->arg1, com->arg2, com->arg3, zon->comment);
+        strcpy(str, std::format("{:>3} A::Type:{}, Arg1:{}, Arg2:{}\n\r      {}\n\r",
+            zon->number, com->arg1, com->arg2, com->arg3, zon->comment)
+                         .c_str());
 
         break;
     case 'M': /* Load mobile */
 
-        sprintf(str, "%3d M:: Ld_flg(%d) Mob:%d toRom:%d MxExst:%d Prb:%d Diff:%d MxLine:%d Tro:%d\n\r      %s\n\r",
+        strcpy(str, std::format("{:>3} M:: Ld_flg({}) Mob:{} toRom:{} MxExst:{} Prb:{} Diff:{} MxLine:{} Tro:{}\n\r      {}\n\r",
             zon->number, com->if_flag, com->arg1, com->arg2, com->arg3,
-            com->arg4, com->arg5, com->arg6, com->arg7, zon->comment);
+            com->arg4, com->arg5, com->arg6, com->arg7, zon->comment)
+                         .c_str());
 
         break;
 
     case 'N': /* Load mobile, random */
 
-        sprintf(str, "%3d N:: Ld_flg(%d) Type:%d toRom:%d LvlGen:%d Prb:%d Dif:%d MxLine:%d Tro:%d\n\r      %s\n\r",
+        strcpy(str, std::format("{:>3} N:: Ld_flg({}) Type:{} toRom:{} LvlGen:{} Prb:{} Dif:{} MxLine:{} Tro:{}\n\r      {}\n\r",
             zon->number, com->if_flag, com->arg1, com->arg2, com->arg3,
-            com->arg4, com->arg5, com->arg6, com->arg7, zon->comment);
+            com->arg4, com->arg5, com->arg6, com->arg7, zon->comment)
+                         .c_str());
 
         break;
 
     case 'O': /* Load object */
 
-        sprintf(str, "%3d O:: Load_flg(%d) Obj:%d to Room:%d, MxExst:%d Prb:%d MxInRom:%d\n\r     %s\n\r",
+        strcpy(str, std::format("{:>3} O:: Load_flg({}) Obj:{} to Room:{}, MxExst:{} Prb:{} MxInRom:{}\n\r     {}\n\r",
             zon->number, com->if_flag, com->arg1, com->arg2, com->arg3,
-            com->arg4, com->arg5, zon->comment);
+            com->arg4, com->arg5, zon->comment)
+                         .c_str());
 
         break;
 
@@ -156,49 +162,55 @@ void show_command(char* str, struct zone_tree* zon)
 
     case 'G': /* give object to the last 'M' loaded mob */
 
-        sprintf(str, "%3d G:: Load_flg(%d) ObjN:%d NULL(?):%d, MxExst:%d Prb:%d MxOnMob:%d MxObjMob:%d\n\r     %s\n\r",
+        strcpy(str, std::format("{:>3} G:: Load_flg({}) ObjN:{} NULL(?):{}, MxExst:{} Prb:{} MxOnMob:{} MxObjMob:{}\n\r     {}\n\r",
             zon->number, com->if_flag, com->arg1, com->arg2, com->arg3,
-            com->arg4, com->arg5, com->arg6, zon->comment);
+            com->arg4, com->arg5, com->arg6, zon->comment)
+                         .c_str());
 
         break;
 
     case 'H': /* give object to the last 'M' loaded mob, random */
 
-        sprintf(str, "%3d H:: Load_flg(%d) Type:%d Prb:%d, MaxOnMob:%d MxObjMob:%d LvlGen:%d Good:%d\n\r     %s\n\r",
+        strcpy(str, std::format("{:>3} H:: Load_flg({}) Type:{} Prb:{}, MaxOnMob:{} MxObjMob:{} LvlGen:{} Good:{}\n\r     {}\n\r",
             zon->number, com->if_flag, com->arg1, com->arg2, com->arg3,
-            com->arg4, com->arg5, com->arg6, zon->comment);
+            com->arg4, com->arg5, com->arg6, zon->comment)
+                         .c_str());
 
         break;
 
     case 'E': /* Object to equipment list of the last 'M' loaded mob */
 
-        sprintf(str, "%3d E:: Load_flg(%d) ObjN:%d EqPos:%d, MaxExst:%d Prb:%d MaxOnMob:%d MxObjMob:%d\n\r     %s\n\r",
+        strcpy(str, std::format("{:>3} E:: Load_flg({}) ObjN:{} EqPos:{}, MaxExst:{} Prb:{} MaxOnMob:{} MxObjMob:{}\n\r     {}\n\r",
             zon->number, com->if_flag, com->arg1, com->arg2, com->arg3,
-            com->arg4, com->arg5, com->arg6, zon->comment);
+            com->arg4, com->arg5, com->arg6, zon->comment)
+                         .c_str());
 
         break;
 
     case 'Q': /* Object to equip list of the last 'M' loaded mob, random */
 
-        sprintf(str, "%3d Q:: Load_flg(%d) Type:%d EqPos:%d, Prb:%d MaxOnMob:%d, MxObjMob:%d LvlGen:%d Good:%d\n\r     %s\n\r",
+        strcpy(str, std::format("{:>3} Q:: Load_flg({}) Type:{} EqPos:{}, Prb:{} MaxOnMob:{}, MxObjMob:{} LvlGen:{} Good:{}\n\r     {}\n\r",
             zon->number, com->if_flag, com->arg1, com->arg2, com->arg3,
-            com->arg4, com->arg5, com->arg6, com->arg7, zon->comment);
+            com->arg4, com->arg5, com->arg6, com->arg7, zon->comment)
+                         .c_str());
 
         break;
 
     case 'P': /* Put object to object */
 
-        sprintf(str, "%3d P:: Load_flg(%d) Room:%d Obj:%d toObj:%d, MaxExst:%d Prb:%d MaxInObj:%d\n\r     %s\n\r",
+        strcpy(str, std::format("{:>3} P:: Load_flg({}) Room:{} Obj:{} toObj:{}, MaxExst:{} Prb:{} MaxInObj:{}\n\r     {}\n\r",
             zon->number, com->if_flag, com->arg1, com->arg2, com->arg3,
-            com->arg4, com->arg5, com->arg6, zon->comment);
+            com->arg4, com->arg5, com->arg6, zon->comment)
+                         .c_str());
 
         break;
 
     case 'K':
 
-        sprintf(str, "%3d K:: Load_flg(%d) Objects:%d, %d, %d, %d, %d, %d, %d\n\r     %s\n\r",
+        strcpy(str, std::format("{:>3} K:: Load_flg({}) Objects:{}, {}, {}, {}, {}, {}, {}\n\r     {}\n\r",
             zon->number, com->if_flag, com->arg1, com->arg2, com->arg3,
-            com->arg4, com->arg5, com->arg6, com->arg7, zon->comment);
+            com->arg4, com->arg5, com->arg6, com->arg7, zon->comment)
+                         .c_str());
 
         break;
 
@@ -225,29 +237,33 @@ void show_command(char* str, struct zone_tree* zon)
         default:
             tmpc = 'X';
         }
-        sprintf(str, "%3d D:: Load_flg(%d) Room:%d Exit:%c, State:%d\n\r    %s\n\r",
-            zon->number, com->if_flag, com->arg1, tmpc, com->arg3, zon->comment);
+        strcpy(str, std::format("{:>3} D:: Load_flg({}) Room:{} Exit:{}, State:{}\n\r    {}\n\r",
+            zon->number, com->if_flag, com->arg1, tmpc, com->arg3, zon->comment)
+                         .c_str());
         break;
 
     case 'R': /* remove object from room */
 
-        sprintf(str, "%3d R:: Load_flg(%d) Room:%d, Obj:%d\n\r     %s\n\r",
-            zon->number, com->if_flag, com->arg1, com->arg2, zon->comment);
+        strcpy(str, std::format("{:>3} R:: Load_flg({}) Room:{}, Obj:{}\n\r     {}\n\r",
+            zon->number, com->if_flag, com->arg1, com->arg2, zon->comment)
+                         .c_str());
 
         break;
 
     case 'L': /* set last_mob or last_obj */
-        sprintf(str, "%3d L:: Load_flg(%d) Mode:%d Room:%d Mob/Obj:%d Num:%d\n\r     %s\n\r",
+        strcpy(str, std::format("{:>3} L:: Load_flg({}) Mode:{} Room:{} Mob/Obj:{} Num:{}\n\r     {}\n\r",
             zon->number, com->if_flag, com->arg1, com->arg2, com->arg3,
-            com->arg4, zon->comment);
+            com->arg4, zon->comment)
+                         .c_str());
 
         break;
 
     default:
 
-        sprintf(str, "%3d Unrecognized Command (if %d) on %d by %d to %d when %d with %d, (%d %d) \n\r    %s.\n\r",
+        strcpy(str, std::format("{:>3} Unrecognized Command (if {}) on {} by {} to {} when {} with {}, ({} {}) \n\r    {}.\n\r",
             zon->number, com->if_flag, com->arg1, com->arg2, com->arg3,
-            com->arg4, com->arg5, com->arg6, com->arg7, zon->comment);
+            com->arg4, com->arg5, com->arg6, com->arg7, zon->comment)
+                         .c_str());
 
         break;
     }
@@ -513,8 +529,7 @@ void implement_zone(struct char_data* ch)
 #define DESCRCHANGE(line, addr)                                       \
     do {                                                              \
         if (!IS_SET(SHAPE_ZONE(ch)->flags, SHAPE_SIMPLE_ACTIVE)) {    \
-            sprintf(tmpstr, "You are about to change %s:\n\r", line); \
-            send_to_char(tmpstr, ch);                                 \
+            send_to_char(std::format("You are about to change {}:\n\r", line).c_str(), ch); \
             SHAPE_ZONE(ch)                                            \
                 ->position                                            \
                 = shape_standup(ch, POSITION_SHAPING);                \
@@ -546,8 +561,7 @@ void implement_zone(struct char_data* ch)
 #define LINECHANGE(line, addr)                                                              \
     do {                                                                                    \
         if (!IS_SET(SHAPE_ZONE(ch)->flags, SHAPE_DIGIT_ACTIVE)) {                           \
-            sprintf(tmpstr, "Enter line %s:\n\r[%s]\n\r", line, (addr) ? (char*)addr : ""); \
-            send_to_char(tmpstr, ch);                                                       \
+            send_to_char(std::format("Enter line {}:\n\r[{}]\n\r", line, (addr) ? (char*)addr : "").c_str(), ch); \
             SHAPE_ZONE(ch)                                                                  \
                 ->position                                                                  \
                 = shape_standup(ch, POSITION_SHAPING);                                      \
@@ -620,8 +634,7 @@ void implement_zone(struct char_data* ch)
 #define REALDIGCHANGE(line, addr)                                      \
     do {                                                               \
         if (!IS_SET(SHAPE_ZONE(ch)->flags, SHAPE_DIGIT_ACTIVE)) {      \
-            sprintf(tmpstr, "Enter %s [%d]:\n\r", line, addr);         \
-            send_to_char(tmpstr, ch);                                  \
+            send_to_char(std::format("Enter {} [{}]:\n\r", line, addr).c_str(), ch); \
             SHAPE_ZONE(ch)                                             \
                 ->position                                             \
                 = shape_standup(ch, POSITION_SHAPING);                 \
@@ -723,18 +736,18 @@ void shape_center_zone(struct char_data* ch, char* arg)
 
             if (current) {
                 if (current->prev) {
-                    sprintf(str, "Prev: ");
+                    strcpy(str, "Prev: ");
                     show_command(str + strlen(str), current->prev);
                     send_to_char(str, ch);
                 } else
                     send_to_char("No previous command.\n\r", ch);
 
-                sprintf(str, "Curr: ");
+                strcpy(str, "Curr: ");
                 show_command(str + strlen(str), current);
                 send_to_char(str, ch);
 
                 if (current->next) {
-                    sprintf(str, "Next: ");
+                    strcpy(str, "Next: ");
                     show_command(str + strlen(str), current->next);
                     send_to_char(str, ch);
                 } else
@@ -749,7 +762,7 @@ void shape_center_zone(struct char_data* ch, char* arg)
         case 2: /*Set mask*/
 
             if (!IS_SET(SHAPE_ZONE(ch)->flags, SHAPE_DIGIT_ACTIVE)) {
-                sprintf(str, "ENTER MASK, use '*' to ignore parameter :\n\r");
+                strcpy(str, "ENTER MASK, use '*' to ignore parameter :\n\r");
                 send_to_char(str, ch);
                 SET_BIT(SHAPE_ZONE(ch)->flags, SHAPE_DIGIT_ACTIVE);
                 ch->specials.prompt_number = 2;
@@ -842,7 +855,7 @@ void shape_center_zone(struct char_data* ch, char* arg)
         case 3: /*Set command*/
 
             if (!IS_SET(SHAPE_ZONE(ch)->flags, SHAPE_DIGIT_ACTIVE)) {
-                sprintf(str, "ENTER COMMAND TYPE <MOGEPDKAL>:\n\r");
+                strcpy(str, "ENTER COMMAND TYPE <MOGEPDKAL>:\n\r");
                 send_to_char(str, ch);
                 SET_BIT(SHAPE_ZONE(ch)->flags, SHAPE_DIGIT_ACTIVE);
                 ch->specials.prompt_number = 2;
@@ -1097,7 +1110,7 @@ void shape_center_zone(struct char_data* ch, char* arg)
 
         case 9: /* remove command */
             if (!IS_SET(SHAPE_ZONE(ch)->flags, SHAPE_DIGIT_ACTIVE)) {
-                sprintf(str, "REMOVE current command?<yn>:\n\r");
+                strcpy(str, "REMOVE current command?<yn>:\n\r");
                 send_to_char(str, ch);
                 SET_BIT(SHAPE_ZONE(ch)->flags, SHAPE_DIGIT_ACTIVE);
                 ch->specials.prompt_number = 2;
@@ -1344,9 +1357,10 @@ void shape_center_zone(struct char_data* ch, char* arg)
                 break;
             }
             if (!IS_SET(SHAPE_ZONE(ch)->flags, SHAPE_DIGIT_ACTIVE)) {
-                sprintf(tmpstr, "Enter zone map symbol:[%c]\n\r",
-                    SHAPE_ZONE(ch)->symbol);
-                send_to_char(tmpstr, ch);
+                send_to_char(std::format("Enter zone map symbol:[{}]\n\r",
+                    SHAPE_ZONE(ch)->symbol)
+                                 .c_str(),
+                    ch);
                 SHAPE_ZONE(ch)
                     ->position
                     = shape_standup(ch, POSITION_SHAPING);
@@ -1428,27 +1442,34 @@ void shape_center_zone(struct char_data* ch, char* arg)
             break;
 
         case 51:
-            sprintf(str, "Zone #%d: %s\n\rReset time: %d; Reset mode: %d\n\r",
+            send_to_char(std::format("Zone #{}: {}\n\rReset time: {}; Reset mode: {}\n\r",
                 SHAPE_ZONE(ch)->zone_number, SHAPE_ZONE(ch)->zone_name,
-                SHAPE_ZONE(ch)->lifespan, SHAPE_ZONE(ch)->reset_mode);
-            send_to_char(str, ch);
-            sprintf(str, "Symbol:'%c', Coords - x:%d y:%d, Level:%d\n\r",
+                SHAPE_ZONE(ch)->lifespan, SHAPE_ZONE(ch)->reset_mode)
+                             .c_str(),
+                ch);
+            send_to_char(std::format("Symbol:'{}', Coords - x:{} y:{}, Level:{}\n\r",
                 SHAPE_ZONE(ch)->symbol, SHAPE_ZONE(ch)->x,
-                SHAPE_ZONE(ch)->y, SHAPE_ZONE(ch)->level);
-            send_to_char(str, ch);
+                SHAPE_ZONE(ch)->y, SHAPE_ZONE(ch)->level)
+                             .c_str(),
+                ch);
 
-            sprintf(str, "Owners: ");
-            tmpowner = SHAPE_ZONE(ch)->root_owner;
-            if (tmpowner->owner == 0)
-                strcat(str, "All");
-            else
-                while (tmpowner->owner != 0) {
-                    sprintf(tmpstr, " %d", tmpowner->owner);
-                    strcat(str, tmpstr);
-                    tmpowner = tmpowner->next;
-                }
-            strcat(str, "\n\r\n\r");
-            send_to_char(str, ch);
+            // Was sprintf(str, "Owners: ") followed by a loop of
+            // sprintf(tmpstr, " %d", ...); strcat(str, tmpstr) --
+            // incremental-append converted to std::string, same as the
+            // other accumulation sites in this task.
+            {
+                std::string owners = "Owners: ";
+                tmpowner = SHAPE_ZONE(ch)->root_owner;
+                if (tmpowner->owner == 0)
+                    owners += "All";
+                else
+                    while (tmpowner->owner != 0) {
+                        owners += std::format(" {}", tmpowner->owner);
+                        tmpowner = tmpowner->next;
+                    }
+                owners += "\n\r\n\r";
+                send_to_char(owners.c_str(), ch);
+            }
             send_to_char(SHAPE_ZONE(ch)->zone_descr, ch);
             send_to_char("\n\r-----------------------------------------------\n\r", ch);
             send_to_char(SHAPE_ZONE(ch)->zone_map, ch);
@@ -1527,41 +1548,19 @@ void list_zone(struct char_data* ch)
     struct zone_tree* zon;
     struct reset_com* mask = &(SHAPE_ZONE(ch)->mask);
 
-    sprintf(str, "Mask is: %c ", mask->command);
-    if (mask->if_flag != -1)
-        sprintf(str + strlen(str), "%d ", mask->if_flag);
-    else
-        sprintf(str + strlen(str), "* ");
-
-    if (mask->arg1 != -1)
-        sprintf(str + strlen(str), "%d ", mask->arg1);
-    else
-        sprintf(str + strlen(str), "* ");
-    if (mask->arg2 != -1)
-        sprintf(str + strlen(str), "%d ", mask->arg2);
-    else
-        sprintf(str + strlen(str), "* ");
-    if (mask->arg3 != -1)
-        sprintf(str + strlen(str), "%d ", mask->arg3);
-    else
-        sprintf(str + strlen(str), "* ");
-    if (mask->arg4 != -1)
-        sprintf(str + strlen(str), "%d ", mask->arg4);
-    else
-        sprintf(str + strlen(str), "* ");
-    if (mask->arg5 != -1)
-        sprintf(str + strlen(str), "%d ", mask->arg5);
-    else
-        sprintf(str + strlen(str), "* ");
-    if (mask->arg6 != -1)
-        sprintf(str + strlen(str), "%d ", mask->arg6);
-    else
-        sprintf(str + strlen(str), "* ");
-    if (mask->arg7 != -1)
-        sprintf(str + strlen(str), "%d\n\r", mask->arg7);
-    else
-        sprintf(str + strlen(str), "*\n\r");
-    send_to_char(str, ch);
+    // Was a chain of sprintf(str + strlen(str), ...) incremental appends --
+    // same anti-pattern converted elsewhere in this task, composed into a
+    // std::string instead.
+    std::string mask_line = std::format("Mask is: {} ", mask->command);
+    mask_line += (mask->if_flag != -1) ? std::format("{} ", mask->if_flag) : "* ";
+    mask_line += (mask->arg1 != -1) ? std::format("{} ", mask->arg1) : "* ";
+    mask_line += (mask->arg2 != -1) ? std::format("{} ", mask->arg2) : "* ";
+    mask_line += (mask->arg3 != -1) ? std::format("{} ", mask->arg3) : "* ";
+    mask_line += (mask->arg4 != -1) ? std::format("{} ", mask->arg4) : "* ";
+    mask_line += (mask->arg5 != -1) ? std::format("{} ", mask->arg5) : "* ";
+    mask_line += (mask->arg6 != -1) ? std::format("{} ", mask->arg6) : "* ";
+    mask_line += (mask->arg7 != -1) ? std::format("{}\n\r", mask->arg7) : "*\n\r";
+    send_to_char(mask_line.c_str(), ch);
     str[0] = 0;
     zon = SHAPE_ZONE(ch)->root;
     // printf("cur_room = %d\n",SHAPE_ZONE(ch)->cur_room);
@@ -1654,8 +1653,11 @@ int load_zone(struct char_data* ch, char* arg)
         send_to_char("Choose a zone by 'shape zone <zone_number>'\n\r", ch);
         return -1;
     }
-    sprintf(fname, "%d", number);
-    sprintf(str, SHAPE_ZON_DIR, fname);
+    // SHAPE_ZON_DIR/SHAPE_ZON_BACKDIR's %s templates inlined as literal {}
+    // paths (matches the other shape*.cpp files' Task 3 conversion); the
+    // shared macros stay %-style for any shape*.cpp file not yet converted.
+    strcpy(fname, std::format("{}", number).c_str());
+    strcpy(str, std::format("world/zon/{}.zon", static_cast<const char*>(fname)).c_str());
     send_to_char(str, ch);
     f = fopen(str, "r+");
     if (f == 0) {
@@ -1665,7 +1667,7 @@ int load_zone(struct char_data* ch, char* arg)
     strcpy(SHAPE_ZONE(ch)->f_from, str);
     SET_BIT(SHAPE_ZONE(ch)->flags, SHAPE_FILENAME);
 
-    sprintf(SHAPE_ZONE(ch)->f_old, SHAPE_ZON_BACKDIR, fname);
+    strcpy(SHAPE_ZONE(ch)->f_old, std::format("world/zon/oldzons/{}.zon", static_cast<const char*>(fname)).c_str());
 
     tmp = find_zone(f, number);
     if (tmp == -1) {
@@ -1681,8 +1683,7 @@ int load_zone(struct char_data* ch, char* arg)
     get_text(f, &(SHAPE_ZONE(ch)->zone_name));
     get_text(f, &(SHAPE_ZONE(ch)->zone_descr));
     get_text(f, &(SHAPE_ZONE(ch)->zone_map));
-    sprintf(str, " loading zone #%d %s\n\r", tmp, SHAPE_ZONE(ch)->zone_name);
-    send_to_char(str, ch);
+    send_to_char(std::format(" loading zone #{} {}\n\r", tmp, SHAPE_ZONE(ch)->zone_name).c_str(), ch);
 
     CREATE1(SHAPE_ZONE(ch)->root_owner, owner_list);
     SHAPE_ZONE(ch)
@@ -1795,8 +1796,7 @@ int load_zone(struct char_data* ch, char* arg)
         RELEASE(zon);
         if (prv)
             prv->next = 0;
-        sprintf(str, "Zone loaded, %d commands found.\n\r", num);
-        send_to_char(str, ch);
+        send_to_char(std::format("Zone loaded, {} commands found.\n\r", num).c_str(), ch);
     } else {
         send_to_char("Zone loaded, 0 commands found, fake command inserted.\n\r",
             ch);
@@ -1928,9 +1928,7 @@ int replace_zone(struct char_data* ch, char* arg)
     } while ((i != num) && (check));
 
     if (!check) {
-        sprintf(str, "no zone #%d in this file\n", num);
-
-        send_to_char(str, ch);
+        send_to_char(std::format("no zone #{} in this file\n", num).c_str(), ch);
 
         fclose(f1);
         fclose(f2);

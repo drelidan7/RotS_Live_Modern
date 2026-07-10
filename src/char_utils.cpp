@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <assert.h>
 #include <cmath>
+#include <format>
 
 #include "comm.h" // for send_to_char
 #include <cstring>
@@ -1704,15 +1705,21 @@ std::string player_damage_details::get_damage_report(const char_data* character)
     message_writer << "-------------------------------------------------------------------------------" << std::endl;
 
     for (map_iter iter = damage_map.begin(); iter != damage_map.end(); ++iter) {
-        char ability_name[25];
+        // Longest real name in either source table (hit_text.singular from
+        // attack_hit_text[], or skill.name from the skills[] table) is well
+        // under the 24-char field width -- see attack_hit_text[]/skills[] in
+        // fight.cpp/consts.cpp -- so std::format's min-width padding never
+        // truncates real data the way the old fixed char[25]+sprintf could
+        // silently overflow on a hypothetical longer name.
+        std::string ability_name;
 
         int ability_index = iter->first;
         if (ability_index > 128 && ability_index >= TYPE_HIT && ability_index < 152) {
             const attack_hit_type& hit_text = get_hit_text(ability_index);
-            sprintf(ability_name, "%-24s", hit_text.singular);
+            ability_name = std::format("{:<24}", hit_text.singular);
         } else {
             const skill_data& skill = skills[iter->first];
-            sprintf(ability_name, "%-24s", skill.name);
+            ability_name = std::format("{:<24}", skill.name);
         }
 
         const damage_details& details = iter->second;
@@ -1759,10 +1766,8 @@ std::string group_damaga_data::get_damage_report() const
     message_writer << "-------------------------------------------------------------------------------" << std::endl;
 
     for (map_iter iter = damage_map.begin(); iter != damage_map.end(); ++iter) {
-        char character_name[100];
-
         char_data* character = iter->first;
-        sprintf(character_name, "%-24s", utils::get_name(*character));
+        const std::string character_name = std::format("{:<24}", utils::get_name(*character));
 
         const timed_damage_details& details = iter->second;
 

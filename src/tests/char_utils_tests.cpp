@@ -673,3 +673,55 @@ TEST(DamageReports, ReturnsFriendlyEmptyReports) {
     EXPECT_NE(player_report.get_damage_report(&context.character).find("has not recorded any damage dealt"), std::string::npos);
     EXPECT_NE(group_report.get_damage_report().find("have not recorded any damage dealt"), std::string::npos);
 }
+
+// Characterization pin for Phase 4 Wave 1 Task 5 (std::format conversion).
+// player_damage_details::get_damage_report (char_utils.cpp) pads each ability
+// name into a fixed char[25] via sprintf(ability_name, "%-24s", ...) before
+// streaming it -- this pins the exact padded bytes, per-ability stats, and
+// percentage formatting for both the "hit text" branch (ability index in the
+// TYPE_HIT..152 weapon-attack range) and the ordinary skill-name branch,
+// BEFORE that sprintf is converted to std::format.
+TEST(DamageReports, PlayerReportPadsAbilityNamesAndFormatsPerAbilityStats) {
+    player_damage_details player_report;
+    CharUtilsTestContext context;
+    context.character.player.name = const_cast<char*>("player-name");
+
+    player_report.add_damage(SKILL_SWIPE, 50); // skill-name branch: "swipe"
+    player_report.add_damage(TYPE_HIT, 100); // hit-text branch: "hit" (attack_hit_text[0])
+
+    const std::string report = player_report.get_damage_report(&context.character);
+    EXPECT_EQ(report,
+        "Damage report details for player-name:\n"
+        "-------------------------------------------------------------------------------\n"
+        "swipe                   <Count: 1, Total: 50, Max: 50, Average: 50.00> 33.33% of damage\n"
+        "hit                     <Count: 1, Total: 100, Max: 100, Average: 100.00> 66.67% of damage\n"
+        "-------------------------------------------------------------------------------\n"
+        "Total Damage: 150; Combat Time: 0.50s; Damage per Second: 300.00\n"
+        "-------------------------------------------------------------------------------\n")
+        << report;
+}
+
+// Characterization pin for Phase 4 Wave 1 Task 5 (std::format conversion).
+// group_damaga_data::get_damage_report (char_utils.cpp) pads the character
+// name into a fixed char[100] via sprintf(character_name, "%-24s", ...)
+// before streaming it -- pinned here with a single member (the map key is
+// char_data*, so iteration order across multiple members depends on pointer
+// value and is intentionally not exercised by this test).
+TEST(DamageReports, GroupReportPadsCharacterNameAndFormatsDps) {
+    group_damaga_data group_report;
+    CharUtilsTestContext context;
+    context.character.player.name = const_cast<char*>("warrior-hero");
+
+    group_report.add_damage(&context.character, 80);
+    group_report.track_time(&context.character, 4.0f);
+
+    const std::string report = group_report.get_damage_report();
+    EXPECT_EQ(report,
+        "Group damage report details:\n"
+        "-------------------------------------------------------------------------------\n"
+        "warrior-hero            <Count: 1, Total: 80, Max: 80, Average: 80.00, DPS: 20.00> 100.00% of group damage\n"
+        "-------------------------------------------------------------------------------\n"
+        "Total Damage: 80\n"
+        "-------------------------------------------------------------------------------\n")
+        << report;
+}

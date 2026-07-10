@@ -2757,6 +2757,19 @@ void start_account_login(struct descriptor_data* d, const char* email)
 
 } // namespace
 
+#ifdef TESTING
+// Test seam: clears g_account_character_selection_unlocks, the process-lifetime map
+// tracking per-account "linked-character selection unlock" grants. Nothing else ever
+// clears entries left behind by a test that grants but doesn't fully consume an unlock,
+// so state otherwise persists across in-process test repeats (--gtest_repeat) and
+// shuffled orderings in the monolithic test binary. Symbol does not exist in production
+// builds (no -DTESTING there).
+void reset_account_character_selection_unlocks_for_testing()
+{
+    g_account_character_selection_unlocks.clear();
+}
+#endif
+
 bool account_has_restricting_active_linked_session(const account::AccountData& account_data)
 {
     return first_restricting_active_account_session(active_account_character_sessions(nullptr, account_data)) != nullptr;

@@ -60,6 +60,7 @@ int create_entry(char* name);
 void save_player(struct char_data* ch, int load_room, int index_pos);
 int process_input(struct descriptor_data* t);
 int get_from_q(struct txt_q* queue, char* dest);
+void reset_account_character_selection_unlocks_for_testing();
 
 namespace {
 
@@ -212,11 +213,18 @@ public:
         : m_previous_descriptor_list(descriptor_list)
     {
         descriptor_list = nullptr;
+        // Almost every test in this file constructs one of these, so it doubles as the
+        // reset point for interpre.cpp's account-character-selection-unlock map, which
+        // otherwise persists across --gtest_repeat iterations / shuffled orderings and
+        // corrupts unrelated tests that happen to reuse an account name (Phase 4 Wave 1
+        // Task 4 added item).
+        reset_account_character_selection_unlocks_for_testing();
     }
 
     ~ScopedDescriptorListReset()
     {
         descriptor_list = m_previous_descriptor_list;
+        reset_account_character_selection_unlocks_for_testing();
     }
 
 private:

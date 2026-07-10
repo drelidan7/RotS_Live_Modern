@@ -24,6 +24,7 @@ extern int top_of_p_table;
 void clear_char(struct char_data* ch, int mode);
 void save_player(struct char_data* ch, int load_room, int index_pos);
 void store_to_char(struct char_file_u* st, struct char_data* ch);
+void reset_account_character_selection_unlocks_for_testing();
 
 namespace {
 
@@ -126,11 +127,18 @@ public:
         : m_previous_descriptor_list(descriptor_list)
     {
         descriptor_list = nullptr;
+        // Almost every test in this file constructs one of these, so it doubles as the
+        // reset point for interpre.cpp's account-character-selection-unlock map, which
+        // otherwise persists across --gtest_repeat iterations / shuffled orderings and
+        // corrupts unrelated tests that happen to reuse an account name (Phase 4 Wave 1
+        // Task 4 added item).
+        reset_account_character_selection_unlocks_for_testing();
     }
 
     ~ScopedDescriptorList()
     {
         descriptor_list = m_previous_descriptor_list;
+        reset_account_character_selection_unlocks_for_testing();
     }
 
 private:

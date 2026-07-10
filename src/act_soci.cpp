@@ -9,6 +9,7 @@
  ************************************************************************ */
 
 #include "platdef.h"
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,7 +47,7 @@ char* fread_action(FILE* fl, int nr)
 
     fgets(buf, MAX_STRING_LENGTH, fl);
     if (feof(fl)) {
-        sprintf(buf, "SYSERR: fread_action - unexpected EOF near action #%d", nr);
+        strcpy(buf, std::format("SYSERR: fread_action - unexpected EOF near action #{}", nr).c_str());
         log(buf);
         exit(0);
     }
@@ -327,7 +328,7 @@ ACMD(do_insult)
             send_to_char("Can't hear you!\n\r", ch);
         else {
             if (victim != ch) {
-                sprintf(buf, "You insult %s.\n\r", PERS(victim, ch, FALSE, FALSE));
+                strcpy(buf, std::format("You insult {}.\n\r", PERS(victim, ch, FALSE, FALSE)).c_str());
                 send_to_char(buf, ch);
 
                 switch (rots_rng::next() % 3) {

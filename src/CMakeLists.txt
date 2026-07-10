@@ -207,6 +207,7 @@ if(ROTS_BUILD_TESTS)
         tests/rots_rng_tests.cpp
         tests/safe_template_tests.cpp
         tests/save_benchmark_tests.cpp
+        tests/shape_format_tests.cpp
         tests/shapemob_tests.cpp
         tests/spell_pa_tests.cpp
         tests/startup_options_tests.cpp

@@ -1,11 +1,14 @@
-# Phase 2b CI matrix (modernization plan).
+# Phase 3 CI matrix (modernization plan).
 #
-# legacy-32bit, linux-x64, and macos-arm64 are all REQUIRED jobs: Phase 2b
-# verified the 64-bit Linux and native macOS arm64 builds boot, pass tests,
-# and match the Phase 0 characterization goldens, so their continue-on-error
-# escape hatches are gone. Only windows-msvc still runs allowed-to-fail
-# (continue-on-error) until Phase 3 lands the Windows platform layer; its log
-# is the porting work-list, not noise.
+# All four jobs are REQUIRED: legacy-32bit, linux-x64, and macos-arm64 were
+# promoted in Phase 2b (64-bit Linux and native macOS arm64 build, boot, pass
+# tests, and match the Phase 0 characterization goldens); windows-msvc was
+# promoted in Phase 3 Task 7 once the hand-rolled platform-gated socket shim,
+# chrono/filesystem migrations, and MSVC bring-up landed (Task 6) and its
+# continue-on-error escape hatch was removed. Windows CI verifies configure +
+# build + the full ctest suite (characterization goldens included); live boot
+# verification on Windows is deferred (no Windows host with world data exists)
+# — see docs/BUILD.md and the plan's Phase 3 exit note.
 #
 # CI deliberately has NO boot smoke and NO account_smoke.py: both need
 # lib/world/ (separate repo, git-ignored) and the Rust proxy. Unit tests and
@@ -82,9 +85,8 @@ jobs:
         run: cd src && ctest --preset macos-arm64
 
   windows-msvc:
-    name: Windows MSVC (allowed to fail until Phase 3 Task 7)
+    name: Windows MSVC (required)
     runs-on: windows-2022
-    continue-on-error: true
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -105,7 +107,8 @@ jobs:
         run: cd src; cmake --build --preset windows-msvc
       # -j4: each gtest_discover_tests case runs as its own isolated process, so
       # parallel execution is safe (no shared in-process global state) and keeps
-      # the full ~640-test suite comfortably inside the 30-minute job wall on the
-      # 4-core windows-2022 runner.
+      # the full ~645-test suite (641 on Windows; a handful of cases are
+      # POSIX-only) comfortably inside the 30-minute job wall on the 4-core
+      # windows-2022 runner.
       - name: Test
         run: cd src; ctest --preset windows-msvc -j4

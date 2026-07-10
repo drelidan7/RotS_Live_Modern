@@ -22,6 +22,7 @@
 #include "limits.h"
 #include "platform_compat.h"
 #include "profs.h"
+#include "safe_template.h"
 #include "spells.h"
 #include "structs.h"
 #include "utils.h"
@@ -3558,7 +3559,14 @@ SPECIAL(herald)
         mudlog("herald: missing death_cry2", BRF, LEVEL_GOD, TRUE);
         return 0;
     }
-    snprintf(hbuf, HERALD_LEN - 1, host->player.death_cry2, ch->player.name, ch->player.title);
+    // death_cry2 is builder mob data (world file), not code -- validate its
+    // conversions before expanding so a malformed template ('%d' where '%s' is
+    // expected, an extra '%s', a '%n', etc.) can't read past name/title.
+    const std::string herald_line = safe_template::expand_checked(host->player.death_cry2,
+        { safe_template::Conv::String, safe_template::Conv::String },
+        { std::string_view(ch->player.name), std::string_view(ch->player.title) },
+        "notices someone new arrive.", "herald death_cry2");
+    snprintf(hbuf, HERALD_LEN - 1, "%s", herald_line.c_str());
     do_say(host, hbuf, 0, 0, 0);
 
     return 0;

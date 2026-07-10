@@ -17,6 +17,7 @@
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
+#include "safe_template.h"
 #include "structs.h"
 #include "utils.h"
 
@@ -246,20 +247,32 @@ void shopping_buy(char* arg, struct char_data* ch,
         objnum = 9999;
     // printf("argm=%s, objnum=%d\n",argm,objnum);
     if (!(temp1 = get_obj_in_list_vis(ch, argm, world[shop_index[shop_nr].stock_room].contents, objnum))) {
-        sprintf(buf, shop_index[shop_nr].no_such_item1, GET_NAME(ch));
+        // no_such_item1/2, missing_cash1/2, do_not_buy, message_buy/sell are
+        // builder shop-file strings (structs.h-adjacent shop_data fields) --
+        // validate before expanding, same reasoning as death_cry2 above.
+        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].no_such_item1,
+                                { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
+                                "We don't have that.", "shop no_such_item1 (buy: no item)")
+                                .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
     }
 
     if (temp1->obj_flags.cost <= 0) {
-        sprintf(buf, shop_index[shop_nr].no_such_item1, GET_NAME(ch));
+        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].no_such_item1,
+                                { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
+                                "We don't have that.", "shop no_such_item1 (buy: not for sale)")
+                                .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         extract_obj(temp1);
         return;
     }
 
     if (GET_GOLD(ch) < (int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100) /*&& GET_LEVEL(ch) < LEVEL_GOD*/) {
-        sprintf(buf, shop_index[shop_nr].missing_cash2, GET_NAME(ch));
+        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].missing_cash2,
+                                { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
+                                "You don't have enough cash.", "shop missing_cash2 (buy)")
+                                .c_str());
         do_tell(keeper, buf, 0, 19, 0);
 
         switch (shop_index[shop_nr].temper1) {
@@ -289,7 +302,13 @@ void shopping_buy(char* arg, struct char_data* ch,
 
     act("$n buys $p.", FALSE, ch, temp1, 0, TO_ROOM);
 
-    sprintf(buf, shop_index[shop_nr].message_buy, GET_NAME(ch), money_message((int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100)));
+    sprintf(buf, "%s",
+        safe_template::expand_checked(shop_index[shop_nr].message_buy,
+            { safe_template::Conv::String, safe_template::Conv::String },
+            { std::string_view(GET_NAME(ch)),
+                std::string_view(money_message((int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100))) },
+            "Thanks for your business.", "shop message_buy")
+            .c_str());
     do_tell(keeper, buf, 0, 19, 0);
     sprintf(buf, "You now have %s.\n\r", temp1->short_description);
     send_to_char(buf, ch);
@@ -332,7 +351,10 @@ void shopping_sell(char* arg, struct char_data* ch, struct char_data* keeper, in
     }
 
     if (!(temp1 = get_obj_in_list_vis(ch, argm, ch->carrying, 9999))) {
-        sprintf(buf, shop_index[shop_nr].no_such_item2, GET_NAME(ch));
+        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].no_such_item2,
+                                { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
+                                "You don't have that.", "shop no_such_item2 (sell)")
+                                .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
     }
@@ -343,20 +365,32 @@ void shopping_sell(char* arg, struct char_data* ch, struct char_data* keeper, in
     }
 
     if (!(trade_with(temp1, shop_nr)) || (temp1->obj_flags.cost < 1)) {
-        sprintf(buf, shop_index[shop_nr].do_not_buy, GET_NAME(ch));
+        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].do_not_buy,
+                                { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
+                                "I don't buy that kind of thing.", "shop do_not_buy (sell)")
+                                .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
     }
 
     if ((GET_GOLD(keeper) + shop_index[shop_nr].bankAccount) < (int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_sell / 100)) {
-        sprintf(buf, shop_index[shop_nr].missing_cash1, GET_NAME(ch));
+        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].missing_cash1,
+                                { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
+                                "I don't have enough cash for that.", "shop missing_cash1 (sell)")
+                                .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
     }
 
     act("$n sells $p.", FALSE, ch, temp1, 0, TO_ROOM);
 
-    sprintf(buf, shop_index[shop_nr].message_sell, GET_NAME(ch), money_message((int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_sell / 100)));
+    sprintf(buf, "%s",
+        safe_template::expand_checked(shop_index[shop_nr].message_sell,
+            { safe_template::Conv::String, safe_template::Conv::String },
+            { std::string_view(GET_NAME(ch)),
+                std::string_view(money_message((int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_sell / 100))) },
+            "Thanks for the item.", "shop message_sell")
+            .c_str());
     do_tell(keeper, buf, 0, 19, 0);
     sprintf(buf, "The shopkeeper now has %s.\n\r", temp1->short_description);
     send_to_char(buf, ch);
@@ -405,14 +439,20 @@ void shopping_value(char* arg, struct char_data* ch,
 
     if (!(temp1 = get_obj_in_list_vis(ch, argm, ch->carrying, 9999))) {
         // printf("no such item\n");
-        sprintf(buf, shop_index[shop_nr].no_such_item2, GET_NAME(ch));
+        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].no_such_item2,
+                                { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
+                                "You don't have that.", "shop no_such_item2 (value)")
+                                .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
     }
 
     if (!(trade_with(temp1, shop_nr))) {
         // printf("no trade with you\n");
-        sprintf(buf, shop_index[shop_nr].do_not_buy, GET_NAME(ch));
+        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].do_not_buy,
+                                { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
+                                "I don't buy that kind of thing.", "shop do_not_buy (value)")
+                                .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
     }

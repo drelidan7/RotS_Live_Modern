@@ -124,10 +124,10 @@ private:
 **Files:** `docs/BUILD.md` (toolchain matrix: trixie/g++14 containers, C++20 all platforms, std::format note), `docs/superpowers/specs/2026-07-06-cpp-modernization-design.md` (dated amendment note in the Dependencies section: fmt superseded by std::format per user C++20 decision + no-third-party constraint; Asio row already superseded by rots_net), CLAUDE.md/AGENTS.md (C++20 mentions where C++17 is stated — grep `c++17\|C++17`).
 
 **Steps:**
-- [ ] Doc updates; verify zero stale `c++1z`/`C++17` claims remain in docs (source comments referencing history are fine).
-- [ ] Create the Windows operational-gaps tracking issue via `gh issue create` on drelidan7/RotS_Live_Modern, consolidating: sendmail no-op, umask/ACLs, backtrace, SIGVTALRM watchdog, WSA error-reporting polish (perror-vs-WSAGetLastError, WSAStartup retcode), Windows-boot prerequisites (Windows host + world data + boot-golden.sh port). Quote issue URL in the report.
-- [ ] Exit battery ×4 + CI run URL recorded; ledger updated with new baselines (test counts will have grown: +1 format smoke, +Task 3/4/5 tests — record exact).
-- [ ] Commit `docs: record Phase 4 Wave 1 exit`.
+- [x] Doc updates; verify zero stale `c++1z`/`C++17` claims remain in docs (source comments referencing history are fine).
+- [x] Create the Windows operational-gaps tracking issue via `gh issue create` on drelidan7/RotS_Live_Modern, consolidating: sendmail no-op, umask/ACLs, backtrace, SIGVTALRM watchdog, WSA error-reporting polish (perror-vs-WSAGetLastError, WSAStartup retcode), Windows-boot prerequisites (Windows host + world data + boot-golden.sh port). Quote issue URL in the report.
+- [x] Exit battery ×4 + CI run URL recorded; ledger updated with new baselines (test counts will have grown: +1 format smoke, +Task 3/4/5 tests — record exact).
+- [x] Commit `docs: record Phase 4 Wave 1 exit`.
 
 ---
 
@@ -136,3 +136,42 @@ private:
 - Spec coverage: Task 1↔spec§Task1, 2↔§2, 3↔§3, 4↔§4 (MSSP resolved: semantics correct, fix narrowing), 5↔§5 (leaf list finalized by census: color/char_utils/utility — the other four candidates have zero sites), 6↔§6. Deferred list matches spec.
 - No placeholders; exact anchors verified 2026-07-09; interfaces (ScopedTestWorld, cpp20 smoke test) fully specified.
 - Type consistency: SocketType prints (Task 4) consistent with rots_net conventions; ScopedTestWorld mirrors existing Scoped* naming.
+
+---
+
+## Wave 1 exit
+
+**Date:** 2026-07-10. **Final commit:** `1d15155` (`docs: reconcile toolchain/test-count claims for Phase 4 Wave 1`), on `modernization/phase-4-wave-1`, branched from `master` at `3536002`. All six wave tasks (toolchain bump, dead-code deletion, test-world RAII, backlog burn-down, `std::format` leaf-module pattern, exit docs/tracking) complete and reviewed; the tree is docs-only on top of Task 5's `7a01f49`, so this exit re-verified rather than changed runtime behavior.
+
+**Exit battery ×4 (actuals, this session, 2026-07-10):**
+
+| Leg | Command(s) | Result |
+|---|---|---|
+| i386 container | `docker compose run --rm rots` tests-Makefile runner (`../../bin/tests`) | 664 tests: 657 passed, 0 failed, 7 skipped |
+| i386 container | `cmake -S src -B build && cmake --build build --target ageland_tests && ctest` | 664/664 passed, 0 failed, 7 skipped |
+| i386 container | `scripts/boot-golden.sh verify` | boot log matches golden |
+| rots64 container | `cmake --preset linux-x64 && cmake --build --preset linux-x64 && ctest --preset linux-x64` | 664/664 passed, 0 failed, 73 skipped |
+| rots64 container | `scripts/boot-golden.sh --service rots64 verify` | boot log matches golden |
+| macOS native | `build/macos-arm64/ageland_tests` direct invocation (ctest-equivalent — see note) | 664 tests: 593 passed, 0 failed, 71 skipped |
+| macOS native | `scripts/boot-golden.sh --native build/macos-arm64/ageland verify` | boot log matches golden |
+| CI (windows-msvc + linux-x64 + macos-arm64 + legacy-32bit, all required) | push + blocking `gh run watch` | all four green, run 29082555190 |
+
+**macOS local-run note:** this machine's iCloud FileProvider wedge on `~/Documents` (first surfaced in Wave 1 Task 3, `.superpowers/sdd/w1-task-3-report.md`) is still present — confirmed again this session (`cmake --preset macos-arm64` and a bare `os.listdir('/Users/drelidan/Documents')` both hung indefinitely and had to be killed). Since this task made no source changes, the pre-existing `build/macos-arm64/ageland`/`ageland_tests` binaries (built earlier the same day, before this task started) were still current; the ctest leg was therefore run by invoking `ageland_tests` directly from the repo root (bypassing cmake/ctest entirely, so the FileProvider wedge never triggers) — identical partition to the macOS CI leg's 664/0/71. `boot-golden.sh --native` also bypasses cmake/docker by design, so it ran normally. This is an environment issue local to this Mac, not a code or CI issue — CI's macOS job (which runs on GitHub's runners, unaffected) is the leg of record for the required gate.
+
+**Test-count baselines (final, Wave 1 exit):** 664 total on i386/rots64/macOS (664/0, skips 71 macOS / 7 i386 / 73 rots64); Windows 660/0/20 (verified from the exact Windows ctest summary line of CI run 29080797408, Task 5's green run: `660/660` tests, `100% tests passed, 0 tests failed out of 660`, 20 skipped). Both CLAUDE.md and AGENTS.md have been updated to state these numbers (previously stale at "~645 (641 Windows)").
+
+**Tracking issues opened (this task):**
+- Windows operational gaps: https://github.com/drelidan7/RotS_Live_Modern/issues/1 (sendmail no-op, umask/ACLs, backtrace, SIGVTALRM watchdog, WSA error-reporting polish, Windows-boot prerequisites)
+- Phase 4 backlog (parked fixes and follow-ups): https://github.com/drelidan7/RotS_Live_Modern/issues/2 (zone.cpp `-1`/`65535` sentinel fix — parked patch + golden-recapture sign-off needed; world-data format-template hardening; mage_tests 5th test-world clone; DamageTranscriptSeed42 corpse-leak test hygiene; object_utils.cpp `get_weapon_damage` orphaned twin; stale `src/tags` ctags index)
+
+**CI run of record:** https://github.com/drelidan7/RotS_Live_Modern/actions/runs/29082555190 — all four required jobs (`Linux i386 legacy`, `Linux x64`, `macOS arm64`, `Windows MSVC`) green.
+
+**Deferred list — confirmed still deferred, matches spec §"Explicitly deferred from wave 1":**
+- Y2038-class `int`-timestamp narrowings (needs a deliberate on-disk format version bump).
+- RAII / owner-explicit smart-pointer wave (needs the `char_data`/`obj_data` lifecycle audit first).
+- Intrusive-list → STL container migrations; `char[MAX_STRING_LENGTH]` → `std::string`; `enum class` / namespace introduction; god-file splits.
+- C++23 bump (MSVC stabilization gate).
+- Remaining `utility.cpp` sprintf/strcpy/strcat sites not converted in Task 5 (7 of the 27 census sites — legitimately justified skips per the Task 5 report, e.g. proto-fixture gaps).
+- The broader `act_*.cpp`/`fight.cpp`/`db.cpp`/`comm.cpp` sprintf/strcpy/strcat population — Wave 1 proved the `std::format` conversion pattern on leaf modules only (`color.cpp`, `char_utils.cpp`, `utility.cpp`); the high-fan-in modules are explicitly later-wave work per the parent spec's "leaf utilities first; fight.cpp, db.cpp, comm.cpp last" ordering.
+
+Wave 1 is complete. Recommend the next session pick up Phase 4's next wave (or address a backlog item from issue #2) per the parent spec's phase ordering.

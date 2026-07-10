@@ -201,6 +201,25 @@ TEST(ActOthe, DoTitleQueryFormatsEmptyTitleAsEmptyString)
     EXPECT_EQ(std::string(ctx.descriptor.output), "Your present title is: \n\r");
 }
 
+// Regression pin for the Phase 4 Wave 2 whole-branch review's null-guard
+// finding: GET_TITLE(ch) is null (not merely empty) before a player ever sets
+// a title (db.cpp's store_to_char zeroes it; SoloCharacterContext's
+// clear_char() leaves player.title null-constructed the same way). The old
+// sprintf("%s", NULL) this site replaced happened to print glibc's literal
+// "(null)" rather than crashing; utils.h's nz() reproduces that exact string
+// so act_othe.cpp:314's std::format doesn't call strlen(nullptr) instead.
+TEST(ActOthe, DoTitleQueryFormatsNullTitleAsGlibcNullLiteral)
+{
+    SoloCharacterContext ctx;
+    ctx.character.player.level = 25;
+    ASSERT_EQ(ctx.character.player.title, nullptr);
+
+    char empty_argument[] = "";
+    do_title(&ctx.character, empty_argument, nullptr, 0, 0);
+
+    EXPECT_EQ(std::string(ctx.descriptor.output), "Your present title is: (null)\n\r");
+}
+
 TEST(ActOthe, DoTitleSetFormatsNameAndTitleWithSpecialCharacters)
 {
     SoloCharacterContext ctx;
@@ -521,4 +540,31 @@ TEST(ActOffe, DoBashHeavyDoorFormatsLightBodyMessageForWoodElf)
 
     EXPECT_EQ(std::string(ctx.descriptor.output),
         "You throw your light body on the gate.\n\rThe gate would not budge.\n\r");
+}
+
+// Regression pin for the Phase 4 Wave 2 whole-branch review's null-guard
+// finding: a direction-targeted exit's keyword can be null (find_door,
+// act_move.cpp, already treats a null keyword as "no keyword required" for a
+// direction-only exit -- see its `if (EXIT(ch, door)->keyword)` guard).
+// DoorContext's exit is value-initialized ({}), so leaving ctx.exit.keyword
+// unset here reproduces that null state directly, without needing to load a
+// real door-less world exit. Old sprintf("%s", NULL) printed glibc's literal
+// "(null)"; utils.h's nz() reproduces that same string at all 7 of
+// act_offe.cpp's do_bash keyword sites so std::format doesn't call
+// strlen(nullptr) instead.
+TEST(ActOffe, DoBashHeavyDoorFormatsNullKeywordAsGlibcNullLiteral)
+{
+    DoorContext ctx;
+    ctx.character.player.race = RACE_HUMAN;
+    ASSERT_EQ(ctx.exit.keyword, nullptr);
+    ctx.exit.exit_info = EX_ISDOOR | EX_CLOSED | EX_DOORISHEAVY;
+
+    waiting_type wtl {};
+    wtl.targ1.type = TARGET_OTHER;
+    wtl.targ1.ch_num = DoorContext::door_direction;
+
+    do_bash(&ctx.character, const_cast<char*>(""), &wtl, 0, 3);
+
+    EXPECT_EQ(std::string(ctx.descriptor.output),
+        "You throw yourself on the (null).\n\rThe (null) would not budge.\n\r");
 }

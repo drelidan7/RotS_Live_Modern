@@ -601,17 +601,21 @@ ACMD(do_bash)
 
         prob = (GET_SKILL(ch, SKILL_BASH) / 10 + GET_STR(ch) - 20) * 5;
 
+        // door's keyword can be null for a direction-targeted exit (find_door,
+        // act_move.cpp, already guards this with `if (... ->keyword)`); nz()
+        // reproduces old sprintf's glibc "(null)" output on the 7 std::format
+        // sites below instead of crashing std::format's strlen(nullptr).
         tmp = GET_RACE(ch);
         if ((tmp == RACE_WOOD) || (tmp == RACE_HIGH) || (tmp == RACE_HOBBIT)) {
-            strcpy(buf, std::format("You throw your light body on the {}.\n\r", EXIT(ch, door)->keyword).c_str());
+            strcpy(buf, std::format("You throw your light body on the {}.\n\r", nz(EXIT(ch, door)->keyword)).c_str());
             send_to_char(buf, ch);
-            strcpy(buf, std::format("$n throws $mself on the {}.\n\r", EXIT(ch, door)->keyword).c_str());
+            strcpy(buf, std::format("$n throws $mself on the {}.\n\r", nz(EXIT(ch, door)->keyword)).c_str());
             act(buf, TRUE, ch, 0, 0, TO_ROOM);
             prob = -1;
         } else {
-            strcpy(buf, std::format("You throw yourself on the {}.\n\r", EXIT(ch, door)->keyword).c_str());
+            strcpy(buf, std::format("You throw yourself on the {}.\n\r", nz(EXIT(ch, door)->keyword)).c_str());
             send_to_char(buf, ch);
-            strcpy(buf, std::format("$n throws $mself on the {}.\n\r", EXIT(ch, door)->keyword).c_str());
+            strcpy(buf, std::format("$n throws $mself on the {}.\n\r", nz(EXIT(ch, door)->keyword)).c_str());
             act(buf, TRUE, ch, 0, 0, TO_ROOM);
         }
         if ((tmp == RACE_URUK) || (tmp == RACE_DWARF))
@@ -626,7 +630,7 @@ ACMD(do_bash)
             prob = -1;
 
         if (prob < 0) {
-            strcpy(buf, std::format("The {} would not budge.\n\r", EXIT(ch, door)->keyword).c_str());
+            strcpy(buf, std::format("The {} would not budge.\n\r", nz(EXIT(ch, door)->keyword)).c_str());
             send_to_char(buf, ch);
             return;
         }
@@ -641,9 +645,9 @@ ACMD(do_bash)
         }
         SET_BIT(EXIT(ch, door)->exit_info, EX_ISBROKEN);
         REMOVE_BIT(EXIT(ch, door)->exit_info, EX_CLOSED | EX_LOCKED);
-        strcpy(buf, std::format("The {} crashes open! You fall through it.\n\r", EXIT(ch, door)->keyword).c_str());
+        strcpy(buf, std::format("The {} crashes open! You fall through it.\n\r", nz(EXIT(ch, door)->keyword)).c_str());
         send_to_char(buf, ch);
-        strcpy(buf, std::format("The {} crashes open! $n falls through it.\n\r", EXIT(ch, door)->keyword).c_str());
+        strcpy(buf, std::format("The {} crashes open! $n falls through it.\n\r", nz(EXIT(ch, door)->keyword)).c_str());
         act(buf, TRUE, ch, 0, 0, TO_ROOM);
         if ((other_room = EXIT(ch, door)->to_room) != NOWHERE) {
             if ((back = world[other_room].dir_option[rev_dir[door]]))

@@ -43,6 +43,18 @@ int hide_prof(struct char_data*);
 int see_hiding(struct char_data*);
 char unaccent(char);
 char* str_dup(const char* source);
+
+// Guards a possibly-null char* (a saved title, a door/exit keyword, etc.)
+// before it reaches std::format/std::string_view -- both call strlen() on the
+// pointer unconditionally and crash on null, unlike the old glibc sprintf("%s",
+// NULL) these call sites used to go through, which printed the literal string
+// "(null)". Returns that same "(null)" literal for a null p so converted call
+// sites stay byte-identical to the sprintf-era output.
+inline const char* nz(const char* p)
+{
+    return p ? p : "(null)";
+}
+
 int str_cmp(const char* arg1, const char* arg2);
 int strn_cmp(const char* arg1, const char* arg2, int n);
 void log(const char* str);

@@ -3562,9 +3562,13 @@ SPECIAL(herald)
     // death_cry2 is builder mob data (world file), not code -- validate its
     // conversions before expanding so a malformed template ('%d' where '%s' is
     // expected, an extra '%s', a '%n', etc.) can't read past name/title.
+    // ch->player.title is null before a player ever sets a title (see do_title,
+    // act_othe.cpp); nz() guards it before the string_view construction below,
+    // which would otherwise call strlen(nullptr) and crash. ch->player.name is
+    // always set for a connected player.
     const std::string herald_line = safe_template::expand_checked(host->player.death_cry2,
         { safe_template::Conv::String, safe_template::Conv::String },
-        { std::string_view(ch->player.name), std::string_view(ch->player.title) },
+        { std::string_view(ch->player.name), std::string_view(nz(ch->player.title)) },
         "notices someone new arrive.", "herald death_cry2");
     snprintf(hbuf, HERALD_LEN - 1, "%s", herald_line.c_str());
     do_say(host, hbuf, 0, 0, 0);

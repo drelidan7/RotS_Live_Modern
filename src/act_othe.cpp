@@ -311,7 +311,10 @@ ACMD(do_title)
     else if (PLR_FLAGGED(ch, PLR_NOTITLE))
         send_to_char("You can't title yourself - you shouldn't have abused it!\n\r", ch);
     else if (!*argument) {
-        strcpy(buf, std::format("Your present title is: {}\n\r", GET_TITLE(ch)).c_str());
+        // GET_TITLE(ch) is null when the saved title is empty (db.cpp's
+        // store_to_char clears it to 0); nz() reproduces old sprintf's
+        // glibc "(null)" output instead of crashing std::format's strlen().
+        strcpy(buf, std::format("Your present title is: {}\n\r", nz(GET_TITLE(ch))).c_str());
         send_to_char(buf, ch);
     } else if (strstr(argument, "(") || strstr(argument, ")"))
         send_to_char("Titles can't contain the ( or ) characters.\n\r", ch);

@@ -1045,7 +1045,10 @@ void list_room(struct char_data* ch, struct room_data* mob)
         send_to_char(std::format("(5) exit selected  :{}\n\r", exit_convert(SHAPE_ROOM(ch)->exit_chosen)).c_str(), ch);
         flg = mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->exit_info;
         send_to_char(std::format("(6) exit type   :{}\n\r", flg /*convert_exit_flag(flg,1)*/).c_str(), ch);
-        send_to_char(std::format("(8) exit keyword   :{}\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->keyword).c_str(), ch);
+        // Same nullable room_direction_data::keyword as the act_offe.cpp bash-door
+        // sites (find_door treats a null keyword as a valid direction-only exit);
+        // nz() avoids crashing std::format's strlen(nullptr) here too.
+        send_to_char(std::format("(8) exit keyword   :{}\n\r", nz(mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->keyword)).c_str(), ch);
         send_to_char("(9) exit description  :\n\r", ch);
         send_to_char(mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->general_description, ch);
         send_to_char("\n\r", ch);

@@ -2273,7 +2273,11 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
             break;
 
         case 'K':
-            printf(value);
+            // `value` is attacker-controllable player-file text, not a format string --
+            // pass it through "%s" rather than as the format argument itself (a
+            // non-literal-format-string bug: any '%' bytes in the line would previously
+            // be interpreted as conversion specifiers).
+            printf("%s", value);
             break;
 
         case 'L':

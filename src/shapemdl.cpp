@@ -147,7 +147,11 @@ int save_mudlle(struct char_data* ch)
     str[0] = 0;
     sprintf(str, "%s %s %s", COPY_COMMAND,
         SHAPE_MUDLLE(ch)->f_from, SHAPE_MUDLLE(ch)->f_old);
-    fprintf(stderr, str);
+    // str is a locally-built command line, not a format string -- pass it through
+    // fputs rather than as fprintf's format argument (a non-literal-format-string
+    // bug: any '%' bytes it happens to contain would previously be interpreted as
+    // conversion specifiers).
+    fputs(str, stderr);
     // Was system(str) (a shell "cp <f_from> <f_old>"); the return value was
     // never checked, so a failed copy silently left f_old stale -- preserve
     // that by ignoring copy_ec here too.
@@ -161,7 +165,9 @@ int save_mudlle(struct char_data* ch)
     saved = 0;
     while (!feof(ofp)) {
         fgets(str, MAX_STRING_LENGTH, ofp);
-        fprintf(stderr, str);
+        // str is a raw line read from a mudlle program file, not a format string --
+        // same non-literal-format-string fix as above.
+        fputs(str, stderr);
         for (tmp = 0; (tmp < MAX_STRING_LENGTH) && (str[tmp] <= ' '); tmp++)
             ;
 

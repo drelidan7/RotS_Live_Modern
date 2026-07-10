@@ -40,7 +40,7 @@
     },
     {
       "name": "windows-msvc",
-      "displayName": "Windows MSVC (64-bit; Phase 3 bring-up)",
+      "displayName": "Windows MSVC (64-bit; required in CI)",
       "inherits": "base",
       "generator": "Visual Studio 17 2022",
       "architecture": { "value": "x64", "strategy": "set" },

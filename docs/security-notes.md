@@ -85,7 +85,7 @@ character's `pwd` field with this marker instead of a real password, called once
 new-character-creation path (interpre.cpp:2905). It is **write-only**: nothing anywhere reads or
 compares against `kAccountOnlyPasswordMarker` — it is a defensive placeholder documenting intent
 ("this field is meaningless for this character"), not an enforced guard. Account-native characters
-never reach the three live legacy-`pwd` comparison sites above in the first place, because
+never reach the five live legacy-`pwd` comparison sites above in the first place, because
 `*d->account_name` is non-empty for them and routes into the account-password branches instead;
 the sentinel is redundant-but-harmless belt-and-braces, not the actual enforcement mechanism.
 

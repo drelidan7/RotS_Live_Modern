@@ -133,7 +133,7 @@ docker compose run --rm rots64 bash -lc 'cd /rots/src && ctest --preset linux-x6
 scripts/boot-golden.sh --service rots64 verify
 ```
 
-## Build matrix (Phase 2b)
+## Build matrix (Phase 3)
 
 The authoritative build is CMake. Presets live in `src/CMakePresets.json`
 (CMake ≥ 3.23 to use presets; the i386 container's CMake 3.18 uses the root
@@ -145,11 +145,38 @@ The authoritative build is CMake. Presets live in `src/CMakePresets.json`
 | `linux-x86-legacy` | Linux i386 via multilib | builds the game; tests stay in the container path |
 | `linux-x64` (native or `rots64` container) | Linux x86-64 | **green — boots, passes tests, matches the Phase 0 goldens; CI-required** |
 | `macos-arm64` (native) | macOS arm64 | **green — boots, passes tests, matches the Phase 0 goldens; CI-required** |
-| `windows-msvc` | Windows x64 MSVC | red until Phase 3 (platform layer) |
+| `windows-msvc` | Windows x64 MSVC | **green — configure/build/full ctest (goldens included); CI-required as of Phase 3 Task 7** |
 
 Per-platform (from `src/`): `cmake --preset <name>`, `cmake --build --preset <name>`,
 `ctest --preset <name>`. `cmake --list-presets` shows what runs on this host.
 
-CI (`.github/workflows/ci.yml`): `legacy-32bit`, `linux-x64`, and `macos-arm64` are all
-required jobs. Only `windows-msvc` still runs allowed-to-fail, until Phase 3 lands the
-Windows platform layer — its log is the porting work-list.
+CI (`.github/workflows/ci.yml`): `legacy-32bit`, `linux-x64`, `macos-arm64`, and
+`windows-msvc` are all required jobs — no job in the matrix is allowed to fail anymore.
+
+### Windows: build+test green, boot verification deferred
+
+`windows-msvc` networking runs through a hand-rolled, platform-gated socket shim
+(`src/rots_net.h`/`.cpp`) — no third-party networking library. An earlier vendoring of
+Asio (Task 1) was implemented, reviewed, and then **reverted** per a 2026-07-09
+no-third-party-libraries decision; `platdef.h`'s Windows scaffold (winsock2 includes,
+`SocketType`) survived the revert and is what the shim builds on. GoogleTest is the one
+exception — it is test-only tooling, never linked into the shipping game binary, and on
+Windows CI it is provisioned via CMake `FetchContent` (source-built against the exact
+MSVC/CRT, cached in `actions/cache` keyed on `src/CMakeLists.txt`) since the windows-2022
+runner carries no system GTest package; Linux/macOS keep `find_package(GTest REQUIRED)`
+against apt/brew packages.
+
+What Windows CI verifies today: `cmake --preset windows-msvc`, build, and
+`ctest --preset windows-msvc` — the full unit suite including the characterization
+goldens (JSON goldens are platform-neutral; the combat golden's RNG is `mt19937`,
+platform-independent by construction). What it does **not** verify: a live server boot
+against real world data — the windows-2022 runner has no `lib/world/` and there is no
+Windows workstation in this project to run one locally, so `scripts/boot-golden.sh` has
+no Windows path. This is a deliberate, documented deviation from the general "boots and
+passes tests" bar the other three platforms clear, not an oversight.
+
+Enabling a Windows boot check in a future phase would need: (1) a Windows host (or a
+Windows CI runner willing to accept a long-running background process) with `lib/world/`
+staged onto it, and (2) either a `boot-golden.sh` Windows/PowerShell port or a
+cross-platform rewrite of that script, since it currently shells out to POSIX tools
+(`nc`/process-signaling) that don't exist on Windows as-is.

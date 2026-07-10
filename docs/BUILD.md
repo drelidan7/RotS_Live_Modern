@@ -170,15 +170,42 @@ an earlier spec draft listed it (see the Dependencies section of
 amendment). C++20's `<format>` is available on all four toolchains above, so this is
 a zero-dependency, zero-portability-risk choice.
 
-**Lesson learned in Wave 1 (record for later waves doing the same conversion):**
-a fixed-size `char[N]` class/struct member (e.g. `skill_data::name`) does **not**
-format the same across standard libraries — libc++ (AppleClang) formats a `char`
-array as a *range* (prints each element/looks nothing like a C string), while
-libstdc++ decays it and prints the string. This only surfaces as a divergence
-between local macOS runs and Linux CI, not as a local build failure, so it's easy to
-miss. Always `static_cast<const char*>(the_array)` (or otherwise take an explicit
-pointer) before handing a `char[N]` member to `std::format` — never pass the array
-itself.
+**Lesson learned in Wave 1 (reaffirmed in Wave 2, still applies to every future
+`std::format` conversion):** a fixed-size `char[N]` class/struct member (e.g.
+`skill_data::name`) does **not** format the same across standard libraries —
+libc++ (AppleClang) formats a `char` array as a *range* (prints each
+element/looks nothing like a C string), while libstdc++ decays it and prints
+the string. This only surfaces as a divergence between local macOS runs and
+Linux CI, not as a local build failure, so it's easy to miss. Always
+`static_cast<const char*>(the_array)` (or otherwise take an explicit pointer)
+before handing a `char[N]` member to `std::format` — never pass the array
+itself. Wave 2's `act_othe.cpp`/`act_offe.cpp` conversions hit this again
+(a `char[256]` local and a `skill_data::name` `char[50]`) and applied the same
+cast; a `char*` (already a pointer, e.g. `GET_NAME`/`GET_TITLE`) needs no cast.
+
+**World-data format-template hardening (`safe_template`, Wave 2):** some
+`sprintf`-family call sites don't just format a value — they use a
+**builder/world-data-supplied string as the format template itself**
+(`spec_pro.cpp`'s Herald `death_cry2` mob field, `shop.cpp`'s ~10
+`shop_index[].message_*`/`no_such_item*` fields). A malformed template there
+(wrong conversion count/type, a stray `%n`) is undefined behavior at the
+`sprintf` call, not just a wrong-looking message. `src/safe_template.h`/`.cpp`
+adds `safe_template::expand_checked()`: it scans the template's conversions,
+compares them against the site's expected signature (currently `%s`-only,
+prefix-tolerant — a template with *fewer* conversions than the declared
+signature is accepted and expands sprintf-style, matching real world-data
+templates that leave trailing args unused), and only expands when the shape
+matches; on mismatch it logs one `mudlog` line and returns a neutral fallback
+string instead of touching the mismatched varargs. Well-formed templates —
+the entire live `lib/world/` data set — expand byte-identical to the old
+`sprintf`/`snprintf` call. Convert a *new* world-data-as-template site through
+`safe_template`, not a raw `std::format`/`sprintf` call, since `std::format`
+has no runtime concept of "validate the template against caller-supplied
+data" and would reintroduce the same class of bug in a different form. As of
+Wave 2 this covers `death_cry2` and the 10 enumerated `shop.cpp` fields only —
+see the Wave 2 exit section of
+`docs/superpowers/plans/2026-07-10-phase-4-wave-2.md` for what's still
+outstanding in this template-hardening class.
 
 ### Windows: build+test green, boot verification deferred
 

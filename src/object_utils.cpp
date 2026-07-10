@@ -3,7 +3,6 @@
 #include "structs.h"
 
 #include "handler.h"
-#include "spells.h"
 #include "utils.h"
 
 //============================================================================

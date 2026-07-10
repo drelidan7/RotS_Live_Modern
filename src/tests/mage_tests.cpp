@@ -39,6 +39,19 @@ namespace {
 // requests room 32 (the highest).
 constexpr int kMageTestWorldRoomCount = 33;
 
+// Any create_bulk() allocation dummy_room_data()-initializes a window of
+// EXTENSION_SIZE rooms and always spans at least indices [0, EXTENSION_SIZE)
+// in the worst reuse case (a single-room create_bulk(1) another suite ran
+// first), so keeping the count within EXTENSION_SIZE guarantees every room
+// this suite touches is a real, initialized room even when ScopedTestWorld
+// reuses a world it didn't allocate. Mirrors damage_test_context.h's
+// compile-time guard on its single-room reliance; complements the runtime
+// assert in ScopedTestWorld's reuse branch (test_world.h). Bump both the
+// world and this bound together if a future test needs a higher room number.
+static_assert(kMageTestWorldRoomCount <= EXTENSION_SIZE,
+    "mage_tests' shared world must fit inside create_bulk()'s "
+    "dummy-initialized EXTENSION_SIZE window");
+
 void ensure_test_world(int minimum_room_number) {
     // Migrated onto the shared multi-room ScopedTestWorld (test_world.h) --
     // this function used to hand-roll its own world.create_bulk()/

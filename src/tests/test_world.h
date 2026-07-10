@@ -55,6 +55,7 @@
 #include "../structs.h"
 #include "../utils.h"
 
+#include <cassert>
 #include <cstdlib>
 
 extern struct room_data world;
@@ -96,6 +97,29 @@ public:
         else
         {
             owns_world_ = false;
+
+            // Reuse branch: a prior suite/instance already allocated
+            // BASE_WORLD, and we deliberately neither resize nor re-dummy-init
+            // it here -- so we rely on that existing allocation already being
+            // large enough for the room_count we were asked for. create_bulk(N)
+            // allocates N + EXTENSION_SIZE rooms in one contiguous block, whose
+            // valid base indices are [0, BASE_LENGTH] (BASE_LENGTH == N +
+            // EXTENSION_SIZE - 1), so world[0..room_count_) stays in-bounds
+            // exactly when room_count_ <= BASE_LENGTH + 1. Every current caller
+            // satisfies this trivially (single-room callers need 1; mage_tests'
+            // multi-room static needs 33, and its own
+            // static_assert(kMageTestWorldRoomCount <= EXTENSION_SIZE) plus the
+            // fact that BASE_LENGTH >= EXTENSION_SIZE for any allocation keeps
+            // it safe). This assert guards ANY future multi-room caller against
+            // silently overrunning an undersized reused world -- the runtime
+            // analogue of damage_test_context.h's compile-time
+            // static_assert(room_number < EXTENSION_SIZE - 1). NDEBUG test
+            // builds compile it out, which is why mage_tests ALSO carries the
+            // compile-time static_assert; the two together cover both the
+            // always-on compile-time case for the known caller and the
+            // debug-build runtime case for arbitrary future ones.
+            assert(room_count_ <= room_data::BASE_LENGTH + 1
+                && "ScopedTestWorld: requested room_count exceeds the already-allocated test world");
         }
 
         // Every ensure_test_world_room() clone this fixture replaces forced

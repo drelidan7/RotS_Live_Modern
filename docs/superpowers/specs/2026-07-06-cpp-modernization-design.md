@@ -171,11 +171,26 @@ functional diffs observed in playtesting.
 ## 5. Key technical decisions
 
 - **Language:** C++20 (comfortably supported by AppleClang, GCC, MSVC; C++23 adds
-  little for this codebase).
+  little for this codebase). Confirmed as landed: Phase 4 Wave 1 raised every build
+  path (`src/Makefile`, `src/tests/Makefile`, `src/CMakeLists.txt`, all four CMake
+  presets) to C++20 on `debian:trixie`/g++ 14.2 containers, AppleClang 21, and MSVC
+  `/std:c++20` — the "Language" line above is no longer aspirational.
 - **Dependencies** (pinned via FetchContent; no system-package requirements):
   standalone **Asio** (networking), **fmt** (formatting), **GoogleTest** (already
   in use). **No JSON library** — the account branch's tested `json_utils` stays;
   replacing it with nlohmann/json would be churn with no behavioral payoff.
+
+  > **2026-07-09 amendment (Phase 3 / Phase 4 Wave 1):** the no-third-party-libraries
+  > constraint (user decision, 2026-07-09) supersedes both third-party rows above.
+  > **Asio** was vendored in Phase 3 Task 1, then reverted the same day in favor of a
+  > hand-rolled, platform-gated socket shim (`src/rots_net.h`/`.cpp`) — see
+  > `docs/BUILD.md` "Windows: build+test green, boot verification deferred". **fmt**
+  > is superseded by **`std::format`** (C++20 standard library, zero dependency) as
+  > the sanctioned formatting/output-composition target, proven out on the leaf
+  > modules (`color.cpp`, `char_utils.cpp`, `utility.cpp`) in Phase 4 Wave 1 — see
+  > `docs/BUILD.md` "Formatting: `std::format` is the sanctioned target" for the
+  > `char[N]`-decay lesson learned there. GoogleTest remains the sole dependency,
+  > and remains test-only tooling never linked into the shipping binary.
 - **World files:** unchanged (text CircleMUD format, separate repo:
   RotS-WorldFiles). Parsing must tolerate the documented quirks (`\n\r` endings,
   missing trailing newlines).

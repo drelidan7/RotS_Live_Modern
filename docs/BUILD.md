@@ -133,25 +133,52 @@ docker compose run --rm rots64 bash -lc 'cd /rots/src && ctest --preset linux-x6
 scripts/boot-golden.sh --service rots64 verify
 ```
 
-## Build matrix (Phase 3)
+## Build matrix (Phase 3, toolchain updated Phase 4 Wave 1)
 
 The authoritative build is CMake. Presets live in `src/CMakePresets.json`
 (CMake ≥ 3.23 to use presets; the i386 container's CMake 3.18 uses the root
 `Makefile` flow instead).
 
-| Preset / path | Platform | Status |
-|---|---|---|
-| container + root `Makefile` (`make configure/build/test`) | Linux i386 (`-m32`) | **green — the shipping ABI; CI-required** |
-| `linux-x86-legacy` | Linux i386 via multilib | builds the game; tests stay in the container path |
-| `linux-x64` (native or `rots64` container) | Linux x86-64 | **green — boots, passes tests, matches the Phase 0 goldens; CI-required** |
-| `macos-arm64` (native) | macOS arm64 | **green — boots, passes tests, matches the Phase 0 goldens; CI-required** |
-| `windows-msvc` | Windows x64 MSVC | **green — configure/build/full ctest (goldens included); CI-required as of Phase 3 Task 7** |
+As of Phase 4 Wave 1, both Linux containers (`Dockerfile`, `Dockerfile.x64`) build
+from `debian:trixie` (g++ 14.2 on both the `linux/386` and `linux/amd64` platforms),
+and **every** build path — containers, native macOS, MSVC — compiles as **C++20**
+(`src/Makefile`, `src/tests/Makefile`, `src/CMakeLists.txt` all specify `c++20`/
+`cxx_std_20`). The i386 image is still `-m32` on top of the newer compiler — only
+the toolchain version changed, the ABI did not.
+
+| Preset / path | Platform | Toolchain | Status |
+|---|---|---|---|
+| container + root `Makefile` (`make configure/build/test`) | Linux i386 (`-m32`) | `debian:trixie`, g++ 14.2, C++20 | **green — the shipping ABI; CI-required** |
+| `linux-x86-legacy` | Linux i386 via multilib | host g++, C++20 | builds the game; tests stay in the container path |
+| `linux-x64` (native or `rots64` container) | Linux x86-64 | `debian:trixie`, g++ 14.2, C++20 | **green — boots, passes tests, matches the Phase 0 goldens; CI-required** |
+| `macos-arm64` (native) | macOS arm64 | AppleClang 21, C++20 | **green — boots, passes tests, matches the Phase 0 goldens; CI-required** |
+| `windows-msvc` | Windows x64 MSVC | MSVC (windows-2022 runner), `/std:c++20` | **green — configure/build/full ctest (goldens included); CI-required as of Phase 3 Task 7** |
 
 Per-platform (from `src/`): `cmake --preset <name>`, `cmake --build --preset <name>`,
 `ctest --preset <name>`. `cmake --list-presets` shows what runs on this host.
 
 CI (`.github/workflows/ci.yml`): `legacy-32bit`, `linux-x64`, `macos-arm64`, and
 `windows-msvc` are all required jobs — no job in the matrix is allowed to fail anymore.
+
+### Formatting: `std::format` is the sanctioned target
+
+Output composition (`sprintf`/`strcpy`/`strcat`-family call sites being modernized in
+Phase 4) converts to **`std::format`**, not a third-party formatting library — the
+project's standing no-third-party-libraries constraint rules out `{fmt}` even though
+an earlier spec draft listed it (see the Dependencies section of
+`docs/superpowers/specs/2026-07-06-cpp-modernization-design.md` for the dated
+amendment). C++20's `<format>` is available on all four toolchains above, so this is
+a zero-dependency, zero-portability-risk choice.
+
+**Lesson learned in Wave 1 (record for later waves doing the same conversion):**
+a fixed-size `char[N]` class/struct member (e.g. `skill_data::name`) does **not**
+format the same across standard libraries — libc++ (AppleClang) formats a `char`
+array as a *range* (prints each element/looks nothing like a C string), while
+libstdc++ decays it and prints the string. This only surfaces as a divergence
+between local macOS runs and Linux CI, not as a local build failure, so it's easy to
+miss. Always `static_cast<const char*>(the_array)` (or otherwise take an explicit
+pointer) before handing a `char[N]` member to `std::format` — never pass the array
+itself.
 
 ### Windows: build+test green, boot verification deferred
 

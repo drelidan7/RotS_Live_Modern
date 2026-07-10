@@ -13,7 +13,7 @@
 - Build (Make): `cd src && make all` — compiles C/C++ sources to `bin/ageland`.
 - Run: `cd src && make run` or `./bin/ageland -p &` — starts server in background.
 - Clean: `cd src && make clean` — removes `*.o` objects.
-- CMake alt build: `cmake -S src -B build && cmake --build build` (C++17).
+- CMake alt build: `cmake -S src -B build && cmake --build build` (C++20).
 - Rust proxy: `cargo build -p proxy` | `cargo test -p proxy` | `cargo run -p proxy -- --help`.
 - Root Makefile wrappers (from the account-management merge; run inside the
   32-bit container): `make configure` (CMake tree), `make build`, `make test`
@@ -33,7 +33,7 @@
 - Rust (proxy): follow `rustfmt` defaults; module/file lowercase with underscores.
 
 ## Testing Guidelines
-- C/C++: a GoogleTest suite (`cd src/tests && make tests && ../../bin/tests`, or `ctest --test-dir build`) covers ~645 tests (641 on Windows, where a handful of POSIX-only cases don't build/run), including characterization goldens (`src/tests/goldens/`, `docs/superpowers/goldens/`) that pin existing behavior byte-for-byte. Smoke tests (build + boot, see `/build-and-smoke`) remain the final gate — verify server boots, accepts connections, and changed features behave as expected.
+- C/C++: a GoogleTest suite (`cd src/tests && make tests && ../../bin/tests`, or `ctest --test-dir build`) covers ~665 tests (664 on Linux/macOS, 660 on Windows, where a handful of POSIX-only cases don't build/run), including characterization goldens (`src/tests/goldens/`, `docs/superpowers/goldens/`) that pin existing behavior byte-for-byte. Smoke tests (build + boot, see `/build-and-smoke`) remain the final gate — verify server boots, accepts connections, and changed features behave as expected.
 - Rust: write unit/integration tests in `proxy/`; run with `cargo test -p proxy` and keep coverage reasonable.
 - Characterization goldens pin current behavior: gtest suites `CharacterizationCombatTest.*`
   / `CharacterizationJson.*` (goldens in `src/tests/goldens/`) and

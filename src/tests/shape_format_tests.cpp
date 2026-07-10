@@ -135,9 +135,22 @@ void write_file(const std::string& path, const std::string& contents)
 }
 
 // Points descriptor.output back at descriptor's OWN small_outbuf and clears
-// its write cursor. Mutates the object in place rather than building a
-// separate temporary -- see reset_capturing_descriptor()'s doc comment below
-// for why building-and-assigning a whole descriptor_data is unsafe here.
+// its write cursor.
+//
+// CRITICAL: this MUST mutate the caller's own descriptor_data in place; a
+// helper that builds a descriptor and returns it BY VALUE is unsafe here.
+// descriptor_data::output is a self-pointer into the same object's
+// small_outbuf[] array, and copying/moving a descriptor_data (whether across
+// a `return` or an `x = f()` reassignment) copies that pointer bytewise --
+// leaving `output` aimed at the SOURCE object's small_outbuf, which for a
+// returned function-local is destroyed the moment the function returns. The
+// resulting dangling pointer is what made write_to_output() scribble into
+// freed stack on MSVC (empty/garbage output, cross-descriptor bleed, and an
+// eventual SEH 0xc0000005 access violation once bufptr walked off a guard
+// page). It went unnoticed on Linux/macOS only because those builds happened
+// to elide the copy (guaranteed/NRVO) or the freed slot stayed intact; MSVC's
+// Debug config disables NRVO, exposing the bug. Always: declare the
+// descriptor, then reset_capturing_descriptor() it in place.
 void reset_capturing_descriptor(descriptor_data& descriptor, char_data* character)
 {
     descriptor.output = descriptor.small_outbuf;
@@ -146,13 +159,6 @@ void reset_capturing_descriptor(descriptor_data& descriptor, char_data* characte
     descriptor.bufspace = SMALL_BUFSIZE - 1;
     descriptor.connected = 0; // CON_PLAYING
     descriptor.character = character;
-}
-
-descriptor_data make_capturing_descriptor(char_data* character)
-{
-    descriptor_data descriptor {};
-    reset_capturing_descriptor(descriptor, character);
-    return descriptor;
 }
 
 } // namespace
@@ -186,7 +192,8 @@ TEST(ShapeMudlle, LoadThenSaveRoundTripsMdlFileByteForByte)
 
     char_data editor {};
     clear_char(&editor, MOB_VOID);
-    descriptor_data descriptor = make_capturing_descriptor(&editor);
+    descriptor_data descriptor {};
+    reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
 
     shape_mudlle mudlle {};
@@ -217,9 +224,8 @@ TEST(ShapeMudlle, LoadThenSaveRoundTripsMdlFileByteForByte)
     // write_to_output() (comm.cpp) tracks the next-write position via
     // bufptr/bufspace, not strlen(output) -- resetting only output[0]
     // leaves bufptr pointing past the just-cleared byte, so the next
-    // message would land after an unreachable '\0' gap. Re-run the same
-    // setup make_capturing_descriptor() uses to get a genuinely empty,
-    // freshly-positioned buffer.
+    // message would land after an unreachable '\0' gap. Reset the descriptor
+    // in place to get a genuinely empty, freshly-positioned buffer.
     reset_capturing_descriptor(descriptor, &editor);
     int saved = save_mudlle(&editor);
     EXPECT_EQ(saved, 1101);
@@ -266,7 +272,8 @@ TEST(ShapeMudlle, LoadOfUnknownProgramNumberCreatesNewProgramMessage)
 
     char_data editor {};
     clear_char(&editor, MOB_VOID);
-    descriptor_data descriptor = make_capturing_descriptor(&editor);
+    descriptor_data descriptor {};
+    reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
 
     shape_mudlle mudlle {};
@@ -299,7 +306,8 @@ TEST(ShapeMudlle, ShowMudlleFormatsNegativeRealNumCorrectly)
 {
     char_data editor {};
     clear_char(&editor, MOB_VOID);
-    descriptor_data descriptor = make_capturing_descriptor(&editor);
+    descriptor_data descriptor {};
+    reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
 
     shape_mudlle mudlle {};
@@ -332,7 +340,8 @@ TEST(ShapeObj, ListObjectFormatsAllFieldsIncludingNegativeAffections)
 {
     char_data editor {};
     clear_char(&editor, MOB_VOID);
-    descriptor_data descriptor = make_capturing_descriptor(&editor);
+    descriptor_data descriptor {};
+    reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
 
     obj_data object {};
@@ -390,7 +399,8 @@ TEST(ShapeRoom, ListRoomFormatsAllFieldsWithNoExitsAndNegativeAffection)
 {
     char_data editor {};
     clear_char(&editor, MOB_VOID);
-    descriptor_data descriptor = make_capturing_descriptor(&editor);
+    descriptor_data descriptor {};
+    reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
 
     shape_room shape {};
@@ -480,7 +490,8 @@ TEST(ShapeMob, ListSimpleProtoFormatsAllFields)
 {
     char_data editor {};
     clear_char(&editor, MOB_VOID);
-    descriptor_data descriptor = make_capturing_descriptor(&editor);
+    descriptor_data descriptor {};
+    reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
 
     char_data mob {};
@@ -516,7 +527,8 @@ TEST(ShapeMob, ListProtoRoleplayFlagLinePreservesNonStandardLineEnding)
 {
     char_data editor {};
     clear_char(&editor, MOB_VOID);
-    descriptor_data descriptor = make_capturing_descriptor(&editor);
+    descriptor_data descriptor {};
+    reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
 
     char_data mob {};
@@ -552,7 +564,8 @@ TEST(ShapeScript, ShowCommandFormatsTrigAssignEqSayAndReversedLineEnding)
 {
     char_data editor {};
     clear_char(&editor, MOB_VOID);
-    descriptor_data descriptor = make_capturing_descriptor(&editor);
+    descriptor_data descriptor {};
+    reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
 
     script_data script {};

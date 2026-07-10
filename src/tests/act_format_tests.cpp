@@ -48,19 +48,29 @@ void clear_char(struct char_data* ch, int mode);
 
 namespace {
 
-// Mirrors shape_format_tests.cpp's helper (Phase 4 Wave 2 Task 3): attaches a
-// small-outbuf-backed descriptor to a character so send_to_char()/act()
-// output can be inspected directly instead of going to a real socket.
-descriptor_data make_capturing_descriptor(char_data* character)
+// Mirrors shape_format_tests.cpp's helper (Phase 4 Wave 2 Task 3): points a
+// descriptor's output at its OWN small_outbuf so send_to_char()/act() output
+// can be inspected directly instead of going to a real socket.
+//
+// CRITICAL: this mutates the caller's descriptor_data in place and must NEVER
+// be replaced by a version that returns a descriptor_data by value.
+// descriptor_data::output is a self-pointer into the same object's
+// small_outbuf[]; copying/moving a descriptor_data (across a `return`, an
+// `x = f()`, or a member-initializer) copies that pointer bytewise and leaves
+// `output` aimed at the SOURCE object's buffer -- a dangling pointer once the
+// source (a returned temporary) is destroyed. On MSVC's Debug config (NRVO
+// disabled) that dangling write_to_output() target produced empty/garbage
+// output, cross-descriptor bleed (a victim's message surfacing in the actor's
+// buffer), and an eventual SEH 0xc0000005 access violation; Linux/macOS masked
+// it via copy elision. Always declare the descriptor, then reset it in place.
+void reset_capturing_descriptor(descriptor_data& descriptor, char_data* character)
 {
-    descriptor_data descriptor {};
     descriptor.output = descriptor.small_outbuf;
     descriptor.small_outbuf[0] = '\0';
     descriptor.bufptr = 0;
     descriptor.bufspace = SMALL_BUFSIZE - 1;
     descriptor.connected = 0; // CON_PLAYING
     descriptor.character = character;
-    return descriptor;
 }
 
 // A single awake PC, connected to a capturing descriptor, with no world
@@ -71,12 +81,12 @@ descriptor_data make_capturing_descriptor(char_data* character)
 // room/light bootstrap is needed at all.
 struct SoloCharacterContext {
     char_data character {};
-    descriptor_data descriptor;
+    descriptor_data descriptor {};
 
     SoloCharacterContext()
-        : descriptor(make_capturing_descriptor(&character))
     {
         clear_char(&character, MOB_VOID);
+        reset_capturing_descriptor(descriptor, &character);
         character.desc = &descriptor;
         character.specials.position = POSITION_STANDING;
     }
@@ -92,14 +102,15 @@ struct RoomPairContext {
     ScopedTestWorld test_world;
     char_data actor {};
     char_data victim {};
-    descriptor_data actor_descriptor;
-    descriptor_data victim_descriptor;
+    descriptor_data actor_descriptor {};
+    descriptor_data victim_descriptor {};
     char_data* original_people = nullptr;
 
     RoomPairContext()
-        : actor_descriptor(make_capturing_descriptor(&actor))
-        , victim_descriptor(make_capturing_descriptor(&victim))
     {
+        reset_capturing_descriptor(actor_descriptor, &actor);
+        reset_capturing_descriptor(victim_descriptor, &victim);
+
         original_people = test_world.room().people;
 
         actor.in_room = 0;
@@ -138,13 +149,14 @@ struct DoorContext {
 
     ScopedTestWorld test_world;
     char_data character {};
-    descriptor_data descriptor;
+    descriptor_data descriptor {};
     room_direction_data exit {};
     char_data* original_people = nullptr;
 
     DoorContext()
-        : descriptor(make_capturing_descriptor(&character))
     {
+        reset_capturing_descriptor(descriptor, &character);
+
         original_people = test_world.room().people;
 
         character.in_room = 0;
@@ -237,7 +249,8 @@ TEST(ActOthe, RollForCharacterFormatsRightJustifiedNameAndRoll)
 
     char_data roll_initiator {};
     clear_char(&roll_initiator, MOB_VOID);
-    descriptor_data initiator_descriptor = make_capturing_descriptor(&roll_initiator);
+    descriptor_data initiator_descriptor {};
+    reset_capturing_descriptor(initiator_descriptor, &roll_initiator);
     roll_initiator.desc = &initiator_descriptor;
     roll_initiator.specials.position = POSITION_STANDING;
 
@@ -322,7 +335,8 @@ TEST(ActOthe, GiveShareFormatsSenderNameAndMoneyMessage)
 
     char_data receiver {};
     clear_char(&receiver, MOB_VOID);
-    descriptor_data receiver_descriptor = make_capturing_descriptor(&receiver);
+    descriptor_data receiver_descriptor {};
+    reset_capturing_descriptor(receiver_descriptor, &receiver);
     receiver.desc = &receiver_descriptor;
     receiver.specials.position = POSITION_STANDING;
 

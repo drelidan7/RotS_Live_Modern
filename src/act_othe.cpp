@@ -330,17 +330,9 @@ ACMD(do_title)
 
 void roll_for_character(char_data* character, char_data* roll_initiator)
 {
-    fprintf(stderr, "[TRACE roll_for_character] is_pc=%d name_ptr=%p\n", (int)utils::is_pc(*character),
-        (const void*)utils::get_name(*character));
-    fflush(stderr);
     if (utils::is_pc(*character)) {
         int roll = number(1, 100);
-        std::string composed = std::format("{:>8} -- Rolled: {:>3}", utils::get_name(*character), roll);
-        fprintf(stderr, "[TRACE roll_for_character] composed=\"%s\" len=%zu roll_initiator=%p desc=%p\n",
-            composed.c_str(), composed.size(), (const void*)roll_initiator,
-            (const void*)roll_initiator->desc);
-        fflush(stderr);
-        strcpy(buf, composed.c_str());
+        strcpy(buf, std::format("{:>8} -- Rolled: {:>3}", utils::get_name(*character), roll).c_str());
         act(buf, FALSE, roll_initiator, 0, 0, TO_CHAR);
         act(buf, FALSE, roll_initiator, 0, 0, TO_ROOM);
     }
@@ -742,16 +734,9 @@ int calculate_gold_amount(char* text, char* argument, char_data* character)
 void give_share(char_data* sender, char_data* receiver, int share_amount)
 {
     GET_GOLD(receiver) += share_amount;
-    const char* sender_name = GET_NAME(sender);
-    const char* money_str = money_message(share_amount, 0);
-    fprintf(stderr, "[TRACE give_share] sender_name=%p (\"%s\") money_str=%p (\"%s\") receiver=%p desc=%p\n",
-        (const void*)sender_name, sender_name ? sender_name : "(null-ptr)", (const void*)money_str,
-        money_str ? money_str : "(null-ptr)", (const void*)receiver, (const void*)receiver->desc);
-    fflush(stderr);
-    std::string composed = std::format("{} splits some money among the group; you receive {}.\r\n", sender_name, money_str);
-    fprintf(stderr, "[TRACE give_share] composed=\"%s\" len=%zu\n", composed.c_str(), composed.size());
-    fflush(stderr);
-    strcpy(buf, composed.c_str());
+    strcpy(buf, std::format("{} splits some money among the group; you receive {}.\r\n", GET_NAME(sender),
+        money_message(share_amount, 0))
+                     .c_str());
     send_to_char(buf, receiver);
 }
 

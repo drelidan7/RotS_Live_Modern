@@ -1222,12 +1222,6 @@ void write_to_output(const char* txt, struct descriptor_data* t)
 
     size = strlen(txt);
 
-    // TEMPORARY diagnostic instrumentation (Wave 2 MSVC test-failure investigation).
-    fprintf(stderr,
-        "[TRACE write_to_output] size=%d t=%p t->output=%p t->small_outbuf=%p t->bufptr=%d t->bufspace=%d\n",
-        size, (const void*)t, (const void*)t->output, (const void*)t->small_outbuf, t->bufptr, t->bufspace);
-    fflush(stderr);
-
     /* if we're in the overflow state already, ignore this */
     if (t->bufptr < 0)
         return;
@@ -1237,8 +1231,6 @@ void write_to_output(const char* txt, struct descriptor_data* t)
         strcpy(t->output + t->bufptr, txt);
         t->bufspace -= size;
         t->bufptr += size;
-        fprintf(stderr, "[TRACE write_to_output] after write: t->output now=\"%s\"\n", t->output);
-        fflush(stderr);
     } else { /* otherwise, try to switch to a large buffer */
         if (t->large_outbuf || ((size + strlen(t->output)) > LARGE_BUFSIZE)) {
             /* we're already using large buffer, or even the large buffer
@@ -2017,31 +2009,16 @@ void close_socket(descriptor_data* conn_descriptor, int drop_all)
  *******************************************************************/
 void send_to_char(const char* message, char_data* character)
 {
-    // TEMPORARY diagnostic instrumentation (Wave 2 MSVC test-failure
-    // investigation) -- to be removed once the root cause of the
-    // windows-msvc-only act_/shape_format_tests failures is identified.
-    fprintf(stderr, "[TRACE send_to_char] message=%p msg[0]=%d character=%p desc=%p connected=%d\n",
-        (const void*)message, message ? (int)(unsigned char)message[0] : -1, (const void*)character,
-        character ? (const void*)character->desc : nullptr,
-        (character && character->desc) ? character->desc->connected : -999);
-    fflush(stderr);
-
     // Early out if we have no message or character.
     if (message == nullptr || message[0] == 0 || character == nullptr) {
-        fprintf(stderr, "[TRACE send_to_char] early-out: null message/character\n");
-        fflush(stderr);
         return;
     }
 
     // Early out if the character isn't connected.
     if (character->desc == nullptr || character->desc->connected != CON_PLYNG) {
-        fprintf(stderr, "[TRACE send_to_char] early-out: desc null or not connected\n");
-        fflush(stderr);
         return;
     }
 
-    fprintf(stderr, "[TRACE send_to_char] sending %zu bytes: \"%s\"\n", strlen(message), message);
-    fflush(stderr);
     SEND_TO_Q(message, character->desc);
 }
 
@@ -2370,31 +2347,14 @@ void act(const char* str, int hide_invisible, struct char_data* ch, struct obj_d
             to = world[obj->in_room].people;
     }
 
-    if (!to) {
-        fprintf(stderr, "[TRACE act] str=\"%s\" type=%d -- no initial 'to', returning\n", str, type);
-        fflush(stderr);
+    if (!to)
         return;
-    }
     //   printf("act(%s) called, to=%p\n",str, to);
     for (; to; to = to->next_in_room) {
-        // NOTE: preserves the original single short-circuited && chain exactly
-        // (the diagnostic-only bool breakout below evaluates AFTER, only when
-        // to->desc is already known non-null, so it can't introduce a null
-        // deref/behavior change the original short-circuiting avoided).
         if (to->desc && (to != ch || type == TO_CHAR) && (CAN_SEE(to, ch) || !hide_invisible) && (AWAKE(to) || type == TO_VICT) && !PLR_FLAGGED(to, PLR_WRITING) && !(type == TO_NOTVICT && to == (struct char_data*)vict_obj) && (!spam_only || PRF_FLAGGED(to, PRF_SPAM))) {
-            fprintf(stderr, "[TRACE act] to=%p desc=%p passed all gates, converting\n", (const void*)to,
-                (const void*)to->desc);
-            fflush(stderr);
             convert_string(str, hide_invisible, ch, obj, vict_obj, to, buf);
-            fprintf(stderr, "[TRACE act] convert_string produced: \"%s\" (to->desc=%p)\n", buf,
-                (const void*)to->desc);
-            fflush(stderr);
             if (*buf != '\0')
                 SEND_TO_Q(buf, to->desc);
-        } else {
-            fprintf(stderr, "[TRACE act] to=%p desc=%p did not pass gates\n", (const void*)to,
-                (const void*)to->desc);
-            fflush(stderr);
         }
         if ((type == TO_VICT) || (type == TO_CHAR))
             return;

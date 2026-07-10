@@ -230,9 +230,6 @@ void implement_mudlle(struct char_data* ch)
 
 void show_mudlle(struct char_data* ch)
 {
-    fprintf(stderr, "[TRACE show_mudlle] ch=%p ch->desc=%p SHAPE_MUDLLE(ch)=%p\n", (const void*)ch,
-        (const void*)ch->desc, (const void*)SHAPE_MUDLLE(ch));
-    fflush(stderr);
     if (!SHAPE_MUDLLE(ch))
         return;
     if ((!SHAPE_MUDLLE(ch)->txt) || (!SHAPE_MUDLLE(ch)->prog_num < 0)) {
@@ -240,16 +237,11 @@ void show_mudlle(struct char_data* ch)
         return;
     }
 
-    std::string composed = std::format("Program #{} (real #{}).\n\rProgram text:\n\r",
-        SHAPE_MUDLLE(ch)->prog_num, SHAPE_MUDLLE(ch)->real_num);
-    fprintf(stderr, "[TRACE show_mudlle] composed=\"%s\" len=%zu\n", composed.c_str(), composed.size());
-    fflush(stderr);
-    send_to_char(composed.c_str(), ch);
+    send_to_char(std::format("Program #{} (real #{}).\n\rProgram text:\n\r",
+        SHAPE_MUDLLE(ch)->prog_num, SHAPE_MUDLLE(ch)->real_num).c_str(), ch);
     send_to_char(SHAPE_MUDLLE(ch)->txt, ch);
     send_to_char("\n\r", ch);
 
-    fprintf(stderr, "[TRACE show_mudlle] END ch->desc->output=\"%s\"\n", ch->desc ? ch->desc->output : "(no desc)");
-    fflush(stderr);
     return;
 }
 

@@ -42,11 +42,11 @@ ALL_CXXFLAGS = $(REQ_CXXFLAGS) $(CXXFLAGS)
 ALL_LDFLAGS  = $(REQ_LDFLAGS) $(LDFLAGS)
 
 # --- Sources -----------------------------------------------------------------
-# combat_manager.cpp is dead code (never instantiated/invoked; the live melee path
-# is fight.cpp::hit() — see CLAUDE.md) and is deliberately absent below.
-# NOTE: char_utils_combat.cpp IS built — it also defines live functions used by
-# fight.cpp / clerics.cpp / ranger.cpp; only its get_real_ob/parry/dodge helpers
-# are dead. Keep this list in sync with the source list in CMakeLists.txt.
+# combat_manager.cpp was proven-dead code and was DELETED in Phase 4 Wave 1 (the
+# live melee path is fight.cpp::hit() — see AGENTS.md's dead-code section).
+# NOTE: char_utils_combat.cpp IS built — it defines live functions used by
+# fight.cpp / clerics.cpp / ranger.cpp (its dead OB/PB/DB helpers were deleted in
+# the same wave). Keep this list in sync with the source list in CMakeLists.txt.
 OBJNAMES = account_cache.o account_management.o act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o char_utils.o char_utils_combat.o character_json.o clerics.o clock.o color.o \
 	comm.o config.o consts.o convert_exploits.o convert_plrobjs.o crashsave_schedule.o db.o delayed_command_interpreter.o exploits_json.o fight.o graph.o handler.o interpre.o environment_utils.o \

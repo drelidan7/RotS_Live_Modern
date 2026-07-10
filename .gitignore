@@ -41,8 +41,8 @@
 .ageland.pid
 bin/
 .idea/
-lib/last_cmds
-lib/crash_cmds
+lib/last_cmds*
+lib/crash_cmds*
 
 # Imported world & player data — kept OUT of the core repo on purpose.
 # World comes from a separate source (RotS-WorldFiles, or an old server backup

@@ -35,10 +35,10 @@ endif()
 # added/removed, so the build silently goes stale). Keep in sync with OBJFILES in
 # src/Makefile.
 #
-# combat_manager.cpp is intentionally omitted — dead code (never instantiated or
-# invoked; the live melee path is fight.cpp::hit(), see CLAUDE.md).
-# char_utils_combat.cpp IS listed: it also defines live functions used by
-# fight.cpp / clerics.cpp / ranger.cpp; only its get_real_ob/parry/dodge helpers are dead.
+# combat_manager.cpp was proven-dead code and was DELETED in Phase 4 Wave 1 (the
+# live melee path is fight.cpp::hit(), see AGENTS.md's dead-code section).
+# char_utils_combat.cpp IS listed: it defines live functions used by
+# fight.cpp / clerics.cpp / ranger.cpp (its dead OB/PB/DB helpers were deleted in the same wave).
 #
 # account_management.cpp / character_json.cpp / exploits_json.cpp / json_utils.cpp /
 # objects_json.cpp arrive with the account-management merge (JSON persistence +

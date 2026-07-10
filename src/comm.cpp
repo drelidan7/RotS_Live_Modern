@@ -1426,7 +1426,11 @@ SocketType pnew_connection(SocketType s)
         perror("Accept");
         return (0); // probably incorrect..
     }
-    sprintf(buf, "Socket %d connected.", t);
+    // SocketType is `int` on POSIX but `SOCKET` (an unsigned 64-bit handle) on Windows;
+    // %d silently truncated/misprinted the handle there. Cast explicitly to a wide
+    // signed type and use a matching, platform-identical format spec instead of relying
+    // on SocketType's platform-dependent width/signedness.
+    sprintf(buf, "Socket %lld connected.", static_cast<long long>(t));
     mudlog(buf, NRM, LEVEL_IMPL, TRUE);
 
     return (t);
@@ -1921,7 +1925,9 @@ void close_socket(descriptor_data* conn_descriptor, int drop_all)
     }
 
     if (conn_descriptor->descriptor) {
-        sprintf(buf, "Closing socket %d.", conn_descriptor->descriptor);
+        // Same SocketType-width issue as pnew_connection() above: cast explicitly and
+        // use the same %lld spelling on both platforms.
+        sprintf(buf, "Closing socket %lld.", static_cast<long long>(conn_descriptor->descriptor));
         mudlog(buf, NRM, LEVEL_IMPL, TRUE);
 
         rots_net::close_socket(conn_descriptor->descriptor);

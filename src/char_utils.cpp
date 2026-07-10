@@ -1719,7 +1719,18 @@ std::string player_damage_details::get_damage_report(const char_data* character)
             ability_name = std::format("{:<24}", hit_text.singular);
         } else {
             const skill_data& skill = skills[iter->first];
-            ability_name = std::format("{:<24}", skill.name);
+            // skill.name is a fixed char[50] array, not a char*: passed as-is,
+            // std::format's argument capture preserves its array-ness (rather
+            // than the implicit pointer decay an ordinary function call would
+            // apply), and libc++ formats a char[N] argument as a raw N-element
+            // sequence -- embedded/trailing NULs included -- rather than as a
+            // NUL-terminated string, diverging from libstdc++'s behavior
+            // (observed as a macOS-CI-only characterization failure: the
+            // padded field came out as "swipe\0\0\0...<Count..." instead of
+            // "swipe                   <Count..."). Decay to const char*
+            // explicitly so every implementation selects the NUL-terminated-
+            // string formatter.
+            ability_name = std::format("{:<24}", static_cast<const char*>(skill.name));
         }
 
         const damage_details& details = iter->second;

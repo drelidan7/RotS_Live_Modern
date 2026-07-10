@@ -34,6 +34,26 @@ struct reset_q_type {
     struct reset_q_element* tail;
 };
 
+// Index of the next zone_table slot load_zones() will fill; incremented once
+// per call. Historically a function-local `static int zone;` inside
+// load_zones() — hoisted (same zero initialization, same lifetime, no other
+// reader/writer) purely so the TESTING seam below can reset it between tests;
+// named distinctly because renum_zone_one/reset_zone/check_if_flag all take a
+// `zone` parameter that would otherwise shadow it.
+static int zone_load_cursor;
+
+#ifdef TESTING
+// Test seam: resets the zone_load_cursor load_zones() advances on every call,
+// so a test that loads a fixture zone into a 1-element zone_table doesn't leave
+// the cursor pointing past that array for the next load_zones()-calling test
+// (or a --gtest_repeat re-run) in the same monolithic test binary. Symbol does
+// not exist in production builds (no -DTESTING there).
+void reset_zone_load_cursor_for_testing()
+{
+    zone_load_cursor = 0;
+}
+#endif
+
 /*
  * Given a cleanly opened zone file, load the zone information
  * such as coordinates, owners, description, etc. and load all of
@@ -43,23 +63,22 @@ struct reset_q_type {
  */
 void load_zones(FILE* fl)
 {
-    static int zone;
     int cmd_no;
     char buf[81], command;
     struct owner_list* owner;
     extern char* fread_string(FILE*, char*);
 
-    memset(&zone_table[zone], 0, sizeof(struct zone_data));
-    fscanf(fl, " #%d\n", &zone_table[zone].number);
-    sprintf(buf2, "beginning of zone #%d", zone_table[zone].number);
+    memset(&zone_table[zone_load_cursor], 0, sizeof(struct zone_data));
+    fscanf(fl, " #%d\n", &zone_table[zone_load_cursor].number);
+    sprintf(buf2, "beginning of zone #%d", zone_table[zone_load_cursor].number);
 
-    zone_table[zone].name = fread_string(fl, buf2);
-    zone_table[zone].description = fread_string(fl, buf2);
-    zone_table[zone].map = fread_string(fl, buf2);
+    zone_table[zone_load_cursor].name = fread_string(fl, buf2);
+    zone_table[zone_load_cursor].description = fread_string(fl, buf2);
+    zone_table[zone_load_cursor].map = fread_string(fl, buf2);
 
     /* Read in the owner list.  An owner of '0' ends the list. */
-    CREATE1(zone_table[zone].owners, owner_list);
-    owner = zone_table[zone].owners;
+    CREATE1(zone_table[zone_load_cursor].owners, owner_list);
+    owner = zone_table[zone_load_cursor].owners;
     for (;;) {
         fscanf(fl, "%d", &owner->owner);
         if (owner->owner) {
@@ -73,13 +92,13 @@ void load_zones(FILE* fl)
     while (fgetc(fl) != '\n')
         continue;
     fscanf(fl, "%c %d %d %d\n",
-        &zone_table[zone].symbol,
-        &zone_table[zone].x,
-        &zone_table[zone].y,
-        &zone_table[zone].level);
-    fscanf(fl, "%d\n", &zone_table[zone].top);
-    fscanf(fl, "%d\n", &zone_table[zone].lifespan);
-    fscanf(fl, "%d\n", &zone_table[zone].reset_mode);
+        &zone_table[zone_load_cursor].symbol,
+        &zone_table[zone_load_cursor].x,
+        &zone_table[zone_load_cursor].y,
+        &zone_table[zone_load_cursor].level);
+    fscanf(fl, "%d\n", &zone_table[zone_load_cursor].top);
+    fscanf(fl, "%d\n", &zone_table[zone_load_cursor].lifespan);
+    fscanf(fl, "%d\n", &zone_table[zone_load_cursor].reset_mode);
 
     /* Read the command list */
     for (cmd_no = 0;; ++cmd_no) {
@@ -101,17 +120,17 @@ void load_zones(FILE* fl)
         }
 
         if (!cmd_no)
-            CREATE(zone_table[zone].cmd, struct reset_com, 1);
+            CREATE(zone_table[zone_load_cursor].cmd, struct reset_com, 1);
         else {
-            RECREATE(zone_table[zone].cmd, struct reset_com, cmd_no + 1, cmd_no);
-            if (!(zone_table[zone].cmd)) {
+            RECREATE(zone_table[zone_load_cursor].cmd, struct reset_com, cmd_no + 1, cmd_no);
+            if (!(zone_table[zone_load_cursor].cmd)) {
                 perror("reset command load");
                 exit(0);
             }
         }
 
         /* XXX: still preserving the 'S' command */
-        zone_table[zone].cmd[cmd_no].command = command;
+        zone_table[zone_load_cursor].cmd[cmd_no].command = command;
 
         // if_flag/arg1..arg7 are declared `int` in struct reset_com (db.h), not `short`;
         // %hd here was writing through an `int*` as if it were a `short*` (undefined
@@ -122,16 +141,16 @@ void load_zones(FILE* fl)
         // (reset_com is never persisted in binary form), so aligning the read format to
         // the field type changes no on-disk world-file format.
         fscanf(fl, "%d %d %d %d %d %d",
-            &zone_table[zone].cmd[cmd_no].if_flag,
-            &zone_table[zone].cmd[cmd_no].arg1,
-            &zone_table[zone].cmd[cmd_no].arg2,
-            &zone_table[zone].cmd[cmd_no].arg3,
-            &zone_table[zone].cmd[cmd_no].arg4,
-            &zone_table[zone].cmd[cmd_no].arg5);
+            &zone_table[zone_load_cursor].cmd[cmd_no].if_flag,
+            &zone_table[zone_load_cursor].cmd[cmd_no].arg1,
+            &zone_table[zone_load_cursor].cmd[cmd_no].arg2,
+            &zone_table[zone_load_cursor].cmd[cmd_no].arg3,
+            &zone_table[zone_load_cursor].cmd[cmd_no].arg4,
+            &zone_table[zone_load_cursor].cmd[cmd_no].arg5);
 
-        zone_table[zone].cmd[cmd_no].existing = 0;
+        zone_table[zone_load_cursor].cmd[cmd_no].existing = 0;
 
-        switch (zone_table[zone].cmd[cmd_no].command) {
+        switch (zone_table[zone_load_cursor].cmd[cmd_no].command) {
         case 'M':
         case 'N':
         case 'X':
@@ -140,11 +159,11 @@ void load_zones(FILE* fl)
         case 'K':
         case 'Q':
             fscanf(fl, "%d %d",
-                &zone_table[zone].cmd[cmd_no].arg6,
-                &zone_table[zone].cmd[cmd_no].arg7);
+                &zone_table[zone_load_cursor].cmd[cmd_no].arg6,
+                &zone_table[zone_load_cursor].cmd[cmd_no].arg7);
             break;
         case 'P':
-            fscanf(fl, "%d", &zone_table[zone].cmd[cmd_no].arg6);
+            fscanf(fl, "%d", &zone_table[zone_load_cursor].cmd[cmd_no].arg6);
         default:
             break;
         }
@@ -159,19 +178,19 @@ void load_zones(FILE* fl)
          */
         fgets(buf, 80, fl);
         vmudlog(NRM, "Got command: %c %d %d %d %d %d %d %d.",
-            zone_table[zone].cmd[cmd_no].command,
-            zone_table[zone].cmd[cmd_no].arg1,
-            zone_table[zone].cmd[cmd_no].arg2,
-            zone_table[zone].cmd[cmd_no].arg3,
-            zone_table[zone].cmd[cmd_no].arg4,
-            zone_table[zone].cmd[cmd_no].arg5,
-            zone_table[zone].cmd[cmd_no].arg6,
-            zone_table[zone].cmd[cmd_no].arg7);
+            zone_table[zone_load_cursor].cmd[cmd_no].command,
+            zone_table[zone_load_cursor].cmd[cmd_no].arg1,
+            zone_table[zone_load_cursor].cmd[cmd_no].arg2,
+            zone_table[zone_load_cursor].cmd[cmd_no].arg3,
+            zone_table[zone_load_cursor].cmd[cmd_no].arg4,
+            zone_table[zone_load_cursor].cmd[cmd_no].arg5,
+            zone_table[zone_load_cursor].cmd[cmd_no].arg6,
+            zone_table[zone_load_cursor].cmd[cmd_no].arg7);
     }
-    zone_table[zone].cmdno = cmd_no;
-    zone++;
+    zone_table[zone_load_cursor].cmdno = cmd_no;
+    zone_load_cursor++;
 
-    top_of_zone_table = zone - 1;
+    top_of_zone_table = zone_load_cursor - 1;
 }
 
 /*

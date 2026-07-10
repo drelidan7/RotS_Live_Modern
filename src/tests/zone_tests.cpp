@@ -8,6 +8,13 @@
 #include <filesystem>
 #include <string>
 
+// TESTING seam in zone.cpp (same convention as fight.cpp's
+// reset_perform_violence_timing_for_testing): resets the static cursor
+// load_zones() advances on every call, so each test starts filling
+// zone_table at slot 0 instead of wherever a previous load_zones() call
+// (same test under --gtest_repeat, or another test) left it.
+void reset_zone_load_cursor_for_testing();
+
 namespace {
 
 void write_file(const std::string& path, const std::string& contents)
@@ -46,13 +53,19 @@ private:
 // RAII fixture: gives load_zones() one fresh zone_table slot to write into
 // and restores the previous global zone_table/top_of_zone_table afterward,
 // so this test doesn't leak process-global zone state into any other test
-// that happens to run later in the same gtest binary.
+// that happens to run later in the same gtest binary. Also resets zone.cpp's
+// static zone_load_cursor on BOTH construction and destruction: load_zones()
+// increments it every call, and without the reset a second run of any
+// load_zones()-calling test (--gtest_repeat, or a future sibling test) would
+// index past this fixture's 1-element array — a heap overflow, not just
+// stale state.
 class ScopedZoneTable {
 public:
     ScopedZoneTable()
         : m_previous_zone_table(zone_table)
         , m_previous_top_of_zone_table(top_of_zone_table)
     {
+        reset_zone_load_cursor_for_testing();
         zone_table = new zone_data[1] {};
     }
 
@@ -61,6 +74,7 @@ public:
         delete[] zone_table;
         zone_table = m_previous_zone_table;
         top_of_zone_table = m_previous_top_of_zone_table;
+        reset_zone_load_cursor_for_testing();
     }
 
 private:
@@ -97,11 +111,18 @@ TEST(ZoneLoad, NegativeOneArgumentParsesAsSignedNegativeOne)
     const std::string zone_file_path = temp_directory.path() + "/1.zon";
     // Minimal zone-file snippet covering every header field load_zones reads
     // before the command list (name/description/map, an empty owner list,
-    // symbol/x/y/level, top, lifespan, reset_mode), then one 'M' (load
-    // mobile) command. arg3 (max-existing, per the M:: print layout in
-    // shapezon.cpp) carries the -1 sentinel under test; the surrounding
-    // fields are all distinct in-range values so a field-order mixup would
-    // also fail this test, not just the sentinel itself.
+    // symbol/x/y/level, top, lifespan, reset_mode), then one command per
+    // fixed fscanf call site so all three are pinned:
+    //   - 'M' (load mobile): call site 1 (the always-read if_flag/arg1..arg5
+    //     block) via arg3 = -1 (max-existing, per the M:: print layout in
+    //     shapezon.cpp), AND call site 2 (the M/N/X/H/E/K/Q arg6/arg7 read)
+    //     via arg7 = -1 (the census found real negative arg6/arg7 values in
+    //     113.zon/116.zon K commands, same read path).
+    //   - 'P' (put object in object): call site 3 (the P-only arg6 read) via
+    //     arg6 = -1; its arg1/arg3 = -1 mirror the census's real
+    //     "P 1 -1 7628 -1 0 100 2" lines (NOWHERE room / no sub-container).
+    // The surrounding fields are all distinct in-range values so a
+    // field-order mixup would also fail this test, not just the sentinels.
     write_file(zone_file_path,
         "#1\n"
         "TestZone~\n"
@@ -112,7 +133,8 @@ TEST(ZoneLoad, NegativeOneArgumentParsesAsSignedNegativeOne)
         "5\n"
         "10\n"
         "2\n"
-        "M 0 30 1200 -1 100 100 5 3 test mob load, -1 = no max-existing cap\n"
+        "M 0 30 1200 -1 100 100 5 -1 test mob load, -1 = no cap / no trophy line\n"
+        "P 1 -1 7628 -1 0 100 -1 put paper in last_obj pouch, -1 = no max-in-obj\n"
         "S\n");
 
     FILE* zone_file = fopen(zone_file_path.c_str(), "r");
@@ -120,14 +142,26 @@ TEST(ZoneLoad, NegativeOneArgumentParsesAsSignedNegativeOne)
     load_zones(zone_file);
     fclose(zone_file);
 
-    ASSERT_EQ(zone_table[0].cmdno, 1);
+    ASSERT_EQ(zone_table[0].cmdno, 2);
+
+    // Call sites 1 + 2 ('M'): base block and the two-extra-args read.
     EXPECT_EQ(zone_table[0].cmd[0].command, 'M');
     EXPECT_EQ(zone_table[0].cmd[0].if_flag, 0);
     EXPECT_EQ(zone_table[0].cmd[0].arg1, 30);
     EXPECT_EQ(zone_table[0].cmd[0].arg2, 1200);
-    EXPECT_EQ(zone_table[0].cmd[0].arg3, -1); // pre-fix: 65535
+    EXPECT_EQ(zone_table[0].cmd[0].arg3, -1); // call site 1; pre-fix: 65535
     EXPECT_EQ(zone_table[0].cmd[0].arg4, 100);
     EXPECT_EQ(zone_table[0].cmd[0].arg5, 100);
     EXPECT_EQ(zone_table[0].cmd[0].arg6, 5);
-    EXPECT_EQ(zone_table[0].cmd[0].arg7, 3);
+    EXPECT_EQ(zone_table[0].cmd[0].arg7, -1); // call site 2; pre-fix: 65535
+
+    // Call sites 1 + 3 ('P'): base block again and the one-extra-arg read.
+    EXPECT_EQ(zone_table[0].cmd[1].command, 'P');
+    EXPECT_EQ(zone_table[0].cmd[1].if_flag, 1);
+    EXPECT_EQ(zone_table[0].cmd[1].arg1, -1); // call site 1; pre-fix: 65535
+    EXPECT_EQ(zone_table[0].cmd[1].arg2, 7628);
+    EXPECT_EQ(zone_table[0].cmd[1].arg3, -1); // call site 1; pre-fix: 65535
+    EXPECT_EQ(zone_table[0].cmd[1].arg4, 0);
+    EXPECT_EQ(zone_table[0].cmd[1].arg5, 100);
+    EXPECT_EQ(zone_table[0].cmd[1].arg6, -1); // call site 3; pre-fix: 65535
 }

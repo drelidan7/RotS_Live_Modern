@@ -14,6 +14,8 @@
 #include "spells.h"
 #include "structs.h"
 #include "utils.h"
+#include <format>
+#include <string>
 
 extern struct room_data world;
 extern struct skill_data skills[];
@@ -320,8 +322,7 @@ void implement_room(struct char_data* ch)
 #define DESCRCHANGE(line, addr)                                       \
     do {                                                              \
         if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_SIMPLE_ACTIVE)) {    \
-            sprintf(tmpstr, "You are about to change %s:\n\r", line); \
-            send_to_char(tmpstr, ch);                                 \
+            send_to_char(std::format("You are about to change {}:\n\r", line).c_str(), ch); \
             SHAPE_ROOM(ch)                                            \
                 ->position                                            \
                 = shape_standup(ch, POSITION_SHAPING);                \
@@ -353,8 +354,7 @@ void implement_room(struct char_data* ch)
 
 #define LINECHANGE(line, addr)                                                   \
     if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_DIGIT_ACTIVE)) {                    \
-        sprintf(tmpstr, "Enter line %s:\n\r[%s]\n\r", line, (addr) ? addr : ""); \
-        send_to_char(tmpstr, ch);                                                \
+        send_to_char(std::format("Enter line {}:\n\r[{}]\n\r", line, (addr) ? addr : "").c_str(), ch); \
         SHAPE_ROOM(ch)                                                           \
             ->position                                                           \
             = shape_standup(ch, POSITION_SHAPING);                               \
@@ -421,7 +421,7 @@ void extra_coms_room(struct char_data* ch, char* arg);
 void shape_center_room(struct char_data* ch, char* arg)
 {
 
-    char str[1000], tmpstr[1000];
+    char str[1000];
     int tmp, choice, tmp1, tmp2, tmp3;
     struct room_data* mob;
     struct extra_descr_data* tmpdescr;
@@ -552,8 +552,7 @@ void shape_center_room(struct char_data* ch, char* arg)
 
 #define DIGITCHANGE(line, addr)                               \
     if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_DIGIT_ACTIVE)) { \
-        sprintf(tmpstr, "enter %s [%d]:\n\r", line, addr);    \
-        send_to_char(tmpstr, ch);                             \
+        send_to_char(std::format("enter {} [{}]:\n\r", line, addr).c_str(), ch); \
         SHAPE_ROOM(ch)                                        \
             ->position                                        \
             = shape_standup(ch, POSITION_SHAPING);            \
@@ -573,8 +572,7 @@ void shape_center_room(struct char_data* ch, char* arg)
         = 0;
 #define DIGITCHANGEL(line, addr)                              \
     if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_DIGIT_ACTIVE)) { \
-        sprintf(tmpstr, "enter %s [%ld]:\n\r", line, addr);   \
-        send_to_char(tmpstr, ch);                             \
+        send_to_char(std::format("enter {} [{}]:\n\r", line, addr).c_str(), ch); \
         SHAPE_ROOM(ch)                                        \
             ->position                                        \
             = shape_standup(ch, POSITION_SHAPING);            \
@@ -649,12 +647,12 @@ void shape_center_room(struct char_data* ch, char* arg)
                 SHAPE_ROOM(ch)
                     ->room->dir_option[tmp]
                     = 0;
-                sprintf(str, "Exit %s removed.\n\r", exit_convert(tmp));
+                strcpy(str, std::format("Exit {} removed.\n\r", exit_convert(tmp)).c_str());
                 SHAPE_ROOM(ch)
                     ->exit_chosen
                     = -1;
             } else {
-                sprintf(str, "This exit did not exist already.\n\r");
+                strcpy(str, "This exit did not exist already.\n\r");
             }
             send_to_char(str, ch);
             shape_standup(ch, SHAPE_ROOM(ch)->position);
@@ -722,7 +720,7 @@ void shape_center_room(struct char_data* ch, char* arg)
                 SHAPE_ROOM(ch)
                     ->exit_chosen
                     = 0;
-            sprintf(str, "You will edit exit %s\n\r", exit_convert(SHAPE_ROOM(ch)->exit_chosen));
+            strcpy(str, std::format("You will edit exit {}\n\r", exit_convert(SHAPE_ROOM(ch)->exit_chosen)).c_str());
             send_to_char(str, ch);
             if (!mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]) {
                 // printf("creating exit\n");
@@ -1019,71 +1017,67 @@ void list_room(struct char_data* ch, struct room_data* mob)
     static char str[MAX_STRING_LENGTH]; // st2[50];
     int i, i2;
     long int flg;
-    sprintf(str, "(1) name         :%s\n\r", mob->name);
-    send_to_char(str, ch);
-    sprintf(str, "(2) description  :\n\r");
-    send_to_char(str, ch);
+    send_to_char(std::format("(1) name         :{}\n\r", mob->name).c_str(), ch);
+    send_to_char("(2) description  :\n\r", ch);
     send_to_char(mob->description, ch);
     send_to_char("\n\r", ch);
-    sprintf(str, "(3) room flag  :%ld\n\r", mob->room_flags);
-    send_to_char(str, ch);
-    sprintf(str, "(4) sector type   :%d\n\r", mob->sector_type);
-    send_to_char(str, ch);
-    sprintf(str, "Existing exits:");
+    send_to_char(std::format("(3) room flag  :{}\n\r", mob->room_flags).c_str(), ch);
+    send_to_char(std::format("(4) sector type   :{}\n\r", mob->sector_type).c_str(), ch);
+    // Was sprintf(str, "Existing exits:") followed by a loop of
+    // sprintf(str + strlen(str), ...) -- the same incremental-append-via-
+    // sprintf-return-buffer-as-cursor anti-pattern converted elsewhere in
+    // this task (e.g. shapeobj.cpp's Affections list); compose into a
+    // std::string instead.
+    std::string exits = "Existing exits:";
     for (i = 0, i2 = 0; i < NUM_OF_DIRS; i++)
         if (mob->dir_option[i]) {
-            sprintf(str + strlen(str), " %s", exit_convert(i));
+            exits += std::format(" {}", exit_convert(i));
             i2++;
         }
     if (i2 == 0)
-        sprintf(str, "No exits are made from this room\n\r");
+        exits = "No exits are made from this room\n\r";
     else
-        sprintf(str + strlen(str), "\n\r");
-    send_to_char(str, ch);
+        exits += "\n\r";
+    send_to_char(exits.c_str(), ch);
     if (SHAPE_ROOM(ch)->exit_chosen < 0) {
         send_to_char("No exit selected for editing.\n\r", ch);
     } else {
-        sprintf(str, "(5) exit selected  :%s\n\r", exit_convert(SHAPE_ROOM(ch)->exit_chosen));
-        send_to_char(str, ch);
+        send_to_char(std::format("(5) exit selected  :{}\n\r", exit_convert(SHAPE_ROOM(ch)->exit_chosen)).c_str(), ch);
         flg = mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->exit_info;
-        sprintf(str, "(6) exit type   :%ld\n\r", flg /*convert_exit_flag(flg,1)*/);
-        send_to_char(str, ch);
-        sprintf(str, "(8) exit keyword   :%s\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->keyword);
-        send_to_char(str, ch);
-        sprintf(str, "(9) exit description  :\n\r");
-        send_to_char(str, ch);
+        send_to_char(std::format("(6) exit type   :{}\n\r", flg /*convert_exit_flag(flg,1)*/).c_str(), ch);
+        send_to_char(std::format("(8) exit keyword   :{}\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->keyword).c_str(), ch);
+        send_to_char("(9) exit description  :\n\r", ch);
         send_to_char(mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->general_description, ch);
         send_to_char("\n\r", ch);
 
-        sprintf(str, "(10) key number  :%d\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->key);
-        send_to_char(str, ch);
-        sprintf(str, "(11) exit to room  :%d\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->to_room);
-        send_to_char(str, ch);
-        sprintf(str, "(12) exit width  :%d\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->exit_width);
-        send_to_char(str, ch);
+        send_to_char(std::format("(10) key number  :{}\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->key).c_str(), ch);
+        send_to_char(std::format("(11) exit to room  :{}\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->to_room).c_str(), ch);
+        send_to_char(std::format("(12) exit width  :{}\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->exit_width).c_str(), ch);
     }
     if (!mob->ex_description) {
         send_to_char("No extra description exists.\n\r", ch);
     } else {
-        sprintf(str, "(13) extra description keyword  :%s\n\r", mob->ex_description->keyword);
-        send_to_char(str, ch);
-        sprintf(str, "(14) extra description  :\n\r");
-        send_to_char(str, ch);
+        send_to_char(std::format("(13) extra description keyword  :{}\n\r", mob->ex_description->keyword).c_str(), ch);
+        send_to_char("(14) extra description  :\n\r", ch);
         send_to_char(mob->ex_description->description, ch);
         send_to_char("\n\r", ch);
     }
 
-    sprintf(str, "(17) Room level: %d\n\r", mob->level);
+    // Pre-existing quirk, preserved: this assignment's result is never sent
+    // to the player -- both branches below overwrite/bypass `str` before it
+    // would otherwise be read. Not this task's concern to "fix".
+    strcpy(str, std::format("(17) Room level: {}\n\r", mob->level).c_str());
 
     if (!mob->affected) {
         send_to_char("(18) No affections exist.\n\r", ch);
     } else {
         if (mob->affected->type == ROOMAFF_SPELL)
-            sprintf(str, "(18) Affection type (1), (%s)-%d, level %d, flags %ld\n\r",
-                ((mob->affected->location >= 0) && (mob->affected->location < MAX_SKILLS)) ? skills[mob->affected->location].name : "unknown",
+            strcpy(str, std::format("(18) Affection type (1), ({})-{}, level {}, flags {}\n\r",
+                ((mob->affected->location >= 0) && (mob->affected->location < MAX_SKILLS)) ? static_cast<const char*>(skills[mob->affected->location].name) : "unknown",
                 mob->affected->location,
                 mob->affected->modifier,
-                mob->affected->bitvector);
+                mob->affected->bitvector)
+                                      .c_str());
         send_to_char(str, ch);
     }
 }
@@ -1107,8 +1101,11 @@ int load_room(struct char_data* ch, char* arg)
         send_to_char("Please load room by 'shape room current'\n\r", ch);
         return -1;
     }
-    sprintf(fname, "%d", number / 100);
-    sprintf(str, SHAPE_ROM_DIR, fname);
+    // SHAPE_ROM_DIR/SHAPE_ROM_BACKDIR's %s templates inlined as literal {}
+    // paths (matches shapemdl.cpp/shapeobj.cpp's Task 3 conversion); the
+    // shared macros stay %-style for any shape*.cpp file not yet converted.
+    strcpy(fname, std::format("{}", number / 100).c_str());
+    strcpy(str, std::format("world/wld/{}.wld", static_cast<const char*>(fname)).c_str());
 
     send_to_char(str, ch);
     f = fopen(str, "r+");
@@ -1118,7 +1115,7 @@ int load_room(struct char_data* ch, char* arg)
     }
     strcpy(SHAPE_ROOM(ch)->f_from, str);
     SET_BIT(SHAPE_ROOM(ch)->flags, SHAPE_FILENAME);
-    sprintf(SHAPE_ROOM(ch)->f_old, SHAPE_ROM_BACKDIR, fname);
+    strcpy(SHAPE_ROOM(ch)->f_old, std::format("world/wld/oldroms/{}.wld", static_cast<const char*>(fname)).c_str());
 
     SHAPE_ROOM(ch)
         ->permission
@@ -1137,11 +1134,9 @@ int load_room(struct char_data* ch, char* arg)
     }
     if (tmp > number) {
         new_room(ch, number);
-        sprintf(str, " could not find room #%d, created it.\n\r", number);
-        send_to_char(str, ch);
+        send_to_char(std::format(" could not find room #{}, created it.\n\r", number).c_str(), ch);
     } else {
-        sprintf(str, "loading room #%d\n\r", tmp);
-        send_to_char(str, ch);
+        send_to_char(std::format("loading room #{}\n\r", tmp).c_str(), ch);
         number = tmp;
 
         /*  room_number=ch->in_room;*/
@@ -1310,7 +1305,7 @@ int create_room(struct char_data* ch, char* arg)
         return -1;
     }
 
-    sprintf(str, SHAPE_ROM_DIR, fname);
+    strcpy(str, std::format("world/wld/{}.wld", static_cast<const char*>(fname)).c_str());
 
     //  send_to_char(str,ch);
     f = fopen(str, "r+");
@@ -1321,7 +1316,7 @@ int create_room(struct char_data* ch, char* arg)
     }
     strcpy(SHAPE_ROOM(ch)->f_from, str);
     SET_BIT(SHAPE_ROOM(ch)->flags, SHAPE_FILENAME);
-    sprintf(SHAPE_ROOM(ch)->f_old, SHAPE_ROM_BACKDIR, fname);
+    strcpy(SHAPE_ROOM(ch)->f_old, std::format("world/wld/oldroms/{}.wld", static_cast<const char*>(fname)).c_str());
 
     tmp = find_mob(f, 99999);
     if (tmp == -1) {
@@ -1330,8 +1325,7 @@ int create_room(struct char_data* ch, char* arg)
         return -1;
     }
 
-    sprintf(str, "creating room at zone %s\n\r", fname);
-    send_to_char(str, ch);
+    send_to_char(std::format("creating room at zone {}\n\r", static_cast<const char*>(fname)).c_str(), ch);
     new_room(ch, number);
     SET_BIT(SHAPE_ROOM(ch)->flags, SHAPE_ROOM_LOADED);
     SHAPE_ROOM(ch)
@@ -1341,9 +1335,10 @@ int create_room(struct char_data* ch, char* arg)
     SHAPE_ROOM(ch)
         ->room->number
         = append_room(ch, arg);
-    sprintf(str, "causing the eternal order to shiver, you created a room #%d\n\r",
-        SHAPE_ROOM(ch)->room->number);
-    send_to_char(str, ch);
+    send_to_char(std::format("causing the eternal order to shiver, you created a room #{}\n\r",
+        SHAPE_ROOM(ch)->room->number)
+                     .c_str(),
+        ch);
     return number;
 }
 /*****************----------------------------------******************/
@@ -1433,8 +1428,7 @@ int replace_room(struct char_data* ch, char* arg)
     } while ((i < num) && (check != EOF));
 
     if (check == EOF) {
-        sprintf(str, "no room #%d in this file\n\r", num);
-        send_to_char(str, ch);
+        send_to_char(std::format("no room #{} in this file\n\r", num).c_str(), ch);
         fclose(f1);
         fclose(f2);
         return -1;
@@ -1448,12 +1442,10 @@ int replace_room(struct char_data* ch, char* arg)
     }
     if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_DELETE_ACTIVE)) {
         write_room(f2, SHAPE_ROOM(ch)->room, num);
-        sprintf(str, "Saved as room #%d\n\r", num);
-        send_to_char(str, ch);
+        send_to_char(std::format("Saved as room #{}\n\r", num).c_str(), ch);
         REMOVE_BIT(SHAPE_ROOM(ch)->flags, SHAPE_DELETE_ACTIVE);
     } else {
-        sprintf(str, "Deleted room #%d\n\r", num);
-        send_to_char(str, ch);
+        send_to_char(std::format("Deleted room #{}\n\r", num).c_str(), ch);
     }
     fprintf(f2, "#%-d", oldnum);
     for (; i != EOF;) {
@@ -1487,8 +1479,8 @@ int append_room(struct char_data* ch, char* arg)
                 return -1;
             }
         } else {
-            sprintf(SHAPE_ROOM(ch)->f_from, SHAPE_ROM_DIR, fname);
-            sprintf(SHAPE_ROOM(ch)->f_old, SHAPE_ROM_BACKDIR, fname);
+            strcpy(SHAPE_ROOM(ch)->f_from, std::format("world/wld/{}.wld", static_cast<const char*>(fname)).c_str());
+            strcpy(SHAPE_ROOM(ch)->f_old, std::format("world/wld/oldroms/{}.wld", static_cast<const char*>(fname)).c_str());
             SET_BIT(SHAPE_ROOM(ch)->flags, SHAPE_FILENAME);
         }
     }
@@ -1497,8 +1489,7 @@ int append_room(struct char_data* ch, char* arg)
         return -1;
     }
 
-    sprintf(str, "Adding a new room to zone file %s.\n\r", SHAPE_ROOM(ch)->f_from);
-    send_to_char(str, ch);
+    send_to_char(std::format("Adding a new room to zone file {}.\n\r", static_cast<const char*>(SHAPE_ROOM(ch)->f_from)).c_str(), ch);
     if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_ROOM_LOADED)) {
         send_to_char("you have no room to add...\n\r", ch);
         return -1;
@@ -1564,8 +1555,7 @@ int append_room(struct char_data* ch, char* arg)
     SHAPE_ROOM(ch)
         ->room->number
         = i1 + 1;
-    sprintf(str, "The room is added to database. New number is #%d\n\r", i1 + 1);
-    send_to_char(str, ch);
+    send_to_char(std::format("The room is added to database. New number is #{}\n\r", i1 + 1).c_str(), ch);
     ch->specials.prompt_value = i1 + 1;
 
     fprintf(f2, "#99999\n\r$~\n\r");

@@ -365,3 +365,55 @@ TEST(ShapeObj, ListObjectFormatsAllFieldsIncludingNegativeAffections)
     EXPECT_NE(output.find("(19) Affections:\n\r (1 -3)"), std::string::npos);
     EXPECT_NE(output.find("(21) script        :0\n\r"), std::string::npos);
 }
+
+// shaperom.cpp's list_room() (the OLC "look at room" display) -- same
+// rationale as ShapeObj.ListObjectFormatsAllFieldsIncludingNegativeAffections
+// above: pure formatting, no file I/O. Exercises the "no exits"/"no extra
+// description"/room-affection branches, including a negative
+// affected->location (forces the ternary's "unknown" branch rather than
+// indexing the here-un-booted skills[] table -- same technique as
+// shapeobj.cpp's material=-1 case) and a negative modifier/bitvector.
+extern void list_room(struct char_data* ch, struct room_data* mob);
+
+TEST(ShapeRoom, ListRoomFormatsAllFieldsWithNoExitsAndNegativeAffection)
+{
+    char_data editor {};
+    clear_char(&editor, MOB_VOID);
+    descriptor_data descriptor = make_capturing_descriptor(&editor);
+    editor.desc = &descriptor;
+
+    shape_room shape {};
+    shape.exit_chosen = -1;
+    editor.temp = &shape;
+
+    room_data room; // room_data() sets number/zone/level/name/description/affected;
+                     // the rest (dir_option/ex_description/sector_type/room_flags)
+                     // needs explicit zeroing here, same as dummy_room_data() does
+                     // for a freshly-allocated real room.
+    room.name = const_cast<char*>("A Dusty Study");
+    room.description = const_cast<char*>("Dust motes hang in still air.");
+    room.room_flags = 4;
+    room.sector_type = 2;
+    for (int i = 0; i < NUM_OF_DIRS; i++)
+        room.dir_option[i] = nullptr;
+    room.ex_description = nullptr;
+    room.level = 3;
+
+    affected_type affection {};
+    affection.type = ROOMAFF_SPELL;
+    affection.location = -1; // forces the "unknown" skill-name branch
+    affection.modifier = -5;
+    affection.bitvector = -1;
+    room.affected = &affection;
+
+    list_room(&editor, &room);
+
+    const std::string output(descriptor.output);
+    EXPECT_NE(output.find("(1) name         :A Dusty Study\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(3) room flag  :4\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(4) sector type   :2\n\r"), std::string::npos);
+    EXPECT_NE(output.find("No exits are made from this room\n\r"), std::string::npos);
+    EXPECT_NE(output.find("No exit selected for editing.\n\r"), std::string::npos);
+    EXPECT_NE(output.find("No extra description exists.\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(18) Affection type (1), (unknown)--1, level -5, flags -1\n\r"), std::string::npos);
+}

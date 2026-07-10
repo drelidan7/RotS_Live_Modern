@@ -107,9 +107,34 @@ class CharacterizationCombatTest : public ::testing::Test {
         if (claimed_abs_number >= 0) {
             remove_char_exists(claimed_abs_number);
         }
+
+        // Frees the corpse make_physical_corpse() (fight.cpp) built, if the
+        // transcript killed the victim. Already unlinked from object_list /
+        // world[room].contents by the test body -- nothing in production
+        // still references it -- so this is a plain deallocation, not a
+        // scaled-down extract_obj(): CREATE()/str_dup() route through
+        // create_function(), which is calloc(); rots_asprintf() (used by
+        // get_corpse_desc() for description/short_description) is malloc();
+        // both are plain free()-compatible, and corpse->contains/ex_description
+        // are guaranteed null here (DamageTestContext's victim carries
+        // nothing and owns no wear-slot equipment, so make_physical_corpse()
+        // never populates them). Test-only: production's make_corpse()/
+        // make_physical_corpse() path is untouched.
+        if (corpse_to_free != nullptr) {
+            std::free(corpse_to_free->name);
+            std::free(corpse_to_free->description);
+            std::free(corpse_to_free->short_description);
+            std::free(corpse_to_free);
+            corpse_to_free = nullptr;
+        }
     }
 
     int claimed_abs_number = -1;
+
+    // Corpse make_physical_corpse() (fight.cpp) allocated during the test, if
+    // the seed-42 transcript killed the victim; set by the test body once
+    // it's unlinked from object_list/world[room].contents, freed above.
+    obj_data* corpse_to_free = nullptr;
 };
 
 // Characterization, not specification: this pins CURRENT behavior of the live
@@ -181,13 +206,13 @@ TEST_F(CharacterizationCombatTest, DamageTranscriptSeed42)
     // world[room].contents (obj_to_room). Unlink it from both so no later
     // test in this binary observes our leftovers; nothing else allocates
     // objects between the kill and here, so the corpse is at the head of
-    // both lists when it exists. The corpse allocation itself is
-    // intentionally leaked (one small block, once per process) because
-    // freeing it safely would require the full extract_obj() machinery.
+    // both lists when it exists. Handed to TearDown() (corpse_to_free) for
+    // the actual deallocation.
     obj_data* corpse = world[DamageTestContext::room_number].contents;
     if (corpse != nullptr && corpse == object_list) {
         world[DamageTestContext::room_number].contents = corpse->next_content;
         object_list = corpse->next;
+        corpse_to_free = corpse;
     }
 
     if (std::getenv("UPDATE_GOLDENS") != nullptr) {

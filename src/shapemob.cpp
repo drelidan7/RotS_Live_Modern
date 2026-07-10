@@ -14,6 +14,8 @@
 #include "structs.h"
 #include "utils.h"
 #include "zone.h"
+#include <format>
+#include <string>
 
 extern struct room_data world;
 extern struct char_data* character_list;
@@ -374,8 +376,7 @@ void write_proto(FILE* f, struct char_data* m, int num)
 #define DESCRCHANGE(line, addr)                                       \
     do {                                                              \
         if (!IS_SET(SHAPE_PROTO(ch)->flags, SHAPE_SIMPLE_ACTIVE)) {   \
-            sprintf(tmpstr, "You are about to change %s:\n\r", line); \
-            send_to_char(tmpstr, ch);                                 \
+            send_to_char(std::format("You are about to change {}:\n\r", line).c_str(), ch); \
             SHAPE_PROTO(ch)                                           \
                 ->position                                            \
                 = shape_standup(ch, POSITION_SHAPING);                \
@@ -407,8 +408,7 @@ void write_proto(FILE* f, struct char_data* m, int num)
 #define LINECHANGE(line, addr)                                                              \
     do {                                                                                    \
         if (!IS_SET(SHAPE_PROTO(ch)->flags, SHAPE_DIGIT_ACTIVE)) {                          \
-            sprintf(tmpstr, "Enter line %s:\n\r[%s]\n\r", line, (addr) ? (char*)addr : ""); \
-            send_to_char(tmpstr, ch);                                                       \
+            send_to_char(std::format("Enter line {}:\n\r[{}]\n\r", line, (addr) ? (char*)addr : "").c_str(), ch); \
             SHAPE_PROTO(ch)                                                                 \
                 ->position                                                                  \
                 = shape_standup(ch, POSITION_SHAPING);                                      \
@@ -457,7 +457,7 @@ void extra_coms_proto(struct char_data* ch, char* argument);
 void shape_center_proto(struct char_data* ch, char* arg)
 {
 
-    char str[1000], tmpstr[1000];
+    char str[1000];
     // int i,i1;
     int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, choice;
     struct char_data* mob;
@@ -542,8 +542,7 @@ void shape_center_proto(struct char_data* ch, char* arg)
 #define DIGITCHANGE(line, addr)                                    \
     do {                                                           \
         if (!IS_SET(SHAPE_PROTO(ch)->flags, SHAPE_DIGIT_ACTIVE)) { \
-            sprintf(tmpstr, "Enter %s [%d]:\n\r", line, addr);     \
-            send_to_char(tmpstr, ch);                              \
+            send_to_char(std::format("Enter {} [{}]:\n\r", line, addr).c_str(), ch); \
             SHAPE_PROTO(ch)                                        \
                 ->position                                         \
                 = shape_standup(ch, POSITION_SHAPING);             \
@@ -565,8 +564,7 @@ void shape_center_proto(struct char_data* ch, char* arg)
 #define DIGITCHANGEL(line, addr)                                   \
     do {                                                           \
         if (!IS_SET(SHAPE_PROTO(ch)->flags, SHAPE_DIGIT_ACTIVE)) { \
-            sprintf(tmpstr, "Enter %s [%ld]:\n\r", line, addr);    \
-            send_to_char(tmpstr, ch);                              \
+            send_to_char(std::format("Enter {} [{}]:\n\r", line, addr).c_str(), ch); \
             SHAPE_PROTO(ch)                                        \
                 ->position                                         \
                 = shape_standup(ch, POSITION_SHAPING);             \
@@ -1086,137 +1084,90 @@ void list_help(struct char_data* ch)
 /*********--------------------------------*********/
 void list_simple_proto(struct char_data* ch, struct char_data* mob)
 {
-    char str[255];
-
     //  recalculate_mob(ch);
     send_to_char("Simple editing mode.\n\r", ch);
-    sprintf(str, "(1) alias(es)         :%s\n\r", mob->player.name);
-    send_to_char(str, ch);
-    sprintf(str, "(2) reference description  :%s\n\r", mob->player.short_descr);
-    send_to_char(str, ch);
-    sprintf(str, "(3) full  description   :\n\r");
-    send_to_char(str, ch);
+    send_to_char(std::format("(1) alias(es)         :{}\n\r", mob->player.name).c_str(), ch);
+    send_to_char(std::format("(2) reference description  :{}\n\r", mob->player.short_descr).c_str(), ch);
+    send_to_char("(3) full  description   :\n\r", ch);
     send_to_char(mob->player.long_descr, ch);
     send_to_char("\n\r", ch);
-    sprintf(str, "(4) detailed description  :\n\r");
-    send_to_char(str, ch);
+    send_to_char("(4) detailed description  :\n\r", ch);
     send_to_char(mob->player.description, ch);
     send_to_char("\n\r", ch);
-    sprintf(str, "(5) flag number  :%ld\n\r", mob->specials2.act);
-    send_to_char(str, ch);
-    sprintf(str, "(6) affections   :%ld\n\r", mob->specials.affected_by);
-    send_to_char(str, ch);
+    send_to_char(std::format("(5) flag number  :{}\n\r", mob->specials2.act).c_str(), ch);
+    send_to_char(std::format("(6) affections   :{}\n\r", mob->specials.affected_by).c_str(), ch);
     //  sprintf(str,"(7) alignment    :%d\n\r",mob->specials2.alignment);
     //  send_to_char(str,ch);
-    sprintf(str, "(7) level        :%d\n\r", mob->player.level);
-    send_to_char(str, ch);
-    sprintf(str, "(8) sex          :%d\n\r", mob->player.sex);
-    send_to_char(str, ch);
-    sprintf(str, "(9) race         :%d\n\r", mob->player.race);
-    send_to_char(str, ch);
-    sprintf(str, "(10) bodytype    :%d\n\r", mob->player.bodytype);
-    send_to_char(str, ch);
-    sprintf(str, "(11) race aggr.  :%ld\n\r", mob->specials2.pref);
-    send_to_char(str, ch);
-    sprintf(str, "(12) butcher item:%d\n\r", mob->specials.butcher_item);
-    send_to_char(str, ch);
-    sprintf(str, "(13) spirit:%d\n\r", mob->points.spirit);
-    send_to_char(str, ch);
+    send_to_char(std::format("(7) level        :{}\n\r", mob->player.level).c_str(), ch);
+    send_to_char(std::format("(8) sex          :{}\n\r", mob->player.sex).c_str(), ch);
+    send_to_char(std::format("(9) race         :{}\n\r", mob->player.race).c_str(), ch);
+    send_to_char(std::format("(10) bodytype    :{}\n\r", mob->player.bodytype).c_str(), ch);
+    send_to_char(std::format("(11) race aggr.  :{}\n\r", mob->specials2.pref).c_str(), ch);
+    send_to_char(std::format("(12) butcher item:{}\n\r", mob->specials.butcher_item).c_str(), ch);
+    send_to_char(std::format("(13) spirit:{}\n\r", mob->points.spirit).c_str(), ch);
 }
 
 void list_proto(struct char_data* ch, struct char_data* mob)
 {
-    static char str[MAX_STRING_LENGTH];
     send_to_char("Full editing mode.\n\r", ch);
-    sprintf(str, "(1) alias(es)         :%s\n\r", mob->player.name);
-    send_to_char(str, ch);
-    sprintf(str, "(2) reference description  :%s\n\r", mob->player.short_descr);
-    send_to_char(str, ch);
-    sprintf(str, "(3) full  description   :\n\r");
-    send_to_char(str, ch);
+    send_to_char(std::format("(1) alias(es)         :{}\n\r", mob->player.name).c_str(), ch);
+    send_to_char(std::format("(2) reference description  :{}\n\r", mob->player.short_descr).c_str(), ch);
+    send_to_char("(3) full  description   :\n\r", ch);
     send_to_char(mob->player.long_descr, ch);
     send_to_char("\n\r", ch);
-    sprintf(str, "(4) detailed description  :\n\r");
-    send_to_char(str, ch);
+    send_to_char("(4) detailed description  :\n\r", ch);
     send_to_char(mob->player.description, ch);
     send_to_char("\n\r", ch);
-    sprintf(str, "(5) flag number  :%ld\n\r", mob->specials2.act);
-    send_to_char(str, ch);
-    sprintf(str, "(6) affections   :%ld\n\r", mob->specials.affected_by);
-    send_to_char(str, ch);
-    sprintf(str, "(7) alignment    :%d\n\r", mob->specials2.alignment);
-    send_to_char(str, ch);
-    sprintf(str, "(8) level        :%d\n\r", mob->player.level);
-    send_to_char(str, ch);
-    sprintf(str, "(9) OB:%d,   parry:%d, dodge:%d\n\r", mob->points.OB,
-        mob->points.parry, mob->points.dodge);
-    send_to_char(str, ch);
-    sprintf(str, "(10) min_hit:%d, max_hit:%d\n\r",
-        mob->tmpabilities.hit, mob->abilities.hit);
-    send_to_char(str, ch);
-    sprintf(str, "(11) damage       :%d\n\r", mob->points.damage);
-    send_to_char(str, ch);
-    sprintf(str, "(12) energy regen :%d\n\r", mob->points.ENE_regen);
-    send_to_char(str, ch);
-    sprintf(str, "(13) gold         :%d\n\r", mob->points.gold);
-    send_to_char(str, ch);
-    sprintf(str, "(14) exp          :%d\n\r", mob->points.exp);
-    send_to_char(str, ch);
-    sprintf(str, "(16) position     :%d\n\r", mob->specials.position);
-    send_to_char(str, ch);
-    sprintf(str, "(17) default pos. :%d\n\r", mob->specials.default_pos);
-    send_to_char(str, ch);
-    sprintf(str, "(18) sex          :%d\n\r", mob->player.sex);
-    send_to_char(str, ch);
-    sprintf(str, "(19) race         :%d\n\r", mob->player.race);
-    send_to_char(str, ch);
-    sprintf(str, "(20) race aggr.   :%ld\n\r", mob->specials2.pref);
-    send_to_char(str, ch);
-    sprintf(str, "(21) weight       :%d\n\r", mob->player.weight);
-    send_to_char(str, ch);
-    sprintf(str, "(22) height       :%d\n\r", mob->player.height);
-    send_to_char(str, ch);
-    sprintf(str, "(23) prof        :%d\n\r", mob->player.prof);
-    send_to_char(str, ch);
-    sprintf(str, "(24) stamina      :%d\n\r", mob->abilities.mana);
-    send_to_char(str, ch);
-    sprintf(str, "(25) movepoints   :%d\n\r", mob->abilities.move);
-    send_to_char(str, ch);
-    sprintf(str, "(26) bodytype     :%d\n\r", mob->player.bodytype);
-    send_to_char(str, ch);
-    sprintf(str, "(27) saving throw :%d\n\r", mob->specials2.saving_throw);
-    send_to_char(str, ch);
-    sprintf(str, "(28) STR=%d INT=%d WILL=%d DEX=%d CON=%d LEA=%d\n\r",
+    send_to_char(std::format("(5) flag number  :{}\n\r", mob->specials2.act).c_str(), ch);
+    send_to_char(std::format("(6) affections   :{}\n\r", mob->specials.affected_by).c_str(), ch);
+    send_to_char(std::format("(7) alignment    :{}\n\r", mob->specials2.alignment).c_str(), ch);
+    send_to_char(std::format("(8) level        :{}\n\r", mob->player.level).c_str(), ch);
+    send_to_char(std::format("(9) OB:{},   parry:{}, dodge:{}\n\r", mob->points.OB,
+        mob->points.parry, mob->points.dodge)
+                     .c_str(),
+        ch);
+    send_to_char(std::format("(10) min_hit:{}, max_hit:{}\n\r",
+        mob->tmpabilities.hit, mob->abilities.hit)
+                     .c_str(),
+        ch);
+    send_to_char(std::format("(11) damage       :{}\n\r", mob->points.damage).c_str(), ch);
+    send_to_char(std::format("(12) energy regen :{}\n\r", mob->points.ENE_regen).c_str(), ch);
+    send_to_char(std::format("(13) gold         :{}\n\r", mob->points.gold).c_str(), ch);
+    send_to_char(std::format("(14) exp          :{}\n\r", mob->points.exp).c_str(), ch);
+    send_to_char(std::format("(16) position     :{}\n\r", mob->specials.position).c_str(), ch);
+    send_to_char(std::format("(17) default pos. :{}\n\r", mob->specials.default_pos).c_str(), ch);
+    send_to_char(std::format("(18) sex          :{}\n\r", mob->player.sex).c_str(), ch);
+    send_to_char(std::format("(19) race         :{}\n\r", mob->player.race).c_str(), ch);
+    send_to_char(std::format("(20) race aggr.   :{}\n\r", mob->specials2.pref).c_str(), ch);
+    send_to_char(std::format("(21) weight       :{}\n\r", mob->player.weight).c_str(), ch);
+    send_to_char(std::format("(22) height       :{}\n\r", mob->player.height).c_str(), ch);
+    send_to_char(std::format("(23) prof        :{}\n\r", mob->player.prof).c_str(), ch);
+    send_to_char(std::format("(24) stamina      :{}\n\r", mob->abilities.mana).c_str(), ch);
+    send_to_char(std::format("(25) movepoints   :{}\n\r", mob->abilities.move).c_str(), ch);
+    send_to_char(std::format("(26) bodytype     :{}\n\r", mob->player.bodytype).c_str(), ch);
+    send_to_char(std::format("(27) saving throw :{}\n\r", mob->specials2.saving_throw).c_str(), ch);
+    send_to_char(std::format("(28) STR={} INT={} WILL={} DEX={} CON={} LEA={}\n\r",
         mob->abilities.str, mob->abilities.intel, mob->abilities.wil,
-        mob->abilities.dex, mob->abilities.con, mob->abilities.lea);
-    send_to_char(str, ch);
-    sprintf(str, "(29) program number:%d\n\r", mob->specials.store_prog_number);
-    send_to_char(str, ch);
-    sprintf(str, "(30) language (0-%d):%d\n\r", language_number,
-        mob->player.language);
-    send_to_char(str, ch);
-    sprintf(str, "(31) butcher item   :%d\n\r", mob->specials.butcher_item);
-    send_to_char(str, ch);
-    sprintf(str, "(32) perception     :%d\n\r", mob->specials2.perception);
-    send_to_char(str, ch);
-    sprintf(str, "(33) death cry_1    :%s\n\r", (mob->player.death_cry) ? mob->player.death_cry : "(None)");
-    send_to_char(str, ch);
-    sprintf(str, "(34) death cry_2    :%s\n\r", (mob->player.death_cry2) ? mob->player.death_cry2 : "(None)");
-    send_to_char(str, ch);
-    sprintf(str, "(35) corpse number  :%d\n\r", mob->player.corpse_num);
-    send_to_char(str, ch);
-    sprintf(str, "(36) resistances    :%d\n\r", mob->specials.resistance);
-    send_to_char(str, ch);
-    sprintf(str, "(37) vulnerabilities:%d\n\r", mob->specials.vulnerability);
-    send_to_char(str, ch);
-    sprintf(str, "(38) script number  :%d\n\r", mob->specials.script_number);
-    send_to_char(str, ch);
-    sprintf(str, "(39) roleplay flag  :%d\n\4", mob->specials2.rp_flag);
-    send_to_char(str, ch);
-    sprintf(str, "(40) spirit:%d\n\r", mob->points.spirit);
-    send_to_char(str, ch);
-    sprintf(str, "(41) will teach     :%ld\n\r", mob->specials2.will_teach);
-    send_to_char(str, ch);
+        mob->abilities.dex, mob->abilities.con, mob->abilities.lea)
+                     .c_str(),
+        ch);
+    send_to_char(std::format("(29) program number:{}\n\r", mob->specials.store_prog_number).c_str(), ch);
+    send_to_char(std::format("(30) language (0-{}):{}\n\r", language_number,
+        mob->player.language)
+                     .c_str(),
+        ch);
+    send_to_char(std::format("(31) butcher item   :{}\n\r", mob->specials.butcher_item).c_str(), ch);
+    send_to_char(std::format("(32) perception     :{}\n\r", mob->specials2.perception).c_str(), ch);
+    send_to_char(std::format("(33) death cry_1    :{}\n\r", (mob->player.death_cry) ? mob->player.death_cry : "(None)").c_str(), ch);
+    send_to_char(std::format("(34) death cry_2    :{}\n\r", (mob->player.death_cry2) ? mob->player.death_cry2 : "(None)").c_str(), ch);
+    send_to_char(std::format("(35) corpse number  :{}\n\r", mob->player.corpse_num).c_str(), ch);
+    send_to_char(std::format("(36) resistances    :{}\n\r", mob->specials.resistance).c_str(), ch);
+    send_to_char(std::format("(37) vulnerabilities:{}\n\r", mob->specials.vulnerability).c_str(), ch);
+    send_to_char(std::format("(38) script number  :{}\n\r", mob->specials.script_number).c_str(), ch);
+    // "\n\4" (not "\n\r") is a pre-existing typo -- preserved exactly.
+    send_to_char(std::format("(39) roleplay flag  :{}\n\4", mob->specials2.rp_flag).c_str(), ch);
+    send_to_char(std::format("(40) spirit:{}\n\r", mob->points.spirit).c_str(), ch);
+    send_to_char(std::format("(41) will teach     :{}\n\r", mob->specials2.will_teach).c_str(), ch);
 }
 
 /*********--------------------------------*********/
@@ -1262,8 +1213,11 @@ int load_proto(struct char_data* ch, char* arg)
         send_to_char("Choose a mobile by 'shape mobile <number>'\n\r", ch);
         return -1;
     }
-    sprintf(fname, "%d", number / 100);
-    sprintf(str, SHAPE_MOB_DIR, fname);
+    // SHAPE_MOB_DIR/SHAPE_MOB_BACKDIR's %s templates inlined as literal {}
+    // paths (matches the other shape*.cpp files' Task 3 conversion); the
+    // shared macros stay %-style for any shape*.cpp file not yet converted.
+    strcpy(fname, std::format("{}", number / 100).c_str());
+    strcpy(str, std::format("world/mob/{}.mob", static_cast<const char*>(fname)).c_str());
 
     send_to_char(str, ch);
     file = fopen(str, "r+");
@@ -1274,7 +1228,7 @@ int load_proto(struct char_data* ch, char* arg)
 
     strcpy(SHAPE_PROTO(ch)->f_from, str);
     SET_BIT(SHAPE_PROTO(ch)->flags, SHAPE_FILENAME);
-    sprintf(SHAPE_PROTO(ch)->f_old, SHAPE_MOB_BACKDIR, fname);
+    strcpy(SHAPE_PROTO(ch)->f_old, std::format("world/mob/oldmobs/{}.mob", static_cast<const char*>(fname)).c_str());
 
     if (GET_IDNUM(ch) == mobile_master_idnum) {
         SHAPE_PROTO(ch)
@@ -1296,11 +1250,9 @@ int load_proto(struct char_data* ch, char* arg)
         SHAPE_PROTO(ch)
             ->number
             = number;
-        sprintf(str, " could not find mob #%d, created it.\n\r", number);
-        send_to_char(str, ch);
+        send_to_char(std::format(" could not find mob #{}, created it.\n\r", number).c_str(), ch);
     } else {
-        sprintf(str, " loading mob #%d\n\r", tmp);
-        send_to_char(str, ch);
+        send_to_char(std::format(" loading mob #{}\n\r", tmp).c_str(), ch);
         number = tmp;
         SHAPE_PROTO(ch)
             ->number
@@ -1644,8 +1596,7 @@ int replace_proto(struct char_data* ch, char* arg)
     } while (i < num && check != EOF);
 
     if (check == EOF) {
-        sprintf(str, "no mob #%d in this file\n\r", num);
-        send_to_char(str, ch);
+        send_to_char(std::format("no mob #{} in this file\n\r", num).c_str(), ch);
         fclose(f1);
         fclose(f2);
         return -1;
@@ -1705,8 +1656,8 @@ int append_proto(struct char_data* ch, char* arg)
             return -1;
         }
     } else {
-        sprintf(SHAPE_PROTO(ch)->f_from, SHAPE_MOB_DIR, fname);
-        sprintf(SHAPE_PROTO(ch)->f_old, SHAPE_MOB_BACKDIR, fname);
+        strcpy(SHAPE_PROTO(ch)->f_from, std::format("world/mob/{}.mob", static_cast<const char*>(fname)).c_str());
+        strcpy(SHAPE_PROTO(ch)->f_old, std::format("world/mob/oldmobs/{}.mob", static_cast<const char*>(fname)).c_str());
         SET_BIT(SHAPE_PROTO(ch)->flags, SHAPE_FILENAME);
     }
     if (!IS_SET(SHAPE_PROTO(ch)->flags, SHAPE_PROTO_LOADED)) {
@@ -1778,8 +1729,7 @@ int append_proto(struct char_data* ch, char* arg)
 
     fseek(f2, -1, SEEK_CUR);
     write_proto(f2, SHAPE_PROTO(ch)->proto, i1 + 1);
-    sprintf(str, "Mobile added to database as #%d.\n\r", i1 + 1);
-    send_to_char(str, ch);
+    send_to_char(std::format("Mobile added to database as #{}.\n\r", i1 + 1).c_str(), ch);
     SHAPE_PROTO(ch)
         ->number
         = i1 + 1;
@@ -1943,10 +1893,10 @@ ACMD(do_shape)
                 ;
             for (; argument[stlen] > ' '; stlen++)
                 ; /*new*/
-            sprintf(str, "new %s\n\r", argument + stlen);
+            strcpy(str, std::format("new {}\n\r", argument + stlen).c_str());
             newflag = 1;
         } else {
-            sprintf(str, "load %s\n\r", argument + stlen);
+            strcpy(str, std::format("load {}\n\r", argument + stlen).c_str());
             newflag = 0;
         }
         switch (key) {
@@ -2032,7 +1982,7 @@ ACMD(do_shape)
             send_to_char("You start shaping a room.\n\r", ch);
             if (2 == sscanf(argument, "%s %s", tmp, tmp2))
                 if (!strncmp(tmp2, "current", strlen(tmp2)))
-                    sprintf(str, "load %d", world[ch->in_room].number);
+                    strcpy(str, std::format("load {}", world[ch->in_room].number).c_str());
             shape_center_room(ch, str);
             break;
         case SHAPE_ZONES:
@@ -2087,7 +2037,7 @@ ACMD(do_shape)
                 = ch->specials.position;
             if (2 == sscanf(argument, "%s %s", tmp, tmp2))
                 if (!strncmp(tmp2, "current", strlen(tmp2)))
-                    sprintf(str, "load %d", world[ch->in_room].number / 100);
+                    strcpy(str, std::format("load {}", world[ch->in_room].number / 100).c_str());
             shape_center_zone(ch, str);
             break;
         case SHAPE_SCRIPTS:
@@ -2126,20 +2076,21 @@ ACMD(do_shape)
                 = -1;
             SET_BIT(PRF_FLAGS(ch), PRF_DISPTEXT);
             ch->specials.prompt_number = 8;
-            sprintf(str, "load %s", tmp2);
+            strcpy(str, std::format("load {}", tmp2).c_str());
             shape_center_mudlle(ch, str);
 
             break;
         case SHAPE_RECALC_ALL:
             printf("going to recalc all\n");
             for (i = 0; i <= top_of_mobt; i++) {
-                sprintf(str, "mobile %d", mob_index[i].virt);
+                strcpy(str, std::format("mobile {}", mob_index[i].virt).c_str());
                 do_shape(ch, str, 0, 0, 0);
                 if (!IS_SET(SHAPE_PROTO(ch)->proto->specials2.act, MOB_NORECALC)) {
                     recalculate_mob(ch);
                     replace_proto(ch, "");
-                    sprintf(str, "Recalculated [%5d] %s;\n\r",
-                        mob_index[i].virt, GET_NAME(mob_proto + i));
+                    strcpy(str, std::format("Recalculated [{:>5}] {};\n\r",
+                        mob_index[i].virt, GET_NAME(mob_proto + i))
+                                    .c_str());
                 }
                 free_proto(ch);
                 send_to_char(str, ch);
@@ -2149,16 +2100,14 @@ ACMD(do_shape)
 
         case SHAPE_MASTER_MOBILE:
             sscanf(argument + stlen, "%d", &i);
-            sprintf(str, "Mobile permission set to player #%d\n\r", i);
             mobile_master_idnum = i;
-            send_to_char(str, ch);
+            send_to_char(std::format("Mobile permission set to player #{}\n\r", i).c_str(), ch);
             break;
 
         case SHAPE_MASTER_OBJECT:
             sscanf(argument + stlen, "%d", &i);
-            sprintf(str, "Object permission set to player #%d\n\r", i);
             object_master_idnum = i;
-            send_to_char(str, ch);
+            send_to_char(std::format("Object permission set to player #{}\n\r", i).c_str(), ch);
             break;
         };
     }
@@ -2285,8 +2234,8 @@ void extra_coms_proto(struct char_data* ch, char* argument)
         SHAPE_PROTO(ch)
             ->permission
             = get_permission(zonnum, ch);
-        sprintf(SHAPE_PROTO(ch)->f_from, SHAPE_MOB_DIR, str2);
-        sprintf(SHAPE_PROTO(ch)->f_old, SHAPE_MOB_BACKDIR, str2);
+        strcpy(SHAPE_PROTO(ch)->f_from, std::format("world/mob/{}.mob", static_cast<const char*>(str2)).c_str());
+        strcpy(SHAPE_PROTO(ch)->f_old, std::format("world/mob/oldmobs/{}.mob", static_cast<const char*>(str2)).c_str());
         SET_BIT(SHAPE_PROTO(ch)->flags, SHAPE_FILENAME);
         new_mob(ch);
         SET_BIT(SHAPE_PROTO(ch)->flags, SHAPE_PROTO_LOADED);

@@ -455,3 +455,74 @@ TEST(ShapeZone, ShowCommandFormatsKnownAndUnrecognizedCommandsWithRightJustified
     EXPECT_STREQ(buf,
         "123 Unrecognized Command (if 1) on 101 by 5 to -1 when 50 with 100, (3 0) \n\r    a test comment.\n\r");
 }
+
+// shapemob.cpp's list_simple_proto()/list_proto() (the OLC "look at mobile"
+// displays, simple and full editing modes) -- pure formatting, no file I/O.
+// list_proto's "(39) roleplay flag" line is a pre-existing "\n\4" (not
+// "\n\r") typo this task preserves rather than "fixes" -- pinned explicitly
+// below since it's the one site in this whole task where the literal tail
+// isn't the usual "\n\r".
+extern void list_simple_proto(struct char_data* ch, struct char_data* mob);
+extern void list_proto(struct char_data* ch, struct char_data* mob);
+
+TEST(ShapeMob, ListSimpleProtoFormatsAllFields)
+{
+    char_data editor {};
+    clear_char(&editor, MOB_VOID);
+    descriptor_data descriptor = make_capturing_descriptor(&editor);
+    editor.desc = &descriptor;
+
+    char_data mob {};
+    clear_char(&mob, MOB_ISNPC);
+    mob.player.name = const_cast<char*>("a stone golem");
+    mob.player.short_descr = const_cast<char*>("a stone golem");
+    mob.player.long_descr = const_cast<char*>("A stone golem stands here.\n\r");
+    mob.player.description = const_cast<char*>("It is roughly hewn.\n\r");
+    mob.specials2.act = 4096;
+    mob.specials.affected_by = -1;
+    mob.player.level = 30;
+    mob.player.sex = 1;
+    mob.player.race = 2;
+    mob.player.bodytype = 3;
+    mob.specials2.pref = 0;
+    mob.specials.butcher_item = -1;
+    mob.points.spirit = 0;
+
+    list_simple_proto(&editor, &mob);
+
+    const std::string output(descriptor.output);
+    EXPECT_NE(output.find("(1) alias(es)         :a stone golem\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(3) full  description   :\n\rA stone golem stands here.\n\r\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(4) detailed description  :\n\rIt is roughly hewn.\n\r\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(5) flag number  :4096\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(6) affections   :-1\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(7) level        :30\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(12) butcher item:-1\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(13) spirit:0\n\r"), std::string::npos);
+}
+
+TEST(ShapeMob, ListProtoRoleplayFlagLinePreservesNonStandardLineEnding)
+{
+    char_data editor {};
+    clear_char(&editor, MOB_VOID);
+    descriptor_data descriptor = make_capturing_descriptor(&editor);
+    editor.desc = &descriptor;
+
+    char_data mob {};
+    clear_char(&mob, MOB_ISNPC);
+    mob.player.name = const_cast<char*>("a stone golem");
+    mob.player.short_descr = const_cast<char*>("a stone golem");
+    mob.player.long_descr = const_cast<char*>("A stone golem stands here.\n\r");
+    mob.player.description = const_cast<char*>("It is roughly hewn.\n\r");
+    mob.specials2.rp_flag = 7;
+    mob.player.death_cry = nullptr; // exercises the "(None)" ternary branch
+    mob.player.death_cry2 = const_cast<char*>("The golem crumbles to dust!");
+
+    list_proto(&editor, &mob);
+
+    const std::string output(descriptor.output);
+    EXPECT_NE(output.find("(33) death cry_1    :(None)\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(34) death cry_2    :The golem crumbles to dust!\n\r"), std::string::npos);
+    // "\n\4" (EOT), not "\n\r" -- the preserved typo.
+    EXPECT_NE(output.find("(39) roleplay flag  :7\n\4"), std::string::npos);
+}

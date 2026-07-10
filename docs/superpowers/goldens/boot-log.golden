@@ -1190,21 +1190,8 @@ Invalid virtual number in zone reset command: zone #23, command 39.  Command dis
 Invalid virtual number in zone reset command: zone #23, command 40.  Command disabled.
 Invalid virtual number in zone reset command: zone #23, command 41.  Command disabled.
 Invalid virtual number in zone reset command: zone #29, command 31.  Command disabled.
-Room 65535 does not exist in database
 Invalid virtual number in zone reset command: zone #33, command 40.  Command disabled.
 Invalid virtual number in zone reset command: zone #34, command 4.  Command disabled.
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
 Invalid virtual number in zone reset command: zone #58, command 4.  Command disabled.
 Invalid virtual number in zone reset command: zone #58, command 21.  Command disabled.
 Room 7355 does not exist in database
@@ -1228,8 +1215,6 @@ Room 13053 does not exist in database
 Invalid virtual number in zone reset command: zone #130, command 53.  Command disabled.
 Room 13064 does not exist in database
 Invalid virtual number in zone reset command: zone #130, command 54.  Command disabled.
-Room 65535 does not exist in database
-Room 65535 does not exist in database
 Invalid virtual number in zone reset command: zone #148, command 137.  Command disabled.
 Room 14383 does not exist in database
 Invalid virtual number in zone reset command: zone #154, command 21.  Command disabled.
@@ -1261,45 +1246,8 @@ Invalid virtual number in zone reset command: zone #207, command 37.  Command di
 Room 20775 does not exist in database
 Invalid virtual number in zone reset command: zone #207, command 38.  Command disabled.
 Invalid virtual number in zone reset command: zone #218, command 14.  Command disabled.
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
 Invalid virtual number in zone reset command: zone #230, command 37.  Command disabled.
 Invalid virtual number in zone reset command: zone #230, command 40.  Command disabled.
-Room 65535 does not exist in database
-Room 65535 does not exist in database
 Invalid virtual number in zone reset command: zone #230, command 73.  Command disabled.
 Invalid virtual number in zone reset command: zone #231, command 10.  Command disabled.
 Invalid virtual number in zone reset command: zone #231, command 33.  Command disabled.
@@ -1313,21 +1261,11 @@ Invalid virtual number in zone reset command: zone #233, command 123.  Command d
 Invalid virtual number in zone reset command: zone #234, command 12.  Command disabled.
 Invalid virtual number in zone reset command: zone #239, command 37.  Command disabled.
 Invalid virtual number in zone reset command: zone #241, command 5.  Command disabled.
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
-Room 65535 does not exist in database
 Invalid virtual number in zone reset command: zone #249, command 104.  Command disabled.
 Invalid virtual number in zone reset command: zone #249, command 111.  Command disabled.
 Invalid virtual number in zone reset command: zone #250, command 15.  Command disabled.
 Invalid virtual number in zone reset command: zone #254, command 50.  Command disabled.
 Invalid virtual number in zone reset command: zone #268, command 1.  Command disabled.
-Room 38520 does not exist in database
 Invalid virtual number in zone reset command: zone #285, command 10.  Command disabled.
 Invalid virtual number in zone reset command: zone #288, command 25.  Command disabled.
 Invalid virtual number in zone reset command: zone #293, command 14.  Command disabled.
@@ -1345,6 +1283,9 @@ Invalid virtual number in zone reset command: zone #300, command 17.  Command di
 Invalid virtual number in zone reset command: zone #302, command 16.  Command disabled.
 Invalid virtual number in zone reset command: zone #318, command 1.  Command disabled.
 Invalid virtual number in zone reset command: zone #323, command 1.  Command disabled.
+Invalid virtual number in zone reset command: zone #329, command 1.  Command disabled.
+Invalid virtual number in zone reset command: zone #330, command 1.  Command disabled.
+Invalid virtual number in zone reset command: zone #330, command 2.  Command disabled.
 Invalid virtual number in zone reset command: zone #338, command 1.  Command disabled.
 Loading pkill list.
 Loading crime list.

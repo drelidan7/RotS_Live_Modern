@@ -113,7 +113,15 @@ void load_zones(FILE* fl)
         /* XXX: still preserving the 'S' command */
         zone_table[zone].cmd[cmd_no].command = command;
 
-        fscanf(fl, "%hd %hd %hd %hd %hd %hd",
+        // if_flag/arg1..arg7 are declared `int` in struct reset_com (db.h), not `short`;
+        // %hd here was writing through an `int*` as if it were a `short*` (undefined
+        // behavior, and on real little-endian platforms silently truncating each write
+        // to the low 2 bytes). shapezon.cpp's write side (write_zone/DIGITCHANGE) already
+        // round-trips these fields with %d, so %d is what matches the declared type and
+        // the on-disk textual format -- this is a boot-time-only in-memory struct
+        // (reset_com is never persisted in binary form), so aligning the read format to
+        // the field type changes no on-disk world-file format.
+        fscanf(fl, "%d %d %d %d %d %d",
             &zone_table[zone].cmd[cmd_no].if_flag,
             &zone_table[zone].cmd[cmd_no].arg1,
             &zone_table[zone].cmd[cmd_no].arg2,
@@ -131,12 +139,12 @@ void load_zones(FILE* fl)
         case 'E':
         case 'K':
         case 'Q':
-            fscanf(fl, "%hd %hd",
+            fscanf(fl, "%d %d",
                 &zone_table[zone].cmd[cmd_no].arg6,
                 &zone_table[zone].cmd[cmd_no].arg7);
             break;
         case 'P':
-            fscanf(fl, "%hd", &zone_table[zone].cmd[cmd_no].arg6);
+            fscanf(fl, "%d", &zone_table[zone].cmd[cmd_no].arg6);
         default:
             break;
         }

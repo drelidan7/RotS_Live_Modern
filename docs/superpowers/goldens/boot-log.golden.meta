@@ -12,3 +12,25 @@
 # Regenerate this golden (scripts/boot-golden.sh capture) whenever lib/world/
 # changes — a different world snapshot will boot-load different
 # zones/mobs/objects and legitimately shift the normalized boot log.
+#
+# --- Recaptured 2026-07-10 (Phase 4 Wave 2, Task 1) ---
+#
+# INTENTIONAL, user-approved (sign-off 2026-07-10) behavior change: zone.cpp's
+# load_zones() read the 8 always/conditionally-present reset_com fields
+# (if_flag/arg1..arg7 -- all declared `int` in db.h) with fscanf("%hd", ...),
+# writing through each `int*` as if it pointed at a `short` -- undefined
+# behavior that, on this little-endian target, silently truncated any
+# negative or >32767-magnitude argument to its low 16 bits embedded in an
+# otherwise-zeroed int. Fixed to %d (matching the declared field type and the
+# already-%d write side in shapezon.cpp); see zone_tests.cpp
+# (ZoneLoad.NegativeOneArgumentParsesAsSignedNegativeOne) for the pinned unit
+# regression and the Task 1 report (.superpowers/sdd/w2-task-1-report.md) for
+# the full before/after boot-log diff, per-line root cause, and the census of
+# every affected .zon command argument (both the literal "-1" sentinels the
+# task scoped for, and a handful of other negative world-data values that hit
+# the identical bug).
+#
+# lib/world/ is BYTE-FOR-BYTE UNCHANGED across this recapture (still files:
+# 1887, bytes: 25290200 -- confirmed identical to the fingerprint above) --
+# every line that changed in this golden is attributable to the code fix, not
+# to a world-data update.

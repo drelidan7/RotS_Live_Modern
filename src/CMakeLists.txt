@@ -213,6 +213,7 @@ if(ROTS_BUILD_TESTS)
         tests/test_random_utils_tests.cpp
         tests/utility_format_tests.cpp
         tests/weapon_master_handler_tests.cpp
+        tests/zone_tests.cpp
     )
 
     # GoogleTest provisioning (Phase 3 Task 6): Linux/macOS CI installs GTest

@@ -37,8 +37,15 @@ protected:
 private:
     // Deleted functions.
     // Don't put definitions in here so trying to do them will cause a compile error.
-    singleton<T>(const singleton<T>& other);
-    singleton<T>& operator=(const singleton<T>&);
+    // C++20 no longer accepts a constructor/operator= declared with the
+    // template-id form (ClassName<T>(...)) here -- only the injected-class-
+    // name (ClassName(...)) is a valid constructor-name; GCC's older,
+    // permissive-extension acceptance of the template-id spelling is gone
+    // under strict -std=c++20 (Phase 4 Wave 1 Task 1). Purely a spelling fix:
+    // these declarations are still private and never defined, so copying a
+    // singleton<T> is still a compile error either way.
+    singleton(const singleton& other);
+    singleton& operator=(const singleton&);
 
     static T* m_pInstance;
     static bool m_bDestroyed;
@@ -90,8 +97,9 @@ protected:
 private:
     // Deleted functions.
     // Don't put definitions in here so trying to do them will cause a compile error.
-    world_singleton<T>(const world_singleton<T>& other);
-    world_singleton<T>& operator=(const world_singleton<T>&);
+    // Same C++20 template-id-as-constructor-name fix as singleton<T> above.
+    world_singleton(const world_singleton& other);
+    world_singleton& operator=(const world_singleton&);
 
     static T* m_pInstance;
     static bool m_bDestroyed;

@@ -79,7 +79,17 @@ set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 #   * Compiler guards keep GCC/Clang spellings away from MSVC, which fails hard
 #     on unknown flags. MSVC gets /J — the -funsigned-char equivalent — because
 #     unsigned char is a load-bearing behavior assumption (spec Phase 5 audits
-#     it away; until then every compiler must pin it).
+#     it away; until then every compiler must pin it). MSVC also gets
+#     /Zc:strictStrings- (Phase 4 Wave 1 Task 1, C++20 bump): MSVC's default
+#     string-literal-to-char* conversion strictness is tied to /std level, and
+#     /std:c++20 newly enables it, turning this codebase's pervasive
+#     (pre-C++11-era) `char *p = "literal";` idiom -- hundreds of sites across
+#     the old C-heritage sources -- into hard C2440/C2664 errors that never
+#     fired under /std:c++17. /Zc:strictStrings- restores the same permissive
+#     behavior the c++17 build already relied on: purely a compiler-conformance
+#     switch (the flag MSVC itself provides for exactly this legacy-code
+#     scenario), not a rewrite -- the pointed-to data and every call site are
+#     unchanged, so it cannot affect runtime behavior or goldens.
 # GNU-family flags: -funsigned-char / -fstrict-aliasing / -w / -g are identical
 # on GCC, Clang, and AppleClang.
 #   -D_FILE_OFFSET_BITS=64  32-bit glibc's legacy readdir()/stat() use a 32-bit
@@ -101,7 +111,7 @@ endif()
 target_compile_options(ageland PRIVATE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
     $<${ROTS_GNULIKE}:-funsigned-char -fstrict-aliasing -w -g>
-    $<$<CXX_COMPILER_ID:MSVC>:/J /w>
+    $<$<CXX_COMPILER_ID:MSVC>:/J /w /Zc:strictStrings->
 )
 target_link_options(ageland PRIVATE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
@@ -302,6 +312,13 @@ if(ROTS_BUILD_TESTS)
     # sign-extension test that exercises high-bit (>=0x80) byte values.
     target_compile_options(ageland_tests PRIVATE
         $<${ROTS_GNULIKE}:-funsigned-char>
+    )
+    # /Zc:strictStrings-: same rationale as the ageland target above -- this
+    # target ALSO compiles every ROTS_SERVER_SOURCES file (act_comm.cpp,
+    # act_info.cpp, etc.), so it hits the identical MSVC /std:c++20
+    # string-literal-to-char* strictness without this.
+    target_compile_options(ageland_tests PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/Zc:strictStrings->
     )
     # _FILE_OFFSET_BITS=64: same EOVERFLOW-avoidance rationale as the ageland target
     # above — account-management tests do real opendir/readdir bucket scans under

@@ -169,8 +169,12 @@ all `(required)`, all success; windows-msvc's `continue-on-error` removed in `32
 - Windows (windows-msvc, CI): ctest **641/641 passed, 0 failed, 20 ctest-listed skips**
   (6 AccountManagement, 8 BoardsJson LLP64-guarded, 3 InterpreAccountMenu, 1 DbLoader,
   1 OlogHaiHelpers, 1 SpellParser — all pre-existing platform guards; verified against the
-  final run log. Task 6's report cited "40 skips" from gtest-level counting; the ctest
-  "did not run" census is 20 and is the number of record).
+  final run log. Task 6's report stated "40 skips"; that figure does not match Task 6's
+  own cited CI run log — run 29055050418 already shows exactly 20 in ctest's "did not
+  run" census, byte-identical names to Task 7's, with zero gtest `[ SKIPPED ]` lines
+  anywhere in the log. Root cause of the original miscount is unresolved; **20 is the
+  verified number of record**, consistent across three independent green runs
+  (29055050418, 29056541362, 29059169576)).
 
 **Spec deviation (recorded for the Phase 5 exit review): Windows boot verification
 deferred.** The spec's "boots" wording is satisfied on Linux i386, Linux x64, and macOS

@@ -28,17 +28,23 @@ namespace safe_template
     };
 
     // Validates that `tmpl`'s ordered run of conversions (ignoring literal "%%"
-    // and any non-conversion text) is EXACTLY `expected` -- same count, same
-    // order, no extra conversions, and no unsupported specifier (%d, %n, %5s,
-    // %-s, etc. all count as unsupported, since this validator only ever accepts
-    // bare %s). `args` supplies the replacement text for each accepted %s, in
-    // order; its size must equal `expected`'s or the check fails.
+    // and any non-conversion text) is a PREFIX of `expected` -- same order, and
+    // no MORE conversions than `expected` describes, with no unsupported
+    // specifier (%d, %n, %5s, %-s, a dangling trailing %, etc. all count as
+    // unsupported, since this validator only ever accepts bare %s). A template
+    // with FEWER conversions than `expected` is accepted: the surplus trailing
+    // args are ignored, exactly as sprintf ignores surplus varargs -- live world
+    // data depends on this (a one-%s message_sell at a two-arg call site, a
+    // fully-literal death_cry2 at a two-%s herald call site). `args` supplies the
+    // replacement text; its size must equal `expected`'s (the call site pairs the
+    // two) or the check fails.
     //
     // On a signature match, returns `tmpl` with each %s substituted by the
-    // matching `args` entry and each %% collapsed to a literal '%' -- byte-
-    // identical to what sprintf(tmpl, args...) would have produced. On any
-    // mismatch (including a null `tmpl`), logs one mudlog line tagged with
-    // `context` and returns `fallback` unexpanded.
+    // matching leading `args` entry and each %% collapsed to a literal '%' --
+    // byte-identical to what sprintf(tmpl, args...) would have produced,
+    // including the ignored-surplus-args case. On any mismatch (including a null
+    // `tmpl`), logs one mudlog line tagged with `context` and returns `fallback`
+    // unexpanded.
     std::string expand_checked(const char* tmpl,
         std::initializer_list<Conv> expected,
         std::initializer_list<std::string_view> args,

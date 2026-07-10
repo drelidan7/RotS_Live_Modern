@@ -121,20 +121,61 @@ TEST(SafeTemplate, TooManyStringConversionsFallsBackWithNoUB)
     EXPECT_EQ(result, "fallback text");
 }
 
-TEST(SafeTemplate, TooFewStringConversionsFallsBack)
+TEST(SafeTemplate, FewerConversionsThanExpectedExpandsUsingLeadingArgsLikeSprintf)
 {
     ScopedDescriptorListReset descriptor_list_reset;
 
-    // Only one %s in the template where two are expected: the second
-    // argument would simply be dropped by a real sprintf, but this
-    // validator treats any count mismatch as malformed rather than
-    // silently ignoring a caller-supplied argument.
+    // Only one %s where two args are supplied: a real sprintf binds the %s to
+    // the first arg and IGNORES the surplus trailing arg -- well-defined, and
+    // relied on by live world data (a one-%s message_sell at the two-arg sell
+    // call site). Must EXPAND (not fall back), byte-identical to sprintf.
     const char* tmpl = "%s falls dead!";
+    char expected_buf[256];
+    std::snprintf(expected_buf, sizeof(expected_buf), tmpl, "Bob", "Alice");
 
     std::string result = safe_template::expand_checked(tmpl,
         { safe_template::Conv::String, safe_template::Conv::String },
         { std::string_view("Bob"), std::string_view("Alice") },
-        "fallback text", "test: too few %s");
+        "fallback text", "test: fewer conversions than expected");
+
+    EXPECT_EQ(result, std::string(expected_buf));
+    EXPECT_EQ(result, "Bob falls dead!");
+}
+
+TEST(SafeTemplate, ZeroConversionsLiteralTemplateReturnsLiteralVerbatim)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    // A template with NO conversions at a two-%s call site: real death_cry2
+    // world data is entirely literal text. sprintf ignores both args and emits
+    // the literal unchanged; the validator must do the same, not fall back.
+    const char* tmpl = "The herald cries out for someone else to save the king.";
+    char expected_buf[256];
+    std::snprintf(expected_buf, sizeof(expected_buf), tmpl, "Bob", "the Brave");
+
+    std::string result = safe_template::expand_checked(tmpl,
+        { safe_template::Conv::String, safe_template::Conv::String },
+        { std::string_view("Bob"), std::string_view("the Brave") },
+        "notices someone new arrive.", "test: zero-conversion literal");
+
+    EXPECT_EQ(result, std::string(expected_buf));
+    EXPECT_EQ(result, "The herald cries out for someone else to save the king.");
+}
+
+TEST(SafeTemplate, WidthModifiedStringConversionFallsBack)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    // "%-20s" is a width/flag-modified conversion, NOT a bare %s. The narrow
+    // validator does not model field widths (its substitute path would produce
+    // a DIFFERENT string than sprintf), so it must reject rather than silently
+    // mis-expand. This is the top-risk case: a builder padding directive.
+    const char* tmpl = "%-20s reporting in.";
+
+    std::string result = safe_template::expand_checked(tmpl,
+        { safe_template::Conv::String },
+        { std::string_view("Bob") },
+        "fallback text", "test: width-modified %s");
 
     EXPECT_EQ(result, "fallback text");
 }
@@ -200,4 +241,60 @@ TEST(SafeTemplate, MismatchedArgCountAgainstExpectedFallsBack)
         "fallback text", "test: arg/expected count mismatch");
 
     EXPECT_EQ(result, "fallback text");
+}
+
+// Real shipping-data re-pins (reviewer-extracted 2026-07-10): the sole
+// difference between the validated expander and the old sprintf must be
+// MALFORMED templates. These pin that ACTUAL live world strings -- which use
+// one %s at a two-arg call site, or zero %s at a two-arg call site -- still
+// expand byte-identically to sprintf, NOT fall back.
+
+TEST(SafeTemplate, RealShopMessageSellOneConversionAtTwoArgSiteExpandsByteIdentical)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    // The six real message_sell strings the sell call site (GET_NAME +
+    // money_message => 2 args) invokes, all of which carry only ONE %s:
+    //   lib/world/shp/100.shp #10011,#10012  #10013,#10014
+    //   lib/world/shp/88.shp / 319.shp #8801
+    const char* real_templates[] = {
+        "%s If you see this its a BUG, tell Prami or Fingolfin.",
+        "%s If you see this its a BUG.  Please tell Prami or Fingolfin.",
+        "%s I AM BUGGED. PLEASE ASK IMMORTAL ASAP. PURCHASE MESSAGE.",
+    };
+
+    for (const char* tmpl : real_templates) {
+        char expected_buf[256];
+        // Old code: sprintf(buf, tmpl, GET_NAME(ch), money_message(...)) --
+        // second arg ignored because tmpl has one %s.
+        std::snprintf(expected_buf, sizeof(expected_buf), tmpl, "Grimbold", "100 coins");
+
+        std::string result = safe_template::expand_checked(tmpl,
+            { safe_template::Conv::String, safe_template::Conv::String },
+            { std::string_view("Grimbold"), std::string_view("100 coins") },
+            "Thanks for the item.", "shop message_sell");
+
+        EXPECT_EQ(result, std::string(expected_buf)) << "template: " << tmpl;
+        EXPECT_NE(result, "Thanks for the item.") << "must NOT fall back: " << tmpl;
+    }
+}
+
+TEST(SafeTemplate, RealLiteralDeathCry2AtTwoArgHeraldSiteReturnsLiteral)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+
+    // A representative real death_cry2 (lib/world/mob) -- entirely literal, no
+    // %s, invoked at the herald site with name+title (2 args). Old snprintf
+    // ignored both args and emitted the literal; the expander must too.
+    const char* tmpl = "The herald cries out for someone else to save the king.";
+    char expected_buf[256];
+    std::snprintf(expected_buf, sizeof(expected_buf), tmpl, "Aragorn", "the King");
+
+    std::string result = safe_template::expand_checked(tmpl,
+        { safe_template::Conv::String, safe_template::Conv::String },
+        { std::string_view("Aragorn"), std::string_view("the King") },
+        "notices someone new arrive.", "herald death_cry2");
+
+    EXPECT_EQ(result, std::string(expected_buf));
+    EXPECT_EQ(result, "The herald cries out for someone else to save the king.");
 }

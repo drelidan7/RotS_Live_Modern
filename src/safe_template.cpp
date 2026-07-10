@@ -73,11 +73,12 @@ namespace safe_template
         // Rebuilds `tmpl` with each validated bare %s replaced by the next
         // entry of `args` (in order) and each %% collapsed to a literal '%';
         // every other character is copied through unchanged. Only ever called
-        // once the caller's expected signature has been confirmed to match, so
-        // `args` is guaranteed to hold exactly as many entries as `tmpl` has %s
-        // conversions -- no bounds check needed on `arg_index` here. Produces
-        // byte-identical output to sprintf(tmpl, args...) for these %s-only
-        // templates, since there are no field-width/flag conversions in play.
+        // once the signature has matched, which guarantees `args` holds at least
+        // as many entries as `tmpl` has %s conversions (it may hold MORE -- the
+        // surplus trailing args are simply never consumed, mirroring sprintf) --
+        // so `next_arg` can never run past `args.end()`. Produces byte-identical
+        // output to sprintf(tmpl, args...) for these %s-only templates, since
+        // there are no field-width/flag conversions in play.
         std::string substitute(std::string_view tmpl, std::initializer_list<std::string_view> args)
         {
             std::string out;
@@ -118,8 +119,19 @@ namespace safe_template
     {
         const ScanResult scan = tmpl ? scan_conversions(tmpl) : ScanResult { {}, true };
 
+        // sprintf parity: a template may legitimately use FEWER conversions than the
+        // call site supplies arguments -- the surplus trailing varargs are simply
+        // ignored, which is well-defined. Live world data relies on this (e.g. a
+        // one-%s message_sell string at a two-arg call site, or a fully literal
+        // death_cry2 at a two-%s herald call site). So accept when the template's
+        // conversions are a PREFIX of `expected` (same order, no more conversions
+        // than args), binding each conversion to the matching leading arg and
+        // leaving any trailing args unused. Reject only genuine hazards: an
+        // unsupported specifier (scan.malformed -- covers %d/%n/%5s/%-s/dangling
+        // %), MORE conversions than args, or a caller whose arg count doesn't
+        // match the signature it declared.
         const bool signature_matches = !scan.malformed
-            && scan.conversions.size() == expected.size()
+            && scan.conversions.size() <= expected.size()
             && std::equal(scan.conversions.begin(), scan.conversions.end(), expected.begin())
             && args.size() == expected.size();
 

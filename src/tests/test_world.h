@@ -72,15 +72,28 @@ public:
 
     ~ScopedTestWorld()
     {
-        room_data& room = world[0];
-        room.people = nullptr;
+        world[0].people = nullptr;
 
         if (owns_world_)
         {
-            std::free(room.name);
-            room.name = nullptr;
-            std::free(room.description);
-            room.description = nullptr;
+            // Free every room's strdup'd name/description before dropping the
+            // array: our create_bulk(1) dummy_room_data()-initialized indices
+            // [0, EXTENSION_SIZE - 1] (each strdup'ing both strings), and the
+            // constructor above re-strdup'd room 0's. The final index
+            // (EXTENSION_SIZE) only ran room_data's constructor, which nulls
+            // both pointers, so freeing the whole [0, EXTENSION_SIZE] range
+            // unconditionally is safe (free(nullptr) is a no-op). Without
+            // this loop, every owning create/teardown cycle leaked 49 rooms
+            // x 2 strings (~63 KB, measured with macOS `leaks`) -- per
+            // DamageTestContext construction in the monolithic runner.
+            for (int index = 0; index <= EXTENSION_SIZE; ++index)
+            {
+                room_data& room = room_data::BASE_WORLD[index];
+                std::free(room.name);
+                room.name = nullptr;
+                std::free(room.description);
+                room.description = nullptr;
+            }
 
             delete[] room_data::BASE_WORLD;
             room_data::BASE_WORLD = nullptr;
@@ -96,7 +109,10 @@ public:
 
     // The canonical test room (world[0]); callers stamp their own .number
     // (and any other per-test fields) on it after construction.
-    room_data& room() { return world[0]; }
+    room_data& room()
+    {
+        return world[0];
+    }
 
 private:
     // Whether this instance allocated BASE_WORLD (owns teardown) or found an

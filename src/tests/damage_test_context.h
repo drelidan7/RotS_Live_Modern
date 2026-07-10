@@ -11,58 +11,27 @@
 extern room_data world;
 extern int top_of_world;
 
-// Production room initializer from db.cpp: zeroes people/contents/
-// ex_description/dir_option and resets number/zone/sector_type/room_flags/
-// light. Not exposed in any header, so declared here for test bootstrap use.
-void dummy_room_data(room_data* room);
-
 namespace {
-
-// DamageTestContext needs room `minimum_room_number` (always room_number == 1
-// below) to be a genuinely usable, non-garbage room — not just room 0, which
-// is all ScopedTestWorld's own contract covers. This only extends *that*
-// coverage; room_data::BASE_WORLD itself is guaranteed already allocated by
-// the time this runs, because DamageTestContext constructs a ScopedTestWorld
-// member (test_world, below) before any constructor-body statement executes.
-void ensure_test_world(int minimum_room_number)
-{
-    if (top_of_world < minimum_room_number) {
-        top_of_world = minimum_room_number;
-
-        // create_bulk() only dummy_room_data()-initializes the trailing
-        // EXTENSION_SIZE rooms; the "real" rooms [0, amount-1) get just
-        // room_data's constructor, which sets number/zone/level/name/
-        // description/affected and leaves everything else — people,
-        // contents, dir_option[], funct, bfs_* — as whatever heap garbage
-        // `new room_data[...]` landed on. The real game never notices
-        // because db_boot()'s load_rooms() fully populates every room
-        // before anything runs; tests skip that bootstrap. The garbage is
-        // silently harmless while the backing memory happens to read as
-        // zero, but turns into order-dependent segfaults once earlier
-        // tests' allocator churn dirties the heap first and some code path
-        // walks a garbage pointer — seen while writing the Task 8
-        // characterization golden as (a) death_cry()'s CAN_GO() loop
-        // reading dir_option[], (b) obj_to_room() walking room contents
-        // for the corpse, and (c) act(..., TO_ROOM) walking world[0].people
-        // from interpre's reconnect path, whose fixture assumes room 0 of
-        // a previously-allocated world is usable as-is. Zero every real
-        // room every time top_of_world needs to grow to cover it (in
-        // practice this is always redundant against ScopedTestWorld's own
-        // single-room create_bulk(1), whose trailing-extension loop already
-        // dummy_room_data()-initializes every index up to EXTENSION_SIZE - 1
-        // as a side effect of amount == 1 — see test_world.h — but this loop
-        // stays independent of that allocation-size coincidence).
-        for (int room = 0; room < minimum_room_number + 1; ++room) {
-            dummy_room_data(&world[room]);
-            world[room].funct = nullptr;
-            world[room].bfs_dir = 0;
-            world[room].bfs_next = nullptr;
-        }
-    }
-}
 
 struct DamageTestContext {
     static constexpr int room_number = 1;
+
+    // This context fights in room `room_number`, not ScopedTestWorld's
+    // canonical room 0, so it relies on that index being a genuinely usable,
+    // dummy_room_data()-initialized room. That holds for every allocation
+    // path that can own the world here: ScopedTestWorld's create_bulk(1)
+    // dummy-initializes indices [0, EXTENSION_SIZE - 1] outright (its
+    // trailing-extension loop starts at amount - 1 == 0), and any world a
+    // different suite allocated first covers at least that same trailing
+    // range. The static_assert pins the reliance so a future room_number
+    // bump can't silently walk past the guaranteed-initialized range.
+    // (Historical context: an earlier revision re-ran dummy_room_data()
+    // over rooms [0, room_number] here "just in case", but that clobbered
+    // and leaked the name/description strings ScopedTestWorld had just
+    // installed in room 0 on every construction — the exact leak class
+    // this fixture exists to kill. Do not reintroduce it.)
+    static_assert(room_number < EXTENSION_SIZE - 1,
+        "room_number must stay inside the range create_bulk(1) dummy-initializes");
 
     // Owns/normalizes the shared process-wide test world (room 0) with the
     // same RAII discipline the other test-world clones now use (test_world.h);
@@ -81,7 +50,12 @@ struct DamageTestContext {
 
     DamageTestContext()
     {
-        ensure_test_world(room_number);
+        // ScopedTestWorld's constructor (above) just reset top_of_world to 0
+        // (room 0 is all its own contract covers); raise it to cover the room
+        // this context actually fights in. Plain assignment, not a
+        // conditional grow: the old `if (top_of_world < room_number)` gate
+        // was meaningless here since the member ctor made it always-true.
+        top_of_world = room_number;
         original_people = world[room_number].people;
 
         attacker.specials2.act = MOB_ISNPC;

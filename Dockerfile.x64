@@ -7,7 +7,7 @@
 # image in Dockerfile runs via linux/386 emulation.
 #
 # Build/run with docker compose (see docker-compose.yml, service `rots64`).
-FROM --platform=linux/amd64 debian:bookworm
+FROM --platform=linux/amd64 debian:trixie
 
 # g++/make/cmake for the CMake build (cmake --preset linux-x64); libgtest-dev for
 # the GoogleTest suite. NOTE: libcrypt-dev is intentionally NOT installed here —

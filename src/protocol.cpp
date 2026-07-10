@@ -2383,7 +2383,13 @@ static const char* GetMSSP_Players()
 static const char* GetMSSP_Uptime()
 {
     static char Buffer[32];
-    sprintf(Buffer, "%d", (int)s_Uptime);
+    // UPTIME per the MSSP spec is the server's boot-time epoch (seconds since the Unix
+    // epoch when the server started), NOT elapsed uptime -- s_Uptime is set once from
+    // time(0) at startup and never updated, which is correct as-is. The only defect
+    // here was the narrowing (int) cast: widen to long long / %lld so the value doesn't
+    // wrap once epoch seconds exceed INT_MAX (the year-2038 problem). No observable
+    // output change until then.
+    sprintf(Buffer, "%lld", static_cast<long long>(s_Uptime));
     return Buffer;
 }
 

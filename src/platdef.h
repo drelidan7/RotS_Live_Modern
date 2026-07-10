@@ -39,10 +39,11 @@
 // getnameinfo() for reverse DNS. The select() pulse loop itself is unchanged
 // and portable across both. The POSIX branch is built, tested, and
 // network-smoke-verified (see .superpowers/sdd/p3-task-4-report.md); the
-// Windows branch below is written but NOT locally compiled or verified (no
-// Windows/MSVC environment here) -- windows-msvc stays an allowed-to-fail CI
-// preset until its own bring-up task. This header supplies the platform
-// includes and the SocketType handle below.
+// Windows branch below now compiles and its full GoogleTest suite runs green
+// on the required windows-msvc CI job. Live boot verification against real
+// world/player data on an actual Windows host is still deferred -- no
+// Windows machine with that data is available yet. This header supplies the
+// platform includes and the SocketType handle below.
 //
 // WIN32_LEAN_AND_MEAN keeps <windows.h> (pulled in transitively by
 // <winsock2.h>) from dragging in most of the Win32 API surface; winsock2.h
@@ -65,6 +66,16 @@
 // errors dozens of lines later in whatever .cpp file happens to include it.
 #ifndef NOMINMAX
 #define NOMINMAX
+#endif
+// FD_SETSIZE (must precede winsock2.h -- it sizes the fd_set type winsock2.h
+// declares, so redefining it after the header has already been included
+// anywhere in this translation unit has no effect): Winsock's default fd_set
+// capacity is only 64 sockets, and FD_SET() silently drops sockets beyond
+// that limit instead of erroring, whereas the game's select() pulse loop
+// accepts up to MAX_DESCRIPTORS_AVAILABLE (256, comm.cpp) simultaneous
+// connections on every platform including Windows.
+#ifndef FD_SETSIZE
+#define FD_SETSIZE 256
 #endif
 #include <winsock2.h>
 #include <ws2tcpip.h>

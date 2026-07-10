@@ -19,8 +19,13 @@ bool write_account_character_file(const std::string& root_directory, const std::
     if (!create_directory_if_missing(account_directory, error_message))
         return false;
 
+    character_json::CharacterData character_data = character_json::character_data_from_store(stored_character);
+    char_file_u validated_character {};
+    if (!character_json::apply_character_data_to_store(character_data, &validated_character, error_message))
+        return false;
+
     const std::string final_path = resolved_character_path(account, root_directory, stored_character.name);
-    const std::string json = character_json::serialize_character_to_json(character_json::character_data_from_store(stored_character));
+    const std::string json = character_json::serialize_character_to_json(character_data);
     return write_text_file_atomically(final_path, json, error_message);
 }
 

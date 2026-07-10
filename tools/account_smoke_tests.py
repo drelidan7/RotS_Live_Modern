@@ -417,6 +417,65 @@ class AccountFileExpectationTest(unittest.TestCase):
 
             account_smoke.expect_account_character_links(account_file, ["aragorn"])
 
+    def test_accepts_expected_account_native_character_identity_with_specialization(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            account_file = Path(temp_dir) / "account.json"
+            account_file.write_text("{}", encoding="utf-8")
+            character_file = Path(temp_dir) / "aragorn.character.json"
+            character_file.write_text(
+                json.dumps(
+                    {
+                        "title": "the Migrated Smoke Sentinel",
+                        "progression": {"level": 7},
+                        "identity": {"race": 2, "idnum": 123456},
+                        "state": {"load_room": 1170, "specialization": account_smoke.LEGACY_FIXTURE_SPECIALIZATION},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            account_smoke.expect_account_character_identity(
+                account_file,
+                "Aragorn",
+                7,
+                2,
+                123456,
+                1170,
+                "the Migrated Smoke Sentinel",
+                account_smoke.LEGACY_FIXTURE_SPECIALIZATION,
+            )
+
+    def test_rejects_mismatched_account_native_character_specialization(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            account_file = Path(temp_dir) / "account.json"
+            account_file.write_text("{}", encoding="utf-8")
+            character_file = Path(temp_dir) / "aragorn.character.json"
+            character_file.write_text(
+                json.dumps(
+                    {
+                        "title": "the Migrated Smoke Sentinel",
+                        "progression": {"level": 7},
+                        "identity": {"race": 2, "idnum": 123456},
+                        "state": {"load_room": 1170, "specialization": 0},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(RuntimeError) as context:
+                account_smoke.expect_account_character_identity(
+                    account_file,
+                    "aragorn",
+                    7,
+                    2,
+                    123456,
+                    1170,
+                    "the Migrated Smoke Sentinel",
+                    account_smoke.LEGACY_FIXTURE_SPECIALIZATION,
+                )
+
+            self.assertIn("'specialization': 18", str(context.exception))
+
     def test_accepts_expected_account_native_truecolor_foreground(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             account_file = Path(temp_dir) / "account.json"
@@ -541,6 +600,14 @@ class AccountFileExpectationTest(unittest.TestCase):
 
 
 class LegacyPlayerFixtureTest(unittest.TestCase):
+    def test_legacy_specialization_fixture_is_nonzero_weapon_mastery(self) -> None:
+        self.assertEqual(account_smoke.LEGACY_FIXTURE_SPECIALIZATION, 18)
+        self.assertGreater(account_smoke.LEGACY_FIXTURE_SPECIALIZATION, 0)
+        self.assertEqual(
+            account_smoke.legacy_fixture_specialization_line(),
+            "You are specialized in weapon mastery.",
+        )
+
     def test_encrypts_legacy_password_with_fixed_width_player_file_encoding(self) -> None:
         self.assertEqual(account_smoke.encrypt_legacy_player_password("QQtqkA0yu"), ":>n=X6/>p*")
 
@@ -556,6 +623,7 @@ class LegacyPlayerFixtureTest(unittest.TestCase):
             self.assertEqual(fixture.race, 2)
             self.assertEqual(fixture.load_room, 1170)
             self.assertEqual(fixture.title, "the Migrated Smoke Sentinel")
+            self.assertEqual(fixture.specialization, account_smoke.LEGACY_FIXTURE_SPECIALIZATION)
             fixture_text = fixture.path.read_text(encoding="latin1")
             self.assertIn("name        smokelegacy\n", fixture_text)
             self.assertIn("password    :>n=X6/>p*\n", fixture_text)
@@ -563,6 +631,7 @@ class LegacyPlayerFixtureTest(unittest.TestCase):
             self.assertIn("race        2\n", fixture_text)
             self.assertIn("title       the Migrated Smoke Sentinel\n", fixture_text)
             self.assertIn("load_room   1170\n", fixture_text)
+            self.assertIn(f"spec        {account_smoke.LEGACY_FIXTURE_SPECIALIZATION}\n", fixture_text)
 
     def test_writes_legacy_object_and_exploit_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

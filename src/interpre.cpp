@@ -28,10 +28,10 @@
 #include "limits.h"
 #include "mail.h"
 #include "mob_csv_extract.h"
-#include "savebench.h"
 #include "pkill.h"
 #include "profs.h"
 #include "protos.h"
+#include "savebench.h"
 #include "spells.h"
 #include "structs.h"
 #include "utils.h"
@@ -2304,6 +2304,7 @@ struct ActiveAccountCharacterSession {
     std::string display_character_name;
     int level = 0;
     bool linkless = false;
+    bool ownership_ambiguous = false;
 };
 
 void show_account_email_prompt(struct descriptor_data* d)
@@ -2386,6 +2387,49 @@ bool is_active_account_character_state(int connection_state)
     return connection_state == CON_PLYNG || connection_state == CON_LINKLS;
 }
 
+bool linked_character_owner_matches_account(
+    const account::AccountData& account_data, const std::string& character_name)
+{
+    std::string owner_account_name;
+    if (!account::find_linked_character_owner_account(
+            kAccountStorageRoot, character_name, &owner_account_name, nullptr))
+        return false;
+
+    return !owner_account_name.empty()
+        && account::normalize_account_name(owner_account_name)
+        == account::normalize_account_name(account_data.account_name);
+}
+
+enum class AccountCharacterSessionMatch {
+    None,
+    Matched,
+    AmbiguousRestriction,
+};
+
+AccountCharacterSessionMatch descriptor_or_character_matches_account(
+    const descriptor_data* descriptor, const account::AccountData& account_data, const char* character_name)
+{
+    if (descriptor_matches_account(descriptor, account_data)) {
+        if (!account_links_character(account_data, character_name))
+            return AccountCharacterSessionMatch::None;
+
+        if (linked_character_owner_matches_account(account_data, character_name))
+            return AccountCharacterSessionMatch::Matched;
+
+        return AccountCharacterSessionMatch::AmbiguousRestriction;
+    }
+
+    if (descriptor != nullptr && *descriptor->account_name)
+        return AccountCharacterSessionMatch::None;
+
+    if (!account_links_character(account_data, character_name))
+        return AccountCharacterSessionMatch::None;
+
+    return linked_character_owner_matches_account(account_data, character_name)
+        ? AccountCharacterSessionMatch::Matched
+        : AccountCharacterSessionMatch::None;
+}
+
 std::vector<ActiveAccountCharacterSession> active_account_character_sessions(
     const descriptor_data* current_descriptor, const account::AccountData& account_data)
 {
@@ -2396,8 +2440,6 @@ std::vector<ActiveAccountCharacterSession> active_account_character_sessions(
             continue;
         if (!is_active_account_character_state(descriptor->connected))
             continue;
-        if (!descriptor_matches_account(descriptor, account_data))
-            continue;
 
         char_data* character = descriptor->character;
         if (character == nullptr || IS_NPC(character))
@@ -2406,14 +2448,19 @@ std::vector<ActiveAccountCharacterSession> active_account_character_sessions(
             continue;
         if (GET_NAME(character) == nullptr || !*GET_NAME(character))
             continue;
-        if (!account_links_character(account_data, GET_NAME(character)))
+        const AccountCharacterSessionMatch session_match
+            = descriptor_or_character_matches_account(descriptor, account_data, GET_NAME(character));
+        if (session_match == AccountCharacterSessionMatch::None)
             continue;
 
         ActiveAccountCharacterSession session;
         session.normalized_character_name = account::normalize_account_name(GET_NAME(character));
         session.display_character_name = format_account_character_name_for_display(GET_NAME(character));
-        session.level = GET_LEVEL(character);
+        session.level = session_match == AccountCharacterSessionMatch::AmbiguousRestriction
+            ? kAccountActiveSessionAlternateCharacterLevel
+            : GET_LEVEL(character);
         session.linkless = descriptor->connected == CON_LINKLS;
+        session.ownership_ambiguous = session_match == AccountCharacterSessionMatch::AmbiguousRestriction;
         sessions.push_back(session);
     }
 
@@ -2436,12 +2483,57 @@ const ActiveAccountCharacterSession* first_restricting_active_account_session(
     return nullptr;
 }
 
+bool account_has_high_level_linked_character(const account::AccountData& account_data)
+{
+    for (const std::string& linked_character : account_data.characters) {
+        char_file_u stored_character {};
+        if (!account::read_account_character_file(
+                kAccountStorageRoot, account_data.account_name, linked_character, &stored_character, nullptr))
+            continue;
+
+        if (IS_SET(stored_character.specials2.act, PLR_DELETED))
+            continue;
+
+        if (!linked_character_owner_matches_account(account_data, linked_character))
+            continue;
+
+        if (stored_character.level > kAccountActiveSessionAlternateCharacterLevel)
+            return true;
+    }
+
+    return false;
+}
+
+const ActiveAccountCharacterSession* first_restricting_active_account_session_for_account(
+    const account::AccountData& account_data, const std::vector<ActiveAccountCharacterSession>& sessions)
+{
+    for (const ActiveAccountCharacterSession& session : sessions) {
+        if (session.ownership_ambiguous)
+            return &session;
+    }
+
+    if (account_has_high_level_linked_character(account_data))
+        return nullptr;
+
+    return first_restricting_active_account_session(sessions);
+}
+
 bool selected_character_is_active_account_session(
     const std::vector<ActiveAccountCharacterSession>& sessions, const std::string& selected_character_name)
 {
     const std::string normalized_selection = account::normalize_account_name(selected_character_name);
     for (const ActiveAccountCharacterSession& session : sessions) {
         if (session.normalized_character_name == normalized_selection)
+            return true;
+    }
+
+    return false;
+}
+
+bool active_sessions_have_ambiguous_ownership(const std::vector<ActiveAccountCharacterSession>& sessions)
+{
+    for (const ActiveAccountCharacterSession& session : sessions) {
+        if (session.ownership_ambiguous)
             return true;
     }
 
@@ -2462,7 +2554,12 @@ bool account_has_usable_character_selection_unlock(
     if (unlock == g_account_character_selection_unlocks.end())
         return false;
 
-    if (first_restricting_active_account_session(sessions) == nullptr) {
+    if (active_sessions_have_ambiguous_ownership(sessions)) {
+        g_account_character_selection_unlocks.erase(unlock);
+        return false;
+    }
+
+    if (first_restricting_active_account_session_for_account(account_data, sessions) == nullptr) {
         g_account_character_selection_unlocks.erase(unlock);
         return false;
     }
@@ -2486,7 +2583,7 @@ AccountCharacterSelectionUnlock build_account_character_selection_unlock(
 {
     AccountCharacterSelectionUnlock unlock;
     for (const ActiveAccountCharacterSession& session : sessions) {
-        if (session.level <= kAccountActiveSessionAlternateCharacterLevel)
+        if (!session.ownership_ambiguous && session.level <= kAccountActiveSessionAlternateCharacterLevel)
             unlock.restricting_character_names.push_back(session.normalized_character_name);
     }
 
@@ -2494,9 +2591,10 @@ AccountCharacterSelectionUnlock build_account_character_selection_unlock(
 }
 
 bool account_session_allows_character_selection(
+    const account::AccountData& account_data,
     const std::vector<ActiveAccountCharacterSession>& sessions, const std::string& selected_character_name)
 {
-    if (first_restricting_active_account_session(sessions) == nullptr)
+    if (first_restricting_active_account_session_for_account(account_data, sessions) == nullptr)
         return true;
 
     return selected_character_is_active_account_session(sessions, selected_character_name);
@@ -2507,7 +2605,7 @@ bool account_session_allows_character_selection_with_unlock(
     const std::vector<ActiveAccountCharacterSession>& sessions,
     const std::string& selected_character_name)
 {
-    if (account_session_allows_character_selection(sessions, selected_character_name))
+    if (account_session_allows_character_selection(account_data, sessions, selected_character_name))
         return true;
 
     return account_has_usable_character_selection_unlock(account_data, sessions);
@@ -2518,7 +2616,7 @@ bool consume_account_character_selection_unlock(
     const std::vector<ActiveAccountCharacterSession>& sessions,
     const std::string& selected_character_name)
 {
-    if (account_session_allows_character_selection(sessions, selected_character_name))
+    if (account_session_allows_character_selection(account_data, sessions, selected_character_name))
         return true;
 
     if (!account_has_usable_character_selection_unlock(account_data, sessions))
@@ -2530,15 +2628,21 @@ bool consume_account_character_selection_unlock(
     return true;
 }
 
-std::string active_account_session_restriction_message(
-    const std::vector<ActiveAccountCharacterSession>& sessions)
+std::string active_account_session_restriction_message_for_session(
+    const ActiveAccountCharacterSession* restricting_session)
 {
-    const ActiveAccountCharacterSession* restricting_session = first_restricting_active_account_session(sessions);
     if (restricting_session == nullptr)
         return "";
 
     return "You are already connected as " + restricting_session->display_character_name
         + ". Reconnect to that character or log out before playing another character.\n\r";
+}
+
+std::string active_account_session_restriction_message(
+    const account::AccountData& account_data, const std::vector<ActiveAccountCharacterSession>& sessions)
+{
+    return active_account_session_restriction_message_for_session(
+        first_restricting_active_account_session_for_account(account_data, sessions));
 }
 
 void append_active_account_session_status(std::string* menu, const std::vector<ActiveAccountCharacterSession>& sessions)
@@ -2772,20 +2876,29 @@ void reset_account_character_selection_unlocks_for_testing()
 
 bool account_has_restricting_active_linked_session(const account::AccountData& account_data)
 {
-    return first_restricting_active_account_session(active_account_character_sessions(nullptr, account_data)) != nullptr;
+    return first_restricting_active_account_session_for_account(
+               account_data, active_account_character_sessions(nullptr, account_data))
+        != nullptr;
 }
 
 bool grant_account_character_selection_unlock(
     const account::AccountData& account_data, std::string* error_message)
 {
     const std::vector<ActiveAccountCharacterSession> active_sessions = active_account_character_sessions(nullptr, account_data);
-    if (first_restricting_active_account_session(active_sessions) == nullptr) {
+    const std::string unlock_key = account_character_selection_unlock_key(account_data);
+    if (first_restricting_active_account_session_for_account(account_data, active_sessions) == nullptr) {
         if (error_message != nullptr)
             *error_message = "That account does not currently have a restricting active linked character session.";
         return false;
     }
 
-    const std::string unlock_key = account_character_selection_unlock_key(account_data);
+    if (active_sessions_have_ambiguous_ownership(active_sessions)) {
+        g_account_character_selection_unlocks.erase(unlock_key);
+        if (error_message != nullptr)
+            *error_message = "That account has an active linked character with ambiguous account ownership.";
+        return false;
+    }
+
     if (g_account_character_selection_unlocks.find(unlock_key) != g_account_character_selection_unlocks.end()) {
         if (!account_has_usable_character_selection_unlock(account_data, active_sessions)) {
             g_account_character_selection_unlocks[unlock_key] = build_account_character_selection_unlock(active_sessions);
@@ -3127,7 +3240,7 @@ void nanny(struct descriptor_data* d, char* arg)
 
             const std::vector<ActiveAccountCharacterSession> active_sessions = active_account_character_sessions(d, account_data);
             if (!account_session_allows_character_selection_with_unlock(account_data, active_sessions, selected_character_name)) {
-                SEND_TO_Q(active_account_session_restriction_message(active_sessions).c_str(), d);
+                SEND_TO_Q(active_account_session_restriction_message(account_data, active_sessions).c_str(), d);
                 show_account_character_prompt(d, account_data);
                 return;
             }
@@ -3392,8 +3505,8 @@ void nanny(struct descriptor_data* d, char* arg)
                 break;
             case '4': {
                 const std::vector<ActiveAccountCharacterSession> active_sessions = active_account_character_sessions(d, account_data);
-                if (first_restricting_active_account_session(active_sessions) != nullptr) {
-                    SEND_TO_Q(active_account_session_restriction_message(active_sessions).c_str(), d);
+                if (first_restricting_active_account_session_for_account(account_data, active_sessions) != nullptr) {
+                    SEND_TO_Q(active_account_session_restriction_message(account_data, active_sessions).c_str(), d);
                     show_account_menu(d, account_data);
                     break;
                 }
@@ -3930,7 +4043,7 @@ void nanny(struct descriptor_data* d, char* arg)
 
                 const std::vector<ActiveAccountCharacterSession> active_sessions = active_account_character_sessions(d, account_data);
                 if (!consume_account_character_selection_unlock(account_data, active_sessions, GET_NAME(d->character))) {
-                    SEND_TO_Q(active_account_session_restriction_message(active_sessions).c_str(), d);
+                    SEND_TO_Q(active_account_session_restriction_message(account_data, active_sessions).c_str(), d);
                     discard_descriptor_character_selection(d);
                     show_account_menu(d, account_data);
                     STATE(d) = CON_ACCTMENU;
@@ -4424,8 +4537,9 @@ void introduce_char(struct descriptor_data* d)
         }
 
         const std::vector<ActiveAccountCharacterSession> active_sessions = active_account_character_sessions(d, account_data);
-        if (new_character_name != nullptr && !account_session_allows_character_selection(active_sessions, new_character_name)) {
-            SEND_TO_Q(active_account_session_restriction_message(active_sessions).c_str(), d);
+        if (new_character_name != nullptr
+            && first_restricting_active_account_session_for_account(account_data, active_sessions) != nullptr) {
+            SEND_TO_Q(active_account_session_restriction_message(account_data, active_sessions).c_str(), d);
             SEND_TO_Q("New character creation cancelled.\n\r", d);
             discard_descriptor_character_selection(d);
             show_account_menu(d, account_data);

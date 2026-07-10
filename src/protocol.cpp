@@ -44,6 +44,8 @@
 #include <string.h>
 #include <time.h>
 
+#include <string>
+
 #include "protocol.h"
 
 /******************************************************************************
@@ -107,11 +109,11 @@ static const char s_Gauge5[] = "\005\002Opponent\002darkred\002OPPONENT_HEALTH\0
 #define NUMBER_READ_ONLY false, false, false, false, false, -1, 0, NULL
 #define NUMBER_READ_ONLY_SET_TO(x) false, false, false, false, false, -1, x, NULL
 #define STRING_READ_ONLY true, false, false, false, false, -1, 0, NULL
-#define NUMBER_IN_THE_RANGE(x, y) false, true, false, false, x, y, 0, NULL
-#define BOOLEAN_SET_TO(x) false, true, false, false, 0, 1, x, NULL
-#define STRING_WITH_LENGTH_OF(x, y) true, true, false, false, x, y, 0, NULL
-#define STRING_WRITE_ONCE(x, y) true, true, true, false, false, -1, 0, NULL
-#define STRING_GUI(x) true, false, false, true, false, -1, 0, x
+#define NUMBER_IN_THE_RANGE(x, y) false, true, false, x, false, y, 0, NULL
+#define BOOLEAN_SET_TO(x) false, true, false, 0, false, 1, x, NULL
+#define STRING_WITH_LENGTH_OF(x, y) true, true, false, x, false, y, 0, NULL
+#define STRING_WRITE_ONCE(x, y) true, true, true, x, false, y, 0, NULL
+#define STRING_GUI(x) true, false, false, false, true, -1, 0, x
 
 static variable_name_t VariableNameTable[eMSDP_MAX + 1] = {
     /* General */
@@ -315,6 +317,8 @@ protocol_t* ProtocolCreate(void)
     pProtocol->bBlockMXP = false;
     pProtocol->PendingInputLength = 0;
     memset(pProtocol->PendingInput, 0, sizeof(pProtocol->PendingInput));
+    pProtocol->IacInputLength = 0;
+    memset(pProtocol->IacInput, 0, sizeof(pProtocol->IacInput));
     pProtocol->bTTYPE = false;
     pProtocol->bECHO = false;
     pProtocol->bNAWS = false;
@@ -372,14 +376,15 @@ void ProtocolDestroy(protocol_t* apProtocol)
 void ProtocolInput(descriptor_t* apDescriptor, char* apData, int aSize, char* apOut)
 {
     static char CmdBuf[MAX_PROTOCOL_BUFFER + 1];
-    static char IacBuf[MAX_PROTOCOL_BUFFER + 1];
     int CmdIndex = 0;
-    int IacIndex = 0;
     int Index;
 
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
     if (pProtocol == NULL || apData == NULL || apOut == NULL || aSize <= 0)
         return;
+
+    char* IacBuf = pProtocol->IacInput;
+    int IacIndex = pProtocol->bIACMode ? pProtocol->IacInputLength : 0;
 
     if (pProtocol->PendingInputLength > 0) {
         char* combined = static_cast<char*>(alloca(pProtocol->PendingInputLength + aSize));
@@ -398,6 +403,11 @@ void ProtocolInput(descriptor_t* apDescriptor, char* apData, int aSize, char* ap
         /* If we'd overflow the buffer, we just ignore the input */
         if (CmdIndex >= MAX_PROTOCOL_BUFFER || IacIndex >= MAX_PROTOCOL_BUFFER) {
             ReportBug("ProtocolInput: Too much incoming data to store in the buffer.\n");
+            if (IacIndex >= MAX_PROTOCOL_BUFFER) {
+                pProtocol->bIACMode = false;
+                pProtocol->IacInputLength = 0;
+                pProtocol->IacInput[0] = '\0';
+            }
             return;
         }
 
@@ -410,13 +420,18 @@ void ProtocolInput(descriptor_t* apDescriptor, char* apData, int aSize, char* ap
             Index++;
         } else if (pProtocol->bIACMode) {
             /* End subnegotiation. */
-            if (apData[Index] == (char)IAC && has_next && apData[Index + 1] == (char)SE) {
+            if (apData[Index] == (char)IAC && !has_next) {
+                pProtocol->PendingInput[0] = apData[Index];
+                pProtocol->PendingInputLength = 1;
+                break;
+            } else if (apData[Index] == (char)IAC && has_next && apData[Index + 1] == (char)SE) {
                 Index++;
                 pProtocol->bIACMode = false;
                 IacBuf[IacIndex] = '\0';
                 if (IacIndex >= 2)
                     PerformSubnegotiation(apDescriptor, IacBuf[0], &IacBuf[1], IacIndex - 1);
                 IacIndex = 0;
+                pProtocol->IacInputLength = 0;
             } else
                 IacBuf[IacIndex++] = apData[Index];
         } else if (apData[Index] == (char)27 && !has_three_more) {
@@ -544,6 +559,7 @@ void ProtocolInput(descriptor_t* apDescriptor, char* apData, int aSize, char* ap
     /* Terminate the two buffers */
     IacBuf[IacIndex] = '\0';
     CmdBuf[CmdIndex] = '\0';
+    pProtocol->IacInputLength = pProtocol->bIACMode ? IacIndex : 0;
 
     /* Copy the input buffer back to the player. */
     strcat(apOut, CmdBuf);
@@ -573,7 +589,7 @@ const char* ProtocolOutput(descriptor_t* apDescriptor, const char* apData, int* 
         bUseMSP = true;
 
     for (; i < MAX_OUTPUT_BUFFER && apData[j] != '\0' && !bTerminate && (*apLength <= 0 || j < *apLength);
-         ++j) {
+        ++j) {
         if (apData[j] == '\t') {
             const char* pCopyFrom = NULL;
 
@@ -1168,7 +1184,7 @@ void MSDPFlush(descriptor_t* apDescriptor, variable_t aMSDP)
     if (aMSDP > eMSDP_NONE && aMSDP < eMSDP_MAX) {
         protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
-        if (pProtocol->pVariables[aMSDP]->bReport) {
+        if (pProtocol != NULL && pProtocol->pVariables[aMSDP]->bReport) {
             if (pProtocol->pVariables[aMSDP]->bDirty) {
                 MSDPSend(apDescriptor, aMSDP);
                 pProtocol->pVariables[aMSDP]->bDirty = false;
@@ -1180,16 +1196,13 @@ void MSDPFlush(descriptor_t* apDescriptor, variable_t aMSDP)
 void MSDPSend(descriptor_t* apDescriptor, variable_t aMSDP)
 {
     char MSDPBuffer[MAX_VARIABLE_LENGTH + 1] = { '\0' };
+    protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
-    auto character = apDescriptor->character;
-
-    if (!PRF_FLAGGED(character, PRF_MSDP)) {
+    if (pProtocol == NULL || apDescriptor->character == NULL || !PRF_FLAGGED(apDescriptor->character, PRF_MSDP)) {
         return;
     }
 
     if (aMSDP > eMSDP_NONE && aMSDP < eMSDP_MAX) {
-        protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
-
         if (VariableNameTable[aMSDP].bString) {
             /* Should really be replaced with a dynamic buffer */
             int RequiredBuffer = strlen(VariableNameTable[aMSDP].pName) + strlen(pProtocol->pVariables[aMSDP]->pValueString) + 12;
@@ -1233,6 +1246,8 @@ void MSDPSendPair(descriptor_t* apDescriptor, const char* apVariable, const char
 
     if (apVariable != NULL && apValue != NULL) {
         protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
+        if (pProtocol == NULL)
+            return;
 
         /* Should really be replaced with a dynamic buffer */
         int RequiredBuffer = strlen(apVariable) + strlen(apValue) + 12;
@@ -1272,6 +1287,8 @@ void MSDPSendList(descriptor_t* apDescriptor, const char* apVariable, const char
 
     if (apVariable != NULL && apValue != NULL) {
         protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
+        if (pProtocol == NULL)
+            return;
 
         /* Should really be replaced with a dynamic buffer */
         int RequiredBuffer = strlen(apVariable) + strlen(apValue) + 12;
@@ -1317,7 +1334,7 @@ void MSDPSetNumber(descriptor_t* apDescriptor, variable_t aMSDP, int aValue)
 {
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
-    if (pProtocol != NULL && aMSDP > eMSDP_NONE && aMSDP < eMSDP_MAX) {
+    if (pProtocol != NULL && MSDPIsValidVariable(aMSDP)) {
         if (!VariableNameTable[aMSDP].bString) {
             if (pProtocol->pVariables[aMSDP]->ValueInt != aValue) {
                 pProtocol->pVariables[aMSDP]->ValueInt = aValue;
@@ -1327,15 +1344,63 @@ void MSDPSetNumber(descriptor_t* apDescriptor, variable_t aMSDP, int aValue)
     }
 }
 
+bool MSDPIsValidVariable(variable_t aMSDP)
+{
+    return aMSDP > eMSDP_NONE && aMSDP < eMSDP_MAX;
+}
+
+std::string MSDPSanitizeValue(const char* apValue)
+{
+    std::string Result;
+
+    if (apValue == NULL) {
+        return Result;
+    }
+
+    Result.reserve(strlen(apValue));
+
+    for (const unsigned char* p = (const unsigned char*)apValue; *p != '\0'; ++p) {
+        switch (*p) {
+        case '\"':
+            Result += "\\\"";
+            break;
+        case '\\':
+            Result += "\\\\";
+            break;
+        case '\n':
+            Result += "\\n";
+            break;
+        case '\r':
+            Result += "\\r";
+            break;
+        case '\t':
+            Result += "\\t";
+            break;
+        default:
+            if (*p < 0x20) {
+                char Escape[8];
+                sprintf(Escape, "\\u%04x", *p);
+                Result += Escape;
+            } else {
+                Result += (char)*p;
+            }
+        }
+    }
+
+    return Result;
+}
+
 void MSDPSetString(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue)
 {
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
-    if (pProtocol != NULL && apValue != NULL) {
+    if (pProtocol != NULL && apValue != NULL && MSDPIsValidVariable(aMSDP)) {
         if (VariableNameTable[aMSDP].bString) {
-            if (strcmp(pProtocol->pVariables[aMSDP]->pValueString, apValue)) {
+            std::string SanitizedValue = MSDPSanitizeValue(apValue);
+
+            if (strcmp(pProtocol->pVariables[aMSDP]->pValueString, SanitizedValue.c_str())) {
                 free(pProtocol->pVariables[aMSDP]->pValueString);
-                pProtocol->pVariables[aMSDP]->pValueString = AllocString(apValue);
+                pProtocol->pVariables[aMSDP]->pValueString = AllocString(SanitizedValue.c_str());
                 pProtocol->pVariables[aMSDP]->bDirty = true;
             }
         }
@@ -1346,7 +1411,7 @@ void MSDPSetTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apVa
 {
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
-    if (pProtocol != NULL && apValue != NULL) {
+    if (pProtocol != NULL && apValue != NULL && MSDPIsValidVariable(aMSDP)) {
         if (*apValue == '\0') {
             /* It's easier to call MSDPSetString if the value is empty */
             MSDPSetString(apDescriptor, aMSDP, apValue);
@@ -1376,7 +1441,7 @@ void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apV
 {
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
-    if (pProtocol != NULL && apValue != NULL) {
+    if (pProtocol != NULL && apValue != NULL && MSDPIsValidVariable(aMSDP)) {
         if (*apValue == '\0') {
             /* It's easier to call MSDPSetString if the value is empty */
             MSDPSetString(apDescriptor, aMSDP, apValue);
@@ -1410,7 +1475,7 @@ void MSDPSetArray(descriptor_t* apDescriptor, variable_t aMSDP, const char* apVa
 {
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
-    if (pProtocol != NULL && apValue != NULL) {
+    if (pProtocol != NULL && apValue != NULL && MSDPIsValidVariable(aMSDP)) {
         if (*apValue == '\0') {
             /* It's easier to call MSDPSetString if the value is empty */
             MSDPSetString(apDescriptor, aMSDP, apValue);
@@ -1863,7 +1928,8 @@ static void PerformSubnegotiation(descriptor_t* apDescriptor, char aCmd, char* a
             bool bStopCyclicTTYPE = false;
 
             for (; apData[j] != '\0' && i < MaxClientLength; ++j) {
-                if (isprint(apData[j]))
+                const unsigned char client_byte = static_cast<unsigned char>(apData[j]);
+                if (client_byte >= 0x20 && client_byte <= 0x7e)
                     pClientName[i++] = apData[j];
             }
             pClientName[i] = '\0';
@@ -2267,13 +2333,14 @@ static void ExecuteMSDPPair(descriptor_t* apDescriptor, const char* apVariable,
                                 int j; /* Loop counter */
 
                                 for (j = 0; j < VariableNameTable[i].Max && *apValue != '\0';
-                                     ++apValue) {
-                                    if (isprint(*apValue))
+                                    ++apValue) {
+                                    const unsigned char value_byte = static_cast<unsigned char>(*apValue);
+                                    if (value_byte >= 0x20 && value_byte <= 0x7e)
                                         pBuffer[j++] = *apValue;
                                 }
                                 pBuffer[j++] = '\0';
 
-                                if (j >= VariableNameTable[i].Min) {
+                                if (j > VariableNameTable[i].Min) {
                                     free(apDescriptor->pProtocol->pVariables[i]->pValueString);
                                     apDescriptor->pProtocol->pVariables[i]->pValueString = AllocString(pBuffer);
                                 }

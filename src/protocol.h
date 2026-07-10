@@ -10,6 +10,8 @@
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
+#include <string>
+
 /******************************************************************************
  Set your MUD_NAME, and change descriptor_t if necessary.
  ******************************************************************************/
@@ -261,6 +263,8 @@ struct protocol_t {
     bool bBlockMXP; /* Used internally based on MXP version */
     int PendingInputLength; /* Buffered bytes from an incomplete telnet/MXP fragment */
     char PendingInput[4]; /* Prefix buffer for split negotiation sequences */
+    int IacInputLength; /* Buffered bytes from an incomplete subnegotiation sequence */
+    char IacInput[MAX_PROTOCOL_BUFFER + 1]; /* Subnegotiation bytes split across network reads */
     bool bTTYPE; /* The client supports TTYPE */
     bool bECHO; /* Toggles ECHO on/off */
     bool bNAWS; /* The client supports NAWS */
@@ -480,8 +484,22 @@ void MSDPSetNumber(descriptor_t* apDescriptor, variable_t aMSDP, int aValue);
  * approach is to send every MSDP variable within an update function (and
  * this is what the snippet does by default), but if the variable is only
  * set in one place you can just move its MDSPSend() call to there.
+ *
+ * The value is passed through MSDPSanitizeValue() first, so it stays a
+ * valid JSON string for clients that convert MSDP into JSON.
  */
 void MSDPSetString(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue);
+
+/* Function: MSDPSanitizeValue
+ *
+ * Returns a copy of apValue with characters that are illegal inside a bare
+ * JSON string ('"', '\', and control characters such as \n and \r) replaced
+ * by their standard JSON escape sequence. MSDPSetString() applies this
+ * automatically; call it directly when hand-building a table/array value
+ * (see MSDPSetTable) that embeds freeform text, since those bypass
+ * MSDPSetString().
+ */
+std::string MSDPSanitizeValue(const char* apValue);
 
 /* Function: MSDPSetTable
  *
@@ -512,6 +530,8 @@ void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apV
  * MSDPSetArray( d, eMSDP_TEST, Buffer );
  */
 void MSDPSetArray(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue);
+
+bool MSDPIsValidVariable(variable_t aMSDP);
 
 /******************************************************************************
  MSSP functions.

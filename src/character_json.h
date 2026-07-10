@@ -120,6 +120,7 @@ struct CharacterData {
     int shooting = 2;
     int casting = 2;
     bool two_handed = false;
+    int specialization = PLRSPEC_NONE;
 
     ProfessionData mage;
     ProfessionData mystic;

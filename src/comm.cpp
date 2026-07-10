@@ -1635,52 +1635,6 @@ int process_output(struct descriptor_data* t)
     return 1;
 }
 
-// New version (similar to circle ver 3) April 2001 - Fingolfin
-// Not windows compatible (not finished and not working...), but c'est la vie...
-//
-// Confirmed dead (Phase 3 Task 5, MSVC bring-up round 2): zero callers anywhere in
-// this codebase -- write_to_descriptor (below) is the one actually used. Its
-// raw POSIX write() doesn't exist on Windows and its own header comment already
-// says it isn't Windows-compatible; guarded to PREDEF_PLATFORM_LINUX rather than
-// deleted, matching this file's existing "old version replaced with above" pattern
-// of keeping a superseded implementation around for reference.
-#if defined PREDEF_PLATFORM_LINUX
-int write_to_descriptor_new(int desc, char* txt)
-{
-    int result, length;
-
-    length = strlen(txt);
-
-    while (length > 0) {
-
-        result = write(desc, txt, length);
-
-        if (result <= 0) {
-            if (result == 0) {
-                /* This should never happen! */
-                log("SYSERR: Huh??  write() returned 0???  Please report this!");
-                return (-1);
-            }
-
-            if (errno == EWOULDBLOCK) {
-                perror("WARNING: socket would block, about to close");
-                return (-1);
-            } else {
-                /* Fatal error.  Disconnect the player. */
-                perror("SYSERR: Write to socket");
-                return (-1);
-            }
-        }
-
-        txt += result;
-        length -= result;
-    }
-    return (0);
-}
-#endif
-
-// old version replaced with above April 2001 - Fingolfin
-
 int write_to_descriptor(SocketType desc, char* txt)
 {
     int sofar, thisround, total;

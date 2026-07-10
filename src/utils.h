@@ -704,12 +704,7 @@ void set_mental_delay(char_data* ch, int value);
 #define IS_VULNERABLE(ch, attackgroup) (GET_VULNERABILITIES(ch) & (1 << (attackgroup)))
 
 // CLEAR(x) used to expand to bzero() (a BSD-ism absent on MSVC); memset(...,0,...) is
-// the portable, standard-library equivalent and behaves identically here. The
-// SUNPROCESSING bzero() prototype below is inert dead code (that macro is never
-// defined anywhere in this tree) -- left as-is, it declares a call that never happens.
-#ifdef SUNPROCESSING
-void bzero(char*, int);
-#endif
+// the portable, standard-library equivalent and behaves identically here.
 #define CLEAR(x) memset((char*)(x), 0, sizeof(x))
 
 void show_char_to_char(struct char_data* i, struct char_data* ch, int mode,

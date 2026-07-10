@@ -63,17 +63,24 @@
 ## Dead / Unused Code (read before touching combat)
 Some files are compiled but never actually called — changing them has no effect on the running
 game, and reading them to understand mechanics will mislead you. Known cases:
-- **`src/combat_manager.cpp` (the whole `combat_manager` class) is unused.** It is in the
-  Makefile and compiles, but is never instantiated or invoked. The **live** melee path is
-  `src/fight.cpp::hit()` (driven by the round loop around `fight.cpp:2755-2761`).
-- Consequently the OB/PB/DB functions in **`src/char_utils_combat.cpp`**
-  (`get_real_ob`/`get_real_parry`/`get_real_dodge`, which take `weather`/`room` args) are also
-  dead. The **live** OB/PB/DB are in **`src/utility.cpp`**: `get_real_OB`, `get_real_parry`,
-  `get_real_dodge` (all take a single `char_data*`).
-- The two implementations are close but differ materially (e.g., the live damage formula folds
-  the strength term *inside* the random factor; there is no live "accurate hit" system — the
-  guaranteed-hit mechanism is `frenzy`). When documenting or modifying combat, follow the
-  `fight.cpp` / `utility.cpp` versions.
-- Heuristic: before relying on a combat helper, grep for its callers
-  (`grep -rn 'funcname(' src/`). If `combat_manager` is the only caller, it's dead.
+- **`src/combat_manager.{h,cpp}` (the whole `combat_manager` class) was deleted in Phase 4 Wave 1**
+  (it was never instantiated or invoked — dead since at least Phase 2). The **live** melee path is
+  `src/fight.cpp::hit()` (driven by the round loop around `fight.cpp:2755-2761`). If you find a
+  reference to `combat_manager` in an older doc or comment, it's describing pre-deletion history,
+  not current code.
+- The weather/room-arg OB/PB/DB trio that only `combat_manager` called
+  (`utils::get_real_ob`/`get_real_parry`/`get_real_dodge` in `src/char_utils_combat.cpp`) was
+  deleted alongside it. The **live** OB/PB/DB are in **`src/utility.cpp`**: `get_real_OB`,
+  `get_real_parry`, `get_real_dodge` (all take a single `char_data*`, global namespace, declared
+  in `src/utils.h`) — do not confuse these with the deleted `utils::`-namespaced trio that took
+  `weather_data`/`room_data` arguments. `char_utils_combat.cpp` itself is still live: it also
+  defines `get_engaged_characters`/`is_victim_player`/`get_controlling_player`/
+  `on_attacked_character`, used by `fight.cpp`/`clerics.cpp`/`ranger.cpp`.
+- The deleted implementation differed materially from the live one (e.g., its damage formula
+  added the strength term *outside* the random factor, where the live formula folds it *inside*;
+  there is no live "accurate hit" system — the guaranteed-hit mechanism is `frenzy`). When
+  documenting or modifying combat, follow the `fight.cpp` / `utility.cpp` versions.
+- Heuristic: before relying on a combat helper, grep for its callers (`grep -rn 'funcname(' src/`).
+  A helper with no caller outside its own file (or only called by other dead code) is dead —
+  that's how `combat_manager` and the OB/PB/DB trio above were identified before deletion.
 

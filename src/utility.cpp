@@ -32,6 +32,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctype.h>
+#include <format>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1196,12 +1197,11 @@ int strn_cmp(const char* arg1, const char* arg2, int n)
 /* log a death trap hit */
 void log_death_trap(struct char_data* ch)
 {
-    char buf[150];
     //   extern struct room_data world;
 
-    sprintf(buf, "%s hit death trap #%d (%s)", GET_NAME(ch),
+    std::string message = std::format("{} hit death trap #{} ({})", GET_NAME(ch),
         world[ch->in_room].number, world[ch->in_room].name);
-    mudlog(buf, BRF, LEVEL_IMMORT, TRUE);
+    mudlog(message.data(), BRF, LEVEL_IMMORT, TRUE);
 }
 
 /* writes a string to the log */
@@ -1229,7 +1229,6 @@ void log(const char* str)
 
 void mudlog(char* str, char type, sh_int level, byte file)
 {
-    char buf[8000];
     extern struct descriptor_data* descriptor_list;
     struct descriptor_data* i;
     char* tmp;
@@ -1253,7 +1252,7 @@ void mudlog(char* str, char type, sh_int level, byte file)
     if (level < LEVEL_AREAGOD)
         level = LEVEL_AREAGOD;
 
-    sprintf(buf, "[ %s ]\n\r", str);
+    const std::string message = std::format("[ {} ]\n\r", str);
 
     for (i = descriptor_list; i; i = i->next)
         if (!i->connected && !PLR_FLAGGED(i->character, PLR_WRITING)) {
@@ -1261,7 +1260,7 @@ void mudlog(char* str, char type, sh_int level, byte file)
 
             if ((GET_LEVEL(i->character) >= level) && (tp >= type)) {
                 send_to_char(CC_FIX(i->character, CGRN), i->character);
-                send_to_char(buf, i->character);
+                send_to_char(message.c_str(), i->character);
                 send_to_char(CC_NORM(i->character), i->character);
             }
         }
@@ -1303,7 +1302,6 @@ void sprintbit(long vektor, char* names[], char* result, int var)
     long nr;
     int count;
 
-    *result = '\0';
     count = 0;
 
     if (vektor < 0) {
@@ -1312,13 +1310,17 @@ void sprintbit(long vektor, char* names[], char* result, int var)
     }
 
     if (vektor == 0) {
-        if (var != 0)
-            strcpy(result, "has no additional attributes. ");
-        else
-            strcpy(result, "<NONE>");
+        strcpy(result, var != 0 ? "has no additional attributes. " : "<NONE>");
         return;
     }
 
+    // Composed here (rather than strcat-chained straight into `result`) so
+    // the "did the loop append anything" check below (the NOFLAGS fallback)
+    // is a plain std::string::empty() instead of testing *result -- result
+    // itself is only written once, at the very end, via the same unbounded
+    // strcpy the original code used (callers still supply their own
+    // sufficiently-sized buffer; no size is available here to bound against).
+    std::string composed;
     for (nr = 0; vektor; vektor >>= 1) {
         if (IS_SET(1, vektor) && (vektor != BFS_MARK)) {
             if (*names[nr] != '\n') {
@@ -1330,32 +1332,27 @@ void sprintbit(long vektor, char* names[], char* result, int var)
                  */
                 if (var != 0) {
                     if (var == 2) {
-                        if (count == 0)
-                            strcat(result, " ");
-                        else
-                            strcat(result, " and ");
+                        composed += (count == 0) ? " " : " and ";
                     } else {
-                        if (count == 0)
-                            strcat(result, "has the following attributes.\r\n");
-                        else
-                            strcat(result, ".\r\n");
+                        composed += (count == 0) ? "has the following attributes.\r\n" : ".\r\n";
                     }
                 } else /* normal sprintbit resumes here */
-                    strcat(result, " ");
-                strcat(result, names[nr]);
+                    composed += " ";
+                composed += names[nr];
                 count++;
             } else {
-                strcat(result, "UNDEFINE ");
+                composed += "UNDEFINE ";
             }
         }
         if (*names[nr] != '\r\n')
             nr++;
     }
 
-    if (!*result)
-        strcat(result, "NOFLAGS");
+    if (composed.empty())
+        composed += "NOFLAGS";
 
-    strcat(result, ".");
+    composed += ".";
+    strcpy(result, composed.c_str());
 }
 
 void sprinttype(int type, char* names[], char* result)
@@ -1364,10 +1361,9 @@ void sprinttype(int type, char* names[], char* result)
 
     for (nr = 0; (*names[nr] != '\n'); nr++)
         ;
-    if (type < nr)
-        strcpy(result, names[type]);
-    else
-        strcpy(result, "UNDEFINED");
+
+    const std::string value = (type < nr) ? names[type] : "UNDEFINED";
+    strcpy(result, value.c_str());
 }
 
 /* Calculate the REAL time passed over the last t2-t1 centuries (secs) */
@@ -1849,7 +1845,8 @@ void day_to_str(struct time_info_data* loc_time_info, char* str)
 
     s = nth(day);
 
-    sprintf(str, "the %s day of %s", s, month_name[(int)loc_time_info->month]);
+    const std::string message = std::format("the {} day of {}", s, month_name[(int)loc_time_info->month]);
+    strcpy(str, message.c_str());
 
     free(s);
 }
@@ -2247,6 +2244,15 @@ struct obj_data* obj_to_proto(struct obj_data* obj)
     return new_obj;
 }
 
+// check_inventory_proto/check_equipment_proto/check_container_proto (below):
+// their sprintf(buf, " - ...%s...", tmp->short_description) sites are left
+// unconverted for Phase 4 Wave 1 Task 5. Characterizing them needs a real
+// obj_index/obj_proto prototype-table fixture to drive compare_obj_to_proto()
+// down both its result>0 and result<0 branches -- out of scope for this
+// leaf-module wave without broader object-system test scaffolding (the
+// result<0 branch's sprintf is additionally a pre-existing dead store: its
+// `buf` is never sent to the character, matching current behavior exactly
+// either way). Left as sprintf pending a dedicated object_utils/objsave wave.
 void check_inventory_proto(struct char_data* ch)
 {
     int result = 0;
@@ -2362,6 +2368,12 @@ char* PERS(struct char_data* target, struct char_data* observer,
 
         name[127] = '\0';
     } else
+        // Left as sprintf for Phase 4 Wave 1 Task 5: characterizing this
+        // branch needs a CAN_SEE(observer, target) == false fixture (room
+        // light/invisibility state), which is out of scope for this
+        // leaf-module wave. Trivial single-literal, no format args, no
+        // aliasing -- low risk, deferred pending a lighter PERS-specific
+        // fixture.
         sprintf(name, "someone");
 
     if (capitalize)

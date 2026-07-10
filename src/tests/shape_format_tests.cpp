@@ -305,3 +305,63 @@ TEST(ShapeMudlle, ShowMudlleFormatsNegativeRealNumCorrectly)
 
     RELEASE(mudlle.txt);
 }
+
+// shapeobj.cpp's list_object() (the OLC "look at object" display) --
+// pure formatting, no file I/O, no zone_table/permission dependency, so it's
+// a cheap, representative pin for that file's message-composition sites
+// (the path-construction sites (load_object/save_object) reuse the exact
+// literal-inlined-{}-plus-static_cast<const char*>-decay pattern already
+// pinned by the shapemdl.cpp round-trip test above; write_object() itself,
+// which emits the actual .obj world-file records, uses only fprintf and has
+// no sprintf/strcpy/strcat sites -- untouched by this task).
+extern void list_object(struct char_data* ch, struct obj_data* obj);
+extern int num_of_object_materials;
+
+TEST(ShapeObj, ListObjectFormatsAllFieldsIncludingNegativeAffections)
+{
+    char_data editor {};
+    clear_char(&editor, MOB_VOID);
+    descriptor_data descriptor = make_capturing_descriptor(&editor);
+    editor.desc = &descriptor;
+
+    obj_data object {};
+    object.name = const_cast<char*>("a shiny widget");
+    object.short_description = const_cast<char*>("a shiny widget");
+    object.description = const_cast<char*>("A shiny widget lies here.");
+    object.action_description = const_cast<char*>("The widget hums.");
+    object.obj_flags.type_flag = 5;
+    object.obj_flags.extra_flags = 0;
+    object.obj_flags.wear_flags = 2;
+    object.obj_flags.value[0] = 1;
+    object.obj_flags.value[1] = -2;
+    object.obj_flags.value[2] = 3;
+    object.obj_flags.value[3] = -4;
+    object.obj_flags.value[4] = 5;
+    object.obj_flags.weight = 10;
+    object.obj_flags.cost = 100;
+    object.obj_flags.cost_per_day = 0;
+    object.obj_flags.level = 1;
+    object.obj_flags.rarity = 0;
+    // material=-1: exercises the "out of range" ternary branch without
+    // needing the (here un-booted) object_materials[]/num_of_object_materials
+    // globals populated.
+    object.obj_flags.material = -1;
+    object.obj_flags.prog_number = 0;
+    object.obj_flags.script_number = 0;
+    object.affected[0].location = 1;
+    object.affected[0].modifier = -3;
+
+    list_object(&editor, &object);
+
+    const std::string output(descriptor.output);
+    EXPECT_NE(output.find("(1) alias(es)    :a shiny widget\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(2) reference description :a shiny widget\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(3) full  description     :A shiny widget lies here.\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(4) action description  :\n\rThe widget hums.\n\r"), std::string::npos);
+    EXPECT_NE(output.find("No extra descriptions for this object\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(9) type flag    :5\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(12) values: 1 -2 3 -4 5\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(18) material     :-1 (Unknown)\n\r"), std::string::npos);
+    EXPECT_NE(output.find("(19) Affections:\n\r (1 -3)"), std::string::npos);
+    EXPECT_NE(output.find("(21) script        :0\n\r"), std::string::npos);
+}

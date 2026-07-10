@@ -12,6 +12,8 @@
 #include "protos.h"
 #include "structs.h"
 #include "utils.h"
+#include <format>
+#include <string>
 
 extern struct obj_data* obj_proto;
 extern int object_master_idnum;
@@ -258,8 +260,7 @@ void implement_object(struct char_data* ch)
 #define DESCRCHANGE(line, addr)                                       \
     do {                                                              \
         if (!IS_SET(SHAPE_OBJECT(ch)->flags, SHAPE_SIMPLE_ACTIVE)) {  \
-            sprintf(tmpstr, "You are about to change %s:\n\r", line); \
-            send_to_char(tmpstr, ch);                                 \
+            send_to_char(std::format("You are about to change {}:\n\r", line).c_str(), ch); \
             SHAPE_OBJECT(ch)                                          \
                 ->position                                            \
                 = shape_standup(ch, POSITION_SHAPING);                \
@@ -290,8 +291,7 @@ void implement_object(struct char_data* ch)
 
 #define LINECHANGE(line, addr)                                                    \
     if (!IS_SET(SHAPE_OBJECT(ch)->flags, SHAPE_DIGIT_ACTIVE)) {                   \
-        sprintf(tmpstr, "Enter line %s: \n\r[%s]\n\r", line, (addr) ? addr : ""); \
-        send_to_char(tmpstr, ch);                                                 \
+        send_to_char(std::format("Enter line {}: \n\r[{}]\n\r", line, (addr) ? addr : "").c_str(), ch); \
         SHAPE_OBJECT(ch)                                                          \
             ->position                                                            \
             = shape_standup(ch, POSITION_SHAPING);                                \
@@ -339,7 +339,7 @@ void extra_coms_obj(struct char_data* ch, char* arg);
 void shape_center_obj(struct char_data* ch, char* arg)
 {
 
-    char str[1000], tmpstr[1000];
+    char str[1000];
 
     //  int i,i1;
     int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, choice;
@@ -563,8 +563,7 @@ void shape_center_obj(struct char_data* ch, char* arg)
 
 #define DIGITCHANGE(line, addr)                                 \
     if (!IS_SET(SHAPE_OBJECT(ch)->flags, SHAPE_DIGIT_ACTIVE)) { \
-        sprintf(tmpstr, "enter %s [%d]:\n\r", line, addr);      \
-        send_to_char(tmpstr, ch);                               \
+        send_to_char(std::format("enter {} [{}]:\n\r", line, addr).c_str(), ch); \
         SHAPE_OBJECT(ch)                                        \
             ->position                                          \
             = shape_standup(ch, POSITION_SHAPING);              \
@@ -909,28 +908,17 @@ void list_help_obj(struct char_data* ch)
 
 void list_object(struct char_data* ch, struct obj_data* obj)
 {
-
-    static char str[MAX_STRING_LENGTH]; // str1[100];
-
     struct extra_descr_data* tmpdesc;
 
     int i;
 
-    sprintf(str, "(1) alias(es)    :%s\n\r", obj->name);
+    send_to_char(std::format("(1) alias(es)    :{}\n\r", obj->name).c_str(), ch);
 
-    send_to_char(str, ch);
+    send_to_char(std::format("(2) reference description :{}\n\r", obj->short_description).c_str(), ch);
 
-    sprintf(str, "(2) reference description :%s\n\r", obj->short_description);
+    send_to_char(std::format("(3) full  description     :{}\n\r", obj->description).c_str(), ch);
 
-    send_to_char(str, ch);
-
-    sprintf(str, "(3) full  description     :%s\n\r", obj->description);
-
-    send_to_char(str, ch);
-
-    sprintf(str, "(4) action description  :\n\r%s\n\r", obj->action_description);
-
-    send_to_char(str, ch);
+    send_to_char(std::format("(4) action description  :\n\r{}\n\r", obj->action_description).c_str(), ch);
 
     tmpdesc = obj->ex_description;
 
@@ -940,11 +928,10 @@ void list_object(struct char_data* ch, struct obj_data* obj)
 
         for (; tmpdesc; tmpdesc = tmpdesc->next) {
 
-            sprintf(str, "(6) Keyword:%s\n\r(7) Text:%s\n\r",
-
-                tmpdesc->keyword, tmpdesc->description);
-
-            send_to_char(str, ch);
+            send_to_char(std::format("(6) Keyword:{}\n\r(7) Text:{}\n\r",
+                tmpdesc->keyword, tmpdesc->description)
+                             .c_str(),
+                ch);
         }
 
     }
@@ -952,69 +939,53 @@ void list_object(struct char_data* ch, struct obj_data* obj)
     else
         send_to_char("No extra descriptions for this object\n\r", ch);
 
-    sprintf(str, "(9) type flag    :%d\n\r", obj->obj_flags.type_flag);
+    send_to_char(std::format("(9) type flag    :{}\n\r", obj->obj_flags.type_flag).c_str(), ch);
 
-    send_to_char(str, ch);
+    send_to_char(std::format("(10) extra flag   :{}\n\r", obj->obj_flags.extra_flags).c_str(), ch);
 
-    sprintf(str, "(10) extra flag   :%d\n\r", obj->obj_flags.extra_flags);
+    send_to_char(std::format("(11) wear flag    :{}\n\r", obj->obj_flags.wear_flags).c_str(), ch);
 
-    send_to_char(str, ch);
-
-    sprintf(str, "(11) wear flag    :%d\n\r", obj->obj_flags.wear_flags);
-
-    send_to_char(str, ch);
-
-    sprintf(str, "(12) values: %d %d %d %d %d\n\r", obj->obj_flags.value[0],
+    send_to_char(std::format("(12) values: {} {} {} {} {}\n\r", obj->obj_flags.value[0],
 
         obj->obj_flags.value[1], obj->obj_flags.value[2],
 
-        obj->obj_flags.value[3], obj->obj_flags.value[4]);
+        obj->obj_flags.value[3], obj->obj_flags.value[4])
+                     .c_str(),
+        ch);
 
-    send_to_char(str, ch);
+    send_to_char(std::format("(13) weight       :{}\n\r", obj->obj_flags.weight).c_str(), ch);
 
-    sprintf(str, "(13) weight       :%d\n\r", obj->obj_flags.weight);
+    send_to_char(std::format("(14) cost         :{}\n\r", obj->obj_flags.cost).c_str(), ch);
 
-    send_to_char(str, ch);
+    send_to_char(std::format("(15) cost per day :{}\n\r", obj->obj_flags.cost_per_day).c_str(), ch);
 
-    sprintf(str, "(14) cost         :%d\n\r", obj->obj_flags.cost);
+    send_to_char(std::format("(16) level        :{}\n\r", obj->obj_flags.level).c_str(), ch);
 
-    send_to_char(str, ch);
+    send_to_char(std::format("(17) rarity       :{}\n\r", obj->obj_flags.rarity).c_str(), ch);
 
-    sprintf(str, "(15) cost per day :%d\n\r", obj->obj_flags.cost_per_day);
+    send_to_char(std::format("(18) material     :{} ({})\n\r", obj->obj_flags.material,
+        ((obj->obj_flags.material >= 0) && (obj->obj_flags.material < num_of_object_materials)) ? object_materials[obj->obj_flags.material] : "Unknown")
+                     .c_str(),
+        ch);
 
-    send_to_char(str, ch);
-
-    sprintf(str, "(16) level        :%d\n\r", obj->obj_flags.level);
-
-    send_to_char(str, ch);
-
-    sprintf(str, "(17) rarity       :%d\n\r", obj->obj_flags.rarity);
-
-    send_to_char(str, ch);
-
-    sprintf(str, "(18) material     :%d (%s)\n\r", obj->obj_flags.material,
-        ((obj->obj_flags.material >= 0) && (obj->obj_flags.material < num_of_object_materials)) ? object_materials[obj->obj_flags.material] : "Unknown");
-
-    send_to_char(str, ch);
-
-    sprintf(str, "(19) Affections:\n\r");
+    // Was sprintf(str, "(19) Affections:\n\r") followed by a loop of
+    // sprintf(str + strlen(str), ...) -- classic incremental-append via
+    // sprintf's return-buffer-as-cursor; compose into a std::string instead
+    // (same pattern as color.cpp's join_with_leading_spaces, Wave 1).
+    std::string affections = "(19) Affections:\n\r";
 
     for (i = 0; i < MAX_OBJ_AFFECT; i++) {
 
-        sprintf(str + strlen(str), " (%d %d)", obj->affected[i].location,
+        affections += std::format(" ({} {})", obj->affected[i].location,
 
             obj->affected[i].modifier);
     }
 
-    send_to_char(str, ch);
+    send_to_char(affections.c_str(), ch);
 
-    sprintf(str, "\n\r(20) program       :%d\n\r", obj->obj_flags.prog_number);
+    send_to_char(std::format("\n\r(20) program       :{}\n\r", obj->obj_flags.prog_number).c_str(), ch);
 
-    send_to_char(str, ch);
-
-    sprintf(str, "(21) script        :%d\n\r", obj->obj_flags.script_number);
-
-    send_to_char(str, ch);
+    send_to_char(std::format("(21) script        :{}\n\r", obj->obj_flags.script_number).c_str(), ch);
 }
 
 /*********--------------------------------*********/
@@ -1063,8 +1034,12 @@ int load_object(struct char_data* ch, char* arg)
         send_to_char("Choose an object by 'shape object <number>'\n\r", ch);
         return -1;
     }
-    sprintf(fname, "%d", number / 100);
-    sprintf(str, SHAPE_OBJ_DIR, fname);
+    // fname/str's SHAPE_OBJ_DIR/SHAPE_OBJ_BACKDIR %s templates are inlined
+    // as literal {} paths here (matches shapemdl.cpp's Task 3 conversion) --
+    // the shared macros stay %-style for any shape*.cpp file not yet
+    // converted in this pass.
+    strcpy(fname, std::format("{}", number / 100).c_str());
+    strcpy(str, std::format("world/obj/{}.obj", static_cast<const char*>(fname)).c_str());
 
     send_to_char(str, ch);
     f = fopen(str, "r+");
@@ -1075,7 +1050,7 @@ int load_object(struct char_data* ch, char* arg)
     strcpy(SHAPE_OBJECT(ch)->f_from, str);
     SET_BIT(SHAPE_OBJECT(ch)->flags, SHAPE_FILENAME);
 
-    sprintf(SHAPE_OBJECT(ch)->f_old, SHAPE_OBJ_BACKDIR, fname);
+    strcpy(SHAPE_OBJECT(ch)->f_old, std::format("world/obj/oldobjs/{}.obj", static_cast<const char*>(fname)).c_str());
     if (GET_IDNUM(ch) == object_master_idnum || GET_IDNUM(ch) == object_master2_idnum)
         SHAPE_OBJECT(ch)
             ->permission
@@ -1105,12 +1080,9 @@ int load_object(struct char_data* ch, char* arg)
             ->basenum
             = number;
         new_obj(ch);
-        sprintf(str, "Could not find obj #%d, created it.\n\r", number);
-        send_to_char(str, ch);
+        send_to_char(std::format("Could not find obj #{}, created it.\n\r", number).c_str(), ch);
     } else {
-        sprintf(str, "loading object #%d\n\r", tmp);
-
-        send_to_char(str, ch);
+        send_to_char(std::format("loading object #{}\n\r", tmp).c_str(), ch);
 
         number = tmp;
 
@@ -1484,9 +1456,7 @@ int replace_object(struct char_data* ch, char* arg)
     } while ((i < num) && (check != EOF));
 
     if (check == EOF) {
-        sprintf(str, "no mob #%d in this file\n\r", num);
-
-        send_to_char(str, ch);
+        send_to_char(std::format("no mob #{} in this file\n\r", num).c_str(), ch);
 
         fclose(f1);
         fclose(f2);
@@ -1580,9 +1550,12 @@ int append_object(struct char_data* ch, char* arg)
 
     else {
 
-        sprintf(SHAPE_OBJECT(ch)->f_from, SHAPE_MOB_DIR, fname);
+        // SHAPE_MOB_DIR/SHAPE_MOB_BACKDIR here (not SHAPE_OBJ_DIR/BACKDIR) is a
+        // pre-existing copy-paste quirk from the sibling mob-editor file --
+        // preserved exactly, not "fixed", per this task's mandate.
+        strcpy(SHAPE_OBJECT(ch)->f_from, std::format("world/mob/{}.mob", static_cast<const char*>(fname)).c_str());
 
-        sprintf(SHAPE_OBJECT(ch)->f_old, SHAPE_MOB_BACKDIR, fname);
+        strcpy(SHAPE_OBJECT(ch)->f_old, std::format("world/mob/oldmobs/{}.mob", static_cast<const char*>(fname)).c_str());
 
         SET_BIT(SHAPE_OBJECT(ch)->flags, SHAPE_FILENAME);
     }
@@ -1825,8 +1798,8 @@ void extra_coms_obj(struct char_data* ch, char* argument)
             ->permission
             = get_permission(i, ch);
 
-        sprintf(SHAPE_OBJECT(ch)->f_from, SHAPE_OBJ_DIR, str2);
-        sprintf(SHAPE_OBJECT(ch)->f_old, SHAPE_OBJ_BACKDIR, str2);
+        strcpy(SHAPE_OBJECT(ch)->f_from, std::format("world/obj/{}.obj", static_cast<const char*>(str2)).c_str());
+        strcpy(SHAPE_OBJECT(ch)->f_old, std::format("world/obj/oldobjs/{}.obj", static_cast<const char*>(str2)).c_str());
         SET_BIT(SHAPE_OBJECT(ch)->flags, SHAPE_FILENAME);
         new_obj(ch);
         SET_BIT(SHAPE_OBJECT(ch)->flags, SHAPE_OBJECT_LOADED);

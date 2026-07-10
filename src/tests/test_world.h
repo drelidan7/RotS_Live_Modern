@@ -32,6 +32,25 @@
 // Mirrors the existing ScopedDescriptorListReset (interpre_account_menu_tests.cpp)
 // / ScopedDescriptorList (act_wiz_tests.cpp) RAII convention used for the
 // other process-global test fixtures (descriptor_list, player_table).
+//
+// Multi-room contract (added for mage_tests.cpp's ensure_test_world clone,
+// the one Wave-1 Task 3 left unmigrated because this fixture was single-room
+// only): pass `room_count` to guarantee rooms [0, room_count) are usable.
+// world.create_bulk(room_count) only dummy_room_data()-initializes the
+// trailing EXTENSION_SIZE rooms starting at index (room_count - 1); the
+// constructor dummy_room_data()-initializes the remaining prefix
+// [0, room_count - 2] itself so every room in [0, room_count) is safe to
+// read/write (unset otherwise: heap garbage in people/contents/
+// dir_option[]/funct/bfs_*/sector_type/room_flags/light, same hazard
+// documented for the single-room case below). Room 0 still gets the special
+// "Testing Meadow" name/description; rooms [1, room_count) get
+// dummy_room_data()'s generic "New room" naming, which is all mage_tests.cpp's
+// ZoneGuard/RoomExitGuard/MageProcTest fixtures read (they only depend on
+// zone/dir_option/room_flags/people, not on custom names, per-room). The
+// default `room_count = 1` reproduces the original single-room behavior
+// exactly (same create_bulk(1) call, same empty prefix loop, same
+// top_of_world reset to 0) so the four Wave-1 single-room migrations are
+// unaffected.
 
 #include "../structs.h"
 #include "../utils.h"
@@ -41,15 +60,38 @@
 extern struct room_data world;
 extern int top_of_world;
 
+// Production room initializer from db.cpp: zeroes people/contents/
+// ex_description/dir_option and resets number/zone/sector_type/room_flags/
+// light. Not exposed in any header; declared here (mirrors the identical
+// forward declarations in mage_tests.cpp / damage_test_context.h) so the
+// multi-room constructor below can dummy-initialize the prefix
+// create_bulk() itself skips.
+void dummy_room_data(room_data* room);
+
 class ScopedTestWorld
 {
 public:
-    ScopedTestWorld()
+    // room_count: number of usable rooms, world[0..room_count). Defaults to
+    // 1 to keep every existing single-room call site's behavior byte-for-byte
+    // unchanged (see the multi-room contract comment above the class).
+    explicit ScopedTestWorld(int room_count = 1)
+        : room_count_(room_count)
     {
         if (room_data::BASE_WORLD == nullptr)
         {
-            world.create_bulk(1);
+            world.create_bulk(room_count_);
             owns_world_ = true;
+
+            // create_bulk(room_count_) dummy_room_data()-initializes indices
+            // [room_count_ - 1, room_count_ - 1 + EXTENSION_SIZE) itself; the
+            // prefix [0, room_count_ - 2] gets only room_data's default
+            // constructor otherwise. For room_count_ == 1 this range is
+            // empty, so this loop is a no-op and behavior matches the prior
+            // single-room-only constructor exactly.
+            for (int index = 0; index < room_count_ - 1; ++index)
+            {
+                dummy_room_data(&world[index]);
+            }
         }
         else
         {
@@ -57,10 +99,12 @@ public:
         }
 
         // Every ensure_test_world_room() clone this fixture replaces forced
-        // top_of_world back to 0 unconditionally on every call (room 0 is
-        // the only room these single-room tests need); preserved verbatim so
-        // replaced call sites behave identically.
-        top_of_world = 0;
+        // top_of_world back to a fixed value unconditionally on every call
+        // (room_count_ - 1 is the highest room these tests need -- 0 for the
+        // single-room default, preserving the original "reset to 0"
+        // behavior verbatim); preserved verbatim so replaced call sites
+        // behave identically.
+        top_of_world = room_count_ - 1;
 
         room_data& room = world[0];
         std::free(room.name);
@@ -77,16 +121,20 @@ public:
         if (owns_world_)
         {
             // Free every room's strdup'd name/description before dropping the
-            // array: our create_bulk(1) dummy_room_data()-initialized indices
-            // [0, EXTENSION_SIZE - 1] (each strdup'ing both strings), and the
-            // constructor above re-strdup'd room 0's. The final index
-            // (EXTENSION_SIZE) only ran room_data's constructor, which nulls
-            // both pointers, so freeing the whole [0, EXTENSION_SIZE] range
-            // unconditionally is safe (free(nullptr) is a no-op). Without
-            // this loop, every owning create/teardown cycle leaked 49 rooms
-            // x 2 strings (~63 KB, measured with macOS `leaks`) -- per
-            // DamageTestContext construction in the monolithic runner.
-            for (int index = 0; index <= EXTENSION_SIZE; ++index)
+            // array: our create_bulk(room_count_) dummy_room_data()-initialized
+            // every index except the very last one (each dummy'd index
+            // strdup'ing both strings), and the constructor above re-strdup'd
+            // room 0's. The array is sized room_count_ + EXTENSION_SIZE, so
+            // the final valid index is room_count_ + EXTENSION_SIZE - 1; for
+            // the single-room default (room_count_ == 1) that's EXTENSION_SIZE,
+            // matching this loop's original hardcoded bound exactly. That
+            // final index only ran room_data's constructor, which nulls both
+            // pointers, so freeing the whole [0, room_count_ + EXTENSION_SIZE - 1]
+            // range unconditionally is safe (free(nullptr) is a no-op).
+            // Without this loop, every owning create/teardown cycle leaked
+            // 49 rooms x 2 strings (~63 KB, measured with macOS `leaks`) --
+            // per DamageTestContext construction in the monolithic runner.
+            for (int index = 0; index <= room_count_ + EXTENSION_SIZE - 1; ++index)
             {
                 room_data& room = room_data::BASE_WORLD[index];
                 std::free(room.name);
@@ -119,4 +167,10 @@ private:
     // existing world already shared with other suites in this process (reset
     // room 0 only, leave the array itself alone).
     bool owns_world_;
+
+    // Number of usable rooms requested (world[0..room_count_)); drives the
+    // create_bulk() size, the dummy-init prefix loop, top_of_world, and the
+    // destructor's free-range bound. 1 for every pre-existing single-room
+    // caller.
+    int room_count_;
 };

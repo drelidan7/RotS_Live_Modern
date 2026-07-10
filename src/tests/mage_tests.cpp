@@ -1,6 +1,7 @@
 #include "../spells.h"
 #include "../utils.h"
 #include "test_random_utils.h"
+#include "test_world.h"
 #include <algorithm>
 #include <gtest/gtest.h>
 
@@ -31,41 +32,47 @@ extern int top_of_world;
 extern char_data* combat_list;
 extern char_data* combat_next_dude;
 
-// Production room initializer from db.cpp: zeroes people/contents/
-// ex_description/dir_option and resets number/zone/sector_type/room_flags/
-// light. Not exposed in any header, so declared here for test bootstrap use
-// (mirrors damage_test_context.h's identical declaration/use).
-void dummy_room_data(room_data* room);
-
 namespace {
 
-void ensure_test_world(int minimum_room_number) {
-    if (!room_data::BASE_WORLD) {
-        world.create_bulk(minimum_room_number + 2);
-        top_of_world = minimum_room_number + 1;
+// Rooms 0..32 (33 rooms) covers every room number any test in this file
+// requests: ZoneGuard/RoomExitGuard use rooms up to 9, MageProcTest::SetUp
+// requests room 32 (the highest).
+constexpr int kMageTestWorldRoomCount = 33;
 
-        // create_bulk() only dummy_room_data()-initializes the trailing
-        // EXTENSION_SIZE rooms; the "real" rooms [0, amount-1) get just
-        // room_data's constructor, which leaves people/contents/
-        // dir_option[]/funct/bfs_*/sector_type/room_flags/light as
-        // whatever heap garbage `new room_data[...]` landed on (see
-        // test_world.h / damage_test_context.h for the long-form
-        // explanation). Previously masked here because nothing in this
-        // process ever freed room_data::BASE_WORLD once any suite first
-        // allocated it, so this branch's un-dummied rooms were never
-        // actually reachable in practice -- ScopedTestWorld (test_world.h)
-        // now properly tears its own allocation down between tests, which
-        // makes this branch reachable for real and exposed stale/garbage
-        // .light/.room_flags/.sector_type readable by later tests (e.g.
-        // CAN_SEE()'s darkness check) once this suite is the one that
-        // happens to (re)allocate the shared world first.
-        for (int room = 0; room < minimum_room_number + 1; ++room) {
-            dummy_room_data(&world[room]);
-            world[room].funct = nullptr;
-            world[room].bfs_dir = 0;
-            world[room].bfs_next = nullptr;
-        }
-    } else if (top_of_world < minimum_room_number) {
+void ensure_test_world(int minimum_room_number) {
+    // Migrated onto the shared multi-room ScopedTestWorld (test_world.h) --
+    // this function used to hand-roll its own world.create_bulk()/
+    // dummy_room_data() bootstrap; Wave-1 Task 3 left it as the "5th clone"
+    // specifically because ScopedTestWorld was single-room-only at the time
+    // (Task 5 added the room_count ctor param this suite needs).
+    //
+    // Sized once for the whole suite's lifetime (function-local static,
+    // process duration -- matching this suite's pre-existing
+    // never-torn-down idiom, unlike the single-room callers that scope a
+    // fresh instance per test) to kMageTestWorldRoomCount, the highest room
+    // any test in this file ever touches, rather than to whichever call
+    // happens to run first. The original per-call-site sizing
+    // (create_bulk(minimum_room_number + 2)) left a latent bug where a
+    // small first call (e.g. ZoneGuard(7, 8)) permanently capped the array,
+    // leaving higher rooms only default-constructed (heap garbage in
+    // sector_type/room_flags/light/etc.) for whichever suite happened to
+    // run first under --gtest_shuffle.
+    static ScopedTestWorld shared_world(kMageTestWorldRoomCount);
+
+    // ScopedTestWorld's dummy_room_data() pass (like create_bulk()'s own)
+    // doesn't touch funct/bfs_dir/bfs_next -- room_data's constructor
+    // (db.cpp) leaves those as heap garbage. This suite's original
+    // hand-rolled bootstrap explicitly zeroed them for every room it
+    // touched (loclife_add_rooms/random_exit's room-graph walk reads
+    // them), so preserve that here; cheap enough to just redo on every
+    // call rather than gate behind the static's one-time init.
+    for (int room = 0; room < kMageTestWorldRoomCount; ++room) {
+        world[room].funct = nullptr;
+        world[room].bfs_dir = 0;
+        world[room].bfs_next = nullptr;
+    }
+
+    if (top_of_world < minimum_room_number) {
         top_of_world = minimum_room_number;
     }
 }

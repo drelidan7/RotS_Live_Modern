@@ -148,3 +148,45 @@ Task 2 and changes this plan's ground truth:
 - **Battery baselines:** post-merge, post-Asio-revert totals supersede all counts stated
   above; the ledger records the authoritative numbers after merge task M2.
 - **Type consistency:** `rots_asprintf`/`rots_strcasecmp` naming follows `rots_rng`/`rots_crypt` precedent; battery definitions match the ledger's current numbers (579/7 of 586; macOS 515/71).
+
+---
+
+## Phase 3 exit (2026-07-09, Task 7)
+
+**Exit date:** 2026-07-09. **Final CI run (all four jobs REQUIRED and green):**
+https://github.com/drelidan7/RotS_Live_Modern/actions/runs/29059169576
+(commit `db42da3`; jobs: Linux i386 legacy, Linux x64, macOS arm64, Windows MSVC —
+all `(required)`, all success; windows-msvc's `continue-on-error` removed in `3212788`).
+
+**Exit battery (actuals):**
+- 32-bit container: root-Makefile `make test` ctest **645/645 passed, 0 failed, 7 skipped**;
+  tests-Makefile monolithic runner **638 passed / 7 skipped / 0 failed** (645 ran);
+  `boot-golden.sh verify` — boot log matches golden.
+- rots64 (`linux-x64` preset): ctest **645/645 passed, 0 failed, 73 skipped**;
+  `boot-golden.sh --service rots64 verify` — boot log matches golden.
+- macOS native (`macos-arm64` preset): ctest **645/645 passed, 0 failed, 71 skipped**;
+  `boot-golden.sh --native build/macos-arm64/ageland verify` — boot log matches golden.
+- Windows (windows-msvc, CI): ctest **641/641 passed, 0 failed, 20 ctest-listed skips**
+  (6 AccountManagement, 8 BoardsJson LLP64-guarded, 3 InterpreAccountMenu, 1 DbLoader,
+  1 OlogHaiHelpers, 1 SpellParser — all pre-existing platform guards; verified against the
+  final run log. Task 6's report cited "40 skips" from gtest-level counting; the ctest
+  "did not run" census is 20 and is the number of record).
+
+**Spec deviation (recorded for the Phase 5 exit review): Windows boot verification
+deferred.** The spec's "boots" wording is satisfied on Linux i386, Linux x64, and macOS
+arm64 (boot-goldens above); on Windows the Phase 3 exit is **build + full unit suite +
+characterization goldens green on CI**, per this plan's Global Constraints — the
+windows-2022 runner has no `lib/world/` and no Windows workstation exists in this project.
+Future enabler: a Windows host (or long-running-capable runner) with world data staged,
+plus a Windows port of `scripts/boot-golden.sh` (bash/POSIX-tools today). A committed
+minimal test world remains the cleanest path and stays out of scope for Phase 3.
+
+**Asio→hand-rolled pivot, as implemented.** Task 1 vendored Asio per the original spec;
+the 2026-07-09 user decision (no third-party libraries in the game) reverted the vendoring
+(commit `0ebc9a9`), keeping platdef.h's Windows scaffold and the test include hygiene.
+Task 4 delivered the replacement: `src/rots_net.{h,cpp}`, a hand-rolled, platform-gated
+socket shim (startup/close/nonblocking/read/write/error-predicates; select() retained as
+the readiness primitive on all platforms; getnameinfo for DNS) — single-threaded
+select-per-tick loop preserved, proxy 4-byte-header contract intact, POSIX behavior
+byte-identical per the batteries and network smokes. GoogleTest remains test-only tooling,
+FetchContent-provisioned on Windows CI only, never linked into the game binary.

@@ -300,7 +300,7 @@ ACMD(do_goto)
     stop_riding(ch);
 
     if (ch->specials.poofOut)
-        sprintf(buf, "%s", ch->specials.poofOut);
+        strcpy(buf, std::format("{}", ch->specials.poofOut).c_str());
     else
         strcpy(buf, "$n disappears in a puff of smoke.");
 
@@ -309,7 +309,7 @@ ACMD(do_goto)
     char_to_room(ch, location);
 
     if (ch->specials.poofIn)
-        sprintf(buf, "%s", ch->specials.poofIn);
+        strcpy(buf, std::format("{}", ch->specials.poofIn).c_str());
     else
         strcpy(buf, "A huge gate appears briefly and $n steps out.");
 
@@ -1435,7 +1435,7 @@ ACMD(do_purge)
             if ((obj->in_room != NOWHERE) && (world[obj->in_room].zone == my_zone))
                 extract_obj(obj);
         }
-        sprintf(buf, "(GC) %s has purged zone %d.", GET_NAME(ch), zone_table[my_zone].number);
+        strcpy(buf, std::format("(GC) {} has purged zone {}.", GET_NAME(ch), zone_table[my_zone].number).c_str());
         mudlog(buf, BRF, LEVEL_GOD, TRUE);
         return;
     }
@@ -1466,7 +1466,7 @@ ACMD(do_purge)
             if (IS_NPC(vict)) {
                 extract_char(vict);
             } else {
-                sprintf(buf, "(GC) %s has purged %s.", GET_NAME(ch), GET_NAME(vict));
+                strcpy(buf, std::format("(GC) {} has purged {}.", GET_NAME(ch), GET_NAME(vict)).c_str());
                 mudlog(buf, BRF, LEVEL_GOD, TRUE);
                 if (vict->desc && vict->desc->descriptor) {
                     close_socket(vict->desc);
@@ -1901,8 +1901,8 @@ ACMD(do_force)
 
     half_chop(argument, name, to_force);
 
-    sprintf(buf1, "%s has forced you to %s.\n\r", GET_NAME(ch), to_force);
-    sprintf(buf2, "Someone has forced you to %s.\n\r", to_force);
+    strcpy(buf1, std::format("{} has forced you to {}.\n\r", GET_NAME(ch), static_cast<const char*>(to_force)).c_str());
+    strcpy(buf2, std::format("Someone has forced you to {}.\n\r", static_cast<const char*>(to_force)).c_str());
 
     if (!*name || !*to_force)
         send_to_char("Whom do you wish to force do what?\n\r", ch);
@@ -1918,7 +1918,7 @@ ACMD(do_force)
                     send_to_char(buf2, vict);
                 }
                 if (GET_LEVEL(ch) < LEVEL_IMPL) {
-                    sprintf(buf, "(GC) %s forced %s to %s", GET_NAME(ch), name, to_force);
+                    strcpy(buf, std::format("(GC) {} forced {} to {}", GET_NAME(ch), static_cast<const char*>(name), static_cast<const char*>(to_force)).c_str());
                     log(buf);
                 }
                 command_interpreter(vict, to_force);
@@ -1928,7 +1928,7 @@ ACMD(do_force)
     } else if (str_cmp("room", name)) {
         send_to_char("Okay.\n\r", ch);
         if (GET_LEVEL(ch) < LEVEL_IMPL) {
-            sprintf(buf, "(GC) %s forced %s to %s", GET_NAME(ch), name, to_force);
+            strcpy(buf, std::format("(GC) {} forced {} to {}", GET_NAME(ch), static_cast<const char*>(name), static_cast<const char*>(to_force)).c_str());
             log(buf);
         }
         for (i = descriptor_list; i; i = i->next)
@@ -1945,7 +1945,7 @@ ACMD(do_force)
     } else {
         send_to_char("Okay.\n\r", ch);
         if (GET_LEVEL(ch) < LEVEL_IMPL) {
-            sprintf(buf, "(GC) %s forced %s to %s", GET_NAME(ch), name, to_force);
+            strcpy(buf, std::format("(GC) {} forced {} to {}", GET_NAME(ch), static_cast<const char*>(name), static_cast<const char*>(to_force)).c_str());
             log(buf);
         }
         for (i = descriptor_list; i; i = i->next)
@@ -2115,9 +2115,8 @@ ACMD(do_zreset)
     }
     if (i >= 0 && i <= top_of_zone_table) {
         reset_zone(i);
-        sprintf(buf, "Reset zone %d: %s.\n\r", i, zone_table[i].name);
-        send_to_char(buf, ch);
-        sprintf(buf, "(GC) %s reset zone %d (%s)", GET_NAME(ch), zone_table[i].number, zone_table[i].name);
+        send_to_char(std::format("Reset zone {}: {}.\n\r", i, zone_table[i].name).c_str(), ch);
+        strcpy(buf, std::format("(GC) {} reset zone {} ({})", GET_NAME(ch), zone_table[i].number, zone_table[i].name).c_str());
         mudlog(buf, NRM, (sh_int)MAX(LEVEL_GRGOD, GET_INVIS_LEV(ch)), TRUE);
     } else
         send_to_char("Invalid zone number.\n\r", ch);

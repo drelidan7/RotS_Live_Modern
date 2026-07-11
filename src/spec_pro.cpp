@@ -14,6 +14,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <vector>
+#include <algorithm>
+#include <cstring>
 #include <iostream>
 #include <regex>
 
@@ -295,7 +297,10 @@ SPECIAL(guild) {
 
         auto tokens = split(input_str, regex_str);
         for (auto& item: tokens) {
-            memcpy(str2, item.c_str(), 255);
+            // item is a std::string token from split(); copy at most 254 chars + NUL into str2[255].
+            const std::size_t copy_len = std::min(item.size(), sizeof(str2) - 1);
+            std::memcpy(str2, item.c_str(), copy_len);
+            str2[copy_len] = '\0';
             if(is_number(str2)) {
                 times = atoi(str2);
             } else if(!strncmp(str2, "all",  strlen(str2)) ) {

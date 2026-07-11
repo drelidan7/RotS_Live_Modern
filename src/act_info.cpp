@@ -1985,9 +1985,15 @@ ACMD(do_score)
 // every use (and every early-return path) without changing any output byte.
 // Used by do_time, do_fame, and do_rank below (this chunk owns every such
 // allocation site in the file).
+//
+// Null-guard: those producers route through rots_asprintf and can return
+// NULL on allocation failure. The old sprintf("%s", NULL) call sites printed
+// glibc's "(null)" gracefully; std::string(nullptr) is UB, so substitute the
+// same "(null)" literal (matching utils.h's nz() precedent). free(NULL) is
+// well-defined, so the unconditional free stays.
 static std::string take_cstring(char* raw)
 {
-    std::string result(raw);
+    std::string result(raw ? raw : "(null)");
     free(raw);
     return result;
 }

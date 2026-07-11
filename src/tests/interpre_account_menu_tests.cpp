@@ -1487,12 +1487,22 @@ TEST(InterpreAccountMenu, LinkedRosterLevelOneHundredAllowsDifferentSelectionWhe
     ASSERT_TRUE(account::admin_link_character(".", "acct", "legolas", 1700010203, &stored_account, &error_message)) << error_message;
 
     descriptor_data active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    active_descriptor.output = active_descriptor.small_outbuf;
     active_descriptor.connected = CON_PLYNG;
     active_descriptor.descriptor = 7;
     attach_active_character(&active_descriptor, "aragorn", 50, 4242);
     descriptor_list = &active_descriptor;
 
     descriptor_data select_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    select_descriptor.output = select_descriptor.small_outbuf;
     select_descriptor.connected = CON_ACCTSLCT;
     std::snprintf(select_descriptor.host, sizeof(select_descriptor.host), "%s", "127.0.0.1");
     char selection[] = "3";
@@ -1531,12 +1541,22 @@ TEST(InterpreAccountMenu, LinkedRosterLevelNinetyOneDoesNotUnlockDifferentSelect
     ASSERT_TRUE(account::admin_link_character(".", "acct", "legolas", 1700010203, &stored_account, &error_message)) << error_message;
 
     descriptor_data active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    active_descriptor.output = active_descriptor.small_outbuf;
     active_descriptor.connected = CON_PLYNG;
     active_descriptor.descriptor = 7;
     attach_active_character(&active_descriptor, "aragorn", 50, 4242);
     descriptor_list = &active_descriptor;
 
     descriptor_data select_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    select_descriptor.output = select_descriptor.small_outbuf;
     select_descriptor.connected = CON_ACCTSLCT;
     char selection[] = "3";
     nanny(&select_descriptor, selection);
@@ -1568,12 +1588,22 @@ TEST(InterpreAccountMenu, MissingHighLevelLinkedRosterCharacterDoesNotUnlockDiff
     ASSERT_TRUE(account::admin_link_character(".", "acct", "legolas", 1700010203, &stored_account, &error_message)) << error_message;
 
     descriptor_data active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    active_descriptor.output = active_descriptor.small_outbuf;
     active_descriptor.connected = CON_PLYNG;
     active_descriptor.descriptor = 7;
     attach_active_character(&active_descriptor, "aragorn", 50, 4242);
     descriptor_list = &active_descriptor;
 
     descriptor_data select_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    select_descriptor.output = select_descriptor.small_outbuf;
     select_descriptor.connected = CON_ACCTSLCT;
     char selection[] = "3";
     nanny(&select_descriptor, selection);
@@ -1607,12 +1637,22 @@ TEST(InterpreAccountMenu, CorruptHighLevelLinkedRosterCharacterDoesNotUnlockDiff
     ASSERT_TRUE(account::admin_link_character(".", "acct", "legolas", 1700010203, &stored_account, &error_message)) << error_message;
 
     descriptor_data active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    active_descriptor.output = active_descriptor.small_outbuf;
     active_descriptor.connected = CON_PLYNG;
     active_descriptor.descriptor = 7;
     attach_active_character(&active_descriptor, "aragorn", 50, 4242);
     descriptor_list = &active_descriptor;
 
     descriptor_data select_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    select_descriptor.output = select_descriptor.small_outbuf;
     select_descriptor.connected = CON_ACCTSLCT;
     char selection[] = "3";
     nanny(&select_descriptor, selection);
@@ -1646,12 +1686,22 @@ TEST(InterpreAccountMenu, DeletedHighLevelLinkedRosterCharacterDoesNotUnlockDiff
     ASSERT_TRUE(account::admin_link_character(".", "acct", "legolas", 1700010203, &stored_account, &error_message)) << error_message;
 
     descriptor_data active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    active_descriptor.output = active_descriptor.small_outbuf;
     active_descriptor.connected = CON_PLYNG;
     active_descriptor.descriptor = 7;
     attach_active_character(&active_descriptor, "aragorn", 50, 4242);
     descriptor_list = &active_descriptor;
 
     descriptor_data select_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    select_descriptor.output = select_descriptor.small_outbuf;
     select_descriptor.connected = CON_ACCTSLCT;
     char selection[] = "3";
     nanny(&select_descriptor, selection);
@@ -1690,12 +1740,22 @@ TEST(InterpreAccountMenu, DuplicateOwnedHighLevelLinkedRosterCharacterDoesNotUnl
     ASSERT_TRUE(account::write_account_file(".", other_account, &error_message)) << error_message;
 
     descriptor_data active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    active_descriptor.output = active_descriptor.small_outbuf;
     active_descriptor.connected = CON_PLYNG;
     active_descriptor.descriptor = 7;
     attach_active_character(&active_descriptor, "aragorn", 50, 4242);
     descriptor_list = &active_descriptor;
 
     descriptor_data select_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    select_descriptor.output = select_descriptor.small_outbuf;
     select_descriptor.connected = CON_ACCTSLCT;
     char selection[] = "3";
     nanny(&select_descriptor, selection);
@@ -1732,11 +1792,21 @@ TEST(InterpreAccountMenu, DuplicateOwnedActiveHighLevelLinkedCharacterDoesNotUnl
     ASSERT_TRUE(account::write_account_file(".", other_account, &error_message)) << error_message;
 
     descriptor_data duplicate_high_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    duplicate_high_descriptor.output = duplicate_high_descriptor.small_outbuf;
     duplicate_high_descriptor.connected = CON_PLYNG;
     duplicate_high_descriptor.descriptor = 7;
     attach_active_character(&duplicate_high_descriptor, "aragorn", 100, 4242);
 
     descriptor_data low_level_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    low_level_descriptor.output = low_level_descriptor.small_outbuf;
     low_level_descriptor.connected = CON_PLYNG;
     low_level_descriptor.descriptor = 8;
     attach_active_character(&low_level_descriptor, "boromir", 50, 5252);
@@ -1744,6 +1814,11 @@ TEST(InterpreAccountMenu, DuplicateOwnedActiveHighLevelLinkedCharacterDoesNotUnl
     descriptor_list = &duplicate_high_descriptor;
 
     descriptor_data select_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    select_descriptor.output = select_descriptor.small_outbuf;
     select_descriptor.connected = CON_ACCTSLCT;
     char selection[] = "3";
     nanny(&select_descriptor, selection);
@@ -1785,6 +1860,11 @@ TEST(InterpreAccountMenu, DuplicateOwnedActiveLowLevelLinkedCharacterStillRestri
     ASSERT_TRUE(account::write_account_file(".", other_account, &error_message)) << error_message;
 
     descriptor_data duplicate_low_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    duplicate_low_descriptor.output = duplicate_low_descriptor.small_outbuf;
     duplicate_low_descriptor.connected = CON_PLYNG;
     duplicate_low_descriptor.descriptor = 7;
     attach_active_character(&duplicate_low_descriptor, "aragorn", 50, 4242);
@@ -1794,6 +1874,11 @@ TEST(InterpreAccountMenu, DuplicateOwnedActiveLowLevelLinkedCharacterStillRestri
     EXPECT_NE(error_message.find("ambiguous account ownership"), std::string::npos) << error_message;
 
     descriptor_data select_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    select_descriptor.output = select_descriptor.small_outbuf;
     select_descriptor.connected = CON_ACCTSLCT;
     char selection[] = "2";
     nanny(&select_descriptor, selection);
@@ -1831,6 +1916,11 @@ TEST(InterpreAccountMenu, ActiveHighLevelLinkedCharacterWithoutDescriptorAccount
     ASSERT_TRUE(account::admin_link_character(".", "acct", "legolas", 1700010202, &stored_account, &error_message)) << error_message;
 
     descriptor_data active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    active_descriptor.output = active_descriptor.small_outbuf;
     active_descriptor.connected = CON_PLYNG;
     active_descriptor.descriptor = 7;
     active_descriptor.account_name[0] = '\0';
@@ -1838,6 +1928,11 @@ TEST(InterpreAccountMenu, ActiveHighLevelLinkedCharacterWithoutDescriptorAccount
     descriptor_list = &active_descriptor;
 
     descriptor_data select_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    select_descriptor.output = select_descriptor.small_outbuf;
     select_descriptor.connected = CON_ACCTSLCT;
     std::snprintf(select_descriptor.host, sizeof(select_descriptor.host), "%s", "127.0.0.1");
     char selection[] = "2";
@@ -1872,6 +1967,11 @@ TEST(InterpreAccountMenu, ActiveLowLevelLinkedCharacterWithoutDescriptorAccountN
     ASSERT_TRUE(account::admin_link_character(".", "acct", "legolas", 1700010202, &stored_account, &error_message)) << error_message;
 
     descriptor_data active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    active_descriptor.output = active_descriptor.small_outbuf;
     active_descriptor.connected = CON_PLYNG;
     active_descriptor.descriptor = 7;
     active_descriptor.account_name[0] = '\0';
@@ -1879,6 +1979,11 @@ TEST(InterpreAccountMenu, ActiveLowLevelLinkedCharacterWithoutDescriptorAccountN
     descriptor_list = &active_descriptor;
 
     descriptor_data select_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    select_descriptor.output = select_descriptor.small_outbuf;
     select_descriptor.connected = CON_ACCTSLCT;
     char selection[] = "2";
     nanny(&select_descriptor, selection);
@@ -2231,6 +2336,11 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenLink
     ASSERT_TRUE(account::admin_link_character(".", "acct", "legolas", 1700010203, &stored_account, &error_message)) << error_message;
 
     descriptor_data active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    active_descriptor.output = active_descriptor.small_outbuf;
     active_descriptor.connected = CON_PLYNG;
     active_descriptor.descriptor = 7;
     attach_active_character(&active_descriptor, "aragorn", 50, 4242);
@@ -2246,6 +2356,11 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenLink
     character_list = selected_character_body;
 
     descriptor_data descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    descriptor.output = descriptor.small_outbuf;
     descriptor.connected = CON_SLCT;
     descriptor.character = new char_data {};
     clear_char(descriptor.character, MOB_VOID);
@@ -2335,12 +2450,22 @@ TEST(InterpreAccountMenu, LinkedRosterLevelOneHundredAllowsNewCharacterCreation)
     ASSERT_TRUE(account::admin_link_character(".", "acct", "gandalf", 1700010202, &stored_account, &error_message)) << error_message;
 
     descriptor_data active_descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    active_descriptor.output = active_descriptor.small_outbuf;
     active_descriptor.connected = CON_PLYNG;
     active_descriptor.descriptor = 7;
     attach_active_character(&active_descriptor, "aragorn", 50, 4242);
     descriptor_list = &active_descriptor;
 
     descriptor_data descriptor = make_descriptor();
+    // Re-point output to THIS object's own small_outbuf: make_descriptor()
+    // returns by value and its internal `output = &small_outbuf` self-pointer
+    // dangles into the returned-from frame when NRVO isn't applied (MSVC
+    // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
+    descriptor.output = descriptor.small_outbuf;
     char new_character_choice[] = "4";
     nanny(&descriptor, new_character_choice);
 

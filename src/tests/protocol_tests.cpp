@@ -1,23 +1,27 @@
 #include "../char_utils.h"
 #include "../limits.h"
 #include "../protocol.h"
+#include "../rots_net.h"
 #include "../structs.h"
 #include "../utils.h"
 
 // IAC/DO/WILL/TELOPT_TTYPE: from <arpa/telnet.h> on POSIX; that header does
 // not exist on Windows, where platdef.h hand-declares the same fixed RFC
 // 854/1091 byte values instead (Phase 3 Task 5's stand-in, used here in
-// Task 6). structs.h above already pulls in platdef.h.
+// Task 6). structs.h above already pulls in platdef.h, which on Windows
+// brings in winsock2.h/ws2tcpip.h (socket()/bind()/listen()/connect()/
+// accept()/getsockname()/htonl()) -- ProtocolDescriptor below needs those
+// too, for its portable loopback pair.
 #if !defined(_WIN32)
+#include <arpa/inet.h>
 #include <arpa/telnet.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
-#include <unistd.h>
 #endif
 
 #include <gtest/gtest.h>
 
 #include <cstring>
-#include <fcntl.h>
 #include <string>
 #include <vector>
 
@@ -38,20 +42,65 @@ class ProtocolDescriptor {
 public:
     ProtocolDescriptor()
     {
-        if (socketpair(AF_UNIX, SOCK_STREAM, 0, m_sockets) != 0) {
-            ADD_FAILURE() << "Expected socketpair to create a local protocol output capture.";
+        // A connected loopback TCP pair, portable across POSIX and Windows
+        // (mirrors startup_options_tests.cpp's AcceptPathTest fixture): POSIX's
+        // AF_UNIX socketpair() has no Windows equivalent at all, so the pair is
+        // assembled from plain bind+listen+connect+accept on 127.0.0.1 instead.
+        // `descriptor.descriptor` (the accepted server-side peer) is what
+        // Protocol* functions write to, simulating the player's connection;
+        // `m_capture_socket` (the connecting client end) is what read_output()
+        // drains to capture that output.
+        descriptor.descriptor = rots_net::kInvalidSocket;
+
+        SocketType listener = socket(AF_INET, SOCK_STREAM, 0);
+        if (!rots_net::is_valid_socket(listener)) {
+            ADD_FAILURE() << "Expected a loopback listener socket for protocol output capture.";
             return;
         }
-        const int flags = fcntl(m_sockets[1], F_GETFL, 0);
-        if (flags < 0 || fcntl(m_sockets[1], F_SETFL, flags | O_NONBLOCK) != 0) {
-            ADD_FAILURE() << "Expected protocol output capture socket to become nonblocking.";
-            close(m_sockets[0]);
-            close(m_sockets[1]);
-            m_sockets[0] = -1;
-            m_sockets[1] = -1;
+
+        sockaddr_in address {};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        address.sin_port = 0;
+        if (bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0
+            || listen(listener, 1) != 0) {
+            ADD_FAILURE() << "Expected the loopback listener to bind and listen.";
+            rots_net::close_socket(listener);
             return;
         }
-        descriptor.descriptor = m_sockets[0];
+
+        socklen_t address_length = sizeof(address);
+        if (getsockname(listener, reinterpret_cast<sockaddr*>(&address), &address_length) != 0) {
+            ADD_FAILURE() << "Expected to read back the loopback listener's ephemeral port.";
+            rots_net::close_socket(listener);
+            return;
+        }
+
+        SocketType client = socket(AF_INET, SOCK_STREAM, 0);
+        if (!rots_net::is_valid_socket(client)) {
+            ADD_FAILURE() << "Expected a loopback client socket for protocol output capture.";
+            rots_net::close_socket(listener);
+            return;
+        }
+
+        if (connect(client, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
+            ADD_FAILURE() << "Expected the loopback client to connect.";
+            rots_net::close_socket(listener);
+            rots_net::close_socket(client);
+            return;
+        }
+
+        SocketType server_peer = accept(listener, nullptr, nullptr);
+        rots_net::close_socket(listener);
+        if (!rots_net::is_valid_socket(server_peer)) {
+            ADD_FAILURE() << "Expected the loopback listener to accept the client's connection.";
+            rots_net::close_socket(client);
+            return;
+        }
+
+        rots_net::set_nonblocking(client);
+        m_capture_socket = client;
+        descriptor.descriptor = server_peer;
         descriptor.pProtocol = ProtocolCreate();
         descriptor.character = &character;
         SET_BIT(character.specials2.pref, PRF_MSDP);
@@ -61,21 +110,21 @@ public:
     {
         if (descriptor.pProtocol != nullptr)
             ProtocolDestroy(descriptor.pProtocol);
-        if (m_sockets[0] >= 0)
-            close(m_sockets[0]);
-        if (m_sockets[1] >= 0)
-            close(m_sockets[1]);
+        if (rots_net::is_valid_socket(descriptor.descriptor))
+            rots_net::close_socket(descriptor.descriptor);
+        if (rots_net::is_valid_socket(m_capture_socket))
+            rots_net::close_socket(m_capture_socket);
     }
 
     std::string read_output()
     {
         std::string output;
-        if (m_sockets[1] < 0)
+        if (!rots_net::is_valid_socket(m_capture_socket))
             return output;
 
         char buffer[4096];
         while (true) {
-            const ssize_t bytes_read = recv(m_sockets[1], buffer, sizeof(buffer), 0);
+            const rots_net::ssize_type bytes_read = rots_net::read_socket(m_capture_socket, buffer, sizeof(buffer));
             if (bytes_read > 0) {
                 output.append(buffer, static_cast<size_t>(bytes_read));
                 continue;
@@ -89,7 +138,7 @@ public:
     char_data character {};
 
 private:
-    int m_sockets[2] = { -1, -1 };
+    SocketType m_capture_socket = rots_net::kInvalidSocket;
 };
 
 descriptor_data make_protocol_input_descriptor()

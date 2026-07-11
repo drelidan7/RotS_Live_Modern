@@ -136,7 +136,7 @@ ACMD(do_emote)
     if (!*(argument + i))
         send_to_char("Yes.. But what?\n\r", ch);
     else {
-        sprintf(buf, "$n %s", argument + i);
+        strcpy(buf, std::format("$n {}", argument + i).c_str());
         act(buf, FALSE, ch, 0, 0, TO_ROOM);
         if (!PRF_FLAGGED(ch, PRF_ECHO))
             send_to_char("Ok.\n\r", ch);
@@ -166,7 +166,7 @@ ACMD(do_send)
     if (!PRF_FLAGGED(ch, PRF_ECHO))
         send_to_char("Sent.\n\r", ch);
     else {
-        sprintf(buf2, "You send '%s' to %s.\n\r", buf, GET_NAME(vict));
+        strcpy(buf2, std::format("You send '{}' to {}.\n\r", buf, GET_NAME(vict)).c_str());
         send_to_char(buf2, ch);
     }
 }
@@ -185,7 +185,7 @@ ACMD(do_echo)
     if (!*(argument + i))
         send_to_char("That must be a mistake...\n\r", ch);
     else {
-        sprintf(buf, "%s\n\r", argument + i);
+        strcpy(buf, std::format("{}\n\r", argument + i).c_str());
         //      send_to_room_except(buf, ch->in_room, ch);
         for (tmpch = world[ch->in_room].people; tmpch;
             tmpch = tmpch->next_in_room)
@@ -1687,7 +1687,7 @@ ACMD(do_gecho)
     if (!*(argument + i))
         send_to_char("That must be a mistake...\n\r", ch);
     else {
-        sprintf(buf, "%s\n\r", argument + i);
+        strcpy(buf, std::format("{}\n\r", argument + i).c_str());
         for (pt = descriptor_list; pt; pt = pt->next)
             if (!pt->connected && pt->character && pt->character != ch) {
                 //	    act(buf, FALSE, ch, 0, pt->character, TO_VICT);
@@ -2044,39 +2044,19 @@ ACMD(do_wiznet)
 
     if (to_vict) {
         if (level > LEVEL_IMMORT) {
-            sprintf(buf1, "%s %s <%d> (to %s) %s'%s'\n\r", GET_NAME(ch),
-                (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets",
-                level, GET_NAME(to_vict), emote ? "<--- " : "", argument);
-            sprintf(buf2, "Someone %s <%d> (to %s) %s'%s'\n\r",
-                (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets",
-                level, GET_NAME(to_vict), emote ? "<--- " : "",
-                argument);
+            strcpy(buf1, std::format("{} {} <{}> (to {}) {}'{}'\n\r", GET_NAME(ch), (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets", level, GET_NAME(to_vict), emote ? "<--- " : "", argument).c_str());
+            strcpy(buf2, std::format("Someone {} <{}> (to {}) {}'{}'\n\r", (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets", level, GET_NAME(to_vict), emote ? "<--- " : "", argument).c_str());
         } else {
-            sprintf(buf1, "%s %s (to %s) %s'%s'\n\r", GET_NAME(ch),
-                (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets",
-                GET_NAME(to_vict), emote ? "<--- " : "",
-                argument);
-            sprintf(buf2, "Someone %s (to %s) %s'%s'\n\r",
-                (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets",
-                GET_NAME(to_vict), emote ? "<--- " : "", argument);
+            strcpy(buf1, std::format("{} {} (to {}) {}'{}'\n\r", GET_NAME(ch), (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets", GET_NAME(to_vict), emote ? "<--- " : "", argument).c_str());
+            strcpy(buf2, std::format("Someone {} (to {}) {}'{}'\n\r", (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets", GET_NAME(to_vict), emote ? "<--- " : "", argument).c_str());
         }
     } else {
         if (level > LEVEL_IMMORT) {
-            sprintf(buf1, "%s %s <%d> %s'%s'\n\r", GET_NAME(ch),
-                (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets",
-                level, emote ? "<--- " : "", argument);
-            sprintf(buf2, "Someone %s <%d> %s'%s'\n\r",
-                (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets",
-                level, emote ? "<--- " : "",
-                argument);
+            strcpy(buf1, std::format("{} {} <{}> {}'{}'\n\r", GET_NAME(ch), (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets", level, emote ? "<--- " : "", argument).c_str());
+            strcpy(buf2, std::format("Someone {} <{}> {}'{}'\n\r", (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets", level, emote ? "<--- " : "", argument).c_str());
         } else {
-            sprintf(buf1, "%s %s %s'%s'\n\r", GET_NAME(ch),
-                (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets",
-                emote ? "<--- " : "",
-                argument);
-            sprintf(buf2, "Someone %s %s'%s'\n\r",
-                (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets",
-                emote ? "<--- " : "", argument);
+            strcpy(buf1, std::format("{} {} {}'{}'\n\r", GET_NAME(ch), (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets", emote ? "<--- " : "", argument).c_str());
+            strcpy(buf2, std::format("Someone {} {}'{}'\n\r", (GET_LEVEL(ch) < LEVEL_IMMORT) ? "petitions" : "wiznets", emote ? "<--- " : "", argument).c_str());
         }
     }
 

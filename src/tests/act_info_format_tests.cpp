@@ -30,15 +30,16 @@
 //    pure symbol_to_map()/send_to_char() plumbing over pre-built world_map/
 //    small_map buffers), so there is nothing in them for this task's
 //    transform to touch and nothing to pin.
-//  - do_look's own case 8 ("look" with no argument -- full room rendering:
-//    the room-flags line's sprintf sites at act_info.cpp:1328/1332/1335,
-//    and show_obj_to_char's mode-0 sprintf at :336, reached only through
-//    list_obj_to_char(..., mode=0, ...) at :1438) needs a fully-populated
-//    room (real exits, weather_info, sprintbit-formatted room_flags,
-//    PRF_SPAM-gated description) to exercise meaningfully -- exactly the
-//    "deep room rendering" the task brief calls out as covered by
-//    scripts/boot-golden.sh's real room output rather than a fixture-driven
-//    unit test.
+//  - do_look's case 8 ("look" with no argument) is pinned only at its
+//    shallow fixture-reachable depth (name + exits line + description, via
+//    the do_examine no-target delegation test below); the deeper rendering
+//    -- the room-flags line's sprintf sites at act_info.cpp:1328/1332/1335
+//    (PRF_ROOMFLAGS/PRF_ADVANCED_VIEW + sprintbit), weather/affection
+//    lines, and show_obj_to_char's mode-0 sprintf at :336 reached through
+//    list_obj_to_char(..., mode=0, ...) at :1438 -- needs a fully-populated
+//    room, exactly the "deep room rendering" the task brief calls out as
+//    covered by scripts/boot-golden.sh's real room output rather than a
+//    fixture-driven unit test.
 //  - do_look's case 7 ("look at <target>") and do_examine's own object path,
 //    when the target has no ex_description match, route through
 //    show_obj_to_char's mode 5, which calls call_trigger(ON_EXAMINE_OBJECT,
@@ -90,6 +91,26 @@ void reset_capturing_descriptor(descriptor_data& descriptor, char_data* characte
     descriptor.connected = 0; // CON_PLAYING
     descriptor.character = character;
 }
+
+// Saves, overrides, and restores the process-global weather_info.sunlight
+// (utils.h) around a test -- IS_SUNLIT_EXIT/SUN_PENALTY read it, and the
+// monolithic runner shares one weather_info across every suite, so a test
+// that stamps SUN_LIGHT must put the prior value back.
+struct ScopedSunlight {
+    // The sunlight value in effect before this guard, restored on scope exit.
+    int saved_sunlight;
+
+    explicit ScopedSunlight(int sunlight)
+        : saved_sunlight(weather_info.sunlight)
+    {
+        weather_info.sunlight = sunlight;
+    }
+
+    ~ScopedSunlight()
+    {
+        weather_info.sunlight = saved_sunlight;
+    }
+};
 
 // A single standing PC in room 0 of a fresh single-room test world, with no
 // exits configured -- covers do_exits's "no exits" branch and do_search's
@@ -168,6 +189,13 @@ struct RoomWithExitContext {
         test_world.room().dir_option[door_direction] = &exit;
         exit.to_room = 0;
 
+        // The do_look SCMD_LOOK_EXAM delegation path (do_examine with no
+        // target) renders the room, which ends in show_blood_trail() reading
+        // room 0's bleed_track[] -- neither room_data's constructor nor
+        // dummy_room_data() initializes that array, so zero it here to keep
+        // the "no blood trails" branch (char_number == 0) deterministic.
+        std::memset(&test_world.room().bleed_track, 0, sizeof(test_world.room().bleed_track));
+
         character.specials.position = POSITION_STANDING;
         character.player.race = RACE_HUMAN;
         character.player.level = 1;
@@ -176,6 +204,68 @@ struct RoomWithExitContext {
 
     ~RoomWithExitContext()
     {
+        test_world.room().people = original_people;
+        test_world.room().dir_option[door_direction] = nullptr;
+        // Tests set DARK on the shared room 0 (do_exits's "Too dark to
+        // tell" branch); clear it so later suites in the monolithic runner
+        // see the flag state ScopedTestWorld's reuse branch assumes.
+        test_world.room().room_flags = 0;
+        character.in_room = NOWHERE;
+    }
+};
+
+// RoomWithExitContext's two-room sibling for "look <direction>" into a
+// DIFFERENT room: the dark-exit branch needs the actor's own room lit (or
+// do_look bails out at its "It is pitch black..." gate) while the exit's
+// target room is dark -- impossible with a self-loop exit. Room 1 is
+// stamped with a known name (mirroring ScopedTestWorld's own free-then-
+// str_dup room-0 pattern, since the reuse branch guarantees nothing about
+// room 1's contents) and explicitly cleared flags/light/sector so
+// IS_DARK(1) is driven only by the DARK bit a test chooses to set.
+// exit.general_description is a non-null empty string: unlike do_exits,
+// do_look's direction cases dereference it unconditionally (real world
+// data always allocates it; a default-constructed fixture exit does not).
+struct TwoRoomLookContext {
+    static constexpr int door_direction = 0; // NORTH
+
+    ScopedTestWorld test_world { 2 };
+    char_data character {};
+    descriptor_data descriptor {};
+    room_direction_data exit {};
+    byte knowledge[MAX_SKILLS] {};
+    char_data* original_people = nullptr;
+
+    TwoRoomLookContext()
+    {
+        clear_char(&character, MOB_VOID);
+        reset_capturing_descriptor(descriptor, &character);
+        // See RoomCharacterContext's comment: do_look requires a non-zero fd.
+        descriptor.descriptor = 7;
+        character.knowledge = knowledge;
+
+        original_people = test_world.room().people;
+        character.in_room = 0;
+        character.next_in_room = nullptr;
+        test_world.room().people = &character;
+        test_world.room().dir_option[door_direction] = &exit;
+        exit.to_room = 1;
+        exit.general_description = const_cast<char*>("");
+
+        std::free(world[1].name);
+        world[1].name = str_dup("A Northern Clearing");
+        world[1].room_flags = 0;
+        world[1].light = 0;
+        world[1].sector_type = 0; // SECT_INSIDE: IS_DARK() then keys off DARK only
+
+        character.specials.position = POSITION_STANDING;
+        character.player.race = RACE_HUMAN;
+        character.player.level = 1;
+        character.desc = &descriptor;
+    }
+
+    ~TwoRoomLookContext()
+    {
+        world[1].room_flags = 0;
         test_world.room().people = original_people;
         test_world.room().dir_option[door_direction] = nullptr;
         character.in_room = NOWHERE;
@@ -300,9 +390,55 @@ TEST(ActInfoPerception, DoExitsFormatsOpenExitForImmortalWithRoomNumberAndWidth)
     do_exits(&context.character, const_cast<char*>(""), nullptr, 0, 0);
 
     EXPECT_STREQ(context.descriptor.output,
-        std::format("Obvious exits:\n\rNorth   - [{:>7}][w:{:>2}] {}\n\r", 3001, 4,
-            "The Testing Meadow")
-            .c_str());
+        "Obvious exits:\n\rNorth   - [   3001][w: 4] The Testing Meadow\n\r");
+}
+
+// do_exits: a mortal (below LEVEL_IMMORT) viewing an open exit whose target
+// room is visible (CAN_SEE holds after do_exits temporarily re-homes the
+// character into the target room) sees the plain direction + room-name line
+// -- pins the "%-7s - %s\n\r" conversion (the mortal sibling of the
+// immortal [vnum][width] line above), including nz() on the room name.
+TEST(ActInfoPerception, DoExitsFormatsOpenExitRoomNameForMortal)
+{
+    RoomWithExitContext context;
+
+    do_exits(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "Obvious exits:\n\rNorth   - The Testing Meadow\n\r");
+}
+
+// do_exits: the same mortal open-exit walk when the target room is dark
+// (DARK room flag; the fixture's zero `light` count does the rest per
+// utils.h's IS_DARK) and the viewer has neither PRF_HOLYLIGHT nor infravision
+// -- pins the "%-7s - Too dark to tell\n\r" conversion. The fixture's
+// destructor clears the DARK bit off the shared room 0 afterwards.
+TEST(ActInfoPerception, DoExitsFormatsTooDarkLineForMortalWhenTargetRoomIsDark)
+{
+    RoomWithExitContext context;
+    context.test_world.room().room_flags = DARK;
+
+    do_exits(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "Obvious exits:\n\rNorth   - Too dark to tell\n\r");
+}
+
+// do_exits: an orc viewing an open exit into a sunlit room under SUN_LIGHT
+// takes the sun_exits[] ("#North#") direction column instead of exits[]
+// ("North") -- pins the sunlit-marker variant of the open-exit line
+// (IS_SUNLIT_EXIT needs the exit open, the target room un-DARK/un-SHADOWY/
+// un-INDOORS, and weather_info.sunlight == SUN_LIGHT, guarded/restored by
+// ScopedSunlight). "#North#" is exactly 7 characters, so the {:<7} column
+// adds no padding here -- the one direction whose sunlit marker consumes
+// the entire field width.
+TEST(ActInfoPerception, DoExitsFormatsSunlitExitMarkerForOrcUnderSunlight)
+{
+    RoomWithExitContext context;
+    context.character.player.race = RACE_ORC;
+    ScopedSunlight sunlight(SUN_LIGHT);
+
+    do_exits(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "Obvious exits:\n\r#North# - The Testing Meadow\n\r");
 }
 
 // do_exits: no exits configured at all -- pins the "buf stays empty" branch
@@ -397,6 +533,61 @@ TEST(ActInfoPerception, DoSearchCase1SendsSearchAnnouncementToRoomBystander)
     const std::string output(context.bystander_descriptor.output);
     EXPECT_NE(output.find("searches for something to the north."), std::string::npos)
         << "actual output: " << output;
+}
+
+// ---------------------------------------------------------------------------
+// do_look (act_info.cpp:1037) -- cases 0-5, "look <direction>"
+// ---------------------------------------------------------------------------
+
+// "examine <direction>" (SCMD_LOOK_EXAM) for an orc under SUN_LIGHT: the
+// sun-penalty early return pins both the "To the %s you see:\n\r" header
+// conversion AND the bare "%s\n\r" room-name conversion (plus the literal
+// light-penalty line) without entering the recursive full-room do_look the
+// non-penalized path takes. The exit self-loops to room 0, whose flags stay
+// clear, so SUN_PENALTY(ch) (orc + OUTSIDE + SUN_LIGHT) holds after do_look
+// re-homes the character into the target room.
+TEST(ActInfoPerception, DoLookDirectionExamFormatsHeaderAndRoomNameUnderSunPenalty)
+{
+    RoomWithExitContext context;
+    context.character.player.race = RACE_ORC;
+    context.exit.general_description = const_cast<char*>("");
+    ScopedSunlight sunlight(SUN_LIGHT);
+
+    do_look(&context.character, const_cast<char*>("north"), nullptr, 0, SCMD_LOOK_EXAM);
+
+    EXPECT_STREQ(context.descriptor.output,
+        "To the north you see:\n\r"
+        "The Testing Meadow\n\r"
+        "The power of light makes it hard to see.\n\r");
+}
+
+// "look <direction>" (subcmd 0) into a dark target room: the actor's own
+// room stays lit (or do_look's !CAN_SEE gate would fire first), room 1
+// carries the DARK flag, and the viewer has no PRF_HOLYLIGHT -- pins the
+// "It's too dark to the %s to see anything.\n\r" conversion. The exit's
+// empty (non-null) general_description routes past the exit-description
+// branch into the to_room rendering, and the trailing door-state block
+// appends nothing (no door flags, null keyword).
+TEST(ActInfoPerception, DoLookDirectionFormatsTooDarkMessageWhenTargetRoomIsDark)
+{
+    TwoRoomLookContext context;
+    world[1].room_flags = DARK;
+
+    do_look(&context.character, const_cast<char*>("north"), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "It's too dark to the north to see anything.\n\r");
+}
+
+// "look <direction>" (subcmd 0) into a visible target room -- pins the
+// "To the %s you see %s.\n\r" conversion, including nz() on the target
+// room's name.
+TEST(ActInfoPerception, DoLookDirectionFormatsTargetRoomNameWhenVisible)
+{
+    TwoRoomLookContext context;
+
+    do_look(&context.character, const_cast<char*>("north"), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "To the north you see A Northern Clearing.\n\r");
 }
 
 // ---------------------------------------------------------------------------
@@ -523,4 +714,28 @@ TEST(ActInfoPerception, DoExamineContainerDelegatesInPrefixedLookMessageForDrink
         "It looks like a drink container.\n\r"
         "When you look inside, you see:\n\r"
         "It's full of a clear liquid.\n\r");
+}
+
+// do_examine with NO target delegates to do_look(ch, "", wtl, CMD_LOOK,
+// SCMD_LOOK_EXAM) with PRF_SPAM force-toggled on, which renders the full
+// room (do_look case 8) -- pinning the case-8 composition this fixture can
+// reach: room name + the "    Exits are:" line with the plain " N" exit
+// mark (exit_mark[1], the unconverted runtime-format-table site) + the
+// PRF_SPAM-gated room description. No room flags/colors/objects/other
+// characters are configured, sunlight stays at the fixture default, and
+// bleed_track is zeroed by the fixture, so nothing else contributes bytes.
+// (The deeper case-8 variants -- PRF_ROOMFLAGS/PRF_ADVANCED_VIEW headers,
+// weather, affections -- remain boot-golden territory per the task brief.)
+TEST(ActInfoPerception, DoExamineWithoutTargetRendersRoomViaLookExamDelegation)
+{
+    RoomWithExitContext context;
+    ASSERT_FALSE(PRF_FLAGGED(&context.character, PRF_SPAM));
+
+    do_examine(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output,
+        "The Testing Meadow    Exits are: N\n\r"
+        "A quiet room used for account-menu tests.\n\r");
+    // do_examine restores the toggled PRF_SPAM bit on its way out.
+    EXPECT_FALSE(PRF_FLAGGED(&context.character, PRF_SPAM));
 }

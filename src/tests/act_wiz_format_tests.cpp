@@ -70,6 +70,14 @@ ACMD(do_last);
 ACMD(do_date);
 ACMD(do_uptime);
 ACMD(do_show);
+ACMD(do_at);
+ACMD(do_goto);
+ACMD(do_load);
+ACMD(do_purge);
+ACMD(do_zreset);
+ACMD(do_force);
+
+int find_target_room(struct char_data* ch, char* rawroomstr);
 void do_stat_room(struct char_data* ch);
 void do_stat_object(struct char_data* ch, struct obj_data* j);
 void do_stat_character(struct char_data* ch, struct char_data* k);
@@ -1741,4 +1749,234 @@ TEST(ActWizInspection, DoShowFormatsAliasesNoneDefinedLine)
     EXPECT_NE(std::string(viewer.descriptor.output).find("Sam has no aliases defined.\n\r"),
         std::string::npos)
         << viewer.descriptor.output;
+}
+
+// ---------------------------------------------------------------------------
+// ActWizWorldManip -- Phase 4 Wave 3 Task 6 (Chunk W2 -- act_wiz.cpp
+// world-manipulation family: do_at, do_goto, do_trans, do_teleport, do_load,
+// do_purge, do_zreset, do_switch, do_return, do_snoop, do_force). Same
+// binding pattern as every other chunk this wave: these pin the CURRENT
+// byte-for-byte output of every fixture-reachable error/usage line --
+// confirmed passing against the pre-conversion source -- before this
+// chunk's sprintf sites convert to std::format, and green again after.
+//
+// Deliberately NOT unit-tested here (documented exclusions, not oversights):
+//  - do_trans (act_wiz.cpp:321), do_teleport (act_wiz.cpp:369), do_switch
+//    (act_wiz.cpp:1257), do_return (act_wiz.cpp:1297), do_snoop
+//    (act_wiz.cpp:1204): every branch in all five is a literal
+//    send_to_char()/act() call -- zero sprintf/strcat/strcpy composition
+//    anywhere in any of them (verified by inspection in Step 1) -- so there
+//    is nothing for this task's std::format transform to touch. Covered by
+//    the boot golden smoke test for compile-level regressions only.
+//  - do_goto's two `sprintf(buf, "%s", ...)` poofin/poofout lines DO convert
+//    (see the transform commit) but are only reachable through do_goto's
+//    success path (an actual room transfer, `act()` to two rooms, a
+//    `do_look()`); that mutation itself is out of scope per the SCOPE NOTE
+//    below, so only the shared `find_target_room()` failure path (below) is
+//    pinned directly for do_goto.
+//  - do_load's mob/obj creation success paths (act_wiz.cpp:1336-1365) hand a
+//    freshly-`read_mobile()`/`read_object()`-allocated pointer into the live
+//    world graph via char_to_room()/obj_to_char() -- ownership leaves the
+//    function, so per the transform catalog's RAII item this pointer is NOT
+//    wrapped in RAII (recorded in the transform commit body). do_load has no
+//    sprintf/strcat of its own on ANY path (every message is a literal
+//    send_to_char()), so there is no format conversion here either -- only
+//    its four fixture-reachable usage/error lines are pinned below.
+//  - do_load's `if ((number = atoi(buf2)) < 0)` "A NEGATIVE number??"
+//    branch (act_wiz.cpp:1332-1335) is unreachable dead code: the preceding
+//    guard already requires `isdigit(*buf2)` to proceed past the usage
+//    check, and atoi() of a string starting with a digit character can
+//    never yield a negative value. Not tested (nothing exercises it in
+//    production either).
+//  - do_purge's "zone" branch (act_wiz.cpp:1424-1441), single-target success
+//    branch (extract_char/extract_obj, act_wiz.cpp:1443-1485), and
+//    no-argument whole-room branch (act_wiz.cpp:1486-1512) all mutate the
+//    world graph (extract_char/extract_obj/Crash_idlesave/close_socket) --
+//    out of scope per the SCOPE NOTE below. Their sprintf-to-mudlog() lines
+//    (act_wiz.cpp:1438, 1469) still convert (transform commit), pinned only
+//    by line-by-line diff review against catalog item 2, not by a unit
+//    test. Only the side-effect-free early-return branches (silent
+//    NOWHERE-room guard, "I don't know anyone or anything by that name")
+//    are pinned below.
+//  - do_zreset's `arg == '*'` (reset the whole world) and successful
+//    single-zone reset branches (act_wiz.cpp:2103-2121) call reset_zone(),
+//    a world mutation -- out of scope. Its sprintf-to-send_to_char and
+//    sprintf-to-mudlog lines (act_wiz.cpp:2118, 2120) still convert
+//    (transform commit: catalog items 1 and 2 respectively), pinned only by
+//    diff review. Only the side-effect-free NPC/empty-argument/
+//    unmatched-zone-number branches are pinned below.
+//  - do_force's "all"/"room" broadcast branches and the found-victim branch
+//    of its name-target path (act_wiz.cpp:1913-1961) all call
+//    command_interpreter() on a live character and/or walk descriptor_list
+//    to message other connected players -- world/session mutation, out of
+//    scope. Its unconditional buf1/buf2 sprintf lines (act_wiz.cpp:1904-1905)
+//    and the three duplicated "(GC) ... forced ... to ..." log lines
+//    (act_wiz.cpp:1921, 1931, 1948) still convert (transform commit), pinned
+//    by diff review; only the missing-argument and victim-not-found early
+//    returns (which still exercise the unconditional buf1/buf2 composition
+//    every call performs) are pinned below.
+//
+// SCOPE NOTE (task brief): do_load's and do_purge's object/mob creation
+// hands ownership into the world graph -- the RAII catalog item does NOT
+// apply to those pointers; only formatting composition converts in this
+// chunk, and even that formatting conversion is absent from do_load (no
+// sprintf at all). Success paths with world side effects (teleport/load/
+// purge/reset/force-broadcast) are NOT unit-tested here; the boot golden +
+// dual local gate cover compile-level regressions on those paths, and the
+// formatting conversions living on them are pinned by reviewing the diff
+// line-by-line against transform catalog items 1/2 equivalence.
+
+TEST(ActWizWorldManip, DoAtRejectsEmptyRoomArgument)
+{
+    SoloCharacterContext context;
+    char argument[] = "";
+    do_at(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "You must supply a room number or a name.\n\r");
+}
+
+TEST(ActWizWorldManip, DoAtRejectsUnknownRoomNumber)
+{
+    // find_target_room()'s real_room() lookup dereferences world[] --
+    // BASE_WORLD must be allocated (room_data::operator[] aborts otherwise)
+    // even though the requested room number (999999) never matches any
+    // room in this 1-room test world.
+    ScopedTestWorld test_world;
+    SoloCharacterContext context;
+    char argument[] = "999999 look";
+    do_at(&context.character, argument, nullptr, 0, 0);
+    EXPECT_NE(std::string(context.descriptor.output).find("No room exists with that number."),
+        std::string::npos)
+        << context.descriptor.output;
+}
+
+// do_goto: pins the invalid-target error line (no world mutation). Shares
+// find_target_room() with do_at above.
+TEST(ActWizWorldManip, DoGotoRejectsUnknownRoomWithErrorLine)
+{
+    ScopedTestWorld test_world;
+    SoloCharacterContext context;
+    char argument[] = " 999999";
+    do_goto(&context.character, argument, nullptr, 0, 0);
+    EXPECT_NE(std::string(context.descriptor.output).find("No room exists with that number."),
+        std::string::npos)
+        << context.descriptor.output;
+}
+
+TEST(ActWizWorldManip, DoLoadRejectsUsageWithMissingArguments)
+{
+    SoloCharacterContext context;
+    char argument[] = "";
+    do_load(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "Usage: load { obj | mob } <number>\n\r");
+}
+
+TEST(ActWizWorldManip, DoLoadRejectsUnknownMobileNumber)
+{
+    // real_mobile()'s binary search dereferences mob_index[] -- give it one
+    // fabricated entry (virt 1) so the "not found" path (requested number
+    // 42 never matches) exercises real_mobile() safely instead of walking a
+    // null mob_index.
+    ScopedMobIndexEntry mob_index_entry(1, false);
+    SoloCharacterContext context;
+    char argument[] = "mob 42";
+    do_load(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "There is no monster with that number.\n\r");
+}
+
+TEST(ActWizWorldManip, DoLoadRejectsUnknownObjectNumber)
+{
+    ScopedObjIndexEntry obj_index_entry(1, false);
+    SoloCharacterContext context;
+    char argument[] = "obj 42";
+    do_load(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "There is no object with that number.\n\r");
+}
+
+TEST(ActWizWorldManip, DoLoadRejectsUnrecognizedType)
+{
+    SoloCharacterContext context;
+    char argument[] = "foo 5";
+    do_load(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "That'll have to be either 'obj' or 'mob'.\n\r");
+}
+
+TEST(ActWizWorldManip, DoPurgeSilentlyIgnoresCallerWithNoRoom)
+{
+    // clear_char() leaves in_room == NOWHERE; do_purge()'s very first guard
+    // returns immediately without emitting anything.
+    SoloCharacterContext context;
+    char argument[] = "";
+    do_purge(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "");
+}
+
+TEST(ActWizWorldManip, DoPurgeReportsUnknownTarget)
+{
+    ScopedTestWorld test_world;
+    SoloCharacterContext context;
+    context.character.in_room = 0;
+    char argument[] = "NoSuchCreatureOrObject";
+    do_purge(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output),
+        "I don't know anyone or anything by that name.\n\r");
+}
+
+TEST(ActWizWorldManip, DoZresetRejectsNpcCaller)
+{
+    char_data npc { };
+    descriptor_data npc_descriptor { };
+    clear_char(&npc, MOB_ISNPC);
+    npc.specials2.act = MOB_ISNPC;
+    reset_capturing_descriptor(npc_descriptor, &npc);
+    npc.desc = &npc_descriptor;
+
+    char argument[] = "1";
+    do_zreset(&npc, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(npc_descriptor.output), "Homie don't play that!\n\r");
+}
+
+TEST(ActWizWorldManip, DoZresetRejectsEmptyArgument)
+{
+    SoloCharacterContext context;
+    char argument[] = "";
+    do_zreset(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "You must specify a zone.\n\r");
+}
+
+TEST(ActWizWorldManip, DoZresetReportsInvalidZoneNumber)
+{
+    // ScopedZoneTable seeds a single zone numbered 0; requesting zone 999
+    // (not '*' and not '.') walks the whole table without a match and falls
+    // through to the "invalid" branch without ever calling reset_zone().
+    ScopedZoneTable zone_table_scope(0);
+    SoloCharacterContext context;
+    char argument[] = "999";
+    do_zreset(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "Invalid zone number.\n\r");
+}
+
+TEST(ActWizWorldManip, DoForceRejectsMissingNameOrCommand)
+{
+    // do_force() unconditionally composes buf1/buf2 (GET_NAME(ch) + to_force)
+    // before checking whether name/to_force were even supplied, so
+    // player.name must be set even for this early-return branch.
+    SoloCharacterContext context;
+    context.character.player.name = const_cast<char*>("Gandalf");
+    char argument[] = "";
+    do_force(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "Whom do you wish to force do what?\n\r");
+}
+
+TEST(ActWizWorldManip, DoForceReportsNoSuchVictim)
+{
+    // get_char_vis() -> get_char_room_vis() dereferences world[] via
+    // ch->in_room, so BASE_WORLD must be allocated even though the named
+    // victim is never linked into it (or into character_list).
+    ScopedTestWorld test_world;
+    SoloCharacterContext context;
+    context.character.player.name = const_cast<char*>("Gandalf");
+    context.character.in_room = 0;
+    char argument[] = "NoSuchVictim quit";
+    do_force(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "No-one by that name here...\n\r");
 }

@@ -155,6 +155,24 @@ inline int rots_unsetenv(const char* name)
 #endif
 }
 
+// rots_mkdir: portable replacement for POSIX mkdir(2) in test fixtures that
+// pre-create an "accounts"/"accounts/<bucket>" directory tree by hand
+// (interpre_account_menu_tests.cpp). POSIX: direct passthrough, honoring the
+// requested mode. Windows: the CRT's mkdir/_mkdir takes no mode argument at
+// all (no owner/group/other bits -- the directory inherits its parent's ACL
+// instead), the same asymmetry account_management.cpp's
+// create_directory_if_missing already gates on; this is that same shape as a
+// two-argument shim so call sites don't need their own #ifdef.
+inline int rots_mkdir(const char* path, int mode)
+{
+#if defined(_WIN32)
+    (void)mode;
+    return _mkdir(path);
+#else
+    return mkdir(path, static_cast<mode_t>(mode));
+#endif
+}
+
 // rots_chmod: compile-time stand-in for POSIX chmod(2) in test fixtures.
 // On POSIX this is a direct passthrough. On Windows, _chmod only understands
 // _S_IREAD/_S_IWRITE (there are no owner/group/other bits and no execute

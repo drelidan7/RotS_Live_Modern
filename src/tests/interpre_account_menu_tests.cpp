@@ -1466,8 +1466,8 @@ TEST(InterpreAccountMenu, LinkedRosterLevelOneHundredAllowsDifferentSelectionWhe
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -1518,8 +1518,8 @@ TEST(InterpreAccountMenu, LinkedRosterLevelNinetyOneDoesNotUnlockDifferentSelect
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1557,8 +1557,8 @@ TEST(InterpreAccountMenu, MissingHighLevelLinkedRosterCharacterDoesNotUnlockDiff
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1593,8 +1593,8 @@ TEST(InterpreAccountMenu, CorruptHighLevelLinkedRosterCharacterDoesNotUnlockDiff
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1632,8 +1632,8 @@ TEST(InterpreAccountMenu, DeletedHighLevelLinkedRosterCharacterDoesNotUnlockDiff
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1671,9 +1671,9 @@ TEST(InterpreAccountMenu, DuplicateOwnedHighLevelLinkedRosterCharacterDoesNotUnl
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/K-O", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/K-O", 0700), 0);
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1715,9 +1715,9 @@ TEST(InterpreAccountMenu, DuplicateOwnedActiveHighLevelLinkedCharacterDoesNotUnl
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/K-O", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/K-O", 0700), 0);
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1766,9 +1766,9 @@ TEST(InterpreAccountMenu, DuplicateOwnedActiveLowLevelLinkedCharacterStillRestri
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/K-O", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/K-O", 0700), 0);
 
     account::AccountData stored_account;
     std::string error_message;
@@ -1813,8 +1813,8 @@ TEST(InterpreAccountMenu, ActiveHighLevelLinkedCharacterWithoutDescriptorAccount
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
     static char test_motd[] = "Test MOTD\r\n";
     ScopedMotdOverride motd_override(test_motd);
 
@@ -1862,8 +1862,8 @@ TEST(InterpreAccountMenu, ActiveLowLevelLinkedCharacterWithoutDescriptorAccountN
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
 
     account::AccountData stored_account;
     std::string error_message;
@@ -2214,8 +2214,8 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenLink
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedPlayerTableReset player_table_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
     ScopedTestWorld test_world;
     test_world.room().number = 3001;
     static char test_motd[] = "Test MOTD\r\n";
@@ -2323,8 +2323,8 @@ TEST(InterpreAccountMenu, LinkedRosterLevelOneHundredAllowsNewCharacterCreation)
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedDescriptorListReset descriptor_list_reset;
-    ASSERT_EQ(mkdir("accounts", 0700), 0);
-    ASSERT_EQ(mkdir("accounts/A-E", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts", 0700), 0);
+    ASSERT_EQ(rots_mkdir("accounts/A-E", 0700), 0);
 
     account::AccountData stored_account;
     std::string error_message;

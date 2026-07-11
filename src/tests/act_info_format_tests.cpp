@@ -104,8 +104,21 @@ ACMD(do_info);
 ACMD(do_toggle);
 ACMD(do_affections);
 ACMD(do_gen_ps);
+ACMD(do_time);
+ACMD(do_who);
+ACMD(do_levels);
+ACMD(do_consider);
+ACMD(do_rank);
 
 void clear_char(struct char_data* ch, int mode);
+
+// Process globals ActInfoWorldSocial's fixtures stamp directly (db.cpp/
+// comm.cpp definitions; none of these are declared in a shared header, same
+// as this file's existing `extern char buf[];` below).
+extern struct time_info_data time_info;
+extern struct player_index_element* player_table;
+extern int top_of_p_table;
+extern struct descriptor_data* descriptor_list;
 
 namespace {
 
@@ -420,6 +433,149 @@ void ensure_skill_timer_created()
     game_timer::skill_timer::create(weather_info, nullptr);
     game_rules::big_brother::create(weather_info, nullptr);
 }
+
+// Saves/restores the process-global `time_info` calendar fields plus the
+// two `weather_info` fields do_time reads (moonlight/moonphase) -- the
+// monolithic runner shares one process, so a test that stamps a specific
+// year/month/day/hour must put the prior values back (same hygiene as
+// ScopedSunlight above).
+struct ScopedTimeAndWeather {
+    // Full time_info_data snapshot taken at construction, written back on
+    // scope exit.
+    time_info_data saved_time_info;
+    // weather_info.moonlight/moonphase snapshot (weather_info itself is a
+    // shared global; only these two fields are touched by do_time).
+    int saved_moonlight;
+    int saved_moonphase;
+
+    ScopedTimeAndWeather()
+        : saved_time_info(time_info)
+        , saved_moonlight(weather_info.moonlight)
+        , saved_moonphase(weather_info.moonphase)
+    {
+    }
+
+    ~ScopedTimeAndWeather()
+    {
+        time_info = saved_time_info;
+        weather_info.moonlight = saved_moonlight;
+        weather_info.moonphase = saved_moonphase;
+    }
+};
+
+// do_rank consults the process-global player index (`player_table`/
+// `top_of_p_table`, db.h's player_index_element) via GET_INDEX(ch) ==
+// ch->player_index rather than any pkill leaderboard machinery for the
+// character's OWN rank number: pkill_get_totalrank_by_character_id() reads
+// player_table[idx].rank directly. A single-entry player_table with
+// .rank == 0 is therefore enough to drive do_rank's "ranked" header without
+// booting real pkill data. The leaderboard walk that follows
+// (pkill_get_leader_by_rank, for the "3 above/3 below" listing) consults
+// pkill.cpp's file-local good_ranking/evil_ranking RANKING tables instead;
+// those are static globals nothing in this test binary ever populates
+// (rank_len stays 0), so pkill_get_leader_by_rank immediately returns an
+// invalid dummy leader and do_rank's per-rank loop stops after one no-op
+// iteration -- never touching player_table beyond the rank lookup above.
+struct RankedCharacterContext {
+    char_data character {};
+    descriptor_data descriptor {};
+    // Single-entry stand-in for the real player_table; player_index 0
+    // resolves into this entry via GET_INDEX(ch)/pkill_get_rank_by_character.
+    player_index_element entry {};
+    player_index_element* saved_player_table;
+    int saved_top_of_p_table;
+
+    explicit RankedCharacterContext(int race)
+    {
+        clear_char(&character, MOB_VOID);
+        reset_capturing_descriptor(descriptor, &character);
+        character.desc = &descriptor;
+        character.specials.position = POSITION_STANDING;
+        character.player.race = race;
+        character.player_index = 0;
+
+        entry.name = const_cast<char*>("Ranked");
+        entry.rank = 0;
+        entry.totalrank = 0;
+
+        saved_player_table = player_table;
+        saved_top_of_p_table = top_of_p_table;
+        player_table = &entry;
+        top_of_p_table = 0;
+    }
+
+    ~RankedCharacterContext()
+    {
+        player_table = saved_player_table;
+        top_of_p_table = saved_top_of_p_table;
+    }
+};
+
+// Mirrors act_wiz_tests.cpp's ScopedDescriptorList (Phase 4 Wave 1): saves
+// and clears the process-global descriptor_list around a do_who/do_users
+// test, restoring it on scope exit. Deliberately simpler than the
+// act_wiz_tests.cpp original -- this file's descriptor-list tests never
+// touch the account-character-selection-unlock map that class also resets,
+// so that call is left out rather than pulled in for no reason. Per-file
+// duplication (not a shared header) matches this suite's existing
+// reset_capturing_descriptor/SoloCharacterContext convention.
+class ScopedDescriptorList {
+public:
+    ScopedDescriptorList()
+        : m_previous_descriptor_list(descriptor_list)
+    {
+        descriptor_list = nullptr;
+    }
+
+    ~ScopedDescriptorList()
+    {
+        descriptor_list = m_previous_descriptor_list;
+    }
+
+private:
+    // The process-global descriptor_list value in effect before this guard,
+    // restored on scope exit.
+    descriptor_data* m_previous_descriptor_list;
+};
+
+// Two connected PCs wired into a minimal, from-scratch descriptor_list --
+// covers do_who's header/dashline/footer-count formatting without needing
+// any world/room data (do_who only touches ch->in_room for the "-z"/"-r"
+// filters, neither of which this fixture exercises).
+struct WhoDescriptorListContext {
+    ScopedDescriptorList descriptor_list_scope;
+    char_data viewer {};
+    char_data other {};
+    descriptor_data viewer_descriptor {};
+    descriptor_data other_descriptor {};
+
+    WhoDescriptorListContext()
+    {
+        clear_char(&viewer, MOB_VOID);
+        clear_char(&other, MOB_VOID);
+        reset_capturing_descriptor(viewer_descriptor, &viewer);
+        reset_capturing_descriptor(other_descriptor, &other);
+        viewer_descriptor.connected = CON_PLYNG;
+        other_descriptor.connected = CON_PLYNG;
+        viewer.desc = &viewer_descriptor;
+        other.desc = &other_descriptor;
+
+        viewer.player.race = RACE_HUMAN;
+        other.player.race = RACE_HUMAN;
+        viewer.player.level = 50;
+        other.player.level = 30;
+        viewer.player.name = const_cast<char*>("Viewer");
+        other.player.name = const_cast<char*>("Other");
+        viewer.player.title = const_cast<char*>("");
+        other.player.title = const_cast<char*>("the Wanderer");
+        viewer.specials.position = POSITION_STANDING;
+        other.specials.position = POSITION_STANDING;
+
+        other_descriptor.next = nullptr;
+        viewer_descriptor.next = &other_descriptor;
+        descriptor_list = &viewer_descriptor;
+    }
+};
 
 } // namespace
 
@@ -1339,4 +1495,215 @@ TEST(ActInfoSelfStatus, DoGenPsWhoamiEchoesCharacterNameWithCrlf)
     do_gen_ps(&context.character, const_cast<char*>(""), nullptr, 0, SCMD_WHOAMI);
 
     EXPECT_STREQ(context.descriptor.output, "Aragorn\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// Characterization tests for Phase 4 Wave 3 Task 3 (Chunk I3 --
+// act_info.cpp world/social family: do_time, do_rank, do_consider, do_who,
+// do_levels; plus every act_info RAII allocation site in the file --
+// do_time's nth(), do_fame's pkill_get_string x3 + rots_asprintf, do_rank's
+// nth() -- this chunk owns them all). Suite ActInfoWorldSocial below. Same
+// binding pattern as Tasks 1-2: these pin CURRENT byte-for-byte output --
+// confirmed passing against the pre-conversion source -- before the
+// bufpt-accumulation/sprintf-chain sites convert to std::format/std::string
+// composition and the four malloc'd-char* RAII sites become immediate
+// capture-and-free, and green again after.
+//
+// Deliberately NOT unit-tested here (documented exclusions, not oversights):
+//  - do_weather (act_info.cpp:2034): every branch is a literal
+//    send_to_char() (or a delegate call to the extern weather_to_char()) --
+//    no sprintf/strcpy of its own, nothing for this task's transform to
+//    touch.
+//  - do_consider (act_info.cpp:2781) itself has no sprintf/strcpy either --
+//    every diff band is a literal send_to_char() -- so there is no
+//    conversion site in do_consider proper; the tests below still pin its
+//    level-delta ladder because the brief calls it out by name and the
+//    ladder is cheap to lock in, but "converting" it is a no-op.
+//  - do_where (act_info.cpp:2701) is a two-line dispatcher with no sprintf
+//    of its own; the formatting lives in perform_mortal_where/
+//    perform_immort_where (act_info.cpp:2585/2620), which are NOT in this
+//    chunk's function list (same exclusion pattern as Task 1's
+//    diag_char_to_char) -- not converted or tested here.
+//  - do_users (act_info.cpp:2377), do_help (act_info.cpp:2075),
+//    do_commands (act_info.cpp:2975), do_whois (act_info.cpp:3125), and
+//    do_fame (act_info.cpp:3635, plus do_fame_leader_string:3614) are
+//    converted (transform diff) but not pinned by a dedicated fixture-driven
+//    test here: do_users/do_who both need a live descriptor_list, and the
+//    minimal WhoDescriptorListContext below already exercises that harness
+//    shape for do_who; do_help needs lib/text/help_tbl file data (fseek/
+//    fgets against help_content[]) this binary never loads; do_commands
+//    needs a populated cmd_info[]/sort_commands() table (real command
+//    dispatch, not fixture-buildable); do_whois needs a populated
+//    player_table AND the on-disk player file load_player() falls back to;
+//    do_fame's "war"/"all" paths need real pkill leaderboard data
+//    (good_ranking/evil_ranking) and its by-name path needs
+//    find_player_in_table() to resolve a real player_table entry by name --
+//    all four are covered instead by the transform-diff review plus the
+//    macOS/rots64 dual gate's boot-golden smoke test, per this wave's
+//    pre-approved fallback for fixture-impractical sites.
+//  - get_level_abbr (act_info.cpp:3220), do_whois's static level-string
+//    helper, is textually adjacent to do_whois but is NOT in this chunk's
+//    function list -- not converted or tested here (same exclusion pattern
+//    as Task 1/2's out-of-list static helpers).
+
+TEST(ActInfoWorldSocial, DoTimeFormatsStewardsReckoningYearWithNthOrdinalSuffix)
+{
+    SoloCharacterContext context;
+    ScopedTimeAndWeather time_guard;
+
+    // year % 10 == 1 but year != 11 -> the "st" branch of nth(), not the
+    // default "th" -- exercises the ordinal-suffix logic the RAII
+    // conversion (nth()'s malloc'd char* -> capture-and-free) must not
+    // disturb.
+    time_info.year = 21;
+    time_info.month = 5;
+    time_info.day = 10;
+    time_info.hours = 10;
+    weather_info.moonlight = 0;
+    weather_info.moonphase = 0;
+
+    do_time(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "By the Steward's Reckoning, it is the 21st year of the "
+                    "fourth age of Arda.\r\n")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_rank: pins the ranked-path header INCLUDING nth()'s ordinal suffix
+// ("1st"), which the RAII conversion must not disturb, for a good-race PC.
+TEST(ActInfoWorldSocial, DoRankFormatsOrdinalRankHeaderForGoodRace)
+{
+    RankedCharacterContext context(RACE_HUMAN);
+
+    do_rank(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "You are ranked 1st among the free peoples of "
+                    "Middle-earth:\r\n")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_rank: same ranked-path header, evil-race branch -- pins the
+// RACE_GOOD(ch) ternary's other side.
+TEST(ActInfoWorldSocial, DoRankFormatsOrdinalRankHeaderForEvilRace)
+{
+    RankedCharacterContext context(RACE_URUK);
+
+    do_rank(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "You are ranked 1st among the forces of the Shadow:\r\n")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_consider: level-delta ladder, diff <= -10 branch (act_info.cpp:2800).
+TEST(ActInfoWorldSocial, DoConsiderFormatsChickenMessageForFarWeakerVictim)
+{
+    RoomWithBystanderContext context;
+    context.actor.player.name = const_cast<char*>("Attacker");
+    context.bystander.player.name = const_cast<char*>("Weakling");
+    context.actor.player.level = 30;
+    context.bystander.player.level = 10; // diff == -20
+
+    do_consider(&context.actor, const_cast<char*>("Weakling"), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.actor_descriptor.output, "Now where did that chicken go?\n\r");
+}
+
+// do_consider: level-delta ladder, diff == 0 branch (act_info.cpp:2808).
+TEST(ActInfoWorldSocial, DoConsiderFormatsPerfectMatchMessageForEqualLevel)
+{
+    RoomWithBystanderContext context;
+    context.actor.player.name = const_cast<char*>("Attacker");
+    context.bystander.player.name = const_cast<char*>("Peer");
+    context.actor.player.level = 20;
+    context.bystander.player.level = 20; // diff == 0
+
+    do_consider(&context.actor, const_cast<char*>("Peer"), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.actor_descriptor.output, "The perfect match!\n\r");
+}
+
+// do_consider: level-delta ladder, diff == 10 branch (act_info.cpp:2818) --
+// the upper edge of the "Are you mad!?" band.
+TEST(ActInfoWorldSocial, DoConsiderFormatsAreYouMadMessageAtUpperBoundary)
+{
+    RoomWithBystanderContext context;
+    context.actor.player.name = const_cast<char*>("Attacker");
+    context.bystander.player.name = const_cast<char*>("Champion");
+    context.actor.player.level = 20;
+    context.bystander.player.level = 30; // diff == 10
+
+    do_consider(&context.actor, const_cast<char*>("Champion"), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.actor_descriptor.output, "Are you mad!?\n\r");
+}
+
+// do_consider: level-delta ladder, diff == 11 branch (act_info.cpp:2820) --
+// one past the "Are you mad!?" band, into the final "You ARE mad!" catch-all.
+TEST(ActInfoWorldSocial, DoConsiderFormatsYouAreMadMessageBeyondUpperBoundary)
+{
+    RoomWithBystanderContext context;
+    context.actor.player.name = const_cast<char*>("Attacker");
+    context.bystander.player.name = const_cast<char*>("Overlord");
+    // Both levels stay <= LEVEL_MAX (30) so GET_LEVELB()'s dampening
+    // (utils.h: min(level, LEVEL_MAX*2/3 + level/3)) is a no-op here and
+    // diff is a plain level subtraction.
+    context.actor.player.level = 19;
+    context.bystander.player.level = 30; // diff == 11
+
+    do_consider(&context.actor, const_cast<char*>("Overlord"), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.actor_descriptor.output, "You ARE mad!\n\r");
+}
+
+// do_levels: pins the header line (profession percentages + table caption)
+// and the table's first data row -- a zeroed char_prof_data (from
+// clear_char()) keeps every profession percentage/xp-per-level column
+// deterministically 0.
+TEST(ActInfoWorldSocial, DoLevelsFormatsHeaderAndFirstTableRow)
+{
+    SoloCharacterContext context;
+
+    do_levels(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "You are 0% Warrior, 0% Ranger, 0% Mystic, 0% Mage\r\n"
+                    "Level:  Exp. to Level  : Warrior :  Ranger :  Mystic : Mage :\r\n")
+        != nullptr)
+        << context.descriptor.output;
+    EXPECT_TRUE(strstr(context.descriptor.output, "[ 1]     1500-6000     :         0         0         0         0\n\r")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_levels: IS_NPC(ch) guard rejects mobiles outright -- no table at all.
+TEST(ActInfoWorldSocial, DoLevelsRejectsNpcCaller)
+{
+    SoloCharacterContext context;
+    SET_BIT(context.character.specials2.act, MOB_ISNPC);
+
+    do_levels(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "You ain't nothin' but a hound-dog.\n\r");
+}
+
+// do_who: header/dashline/footer-count formatting against a minimal,
+// from-scratch descriptor_list (two connected PCs, no world/room data) --
+// pins the "Players\r\n-------\r\n" header/dashline pair and the
+// "N character(s) displayed." footer's pluralization.
+TEST(ActInfoWorldSocial, DoWhoFormatsHeaderDashlineAndFooterCountForTwoPlayers)
+{
+    WhoDescriptorListContext context;
+
+    do_who(&context.viewer, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.viewer_descriptor.output, "Players\r\n-------\r\n") != nullptr)
+        << context.viewer_descriptor.output;
+    EXPECT_TRUE(strstr(context.viewer_descriptor.output, "\n\r2 characters displayed.\n\r") != nullptr)
+        << context.viewer_descriptor.output;
 }

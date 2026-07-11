@@ -168,6 +168,7 @@ if(ROTS_BUILD_TESTS)
         tests/account_management_types_header_compile.cpp
         tests/act_format_tests.cpp
         tests/act_info_format_tests.cpp
+        tests/act_wiz_format_tests.cpp
         tests/act_wiz_tests.cpp
         tests/battle_mage_handler_tests.cpp
         tests/boards_json_tests.cpp

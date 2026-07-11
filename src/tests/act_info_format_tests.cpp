@@ -1833,11 +1833,22 @@ TEST(ActInfoObjectId, DoCompareFormatsMuchBetterVerdictForLargeLevelGap)
     sword.name = const_cast<char*>("sword");
     sword.short_description = const_cast<char*>("a gleaming sword");
     sword.obj_flags = builders::ObjFlagDataBuilder().setLevel(50).build();
+    // ObjFlagDataBuilder's underlying obj_flag_data has no user-declared
+    // constructor/member initializers -- fields its setters don't touch
+    // (extra_flags here) are indeterminate, not zeroed (see the
+    // do_identify_object tests below for the fuller writeup). get_obj_in_list_vis's
+    // CAN_SEE_OBJ() visibility gate reads extra_flags's ITEM_INVISIBLE bit,
+    // so an unset extra_flags risks a stack-garbage-dependent, test-order-
+    // sensitive false "invisible" read (confirmed by observation: these two
+    // tests failed only when run immediately after a preceding test whose
+    // stack usage happened to leave that bit set).
+    sword.obj_flags.extra_flags = 0;
 
     obj_data dagger {};
     dagger.name = const_cast<char*>("dagger");
     dagger.short_description = const_cast<char*>("a rusty dagger");
     dagger.obj_flags = builders::ObjFlagDataBuilder().setLevel(1).build();
+    dagger.obj_flags.extra_flags = 0;
 
     dagger.next_content = context.character.carrying;
     sword.next_content = &dagger;
@@ -1857,11 +1868,15 @@ TEST(ActInfoObjectId, DoCompareFormatsAboutSameVerdictForSmallLevelGap)
     sword.name = const_cast<char*>("sword");
     sword.short_description = const_cast<char*>("a gleaming sword");
     sword.obj_flags = builders::ObjFlagDataBuilder().setLevel(20).build();
+    // See the sibling test above: zero the builder-untouched extra_flags
+    // field CAN_SEE_OBJ() reads rather than leave it indeterminate.
+    sword.obj_flags.extra_flags = 0;
 
     obj_data dagger {};
     dagger.name = const_cast<char*>("dagger");
     dagger.short_description = const_cast<char*>("a rusty dagger");
     dagger.obj_flags = builders::ObjFlagDataBuilder().setLevel(21).build();
+    dagger.obj_flags.extra_flags = 0;
 
     dagger.next_content = context.character.carrying;
     sword.next_content = &dagger;

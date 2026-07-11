@@ -3926,37 +3926,39 @@ ACMD(do_compare)
 
     obj1 = get_obj_in_list_vis(ch, str1, ch->carrying, 9999);
     if (!obj1) {
-        sprintf(buf, "You don't seem to have any %s.\n\r", str1);
-        send_to_char(buf, ch);
+        send_to_char(std::format("You don't seem to have any {}.\n\r", str1).c_str(), ch);
         return;
     }
 
     obj2 = get_obj_in_list_vis(ch, str2, ch->carrying, 9999);
     if (!obj2) {
-        sprintf(buf, "You don't seem to have any %s.\n\r", str2);
-        send_to_char(buf, ch);
+        send_to_char(std::format("You don't seem to have any {}.\n\r", str2).c_str(), ch);
         return;
     }
 
     lev = obj2->obj_flags.level - obj1->obj_flags.level;
 
-    if (lev < -10)
-        sprintf(buf, "%s seems much better than %s.\n\r", obj1->short_description,
-            obj2->short_description);
-    else if (lev < -3)
-        sprintf(buf, "%s seems better than %s.\n\r", obj1->short_description,
-            obj2->short_description);
-    else if (lev <= 3)
-        sprintf(buf, "%s and %s seems about the same.\n\r", obj1->short_description,
-            obj2->short_description);
-    else if (lev < 10)
-        sprintf(buf, "%s seems worse than %s.\n\r", obj1->short_description,
-            obj2->short_description);
-    else
-        sprintf(buf, "%s seems much worse than %s.\n\r", obj1->short_description,
-            obj2->short_description);
+    // short_description isn't guaranteed non-null (do_identify_object's own
+    // ternary guards against it elsewhere in this file); the old sprintf
+    // "%s" here tolerated a null pointer via glibc's "(null)" fallback, so
+    // nz() (utils.h) preserves that instead of std::format's throw-on-null.
+    const char* obj1_desc = nz(obj1->short_description);
+    const char* obj2_desc = nz(obj2->short_description);
 
-    send_to_char(buf, ch);
+    if (lev < -10)
+        send_to_char(
+            std::format("{} seems much better than {}.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+    else if (lev < -3)
+        send_to_char(std::format("{} seems better than {}.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+    else if (lev <= 3)
+        send_to_char(
+            std::format("{} and {} seems about the same.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+    else if (lev < 10)
+        send_to_char(std::format("{} seems worse than {}.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+    else
+        send_to_char(
+            std::format("{} seems much worse than {}.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+
     return;
 }
 
@@ -4070,16 +4072,18 @@ ACMD(do_stat)
     auto stat_sum = GET_STR_BASE(ch) + GET_INT_BASE(ch) + GET_WILL_BASE(ch) + GET_DEX_BASE(ch) + GET_CON_BASE(ch) + GET_LEA_BASE(ch);
 
     if (!wtl || ((wtl->targ1.type == TARGET_NONE) || RETIRED(ch)) || (GET_LEVEL(ch) < LEVEL_GOD)) {
-        sprintf(buf,
-            "Your fatigue is %d; Your willpower is %d; Your statistic sum is %d\n\rYour "
-            "statistics are\n\rStr: %2d/%2d, Int: %2d/%2d, Wil: %2d/%2d, Dex: %2d/%2d, Con: "
-            "%2d/%2d, Lea: %2d/%2d.\n\r",
-            GET_MENTAL_DELAY(ch) / PULSE_MENTAL_FIGHT, GET_WILLPOWER(ch), stat_sum, GET_STR(ch),
-            GET_STR_BASE(ch), GET_INT(ch), GET_INT_BASE(ch), GET_WILL(ch), GET_WILL_BASE(ch),
-            GET_DEX(ch), GET_DEX_BASE(ch), GET_CON(ch), GET_CON_BASE(ch), GET_LEA(ch),
-            GET_LEA_BASE(ch));
-
-        send_to_char(buf, ch);
+        // %2d -> {:2}: printf's field-width-2 (minimum width, right-justified
+        // for a numeric arg) maps directly to std::format's {:2}.
+        send_to_char(std::format("Your fatigue is {}; Your willpower is {}; Your statistic sum is {}\n\r"
+                                 "Your statistics are\n\r"
+                                 "Str: {:2}/{:2}, Int: {:2}/{:2}, Wil: {:2}/{:2}, Dex: {:2}/{:2}, "
+                                 "Con: {:2}/{:2}, Lea: {:2}/{:2}.\n\r",
+                         GET_MENTAL_DELAY(ch) / PULSE_MENTAL_FIGHT, GET_WILLPOWER(ch), stat_sum,
+                         GET_STR(ch), GET_STR_BASE(ch), GET_INT(ch), GET_INT_BASE(ch), GET_WILL(ch),
+                         GET_WILL_BASE(ch), GET_DEX(ch), GET_DEX_BASE(ch), GET_CON(ch),
+                         GET_CON_BASE(ch), GET_LEA(ch), GET_LEA_BASE(ch))
+                         .c_str(),
+            ch);
         return;
     }
     do_wizstat(ch, argument, wtl, cmd, subcmd);
@@ -4089,20 +4093,16 @@ void print_exploits(struct char_data* sendto, char* name)
 {
     char str2[255];
     char str3[255];
-    char str4[255];
-    char str5[255];
     int i, iTotalPk, iDeaths = 0, iNotes = 0;
     exploit_record exploitrec;
-    // 1000 lines max of output.
-    // that means max of 2000 kills/deaths. certainly enough for a while.
-    char buf[80000];
     int iMobDeaths;
 
     std::vector<exploit_record> records;
     std::string error_message;
     if (!load_exploit_records_for_character(".", name, &records, &error_message)) {
-        snprintf(buf, sizeof(buf), "print_exploits: failed to load exploit history for %s: %s", name, error_message.c_str());
-        mudlog(buf, NRM, LEVEL_IMMORT, TRUE);
+        std::string log_message = std::format(
+            "print_exploits: failed to load exploit history for {}: {}", name, error_message);
+        mudlog(log_message.data(), NRM, LEVEL_IMMORT, TRUE);
         send_to_char("You have accomplished nothing worthy of note.\n\r", sendto);
         return;
     }
@@ -4112,9 +4112,18 @@ void print_exploits(struct char_data* sendto, char* name)
         return;
     }
 
-    buf[0] = '\0';
-    sprintf(buf,
-        "Exploits for %s\n\r"
+    // Accumulation (transform idiom catalog item 3), deliberately NOT staged
+    // through the global `buf` before page_string() the way most other
+    // sites in this file do: the old code's own local `buf` here was a
+    // dedicated 80000-byte buffer (explicitly sized for "1000 lines max of
+    // output... 2000 kills/deaths") specifically because the global `buf`
+    // (MAX_STRING_LENGTH == 8192, structs.h) is far too small to hold a
+    // long-lived character's full exploit history without truncating or
+    // overflowing it. std::string grows to fit instead, and is passed to
+    // page_string() directly via data() (non-const since C++17, and
+    // NUL-terminated) rather than copied into the undersized global buffer.
+    std::string out = std::format(
+        "Exploits for {}\n\r"
         "Numbers in brackets indicate (your,their) level at time of a "
         "kill\n\r\n\r",
         name);
@@ -4122,6 +4131,12 @@ void print_exploits(struct char_data* sendto, char* name)
     // they have entries
     i = 0;
     iTotalPk = 0;
+
+    // Pending first-column text for the row in progress -- filled on the
+    // odd (i == 1) record, flushed into `out` alongside the even record's
+    // text on the next iteration (or alone, at the end, if the record count
+    // is odd). Mirrors the old str4's role exactly.
+    std::string column;
 
     iMobDeaths = 0;
     for (const exploit_record& loaded_record : records) {
@@ -4158,11 +4173,14 @@ void print_exploits(struct char_data* sendto, char* name)
         str3[year_len] = '\0';
         i++;
 
-        sprintf(str5, "Unknown record type");
+        // No "default:" in the switch below (matches the original's
+        // sprintf-before-switch-with-no-default structure): row keeps this
+        // fallback text unless a case below overwrites it.
+        std::string row = "Unknown record type";
 
         switch (exploitrec.type) {
         case EXPLOIT_PK: // it's a pk type
-            sprintf(str5, "%s, %s: Killed %s (%d,%d)", str2, str3, bounded_victim_name,
+            row = std::format("{}, {}: Killed {} ({},{})", str2, str3, bounded_victim_name,
                 exploitrec.iKillerLevel, exploitrec.iVictimLevel);
             iTotalPk++;
             break;
@@ -4170,94 +4188,87 @@ void print_exploits(struct char_data* sendto, char* name)
         case EXPLOIT_DEATH: // it's a death type
             // chvictimname used to store killer name here
             if (exploitrec.iIntParam == 1) {
-                sprintf(str5, "%s, %s: * Died to %s (%d,%d)", str2, str3, bounded_victim_name,
+                row = std::format("{}, {}: * Died to {} ({},{})", str2, str3, bounded_victim_name,
                     exploitrec.iVictimLevel, exploitrec.iKillerLevel);
                 iDeaths++;
             } else
-                sprintf(str5, "%s, %s: Died to %s (%d,%d)", str2, str3, bounded_victim_name,
+                row = std::format("{}, {}: Died to {} ({},{})", str2, str3, bounded_victim_name,
                     exploitrec.iVictimLevel, exploitrec.iKillerLevel);
             break;
 
         case EXPLOIT_LEVEL:
-            sprintf(str5, "%s, %s: Obtained level %d", str2, str3, exploitrec.iIntParam);
+            row = std::format("{}, {}: Obtained level {}", str2, str3, exploitrec.iIntParam);
             break;
 
         case EXPLOIT_STAT:
-            sprintf(str5, "%s, %s: L%d: Stat inc (%s)", str2, str3, exploitrec.iIntParam,
-                bounded_victim_name);
+            row = std::format(
+                "{}, {}: L{}: Stat inc ({})", str2, str3, exploitrec.iIntParam, bounded_victim_name);
             break;
 
         case EXPLOIT_BIRTH:
-            sprintf(str5, "%s, %s: Character Created", str2, str3);
+            row = std::format("{}, {}: Character Created", str2, str3);
             break;
 
         case EXPLOIT_MOBDEATH:
-            sprintf(str5, "%s, %s: Mobdied: %s", str2, str3, bounded_victim_name);
+            row = std::format("{}, {}: Mobdied: {}", str2, str3, bounded_victim_name);
             iMobDeaths++;
             break;
 
         case EXPLOIT_RETIRED:
-            sprintf(str5, "%s, %s: Retired", str2, str3);
+            row = std::format("{}, {}: Retired", str2, str3);
             break;
 
         case EXPLOIT_ACHIEVEMENT:
-            sprintf(str5, "%s, %s: %s", str2, str3, bounded_victim_name);
+            row = std::format("{}, {}: {}", str2, str3, bounded_victim_name);
             break;
 
         case EXPLOIT_NOTE:
-            sprintf(str5, "%s, %s: !%s", str2, str3, bounded_victim_name);
+            row = std::format("{}, {}: !{}", str2, str3, bounded_victim_name);
             iNotes++;
             break;
 
         case EXPLOIT_POISON:
-            sprintf(str5, "%s, %s: Died to Poison", str2, str3);
+            row = std::format("{}, {}: Died to Poison", str2, str3);
             break;
 
         case EXPLOIT_REGEN_DEATH:
-            sprintf(str5, "%s, %s: Died to Injuries", str2, str3);
+            row = std::format("{}, {}: Died to Injuries", str2, str3);
             break;
         }
         // an output line - first column
         if (i == 1)
-            sprintf(str4, "%-39s", str5);
+            column = std::format("{:<39}", row);
         else {
-            sprintf(str4, "%s%-39s\n\r", str4, str5);
-            // add to output buffer
-            sprintf(buf, "%s%s", buf, str4);
+            out += std::format("{}{:<39}\n\r", column, row);
             i = 0;
         }
     }
     if (i == 1) {
         // add to output buffer
-        sprintf(buf, "%s%s\n\r", buf, str4);
+        out += std::format("{}\n\r", column);
     }
 
     if (iTotalPk == 1)
-        sprintf(buf, "%s\n\rTotal: 1 pkill, ", buf);
+        out += "\n\rTotal: 1 pkill, ";
     else
-        sprintf(buf, "%s\n\rTotal: %d pkills, ", buf, iTotalPk);
+        out += std::format("\n\rTotal: {} pkills, ", iTotalPk);
 
-    if (iDeaths == 1) {
-        sprintf(buf, "%s1 pdeath, ", buf);
-    } else {
-        sprintf(buf, "%s%d pdeaths, ", buf, iDeaths);
-    }
+    if (iDeaths == 1)
+        out += "1 pdeath, ";
+    else
+        out += std::format("{} pdeaths, ", iDeaths);
 
-    if (iMobDeaths == 1) {
-
-        sprintf(buf, "%s1 mobdeath, ", buf);
-
-    } else {
-
-        sprintf(buf, "%s%d mobdeaths, ", buf, iMobDeaths);
-    }
+    if (iMobDeaths == 1)
+        out += "1 mobdeath, ";
+    else
+        out += std::format("{} mobdeaths, ", iMobDeaths);
 
     if (iNotes == 1)
-        sprintf(buf, "%s1 note.\n\r\n\r", buf);
+        out += "1 note.\n\r\n\r";
     else
-        sprintf(buf, "%s%d notes.\n\r\n\r", buf, iNotes);
+        out += std::format("{} notes.\n\r\n\r", iNotes);
 
-    page_string(sendto->desc, buf, 1);
+    page_string(sendto->desc, out.data(), 1);
     return;
 }
 
@@ -4641,15 +4652,22 @@ void do_food_display(struct char_data* ch, struct obj_data* j)
     int make_full, message_num;
 
     make_full = j->obj_flags.value[0];
-    if (j->obj_flags.value[3] != 0)
-        sprintf(buf1, "However it seems to be of"
-                      " a less than wholesome quality.");
-    else
-        sprintf(buf1, "It is also of a wholesome quality.");
+    // Kept as a ternary (transform idiom catalog item 4): the old code's two
+    // sprintf() branches produced two distinct literals, not a
+    // null-guarded fallback, so this is a plain either/or, not an nz() site.
+    const char* quality_note = j->obj_flags.value[3] != 0
+        ? "However it seems to be of a less than wholesome quality."
+        : "It is also of a wholesome quality.";
 
     message_num = get_value_ranges(make_full, 0, 2, 4, 6, 10, 14, 18, 24);
-    sprintf(buf, "%s %s. %s\r\n", j->short_description, food_messages[message_num], buf1);
-    send_to_char(buf, ch);
+    // short_description isn't guaranteed non-null (do_identify_object's own
+    // ternary guards it elsewhere in this file); nz() (utils.h) preserves
+    // the old sprintf("%s", NULL)-via-glibc "(null)" fallback that
+    // std::format would otherwise crash on.
+    send_to_char(std::format("{} {}. {}\r\n", nz(j->short_description),
+                     food_messages[message_num], quality_note)
+                     .c_str(),
+        ch);
 }
 
 void do_light_display(struct char_data* ch, struct obj_data* j)
@@ -4659,8 +4677,8 @@ void do_light_display(struct char_data* ch, struct obj_data* j)
 
     duration_range = j->obj_flags.value[2];
     message_num = get_value_ranges(duration_range, 0, 6, 12, 19, 50, 150, 500, 1000);
-    sprintf(buf, "This source of light is %s.\r\n", light_messages[message_num]);
-    send_to_char(buf, ch);
+    send_to_char(
+        std::format("This source of light is {}.\r\n", light_messages[message_num]).c_str(), ch);
 }
 
 void do_flag_values_display(struct char_data* ch, struct obj_data* j)
@@ -4669,20 +4687,21 @@ void do_flag_values_display(struct char_data* ch, struct obj_data* j)
     int i;
 
     if (GET_ITEM_TYPE(j) == ITEM_ARMOR) {
-        sprintf(buf, "Absorbtion\t\t %d.\r\n", armor_absorb(j));
-        send_to_char(buf, ch);
+        send_to_char(std::format("Absorbtion\t\t {}.\r\n", armor_absorb(j)).c_str(), ch);
     }
 
     for (i = 0; i <= 4; i++) {
-        sprintf(buf, "%s", value_array[GET_ITEM_TYPE(j)][i]);
+        // value_array[...][i] entries are static string-literal labels
+        // (never null); the "!= \"\"" pointer comparison against a fresh ""
+        // literal is the exact same check the old code ran on its own
+        // sprintf("%s", ...) copy of the same pointer -- unchanged here.
         if (value_array[GET_ITEM_TYPE(j)][i] != "") {
-            send_to_char(buf, ch);
+            send_to_char(value_array[GET_ITEM_TYPE(j)][i], ch);
 
             if (j->obj_flags.value[i] < 0) /* Checks for negative for display purposes */
-                sprintf(buf, "\t %d.\r\n", j->obj_flags.value[i]);
+                send_to_char(std::format("\t {}.\r\n", j->obj_flags.value[i]).c_str(), ch);
             else
-                sprintf(buf, "\t  %d.\r\n", j->obj_flags.value[i]);
-            send_to_char(buf, ch);
+                send_to_char(std::format("\t  {}.\r\n", j->obj_flags.value[i]).c_str(), ch);
         }
     }
 }
@@ -4692,13 +4711,13 @@ void do_weapon_display(struct char_data* ch, struct obj_data* j)
 
     // weapon_types[] entries are plain names, not format strings -- same
     // non-literal-format-string anti-pattern as the pkill sites above (inert
-    // today since no entry contains '%', but route through "%s" regardless).
-    sprintf(buf1, "%s", weapon_types[j->obj_flags.value[3]]);
-    sprintf(buf,
-        "The weapon you hold is a %s weapon.\r\n"
-        "\n\rDamage Rating \t   %d/10.\r\n",
-        buf1, get_weapon_damage(j));
-    send_to_char(buf, ch);
+    // today since no entry contains '%', but route through std::format's
+    // {} substitution regardless, never as a format string of its own).
+    send_to_char(std::format("The weapon you hold is a {} weapon.\r\n"
+                             "\n\rDamage Rating \t   {}/10.\r\n",
+                     weapon_types[j->obj_flags.value[3]], get_weapon_damage(j))
+                     .c_str(),
+        ch);
 }
 
 /*
@@ -4731,28 +4750,40 @@ void do_identify_object(struct char_data* ch, struct obj_data* j)
     char found;
     int i;
 
-    sprintf(buf,
-        "   You feel certain the object you have"
-        " is %s. \r\n",
-        j->short_description ? j->short_description
-                             : "No object description found, please report. ");
-    send_to_char(buf, ch);
+    // Both null-guard ternaries kept as ternaries (transform idiom catalog
+    // item 4): the old code already guards short_description/
+    // action_description here with a fallback literal rather than handing
+    // std::format a possibly-null char*, so there is no nz() call to add.
+    send_to_char(std::format("   You feel certain the object you have is {}. \r\n",
+                     j->short_description ? j->short_description
+                                          : "No object description found, please report. ")
+                     .c_str(),
+        ch);
 
-    sprintf(buf, "%s \r\n",
-        j->action_description ? j->action_description
-                              : "No object description, please report. \r\n");
-    send_to_char(buf, ch);
+    send_to_char(std::format("{} \r\n",
+                     j->action_description ? j->action_description
+                                           : "No object description, please report. \r\n")
+                     .c_str(),
+        ch);
 
+    // sprintbit() fills the caller's buffer (buf2 here); left unconverted
+    // (transform idiom catalog item 7 -- it lives in utility.cpp, another
+    // wave) and composed into the new std::format call via
+    // static_cast<const char*> (catalog item 5: buf2 is a fixed-size
+    // char[MAX_STRING_LENGTH], db.h -- passing the array itself, not a
+    // decayed pointer, is the libc++/libstdc++-divergent case this file's
+    // existing do_exits conversion already works around the same way).
     sprintbit(j->obj_flags.wear_flags, wear_messages, buf2, 2);
-    sprintf(buf,
-        "This %s is made %s, and weighs %.1flbs.\r\n"
-        "This %s can be%s\r\n",
-        item_messages[GET_ITEM_TYPE(j)],
-        j->obj_flags.material >= 0 && j->obj_flags.material < num_of_object_materials
-            ? material_messages[j->obj_flags.material]
-            : "an unknown substance",
-        j->obj_flags.weight / 100., item_messages[GET_ITEM_TYPE(j)], buf2);
-    send_to_char(buf, ch);
+    send_to_char(std::format("This {} is made {}, and weighs {:.1f}lbs.\r\n"
+                             "This {} can be{}\r\n",
+                     item_messages[GET_ITEM_TYPE(j)],
+                     j->obj_flags.material >= 0 && j->obj_flags.material < num_of_object_materials
+                         ? material_messages[j->obj_flags.material]
+                         : "an unknown substance",
+                     j->obj_flags.weight / 100., item_messages[GET_ITEM_TYPE(j)],
+                     static_cast<const char*>(buf2))
+                     .c_str(),
+        ch);
 
     /*
      * If an object type_flag is either Light or Food, its value_flags
@@ -4775,18 +4806,27 @@ void do_identify_object(struct char_data* ch, struct obj_data* j)
     do_flag_values_display(ch, j);
 
     sprintbit(j->obj_flags.extra_flags, extra_messages, buf1, 1);
-    sprintf(buf, "\r\nThis item %s\r\n", buf1);
-    send_to_char(buf, ch);
+    send_to_char(
+        std::format("\r\nThis item {}\r\n", static_cast<const char*>(buf1)).c_str(), ch);
 
     found = 0;
 
     for (i = 0; i < MAX_OBJ_AFFECT; i++)
         if (j->affected[i].modifier) {
             sprinttype(j->affected[i].location, apply_types, buf2);
-            sprintf(buf, "%s %+d to %s", found++ ? "" : "", j->affected[i].modifier, buf2);
+            // The old code's first "%s" argument was `found++ ? "" : ""` --
+            // both ternary branches are the identical empty string, so the
+            // expression's only real effect was incrementing `found` (read
+            // by the "has the following affections" header check just
+            // below). Keep that increment; drop the always-"" ternary and
+            // its leading %s (the format string's own leading space is
+            // unchanged).
+            ++found;
+            std::string affect_line = std::format(
+                " {:+d} to {}", j->affected[i].modifier, static_cast<const char*>(buf2));
             if (found == 1)
                 send_to_char("\r\nThis item has the following affections.\r\n", ch);
-            send_to_char(buf, ch);
+            send_to_char(affect_line.c_str(), ch);
             send_to_char("\r\n", ch);
         }
     if (!found)

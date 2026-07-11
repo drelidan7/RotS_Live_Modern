@@ -166,7 +166,7 @@ ACMD(do_send)
     if (!PRF_FLAGGED(ch, PRF_ECHO))
         send_to_char("Sent.\n\r", ch);
     else {
-        strcpy(buf2, std::format("You send '{}' to {}.\n\r", buf, GET_NAME(vict)).c_str());
+        strcpy(buf2, std::format("You send '{}' to {}.\n\r", static_cast<const char*>(buf), GET_NAME(vict)).c_str());
         send_to_char(buf2, ch);
     }
 }

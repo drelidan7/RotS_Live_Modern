@@ -364,13 +364,13 @@ void ProtocolDestroy(protocol_t* apProtocol)
 
     for (i = eMSDP_NONE + 1; i < eMSDP_MAX; ++i) {
         free(apProtocol->pVariables[i]->pValueString);
-        free(apProtocol->pVariables[i]);
+        delete apProtocol->pVariables[i];
     }
 
-    free(apProtocol->pVariables);
+    delete[] apProtocol->pVariables;
     free(apProtocol->pLastTTYPE);
     free(apProtocol->pMXPVersion);
-    free(apProtocol);
+    delete apProtocol;
 }
 
 void ProtocolInput(descriptor_t* apDescriptor, char* apData, int aSize, char* apOut)

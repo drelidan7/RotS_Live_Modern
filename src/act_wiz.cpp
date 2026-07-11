@@ -2210,14 +2210,19 @@ ACMD(do_wizutil)
         result = PLR_TOG_CHK(vict, PLR_NOTITLE);
         strcpy(buf, std::format("(GC) Notitle {} for {} by {}.", ONOFF(result), GET_NAME(vict), GET_NAME(ch)).c_str());
         mudlog(buf, NRM, (sh_int)MAX(LEVEL_GOD, GET_INVIS_LEV(ch)), TRUE);
-        strcat(buf, "\n\r");
+        // mudlog() above must see `buf` WITHOUT the trailing CRLF (it adds
+        // its own log-line formatting); composing the player-facing CRLF
+        // suffix into a temporary before strcpy()'ing it back in (rather
+        // than strcat()) is the same self-reference-safe pattern used
+        // elsewhere in this wave for `buf`/`buf2` self-composition.
+        strcpy(buf, std::format("{}\n\r", static_cast<const char*>(buf)).c_str());
         send_to_char(buf, ch);
         break;
     case SCMD_SQUELCH:
         result = PLR_TOG_CHK(vict, PLR_NOSHOUT);
         strcpy(buf, std::format("(GC) Squelch {} for {} by {}.", ONOFF(result), GET_NAME(vict), GET_NAME(ch)).c_str());
         mudlog(buf, BRF, (sh_int)MAX(LEVEL_GOD, GET_INVIS_LEV(ch)), TRUE);
-        strcat(buf, "\n\r");
+        strcpy(buf, std::format("{}\n\r", static_cast<const char*>(buf)).c_str());
         send_to_char(buf, ch);
         break;
     case SCMD_FREEZE:
@@ -2335,10 +2340,16 @@ ACMD(do_wizutil)
 
 void print_zone_to_buf(char* bufptr, int zone)
 {
-    sprintf(bufptr, "%s%3d %-30.30s Age: %3d; Reset: %3d (%d); Top: %5d\n\r",
-        bufptr, zone_table[zone].number, zone_table[zone].name,
-        zone_table[zone].age, zone_table[zone].lifespan,
-        zone_table[zone].reset_mode, zone_table[zone].top);
+    // The old sprintf(bufptr, "%s...", bufptr, ...) self-referenced bufptr
+    // as both destination and source; composing into a temporary
+    // std::string first and strcpy()'ing the result in removes that
+    // overlap hazard while producing identical bytes (same pattern as
+    // do_look's room-flags line, act_info.cpp).
+    strcpy(bufptr,
+        std::format("{}{:3} {:<30.30} Age: {:3}; Reset: {:3} ({}); Top: {:5}\n\r", bufptr,
+            zone_table[zone].number, zone_table[zone].name, zone_table[zone].age,
+            zone_table[zone].lifespan, zone_table[zone].reset_mode, zone_table[zone].top)
+            .c_str());
 }
 
 ACMD(do_show)
@@ -3106,7 +3117,12 @@ ACMD(do_wizset)
     } else if (fields[l].type == NUMBER) {
         strcpy(buf, std::format("{}'s {} set to {}.\n\r", GET_NAME(vict), fields[l].cmd, value).c_str());
     } else
-        strcat(buf, "\n\r");
+        // `buf` already holds one of the switch's plain-message strcpy()s
+        // above (e.g. "Okay.", a title/password/loadroom message, or
+        // "Can't set that!"); appending the trailing CRLF via a
+        // compose-then-strcpy-back (rather than strcat()) keeps this
+        // self-referencing the same safe pattern used elsewhere.
+        strcpy(buf, std::format("{}\n\r", static_cast<const char*>(buf)).c_str());
     send_to_char(buf, ch);
 
     if (!is_file && !IS_NPC(vict))

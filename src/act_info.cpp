@@ -488,7 +488,17 @@ void diag_char_to_char(char_data* looked_at, char_data* viewer)
     *buf = 0;
     report_char_health(viewer, looked_at, buf);
     report_char_mentals(looked_at, str, 0);
-    sprintf(buf, "%s%s is %s.\n\r", buf, strname, str);
+    // `str`/`strname` are local char[255] arrays used as std::format
+    // arguments -- static_cast<const char*> per the char[N]-decay rule
+    // (catalog item 5); the old sprintf(buf, "%s...", buf, ...) read buf as
+    // its own source before overwriting it, so composing into a temporary
+    // std::string first and strcpy()'ing the result in removes that
+    // self-reference hazard while producing identical bytes (same pattern
+    // as do_look's room-flags line, act_info.cpp).
+    strcpy(buf,
+        std::format("{}{} is {}.\n\r", static_cast<const char*>(buf),
+            static_cast<const char*>(strname), static_cast<const char*>(str))
+            .c_str());
     send_to_char(buf, viewer);
     if (IS_NPC(looked_at)) {
         report_mob_age(viewer, looked_at);
@@ -504,15 +514,26 @@ void diag_char_to_char(char_data* looked_at, char_data* viewer)
         game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
         bool is_protected = !bb_instance.is_target_valid(viewer, looked_at);
         if (looked_at->is_affected() == false && is_protected == false && is_exposed_to_elements == false) {
-            sprintf(buf, "%s is not affected by anything.\n\r", strname);
+            strcpy(buf,
+                std::format("{} is not affected by anything.\n\r", static_cast<const char*>(strname))
+                    .c_str());
             send_to_char(buf, viewer);
         } else {
-            sprintf(buf, "%s is affected by:\n\r", strname);
+            // Preserves the pre-existing overwrite behavior byte-for-byte:
+            // each of these three sprintf()s OVERWROTE buf rather than
+            // appending (only the strcat() loop below appends), so whenever
+            // is_protected or is_exposed_to_elements is true the "is
+            // affected by:" header line -- and, if both are true, the "holy
+            // protection" line too -- is clobbered before send_to_char()
+            // ever sees it. That is existing (if surprising) behavior, not
+            // something this conversion changes.
+            strcpy(buf,
+                std::format("{} is affected by:\n\r", static_cast<const char*>(strname)).c_str());
             if (is_protected) {
-                sprintf(buf, "%-30s (special)\n\r", "holy protection");
+                strcpy(buf, std::format("{:<30} (special)\n\r", "holy protection").c_str());
             }
             if (is_exposed_to_elements) {
-                sprintf(buf, "%-30s (special)\n\r", "expose elements");
+                strcpy(buf, std::format("{:<30} (special)\n\r", "expose elements").c_str());
             }
             for (tmpaff = looked_at->affected; tmpaff; tmpaff = tmpaff->next) {
                 report_affection(tmpaff, str);
@@ -525,6 +546,46 @@ void diag_char_to_char(char_data* looked_at, char_data* viewer)
     }
 }
 
+// WAVE 3 TASK 9 SWEEP -- justified skip, not an oversight.
+//
+// get_char_position_line/get_char_flag_line/show_mount_to_char/
+// show_char_to_char/list_char_to_char/show_room_affection/show_room_weather,
+// plus do_look's case 8 ("look" with no argument, the room-render branch)
+// below, remain on raw strcat()/sprintf() into the global `buf'/`buf2'
+// staging buffers. This is a deliberate extension of Task 1's own
+// documented exclusion (see the "Deliberately NOT unit-tested" note at the
+// top of act_info_format_tests.cpp, which already carves diag_char_to_char
+// and do_look's deep-room-rendering path out of the do_look chunk for the
+// same reason), not a gap Task 1-8 missed:
+//
+//  - Several of these functions rely on POINTER ALIASING rather than their
+//    declared `str'/`character_message' parameter: get_char_flag_line's
+//    "(red aura)" branch and get_char_position_line's POSITION_FIGHTING
+//    "else" branch strcat() into the global `buf' directly instead of the
+//    parameter, which only produces correct output because every current
+//    call site happens to pass `buf + strlen(buf)' as that parameter (an
+//    alias into the same array, not a separate buffer). Converting any one
+//    function in this web to std::string accumulation breaks that aliasing
+//    invariant for every OTHER function still relying on it -- the only
+//    safe conversion unit is "all of them, together, in one pass."
+//  - None of these functions (nor do_look's case 8) has a dedicated unit
+//    test; they are exercised only transitively via scripts/boot-golden.sh's
+//    real room/character rendering, which does not cover every branch
+//    (mounted riders, every position, every room-affection type, every
+//    PRF_ROOMFLAGS/PRF_ADVANCED_VIEW combination).
+//  - do_look is the single most frequently executed player command in the
+//    game; a subtle accumulation-order mistake here (e.g. mis-replicating
+//    the "%s...", buf, ... self-reference overlap, or the buf-vs-parameter
+//    aliasing above) would be a live-gameplay regression with no test to
+//    catch it before a human notices in production.
+//
+// Per this task's brief ("if a site is too gnarly to convert with
+// confidence, LEAVE it with a written justification instead; do not
+// gamble"), this cluster is left as sprintf/strcpy/strcat pending a
+// dedicated future task that adds characterization tests for it FIRST (the
+// TDD-then-transform pattern every other Wave 3 chunk followed) and converts
+// the whole web in one atomic change.
+//
 /*
  * Puts a line into `str' describing how `ch' sees `i'; i.e.:
  * "i is sitting/standing/whatever here."
@@ -1340,6 +1401,11 @@ ACMD(do_look)
         break;
 
     case 8: /* look '' */
+        // WAVE 3 TASK 9 SWEEP: this room-render block's remaining
+        // strcpy/strcat/sprintf sites are a justified skip -- see the
+        // block comment above get_char_position_line (act_info.cpp) for
+        // the full reasoning (aliasing-dependent helper web, no unit
+        // tests, single hottest player command).
         strcpy(buf2, CC_USE(ch, COLOR_ROOM));
         strcat(buf2, world[ch->in_room].name);
         if (PRF_FLAGGED(ch, PRF_ROOMFLAGS)) {
@@ -2642,10 +2708,14 @@ void perform_mortal_where(struct char_data* ch, char* arg)
                 if (i && CAN_SEE(ch, i) && (i->in_room != NOWHERE) && !other_side(ch, i) && (world[ch->in_room].zone == world[i->in_room].zone)) {
                     tmploc = ch->in_room;
                     ch->in_room = i->in_room;
-                    sprintf(buf, "%-20s - %s\n\r", GET_NAME(i),
-                        (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere");
+                    // ch->in_room is temporarily swapped to i->in_room so
+                    // CAN_SEE(ch) evaluates lighting for i's room -- compose
+                    // the line before restoring tmploc, matching the
+                    // original sprintf-then-restore-then-send order exactly.
+                    std::string line = std::format(
+                        "{:<20} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere");
                     ch->in_room = tmploc;
-                    send_to_char(buf, ch);
+                    send_to_char(line.c_str(), ch);
                 }
             }
     } else { /* print only FIRST char, not all. */
@@ -2653,10 +2723,10 @@ void perform_mortal_where(struct char_data* ch, char* arg)
             if ((i->in_room != NOWHERE) && (!IS_NPC(i)) && (world[i->in_room].zone == world[ch->in_room].zone) && (world[i->in_room].level == world[ch->in_room].level) && CAN_SEE(ch, i) && (!other_side(ch, i)) && isname(arg, i->player.name)) {
                 tmploc = ch->in_room;
                 ch->in_room = i->in_room;
-                sprintf(buf, "%-25s - %s\n\r", GET_NAME(i),
-                    (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere");
+                std::string line = std::format(
+                    "{:<25} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere");
                 ch->in_room = tmploc;
-                send_to_char(buf, ch);
+                send_to_char(line.c_str(), ch);
                 return;
             }
         send_to_char("No-one around by that name.\n\r", ch);
@@ -2678,22 +2748,26 @@ void perform_immort_where(struct char_data* ch, char* arg)
                 i = (d->original ? d->original : d->character);
                 if (i && CAN_SEE(ch, i) && (i->in_room != NOWHERE)) {
                     if (d->original)
-                        sprintf(buf, "%-20s - [%5d] %s (in %s)\n\r", GET_NAME(i),
-                            world[d->character->in_room].number,
-                            world[d->character->in_room].name, GET_NAME(d->character));
+                        send_to_char(std::format("{:<20} - [{:5}] {} (in {})\n\r", GET_NAME(i),
+                                         world[d->character->in_room].number, world[d->character->in_room].name,
+                                         GET_NAME(d->character))
+                                         .c_str(),
+                            ch);
                     else
-                        sprintf(buf, "%-20s - [%5d] %s\n\r", GET_NAME(i), world[i->in_room].number,
-                            world[i->in_room].name);
-                    send_to_char(buf, ch);
+                        send_to_char(std::format("{:<20} - [{:5}] {}\n\r", GET_NAME(i),
+                                         world[i->in_room].number, world[i->in_room].name)
+                                         .c_str(),
+                            ch);
                 }
             }
     } else {
         for (i = character_list; i; i = i->next)
             if (CAN_SEE(ch, i) && i->in_room != NOWHERE && (isname(arg, i->player.name) || mob_index[i->nr].virt == atoi(arg))) {
                 found = 1;
-                sprintf(buf, "%3d. %-25s - [%5d] %s\n\r", ++num, GET_NAME(i),
-                    world[i->in_room].number, world[i->in_room].name);
-                send_to_char(buf, ch);
+                send_to_char(std::format("{:3}. {:<25} - [{:5}] {}\n\r", ++num, GET_NAME(i),
+                                 world[i->in_room].number, world[i->in_room].name)
+                                 .c_str(),
+                    ch);
             }
 
         for (num = 0, k = object_list; k; k = k->next)
@@ -2717,26 +2791,28 @@ void perform_immort_where(struct char_data* ch, char* arg)
                         i = tmpobj->carried_by;
                     else {
                         tmp = tmpobj->in_room;
-                        sprintf(buf, "%3d. %-25s - [%5d] >> Stored in %s\n\r", ++num,
-                            k->short_description, tmp < 0 ? tmp : world[tmp].number,
-                            tmpobj ? tmpobj->short_description : "Something");
-                        send_to_char(buf, ch);
+                        send_to_char(std::format("{:3}. {:<25} - [{:5}] >> Stored in {}\n\r", ++num,
+                                         k->short_description, tmp < 0 ? tmp : world[tmp].number,
+                                         tmpobj ? tmpobj->short_description : "Something")
+                                         .c_str(),
+                            ch);
                     }
                 }
                 if (i) {
                     if (!CAN_SEE(ch, i)) /* Save wizinvis */
                         continue;
                     tmp = i->in_room;
-                    sprintf(buf, "%3d. %-25s - [%5d] >> Carried by %s\n\r", ++num,
-                        k->short_description, tmp < 0 ? tmp : world[tmp].number,
-                        i ? GET_NAME(i) : "Somebody");
-                    send_to_char(buf, ch);
+                    send_to_char(std::format("{:3}. {:<25} - [{:5}] >> Carried by {}\n\r", ++num,
+                                     k->short_description, tmp < 0 ? tmp : world[tmp].number,
+                                     i ? GET_NAME(i) : "Somebody")
+                                     .c_str(),
+                        ch);
                 }
                 if (!tmpobj && !i) {
-                    sprintf(buf, "%3d. %-25s - [%5d] %s\n\r", ++num, k->short_description,
-                        tmp < 0 ? tmp : world[tmp].number,
-                        tmp < 0 ? "Nowhere" : world[tmp].name);
-                    send_to_char(buf, ch);
+                    send_to_char(std::format("{:3}. {:<25} - [{:5}] {}\n\r", ++num, k->short_description,
+                                     tmp < 0 ? tmp : world[tmp].number, tmp < 0 ? "Nowhere" : world[tmp].name)
+                                     .c_str(),
+                        ch);
                 }
             }
         if (!found)
@@ -2804,7 +2880,6 @@ void report_mob_align(struct char_data* ch, struct char_data* victim)
 void report_mob_age(struct char_data* ch, struct char_data* victim)
 {
     int age;
-    char str[255];
     extern int average_mob_life;
 
     if (!IS_NPC(victim) || (MOB_FLAGGED(victim, MOB_ORC_FRIEND) && MOB_FLAGGED(victim, MOB_PET)))
@@ -2812,20 +2887,24 @@ void report_mob_age(struct char_data* ch, struct char_data* victim)
 
     age = MOB_AGE_TICKS(victim, time(0));
 
+    // One-shot compose-then-send (catalog item 1) -- `str` was a local
+    // char[255] never reused after send_to_char(), so it becomes a plain
+    // std::string here instead of a caller-owned buffer.
+    std::string str;
     if (age <= 1)
-        sprintf(str, "%s has just arrived to this place.\r\n", GET_NAME(victim));
+        str = std::format("{} has just arrived to this place.\r\n", GET_NAME(victim));
     else if (age <= average_mob_life / 4)
-        sprintf(str, "%s has arrived but recently.\r\n", GET_NAME(victim));
+        str = std::format("{} has arrived but recently.\r\n", GET_NAME(victim));
     else if (age <= average_mob_life * 3 / 4)
-        sprintf(str, "%s has been here for a little while.\r\n", GET_NAME(victim));
+        str = std::format("{} has been here for a little while.\r\n", GET_NAME(victim));
     else if (age <= average_mob_life)
-        sprintf(str, "%s has been here for quite a while.\r\n", GET_NAME(victim));
+        str = std::format("{} has been here for quite a while.\r\n", GET_NAME(victim));
     else if (age <= average_mob_life * 3 / 2)
-        sprintf(str, "%s has been here for a long time already.\r\n", GET_NAME(victim));
+        str = std::format("{} has been here for a long time already.\r\n", GET_NAME(victim));
     else
-        sprintf(str, "%s has been here for a very long time.\r\n", GET_NAME(victim));
+        str = std::format("{} has been here for a very long time.\r\n", GET_NAME(victim));
     str[0] = toupper(str[0]);
-    send_to_char(str, ch);
+    send_to_char(str.c_str(), ch);
 }
 
 ACMD(do_consider)
@@ -3114,17 +3193,34 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
     int tmp;
     char str[250];
     if (flag & PRF_DISPTEXT) {
+        // prompt_text[] entries are printf-style format strings selected at
+        // runtime from a data table (consts.cpp), not compile-time string
+        // literals -- std::format requires a constant-evaluated format
+        // string, so this dynamic-format-string sprintf() is kept as-is
+        // (would need prompt_text[]/prompt_hit[]/prompt_mana[]/
+        // prompt_move[]/prompt_mount[]'s stored strings rewritten from %d to
+        // {} too, which is out of this file's/task's scope).
         if (ch->specials.prompt_value >= 0)
             sprintf(str, prompt_text[ch->specials.prompt_number], ch->specials.prompt_value);
         else
             sprintf(str, prompt_text[ch->specials.prompt_number], -1);
-        sprintf(prompt, "%s%s%c", prompt, str, 0);
+        // The trailing "%c", 0 in the old sprintf(prompt, "%s%s%c", prompt,
+        // str, 0) embedded a redundant explicit NUL byte right where
+        // sprintf's own terminating NUL already goes -- invisible to any
+        // strlen()/send_to_char() reader, so it is dropped here rather than
+        // reproduced. `str` is a local char[250] array used as a
+        // std::format argument -- static_cast<const char*> per the
+        // char[N]-decay rule (catalog item 5); `prompt` is already `char*`.
+        strcpy(prompt,
+            std::format("{}{}", prompt, static_cast<const char*>(str)).c_str());
         return;
     }
 
     if (flag & PROMPT_ADVANCED) {
-        sprintf(prompt, "%sHP: %d/%d S: %d/%d MV: %d/%d]%c", prompt, GET_HIT(ch), GET_MAX_HIT(ch),
-            GET_MANA(ch), GET_MAX_MANA(ch), GET_MOVE(ch), GET_MAX_MOVE(ch), 0);
+        strcpy(prompt,
+            std::format("{}HP: {}/{} S: {}/{} MV: {}/{}]", prompt, GET_HIT(ch), GET_MAX_HIT(ch),
+                GET_MANA(ch), GET_MAX_MANA(ch), GET_MOVE(ch), GET_MAX_MOVE(ch))
+                .c_str());
         return;
     }
     if (GET_MAX_HIT(ch))
@@ -3132,17 +3228,17 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
             for (tmp = 0; tmp < 7 && (1000LL * GET_HIT(ch)) / GET_MAX_HIT(ch) > prompt_hit[tmp].value; tmp++)
                 ;
             if ((GET_HIT(ch) != GET_MAX_HIT(ch)) || (ch->specials.position == POSITION_FIGHTING))
-                sprintf(prompt, "%s%s%c", prompt, prompt_hit[tmp].message, 0);
+                strcpy(prompt, std::format("{}{}", prompt, prompt_hit[tmp].message).c_str());
         }
     if (flag & PROMPT_STAT) {
         report_char_mentals(ch, str, 1);
-        sprintf(prompt, "%s%s%c", prompt, str, 0);
+        strcpy(prompt, std::format("{}{}", prompt, static_cast<const char*>(str)).c_str());
         return;
     }
     if (flag & PROMPT_MAUL) {
         affected_type* maul_aff = affected_by_spell(ch, SKILL_MAUL);
         int mod = maul_aff->duration * 10 / 2;
-        sprintf(prompt, "%s%d/1000%c", prompt, mod, 0);
+        strcpy(prompt, std::format("{}{}/1000", prompt, mod).c_str());
     }
 
     if (flag & PROMPT_ARROWS) {
@@ -3152,14 +3248,14 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
         for (arrow = quiver->contains; arrow; arrow = arrow->next_content) {
             arrows++;
         }
-        sprintf(prompt, "%s%d)%c", prompt, arrows, 0);
+        strcpy(prompt, std::format("{}{})", prompt, arrows).c_str());
     }
 
     if (GET_MAX_MANA(ch))
         if (flag & PROMPT_MANA) {
             for (tmp = 0; (1000 * GET_MANA(ch)) / GET_MAX_MANA(ch) > prompt_mana[tmp].value; tmp++)
                 ;
-            sprintf(prompt, "%s%s%c", prompt, prompt_mana[tmp].message, 0);
+            strcpy(prompt, std::format("{}{}", prompt, prompt_mana[tmp].message).c_str());
         }
     if (GET_MAX_MOVE(ch))
         if (flag & PROMPT_MOVE) {
@@ -3167,9 +3263,9 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
                 ;
 
             if (IS_NPC(ch) && MOB_FLAGGED(ch, MOB_MOUNT))
-                sprintf(prompt, "%s%s%c", prompt, prompt_mount[tmp].message, 0);
+                strcpy(prompt, std::format("{}{}", prompt, prompt_mount[tmp].message).c_str());
             else
-                sprintf(prompt, "%s%s%c", prompt, prompt_move[tmp].message, 0);
+                strcpy(prompt, std::format("{}{}", prompt, prompt_move[tmp].message).c_str());
         }
 }
 
@@ -3278,35 +3374,35 @@ static char* get_level_abbr(sh_int level, sh_int race)
 
     switch (level) {
     case LEVEL_IMPL:
-        sprintf(buf, "an Implementor");
+        strcpy(buf, "an Implementor");
         break;
 
     case LEVEL_GRGOD + 2:
     case LEVEL_GRGOD + 1:
     case LEVEL_GRGOD:
-        sprintf(buf, "one of the Aratar (level %d)", level);
+        strcpy(buf, std::format("one of the Aratar (level {})", level).c_str());
         break;
 
     case LEVEL_AREAGOD + 1:
     case LEVEL_AREAGOD:
-        sprintf(buf, "one of the Valar (level %d)", level);
+        strcpy(buf, std::format("one of the Valar (level {})", level).c_str());
         break;
 
     case LEVEL_GOD + 1:
-        sprintf(buf, "one of the Greater Maiar");
+        strcpy(buf, "one of the Greater Maiar");
         break;
 
     case LEVEL_GOD:
-        sprintf(buf, "one of the Maiar");
+        strcpy(buf, "one of the Maiar");
         break;
 
     case LEVEL_IMMORT + 1:
     case LEVEL_IMMORT:
-        sprintf(buf, "one of the Lesser Maiar (level %d)", level);
+        strcpy(buf, std::format("one of the Lesser Maiar (level {})", level).c_str());
         break;
 
     default:
-        sprintf(buf, "a level %d %s", level, pc_races[race]);
+        strcpy(buf, std::format("a level {} {}", level, pc_races[race]).c_str());
         break;
     }
 
@@ -3538,17 +3634,19 @@ void report_perception(char_data* ch, char* str)
 {
 
     if (GET_PERCEPTION(ch) == 0) {
-        sprintf(str, "%s mind is totally numb.\n\r", HSHR(ch));
+        strcpy(str, std::format("{} mind is totally numb.\n\r", HSHR(ch)).c_str());
     } else if (GET_PERCEPTION(ch) < 20) {
-        sprintf(str, "%s mind is as well as numb.\n\r", HSHR(ch));
+        strcpy(str, std::format("{} mind is as well as numb.\n\r", HSHR(ch)).c_str());
     } else if (GET_PERCEPTION(ch) < 50) {
-        sprintf(str, "%s is moderately sensitive to the spiritual.\n\r", HSSH(ch));
+        strcpy(str,
+            std::format("{} is moderately sensitive to the spiritual.\n\r", HSSH(ch)).c_str());
     } else if (GET_PERCEPTION(ch) < 80) {
-        sprintf(str, "%s is well aware of the Wraith-world.\n\r", HSSH(ch));
+        strcpy(str, std::format("{} is well aware of the Wraith-world.\n\r", HSSH(ch)).c_str());
     } else if (GET_PERCEPTION(ch) < 100) {
-        sprintf(str, "%s is very perceptive to the Wraith-world.\n\r", HSSH(ch));
+        strcpy(str,
+            std::format("{} is very perceptive to the Wraith-world.\n\r", HSSH(ch)).c_str());
     } else {
-        sprintf(str, "%s is one with the Wraith-world!\n\r", HSSH(ch));
+        strcpy(str, std::format("{} is one with the Wraith-world!\n\r", HSSH(ch)).c_str());
     }
     str[0] = UPPER(str[0]);
 }
@@ -3572,14 +3670,17 @@ void report_affection(affected_type* aff, char* str)
     const char* skill_name = skill.name;
     const char* duration = durations[dur_index];
 
-    char duration_text[32];
+    // duration_text was a local char[32] staging buffer fed straight into
+    // str's final sprintf; a std::string serves the same role without the
+    // fixed-size risk.
+    std::string duration_text;
     if (skill.is_fast) {
-        sprintf(duration_text, "%s, %s", duration, durations[4]);
+        duration_text = std::format("{}, {}", duration, durations[4]);
     } else {
-        sprintf(duration_text, "%s", duration);
+        duration_text = duration;
     }
 
-    sprintf(str, "%-30s (%s)\n\r", skill_name, duration_text);
+    strcpy(str, std::format("{:<30} ({})\n\r", skill_name, duration_text).c_str());
 }
 
 void report_skill_timer(const char_data& ch, char* buf)
@@ -4062,10 +4163,13 @@ void report_char_mentals(char_data* ch, char* str, int brief_mode)
     if (low_stat1 == -1) {
         strcpy(str, "in top shape");
     } else if ((low_stat2 == -1) || brief_mode) {
-        sprintf(str, "%s %s", stat_attrs[stat_value1 / 10], stat_defects[low_stat1]);
+        strcpy(str,
+            std::format("{} {}", stat_attrs[stat_value1 / 10], stat_defects[low_stat1]).c_str());
     } else {
-        sprintf(str, "%s %s and %s %s", stat_attrs[stat_value1 / 10], stat_defects[low_stat1],
-            stat_attrs[stat_value2 / 10], stat_defects[low_stat2]);
+        strcpy(str,
+            std::format("{} {} and {} {}", stat_attrs[stat_value1 / 10], stat_defects[low_stat1],
+                stat_attrs[stat_value2 / 10], stat_defects[low_stat2])
+                .c_str());
     }
     return;
 }

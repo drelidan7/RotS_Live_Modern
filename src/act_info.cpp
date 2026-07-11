@@ -1977,39 +1977,56 @@ ACMD(do_score)
     send_to_char(out.c_str(), ch);
 }
 
+// Local RAII helper for this chunk's malloc'd-char* sites (transform idiom
+// catalog item 10): nth()/pkill_get_string()/rots_asprintf() all return a
+// heap char* the caller owns outright and frees once consumed locally.
+// Capturing it as a std::string immediately -- and freeing the source right
+// there -- removes the free()-call-site bookkeeping the old code needed at
+// every use (and every early-return path) without changing any output byte.
+// Used by do_time, do_fame, and do_rank below (this chunk owns every such
+// allocation site in the file).
+static std::string take_cstring(char* raw)
+{
+    std::string result(raw);
+    free(raw);
+    return result;
+}
+
 ACMD(do_time)
 {
-    char* bufpt;
-    char* year;
     int weekday, sunrise, sunset, hours;
     extern int sun_events[12][2];
     extern char* weekdays[];
     extern struct time_info_data time_info;
     int get_season();
 
-    bufpt = buf;
-    bufpt += sprintf(bufpt, "It is about %d:00 %s on ",
+    std::string out;
+    out += std::format("It is about {}:00 {} on ",
         time_info.hours % 12 == 0 ? 12 : time_info.hours % 12,
         time_info.hours >= 12 ? "PM" : "AM");
 
     /* 35 days in a month */
     weekday = ((30 * time_info.month) + time_info.day + 1) % 7;
-    bufpt += sprintf(bufpt, "%s, ", weekdays[weekday]);
+    out += std::format("{}, ", weekdays[weekday]);
 
-    /* Get the daytime */
-    day_to_str(&time_info, bufpt);
-    bufpt += strlen(bufpt);
-    bufpt += sprintf(bufpt, ".\r\n");
+    /* Get the daytime -- day_to_str() is a legacy helper that writes into a
+     * caller-owned char* (transform idiom catalog item 3's named exception);
+     * bridge it via a zeroed local staging buffer rather than changing its
+     * signature this wave. */
+    char day_stage[MAX_STRING_LENGTH];
+    day_stage[0] = '\0';
+    day_to_str(&time_info, day_stage);
+    out += day_stage;
+    out += ".\r\n";
 
-    year = nth(time_info.year);
-    bufpt += sprintf(bufpt,
+    std::string year = take_cstring(nth(time_info.year));
+    out += std::format(
         "By the Steward's Reckoning, it is "
-        "the %s year of the fourth age of Arda.\r\n",
+        "the {} year of the fourth age of Arda.\r\n",
         year);
-    free(year);
 
     /* A blurb on the phase of the moon */
-    bufpt += sprintf(bufpt, "The moon is %s and %s.\n\r", moon_phase[weather_info.moonphase],
+    out += std::format("The moon is {} and {}.\n\r", moon_phase[weather_info.moonphase],
         weather_info.moonlight ? "shining" : "not shining");
 
     /* When the sun will rise and set */
@@ -2017,14 +2034,14 @@ ACMD(do_time)
     sunset = sun_events[time_info.month][1];
     if (time_info.hours >= sunrise && time_info.hours < sunset) {
         hours = sunset - time_info.hours;
-        bufpt += sprintf(bufpt, "The sun will set in about %d hour%s.\r\n", hours,
+        out += std::format("The sun will set in about {} hour{}.\r\n", hours,
             hours == 1 ? "" : "s");
     } else {
         hours = sunrise + (time_info.hours < 12 ? -time_info.hours : 24 - time_info.hours);
-        bufpt += sprintf(bufpt, "The sun will rise in about %d hour%s.\n\r", hours,
+        out += std::format("The sun will rise in about {} hour{}.\n\r", hours,
             hours == 1 ? "" : "s");
     }
-    send_to_char(buf, ch);
+    send_to_char(out.c_str(), ch);
 }
 
 char* sky_look[6] = {
@@ -2074,8 +2091,8 @@ ACMD(do_weather)
  */
 ACMD(do_help)
 {
-    int chk, bot, top, mid, minlen, tmp, num, buf2tmp;
-    char chapstr[255], *buf2pt;
+    int chk, bot, top, mid, minlen, tmp, num;
+    char chapstr[255];
     extern int help_summary_length;
     extern char* help;
     extern struct help_index_summary help_content[];
@@ -2086,7 +2103,6 @@ ACMD(do_help)
     for (; isspace(*argument); argument++)
         ;
 
-    buf2pt = buf2;
     /* Find the index for the chapter that the character requested */
     if (subcmd == 1) { /* man (manual) command */
         if (*argument) {
@@ -2105,15 +2121,19 @@ ACMD(do_help)
 
         /* no argument, or no matching chapter */
         if (tmp == help_summary_length) {
-            buf2pt += sprintf(buf2pt, "The manual chapters are:\r\n");
+            std::string out = "The manual chapters are:\r\n";
             for (tmp = 0; tmp < help_summary_length; tmp++)
                 if ((help_content[tmp].imm_only && GET_LEVEL(ch) >= LEVEL_IMMORT) || !help_content[tmp].imm_only) {
-                    buf2tmp = sprintf(buf2pt, "%-18s %-50s\r\n", help_content[tmp].keyword,
+                    std::string line = std::format("{:<18} {:<50}\r\n", help_content[tmp].keyword,
                         help_content[tmp].descr);
-                    CAP(buf2pt);
-                    buf2pt += buf2tmp;
+                    // Same manual-ASCII capitalization as the CAP() macro
+                    // (utils.h) this replaces -- NOT std::toupper(), which
+                    // is locale-sensitive and would diverge from it.
+                    if (!line.empty())
+                        line[0] = UPPER(line[0]);
+                    out += line;
                 }
-            send_to_char(buf2, ch);
+            send_to_char(out.c_str(), ch);
             return;
         }
         num = tmp;
@@ -2141,19 +2161,26 @@ ACMD(do_help)
 
             if (!(chk = strn_cmp(argument, help_content[num].index[mid].keyword, minlen))) {
                 fseek(help_content[num].file, help_content[num].index[mid].pos, SEEK_SET);
-                *buf2 = '\0';
+                // fgets() writes into the shared global `buf` directly (a
+                // parser-adjacent buffer per transform idiom catalog item 8)
+                // -- accumulate its lines into a std::string, then stage the
+                // result into buf2 for page_string(), whose signature takes
+                // a caller-owned char* (catalog item 3's page_string note).
+                std::string entry_text;
                 for (;;) {
                     fgets(buf, 80, help_content[num].file);
                     if (*buf == '#')
                         break;
-                    buf2pt += sprintf(buf2pt, "%s", buf);
+                    entry_text += buf;
                 }
+                strcpy(buf2, entry_text.c_str());
                 page_string(ch->desc, buf2, 1);
                 return;
             } else if (bot >= top) {
-                sprintf(buf2, "There is no entry for '%s' in the %s chapter.\r\n", argument,
-                    help_content[num].keyword);
-                send_to_char(buf2, ch);
+                send_to_char(std::format("There is no entry for '{}' in the {} chapter.\r\n",
+                                 argument, help_content[num].keyword)
+                                 .c_str(),
+                    ch);
                 return;
             } else if (chk > 0)
                 bot = ++mid;
@@ -2162,15 +2189,16 @@ ACMD(do_help)
         }
         return;
     } else if (subcmd == 1) { /* They used manual with a chapter but no argument */
-        buf2pt += sprintf(buf2pt, "Topics in the '%s' chapter are:\r\n", help_content[num].keyword);
+        std::string out
+            = std::format("Topics in the '{}' chapter are:\r\n", help_content[num].keyword);
         for (tmp = 0; tmp < help_content[num].top_of_helpt; tmp++) {
-            buf2pt += sprintf(buf2pt, "%-17s| ", help_content[num].index[tmp].keyword);
+            out += std::format("{:<17}| ", help_content[num].index[tmp].keyword);
             if (!((tmp + 1) % 4))
-                buf2pt += sprintf(buf2pt, "\r\n");
+                out += "\r\n";
         }
         if (tmp % 4)
-            strcat(buf2, "\n\r");
-        send_to_char(buf2, ch);
+            out += "\n\r";
+        send_to_char(out.c_str(), ch);
     } else /* They used help with no first argument */
         send_to_char(help, ch);
 
@@ -2189,11 +2217,17 @@ ACMD(do_who)
     int short_list = 0, num_can_see = 0;
     int who_room = 0, level_limit = 0, who_whitie = 0, who_darkie = 0;
     int who_magi = 0;
-    char buf2[16384], *buf2pt;
+    // Local buf2 deliberately shadows the global 8192-byte buf2 (db.h) --
+    // a "who" listing can exceed that (many connected players), so the
+    // original code sized this staging buffer at 16384 bytes; preserved
+    // here for page_string()'s char* signature (transform idiom catalog
+    // item 3's page_string note) rather than switching to the smaller
+    // global and risking a truncation/overflow regression.
+    char buf2[16384];
     extern char* imm_abbrevs[];
 
-    *buf2 = *name_search = '\0';
-    buf2pt = buf2;
+    *name_search = '\0';
+    std::string out;
 
     for (i = 0; *(argument + i) == ' '; i++)
         ;
@@ -2205,7 +2239,7 @@ ACMD(do_who)
         if (isdigit(*arg)) {
             sscanf(arg, "%d-%d", &low, &high);
             level_limit = 1;
-            buf2pt += sprintf(buf2pt, "Players between level %d and %d\r\n", low, high);
+            out += std::format("Players between level {} and {}\r\n", low, high);
             strcpy(buf, buf1);
         } else if (*arg == '-') {
             mode = *(arg + 1); /* just in case; we destroy arg in the switch */
@@ -2213,7 +2247,7 @@ ACMD(do_who)
             case 'z':
                 localwho = 1;
                 strcpy(buf, buf1);
-                buf2pt += sprintf(buf2pt, "Players in your zone\r\n");
+                out += "Players in your zone\r\n";
                 break;
 
             case 's':
@@ -2225,13 +2259,13 @@ ACMD(do_who)
                 half_chop(buf1, arg, buf);
                 sscanf(arg, "%d-%d", &low, &high);
                 level_limit = 1;
-                buf2pt += sprintf(buf2pt, "Players between level %d and %d\r\n", low, high);
+                out += std::format("Players between level {} and {}\r\n", low, high);
                 break;
 
             case 'n':
                 half_chop(buf1, name_search, buf);
-                buf2pt += sprintf(buf2pt,
-                    "Players with '%s' in their names or titles"
+                out += std::format(
+                    "Players with '{}' in their names or titles"
                     "\r\n",
                     name_search);
                 break;
@@ -2239,25 +2273,25 @@ ACMD(do_who)
             case 'r':
                 who_room = 1;
                 strcpy(buf, buf1);
-                buf2pt += sprintf(buf2pt, "Players in your room\r\n");
+                out += "Players in your room\r\n";
                 break;
 
             case 'w':
                 who_whitie = 1;
                 strcpy(buf, buf1);
-                buf2pt += sprintf(buf2pt, "Humans, Elves, Dwarves, Beornings and Hobbits\r\n");
+                out += "Humans, Elves, Dwarves, Beornings and Hobbits\r\n";
                 break;
 
             case 'm':
                 who_magi = 1;
                 strcpy(buf, buf1);
-                buf2pt += sprintf(buf2pt, "Uruk-Lhuth and Haradrims\r\n");
+                out += "Uruk-Lhuth and Haradrims\r\n";
                 break;
 
             case 'd':
                 who_darkie = 1;
                 strcpy(buf, buf1);
-                buf2pt += sprintf(buf2pt, "Uruk-Hais, Olog-Hais and Common Orcs\r\n");
+                out += "Uruk-Hais, Olog-Hais and Common Orcs\r\n";
                 break;
 
             default:
@@ -2271,13 +2305,12 @@ ACMD(do_who)
         }
     } /* end while (parser) */
 
-    if (!*buf2)
-        buf2pt += sprintf(buf2pt, "Players\r\n");
+    if (out.empty())
+        out += "Players\r\n";
     /* Make a dashline the same size as the header */
-    memset(buf2pt, '-', strlen(buf2) - 2);
-    buf2pt += buf2pt - buf2 - 2;
-    *buf2pt = '\0';
-    buf2pt += sprintf(buf2pt, "\r\n");
+    size_t header_len = out.size();
+    out.append(header_len - 2, '-');
+    out += "\r\n";
 
     /* Cycle through all connected sockets */
     for (d = descriptor_list; d; d = d->next) {
@@ -2320,54 +2353,59 @@ ACMD(do_who)
         /* The short list doesn't show a title, and attempts 4 players per row */
         if (short_list) {
             if (PLR_FLAGGED(tch, PLR_INCOGNITO) && (GET_LEVEL(ch) < LEVEL_IMMORT))
-                buf2pt += sprintf(buf2pt, "[--- %s] %-12.12s%s", RACE_ABBR(tch), GET_NAME(tch),
+                out += std::format("[--- {}] {:<12.12}{}", RACE_ABBR(tch), GET_NAME(tch),
                     !(++num_can_see % 4) ? "\r\n" : "");
             else
-                buf2pt += sprintf(buf2pt, "[%3d %s] %-12.12s%s", GET_LEVEL(tch), RACE_ABBR(tch),
+                out += std::format("[{:3} {}] {:<12.12}{}", GET_LEVEL(tch), RACE_ABBR(tch),
                     GET_NAME(tch), !(++num_can_see % 4) ? "\r\n" : "");
         } else { /* A normal list */
             num_can_see++;
             if (PLR_FLAGGED(tch, PLR_INCOGNITO) && (GET_LEVEL(ch) < LEVEL_IMMORT))
-                buf2pt += sprintf(buf2pt, "[--- %s] ", RACE_ABBR(tch));
+                out += std::format("[--- {}] ", RACE_ABBR(tch));
             else {
                 if (GET_LEVEL(tch) < LEVEL_IMMORT)
-                    buf2pt += sprintf(buf2pt, "[%3d %s] ", GET_LEVEL(tch), RACE_ABBR(tch));
+                    out += std::format("[{:3} {}] ", GET_LEVEL(tch), RACE_ABBR(tch));
                 else
-                    buf2pt += sprintf(buf2pt, "[%s] ", imm_abbrevs[GET_LEVEL(tch) - LEVEL_MINIMM]);
+                    out += std::format("[{}] ", imm_abbrevs[GET_LEVEL(tch) - LEVEL_MINIMM]);
             }
-            buf2pt += sprintf(buf2pt, "%s %s", GET_NAME(tch), GET_TITLE(tch));
+            out += std::format("{} {}", GET_NAME(tch), nz(GET_TITLE(tch)));
 
             if (GET_INVIS_LEV(tch))
-                buf2pt += sprintf(buf2pt, " (i%d)", GET_INVIS_LEV(tch));
+                out += std::format(" (i{})", GET_INVIS_LEV(tch));
             else if (IS_AFFECTED(tch, AFF_INVISIBLE))
-                buf2pt += sprintf(buf2pt, " (invis)");
+                out += " (invis)";
             if (PLR_FLAGGED(tch, PLR_MAILING))
-                buf2pt += sprintf(buf2pt, " (mailing)");
+                out += " (mailing)";
             else if (PLR_FLAGGED(tch, PLR_WRITING))
-                buf2pt += sprintf(buf2pt, " (writing)");
+                out += " (writing)";
             if (d->connected == CON_LINKLS)
-                buf2pt += sprintf(buf2pt, " (linkless)");
+                out += " (linkless)";
             if (PLR_FLAGGED(tch, PLR_RETIRED))
-                buf2pt += sprintf(buf2pt, " (retired)");
+                out += " (retired)";
             if (!PRF_FLAGGED(tch, PRF_NARRATE))
-                buf2pt += sprintf(buf2pt, " (deaf)");
+                out += " (deaf)";
             if (PRF_FLAGGED(tch, PRF_NOTELL))
-                buf2pt += sprintf(buf2pt, " (notell)");
+                out += " (notell)";
             if (PLR_FLAGGED(tch, PLR_ISAFK))
-                buf2pt += sprintf(buf2pt, " (AFK)");
+                out += " (AFK)";
             if (GET_POS(tch) == POSITION_SLEEPING)
-                buf2pt += sprintf(buf2pt, " (sleeping)");
+                out += " (sleeping)";
             if (IS_SHADOW(tch))
-                buf2pt += sprintf(buf2pt, " (shadow)");
-            buf2pt += sprintf(buf2pt, "\n\r");
+                out += " (shadow)";
+            out += "\n\r";
         }
     }
 
     if (short_list && (num_can_see % 4))
-        buf2pt += sprintf(buf2pt, "\n\r");
-    buf2pt += sprintf(buf2pt, "\n\r%d character%s displayed.\n\r", num_can_see,
+        out += "\n\r";
+    out += std::format("\n\r{} character{} displayed.\n\r", num_can_see,
         num_can_see == 1 ? "" : "s");
 
+    // page_string() takes a caller-owned char* (transform idiom catalog
+    // item 3's page_string note); stage the composed text into the
+    // pre-existing 16384-byte buf2 (db.cpp/db.h) rather than changing its
+    // signature this wave.
+    strcpy(buf2, out.c_str());
     page_string(ch->desc, buf2, 1);
 }
 
@@ -2376,10 +2414,9 @@ ACMD(do_who)
 
 ACMD(do_users)
 {
-    char line[200], idletime[10], profname[20];
-    char state[100], *timeptr;
+    char* timeptr;
     char name_search[80], host_search[80];
-    char mode, *format;
+    char mode;
     int low = 0, high = LEVEL_IMPL;
     unsigned int i;
     int showprof = 0, num_can_see = 0, playing = 0, deadweight = 0;
@@ -2454,10 +2491,10 @@ ACMD(do_users)
     }
 
     /* Header */
-    strcpy(line, "Num   Prof       Name         State       Idl  Login@   Site\n\r");
-    strcat(line, "--- --------- ------------ -------------- --- -------- "
-                 "------------------------\n\r");
-    send_to_char(line, ch);
+    send_to_char("Num   Prof       Name         State       Idl  Login@   Site\n\r"
+                 "--- --------- ------------ -------------- --- -------- "
+                 "------------------------\n\r",
+        ch);
 
     one_argument(argument, arg);
 
@@ -2466,6 +2503,8 @@ ACMD(do_users)
             continue;
         if (!d->connected && deadweight)
             continue;
+
+        std::string profname;
         if (!d->connected || (d->connected == CON_LINKLS)) {
             if (d->original)
                 tch = d->original;
@@ -2484,52 +2523,53 @@ ACMD(do_users)
                 continue;
 
             if (d->original)
-                sprintf(profname, "[%3d %s]", GET_LEVEL(d->original), RACE_ABBR(d->original));
+                profname = std::format("[{:3} {}]", GET_LEVEL(d->original), RACE_ABBR(d->original));
             else
-                sprintf(profname, "[%3d %s]", GET_LEVEL(d->character), RACE_ABBR(d->character));
+                profname = std::format("[{:3} {}]", GET_LEVEL(d->character), RACE_ABBR(d->character));
         } else
-            strcpy(profname, "[   -   ]");
+            profname = "[   -   ]";
 
         timeptr = asctime(localtime(&d->login_time));
         timeptr += 11;
         *(timeptr + 8) = '\0';
 
+        std::string state;
         if (!d->connected && d->original)
-            strcpy(state, "Switched");
+            state = "Switched";
         else
-            strcpy(state, connected_types[d->connected]);
+            state = connected_types[d->connected];
 
+        std::string idletime;
         if (d->character && (!d->connected || (d->connected == CON_LINKLS)))
-            sprintf(idletime, "%3d",
-                d->character->specials.timer * SECS_PER_MUD_HOUR / SECS_PER_REAL_MIN);
+            idletime = std::format(
+                "{:3}", d->character->specials.timer * SECS_PER_MUD_HOUR / SECS_PER_REAL_MIN);
         else
-            strcpy(idletime, " - ");
+            idletime = " - ";
 
-        format = "%3d %-9s %-12s %-14s %-3s %-8s ";
-
+        std::string line;
         if (d->character && d->character->player.name) {
             if (d->original)
-                sprintf(line, format, d->desc_num, profname, d->original->player.name, state,
-                    idletime, timeptr);
+                line = std::format("{:3} {:<9} {:<12} {:<14} {:<3} {:<8} ", d->desc_num, profname,
+                    d->original->player.name, state, idletime, timeptr);
             else
-                sprintf(line, format, d->desc_num, profname, d->character->player.name, state,
-                    idletime, timeptr);
+                line = std::format("{:3} {:<9} {:<12} {:<14} {:<3} {:<8} ", d->desc_num, profname,
+                    d->character->player.name, state, idletime, timeptr);
         } else
-            sprintf(line, format, d->desc_num, "   -   ", "UNDEFINED", state, idletime, timeptr);
+            line = std::format("{:3} {:<9} {:<12} {:<14} {:<3} {:<8} ", d->desc_num, "   -   ",
+                "UNDEFINED", state, idletime, timeptr);
 
         if (d->host && *d->host)
-            sprintf(line + strlen(line), "[%s]\n\r", d->host);
+            line += std::format("[{}]\n\r", d->host);
         else
-            strcat(line, "[Hostname unknown]\n\r");
+            line += "[Hostname unknown]\n\r";
 
         if (d->connected || (!d->connected && CAN_SEE(ch, d->character))) {
-            send_to_char(line, ch);
+            send_to_char(line.c_str(), ch);
             num_can_see++;
         }
     }
 
-    sprintf(line, "\n\r%d visible sockets connected.\n\r", num_can_see);
-    send_to_char(line, ch);
+    send_to_char(std::format("\n\r{} visible sockets connected.\n\r", num_can_see).c_str(), ch);
 }
 
 ACMD(do_inventory)
@@ -2717,19 +2757,23 @@ ACMD(do_levels)
         return;
     }
 
-    sprintf(buf,
-        "You are %d%% Warrior, %d%% Ranger, %d%% Mystic, %d%% Mage\r\n"
+    std::string out = std::format(
+        "You are {}% Warrior, {}% Ranger, {}% Mystic, {}% Mage\r\n"
         "Level:  Exp. to Level  : Warrior :  Ranger :  Mystic : Mage :\r\n",
         GET_PROF_COOF(PROF_WARRIOR, ch) / 10, GET_PROF_COOF(PROF_RANGER, ch) / 10,
         GET_PROF_COOF(PROF_CLERIC, ch) / 10, GET_PROF_COOF(PROF_MAGIC_USER, ch) / 10);
 
     for (i = 1; i < LEVEL_IMMORT && i < 31; i++) {
-        sprintf(buf + strlen(buf), "[%2d] %8d-%-8d : %9d %9d %9d %9d\n\r", i, xp_to_level(i),
+        out += std::format("[{:2}] {:8}-{:<8} : {:9} {:9} {:9} {:9}\n\r", i, xp_to_level(i),
             xp_to_level(i + 1), i * GET_PROF_COOF(PROF_WARRIOR, ch) / 1000,
             i * GET_PROF_COOF(PROF_RANGER, ch) / 1000,
             i * GET_PROF_COOF(PROF_CLERIC, ch) / 1000,
             i * GET_PROF_COOF(PROF_MAGIC_USER, ch) / 1000);
     }
+    // page_string() takes a caller-owned char* (transform idiom catalog
+    // item 3's page_string note); stage into the pre-existing global `buf`
+    // rather than changing its signature this wave.
+    strcpy(buf, out.c_str());
     page_string(ch->desc, buf, 1);
 }
 
@@ -2993,43 +3037,44 @@ ACMD(do_commands)
         vict = ch;
 
     if (subcmd == SCMD_SOCIALS) {
-        sprintf(buf, "The following socials are available to %s:\n\r",
+        std::string out = std::format("The following socials are available to {}:\n\r",
             vict == ch ? "you" : GET_NAME(vict));
 
         for (no = 1; no < social_list_top; no++) {
             if ((GET_LEVEL(ch) >= LEVEL_GOD) && PRF_FLAGGED(ch, PRF_ROOMFLAGS))
-                sprintf(buf + strlen(buf), "(%3d)%-11s", no, soc_mess_list[no].command);
+                out += std::format("({:3}){:<11}", no, soc_mess_list[no].command);
             else
-                sprintf(buf + strlen(buf), "%-16s", soc_mess_list[no].command);
+                out += std::format("{:<16}", soc_mess_list[no].command);
             if (!(no % 5))
-                strcat(buf, "\n\r");
+                out += "\n\r";
         }
-        strcat(buf, "\n\r");
-        send_to_char(buf, ch);
+        out += "\n\r";
+        send_to_char(out.c_str(), ch);
         return;
     }
 
     if (subcmd == SCMD_WIZHELP)
         wizhelp = 1;
 
-    sprintf(buf, "The following %s%s are available to %s:\n\r", wizhelp ? "privileged " : "",
-        socials ? "socials" : "commands", vict == ch ? "you" : GET_NAME(vict));
+    std::string out = std::format("The following {}{} are available to {}:\n\r",
+        wizhelp ? "privileged " : "", socials ? "socials" : "commands",
+        vict == ch ? "you" : GET_NAME(vict));
 
     for (no = 1, cmd_num = 1; cmd_num <= num_of_cmds; cmd_num++) {
         i = cmd_info[cmd_num].sort_pos;
         if (cmd_info[i + 1].minimum_level >= 0 && (cmd_info[i + 1].minimum_level >= LEVEL_IMMORT) == wizhelp && GET_LEVEL(vict) >= cmd_info[i + 1].minimum_level && (wizhelp || socials == cmd_info[i + 1].is_social)) {
             if ((GET_LEVEL(ch) >= LEVEL_GOD) && PRF_FLAGGED(ch, PRF_ROOMFLAGS))
-                sprintf(buf + strlen(buf), "(%3d)%-11s", i + 1, command[i]);
+                out += std::format("({:3}){:<11}", i + 1, command[i]);
             else
-                sprintf(buf + strlen(buf), "%-16s", command[i]);
+                out += std::format("{:<16}", command[i]);
             if (!(no % 5))
-                strcat(buf, "\n\r");
+                out += "\n\r";
             no++;
         }
     }
 
-    strcat(buf, "\n\r");
-    send_to_char(buf, ch);
+    out += "\n\r";
+    send_to_char(out.c_str(), ch);
 }
 
 ACMD(do_diagnose)
@@ -3128,7 +3173,6 @@ ACMD(do_whois)
     int t_race, t_level;
     time_t tt;
     int _player;
-    char str[255];
     char name[MAX_INPUT_LENGTH];
     char *t_title, *t_retired;
     const char *retired = " [Retired]", *blank = "";
@@ -3184,29 +3228,34 @@ ACMD(do_whois)
         incognito = IS_SET(P->flags, PLR_INCOGNITO);
     }
 
+    std::string str;
     if (other_side_num(GET_RACE(ch), t_race)) {
         /* P->title replaced with "" in the new player file format */
         if (incognito)
-            sprintf(str, "%s %s%s.\n\r", P->name, t_title, t_retired);
+            str = std::format("{} {}{}.\n\r", P->name, nz(t_title), t_retired);
         else
-            sprintf(str, "%s %s is %s%s.\n\r", P->name, t_title, get_level_abbr(t_level, t_race),
-                t_retired);
+            str = std::format("{} {} is {}{}.\n\r", P->name, nz(t_title),
+                get_level_abbr(t_level, t_race), t_retired);
     } else { /* Now we assume they aren't on opposite sides of the war */
         if (incognito && GET_LEVEL(ch) < LEVEL_GRGOD)
-            sprintf(str, "%s %s%s.\n\r", P->name, t_title, t_retired);
+            str = std::format("{} {}{}.\n\r", P->name, nz(t_title), t_retired);
         else
             /* Playtime info given for: mortals, immortals whoising lower targets */
             if ((GET_LEVEL(ch) >= LEVEL_IMMORT && GET_LEVEL(ch) >= t_level) || t_level < LEVEL_IMMORT)
-                sprintf(str, "%s %s is %s%s.\n\r%s %s\r", P->name, t_title,
+                str = std::format("{} {} is {}{}.\n\r{} {}\r", P->name, nz(t_title),
                     get_level_abbr(t_level, t_race), t_retired,
                     isplaying ? "Playing since " : "Last seen ", asctime(localtime(&tt)));
             else
-                sprintf(str, "%s %s is %s%s.\n\r", P->name, t_title,
+                str = std::format("{} {} is {}{}.\n\r", P->name, nz(t_title),
                     get_level_abbr(t_level, t_race), t_retired);
     }
 
-    *str = toupper(*str);
-    send_to_char(str, ch);
+    // *str = toupper(*str) in the original -- ctype.h's locale-aware
+    // toupper(), NOT the manual-ASCII UPPER() macro do_help above uses;
+    // preserved as the same toupper() call, just against str[0] now.
+    if (!str.empty())
+        str[0] = static_cast<char>(toupper(static_cast<unsigned char>(str[0])));
+    send_to_char(str.c_str(), ch);
 
     return;
 #undef P
@@ -3614,22 +3663,28 @@ ACMD(do_affections)
 void do_fame_leader_string(LEADER* ldr, char* buffer)
 {
     int i, n;
-    size_t bufpt;
 
     if (ldr->invalid) {
-        sprintf(buffer, "%27s", " ");
+        // "%27s" of a single space -- 26 padding spaces plus the space
+        // character itself, i.e. 27 spaces total.
+        strcpy(buffer, std::string(27, ' ').c_str());
         return;
     }
 
-    bufpt = sprintf(buffer, "%2d. %s", ldr->rank + 1, ldr->name);
-    bufpt += sprintf(buffer + bufpt, " the %s", pc_races[ldr->race]);
+    std::string out = std::format("{:2}. {}", ldr->rank + 1, ldr->name);
+    out += std::format(" the {}", pc_races[ldr->race]);
 
-    /* Pad with spaces til the end of name/title section */
+    /* Pad with spaces til the end of name/title section. Deliberately kept
+     * as the original's exact (signed-int-minus-size_t) arithmetic rather
+     * than "fixed" -- this is a characterization conversion, not a
+     * behavior change, and this expression's implementation-defined
+     * overflow behavior for an over-long name/race is unchanged. */
     n = 27 - strlen(ldr->name) - strlen(pc_races[ldr->race]) - 5;
     for (i = 0; i < n; ++i)
-        bufpt += sprintf(buffer + bufpt, " ");
+        out += " ";
 
-    bufpt += sprintf(buffer + bufpt, " %4d", ldr->fame);
+    out += std::format(" {:4}", ldr->fame);
+    strcpy(buffer, out.c_str());
 }
 
 ACMD(do_fame)
@@ -3639,9 +3694,7 @@ ACMD(do_fame)
     int idx;
     int numname;
     int records;
-    size_t bufpt;
     char leaderstr[MAX_LEADER_STRING];
-    char* string;
     char name[MAX_INPUT_LENGTH];
     char* warheader = "Status of the War in Middle-earth";
     char* good_victory = "The free peoples of Middle-earth are victorious "
@@ -3657,28 +3710,27 @@ ACMD(do_fame)
         return;
     }
 
-    buf[0] = '\0';
     one_argument(argument, name);
 
     if (!strcmp(name, "war")) {
-        bufpt = sprintf(buf, "%22s%s\r\n\r\n", " ", warheader);
+        std::string out = std::format("{:>22}{}\r\n\r\n", " ", warheader);
 
         /* Report the top 10 fame leaders */
-        bufpt += sprintf(buf + bufpt, "    The Free Peoples of Middle-earth     "
-                                      "    The Forces of the Shadow\r\n");
+        out += "    The Free Peoples of Middle-earth     "
+               "    The Forces of the Shadow\r\n";
         for (i = 0; i < 10; ++i) {
             /* Good rank i leader */
             ldr1 = pkill_get_leader_by_rank(i, RACE_WOOD);
             ldr1valid = !ldr1->invalid;
             do_fame_leader_string(ldr1, leaderstr);
-            bufpt += sprintf(buf + bufpt, "%s%5s", leaderstr, " ");
+            out += std::format("{}{:>5}", leaderstr, " ");
             pkill_free_leader(ldr1);
 
             /* Evil rank i leader */
             ldr2 = pkill_get_leader_by_rank(i, RACE_URUK);
             ldr2valid = !ldr2->invalid;
             do_fame_leader_string(ldr2, leaderstr);
-            bufpt += sprintf(buf + bufpt, "%s\r\n", leaderstr);
+            out += std::format("{}\r\n", leaderstr);
             pkill_free_leader(ldr2);
 
             /* If both ranks were invalid, stop looping */
@@ -3686,24 +3738,23 @@ ACMD(do_fame)
                 break;
         }
         if (i == 10)
-            bufpt += sprintf(buf + bufpt, "\r\n");
+            out += "\r\n";
 
         /* Report the exact states of the war */
-        bufpt += sprintf(buf + bufpt, "Total fame for the free peoples of Middle-earth: %d\r\n",
-            pkill_get_good_fame());
-        bufpt += sprintf(buf + bufpt, "Total fame for the forces of the Shadow: %d\r\n",
-            pkill_get_evil_fame());
-        bufpt += sprintf(buf + bufpt, "\r\n");
+        out += std::format(
+            "Total fame for the free peoples of Middle-earth: {}\r\n", pkill_get_good_fame());
+        out += std::format("Total fame for the forces of the Shadow: {}\r\n", pkill_get_evil_fame());
+        out += "\r\n";
 
         /* Report the general state of the war */
         if (pkill_get_good_fame() > pkill_get_evil_fame())
-            sprintf(buf + bufpt, "%s\r\n", good_victory);
+            out += std::format("{}\r\n", good_victory);
         else if (pkill_get_good_fame() < pkill_get_evil_fame())
-            sprintf(buf + bufpt, "%s\r\n", evil_victory);
+            out += std::format("{}\r\n", evil_victory);
         else
-            sprintf(buf + bufpt, "%s\r\n", no_victory);
+            out += std::format("{}\r\n", no_victory);
 
-        send_to_char(buf, ch);
+        send_to_char(out.c_str(), ch);
         return;
     }
 
@@ -3715,16 +3766,21 @@ ACMD(do_fame)
             return;
         }
 
-        bufpt = 0;
+        std::string out;
         for (i = 0; i < n; ++i) {
-            string = pkill_get_string(&pkills[i], PKILL_STRING_KILLED);
-            // string interpolates character names -- pass it through "%s" rather than
-            // as the format string itself (a non-literal-format-string bug: any '%'
-            // bytes in a name would previously be interpreted as conversion specifiers).
-            bufpt += sprintf(buf + bufpt, "%s", string);
-            free(string);
+            // pkill_get_string()'s malloc'd result interpolates character
+            // names -- appended as data via std::string::operator+=, never
+            // re-interpreted as a format string, so a '%' byte in a name
+            // can't be misread as a conversion specifier (the same
+            // non-literal-format-string fix the old "%s"-wrapped sprintf()
+            // call here used to guard against). RAII: captured and freed
+            // immediately via take_cstring() (transform idiom catalog item 10).
+            out += take_cstring(pkill_get_string(&pkills[i], PKILL_STRING_KILLED));
         }
 
+        // page_string() takes a caller-owned char* (transform idiom
+        // catalog item 3's page_string note); stage into the global `buf`.
+        strcpy(buf, out.c_str());
         page_string(ch->desc, buf, 1);
         return;
     }
@@ -3755,15 +3811,14 @@ ACMD(do_fame)
      */
     pkills = pkill_get_all(&n);
     records = 0;
-    bufpt = 0;
+    std::string out;
 
     /* Get the records where the character idx is the killer */
     for (i = 0; i < n; ++i) {
         if (pkills[i].killer == idx) {
-            string = pkill_get_string(&pkills[i], PKILL_STRING_KILLED);
-            // Same non-literal-format-string fix as the "fame all" loop above.
-            bufpt += sprintf(buf + bufpt, "%s", string);
-            free(string);
+            // Same non-literal-format-string fix / RAII as the "fame all"
+            // loop above.
+            out += take_cstring(pkill_get_string(&pkills[i], PKILL_STRING_KILLED));
             ++records;
         }
     }
@@ -3771,34 +3826,36 @@ ACMD(do_fame)
     /* Get the records where the character idx is the victim */
     for (i = 0; i < n; ++i) {
         if (pkills[i].victim == idx) {
-            string = pkill_get_string(&pkills[i], PKILL_STRING_SLAIN);
-            // Same non-literal-format-string fix as the "fame all" loop above.
-            bufpt += sprintf(buf + bufpt, "%s", string);
-            free(string);
+            // Same non-literal-format-string fix / RAII as the "fame all"
+            // loop above.
+            out += take_cstring(pkill_get_string(&pkills[i], PKILL_STRING_SLAIN));
             ++records;
         }
     }
 
     /* Display the total fame */
-    rots_asprintf(&string, "%s", player_table[idx].name);
-    CAP(string);
-    sprintf(buf + bufpt,
-        "There %s %d record%s found about %s, "
-        "total fame %d.\r\n",
-        records == 1 ? "was" : "were", records, records == 1 ? "" : "s", string,
-        player_table[idx].warpoints / 100);
-    free(string);
+    char* raw_name = nullptr;
+    rots_asprintf(&raw_name, "%s", player_table[idx].name);
+    std::string display_name = take_cstring(raw_name);
+    // Same manual-ASCII capitalization as the CAP() macro (utils.h) this
+    // replaces -- NOT toupper()/std::toupper(), which are locale-sensitive.
+    if (!display_name.empty())
+        display_name[0] = UPPER(display_name[0]);
 
-    send_to_char(buf, ch);
+    out += std::format(
+        "There {} {} record{} found about {}, "
+        "total fame {}.\r\n",
+        records == 1 ? "was" : "were", records, records == 1 ? "" : "s", display_name,
+        player_table[idx].warpoints / 100);
+
+    send_to_char(out.c_str(), ch);
 }
 
 ACMD(do_rank)
 {
     int i, r;
     int ldrvalid;
-    char* s;
     char leaderstr[MAX_LEADER_STRING];
-    size_t bufpt;
     LEADER* ldr;
 
     r = pkill_get_rank_by_character(ch, false);
@@ -3809,25 +3866,24 @@ ACMD(do_rank)
         return;
     }
 
-    s = nth(r + 1);
-    bufpt = sprintf(buf, "You are ranked %s among %s:\r\n", s,
+    std::string s = take_cstring(nth(r + 1));
+    std::string out = std::format("You are ranked {} among {}:\r\n", s,
         RACE_GOOD(ch) ? "the free peoples of Middle-earth" : "the forces of the Shadow");
-    free(s);
 
     /* Show 7 characters: 3 above ch, ch and 3 below ch */
     i = MAX(0, r - 3);
 
     /* We didn't start with the first ranked character */
     if (i > 0)
-        bufpt += sprintf(buf + bufpt, "       ...");
+        out += "       ...";
 
-    bufpt += sprintf(buf + bufpt, "\r\n");
+    out += "\r\n";
 
     for (i = MAX(0, r - 3); i < r + 3; ++i) {
         ldr = pkill_get_leader_by_rank(i, GET_RACE(ch));
         ldrvalid = !ldr->invalid;
         do_fame_leader_string(ldr, leaderstr);
-        bufpt += sprintf(buf + bufpt, " %s %s\r\n", i == r ? "*" : " ", leaderstr);
+        out += std::format(" {} {}\r\n", i == r ? "*" : " ", leaderstr);
         pkill_free_leader(ldr);
 
         if (!ldrvalid)
@@ -3836,8 +3892,13 @@ ACMD(do_rank)
 
     /* We didn't hit the last ranked character */
     if (i == r + 3)
-        bufpt += sprintf(buf + bufpt, "       ...\r\n");
+        out += "       ...\r\n";
 
+    // vsend_to_char() treats its second argument as a printf-style format
+    // string (comm.h) -- stage the composed text into the global `buf`
+    // and call it exactly as before rather than changing this call site's
+    // shape this wave.
+    strcpy(buf, out.c_str());
     vsend_to_char(ch, buf);
 }
 

@@ -14,6 +14,7 @@
 #include <ctime>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <string>
 
 // Characterization tests for Phase 4 Wave 3 Task 5 (Chunk W1 -- act_wiz.cpp
@@ -59,6 +60,7 @@
 //    string shape.
 
 extern char buf[];
+extern char buf1[];
 
 ACMD(do_vnum);
 ACMD(do_zone);
@@ -302,6 +304,23 @@ struct RoomStatContext {
         // ScopedZoneTable's zone 0) -- pin it to room 0 of zone 0 so it
         // resolves against this fixture's ScopedZoneTable entry.
         test_world.room().number = 0;
+        // room_data's own constructor (db.cpp) only sets number/zone/level/
+        // name/description/affected -- funct/room_flags/ex_description/
+        // dir_option[] are left as indeterminate bytes from the underlying
+        // `new room_data[]` allocation. A plain macOS build's allocator
+        // happened to hand back zeroed pages every time (so `rm->funct`/
+        // `rm->room_flags` read as null/0 "by luck"), but macOS ASan's
+        // allocator does not: it surfaced as SpecProc reading "Exists"
+        // instead of "No" under `-fsanitize=address` (Task 5 ASan gate).
+        // Zeroing explicitly here removes the reliance on incidental
+        // allocator behavior for every RoomStatContext-based test, and
+        // guards do_stat_room's `for (i = 0; i < NUM_OF_DIRS; i++) if
+        // (rm->dir_option[i])` loop against dereferencing garbage pointers.
+        test_world.room().funct = nullptr;
+        test_world.room().room_flags = 0;
+        test_world.room().ex_description = nullptr;
+        for (int direction = 0; direction < NUM_OF_DIRS; direction++)
+            test_world.room().dir_option[direction] = nullptr;
         character.in_room = 0;
         character.next_in_room = nullptr;
         test_world.room().people = &character;
@@ -451,6 +470,17 @@ TEST(ActWizInspection, StatRoomFormatsContentsLineWithoutVnumForLowLevelViewer)
 {
     RoomStatContext context;
     context.character.player.level = 50; // <= 91: no obj_index vnum tag
+    // do_stat_room's Contents loop intentionally leaves the global buf1
+    // untouched (not reset) when the viewer's level is <= 91 -- a legacy
+    // quirk preserved verbatim in the transform (see act_wiz.cpp's comment
+    // at that site). That means THIS test's expected output depends on
+    // buf1's process-global state at the moment it runs; without resetting
+    // it here, a differently-ordered/shuffled/repeated run (e.g. after
+    // StatRoomFormatsExitLineWithNoDestinationAndNoKeyword, which leaves
+    // buf1 == " NONE") would append that leftover text, exactly reproducing
+    // the legacy bug rather than exercising THIS test's own "no tag"
+    // expectation. Clear it first so the assertion below is deterministic.
+    buf1[0] = '\0';
     obj_data object { };
     object.short_description = const_cast<char*>("a shining sword");
     object.item_number = -1;
@@ -1571,10 +1601,6 @@ TEST(ActWizInspection, DoLastFormatsPlayerSummaryLine)
     viewer.character.player.level = LEVEL_IMPL;
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
-    // save_player() (db.cpp) writes its finalize-by-rename staging file to
-    // "players/temp" (a FILE, not a directory) and its final destination
-    // under "players/A-E/<name>...": only the destination directory needs
-    // to pre-exist.
     std::filesystem::create_directories("players/A-E");
 
     player_index_element* previous_player_table = player_table;
@@ -1582,23 +1608,37 @@ TEST(ActWizInspection, DoLastFormatsPlayerSummaryLine)
     player_table = new player_index_element[1] { };
     top_of_p_table = 0;
     player_table[0].name = strdup("aragorn");
+    std::snprintf(player_table[0].ch_file, sizeof(player_table[0].ch_file), "%s", "players/A-E/aragorn");
 
-    char_data* stored_character = new char_data { };
-    clear_char(stored_character, MOB_VOID);
-    stored_character->player.name = strdup("aragorn");
-    stored_character->player.level = 50;
-    stored_character->player.race = RACE_HUMAN;
-    stored_character->specials2.idnum = 4242;
-
-    descriptor_data save_descriptor { };
-    std::snprintf(save_descriptor.host, sizeof(save_descriptor.host), "%s", "test-host");
-    stored_character->desc = &save_descriptor;
-    save_player(stored_character, 0, 0);
+    // Hand-written minimal load_player_from_text() (db.cpp) player file --
+    // deliberately NOT produced via save_player()/write_player_text(): that
+    // path's "password" field is always encrypt_line()-transformed bytes in
+    // [32, 159], which never contains a null terminator inside
+    // MAX_PWD_LENGTH, so its own fprintf("%s", pwdcrypt) is an
+    // always-triggering global-buffer-overflow under ASan (db.cpp, out of
+    // this task's file list) whenever save_player() runs at all -- not a
+    // bug this test introduces, but one this test must route around rather
+    // than trip over. load_player_from_text() is a flexible key/value
+    // parser (db.cpp's KEY_INT/KEY_STR macros): only "end" is mandatory,
+    // everything else defaults to the char_file_u{} zero-fill, and each
+    // recognized line's value must start at column 12 (the field name
+    // padded with spaces), matching write_player_text()'s own field
+    // layout. Only the fields do_last actually reads are supplied.
+    {
+        std::ofstream player_file("players/A-E/aragorn", std::ios::binary);
+        ASSERT_TRUE(player_file.good());
+        player_file << "name        aragorn\n";
+        player_file << "level       50\n";
+        player_file << "race        " << static_cast<int>(RACE_HUMAN) << "\n";
+        player_file << "idnum       4242\n";
+        player_file << "last_logon  1700000000\n";
+        player_file << "host        test-host\n";
+        player_file << "end\n";
+    }
 
     char argument[] = "aragorn";
     do_last(&viewer.character, argument, nullptr, 0, 0);
 
-    delete stored_character;
     free(player_table[0].name);
     delete[] player_table;
     player_table = previous_player_table;

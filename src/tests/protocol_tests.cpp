@@ -42,16 +42,15 @@ class ProtocolDescriptor {
 public:
     ProtocolDescriptor()
     {
-        // A connected loopback TCP pair, portable across POSIX and Windows
-        // (mirrors startup_options_tests.cpp's AcceptPathTest fixture): POSIX's
-        // AF_UNIX socketpair() has no Windows equivalent at all, so the pair is
-        // assembled from plain bind+listen+connect+accept on 127.0.0.1 instead.
-        // `descriptor.descriptor` (the accepted server-side peer) is what
-        // Protocol* functions write to, simulating the player's connection;
-        // `m_capture_socket` (the connecting client end) is what read_output()
-        // drains to capture that output.
         descriptor.descriptor = rots_net::kInvalidSocket;
-
+#if defined(_WIN32)
+        // AF_UNIX socketpair() has no Windows equivalent at all, so the pair
+        // is assembled from a portable AF_INET loopback bind+listen+connect+
+        // accept sequence instead (mirrors startup_options_tests.cpp's
+        // AcceptPathTest fixture). `descriptor.descriptor` (the accepted
+        // server-side peer) is what Protocol* functions write to, simulating
+        // the player's connection; `m_capture_socket` (the connecting client
+        // end) is what read_output() drains to capture that output.
         SocketType listener = socket(AF_INET, SOCK_STREAM, 0);
         if (!rots_net::is_valid_socket(listener)) {
             ADD_FAILURE() << "Expected a loopback listener socket for protocol output capture.";
@@ -98,9 +97,33 @@ public:
             return;
         }
 
+        // Disable Nagle on both ends: unlike POSIX's AF_UNIX socketpair (an
+        // already-connected, directly-buffered in-kernel channel), a real
+        // TCP/IP loopback pair goes through the full network stack, so a
+        // single small write can sit uncombined/unflushed long enough that
+        // read_output()'s drain loop below sees nothing yet without this.
+        const int disable_nagle = 1;
+        setsockopt(client, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&disable_nagle), sizeof(disable_nagle));
+        setsockopt(server_peer, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&disable_nagle), sizeof(disable_nagle));
+
         rots_net::set_nonblocking(client);
         m_capture_socket = client;
         descriptor.descriptor = server_peer;
+#else
+        // POSIX: a direct AF_UNIX socketpair -- an already-connected pair of
+        // endpoints sharing one in-kernel buffer (no network-stack framing
+        // at all, unlike the Windows branch above), so a write is visible to
+        // the peer's recv() effectively synchronously. Unchanged from before
+        // this file gained Windows portability.
+        SocketType raw_pair[2] = { rots_net::kInvalidSocket, rots_net::kInvalidSocket };
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, raw_pair) != 0) {
+            ADD_FAILURE() << "Expected socketpair to create a local protocol output capture.";
+            return;
+        }
+        rots_net::set_nonblocking(raw_pair[1]);
+        m_capture_socket = raw_pair[1];
+        descriptor.descriptor = raw_pair[0];
+#endif
         descriptor.pProtocol = ProtocolCreate();
         descriptor.character = &character;
         SET_BIT(character.specials2.pref, PRF_MSDP);
@@ -123,12 +146,22 @@ public:
             return output;
 
         char buffer[4096];
-        while (true) {
+        for (;;) {
             const rots_net::ssize_type bytes_read = rots_net::read_socket(m_capture_socket, buffer, sizeof(buffer));
             if (bytes_read > 0) {
                 output.append(buffer, static_cast<size_t>(bytes_read));
                 continue;
             }
+#if defined(_WIN32)
+            // The AF_INET loopback path above (Windows only) can still have a
+            // just-written byte or two in flight through the network stack;
+            // give it one short, bounded window to arrive before concluding
+            // there is nothing left, rather than only ever trying once. POSIX
+            // keeps the original immediate-return behavior (never needed
+            // this with a direct socketpair buffer).
+            if (wait_for_more_windows_loopback_data())
+                continue;
+#endif
             break;
         }
         return output;
@@ -138,6 +171,19 @@ public:
     char_data character {};
 
 private:
+#if defined(_WIN32)
+    bool wait_for_more_windows_loopback_data()
+    {
+        fd_set read_set;
+        FD_ZERO(&read_set);
+        FD_SET(m_capture_socket, &read_set);
+        timeval wait_time {};
+        wait_time.tv_sec = 0;
+        wait_time.tv_usec = 50000; // 50ms
+        return select(0, &read_set, nullptr, nullptr, &wait_time) > 0;
+    }
+#endif
+
     SocketType m_capture_socket = rots_net::kInvalidSocket;
 };
 

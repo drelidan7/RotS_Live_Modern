@@ -1799,7 +1799,7 @@ ACMD(do_wizlock)
         when = "currently";
 
     if (*buf2) {
-        wizlock_msg = std::format("{}\n\r", buf2);
+        wizlock_msg = std::format("{}\n\r", static_cast<const char*>(buf2));
     } else {
         wizlock_msg = wizlock_default;
     }
@@ -3021,7 +3021,7 @@ ACMD(do_wizset)
         descr.pwd[MAX_PWD_LENGTH] = '\0';
         if (strlen(val_arg) < MAX_PWD_LENGTH)
             descr.pwd[strlen(val_arg)] = 0;
-        strcpy(buf, std::format("Password changed to '{}'.", val_arg).c_str());
+        strcpy(buf, std::format("Password changed to '{}'.", static_cast<const char*>(val_arg)).c_str());
         break;
     case 46:
         SET_OR_REMOVE(PLR_FLAGS(vict), PLR_NODELETE);
@@ -3166,7 +3166,7 @@ ACMD(do_delete)
         }
         extract_char(vict);
     }
-    strcpy(buf, std::format("(GC) {} has deleted {}.", GET_NAME(ch), arg).c_str());
+    strcpy(buf, std::format("(GC) {} has deleted {}.", GET_NAME(ch), static_cast<const char*>(arg)).c_str());
     mudlog(buf, BRF, LEVEL_GOD, TRUE);
     Crash_delete_file(player_table[char_index].name);
     delete_exploits_file(player_table[char_index].name);

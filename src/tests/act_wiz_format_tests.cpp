@@ -76,6 +76,33 @@ ACMD(do_load);
 ACMD(do_purge);
 ACMD(do_zreset);
 ACMD(do_force);
+ACMD(do_advance);
+ACMD(do_restore);
+ACMD(do_invis);
+ACMD(do_dc);
+ACMD(do_wizlock);
+ACMD(do_wizutil);
+ACMD(do_wizset);
+ACMD(do_delete);
+ACMD(do_register);
+ACMD(do_setfree);
+
+// Phase 4 Wave 3 Task 7 (Chunk W3 -- act_wiz.cpp player-administration
+// family): restrict/global_release_flag/player_table/descriptor_list are
+// process globals do_wizlock/do_setfree/do_delete/do_dc read and mutate
+// directly, and top_of_p_table gates find_player_in_table()'s walk (do_delete).
+// Deliberately NOT declared here: `wizlock_msg` itself -- its type changes
+// from `char*` to `std::string` in this task's transform commit, and every
+// ActWizPlayerAdmin test below observes its effect only indirectly (through
+// do_wizlock's own SEND_TO_Q'd echo of it back to `ch`), so no test needs an
+// extern of its own that would otherwise have to be edited in lockstep with
+// the production type change.
+extern int restrict;
+extern char* wizlock_default;
+extern int global_release_flag;
+extern struct player_index_element* player_table;
+extern int top_of_p_table;
+extern struct descriptor_data* descriptor_list;
 
 int find_target_room(struct char_data* ch, char* rawroomstr);
 void do_stat_room(struct char_data* ch);
@@ -1979,4 +2006,588 @@ TEST(ActWizWorldManip, DoForceReportsNoSuchVictim)
     char argument[] = "NoSuchVictim quit";
     do_force(&context.character, argument, nullptr, 0, 0);
     EXPECT_EQ(std::string(context.descriptor.output), "No-one by that name here...\n\r");
+}
+
+
+// ---------------------------------------------------------------------------
+// ActWizPlayerAdmin -- Phase 4 Wave 3 Task 7 (Chunk W3 -- act_wiz.cpp
+// player-administration family: do_advance, do_restore, do_invis, do_dc,
+// do_wizlock (+ the wizlock_msg RAII conversion), do_wizutil, do_wizset,
+// do_delete, do_register, do_setfree; do_account/do_whoacct live in the
+// separate act_wiz_tests.cpp file and are NOT re-declared/re-tested here --
+// see below). Same binding pattern as every other chunk this wave: these pin
+// the CURRENT byte-for-byte output of every fixture-reachable error/usage
+// line -- confirmed passing against the pre-conversion source -- before this
+// chunk's sprintf/strcat sites (and the wizlock_msg char*->std::string RAII
+// conversion) convert, and green again after.
+//
+// wizlock_msg consumer-guard trace (task brief Step 1): interpre.cpp's two
+// SEND_TO_Q(wizlock_msg, d) sites (complete_existing_character_login's
+// restrict-gate at interpre.cpp:2751, and the CON_NMECNF new-character
+// wizlock gate at interpre.cpp:3012) are both reached only when `restrict`
+// is non-zero. `restrict` is set non-zero in exactly two places in the whole
+// codebase: (1) do_wizlock, which unconditionally reassigns wizlock_msg in
+// the very same call before returning -- so by the time THAT path can raise
+// restrict, wizlock_msg is always freshly set; and (2) comm.cpp:476
+// (`restrict = startup_options.restrict_game ? 1 : 0`), driven by the `-r`
+// command-line flag parsed at comm.cpp:285-287, which sets restrict=1 at
+// boot WITHOUT ever calling do_wizlock. In that second case wizlock_msg is
+// still its static initializer (`char* wizlock_msg = 0`, act_wiz.cpp) --
+// nullptr -- so a level-0 (or wizlock-blocked) login/new-character attempt
+// under `-r` reaches SEND_TO_Q(nullptr, d) -> write_to_output() ->
+// `strlen(txt)` on a null pointer: a genuine, currently-reachable crash, not
+// a hypothetical one. Converting wizlock_msg to `std::string wizlock_msg;`
+// (default-constructed to "") fixes this as a side effect: `.c_str()` on an
+// empty string is a valid pointer to "", so `strlen()` returns 0 and
+// SEND_TO_Q sends nothing instead of crashing (both consumer sites then send
+// an empty payload followed by "\n\r" in place of what would have been the
+// crash). Per the task brief this is explicitly a sanctioned "note it in the
+// commit" latent-crash fix, not a silent behavior change on the SET path
+// (which stays byte-for-byte identical) -- no `if (!wizlock_msg.empty())`
+// guard was added because the OLD code had none on the set path either, and
+// none is needed to preserve set-path parity.
+//
+// Deliberately NOT unit-tested here (documented exclusions, not oversights):
+//  - do_account (act_wiz.cpp:3173) and do_whoacct (act_wiz.cpp:3442): both
+//    are exhaustively characterized already by the 13 pre-existing ActWiz.*
+//    tests in act_wiz_tests.cpp (the characterization BASE this task must
+//    keep green, per the brief's caution). do_account has no sprintf/strcat
+//    composition of its own left to convert -- it was already rewritten onto
+//    std::string/std::format by the account-management merge. do_whoacct's
+//    remaining char line[256]/strcpy/strcat header composition and its
+//    snprintf(buf, sizeof(buf), "%3d %-26.26s %-12.12s %-16.16s %s\n\r", ...)
+//    row DO convert in the transform commit (catalog items 1 and 8), but
+//    every byte of that row format (including the "%-26.26"/"%-12.12"/
+//    "%-16.16" truncation widths, the sanitized-field substitutions, and the
+//    singular/plural session-count line) is already pinned exactly by
+//    WhoAcctShowsAuthenticatedAccountsAndCurrentCharacterOrMenuState,
+//    WhoAcctListsDuplicateAuthenticatedSessionsSeparatelyAndSkipsClosingDescriptors,
+//    WhoAcctShowsCharacterSelectStateAndSkipsPendingVerificationSessions,
+//    WhoAcctSanitizesDisplayedAccountAndHostFields, and
+//    WhoAcctFormatsLongFieldsIntoStableColumns -- so no additional pins are
+//    needed here; the transform is verified by keeping those 13 tests green.
+//  - do_wizset (act_wiz.cpp:2683), the file's single biggest function: only
+//    its side-effect-free early-return branches (usage, NPC-caller, and the
+//    is_player/default "not found" lookups) are pinned below. The ~60
+//    field-table switch cases and their final BINARY/NUMBER/MISC composition
+//    lines (act_wiz.cpp:3118-3126) all require a fully-permission-cleared,
+//    resolved `vict` (and, for non-NPC victims, a matching player_table
+//    entry via find_name()) to reach -- reproducing that for every case is
+//    combinatorially expensive for a single sub-pass. Those lines still
+//    convert (transform commit: catalog items 1/6), verified by direct diff
+//    review against the pre-conversion sprintf format strings plus the dual
+//    local gate / boot golden, not by a per-case unit test here.
+//  - do_wizutil (act_wiz.cpp:2152)'s per-subcommand branches past victim
+//    resolution (freeze/thaw/reroll/retire/... success paths, act_wiz.cpp:
+//    2209-2341) mutate the victim (SET_BIT/affect_remove/roll_abilities/
+//    retire/...) and log via mudlog -- out of scope per the world-mutation
+//    convention established in ActWizWorldManip above. Only the four
+//    side-effect-free early-return branches (NPC caller, malformed general
+//    call, missing name, victim not found) are pinned below.
+//  - do_delete (act_wiz.cpp:3140)'s success path (close_socket/extract_char/
+//    Crash_delete_file/move_char_deleted, act_wiz.cpp:3159-3170) mutates the
+//    world/player table and touches disk -- out of scope. Only its two
+//    side-effect-free early returns (wrong password, player not found) are
+//    pinned below.
+//  - do_register (act_wiz.cpp:3500) is a long flat dispatcher over
+//    mobile/object/room/player/top/script listings, each walking a
+//    process-global index table (mob_index/obj_index/world/player_table/
+//    script_table) that would need substantial fixture reconstruction to
+//    exercise deterministically -- the same class of exclusion do_show's
+//    "stats"/"death"/"godrooms" branches already document above. Only the
+//    two branches reachable without any of those tables populated (the
+//    top-level usage message, and the final "mobile, object, player, script
+//    or room only" fallback for an unrecognized type token) are pinned
+//    below.
+//  - do_rehash (act_wiz.cpp:3843) sends its only composed line
+//    ("(GC) ... rehashed affection, was %d, now %d.") to mudlog() only, never
+//    to send_to_char -- there is no descriptor-captured text for a unit test
+//    to assert on, and exercising it meaningfully needs a populated world/
+//    character_list to produce a non-trivial count. Its sprintf converts in
+//    the transform commit (catalog item 2: buf reused by mudlog), verified
+//    by diff review and the dual local gate / boot golden only.
+
+namespace {
+
+// Saves/restores the `restrict` global (act_wiz.cpp/interpre.cpp/comm.cpp)
+// around do_wizlock tests, which unconditionally assign it whenever the
+// caller supplies a numeric first argument.
+class ScopedRestrictLevel {
+public:
+    ScopedRestrictLevel()
+        : m_previous(restrict)
+    {
+    }
+
+    ~ScopedRestrictLevel() { restrict = m_previous; }
+
+private:
+    int m_previous;
+};
+
+// Saves/restores global_release_flag (structs.h, default 1) around
+// do_setfree tests, which read and toggle it directly.
+class ScopedGlobalReleaseFlag {
+public:
+    ScopedGlobalReleaseFlag()
+        : m_previous(global_release_flag)
+    {
+    }
+
+    ~ScopedGlobalReleaseFlag() { global_release_flag = m_previous; }
+
+private:
+    int m_previous;
+};
+
+// Forces find_player_in_table() (utility.cpp) to report "not found" for any
+// name/idnum without needing a real player_table allocation: its very first
+// comparison is `i > top_of_p_table`, short-circuiting before it ever
+// dereferences player_table[i], so top_of_p_table alone is sufficient here.
+class ScopedEmptyPlayerTable {
+public:
+    ScopedEmptyPlayerTable()
+        : m_previous(top_of_p_table)
+    {
+        top_of_p_table = -1;
+    }
+
+    ~ScopedEmptyPlayerTable() { top_of_p_table = m_previous; }
+
+private:
+    int m_previous;
+};
+
+// Mirrors act_wiz_tests.cpp's ScopedDescriptorList (mirrored, not included,
+// per this file's per-file-fixture convention) for do_dc's connection-list
+// walk.
+class ScopedDescriptorListForDc {
+public:
+    ScopedDescriptorListForDc()
+        : m_previous(descriptor_list)
+    {
+        descriptor_list = nullptr;
+    }
+
+    ~ScopedDescriptorListForDc() { descriptor_list = m_previous; }
+
+private:
+    descriptor_data* m_previous;
+};
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// do_wizlock (act_wiz.cpp:1771)
+// ---------------------------------------------------------------------------
+
+// Pins the level-gate status line, "now" branch (argument given).
+TEST(ActWizPlayerAdmin, DoWizlockFormatsLevelGateStatusLineNow)
+{
+    ScopedRestrictLevel restrict_scope;
+    SoloCharacterContext context; // PC at LEVEL_IMPL so do_wizlock's caller passes freely
+    char argument[] = " 20";
+    do_wizlock(&context.character, argument, nullptr, 0, 0);
+    EXPECT_TRUE(strstr(context.descriptor.output,
+        "Only level 20 and above may enter the game now.\n") != nullptr)
+        << context.descriptor.output;
+}
+
+TEST(ActWizPlayerAdmin, DoWizlockFormatsFullyOpenStatusLineCurrently)
+{
+    ScopedRestrictLevel restrict_scope;
+    restrict = 0;
+    SoloCharacterContext context;
+    char argument[] = "";
+    do_wizlock(&context.character, argument, nullptr, 0, 0);
+    // restrict stays 0 ("currently" branch, no numeric argument), so the
+    // `sprintf(buf, "Message set to:  %s", wizlock_msg)` reassignment is
+    // skipped (guarded by `if (restrict != 0)`) -- but the send_to_char(buf,
+    // ch) two lines below that sprintf is NOT itself inside that guard, so
+    // `buf` still holds the untouched status line and gets sent a SECOND
+    // time. This is a pre-existing quirk of the original code (verified
+    // against unmodified act_wiz.cpp), not a bug this task introduces or
+    // fixes -- pinned verbatim.
+    EXPECT_EQ(std::string(context.descriptor.output),
+        "The game is currently completely open.\n"
+        "The game is currently completely open.\n");
+}
+
+// Pins both the "closed to new players" status line AND the "Message set
+// to:" echo of the DEFAULT wizlock message (no text argument supplied).
+TEST(ActWizPlayerAdmin, DoWizlockFormatsClosedToNewPlayersStatusLineWithDefaultMessage)
+{
+    ScopedRestrictLevel restrict_scope;
+    SoloCharacterContext context;
+    char argument[] = "1";
+    do_wizlock(&context.character, argument, nullptr, 0, 0);
+    const std::string expected = std::string("The game is now closed to new players.\n") + "Message set to:  " + wizlock_default;
+    EXPECT_EQ(std::string(context.descriptor.output), expected);
+}
+
+// Pins the "Message set to:" echo of a CUSTOM wizlock message (text
+// argument supplied), appended to the default's "\n\r" the same way the
+// default branch appends wizlock_default verbatim.
+TEST(ActWizPlayerAdmin, DoWizlockFormatsMessageSetToLineWithCustomMessage)
+{
+    ScopedRestrictLevel restrict_scope;
+    SoloCharacterContext context;
+    char argument[] = "5 Server going down for maintenance";
+    do_wizlock(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output),
+        "Only level 5 and above may enter the game now.\n"
+        "Message set to:  Server going down for maintenance\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoWizlockRejectsInvalidValue)
+{
+    ScopedRestrictLevel restrict_scope;
+    SoloCharacterContext context;
+    char argument[] = "-1";
+    do_wizlock(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "Invalid wizlock value.\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// do_advance (act_wiz.cpp:1515)
+// ---------------------------------------------------------------------------
+
+TEST(ActWizPlayerAdmin, DoAdvanceRejectsEmptyName)
+{
+    SoloCharacterContext context;
+    char argument[] = "";
+    do_advance(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "Advance who?\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoAdvanceReportsTargetNotFound)
+{
+    ScopedTestWorld test_world;
+    SoloCharacterContext context;
+    context.character.in_room = 0;
+    char argument[] = "NoSuchVictim";
+    do_advance(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "That player is not here.\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// do_restore (act_wiz.cpp:1612)
+// ---------------------------------------------------------------------------
+
+TEST(ActWizPlayerAdmin, DoRestoreRequestsTargetWhenArgumentEmpty)
+{
+    SoloCharacterContext context;
+    char argument[] = "";
+    do_restore(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "Whom do you wish to restore?\n\r");
+}
+
+// get_char() (handler.cpp) only walks character_list -- no world[]
+// dependency, unlike get_char_vis() -- so no ScopedTestWorld is needed here.
+TEST(ActWizPlayerAdmin, DoRestoreReportsTargetNotFound)
+{
+    SoloCharacterContext context;
+    char argument[] = "NoSuchVictim";
+    do_restore(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "No-one by that name in the world.\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// do_invis (act_wiz.cpp:1643)
+// ---------------------------------------------------------------------------
+
+TEST(ActWizPlayerAdmin, DoInvisRejectsNpcCaller)
+{
+    char_data npc {};
+    descriptor_data npc_descriptor {};
+    clear_char(&npc, MOB_ISNPC);
+    npc.specials2.act = MOB_ISNPC;
+    reset_capturing_descriptor(npc_descriptor, &npc);
+    npc.desc = &npc_descriptor;
+
+    char argument[] = "";
+    do_invis(&npc, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(npc_descriptor.output), "Yeah.. like a mob knows how to bend light.\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoInvisTogglesOffWhenAlreadyInvisibleAndNoArgument)
+{
+    SoloCharacterContext context;
+    GET_INVIS_LEV(&context.character) = GET_LEVEL(&context.character);
+    char argument[] = "";
+    do_invis(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "You are now fully visible.\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoInvisTogglesOnAtOwnLevelWhenNoArgument)
+{
+    SoloCharacterContext context;
+    GET_INVIS_LEV(&context.character) = 0;
+    char argument[] = "";
+    do_invis(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output),
+        std::format("Your invisibility level is {}.\n\r", GET_LEVEL(&context.character)));
+}
+
+TEST(ActWizPlayerAdmin, DoInvisRejectsLevelAboveOwnLevel)
+{
+    SoloCharacterContext context;
+    char argument[] = "200";
+    do_invis(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "You can't go invisible above your own level.\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoInvisSetsSpecificLevelBelowOwnLevel)
+{
+    SoloCharacterContext context;
+    char argument[] = "50";
+    do_invis(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "Your invisibility level is now 50.\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoInvisTogglesOffViaExplicitZeroArgument)
+{
+    SoloCharacterContext context;
+    char argument[] = "0";
+    do_invis(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "You are now fully visible.\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// do_dc (act_wiz.cpp:1734)
+// ---------------------------------------------------------------------------
+
+TEST(ActWizPlayerAdmin, DoDcRejectsNpcCaller)
+{
+    char_data npc {};
+    descriptor_data npc_descriptor {};
+    clear_char(&npc, MOB_ISNPC);
+    npc.specials2.act = MOB_ISNPC;
+    reset_capturing_descriptor(npc_descriptor, &npc);
+    npc.desc = &npc_descriptor;
+
+    char argument[] = "1";
+    do_dc(&npc, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(npc_descriptor.output), "Monsters can't cut connections... leave me alone.\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoDcReportsUsageWhenArgumentIsNotNumeric)
+{
+    SoloCharacterContext context;
+    char argument[] = "notanumber";
+    do_dc(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "Usage: DC <connection number> (type USERS for a list)\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoDcReportsNoSuchConnection)
+{
+    ScopedDescriptorListForDc descriptor_list_scope;
+    SoloCharacterContext context;
+    char argument[] = "42";
+    do_dc(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "No such connection.\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// do_wizutil (act_wiz.cpp:2152)
+// ---------------------------------------------------------------------------
+
+TEST(ActWizPlayerAdmin, DoWizutilRejectsNpcCaller)
+{
+    char_data npc {};
+    descriptor_data npc_descriptor {};
+    clear_char(&npc, MOB_ISNPC);
+    npc.specials2.act = MOB_ISNPC;
+    reset_capturing_descriptor(npc_descriptor, &npc);
+    npc.desc = &npc_descriptor;
+
+    char argument[] = "";
+    do_wizutil(&npc, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(npc_descriptor.output), "You're just an unfrozen caveman NPC.\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoWizutilReportsMalformedGeneralCallWhenWtlIsNull)
+{
+    SoloCharacterContext context;
+    char argument[] = "";
+    do_wizutil(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "Wrong call to wizutils. Consult implementors, please.\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoWizutilRequestsNameWhenMissing)
+{
+    SoloCharacterContext context;
+    char argument[] = "";
+    do_wizutil(&context.character, argument, nullptr, 0, SCMD_FREEZE);
+    EXPECT_EQ(std::string(context.descriptor.output), "Yes, but for whom?!?\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoWizutilReportsTargetNotFound)
+{
+    ScopedTestWorld test_world;
+    SoloCharacterContext context;
+    context.character.in_room = 0;
+    char argument[] = "NoSuchVictim";
+    do_wizutil(&context.character, argument, nullptr, 0, SCMD_FREEZE);
+    EXPECT_EQ(std::string(context.descriptor.output), "There is no such player.\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// do_wizset (act_wiz.cpp:2683)
+// ---------------------------------------------------------------------------
+
+TEST(ActWizPlayerAdmin, DoWizsetReportsUsageWhenNameOrFieldMissing)
+{
+    SoloCharacterContext context;
+    char argument[] = "";
+    do_wizset(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "Usage: wizset <victim> <field> <value>\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoWizsetRejectsNpcCaller)
+{
+    char_data npc {};
+    descriptor_data npc_descriptor {};
+    clear_char(&npc, MOB_ISNPC);
+    npc.specials2.act = MOB_ISNPC;
+    reset_capturing_descriptor(npc_descriptor, &npc);
+    npc.desc = &npc_descriptor;
+
+    // Both name and field must be non-empty to get past the usage check
+    // above and reach the IS_NPC(ch) gate; the target name itself ("orc")
+    // is never looked up since this branch returns first.
+    char argument[] = "orc field on";
+    do_wizset(&npc, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(npc_descriptor.output), "None of that!\n\r");
+}
+
+// get_player_vis() (handler.cpp) only walks character_list -- no world[]
+// dependency -- so no ScopedTestWorld is needed for the "player" subcommand.
+TEST(ActWizPlayerAdmin, DoWizsetReportsNoSuchPlayerForPlayerSubcommand)
+{
+    SoloCharacterContext context;
+    char argument[] = "player NoSuchPlayer field on";
+    do_wizset(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "There is no such player.\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoWizsetReportsNoSuchCreatureForDefaultLookup)
+{
+    ScopedTestWorld test_world;
+    SoloCharacterContext context;
+    context.character.in_room = 0;
+    char argument[] = "NoSuchCreature field on";
+    do_wizset(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "There is no such creature.\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// do_delete (act_wiz.cpp:3140)
+// ---------------------------------------------------------------------------
+
+// Note the exact literal (no trailing "\n\r") matches act_wiz.cpp's source.
+TEST(ActWizPlayerAdmin, DoDeleteRejectsIncorrectPassword)
+{
+    SoloCharacterContext context;
+    char argument[] = "somebody wrongpassword";
+    do_delete(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "Incorrect or missing password");
+}
+
+// Note the exact literal (no trailing "\n\r") matches act_wiz.cpp's source.
+TEST(ActWizPlayerAdmin, DoDeleteReportsNoSuchPlayer)
+{
+    ScopedEmptyPlayerTable player_table_scope;
+    SoloCharacterContext context;
+    char argument[] = "somebody rots";
+    do_delete(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "No such player");
+}
+
+// ---------------------------------------------------------------------------
+// do_register (act_wiz.cpp:3500)
+// ---------------------------------------------------------------------------
+
+// Even the empty-argument usage path reads world[ch->in_room].number (the
+// `if (!*arg2) zonnum = world[ch->in_room].number / 100;` fallback runs
+// before the usage check), so BASE_WORLD must be allocated here too.
+TEST(ActWizPlayerAdmin, DoRegisterReportsUsageWhenNoTypeOrZoneGiven)
+{
+    ScopedTestWorld test_world;
+    SoloCharacterContext context;
+    context.character.in_room = 0;
+    char argument[] = "";
+    do_register(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "Usage: register <room|mobile|object> [zone number].\n\r");
+}
+
+// Supplying a numeric zone argument skips the world[]-touching fallback
+// above entirely, so this path needs no ScopedTestWorld.
+TEST(ActWizPlayerAdmin, DoRegisterReportsUnknownTypeFallback)
+{
+    SoloCharacterContext context;
+    char argument[] = "unknowntype 5";
+    do_register(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output),
+        "You can see register for mobile, object, player, script or room only.\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// do_setfree (act_wiz.cpp:3812)
+// ---------------------------------------------------------------------------
+// No sprintf/strcat anywhere in do_setfree -- every branch is a literal
+// send_to_char() -- so there is no format site here for this task's
+// transform to touch. Exercised anyway (all five branches), same rationale
+// as do_vnum's LightlyExercisesUsageMessage precedent above: a smoke check
+// since it's in this chunk's read range, and because it directly reads/
+// writes the process-global global_release_flag that RELEASE() (utils.h)
+// gates everywhere else in the codebase.
+
+TEST(ActWizPlayerAdmin, DoSetfreeReportsAllowedStateWhenFlagIsSet)
+{
+    ScopedGlobalReleaseFlag release_flag_scope;
+    global_release_flag = 1;
+    SoloCharacterContext context;
+    char argument[] = "";
+    do_setfree(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "RELEASE is allowed.\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoSetfreeReportsFakedStateWhenFlagIsClear)
+{
+    ScopedGlobalReleaseFlag release_flag_scope;
+    global_release_flag = 0;
+    SoloCharacterContext context;
+    char argument[] = "";
+    do_setfree(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "RELEASE is faked - be careful.\n\r");
+}
+
+TEST(ActWizPlayerAdmin, DoSetfreeEnablesReleaseOnArgumentOn)
+{
+    ScopedGlobalReleaseFlag release_flag_scope;
+    SoloCharacterContext context;
+    char argument[] = "on";
+    do_setfree(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "You enabled pointer release.\n\r");
+    EXPECT_EQ(global_release_flag, 1);
+}
+
+TEST(ActWizPlayerAdmin, DoSetfreeDisablesReleaseOnArgumentOff)
+{
+    ScopedGlobalReleaseFlag release_flag_scope;
+    SoloCharacterContext context;
+    char argument[] = "off";
+    do_setfree(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "You disabled pointer release.\n\r");
+    EXPECT_EQ(global_release_flag, 0);
+}
+
+TEST(ActWizPlayerAdmin, DoSetfreeReportsUsageForUnrecognizedArgument)
+{
+    ScopedGlobalReleaseFlag release_flag_scope;
+    SoloCharacterContext context;
+    char argument[] = "bogus";
+    do_setfree(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output), "Use [on|off] to switch pointer RELEASE.\n\r");
 }

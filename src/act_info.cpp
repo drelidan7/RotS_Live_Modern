@@ -37,6 +37,7 @@
 #include "char_utils.h"
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -328,75 +329,73 @@ char* find_ex_description(char* word, struct extra_descr_data* list)
 
 void show_obj_to_char(struct obj_data* object, struct char_data* ch, int mode)
 {
-    char found;
-
-    *buf = '\0';
+    // Accumulates the message this call sends; replaces the old global `buf`
+    // accumulation (idiom 3). `object->description`/`short_description` are
+    // both truthy-guarded before use here, so no nz() wrap is needed at
+    // either site. The old `char found;` write-only flag (set on every flag
+    // branch below but never read) is dropped entirely -- dead state, not a
+    // behavior change.
+    std::string out;
 
     if ((mode == 0) && object->description)
-        sprintf(buf, "%s", object->description);
+        out = object->description;
     else if (object->short_description && ((mode == 1) || (mode == 2) || (mode == 3) || (mode == 4)))
-        sprintf(buf, "%s", object->short_description);
+        out = object->short_description;
     else if (mode == 5) { /* The trigger will deal with what is sent to ch */
         if (!call_trigger(ON_EXAMINE_OBJECT, object, ch, 0))
             return;
 
         if (object->obj_flags.type_flag == ITEM_NOTE) {
             if (object->action_description) {
-                strcpy(buf, "There is something written upon it:\n\r\n\r");
-                strcat(buf, object->action_description);
+                out = "There is something written upon it:\n\r\n\r";
+                out += object->action_description;
+                // page_string() needs a mutable char*; the global `buf`
+                // staging buffer is reused downstream here (idiom 2).
+                strcpy(buf, out.c_str());
                 page_string(ch->desc, buf, 1);
             } else
                 act("It's blank.", FALSE, ch, 0, 0, TO_CHAR);
             return;
         } else if (object->action_description)
-            strcpy(buf, object->action_description);
+            out = object->action_description;
         else if ((object->obj_flags.type_flag != ITEM_DRINKCON))
-            strcpy(buf, "You see nothing special..\n\r");
+            out = "You see nothing special..\n\r";
         else /* ITEM_TYPE == ITEM_DRINKCON||FOUNTAIN */
-            strcpy(buf, "It looks like a drink container.\n\r");
+            out = "It looks like a drink container.\n\r";
     }
 
     if ((mode != 3) && (mode != 5)) {
-        found = FALSE;
         if (IS_OBJ_STAT(object, ITEM_INVISIBLE)) {
-            strcat(buf, "(invisible)");
-            found = TRUE;
+            out += "(invisible)";
         }
         if (IS_OBJ_STAT(object, ITEM_EVIL) && IS_AFFECTED(ch, AFF_DETECT_INVISIBLE)) {
-            strcat(buf, "..It glows red!");
-            found = TRUE;
+            out += "..It glows red!";
         }
         if (IS_OBJ_STAT(object, ITEM_MAGIC) && !IS_OBJ_STAT(object, ITEM_ANTI_GOOD) && IS_AFFECTED(ch, AFF_DETECT_MAGIC)) {
-            strcat(buf, "..It glows blue!");
-            found = TRUE;
+            out += "..It glows blue!";
         }
         if (IS_OBJ_STAT(object, ITEM_ANTI_GOOD) && IS_OBJ_STAT(object, ITEM_MAGIC) && IS_AFFECTED(ch, AFF_DETECT_MAGIC)) {
-            strcat(buf, "..It glows red!");
-            found = TRUE;
+            out += "..It glows red!";
         }
         if (IS_OBJ_STAT(object, ITEM_WILLPOWER) && IS_SHADOW(ch)) {
-            strcat(buf, " ..It has a powerful aura!");
-            found = TRUE;
+            out += " ..It has a powerful aura!";
         }
         if (IS_OBJ_STAT(object, ITEM_GLOW)) {
-            strcat(buf, "..It has a soft glowing aura!");
-            found = TRUE;
+            out += "..It has a soft glowing aura!";
         }
         if (IS_OBJ_STAT(object, ITEM_HUM)) {
-            strcat(buf, "..It emits a faint humming sound!");
-            found = TRUE;
+            out += "..It emits a faint humming sound!";
         }
         if (IS_OBJ_STAT(object, ITEM_BROKEN)) {
-            strcat(buf, " (broken)");
-            found = TRUE;
+            out += " (broken)";
         }
         if ((GET_ITEM_TYPE(object) == ITEM_LIGHT) && (object->obj_flags.value[2] && object->obj_flags.value[3]))
-            strcat(buf, "..It glows brightly.");
+            out += "..It glows brightly.";
     }
     if (mode != 5)
-        strcat(buf, "\n\r");
+        out += "\n\r";
 
-    send_to_char(buf, ch);
+    send_to_char(out.c_str(), ch);
 }
 
 /** The 'show' flag is true for containers and false for rooms. */
@@ -458,12 +457,11 @@ void show_equipment_to_char(struct char_data* from, struct char_data* to)
 
 extern struct prompt_type health_diagnose[];
 
-void report_char_health(struct char_data *ch, struct char_data *i, char *str) {
+void report_char_health(struct char_data* ch, struct char_data* i, char* str)
+{
     int tmp;
     long long percent; // widen so 1000 * GET_HIT(i) cannot signed-overflow
     const int max_index = 7; // health_diagnose[] has 8 entries (consts.cpp)
-
-    strcpy(str, PERS(i, ch, TRUE, FALSE));
 
     if (GET_MAX_HIT(i) > 0)
         percent = (1000LL * GET_HIT(i)) / GET_MAX_HIT(i);
@@ -473,7 +471,11 @@ void report_char_health(struct char_data *ch, struct char_data *i, char *str) {
     for (tmp = 0; tmp < max_index && health_diagnose[tmp].value < percent; tmp++)
         ;
 
-    strcat(str, health_diagnose[tmp].message);
+    // `str` is a caller-owned buffer (global `buf`, or a caller's local)
+    // reused/concatenated downstream by callers (diag_char_to_char,
+    // show_char_to_char) -- idiom 2: compose once, strcpy into the existing
+    // out-parameter rather than changing the signature.
+    strcpy(str, std::format("{}{}", PERS(i, ch, TRUE, FALSE), health_diagnose[tmp].message).c_str());
 }
 
 void diag_char_to_char(char_data* looked_at, char_data* viewer)
@@ -673,7 +675,7 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, char* line1, 
     tmpch = i->mount_data.rider;
     tmpnum = i->mount_data.rider_number;
     for (riderno = 0; tmpch && char_exists(tmpnum);
-         tmpch = tmpch->mount_data.next_rider, ++riderno) {
+        tmpch = tmpch->mount_data.next_rider, ++riderno) {
         if (CAN_SEE(ch, tmpch)) {
             tmpnum = tmpch->mount_data.next_rider_number;
             if (GET_POS(tmpch) == POSITION_FIGHTING || GET_POS(tmpch) == POSITION_RESTING)
@@ -698,7 +700,11 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, char* line1, 
             }
 
             if (ch == tmpch) {
-                sprintf(buf + strlen(buf), "%cou", !vis_count ? 'Y' : 'y');
+                // "%cou" ('Y'/'y' + "ou") is a two-way literal choice, not
+                // real interpolation -- a plain strcat of the whole word
+                // avoids a std::format call for something that isn't
+                // actually formatting.
+                strcat(buf, !vis_count ? "You" : "you");
                 you_are_riding = 1;
             } else {
                 /* Unfortunately, act can't take arbitrary numbers of riders */
@@ -1037,7 +1043,6 @@ char* keywords[] = { "north", "east", "south", "west", "up",
 ACMD(do_look)
 {
     char arg1[MAX_INPUT_LENGTH], arg2[MAX_INPUT_LENGTH];
-    char str[2000];
     int keyword_no;
     int j, bits = 0, temp, tmp;
     char found;
@@ -1097,15 +1102,15 @@ ACMD(do_look)
                  * to that direction
                  */
                 if (subcmd == SCMD_LOOK_EXAM) {
-                    sprintf(str, "To the %s you see:\n\r", keywords[keyword_no]);
-                    send_to_char(str, ch);
+                    send_to_char(
+                        std::format("To the {} you see:\n\r", keywords[keyword_no]).c_str(), ch);
                     tmp = ch->in_room;
                     ch->in_room = EXIT(ch, keyword_no)->to_room;
 
                     /* Darkies can't see room contents or description if it's sunny */
                     if (SUN_PENALTY(ch)) {
-                        sprintf(str, "%s\n\r", world[ch->in_room].name);
-                        send_to_char(str, ch);
+                        send_to_char(
+                            std::format("{}\n\r", nz(world[ch->in_room].name)).c_str(), ch);
                         send_to_char("The power of light makes it hard to see.\n\r", ch);
                         ch->in_room = tmp;
                         return;
@@ -1117,20 +1122,23 @@ ACMD(do_look)
                     ch->in_room = tmp;
                 } else {
                     /* They typed look <dir>; look renders the exit's description */
+                    std::string exit_message;
                     if (*(EXIT(ch, keyword_no)->general_description))
-                        sprintf(str, "%s", (EXIT(ch, keyword_no)->general_description));
+                        exit_message = EXIT(ch, keyword_no)->general_description;
                     else {
                         tmp = EXIT(ch, keyword_no)->to_room;
                         if (tmp == NOWHERE)
-                            sprintf(str, "Protogenal chaos.\n\r");
+                            exit_message = "Protogenal chaos.\n\r";
                         else if (IS_DARK(tmp) && !PRF_FLAGGED(ch, PRF_HOLYLIGHT))
-                            sprintf(str, "It's too dark to the %s to see anything.\n\r",
+                            exit_message = std::format(
+                                "It's too dark to the {} to see anything.\n\r",
                                 keywords[keyword_no]);
                         else
-                            sprintf(str, "To the %s you see %s.\n\r", keywords[keyword_no],
-                                world[EXIT(ch, keyword_no)->to_room].name);
+                            exit_message = std::format("To the {} you see {}.\n\r",
+                                keywords[keyword_no],
+                                nz(world[EXIT(ch, keyword_no)->to_room].name));
                     }
-                    send_to_char(str, ch);
+                    send_to_char(exit_message.c_str(), ch);
                 }
             } else { /* There's no room there.. maybe a door? */
                 if (EXIT(ch, keyword_no)->general_description && *(EXIT(ch, keyword_no)->general_description))
@@ -1143,17 +1151,30 @@ ACMD(do_look)
 
             /* Handle different states of doors */
             if (EXIT(ch, keyword_no)->to_room != NOWHERE) {
+                // Each branch is truthy-guarded on EXIT(ch,keyword_no)->keyword
+                // before calling fname(), so fname()'s argument is never null
+                // here -- no nz() wrap needed. `buf` isn't read again before
+                // the next branch overwrites it, so these are one-shot
+                // sprintf+send_to_char sites (idiom 1): send directly,
+                // skipping the global staging buffer.
                 if (IS_SET(EXIT(ch, keyword_no)->exit_info, EX_ISBROKEN) && (EXIT(ch, keyword_no)->keyword)) { /* Broken door */
-                    sprintf(buf, "The %s is broken.\n\r", fname(EXIT(ch, keyword_no)->keyword));
-                    send_to_char(buf, ch);
+                    send_to_char(
+                        std::format("The {} is broken.\n\r", fname(EXIT(ch, keyword_no)->keyword))
+                            .c_str(),
+                        ch);
                 } else if (IS_SET(EXIT(ch, keyword_no)->exit_info, EX_CLOSED) && (EXIT(ch, keyword_no)->keyword)) { /* Closed door */
                     if (!IS_SET(EXIT(ch, keyword_no)->exit_info, EX_ISHIDDEN)) {
-                        sprintf(buf, "The %s is closed.\n\r", fname(EXIT(ch, keyword_no)->keyword));
-                        send_to_char(buf, ch);
+                        send_to_char(
+                            std::format(
+                                "The {} is closed.\n\r", fname(EXIT(ch, keyword_no)->keyword))
+                                .c_str(),
+                            ch);
                     }
                 } else if (IS_SET(EXIT(ch, keyword_no)->exit_info, EX_ISDOOR) && EXIT(ch, keyword_no)->keyword) { /* Open door */
-                    sprintf(buf, "The %s is open.\n\r", fname(EXIT(ch, keyword_no)->keyword));
-                    send_to_char(buf, ch);
+                    send_to_char(
+                        std::format("The {} is open.\n\r", fname(EXIT(ch, keyword_no)->keyword))
+                            .c_str(),
+                        ch);
                 }
             }
         } else
@@ -1173,11 +1194,12 @@ ACMD(do_look)
                     else { /* It's not empty, how full is it? */
                         if (tmp_object->obj_flags.value[0]) {
                             temp = (tmp_object->obj_flags.value[1] * 3) / tmp_object->obj_flags.value[0];
-                            sprintf(buf, "It's %sfull of a %s liquid.\n\r", fullness[temp],
-                                color_liquid[tmp_object->obj_flags.value[2]]);
+                            send_to_char(std::format("It's {}full of a {} liquid.\n\r", fullness[temp],
+                                             color_liquid[tmp_object->obj_flags.value[2]])
+                                             .c_str(),
+                                ch);
                         } else
-                            sprintf(buf, "It's max_content is zero, beware!\n\r");
-                        send_to_char(buf, ch);
+                            send_to_char("It's max_content is zero, beware!\n\r", ch);
                     }
                 } else if (GET_ITEM_TYPE(tmp_object) == ITEM_CONTAINER) {
                     /* Found a normal container; i.e.: backpack, pouch, etc */
@@ -1285,7 +1307,7 @@ ACMD(do_look)
             /* Is it maybe something in your inventory? */
             if (!found)
                 for (tmp_object = ch->carrying; tmp_object && !found;
-                     tmp_object = tmp_object->next_content)
+                    tmp_object = tmp_object->next_content)
                     if (CAN_SEE_OBJ(ch, tmp_object)) {
                         tmp_desc = find_ex_description(arg2, tmp_object->ex_description);
                         if (tmp_desc) {
@@ -1297,7 +1319,7 @@ ACMD(do_look)
             /* Ok.. how about an object lying around in the room? */
             if (!found)
                 for (tmp_object = world[ch->in_room].contents; tmp_object && !found;
-                     tmp_object = tmp_object->next_content)
+                    tmp_object = tmp_object->next_content)
                     if (CAN_SEE_OBJ(ch, tmp_object)) {
                         tmp_desc = find_ex_description(arg2, tmp_object->ex_description);
                         if (tmp_desc) {
@@ -1325,15 +1347,30 @@ ACMD(do_look)
                 strcpy(buf, "NOFLAGS");
             else
                 sprintbit((long)world[ch->in_room].room_flags, room_bits, buf, 0);
-            sprintf(buf2, "%s (#%d) [ %s, %s]", buf2, world[ch->in_room].number,
-                sector_types[world[ch->in_room].sector_type], buf);
+            // The old sprintf(buf2, "%s...", buf2, ...) self-referenced buf2
+            // as both destination and source (an sprintf-overlap antipattern
+            // that happens to work because glibc reads %s's source before
+            // writing, but is not something to keep relying on). Composing
+            // into a temporary std::string first and strcpy()'ing the result
+            // in removes that hazard while producing the identical bytes;
+            // static_cast<const char*> decays the char[MAX_STRING_LENGTH]
+            // globals per the libc++/libstdc++ char[N]-to-std::format rule.
+            strcpy(buf2,
+                std::format("{} (#{}) [ {}, {}]", static_cast<const char*>(buf2),
+                    world[ch->in_room].number, sector_types[world[ch->in_room].sector_type],
+                    static_cast<const char*>(buf))
+                    .c_str());
         } else if (PRF_FLAGGED(ch, PRF_ADVANCED_VIEW)) {
             if (IS_SET(world[ch->in_room].room_flags, HIDE_VNUM)) {
-                sprintf(buf2, "%s (???) [ %s ]", buf2,
-                    sector_types[world[ch->in_room].sector_type]);
+                strcpy(buf2,
+                    std::format("{} (???) [ {} ]", static_cast<const char*>(buf2),
+                        sector_types[world[ch->in_room].sector_type])
+                        .c_str());
             } else {
-                sprintf(buf2, "%s (#%d) [ %s ]", buf2, world[ch->in_room].number,
-                    sector_types[world[ch->in_room].sector_type]);
+                strcpy(buf2,
+                    std::format("{} (#{}) [ {} ]", static_cast<const char*>(buf2),
+                        world[ch->in_room].number, sector_types[world[ch->in_room].sector_type])
+                        .c_str());
             }
         }
 
@@ -1474,7 +1511,8 @@ ACMD(do_read)
         return;
     }
 
-    sprintf(buf1, "at %s", argument);
+    // buf1 is reused downstream (handed to do_look as its argument) -- idiom 2.
+    strcpy(buf1, std::format("at {}", argument).c_str());
     do_look(ch, buf1, wtl, 15, 0);
 }
 
@@ -1509,7 +1547,9 @@ ACMD(do_examine)
     if (tmp_object) {
         if ((GET_ITEM_TYPE(tmp_object) == ITEM_DRINKCON) || (GET_ITEM_TYPE(tmp_object) == ITEM_FOUNTAIN) || (GET_ITEM_TYPE(tmp_object) == ITEM_CONTAINER)) {
             send_to_char("When you look inside, you see:\n\r", ch);
-            sprintf(buf, "in %s", argument);
+            // `buf` here is do_examine's own local char[100] (reused
+            // downstream as do_look's argument) -- idiom 2.
+            strcpy(buf, std::format("in {}", argument).c_str());
             do_look(ch, buf, wtl, 15, 0);
         }
     }
@@ -1518,10 +1558,14 @@ ACMD(do_examine)
 ACMD(do_exits)
 {
     int door, tmp;
-    char* exits[] = { "North", "East ", "South", "West ", "Up   ", "Down " };
-    char* sun_exits[] = { "#North#", "#East# ", "#South#", "#West# ", "#Up#   ", "#Down# " };
+    const char* const exits[] = { "North", "East ", "South", "West ", "Up   ", "Down " };
+    const char* const sun_exits[]
+        = { "#North#", "#East# ", "#South#", "#West# ", "#Up#   ", "#Down# " };
 
-    *buf = '\0';
+    // Accumulates the exit lines; replaces the old `buf + strlen(buf)`
+    // accumulation (idiom 3). Not reused past this function, so a local
+    // std::string (rather than the global staging buffer) is enough.
+    std::string out;
 
     for (door = 0; door <= 5; door++)
         if (EXIT(ch, door))
@@ -1530,45 +1574,45 @@ ACMD(do_exits)
 
                 if (!tmp && (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED) || IS_SET(EXIT(ch, door)->exit_info, EX_ISBROKEN))) {
                     if (GET_LEVEL(ch) >= LEVEL_IMMORT) {
-                        sprintf(buf + strlen(buf), "%-7s - [%7d][w:%2d] %s\n\r", exits[door],
+                        out += std::format("{:<7} - [{:>7}][w:{:>2}] {}\n\r", exits[door],
                             world[EXIT(ch, door)->to_room].number, EXIT(ch, door)->exit_width,
-                            world[EXIT(ch, door)->to_room].name);
+                            nz(world[EXIT(ch, door)->to_room].name));
                     } else {
                         tmp = ch->in_room;
                         ch->in_room = EXIT(ch, door)->to_room;
                         if (!CAN_SEE(ch) && !PRF_FLAGGED(ch, PRF_HOLYLIGHT)) {
-                            sprintf(buf + strlen(buf), "%-7s - Too dark to tell\n\r",
+                            out += std::format("{:<7} - Too dark to tell\n\r",
                                 (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(tmp, ch->in_room, door))
                                     ? sun_exits[door]
                                     : exits[door]);
                         } else {
-                            sprintf(buf + strlen(buf), "%-7s - %s\n\r",
+                            out += std::format("{:<7} - {}\n\r",
                                 (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(tmp, ch->in_room, door))
                                     ? sun_exits[door]
                                     : exits[door],
-                                world[ch->in_room].name);
+                                nz(world[ch->in_room].name));
                         }
                         ch->in_room = tmp;
                     }
                 } else {
                     if (!IS_SET(EXIT(ch, door)->exit_info, EX_ISHIDDEN)) {
-                        sprintf(buf + strlen(buf), "%-7s - Closed %s\n\r",
+                        out += std::format("{:<7} - Closed {}\n\r",
                             (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(ch->in_room, ch->in_room, door))
                                 ? sun_exits[door]
                                 : exits[door],
-                            EXIT(ch, door)->keyword);
+                            nz(EXIT(ch, door)->keyword));
                     } else if (ch->player.level >= LEVEL_GOD)
-                        sprintf(buf + strlen(buf), "%-7s - *Hidden* %s\n\r",
+                        out += std::format("{:<7} - *Hidden* {}\n\r",
                             (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(ch->in_room, ch->in_room, door))
                                 ? sun_exits[door]
                                 : exits[door],
-                            EXIT(ch, door)->keyword);
+                            nz(EXIT(ch, door)->keyword));
                 }
             }
     send_to_char("Obvious exits:\n\r", ch);
 
-    if (*buf)
-        send_to_char(buf, ch);
+    if (!out.empty())
+        send_to_char(out.c_str(), ch);
     else
         send_to_char(" None.\n\r", ch);
 }
@@ -3335,7 +3379,8 @@ ACMD(do_search)
         tmp = wtl->flg;
         ex = world[ch->in_room].dir_option[tmp];
 
-        sprintf(buf, "$n searches for something to %s.", refer_dirs[tmp]);
+        // `buf` is reused downstream (handed to act()) -- idiom 2.
+        strcpy(buf, std::format("$n searches for something to {}.", refer_dirs[tmp]).c_str());
         act(buf, TRUE, ch, 0, 0, TO_ROOM);
 
         if (ex && !IS_SET(ex->exit_info, EX_ISDOOR) && !IS_SET(ex->exit_info, EX_CLOSED)) {
@@ -3348,14 +3393,20 @@ ACMD(do_search)
             skill -= 50;
 
         if (skill > number(0, 99)) {
+            // `ex->keyword` is truthy-guarded before use below, so no nz()
+            // wrap is needed there; `buf` stays the destination (idiom 2,
+            // matching the shared send_to_char(buf, ch) after this if/else).
             if (!ex || (ex->to_room == NOWHERE))
-                sprintf(buf, "There is no passage %s.\n\r", dirs[tmp]);
+                strcpy(buf, std::format("There is no passage {}.\n\r", dirs[tmp]).c_str());
             else {
                 if (ex->keyword && *ex->keyword)
-                    sprintf(buf, "You found %s at %s.\n", ex->keyword, refer_dirs[tmp]);
+                    strcpy(buf,
+                        std::format("You found {} at {}.\n", ex->keyword, refer_dirs[tmp]).c_str());
                 else
-                    sprintf(buf, "The exit %s has no name, please notify immortals.\n\r",
-                        dirs[tmp]);
+                    strcpy(buf,
+                        std::format("The exit {} has no name, please notify immortals.\n\r",
+                            dirs[tmp])
+                            .c_str());
             }
             send_to_char(buf, ch);
         } else
@@ -4674,7 +4725,7 @@ void do_details(char_data* character, char* argument, waiting_type* wait_list, i
                 character->damage_details.reset();
 
                 for (follow_type* follower = character->followers; follower;
-                     follower = follower->next) {
+                    follower = follower->next) {
                     char_data* follow_char = follower->follower;
                     if (utils::is_npc(*follow_char) && utils::is_affected_by(*follow_char, AFF_CHARM)) {
                         follow_char->damage_details.reset();
@@ -4687,7 +4738,7 @@ void do_details(char_data* character, char* argument, waiting_type* wait_list, i
                 send_to_char(damage_data.c_str(), character);
 
                 for (follow_type* follower = character->followers; follower;
-                     follower = follower->next) {
+                    follower = follower->next) {
                     const char_data* follow_char = follower->follower;
                     if (utils::is_npc(*follow_char) && utils::is_affected_by(*follow_char, AFF_CHARM)) {
                         std::string follower_damage_data = follow_char->damage_details.get_damage_report(follow_char);

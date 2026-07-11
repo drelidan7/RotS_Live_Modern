@@ -124,7 +124,8 @@
     "tactics": 5,
     "shooting": 3,
     "casting": 3,
-    "two_handed": true
+    "two_handed": true,
+    "specialization": 0
   },
   "talks": {"animal_language": 50, "human_language": 75, "orcish_language": 100},
   "skills": {"barehanded": 12, "slashing": 34, "concussion": 56, "whips_flails": 78, "piercing": 90},

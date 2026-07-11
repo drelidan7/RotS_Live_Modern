@@ -3926,13 +3926,22 @@ ACMD(do_compare)
 
     obj1 = get_obj_in_list_vis(ch, str1, ch->carrying, 9999);
     if (!obj1) {
-        send_to_char(std::format("You don't seem to have any {}.\n\r", str1).c_str(), ch);
+        // static_cast: str1/str2 are char[MAX_INPUT_LENGTH] arrays (catalog
+        // item 5 / docs/BUILD.md "Formatting" -- libc++ formats a char array
+        // as a range, not a C string).
+        send_to_char(
+            std::format("You don't seem to have any {}.\n\r", static_cast<const char*>(str1))
+                .c_str(),
+            ch);
         return;
     }
 
     obj2 = get_obj_in_list_vis(ch, str2, ch->carrying, 9999);
     if (!obj2) {
-        send_to_char(std::format("You don't seem to have any {}.\n\r", str2).c_str(), ch);
+        send_to_char(
+            std::format("You don't seem to have any {}.\n\r", static_cast<const char*>(str2))
+                .c_str(),
+            ch);
         return;
     }
 
@@ -4138,6 +4147,11 @@ void print_exploits(struct char_data* sendto, char* name)
     // is odd). Mirrors the old str4's role exactly.
     std::string column;
 
+    // Per-record display text (the old str5's role); hoisted out of the loop
+    // so one string's capacity is reused across all records instead of
+    // allocating a fresh std::string per iteration (per-loop reuse idiom).
+    std::string row;
+
     iMobDeaths = 0;
     for (const exploit_record& loaded_record : records) {
         exploitrec = loaded_record;
@@ -4173,14 +4187,25 @@ void print_exploits(struct char_data* sendto, char* name)
         str3[year_len] = '\0';
         i++;
 
+        // Mandatory char[N] -> const char* materialization (transform idiom
+        // catalog item 5; docs/BUILD.md "Formatting"): str2/str3/
+        // bounded_victim_name are fixed-size char arrays, and libc++ formats
+        // a char array as a range rather than a C string (libstdc++
+        // divergence), so every std::format argument below must be a
+        // pointer. Cast once per iteration here instead of at each of the
+        // eleven call sites.
+        const char* month_day = static_cast<const char*>(str2);
+        const char* year_suffix = static_cast<const char*>(str3);
+        const char* victim_name = static_cast<const char*>(bounded_victim_name);
+
         // No "default:" in the switch below (matches the original's
         // sprintf-before-switch-with-no-default structure): row keeps this
         // fallback text unless a case below overwrites it.
-        std::string row = "Unknown record type";
+        row = "Unknown record type";
 
         switch (exploitrec.type) {
         case EXPLOIT_PK: // it's a pk type
-            row = std::format("{}, {}: Killed {} ({},{})", str2, str3, bounded_victim_name,
+            row = std::format("{}, {}: Killed {} ({},{})", month_day, year_suffix, victim_name,
                 exploitrec.iKillerLevel, exploitrec.iVictimLevel);
             iTotalPk++;
             break;
@@ -4188,51 +4213,52 @@ void print_exploits(struct char_data* sendto, char* name)
         case EXPLOIT_DEATH: // it's a death type
             // chvictimname used to store killer name here
             if (exploitrec.iIntParam == 1) {
-                row = std::format("{}, {}: * Died to {} ({},{})", str2, str3, bounded_victim_name,
-                    exploitrec.iVictimLevel, exploitrec.iKillerLevel);
+                row = std::format("{}, {}: * Died to {} ({},{})", month_day, year_suffix,
+                    victim_name, exploitrec.iVictimLevel, exploitrec.iKillerLevel);
                 iDeaths++;
             } else
-                row = std::format("{}, {}: Died to {} ({},{})", str2, str3, bounded_victim_name,
-                    exploitrec.iVictimLevel, exploitrec.iKillerLevel);
+                row = std::format("{}, {}: Died to {} ({},{})", month_day, year_suffix,
+                    victim_name, exploitrec.iVictimLevel, exploitrec.iKillerLevel);
             break;
 
         case EXPLOIT_LEVEL:
-            row = std::format("{}, {}: Obtained level {}", str2, str3, exploitrec.iIntParam);
+            row = std::format(
+                "{}, {}: Obtained level {}", month_day, year_suffix, exploitrec.iIntParam);
             break;
 
         case EXPLOIT_STAT:
-            row = std::format(
-                "{}, {}: L{}: Stat inc ({})", str2, str3, exploitrec.iIntParam, bounded_victim_name);
+            row = std::format("{}, {}: L{}: Stat inc ({})", month_day, year_suffix,
+                exploitrec.iIntParam, victim_name);
             break;
 
         case EXPLOIT_BIRTH:
-            row = std::format("{}, {}: Character Created", str2, str3);
+            row = std::format("{}, {}: Character Created", month_day, year_suffix);
             break;
 
         case EXPLOIT_MOBDEATH:
-            row = std::format("{}, {}: Mobdied: {}", str2, str3, bounded_victim_name);
+            row = std::format("{}, {}: Mobdied: {}", month_day, year_suffix, victim_name);
             iMobDeaths++;
             break;
 
         case EXPLOIT_RETIRED:
-            row = std::format("{}, {}: Retired", str2, str3);
+            row = std::format("{}, {}: Retired", month_day, year_suffix);
             break;
 
         case EXPLOIT_ACHIEVEMENT:
-            row = std::format("{}, {}: {}", str2, str3, bounded_victim_name);
+            row = std::format("{}, {}: {}", month_day, year_suffix, victim_name);
             break;
 
         case EXPLOIT_NOTE:
-            row = std::format("{}, {}: !{}", str2, str3, bounded_victim_name);
+            row = std::format("{}, {}: !{}", month_day, year_suffix, victim_name);
             iNotes++;
             break;
 
         case EXPLOIT_POISON:
-            row = std::format("{}, {}: Died to Poison", str2, str3);
+            row = std::format("{}, {}: Died to Poison", month_day, year_suffix);
             break;
 
         case EXPLOIT_REGEN_DEATH:
-            row = std::format("{}, {}: Died to Injuries", str2, str3);
+            row = std::format("{}, {}: Died to Injuries", month_day, year_suffix);
             break;
         }
         // an output line - first column

@@ -1,7 +1,9 @@
+#include "../big_brother.h"
 #include "../db.h"
 #include "../handler.h"
 #include "../interpre.h"
 #include "../rots_rng.h"
+#include "../skill_timer.h"
 #include "../spells.h"
 #include "../structs.h"
 #include "../utils.h"
@@ -54,6 +56,41 @@
 //    (do_diagnose, act_info.cpp:2986/2989) is outside this chunk's function
 //    list (do_look/do_read/do_examine/do_exits/do_search/do_map/
 //    do_small_map) -- not converted or tested by this task.
+//
+// Characterization tests for Phase 4 Wave 3 Task 2 (Chunk I2 -- act_info.cpp
+// self-status/do_score family: do_score, do_info, do_toggle, do_affections,
+// do_gen_ps's SCMD_WHOAMI branch). Suite ActInfoSelfStatus below. Same
+// binding pattern as Task 1: these pin CURRENT byte-for-byte output --
+// confirmed passing against the pre-conversion source -- before the
+// bufpt-accumulation/strcpy+strcat sites in this chunk convert to
+// std::string/std::format composition, and green again after.
+//
+// Deliberately NOT unit-tested here (documented exclusions, not oversights):
+//  - do_squareroot (act_info.cpp:1879): pure integer/table arithmetic, no
+//    sprintf/strcpy/strcat/send_to_char call at all -- nothing for this
+//    task's transform to touch.
+//  - do_inventory / do_equipment (act_info.cpp:2522/2528): each is a single
+//    literal send_to_char() plus a delegate call (list_obj_to_char /
+//    show_equipment_to_char, both defined elsewhere and out of this chunk) --
+//    no format site of their own.
+//  - do_diagnose (act_info.cpp:3019): no sprintf/strcpy of its own; its only
+//    formatting happens inside diag_char_to_char (act_info.cpp:479), which
+//    Task 1's exclusion note already places outside this chunk's function
+//    list (still not do_diagnose's own code, and still not converted here).
+//  - do_orc_delay (act_info.cpp:3444): every branch is either a literal
+//    send_to_char() or a commented-out WAIT_STATE_FULL/REMOVE_BIT -- no
+//    format site.
+//  - do_gen_ps's non-WHOAMI branches (CREDITS/NEWS/INFO/WIZLIST/IMMLIST/
+//    HANDBOOK/POLICIES/CLEAR/VERSION): each pages or sends a literal/extern
+//    string buffer with no sprintf of its own; only SCMD_WHOAMI
+//    (strcat(strcpy(buf, GET_NAME(ch)), "\n\r")) has a conversion site, and
+//    is pinned below.
+//  - do_score's weapon-master interop (player_spec::weapon_master_handler::
+//    append_score_message, warrior_spec_handlers.h/weapon_master_handler.cpp)
+//    is a legacy helper out of this chunk's file list; its char* signature is
+//    kept as-is per the transform idiom catalog (a local `char stage[...]`
+//    staging buffer bridges it into the new std::string accumulation) and is
+//    exercised (not modified) by the weapon-master score-message test below.
 
 extern char buf[];
 
@@ -62,6 +99,11 @@ ACMD(do_read);
 ACMD(do_examine);
 ACMD(do_exits);
 ACMD(do_search);
+ACMD(do_score);
+ACMD(do_info);
+ACMD(do_toggle);
+ACMD(do_affections);
+ACMD(do_gen_ps);
 
 void clear_char(struct char_data* ch, int mode);
 
@@ -91,6 +133,27 @@ void reset_capturing_descriptor(descriptor_data& descriptor, char_data* characte
     descriptor.connected = 0; // CON_PLAYING
     descriptor.character = character;
 }
+
+// A single awake PC, connected to a capturing descriptor, with no world
+// dependency -- mirrors act_format_tests.cpp's SoloCharacterContext (Phase 4
+// Wave 2 Task 4) exactly. Duplicated per-file rather than shared across
+// translation units (each test file in this suite defines its own copy of
+// reset_capturing_descriptor/SoloCharacterContext, same convention as the
+// fixtures above). Covers every ActInfoSelfStatus site reached only through
+// send_to_char()/act(..., TO_CHAR), where no room/light bootstrap is needed
+// -- e.g. do_score and do_toggle, neither of which touches ch->in_room.
+struct SoloCharacterContext {
+    char_data character {};
+    descriptor_data descriptor {};
+
+    SoloCharacterContext()
+    {
+        clear_char(&character, MOB_VOID);
+        reset_capturing_descriptor(descriptor, &character);
+        character.desc = &descriptor;
+        character.specials.position = POSITION_STANDING;
+    }
+};
 
 // Saves, overrides, and restores the process-global weather_info.sunlight
 // (utils.h) around a test -- IS_SUNLIT_EXIT/SUN_PENALTY read it, and the
@@ -322,6 +385,30 @@ struct RoomWithBystanderContext {
         bystander.in_room = NOWHERE;
     }
 };
+
+// Ensures game_timer::skill_timer's AND game_rules::big_brother's
+// process-wide singletons (skill_timer.h / big_brother.h) are constructed
+// before a test exercises do_affections/do_info -- both call
+// report_skill_timer() then game_rules::big_brother::instance()
+// (act_info.cpp), unconditionally, back to back. Production reaches these
+// via boot-time skill_timer::create()/big_brother::create() calls that this
+// unit test binary's main() never runs; without them, instance()
+// (singleton.h's world_singleton<T>) returns `*m_pInstance` while
+// m_pInstance is still null -- a guaranteed null-pointer-dereference SIGSEGV
+// the very first time ANY suite in this process calls do_affections/do_info
+// (confirmed by bisection: no pre-existing suite touched either path, so
+// nothing had hit this before). Each create()'s storage is a function-local
+// static, so repeat calls across multiple tests in the monolithic runner are
+// idempotent -- they just re-point the pointer at the same
+// already-constructed instance; this is NOT modeling boot's real
+// weather_info/world wiring (do_affections's own reads -- m_skill_timer,
+// is_target_looting()'s corpse map -- never touch get_weather()/
+// get_world()), just satisfying instance()'s non-null precondition.
+void ensure_skill_timer_created()
+{
+    game_timer::skill_timer::create(weather_info, nullptr);
+    game_rules::big_brother::create(weather_info, nullptr);
+}
 
 } // namespace
 
@@ -738,4 +825,507 @@ TEST(ActInfoPerception, DoExamineWithoutTargetRendersRoomViaLookExamDelegation)
         "A quiet room used for account-menu tests.\n\r");
     // do_examine restores the toggled PRF_SPAM bit on its way out.
     EXPECT_FALSE(PRF_FLAGGED(&context.character, PRF_SPAM));
+}
+
+// ---------------------------------------------------------------------------
+// do_score (act_info.cpp:1900)
+// ---------------------------------------------------------------------------
+
+// do_score: pins the two leading stat lines for a solo PC with known
+// abilities. bufpt-accumulation converts to a single std::string in the
+// transform; these bytes must not move. (Exemplar from the task brief; the
+// OB/DB/PB/Speed/Gold line that follows depends on get_real_OB()/
+// get_real_dodge()/get_real_parry()/utils::get_energy_regen() -- derived
+// combat stats this fixture doesn't pin -- so only the leading substring is
+// asserted here.)
+TEST(ActInfoSelfStatus, DoScoreFormatsHitStaminaMovesSpiritAndCombatLine)
+{
+    SoloCharacterContext context;
+    context.character.tmpabilities.hit = 50;
+    context.character.abilities.hit = 100;
+    context.character.tmpabilities.mana = 40;
+    context.character.abilities.mana = 80;
+    context.character.tmpabilities.move = 30;
+    context.character.abilities.move = 60;
+    do_score(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+    EXPECT_TRUE(strstr(context.descriptor.small_outbuf,
+                    "You have 50/100 hit, 40/80 stamina, 30/60 moves")
+        != nullptr)
+        << context.descriptor.small_outbuf;
+}
+
+// do_score: the XP-needed blurb's plain "%d" branch (|tmp| < 1000) --
+// pins the non-K-suffixed conversion (act_info.cpp:1920). Level 50's
+// next-level threshold (xp_to_level(51) == 51*51*1500 == 3,901,500) minus an
+// exp total 500 short of it keeps tmp deterministic without needing to pin
+// the derived OB/DB/PB combat line first.
+TEST(ActInfoSelfStatus, DoScoreFormatsXpNeededUnderThousandUsesPlainNumber)
+{
+    SoloCharacterContext context;
+    context.character.player.level = 50;
+    context.character.points.exp = 51 * 51 * 1500 - 500;
+
+    do_score(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output, ", XP Needed: 500.\n\r") != nullptr)
+        << context.descriptor.output;
+}
+
+// do_score: the XP-needed blurb's "%dK" branch (|tmp| >= 1000) -- pins the
+// K-suffixed conversion (act_info.cpp:1922). Same level-50 threshold, this
+// time 5000 exp short so tmp / 1000 == 5.
+TEST(ActInfoSelfStatus, DoScoreFormatsXpNeededOverThousandUsesKSuffix)
+{
+    SoloCharacterContext context;
+    context.character.player.level = 50;
+    context.character.points.exp = 51 * 51 * 1500 - 5000;
+
+    do_score(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output, ", XP Needed: 5K.\n\r") != nullptr)
+        << context.descriptor.output;
+}
+
+// do_score: immortals (level >= LEVEL_IMMORT - 1) get no XP blurb at all --
+// pins the bare ".\r\n" tail appended straight after the Gold figure
+// (act_info.cpp:1925). Zeroing the gold purse keeps "Gold: 0.\r\n" exact and
+// distinguishes this branch (which ends the line right there) from the
+// sibling branch that inserts ", XP Needed: ..." first.
+TEST(ActInfoSelfStatus, DoScoreOmitsXpBlurbForImmortalLevel)
+{
+    SoloCharacterContext context;
+    context.character.player.level = LEVEL_IMMORT;
+    context.character.points.gold = 0;
+
+    do_score(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output, "Gold: 0.\r\n") != nullptr)
+        << context.descriptor.output;
+    EXPECT_EQ(strstr(context.descriptor.output, "XP Needed"), nullptr) << context.descriptor.output;
+}
+
+// do_score: PS_LightFighting with a light (bulk <= 2) wielded weapon pins
+// the specialization bonus literal (act_info.cpp:1931) -- no format
+// specifiers, so this is a pure survive-the-transform pin.
+TEST(ActInfoSelfStatus, DoScoreFormatsLightFightingBonusLine)
+{
+    SoloCharacterContext context;
+    context.character.profs->specialization = game_types::PS_LightFighting;
+
+    obj_data weapon {};
+    weapon.obj_flags.value[2] = 1; // bulk <= 2
+    context.character.equipment[WIELD] = &weapon;
+
+    do_score(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "The lightness of your weapon lends precision to your strikes.\r\n")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_score: PS_HeavyFighting with a heavy (bulk >= 4) wielded weapon pins
+// the sibling specialization bonus literal (act_info.cpp:1936).
+TEST(ActInfoSelfStatus, DoScoreFormatsHeavyFightingBonusLine)
+{
+    SoloCharacterContext context;
+    context.character.profs->specialization = game_types::PS_HeavyFighting;
+
+    obj_data weapon {};
+    weapon.obj_flags.value[2] = 4; // bulk >= 4
+    context.character.equipment[WIELD] = &weapon;
+
+    do_score(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "The heft of your weapon lends power to your blows.\r\n")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_score: PS_WildFighting + TACTICS_BERSERK at <= 45% health pins the
+// berserker-fury literal (act_info.cpp:1941).
+TEST(ActInfoSelfStatus, DoScoreFormatsWildFightingBerserkLowHealthLine)
+{
+    SoloCharacterContext context;
+    context.character.profs->specialization = game_types::PS_WildFighting;
+    context.character.specials.tactics = TACTICS_BERSERK;
+    context.character.tmpabilities.hit = 40;
+    context.character.abilities.hit = 100; // 40% <= 0.45f threshold
+
+    do_score(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output, "Your fury lends speed to your attacks!\r\n")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_score: PS_WeaponMaster's append_score_message() interop
+// (player_spec::weapon_master_handler, warrior_spec_handlers.h) -- pins the
+// char* staging-buffer bridge (transform idiom catalog item 3's named
+// exception: the legacy helper's char* signature is kept as-is, fed by a
+// local `char stage[MAX_STRING_LENGTH]`) with a stabbing weapon's specific
+// message text.
+TEST(ActInfoSelfStatus, DoScoreFormatsWeaponMasterScoreMessage)
+{
+    SoloCharacterContext context;
+    context.character.profs->specialization = game_types::PS_WeaponMaster;
+
+    obj_data weapon {};
+    weapon.obj_flags.type_flag = ITEM_WEAPON;
+    weapon.obj_flags.value[3] = game_types::WT_STABBING;
+    context.character.equipment[WIELD] = &weapon;
+
+    do_score(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "Your mastery grants defensive prowess and armor piercing blows.\r\n")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_score: GET_COND(DRUNK) > 10 pins the intoxication literal
+// (act_info.cpp:1949) -- note the "\n\r" byte order (not "\r\n"), preserved
+// verbatim from the legacy source (do_info's sibling intoxication line a few
+// hundred lines up uses the opposite "\r\n" order -- see the do_info test
+// below -- so this pins the two sites don't accidentally converge under the
+// transform).
+TEST(ActInfoSelfStatus, DoScoreFormatsDrunkLineWithLegacyByteOrder)
+{
+    SoloCharacterContext context;
+    context.character.specials2.conditions[DRUNK] = 11;
+
+    do_score(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output, "You are intoxicated.\n\r") != nullptr)
+        << context.descriptor.output;
+}
+
+// do_score: GET_COND(FULL) == 0 pins the plain hunger literal
+// (act_info.cpp:1953).
+TEST(ActInfoSelfStatus, DoScoreFormatsHungryLineWhenFullConditionIsZero)
+{
+    SoloCharacterContext context;
+    context.character.specials2.conditions[FULL] = 0;
+
+    do_score(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output, "You are hungry.\r\n") != nullptr)
+        << context.descriptor.output;
+}
+
+// do_score: 0 < GET_COND(FULL) < 4 pins the "getting hungry" literal
+// (act_info.cpp:1955).
+TEST(ActInfoSelfStatus, DoScoreFormatsGettingHungryLineWhenFullConditionIsLow)
+{
+    SoloCharacterContext context;
+    context.character.specials2.conditions[FULL] = 2;
+
+    do_score(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output, "You are getting hungry.\r\n") != nullptr)
+        << context.descriptor.output;
+}
+
+// do_score: GET_COND(THIRST) == 0 pins the plain thirst literal
+// (act_info.cpp:1959).
+TEST(ActInfoSelfStatus, DoScoreFormatsThirstyLineWhenThirstConditionIsZero)
+{
+    SoloCharacterContext context;
+    context.character.specials2.conditions[THIRST] = 0;
+
+    do_score(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output, "You are thirsty.\r\n") != nullptr)
+        << context.descriptor.output;
+}
+
+// do_score: 0 < GET_COND(THIRST) < 4 pins the "getting thirsty" literal
+// (act_info.cpp:1961).
+TEST(ActInfoSelfStatus, DoScoreFormatsGettingThirstyLineWhenThirstConditionIsLow)
+{
+    SoloCharacterContext context;
+    context.character.specials2.conditions[THIRST] = 2;
+
+    do_score(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output, "You are getting thirsty.\r\n") != nullptr)
+        << context.descriptor.output;
+}
+
+// ---------------------------------------------------------------------------
+// do_info (act_info.cpp:1670)
+// ---------------------------------------------------------------------------
+
+// do_info: pins the leading identity line's nz()-wrapped null-title case
+// (act_info.cpp:1682) -- GET_TITLE(ch) is null for a freshly-cleared PC
+// (clear_char() never allocates player.title), so the old sprintf("%s", NULL)
+// glibc "(null)" literal must survive the std::format conversion exactly,
+// same regression class as Task 1's do_exits null-keyword test.
+TEST(ActInfoSelfStatus, DoInfoFormatsIdentityLineWithNullTitleAsGlibcNullLiteral)
+{
+    RoomCharacterContext context;
+    context.character.tmpabilities.str = 100; // avoid room_move_cost() / 0
+    context.character.player.name = const_cast<char*>("Frodo");
+    ASSERT_EQ(context.character.player.title, nullptr);
+
+    ensure_skill_timer_created();
+    do_info(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "You are Frodo (null), a neutral (0) neutral Human.\n\r")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_info: GET_SPEC-less/unspecialized PC pins the "not specialized" literal
+// (act_info.cpp:1702).
+TEST(ActInfoSelfStatus, DoInfoFormatsNotSpecializedLine)
+{
+    RoomCharacterContext context;
+    context.character.tmpabilities.str = 100;
+    ASSERT_EQ(context.character.profs->specialization, (int)game_types::PS_None);
+
+    ensure_skill_timer_created();
+    do_info(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output, "You are not specialized in anything.\n\r")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_info: a specialized PC pins the "specialized in %s" conversion
+// (act_info.cpp:1704), including the specialize_name[] table lookup.
+TEST(ActInfoSelfStatus, DoInfoFormatsSpecializedLine)
+{
+    RoomCharacterContext context;
+    context.character.tmpabilities.str = 100;
+    context.character.profs->specialization = game_types::PS_LightFighting;
+
+    ensure_skill_timer_created();
+    do_info(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output, "You are specialized in light fighting.\n\r")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_info: pins the add_move_report() interop (act_info.cpp:1798) surviving
+// the accumulation-to-std::string conversion -- add_move_report() strcat()s
+// into its `bf` argument, so the transform must feed it a zeroed local
+// staging buffer (same "legacy helper appends into char*" shape as
+// do_score's weapon_master interop) rather than a raw std::string. With
+// tmpabilities.str == 100 and no equipment/encumbrance, room_move_cost()'s
+// only variable term (a `number(0, 99)` draw) lands in [100, 199] after the
+// sector-2 multiplier and always collapses to 1 after the final /100
+// integer division -- so real_move == 1 deterministically regardless of the
+// RNG draw, landing in the "You move easily indeed." bucket (1 < 3, not < 1).
+TEST(ActInfoSelfStatus, DoInfoAppendsMoveReportViaStagingBufferInterop)
+{
+    RoomCharacterContext context;
+    context.character.tmpabilities.str = 100;
+
+    ensure_skill_timer_created();
+    do_info(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    // add_move_report()'s "easily indeed" literal uses "\n\r" byte order
+    // (act_info.cpp:1657), not "\r\n" -- verified against the captured
+    // pre-transform buffer.
+    EXPECT_TRUE(strstr(context.descriptor.output, "You move easily indeed.\n\r") != nullptr)
+        << context.descriptor.output;
+}
+
+// do_info: the XP-needed blurb's plain "%d" branch (act_info.cpp:1803-1806),
+// do_info's own sibling of do_score's identically-shaped conversion.
+TEST(ActInfoSelfStatus, DoInfoFormatsXpBlurbUnderCapForNonImmortal)
+{
+    RoomCharacterContext context;
+    context.character.tmpabilities.str = 100;
+    context.character.player.level = 50;
+    context.character.points.exp = 51 * 51 * 1500 - 500;
+
+    ensure_skill_timer_created();
+    do_info(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "You have scored 3901000 experience points, and need 500 more to advance.\n\r")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_info: the immortal-level branch (act_info.cpp:1808) omits the
+// "need N more to advance" clause entirely.
+TEST(ActInfoSelfStatus, DoInfoOmitsXpBlurbForImmortalLevel)
+{
+    RoomCharacterContext context;
+    context.character.tmpabilities.str = 100;
+    context.character.player.level = LEVEL_IMMORT;
+    context.character.points.exp = 12345;
+
+    ensure_skill_timer_created();
+    do_info(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output, "You have scored 12345 experience points.\r\n")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_info: POSITION_FIGHTING with no `ch->specials.fighting` opponent pins
+// the "fighting thin air" literal (act_info.cpp:1851).
+TEST(ActInfoSelfStatus, DoInfoFormatsPositionFightingThinAirLine)
+{
+    RoomCharacterContext context;
+    context.character.tmpabilities.str = 100;
+    context.character.specials.position = POSITION_FIGHTING;
+    ASSERT_EQ(context.character.specials.fighting, nullptr);
+
+    ensure_skill_timer_created();
+    do_info(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output, "You are fighting thin air.\r\n") != nullptr)
+        << context.descriptor.output;
+}
+
+// do_info: all three special-condition lines (act_info.cpp:1864-1869) --
+// note the "\r\n" byte order here, the opposite of do_score's "\n\r" for the
+// same intoxication message (see the do_score drunk-line test above).
+TEST(ActInfoSelfStatus, DoInfoFormatsSpecialConditionLinesWithLegacyByteOrder)
+{
+    RoomCharacterContext context;
+    context.character.tmpabilities.str = 100;
+    context.character.specials2.conditions[DRUNK] = 11;
+    context.character.specials2.conditions[FULL] = 0;
+    context.character.specials2.conditions[THIRST] = 0;
+
+    ensure_skill_timer_created();
+    do_info(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "You are intoxicated.\r\nYou are hungry.\r\nYou are thirsty.\r\n")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// ---------------------------------------------------------------------------
+// do_toggle (act_info.cpp:2813)
+// ---------------------------------------------------------------------------
+
+// do_toggle: the default (all-off) preference table for a non-immortal PC --
+// pins the entire %-3s-padded three-column table plus the trailing tactics/
+// language line (act_info.cpp:2848-2894), fully determined by
+// SoloCharacterContext's clear_char() defaults (every PRF_* bit off,
+// WIMP_LEVEL 0, TACTICS_NORMAL, no spoken language). No immortal-only
+// roomflags block and no archer/arcane shooting/casting line, since GET_SPEC
+// stays PS_None/0.
+TEST(ActInfoSelfStatus, DoToggleFormatsDefaultPreferenceTableForMortalPc)
+{
+    SoloCharacterContext context;
+    ASSERT_LT(context.character.player.level, LEVEL_IMMORT);
+    ASSERT_EQ(GET_SPEC(&context.character), 0);
+
+    do_toggle(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output,
+        "         Prompt: OFF         Brief Mode: OFF             NoTell: OFF\r\n"
+        "   Compact Mode: OFF    Narrate Channel: OFF          MSDP Mode: OFF\r\n"
+        "      Spam Mode: OFF       Chat Channel: OFF     Incognito Mode: ON \r\n"
+        "           Echo: OFF       Sing Channel: OFF        Auto Mental: OFF\r\n"
+        "      Wrap Mode: OFF     Summon Protect: OFF         Wimp Level: OFF\r\n"
+        "           Swim: OFF            Latin-1: OFF            Spinner: OFF\r\n"
+        "  Advanced View: OFF    Advanced Prompt: OFF    "
+        "\r\nYou are employing normal tactics, and are speaking common tongue.\r\n");
+}
+
+// do_toggle: an immortal (>= LEVEL_IMMORT) additionally sees the roomflags/
+// holylight/nohassle/wiznet block (act_info.cpp:2882-2891) appended before
+// the tactics/language line.
+TEST(ActInfoSelfStatus, DoToggleAppendsImmortalRoomflagsBlockForGodLevel)
+{
+    SoloCharacterContext context;
+    context.character.player.level = LEVEL_IMMORT;
+
+    do_toggle(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "      Roomflags: OFF\r\n"
+                    "      Holylight: OFF    "
+                    "       Nohassle: OFF    "
+                    " Wiznet Channel: OFF\r\n")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// ---------------------------------------------------------------------------
+// do_affections (act_info.cpp:3520)
+// ---------------------------------------------------------------------------
+
+// do_affections: an unaffected PC pins the strcpy "not affected" literal
+// (act_info.cpp:3539) as the entire buffer -- fully deterministic once the
+// idnum sentinel keeps this test's report_skill_timer() lookup (skill_timer.h,
+// a process-global singleton shared by the monolithic runner) from matching
+// any other suite's registered skill timers.
+TEST(ActInfoSelfStatus, DoAffectionsFormatsNotAffectedLineWhenNoActiveEffects)
+{
+    SoloCharacterContext context;
+    context.character.specials2.idnum = 90210001; // sentinel: no other suite uses this id
+    ASSERT_EQ(context.character.affected, nullptr);
+
+    ensure_skill_timer_created();
+    do_affections(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "You are not affected by anything.\n\r");
+}
+
+// do_affections: one active affect pins the self-referential
+// `sprintf(buf, "%s%s", buf, str)` accumulation (act_info.cpp:3545)
+// converting cleanly to std::string concatenation -- report_affection()
+// itself (act_info.cpp:3485) is a helper outside this chunk's file list and
+// is not modified; this only exercises do_affections' own loop wrapping it.
+TEST(ActInfoSelfStatus, DoAffectionsFormatsAffectedByListEntryWithDurationTag)
+{
+    SoloCharacterContext context;
+    context.character.specials2.idnum = 90210002;
+
+    affected_type aff {};
+    aff.type = SKILL_SEARCH;
+    aff.duration = 5; // 3 <= duration < 12 -> durations[2] == "medium"
+    aff.next = nullptr;
+    context.character.affected = &aff;
+
+    ensure_skill_timer_created();
+    do_affections(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    std::string expected = "You are affected by:\n\r" + std::format("{:<30} ({})\n\r", "search", "medium");
+    EXPECT_STREQ(context.descriptor.output, expected.c_str());
+}
+
+// do_affections: AFF_SNEAK pins the sneaking-announcement literal
+// (act_info.cpp:3527), independent of/preceding the affected-list section.
+TEST(ActInfoSelfStatus, DoAffectionsFormatsSneakLineBeforeAffectedByList)
+{
+    SoloCharacterContext context;
+    context.character.specials2.idnum = 90210003;
+    SET_BIT(context.character.specials.affected_by, AFF_SNEAK);
+
+    ensure_skill_timer_created();
+    do_affections(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output,
+        "You are trying to sneak.\n\rYou are not affected by anything.\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// do_gen_ps (act_info.cpp:2534) -- SCMD_WHOAMI branch
+// ---------------------------------------------------------------------------
+
+// do_gen_ps's SCMD_WHOAMI branch pins the
+// `strcat(strcpy(buf, GET_NAME(ch)), "\n\r")` conversion (act_info.cpp:2567).
+TEST(ActInfoSelfStatus, DoGenPsWhoamiEchoesCharacterNameWithCrlf)
+{
+    SoloCharacterContext context;
+    context.character.player.name = const_cast<char*>("Aragorn");
+
+    do_gen_ps(&context.character, const_cast<char*>(""), nullptr, 0, SCMD_WHOAMI);
+
+    EXPECT_STREQ(context.descriptor.output, "Aragorn\n\r");
 }

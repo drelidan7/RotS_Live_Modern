@@ -108,7 +108,7 @@ str2[copy_len] = '\0';
 
 ## Effort Exit
 
-**Date:** 2026-07-11. **Final commit:** `2036e5f` (branch `merge/upstream-2026-07-10`, not merged to master — pending owner decision).
+**Date:** 2026-07-11. **Final commit:** `2036e5f` (branch `merge/upstream-2026-07-10`; merged to master 2026-07-11 with owner approval — master fast-forwarded to `942c83f`).
 
 ### Per-surface validation outcomes (Tasks 1-4)
 
@@ -143,10 +143,10 @@ Five push+watch cycles were needed to reach all-green — each of the first four
 
 No golden (boot-log, combat, or JSON) moved in any of the three fix commits — all changes are test-file-only.
 
-### Deferred item
+### Deferred item — CLOSED 2026-07-11
 
-Local macOS-native `boot-golden.sh --native build/macos-arm64/ageland verify` — the one item deferred to post-reboot (iCloud FileProvider wedge). CI's `macos-arm64` job (GitHub runner, unaffected by the local wedge) is this effort's macOS coverage in the meantime.
+Local macOS-native `boot-golden.sh --native build/macos-arm64/ageland verify` — the one item deferred to post-reboot (iCloud FileProvider wedge). **Closed 2026-07-11:** the repo moved from `~/Documents/GitHub` (iCloud-synced) to `~/Projects/GitHub`, clearing the wedge; after wiping the stale CMake cache (old-path `CMakeCache.txt`), a full local macOS-native pass at `942c83f` came back clean — configure + build, `ctest --preset macos-arm64` 758/758 pass 0 fail, and `boot-golden.sh --native build/macos-arm64/ageland verify` byte-identical. No open items remain.
 
 ### Merge decision
 
-Branch is four-platform green, container battery clean, smoke verified, no unsanctioned golden movement. **Merge-to-master is the owner's decision** (not made here per the Global Constraints).
+Branch is four-platform green, container battery clean, smoke verified, no unsanctioned golden movement. **Merge-to-master is the owner's decision** (not made here per the Global Constraints). **Owner approved 2026-07-11**; master fast-forwarded to the branch tip (`942c83f`) and matches `origin/master`.

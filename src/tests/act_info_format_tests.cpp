@@ -136,12 +136,22 @@ void reset_capturing_descriptor(descriptor_data& descriptor, char_data* characte
 
 // A single awake PC, connected to a capturing descriptor, with no world
 // dependency -- mirrors act_format_tests.cpp's SoloCharacterContext (Phase 4
-// Wave 2 Task 4) exactly. Duplicated per-file rather than shared across
-// translation units (each test file in this suite defines its own copy of
+// Wave 2 Task 4), duplicated per-file rather than shared across translation
+// units (each test file in this suite defines its own copy of
 // reset_capturing_descriptor/SoloCharacterContext, same convention as the
 // fixtures above). Covers every ActInfoSelfStatus site reached only through
 // send_to_char()/act(..., TO_CHAR), where no room/light bootstrap is needed
 // -- e.g. do_score and do_toggle, neither of which touches ch->in_room.
+//
+// One deliberate deviation from the act_format_tests.cpp original: strength
+// is set non-zero. do_score's derived-stat line walks get_real_OB()/
+// get_real_dodge(), whose get_skill_penalty()/get_dodge_penalty()
+// (char_utils.cpp) divide by get_bal_strength() -- 0 for a fully-zeroed
+// character. x86 traps that integer division as SIGFPE ("Exception:
+// Numerical" in the i386 container's ctest) while ARM silently yields 0, so
+// the suite passed on macOS and crashed on i386 until this was set. Real
+// characters always have non-zero strength; none of this suite's pinned
+// bytes include a derived combat stat, so the value itself is arbitrary.
 struct SoloCharacterContext {
     char_data character {};
     descriptor_data descriptor {};
@@ -152,6 +162,7 @@ struct SoloCharacterContext {
         reset_capturing_descriptor(descriptor, &character);
         character.desc = &descriptor;
         character.specials.position = POSITION_STANDING;
+        character.tmpabilities.str = 100; // see fixture comment: div-by-zero guard
     }
 };
 

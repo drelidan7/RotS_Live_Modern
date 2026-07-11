@@ -1670,16 +1670,15 @@ void add_move_report(int real_move, char* bf)
 ACMD(do_info)
 {
     int tmp;
-    char* bufpt;
     struct time_info_data playing_time;
     int room_move_cost(struct char_data*, struct room_data*);
     struct time_info_data real_time_passed(time_t, time_t);
     extern const char* specialize_name[];
 
-    bufpt = buf;
+    std::string out;
 
     /* `ch's name, title, alignment, sex and race */
-    bufpt += sprintf(bufpt, "You are %s %s, %s (%d) %s %s.\n\r", GET_NAME(ch), GET_TITLE(ch),
+    out += std::format("You are {} {}, {} ({}) {} {}.\n\r", nz(GET_NAME(ch)), nz(GET_TITLE(ch)),
         IS_GOOD(ch)       ? "a good"
             : IS_EVIL(ch) ? "an evil"
                           : "a neutral",
@@ -1687,45 +1686,45 @@ ACMD(do_info)
         pc_races[GET_RACE(ch)]);
 
     /* `ch's level */
-    bufpt += sprintf(bufpt, "You have reached level %d.\n\r", GET_LEVEL(ch));
+    out += std::format("You have reached level {}.\n\r", GET_LEVEL(ch));
 
     /* `ch's class proficiencies */
-    bufpt += sprintf(bufpt,
-        "You are level %d Warrior, %d Ranger, "
-        "%d Mystic, and %d Mage.\n\r",
+    out += std::format(
+        "You are level {} Warrior, {} Ranger, "
+        "{} Mystic, and {} Mage.\n\r",
         GET_PROF_LEVEL(PROF_WARRIOR, ch), GET_PROF_LEVEL(PROF_RANGER, ch),
         GET_PROF_LEVEL(PROF_CLERIC, ch), GET_PROF_LEVEL(PROF_MAGE, ch));
 
     /* `ch's specialization */
     game_types::player_specs spec = utils::get_specialization(*ch);
     if (spec == game_types::PS_None || spec == game_types::PS_Count) {
-        bufpt += sprintf(bufpt, "You are not specialized in anything.\n\r");
+        out += "You are not specialized in anything.\n\r";
     } else {
-        bufpt += sprintf(bufpt, "You are specialized in %s.\n\r", specialize_name[spec]);
+        out += std::format("You are specialized in {}.\n\r", specialize_name[spec]);
     }
 
     /* `ch's age */
     playing_time = real_time_passed((time(0) - ch->player.time.logon) + ch->player.time.played, 0);
-    bufpt += sprintf(bufpt,
-        "You are %d years old, and have played "
-        "%d days and %d hours.\n\r",
+    out += std::format(
+        "You are {} years old, and have played "
+        "{} days and {} hours.\n\r",
         GET_AGE(ch), playing_time.day, playing_time.hours);
 
     /* Is it `ch's birthday today? */
     if (!age(ch).month && !age(ch).day)
-        bufpt += sprintf(bufpt, "It's your birthday today!\r\n");
+        out += "It's your birthday today!\r\n";
 
     /* `ch's weight and height */
-    bufpt += sprintf(bufpt,
-        "You are %d'%d\" high, weight %.1flb and "
-        "carrying %.1flb.\r\n",
+    out += std::format(
+        "You are {}'{}\" high, weight {:.1f}lb and "
+        "carrying {:.1f}lb.\r\n",
         GET_HEIGHT(ch) / 30, (GET_HEIGHT(ch) % 30) * 10 / 25, GET_WEIGHT(ch) / 100.,
         IS_CARRYING_W(ch) / 100.);
 
     /* `ch's hitpoints, stamina, moves and spirit */
-    bufpt += sprintf(bufpt,
-        "You have %d/%d hit points, %d/%d stamina, "
-        "%d/%d moves and %d spirit.\n\r",
+    out += std::format(
+        "You have {}/{} hit points, {}/{} stamina, "
+        "{}/{} moves and {} spirit.\n\r",
         GET_HIT(ch), GET_MAX_HIT(ch), GET_MANA(ch), GET_MAX_MANA(ch), GET_MOVE(ch),
         GET_MAX_MOVE(ch), utils::get_spirits(ch));
 
@@ -1743,76 +1742,80 @@ ACMD(do_info)
         float bonus_move_regen = get_bonus_move_gain(ch);
         const char* move_symbol = bonus_move_regen > 0.0f ? "+" : "";
 
-        bufpt += sprintf(bufpt,
-            "You regain %.0f (%s%.0f) health, %.0f (%s%.0f) stamina, and %.0f "
-            "(%s%.0f) moves per hour.\n\r",
+        out += std::format(
+            "You regain {:.0f} ({}{:.0f}) health, {:.0f} ({}{:.0f}) stamina, and {:.0f} "
+            "({}{:.0f}) moves per hour.\n\r",
             health_regen, health_symbol, bonus_health_regen, mana_regen, mana_symbol,
             bonus_mana_regen, move_regen, move_symbol, bonus_move_regen);
     }
 
     /* `ch's wealth */
-    bufpt += sprintf(bufpt, "You have %s.\n\r", money_message(GET_GOLD(ch), 1));
+    out += std::format("You have {}.\n\r", money_message(GET_GOLD(ch), 1));
 
     /* `ch's OB, DB, PB, and attack speed */
-    bufpt += sprintf(bufpt,
-        "Your OB is %d, dodge is %d, parry %d, "
-        "and your attack speed is %d.\r\n"
-        "Your armour absorbs about %d%% damage, and ",
+    out += std::format(
+        "Your OB is {}, dodge is {}, parry {}, "
+        "and your attack speed is {}.\r\n"
+        "Your armour absorbs about {}% damage, and ",
         get_real_OB(ch), get_real_dodge(ch), get_real_parry(ch),
         utils::get_energy_regen(*ch) / 5, get_percent_absorb(ch));
 
     /* A small blurb on `ch's spellsave; should be its own function */
     if (ch->specials2.saving_throw < 0)
-        bufpt += sprintf(bufpt, "leaves you helpless against magical "
-                                "attacks.\r\n");
+        out += "leaves you helpless against magical attacks.\r\n";
     else if (!ch->specials2.saving_throw)
-        bufpt += sprintf(bufpt, "makes you extremely sensitive to magic.\r\n");
+        out += "makes you extremely sensitive to magic.\r\n";
     else if (ch->specials2.saving_throw > 0 && ch->specials2.saving_throw < 5)
-        bufpt += sprintf(bufpt, "gives you a meagre resilience to magic.\r\n");
+        out += "gives you a meagre resilience to magic.\r\n";
     else if (ch->specials2.saving_throw > 4 && ch->specials2.saving_throw < 12)
-        bufpt += sprintf(bufpt, "callouses you to the effects of magic.\r\n");
+        out += "callouses you to the effects of magic.\r\n";
     else
-        bufpt += sprintf(bufpt, "renders you numb to magical onslaught.\r\n");
+        out += "renders you numb to magical onslaught.\r\n";
 
     /* `ch's mystic abilities (perception and willpower) */
-    bufpt += sprintf(bufpt,
-        "Your spiritual perception is %d%%, "
-        "willpower: %d,\r\n",
+    out += std::format(
+        "Your spiritual perception is {}%, "
+        "willpower: {},\r\n",
         GET_PERCEPTION(ch), GET_WILLPOWER(ch));
 
     player_spec::battle_mage_handler battle_mage_handler(ch);
-    bufpt += sprintf(bufpt,
-        "Your spell penetration is %d, "
-        "and your spell power is %d,\n\r",
+    out += std::format(
+        "Your spell penetration is {}, "
+        "and your spell power is {},\n\r",
         battle_mage_handler.get_bonus_spell_pen(ch->points.get_spell_pen()),
         battle_mage_handler.get_bonus_spell_power(ch->points.get_spell_power()));
 
     /* `ch's skill encumbrance and leg encumbrance */
-    bufpt += sprintf(bufpt,
-        "Your skill encumbrance is %d, and your "
-        "movement is encumbered by %d.\n\r",
+    out += std::format(
+        "Your skill encumbrance is {}, and your "
+        "movement is encumbered by {}.\n\r",
         utils::get_encumbrance(*ch), utils::get_leg_encumbrance(*ch));
 
-    /* How much effort `ch' has to put into moving in this room */
+    /* How much effort `ch' has to put into moving in this room -- a local
+     * staging buffer bridges add_move_report()'s legacy char-pointer +
+     * strcat() signature into the std::string accumulation (transform idiom
+     * catalog item 3), same shape as do_score's weapon-master interop below. */
     tmp = room_move_cost(ch, &world[ch->in_room]);
-    add_move_report(tmp, bufpt);
-    bufpt += strlen(bufpt);
+    char move_report_stage[MAX_STRING_LENGTH];
+    move_report_stage[0] = '\0';
+    add_move_report(tmp, move_report_stage);
+    out += move_report_stage;
 
     /* `ch's total experience and TNL */
     if (GET_LEVEL(ch) < LEVEL_IMMORT - 1)
-        bufpt += sprintf(bufpt,
-            "You have scored %d experience points, and "
-            "need %d more to advance.\n\r",
+        out += std::format(
+            "You have scored {} experience points, and "
+            "need {} more to advance.\n\r",
             GET_EXP(ch), xp_to_level(GET_LEVEL(ch) + 1) - GET_EXP(ch));
     else
-        bufpt += sprintf(bufpt, "You have scored %d experience points.\r\n", GET_EXP(ch));
+        out += std::format("You have scored {} experience points.\r\n", GET_EXP(ch));
 
     /* `ch's stats */
     if (GET_LEVEL(ch) > 5)
-        bufpt += sprintf(bufpt,
-            "Strength: %d/%d, Intelligence: %d/%d, "
-            "Will: %d/%d, Dexterity: %d/%d\r\n             "
-            "Constitution: %d/%d, Learning Ability: %d/%d.\r\n",
+        out += std::format(
+            "Strength: {}/{}, Intelligence: {}/{}, "
+            "Will: {}/{}, Dexterity: {}/{}\r\n             "
+            "Constitution: {}/{}, Learning Ability: {}/{}.\r\n",
             GET_STR(ch), GET_STR_BASE(ch), GET_INT(ch), GET_INT_BASE(ch), GET_WILL(ch),
             GET_WILL_BASE(ch), GET_DEX(ch), GET_DEX_BASE(ch), GET_CON(ch),
             GET_CON_BASE(ch), GET_LEA(ch), GET_LEA_BASE(ch));
@@ -1820,55 +1823,55 @@ ACMD(do_info)
     /* `ch's position */
     switch (GET_POS(ch)) {
     case POSITION_DEAD:
-        bufpt += sprintf(bufpt, "You are DEAD!\r\n");
+        out += "You are DEAD!\r\n";
         break;
 
     case POSITION_INCAP:
-        bufpt += sprintf(bufpt, "You are incapacitated, slowly fading away..\r\n");
+        out += "You are incapacitated, slowly fading away..\r\n";
         break;
 
     case POSITION_STUNNED:
-        bufpt += sprintf(bufpt, "You are stunned!  You can't move!\r\n");
+        out += "You are stunned!  You can't move!\r\n";
         break;
 
     case POSITION_SLEEPING:
-        bufpt += sprintf(bufpt, "You are sleeping.\r\n");
+        out += "You are sleeping.\r\n";
         break;
 
     case POSITION_RESTING:
-        bufpt += sprintf(bufpt, "You are resting.\n\r");
+        out += "You are resting.\n\r";
         break;
 
     case POSITION_SITTING:
-        bufpt += sprintf(bufpt, "You are sitting.\r\n");
+        out += "You are sitting.\r\n";
         break;
 
     case POSITION_FIGHTING:
         if (ch->specials.fighting)
-            bufpt += sprintf(bufpt, "You are fighting %s.\r\n",
+            out += std::format("You are fighting {}.\r\n",
                 PERS(ch->specials.fighting, ch, FALSE, FALSE));
         else
-            bufpt += sprintf(bufpt, "You are fighting thin air.\r\n");
+            out += "You are fighting thin air.\r\n";
         break;
 
     case POSITION_STANDING:
-        bufpt += sprintf(bufpt, "You are standing.\r\n");
+        out += "You are standing.\r\n";
         break;
 
     default:
-        bufpt += sprintf(bufpt, "You are floating.\r\n");
+        out += "You are floating.\r\n";
         break;
     }
 
     /* Special conditions */
     if (GET_COND(ch, DRUNK) > 10)
-        bufpt += sprintf(bufpt, "You are intoxicated.\r\n");
+        out += "You are intoxicated.\r\n";
     if (!GET_COND(ch, FULL))
-        bufpt += sprintf(bufpt, "You are hungry.\r\n");
+        out += "You are hungry.\r\n";
     if (!GET_COND(ch, THIRST))
-        bufpt += sprintf(bufpt, "You are thirsty.\r\n");
+        out += "You are thirsty.\r\n";
 
-    send_to_char(buf, ch);
+    send_to_char(out.c_str(), ch);
     do_affections(ch, "", 0, 0, 0);
 }
 
@@ -1900,16 +1903,15 @@ int test_hp(int war_points, int ran_points, int cler_points, int level, int con_
 ACMD(do_score)
 {
     int tmp;
-    char* bufpt;
 
-    bufpt = buf;
-    bufpt += sprintf(bufpt,
-        "You have %d/%d hit, %d/%d stamina, %d/%d moves, "
-        "%d spirit.\r\n",
+    std::string out;
+    out += std::format(
+        "You have {}/{} hit, {}/{} stamina, {}/{} moves, "
+        "{} spirit.\r\n",
         GET_HIT(ch), GET_MAX_HIT(ch), GET_MANA(ch), GET_MAX_MANA(ch), GET_MOVE(ch),
         GET_MAX_MOVE(ch), utils::get_spirits(ch));
 
-    bufpt += sprintf(bufpt, "OB: %d, DB: %d, PB: %d, Speed: %d, Gold: %d", get_real_OB(ch),
+    out += std::format("OB: {}, DB: {}, PB: {}, Speed: {}, Gold: {}", get_real_OB(ch),
         get_real_dodge(ch), get_real_parry(ch), utils::get_energy_regen(*ch) / 5,
         GET_GOLD(ch) / COPP_IN_GOLD);
 
@@ -1917,51 +1919,62 @@ ACMD(do_score)
     if (GET_LEVEL(ch) < LEVEL_IMMORT - 1) {
         tmp = xp_to_level(GET_LEVEL(ch) + 1) - GET_EXP(ch);
         if (tmp < 1000 && tmp > -1000) {
-            bufpt += sprintf(bufpt, ", XP Needed: %d.\n\r", tmp);
+            out += std::format(", XP Needed: {}.\n\r", tmp);
         } else {
-            bufpt += sprintf(bufpt, ", XP Needed: %dK.\n\r", tmp / 1000);
+            out += std::format(", XP Needed: {}K.\n\r", tmp / 1000);
         }
     } else {
-        bufpt += sprintf(bufpt, ".\r\n");
+        out += ".\r\n";
     }
 
     if (utils::get_specialization(*ch) == game_types::PS_LightFighting) {
         obj_data* weapon = ch->equipment[WIELD];
         if (weapon && (weapon->get_bulk() <= 2 || (weapon->get_bulk() == 3 && weapon->get_weight() <= LIGHT_WEAPON_WEIGHT_CUTOFF))) {
-            bufpt += sprintf(bufpt, "The lightness of your weapon lends precision to your strikes.\r\n");
+            out += "The lightness of your weapon lends precision to your strikes.\r\n";
         }
     } else if (utils::get_specialization(*ch) == game_types::PS_HeavyFighting) {
         obj_data* weapon = ch->equipment[WIELD];
         if (weapon && (weapon->get_bulk() >= 4 || (weapon->get_bulk() == 3 && weapon->get_weight() > LIGHT_WEAPON_WEIGHT_CUTOFF))) {
-            bufpt += sprintf(bufpt, "The heft of your weapon lends power to your blows.\r\n");
+            out += "The heft of your weapon lends power to your blows.\r\n";
         }
     } else if (utils::get_specialization(*ch) == game_types::PS_WildFighting && ch->specials.tactics == TACTICS_BERSERK) {
         float health_percentage = ch->tmpabilities.hit / (float)ch->abilities.hit;
         if (health_percentage <= 0.45f) {
-            bufpt += sprintf(bufpt, "Your fury lends speed to your attacks!\r\n");
+            out += "Your fury lends speed to your attacks!\r\n";
         }
     }
 
+    /* weapon_master_handler::append_score_message() is a legacy helper that
+     * writes into a caller-owned char* (transform idiom catalog item 3's
+     * named exception) -- bridge it via a zeroed local staging buffer rather
+     * than changing its signature this wave. Zeroing stage[0] first matters:
+     * the old bufpt-chain relied on bufpt already pointing at a prior
+     * sprintf's null terminator when the helper declines to write (its
+     * `default: break;` returns 0 leaving message_buffer untouched); a fresh
+     * local array has no such terminator. */
+    char stage[MAX_STRING_LENGTH];
+    stage[0] = '\0';
     player_spec::weapon_master_handler weapon_master(ch);
-    bufpt += weapon_master.append_score_message(bufpt);
+    weapon_master.append_score_message(stage);
+    out += stage;
 
     if (GET_COND(ch, DRUNK) > 10) {
-        bufpt += sprintf(bufpt, "You are intoxicated.\n\r");
+        out += "You are intoxicated.\n\r";
     }
 
     if (!GET_COND(ch, FULL)) {
-        bufpt += sprintf(bufpt, "You are hungry.\r\n");
+        out += "You are hungry.\r\n";
     } else if (GET_COND(ch, FULL) < 4 && GET_COND(ch, FULL) > 0) {
-        bufpt += sprintf(bufpt, "You are getting hungry.\r\n");
+        out += "You are getting hungry.\r\n";
     }
 
     if (!GET_COND(ch, THIRST)) {
-        bufpt += sprintf(bufpt, "You are thirsty.\r\n");
+        out += "You are thirsty.\r\n";
     } else if (GET_COND(ch, THIRST) < 4 && GET_COND(ch, THIRST) > 0) {
-        bufpt += sprintf(bufpt, "You are getting thirsty.\r\n");
+        out += "You are getting thirsty.\r\n";
     }
 
-    send_to_char(buf, ch);
+    send_to_char(out.c_str(), ch);
 }
 
 ACMD(do_time)
@@ -2564,7 +2577,7 @@ ACMD(do_gen_ps)
         send_to_char(circlemud_version, ch);
         break;
     case SCMD_WHOAMI:
-        send_to_char(strcat(strcpy(buf, GET_NAME(ch)), "\n\r"), ch);
+        send_to_char(std::format("{}\n\r", nz(GET_NAME(ch))).c_str(), ch);
         break;
     }
 }
@@ -2812,122 +2825,125 @@ ACMD(do_consider)
 
 ACMD(do_toggle)
 {
-    char buf3[100];
     extern char* tactics[];
     extern char* shooting[];
     extern char* casting[];
 
     if (IS_NPC(ch))
         return;
-    if (!WIMP_LEVEL(ch))
-        strcpy(buf2, "OFF");
-    else
-        sprintf(buf2, "%-3d", WIMP_LEVEL(ch));
 
+    std::string wimp_level_text
+        = WIMP_LEVEL(ch) ? std::format("{:<3}", WIMP_LEVEL(ch)) : "OFF";
+
+    // Reused across the tactics/shooting/casting switches below: only one of
+    // the three is ever active for a given send_to_char() call, so one
+    // local string does the job of the legacy shared `buf3` scratch buffer.
+    std::string buf3;
     switch (GET_TACTICS(ch)) {
     case TACTICS_DEFENSIVE:
-        sprintf(buf3, "%s", tactics[0]);
+        buf3 = tactics[0];
         break;
     case TACTICS_CAREFUL:
-        sprintf(buf3, "%s", tactics[1]);
+        buf3 = tactics[1];
         break;
     case TACTICS_NORMAL:
-        sprintf(buf3, "%s", tactics[2]);
+        buf3 = tactics[2];
         break;
     case TACTICS_AGGRESSIVE:
-        sprintf(buf3, "%s", tactics[3]);
+        buf3 = tactics[3];
         break;
     case TACTICS_BERSERK:
-        sprintf(buf3, "%s", tactics[4]);
+        buf3 = tactics[4];
         break;
     default:
-        sprintf(buf3, "tactical error, please notify IMPs.");
+        buf3 = "tactical error, please notify IMPs.";
         break;
     }
 
-    sprintf(buf,
-        "         Prompt: %-3s    "
-        "     Brief Mode: %-3s    "
-        "         NoTell: %-3s\r\n"
-        "   Compact Mode: %-3s    "
-        "Narrate Channel: %-3s    "
-        "      MSDP Mode: %-3s\r\n"
-        "      Spam Mode: %-3s    "
-        "   Chat Channel: %-3s    "
-        " Incognito Mode: %-3s\r\n"
-        "           Echo: %-3s    "
-        "   Sing Channel: %-3s    "
-        "    Auto Mental: %-3s\r\n"
-        "      Wrap Mode: %-3s    "
-        " Summon Protect: %-3s    "
-        "     Wimp Level: %-3s\r\n"
-        "           Swim: %-3s    "
-        "        Latin-1: %-3s    "
-        "        Spinner: %-3s\r\n"
-        "  Advanced View: %-3s    "
-        "Advanced Prompt: %-3s    ",
-        ONOFF(PRF_FLAGGED(ch, PRF_PROMPT)), ONOFF(PRF_FLAGGED(ch, PRF_BRIEF)),
-        ONOFF(PRF_FLAGGED(ch, PRF_NOTELL)), ONOFF(PRF_FLAGGED(ch, PRF_COMPACT)),
-        ONOFF(PRF_FLAGGED(ch, PRF_NARRATE)), ONOFF(PRF_FLAGGED(ch, PRF_MSDP)),
-        ONOFF(PRF_FLAGGED(ch, PRF_SPAM)), ONOFF(PRF_FLAGGED(ch, PRF_CHAT)),
-        ONOFF(!PRF_FLAGGED(ch, PLR_INCOGNITO)), ONOFF(PRF_FLAGGED(ch, PRF_ECHO)),
-        ONOFF(PRF_FLAGGED(ch, PRF_SING)), ONOFF(PRF_FLAGGED(ch, PRF_MENTAL)),
-        ONOFF(PRF_FLAGGED(ch, PRF_WRAP)), ONOFF(PRF_FLAGGED(ch, PRF_SUMMONABLE)), buf2,
-        ONOFF(PRF_FLAGGED(ch, PRF_SWIM)), ONOFF(PRF_FLAGGED(ch, PRF_LATIN1)),
-        ONOFF(PRF_FLAGGED(ch, PRF_SPINNER)), ONOFF(PRF_FLAGGED(ch, PRF_ADVANCED_VIEW)),
-        ONOFF(PRF_FLAGGED(ch, PRF_ADVANCED_PROMPT)));
-    send_to_char(buf, ch);
+    send_to_char(std::format(
+                     "         Prompt: {:<3}    "
+                     "     Brief Mode: {:<3}    "
+                     "         NoTell: {:<3}\r\n"
+                     "   Compact Mode: {:<3}    "
+                     "Narrate Channel: {:<3}    "
+                     "      MSDP Mode: {:<3}\r\n"
+                     "      Spam Mode: {:<3}    "
+                     "   Chat Channel: {:<3}    "
+                     " Incognito Mode: {:<3}\r\n"
+                     "           Echo: {:<3}    "
+                     "   Sing Channel: {:<3}    "
+                     "    Auto Mental: {:<3}\r\n"
+                     "      Wrap Mode: {:<3}    "
+                     " Summon Protect: {:<3}    "
+                     "     Wimp Level: {:<3}\r\n"
+                     "           Swim: {:<3}    "
+                     "        Latin-1: {:<3}    "
+                     "        Spinner: {:<3}\r\n"
+                     "  Advanced View: {:<3}    "
+                     "Advanced Prompt: {:<3}    ",
+                     ONOFF(PRF_FLAGGED(ch, PRF_PROMPT)), ONOFF(PRF_FLAGGED(ch, PRF_BRIEF)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_NOTELL)), ONOFF(PRF_FLAGGED(ch, PRF_COMPACT)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_NARRATE)), ONOFF(PRF_FLAGGED(ch, PRF_MSDP)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_SPAM)), ONOFF(PRF_FLAGGED(ch, PRF_CHAT)),
+                     ONOFF(!PRF_FLAGGED(ch, PLR_INCOGNITO)), ONOFF(PRF_FLAGGED(ch, PRF_ECHO)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_SING)), ONOFF(PRF_FLAGGED(ch, PRF_MENTAL)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_WRAP)), ONOFF(PRF_FLAGGED(ch, PRF_SUMMONABLE)), wimp_level_text,
+                     ONOFF(PRF_FLAGGED(ch, PRF_SWIM)), ONOFF(PRF_FLAGGED(ch, PRF_LATIN1)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_SPINNER)), ONOFF(PRF_FLAGGED(ch, PRF_ADVANCED_VIEW)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_ADVANCED_PROMPT)))
+                     .c_str(),
+        ch);
 
     /* the special, immortal set list */
     if (GET_LEVEL(ch) >= LEVEL_IMMORT) {
-        sprintf(buf,
-            "      Roomflags: %-3s\r\n"
-            "      Holylight: %-3s    "
-            "       Nohassle: %-3s    "
-            " Wiznet Channel: %-3s\r\n",
-            ONOFF(PRF_FLAGGED(ch, PRF_ROOMFLAGS)), ONOFF(PRF_FLAGGED(ch, PRF_HOLYLIGHT)),
-            ONOFF(PRF_FLAGGED(ch, PRF_NOHASSLE)), ONOFF(PRF_FLAGGED(ch, PRF_WIZ)));
-        send_to_char(buf, ch);
+        send_to_char(std::format(
+                         "      Roomflags: {:<3}\r\n"
+                         "      Holylight: {:<3}    "
+                         "       Nohassle: {:<3}    "
+                         " Wiznet Channel: {:<3}\r\n",
+                         ONOFF(PRF_FLAGGED(ch, PRF_ROOMFLAGS)), ONOFF(PRF_FLAGGED(ch, PRF_HOLYLIGHT)),
+                         ONOFF(PRF_FLAGGED(ch, PRF_NOHASSLE)), ONOFF(PRF_FLAGGED(ch, PRF_WIZ)))
+                         .c_str(),
+            ch);
     }
 
-    sprintf(buf, "\r\nYou are employing %s tactics, and are speaking %s.\r\n", buf3,
-        ch->player.language ? skills[ch->player.language].name : "common tongue");
-    send_to_char(buf, ch);
+    send_to_char(std::format("\r\nYou are employing {} tactics, and are speaking {}.\r\n", buf3,
+                     ch->player.language ? skills[ch->player.language].name : "common tongue")
+                     .c_str(),
+        ch);
     if (GET_SPEC(ch) == PLRSPEC_ARCH) {
         switch (GET_SHOOTING(ch)) {
         case SHOOTING_SLOW:
-            sprintf(buf3, "%s", shooting[0]);
+            buf3 = shooting[0];
             break;
         case SHOOTING_NORMAL:
-            sprintf(buf3, "%s", shooting[1]);
+            buf3 = shooting[1];
             break;
         case SHOOTING_FAST:
-            sprintf(buf3, "%s", shooting[2]);
+            buf3 = shooting[2];
             break;
         default:
-            sprintf(buf3, "shooting error, please notify IMMs!");
+            buf3 = "shooting error, please notify IMMs!";
             break;
         }
-        sprintf(buf, "You are using %s shooting speed.\r\n", buf3);
-        send_to_char(buf, ch);
+        send_to_char(std::format("You are using {} shooting speed.\r\n", buf3).c_str(), ch);
     }
     if (GET_SPEC(ch) == PLRSPEC_ARCANE) {
         switch (GET_CASTING(ch)) {
         case CASTING_SLOW:
-            sprintf(buf3, "%s", casting[0]);
+            buf3 = casting[0];
             break;
         case CASTING_NORMAL:
-            sprintf(buf3, "%s", casting[1]);
+            buf3 = casting[1];
             break;
         case CASTING_FAST:
-            sprintf(buf3, "%s", casting[2]);
+            buf3 = casting[2];
             break;
         default:
-            sprintf(buf3, "casting error, please notify IMMs!");
+            buf3 = "casting error, please notify IMMs!";
             break;
         }
-        sprintf(buf, "You are using %s casting speed.\r\n", buf3);
-        send_to_char(buf, ch);
+        send_to_char(std::format("You are using {} casting speed.\r\n", buf3).c_str(), ch);
     }
 }
 
@@ -3535,33 +3551,43 @@ ACMD(do_affections)
     if (IS_AFFECTED(ch, AFF_MOONVISION) && OUTSIDE(ch) && weather_info.moonlight)
         send_to_char("The moon lights your surroundings.\n\r", ch);
 
+    std::string out;
     if (!ch->affected) {
-        strcpy(buf, "You are not affected by anything.\n\r");
+        out = "You are not affected by anything.\n\r";
     } else {
-        sprintf(buf, "You are affected by:\n\r");
+        out = "You are affected by:\n\r";
 
         for (tmpaff = ch->affected; tmpaff; tmpaff = tmpaff->next) {
             report_affection(tmpaff, str);
-            sprintf(buf, "%s%s", buf, str);
+            out += str;
         }
     }
-    report_skill_timer(*ch, buf);
+
+    /* report_skill_timer() (defined above in this file, but outside this
+     * chunk's function list) appends into a caller-owned char* -- bridge it
+     * via a zeroed local staging buffer, the same legacy-helper interop
+     * idiom used for add_move_report() in do_info and
+     * weapon_master_handler::append_score_message() in do_score. */
+    char skill_timer_stage[MAX_STRING_LENGTH];
+    skill_timer_stage[0] = '\0';
+    report_skill_timer(*ch, skill_timer_stage);
+    out += skill_timer_stage;
 
     game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
     if (bb_instance.is_target_looting(ch)) {
-        sprintf(buf, "%sYou are under the protection of the Gods.\n\r", buf);
+        out += "You are under the protection of the Gods.\n\r";
     }
 
     /* checking for a prepared spell */
     if ((ch->delay.cmd == CMD_PREPARE) && (ch->delay.targ1.type == TARGET_IGNORE)) {
-        sprintf(buf, "%sYou have prepared the '%s' spell.\n\r", buf,
-            skills[ch->delay.targ1.ch_num].name);
+        out += std::format("You have prepared the '{}' spell.\n\r",
+            static_cast<const char*>(skills[ch->delay.targ1.ch_num].name));
     } else if (ch->delay.cmd == CMD_TRAP)
-        sprintf(buf, "%sYou lay in wait to trap an unsuspecting victim.\r\n", buf);
+        out += "You lay in wait to trap an unsuspecting victim.\r\n";
     if (SUN_PENALTY(ch))
-        strcat(buf, "You feel weak under the intensity of light.\n\r");
+        out += "You feel weak under the intensity of light.\n\r";
 
-    send_to_char(buf, ch);
+    send_to_char(out.c_str(), ch);
 }
 
 /*

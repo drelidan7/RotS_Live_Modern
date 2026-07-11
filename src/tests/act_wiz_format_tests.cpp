@@ -2008,7 +2008,6 @@ TEST(ActWizWorldManip, DoForceReportsNoSuchVictim)
     EXPECT_EQ(std::string(context.descriptor.output), "No-one by that name here...\n\r");
 }
 
-
 // ---------------------------------------------------------------------------
 // ActWizPlayerAdmin -- Phase 4 Wave 3 Task 7 (Chunk W3 -- act_wiz.cpp
 // player-administration family: do_advance, do_restore, do_invis, do_dc,
@@ -2189,7 +2188,8 @@ TEST(ActWizPlayerAdmin, DoWizlockFormatsLevelGateStatusLineNow)
     char argument[] = " 20";
     do_wizlock(&context.character, argument, nullptr, 0, 0);
     EXPECT_TRUE(strstr(context.descriptor.output,
-        "Only level 20 and above may enter the game now.\n") != nullptr)
+                    "Only level 20 and above may enter the game now.\n")
+        != nullptr)
         << context.descriptor.output;
 }
 
@@ -2298,8 +2298,8 @@ TEST(ActWizPlayerAdmin, DoRestoreReportsTargetNotFound)
 
 TEST(ActWizPlayerAdmin, DoInvisRejectsNpcCaller)
 {
-    char_data npc {};
-    descriptor_data npc_descriptor {};
+    char_data npc { };
+    descriptor_data npc_descriptor { };
     clear_char(&npc, MOB_ISNPC);
     npc.specials2.act = MOB_ISNPC;
     reset_capturing_descriptor(npc_descriptor, &npc);
@@ -2359,8 +2359,8 @@ TEST(ActWizPlayerAdmin, DoInvisTogglesOffViaExplicitZeroArgument)
 
 TEST(ActWizPlayerAdmin, DoDcRejectsNpcCaller)
 {
-    char_data npc {};
-    descriptor_data npc_descriptor {};
+    char_data npc { };
+    descriptor_data npc_descriptor { };
     clear_char(&npc, MOB_ISNPC);
     npc.specials2.act = MOB_ISNPC;
     reset_capturing_descriptor(npc_descriptor, &npc);
@@ -2394,8 +2394,8 @@ TEST(ActWizPlayerAdmin, DoDcReportsNoSuchConnection)
 
 TEST(ActWizPlayerAdmin, DoWizutilRejectsNpcCaller)
 {
-    char_data npc {};
-    descriptor_data npc_descriptor {};
+    char_data npc { };
+    descriptor_data npc_descriptor { };
     clear_char(&npc, MOB_ISNPC);
     npc.specials2.act = MOB_ISNPC;
     reset_capturing_descriptor(npc_descriptor, &npc);
@@ -2446,8 +2446,8 @@ TEST(ActWizPlayerAdmin, DoWizsetReportsUsageWhenNameOrFieldMissing)
 
 TEST(ActWizPlayerAdmin, DoWizsetRejectsNpcCaller)
 {
-    char_data npc {};
-    descriptor_data npc_descriptor {};
+    char_data npc { };
+    descriptor_data npc_descriptor { };
     clear_char(&npc, MOB_ISNPC);
     npc.specials2.act = MOB_ISNPC;
     reset_capturing_descriptor(npc_descriptor, &npc);

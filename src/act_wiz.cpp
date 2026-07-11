@@ -1176,25 +1176,24 @@ ACMD(do_shutdown)
     one_argument(argument, arg);
 
     if (!*arg) {
-        sprintf(buf, "(GC) Shutdown by %s. \n\r", GET_NAME(ch));
-        send_to_all(buf);
-        log(buf);
+        const std::string message = std::format("(GC) Shutdown by {}. \n\r", GET_NAME(ch));
+        send_to_all(message.c_str());
+        log(message.c_str());
         circle_shutdown = 1;
     } else if (!str_cmp(arg, "reboot")) {
-        sprintf(buf, "(GC) Reboot by %s.", GET_NAME(ch));
-        log(buf);
+        log(std::format("(GC) Reboot by {}.", GET_NAME(ch)).c_str());
         send_to_all("Rebooting... come back in a minute or two.");
         circle_shutdown = circle_reboot = 1;
     } else if (!str_cmp(arg, "die")) {
-        sprintf(buf, "(GC) Shutdown by %s. \n\r", GET_NAME(ch));
-        send_to_all(buf);
-        log(buf);
+        const std::string message = std::format("(GC) Shutdown by {}. \n\r", GET_NAME(ch));
+        send_to_all(message.c_str());
+        log(message.c_str());
         touch_file("../.killscript");
         circle_shutdown = 1;
     } else if (!str_cmp(arg, "pause")) {
-        sprintf(buf, "(GC) Shutdown by %s. \n\r", GET_NAME(ch));
-        send_to_all(buf);
-        log(buf);
+        const std::string message = std::format("(GC) Shutdown by {}. \n\r", GET_NAME(ch));
+        send_to_all(message.c_str());
+        log(message.c_str());
         touch_file("../pause");
         circle_shutdown = 1;
     } else
@@ -1587,9 +1586,9 @@ ACMD(do_advance)
         do_start(victim);
     } else {
         if (GET_LEVEL(victim) < LEVEL_IMPL) {
-            sprintf(buf, "(GC) %s has advanced %s to level %d (from %d)",
-                GET_NAME(ch), GET_NAME(victim), newlevel, GET_LEVEL(victim));
-            log(buf);
+            log(std::format("(GC) {} has advanced {} to level {} (from {})",
+                GET_NAME(ch), GET_NAME(victim), newlevel, GET_LEVEL(victim))
+                    .c_str());
             if (adv > 0)
                 gain_exp_regardless(victim, (xp_to_level(GET_LEVEL(victim) + adv) - GET_EXP(victim)));
 
@@ -1653,10 +1652,10 @@ ACMD(do_invis)
     if (!*arg) {
         if (GET_INVIS_LEV(ch) > 0) {
             GET_INVIS_LEV(ch) = 0;
-            sprintf(buf, "You are now fully visible.\n\r");
+            strcpy(buf, "You are now fully visible.\n\r");
         } else {
             GET_INVIS_LEV(ch) = GET_LEVEL(ch);
-            sprintf(buf, "Your invisibility level is %d.\n\r", GET_LEVEL(ch));
+            strcpy(buf, std::format("Your invisibility level is {}.\n\r", GET_LEVEL(ch)).c_str());
         }
     } else {
         level = atoi(arg);
@@ -1665,10 +1664,10 @@ ACMD(do_invis)
             return;
         } else if (level < 1) {
             GET_INVIS_LEV(ch) = 0;
-            sprintf(buf, "You are now fully visible.\n\r");
+            strcpy(buf, "You are now fully visible.\n\r");
         } else {
             GET_INVIS_LEV(ch) = level;
-            sprintf(buf, "Your invisibility level is now %d.\n\r", level);
+            strcpy(buf, std::format("Your invisibility level is now {}.\n\r", level).c_str());
         }
     }
     send_to_char(buf, ch);
@@ -1760,13 +1759,26 @@ ACMD(do_dc)
     }
 
     close_socket(d);
-    sprintf(buf, "Connection #%d closed.\n\r", num_to_dc);
-    send_to_char(buf, ch);
-    sprintf(buf, "(GC) Connection closed by %s.", GET_NAME(ch));
-    log(buf);
+    send_to_char(std::format("Connection #{} closed.\n\r", num_to_dc).c_str(), ch);
+    log(std::format("(GC) Connection closed by {}.", GET_NAME(ch)).c_str());
 }
 
-char* wizlock_msg = 0; /* wizlock message              */
+// wizlock message shown to blocked connections (interpre.cpp's
+// complete_existing_character_login and CON_NMECNF gates SEND_TO_Q this
+// verbatim once `restrict` is non-zero). Was `char* wizlock_msg = 0`,
+// malloc'd fresh on every do_wizlock call WITHOUT freeing the previous
+// value (a pre-existing per-call leak, fixed here as a side effect since
+// std::string owns/replaces its own buffer). Converting to std::string also
+// fixes a genuine latent crash: `restrict` can be set non-zero at boot via
+// the `-r` flag (comm.cpp:476) without ever calling do_wizlock, leaving the
+// old raw pointer at its nullptr initializer; interpre.cpp's
+// SEND_TO_Q(wizlock_msg, d) would then call write_to_output(nullptr, ...),
+// which does `strlen(txt)` on that null pointer and crashes. A
+// default-constructed (empty) std::string's .c_str() is always a valid
+// pointer, so that path now sends an empty payload instead of crashing. The
+// SET path (the only path exercised once do_wizlock has ever run) is
+// unchanged byte-for-byte.
+std::string wizlock_msg;
 
 ACMD(do_wizlock)
 {
@@ -1787,28 +1799,25 @@ ACMD(do_wizlock)
         when = "currently";
 
     if (*buf2) {
-        wizlock_msg = (char*)malloc(strlen(buf2) + 3);
-        sprintf(wizlock_msg, "%s\n\r", buf2);
+        wizlock_msg = std::format("{}\n\r", buf2);
     } else {
-        wizlock_msg = (char*)malloc(strlen(wizlock_default) + 1);
-        sprintf(wizlock_msg, "%s", wizlock_default);
+        wizlock_msg = wizlock_default;
     }
 
     switch (restrict) {
     case 0:
-        sprintf(buf, "The game is %s completely open.\n", when);
+        strcpy(buf, std::format("The game is {} completely open.\n", when).c_str());
         break;
     case 1:
-        sprintf(buf, "The game is %s closed to new players.\n", when);
+        strcpy(buf, std::format("The game is {} closed to new players.\n", when).c_str());
         break;
     default:
-        sprintf(buf, "Only level %d and above may enter the game %s.\n",
-            restrict, when);
+        strcpy(buf, std::format("Only level {} and above may enter the game {}.\n", restrict, when).c_str());
         break;
     }
     send_to_char(buf, ch);
     if (restrict != 0)
-        sprintf(buf, "Message set to:  %s", wizlock_msg);
+        strcpy(buf, std::format("Message set to:  {}", wizlock_msg).c_str());
     send_to_char(buf, ch);
 }
 
@@ -2170,14 +2179,15 @@ ACMD(do_wizutil)
                 break;
 
         if ((tmp == num_of_wizutils) || (wtl->targ2.type != TARGET_CHAR)) {
-            strcpy(buf, "The format is 'wizutil <field> <name>',\n\rPossible fields are:\n\r");
+            std::string usage_line = "The format is 'wizutil <field> <name>',\n\rPossible fields are:\n\r";
             for (tmp = 0; tmp < num_of_wizutils; tmp++)
                 if (GET_LEVEL(ch) >= wizutil_options[tmp].min_level) {
-                    strcat(buf, wizutil_options[tmp].field);
-                    strcat(buf, ", ");
+                    usage_line += wizutil_options[tmp].field;
+                    usage_line += ", ";
                 }
-            strcpy(buf + strlen(buf) - 2, ".\n\r");
-            send_to_char(buf, ch);
+            usage_line.resize(usage_line.size() - 2);
+            usage_line += ".\n\r";
+            send_to_char(usage_line.c_str(), ch);
             return;
         }
         if (GET_LEVEL(ch) < wizutil_options[tmp].min_level) {
@@ -2207,24 +2217,25 @@ ACMD(do_wizutil)
     }
 
     switch (subcmd) {
+    // SCMD_PARDON's body was unconditionally unreachable (an unconditional
+    // `return;` as the case's first statement, before the send_to_char/
+    // sprintf/mudlog dead code that followed it) -- confirmed dead by direct
+    // inspection, and the wizutil_options[] table above already flags this
+    // command "no longer used". Deleted per the transform catalog's dead
+    // code rule (delete, don't modernize) rather than converting sprintf
+    // that can never execute.
     case SCMD_PARDON:
-
         return;
-        send_to_char("Pardoned.\n\r", ch);
-        send_to_char("You have been pardoned by the Gods!\n\r", vict);
-        sprintf(buf, "(GC) %s pardoned by %s", GET_NAME(vict), GET_NAME(ch));
-        mudlog(buf, BRF, (sh_int)MAX(LEVEL_GOD, GET_INVIS_LEV(ch)), TRUE);
-        break;
     case SCMD_NOTITLE:
         result = PLR_TOG_CHK(vict, PLR_NOTITLE);
-        sprintf(buf, "(GC) Notitle %s for %s by %s.", ONOFF(result), GET_NAME(vict), GET_NAME(ch));
+        strcpy(buf, std::format("(GC) Notitle {} for {} by {}.", ONOFF(result), GET_NAME(vict), GET_NAME(ch)).c_str());
         mudlog(buf, NRM, (sh_int)MAX(LEVEL_GOD, GET_INVIS_LEV(ch)), TRUE);
         strcat(buf, "\n\r");
         send_to_char(buf, ch);
         break;
     case SCMD_SQUELCH:
         result = PLR_TOG_CHK(vict, PLR_NOSHOUT);
-        sprintf(buf, "(GC) Squelch %s for %s by %s.", ONOFF(result), GET_NAME(vict), GET_NAME(ch));
+        strcpy(buf, std::format("(GC) Squelch {} for {} by {}.", ONOFF(result), GET_NAME(vict), GET_NAME(ch)).c_str());
         mudlog(buf, BRF, (sh_int)MAX(LEVEL_GOD, GET_INVIS_LEV(ch)), TRUE);
         strcat(buf, "\n\r");
         send_to_char(buf, ch);
@@ -2243,7 +2254,7 @@ ACMD(do_wizutil)
         send_to_char("A bitter wind suddenly rises and drains every erg of heat from your body!\n\rYou feel frozen!\n\r", vict);
         send_to_char("Frozen.\n\r", ch);
         act("A sudden cold wind conjured from nowhere freezes $n!", FALSE, vict, 0, 0, TO_ROOM);
-        sprintf(buf, "(GC) %s frozen by %s.", GET_NAME(vict), GET_NAME(ch));
+        strcpy(buf, std::format("(GC) {} frozen by {}.", GET_NAME(vict), GET_NAME(ch)).c_str());
         mudlog(buf, BRF, (sh_int)MAX(LEVEL_GOD, GET_INVIS_LEV(ch)), TRUE);
         break;
     case SCMD_THAW:
@@ -2252,12 +2263,13 @@ ACMD(do_wizutil)
             return;
         }
         if (vict->specials2.freeze_level > GET_LEVEL(ch)) {
-            sprintf(buf, "Sorry, a level %d God froze %s... you can't unfreeze %s.\n\r",
-                vict->specials2.freeze_level, GET_NAME(vict), HMHR(vict));
-            send_to_char(buf, ch);
+            send_to_char(std::format("Sorry, a level {} God froze {}... you can't unfreeze {}.\n\r",
+                             vict->specials2.freeze_level, GET_NAME(vict), HMHR(vict))
+                             .c_str(),
+                ch);
             return;
         }
-        sprintf(buf, "(GC) %s un-frozen by %s.", GET_NAME(vict), GET_NAME(ch));
+        strcpy(buf, std::format("(GC) {} un-frozen by {}.", GET_NAME(vict), GET_NAME(ch)).c_str());
         mudlog(buf, BRF, (sh_int)MAX(LEVEL_GOD, GET_INVIS_LEV(ch)), TRUE);
         REMOVE_BIT(PLR_FLAGS(vict), PLR_FROZEN);
         send_to_char("A fireball suddenly explodes in front of you, melting the ice!\n\rYou feel thawed.\n\r", vict);
@@ -2282,8 +2294,7 @@ ACMD(do_wizutil)
         roll_abilities(vict, 80, 93);
         if (vict->desc)
             act("$n just rerolled you.", FALSE, ch, 0, vict, TO_VICT);
-        sprintf(buf, "(GC) %s has rerolled %s.", GET_NAME(ch), GET_NAME(vict));
-        log(buf);
+        log(std::format("(GC) {} has rerolled {}.", GET_NAME(ch), GET_NAME(vict)).c_str());
         vict->update_available_practice_sessions();
         break;
     case SCMD_RETIRE:
@@ -2294,8 +2305,7 @@ ACMD(do_wizutil)
         retire(vict);
         act("You are retired by $n.", FALSE, ch, 0, vict, TO_VICT);
         act("You retire $N.", FALSE, ch, 0, vict, TO_CHAR);
-        sprintf(buf, "(GC) %s has retired %s.", GET_NAME(ch), GET_NAME(vict));
-        log(buf);
+        log(std::format("(GC) {} has retired {}.", GET_NAME(ch), GET_NAME(vict)).c_str());
         break;
     case SCMD_REACTV:
         if (!PLR_FLAGGED(vict, PLR_RETIRED)) {
@@ -2305,8 +2315,7 @@ ACMD(do_wizutil)
         unretire(vict);
         act("You are reactivated by $n.", FALSE, ch, 0, vict, TO_VICT);
         act("You reactivate $N.", FALSE, ch, 0, vict, TO_CHAR);
-        sprintf(buf, "(GC) %s has reactivated %s.", GET_NAME(ch), GET_NAME(vict));
-        log(buf);
+        log(std::format("(GC) {} has reactivated {}.", GET_NAME(ch), GET_NAME(vict)).c_str());
         break;
     case SCMD_REHASH:
         do_rehash(ch, "", 0, 0, 0);
@@ -2334,8 +2343,7 @@ ACMD(do_wizutil)
             return;
         }
         add_exploit_record(EXPLOIT_NOTE, vict, 0, c);
-        sprintf(buf, "(GC) %s wrote a note about %s.", GET_NAME(ch), GET_NAME(vict));
-        log(buf);
+        log(std::format("(GC) {} wrote a note about {}.", GET_NAME(ch), GET_NAME(vict)).c_str());
         send_to_char("OK.", ch);
         break;
     }
@@ -2814,7 +2822,7 @@ ACMD(do_wizset)
             RELEASE(GET_TITLE(vict));
         CREATE(GET_TITLE(vict), char, strlen(val_arg) + 1);
         strcpy(GET_TITLE(vict), val_arg);
-        sprintf(buf, "%s's title is now: %s", GET_NAME(vict), GET_TITLE(vict));
+        strcpy(buf, std::format("{}'s title is now: {}", GET_NAME(vict), static_cast<const char*>(GET_TITLE(vict))).c_str());
         break;
     case 3:
         SET_OR_REMOVE(PRF_FLAGS(vict), PRF_SUMMONABLE);
@@ -2934,14 +2942,12 @@ ACMD(do_wizset)
     case 31:
         if (!str_cmp(val_arg, "off")) {
             GET_COND(vict, (l - 29)) = (signed char)-1;
-            sprintf(buf, "%s's %s now off.", GET_NAME(vict),
-                fields[l].cmd);
+            strcpy(buf, std::format("{}'s {} now off.", GET_NAME(vict), fields[l].cmd).c_str());
         } else if (is_number(val_arg)) {
             value = atoi(val_arg);
             RANGE(0, 24);
             GET_COND(vict, (l - 29)) = (signed char)value;
-            sprintf(buf, "%s's %s set to %d.", GET_NAME(vict),
-                fields[l].cmd, value);
+            strcpy(buf, std::format("{}'s {} set to {}.", GET_NAME(vict), fields[l].cmd, value).c_str());
         } else {
             send_to_char("Must be 'off' or a value from 0 to 24.\n\r", ch);
             return;
@@ -2990,10 +2996,9 @@ ACMD(do_wizset)
         else {
             if (real_room(i = atoi(val_arg)) > -1) {
                 GET_LOADROOM(vict) = i;
-                sprintf(buf, "%s will enter at %d.", GET_NAME(vict),
-                    GET_LOADROOM(vict));
+                strcpy(buf, std::format("{} will enter at {}.", GET_NAME(vict), GET_LOADROOM(vict)).c_str());
             } else
-                sprintf(buf, "That room does not exist!");
+                strcpy(buf, "That room does not exist!");
         }
         break;
     case 43:
@@ -3016,7 +3021,7 @@ ACMD(do_wizset)
         descr.pwd[MAX_PWD_LENGTH] = '\0';
         if (strlen(val_arg) < MAX_PWD_LENGTH)
             descr.pwd[strlen(val_arg)] = 0;
-        sprintf(buf, "Password changed to '%s'.", val_arg);
+        strcpy(buf, std::format("Password changed to '{}'.", val_arg).c_str());
         break;
     case 46:
         SET_OR_REMOVE(PLR_FLAGS(vict), PLR_NODELETE);
@@ -3111,17 +3116,15 @@ ACMD(do_wizset)
         break;
 
     default:
-        sprintf(buf, "Can't set that!");
+        strcpy(buf, "Can't set that!");
         break;
     }
 
     if (fields[l].type == BINARY) {
-        sprintf(buf, "%s %s for %s.\n\r", fields[l].cmd, ONOFF(on),
-            GET_NAME(vict));
+        strcpy(buf, std::format("{} {} for {}.\n\r", fields[l].cmd, ONOFF(on), GET_NAME(vict)).c_str());
         CAP(buf);
     } else if (fields[l].type == NUMBER) {
-        sprintf(buf, "%s's %s set to %d.\n\r", GET_NAME(vict),
-            fields[l].cmd, value);
+        strcpy(buf, std::format("{}'s {} set to {}.\n\r", GET_NAME(vict), fields[l].cmd, value).c_str());
     } else
         strcat(buf, "\n\r");
     send_to_char(buf, ch);
@@ -3163,7 +3166,7 @@ ACMD(do_delete)
         }
         extract_char(vict);
     }
-    sprintf(buf, "(GC) %s has deleted %s.", GET_NAME(ch), arg);
+    strcpy(buf, std::format("(GC) {} has deleted {}.", GET_NAME(ch), arg).c_str());
     mudlog(buf, BRF, LEVEL_GOD, TRUE);
     Crash_delete_file(player_table[char_index].name);
     delete_exploits_file(player_table[char_index].name);
@@ -3442,17 +3445,15 @@ const char* whoacct_session_label(const descriptor_data* descriptor)
 ACMD(do_whoacct)
 {
     int displayed_sessions = 0;
-    char line[256];
-
-    strcpy(line, "Num   Account                    Character    State            Site\n\r");
-    strcat(line, "--- -------------------------- ------------ ---------------- ------------------------\n\r");
+    const std::string line = "Num   Account                    Character    State            Site\n\r"
+                             "--- -------------------------- ------------ ---------------- ------------------------\n\r";
 
     for (descriptor_data* descriptor = descriptor_list; descriptor; descriptor = descriptor->next) {
         if (!is_live_authenticated_account_session(descriptor))
             continue;
 
         if (displayed_sessions == 0)
-            send_to_char(line, ch);
+            send_to_char(line.c_str(), ch);
 
         std::string account_identifier = sanitize_whoacct_field(
             *descriptor->account_email ? descriptor->account_email : descriptor->account_name);
@@ -3474,9 +3475,10 @@ ACMD(do_whoacct)
         if (host_display.empty())
             host_display = "Hostname unknown";
 
-        snprintf(buf, sizeof(buf), "%3d %-26.26s %-12.12s %-16.16s %s\n\r", descriptor->desc_num,
-            account_identifier.c_str(), character_display.c_str(), state_display, host_display.c_str());
-        send_to_char(buf, ch);
+        send_to_char(std::format("{:>3} {:<26.26} {:<12.12} {:<16.16} {}\n\r", descriptor->desc_num,
+                         account_identifier, character_display, state_display, host_display)
+                         .c_str(),
+            ch);
         ++displayed_sessions;
     }
 
@@ -3485,9 +3487,10 @@ ACMD(do_whoacct)
         return;
     }
 
-    snprintf(buf, sizeof(buf), "\n\r%d visible account session%s connected.\n\r",
-        displayed_sessions, displayed_sessions == 1 ? "" : "s");
-    send_to_char(buf, ch);
+    send_to_char(std::format("\n\r{} visible account session{} connected.\n\r",
+                     displayed_sessions, displayed_sessions == 1 ? "" : "s")
+                     .c_str(),
+        ch);
 }
 
 extern int top_of_world;
@@ -3503,8 +3506,6 @@ ACMD(do_register)
     int zonnum, tmp, sw, vn, count, count1, race, i, oldest;
     char* tmpptr;
 
-    char buf[255];
-    char buf2[255];
     /*static*/ char arg1[MAX_INPUT_LENGTH];
     /*static*/ char arg2[MAX_INPUT_LENGTH];
     /*static*/ char arg3[MAX_INPUT_LENGTH];
@@ -3550,10 +3551,11 @@ ACMD(do_register)
             vn = mob_index[tmp].virt;
             //      if(vn/100 > zonnum) return;
             if (vn / 100 == zonnum) {
-                sprintf(buf, "%5d: %-30s%s", vn,
-                    mob_proto[tmp].player.short_descr,
-                    (sw) ? "| " : "\n\r");
-                send_to_char(buf, ch);
+                send_to_char(std::format("{:5}: {:<30}{}", vn,
+                                 nz(mob_proto[tmp].player.short_descr),
+                                 (sw) ? "| " : "\n\r")
+                                 .c_str(),
+                    ch);
                 sw = 1 - sw;
                 count++;
             }
@@ -3570,10 +3572,11 @@ ACMD(do_register)
             vn = obj_index[tmp].virt;
             //      if(vn/100 > zonnum) return;
             if (vn / 100 == zonnum) {
-                sprintf(buf, "%5d: %-30s%s", vn,
-                    obj_proto[tmp].short_description,
-                    (sw) ? "| " : "\n\r");
-                send_to_char(buf, ch);
+                send_to_char(std::format("{:5}: {:<30}{}", vn,
+                                 nz(obj_proto[tmp].short_description),
+                                 (sw) ? "| " : "\n\r")
+                                 .c_str(),
+                    ch);
                 sw = 1 - sw;
                 count++;
             }
@@ -3590,10 +3593,11 @@ ACMD(do_register)
             vn = zone_table[world[tmp].zone].number;
             //      if(vn/100 > zonnum) return;
             if (vn == zonnum) {
-                sprintf(buf, "%5d: %-30s%s", world[tmp].number,
-                    world[tmp].name,
-                    (sw) ? "| " : "\n\r");
-                send_to_char(buf, ch);
+                send_to_char(std::format("{:5}: {:<30}{}", world[tmp].number,
+                                 nz(static_cast<const char*>(world[tmp].name)),
+                                 (sw) ? "| " : "\n\r")
+                                 .c_str(),
+                    ch);
                 sw = 1 - sw;
                 count++;
             }
@@ -3608,8 +3612,7 @@ ACMD(do_register)
         send_to_char("Players of that level:\n\r", ch);
         for (tmp = 0; tmp <= top_of_p_table; tmp++)
             if ((player_table + tmp)->level == zonnum) {
-                sprintf(buf, "%s\n\r", (player_table + tmp)->name);
-                send_to_char(buf, ch);
+                send_to_char(std::format("{}\n\r", nz(static_cast<const char*>((player_table + tmp)->name))).c_str(), ch);
             }
         return;
     }
@@ -3620,45 +3623,47 @@ ACMD(do_register)
         if (zonnum < 1)
             zonnum = 1;
         race = 0;
+        std::string race_name;
+        std::string top_header;
         if (!*arg3) {
-            sprintf(buf, "Top %2d Characters\n\r", zonnum);
+            top_header = std::format("Top {:2} Characters\n\r", zonnum);
         } else {
             if (!strncmp("dark", arg3, strlen(arg3)) || !strncmp("shadow", arg3, strlen(arg3))) {
 
             } else if (!strncmp("white", arg3, strlen(arg3)) || !strncmp("light", arg3, strlen(arg3))) {
 
             } else if (!strncmp("human", arg3, strlen(arg3))) {
-                sprintf(buf2, "Human ");
+                race_name = "Human ";
                 race = RACE_HUMAN;
             } else if (!strncmp("dwarf", arg3, strlen(arg3))) {
-                sprintf(buf2, "Dwarf ");
+                race_name = "Dwarf ";
                 race = RACE_DWARF;
             } else if (!strncmp("elf", arg3, strlen(arg3)) || !strncmp("woodelf", arg3, strlen(arg3))) {
-                sprintf(buf2, "Wood Elf ");
+                race_name = "Wood Elf ";
                 race = RACE_WOOD;
             } else if (!strncmp("hobbit", arg3, strlen(arg3))) {
-                sprintf(buf2, "Hobbit ");
+                race_name = "Hobbit ";
                 race = RACE_HOBBIT;
             } else if (!strncmp("bear", arg3, strlen(arg3)) || !strncmp("beorning", arg3, strlen(arg3))) {
-                sprintf(buf2, "Beorning ");
+                race_name = "Beorning ";
                 race = RACE_BEORNING;
             } else if (!strncmp("uruk-hai", arg3, strlen(arg3))) {
-                sprintf(buf2, "Uruk-Hai ");
+                race_name = "Uruk-Hai ";
                 race = RACE_URUK;
             } else if (!strncmp("orc", arg3, strlen(arg3))) {
-                sprintf(buf2, "Common Orc ");
+                race_name = "Common Orc ";
                 race = RACE_ORC;
             } else if (!strncmp("uruk-lhuth", arg3, strlen(arg3)) || !strncmp("lhuth", arg3, strlen(arg3))) {
-                sprintf(buf2, "Uruk-Lhuth ");
+                race_name = "Uruk-Lhuth ";
                 race = RACE_MAGUS;
             } else if (!strncmp("olog-hai", arg3, strlen(arg3)) || !strncmp("olog", arg3, strlen(arg3))) {
-                sprintf(buf2, "Olog-Hai ");
+                race_name = "Olog-Hai ";
                 race = RACE_OLOGHAI;
             } else if (!strncmp("harad", arg3, strlen(arg3)) || !strncmp("haradrim", arg3, strlen(arg3))) {
-                sprintf(buf2, "Haradrim ");
+                race_name = "Haradrim ";
                 race = RACE_HARADRIM;
             } else if (!strncmp("oldest", arg3, strlen(arg3))) {
-                sprintf(buf2, "Oldest Legend ");
+                race_name = "Oldest Legend ";
                 oldest = 1;
             }
 
@@ -3668,42 +3673,42 @@ ACMD(do_register)
                 } else if (!strncmp("white", arg4, strlen(arg4)) || !strncmp("light", arg4, strlen(arg4))) {
 
                 } else if (!strncmp("human", arg4, strlen(arg4))) {
-                    sprintf(buf2, "%sHuman ", buf2);
+                    race_name += "Human ";
                     race = RACE_HUMAN;
                 } else if (!strncmp("dwarf", arg4, strlen(arg4))) {
-                    sprintf(buf2, "%sDwarf ", buf2);
+                    race_name += "Dwarf ";
                     race = RACE_DWARF;
                 } else if (!strncmp("elf", arg4, strlen(arg4)) || !strncmp("woodelf", arg4, strlen(arg4))) {
-                    sprintf(buf2, "%sWood Elf ", buf2);
+                    race_name += "Wood Elf ";
                     race = RACE_WOOD;
                 } else if (!strncmp("hobbit", arg4, strlen(arg4))) {
-                    sprintf(buf2, "%sHobbit ", buf2);
+                    race_name += "Hobbit ";
                     race = RACE_HOBBIT;
                 } else if (!strncmp("bear", arg4, strlen(arg4)) || !strncmp("beorning", arg4, strlen(arg4))) {
-                    sprintf(buf2, "%sBeorning ", buf2);
+                    race_name += "Beorning ";
                     race = RACE_BEORNING;
                 } else if (!strncmp("uruk-hai", arg4, strlen(arg4))) {
-                    sprintf(buf2, "%sUruk-Hai ", buf2);
+                    race_name += "Uruk-Hai ";
                     race = RACE_URUK;
                 } else if (!strncmp("orc", arg4, strlen(arg4))) {
-                    sprintf(buf2, "%sCommon Orc ", buf2);
+                    race_name += "Common Orc ";
                     race = RACE_ORC;
                 } else if (!strncmp("uruk-lhuth", arg4, strlen(arg4)) || !strncmp("lhuth", arg4, strlen(arg4))) {
-                    sprintf(buf2, "%sUruk-Lhuth ", buf2);
+                    race_name += "Uruk-Lhuth ";
                     race = RACE_MAGUS;
                 } else if (!strncmp("olog-hai", arg4, strlen(arg4)) || !strncmp("olog", arg4, strlen(arg4))) {
-                    sprintf(buf2, "%sOlog-Hai ", buf2);
+                    race_name += "Olog-Hai ";
                     race = RACE_OLOGHAI;
                 } else if (!strncmp("harad", arg4, strlen(arg4)) || !strncmp("haradrim", arg4, strlen(arg4))) {
-                    sprintf(buf2, "%sHaradrim ", buf2);
+                    race_name += "Haradrim ";
                     race = RACE_HARADRIM;
                 }
             }
 
-            sprintf(buf, "Top %2d %sCharacters\n\r", zonnum, buf2);
+            top_header = std::format("Top {:2} {}Characters\n\r", zonnum, race_name);
         }
 
-        send_to_char(buf, ch);
+        send_to_char(top_header.c_str(), ch);
         if (oldest == 1) {
             for (count = 0; count < 25; count++) {
                 lowest[count][0] = -1;
@@ -3731,8 +3736,10 @@ ACMD(do_register)
             }
             for (i = 0; i < zonnum; i++) {
                 if ((lowest[i][0] >= 0) && (lowest[i][0] <= top_of_p_table)) {
-                    sprintf(buf, "%2d - %s\n\r", (player_table + lowest[i][0])->level, (player_table + lowest[i][0])->name);
-                    send_to_char(buf, ch);
+                    send_to_char(std::format("{:2} - {}\n\r", (player_table + lowest[i][0])->level,
+                                     nz(static_cast<const char*>((player_table + lowest[i][0])->name)))
+                                     .c_str(),
+                        ch);
                 }
             }
         } else {
@@ -3745,8 +3752,10 @@ ACMD(do_register)
                                 continue;
                             }
                         }
-                        sprintf(buf, "%2d - %s\n\r", (player_table + tmp)->level, (player_table + tmp)->name);
-                        send_to_char(buf, ch);
+                        send_to_char(std::format("{:2} - {}\n\r", (player_table + tmp)->level,
+                                         nz(static_cast<const char*>((player_table + tmp)->name)))
+                                         .c_str(),
+                            ch);
                         count++;
                     }
                 }
@@ -3759,8 +3768,7 @@ ACMD(do_register)
         for (tmp = 0; tmp <= top_of_script_table; tmp++) {
             vn = script_table[tmp].number;
             if (vn / 100 == zonnum) {
-                sprintf(buf, "%5d: %-30s%s", vn, script_table[tmp].name, (sw) ? "| " : "\n\r");
-                send_to_char(buf, ch);
+                send_to_char(std::format("{:5}: {:<30}{}", vn, nz(script_table[tmp].name), (sw) ? "| " : "\n\r").c_str(), ch);
                 sw = 1 - sw;
                 count++;
             }
@@ -3886,8 +3894,7 @@ ACMD(do_rehash)
         }
     }
 
-    sprintf(buf, "(GC) %s rehashed affection, was %d, now %d.", GET_NAME(ch),
-        count1, count2);
+    strcpy(buf, std::format("(GC) {} rehashed affection, was {}, now {}.", GET_NAME(ch), count1, count2).c_str());
 
     mudlog(buf, NRM, LEVEL_GOD, TRUE);
 }
@@ -3915,16 +3922,12 @@ int advance_perm(struct char_data* ch, struct char_data* vict, int level)
         return 1;
 
     if (level + 3 > GET_LEVEL(ch)) {
-        sprintf(buf2, "You do not have permission to advance %s to level %d.\r\n",
-            GET_NAME(vict), level);
-        send_to_char(buf2, ch);
+        send_to_char(std::format("You do not have permission to advance {} to level {}.\r\n", GET_NAME(vict), level).c_str(), ch);
         return 0;
     }
 
     if (GET_LEVEL(vict) + 3 > GET_LEVEL(ch)) {
-        sprintf(buf2, "You do not have permission to change %s's level.\r\n",
-            GET_NAME(vict));
-        send_to_char(buf2, ch);
+        send_to_char(std::format("You do not have permission to change {}'s level.\r\n", GET_NAME(vict)).c_str(), ch);
         return 0;
     }
 

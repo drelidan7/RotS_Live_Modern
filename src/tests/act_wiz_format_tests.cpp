@@ -87,6 +87,14 @@ ACMD(do_delete);
 ACMD(do_register);
 ACMD(do_setfree);
 
+// Phase 4 Wave 3 Task 8 (Chunk W4 -- act_wiz.cpp Wiz communication family).
+ACMD(do_emote);
+ACMD(do_send);
+ACMD(do_echo);
+ACMD(do_gecho);
+ACMD(do_poofset);
+ACMD(do_wiznet);
+
 // Phase 4 Wave 3 Task 7 (Chunk W3 -- act_wiz.cpp player-administration
 // family): restrict/global_release_flag/player_table/descriptor_list are
 // process globals do_wizlock/do_setfree/do_delete/do_dc read and mutate
@@ -2590,4 +2598,335 @@ TEST(ActWizPlayerAdmin, DoSetfreeReportsUsageForUnrecognizedArgument)
     char argument[] = "bogus";
     do_setfree(&context.character, argument, nullptr, 0, 0);
     EXPECT_EQ(std::string(context.descriptor.output), "Use [on|off] to switch pointer RELEASE.\n\r");
+}
+
+
+// ---------------------------------------------------------------------------
+// Phase 4 Wave 3 Task 8 (Chunk W4 -- act_wiz.cpp Wiz communication family):
+// do_emote, do_send, do_echo, do_gecho, do_poofset, do_wiznet. Suite
+// ActWizComm below. Same binding pattern as Tasks 5-7: these pin the CURRENT
+// byte-for-byte output -- confirmed passing against the pre-conversion
+// source -- before this chunk's sprintf sites convert to std::format, and
+// green again after.
+//
+// SCOPE NOTE (do_poofset, act_wiz.cpp ~:1725): `*msg = str_dup(argument + i)`
+// stores a malloc'd string into char_data::specials.poofIn/poofOut --
+// ownership leaves the function into a struct member the live game frees
+// later (RELEASE() on a subsequent do_poofset call, or player/mob teardown).
+// Per the transform idiom catalog (#10: "ownership that leaves the function
+// ... is OUT of scope"), that assignment is NOT converted to RAII this task;
+// only formatting is otherwise in play there, and do_poofset has no sprintf/
+// strcpy/strcat of its own to convert.
+
+namespace {
+
+// Mirrors act_format_tests.cpp's RoomPairContext (Phase 4 Wave 2 Task 4),
+// redefined locally per this wave's per-file-fixture convention (not
+// included across test files). Two ordinary (non-NPC) PCs share room 0 of a
+// fresh single-room test world so do_echo/do_emote's TO_ROOM delivery and
+// do_send's get_char_vis() room lookup are all directly exercisable.
+//
+// Deviates from act_format_tests.cpp's version in one respect: PRF_HOLYLIGHT
+// is set on BOTH characters here, not just the actor. That original fixture
+// only needed the ACTOR to bypass CAN_SEE's light gate (its get_char_room_vis()
+// callers always call CAN_SEE(ch=actor, victim, ...)). This chunk's
+// do_emote/do_echo additionally substitute "$n" through PERS(actor, victim,
+// ...) inside act(), which calls CAN_SEE(victim, actor) -- the OPPOSITE
+// direction -- so the victim needs its own bypass too. Without it, whether
+// $n resolves to the actor's real name or falls back to "someone" would
+// depend on room_data's otherwise-untouched sector_type/room_flags/light
+// fields, which (per RoomStatContext's fixture comment above) are
+// indeterminate bytes from the underlying `new room_data[]` allocation --
+// exactly the allocator-dependent nondeterminism macOS ASan surfaced in
+// Task 5. Setting HOLYLIGHT on both sides makes every test here independent
+// of that garbage.
+struct RoomPairContext {
+  ScopedTestWorld test_world;
+  char_data actor{};
+  char_data victim{};
+  descriptor_data actor_descriptor{};
+  descriptor_data victim_descriptor{};
+  char_data *original_people = nullptr;
+
+  RoomPairContext() {
+    clear_char(&actor, MOB_VOID);
+    clear_char(&victim, MOB_VOID);
+    reset_capturing_descriptor(actor_descriptor, &actor);
+    reset_capturing_descriptor(victim_descriptor, &victim);
+
+    original_people = test_world.room().people;
+
+    actor.in_room = 0;
+    victim.in_room = 0;
+    actor.next_in_room = &victim;
+    victim.next_in_room = nullptr;
+    test_world.room().people = &actor;
+
+    actor.specials.position = POSITION_STANDING;
+    victim.specials.position = POSITION_STANDING;
+    actor.player.race = RACE_HUMAN;
+    victim.player.race = RACE_HUMAN;
+    actor.player.name = const_cast<char *>("Gandalf");
+    victim.player.name = const_cast<char *>("Legolas");
+    SET_BIT(PRF_FLAGS(&actor), PRF_HOLYLIGHT);
+    SET_BIT(PRF_FLAGS(&victim), PRF_HOLYLIGHT);
+
+    actor.desc = &actor_descriptor;
+    victim.desc = &victim_descriptor;
+  }
+
+  ~RoomPairContext() {
+    test_world.room().people = original_people;
+    actor.next_in_room = nullptr;
+    victim.next_in_room = nullptr;
+    actor.in_room = NOWHERE;
+    victim.in_room = NOWHERE;
+  }
+};
+
+// Mirrors act_wiz_tests.cpp's ScopedDescriptorList (Phase 4 Wave 1) minus the
+// account-character-selection-unlock reset -- this file's do_gecho/
+// do_wiznet tests never touch that map (the same simplification
+// act_info_format_tests.cpp's own copy already made). Per-file duplication,
+// not a shared header, matches this suite's existing convention.
+class ScopedDescriptorList {
+public:
+  ScopedDescriptorList() : m_previous_descriptor_list(descriptor_list) {
+    descriptor_list = nullptr;
+  }
+
+  ~ScopedDescriptorList() { descriptor_list = m_previous_descriptor_list; }
+
+private:
+  // The process-global descriptor_list value in effect before this guard,
+  // restored on scope exit.
+  descriptor_data *m_previous_descriptor_list;
+};
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// do_emote (act_wiz.cpp:121)
+// ---------------------------------------------------------------------------
+
+TEST(ActWizComm, DoEmoteReportsMistakeMessageWhenArgumentBlank) {
+  SoloCharacterContext context;
+  char argument[] = "   ";
+  do_emote(&context.character, argument, nullptr, 0, 0);
+  EXPECT_EQ(std::string(context.descriptor.output), "Yes.. But what?\n\r");
+}
+
+TEST(ActWizComm, DoEmoteDeliversToRoomAndAcksActorWithoutEcho) {
+  RoomPairContext context;
+  char argument[] = "waves.";
+  do_emote(&context.actor, argument, nullptr, 0, 0);
+  EXPECT_EQ(std::string(context.victim_descriptor.output),
+            "Gandalf waves.\n\r");
+  EXPECT_EQ(std::string(context.actor_descriptor.output), "Ok.\n\r");
+}
+
+TEST(ActWizComm, DoEmoteDeliversToActorTooWhenEchoOn) {
+  RoomPairContext context;
+  SET_BIT(PRF_FLAGS(&context.actor), PRF_ECHO);
+  char argument[] = "waves.";
+  do_emote(&context.actor, argument, nullptr, 0, 0);
+  EXPECT_EQ(std::string(context.victim_descriptor.output),
+            "Gandalf waves.\n\r");
+  EXPECT_EQ(std::string(context.actor_descriptor.output), "Gandalf waves.\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// do_send (act_wiz.cpp:146)
+// ---------------------------------------------------------------------------
+
+TEST(ActWizComm, DoSendReportsSendWhatWhenNoArgument) {
+  SoloCharacterContext context;
+  char argument[] = "";
+  do_send(&context.character, argument, nullptr, 0, 0);
+  EXPECT_EQ(std::string(context.descriptor.output), "Send what to who?\n\r");
+}
+
+TEST(ActWizComm, DoSendReportsNoSuchPersonWhenTargetNotFound) {
+  RoomPairContext context;
+  char argument[] = "Nobody hello";
+  do_send(&context.actor, argument, nullptr, 0, 0);
+  EXPECT_EQ(std::string(context.actor_descriptor.output),
+            "No such person around.\n\r");
+}
+
+TEST(ActWizComm, DoSendDeliversMessageAndSentAckWithoutEcho) {
+  RoomPairContext context;
+  char argument[] = "Legolas Watch out!";
+  do_send(&context.actor, argument, nullptr, 0, 0);
+  EXPECT_EQ(std::string(context.victim_descriptor.output), "Watch out!\n\r");
+  EXPECT_EQ(std::string(context.actor_descriptor.output), "Sent.\n\r");
+}
+
+TEST(ActWizComm, DoSendReportsEchoConfirmationToActorWhenEchoOn) {
+  RoomPairContext context;
+  SET_BIT(PRF_FLAGS(&context.actor), PRF_ECHO);
+  char argument[] = "Legolas Watch out!";
+  do_send(&context.actor, argument, nullptr, 0, 0);
+  EXPECT_EQ(std::string(context.victim_descriptor.output), "Watch out!\n\r");
+  EXPECT_EQ(std::string(context.actor_descriptor.output),
+            "You send 'Watch out!' to Legolas.\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// do_echo (act_wiz.cpp:172)
+// ---------------------------------------------------------------------------
+
+// Exemplar from the task brief: pins the observer's received line and the
+// actor's PRF_ECHO=off "Ok." acknowledgment in one shot.
+TEST(ActWizComm, DoEchoDeliversLineToRoomAndAcksActor) {
+  RoomPairContext context;
+  char argument[] = "  The walls tremble.";
+  do_echo(&context.actor, argument, nullptr, 0, 0);
+  EXPECT_STREQ(context.victim_descriptor.small_outbuf,
+               "The walls tremble.\n\r");
+  EXPECT_STREQ(context.actor_descriptor.small_outbuf, "Ok.\n\r");
+}
+
+TEST(ActWizComm, DoEchoDeliversLineToActorTooWhenEchoOn) {
+  RoomPairContext context;
+  SET_BIT(PRF_FLAGS(&context.actor), PRF_ECHO);
+  char argument[] = "  The walls tremble.";
+  do_echo(&context.actor, argument, nullptr, 0, 0);
+  EXPECT_STREQ(context.victim_descriptor.small_outbuf,
+               "The walls tremble.\n\r");
+  EXPECT_STREQ(context.actor_descriptor.small_outbuf, "The walls tremble.\n\r");
+}
+
+TEST(ActWizComm, DoEchoReportsMistakeMessageWhenArgumentBlank) {
+  RoomPairContext context;
+  char argument[] = "   ";
+  do_echo(&context.actor, argument, nullptr, 0, 0);
+  EXPECT_EQ(std::string(context.actor_descriptor.output),
+            "That must be a mistake...\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// do_gecho (act_wiz.cpp:1676)
+// ---------------------------------------------------------------------------
+
+TEST(ActWizComm, DoGechoDeliversToConnectedDescriptorsAndAcksActorWithoutEcho) {
+  ScopedDescriptorList descriptor_list_scope;
+
+  SoloCharacterContext actor_context;
+  char_data receiver{};
+  clear_char(&receiver, MOB_VOID);
+  descriptor_data receiver_descriptor{};
+  reset_capturing_descriptor(receiver_descriptor, &receiver);
+  receiver.desc = &receiver_descriptor;
+
+  // actor's own descriptor is deliberately included in the list too --
+  // do_gecho's loop gates on `pt->character != ch`, so it must be skipped
+  // there even though the SAME actor separately receives an "Ok."
+  // acknowledgment via the direct send_to_char() below the loop.
+  actor_context.descriptor.next = &receiver_descriptor;
+  receiver_descriptor.next = nullptr;
+  descriptor_list = &actor_context.descriptor;
+
+  char argument[] = "  The gods speak.";
+  do_gecho(&actor_context.character, argument, nullptr, 0, 0);
+  EXPECT_EQ(std::string(receiver_descriptor.output), "The gods speak.\n\r");
+  EXPECT_EQ(std::string(actor_context.descriptor.output), "Ok.\n\r");
+}
+
+TEST(ActWizComm, DoGechoSkipsDescriptorsStillConnecting) {
+  ScopedDescriptorList descriptor_list_scope;
+
+  SoloCharacterContext actor_context;
+  char_data connecting_char{};
+  clear_char(&connecting_char, MOB_VOID);
+  descriptor_data connecting_descriptor{};
+  reset_capturing_descriptor(connecting_descriptor, &connecting_char);
+  connecting_descriptor.connected = 1; // still at a menu, not CON_PLAYING
+  connecting_descriptor.next = nullptr;
+  descriptor_list = &connecting_descriptor;
+
+  char argument[] = "  The gods speak.";
+  do_gecho(&actor_context.character, argument, nullptr, 0, 0);
+  EXPECT_STREQ(connecting_descriptor.small_outbuf, "");
+  EXPECT_EQ(std::string(actor_context.descriptor.output), "Ok.\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// do_poofset (act_wiz.cpp:1703)
+// ---------------------------------------------------------------------------
+
+TEST(ActWizComm, DoPoofsetStoresPoofinMessageAndAcksActor) {
+  SoloCharacterContext context;
+  char argument[] = "  Ta-da!";
+  do_poofset(&context.character, argument, nullptr, 0, SCMD_POOFIN);
+  ASSERT_NE(context.character.specials.poofIn, nullptr);
+  EXPECT_STREQ(context.character.specials.poofIn, "Ta-da!");
+  EXPECT_EQ(std::string(context.descriptor.output), "Ok.\n\r");
+  // Freed directly (not via RELEASE()) so cleanup doesn't depend on the
+  // process-global global_release_flag toggle (RELEASE() only calls
+  // free_function() when that flag is set -- see do_setfree's "RELEASE is
+  // faked" message); str_dup()'s allocation is a plain malloc-compatible
+  // buffer (create_function()/CREATE()), so std::free() is always safe here.
+  std::free(context.character.specials.poofIn);
+  context.character.specials.poofIn = nullptr;
+}
+
+TEST(ActWizComm, DoPoofsetClearsPoofoutMessageWhenArgumentBlank) {
+  SoloCharacterContext context;
+  context.character.specials.poofOut = str_dup("old message");
+  char argument[] = "   ";
+  do_poofset(&context.character, argument, nullptr, 0, SCMD_POOFOUT);
+  EXPECT_EQ(context.character.specials.poofOut, nullptr);
+  EXPECT_EQ(std::string(context.descriptor.output), "Ok.\n\r");
+}
+
+TEST(ActWizComm, DoPoofsetIgnoresUnrecognizedSubcommand) {
+  SoloCharacterContext context;
+  char argument[] = "whatever";
+  do_poofset(&context.character, argument, nullptr, 0, 99);
+  EXPECT_EQ(std::string(context.descriptor.output), "");
+}
+
+// ---------------------------------------------------------------------------
+// do_wiznet (act_wiz.cpp:1974)
+// ---------------------------------------------------------------------------
+
+// Pins the "<name> wiznets '<text>'" line prefix delivered (color-code-
+// wrapped, colorless here since neither character has PRF_COLOR) to a
+// wiz-flagged descriptor, alongside the actor's own "Ok." acknowledgment.
+TEST(ActWizComm,
+     DoWiznetDeliversPrefixedLineToWizFlaggedDescriptorAndAcksActor) {
+  ScopedTestWorld test_world;
+  ScopedDescriptorList descriptor_list_scope;
+
+  char_data actor{};
+  clear_char(&actor, MOB_VOID);
+  descriptor_data actor_descriptor{};
+  reset_capturing_descriptor(actor_descriptor, &actor);
+  actor.desc = &actor_descriptor;
+  actor.in_room = 0;
+  actor.player.name = const_cast<char *>("Gandalf");
+  actor.player.level = LEVEL_IMMORT;
+  actor.specials.position = POSITION_STANDING;
+  SET_BIT(PRF_FLAGS(&actor), PRF_WIZ);
+  SET_BIT(PRF_FLAGS(&actor), PRF_HOLYLIGHT);
+
+  char_data receiver{};
+  clear_char(&receiver, MOB_VOID);
+  descriptor_data receiver_descriptor{};
+  reset_capturing_descriptor(receiver_descriptor, &receiver);
+  receiver.desc = &receiver_descriptor;
+  receiver.player.level = LEVEL_IMMORT;
+  receiver.specials.position = POSITION_STANDING;
+  SET_BIT(PRF_FLAGS(&receiver), PRF_WIZ);
+  SET_BIT(PRF_FLAGS(&receiver), PRF_HOLYLIGHT);
+
+  descriptor_list = &receiver_descriptor;
+  receiver_descriptor.next = nullptr;
+
+  char argument[] = " The council convenes.";
+  do_wiznet(&actor, argument, nullptr, 0, 0);
+  EXPECT_EQ(std::string(receiver_descriptor.output),
+            "Gandalf wiznets 'The council convenes.'\n\r");
+  EXPECT_EQ(std::string(actor_descriptor.output), "Ok.\n\r");
 }

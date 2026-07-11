@@ -1,3 +1,4 @@
+#include "../account_management_storage.h"
 #include "../big_brother.h"
 #include "../db.h"
 #include "../handler.h"
@@ -7,12 +8,15 @@
 #include "../spells.h"
 #include "../structs.h"
 #include "../utils.h"
+#include "ObjFlagDataBuilder.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <format>
 #include <string>
 
@@ -109,6 +113,23 @@ ACMD(do_who);
 ACMD(do_levels);
 ACMD(do_consider);
 ACMD(do_rank);
+ACMD(do_compare);
+ACMD(do_stat);
+ACMD(do_exploits);
+
+// Plain (non-ACMD) object-display helpers reached via do_identify_object's
+// ITEM_LIGHT/ITEM_FOOD/ITEM_WEAPON switch (act_info.cpp) -- exercised
+// directly below rather than only transitively, per the task brief.
+void do_food_display(struct char_data* ch, struct obj_data* j);
+void do_light_display(struct char_data* ch, struct obj_data* j);
+void do_flag_values_display(struct char_data* ch, struct obj_data* j);
+void do_weapon_display(struct char_data* ch, struct obj_data* j);
+void do_identify_object(struct char_data* ch, struct obj_data* j);
+// Signature copied verbatim from its forward declaration in interpre.cpp --
+// do_details is a plain function (not registered via the ACMD macro,
+// though its parameter shape matches ACMD's expansion).
+void do_details(char_data* character, char* argument, waiting_type* wait_list, int command,
+    int sub_command);
 
 void clear_char(struct char_data* ch, int mode);
 
@@ -575,6 +596,70 @@ struct WhoDescriptorListContext {
         viewer_descriptor.next = &other_descriptor;
         descriptor_list = &viewer_descriptor;
     }
+};
+
+// Per-file copy of act_wiz_tests.cpp's TemporaryDirectory (Phase 4 Wave 3
+// Task 4 -- do_exploits/print_exploits needs a real, throwaway
+// "<root>/exploits/<bucket>/" directory to read a legacy .exploits binary
+// record from). Same rots_mkdtemp portable-mkdtemp shim, same
+// remove_all-not-system("rm -rf") cleanup; duplicated rather than shared,
+// matching this file's existing reset_capturing_descriptor/
+// SoloCharacterContext per-file-copy convention.
+class TemporaryDirectory {
+public:
+    TemporaryDirectory()
+    {
+        char directory_template[] = "/tmp/rots-act-info-tests-XXXXXX";
+        char* created_path = rots_mkdtemp(directory_template);
+        EXPECT_NE(created_path, nullptr);
+        if (created_path != nullptr)
+            m_path = created_path;
+    }
+
+    ~TemporaryDirectory()
+    {
+        if (!m_path.empty()) {
+            std::error_code ec;
+            std::filesystem::remove_all(m_path, ec);
+        }
+    }
+
+    const std::string& path() const { return m_path; }
+
+private:
+    std::string m_path;
+};
+
+// Per-file copy of act_wiz_tests.cpp's/account_management_tests.cpp's
+// ScopedWorkingDirectory: print_exploits (act_info.cpp) hardcodes its
+// exploit-history root directory as "." (relative to the process's current
+// working directory), so a test that wants it to resolve into a throwaway
+// TemporaryDirectory must chdir there for the duration of the call.
+// std::filesystem::current_path() is the portable getcwd()/chdir() stand-in
+// (no <unistd.h> dependency, unavailable on MSVC).
+class ScopedWorkingDirectory {
+public:
+    explicit ScopedWorkingDirectory(const std::string& path)
+    {
+        std::error_code ec;
+        m_original_path = std::filesystem::current_path(ec);
+        EXPECT_FALSE(ec) << "Expected current_path() to report this test process's working directory.";
+
+        std::filesystem::current_path(path, ec);
+        EXPECT_FALSE(ec) << "Expected current_path(" << path << ") to succeed.";
+    }
+
+    ~ScopedWorkingDirectory()
+    {
+        if (!m_original_path.empty()) {
+            std::error_code ec;
+            std::filesystem::current_path(m_original_path, ec);
+            EXPECT_FALSE(ec);
+        }
+    }
+
+private:
+    std::filesystem::path m_original_path;
 };
 
 } // namespace
@@ -1706,4 +1791,340 @@ TEST(ActInfoWorldSocial, DoWhoFormatsHeaderDashlineAndFooterCountForTwoPlayers)
         << context.viewer_descriptor.output;
     EXPECT_TRUE(strstr(context.viewer_descriptor.output, "\n\r2 characters displayed.\n\r") != nullptr)
         << context.viewer_descriptor.output;
+}
+
+// ---------------------------------------------------------------------------
+// Characterization tests for Phase 4 Wave 3 Task 4 (Chunk I4 --
+// act_info.cpp's object-identification family: do_compare, do_stat,
+// do_exploits/print_exploits, do_food_display, do_light_display,
+// do_flag_values_display, do_weapon_display, do_identify_object,
+// do_details). Suite ActInfoObjectId. Same binding pattern as Tasks 1-3:
+// these pin CURRENT byte-for-byte output -- confirmed passing against the
+// pre-conversion source -- before this chunk's sprintf sites convert to
+// std::format/std::string composition, and green again after. This is
+// act_info.cpp's LAST chunk -- after Task 4's transform the file is
+// sprintf/strcpy/strcat-free (Task 9 verifies).
+//
+// Deliberately NOT unit-tested here (documented exclusion, not an
+// oversight): do_details (act_info.cpp) contains no sprintf/strcpy/strcat
+// call of its own -- every branch already composes via std::string
+// (extra_specialization_data::to_string / damage_details::
+// get_damage_report / group_data::get_damage_report) and sends via
+// send_to_char(std::string::c_str()). One test below still pins its
+// default/no-target reply for chunk completeness, but there is nothing for
+// this task's transform to touch in this function.
+
+TEST(ActInfoObjectId, DoCompareReportsMissingFirstObject)
+{
+    SoloCharacterContext context;
+
+    do_compare(&context.character, const_cast<char*>("sword dagger"), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "You don't seem to have any sword.\n\r");
+}
+
+// do_compare: lev = obj2.level - obj1.level < -10 pins the "much better"
+// verdict branch (act_info.cpp do_compare).
+TEST(ActInfoObjectId, DoCompareFormatsMuchBetterVerdictForLargeLevelGap)
+{
+    RoomCharacterContext context;
+
+    obj_data sword {};
+    sword.name = const_cast<char*>("sword");
+    sword.short_description = const_cast<char*>("a gleaming sword");
+    sword.obj_flags = builders::ObjFlagDataBuilder().setLevel(50).build();
+
+    obj_data dagger {};
+    dagger.name = const_cast<char*>("dagger");
+    dagger.short_description = const_cast<char*>("a rusty dagger");
+    dagger.obj_flags = builders::ObjFlagDataBuilder().setLevel(1).build();
+
+    dagger.next_content = context.character.carrying;
+    sword.next_content = &dagger;
+    context.character.carrying = &sword;
+
+    do_compare(&context.character, const_cast<char*>("sword dagger"), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "a gleaming sword seems much better than a rusty dagger.\n\r");
+}
+
+// do_compare: lev within [-3, 3] pins the "about the same" verdict branch.
+TEST(ActInfoObjectId, DoCompareFormatsAboutSameVerdictForSmallLevelGap)
+{
+    RoomCharacterContext context;
+
+    obj_data sword {};
+    sword.name = const_cast<char*>("sword");
+    sword.short_description = const_cast<char*>("a gleaming sword");
+    sword.obj_flags = builders::ObjFlagDataBuilder().setLevel(20).build();
+
+    obj_data dagger {};
+    dagger.name = const_cast<char*>("dagger");
+    dagger.short_description = const_cast<char*>("a rusty dagger");
+    dagger.obj_flags = builders::ObjFlagDataBuilder().setLevel(21).build();
+
+    dagger.next_content = context.character.carrying;
+    sword.next_content = &dagger;
+    context.character.carrying = &sword;
+
+    do_compare(&context.character, const_cast<char*>("sword dagger"), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "a gleaming sword and a rusty dagger seems about the same.\n\r");
+}
+
+// do_stat: the "!wtl" branch (a plain "stat" with no active wizstat target)
+// pins the fatigue/willpower/statistic-sum/six-attribute-pairs line
+// (act_info.cpp do_stat) -- every number is two digits so none of the
+// format's "%2d" fields introduce a padding space, keeping this a plain
+// value substitution.
+TEST(ActInfoObjectId, DoStatFormatsFatigueWillpowerAndStatisticsLine)
+{
+    SoloCharacterContext context;
+    context.character.player.level = 10; // >= 6, past do_stat's "too young" gate
+
+    context.character.specials.mental_delay = 40; // / PULSE_MENTAL_FIGHT(8) == 5
+    context.character.points.willpower = 55;
+
+    context.character.abilities.str = 80;
+    context.character.abilities.intel = 70;
+    context.character.abilities.wil = 60;
+    context.character.abilities.dex = 50;
+    context.character.abilities.con = 90;
+    context.character.abilities.lea = 40;
+
+    context.character.tmpabilities.str = 75;
+    context.character.tmpabilities.intel = 65;
+    context.character.tmpabilities.wil = 55;
+    context.character.tmpabilities.dex = 45;
+    context.character.tmpabilities.con = 85;
+    context.character.tmpabilities.lea = 35;
+
+    do_stat(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output,
+        "Your fatigue is 5; Your willpower is 55; Your statistic sum is 390\n\r"
+        "Your statistics are\n\r"
+        "Str: 75/80, Int: 65/70, Wil: 55/60, Dex: 45/50, Con: 85/90, Lea: 35/40.\n\r");
+}
+
+// do_exploits/print_exploits: a single legacy-binary .exploits record on
+// disk (root "." resolves into a throwaway TemporaryDirectory via
+// ScopedWorkingDirectory) pins the header line plus one EXPLOIT_PK row and
+// the trailing totals line. Asserted with strstr rather than a full
+// EXPECT_STREQ: the per-row "%-39s" left-justify padding (act_info.cpp
+// print_exploits) is exact but not the point of this pin -- the header,
+// the composed row text, and the totals line are.
+TEST(ActInfoObjectId, DoExploitsFormatsHeaderAndOneRow)
+{
+    TemporaryDirectory temp_directory;
+    ASSERT_TRUE(std::filesystem::create_directories(temp_directory.path() + "/exploits/A-E"));
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+
+    exploit_record record {};
+    record.type = EXPLOIT_PK;
+    std::strncpy(record.chtime, "Mon Jan  1 00:00:00 2024", sizeof(record.chtime) - 1);
+    std::strncpy(record.chVictimName, "Sauron", sizeof(record.chVictimName) - 1);
+    record.iKillerLevel = 20;
+    record.iVictimLevel = 15;
+
+    const std::string exploits_path = account::legacy_exploits_file_path(".", "aragorn");
+    FILE* file = std::fopen(exploits_path.c_str(), "wb");
+    ASSERT_NE(file, nullptr);
+    ASSERT_EQ(std::fwrite(&record, sizeof(record), 1, file), 1u);
+    ASSERT_EQ(std::fclose(file), 0);
+
+    SoloCharacterContext context;
+    context.character.player.name = const_cast<char*>("aragorn");
+
+    do_exploits(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "Exploits for aragorn\n\r"
+                    "Numbers in brackets indicate (your,their) level at time of a kill\n\r\n\r")
+        != nullptr)
+        << context.descriptor.output;
+    EXPECT_TRUE(strstr(context.descriptor.output, "Jan  1, 24: Killed Sauron (20,15)") != nullptr)
+        << context.descriptor.output;
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "Total: 1 pkill, 0 pdeaths, 0 mobdeaths, 0 notes.\n\r\n\r")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_food_display: pins the fullness-hours message-array line (act_info.cpp)
+// for a builder-made food object whose value[3] quality flag is 0 (the
+// "wholesome" branch). ObjFlagDataBuilder has no dedicated food-value
+// setter -- value[0] (make_full) is set via setObCoef() (the same
+// value[0] slot the builder's weapon setter also targets; obj_flag_data's
+// value[] array is reused per item type) and value[3] is poked directly,
+// matching object_utils_tests.cpp's established convention of setting
+// fields the builder doesn't expose directly on the built struct.
+TEST(ActInfoObjectId, DoFoodDisplayFormatsWholesomeQualityLine)
+{
+    SoloCharacterContext context;
+    obj_data food {};
+    food.short_description = const_cast<char*>("a piece of bread");
+    food.obj_flags = builders::ObjFlagDataBuilder().setObCoef(1).build(); // value[0] == 1 hour
+    food.obj_flags.value[3] = 0; // wholesome
+
+    do_food_display(&context.character, &food);
+
+    EXPECT_STREQ(context.descriptor.output,
+        "a piece of bread is barely a morsel of food, and will\r\n"
+        "do little to aid against the pangs of hunger. It is also of a wholesome quality.\r\n");
+}
+
+// do_food_display: value[3] != 0 pins the "less than wholesome" branch.
+TEST(ActInfoObjectId, DoFoodDisplayFormatsLessThanWholesomeQualityLine)
+{
+    SoloCharacterContext context;
+    obj_data food {};
+    food.short_description = const_cast<char*>("a piece of bread");
+    food.obj_flags = builders::ObjFlagDataBuilder().setObCoef(1).build();
+    food.obj_flags.value[3] = 1; // not wholesome
+
+    do_food_display(&context.character, &food);
+
+    EXPECT_STREQ(context.descriptor.output,
+        "a piece of bread is barely a morsel of food, and will\r\n"
+        "do little to aid against the pangs of hunger. However it seems to be of"
+        " a less than wholesome quality.\r\n");
+}
+
+// do_light_display: pins the duration-range message-array line
+// (act_info.cpp). value[2] (duration_range) is set via setBulk() -- the
+// builder's value[2] slot is reused across item types, same as the
+// food-display test's value[0]/setObCoef() reuse above.
+TEST(ActInfoObjectId, DoLightDisplayFormatsDurationMessage)
+{
+    SoloCharacterContext context;
+    obj_data lantern {};
+    lantern.obj_flags = builders::ObjFlagDataBuilder().setBulk(3).build(); // value[2] == 3
+
+    do_light_display(&context.character, &lantern);
+
+    EXPECT_STREQ(context.descriptor.output,
+        "This source of light is extremely weak, and will not last very long.\r\n");
+}
+
+// do_flag_values_display: an ITEM_WEAPON object pins the Offensive
+// Bonus/Parry Bonus/Bulk value_array row (act_info.cpp), including both the
+// "%-15s"-style pre-padded label strings AND the positive-vs-negative value
+// spacing branch ("\t  %d.\r\n" vs "\t %d.\r\n") -- Parry Bonus is set
+// negative specifically to pin that second branch.
+TEST(ActInfoObjectId, DoFlagValuesDisplayFormatsWeaponBonusRowsWithNegativeSpacing)
+{
+    SoloCharacterContext context;
+    obj_data weapon {};
+    weapon.obj_flags = builders::ObjFlagDataBuilder().setObCoef(10).setParryCoef(-3).setBulk(2).build();
+    weapon.obj_flags.type_flag = ITEM_WEAPON;
+
+    do_flag_values_display(&context.character, &weapon);
+
+    EXPECT_STREQ(context.descriptor.output,
+        "Offensive Bonus\t  10.\r\n"
+        "Parry Bonus    \t -3.\r\n"
+        "Bulk           \t  2.\r\n");
+}
+
+// do_weapon_display: pins the weapon-type name line plus the Damage Rating
+// line (act_info.cpp) for a builder-constructed, unowned (carried_by ==
+// nullptr) slashing weapon -- get_weapon_damage(obj_data*) (utils.h/
+// utility.cpp:434) is the live pointer overload every caller in this file
+// (act_wiz.cpp, fight.cpp, ranger.cpp) binds to; Wave 2 Task 5 resolved the
+// "twin overload" question and found no live `const obj_data&` caller left
+// to worry about, so this call site needed no adaptation of its own.
+TEST(ActInfoObjectId, DoWeaponDisplayFormatsWeaponTypeAndDamageRatingLine)
+{
+    SoloCharacterContext context;
+    obj_data weapon {};
+    weapon.obj_flags = builders::ObjFlagDataBuilder()
+                           .setWeaponType(game_types::WT_SLASHING)
+                           .setObCoef(10)
+                           .setParryCoef(5)
+                           .setBulk(3)
+                           .setLevel(20)
+                           .setWeight(50)
+                           .build();
+    weapon.obj_flags.type_flag = ITEM_WEAPON;
+
+    do_weapon_display(&context.character, &weapon);
+
+    EXPECT_STREQ(context.descriptor.output,
+        "The weapon you hold is a slashing weapon.\r\n"
+        "\n\rDamage Rating \t   42/10.\r\n");
+}
+
+// do_identify_object: end-to-end pin for an ITEM_TREASURE object (a type
+// with no do_light_display/do_food_display/do_weapon_display delegation and
+// an empty value_array row, keeping do_flag_values_display's contribution
+// to nothing) with a null action_description -- pins the ternary
+// null-guard fallback (act_info.cpp; kept as a ternary per the transform
+// idiom catalog, NOT wrapped in nz(), since the old code already guarded
+// it) and the sprintbit-composed wear/extra-flags lines (sprintbit itself
+// is out of scope this wave -- transform idiom catalog item 7).
+TEST(ActInfoObjectId, DoIdentifyObjectFormatsDescriptionMaterialWeightAndFlagLines)
+{
+    SoloCharacterContext context;
+    obj_data idol {};
+    idol.short_description = const_cast<char*>("a golden idol");
+    idol.action_description = nullptr;
+    idol.obj_flags = builders::ObjFlagDataBuilder().setMaterial(0).setWeight(250).build();
+    idol.obj_flags.type_flag = ITEM_TREASURE;
+    // ObjFlagDataBuilder's underlying obj_flag_data has no user-declared
+    // constructor and no in-class member initializers -- fields the
+    // builder's fluent setters don't touch (wear_flags/extra_flags here)
+    // are left default-initialized (indeterminate), not zeroed. Both feed
+    // this call's sprintbit() lines, so pin them explicitly rather than
+    // rely on whatever the builder's internal storage happens to contain.
+    idol.obj_flags.wear_flags = 0;
+    idol.obj_flags.extra_flags = 0;
+
+    do_identify_object(&context.character, &idol);
+
+    EXPECT_STREQ(context.descriptor.output,
+        "   You feel certain the object you have is a golden idol. \r\n"
+        "No object description, please report. \r\n \r\n"
+        "This piece of treasure is made of the usual stuff, and weighs 2.5lbs.\r\n"
+        "This piece of treasure can behas no additional attributes. \r\n"
+        "\r\nThis item has no additional attributes. \r\n"
+        "\r\n");
+}
+
+// do_identify_object: a null short_description pins the OTHER ternary
+// null-guard fallback (act_info.cpp's first sprintf site).
+TEST(ActInfoObjectId, DoIdentifyObjectFormatsMissingShortDescriptionFallback)
+{
+    SoloCharacterContext context;
+    obj_data mystery {};
+    mystery.short_description = nullptr;
+    mystery.action_description = const_cast<char*>("glows.");
+    mystery.obj_flags = builders::ObjFlagDataBuilder().setMaterial(0).setWeight(100).build();
+    mystery.obj_flags.type_flag = ITEM_TREASURE;
+    // See the sibling test above: zero the builder-untouched flag fields
+    // this call reads via sprintbit() rather than leave them
+    // indeterminate.
+    mystery.obj_flags.wear_flags = 0;
+    mystery.obj_flags.extra_flags = 0;
+
+    do_identify_object(&context.character, &mystery);
+
+    EXPECT_TRUE(strstr(context.descriptor.output,
+                    "You feel certain the object you have is No object description found,"
+                    " please report. . \r\n")
+        != nullptr)
+        << context.descriptor.output;
+}
+
+// do_details: no sprintf/strcpy/strcat call of its own (see the suite-level
+// comment above) -- this pins its default/no-target reply for chunk
+// completeness rather than exercising any conversion.
+TEST(ActInfoObjectId, DoDetailsFormatsAcceptedArgumentsWhenNoWaitListTarget)
+{
+    SoloCharacterContext context;
+
+    do_details(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output,
+        "Accepted arguments: spec, group, damage (optional: reset) \r\n");
 }

@@ -103,3 +103,50 @@ str2[copy_len] = '\0';
 - Golden discipline: the ONE sanctioned change (JSON specialization, Task 1, sign-off) stated in Global Constraints + Task 1 + Task 5. Boot/combat goldens are STOP-on-diff.
 - Deferred item (local macOS-native boot-golden) isolated to Task 5, everything else runs now.
 - Type consistency: MSDPSanitizeValue(const char*), IacInput/PendingInput field names, split()/handle_pracs, command slot numbers all match the scouted source.
+
+---
+
+## Effort Exit
+
+**Date:** 2026-07-11. **Final commit:** `2036e5f` (branch `merge/upstream-2026-07-10`, not merged to master — pending owner decision).
+
+### Per-surface validation outcomes (Tasks 1-4)
+
+- **Task 1 (specialization JSON golden):** sanctioned change, owner sign-off obtained, commit `9e05453`. All 3 writers (`character_json.cpp:2192/2445-2446/2700-2701`) unconditionally emit the field; golden diff = exactly one line (`"specialization": 0` after `two_handed`); validate-before-write census showed zero currently-valid local characters rejected; cross-ABI fixture/LLP64 suites (72/72) confirm no layout shift.
+- **Task 2 (MSDP surface #275):** verified, one real pre-existing defect found and fixed by the new-test ASan gate — `ProtocolDestroy` was `free()`-ing `new`/`new[]`-allocated protocol memory (predates the merge); fixed to matching `delete`/`delete[]` (commit `017ef2c`). Split-subnegotiation reassembly, sanitizer non-conflict, and NULL-pProtocol guards all verified correct, no further change needed.
+- **Task 3 (prac command #271):** memcpy over-read at `spec_pro.cpp:298` fixed (bounded copy, `std::min(item.size(), 254)` + explicit NUL), header transitivity confirmed moot (`platform_compat.h`/`safe_template.h` already present and actively used), `handle_pracs` batch logic verified correct, new `HandlePracs` test suite added and ASan-clean (commit `b44da18`).
+- **Task 4 (command-table + qemu segfault):** command-table alignment (entries 245-252) confirmed correct, no off-by-one from the merge. `AccountManagement.FormatsCharacterPromptWithLinkedCharacterList`'s SIGSEGV under qemu-i386 on this Apple-Silicon host confirmed as a qemu-user emulation artifact (passes cleanly on rots64 native and on every CI runner, native hardware in all cases) — not a product defect, out of scope, no fix needed.
+
+### Container battery (this task)
+
+- **rots64:** `ctest --preset linux-x64` 758/758 pass, 0 fail. `boot-golden.sh --service rots64 verify` byte-identical.
+- **i386:** isolated per-test `ctest` (each test its own process via `gtest_discover_tests` PRE_TEST mode) 758/758 pass, 0 fail — **including** `AccountManagement.FormatsCharacterPromptWithLinkedCharacterList`, confirming the qemu crash is specific to the *monolithic* single-process runner, not the test itself. The monolithic `tests-Makefile` runner reproduced the documented qemu-i386-only SIGSEGV at that same test twice (once before, once after this task's fixes) — tolerated per the Global Constraints, cross-confirmed passing on rots64 and (this run) on native CI i386 hardware. `boot-golden.sh --service rots verify` byte-identical. Backup tarball taken first (`../rots-lib-backup-2026-07-10-2310.tar.gz`, 59,370 entries).
+- No boot/combat/JSON golden moved beyond Task 1's one sanctioned line.
+
+### Account smoke (manual nanny()-drive substitute)
+
+`make smoke-account` env-blocked (no cargo to build the proxy; host Python 3.9.6 < 3.10). Drove the actual `nanny()` state machine by hand over plain telnet against rots64 (native amd64, sidesteps the qemu artifact), with `ROTS_SENDMAIL_COMMAND` capturing the verification-code email inside the container. Two passes: (1) create account → verify email → account menu → create character "Usvsmoke" (Human Warrior) → full creation wizard → enter game → no crash → `info` shows "You are not specialized in anything." → `quit` (account-linked quit keeps the connection at the character menu rather than closing it) → confirmed on-disk `usvsmoke.character.json` has `"specialization": 0`. (2) Fresh reconnect → login → "Play a linked character" → reloads from disk → enter game → no crash → `info` again shows the same line, proving the account-native JSON round-trip (write on quit, read on fresh reconnect) preserves the new field with no corruption. Cleaned up: `lib/accounts/U-Z/usvsmoke1783740149@example.com/` and `lib/plrobjs/U-Z/usvsmoke.objs.json` deleted; `git status` clean; smoke container stopped+removed. Full transcript: `.superpowers/sdd/usv-task5-smoke-transcript.log`.
+
+### Four-platform CI (finalization gate)
+
+Five push+watch cycles were needed to reach all-green — each of the first four surfaced a **real Windows-only defect the containers could never catch**, since `windows-msvc` had never once compiled the branch's own tests to completion before this task (two earlier issues had always blocked it first):
+
+1. **`mkdir` arity** (`interpre_account_menu_tests.cpp`, 27 sites): POSIX `mkdir(path, mode)` doesn't compile on MSVC (`_mkdir` takes no mode). Fixed via a new `rots_mkdir()` shim in `test_platform_compat.h` (commit `b2a8306`).
+2. **`socketpair`/`fcntl`** (`protocol_tests.cpp`'s `ProtocolDescriptor` fixture, all 39 `ProtocolInput`/`MSDPProtocol` tests): POSIX-only APIs with no Windows equivalent, compiled unconditionally. Fixed via a portable AF_INET loopback pair for Windows (commit `83d46ef`), then corrected to keep POSIX on its original `socketpair()` path after the AF_INET version caused a macOS timing regression (commit `3ead7fb`).
+3. **Dangling `output` self-pointer** (`interpre_account_menu_tests.cpp`, 25 `make_descriptor()` call sites in the upstream merge's new "linked-roster active-session/unlock" test family): a pre-existing, already-documented MSVC-Debug NRVO pitfall (Phase 3 Task 6) that the merge's new tests omitted the established workaround for. 10 tests observably failed with corrupted (but logic-correct) output text; 15 more were latently unsafe (including the Task-4-verified level-100-roster test, passing only by luck). Fixed by adding the missing re-point line to all 25 sites (commit `2036e5f`).
+
+**Final run:** all four required jobs green — https://github.com/drelidan7/RotS_Live_Modern/actions/runs/29139211323
+- Linux i386 legacy: 751/758 passed (native CI hardware, no qemu)
+- Linux x64: 758/758 passed
+- macOS arm64: 758/758 passed
+- Windows MSVC: 754/754 passed (4 fewer total — POSIX-only suites, e.g. `rots_net_tests.cpp`'s `PREDEF_PLATFORM_LINUX`-gated tests, don't exist as compiled translation units on Windows, by design)
+
+No golden (boot-log, combat, or JSON) moved in any of the three fix commits — all changes are test-file-only.
+
+### Deferred item
+
+Local macOS-native `boot-golden.sh --native build/macos-arm64/ageland verify` — the one item deferred to post-reboot (iCloud FileProvider wedge). CI's `macos-arm64` job (GitHub runner, unaffected by the local wedge) is this effort's macOS coverage in the meantime.
+
+### Merge decision
+
+Branch is four-platform green, container battery clean, smoke verified, no unsanctioned golden movement. **Merge-to-master is the owner's decision** (not made here per the Global Constraints).

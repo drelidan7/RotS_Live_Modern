@@ -37,17 +37,19 @@ Every task's requirements implicitly include this section.
 9. **Dead code:** delete (never modernize) only with caller-grep proof (`grep -rn 'funcname(' src/`) quoted in the commit message.
 10. **Local RAII:** malloc'd `char*` results consumed locally (`nth()`, `pkill_get_string()`, `rots_asprintf`) → capture immediately as `std::string` and `free()` the source at once, or use `std::unique_ptr<char, decltype(&std::free)>`; prefer the immediate-`std::string` form. Ownership that leaves the function (e.g. `str_dup` into `char_data`) is OUT of scope — record justification.
 
-### Triple local gate (run at the end of EVERY task; Docker Desktop must be running)
+### Local gate (run at the end of EVERY task; Docker Desktop must be running)
+
+**AMENDED by owner 2026-07-11 (mid-wave, after Task 1): the per-task gate is DUAL — macOS native + rots64 only. The i386 container legs below moved to the Task 10 finalization battery (qemu cost 60-90+ min/run on this host). Task 1 ran the original triple gate; Tasks 2+ run the dual gate. Any "Triple local gate"/"green ×3" wording in task steps reads as "dual gate"/"green ×2".**
 
 ```bash
-# (a) i386 container: ctest suite, monolithic runner, boot golden
-docker compose run --rm rots bash -lc 'cd /rots && make test'
-docker compose run --rm rots bash -lc 'cd /rots/src/tests && make tests && ../../bin/tests'
-scripts/boot-golden.sh verify
-# (b) macOS native: build, ctest, boot golden
+# Finalization-only (Task 10) — i386 container: ctest suite, monolithic runner, boot golden
+#   docker compose run --rm rots bash -lc 'cd /rots && make test'
+#   docker compose run --rm rots bash -lc 'cd /rots/src/tests && make tests && ../../bin/tests'
+#   scripts/boot-golden.sh verify
+# (a) macOS native: build, ctest, boot golden
 cd src && cmake --build --preset macos-arm64 -j4 && ctest --preset macos-arm64; cd ..
 scripts/boot-golden.sh --native build/macos-arm64/ageland verify
-# (c) rots64: build, ctest, boot golden
+# (b) rots64: build, ctest, boot golden
 docker compose run --rm rots64 bash -lc 'cd /rots/src && cmake --preset linux-x64 && cmake --build --preset linux-x64 -j"$(nproc)" && ctest --preset linux-x64'
 scripts/boot-golden.sh --service rots64 verify
 ```
@@ -561,7 +563,7 @@ Expected: first grep returns ONLY intentional-skip sites (each must have a comme
 
 - [ ] **Step 1: Update docs.** Grep for stale test counts (`grep -rn '758\|~703' CLAUDE.md AGENTS.md`) and update to the finalization actuals per platform. Add any new BUILD.md lesson (only real ones).
 
-- [ ] **Step 2: Full finalization battery.** Triple local gate one more time from a clean tree (all three legs green, three `boot log matches golden`).
+- [ ] **Step 2: Full finalization battery.** Dual local gate from a clean tree PLUS the full i386 container battery (deferred here by the 2026-07-11 mid-wave amendment): `docker compose run --rm rots bash -lc 'cd /rots && make test'`, the monolithic runner (`cd /rots/src/tests && make tests && ../../bin/tests`), and `scripts/boot-golden.sh verify`. All legs green, all boot goldens byte-identical.
 
 - [ ] **Step 3: Push and watch remote CI.**
 

@@ -1833,15 +1833,15 @@ TEST(ActInfoObjectId, DoCompareFormatsMuchBetterVerdictForLargeLevelGap)
     sword.name = const_cast<char*>("sword");
     sword.short_description = const_cast<char*>("a gleaming sword");
     sword.obj_flags = builders::ObjFlagDataBuilder().setLevel(50).build();
-    // ObjFlagDataBuilder's underlying obj_flag_data has no user-declared
-    // constructor/member initializers -- fields its setters don't touch
-    // (extra_flags here) are indeterminate, not zeroed (see the
-    // do_identify_object tests below for the fuller writeup). get_obj_in_list_vis's
-    // CAN_SEE_OBJ() visibility gate reads extra_flags's ITEM_INVISIBLE bit,
-    // so an unset extra_flags risks a stack-garbage-dependent, test-order-
-    // sensitive false "invisible" read (confirmed by observation: these two
-    // tests failed only when run immediately after a preceding test whose
-    // stack usage happened to leave that bit set).
+    // ObjFlagDataBuilder value-initializes its backing struct (fixed after
+    // the Wave 3 finalization-CI MSVC 0xCC-fill failure -- see the header),
+    // so builder-untouched fields are deterministically zero now. The
+    // explicit zero below is kept as a local, self-documenting guard for
+    // the exact field this test's path reads: get_obj_in_list_vis's
+    // CAN_SEE_OBJ() visibility gate checks extra_flags's ITEM_INVISIBLE
+    // bit, and a non-zero value here silently empties the comparison
+    // output (this bit us as a test-order-dependent flake before the
+    // builder fix).
     sword.obj_flags.extra_flags = 0;
 
     obj_data dagger {};
@@ -1868,8 +1868,8 @@ TEST(ActInfoObjectId, DoCompareFormatsAboutSameVerdictForSmallLevelGap)
     sword.name = const_cast<char*>("sword");
     sword.short_description = const_cast<char*>("a gleaming sword");
     sword.obj_flags = builders::ObjFlagDataBuilder().setLevel(20).build();
-    // See the sibling test above: zero the builder-untouched extra_flags
-    // field CAN_SEE_OBJ() reads rather than leave it indeterminate.
+    // See the sibling test above: explicit zero kept for the one field
+    // CAN_SEE_OBJ() reads (deterministic since the builder fix).
     sword.obj_flags.extra_flags = 0;
 
     obj_data dagger {};
@@ -2086,12 +2086,11 @@ TEST(ActInfoObjectId, DoIdentifyObjectFormatsDescriptionMaterialWeightAndFlagLin
     idol.action_description = nullptr;
     idol.obj_flags = builders::ObjFlagDataBuilder().setMaterial(0).setWeight(250).build();
     idol.obj_flags.type_flag = ITEM_TREASURE;
-    // ObjFlagDataBuilder's underlying obj_flag_data has no user-declared
-    // constructor and no in-class member initializers -- fields the
-    // builder's fluent setters don't touch (wear_flags/extra_flags here)
-    // are left default-initialized (indeterminate), not zeroed. Both feed
-    // this call's sprintbit() lines, so pin them explicitly rather than
-    // rely on whatever the builder's internal storage happens to contain.
+    // ObjFlagDataBuilder value-initializes its backing struct (fixed after
+    // the Wave 3 finalization-CI MSVC 0xCC-fill failure -- see the header),
+    // so wear_flags/extra_flags/value[] are deterministically zero. The
+    // explicit zeroes below stay as local documentation of the two fields
+    // this test's sprintbit() lines pin.
     idol.obj_flags.wear_flags = 0;
     idol.obj_flags.extra_flags = 0;
 
@@ -2116,9 +2115,8 @@ TEST(ActInfoObjectId, DoIdentifyObjectFormatsMissingShortDescriptionFallback)
     mystery.action_description = const_cast<char*>("glows.");
     mystery.obj_flags = builders::ObjFlagDataBuilder().setMaterial(0).setWeight(100).build();
     mystery.obj_flags.type_flag = ITEM_TREASURE;
-    // See the sibling test above: zero the builder-untouched flag fields
-    // this call reads via sprintbit() rather than leave them
-    // indeterminate.
+    // See the sibling test above: explicit zeroes kept for the flag fields
+    // this call reads via sprintbit() (deterministic since the builder fix).
     mystery.obj_flags.wear_flags = 0;
     mystery.obj_flags.extra_flags = 0;
 

@@ -9,7 +9,15 @@ namespace builders {
     class ObjFlagDataBuilder {
 
     private:
-        obj_flag_data data;
+        // Value-initialized ({}): obj_flag_data has no constructor or member
+        // initializers, so a default-initialized instance leaves every field
+        // its fluent setters don't touch indeterminate -- accidentally zero
+        // on glibc/libc++ builds, but 0xCC-filled (-858993460) on MSVC Debug,
+        // which broke two ActInfoObjectId characterization pins at Wave 3
+        // finalization CI. Zeroing here gives every built obj_flag_data a
+        // deterministic all-zero baseline before the setters overlay the
+        // intended fields, for every existing and future fixture at once.
+        obj_flag_data data {};
 
     public:
         ObjFlagDataBuilder() {

@@ -2282,9 +2282,7 @@ void convert_string(const char* str, int hide_invisible, struct char_data* ch, s
                 break;
             default:
                 log("SYSERR: Illegal $-code to act():");
-                strcpy(buf1, "SYSERR: ");
-                strcat(buf1, str);
-                log(buf1);
+                log(std::format("SYSERR: {}", str).c_str());
                 break;
             }
             while ((*point = *(i++)))
@@ -2306,9 +2304,10 @@ void convert_string(const char* str, int hide_invisible, struct char_data* ch, s
 
     if (used_color) {
         // CC_NORM expands to a runtime-selected color-escape string, not a format
-        // string -- pass it through "%s" (non-literal-format-string hygiene; the ANSI
-        // sequences contain no '%' today, but don't treat data as a format).
-        sprintf(point, "%s", CC_NORM(to));
+        // string -- pass it through the {} placeholder (non-literal-format-string
+        // hygiene; the ANSI sequences contain no '%'/'{' today, but don't treat data
+        // as a format).
+        strcpy(point, std::format("{}", CC_NORM(to)).c_str());
     }
 
     /* Find the first character in the string, ignoring ANSI colors */

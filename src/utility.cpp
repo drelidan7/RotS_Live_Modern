@@ -1231,7 +1231,7 @@ void log(const char* str)
     fprintf(stderr, "%-19.19s :: %s\n", tmstr, str);
 }
 
-void mudlog(char* str, char type, sh_int level, byte file)
+void mudlog(const char* str, char type, sh_int level, byte file)
 {
     extern struct descriptor_data* descriptor_list;
     struct descriptor_data* i;
@@ -1271,19 +1271,19 @@ void mudlog(char* str, char type, sh_int level, byte file)
     return;
 }
 
-void mudlog_debug_mob(char* buf, char_data* ch)
+void mudlog_debug_mob(const char* buf, char_data* ch)
 {
     mudlog_aliased_mob(buf, ch, "debug");
 }
 
-void mudlog_aliased_mob(char* buf, char_data* ch, char* mob_alias)
+void mudlog_aliased_mob(const char* buf, char_data* ch, const char* mob_alias)
 {
     if (strstr(ch->player.name, mob_alias)) {
         mudlog(buf, SPL, LEVEL_GOD, FALSE);
     }
 }
 
-void vmudlog(char type, char* format, ...)
+void vmudlog(char type, const char* format, ...)
 {
 #define BUFSIZE 2048
     char buf[BUFSIZE];
@@ -1856,7 +1856,7 @@ void day_to_str(struct time_info_data* loc_time_info, char* str)
     free(s);
 }
 
-int find_player_in_table(char* name, int idnum)
+int find_player_in_table(const char* name, int idnum)
 {
     int i;
 

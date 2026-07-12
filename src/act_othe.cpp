@@ -806,7 +806,7 @@ ACMD(do_use)
         if (stick->obj_flags.value[2] > 0) { /* Is there any charges left? */
             stick->obj_flags.value[2]--;
             if (*skills[stick->obj_flags.value[3]].spell_pointer)
-                ((*skills[stick->obj_flags.value[3]].spell_pointer)(ch, "", SPELL_TYPE_STAFF, 0, 0,
+                ((*skills[stick->obj_flags.value[3]].spell_pointer)(ch, mutable_arg(""), SPELL_TYPE_STAFF, 0, 0,
                     0, 0));
 
         } else
@@ -827,7 +827,7 @@ ACMD(do_use)
                 stick->obj_flags.value[2]--;
                 if (*skills[stick->obj_flags.value[3]].spell_pointer)
                     ((*skills[stick->obj_flags.value[3]].spell_pointer)(
-                        ch, "", SPELL_TYPE_WAND, tmp_char, tmp_object, 0, 0));
+                        ch, mutable_arg(""), SPELL_TYPE_WAND, tmp_char, tmp_object, 0, 0));
             } else
                 send_to_char("The wand seems powerless.\n\r", ch);
         } else
@@ -872,7 +872,7 @@ ACMD(do_wimpy)
         send_to_char("At how many hit points do you wish to flee?\n\r", ch);
 }
 
-char* logtypes[] = { "off", "brief", "normal", "spell", "complete", "\n" };
+const char* const logtypes[] = { "off", "brief", "normal", "spell", "complete", "\n" };
 
 ACMD(do_syslog)
 {
@@ -908,7 +908,7 @@ ACMD(do_syslog)
 
 #define PRF_TOG_CHK(ch, flag) ((TOGGLE_BIT(PRF_FLAGS(ch), (flag))) & (flag))
 
-int flag_on(struct char_data* ch, int flag, char** message, int which)
+int flag_on(struct char_data* ch, int flag, const char* const* message, int which)
 {
     if (!which)
         SET_BIT(PRF_FLAGS(ch), (flag));
@@ -919,7 +919,7 @@ int flag_on(struct char_data* ch, int flag, char** message, int which)
     return 1;
 }
 
-int flag_off(struct char_data* ch, int flag, char** message, int which)
+int flag_off(struct char_data* ch, int flag, const char* const* message, int which)
 {
     if (!which)
         REMOVE_BIT(PRF_FLAGS(ch), (flag));
@@ -929,7 +929,7 @@ int flag_off(struct char_data* ch, int flag, char** message, int which)
     return 0;
 }
 
-int flag_toggle(struct char_data* ch, int flag, char** message, int which)
+int flag_toggle(struct char_data* ch, int flag, const char* const* message, int which)
 {
     int i;
     if (!which) {
@@ -946,7 +946,7 @@ int flag_toggle(struct char_data* ch, int flag, char** message, int which)
     return i;
 }
 
-int flag_void(struct char_data* ch, int flag, char** message, int which)
+int flag_void(struct char_data* ch, int flag, const char* const* message, int which)
 {
     int i;
     if (!which)
@@ -962,8 +962,8 @@ int flag_void(struct char_data* ch, int flag, char** message, int which)
     return i;
 }
 
-int (*flag_modify)(struct char_data*, int, char**, int);
-char* tog_messages[][4] = {
+int (*flag_modify)(struct char_data*, int, const char* const*, int);
+const char* const tog_messages[][4] = {
     { "You are now safe from summoning by other players.\n\r",
         "You may now be summoned by other players.\n\r",
         "You are safe from summoning by other players.\n\r",
@@ -1179,9 +1179,9 @@ ACMD(do_casting)
         send_to_char("Only players specialized in arcane may set their casting speed.\n\r", ch);
         return;
     }
-    char* s1 = "You are presently using";
-    char* s2 = "You are now using";
-    char* s;
+    const char* s1 = "You are presently using";
+    const char* s2 = "You are now using";
+    const char* s;
     int tmp, len;
     if (!*argument) {
         s = s1;
@@ -1246,10 +1246,10 @@ ACMD(do_shooting)
         send_to_char("Only players specialized in archery may set their speed.\n\r", ch);
         return;
     }
-    char* s1 = "You are presently using";
-    char* s2 = "You are now using";
+    const char* s1 = "You are presently using";
+    const char* s2 = "You are now using";
 
-    char* s;
+    const char* s;
     int tmp, len;
     if (!*argument)
         s = s1;
@@ -1390,9 +1390,9 @@ ACMD(do_inventory_sort)
 extern const char* const tactics[];
 ACMD(do_tactics)
 {
-    char* s1 = "You are presently employing";
-    char* s2 = "You are now employing";
-    char* s;
+    const char* s1 = "You are presently employing";
+    const char* s2 = "You are now employing";
+    const char* s;
     int tmp, len;
 
     if (utils::is_affected_by_spell(*ch, SKILL_FRENZY) && utils::get_race(*ch) == RACE_OLOGHAI) {
@@ -1539,7 +1539,7 @@ ACMD(do_language)
 
 #define SORTING_COMMAND_INDEX 30
 
-char* change_comm[] = {
+const char* const change_comm[] = {
     "prompt", /* 0 */
     "tactics", "nosummon", "echo", "brief", "spam", /* 5 */
     "compact", "notell", "narrate", "chat", "title", /* 10 */
@@ -1572,7 +1572,7 @@ ACMD(do_set)
     len = strlen(command);
 
     if (!*command) {
-        do_toggle(ch, "", wtl, 0, 0);
+        do_toggle(ch, mutable_arg(""), wtl, 0, 0);
         return;
     }
 
@@ -2055,7 +2055,7 @@ ACMD(do_fish)
 }
 
 struct {
-    char* field;
+    const char* field;
     int subcmd;
 } apply_options[] = { { "poison", SCMD_APPLY_POISON }, { "antidote", SCMD_APPLY_ANTIDOTE } };
 

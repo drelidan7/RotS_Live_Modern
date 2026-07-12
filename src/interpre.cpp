@@ -1531,7 +1531,7 @@ int fill_word(char* argument)
     return (search_block(argument, fill, TRUE) >= 0);
 }
 
-int is_abbrev(char* arg1, char* arg2)
+int is_abbrev(const char* arg1, const char* arg2)
 /* determine if a given string is an abbreviation of another string */
 {
     if (!*arg1)

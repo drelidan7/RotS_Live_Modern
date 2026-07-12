@@ -81,10 +81,10 @@ inline const char* nz(const char* p)
 int str_cmp(const char* arg1, const char* arg2);
 int strn_cmp(const char* arg1, const char* arg2, int n);
 void log(const char* str);
-void mudlog(char* str, char type, sh_int level, byte file);
-void mudlog_debug_mob(char* buf, char_data* ch);
-void mudlog_aliased_mob(char* buf, char_data* ch, char* mob_alias);
-void vmudlog(char type, char* format, ...);
+void mudlog(const char* str, char type, sh_int level, byte file);
+void mudlog_debug_mob(const char* buf, char_data* ch);
+void mudlog_aliased_mob(const char* buf, char_data* ch, const char* mob_alias);
+void vmudlog(char type, const char* format, ...);
 void log_death_trap(struct char_data* ch);
 int number(int from, int to);
 int dice(int number, int size);
@@ -103,7 +103,7 @@ void string_add(struct descriptor_data*, char*);
 int string_to_new_value(char* arg, int* value);
 char* nth(int);
 void day_to_str(time_info_data* loc_time_info, char* str);
-int find_player_in_table(char* name, int idnum);
+int find_player_in_table(const char* name, int idnum);
 
 char* strcpy_lang(char* targ, char* src, byte freq, int maxlen);
 void reshuffle(int* arr, int len);

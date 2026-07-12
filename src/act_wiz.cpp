@@ -314,7 +314,7 @@ ACMD(do_goto)
         strcpy(buf, "A huge gate appears briefly and $n steps out.");
 
     act(buf, TRUE, ch, 0, 0, TO_ROOM);
-    do_look(ch, "", wtl, 0, 0);
+    do_look(ch, mutable_arg(""), wtl, 0, 0);
     msdp_room_update(ch);
 }
 
@@ -346,7 +346,7 @@ ACMD(do_trans)
             char_to_room(victim, ch->in_room);
             act("$n arrives from a puff of smoke.", FALSE, victim, 0, 0, TO_ROOM);
             act("$n has transferred you!", FALSE, ch, 0, victim, TO_VICT);
-            do_look(victim, "", wtl, 0, 0);
+            do_look(victim, mutable_arg(""), wtl, 0, 0);
         }
     } else { /* Trans All */
         for (i = descriptor_list; i; i = i->next)
@@ -359,7 +359,7 @@ ACMD(do_trans)
                 char_to_room(victim, ch->in_room);
                 act("$n arrives from a puff of smoke.", FALSE, victim, 0, 0, TO_ROOM);
                 act("$n has transferred you!", FALSE, ch, 0, victim, TO_VICT);
-                do_look(victim, "", wtl, 0, 0);
+                do_look(victim, mutable_arg(""), wtl, 0, 0);
             }
 
         send_to_char("Ok.\n\r", ch);
@@ -392,7 +392,7 @@ ACMD(do_teleport)
         char_to_room(victim, target);
         act("$n arrives from a puff of smoke.", FALSE, victim, 0, 0, TO_ROOM);
         act("$n has teleported you!", FALSE, ch, 0, (char*)victim, TO_VICT);
-        do_look(victim, "", wtl, 0, 0);
+        do_look(victim, mutable_arg(""), wtl, 0, 0);
     }
 }
 
@@ -1783,7 +1783,7 @@ std::string wizlock_msg;
 ACMD(do_wizlock)
 {
     int value;
-    char* when;
+    const char* when;
     extern const char* const wizlock_default;
 
     half_chop(argument, buf, buf2);
@@ -2118,7 +2118,7 @@ ACMD(do_zreset)
 
 struct
 {
-    char* field;
+    const char* field;
     int subcmd;
     int min_level;
 } wizutil_options[] = {
@@ -2304,7 +2304,7 @@ ACMD(do_wizutil)
         log(std::format("(GC) {} has reactivated {}.", GET_NAME(ch), GET_NAME(vict)).c_str());
         break;
     case SCMD_REHASH:
-        do_rehash(ch, "", 0, 0, 0);
+        do_rehash(ch, mutable_arg(""), 0, 0, 0);
         send_to_char("Ok, rehashed.\n\r", ch);
         break;
     case SCMD_NOTE:
@@ -2372,7 +2372,7 @@ ACMD(do_show)
     extern universal_list* affected_list;
 
     struct show_struct {
-        char* cmd;
+        const char* cmd;
         char level;
     } fields[] = {
         { "nothing", 0 },
@@ -2608,7 +2608,7 @@ ACMD(do_show)
   int	player_i;
 */
 struct set_struct {
-    char* cmd;
+    const char* cmd;
     char level;
     char pcnpc;
     char type;

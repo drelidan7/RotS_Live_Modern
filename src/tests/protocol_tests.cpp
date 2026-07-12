@@ -29,8 +29,8 @@ extern descriptor_data* descriptor_list;
 extern int top_of_world;
 extern room_data world;
 extern weather_data weather_info;
-extern char* pc_races[];
-extern char* pc_star_types[];
+extern const char* const pc_races[];
+extern const char* const pc_star_types[];
 
 void clear_char(struct char_data* ch, int mode);
 void msdp_update();

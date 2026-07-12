@@ -31,7 +31,7 @@ extern int top_of_world;
 
 char mudlle_dummy[] = "Overflowed  buffer overflow.";
 
-extern char* dirs[];
+extern const char* const dirs[];
 
 char* mudalloc(char* str);
 void muddealloc(char* str);

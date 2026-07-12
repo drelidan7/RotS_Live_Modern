@@ -27,7 +27,7 @@
 
 /* extern variables */
 extern struct room_data world;
-extern char* drinks[];
+extern const char* const drinks[];
 extern int drink_aff[][3];
 ACMD(do_twohand);
 
@@ -72,7 +72,7 @@ void name_to_drinkcon(struct obj_data* obj, int type)
 {
     char* new_name;
     extern struct obj_data* obj_proto;
-    extern char* drinknames[];
+    extern const char* const drinknames[];
 
     CREATE(new_name, char, strlen(obj->name) + strlen(drinknames[type]) + 2);
     strcpy(new_name, std::format("{} {}", drinknames[type], obj->name).c_str());

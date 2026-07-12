@@ -42,11 +42,11 @@ extern struct skill_data skills[];
 extern struct room_data world;
 extern byte language_skills[];
 extern byte language_number;
-extern char* prof_abbrevs[];
-extern char* race_abbrevs[];
+extern const char* const prof_abbrevs[];
+extern const char* const race_abbrevs[];
 extern int top_of_world;
 extern int rev_dir[];
-extern char* dirs[];
+extern const char* const dirs[];
 
 /* extern procedures */
 extern int old_search_block(char*, int, unsigned int, const char**, int);
@@ -1172,7 +1172,7 @@ ACMD(do_gen_tog)
     }
 }
 
-extern char* casting[];
+extern const char* const casting[];
 ACMD(do_casting)
 {
     if (GET_SPEC(ch) != PLRSPEC_ARCANE) {
@@ -1239,7 +1239,7 @@ ACMD(do_casting)
     send_to_char(buf, ch);
 }
 
-extern char* shooting[];
+extern const char* const shooting[];
 ACMD(do_shooting)
 {
     if (GET_SPEC(ch) != PLRSPEC_ARCH) {
@@ -1387,7 +1387,7 @@ ACMD(do_inventory_sort)
     }
 }
 
-extern char* tactics[];
+extern const char* const tactics[];
 ACMD(do_tactics)
 {
     char* s1 = "You are presently employing";
@@ -1921,7 +1921,7 @@ ACMD(do_block)
 
 ACMD(do_specialize)
 {
-    extern const char* specialize_name[];
+    extern const char* const specialize_name[];
 
     if (GET_LEVEL(ch) < 12) {
         send_to_char("You are too young to specialize.\n\r", ch);

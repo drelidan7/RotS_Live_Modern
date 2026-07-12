@@ -32,7 +32,7 @@
 extern struct room_data world;
 extern struct descriptor_data* descriptor_list;
 extern struct char_data* waiting_list;
-extern char* dirs[];
+extern const char* const dirs[];
 extern int rev_dir[];
 extern struct skill_data skills[MAX_SKILLS];
 
@@ -402,7 +402,17 @@ ACMD(do_flee)
 
                 send_to_char("You flee head over heels.\n\r", ch);
                 act("$n flees head over heels!", FALSE, ch, 0, 0, TO_ROOM);
-                do_move(ch, dirs[attempt], 0, attempt + 1, SCMD_FLEE);
+                // do_move()'s argument is a mutable char*; dirs[] is now a
+                // const string table, so copy the direction name into a
+                // small mutable buffer before passing it (do_move never
+                // writes through argument for the flee path, this is purely
+                // to satisfy the parameter type).
+                {
+                    char flee_dir[16];
+                    strncpy(flee_dir, dirs[attempt], sizeof(flee_dir) - 1);
+                    flee_dir[sizeof(flee_dir) - 1] = '\0';
+                    do_move(ch, flee_dir, 0, attempt + 1, SCMD_FLEE);
+                }
                 return;
             }
             break;

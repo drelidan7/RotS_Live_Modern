@@ -1301,7 +1301,7 @@ void vmudlog(char type, char* format, ...)
  * Sprintbit now contains an extra variable (int var) so it can
  * discern when identify is using it.
  */
-void sprintbit(long vektor, char* names[], char* result, int var)
+void sprintbit(long vektor, const char* const names[], char* result, int var)
 {
     long nr;
     int count;
@@ -1359,7 +1359,7 @@ void sprintbit(long vektor, char* names[], char* result, int var)
     strcpy(result, composed.c_str());
 }
 
-void sprinttype(int type, char* names[], char* result)
+void sprinttype(int type, const char* const names[], char* result)
 {
     int nr;
 
@@ -1844,7 +1844,7 @@ void day_to_str(struct time_info_data* loc_time_info, char* str)
 {
     char* s;
     int day;
-    extern char* month_name[];
+    extern const char* const month_name[];
 
     day = loc_time_info->day + 1; /* day in [1..35] */
 

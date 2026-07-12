@@ -32,8 +32,8 @@ extern struct char_data* character_list;
 extern struct char_data* waiting_list;
 extern struct skill_data skills[];
 extern struct room_data world;
-extern char* spell_wear_off_msg[];
-extern char* dirs[];
+extern const char* const spell_wear_off_msg[];
+extern const char* const dirs[];
 
 char* target_from_word(struct char_data*, char*, int, struct target_data*);
 int check_hallucinate(struct char_data*, struct char_data*);

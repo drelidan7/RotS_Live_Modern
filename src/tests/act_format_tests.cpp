@@ -41,7 +41,7 @@ void give_share(char_data* sender, char_data* receiver, int share_amount);
 extern struct prompt_type prompt_hit[];
 extern struct prompt_type prompt_mana[];
 extern struct prompt_type prompt_move[];
-extern char* casting[];
+extern const char* const casting[];
 extern const char* specialize_name[];
 
 void clear_char(struct char_data* ch, int mode);

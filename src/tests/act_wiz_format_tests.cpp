@@ -106,7 +106,7 @@ ACMD(do_wiznet);
 // extern of its own that would otherwise have to be edited in lockstep with
 // the production type change.
 extern int restrict;
-extern char* wizlock_default;
+extern const char* const wizlock_default;
 extern int global_release_flag;
 extern struct player_index_element* player_table;
 extern int top_of_p_table;

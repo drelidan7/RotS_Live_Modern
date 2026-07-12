@@ -370,12 +370,12 @@ struct skill_data {
 };
 
 struct skill_teach_data {
-    char* list_message;
-    char* reject_message;
-    char* practice_message;
-    char* practice_msg_to_char;
-    char* limit_message;
-    char* learned_message;
+    const char* list_message;
+    const char* reject_message;
+    const char* practice_message;
+    const char* practice_msg_to_char;
+    const char* limit_message;
+    const char* learned_message;
     byte knowledge[MAX_SKILLS];
 };
 
@@ -388,8 +388,8 @@ struct skill_teach_data {
 
 /* Attack types with grammar */
 struct attack_hit_type {
-    char* singular;
-    char* plural;
+    const char* singular;
+    const char* plural;
 };
 
 void recalc_skills(struct char_data*);

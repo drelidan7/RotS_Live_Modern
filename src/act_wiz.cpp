@@ -75,38 +75,38 @@ extern unsigned long stat_whitie_legend_counter;
 extern unsigned long stat_darkie_legend_counter;
 
 /* for objects */
-extern char* item_types[];
-extern char* wear_bits[];
-extern char* extra_bits[];
-extern char* drinks[];
+extern const char* const item_types[];
+extern const char* const wear_bits[];
+extern const char* const extra_bits[];
+extern const char* const drinks[];
 
 /* for rooms */
-extern char* dirs[];
-extern char* room_bits[];
-extern char* exit_bits[];
-extern char* sector_types[];
+extern const char* const dirs[];
+extern const char* const room_bits[];
+extern const char* const exit_bits[];
+extern const char* const sector_types[];
 
 /* for chars */
 extern struct skill_data skills[];
-extern char* equipment_types[];
-extern char* affected_bits[];
-extern char* apply_types[];
-extern char* pc_prof_types[];
-extern char* npc_prof_types[];
-extern char* action_bits[];
-extern char* player_bits[];
-extern char* preference_bits[];
-extern char* position_types[];
-extern char* connected_types[];
+extern const char* const equipment_types[];
+extern const char* const affected_bits[];
+extern const char* const apply_types[];
+extern const char* const pc_prof_types[];
+extern const char* const npc_prof_types[];
+extern const char* const action_bits[];
+extern const char* const player_bits[];
+extern const char* const preference_bits[];
+extern const char* const position_types[];
+extern const char* const connected_types[];
 extern byte language_skills[];
 extern int num_of_object_materials;
-extern char* object_materials[];
-extern char* mobile_program_base[];
+extern const char* const object_materials[];
+extern const char* const mobile_program_base[];
 extern char** mobile_program;
 extern int* mobile_program_zone;
 extern int num_of_programs;
-extern char* resistance_name[];
-extern char* vulnerability_name[];
+extern const char* const resistance_name[];
+extern const char* const vulnerability_name[];
 /* external functs */
 
 // char *crypt(const char *key, const char *salt);
@@ -734,7 +734,7 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
     struct affected_type* aff;
     struct memory_rec* tmprec;
 
-    extern const char* specialize_name[];
+    extern const char* const specialize_name[];
 
     if ((GET_LEVEL(ch) < LEVEL_AREAGOD) && (!IS_NPC(k))) {
         send_to_char("You can't do this.\n\r", ch);
@@ -1784,7 +1784,7 @@ ACMD(do_wizlock)
 {
     int value;
     char* when;
-    extern char* wizlock_default;
+    extern const char* const wizlock_default;
 
     half_chop(argument, buf, buf2);
     if (*buf) {
@@ -1867,7 +1867,7 @@ ACMD(do_uptime)
 ACMD(do_last)
 {
     struct char_file_u chdata;
-    extern char* race_abbrevs[];
+    extern const char* const race_abbrevs[];
 
     if (IS_NPC(ch))
         return;
@@ -2365,8 +2365,8 @@ ACMD(do_show)
     char field[40], value[40], birth[80];
     universal_list* tmplist;
 
-    extern char* prof_abbrevs[];
-    extern char* genders[];
+    extern const char* const prof_abbrevs[];
+    extern const char* const genders[];
     extern int buf_switches, buf_largecount, buf_overflows;
     extern int memory_rec_counter;
     extern universal_list* affected_list;

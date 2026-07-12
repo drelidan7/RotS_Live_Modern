@@ -50,8 +50,8 @@ extern struct descriptor_data* descriptor_list;
 extern struct char_data* character_list;
 extern struct obj_data* object_list;
 extern struct command_info cmd_info[];
-extern char* room_spell_message[];
-extern char* room_bits_message[];
+extern const char* const room_spell_message[];
+extern const char* const room_bits_message[];
 extern struct player_index_element* player_table;
 extern struct skill_data skills[];
 extern char world_map[];
@@ -71,34 +71,34 @@ extern char* wizlist;
 extern char* immlist;
 extern char* policies;
 extern char* handbook;
-extern char* dirs[];
-extern char* refer_dirs[];
-extern char* where[];
-extern char* color_liquid[];
-extern char* fullness[];
-extern char* connected_types[];
+extern const char* const dirs[];
+extern const char* const refer_dirs[];
+extern const char* const where[];
+extern const char* const color_liquid[];
+extern const char* const fullness[];
+extern const char* const connected_types[];
 // const char*, matching interpre.cpp's definition exactly. The old
 // `extern char* command[]` mismatch linked anyway on GCC/Clang (Itanium ABI
 // variable mangling carries no type), but MSVC encodes the element type in
 // the decorated name, so the mismatched declaration is a hard LNK2001 there
 // (Phase 3 Task 6).
 extern const char* command[];
-extern char* prof_abbrevs[];
-extern char* race_abbrevs[];
-extern char* room_bits[];
+extern const char* const prof_abbrevs[];
+extern const char* const race_abbrevs[];
+extern const char* const room_bits[];
 extern int top_of_p_table;
-extern char* sector_types[];
-extern char* moon_phase[];
+extern const char* const sector_types[];
+extern const char* const moon_phase[];
 extern long judppwd;
 extern int judpavailable;
-extern char* beornwhere[];
+extern const char* const beornwhere[];
 
-extern char* extra_bits[];
+extern const char* const extra_bits[];
 extern int num_of_object_materials;
-extern char* apply_types[];
-extern char* drinks[];
-extern char* pc_arda_fame_identifier[];
-extern char* pc_evil_fame_identifier[];
+extern const char* const apply_types[];
+extern const char* const drinks[];
+extern const char* const pc_arda_fame_identifier[];
+extern const char* const pc_evil_fame_identifier[];
 
 void symbol_to_map(int, int, int);
 void reset_small_map();
@@ -1790,7 +1790,7 @@ ACMD(do_info)
     struct time_info_data playing_time;
     int room_move_cost(struct char_data*, struct room_data*);
     struct time_info_data real_time_passed(time_t, time_t);
-    extern const char* specialize_name[];
+    extern const char* const specialize_name[];
 
     std::string out;
 
@@ -2119,7 +2119,7 @@ ACMD(do_time)
 {
     int weekday, sunrise, sunset, hours;
     extern int sun_events[12][2];
-    extern char* weekdays[];
+    extern const char* const weekdays[];
     extern struct time_info_data time_info;
     int get_season();
 
@@ -2347,7 +2347,7 @@ ACMD(do_who)
     // item 3's page_string note) rather than switching to the smaller
     // global and risking a truncation/overflow regression.
     char buf2[16384];
-    extern char* imm_abbrevs[];
+    extern const char* const imm_abbrevs[];
 
     *name_search = '\0';
     std::string out;
@@ -2547,7 +2547,7 @@ ACMD(do_users)
     int showprof = 0, num_can_see = 0, playing = 0, deadweight = 0;
     struct char_data* tch;
     struct descriptor_data* d;
-    extern char* connected_types[];
+    extern const char* const connected_types[];
 
     name_search[0] = '\0';
     host_search[0] = '\0';
@@ -3009,9 +3009,9 @@ ACMD(do_consider)
 
 ACMD(do_toggle)
 {
-    extern char* tactics[];
-    extern char* shooting[];
-    extern char* casting[];
+    extern const char* const tactics[];
+    extern const char* const shooting[];
+    extern const char* const casting[];
 
     if (IS_NPC(ch))
         return;
@@ -3237,7 +3237,7 @@ ACMD(do_diagnose)
     }
 }
 
-extern char* prompt_text[];
+extern const char* const prompt_text[];
 extern struct prompt_type prompt_hit[];
 extern struct prompt_type prompt_mana[];
 extern struct prompt_type prompt_move[];

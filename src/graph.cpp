@@ -34,7 +34,7 @@
 
 /* Externals */
 extern int top_of_world;
-extern char* dirs[];
+extern const char* const dirs[];
 extern struct room_data world;
 extern struct time_info_data time_info;
 extern struct char_data* mob_proto; /* prototypes for mobs*/

@@ -47,11 +47,11 @@ extern struct obj_data* obj_proto;
 extern struct char_data* character_list;
 extern int top_of_world;
 extern int rev_dir[];
-extern char* dirs[];
-extern char* room_bits[];
-extern char* sector_types[];
+extern const char* const dirs[];
+extern const char* const room_bits[];
+extern const char* const sector_types[];
 extern int guardian_mob[][3];
-extern char* race_abbrevs[];
+extern const char* const race_abbrevs[];
 /*
  *External functions
  */

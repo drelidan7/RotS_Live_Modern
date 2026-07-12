@@ -39,7 +39,7 @@ extern int get_number(char** name);
 extern int num_of_ferries;
 extern int num_of_captains;
 extern char guildmaster_number;
-extern char* dirs[];
+extern const char* const dirs[];
 extern void raw_kill(char_data* ch, char_data* killer, int attacktype);
 extern int mark_calculate_wait(const char_data* ch);
 extern int shoot_calculate_wait(const char_data* archer);

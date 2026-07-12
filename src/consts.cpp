@@ -18,10 +18,10 @@
 char circlemud_version[] = { "Arda: The Fourth Age, version 1.5.7\n\r" };
 
 // const
-char* prof_abbrevs[] = { "--", "Mu", "Cl", "Ra", "Wa" };
+extern const char* const prof_abbrevs[] = { "--", "Mu", "Cl", "Ra", "Wa" };
 
 // const
-char* spell_wear_off_msg[] = {
+extern const char* const spell_wear_off_msg[] = {
     "RESERVED DB.C",
     "You feel less protected.", //* 1 *
     "!Teleport!",
@@ -185,7 +185,7 @@ char* spell_wear_off_msg[] = {
     "", // * 160 *
 };
 
-char* room_bits_message[32] = { "Dark mist permeats the air.",
+extern const char* const room_bits_message[32] = { "Dark mist permeats the air.",
     "",
     "",
     "",
@@ -218,7 +218,7 @@ char* room_bits_message[32] = { "Dark mist permeats the air.",
     /* 30 */ "",
     "" };
 
-char* room_spell_message[MAX_SKILLS] = {
+extern const char* const room_spell_message[MAX_SKILLS] = {
     "",
     /* 1*/ "",
     "",
@@ -1724,20 +1724,20 @@ int movement_loss[] = { /* movement cost with a good load BTW. min. is 3/4 .. 2-
 };
 
 int num_of_object_materials = 14;
-char* object_materials[] = {
+extern const char* const object_materials[] = {
     "Usual stuff", "cloth", "leather", "chain", "metal", "wood", "stone",
     "crystal", "gold", "silver", "mithril", "fur", "glass", "plant",
     "undefined", "undefined", "undefined", "undefined", "undefined", "undefined", "undefined"
 };
 
 // const
-char* dirs[] = { "north", "east", "south", "west", "up", "down", "\n" };
-char* refer_dirs[] = { "the north", "the east", "the south", "the west", "above", "below", "\n" };
+extern const char* const dirs[] = { "north", "east", "south", "west", "up", "down", "\n" };
+extern const char* const refer_dirs[] = { "the north", "the east", "the south", "the west", "above", "below", "\n" };
 // const
-char* weekdays[7] = { "Elenya", "Anarya", "Isilya", "Alduya", "Menelya", "Valanya", "Earenya" };
+extern const char* const weekdays[7] = { "Elenya", "Anarya", "Isilya", "Alduya", "Menelya", "Valanya", "Earenya" };
 
 // const
-char* month_name[17] = { "Narviny\xEB", /* 0 */
+extern const char* const month_name[17] = { "Narviny\xEB", /* 0 */
     "N\xE9nim\xEB",
     "S\xFAlim\xEB",
     "V\xEDress\xEB",
@@ -1756,7 +1756,7 @@ char* month_name[17] = { "Narviny\xEB", /* 0 */
     "Month of the Great Evil" };
 
 // const
-char* where[] = {
+extern const char* const where[] = {
     "<used as light>        ",
     "<worn on finger>       ",
     "<worn on finger>       ",
@@ -1782,7 +1782,7 @@ char* where[] = {
     "<wielded two-handed>   ",
 };
 
-char* beornwhere[] = {
+extern const char* const beornwhere[] = {
     "<used as light>        ",
     "<worn on paw>          ",
     "<worn on paw>          ",
@@ -1849,7 +1849,7 @@ sh_int leg_encumb_table[MAX_WEAR] = {
 sh_int* get_leg_encumb_table() { return leg_encumb_table; }
 
 // const
-char* drinks[] = { "water",
+extern const char* const drinks[] = { "water",
     "beer",
     "wine",
     "ale",
@@ -1868,7 +1868,7 @@ char* drinks[] = { "water",
     "\n" };
 
 // const
-char* drinknames[] = { "water", "beer", "wine", "ale", "ale", "whisky",
+extern const char* const drinknames[] = { "water", "beer", "wine", "ale", "ale", "whisky",
     "lemonade", "firebreather", "local", "juice", "milk", "tea",
     "coffee", "blood", "salt", "water" };
 
@@ -1878,18 +1878,18 @@ int drink_aff[][3] = { { 0, 1, 10 }, { 3, 2, 5 }, { 5, 2, 5 }, { 2, 2, 5 }, { 1,
     { 0, 1, 6 }, { 0, 2, -1 }, { 0, 1, -2 }, { 0, 0, 13 } };
 
 // const
-char* genders[] = { "neutral", "male", "female" };
+extern const char* const genders[] = { "neutral", "male", "female" };
 
 // const
-char* color_liquid[] = { "clear", "brown", "clear", "brown", "dark", "golden",
+extern const char* const color_liquid[] = { "clear", "brown", "clear", "brown", "dark", "golden",
     "red", "green", "clear", "light green", "white", "brown",
     "black", "red", "clear", "crystal clear" };
 
 // const
-char* fullness[] = { "less than half ", "about half ", "more than half ", "" };
+extern const char* const fullness[] = { "less than half ", "about half ", "more than half ", "" };
 
 // const
-char* item_types[] = {
+extern const char* const item_types[] = {
     "UNDEFINED", "LIGHT", "SCROLL", "WAND", "STAFF", "WEAPON",
     "FIRE WEAPON", "MISSILE", "TREASURE", "ARMOR", "POTION", "WORN",
     "OTHER", "TRASH", "TRAP", "CONTAINER", "NOTE", "LIQUID CONTAINER",
@@ -1898,12 +1898,12 @@ char* item_types[] = {
 };
 
 // const
-char* wear_bits[] = { "TAKE", "FINGER", "NECK", "BODY", "HEAD", "LEGS", "FEET",
+extern const char* const wear_bits[] = { "TAKE", "FINGER", "NECK", "BODY", "HEAD", "LEGS", "FEET",
     "HANDS", "ARMS", "SHIELD", "ABOUT", "WAISTE", "WRIST", "WIELD",
     "HOLD", "THROW", "BACK", "BELT", "\n" };
 
 // const
-char* extra_bits[] = { "GLOW", "HUM", "DARK", "BREAKABLE", "EVIL", "INVISIBLE", "MAGIC", "NODROP",
+extern const char* const extra_bits[] = { "GLOW", "HUM", "DARK", "BREAKABLE", "EVIL", "INVISIBLE", "MAGIC", "NODROP",
     "BROKEN", "!GOOD", "!EVIL", "!NEUTRAL", "!RENT",
     /* if a sprintbit() ever tries to issue the !DONATE bit on an
      * object, we want to know about it.  it -never- should do this,
@@ -1916,18 +1916,18 @@ char* extra_bits[] = { "GLOW", "HUM", "DARK", "BREAKABLE", "EVIL", "INVISIBLE", 
     "LHUTH", "OLOGHAI", "HARADRIM", "STAY_ZONE", "\n" };
 
 // const
-char* room_bits[] = { "DARK", "DEATH", "NO_MOB", "INDOORS", "NORIDE", "*PERM*",
+extern const char* const room_bits[] = { "DARK", "DEATH", "NO_MOB", "INDOORS", "NORIDE", "*PERM*",
     "SHADOWY", "NO_MAGIC", "TUNNEL", "PRIVATE", "GODROOM", "",
     "WATER", "POISON", "SECURITY", "PEACE", "NO_TELEPORT", "HIDE_VNUM",
     "\n" };
 char num_of_sector_types = 13;
 
-char* sector_types[] = { "Floor", "City", "Field", "Forest", "Hills",
+extern const char* const sector_types[] = { "Floor", "City", "Field", "Forest", "Hills",
     "Mountain", "Water", "Water_noswim", "Underwater", "Road",
     "Crack", "Dense_forest", "Swamp", "\n" };
 
 // const
-char* exit_bits[] = { "DOOR", "CLOSED", "LOCKED", "NOFLEE", "LOCKED", "NOPICK",
+extern const char* const exit_bits[] = { "DOOR", "CLOSED", "LOCKED", "NOFLEE", "LOCKED", "NOPICK",
     "ISHEAVY", "NOBREAK", "NOLOOK", "HIDDEN", "BROKEN", "NORIDE",
     "NOBLINK", "LEVER", "NOWALK", "\n" };
 
@@ -1946,7 +1946,7 @@ char* exit_bits[] = { "DOOR", "CLOSED", "LOCKED", "NOFLEE", "LOCKED", "NOPICK",
 //  };
 
 // const
-char* equipment_types[] = { "Special",
+extern const char* const equipment_types[] = { "Special",
     "Worn on right finger",
     "Worn on left finger",
     "First worn around Neck",
@@ -1971,7 +1971,7 @@ char* equipment_types[] = { "Special",
     "\n" };
 
 // const
-char* affected_bits[] = { "SENSE",
+extern const char* const affected_bits[] = { "SENSE",
     "INFRA",
     "SNEAK",
     "HIDE",
@@ -2006,7 +2006,7 @@ char* affected_bits[] = { "SENSE",
     "\n" };
 
 // const
-char* apply_types[] = {
+extern const char* const apply_types[] = {
     "NONE", "STR", "DEX", "INT", "WIS", "CON",
     "SEX", "CLASS", "LEVEL", "AGE", "CHAR_WEIGHT", "CHAR_HEIGHT",
     "MANA", "HIT", "MOVE", "GOLD", "EXP", "DODGE",
@@ -2017,24 +2017,24 @@ char* apply_types[] = {
 };
 
 // const
-char* pc_prof_types[] = { "UNDEFINED", "Magic User", "Cleric", "Ranger", "Warrior", "\n" };
+extern const char* const pc_prof_types[] = { "UNDEFINED", "Magic User", "Cleric", "Ranger", "Warrior", "\n" };
 
 // const
-char* pc_races[] = { "God", "Human", "Dwarf", "Wood Elf", "Hobbit", "High Elf", "Beorning",
+extern const char* const pc_races[] = { "God", "Human", "Dwarf", "Wood Elf", "Hobbit", "High Elf", "Beorning",
     "UNDEFINED", "UNDEFINED", "UNDEFINED", "UNDEFINED", "Uruk-Hai", "Harad", "Orc",
     "Easterling", "Uruk-Lhuth", "Undead", "Olog-Hai", "Haradrim", "UNDEFINED",
     "Troll",
     /* Orc is 11, 16 total  ::: here all was changed to lowers, and
    harad human changed to human, for the "look" purposes. */
     "\n" };
-char* pc_race_types[] = { "god", "human", "dwarf", "elf", "hobbit", "elf", "beorning", "UNDEFINED",
+extern const char* const pc_race_types[] = { "god", "human", "dwarf", "elf", "hobbit", "elf", "beorning", "UNDEFINED",
     "UNDEFINED", "UNDEFINED", "UNDEFINED", "uruk-hai", "human", "orc",
     "easterling", "uruk-lhuth", "undead", "olog-hai", "haradrim", "UNDEFINED",
     "troll",
     /* Orc is 11, 16 total  ::: here all was changed to lowers, and
    harad human changed to human, for the "look" purposes. */
     "\n" };
-char* pc_race_keywords[] = { "god", "human", "dwarf", "elf", "hobbit", "elf", "bear", "UNDEFINED",
+extern const char* const pc_race_keywords[] = { "god", "human", "dwarf", "elf", "hobbit", "elf", "bear", "UNDEFINED",
     "UNDEFINED", "UNDEFINED", "UNDEFINED", "uruk", "human", "orc", "human",
     "uruk", "undead", "olog", "haradrim", "UNDEFINED", "troll",
     /* Orc is 11, 16 total  ::: here all was changed to lowers, and
@@ -2042,7 +2042,7 @@ char* pc_race_keywords[] = { "god", "human", "dwarf", "elf", "hobbit", "elf", "b
     "\n" };
 
 // const
-char* pc_star_types[] = { "God", "*a Human*", "*a Dwarf*", "*an Elf*", "*a Hobbit*", "*an Elf*",
+extern const char* const pc_star_types[] = { "God", "*a Human*", "*a Dwarf*", "*an Elf*", "*a Hobbit*", "*an Elf*",
     "*a Bear*", "UNDEFINED", "UNDEFINED", "UNDEFINED", "UNDEFINED",
     "*an Uruk*", "*a Human*", "*an Orc*", "*an Easterling*", "*an Uruk*",
     "*an Undead*", "*an Olog-Hai*", "*a Haradrim*", "UNDEFINED", "*a Troll*",
@@ -2050,7 +2050,7 @@ char* pc_star_types[] = { "God", "*a Human*", "*a Dwarf*", "*an Elf*", "*a Hobbi
     "\n" };
 
 // const
-char* pc_named_star_types[] = {
+extern const char* const pc_named_star_types[] = {
     "%s the God", "*%s the Human*", "*%s the Dwarf*", "*%s the Elf*", "*%s the Hobbit*",
     "*%s the Elf*", "*%s the Beorning*", "%s the UNDEFINED", "%s the UNDEFINED", "%s the UNDEFINED",
     "%s the UNDEFINED", "*%s the Uruk*", "*%s the Human*", "*%s the Orc*", "*%s the Easterling*",
@@ -2060,21 +2060,21 @@ char* pc_named_star_types[] = {
     "\n"
 };
 
-char* pc_arda_fame_identifier[] = { "", " (Warlord of Arda)", " (Noble Crusader)",
+extern const char* const pc_arda_fame_identifier[] = { "", " (Warlord of Arda)", " (Noble Crusader)",
     " (Heroic Knight)", "" };
 
-char* pc_evil_fame_identifier[] = { "", " (Chieftain of Evil)", " (Wicked Commander)",
+extern const char* const pc_evil_fame_identifier[] = { "", " (Chieftain of Evil)", " (Wicked Commander)",
     " (Sinister Patrol)", "" };
 
-char* pc_arda_fame_keywords[] = { "arda", "warlord", "crusader", "knight", "" };
+extern const char* const pc_arda_fame_keywords[] = { "arda", "warlord", "crusader", "knight", "" };
 
-char* pc_evil_fame_keywords[] = { "evil", "chieftain", "commander", "patrol", "" };
-
-// const
-char* npc_prof_types[] = { "Normal", "Undead", "\n" };
+extern const char* const pc_evil_fame_keywords[] = { "evil", "chieftain", "commander", "patrol", "" };
 
 // const
-char* action_bits[] = {
+extern const char* const npc_prof_types[] = { "Normal", "Undead", "\n" };
+
+// const
+extern const char* const action_bits[] = {
     "SPEC", "SENTINEL", "SCAVENGER", "ISNPC", "NOBASH", "AGGR", "STAY-ZONE",
     "WIMPY", "STAY-TYPE", "MOUNT", "CAN_SWIM", "MEMORY", "HELPER", "AGGR_EVIL",
     "AGGR_NEUT", "AGGR_GOOD", "BODYGUARD", "WRAITH", "SWITCH", "NORECALC", "ACTIVE",
@@ -2082,7 +2082,7 @@ char* action_bits[] = {
 };
 
 // const
-char* player_bits[] = { "", "IS_NCHANGED", "FROZEN", "DONTSET", "WRITING", "MAILING",
+extern const char* const player_bits[] = { "", "IS_NCHANGED", "FROZEN", "DONTSET", "WRITING", "MAILING",
     "CSH", "SITEOK", "NOSHOUT", "NOTITLE", "DELETED", "LOADRM",
     "!WIZL", "!DEL", "INVST", "RETIRED", "SHAPING", "WR_FINISH",
     "SHADOW", "AFK", "INCOG", "WAS_KITTED", /* used to be: outlaw */
@@ -2090,18 +2090,18 @@ char* player_bits[] = { "", "IS_NCHANGED", "FROZEN", "DONTSET", "WRITING", "MAIL
     "\n" };
 
 // const
-char* preference_bits[] = { "BRIEF", "COMPACT", "NARR", "!TELL", "MENTAL", "SWIM", "NOTH2",
+extern const char* const preference_bits[] = { "BRIEF", "COMPACT", "NARR", "!TELL", "MENTAL", "SWIM", "NOTH2",
     "PRMPT", "D_TEXT", "!HASS", "QUEST", "SUMN", "ECHO", "LIGHT",
     "COLOR", "SING", "WIZ", "LOG1", "LOG2", "LOG3", "!AUC",
     "CHAT", "!GTZ", "RMFLG", "SPAM", "AUTOEX", "LATIN1", "SPINNER",
     "SORT1", "SORT2", "!UNUS1", "!UNUS2", "!UNUS3", "\n" };
 
 // const
-char* position_types[] = { "Dead", "Mortally wounded", "Incapacitated", "Stunned", "Sleeping",
+extern const char* const position_types[] = { "Dead", "Mortally wounded", "Incapacitated", "Stunned", "Sleeping",
     "Resting", "Sitting", "Fighting", "Standing", "\n" };
 
 // const
-char* connected_types[] = { "Playing",
+extern const char* const connected_types[] = { "Playing",
     "Get name",
     "Confirm name",
     "Get password",
@@ -2131,7 +2131,7 @@ char* connected_types[] = { "Playing",
     "\n" };
 
 // const
-char* ban_types[] = { "no", "new", "select", "all", "ERROR" };
+extern const char* const ban_types[] = { "no", "new", "select", "all", "ERROR" };
 
 sh_int square_root[171] = {
     0,
@@ -2307,7 +2307,7 @@ sh_int square_root[171] = {
     1303,
 };
 
-char* prompt_text[] = { "", /*0*/
+extern const char* const prompt_text[] = { "", /*0*/
     "",
     "Lin", /* Make sure these lines are not shifted. */
     "Dgt", /* they are referred by raw numbers,      */
@@ -2354,7 +2354,7 @@ struct prompt_type prompt_spirit[] = { /* Notice that the value means different
     { "Master", 165 }, { "Buddha", 180 }
 };
 
-char* mobile_program_base[] = {
+extern const char* const mobile_program_base[] = {
     "",
     "fp035i`Alas, no one is here.`SP135g`Ah, here you are!`S.vH.vh.=097i`I see you're not "
     "well,`SP135g`I see you're healthy :)`S`magic mi`?U `Let me rest`S ",
@@ -2418,13 +2418,13 @@ ferry_captain_type ferry_captain_data[] = {
         "Water splashes at the boards as $o sails along." }
 };
 
-char* tactics[] = { "defensive", "careful", "normal", "aggressive", "berserk", "\n" };
+extern const char* const tactics[] = { "defensive", "careful", "normal", "aggressive", "berserk", "\n" };
 
-char* shooting[] = { "slow", "normal", "fast", "\n" };
+extern const char* const shooting[] = { "slow", "normal", "fast", "\n" };
 
-char* casting[] = { "slow", "normal", "fast", "\n" };
+extern const char* const casting[] = { "slow", "normal", "fast", "\n" };
 
-char* moon_phase[8] = { "new", "new-born", "half-grown", "almost full",
+extern const char* const moon_phase[8] = { "new", "new-born", "half-grown", "almost full",
     "full", "slightly wane", "waning", "dying" };
 
 // Perm starting affects for races
@@ -2535,13 +2535,13 @@ int r_mortal_idle_room[MAX_RACES];
 int r_bugged_start_room = 1152;
 
 /* Used in do_whois */
-char* imm_abbrevs[] = {
+extern const char* const imm_abbrevs[] = {
     "L. Maia", /* Level 91 */
     " Maia  ", " Maia  ", "G. Maia", " Vala  ", /* Level 95 */
     "G. Vala", " Arata ", "G.Arata", "G.Arata", "  Imp  " /* Level 100 */
 };
 
-char* race_abbrevs[MAX_RACES + 40 /*for mob ones*/] = {
+extern const char* const race_abbrevs[MAX_RACES + 40 /*for mob ones*/] = {
     "Imm", "Hum", "Dwf", "WdE", "Hob", "HiE", "Beo", "??", "??", "??", "??",
     "Urk", "Har", "Orc", "Eas", "Lhu", "??", "Olo", "Har", "??", "??", "??"
 };
@@ -2557,14 +2557,14 @@ int min_race_align[MAX_RACES] = { -1000,
     -100, 0, 0, 0, 0, -500, -500, -500,
     -500, -500, 0, -500, -500, 0, 0, 0 };
 
-const char* specialize_name[game_types::PS_Count] = {
+extern const char* const specialize_name[game_types::PS_Count] = {
     "nothing", "fire", "cold", "regeneration", "protection",
     "animals", "stealth", "wild fighting", "teleportation", "illusion",
     "lightning", "guardian", "heavy fighting", "light fighting", "defending",
     "archery", "darkness", "arcane", "weapon mastery", "battle magic"
 };
 
-char* resistance_name[] = { "UNGROUPED", /* 0 */
+extern const char* const resistance_name[] = { "UNGROUPED", /* 0 */
     "FIRE", "COLD", "REGEN", "PROT", "ANIMALS", /* 5 */
     "STEALTH",
     "WILD-F", // also resistance to hit-crush
@@ -2572,7 +2572,7 @@ char* resistance_name[] = { "UNGROUPED", /* 0 */
     "MIND", "", "", "", "", /* 15*/
     "\n" };
 
-char* vulnerability_name[] = { "V-UNGROUPED", /* 0 */
+extern const char* const vulnerability_name[] = { "V-UNGROUPED", /* 0 */
     "V-FIRE",
     "V-COLD",
     "V-REGEN",
@@ -2634,6 +2634,6 @@ unsigned long stat_darkie_counter = 0;
 unsigned long stat_whitie_legend_counter = 0;
 unsigned long stat_darkie_legend_counter = 0;
 
-char* wizlock_default = "The game is closed.  Please try again later.\n\r";
+extern const char* const wizlock_default = "The game is closed.  Please try again later.\n\r";
 
 #undef CONSTANTSMARK

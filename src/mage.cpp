@@ -130,10 +130,10 @@ extern struct char_data* character_list;
 extern void prohibit_item_stay_zone_move(char_data* ch, int was_in);
 extern int rev_dir[];
 extern int top_of_world;
-extern char* dirs[];
-extern char* refer_dirs[];
-extern char* room_bits[];
-extern char* sector_types[];
+extern const char* const dirs[];
+extern const char* const refer_dirs[];
+extern const char* const room_bits[];
+extern const char* const sector_types[];
 
 /*
  * external functions

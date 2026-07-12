@@ -31,7 +31,7 @@
 #include <algorithm>
 #include <cmath>
 
-extern char* pc_race_types[];
+extern const char* const pc_race_types[];
 
 #define READ_TITLE(ch) pc_race_types[GET_RACE(ch)]
 
@@ -41,7 +41,7 @@ extern struct room_data world;
 extern int top_of_world;
 extern struct time_info_data time_info;
 extern struct skill_data skills[];
-extern char* spell_wear_off_msg[];
+extern const char* const spell_wear_off_msg[];
 extern struct char_data* fast_update_list;
 extern int circle_shutdown;
 extern struct char_data* death_waiting_list;
@@ -1443,7 +1443,7 @@ void affect_update_room(struct room_data* room)
     struct affected_type newaf;
     struct char_data *tmpch, *next_tmpch;
     int time_phase, tmp, direction, mod, roomnum, movechance;
-    extern char* dirs[];
+    extern const char* const dirs[];
 
     time_phase = get_current_time_phase();
 

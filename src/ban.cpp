@@ -25,7 +25,7 @@
 #include "utils.h"
 
 struct ban_list_element* ban_list = 0;
-extern char* ban_types[];
+extern const char* const ban_types[];
 
 void load_banned(void)
 {

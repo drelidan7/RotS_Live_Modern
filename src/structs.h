@@ -892,11 +892,11 @@ const int constexpr RACE_HARADRIM = 18;
 // asctime() (Phase 3 Task 6). It is deliberately removed: every call site now
 // passes a real time_t*, so any new mismatch fails at compile time on MSVC.
 #ifndef CONSTANTSMARK
-extern char* pc_races[];
-extern char* pc_race_types[];
-extern char* pc_race_keywords[];
-extern char* pc_star_types[];
-extern char* pc_named_star_types[];
+extern const char* const pc_races[];
+extern const char* const pc_race_types[];
+extern const char* const pc_race_keywords[];
+extern const char* const pc_star_types[];
+extern const char* const pc_named_star_types[];
 #endif
 
 /* sex */
@@ -1799,7 +1799,7 @@ public:
 };
 
 struct race_bodypart_data {
-    char* parts[MAX_BODYPARTS];
+    const char* parts[MAX_BODYPARTS];
     sh_int percent[MAX_BODYPARTS];
     sh_int bodyparts;
     ubyte armor_location[MAX_BODYPARTS];
@@ -2086,7 +2086,7 @@ struct message_list {
 };
 
 struct prompt_type {
-    char* message;
+    const char* message;
     int value;
 };
 

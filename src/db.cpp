@@ -94,7 +94,7 @@ struct message_list fight_messages[MAX_MESSAGES]; /* fighting messages	*/
 struct script_head* script_table = 0;
 int top_of_script_table = 0;
 
-extern char* mobile_program_base[];
+extern const char* const mobile_program_base[];
 char** mobile_program;
 int* mobile_program_zone;
 int num_of_programs;

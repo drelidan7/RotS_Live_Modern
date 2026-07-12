@@ -51,7 +51,7 @@ extern int get_real_stealth(struct char_data*);
 extern int rev_dir[];
 extern int show_tracks(struct char_data* ch, char* name, int mode);
 extern int top_of_world;
-extern char* dirs[];
+extern const char* const dirs[];
 extern void appear(struct char_data* ch);
 extern void check_break_prep(struct char_data*);
 extern void stop_hiding(struct char_data* ch, char);
@@ -3646,7 +3646,17 @@ void on_windblast_hit(char_data* ch)
                 act("$n gets sweep out from the wave of thunderous force!", FALSE, ch, 0, 0,
                     TO_ROOM);
 
-                do_move(ch, dirs[attempt], 0, attempt + 1, SCMD_FLEE);
+                // do_move()'s argument is a mutable char*; dirs[] is now a
+                // const string table, so copy the direction name into a
+                // small mutable buffer before passing it (do_move never
+                // writes through argument for the flee path, this is purely
+                // to satisfy the parameter type).
+                {
+                    char flee_dir[16];
+                    strncpy(flee_dir, dirs[attempt], sizeof(flee_dir) - 1);
+                    flee_dir[sizeof(flee_dir) - 1] = '\0';
+                    do_move(ch, flee_dir, 0, attempt + 1, SCMD_FLEE);
+                }
                 return;
             }
         }

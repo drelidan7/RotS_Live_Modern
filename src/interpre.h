@@ -86,7 +86,7 @@ typedef int (*special_func)(char_data* host, char_data* character, int cmd, char
     }
 
 void command_interpreter(struct char_data* ch, char* arg_chr, struct waiting_type* arg_wtl = 0);
-int search_block(char* arg, char** list, char exact);
+int search_block(char* arg, const char* const* list, char exact);
 int old_search_block(char* argument, int begin, unsigned int length, const char** list, int mode);
 char lower(char c);
 void argument_interpreter(char* argument, char* first_arg, char* second_arg);

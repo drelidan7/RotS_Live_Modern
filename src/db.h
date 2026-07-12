@@ -246,9 +246,9 @@ struct help_index_element {
 };
 
 struct help_index_summary {
-    char* keyword;
-    char* descr;
-    char* filename;
+    const char* keyword;
+    const char* descr;
+    const char* filename;
     FILE* file;
     int top_of_helpt;
     char imm_only;

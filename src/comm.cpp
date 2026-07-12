@@ -711,7 +711,7 @@ void msdp_update()
         MSDPSetNumber(desc, eMDSP_DODGE, get_real_dodge(desc->character));
         MSDPSetNumber(desc, eMDSP_ATTACK_SPEED, utils::get_energy_regen(*desc->character) / 5);
 
-        extern char* tactics[];
+        extern const char* const tactics[];
         MSDPSetString(desc, eMDSP_TACTIC, tactics[GET_TACTICS(desc->character) - 1]);
 
         MSDPSetNumber(desc, eMDSP_PERCEPTION, GET_PERCEPTION(desc->character));

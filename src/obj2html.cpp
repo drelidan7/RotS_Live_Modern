@@ -20,7 +20,7 @@
 extern struct index_data* obj_index;
 extern struct obj_data* obj_proto;
 extern int top_of_objt;
-extern char* object_materials[];
+extern const char* const object_materials[];
 extern int num_of_object_materials;
 
 int tables; /* The number of tables written so far */
@@ -511,7 +511,7 @@ void obj2html_endtable(struct char_data* ch, FILE* f,
 int obj2html(FILE* f, struct obj_data* o)
 {
     int i, found;
-    extern char* apply_types[];
+    extern const char* const apply_types[];
 
     /* Header */
     /* We highlight it purple if it's magical already */
@@ -582,7 +582,7 @@ int obj2html(FILE* f, struct obj_data* o)
         fprintf(f, "         <TD> %d </TD>\n", o->obj_flags.value[3]);
         break;
     case ITEM_LEVER:
-        extern char* dirs[];
+        extern const char* const dirs[];
         fprintf(f, "         <TD> %d </TD>\n", o->obj_flags.value[0]);
         fprintf(f, "         <TD> %s </TD>\n", dirs[o->obj_flags.value[1]]);
         break;

@@ -67,7 +67,7 @@ extern int max_race_str[];
 extern bool weapon_willpower_damage(char_data* ch, char_data* victim);
 extern void check_break_prep(struct char_data*);
 extern int max_npc_corpse_time, max_pc_corpse_time;
-extern char* pc_star_types[];
+extern const char* const pc_star_types[];
 
 /* External procedures */
 char* fread_string(FILE* fl, char* error);
@@ -1317,7 +1317,7 @@ void group_gain(char_data* killer, char_data* dead_man)
 
 char replace_string_buf[500];
 
-char* replace_string(char* str, char* weapon_singular, char* weapon_plural, char* bodypart)
+char* replace_string(const char* str, const char* weapon_singular, const char* weapon_plural, const char* bodypart)
 {
     char* buf;
     char* cp;
@@ -1368,9 +1368,9 @@ char* replace_string(char* str, char* weapon_singular, char* weapon_plural, char
 
 /* use #w for singular (i.e. "slash") and #W for plural (i.e. "slashes") */
 static struct dam_weapon_type {
-    char* to_room;
-    char* to_char;
-    char* to_victim;
+    const char* to_room;
+    const char* to_char;
+    const char* to_victim;
 } dam_weapons[] = {
     { "$n misses $N#s#b with $s #w.", /* 0: 0     */
         "$CHYou miss $N#s#b with your #w.",
@@ -1450,7 +1450,7 @@ const attack_hit_type& get_hit_text(int w_type)
     return attack_hit_text[w_type];
 }
 
-void dam_message(int damage, char_data* attacker, char_data* victim, int w_type, char* bodypart)
+void dam_message(int damage, char_data* attacker, char_data* victim, int w_type, const char* bodypart)
 {
     obj_data* wield = attacker->equipment[WIELD];
 
@@ -1478,7 +1478,7 @@ void generate_damage_message(char_data* attacker, char_data* victim, int damage,
     struct message_type* messages;
 
     const race_bodypart_data& part = bodyparts[GET_BODYTYPE(victim)];
-    char* body_part = part.parts[hit_location];
+    const char* body_part = part.parts[hit_location];
     if (IS_PHYSICAL(attacktype)) {
         if (!attacker->equipment[WIELD]) {
             if (GET_RACE(attacker) == RACE_BEORNING) {
@@ -1496,8 +1496,8 @@ void generate_damage_message(char_data* attacker, char_data* victim, int damage,
 
         int msg_num = get_damage_message_number(damage);
         const dam_weapon_type& weap = dam_weapons[msg_num];
-        char* singular = "shot";
-        char* plural = "shot";
+        const char* singular = "shot";
+        const char* plural = "shot";
         if (damage < 34) {
             singular = "shoot";
             plural = "shoots";

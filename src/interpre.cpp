@@ -67,7 +67,7 @@ extern struct index_data* obj_index;
 extern struct room_data world;
 
 extern int social_command_number;
-extern char* wizlock_default;
+extern const char* const wizlock_default;
 extern std::string wizlock_msg;
 extern int top_of_p_table;
 extern char* START_MESSG;
@@ -75,7 +75,7 @@ extern char* WELC_MESSG;
 extern char* background;
 extern int no_specials;
 extern int restrict;
-extern char* dirs[];
+extern const char* const dirs[];
 extern char* imotd;
 extern char* motd;
 extern char* MENU;
@@ -580,7 +580,7 @@ char* fill[] = {
     "\n"
 };
 
-int search_block(char* arg, char** list, char exact)
+int search_block(char* arg, const char* const* list, char exact)
 {
     int i, l;
 

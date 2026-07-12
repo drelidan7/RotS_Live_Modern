@@ -50,7 +50,7 @@ unsigned int length[] = {
     60
 };
 
-char* skill_fields[] = {
+const char* const skill_fields[] = {
     "learned",
     "affected",
     "duration",
@@ -791,7 +791,7 @@ void page_string(struct descriptor_data* d, char* str, int keep_internal)
     } else
         d->showstr_point = str;
 
-    show_string(d, "");
+    show_string(d, mutable_arg(""));
 }
 
 void show_string(struct descriptor_data* d, char* input)

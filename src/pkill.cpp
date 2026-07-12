@@ -769,7 +769,7 @@ void __pkill_extend_tab(int n)
  * file.  Store them in the global variable pkill_tab and
  * return the number of pkills read from the file.
  */
-int pkill_read_file(char* file)
+int pkill_read_file(const char* file)
 {
     const std::string json_path = pkill_json::pkill_json_path(file);
     std::vector<PKILL> loaded_records;
@@ -820,7 +820,7 @@ int pkill_read_file(char* file)
     return static_cast<int>(loaded_records.size());
 }
 
-void pkill_delete_file(char* file)
+void pkill_delete_file(const char* file)
 {
     const std::string json_path = pkill_json::pkill_json_path(file);
     std::string error_message;
@@ -832,7 +832,7 @@ void pkill_delete_file(char* file)
  * Write out all pkills which haven't expired to the given
  * pkill file.
  */
-int pkill_update_file(char* file, PKILL pkills[], int n)
+int pkill_update_file(const char* file, PKILL pkills[], int n)
 {
     int i, nwritten;
     PKILL p;
@@ -1148,7 +1148,7 @@ int pkill_get_evil_fame()
 }
 
 LEADER*
-__new_leader(char* name, int idx, int rank, int fame, int race, int side, int invalid)
+__new_leader(const char* name, int idx, int rank, int fame, int race, int side, int invalid)
 {
     LEADER* ldr;
 

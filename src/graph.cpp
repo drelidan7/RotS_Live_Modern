@@ -227,7 +227,7 @@ void hunt_victim(struct char_data* ch)
             found = 1;
 
     if (!found) {
-        do_say(ch, "Damn!  My prey is gone!!", 0, 0, 0);
+        do_say(ch, mutable_arg("Damn!  My prey is gone!!"), 0, 0, 0);
         ch->specials.hunting = 0;
         return;
     }
@@ -239,7 +239,7 @@ void hunt_victim(struct char_data* ch)
         ch->specials.hunting = 0;
         return;
     } else {
-        do_move(ch, "", 0, dir + 1, 0);
+        do_move(ch, mutable_arg(""), 0, dir + 1, 0);
         if (ch->in_room == ch->specials.hunting->in_room)
             hit(ch, ch->specials.hunting, TYPE_UNDEFINED);
         return;

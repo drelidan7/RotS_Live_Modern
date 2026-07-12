@@ -100,7 +100,7 @@ struct char_data* get_char_room_vis(struct char_data* ch, char* name,
 struct char_data* get_player_vis(struct char_data* ch, char* name);
 struct char_data* get_char_vis(struct char_data* ch, char* name,
     int dark_ok = 0);
-struct obj_data* get_obj_in_list_vis(struct char_data* ch, char* name,
+struct obj_data* get_obj_in_list_vis(struct char_data* ch, const char* name,
     struct obj_data* list, int num);
 struct obj_data* get_obj_vis(struct char_data* ch, char* name);
 struct obj_data* get_object_in_equip_vis(struct char_data* ch,

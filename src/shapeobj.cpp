@@ -1813,7 +1813,7 @@ void extra_coms_obj(struct char_data* ch, char* argument)
         SHAPE_OBJECT(ch)
             ->editflag
             = 49;
-        shape_center_obj(ch, "");
+        shape_center_obj(ch, mutable_arg(""));
         break;
 
     case SHAPE_LOAD:
@@ -1867,7 +1867,7 @@ void extra_coms_obj(struct char_data* ch, char* argument)
     case SHAPE_DONE:
         replace_object(ch, argument);
         implement_object(ch);
-        extra_coms_obj(ch, "free");
+        extra_coms_obj(ch, mutable_arg("free"));
         //    SHAPE_OBJECT(ch)->procedure=SHAPE_EDIT;
         break;
     }

@@ -2127,7 +2127,7 @@ void extra_coms_zone(struct char_data* ch, char* argument)
             implement_zone(ch);
         } else
             send_to_char("You are not allowed to save this zone.\n\r", ch);
-        extra_coms_zone(ch, "free");
+        extra_coms_zone(ch, mutable_arg("free"));
         break;
     case SHAPE_CURRENT:
         if (IS_SET(SHAPE_ZONE(ch)->flags, SHAPE_CURRFLAG)) {

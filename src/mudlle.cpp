@@ -123,7 +123,7 @@ void service_commands(struct char_data* host, char* arg, int,
     case 'X':
         if (SPECIAL_LIST_NEXT(host) < 0) {
             PRE_COMMAND;
-            do_say(host, "Not enough elements in the list to switch. :(", 0, 0, 0);
+            do_say(host, mutable_arg("Not enough elements in the list to switch. :("), 0, 0, 0);
             POST_COMMAND;
             break;
         }
@@ -564,7 +564,7 @@ void question_proc(struct char_data* host)
     do_say(host, tmpstr, 0, 0, 0);
 
     tmp = SPECIAL_LIST_HEAD(host);
-    do_say(host, "My list is:", 0, 0, 0);
+    do_say(host, mutable_arg("My list is:"), 0, 0, 0);
     while (tmp >= 0) {
         tmpstr[0] = 0;
         tmplist = SPECIAL_LIST_AREA(host)->field + tmp;
@@ -599,7 +599,7 @@ void question_proc(struct char_data* host)
         tmp = SPECIAL_LIST_AREA(host)->next[tmp];
         //	  printf("new tmplist=%ld\n",tmplist);
     }
-    do_say(host, "End of list", 0, 0, 0);
+    do_say(host, mutable_arg("End of list"), 0, 0, 0);
     POST_COMMAND;
     //	printf("'?' passed\n");
 }
@@ -779,7 +779,7 @@ SPECIAL(intelligent)
 
             default:
                 PRE_COMMAND;
-                do_say(host, "My string is too long.", 0, 0, 0);
+                do_say(host, mutable_arg("My string is too long."), 0, 0, 0);
                 POST_COMMAND;
                 PROG_POINT(host) = 0;
                 return FALSE;
@@ -854,7 +854,7 @@ SPECIAL(intelligent)
             }
             PRE_COMMAND;
             //      do_move(host,dirs[tmpvar], 0, tmpvar+1, 0);
-            command_interpreter(host, "", &tmpwtl);
+            command_interpreter(host, mutable_arg(""), &tmpwtl);
             POST_COMMAND;
             tmpwtl.targ1.cleanup();
             tmpwtl.targ2.cleanup();
@@ -975,7 +975,7 @@ SPECIAL(intelligent)
                 POST_COMMAND;
             } else {
                 PRE_COMMAND;
-                do_say(host, "What can I say if there is nothing to say?..", 0, 0, 0);
+                do_say(host, mutable_arg("What can I say if there is nothing to say?.."), 0, 0, 0);
                 POST_COMMAND;
             }
             REMOVE_LIST(host);
@@ -1059,7 +1059,7 @@ SPECIAL(intelligent)
                 tmpvar2 = FROM_STACK(host);
                 if (tmpvar == 0) {
                     PRE_COMMAND;
-                    do_say(host, "I tried to divide by zero. Zero put in stack.",
+                    do_say(host, mutable_arg("I tried to divide by zero. Zero put in stack."),
                         0, 0, 0);
                     POST_COMMAND;
                     TO_STACK(host, 0);

@@ -292,7 +292,7 @@ void check_break_prep(struct char_data* ch)
     } else if (ch->delay.cmd == CMD_TRAP) {
         act("Your carefully planned trap has been ruined.", FALSE, ch, 0, 0, TO_CHAR);
         act("$n's carefully constructed trap is ruined!", FALSE, ch, 0, ch, TO_NOTVICT);
-        do_trap(ch, "", NULL, CMD_TRAP, -1);
+        do_trap(ch, mutable_arg(""), NULL, CMD_TRAP, -1);
     }
 }
 

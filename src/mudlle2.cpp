@@ -194,7 +194,7 @@ void UP_LIST(struct char_data* host)
     char tmp, tmp2;
 
     if (SPECIAL_LIST_NEXT(host) < 0) {
-        do_say(host, "My list is less than two elements, I can't move in it.",
+        do_say(host, mutable_arg("My list is less than two elements, I can't move in it."),
             0, 0, 0);
         return;
     }
@@ -223,7 +223,7 @@ void DOWN_LIST(struct char_data* host)
     char tmp, tmp2, tmp3;
 
     if (SPECIAL_LIST_NEXT(host) < 0) {
-        do_say(host, "My list is less than two elements, I can't move in it.",
+        do_say(host, mutable_arg("My list is less than two elements, I can't move in it."),
             0, 0, 0);
         return;
     }

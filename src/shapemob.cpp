@@ -2090,7 +2090,7 @@ ACMD(do_shape)
                 do_shape(ch, str, 0, 0, 0);
                 if (!IS_SET(SHAPE_PROTO(ch)->proto->specials2.act, MOB_NORECALC)) {
                     recalculate_mob(ch);
-                    replace_proto(ch, "");
+                    replace_proto(ch, mutable_arg(""));
                     strcpy(str, std::format("Recalculated [{:>5}] {};\n\r",
                         mob_index[i].virt, GET_NAME(mob_proto + i))
                                     .c_str());
@@ -2098,7 +2098,7 @@ ACMD(do_shape)
                 free_proto(ch);
                 send_to_char(str, ch);
             }
-            do_shutdown(ch, "", 0, 0, SCMD_SHUTDOWN);
+            do_shutdown(ch, mutable_arg(""), 0, 0, SCMD_SHUTDOWN);
             break;
 
         case SHAPE_MASTER_MOBILE:
@@ -2250,7 +2250,7 @@ void extra_coms_proto(struct char_data* ch, char* argument)
             = 49;
         send_to_char("OK. You created a new mobile. Do '/save' to assign a number to your mobile\n\r",
             ch);
-        shape_center_proto(ch, "");
+        shape_center_proto(ch, mutable_arg(""));
         break;
 
     case SHAPE_LOAD:
@@ -2322,7 +2322,7 @@ void extra_coms_proto(struct char_data* ch, char* argument)
     case SHAPE_DONE:
         replace_proto(ch, argument);
         implement_proto(ch);
-        extra_coms_proto(ch, "free");
+        extra_coms_proto(ch, mutable_arg("free"));
         break;
     }
     //  printf("passed shape_proto_center\n");

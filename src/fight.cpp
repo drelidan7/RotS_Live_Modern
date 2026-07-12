@@ -70,7 +70,7 @@ extern int max_npc_corpse_time, max_pc_corpse_time;
 extern const char* const pc_star_types[];
 
 /* External procedures */
-char* fread_string(FILE* fl, char* error);
+char* fread_string(FILE* fl, const char* error);
 int check_resistances(char_data* ch, int attacktype);
 void stop_hiding(struct char_data*, char);
 void break_meditation(char_data* ch);

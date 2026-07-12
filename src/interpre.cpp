@@ -70,15 +70,15 @@ extern int social_command_number;
 extern const char* const wizlock_default;
 extern std::string wizlock_msg;
 extern int top_of_p_table;
-extern char* START_MESSG;
-extern char* WELC_MESSG;
+extern const char* START_MESSG;
+extern const char* WELC_MESSG;
 extern char* background;
 extern int no_specials;
 extern int restrict;
 extern const char* const dirs[];
 extern char* imotd;
 extern char* motd;
-extern char* MENU;
+extern const char* MENU;
 
 struct command_info cmd_info[MAX_CMD_LIST];
 

@@ -120,7 +120,7 @@ void free_char(struct char_data*);
 void free_obj(struct obj_data*);
 int real_room(int);
 int real_program(int);
-char* fread_string(FILE*, char*);
+char* fread_string(FILE*, const char*);
 int real_object(int);
 int real_mobile(int);
 int vnum_mobile(char*, struct char_data*);

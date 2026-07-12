@@ -1361,7 +1361,7 @@ void affect_update_person(struct char_data* i, int mode)
                     // handled by hit_gain and move_gain now.
                     break;
                 case SPELL_FEAR:
-                    do_flee(i, "", 0, 0, 0);
+                    do_flee(i, mutable_arg(""), 0, 0, 0);
                     if (saves_spell(i, af->modifier -= 2, 0))
                         af->duration = 0;
                     break;
@@ -1465,7 +1465,7 @@ void affect_update_room(struct room_data* room)
 
                         /* 1 in 13 chance that a room spell won't do anything */
                         if (!(tmp = number(0, 12)) || (skills[tmpaf->location].is_fast && !number(0, 2))) {
-                            (skills[tmpaf->location].spell_pointer)(tmpch, "", SPELL_TYPE_SPELL,
+                            (skills[tmpaf->location].spell_pointer)(tmpch, mutable_arg(""), SPELL_TYPE_SPELL,
                                 tmpch, 0, 0, 0);
                         }
                     }

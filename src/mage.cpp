@@ -824,7 +824,7 @@ ASPELL(spell_summon)
         char_from_room(victim);
         char_to_room(victim, caster->in_room);
         act("$N summons you!", FALSE, victim, 0, caster, TO_CHAR);
-        do_look(victim, "", 0, 0, 0);
+        do_look(victim, mutable_arg(""), 0, 0, 0);
         extern void msdp_room_update(char_data * ch);
 
         msdp_room_update(victim);
@@ -958,7 +958,7 @@ ASPELL(spell_blink)
         act("$n disappeared in a flash of light.\n\r", TRUE, victim, 0, 0, TO_ROOM);
         char_from_room(victim);
         char_to_room(victim, room);
-        do_look(victim, "", 0, 15, 0);
+        do_look(victim, mutable_arg(""), 0, 15, 0);
         extern void msdp_room_update(char_data * ch);
 
         msdp_room_update(victim);
@@ -1177,7 +1177,7 @@ ASPELL(spell_relocate)
                 TRUE, caster, 0, 0, TO_CHAR);
             act("$n staggers, overcome by dizziness!", FALSE, caster, 0, 0, TO_ROOM);
         }
-        do_look(caster, "", 0, 0, 0);
+        do_look(caster, mutable_arg(""), 0, 0, 0);
     }
 }
 
@@ -1272,7 +1272,7 @@ ASPELL(spell_beacon)
             act("$n appears in bright spectral halo.", FALSE, caster, 0, 0, TO_ROOM);
 
             send_to_char("You return to your beacon!\n\r", caster);
-            do_look(caster, "", 0, 0, 0);
+            do_look(caster, mutable_arg(""), 0, 0, 0);
 
             affect_from_char(caster, SPELL_BEACON);
             return;

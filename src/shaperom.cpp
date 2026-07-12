@@ -397,7 +397,7 @@ void implement_room(struct char_data* ch)
         ->editflag                                                               \
         = 0;
 
-char* exit_convert(int i)
+const char* exit_convert(int i)
 {
     switch (i) {
     case UP:
@@ -1755,7 +1755,7 @@ void extra_coms_room(struct char_data* ch, char* argument)
             implement_room(ch);
         } else
             send_to_char("You have nothing to save.\n\r", ch);
-        extra_coms_room(ch, "free");
+        extra_coms_room(ch, mutable_arg("free"));
         break;
     }
     return;

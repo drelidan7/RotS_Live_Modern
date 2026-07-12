@@ -55,7 +55,7 @@
 
 #include "comm.h"
 
-static void Write(descriptor_t* apDescriptor, char* apData)
+static void Write(descriptor_t* apDescriptor, const char* apData)
 {
     // wtf is fcommand?!
     //    if ( apDescriptor != nullptr && !apDescriptor->fcommand )
@@ -70,7 +70,7 @@ static void Write(descriptor_t* apDescriptor, char* apData)
     write_to_descriptor(apDescriptor->descriptor, apData);
 }
 
-static void ReportBug(char* apText) { vmudlog(NRM, apText); }
+static void ReportBug(const char* apText) { vmudlog(NRM, apText); }
 
 static void InfoMessage(descriptor_t* apDescriptor, char* apData)
 {

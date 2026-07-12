@@ -3183,7 +3183,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
  ********************************************************************** */
 
 /* read and allocate space for a '~'-terminated string from a given file */
-char* fread_string(FILE* fl, char* error)
+char* fread_string(FILE* fl, const char* error)
 {
     char buf[MAX_STRING_LENGTH], tmp[MAX_STRING_LENGTH];
     char* rslt;

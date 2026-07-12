@@ -246,7 +246,7 @@ void apply_smash_damage(char_data* attacker, char_data* victim, int prob)
         char_data* mount = victim->mount_data.mount;
         damage(attacker, victim, dam, SKILL_SMASH, 0);
         generate_smash_dismount_messages(attacker, victim);
-        do_dismount(victim, "", 0, 0, 0);
+        do_dismount(victim, mutable_arg(""), 0, 0, 0);
         if (number() >= 0.50) {
             damage(attacker, mount, dam / 2, SKILL_SMASH, 0);
         }
@@ -539,7 +539,7 @@ ACMD(do_overrun)
         }
 
         stop_fighting(ch);
-        do_move(ch, "", 0, cmd + 1, 0);
+        do_move(ch, mutable_arg(""), 0, cmd + 1, 0);
     }
 
     if (dis < total_moves) {

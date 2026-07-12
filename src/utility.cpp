@@ -1810,11 +1810,12 @@ int can_breathe(struct char_data* ch)
  */
 char* nth(int n)
 {
-    char *s, *r;
-    char* first = "st";
-    char* second = "nd";
-    char* third = "rd";
-    char* other = "th";
+    const char *s;
+    char* r;
+    const char* first = "st";
+    const char* second = "nd";
+    const char* third = "rd";
+    const char* other = "th";
 
     /* 11, 12 and 13 don't follow the general rule */
     if (n == 11 || n == 12 || n == 13)

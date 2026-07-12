@@ -72,7 +72,7 @@ extern int mini_mud;
 extern int new_mud;
 extern int no_rent_check;
 extern FILE* player_fl;
-extern char* DFLT_DIR;
+extern const char* DFLT_DIR;
 extern int mortal_start_room[];
 extern struct room_data world; /* In db.c */
 extern struct char_data* character_list; /* In db.c */
@@ -116,7 +116,7 @@ int txt_block_counter = 0;
 
 extern int nameserver_is_slow; /* see config.c */
 extern int autosave_time; /* see config.c */
-extern char* GREETINGS;
+extern const char* GREETINGS;
 
 int process_output(struct descriptor_data* t);
 int isbanned(char* hostname);
@@ -1444,7 +1444,7 @@ SocketType pnew_descriptor(SocketType s)
     socklen_t size;
     int sockets_connected, sockets_playing, i;
     struct sockaddr_in sock;
-    extern char* GREETINGS;
+    extern const char* GREETINGS;
 
     if ((desc = pnew_connection(s)) == 0) // here was <0, too bad
         return (0); // here was -1, too bad...

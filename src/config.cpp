@@ -57,7 +57,7 @@ const char* NOEFFECT = "Nothing seems to happen.\r\n";
 /* GAME OPERATION OPTIONS */
 
 /* default directory to use as data directory */
-char* DFLT_DIR = "lib";
+const char* DFLT_DIR = "lib";
 
 /* Some nameservers (such as the one here at JHU) are slow and cause the
    game to lag terribly every time someone logs in.  The lag is caused by
@@ -79,7 +79,7 @@ char* DFLT_DIR = "lib";
 
 int nameserver_is_slow = YES;
 
-char* MENU = "\n\r"
+const char* MENU = "\n\r"
              "Welcome to Arda!\n\r"
              "0) Exit from the MUD.\n\r"
              "1) Enter the game.\n\r"
@@ -90,7 +90,7 @@ char* MENU = "\n\r"
              "\n\r"
              "   Make your choice: ";
 
-char* GREETINGS = "\n\r"
+const char* GREETINGS = "\n\r"
                   "\n\r"
                   "                               Welcome to\n\r"
                   "                          RETURN OF THE SHADOW\n\r"
@@ -105,11 +105,11 @@ char* GREETINGS = "\n\r"
                   "          Log in with your account email address at the prompt.\n\r"
                   "\n\r";
 
-char* WELC_MESSG = "\n\r"
+const char* WELC_MESSG = "\n\r"
                    "Here we go..."
                    "\n\r";
 
-char* START_MESSG = "Welcome.  This is your new MUD character.\n\r"
+const char* START_MESSG = "Welcome.  This is your new MUD character.\n\r"
                     "Don't forget to role play!\n\r";
 
 /* AUTOWIZ OPTIONS */

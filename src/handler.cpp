@@ -61,7 +61,7 @@ extern struct index_data* mob_index;
 extern struct index_data* obj_index;
 extern struct descriptor_data* descriptor_list;
 extern struct char_data* fast_update_list;
-extern char* MENU;
+extern const char* MENU;
 extern int top_of_world;
 extern struct skill_data skills[];
 extern sh_int encumb_table[MAX_WEAR];
@@ -2149,7 +2149,7 @@ struct char_data* get_char_vis(struct char_data* ch, char* name, int dark_ok)
     return (0);
 }
 
-struct obj_data* get_obj_in_list_vis(struct char_data* ch, char* name,
+struct obj_data* get_obj_in_list_vis(struct char_data* ch, const char* name,
     struct obj_data* list, int num)
 {
     struct obj_data* i;

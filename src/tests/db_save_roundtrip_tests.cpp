@@ -18,7 +18,12 @@
 // against UNCHANGED source and record the FNV-1a64 value it prints to stdout; apply the
 // D2 transform; rebuild and rerun; the hash MUST be byte-identical. Any diff is a STOP
 // per the wave's global constraints. The task report records the actual before/after
-// values captured this way.
+// values captured this way. Both the hash and the round-trip equality check below
+// normalize away write_player_text's two wall-clock-derived fields first (see
+// normalize_time_variant_fields) -- without that, comparing raw bytes across two
+// SEPARATE PROCESS RUNS (exactly what the pre-/post-transform gate does) would show a
+// spurious diff on `last_logon` alone, purely because real time advanced between runs,
+// even though nothing in write_player_text's own composition changed.
 
 #include "../db.h"
 #include "../structs.h"
@@ -30,6 +35,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -115,6 +121,30 @@ std::string read_entire_file(const std::string& path)
     return contents;
 }
 
+// Blanks the value on write_player_text's two wall-clock-derived lines ("played" and
+// "last_logon", db.cpp's char_to_store folds time(0) into both -- see char_to_store:
+// "st->played += (long)(time(0) - ch->player.time.logon); st->last_logon = time(0);")
+// to a fixed placeholder, so byte comparisons reflect the FORMAT write_player_text
+// produces, not the moment it happened to run. `last_logon` is guaranteed to differ
+// between two separate process invocations; `played` is stable in practice (the two
+// time(0) calls this fixture triggers land microseconds apart, so their delta is
+// almost always 0) but isn't provably so, so it's normalized defensively too.
+std::string normalize_time_variant_fields(std::string text)
+{
+    static const char* const kVariantPrefixes[] = { "played      ", "last_logon  " };
+    for (const char* prefix : kVariantPrefixes) {
+        const std::size_t prefix_position = text.find(prefix);
+        if (prefix_position == std::string::npos)
+            continue;
+        const std::size_t value_start = prefix_position + std::strlen(prefix);
+        const std::size_t value_end = text.find('\n', value_start);
+        if (value_end == std::string::npos)
+            continue;
+        text.replace(value_start, value_end - value_start, "0");
+    }
+    return text;
+}
+
 // A tiny, fully-specified, dependency-free 64-bit hash (FNV-1a) used only to print a
 // short fingerprint of the serialized bytes for the before/after diff described in the
 // file header comment. Deliberately NOT std::hash<std::string> (its result is
@@ -135,7 +165,8 @@ std::uint64_t fnv1a64(const std::string& data)
 
 // Pins the on-disk text player-save format byte-for-byte. write_player_text()
 // exists precisely to serialize to a caller-chosen scratch path without touching live
-// data; a fixed fixture character must serialize to IDENTICAL bytes across two
+// data; a fixed fixture character must serialize to IDENTICAL bytes (modulo the two
+// wall-clock fields normalize_time_variant_fields blanks -- see its comment) across two
 // back-to-back calls, and every landmark line below is a field that flows straight
 // through store_to_char -> char_to_store -> write_player_text with no derived/
 // recomputed value, so its exact text is safe to pin.
@@ -159,12 +190,7 @@ TEST(SavePlayerRoundTrip, FixtureCharacterSerializesToStableBytes)
     ASSERT_TRUE(write_player_text(&character, /*load_room=*/9001, scratch.c_str()));
     const std::string second = read_entire_file(scratch);
 
-    // write_player_text is deterministic for a fixed character/load_room *within the
-    // same wall-clock second*: char_to_store folds time(0) into played/last_logon
-    // (db.cpp:2590-2591), so two back-to-back calls could in principle observe a
-    // second-boundary flake -- an existing property of the on-disk format, not
-    // something this task's sprintf/strcpy->std::format transform touches or fixes.
-    EXPECT_EQ(first, second);
+    EXPECT_EQ(normalize_time_variant_fields(first), normalize_time_variant_fields(second));
     EXPECT_FALSE(first.empty());
 
     EXPECT_NE(first.find("#player\n"), std::string::npos);
@@ -210,7 +236,7 @@ TEST(SavePlayerRoundTrip, PrintsStableFormatHash)
     build_round_trip_character(character, descriptor, fixture);
 
     ASSERT_TRUE(write_player_text(&character, /*load_room=*/9001, scratch.c_str()));
-    static std::string pre_transform_bytes = read_entire_file(scratch);
+    static std::string pre_transform_bytes = normalize_time_variant_fields(read_entire_file(scratch));
     const std::uint64_t hash = fnv1a64(pre_transform_bytes);
 
     std::cout << "[SavePlayerRoundTrip] write_player_text FNV-1a64 = 0x" << std::hex << hash

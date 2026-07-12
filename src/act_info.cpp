@@ -890,7 +890,7 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, const char* l
     }
 }
 
-extern char* spec_pro_message[];
+extern const char* const spec_pro_message[];
 
 /*
  * `i' is the character being shown; `ch' is the character who is

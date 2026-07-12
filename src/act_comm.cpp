@@ -450,7 +450,7 @@ int channels[] = {
     PRF_SING
 };
 
-char* com_msgs[][3] = {
+const char* const com_msgs[][3] = {
     { "You tried to narrate but could not make a sound\n\r",
         "narrate",
         "You aren't even on the channel!\n\r" },
@@ -465,7 +465,7 @@ char* com_msgs[][3] = {
         "You aren't even on the channel!\n\r" }
 };
 
-char* com_msgs_col[] = {
+const char* const com_msgs_col[] = {
     "$CN",
     "$CC",
     "$CY",
@@ -475,14 +475,14 @@ char* com_msgs_col[] = {
 ACMD(do_gen_com)
 {
     struct descriptor_data* i;
-    char* color;
+    const char* color;
     int imm_to_race, imm_side;
     struct room_data* tmproom;
     int myzone, tmp;
 
     void stop_hiding(struct char_data*, char);
 
-    static char* imm_side_message[] = {
+    static const char* const imm_side_message[] = {
         "",
         " to the Light.",
         " to the Dark.",

@@ -374,7 +374,7 @@ ACMD(do_gather_food)
      * a neat little array, and used search_block to get the desired
      * values.
      */
-    static char* gather_type[] = { "", "food", "light", "healing", "energy", "bow",
+    static const char* const gather_type[] = { "", "food", "light", "healing", "energy", "bow",
         "arrows", "dust", "poison", "antidote", "\n" };
 
     if (IS_SHADOW(ch)) {
@@ -1277,7 +1277,7 @@ ACMD(do_trap)
         victim = trap_get_valid_victim(ch, wtl);
         if (victim == NULL) {
             /* Reset the trap.  do_trap subcmd=1 does exactly this. */
-            do_trap(ch, "", wtl, CMD_TRAP, 1);
+            do_trap(ch, mutable_arg(""), wtl, CMD_TRAP, 1);
             return;
         }
 
@@ -1293,7 +1293,7 @@ ACMD(do_trap)
                 ch);
 
             /* Reset the trap.  do_trap subcmd=1 does exactly this. */
-            do_trap(ch, "", wtl, CMD_TRAP, 1);
+            do_trap(ch, mutable_arg(""), wtl, CMD_TRAP, 1);
             return;
         }
 
@@ -1698,7 +1698,7 @@ ACMD(do_whistle)
                     if (GET_POS(tmpch) == POSITION_FIGHTING) {
                         /* in combat: just try to disengage this whistle; the
                          * normal recall runs next time it's whistled while not fighting */
-                        do_flee(tmpch, "", 0, 0, 0);
+                        do_flee(tmpch, mutable_arg(""), 0, 0, 0);
                         continue;
                     }
 
@@ -1740,7 +1740,7 @@ ACMD(do_stalk)
 
     dir = wtl->targ1.ch_num;
 
-    if (special(ch, dir + 1, "", SPECIAL_COMMAND, 0))
+    if (special(ch, dir + 1, mutable_arg(""), SPECIAL_COMMAND, 0))
         return;
 
     if (GET_KNOWLEDGE(ch, SKILL_STALK) <= 0) {

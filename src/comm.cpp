@@ -410,7 +410,7 @@ void touch_file(const char* path)
 
 ACMD(do_cast);
 SPECIAL(intelligent);
-char* wait_wheel[8] = { "\r|\r", "\r\\\r", "\r-\r", "\r/\r", "\r|\r", "\r\\\r", "\r-\r", "\r/\r" };
+const char* const wait_wheel[8] = { "\r|\r", "\r\\\r", "\r-\r", "\r/\r", "\r|\r", "\r\\\r", "\r-\r", "\r/\r" };
 
 void sigsegv_handler(int sig)
 {
@@ -1640,7 +1640,7 @@ int process_output(struct descriptor_data* t)
     return 1;
 }
 
-int write_to_descriptor(SocketType desc, char* txt)
+int write_to_descriptor(SocketType desc, const char* txt)
 {
     int sofar, thisround, total;
 
@@ -1700,7 +1700,7 @@ void break_spell(struct char_data* ch)
     //     }
     //     else if(ch->delay.cmd > 0){
     //       //	      printf("gonna interpret, name=%s, delay=%p\n",wait_ch->player.name,
-    //       &(wait_ch->delay)); command_interpreter(ch, "", &(ch->delay));
+    //       &(wait_ch->delay)); command_interpreter(ch, mutable_arg(""), &(ch->delay));
     //     }
     //  }
     //  else{
@@ -2374,14 +2374,14 @@ void complete_delay(struct char_data* ch)
     if (ch->delay.cmd == -1 && IS_NPC(ch)) {
         /* Here calls special procedure */
         if (mob_index[ch->nr].func)
-            (*mob_index[ch->nr].func)(ch, 0, -1, "", SPECIAL_NONE, &(ch->delay));
+            (*mob_index[ch->nr].func)(ch, 0, -1, mutable_arg(""), SPECIAL_NONE, &(ch->delay));
         else if (ch->specials.store_prog_number) {
             tmpfunc = (SPECIAL(*))virt_program_number(ch->specials.store_prog_number);
-            tmpfunc(ch, 0, ch->delay.cmd, "", SPECIAL_DELAY, &(ch->delay));
+            tmpfunc(ch, 0, ch->delay.cmd, mutable_arg(""), SPECIAL_DELAY, &(ch->delay));
         } else if (ch->specials.union1.prog_number)
-            intelligent(ch, 0, -1, "", SPECIAL_DELAY, &(ch->delay));
+            intelligent(ch, 0, -1, mutable_arg(""), SPECIAL_DELAY, &(ch->delay));
     } else if (ch->delay.cmd > 0)
-        command_interpreter(ch, "", &(ch->delay));
+        command_interpreter(ch, mutable_arg(""), &(ch->delay));
 }
 
 int in_waiting_list(char_data* ch)

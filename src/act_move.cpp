@@ -155,7 +155,7 @@ int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
 
     if (mode != SCMD_MOVING)
         /* check for special routines (north = 1) */
-        if (special(ch, cmd + 1, "", SPECIAL_COMMAND, 0))
+        if (special(ch, cmd + 1, mutable_arg(""), SPECIAL_COMMAND, 0))
             return 1;
     if ((GET_POS(ch) < POSITION_FIGHTING) || (PLR_FLAGGED(ch, PLR_WRITING)))
         return 1;
@@ -326,7 +326,7 @@ int perform_move_mount(struct char_data* ch, int dir)
     is_death = IS_SET(world[new_room].room_flags, DEATH);
 
     /* supposedly, the primary rider has already passed special() */
-    special(ch->mount_data.rider, dir + 1, "", SPECIAL_COMMAND, 0);
+    special(ch->mount_data.rider, dir + 1, mutable_arg(""), SPECIAL_COMMAND, 0);
 
     for (tmpch = ch->mount_data.rider->mount_data.next_rider,
         num2 = ch->mount_data.rider->mount_data.next_rider_number;
@@ -410,10 +410,10 @@ int perform_move_mount(struct char_data* ch, int dir)
         raw_kill(ch, NULL, 0);
         return 0;
     }
-    do_look(ch, "", 0, 0, SCMD_LOOK_BRIEF);
+    do_look(ch, mutable_arg(""), 0, 0, SCMD_LOOK_BRIEF);
 
     for (tmpch = ch->mount_data.rider; tmpch; tmpch = tmpch->mount_data.next_rider) {
-        do_look(tmpch, "", 0, CMD_LOOK, SCMD_LOOK_BRIEF);
+        do_look(tmpch, mutable_arg(""), 0, CMD_LOOK, SCMD_LOOK_BRIEF);
     }
     /* now forming and sending the "enter" message */
 
@@ -440,11 +440,11 @@ int perform_move_mount(struct char_data* ch, int dir)
     for (tmpch = ch->mount_data.rider; tmpch; tmpch = tmpch2) {
         tmpch2 = tmpch->mount_data.next_rider;
 
-        special(tmpch, rev_dir[dir] + 1, "", SPECIAL_ENTER, 0);
+        special(tmpch, rev_dir[dir] + 1, mutable_arg(""), SPECIAL_ENTER, 0);
 
         call_trigger(ON_ENTER, (void*)&world[tmpch->in_room], (void*)tmpch, 0);
     }
-    if (special(ch, rev_dir[dir] + 1, "", SPECIAL_ENTER, 0))
+    if (special(ch, rev_dir[dir] + 1, mutable_arg(""), SPECIAL_ENTER, 0))
         return 0;
 
     call_trigger(ON_ENTER, (void*)&world[ch->in_room], (void*)ch, 0);
@@ -680,7 +680,7 @@ ACMD(do_move)
             tmpwtl.targ1.type = TARGET_DIR;
             tmpwtl.targ1.ch_num = cmd;
             tmpwtl.targ2.type = TARGET_NONE;
-            do_open(ch, "", &tmpwtl, CMD_OPEN, 0);
+            do_open(ch, mutable_arg(""), &tmpwtl, CMD_OPEN, 0);
         }
 
         if (!CAN_GO(ch, cmd)) {
@@ -825,7 +825,7 @@ ACMD(do_move)
 
             char_from_room(ch);
             char_to_room(ch, to_room);
-            do_look(ch, "\0", 0, 0, 0);
+            do_look(ch, mutable_arg("\0"), 0, 0, 0);
             GET_MOVE(ch) -= need_move;
             if (!IS_AFFECTED(ch, AFF_SNEAK) || (subcmd == SCMD_FLEE) || number(0, 100) > GET_SKILL(ch, SKILL_SNEAK) + get_real_stealth(ch) - 25) {
                 strcpy(buf2, std::format(" enters from {}.", refer_dirs[rev_dir[cmd]]).c_str());
@@ -841,7 +841,7 @@ ACMD(do_move)
                 snuck_in(ch);
 
             if (!ch->spec_busy) {
-                special(ch, rev_dir[cmd] + 1, "", SPECIAL_ENTER, 0);
+                special(ch, rev_dir[cmd] + 1, mutable_arg(""), SPECIAL_ENTER, 0);
             }
 
             call_trigger(ON_ENTER, (void*)&world[ch->in_room], (void*)ch, 0);
@@ -984,7 +984,7 @@ ACMD(do_move)
 int find_door(struct char_data* ch, char* type, char* dir)
 {
     int door;
-    char* dirs[] = { "north", "east", "south", "west", "up", "down", "\n" };
+    const char* const dirs[] = { "north", "east", "south", "west", "up", "down", "\n" };
 
     if (*dir) /* a direction was specified */ {
         if ((door = search_block(dir, dirs, FALSE)) == -1) /* Partial Match */ {
@@ -1414,7 +1414,7 @@ ACMD(do_enter)
             if (EXIT(ch, door))
                 if (EXIT(ch, door)->keyword)
                     if (!str_cmp(EXIT(ch, door)->keyword, buf)) {
-                        do_move(ch, "", wtl, ++door, 0);
+                        do_move(ch, mutable_arg(""), wtl, ++door, 0);
                         return;
                     }
         send_to_char(std::format("There is no {} here.\n\r", static_cast<const char*>(buf)).c_str(), ch);
@@ -1426,7 +1426,7 @@ ACMD(do_enter)
             if (EXIT(ch, door))
                 if (EXIT(ch, door)->to_room != NOWHERE)
                     if (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED) && IS_SET(world[EXIT(ch, door)->to_room].room_flags, INDOORS)) {
-                        do_move(ch, "", wtl, ++door, 0);
+                        do_move(ch, mutable_arg(""), wtl, ++door, 0);
                         return;
                     }
         send_to_char("You can't seem to find anything to enter.\n\r", ch);
@@ -1450,7 +1450,7 @@ ACMD(do_leave)
             unretire(ch);
             char_from_room(ch);
             char_to_room(ch, r_mortal_start_room[GET_RACE(ch)]);
-            do_look(ch, "", 0, 0, 0);
+            do_look(ch, mutable_arg(""), 0, 0, 0);
         } else
             send_to_char("You cannot leave the retirement home yet.\r\n", ch);
 
@@ -1464,7 +1464,7 @@ ACMD(do_leave)
             if (EXIT(ch, door))
                 if (EXIT(ch, door)->to_room != NOWHERE)
                     if (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED) && !IS_SET(world[EXIT(ch, door)->to_room].room_flags, INDOORS)) {
-                        do_move(ch, "", wtl, ++door, 0);
+                        do_move(ch, mutable_arg(""), wtl, ++door, 0);
                         return;
                     }
         send_to_char("I see no obvious exits to the outside.\n\r", ch);
@@ -1584,7 +1584,7 @@ ACMD(do_sleep)
 {
 
     if (IS_RIDING(ch))
-        do_dismount(ch, "", 0, 0, 0);
+        do_dismount(ch, mutable_arg(""), 0, 0, 0);
 
     switch (GET_POS(ch)) {
     case POSITION_STANDING:
@@ -1769,7 +1769,7 @@ ACMD(do_lead)
     mount = 0;
 
     if (!*argument) { // default mount
-        do_dismount(ch, "", 0, 0, 0);
+        do_dismount(ch, mutable_arg(""), 0, 0, 0);
     } else {
         potential_mount = get_char_room_vis(ch, argument);
         if (!potential_mount) {
@@ -1801,7 +1801,7 @@ ACMD(do_lead)
     }
 
     if (IS_RIDING(ch) && ch->mount_data.mount == mount) {
-        do_dismount(ch, "", 0, 0, 0);
+        do_dismount(ch, mutable_arg(""), 0, 0, 0);
         return;
     }
 

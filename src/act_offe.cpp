@@ -346,7 +346,7 @@ ACMD(do_flee)
         return;
 
     if (GET_POS(ch) < POSITION_FIGHTING)
-        do_stand(ch, "", 0, 0, 0);
+        do_stand(ch, mutable_arg(""), 0, 0, 0);
 
     for (i = 0; i < 6; i++) {
         attempt = number(0, NUM_OF_DIRS - 1);
@@ -363,7 +363,7 @@ ACMD(do_flee)
             act("$n panics, and attempts to flee!", TRUE, ch, 0, 0, TO_ROOM);
 
             die = check_simple_move(ch, attempt, &move_cost, SCMD_FLEE);
-            if (!special(ch, cmd + 1, "", SPECIAL_COMMAND, 0) && number(0, 1) && die) {
+            if (!special(ch, cmd + 1, mutable_arg(""), SPECIAL_COMMAND, 0) && number(0, 1) && die) {
                 /* The escape has not succeded */
                 switch (die) {
                 case 1:
@@ -587,7 +587,7 @@ ACMD(do_bash)
             act("$n has recovered from a bash!", TRUE, ch, 0, 0, TO_ROOM);
             act("You have regained your balance!", TRUE, ch, 0, 0, TO_CHAR);
             if (GET_POS(ch) < POSITION_FIGHTING)
-                do_stand(ch, "", 0, 0, 0);
+                do_stand(ch, mutable_arg(""), 0, 0, 0);
         }
         break;
 
@@ -674,7 +674,7 @@ ACMD(do_bash)
             stop_riding(ch);
             char_from_room(ch);
             char_to_room(ch, other_room);
-            do_look(ch, "\0", 0, 0, 0);
+            do_look(ch, mutable_arg("\0"), 0, 0, 0);
             act("$n falls in.", TRUE, ch, 0, 0, TO_ROOM);
         }
         GET_POS(ch) = POSITION_SITTING;
@@ -690,7 +690,7 @@ ACMD(do_bash)
     }
 }
 
-char* rescue_message[MAX_RACES][2] = {
+const char* const rescue_message[MAX_RACES][2] = {
     { "Fearless, you leap into harms way!\r\n", "$n rescues $N.\r\n" },
     { "Shouting 'Elendil!', you leap to the rescue!\r\n",
         "Shouting 'Elendil', $n fearlessly rescues $N.\r\n" },

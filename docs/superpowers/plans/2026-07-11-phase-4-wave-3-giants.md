@@ -37,17 +37,19 @@ Every task's requirements implicitly include this section.
 9. **Dead code:** delete (never modernize) only with caller-grep proof (`grep -rn 'funcname(' src/`) quoted in the commit message.
 10. **Local RAII:** malloc'd `char*` results consumed locally (`nth()`, `pkill_get_string()`, `rots_asprintf`) → capture immediately as `std::string` and `free()` the source at once, or use `std::unique_ptr<char, decltype(&std::free)>`; prefer the immediate-`std::string` form. Ownership that leaves the function (e.g. `str_dup` into `char_data`) is OUT of scope — record justification.
 
-### Triple local gate (run at the end of EVERY task; Docker Desktop must be running)
+### Local gate (run at the end of EVERY task; Docker Desktop must be running)
+
+**AMENDED by owner 2026-07-11 (mid-wave, after Task 1): the per-task gate is DUAL — macOS native + rots64 only. The i386 container legs below moved to the Task 10 finalization battery (qemu cost 60-90+ min/run on this host). Task 1 ran the original triple gate; Tasks 2+ run the dual gate. Any "Triple local gate"/"green ×3" wording in task steps reads as "dual gate"/"green ×2".**
 
 ```bash
-# (a) i386 container: ctest suite, monolithic runner, boot golden
-docker compose run --rm rots bash -lc 'cd /rots && make test'
-docker compose run --rm rots bash -lc 'cd /rots/src/tests && make tests && ../../bin/tests'
-scripts/boot-golden.sh verify
-# (b) macOS native: build, ctest, boot golden
+# Finalization-only (Task 10) — i386 container: ctest suite, monolithic runner, boot golden
+#   docker compose run --rm rots bash -lc 'cd /rots && make test'
+#   docker compose run --rm rots bash -lc 'cd /rots/src/tests && make tests && ../../bin/tests'
+#   scripts/boot-golden.sh verify
+# (a) macOS native: build, ctest, boot golden
 cd src && cmake --build --preset macos-arm64 -j4 && ctest --preset macos-arm64; cd ..
 scripts/boot-golden.sh --native build/macos-arm64/ageland verify
-# (c) rots64: build, ctest, boot golden
+# (b) rots64: build, ctest, boot golden
 docker compose run --rm rots64 bash -lc 'cd /rots/src && cmake --preset linux-x64 && cmake --build --preset linux-x64 -j"$(nproc)" && ctest --preset linux-x64'
 scripts/boot-golden.sh --service rots64 verify
 ```
@@ -561,7 +563,7 @@ Expected: first grep returns ONLY intentional-skip sites (each must have a comme
 
 - [ ] **Step 1: Update docs.** Grep for stale test counts (`grep -rn '758\|~703' CLAUDE.md AGENTS.md`) and update to the finalization actuals per platform. Add any new BUILD.md lesson (only real ones).
 
-- [ ] **Step 2: Full finalization battery.** Triple local gate one more time from a clean tree (all three legs green, three `boot log matches golden`).
+- [ ] **Step 2: Full finalization battery.** Dual local gate from a clean tree PLUS the full i386 container battery (deferred here by the 2026-07-11 mid-wave amendment): `docker compose run --rm rots bash -lc 'cd /rots && make test'`, the monolithic runner (`cd /rots/src/tests && make tests && ../../bin/tests`), and `scripts/boot-golden.sh verify`. All legs green, all boot goldens byte-identical.
 
 - [ ] **Step 3: Push and watch remote CI.**
 
@@ -584,3 +586,43 @@ Expected: all four green. An MSVC-only failure in the wave's new test files is t
 - Characterization-passes-first is stated in Global Constraints AND as an explicit "must PASS against unchanged source" step in every chunk — the one deliberate inversion of the fail-first step template, inherent to characterization work.
 - Exemplar code uses only verified anchors/signatures: `send_to_char(const char*, char_data*)` comm.h:33, `nz` utils.h:53, `nth` utils.h:81/utility.cpp:1806, `rots_asprintf` platform_compat.h:16, wizlock consumers interpre.cpp:70/2751/3012, fixture source act_format_tests.cpp:69-141. Fixture structs named in tests but not yet existing (`RoomWithExitContext`, `RankedCharacterContext`, `ImplementorContext`, `RoomPairContext` mirror) are defined by the same step that uses them, modeled on the cited act_format_tests.cpp patterns; two sketched fixture APIs are flagged in-place for adaptation (`ObjFlagDataBuilder` real method names, do_goto's actual error text).
 - Type consistency: suite names (`ActInfoPerception`/`ActInfoSelfStatus`/`ActInfoWorldSocial`/`ActInfoObjectId`/`ActWizInspection`/`ActWizWorldManip`/`ActWizPlayerAdmin`/`ActWizComm`) match between their defining tasks, the ASan filters, and the spec.
+
+---
+
+## Wave 3 Exit (2026-07-12)
+
+**Final commit:** `84a8d4e` (branch `modernization/phase-4-wave-3`, 27 commits off master `1776a18`).
+**Merge decision:** owner's (pending at write time; second CI run in flight).
+
+### Battery actuals
+
+- **macOS native:** ctest 979 pass / 0 fail / 71 skip; boot golden byte-identical; per-task ASan runs clean on every new suite.
+- **rots64:** ctest 979 / 0 / 73; boot golden byte-identical.
+- **i386 container (finalization-only per the 2026-07-11 second cadence amendment):** ctest 979 / 0 / 14; boot golden byte-identical; monolithic tests-Makefile runner green up to the documented tolerated qemu SIGSEGV at `AccountManagement.FormatsCharacterPromptWithLinkedCharacterList` (zero failures before it — same signature and disposition as the USV exit). Two qemu hangs (one mid-`make`, one post-SIGSEGV) killed + rerun green per the wave's operational guidance.
+- **Four-platform CI:** run 1 (29179627882) — linux-x64, linux-i386-legacy, macos-arm64 GREEN; windows-msvc FAILED exactly 2 new ActInfoObjectId tests, root-caused to MSVC Debug specifics (0xCC uninitialized-fill in a test fixture AND a real product guard bug — see deltas). Fixed in `bd721b9`/`e7e3e7d`/`84a8d4e`; run 2 (29180267281) result recorded in the ledger.
+
+### Deliverables
+
+- ~770 sprintf/strcpy/strcat sites across `act_info.cpp` (4,724 lines) + `act_wiz.cpp` (4,110 lines) converted to `std::format`/`std::string` composition or left with written justifications (buf-aliasing display cluster, dynamic-format-string branches, parser buffers — in-code comments + the `bd50cf2` commit ledger).
+- 221 new characterization tests in 8 suites (ActInfoPerception 21, ActInfoSelfStatus 27, ActInfoWorldSocial 10, ActInfoObjectId 13, ActWizInspection 85, ActWizWorldManip 14, ActWizPlayerAdmin 35, ActWizComm 16); suite total 758 → 979.
+- **RAII ledger:** `do_time`/`do_rank` `nth()` + `do_fame` `pkill_get_string`×3/`rots_asprintf` → `take_cstring()` helper (null-guarded); `wizlock_msg` global `char*` → `std::string` (consumers `interpre.cpp:2751/3012` → `.c_str()`), also fixing the re-set leak. Out-of-scope (documented): `do_poofset` `str_dup` and `do_load`/`do_purge` world-graph ownership.
+- Dead code deleted with caller-grep proof: `SCMD_PARDON` case body (Task 7).
+
+### Behavior deltas (all disclosed; everything else byte-identical, goldens untouched)
+
+1. `take_cstring` allocation-failure NULL → `"(null)"` (glibc parity; old UB-crash under std::format).
+2. Never-set `wizlock_msg` (`-r` boot flag) → empty send instead of `strlen(nullptr)` crash — a real latent crash fixed.
+3. `do_top` unmatched-race-token: indeterminate stack bytes → empty string.
+4. `do_flag_values_display` row guard: pointer-compare vs `""` → `label[0] != '\0'` (`bd721b9`) — byte-identical wherever literals pool (all canonical platforms); fixes always-true guard emitting garbage rows on non-pooling MSVC Debug.
+
+### Golden integrity
+
+Zero files under `src/tests/goldens/` or `docs/superpowers/goldens/` touched in any of the 27 commits (final-review verified). No `UPDATE_GOLDENS`/`capture` run all wave.
+
+### Reviews
+
+Per-task: 9 task reviews (Sonnet ×8, Opus for the unpinned sweep), 3 fix loops (Task 1 missing pins; Task 3 take_cstring null-guard; Task 4 char[N] casts — the class later re-bitten and closed wave-wide). Final whole-branch review (Fable): READY TO MERGE after 3 fix commits; corrected-scan confirms residual uncast char[N]→std::format class is ZERO in both files.
+
+### Deferred / backlog
+
+fight.cpp/db.cpp/comm.cpp (last per parent spec); RAII lifecycle-audit wave; file splitting; Wave-2 leftovers (DO_SAY hardening, stale src/tags, shape* bugs); pre-existing bugs disclosed this wave: `db.cpp` `write_player_text()` pwdcrypt overflow under ASan, `room_data` ctor uninitialized fields; buf-aliasing display cluster conversion (needs its own characterization effort); prompt `PRF_DISPTEXT` dynamic-format branch.

@@ -20,10 +20,10 @@
 #include "account_management.h"
 #include "color.h"
 #include "comm.h"
-#include "db.h"
-#include "handler.h"
 #include "convert_exploits.h"
 #include "convert_plrobjs.h"
+#include "db.h"
+#include "handler.h"
 #include "interpre.h"
 #include "limits.h"
 #include "mail.h"
@@ -67,7 +67,7 @@ extern struct room_data world;
 
 extern int social_command_number;
 extern char* wizlock_default;
-extern char* wizlock_msg;
+extern std::string wizlock_msg;
 extern int top_of_p_table;
 extern char* START_MESSG;
 extern char* WELC_MESSG;
@@ -2486,7 +2486,7 @@ const ActiveAccountCharacterSession* first_restricting_active_account_session(
 bool account_has_high_level_linked_character(const account::AccountData& account_data)
 {
     for (const std::string& linked_character : account_data.characters) {
-        char_file_u stored_character {};
+        char_file_u stored_character { };
         if (!account::read_account_character_file(
                 kAccountStorageRoot, account_data.account_name, linked_character, &stored_character, nullptr))
             continue;
@@ -2748,7 +2748,7 @@ void complete_existing_character_login(struct descriptor_data* d, int load_resul
     if (GET_LEVEL(d->character) < restrict) {
         clear_account_backed_object_bytes_for_character(d->character);
         SEND_TO_Q("The game is temporarily restricted.\r\nTry again later.", d);
-        SEND_TO_Q(wizlock_msg, d);
+        SEND_TO_Q(wizlock_msg.c_str(), d);
         SEND_TO_Q("\n\r", d);
         STATE(d) = CON_CLOSE;
         vmudlog(NRM, "Request for login denied for %s [%s] (wizlock)", GET_NAME(d->character), d->host);
@@ -3009,7 +3009,7 @@ void nanny(struct descriptor_data* d, char* arg)
             if (restrict) {
                 SEND_TO_Q("Sorry, new players can't be created at the moment.\r\n",
                     d);
-                SEND_TO_Q(wizlock_msg, d);
+                SEND_TO_Q(wizlock_msg.c_str(), d);
                 SEND_TO_Q("\n\r", d);
                 vmudlog(NRM, "Request for new char %s denied from %s (wizlock)",
                     GET_NAME(d->character), d->host);
@@ -4488,7 +4488,7 @@ int new_player_select(struct descriptor_data* d, char* arg)
 void introduce_char(struct descriptor_data* d)
 {
     FILE* fp;
-    char_file_u stored_character {};
+    char_file_u stored_character { };
     const bool account_backed_character = *d->account_name != '\0';
     if (account_backed_character) {
         account::AccountData account_data;
@@ -4525,7 +4525,7 @@ void introduce_char(struct descriptor_data* d)
             char existing_name[MAX_INPUT_LENGTH];
             strncpy(existing_name, new_character_name, sizeof(existing_name) - 1);
             existing_name[sizeof(existing_name) - 1] = '\0';
-            char_file_u existing_character {};
+            char_file_u existing_character { };
             if (load_char(existing_name, &existing_character) > -1 && !IS_SET(existing_character.specials2.act, PLR_DELETED)) {
                 SEND_TO_Q("That character already exists.\n\r", d);
                 SEND_TO_Q("New character creation cancelled.\n\r", d);

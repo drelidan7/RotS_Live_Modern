@@ -37,6 +37,7 @@
 #include "char_utils.h"
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -328,75 +329,73 @@ char* find_ex_description(char* word, struct extra_descr_data* list)
 
 void show_obj_to_char(struct obj_data* object, struct char_data* ch, int mode)
 {
-    char found;
-
-    *buf = '\0';
+    // Accumulates the message this call sends; replaces the old global `buf`
+    // accumulation (idiom 3). `object->description`/`short_description` are
+    // both truthy-guarded before use here, so no nz() wrap is needed at
+    // either site. The old `char found;` write-only flag (set on every flag
+    // branch below but never read) is dropped entirely -- dead state, not a
+    // behavior change.
+    std::string out;
 
     if ((mode == 0) && object->description)
-        sprintf(buf, "%s", object->description);
+        out = object->description;
     else if (object->short_description && ((mode == 1) || (mode == 2) || (mode == 3) || (mode == 4)))
-        sprintf(buf, "%s", object->short_description);
+        out = object->short_description;
     else if (mode == 5) { /* The trigger will deal with what is sent to ch */
         if (!call_trigger(ON_EXAMINE_OBJECT, object, ch, 0))
             return;
 
         if (object->obj_flags.type_flag == ITEM_NOTE) {
             if (object->action_description) {
-                strcpy(buf, "There is something written upon it:\n\r\n\r");
-                strcat(buf, object->action_description);
+                out = "There is something written upon it:\n\r\n\r";
+                out += object->action_description;
+                // page_string() needs a mutable char*; the global `buf`
+                // staging buffer is reused downstream here (idiom 2).
+                strcpy(buf, out.c_str());
                 page_string(ch->desc, buf, 1);
             } else
                 act("It's blank.", FALSE, ch, 0, 0, TO_CHAR);
             return;
         } else if (object->action_description)
-            strcpy(buf, object->action_description);
+            out = object->action_description;
         else if ((object->obj_flags.type_flag != ITEM_DRINKCON))
-            strcpy(buf, "You see nothing special..\n\r");
+            out = "You see nothing special..\n\r";
         else /* ITEM_TYPE == ITEM_DRINKCON||FOUNTAIN */
-            strcpy(buf, "It looks like a drink container.\n\r");
+            out = "It looks like a drink container.\n\r";
     }
 
     if ((mode != 3) && (mode != 5)) {
-        found = FALSE;
         if (IS_OBJ_STAT(object, ITEM_INVISIBLE)) {
-            strcat(buf, "(invisible)");
-            found = TRUE;
+            out += "(invisible)";
         }
         if (IS_OBJ_STAT(object, ITEM_EVIL) && IS_AFFECTED(ch, AFF_DETECT_INVISIBLE)) {
-            strcat(buf, "..It glows red!");
-            found = TRUE;
+            out += "..It glows red!";
         }
         if (IS_OBJ_STAT(object, ITEM_MAGIC) && !IS_OBJ_STAT(object, ITEM_ANTI_GOOD) && IS_AFFECTED(ch, AFF_DETECT_MAGIC)) {
-            strcat(buf, "..It glows blue!");
-            found = TRUE;
+            out += "..It glows blue!";
         }
         if (IS_OBJ_STAT(object, ITEM_ANTI_GOOD) && IS_OBJ_STAT(object, ITEM_MAGIC) && IS_AFFECTED(ch, AFF_DETECT_MAGIC)) {
-            strcat(buf, "..It glows red!");
-            found = TRUE;
+            out += "..It glows red!";
         }
         if (IS_OBJ_STAT(object, ITEM_WILLPOWER) && IS_SHADOW(ch)) {
-            strcat(buf, " ..It has a powerful aura!");
-            found = TRUE;
+            out += " ..It has a powerful aura!";
         }
         if (IS_OBJ_STAT(object, ITEM_GLOW)) {
-            strcat(buf, "..It has a soft glowing aura!");
-            found = TRUE;
+            out += "..It has a soft glowing aura!";
         }
         if (IS_OBJ_STAT(object, ITEM_HUM)) {
-            strcat(buf, "..It emits a faint humming sound!");
-            found = TRUE;
+            out += "..It emits a faint humming sound!";
         }
         if (IS_OBJ_STAT(object, ITEM_BROKEN)) {
-            strcat(buf, " (broken)");
-            found = TRUE;
+            out += " (broken)";
         }
         if ((GET_ITEM_TYPE(object) == ITEM_LIGHT) && (object->obj_flags.value[2] && object->obj_flags.value[3]))
-            strcat(buf, "..It glows brightly.");
+            out += "..It glows brightly.";
     }
     if (mode != 5)
-        strcat(buf, "\n\r");
+        out += "\n\r";
 
-    send_to_char(buf, ch);
+    send_to_char(out.c_str(), ch);
 }
 
 /** The 'show' flag is true for containers and false for rooms. */
@@ -458,12 +457,11 @@ void show_equipment_to_char(struct char_data* from, struct char_data* to)
 
 extern struct prompt_type health_diagnose[];
 
-void report_char_health(struct char_data *ch, struct char_data *i, char *str) {
+void report_char_health(struct char_data* ch, struct char_data* i, char* str)
+{
     int tmp;
     long long percent; // widen so 1000 * GET_HIT(i) cannot signed-overflow
     const int max_index = 7; // health_diagnose[] has 8 entries (consts.cpp)
-
-    strcpy(str, PERS(i, ch, TRUE, FALSE));
 
     if (GET_MAX_HIT(i) > 0)
         percent = (1000LL * GET_HIT(i)) / GET_MAX_HIT(i);
@@ -473,7 +471,11 @@ void report_char_health(struct char_data *ch, struct char_data *i, char *str) {
     for (tmp = 0; tmp < max_index && health_diagnose[tmp].value < percent; tmp++)
         ;
 
-    strcat(str, health_diagnose[tmp].message);
+    // `str` is a caller-owned buffer (global `buf`, or a caller's local)
+    // reused/concatenated downstream by callers (diag_char_to_char,
+    // show_char_to_char) -- idiom 2: compose once, strcpy into the existing
+    // out-parameter rather than changing the signature.
+    strcpy(str, std::format("{}{}", PERS(i, ch, TRUE, FALSE), health_diagnose[tmp].message).c_str());
 }
 
 void diag_char_to_char(char_data* looked_at, char_data* viewer)
@@ -486,7 +488,17 @@ void diag_char_to_char(char_data* looked_at, char_data* viewer)
     *buf = 0;
     report_char_health(viewer, looked_at, buf);
     report_char_mentals(looked_at, str, 0);
-    sprintf(buf, "%s%s is %s.\n\r", buf, strname, str);
+    // `str`/`strname` are local char[255] arrays used as std::format
+    // arguments -- static_cast<const char*> per the char[N]-decay rule
+    // (catalog item 5); the old sprintf(buf, "%s...", buf, ...) read buf as
+    // its own source before overwriting it, so composing into a temporary
+    // std::string first and strcpy()'ing the result in removes that
+    // self-reference hazard while producing identical bytes (same pattern
+    // as do_look's room-flags line, act_info.cpp).
+    strcpy(buf,
+        std::format("{}{} is {}.\n\r", static_cast<const char*>(buf),
+            static_cast<const char*>(strname), static_cast<const char*>(str))
+            .c_str());
     send_to_char(buf, viewer);
     if (IS_NPC(looked_at)) {
         report_mob_age(viewer, looked_at);
@@ -502,15 +514,26 @@ void diag_char_to_char(char_data* looked_at, char_data* viewer)
         game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
         bool is_protected = !bb_instance.is_target_valid(viewer, looked_at);
         if (looked_at->is_affected() == false && is_protected == false && is_exposed_to_elements == false) {
-            sprintf(buf, "%s is not affected by anything.\n\r", strname);
+            strcpy(buf,
+                std::format("{} is not affected by anything.\n\r", static_cast<const char*>(strname))
+                    .c_str());
             send_to_char(buf, viewer);
         } else {
-            sprintf(buf, "%s is affected by:\n\r", strname);
+            // Preserves the pre-existing overwrite behavior byte-for-byte:
+            // each of these three sprintf()s OVERWROTE buf rather than
+            // appending (only the strcat() loop below appends), so whenever
+            // is_protected or is_exposed_to_elements is true the "is
+            // affected by:" header line -- and, if both are true, the "holy
+            // protection" line too -- is clobbered before send_to_char()
+            // ever sees it. That is existing (if surprising) behavior, not
+            // something this conversion changes.
+            strcpy(buf,
+                std::format("{} is affected by:\n\r", static_cast<const char*>(strname)).c_str());
             if (is_protected) {
-                sprintf(buf, "%-30s (special)\n\r", "holy protection");
+                strcpy(buf, std::format("{:<30} (special)\n\r", "holy protection").c_str());
             }
             if (is_exposed_to_elements) {
-                sprintf(buf, "%-30s (special)\n\r", "expose elements");
+                strcpy(buf, std::format("{:<30} (special)\n\r", "expose elements").c_str());
             }
             for (tmpaff = looked_at->affected; tmpaff; tmpaff = tmpaff->next) {
                 report_affection(tmpaff, str);
@@ -523,6 +546,46 @@ void diag_char_to_char(char_data* looked_at, char_data* viewer)
     }
 }
 
+// WAVE 3 TASK 9 SWEEP -- justified skip, not an oversight.
+//
+// get_char_position_line/get_char_flag_line/show_mount_to_char/
+// show_char_to_char/list_char_to_char/show_room_affection/show_room_weather,
+// plus do_look's case 8 ("look" with no argument, the room-render branch)
+// below, remain on raw strcat()/sprintf() into the global `buf'/`buf2'
+// staging buffers. This is a deliberate extension of Task 1's own
+// documented exclusion (see the "Deliberately NOT unit-tested" note at the
+// top of act_info_format_tests.cpp, which already carves diag_char_to_char
+// and do_look's deep-room-rendering path out of the do_look chunk for the
+// same reason), not a gap Task 1-8 missed:
+//
+//  - Several of these functions rely on POINTER ALIASING rather than their
+//    declared `str'/`character_message' parameter: get_char_flag_line's
+//    "(red aura)" branch and get_char_position_line's POSITION_FIGHTING
+//    "else" branch strcat() into the global `buf' directly instead of the
+//    parameter, which only produces correct output because every current
+//    call site happens to pass `buf + strlen(buf)' as that parameter (an
+//    alias into the same array, not a separate buffer). Converting any one
+//    function in this web to std::string accumulation breaks that aliasing
+//    invariant for every OTHER function still relying on it -- the only
+//    safe conversion unit is "all of them, together, in one pass."
+//  - None of these functions (nor do_look's case 8) has a dedicated unit
+//    test; they are exercised only transitively via scripts/boot-golden.sh's
+//    real room/character rendering, which does not cover every branch
+//    (mounted riders, every position, every room-affection type, every
+//    PRF_ROOMFLAGS/PRF_ADVANCED_VIEW combination).
+//  - do_look is the single most frequently executed player command in the
+//    game; a subtle accumulation-order mistake here (e.g. mis-replicating
+//    the "%s...", buf, ... self-reference overlap, or the buf-vs-parameter
+//    aliasing above) would be a live-gameplay regression with no test to
+//    catch it before a human notices in production.
+//
+// Per this task's brief ("if a site is too gnarly to convert with
+// confidence, LEAVE it with a written justification instead; do not
+// gamble"), this cluster is left as sprintf/strcpy/strcat pending a
+// dedicated future task that adds characterization tests for it FIRST (the
+// TDD-then-transform pattern every other Wave 3 chunk followed) and converts
+// the whole web in one atomic change.
+//
 /*
  * Puts a line into `str' describing how `ch' sees `i'; i.e.:
  * "i is sitting/standing/whatever here."
@@ -673,7 +736,7 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, char* line1, 
     tmpch = i->mount_data.rider;
     tmpnum = i->mount_data.rider_number;
     for (riderno = 0; tmpch && char_exists(tmpnum);
-         tmpch = tmpch->mount_data.next_rider, ++riderno) {
+        tmpch = tmpch->mount_data.next_rider, ++riderno) {
         if (CAN_SEE(ch, tmpch)) {
             tmpnum = tmpch->mount_data.next_rider_number;
             if (GET_POS(tmpch) == POSITION_FIGHTING || GET_POS(tmpch) == POSITION_RESTING)
@@ -698,7 +761,11 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, char* line1, 
             }
 
             if (ch == tmpch) {
-                sprintf(buf + strlen(buf), "%cou", !vis_count ? 'Y' : 'y');
+                // "%cou" ('Y'/'y' + "ou") is a two-way literal choice, not
+                // real interpolation -- a plain strcat of the whole word
+                // avoids a std::format call for something that isn't
+                // actually formatting.
+                strcat(buf, !vis_count ? "You" : "you");
                 you_are_riding = 1;
             } else {
                 /* Unfortunately, act can't take arbitrary numbers of riders */
@@ -1037,7 +1104,6 @@ char* keywords[] = { "north", "east", "south", "west", "up",
 ACMD(do_look)
 {
     char arg1[MAX_INPUT_LENGTH], arg2[MAX_INPUT_LENGTH];
-    char str[2000];
     int keyword_no;
     int j, bits = 0, temp, tmp;
     char found;
@@ -1097,15 +1163,15 @@ ACMD(do_look)
                  * to that direction
                  */
                 if (subcmd == SCMD_LOOK_EXAM) {
-                    sprintf(str, "To the %s you see:\n\r", keywords[keyword_no]);
-                    send_to_char(str, ch);
+                    send_to_char(
+                        std::format("To the {} you see:\n\r", keywords[keyword_no]).c_str(), ch);
                     tmp = ch->in_room;
                     ch->in_room = EXIT(ch, keyword_no)->to_room;
 
                     /* Darkies can't see room contents or description if it's sunny */
                     if (SUN_PENALTY(ch)) {
-                        sprintf(str, "%s\n\r", world[ch->in_room].name);
-                        send_to_char(str, ch);
+                        send_to_char(
+                            std::format("{}\n\r", nz(world[ch->in_room].name)).c_str(), ch);
                         send_to_char("The power of light makes it hard to see.\n\r", ch);
                         ch->in_room = tmp;
                         return;
@@ -1117,20 +1183,23 @@ ACMD(do_look)
                     ch->in_room = tmp;
                 } else {
                     /* They typed look <dir>; look renders the exit's description */
+                    std::string exit_message;
                     if (*(EXIT(ch, keyword_no)->general_description))
-                        sprintf(str, "%s", (EXIT(ch, keyword_no)->general_description));
+                        exit_message = EXIT(ch, keyword_no)->general_description;
                     else {
                         tmp = EXIT(ch, keyword_no)->to_room;
                         if (tmp == NOWHERE)
-                            sprintf(str, "Protogenal chaos.\n\r");
+                            exit_message = "Protogenal chaos.\n\r";
                         else if (IS_DARK(tmp) && !PRF_FLAGGED(ch, PRF_HOLYLIGHT))
-                            sprintf(str, "It's too dark to the %s to see anything.\n\r",
+                            exit_message = std::format(
+                                "It's too dark to the {} to see anything.\n\r",
                                 keywords[keyword_no]);
                         else
-                            sprintf(str, "To the %s you see %s.\n\r", keywords[keyword_no],
-                                world[EXIT(ch, keyword_no)->to_room].name);
+                            exit_message = std::format("To the {} you see {}.\n\r",
+                                keywords[keyword_no],
+                                nz(world[EXIT(ch, keyword_no)->to_room].name));
                     }
-                    send_to_char(str, ch);
+                    send_to_char(exit_message.c_str(), ch);
                 }
             } else { /* There's no room there.. maybe a door? */
                 if (EXIT(ch, keyword_no)->general_description && *(EXIT(ch, keyword_no)->general_description))
@@ -1143,17 +1212,30 @@ ACMD(do_look)
 
             /* Handle different states of doors */
             if (EXIT(ch, keyword_no)->to_room != NOWHERE) {
+                // Each branch is truthy-guarded on EXIT(ch,keyword_no)->keyword
+                // before calling fname(), so fname()'s argument is never null
+                // here -- no nz() wrap needed. `buf` isn't read again before
+                // the next branch overwrites it, so these are one-shot
+                // sprintf+send_to_char sites (idiom 1): send directly,
+                // skipping the global staging buffer.
                 if (IS_SET(EXIT(ch, keyword_no)->exit_info, EX_ISBROKEN) && (EXIT(ch, keyword_no)->keyword)) { /* Broken door */
-                    sprintf(buf, "The %s is broken.\n\r", fname(EXIT(ch, keyword_no)->keyword));
-                    send_to_char(buf, ch);
+                    send_to_char(
+                        std::format("The {} is broken.\n\r", fname(EXIT(ch, keyword_no)->keyword))
+                            .c_str(),
+                        ch);
                 } else if (IS_SET(EXIT(ch, keyword_no)->exit_info, EX_CLOSED) && (EXIT(ch, keyword_no)->keyword)) { /* Closed door */
                     if (!IS_SET(EXIT(ch, keyword_no)->exit_info, EX_ISHIDDEN)) {
-                        sprintf(buf, "The %s is closed.\n\r", fname(EXIT(ch, keyword_no)->keyword));
-                        send_to_char(buf, ch);
+                        send_to_char(
+                            std::format(
+                                "The {} is closed.\n\r", fname(EXIT(ch, keyword_no)->keyword))
+                                .c_str(),
+                            ch);
                     }
                 } else if (IS_SET(EXIT(ch, keyword_no)->exit_info, EX_ISDOOR) && EXIT(ch, keyword_no)->keyword) { /* Open door */
-                    sprintf(buf, "The %s is open.\n\r", fname(EXIT(ch, keyword_no)->keyword));
-                    send_to_char(buf, ch);
+                    send_to_char(
+                        std::format("The {} is open.\n\r", fname(EXIT(ch, keyword_no)->keyword))
+                            .c_str(),
+                        ch);
                 }
             }
         } else
@@ -1173,11 +1255,12 @@ ACMD(do_look)
                     else { /* It's not empty, how full is it? */
                         if (tmp_object->obj_flags.value[0]) {
                             temp = (tmp_object->obj_flags.value[1] * 3) / tmp_object->obj_flags.value[0];
-                            sprintf(buf, "It's %sfull of a %s liquid.\n\r", fullness[temp],
-                                color_liquid[tmp_object->obj_flags.value[2]]);
+                            send_to_char(std::format("It's {}full of a {} liquid.\n\r", fullness[temp],
+                                             color_liquid[tmp_object->obj_flags.value[2]])
+                                             .c_str(),
+                                ch);
                         } else
-                            sprintf(buf, "It's max_content is zero, beware!\n\r");
-                        send_to_char(buf, ch);
+                            send_to_char("It's max_content is zero, beware!\n\r", ch);
                     }
                 } else if (GET_ITEM_TYPE(tmp_object) == ITEM_CONTAINER) {
                     /* Found a normal container; i.e.: backpack, pouch, etc */
@@ -1285,7 +1368,7 @@ ACMD(do_look)
             /* Is it maybe something in your inventory? */
             if (!found)
                 for (tmp_object = ch->carrying; tmp_object && !found;
-                     tmp_object = tmp_object->next_content)
+                    tmp_object = tmp_object->next_content)
                     if (CAN_SEE_OBJ(ch, tmp_object)) {
                         tmp_desc = find_ex_description(arg2, tmp_object->ex_description);
                         if (tmp_desc) {
@@ -1297,7 +1380,7 @@ ACMD(do_look)
             /* Ok.. how about an object lying around in the room? */
             if (!found)
                 for (tmp_object = world[ch->in_room].contents; tmp_object && !found;
-                     tmp_object = tmp_object->next_content)
+                    tmp_object = tmp_object->next_content)
                     if (CAN_SEE_OBJ(ch, tmp_object)) {
                         tmp_desc = find_ex_description(arg2, tmp_object->ex_description);
                         if (tmp_desc) {
@@ -1318,6 +1401,11 @@ ACMD(do_look)
         break;
 
     case 8: /* look '' */
+        // WAVE 3 TASK 9 SWEEP: this room-render block's remaining
+        // strcpy/strcat/sprintf sites are a justified skip -- see the
+        // block comment above get_char_position_line (act_info.cpp) for
+        // the full reasoning (aliasing-dependent helper web, no unit
+        // tests, single hottest player command).
         strcpy(buf2, CC_USE(ch, COLOR_ROOM));
         strcat(buf2, world[ch->in_room].name);
         if (PRF_FLAGGED(ch, PRF_ROOMFLAGS)) {
@@ -1325,15 +1413,30 @@ ACMD(do_look)
                 strcpy(buf, "NOFLAGS");
             else
                 sprintbit((long)world[ch->in_room].room_flags, room_bits, buf, 0);
-            sprintf(buf2, "%s (#%d) [ %s, %s]", buf2, world[ch->in_room].number,
-                sector_types[world[ch->in_room].sector_type], buf);
+            // The old sprintf(buf2, "%s...", buf2, ...) self-referenced buf2
+            // as both destination and source (an sprintf-overlap antipattern
+            // that happens to work because glibc reads %s's source before
+            // writing, but is not something to keep relying on). Composing
+            // into a temporary std::string first and strcpy()'ing the result
+            // in removes that hazard while producing the identical bytes;
+            // static_cast<const char*> decays the char[MAX_STRING_LENGTH]
+            // globals per the libc++/libstdc++ char[N]-to-std::format rule.
+            strcpy(buf2,
+                std::format("{} (#{}) [ {}, {}]", static_cast<const char*>(buf2),
+                    world[ch->in_room].number, sector_types[world[ch->in_room].sector_type],
+                    static_cast<const char*>(buf))
+                    .c_str());
         } else if (PRF_FLAGGED(ch, PRF_ADVANCED_VIEW)) {
             if (IS_SET(world[ch->in_room].room_flags, HIDE_VNUM)) {
-                sprintf(buf2, "%s (???) [ %s ]", buf2,
-                    sector_types[world[ch->in_room].sector_type]);
+                strcpy(buf2,
+                    std::format("{} (???) [ {} ]", static_cast<const char*>(buf2),
+                        sector_types[world[ch->in_room].sector_type])
+                        .c_str());
             } else {
-                sprintf(buf2, "%s (#%d) [ %s ]", buf2, world[ch->in_room].number,
-                    sector_types[world[ch->in_room].sector_type]);
+                strcpy(buf2,
+                    std::format("{} (#{}) [ {} ]", static_cast<const char*>(buf2),
+                        world[ch->in_room].number, sector_types[world[ch->in_room].sector_type])
+                        .c_str());
             }
         }
 
@@ -1474,7 +1577,8 @@ ACMD(do_read)
         return;
     }
 
-    sprintf(buf1, "at %s", argument);
+    // buf1 is reused downstream (handed to do_look as its argument) -- idiom 2.
+    strcpy(buf1, std::format("at {}", argument).c_str());
     do_look(ch, buf1, wtl, 15, 0);
 }
 
@@ -1509,7 +1613,9 @@ ACMD(do_examine)
     if (tmp_object) {
         if ((GET_ITEM_TYPE(tmp_object) == ITEM_DRINKCON) || (GET_ITEM_TYPE(tmp_object) == ITEM_FOUNTAIN) || (GET_ITEM_TYPE(tmp_object) == ITEM_CONTAINER)) {
             send_to_char("When you look inside, you see:\n\r", ch);
-            sprintf(buf, "in %s", argument);
+            // `buf` here is do_examine's own local char[100] (reused
+            // downstream as do_look's argument) -- idiom 2.
+            strcpy(buf, std::format("in {}", argument).c_str());
             do_look(ch, buf, wtl, 15, 0);
         }
     }
@@ -1518,10 +1624,14 @@ ACMD(do_examine)
 ACMD(do_exits)
 {
     int door, tmp;
-    char* exits[] = { "North", "East ", "South", "West ", "Up   ", "Down " };
-    char* sun_exits[] = { "#North#", "#East# ", "#South#", "#West# ", "#Up#   ", "#Down# " };
+    const char* const exits[] = { "North", "East ", "South", "West ", "Up   ", "Down " };
+    const char* const sun_exits[]
+        = { "#North#", "#East# ", "#South#", "#West# ", "#Up#   ", "#Down# " };
 
-    *buf = '\0';
+    // Accumulates the exit lines; replaces the old `buf + strlen(buf)`
+    // accumulation (idiom 3). Not reused past this function, so a local
+    // std::string (rather than the global staging buffer) is enough.
+    std::string out;
 
     for (door = 0; door <= 5; door++)
         if (EXIT(ch, door))
@@ -1530,45 +1640,45 @@ ACMD(do_exits)
 
                 if (!tmp && (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED) || IS_SET(EXIT(ch, door)->exit_info, EX_ISBROKEN))) {
                     if (GET_LEVEL(ch) >= LEVEL_IMMORT) {
-                        sprintf(buf + strlen(buf), "%-7s - [%7d][w:%2d] %s\n\r", exits[door],
+                        out += std::format("{:<7} - [{:>7}][w:{:>2}] {}\n\r", exits[door],
                             world[EXIT(ch, door)->to_room].number, EXIT(ch, door)->exit_width,
-                            world[EXIT(ch, door)->to_room].name);
+                            nz(world[EXIT(ch, door)->to_room].name));
                     } else {
                         tmp = ch->in_room;
                         ch->in_room = EXIT(ch, door)->to_room;
                         if (!CAN_SEE(ch) && !PRF_FLAGGED(ch, PRF_HOLYLIGHT)) {
-                            sprintf(buf + strlen(buf), "%-7s - Too dark to tell\n\r",
+                            out += std::format("{:<7} - Too dark to tell\n\r",
                                 (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(tmp, ch->in_room, door))
                                     ? sun_exits[door]
                                     : exits[door]);
                         } else {
-                            sprintf(buf + strlen(buf), "%-7s - %s\n\r",
+                            out += std::format("{:<7} - {}\n\r",
                                 (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(tmp, ch->in_room, door))
                                     ? sun_exits[door]
                                     : exits[door],
-                                world[ch->in_room].name);
+                                nz(world[ch->in_room].name));
                         }
                         ch->in_room = tmp;
                     }
                 } else {
                     if (!IS_SET(EXIT(ch, door)->exit_info, EX_ISHIDDEN)) {
-                        sprintf(buf + strlen(buf), "%-7s - Closed %s\n\r",
+                        out += std::format("{:<7} - Closed {}\n\r",
                             (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(ch->in_room, ch->in_room, door))
                                 ? sun_exits[door]
                                 : exits[door],
-                            EXIT(ch, door)->keyword);
+                            nz(EXIT(ch, door)->keyword));
                     } else if (ch->player.level >= LEVEL_GOD)
-                        sprintf(buf + strlen(buf), "%-7s - *Hidden* %s\n\r",
+                        out += std::format("{:<7} - *Hidden* {}\n\r",
                             (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(ch->in_room, ch->in_room, door))
                                 ? sun_exits[door]
                                 : exits[door],
-                            EXIT(ch, door)->keyword);
+                            nz(EXIT(ch, door)->keyword));
                 }
             }
     send_to_char("Obvious exits:\n\r", ch);
 
-    if (*buf)
-        send_to_char(buf, ch);
+    if (!out.empty())
+        send_to_char(out.c_str(), ch);
     else
         send_to_char(" None.\n\r", ch);
 }
@@ -1626,16 +1736,15 @@ void add_move_report(int real_move, char* bf)
 ACMD(do_info)
 {
     int tmp;
-    char* bufpt;
     struct time_info_data playing_time;
     int room_move_cost(struct char_data*, struct room_data*);
     struct time_info_data real_time_passed(time_t, time_t);
     extern const char* specialize_name[];
 
-    bufpt = buf;
+    std::string out;
 
     /* `ch's name, title, alignment, sex and race */
-    bufpt += sprintf(bufpt, "You are %s %s, %s (%d) %s %s.\n\r", GET_NAME(ch), GET_TITLE(ch),
+    out += std::format("You are {} {}, {} ({}) {} {}.\n\r", nz(GET_NAME(ch)), nz(GET_TITLE(ch)),
         IS_GOOD(ch)       ? "a good"
             : IS_EVIL(ch) ? "an evil"
                           : "a neutral",
@@ -1643,45 +1752,45 @@ ACMD(do_info)
         pc_races[GET_RACE(ch)]);
 
     /* `ch's level */
-    bufpt += sprintf(bufpt, "You have reached level %d.\n\r", GET_LEVEL(ch));
+    out += std::format("You have reached level {}.\n\r", GET_LEVEL(ch));
 
     /* `ch's class proficiencies */
-    bufpt += sprintf(bufpt,
-        "You are level %d Warrior, %d Ranger, "
-        "%d Mystic, and %d Mage.\n\r",
+    out += std::format(
+        "You are level {} Warrior, {} Ranger, "
+        "{} Mystic, and {} Mage.\n\r",
         GET_PROF_LEVEL(PROF_WARRIOR, ch), GET_PROF_LEVEL(PROF_RANGER, ch),
         GET_PROF_LEVEL(PROF_CLERIC, ch), GET_PROF_LEVEL(PROF_MAGE, ch));
 
     /* `ch's specialization */
     game_types::player_specs spec = utils::get_specialization(*ch);
     if (spec == game_types::PS_None || spec == game_types::PS_Count) {
-        bufpt += sprintf(bufpt, "You are not specialized in anything.\n\r");
+        out += "You are not specialized in anything.\n\r";
     } else {
-        bufpt += sprintf(bufpt, "You are specialized in %s.\n\r", specialize_name[spec]);
+        out += std::format("You are specialized in {}.\n\r", specialize_name[spec]);
     }
 
     /* `ch's age */
     playing_time = real_time_passed((time(0) - ch->player.time.logon) + ch->player.time.played, 0);
-    bufpt += sprintf(bufpt,
-        "You are %d years old, and have played "
-        "%d days and %d hours.\n\r",
+    out += std::format(
+        "You are {} years old, and have played "
+        "{} days and {} hours.\n\r",
         GET_AGE(ch), playing_time.day, playing_time.hours);
 
     /* Is it `ch's birthday today? */
     if (!age(ch).month && !age(ch).day)
-        bufpt += sprintf(bufpt, "It's your birthday today!\r\n");
+        out += "It's your birthday today!\r\n";
 
     /* `ch's weight and height */
-    bufpt += sprintf(bufpt,
-        "You are %d'%d\" high, weight %.1flb and "
-        "carrying %.1flb.\r\n",
+    out += std::format(
+        "You are {}'{}\" high, weight {:.1f}lb and "
+        "carrying {:.1f}lb.\r\n",
         GET_HEIGHT(ch) / 30, (GET_HEIGHT(ch) % 30) * 10 / 25, GET_WEIGHT(ch) / 100.,
         IS_CARRYING_W(ch) / 100.);
 
     /* `ch's hitpoints, stamina, moves and spirit */
-    bufpt += sprintf(bufpt,
-        "You have %d/%d hit points, %d/%d stamina, "
-        "%d/%d moves and %d spirit.\n\r",
+    out += std::format(
+        "You have {}/{} hit points, {}/{} stamina, "
+        "{}/{} moves and {} spirit.\n\r",
         GET_HIT(ch), GET_MAX_HIT(ch), GET_MANA(ch), GET_MAX_MANA(ch), GET_MOVE(ch),
         GET_MAX_MOVE(ch), utils::get_spirits(ch));
 
@@ -1699,76 +1808,80 @@ ACMD(do_info)
         float bonus_move_regen = get_bonus_move_gain(ch);
         const char* move_symbol = bonus_move_regen > 0.0f ? "+" : "";
 
-        bufpt += sprintf(bufpt,
-            "You regain %.0f (%s%.0f) health, %.0f (%s%.0f) stamina, and %.0f "
-            "(%s%.0f) moves per hour.\n\r",
+        out += std::format(
+            "You regain {:.0f} ({}{:.0f}) health, {:.0f} ({}{:.0f}) stamina, and {:.0f} "
+            "({}{:.0f}) moves per hour.\n\r",
             health_regen, health_symbol, bonus_health_regen, mana_regen, mana_symbol,
             bonus_mana_regen, move_regen, move_symbol, bonus_move_regen);
     }
 
     /* `ch's wealth */
-    bufpt += sprintf(bufpt, "You have %s.\n\r", money_message(GET_GOLD(ch), 1));
+    out += std::format("You have {}.\n\r", money_message(GET_GOLD(ch), 1));
 
     /* `ch's OB, DB, PB, and attack speed */
-    bufpt += sprintf(bufpt,
-        "Your OB is %d, dodge is %d, parry %d, "
-        "and your attack speed is %d.\r\n"
-        "Your armour absorbs about %d%% damage, and ",
+    out += std::format(
+        "Your OB is {}, dodge is {}, parry {}, "
+        "and your attack speed is {}.\r\n"
+        "Your armour absorbs about {}% damage, and ",
         get_real_OB(ch), get_real_dodge(ch), get_real_parry(ch),
         utils::get_energy_regen(*ch) / 5, get_percent_absorb(ch));
 
     /* A small blurb on `ch's spellsave; should be its own function */
     if (ch->specials2.saving_throw < 0)
-        bufpt += sprintf(bufpt, "leaves you helpless against magical "
-                                "attacks.\r\n");
+        out += "leaves you helpless against magical attacks.\r\n";
     else if (!ch->specials2.saving_throw)
-        bufpt += sprintf(bufpt, "makes you extremely sensitive to magic.\r\n");
+        out += "makes you extremely sensitive to magic.\r\n";
     else if (ch->specials2.saving_throw > 0 && ch->specials2.saving_throw < 5)
-        bufpt += sprintf(bufpt, "gives you a meagre resilience to magic.\r\n");
+        out += "gives you a meagre resilience to magic.\r\n";
     else if (ch->specials2.saving_throw > 4 && ch->specials2.saving_throw < 12)
-        bufpt += sprintf(bufpt, "callouses you to the effects of magic.\r\n");
+        out += "callouses you to the effects of magic.\r\n";
     else
-        bufpt += sprintf(bufpt, "renders you numb to magical onslaught.\r\n");
+        out += "renders you numb to magical onslaught.\r\n";
 
     /* `ch's mystic abilities (perception and willpower) */
-    bufpt += sprintf(bufpt,
-        "Your spiritual perception is %d%%, "
-        "willpower: %d,\r\n",
+    out += std::format(
+        "Your spiritual perception is {}%, "
+        "willpower: {},\r\n",
         GET_PERCEPTION(ch), GET_WILLPOWER(ch));
 
     player_spec::battle_mage_handler battle_mage_handler(ch);
-    bufpt += sprintf(bufpt,
-        "Your spell penetration is %d, "
-        "and your spell power is %d,\n\r",
+    out += std::format(
+        "Your spell penetration is {}, "
+        "and your spell power is {},\n\r",
         battle_mage_handler.get_bonus_spell_pen(ch->points.get_spell_pen()),
         battle_mage_handler.get_bonus_spell_power(ch->points.get_spell_power()));
 
     /* `ch's skill encumbrance and leg encumbrance */
-    bufpt += sprintf(bufpt,
-        "Your skill encumbrance is %d, and your "
-        "movement is encumbered by %d.\n\r",
+    out += std::format(
+        "Your skill encumbrance is {}, and your "
+        "movement is encumbered by {}.\n\r",
         utils::get_encumbrance(*ch), utils::get_leg_encumbrance(*ch));
 
-    /* How much effort `ch' has to put into moving in this room */
+    /* How much effort `ch' has to put into moving in this room -- a local
+     * staging buffer bridges add_move_report()'s legacy char-pointer +
+     * strcat() signature into the std::string accumulation (transform idiom
+     * catalog item 3), same shape as do_score's weapon-master interop below. */
     tmp = room_move_cost(ch, &world[ch->in_room]);
-    add_move_report(tmp, bufpt);
-    bufpt += strlen(bufpt);
+    char move_report_stage[MAX_STRING_LENGTH];
+    move_report_stage[0] = '\0';
+    add_move_report(tmp, move_report_stage);
+    out += move_report_stage;
 
     /* `ch's total experience and TNL */
     if (GET_LEVEL(ch) < LEVEL_IMMORT - 1)
-        bufpt += sprintf(bufpt,
-            "You have scored %d experience points, and "
-            "need %d more to advance.\n\r",
+        out += std::format(
+            "You have scored {} experience points, and "
+            "need {} more to advance.\n\r",
             GET_EXP(ch), xp_to_level(GET_LEVEL(ch) + 1) - GET_EXP(ch));
     else
-        bufpt += sprintf(bufpt, "You have scored %d experience points.\r\n", GET_EXP(ch));
+        out += std::format("You have scored {} experience points.\r\n", GET_EXP(ch));
 
     /* `ch's stats */
     if (GET_LEVEL(ch) > 5)
-        bufpt += sprintf(bufpt,
-            "Strength: %d/%d, Intelligence: %d/%d, "
-            "Will: %d/%d, Dexterity: %d/%d\r\n             "
-            "Constitution: %d/%d, Learning Ability: %d/%d.\r\n",
+        out += std::format(
+            "Strength: {}/{}, Intelligence: {}/{}, "
+            "Will: {}/{}, Dexterity: {}/{}\r\n             "
+            "Constitution: {}/{}, Learning Ability: {}/{}.\r\n",
             GET_STR(ch), GET_STR_BASE(ch), GET_INT(ch), GET_INT_BASE(ch), GET_WILL(ch),
             GET_WILL_BASE(ch), GET_DEX(ch), GET_DEX_BASE(ch), GET_CON(ch),
             GET_CON_BASE(ch), GET_LEA(ch), GET_LEA_BASE(ch));
@@ -1776,55 +1889,55 @@ ACMD(do_info)
     /* `ch's position */
     switch (GET_POS(ch)) {
     case POSITION_DEAD:
-        bufpt += sprintf(bufpt, "You are DEAD!\r\n");
+        out += "You are DEAD!\r\n";
         break;
 
     case POSITION_INCAP:
-        bufpt += sprintf(bufpt, "You are incapacitated, slowly fading away..\r\n");
+        out += "You are incapacitated, slowly fading away..\r\n";
         break;
 
     case POSITION_STUNNED:
-        bufpt += sprintf(bufpt, "You are stunned!  You can't move!\r\n");
+        out += "You are stunned!  You can't move!\r\n";
         break;
 
     case POSITION_SLEEPING:
-        bufpt += sprintf(bufpt, "You are sleeping.\r\n");
+        out += "You are sleeping.\r\n";
         break;
 
     case POSITION_RESTING:
-        bufpt += sprintf(bufpt, "You are resting.\n\r");
+        out += "You are resting.\n\r";
         break;
 
     case POSITION_SITTING:
-        bufpt += sprintf(bufpt, "You are sitting.\r\n");
+        out += "You are sitting.\r\n";
         break;
 
     case POSITION_FIGHTING:
         if (ch->specials.fighting)
-            bufpt += sprintf(bufpt, "You are fighting %s.\r\n",
+            out += std::format("You are fighting {}.\r\n",
                 PERS(ch->specials.fighting, ch, FALSE, FALSE));
         else
-            bufpt += sprintf(bufpt, "You are fighting thin air.\r\n");
+            out += "You are fighting thin air.\r\n";
         break;
 
     case POSITION_STANDING:
-        bufpt += sprintf(bufpt, "You are standing.\r\n");
+        out += "You are standing.\r\n";
         break;
 
     default:
-        bufpt += sprintf(bufpt, "You are floating.\r\n");
+        out += "You are floating.\r\n";
         break;
     }
 
     /* Special conditions */
     if (GET_COND(ch, DRUNK) > 10)
-        bufpt += sprintf(bufpt, "You are intoxicated.\r\n");
+        out += "You are intoxicated.\r\n";
     if (!GET_COND(ch, FULL))
-        bufpt += sprintf(bufpt, "You are hungry.\r\n");
+        out += "You are hungry.\r\n";
     if (!GET_COND(ch, THIRST))
-        bufpt += sprintf(bufpt, "You are thirsty.\r\n");
+        out += "You are thirsty.\r\n";
 
-    send_to_char(buf, ch);
+    send_to_char(out.c_str(), ch);
     do_affections(ch, "", 0, 0, 0);
 }
 
@@ -1856,16 +1969,15 @@ int test_hp(int war_points, int ran_points, int cler_points, int level, int con_
 ACMD(do_score)
 {
     int tmp;
-    char* bufpt;
 
-    bufpt = buf;
-    bufpt += sprintf(bufpt,
-        "You have %d/%d hit, %d/%d stamina, %d/%d moves, "
-        "%d spirit.\r\n",
+    std::string out;
+    out += std::format(
+        "You have {}/{} hit, {}/{} stamina, {}/{} moves, "
+        "{} spirit.\r\n",
         GET_HIT(ch), GET_MAX_HIT(ch), GET_MANA(ch), GET_MAX_MANA(ch), GET_MOVE(ch),
         GET_MAX_MOVE(ch), utils::get_spirits(ch));
 
-    bufpt += sprintf(bufpt, "OB: %d, DB: %d, PB: %d, Speed: %d, Gold: %d", get_real_OB(ch),
+    out += std::format("OB: {}, DB: {}, PB: {}, Speed: {}, Gold: {}", get_real_OB(ch),
         get_real_dodge(ch), get_real_parry(ch), utils::get_energy_regen(*ch) / 5,
         GET_GOLD(ch) / COPP_IN_GOLD);
 
@@ -1873,86 +1985,120 @@ ACMD(do_score)
     if (GET_LEVEL(ch) < LEVEL_IMMORT - 1) {
         tmp = xp_to_level(GET_LEVEL(ch) + 1) - GET_EXP(ch);
         if (tmp < 1000 && tmp > -1000) {
-            bufpt += sprintf(bufpt, ", XP Needed: %d.\n\r", tmp);
+            out += std::format(", XP Needed: {}.\n\r", tmp);
         } else {
-            bufpt += sprintf(bufpt, ", XP Needed: %dK.\n\r", tmp / 1000);
+            out += std::format(", XP Needed: {}K.\n\r", tmp / 1000);
         }
     } else {
-        bufpt += sprintf(bufpt, ".\r\n");
+        out += ".\r\n";
     }
 
     if (utils::get_specialization(*ch) == game_types::PS_LightFighting) {
         obj_data* weapon = ch->equipment[WIELD];
         if (weapon && (weapon->get_bulk() <= 2 || (weapon->get_bulk() == 3 && weapon->get_weight() <= LIGHT_WEAPON_WEIGHT_CUTOFF))) {
-            bufpt += sprintf(bufpt, "The lightness of your weapon lends precision to your strikes.\r\n");
+            out += "The lightness of your weapon lends precision to your strikes.\r\n";
         }
     } else if (utils::get_specialization(*ch) == game_types::PS_HeavyFighting) {
         obj_data* weapon = ch->equipment[WIELD];
         if (weapon && (weapon->get_bulk() >= 4 || (weapon->get_bulk() == 3 && weapon->get_weight() > LIGHT_WEAPON_WEIGHT_CUTOFF))) {
-            bufpt += sprintf(bufpt, "The heft of your weapon lends power to your blows.\r\n");
+            out += "The heft of your weapon lends power to your blows.\r\n";
         }
     } else if (utils::get_specialization(*ch) == game_types::PS_WildFighting && ch->specials.tactics == TACTICS_BERSERK) {
         float health_percentage = ch->tmpabilities.hit / (float)ch->abilities.hit;
         if (health_percentage <= 0.45f) {
-            bufpt += sprintf(bufpt, "Your fury lends speed to your attacks!\r\n");
+            out += "Your fury lends speed to your attacks!\r\n";
         }
     }
 
+    /* weapon_master_handler::append_score_message() is a legacy helper that
+     * writes into a caller-owned char* (transform idiom catalog item 3's
+     * named exception) -- bridge it via a zeroed local staging buffer rather
+     * than changing its signature this wave. Zeroing stage[0] first matters:
+     * the old bufpt-chain relied on bufpt already pointing at a prior
+     * sprintf's null terminator when the helper declines to write (its
+     * `default: break;` returns 0 leaving message_buffer untouched); a fresh
+     * local array has no such terminator. */
+    char stage[MAX_STRING_LENGTH];
+    stage[0] = '\0';
     player_spec::weapon_master_handler weapon_master(ch);
-    bufpt += weapon_master.append_score_message(bufpt);
+    weapon_master.append_score_message(stage);
+    out += stage;
 
     if (GET_COND(ch, DRUNK) > 10) {
-        bufpt += sprintf(bufpt, "You are intoxicated.\n\r");
+        out += "You are intoxicated.\n\r";
     }
 
     if (!GET_COND(ch, FULL)) {
-        bufpt += sprintf(bufpt, "You are hungry.\r\n");
+        out += "You are hungry.\r\n";
     } else if (GET_COND(ch, FULL) < 4 && GET_COND(ch, FULL) > 0) {
-        bufpt += sprintf(bufpt, "You are getting hungry.\r\n");
+        out += "You are getting hungry.\r\n";
     }
 
     if (!GET_COND(ch, THIRST)) {
-        bufpt += sprintf(bufpt, "You are thirsty.\r\n");
+        out += "You are thirsty.\r\n";
     } else if (GET_COND(ch, THIRST) < 4 && GET_COND(ch, THIRST) > 0) {
-        bufpt += sprintf(bufpt, "You are getting thirsty.\r\n");
+        out += "You are getting thirsty.\r\n";
     }
 
-    send_to_char(buf, ch);
+    send_to_char(out.c_str(), ch);
+}
+
+// Local RAII helper for this chunk's malloc'd-char* sites (transform idiom
+// catalog item 10): nth()/pkill_get_string()/rots_asprintf() all return a
+// heap char* the caller owns outright and frees once consumed locally.
+// Capturing it as a std::string immediately -- and freeing the source right
+// there -- removes the free()-call-site bookkeeping the old code needed at
+// every use (and every early-return path) without changing any output byte.
+// Used by do_time, do_fame, and do_rank below (this chunk owns every such
+// allocation site in the file).
+//
+// Null-guard: those producers route through rots_asprintf and can return
+// NULL on allocation failure. The old sprintf("%s", NULL) call sites printed
+// glibc's "(null)" gracefully; std::string(nullptr) is UB, so substitute the
+// same "(null)" literal (matching utils.h's nz() precedent). free(NULL) is
+// well-defined, so the unconditional free stays.
+static std::string take_cstring(char* raw)
+{
+    std::string result(raw ? raw : "(null)");
+    free(raw);
+    return result;
 }
 
 ACMD(do_time)
 {
-    char* bufpt;
-    char* year;
     int weekday, sunrise, sunset, hours;
     extern int sun_events[12][2];
     extern char* weekdays[];
     extern struct time_info_data time_info;
     int get_season();
 
-    bufpt = buf;
-    bufpt += sprintf(bufpt, "It is about %d:00 %s on ",
+    std::string out;
+    out += std::format("It is about {}:00 {} on ",
         time_info.hours % 12 == 0 ? 12 : time_info.hours % 12,
         time_info.hours >= 12 ? "PM" : "AM");
 
     /* 35 days in a month */
     weekday = ((30 * time_info.month) + time_info.day + 1) % 7;
-    bufpt += sprintf(bufpt, "%s, ", weekdays[weekday]);
+    out += std::format("{}, ", weekdays[weekday]);
 
-    /* Get the daytime */
-    day_to_str(&time_info, bufpt);
-    bufpt += strlen(bufpt);
-    bufpt += sprintf(bufpt, ".\r\n");
+    /* Get the daytime -- day_to_str() is a legacy helper that writes into a
+     * caller-owned char* (transform idiom catalog item 3's named exception);
+     * bridge it via a zeroed local staging buffer rather than changing its
+     * signature this wave. */
+    char day_stage[MAX_STRING_LENGTH];
+    day_stage[0] = '\0';
+    day_to_str(&time_info, day_stage);
+    out += day_stage;
+    out += ".\r\n";
 
-    year = nth(time_info.year);
-    bufpt += sprintf(bufpt,
+    std::string year = take_cstring(nth(time_info.year));
+    out += std::format(
         "By the Steward's Reckoning, it is "
-        "the %s year of the fourth age of Arda.\r\n",
+        "the {} year of the fourth age of Arda.\r\n",
         year);
-    free(year);
 
     /* A blurb on the phase of the moon */
-    bufpt += sprintf(bufpt, "The moon is %s and %s.\n\r", moon_phase[weather_info.moonphase],
+    out += std::format("The moon is {} and {}.\n\r", moon_phase[weather_info.moonphase],
         weather_info.moonlight ? "shining" : "not shining");
 
     /* When the sun will rise and set */
@@ -1960,14 +2106,14 @@ ACMD(do_time)
     sunset = sun_events[time_info.month][1];
     if (time_info.hours >= sunrise && time_info.hours < sunset) {
         hours = sunset - time_info.hours;
-        bufpt += sprintf(bufpt, "The sun will set in about %d hour%s.\r\n", hours,
+        out += std::format("The sun will set in about {} hour{}.\r\n", hours,
             hours == 1 ? "" : "s");
     } else {
         hours = sunrise + (time_info.hours < 12 ? -time_info.hours : 24 - time_info.hours);
-        bufpt += sprintf(bufpt, "The sun will rise in about %d hour%s.\n\r", hours,
+        out += std::format("The sun will rise in about {} hour{}.\n\r", hours,
             hours == 1 ? "" : "s");
     }
-    send_to_char(buf, ch);
+    send_to_char(out.c_str(), ch);
 }
 
 char* sky_look[6] = {
@@ -2017,8 +2163,8 @@ ACMD(do_weather)
  */
 ACMD(do_help)
 {
-    int chk, bot, top, mid, minlen, tmp, num, buf2tmp;
-    char chapstr[255], *buf2pt;
+    int chk, bot, top, mid, minlen, tmp, num;
+    char chapstr[255];
     extern int help_summary_length;
     extern char* help;
     extern struct help_index_summary help_content[];
@@ -2029,7 +2175,6 @@ ACMD(do_help)
     for (; isspace(*argument); argument++)
         ;
 
-    buf2pt = buf2;
     /* Find the index for the chapter that the character requested */
     if (subcmd == 1) { /* man (manual) command */
         if (*argument) {
@@ -2048,15 +2193,19 @@ ACMD(do_help)
 
         /* no argument, or no matching chapter */
         if (tmp == help_summary_length) {
-            buf2pt += sprintf(buf2pt, "The manual chapters are:\r\n");
+            std::string out = "The manual chapters are:\r\n";
             for (tmp = 0; tmp < help_summary_length; tmp++)
                 if ((help_content[tmp].imm_only && GET_LEVEL(ch) >= LEVEL_IMMORT) || !help_content[tmp].imm_only) {
-                    buf2tmp = sprintf(buf2pt, "%-18s %-50s\r\n", help_content[tmp].keyword,
+                    std::string line = std::format("{:<18} {:<50}\r\n", help_content[tmp].keyword,
                         help_content[tmp].descr);
-                    CAP(buf2pt);
-                    buf2pt += buf2tmp;
+                    // Same manual-ASCII capitalization as the CAP() macro
+                    // (utils.h) this replaces -- NOT std::toupper(), which
+                    // is locale-sensitive and would diverge from it.
+                    if (!line.empty())
+                        line[0] = UPPER(line[0]);
+                    out += line;
                 }
-            send_to_char(buf2, ch);
+            send_to_char(out.c_str(), ch);
             return;
         }
         num = tmp;
@@ -2084,19 +2233,26 @@ ACMD(do_help)
 
             if (!(chk = strn_cmp(argument, help_content[num].index[mid].keyword, minlen))) {
                 fseek(help_content[num].file, help_content[num].index[mid].pos, SEEK_SET);
-                *buf2 = '\0';
+                // fgets() writes into the shared global `buf` directly (a
+                // parser-adjacent buffer per transform idiom catalog item 8)
+                // -- accumulate its lines into a std::string, then stage the
+                // result into buf2 for page_string(), whose signature takes
+                // a caller-owned char* (catalog item 3's page_string note).
+                std::string entry_text;
                 for (;;) {
                     fgets(buf, 80, help_content[num].file);
                     if (*buf == '#')
                         break;
-                    buf2pt += sprintf(buf2pt, "%s", buf);
+                    entry_text += buf;
                 }
+                strcpy(buf2, entry_text.c_str());
                 page_string(ch->desc, buf2, 1);
                 return;
             } else if (bot >= top) {
-                sprintf(buf2, "There is no entry for '%s' in the %s chapter.\r\n", argument,
-                    help_content[num].keyword);
-                send_to_char(buf2, ch);
+                send_to_char(std::format("There is no entry for '{}' in the {} chapter.\r\n",
+                                 argument, help_content[num].keyword)
+                                 .c_str(),
+                    ch);
                 return;
             } else if (chk > 0)
                 bot = ++mid;
@@ -2105,15 +2261,16 @@ ACMD(do_help)
         }
         return;
     } else if (subcmd == 1) { /* They used manual with a chapter but no argument */
-        buf2pt += sprintf(buf2pt, "Topics in the '%s' chapter are:\r\n", help_content[num].keyword);
+        std::string out
+            = std::format("Topics in the '{}' chapter are:\r\n", help_content[num].keyword);
         for (tmp = 0; tmp < help_content[num].top_of_helpt; tmp++) {
-            buf2pt += sprintf(buf2pt, "%-17s| ", help_content[num].index[tmp].keyword);
+            out += std::format("{:<17}| ", help_content[num].index[tmp].keyword);
             if (!((tmp + 1) % 4))
-                buf2pt += sprintf(buf2pt, "\r\n");
+                out += "\r\n";
         }
         if (tmp % 4)
-            strcat(buf2, "\n\r");
-        send_to_char(buf2, ch);
+            out += "\n\r";
+        send_to_char(out.c_str(), ch);
     } else /* They used help with no first argument */
         send_to_char(help, ch);
 
@@ -2132,11 +2289,17 @@ ACMD(do_who)
     int short_list = 0, num_can_see = 0;
     int who_room = 0, level_limit = 0, who_whitie = 0, who_darkie = 0;
     int who_magi = 0;
-    char buf2[16384], *buf2pt;
+    // Local buf2 deliberately shadows the global 8192-byte buf2 (db.h) --
+    // a "who" listing can exceed that (many connected players), so the
+    // original code sized this staging buffer at 16384 bytes; preserved
+    // here for page_string()'s char* signature (transform idiom catalog
+    // item 3's page_string note) rather than switching to the smaller
+    // global and risking a truncation/overflow regression.
+    char buf2[16384];
     extern char* imm_abbrevs[];
 
-    *buf2 = *name_search = '\0';
-    buf2pt = buf2;
+    *name_search = '\0';
+    std::string out;
 
     for (i = 0; *(argument + i) == ' '; i++)
         ;
@@ -2148,7 +2311,7 @@ ACMD(do_who)
         if (isdigit(*arg)) {
             sscanf(arg, "%d-%d", &low, &high);
             level_limit = 1;
-            buf2pt += sprintf(buf2pt, "Players between level %d and %d\r\n", low, high);
+            out += std::format("Players between level {} and {}\r\n", low, high);
             strcpy(buf, buf1);
         } else if (*arg == '-') {
             mode = *(arg + 1); /* just in case; we destroy arg in the switch */
@@ -2156,7 +2319,7 @@ ACMD(do_who)
             case 'z':
                 localwho = 1;
                 strcpy(buf, buf1);
-                buf2pt += sprintf(buf2pt, "Players in your zone\r\n");
+                out += "Players in your zone\r\n";
                 break;
 
             case 's':
@@ -2168,39 +2331,41 @@ ACMD(do_who)
                 half_chop(buf1, arg, buf);
                 sscanf(arg, "%d-%d", &low, &high);
                 level_limit = 1;
-                buf2pt += sprintf(buf2pt, "Players between level %d and %d\r\n", low, high);
+                out += std::format("Players between level {} and {}\r\n", low, high);
                 break;
 
             case 'n':
                 half_chop(buf1, name_search, buf);
-                buf2pt += sprintf(buf2pt,
-                    "Players with '%s' in their names or titles"
+                // char[N] decay: cast before std::format (BUILD.md "Formatting") --
+                // same class as the leaderstr sites in do_fame/do_rank below.
+                out += std::format(
+                    "Players with '{}' in their names or titles"
                     "\r\n",
-                    name_search);
+                    static_cast<const char*>(name_search));
                 break;
 
             case 'r':
                 who_room = 1;
                 strcpy(buf, buf1);
-                buf2pt += sprintf(buf2pt, "Players in your room\r\n");
+                out += "Players in your room\r\n";
                 break;
 
             case 'w':
                 who_whitie = 1;
                 strcpy(buf, buf1);
-                buf2pt += sprintf(buf2pt, "Humans, Elves, Dwarves, Beornings and Hobbits\r\n");
+                out += "Humans, Elves, Dwarves, Beornings and Hobbits\r\n";
                 break;
 
             case 'm':
                 who_magi = 1;
                 strcpy(buf, buf1);
-                buf2pt += sprintf(buf2pt, "Uruk-Lhuth and Haradrims\r\n");
+                out += "Uruk-Lhuth and Haradrims\r\n";
                 break;
 
             case 'd':
                 who_darkie = 1;
                 strcpy(buf, buf1);
-                buf2pt += sprintf(buf2pt, "Uruk-Hais, Olog-Hais and Common Orcs\r\n");
+                out += "Uruk-Hais, Olog-Hais and Common Orcs\r\n";
                 break;
 
             default:
@@ -2214,13 +2379,12 @@ ACMD(do_who)
         }
     } /* end while (parser) */
 
-    if (!*buf2)
-        buf2pt += sprintf(buf2pt, "Players\r\n");
+    if (out.empty())
+        out += "Players\r\n";
     /* Make a dashline the same size as the header */
-    memset(buf2pt, '-', strlen(buf2) - 2);
-    buf2pt += buf2pt - buf2 - 2;
-    *buf2pt = '\0';
-    buf2pt += sprintf(buf2pt, "\r\n");
+    size_t header_len = out.size();
+    out.append(header_len - 2, '-');
+    out += "\r\n";
 
     /* Cycle through all connected sockets */
     for (d = descriptor_list; d; d = d->next) {
@@ -2263,54 +2427,59 @@ ACMD(do_who)
         /* The short list doesn't show a title, and attempts 4 players per row */
         if (short_list) {
             if (PLR_FLAGGED(tch, PLR_INCOGNITO) && (GET_LEVEL(ch) < LEVEL_IMMORT))
-                buf2pt += sprintf(buf2pt, "[--- %s] %-12.12s%s", RACE_ABBR(tch), GET_NAME(tch),
+                out += std::format("[--- {}] {:<12.12}{}", RACE_ABBR(tch), GET_NAME(tch),
                     !(++num_can_see % 4) ? "\r\n" : "");
             else
-                buf2pt += sprintf(buf2pt, "[%3d %s] %-12.12s%s", GET_LEVEL(tch), RACE_ABBR(tch),
+                out += std::format("[{:3} {}] {:<12.12}{}", GET_LEVEL(tch), RACE_ABBR(tch),
                     GET_NAME(tch), !(++num_can_see % 4) ? "\r\n" : "");
         } else { /* A normal list */
             num_can_see++;
             if (PLR_FLAGGED(tch, PLR_INCOGNITO) && (GET_LEVEL(ch) < LEVEL_IMMORT))
-                buf2pt += sprintf(buf2pt, "[--- %s] ", RACE_ABBR(tch));
+                out += std::format("[--- {}] ", RACE_ABBR(tch));
             else {
                 if (GET_LEVEL(tch) < LEVEL_IMMORT)
-                    buf2pt += sprintf(buf2pt, "[%3d %s] ", GET_LEVEL(tch), RACE_ABBR(tch));
+                    out += std::format("[{:3} {}] ", GET_LEVEL(tch), RACE_ABBR(tch));
                 else
-                    buf2pt += sprintf(buf2pt, "[%s] ", imm_abbrevs[GET_LEVEL(tch) - LEVEL_MINIMM]);
+                    out += std::format("[{}] ", imm_abbrevs[GET_LEVEL(tch) - LEVEL_MINIMM]);
             }
-            buf2pt += sprintf(buf2pt, "%s %s", GET_NAME(tch), GET_TITLE(tch));
+            out += std::format("{} {}", GET_NAME(tch), nz(GET_TITLE(tch)));
 
             if (GET_INVIS_LEV(tch))
-                buf2pt += sprintf(buf2pt, " (i%d)", GET_INVIS_LEV(tch));
+                out += std::format(" (i{})", GET_INVIS_LEV(tch));
             else if (IS_AFFECTED(tch, AFF_INVISIBLE))
-                buf2pt += sprintf(buf2pt, " (invis)");
+                out += " (invis)";
             if (PLR_FLAGGED(tch, PLR_MAILING))
-                buf2pt += sprintf(buf2pt, " (mailing)");
+                out += " (mailing)";
             else if (PLR_FLAGGED(tch, PLR_WRITING))
-                buf2pt += sprintf(buf2pt, " (writing)");
+                out += " (writing)";
             if (d->connected == CON_LINKLS)
-                buf2pt += sprintf(buf2pt, " (linkless)");
+                out += " (linkless)";
             if (PLR_FLAGGED(tch, PLR_RETIRED))
-                buf2pt += sprintf(buf2pt, " (retired)");
+                out += " (retired)";
             if (!PRF_FLAGGED(tch, PRF_NARRATE))
-                buf2pt += sprintf(buf2pt, " (deaf)");
+                out += " (deaf)";
             if (PRF_FLAGGED(tch, PRF_NOTELL))
-                buf2pt += sprintf(buf2pt, " (notell)");
+                out += " (notell)";
             if (PLR_FLAGGED(tch, PLR_ISAFK))
-                buf2pt += sprintf(buf2pt, " (AFK)");
+                out += " (AFK)";
             if (GET_POS(tch) == POSITION_SLEEPING)
-                buf2pt += sprintf(buf2pt, " (sleeping)");
+                out += " (sleeping)";
             if (IS_SHADOW(tch))
-                buf2pt += sprintf(buf2pt, " (shadow)");
-            buf2pt += sprintf(buf2pt, "\n\r");
+                out += " (shadow)";
+            out += "\n\r";
         }
     }
 
     if (short_list && (num_can_see % 4))
-        buf2pt += sprintf(buf2pt, "\n\r");
-    buf2pt += sprintf(buf2pt, "\n\r%d character%s displayed.\n\r", num_can_see,
+        out += "\n\r";
+    out += std::format("\n\r{} character{} displayed.\n\r", num_can_see,
         num_can_see == 1 ? "" : "s");
 
+    // page_string() takes a caller-owned char* (transform idiom catalog
+    // item 3's page_string note); stage the composed text into the
+    // pre-existing 16384-byte buf2 (db.cpp/db.h) rather than changing its
+    // signature this wave.
+    strcpy(buf2, out.c_str());
     page_string(ch->desc, buf2, 1);
 }
 
@@ -2319,10 +2488,9 @@ ACMD(do_who)
 
 ACMD(do_users)
 {
-    char line[200], idletime[10], profname[20];
-    char state[100], *timeptr;
+    char* timeptr;
     char name_search[80], host_search[80];
-    char mode, *format;
+    char mode;
     int low = 0, high = LEVEL_IMPL;
     unsigned int i;
     int showprof = 0, num_can_see = 0, playing = 0, deadweight = 0;
@@ -2397,10 +2565,10 @@ ACMD(do_users)
     }
 
     /* Header */
-    strcpy(line, "Num   Prof       Name         State       Idl  Login@   Site\n\r");
-    strcat(line, "--- --------- ------------ -------------- --- -------- "
-                 "------------------------\n\r");
-    send_to_char(line, ch);
+    send_to_char("Num   Prof       Name         State       Idl  Login@   Site\n\r"
+                 "--- --------- ------------ -------------- --- -------- "
+                 "------------------------\n\r",
+        ch);
 
     one_argument(argument, arg);
 
@@ -2409,6 +2577,8 @@ ACMD(do_users)
             continue;
         if (!d->connected && deadweight)
             continue;
+
+        std::string profname;
         if (!d->connected || (d->connected == CON_LINKLS)) {
             if (d->original)
                 tch = d->original;
@@ -2427,52 +2597,55 @@ ACMD(do_users)
                 continue;
 
             if (d->original)
-                sprintf(profname, "[%3d %s]", GET_LEVEL(d->original), RACE_ABBR(d->original));
+                profname = std::format("[{:3} {}]", GET_LEVEL(d->original), RACE_ABBR(d->original));
             else
-                sprintf(profname, "[%3d %s]", GET_LEVEL(d->character), RACE_ABBR(d->character));
+                profname = std::format("[{:3} {}]", GET_LEVEL(d->character), RACE_ABBR(d->character));
         } else
-            strcpy(profname, "[   -   ]");
+            profname = "[   -   ]";
 
         timeptr = asctime(localtime(&d->login_time));
         timeptr += 11;
         *(timeptr + 8) = '\0';
 
+        std::string state;
         if (!d->connected && d->original)
-            strcpy(state, "Switched");
+            state = "Switched";
         else
-            strcpy(state, connected_types[d->connected]);
+            state = connected_types[d->connected];
 
+        std::string idletime;
         if (d->character && (!d->connected || (d->connected == CON_LINKLS)))
-            sprintf(idletime, "%3d",
-                d->character->specials.timer * SECS_PER_MUD_HOUR / SECS_PER_REAL_MIN);
+            idletime = std::format(
+                "{:3}", d->character->specials.timer * SECS_PER_MUD_HOUR / SECS_PER_REAL_MIN);
         else
-            strcpy(idletime, " - ");
+            idletime = " - ";
 
-        format = "%3d %-9s %-12s %-14s %-3s %-8s ";
-
+        std::string line;
         if (d->character && d->character->player.name) {
             if (d->original)
-                sprintf(line, format, d->desc_num, profname, d->original->player.name, state,
-                    idletime, timeptr);
+                line = std::format("{:3} {:<9} {:<12} {:<14} {:<3} {:<8} ", d->desc_num, profname,
+                    d->original->player.name, state, idletime, timeptr);
             else
-                sprintf(line, format, d->desc_num, profname, d->character->player.name, state,
-                    idletime, timeptr);
+                line = std::format("{:3} {:<9} {:<12} {:<14} {:<3} {:<8} ", d->desc_num, profname,
+                    d->character->player.name, state, idletime, timeptr);
         } else
-            sprintf(line, format, d->desc_num, "   -   ", "UNDEFINED", state, idletime, timeptr);
+            line = std::format("{:3} {:<9} {:<12} {:<14} {:<3} {:<8} ", d->desc_num, "   -   ",
+                "UNDEFINED", state, idletime, timeptr);
 
         if (d->host && *d->host)
-            sprintf(line + strlen(line), "[%s]\n\r", d->host);
+            // char[N] member decay: descriptor_data::host is char[50]
+            // (structs.h) -- cast before std::format (BUILD.md "Formatting").
+            line += std::format("[{}]\n\r", static_cast<const char*>(d->host));
         else
-            strcat(line, "[Hostname unknown]\n\r");
+            line += "[Hostname unknown]\n\r";
 
         if (d->connected || (!d->connected && CAN_SEE(ch, d->character))) {
-            send_to_char(line, ch);
+            send_to_char(line.c_str(), ch);
             num_can_see++;
         }
     }
 
-    sprintf(line, "\n\r%d visible sockets connected.\n\r", num_can_see);
-    send_to_char(line, ch);
+    send_to_char(std::format("\n\r{} visible sockets connected.\n\r", num_can_see).c_str(), ch);
 }
 
 ACMD(do_inventory)
@@ -2520,7 +2693,7 @@ ACMD(do_gen_ps)
         send_to_char(circlemud_version, ch);
         break;
     case SCMD_WHOAMI:
-        send_to_char(strcat(strcpy(buf, GET_NAME(ch)), "\n\r"), ch);
+        send_to_char(std::format("{}\n\r", nz(GET_NAME(ch))).c_str(), ch);
         break;
     }
 }
@@ -2539,10 +2712,14 @@ void perform_mortal_where(struct char_data* ch, char* arg)
                 if (i && CAN_SEE(ch, i) && (i->in_room != NOWHERE) && !other_side(ch, i) && (world[ch->in_room].zone == world[i->in_room].zone)) {
                     tmploc = ch->in_room;
                     ch->in_room = i->in_room;
-                    sprintf(buf, "%-20s - %s\n\r", GET_NAME(i),
-                        (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere");
+                    // ch->in_room is temporarily swapped to i->in_room so
+                    // CAN_SEE(ch) evaluates lighting for i's room -- compose
+                    // the line before restoring tmploc, matching the
+                    // original sprintf-then-restore-then-send order exactly.
+                    std::string line = std::format(
+                        "{:<20} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere");
                     ch->in_room = tmploc;
-                    send_to_char(buf, ch);
+                    send_to_char(line.c_str(), ch);
                 }
             }
     } else { /* print only FIRST char, not all. */
@@ -2550,10 +2727,10 @@ void perform_mortal_where(struct char_data* ch, char* arg)
             if ((i->in_room != NOWHERE) && (!IS_NPC(i)) && (world[i->in_room].zone == world[ch->in_room].zone) && (world[i->in_room].level == world[ch->in_room].level) && CAN_SEE(ch, i) && (!other_side(ch, i)) && isname(arg, i->player.name)) {
                 tmploc = ch->in_room;
                 ch->in_room = i->in_room;
-                sprintf(buf, "%-25s - %s\n\r", GET_NAME(i),
-                    (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere");
+                std::string line = std::format(
+                    "{:<25} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere");
                 ch->in_room = tmploc;
-                send_to_char(buf, ch);
+                send_to_char(line.c_str(), ch);
                 return;
             }
         send_to_char("No-one around by that name.\n\r", ch);
@@ -2575,22 +2752,26 @@ void perform_immort_where(struct char_data* ch, char* arg)
                 i = (d->original ? d->original : d->character);
                 if (i && CAN_SEE(ch, i) && (i->in_room != NOWHERE)) {
                     if (d->original)
-                        sprintf(buf, "%-20s - [%5d] %s (in %s)\n\r", GET_NAME(i),
-                            world[d->character->in_room].number,
-                            world[d->character->in_room].name, GET_NAME(d->character));
+                        send_to_char(std::format("{:<20} - [{:5}] {} (in {})\n\r", GET_NAME(i),
+                                         world[d->character->in_room].number, world[d->character->in_room].name,
+                                         GET_NAME(d->character))
+                                         .c_str(),
+                            ch);
                     else
-                        sprintf(buf, "%-20s - [%5d] %s\n\r", GET_NAME(i), world[i->in_room].number,
-                            world[i->in_room].name);
-                    send_to_char(buf, ch);
+                        send_to_char(std::format("{:<20} - [{:5}] {}\n\r", GET_NAME(i),
+                                         world[i->in_room].number, world[i->in_room].name)
+                                         .c_str(),
+                            ch);
                 }
             }
     } else {
         for (i = character_list; i; i = i->next)
             if (CAN_SEE(ch, i) && i->in_room != NOWHERE && (isname(arg, i->player.name) || mob_index[i->nr].virt == atoi(arg))) {
                 found = 1;
-                sprintf(buf, "%3d. %-25s - [%5d] %s\n\r", ++num, GET_NAME(i),
-                    world[i->in_room].number, world[i->in_room].name);
-                send_to_char(buf, ch);
+                send_to_char(std::format("{:3}. {:<25} - [{:5}] {}\n\r", ++num, GET_NAME(i),
+                                 world[i->in_room].number, world[i->in_room].name)
+                                 .c_str(),
+                    ch);
             }
 
         for (num = 0, k = object_list; k; k = k->next)
@@ -2614,26 +2795,28 @@ void perform_immort_where(struct char_data* ch, char* arg)
                         i = tmpobj->carried_by;
                     else {
                         tmp = tmpobj->in_room;
-                        sprintf(buf, "%3d. %-25s - [%5d] >> Stored in %s\n\r", ++num,
-                            k->short_description, tmp < 0 ? tmp : world[tmp].number,
-                            tmpobj ? tmpobj->short_description : "Something");
-                        send_to_char(buf, ch);
+                        send_to_char(std::format("{:3}. {:<25} - [{:5}] >> Stored in {}\n\r", ++num,
+                                         k->short_description, tmp < 0 ? tmp : world[tmp].number,
+                                         tmpobj ? tmpobj->short_description : "Something")
+                                         .c_str(),
+                            ch);
                     }
                 }
                 if (i) {
                     if (!CAN_SEE(ch, i)) /* Save wizinvis */
                         continue;
                     tmp = i->in_room;
-                    sprintf(buf, "%3d. %-25s - [%5d] >> Carried by %s\n\r", ++num,
-                        k->short_description, tmp < 0 ? tmp : world[tmp].number,
-                        i ? GET_NAME(i) : "Somebody");
-                    send_to_char(buf, ch);
+                    send_to_char(std::format("{:3}. {:<25} - [{:5}] >> Carried by {}\n\r", ++num,
+                                     k->short_description, tmp < 0 ? tmp : world[tmp].number,
+                                     i ? GET_NAME(i) : "Somebody")
+                                     .c_str(),
+                        ch);
                 }
                 if (!tmpobj && !i) {
-                    sprintf(buf, "%3d. %-25s - [%5d] %s\n\r", ++num, k->short_description,
-                        tmp < 0 ? tmp : world[tmp].number,
-                        tmp < 0 ? "Nowhere" : world[tmp].name);
-                    send_to_char(buf, ch);
+                    send_to_char(std::format("{:3}. {:<25} - [{:5}] {}\n\r", ++num, k->short_description,
+                                     tmp < 0 ? tmp : world[tmp].number, tmp < 0 ? "Nowhere" : world[tmp].name)
+                                     .c_str(),
+                        ch);
                 }
             }
         if (!found)
@@ -2660,19 +2843,23 @@ ACMD(do_levels)
         return;
     }
 
-    sprintf(buf,
-        "You are %d%% Warrior, %d%% Ranger, %d%% Mystic, %d%% Mage\r\n"
+    std::string out = std::format(
+        "You are {}% Warrior, {}% Ranger, {}% Mystic, {}% Mage\r\n"
         "Level:  Exp. to Level  : Warrior :  Ranger :  Mystic : Mage :\r\n",
         GET_PROF_COOF(PROF_WARRIOR, ch) / 10, GET_PROF_COOF(PROF_RANGER, ch) / 10,
         GET_PROF_COOF(PROF_CLERIC, ch) / 10, GET_PROF_COOF(PROF_MAGIC_USER, ch) / 10);
 
     for (i = 1; i < LEVEL_IMMORT && i < 31; i++) {
-        sprintf(buf + strlen(buf), "[%2d] %8d-%-8d : %9d %9d %9d %9d\n\r", i, xp_to_level(i),
+        out += std::format("[{:2}] {:8}-{:<8} : {:9} {:9} {:9} {:9}\n\r", i, xp_to_level(i),
             xp_to_level(i + 1), i * GET_PROF_COOF(PROF_WARRIOR, ch) / 1000,
             i * GET_PROF_COOF(PROF_RANGER, ch) / 1000,
             i * GET_PROF_COOF(PROF_CLERIC, ch) / 1000,
             i * GET_PROF_COOF(PROF_MAGIC_USER, ch) / 1000);
     }
+    // page_string() takes a caller-owned char* (transform idiom catalog
+    // item 3's page_string note); stage into the pre-existing global `buf`
+    // rather than changing its signature this wave.
+    strcpy(buf, out.c_str());
     page_string(ch->desc, buf, 1);
 }
 
@@ -2697,7 +2884,6 @@ void report_mob_align(struct char_data* ch, struct char_data* victim)
 void report_mob_age(struct char_data* ch, struct char_data* victim)
 {
     int age;
-    char str[255];
     extern int average_mob_life;
 
     if (!IS_NPC(victim) || (MOB_FLAGGED(victim, MOB_ORC_FRIEND) && MOB_FLAGGED(victim, MOB_PET)))
@@ -2705,20 +2891,24 @@ void report_mob_age(struct char_data* ch, struct char_data* victim)
 
     age = MOB_AGE_TICKS(victim, time(0));
 
+    // One-shot compose-then-send (catalog item 1) -- `str` was a local
+    // char[255] never reused after send_to_char(), so it becomes a plain
+    // std::string here instead of a caller-owned buffer.
+    std::string str;
     if (age <= 1)
-        sprintf(str, "%s has just arrived to this place.\r\n", GET_NAME(victim));
+        str = std::format("{} has just arrived to this place.\r\n", GET_NAME(victim));
     else if (age <= average_mob_life / 4)
-        sprintf(str, "%s has arrived but recently.\r\n", GET_NAME(victim));
+        str = std::format("{} has arrived but recently.\r\n", GET_NAME(victim));
     else if (age <= average_mob_life * 3 / 4)
-        sprintf(str, "%s has been here for a little while.\r\n", GET_NAME(victim));
+        str = std::format("{} has been here for a little while.\r\n", GET_NAME(victim));
     else if (age <= average_mob_life)
-        sprintf(str, "%s has been here for quite a while.\r\n", GET_NAME(victim));
+        str = std::format("{} has been here for quite a while.\r\n", GET_NAME(victim));
     else if (age <= average_mob_life * 3 / 2)
-        sprintf(str, "%s has been here for a long time already.\r\n", GET_NAME(victim));
+        str = std::format("{} has been here for a long time already.\r\n", GET_NAME(victim));
     else
-        sprintf(str, "%s has been here for a very long time.\r\n", GET_NAME(victim));
+        str = std::format("{} has been here for a very long time.\r\n", GET_NAME(victim));
     str[0] = toupper(str[0]);
-    send_to_char(str, ch);
+    send_to_char(str.c_str(), ch);
 }
 
 ACMD(do_consider)
@@ -2768,122 +2958,125 @@ ACMD(do_consider)
 
 ACMD(do_toggle)
 {
-    char buf3[100];
     extern char* tactics[];
     extern char* shooting[];
     extern char* casting[];
 
     if (IS_NPC(ch))
         return;
-    if (!WIMP_LEVEL(ch))
-        strcpy(buf2, "OFF");
-    else
-        sprintf(buf2, "%-3d", WIMP_LEVEL(ch));
 
+    std::string wimp_level_text
+        = WIMP_LEVEL(ch) ? std::format("{:<3}", WIMP_LEVEL(ch)) : "OFF";
+
+    // Reused across the tactics/shooting/casting switches below: only one of
+    // the three is ever active for a given send_to_char() call, so one
+    // local string does the job of the legacy shared `buf3` scratch buffer.
+    std::string buf3;
     switch (GET_TACTICS(ch)) {
     case TACTICS_DEFENSIVE:
-        sprintf(buf3, "%s", tactics[0]);
+        buf3 = tactics[0];
         break;
     case TACTICS_CAREFUL:
-        sprintf(buf3, "%s", tactics[1]);
+        buf3 = tactics[1];
         break;
     case TACTICS_NORMAL:
-        sprintf(buf3, "%s", tactics[2]);
+        buf3 = tactics[2];
         break;
     case TACTICS_AGGRESSIVE:
-        sprintf(buf3, "%s", tactics[3]);
+        buf3 = tactics[3];
         break;
     case TACTICS_BERSERK:
-        sprintf(buf3, "%s", tactics[4]);
+        buf3 = tactics[4];
         break;
     default:
-        sprintf(buf3, "tactical error, please notify IMPs.");
+        buf3 = "tactical error, please notify IMPs.";
         break;
     }
 
-    sprintf(buf,
-        "         Prompt: %-3s    "
-        "     Brief Mode: %-3s    "
-        "         NoTell: %-3s\r\n"
-        "   Compact Mode: %-3s    "
-        "Narrate Channel: %-3s    "
-        "      MSDP Mode: %-3s\r\n"
-        "      Spam Mode: %-3s    "
-        "   Chat Channel: %-3s    "
-        " Incognito Mode: %-3s\r\n"
-        "           Echo: %-3s    "
-        "   Sing Channel: %-3s    "
-        "    Auto Mental: %-3s\r\n"
-        "      Wrap Mode: %-3s    "
-        " Summon Protect: %-3s    "
-        "     Wimp Level: %-3s\r\n"
-        "           Swim: %-3s    "
-        "        Latin-1: %-3s    "
-        "        Spinner: %-3s\r\n"
-        "  Advanced View: %-3s    "
-        "Advanced Prompt: %-3s    ",
-        ONOFF(PRF_FLAGGED(ch, PRF_PROMPT)), ONOFF(PRF_FLAGGED(ch, PRF_BRIEF)),
-        ONOFF(PRF_FLAGGED(ch, PRF_NOTELL)), ONOFF(PRF_FLAGGED(ch, PRF_COMPACT)),
-        ONOFF(PRF_FLAGGED(ch, PRF_NARRATE)), ONOFF(PRF_FLAGGED(ch, PRF_MSDP)),
-        ONOFF(PRF_FLAGGED(ch, PRF_SPAM)), ONOFF(PRF_FLAGGED(ch, PRF_CHAT)),
-        ONOFF(!PRF_FLAGGED(ch, PLR_INCOGNITO)), ONOFF(PRF_FLAGGED(ch, PRF_ECHO)),
-        ONOFF(PRF_FLAGGED(ch, PRF_SING)), ONOFF(PRF_FLAGGED(ch, PRF_MENTAL)),
-        ONOFF(PRF_FLAGGED(ch, PRF_WRAP)), ONOFF(PRF_FLAGGED(ch, PRF_SUMMONABLE)), buf2,
-        ONOFF(PRF_FLAGGED(ch, PRF_SWIM)), ONOFF(PRF_FLAGGED(ch, PRF_LATIN1)),
-        ONOFF(PRF_FLAGGED(ch, PRF_SPINNER)), ONOFF(PRF_FLAGGED(ch, PRF_ADVANCED_VIEW)),
-        ONOFF(PRF_FLAGGED(ch, PRF_ADVANCED_PROMPT)));
-    send_to_char(buf, ch);
+    send_to_char(std::format(
+                     "         Prompt: {:<3}    "
+                     "     Brief Mode: {:<3}    "
+                     "         NoTell: {:<3}\r\n"
+                     "   Compact Mode: {:<3}    "
+                     "Narrate Channel: {:<3}    "
+                     "      MSDP Mode: {:<3}\r\n"
+                     "      Spam Mode: {:<3}    "
+                     "   Chat Channel: {:<3}    "
+                     " Incognito Mode: {:<3}\r\n"
+                     "           Echo: {:<3}    "
+                     "   Sing Channel: {:<3}    "
+                     "    Auto Mental: {:<3}\r\n"
+                     "      Wrap Mode: {:<3}    "
+                     " Summon Protect: {:<3}    "
+                     "     Wimp Level: {:<3}\r\n"
+                     "           Swim: {:<3}    "
+                     "        Latin-1: {:<3}    "
+                     "        Spinner: {:<3}\r\n"
+                     "  Advanced View: {:<3}    "
+                     "Advanced Prompt: {:<3}    ",
+                     ONOFF(PRF_FLAGGED(ch, PRF_PROMPT)), ONOFF(PRF_FLAGGED(ch, PRF_BRIEF)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_NOTELL)), ONOFF(PRF_FLAGGED(ch, PRF_COMPACT)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_NARRATE)), ONOFF(PRF_FLAGGED(ch, PRF_MSDP)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_SPAM)), ONOFF(PRF_FLAGGED(ch, PRF_CHAT)),
+                     ONOFF(!PRF_FLAGGED(ch, PLR_INCOGNITO)), ONOFF(PRF_FLAGGED(ch, PRF_ECHO)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_SING)), ONOFF(PRF_FLAGGED(ch, PRF_MENTAL)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_WRAP)), ONOFF(PRF_FLAGGED(ch, PRF_SUMMONABLE)), wimp_level_text,
+                     ONOFF(PRF_FLAGGED(ch, PRF_SWIM)), ONOFF(PRF_FLAGGED(ch, PRF_LATIN1)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_SPINNER)), ONOFF(PRF_FLAGGED(ch, PRF_ADVANCED_VIEW)),
+                     ONOFF(PRF_FLAGGED(ch, PRF_ADVANCED_PROMPT)))
+                     .c_str(),
+        ch);
 
     /* the special, immortal set list */
     if (GET_LEVEL(ch) >= LEVEL_IMMORT) {
-        sprintf(buf,
-            "      Roomflags: %-3s\r\n"
-            "      Holylight: %-3s    "
-            "       Nohassle: %-3s    "
-            " Wiznet Channel: %-3s\r\n",
-            ONOFF(PRF_FLAGGED(ch, PRF_ROOMFLAGS)), ONOFF(PRF_FLAGGED(ch, PRF_HOLYLIGHT)),
-            ONOFF(PRF_FLAGGED(ch, PRF_NOHASSLE)), ONOFF(PRF_FLAGGED(ch, PRF_WIZ)));
-        send_to_char(buf, ch);
+        send_to_char(std::format(
+                         "      Roomflags: {:<3}\r\n"
+                         "      Holylight: {:<3}    "
+                         "       Nohassle: {:<3}    "
+                         " Wiznet Channel: {:<3}\r\n",
+                         ONOFF(PRF_FLAGGED(ch, PRF_ROOMFLAGS)), ONOFF(PRF_FLAGGED(ch, PRF_HOLYLIGHT)),
+                         ONOFF(PRF_FLAGGED(ch, PRF_NOHASSLE)), ONOFF(PRF_FLAGGED(ch, PRF_WIZ)))
+                         .c_str(),
+            ch);
     }
 
-    sprintf(buf, "\r\nYou are employing %s tactics, and are speaking %s.\r\n", buf3,
-        ch->player.language ? skills[ch->player.language].name : "common tongue");
-    send_to_char(buf, ch);
+    send_to_char(std::format("\r\nYou are employing {} tactics, and are speaking {}.\r\n", buf3,
+                     ch->player.language ? skills[ch->player.language].name : "common tongue")
+                     .c_str(),
+        ch);
     if (GET_SPEC(ch) == PLRSPEC_ARCH) {
         switch (GET_SHOOTING(ch)) {
         case SHOOTING_SLOW:
-            sprintf(buf3, "%s", shooting[0]);
+            buf3 = shooting[0];
             break;
         case SHOOTING_NORMAL:
-            sprintf(buf3, "%s", shooting[1]);
+            buf3 = shooting[1];
             break;
         case SHOOTING_FAST:
-            sprintf(buf3, "%s", shooting[2]);
+            buf3 = shooting[2];
             break;
         default:
-            sprintf(buf3, "shooting error, please notify IMMs!");
+            buf3 = "shooting error, please notify IMMs!";
             break;
         }
-        sprintf(buf, "You are using %s shooting speed.\r\n", buf3);
-        send_to_char(buf, ch);
+        send_to_char(std::format("You are using {} shooting speed.\r\n", buf3).c_str(), ch);
     }
     if (GET_SPEC(ch) == PLRSPEC_ARCANE) {
         switch (GET_CASTING(ch)) {
         case CASTING_SLOW:
-            sprintf(buf3, "%s", casting[0]);
+            buf3 = casting[0];
             break;
         case CASTING_NORMAL:
-            sprintf(buf3, "%s", casting[1]);
+            buf3 = casting[1];
             break;
         case CASTING_FAST:
-            sprintf(buf3, "%s", casting[2]);
+            buf3 = casting[2];
             break;
         default:
-            sprintf(buf3, "casting error, please notify IMMs!");
+            buf3 = "casting error, please notify IMMs!";
             break;
         }
-        sprintf(buf, "You are using %s casting speed.\r\n", buf3);
-        send_to_char(buf, ch);
+        send_to_char(std::format("You are using {} casting speed.\r\n", buf3).c_str(), ch);
     }
 }
 
@@ -2933,43 +3126,44 @@ ACMD(do_commands)
         vict = ch;
 
     if (subcmd == SCMD_SOCIALS) {
-        sprintf(buf, "The following socials are available to %s:\n\r",
+        std::string out = std::format("The following socials are available to {}:\n\r",
             vict == ch ? "you" : GET_NAME(vict));
 
         for (no = 1; no < social_list_top; no++) {
             if ((GET_LEVEL(ch) >= LEVEL_GOD) && PRF_FLAGGED(ch, PRF_ROOMFLAGS))
-                sprintf(buf + strlen(buf), "(%3d)%-11s", no, soc_mess_list[no].command);
+                out += std::format("({:3}){:<11}", no, soc_mess_list[no].command);
             else
-                sprintf(buf + strlen(buf), "%-16s", soc_mess_list[no].command);
+                out += std::format("{:<16}", soc_mess_list[no].command);
             if (!(no % 5))
-                strcat(buf, "\n\r");
+                out += "\n\r";
         }
-        strcat(buf, "\n\r");
-        send_to_char(buf, ch);
+        out += "\n\r";
+        send_to_char(out.c_str(), ch);
         return;
     }
 
     if (subcmd == SCMD_WIZHELP)
         wizhelp = 1;
 
-    sprintf(buf, "The following %s%s are available to %s:\n\r", wizhelp ? "privileged " : "",
-        socials ? "socials" : "commands", vict == ch ? "you" : GET_NAME(vict));
+    std::string out = std::format("The following {}{} are available to {}:\n\r",
+        wizhelp ? "privileged " : "", socials ? "socials" : "commands",
+        vict == ch ? "you" : GET_NAME(vict));
 
     for (no = 1, cmd_num = 1; cmd_num <= num_of_cmds; cmd_num++) {
         i = cmd_info[cmd_num].sort_pos;
         if (cmd_info[i + 1].minimum_level >= 0 && (cmd_info[i + 1].minimum_level >= LEVEL_IMMORT) == wizhelp && GET_LEVEL(vict) >= cmd_info[i + 1].minimum_level && (wizhelp || socials == cmd_info[i + 1].is_social)) {
             if ((GET_LEVEL(ch) >= LEVEL_GOD) && PRF_FLAGGED(ch, PRF_ROOMFLAGS))
-                sprintf(buf + strlen(buf), "(%3d)%-11s", i + 1, command[i]);
+                out += std::format("({:3}){:<11}", i + 1, command[i]);
             else
-                sprintf(buf + strlen(buf), "%-16s", command[i]);
+                out += std::format("{:<16}", command[i]);
             if (!(no % 5))
-                strcat(buf, "\n\r");
+                out += "\n\r";
             no++;
         }
     }
 
-    strcat(buf, "\n\r");
-    send_to_char(buf, ch);
+    out += "\n\r";
+    send_to_char(out.c_str(), ch);
 }
 
 ACMD(do_diagnose)
@@ -3003,17 +3197,34 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
     int tmp;
     char str[250];
     if (flag & PRF_DISPTEXT) {
+        // prompt_text[] entries are printf-style format strings selected at
+        // runtime from a data table (consts.cpp), not compile-time string
+        // literals -- std::format requires a constant-evaluated format
+        // string, so this dynamic-format-string sprintf() is kept as-is
+        // (would need prompt_text[]/prompt_hit[]/prompt_mana[]/
+        // prompt_move[]/prompt_mount[]'s stored strings rewritten from %d to
+        // {} too, which is out of this file's/task's scope).
         if (ch->specials.prompt_value >= 0)
             sprintf(str, prompt_text[ch->specials.prompt_number], ch->specials.prompt_value);
         else
             sprintf(str, prompt_text[ch->specials.prompt_number], -1);
-        sprintf(prompt, "%s%s%c", prompt, str, 0);
+        // The trailing "%c", 0 in the old sprintf(prompt, "%s%s%c", prompt,
+        // str, 0) embedded a redundant explicit NUL byte right where
+        // sprintf's own terminating NUL already goes -- invisible to any
+        // strlen()/send_to_char() reader, so it is dropped here rather than
+        // reproduced. `str` is a local char[250] array used as a
+        // std::format argument -- static_cast<const char*> per the
+        // char[N]-decay rule (catalog item 5); `prompt` is already `char*`.
+        strcpy(prompt,
+            std::format("{}{}", prompt, static_cast<const char*>(str)).c_str());
         return;
     }
 
     if (flag & PROMPT_ADVANCED) {
-        sprintf(prompt, "%sHP: %d/%d S: %d/%d MV: %d/%d]%c", prompt, GET_HIT(ch), GET_MAX_HIT(ch),
-            GET_MANA(ch), GET_MAX_MANA(ch), GET_MOVE(ch), GET_MAX_MOVE(ch), 0);
+        strcpy(prompt,
+            std::format("{}HP: {}/{} S: {}/{} MV: {}/{}]", prompt, GET_HIT(ch), GET_MAX_HIT(ch),
+                GET_MANA(ch), GET_MAX_MANA(ch), GET_MOVE(ch), GET_MAX_MOVE(ch))
+                .c_str());
         return;
     }
     if (GET_MAX_HIT(ch))
@@ -3021,17 +3232,17 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
             for (tmp = 0; tmp < 7 && (1000LL * GET_HIT(ch)) / GET_MAX_HIT(ch) > prompt_hit[tmp].value; tmp++)
                 ;
             if ((GET_HIT(ch) != GET_MAX_HIT(ch)) || (ch->specials.position == POSITION_FIGHTING))
-                sprintf(prompt, "%s%s%c", prompt, prompt_hit[tmp].message, 0);
+                strcpy(prompt, std::format("{}{}", prompt, prompt_hit[tmp].message).c_str());
         }
     if (flag & PROMPT_STAT) {
         report_char_mentals(ch, str, 1);
-        sprintf(prompt, "%s%s%c", prompt, str, 0);
+        strcpy(prompt, std::format("{}{}", prompt, static_cast<const char*>(str)).c_str());
         return;
     }
     if (flag & PROMPT_MAUL) {
         affected_type* maul_aff = affected_by_spell(ch, SKILL_MAUL);
         int mod = maul_aff->duration * 10 / 2;
-        sprintf(prompt, "%s%d/1000%c", prompt, mod, 0);
+        strcpy(prompt, std::format("{}{}/1000", prompt, mod).c_str());
     }
 
     if (flag & PROMPT_ARROWS) {
@@ -3041,14 +3252,14 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
         for (arrow = quiver->contains; arrow; arrow = arrow->next_content) {
             arrows++;
         }
-        sprintf(prompt, "%s%d)%c", prompt, arrows, 0);
+        strcpy(prompt, std::format("{}{})", prompt, arrows).c_str());
     }
 
     if (GET_MAX_MANA(ch))
         if (flag & PROMPT_MANA) {
             for (tmp = 0; (1000 * GET_MANA(ch)) / GET_MAX_MANA(ch) > prompt_mana[tmp].value; tmp++)
                 ;
-            sprintf(prompt, "%s%s%c", prompt, prompt_mana[tmp].message, 0);
+            strcpy(prompt, std::format("{}{}", prompt, prompt_mana[tmp].message).c_str());
         }
     if (GET_MAX_MOVE(ch))
         if (flag & PROMPT_MOVE) {
@@ -3056,9 +3267,9 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
                 ;
 
             if (IS_NPC(ch) && MOB_FLAGGED(ch, MOB_MOUNT))
-                sprintf(prompt, "%s%s%c", prompt, prompt_mount[tmp].message, 0);
+                strcpy(prompt, std::format("{}{}", prompt, prompt_mount[tmp].message).c_str());
             else
-                sprintf(prompt, "%s%s%c", prompt, prompt_move[tmp].message, 0);
+                strcpy(prompt, std::format("{}{}", prompt, prompt_move[tmp].message).c_str());
         }
 }
 
@@ -3068,7 +3279,6 @@ ACMD(do_whois)
     int t_race, t_level;
     time_t tt;
     int _player;
-    char str[255];
     char name[MAX_INPUT_LENGTH];
     char *t_title, *t_retired;
     const char *retired = " [Retired]", *blank = "";
@@ -3124,29 +3334,34 @@ ACMD(do_whois)
         incognito = IS_SET(P->flags, PLR_INCOGNITO);
     }
 
+    std::string str;
     if (other_side_num(GET_RACE(ch), t_race)) {
         /* P->title replaced with "" in the new player file format */
         if (incognito)
-            sprintf(str, "%s %s%s.\n\r", P->name, t_title, t_retired);
+            str = std::format("{} {}{}.\n\r", P->name, nz(t_title), t_retired);
         else
-            sprintf(str, "%s %s is %s%s.\n\r", P->name, t_title, get_level_abbr(t_level, t_race),
-                t_retired);
+            str = std::format("{} {} is {}{}.\n\r", P->name, nz(t_title),
+                get_level_abbr(t_level, t_race), t_retired);
     } else { /* Now we assume they aren't on opposite sides of the war */
         if (incognito && GET_LEVEL(ch) < LEVEL_GRGOD)
-            sprintf(str, "%s %s%s.\n\r", P->name, t_title, t_retired);
+            str = std::format("{} {}{}.\n\r", P->name, nz(t_title), t_retired);
         else
             /* Playtime info given for: mortals, immortals whoising lower targets */
             if ((GET_LEVEL(ch) >= LEVEL_IMMORT && GET_LEVEL(ch) >= t_level) || t_level < LEVEL_IMMORT)
-                sprintf(str, "%s %s is %s%s.\n\r%s %s\r", P->name, t_title,
+                str = std::format("{} {} is {}{}.\n\r{} {}\r", P->name, nz(t_title),
                     get_level_abbr(t_level, t_race), t_retired,
                     isplaying ? "Playing since " : "Last seen ", asctime(localtime(&tt)));
             else
-                sprintf(str, "%s %s is %s%s.\n\r", P->name, t_title,
+                str = std::format("{} {} is {}{}.\n\r", P->name, nz(t_title),
                     get_level_abbr(t_level, t_race), t_retired);
     }
 
-    *str = toupper(*str);
-    send_to_char(str, ch);
+    // *str = toupper(*str) in the original -- ctype.h's locale-aware
+    // toupper(), NOT the manual-ASCII UPPER() macro do_help above uses;
+    // preserved as the same toupper() call, just against str[0] now.
+    if (!str.empty())
+        str[0] = static_cast<char>(toupper(static_cast<unsigned char>(str[0])));
+    send_to_char(str.c_str(), ch);
 
     return;
 #undef P
@@ -3163,35 +3378,35 @@ static char* get_level_abbr(sh_int level, sh_int race)
 
     switch (level) {
     case LEVEL_IMPL:
-        sprintf(buf, "an Implementor");
+        strcpy(buf, "an Implementor");
         break;
 
     case LEVEL_GRGOD + 2:
     case LEVEL_GRGOD + 1:
     case LEVEL_GRGOD:
-        sprintf(buf, "one of the Aratar (level %d)", level);
+        strcpy(buf, std::format("one of the Aratar (level {})", level).c_str());
         break;
 
     case LEVEL_AREAGOD + 1:
     case LEVEL_AREAGOD:
-        sprintf(buf, "one of the Valar (level %d)", level);
+        strcpy(buf, std::format("one of the Valar (level {})", level).c_str());
         break;
 
     case LEVEL_GOD + 1:
-        sprintf(buf, "one of the Greater Maiar");
+        strcpy(buf, "one of the Greater Maiar");
         break;
 
     case LEVEL_GOD:
-        sprintf(buf, "one of the Maiar");
+        strcpy(buf, "one of the Maiar");
         break;
 
     case LEVEL_IMMORT + 1:
     case LEVEL_IMMORT:
-        sprintf(buf, "one of the Lesser Maiar (level %d)", level);
+        strcpy(buf, std::format("one of the Lesser Maiar (level {})", level).c_str());
         break;
 
     default:
-        sprintf(buf, "a level %d %s", level, pc_races[race]);
+        strcpy(buf, std::format("a level {} {}", level, pc_races[race]).c_str());
         break;
     }
 
@@ -3335,7 +3550,8 @@ ACMD(do_search)
         tmp = wtl->flg;
         ex = world[ch->in_room].dir_option[tmp];
 
-        sprintf(buf, "$n searches for something to %s.", refer_dirs[tmp]);
+        // `buf` is reused downstream (handed to act()) -- idiom 2.
+        strcpy(buf, std::format("$n searches for something to {}.", refer_dirs[tmp]).c_str());
         act(buf, TRUE, ch, 0, 0, TO_ROOM);
 
         if (ex && !IS_SET(ex->exit_info, EX_ISDOOR) && !IS_SET(ex->exit_info, EX_CLOSED)) {
@@ -3348,14 +3564,20 @@ ACMD(do_search)
             skill -= 50;
 
         if (skill > number(0, 99)) {
+            // `ex->keyword` is truthy-guarded before use below, so no nz()
+            // wrap is needed there; `buf` stays the destination (idiom 2,
+            // matching the shared send_to_char(buf, ch) after this if/else).
             if (!ex || (ex->to_room == NOWHERE))
-                sprintf(buf, "There is no passage %s.\n\r", dirs[tmp]);
+                strcpy(buf, std::format("There is no passage {}.\n\r", dirs[tmp]).c_str());
             else {
                 if (ex->keyword && *ex->keyword)
-                    sprintf(buf, "You found %s at %s.\n", ex->keyword, refer_dirs[tmp]);
+                    strcpy(buf,
+                        std::format("You found {} at {}.\n", ex->keyword, refer_dirs[tmp]).c_str());
                 else
-                    sprintf(buf, "The exit %s has no name, please notify immortals.\n\r",
-                        dirs[tmp]);
+                    strcpy(buf,
+                        std::format("The exit {} has no name, please notify immortals.\n\r",
+                            dirs[tmp])
+                            .c_str());
             }
             send_to_char(buf, ch);
         } else
@@ -3416,17 +3638,19 @@ void report_perception(char_data* ch, char* str)
 {
 
     if (GET_PERCEPTION(ch) == 0) {
-        sprintf(str, "%s mind is totally numb.\n\r", HSHR(ch));
+        strcpy(str, std::format("{} mind is totally numb.\n\r", HSHR(ch)).c_str());
     } else if (GET_PERCEPTION(ch) < 20) {
-        sprintf(str, "%s mind is as well as numb.\n\r", HSHR(ch));
+        strcpy(str, std::format("{} mind is as well as numb.\n\r", HSHR(ch)).c_str());
     } else if (GET_PERCEPTION(ch) < 50) {
-        sprintf(str, "%s is moderately sensitive to the spiritual.\n\r", HSSH(ch));
+        strcpy(str,
+            std::format("{} is moderately sensitive to the spiritual.\n\r", HSSH(ch)).c_str());
     } else if (GET_PERCEPTION(ch) < 80) {
-        sprintf(str, "%s is well aware of the Wraith-world.\n\r", HSSH(ch));
+        strcpy(str, std::format("{} is well aware of the Wraith-world.\n\r", HSSH(ch)).c_str());
     } else if (GET_PERCEPTION(ch) < 100) {
-        sprintf(str, "%s is very perceptive to the Wraith-world.\n\r", HSSH(ch));
+        strcpy(str,
+            std::format("{} is very perceptive to the Wraith-world.\n\r", HSSH(ch)).c_str());
     } else {
-        sprintf(str, "%s is one with the Wraith-world!\n\r", HSSH(ch));
+        strcpy(str, std::format("{} is one with the Wraith-world!\n\r", HSSH(ch)).c_str());
     }
     str[0] = UPPER(str[0]);
 }
@@ -3450,14 +3674,17 @@ void report_affection(affected_type* aff, char* str)
     const char* skill_name = skill.name;
     const char* duration = durations[dur_index];
 
-    char duration_text[32];
+    // duration_text was a local char[32] staging buffer fed straight into
+    // str's final sprintf; a std::string serves the same role without the
+    // fixed-size risk.
+    std::string duration_text;
     if (skill.is_fast) {
-        sprintf(duration_text, "%s, %s", duration, durations[4]);
+        duration_text = std::format("{}, {}", duration, durations[4]);
     } else {
-        sprintf(duration_text, "%s", duration);
+        duration_text = duration;
     }
 
-    sprintf(str, "%-30s (%s)\n\r", skill_name, duration_text);
+    strcpy(str, std::format("{:<30} ({})\n\r", skill_name, duration_text).c_str());
 }
 
 void report_skill_timer(const char_data& ch, char* buf)
@@ -3484,33 +3711,43 @@ ACMD(do_affections)
     if (IS_AFFECTED(ch, AFF_MOONVISION) && OUTSIDE(ch) && weather_info.moonlight)
         send_to_char("The moon lights your surroundings.\n\r", ch);
 
+    std::string out;
     if (!ch->affected) {
-        strcpy(buf, "You are not affected by anything.\n\r");
+        out = "You are not affected by anything.\n\r";
     } else {
-        sprintf(buf, "You are affected by:\n\r");
+        out = "You are affected by:\n\r";
 
         for (tmpaff = ch->affected; tmpaff; tmpaff = tmpaff->next) {
             report_affection(tmpaff, str);
-            sprintf(buf, "%s%s", buf, str);
+            out += str;
         }
     }
-    report_skill_timer(*ch, buf);
+
+    /* report_skill_timer() (defined above in this file, but outside this
+     * chunk's function list) appends into a caller-owned char* -- bridge it
+     * via a zeroed local staging buffer, the same legacy-helper interop
+     * idiom used for add_move_report() in do_info and
+     * weapon_master_handler::append_score_message() in do_score. */
+    char skill_timer_stage[MAX_STRING_LENGTH];
+    skill_timer_stage[0] = '\0';
+    report_skill_timer(*ch, skill_timer_stage);
+    out += skill_timer_stage;
 
     game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
     if (bb_instance.is_target_looting(ch)) {
-        sprintf(buf, "%sYou are under the protection of the Gods.\n\r", buf);
+        out += "You are under the protection of the Gods.\n\r";
     }
 
     /* checking for a prepared spell */
     if ((ch->delay.cmd == CMD_PREPARE) && (ch->delay.targ1.type == TARGET_IGNORE)) {
-        sprintf(buf, "%sYou have prepared the '%s' spell.\n\r", buf,
-            skills[ch->delay.targ1.ch_num].name);
+        out += std::format("You have prepared the '{}' spell.\n\r",
+            static_cast<const char*>(skills[ch->delay.targ1.ch_num].name));
     } else if (ch->delay.cmd == CMD_TRAP)
-        sprintf(buf, "%sYou lay in wait to trap an unsuspecting victim.\r\n", buf);
+        out += "You lay in wait to trap an unsuspecting victim.\r\n";
     if (SUN_PENALTY(ch))
-        strcat(buf, "You feel weak under the intensity of light.\n\r");
+        out += "You feel weak under the intensity of light.\n\r";
 
-    send_to_char(buf, ch);
+    send_to_char(out.c_str(), ch);
 }
 
 /*
@@ -3537,22 +3774,28 @@ ACMD(do_affections)
 void do_fame_leader_string(LEADER* ldr, char* buffer)
 {
     int i, n;
-    size_t bufpt;
 
     if (ldr->invalid) {
-        sprintf(buffer, "%27s", " ");
+        // "%27s" of a single space -- 26 padding spaces plus the space
+        // character itself, i.e. 27 spaces total.
+        strcpy(buffer, std::string(27, ' ').c_str());
         return;
     }
 
-    bufpt = sprintf(buffer, "%2d. %s", ldr->rank + 1, ldr->name);
-    bufpt += sprintf(buffer + bufpt, " the %s", pc_races[ldr->race]);
+    std::string out = std::format("{:2}. {}", ldr->rank + 1, ldr->name);
+    out += std::format(" the {}", pc_races[ldr->race]);
 
-    /* Pad with spaces til the end of name/title section */
+    /* Pad with spaces til the end of name/title section. Deliberately kept
+     * as the original's exact (signed-int-minus-size_t) arithmetic rather
+     * than "fixed" -- this is a characterization conversion, not a
+     * behavior change, and this expression's implementation-defined
+     * overflow behavior for an over-long name/race is unchanged. */
     n = 27 - strlen(ldr->name) - strlen(pc_races[ldr->race]) - 5;
     for (i = 0; i < n; ++i)
-        bufpt += sprintf(buffer + bufpt, " ");
+        out += " ";
 
-    bufpt += sprintf(buffer + bufpt, " %4d", ldr->fame);
+    out += std::format(" {:4}", ldr->fame);
+    strcpy(buffer, out.c_str());
 }
 
 ACMD(do_fame)
@@ -3562,9 +3805,7 @@ ACMD(do_fame)
     int idx;
     int numname;
     int records;
-    size_t bufpt;
     char leaderstr[MAX_LEADER_STRING];
-    char* string;
     char name[MAX_INPUT_LENGTH];
     char* warheader = "Status of the War in Middle-earth";
     char* good_victory = "The free peoples of Middle-earth are victorious "
@@ -3580,28 +3821,29 @@ ACMD(do_fame)
         return;
     }
 
-    buf[0] = '\0';
     one_argument(argument, name);
 
     if (!strcmp(name, "war")) {
-        bufpt = sprintf(buf, "%22s%s\r\n\r\n", " ", warheader);
+        std::string out = std::format("{:>22}{}\r\n\r\n", " ", warheader);
 
         /* Report the top 10 fame leaders */
-        bufpt += sprintf(buf + bufpt, "    The Free Peoples of Middle-earth     "
-                                      "    The Forces of the Shadow\r\n");
+        out += "    The Free Peoples of Middle-earth     "
+               "    The Forces of the Shadow\r\n";
         for (i = 0; i < 10; ++i) {
             /* Good rank i leader */
             ldr1 = pkill_get_leader_by_rank(i, RACE_WOOD);
             ldr1valid = !ldr1->invalid;
             do_fame_leader_string(ldr1, leaderstr);
-            bufpt += sprintf(buf + bufpt, "%s%5s", leaderstr, " ");
+            // char[N] decay: cast before std::format (BUILD.md "Formatting").
+            out += std::format("{}{:>5}", static_cast<const char*>(leaderstr), " ");
             pkill_free_leader(ldr1);
 
             /* Evil rank i leader */
             ldr2 = pkill_get_leader_by_rank(i, RACE_URUK);
             ldr2valid = !ldr2->invalid;
             do_fame_leader_string(ldr2, leaderstr);
-            bufpt += sprintf(buf + bufpt, "%s\r\n", leaderstr);
+            // Same char[N] decay cast as the good-leader line above.
+            out += std::format("{}\r\n", static_cast<const char*>(leaderstr));
             pkill_free_leader(ldr2);
 
             /* If both ranks were invalid, stop looping */
@@ -3609,24 +3851,23 @@ ACMD(do_fame)
                 break;
         }
         if (i == 10)
-            bufpt += sprintf(buf + bufpt, "\r\n");
+            out += "\r\n";
 
         /* Report the exact states of the war */
-        bufpt += sprintf(buf + bufpt, "Total fame for the free peoples of Middle-earth: %d\r\n",
-            pkill_get_good_fame());
-        bufpt += sprintf(buf + bufpt, "Total fame for the forces of the Shadow: %d\r\n",
-            pkill_get_evil_fame());
-        bufpt += sprintf(buf + bufpt, "\r\n");
+        out += std::format(
+            "Total fame for the free peoples of Middle-earth: {}\r\n", pkill_get_good_fame());
+        out += std::format("Total fame for the forces of the Shadow: {}\r\n", pkill_get_evil_fame());
+        out += "\r\n";
 
         /* Report the general state of the war */
         if (pkill_get_good_fame() > pkill_get_evil_fame())
-            sprintf(buf + bufpt, "%s\r\n", good_victory);
+            out += std::format("{}\r\n", good_victory);
         else if (pkill_get_good_fame() < pkill_get_evil_fame())
-            sprintf(buf + bufpt, "%s\r\n", evil_victory);
+            out += std::format("{}\r\n", evil_victory);
         else
-            sprintf(buf + bufpt, "%s\r\n", no_victory);
+            out += std::format("{}\r\n", no_victory);
 
-        send_to_char(buf, ch);
+        send_to_char(out.c_str(), ch);
         return;
     }
 
@@ -3638,16 +3879,21 @@ ACMD(do_fame)
             return;
         }
 
-        bufpt = 0;
+        std::string out;
         for (i = 0; i < n; ++i) {
-            string = pkill_get_string(&pkills[i], PKILL_STRING_KILLED);
-            // string interpolates character names -- pass it through "%s" rather than
-            // as the format string itself (a non-literal-format-string bug: any '%'
-            // bytes in a name would previously be interpreted as conversion specifiers).
-            bufpt += sprintf(buf + bufpt, "%s", string);
-            free(string);
+            // pkill_get_string()'s malloc'd result interpolates character
+            // names -- appended as data via std::string::operator+=, never
+            // re-interpreted as a format string, so a '%' byte in a name
+            // can't be misread as a conversion specifier (the same
+            // non-literal-format-string fix the old "%s"-wrapped sprintf()
+            // call here used to guard against). RAII: captured and freed
+            // immediately via take_cstring() (transform idiom catalog item 10).
+            out += take_cstring(pkill_get_string(&pkills[i], PKILL_STRING_KILLED));
         }
 
+        // page_string() takes a caller-owned char* (transform idiom
+        // catalog item 3's page_string note); stage into the global `buf`.
+        strcpy(buf, out.c_str());
         page_string(ch->desc, buf, 1);
         return;
     }
@@ -3678,15 +3924,14 @@ ACMD(do_fame)
      */
     pkills = pkill_get_all(&n);
     records = 0;
-    bufpt = 0;
+    std::string out;
 
     /* Get the records where the character idx is the killer */
     for (i = 0; i < n; ++i) {
         if (pkills[i].killer == idx) {
-            string = pkill_get_string(&pkills[i], PKILL_STRING_KILLED);
-            // Same non-literal-format-string fix as the "fame all" loop above.
-            bufpt += sprintf(buf + bufpt, "%s", string);
-            free(string);
+            // Same non-literal-format-string fix / RAII as the "fame all"
+            // loop above.
+            out += take_cstring(pkill_get_string(&pkills[i], PKILL_STRING_KILLED));
             ++records;
         }
     }
@@ -3694,34 +3939,36 @@ ACMD(do_fame)
     /* Get the records where the character idx is the victim */
     for (i = 0; i < n; ++i) {
         if (pkills[i].victim == idx) {
-            string = pkill_get_string(&pkills[i], PKILL_STRING_SLAIN);
-            // Same non-literal-format-string fix as the "fame all" loop above.
-            bufpt += sprintf(buf + bufpt, "%s", string);
-            free(string);
+            // Same non-literal-format-string fix / RAII as the "fame all"
+            // loop above.
+            out += take_cstring(pkill_get_string(&pkills[i], PKILL_STRING_SLAIN));
             ++records;
         }
     }
 
     /* Display the total fame */
-    rots_asprintf(&string, "%s", player_table[idx].name);
-    CAP(string);
-    sprintf(buf + bufpt,
-        "There %s %d record%s found about %s, "
-        "total fame %d.\r\n",
-        records == 1 ? "was" : "were", records, records == 1 ? "" : "s", string,
-        player_table[idx].warpoints / 100);
-    free(string);
+    char* raw_name = nullptr;
+    rots_asprintf(&raw_name, "%s", player_table[idx].name);
+    std::string display_name = take_cstring(raw_name);
+    // Same manual-ASCII capitalization as the CAP() macro (utils.h) this
+    // replaces -- NOT toupper()/std::toupper(), which are locale-sensitive.
+    if (!display_name.empty())
+        display_name[0] = UPPER(display_name[0]);
 
-    send_to_char(buf, ch);
+    out += std::format(
+        "There {} {} record{} found about {}, "
+        "total fame {}.\r\n",
+        records == 1 ? "was" : "were", records, records == 1 ? "" : "s", display_name,
+        player_table[idx].warpoints / 100);
+
+    send_to_char(out.c_str(), ch);
 }
 
 ACMD(do_rank)
 {
     int i, r;
     int ldrvalid;
-    char* s;
     char leaderstr[MAX_LEADER_STRING];
-    size_t bufpt;
     LEADER* ldr;
 
     r = pkill_get_rank_by_character(ch, false);
@@ -3732,25 +3979,25 @@ ACMD(do_rank)
         return;
     }
 
-    s = nth(r + 1);
-    bufpt = sprintf(buf, "You are ranked %s among %s:\r\n", s,
+    std::string s = take_cstring(nth(r + 1));
+    std::string out = std::format("You are ranked {} among {}:\r\n", s,
         RACE_GOOD(ch) ? "the free peoples of Middle-earth" : "the forces of the Shadow");
-    free(s);
 
     /* Show 7 characters: 3 above ch, ch and 3 below ch */
     i = MAX(0, r - 3);
 
     /* We didn't start with the first ranked character */
     if (i > 0)
-        bufpt += sprintf(buf + bufpt, "       ...");
+        out += "       ...";
 
-    bufpt += sprintf(buf + bufpt, "\r\n");
+    out += "\r\n";
 
     for (i = MAX(0, r - 3); i < r + 3; ++i) {
         ldr = pkill_get_leader_by_rank(i, GET_RACE(ch));
         ldrvalid = !ldr->invalid;
         do_fame_leader_string(ldr, leaderstr);
-        bufpt += sprintf(buf + bufpt, " %s %s\r\n", i == r ? "*" : " ", leaderstr);
+        // Same char[N] decay cast as do_fame's leader lines.
+        out += std::format(" {} {}\r\n", i == r ? "*" : " ", static_cast<const char*>(leaderstr));
         pkill_free_leader(ldr);
 
         if (!ldrvalid)
@@ -3759,8 +4006,13 @@ ACMD(do_rank)
 
     /* We didn't hit the last ranked character */
     if (i == r + 3)
-        bufpt += sprintf(buf + bufpt, "       ...\r\n");
+        out += "       ...\r\n";
 
+    // vsend_to_char() treats its second argument as a printf-style format
+    // string (comm.h) -- stage the composed text into the global `buf`
+    // and call it exactly as before rather than changing this call site's
+    // shape this wave.
+    strcpy(buf, out.c_str());
     vsend_to_char(ch, buf);
 }
 
@@ -3782,37 +4034,48 @@ ACMD(do_compare)
 
     obj1 = get_obj_in_list_vis(ch, str1, ch->carrying, 9999);
     if (!obj1) {
-        sprintf(buf, "You don't seem to have any %s.\n\r", str1);
-        send_to_char(buf, ch);
+        // static_cast: str1/str2 are char[MAX_INPUT_LENGTH] arrays (catalog
+        // item 5 / docs/BUILD.md "Formatting" -- libc++ formats a char array
+        // as a range, not a C string).
+        send_to_char(
+            std::format("You don't seem to have any {}.\n\r", static_cast<const char*>(str1))
+                .c_str(),
+            ch);
         return;
     }
 
     obj2 = get_obj_in_list_vis(ch, str2, ch->carrying, 9999);
     if (!obj2) {
-        sprintf(buf, "You don't seem to have any %s.\n\r", str2);
-        send_to_char(buf, ch);
+        send_to_char(
+            std::format("You don't seem to have any {}.\n\r", static_cast<const char*>(str2))
+                .c_str(),
+            ch);
         return;
     }
 
     lev = obj2->obj_flags.level - obj1->obj_flags.level;
 
-    if (lev < -10)
-        sprintf(buf, "%s seems much better than %s.\n\r", obj1->short_description,
-            obj2->short_description);
-    else if (lev < -3)
-        sprintf(buf, "%s seems better than %s.\n\r", obj1->short_description,
-            obj2->short_description);
-    else if (lev <= 3)
-        sprintf(buf, "%s and %s seems about the same.\n\r", obj1->short_description,
-            obj2->short_description);
-    else if (lev < 10)
-        sprintf(buf, "%s seems worse than %s.\n\r", obj1->short_description,
-            obj2->short_description);
-    else
-        sprintf(buf, "%s seems much worse than %s.\n\r", obj1->short_description,
-            obj2->short_description);
+    // short_description isn't guaranteed non-null (do_identify_object's own
+    // ternary guards against it elsewhere in this file); the old sprintf
+    // "%s" here tolerated a null pointer via glibc's "(null)" fallback, so
+    // nz() (utils.h) preserves that instead of std::format's throw-on-null.
+    const char* obj1_desc = nz(obj1->short_description);
+    const char* obj2_desc = nz(obj2->short_description);
 
-    send_to_char(buf, ch);
+    if (lev < -10)
+        send_to_char(
+            std::format("{} seems much better than {}.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+    else if (lev < -3)
+        send_to_char(std::format("{} seems better than {}.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+    else if (lev <= 3)
+        send_to_char(
+            std::format("{} and {} seems about the same.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+    else if (lev < 10)
+        send_to_char(std::format("{} seems worse than {}.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+    else
+        send_to_char(
+            std::format("{} seems much worse than {}.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+
     return;
 }
 
@@ -3907,10 +4170,13 @@ void report_char_mentals(char_data* ch, char* str, int brief_mode)
     if (low_stat1 == -1) {
         strcpy(str, "in top shape");
     } else if ((low_stat2 == -1) || brief_mode) {
-        sprintf(str, "%s %s", stat_attrs[stat_value1 / 10], stat_defects[low_stat1]);
+        strcpy(str,
+            std::format("{} {}", stat_attrs[stat_value1 / 10], stat_defects[low_stat1]).c_str());
     } else {
-        sprintf(str, "%s %s and %s %s", stat_attrs[stat_value1 / 10], stat_defects[low_stat1],
-            stat_attrs[stat_value2 / 10], stat_defects[low_stat2]);
+        strcpy(str,
+            std::format("{} {} and {} {}", stat_attrs[stat_value1 / 10], stat_defects[low_stat1],
+                stat_attrs[stat_value2 / 10], stat_defects[low_stat2])
+                .c_str());
     }
     return;
 }
@@ -3926,16 +4192,18 @@ ACMD(do_stat)
     auto stat_sum = GET_STR_BASE(ch) + GET_INT_BASE(ch) + GET_WILL_BASE(ch) + GET_DEX_BASE(ch) + GET_CON_BASE(ch) + GET_LEA_BASE(ch);
 
     if (!wtl || ((wtl->targ1.type == TARGET_NONE) || RETIRED(ch)) || (GET_LEVEL(ch) < LEVEL_GOD)) {
-        sprintf(buf,
-            "Your fatigue is %d; Your willpower is %d; Your statistic sum is %d\n\rYour "
-            "statistics are\n\rStr: %2d/%2d, Int: %2d/%2d, Wil: %2d/%2d, Dex: %2d/%2d, Con: "
-            "%2d/%2d, Lea: %2d/%2d.\n\r",
-            GET_MENTAL_DELAY(ch) / PULSE_MENTAL_FIGHT, GET_WILLPOWER(ch), stat_sum, GET_STR(ch),
-            GET_STR_BASE(ch), GET_INT(ch), GET_INT_BASE(ch), GET_WILL(ch), GET_WILL_BASE(ch),
-            GET_DEX(ch), GET_DEX_BASE(ch), GET_CON(ch), GET_CON_BASE(ch), GET_LEA(ch),
-            GET_LEA_BASE(ch));
-
-        send_to_char(buf, ch);
+        // %2d -> {:2}: printf's field-width-2 (minimum width, right-justified
+        // for a numeric arg) maps directly to std::format's {:2}.
+        send_to_char(std::format("Your fatigue is {}; Your willpower is {}; Your statistic sum is {}\n\r"
+                                 "Your statistics are\n\r"
+                                 "Str: {:2}/{:2}, Int: {:2}/{:2}, Wil: {:2}/{:2}, Dex: {:2}/{:2}, "
+                                 "Con: {:2}/{:2}, Lea: {:2}/{:2}.\n\r",
+                         GET_MENTAL_DELAY(ch) / PULSE_MENTAL_FIGHT, GET_WILLPOWER(ch), stat_sum,
+                         GET_STR(ch), GET_STR_BASE(ch), GET_INT(ch), GET_INT_BASE(ch), GET_WILL(ch),
+                         GET_WILL_BASE(ch), GET_DEX(ch), GET_DEX_BASE(ch), GET_CON(ch),
+                         GET_CON_BASE(ch), GET_LEA(ch), GET_LEA_BASE(ch))
+                         .c_str(),
+            ch);
         return;
     }
     do_wizstat(ch, argument, wtl, cmd, subcmd);
@@ -3945,20 +4213,16 @@ void print_exploits(struct char_data* sendto, char* name)
 {
     char str2[255];
     char str3[255];
-    char str4[255];
-    char str5[255];
     int i, iTotalPk, iDeaths = 0, iNotes = 0;
     exploit_record exploitrec;
-    // 1000 lines max of output.
-    // that means max of 2000 kills/deaths. certainly enough for a while.
-    char buf[80000];
     int iMobDeaths;
 
     std::vector<exploit_record> records;
     std::string error_message;
     if (!load_exploit_records_for_character(".", name, &records, &error_message)) {
-        snprintf(buf, sizeof(buf), "print_exploits: failed to load exploit history for %s: %s", name, error_message.c_str());
-        mudlog(buf, NRM, LEVEL_IMMORT, TRUE);
+        std::string log_message = std::format(
+            "print_exploits: failed to load exploit history for {}: {}", name, error_message);
+        mudlog(log_message.data(), NRM, LEVEL_IMMORT, TRUE);
         send_to_char("You have accomplished nothing worthy of note.\n\r", sendto);
         return;
     }
@@ -3968,9 +4232,18 @@ void print_exploits(struct char_data* sendto, char* name)
         return;
     }
 
-    buf[0] = '\0';
-    sprintf(buf,
-        "Exploits for %s\n\r"
+    // Accumulation (transform idiom catalog item 3), deliberately NOT staged
+    // through the global `buf` before page_string() the way most other
+    // sites in this file do: the old code's own local `buf` here was a
+    // dedicated 80000-byte buffer (explicitly sized for "1000 lines max of
+    // output... 2000 kills/deaths") specifically because the global `buf`
+    // (MAX_STRING_LENGTH == 8192, structs.h) is far too small to hold a
+    // long-lived character's full exploit history without truncating or
+    // overflowing it. std::string grows to fit instead, and is passed to
+    // page_string() directly via data() (non-const since C++17, and
+    // NUL-terminated) rather than copied into the undersized global buffer.
+    std::string out = std::format(
+        "Exploits for {}\n\r"
         "Numbers in brackets indicate (your,their) level at time of a "
         "kill\n\r\n\r",
         name);
@@ -3978,6 +4251,17 @@ void print_exploits(struct char_data* sendto, char* name)
     // they have entries
     i = 0;
     iTotalPk = 0;
+
+    // Pending first-column text for the row in progress -- filled on the
+    // odd (i == 1) record, flushed into `out` alongside the even record's
+    // text on the next iteration (or alone, at the end, if the record count
+    // is odd). Mirrors the old str4's role exactly.
+    std::string column;
+
+    // Per-record display text (the old str5's role); hoisted out of the loop
+    // so one string's capacity is reused across all records instead of
+    // allocating a fresh std::string per iteration (per-loop reuse idiom).
+    std::string row;
 
     iMobDeaths = 0;
     for (const exploit_record& loaded_record : records) {
@@ -4014,11 +4298,25 @@ void print_exploits(struct char_data* sendto, char* name)
         str3[year_len] = '\0';
         i++;
 
-        sprintf(str5, "Unknown record type");
+        // Mandatory char[N] -> const char* materialization (transform idiom
+        // catalog item 5; docs/BUILD.md "Formatting"): str2/str3/
+        // bounded_victim_name are fixed-size char arrays, and libc++ formats
+        // a char array as a range rather than a C string (libstdc++
+        // divergence), so every std::format argument below must be a
+        // pointer. Cast once per iteration here instead of at each of the
+        // eleven call sites.
+        const char* month_day = static_cast<const char*>(str2);
+        const char* year_suffix = static_cast<const char*>(str3);
+        const char* victim_name = static_cast<const char*>(bounded_victim_name);
+
+        // No "default:" in the switch below (matches the original's
+        // sprintf-before-switch-with-no-default structure): row keeps this
+        // fallback text unless a case below overwrites it.
+        row = "Unknown record type";
 
         switch (exploitrec.type) {
         case EXPLOIT_PK: // it's a pk type
-            sprintf(str5, "%s, %s: Killed %s (%d,%d)", str2, str3, bounded_victim_name,
+            row = std::format("{}, {}: Killed {} ({},{})", month_day, year_suffix, victim_name,
                 exploitrec.iKillerLevel, exploitrec.iVictimLevel);
             iTotalPk++;
             break;
@@ -4026,94 +4324,88 @@ void print_exploits(struct char_data* sendto, char* name)
         case EXPLOIT_DEATH: // it's a death type
             // chvictimname used to store killer name here
             if (exploitrec.iIntParam == 1) {
-                sprintf(str5, "%s, %s: * Died to %s (%d,%d)", str2, str3, bounded_victim_name,
-                    exploitrec.iVictimLevel, exploitrec.iKillerLevel);
+                row = std::format("{}, {}: * Died to {} ({},{})", month_day, year_suffix,
+                    victim_name, exploitrec.iVictimLevel, exploitrec.iKillerLevel);
                 iDeaths++;
             } else
-                sprintf(str5, "%s, %s: Died to %s (%d,%d)", str2, str3, bounded_victim_name,
-                    exploitrec.iVictimLevel, exploitrec.iKillerLevel);
+                row = std::format("{}, {}: Died to {} ({},{})", month_day, year_suffix,
+                    victim_name, exploitrec.iVictimLevel, exploitrec.iKillerLevel);
             break;
 
         case EXPLOIT_LEVEL:
-            sprintf(str5, "%s, %s: Obtained level %d", str2, str3, exploitrec.iIntParam);
+            row = std::format(
+                "{}, {}: Obtained level {}", month_day, year_suffix, exploitrec.iIntParam);
             break;
 
         case EXPLOIT_STAT:
-            sprintf(str5, "%s, %s: L%d: Stat inc (%s)", str2, str3, exploitrec.iIntParam,
-                bounded_victim_name);
+            row = std::format("{}, {}: L{}: Stat inc ({})", month_day, year_suffix,
+                exploitrec.iIntParam, victim_name);
             break;
 
         case EXPLOIT_BIRTH:
-            sprintf(str5, "%s, %s: Character Created", str2, str3);
+            row = std::format("{}, {}: Character Created", month_day, year_suffix);
             break;
 
         case EXPLOIT_MOBDEATH:
-            sprintf(str5, "%s, %s: Mobdied: %s", str2, str3, bounded_victim_name);
+            row = std::format("{}, {}: Mobdied: {}", month_day, year_suffix, victim_name);
             iMobDeaths++;
             break;
 
         case EXPLOIT_RETIRED:
-            sprintf(str5, "%s, %s: Retired", str2, str3);
+            row = std::format("{}, {}: Retired", month_day, year_suffix);
             break;
 
         case EXPLOIT_ACHIEVEMENT:
-            sprintf(str5, "%s, %s: %s", str2, str3, bounded_victim_name);
+            row = std::format("{}, {}: {}", month_day, year_suffix, victim_name);
             break;
 
         case EXPLOIT_NOTE:
-            sprintf(str5, "%s, %s: !%s", str2, str3, bounded_victim_name);
+            row = std::format("{}, {}: !{}", month_day, year_suffix, victim_name);
             iNotes++;
             break;
 
         case EXPLOIT_POISON:
-            sprintf(str5, "%s, %s: Died to Poison", str2, str3);
+            row = std::format("{}, {}: Died to Poison", month_day, year_suffix);
             break;
 
         case EXPLOIT_REGEN_DEATH:
-            sprintf(str5, "%s, %s: Died to Injuries", str2, str3);
+            row = std::format("{}, {}: Died to Injuries", month_day, year_suffix);
             break;
         }
         // an output line - first column
         if (i == 1)
-            sprintf(str4, "%-39s", str5);
+            column = std::format("{:<39}", row);
         else {
-            sprintf(str4, "%s%-39s\n\r", str4, str5);
-            // add to output buffer
-            sprintf(buf, "%s%s", buf, str4);
+            out += std::format("{}{:<39}\n\r", column, row);
             i = 0;
         }
     }
     if (i == 1) {
         // add to output buffer
-        sprintf(buf, "%s%s\n\r", buf, str4);
+        out += std::format("{}\n\r", column);
     }
 
     if (iTotalPk == 1)
-        sprintf(buf, "%s\n\rTotal: 1 pkill, ", buf);
+        out += "\n\rTotal: 1 pkill, ";
     else
-        sprintf(buf, "%s\n\rTotal: %d pkills, ", buf, iTotalPk);
+        out += std::format("\n\rTotal: {} pkills, ", iTotalPk);
 
-    if (iDeaths == 1) {
-        sprintf(buf, "%s1 pdeath, ", buf);
-    } else {
-        sprintf(buf, "%s%d pdeaths, ", buf, iDeaths);
-    }
+    if (iDeaths == 1)
+        out += "1 pdeath, ";
+    else
+        out += std::format("{} pdeaths, ", iDeaths);
 
-    if (iMobDeaths == 1) {
-
-        sprintf(buf, "%s1 mobdeath, ", buf);
-
-    } else {
-
-        sprintf(buf, "%s%d mobdeaths, ", buf, iMobDeaths);
-    }
+    if (iMobDeaths == 1)
+        out += "1 mobdeath, ";
+    else
+        out += std::format("{} mobdeaths, ", iMobDeaths);
 
     if (iNotes == 1)
-        sprintf(buf, "%s1 note.\n\r\n\r", buf);
+        out += "1 note.\n\r\n\r";
     else
-        sprintf(buf, "%s%d notes.\n\r\n\r", buf, iNotes);
+        out += std::format("{} notes.\n\r\n\r", iNotes);
 
-    page_string(sendto->desc, buf, 1);
+    page_string(sendto->desc, out.data(), 1);
     return;
 }
 
@@ -4497,15 +4789,22 @@ void do_food_display(struct char_data* ch, struct obj_data* j)
     int make_full, message_num;
 
     make_full = j->obj_flags.value[0];
-    if (j->obj_flags.value[3] != 0)
-        sprintf(buf1, "However it seems to be of"
-                      " a less than wholesome quality.");
-    else
-        sprintf(buf1, "It is also of a wholesome quality.");
+    // Kept as a ternary (transform idiom catalog item 4): the old code's two
+    // sprintf() branches produced two distinct literals, not a
+    // null-guarded fallback, so this is a plain either/or, not an nz() site.
+    const char* quality_note = j->obj_flags.value[3] != 0
+        ? "However it seems to be of a less than wholesome quality."
+        : "It is also of a wholesome quality.";
 
     message_num = get_value_ranges(make_full, 0, 2, 4, 6, 10, 14, 18, 24);
-    sprintf(buf, "%s %s. %s\r\n", j->short_description, food_messages[message_num], buf1);
-    send_to_char(buf, ch);
+    // short_description isn't guaranteed non-null (do_identify_object's own
+    // ternary guards it elsewhere in this file); nz() (utils.h) preserves
+    // the old sprintf("%s", NULL)-via-glibc "(null)" fallback that
+    // std::format would otherwise crash on.
+    send_to_char(std::format("{} {}. {}\r\n", nz(j->short_description),
+                     food_messages[message_num], quality_note)
+                     .c_str(),
+        ch);
 }
 
 void do_light_display(struct char_data* ch, struct obj_data* j)
@@ -4515,8 +4814,8 @@ void do_light_display(struct char_data* ch, struct obj_data* j)
 
     duration_range = j->obj_flags.value[2];
     message_num = get_value_ranges(duration_range, 0, 6, 12, 19, 50, 150, 500, 1000);
-    sprintf(buf, "This source of light is %s.\r\n", light_messages[message_num]);
-    send_to_char(buf, ch);
+    send_to_char(
+        std::format("This source of light is {}.\r\n", light_messages[message_num]).c_str(), ch);
 }
 
 void do_flag_values_display(struct char_data* ch, struct obj_data* j)
@@ -4525,20 +4824,30 @@ void do_flag_values_display(struct char_data* ch, struct obj_data* j)
     int i;
 
     if (GET_ITEM_TYPE(j) == ITEM_ARMOR) {
-        sprintf(buf, "Absorbtion\t\t %d.\r\n", armor_absorb(j));
-        send_to_char(buf, ch);
+        send_to_char(std::format("Absorbtion\t\t {}.\r\n", armor_absorb(j)).c_str(), ch);
     }
 
     for (i = 0; i <= 4; i++) {
-        sprintf(buf, "%s", value_array[GET_ITEM_TYPE(j)][i]);
-        if (value_array[GET_ITEM_TYPE(j)][i] != "") {
-            send_to_char(buf, ch);
+        // value_array[...][i] entries are static string-literal labels
+        // (never null). The historical guard compared the label POINTER
+        // against a fresh "" literal -- an emptiness check only where the
+        // compiler pools identical string literals (gcc/clang do, so every
+        // canonical platform's behavior -- pinned by the ActInfoObjectId
+        // tests and goldens -- skipped empty labels). MSVC's Debug config
+        // (/GF off, the windows-msvc CI preset) does NOT pool, so there the
+        // old pointer compare was always-true and this loop emitted bogus
+        // "label-less" value rows for every empty slot (Wave 3 finalization
+        // CI failure). Check the label's CONTENT instead: byte-identical
+        // output on all pooling platforms, and the empty-label skip finally
+        // holds on MSVC too.
+        const char* label = value_array[GET_ITEM_TYPE(j)][i];
+        if (label[0] != '\0') {
+            send_to_char(label, ch);
 
             if (j->obj_flags.value[i] < 0) /* Checks for negative for display purposes */
-                sprintf(buf, "\t %d.\r\n", j->obj_flags.value[i]);
+                send_to_char(std::format("\t {}.\r\n", j->obj_flags.value[i]).c_str(), ch);
             else
-                sprintf(buf, "\t  %d.\r\n", j->obj_flags.value[i]);
-            send_to_char(buf, ch);
+                send_to_char(std::format("\t  {}.\r\n", j->obj_flags.value[i]).c_str(), ch);
         }
     }
 }
@@ -4548,13 +4857,13 @@ void do_weapon_display(struct char_data* ch, struct obj_data* j)
 
     // weapon_types[] entries are plain names, not format strings -- same
     // non-literal-format-string anti-pattern as the pkill sites above (inert
-    // today since no entry contains '%', but route through "%s" regardless).
-    sprintf(buf1, "%s", weapon_types[j->obj_flags.value[3]]);
-    sprintf(buf,
-        "The weapon you hold is a %s weapon.\r\n"
-        "\n\rDamage Rating \t   %d/10.\r\n",
-        buf1, get_weapon_damage(j));
-    send_to_char(buf, ch);
+    // today since no entry contains '%', but route through std::format's
+    // {} substitution regardless, never as a format string of its own).
+    send_to_char(std::format("The weapon you hold is a {} weapon.\r\n"
+                             "\n\rDamage Rating \t   {}/10.\r\n",
+                     weapon_types[j->obj_flags.value[3]], get_weapon_damage(j))
+                     .c_str(),
+        ch);
 }
 
 /*
@@ -4587,28 +4896,40 @@ void do_identify_object(struct char_data* ch, struct obj_data* j)
     char found;
     int i;
 
-    sprintf(buf,
-        "   You feel certain the object you have"
-        " is %s. \r\n",
-        j->short_description ? j->short_description
-                             : "No object description found, please report. ");
-    send_to_char(buf, ch);
+    // Both null-guard ternaries kept as ternaries (transform idiom catalog
+    // item 4): the old code already guards short_description/
+    // action_description here with a fallback literal rather than handing
+    // std::format a possibly-null char*, so there is no nz() call to add.
+    send_to_char(std::format("   You feel certain the object you have is {}. \r\n",
+                     j->short_description ? j->short_description
+                                          : "No object description found, please report. ")
+                     .c_str(),
+        ch);
 
-    sprintf(buf, "%s \r\n",
-        j->action_description ? j->action_description
-                              : "No object description, please report. \r\n");
-    send_to_char(buf, ch);
+    send_to_char(std::format("{} \r\n",
+                     j->action_description ? j->action_description
+                                           : "No object description, please report. \r\n")
+                     .c_str(),
+        ch);
 
+    // sprintbit() fills the caller's buffer (buf2 here); left unconverted
+    // (transform idiom catalog item 7 -- it lives in utility.cpp, another
+    // wave) and composed into the new std::format call via
+    // static_cast<const char*> (catalog item 5: buf2 is a fixed-size
+    // char[MAX_STRING_LENGTH], db.h -- passing the array itself, not a
+    // decayed pointer, is the libc++/libstdc++-divergent case this file's
+    // existing do_exits conversion already works around the same way).
     sprintbit(j->obj_flags.wear_flags, wear_messages, buf2, 2);
-    sprintf(buf,
-        "This %s is made %s, and weighs %.1flbs.\r\n"
-        "This %s can be%s\r\n",
-        item_messages[GET_ITEM_TYPE(j)],
-        j->obj_flags.material >= 0 && j->obj_flags.material < num_of_object_materials
-            ? material_messages[j->obj_flags.material]
-            : "an unknown substance",
-        j->obj_flags.weight / 100., item_messages[GET_ITEM_TYPE(j)], buf2);
-    send_to_char(buf, ch);
+    send_to_char(std::format("This {} is made {}, and weighs {:.1f}lbs.\r\n"
+                             "This {} can be{}\r\n",
+                     item_messages[GET_ITEM_TYPE(j)],
+                     j->obj_flags.material >= 0 && j->obj_flags.material < num_of_object_materials
+                         ? material_messages[j->obj_flags.material]
+                         : "an unknown substance",
+                     j->obj_flags.weight / 100., item_messages[GET_ITEM_TYPE(j)],
+                     static_cast<const char*>(buf2))
+                     .c_str(),
+        ch);
 
     /*
      * If an object type_flag is either Light or Food, its value_flags
@@ -4631,18 +4952,27 @@ void do_identify_object(struct char_data* ch, struct obj_data* j)
     do_flag_values_display(ch, j);
 
     sprintbit(j->obj_flags.extra_flags, extra_messages, buf1, 1);
-    sprintf(buf, "\r\nThis item %s\r\n", buf1);
-    send_to_char(buf, ch);
+    send_to_char(
+        std::format("\r\nThis item {}\r\n", static_cast<const char*>(buf1)).c_str(), ch);
 
     found = 0;
 
     for (i = 0; i < MAX_OBJ_AFFECT; i++)
         if (j->affected[i].modifier) {
             sprinttype(j->affected[i].location, apply_types, buf2);
-            sprintf(buf, "%s %+d to %s", found++ ? "" : "", j->affected[i].modifier, buf2);
+            // The old code's first "%s" argument was `found++ ? "" : ""` --
+            // both ternary branches are the identical empty string, so the
+            // expression's only real effect was incrementing `found` (read
+            // by the "has the following affections" header check just
+            // below). Keep that increment; drop the always-"" ternary and
+            // its leading %s (the format string's own leading space is
+            // unchanged).
+            ++found;
+            std::string affect_line = std::format(
+                " {:+d} to {}", j->affected[i].modifier, static_cast<const char*>(buf2));
             if (found == 1)
                 send_to_char("\r\nThis item has the following affections.\r\n", ch);
-            send_to_char(buf, ch);
+            send_to_char(affect_line.c_str(), ch);
             send_to_char("\r\n", ch);
         }
     if (!found)
@@ -4674,7 +5004,7 @@ void do_details(char_data* character, char* argument, waiting_type* wait_list, i
                 character->damage_details.reset();
 
                 for (follow_type* follower = character->followers; follower;
-                     follower = follower->next) {
+                    follower = follower->next) {
                     char_data* follow_char = follower->follower;
                     if (utils::is_npc(*follow_char) && utils::is_affected_by(*follow_char, AFF_CHARM)) {
                         follow_char->damage_details.reset();
@@ -4687,7 +5017,7 @@ void do_details(char_data* character, char* argument, waiting_type* wait_list, i
                 send_to_char(damage_data.c_str(), character);
 
                 for (follow_type* follower = character->followers; follower;
-                     follower = follower->next) {
+                    follower = follower->next) {
                     const char_data* follow_char = follower->follower;
                     if (utils::is_npc(*follow_char) && utils::is_affected_by(*follow_char, AFF_CHARM)) {
                         std::string follower_damage_data = follow_char->damage_details.get_damage_report(follow_char);

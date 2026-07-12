@@ -26,6 +26,11 @@ Upstream Sync & Validation effort (`2026-07-10-upstream-sync-validation.md`, mer
    `boot-golden.sh --service rots64 verify`)**. The four-platform remote CI push stays at wave
    finalization only (windows-msvc remains the finalization-only exercise). CLAUDE.md's cadence
    paragraph is updated alongside this spec.
+   **SECOND AMENDMENT (owner, 2026-07-11, mid-wave after Task 1):** the i386 container leg
+   moved from per-task to **finalization-only** (Task 10) — qemu-i386 on this host costs
+   60-90+ min per run and dominated iteration time. Per-task gate is now **DUAL**: macOS
+   native + rots64. Task 1 ran the original triple gate; Tasks 2+ run the dual gate.
+   CLAUDE.md updated again alongside.
 5. Standing constraints carry: no third-party libraries in the game binary (`std::format` is the
    formatting target); RNG through `rots_rng` only; goldens STOP-on-diff; i386 container is the
    legacy guard; new-test macOS ASan gate applies to every new test file.

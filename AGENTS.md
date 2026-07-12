@@ -33,7 +33,7 @@
 - Rust (proxy): follow `rustfmt` defaults; module/file lowercase with underscores.
 
 ## Testing Guidelines
-- C/C++: a GoogleTest suite (`cd src/tests && make tests && ../../bin/tests`, or `ctest --test-dir build`) covers ~703 tests (703 total on the i386 container, `rots64`, and macOS native, where skip counts differ by platform — 7 on i386, 71-73 on macOS/rots64 for POSIX/32-bit-fixture-gated cases; Windows count tracked separately in CI, where a handful of POSIX-only cases don't build/run), including characterization goldens (`src/tests/goldens/`, `docs/superpowers/goldens/`) that pin existing behavior byte-for-byte. Smoke tests (build + boot, see `/build-and-smoke`) remain the final gate — verify server boots, accepts connections, and changed features behave as expected.
+- C/C++: a GoogleTest suite (`cd src/tests && make tests && ../../bin/tests`, or `ctest --test-dir build`) covers ~979 tests (979 total on the i386 container, `rots64`, and macOS native, where skip counts differ by platform — 14 on i386, 71 on macOS / 73 on rots64 for POSIX/32-bit-fixture-gated cases; Windows count tracked separately in CI, where a handful of POSIX-only cases don't build/run), including characterization goldens (`src/tests/goldens/`, `docs/superpowers/goldens/`) that pin existing behavior byte-for-byte. Smoke tests (build + boot, see `/build-and-smoke`) remain the final gate — verify server boots, accepts connections, and changed features behave as expected.
 - Rust: write unit/integration tests in `proxy/`; run with `cargo test -p proxy` and keep coverage reasonable.
 - Characterization goldens pin current behavior: gtest suites `CharacterizationCombatTest.*`
   / `CharacterizationJson.*` (goldens in `src/tests/goldens/`) and

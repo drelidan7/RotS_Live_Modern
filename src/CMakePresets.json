@@ -31,11 +31,31 @@
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
     },
     {
+      "name": "linux-x64-sanitize",
+      "displayName": "Linux x86-64 with ASan+UBSan (required in CI)",
+      "inherits": "linux-x64",
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-sanitize-recover=all -g",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    },
+    {
       "name": "macos-arm64",
       "displayName": "macOS arm64 (64-bit; required in CI)",
       "inherits": "base",
       "generator": "Unix Makefiles",
       "cacheVariables": { "ROTS_LEGACY_32BIT": "OFF" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
+    },
+    {
+      "name": "macos-arm64-asan",
+      "displayName": "macOS arm64 with ASan+UBSan (required in CI)",
+      "inherits": "macos-arm64",
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-sanitize-recover=all -g",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+      },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
     },
     {
@@ -54,7 +74,9 @@
   "buildPresets": [
     { "name": "linux-x64", "configurePreset": "linux-x64" },
     { "name": "linux-x86-legacy", "configurePreset": "linux-x86-legacy" },
+    { "name": "linux-x64-sanitize", "configurePreset": "linux-x64-sanitize" },
     { "name": "macos-arm64", "configurePreset": "macos-arm64" },
+    { "name": "macos-arm64-asan", "configurePreset": "macos-arm64-asan" },
     { "name": "windows-msvc", "configurePreset": "windows-msvc", "configuration": "Debug" }
   ],
   "testPresets": [
@@ -65,8 +87,20 @@
       "execution": { "noTestsAction": "error" }
     },
     {
+      "name": "linux-x64-sanitize",
+      "configurePreset": "linux-x64-sanitize",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error" }
+    },
+    {
       "name": "macos-arm64",
       "configurePreset": "macos-arm64",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error" }
+    },
+    {
+      "name": "macos-arm64-asan",
+      "configurePreset": "macos-arm64-asan",
       "output": { "outputOnFailure": true },
       "execution": { "noTestsAction": "error" }
     },

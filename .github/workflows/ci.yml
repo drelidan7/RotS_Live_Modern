@@ -1,6 +1,6 @@
-# Phase 3 CI matrix (modernization plan).
+# Phase 3 CI matrix (modernization plan), extended in Phase 5 Task 6.
 #
-# All four jobs are REQUIRED: legacy-32bit, linux-x64, and macos-arm64 were
+# All six jobs are REQUIRED: legacy-32bit, linux-x64, and macos-arm64 were
 # promoted in Phase 2b (64-bit Linux and native macOS arm64 build, boot, pass
 # tests, and match the Phase 0 characterization goldens); windows-msvc was
 # promoted in Phase 3 Task 7 once the hand-rolled platform-gated socket shim,
@@ -8,7 +8,11 @@
 # continue-on-error escape hatch was removed. Windows CI verifies configure +
 # build + the full ctest suite (characterization goldens included); live boot
 # verification on Windows is deferred (no Windows host with world data exists)
-# — see docs/BUILD.md and the plan's Phase 3 exit note.
+# — see docs/BUILD.md and the plan's Phase 3 exit note. sanitize-linux and
+# sanitize-macos (Phase 5 Task 6) run the same full ctest suite under
+# ASan+UBSan (linux-x64-sanitize / macos-arm64-asan CMake presets); leak
+# detection (ASAN_OPTIONS detect_leaks=1) runs on sanitize-linux only, since
+# AppleClang's LeakSanitizer support on macOS is limited/unreliable.
 #
 # CI deliberately has NO boot smoke and NO account_smoke.py: both need
 # lib/world/ (separate repo, git-ignored) and the Rust proxy. Unit tests and
@@ -81,6 +85,41 @@ jobs:
       - name: Test
         run: cd src && ctest --preset linux-x64
 
+  sanitize-linux:
+    name: Linux x64 ASan+UBSan (required)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install GoogleTest
+        run: sudo apt-get update && sudo apt-get install -y libgtest-dev libcrypt-dev
+      - name: Verify g++ provides C++20 std::format (>= 13)
+        run: |
+          g++ --version
+          gxx_major=$(g++ -dumpversion | cut -d. -f1)
+          if [ "$gxx_major" -lt 13 ]; then
+            echo "::error::g++ major version $gxx_major < 13; std::format unavailable" >&2
+            exit 1
+          fi
+      - name: Configure
+        run: cd src && cmake --preset linux-x64-sanitize
+      - name: Build
+        run: cd src && cmake --build --preset linux-x64-sanitize -j4
+      # Leak detection lives on this job only: macOS AppleClang's LeakSanitizer
+      # support is limited/unreliable, so the macOS sanitize job below disables
+      # detect_leaks and relies on this Linux job to catch real leaks.
+      # LSAN_OPTIONS points at the checked-in suppression file (src/tests/
+      # sanitize.supp) -- see that file's header comment for the suppression
+      # discipline (every entry is a disclosed, real, deliberately-deferred
+      # leak, not a false positive).
+      - name: Test
+        run: cd src && ASAN_OPTIONS=detect_leaks=1 ctest --preset linux-x64-sanitize
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          LSAN_OPTIONS: suppressions=${{ github.workspace }}/src/tests/sanitize.supp
+
   macos-arm64:
     name: macOS arm64 (required)
     runs-on: macos-14
@@ -97,6 +136,29 @@ jobs:
         run: cd src && cmake --build --preset macos-arm64 -j4
       - name: Test
         run: cd src && ctest --preset macos-arm64
+
+  sanitize-macos:
+    name: macOS arm64 ASan+UBSan (required)
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install GoogleTest
+        run: brew install googletest
+      - name: Configure
+        run: cd src && cmake --preset macos-arm64-asan
+      - name: Build
+        run: cd src && cmake --build --preset macos-arm64-asan -j4
+      # AppleClang's LeakSanitizer support is limited/unreliable on macOS, so
+      # leak detection is disabled here; the sanitize-linux job is the leak
+      # gate (ASAN_OPTIONS detect_leaks=1 there). This job still catches
+      # memory corruption (ASan) and UB (UBSan) on the macOS/AppleClang ABI.
+      - name: Test
+        run: cd src && ASAN_OPTIONS=detect_leaks=0 ctest --preset macos-arm64-asan
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
 
   windows-msvc:
     name: Windows MSVC (required)

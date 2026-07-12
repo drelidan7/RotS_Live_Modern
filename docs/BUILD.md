@@ -189,22 +189,33 @@ that drove the GNU-family warning census to zero on every locally-built configur
 the tree is already clean — flipping it first would just be a wall of red with no
 signal.
 
-**Task 8's own clean-build census still found four stragglers** that the per-category
-probe builds in Tasks 1-7 missed, because a full `ageland`/`ageland_tests` build
-compiles a different (larger) translation-unit set than a targeted probe: three
-`-Wimplicit-fallthrough` sites (`fight.cpp`'s `weapon_hit_type`, `limits.cpp`'s
-`affect_update_person`, `modify.cpp`'s `string_add`) plus one in `shapemob.cpp`'s
-`recalculate_mob` and five more in `shapescript.cpp`'s `get_parameter`  — all fixed
-with the standard `[[fallthrough]];` attribute, which documents intent without
-changing the generated code or observable behavior (a fall-through switch case is
-still a fall-through switch case; the attribute only tells the compiler it was
-deliberate). One `-Wformat-truncation` site (`objsave.cpp`'s
-`Crash_get_file_by_name`) was converted from `snprintf` into a fixed buffer to
-`std::format` — the same idiom already used two lines above it in the same
-function — which is both the project's sanctioned modernization target for
-sprintf-family call sites (see "Formatting" below) and immune to this class of
-diagnostic (no fixed-size destination buffer for the compiler to reason about).
-None of these were suppressions: every one is a real, behavior-preserving fix.
+**Task 8's own clean-build census still found twelve stragglers** that the
+per-category probe builds in Tasks 1-7 missed, because a full
+`ageland`/`ageland_tests` build compiles a different (larger) translation-unit set
+than a targeted probe. Ten `-Wimplicit-fallthrough` sites across six files —
+`fight.cpp`'s `weapon_hit_type`, `limits.cpp`'s `affect_update_person`,
+`modify.cpp`'s `string_add`, `ranger.cpp`'s `do_tame`, `shapemob.cpp`'s
+`recalculate_mob`, and five in `shapescript.cpp`'s `get_parameter` — all annotated
+with the standard `[[fallthrough]];` attribute, which changes neither the generated
+code nor observable behavior (a fall-through switch case is still a fall-through
+switch case; the attribute only tells the compiler the fall-through is
+acknowledged). Eight of the ten are genuinely intentional fall-throughs; the two
+dead-assignment sites (`fight.cpp` case 13→14, `shapemob.cpp`
+`RACE_EASTERLING`→`default`) are marked `FIXME` in the source rather than claimed
+intentional — independent evidence (`spells.h`'s `weapon_skill_num` treating cases
+13/14 as distinct skills; `spec_pro.cpp`'s race→language switch giving
+`RACE_EASTERLING` its own `break`) suggests each is a historical missing-break bug;
+they are preserved byte-for-byte per the Phase 5 byte-identical constraint and
+recorded as behavior-fix candidates for a future disclosed-delta effort. Two
+`-Wformat-truncation` sites: `objsave.cpp`'s `Crash_get_file_by_name` was converted
+from `snprintf` into a fixed buffer to `std::format` — the same idiom already used
+two lines above it in the same function — which is both the project's sanctioned
+modernization target for sprintf-family call sites (see "Formatting" below) and
+immune to this class of diagnostic (no fixed-size destination buffer for the
+compiler to reason about); and a test fixture literal in
+`account_management_tests.cpp` that overflowed a `MAX_PWD_LENGTH+1` field was
+shortened (no assertion ever inspected it). None of these were suppressions: every
+one is a real, behavior-preserving fix.
 
 **Suppression discipline still applies when a real fix isn't available:** a warning
 may be silenced with a pragma/attribute only alongside a comment stating why the code

@@ -2039,8 +2039,12 @@ int weapon_hit_type(int weapon_type)
         break;
     case 13:
         w_type = TYPE_WHIP;
-        [[fallthrough]]; // intentional: case 14 immediately overwrites w_type, matching
-                          // pre-existing (pre-Werror) behavior byte-for-byte.
+        [[fallthrough]]; // FIXME: likely a historical missing break, not intent -- spells.h's
+                          // weapon_skill_num gives case 13 (SKILL_WHIP) and case 14
+                          // (SKILL_CONCUSSION) distinct skills, so collapsing 13 into
+                          // TYPE_BLUDGEON here looks like a bug. Preserved byte-for-byte per
+                          // the Phase 5 byte-identical constraint; behavior-fix candidate for
+                          // a future disclosed-delta effort.
     case 14:
         w_type = TYPE_BLUDGEON;
         break;

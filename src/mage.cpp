@@ -19,6 +19,7 @@
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 #include "zone.h" /* For zone_table */
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -447,7 +448,6 @@ ASPELL(spell_locate_living)
     struct char_data* mobs;
     int isscanned[255];
     int tmp, tmp2, roomnum, num, notscanned, bigcount, roomrange, mobrange;
-    char buf[255];
     loclife_coord roomlist[255];
     loclife_coord new_room;
 
@@ -485,11 +485,12 @@ ASPELL(spell_locate_living)
         mobs = world[roomlist[tmp].number].people;
         while (mobs && (bigcount < mobrange)) {
             if (!new_saves_spell(caster, mobs, 0)) {
-                sprintf(buf, "%s at %s to the %s.\n\r",
+                send_to_char(std::format("{} at {} to the {}.\n\r",
                     (IS_NPC(mobs) ? GET_NAME(mobs) : pc_star_types[mobs->player.race]),
                     world[roomlist[tmp].number].name,
-                    loclife_dir_convert(roomlist[tmp]));
-                send_to_char(buf, caster);
+                    loclife_dir_convert(roomlist[tmp]))
+                                 .c_str(),
+                    caster);
             }
             bigcount++;
             mobs = mobs->next_in_room;
@@ -1553,9 +1554,10 @@ ASPELL(spell_cone_of_cold)
             send_to_char("There is nothing in that direction.\n\r", caster);
             return;
         } else {
-            sprintf(buf1, "Your cone of cold hit %s, to no real effect.\n\r",
-                EXIT(caster, digit)->keyword);
-            send_to_char(buf1, caster);
+            send_to_char(std::format("Your cone of cold hit {}, to no real effect.\n\r",
+                             EXIT(caster, digit)->keyword)
+                             .c_str(),
+                caster);
             return;
         }
     }
@@ -1565,13 +1567,12 @@ ASPELL(spell_cone_of_cold)
         return;
     }
 
-    sprintf(buf1, "You send a cone of cold to %s.\n\r", refer_dirs[digit]);
-    send_to_char(buf1, caster);
+    send_to_char(std::format("You send a cone of cold to {}.\n\r", refer_dirs[digit]).c_str(), caster);
 
-    sprintf(buf1, "A sudden wave of cold strikes you, coming from %s.\n\r",
-        refer_dirs[rev_dir[digit]]);
-    sprintf(buf2, "You feel a sudden wave of cold coming from %s.\n\r",
-        refer_dirs[rev_dir[digit]]);
+    strcpy(buf1, std::format("A sudden wave of cold strikes you, coming from {}.\n\r",
+        refer_dirs[rev_dir[digit]]).c_str());
+    strcpy(buf2, std::format("You feel a sudden wave of cold coming from {}.\n\r",
+        refer_dirs[rev_dir[digit]]).c_str());
 
     struct char_data* tmpch;
     for (tmpch = world[EXIT(caster, digit)->to_room].people;
@@ -2268,12 +2269,12 @@ ASPELL(spell_freeze)
     if (IS_SET(EXIT(caster, digit)->exit_info, EX_CLOSED)) {
         /* Did they use "east", "west", etc. to target this direction? */
         if (caster->delay.targ2.choice == TAR_DIR_WAY)
-            sprintf(buf, "A thick sheet of hardened frost forms %s%s%s.\r\n",
+            strcpy(buf, std::format("A thick sheet of hardened frost forms {}{}{}.\r\n",
                 digit != UP && digit != DOWN ? "to " : "", refer_dirs[digit],
-                digit != UP && digit != DOWN ? "" : " you");
+                digit != UP && digit != DOWN ? "" : " you").c_str());
         /* Or did they actually know the name of the door? */
         else if (caster->delay.targ2.choice == TAR_DIR_NAME)
-            sprintf(buf, "The %s is frozen shut.\r\n", EXIT(caster, digit)->keyword);
+            strcpy(buf, std::format("The {} is frozen shut.\r\n", EXIT(caster, digit)->keyword).c_str());
         send_to_room(buf, caster->in_room);
         return;
     } else

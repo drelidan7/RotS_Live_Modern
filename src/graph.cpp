@@ -20,6 +20,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <format>
+#include <string>
+
 #include "comm.h"
 #include "db.h"
 #include "handler.h"
@@ -180,9 +183,10 @@ ACMD(do_wiztrack)
         send_to_char("You're already in the same room!!\r\n", ch);
         break;
     case BFS_NO_PATH:
-        sprintf(buf, "You can't sense a trail to %s from here.\r\n",
-            HMHR(vict));
-        send_to_char(buf, ch);
+        send_to_char(std::format("You can't sense a trail to {} from here.\r\n",
+                         HMHR(vict))
+                         .c_str(),
+            ch);
         break;
     default:
 
@@ -202,8 +206,7 @@ ACMD(do_wiztrack)
             } while (!CAN_GO(ch, dir));
     }
 #endif
-        sprintf(buf, "You sense a trail %s from here!\n\r", dirs[dir]);
-        send_to_char(buf, ch);
+        send_to_char(std::format("You sense a trail {} from here!\n\r", dirs[dir]).c_str(), ch);
         break;
     }
 }
@@ -230,7 +233,7 @@ void hunt_victim(struct char_data* ch)
 
     dir = find_first_step(ch->in_room, ch->specials.hunting->in_room);
     if (dir < 0) {
-        sprintf(buf, "Damn!  Lost %s!", HMHR(ch->specials.hunting));
+        strcpy(buf, std::format("Damn!  Lost {}!", HMHR(ch->specials.hunting)).c_str());
         do_say(ch, buf, 0, 0, 0);
         ch->specials.hunting = 0;
         return;
@@ -323,7 +326,7 @@ int show_tracks(char_data* ch, char* name, int mode)
     if (mode == 2)
         chance_factor -= 20;
 
-    buf[0] = 0;
+    std::string track_out;
     for (tmp = 0, count = 0; tmp < NUM_OF_TRACKS; tmp++) {
         ch_num = ch_room->room_track[tmp].char_number;
         tr_time = ch_room->room_track[tmp].condition;
@@ -337,17 +340,17 @@ int show_tracks(char_data* ch, char* name, int mode)
         if (shall_show) {
             count++;
             if (IS_WATER(ch->in_room))
-                sprintf(buf, "The water looks %s disturbed to the %s.\n\r",
+                track_out = std::format("The water looks {} disturbed to the {}.\n\r",
                     water_track_desc(tr_time), dirs[ch_room->room_track[tmp].data & 7]);
             else
-                sprintf(buf, "%sThe tracks of %s lead %s.  Their condition is %s\n\r", buf,
+                track_out += std::format("The tracks of {} lead {}.  Their condition is {}\n\r",
                     (ch_num >= 0) ? mob_proto[ch_num].player.short_descr : pc_star_types[-ch_num], dirs[ch_room->room_track[tmp].data & 7], track_desc(tr_time));
         }
     }
     if (count != 0) {
         if (mode == 1)
             send_to_char("You find some tracks of what went past here.\r\n", ch);
-        send_to_char(buf, ch);
+        send_to_char(track_out.c_str(), ch);
     }
     return count;
 }
@@ -375,7 +378,7 @@ int show_blood_trail(struct char_data* ch, char* name, int mode)
         chance_factor -= 20;
     }
 
-    buf[0] = 0;
+    std::string blood_out;
 
     for (tmp = 0, count = 0; tmp < NUM_OF_BLOOD_TRAILS; tmp++) {
         ch_num = ch_room->bleed_track[tmp].char_number;
@@ -393,10 +396,10 @@ int show_blood_trail(struct char_data* ch, char* name, int mode)
         if (shall_show) {
             count++;
             if (IS_WATER(ch->in_room)) {
-                sprintf(buf, "The water looks %s disturbed to the %s.\n\r",
+                blood_out = std::format("The water looks {} disturbed to the {}.\n\r",
                     water_track_desc(tr_time), dirs[ch_room->bleed_track[tmp].data & 7]);
             } else {
-                sprintf(buf, "%sA blood trail leading %s is %s.\n\r", buf, dirs[ch_room->bleed_track[tmp].data & 7], track_desc(tr_time));
+                blood_out += std::format("A blood trail leading {} is {}.\n\r", dirs[ch_room->bleed_track[tmp].data & 7], track_desc(tr_time));
             }
         }
     }
@@ -405,7 +408,7 @@ int show_blood_trail(struct char_data* ch, char* name, int mode)
         if (mode == 1) {
             send_to_char("You find some blood trails here.\r\n", ch);
         }
-        send_to_char(buf, ch);
+        send_to_char(blood_out.c_str(), ch);
     }
     return count;
 }

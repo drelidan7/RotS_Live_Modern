@@ -2271,14 +2271,27 @@ void check_inventory_proto(struct char_data* ch)
         if (result > 0) {
             char buf[1024];
 
+            // Justified skip -- see the block comment above
+            // check_inventory_proto (utility.cpp:2252-2260): left unconverted
+            // for Phase 4 Wave 1 Task 5 pending a dedicated
+            // object_utils/objsave characterization wave.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             sprintf(buf, " - An object in your inventory, %s, was updated.\n\r", tmp->short_description);
+#pragma clang diagnostic pop
             send_to_char(buf, ch);
             obj_to_char(obj_to_proto(tmp), ch);
         } else if (result < 0) {
             char buf[1024];
 
+            // Justified skip -- same as above; this branch's `buf` is
+            // additionally a pre-existing dead store (never sent), matching
+            // current behavior exactly either way.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             sprintf(buf, " - An object in your inventory, %s, has no prototype.  Please notify imps.\n\r",
                 tmp->short_description);
+#pragma clang diagnostic pop
         }
     }
 }
@@ -2299,14 +2312,23 @@ void check_equipment_proto(struct char_data* ch)
             if (result > 0) {
                 char buf[1024];
 
+                // Justified skip -- see the block comment above
+                // check_inventory_proto (utility.cpp:2252-2260).
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                 sprintf(buf, " - An object in your equipment, %s, was updated.\n\r", tmp->short_description);
+#pragma clang diagnostic pop
                 send_to_char(buf, ch);
                 obj_to_char(obj_to_proto(tmp), ch);
             } else if (result < 0) {
                 char buf[1024];
 
+                // Justified skip -- same as above; pre-existing dead store.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                 sprintf(buf, " - An object in your inventory, %s, has no prototype.  Please notify imps.\n\r",
                     tmp->short_description);
+#pragma clang diagnostic pop
             }
         }
     }
@@ -2325,14 +2347,23 @@ static void check_container_proto(struct obj_data* obj, struct char_data* ch)
         if (result > 0) {
             char buf[1024];
 
+            // Justified skip -- see the block comment above
+            // check_inventory_proto (utility.cpp:2252-2260).
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             sprintf(buf, " - An object in %s, %s, was updated.\n\r", obj->short_description, tmp->short_description);
+#pragma clang diagnostic pop
             send_to_char(buf, ch);
             obj_to_char(obj_to_proto(tmp), ch);
         } else if (result < 0) {
             char buf[1024];
 
+            // Justified skip -- same as above; pre-existing dead store.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             sprintf(buf, " - An object in your inventory, %s, has no prototype.  Please notify imps.\n\r",
                 tmp->short_description);
+#pragma clang diagnostic pop
         }
     }
 }
@@ -2379,7 +2410,10 @@ char* PERS(struct char_data* target, struct char_data* observer,
         // leaf-module wave. Trivial single-literal, no format args, no
         // aliasing -- low risk, deferred pending a lighter PERS-specific
         // fixture.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         sprintf(name, "someone");
+#pragma clang diagnostic pop
 
     if (capitalize)
         CAP(name);

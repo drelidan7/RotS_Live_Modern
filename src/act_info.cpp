@@ -922,15 +922,27 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
          */
         if ((!i->player.long_descr || GET_POS(i) != i->specials.default_pos || pos_line) || (IS_NPC(i) && MOB_FLAGGED(i, MOB_ORC_FRIEND) && MOB_FLAGGED(i, MOB_PET) && other_side(ch, i))) {
             if (!pos_line) {
+                // Justified skip -- see the "WAVE 3 TASK 9 SWEEP" block comment
+                // above get_char_position_line (act_info.cpp:549-587): this whole
+                // function web relies on pointer aliasing into the global `buf',
+                // and the only safe conversion unit is all of it at once.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                 sprintf(buf, "%s%s%s", CC_USE(ch, COLOR_CHAR), PERS(i, ch, TRUE, FALSE),
                     CC_USE(ch, COLOR_CHAR));
                 if (!IS_NPC(i) && !other_side(ch, i))
                     sprintf(buf + strlen(buf), " %s", GET_TITLE(i));
+#pragma clang diagnostic pop
 
                 get_char_flag_line(ch, i, buf + strlen(buf));
                 get_char_position_line(ch, i, buf + strlen(buf));
             } else {
+                // Justified skip -- same aliasing web, see the block comment
+                // above get_char_position_line (act_info.cpp:549-587).
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                 sprintf(buf, "%s", PERS(i, ch, TRUE, FALSE));
+#pragma clang diagnostic pop
                 get_char_flag_line(ch, i, buf + strlen(buf));
                 strcat(buf, pos_line);
             }
@@ -960,7 +972,15 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
         } else {
             log("show_char: No description.");
             if (GET_NAME(i))
+                // Justified skip -- same aliasing web, see the block comment
+                // above get_char_position_line (act_info.cpp:549-587). (The
+                // result is clobbered by `*buf = 0;` a few lines below --
+                // that's pre-existing behavior, not something this task
+                // changes.)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                 sprintf(buf, "show_char: No description on %s.\n", GET_NAME(i));
+#pragma clang diagnostic pop
             act("You see nothing special about $m.", FALSE, i, 0, ch, TO_VICT);
         }
 
@@ -1049,11 +1069,19 @@ void show_room_affection(char* str, struct affected_type* aff, int mode)
         case ROOMAFF_SPELL:
             *buf2 = 0;
             sprintbit(aff->bitvector, room_bits, buf2, 0);
+            // Justified skip -- same aliasing web, see the "WAVE 3 TASK 9
+            // SWEEP" block comment above get_char_position_line
+            // (act_info.cpp:549-587), which names show_room_affection
+            // explicitly: `str' is both destination and source here
+            // (self-referencing "%s...", str, ... overlap).
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             sprintf(str, "%s Spell %s(%d) level %d, %dhrs, sets %s.\r\n", str,
                 ((aff->location >= 0) && (aff->location < MAX_SKILLS))
                     ? skills[aff->location].name
                     : "none",
                 aff->location, aff->modifier, aff->duration, buf2);
+#pragma clang diagnostic pop
             break;
 
         case ROOMAFF_EXIT:
@@ -1061,7 +1089,12 @@ void show_room_affection(char* str, struct affected_type* aff, int mode)
             break;
 
         default:
+            // Justified skip -- same aliasing web, see the block comment
+            // above get_char_position_line (act_info.cpp:549-587).
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             sprintf(str, "Unknown room affect (%d).\n\r", aff->type);
+#pragma clang diagnostic pop
             break;
         }
     }
@@ -1073,8 +1106,15 @@ void show_room_affection(char* str, struct affected_type* aff, int mode)
 void show_room_weather(char* str, struct char_data* ch)
 {
     /* Is it snowy? */
+    // Justified skip -- same aliasing web, see the block comment above
+    // get_char_position_line (act_info.cpp:549-587), which names
+    // show_room_weather explicitly: `str' is both destination and source
+    // here (self-referencing "%s...", str overlap).
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     if (weather_info.snow[world[ch->in_room].sector_type])
         sprintf(str, "%sSnow lies upon the ground.\n\r", str);
+#pragma clang diagnostic pop
 }
 
 /*
@@ -1494,6 +1534,16 @@ ACMD(do_look)
                      * Generate the direction letter and any surrounding symbols
                      * based on the information we've gathered with exit_choice
                      */
+                    // Justified skip -- exit_mark[] (act_info.cpp) is a
+                    // runtime-indexed table of printf-style format strings
+                    // selected by `exit_choice', not a compile-time string
+                    // literal, so std::format's constant-evaluated format
+                    // string requirement can't apply here without also
+                    // rewriting exit_mark[]'s stored strings from %c to {}
+                    // -- same dynamic-format-string class as add_prompt's
+                    // prompt_text[] use below (see that comment).
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                     switch (i) {
                     case 0:
                         sprintf(exit_line, exit_mark[exit_choice], 'N');
@@ -1514,6 +1564,7 @@ ACMD(do_look)
                         sprintf(exit_line, exit_mark[exit_choice], 'D');
                         break;
                     };
+#pragma clang diagnostic pop
 
                     strcat(buf2, exit_line);
                 }
@@ -3204,10 +3255,13 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
         // (would need prompt_text[]/prompt_hit[]/prompt_mana[]/
         // prompt_move[]/prompt_mount[]'s stored strings rewritten from %d to
         // {} too, which is out of this file's/task's scope).
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         if (ch->specials.prompt_value >= 0)
             sprintf(str, prompt_text[ch->specials.prompt_number], ch->specials.prompt_value);
         else
             sprintf(str, prompt_text[ch->specials.prompt_number], -1);
+#pragma clang diagnostic pop
         // The trailing "%c", 0 in the old sprintf(prompt, "%s%s%c", prompt,
         // str, 0) embedded a redundant explicit NUL byte right where
         // sprintf's own terminating NUL already goes -- invisible to any

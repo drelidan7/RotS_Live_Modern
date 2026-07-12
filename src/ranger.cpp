@@ -11,6 +11,7 @@
 
 #include "platdef.h"
 #include <ctype.h>
+#include <format>
 #include <stdio.h>
 #include <string.h>
 
@@ -203,7 +204,7 @@ ACMD(do_ride)
 ACMD(do_dismount)
 {
     if (ch == NULL) {
-        sprintf(buf, "Dismount called without a character.  Exiting.");
+        strcpy(buf, std::format("Dismount called without a character.  Exiting.").c_str());
         mudlog(buf, NRM, LEVEL_IMMORT, TRUE);
         return;
     }
@@ -217,7 +218,7 @@ ACMD(do_dismount)
             if (IS_RIDDEN(mount)) {
                 were_rider = mount->mount_data.rider;
             } else {
-                sprintf(buf, "Screwed mount %s, all be wary!", GET_NAME(mount));
+                strcpy(buf, std::format("Screwed mount {}, all be wary!", GET_NAME(mount)).c_str());
                 mudlog(buf, NRM, LEVEL_IMMORT, TRUE);
                 were_rider = NULL;
             }
@@ -440,9 +441,8 @@ ACMD(do_gather_food)
                 break;
             }
 
-            sprintf(buf, "You tried to gather %s, but could not find anything useful.\n\r",
-                gather_type);
-            send_to_char(buf, ch);
+            send_to_char(std::format("You tried to gather {}, but could not find anything useful.\n\r",
+                gather_type).c_str(), ch);
 
             return;
         } else {
@@ -885,7 +885,7 @@ int ambush_calculate_damage(char_data* attacker, char_data* victim, int modifier
     }
 
     if (utils::is_pc(*attacker)) {
-        sprintf(buf, "%s ambush damage of %3d.", GET_NAME(attacker), damage_dealt);
+        strcpy(buf, std::format("{} ambush damage of {:>3}.", GET_NAME(attacker), damage_dealt).c_str());
         mudlog(buf, NRM, LEVEL_GRGOD, TRUE);
     }
 
@@ -1363,7 +1363,7 @@ ACMD(do_calm)
         victim = (struct char_data*)wtl->targ1.ptr.ch;
         break;
     default:
-        sprintf(buf2, "do_calm: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_calm: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         return;
     }
@@ -1382,8 +1382,7 @@ ACMD(do_calm)
         send_to_char("You can only calm animals.\r\n", ch);
         return;
     } else if (GET_POS(victim) == POSITION_FIGHTING) {
-        sprintf(buf, "%s is too enraged!\r\n", GET_NAME(victim));
-        send_to_char(buf, ch);
+        send_to_char(std::format("{} is too enraged!\r\n", GET_NAME(victim)).c_str(), ch);
         return;
     } else if (GET_POS(victim) < POSITION_FIGHTING) {
         send_to_char("Your target needs to be standing.\r\n", ch);
@@ -1432,7 +1431,7 @@ ACMD(do_calm)
         break;
 
     default: /* Shouldn't ever happen */
-        sprintf(buf2, "do_calm: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_calm: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
         return;
@@ -1770,8 +1769,7 @@ ACMD(do_stalk)
     ch->delay.targ1.ch_num = dir;
 
     act("$n looks carefully at the ground.", TRUE, ch, 0, 0, TO_ROOM);
-    sprintf(buf, "You look for a discreet way %s.\n\r", dirs[dir]);
-    send_to_char(buf, ch);
+    send_to_char(std::format("You look for a discreet way {}.\n\r", dirs[dir]).c_str(), ch);
     return;
 }
 
@@ -2437,8 +2435,8 @@ void on_arrow_hit(char_data* archer, char_data* victim, obj_data* arrow)
     } else if (GET_SHOOTING(archer) == SHOOTING_SLOW) {
         damage_dealt = damage_dealt * 2;
     }
-    sprintf(buf, "%s archery damage of %3d to %s.", GET_NAME(archer), damage_dealt,
-        GET_NAME(victim));
+    strcpy(buf, std::format("{} archery damage of {:>3} to {}.", GET_NAME(archer), damage_dealt,
+        GET_NAME(victim)).c_str());
     mudlog(buf, NRM, LEVEL_GRGOD, TRUE);
 
     damage(archer, victim, damage_dealt, SKILL_ARCHERY, hit_location);
@@ -2678,7 +2676,7 @@ ACMD(do_shoot)
         wtl->targ2.cleanup();
     } break;
     default:
-        sprintf(buf2, "do_shoot: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_shoot: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
         break;
@@ -2892,12 +2890,12 @@ void do_scan(char_data* character, char*, waiting_type*, int, int)
                 for (i = world[character->in_room].people; i; i = i->next_in_room) {
                     if ((!((character == i) && (dis == 0))) && CAN_SEE(character, i)) {
                         if (dis > 0) {
-                            sprintf(buf, "%33s: %s%s%s%s",
+                            strcpy(buf, std::format("{:>33}: {}{}{}{}",
                                 (IS_NPC(i) ? GET_NAME(i) : pc_star_types[i->player.race]),
                                 distance[dis],
                                 ((dis > 0) && (dir < (NUM_OF_DIRS - 2))) ? "to the " : "",
                                 (dis > 0) ? dirs[dir] : "",
-                                ((dis > 0) && (dir > (NUM_OF_DIRS - 3))) ? "wards" : "");
+                                ((dis > 0) && (dir > (NUM_OF_DIRS - 3))) ? "wards" : "").c_str());
                             act(buf, TRUE, character, 0, 0, TO_CHAR);
                         }
                         found++;
@@ -3202,7 +3200,7 @@ ACMD(do_mark)
         wtl->targ2.cleanup();
     } break;
     default:
-        sprintf(buf2, "do_mark: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_mark: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
         break;
@@ -3461,7 +3459,7 @@ ACMD(do_blinding)
     } break;
 
     default:
-        sprintf(buf2, "do_blinding: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_blinding: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
         break;
@@ -3595,7 +3593,7 @@ ACMD(do_bendtime)
     } break;
 
     default: {
-        sprintf(buf2, "do_bendtime: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_bendtime: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
     } break;
@@ -3752,7 +3750,7 @@ ACMD(do_windblast)
         }
     } break;
     default: {
-        sprintf(buf2, "do_windblast: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_windblast: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
     } break;

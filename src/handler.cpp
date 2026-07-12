@@ -33,6 +33,7 @@
 #include "platdef.h"
 #include <assert.h>
 #include <ctype.h>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -644,7 +645,12 @@ void affect_to_char(struct char_data* ch, struct affected_type* af)
         tmplist->number = ch->abs_number;
         tmplist->type = TARGET_CHAR;
 
-        sprintf(mybuf, "Char to aff_list: %s\n\r", GET_NAME(ch));
+        // nz(): GET_NAME(ch) can be null for a bare/uninitialized char_data
+        // (e.g. a test fixture) -- glibc's old sprintf("%s", NULL) printed
+        // "(null)" here without crashing; std::format calls strlen()
+        // unconditionally and crashes on a null char*, so nz() preserves
+        // the old byte-identical output instead (utils.h).
+        strcpy(mybuf, std::format("Char to aff_list: {}\n\r", nz(GET_NAME(ch))).c_str());
     }
 
     // 2
@@ -1165,8 +1171,8 @@ void char_from_room(struct char_data* ch)
         stop_fighting(ch);
     }
     if (tmp == 100) {
-        sprintf(buf, "Char_from_room: could not stop fighting for %s.\n",
-            GET_NAME(ch));
+        strcpy(buf, std::format("Char_from_room: could not stop fighting for {}.\n",
+            GET_NAME(ch)).c_str());
         mudlog(buf, NRM, LEVEL_GOD, TRUE);
     }
 }
@@ -1278,9 +1284,9 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
     assert(item_slot >= 0 && item_slot < MAX_WEAR);
 
     if (character->equipment[item_slot]) {
-        sprintf(buf, "SYSERR: Char is already equipped: %s, %s", GET_NAME(character),
-            item->short_description);
-        log(buf);
+        log(std::format("SYSERR: Char is already equipped: {}, {}", GET_NAME(character),
+            item->short_description)
+                .c_str());
         return;
     }
 
@@ -1657,7 +1663,7 @@ void obj_to_room(struct obj_data* object, int room)
 
     for (tmpobj = world[room].contents; tmpobj; tmpobj = tmpobj->next_content)
         if (tmpobj == object) {
-            sprintf(buf, "obj_to_room: double call for room %d, object %s\n", world[room].number, object->short_description);
+            strcpy(buf, std::format("obj_to_room: double call for room {}, object {}\n", world[room].number, object->short_description).c_str());
             mudlog(buf, NRM, LEVEL_IMPL, TRUE);
             return;
         }
@@ -2003,9 +2009,8 @@ void extract_char(struct char_data* ch, int new_room)
             if (k)
                 k->next = ch->next;
             else {
-                char log_buf[1024];
-                sprintf(log_buf, "SYSERR: Trying to remove %s from character_list. (handler.c, extract_char)%c", GET_NAME(ch), '\0');
-                log(log_buf);
+                log(std::format("SYSERR: Trying to remove {} from character_list. (handler.c, extract_char)", GET_NAME(ch))
+                        .c_str());
                 abort();
             }
         }
@@ -2220,8 +2225,6 @@ struct obj_data* get_object_in_equip_vis(struct char_data* ch,
 
 struct obj_data* create_money(int amount)
 {
-    char buf[200];
-
     struct obj_data* obj;
     struct extra_descr_data* new_descr;
 
@@ -2260,18 +2263,17 @@ struct obj_data* create_money(int amount)
 
         new_descr->keyword = str_dup("coins money gold");
         if (amount < COPP_IN_SILV) {
-            sprintf(buf, "There are %d copper coins.", amount);
-            new_descr->description = str_dup(buf);
+            new_descr->description = str_dup(std::format("There are {} copper coins.", amount).c_str());
         } else if (amount < COPP_IN_GOLD) {
-            sprintf(buf, "There are about %d silver coins.", (amount / COPP_IN_SILV));
-            new_descr->description = str_dup(buf);
+            new_descr->description = str_dup(
+                std::format("There are about {} silver coins.", (amount / COPP_IN_SILV)).c_str());
         } else if (amount < 10 * COPP_IN_GOLD) {
-            sprintf(buf, "It looks to be about %d gold coins.", (amount / COPP_IN_GOLD));
-            new_descr->description = str_dup(buf);
+            new_descr->description = str_dup(
+                std::format("It looks to be about {} gold coins.", (amount / COPP_IN_GOLD)).c_str());
         } else if (amount < 100 * COPP_IN_GOLD) {
-            sprintf(buf, "You guess there are, maybe, %d gold coins.",
-                10 * ((amount / 10 / COPP_IN_GOLD)));
-            new_descr->description = str_dup(buf);
+            new_descr->description = str_dup(std::format("You guess there are, maybe, {} gold coins.",
+                10 * ((amount / 10 / COPP_IN_GOLD)))
+                                                  .c_str());
         } else
             new_descr->description = str_dup("There is a lot of gold.");
     }
@@ -2413,7 +2415,7 @@ char* money_message(int sum, int mode)
     *moneystr = 0;
 
     if (sum < 0) {
-        sprintf(moneystr, "%d copper coins", sum);
+        strcpy(moneystr, std::format("{} copper coins", sum).c_str());
         return moneystr;
     }
 
@@ -2422,23 +2424,25 @@ char* money_message(int sum, int mode)
     s = c / COPP_IN_SILV;
     c = c % COPP_IN_SILV;
 
+    std::string out;
     if (g)
-        sprintf(moneystr, "%d gold", g);
+        out += std::format("{} gold", g);
     if (g && c && s)
-        strcat(moneystr, ", ");
+        out += ", ";
     if (!c && s && g)
-        strcat(moneystr, " and ");
+        out += " and ";
     if (s)
-        sprintf(moneystr + strlen(moneystr), "%d silver", s);
+        out += std::format("{} silver", s);
     if ((g || s) && c)
-        strcat(moneystr, " and ");
+        out += " and ";
     if (c || (!sum))
-        sprintf(moneystr + strlen(moneystr), "%d copper", c);
+        out += std::format("{} copper", c);
 
     if (mode)
-        sprintf(moneystr + strlen(moneystr), " coin%s",
+        out += std::format(" coin{}",
             ((g == 1) && (s == 1)) || c == 1 ? "" : "s");
 
+    strcpy(moneystr, out.c_str());
     return moneystr;
 }
 

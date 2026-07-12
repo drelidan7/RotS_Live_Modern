@@ -84,6 +84,7 @@ Send comments, bug reports, help requests, etc. to Jeremy Elson
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <format>
 #include <sstream>
 #include <utility>
 
@@ -254,7 +255,7 @@ SPECIAL(gen_board)
             cmd = CMD_LOOK;
             if (strlen(arg) > 20)
                 arg[20] = 0;
-            sprintf(argb, "board %s\n", arg);
+            strcpy(argb, std::format("board {}\n", arg).c_str());
             arg1 = argb;
         } else if (isdigit(*arg)) {
             cmd = CMD_READ;
@@ -263,7 +264,7 @@ SPECIAL(gen_board)
             cmd = CMD_LOOK;
             if (strlen(arg) > 20)
                 arg[20] = 0;
-            sprintf(argb, "board %s\n", arg);
+            strcpy(argb, std::format("board {}\n", arg).c_str());
             arg1 = argb;
         } else if (!strncmp("read", argb, strlen(argb))) {
             cmd = CMD_READ;
@@ -278,7 +279,7 @@ SPECIAL(gen_board)
         //    printf("news call, argb=%s.\n",argb);
         if (*argb && !strcmp(argb, "all")) {
             cmd = CMD_EXAMINE;
-            sprintf(argb, "board");
+            strcpy(argb, "board");
             arg1 = argb;
         } else if (*argb)
             cmd = CMD_READ;
@@ -287,7 +288,7 @@ SPECIAL(gen_board)
             //      printf("news: argument is:%s.\n",arg);
             if (strlen(argb) > 20)
                 argb[20] = 0;
-            sprintf(argb, "board %s\n", arg);
+            strcpy(argb, std::format("board {}\n", arg).c_str());
             arg1 = argb;
         }
     } else if (cmd == CMD_SEND) {
@@ -381,8 +382,8 @@ void board_info_type::write_message(struct char_data* ch, char* arg, int num)
     tmstr = (char*)asctime(localtime(&ct));
     *(tmstr + strlen(tmstr) - 1) = '\0';
 
-    sprintf(buf2, "(%s)", GET_NAME(ch));
-    sprintf(buf, "%6.10s %-12s :: %s", tmstr, buf2, arg);
+    strcpy(buf2, std::format("({})", GET_NAME(ch)).c_str());
+    strcpy(buf, std::format("{:6.10} {:12} :: {}", tmstr, static_cast<const char*>(buf2), arg).c_str());
     len = strlen(buf) + 1;
     CREATE((NEW_MSG_INDEX.heading), char, len);
     if (!(NEW_MSG_INDEX.heading)) {
@@ -476,8 +477,8 @@ int board_info_type::show_board(struct char_data* ch,
     else if (!count)
         strcat(buf, "There is no unread messages.\n\r");
     else {
-        sprintf(buf + strlen(buf), "There are %d %smessages.\n\r",
-            count, (allflag) ? ("") : ("unread "));
+        strcat(buf, std::format("There are {} {}messages.\n\r",
+            count, (allflag) ? ("") : ("unread ")).c_str());
         chng_mark = 0;
         for (i = 0; i < num_of_msgs; i++) {
             for (d = descriptor_list; d; d = d->next)
@@ -485,7 +486,7 @@ int board_info_type::show_board(struct char_data* ch,
 
             if (approve_msg(ch, msg_index + i, cur, &show_num)) {
                 if (MSG_HEADING(i))
-                    sprintf(buf + strlen(buf), "%4d : %s\n\r", show_num, MSG_HEADING(i));
+                    strcat(buf, std::format("{:4} : {}\n\r", show_num, MSG_HEADING(i)).c_str());
                 else {
                     log("SYSERR: The board is fubar'd.");
                     send_to_char("Sorry, the board isn't working.\n\r", ch);
@@ -520,7 +521,7 @@ int board_info_type::select_msg(int msg, int softflag)
 int board_info_type::display_msg(struct char_data* ch,
     char* arg, int nextflag)
 {
-    char number[MAX_STRING_LENGTH], buffer[MAX_STRING_LENGTH];
+    char number[MAX_STRING_LENGTH];
     int msg, ind, tmp, show_num, looseflag;
 
     while (*arg && (*arg <= ' '))
@@ -627,9 +628,8 @@ int board_info_type::display_msg(struct char_data* ch,
         return 1;
     }
 
-    sprintf(buffer, "Message %4d : %s\n\r", show_num,
-        MSG_HEADING(ind));
-    send_to_char(buffer, ch);
+    send_to_char(std::format("Message {:4} : {}\n\r", show_num,
+        MSG_HEADING(ind)).c_str(), ch);
     page_string(ch->desc, msg_storage[MSG_SLOTNUM(ind)], 1);
     send_to_char("\n\r", ch);
 
@@ -639,7 +639,7 @@ int board_info_type::display_msg(struct char_data* ch,
 int board_info_type::remove_msg(struct char_data* ch, char* arg)
 {
     int ind, msg, slot_num, tmp, show_num, remflag;
-    char number[MAX_INPUT_LENGTH], buf[MAX_INPUT_LENGTH];
+    char number[MAX_INPUT_LENGTH];
     char* tmpptr;
     struct descriptor_data* d;
 
@@ -682,8 +682,7 @@ int board_info_type::remove_msg(struct char_data* ch, char* arg)
         return 1;
     }
 
-    sprintf(buf, "(%s)", GET_NAME(ch));
-    if (GET_LEVEL(ch) < LEVEL_AREAGOD && !(strstr(MSG_HEADING(ind), buf))) {
+    if (GET_LEVEL(ch) < LEVEL_AREAGOD && !(strstr(MSG_HEADING(ind), std::format("({})", GET_NAME(ch)).c_str()))) {
         send_to_char("You cannot remove that message.\n\r", ch);
         return 1;
     }
@@ -739,7 +738,7 @@ void board_info_type::flush_board()
     for (i = 0, shn = 0; i < num_of_msgs; i++) {
         approve_msg(&dummy, msg_index + i, 0, &shn);
         if (!(msg_storage[MSG_SLOTNUM(i)])) {
-            sprintf(str, "%d", shn);
+            strcpy(str, std::format("{}", shn).c_str());
             //      printf("going to remove msg %s\n",str);
             remove_msg(&dummy, str);
         }
@@ -1173,12 +1172,12 @@ void board_info_type::save_board()
 
     no_html = 0;
 
-    sprintf(ht_name, "%s/%s.index", BOARD_HTML_DIR, short_name);
+    strcpy(ht_name, std::format("{}/{}.index", BOARD_HTML_DIR, static_cast<const char*>(short_name)).c_str());
 
     if (!(ind_fl = fopen(ht_name, "w+")))
         no_html = 1;
 
-    sprintf(ht_name, "%s/%s.html", BOARD_HTML_DIR, short_name);
+    strcpy(ht_name, std::format("{}/{}.html", BOARD_HTML_DIR, static_cast<const char*>(short_name)).c_str());
     if (!(ht_fl = fopen(ht_name, "w+"))) {
         no_html = 1;
         fclose(ind_fl);
@@ -1455,7 +1454,7 @@ board_info_type::board_info_type(int objnum, int l_read, int l_write, int l_rem,
     //    calloc(max_msg,sizeof(struct board_msginfo));
     CREATE(msg_index, board_msginfo, max_msg);
     strcpy(short_name, file);
-    sprintf(filename, "%s/%s.boa", BOARD_DIR, file);
+    strcpy(filename, std::format("{}/{}.boa", BOARD_DIR, file).c_str());
     strcpy(title, titlename);
     load_board();
 }
@@ -1499,7 +1498,7 @@ mail_info_type::mail_info_type(int objnum, int l_read, int l_write, int l_rem,
     CREATE(msg_index, board_msginfo, max_msg);
 
     strcpy(short_name, file);
-    sprintf(filename, "%s/%s.boa", BOARD_DIR, file);
+    strcpy(filename, std::format("{}/{}.boa", BOARD_DIR, file).c_str());
     strcpy(title, titlename);
 
     load_board();
@@ -1533,8 +1532,8 @@ void mail_info_type::write_message(struct char_data* ch, char* arg, int)
     *(tmstr + strlen(tmstr) - 1) = '\0';
 
     for (i = 0; i < 99 && arg[i] > 0 && arg[i] != ':'; i++)
-        sprintf(buf2, "(%s)", GET_NAME(ch));
-    sprintf(buf, "%6.10s %-12s :%s", tmstr, buf2, arg + i);
+        strcpy(buf2, std::format("({})", GET_NAME(ch)).c_str());
+    strcpy(buf, std::format("{:6.10} {:12} :{}", tmstr, static_cast<const char*>(buf2), arg + i).c_str());
     len = strlen(buf) + 1;
 
     do {
@@ -1599,7 +1598,6 @@ int mail_info_type::approve_msg(char_data* ch, board_msginfo* msg, int, int* num
 void report_news(struct char_data* ch)
 {
     int count;
-    char message[100];
 
     news_board->tmp_allflag = 0;
     count = news_board->count_msg(ch, ch->specials.board_point[news_board->lnum]);
@@ -1612,8 +1610,7 @@ void report_news(struct char_data* ch)
         send_to_char("There is 1 unread news.\n\r", ch);
         break;
     default:
-        sprintf(message, "There are %d unread news.\n\r", count);
-        send_to_char(message, ch);
+        send_to_char(std::format("There are {} unread news.\n\r", count).c_str(), ch);
         break;
     }
 }

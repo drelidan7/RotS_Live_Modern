@@ -10,6 +10,7 @@
 
 #include "platdef.h"
 #include <ctype.h>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2734,7 +2735,6 @@ void show_account_character_list(struct descriptor_data* d, const account::Accou
 
 void complete_existing_character_login(struct descriptor_data* d, int load_result)
 {
-    char buf[1000];
     struct char_data* tmp_ch;
 
     if (isbanned(d->host) == BAN_SELECT && !PLR_FLAGGED(d->character, PLR_SITEOK)) {
@@ -2818,9 +2818,8 @@ void complete_existing_character_login(struct descriptor_data* d, int load_resul
         SEND_TO_Q(motd, d);
 
     if (load_result) {
-        sprintf(buf, "\n\r\n\r%s%d LOGIN FAILURE%s SINCE LAST SUCCESSFUL LOGIN.%s\n\r",
-            CC_FIX(d->character, CRED), load_result, (load_result > 1) ? "S" : "", CC_NORM(d->character));
-        SEND_TO_Q(buf, d);
+        SEND_TO_Q(std::format("\n\r\n\r{}{} LOGIN FAILURE{} SINCE LAST SUCCESSFUL LOGIN.{}\n\r",
+            CC_FIX(d->character, CRED), load_result, (load_result > 1) ? "S" : "", CC_NORM(d->character)).c_str(), d);
     }
 
     show_character_menu_impl(d);
@@ -3032,9 +3031,8 @@ void nanny(struct descriptor_data* d, char* arg)
                 SEND_TO_Q("What is your sex (M/F)? ", d);
                 STATE(d) = CON_QSEX;
             } else {
-                sprintf(buf, "Please enter a password for %s: ",
-                    GET_NAME(d->character));
-                SEND_TO_Q(buf, d);
+                SEND_TO_Q(std::format("Please enter a password for {}: ",
+                    GET_NAME(d->character)).c_str(), d);
                 echo_off(d->descriptor);
                 STATE(d) = CON_PWDGET;
             }
@@ -3745,10 +3743,9 @@ void nanny(struct descriptor_data* d, char* arg)
         CREATE(d->character->player.name, char, strlen(tmp_name) + 1);
         CAP(tmp_name);
         strcpy(d->character->player.name, tmp_name);
-        sprintf(buf, "\n\rA new character will be created if you enter 'Y'.\n\r"
-                     "Is %s a suitable name for roleplay in Middle-earth (Y/N)? ",
-            tmp_name);
-        SEND_TO_Q(buf, d);
+        SEND_TO_Q(std::format("\n\rA new character will be created if you enter 'Y'.\n\r"
+                              "Is {} a suitable name for roleplay in Middle-earth (Y/N)? ",
+            static_cast<const char*>(tmp_name)).c_str(), d);
         STATE(d) = CON_NMECNF;
         break;
     case CON_PWDGET: /* get pwd for new player */
@@ -3966,17 +3963,16 @@ void nanny(struct descriptor_data* d, char* arg)
             break;
         }
 
-        sprintf(buf, "\r\n"
-                     "We allow players to use the latin-1 character set to better\r\n"
-                     "represent the alphabet common in Tolkien's works.  You may\r\n"
-                     "want to enable latin-1 encoding here if your terminal passes\r\n"
-                     "the test below--but remember that you can change your latin-1\r\n"
-                     "preferences at any time during normal game play via the\r\n"
-                     "'set latin-1' command.\r\n"
-                     "\r\nDo you see an 'a' with "
-                     "a pair of dots above it: %c (Y/N)? ",
-            228);
-        SEND_TO_Q(buf, d);
+        SEND_TO_Q(std::format("\r\n"
+                              "We allow players to use the latin-1 character set to better\r\n"
+                              "represent the alphabet common in Tolkien's works.  You may\r\n"
+                              "want to enable latin-1 encoding here if your terminal passes\r\n"
+                              "the test below--but remember that you can change your latin-1\r\n"
+                              "preferences at any time during normal game play via the\r\n"
+                              "'set latin-1' command.\r\n"
+                              "\r\nDo you see an 'a' with "
+                              "a pair of dots above it: {} (Y/N)? ",
+            static_cast<char>(228)).c_str(), d);
         STATE(d) = CON_LATIN;
         break;
     case CON_LATIN:
@@ -4117,25 +4113,26 @@ void nanny(struct descriptor_data* d, char* arg)
 
             /* report how long they must wait until unretire */
             if (IS_SET(PLR_FLAGS(d->character), PLR_RETIRED)) {
+                std::string out;
                 if ((s = secs_to_unretire(d->character)) > 0) {
-                    sprintf(buf, "You may unretire in ");
+                    out = "You may unretire in ";
                     if ((tmp = (int)(s / 86400)))
-                        sprintf(buf + strlen(buf), "%d day%s.\r\n", tmp,
+                        out += std::format("{} day{}.\r\n", tmp,
                             tmp == 1 ? "" : "s");
                     else if ((tmp = (int)(s / 3600)))
-                        sprintf(buf + strlen(buf), "%d hour%s.\r\n", tmp,
+                        out += std::format("{} hour{}.\r\n", tmp,
                             tmp == 1 ? "" : "s");
                     else if ((tmp = (int)(s / 60)))
-                        sprintf(buf + strlen(buf), "%d minute%s.\r\n", tmp,
+                        out += std::format("{} minute{}.\r\n", tmp,
                             tmp == 1 ? "" : "s");
                     else
-                        sprintf(buf + strlen(buf), "%ld second%s.\r\n", s,
+                        out += std::format("{} second{}.\r\n", s,
                             s == 1 ? "" : "s");
                 } else {
-                    sprintf(buf, "You may unretire now.\r\nType leave to leave the retirement home.\r\n");
+                    out = "You may unretire now.\r\nType leave to leave the retirement home.\r\n";
                 }
 
-                send_to_char(buf, d->character);
+                send_to_char(out.c_str(), d->character);
             }
             d->prompt_mode = 1;
             REMOVE_BIT(PRF_FLAGS(d->character), PRF_DISPTEXT);
@@ -4321,9 +4318,8 @@ void nanny(struct descriptor_data* d, char* arg)
             std::snprintf(deleted_character_name, sizeof(deleted_character_name), "%s", GET_NAME(d->character));
             const int deleted_character_level = GET_LEVEL(d->character);
 
-            sprintf(buf, "Character '%s' deleted!\n\r",
-                deleted_character_name);
-            SEND_TO_Q(buf, d);
+            SEND_TO_Q(std::format("Character '{}' deleted!\n\r",
+                static_cast<const char*>(deleted_character_name)).c_str(), d);
             vmudlog(NRM, "%s (lev %d) has self-deleted.",
                 deleted_character_name, deleted_character_level);
             if (*d->account_name) {
@@ -4394,9 +4390,8 @@ int new_player_select(struct descriptor_data* d, char* arg)
                     draw_coofs(buf, d->character);
                     SEND_TO_Q("Ok, your abilities are now as follows:\n\r", d);
                     SEND_TO_Q(buf, d);
-                    sprintf(buf, "Points remaining: %d\n\r",
-                        150 - points_used(d->character));
-                    SEND_TO_Q(buf, d);
+                    SEND_TO_Q(std::format("Points remaining: {}\n\r",
+                        150 - points_used(d->character)).c_str(), d);
                     SEND_TO_Q("Your choice: ", d);
                     return CON_CREATE;
                 }
@@ -4441,8 +4436,7 @@ int new_player_select(struct descriptor_data* d, char* arg)
             SEND_TO_Q("Your current abilities are:\n\r", d);
             draw_coofs(buf, d->character);
             SEND_TO_Q(buf, d);
-            sprintf(buf, "Points remaining: %d\n\r", 150 - points_used(d->character));
-            SEND_TO_Q(buf, d);
+            SEND_TO_Q(std::format("Points remaining: {}\n\r", 150 - points_used(d->character)).c_str(), d);
             SEND_TO_Q("\n\rYour Choice: ", d);
             return CON_CREATE;
         }
@@ -4469,14 +4463,12 @@ int new_player_select(struct descriptor_data* d, char* arg)
             break;
 
         default:
-            sprintf(buf, "Invalid ability: %c\n\r", *arg);
-            SEND_TO_Q(buf, d);
+            SEND_TO_Q(std::format("Invalid ability: {}\n\r", *arg).c_str(), d);
             break;
         }
         draw_coofs(buf, d->character);
         SEND_TO_Q(buf, d);
-        sprintf(buf, "Points remaining: %d\n\r", 150 - points_used(d->character));
-        SEND_TO_Q(buf, d);
+        SEND_TO_Q(std::format("Points remaining: {}\n\r", 150 - points_used(d->character)).c_str(), d);
         SEND_TO_Q("Ok.\n\rYour choice: ", d);
     } else {
         log("Illegal call to new_player_select.");
@@ -4552,9 +4544,8 @@ void introduce_char(struct descriptor_data* d)
 
     if (d->pos < 0)
         d->pos = create_entry(GET_NAME(d->character));
-    sprintf(buf, "Char created: %s, idnum = %ld", GET_NAME(d->character),
-        GET_IDNUM(d->character));
-    log(buf);
+    log(std::format("Char created: {}, idnum = {}", GET_NAME(d->character),
+        GET_IDNUM(d->character)).c_str());
 
     SET_SHOOTING(d->character, SHOOTING_NORMAL);
     utils::set_specialization(*d->character, game_types::PS_None);

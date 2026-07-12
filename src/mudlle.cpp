@@ -1,5 +1,6 @@
 #include "platdef.h"
 #include <algorithm>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -378,7 +379,7 @@ void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
 
     case 'i':
         tmpvar = FROM_STACK(host);
-        sprintf(str, "%d%c", tmpvar, 0);
+        strcpy(str, std::format("{}", tmpvar).c_str());
         //    printf("f-i command, goind to list:%s.\n",str);
         TO_LIST(host, get_from_txt_block_pool(str), TARGET_TEXT);
         break;
@@ -491,7 +492,7 @@ void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
         break;
 
     default:
-        sprintf(buf, "Wrong to-list command '%c', sorry.\n\r", *arg);
+        strcpy(buf, std::format("Wrong to-list command '{}', sorry.\n\r", *arg).c_str());
         do_say(host, buf, 0, 0, 0);
         break;
     }
@@ -552,10 +553,13 @@ void question_proc(struct char_data* host)
     char tmpstr[255];
     struct target_data* tmplist;
 
-    sprintf(tmpstr, "My stack is:[");
-    for (tmp = SPECIAL_STACKPOINT(host) - 1; tmp >= 0; tmp--)
-        sprintf(tmpstr + strlen(tmpstr), " %ld", SPECIAL_STACK(host)[tmp]);
-    sprintf(tmpstr + strlen(tmpstr), "]");
+    {
+        std::string stack_str = "My stack is:[";
+        for (tmp = SPECIAL_STACKPOINT(host) - 1; tmp >= 0; tmp--)
+            stack_str += std::format(" {}", SPECIAL_STACK(host)[tmp]);
+        stack_str += "]";
+        strcpy(tmpstr, stack_str.c_str());
+    }
     PRE_COMMAND;
     do_say(host, tmpstr, 0, 0, 0);
 
@@ -566,28 +570,28 @@ void question_proc(struct char_data* host)
         tmplist = SPECIAL_LIST_AREA(host)->field + tmp;
         switch (SPECIAL_LIST_AREA(host)->field[tmp].type) {
         case SPECIAL_MARK:
-            sprintf(tmpstr, "mark_record");
+            strcpy(tmpstr, "mark_record");
             break;
 
         case SPECIAL_NULL:
             //	    sprintf(tmpstr,"Null :%ld",tmplist.str);
-            sprintf(tmpstr, "null_record");
+            strcpy(tmpstr, "null_record");
             break;
 
         case TARGET_TEXT:
-            sprintf(tmpstr, "Str :%s", tmplist->ptr.text->text);
+            strcpy(tmpstr, std::format("Str :{}", tmplist->ptr.text->text).c_str());
             break;
 
         case TARGET_OBJ:
-            sprintf(tmpstr, "Obj :%s", tmplist->ptr.obj->name);
+            strcpy(tmpstr, std::format("Obj :{}", tmplist->ptr.obj->name).c_str());
             break;
 
         case TARGET_CHAR:
-            sprintf(tmpstr, "Char:%s", GET_NAME(tmplist->ptr.ch));
+            strcpy(tmpstr, std::format("Char:{}", GET_NAME(tmplist->ptr.ch)).c_str());
             break;
 
         case TARGET_ROOM:
-            sprintf(tmpstr, "Room:%s", tmplist->ptr.room->name);
+            strcpy(tmpstr, std::format("Room:{}", tmplist->ptr.room->name).c_str());
             break;
         }
         //	  printf("'?': tmpstr=%s, next=%ld\n",tmpstr,tmplist->next);
@@ -1203,7 +1207,7 @@ SPECIAL(intelligent)
 
         default:
             PRE_COMMAND;
-            sprintf(buf2, "I can't understand my command (%c), alas :(", key);
+            strcpy(buf2, std::format("I can't understand my command ({}), alas :(", key).c_str());
             do_say(host, buf2, 0, 0, 0);
             POST_COMMAND;
             break;
@@ -1318,12 +1322,12 @@ char* mudlle_converter(char* source)
                     if (tmp == markn) {
                         RELEASE(newl);
                         CREATE(newl, char, 1000);
-                        sprintf(newl, "Mark not found:");
+                        strcpy(newl, "Mark not found:");
                         strncat(newl, source + i, 5);
                         strcat(newl, "\n\r");
                         return newl;
                     }
-                    sprintf(newl + len2, "%4.4d", mark_adr[tmp]);
+                    strcpy(newl + len2, std::format("{:04}", mark_adr[tmp]).c_str());
                     len2 += 4;
                     i += 3;
                 } else
@@ -1340,7 +1344,7 @@ char* mudlle_converter(char* source)
                             break;
                     if (tmp == num_of_programs)
                         tmp = 99999;
-                    sprintf(newl + len2, "%6.6d", tmp);
+                    strcpy(newl + len2, std::format("{:06}", tmp).c_str());
                     len2 += 6;
                     i += 5;
                 } else

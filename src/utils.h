@@ -11,8 +11,31 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <cstring>
+
 #include "platdef.h" /* For byte, sh_int, ush_int, etc. */
 #include "structs.h" /* For time_info_data */
+
+// Short-lived mutable copy of a string literal, for legacy char*-typed APIs
+// (most commonly ACMD's `argument` parameter) that a per-callsite audit has
+// confirmed are never actually written through for the call in question --
+// widening those signatures wholesale is out of scope (see Phase 5 Task 4's
+// report: do_give/find_all_dots is a real counter-example elsewhere in the
+// command-dispatch surface), so the literal side is fixed instead. The
+// temporary's lifetime spans the full enclosing expression (a standard
+// C++ guarantee), which covers the entire call it is passed into.
+class mutable_arg {
+public:
+    explicit mutable_arg(const char* text)
+    {
+        std::strncpy(buf_, text, sizeof(buf_) - 1);
+        buf_[sizeof(buf_) - 1] = '\0';
+    }
+    operator char*() { return buf_; }
+
+private:
+    char buf_[MAX_INPUT_LENGTH];
+};
 
 extern struct weather_data weather_info;
 extern sh_int square_root[];

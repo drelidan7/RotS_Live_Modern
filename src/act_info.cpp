@@ -716,7 +716,7 @@ void get_char_flag_line(char_data* viewer, char_data* viewed, char* character_me
  *
  * If 'color' is true, then we color this message.
  */
-void show_mount_to_char(struct char_data* i, struct char_data* ch, char* line1, char* line2,
+void show_mount_to_char(struct char_data* i, struct char_data* ch, const char* line1, const char* line2,
     int color)
 {
     int vis_count, tmpnum, you_are_riding, riderno;
@@ -1122,7 +1122,7 @@ void show_room_weather(char* str, struct char_data* ch)
  * symbol when using the look <no argument> command; i.e.:
  * Exits are: E (W) *S* #U# %D%
  */
-char* exit_mark[] = {
+const char* const exit_mark[] = {
     "", /* A hidden exit */
     " %c", /* A plain, boring link to another room */
     " (%c)", /* A closed, non-broken door */
@@ -1136,7 +1136,7 @@ char* exit_mark[] = {
  * A list of valid arguments to look; i.e.: look north,
  * look at <thing>, look (no argument), etc.
  */
-char* keywords[] = { "north", "east", "south", "west", "up",
+const char* const keywords[] = { "north", "east", "south", "west", "up",
     "down", "in", "at", "", /* Look at '' case */
     "\n" };
 
@@ -1217,7 +1217,7 @@ ACMD(do_look)
                         return;
                     }
                     if (ch->in_room != NOWHERE)
-                        do_look(ch, "", wtl, 15, 0);
+                        do_look(ch, mutable_arg(""), wtl, 15, 0);
                     else
                         send_to_char("You see nothing special.\n\r", ch);
                     ch->in_room = tmp;
@@ -1599,7 +1599,7 @@ ACMD(do_look)
 
         /* ORC DELAY - URUK DELAY - a nasty hack, but what else can i do.. */
         if (SUN_PENALTY(ch) && !IS_AFFECTED(ch, AFF_WAITING) && !(IS_AFFECTED((ch), AFF_BLIND)))
-            do_orc_delay(ch, "", 0, 0, 0);
+            do_orc_delay(ch, mutable_arg(""), 0, 0, 0);
 
         /*
          * If you're hunting, have no sun penalty, and aren't confused,
@@ -1989,7 +1989,7 @@ ACMD(do_info)
         out += "You are thirsty.\r\n";
 
     send_to_char(out.c_str(), ch);
-    do_affections(ch, "", 0, 0, 0);
+    do_affections(ch, mutable_arg(""), 0, 0, 0);
 }
 
 /*
@@ -2167,7 +2167,7 @@ ACMD(do_time)
     send_to_char(out.c_str(), ch);
 }
 
-char* sky_look[6] = {
+const char* const sky_look[6] = {
     "cloudless", "cloudy", "rainy", "lit by flashes of lightning", "snowy", "full of driving snow"
 };
 
@@ -3861,11 +3861,11 @@ ACMD(do_fame)
     int records;
     char leaderstr[MAX_LEADER_STRING];
     char name[MAX_INPUT_LENGTH];
-    char* warheader = "Status of the War in Middle-earth";
-    char* good_victory = "The free peoples of Middle-earth are victorious "
+    const char* warheader = "Status of the War in Middle-earth";
+    const char* good_victory = "The free peoples of Middle-earth are victorious "
                          "over the forces of the Shadow.";
-    char* evil_victory = "The power of the Shadow falls over Middle-earth.";
-    char* no_victory = "The war in Middle-earth favors neither the "
+    const char* evil_victory = "The power of the Shadow falls over Middle-earth.";
+    const char* no_victory = "The war in Middle-earth favors neither the "
                        "Shadow nor the free peoples.";
     PKILL* pkills;
     LEADER *ldr1, *ldr2;
@@ -4133,7 +4133,7 @@ ACMD(do_compare)
     return;
 }
 
-static char* stat_defects[] = {
+static const char* const stat_defects[] = {
     "weakened",
     "duped",
     "dispirited",
@@ -4143,7 +4143,7 @@ static char* stat_defects[] = {
     "\n",
 };
 
-static char* stat_attrs[] = { "horribly", "strongly", "strongly", "seriously", "seriously", "quite",
+static const char* const stat_attrs[] = { "horribly", "strongly", "strongly", "seriously", "seriously", "quite",
     "somewhat", "somewhat", "slightly", "barely", "not at all" };
 
 void report_char_mentals(char_data* ch, char* str, int brief_mode)
@@ -4473,7 +4473,7 @@ ACMD(do_exploits)
  * Arrarys used for identify, this is just a temporary
  * place of residence.
  */
-char* light_messages[] = {
+const char* const light_messages[] = {
 
     "extremely weak, and will not last very long",
     "weak, and will not last very long",
@@ -4486,7 +4486,7 @@ char* light_messages[] = {
 
 };
 
-char* food_messages[] = {
+const char* const food_messages[] = {
 
     "is barely a morsel of food, and will\r\ndo little to aid against the pangs of hunger",
     "is not very filling, and will do little\r\nto keep hunger at bay",
@@ -4498,7 +4498,7 @@ char* food_messages[] = {
     "is extremely filling, and will keep you \r\nfull all day and night",
 
 };
-char* wear_messages[] = {
+const char* const wear_messages[] = {
 
     "taken",
     "worn on your finger",
@@ -4520,7 +4520,7 @@ char* wear_messages[] = {
     "worn on a belt",
 };
 
-char* material_messages[] = {
+const char* const material_messages[] = {
 
     "of the usual stuff",
     "of cloth",
@@ -4540,7 +4540,7 @@ char* material_messages[] = {
     "Blurp3",
 };
 
-char* item_messages[] = {
+const char* const item_messages[] = {
     "Unidentified",
     "light source",
     "scroll",
@@ -4569,7 +4569,7 @@ char* item_messages[] = {
     "lever",
 };
 
-char* extra_messages[] = {
+const char* const extra_messages[] = {
 
     "It glows brigtly",
     "It hums softly",
@@ -4594,7 +4594,7 @@ char* extra_messages[] = {
  * This array is used as a generic value_flag display
  * for all items, with the exception of food/light.
  */
-char* value_array[][5] = {
+const char* const value_array[][5] = {
 
     {
         "",
@@ -4780,7 +4780,7 @@ char* value_array[][5] = {
     }, /* Lever */
 };
 
-char* weapon_types[] = {
+const char* const weapon_types[] = {
 
     "Error, Unsed weapon type, contact Imms",
     "Error, Unsed weapon type, contact Imms",

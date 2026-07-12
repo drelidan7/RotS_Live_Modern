@@ -261,3 +261,44 @@ TEST(ActTokenExpansion, DollarNExpandsToActorNameForSeeingObserver)
 - Placeholder scan: Task 3 Step 2's `...`/landmark sketch is explicitly flagged as MUST-become-concrete from the same step's required reading (player-save.md + the writer source) — the plan cannot pre-state the field list without risking staleness against the real writer; the authoritative-source-wins instruction is deliberate, mirroring Wave 3's ObjFlagDataBuilder adaptation flag. Same pattern for Task 5's token-case list.
 - Type consistency: `write_player_text(char_data*, int, const char*)` matches db.cpp:2853; `act(...)` matches comm.cpp:2333; `convert_string(...)` matches comm.cpp:2172; suite names consistent across tasks/ASan filters.
 - Verified anchors 2026-07-12: fight sites :131-:872, save region :2851-:3170, comm function-site distribution (game_loop 14, convert_string 3, etc.).
+
+---
+
+## Wave 4 Exit (2026-07-12)
+
+**Final commit:** `9e45139` (branch `modernization/phase-4-wave-4`, 12 commits off master `fe7f7f2`).
+**Merge decision:** owner's (pending at write time).
+
+### Battery actuals
+
+- **macOS native:** ctest 1015 / 0 fail / 71 skip; boot golden byte-identical; combat goldens (seed 42) explicitly green; per-task ASan clean.
+- **rots64:** ctest 1015 / 0 / 73; boot golden byte-identical.
+- **i386 (finalization):** ctest 1015 / 0 / 7; boot golden byte-identical; **monolithic runner 1008 pass / 7 skip / 0 fail, ZERO SIGSEGVs** — first fully-clean monolithic i386 run on record.
+- **Four-platform CI:** run 29189954472 — ALL FOUR REQUIRED JOBS GREEN ON THE FIRST ATTEMPT (no MSVC surprise; the per-task cast audits + standing fixture rules closed the class that cost Wave 3 five cycles and the USV effort four).
+- **Manual account smoke (AGENTS.md requirement, comm.cpp connection surfaces):** PASS ×2 sessions (create→verify→character→game→look/score/who→quit; reconnect→linked character→game→quit); transcript `.superpowers/sdd/wave4-smoke-transcript.log`; cleanup verified.
+
+### Deliverables
+
+- The final trio converted: fight.cpp (9 conversions / 2 plain-copy skips), db.cpp (66 loader + 18 save-writer + 2 sweep conversions; fprintf and legacy decoders untouched by rule), comm.cpp (30 + 3 convert_string conversions; 7 pipeline-accounting skips preserved). Every remaining sprintf-family hit across the trio carries a disposition (169-hit ledger in `2a39db5`).
+- New suites: `SavePlayerRoundTrip` (2 tests — on-disk text-save format byte-pinned via write_player_text round-trip, FNV hash identical pre/post) and `ActTokenExpansion` (34 tests — full real token inventory $C×12/$K/$n/$N/$m/$M/$s/$S/$e/$E/$o/$O/$p/$P/$a/$A/$T/$F/$b/$B/$$, all four routing modes, visibility gates). Suite total 979 → 1015.
+- **Two pre-existing memory-safety bugs fixed** (`0050de2`): the `pwdcrypt` global-buffer-overflow in write_player_text (the Wave 3 ASan backlog item — final review upgraded it: `encrypt_line` never emits NUL/newline, so the overflow was a latent save-file line-desync corruption vector) and an uninitialized `chd` struct.
+- **Build-system fix** (`9e45139`): `-MMD -MP` auto-dependency generation in src/tests/Makefile, after the finalization battery surfaced a stale-object ODR artifact (missing test_world.h dep line → wild free in ~ScopedTestWorld, i386 monolithic only). Touch-verified (12 dependent TUs rebuild).
+- **Historical "tolerated qemu flake" RETIRED:** the clean-build monolithic run passed AccountManagement.FormatsCharacterPromptWithLinkedCharacterList (134 ms) and everything else — the long-tolerated SIGSEGV was almost certainly this stale-object class, not qemu. CLAUDE.md updated: any future monolithic SIGSEGV is investigated, no tolerance carve-out.
+
+### Behavior deltas (all disclosed; everything else byte-identical, goldens untouched)
+
+1. Live password-line bytes in text saves: old code wrote overflow-read garbage after the 10 encrypted bytes (nonzero adjacent memory, e.g. mid-combat autosave); now exactly 10 bytes + NUL. Load path truncates at 10 → zero corruption/login impact, strictly safer.
+2. game_loop prompt self-referential sprintf UB and perform_subst unbounded-global overflow removed (byte-identical for all previously-defined inputs).
+3. Previously-crashing/garbage paths per Wave 3 precedent (take_cstring-style null guards where old code was UB).
+
+### Reviews
+
+7 task reviews (Sonnet ×6, Opus for the save-writer), zero fix loops required (first wave with none); final whole-branch review (Fable): READY TO MERGE, 0 Critical / 0 Important / 8 backlog Minors; independent 115-arg char[N] scan clean; RNG-discipline and golden-integrity verified per-commit.
+
+### Backlog (carried)
+
+JsonUtils dangling-temporary tests (json_utils_tests.cpp:83/:96, ASan-visible, pre-existing); world[0].light shuffle pollution (seed-1, ActWizInspection→ActInfoPerception); perform_subst residual caller-buffer ceiling (pre-existing); mudlog const-correctness; test-fixture profs leaks; buf-aliasing display cluster (Wave 3 carry); RAII lifecycle-audit wave; -funsigned-char + Phase 5 hardening items.
+
+### Phase 4 status
+
+With the trio done, the Phase 4 transform catalog has now been applied to every targeted module (Waves 1-4). Remaining Phase 4-adjacent work is the deferred backlog above; Phase 5 (hardening: -Wall/-Wextra, sanitizers in CI, -funsigned-char audit, clang-tidy, 32-bit retirement after data migration) is next per the parent spec.

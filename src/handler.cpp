@@ -758,7 +758,7 @@ void affect_remove(struct char_data* ch, struct affected_type* af)
 
 void affect_remove_notify(struct char_data* ch, struct affected_type* af)
 {
-    extern char* spell_wear_off_msg[];
+    extern const char* const spell_wear_off_msg[];
 
     if (*spell_wear_off_msg[af->type] && !PLR_FLAGGED(ch, PLR_WRITING))
         vsend_to_char(ch, "%s\n", spell_wear_off_msg[af->type]);
@@ -838,7 +838,7 @@ int in_affected_list(struct char_data* ch)
  */
 void affect_from_char_notify(struct char_data* ch, byte skill)
 {
-    extern char* spell_wear_off_msg[];
+    extern const char* const spell_wear_off_msg[];
 
     if (*spell_wear_off_msg[skill] && !PLR_FLAGGED(ch, PLR_WRITING))
         vsend_to_char(ch, "%s\n", spell_wear_off_msg[skill]);

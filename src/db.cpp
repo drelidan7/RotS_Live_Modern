@@ -4633,7 +4633,7 @@ void write_exploits(char_data* ch, exploit_record* record)
 
     std::string error_message;
     if (!write_exploit_record_for_character(".", GET_NAME(ch), *record, &error_message)) {
-        snprintf(buf, sizeof(buf), "**ERROR: Could not persist exploit file for character: %s", error_message.c_str());
+        strcpy(buf, std::format("**ERROR: Could not persist exploit file for character: {}", error_message).c_str());
         mudlog(buf, NRM, LEVEL_IMMORT, TRUE);
     } else {
         // Anti-rollback: an exploit record (PK -> killer; death/level/stat/birth/... -> victim) marks a
@@ -5163,9 +5163,7 @@ bool load_object_save_data_for_character(const std::string& root_directory, cons
         bool accepted_missing_follower_section = false;
         std::string decode_error;
         if (!objects_json::legacy_object_save_data_from_binary(legacy_bytes, &decoded, &accepted_missing_follower_section, &decode_error)) {
-            char log_buffer[MAX_STRING_LENGTH];
-            std::snprintf(log_buffer, sizeof(log_buffer), "SYSERR: unable to decode account-staged object data for %s: %s", character_name.c_str(), decode_error.c_str());
-            log(log_buffer);
+            log(std::format("SYSERR: unable to decode account-staged object data for {}: {}", character_name, decode_error).c_str());
             *data = build_default_account_backed_object_data();
             set_db_error(error_message, "");
             return true;

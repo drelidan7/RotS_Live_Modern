@@ -4822,11 +4822,20 @@ void do_flag_values_display(struct char_data* ch, struct obj_data* j)
 
     for (i = 0; i <= 4; i++) {
         // value_array[...][i] entries are static string-literal labels
-        // (never null); the "!= \"\"" pointer comparison against a fresh ""
-        // literal is the exact same check the old code ran on its own
-        // sprintf("%s", ...) copy of the same pointer -- unchanged here.
-        if (value_array[GET_ITEM_TYPE(j)][i] != "") {
-            send_to_char(value_array[GET_ITEM_TYPE(j)][i], ch);
+        // (never null). The historical guard compared the label POINTER
+        // against a fresh "" literal -- an emptiness check only where the
+        // compiler pools identical string literals (gcc/clang do, so every
+        // canonical platform's behavior -- pinned by the ActInfoObjectId
+        // tests and goldens -- skipped empty labels). MSVC's Debug config
+        // (/GF off, the windows-msvc CI preset) does NOT pool, so there the
+        // old pointer compare was always-true and this loop emitted bogus
+        // "label-less" value rows for every empty slot (Wave 3 finalization
+        // CI failure). Check the label's CONTENT instead: byte-identical
+        // output on all pooling platforms, and the empty-label skip finally
+        // holds on MSVC too.
+        const char* label = value_array[GET_ITEM_TYPE(j)][i];
+        if (label[0] != '\0') {
+            send_to_char(label, ch);
 
             if (j->obj_flags.value[i] < 0) /* Checks for negative for display purposes */
                 send_to_char(std::format("\t {}.\r\n", j->obj_flags.value[i]).c_str(), ch);

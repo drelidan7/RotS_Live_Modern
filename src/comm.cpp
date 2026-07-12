@@ -1438,7 +1438,7 @@ SocketType pnew_descriptor(SocketType s)
     struct descriptor_data *pnewd, *point, *next_point;
     socklen_t size;
     int sockets_connected, sockets_playing;
-    struct sockaddr_in sock;
+    struct sockaddr_in sock = {};
 
     if ((desc = pnew_connection(s)) == 0) // here was <0, too bad
         return (0); // here was -1, too bad...
@@ -1824,7 +1824,7 @@ int process_input(struct descriptor_data* t)
             }
 
             if ((t->connected == CON_PLYNG) && (t->character))
-                fprintf(fpCommand, "%3d %-16s: %s\n", t->descriptor, GET_NAME(t->character), tmp);
+                fprintf(fpCommand, "%3lld %-16s: %s\n", static_cast<long long>(t->descriptor), GET_NAME(t->character), tmp);
 
             iCommands++;
             fflush(fpCommand);

@@ -476,7 +476,10 @@ ACMD(do_gen_com)
 {
     struct descriptor_data* i;
     const char* color;
-    int imm_to_race, imm_side;
+    // = 0: deterministic defaults (imm_side 0 -> imm_side_message[0], the empty
+    // suffix) for the paths where the assignment chains below don't cover the
+    // speaker's race -- previously an indeterminate read (MSVC C4701/UB).
+    int imm_to_race = 0, imm_side = 0;
     struct room_data* tmproom;
     int myzone, tmp;
 

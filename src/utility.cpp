@@ -150,7 +150,9 @@ char unaccent(char c)
         return 'u';
 
 #undef B
-    return 255;
+    // '\xff' == 255: char is pinned unsigned everywhere (-funsigned-char, /J);
+    // spelled as a char literal because MSVC's C4309 check ignores /J.
+    return '\xff';
 }
 
 inline int
@@ -663,7 +665,7 @@ int get_real_OB(char_data* ch)
     }
 
     int sun_mod = 0;
-    int tmpob, tactics, weapon_skill = 0;
+    int tmpob, tactics = 0, weapon_skill = 0;
 
     obj_data* weapon = ch->equipment[WIELD];
 

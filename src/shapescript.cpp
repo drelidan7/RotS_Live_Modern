@@ -410,7 +410,7 @@ int replace_script(struct char_data* ch, char* arg)
     FILE* f1;
     FILE* f2;
     char *f_from, *f_old;
-    int num, check, i, oldnum;
+    int num, check, i = 0, oldnum = 0;
     char c;
 
     if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_FILENAME)) {

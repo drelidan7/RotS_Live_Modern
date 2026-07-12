@@ -750,6 +750,10 @@ ACMD(do_butcher)
         if (!tool) {
             if (GET_RACE(ch) == RACE_BEORNING) {
                 chance = 50 + (GET_PROF_LEVEL(PROF_RANGER, ch) + 2);
+                // Butchering with natural claws: no tool wielded. Previously left
+                // indeterminate on this branch (MSVC C4701/UB) -- the later
+                // `!no_tool` food-bonus check read garbage for Beornings.
+                no_tool = 1;
             } else {
                 chance = 0;
                 no_tool = 1;

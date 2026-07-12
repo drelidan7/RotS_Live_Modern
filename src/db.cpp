@@ -2937,14 +2937,14 @@ bool write_player_text(struct char_data* ch, int load_room, const char* scratch_
     fprintf(pf, "bodytype    %d\n", chd.bodytype);
     fprintf(pf, "level       %d\n", chd.level);
     fprintf(pf, "language    %d\n", chd.language);
-    fprintf(pf, "birth       %ld\n", chd.birth);
+    fprintf(pf, "birth       %lld\n", static_cast<long long>(chd.birth));
     fprintf(pf, "played      %d\n", chd.played);
     fprintf(pf, "weight      %d\n", chd.weight);
     fprintf(pf, "height      %d\n", chd.height);
     fprintf(pf, "title       %s\n", chd.title);
     fprintf(pf, "hometown    %d\n", chd.hometown);
     fprintf(pf, "description \n%s~\n", chd.description);
-    fprintf(pf, "last_logon  %ld\n", chd.last_logon);
+    fprintf(pf, "last_logon  %lld\n", static_cast<long long>(chd.last_logon));
     memcpy(pwdcrypt, chd.pwd, MAX_PWD_LENGTH);
     encrypt_line((unsigned char*)pwdcrypt, MAX_PWD_LENGTH);
     pwdcrypt[MAX_PWD_LENGTH] = '\0'; // terminate explicitly -- see the pwdcrypt declaration comment

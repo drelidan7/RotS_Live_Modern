@@ -1805,7 +1805,7 @@ SPECIAL(mob_magic_user_spec)
     }
 
     struct char_data* tmpch;
-    char_data* target;
+    char_data* target = nullptr;
     int spell_list[20]; // the first index is the count of spells
     int tgt = 0;
     int spell_number = 0;

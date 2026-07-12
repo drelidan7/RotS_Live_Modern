@@ -1515,7 +1515,7 @@ int replace_proto(struct char_data* ch, char* arg)
 {
     char *f_from, *f_old;
     char c;
-    int i, check, num, oldnum;
+    int i = 0, check, num, oldnum = 0;
     FILE* f1;
     FILE* f2;
 

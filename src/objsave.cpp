@@ -399,7 +399,10 @@ int Crash_delete_crashfile(struct char_data* ch)
 {
 
     char fname[MAX_INPUT_LENGTH];
-    struct rent_info rent;
+    // Value-init: a truncated/empty crash file leaves fread() short and
+    // rent.rentcode was then an indeterminate read (MSVC C4701/UB); zeroed it
+    // is deterministically "not RENT_CRASH" (no delete).
+    struct rent_info rent = {};
     FILE* fl;
 
     if (!Crash_get_filename(GET_NAME(ch), fname))

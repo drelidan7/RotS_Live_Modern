@@ -2683,7 +2683,7 @@ struct set_struct {
 ACMD(do_wizset)
 {
     int i, l, tmp;
-    struct char_data* vict;
+    struct char_data* vict = 0;
     struct char_data* cbuf = 0;
     struct char_file_u tmp_store;
     struct descriptor_data descr;

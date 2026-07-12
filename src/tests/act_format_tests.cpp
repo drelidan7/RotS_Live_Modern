@@ -43,7 +43,10 @@ extern struct prompt_type prompt_hit[];
 extern struct prompt_type prompt_mana[];
 extern struct prompt_type prompt_move[];
 extern const char* const casting[];
-extern const char* specialize_name[];
+// Must match the consts.cpp definition's type exactly (const char* const):
+// MSVC mangles a variable's type into its decorated name, so a missing
+// top-level const links fine on GNU/Itanium but is LNK2001 on Windows.
+extern const char* const specialize_name[];
 
 void clear_char(struct char_data* ch, int mode);
 

@@ -721,7 +721,7 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, const char* l
 {
     int vis_count, tmpnum, you_are_riding, riderno;
     int special_message;
-    struct char_data *tmpch, *last_rider;
+    struct char_data *tmpch, *last_rider = 0;
 
     you_are_riding = special_message = vis_count = 0;
     *buf = 0;
@@ -1226,7 +1226,7 @@ ACMD(do_look)
     int keyword_no;
     int j, bits = 0, temp, tmp;
     char found;
-    struct obj_data *tmp_object, *found_object;
+    struct obj_data *tmp_object, *found_object = 0;
     struct char_data* tmp_char;
     struct affected_type* tmpaf;
     char* tmp_desc;

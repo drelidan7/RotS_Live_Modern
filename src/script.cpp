@@ -793,8 +793,11 @@ int run_script(struct info_script* info, struct script_data* position)
     char_data* tmpch2;
     struct waiting_type tmpwtl;
     obj_data* tmpobj = 0;
-    int tobjcnt;
-    int tmpint, tmpint2;
+    int tobjcnt = 0;
+    // tmpint = 0: SCRIPT_TELEPORT_CHAR_XL reads tmpint set by *other* cases (a
+    // preserved pre-existing bug); a deterministic 0 replaces the indeterminate
+    // first-read (MSVC C4701/UB) without changing the stale-reuse behavior.
+    int tmpint = 0, tmpint2;
     struct follow_type *k, *next_fol;
 
     curr = position;
@@ -905,11 +908,17 @@ int run_script(struct info_script* info, struct script_data* position)
 #pragma clang diagnostic push
 #elif defined(__GNUC__)
 #pragma GCC diagnostic push
+#elif defined(_MSC_VER)
+#pragma warning(push)
 #endif
 #if defined(__clang__)
 #pragma clang diagnostic ignored "-Wtautological-constant-out-of-range-compare"
 #elif defined(__GNUC__)
 #pragma GCC diagnostic ignored "-Wbool-compare"
+#elif defined(_MSC_VER)
+// C4804 (unsafe bool in '<'): same bug-preservation rationale as the GNU/Clang
+// suppressions above -- the always-true comparison is intentional legacy behavior.
+#pragma warning(disable : 4804)
 #endif
                 if (tmprm && (tmpint != NOWHERE) && ((-1 < curr->param[1]) < 6))
                     tmprm->dir_option[curr->param[1]]->to_room = tmpint;
@@ -917,6 +926,8 @@ int run_script(struct info_script* info, struct script_data* position)
 #pragma clang diagnostic pop
 #elif defined(__GNUC__)
 #pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
 #endif
             }
             curr = curr->next;
@@ -1005,11 +1016,17 @@ int run_script(struct info_script* info, struct script_data* position)
 #pragma clang diagnostic push
 #elif defined(__GNUC__)
 #pragma GCC diagnostic push
+#elif defined(_MSC_VER)
+#pragma warning(push)
 #endif
 #if defined(__clang__)
 #pragma clang diagnostic ignored "-Wtautological-constant-out-of-range-compare"
 #elif defined(__GNUC__)
 #pragma GCC diagnostic ignored "-Wbool-compare"
+#elif defined(_MSC_VER)
+// C4804 (unsafe bool in '<'): same bug-preservation rationale as the GNU/Clang
+// suppressions above -- the always-true comparison is intentional legacy behavior.
+#pragma warning(disable : 4804)
 #endif
                 if (tmpch && ((-1 < curr->param[1]) < MAX_WEAR))
                     if (tmpch->equipment[curr->param[1]])
@@ -1018,6 +1035,8 @@ int run_script(struct info_script* info, struct script_data* position)
 #pragma clang diagnostic pop
 #elif defined(__GNUC__)
 #pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
 #endif
             }
             curr = curr->next;

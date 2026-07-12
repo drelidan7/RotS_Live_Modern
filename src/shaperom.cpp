@@ -1350,7 +1350,7 @@ int replace_room(struct char_data* ch, char*)
     /* copy f1 to f2, replacing mob #num with new mob */
     char *f_from, *f_old;
     char c;
-    int i, check, num, oldnum;
+    int i, check, num, oldnum = 0;
     FILE* f1;
     FILE* f2;
     /*  if(3!=sscanf(arg,"%s %s %s",str,f_from,f_old)){
@@ -1465,7 +1465,7 @@ int append_room(struct char_data* ch, char* arg)
     char* f_from;
     char* f_old;
     char c;
-    int i, i1, check;
+    int i = 0, i1, check;
     FILE* f1;
     FILE* f2;
     /*  if(3!=sscanf(arg,"%s %s %s",str,f_from,f_old)){

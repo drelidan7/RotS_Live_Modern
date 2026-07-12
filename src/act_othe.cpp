@@ -805,7 +805,7 @@ ACMD(do_use)
 
         if (stick->obj_flags.value[2] > 0) { /* Is there any charges left? */
             stick->obj_flags.value[2]--;
-            if (*skills[stick->obj_flags.value[3]].spell_pointer)
+            if (skills[stick->obj_flags.value[3]].spell_pointer)
                 ((*skills[stick->obj_flags.value[3]].spell_pointer)(ch, mutable_arg(""), SPELL_TYPE_STAFF, 0, 0,
                     0, 0));
 
@@ -825,7 +825,7 @@ ACMD(do_use)
 
             if (stick->obj_flags.value[2] > 0) { /* Is there any charges left? */
                 stick->obj_flags.value[2]--;
-                if (*skills[stick->obj_flags.value[3]].spell_pointer)
+                if (skills[stick->obj_flags.value[3]].spell_pointer)
                     ((*skills[stick->obj_flags.value[3]].spell_pointer)(
                         ch, mutable_arg(""), SPELL_TYPE_WAND, tmp_char, tmp_object, 0, 0));
             } else
@@ -1359,7 +1359,7 @@ void report_inventory_sorting_to(char_data* character, const char* intro_string)
     bool high_bit_set = PRF_FLAGGED(character, PRF_INV_SORT2) != 0;
     bool low_bit_set = PRF_FLAGGED(character, PRF_INV_SORT1) != 0;
 
-    int sort_value = high_bit_set << 1 | low_bit_set;
+    int sort_value = (static_cast<int>(high_bit_set) << 1) | static_cast<int>(low_bit_set);
 
     const char* sort_name = inv_sorting[sort_value].data();
 

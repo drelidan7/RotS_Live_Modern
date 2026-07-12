@@ -1326,7 +1326,7 @@ int replace_object(struct char_data* ch, char* arg)
 
     char c;
 
-    int i, check, num, oldnum;
+    int i, check, num, oldnum = 0;
 
     FILE* f1;
 

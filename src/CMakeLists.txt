@@ -179,6 +179,7 @@ if(ROTS_BUILD_TESTS)
         tests/CharPlayerDataBuilder.cpp
         tests/clock_tests.cpp
         tests/color_tests.cpp
+        tests/comm_act_tests.cpp
         tests/convert_exploits_tests.cpp
         tests/convert_plrobjs_tests.cpp
         tests/cpp20_format_smoke_tests.cpp

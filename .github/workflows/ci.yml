@@ -161,8 +161,16 @@ jobs:
       # leak detection is disabled here; the sanitize-linux job is the leak
       # gate (ASAN_OPTIONS detect_leaks=1 there). This job still catches
       # memory corruption (ASan) and UB (UBSan) on the macOS/AppleClang ABI.
+      # detect_container_overflow=0 (Phase 5 Task 9): the brew-installed
+      # GoogleTest static lib is NOT ASan-instrumented, and mixing it with the
+      # instrumented test binary + Apple's annotated libc++ produces the
+      # documented container-overflow false positive (fires inside gtest's own
+      # JSON test-list printer during ctest PRE_TEST discovery -- see
+      # https://github.com/google/sanitizers/wiki/AddressSanitizerContainerOverflow).
+      # The fully-instrumented sanitize-linux job keeps container-overflow
+      # checking for the game's own code.
       - name: Test
-        run: cd src && ASAN_OPTIONS=detect_leaks=0 ctest --preset macos-arm64-asan
+        run: cd src && ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 ctest --preset macos-arm64-asan
         env:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
 

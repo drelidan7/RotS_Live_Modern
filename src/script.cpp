@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <ctype.h>
 #include <fcntl.h>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -880,7 +881,7 @@ int run_script(struct info_script* info, struct script_data* position)
                 // the SCRIPT_DO_SAY-family sites below): pass through "%s" so a '%' in
                 // the script text can't be treated as a conversion specifier and write
                 // past the strlen(curr->text)+1 allocation above.
-                sprintf(*wtxt, "%s", curr->text);
+                strcpy(*wtxt, std::format("{}", curr->text).c_str());
             }
             curr = curr->next;
             break;
@@ -995,7 +996,23 @@ int run_script(struct info_script* info, struct script_data* position)
         case SCRIPT_DO_SAY:
             if (curr->text && curr->param[0]) {
                 txt1 = get_text_param(curr->param[1], info);
+                // Justified skip -- curr->text is a MUD-script-authored
+                // string used directly AS the printf-style format string
+                // (%s-style), not a literal. This is a genuinely dynamic
+                // runtime format string: std::format's format-string
+                // argument must satisfy std::format_string<Args...>, which
+                // is parsed at compile time, and even std::vformat's
+                // runtime path only understands "{}"-style syntax, not
+                // printf's "%s"-style syntax that curr->text contains.
+                // There is no std::format-family equivalent for this
+                // pattern in this codebase (vformat is unused everywhere
+                // else too); same shape repeats at script.cpp's other
+                // SCRIPT_DO_YELL/SCRIPT_SEND_TO_CHAR/SCRIPT_SEND_TO_ROOM/
+                // SCRIPT_SEND_TO_ROOM_X cases below.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                 sprintf(output, curr->text, txt1);
+#pragma clang diagnostic pop
                 tmpch = get_char_param(curr->param[0], info);
                 if (tmpch)
                     do_say(tmpch, output, 0, 0, 0);
@@ -1046,7 +1063,13 @@ int run_script(struct info_script* info, struct script_data* position)
         case SCRIPT_DO_YELL:
             if (curr->text && curr->param[0]) {
                 txt1 = get_text_param(curr->param[1], info);
+                // Justified skip -- see the comment at SCRIPT_DO_SAY above:
+                // curr->text is a dynamic runtime printf-style format
+                // string, not convertible to std::format.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                 sprintf(output, curr->text, txt1);
+#pragma clang diagnostic pop
                 tmpch = get_char_param(curr->param[0], info);
                 if (tmpch)
                     do_gen_com(tmpch, output, 0, 0, SCMD_YELL);
@@ -1447,7 +1470,13 @@ int run_script(struct info_script* info, struct script_data* position)
             if (curr->text && curr->param[0]) {
                 tmpch = get_char_param(curr->param[0], info);
                 txt1 = get_text_param(curr->param[1], info);
+                // Justified skip -- see the comment at SCRIPT_DO_SAY above:
+                // curr->text is a dynamic runtime printf-style format
+                // string, not convertible to std::format.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                 sprintf(output, curr->text, txt1);
+#pragma clang diagnostic pop
                 if (tmpch) {
                     send_to_char(output, tmpch);
                     send_to_char("\n", tmpch);
@@ -1460,7 +1489,13 @@ int run_script(struct info_script* info, struct script_data* position)
             if (curr->text && curr->param[0]) {
                 tmprm = get_room_param(curr->param[0], info);
                 txt1 = get_text_param(curr->param[1], info);
+                // Justified skip -- see the comment at SCRIPT_DO_SAY above:
+                // curr->text is a dynamic runtime printf-style format
+                // string, not convertible to std::format.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                 sprintf(output, curr->text, txt1);
+#pragma clang diagnostic pop
                 if (tmprm) {
                     send_to_room(output, real_room(tmprm->number));
                     send_to_room("\n", real_room(tmprm->number));
@@ -1474,7 +1509,13 @@ int run_script(struct info_script* info, struct script_data* position)
                 tmprm = get_room_param(curr->param[0], info);
                 tmpch = get_char_param(curr->param[1], info);
                 txt1 = get_text_param(curr->param[2], info);
+                // Justified skip -- see the comment at SCRIPT_DO_SAY above:
+                // curr->text is a dynamic runtime printf-style format
+                // string, not convertible to std::format.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                 sprintf(output, curr->text, txt1);
+#pragma clang diagnostic pop
                 if (tmprm && tmpch) {
                     send_to_room_except(output, real_room(tmprm->number), tmpch);
                     send_to_room_except("\n", real_room(tmprm->number), tmpch);

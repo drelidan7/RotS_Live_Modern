@@ -20,6 +20,7 @@
 #include "object_utils.h"
 #include "warrior_spec_handlers.h"
 #include <algorithm>
+#include <format>
 
 const int MIN_SAFE_STAT = 3;
 
@@ -213,13 +214,13 @@ ACMD(do_mental)
         if (!(check_mind_block(victim, ch, damg, tmp)))
             return;
 
-        sprintf(buf, "$CHYou force your Will against $N's %s!", stat_word[tmp]);
+        strcpy(buf, std::format("$CHYou force your Will against $N's {}!", stat_word[tmp]).c_str());
         act(buf, FALSE, ch, NULL, victim, TO_CHAR);
 
-        sprintf(buf, "$CD$n forces $s Will against your %s!", stat_word[tmp]);
+        strcpy(buf, std::format("$CD$n forces $s Will against your {}!", stat_word[tmp]).c_str());
         act(buf, FALSE, ch, NULL, victim, TO_VICT);
 
-        sprintf(buf, "$n forces $s Will against $N's %s!", stat_word[tmp]);
+        strcpy(buf, std::format("$n forces $s Will against $N's {}!", stat_word[tmp]).c_str());
         act(buf, TRUE, ch, 0, victim, TO_NOTVICT);
 
         damage_result = damage_stat(ch, victim, tmp, damg);
@@ -467,7 +468,6 @@ int restore_stat(char_data* character, int stat_num, int amount)
 
 ACMD(do_concentrate)
 {
-    char str[255];
     int i, tmp, extra;
     struct char_data* victim;
     int stat_damage[6];
@@ -479,8 +479,7 @@ ACMD(do_concentrate)
         if (ch->specials.fighting) {
             victim = ch->specials.fighting;
             extra = (-GET_MENTAL_DELAY(ch) + number(0, PULSE_MENTAL_FIGHT - 1)) / PULSE_MENTAL_FIGHT;
-            sprintf(str, "You attack with extra will power! (%d)\n\r", extra);
-            send_to_char(str, ch);
+            send_to_char(std::format("You attack with extra will power! ({})\n\r", extra).c_str(), ch);
             act("$n lashes out his power!", FALSE, ch, 0, 0, TO_ROOM);
 
             extra = extra * GET_PERCEPTION(victim) / 100;

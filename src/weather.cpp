@@ -8,6 +8,7 @@
  *  CircleMUD is based on DikuMUD, Copyright (C) 1990, 1991.               *
  ************************************************************************ */
 
+#include <format>
 #include <stdio.h>
 
 #include "comm.h"
@@ -409,29 +410,26 @@ void another_hour(int mode)
         weather_info.moonphase = new_moon_phase;
         if (weather_info.moonphase != MOON_NEW) {
             weather_info.moonlight = 1;
-            sprintf(buf, "The %s moon shows in the sky.\n\r",
-                moon_phase[new_moon_phase]);
-            send_to_outdoor(buf, OUTDOORS_LIGHT);
+            send_to_outdoor(std::format("The {} moon shows in the sky.\n\r",
+                moon_phase[new_moon_phase]).c_str(), OUTDOORS_LIGHT);
         }
     }
     if (time_info.hours == (moon_rise + 12) % 24) {
         if (weather_info.moonphase != MOON_NEW) {
             weather_info.moonlight = 0;
-            sprintf(buf, "The %s moon goes off the sky.\n\r",
-                moon_phase[new_moon_phase]);
-            send_to_outdoor(buf, OUTDOORS_LIGHT);
+            send_to_outdoor(std::format("The {} moon goes off the sky.\n\r",
+                moon_phase[new_moon_phase]).c_str(), OUTDOORS_LIGHT);
         }
     }
     age_room_tracks();
     age_bleed_tracks();
 
     send_msdp_function([](descriptor_data* desc) {
-        char time[64];
-        sprintf(time, "It is about %d:00 %s on ",
-            time_info.hours % 12 == 0 ? 12 : time_info.hours % 12,
-            time_info.hours >= 12 ? "PM" : "AM");
-
-        MSDPSetString(desc, eMSDP_WORLD_TIME, time);
+        MSDPSetString(desc, eMSDP_WORLD_TIME,
+            std::format("It is about {}:00 {} on ",
+                time_info.hours % 12 == 0 ? 12 : time_info.hours % 12,
+                time_info.hours >= 12 ? "PM" : "AM")
+                .c_str());
         MSDPSend(desc, eMSDP_WORLD_TIME);
     });
 }
@@ -626,8 +624,7 @@ void initialize_weather()
 
     weather_info.sunlight = get_sunlight_level(time_info.hours, sun_rise_time, sun_set_time);
 
-    sprintf(buf, "   Current Gametime: %dH %dD %dM %dY.", time_info.hours, time_info.day, time_info.month, time_info.year);
-    log(buf);
+    log(std::format("   Current Gametime: {}H {}D {}M {}Y.", time_info.hours, time_info.day, time_info.month, time_info.year).c_str());
 
     weather_info.pressure = 960;
     weather_info.pressure += get_seasonal_pressure(time_info.month);

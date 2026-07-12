@@ -96,6 +96,7 @@ Send comments, bug reports, etc. to jelson@server.cs.jhu.edu
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <format>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -831,17 +832,17 @@ char* read_delete(char* recipient, char* recipient_formatted, int is_good)
     *(tmstr + strlen(tmstr) - 1) = '\0';
 
     if (is_good)
-        sprintf(buf, " --- Postal Service of Gondor ---\n\r"
-                     "Date: %s\n\r"
-                     "  To: %s\n\r"
-                     "From: %s\n\r\n\r",
-            tmstr, recipient_formatted, stored.data.from.c_str());
+        strcpy(buf, std::format(" --- Postal Service of Gondor ---\n\r"
+                     "Date: {}\n\r"
+                     "  To: {}\n\r"
+                     "From: {}\n\r\n\r",
+            tmstr, recipient_formatted, stored.data.from).c_str());
     else
-        sprintf(buf, " !!! Subversive Messaging System !!!\n\r"
-                     "Date: %s\n\r"
-                     "  To: %s\n\r"
-                     "From: %s\n\r\n\r",
-            tmstr, recipient_formatted, stored.data.from.c_str());
+        strcpy(buf, std::format(" !!! Subversive Messaging System !!!\n\r"
+                     "Date: {}\n\r"
+                     "  To: {}\n\r"
+                     "From: {}\n\r\n\r",
+            tmstr, recipient_formatted, stored.data.from).c_str());
 
     string_size = strlen(buf) + stored.data.body.size() + 1;
     message = (char*)malloc(string_size);
@@ -907,7 +908,7 @@ void postmaster_send_mail(struct char_data* ch, int, char* arg, char_data* host)
     mailman = host;
 
     if (GET_LEVEL(ch) < MIN_MAIL_LEVEL) {
-        sprintf(buf, "$n tells you, 'Sorry, you have to be level %d to send mail!'", MIN_MAIL_LEVEL);
+        strcpy(buf, std::format("$n tells you, 'Sorry, you have to be level {} to send mail!'", MIN_MAIL_LEVEL).c_str());
         act(buf, FALSE, mailman, 0, ch, TO_VICT);
         return;
     }
@@ -919,9 +920,9 @@ void postmaster_send_mail(struct char_data* ch, int, char* arg, char_data* host)
     }
 
     if (GET_GOLD(ch) < STAMP_PRICE && GET_LEVEL(ch) < LEVEL_IMMORT) {
-        sprintf(buf, "$n tells you, 'A stamp costs %d silver coins.'\n\r"
+        strcpy(buf, std::format("$n tells you, 'A stamp costs {} silver coins.'\n\r"
                      "$n tells you, '...which I see you can't afford.'",
-            STAMP_PRICE / 100);
+            STAMP_PRICE / 100).c_str());
         act(buf, FALSE, mailman, 0, ch, TO_VICT);
         return;
     }
@@ -940,13 +941,13 @@ void postmaster_send_mail(struct char_data* ch, int, char* arg, char_data* host)
     act("$n starts to write some mail.", TRUE, ch, 0, 0, TO_ROOM);
 
     if (GET_LEVEL(ch) < LEVEL_IMMORT) {
-        sprintf(buf, "$n tells you, 'I'll take %d silver coins for the stamp.'",
-            STAMP_PRICE / 100);
+        strcpy(buf, std::format("$n tells you, 'I'll take {} silver coins for the stamp.'",
+            STAMP_PRICE / 100).c_str());
         act(buf, FALSE, mailman, 0, ch, TO_VICT);
         GET_GOLD(ch) -= STAMP_PRICE;
     }
 
-    sprintf(buf, "$n tells you, 'Write your message, use %%e when done.'");
+    strcpy(buf, "$n tells you, 'Write your message, use %e when done.'");
     act(buf, FALSE, mailman, 0, ch, TO_VICT);
     SET_BIT(PLR_FLAGS(ch), PLR_MAILING | PLR_WRITING);
 
@@ -969,9 +970,9 @@ void postmaster_check_mail(struct char_data* ch, int, char*, char_data* host)
         *tmp = tolower(*tmp);
 
     if (has_mail(recipient))
-        sprintf(buf, "$n tells you, 'You have mail waiting.'");
+        strcpy(buf, "$n tells you, 'You have mail waiting.'");
     else
-        sprintf(buf, "$n tells you, 'Sorry, you don't have any mail waiting.'");
+        strcpy(buf, "$n tells you, 'Sorry, you don't have any mail waiting.'");
     act(buf, FALSE, mailman, 0, ch, TO_VICT);
 }
 
@@ -989,7 +990,7 @@ void postmaster_receive_mail(struct char_data* ch, int, char*, char_data* host)
         *tmp = tolower(*tmp);
 
     if (!has_mail(recipient)) {
-        sprintf(buf, "$n tells you, 'Sorry, you don't have any mail waiting.'");
+        strcpy(buf, "$n tells you, 'Sorry, you don't have any mail waiting.'");
         act(buf, FALSE, mailman, 0, ch, TO_VICT);
         return;
     }

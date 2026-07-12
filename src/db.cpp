@@ -5201,7 +5201,7 @@ void add_exploit_record(int recordtype, char_data* victim, int iIntParam,
     ct = time(0);
     tmstr = (char*)asctime(localtime(&ct));
     *(tmstr + strlen(tmstr) - 1) = '\0';
-    sprintf(exploitrec.chtime, "%s", tmstr);
+    strcpy(exploitrec.chtime, std::format("{}", tmstr).c_str());
 
     // It's a PK record
     switch (recordtype) {
@@ -5221,9 +5221,9 @@ void add_exploit_record(int recordtype, char_data* victim, int iIntParam,
                     // only trophies for chars
                     // CREATE A TROPHY RECORD
                     exploitrec.type = EXPLOIT_PK;
-                    sprintf(exploitrec.chtime, "%s", tmstr);
+                    strcpy(exploitrec.chtime, std::format("{}", tmstr).c_str());
                     exploitrec.shintVictimID = GET_IDNUM(victim);
-                    sprintf(exploitrec.chVictimName, "%s", GET_NAME(victim));
+                    strcpy(exploitrec.chVictimName, std::format("{}", GET_NAME(victim)).c_str());
                     exploitrec.iVictimLevel = GET_LEVEL(victim);
                     exploitrec.iKillerLevel = GET_LEVEL(cur_killer);
 
@@ -5251,7 +5251,7 @@ void add_exploit_record(int recordtype, char_data* victim, int iIntParam,
                     exploitrec.type = EXPLOIT_DEATH;
                     exploitrec.shintVictimID = GET_IDNUM(cur_killer);
                     // killed by..
-                    sprintf(exploitrec.chVictimName, "%s", GET_NAME(cur_killer));
+                    strcpy(exploitrec.chVictimName, std::format("{}", GET_NAME(cur_killer)).c_str());
                     exploitrec.iVictimLevel = GET_LEVEL(victim);
                     exploitrec.iKillerLevel = GET_LEVEL(cur_killer);
                     // used to indicate separators between subsequent deaths.
@@ -5282,14 +5282,14 @@ void add_exploit_record(int recordtype, char_data* victim, int iIntParam,
 
     case EXPLOIT_STAT:
         exploitrec.type = EXPLOIT_STAT;
-        sprintf(exploitrec.chVictimName, "%s", chParam);
+        strcpy(exploitrec.chVictimName, std::format("{}", chParam).c_str());
         exploitrec.iIntParam = iIntParam;
         write_exploits(victim, &exploitrec);
         break;
 
     case EXPLOIT_MOBDEATH:
         exploitrec.type = EXPLOIT_MOBDEATH;
-        sprintf(exploitrec.chVictimName, "%s", chParam);
+        strcpy(exploitrec.chVictimName, std::format("{}", chParam).c_str());
         exploitrec.iVictimLevel = GET_LEVEL(victim);
         exploitrec.iIntParam = iIntParam;
         write_exploits(victim, &exploitrec);
@@ -5302,13 +5302,13 @@ void add_exploit_record(int recordtype, char_data* victim, int iIntParam,
 
     case EXPLOIT_ACHIEVEMENT:
         exploitrec.type = EXPLOIT_ACHIEVEMENT;
-        sprintf(exploitrec.chVictimName, "%s", chParam);
+        strcpy(exploitrec.chVictimName, std::format("{}", chParam).c_str());
         write_exploits(victim, &exploitrec);
         break;
 
     case EXPLOIT_NOTE:
         exploitrec.type = EXPLOIT_NOTE;
-        sprintf(exploitrec.chVictimName, "%s", chParam);
+        strcpy(exploitrec.chVictimName, std::format("{}", chParam).c_str());
         write_exploits(victim, &exploitrec);
         break;
 

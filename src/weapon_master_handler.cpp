@@ -1,3 +1,6 @@
+#include <format>
+#include <string.h>
+
 #include "char_utils.h"
 #include "comm.h"
 #include "handler.h"
@@ -250,23 +253,31 @@ int weapon_master_handler::append_score_message(char* message_buffer) const
     switch (weapon_type) {
     case game_types::WT_BLUDGEONING:
     case game_types::WT_BLUDGEONING_TWO:
-        return sprintf(message_buffer, "Your mastery grants offensive prowess and staggering blows.\r\n");
+        strcpy(message_buffer, std::format("Your mastery grants offensive prowess and staggering blows.\r\n").c_str());
+        return static_cast<int>(strlen(message_buffer));
     case game_types::WT_CLEAVING:
     case game_types::WT_CLEAVING_TWO:
-        return sprintf(message_buffer, "Your mastery grants unrivaled power to your blows.\r\n");
+        strcpy(message_buffer, std::format("Your mastery grants unrivaled power to your blows.\r\n").c_str());
+        return static_cast<int>(strlen(message_buffer));
     case game_types::WT_FLAILING:
-        return sprintf(message_buffer, "Your mastery grants power to your blows and renders shields ineffective.\r\n");
+        strcpy(message_buffer, std::format("Your mastery grants power to your blows and renders shields ineffective.\r\n").c_str());
+        return static_cast<int>(strlen(message_buffer));
     case game_types::WT_PIERCING:
-        return sprintf(message_buffer, "Your mastery grants swiftness to your blows and renders armor useless.\r\n");
+        strcpy(message_buffer, std::format("Your mastery grants swiftness to your blows and renders armor useless.\r\n").c_str());
+        return static_cast<int>(strlen(message_buffer));
     case game_types::WT_SLASHING:
     case game_types::WT_SLASHING_TWO:
-        return sprintf(message_buffer, "Your mastery grants balanced prowess and occasional swift strikes.\r\n");
+        strcpy(message_buffer, std::format("Your mastery grants balanced prowess and occasional swift strikes.\r\n").c_str());
+        return static_cast<int>(strlen(message_buffer));
     case game_types::WT_SMITING:
-        return sprintf(message_buffer, "Your mastery grants offensive prowess and dazing blows.\r\n");
+        strcpy(message_buffer, std::format("Your mastery grants offensive prowess and dazing blows.\r\n").c_str());
+        return static_cast<int>(strlen(message_buffer));
     case game_types::WT_STABBING:
-        return sprintf(message_buffer, "Your mastery grants defensive prowess and armor piercing blows.\r\n");
+        strcpy(message_buffer, std::format("Your mastery grants defensive prowess and armor piercing blows.\r\n").c_str());
+        return static_cast<int>(strlen(message_buffer));
     case game_types::WT_WHIPPING:
-        return sprintf(message_buffer, "Your mastery grants swiftness to your blows and renders armor useless.\r\n");
+        strcpy(message_buffer, std::format("Your mastery grants swiftness to your blows and renders armor useless.\r\n").c_str());
+        return static_cast<int>(strlen(message_buffer));
     default:
         break;
     }

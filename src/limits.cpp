@@ -21,6 +21,7 @@
 #include "utils.h"
 #include <assert.h>
 #include <ctype.h>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -370,7 +371,7 @@ void set_title(char_data* character)
         RELEASE(GET_TITLE(character));
     CREATE(GET_TITLE(character), char, strlen(READ_TITLE(character)) + 5);
 
-    sprintf(GET_TITLE(character), "the %s", READ_TITLE(character));
+    strcpy(GET_TITLE(character), std::format("the {}", READ_TITLE(character)).c_str());
     *(GET_TITLE(character) + 4) = toupper(*(GET_TITLE(character) + 4));
 }
 
@@ -384,14 +385,13 @@ void set_title(char_data* character)
 #if defined PREDEF_PLATFORM_LINUX
 void check_autowiz(struct char_data* ch)
 {
-    char buf[100];
     extern int min_wizlist_lev;
 
     if (GET_LEVEL(ch) >= LEVEL_IMMORT) {
-        sprintf(buf, "nice ../bin/autowiz %d %s %d %s %d &", min_wizlist_lev, WIZLIST_FILE,
-            LEVEL_IMMORT, IMMLIST_FILE, getpid());
+        std::string autowiz_cmd = std::format("nice ../bin/autowiz {} {} {} {} {} &",
+            min_wizlist_lev, WIZLIST_FILE, LEVEL_IMMORT, IMMLIST_FILE, getpid());
         mudlog("Initiating autowiz.", NRM, LEVEL_IMMORT, FALSE);
-        system(buf);
+        system(autowiz_cmd.c_str());
     }
 }
 #endif
@@ -581,7 +581,7 @@ int check_idling(char_data* character)
             character->specials.was_in_room = NOWHERE;
         }
         Crash_idlesave(character);
-        sprintf(buf, "%s force-rented and extracted (idle).", GET_NAME(character));
+        strcpy(buf, std::format("{} force-rented and extracted (idle).", GET_NAME(character)).c_str());
         mudlog(buf, NRM, LEVEL_GOD, TRUE);
 
         for (int j = 0; j < MAX_WEAR; j++) {
@@ -841,8 +841,7 @@ void point_update(void)
                     act("$n's $o went out.", TRUE, j->carried_by, j, 0, TO_ROOM);
                     recount_light_room(j->carried_by->in_room);
                 } else if (j->in_room != NOWHERE) {
-                    sprintf(buf, "%s here went out.\n\r", j->short_description);
-                    send_to_room(buf, j->in_room);
+                    send_to_room(std::format("{} here went out.\n\r", j->short_description).c_str(), j->in_room);
                     recount_light_room(j->in_room);
                 }
                 extract_obj(j);
@@ -854,8 +853,7 @@ void point_update(void)
                     act("$n's $o flickers weakly.", TRUE, j->carried_by, j, 0, TO_ROOM);
                     //	  recount_light_room(j->carried_by->in_room);
                 } else if (j->in_room != NOWHERE) {
-                    sprintf(buf, "%s here flickers weakly.\n\r", j->short_description);
-                    send_to_room(buf, j->in_room);
+                    send_to_room(std::format("{} here flickers weakly.\n\r", j->short_description).c_str(), j->in_room);
                     //	  recount_light_room(j->in_room);
                 }
             }
@@ -1472,8 +1470,8 @@ void affect_update_room(struct room_data* room)
                         }
                     }
                 } else {
-                    sprintf(buf2, "Attempt to cast spell %d in room %d", tmpaf->location,
-                        room->number);
+                    strcpy(buf2, std::format("Attempt to cast spell {} in room {}", tmpaf->location,
+                        room->number).c_str());
                     mudlog(buf2, NRM, LEVEL_GOD, FALSE);
                 }
             }
@@ -1483,13 +1481,13 @@ void affect_update_room(struct room_data* room)
             tmpaf->duration--;
         if (tmpaf->location == SPELL_MIST_OF_BAAZUNGA && tmpaf->duration > 0 && time_phase == tmpaf->time_phase) {
             /* 70% chance of mist thinking about moving */
-            sprintf(buf, "check mist movement");
+            strcpy(buf, std::format("check mist movement").c_str());
             mudlog(buf, NRM, LEVEL_GOD, FALSE);
             if (movechance < 75) {
                 direction = number(0, NUM_OF_DIRS - 1);
                 /* Decide if the random direction is legal, if so, move the mist */
                 if (!(room->dir_option[direction])) {
-                    sprintf(buf, "no option for movement");
+                    strcpy(buf, std::format("no option for movement").c_str());
                     mudlog(buf, NRM, LEVEL_GOD, FALSE);
                 } else if (room->dir_option[direction]->to_room != NOWHERE) {
                     roomnum = room->dir_option[direction]->to_room;
@@ -1498,7 +1496,7 @@ void affect_update_room(struct room_data* room)
                             REMOVE_BIT(room->room_flags, SHADOWY);
                         if ((checkaf = room_affected_by_spell(&world[roomnum], SPELL_MIST_OF_BAAZUNGA))) {
                             mod = checkaf->modifier;
-                            sprintf(buf, "WARNING LOMAN: Mist already in move to room");
+                            strcpy(buf, std::format("WARNING LOMAN: Mist already in move to room").c_str());
                             mudlog(buf, NRM, LEVEL_GOD, FALSE);
                         } else if (IS_SET(world[roomnum].room_flags, SHADOWY))
                             mod = 1;
@@ -1511,8 +1509,7 @@ void affect_update_room(struct room_data* room)
                         newaf.location = SPELL_MIST_OF_BAAZUNGA;
                         newaf.bitvector = 0;
 
-                        sprintf(buf, "The mists drift %s.\n\r", dirs[direction]);
-                        send_to_room(buf, room->number);
+                        send_to_room(std::format("The mists drift {}.\n\r", dirs[direction]).c_str(), room->number);
 
                         affect_to_room(&world[roomnum], &newaf);
                         affect_remove_room(room, tmpaf);
@@ -1550,7 +1547,7 @@ void affect_update()
                 affect_update_person(tmplist->ptr.ch, 0);
             } else {
                 if (char_exists(tmplist->number))
-                    sprintf(mybuf, "Getting %s off the affected_list.", GET_NAME(tmplist->ptr.ch));
+                    strcpy(mybuf, std::format("Getting {} off the affected_list.", GET_NAME(tmplist->ptr.ch)).c_str());
                 else
                     strcpy(mybuf, "Getting Unknown char off the affected_list.");
                 mudlog(mybuf, CMP, LEVEL_GRGOD, TRUE);

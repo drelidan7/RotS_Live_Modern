@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <assert.h>
 #include <cmath>
+#include <format>
 #include <numeric>
 #include <vector>
 
@@ -183,24 +184,25 @@ void draw_coofs(char* buf, struct char_data* ch)
 {
     char buf2[80];
 
-    sprintf(buf, "\r\n"
-                 "    0%%,      20%%,      40%%,      60%%,      80%%,      100%%"
-                 "\n\r"
-                 "    |         |         |         |         |         |\n\r");
+    strcpy(buf, std::format("\r\n"
+                             "    0%,      20%,      40%,      60%,      80%,      100%"
+                             "\n\r"
+                             "    |         |         |         |         |         |\n\r")
+                    .c_str());
 
-    sprintf(buf2, "Mag: ");
+    strcpy(buf2, std::format("Mag: ").c_str());
     draw_line(buf2, GET_PROF_COOF(1, ch) / 20);
     strcat(buf, buf2);
 
-    sprintf(buf2, "\n\rMys: ");
+    strcpy(buf2, std::format("\n\rMys: ").c_str());
     draw_line(buf2, GET_PROF_COOF(2, ch) / 20);
     strcat(buf, buf2);
 
-    sprintf(buf2, "\n\rRan: ");
+    strcpy(buf2, std::format("\n\rRan: ").c_str());
     draw_line(buf2, GET_PROF_COOF(3, ch) / 20);
     strcat(buf, buf2);
 
-    sprintf(buf2, "\n\rWar: ");
+    strcpy(buf2, std::format("\n\rWar: ").c_str());
     draw_line(buf2, GET_PROF_COOF(4, ch) / 20);
     strcat(buf, buf2);
     strcat(buf, "\n\r\0");
@@ -429,7 +431,7 @@ void advance_level(char_data* character)
         GET_RACE(character) = RACE_GOD;
     }
 
-    sprintf(buf, "%s advanced to level %d", GET_NAME(character), GET_LEVEL(character));
+    strcpy(buf, std::format("{} advanced to level {}", GET_NAME(character), GET_LEVEL(character)).c_str());
     mudlog(buf, BRF, std::max(LEVEL_IMMORT, GET_INVIS_LEV(character)), TRUE);
 
     /* log following levels in exploits */
@@ -722,19 +724,17 @@ private:
 /* Give pointers to the six abilities */
 void roll_abilities(char_data* character, int min_sum, int max_sum)
 {
-    char stats[256];
-
     _INTERNAL::stat_assigner statter(*character);
     statter.assign_stats(min_sum, max_sum, 1000);
 
     if (character->player.level > 1) {
         const char_ability_data& abils = character->constabilities;
         const char* character_name = utils::get_name(*character);
-        sprintf(stats, "STATS: %s rolled  %d %d %d %d %d %d",
+        log(std::format("STATS: {} rolled  {} {} {} {} {} {}",
             character_name, abils.str, abils.intel,
             abils.wil, abils.dex,
-            abils.con, abils.lea);
-        log(stats);
+            abils.con, abils.lea)
+                .c_str());
     }
 
     recalc_abilities(character);
@@ -789,7 +789,7 @@ void recalc_abilities(char_data* character)
             if (GET_OBJ_WEIGHT(weapon) == 0) {
                 /*UPDATE*, temporary check for 0 weight weapons*/
                 GET_OBJ_WEIGHT(weapon) = 1;
-                sprintf(buf, "SYSERR: 0 weight weapon");
+                strcpy(buf, std::format("SYSERR: 0 weight weapon").c_str());
                 mudlog(buf, NRM, LEVEL_GOD, TRUE);
             }
 

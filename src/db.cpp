@@ -3020,28 +3020,28 @@ void save_player(struct char_data* ch, int load_room, int index_pos)
     case 'c':
     case 'd':
     case 'e':
-        sprintf(playerfname, "players/A-E/%s", name);
+        strcpy(playerfname, std::format("players/A-E/{}", static_cast<const char*>(name)).c_str());
         break;
     case 'f':
     case 'g':
     case 'h':
     case 'i':
     case 'j':
-        sprintf(playerfname, "players/F-J/%s", name);
+        strcpy(playerfname, std::format("players/F-J/{}", static_cast<const char*>(name)).c_str());
         break;
     case 'k':
     case 'l':
     case 'm':
     case 'n':
     case 'o':
-        sprintf(playerfname, "players/K-O/%s", name);
+        strcpy(playerfname, std::format("players/K-O/{}", static_cast<const char*>(name)).c_str());
         break;
     case 'p':
     case 'q':
     case 'r':
     case 's':
     case 't':
-        sprintf(playerfname, "players/P-T/%s", name);
+        strcpy(playerfname, std::format("players/P-T/{}", static_cast<const char*>(name)).c_str());
         break;
     case 'u':
     case 'v':
@@ -3049,10 +3049,10 @@ void save_player(struct char_data* ch, int load_room, int index_pos)
     case 'x':
     case 'y':
     case 'z':
-        sprintf(playerfname, "players/U-Z/%s", name);
+        strcpy(playerfname, std::format("players/U-Z/{}", static_cast<const char*>(name)).c_str());
         break;
     default:
-        sprintf(playerfname, "players/ZZZ/%s", name);
+        strcpy(playerfname, std::format("players/ZZZ/{}", static_cast<const char*>(name)).c_str());
         break;
     }
 
@@ -3062,21 +3062,24 @@ void save_player(struct char_data* ch, int load_room, int index_pos)
         return;
     }
 
-    char versioned[120];
-    snprintf(versioned, sizeof(versioned), "%s.%d.%d.%d.%ld.%ld", playerfname,
+    // std::string, not a fixed char[120]: the original snprintf(..., sizeof(versioned), ...)
+    // truncated silently past 119 bytes -- a real-if-unlikely player-file-naming corruption
+    // for a long enough playerfname/idnum/log_time combination. A std::string composes the
+    // same "{}.{}.{}.{}.{}.{}" text with no artificial ceiling and no truncation risk.
+    const std::string versioned = std::format("{}.{}.{}.{}.{}.{}", static_cast<const char*>(playerfname),
         (player_table + index_pos)->level, (player_table + index_pos)->race,
         (player_table + index_pos)->idnum,
         (long)(player_table + index_pos)->log_time,
         (player_table + index_pos)->flags);
 
     char dirpath[100];
-    snprintf(dirpath, sizeof(dirpath), "%s", playerfname);
+    strcpy(dirpath, playerfname);
     char* dirslash = strrchr(dirpath, '/');
     if (dirslash) {
         *dirslash = '\0';
     }
-    if (finalize_player_file_rename("players/temp", dirpath, name, versioned)) {
-        sprintf((player_table + index_pos)->ch_file, "%s", versioned);
+    if (finalize_player_file_rename("players/temp", dirpath, name, versioned.c_str())) {
+        strcpy((player_table + index_pos)->ch_file, versioned.c_str());
     } else {
         log("save_player: could not finalize player file.");
     }
@@ -3088,8 +3091,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
     char_file_u chd {};
 
     if (IS_NPC(ch) || (!ch->desc)) {
-        sprintf(buf, "save_char: (%s) zero desc or is_npc\n", GET_NAME(ch));
-        log(buf);
+        log(std::format("save_char: ({}) zero desc or is_npc\n", GET_NAME(ch)).c_str());
         return;
     }
 
@@ -3102,8 +3104,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
 
     //  Send player a msg if this is an autosave.
     if (notify_char) {
-        sprintf(buf, "Saving %s.\n\r", GET_NAME(ch));
-        send_to_char(buf, ch);
+        send_to_char(std::format("Saving {}.\n\r", GET_NAME(ch)).c_str(), ch);
     }
 
     /* whois update block */
@@ -3114,9 +3115,9 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
     if (tmp > top_of_p_table) {
         send_to_char(
             "Error: you are not being saved.  Please contact an immortal.\n\r", ch);
-        sprintf(buf, "save_char: could not find player %s: Not saving.\n",
-            ch->player.name);
-        log(buf);
+        log(std::format("save_char: could not find player {}: Not saving.\n",
+            ch->player.name)
+                .c_str());
         return;
     }
 
@@ -3139,21 +3140,21 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
         if (has_account_character_file) {
             std::string write_error;
             if (!account::write_account_character_file(".", owner_account_name, chd, &write_error)) {
-                sprintf(buf, "save_char: failed to write account-native character file for %s: %s",
-                    GET_NAME(ch), write_error.c_str());
-                log(buf);
+                log(std::format("save_char: failed to write account-native character file for {}: {}",
+                    GET_NAME(ch), write_error)
+                        .c_str());
             } else
                 wrote_account_character_file = true;
         } else if (!character_file_error.empty()) {
-            sprintf(buf, "save_char: failed to inspect account-native character file for %s: %s",
-                GET_NAME(ch), character_file_error.c_str());
-            log(buf);
+            log(std::format("save_char: failed to inspect account-native character file for {}: {}",
+                GET_NAME(ch), character_file_error)
+                    .c_str());
         } else {
             std::string write_error;
             if (!account::write_account_character_file(".", owner_account_name, chd, &write_error)) {
-                sprintf(buf, "save_char: failed to repair missing account-native character file for %s: %s",
-                    GET_NAME(ch), write_error.c_str());
-                log(buf);
+                log(std::format("save_char: failed to repair missing account-native character file for {}: {}",
+                    GET_NAME(ch), write_error)
+                        .c_str());
             } else
                 wrote_account_character_file = true;
         }
@@ -3161,16 +3162,16 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
             const std::string account_character_path = account::account_character_player_path(".", owner_account_name, GET_NAME(ch));
             std::string player_index_error;
             if (!update_player_index_entry_from_store(&chd, account_character_path.c_str(), &player_index_error)) {
-                sprintf(buf, "save_char: failed to refresh account-native player index for %s: %s",
-                    GET_NAME(ch), player_index_error.c_str());
-                log(buf);
+                log(std::format("save_char: failed to refresh account-native player index for {}: {}",
+                    GET_NAME(ch), player_index_error)
+                        .c_str());
             }
         }
     } else if (account_native_player_entry) {
         if (account_error.empty())
-            sprintf(buf, "save_char: refusing legacy fallback for account-native character %s because linked ownership could not be resolved", GET_NAME(ch));
+            strcpy(buf, std::format("save_char: refusing legacy fallback for account-native character {} because linked ownership could not be resolved", GET_NAME(ch)).c_str());
         else
-            sprintf(buf, "save_char: refusing legacy fallback for account-native character %s: %s", GET_NAME(ch), account_error.c_str());
+            strcpy(buf, std::format("save_char: refusing legacy fallback for account-native character {}: {}", GET_NAME(ch), account_error).c_str());
         log(buf);
     } else {
         save_player(ch, load_room, tmp); // New save into individual files

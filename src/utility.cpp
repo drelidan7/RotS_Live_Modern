@@ -2421,7 +2421,7 @@ char* PERS(struct char_data* target, struct char_data* observer,
     return name;
 }
 
-int has_alias(char_data* host, char* keyword)
+int has_alias(char_data* host, const char* keyword)
 {
     if (strstr(host->player.name, keyword)) {
         return 1;

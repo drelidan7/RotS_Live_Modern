@@ -128,7 +128,7 @@ int vnum_object(char*, struct char_data*);
 void record_crime(struct char_data*, struct char_data*, int, int);
 void add_crime(int, int, int, int, int);
 void forget_crimes(struct char_data*, int);
-void add_exploit_record(int, struct char_data*, int, char*);
+void add_exploit_record(int, struct char_data*, int, const char*);
 int delete_exploits_file(char*);
 void delete_character_file(struct char_data*);
 void move_char_deleted(int);

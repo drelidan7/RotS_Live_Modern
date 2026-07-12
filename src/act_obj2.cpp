@@ -473,7 +473,7 @@ ACMD(do_pour)
 
 void wear_message(struct char_data* ch, struct obj_data* obj, int where)
 {
-    char* wear_messages[][2] = {
+    const char* const wear_messages[][2] = {
         { "$n lights $p and holds it.",
             "You light $p and hold it." },
 
@@ -543,7 +543,7 @@ void wear_message(struct char_data* ch, struct obj_data* obj, int where)
             "You fasten $p on your belt." }
     };
 
-    char* beorn_wear_messages[][2] = {
+    const char* const beorn_wear_messages[][2] = {
         { "$n lights $p and holds it.",
             "You light $p and hold it." },
 
@@ -822,7 +822,7 @@ int find_eq_pos(struct char_data* ch, struct obj_data* obj, char* arg)
 {
     int where = -1;
 
-    static char* keywords[] = {
+    static const char* const keywords[] = {
         "!RESERVED!",
         "finger",
         "!RESERVED!",

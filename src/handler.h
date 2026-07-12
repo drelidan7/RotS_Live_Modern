@@ -85,7 +85,7 @@ int other_side_num(int ch_race, int i_race);
 
 struct char_data* get_char_room(char* name, int room);
 struct char_data* get_char_num(int nr);
-struct char_data* get_char(char* name);
+struct char_data* get_char(const char* name);
 
 void char_from_room(struct char_data* ch);
 void char_to_room(struct char_data* ch, int room);

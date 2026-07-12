@@ -1618,7 +1618,7 @@ struct char_data* get_char_room(char* name, int room)
 }
 
 /* search all over the world for a char, and return a pointer if found */
-struct char_data* get_char(char* name)
+struct char_data* get_char(const char* name)
 {
     struct char_data* i;
     int j, number;

@@ -5185,7 +5185,7 @@ bool load_object_save_data_for_character(const std::string& root_directory, cons
 }
 
 void add_exploit_record(int recordtype, char_data* victim, int iIntParam,
-    char* chParam)
+    const char* chParam)
 {
     struct char_data* killer;
     struct exploit_record exploitrec;

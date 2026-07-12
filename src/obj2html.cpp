@@ -60,8 +60,8 @@ int dump_all; /* If asserted, then we dump /all objects/ */
  * erent.
  */
 struct obj2html_type {
-    char* title; /* Title for a table of this type */
-    char** keywords;
+    const char* title; /* Title for a table of this type */
+    const char* const* keywords;
     unsigned long typemask;
     unsigned long (*get_typemask)(struct obj_data*);
     struct obj2html_type* subtypes;
@@ -78,7 +78,7 @@ struct obj2html_type {
  * greater than 4.  In order to allow our user to specify multiple
  * bulks, we have to shift this into a bitvector.
  */
-char* handed_keywords[][3] = {
+const char* const handed_keywords[][3] = {
     { "2h", "two-handed", NULL },
     { "1h", "one-handed", NULL }
 };
@@ -166,7 +166,7 @@ struct obj2html_type spear_subtypes[] = {
  * each type value before shifting; that way we end up with a range
  * of values between 0-31, enough to fit in a 32 bit vector.
  */
-char* weapon_keywords[][4] = {
+const char* const weapon_keywords[][4] = {
     { "whip", "flail", NULL },
     { "slash", NULL },
     { "pierce", NULL },
@@ -216,7 +216,7 @@ struct obj2html_type weapon_subtypes[] = {
  * so there's no need to shift it into a bitvector.  The bitvector
  * in question is stored in (object)->obj_flags.wear_flags.
  */
-char* armor_keywords[][2] = {
+const char* const armor_keywords[][2] = {
     { "head", NULL },
     { "neck", NULL },
     { "about", NULL },
@@ -282,7 +282,7 @@ struct obj2html_type armor_subtypes[] = {
  * user to specify multiple items, we shift the GET_ITEM_TYPE values
  * into a bit vector.  Note that there is no item of type 0.
  */
-char* type_keywords[][2] = {
+const char* const type_keywords[][2] = {
     { NULL },
     { "light", NULL },
     { "scroll", NULL },

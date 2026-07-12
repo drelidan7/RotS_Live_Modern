@@ -1260,7 +1260,7 @@ void write_to_output(const char* txt, struct descriptor_data* t)
     }
 }
 
-struct txt_block* get_from_txt_block_pool(char* line)
+struct txt_block* get_from_txt_block_pool(const char* line)
 {
     struct txt_block* pnew;
     int tmp;
@@ -2055,7 +2055,7 @@ char_data* get_character(int character_id)
     return NULL;
 }
 
-void vsend_to_char(char_data* character, char* format, ...)
+void vsend_to_char(char_data* character, const char* format, ...)
 {
 #define BUFSIZE 2048
     char buf[BUFSIZE];

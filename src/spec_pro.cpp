@@ -254,17 +254,17 @@ SPECIAL(guild) {
     }
 
     if (!WILL_TEACH(host, ch)) {
-        do_say(host, "Go away, I won't teach you anything!", 0, 0, 0);
+        do_say(host, mutable_arg("Go away, I won't teach you anything!"), 0, 0, 0);
         return TRUE;
     }
 
     if (IS_SHADOW(ch)) {
-        do_say(host, "Ugh!  I'm not teaching YOU!", 0, 0, 0);
+        do_say(host, mutable_arg("Ugh!  I'm not teaching YOU!"), 0, 0, 0);
         return TRUE;
     }
 
     if (!RP_RACE_CHECK(host, ch)) {
-        do_say(host, "Sorry, I can't teach you.", 0, 0, 0);
+        do_say(host, mutable_arg("Sorry, I can't teach you."), 0, 0, 0);
         return TRUE;
     }
 
@@ -737,7 +737,7 @@ SPECIAL(snake)
     if (host->specials.fighting && (host->specials.fighting->in_room == host->in_room) && (number(0, 42 - GET_LEVEL(host)) < std::min(1 + GET_LEVEL(host) / 4, 4))) {
         act("$n bites $N!", 1, host, 0, host->specials.fighting, TO_NOTVICT);
         act("$n bites you!", 1, host, 0, host->specials.fighting, TO_VICT);
-        spell_poison(host, "", SPELL_TYPE_SPELL, host->specials.fighting, 0, 0, 0);
+        spell_poison(host, mutable_arg(""), SPELL_TYPE_SPELL, host->specials.fighting, 0, 0, 0);
         return TRUE;
     }
     return FALSE;
@@ -798,7 +798,7 @@ SPECIAL(gatekeeper)
             return FALSE;
 
         if (!CAN_SEE(host, ch)) {
-            do_gen_com(host, "Who is out there?", 0, 0, SCMD_YELL);
+            do_gen_com(host, mutable_arg("Who is out there?"), 0, 0, SCMD_YELL);
             return FALSE;
         }
 
@@ -814,7 +814,7 @@ SPECIAL(gatekeeper)
 
             if (!*arg || strncmp(arg, "open", 4)) {
                 if (number(1, 10) == 5)
-                    do_say(host, "Stop loitering here, I have a job to do.", 0, 0, 0);
+                    do_say(host, mutable_arg("Stop loitering here, I have a job to do."), 0, 0, 0);
                 return FALSE;
             }
 
@@ -830,7 +830,7 @@ SPECIAL(gatekeeper)
                         break;
 
             if (doordir == NUM_OF_DIRS) {
-                do_say(host, "There is nothing such to open.", 0, 0, 0);
+                do_say(host, mutable_arg("There is nothing such to open."), 0, 0, 0);
                 return FALSE;
             }
 
@@ -846,19 +846,19 @@ SPECIAL(gatekeeper)
     }
 
     if (!host->delay.cmd || !host->delay.subcmd) {
-        do_say(host, "Ugh, I forgot what I'm doing.", 0, 0, 0);
+        do_say(host, mutable_arg("Ugh, I forgot what I'm doing."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
 
     if (host->delay.targ2.ch_num == -1) {
-        do_say(host, "There is nothing like that here.", 0, 0, 0);
+        do_say(host, mutable_arg("There is nothing like that here."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
 
     if (host->delay.targ2.ch_num == -2) {
-        do_say(host, "Ah, there is no door for me to open.", 0, 0, 0);
+        do_say(host, mutable_arg("Ah, there is no door for me to open."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
@@ -895,7 +895,7 @@ SPECIAL(gatekeeper)
 
     if (host->delay.subcmd == 2) {
         if (CAN_GO(host, doordir)) {
-            do_say(host, "Ah, the door is open. You are free to go.", 0, 0, 0);
+            do_say(host, mutable_arg("Ah, the door is open. You are free to go."), 0, 0, 0);
             host->delay.cmd = host->delay.subcmd = 0;
             return FALSE;
         }
@@ -1029,7 +1029,7 @@ SPECIAL(gatekeeper2)
 
         /* Don't trust someone you can't see */
         if (!CAN_SEE(host, ch)) {
-            do_gen_com(host, "Who is out there?", 0, 0, SCMD_YELL);
+            do_gen_com(host, mutable_arg("Who is out there?"), 0, 0, SCMD_YELL);
 
             return FALSE;
         }
@@ -1048,7 +1048,7 @@ SPECIAL(gatekeeper2)
 
             if (!*arg || strncmp(arg, "open", 4)) {
                 if (number(1, 10) == 5)
-                    do_say(host, "Stop loitering here, I have a job to do.", 0, 0, 0);
+                    do_say(host, mutable_arg("Stop loitering here, I have a job to do."), 0, 0, 0);
                 return FALSE;
             }
 
@@ -1063,7 +1063,7 @@ SPECIAL(gatekeeper2)
                         break;
 
             if (doordir == NUM_OF_DIRS) {
-                do_say(host, "There is nothing such to open.", 0, 0, 0);
+                do_say(host, mutable_arg("There is nothing such to open."), 0, 0, 0);
                 return FALSE;
             }
 
@@ -1091,19 +1091,19 @@ SPECIAL(gatekeeper2)
      * bash (or anything else, for that matter)
      */
     if (!host->delay.cmd || !host->delay.subcmd) {
-        do_say(host, "Ugh, I forgot what I'm doing.", 0, 0, 0);
+        do_say(host, mutable_arg("Ugh, I forgot what I'm doing."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
 
     if (host->delay.targ2.ch_num == -1) {
-        do_say(host, "There is nothing like that here.", 0, 0, 0);
+        do_say(host, mutable_arg("There is nothing like that here."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
 
     if (host->delay.targ2.ch_num == -2) {
-        do_say(host, "Ah, there is no door for me to open.", 0, 0, 0);
+        do_say(host, mutable_arg("Ah, there is no door for me to open."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
@@ -1133,7 +1133,7 @@ SPECIAL(gatekeeper2)
 
     if (host->delay.subcmd == 2) {
         if (CAN_GO(host, doordir)) {
-            do_say(host, "Ah, the door is open. You are free to go.", 0, 0, 0);
+            do_say(host, mutable_arg("Ah, the door is open. You are free to go."), 0, 0, 0);
             host->delay.cmd = host->delay.subcmd = 0;
             return FALSE;
         }
@@ -1229,7 +1229,7 @@ void _recursive_move(struct char_data* ch, struct obj_data* hostobj)
     act("$n enters $o.", TRUE, ch, hostobj, 0, TO_ROOM);
     char_from_room(ch);
     char_to_room(ch, ferry_boat_data[num].to_room[tmp]);
-    do_look(ch, "", 0, 0, 0);
+    do_look(ch, mutable_arg(""), 0, 0, 0);
     act("$n comes aboard.", TRUE, ch, 0, 0, TO_ROOM);
     for (tmpfol = ch->followers; tmpfol; tmpfol = tmpfol->next)
         if (tmpfol->follower->in_room == was_in) {
@@ -1287,8 +1287,8 @@ SPECIAL(ferry_captain)
         return FALSE;
 
     if (GET_POS(host) < POSITION_FIGHTING) {
-        do_wake(host, "", 0, 0, 0);
-        do_stand(host, "", 0, 0, 0);
+        do_wake(host, mutable_arg(""), 0, 0, 0);
+        do_stand(host, mutable_arg(""), 0, 0, 0);
     }
     if (GET_POS(host) < POSITION_STANDING)
         return FALSE;
@@ -1306,7 +1306,7 @@ SPECIAL(ferry_captain)
 
     if (!ferryobj) {
         if (!number(0, 5))
-            do_say(host, "I wonder where my ship is?", 0, 0, 0);
+            do_say(host, mutable_arg("I wonder where my ship is?"), 0, 0, 0);
         return FALSE;
     }
 
@@ -1606,7 +1606,7 @@ SPECIAL(mob_cleric)
     wtl_base.targ2.type = TARGET_CHAR;
     wtl_base.targ2.choice = TAR_CHAR_ROOM;
     wtl_base.flg = 1;
-    do_cast(host, "", &wtl_base, CMD_CAST, 0);
+    do_cast(host, mutable_arg(""), &wtl_base, CMD_CAST, 0);
     return FALSE;
 }
 
@@ -1637,7 +1637,7 @@ SPECIAL(mob_magic_user)
     wtl_base.targ2.type = TARGET_CHAR;
     wtl_base.targ2.choice = TAR_CHAR_ROOM;
     wtl_base.flg = 1;
-    do_cast(host, "", &wtl_base, CMD_CAST, 0);
+    do_cast(host, mutable_arg(""), &wtl_base, CMD_CAST, 0);
     return FALSE;
 }
 
@@ -1922,7 +1922,7 @@ SPECIAL(mob_magic_user_spec)
     wtl_base.targ2.type = TARGET_CHAR;
     wtl_base.targ2.choice = TAR_CHAR_ROOM;
     wtl_base.flg = 1;
-    do_cast(host, "", &wtl_base, CMD_CAST, 0);
+    do_cast(host, mutable_arg(""), &wtl_base, CMD_CAST, 0);
     return TRUE;
 }
 
@@ -2024,13 +2024,13 @@ SPECIAL(mob_ranger)
         tmpwtl.targ1.type = TARGET_CHAR;
         tmpwtl.targ1.ptr.ch = tmpch;
         tmpwtl.targ1.ch_num = tmpch->abs_number;
-        do_ambush(host, "", &tmpwtl, CMD_AMBUSH, 0);
+        do_ambush(host, mutable_arg(""), &tmpwtl, CMD_AMBUSH, 0);
         tmpwtl.targ1.cleanup();
         return 1;
     }
 
     if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) || IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) && ch->delay.wait_value == 0)
-        do_hide(host, "", 0, 0, 0);
+        do_hide(host, mutable_arg(""), 0, 0, 0);
 
     tmproom = &world[host->in_room];
     mintime = 999;
@@ -2049,7 +2049,7 @@ SPECIAL(mob_ranger)
         // char, skipping the ON_ENTER call for each in-between room,
         //   likely doesnt leave tracks in the middle rooms either, also it moves rather instantly
         //   since its looping in a single one_mobile_activity call
-        do_move(host, "", &tmpwtl, (tmproom->room_track[mintmp].data & 7) + 1, 0);
+        do_move(host, mutable_arg(""), &tmpwtl, (tmproom->room_track[mintmp].data & 7) + 1, 0);
         tmpwtl.targ1.cleanup();
         return 0;
     }
@@ -2057,7 +2057,7 @@ SPECIAL(mob_ranger)
         tmpwtl.cmd = number(1, NUM_OF_DIRS);
         tmpwtl.subcmd = 0;
         if (CAN_GO(host, tmpwtl.cmd - 1))
-            do_move(host, "", &tmpwtl, tmpwtl.cmd, 0);
+            do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
     }
     return 0; // Because this isn't a 1: If the mob moves above, when it leaves this prog it can
@@ -2102,7 +2102,7 @@ void do_spec_ambush(char_data* host, char_data* tmpch)
     tmpwtl.targ1.type = TARGET_CHAR;
     tmpwtl.targ1.ptr.ch = tmpch;
     tmpwtl.targ1.ch_num = tmpch->abs_number;
-    do_ambush(host, "", &tmpwtl, CMD_AMBUSH, 0);
+    do_ambush(host, mutable_arg(""), &tmpwtl, CMD_AMBUSH, 0);
     tmpwtl.targ1.cleanup();
     host->spec_busy = false;
 }
@@ -2176,7 +2176,7 @@ SPECIAL(mob_ranger_new)
         if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) ||
              IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) &&
             host->delay.wait_value == 0 && has_alias(host, "p_hide")) {
-            do_hide(host, "", 0, 0, 0);
+            do_hide(host, mutable_arg(""), 0, 0, 0);
         }
 
         if ((callflag == SPECIAL_ENTER) && ch && !is_wimpy && !PRF_FLAGGED(ch, PRF_NOHASSLE) && (IS_AGGR_TO(host, ch) || IS_SET(ch->specials2.act, MOB_AGGRESSIVE))) {
@@ -2252,9 +2252,9 @@ SPECIAL(mob_ranger_new)
                     tmp = BFS_NO_PATH;
                 }
                 if (tmp >= 0) {
-                    do_move(ch, "", 0, tmp + 1, 0);
+                    do_move(ch, mutable_arg(""), 0, tmp + 1, 0);
                     if(has_alias(host, "p_hide")) {
-                        do_hide(host, "", 0, 0, 0);
+                        do_hide(host, mutable_arg(""), 0, 0, 0);
                     }
                     host->spec_busy = false;
                     return 1;
@@ -2289,11 +2289,11 @@ SPECIAL(mob_ranger_new)
             if (mintmp < NUM_OF_TRACKS) {
                 tmpwtl.cmd = (tmproom->room_track[mintmp].data & 7) + 1;
                 tmpwtl.subcmd = 0;
-                do_move(host, "", &tmpwtl, tmpwtl.cmd, 0);
+                do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
                 if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) ||
                      IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) &&
                     host->delay.wait_value == 0 && has_alias(host, "p_hide")) {
-                    do_hide(host, "", 0, 0, 0);
+                    do_hide(host, mutable_arg(""), 0, 0, 0);
                 }
                 tmpwtl.targ1.cleanup();
                 ch->spec_busy = false;
@@ -2306,11 +2306,11 @@ SPECIAL(mob_ranger_new)
             tmpwtl.cmd = number(1, NUM_OF_DIRS);
             tmpwtl.subcmd = 0;
             if (CAN_GO(host, tmpwtl.cmd - 1)) {
-                do_move(host, "", &tmpwtl, tmpwtl.cmd, tmpwtl.subcmd);
+                do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, tmpwtl.subcmd);
                 if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) ||
                      IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) &&
                     host->delay.wait_value == 0 && has_alias(host, "p_hide")) {
-                    do_hide(host, "", 0, 0, 0);
+                    do_hide(host, mutable_arg(""), 0, 0, 0);
                 }
                 tmpwtl.targ1.cleanup();
                 return 1;
@@ -2330,7 +2330,7 @@ SPECIAL(mob_ranger_new)
  * and to the room.
  */
 
-char* dance_description[][2] = {
+const char* const dance_description[][2] = {
     { "jumps merrily up and down, dancing happily.", "You happily jump up and down" },
     { "steps in a little circle, clapping $s hands together",
         "You step in a little circle, clapping your hands together" },
@@ -2727,7 +2727,7 @@ SPECIAL(resetter)
 
         for (tmpfol = ch->followers; tmpfol; tmpfol = ch->followers)
             stop_follower(tmpfol->follower, FOLLOW_MOVE);
-        do_pracreset(host, "", &wtltmp, CMD_PRACRESET, 0);
+        do_pracreset(host, mutable_arg(""), &wtltmp, CMD_PRACRESET, 0);
 
         return 0;
 
@@ -2742,7 +2742,7 @@ SPECIAL(resetter)
                     "Sorry, you have exceeded the amount of times you can reroll statistics.");
                 wtltmp.cmd = CMD_TELL;
                 wtltmp.subcmd = 0;
-                do_tell(host, "", &wtltmp, CMD_TELL, 0);
+                do_tell(host, mutable_arg(""), &wtltmp, CMD_TELL, 0);
                 wtltmp.targ2.cleanup();
                 return 0;
             }
@@ -2754,13 +2754,13 @@ SPECIAL(resetter)
             save_char(ch, NOWHERE, 0);
             reroll_count = 41 - ch->specials2.rerolls;
             send_to_char(std::format("You have {} reroll attempts left.\n\r", reroll_count).c_str(), ch);
-            do_stat(ch, "", 0, 0, 0);
+            do_stat(ch, mutable_arg(""), 0, 0, 0);
             return 0;
         } else {
             wtltmp.targ2.type = TARGET_TEXT;
             wtltmp.targ2.ptr.text = get_from_txt_block_pool("Only level 6 characters may reroll statistics.");
             wtltmp.cmd = 0;
-            do_tell(host, "", &wtltmp, CMD_TELL, 0);
+            do_tell(host, mutable_arg(""), &wtltmp, CMD_TELL, 0);
             wtltmp.targ2.cleanup();
             return 0;
         }
@@ -2772,7 +2772,7 @@ SPECIAL(resetter)
         wtltmp.targ2.ptr.text = get_from_txt_block_pool("You may ask me for a pracreset and rerolls.");
         wtltmp.cmd = CMD_TELL;
         wtltmp.subcmd = 0;
-        do_tell(host, "", &wtltmp, CMD_TELL, 0);
+        do_tell(host, mutable_arg(""), &wtltmp, CMD_TELL, 0);
         wtltmp.targ2.cleanup();
         return 0;
     }
@@ -2807,7 +2807,7 @@ SPECIAL(react_trap)
     /* See if they abandon their trap */
     if (callflag == SPECIAL_COMMAND) {
         if (cmd_info[cmd].minimum_position > POSITION_SITTING && ch == host && cmd != CMD_TRAP)
-            do_trap(host, "", NULL, CMD_TRAP, -1);
+            do_trap(host, mutable_arg(""), NULL, CMD_TRAP, -1);
         return FALSE;
     }
 
@@ -2826,7 +2826,7 @@ SPECIAL(react_trap)
      * trap.  Can this be dealt with in do_trap()?
      */
     target_check(host, CMD_TRAP, &w.targ1, &w.targ2);
-    do_trap(host, "", &w, CMD_TRAP, w.subcmd);
+    do_trap(host, mutable_arg(""), &w, CMD_TRAP, w.subcmd);
 
     return FALSE;
 }
@@ -2844,14 +2844,14 @@ SPECIAL(ar_tarthalon)
         victim = get_char("balkazor");
         if (victim) {
             if (world[victim->in_room].number != 8483)
-                do_say(host, "Balkazor my sorcerer, I command you to aid me!", 0, 0, 0);
+                do_say(host, mutable_arg("Balkazor my sorcerer, I command you to aid me!"), 0, 0, 0);
             else
                 switch (number(0, 6)) {
                 case 4:
-                    do_say(host, "Turn these intruders to dust, my faithful wizard!", 0, 0, 0);
+                    do_say(host, mutable_arg("Turn these intruders to dust, my faithful wizard!"), 0, 0, 0);
                     break;
                 case 5:
-                    do_say(host, "Balkazor, burn these infidels into eternity!", 0, 0, 0);
+                    do_say(host, mutable_arg("Balkazor, burn these infidels into eternity!"), 0, 0, 0);
                     break;
                 }
         }
@@ -2859,16 +2859,16 @@ SPECIAL(ar_tarthalon)
         victim = get_char("karahaz");
         if (victim) {
             if (world[victim->in_room].number != 8483)
-                do_say(host, "Karahaz!  Master swordsman, Come!  Rid my tomb of these intruders!",
+                do_say(host, mutable_arg("Karahaz!  Master swordsman, Come!  Rid my tomb of these intruders!"),
                     0, 0, 0);
             else
                 switch (number(0, 6)) {
                 case 4:
-                    do_say(host, "Karahaz, may these mere mortals feel the power of your blade!", 0,
+                    do_say(host, mutable_arg("Karahaz, may these mere mortals feel the power of your blade!"), 0,
                         0, 0);
                     break;
                 case 5:
-                    do_say(host, "I require your service once again Karahaz - do not fail me.", 0,
+                    do_say(host, mutable_arg("I require your service once again Karahaz - do not fail me."), 0,
                         0, 0);
                     break;
                 }
@@ -2880,13 +2880,13 @@ SPECIAL(ar_tarthalon)
         switch (world[victim->in_room].number) {
         case 8484:
             tmpwtl.cmd = 3;
-            do_unlock(victim, "northdoor", 0, 0, 0);
-            do_open(victim, "northdoor", 0, 0, 0);
+            do_unlock(victim, mutable_arg("northdoor"), 0, 0, 0);
+            do_open(victim, mutable_arg("northdoor"), 0, 0, 0);
             break;
         case 8485:
             tmpwtl.cmd = 1;
-            do_unlock(victim, "southdoor", 0, 0, 0);
-            do_open(victim, "southdoor", 0, 0, 0);
+            do_unlock(victim, mutable_arg("southdoor"), 0, 0, 0);
+            do_open(victim, mutable_arg("southdoor"), 0, 0, 0);
             break;
         case 8482:
             tmpwtl.cmd = 2;
@@ -2917,7 +2917,7 @@ SPECIAL(ar_tarthalon)
         }
         tmpwtl.subcmd = 0;
         if (CAN_GO(victim, tmpwtl.cmd - 1))
-            do_move(victim, "", &tmpwtl, tmpwtl.cmd, 0);
+            do_move(victim, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
     }
 
@@ -3170,7 +3170,7 @@ SPECIAL(vampire_huntress)
                     SET_BIT(room->dir_option[2]->exit_info, EX_CLOSED);
                     SET_BIT(room->dir_option[2]->exit_info, EX_LOCKED);
                     send_to_room("The iron door slams shut.\n\r\n", real_room(room->number));
-                    do_look(victim, "", wtl, 0, 0);
+                    do_look(victim, mutable_arg(""), wtl, 0, 0);
                     WAIT_STATE_FULL(host, 200, 0, 0, 59, 0, 0, 0, AFF_WAITING, TARGET_NONE);
                 } else if (tmpno == 2 && GET_LEVEL(victim) < LEVEL_GOD)
                     hit(host, victim, TYPE_UNDEFINED);
@@ -3202,11 +3202,11 @@ SPECIAL(vampire_huntress)
             obj_to_char(obj, mob);
         if ((obj = read_object(6510, VIRT)))
             obj_to_char(obj, mob);
-        do_wear(mob, "all", 0, 0, 0);
+        do_wear(mob, mutable_arg("all"), 0, 0, 0);
         tmpwtl.subcmd = 0;
         tmpwtl.cmd = 6;
         if (CAN_GO(mob, tmpwtl.cmd - 1))
-            do_move(mob, "", &tmpwtl, tmpwtl.cmd, 0);
+            do_move(mob, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
         host = mob; // Maybe this will avoid the error, pointing to the new mob - nope :-)
         return 1;
@@ -3231,7 +3231,7 @@ SPECIAL(thuringwethil)
             break;
 
     if (GET_HIT(host) <= 500) {
-        do_say(host, "Curse you all, I will remember this outrage!\n\r", 0, 0, 0);
+        do_say(host, mutable_arg("Curse you all, I will remember this outrage!\n\r"), 0, 0, 0);
         if (obj)
             act("$n hides her face from the glowing plate!", FALSE, host, 0, 0, TO_ROOM);
         for (tmpch = combat_list; tmpch; tmpch = tmpch->next_fighting)
@@ -3392,12 +3392,12 @@ SPECIAL(vampire_killer)
         tmpwtl.subcmd = 0;
         if (tmpwtl.cmd == 1) {
             if (IS_SET(room->dir_option[0]->exit_info, EX_CLOSED)) {
-                do_unlock(host, "irondoor", 0, 0, 0);
-                do_open(host, "irondoor", 0, 0, 0);
+                do_unlock(host, mutable_arg("irondoor"), 0, 0, 0);
+                do_open(host, mutable_arg("irondoor"), 0, 0, 0);
             }
         }
         if (CAN_GO(host, tmpwtl.cmd - 1))
-            do_move(host, "", &tmpwtl, tmpwtl.cmd, 0);
+            do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
         return 0;
     } else {
@@ -3424,8 +3424,8 @@ SPECIAL(vampire_killer)
             else {
                 room = &world[real_room(15396)];
                 if (IS_SET(room->dir_option[2]->exit_info, EX_CLOSED)) {
-                    do_unlock(host, "irondoor", 0, 0, 0);
-                    do_open(host, "irondoor", 0, 0, 0);
+                    do_unlock(host, mutable_arg("irondoor"), 0, 0, 0);
+                    do_open(host, mutable_arg("irondoor"), 0, 0, 0);
                 } else
                     tmpwtl.cmd = 3;
             }
@@ -3437,8 +3437,8 @@ SPECIAL(vampire_killer)
             else {
                 room = &world[real_room(15397)];
                 if (IS_SET(room->dir_option[2]->exit_info, EX_CLOSED)) {
-                    do_unlock(host, "irondoor", 0, 0, 0);
-                    do_open(host, "irondoor", 0, 0, 0);
+                    do_unlock(host, mutable_arg("irondoor"), 0, 0, 0);
+                    do_open(host, mutable_arg("irondoor"), 0, 0, 0);
                 } else
                     tmpwtl.cmd = 3;
             }
@@ -3449,7 +3449,7 @@ SPECIAL(vampire_killer)
         }
         tmpwtl.subcmd = 0;
         if (CAN_GO(host, tmpwtl.cmd - 1))
-            do_move(host, "", &tmpwtl, tmpwtl.cmd, 0);
+            do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
     }
     return 0;

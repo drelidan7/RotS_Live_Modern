@@ -457,6 +457,24 @@ void boot_db(void)
         log("Done.");
     }
 
+    // Fixed-bug (Phase 5 T6, UBSan reference-binding-to-null-pointer):
+    // big_brother::create()/skill_timer::create() used to run at the very
+    // end of this function (see the comment near "Boot db -- DONE." below,
+    // which explains why the calls moved), well AFTER this reset_zone()
+    // loop -- but reset_zone() (spawning/positioning mobiles and running zone
+    // commands/scripts for a fresh boot) can reach code that calls
+    // game_rules::big_brother::instance()/game_timer::skill_timer::instance()
+    // (confirmed live: a real Mirkwood zone hit this during a real
+    // world-data boot under UBSan), which dereferences a still-null
+    // singleton pointer -- undefined behavior in every boot that reaches
+    // that path, sanitized or not. Both singletons only need weather_info
+    // (a file-scope global, always valid) and `world` (populated by
+    // renum_world() above, well before this loop), so constructing them
+    // here instead is safe and satisfies every caller reset_zone() can
+    // reach.
+    game_rules::big_brother::create(weather_info, &world);
+    game_timer::skill_timer::create(weather_info, &world);
+
     for (i = 0; i <= top_of_zone_table; i++) {
         vmudlog(NRM, "Resetting %s (rooms %d-%d).", zone_table[i].name,
             i ? (zone_table[i - 1].top + 1) : 0, zone_table[i].top);
@@ -498,10 +516,14 @@ void boot_db(void)
     log("Boot db -- DONE.");
     boot_mode = 0;
 
-    // Initialize the Big Brother system after we have our weather data and
-    // our map.
-    game_rules::big_brother::create(weather_info, &world);
-    game_timer::skill_timer::create(weather_info, &world);
+    // Big Brother/skill_timer are now constructed earlier, right before the
+    // zone-reset loop above (Phase 5 T6 fix) -- reset_zone() can reach code
+    // that needs them mid-loop, so constructing them only after the loop
+    // finished was too late. create()'s storage is a function-local static,
+    // so this is intentionally left uncalled here rather than removed
+    // outright: nothing about this comment block is load-bearing, but a
+    // future reader diffing db.cpp against upstream should see exactly where
+    // the call used to live and why it moved.
 }
 
 /* reset the time in the game from file */
@@ -2290,7 +2312,14 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
             break;
 
         case 'N':
-            KEY_STR("name", char_element->name, 20);
+            // Fixed-bug (Phase 5 T6, UBSan array-bounds): char_element->name is
+            // char[MAX_NAME_LENGTH + 1] (13 bytes); the literal 20 here overran the
+            // array by 7 bytes into the adjacent char_element->pwd field on every
+            // player-file load (memcpy in the KEY_STR macro). Matches the
+            // (array_size - 1)-length convention used by the "host"/"password"
+            // KEY_STR calls above/below (which leave the struct's pre-zeroed final
+            // byte as the terminator).
+            KEY_STR("name", char_element->name, MAX_NAME_LENGTH);
             break;
 
         case 'O':
@@ -2470,12 +2499,22 @@ void store_to_char(struct char_file_u* st, struct char_data* ch)
     ch->player.short_descr = 0;
     ch->player.long_descr = 0;
 
+    // Fixed-bug (Phase 5 T6, LeakSanitizer): store_to_char() can run more
+    // than once against the SAME char_data (e.g. interpre.cpp's login flow
+    // re-verifies and re-stores an already-loaded d->character), and title/
+    // description were unconditionally (re-)CREATE()'d every time, orphaning
+    // whatever the PRIOR call had allocated -- the same leak class as the
+    // ch->profs fix above, just for these two fields. RELEASE() first (a
+    // no-op via its own null check the first time through) so a repeat call
+    // frees the old buffer before allocating its replacement.
+    RELEASE(ch->player.title);
     if (*st->title) {
         CREATE(ch->player.title, char, strlen(st->title) + 1);
         strcpy(ch->player.title, st->title);
     } else
         GET_TITLE(ch) = 0;
 
+    RELEASE(ch->player.description);
     if (*st->description) {
         CREATE(ch->player.description, char, strlen(st->description) + 1);
         strcpy(ch->player.description, st->description);
@@ -2493,7 +2532,17 @@ void store_to_char(struct char_file_u* st, struct char_data* ch)
     for (i = 0; i < MAX_TOUNGE; i++)
         ch->player.talks[i] = st->talks[i];
 
-    CREATE1(ch->profs, char_prof_data);
+    // Fixed-bug (Phase 5 T6, LeakSanitizer): every real call site
+    // (interpre.cpp's account-character selection, act_wiz.cpp's `stat
+    // file`/player-file lookups) calls clear_char() -- which already
+    // CREATE1()s ch->profs -- immediately before store_to_char(), so this was
+    // unconditionally allocating a SECOND char_prof_data and orphaning the
+    // first one on every single call (one char_prof_data leaked per account
+    // character selection in the live game). Only allocate if ch->profs is
+    // still null; either way the final contents are identical (byte-copied
+    // from st->profs below).
+    if (!ch->profs)
+        CREATE1(ch->profs, char_prof_data);
     memcpy(ch->profs, &(st->profs), sizeof(struct char_prof_data));
     ch->specials.alias = 0;
 
@@ -2537,6 +2586,10 @@ void store_to_char(struct char_file_u* st, struct char_data* ch)
     utils::set_specialization(*ch, game_types::player_specs(spec));
     utils::set_casting(*ch, ch->specials2.casting);
 
+    // Same leak class as title/description above -- RELEASE() first so a
+    // repeat store_to_char() call on the same char_data doesn't orphan the
+    // previous ch->player.name allocation.
+    RELEASE(ch->player.name);
     CREATE(ch->player.name, char, strlen(st->name) + 1);
     strcpy(ch->player.name, st->name);
 
@@ -3217,7 +3270,21 @@ char* fread_string(FILE* fl, const char* error)
         for (point = buf + strlen(buf) - 2; point >= buf && isspace(*point);
             point--)
             continue;
-        if ((flag = (*point == '~')))
+        // Fixed-bug (Phase 5 T6, ASan stack-buffer-underflow): when buf is
+        // empty or 1 byte after trimming, the loop above leaves `point`
+        // below `buf` (buf + strlen(buf) - 2, e.g. buf-2 or buf-1) without
+        // ever dereferencing it (short-circuited by `point >= buf`) -- but
+        // the old `*point == '~'` here dereferenced it unconditionally,
+        // reading stack memory before the buffer (confirmed live: a real
+        // zone file line hit this during a real world-data boot under ASan).
+        // `flag` was also read uninitialized in that same case (never
+        // assigned before this line ran). Bounds-check first: an
+        // out-of-range `point` can't be the '~' terminator, so this matches
+        // the previous behavior for every case that wasn't already
+        // undefined (garbage stack bytes essentially never equal '~', so
+        // real-world output is unaffected).
+        flag = (point >= buf && *point == '~');
+        if (flag)
             *point = 0;
         else if (strlen(buf)) {
             *(buf + strlen(buf) + 1) = '\0';

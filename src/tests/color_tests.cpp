@@ -2,6 +2,7 @@
 #include "../interpre.h"
 #include "../structs.h"
 #include "../utils.h"
+#include "test_char_cleanup.h"
 
 #include <gtest/gtest.h>
 
@@ -42,6 +43,10 @@ TEST(Color, RendersLegacyAnsiForegroundSelections)
 {
     char_data character {};
     initialize_player_character(&character);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     set_colornum(&character, COLOR_CHAT, CMAG);
 
     EXPECT_EQ(std::string(get_color_sequence(&character, COLOR_CHAT)), std::string(color_sequence[CMAG]));
@@ -51,6 +56,10 @@ TEST(Color, RendersTrueColorForegroundSelections)
 {
     char_data character {};
     initialize_player_character(&character);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     set_truecolor_foreground(&character, COLOR_MAGIC, 180, 80, 255);
 
     const std::string sequence = get_color_sequence(&character, COLOR_MAGIC);
@@ -61,6 +70,10 @@ TEST(Color, RendersTrueColorBackgroundSelectionsAlongsideAnsiForegroundFallback)
 {
     char_data character {};
     initialize_player_character(&character);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     set_colornum(&character, COLOR_WEATHER, CBCYN);
     set_truecolor_background(&character, COLOR_WEATHER, 10, 20, 35);
 
@@ -73,6 +86,10 @@ TEST(Color, ClearsBackgroundWithoutAffectingForegroundSelection)
 {
     char_data character {};
     initialize_player_character(&character);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     set_truecolor_foreground(&character, COLOR_MAGIC, 180, 80, 255);
     set_truecolor_background(&character, COLOR_MAGIC, 10, 20, 35);
 
@@ -99,6 +116,10 @@ TEST(Color, LegacyCommandSyntaxStillSetsAnsiForegroundSelection)
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     character.desc = &descriptor;
 
     char command[] = "magic bright magenta";
@@ -120,6 +141,10 @@ TEST(Color, CommandSupportsTrueColorForegroundRgbSelection)
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     character.desc = &descriptor;
 
     char command[] = "magic fg rgb 180 80 255";
@@ -143,6 +168,10 @@ TEST(Color, CommandSupportsTrueColorBackgroundHexSelection)
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     character.desc = &descriptor;
 
     char command[] = "weather bg hex #0A1423";
@@ -166,6 +195,10 @@ TEST(Color, CommandCanClearBackgroundToDefault)
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     character.desc = &descriptor;
     set_truecolor_background(&character, COLOR_MAGIC, 10, 20, 35);
 
@@ -187,6 +220,14 @@ TEST(Color, CommandListsStructuredForegroundAndBackgroundSelections)
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
+    // do_color's structured listing overflows descriptor.small_outbuf,
+    // promoting it to a heap-allocated large_outbuf block (Phase 5 T6 leak
+    // sweep; see test_char_cleanup.h).
+    ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
     character.desc = &descriptor;
     set_truecolor_foreground(&character, COLOR_MAGIC, 180, 80, 255);
     set_truecolor_background(&character, COLOR_WEATHER, 10, 20, 35);
@@ -211,6 +252,10 @@ TEST(Color, CommandRejectsOutOfRangeRgbValues)
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     character.desc = &descriptor;
 
     char command[] = "magic fg rgb 300 80 255";
@@ -235,6 +280,10 @@ TEST(Color, UnknownFieldNameListsAllValidFieldsWithLeadingSpaceAndCrlf)
     descriptor_data descriptor = make_descriptor();
     descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     character.desc = &descriptor;
 
     char command[] = "bogus-field";
@@ -263,6 +312,10 @@ TEST(Color, UnknownAnsiColourNameInsideFgBranchListsEightBaseColours)
     descriptor_data descriptor = make_descriptor();
     descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     character.desc = &descriptor;
 
     char command[] = "magic fg ansi bogus-colour";
@@ -282,6 +335,10 @@ TEST(Color, UnknownAnsiColourNameAtTopLevelListsEightBaseColours)
     descriptor_data descriptor = make_descriptor();
     descriptor.output = descriptor.small_outbuf;
     initialize_player_character(&character);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     character.desc = &descriptor;
 
     char command[] = "magic bogus-colour";

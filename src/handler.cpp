@@ -474,17 +474,25 @@ void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add,
         break;
 
     case APPLY_RESIST:
+        // Fixed-bug (Phase 5 T6, UBSan negative-shift-exponent): AFFECT_MODIFY_REMOVE
+        // above negates `mod` (it's a bit position here, e.g. PLRSPEC_FIRE,
+        // not a numeric stat delta -- the negation is this function's generic
+        // "undo an add" convention for every APPLY_* case, not specific to
+        // this one). `1 << mod` with mod now negative is UB (confirmed live:
+        // an APPLY_VULN affect wearing off during a real world-data boot hit
+        // this under UBSan); negate back to recover the original bit
+        // position before shifting.
         if (mod >= 0)
             GET_RESISTANCES(ch) |= (1 << mod);
         else
-            GET_RESISTANCES(ch) &= ~(1 << mod);
+            GET_RESISTANCES(ch) &= ~(1 << (-mod));
         break;
 
     case APPLY_VULN:
         if (mod >= 0)
             GET_VULNERABILITIES(ch) |= (1 << mod);
         else
-            GET_VULNERABILITIES(ch) &= ~(1 << mod);
+            GET_VULNERABILITIES(ch) &= ~(1 << (-mod));
         break;
 
     default:

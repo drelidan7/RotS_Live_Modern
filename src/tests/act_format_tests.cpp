@@ -4,6 +4,7 @@
 #include "../rots_rng.h"
 #include "../structs.h"
 #include "../utils.h"
+#include "test_char_cleanup.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
@@ -82,6 +83,10 @@ void reset_capturing_descriptor(descriptor_data& descriptor, char_data* characte
 struct SoloCharacterContext {
     char_data character {};
     descriptor_data descriptor {};
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
+    ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
 
     SoloCharacterContext()
     {
@@ -199,6 +204,13 @@ TEST(ActOthe, DoTitleQueryFormatsEmptyTitleAsEmptyString)
     do_title(&ctx.character, empty_argument, nullptr, 0, 0);
 
     EXPECT_EQ(std::string(ctx.descriptor.output), "Your present title is: \n\r");
+
+    // do_title's query branch (empty argument) never replaces the title, so
+    // -- unlike DoTitleSetFormatsNameAndTitleWithSpecialCharacters below,
+    // where do_title's SET branch itself frees the old title before
+    // installing the new one -- this str_dup("") is never released by
+    // production code; release it here (Phase 5 T6 leak sweep).
+    RELEASE(ctx.character.player.title);
 }
 
 // Regression pin for the Phase 4 Wave 2 whole-branch review's null-guard
@@ -268,6 +280,9 @@ TEST(ActOthe, RollForCharacterFormatsRightJustifiedNameAndRoll)
 
     char_data roll_initiator {};
     clear_char(&roll_initiator, MOB_VOID);
+    // Releases roll_initiator.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields roll_initiator_cleanup { roll_initiator };
     descriptor_data initiator_descriptor {};
     reset_capturing_descriptor(initiator_descriptor, &roll_initiator);
     roll_initiator.desc = &initiator_descriptor;
@@ -293,6 +308,9 @@ TEST(ActOthe, PrintGroupLeaderFormatsFullHealthStatusLine)
 {
     char_data leader {};
     clear_char(&leader, MOB_VOID);
+    // Releases leader.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields leader_cleanup { leader };
     leader.player.name = const_cast<char*>("Leader");
     leader.abilities.hit = 100;
     leader.tmpabilities.hit = 100;
@@ -310,6 +328,9 @@ TEST(ActOthe, PrintGroupMemberFormatsLevelFieldForOrcFriendPet)
 {
     char_data member {};
     clear_char(&member, MOB_VOID);
+    // Releases member.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields member_cleanup { member };
     member.specials2.act = MOB_ISNPC;
     SET_BIT(MOB_FLAGS(&member), MOB_ORC_FRIEND);
     member.player.short_descr = const_cast<char*>("a recruited orc");
@@ -330,6 +351,9 @@ TEST(ActOthe, PrintGroupMemberFormatsPlainLineForNonOrcFriendMember)
 {
     char_data member {};
     clear_char(&member, MOB_VOID);
+    // Releases member.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields member_cleanup { member };
     member.player.name = const_cast<char*>("Fellow");
     member.abilities.hit = 100;
     member.tmpabilities.hit = 100;
@@ -350,10 +374,16 @@ TEST(ActOthe, GiveShareFormatsSenderNameAndMoneyMessage)
 {
     char_data sender {};
     clear_char(&sender, MOB_VOID);
+    // Releases sender.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields sender_cleanup { sender };
     sender.player.name = const_cast<char*>("Sender");
 
     char_data receiver {};
     clear_char(&receiver, MOB_VOID);
+    // Releases receiver.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields receiver_cleanup { receiver };
     descriptor_data receiver_descriptor {};
     reset_capturing_descriptor(receiver_descriptor, &receiver);
     receiver.desc = &receiver_descriptor;

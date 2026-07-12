@@ -6,6 +6,7 @@
 #include "../handler.h"
 #include "../objects_json.h"
 #include "../utils.h"
+#include "test_char_cleanup.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
@@ -64,7 +65,16 @@ public:
         : m_previous_player_table(player_table)
         , m_previous_top_of_p_table(top_of_p_table)
     {
-        player_table = new player_index_element[1] {};
+        // CREATE(), not `new[]` -- some of this fixture's tests exercise
+        // migration/hydration paths that call db.cpp's inc_p_table() to grow
+        // the table for a second entry, which does
+        // CREATE(tmpel, ..., top_of_p_table + 2) + RELEASE(player_table) (i.e.
+        // create_function()/free_function(), matching create_entry()'s own
+        // allocations) -- mixing that with a `new[]`-allocated initial array
+        // is an operator-new[]/free() mismatch (Phase 5 T6 alloc-dealloc-
+        // mismatch fix; ASan's alloc-dealloc-mismatch check would catch this
+        // the moment such a test exercises inc_p_table()).
+        CREATE(player_table, player_index_element, 1);
         top_of_p_table = 0;
         player_table[0].name = strdup(name);
         player_table[0].level = 1;
@@ -74,8 +84,17 @@ public:
 
     ~ScopedPlayerTableEntry()
     {
-        free(player_table[0].name);
-        delete[] player_table;
+        // Releases every entry's .name (not just index 0 -- migration/
+        // hydration paths can grow the table past the seeded entry via
+        // create_entry()/inc_p_table(), Phase 5 T6 leak sweep) plus the
+        // table itself via RELEASE() (create_function()/free_function(),
+        // matching the CREATE() above and whatever inc_p_table() replaced it
+        // with).
+        if (player_table != nullptr) {
+            for (int index = 0; index <= top_of_p_table; ++index)
+                RELEASE(player_table[index].name);
+            RELEASE(player_table);
+        }
         player_table = m_previous_player_table;
         top_of_p_table = m_previous_top_of_p_table;
     }
@@ -316,12 +335,29 @@ public:
 
     ~ScopedObjectPrototypeTable()
     {
+        // free_obj() (db.cpp), not `delete` -- object_list's nodes come from
+        // read_object() (create_function()-based, i.e. calloc), matching
+        // production's own object lifecycle; free_obj() also releases the
+        // object's name/description/short_description/action_description/
+        // ex_description fields. `delete` here was an operator-new/free()-
+        // family mismatch AND leaked those inner fields (Phase 5 T6 ASan
+        // alloc-dealloc-mismatch fix).
         while (object_list != nullptr) {
             obj_data* next = object_list->next;
-            delete object_list;
+            free_obj(object_list);
             object_list = next;
         }
 
+        // initialize_prototype() below strdup()s name/short_description/
+        // description straight into obj_proto[0]/[1] -- `delete[] obj_proto`
+        // only destructs/frees the array itself, not those inner fields
+        // (Phase 5 T6 leak sweep).
+        RELEASE(obj_proto[0].name);
+        RELEASE(obj_proto[0].short_description);
+        RELEASE(obj_proto[0].description);
+        RELEASE(obj_proto[1].name);
+        RELEASE(obj_proto[1].short_description);
+        RELEASE(obj_proto[1].description);
         delete[] obj_proto;
         delete[] obj_index;
         obj_proto = m_previous_obj_proto;
@@ -409,7 +445,12 @@ std::string write_valid_legacy_player_file(const std::string& root_directory, co
     player_table[0].log_time = stored_character.last_logon;
     player_table[0].flags = stored_character.specials2.act;
 
-    char_data* character = new char_data {};
+    // CREATE1() (create_function()-based, i.e. calloc), not `new` -- must
+    // match free_char()'s free()-based deallocation below (Phase 5 T6
+    // alloc-dealloc-mismatch fix; see account_management_tests.cpp's
+    // identical fix for the full rationale).
+    char_data* character;
+    CREATE1(character, char_data);
     clear_char(character, MOB_VOID);
 
     char_file_u mutable_store = stored_character;
@@ -441,6 +482,16 @@ std::string write_valid_legacy_player_file(const std::string& root_directory, co
     write_file(final_path, player_text);
     if (generated_path != final_path)
         std::remove(generated_path.c_str());
+
+    // free_char() -- releases GET_NAME/title/description/profs/skills/
+    // knowledge and the char_data itself (clear_char() above heap-allocates
+    // profs/skills/knowledge via create_function()); this `character` was
+    // never released at all before (LeakSanitizer, Phase 5 T6 -- same fix as
+    // account_management_tests.cpp's/act_wiz_tests.cpp's identically-named
+    // helper). character->desc still points at the stack-local `descriptor`
+    // here (still in scope) -- free_char() never touches ch->desc, so this is
+    // safe.
+    free_char(character);
 
     free(player_table[0].name);
     delete[] player_table;
@@ -574,7 +625,13 @@ TEST(DbLoader, LegacyPlayerTextRoundTripPreservesCombatState)
 
     char_data live_character {};
     clear_char(&live_character, MOB_VOID);
+    // Releases live_character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields live_character_cleanup { live_character };
     store_to_char(&loaded, &live_character);
+    // Releases live_character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields live_character_store_cleanup { live_character };
 
     EXPECT_EQ(utils::get_tactics(live_character), original.specials2.tactics);
     EXPECT_EQ(utils::get_shooting(live_character), original.specials2.shooting);
@@ -610,7 +667,13 @@ TEST(DbLoader, LegacyPlayerTextRoundTripPreservesStructuredColorSettings)
 
     char_data live_character {};
     clear_char(&live_character, MOB_VOID);
+    // Releases live_character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields live_character_cleanup { live_character };
     store_to_char(&loaded, &live_character);
+    // Releases live_character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields live_character_store_cleanup { live_character };
 
     const std::string magic_sequence = get_color_sequence(&live_character, COLOR_MAGIC);
     const std::string weather_sequence = get_color_sequence(&live_character, COLOR_WEATHER);
@@ -643,7 +706,13 @@ TEST(DbLoader, LegacyPlayerTextNormalizesOutOfRangeCombatStateValues)
 
     char_data live_character {};
     clear_char(&live_character, MOB_VOID);
+    // Releases live_character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields live_character_cleanup { live_character };
     store_to_char(&loaded, &live_character);
+    // Releases live_character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields live_character_store_cleanup { live_character };
 
     EXPECT_EQ(utils::get_tactics(live_character), TACTICS_NORMAL);
     EXPECT_EQ(utils::get_shooting(live_character), SHOOTING_NORMAL);
@@ -1165,6 +1234,9 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
 
     char_data character {};
     clear_char(&character, MOB_VOID);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
 
     char_file_u stored_character {};
     std::snprintf(stored_character.name, sizeof(stored_character.name), "%s", "aragorn");
@@ -1179,6 +1251,9 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
     stored_character.weight = 210;
     stored_character.height = 72;
     store_to_char(&stored_character, &character);
+    // Releases character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields character_store_cleanup { character };
 
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
@@ -1207,6 +1282,9 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndEquipsWearableI
 
     char_data character {};
     clear_char(&character, MOB_VOID);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
 
     char_file_u stored_character {};
     std::snprintf(stored_character.name, sizeof(stored_character.name), "%s", "aragorn");
@@ -1221,6 +1299,9 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndEquipsWearableI
     stored_character.weight = 210;
     stored_character.height = 72;
     store_to_char(&stored_character, &character);
+    // Releases character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields character_store_cleanup { character };
 
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
@@ -1292,7 +1373,13 @@ TEST(DbLoader, AccountNativeCharacterAndObjectsJsonSupportEquippedLoginWithoutMi
 
     char_data character {};
     clear_char(&character, MOB_VOID);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     store_to_char(&loaded_store, &character);
+    // Releases character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields character_store_cleanup { character };
 
     stage_object_data_for_character(&character, loaded_object_data);
     FILE* fp = Crash_load(&character);
@@ -1341,7 +1428,13 @@ TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallba
 
     char_data character {};
     clear_char(&character, MOB_VOID);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     store_to_char(&loaded_store, &character);
+    // Releases character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields character_store_cleanup { character };
 
     stage_object_data_for_character(&character, object_data);
 
@@ -1394,7 +1487,13 @@ TEST(DbLoader, AccountNativeCrashLoadStillLogsNonMissingLegacyObjectOpenFailures
 
     char_data character {};
     clear_char(&character, MOB_VOID);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     store_to_char(&loaded_store, &character);
+    // Releases character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields character_store_cleanup { character };
 
     stage_object_data_for_character(&character, object_data);
 
@@ -1435,7 +1534,13 @@ TEST(DbLoader, AccountNativeCharacterLoadDoesNotPropagateGarbageColorStateIntoLi
 
     char_data character {};
     clear_char(&character, MOB_VOID);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     store_to_char(&loaded_store, &character);
+    // Releases character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields character_store_cleanup { character };
 
     EXPECT_EQ(get_colornum(&character, COLOR_ROOM), CNRM);
 }
@@ -1469,7 +1574,13 @@ TEST(DbLoader, SavingAccountNativeCharacterDoesNotAttemptLegacySnapshotRefreshAf
 
     char_data character {};
     clear_char(&character, MOB_VOID);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     store_to_char(&stored_character, &character);
+    // Releases character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields character_store_cleanup { character };
 
     descriptor_data descriptor {};
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "LegacyPw1");
@@ -1512,7 +1623,13 @@ TEST(DbLoader, SavingLinkedCharacterRefreshesStalePlayerIndexToAccountNativePath
 
     char_data character {};
     clear_char(&character, MOB_VOID);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     store_to_char(&stored_character, &character);
+    // Releases character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields character_store_cleanup { character };
 
     descriptor_data descriptor {};
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "LegacyPw1");
@@ -1558,7 +1675,13 @@ TEST(DbLoader, SavingLinkedCharacterRepairsMissingAccountNativeCharacterFileDire
 
     char_data character {};
     clear_char(&character, MOB_VOID);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     store_to_char(&stored_character, &character);
+    // Releases character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields character_store_cleanup { character };
 
     descriptor_data descriptor {};
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "LegacyPw1");
@@ -1617,7 +1740,13 @@ TEST(DbLoader, SavingAccountNativeCharacterWithUnreadableAccountRecordDoesNotRev
 
     char_data character {};
     clear_char(&character, MOB_VOID);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
     store_to_char(&stored_character, &character);
+    // Releases character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields character_store_cleanup { character };
 
     descriptor_data descriptor {};
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "LegacyPw1");
@@ -1647,6 +1776,9 @@ TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacte
 
     char_data staged_character {};
     clear_char(&staged_character, MOB_VOID);
+    // Releases staged_character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields staged_character_cleanup { staged_character };
     char_file_u staged_store {};
     std::snprintf(staged_store.name, sizeof(staged_store.name), "%s", "aragorn");
     std::snprintf(staged_store.title, sizeof(staged_store.title), "%s", "the Ranger");
@@ -1658,6 +1790,9 @@ TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacte
     staged_store.language = LANG_HUMAN;
     staged_store.specials2.load_room = 3001;
     store_to_char(&staged_store, &staged_character);
+    // Releases staged_character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields staged_character_store_cleanup { staged_character };
 
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
@@ -1669,6 +1804,9 @@ TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacte
 
     char_data later_character {};
     clear_char(&later_character, MOB_VOID);
+    // Releases later_character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields later_character_cleanup { later_character };
     char_file_u later_store {};
     std::snprintf(later_store.name, sizeof(later_store.name), "%s", "boromir");
     std::snprintf(later_store.title, sizeof(later_store.title), "%s", "of Gondor");
@@ -1680,6 +1818,9 @@ TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacte
     later_store.language = LANG_HUMAN;
     later_store.specials2.load_room = 3001;
     store_to_char(&later_store, &later_character);
+    // Releases later_character.player.title/description/name (store_to_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields later_character_store_cleanup { later_character };
 
     EXPECT_EQ(Crash_load(&later_character), nullptr);
     clear_account_backed_object_bytes_for_character(&staged_character);

@@ -5,6 +5,7 @@
 #include "../limits.h"
 #include "../objects_json.h"
 #include "../profs.h"
+#include "../protocol.h"
 #include "../spells.h"
 #include "../structs.h"
 #include "../utils.h"
@@ -199,6 +200,19 @@ public:
 
     ~ScopedPlayerTableReset()
     {
+        // Releases every entry's create_entry()-strdup'd .name plus the
+        // player_table array itself (grown via inc_p_table()'s CREATE()/
+        // RELEASE() pair, i.e. create_function()/free_function() -- matching
+        // RELEASE() here, not delete[]) before restoring the previous table.
+        // Constructed with player_table == nullptr / top_of_p_table == -1, so
+        // any entries here were allocated during this test by nanny()'s
+        // real account-selection/character-creation flow (Phase 5 T6 leak
+        // sweep).
+        if (player_table != nullptr) {
+            for (int index = 0; index <= top_of_p_table; ++index)
+                RELEASE(player_table[index].name);
+            RELEASE(player_table);
+        }
         player_table = m_previous_player_table;
         top_of_p_table = m_previous_top_of_p_table;
     }
@@ -336,7 +350,11 @@ std::string write_valid_legacy_player_file(const std::string& root_directory, co
     player_table[0].log_time = stored_character.last_logon;
     player_table[0].flags = stored_character.specials2.act;
 
-    char_data* character = new char_data {};
+    // CREATE1(), not `new` -- must match free_char()'s free()-based
+    // deallocation (Phase 5 T6 alloc-dealloc-mismatch fix; see
+    // account_management_tests.cpp's identical fix for the full rationale).
+    char_data* character;
+    CREATE1(character, char_data);
     clear_char(character, MOB_VOID);
 
     char_file_u mutable_store = stored_character;
@@ -423,7 +441,11 @@ descriptor_data* allocate_descriptor()
 char_data* attach_active_character(
     descriptor_data* descriptor, const char* name, int level, long idnum, int race = RACE_HUMAN)
 {
-    char_data* character = new char_data {};
+    // CREATE1(), not `new` -- must match free_char()'s free()-based
+    // deallocation (Phase 5 T6 alloc-dealloc-mismatch fix; see
+    // account_management_tests.cpp's identical fix for the full rationale).
+    char_data* character;
+    CREATE1(character, char_data);
     clear_char(character, MOB_VOID);
     character->player.name = strdup(name);
     character->player.level = level;
@@ -1099,7 +1121,11 @@ TEST(InterpreAccountMenu, UnlockSelectAllowsOneDifferentLinkedCharacterSelection
     EXPECT_EQ(std::string(descriptor.output).find("You are already connected as Aragorn."), std::string::npos)
         << descriptor.output;
 
-    char_data* linkless_legolas = new char_data {};
+    // CREATE1(), not `new` -- must match free_char()'s free()-based
+    // deallocation (Phase 5 T6 alloc-dealloc-mismatch fix; see
+    // account_management_tests.cpp's identical fix for the full rationale).
+    char_data* linkless_legolas;
+    CREATE1(linkless_legolas, char_data);
     clear_char(linkless_legolas, MOB_VOID);
     linkless_legolas->player.name = strdup("legolas");
     linkless_legolas->player.level = 45;
@@ -2108,6 +2134,12 @@ TEST(InterpreAccountMenu, SelectingSameLinklessActiveCharacterReconnectsExisting
     character_list = nullptr;
     free_char(descriptor.character);
     descriptor.character = nullptr;
+    // complete_existing_character_login() (interpre.cpp, via nanny()'s
+    // reconnect-existing-body path above) allocates descriptor.pProtocol;
+    // production frees it via close_socket(), which this stack-local
+    // descriptor never runs through (Phase 5 T6 leak sweep).
+    if (descriptor.pProtocol != nullptr)
+        ProtocolDestroy(descriptor.pProtocol);
 }
 
 TEST(InterpreAccountMenu, SelectingSameActivePlayingCharacterUsurpsExistingDescriptor)
@@ -2168,6 +2200,10 @@ TEST(InterpreAccountMenu, SelectingSameActivePlayingCharacterUsurpsExistingDescr
     character_list = nullptr;
     free_char(descriptor.character);
     descriptor.character = nullptr;
+    // See SelectingSameLinklessActiveCharacterReconnectsExistingBody's
+    // comment above (Phase 5 T6 leak sweep).
+    if (descriptor.pProtocol != nullptr)
+        ProtocolDestroy(descriptor.pProtocol);
 }
 
 TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuBlocksDifferentActiveLowLevelCharacter)
@@ -2203,7 +2239,9 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuBlocksDifferentActiveLo
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     descriptor.connected = CON_SLCT;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     descriptor.character->player.name = strdup("legolas");
     descriptor.character->player.level = 45;
@@ -2268,7 +2306,11 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenAnyA
     high_level_descriptor.next = &low_level_descriptor;
     descriptor_list = &high_level_descriptor;
 
-    char_data* selected_character_body = new char_data {};
+    // CREATE1(), not `new` -- must match free_char()'s free()-based
+    // deallocation (Phase 5 T6 alloc-dealloc-mismatch fix; see
+    // account_management_tests.cpp's identical fix for the full rationale).
+    char_data* selected_character_body;
+    CREATE1(selected_character_body, char_data);
     clear_char(selected_character_body, MOB_VOID);
     selected_character_body->player.name = strdup("legolas");
     selected_character_body->player.level = 45;
@@ -2284,7 +2326,9 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenAnyA
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     descriptor.connected = CON_SLCT;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     descriptor.character->player.name = strdup("legolas");
     descriptor.character->player.level = 45;
@@ -2347,7 +2391,11 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenLink
     attach_active_character(&active_descriptor, "aragorn", 50, 4242);
     descriptor_list = &active_descriptor;
 
-    char_data* selected_character_body = new char_data {};
+    // CREATE1(), not `new` -- must match free_char()'s free()-based
+    // deallocation (Phase 5 T6 alloc-dealloc-mismatch fix; see
+    // account_management_tests.cpp's identical fix for the full rationale).
+    char_data* selected_character_body;
+    CREATE1(selected_character_body, char_data);
     clear_char(selected_character_body, MOB_VOID);
     selected_character_body->player.name = strdup("legolas");
     selected_character_body->player.level = 45;
@@ -2363,7 +2411,9 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenLink
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     descriptor.connected = CON_SLCT;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     descriptor.character->player.name = strdup("legolas");
     descriptor.character->player.level = 45;
@@ -2576,7 +2626,9 @@ TEST(InterpreAccountMenu, StaleAccountCreationWizardBlocksBirthWhenLowLevelChara
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     descriptor.connected = CON_CREATE;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     descriptor.character->player.name = strdup("legolas");
     descriptor.character->player.race = RACE_HUMAN;
@@ -2639,7 +2691,9 @@ TEST(InterpreAccountMenu, UnlockSelectDoesNotAllowStaleAccountCreationWizardBirt
     descriptor.output = descriptor.small_outbuf;
     std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "unlock-birth");
     descriptor.connected = CON_CREATE;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     descriptor.character->player.name = strdup("legolas");
     descriptor.character->player.race = RACE_HUMAN;
@@ -2702,7 +2756,9 @@ TEST(InterpreAccountMenu, StaleAccountCreationWizardCannotOverwriteSameNameActiv
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     descriptor.connected = CON_CREATE;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     descriptor.character->player.name = strdup("aragorn");
     descriptor.character->player.race = RACE_HUMAN;
@@ -2925,7 +2981,9 @@ TEST(InterpreAccountMenu, InGameLinkChoiceUsesPlayerFacingSuccessMessage)
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     descriptor.connected = CON_ACCTLINKPWD;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -2971,7 +3029,9 @@ TEST(InterpreAccountMenu, AccountMenuNewCharacterConfirmationSkipsLegacyPassword
     // dangles into the returned-from frame when NRVO isn't applied (MSVC
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -3813,7 +3873,9 @@ TEST(InterpreAccountMenu, CharacterMenuDeleteOptionRoutesAccountBackedCharacters
     descriptor.connected = CON_SLCT;
     std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "*ACCOUNT*");
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->player.level = 10;
@@ -3930,7 +3992,9 @@ TEST(InterpreAccountMenu, AccountBackedDeleteVerificationRejectsIncorrectAccount
     descriptor.output = descriptor.small_outbuf;
     descriptor.connected = CON_ACCTDELCNF1;
     std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->player.level = 10;
@@ -3967,7 +4031,9 @@ TEST(InterpreAccountMenu, AccountBackedDeleteVerificationAcceptsCorrectAccountPa
     descriptor.connected = CON_ACCTDELCNF1;
     std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "WrongPwd");
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->player.level = 10;
@@ -4013,7 +4079,9 @@ TEST(InterpreAccountMenu, ConfirmedAccountBackedDeleteReturnsToUsableAccountMenu
     descriptor.connected = CON_SLCT;
     std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "WrongPwd");
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->player.level = 10;
@@ -4125,7 +4193,9 @@ TEST(InterpreAccountMenu, SelectingAnotherLinkedCharacterAfterDeleteRecreatesDes
     std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "WrongPwd");
     std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -4226,7 +4296,9 @@ TEST(InterpreAccountMenu, FailedSelectionAfterDeleteDoesNotLeaveReplacementDescr
     std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "WrongPwd");
     std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -4307,7 +4379,9 @@ TEST(InterpreAccountMenu, CreatingNewCharacterAfterDeleteRecreatesDescriptorChar
     descriptor.connected = CON_SLCT;
     std::snprintf(descriptor.account_name, sizeof(descriptor.account_name), "%s", "acct");
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "WrongPwd");
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -4436,7 +4510,11 @@ TEST(InterpreAccountMenu, ExtractCharReturnsAccountBackedCharactersToAccountAwar
     descriptor.connected = CON_PLYNG;
     descriptor.descriptor = 1;
 
-    char_data* character = new char_data {};
+    // CREATE1(), not `new` -- must match free_char()'s free()-based
+    // deallocation (Phase 5 T6 alloc-dealloc-mismatch fix; see
+    // account_management_tests.cpp's identical fix for the full rationale).
+    char_data* character;
+    CREATE1(character, char_data);
     clear_char(character, MOB_VOID);
     register_pc_char(character);
     character->desc = &descriptor;
@@ -4489,7 +4567,9 @@ TEST(InterpreAccountMenu, AccountSelectionKeepsAccountSessionForCharacterMenuOpt
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     descriptor.connected = CON_ACCTSLCT;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -4550,7 +4630,9 @@ TEST(InterpreAccountMenu, AccountSelectionLoadsTheSecondNumberedLinkedCharacter)
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     descriptor.connected = CON_ACCTSLCT;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -4602,7 +4684,9 @@ TEST(InterpreAccountMenu, AccountSelectionReplacesRentedCharacterShellSoStoredAf
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     descriptor.connected = CON_ACCTSLCT;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -4667,7 +4751,9 @@ TEST(InterpreAccountMenu, ReturningToAccountAndReselectingSameCharacterDoesNotDu
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     descriptor.connected = CON_ACCTSLCT;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -4737,7 +4823,9 @@ TEST(InterpreAccountMenu, AccountSelectionKeepsBackToAccountMenuLabelWhenMenuRer
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
     descriptor.connected = CON_ACCTSLCT;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -4788,7 +4876,11 @@ TEST(InterpreAccountMenu, AccountBackedNewCharactersAreBornWithStartRoomAndNaked
     ScopedTestWorld test_world;
     test_world.room().number = 1200;
 
-    char_data* character = new char_data {};
+    // CREATE1(), not `new` -- must match free_char()'s free()-based
+    // deallocation (Phase 5 T6 alloc-dealloc-mismatch fix; see
+    // account_management_tests.cpp's identical fix for the full rationale).
+    char_data* character;
+    CREATE1(character, char_data);
     clear_char(character, MOB_VOID);
     character->player.race = RACE_HUMAN;
     character->player.sex = SEX_MALE;
@@ -4840,7 +4932,9 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
     // dangles into the returned-from frame when NRVO isn't applied (MSVC
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -4914,7 +5008,11 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
     ASSERT_EQ(exploit_records.size(), 1u);
     EXPECT_EQ(exploit_records[0].type, EXPLOIT_BIRTH);
 
-    char_data* loaded_character = new char_data {};
+    // CREATE1(), not `new` -- must match free_char()'s free()-based
+    // deallocation (Phase 5 T6 alloc-dealloc-mismatch fix; see
+    // account_management_tests.cpp's identical fix for the full rationale).
+    char_data* loaded_character;
+    CREATE1(loaded_character, char_data);
     clear_char(loaded_character, MOB_VOID);
     store_to_char(&stored_character, loaded_character);
     descriptor_data loaded_descriptor = make_descriptor();
@@ -4979,7 +5077,9 @@ TEST(InterpreAccountMenu, IntroduceCharRejectsTooLongAccountNativeIndexPathWitho
     // dangles into the returned-from frame when NRVO isn't applied (MSVC
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -5122,7 +5222,9 @@ TEST(InterpreAccountMenu, IntroduceCharRollbackDoesNotLeaveLegacyOrAccountNative
     // dangles into the returned-from frame when NRVO isn't applied (MSVC
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -5199,7 +5301,9 @@ TEST(InterpreAccountMenu, IntroduceCharRejectsNameLinkedToAnotherAccountBeforeWr
     // dangles into the returned-from frame when NRVO isn't applied (MSVC
     // Debug) -- writes would otherwise corrupt freed stack. Phase 3 Task 6.
     descriptor.output = descriptor.small_outbuf;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;
@@ -5275,7 +5379,9 @@ TEST(InterpreAccountMenu, AdvanceLevelStillPersistsWhenAccountOwnershipLookupFai
     descriptor.output = descriptor.small_outbuf;
     descriptor.output = descriptor.small_outbuf;
     descriptor.bufspace = SMALL_BUFSIZE - 1;
-    descriptor.character = new char_data {};
+    // CREATE1(), not `new` -- see the file's other Phase 5 T6
+    // alloc-dealloc-mismatch comments for the full rationale.
+    CREATE1(descriptor.character, char_data);
     clear_char(descriptor.character, MOB_VOID);
     register_pc_char(descriptor.character);
     descriptor.character->desc = &descriptor;

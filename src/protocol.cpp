@@ -44,6 +44,7 @@
 #include <string.h>
 #include <time.h>
 
+#include <format>
 #include <string>
 
 #include "protocol.h"
@@ -499,8 +500,9 @@ void ProtocolInput(descriptor_t* apDescriptor, char* apData, int aSize, char* ap
 
             if (strcmp(pProtocol->pMXPVersion, "Unknown")) {
                 Write(apDescriptor, "\n");
-                sprintf(MXPBuffer, "MXP version %s detected and enabled.\r\n",
-                    pProtocol->pMXPVersion);
+                strcpy(MXPBuffer,
+                    std::format("MXP version {} detected and enabled.\r\n", pProtocol->pMXPVersion)
+                        .c_str());
                 InfoMessage(apDescriptor, MXPBuffer);
             }
         } else /* In-band command */
@@ -732,13 +734,16 @@ const char* ProtocolOutput(descriptor_t* apDescriptor, const char* apData, int* 
                     }
 
                     if (!bDone) {
-                        sprintf(BugString,
-                            "BUG: Unicode substitute '%s' wasn't terminated with ']'.\n",
-                            Buffer);
+                        strcpy(BugString,
+                            std::format("BUG: Unicode substitute '{}' wasn't terminated with ']'.\n",
+                                static_cast<const char*>(Buffer))
+                                .c_str());
                         ReportBug(BugString);
                     } else if (!bValid) {
-                        sprintf(BugString,
-                            "BUG: Unicode substitute '%s' truncated.  Missing ']'?\n", Buffer);
+                        strcpy(BugString,
+                            std::format("BUG: Unicode substitute '{}' truncated.  Missing ']'?\n",
+                                static_cast<const char*>(Buffer))
+                                .c_str());
                         ReportBug(BugString);
                     } else if (pProtocol->pVariables[eMSDP_UTF_8]->ValueInt) {
                         pCopyFrom = UnicodeGet(Number);
@@ -768,15 +773,17 @@ const char* ProtocolOutput(descriptor_t* apDescriptor, const char* apData, int* 
                     }
 
                     if (!bDone || !bValid) {
-                        sprintf(BugString,
-                            "BUG: RGB %sground colour '%s' wasn't terminated with ']'.\n",
-                            (tolower(Buffer[0]) == 'f') ? "fore" : "back", &Buffer[1]);
+                        strcpy(BugString,
+                            std::format("BUG: RGB {}ground colour '{}' wasn't terminated with ']'.\n",
+                                (tolower(Buffer[0]) == 'f') ? "fore" : "back", &Buffer[1])
+                                .c_str());
                         ReportBug(BugString);
                     } else if (!IsValidColour(Buffer)) {
-                        sprintf(BugString,
-                            "BUG: RGB %sground colour '%s' invalid (each digit must be "
-                            "in the range 0-5).\n",
-                            (tolower(Buffer[0]) == 'f') ? "fore" : "back", &Buffer[1]);
+                        strcpy(BugString,
+                            std::format("BUG: RGB {}ground colour '{}' invalid (each digit must be "
+                                        "in the range 0-5).\n",
+                                (tolower(Buffer[0]) == 'f') ? "fore" : "back", &Buffer[1])
+                                .c_str());
                         ReportBug(BugString);
                     } else /* Success */
                     {
@@ -802,13 +809,16 @@ const char* ProtocolOutput(descriptor_t* apDescriptor, const char* apData, int* 
                     }
 
                     if (!bDone) {
-                        sprintf(BugString,
-                            "BUG: Required MXP version '%s' wasn't terminated with ']'.\n",
-                            Buffer);
+                        strcpy(BugString,
+                            std::format("BUG: Required MXP version '{}' wasn't terminated with ']'.\n",
+                                static_cast<const char*>(Buffer))
+                                .c_str());
                         ReportBug(BugString);
                     } else if (!bValid) {
-                        sprintf(BugString,
-                            "BUG: Required MXP version '%s' too long.  Missing ']'?\n", Buffer);
+                        strcpy(BugString,
+                            std::format("BUG: Required MXP version '{}' too long.  Missing ']'?\n",
+                                static_cast<const char*>(Buffer))
+                                .c_str());
                         ReportBug(BugString);
                     } else if (!strcmp(pProtocol->pMXPVersion, "Unknown") || strcmp(pProtocol->pMXPVersion, Buffer) < 0) {
                         /* Their version of MXP isn't high enough */
@@ -1044,7 +1054,8 @@ const char* CopyoverGet(descriptor_t* apDescriptor)
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
     if (pProtocol != NULL) {
-        sprintf(Buffer, "%d/%d", pProtocol->ScreenWidth, pProtocol->ScreenHeight);
+        strcpy(Buffer,
+            std::format("{}/{}", pProtocol->ScreenWidth, pProtocol->ScreenHeight).c_str());
 
         /* Skip to the end */
         while (*pBuffer != '\0')
@@ -1208,29 +1219,45 @@ void MSDPSend(descriptor_t* apDescriptor, variable_t aMSDP)
             int RequiredBuffer = strlen(VariableNameTable[aMSDP].pName) + strlen(pProtocol->pVariables[aMSDP]->pValueString) + 12;
 
             if (RequiredBuffer >= MAX_VARIABLE_LENGTH) {
-                sprintf(MSDPBuffer, "MSDPSend: %s %d bytes (exceeds MAX_VARIABLE_LENGTH of %d).\n",
-                    VariableNameTable[aMSDP].pName, RequiredBuffer, MAX_VARIABLE_LENGTH);
+                strcpy(MSDPBuffer,
+                    std::format("MSDPSend: {} {} bytes (exceeds MAX_VARIABLE_LENGTH of {}).\n",
+                        VariableNameTable[aMSDP].pName, RequiredBuffer, MAX_VARIABLE_LENGTH)
+                        .c_str());
                 ReportBug(MSDPBuffer);
                 MSDPBuffer[0] = '\0';
             } else if (pProtocol->bMSDP) {
-                sprintf(MSDPBuffer, "%c%c%c%c%s%c%s%c%c", IAC, SB, TELOPT_MSDP, MSDP_VAR,
-                    VariableNameTable[aMSDP].pName, MSDP_VAL,
-                    pProtocol->pVariables[aMSDP]->pValueString, IAC, SE);
+                strcpy(MSDPBuffer,
+                    std::format("{}{}{}{}{}{}{}{}{}", static_cast<char>(IAC), static_cast<char>(SB),
+                        static_cast<char>(TELOPT_MSDP), static_cast<char>(MSDP_VAR),
+                        VariableNameTable[aMSDP].pName, static_cast<char>(MSDP_VAL),
+                        pProtocol->pVariables[aMSDP]->pValueString, static_cast<char>(IAC),
+                        static_cast<char>(SE))
+                        .c_str());
             } else if (pProtocol->bATCP) {
-                sprintf(MSDPBuffer, "%c%c%cMSDP.%s %s%c%c", IAC, SB, TELOPT_ATCP,
-                    VariableNameTable[aMSDP].pName, pProtocol->pVariables[aMSDP]->pValueString,
-                    IAC, SE);
+                strcpy(MSDPBuffer,
+                    std::format("{}{}{}MSDP.{} {}{}{}", static_cast<char>(IAC), static_cast<char>(SB),
+                        static_cast<char>(TELOPT_ATCP), VariableNameTable[aMSDP].pName,
+                        pProtocol->pVariables[aMSDP]->pValueString, static_cast<char>(IAC),
+                        static_cast<char>(SE))
+                        .c_str());
             }
         } else /* It's an integer, not a string */
         {
             if (pProtocol->bMSDP) {
-                sprintf(MSDPBuffer, "%c%c%c%c%s%c%d%c%c", IAC, SB, TELOPT_MSDP, MSDP_VAR,
-                    VariableNameTable[aMSDP].pName, MSDP_VAL,
-                    pProtocol->pVariables[aMSDP]->ValueInt, IAC, SE);
+                strcpy(MSDPBuffer,
+                    std::format("{}{}{}{}{}{}{}{}{}", static_cast<char>(IAC), static_cast<char>(SB),
+                        static_cast<char>(TELOPT_MSDP), static_cast<char>(MSDP_VAR),
+                        VariableNameTable[aMSDP].pName, static_cast<char>(MSDP_VAL),
+                        pProtocol->pVariables[aMSDP]->ValueInt, static_cast<char>(IAC),
+                        static_cast<char>(SE))
+                        .c_str());
             } else if (pProtocol->bATCP) {
-                sprintf(MSDPBuffer, "%c%c%cMSDP.%s %d%c%c", IAC, SB, TELOPT_ATCP,
-                    VariableNameTable[aMSDP].pName, pProtocol->pVariables[aMSDP]->ValueInt, IAC,
-                    SE);
+                strcpy(MSDPBuffer,
+                    std::format("{}{}{}MSDP.{} {}{}{}", static_cast<char>(IAC), static_cast<char>(SB),
+                        static_cast<char>(TELOPT_ATCP), VariableNameTable[aMSDP].pName,
+                        pProtocol->pVariables[aMSDP]->ValueInt, static_cast<char>(IAC),
+                        static_cast<char>(SE))
+                        .c_str());
             }
         }
 
@@ -1254,25 +1281,34 @@ void MSDPSendPair(descriptor_t* apDescriptor, const char* apVariable, const char
 
         if (RequiredBuffer >= MAX_VARIABLE_LENGTH) {
             if (RequiredBuffer - strlen(apValue) < MAX_VARIABLE_LENGTH) {
-                sprintf(MSDPBuffer,
-                    "MSDPSendPair: %s %d bytes (exceeds MAX_VARIABLE_LENGTH of %d).\n",
-                    apVariable, RequiredBuffer, MAX_VARIABLE_LENGTH);
+                strcpy(MSDPBuffer,
+                    std::format("MSDPSendPair: {} {} bytes (exceeds MAX_VARIABLE_LENGTH of {}).\n",
+                        apVariable, RequiredBuffer, MAX_VARIABLE_LENGTH)
+                        .c_str());
             } else /* The variable name itself is too long */
             {
-                sprintf(MSDPBuffer,
-                    "MSDPSendPair: Variable name has a length of %d bytes (exceeds "
-                    "MAX_VARIABLE_LENGTH of %d).\n",
-                    RequiredBuffer, MAX_VARIABLE_LENGTH);
+                strcpy(MSDPBuffer,
+                    std::format("MSDPSendPair: Variable name has a length of {} bytes (exceeds "
+                                "MAX_VARIABLE_LENGTH of {}).\n",
+                        RequiredBuffer, MAX_VARIABLE_LENGTH)
+                        .c_str());
             }
 
             ReportBug(MSDPBuffer);
             MSDPBuffer[0] = '\0';
         } else if (pProtocol->bMSDP) {
-            sprintf(MSDPBuffer, "%c%c%c%c%s%c%s%c%c", IAC, SB, TELOPT_MSDP, MSDP_VAR, apVariable,
-                MSDP_VAL, apValue, IAC, SE);
+            strcpy(MSDPBuffer,
+                std::format("{}{}{}{}{}{}{}{}{}", static_cast<char>(IAC), static_cast<char>(SB),
+                    static_cast<char>(TELOPT_MSDP), static_cast<char>(MSDP_VAR), apVariable,
+                    static_cast<char>(MSDP_VAL), apValue, static_cast<char>(IAC),
+                    static_cast<char>(SE))
+                    .c_str());
         } else if (pProtocol->bATCP) {
-            sprintf(MSDPBuffer, "%c%c%cMSDP.%s %s%c%c", IAC, SB, TELOPT_ATCP, apVariable, apValue,
-                IAC, SE);
+            strcpy(MSDPBuffer,
+                std::format("{}{}{}MSDP.{} {}{}{}", static_cast<char>(IAC), static_cast<char>(SB),
+                    static_cast<char>(TELOPT_ATCP), apVariable, apValue, static_cast<char>(IAC),
+                    static_cast<char>(SE))
+                    .c_str());
         }
 
         /* Just in case someone calls this function without checking MSDP/ATCP */
@@ -1295,24 +1331,31 @@ void MSDPSendList(descriptor_t* apDescriptor, const char* apVariable, const char
 
         if (RequiredBuffer >= MAX_VARIABLE_LENGTH) {
             if (RequiredBuffer - strlen(apValue) < MAX_VARIABLE_LENGTH) {
-                sprintf(MSDPBuffer,
-                    "MSDPSendList: %s %d bytes (exceeds MAX_VARIABLE_LENGTH of %d).\n",
-                    apVariable, RequiredBuffer, MAX_VARIABLE_LENGTH);
+                strcpy(MSDPBuffer,
+                    std::format("MSDPSendList: {} {} bytes (exceeds MAX_VARIABLE_LENGTH of {}).\n",
+                        apVariable, RequiredBuffer, MAX_VARIABLE_LENGTH)
+                        .c_str());
             } else /* The variable name itself is too long */
             {
-                sprintf(MSDPBuffer,
-                    "MSDPSendList: Variable name has a length of %d bytes (exceeds "
-                    "MAX_VARIABLE_LENGTH of %d).\n",
-                    RequiredBuffer, MAX_VARIABLE_LENGTH);
+                strcpy(MSDPBuffer,
+                    std::format("MSDPSendList: Variable name has a length of {} bytes (exceeds "
+                                "MAX_VARIABLE_LENGTH of {}).\n",
+                        RequiredBuffer, MAX_VARIABLE_LENGTH)
+                        .c_str());
             }
 
             ReportBug(MSDPBuffer);
             MSDPBuffer[0] = '\0';
         } else if (pProtocol->bMSDP) {
             int i; /* Loop counter */
-            sprintf(MSDPBuffer, "%c%c%c%c%s%c%c%c%s%c%c%c", IAC, SB, TELOPT_MSDP, MSDP_VAR,
-                apVariable, MSDP_VAL, MSDP_ARRAY_OPEN, MSDP_VAL, apValue, MSDP_ARRAY_CLOSE, IAC,
-                SE);
+            strcpy(MSDPBuffer,
+                std::format("{}{}{}{}{}{}{}{}{}{}{}{}", static_cast<char>(IAC),
+                    static_cast<char>(SB), static_cast<char>(TELOPT_MSDP),
+                    static_cast<char>(MSDP_VAR), apVariable, static_cast<char>(MSDP_VAL),
+                    static_cast<char>(MSDP_ARRAY_OPEN), static_cast<char>(MSDP_VAL), apValue,
+                    static_cast<char>(MSDP_ARRAY_CLOSE), static_cast<char>(IAC),
+                    static_cast<char>(SE))
+                    .c_str());
 
             /* Convert the spaces to MSDP_VAL */
             for (i = 0; MSDPBuffer[i] != '\0'; ++i) {
@@ -1320,8 +1363,11 @@ void MSDPSendList(descriptor_t* apDescriptor, const char* apVariable, const char
                     MSDPBuffer[i] = MSDP_VAL;
             }
         } else if (pProtocol->bATCP) {
-            sprintf(MSDPBuffer, "%c%c%cMSDP.%s %s%c%c", IAC, SB, TELOPT_ATCP, apVariable, apValue,
-                IAC, SE);
+            strcpy(MSDPBuffer,
+                std::format("{}{}{}MSDP.{} {}{}{}", static_cast<char>(IAC), static_cast<char>(SB),
+                    static_cast<char>(TELOPT_ATCP), apVariable, apValue, static_cast<char>(IAC),
+                    static_cast<char>(SE))
+                    .c_str());
         }
 
         /* Just in case someone calls this function without checking MSDP/ATCP */
@@ -1378,9 +1424,7 @@ std::string MSDPSanitizeValue(const char* apValue)
             break;
         default:
             if (*p < 0x20) {
-                char Escape[8];
-                sprintf(Escape, "\\u%04x", *p);
-                Result += Escape;
+                Result += std::format("\\u{:04x}", *p);
             } else {
                 Result += (char)*p;
             }
@@ -1523,7 +1567,7 @@ const char* MXPCreateTag(descriptor_t* apDescriptor, const char* apTag)
 
     if (pProtocol != NULL && pProtocol->pVariables[eMSDP_MXP]->ValueInt && strlen(apTag) < 1000) {
         static char MXPBuffer[1024];
-        sprintf(MXPBuffer, "\033[1z%s\033[7z", apTag);
+        strcpy(MXPBuffer, std::format("\033[1z{}\033[7z", apTag).c_str());
         return MXPBuffer;
     } else /* Leave the tag as-is, don't try to MXPify it */
     {
@@ -1538,7 +1582,7 @@ void MXPSendTag(descriptor_t* apDescriptor, const char* apTag)
     if (pProtocol != NULL && apTag != NULL && strlen(apTag) < 1000) {
         if (pProtocol->pVariables[eMSDP_MXP]->ValueInt) {
             char MXPBuffer[1024];
-            sprintf(MXPBuffer, "\033[1z%s\033[7z\r\n", apTag);
+            strcpy(MXPBuffer, std::format("\033[1z{}\033[7z\r\n", apTag).c_str());
             Write(apDescriptor, MXPBuffer);
         } else if (pProtocol->bRenegotiate) {
             /* Tijer pointed out that when MUSHclient autoconnects, it fails
@@ -1577,7 +1621,7 @@ void SoundSend(descriptor_t* apDescriptor, const char* apTrigger)
             } else if (strlen(apTrigger) <= MaxTriggerLength) {
                 /* Use an old MSP-style trigger */
                 char* pBuffer = (char*)alloca(MaxTriggerLength + 10);
-                sprintf(pBuffer, "\t!SOUND(%s)", apTrigger);
+                strcpy(pBuffer, std::format("\t!SOUND({})", apTrigger).c_str());
                 Write(apDescriptor, pBuffer);
             }
         }
@@ -2443,7 +2487,7 @@ static void SendATCP(descriptor_t* apDescriptor, const char* apVariable, const c
 static const char* GetMSSP_Players()
 {
     static char Buffer[32];
-    sprintf(Buffer, "%d", s_Players);
+    strcpy(Buffer, std::format("{}", s_Players).c_str());
     return Buffer;
 }
 
@@ -2456,7 +2500,7 @@ static const char* GetMSSP_Uptime()
     // here was the narrowing (int) cast: widen to long long / %lld so the value doesn't
     // wrap once epoch seconds exceed INT_MAX (the year-2038 problem). No observable
     // output change until then.
-    sprintf(Buffer, "%lld", static_cast<long long>(s_Uptime));
+    strcpy(Buffer, std::format("{}", static_cast<long long>(s_Uptime)).c_str());
     return Buffer;
 }
 
@@ -2586,14 +2630,20 @@ static void SendMSSP(descriptor_t* apDescriptor)
     };
 
     /* Begin the subnegotiation sequence */
-    sprintf(MSSPBuffer, "%c%c%c", IAC, SB, TELOPT_MSSP);
+    strcpy(MSSPBuffer,
+        std::format("{}{}{}", static_cast<char>(IAC), static_cast<char>(SB),
+            static_cast<char>(TELOPT_MSSP))
+            .c_str());
 
     for (i = 0; MSSPTable[i].pName != NULL; ++i) {
         int SizePair;
 
         /* Retrieve the next MSSP variable/value pair */
-        sprintf(MSSPPair, "%c%s%c%s", MSSP_VAR, MSSPTable[i].pName, MSSP_VAL,
-            MSSPTable[i].pFunction ? (*MSSPTable[i].pFunction)() : MSSPTable[i].pValue);
+        strcpy(MSSPPair,
+            std::format("{}{}{}{}", static_cast<char>(MSSP_VAR), MSSPTable[i].pName,
+                static_cast<char>(MSSP_VAL),
+                MSSPTable[i].pFunction ? (*MSSPTable[i].pFunction)() : MSSPTable[i].pValue)
+                .c_str());
 
         /* Make sure we don't overflow the buffer */
         SizePair = strlen(MSSPPair);
@@ -2604,7 +2654,7 @@ static void SendMSSP(descriptor_t* apDescriptor)
     }
 
     /* End the subnegotiation sequence */
-    sprintf(MSSPPair, "%c%c", IAC, SE);
+    strcpy(MSSPPair, std::format("{}{}", static_cast<char>(IAC), static_cast<char>(SE)).c_str());
     strcat(MSSPBuffer, MSSPPair);
 
     /* Send the sequence */
@@ -2685,10 +2735,12 @@ static const char* GetRGBColour(bool abBackground, int aRed, int aGreen, int aBl
 {
     static char Result[16];
     int ColVal = 16 + (aRed * 36) + (aGreen * 6) + aBlue;
-    sprintf(Result, "\033[%c8;5;%c%c%cm", '3' + abBackground, /* Background */
-        '0' + (ColVal / 100), /* Red        */
-        '0' + ((ColVal % 100) / 10), /* Green      */
-        '0' + (ColVal % 10)); /* Blue       */
+    strcpy(Result,
+        std::format("\033[{}8;5;{}{}{}m", static_cast<char>('3' + abBackground), /* Background */
+            static_cast<char>('0' + (ColVal / 100)), /* Red        */
+            static_cast<char>('0' + ((ColVal % 100) / 10)), /* Green      */
+            static_cast<char>('0' + (ColVal % 10))) /* Blue       */
+            .c_str());
     return Result;
 }
 

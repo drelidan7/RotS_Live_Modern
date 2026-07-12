@@ -16,6 +16,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <format>
 #include <iostream>
 #include <regex>
 
@@ -238,7 +239,7 @@ SPECIAL(guild) {
     int tmp, prog, len, request, level;
     int times = 1;
     bool res = false;
-    char str[255], str2[255]; 
+    char str2[255];
     char arg2[255] = "";
 
     if (IS_NPC(ch) || ((cmd != CMD_PRACTICE) && (cmd != CMD_PRACTISE)))
@@ -276,17 +277,18 @@ SPECIAL(guild) {
         ;
     if (!*arg) {
         act(guildmasters[prog].list_message, FALSE, host, 0, ch, TO_VICT);
-        sprintf(str, "You have %d practice sessions left.\n\r", ch->specials2.spells_to_learn);
-        send_to_char(str, ch);
+        send_to_char(std::format("You have {} practice sessions left.\n\r", ch->specials2.spells_to_learn).c_str(), ch);
         for (tmp = 0; tmp < MAX_SKILLS; tmp++) {
             if (guildmasters[prog].knowledge[tmp] > 0) {
                 level = GET_PROF_LEVEL((int)skills[(int)tmp].type, ch);
 
                 if ((skills[tmp].level <= level) && (!IS_SET(skills[tmp].learn_type, LEARN_SPEC) || (GET_SPEC(ch) == skills[tmp].skill_spec))) {
 
-                    sprintf(str, "%-25s %3d%%     Taught to: %-12s\n\r", skills[tmp].name,
-                        ch->knowledge[tmp], how_good(guildmasters[prog].knowledge[tmp]));
-                    send_to_char(str, ch);
+                    send_to_char(std::format("{:<25} {:>3}%     Taught to: {:<12}\n\r",
+                                      static_cast<const char*>(skills[tmp].name), ch->knowledge[tmp],
+                                      how_good(guildmasters[prog].knowledge[tmp]))
+                                      .c_str(),
+                        ch);
                 }
             }
         }
@@ -306,8 +308,7 @@ SPECIAL(guild) {
             } else if(!strncmp(str2, "all",  strlen(str2)) ) {
                 times = 200;
             } else {
-                sprintf(str, " %s", str2);
-                strcat(arg2, str);
+                strcat(arg2, std::format(" {}", static_cast<const char*>(str2)).c_str());
             }
         }
         memmove(arg2, arg2 + 1, strlen(arg2)); // remove leading space
@@ -378,10 +379,9 @@ SPECIAL(guild) {
 ACMD(do_practice)
 {
     int tmp;
-    char str[255], str2[30];
+    char str2[30];
 
-    sprintf(str, "You have %d practice sessions left\n\r", ch->specials2.spells_to_learn);
-    send_to_char(str, ch);
+    send_to_char(std::format("You have {} practice sessions left\n\r", ch->specials2.spells_to_learn).c_str(), ch);
     if (!ch->skills || !ch->knowledge) {
         send_to_char("But you don't have skill memory anyway.\n\r", ch);
         return;
@@ -402,28 +402,31 @@ ACMD(do_practice)
                     mana_cost = (mana_cost * 1 + 1) / 2;
                 }
 
-                sprintf(str2, "(%3d time,   %3d stamina)", casting_time, mana_cost);
+                strcpy(str2, std::format("({:>3} time,   {:>3} stamina)", casting_time, mana_cost).c_str());
             } else if (skills[tmp].type == PROF_CLERIC) {
-                sprintf(str2, "(%3d time, %3d spirit)", CASTING_TIME(ch, tmp), USE_SPIRIT(ch, tmp));
+                strcpy(str2, std::format("({:>3} time, {:>3} spirit)", CASTING_TIME(ch, tmp), USE_SPIRIT(ch, tmp)).c_str());
             } else if (tmp == SKILL_BEND_TIME) {
-                sprintf(str2, "(%3d time,   %3d stamina)", skills[tmp].beats, ch->abilities.mana);
+                strcpy(str2, std::format("({:>3} time,   {:>3} stamina)", skills[tmp].beats, ch->abilities.mana).c_str());
             } else if (tmp == SKILL_MARK) {
-                sprintf(str2, "(%3d time,   %3d stamina)", mark_calculate_wait(ch),
-                    skills[tmp].min_usesmana);
+                strcpy(str2, std::format("({:>3} time,   {:>3} stamina)", mark_calculate_wait(ch),
+                                  skills[tmp].min_usesmana)
+                                  .c_str());
             } else if (tmp == SKILL_ARCHERY) {
-                sprintf(str2, "(%3d time)", shoot_calculate_wait(ch));
+                strcpy(str2, std::format("({:>3} time)", shoot_calculate_wait(ch)).c_str());
             } else if (skills[tmp].type == PROF_RANGER && skills[tmp].min_usesmana > 10) {
-                sprintf(str2, "(%3d time,   %3d stamina)", skills[tmp].beats,
-                    skills[tmp].min_usesmana);
+                strcpy(str2, std::format("({:>3} time,   {:>3} stamina)", skills[tmp].beats,
+                                  skills[tmp].min_usesmana)
+                                  .c_str());
             } else if (CASTING_TIME(ch, tmp)) {
-                sprintf(str2, "(%3d time)", skills[tmp].beats);
+                strcpy(str2, std::format("({:>3} time)", skills[tmp].beats).c_str());
             } else {
                 strcpy(str2, "");
             }
 
-            sprintf(str, "%-25s %-12s %s\n\r", skills[tmp].name, how_good(ch->knowledge[tmp]),
-                str2);
-            send_to_char(str, ch);
+            send_to_char(std::format("{:<25} {:<12} {}\n\r", static_cast<const char*>(skills[tmp].name),
+                                  how_good(ch->knowledge[tmp]), static_cast<const char*>(str2))
+                                  .c_str(),
+                ch);
         }
 }
 
@@ -482,9 +485,10 @@ SPECIAL(pet_shops)
     if (cmd == CMD_LIST) { /* List */
         send_to_char("Available pets are:\n\r", ch);
         for (pet = world[pet_room].people; pet; pet = pet->next_in_room) {
-            sprintf(buf, "%-20s - %s\n\r", pet->player.short_descr,
-                money_message(3 * GET_EXP(pet)));
-            send_to_char(buf, ch);
+            send_to_char(std::format("{:<20} - {}\n\r", pet->player.short_descr,
+                                  money_message(3 * GET_EXP(pet)))
+                                  .c_str(),
+                ch);
         }
         return (TRUE);
     } else if (cmd == CMD_BUY) { /* Buy */
@@ -1695,17 +1699,17 @@ int pick_a_spell(int* spell_list, char_data* host)
 {
     if (spell_list[0] > 0) {
         if (has_alias(host, "spells")) {
-            sprintf(buf, "----------");
+            strcpy(buf, std::format("----------").c_str());
             mudlog_aliased_mob(buf, host, "spells");
             for (int i = 1; i <= spell_list[0]; i++) {
-                sprintf(buf, "Spell: %d", spell_list[i]);
+                strcpy(buf, std::format("Spell: {}", spell_list[i]).c_str());
                 mudlog_aliased_mob(buf, host, "spells");
             }
         }
         int chance = number(1, spell_list[0]);
         return spell_list[chance];
     } else {
-        sprintf(buf, "--- NO MAGE KEYWORDS FOUND ---");
+        strcpy(buf, std::format("--- NO MAGE KEYWORDS FOUND ---").c_str());
         mudlog_aliased_mob(buf, host, "spells");
         return 0;
     }
@@ -1722,7 +1726,7 @@ void add_spell_to_list(int* spell_list, int spell, char_data* host)
         }
     }
     if (found == 0) {
-        sprintf(buf, "ADDING: %d", spell);
+        strcpy(buf, std::format("ADDING: {}", spell).c_str());
         mudlog_aliased_mob(buf, host, "spells");
         spell_list[0] += 1;
         spell_list[spell_list[0]] = spell;
@@ -1732,7 +1736,7 @@ void add_spell_to_list(int* spell_list, int spell, char_data* host)
 // fetch spells from hp bracket
 void get_spells(int* spell_list, int mage_type, int health, char_data* host)
 {
-    sprintf(buf, "MType: %d,    Spell_Tier: %d, Pct: %.2f", mage_type, health, percents[health]);
+    strcpy(buf, std::format("MType: {},    Spell_Tier: {}, Pct: {:.2f}", mage_type, health, percents[health]).c_str());
     mudlog_aliased_mob(buf, host, "spells");
     for (int i = 0; i < indvidual_spells_length; i++) {
         if (new_spell_list[mage_type][health][i] != 0) {
@@ -1746,7 +1750,7 @@ void add_leveled_spell_to_list(int* spell_list, int spell, int mage_type, int cu
     char* keyword, char_data* host, int min_level)
 {
     if (GET_LEVEL(host) >= min_level && mage_type == cur_mage_type && has_alias(host, keyword)) {
-        sprintf(buf, "MType: %d    (HL_SPELL)", mage_type);
+        strcpy(buf, std::format("MType: {}    (HL_SPELL)", mage_type).c_str());
         mudlog_aliased_mob(buf, host, "spells");
         add_spell_to_list(spell_list, spell, host);
     }
@@ -1903,8 +1907,9 @@ SPECIAL(mob_magic_user_spec)
         return FALSE;
     }
 
-    sprintf(buf, "PROG::MAGE    -> Tgt: %s, Spell: %d, TgtType: %d, InterruptCnt: %d, Hit%: %.2f",
-        GET_NAME(target), spell_number, tgt, host->interrupt_count, current_health_pct);
+    strcpy(buf, std::format("PROG::MAGE    -> Tgt: {}, Spell: {}, TgtType: {}, InterruptCnt: {}, Hit%: {:.2f}",
+                       GET_NAME(target), spell_number, tgt, host->interrupt_count, current_health_pct)
+                       .c_str());
     mudlog_debug_mob(buf, host);
 
     waiting_type wtl_base;
@@ -2157,7 +2162,7 @@ SPECIAL(mob_ranger_new)
 
     const int wimpy_health_limit = GET_MAX_HIT(host) / 5;
     if (GET_HIT(host) <= wimpy_health_limit) {
-        sprintf(buf, "WIMPY --> health: %d, wimpy: %d", GET_HIT(host), wimpy_health_limit);
+        strcpy(buf, std::format("WIMPY --> health: {}, wimpy: {}", GET_HIT(host), wimpy_health_limit).c_str());
         mudlog_debug_mob(buf, host);
         is_wimpy = 1;
     }
@@ -2363,10 +2368,9 @@ SPECIAL(mob_jig)
         return FALSE;
 
     dance_desc = number(0, 5);
-    sprintf(buf, "$n %s.\r\n", dance_description[dance_desc][0]);
-    sprintf(buf1, "%s.\r\n", dance_description[dance_desc][1]);
+    strcpy(buf, std::format("$n {}.\r\n", dance_description[dance_desc][0]).c_str());
     act(buf, TRUE, host, 0, 0, TO_ROOM);
-    send_to_char(buf1, ch);
+    send_to_char(std::format("{}.\r\n", dance_description[dance_desc][1]).c_str(), ch);
 
     return FALSE;
 }
@@ -2749,8 +2753,7 @@ SPECIAL(resetter)
             // immediately to close the crash-to-reroll exploit (crashing after a bad reroll to retry).
             save_char(ch, NOWHERE, 0);
             reroll_count = 41 - ch->specials2.rerolls;
-            sprintf(buf, "You have %d reroll attempts left.\n\r", reroll_count);
-            send_to_char(buf, ch);
+            send_to_char(std::format("You have {} reroll attempts left.\n\r", reroll_count).c_str(), ch);
             do_stat(ch, "", 0, 0, 0);
             return 0;
         } else {
@@ -3303,24 +3306,28 @@ SPECIAL(vampire_doorkeep)
     if (close_it)
         if (!IS_SET(room->dir_option[2]->exit_info, EX_CLOSED)) {
             SET_BIT(room->dir_option[2]->exit_info, EX_CLOSED);
-            sprintf(buf, "The %s blurs for a second... then closes.\n\r",
-                room->dir_option[2]->keyword);
-            send_to_room(buf, real_room(15345));
+            send_to_room(std::format("The {} blurs for a second... then closes.\n\r",
+                             room->dir_option[2]->keyword)
+                             .c_str(),
+                real_room(15345));
             SET_BIT(room2->dir_option[0]->exit_info, EX_CLOSED);
-            sprintf(buf, "The %s blurs for a second... then closes.\n\r",
-                room2->dir_option[0]->keyword);
-            send_to_room(buf, real_room(15355));
+            send_to_room(std::format("The {} blurs for a second... then closes.\n\r",
+                             room2->dir_option[0]->keyword)
+                             .c_str(),
+                real_room(15355));
         }
     if (!close_it)
         if (IS_SET(room->dir_option[2]->exit_info, EX_CLOSED)) {
             REMOVE_BIT(room->dir_option[2]->exit_info, EX_CLOSED);
-            sprintf(buf, "The %s blurs for a second... then opens..\n\r",
-                room->dir_option[2]->keyword);
-            send_to_room(buf, real_room(15345));
+            send_to_room(std::format("The {} blurs for a second... then opens..\n\r",
+                             room->dir_option[2]->keyword)
+                             .c_str(),
+                real_room(15345));
             REMOVE_BIT(room2->dir_option[0]->exit_info, EX_CLOSED);
-            sprintf(buf, "The %s blurs for a second... then opens.\n\r",
-                room2->dir_option[0]->keyword);
-            send_to_room(buf, real_room(15355));
+            send_to_room(std::format("The {} blurs for a second... then opens.\n\r",
+                             room2->dir_option[0]->keyword)
+                             .c_str(),
+                real_room(15355));
         }
     return 0;
 }
@@ -3344,8 +3351,9 @@ SPECIAL(vampire_killer)
             "\n\rYou feel a moment of intense pain... as your numb body slumps to the floor.\n\r\n",
             victim);
         send_to_char("You are dead, sorry...\n\r", victim);
-        sprintf(buf, "%s killed by %s at %s", GET_NAME(victim), GET_NAME(host),
-            world[victim->in_room].name);
+        strcpy(buf, std::format("{} killed by {} at {}", GET_NAME(victim), GET_NAME(host),
+                           world[victim->in_room].name)
+                           .c_str());
         mudlog(buf, BRF, LEVEL_GOD, TRUE);
         add_exploit_record(EXPLOIT_MOBDEATH, victim, GET_IDNUM(host), GET_NAME(host));
         raw_kill(victim, host, 0);

@@ -8,6 +8,7 @@
  *  CircleMUD is based on DikuMUD, Copyright (C) 1990, 1991.               *
  ************************************************************************ */
 
+#include <format>
 #include <stdio.h>
 #include <string.h>
 
@@ -361,8 +362,8 @@ int perform_move_mount(struct char_data* ch, int dir)
 
     /* now forming and sending the "leave" message */
 
-    sprintf(buff, " leaving %s, riding on ", dirs[dir]);
-    sprintf(buff2, " leaving %s, riding on ", dirs[dir]);
+    strcpy(buff, std::format(" leaving {}, riding on ", dirs[dir]).c_str());
+    strcpy(buff2, std::format(" leaving {}, riding on ", dirs[dir]).c_str());
 
     for (tmpvict = world[was_in].people; tmpvict; tmpvict = tmpvict->next_in_room) {
 
@@ -378,9 +379,7 @@ int perform_move_mount(struct char_data* ch, int dir)
 
         if (tmpch != ch->mount_data.rider) {
 
-            sprintf(buff, "You are carried %s by %s.\n\r", dirs[dir],
-                PERS(ch, tmpch, FALSE, FALSE));
-            send_to_char(buff, tmpch);
+            send_to_char(std::format("You are carried {} by {}.\n\r", dirs[dir], PERS(ch, tmpch, FALSE, FALSE)).c_str(), tmpch);
         }
         char_from_room(tmpch);
         char_to_room(tmpch, new_room);
@@ -418,8 +417,8 @@ int perform_move_mount(struct char_data* ch, int dir)
     }
     /* now forming and sending the "enter" message */
 
-    sprintf(buff, " entering from %s, riding on ", refer_dirs[rev_dir[dir]]);
-    sprintf(buff2, " entering from %s, riding on ", refer_dirs[rev_dir[dir]]);
+    strcpy(buff, std::format(" entering from {}, riding on ", refer_dirs[rev_dir[dir]]).c_str());
+    strcpy(buff2, std::format(" entering from {}, riding on ", refer_dirs[rev_dir[dir]]).c_str());
 
     for (tmpvict = world[new_room].people; tmpvict; tmpvict = tmpvict->next_in_room) {
 
@@ -464,9 +463,8 @@ void parse_container_for_stay_zone(char_data* ch, obj_data* container, const int
         }
 
         if (IS_OBJ_STAT(item, ITEM_STAY_ZONE)) {
-            sprintf(buf, "You drop %s.\n\r", OBJS(item, ch));
-            send_to_char(buf, ch);
-            sprintf(buf, "$n drops $p.");
+            send_to_char(std::format("You drop {}.\n\r", OBJS(item, ch)).c_str(), ch);
+            strcpy(buf, std::format("$n drops $p.").c_str());
             act(buf, TRUE, ch, item, 0, TO_ROOM);
             obj_from_obj(item);
             obj_to_room(item, room);
@@ -498,9 +496,8 @@ void prohibit_item_stay_zone_move(char_data* ch, int room)
         }
 
         if (IS_OBJ_STAT(item, ITEM_STAY_ZONE)) {
-            sprintf(buf, "You drop %s.\n\r", OBJS(item, ch));
-            send_to_char(buf, ch);
-            sprintf(buf, "$n drops $p.");
+            send_to_char(std::format("You drop {}.\n\r", OBJS(item, ch)).c_str(), ch);
+            strcpy(buf, std::format("$n drops $p.").c_str());
             act(buf, TRUE, ch, item, 0, TO_ROOM);
             obj_from_char(item);
             obj_to_room(item, room);
@@ -692,11 +689,9 @@ ACMD(do_move)
                 return;
             } else if (EXIT(ch, cmd)->keyword) {
                 if (IS_SHADOW(ch))
-                    sprintf(buf2, "You cannot pass through the %s.\n\r",
-                        fname(EXIT(ch, cmd)->keyword));
+                    send_to_char(std::format("You cannot pass through the {}.\n\r", fname(EXIT(ch, cmd)->keyword)).c_str(), ch);
                 else
-                    sprintf(buf2, "The %s seems to be closed.\n\r", fname(EXIT(ch, cmd)->keyword));
-                send_to_char(buf2, ch);
+                    send_to_char(std::format("The {} seems to be closed.\n\r", fname(EXIT(ch, cmd)->keyword)).c_str(), ch);
                 return;
             } else {
                 send_to_char("It seems to be closed.\n\r", ch);
@@ -778,7 +773,7 @@ ACMD(do_move)
             }
 
             if (!IS_AFFECTED(ch, AFF_SNEAK) || (subcmd == SCMD_FLEE) || number(0, 125) > GET_SKILL(ch, SKILL_SNEAK) + get_real_stealth(ch)) {
-                sprintf(buf2, " leaves %s.", dirs[cmd]);
+                strcpy(buf2, std::format(" leaves {}.", dirs[cmd]).c_str());
                 for (tmpvict = world[ch->in_room].people; tmpvict;
                      tmpvict = tmpvict->next_in_room) {
                     if ((ch == tmpvict) || !CAN_SEE(tmpvict, ch) || ((ch->master == tmpvict) && IS_NPC(ch) && MOB_FLAGGED(ch, MOB_ORC_FRIEND)))
@@ -833,7 +828,7 @@ ACMD(do_move)
             do_look(ch, "\0", 0, 0, 0);
             GET_MOVE(ch) -= need_move;
             if (!IS_AFFECTED(ch, AFF_SNEAK) || (subcmd == SCMD_FLEE) || number(0, 100) > GET_SKILL(ch, SKILL_SNEAK) + get_real_stealth(ch) - 25) {
-                sprintf(buf2, " enters from %s.", refer_dirs[rev_dir[cmd]]);
+                strcpy(buf2, std::format(" enters from {}.", refer_dirs[rev_dir[cmd]]).c_str());
                 for (tmpvict = world[ch->in_room].people; tmpvict;
                      tmpvict = tmpvict->next_in_room) {
                     if ((tmpvict == ch) || !CAN_SEE(tmpvict, ch))
@@ -950,7 +945,7 @@ ACMD(do_move)
 
             GET_MOVE(ch->mount_data.mount) -= tmp_move;
 
-            sprintf(buf2, "$N has forced you %s.\n\r", dirs[cmd]);
+            strcpy(buf2, std::format("$N has forced you {}.\n\r", dirs[cmd]).c_str());
             act(buf2, FALSE, ch->mount_data.mount, 0, ch, TO_CHAR);
 
             res_flag = perform_move_mount(ch->mount_data.mount, cmd);
@@ -1002,8 +997,7 @@ int find_door(struct char_data* ch, char* type, char* dir)
                 if (isname(type, EXIT(ch, door)->keyword))
                     return (door);
                 else {
-                    sprintf(buf2, "I see no %s there.\n\r", type);
-                    send_to_char(buf2, ch);
+                    send_to_char(std::format("I see no {} there.\n\r", type).c_str(), ch);
                     return (-1);
                 }
             else
@@ -1019,8 +1013,7 @@ int find_door(struct char_data* ch, char* type, char* dir)
                     if (isname(type, EXIT(ch, door)->keyword))
                         return (door);
 
-        sprintf(buf2, "I see no %s here.\n\r", type);
-        send_to_char(buf2, ch);
+        send_to_char(std::format("I see no {} here.\n\r", type).c_str(), ch);
         return (-1);
     }
 }
@@ -1060,8 +1053,7 @@ ACMD(do_open)
             }
             sscanf(EXIT(ch, d1)->keyword, "%s", type);
             if (str_cmp(EXIT(ch, d2)->keyword, type)) {
-                sprintf(buf, "No %s in that direction.\n\r", type);
-                send_to_char(buf, ch);
+                send_to_char(std::format("No {} in that direction.\n\r", static_cast<const char*>(type)).c_str(), ch);
                 return;
             }
             door = d2;
@@ -1111,9 +1103,7 @@ ACMD(do_open)
                     if (back->to_room == ch->in_room) {
                         REMOVE_BIT(back->exit_info, EX_CLOSED);
                         if (back->keyword) {
-                            sprintf(buf, "The %s is opened from the other side.\n\r",
-                                fname(back->keyword));
-                            send_to_room(buf, EXIT(ch, door)->to_room);
+                            send_to_room(std::format("The {} is opened from the other side.\n\r", fname(back->keyword)).c_str(), EXIT(ch, door)->to_room);
                         } else
                             send_to_room("The door is opened from the other side.\n\r",
                                 EXIT(ch, door)->to_room);
@@ -1174,8 +1164,7 @@ ACMD(do_close)
             }
             sscanf(EXIT(ch, d1)->keyword, "%s", type);
             if (str_cmp(EXIT(ch, d2)->keyword, type)) {
-                sprintf(buf, "No %s in that direction.\n\r", type);
-                send_to_char(buf, ch);
+                send_to_char(std::format("No {} in that direction.\n\r", static_cast<const char*>(type)).c_str(), ch);
                 return;
             }
             door = d2;
@@ -1222,8 +1211,7 @@ ACMD(do_close)
                     if ((back->to_room == ch->in_room) && IS_SET(back->exit_info, EX_ISDOOR)) {
                         SET_BIT(back->exit_info, EX_CLOSED);
                         if (back->keyword) {
-                            sprintf(buf, "The %s closes quietly.\n\r", back->keyword);
-                            send_to_room(buf, EXIT(ch, door)->to_room);
+                            send_to_room(std::format("The {} closes quietly.\n\r", back->keyword).c_str(), EXIT(ch, door)->to_room);
                         } else
                             send_to_room("The door closes quietly.\n\r", EXIT(ch, door)->to_room);
                     }
@@ -1429,8 +1417,7 @@ ACMD(do_enter)
                         do_move(ch, "", wtl, ++door, 0);
                         return;
                     }
-        sprintf(buf2, "There is no %s here.\n\r", buf);
-        send_to_char(buf2, ch);
+        send_to_char(std::format("There is no {} here.\n\r", static_cast<const char*>(buf)).c_str(), ch);
     } else if (IS_SET(world[ch->in_room].room_flags, INDOORS))
         send_to_char("You are already indoors.\n\r", ch);
     else {
@@ -1689,8 +1676,7 @@ ACMD(do_lose)
         if (tmpch->master == ch)
             stop_follower(tmpch, FOLLOW_MOVE);
         else {
-            sprintf(buf, "But, %s is not following you!\n\r", HSSH(tmpch));
-            send_to_char(buf, ch);
+            send_to_char(std::format("But, {} is not following you!\n\r", HSSH(tmpch)).c_str(), ch);
         }
     }
 }
@@ -1721,8 +1707,7 @@ ACMD(do_follow)
     }
 
     if (other_side(ch, leader) || (IS_NPC(leader) && MOB_FLAGGED(leader, MOB_MOUNT) && IS_AGGR_TO(leader, ch))) {
-        sprintf(buf, "It doesn't want you to follow it.\n\r");
-        send_to_char(buf, ch);
+        send_to_char(std::format("It doesn't want you to follow it.\n\r").c_str(), ch);
         return;
     }
 
@@ -1732,8 +1717,7 @@ ACMD(do_follow)
     }
 
     if (ch->master == leader) {
-        sprintf(buf, "You are already following %s.\n\r", HMHR(leader));
-        send_to_char(buf, ch);
+        send_to_char(std::format("You are already following {}.\n\r", HMHR(leader)).c_str(), ch);
         return;
     }
 
@@ -1909,8 +1893,7 @@ ACMD(do_pull)
 
     if (IS_SET(room->dir_option[exit_num]->exit_info, EX_CLOSED)) {
         REMOVE_BIT(room->dir_option[exit_num]->exit_info, EX_CLOSED);
-        sprintf(buf, "The %s opens slowly.\n\r", room->dir_option[exit_num]->keyword);
-        send_to_room(buf, room_num);
+        send_to_room(std::format("The {} opens slowly.\n\r", room->dir_option[exit_num]->keyword).c_str(), room_num);
 
         would_open = 1;
 
@@ -1919,8 +1902,7 @@ ACMD(do_pull)
         }
     } else {
         SET_BIT(room->dir_option[exit_num]->exit_info, EX_CLOSED);
-        sprintf(buf, "The %s closes slowly.\n\r", room->dir_option[exit_num]->keyword);
-        send_to_room(buf, room_num);
+        send_to_room(std::format("The {} closes slowly.\n\r", room->dir_option[exit_num]->keyword).c_str(), room_num);
 
         would_open = 0;
 
@@ -1950,12 +1932,10 @@ ACMD(do_pull)
 
     if (IS_SET(next_room->dir_option[exit_num]->exit_info, EX_CLOSED) || would_open) {
         REMOVE_BIT(next_room->dir_option[exit_num]->exit_info, EX_CLOSED);
-        sprintf(buf, "The %s opens slowly.\n\r", next_room->dir_option[exit_num]->keyword);
-        send_to_room(buf, next_room_num);
+        send_to_room(std::format("The {} opens slowly.\n\r", next_room->dir_option[exit_num]->keyword).c_str(), next_room_num);
 
     } else {
         SET_BIT(next_room->dir_option[exit_num]->exit_info, EX_CLOSED);
-        sprintf(buf, "The %s closes slowly.\n\r", next_room->dir_option[exit_num]->keyword);
-        send_to_room(buf, next_room_num);
+        send_to_room(std::format("The {} closes slowly.\n\r", next_room->dir_option[exit_num]->keyword).c_str(), next_room_num);
     }
 }

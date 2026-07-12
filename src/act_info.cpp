@@ -2336,10 +2336,12 @@ ACMD(do_who)
 
             case 'n':
                 half_chop(buf1, name_search, buf);
+                // char[N] decay: cast before std::format (BUILD.md "Formatting") --
+                // same class as the leaderstr sites in do_fame/do_rank below.
                 out += std::format(
                     "Players with '{}' in their names or titles"
                     "\r\n",
-                    name_search);
+                    static_cast<const char*>(name_search));
                 break;
 
             case 'r':
@@ -2631,7 +2633,9 @@ ACMD(do_users)
                 "UNDEFINED", state, idletime, timeptr);
 
         if (d->host && *d->host)
-            line += std::format("[{}]\n\r", d->host);
+            // char[N] member decay: descriptor_data::host is char[50]
+            // (structs.h) -- cast before std::format (BUILD.md "Formatting").
+            line += std::format("[{}]\n\r", static_cast<const char*>(d->host));
         else
             line += "[Hostname unknown]\n\r";
 
@@ -3830,14 +3834,16 @@ ACMD(do_fame)
             ldr1 = pkill_get_leader_by_rank(i, RACE_WOOD);
             ldr1valid = !ldr1->invalid;
             do_fame_leader_string(ldr1, leaderstr);
-            out += std::format("{}{:>5}", leaderstr, " ");
+            // char[N] decay: cast before std::format (BUILD.md "Formatting").
+            out += std::format("{}{:>5}", static_cast<const char*>(leaderstr), " ");
             pkill_free_leader(ldr1);
 
             /* Evil rank i leader */
             ldr2 = pkill_get_leader_by_rank(i, RACE_URUK);
             ldr2valid = !ldr2->invalid;
             do_fame_leader_string(ldr2, leaderstr);
-            out += std::format("{}\r\n", leaderstr);
+            // Same char[N] decay cast as the good-leader line above.
+            out += std::format("{}\r\n", static_cast<const char*>(leaderstr));
             pkill_free_leader(ldr2);
 
             /* If both ranks were invalid, stop looping */
@@ -3990,7 +3996,8 @@ ACMD(do_rank)
         ldr = pkill_get_leader_by_rank(i, GET_RACE(ch));
         ldrvalid = !ldr->invalid;
         do_fame_leader_string(ldr, leaderstr);
-        out += std::format(" {} {}\r\n", i == r ? "*" : " ", leaderstr);
+        // Same char[N] decay cast as do_fame's leader lines.
+        out += std::format(" {} {}\r\n", i == r ? "*" : " ", static_cast<const char*>(leaderstr));
         pkill_free_leader(ldr);
 
         if (!ldrvalid)

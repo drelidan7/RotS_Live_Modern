@@ -284,6 +284,8 @@ EXECUTABLE = ../../bin/tests
 # silently run different fixture code.
 characterization_combat_tests.o damage_tests.o : damage_test_context.h
 utility_format_tests.o : test_world.h ../utils.h
+act_info_format_tests.o : test_world.h test_platform_compat.h ObjFlagDataBuilder.h ../utils.h ../db.h
+act_wiz_format_tests.o : test_world.h test_platform_compat.h ../utils.h ../zone.h ../db.h
 characterization_json_tests.o : ../character_json.h
 objects_json_layout_tests.o convert_plrobjs_tests.o : ../objects_json.h legacy_rent_fixture.h
 objsave_json_tests.o : ../objects_json.h

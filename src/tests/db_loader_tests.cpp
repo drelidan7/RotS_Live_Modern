@@ -198,8 +198,9 @@ public:
 
         m_redirect_fd = open(path.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0600);
         EXPECT_GE(m_redirect_fd, 0);
-        if (m_redirect_fd >= 0)
+        if (m_redirect_fd >= 0) {
             EXPECT_GE(rots_dup2(m_redirect_fd, STDERR_FILENO), 0);
+        }
     }
 
     ~ScopedStderrRedirect()

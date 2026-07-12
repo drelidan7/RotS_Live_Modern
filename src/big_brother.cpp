@@ -11,13 +11,10 @@
 #include <string>
 
 /********************************************************************
- * Singleton Implementation
+ * Singleton Implementation: m_pInstance/m_bDestroyed are now `inline
+ * static` members defined directly in singleton.h (Phase 5 T1) -- no
+ * out-of-line explicit specialization needed here anymore.
  *********************************************************************/
-template <>
-game_rules::big_brother* world_singleton<game_rules::big_brother>::m_pInstance(0);
-
-template <>
-bool world_singleton<game_rules::big_brother>::m_bDestroyed(false);
 
 namespace game_rules {
 //============================================================================

@@ -1310,7 +1310,7 @@ ACMD(do_lock)
             send_to_char("*Cluck*\n\r", ch);
             act("$n locks $p - 'cluck', it says.", FALSE, ch, obj, 0, TO_ROOM);
         }
-    else if ((door = find_door(ch, type, dir)) >= 0)
+    else if ((door = find_door(ch, type, dir)) >= 0) {
 
         /* a door, perhaps */
 
@@ -1339,6 +1339,7 @@ ACMD(do_lock)
                     if ((back->to_room == ch->in_room) && IS_SET(back->exit_info, EX_ISDOOR))
                         SET_BIT(back->exit_info, EX_LOCKED);
         }
+    }
 }
 
 ACMD(do_unlock)
@@ -1378,7 +1379,7 @@ ACMD(do_unlock)
             act("$n unlocks $p.", FALSE, ch, obj, 0, TO_ROOM);
             check_break_key(has_key(ch, obj->obj_flags.value[2]), ch);
         }
-    else if ((door = find_door(ch, type, dir)) >= 0)
+    else if ((door = find_door(ch, type, dir)) >= 0) {
 
         /* it is a door */
 
@@ -1408,6 +1409,7 @@ ACMD(do_unlock)
                     if (back->to_room == ch->in_room)
                         REMOVE_BIT(back->exit_info, EX_LOCKED);
         }
+    }
 }
 
 ACMD(do_move);
@@ -1790,7 +1792,7 @@ ACMD(do_lead)
             send_to_char("There is nobody by that name.\n\r", ch);
             return;
         }
-        if (IS_NPC(potential_mount) && !IS_SET(potential_mount->specials2.act, MOB_MOUNT) || !IS_NPC(potential_mount)) {
+        if ((IS_NPC(potential_mount) && !IS_SET(potential_mount->specials2.act, MOB_MOUNT)) || !IS_NPC(potential_mount)) {
             send_to_char("You can not lead this.\n\r", ch);
             return;
         }

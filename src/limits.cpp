@@ -684,11 +684,12 @@ void point_update(void)
             update_pos(i); // Added by Fingolfin 30th December 2001
 
         if (GET_POS(i) >= POSITION_STUNNED) {
-            if (GET_AMBUSHED(i))
+            if (GET_AMBUSHED(i)) {
                 if (IS_NPC(i))
                     GET_AMBUSHED(i) -= GET_AMBUSHED(i) / (GET_LEVELA(i) + 5) + 1;
                 else
                     GET_AMBUSHED(i) -= GET_AMBUSHED(i) / 10 + 1;
+            }
 
             recalc_flag = 0;
 
@@ -1421,12 +1422,13 @@ void affect_update_person(struct char_data* i, int mode)
                 if (GET_POS(i) == POSITION_STUNNED)
                     update_pos(i);
             } else {
-                if (af->type > 0 && af->type < MAX_SKILLS)
+                if (af->type > 0 && af->type < MAX_SKILLS) {
                     /* It must be a spell */
                     if (!af->next || af->next->type != af->type || af->next->duration > 0)
                         affect_remove_notify(i, af);
                     else
                         affect_remove(i, af);
+                }
 
                 if (af->type == SPELL_ANGER)
                     i->specials.attacked_level = 0;

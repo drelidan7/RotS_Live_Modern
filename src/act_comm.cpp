@@ -236,7 +236,7 @@ ACMD(do_tell)
     if (!vict)
         return;
 
-    if (other_side(ch, vict) || (!CAN_SEE(ch, vict, 1)) && (subcmd != SCMD_REPLY))
+    if (other_side(ch, vict) || ((!CAN_SEE(ch, vict, 1)) && (subcmd != SCMD_REPLY)))
         send_to_char("Nobody by that name.\n\r", ch);
     else if (ch == vict)
         send_to_char("You try to tell yourself something.\n\r", ch);

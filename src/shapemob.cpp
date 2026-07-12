@@ -1706,7 +1706,10 @@ int append_proto(struct char_data* ch, char* arg)
     if (!IS_SET(SHAPE_PROTO(ch)->flags, SHAPE_FILENAME))
         i = atoi(fname) * 100 + 1;
     else {
-        for (c = 0; (f_from[c] < '0' || f_from[c] > '9') && f_from[c]; c++)
+        // static_cast<unsigned char> makes explicit what -funsigned-char already
+        // guarantees (c is never negative); silences -Wchar-subscripts without
+        // changing behavior (Phase 5 T1).
+        for (c = 0; (f_from[static_cast<unsigned char>(c)] < '0' || f_from[static_cast<unsigned char>(c)] > '9') && f_from[static_cast<unsigned char>(c)]; c++)
             ;
         sscanf(f_from + c, "%d", &i);
         i = i * 100;

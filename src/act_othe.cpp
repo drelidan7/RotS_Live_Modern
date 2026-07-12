@@ -890,7 +890,7 @@ ACMD(do_syslog)
         return;
     }
 
-    if (((tp = search_block(arg, logtypes, FALSE)) == -1)) {
+    if ((tp = search_block(arg, logtypes, FALSE)) == -1) {
         send_to_char("Usage: syslog { Off | Brief | Normal | Spell | Complete }\n\r", ch);
         return;
     }
@@ -2092,7 +2092,7 @@ ACMD(do_apply)
                 break;
         }
 
-        if ((tmp == num_of_apply)) {
+        if (tmp == num_of_apply) {
             std::string apply_fields = "The format is 'apply <type> <object>', \n\rPossible fields are:\n\r";
             for (tmp = 0; tmp < num_of_apply; tmp++) {
                 apply_fields += apply_options[tmp].field;

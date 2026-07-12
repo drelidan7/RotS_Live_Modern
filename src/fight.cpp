@@ -285,7 +285,7 @@ void stop_fighting(struct char_data* ch)
      * has mental delay, and ch is alive (stunned or better), ch is no longer
      * fighting anyone, and we return.
      */
-    if (!tmp && GET_ENERGY(ch) < ENE_TO_HIT || GET_MENTAL_DELAY(ch) && GET_POS(ch) > POSITION_STUNNED) {
+    if ((!tmp && GET_ENERGY(ch) < ENE_TO_HIT) || (GET_MENTAL_DELAY(ch) && GET_POS(ch) > POSITION_STUNNED)) {
         ch->specials.fighting = 0;
         GET_POS(ch) = POSITION_STANDING;
         update_pos(ch);
@@ -557,7 +557,7 @@ void move_gold(struct char_data* ch, struct obj_data* object, int option)
     struct obj_data* money;
 
     if (GET_GOLD(ch) > 0) {
-        if (option == 0)
+        if (option == 0) {
             if (IS_NPC(ch) || (!IS_NPC(ch) && ch->desc)) {
                 money = create_money(GET_GOLD(ch));
                 obj_to_obj(money, object);
@@ -565,6 +565,7 @@ void move_gold(struct char_data* ch, struct obj_data* object, int option)
                 money = create_money(GET_GOLD(ch));
                 obj_to_room(money, ch->in_room);
             }
+        }
     }
     GET_GOLD(ch) = 0;
 }
@@ -925,7 +926,7 @@ void raw_kill(char_data* dead_man, char_data* killer, int attack_type)
         // Restore them.
         // TODO(drelidan):  When we can track the origin of status effects, include that
         // here so we can determine if the 'poisoned' kill type was actually from a player.
-        bool died_to_player = attack_type == SPELL_POISON || killer != NULL && !IS_NPC(killer);
+        bool died_to_player = attack_type == SPELL_POISON || (killer != NULL && !IS_NPC(killer));
         char_ability_data& cur_abils = dead_man->tmpabilities;
         char_ability_data& max_abils = dead_man->abilities;
         cur_abils = max_abils;

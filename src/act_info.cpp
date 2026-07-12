@@ -2775,7 +2775,7 @@ void perform_immort_where(struct char_data* ch, char* arg)
             }
 
         for (num = 0, k = object_list; k; k = k->next)
-            if (CAN_SEE_OBJ(ch, k) && isname(arg, k->name) || (atoi(arg) == obj_index[k->item_number].virt && atoi(arg))) {
+            if ((CAN_SEE_OBJ(ch, k) && isname(arg, k->name)) || (atoi(arg) == obj_index[k->item_number].virt && atoi(arg))) {
                 found = 1;
                 tmp = NOWHERE;
                 tmpobj = 0;

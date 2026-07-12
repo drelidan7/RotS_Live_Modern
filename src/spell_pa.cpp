@@ -370,11 +370,12 @@ char saves_leadership(struct char_data* victim)
 {
     int save;
 
-    if (!(save = saves_mystic(victim)))
+    if (!(save = saves_mystic(victim))) {
         if (victim->master)
             save = (number(1, 115) <= GET_SKILL(victim->master, SKILL_LEADERSHIP));
         else if (IS_RIDDEN(victim))
             save = (number(1, 100) <= GET_SKILL(victim->mount_data.rider, SKILL_RIDE));
+    }
 
     return save;
 }

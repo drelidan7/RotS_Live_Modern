@@ -483,7 +483,7 @@ int board_info_type::show_board(struct char_data* ch,
             for (d = descriptor_list; d; d = d->next)
                 chng_mark |= (!d->connected && d->str == &(msg_storage[MSG_SLOTNUM(i)]));
 
-            if (approve_msg(ch, msg_index + i, cur, &show_num))
+            if (approve_msg(ch, msg_index + i, cur, &show_num)) {
                 if (MSG_HEADING(i))
                     sprintf(buf + strlen(buf), "%4d : %s\n\r", show_num, MSG_HEADING(i));
                 else {
@@ -491,6 +491,7 @@ int board_info_type::show_board(struct char_data* ch,
                     send_to_char("Sorry, the board isn't working.\n\r", ch);
                     return 1;
                 }
+            }
         }
         is_changed = chng_mark;
     }

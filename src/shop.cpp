@@ -145,12 +145,12 @@ int is_ok(struct char_data* keeper, struct char_data* ch, int shop_nr)
         return FALSE;
     }
 
-    if (!shop_index[shop_nr].is_open)
+    if (!shop_index[shop_nr].is_open) {
         if (shop_index[shop_nr].open1 > time_info.hours) {
             if (keeper)
                 do_say(keeper, "Come back later!", 0, 17, 0);
             return (FALSE);
-        } else if (shop_index[shop_nr].close1 <= time_info.hours)
+        } else if (shop_index[shop_nr].close1 <= time_info.hours) {
             if (shop_index[shop_nr].open2 > time_info.hours) {
                 if (keeper)
                     do_say(keeper, "Sorry, we have closed, but come back later.", 0, 17, 0);
@@ -159,7 +159,9 @@ int is_ok(struct char_data* keeper, struct char_data* ch, int shop_nr)
                 if (keeper)
                     do_say(keeper, "Sorry, come back tomorrow.", 0, 17, 0);
                 return (FALSE);
-            };
+            }
+        }
+    }
 
     if (!keeper)
         return TRUE;

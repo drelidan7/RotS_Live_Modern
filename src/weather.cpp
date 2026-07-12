@@ -488,12 +488,13 @@ void weather_change(void)
                 weather_info.sky[SECT_FIELD] = SKY_CLOUDY;
         break;
     case SKY_CLOUDY:
-        if (weather_info.pressure < 970)
+        if (weather_info.pressure < 970) {
             if (get_season() == SEASON_WINTER && dice(1, 6) == 1)
                 weather_info.sky[SECT_FIELD] = SKY_SNOWING;
             else if (weather_info.pressure < 990)
                 if (dice(1, 4) == 1)
                     weather_info.sky[SECT_FIELD] = SKY_RAINING;
+        }
         if (dice(1, 4) == 1 && weather_info.pressure > 1000)
             weather_info.sky[SECT_FIELD] = SKY_CLOUDLESS;
         break;

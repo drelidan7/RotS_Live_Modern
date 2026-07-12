@@ -101,8 +101,15 @@ private:
     world_singleton(const world_singleton& other);
     world_singleton& operator=(const world_singleton&);
 
-    static T* m_pInstance;
-    static bool m_bDestroyed;
+    // inline (C++17+) so the definition lives in this single header-declared
+    // point of instantiation -- avoids the out-of-line `template <> T*
+    // world_singleton<T>::m_pInstance(0);` explicit-specialization definitions
+    // previously required in big_brother.cpp/skill_timer.cpp, which every OTHER
+    // translation unit that calls instance() couldn't see, triggering
+    // -Wundefined-var-template there (Phase 5 T1; the linked binary was always
+    // correct once all TUs were merged -- this just makes each TU self-sufficient).
+    inline static T* m_pInstance = nullptr;
+    inline static bool m_bDestroyed = false;
 
     const weather_data* m_weather;
     const room_data* m_world;

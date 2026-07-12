@@ -368,7 +368,10 @@ int append_script(struct char_data* ch, char* arg)
     if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_FILENAME))
         i = atoi(fname) * 100 + 1;
     else {
-        for (c = 0; (f_from[c] < '0' || f_from[c] > '9') && f_from[c]; c++)
+        // static_cast<unsigned char> makes explicit what -funsigned-char already
+        // guarantees (c is never negative); silences -Wchar-subscripts without
+        // changing behavior (Phase 5 T1).
+        for (c = 0; (f_from[static_cast<unsigned char>(c)] < '0' || f_from[static_cast<unsigned char>(c)] > '9') && f_from[static_cast<unsigned char>(c)]; c++)
             ;
         sscanf(f_from + c, "%d", &i);
         i = i * 100;
@@ -1372,7 +1375,13 @@ void shape_center_script(struct char_data* ch, char* arg)
     int tmp, itmp[8], tmp1, tmp2, i;
     char st1[50];
     char* ptr;
-    char input[3][50];
+    // Sized for 4, not 3: the SCRIPTPARAMCHANGE macro unconditionally
+    // memset()s input[0..3] and the num==4 call sites (SCRIPT_ASSIGN_EQ,
+    // SCRIPT_ASSIGN_INV, SCRIPT_ASSIGN_ROOM) index up to input[3]. The
+    // previous char[3][50] sizing was a one-element-short stack buffer
+    // overflow on every SCRIPTPARAMCHANGE invocation (Phase 5 T1 latent-bug
+    // fix -- see task-1-report.md).
+    char input[4][50];
     script_data* tmpscript;
 
     script = SHAPE_SCRIPT(ch)->script;

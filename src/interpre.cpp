@@ -1225,7 +1225,7 @@ void replace_aliases(struct char_data* ch, char* line)
     int begin, tmp;
     struct alias_list* list;
 
-    for (begin = 0; (*(line + begin) == ' '); begin++)
+    for (begin = 0; *(line + begin) == ' '; begin++)
         ;
     new_line[0] = 0;
 
@@ -1289,7 +1289,7 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
         memset(argument, 0, MAX_INPUT_LENGTH);
 
         /* Find first non blank */
-        for (begin = 0; (*(argument_raw + begin) == ' '); begin++)
+        for (begin = 0; *(argument_raw + begin) == ' '; begin++)
             ;
         strcpy(argument, argument_raw + begin);
         begin = 0;

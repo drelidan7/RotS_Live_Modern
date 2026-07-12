@@ -176,7 +176,7 @@ ACMD(do_echo)
     int i;
     char_data* tmpch;
 
-    if (/*IS_NPC(ch) ||*/ (ch->in_room == NOWHERE))
+    if (/*IS_NPC(ch) ||*/ ch->in_room == NOWHERE)
         return;
 
     for (i = 0; *(argument + i) == ' '; i++)
@@ -1986,7 +1986,7 @@ ACMD(do_wiznet)
     for (; *argument == ' '; argument++)
         ;
 
-    if (!*argument)
+    if (!*argument) {
         if (GET_LEVEL(ch) >= LEVEL_IMMORT) {
             send_to_char("Usage: wiznet <text> | #<level> <text> | *<emotetext> |\n\r "
                          "       wiznet @<person *<emotetext> | wiz @ | wiz - | wiz +\n\r",
@@ -1996,6 +1996,7 @@ ACMD(do_wiznet)
             send_to_char("You whine pitifully to eternal powers.\n\r", ch);
             return;
         }
+    }
     if (GET_LEVEL(ch) >= LEVEL_IMMORT) /* petitioners can not use options */
         switch (*argument) {
         case '*':

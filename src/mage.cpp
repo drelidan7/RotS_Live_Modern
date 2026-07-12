@@ -1694,7 +1694,7 @@ ASPELL(spell_earthquake)
         for (tmpch = cur_room->people; tmpch; tmpch = tmpch_next) {
             bool saved = new_saves_spell(caster, tmpch, tmpch->tmpabilities.dex / 4);
             tmpch_next = tmpch->next_in_room;
-            if (!saved && (tmpch != caster) || (!number(0, 1))) {
+            if ((!saved && (tmpch != caster)) || (!number(0, 1))) {
                 act("$n loses balance and falls down!", TRUE, tmpch, 0, 0, TO_ROOM);
                 send_to_char("The earthquake throws you down!\n\r", tmpch);
                 stop_riding(tmpch);

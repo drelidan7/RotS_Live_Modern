@@ -2024,7 +2024,7 @@ SPECIAL(mob_ranger)
         return 1;
     }
 
-    if (((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host) || IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) && ch->delay.wait_value == 0)
+    if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) || IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) && ch->delay.wait_value == 0)
         do_hide(host, "", 0, 0, 0);
 
     tmproom = &world[host->in_room];
@@ -2085,7 +2085,7 @@ bool see_hidden(char_data* host, char_data* tmpch)
 bool should_attack(char_data* host, char_data* tmpch)
 {
     int is_aggressive = IS_SET(host->specials2.act, MOB_AGGRESSIVE);
-    return (tmpch && tmpch != host && CAN_SEE(host, tmpch) && see_hidden(host, tmpch) && see_hidden(host, tmpch) && !PRF_FLAGGED(tmpch, PRF_NOHASSLE) && (IS_AGGR_TO(host, tmpch) || (is_aggressive && !IS_NPC(tmpch)) || host->specials.fighting && (GET_POS(host) > POSITION_SITTING)));
+    return (tmpch && tmpch != host && CAN_SEE(host, tmpch) && see_hidden(host, tmpch) && see_hidden(host, tmpch) && !PRF_FLAGGED(tmpch, PRF_NOHASSLE) && (IS_AGGR_TO(host, tmpch) || (is_aggressive && !IS_NPC(tmpch)) || (host->specials.fighting && (GET_POS(host) > POSITION_SITTING))));
 }
 
 void do_spec_ambush(char_data* host, char_data* tmpch)
@@ -2168,7 +2168,7 @@ SPECIAL(mob_ranger_new)
 
     if (is_not_engaged) {
         // hide here for pop or after fighting and didnt move
-        if (((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host) ||
+        if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) ||
              IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) &&
             host->delay.wait_value == 0 && has_alias(host, "p_hide")) {
             do_hide(host, "", 0, 0, 0);
@@ -2285,7 +2285,7 @@ SPECIAL(mob_ranger_new)
                 tmpwtl.cmd = (tmproom->room_track[mintmp].data & 7) + 1;
                 tmpwtl.subcmd = 0;
                 do_move(host, "", &tmpwtl, tmpwtl.cmd, 0);
-                if (((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host) ||
+                if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) ||
                      IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) &&
                     host->delay.wait_value == 0 && has_alias(host, "p_hide")) {
                     do_hide(host, "", 0, 0, 0);
@@ -2302,7 +2302,7 @@ SPECIAL(mob_ranger_new)
             tmpwtl.subcmd = 0;
             if (CAN_GO(host, tmpwtl.cmd - 1)) {
                 do_move(host, "", &tmpwtl, tmpwtl.cmd, tmpwtl.subcmd);
-                if (((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host) ||
+                if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) ||
                      IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) &&
                     host->delay.wait_value == 0 && has_alias(host, "p_hide")) {
                     do_hide(host, "", 0, 0, 0);
@@ -2839,7 +2839,7 @@ SPECIAL(ar_tarthalon)
         return FALSE;
     if (number(0, 1)) {
         victim = get_char("balkazor");
-        if (victim)
+        if (victim) {
             if (world[victim->in_room].number != 8483)
                 do_say(host, "Balkazor my sorcerer, I command you to aid me!", 0, 0, 0);
             else
@@ -2851,9 +2851,10 @@ SPECIAL(ar_tarthalon)
                     do_say(host, "Balkazor, burn these infidels into eternity!", 0, 0, 0);
                     break;
                 }
+        }
     } else {
         victim = get_char("karahaz");
-        if (victim)
+        if (victim) {
             if (world[victim->in_room].number != 8483)
                 do_say(host, "Karahaz!  Master swordsman, Come!  Rid my tomb of these intruders!",
                     0, 0, 0);
@@ -2868,6 +2869,7 @@ SPECIAL(ar_tarthalon)
                         0, 0);
                     break;
                 }
+        }
     }
     if (!victim)
         return 0;
@@ -3532,7 +3534,7 @@ SPECIAL(reciter)
         quitting = 1;
         goto remove_scroll;
     } // Hm, sbdy just has spoken his last line...
-    if ((GET_POS(host) == POSITION_FIGHTING))
+    if (GET_POS(host) == POSITION_FIGHTING)
         return 0;
     if (number(0, 100) < 50)
         return 0;

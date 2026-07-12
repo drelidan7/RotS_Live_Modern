@@ -122,7 +122,7 @@ ACMD(do_ride)
             return;
         }
 
-        if (IS_NPC(potential_mount) && !IS_SET(potential_mount->specials2.act, MOB_MOUNT) || !IS_NPC(potential_mount)) {
+        if ((IS_NPC(potential_mount) && !IS_SET(potential_mount->specials2.act, MOB_MOUNT)) || !IS_NPC(potential_mount)) {
             send_to_char("You can not ride this.\n\r", ch);
             return;
         }
@@ -594,7 +594,7 @@ ACMD(do_pick)
             act("$n fiddles with $p.", FALSE, ch, obj, 0, TO_ROOM);
         }
 
-    else if ((door = find_door(ch, type, dir)) >= 0)
+    else if ((door = find_door(ch, type, dir)) >= 0) {
         if (!IS_SET(EXIT(ch, door)->exit_info, EX_ISDOOR))
             send_to_char("That's absurd.\n\r", ch);
         else if (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED))
@@ -627,6 +627,7 @@ ACMD(do_pick)
                     if (back->to_room == ch->in_room)
                         REMOVE_BIT(back->exit_info, EX_LOCKED);
         }
+    }
 }
 
 void stop_hiding(struct char_data* ch, char mode)

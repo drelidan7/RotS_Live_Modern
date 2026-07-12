@@ -204,8 +204,9 @@ void expect_deserialize_matches_v1(DeserializeFn v2_fn, bool heavy)
     const bool ok2 = deserialize_and_apply(v2_fn, json, &s2, &e2);
     EXPECT_EQ(ok1, ok2) << "v1 err='" << e1 << "' v2 err='" << e2 << "'";
     EXPECT_EQ(e1, e2);
-    if (ok1 && ok2)
+    if (ok1 && ok2) {
         EXPECT_EQ(0, std::memcmp(&s1, &s2, sizeof(char_file_u)));
+    }
 }
 
 } // namespace
@@ -239,8 +240,9 @@ TEST(JsonPerf, DeserializeV2bMatchesV2a)
         const bool okb = deserialize_and_apply(&character_json::deserialize_character_from_json_v2b, json, &sb, &eb);
         EXPECT_EQ(oka, okb) << "heavy=" << heavy << " ea='" << ea << "' eb='" << eb << "'";
         EXPECT_EQ(ea, eb) << "heavy=" << heavy;
-        if (oka && okb)
+        if (oka && okb) {
             EXPECT_EQ(0, std::memcmp(&sa, &sb, sizeof(char_file_u))) << "heavy=" << heavy;
+        }
     }
 }
 

@@ -770,11 +770,12 @@ int get_real_parry(struct char_data* ch)
 {
     int sun_mod = 0;
 
-    if (IS_NPC(ch))
+    if (IS_NPC(ch)) {
         if (IS_AFFECTED(ch, AFF_CONFUSE))
             return (GET_PARRY(ch) + GET_LEVEL(ch) / 2 + 15) - (get_confuse_modifier(ch) * 2 / 3);
         else
             return (GET_PARRY(ch) + GET_LEVEL(ch) / 2 + 15);
+    }
 
     int tmpparry, tmpskill, tactics, bonus, weapon_bonus = 0;
     struct obj_data* weapon;
@@ -869,11 +870,12 @@ int get_real_dodge(struct char_data* ch)
 {
     int sun_mod = 0;
 
-    if (IS_NPC(ch))
+    if (IS_NPC(ch)) {
         if (IS_AFFECTED(ch, AFF_CONFUSE))
             return (GET_DODGE(ch) + GET_DEX(ch) - 5 + GET_LEVEL(ch) / 2) - (get_confuse_modifier(ch) * 2 / 3);
         else
             return (GET_DODGE(ch) + GET_DEX(ch) - 5 + GET_LEVEL(ch) / 2);
+    }
 
     int dodge = ((GET_SKILL(ch, SKILL_DODGE) + GET_SKILL(ch, SKILL_STEALTH) / 2 + 60) * GET_PROF_LEVEL(PROF_RANGER, ch) / 200 + (GET_SKILL(ch, SKILL_DODGE) + GET_SKILL(ch, SKILL_STEALTH) / 4) / 20);
     dodge -= utils::get_dodge_penalty(*ch);
@@ -1170,11 +1172,12 @@ int str_cmp(const char* arg1, const char* arg2)
     int chk, i;
 
     for (i = 0; *(arg1 + i) || *(arg2 + i); i++)
-        if ((chk = LOWER(*(arg1 + i)) - LOWER(*(arg2 + i))))
+        if ((chk = LOWER(*(arg1 + i)) - LOWER(*(arg2 + i)))) {
             if (chk < 0)
                 return (-1);
             else
                 return (1);
+        }
     return (0);
 }
 
@@ -1185,11 +1188,12 @@ int strn_cmp(const char* arg1, const char* arg2, int n)
     int chk, i;
 
     for (i = 0; (*(arg1 + i) || *(arg2 + i)) && (n > 0); i++, n--)
-        if ((chk = LOWER(*(arg1 + i)) - LOWER(*(arg2 + i))))
+        if ((chk = LOWER(*(arg1 + i)) - LOWER(*(arg2 + i)))) {
             if (chk < 0)
                 return (-1);
             else
                 return (1);
+        }
 
     return (0);
 }
@@ -1723,11 +1727,12 @@ int CAN_SEE_OBJ(char_data* sub, obj_data* obj)
     if (!sub || !obj)
         return 0;
 
-    if (IS_SHADOW(sub))
+    if (IS_SHADOW(sub)) {
         if (IS_SET((obj)->obj_flags.extra_flags, ITEM_MAGIC) || IS_SET((obj)->obj_flags.extra_flags, ITEM_WILLPOWER))
             return 1;
         else
             return 0;
+    }
 
     if ((!IS_SET((obj)->obj_flags.extra_flags, ITEM_INVISIBLE) || IS_AFFECTED((sub), AFF_DETECT_INVISIBLE)) && CAN_SEE(sub))
         return 1;
@@ -1964,7 +1969,7 @@ int check_resistances(char_data* victim, int attack_type)
     if ((attack_type < MAX_SKILLS) && IS_VULNERABLE(victim, skills[attack_type].skill_spec))
         return -1;
 
-    if ((attack_type >= TYPE_HIT) && (attack_type <= TYPE_CRUSH) || attack_type == SKILL_ARCHERY) {
+    if (((attack_type >= TYPE_HIT) && (attack_type <= TYPE_CRUSH)) || attack_type == SKILL_ARCHERY) {
         if (IS_RESISTANT(victim, PLRSPEC_WILD))
             return 1;
 

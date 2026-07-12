@@ -665,7 +665,7 @@ int CAN_SEE_OBJ(char_data* sub, obj_data* obj);
 #define WILL_TEACH(ch, vict) \
     (IS_NPC(ch) && (((ch)->specials2.will_teach & (1 << GET_RACE(vict))) || ((other_side(ch, vict) && !IS_NPC(vict)) && GET_RACE(ch) != 0)))
 
-#define RP_RACE_CHECK(ch, vict) (IS_NPC(ch) && (!(ch)->specials2.rp_flag) || ((ch)->specials2.rp_flag & (1 << GET_RACE(vict))))
+#define RP_RACE_CHECK(ch, vict) ((IS_NPC(ch) && (!(ch)->specials2.rp_flag)) || ((ch)->specials2.rp_flag & (1 << GET_RACE(vict))))
 
 #define GET_RP_FLAG(ch) ((ch)->specials2.rp_flag)
 

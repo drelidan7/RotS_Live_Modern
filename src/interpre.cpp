@@ -569,7 +569,7 @@ const char* command[] = {
 /* CEND: search for me when you're looking for the end of the cmd list! :) */
 
 /* these words are effectively ignored */
-char* fill[] = {
+const char* const fill[] = {
     "in",
     "from",
     "with",
@@ -1253,7 +1253,12 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
     int look_at, cmd, subcmd, begin, mode, may_not_perform;
     char argument[MAX_INPUT_LENGTH];
     char local_buf[MAX_INPUT_LENGTH];
-    char* argument_raw = "";
+    // Genuinely-writable empty-string storage for argument_raw below: shape_center()
+    // (and its shape_center_proto/obj/room/zone/mudlle/script fan-out) takes char*
+    // argument and is not cleared for a const-widening pass (task-4-report.md), so
+    // argument_raw must stay char*; this avoids binding a literal to it directly.
+    static char empty_argument[] = "";
+    char* argument_raw = empty_argument;
     struct waiting_type *argument_info, interp_argument_info;
     extern int no_specials;
 
@@ -1268,7 +1273,7 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
 
     if (argument_wtl) {
         argument_info = argument_wtl;
-        argument_raw = "";
+        argument_raw = empty_argument;
         mode = 1;
     } else {
         argument_raw = argument_chr;
@@ -4109,7 +4114,7 @@ void nanny(struct descriptor_data* d, char* arg)
             extern void msdp_room_update(char_data * ch);
             msdp_room_update(d->character);
 
-            do_look(d->character, "", 0, 0, 0);
+            do_look(d->character, mutable_arg(""), 0, 0, 0);
 
             /* report how long they must wait until unretire */
             if (IS_SET(PLR_FLAGS(d->character), PLR_RETIRED)) {

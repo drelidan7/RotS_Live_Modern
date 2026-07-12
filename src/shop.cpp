@@ -106,7 +106,7 @@ void closing_time(struct char_data* keeper)
             char_from_room(tmpch);
             char_to_room(tmpch, EXIT(keeper, dir)->to_room);
             act("$n is pushed in.", TRUE, tmpch, 0, 0, TO_ROOM);
-            do_look(tmpch, "", 0, 0, 0);
+            do_look(tmpch, mutable_arg(""), 0, 0, 0);
         }
     }
     for (tmp = 0; tmp < NUM_OF_DIRS; tmp++)
@@ -131,34 +131,34 @@ int is_ok(struct char_data* keeper, struct char_data* ch, int shop_nr)
 {
     if (keeper && ch) {
         if (IS_AGGR_TO(keeper, ch)) {
-            do_say(keeper, "Go away, I won't deal with you!", 0, 0, 0);
+            do_say(keeper, mutable_arg("Go away, I won't deal with you!"), 0, 0, 0);
             return FALSE;
         }
     }
     if (ch)
         if (IS_SHADOW(ch)) {
-            do_say(keeper, "Ugh!  I'm not serving you!", 0, 0, 0);
+            do_say(keeper, mutable_arg("Ugh!  I'm not serving you!"), 0, 0, 0);
             return FALSE;
         }
 
     if ((ch) && (!RP_RACE_CHECK(keeper, ch))) {
-        do_say(keeper, "Sorry, I can't serve you!", 0, 0, 0);
+        do_say(keeper, mutable_arg("Sorry, I can't serve you!"), 0, 0, 0);
         return FALSE;
     }
 
     if (!shop_index[shop_nr].is_open) {
         if (shop_index[shop_nr].open1 > time_info.hours) {
             if (keeper)
-                do_say(keeper, "Come back later!", 0, 17, 0);
+                do_say(keeper, mutable_arg("Come back later!"), 0, 17, 0);
             return (FALSE);
         } else if (shop_index[shop_nr].close1 <= time_info.hours) {
             if (shop_index[shop_nr].open2 > time_info.hours) {
                 if (keeper)
-                    do_say(keeper, "Sorry, we have closed, but come back later.", 0, 17, 0);
+                    do_say(keeper, mutable_arg("Sorry, we have closed, but come back later."), 0, 17, 0);
                 return (FALSE);
             } else if (shop_index[shop_nr].close2 <= time_info.hours) {
                 if (keeper)
-                    do_say(keeper, "Sorry, come back tomorrow.", 0, 17, 0);
+                    do_say(keeper, mutable_arg("Sorry, come back tomorrow."), 0, 17, 0);
                 return (FALSE);
             }
         }
@@ -168,7 +168,7 @@ int is_ok(struct char_data* keeper, struct char_data* ch, int shop_nr)
         return TRUE;
 
     if (!(CAN_SEE(keeper, ch))) {
-        do_say(keeper, "I don't trade with someone I can't see!", 0, 17, 0);
+        do_say(keeper, mutable_arg("I don't trade with someone I can't see!"), 0, 17, 0);
         return (FALSE);
     };
 
@@ -283,7 +283,7 @@ void shopping_buy(char* arg, struct char_data* ch,
             do_action(keeper, GET_NAME(ch), 0, 30, 0);
             return;
         case 1:
-            do_emote(keeper, "smokes on his joint.", 0, 36, 0);
+            do_emote(keeper, mutable_arg("smokes on his joint."), 0, 36, 0);
             return;
         default:
             return;
@@ -563,7 +563,7 @@ SPECIAL(shop_keeper)
         tmpwtl.targ2.ptr.text = get_from_txt_block_pool("Don't even think about it.");
         tmpwtl.targ2.type = TARGET_TEXT;
         tmpwtl.cmd = CMD_TELL;
-        do_tell(host, "", &tmpwtl, CMD_TELL, 0);
+        do_tell(host, mutable_arg(""), &tmpwtl, CMD_TELL, 0);
         tmpwtl.targ1.cleanup();
         tmpwtl.targ2.cleanup();
 

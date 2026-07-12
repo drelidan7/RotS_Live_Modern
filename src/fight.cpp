@@ -895,7 +895,7 @@ void raw_kill(char_data* dead_man, char_data* killer, int attack_type)
         stop_fighting(dead_man);
     }
 
-    if (special(dead_man, 0, "", SPECIAL_DEATH, &tmpwtl))
+    if (special(dead_man, 0, mutable_arg(""), SPECIAL_DEATH, &tmpwtl))
         return;
 
     if (IS_RIDING(dead_man))
@@ -1652,7 +1652,7 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
         tmpwtl.targ1.type = TARGET_CHAR;
         tmpwtl.targ2.ptr.other = 0;
         tmpwtl.targ2.type = TARGET_NONE;
-        i = special(attacker, 0, "", SPECIAL_DAMAGE, &tmpwtl);
+        i = special(attacker, 0, mutable_arg(""), SPECIAL_DAMAGE, &tmpwtl);
         if (i) {
             if (attacker->specials.fighting == victim)
                 stop_fighting(attacker);
@@ -1906,7 +1906,7 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
             if (IS_NPC(victim)) {
                 if (IS_SET(victim->specials2.act, MOB_WIMPY))
                     if (GET_POSITION(victim) > POSITION_SLEEPING)
-                        do_flee(victim, "", 0, 0, 0);
+                        do_flee(victim, mutable_arg(""), 0, 0, 0);
             }
         }
 
@@ -1914,12 +1914,12 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
             if (GET_POSITION(victim) > POSITION_SLEEPING && GET_TACTICS(victim) != TACTICS_BERSERK) {
                 send_to_char("You wimp out, and attempt to flee!\n\r",
                     victim);
-                do_flee(victim, "", 0, 0, 0);
+                do_flee(victim, mutable_arg(""), 0, 0, 0);
             }
     }
 
     if (!IS_NPC(victim) && !(victim->desc && victim->desc->descriptor) && (victim->specials.fighting) && GET_POS(victim) > POSITION_INCAP) {
-        do_flee(victim, "", 0, 0, 0);
+        do_flee(victim, mutable_arg(""), 0, 0, 0);
         victim->specials.was_in_room = victim->in_room;
     }
 
@@ -2593,7 +2593,7 @@ void hit(char_data* ch, char_data* victim, int)
         tmpwtl.targ1.type = TARGET_CHAR;
         tmpwtl.targ2.ptr.other = 0;
         tmpwtl.targ2.type = TARGET_NONE;
-        tmp = special(ch, 0, "", SPECIAL_DAMAGE, &tmpwtl);
+        tmp = special(ch, 0, mutable_arg(""), SPECIAL_DAMAGE, &tmpwtl);
         if (tmp) {
             if (ch->specials.fighting == victim)
                 stop_fighting(ch);
@@ -2621,18 +2621,18 @@ void hit(char_data* ch, char_data* victim, int)
         if (IS_NPC(victim))
             if (IS_SET(victim->specials2.act, MOB_WIMPY))
                 if (GET_POSITION(victim) > POSITION_SLEEPING)
-                    do_flee(victim, "", 0, 0, 0);
+                    do_flee(victim, mutable_arg(""), 0, 0, 0);
     }
 
     if (!IS_NPC(victim) && WIMP_LEVEL(victim) && victim != ch && GET_HIT(victim) < WIMP_LEVEL(victim)) {
         if (GET_POSITION(victim) > POSITION_SLEEPING) {
             send_to_char("You wimp out, and attempt to flee!\n\r", victim);
-            do_flee(victim, "", 0, 0, 0);
+            do_flee(victim, mutable_arg(""), 0, 0, 0);
         }
     }
 
     if (!IS_NPC(victim) && !(victim->desc && victim->desc->descriptor) && victim->specials.fighting && GET_POS(victim) > POSITION_INCAP) {
-        do_flee(victim, "", 0, 0, 0);
+        do_flee(victim, mutable_arg(""), 0, 0, 0);
         victim->specials.was_in_room = victim->in_room;
     }
 }
@@ -2769,7 +2769,7 @@ void perform_violence(int)
 
         if (fighter->specials.fighting && (IS_MENTAL(fighter) || (IS_NPC(fighter) && IS_SHADOW(fighter->specials.fighting)))) {
             if ((GET_POS(fighter) >= POSITION_FIGHTING) && !IS_AFFECTED(fighter, AFF_WAITING)) {
-                do_mental(fighter, "", 0, 0, 0);
+                do_mental(fighter, mutable_arg(""), 0, 0, 0);
             }
             continue; // have in mind, the ch could die himself
         }
@@ -2778,7 +2778,7 @@ void perform_violence(int)
             if ((GET_POS(fighter) >= POSITION_FIGHTING) && (fighter->specials.ENERGY <= ENE_TO_HIT)) {
                 fighter->specials.ENERGY += utils::get_energy_regen(*fighter);
             } else if (IS_NPC(fighter) && !fighter->delay.wait_value) {
-                do_stand(fighter, "", 0, 0, 0);
+                do_stand(fighter, mutable_arg(""), 0, 0, 0);
             }
 
             if (fighter->specials.ENERGY > ENE_TO_HIT) {

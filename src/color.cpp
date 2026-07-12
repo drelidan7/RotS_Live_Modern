@@ -305,7 +305,7 @@ const char* color_color[] = {
 
 int num_of_colors = sizeof(color_color) / sizeof(color_color[0]);
 
-char* color_sequence[] = {
+const char* const color_sequence[] = {
     "\x1B[0m",
     "\x1B[31m",
     "\x1B[32m",

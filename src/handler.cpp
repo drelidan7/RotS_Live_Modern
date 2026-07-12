@@ -453,9 +453,9 @@ void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add,
             break;
 
         if (add)
-            skills[tmp].spell_pointer(ch, "", SPELL_TYPE_SPELL, ch, 0, 0, 1);
+            skills[tmp].spell_pointer(ch, mutable_arg(""), SPELL_TYPE_SPELL, ch, 0, 0, 1);
         else
-            skills[tmp].spell_pointer(ch, "", SPELL_TYPE_ANTI, ch, 0, 0, 1);
+            skills[tmp].spell_pointer(ch, mutable_arg(""), SPELL_TYPE_ANTI, ch, 0, 0, 1);
         break;
 
     case APPLY_BITVECTOR:
@@ -1905,7 +1905,7 @@ void extract_char(struct char_data* ch, int new_room)
     if (!IS_NPC(ch) && !ch->desc) {
         for (t_desc = descriptor_list; t_desc; t_desc = t_desc->next)
             if (t_desc->original == ch)
-                do_return(t_desc->character, "", 0, 0, 0);
+                do_return(t_desc->character, mutable_arg(""), 0, 0, 0);
     }
 
     if (ch->followers || ch->master || ch->group)
@@ -2018,7 +2018,7 @@ void extract_char(struct char_data* ch, int new_room)
 
     if (ch->desc) {
         if (ch->desc->original) {
-            do_return(ch, "", 0, 0, 0);
+            do_return(ch, mutable_arg(""), 0, 0, 0);
         } else
             save_char(ch, (new_room < 0) ? ((was_in == NOWHERE) ? -1 : world[was_in].number) : new_room, 0);
     }
@@ -2049,7 +2049,7 @@ void extract_char(struct char_data* ch, int new_room)
             send_to_char("Your spirit found a new body to wear.\n\r", ch);
             SET_POS(ch) = POSITION_RESTING;
             utils::set_spirits(ch, utils::get_spirits(ch) / 2);
-            do_look(ch, "", 0, 0, 0);
+            do_look(ch, mutable_arg(""), 0, 0, 0);
         } else {
             ch->desc->connected = CON_SLCT;
             show_character_menu(ch->desc);
@@ -2310,7 +2310,7 @@ struct obj_data* create_money(int amount)
 int generic_find(char* arg, int bitvector, struct char_data* ch,
     struct char_data** tar_ch, struct obj_data** tar_obj)
 {
-    char* ignore[] = {
+    static const char* const ignore[] = {
         "the",
         "in",
         "on",

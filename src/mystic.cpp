@@ -195,7 +195,7 @@ ASPELL(spell_curse)
 
     // Only flee after the curse has completed attacking all of its stats.
     if (!victim_died && victim_flees) {
-        do_flee(victim, "", NULL, 0, 0);
+        do_flee(victim, mutable_arg(""), NULL, 0, 0);
     }
 
     set_mental_delay(caster, actual_count * PULSE_MENTAL_FIGHT);
@@ -1613,7 +1613,7 @@ ASPELL(spell_guardian)
      * Guardian mob cast by the user
      */
 
-    static char* guardian_type[] = {
+    static const char* const guardian_type[] = {
         "aggressive",
         "defensive",
         "mystic",
@@ -1717,7 +1717,7 @@ ASPELL(spell_shift)
 
 ASPELL(spell_protection)
 {
-    static char* protection_sphere[] = {
+    static const char* const protection_sphere[] = {
         "fire",
         "cold",
         "lightning",

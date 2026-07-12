@@ -76,7 +76,7 @@ SPECIAL(cryogenicist);
 void Crash_alias_load(struct char_data* ch, const objects_json::ObjectSaveData& data);
 void Crash_follower_load(struct char_data* ch, const objects_json::ObjectSaveData& data);
 int calc_load_room(struct char_data* ch, int load_result);
-int Crash_get_filename(char* orig_name, char* filename);
+int Crash_get_filename(const char* orig_name, char* filename);
 
 FILE* fd;
 int Crash_is_unrentable(struct obj_data* obj);
@@ -253,7 +253,7 @@ std::string player_object_bucket_path(const char* orig_name)
 
 } // namespace
 
-int Crash_get_filename(char* orig_name, char* filename)
+int Crash_get_filename(const char* orig_name, char* filename)
 {
     const std::string base = player_object_bucket_path(orig_name);
     if (base.empty())
@@ -337,7 +337,7 @@ bool write_player_objects_json(const char* player_name, const objects_json::Obje
     return true;
 }
 
-FILE* Crash_get_file_by_name(char* name, char* mode)
+FILE* Crash_get_file_by_name(const char* name, const char* mode)
 {
     FILE* fp;
 
@@ -355,7 +355,7 @@ FILE* Crash_get_file_by_name(char* name, char* mode)
     return fp;
 }
 
-int Crash_delete_file(char* name)
+int Crash_delete_file(const char* name)
 {
 
     char filename[50];
@@ -1559,7 +1559,7 @@ int gen_receptionist(struct char_data* ch, int cmd, char* arg, int mode)
     struct char_data* recep = 0;
     struct char_data* tch;
     int save_room;
-    char* action_tabel[9] = { "smile ", "twiddle ", "think ", "frown ", "glare ", "pout ", "sneeze ", "stare ", "yawn " };
+    const char* const action_tabel[9] = { "smile ", "twiddle ", "think ", "frown ", "glare ", "pout ", "sneeze ", "stare ", "yawn " };
     long rent_deadline;
 
     extern int valid_name(char*);
@@ -1581,7 +1581,7 @@ int gen_receptionist(struct char_data* ch, int cmd, char* arg, int mode)
 
     if ((cmd != CMD_RENT) && (cmd != CMD_OFFER)) {
         if (!number(0, 30))
-            do_action(recep, action_tabel[number(0, 8)], 0, 0, 0);
+            do_action(recep, mutable_arg(action_tabel[number(0, 8)]), 0, 0, 0);
         return FALSE;
     }
     if (!AWAKE(recep)) {

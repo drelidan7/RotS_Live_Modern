@@ -1,0 +1,75 @@
+# Curated, advisory clang-tidy configuration (Phase 5 Task 7).
+#
+# Advisory only: WarningsAsErrors is empty and the CI job that runs this
+# config uses continue-on-error: true. Nothing here gates a merge; it is a
+# tuned "what to look at" signal for changed files.
+#
+# Starting point (per the Phase 5 plan) was:
+#   bugprone-*, performance-*, modernize-use-nullptr, modernize-use-override,
+#   modernize-loop-convert, minus bugprone-easily-swappable-parameters and
+#   bugprone-narrowing-conversions.
+# That was run over three representative files (src/fight.cpp — hot combat
+# path/live melee loop; src/character_json.cpp — Phase 2a JSON persistence;
+# src/comm.cpp — networking/descriptor handling) against the macos-arm64
+# compile database (build/macos-arm64/compile_commands.json). The trial
+# surfaced three checks whose signal-to-noise ratio is bad specifically for
+# this codebase's idioms, so they were tuned out below (each documented
+# where it is disabled). Every other default-enabled check in the two
+# groups produced real, low-volume, actionable findings (nullptr literals,
+# missing `override`, CRTP accessibility, signed-char narrowing, etc.) and
+# was left enabled.
+Checks: >
+  bugprone-*,
+  performance-*,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-loop-convert,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-macro-parentheses,
+  -bugprone-assignment-in-if-condition,
+  -performance-enum-size
+
+# Disabled-check rationale (one entry per '-check' above beyond the two the
+# plan named up front):
+#
+# -bugprone-macro-parentheses
+#   By far the loudest single check in the trial: ~204 hits across the 3
+#   trial files alone (mostly `#define FOO -1`-style constant macros and
+#   backslash-continued function-like macros in headers like structs.h,
+#   spells.h, interpre.h). This codebase is soaked in that classic-C macro
+#   idiom (hundreds of unparenthesized constant/flag macros predating this
+#   project). Wrapping them all in parens is a huge, purely-mechanical,
+#   effectively repo-wide diff for near-zero real bug yield here — none of
+#   the sampled hits were an actual latent bug, just the idiom. Left
+#   disabled to keep the advisory signal readable; worth revisiting only as
+#   a dedicated, scoped cleanup task, not as background CI noise.
+#
+# -bugprone-assignment-in-if-condition
+#   ~9 hits across the 3 trial files, all of the form
+#   `if (!(ptr = some_call()))` / `if ((x = f()) == 0)` — the deliberate,
+#   long-standing K&R/CircleMUD-lineage idiom this codebase uses everywhere
+#   for "call and null/zero-check in one line" (comm.cpp's descriptor and
+#   input-parsing code is full of it). The check does not special-case the
+#   already-parenthesized/explicit-comparison forms this codebase
+#   consistently uses to signal intent, so it would fire on essentially
+#   every instance of an established idiom rather than catching accidental
+#   `=`-for-`==` typos. Disabled as idiom noise, not a correctness gap.
+#
+# -performance-enum-size
+#   7 hits per trial file (same handful of enums re-flagged per translation
+#   unit: color_value_mode, negotiated_t/support_t/variable_t in protocol.h,
+#   weapon_type/player_specs/source_type in structs.h), suggesting shrinking
+#   each enum's underlying type to uint8_t/int8_t. Several of these enums
+#   back fields in structs whose in-memory layout is read/written by the
+#   explicit-offset legacy binary decoders (docs/data-formats/*, the
+#   32-bit-only legacy_*_fixture.bin goldens) and by the cross-platform
+#   compile matrix (i386 legacy, linux-x64, macos-arm64, windows-msvc) that
+#   the golden tests pin byte-identical. Changing an enum's underlying type
+#   changes struct size/padding/alignment on some of those ABIs for a
+#   handful of bytes of savings on values that are never allocated in bulk —
+#   not worth the byte-identical-golden risk for this codebase. Disabled;
+#   a real memory-layout audit of these structs is out of scope here.
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '^.*/src/.*'

@@ -17,6 +17,12 @@
 # CI deliberately has NO boot smoke and NO account_smoke.py: both need
 # lib/world/ (separate repo, git-ignored) and the Rust proxy. Unit tests and
 # the committed characterization goldens (src/tests/goldens/) need neither.
+#
+# clang-tidy-advisory (Phase 5 Task 7) is deliberately NOT one of the
+# required jobs above: it runs the checked-in root .clang-tidy (curated,
+# WarningsAsErrors: '') over just the .cpp files changed vs origin/master,
+# using the linux-x64 compile database, and continue-on-error: true so a
+# finding never blocks a merge. It is advisory signal only.
 name: CI
 
 on:
@@ -188,3 +194,53 @@ jobs:
       # windows-2022 runner.
       - name: Test
         run: cd src; ctest --preset windows-msvc -j4
+
+  clang-tidy-advisory:
+    name: clang-tidy (advisory, not required)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Advisory: a clang-tidy finding must never fail this job's caller (no
+    # branch protection should ever name this job required). The root
+    # .clang-tidy is curated/tuned (Phase 5 Task 7 report) and already
+    # advisory (WarningsAsErrors: ''); continue-on-error here is the
+    # workflow-level belt-and-suspenders in case a future edit to that file
+    # ever re-enables WarningsAsErrors.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # Full history so `origin/master...HEAD` below has a merge base to
+          # diff against; this job only ever reads git history, not depth-1
+          # HEAD state, so the extra fetch cost is acceptable for an
+          # advisory job.
+          fetch-depth: 0
+      - name: Install clang-tidy + GoogleTest
+        run: sudo apt-get update && sudo apt-get install -y clang-tidy libgtest-dev libcrypt-dev
+      - name: Configure (compile_commands.json only; no build needed for clang-tidy)
+        run: cd src && cmake --preset linux-x64
+      - name: Find .cpp files changed vs origin/master
+        id: changed
+        run: |
+          git fetch origin master --quiet
+          # --diff-filter=d excludes deleted paths (a file clang-tidy can't
+          # analyze because it no longer exists in the checkout).
+          git diff --name-only --diff-filter=d origin/master...HEAD -- 'src/*.cpp' > /tmp/changed_files.txt
+          if [ -s /tmp/changed_files.txt ]; then
+            echo "has_files=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_files=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run clang-tidy over changed files
+        if: steps.changed.outputs.has_files == 'true'
+        run: |
+          status=0
+          while IFS= read -r f; do
+            echo "::group::clang-tidy $f"
+            clang-tidy -p build/linux-x64 "$f" || status=1
+            echo "::endgroup::"
+          done < /tmp/changed_files.txt
+          exit "$status"
+      - name: No changed .cpp files
+        if: steps.changed.outputs.has_files != 'true'
+        run: echo "No src/*.cpp changes vs origin/master; nothing for clang-tidy to check."

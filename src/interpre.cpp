@@ -677,7 +677,7 @@ void target_data::cleanup()
     ch_num = 0;
 }
 
-void target_data::operator=(target_data t2)
+void target_data::operator=(const target_data& t2)
 {
     cleanup();
     if (t2.type == TARGET_TEXT) {
@@ -1126,10 +1126,8 @@ char* target_from_word(struct char_data* ch, char* argument, int mask, struct ta
 int target_check(struct char_data* ch, int cmd, struct target_data* t1,
     struct target_data* t2)
 {
-    struct command_info* this_command;
     int tmp, tc, res, last_tc, check, last_check;
 
-    this_command = &cmd_info[cmd];
     last_check = last_tc = check = res = 0;
 
     for (tc = 0; tc < 32; tc++) {
@@ -1172,11 +1170,8 @@ int target_check(struct char_data* ch, int cmd, struct target_data* t1,
 int target_parser(struct char_data* ch, int cmd, char* argument,
     struct target_data* t1, struct target_data* t2)
 {
-    struct command_info* this_command;
     int tmp, tc, res, last_tc = 0, target_modif;
     char *newarg, *last_newarg;
-
-    this_command = &cmd_info[cmd];
 
     t1->ptr.other = 0;
     t1->type = TARGET_NONE;
@@ -1449,9 +1444,9 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
 
 void argument_interpreter(char* argument, char* first_arg, char* second_arg)
 {
-    int look_at, found, begin;
+    int look_at, begin;
 
-    found = begin = 0;
+    begin = 0;
 
     do {
         /* Find first non blank */
@@ -1502,9 +1497,9 @@ char* one_argument(char* argument, char* first_arg)
  * in primary argument, following the sub-arg
  */
 {
-    int found, begin, look_at;
+    int begin, look_at;
 
-    found = begin = 0;
+    begin = 0;
 
     do {
         /* Find first non blank */
@@ -4364,10 +4359,9 @@ int new_player_select(struct descriptor_data* d, char* arg)
  * returns CON_CREATE to continue creation, CON_SLCT to end
  */
 {
-    int tmp, tmp2, i, classpoints;
+    int tmp, i, classpoints;
 
     if (STATE(d) == CON_CREATE) {
-        tmp2 = 0;
         if ((*arg == 'l') && (*(arg + 1) == '\0')) {
             SEND_TO_Q("\r\n"
                       "To become more proficient in a class, enter the number of\r\n"

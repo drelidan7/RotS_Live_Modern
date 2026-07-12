@@ -90,7 +90,7 @@ void UP_STACK(struct char_data* host)
 
 void TO_LIST(struct char_data* host, void* entr, int type)
 {
-    char tmp, tmp2, overfl;
+    char tmp, tmp2;
 
     /*
      * if(type == TARGET_TEXT)
@@ -100,7 +100,6 @@ void TO_LIST(struct char_data* host, void* entr, int type)
     if (!entr)
         type = TARGET_NONE;
 
-    overfl = 0;
     for (tmp = 0; tmp < SPECIAL_STACKLEN; tmp++)
         if (SPECIAL_LIST_AREA(host)->field[(int)tmp].type == SPECIAL_VOID)
             break;
@@ -134,7 +133,7 @@ void TO_LIST(struct char_data* host, void* entr, int type)
 
 void TO_LIST(struct char_data* host, target_data* newtarg)
 {
-    char tmp, tmp2, overfl;
+    char tmp, tmp2;
 
     /*
      * if(type == TARGET_TEXT)
@@ -146,7 +145,6 @@ void TO_LIST(struct char_data* host, target_data* newtarg)
         return;
     }
 
-    overfl = 0;
     for (tmp = 0; tmp < SPECIAL_STACKLEN; tmp++)
         if (SPECIAL_LIST_AREA(host)->field[(int)tmp].type == SPECIAL_VOID)
             break;
@@ -421,7 +419,7 @@ int compare_list(struct char_data* host, struct target_data* it1,
         return 0;
 
     case TARGET_CHAR:
-        if (IS_NPC(it1->ptr.ch) && IS_NPC(it2->ptr.ch) && (it1->ptr.ch->nr == it1->ptr.ch->nr))
+        if (IS_NPC(it1->ptr.ch) && IS_NPC(it2->ptr.ch) && (it1->ptr.ch->nr == it2->ptr.ch->nr))
             return 1;
         return 0;
 

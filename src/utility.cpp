@@ -1348,7 +1348,7 @@ void sprintbit(long vektor, const char* const names[], char* result, int var)
                 composed += "UNDEFINE ";
             }
         }
-        if (*names[nr] != '\r\n')
+        if (*names[nr] != '\n')
             nr++;
     }
 
@@ -2276,10 +2276,22 @@ void check_inventory_proto(struct char_data* ch)
             // check_inventory_proto (utility.cpp:2252-2260): left unconverted
             // for Phase 4 Wave 1 Task 5 pending a dedicated
             // object_utils/objsave characterization wave.
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
             sprintf(buf, " - An object in your inventory, %s, was updated.\n\r", tmp->short_description);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             send_to_char(buf, ch);
             obj_to_char(obj_to_proto(tmp), ch);
         } else if (result < 0) {
@@ -2288,11 +2300,23 @@ void check_inventory_proto(struct char_data* ch)
             // Justified skip -- same as above; this branch's `buf` is
             // additionally a pre-existing dead store (never sent), matching
             // current behavior exactly either way.
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
             sprintf(buf, " - An object in your inventory, %s, has no prototype.  Please notify imps.\n\r",
                 tmp->short_description);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
         }
     }
 }
@@ -2315,21 +2339,45 @@ void check_equipment_proto(struct char_data* ch)
 
                 // Justified skip -- see the block comment above
                 // check_inventory_proto (utility.cpp:2252-2260).
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(buf, " - An object in your equipment, %s, was updated.\n\r", tmp->short_description);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
                 send_to_char(buf, ch);
                 obj_to_char(obj_to_proto(tmp), ch);
             } else if (result < 0) {
                 char buf[1024];
 
                 // Justified skip -- same as above; pre-existing dead store.
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(buf, " - An object in your inventory, %s, has no prototype.  Please notify imps.\n\r",
                     tmp->short_description);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             }
         }
     }
@@ -2350,21 +2398,45 @@ static void check_container_proto(struct obj_data* obj, struct char_data* ch)
 
             // Justified skip -- see the block comment above
             // check_inventory_proto (utility.cpp:2252-2260).
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
             sprintf(buf, " - An object in %s, %s, was updated.\n\r", obj->short_description, tmp->short_description);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             send_to_char(buf, ch);
             obj_to_char(obj_to_proto(tmp), ch);
         } else if (result < 0) {
             char buf[1024];
 
             // Justified skip -- same as above; pre-existing dead store.
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
             sprintf(buf, " - An object in your inventory, %s, has no prototype.  Please notify imps.\n\r",
                 tmp->short_description);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
         }
     }
 }
@@ -2411,10 +2483,22 @@ char* PERS(struct char_data* target, struct char_data* observer,
         // leaf-module wave. Trivial single-literal, no format args, no
         // aliasing -- low risk, deferred pending a lighter PERS-specific
         // fixture.
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
         sprintf(name, "someone");
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
     if (capitalize)
         CAP(name);

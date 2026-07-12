@@ -533,7 +533,6 @@ void shopping_kill(char*, struct char_data* ch,
 // int	shop_keeper(struct char_data *ch, int cmd, char *arg)
 SPECIAL(shop_keeper)
 {
-    struct char_data* temp_char;
     struct char_data* keeper;
     int shop_nr;
     waiting_type tmpwtl;
@@ -544,7 +543,6 @@ SPECIAL(shop_keeper)
     if (IS_MOB(temp_char))
     if (mob_index[temp_char->nr].func == shop_keeper)
     */
-    keeper = temp_char;
     keeper = host;
     for (shop_nr = 0; shop_index[shop_nr].keeper != keeper->nr; shop_nr++)
         ;

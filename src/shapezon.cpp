@@ -672,14 +672,13 @@ void shape_center_zone(struct char_data* ch, char* arg)
 {
 
     static char str[MAX_STRING_LENGTH * 2];
-    char st1[50], st2[50], st3[50], st4[50], st5[50], st6[50], st7[50], st8[50], st9[50], tmpstr[255];
-    int i, tmp1, tmp2, tmp[8], choice;
+    char st1[50], st2[50], st3[50], st4[50], st5[50], st6[50], st7[50], st8[50], st9[50];
+    int i, tmp1, tmp2, tmp[8];
     struct zone_tree* current;
     struct zone_tree* tmpzon;
     struct owner_list *tmpowner, *tmpowner2;
     //  char key;
 
-    choice = 0;
 
     current = SHAPE_ZONE(ch)->curr;
     tmp1 = SHAPE_ZONE(ch)->procedure;
@@ -864,10 +863,10 @@ void shape_center_zone(struct char_data* ch, char* arg)
                     = shape_standup(ch, POSITION_SHAPING);
                 return;
             } else {
-                sscanf(arg, "%s", st1);
+                tmp1 = sscanf(arg, "%s", st1);
                 ch->specials.prompt_number = 7;
                 shape_standup(ch, SHAPE_ZONE(ch)->position);
-                if (tmp == 0) {
+                if (tmp1 == 0) {
                     send_to_char("Nothing entered. dropped.\n\r", ch);
                     SHAPE_ZONE(ch)
                         ->editflag
@@ -1819,7 +1818,6 @@ int replace_zone(struct char_data* ch, char*)
 
     /* this procedure is used for deleting objects, too */
 
-    char str[255];
     char mybuf[MAX_STRING_LENGTH];
     char *f_from, *f_old, *check;
     char c;
@@ -2010,11 +2008,10 @@ void extra_coms_zone(struct char_data* ch, char* argument)
 
     //  extern struct room_data world;
 
-    int comm_key, room_number; //,i;
+    int comm_key; //,i;
 
     char str[255], str2[255];
 
-    room_number = ch->in_room;
 
     /*  printf("shape center: flags=%d\n",SHAPE_ZONE(ch)->flags);
 

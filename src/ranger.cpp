@@ -757,7 +757,7 @@ ACMD(do_sneak)
  */
 struct char_data* ambush_get_valid_victim(struct char_data* ch, struct waiting_type* target)
 {
-    struct char_data* victim;
+    struct char_data* victim = nullptr;
 
     if (target->targ1.type == TARGET_TEXT)
         victim = get_char_room_vis(ch, target->targ1.ptr.text->text);
@@ -1038,7 +1038,7 @@ ACMD(do_ambush)
 struct char_data* trap_get_valid_victim(struct char_data* ch, struct waiting_type* target)
 {
     char* keyword;
-    struct char_data* victim;
+    struct char_data* victim = nullptr;
 
     if (target->targ1.type == TARGET_NONE)
         victim = target->targ2.ptr.ch;
@@ -1095,12 +1095,12 @@ bool can_do_trap(char_data& character, int subcmd)
 {
     const int max_trap_weapon_bulk = 2;
 
-    if (IS_SHADOW(&character)) {
+    if (utils::is_shadow(character)) {
         send_to_char("Shadows can't trap!\n\r", &character);
         return false;
     }
 
-    if (IS_NPC(&character) && MOB_FLAGGED(&character, MOB_ORC_FRIEND)) {
+    if (utils::is_npc(character) && utils::is_mob_flagged(character, MOB_ORC_FRIEND)) {
         send_to_char("Leave that to your leader.\r\n", &character);
         return false;
     }
@@ -1444,7 +1444,7 @@ bool is_strong_enough_to_tame(char_data* tamer, char_data* animal, bool include_
 
     int levels_over_required = (GET_PROF_LEVEL(PROF_RANGER, tamer) / 3 + tame_skill / 30 - GET_LEVEL(animal));
     if (include_current_followers) {
-        levels_over_required - get_followers_level(tamer);
+        levels_over_required -= get_followers_level(tamer);
     }
 
     if (affected_by_spell(animal, SKILL_CALM))
@@ -1776,7 +1776,7 @@ ACMD(do_stalk)
 ACMD(do_cover)
 {
     room_data* tmproom;
-    int tmp, dir, dt, tr_time;
+    int tmp, dt, tr_time;
 
     if (IS_SHADOW(ch)) {
         send_to_char("You are too insubstantial to do that.\r\n", ch);
@@ -1812,7 +1812,6 @@ ACMD(do_cover)
         if (tmproom->room_track[tmp].char_number != 0 && GET_KNOWLEDGE(ch, SKILL_STALK) * 2 > number(1, 100)) {
             dt = number(1, 20);
             tr_time = tmproom->room_track[tmp].condition;
-            dir = tmproom->room_track[tmp].data & 7;
             if (dt + tr_time >= 24) {
                 /* Tracks being removed in this if*/
                 tmproom->room_track[tmp].char_number = 0;
@@ -3326,8 +3325,6 @@ int harad_skill_calculate_save(char_data* ch, char_data* victim, int skill_check
 
 void on_dust_miss(char_data* ch, char_data* victim, int mana_cost)
 {
-    byte sex = ch->player.sex;
-
     GET_MANA(ch) -= (mana_cost >> 1);
     damage(ch, victim, 0, SKILL_BLINDING, 0);
 }
@@ -3397,7 +3394,7 @@ ACMD(do_blinding)
         act("$n renounces $s sanctuary!", FALSE, ch, 0, 0, TO_ROOM);
     }
 
-    if (affected_by_spell(victim, AFF_BLIND)) {
+    if (IS_AFFECTED(victim, AFF_BLIND)) {
         act("$N is already blind.\r\n", FALSE, ch, 0, victim, TO_CHAR);
         return;
     }
@@ -3669,9 +3666,8 @@ void on_windblast_hit(char_data* ch)
 
 void on_windblast_success(char_data* ch, int mana_cost, int move_cost)
 {
-    int dam_value, tmp, power_level;
+    int dam_value, power_level;
     struct char_data *tmpch, *tmpch_next;
-    room_data* cur_room;
 
     GET_MANA(ch) -= mana_cost;
     GET_MOVE(ch) -= move_cost;
@@ -3680,8 +3676,6 @@ void on_windblast_success(char_data* ch, int mana_cost, int move_cost)
         return;
 
     power_level = utils::get_prof_level(PROF_RANGER, *ch) / 2;
-
-    cur_room = &world[ch->in_room];
 
     dam_value = number(1, 30) + power_level;
 
@@ -3700,7 +3694,7 @@ void on_windblast_success(char_data* ch, int mana_cost, int move_cost)
 
             int saved = harad_skill_calculate_save(ch, tmpch, 0);
             if (saved < 0) {
-                dam_value >> 1;
+                dam_value >>= 1;
                 damage(ch, tmpch, dam_value, SKILL_WINDBLAST, 0);
             } else {
                 on_windblast_hit(tmpch);

@@ -2097,7 +2097,7 @@ void sanitize_persisted_combat_state(struct char_special2_data* specials2)
 
 int load_player_from_text(char* name, const char* player_text, struct char_file_u* char_element)
 {
-    int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, end, return_value;
+    int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, end;
     char line[100];
     char *tmpchar, *value, *ctmp, *position;
     const char* input_end = nullptr;
@@ -2111,7 +2111,6 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
         if (!str_cmp((player_table + tmp)->name, name))
             break;
 
-    return_value = 0;
 
     if (tmp > top_of_p_table) {
         log(std::format("load_player: player {} not in player_table", name).c_str());
@@ -2262,7 +2261,6 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
         case 'I':
             if (!strcmp(line, "idnum")) {
                 char_element->specials2.idnum = atoi(value);
-                return_value = atoi(value);
                 break;
             }
             break;
@@ -2754,9 +2752,8 @@ int old_create_entry(char* name)
         i = 0;
     } else {
         for (i = 0; i <= top_of_p_table; i++)
-            if (player_table + i)
-                if (IS_SET((player_table + i)->flags, PLR_DELETED))
-                    break;
+            if (IS_SET((player_table + i)->flags, PLR_DELETED))
+                break;
 
         if (i > top_of_p_table) {
             log("Could not find a deleted player, reallocating player_table."); // Fingolfin
@@ -4193,7 +4190,7 @@ void record_crime(char_data* criminal, char_data* victim, int crime,
 
 void read_crime_file()
 {
-    int tmp, count;
+    int tmp;
 
     num_of_crimes = 0;
     const std::string json_path = crime_json::crime_json_path(CRIME_FILE);
@@ -4248,7 +4245,7 @@ void read_crime_file()
             crime_record[tmp] = loaded_records[tmp];
     }
 
-    for (tmp = 0, count = 0; tmp < num_of_crimes; tmp++) {
+    for (tmp = 0; tmp < num_of_crimes; tmp++) {
         crime_record[tmp].criminal = find_player_in_table("", crime_record[tmp].criminal);
         crime_record[tmp].victim = find_player_in_table("", crime_record[tmp].victim);
         crime_record[tmp].witness = find_player_in_table("", crime_record[tmp].witness);

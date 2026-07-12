@@ -495,7 +495,19 @@ bool can_cast_spell(char_data& character, int spell_index, const skill_data& spe
         return false;
     }
 
+    // USE_MANA expands GET_PROF_LEVEL's IS_NPC(ch) null-guard against &character, which GCC
+    // proves can never be null (address-of-reference) -- provably safe tautology, not a bug
+    // (Phase 5 T5 -Wnonnull-compare; the sibling call sites in this function were fixed by
+    // switching to the reference-taking utils:: helpers, but USE_MANA is a tree-wide macro
+    // used elsewhere with genuinely-nullable char_data* and isn't safe to change here).
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnonnull-compare"
+#endif
     if (spell.type == PROF_MAGE && (character.tmpabilities.mana < USE_MANA(&character, spell_index))) {
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
         send_to_char("You can't summon enough energy to cast the spell.\n\r", &character);
         return false;
     }
@@ -514,7 +526,7 @@ bool can_cast_spell(char_data& character, int spell_index, const skill_data& spe
         return false;
     }
 
-    if (IS_SHADOW(&character) && spell.min_usesmana != 55) {
+    if (utils::is_shadow(character) && spell.min_usesmana != 55) {
         send_to_char("You cannot cast this whilst dwelling in the shadow world.\n\r", &character);
         return false;
     }
@@ -522,23 +534,6 @@ bool can_cast_spell(char_data& character, int spell_index, const skill_data& spe
     return true;
 }
 
-//============================================================================
-// Returns the effective casting level for this caster and spell.
-//============================================================================
-double get_casting_level(const char_data* caster, int casting_level, int casting_stat,
-    int spec_number)
-{
-    double final_level(casting_level);
-
-    /* a bonus for anyone who is specialized in this spell's spec */
-    if (utils::get_specialization(*caster) == spec_number) {
-        final_level += (40.0 - final_level) * utils::get_level_legend_cap(*caster) / 150.0;
-    }
-
-    /* we give one level bonus for each 5 int */
-    final_level += casting_stat / 5.0;
-    return final_level;
-}
 } // namespace
 
 /* Assumes that *argument does start with first letter of chopped string */

@@ -345,7 +345,7 @@ struct target_data {
                    digit data*/
     int choice; /* what kind of target is this   */
     void cleanup(); /* cleans the target data, releases the text if nec. */
-    void operator=(target_data t2);
+    void operator=(const target_data& t2);
     int operator==(target_data t2);
 
     target_data()
@@ -354,6 +354,20 @@ struct target_data {
         ptr.other = 0;
         ch_num = 0;
         choice = 0;
+    }
+
+    // Explicit rule-of-three copy constructor (Phase 5 T5, -Wdeprecated-copy): operator= does
+    // pool-managed deep-copy for TARGET_TEXT (see interpre.cpp), so the implicit memberwise
+    // copy constructor would alias two target_data instances' ptr.text on the same pooled
+    // txt_block -- a double-release/use-after-free once both are cleaned up. Delegate to the
+    // same operator= logic instead of defaulting.
+    target_data(const target_data& t2)
+    {
+        type = TARGET_NONE;
+        ptr.other = 0;
+        ch_num = 0;
+        choice = 0;
+        *this = t2;
     }
 };
 

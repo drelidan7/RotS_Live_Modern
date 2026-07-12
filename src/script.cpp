@@ -901,8 +901,23 @@ int run_script(struct info_script* info, struct script_data* position)
                 // parens explicitly is portability-only: it keeps the exact original
                 // (always-true) evaluation on every platform. Do not "fix" this into a real
                 // range check here — that would change 32-bit behavior; see task-5 report.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wtautological-constant-out-of-range-compare"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wbool-compare"
+#endif
                 if (tmprm && (tmpint != NOWHERE) && ((-1 < curr->param[1]) < 6))
                     tmprm->dir_option[curr->param[1]]->to_room = tmpint;
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             }
             curr = curr->next;
             break;
@@ -986,9 +1001,24 @@ int run_script(struct info_script* info, struct script_data* position)
                 // NOTE: same pre-existing chained-comparison bug as SCRIPT_CHANGE_EXIT_TO
                 // above (always true; see the comment there) — parens added for AppleClang
                 // portability only, behavior is unchanged on every platform.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wtautological-constant-out-of-range-compare"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wbool-compare"
+#endif
                 if (tmpch && ((-1 < curr->param[1]) < MAX_WEAR))
                     if (tmpch->equipment[curr->param[1]])
                         perform_remove(tmpch, curr->param[1]);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             }
             curr = curr->next;
             break;
@@ -1009,10 +1039,22 @@ int run_script(struct info_script* info, struct script_data* position)
                 // else too); same shape repeats at script.cpp's other
                 // SCRIPT_DO_YELL/SCRIPT_SEND_TO_CHAR/SCRIPT_SEND_TO_ROOM/
                 // SCRIPT_SEND_TO_ROOM_X cases below.
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(output, curr->text, txt1);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
                 tmpch = get_char_param(curr->param[0], info);
                 if (tmpch)
                     do_say(tmpch, output, 0, 0, 0);
@@ -1066,10 +1108,22 @@ int run_script(struct info_script* info, struct script_data* position)
                 // Justified skip -- see the comment at SCRIPT_DO_SAY above:
                 // curr->text is a dynamic runtime printf-style format
                 // string, not convertible to std::format.
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(output, curr->text, txt1);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
                 tmpch = get_char_param(curr->param[0], info);
                 if (tmpch)
                     do_gen_com(tmpch, output, 0, 0, SCMD_YELL);
@@ -1473,10 +1527,22 @@ int run_script(struct info_script* info, struct script_data* position)
                 // Justified skip -- see the comment at SCRIPT_DO_SAY above:
                 // curr->text is a dynamic runtime printf-style format
                 // string, not convertible to std::format.
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(output, curr->text, txt1);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
                 if (tmpch) {
                     send_to_char(output, tmpch);
                     send_to_char("\n", tmpch);
@@ -1492,10 +1558,22 @@ int run_script(struct info_script* info, struct script_data* position)
                 // Justified skip -- see the comment at SCRIPT_DO_SAY above:
                 // curr->text is a dynamic runtime printf-style format
                 // string, not convertible to std::format.
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(output, curr->text, txt1);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
                 if (tmprm) {
                     send_to_room(output, real_room(tmprm->number));
                     send_to_room("\n", real_room(tmprm->number));
@@ -1512,10 +1590,22 @@ int run_script(struct info_script* info, struct script_data* position)
                 // Justified skip -- see the comment at SCRIPT_DO_SAY above:
                 // curr->text is a dynamic runtime printf-style format
                 // string, not convertible to std::format.
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(output, curr->text, txt1);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
                 if (tmprm && tmpch) {
                     send_to_room_except(output, real_room(tmprm->number), tmpch);
                     send_to_room_except("\n", real_room(tmprm->number), tmpch);
@@ -1658,12 +1748,12 @@ int trigger_room_enter(room_data*, char_data*)
 
 void continue_char_script(char_data* ch)
 {
-    int return_value;
-
     initialise_script_info_char(ch, -1); // Invalidates all pointers, but its safter this way
     ch->specials.script_info->ch[0] = ch;
     ch->delay.cmd = 0;
-    return_value = run_script(ch->specials.script_info, ch->specials.script_info->next_command);
+    // Return value intentionally unused; run_script's side effects (executing the queued
+    // script command) are what this call is for.
+    run_script(ch->specials.script_info, ch->specials.script_info->next_command);
 }
 
 //  A character can prevent another entering the room by returning FALSE

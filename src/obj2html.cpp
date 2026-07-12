@@ -471,7 +471,7 @@ void obj2html_newtable(struct char_data* ch, FILE* f,
             "          <TH> DB </TH>\n"
             "          <TH> PB </TH>\n"
             "          <TH> Skill Enc. </TH>\n"
-            "          <TH> Block % </TH>\n");
+            "          <TH> Block %% </TH>\n");
         break;
     case ITEM_LEVER:
         fprintf(f,
@@ -539,7 +539,7 @@ int obj2html(FILE* f, struct obj_data* o)
         fprintf(f, "          <TD> %d </TD>\n", o->obj_flags.value[1]);
         fprintf(f, "          <TD> %d </TD>\n", o->obj_flags.value[2]);
         fprintf(f, "          <TD> %s </TD>\n",
-            attack_hit_text[weapon_hit_type(o->obj_flags.value[3]) - TYPE_HIT]);
+            attack_hit_text[weapon_hit_type(o->obj_flags.value[3]) - TYPE_HIT].singular);
         fprintf(f, "          <TD> %.1f </TD>\n", get_weapon_damage(o) / 10.0);
         break;
     case ITEM_ARMOR:
@@ -629,7 +629,6 @@ int check_keywords(struct obj2html_type* list, char* arg)
 {
     int i, j;
     int types_selected;
-    char* c;
 
     types_selected = 0;
 
@@ -873,5 +872,8 @@ FILE* obj2html_finish(struct char_data* ch, FILE* f)
     entries = 0;
     total_entries = 0;
 
-    return f;
+    // f is closed above; the caller (do_obj2html) never dereferences its
+    // return value, but returning the stale/closed pointer is a dangling-
+    // pointer footgun for any future caller (GCC -Wuse-after-free).
+    return nullptr;
 }

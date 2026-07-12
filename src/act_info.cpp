@@ -290,8 +290,8 @@ private:
 /* Procedures related to 'look' */
 void argument_split_2(char* argument, char* first_arg, char* second_arg)
 {
-    int look_at, found, begin;
-    found = begin = 0;
+    int look_at, begin;
+    begin = 0;
 
     /* Find first non blank */
     for (; *(argument + begin) == ' '; begin++)
@@ -901,7 +901,6 @@ extern const char* const spec_pro_message[];
  */
 void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char* pos_line)
 {
-    int found;
     struct obj_data* tmp_obj;
 
     /* 'ch' looked at a room, and 'i' is in that room */
@@ -926,23 +925,47 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
                 // above get_char_position_line (act_info.cpp:549-587): this whole
                 // function web relies on pointer aliasing into the global `buf',
                 // and the only safe conversion unit is all of it at once.
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(buf, "%s%s%s", CC_USE(ch, COLOR_CHAR), PERS(i, ch, TRUE, FALSE),
                     CC_USE(ch, COLOR_CHAR));
                 if (!IS_NPC(i) && !other_side(ch, i))
                     sprintf(buf + strlen(buf), " %s", GET_TITLE(i));
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
                 get_char_flag_line(ch, i, buf + strlen(buf));
                 get_char_position_line(ch, i, buf + strlen(buf));
             } else {
                 // Justified skip -- same aliasing web, see the block comment
                 // above get_char_position_line (act_info.cpp:549-587).
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(buf, "%s", PERS(i, ch, TRUE, FALSE));
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
                 get_char_flag_line(ch, i, buf + strlen(buf));
                 strcat(buf, pos_line);
             }
@@ -977,10 +1000,22 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
                 // result is clobbered by `*buf = 0;` a few lines below --
                 // that's pre-existing behavior, not something this task
                 // changes.)
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(buf, "show_char: No description on %s.\n", GET_NAME(i));
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             act("You see nothing special about $m.", FALSE, i, 0, ch, TO_VICT);
         }
 
@@ -993,12 +1028,10 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
 
         /* Immortals and thieves get a chance to look at inventories */
         if ((GET_PROF(ch) == PROF_THIEF || GET_LEVEL(ch) >= LEVEL_IMMORT) && ch != i) {
-            found = FALSE;
             send_to_char("\n\rYou attempt to peek at the inventory:\n\r", ch);
             for (tmp_obj = i->carrying; tmp_obj; tmp_obj = tmp_obj->next_content) {
                 if (CAN_SEE_OBJ(ch, tmp_obj) && (number(0, 20) < GET_LEVEL(ch))) {
                     show_obj_to_char(tmp_obj, ch, 1);
-                    found = TRUE;
                 }
             }
         }
@@ -1074,14 +1107,31 @@ void show_room_affection(char* str, struct affected_type* aff, int mode)
             // (act_info.cpp:549-587), which names show_room_affection
             // explicitly: `str' is both destination and source here
             // (self-referencing "%s...", str, ... overlap).
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+// GCC also flags this call's self-referencing `str` (dest==source) via
+// -Wrestrict; pre-existing, deliberately-reviewed pattern (see the
+// "Justified skip" comment above) -- not rewritten this task, see the
+// Phase 5 T5 report's "Concerns" section.
+#pragma GCC diagnostic ignored "-Wrestrict"
+#endif
             sprintf(str, "%s Spell %s(%d) level %d, %dhrs, sets %s.\r\n", str,
                 ((aff->location >= 0) && (aff->location < MAX_SKILLS))
                     ? skills[aff->location].name
                     : "none",
                 aff->location, aff->modifier, aff->duration, buf2);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             break;
 
         case ROOMAFF_EXIT:
@@ -1091,10 +1141,22 @@ void show_room_affection(char* str, struct affected_type* aff, int mode)
         default:
             // Justified skip -- same aliasing web, see the block comment
             // above get_char_position_line (act_info.cpp:549-587).
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
             sprintf(str, "Unknown room affect (%d).\n\r", aff->type);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             break;
         }
     }
@@ -1110,11 +1172,28 @@ void show_room_weather(char* str, struct char_data* ch)
     // get_char_position_line (act_info.cpp:549-587), which names
     // show_room_weather explicitly: `str' is both destination and source
     // here (self-referencing "%s...", str overlap).
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+// GCC also flags this call's self-referencing `str` (dest==source) via
+// -Wrestrict; pre-existing, deliberately-reviewed pattern (see the
+// "Justified skip" comment above) -- not rewritten this task, see the
+// Phase 5 T5 report's "Concerns" section.
+#pragma GCC diagnostic ignored "-Wrestrict"
+#endif
     if (weather_info.snow[world[ch->in_room].sector_type])
         sprintf(str, "%sSnow lies upon the ground.\n\r", str);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 }
 
 /*
@@ -1469,7 +1548,7 @@ ACMD(do_look)
         } else if (PRF_FLAGGED(ch, PRF_ADVANCED_VIEW)) {
             if (IS_SET(world[ch->in_room].room_flags, HIDE_VNUM)) {
                 strcpy(buf2,
-                    std::format("{} (???) [ {} ]", static_cast<const char*>(buf2),
+                    std::format("{} (??\?) [ {} ]", static_cast<const char*>(buf2),
                         sector_types[world[ch->in_room].sector_type])
                         .c_str());
             } else {
@@ -1542,8 +1621,16 @@ ACMD(do_look)
                     // rewriting exit_mark[]'s stored strings from %c to {}
                     // -- same dynamic-format-string class as add_prompt's
                     // prompt_text[] use below (see that comment).
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                     switch (i) {
                     case 0:
                         sprintf(exit_line, exit_mark[exit_choice], 'N');
@@ -1564,7 +1651,11 @@ ACMD(do_look)
                         sprintf(exit_line, exit_mark[exit_choice], 'D');
                         break;
                     };
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
                     strcat(buf2, exit_line);
                 }
@@ -1640,7 +1731,6 @@ ACMD(do_read)
 ACMD(do_examine)
 {
     char name[100], buf[100];
-    int bits;
     struct char_data* tmp_char;
     struct obj_data* tmp_object;
 
@@ -1658,7 +1748,7 @@ ACMD(do_examine)
         return;
     }
 
-    bits = generic_find(name, FIND_OBJ_INV | FIND_OBJ_ROOM | FIND_OBJ_EQUIP, ch, &tmp_char,
+    generic_find(name, FIND_OBJ_INV | FIND_OBJ_ROOM | FIND_OBJ_EQUIP, ch, &tmp_char,
         &tmp_object);
 
     if (tmp_object) {
@@ -2121,7 +2211,6 @@ ACMD(do_time)
     extern int sun_events[12][2];
     extern const char* const weekdays[];
     extern struct time_info_data time_info;
-    int get_season();
 
     std::string out;
     out += std::format("It is about {}:00 {} on ",
@@ -2167,13 +2256,9 @@ ACMD(do_time)
     send_to_char(out.c_str(), ch);
 }
 
-const char* const sky_look[6] = {
-    "cloudless", "cloudy", "rainy", "lit by flashes of lightning", "snowy", "full of driving snow"
-};
-
 ACMD(do_weather)
 {
-    int get_season();
+    extern int get_season();
     void weather_to_char(char_data * ch);
 
     if (ch->in_room == NOWHERE)
@@ -2683,7 +2768,7 @@ ACMD(do_users)
             line = std::format("{:3} {:<9} {:<12} {:<14} {:<3} {:<8} ", d->desc_num, "   -   ",
                 "UNDEFINED", state, idletime, timeptr);
 
-        if (d->host && *d->host)
+        if (*d->host)
             // char[N] member decay: descriptor_data::host is char[50]
             // (structs.h) -- cast before std::format (BUILD.md "Formatting").
             line += std::format("[{}]\n\r", static_cast<const char*>(d->host));
@@ -3255,13 +3340,25 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
         // (would need prompt_text[]/prompt_hit[]/prompt_mana[]/
         // prompt_move[]/prompt_mount[]'s stored strings rewritten from %d to
         // {} too, which is out of this file's/task's scope).
+#if defined(__clang__)
 #pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
         if (ch->specials.prompt_value >= 0)
             sprintf(str, prompt_text[ch->specials.prompt_number], ch->specials.prompt_value);
         else
             sprintf(str, prompt_text[ch->specials.prompt_number], -1);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
         // The trailing "%c", 0 in the old sprintf(prompt, "%s%s%c", prompt,
         // str, 0) embedded a redundant explicit NUL byte right where
         // sprintf's own terminating NUL already goes -- invisible to any

@@ -318,7 +318,7 @@ int append_script(struct char_data* ch, char* arg)
         replace_script(ch, arg);
         return -1;
     }
-    if (2 != sscanf("%s %s", str, fname)) {
+    if (2 != sscanf(arg, "%s %s", str, fname)) {
         if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_FILENAME)) {
             send_to_char("No file defined to write into. Use 'add <filename>\n\r'", ch);
             return -1;
@@ -412,7 +412,6 @@ int replace_script(struct char_data* ch, char* arg)
     char *f_from, *f_old;
     int num, check, i, oldnum;
     char c;
-    char str[255];
 
     if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_FILENAME)) {
         send_to_char("How strange... you have no file defined to write to.\n\r", ch);
@@ -1015,9 +1014,8 @@ void extra_coms_script(struct char_data* ch, char* argument)
 {
 
     char str[255], str2[50];
-    int room_number, comm_key, zonnum;
+    int comm_key, zonnum;
 
-    room_number = ch->in_room;
 
     if (SHAPE_SCRIPT(ch)->procedure == SHAPE_EDIT) {
 

@@ -422,14 +422,13 @@ void shape_center_room(struct char_data* ch, char* arg)
 {
 
     char str[1000];
-    int tmp, choice, tmp1, tmp2, tmp3;
+    int tmp, tmp1, tmp2, tmp3;
     struct room_data* mob;
     struct extra_descr_data* tmpdescr;
     struct affected_type* tmpaf;
 
     // char key;
     // char * tmppt;
-    choice = 0;
     tmp = SHAPE_ROOM(ch)->procedure;
     mob = SHAPE_ROOM(ch)->room;
     //  SHAPE_ROOM(ch)->procedure=SHAPE_EDIT;
@@ -1349,7 +1348,6 @@ int create_room(struct char_data* ch, char* arg)
 int replace_room(struct char_data* ch, char*)
 {
     /* copy f1 to f2, replacing mob #num with new mob */
-    char str[255];
     char *f_from, *f_old;
     char c;
     int i, check, num, oldnum;
@@ -1460,7 +1458,7 @@ int replace_room(struct char_data* ch, char*)
     fclose(f2);
     return num;
 }
-int append_room(struct char_data* ch, char*)
+int append_room(struct char_data* ch, char* arg)
 {
     /* copy f1 to f2, appending mob #next-in-file with new mob */
     char str[255], fname[80];
@@ -1475,7 +1473,7 @@ int append_room(struct char_data* ch, char*)
     return -1;
   }*/
     if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_FILENAME)) {
-        if (2 != sscanf("%s %s", str, fname)) {
+        if (2 != sscanf(arg, "%s %s", str, fname)) {
             if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_FILENAME)) {
                 send_to_char("No file defined to write into. Use 'add <filename>\n\r'",
                     ch);
@@ -1621,10 +1619,9 @@ void extra_coms_room(struct char_data* ch, char* argument)
 
     /*  extern struct room_data *character_list;*/
     //  extern struct room_data world;
-    int comm_key, room_number;
+    int comm_key;
     char str[1000];
 
-    room_number = ch->in_room;
     /*  printf("shape center: flags=%d\n\r",SHAPE_ROOM(ch)->flags);
      */
     if (SHAPE_ROOM(ch)->procedure == SHAPE_EDIT) {

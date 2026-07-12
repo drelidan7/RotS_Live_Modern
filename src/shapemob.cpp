@@ -459,11 +459,10 @@ void shape_center_proto(struct char_data* ch, char* arg)
 
     char str[1000];
     // int i,i1;
-    int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, choice;
+    int tmp, tmp1, tmp2, tmp3, tmp4, tmp5;
     struct char_data* mob;
     char keymode;
     char* tmpptr = 0;
-    choice = 0;
 
     mob = SHAPE_PROTO(ch)->proto;
 
@@ -1205,7 +1204,7 @@ int load_proto(struct char_data* ch, char* arg)
 {
     char format;
     // int i;
-    int tmp, number, room_number;
+    int tmp, number;
     char str[255], fname[80];
     FILE* file;
 
@@ -1257,7 +1256,6 @@ int load_proto(struct char_data* ch, char* arg)
         SHAPE_PROTO(ch)
             ->number
             = number;
-        room_number = ch->in_room;
         CREATE1(SHAPE_PROTO(ch)->proto, char_data);
         /* Same unconstructed-storage hazard as new_mob() above — placement-new
          * value-initializes proto before any member is touched below. See db.cpp
@@ -1484,7 +1482,7 @@ int load_proto(struct char_data* ch, char* arg)
                 = tmp;
         }
 
-        if (fscanf(file, "%ld ", &tmp) != EOF) {
+        if (fscanf(file, "%d ", &tmp) != EOF) {
             SHAPE_PROTO(ch)
                 ->proto->specials2.will_teach
                 = tmp;
@@ -1509,7 +1507,6 @@ int append_proto(struct char_data* ch, char* arg);
 /* copy f1 to f2, replacing mob #num with new mob */
 int replace_proto(struct char_data* ch, char* arg)
 {
-    char str[255];
     char *f_from, *f_old;
     char c;
     int i, check, num, oldnum;
@@ -1649,7 +1646,7 @@ int append_proto(struct char_data* ch, char* arg)
         replace_proto(ch, arg);
         return -1;
     }
-    if (2 != sscanf("%s %s", str, fname)) {
+    if (2 != sscanf(arg, "%s %s", str, fname)) {
         if (!IS_SET(SHAPE_PROTO(ch)->flags, SHAPE_FILENAME)) {
             send_to_char("No file defined to write into. Use 'add <filename>\n\r'",
                 ch);
@@ -1768,7 +1765,6 @@ void implement_proto(struct char_data* ch)
 {
     int number;
     struct char_data* proto;
-    char *t1, *t2, *t3, *t4;
     if (!IS_SET(SHAPE_PROTO(ch)->flags, SHAPE_PROTO_LOADED)) {
         send_to_char("You have no mob to implement.\n\r", ch);
         return;
@@ -1804,16 +1800,12 @@ void implement_proto(struct char_data* ch)
   */
     CREATE(proto->player.name, char,
         strlen(SHAPE_PROTO(ch)->proto->player.name) + 1);
-    t1 = proto->player.name;
     CREATE(proto->player.short_descr, char,
         strlen(SHAPE_PROTO(ch)->proto->player.short_descr) + 1);
-    t2 = proto->player.short_descr;
     CREATE(proto->player.long_descr, char,
         strlen(SHAPE_PROTO(ch)->proto->player.long_descr) + 1);
-    t3 = proto->player.long_descr;
     CREATE(proto->player.description, char,
         strlen(SHAPE_PROTO(ch)->proto->player.description) + 1);
-    t4 = proto->player.description;
 
     strcpy(proto->player.name, SHAPE_PROTO(ch)->proto->player.name);
     strcpy(proto->player.short_descr, SHAPE_PROTO(ch)->proto->player.short_descr);
@@ -1832,10 +1824,9 @@ void implement_proto(struct char_data* ch)
 }
 ACMD(do_shape)
 {
-    sh_int key, stlen, newflag;
+    sh_int key, stlen;
     char str[50], tmp[50], tmp2[50];
-    int room_number, i;
-    room_number = ch->in_room;
+    int i;
 
     key = 0;
     for (stlen = 0; argument[stlen] <= ' '; stlen++)
@@ -1897,10 +1888,8 @@ ACMD(do_shape)
             for (; argument[stlen] > ' '; stlen++)
                 ; /*new*/
             strcpy(str, std::format("new {}\n\r", argument + stlen).c_str());
-            newflag = 1;
         } else {
             strcpy(str, std::format("load {}\n\r", argument + stlen).c_str());
-            newflag = 0;
         }
         switch (key) {
         case SHAPE_PROTOS:
@@ -2145,10 +2134,8 @@ void extra_coms_proto(struct char_data* ch, char* argument)
 {
 
     //  extern struct room_data world;
-    int comm_key, room_number, zonnum;
+    int comm_key, zonnum;
     char str[255], str2[50];
-
-    room_number = ch->in_room;
 
     if (SHAPE_PROTO(ch)->procedure == SHAPE_EDIT) {
 

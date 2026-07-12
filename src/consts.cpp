@@ -2002,7 +2002,7 @@ extern const char* const affected_bits[] = { "SENSE",
     "",
     "CONCENTR",
     "HAZE",
-    "HALLU"
+    "HALLU",
     "\n" };
 
 // const
@@ -2356,8 +2356,7 @@ struct prompt_type prompt_spirit[] = { /* Notice that the value means different
 
 extern const char* const mobile_program_base[] = {
     "",
-    "fp035i`Alas, no one is here.`SP135g`Ah, here you are!`S.vH.vh.=097i`I see you're not "
-    "well,`SP135g`I see you're healthy :)`S`magic mi`?U `Let me rest`S ",
+    "fp035i`Alas, no one is here.`SP135g`Ah, here you are!`S.vH.vh.=097i`I see you're not well,`SP135g`I see you're healthy :)`S`magic mi`?U `Let me rest`S ",
     "`command line 2`S",
     "`command line 3`S",
     "`command line 4`S",

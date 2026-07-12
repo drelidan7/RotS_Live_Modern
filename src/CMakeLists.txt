@@ -185,6 +185,7 @@ if(ROTS_BUILD_TESTS)
         tests/crashsave_schedule_tests.cpp
         tests/damage_tests.cpp
         tests/db_loader_tests.cpp
+        tests/db_save_roundtrip_tests.cpp
         tests/exploits_json_tests.cpp
         tests/fight_proc_tests.cpp
         tests/gtest_main.cpp

@@ -2,6 +2,9 @@
 #include "char_utils.h"
 #include "structs.h"
 
+#include <cstring>
+#include <format>
+
 // m_pInstance/m_bDestroyed are now `inline static` members defined directly
 // in singleton.h (Phase 5 T1) -- no out-of-line explicit specialization
 // needed here anymore.
@@ -29,8 +32,8 @@ int skill_timer::report_skill_status(int player_id, char* buffer)
         auto& data = m_skill_timer[i];
 
         if (data.player_id == player_id && data.skill_id != GLOBAL_SKILL) {
-            sprintf(str, "%-30s %-3d (seconds)\n\r", utils::get_skill_name(data.skill_id), data.counter);
-            sprintf(buffer, "%s%s", buffer, str);
+            strcpy(str, std::format("{:<30} {:<3} (seconds)\n\r", utils::get_skill_name(data.skill_id), data.counter).c_str());
+            strcpy(buffer, std::format("{}{}", buffer, static_cast<const char*>(str)).c_str());
         }
     }
     return 1;

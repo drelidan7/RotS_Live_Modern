@@ -310,7 +310,7 @@ ACMD(do_order)
                 command_interpreter(victim, message);
             }
         } else { /* This is order "followers" */
-            sprintf(buf, "$n issues an order.");
+            strcpy(buf, std::format("$n issues an order.").c_str());
             act(buf, FALSE, ch, 0, victim, TO_ROOM);
 
             org_room = ch->in_room;

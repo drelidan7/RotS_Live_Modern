@@ -9,8 +9,11 @@
  ************************************************************************ */
 
 #include "platdef.h"
+#include <cstdint>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "char_utils.h"
 #include "comm.h"
@@ -82,8 +85,8 @@ void one_mobile_activity(char_data* ch)
         return;
 
     if ((ch->in_room < 0) || (ch->in_room > top_of_world)) {
-        sprintf(buf, "mobile_act called for %s in %d.",
-            GET_NAME(ch), ch->in_room);
+        strcpy(buf, std::format("mobile_act called for {} in {}.",
+            GET_NAME(ch), ch->in_room).c_str());
         mudlog(buf, NRM, LEVEL_IMPL, FALSE);
         return;
     }
@@ -114,7 +117,7 @@ void one_mobile_activity(char_data* ch)
 
         /* Examine call for special procedure */
         if (IS_SET(ch->specials2.act, MOB_SPEC) && !no_specials) {
-            sprintf(buf, "%s - find prog: %d, func:%d", GET_NAME(ch), ch->specials2.act, mob_index[ch->nr].func);
+            strcpy(buf, std::format("{} - find prog: {}, func:{}", GET_NAME(ch), ch->specials2.act, reinterpret_cast<std::intptr_t>(mob_index[ch->nr].func)).c_str());
             mudlog_aliased_mob(buf, ch, "progdebug");
             if (!mob_index[ch->nr].func && ch->specials.store_prog_number) {
                 tmpfunc = (SPECIAL(*))virt_program_number(ch->specials.store_prog_number);

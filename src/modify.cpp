@@ -10,6 +10,7 @@
 
 #include "platdef.h"
 #include <ctype.h>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -360,9 +361,8 @@ void string_add(struct descriptor_data* d, char* str)
             else {
                 *tmpstr2 = 0;
                 tmp = replace_pattern(d, tmpstr, tmpstr2 + 1);
-                sprintf(buf, "Replaced %d occurence%s.\n\rYour text is:\n\r", tmp,
-                    !tmp ? "" : "s");
-                send_to_char(buf, d->character);
+                send_to_char(std::format("Replaced {} occurence{}.\n\rYour text is:\n\r", tmp,
+                    !tmp ? "" : "s").c_str(), d->character);
                 send_to_char(*d->str, d->character);
                 tmpmark = d->cur_str;
             }

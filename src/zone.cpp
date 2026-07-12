@@ -1,5 +1,6 @@
 /* zone.cc */
 
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h> /* memmove */
@@ -70,7 +71,7 @@ void load_zones(FILE* fl)
 
     memset(&zone_table[zone_load_cursor], 0, sizeof(struct zone_data));
     fscanf(fl, " #%d\n", &zone_table[zone_load_cursor].number);
-    sprintf(buf2, "beginning of zone #%d", zone_table[zone_load_cursor].number);
+    strcpy(buf2, std::format("beginning of zone #{}", zone_table[zone_load_cursor].number).c_str());
 
     zone_table[zone_load_cursor].name = fread_string(fl, buf2);
     zone_table[zone_load_cursor].description = fread_string(fl, buf2);

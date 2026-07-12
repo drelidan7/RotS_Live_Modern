@@ -9,6 +9,7 @@
  **************************************************************************/
 
 #include "platdef.h"
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -83,9 +84,9 @@ void say_spell(char_data* caster, int spell_index)
     // Reset the buffer.
     strcpy(buf, "");
     if (GET_RACE(caster) != RACE_HARADRIM) {
-        sprintf(buf, "$n utters a strange command, '%s'", spell_name);
+        strcpy(buf, std::format("$n utters a strange command, '{}'", spell_name).c_str());
     } else {
-        sprintf(buf, "$n utters a foreign command, '%s'", spell_name);
+        strcpy(buf, std::format("$n utters a foreign command, '{}'", spell_name).c_str());
     }
 
     send_magic_room_message(caster, buf);

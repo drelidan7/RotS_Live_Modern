@@ -95,6 +95,14 @@ proxy in front of the game.
 - Build artifacts (`bin/ageland`, `*.o`) land on the host via the bind mount, but the
   binary is a Linux i386 ELF — it only runs inside the container.
 - "deprecated function" warnings during `make all` are expected and harmless.
+- **`docker compose run` can hang at "Image ... Pulling" even when the image already
+  exists locally** (`docker images` shows it) — Compose still probes the registry for a
+  newer version before falling back to the local image, and that probe can hang
+  indefinitely on this host. This is a distinct hang from the documented qemu-under-load
+  hang below; the tell is the log stopping right after the `Pulling` line, before any
+  build/qemu output. Fix: kill the stuck process/container and rerun with
+  `docker compose run --rm --pull never <service> ...` to force the local image and skip
+  the registry check entirely.
 - The Rust proxy (`proxy/`) is not needed for telnet play; it builds natively on macOS
   with `cargo build -p proxy` if you later want browser-client access.
 

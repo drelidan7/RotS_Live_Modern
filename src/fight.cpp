@@ -35,6 +35,8 @@
 
 #include <chrono>
 #include <ctime>
+#include <format>
+#include <string>
 
 #define IS_PHYSICAL(_at) \
     ((_at) >= TYPE_HIT && (_at) <= TYPE_CRUSH ? TRUE : FALSE)
@@ -128,8 +130,7 @@ void load_messages(void)
     char chk[100];
 
     if (!(f1 = fopen(MESS_FILE, "r"))) {
-        sprintf(buf2, "Error reading combat message file %s", MESS_FILE);
-        perror(buf2);
+        perror(std::format("Error reading combat message file {}", MESS_FILE).c_str());
         exit(0);
     }
 
@@ -156,18 +157,18 @@ void load_messages(void)
         messages->next = fight_messages[i].msg;
         fight_messages[i].msg = messages;
 
-        sprintf(buf2, "combat message #%d in file '%s'", i, MESS_FILE);
+        strcpy(buf2, std::format("combat message #{} in file '{}'", i, MESS_FILE).c_str());
 
         /* Messages on kill */
         /* Read and color as hit */
         messages->die_msg.attacker_msg = fread_string(f1, buf2);
-        sprintf(buf, "$CH%s", messages->die_msg.attacker_msg);
+        strcpy(buf, std::format("$CH{}", nz(messages->die_msg.attacker_msg)).c_str());
         free(messages->die_msg.attacker_msg);
         messages->die_msg.attacker_msg = strdup(buf);
 
         /* Read and color as damage */
         messages->die_msg.victim_msg = fread_string(f1, buf2);
-        sprintf(buf, "$CD%s", messages->die_msg.victim_msg);
+        strcpy(buf, std::format("$CD{}", nz(messages->die_msg.victim_msg)).c_str());
         free(messages->die_msg.victim_msg);
         messages->die_msg.victim_msg = strdup(buf);
 
@@ -181,13 +182,13 @@ void load_messages(void)
         /* Messages on hit */
         /* Attacker gets hit color */
         messages->hit_msg.attacker_msg = fread_string(f1, buf2);
-        sprintf(buf, "$CH%s", messages->hit_msg.attacker_msg);
+        strcpy(buf, std::format("$CH{}", nz(messages->hit_msg.attacker_msg)).c_str());
         free(messages->hit_msg.attacker_msg);
         messages->hit_msg.attacker_msg = strdup(buf);
 
         /* Victim gets damage color */
         messages->hit_msg.victim_msg = fread_string(f1, buf2);
-        sprintf(buf, "$CD%s", messages->hit_msg.victim_msg);
+        strcpy(buf, std::format("$CD{}", nz(messages->hit_msg.victim_msg)).c_str());
         free(messages->hit_msg.victim_msg);
         messages->hit_msg.victim_msg = strdup(buf);
 
@@ -198,7 +199,7 @@ void load_messages(void)
 
         /* Victim (which is attacker) gets damage message */
         messages->self_msg.victim_msg = fread_string(f1, buf2);
-        sprintf(buf, "$CD%s", messages->self_msg.victim_msg);
+        strcpy(buf, std::format("$CD{}", nz(messages->self_msg.victim_msg)).c_str());
         free(messages->self_msg.victim_msg);
         messages->self_msg.victim_msg = strdup(buf);
 
@@ -859,8 +860,7 @@ void death_cry(struct char_data* ch)
     if (ch->player.death_cry && strcmp(ch->player.death_cry, "(null)")) {
         strcpy(buf, ch->player.death_cry);
     } else {
-        sprintf(buf, "Your blood freezes as you hear %s's death cry.",
-            (IS_NPC(ch)) ? "$n" : GET_NAME(ch));
+        strcpy(buf, std::format("Your blood freezes as you hear {}'s death cry.", (IS_NPC(ch)) ? "$n" : GET_NAME(ch)).c_str());
     }
 
     act(buf, FALSE, ch, 0, 0, TO_ROOM);
@@ -869,8 +869,7 @@ void death_cry(struct char_data* ch)
     if (ch->player.death_cry2 && strcmp(ch->player.death_cry2, "(null)")) {
         strcpy(buf, ch->player.death_cry2);
     } else {
-        sprintf(buf, "Your blood freezes as you hear %s's death cry.",
-            (IS_NPC(ch)) ? "someone" : GET_NAME(ch));
+        strcpy(buf, std::format("Your blood freezes as you hear {}'s death cry.", (IS_NPC(ch)) ? "someone" : GET_NAME(ch)).c_str());
     }
     for (door = 0; door < NUM_OF_DIRS; door++) {
         if (CAN_GO(ch, door)) {

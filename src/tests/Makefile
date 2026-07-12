@@ -13,7 +13,17 @@ CXX = g++
 # -funsigned-char: parity with src/Makefile's GAMEC flags (the live game pins
 # char as unsigned on every build); without it, product .cpp files compiled
 # into this test binary get the platform-default (signed) char instead.
-CXXFLAGS = -std=c++20 -Wall -Wextra -D TESTING -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -funsigned-char
+# -MMD -MP: emit compiler-generated header-dependency files (foo.d next to each
+# foo.o, non-system headers only, with phony targets so deleted headers don't
+# wedge make), consumed by the `-include $(DEPS)` at the bottom. This replaces
+# the hand-maintained header-dependency lines as the authority on when a TU
+# rebuilds: Phase 4 Wave 4 exit found a missing hand line (db_loader_tests.o
+# lacked its test_world.h dependency) had left a stale object in the link,
+# which mixed an old ScopedTestWorld class layout with new inline ctor/dtor
+# code and crashed the monolithic runner with a wild free() — see the wave 4
+# plan's exit section. The hand-written prerequisites below are retained but
+# are now redundant (auto-deps supersede them); new TUs do NOT need one.
+CXXFLAGS = -std=c++20 -Wall -Wextra -D TESTING -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -funsigned-char -MMD -MP
 # -idirafter .. lets the account_management_*_header_compile.cpp probes (and
 # every other tests/*.cpp) use bare #include "account_management_assets.h" /
 # "structs.h" (etc.) to reach the product headers one directory up; mirrors
@@ -273,19 +283,25 @@ safe_template.o : ../safe_template.cpp ../safe_template.h ../utils.h
 	$(CXX) -c $(CXXFLAGS) ../safe_template.cpp
 
 
-SRCS = account_management_tests.cpp account_cache_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_format_tests.cpp act_info_format_tests.cpp act_wiz_format_tests.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp clock_tests.cpp color_tests.cpp convert_exploits_tests.cpp convert_plrobjs_tests.cpp cpp20_format_smoke_tests.cpp crashsave_schedule_tests.cpp damage_tests.cpp db_loader_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_perf_tests.cpp json_utils_tests.cpp llp64_probe_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp player_finalize_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_asprintf_tests.cpp rots_crypt_tests.cpp rots_net_tests.cpp rots_rng_tests.cpp safe_template_tests.cpp save_benchmark_tests.cpp shape_format_tests.cpp shapemob_tests.cpp spec_pro_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp utility_format_tests.cpp weapon_master_handler_tests.cpp zone_tests.cpp gtest_main.cpp
+SRCS = account_management_tests.cpp account_cache_tests.cpp account_management_assets_header_compile.cpp account_management_identity_header_compile.cpp account_management_migration_header_compile.cpp account_management_presentation_header_compile.cpp account_management_storage_header_compile.cpp account_management_types_header_compile.cpp act_format_tests.cpp act_info_format_tests.cpp act_wiz_format_tests.cpp act_wiz_tests.cpp battle_mage_handler_tests.cpp CharPlayerDataBuilder.cpp boards_json_tests.cpp characterization_combat_tests.cpp characterization_json_tests.cpp character_json_tests.cpp char_utils_tests.cpp clock_tests.cpp color_tests.cpp comm_act_tests.cpp convert_exploits_tests.cpp convert_plrobjs_tests.cpp cpp20_format_smoke_tests.cpp crashsave_schedule_tests.cpp damage_tests.cpp db_loader_tests.cpp db_save_roundtrip_tests.cpp exploits_json_tests.cpp fight_proc_tests.cpp interpre_account_menu_tests.cpp json_perf_tests.cpp json_utils_tests.cpp llp64_probe_tests.cpp mage_tests.cpp mail_json_tests.cpp ObjFlagDataBuilder.cpp objects_json_layout_tests.cpp objects_json_tests.cpp objsave_json_tests.cpp olog_hai_tests.cpp obj_flag_data_tests.cpp object_utils_tests.cpp player_finalize_tests.cpp pod_persistence_json_tests.cpp protocol_tests.cpp rots_asprintf_tests.cpp rots_crypt_tests.cpp rots_net_tests.cpp rots_rng_tests.cpp safe_template_tests.cpp save_benchmark_tests.cpp shape_format_tests.cpp shapemob_tests.cpp spec_pro_tests.cpp spell_pa_tests.cpp startup_options_tests.cpp test_random_utils.cpp test_random_utils_tests.cpp utility_format_tests.cpp weapon_master_handler_tests.cpp zone_tests.cpp gtest_main.cpp
 
 OBJS = $(SRCS:.cpp=.o)
 EXECUTABLE = ../../bin/tests
 
-# Test TUs build via the generic .cpp.o rule, which knows nothing about
-# headers; without this line, editing the shared fixture header leaves stale
-# objects behind (make considers the .o up to date) and the two suites can
-# silently run different fixture code.
+# HISTORICAL, now redundant: these hand-written dependency lines predate the
+# -MMD -MP auto-dependency generation (see CXXFLAGS comment at the top) and
+# are superseded by the compiler-emitted .d files included at the bottom of
+# this Makefile. They were also incomplete — db_loader_tests.o's missing
+# test_world.h line caused the Phase 4 Wave 4 stale-object monolithic-runner
+# crash — which is exactly why the authority moved to auto-deps. Kept only so
+# a checkout without .d files (fresh clone, post-clean) still has *some*
+# header coverage on the very first incremental edit; do NOT extend this list
+# for new TUs.
 characterization_combat_tests.o damage_tests.o : damage_test_context.h
 utility_format_tests.o : test_world.h ../utils.h
 act_info_format_tests.o : test_world.h test_platform_compat.h ObjFlagDataBuilder.h ../utils.h ../db.h
 act_wiz_format_tests.o : test_world.h test_platform_compat.h ../utils.h ../zone.h ../db.h
+comm_act_tests.o : test_world.h test_platform_compat.h ../comm.h ../color.h ../utils.h ../db.h
 characterization_json_tests.o : ../character_json.h
 objects_json_layout_tests.o convert_plrobjs_tests.o : ../objects_json.h legacy_rent_fixture.h
 objsave_json_tests.o : ../objects_json.h
@@ -299,6 +315,7 @@ crashsave_schedule_tests.o : ../crashsave_schedule.h
 clock_tests.o : ../clock.h
 json_perf_tests.o : ../json_utils.h ../character_json.h
 player_finalize_tests.o : ../player_file_finalize.h
+db_save_roundtrip_tests.o : test_world.h test_platform_compat.h ../db.h ../structs.h ../utils.h
 save_benchmark_tests.o : ../save_benchmark.h ../account_cache.h ../account_management.h ../character_json.h
 zone_tests.o : ../zone.h ../db.h
 
@@ -311,7 +328,13 @@ $(EXECUTABLE): $(OBJFILES) $(OBJS)
 	$(CXX) $(TEST_CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f *.o $(EXECUTABLE)
+	rm -f *.o *.d $(EXECUTABLE)
+
+# Compiler-generated header dependencies (from -MMD -MP in CXXFLAGS). One .d
+# per object, product and test TUs alike; `-include` (leading dash) silently
+# skips files that don't exist yet (fresh clone / first build after clean).
+DEPS = $(OBJFILES:.o=.d) $(OBJS:.o=.d)
+-include $(DEPS)
 
 ageland: ../bin/ageland
 

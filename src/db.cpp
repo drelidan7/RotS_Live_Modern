@@ -53,6 +53,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <format>
 #include <iostream>
 #include <new>
 #include <sstream>
@@ -219,7 +220,17 @@ extern universal_list* affected_list_pool;
 
 #define SAVEBUFLEN 3400
 
-unsigned char pwdcrypt[MAX_PWD_LENGTH];
+// +1 (and the explicit terminator below): encrypt_line() fills all MAX_PWD_LENGTH
+// bytes with encrypted data, leaving no room for a NUL -- the write_player_text()
+// call below then reads this buffer with fprintf's "%s", which scans past the
+// 10-byte allocation for a terminator that was never there. In a non-ASan build
+// this reads whatever adjacent global happens to hold a zero byte (in practice,
+// silently landing on a null combat_list/combat_next_dude pointer's low byte);
+// under ASan it's a global-buffer-overflow read (caught by the Wave 4 D2
+// characterization suite's mandatory ASan pass -- see db_save_roundtrip_tests.cpp).
+// Pre-existing bug, unrelated to and untouched by the sprintf/strcpy->std::format
+// conversion in the surrounding functions.
+unsigned char pwdcrypt[MAX_PWD_LENGTH + 1];
 
 /*************************************************************************
  *  routines for booting the system                                       *
@@ -361,9 +372,9 @@ void boot_db(void)
             build_help_index(help_content[tmp].file,
                 &(help_content[tmp].top_of_helpt),
                 &(help_content[tmp].index));
-            sprintf(buf, "Chapter %s, %d entries.", help_content[tmp].keyword,
-                help_content[tmp].top_of_helpt);
-            log(buf);
+            log(std::format("Chapter {}, {} entries.", help_content[tmp].keyword,
+                help_content[tmp].top_of_helpt)
+                    .c_str());
         }
     }
     log("Loading script table.");
@@ -537,9 +548,9 @@ int find_player_table_index_by_name(const char* name)
 
 [[noreturn]] void fail_duplicate_player_index_entry(const char* name, const char* source_a, const char* source_b)
 {
-    sprintf(buf, "Duplicate character '%s' found in both %s and %s while building player_table.",
-        name ? name : "(null)", source_a ? source_a : "unknown source", source_b ? source_b : "unknown source");
-    log(buf);
+    log(std::format("Duplicate character '{}' found in both {} and {} while building player_table.",
+        name ? name : "(null)", source_a ? source_a : "unknown source", source_b ? source_b : "unknown source")
+            .c_str());
     exit(1);
 }
 
@@ -635,9 +646,9 @@ void populate_player_index_entry_from_store(const char_file_u& stored_character,
     char_file_u indexed_character = stored_character;
     std::string error_message;
     if (!update_player_index_entry_from_store(&indexed_character, character_path.c_str(), &error_message)) {
-        sprintf(buf, "Failed to add account-native character %s to the player index: %s",
-            stored_character.name, error_message.c_str());
-        log(buf);
+        log(std::format("Failed to add account-native character {} to the player index: {}",
+            static_cast<const char*>(stored_character.name), error_message)
+                .c_str());
         exit(1);
     }
 
@@ -681,16 +692,16 @@ void build_account_native_player_index(void)
             account::AccountData account_data;
             std::string error_message;
             if (!account::deserialize_account_from_json(account_json_text, &account_data, &error_message)) {
-                sprintf(buf, "Failed to read account-native index source '%s': %s",
-                    account_json_path.c_str(), error_message.c_str());
-                log(buf);
+                log(std::format("Failed to read account-native index source '{}': {}",
+                    account_json_path, error_message)
+                        .c_str());
                 exit(1);
             }
 
             if (account::normalize_email(account_data.normalized_email) != account_entry_name) {
-                sprintf(buf, "Account-native index source '%s' has mismatched normalized email '%s'.",
-                    account_json_path.c_str(), account_data.normalized_email.c_str());
-                log(buf);
+                log(std::format("Account-native index source '{}' has mismatched normalized email '{}'.",
+                    account_json_path, account_data.normalized_email)
+                        .c_str());
                 exit(1);
             }
 
@@ -703,18 +714,18 @@ void build_account_native_player_index(void)
                     bool account_character_exists = false;
                     std::string inspect_error;
                     if (!account::inspect_account_character_file(".", account_data.account_name, character_name, &account_character_exists, &inspect_error)) {
-                        sprintf(buf, "Failed to inspect account-native character file '%s': %s",
-                            character_path.c_str(), inspect_error.c_str());
-                        log(buf);
+                        log(std::format("Failed to inspect account-native character file '{}': {}",
+                            character_path, inspect_error)
+                                .c_str());
                         exit(1);
                     }
 
                     if (!account_character_exists)
                         continue;
 
-                    sprintf(buf, "Failed to read account-native character file '%s': %s",
-                        character_path.c_str(), read_error.c_str());
-                    log(buf);
+                    log(std::format("Failed to read account-native character file '{}': {}",
+                        character_path, read_error)
+                            .c_str());
                     exit(1);
                 }
 
@@ -727,15 +738,13 @@ void build_account_native_player_index(void)
 int load_player_from_account_json_path(char* name, const char* player_path, struct char_file_u* char_element)
 {
     if (player_path == nullptr || *player_path == '\0') {
-        sprintf(buf, "Couldn't find account-native character file path for %s\n", name);
-        log(buf);
+        log(std::format("Couldn't find account-native character file path for {}\n", name).c_str());
         return -1;
     }
 
     std::string json_text;
     if (!read_text_file_contents(player_path, &json_text)) {
-        sprintf(buf, "Couldn't read account-native character file for %s from %s\n", name, player_path);
-        log(buf);
+        log(std::format("Couldn't read account-native character file for {} from {}\n", name, player_path).c_str());
         return -1;
     }
 
@@ -743,16 +752,15 @@ int load_player_from_account_json_path(char* name, const char* player_path, stru
     std::string error_message;
     if (!character_json::deserialize_character_from_json(json_text, &character_data, &error_message)
         || !character_json::apply_character_data_to_store(character_data, char_element, &error_message)) {
-        sprintf(buf, "Couldn't parse account-native character file for %s from %s: %s\n",
-            name, player_path, error_message.c_str());
-        log(buf);
+        log(std::format("Couldn't parse account-native character file for {} from {}: {}\n",
+            name, player_path, error_message)
+                .c_str());
         return -1;
     }
 
     const int player_index = find_player_table_index_by_name(name);
     if (player_index < 0) {
-        sprintf(buf, "load_player: account-native player %s not in player_table", name);
-        log(buf);
+        log(std::format("load_player: account-native player {} not in player_table", name).c_str());
         return -1;
     }
 
@@ -833,8 +841,8 @@ void build_directory(char* TheDir)
         i = read_filename_field(i + 1, tmpch, entry_name_buf);
         player_table[top_of_p_table].flags = atoi(tmpch);
 
-        sprintf(player_table[top_of_p_table].ch_file, "%s%s", TheDir,
-            entry_name_buf);
+        strcpy(player_table[top_of_p_table].ch_file,
+            std::format("{}{}", TheDir, static_cast<const char*>(entry_name_buf)).c_str());
 
         top_idnum = MAX(top_idnum, player_table[top_of_p_table].idnum);
     } // for (; it != end; it.increment(ec))
@@ -868,8 +876,7 @@ void build_player_index(void)
 
     for (nr = 0; nr <= top_of_p_table; nr++) {
         if (enable_auto_delete && player_table[nr].level < 20 && (!IS_SET(player_table[nr].flags, PLR_DELETED)) && (!IS_SET(player_table[nr].flags, PLR_RETIRED)) && ((tt - player_table[nr].log_time) > SECS_PER_REAL_DAY * player_table[nr].level * 7) && (number(0, 100) < 51)) {
-            sprintf(buf, "Mud auto-deleted char %s.", player_table[nr].name);
-            log(buf);
+            log(std::format("Mud auto-deleted char {}.", player_table[nr].name).c_str());
             Crash_delete_file(player_table[nr].name);
             delete_exploits_file(player_table[nr].name);
             move_char_deleted(nr);
@@ -942,18 +949,17 @@ void index_boot(int mode)
             index_filename = INDEX_FILE;
     }
 
-    sprintf(buf2, "%s/%s", prefix, index_filename);
+    strcpy(buf2, std::format("{}/{}", prefix, index_filename).c_str());
 
     if (!(index = fopen(buf2, "r"))) {
-        sprintf(buf1, "Error opening index file '%s'", buf2);
-        perror(buf1);
+        perror(std::format("Error opening index file '{}'", static_cast<const char*>(buf2)).c_str());
         exit(1);
     }
     /* first, count the number of records in the file so we can malloc */
     if (mode != DB_BOOT_SHP) {
         fscanf(index, "%s\n", buf1);
         while (*buf1 != '$') {
-            sprintf(buf2, "%s/%s", prefix, buf1);
+            strcpy(buf2, std::format("{}/{}", prefix, static_cast<const char*>(buf1)).c_str());
             if (!(db_file = fopen(buf2, "r"))) {
                 perror(buf2);
                 exit(1);
@@ -1002,13 +1008,12 @@ void index_boot(int mode)
     rewind(index);
     fscanf(index, "%s\n", buf1);
     while (*buf1 != '$') {
-        sprintf(buf2, "%s/%s", prefix, buf1);
+        strcpy(buf2, std::format("{}/{}", prefix, static_cast<const char*>(buf1)).c_str());
         if (!(db_file = fopen(buf2, "r"))) {
             perror(buf2);
             exit(1);
         }
-        sprintf(buf, "opened file %s.", buf2);
-        log(buf);
+        log(std::format("opened file {}.", static_cast<const char*>(buf2)).c_str());
         switch (mode) {
         case DB_BOOT_WLD:
             load_rooms(db_file);
@@ -1053,7 +1058,7 @@ void load_rooms(FILE* fl)
     do {
         fscanf(fl, "#%d", &virt_nr);
         //      printf("reading room %d: %d\n",room_nr,virt_nr);
-        sprintf(buf2, "room #%d", virt_nr);
+        strcpy(buf2, std::format("room #{}", virt_nr).c_str());
         temp = fread_string(fl, buf2);
         for (temp2 = temp; *temp2 && *temp2 < ' '; temp2++)
             ;
@@ -1172,7 +1177,7 @@ void setup_dir(FILE* fl, int room, int dir)
 {
     int tmp;
 
-    sprintf(buf2, "Room #%d, direction D%d", world[room].number, dir);
+    strcpy(buf2, std::format("Room #{}, direction D{}", world[room].number, dir).c_str());
 
     CREATE(world[room].dir_option[dir], struct room_direction_data, 1);
 
@@ -1402,9 +1407,10 @@ int vnum_mobile(char* searchname, struct char_data* ch)
 
     for (nr = 0; nr <= top_of_mobt; nr++) {
         if (isname(searchname, mob_proto[nr].player.name)) {
-            sprintf(buf, "%3d. [%5d] %-60.60s\n\r", ++found, mob_index[nr].virt,
-                mob_proto[nr].player.short_descr);
-            send_to_char(buf, ch);
+            send_to_char(std::format("{:3}. [{:5}] {:<60.60}\n\r", ++found, mob_index[nr].virt,
+                             nz(mob_proto[nr].player.short_descr))
+                             .c_str(),
+                ch);
         }
     }
 
@@ -1417,9 +1423,10 @@ int vnum_object(char* searchname, struct char_data* ch)
 
     for (nr = 0; nr <= top_of_objt; nr++) {
         if (isname(searchname, obj_proto[nr].name)) {
-            sprintf(buf, "%3d. [%5d] %-60.60s\n\r", ++found, obj_index[nr].virt,
-                obj_proto[nr].short_description);
-            send_to_char(buf, ch);
+            send_to_char(std::format("{:3}. [{:5}] {:<60.60}\n\r", ++found, obj_index[nr].virt,
+                             nz(obj_proto[nr].short_description))
+                             .c_str(),
+                ch);
         }
     }
     return (found);
@@ -1437,7 +1444,7 @@ struct char_data* read_mobile(int nr, int type)
 
     if (type == VIRT) {
         if ((i = real_mobile(nr)) < 0) {
-            sprintf(buf, "Mobile (V) %d does not exist in database.", nr);
+            strcpy(buf, std::format("Mobile (V) {} does not exist in database.", nr).c_str());
             return (0);
         }
     } else
@@ -1494,8 +1501,7 @@ struct char_data* read_mobile(int nr, int type)
         was_fixed = 1;
     }
     if (was_fixed) {
-        sprintf(buf, "Mobile %d had its stats fixed.",
-            (nr >= 0) ? mob_index[nr].virt : -1);
+        strcpy(buf, std::format("Mobile {} had its stats fixed.", (nr >= 0) ? mob_index[nr].virt : -1).c_str());
         mudlog(buf, CMP, LEVEL_GRGOD, TRUE);
     }
 
@@ -1594,7 +1600,7 @@ void load_mobiles(FILE* mob_f)
 
             clear_char(mob_proto + i, MOB_ISNPC);
 
-            sprintf(buf2, "mob vnum %d", nr);
+            strcpy(buf2, std::format("mob vnum {}", nr).c_str());
 
             /***** String data *** */
             mob_proto[i].player.name = fread_string(mob_f, buf2);
@@ -1724,8 +1730,7 @@ void load_mobiles(FILE* mob_f)
             mob_proto[i].desc = 0;
 
             if (!fscanf(mob_f, "%s\n", chk)) {
-                sprintf(buf2, "SYSERR: Format error in mob file near mob #%d", nr);
-                log(buf2);
+                log(std::format("SYSERR: Format error in mob file near mob #{}", nr).c_str());
                 exit(1);
             }
 
@@ -1733,8 +1738,7 @@ void load_mobiles(FILE* mob_f)
         } else if (*chk == '$') /* EOF */
             break;
         else {
-            sprintf(buf2, "SYSERR: Format error in mob file near mob #%d", nr);
-            log(buf2);
+            log(std::format("SYSERR: Format error in mob file near mob #{}", nr).c_str());
             exit(1);
         }
     }
@@ -1754,7 +1758,7 @@ struct obj_data* read_object(int nr, int type)
 
     if (type == VIRT) {
         if ((i = real_object(nr)) < 0) {
-            sprintf(buf, "Object (V) %d does not exist in database.", nr);
+            strcpy(buf, std::format("Object (V) {} does not exist in database.", nr).c_str());
             return 0;
         }
     } else
@@ -1810,7 +1814,7 @@ void load_objects(FILE* obj_f)
 
             clear_object(obj_proto + i);
 
-            sprintf(buf2, "object #%d", nr);
+            strcpy(buf2, std::format("object #{}", nr).c_str());
 
             /* *** string data *** */
 
@@ -1863,7 +1867,7 @@ void load_objects(FILE* obj_f)
 
             obj_proto[i].ex_description = 0;
 
-            sprintf(buf2, "%s - extra desc. section", buf2);
+            strcpy(buf2, std::format("{} - extra desc. section", static_cast<const char*>(buf2)).c_str());
 
             while (fscanf(obj_f, " %s \n", chk), *chk == 'E') {
                 CREATE(new_descr, struct extra_descr_data, 1);
@@ -1897,8 +1901,7 @@ void load_objects(FILE* obj_f)
         } else if (*chk == '$') /* EOF */
             break;
         else {
-            sprintf(buf2, "Format error in obj file at or near obj #%d", nr);
-            log(buf2);
+            log(std::format("Format error in obj file at or near obj #{}", nr).c_str());
             exit(1);
         }
     }
@@ -1939,7 +1942,7 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
     //	tmp2 = newstate;
     tmp2 = (tmp & ~door_mask) | (tmp2 & door_mask);
     if (IS_SET(tmp, EX_ISBROKEN)) {
-        sprintf(buf, "The %s blurs briefly.", room->dir_option[dir]->keyword);
+        strcpy(buf, std::format("The {} blurs briefly.", nz(room->dir_option[dir]->keyword)).c_str());
         tmpmob = room->people;
         if (tmpmob) {
             act(buf, FALSE, tmpmob, 0, 0, TO_ROOM);
@@ -1948,7 +1951,7 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
         REMOVE_BIT(tmp2, EX_ISBROKEN);
     }
     if (IS_SET(tmp2, EX_CLOSED) && !IS_SET(tmp, EX_CLOSED)) {
-        sprintf(buf, "The %s closes quietly.", room->dir_option[dir]->keyword);
+        strcpy(buf, std::format("The {} closes quietly.", nz(room->dir_option[dir]->keyword)).c_str());
         tmpmob = room->people;
         if (tmpmob) {
             act(buf, FALSE, tmpmob, 0, 0, TO_ROOM);
@@ -1956,7 +1959,7 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
         }
     }
     if (IS_SET(tmp2, EX_LOCKED) && !IS_SET(tmp, EX_LOCKED)) {
-        sprintf(buf, "You hear a sound of a lock snapping shut.");
+        strcpy(buf, "You hear a sound of a lock snapping shut.");
         tmpmob = room->people;
         if (tmpmob) {
             act(buf, FALSE, tmpmob, 0, 0, TO_ROOM);
@@ -1964,7 +1967,7 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
         }
     }
     if (!IS_SET(tmp2, EX_LOCKED) && IS_SET(tmp, EX_LOCKED)) {
-        sprintf(buf, "You hear a sound of a key turning..");
+        strcpy(buf, "You hear a sound of a key turning..");
         tmpmob = room->people;
         if (tmpmob) {
             act(buf, FALSE, tmpmob, 0, 0, TO_ROOM);
@@ -1972,7 +1975,7 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
         }
     }
     if (!IS_SET(tmp2, EX_CLOSED) && IS_SET(tmp, EX_CLOSED)) {
-        sprintf(buf, "%s opens quietly.", room->dir_option[dir]->keyword);
+        strcpy(buf, std::format("{} opens quietly.", nz(room->dir_option[dir]->keyword)).c_str());
         tmpmob = room->people;
         if (tmpmob) {
             act(buf, FALSE, tmpmob, 0, 0, TO_ROOM);
@@ -2010,8 +2013,7 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
         for (tmp1 = 0; position < input_end && *position != '~' && tmp1 < (length - 1); position++, tmp1++) \
             element[tmp1] = *position;                                                                      \
         if (position >= input_end || *position != '~') {                                                    \
-            sprintf(buf, "load_player_from_text: malformed long string for %s", name);                      \
-            log(buf);                                                                                       \
+            log(std::format("load_player_from_text: malformed long string for {}", name).c_str());          \
             return -1;                                                                                      \
         }                                                                                                   \
         element[tmp1] = '\0';                                                                               \
@@ -2112,15 +2114,13 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
     return_value = 0;
 
     if (tmp > top_of_p_table) {
-        sprintf(buf, "load_player: player %s not in player_table", name);
-        log(buf);
+        log(std::format("load_player: player {} not in player_table", name).c_str());
         return -1;
     }
 
     char_element->player_index = tmp;
     if (player_text == nullptr) {
-        sprintf(buf, "Couldn't parse character file text for %s\n", name);
-        log(buf);
+        log(std::format("Couldn't parse character file text for {}\n", name).c_str());
         return -1;
     }
     input_end = player_text + strlen(player_text);
@@ -2141,8 +2141,7 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
     memset(char_element->description, 0, 512);
     while (end == FALSE) {
         if (position >= input_end) {
-            sprintf(buf, "load_player_from_text: malformed player data for %s (unexpected end of input)", name);
-            log(buf);
+            log(std::format("load_player_from_text: malformed player data for {} (unexpected end of input)", name).c_str());
             return -1;
         }
 
@@ -2151,8 +2150,7 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
         for (tmpchar = position, tmp1 = 0; tmpchar < input_end && (*tmpchar != '\n') && (*tmpchar != '\r') && (*tmpchar != '\0');
             tmpchar++, tmp1++) {
             if (tmp1 >= static_cast<int>(sizeof(line) - 1)) {
-                sprintf(buf, "load_player_from_text: malformed player data for %s (line too long)", name);
-                log(buf);
+                log(std::format("load_player_from_text: malformed player data for {} (line too long)", name).c_str());
                 return -1;
             }
             line[tmp1] = *tmpchar;
@@ -2402,20 +2400,19 @@ int load_player(char* name, struct char_file_u* char_element)
             break;
 
     if (tmp > top_of_p_table) {
-        sprintf(buf, "load_player: player %s not in player_table", name);
-        log(buf);
+        log(std::format("load_player: player {} not in player_table", name).c_str());
         return -1;
     }
 
-    sprintf(playerfname, "%s", (player_table + tmp)->ch_file);
+    strcpy(playerfname, (player_table + tmp)->ch_file);
     if (has_suffix(playerfname, ".character.json"))
         return load_player_from_account_json_path(name, playerfname, char_element);
 
     file_to_string_alloc(playerfname, &pf);
     if (!(pf)) {
-        sprintf(buf, "Couldn't find character file for %s in the player_table\n",
-            name);
-        log(buf);
+        log(std::format("Couldn't find character file for {} in the player_table\n",
+            name)
+                .c_str());
         return -1;
     }
 
@@ -2715,10 +2712,10 @@ bool update_player_index_entry_from_store(
         if (path_length >= path_capacity) {
             if (error_message != nullptr)
                 *error_message = "Account character storage path is too long for the live player index.";
-            sprintf(buf,
-                "update_player_index_entry_from_store: account-native path for %s is %zu bytes; player index limit is %zu",
-                stored_character->name, path_length, path_capacity - 1);
-            log(buf);
+            log(std::format(
+                "update_player_index_entry_from_store: account-native path for {} is {} bytes; player index limit is {}",
+                static_cast<const char*>(stored_character->name), path_length, path_capacity - 1)
+                    .c_str());
             return false;
         }
     }
@@ -2832,10 +2829,10 @@ void delete_character_file(struct char_data* ch)
     if (tmp > top_of_p_table) {
         send_to_char("Bug: you are not in the character list: cannot delete.\n",
             ch);
-        sprintf(buf,
-            "delete_character_file: could not find player: cannot delete: %s\n",
-            ch->player.name);
-        log(buf);
+        log(std::format(
+            "delete_character_file: could not find player: cannot delete: {}\n",
+            ch->player.name)
+                .c_str());
         return;
     }
 
@@ -2852,7 +2849,19 @@ void encrypt_line(unsigned char* line, int len);
 // so its bytes stay identical to the legacy path (pinned by the A/B oracle + round-trip test).
 bool write_player_text(struct char_data* ch, int load_room, const char* scratch_path)
 {
-    struct char_file_u chd;
+    // {}: char_to_store() below populates every char_file_u field except pwd/host
+    // (set explicitly right after it returns); leaving chd uninitialized meant
+    // chd.pwd's bytes past the password's null terminator (up to MAX_PWD_LENGTH) were
+    // stack garbage, which memcpy(pwdcrypt, chd.pwd, MAX_PWD_LENGTH) then fed into
+    // encrypt_line() -- an uninitialized-read that made the encrypted "password" line
+    // non-reproducible across calls (caught by the Wave 4 D2 characterization suite's
+    // mandatory ASan pass; see db_save_roundtrip_tests.cpp). Doesn't change the login
+    // password check (a null-terminated compare never reads past the real password's
+    // terminator either way) or any already-written save file -- only makes new writes'
+    // trailing pwd bytes deterministic zero instead of undefined. Pre-existing bug,
+    // unrelated to and untouched by the sprintf/strcpy->std::format conversion in the
+    // surrounding functions.
+    struct char_file_u chd {};
     int tmp;
 
     // "wb": this serialization is pinned byte-for-byte (A/B oracle + round-trip
@@ -2888,6 +2897,7 @@ bool write_player_text(struct char_data* ch, int load_room, const char* scratch_
     fprintf(pf, "last_logon  %ld\n", chd.last_logon);
     memcpy(pwdcrypt, chd.pwd, MAX_PWD_LENGTH);
     encrypt_line((unsigned char*)pwdcrypt, MAX_PWD_LENGTH);
+    pwdcrypt[MAX_PWD_LENGTH] = '\0'; // terminate explicitly -- see the pwdcrypt declaration comment
     fprintf(pf, "password    %s\n", pwdcrypt);
     fprintf(pf, "host        %s\n", chd.host);
     fprintf(pf, "idnum       %ld\n", chd.specials2.idnum);
@@ -3010,28 +3020,28 @@ void save_player(struct char_data* ch, int load_room, int index_pos)
     case 'c':
     case 'd':
     case 'e':
-        sprintf(playerfname, "players/A-E/%s", name);
+        strcpy(playerfname, std::format("players/A-E/{}", static_cast<const char*>(name)).c_str());
         break;
     case 'f':
     case 'g':
     case 'h':
     case 'i':
     case 'j':
-        sprintf(playerfname, "players/F-J/%s", name);
+        strcpy(playerfname, std::format("players/F-J/{}", static_cast<const char*>(name)).c_str());
         break;
     case 'k':
     case 'l':
     case 'm':
     case 'n':
     case 'o':
-        sprintf(playerfname, "players/K-O/%s", name);
+        strcpy(playerfname, std::format("players/K-O/{}", static_cast<const char*>(name)).c_str());
         break;
     case 'p':
     case 'q':
     case 'r':
     case 's':
     case 't':
-        sprintf(playerfname, "players/P-T/%s", name);
+        strcpy(playerfname, std::format("players/P-T/{}", static_cast<const char*>(name)).c_str());
         break;
     case 'u':
     case 'v':
@@ -3039,10 +3049,10 @@ void save_player(struct char_data* ch, int load_room, int index_pos)
     case 'x':
     case 'y':
     case 'z':
-        sprintf(playerfname, "players/U-Z/%s", name);
+        strcpy(playerfname, std::format("players/U-Z/{}", static_cast<const char*>(name)).c_str());
         break;
     default:
-        sprintf(playerfname, "players/ZZZ/%s", name);
+        strcpy(playerfname, std::format("players/ZZZ/{}", static_cast<const char*>(name)).c_str());
         break;
     }
 
@@ -3052,21 +3062,24 @@ void save_player(struct char_data* ch, int load_room, int index_pos)
         return;
     }
 
-    char versioned[120];
-    snprintf(versioned, sizeof(versioned), "%s.%d.%d.%d.%ld.%ld", playerfname,
+    // std::string, not a fixed char[120]: the original snprintf(..., sizeof(versioned), ...)
+    // truncated silently past 119 bytes -- a real-if-unlikely player-file-naming corruption
+    // for a long enough playerfname/idnum/log_time combination. A std::string composes the
+    // same "{}.{}.{}.{}.{}.{}" text with no artificial ceiling and no truncation risk.
+    const std::string versioned = std::format("{}.{}.{}.{}.{}.{}", static_cast<const char*>(playerfname),
         (player_table + index_pos)->level, (player_table + index_pos)->race,
         (player_table + index_pos)->idnum,
         (long)(player_table + index_pos)->log_time,
         (player_table + index_pos)->flags);
 
     char dirpath[100];
-    snprintf(dirpath, sizeof(dirpath), "%s", playerfname);
+    strcpy(dirpath, playerfname);
     char* dirslash = strrchr(dirpath, '/');
     if (dirslash) {
         *dirslash = '\0';
     }
-    if (finalize_player_file_rename("players/temp", dirpath, name, versioned)) {
-        sprintf((player_table + index_pos)->ch_file, "%s", versioned);
+    if (finalize_player_file_rename("players/temp", dirpath, name, versioned.c_str())) {
+        strcpy((player_table + index_pos)->ch_file, versioned.c_str());
     } else {
         log("save_player: could not finalize player file.");
     }
@@ -3078,8 +3091,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
     char_file_u chd {};
 
     if (IS_NPC(ch) || (!ch->desc)) {
-        sprintf(buf, "save_char: (%s) zero desc or is_npc\n", GET_NAME(ch));
-        log(buf);
+        log(std::format("save_char: ({}) zero desc or is_npc\n", GET_NAME(ch)).c_str());
         return;
     }
 
@@ -3092,8 +3104,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
 
     //  Send player a msg if this is an autosave.
     if (notify_char) {
-        sprintf(buf, "Saving %s.\n\r", GET_NAME(ch));
-        send_to_char(buf, ch);
+        send_to_char(std::format("Saving {}.\n\r", GET_NAME(ch)).c_str(), ch);
     }
 
     /* whois update block */
@@ -3104,9 +3115,9 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
     if (tmp > top_of_p_table) {
         send_to_char(
             "Error: you are not being saved.  Please contact an immortal.\n\r", ch);
-        sprintf(buf, "save_char: could not find player %s: Not saving.\n",
-            ch->player.name);
-        log(buf);
+        log(std::format("save_char: could not find player {}: Not saving.\n",
+            ch->player.name)
+                .c_str());
         return;
     }
 
@@ -3129,21 +3140,21 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
         if (has_account_character_file) {
             std::string write_error;
             if (!account::write_account_character_file(".", owner_account_name, chd, &write_error)) {
-                sprintf(buf, "save_char: failed to write account-native character file for %s: %s",
-                    GET_NAME(ch), write_error.c_str());
-                log(buf);
+                log(std::format("save_char: failed to write account-native character file for {}: {}",
+                    GET_NAME(ch), write_error)
+                        .c_str());
             } else
                 wrote_account_character_file = true;
         } else if (!character_file_error.empty()) {
-            sprintf(buf, "save_char: failed to inspect account-native character file for %s: %s",
-                GET_NAME(ch), character_file_error.c_str());
-            log(buf);
+            log(std::format("save_char: failed to inspect account-native character file for {}: {}",
+                GET_NAME(ch), character_file_error)
+                    .c_str());
         } else {
             std::string write_error;
             if (!account::write_account_character_file(".", owner_account_name, chd, &write_error)) {
-                sprintf(buf, "save_char: failed to repair missing account-native character file for %s: %s",
-                    GET_NAME(ch), write_error.c_str());
-                log(buf);
+                log(std::format("save_char: failed to repair missing account-native character file for {}: {}",
+                    GET_NAME(ch), write_error)
+                        .c_str());
             } else
                 wrote_account_character_file = true;
         }
@@ -3151,16 +3162,16 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
             const std::string account_character_path = account::account_character_player_path(".", owner_account_name, GET_NAME(ch));
             std::string player_index_error;
             if (!update_player_index_entry_from_store(&chd, account_character_path.c_str(), &player_index_error)) {
-                sprintf(buf, "save_char: failed to refresh account-native player index for %s: %s",
-                    GET_NAME(ch), player_index_error.c_str());
-                log(buf);
+                log(std::format("save_char: failed to refresh account-native player index for {}: {}",
+                    GET_NAME(ch), player_index_error)
+                        .c_str());
             }
         }
     } else if (account_native_player_entry) {
         if (account_error.empty())
-            sprintf(buf, "save_char: refusing legacy fallback for account-native character %s because linked ownership could not be resolved", GET_NAME(ch));
+            strcpy(buf, std::format("save_char: refusing legacy fallback for account-native character {} because linked ownership could not be resolved", GET_NAME(ch)).c_str());
         else
-            sprintf(buf, "save_char: refusing legacy fallback for account-native character %s: %s", GET_NAME(ch), account_error.c_str());
+            strcpy(buf, std::format("save_char: refusing legacy fallback for account-native character {}: {}", GET_NAME(ch), account_error).c_str());
         log(buf);
     } else {
         save_player(ch, load_room, tmp); // New save into individual files
@@ -3394,8 +3405,7 @@ int file_to_string(char* name, char* buf)
     *buf = '\0';
 
     if (!(fl = fopen(name, "r"))) {
-        sprintf(tmp, "Error reading %s", name);
-        perror(tmp);
+        perror(std::format("Error reading {}", name).c_str());
         *buf = '\0';
         return (-1);
     }
@@ -3438,28 +3448,28 @@ int get_char_directory(char* orig_name, char* filename)
     case 'c':
     case 'd':
     case 'e':
-        sprintf(filename, "/A-E/");
+        strcpy(filename, "/A-E/");
         break;
     case 'f':
     case 'g':
     case 'h':
     case 'i':
     case 'j':
-        sprintf(filename, "/F-J/");
+        strcpy(filename, "/F-J/");
         break;
     case 'k':
     case 'l':
     case 'm':
     case 'n':
     case 'o':
-        sprintf(filename, "/K-O/");
+        strcpy(filename, "/K-O/");
         break;
     case 'p':
     case 'q':
     case 'r':
     case 's':
     case 't':
-        sprintf(filename, "/P-T/");
+        strcpy(filename, "/P-T/");
         break;
     case 'u':
     case 'v':
@@ -3467,10 +3477,10 @@ int get_char_directory(char* orig_name, char* filename)
     case 'x':
     case 'y':
     case 'z':
-        sprintf(filename, "/U-Z/");
+        strcpy(filename, "/U-Z/");
         break;
     default:
-        sprintf(filename, "/ZZZ/");
+        strcpy(filename, "/ZZZ/");
         break;
     }
 
@@ -4267,9 +4277,9 @@ void add_crime(int criminal, int victim, int witness, int crime, int wit_type)
     crime_record[num_of_crimes].crime = crime;
     crime_record[num_of_crimes].witness_type = wit_type;
 
-    sprintf(buf, "criminal: %d, victim: %d, witness: %d", criminal, victim,
-        witness);
-    log(buf);
+    log(std::format("criminal: {}, victim: {}, witness: {}", criminal, victim,
+        witness)
+            .c_str());
 
     // Phase 2a final-review Important 2: mirror pkill_update_file's
     // (pkill.cpp) fail-closed guard. If the on-disk store is present but
@@ -4379,8 +4389,7 @@ void forget_crimes(char_data* ch, int criminal)
     if (!crime_json::write_crime_json_store(crime_json_path, to_write, &write_error))
         return;
 
-    sprintf(buf, "Crimes rewritten:%d.", count);
-    log(buf);
+    log(std::format("Crimes rewritten:{}.", count).c_str());
     RELEASE(crime_record);
     read_crime_file();
 }
@@ -4597,7 +4606,7 @@ room_data& room_data::operator[](int i)
             offset -= EXTENSION_SIZE;
         }
         if (!ext) {
-            sprintf(buf, "room_data called for a room outside the world, %d\n", i);
+            strcpy(buf, std::format("room_data called for a room outside the world, {}\n", i).c_str());
             mudlog(buf, NRM, LEVEL_GRGOD, TRUE);
             if (i == r_immort_start_room)
                 exit(0);
@@ -4624,7 +4633,7 @@ void write_exploits(char_data* ch, exploit_record* record)
 
     std::string error_message;
     if (!write_exploit_record_for_character(".", GET_NAME(ch), *record, &error_message)) {
-        snprintf(buf, sizeof(buf), "**ERROR: Could not persist exploit file for character: %s", error_message.c_str());
+        strcpy(buf, std::format("**ERROR: Could not persist exploit file for character: {}", error_message).c_str());
         mudlog(buf, NRM, LEVEL_IMMORT, TRUE);
     } else {
         // Anti-rollback: an exploit record (PK -> killer; death/level/stat/birth/... -> victim) marks a
@@ -5154,9 +5163,7 @@ bool load_object_save_data_for_character(const std::string& root_directory, cons
         bool accepted_missing_follower_section = false;
         std::string decode_error;
         if (!objects_json::legacy_object_save_data_from_binary(legacy_bytes, &decoded, &accepted_missing_follower_section, &decode_error)) {
-            char log_buffer[MAX_STRING_LENGTH];
-            std::snprintf(log_buffer, sizeof(log_buffer), "SYSERR: unable to decode account-staged object data for %s: %s", character_name.c_str(), decode_error.c_str());
-            log(log_buffer);
+            log(std::format("SYSERR: unable to decode account-staged object data for {}: {}", character_name, decode_error).c_str());
             *data = build_default_account_backed_object_data();
             set_db_error(error_message, "");
             return true;
@@ -5334,28 +5341,28 @@ int delete_exploits_file(char* name)
     case 'c':
     case 'd':
     case 'e':
-        sprintf(filename, "exploits/A-E/%s.exploits", tname);
+        strcpy(filename, std::format("exploits/A-E/{}.exploits", static_cast<const char*>(tname)).c_str());
         break;
     case 'f':
     case 'g':
     case 'h':
     case 'i':
     case 'j':
-        sprintf(filename, "exploits/F-J/%s.exploits", tname);
+        strcpy(filename, std::format("exploits/F-J/{}.exploits", static_cast<const char*>(tname)).c_str());
         break;
     case 'k':
     case 'l':
     case 'm':
     case 'n':
     case 'o':
-        sprintf(filename, "exploits/K-O/%s.exploits", tname);
+        strcpy(filename, std::format("exploits/K-O/{}.exploits", static_cast<const char*>(tname)).c_str());
         break;
     case 'p':
     case 'q':
     case 'r':
     case 's':
     case 't':
-        sprintf(filename, "exploits/P-T/%s.exploits", tname);
+        strcpy(filename, std::format("exploits/P-T/{}.exploits", static_cast<const char*>(tname)).c_str());
         break;
     case 'u':
     case 'v':
@@ -5363,13 +5370,13 @@ int delete_exploits_file(char* name)
     case 'x':
     case 'y':
     case 'z':
-        sprintf(filename, "exploits/U-Z/%s.exploits", tname);
+        strcpy(filename, std::format("exploits/U-Z/{}.exploits", static_cast<const char*>(tname)).c_str());
         break;
     default:
-        sprintf(filename, "exploits/ZZZ/%s.exploits", tname);
+        strcpy(filename, std::format("exploits/ZZZ/{}.exploits", static_cast<const char*>(tname)).c_str());
         break;
     }
-    sprintf(temp, "Deleting trophy file: %s", tname);
+    strcpy(temp, std::format("Deleting trophy file: {}", static_cast<const char*>(tname)).c_str());
     mudlog(temp, NRM, LEVEL_IMMORT, TRUE);
 
     // no checks, because file might not even exist
@@ -5395,7 +5402,7 @@ int rename_char(struct char_data* ch, char* newname)
         return -1;
 
     /* note this in exploits, i hate the ! on NOTE, so we use ACHIEVEMENT */
-    sprintf(namebuf, "Name: %s->%s", GET_NAME(ch), newname);
+    strcpy(namebuf, std::format("Name: {}->{}", GET_NAME(ch), newname).c_str());
     vmudlog(BRF, "%s namechanged: now known as %s.", GET_NAME(ch), newname);
     add_exploit_record(EXPLOIT_ACHIEVEMENT, ch, 0, namebuf);
 
@@ -5413,7 +5420,7 @@ int rename_char(struct char_data* ch, char* newname)
 
     /* get the name of the new exploit file */
     get_char_directory(newname, namebuf);
-    sprintf(new_exploit_file, "exploits%s%s.exploits", namebuf, newname);
+    strcpy(new_exploit_file, std::format("exploits{}{}.exploits", static_cast<const char*>(namebuf), newname).c_str());
 
     /* get the name of the old exploit file */
     get_char_directory(GET_NAME(ch), namebuf);
@@ -5421,7 +5428,7 @@ int rename_char(struct char_data* ch, char* newname)
     for (c = buf; *c; ++c)
         *c = tolower(unaccent(*c));
 
-    sprintf(old_exploit_file, "exploits%s%s.exploits", namebuf, buf);
+    strcpy(old_exploit_file, std::format("exploits{}{}.exploits", static_cast<const char*>(namebuf), static_cast<const char*>(buf)).c_str());
 
     /* now move the exploits */
     // Was system("mv <old_exploit_file> <new_exploit_file>"); the return

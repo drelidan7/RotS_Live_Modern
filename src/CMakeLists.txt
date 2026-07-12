@@ -179,12 +179,14 @@ if(ROTS_BUILD_TESTS)
         tests/CharPlayerDataBuilder.cpp
         tests/clock_tests.cpp
         tests/color_tests.cpp
+        tests/comm_act_tests.cpp
         tests/convert_exploits_tests.cpp
         tests/convert_plrobjs_tests.cpp
         tests/cpp20_format_smoke_tests.cpp
         tests/crashsave_schedule_tests.cpp
         tests/damage_tests.cpp
         tests/db_loader_tests.cpp
+        tests/db_save_roundtrip_tests.cpp
         tests/exploits_json_tests.cpp
         tests/fight_proc_tests.cpp
         tests/gtest_main.cpp

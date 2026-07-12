@@ -54,6 +54,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <system_error>
 #include <thread>
@@ -157,8 +158,10 @@ void populate_descriptor_host(descriptor_data* descriptor, uint32_t peer_address
         if (!nameserver_is_slow)
             log("Reverse hostname lookup failed; using numeric address.");
         const int i = peer_address;
-        sprintf(descriptor->host, "%d.%d.%d.%d", (i & 0x000000FF), (i & 0x0000FF00) >> 8,
-            (i & 0x00FF0000) >> 16, (i & 0xFF000000) >> 24);
+        strcpy(descriptor->host,
+            std::format("{}.{}.{}.{}", (i & 0x000000FF), (i & 0x0000FF00) >> 8, (i & 0x00FF0000) >> 16,
+                (i & 0xFF000000) >> 24)
+                .c_str());
         return;
     }
 
@@ -182,8 +185,10 @@ bool reject_banned_descriptor_host(descriptor_data* descriptor)
         return false;
 
     if (strcmp(descriptor->host, "shrout.org")) {
-        sprintf(buf2, "Connection attempt denied from [%s]", descriptor->host);
-        mudlog(buf2, NRM, LEVEL_GOD, TRUE);
+        mudlog(const_cast<char*>(
+                   std::format("Connection attempt denied from [{}]", static_cast<const char*>(descriptor->host))
+                       .c_str()),
+            NRM, LEVEL_GOD, TRUE);
     }
 
     return true;
@@ -310,9 +315,7 @@ bool parse_startup_options(int argc, char** argv, StartupOptions* options, std::
             break;
         default:
             if (error_message) {
-                char local_buf[128];
-                sprintf(local_buf, "SYSERR: Unknown option -%c in argument string.", *(argv[pos] + 1));
-                *error_message = local_buf;
+                *error_message = std::format("SYSERR: Unknown option -{} in argument string.", *(argv[pos] + 1));
             }
             return false;
         }
@@ -447,7 +450,6 @@ int main(int argc, char** argv)
     // initialize the random number generator
     rots_rng::seed(static_cast<unsigned int>(std::time(0)));
 
-    char buf[512];
     StartupOptions startup_options {};
     std::string parse_error;
 
@@ -494,11 +496,9 @@ int main(int argc, char** argv)
     // checked, so a failed write was already silent -- an unopenable file
     // is equally silent here (the stream's failure is simply not checked).
     std::ofstream(".ageland.pid", std::ios::out) << getpid() << "\n";
-    sprintf(buf, "Running game as pid %d.", getpid());
-    log(buf);
+    log(std::format("Running game as pid {}.", getpid()).c_str());
 
-    sprintf(buf, "Running game on port %d.", startup_options.port);
-    log(buf);
+    log(std::format("Running game on port {}.", startup_options.port).c_str());
 
     // std::filesystem::current_path (the setter overload) is the portable stand-in
     // for chdir() (Phase 3 Task 5, MSVC bring-up round 2 -- found via the
@@ -512,8 +512,7 @@ int main(int argc, char** argv)
         }
     }
 
-    sprintf(buf, "Using %s as data directory.", startup_options.dir.c_str());
-    log(buf);
+    log(std::format("Using {} as data directory.", startup_options.dir.c_str()).c_str());
 
     // Open command log
     // Was system("mv -f last_cmds crash_cmds"); the return value was never
@@ -551,8 +550,7 @@ void run_the_game(sh_int port)
 
     boot_db();
 
-    sprintf(buf, "The char_data size is %d.", sizeof(char_data));
-    log(buf);
+    log(std::format("The char_data size is {}.", sizeof(char_data)).c_str());
     log("Entering game loop.");
 
     specialized_mages.clear();
@@ -783,7 +781,6 @@ void game_loop(SocketType s)
     int sockets_connected, sockets_playing;
     int tmp, was_updated;
     char disp, tmpflag;
-    char buf[100];
 
     null_time.tv_sec = 0;
     null_time.tv_usec = 0;
@@ -802,8 +799,7 @@ void game_loop(SocketType s)
         if (retval == -1)
             log("SYSERR: unable to set table size");
         else {
-            sprintf(buf, "%s %d\n", "dtablesize set to: ", retval);
-            log(buf);
+            log(std::format("{} {}\n", "dtablesize set to: ", retval).c_str());
         }
         avail_descs = getdtablesize() - 8;
     }
@@ -1015,19 +1011,19 @@ void game_loop(SocketType s)
                         pptr = prompt;
 
                         if (GET_INVIS_LEV(point->character)) {
-                            sprintf(prompt, "i%d", GET_INVIS_LEV(point->character));
+                            strcpy(prompt, std::format("i{}", GET_INVIS_LEV(point->character)).c_str());
                             disp = FALSE;
                         } else
                             prompt[0] = 0;
 
                         if (IS_RIDING(point->character))
-                            sprintf(prompt, "%s R", prompt);
+                            strcpy(prompt, std::format("{} R", static_cast<const char*>(prompt)).c_str());
 
                         if (PRF_FLAGGED(point->character, PRF_ADVANCED_PROMPT)) {
-                            sprintf(prompt, "%s [", prompt);
+                            strcpy(prompt, std::format("{} [", static_cast<const char*>(prompt)).c_str());
                             add_prompt(prompt, point->character, PROMPT_ADVANCED);
                         } else if (((GET_HIT(point->character) < GET_MAX_HIT(point->character)) || point->character->specials.fighting) && PRF_FLAGGED(point->character, PRF_PROMPT)) {
-                            sprintf(prompt, "%s HP:", prompt);
+                            strcpy(prompt, std::format("{} HP:", static_cast<const char*>(prompt)).c_str());
                         }
 
                         opponent = point->character->specials.fighting;
@@ -1040,7 +1036,7 @@ void game_loop(SocketType s)
                         }
 
                         if (opponent && IS_MENTAL(opponent)) {
-                            sprintf(prompt, "%s Mind:", prompt);
+                            strcpy(prompt, std::format("{} Mind:", static_cast<const char*>(prompt)).c_str());
                             add_prompt(prompt, point->character, PROMPT_STAT);
                         }
 
@@ -1050,14 +1046,14 @@ void game_loop(SocketType s)
                         if (GET_RACE(point->character) == RACE_BEORNING) {
                             affected_type* maul_buff = affected_by_spell(point->character, SKILL_MAUL);
                             if (maul_buff && maul_buff->location == APPLY_MAUL) {
-                                sprintf(prompt, "%s Maul:", prompt);
+                                strcpy(prompt, std::format("{} Maul:", static_cast<const char*>(prompt)).c_str());
                                 add_prompt(prompt, point->character, PROMPT_MAUL);
                             }
                         }
 
                         const obj_data* quiver = point->character->equipment[WEAR_BACK];
                         if (quiver && quiver->is_quiver()) {
-                            sprintf(prompt, "%s A:(", prompt);
+                            strcpy(prompt, std::format("{} A:(", static_cast<const char*>(prompt)).c_str());
                             add_prompt(prompt, point->character, PROMPT_ARROWS);
                         }
 
@@ -1066,15 +1062,13 @@ void game_loop(SocketType s)
                                 if (opponent->specials.fighting != point->character) {
                                     tank = opponent->specials.fighting;
                                     if (tank) {
-                                        sprintf(prompt, "%s, %s:", prompt,
-                                            PERS(tank, point->character, FALSE, FALSE));
+                                        strcpy(prompt, std::format("{}, {}:", static_cast<const char*>(prompt), PERS(tank, point->character, FALSE, FALSE)).c_str());
                                         add_prompt(prompt, tank,
                                             (IS_MENTAL(opponent)) ? PROMPT_STAT
                                                                   : PROMPT_HIT);
                                     }
                                 }
-                                sprintf(prompt, "%s, %s:", prompt,
-                                    PERS(opponent, point->character, FALSE, FALSE));
+                                strcpy(prompt, std::format("{}, {}:", static_cast<const char*>(prompt), PERS(opponent, point->character, FALSE, FALSE)).c_str());
 
                                 add_prompt(prompt, opponent,
                                     (IS_MENTAL(point->character))
@@ -1091,9 +1085,9 @@ void game_loop(SocketType s)
 
                         disp = TRUE;
                         if (point->character->specials.position == POSITION_SHAPING)
-                            strcat(prompt, "]");
+                            strcpy(prompt, std::format("{}]", static_cast<const char*>(prompt)).c_str());
                         else
-                            strcat(prompt, ">");
+                            strcpy(prompt, std::format("{}>", static_cast<const char*>(prompt)).c_str());
 
                         if (point->character)
                             tmpflag = !IS_AFFECTED(point->character, AFF_WAITWHEEL);
@@ -1165,19 +1159,19 @@ void game_loop(SocketType s)
                 }
             }
 
-            sprintf(buf, "nusage: %-3d sockets connected, %-3d sockets playing", sockets_connected,
-                sockets_playing);
-            log(buf);
+            log(std::format("nusage: {:<3} sockets connected, {:<3} sockets playing", sockets_connected,
+                sockets_playing)
+                    .c_str());
 
 #ifdef RUSAGE
             {
                 struct rusage rusagedata;
 
                 getrusage(0, &rusagedata);
-                sprintf(buf, "rusage: %d %d %d %d %d %d %d", rusagedata.ru_utime.tv_sec,
+                log(std::format("rusage: {} {} {} {} {} {} {}", rusagedata.ru_utime.tv_sec,
                     rusagedata.ru_stime.tv_sec, rusagedata.ru_maxrss, rusagedata.ru_ixrss,
-                    rusagedata.ru_ismrss, rusagedata.ru_idrss, rusagedata.ru_isrss);
-                log(buf);
+                    rusagedata.ru_ismrss, rusagedata.ru_idrss, rusagedata.ru_isrss)
+                        .c_str());
             }
 #endif
         }
@@ -1437,8 +1431,8 @@ SocketType pnew_connection(SocketType s)
     // %d silently truncated/misprinted the handle there. Cast explicitly to a wide
     // signed type and use a matching, platform-identical format spec instead of relying
     // on SocketType's platform-dependent width/signedness.
-    sprintf(buf, "Socket %lld connected.", static_cast<long long>(t));
-    mudlog(buf, NRM, LEVEL_IMPL, TRUE);
+    mudlog(const_cast<char*>(std::format("Socket {} connected.", static_cast<long long>(t)).c_str()), NRM,
+        LEVEL_IMPL, TRUE);
 
     return (t);
 }
@@ -1852,7 +1846,7 @@ int process_input(struct descriptor_data* t)
             }
 
             if (flag) {
-                sprintf(buffer, "Line too long.  Truncated to:\n\r%s\n\r", tmp);
+                strcpy(buffer, std::format("Line too long.  Truncated to:\n\r{}\n\r", tmp).c_str());
                 if (write_to_descriptor(t->descriptor, buffer) < 0)
                     return (-1);
 
@@ -1876,12 +1870,8 @@ int process_input(struct descriptor_data* t)
     return 1;
 }
 
-char perform_subst_pnew[MAX_INPUT_LENGTH + 5];
-
 int perform_subst(struct descriptor_data* t, char* orig, char* subst)
 {
-    char* pnew = perform_subst_pnew;
-
     char *first, *second, *strpos;
 
     first = subst + 1;
@@ -1897,12 +1887,11 @@ int perform_subst(struct descriptor_data* t, char* orig, char* subst)
         return 1;
     }
 
-    strncpy(pnew, orig, (strpos - orig));
-    pnew[(strpos - orig)] = '\0';
-    strcat(pnew, second);
+    std::string result(orig, strpos - orig);
+    result += second;
     if (((strpos - orig) + strlen(first)) < strlen(orig))
-        strcat(pnew, strpos + strlen(first));
-    strcpy(subst, pnew);
+        result += strpos + strlen(first);
+    strcpy(subst, result.c_str());
 
     return 0;
 }
@@ -1920,7 +1909,6 @@ void close_sockets(SocketType s)
 void close_socket(descriptor_data* conn_descriptor, int drop_all)
 {
     descriptor_data* tmp;
-    char buf[100];
 
     clear_account_backed_object_bytes_for_character(conn_descriptor->character);
 
@@ -1934,8 +1922,9 @@ void close_socket(descriptor_data* conn_descriptor, int drop_all)
     if (conn_descriptor->descriptor) {
         // Same SocketType-width issue as pnew_connection() above: cast explicitly and
         // use the same %lld spelling on both platforms.
-        sprintf(buf, "Closing socket %lld.", static_cast<long long>(conn_descriptor->descriptor));
-        mudlog(buf, NRM, LEVEL_IMPL, TRUE);
+        mudlog(const_cast<char*>(
+                   std::format("Closing socket {}.", static_cast<long long>(conn_descriptor->descriptor)).c_str()),
+            NRM, LEVEL_IMPL, TRUE);
 
         rots_net::close_socket(conn_descriptor->descriptor);
         conn_descriptor->descriptor = 0;
@@ -1964,10 +1953,10 @@ void close_socket(descriptor_data* conn_descriptor, int drop_all)
         if (conn_descriptor->connected == CON_PLYNG) {
             save_char(conn_descriptor->character, NOWHERE, 0);
             act("$n has lost $s link.", TRUE, conn_descriptor->character, 0, 0, TO_ROOM);
-            sprintf(buf, "Closing link to: %s [%s].", GET_NAME(conn_descriptor->character),
-                conn_descriptor->host);
-            mudlog(buf, NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(conn_descriptor->character)),
-                TRUE);
+            mudlog(const_cast<char*>(std::format("Closing link to: {} [{}].",
+                       GET_NAME(conn_descriptor->character), static_cast<const char*>(conn_descriptor->host))
+                           .c_str()),
+                NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(conn_descriptor->character)), TRUE);
             //	 d->character->desc = 0;
             // Deliberate: this player was just flushed by the save_char above, then moved to
             // CON_LINKLS. The point-in-time autosave snapshot (Crash_save_all) filters on CON_PLYNG,
@@ -1976,14 +1965,16 @@ void close_socket(descriptor_data* conn_descriptor, int drop_all)
             // revisit the snapshot's reliance on connection state rather than a null desc.
             conn_descriptor->connected = CON_LINKLS;
         } else {
+            std::string buf;
             if (conn_descriptor->character->player.name) {
-                sprintf(buf, "Losing player: %s [%s].", GET_NAME(conn_descriptor->character),
-                    conn_descriptor->host);
+                buf = std::format("Losing player: {} [{}].", GET_NAME(conn_descriptor->character),
+                    static_cast<const char*>(conn_descriptor->host));
             } else {
-                sprintf(buf, "Losing Unnamed player [%s].", conn_descriptor->host);
+                buf = std::format(
+                    "Losing Unnamed player [{}].", static_cast<const char*>(conn_descriptor->host));
             }
-            mudlog(buf, NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(conn_descriptor->character)),
-                TRUE);
+            mudlog(const_cast<char*>(buf.c_str()), NRM,
+                std::max(LEVEL_IMMORT, GET_INVIS_LEV(conn_descriptor->character)), TRUE);
             free_char(conn_descriptor->character);
             drop_all = 1;
         }
@@ -2291,9 +2282,7 @@ void convert_string(const char* str, int hide_invisible, struct char_data* ch, s
                 break;
             default:
                 log("SYSERR: Illegal $-code to act():");
-                strcpy(buf1, "SYSERR: ");
-                strcat(buf1, str);
-                log(buf1);
+                log(std::format("SYSERR: {}", str).c_str());
                 break;
             }
             while ((*point = *(i++)))
@@ -2315,9 +2304,10 @@ void convert_string(const char* str, int hide_invisible, struct char_data* ch, s
 
     if (used_color) {
         // CC_NORM expands to a runtime-selected color-escape string, not a format
-        // string -- pass it through "%s" (non-literal-format-string hygiene; the ANSI
-        // sequences contain no '%' today, but don't treat data as a format).
-        sprintf(point, "%s", CC_NORM(to));
+        // string -- pass it through the {} placeholder (non-literal-format-string
+        // hygiene; the ANSI sequences contain no '%'/'{' today, but don't treat data
+        // as a format).
+        strcpy(point, std::format("{}", CC_NORM(to)).c_str());
     }
 
     /* Find the first character in the string, ignoring ANSI colors */

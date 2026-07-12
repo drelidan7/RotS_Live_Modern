@@ -328,8 +328,7 @@ bool write_player_objects_json(const char* player_name, const objects_json::Obje
 
     std::string mirror_error;
     if (!account::write_linked_character_object_json_file(".", player_name, data, &mirror_error) && !mirror_error.empty()) {
-        sprintf(buf1, "SYSERR: failed to refresh account-native object file for %s: %s", player_name, mirror_error.c_str());
-        log(buf1);
+        log(std::format("SYSERR: failed to refresh account-native object file for {}: {}", player_name, mirror_error).c_str());
     }
 
     if (error)
@@ -369,15 +368,13 @@ int Crash_delete_file(char* name)
 
         if (unlink(filename) < 0) {
             if (errno != ENOENT) { /* if it fails, NOT because of no file */
-                sprintf(buf1, "SYSERR: deleting crash file %s (2)", filename);
-                perror(buf1);
+                perror(std::format("SYSERR: deleting crash file {} (2)", static_cast<const char*>(filename)).c_str());
             }
         } else {
             deleted_something = 1;
         }
     } else if (errno != ENOENT) { /* if it fails but NOT because of no file */
-        sprintf(buf1, "SYSERR: deleting crash file %s (1)", filename);
-        perror(buf1);
+        perror(std::format("SYSERR: deleting crash file {} (1)", static_cast<const char*>(filename)).c_str());
     }
 
     // JSON is now the primary format (this task): a deleted character's
@@ -390,8 +387,7 @@ int Crash_delete_file(char* name)
         if (std::remove(json_path.c_str()) == 0)
             deleted_something = 1;
         else if (errno != ENOENT) {
-            sprintf(buf1, "SYSERR: deleting crash file %s (json)", json_path.c_str());
-            perror(buf1);
+            perror(std::format("SYSERR: deleting crash file {} (json)", json_path).c_str());
         }
     }
 
@@ -409,8 +405,7 @@ int Crash_delete_crashfile(struct char_data* ch)
         return 0;
     if (!(fl = fopen(fname, "rb"))) {
         if (errno != ENOENT) { /* if it fails, NOT because of no file */
-            sprintf(buf1, "SYSERR: checking for crash file %s (3)", fname);
-            perror(buf1);
+            perror(std::format("SYSERR: checking for crash file {} (3)", static_cast<const char*>(fname)).c_str());
         }
         return 0;
     }
@@ -440,8 +435,7 @@ int Crash_clean_file(char* name)
 
     if (!(fl = fopen(fname, "r+b"))) {
         if (errno != ENOENT) { /* if it fails, NOT because of no file */
-            sprintf(buf1, "SYSERR: OPENING OBJECT FILE %s (4)", fname);
-            perror(buf1);
+            perror(std::format("SYSERR: OPENING OBJECT FILE {} (4)", static_cast<const char*>(fname)).c_str());
         }
         return 0;
     }
@@ -553,8 +547,7 @@ void Crash_listrent(struct char_data* ch, char* name)
         if (objects_json::deserialize_objects_from_json(json_contents, &data, &error_message)) {
             have_data = true;
         } else {
-            sprintf(buf1, "SYSERR: corrupt objects JSON '%s' for listrent %s: %s", json_path.c_str(), name, error_message.c_str());
-            log(buf1);
+            log(std::format("SYSERR: corrupt objects JSON '{}' for listrent {}: {}", json_path, name, error_message).c_str());
         }
     }
 
@@ -570,15 +563,14 @@ void Crash_listrent(struct char_data* ch, char* name)
                 if (objects_json::legacy_object_save_data_from_binary(legacy_bytes, &data, &accepted_missing_follower_section, &decode_error)) {
                     have_data = true;
                 } else {
-                    sprintf(buf1, "SYSERR: corrupt legacy object file for listrent %s: %s", name, decode_error.c_str());
-                    log(buf1);
+                    log(std::format("SYSERR: corrupt legacy object file for listrent {}: {}", name, decode_error).c_str());
                 }
             }
         }
     }
 
     if (!have_data) {
-        sprintf(buf, "%s has no rent file.\n\r", name);
+        strcpy(buf, std::format("{} has no rent file.\n\r", name).c_str());
         log(buf);
         send_to_char(buf, ch);
         return;
@@ -684,8 +676,7 @@ FILE* Crash_load(char_data* character)
     if (!json_path.empty() && read_binary_file_contents(json_path.c_str(), &json_contents)) {
         std::string error_message;
         if (!objects_json::deserialize_objects_from_json(json_contents, &data, &error_message)) {
-            sprintf(buf1, "SYSERR: corrupt objects JSON '%s' for %s: %s", json_path.c_str(), GET_NAME(character), error_message.c_str());
-            log(buf1);
+            log(std::format("SYSERR: corrupt objects JSON '{}' for {}: {}", json_path, GET_NAME(character), error_message).c_str());
             return fail_closed();
         }
         have_data = true;
@@ -701,16 +692,14 @@ FILE* Crash_load(char_data* character)
             const bool read_ok = read_open_file_contents(legacy_file, &legacy_bytes);
             std::fclose(legacy_file);
             if (!read_ok) {
-                sprintf(buf1, "SYSERR: unable to read legacy object file for %s.", GET_NAME(character));
-                log(buf1);
+                log(std::format("SYSERR: unable to read legacy object file for {}.", GET_NAME(character)).c_str());
                 return fail_closed();
             }
 
             bool accepted_missing_follower_section = false;
             std::string error_message;
             if (!objects_json::legacy_object_save_data_from_binary(legacy_bytes, &data, &accepted_missing_follower_section, &error_message)) {
-                sprintf(buf1, "SYSERR: corrupt legacy object file for %s: %s", GET_NAME(character), error_message.c_str());
-                log(buf1);
+                log(std::format("SYSERR: corrupt legacy object file for {}: {}", GET_NAME(character), error_message).c_str());
                 return fail_closed();
             }
             have_data = true;
@@ -722,7 +711,7 @@ FILE* Crash_load(char_data* character)
     if (!have_data) {
         REMOVE_BIT(character->specials.affected_by, AFF_TWOHANDED);
         send_to_char("*** Your equipment was lost! Please contact an immortal. ***\n\r", character);
-        sprintf(buf, "%s entering game with no equipment.", GET_NAME(character));
+        strcpy(buf, std::format("{} entering game with no equipment.", GET_NAME(character)).c_str());
         GET_ALIAS(character) = 0;
         mudlog(buf, NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(character)), TRUE);
         character->specials2.load_room = calc_load_room(character, RENT_UNDEF);
@@ -747,8 +736,8 @@ FILE* Crash_load(char_data* character)
         /* can they pay for their rent? */
         if (cost > GET_GOLD(character)) {
             equip_lost = 1;
-            sprintf(buf, "%s entering game, rented equipment lost (no $).",
-                GET_NAME(character));
+            strcpy(buf, std::format("{} entering game, rented equipment lost (no $).",
+                GET_NAME(character)).c_str());
             mudlog(buf, NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(character)), TRUE);
         } else {
             equip_lost = 0;
@@ -758,28 +747,28 @@ FILE* Crash_load(char_data* character)
 
     switch (data.rent.rentcode) {
     case RENT_RENTED:
-        sprintf(buf, "%s un-renting and entering game.", GET_NAME(character));
+        strcpy(buf, std::format("{} un-renting and entering game.", GET_NAME(character)).c_str());
         mudlog(buf, NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(character)), TRUE);
         break;
     case RENT_CRASH:
-        sprintf(buf, "%s retrieving crash-saved items and entering game.", GET_NAME(character));
+        strcpy(buf, std::format("{} retrieving crash-saved items and entering game.", GET_NAME(character)).c_str());
         mudlog(buf, NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(character)), TRUE);
         break;
     case RENT_CAMP:
-        sprintf(buf, "%s un-camping and entering game.", GET_NAME(character));
+        strcpy(buf, std::format("{} un-camping and entering game.", GET_NAME(character)).c_str());
         mudlog(buf, NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(character)), TRUE);
         break;
     case RENT_FORCED:
     case RENT_TIMEDOUT:
-        sprintf(buf, "%s retrieving force-saved items and entering game.", GET_NAME(character));
+        strcpy(buf, std::format("{} retrieving force-saved items and entering game.", GET_NAME(character)).c_str());
         mudlog(buf, NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(character)), TRUE);
         break;
     case RENT_QUIT:
-        sprintf(buf, "%s un-quit and entering game.", GET_NAME(character));
+        strcpy(buf, std::format("{} un-quit and entering game.", GET_NAME(character)).c_str());
         mudlog(buf, NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(character)), TRUE);
         break;
     default:
-        sprintf(buf, "WARNING: %s entering game with undefined rent code.", GET_NAME(character));
+        strcpy(buf, std::format("WARNING: {} entering game with undefined rent code.", GET_NAME(character)).c_str());
         mudlog(buf, NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(character)), TRUE);
         break;
     }
@@ -795,7 +784,7 @@ FILE* Crash_load(char_data* character)
                 obj = Crash_obj2char(character, object);
 
             if (!obj) {
-                sprintf(buf, "LOAD ERROR, equipment lost for %s.", GET_NAME(character));
+                strcpy(buf, std::format("LOAD ERROR, equipment lost for {}.", GET_NAME(character)).c_str());
                 log(buf);
                 obj = &dummy_sack;
             }
@@ -852,8 +841,7 @@ FILE* Crash_load(char_data* character)
     // `character` above.
     FILE* success_handle = std::tmpfile();
     if (success_handle == nullptr) {
-        sprintf(buf1, "SYSERR: unable to create success handle for %s after a successful load.", GET_NAME(character));
-        log(buf1);
+        log(std::format("SYSERR: unable to create success handle for {} after a successful load.", GET_NAME(character)).c_str());
     }
     return success_handle;
 }
@@ -1087,8 +1075,7 @@ void Crash_follower_load(struct char_data* ch, const objects_json::ObjectSaveDat
 
             obj = Crash_obj2char(mob, object);
             if (!obj) {
-                sprintf(buf, "LOAD ERROR, equipment lost for follower of %s.", GET_NAME(ch));
-                log(buf);
+                log(std::format("LOAD ERROR, equipment lost for follower of {}.", GET_NAME(ch)).c_str());
                 return;
             }
             equip_char(mob, obj, object.wear_pos);
@@ -1344,8 +1331,7 @@ void Crash_crashsave(struct char_data* ch, int rent_code)
 
     std::string error_message;
     if (!write_player_objects_json(GET_NAME(ch), data, &error_message)) {
-        sprintf(buf1, "SYSERR: crashsave: failed to write player objects for %s: %s", GET_NAME(ch), error_message.c_str());
-        log(buf1);
+        log(std::format("SYSERR: crashsave: failed to write player objects for {}: {}", GET_NAME(ch), error_message).c_str());
         return;
     }
 
@@ -1379,8 +1365,7 @@ void Crash_idlesave(struct char_data* ch)
 
     std::string error_message;
     if (!write_player_objects_json(GET_NAME(ch), data, &error_message)) {
-        sprintf(buf1, "SYSERR: idlesave: failed to write player objects for %s: %s", GET_NAME(ch), error_message.c_str());
-        log(buf1);
+        log(std::format("SYSERR: idlesave: failed to write player objects for {}: {}", GET_NAME(ch), error_message).c_str());
         return;
     }
 
@@ -1422,8 +1407,7 @@ void Crash_rentsave(struct char_data* ch, int cost)
 
     std::string error_message;
     if (!write_player_objects_json(GET_NAME(ch), data, &error_message)) {
-        sprintf(buf1, "SYSERR: rentsave: failed to write player objects for %s: %s", GET_NAME(ch), error_message.c_str());
-        log(buf1);
+        log(std::format("SYSERR: rentsave: failed to write player objects for {}: {}", GET_NAME(ch), error_message).c_str());
         return;
     }
 
@@ -1443,7 +1427,7 @@ int Crash_report_unrentables(struct char_data* ch, struct char_data* recep,
     if (obj) {
         if (Crash_is_unrentable(obj)) {
             has_norents = 1;
-            sprintf(buf, "$n tells you, 'You cannot store %s.'", OBJS(obj, ch));
+            strcpy(buf, std::format("$n tells you, 'You cannot store {}.'", OBJS(obj, ch)).c_str());
             act(buf, FALSE, recep, 0, ch, TO_VICT);
         }
         has_norents += Crash_report_unrentables(ch, recep, obj->contains);
@@ -1503,9 +1487,9 @@ int Crash_offer_rent(struct char_data* ch, struct char_data* receptionist,
 
     /* RENT FORMULA */
     if (mode) {
-        sprintf(buf, "$n tells you, 'It will cost you %s%s.'",
+        strcpy(buf, std::format("$n tells you, 'It will cost you {}{}.'",
             money_message(totalcost * RENT_HALFTIME * 24 / (RENT_HALFTIME + 24)),
-            (factor == RENT_FACTOR ? " for the first day" : ""));
+            (factor == RENT_FACTOR ? " for the first day" : "")).c_str());
         act(buf, FALSE, receptionist, 0, ch, TO_VICT);
     }
     totalcost = 0;
@@ -1523,39 +1507,39 @@ int Crash_offer_rent(struct char_data* ch, struct char_data* receptionist,
     if (mode) {
         do {
             if (timeval >= 99999) {
-                sprintf(buf, "$n tells you, 'You have enough gold "
+                strcpy(buf, "$n tells you, 'You have enough gold "
                              "for a lifetime of rent.'");
                 break;
             }
             if (timeval < 24) {
-                sprintf(buf, "$n tells you, 'You have enough gold "
-                             "for %ld hour%s of rent.'",
+                strcpy(buf, std::format("$n tells you, 'You have enough gold "
+                             "for {} hour{} of rent.'",
                     timeval,
-                    (timeval == 1) ? "" : "s");
+                    (timeval == 1) ? "" : "s").c_str());
                 break;
             }
 
             timeval /= 24;
 
             if (timeval < 31) {
-                sprintf(buf, "$n tells you, 'You have enough gold "
-                             "for %ld day%s of rent.'",
+                strcpy(buf, std::format("$n tells you, 'You have enough gold "
+                             "for {} day{} of rent.'",
                     timeval,
-                    (timeval == 1) ? "" : "s");
+                    (timeval == 1) ? "" : "s").c_str());
                 break;
             }
 
             timeval /= 12;
 
             if (timeval < 12) {
-                sprintf(buf, "$n tells you, 'You have enough gold "
-                             "for at least %ld month%s of rent.'",
-                    timeval, (timeval == 1) ? "" : "s");
+                strcpy(buf, std::format("$n tells you, 'You have enough gold "
+                             "for at least {} month{} of rent.'",
+                    timeval, (timeval == 1) ? "" : "s").c_str());
                 break;
             }
-            sprintf(buf, "$n tells you, 'You have enough gold "
-                         "for at least %ld year%s of rent.'",
-                timeval, (timeval == 1) ? "" : "s");
+            strcpy(buf, std::format("$n tells you, 'You have enough gold "
+                         "for at least {} year{} of rent.'",
+                timeval, (timeval == 1) ? "" : "s").c_str());
         } while (0);
 
         act(buf, FALSE, receptionist, 0, ch, TO_VICT);
@@ -1725,7 +1709,7 @@ int gen_receptionist(struct char_data* ch, int cmd, char* arg, int mode)
             }
 
             if (_parse_name(arg, tmpname) || fill_word(tmpname) || !valid_name(tmpname)) {
-                sprintf(buf, "$n tells you, 'Sorry, '%s' is an invalid name.'", arg);
+                strcpy(buf, std::format("$n tells you, 'Sorry, '{}' is an invalid name.'", arg).c_str());
                 act(buf, FALSE, recep, 0, ch, TO_VICT);
                 *newname = 0;
                 *tmpname = 0;
@@ -1736,10 +1720,10 @@ int gen_receptionist(struct char_data* ch, int cmd, char* arg, int mode)
 
             if (ch->specials2.idnum != namechanger) {
                 strncpy(newname, tmpname, MAX_NAME_LENGTH);
-                sprintf(buf, "$n tells you, 'You'd like to change your name to '%s', "
+                strcpy(buf, std::format("$n tells you, 'You'd like to change your name to '{}', "
                              "is that correct?\r\n"
                              "$n tells you, 'Repeat the request to make it final.'",
-                    newname);
+                    static_cast<const char*>(newname)).c_str());
                 act(buf, FALSE, recep, 0, ch, TO_VICT);
                 namechanger = ch->specials2.idnum;
                 return TRUE;
@@ -1747,9 +1731,9 @@ int gen_receptionist(struct char_data* ch, int cmd, char* arg, int mode)
             /* they didn't type the same name the second time */
             else if (ch->specials2.idnum == namechanger && *newname && strcmp(newname, tmpname)) {
                 strncpy(newname, tmpname, MAX_NAME_LENGTH);
-                sprintf(buf, "$n tells you, 'So you'd rather be named '%s'?'\r\n"
+                strcpy(buf, std::format("$n tells you, 'So you'd rather be named '{}'?'\r\n"
                              "$n tells you, 'Repeat the request to make it final.'",
-                    newname);
+                    static_cast<const char*>(newname)).c_str());
                 act(buf, FALSE, recep, 0, ch, TO_VICT);
                 return TRUE;
             }
@@ -1783,7 +1767,7 @@ int gen_receptionist(struct char_data* ch, int cmd, char* arg, int mode)
                 rent_deadline = RENT_HALFTIME * rent_deadline / (RENT_HALFTIME - rent_deadline);
             else {
                 rent_deadline = 99999;
-                sprintf(buf, "You have enough money for a lifetime of rent.\n\r");
+                strcpy(buf, "You have enough money for a lifetime of rent.\n\r");
             }
 
             act(buf, FALSE, recep, 0, ch, TO_VICT);
@@ -1798,8 +1782,8 @@ int gen_receptionist(struct char_data* ch, int cmd, char* arg, int mode)
                 affect_remove(ch, aff);
             }
             Crash_rentsave(ch, cost);
-            sprintf(buf, "%s has rented (%d/day, %d tot.)", GET_NAME(ch),
-                cost, GET_GOLD(ch));
+            strcpy(buf, std::format("{} has rented ({}/day, {} tot.)", GET_NAME(ch),
+                cost, GET_GOLD(ch)).c_str());
         }
 
         mudlog(buf, NRM, (sh_int)MAX(LEVEL_IMMORT, GET_INVIS_LEV(ch)), TRUE);
@@ -1852,8 +1836,8 @@ ACMD(do_rent)
     act("$n sets a small camp and rents in it.", FALSE, ch, 0, 0, TO_ROOM);
 
     Crash_rentsave(ch, 0);
-    sprintf(buf, "%s has field-rented (%d total gold)", GET_NAME(ch),
-        GET_GOLD(ch));
+    strcpy(buf, std::format("{} has field-rented ({} total gold)", GET_NAME(ch),
+        GET_GOLD(ch)).c_str());
 
     mudlog(buf, NRM, (sh_int)MAX(LEVEL_IMMORT, GET_INVIS_LEV(ch)), TRUE);
 

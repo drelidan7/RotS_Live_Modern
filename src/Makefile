@@ -14,9 +14,13 @@
 #     switches libc to the 64-bit-safe variants transparently; it only affects
 #     libc's own struct stat/dirent, not any of the game's own on-disk structs
 #     (char_file_u, obj_file_elem, ...), so it does not change save-file format.
-# Warnings are intentionally suppressed (-w): the legacy tree is not warning-clean
-# (append -Wall to CXXFLAGS to see them). User CPPFLAGS/CXXFLAGS/LDFLAGS/LIBS are
-# appended to — never replace — the required flags.
+# Warnings are treated as errors (-Wall -Wextra -Werror) on GNU-family compilers
+# (Phase 5 Task 8): the tree reached a zero warning census under Tasks 1-7, so the
+# historical blanket -w suppression is gone. User CPPFLAGS/CXXFLAGS/LDFLAGS/LIBS are
+# appended to — never replace — the required flags. See docs/BUILD.md's "Warnings
+# policy" section for the pinned-toolchain rationale; the i386 (-m32, g++14
+# container) leg of this Makefile itself only gets exercised under -Werror at
+# Phase 5 Task 10 (finalization) — any target-specific warning there is fixed then.
 #
 
 CXX      ?= g++
@@ -29,7 +33,7 @@ OBJDIR    = ../intermediate
 # --- Flags -------------------------------------------------------------------
 # REQ_* hold the mandatory flags so an environment override of CXXFLAGS/LDFLAGS
 # can add to, but cannot strip, them (e.g. -m32 is always present).
-REQ_CXXFLAGS = -m32 -std=c++20 -w -fstrict-aliasing -funsigned-char -g -D_FILE_OFFSET_BITS=64
+REQ_CXXFLAGS = -m32 -std=c++20 -Wall -Wextra -Werror -fstrict-aliasing -funsigned-char -g -D_FILE_OFFSET_BITS=64
 REQ_LDFLAGS  = -m32 -rdynamic
 
 # -MMD -MP: emit a per-object header-dependency file (.d) plus phony targets for

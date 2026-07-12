@@ -1374,6 +1374,8 @@ void affect_update_person(struct char_data* i, int mode)
                 case SPELL_ACTIVITY:
                     if (IS_NPC(i))
                         one_mobile_activity(i);
+                    [[fallthrough]]; // intentional: SPELL_ACTIVITY also gets SPELL_CONFUSE's
+                                      // concentration-duration handling below.
                 case SPELL_CONFUSE:
                     if (IS_AFFECTED(i, AFF_CONCENTRATION) && (af->duration >= 10))
                         af->duration -= 3;

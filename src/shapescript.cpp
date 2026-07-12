@@ -2489,6 +2489,8 @@ int get_parameter(char* param)
         if (!strcmp(param, "INT3"))
             return SCRIPT_PARAM_INT3;
 
+        [[fallthrough]]; // intentional: cascading param-name checks; no match under 'I' falls
+                          // through to try the 'S'/'R'/'O'/'C' checks too.
     case 'S':
         if (!strcmp(param, "STR1"))
             return SCRIPT_PARAM_STR1;
@@ -2497,6 +2499,8 @@ int get_parameter(char* param)
         if (!strcmp(param, "STR3"))
             return SCRIPT_PARAM_STR3;
 
+        [[fallthrough]]; // intentional: cascading param-name checks; no match under 'S' falls
+                          // through to try the 'R'/'O'/'C' checks too.
     case 'R':
         if (!strcmp(param, "RM1"))
             return SCRIPT_PARAM_RM1;
@@ -2512,6 +2516,8 @@ int get_parameter(char* param)
         if (!strcmp(param, "RM3.NAME"))
             return SCRIPT_PARAM_RM3_NAME;
 
+        [[fallthrough]]; // intentional: cascading param-name checks; no match under 'R' falls
+                          // through to try the 'O'/'C' checks too.
     case 'O':
         if (!strcmp(param, "OB1"))
             return SCRIPT_PARAM_OB1;
@@ -2534,6 +2540,8 @@ int get_parameter(char* param)
         if (!strcmp(param, "OB3.VNUM"))
             return SCRIPT_PARAM_OB3_VNUM;
 
+        [[fallthrough]]; // intentional: cascading param-name checks; no match under 'O' falls
+                          // through to try the 'C' checks too.
     case 'C':
 
         if (!strcmp(param, "CH1"))
@@ -2591,6 +2599,8 @@ int get_parameter(char* param)
         if (!strcmp(param, "CH3.RANK"))
             return SCRIPT_PARAM_CH3_RANK;
 
+        [[fallthrough]]; // intentional: cascading param-name checks; no match under 'C' falls
+                          // through to the default 0-return.
     default:
         return 0;
     } // switch * param

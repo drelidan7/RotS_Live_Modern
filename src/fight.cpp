@@ -2039,6 +2039,8 @@ int weapon_hit_type(int weapon_type)
         break;
     case 13:
         w_type = TYPE_WHIP;
+        [[fallthrough]]; // intentional: case 14 immediately overwrites w_type, matching
+                          // pre-existing (pre-Werror) behavior byte-for-byte.
     case 14:
         w_type = TYPE_BLUDGEON;
         break;

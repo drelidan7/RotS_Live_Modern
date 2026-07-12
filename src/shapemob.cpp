@@ -97,6 +97,8 @@ void recalculate_mob(struct char_data* ch)
         break;
     case RACE_EASTERLING:
         mob->player.language = LANG_BASIC;
+        [[fallthrough]]; // intentional: default immediately overwrites language, matching
+                          // pre-existing (pre-Werror) behavior byte-for-byte.
     default:
         mob->player.language = LANG_ANIMAL;
         break;

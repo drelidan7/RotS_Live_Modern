@@ -168,6 +168,96 @@ Per-platform (from `src/`): `cmake --preset <name>`, `cmake --build --preset <na
 CI (`.github/workflows/ci.yml`): `legacy-32bit`, `linux-x64`, `macos-arm64`, and
 `windows-msvc` are all required jobs — no job in the matrix is allowed to fail anymore.
 
+## Warnings policy (Phase 5 Task 8)
+
+**GNU-family builds (GCC, Clang, AppleClang) compile with `-Wall -Wextra -Werror`
+everywhere.** The historical blanket `-w` suppression is gone from every build path:
+`src/CMakeLists.txt`'s `ageland` target (both `ROTS_GNULIKE` compile-options blocks),
+its `ageland_tests` target (`ROTS_SUPPRESS_TEST_WARNINGS` now defaults **OFF**, so the
+`-Wall -Wextra -Werror` branch is what actually runs; flipping the option back to `ON`
+is an explicit, documented opt-out for local debugging only — never for CI or a merge
+gate), `src/Makefile`'s `REQ_CXXFLAGS`, and `src/tests/Makefile`'s `CXXFLAGS`. The
+sanitizer presets (`linux-x64-sanitize`, `macos-arm64-asan`) inherit from their
+non-sanitizing base presets, so they pick up `-Werror` too — by design, not an
+oversight.
+
+This is the payoff of Phase 5 Tasks 1-7: a mechanical, category-by-category sweep
+(`-Wchar-subscripts`, `-Wwritable-strings`/const-correctness, sprintf-family
+conversions to `std::format`, `-Wunused`, sanitizer-visible UB, tail-sweep stragglers)
+that drove the GNU-family warning census to zero on every locally-built configuration
+(macOS AppleClang, `rots64` g++14) before this flip. `-Werror` only earns its keep once
+the tree is already clean — flipping it first would just be a wall of red with no
+signal.
+
+**Task 8's own clean-build census still found four stragglers** that the per-category
+probe builds in Tasks 1-7 missed, because a full `ageland`/`ageland_tests` build
+compiles a different (larger) translation-unit set than a targeted probe: three
+`-Wimplicit-fallthrough` sites (`fight.cpp`'s `weapon_hit_type`, `limits.cpp`'s
+`affect_update_person`, `modify.cpp`'s `string_add`) plus one in `shapemob.cpp`'s
+`recalculate_mob` and five more in `shapescript.cpp`'s `get_parameter`  — all fixed
+with the standard `[[fallthrough]];` attribute, which documents intent without
+changing the generated code or observable behavior (a fall-through switch case is
+still a fall-through switch case; the attribute only tells the compiler it was
+deliberate). One `-Wformat-truncation` site (`objsave.cpp`'s
+`Crash_get_file_by_name`) was converted from `snprintf` into a fixed buffer to
+`std::format` — the same idiom already used two lines above it in the same
+function — which is both the project's sanctioned modernization target for
+sprintf-family call sites (see "Formatting" below) and immune to this class of
+diagnostic (no fixed-size destination buffer for the compiler to reason about).
+None of these were suppressions: every one is a real, behavior-preserving fix.
+
+**Suppression discipline still applies when a real fix isn't available:** a warning
+may be silenced with a pragma/attribute only alongside a comment stating why the code
+is intentional. No blanket `-Wno-*` flag exists anywhere in this policy; none is
+expected to be needed for the GNU-family census going forward.
+
+**Pinned-toolchain rationale for new-warning arrivals:** the container images
+(`Dockerfile`, `Dockerfile.x64`) pin an exact `debian:trixie` base, and macOS/Windows
+CI runners pin exact OS images — so a warning that's clean today does not silently
+reappear from a toolchain upgrade nobody asked for. When a toolchain bump is
+deliberately taken in a future phase, treat any warnings it introduces the same way
+Tasks 1-7 did: real fix first, `[[fallthrough]]`/cast/restructure over suppression,
+pragma-plus-comment-plus-ledger-entry only as a last resort.
+
+**The `-funsigned-char` (GNU) / `/J` (MSVC) pin is the accepted resolution, not a
+placeholder.** Phase 5 design decision 2 (`docs/superpowers/specs/
+2026-07-12-phase-5-hardening-design.md`) confirmed the existing 4-compiler pin —
+`-funsigned-char` on GCC/Clang/AppleClang, `/J` on MSVC, present in every build path
+before this task (`src/CMakeLists.txt:80/113/324`, `src/Makefile`'s `REQ_CXXFLAGS`,
+`src/tests/Makefile`'s `CXXFLAGS`) — **is** the resolution: an earlier spec draft
+floated auditing char-signedness assumptions away entirely, but that audit is not
+being pursued. `char` stays pinned unsigned on every platform this project builds
+for; do not remove or gate the pin.
+
+**MSVC gets its own campaign, not this flip.** `/W4 /WX` for the `windows-msvc`
+preset is Phase 5 Task 9's job — a staged effort (CI-driven census, triage,
+documented `/wd` suppressions for any genuinely MSVC-only noise class, then the
+flip), tracked separately because MSVC's warning set and diagnostic text don't line
+up 1:1 with GCC/Clang's. Until Task 9 lands, `windows-msvc` is not `-Werror`-clean
+by policy — it happens to build warning-visible-but-not-error today, which is a
+different guarantee.
+
+**The i386 container leg (`-m32`, g++14 `debian:trixie`) is explicitly deferred to
+Phase 5 Task 10 (finalization), not silently skipped.** The per-task verification
+cadence for this phase runs macOS native + `rots64` only (see CLAUDE.md's
+verification-cadence gotcha); the i386 container battery — including its own build
+under `-w` today, `-Werror` starting at Task 10 — runs at the wave/branch
+finalization pass. Its `-m32` translation-unit set and its slightly different
+warning surface (32-bit pointer/size_t widths change what `-Wformat`,
+`-Wsign-compare`, etc. can flag) are a real, disclosed exposure: a straggler
+specific to that ABI may still surface there and will be fixed as part of Task 10,
+the same disposition rigor (real fix or restructure; pragma+comment+ledger only as
+last resort) applying there too.
+
+**32-bit retirement is a future-phase trigger, not part of this warnings policy.**
+The i386 preset/container/CI leg stays required — including once it starts
+building under `-Werror` at Task 10 — until the depot owner confirms live player
+data is fully migrated off the binary/text-legacy save formats (see AGENTS.md's
+JSON-persistence-migration notes and CLAUDE.md's account-native-vs-`save_player`
+split). That confirmation, not this task, is what starts the 32-bit-retirement
+phase; until then `legacy_*_fixture.bin` goldens and the i386 build stay canonical
+for the shipping ABI exactly as they are today.
+
 ### Formatting: `std::format` is the sanctioned target
 
 Output composition (`sprintf`/`strcpy`/`strcat`-family call sites being modernized in

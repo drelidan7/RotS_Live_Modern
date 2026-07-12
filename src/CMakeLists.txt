@@ -90,8 +90,12 @@ set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 #     switch (the flag MSVC itself provides for exactly this legacy-code
 #     scenario), not a rewrite -- the pointed-to data and every call site are
 #     unchanged, so it cannot affect runtime behavior or goldens.
-# GNU-family flags: -funsigned-char / -fstrict-aliasing / -w / -g are identical
-# on GCC, Clang, and AppleClang.
+# GNU-family flags: -funsigned-char / -fstrict-aliasing / -Wall -Wextra -Werror / -g
+# are identical on GCC, Clang, and AppleClang. Phase 5 Task 8 flips the historical
+# -w (suppress everything) to -Wall -Wextra -Werror once the GNU-family warning
+# census (Tasks 1-7) reached zero on every locally-built configuration; see
+# docs/BUILD.md's "Warnings policy" section for the pinned-toolchain rationale and
+# the i386 (-m32, g++14 container) exposure, which is deferred to Task 10.
 #   -D_FILE_OFFSET_BITS=64  32-bit glibc's legacy readdir()/stat() use a 32-bit
 #     ino_t/off_t; against modern filesystems with 64-bit inode numbers (ext4,
 #     overlay2) readdir() fails with EOVERFLOW. Switches libc to the 64-bit-safe
@@ -110,7 +114,7 @@ else()
 endif()
 target_compile_options(ageland PRIVATE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
-    $<${ROTS_GNULIKE}:-funsigned-char -fstrict-aliasing -w -g>
+    $<${ROTS_GNULIKE}:-funsigned-char -fstrict-aliasing -Wall -Wextra -Werror -g>
     $<$<CXX_COMPILER_ID:MSVC>:/J /w /Zc:strictStrings->
 )
 target_link_options(ageland PRIVATE
@@ -154,7 +158,7 @@ target_compile_options(ageland PRIVATE
 if(ROTS_BUILD_TESTS)
     include(CTest)
 
-    option(ROTS_SUPPRESS_TEST_WARNINGS "Suppress compiler warnings when building the ageland_tests target" ON)
+    option(ROTS_SUPPRESS_TEST_WARNINGS "Suppress compiler warnings when building the ageland_tests target" OFF)
 
     # Explicit list, matching the style above — no file(GLOB).
     set(ROTS_TEST_SOURCES
@@ -349,7 +353,7 @@ if(ROTS_BUILD_TESTS)
     if(ROTS_SUPPRESS_TEST_WARNINGS)
         target_compile_options(ageland_tests PRIVATE $<${ROTS_GNULIKE}:-w>)
     else()
-        target_compile_options(ageland_tests PRIVATE $<${ROTS_GNULIKE}:-Wall -Wextra>)
+        target_compile_options(ageland_tests PRIVATE $<${ROTS_GNULIKE}:-Wall -Wextra -Werror>)
     endif()
     # SSE float math for the tests (mirrors src/tests/Makefile): i386 g++ defaults to
     # x87 extended-precision FP, which rounds differently from the SSE math of every

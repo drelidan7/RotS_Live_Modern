@@ -1642,6 +1642,8 @@ ACMD(do_tame)
             tmpwtl.cmd = CMD_HIT;
             do_hit(victim, buf, &tmpwtl, 0, 0);
         }
+        [[fallthrough]]; // intentional: case 1 always falls into default's abort_delay(),
+                          // whether the tame attempt succeeded or failed.
 
     default:
         abort_delay(ch);

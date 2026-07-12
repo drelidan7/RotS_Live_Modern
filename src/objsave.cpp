@@ -346,9 +346,9 @@ FILE* Crash_get_file_by_name(const char* name, const char* mode)
     if (!(fp = fopen(buf, mode))) {
         const bool suppress_missing_read_side_file = (errno == ENOENT) && (mode != nullptr) && (mode[0] == 'r');
         if (!suppress_missing_read_side_file) {
-            snprintf(buf1, sizeof(buf1), "SYSERR: unable to open crashsave file '%s' for %s: %s",
-                buf, name, strerror(errno));
-            log(buf1);
+            log(std::format("SYSERR: unable to open crashsave file '{}' for {}: {}", buf, name,
+                strerror(errno))
+                    .c_str());
         }
         return 0;
     }

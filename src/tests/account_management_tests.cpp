@@ -1917,7 +1917,7 @@ TEST(AccountManagement, PersistedMigrationSnapshotOmitsLegacyPlayerPasswordAndHo
 
     char_file_u stored_character = make_stored_character("aragorn");
     std::snprintf(stored_character.host, sizeof(stored_character.host), "%s", "legacy.example.org");
-    std::snprintf(stored_character.pwd, sizeof(stored_character.pwd), "%s", "legacy-password");
+    std::snprintf(stored_character.pwd, sizeof(stored_character.pwd), "%s", "LegacyPwd1");
     write_valid_legacy_player_file(temp_directory.path(), stored_character);
 
     account::CharacterMigrationData migration;

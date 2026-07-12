@@ -325,6 +325,8 @@ void string_add(struct descriptor_data* d, char* str)
             *(scan + 1) = 0;
             if (!IS_SET(PRF_FLAGS(d->character), PRF_SPAM))
                 break;
+            [[fallthrough]]; // intentional: with PRF_SPAM set, 'l' (list) falls through
+                              // into 'r' (redisplay) to show the trimmed text.
         case 'r':
             if ((int)d->len_str == 0) {
                 send_to_char("Display what?\n\r", d->character);

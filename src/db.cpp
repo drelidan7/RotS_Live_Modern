@@ -220,7 +220,17 @@ extern universal_list* affected_list_pool;
 
 #define SAVEBUFLEN 3400
 
-unsigned char pwdcrypt[MAX_PWD_LENGTH];
+// +1 (and the explicit terminator below): encrypt_line() fills all MAX_PWD_LENGTH
+// bytes with encrypted data, leaving no room for a NUL -- the write_player_text()
+// call below then reads this buffer with fprintf's "%s", which scans past the
+// 10-byte allocation for a terminator that was never there. In a non-ASan build
+// this reads whatever adjacent global happens to hold a zero byte (in practice,
+// silently landing on a null combat_list/combat_next_dude pointer's low byte);
+// under ASan it's a global-buffer-overflow read (caught by the Wave 4 D2
+// characterization suite's mandatory ASan pass -- see db_save_roundtrip_tests.cpp).
+// Pre-existing bug, unrelated to and untouched by the sprintf/strcpy->std::format
+// conversion in the surrounding functions.
+unsigned char pwdcrypt[MAX_PWD_LENGTH + 1];
 
 /*************************************************************************
  *  routines for booting the system                                       *
@@ -2839,7 +2849,19 @@ void encrypt_line(unsigned char* line, int len);
 // so its bytes stay identical to the legacy path (pinned by the A/B oracle + round-trip test).
 bool write_player_text(struct char_data* ch, int load_room, const char* scratch_path)
 {
-    struct char_file_u chd;
+    // {}: char_to_store() below populates every char_file_u field except pwd/host
+    // (set explicitly right after it returns); leaving chd uninitialized meant
+    // chd.pwd's bytes past the password's null terminator (up to MAX_PWD_LENGTH) were
+    // stack garbage, which memcpy(pwdcrypt, chd.pwd, MAX_PWD_LENGTH) then fed into
+    // encrypt_line() -- an uninitialized-read that made the encrypted "password" line
+    // non-reproducible across calls (caught by the Wave 4 D2 characterization suite's
+    // mandatory ASan pass; see db_save_roundtrip_tests.cpp). Doesn't change the login
+    // password check (a null-terminated compare never reads past the real password's
+    // terminator either way) or any already-written save file -- only makes new writes'
+    // trailing pwd bytes deterministic zero instead of undefined. Pre-existing bug,
+    // unrelated to and untouched by the sprintf/strcpy->std::format conversion in the
+    // surrounding functions.
+    struct char_file_u chd {};
     int tmp;
 
     // "wb": this serialization is pinned byte-for-byte (A/B oracle + round-trip
@@ -2875,6 +2897,7 @@ bool write_player_text(struct char_data* ch, int load_room, const char* scratch_
     fprintf(pf, "last_logon  %ld\n", chd.last_logon);
     memcpy(pwdcrypt, chd.pwd, MAX_PWD_LENGTH);
     encrypt_line((unsigned char*)pwdcrypt, MAX_PWD_LENGTH);
+    pwdcrypt[MAX_PWD_LENGTH] = '\0'; // terminate explicitly -- see the pwdcrypt declaration comment
     fprintf(pf, "password    %s\n", pwdcrypt);
     fprintf(pf, "host        %s\n", chd.host);
     fprintf(pf, "idnum       %ld\n", chd.specials2.idnum);

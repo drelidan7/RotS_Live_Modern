@@ -2411,7 +2411,7 @@ const char* get_expose_spell_message(int spell_id)
     }
 }
 
-void spell_expose_elements(char_data* caster, char* arg, int type, char_data* victim, obj_data* obj, int digit, int is_object)
+ASPELL(spell_expose_elements)
 {
     const int max_valid_specs = 6;
     if (!victim || !caster)

@@ -74,7 +74,7 @@ bool is_preference_flagged(const char_data& character, long flag)
 //============================================================================
 // Apparently this isn't used.
 //============================================================================
-bool is_player_mode_on(const char_data& character, long flag)
+bool is_player_mode_on(const char_data&, long)
 {
     return false;
     // there is no character.specials2.mode
@@ -1520,7 +1520,7 @@ std::string specialization_data::to_string(char_data& character) const
 }
 
 //============================================================================
-std::string elemental_spec_data::to_string(char_data& character) const
+std::string elemental_spec_data::to_string(char_data&) const
 {
     std::ostringstream message_writer;
     message_writer << "You are specialized in a mage specialization." << std::endl;
@@ -1546,7 +1546,7 @@ void elemental_spec_data::report_exposed_data(std::ostringstream& message_writer
 }
 
 //============================================================================
-std::string cold_spec_data::to_string(char_data& character) const
+std::string cold_spec_data::to_string(char_data&) const
 {
     std::ostringstream message_writer;
     message_writer << "You are specialized in cold." << std::endl;
@@ -1597,7 +1597,7 @@ std::string fire_spec_data::to_string(char_data& character) const
 }
 
 //============================================================================
-std::string lightning_spec_data::to_string(char_data& character) const
+std::string lightning_spec_data::to_string(char_data&) const
 {
     std::ostringstream message_writer;
     message_writer << "You are specialized in lightning." << std::endl;
@@ -1634,7 +1634,7 @@ std::string darkness_spec_data::to_string(char_data& character) const
 }
 
 //============================================================================
-std::string arcane_spec_data::to_string(char_data& character) const
+std::string arcane_spec_data::to_string(char_data&) const
 {
     std::ostringstream message_writer;
     message_writer << "You are specialized in the arcane." << std::endl;
@@ -1650,30 +1650,30 @@ std::string arcane_spec_data::to_string(char_data& character) const
 }
 
 //============================================================================
-std::string heavy_fighting_data::to_string(char_data& character) const
+std::string heavy_fighting_data::to_string(char_data&) const
 {
     return std::string("You are specialized in heavy fighting.");
 }
 
 //============================================================================
-std::string light_fighting_data::to_string(char_data& character) const
+std::string light_fighting_data::to_string(char_data&) const
 {
     return std::string("You are specialized in light fighting.\n\r");
 }
 
 //============================================================================
-std::string defender_data::to_string(char_data& character) const
+std::string defender_data::to_string(char_data&) const
 {
     return std::string("You are specialized in defending.\n\r");
 }
 
-std::string battle_mage_spec_data::to_string(char_data& character) const
+std::string battle_mage_spec_data::to_string(char_data&) const
 {
     return std::string("You are specialized in battle mage.\n\r");
 }
 
 //============================================================================
-std::string wild_fighting_data::to_string(char_data& character) const
+std::string wild_fighting_data::to_string(char_data&) const
 {
     return std::string("You are specialized in wild fighting.\n\r");
 }

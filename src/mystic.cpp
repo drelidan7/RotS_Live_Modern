@@ -1830,7 +1830,7 @@ ASPELL(spell_protection)
     };
 }
 
-void do_renounce(char_data* character, char* argument, waiting_type* wait_list, int command, int sub_command)
+void do_renounce(char_data* character, char*, waiting_type*, int, int)
 {
 
     if (utils::is_affected_by_spell(*character, SPELL_SANCTUARY)) {

@@ -435,7 +435,7 @@ ACMD(do_get)
     }
 }
 
-void perform_drop_gold(struct char_data* ch, int amount, sh_int RDR)
+void perform_drop_gold(struct char_data* ch, int amount, sh_int)
 {
     struct obj_data* obj;
 
@@ -455,7 +455,7 @@ void perform_drop_gold(struct char_data* ch, int amount, sh_int RDR)
     }
 }
 
-int perform_drop(struct char_data* ch, struct obj_data* obj, sh_int RDR)
+int perform_drop(struct char_data* ch, struct obj_data* obj, sh_int)
 {
     if (IS_SET(obj->obj_flags.extra_flags, ITEM_NODROP)) {
         sprintf(buf, "You can't drop %s, it must be cursed!\n\r", OBJS(obj, ch));

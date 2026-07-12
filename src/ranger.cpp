@@ -1999,7 +1999,7 @@ int see_hiding(struct char_data* seeker)
     return can_see;
 }
 
-bool check_archery_accuracy(const char_data& archer, const char_data& victim)
+bool check_archery_accuracy(const char_data& archer, const char_data&)
 {
     using namespace utils;
 
@@ -2756,8 +2756,7 @@ void get_corpse_tagged_arrows(const char_data* character, std::vector<obj_data*>
 // Recovers arrows that have been tagged by a player from the room that the
 // player is in, and any corpses within the room.
 //============================================================================
-void do_recover(char_data* character, char* argument, waiting_type* wait_list, int command,
-    int sub_command)
+void do_recover(char_data* character, char*, waiting_type*, int, int)
 {
     if (character == NULL)
         return;
@@ -2841,8 +2840,7 @@ void do_recover(char_data* character, char* argument, waiting_type* wait_list, i
    ------------------------------Change Log---------------------------------------
    slyon: Sept 6, 2017 - Documented
 ==================================================================================*/
-void do_scan(char_data* character, char* argument, waiting_type* wait_list, int command,
-    int sub_command)
+void do_scan(char_data* character, char*, waiting_type*, int, int)
 {
     struct char_data* i;
     int is_in, dir, dis, maxdis, found = 0;
@@ -2938,7 +2936,7 @@ int mark_calculate_duration(char_data* marker)
    ------------------------------Change Log---------------------------------------
    slyon: Sept 5, 2017 - Created
 ==================================================================================*/
-int mark_calculate_damage(char_data* marker, char_data* victim)
+int mark_calculate_damage(char_data* marker, char_data*)
 {
     int ranger_level = utils::get_prof_level(PROF_RANGER, *marker);
     int str_factor = marker->tmpabilities.str / 5;

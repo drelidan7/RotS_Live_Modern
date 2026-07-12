@@ -4981,8 +4981,7 @@ void do_identify_object(struct char_data* ch, struct obj_data* j)
     send_to_char("\r\n", ch);
 }
 
-void do_details(char_data* character, char* argument, waiting_type* wait_list, int command,
-    int sub_command)
+void do_details(char_data* character, char* argument, waiting_type* wait_list, int, int)
 {
     const char* SPEC_FLAG = "spec";
     const char* GROUP_FLAG = "group";

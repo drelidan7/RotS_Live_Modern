@@ -1346,7 +1346,7 @@ int create_room(struct char_data* ch, char* arg)
 }
 /*****************----------------------------------******************/
 // #define min(a,b) (((a)<(b))? (a):(b))
-int replace_room(struct char_data* ch, char* arg)
+int replace_room(struct char_data* ch, char*)
 {
     /* copy f1 to f2, replacing mob #num with new mob */
     char str[255];
@@ -1460,7 +1460,7 @@ int replace_room(struct char_data* ch, char* arg)
     fclose(f2);
     return num;
 }
-int append_room(struct char_data* ch, char* arg)
+int append_room(struct char_data* ch, char*)
 {
     /* copy f1 to f2, appending mob #next-in-file with new mob */
     char str[255], fname[80];

@@ -111,7 +111,7 @@ void free_script_list(script_data* root)
     }
 }
 
-void new_script(struct char_data* ch)
+void new_script(struct char_data*)
 {
 
     // Should CREATE1 a script and initialise all variables
@@ -1005,7 +1005,7 @@ void renum_commands(struct script_data* script)
     }
 }
 
-void check_script_syntax(struct char_data* ch)
+void check_script_syntax(struct char_data*)
 {
 
     // add checks for: unterminated scripts, untriggered sections, unconditional use of conditional commands

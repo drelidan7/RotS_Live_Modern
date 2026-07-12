@@ -1506,7 +1506,7 @@ mail_info_type::mail_info_type(int objnum, int l_read, int l_write, int l_rem,
     //  printf("mail_info_type created\n");
 }
 
-void mail_info_type::write_message(struct char_data* ch, char* arg, int num)
+void mail_info_type::write_message(struct char_data* ch, char* arg, int)
 {
     char name[100];
     int i, numb, len, slotnum, oldmsgnum;
@@ -1587,7 +1587,7 @@ void mail_info_type::write_message(struct char_data* ch, char* arg, int num)
     string_add_init(ch->desc, &(msg_storage[slotnum]));
 }
 
-int mail_info_type::approve_msg(char_data* ch, board_msginfo* msg, int cur_num, int* num)
+int mail_info_type::approve_msg(char_data* ch, board_msginfo* msg, int, int* num)
 {
     if ((msg->msg_num == ch->specials2.idnum) || (ch->specials2.idnum < 0)) {
         *num = *num + 1;

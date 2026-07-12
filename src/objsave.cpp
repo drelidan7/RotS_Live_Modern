@@ -472,7 +472,7 @@ struct obj_data*
 // prototype with what is stored in `object' -- the in-memory ObjectSaveData
 // counterpart of the old obj_file_elem, populated identically regardless of
 // whether it came from JSON, a legacy .obj file, or account-staged data.
-Crash_obj2char(struct char_data* ch, const objects_json::ObjectRecord& object)
+Crash_obj2char(struct char_data*, const objects_json::ObjectRecord& object)
 {
     struct obj_data* obj;
 

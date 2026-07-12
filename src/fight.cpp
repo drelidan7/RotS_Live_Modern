@@ -1952,7 +1952,7 @@ bool does_victim_save_on_weapon_poison(struct char_data* victim, struct obj_data
 }
 
 /*UPDATE* integreate parry message with other messages */
-void do_parry(struct char_data* ch, struct char_data* victim, int type)
+void do_parry(struct char_data* ch, struct char_data* victim, int)
 {
     act("$N deflects $n's attack.",
         FALSE, ch, 0, victim, TO_NOTVICT, TRUE);
@@ -1962,7 +1962,7 @@ void do_parry(struct char_data* ch, struct char_data* victim, int type)
         FALSE, ch, 0, victim, TO_VICT, TRUE);
 }
 
-void do_dodge(struct char_data* ch, struct char_data* victim, int type)
+void do_dodge(struct char_data* ch, struct char_data* victim, int)
 {
     act("$N dodges $n's attack.",
         FALSE, ch, 0, victim, TO_NOTVICT, TRUE);
@@ -1972,7 +1972,7 @@ void do_dodge(struct char_data* ch, struct char_data* victim, int type)
         FALSE, ch, 0, victim, TO_VICT, TRUE);
 }
 
-void do_evade(struct char_data* ch, struct char_data* victim, int type)
+void do_evade(struct char_data* ch, struct char_data* victim, int)
 {
     act("$N distracts $n into missing $M.",
         FALSE, ch, 0, victim, TO_NOTVICT, TRUE);
@@ -1982,7 +1982,7 @@ void do_evade(struct char_data* ch, struct char_data* victim, int type)
         FALSE, ch, 0, victim, TO_VICT, TRUE);
 }
 
-void do_pass_through(struct char_data* ch, struct char_data* victim, int type)
+void do_pass_through(struct char_data* ch, struct char_data* victim, int)
 {
     act("$n's attack passes clean through $N.",
         FALSE, ch, 0, victim, TO_NOTVICT, FALSE);
@@ -2379,7 +2379,7 @@ int natural_attack_dam(struct char_data* attacker)
 }
 
 //============================================================================
-void hit(char_data* ch, char_data* victim, int type)
+void hit(char_data* ch, char_data* victim, int)
 {
     obj_data* wielded = 0; /* weapon that ch wields */
     int w_type; /* weapon type, like TYPE_SLASH */
@@ -2671,7 +2671,7 @@ bool can_double_hit(const char_data* character)
     return is_victim_around(character);
 }
 
-bool does_double_hit_proc(const char_data* character)
+bool does_double_hit_proc(const char_data*)
 {
     // Double-hit has a 20% proc chance.
     return number() >= 0.80;
@@ -2729,7 +2729,7 @@ void reset_perform_violence_timing_for_testing()
 /*
  * Control all of the fights going on; works on PULSE_VIOLENCE
  */
-void perform_violence(int mini_tics)
+void perform_violence(int)
 {
     last_time = current_time;
     current_time = std::chrono::steady_clock::now();

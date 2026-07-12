@@ -154,7 +154,7 @@ char unaccent(char c)
 }
 
 inline int
-do_squareroot(int i, struct char_data* ch)
+do_squareroot(int i, struct char_data*)
 {
     if (i / 4 > 170)
         i = 170 * 4;
@@ -1935,7 +1935,7 @@ pool_to_list(struct universal_list** list, struct universal_list** head)
  * and removes it from the list and adds it to the head of the
  * pool
  */
-void from_list_to_pool(universal_list** list, universal_list** head, universal_list* body)
+void from_list_to_pool(universal_list** list, universal_list**, universal_list* body)
 {
     if (*list == body) {
         *list = body->next;

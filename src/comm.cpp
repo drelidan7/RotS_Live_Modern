@@ -2160,7 +2160,7 @@ void send_to_room_except_two(const char* messg, int room, struct char_data* ch1,
  * But we don't want to have:
  *   <NORM>You wield <OBJ>a shadowy blade<NORM><NORM>.<NORM>
  */
-void convert_string(const char* str, int hide_invisible, struct char_data* ch, struct obj_data* obj,
+void convert_string(const char* str, int, struct char_data* ch, struct obj_data* obj,
     void* vict_obj, struct char_data* to, const char* buf)
 {
     int clobbered_color;

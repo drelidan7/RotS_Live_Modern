@@ -1216,7 +1216,7 @@ void assign_pk_bonuses(struct char_data* ch, int coeff, int tier, bool mode)
     }
 }
 
-void remove_fame_war_bonuses(struct char_data* ch, struct affected_type* pkaff)
+void remove_fame_war_bonuses(struct char_data* ch, struct affected_type*)
 {
     int coeff = utils::get_highest_coeffs(*ch);
     affected_type* aff = affected_by_spell(ch, SPELL_FAME_WAR);

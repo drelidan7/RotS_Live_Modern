@@ -511,7 +511,7 @@ void shopping_list(char* arg, struct char_data* ch,
     return;
 }
 
-void shopping_kill(char* arg, struct char_data* ch,
+void shopping_kill(char*, struct char_data* ch,
     struct char_data* keeper, int shop_nr)
 {
     char buf[100];

@@ -10,7 +10,7 @@
 //============================================================================
 namespace utils {
 //============================================================================
-bool is_artifact(const obj_data& object)
+bool is_artifact(const obj_data&)
 {
     // drelidan:  This macro always returns false.
     return false;

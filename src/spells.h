@@ -394,11 +394,15 @@ struct attack_hit_type {
 
 void recalc_skills(struct char_data*);
 
-#define ASPELL(castname)                             \
-    void                                             \
-    castname(char_data* caster, char* arg, int type, \
-        char_data* victim, obj_data* obj, int digit, \
-        int is_object)
+// ASPELL declares the fixed spell_* cast-handler signature; most implementations only use
+// caster/victim (see ACMD/SPECIAL in interpre.h for the same rationale), so the whole
+// parameter list is [[maybe_unused]] rather than suppressing per spell_* definition.
+#define ASPELL(castname)                                                                        \
+    void                                                                                         \
+    castname([[maybe_unused]] char_data* caster, [[maybe_unused]] char* arg,                     \
+        [[maybe_unused]] int type, [[maybe_unused]] char_data* victim,                           \
+        [[maybe_unused]] obj_data* obj, [[maybe_unused]] int digit,                              \
+        [[maybe_unused]] int is_object)
 
 /* Mage spell prototypes */
 ASPELL(spell_blink);

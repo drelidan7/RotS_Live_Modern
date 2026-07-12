@@ -238,7 +238,7 @@ int isname(const char* str, const char* namelist, char full)
     }
 }
 
-void affect_modify_room(struct room_data* room, byte loc, int mod,
+void affect_modify_room(struct room_data* room, byte, int mod,
     long bitv, char add)
 {
     bitv = bitv & (~PERMAFFECT);
@@ -497,7 +497,7 @@ void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add,
 /* This updates a character by subtracting everything he is affected by */
 /* restoring original abilities, and then affecting all again     ?????      */
 
-void affect_total_room(struct room_data* room, int mode)
+void affect_total_room(struct room_data*, int)
 {
 }
 
@@ -892,7 +892,7 @@ affected_type* room_affected_by_spell(const room_data* room, int spell)
    duration and average modifier are not implemented for some reason.*/
 
 void affect_join(struct char_data* ch, struct affected_type* af,
-    char avg_dur, char avg_mod)
+    char, char)
 {
     struct affected_type* hjp;
     char found = FALSE;
@@ -1073,7 +1073,7 @@ void stop_follower(struct char_data* ch, int mode)
 
 /* Check if making CH follow VICTIM will create an illegal */
 /* Follow "Loop/circle"                                    */
-char circle_follow(struct char_data* ch, struct char_data* victim, int mode)
+char circle_follow(struct char_data* ch, struct char_data* victim, int)
 {
     for (char_data* character = victim; character; character = character->master) {
         if (character == ch) {

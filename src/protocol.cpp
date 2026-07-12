@@ -1914,7 +1914,7 @@ static void PerformHandshake(descriptor_t* apDescriptor, char aCmd, char aProtoc
     }
 }
 
-static void PerformSubnegotiation(descriptor_t* apDescriptor, char aCmd, char* apData, int aSize)
+static void PerformSubnegotiation(descriptor_t* apDescriptor, char aCmd, char* apData, int)
 {
     protocol_t* pProtocol = apDescriptor->pProtocol;
 

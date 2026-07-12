@@ -86,7 +86,7 @@ void report_char_mentals(struct char_data*, char*, int);
 void appear(struct char_data*);
 combat_result_struct damage_stat(struct char_data*, struct char_data*, int, int);
 
-void do_mental(struct char_data* ch, char* argument, struct waiting_type* wtl, int cmd, int subcmd)
+ACMD(do_mental)
 {
     char_data* victim;
     int tmp, damg, not_ready;

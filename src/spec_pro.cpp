@@ -1754,7 +1754,7 @@ void add_leveled_spell_to_list(int* spell_list, int spell, int mage_type, int cu
 
 // lookup spells by mage type and hp thresholds
 void get_combat_spells(char_data* host, int* spell_list, double current_health_pct,
-    double current_mana_pct)
+    double)
 {
     for (int mage_type = 0; mage_type < mage_types; mage_type++) {
         char* keyword = (char*)mage_aliases[mage_type];

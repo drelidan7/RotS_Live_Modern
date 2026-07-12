@@ -899,7 +899,7 @@ int mail_ok(struct char_data* ch)
 
 /* Find mailman removed - crashed the mud and isn't needed anyway... */
 
-void postmaster_send_mail(struct char_data* ch, int cmd, char* arg, char_data* host)
+void postmaster_send_mail(struct char_data* ch, int, char* arg, char_data* host)
 {
     struct char_data* mailman;
     char buf[200], recipient[100], *tmp;
@@ -956,7 +956,7 @@ void postmaster_send_mail(struct char_data* ch, int cmd, char* arg, char_data* h
     ch->desc->max_str = MAX_MAIL_SIZE;
 }
 
-void postmaster_check_mail(struct char_data* ch, int cmd, char* arg, char_data* host)
+void postmaster_check_mail(struct char_data* ch, int, char*, char_data* host)
 {
     struct char_data* mailman;
     char buf[200], recipient[100], *tmp;
@@ -975,7 +975,7 @@ void postmaster_check_mail(struct char_data* ch, int cmd, char* arg, char_data* 
     act(buf, FALSE, mailman, 0, ch, TO_VICT);
 }
 
-void postmaster_receive_mail(struct char_data* ch, int cmd, char* arg, char_data* host)
+void postmaster_receive_mail(struct char_data* ch, int, char*, char_data* host)
 {
     struct char_data* mailman;
     char buf[200], recipient[100], *tmp;

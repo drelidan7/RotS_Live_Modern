@@ -1571,7 +1571,7 @@ void half_chop(char* string, char* arg1, char* arg2)
 void* virt_program_number(int);
 
 int activate_char_special(char_data* character, char_data* victim, int cmd, char* argument,
-    int callflag, waiting_type* wait_data, int in_room)
+    int callflag, waiting_type* wait_data, int)
 {
     special_func tmp_func;
 

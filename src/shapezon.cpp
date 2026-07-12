@@ -1814,7 +1814,7 @@ int load_zone(struct char_data* ch, char* arg)
 
 /*****************----------------------------------******************/
 
-int replace_zone(struct char_data* ch, char* arg)
+int replace_zone(struct char_data* ch, char*)
 {
 
     /* this procedure is used for deleting objects, too */

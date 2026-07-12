@@ -152,7 +152,7 @@ sh_int get_lea_mod(int race)
 /*
  * This function returns 200 * sqrt(i).
  */
-inline int do_squareroot(int i, char_data* character)
+inline int do_squareroot(int i, char_data*)
 {
     return int(std::sqrt(i) * 200.0);
 }
@@ -489,7 +489,7 @@ void roll_stats(int num_stats, std::vector<int>& stat_array)
 // Returns a valid stat array, ordered from lowest-to-highest.
 // All stats will be between 3 and 18.  The stat sum will be between
 // min and max (inclusive).
-std::vector<int> get_stat_array(int num_stats, int sum_min, int sum_max, int num_tries)
+std::vector<int> get_stat_array(int num_stats, int sum_min, int sum_max, int)
 {
     assert(sum_min <= sum_max);
 

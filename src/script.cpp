@@ -1606,7 +1606,7 @@ int run_script(struct info_script* info, struct script_data* position)
 
 // A room's reaction to a character's entry
 
-int trigger_room_enter(room_data* room, char_data* ch)
+int trigger_room_enter(room_data*, char_data*)
 {
     return 1;
 }

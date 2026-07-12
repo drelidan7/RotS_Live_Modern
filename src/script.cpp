@@ -280,7 +280,7 @@ static const int MAX_SCRIPT_HIT_VALUE = 1000000;
 void set_int_value(struct info_script* info, int param, int val)
 {
     int* x;
-    extern char* get_param_text(int); /* shapescript.cc */
+    extern const char* get_param_text(int); /* shapescript.cc */
     int* get_int_param(int, struct info_script*);
 
     x = get_int_param(param, info);
@@ -930,7 +930,7 @@ int run_script(struct info_script* info, struct script_data* position)
             if (curr->param[0]) {
                 tmpch = get_char_param(curr->param[0], info);
                 if (tmpch)
-                    do_flee(tmpch, "", 0, 0, 0);
+                    do_flee(tmpch, mutable_arg(""), 0, 0, 0);
             }
             curr = curr->next;
             break;
@@ -1095,7 +1095,7 @@ int run_script(struct info_script* info, struct script_data* position)
                             obj_to_char(tmpobj, tmpch);
                         }
                     }
-                    do_wear(tmpch, "all", 0, 0, 0);
+                    do_wear(tmpch, mutable_arg("all"), 0, 0, 0);
                 }
             }
             curr = curr->next;

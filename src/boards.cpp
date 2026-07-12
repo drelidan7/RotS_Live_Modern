@@ -727,10 +727,15 @@ void board_info_type::flush_board()
 {
     char_data dummy;
     char str[100];
+    // Fixed-lifetime buffer for the throwaway "system" poster name below: dummy.player.name
+    // is a genuinely-mutable char* elsewhere (owns dynamically allocated player names), so it
+    // cannot bind a string literal directly; this local outlives dummy within the function, so
+    // dummy.player.name never dangles (unlike a call-scoped mutable_arg temporary would).
+    char auto_name[] = "Auto";
     int i, shn;
 
     dummy.desc = 0;
-    dummy.player.name = "Auto";
+    dummy.player.name = auto_name;
     dummy.specials.invis_level = LEVEL_IMPL;
     dummy.specials2.idnum = -1;
     GET_LEVEL(&dummy) = LEVEL_IMPL;
@@ -1427,7 +1432,7 @@ void board_info_type::reset_board()
     unlink(boards_json::board_json_path(FILENAME).c_str());
 }
 board_info_type::board_info_type(int objnum, int l_read, int l_write, int l_rem,
-    int max_msg, char* file, char* titlename)
+    int max_msg, const char* file, const char* titlename)
 {
     /** This stuff is copied lower to the mail_info_type constructor -
         be careful and considerate. **/
@@ -1472,7 +1477,7 @@ board_info_type::board_info_type()
     filename[0] = 0;
 }
 mail_info_type::mail_info_type(int objnum, int l_read, int l_write, int l_rem,
-    int max_msg, char* file, char* titlename) /*:
+    int max_msg, const char* file, const char* titlename) /*:
   /  board_info_type::board_info_type/(objnum, l_read, l_write, l_rem, max_msg, file)*/
 {
     vnum = objnum;

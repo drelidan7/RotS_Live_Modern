@@ -65,7 +65,7 @@ int get_command(char* command);
 // Local declarations
 int replace_script(struct char_data* ch, char* arg);
 int get_parameter(char* param);
-char* get_param_text(int param);
+const char* get_param_text(int param);
 
 /* Free the temporary structures associated with shaping a script.
    If the script should be implemented/saved, then this should
@@ -1118,7 +1118,7 @@ void extra_coms_script(struct char_data* ch, char* argument)
             ->editflag
             = 49;
         send_to_char("OK. You created a new script. Do '/save' to assign a number to your script\n\r", ch);
-        shape_center_script(ch, "");
+        shape_center_script(ch, mutable_arg(""));
         break;
 
     case SHAPE_LOAD:
@@ -1175,7 +1175,7 @@ void extra_coms_script(struct char_data* ch, char* argument)
     case SHAPE_DONE:
         replace_script(ch, argument);
         implement_script(ch);
-        extra_coms_script(ch, "free");
+        extra_coms_script(ch, mutable_arg("free"));
         break;
     }
     return;
@@ -2598,7 +2598,7 @@ int get_parameter(char* param)
     } // switch * param
 }
 
-char* get_param_text(int param)
+const char* get_param_text(int param)
 {
     switch (param) {
     case SCRIPT_PARAM_STR1:

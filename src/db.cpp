@@ -178,8 +178,8 @@ void assign_the_shopkeepers(void);
 void build_player_index(void);
 void boot_mudlle();
 void boot_crimes();
-int file_to_string(char* name, char* buf);
-int file_to_string_alloc(char* name, char** buf);
+int file_to_string(const char* name, char* buf);
+int file_to_string_alloc(const char* name, char** buf);
 void check_start_rooms(void);
 void renum_world(void);
 void reset_time(void);
@@ -788,7 +788,7 @@ int read_filename_field(int pos, char* field, char* fname)
 }
 
 /* New index build for the new player files */
-void build_directory(char* TheDir)
+void build_directory(const char* TheDir)
 {
     namespace fs = std::filesystem;
     char* tmpch;
@@ -908,7 +908,7 @@ int count_hash_records(FILE* fl)
 
 void index_boot(int mode)
 {
-    char *index_filename, *prefix = NULL;
+    const char *index_filename, *prefix = NULL;
     FILE *index, *db_file;
     int rec_count = 0;
 
@@ -3383,7 +3383,7 @@ void free_obj(struct obj_data* obj)
 }
 
 /* read contets of a text file, alloc space, point buf to it */
-int file_to_string_alloc(char* name, char** buf)
+int file_to_string_alloc(const char* name, char** buf)
 {
     char temp[MAX_STRING_LENGTH];
 
@@ -3397,7 +3397,7 @@ int file_to_string_alloc(char* name, char** buf)
 }
 
 /* read contents of a text file, and place in buf */
-int file_to_string(char* name, char* buf)
+int file_to_string(const char* name, char* buf)
 {
     FILE* fl;
     char tmp[100];

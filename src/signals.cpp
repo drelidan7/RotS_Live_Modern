@@ -153,7 +153,6 @@ void unrestrict_game(int)
 #endif
     mudlog("Received SIGUSR2 - unrestricting game (emergent)",
         BRF, LEVEL_IMMORT, TRUE);
-    int ban_list = 0;
     restrict = 0;
     num_invalid = 0;
 }

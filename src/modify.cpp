@@ -50,14 +50,6 @@ unsigned int length[] = {
     60
 };
 
-const char* const skill_fields[] = {
-    "learned",
-    "affected",
-    "duration",
-    "recognize",
-    "\n"
-};
-
 int max_value[] = {
     255,
     255,
@@ -692,8 +684,8 @@ ACMD(do_string)
 
 char* one_word(char* argument, char* first_arg)
 {
-    int found, begin, look_at;
-    found = begin = 0;
+    int begin, look_at;
+    begin = 0;
 
     do {
         for (; isspace(*(argument + begin)); begin++)

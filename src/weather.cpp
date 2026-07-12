@@ -436,7 +436,7 @@ void another_hour(int mode)
 
 void weather_change(void)
 {
-    int diff = 0, change, SectorType;
+    int diff = 0, SectorType;
 
     switch (get_season()) { // We therefore get lower pressure in winter.
     case SEASON_SPRING:
@@ -470,7 +470,6 @@ void weather_change(void)
     weather_info.pressure = MIN(weather_info.pressure, 1040);
     weather_info.pressure = MAX(weather_info.pressure, 960);
 
-    change = 0;
     /*
    How this works:  SECT_FIELD is taken as being the benchmark for weather.  Most other sectors have
    the same weather as fields (though with different messages and effects).  Hills and mountains
@@ -554,8 +553,6 @@ void weather_change(void)
     }
     for (SectorType = 1; SectorType < 13; SectorType++)
         send_to_sector(weather_messages[weather_info.sky[SectorType] + 2][SectorType], SectorType);
-
-    extern struct descriptor_data* descriptor_list;
 
     send_msdp_function([](descriptor_data* desc) {
         auto sector_type = world[desc->character->in_room].sector_type;

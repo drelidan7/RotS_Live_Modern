@@ -84,8 +84,6 @@ void bfs_enqueue(room_data* room, char dir)
 void bfs_dequeue(void)
 {
 
-    room_data* curr;
-    curr = queue_head;
     if (!(queue_head = queue_head->bfs_next))
         queue_tail = 0;
 }

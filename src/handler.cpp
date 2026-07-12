@@ -254,7 +254,7 @@ void affect_modify_room(struct room_data* room, byte, int mod,
 
 void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add, sh_int counter)
 {
-    int maxabil, tmp, tmp2;
+    int tmp, tmp2;
 
     if (add == AFFECT_MODIFY_SET) {
         SET_BIT(ch->specials.affected_by, bitv);
@@ -270,8 +270,6 @@ void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add,
         mod = -mod;
     }
     ch->specials.affected_by |= race_affect[GET_RACE(ch)];
-
-    maxabil = (IS_NPC(ch) ? 25 : 25);
 
     if (add == AFFECT_MODIFY_TIME) {
         return; /* so, usual affects are not modified in this call */

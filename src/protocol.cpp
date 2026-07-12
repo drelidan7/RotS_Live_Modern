@@ -2523,12 +2523,12 @@ static void SendMSSP(descriptor_t* apDescriptor)
      */
     static MSSP_t MSSPTable[] = {
         /* Required */
-        { "NAME", MUD_NAME }, /* Change this in protocol.h */
+        { "NAME", MUD_NAME, nullptr }, /* Change this in protocol.h */
         { "PLAYERS", FUNCTION_CALL(GetMSSP_Players) },
         { "UPTIME", FUNCTION_CALL(GetMSSP_Uptime) },
 
         /* Generic */
-        { "CRAWL DELAY", "-1" },
+        { "CRAWL DELAY", "-1", nullptr },
         /*
               { "HOSTNAME",           "" },
               { "PORT",               "" },
@@ -2626,7 +2626,7 @@ static void SendMSSP(descriptor_t* apDescriptor)
               { "SSL",                "0" },
               { "ZMP",                "0" },
         */
-        { NULL, NULL } /* This must always be last. */
+        { NULL, NULL, nullptr } /* This must always be last. */
     };
 
     /* Begin the subnegotiation sequence */

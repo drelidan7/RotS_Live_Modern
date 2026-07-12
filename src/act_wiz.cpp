@@ -2690,7 +2690,7 @@ ACMD(do_wizset)
     char field[MAX_INPUT_LENGTH], name[MAX_INPUT_LENGTH];
     char val_arg[MAX_INPUT_LENGTH];
     int on = 0, off = 0, value = 0;
-    char is_file = 0, is_mob = 0, is_player = 0;
+    char is_file = 0, is_player = 0;
     int player_i;
 
     int advance_perm(struct char_data*, struct char_data*, int);
@@ -2703,7 +2703,6 @@ ACMD(do_wizset)
         is_player = 1;
         half_chop(buf, name, buf);
     } else if (!str_cmp(name, "mob")) {
-        is_mob = 1;
         half_chop(buf, name, buf);
     }
 

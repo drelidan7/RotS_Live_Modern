@@ -819,8 +819,7 @@ int get_prob_skill(char_data* attacker, char_data* victim, int skill)
 ACMD(do_kick)
 {
     struct char_data* victim;
-    struct char_data* t;
-    sh_int prob, num, dam;
+    sh_int prob, dam;
     int attacktype;
 
     if (IS_SHADOW(ch)) {
@@ -934,7 +933,6 @@ ACMD(do_kick)
         damage(ch, victim, dam, attacktype, 0);
     }
 
-delay:
     WAIT_STATE_FULL(ch, PULSE_VIOLENCE * 4 / 3 + number(0, PULSE_VIOLENCE), 0, 0, 59, 0, 0, 0,
         AFF_WAITING, TARGET_NONE);
 }

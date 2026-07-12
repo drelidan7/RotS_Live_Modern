@@ -479,7 +479,9 @@ ASPELL(spell_locate_living)
         bigcount++;
     }
 
-    int caster_level = get_mage_caster_level(caster);
+    // Result intentionally unused here -- call kept for its number()-driven RNG draw
+    // (Phase 5 T5 RNG discipline: never remove/reorder a live number() call).
+    [[maybe_unused]] int caster_level = get_mage_caster_level(caster);
     bigcount = 0;
     for (tmp = 0; (tmp < roomnum) && (bigcount < mobrange); tmp++) {
         mobs = world[roomlist[tmp].number].people;
@@ -679,7 +681,9 @@ ASPELL(spell_flash)
     if (caster->in_room < 0)
         return;
 
-    int caster_level = get_mage_caster_level(caster);
+    // Result intentionally unused here -- call kept for its number()-driven RNG draw
+    // (Phase 5 T5 RNG discipline: never remove/reorder a live number() call).
+    [[maybe_unused]] int caster_level = get_mage_caster_level(caster);
 
     for (tmpch = world[caster->in_room].people; tmpch; tmpch = tmpch->next_in_room) {
         if (tmpch != caster)
@@ -842,8 +846,6 @@ ASPELL(spell_summon)
 
 ASPELL(spell_identify)
 {
-    struct affected_type af;
-
     if (!obj) {
         send_to_char("You should cast this on objects only.\n\r", caster);
         return;
@@ -2138,8 +2140,9 @@ ASPELL(spell_spear_of_darkness)
         dam += dam / 20;
     }
 
-    // Just run through new_saves_spell for logging.
-    bool saved = new_saves_spell(caster, victim, -20);
+    // Just run through new_saves_spell for logging (return value intentionally unused;
+    // new_saves_spell still draws its number() roll and writes the spllog_* globals).
+    new_saves_spell(caster, victim, -20);
     damage(caster, victim, dam, SPELL_SPEAR_OF_DARKNESS, 0);
 }
 
@@ -2169,7 +2172,6 @@ ASPELL(spell_blaze)
     int dam;
 
     int level = get_mage_caster_level(caster);
-    bool is_fire_spec = utils::get_specialization(*caster) == game_types::PS_Fire;
 
     if (!victim && !obj) { /* there was no target, hit the room */
         if (!caster)

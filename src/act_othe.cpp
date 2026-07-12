@@ -1315,7 +1315,7 @@ bool has_argument(const char* argument) { return *argument != 0; }
 
 int get_sort_index(const char* argument)
 {
-    for (int index = 0; index < inv_sorting.size(); ++index) {
+    for (int index = 0; index < static_cast<int>(inv_sorting.size()); ++index) {
         if (inv_sorting[index].find(argument) != std::string::npos) {
             return index;
         }
@@ -1560,7 +1560,7 @@ ACMD(do_set)
     char arg[250];
 
     // What the fuck is tmp and tmp2?!?!?!?!?
-    int change_index, tmp2, len;
+    int change_index, len;
 
     if (IS_NPC(ch)) {
         send_to_char("Sorry, NPCs can't do that.\n\r", ch);
@@ -2072,9 +2072,7 @@ const int num_of_apply = 2;
 ==================================================================================*/
 ACMD(do_apply)
 {
-    struct char_data* vict;
-    struct obj_data* tmp_object;
-    int percent, bits, tmp;
+    int tmp;
 
     if (IS_NPC(ch)) {
         send_to_char("You're just a dumb NPC.\n\r", ch);

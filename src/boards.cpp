@@ -640,7 +640,6 @@ int board_info_type::remove_msg(struct char_data* ch, char* arg)
 {
     int ind, msg, slot_num, tmp, show_num, remflag;
     char number[MAX_INPUT_LENGTH];
-    char* tmpptr;
     struct descriptor_data* d;
 
     one_argument(arg, number);
@@ -692,7 +691,6 @@ int board_info_type::remove_msg(struct char_data* ch, char* arg)
             send_to_char("At least wait until the author is finished before removING(it!\n\r", ch);
             return 1;
         }
-    tmpptr = msg_storage[slot_num];
     RELEASE(msg_storage[slot_num]);
     msg_storage[MSG_SLOTNUM(ind)] = 0;
     msg_storage_taken[MSG_SLOTNUM(ind)] = 0;

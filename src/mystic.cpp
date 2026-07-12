@@ -1034,14 +1034,15 @@ ASPELL(spell_mass_insight)
 ASPELL(spell_hallucinate)
 {
     struct affected_type af;
-    int loc_level, my_duration;
+    int my_duration;
     int modifier;
 
     if (!victim)
         return;
 
-    int level = get_mystic_caster_level(caster);
-    loc_level = level;
+    // Result intentionally unused here -- call kept for its number()-driven RNG draw
+    // (Phase 5 T5 RNG discipline: never remove/reorder a live number() call).
+    [[maybe_unused]] int level = get_mystic_caster_level(caster);
     if (affected_by_spell(victim, SPELL_HALLUCINATE))
         send_to_char("They are already hallucinating!\n\r", caster);
 
@@ -1444,7 +1445,7 @@ ASPELL(spell_death_ward)
 ASPELL(spell_confuse)
 {
     struct affected_type af;
-    int loc_level, my_duration, tmp;
+    int my_duration, tmp;
     affected_type* tmpaf;
     int modifier;
 
@@ -1467,7 +1468,6 @@ ASPELL(spell_confuse)
     }
 
     int level = get_mystic_caster_level(caster);
-    loc_level = level;
 
     if (is_object)
         my_duration = -1;

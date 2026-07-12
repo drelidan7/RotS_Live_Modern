@@ -649,7 +649,7 @@ FILE* Crash_load(char_data* character)
     // the historical uninitialized read was UB (MSVC RTC3 aborts on it -- Phase 3
     // Task 6) with a potential divide-by-zero lurking in (RENT_HALFTIME + garbage).
     int num_of_hours = 0;
-    int tmp, equip_counter;
+    int tmp;
     struct obj_data dummy_sack;
     auto fail_closed = [&character]() -> FILE* {
         REMOVE_BIT(character->specials.affected_by, AFF_TWOHANDED);
@@ -774,7 +774,6 @@ FILE* Crash_load(char_data* character)
         break;
     }
 
-    equip_counter = 1;
     for (const objects_json::ObjectRecord& object : data.objects) {
         if (!equip_lost) {
             int wear_pos = object.wear_pos;

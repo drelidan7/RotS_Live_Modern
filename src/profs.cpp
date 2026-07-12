@@ -529,11 +529,6 @@ bool operator<(const prof_coof_pair& a, const prof_coof_pair& b)
     return a.prof_coof < b.prof_coof;
 }
 
-bool operator<=(const prof_coof_pair& a, const prof_coof_pair& b)
-{
-    return a.prof_coof <= b.prof_coof;
-}
-
 bool operator==(const prof_coof_pair& a, const prof_coof_pair& b)
 {
     return a.prof_coof == b.prof_coof;

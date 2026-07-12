@@ -779,8 +779,8 @@ void game_loop(SocketType s)
     struct char_data *wait_ch, *wait_tmp;
     AutosaveTimer autosave_timer;
     int sockets_connected, sockets_playing;
-    int tmp, was_updated;
-    char disp, tmpflag;
+    int tmp;
+    char tmpflag;
 
     null_time.tv_sec = 0;
     null_time.tv_usec = 0;
@@ -1012,7 +1012,6 @@ void game_loop(SocketType s)
 
                         if (GET_INVIS_LEV(point->character)) {
                             strcpy(prompt, std::format("i{}", GET_INVIS_LEV(point->character)).c_str());
-                            disp = FALSE;
                         } else
                             prompt[0] = 0;
 
@@ -1083,7 +1082,6 @@ void game_loop(SocketType s)
                         if (prompt[strlen(prompt) - 1] == ' ')
                             prompt[strlen(prompt) - 1] = '\0';
 
-                        disp = TRUE;
                         if (point->character->specials.position == POSITION_SHAPING)
                             strcpy(prompt, std::format("{}]", static_cast<const char*>(prompt)).c_str());
                         else
@@ -1104,14 +1102,12 @@ void game_loop(SocketType s)
         /* Note: pulse now changes every 1/4 sec  */
 
         pulse++;
-        was_updated = 0;
 
         if (!((pulse + 3) % PULSE_ZONE)) {
             zone_update();
         }
         if (!((pulse + 9) % PULSE_MOBILE)) {
             mobile_activity();
-            was_updated = 1;
         }
         perform_violence(pulse % (PULSE_VIOLENCE * 2));
         /* parry is restored in 2 combat (PULSE_VIOLENCE) rounds */
@@ -1120,9 +1116,8 @@ void game_loop(SocketType s)
             weather_and_time(1);
             point_update(); // putting affect_total call in point_update.
             stat_update();
-            was_updated = 1;
         }
-        if (!(pulse % (PULSE_FAST_UPDATE)) /*&& !was_updated*/) {
+        if (!(pulse % (PULSE_FAST_UPDATE))) {
             // now increasing hp/mp/mana/spirit fast in fast_update..
             fast_update();
             affect_update();
@@ -1442,9 +1437,8 @@ SocketType pnew_descriptor(SocketType s)
     SocketType desc;
     struct descriptor_data *pnewd, *point, *next_point;
     socklen_t size;
-    int sockets_connected, sockets_playing, i;
+    int sockets_connected, sockets_playing;
     struct sockaddr_in sock;
-    extern const char* GREETINGS;
 
     if ((desc = pnew_connection(s)) == 0) // here was <0, too bad
         return (0); // here was -1, too bad...
@@ -1546,7 +1540,6 @@ SocketType pnew_descriptor(SocketType s)
 
     /* prepend to list */
 
-    descriptor_data* cur_list = descriptor_list;
     descriptor_list = pnewd;
 
     if (!pnewd->waiting_for_proxy_header && send_initial_login_output(pnewd) < 0) {

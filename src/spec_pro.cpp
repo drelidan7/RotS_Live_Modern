@@ -1244,15 +1244,13 @@ void _recursive_move(struct char_data* ch, struct obj_data* hostobj)
 SPECIAL(ferry_boat)
 {
     struct obj_data* hostobj = (struct obj_data*)host;
-    int tmp, num, was_in;
+    int tmp, num;
 
     if ((cmd != CMD_ENTER) || !ch)
         return FALSE;
 
     if (ch->in_room != hostobj->in_room)
         return FALSE;
-
-    was_in = ch->in_room;
     while (*arg && (*arg <= ' '))
         arg++;
     if (!*arg)
@@ -1806,7 +1804,7 @@ SPECIAL(mob_magic_user_spec)
         return FALSE;
     }
 
-    struct char_data *tmpch, *tmpch_next;
+    struct char_data* tmpch;
     char_data* target;
     int spell_list[20]; // the first index is the count of spells
     int tgt = 0;
@@ -2067,7 +2065,7 @@ SPECIAL(mob_ranger)
 /* Created for the new ranger prog */
 bool see_hidden(char_data* host, char_data* tmpch)
 {
-    int hide, vuln_st, my_hide, orig_hide, see_hide;
+    int hide, vuln_st, orig_hide, see_hide;
 
     orig_hide = see_hiding(host);
     see_hide = orig_hide;
@@ -2081,7 +2079,6 @@ bool see_hidden(char_data* host, char_data* tmpch)
     }
     hide = 0;
     hide = GET_HIDING(tmpch);
-    my_hide = GET_HIDING(host);
     return (!(hide > 0) || (hide > 0 && (see_hide > hide)));
 }
 
@@ -3590,7 +3587,7 @@ remove_scroll:
 SPECIAL(herald)
 {
     char hbuf[HERALD_LEN];
-    struct memory_rec *mr, *pr;
+    struct memory_rec* mr;
 
     if (GET_HIT(host) < 1) { /* herald dead? */
         host->player.death_cry2 = NULL;
@@ -3609,10 +3606,9 @@ SPECIAL(herald)
      * track of people entering and leaving the room
      * ok, let's see... did we announce 'host' yet?
      */
-    pr = mr = host->specials.memory;
+    mr = host->specials.memory;
     while (mr) {
         if (mr->enemy != ch) {
-            pr = mr;
             mr = mr->next_on_mob;
         } else
             return 0;

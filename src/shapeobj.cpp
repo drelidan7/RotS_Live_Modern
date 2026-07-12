@@ -342,11 +342,10 @@ void shape_center_obj(struct char_data* ch, char* arg)
     char str[1000];
 
     //  int i,i1;
-    int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, choice;
+    int tmp, tmp1, tmp2, tmp3, tmp4, tmp5;
     struct obj_data* obj;
     // char key;
     struct extra_descr_data* current_descr;
-    choice = 0;
     obj = SHAPE_OBJECT(ch)->object;
 
     /*printf("Entering shape_center_obj, arg=%s.\n\r",arg);*/
@@ -1022,13 +1021,12 @@ int load_object(struct char_data* ch, char* arg)
 {
     // char c;
     // char format;
-    int i, tmp, tmp2, tmp3, tmp4, tmp5, number, room_number;
+    int i, tmp, tmp2, tmp3, tmp4, tmp5, number;
     char str[255], fname[80];
     struct extra_descr_data* new_descr;
     FILE* f;
     // char s1[50],s2[50],s3[50],s4[50];
     char* st = 0;
-    room_number = ch->in_room;
 
     if (2 != sscanf(arg, "%s %d\n\r", str, &number)) {
         send_to_char("Choose an object by 'shape object <number>'\n\r", ch);
@@ -1085,8 +1083,6 @@ int load_object(struct char_data* ch, char* arg)
         send_to_char(std::format("loading object #{}\n\r", tmp).c_str(), ch);
 
         number = tmp;
-
-        room_number = ch->in_room;
 
         //  SHAPE_OBJECT(ch)->object=(struct obj_data *)calloc(1,sizeof(struct obj_data));
         CREATE1(SHAPE_OBJECT(ch)->object, obj_data);
@@ -1325,8 +1321,6 @@ int replace_object(struct char_data* ch, char* arg)
 {
 
     /* this procedure is used for deleting objects, too */
-
-    char str[255];
 
     char *f_from, *f_old;
 
@@ -1714,9 +1708,8 @@ void extra_coms_obj(struct char_data* ch, char* argument)
 {
 
     //  extern struct room_data world;
-    int comm_key, room_number, i;
+    int comm_key, i;
     char str[255], str2[50];
-    room_number = ch->in_room;
     //  printf("Entering extra_coms_obj, proc=%d, arg=%s.\n\r",SHAPE_OBJECT(ch)->procedure,argument);
     if (SHAPE_OBJECT(ch)->procedure == SHAPE_EDIT) {
 

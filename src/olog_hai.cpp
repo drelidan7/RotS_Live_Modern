@@ -516,7 +516,6 @@ ACMD(do_overrun)
         return;
     }
     int total_moves = utils::get_prof_level(PROF_WARRIOR, *ch) / 8 + number(-1, 1);
-    int loop_moves = 0;
     int dis;
     char_data* tmpch = nullptr;
 

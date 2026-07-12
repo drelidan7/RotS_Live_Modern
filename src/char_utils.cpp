@@ -87,7 +87,7 @@ bool is_affected_by(const char_data& character, long skill_id)
     return utils::is_set(character.specials.affected_by, skill_id);
 }
 
-const bool is_fighting(const char_data& character)
+bool is_fighting(const char_data& character)
 {
     return character.specials.fighting;
 }
@@ -700,7 +700,9 @@ namespace {
             int new_encumb = 0;
 
             // Used to track how much the character is "over" the encumbrance difference.
-            int heavy_fighting_encumbrance_difference = 0;
+            // [[maybe_unused]]: computed but not applied yet -- see the "Removing this for
+            // now" comment below; kept for the documented future re-enable.
+            [[maybe_unused]] int heavy_fighting_encumbrance_difference = 0;
 
             for (int item_index = 0; item_index < MAX_WEAR; ++item_index) {
                 if (encumb_table[item_index] > 0) {

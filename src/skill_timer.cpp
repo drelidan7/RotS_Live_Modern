@@ -28,7 +28,7 @@ void skill_timer::add_skill_timer(const char_data& ch, const int skill_id, const
 int skill_timer::report_skill_status(int player_id, char* buffer)
 {
     char str[255];
-    for (int i = 0; i < m_skill_timer.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(m_skill_timer.size()); ++i) {
         auto& data = m_skill_timer[i];
 
         if (data.player_id == player_id && data.skill_id != GLOBAL_SKILL) {
@@ -41,7 +41,7 @@ int skill_timer::report_skill_status(int player_id, char* buffer)
 
 void skill_timer::update_skill_timer()
 {
-    for (int i = 0; i < m_skill_timer.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(m_skill_timer.size()); ++i) {
         auto& data = m_skill_timer[i];
         if (data.counter > 0) {
             data.counter -= 1;
@@ -68,7 +68,7 @@ bool skill_timer::is_skill_allowed(const char_data& ch, const int skill_id)
 
     int player_id = utils::get_idnum(ch);
 
-    for (int i = 0; i < m_skill_timer.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(m_skill_timer.size()); ++i) {
         auto data = m_skill_timer[i];
         if (data.player_id == player_id && (data.skill_id == skill_id || data.skill_id == GLOBAL_SKILL)) {
             return false;

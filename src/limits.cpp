@@ -1330,7 +1330,7 @@ void affect_update_person(struct char_data* i, int mode)
     // mode != 0 for fast_update
 
     static struct affected_type *af, *next_af_dude;
-    int tmp, freq, val, time_phase;
+    int time_phase;
 
     if (i->desc && i->desc->connected && (i->desc->connected != CON_LINKLS))
         return; // PC is not in 'playing' mode
@@ -1533,11 +1533,9 @@ extern universal_list* affected_list_pool;
 
 void affect_update()
 {
-    universal_list *tmplist, *tmplist2, *tmplist3;
-    ;
+    universal_list *tmplist, *tmplist2;
     char mybuf[1000];
 
-    tmplist3 = 0;
     for (tmplist = affected_list; tmplist; tmplist = tmplist2) {
         tmplist2 = tmplist->next;
 
@@ -1556,7 +1554,6 @@ void affect_update()
         } else if (tmplist->type == TARGET_ROOM) {
             affect_update_room(tmplist->ptr.room);
         }
-        tmplist3 = tmplist; /* prev item */
     }
 }
 

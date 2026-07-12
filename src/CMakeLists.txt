@@ -96,6 +96,12 @@ set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 # census (Tasks 1-7) reached zero on every locally-built configuration; see
 # docs/BUILD.md's "Warnings policy" section for the pinned-toolchain rationale and
 # the i386 (-m32, g++14 container) exposure, which is deferred to Task 10.
+# MSVC: Phase 5 Task 9 flips the historical /w (suppress everything) to /W4 the
+# same way Task 8 did for GNU-family -- this is the census step (no /WX yet); once
+# the CI-surfaced warning classes are triaged and fixed/suppressed, a follow-up
+# commit adds /WX. Applied to both the ageland and ageland_tests targets (the
+# latter compiles every ROTS_SERVER_SOURCES file too, so it hits the same
+# warnings).
 #   -D_FILE_OFFSET_BITS=64  32-bit glibc's legacy readdir()/stat() use a 32-bit
 #     ino_t/off_t; against modern filesystems with 64-bit inode numbers (ext4,
 #     overlay2) readdir() fails with EOVERFLOW. Switches libc to the 64-bit-safe
@@ -115,7 +121,7 @@ endif()
 target_compile_options(ageland PRIVATE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
     $<${ROTS_GNULIKE}:-funsigned-char -fstrict-aliasing -Wall -Wextra -Werror -g>
-    $<$<CXX_COMPILER_ID:MSVC>:/J /w /Zc:strictStrings->
+    $<$<CXX_COMPILER_ID:MSVC>:/J /W4 /Zc:strictStrings->
 )
 target_link_options(ageland PRIVATE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
@@ -327,12 +333,13 @@ if(ROTS_BUILD_TESTS)
     target_compile_options(ageland_tests PRIVATE
         $<${ROTS_GNULIKE}:-funsigned-char>
     )
-    # /Zc:strictStrings-: same rationale as the ageland target above -- this
+    # /Zc:strictStrings- / /W4: same rationale as the ageland target above -- this
     # target ALSO compiles every ROTS_SERVER_SOURCES file (act_comm.cpp,
     # act_info.cpp, etc.), so it hits the identical MSVC /std:c++20
-    # string-literal-to-char* strictness without this.
+    # string-literal-to-char* strictness, and the same /W4 warning census
+    # (Phase 5 Task 9), without this.
     target_compile_options(ageland_tests PRIVATE
-        $<$<CXX_COMPILER_ID:MSVC>:/Zc:strictStrings->
+        $<$<CXX_COMPILER_ID:MSVC>:/W4 /Zc:strictStrings->
     )
     # _FILE_OFFSET_BITS=64: same EOVERFLOW-avoidance rationale as the ageland target
     # above — account-management tests do real opendir/readdir bucket scans under

@@ -222,6 +222,7 @@ if(ROTS_BUILD_TESTS)
         tests/account_management_storage_header_compile.cpp
         tests/account_management_tests.cpp
         tests/account_management_types_header_compile.cpp
+        tests/act_comm_alias_tests.cpp
         tests/act_format_tests.cpp
         tests/act_info_format_tests.cpp
         tests/act_wiz_format_tests.cpp

@@ -116,9 +116,9 @@ ACMD(do_say)
     }
 }
 
-void convert_string(const char* str, int hide_invisible, struct char_data* ch,
+void convert_string(std::string_view str, int hide_invisible, struct char_data* ch,
     struct obj_data* obj, void* vict_obj,
-    struct char_data* to, const char* buf);
+    struct char_data* to, char* buf);
 extern char act_buffer[MAX_STRING_LENGTH];
 
 ACMD(do_gsay)

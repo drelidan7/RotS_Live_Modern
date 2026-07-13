@@ -12,10 +12,22 @@ Permitted reasons are `nullable-state`, `retains-storage`, `binary-data`, `print
 | --- | --- | --- |
 | `int rots_asprintf(char** out, const char* fmt, ...);` | `printf-varargs` | The format parameter is consumed by `va_start` and passed to `vsnprintf`. |
 | `int rots_asprintf(char** out, const char* fmt, ...) {` | `printf-varargs` | The implementation uses the format parameter as the final named argument for C varargs. |
+| `void page_string_borrowed(struct descriptor_data* descriptor, char* text);` | `retains-storage` | This explicitly named legacy pager path retains caller-owned mutable storage until paging completes; normal `page_string` copies a bounded view instead. |
+| `void page_string_borrowed(struct descriptor_data* descriptor, char* text) {` | `retains-storage` | The implementation exposes the borrowed lifetime by name and is used only with long-lived world or global help text. |
 | `void vmudlog(char type, const char* format, ...);` | `printf-varargs` | The format parameter is the final named argument for C varargs. |
 | `void vmudlog(char type, const char* format, ...) {` | `printf-varargs` | The implementation initializes a `va_list` from the format parameter. |
 | `void vsend_to_char(struct char_data* ch, const char* format, ...);` | `printf-varargs` | The format parameter is the final named argument for C varargs. |
 | `void vsend_to_char(char_data* character, const char* format, ...) {` | `printf-varargs` | The implementation initializes a `va_list` from the format parameter. |
+| `const char* ProtocolOutput(descriptor_t* apDescriptor, const char* apData, int* apLength);` | `binary-data` | The caller supplies the authoritative byte count through `apLength`, and the function returns protocol-managed output storage. |
+| `const char* ProtocolOutput(descriptor_t* apDescriptor, const char* apData, int* apLength) {` | `binary-data` | The implementation parses and returns telnet protocol bytes using the explicit length contract. |
+| `void MSDPSetTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue);` | `binary-data` | The marker-bearing table payload is retained in the protocol's legacy null-terminated C field; embedded-null support requires a separate state-layout change. |
+| `void MSDPSetTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue) {` | `binary-data` | The implementation copies marker-bearing bytes into the protocol's retained legacy C field. |
+| `void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue);` | `binary-data` | The marker-bearing table payload is copied into retained legacy protocol state before any conditional send. |
+| `void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue) {` | `binary-data` | The implementation stores the marker-bearing payload in a null-terminated protocol C field. |
+| `void MSDPSetArray(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue);` | `binary-data` | The marker-bearing array payload is retained in the protocol's legacy null-terminated C field; embedded-null support requires a separate state-layout change. |
+| `void MSDPSetArray(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue) {` | `binary-data` | The implementation copies marker-bearing bytes into the protocol's retained legacy C field. |
+| `const char* MXPCreateTag(descriptor_t* apDescriptor, const char* apTag);` | `retains-storage` | The API returns either the input pointer or a pointer to a shared scratch buffer, so changing only its parameter would obscure the returned lifetime. |
+| `const char* MXPCreateTag(descriptor_t* apDescriptor, const char* apTag) {` | `retains-storage` | The implementation conditionally returns borrowed input storage and otherwise returns shared scratch-buffer storage. |
 | `extern const char* const dirs[];` | `sentinel-table` | The shared direction table terminates with the legacy `"\n"` sentinel. |
 | `extern const char* const dirs[] = { "north", "east", "south", "west", "up", "down", "\n" };` | `sentinel-table` | The initializer explicitly contains the terminal legacy sentinel. |
 | `const char* const dirs[] = { "north", "east", "south", "west", "up", "down", "\n" };` | `sentinel-table` | The local direction-name table explicitly contains the terminal legacy sentinel. |

@@ -8,6 +8,7 @@
 
 #include <array>
 #include <cstring>
+#include <format>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -17,6 +18,7 @@
 #endif
 
 extern descriptor_data* descriptor_list;
+void show_string(descriptor_data* descriptor, char* input);
 
 namespace {
 
@@ -140,6 +142,45 @@ TEST(CommOutput, CommunicationFunctionsExposeBoundedMessageSignatures)
         void (*)(std::string_view, char_data*)>);
     static_assert(std::is_same_v<decltype(&write_to_descriptor),
         int (*)(SocketType, std::string_view)>);
+    static_assert(std::is_same_v<decltype(&write_to_q),
+        void (*)(std::string_view, txt_q*)>);
+    static_assert(std::is_same_v<decltype(&page_string),
+        void (*)(descriptor_data*, std::string_view)>);
+    static_assert(std::is_same_v<decltype(&page_string_borrowed),
+        void (*)(descriptor_data*, char*)>);
+}
+
+TEST(CommOutput, QueueCopiesABoundedMessageBeforeCallerStorageChanges)
+{
+    txt_q queue {};
+    std::string caller_storage = "prefix-queued-suffix";
+
+    write_to_q(std::string_view(caller_storage).substr(7, 6), &queue);
+    caller_storage.assign(caller_storage.size(), 'X');
+
+    ASSERT_NE(queue.head, nullptr);
+    EXPECT_STREQ(queue.head->text, "queued");
+    put_to_txt_block_pool(queue.head);
+}
+
+TEST(CommOutput, PagerCopiesLongBoundedTextBeforeCallerStorageChanges)
+{
+    descriptor_data descriptor {};
+    ScopedDescriptorLargeOutbufReturn pager_cleanup { descriptor };
+    reset_capturing_descriptor(descriptor, nullptr);
+    std::string caller_storage;
+    for (int line_number = 0; line_number < 24; ++line_number) {
+        caller_storage += std::format("line {}\n", line_number);
+    }
+    const std::string expected_tail = "line 22\nline 23\n";
+
+    page_string(&descriptor, caller_storage);
+    ASSERT_NE(descriptor.showstr_point, nullptr);
+    caller_storage.assign(caller_storage.size(), 'X');
+    reset_capturing_descriptor(descriptor, nullptr);
+    show_string(&descriptor, mutable_arg(""));
+
+    EXPECT_STREQ(descriptor.output, expected_tail.c_str());
 }
 
 TEST(CommOutput, SendToAllForwardsBoundedViewsAndEmbeddedNullSemantics)

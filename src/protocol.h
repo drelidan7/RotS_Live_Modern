@@ -11,6 +11,7 @@
 #define PROTOCOL_H
 
 #include <string>
+#include <string_view>
 
 /******************************************************************************
  Set your MUD_NAME, and change descriptor_t if necessary.
@@ -456,16 +457,20 @@ void MSDPSend(descriptor_t* apDescriptor, variable_t aMSDP);
  *
  * Send the specified strings to the user as an MSDP variable/value pair.  This
  * will automatically use ATCP instead if MSDP is not supported by the client.
+ * Both textual inputs end at their first null character.
  */
-void MSDPSendPair(descriptor_t* apDescriptor, const char* apVariable, const char* apValue);
+void MSDPSendPair(
+    descriptor_t* apDescriptor, std::string_view apVariable, std::string_view apValue);
 
 /* Function: MSDPSendList
  *
  * Works like MSDPSendPair, but the value is sent as an MSDP array.
  *
  * apValue should be a list of values separated by spaces.
+ * Both textual inputs end at their first null character.
  */
-void MSDPSendList(descriptor_t* apDescriptor, const char* apVariable, const char* apValue);
+void MSDPSendList(
+    descriptor_t* apDescriptor, std::string_view apVariable, std::string_view apValue);
 
 /* Function: MSDPSetNumber
  *
@@ -487,8 +492,9 @@ void MSDPSetNumber(descriptor_t* apDescriptor, variable_t aMSDP, int aValue);
  *
  * The value is passed through MSDPSanitizeValue() first, so it stays a
  * valid JSON string for clients that convert MSDP into JSON.
+ * The textual value ends at its first null character and is copied into protocol state.
  */
-void MSDPSetString(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue);
+void MSDPSetString(descriptor_t* apDescriptor, variable_t aMSDP, std::string_view apValue);
 
 /* Function: MSDPSanitizeValue
  *
@@ -498,8 +504,9 @@ void MSDPSetString(descriptor_t* apDescriptor, variable_t aMSDP, const char* apV
  * automatically; call it directly when hand-building a table/array value
  * (see MSDPSetTable) that embeds freeform text, since those bypass
  * MSDPSetString().
+ * The textual value ends at its first null character.
  */
-std::string MSDPSanitizeValue(const char* apValue);
+std::string MSDPSanitizeValue(std::string_view apValue);
 
 /* Function: MSDPSetTable
  *
@@ -562,8 +569,9 @@ const char* MXPCreateTag(descriptor_t* apDescriptor, const char* apTag);
  *
  * This works like MXPCreateTag, but instead of returning the string it sends
  * it directly to the user.  This is mainly useful for the <VERSION> tag.
+ * The textual tag ends at its first null character.
  */
-void MXPSendTag(descriptor_t* apDescriptor, const char* apTag);
+void MXPSendTag(descriptor_t* apDescriptor, std::string_view apTag);
 
 /******************************************************************************
  Sound functions.

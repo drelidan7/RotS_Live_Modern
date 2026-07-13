@@ -24,6 +24,8 @@
 
 #include <cstring>
 #include <string>
+#include <string_view>
+#include <type_traits>
 #include <vector>
 
 extern descriptor_data* descriptor_list;
@@ -553,7 +555,7 @@ TEST(MSDPProtocol, SanitizesStringValuesForJsonLikeConsumers)
     EXPECT_EQ(MSDPSanitizeValue("plain"), "plain");
     EXPECT_EQ(MSDPSanitizeValue("quote\"slash\\\n\r\t\001"),
         "quote\\\"slash\\\\\\n\\r\\t\\u0001");
-    EXPECT_EQ(MSDPSanitizeValue(nullptr), "");
+    EXPECT_EQ(MSDPSanitizeValue(std::string_view()), "");
 }
 
 TEST(MSDPProtocol, ProtocolCreateInitializesExpectedDefaults)
@@ -682,6 +684,82 @@ TEST(MSDPProtocol, SetStringSanitizesAndMarksDirtyOnlyWhenValueChanges)
     context.descriptor.pProtocol->pVariables[eMSDP_CHARACTER_NAME]->bDirty = false;
     MSDPSetString(&context.descriptor, eMSDP_CHARACTER_NAME, "A \"B\"\n");
     EXPECT_FALSE(context.descriptor.pProtocol->pVariables[eMSDP_CHARACTER_NAME]->bDirty);
+}
+
+TEST(MSDPProtocol, TextHelpersExposeBoundedSignatures)
+{
+    static_assert(std::is_same_v<decltype(&MSDPSanitizeValue),
+        std::string (*)(std::string_view)>);
+    static_assert(std::is_same_v<decltype(&MSDPSetString),
+        void (*)(descriptor_t*, variable_t, std::string_view)>);
+    static_assert(std::is_same_v<decltype(&MSDPSendPair),
+        void (*)(descriptor_t*, std::string_view, std::string_view)>);
+    static_assert(std::is_same_v<decltype(&MSDPSendList),
+        void (*)(descriptor_t*, std::string_view, std::string_view)>);
+    static_assert(std::is_same_v<decltype(&MXPSendTag),
+        void (*)(descriptor_t*, std::string_view)>);
+}
+
+TEST(MSDPProtocol, SetStringCopiesAndSanitizesABoundedValue)
+{
+    ProtocolDescriptor context;
+    std::string caller_storage { 'A', '\n', 'B', 'x' };
+
+    MSDPSetString(&context.descriptor, eMSDP_CHARACTER_NAME,
+        std::string_view(caller_storage.data(), 3));
+    caller_storage.assign(caller_storage.size(), 'X');
+
+    EXPECT_STREQ(context.descriptor.pProtocol->pVariables[eMSDP_CHARACTER_NAME]->pValueString,
+        "A\\nB");
+}
+
+TEST(MSDPProtocol, SetStringTruncatesSemanticTextAtEmbeddedNull)
+{
+    ProtocolDescriptor context;
+    const char value_storage[] = { 'A', '\0', 'B', 'x' };
+
+    MSDPSetString(&context.descriptor, eMSDP_CHARACTER_NAME,
+        std::string_view(value_storage, 3));
+
+    EXPECT_STREQ(context.descriptor.pProtocol->pVariables[eMSDP_CHARACTER_NAME]->pValueString,
+        "A");
+}
+
+TEST(MSDPProtocol, SendPairTruncatesSemanticTextAtEmbeddedNull)
+{
+    ProtocolDescriptor context;
+    const char variable_storage[] = { 'x', 'N', 'A', 'M', 'E', 'y' };
+    const char value_storage[] = { 'A', '\0', 'B', 'x' };
+    const std::string_view variable(variable_storage + 1, 4);
+    const std::string_view value(value_storage, 3);
+
+    MSDPSendPair(&context.descriptor, variable, value);
+
+    EXPECT_EQ(context.read_output(), expected_msdp_pair("NAME", "A"));
+}
+
+TEST(MSDPProtocol, SendListTruncatesSemanticTextAtEmbeddedNull)
+{
+    ProtocolDescriptor context;
+    const char variable_storage[] = { 'x', 'L', 'I', 'S', 'T', 'y' };
+    const char value_storage[] = { 'A', ' ', 'B', '\0', 'C', 'x' };
+    const std::string_view variable(variable_storage + 1, 4);
+    const std::string_view value(value_storage, 5);
+
+    MSDPSendList(&context.descriptor, variable, value);
+
+    EXPECT_EQ(context.read_output(), expected_msdp_array_pair("LIST", { "A", "B" }));
+}
+
+TEST(MSDPProtocol, MxpSendTagTruncatesSemanticTextAtEmbeddedNull)
+{
+    ProtocolDescriptor context;
+    context.descriptor.pProtocol->pVariables[eMSDP_MXP]->ValueInt = 1;
+    const char tag_storage[] = { 'x', '<', 'A', '\0', 'B', '>', 'y' };
+
+    MXPSendTag(&context.descriptor, std::string_view(tag_storage + 1, 5));
+
+    EXPECT_EQ(context.read_output(), "\033[1z<A\033[7z\r\n");
 }
 
 TEST(MSDPProtocol, SendsStringAndNumberVariablesAsMSDPPackets)

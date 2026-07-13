@@ -74,7 +74,7 @@ ACMD(do_savebench)
         report += savebench::format_report("COMPARE serialize v1 vs v2a/v2b + cache (NOT in TOTAL above)", save_compare);
         report += savebench::format_report("COMPARE deserialize v1 vs v2a/v2b + cache (NOT in TOTAL above)", load_compare);
     }
-    page_string(ch->desc, const_cast<char*>(report.c_str()), 1);
+    page_string(ch->desc, report);
 
     // Mirror the report to the MUD syslog (one entry per line) so it can be followed
     // server-side, not just by the invoking player. Empty lines are skipped; CR is stripped.

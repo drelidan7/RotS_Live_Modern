@@ -58,12 +58,16 @@ void close_socket(struct descriptor_data* d, int drop_all = TRUE);
 void break_spell(struct char_data* ch);
 void abort_delay(char_data* wait_ch);
 void complete_delay(struct char_data* ch);
-struct txt_block* get_from_txt_block_pool(const char* line = 0);
+/// Obtains an uninitialized text block from the reusable pool.
+struct txt_block* get_from_txt_block_pool();
+/// Obtains a text block whose owned storage contains the bounded input text.
+struct txt_block* get_from_txt_block_pool(std::string_view line);
 void put_to_txt_block_pool(struct txt_block*);
 
 void vsend_to_char(struct char_data* ch, const char* format, ...);
 
-void act(const char* str, int hide_invisible, struct char_data* ch,
+/// Expands a bounded action format and delivers it to the selected recipients.
+void act(std::string_view str, int hide_invisible, struct char_data* ch,
     struct obj_data* obj, void* vict_obj, int type, char spam_only = FALSE);
 
 #define TO_ROOM 0
@@ -73,10 +77,14 @@ void act(const char* str, int hide_invisible, struct char_data* ch,
 
 /// Writes a bounded message to a socket, retrying until every byte is sent or an error occurs.
 int write_to_descriptor(SocketType descriptor, std::string_view text);
-void write_to_q(char* txt, struct txt_q* queue);
+/// Copies a bounded message into the owning text queue.
+void write_to_q(std::string_view text, struct txt_q* queue);
 /// Appends a bounded message to a descriptor's output buffer without retaining the view.
 void write_to_output(std::string_view text, struct descriptor_data* descriptor);
-void page_string(struct descriptor_data* d, char* str, int keep_internal);
+/// Copies bounded text into pager-owned storage before displaying its first page.
+void page_string(struct descriptor_data* descriptor, std::string_view text);
+/// Pages mutable storage whose lifetime the caller guarantees until paging completes.
+void page_string_borrowed(struct descriptor_data* descriptor, char* text);
 bool parse_startup_options(int argc, char** argv, StartupOptions* options, std::string* error_message);
 
 /* #define SEND_TO_Q(messg, desc)  write_to_q((messg), &(desc)->output) */

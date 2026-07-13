@@ -23,6 +23,7 @@
 #include "mail.h"
 #include "protos.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 
 #define TP_MOB 0
@@ -779,19 +780,32 @@ build_help_index(FILE* fl, int* num, struct help_index_element** listpt)
     return (list);
 }
 
-void page_string(struct descriptor_data* d, char* str, int keep_internal)
+void page_string(struct descriptor_data* descriptor, std::string_view text)
 {
-    if (!d)
+    if (!descriptor) {
         return;
+    }
 
-    if (keep_internal) {
-        CREATE(d->showstr_head, char, strlen(str) + 1);
-        strcpy(d->showstr_head, str);
-        d->showstr_point = d->showstr_head;
-    } else
-        d->showstr_point = str;
+    const std::string_view normalized_text = rots::text::truncate_at_null(text);
+    CREATE(descriptor->showstr_head, char, normalized_text.size() + 1);
+    if (!normalized_text.empty()) {
+        memcpy(descriptor->showstr_head, normalized_text.data(), normalized_text.size());
+    }
+    descriptor->showstr_head[normalized_text.size()] = '\0';
+    descriptor->showstr_point = descriptor->showstr_head;
 
-    show_string(d, mutable_arg(""));
+    show_string(descriptor, mutable_arg(""));
+}
+
+void page_string_borrowed(struct descriptor_data* descriptor, char* text)
+{
+    if (!descriptor) {
+        return;
+    }
+
+    descriptor->showstr_point = text;
+
+    show_string(descriptor, mutable_arg(""));
 }
 
 void show_string(struct descriptor_data* d, char* input)

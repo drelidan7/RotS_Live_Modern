@@ -496,7 +496,7 @@ int board_info_type::show_board(struct char_data* ch,
         }
         is_changed = chng_mark;
     }
-    page_string(ch->desc, buf, 1);
+    page_string(ch->desc, buf);
     return 1;
 }
 
@@ -630,7 +630,7 @@ int board_info_type::display_msg(struct char_data* ch,
 
     send_to_char(std::format("Message {:4} : {}\n\r", show_num,
         MSG_HEADING(ind)), ch);
-    page_string(ch->desc, msg_storage[MSG_SLOTNUM(ind)], 1);
+    page_string(ch->desc, msg_storage[MSG_SLOTNUM(ind)]);
     send_to_char("\n\r", ch);
 
     return 1;

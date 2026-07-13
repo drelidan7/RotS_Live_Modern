@@ -51,6 +51,7 @@
 #include "warrior_spec_handlers.h"
 #include "zone.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
@@ -1269,10 +1270,9 @@ void write_to_output(std::string_view text, descriptor_data* descriptor)
     descriptor->output[descriptor->bufptr] = '\0';
 }
 
-struct txt_block* get_from_txt_block_pool(const char* line)
+struct txt_block* get_from_txt_block_pool()
 {
     struct txt_block* pnew;
-    int tmp;
 
     if (txt_block_pool) {
         pnew = txt_block_pool;
@@ -1282,14 +1282,20 @@ struct txt_block* get_from_txt_block_pool(const char* line)
         CREATE(pnew->text, char, MAX_INPUT_LENGTH /*strlen(txt) + 1*/);
         txt_block_counter++;
     }
-    if (line) {
-        tmp = strlen(line);
-        if (tmp > MAX_INPUT_LENGTH - 1)
-            tmp = MAX_INPUT_LENGTH - 1;
-        strncpy(pnew->text, line, tmp);
-        pnew->text[tmp] = 0;
-    }
     return pnew;
+}
+
+struct txt_block* get_from_txt_block_pool(std::string_view line)
+{
+    txt_block* text_block = get_from_txt_block_pool();
+    const std::string_view normalized_line = rots::text::truncate_at_null(line);
+    const std::size_t copied_size
+        = std::min(normalized_line.size(), static_cast<std::size_t>(MAX_INPUT_LENGTH - 1));
+    if (copied_size > 0) {
+        std::memcpy(text_block->text, normalized_line.data(), copied_size);
+    }
+    text_block->text[copied_size] = '\0';
+    return text_block;
 }
 void put_to_txt_block_pool(struct txt_block* pold)
 {
@@ -1298,15 +1304,10 @@ void put_to_txt_block_pool(struct txt_block* pold)
     txt_block_pool = pold;
 }
 
-void write_to_q(char* txt, struct txt_q* queue)
+void write_to_q(std::string_view text, struct txt_q* queue)
 {
-    struct txt_block* pnew;
-
-    pnew = get_from_txt_block_pool();
-
-    if (strlen(txt) > 255)
-        txt[255] = 0;
-    strcpy(pnew->text, txt);
+    const std::string_view normalized_text = rots::text::truncate_at_null(text);
+    txt_block* pnew = get_from_txt_block_pool(normalized_text.substr(0, 255));
 
     /* Q empty? */
     if (!queue->head) {
@@ -2177,175 +2178,183 @@ void send_to_room_except_two(std::string_view message, int room,
  * But we don't want to have:
  *   <NORM>You wield <OBJ>a shadowy blade<NORM><NORM>.<NORM>
  */
-void convert_string(const char* str, int, struct char_data* ch, struct obj_data* obj,
-    void* vict_obj, struct char_data* to, const char* buf)
+void convert_string(std::string_view format_text, int, struct char_data* ch,
+    struct obj_data* obj, void* vict_obj, struct char_data* to, char* output_buffer)
 {
-    int clobbered_color;
-    char* used_color;
-    char *strp, *point;
-    const char* i;
+    bool clobbered_color = false;
+    const char* used_color = nullptr;
+    std::string expanded_text;
+    expanded_text.reserve(format_text.size() + 3);
 
-    i = NULL;
-    used_color = NULL;
-    clobbered_color = FALSE;
-
-    for (strp = (char*)str, point = (char*)buf;;)
-        if (*strp == '$') {
-            switch (*(++strp)) {
+    for (std::size_t format_index = 0; format_index < format_text.size(); ++format_index) {
+        if (format_text[format_index] == '$' && format_index + 1 < format_text.size()) {
+            const char token = format_text[++format_index];
+            const char* replacement = nullptr;
+            switch (token) {
             case 'C': /* This is a two-letter color code */
-                switch (*(++strp)) {
+                if (format_index + 1 >= format_text.size()) {
+                    vmudlog(NRM, "ERROR: Incomplete color code in act().");
+                    break;
+                }
+                switch (format_text[++format_index]) {
                 case 'N': /* Narrate */
-                    i = CC_USE(to, COLOR_NARR);
+                    replacement = CC_USE(to, COLOR_NARR);
                     break;
                 case 'C': /* Chat */
-                    i = CC_USE(to, COLOR_CHAT);
+                    replacement = CC_USE(to, COLOR_CHAT);
                     break;
                 case 'Y': /* Yell */
-                    i = CC_USE(to, COLOR_YELL);
+                    replacement = CC_USE(to, COLOR_YELL);
                     break;
                 case 'T': /* Tell */
-                    i = CC_USE(to, COLOR_TELL);
+                    replacement = CC_USE(to, COLOR_TELL);
                     break;
                 case 'S': /* Say */
-                    i = CC_USE(to, COLOR_SAY);
+                    replacement = CC_USE(to, COLOR_SAY);
                     break;
                 case 'R': /* Room name */
-                    i = CC_USE(to, COLOR_ROOM);
+                    replacement = CC_USE(to, COLOR_ROOM);
                     break;
                 case 'H': /* Hit */
-                    i = CC_USE(to, COLOR_HIT);
+                    replacement = CC_USE(to, COLOR_HIT);
                     break;
                 case 'D': /* Damage */
-                    i = CC_USE(to, COLOR_DAMG);
+                    replacement = CC_USE(to, COLOR_DAMG);
                     break;
                 case 'K': /* Character */
-                    i = CC_USE(to, COLOR_CHAR);
+                    replacement = CC_USE(to, COLOR_CHAR);
                     break;
                 case 'O': /* Object */
-                    i = CC_USE(to, COLOR_OBJ);
+                    replacement = CC_USE(to, COLOR_OBJ);
                     break;
                 case 'E': /* Description */
-                    i = CC_USE(to, COLOR_DESC);
+                    replacement = CC_USE(to, COLOR_DESC);
                     break;
                 case 'G': /* Group Tell */
-                    i = CC_USE(to, COLOR_GTELL);
+                    replacement = CC_USE(to, COLOR_GTELL);
                     break;
                 default:
-                    vmudlog(NRM, "ERROR: Unrecognized color code '%c'.", *strp);
+                    vmudlog(NRM, "ERROR: Unrecognized color code '%c'.", format_text[format_index]);
                 }
-                used_color = (char*)i;
+                used_color = replacement;
                 break;
             case 'K': /* PERS, but force_visible */
-                i = PERS((struct char_data*)vict_obj, to, FALSE, TRUE);
+                replacement = PERS((struct char_data*)vict_obj, to, FALSE, TRUE);
                 break;
             case 'n': /* See note at top of function on PERS and color */
-                i = PERS(ch, to, FALSE, FALSE);
-                clobbered_color = TRUE;
+                replacement = PERS(ch, to, FALSE, FALSE);
+                clobbered_color = true;
                 break;
             case 'N': /* See note at top of function on PERS and color */
-                i = PERS((struct char_data*)vict_obj, to, FALSE, FALSE);
-                clobbered_color = TRUE;
+                replacement = PERS((struct char_data*)vict_obj, to, FALSE, FALSE);
+                clobbered_color = true;
                 break;
             case 'm':
-                i = HMHR(ch);
+                replacement = HMHR(ch);
                 break;
             case 'M':
-                i = HMHR((struct char_data*)vict_obj);
+                replacement = HMHR((struct char_data*)vict_obj);
                 break;
             case 's':
-                i = HSHR(ch);
+                replacement = HSHR(ch);
                 break;
             case 'S':
-                i = HSHR((struct char_data*)vict_obj);
+                replacement = HSHR((struct char_data*)vict_obj);
                 break;
             case 'e':
-                i = HSSH(ch);
+                replacement = HSSH(ch);
                 break;
             case 'E':
-                i = HSSH((struct char_data*)vict_obj);
+                replacement = HSSH((struct char_data*)vict_obj);
                 break;
             case 'o':
-                i = OBJN(obj, to);
+                replacement = OBJN(obj, to);
                 break;
             case 'O':
-                i = OBJN((struct obj_data*)vict_obj, to);
+                replacement = OBJN((struct obj_data*)vict_obj, to);
                 break;
             case 'p':
-                i = OBJS(obj, to);
+                replacement = OBJS(obj, to);
                 break;
             case 'P':
-                i = OBJS((struct obj_data*)vict_obj, to);
+                replacement = OBJS((struct obj_data*)vict_obj, to);
                 break;
             case 'a':
-                i = SANA(obj);
+                replacement = SANA(obj);
                 break;
             case 'A':
-                i = SANA((struct obj_data*)vict_obj);
+                replacement = SANA((struct obj_data*)vict_obj);
                 break;
             case 'T':
-                i = (char*)vict_obj;
+                replacement = (char*)vict_obj;
                 break;
             case 'F':
-                i = fname((char*)vict_obj);
+                replacement = fname((char*)vict_obj);
                 break;
             case 'b':
-                i = GET_CURRPART(ch);
+                replacement = GET_CURRPART(ch);
                 break;
             case 'B':
-                i = GET_CURRPART((struct char_data*)vict_obj);
+                replacement = GET_CURRPART((struct char_data*)vict_obj);
                 break;
             case '$':
-                i = "$";
+                replacement = "$";
                 break;
             default:
                 log("SYSERR: Illegal $-code to act():");
-                log(std::format("SYSERR: {}", str));
+                log(std::format("SYSERR: {}", format_text));
                 break;
             }
-            while ((*point = *(i++)))
-                ++point;
-            ++strp;
-
-            if (clobbered_color && used_color != NULL) {
-                i = used_color;
-                while ((*point = *(i++)))
-                    ++point;
-                clobbered_color = 0;
+            if (replacement != nullptr) {
+                expanded_text += replacement;
             }
-        } else if (!(*(point++) = *(strp++)))
-            break;
 
-    *(--point) = '\n';
-    *(++point) = '\r';
-    *(++point) = '\0';
+            if (clobbered_color && used_color != nullptr) {
+                expanded_text += used_color;
+                clobbered_color = false;
+            }
+        } else {
+            expanded_text += format_text[format_index];
+        }
+    }
+
+    expanded_text += "\n\r";
 
     if (used_color) {
-        // CC_NORM expands to a runtime-selected color-escape string, not a format
-        // string -- pass it through the {} placeholder (non-literal-format-string
-        // hygiene; the ANSI sequences contain no '%'/'{' today, but don't treat data
-        // as a format).
-        strcpy(point, std::format("{}", CC_NORM(to)).c_str());
+        expanded_text += CC_NORM(to);
     }
 
     /* Find the first character in the string, ignoring ANSI colors */
-    for (strp = (char*)buf; *strp == '\x1B'; ++strp)
-        while (*strp != 'm')
-            ++strp;
+    std::size_t visible_index = 0;
+    while (visible_index < expanded_text.size() && expanded_text[visible_index] == '\x1B') {
+        const std::size_t color_end = expanded_text.find('m', visible_index);
+        if (color_end == std::string::npos) {
+            break;
+        }
+        visible_index = color_end + 1;
+    }
 
-    if (isalpha(*strp))
-        CAP(strp);
+    if (visible_index < expanded_text.size()
+        && isalpha(static_cast<unsigned char>(expanded_text[visible_index]))) {
+        expanded_text[visible_index]
+            = static_cast<char>(toupper(static_cast<unsigned char>(expanded_text[visible_index])));
+    }
+
+    const std::size_t copied_size
+        = std::min(expanded_text.size(), static_cast<std::size_t>(MAX_STRING_LENGTH - 1));
+    std::memcpy(output_buffer, expanded_text.data(), copied_size);
+    output_buffer[copied_size] = '\0';
 }
 
 char act_buffer[MAX_STRING_LENGTH];
-void act(const char* str, int hide_invisible, struct char_data* ch, struct obj_data* obj,
+void act(std::string_view str, int hide_invisible, struct char_data* ch, struct obj_data* obj,
     void* vict_obj, int type, char spam_only)
 {
     struct char_data* to;
     char* buf = act_buffer;
 
-    if (!str)
-        return;
-    if (!*str)
+    str = rots::text::truncate_at_null(str);
+    if (str.empty())
         return;
 
     to = 0;

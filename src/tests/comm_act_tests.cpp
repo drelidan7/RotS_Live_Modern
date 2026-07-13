@@ -12,7 +12,10 @@
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <format>
 #include <string>
+#include <string_view>
+#include <type_traits>
 
 // Characterization tests for Phase 4 Wave 4 Task 5 (comm.cpp's convert_string,
 // the hand-rolled $-token scanner every act()-routed message flows through).
@@ -643,4 +646,61 @@ TEST(ActTokenExpansion, EmptyExpansionGuardNeverSkipsDeliveryGivenGuaranteedTrai
     const std::string output(context.actor_descriptor.output);
     EXPECT_FALSE(output.empty());
     EXPECT_EQ(output.substr(output.size() - 2), "\n\r");
+}
+
+TEST(ActTokenExpansion, ExposesABoundedFormatSignature)
+{
+    static_assert(std::is_same_v<decltype(&act),
+        void (*)(std::string_view, int, char_data*, obj_data*, void*, int, char)>);
+}
+
+TEST(ActTokenExpansion, AcceptsANonTerminatedFormatSlice)
+{
+    RoomPairContext context;
+    const char storage[] = { 'x', 'H', 'e', 'l', 'l', 'o', 'y' };
+
+    act(std::string_view(storage + 1, 5), FALSE, &context.actor, nullptr, nullptr, TO_CHAR, 0);
+
+    EXPECT_STREQ(context.actor_descriptor.output, "Hello\n\r");
+}
+
+TEST(ActTokenExpansion, TruncatesAFormatAtItsFirstEmbeddedNull)
+{
+    RoomPairContext context;
+    const char storage[] = { 'H', 'i', '\0', '$', 'n' };
+
+    act(std::string_view(storage, sizeof(storage)), FALSE, &context.actor, nullptr, nullptr,
+        TO_CHAR, 0);
+
+    EXPECT_STREQ(context.actor_descriptor.output, "Hi\n\r");
+}
+
+TEST(ActTokenExpansion, ExpandsATokenWhoseCodeIsTheFinalBoundedByte)
+{
+    RoomPairContext context;
+    context.actor.player.name = const_cast<char*>("Actor");
+    const char storage[] = { 'x', '$', 'n', 'y' };
+
+    act(std::string_view(storage + 1, 2), FALSE, &context.actor, nullptr, nullptr, TO_CHAR, 0);
+
+    EXPECT_STREQ(context.actor_descriptor.output, "Actor\n\r");
+}
+
+TEST(ActTokenExpansion, IgnoresAnEmptyBoundedFormat)
+{
+    RoomPairContext context;
+
+    act(std::string_view(), FALSE, &context.actor, nullptr, nullptr, TO_CHAR, 0);
+
+    EXPECT_STREQ(context.actor_descriptor.output, "");
+}
+
+TEST(ActTokenExpansion, AcceptsATemporaryFormattedMessage)
+{
+    RoomPairContext context;
+
+    act(std::format("{} {}", "Temporary", 42), FALSE, &context.actor, nullptr, nullptr,
+        TO_CHAR, 0);
+
+    EXPECT_STREQ(context.actor_descriptor.output, "Temporary 42\n\r");
 }

@@ -348,10 +348,9 @@ void show_obj_to_char(struct obj_data* object, struct char_data* ch, int mode)
             if (object->action_description) {
                 out = "There is something written upon it:\n\r\n\r";
                 out += object->action_description;
-                // page_string() needs a mutable char*; the global `buf`
-                // staging buffer is reused downstream here (idiom 2).
+                // Preserve the established shared-buffer staging used by this command.
                 strcpy(buf, out.c_str());
-                page_string(ch->desc, buf, 1);
+                page_string(ch->desc, buf);
             } else
                 act("It's blank.", FALSE, ch, 0, 0, TO_CHAR);
             return;
@@ -1370,7 +1369,7 @@ ACMD(do_look)
             if (!found) {
                 tmp_desc = find_ex_description(arg2, world[ch->in_room].ex_description);
                 if (tmp_desc) {
-                    page_string(ch->desc, tmp_desc, 0);
+                    page_string_borrowed(ch->desc, tmp_desc);
                     return; /* RETURN SINCE IT WAS A ROOM DESCRIPTION */
                     /* Old system was: found = TRUE; */
                 }
@@ -1383,7 +1382,7 @@ ACMD(do_look)
                         if (CAN_SEE_OBJ(ch, ch->equipment[j])) {
                             tmp_desc = find_ex_description(arg2, ch->equipment[j]->ex_description);
                             if (tmp_desc) {
-                                page_string(ch->desc, tmp_desc, 1);
+                                page_string(ch->desc, tmp_desc);
                                 found = TRUE;
                             }
                         }
@@ -1395,7 +1394,7 @@ ACMD(do_look)
                     if (CAN_SEE_OBJ(ch, tmp_object)) {
                         tmp_desc = find_ex_description(arg2, tmp_object->ex_description);
                         if (tmp_desc) {
-                            page_string(ch->desc, tmp_desc, 1);
+                            page_string(ch->desc, tmp_desc);
                             found = TRUE;
                         }
                     }
@@ -1407,7 +1406,7 @@ ACMD(do_look)
                     if (CAN_SEE_OBJ(ch, tmp_object)) {
                         tmp_desc = find_ex_description(arg2, tmp_object->ex_description);
                         if (tmp_desc) {
-                            page_string(ch->desc, tmp_desc, 1);
+                            page_string(ch->desc, tmp_desc);
                             found = TRUE;
                         }
                     }
@@ -2272,8 +2271,7 @@ ACMD(do_help)
                 // fgets() writes into the shared global `buf` directly (a
                 // parser-adjacent buffer per transform idiom catalog item 8)
                 // -- accumulate its lines into a std::string, then stage the
-                // result into buf2 for page_string(), whose signature takes
-                // a caller-owned char* (catalog item 3's page_string note).
+                // result into the established shared staging buffer before paging.
                 std::string entry_text;
                 for (;;) {
                     fgets(buf, 80, help_content[num].file);
@@ -2282,7 +2280,7 @@ ACMD(do_help)
                     entry_text += buf;
                 }
                 strcpy(buf2, entry_text.c_str());
-                page_string(ch->desc, buf2, 1);
+                page_string(ch->desc, buf2);
                 return;
             } else if (bot >= top) {
                 send_to_char(std::format("There is no entry for '{}' in the {} chapter.\r\n",
@@ -2329,9 +2327,8 @@ ACMD(do_who)
     // Local buf2 deliberately shadows the global 8192-byte buf2 (db.h) --
     // a "who" listing can exceed that (many connected players), so the
     // original code sized this staging buffer at 16384 bytes; preserved
-    // here for page_string()'s char* signature (transform idiom catalog
-    // item 3's page_string note) rather than switching to the smaller
-    // global and risking a truncation/overflow regression.
+    // here rather than switching to the smaller global and risking a
+    // truncation/overflow regression.
     char buf2[16384];
     extern const char* const imm_abbrevs[];
 
@@ -2512,12 +2509,9 @@ ACMD(do_who)
     out += std::format("\n\r{} character{} displayed.\n\r", num_can_see,
         num_can_see == 1 ? "" : "s");
 
-    // page_string() takes a caller-owned char* (transform idiom catalog
-    // item 3's page_string note); stage the composed text into the
-    // pre-existing 16384-byte buf2 (db.cpp/db.h) rather than changing its
-    // signature this wave.
+    // Preserve the pre-existing 16384-byte staging capacity for this listing.
     strcpy(buf2, out.c_str());
-    page_string(ch->desc, buf2, 1);
+    page_string(ch->desc, buf2);
 }
 
 #define USERS_FORMAT \
@@ -2703,25 +2697,25 @@ ACMD(do_gen_ps)
 
     switch (subcmd) {
     case SCMD_CREDITS:
-        page_string(ch->desc, credits, 0);
+        page_string_borrowed(ch->desc, credits);
         break;
     case SCMD_NEWS:
-        page_string(ch->desc, news, 0);
+        page_string_borrowed(ch->desc, news);
         break;
     case SCMD_INFO:
-        page_string(ch->desc, info, 0);
+        page_string_borrowed(ch->desc, info);
         break;
     case SCMD_WIZLIST:
-        page_string(ch->desc, wizlist, 0);
+        page_string_borrowed(ch->desc, wizlist);
         break;
     case SCMD_IMMLIST:
-        page_string(ch->desc, immlist, 0);
+        page_string_borrowed(ch->desc, immlist);
         break;
     case SCMD_HANDBOOK:
-        page_string(ch->desc, handbook, 0);
+        page_string_borrowed(ch->desc, handbook);
         break;
     case SCMD_POLICIES:
-        page_string(ch->desc, policies, 0);
+        page_string_borrowed(ch->desc, policies);
         break;
     case SCMD_CLEAR:
         send_to_char("\033[H\033[J", ch);
@@ -2893,11 +2887,9 @@ ACMD(do_levels)
             i * GET_PROF_COOF(PROF_CLERIC, ch) / 1000,
             i * GET_PROF_COOF(PROF_MAGIC_USER, ch) / 1000);
     }
-    // page_string() takes a caller-owned char* (transform idiom catalog
-    // item 3's page_string note); stage into the pre-existing global `buf`
-    // rather than changing its signature this wave.
+    // Preserve the established global staging buffer for this listing.
     strcpy(buf, out.c_str());
-    page_string(ch->desc, buf, 1);
+    page_string(ch->desc, buf);
 }
 
 void report_mob_align(struct char_data* ch, struct char_data* victim)
@@ -3943,10 +3935,9 @@ ACMD(do_fame)
             out += take_cstring(pkill_get_string(&pkills[i], PKILL_STRING_KILLED));
         }
 
-        // page_string() takes a caller-owned char* (transform idiom
-        // catalog item 3's page_string note); stage into the global `buf`.
+        // Preserve the established global staging buffer for this listing.
         strcpy(buf, out.c_str());
-        page_string(ch->desc, buf, 1);
+        page_string(ch->desc, buf);
         return;
     }
 
@@ -4292,8 +4283,8 @@ void print_exploits(struct char_data* sendto, char* name)
     // (MAX_STRING_LENGTH == 8192, structs.h) is far too small to hold a
     // long-lived character's full exploit history without truncating or
     // overflowing it. std::string grows to fit instead, and is passed to
-    // page_string() directly via data() (non-const since C++17, and
-    // NUL-terminated) rather than copied into the undersized global buffer.
+    // page_string() directly as a bounded view rather than copied into the
+    // undersized global buffer.
     std::string out = std::format(
         "Exploits for {}\n\r"
         "Numbers in brackets indicate (your,their) level at time of a "
@@ -4457,7 +4448,7 @@ void print_exploits(struct char_data* sendto, char* name)
     else
         out += std::format("{} notes.\n\r\n\r", iNotes);
 
-    page_string(sendto->desc, out.data(), 1);
+    page_string(sendto->desc, out);
     return;
 }
 

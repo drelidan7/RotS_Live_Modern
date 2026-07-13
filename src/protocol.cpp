@@ -54,8 +54,10 @@
  ******************************************************************************/
 
 #include "comm.h"
+#include "rots_net.h"
+#include "text_view.h"
 
-static void Write(descriptor_t* apDescriptor, const char* apData)
+static void Write(descriptor_t* apDescriptor, std::string_view data)
 {
     // wtf is fcommand?!
     //    if ( apDescriptor != nullptr && !apDescriptor->fcommand )
@@ -67,7 +69,20 @@ static void Write(descriptor_t* apDescriptor, const char* apData)
             apDescriptor->pProtocol->WriteOOB = 2;
         }
     }
-    write_to_descriptor(apDescriptor->descriptor, apData);
+    if (apDescriptor == nullptr || apDescriptor->descriptor == 0
+        || !rots_net::is_valid_socket(apDescriptor->descriptor)) {
+        return;
+    }
+
+    std::size_t bytes_sent = 0;
+    while (bytes_sent < data.size()) {
+        const rots_net::ssize_type bytes_written = rots_net::write_socket(
+            apDescriptor->descriptor, data.data() + bytes_sent, data.size() - bytes_sent);
+        if (bytes_written <= 0) {
+            return;
+        }
+        bytes_sent += static_cast<std::size_t>(bytes_written);
+    }
 }
 
 static void ReportBug(const char* apText) { vmudlog(NRM, apText); }
@@ -1267,112 +1282,103 @@ void MSDPSend(descriptor_t* apDescriptor, variable_t aMSDP)
     }
 }
 
-void MSDPSendPair(descriptor_t* apDescriptor, const char* apVariable, const char* apValue)
+void MSDPSendPair(
+    descriptor_t* apDescriptor, std::string_view apVariable, std::string_view apValue)
 {
-    char MSDPBuffer[MAX_VARIABLE_LENGTH + 1] = { '\0' };
+    apVariable = rots::text::truncate_at_null(apVariable);
+    apValue = rots::text::truncate_at_null(apValue);
+    protocol_t* protocol = apDescriptor ? apDescriptor->pProtocol : nullptr;
+    if (protocol == nullptr) {
+        return;
+    }
 
-    if (apVariable != NULL && apValue != NULL) {
-        protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
-        if (pProtocol == NULL)
-            return;
+    const std::size_t required_buffer = apVariable.size() + apValue.size() + 12;
+    if (required_buffer >= MAX_VARIABLE_LENGTH) {
+        const std::string report = apVariable.size() < MAX_VARIABLE_LENGTH
+            ? std::format("MSDPSendPair: {} {} bytes (exceeds MAX_VARIABLE_LENGTH of {}).\n",
+                apVariable, required_buffer, MAX_VARIABLE_LENGTH)
+            : std::format("MSDPSendPair: Variable name has a length of {} bytes (exceeds "
+                          "MAX_VARIABLE_LENGTH of {}).\n",
+                required_buffer, MAX_VARIABLE_LENGTH);
+        ReportBug(report.c_str());
+        return;
+    }
 
-        /* Should really be replaced with a dynamic buffer */
-        int RequiredBuffer = strlen(apVariable) + strlen(apValue) + 12;
+    std::string output;
+    output.reserve(required_buffer);
+    if (protocol->bMSDP) {
+        output.append({ static_cast<char>(IAC), static_cast<char>(SB),
+            static_cast<char>(TELOPT_MSDP), static_cast<char>(MSDP_VAR) });
+        output += apVariable;
+        output += static_cast<char>(MSDP_VAL);
+        output += apValue;
+        output.append({ static_cast<char>(IAC), static_cast<char>(SE) });
+    } else if (protocol->bATCP) {
+        output.append({ static_cast<char>(IAC), static_cast<char>(SB),
+            static_cast<char>(TELOPT_ATCP) });
+        output += "MSDP.";
+        output += apVariable;
+        output += ' ';
+        output += apValue;
+        output.append({ static_cast<char>(IAC), static_cast<char>(SE) });
+    }
 
-        if (RequiredBuffer >= MAX_VARIABLE_LENGTH) {
-            if (RequiredBuffer - strlen(apValue) < MAX_VARIABLE_LENGTH) {
-                strcpy(MSDPBuffer,
-                    std::format("MSDPSendPair: {} {} bytes (exceeds MAX_VARIABLE_LENGTH of {}).\n",
-                        apVariable, RequiredBuffer, MAX_VARIABLE_LENGTH)
-                        .c_str());
-            } else /* The variable name itself is too long */
-            {
-                strcpy(MSDPBuffer,
-                    std::format("MSDPSendPair: Variable name has a length of {} bytes (exceeds "
-                                "MAX_VARIABLE_LENGTH of {}).\n",
-                        RequiredBuffer, MAX_VARIABLE_LENGTH)
-                        .c_str());
-            }
-
-            ReportBug(MSDPBuffer);
-            MSDPBuffer[0] = '\0';
-        } else if (pProtocol->bMSDP) {
-            strcpy(MSDPBuffer,
-                std::format("{}{}{}{}{}{}{}{}{}", static_cast<char>(IAC), static_cast<char>(SB),
-                    static_cast<char>(TELOPT_MSDP), static_cast<char>(MSDP_VAR), apVariable,
-                    static_cast<char>(MSDP_VAL), apValue, static_cast<char>(IAC),
-                    static_cast<char>(SE))
-                    .c_str());
-        } else if (pProtocol->bATCP) {
-            strcpy(MSDPBuffer,
-                std::format("{}{}{}MSDP.{} {}{}{}", static_cast<char>(IAC), static_cast<char>(SB),
-                    static_cast<char>(TELOPT_ATCP), apVariable, apValue, static_cast<char>(IAC),
-                    static_cast<char>(SE))
-                    .c_str());
-        }
-
-        /* Just in case someone calls this function without checking MSDP/ATCP */
-        if (MSDPBuffer[0] != '\0')
-            Write(apDescriptor, MSDPBuffer);
+    if (!output.empty()) {
+        Write(apDescriptor, output);
     }
 }
 
-void MSDPSendList(descriptor_t* apDescriptor, const char* apVariable, const char* apValue)
+void MSDPSendList(
+    descriptor_t* apDescriptor, std::string_view apVariable, std::string_view apValue)
 {
-    char MSDPBuffer[MAX_VARIABLE_LENGTH + 1] = { '\0' };
+    apVariable = rots::text::truncate_at_null(apVariable);
+    apValue = rots::text::truncate_at_null(apValue);
+    protocol_t* protocol = apDescriptor ? apDescriptor->pProtocol : nullptr;
+    if (protocol == nullptr) {
+        return;
+    }
 
-    if (apVariable != NULL && apValue != NULL) {
-        protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
-        if (pProtocol == NULL)
-            return;
+    const std::size_t required_buffer = apVariable.size() + apValue.size() + 12;
+    if (required_buffer >= MAX_VARIABLE_LENGTH) {
+        const std::string report = apVariable.size() < MAX_VARIABLE_LENGTH
+            ? std::format("MSDPSendList: {} {} bytes (exceeds MAX_VARIABLE_LENGTH of {}).\n",
+                apVariable, required_buffer, MAX_VARIABLE_LENGTH)
+            : std::format("MSDPSendList: Variable name has a length of {} bytes (exceeds "
+                          "MAX_VARIABLE_LENGTH of {}).\n",
+                required_buffer, MAX_VARIABLE_LENGTH);
+        ReportBug(report.c_str());
+        return;
+    }
 
-        /* Should really be replaced with a dynamic buffer */
-        int RequiredBuffer = strlen(apVariable) + strlen(apValue) + 12;
-
-        if (RequiredBuffer >= MAX_VARIABLE_LENGTH) {
-            if (RequiredBuffer - strlen(apValue) < MAX_VARIABLE_LENGTH) {
-                strcpy(MSDPBuffer,
-                    std::format("MSDPSendList: {} {} bytes (exceeds MAX_VARIABLE_LENGTH of {}).\n",
-                        apVariable, RequiredBuffer, MAX_VARIABLE_LENGTH)
-                        .c_str());
-            } else /* The variable name itself is too long */
-            {
-                strcpy(MSDPBuffer,
-                    std::format("MSDPSendList: Variable name has a length of {} bytes (exceeds "
-                                "MAX_VARIABLE_LENGTH of {}).\n",
-                        RequiredBuffer, MAX_VARIABLE_LENGTH)
-                        .c_str());
+    std::string output;
+    output.reserve(required_buffer);
+    if (protocol->bMSDP) {
+        output.append({ static_cast<char>(IAC), static_cast<char>(SB),
+            static_cast<char>(TELOPT_MSDP), static_cast<char>(MSDP_VAR) });
+        output += apVariable;
+        output.append(
+            { static_cast<char>(MSDP_VAL), static_cast<char>(MSDP_ARRAY_OPEN),
+                static_cast<char>(MSDP_VAL) });
+        output += apValue;
+        output.append({ static_cast<char>(MSDP_ARRAY_CLOSE), static_cast<char>(IAC),
+            static_cast<char>(SE) });
+        for (char& output_byte : output) {
+            if (output_byte == ' ') {
+                output_byte = MSDP_VAL;
             }
-
-            ReportBug(MSDPBuffer);
-            MSDPBuffer[0] = '\0';
-        } else if (pProtocol->bMSDP) {
-            int i; /* Loop counter */
-            strcpy(MSDPBuffer,
-                std::format("{}{}{}{}{}{}{}{}{}{}{}{}", static_cast<char>(IAC),
-                    static_cast<char>(SB), static_cast<char>(TELOPT_MSDP),
-                    static_cast<char>(MSDP_VAR), apVariable, static_cast<char>(MSDP_VAL),
-                    static_cast<char>(MSDP_ARRAY_OPEN), static_cast<char>(MSDP_VAL), apValue,
-                    static_cast<char>(MSDP_ARRAY_CLOSE), static_cast<char>(IAC),
-                    static_cast<char>(SE))
-                    .c_str());
-
-            /* Convert the spaces to MSDP_VAL */
-            for (i = 0; MSDPBuffer[i] != '\0'; ++i) {
-                if (MSDPBuffer[i] == ' ')
-                    MSDPBuffer[i] = MSDP_VAL;
-            }
-        } else if (pProtocol->bATCP) {
-            strcpy(MSDPBuffer,
-                std::format("{}{}{}MSDP.{} {}{}{}", static_cast<char>(IAC), static_cast<char>(SB),
-                    static_cast<char>(TELOPT_ATCP), apVariable, apValue, static_cast<char>(IAC),
-                    static_cast<char>(SE))
-                    .c_str());
         }
+    } else if (protocol->bATCP) {
+        output.append({ static_cast<char>(IAC), static_cast<char>(SB),
+            static_cast<char>(TELOPT_ATCP) });
+        output += "MSDP.";
+        output += apVariable;
+        output += ' ';
+        output += apValue;
+        output.append({ static_cast<char>(IAC), static_cast<char>(SE) });
+    }
 
-        /* Just in case someone calls this function without checking MSDP/ATCP */
-        if (MSDPBuffer[0] != '\0')
-            Write(apDescriptor, MSDPBuffer);
+    if (!output.empty()) {
+        Write(apDescriptor, output);
     }
 }
 
@@ -1395,18 +1401,15 @@ bool MSDPIsValidVariable(variable_t aMSDP)
     return aMSDP > eMSDP_NONE && aMSDP < eMSDP_MAX;
 }
 
-std::string MSDPSanitizeValue(const char* apValue)
+std::string MSDPSanitizeValue(std::string_view apValue)
 {
+    apValue = rots::text::truncate_at_null(apValue);
     std::string Result;
 
-    if (apValue == NULL) {
-        return Result;
-    }
+    Result.reserve(apValue.size());
 
-    Result.reserve(strlen(apValue));
-
-    for (const unsigned char* p = (const unsigned char*)apValue; *p != '\0'; ++p) {
-        switch (*p) {
+    for (const unsigned char value_byte : apValue) {
+        switch (value_byte) {
         case '\"':
             Result += "\\\"";
             break;
@@ -1423,10 +1426,10 @@ std::string MSDPSanitizeValue(const char* apValue)
             Result += "\\t";
             break;
         default:
-            if (*p < 0x20) {
-                Result += std::format("\\u{:04x}", *p);
+            if (value_byte < 0x20) {
+                Result += std::format("\\u{:04x}", value_byte);
             } else {
-                Result += (char)*p;
+                Result += static_cast<char>(value_byte);
             }
         }
     }
@@ -1434,11 +1437,11 @@ std::string MSDPSanitizeValue(const char* apValue)
     return Result;
 }
 
-void MSDPSetString(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue)
+void MSDPSetString(descriptor_t* apDescriptor, variable_t aMSDP, std::string_view apValue)
 {
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
-    if (pProtocol != NULL && apValue != NULL && MSDPIsValidVariable(aMSDP)) {
+    if (pProtocol != NULL && MSDPIsValidVariable(aMSDP)) {
         if (VariableNameTable[aMSDP].bString) {
             std::string SanitizedValue = MSDPSanitizeValue(apValue);
 
@@ -1575,15 +1578,19 @@ const char* MXPCreateTag(descriptor_t* apDescriptor, const char* apTag)
     }
 }
 
-void MXPSendTag(descriptor_t* apDescriptor, const char* apTag)
+void MXPSendTag(descriptor_t* apDescriptor, std::string_view apTag)
 {
+    apTag = rots::text::truncate_at_null(apTag);
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
-    if (pProtocol != NULL && apTag != NULL && strlen(apTag) < 1000) {
+    if (pProtocol != NULL && apTag.size() < 1000) {
         if (pProtocol->pVariables[eMSDP_MXP]->ValueInt) {
-            char MXPBuffer[1024];
-            strcpy(MXPBuffer, std::format("\033[1z{}\033[7z\r\n", apTag).c_str());
-            Write(apDescriptor, MXPBuffer);
+            std::string output;
+            output.reserve(apTag.size() + 12);
+            output += "\033[1z";
+            output += apTag;
+            output += "\033[7z\r\n";
+            Write(apDescriptor, output);
         } else if (pProtocol->bRenegotiate) {
             /* Tijer pointed out that when MUSHclient autoconnects, it fails
              * to complete the negotiation.  This workaround will attempt to

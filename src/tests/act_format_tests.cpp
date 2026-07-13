@@ -33,6 +33,9 @@ ACMD(do_specialize);
 ACMD(do_order);
 ACMD(do_bash);
 ACMD(do_insult);
+ACMD(do_action);
+
+extern social_messg* soc_mess_list;
 
 void print_group_leader(const char_data* leader);
 void print_group_member(const char_data* group_member);
@@ -499,6 +502,80 @@ TEST(ActSoci, DoInsultSelfTargetSendsPlainLiteralMessage)
     do_insult(&ctx.actor, insult_self, nullptr, 0, 0);
 
     EXPECT_EQ(std::string(ctx.actor_descriptor.output), "You feel insulted.\n\r");
+}
+
+TEST(ActSoci, DoActionAllowsMissingNoArgumentMessages)
+{
+    RoomPairContext context;
+    social_messg social_message {};
+    social_messg* previous_social_message_list = soc_mess_list;
+    soc_mess_list = &social_message;
+
+    waiting_type waiting {};
+    waiting.cmd = CMD_SOCIAL;
+    waiting.subcmd = 0;
+
+    char no_argument[] = "";
+    do_action(&context.actor, no_argument, &waiting, 0, 0);
+
+    EXPECT_EQ(std::string(context.actor_descriptor.output), "\n\r");
+    EXPECT_STREQ(context.victim_descriptor.output, "");
+
+    soc_mess_list = previous_social_message_list;
+}
+
+TEST(ActSoci, DoActionAllowsMissingSelfTargetMessages)
+{
+    RoomPairContext context;
+    social_messg social_message {};
+    social_messg* previous_social_message_list = soc_mess_list;
+    soc_mess_list = &social_message;
+
+    context.actor.abs_number = 61;
+    set_char_exists(context.actor.abs_number);
+
+    waiting_type waiting {};
+    waiting.cmd = CMD_SOCIAL;
+    waiting.subcmd = 0;
+    waiting.targ1.type = TARGET_CHAR;
+    waiting.targ1.ptr.ch = &context.actor;
+    waiting.targ1.ch_num = context.actor.abs_number;
+
+    char no_argument[] = "";
+    do_action(&context.actor, no_argument, &waiting, 0, 0);
+
+    EXPECT_EQ(std::string(context.actor_descriptor.output), "\n\r");
+    EXPECT_STREQ(context.victim_descriptor.output, "");
+
+    remove_char_exists(context.actor.abs_number);
+    soc_mess_list = previous_social_message_list;
+}
+
+TEST(ActSoci, DoActionAllowsMissingOtherTargetMessages)
+{
+    RoomPairContext context;
+    social_messg social_message {};
+    social_messg* previous_social_message_list = soc_mess_list;
+    soc_mess_list = &social_message;
+
+    context.victim.abs_number = 62;
+    set_char_exists(context.victim.abs_number);
+
+    waiting_type waiting {};
+    waiting.cmd = CMD_SOCIAL;
+    waiting.subcmd = 0;
+    waiting.targ1.type = TARGET_CHAR;
+    waiting.targ1.ptr.ch = &context.victim;
+    waiting.targ1.ch_num = context.victim.abs_number;
+
+    char no_argument[] = "";
+    do_action(&context.actor, no_argument, &waiting, 0, 0);
+
+    EXPECT_STREQ(context.actor_descriptor.output, "");
+    EXPECT_STREQ(context.victim_descriptor.output, "");
+
+    remove_char_exists(context.victim.abs_number);
+    soc_mess_list = previous_social_message_list;
 }
 
 // ---------------------------------------------------------------------------

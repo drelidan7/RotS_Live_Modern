@@ -330,6 +330,10 @@ void ProtocolInput(descriptor_t* apDescriptor, char* apData, int aSize, char* ap
  *
  * This function takes a string, applies colour codes to it, and returns the
  * result.  It should be called just before writing to the output buffer.
+ * The input must point to null-terminated readable storage.  A positive
+ * apLength limits how many input positions are processed, but parser
+ * lookahead may inspect bytes beyond that processing limit, so apLength does
+ * not make an unterminated buffer safe.  The first null terminates the text.
  *
  * The special character used to indicate the start of a colour sequence is
  * '\t' (i.e., a tab, or ASCII character 9).  This makes it easy to include

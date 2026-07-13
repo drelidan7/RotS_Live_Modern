@@ -300,7 +300,11 @@ ACMD(do_action)
             send_to_char(action->char_no_arg, ch);
         }
         send_to_char("\n\r", ch);
-        act(action->others_no_arg, action->hide, ch, 0, 0, TO_ROOM);
+        // The socials file uses '#' to omit individual messages, so keep null handling at this
+        // legacy nullable boundary rather than weakening act()'s non-null string-view contract.
+        if (action->others_no_arg) {
+            act(action->others_no_arg, action->hide, ch, 0, 0, TO_ROOM);
+        }
         return;
     }
 
@@ -309,14 +313,22 @@ ACMD(do_action)
             send_to_char(action->char_auto, ch);
         }
         send_to_char("\n\r", ch);
-        act(action->others_auto, action->hide, ch, 0, 0, TO_ROOM);
+        if (action->others_auto) {
+            act(action->others_auto, action->hide, ch, 0, 0, TO_ROOM);
+        }
     } else {
         if (GET_POS(vict) < action->min_victim_position)
             act("$N is not in a proper position for that.", FALSE, ch, 0, vict, TO_CHAR);
         else {
-            act(action->char_found, 0, ch, 0, vict, TO_CHAR);
-            act(action->others_found, action->hide, ch, 0, vict, TO_NOTVICT);
-            act(action->vict_found, action->hide, ch, 0, vict, TO_VICT);
+            if (action->char_found) {
+                act(action->char_found, 0, ch, 0, vict, TO_CHAR);
+            }
+            if (action->others_found) {
+                act(action->others_found, action->hide, ch, 0, vict, TO_NOTVICT);
+            }
+            if (action->vict_found) {
+                act(action->vict_found, action->hide, ch, 0, vict, TO_VICT);
+            }
         }
     }
 }

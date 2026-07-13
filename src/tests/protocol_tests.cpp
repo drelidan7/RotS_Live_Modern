@@ -576,11 +576,24 @@ TEST(MSDPProtocol, SanitizeValueTruncatesSemanticTextAtEmbeddedNull)
     EXPECT_EQ(MSDPSanitizeValue(std::string_view(storage, sizeof(storage))), "A");
 }
 
-TEST(MSDPProtocol, ProtocolOutputTreatsNullAsTextTerminatorDespitePositiveLength)
+TEST(MSDPProtocol, ProtocolOutputUsesLengthAsProcessingLimitForTerminatedText)
 {
     ProtocolDescriptor context;
-    const char storage[] = { 'A', '\0', 'B' };
-    int output_length = static_cast<int>(sizeof(storage));
+    const char storage[] = { 'A', 'B', 'C', '\0' };
+    int output_length = 2;
+
+    const char* output = ProtocolOutput(&context.descriptor, storage, &output_length);
+
+    ASSERT_NE(output, nullptr);
+    EXPECT_EQ(std::string_view(output, static_cast<std::size_t>(output_length)), "AB");
+    EXPECT_EQ(output_length, 2);
+}
+
+TEST(MSDPProtocol, ProtocolOutputStopsAtNullBeforeProcessingLimit)
+{
+    ProtocolDescriptor context;
+    const char storage[] = { 'A', '\0', 'B', '\0' };
+    int output_length = 3;
 
     const char* output = ProtocolOutput(&context.descriptor, storage, &output_length);
 

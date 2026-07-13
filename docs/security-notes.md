@@ -105,25 +105,39 @@ disposition instead of living only in a phase-progress ledger entry.
 
 ## `script.cpp`'s `SCRIPT_DO_SAY`-family sites pass a builder-authored string directly as a `sprintf` format
 
-**Source files:** `src/script.cpp`
+**Source files:** `src/script.cpp`, `src/safe_template.h`, `src/safe_template.cpp`
 
-**Status:** open backlog item, not fixed by this entry (tracked in
-`docs/superpowers/plans/2026-07-12-phase-5-hardening.md`'s deferred-work list as item 1).
+**Status:** resolved (Backlog Cleanup wave, Task 1 — `modernization/backlog-cleanup` branch;
+see the `fix: harden script DO_SAY-family templates via safe_template (backlog T1)` commit,
+preceded by the `test: pin script DO_SAY-family template expansion (backlog T1)` pin commit).
 
 `SCRIPT_DO_SAY` and four sibling cases (`SCRIPT_DO_YELL`, `SCRIPT_SEND_TO_CHAR`,
-`SCRIPT_SEND_TO_ROOM`, `SCRIPT_SEND_TO_ROOM_X`) call `sprintf(output, curr->text, txt1)` where
+`SCRIPT_SEND_TO_ROOM`, `SCRIPT_SEND_TO_ROOM_X`) called `sprintf(output, curr->text, txt1)` where
 `curr->text` is a mudlle-script string authored by a builder (`.mdl`/`.scr` world data), used
-directly as the `printf`-style format template rather than as a literal. This is the same class of
+directly as the `printf`-style format template rather than as a literal. This was the same class of
 risk as the `death_cry2`/`shop.cpp` `message_*` fields documented in `docs/BUILD.md`'s "Formatting"
 section — a malformed template (wrong conversion count/type, a stray `%n`) is undefined behavior at
 the `sprintf` call — but unlike those fields, these five `script.cpp` sites were never routed
-through `safe_template::expand_checked()`. They are only a documented, pragma-wrapped **justified
+through `safe_template::expand_checked()`. They were only a documented, pragma-wrapped **justified
 skip** from the Phase 4 `std::format` conversion sweep (`std::format`'s format-string argument is
 compile-time-checked and has no runtime-template equivalent for this `printf`-style pattern), not a
-`safe_template` hardening pass — the skip addresses the modernization goal (convert to
+`safe_template` hardening pass — the skip addressed the modernization goal (convert to
 `std::format`) without addressing the security goal (validate a builder-supplied template before
-using it as one). Well-formed world data expands fine today; a malformed or malicious `.mdl`/`.scr`
-template at one of these five sites is not defended against. Extending `safe_template` coverage to
-this family is the same shape of work as the `death_cry2`/`shop.cpp` conversions and is recorded
-here so it has a durable, discoverable disposition rather than living only in a phase-progress
-ledger entry.
+using it as one). Well-formed world data expanded fine; a malformed or malicious `.mdl`/`.scr`
+template at one of these five sites was not defended against.
+
+**Fix:** all five sites now route through a new `safe_template::expand_checked_one(tmpl, arg,
+fallback, context)` convenience entry point (delegates to the existing `expand_checked()`
+scan/validate/substitute logic for the "exactly one bare `%s` consuming one argument" shape). A
+malformed template falls back to `curr->text` displayed literally (never re-interpreted as a format
+string) and logs once via `mudlog`, matching `expand_checked()`'s existing fallback mechanic. The
+new entry point also closes a second, previously-latent gap the `death_cry2`/`shop.cpp` call sites
+never had: `txt1` (`get_text_param()`'s return) can legitimately be a null `char*` (an unset
+`SCRIPT_PARAM_STRn`, or a `SCRIPT_PARAM_CHn_NAME` whose target character is gone) — the old
+`sprintf(output, curr->text, txt1)` read that null pointer as the `%s` argument (undefined
+behavior); `expand_checked_one()` coalesces a null `arg` to `""` before it ever reaches
+`std::string_view`, so the template stays well-formed and substitutes an empty string instead of
+hitting UB. The five `-Wdeprecated-declarations` justified-skip pragmas are removed; well-formed
+world data expands byte-identical to the old `sprintf` output (characterization-pinned), and
+`src/tests/safe_template_tests.cpp` carries both the pass-first well-formed pins and the fail-first
+malformed/null-arg pins for this family.

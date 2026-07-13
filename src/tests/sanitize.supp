@@ -61,17 +61,3 @@ leak:ShapeMob_ImplementProtoCopiesMobProtoWithoutCorruptingItsDamageMap_Test::Te
 # not silently dropped.
 leak:DbLoader_BuildPlayerIndexRemainsConsistentAfterVersionedMigrationRetiresStaleFlatFile_Test::TestBody
 
-# objsave.cpp's Crash_alias_load(): builds a linked list of alias_list nodes
-# (CREATE1()'d, one CREATE()'d .command string each) and attaches it to
-# ch->specials.alias -- but no function in the tree (checked: no free_alias()
-# exists, and free_char() does not touch ch->specials.alias) ever releases
-# that list. This is a genuine, pre-existing PRODUCTION leak (any character
-# with saved aliases leaks its alias list on every free_char(), e.g. on
-# logout) -- not a test-only artifact -- but fixing it correctly requires
-# auditing every place a character's alias list is read/mutated/reset across
-# its lifecycle (do_alias, the interpreter's alias-expansion path, crash-save
-# round-tripping) to add the release at the right point without changing
-# save/load behavior, which is beyond this task's scope. Disclosed here as a
-# confirmed, real, not-yet-fixed product bug for a dedicated follow-up task,
-# not swept under the rug.
-leak:DbLoader_CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail_Test::TestBody

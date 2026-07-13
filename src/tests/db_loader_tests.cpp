@@ -1267,6 +1267,11 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
     // in-memory ObjectSaveData -- there's no separate Crash_alias_load(ch,
     // fp) pass needed (or possible: `fp` is just a success handle now).
     ASSERT_EQ(std::fclose(fp), 0);
+    // Crash_alias_load() (invoked by Crash_load() above) heap-allocates
+    // character.specials.alias; this fixture never runs `character` through
+    // free_char(), so release it explicitly (backlog T2 -- see
+    // ScopedAliasListRelease's comment in test_char_cleanup.h).
+    ScopedAliasListRelease character_alias_cleanup { character };
 
     EXPECT_EQ(character.specials.board_point[0], 77);
     ASSERT_NE(GET_ALIAS(&character), nullptr);

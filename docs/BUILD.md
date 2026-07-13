@@ -12,8 +12,9 @@ natively on Apple Silicon — see "Native macOS arm64 build" below, which is the
 day-to-day flow. The i386 container remains the **32-bit legacy-format guard**: it's
 still how the *shipping* 32-bit binary is built, and it stays load-bearing until the
 live server's player/world data is confirmed fully migrated off the legacy binary
-formats (planned Phase 5) — at that point the 32-bit preset itself gets retired. Until
-then, keep using it whenever you need to reproduce the exact shipping ABI.
+formats — a trigger for its own future phase, not yet scheduled — at which point the
+32-bit preset itself gets retired. Until then, keep using it whenever you need to
+reproduce the exact shipping ABI.
 
 This keeps the original binary save-file format intact (no code changes), so a Docker
 build matches how the live game behaves.
@@ -163,12 +164,18 @@ the toolchain version changed, the ABI did not.
 | `linux-x64` (native or `rots64` container) | Linux x86-64 | `debian:trixie`, g++ 14.2, C++20 | **green — boots, passes tests, matches the Phase 0 goldens; CI-required** |
 | `macos-arm64` (native) | macOS arm64 | AppleClang 21, C++20 | **green — boots, passes tests, matches the Phase 0 goldens; CI-required** |
 | `windows-msvc` | Windows x64 MSVC | MSVC (windows-2022 runner), `/std:c++20` | **green — configure/build/full ctest (goldens included); CI-required as of Phase 3 Task 7** |
+| `linux-x64-sanitize` | Linux x86-64 | `debian:trixie`/ubuntu-24.04, g++ 14, C++20, ASan+UBSan | **green — full ctest under `-fsanitize=address,undefined`, leak detection on; CI-required as of Phase 5 Task 6** |
+| `macos-arm64-asan` | macOS arm64 | AppleClang 21, C++20, ASan+UBSan | **green — full ctest under `-fsanitize=address,undefined`, leak detection off (AppleClang LeakSanitizer is unreliable on macOS); CI-required as of Phase 5 Task 6** |
 
 Per-platform (from `src/`): `cmake --preset <name>`, `cmake --build --preset <name>`,
 `ctest --preset <name>`. `cmake --list-presets` shows what runs on this host.
 
-CI (`.github/workflows/ci.yml`): `legacy-32bit`, `linux-x64`, `macos-arm64`, and
-`windows-msvc` are all required jobs — no job in the matrix is allowed to fail anymore.
+CI (`.github/workflows/ci.yml`) runs six required jobs — `legacy-32bit`, `linux-x64`,
+`sanitize-linux`, `macos-arm64`, `sanitize-macos`, and `windows-msvc` — none of which
+is allowed to fail. A seventh job, `clang-tidy-advisory` (Phase 5 Task 7), runs the
+checked-in root `.clang-tidy` config over just the `.cpp` files changed vs.
+`origin/master` and is deliberately advisory (`continue-on-error: true`) — a finding
+there never blocks a merge.
 
 ## Warnings policy (Phase 5 Task 8)
 

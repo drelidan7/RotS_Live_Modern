@@ -97,6 +97,33 @@ population of characters that predate the account system and may never migrate. 
 save-format migration in the same family as the binary-format conversions tracked elsewhere in
 this repo (`docs/data-formats/object-rent-files.md`, the `crime_json`/`exploits_json` converters)
 and needs the same treatment: an explicit plan, a converter, and — per the standing project
-constraint — the legacy path kept intact until live server data is confirmed migrated. That is
-Phase 5-shaped work, not a Phase 3 MSVC-bring-up fix. Recorded here so the finding has a durable,
-discoverable disposition instead of living only in a phase-progress ledger entry.
+constraint — the legacy path kept intact until live server data is confirmed migrated. Phase 5
+(hardening: `-Wall -Wextra -Werror`/`/W4 /WX` compile-warning cleanup) came and went without
+touching this — it remains parked pending a dedicated future save-format-migration effort, not a
+quick fix folded into another task. Recorded here so the finding has a durable, discoverable
+disposition instead of living only in a phase-progress ledger entry.
+
+## `script.cpp`'s `SCRIPT_DO_SAY`-family sites pass a builder-authored string directly as a `sprintf` format
+
+**Source files:** `src/script.cpp`
+
+**Status:** open backlog item, not fixed by this entry (tracked in
+`docs/superpowers/plans/2026-07-12-phase-5-hardening.md`'s deferred-work list as item 1).
+
+`SCRIPT_DO_SAY` and four sibling cases (`SCRIPT_DO_YELL`, `SCRIPT_SEND_TO_CHAR`,
+`SCRIPT_SEND_TO_ROOM`, `SCRIPT_SEND_TO_ROOM_X`) call `sprintf(output, curr->text, txt1)` where
+`curr->text` is a mudlle-script string authored by a builder (`.mdl`/`.scr` world data), used
+directly as the `printf`-style format template rather than as a literal. This is the same class of
+risk as the `death_cry2`/`shop.cpp` `message_*` fields documented in `docs/BUILD.md`'s "Formatting"
+section — a malformed template (wrong conversion count/type, a stray `%n`) is undefined behavior at
+the `sprintf` call — but unlike those fields, these five `script.cpp` sites were never routed
+through `safe_template::expand_checked()`. They are only a documented, pragma-wrapped **justified
+skip** from the Phase 4 `std::format` conversion sweep (`std::format`'s format-string argument is
+compile-time-checked and has no runtime-template equivalent for this `printf`-style pattern), not a
+`safe_template` hardening pass — the skip addresses the modernization goal (convert to
+`std::format`) without addressing the security goal (validate a builder-supplied template before
+using it as one). Well-formed world data expands fine today; a malformed or malicious `.mdl`/`.scr`
+template at one of these five sites is not defended against. Extending `safe_template` coverage to
+this family is the same shape of work as the `death_cry2`/`shop.cpp` conversions and is recorded
+here so it has a durable, discoverable disposition rather than living only in a phase-progress
+ledger entry.

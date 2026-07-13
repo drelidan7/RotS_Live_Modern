@@ -242,11 +242,34 @@ jobs:
       - name: Run clang-tidy over changed files
         if: steps.changed.outputs.has_files == 'true'
         run: |
+          # Parallelized across the runner's cores (Phase 5 Task 10 fix): a
+          # long-lived integration branch's diff vs origin/master can span
+          # dozens of files (Phase 5 hardening alone touched 80 -- const-
+          # correctness/sprintf/warning sweeps land across most of src/), and
+          # a serial one-file-at-a-time loop -- each clang-tidy invocation is
+          # a full-TU parse of the game's large headers -- measurably blew
+          # past this job's 30-minute budget (two runs cancelled mid-file by
+          # the job timeout, not by an empty diff: confirmed via CI run logs
+          # showing 59-60 of 80 files completed when the timeout fired).
+          # Each file's output is captured to its own log first so parallel
+          # workers never interleave inside one ::group:: block, then the
+          # logs are replayed in stable, deterministic order.
+          mkdir -p /tmp/tidy-logs
+          # shellcheck disable=SC2016  # single quotes are intentional: $1/$f
+          # expand in the child `bash -c`, not this outer shell.
+          xargs -a /tmp/changed_files.txt -P "$(nproc)" -I{} bash -c '
+            f="$1"
+            safe="$(echo "$f" | tr "/" "_")"
+            clang-tidy -p build/linux-x64 "$f" > "/tmp/tidy-logs/$safe.log" 2>&1
+            echo $? > "/tmp/tidy-logs/$safe.rc"
+          ' _ {}
           status=0
           while IFS= read -r f; do
+            safe="$(echo "$f" | tr "/" "_")"
             echo "::group::clang-tidy $f"
-            clang-tidy -p build/linux-x64 "$f" || status=1
+            cat "/tmp/tidy-logs/$safe.log"
             echo "::endgroup::"
+            [ "$(cat "/tmp/tidy-logs/$safe.rc" 2>/dev/null)" = "0" ] || status=1
           done < /tmp/changed_files.txt
           exit "$status"
       - name: No changed .cpp files

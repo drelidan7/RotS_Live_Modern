@@ -881,7 +881,7 @@ int random_exit(int room)
     // and returns the real number of the new room.
 
     int tmp, num, res;
-    sh_int romfl;
+    long romfl;
     int ex_rooms[NUM_OF_DIRS];
 
     if ((room < 0) || (room > top_of_world))

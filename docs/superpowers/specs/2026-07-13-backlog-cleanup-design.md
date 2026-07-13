@@ -11,10 +11,13 @@ ownership) runs AFTER this wave merges.
 2. **Roster:** DO_SAY security hardening; Crash_alias_load leak; target_data operator== const&;
    buf-aliasing cluster conversion; gtest FetchContent for the macOS ASan job; MSVC narrowing
    revisit; minor nits (gtest_main comment, interpre whitespace). **Severity-ordered, MSVC last.**
-3. **Fallthrough rulings:** Easterling language fallthrough (shapemob.cpp:98) is INTENTIONAL per
-   owner — reclassify its FIXME comment to documented-intentional (owner ruling 2026-07-13), no
-   behavior change. The whip damage-type FIXME (fight.cpp:2041) stays deferred as a future
-   gameplay-balance decision — untouched this wave.
+3. **Fallthrough rulings (amended 2026-07-13):** BOTH sites — the Easterling language
+   fallthrough (shapemob.cpp:98) and the whip damage-type fallthrough (fight.cpp:2041) — are
+   marked **INVESTIGATE**: the owner needs more information before any behavior ruling. T2
+   rewrites both source comments from FIXME to
+   `INVESTIGATE (owner, 2026-07-13): behavior ruling pending more information; preserved
+   byte-for-byte` (keeping the corroborating-evidence citations). No behavior change to either
+   site this wave.
 
 ## Tasks
 
@@ -32,8 +35,8 @@ ownership) runs AFTER this wave merges.
    of the covering tests + the existing sanitize.supp entry REMOVED, proving the fix). (b)
    `target_data operator==(target_data)` → `const target_data&` (interpre.cpp:~694; dead code
    but latent-leak-by-copy). (c) gtest_main.cpp world_singleton first-call-wins comment. (d)
-   Easterling FIXME → documented-intentional comment (decision 3). (e) interpre.cpp whitespace
-   nits only if separable without churn.
+   BOTH fallthrough comments (fight.cpp:2041, shapemob.cpp:98) → INVESTIGATE wording per
+   decision 3. (e) interpre.cpp whitespace nits only if separable without churn.
 3. **T3 — buf-aliasing cluster conversion.** Characterize with byte-pins, then convert to
    `std::string` composition: act_info.cpp's pragma-wrapped display cluster
    (`show_char_to_char`, `list_char_to_char`, `get_char_position_line`, `get_char_flag_line`,

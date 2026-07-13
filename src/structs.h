@@ -341,12 +341,15 @@ struct target_data {
         struct txt_block* text;
         void* other;
     } ptr;
-    sh_int ch_num; /* abs_number, if the target is a character, or just some
-                   digit data*/
+    int ch_num; /* abs_number, if the target is a character, or just some
+                digit data. int (not sh_int): abs_number is an int slot index
+                allowed up to MAX_CHARACTERS (64000), and a truncated-negative
+                value here would index char_control_array out of bounds via
+                char_exists() (Backlog Cleanup T5, MSVC C4244 revisit). */
     int choice; /* what kind of target is this   */
     void cleanup(); /* cleans the target data, releases the text if nec. */
     void operator=(const target_data& t2);
-    int operator==(target_data t2);
+    int operator==(const target_data& t2) const;
 
     target_data()
     {

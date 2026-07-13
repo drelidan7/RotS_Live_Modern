@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../db.h"
 #include "../structs.h"
 #include "../utils.h"
 
@@ -113,6 +114,34 @@ struct ScopedStoreToCharFields {
         RELEASE(ch.player.title);
         RELEASE(ch.player.description);
         RELEASE(ch.player.name);
+    }
+};
+
+// Crash_alias_load() (objsave.cpp) builds ch->specials.alias as a linked
+// list (each node CREATE1()'d, each with a CREATE()'d .command string).
+// Production code only ever releases that list via free_char()'s
+// free_alias_list() call (db.cpp, backlog T2's ownership fix) -- fixtures
+// that reach Crash_alias_load() (directly, or via Crash_load()) on an
+// already-stack-allocated char_data without ever calling free_char() on it
+// must release the list themselves at scope exit, same rationale as
+// ScopedClearCharFields/ScopedStoreToCharFields above.
+struct ScopedAliasListRelease {
+    // The char_data whose specials.alias chain this guard releases (via
+    // free_alias_list(), db.cpp) at scope exit.
+    char_data& ch;
+
+    explicit ScopedAliasListRelease(char_data& character)
+        : ch(character)
+    {
+    }
+
+    ScopedAliasListRelease(const ScopedAliasListRelease&) = delete;
+    ScopedAliasListRelease& operator=(const ScopedAliasListRelease&) = delete;
+
+    ~ScopedAliasListRelease()
+    {
+        free_alias_list(ch.specials.alias);
+        ch.specials.alias = nullptr;
     }
 };
 

@@ -258,6 +258,74 @@ warning set and diagnostic text don't line up 1:1 with GCC/Clang's. As of Task 9
 GNU-family `-Werror` jobs — both warnings-as-errors policies are now live
 simultaneously.
 
+**The `/wd4244 /wd4267` narrowing suppression was revisited rigorously and
+re-affirmed (Backlog Cleanup Task 5, 2026-07-13).** Phase 5 Task 9 had suppressed
+the two int-narrowing classes on a 20-site sample; this revisit ran a dedicated
+census CI cycle (run 29222339494 — `/WX` and both `/wd` flags lifted by one
+clearly-labeled commit, reverted immediately after harvest) and captured the
+complete site list. The raw harvest was **1,167 deduplicated warning lines,
+exactly matching the Task 9 census count (993 C4244 + 174 C4267 — zero drift
+since)**; 100 of those lines are MSVC multi-line template-note continuations of
+other sites on the list (the `with [_Ty=int]` elaborations MSVC prints for
+template-argument conversions), so the census resolves to **1,067 unique
+file:line sites (893 C4244 + 174 C4267) across 59 files**. Stratification of
+the 1,067: world-file loaders + OLC shape editors 436; combat/spell math 215;
+sizes/lengths 171 (this stratum is 100% C4267 — `strlen()`/`size_t` narrowing;
+the remaining 3 of the 174 C4267 sites sit in the test-fixture stratum);
+`time_t` narrowing 37; misc (indices, flags, encumb, tolower) 190; test
+fixtures 18. An 84-site stratified sample was read in source,
+plus a full (not sampled) read of every suspected-real site. The framing fact:
+`sh_int`/`byte` are fixed-width on **all four platforms**, so C4244 truncation
+behavior is identical everywhere — MSVC is merely the only compiler that diagnoses
+it at `/W4` (the GNU-family `-Wall -Wextra` bar deliberately excludes
+`-Wconversion`).
+
+Real-truncation findings, three classes:
+
+1. **Fixed — `target_data::ch_num` widened `sh_int`→`int`** (`structs.h`; 46
+   warning sites). It stores `abs_number`, an `int` slot index permitted up to
+   `MAX_CHARACTERS` (64000); a value above 32767 would truncate negative and
+   index `char_control_array` out of bounds through `char_exists()`. Unreachable
+   on current world data (concurrent character counts sit far below 32k), so the
+   widening is value-preserving for every reachable input — an in-memory struct
+   only, never persisted, no goldens affected.
+2. **Fixed — `random_exit`'s `romfl` local widened `sh_int`→`long`** (`mage.cpp`).
+   `room_flags` is a `long` bitvector; the truncation was benign-as-used (only
+   bits 1/7/14 are tested) but the local now matches the field it snapshots.
+3. **Not fixed, escalated as format-frozen:** player idnums stored into `sh_int`
+   fields of two *persisted* record layouts — `exploit_record.shintVictimID`
+   (db.cpp, 2 sites) and `crime_record_type.criminal/victim/witness` (db.cpp,
+   9 sites). Real truncation once a server's idnum counter passes 32767 — but
+   both layouts are frozen on-disk legacy formats (`static_assert
+   sizeof(exploit_record) == 80`; `legacy_crime_file_from_binary`), and the JSON
+   codecs intentionally preserve the `sh_int` width for migration compatibility.
+   Widening them is a versioned format migration — a disclosed behavior/format
+   change for a future owner-approved effort, recorded here rather than slipped
+   through. The 37 `time_t`→`int`/`long` sites (rent/board/pkill timestamps,
+   account-API `long` timestamps) are the same shape: Y2038-class narrowing
+   pinned by persisted formats and identical to the shipping 32-bit binary's
+   behavior; deferred to a coordinated Y2038/format effort, not fixable
+   piecemeal. (The interpreter's TARGET_GOLD amount-into-`ch_num` sites are
+   dead code — no command mask ever sets `TAR_GOLD`.)
+
+**Disposition: the global `/wd4244 /wd4267` stays.** The 972 remaining sites
+(1,067 − 46 `ch_num` fixed − 1 `romfl` fixed − 11 idnum-record escalated − 37
+`time_t` escalated) are diffuse (spanning most of the 59 census files) and
+domain-provably benign — stats bounded ≤ ~100 into
+`signed char` (±127), hp/mana/move bounded ≤ ~32k into `sh_int`, `strlen()` of
+`MAX_STRING_LENGTH`-bounded strings into `int`, world-file stats parsed via
+`fscanf("%d")` into their canonical field widths. Narrowing the suppression to
+per-file pragmas would mean annotating essentially every legacy file to silence
+the same benign pattern — strictly worse than one ledgered global flag. The real
+fix remains a future typed-fields effort, as the Task 9 ledger already noted.
+
+The census is reproducible: repeat the labeled census-commit procedure (see
+commits `3953857` — lift `/WX /wd4244 /wd4267` on the MSVC blocks of both
+targets — and its revert `23c09d3`), push, and harvest the C4244/C4267 lines
+from the `windows-msvc` job log of the resulting run (reference run:
+29222339494; strip CRLF and the two-target vcxproj duplication, then drop the
+template-note continuation lines to get unique sites).
+
 **The i386 container leg (`-m32`, g++14 `debian:trixie`) is `-Werror`-clean too —
 verified at Phase 5 Task 10 (finalization), as planned, not silently skipped.** The
 per-task verification cadence for this phase ran macOS native + `rots64` only (see
@@ -338,8 +406,17 @@ no-third-party-libraries decision; `platdef.h`'s Windows scaffold (winsock2 incl
 exception — it is test-only tooling, never linked into the shipping game binary, and on
 Windows CI it is provisioned via CMake `FetchContent` (source-built against the exact
 MSVC/CRT, cached in `actions/cache` keyed on `src/CMakeLists.txt`) since the windows-2022
-runner carries no system GTest package; Linux/macOS keep `find_package(GTest REQUIRED)`
-against apt/brew packages.
+runner carries no system GTest package. Every other preset — including `linux-x64`,
+`linux-x64-sanitize`, and `macos-arm64` — keeps `find_package(GTest REQUIRED)` against
+apt/brew packages; `linux-x64-sanitize` is not an exception just because it's a
+sanitizing preset. The one other exception is `macos-arm64-asan` (Backlog T4), which
+opts into `FetchContent` via the `ROTS_FETCH_GTEST` cache option (set `ON` only by that
+preset) so gtest itself compiles under `-fsanitize=address,undefined` instead of linking
+brew's uninstrumented prebuilt static lib — see `src/CMakeLists.txt`'s
+GoogleTest-provisioning comment and the `sanitize-macos` job in
+`.github/workflows/ci.yml` for the mixed-instrumentation false positive this fixes. In
+short: `FetchContent` is used only by `windows-msvc` and `macos-arm64-asan`; every other
+preset uses `find_package`.
 
 What Windows CI verifies today: `cmake --preset windows-msvc`, build, and
 `ctest --preset windows-msvc` — the full unit suite including the characterization

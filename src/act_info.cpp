@@ -921,51 +921,30 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
          */
         if ((!i->player.long_descr || GET_POS(i) != i->specials.default_pos || pos_line) || (IS_NPC(i) && MOB_FLAGGED(i, MOB_ORC_FRIEND) && MOB_FLAGGED(i, MOB_PET) && other_side(ch, i))) {
             if (!pos_line) {
-                // Justified skip -- see the "WAVE 3 TASK 9 SWEEP" block comment
-                // above get_char_position_line (act_info.cpp:549-587): this whole
-                // function web relies on pointer aliasing into the global `buf',
-                // and the only safe conversion unit is all of it at once.
-#if defined(__clang__)
-#pragma clang diagnostic push
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#endif
-#if defined(__clang__)
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-                sprintf(buf, "%s%s%s", CC_USE(ch, COLOR_CHAR), PERS(i, ch, TRUE, FALSE),
-                    CC_USE(ch, COLOR_CHAR));
+                // Backlog Cleanup Task 3: materialize-then-strcpy (Wave 4's
+                // proven idiom). Neither sprintf here reads `buf' as a
+                // source (the first writes CC_USE()/PERS()/CC_USE() into an
+                // empty buf; the second appends GET_TITLE(i) at buf's new
+                // end), so this is a plain sprintf->std::format swap, not a
+                // self-reference removal. The surrounding strcat()/
+                // buf-aliasing calls below (get_char_flag_line/
+                // get_char_position_line reading and writing `buf +
+                // strlen(buf)') are untouched -- see the "WAVE 3 TASK 9
+                // SWEEP" block comment above get_char_position_line for why
+                // that web stays as-is.
+                strcpy(buf,
+                    std::format("{}{}{}", CC_USE(ch, COLOR_CHAR), PERS(i, ch, TRUE, FALSE),
+                        CC_USE(ch, COLOR_CHAR))
+                        .c_str());
                 if (!IS_NPC(i) && !other_side(ch, i))
-                    sprintf(buf + strlen(buf), " %s", GET_TITLE(i));
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+                    strcpy(buf + strlen(buf), std::format(" {}", GET_TITLE(i)).c_str());
 
                 get_char_flag_line(ch, i, buf + strlen(buf));
                 get_char_position_line(ch, i, buf + strlen(buf));
             } else {
-                // Justified skip -- same aliasing web, see the block comment
-                // above get_char_position_line (act_info.cpp:549-587).
-#if defined(__clang__)
-#pragma clang diagnostic push
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#endif
-#if defined(__clang__)
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-                sprintf(buf, "%s", PERS(i, ch, TRUE, FALSE));
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+                // Backlog Cleanup Task 3: materialize-then-strcpy; no
+                // self-reference (PERS()'s result doesn't read `buf').
+                strcpy(buf, std::format("{}", PERS(i, ch, TRUE, FALSE)).c_str());
                 get_char_flag_line(ch, i, buf + strlen(buf));
                 strcat(buf, pos_line);
             }
@@ -995,27 +974,14 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
         } else {
             log("show_char: No description.");
             if (GET_NAME(i))
-                // Justified skip -- same aliasing web, see the block comment
-                // above get_char_position_line (act_info.cpp:549-587). (The
-                // result is clobbered by `*buf = 0;` a few lines below --
+                // Backlog Cleanup Task 3: materialize-then-strcpy. The
+                // result is clobbered by `*buf = 0;' a few lines below --
                 // that's pre-existing behavior, not something this task
-                // changes.)
-#if defined(__clang__)
-#pragma clang diagnostic push
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#endif
-#if defined(__clang__)
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-                sprintf(buf, "show_char: No description on %s.\n", GET_NAME(i));
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+                // changes (see ActInfoDisplayCluster's suite comment in
+                // act_info_format_tests.cpp for why this site isn't pinned:
+                // its bytes are provably unobservable).
+                strcpy(buf,
+                    std::format("show_char: No description on {}.\n", GET_NAME(i)).c_str());
             act("You see nothing special about $m.", FALSE, i, 0, ch, TO_VICT);
         }
 
@@ -1102,36 +1068,23 @@ void show_room_affection(char* str, struct affected_type* aff, int mode)
         case ROOMAFF_SPELL:
             *buf2 = 0;
             sprintbit(aff->bitvector, room_bits, buf2, 0);
-            // Justified skip -- same aliasing web, see the "WAVE 3 TASK 9
-            // SWEEP" block comment above get_char_position_line
-            // (act_info.cpp:549-587), which names show_room_affection
-            // explicitly: `str' is both destination and source here
-            // (self-referencing "%s...", str, ... overlap).
-#if defined(__clang__)
-#pragma clang diagnostic push
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#endif
-#if defined(__clang__)
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-// GCC also flags this call's self-referencing `str` (dest==source) via
-// -Wrestrict; pre-existing, deliberately-reviewed pattern (see the
-// "Justified skip" comment above) -- not rewritten this task, see the
-// Phase 5 T5 report's "Concerns" section.
-#pragma GCC diagnostic ignored "-Wrestrict"
-#endif
-            sprintf(str, "%s Spell %s(%d) level %d, %dhrs, sets %s.\r\n", str,
-                ((aff->location >= 0) && (aff->location < MAX_SKILLS))
-                    ? skills[aff->location].name
-                    : "none",
-                aff->location, aff->modifier, aff->duration, buf2);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+            // Backlog Cleanup Task 3: materialize-then-strcpy -- `str' was
+            // both destination and source in the old sprintf(str, "%s...",
+            // str, ...) (also flagged by -Wrestrict for the same reason);
+            // composing into a temporary std::string first and strcpy()'ing
+            // the result in removes that hazard while producing identical
+            // bytes. static_cast<const char*> decays the char[]-typed
+            // globals per the libc++/libstdc++ char[N]-to-std::format rule
+            // (catalog item 5); `str' is already a plain `char*' parameter.
+            strcpy(str,
+                std::format("{} Spell {}({}) level {}, {}hrs, sets {}.\r\n",
+                    static_cast<const char*>(str),
+                    ((aff->location >= 0) && (aff->location < MAX_SKILLS))
+                        ? skills[aff->location].name
+                        : "none",
+                    aff->location, aff->modifier, aff->duration,
+                    static_cast<const char*>(buf2))
+                    .c_str());
             break;
 
         case ROOMAFF_EXIT:
@@ -1139,24 +1092,10 @@ void show_room_affection(char* str, struct affected_type* aff, int mode)
             break;
 
         default:
-            // Justified skip -- same aliasing web, see the block comment
-            // above get_char_position_line (act_info.cpp:549-587).
-#if defined(__clang__)
-#pragma clang diagnostic push
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#endif
-#if defined(__clang__)
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-            sprintf(str, "Unknown room affect (%d).\n\r", aff->type);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+            // Backlog Cleanup Task 3: materialize-then-strcpy; no
+            // self-reference (`str' isn't a source here, only the
+            // destination).
+            strcpy(str, std::format("Unknown room affect ({}).\n\r", aff->type).c_str());
             break;
         }
     }
@@ -1168,48 +1107,14 @@ void show_room_affection(char* str, struct affected_type* aff, int mode)
 void show_room_weather(char* str, struct char_data* ch)
 {
     /* Is it snowy? */
-    // Justified skip -- same aliasing web, see the block comment above
-    // get_char_position_line (act_info.cpp:549-587), which names
-    // show_room_weather explicitly: `str' is both destination and source
-    // here (self-referencing "%s...", str overlap).
-#if defined(__clang__)
-#pragma clang diagnostic push
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#endif
-#if defined(__clang__)
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-// GCC also flags this call's self-referencing `str` (dest==source) via
-// -Wrestrict; pre-existing, deliberately-reviewed pattern (see the
-// "Justified skip" comment above) -- not rewritten this task, see the
-// Phase 5 T5 report's "Concerns" section.
-#pragma GCC diagnostic ignored "-Wrestrict"
-#endif
+    // Backlog Cleanup Task 3: materialize-then-strcpy -- `str' was both
+    // destination and source in the old sprintf(str, "%sSnow...", str)
+    // (also flagged by -Wrestrict for the same reason); composing into a
+    // temporary std::string first and strcpy()'ing the result in removes
+    // that hazard while producing identical bytes.
     if (weather_info.snow[world[ch->in_room].sector_type])
-        sprintf(str, "%sSnow lies upon the ground.\n\r", str);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+        strcpy(str, std::format("{}Snow lies upon the ground.\n\r", str).c_str());
 }
-
-/*
- * Format strings passed to sprintf(3); used to print an exit
- * symbol when using the look <no argument> command; i.e.:
- * Exits are: E (W) *S* #U# %D%
- */
-const char* const exit_mark[] = {
-    "", /* A hidden exit */
-    " %c", /* A plain, boring link to another room */
-    " (%c)", /* A closed, non-broken door */
-    " *%c*", /* A closed, hidden exit, as seen by an immortal */
-    " {%c}", /* A NOWALK exit such as a window, as seen by an immortal */
-    " #%c#", /* A sunlit room, as seen by an Orc, Uruk, or Lhuth */
-    " %%%c%%" /* A shadowy room during the day, as seen by darkies */
-};
 
 /*
  * A list of valid arguments to look; i.e.: look north,
@@ -1613,49 +1518,46 @@ ACMD(do_look)
                      * Generate the direction letter and any surrounding symbols
                      * based on the information we've gathered with exit_choice
                      */
-                    // Justified skip -- exit_mark[] (act_info.cpp) is a
-                    // runtime-indexed table of printf-style format strings
-                    // selected by `exit_choice', not a compile-time string
-                    // literal, so std::format's constant-evaluated format
-                    // string requirement can't apply here without also
-                    // rewriting exit_mark[]'s stored strings from %c to {}
-                    // -- same dynamic-format-string class as add_prompt's
-                    // prompt_text[] use below (see that comment).
-#if defined(__clang__)
-#pragma clang diagnostic push
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#endif
-#if defined(__clang__)
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-                    switch (i) {
-                    case 0:
-                        sprintf(exit_line, exit_mark[exit_choice], 'N');
-                        break;
-                    case 1:
-                        sprintf(exit_line, exit_mark[exit_choice], 'E');
-                        break;
-                    case 2:
-                        sprintf(exit_line, exit_mark[exit_choice], 'S');
-                        break;
-                    case 3:
-                        sprintf(exit_line, exit_mark[exit_choice], 'W');
-                        break;
-                    case 4:
-                        sprintf(exit_line, exit_mark[exit_choice], 'U');
-                        break;
-                    case 5:
-                        sprintf(exit_line, exit_mark[exit_choice], 'D');
-                        break;
-                    };
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+                    // Backlog Cleanup Task 3: this used to index a
+                    // runtime-selected exit_mark[] printf format-string
+                    // table (one entry per exit_choice, a %c placeholder for
+                    // the direction letter) -- unlike add_prompt's
+                    // prompt_text[]/prompt_hit[]/etc. below (large,
+                    // externally populated tables in consts.cpp, genuinely
+                    // out of this file's/task's scope), that table was
+                    // small, file-local, and fully enumerable, so each of
+                    // its 7 entries is reproduced directly below as a
+                    // std::format call keyed on `exit_choice' instead (the
+                    // table itself is now dead code and has been removed).
+                    {
+                        static const char direction_letters[NUM_OF_DIRS]
+                            = { 'N', 'E', 'S', 'W', 'U', 'D' };
+                        char direction_letter = direction_letters[i];
+                        switch (exit_choice) {
+                        case 0: // A hidden exit -- nothing shown at all.
+                            exit_line[0] = '\0';
+                            break;
+                        case 2: // A closed, non-broken door.
+                            strcpy(exit_line, std::format(" ({})", direction_letter).c_str());
+                            break;
+                        case 3: // A closed, hidden exit, as seen by an immortal.
+                            strcpy(exit_line, std::format(" *{}*", direction_letter).c_str());
+                            break;
+                        case 4: // A NOWALK exit such as a window, as seen by an immortal.
+                            strcpy(exit_line, std::format(" {{{}}}", direction_letter).c_str());
+                            break;
+                        case 5: // A sunlit room, as seen by an Orc, Uruk, or Lhuth.
+                            strcpy(exit_line, std::format(" #{}#", direction_letter).c_str());
+                            break;
+                        case 6: // A shadowy room during the day, as seen by darkies.
+                            strcpy(exit_line, std::format(" %{}%", direction_letter).c_str());
+                            break;
+                        case 1: // A plain, boring link to another room.
+                        default:
+                            strcpy(exit_line, std::format(" {}", direction_letter).c_str());
+                            break;
+                        }
+                    }
 
                     strcat(buf2, exit_line);
                 }

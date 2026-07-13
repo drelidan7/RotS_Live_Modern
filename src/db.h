@@ -117,6 +117,7 @@ void clear_char(struct char_data*, int);
 void clear_object(struct obj_data*);
 void reset_char(struct char_data*);
 void free_char(struct char_data*);
+void free_alias_list(struct alias_list*);
 void free_obj(struct obj_data*);
 int real_room(int);
 int real_program(int);

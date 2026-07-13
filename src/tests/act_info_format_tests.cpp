@@ -132,6 +132,20 @@ void do_identify_object(struct char_data* ch, struct obj_data* j);
 void do_details(char_data* character, char* argument, waiting_type* wait_list, int command,
     int sub_command);
 
+// The buf-aliasing display cluster (act_info.cpp's "WAVE 3 TASK 9 SWEEP"
+// block comment above get_char_position_line) -- none of these are declared
+// in a shared header (show_char_to_char is the lone exception, via
+// utils.h's default-argument declaration already visible through the
+// includes above), so each gets its own forward declaration here, matching
+// the convention above for do_food_display/do_light_display/etc.
+void get_char_position_line(struct char_data* ch, struct char_data* i, char* str);
+void get_char_flag_line(char_data* viewer, char_data* viewed, char* character_message);
+void show_mount_to_char(struct char_data* i, struct char_data* ch, const char* line1,
+    const char* line2, int color);
+void list_char_to_char(struct char_data* list, struct char_data* ch, int mode);
+void show_room_affection(char* str, struct affected_type* aff, int mode);
+void show_room_weather(char* str, struct char_data* ch);
+
 void clear_char(struct char_data* ch, int mode);
 
 // Process globals ActInfoWorldSocial's fixtures stamp directly (db.cpp/
@@ -1128,6 +1142,715 @@ TEST(ActInfoPerception, DoExamineWithoutTargetRendersRoomViaLookExamDelegation)
     // do_examine restores the toggled PRF_SPAM bit on its way out.
     EXPECT_FALSE(PRF_FLAGGED(&context.character, PRF_SPAM));
 }
+
+// ---------------------------------------------------------------------------
+// ActInfoDisplayCluster (Backlog Cleanup Task 3) -- the buf-aliasing display
+// cluster act_info.cpp's "WAVE 3 TASK 9 SWEEP" block comment (above
+// get_char_position_line) names as a deliberate skip: show_char_to_char,
+// list_char_to_char, get_char_position_line, get_char_flag_line,
+// show_mount_to_char, show_room_affection, show_room_weather, plus do_look
+// case 8's exit_mark[] table. A new suite rather than an ActInfoPerception
+// extension, since this is its own previously-unpinned web (three prior
+// waves left it alone for exactly the reasons that block comment gives).
+// These pin the CURRENT byte-for-byte output -- confirmed passing against
+// the pre-conversion source -- before this task's pragma-guarded sprintf()
+// sites (show_char_to_char's title/no-title/pos-line sites; show_room_
+// affection's self-referencing ROOMAFF_SPELL stat line and its non-self-
+// referencing default-case line; show_room_weather's self-referencing snow
+// line; do_look case 8's exit_mark[] runtime-selected-format-string switch)
+// convert to std::format via the materialize-then-strcpy idiom, and green
+// again after.
+//
+// Deliberately NOT pinned here (documented exclusions, not oversights):
+//  - get_char_position_line/get_char_flag_line/show_mount_to_char/
+//    list_char_to_char contain NO sprintf() of their own (pure strcat()) --
+//    this task converts nothing inside them. They are pinned anyway because
+//    they read/write the SAME global `buf' the sprintf sites write into
+//    (some branches -- get_char_flag_line's "(red aura)" line,
+//    get_char_position_line's POSITION_FIGHTING "someone else" branch --
+//    strcat() into `buf' directly rather than through their `str'/
+//    `character_message' parameter, relying on every real call site passing
+//    `buf + strlen(buf)' as that parameter); these pins are the regression
+//    net proving the sprintf conversions don't disturb that aliasing.
+//  - get_char_flag_line's holy-protection/fame-identifier/marked/shadow/
+//    sanctuary/writing/AFK branches need extra process-singleton
+//    (big_brother) or race-table (other_side/pc_star_types) bootstrap
+//    unrelated to this task's actual conversion sites; the hide/invisible/
+//    linkless combos below are the representative pins the task brief asks
+//    for.
+//  - show_char_to_char's mode-1 ("look at <char>") branches: its one sprintf
+//    (act_info.cpp:1013, "show_char: No description on %s.\n") writes into
+//    `buf' and is UNCONDITIONALLY clobbered by `*buf = 0;' two lines later
+//    before anything reads it (see the "Justified skip" comment at that call
+//    site) -- its bytes are provably unobservable, and reaching them needs
+//    report_char_health()/show_equipment_to_char() fixture depth this task's
+//    actual risk (the sprintf conversion itself) doesn't warrant.
+//  - do_look case 8's PRF_ROOMFLAGS/PRF_ADVANCED_VIEW room-name-suffix
+//    sprintf sites (act_info.cpp:1543-1558) were already converted to
+//    std::format in an earlier wave -- nothing left there for this task.
+namespace {
+
+// Two ordinary PCs sharing room 0 -- `viewer' is the observer (PRF_HOLYLIGHT
+// so CAN_SEE()'s room-light gate never blocks it; this suite has no interest
+// in darkness/light branches), `target' is the character under test. Mirrors
+// RoomWithBystanderContext above, but `target' is meant to be dressed up
+// differently per test rather than playing a fixed "bystander" role.
+// `target_descriptor' defaults to "online" (a live `.descriptor' fd) so
+// get_char_flag_line's "(linkless)" branch doesn't fire unless a test
+// explicitly asks for it (by nulling `target.desc').
+struct DisplayClusterContext {
+    ScopedTestWorld test_world;
+    char_data viewer {};
+    char_data target {};
+    descriptor_data viewer_descriptor {};
+    descriptor_data target_descriptor {};
+    byte knowledge[MAX_SKILLS] {};
+    char_data* original_people = nullptr;
+    // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
+    // leak sweep).
+    ScopedClearCharFields viewer_cleanup { viewer };
+    ScopedClearCharFields target_cleanup { target };
+    ScopedDescriptorLargeOutbufReturn viewer_descriptor_large_outbuf_cleanup { viewer_descriptor };
+
+    DisplayClusterContext()
+    {
+        clear_char(&viewer, MOB_VOID);
+        clear_char(&target, MOB_VOID);
+        viewer_cleanup.release_knowledge_now();
+        reset_capturing_descriptor(viewer_descriptor, &viewer);
+        reset_capturing_descriptor(target_descriptor, &target);
+        viewer_descriptor.descriptor = 7;
+        target_descriptor.descriptor = 7;
+        viewer.knowledge = knowledge;
+
+        original_people = test_world.room().people;
+        viewer.in_room = 0;
+        target.in_room = 0;
+        viewer.next_in_room = &target;
+        target.next_in_room = nullptr;
+        test_world.room().people = &viewer;
+
+        viewer.specials.position = POSITION_STANDING;
+        viewer.player.race = RACE_HUMAN;
+        target.player.race = RACE_HUMAN;
+        // big_brother::is_level_range_appropriate() treats level 0 vs level 0
+        // as a >=3x ratio (0 >= 0*3) and calls it INappropriate -- a same-
+        // level-0 pair otherwise falls through get_char_flag_line's
+        // "!IS_NPC(viewed)" clause (true for any PC target) into a spurious
+        // "(holy protection)" flag. Real characters are never level 0; a
+        // shared non-zero level for both keeps that branch's "no protection
+        // needed" path the one under test here.
+        viewer.player.level = 20;
+        target.player.level = 20;
+        SET_BIT(viewer.specials2.pref, PRF_HOLYLIGHT);
+        viewer.desc = &viewer_descriptor;
+        target.desc = &target_descriptor;
+    }
+
+    ~DisplayClusterContext()
+    {
+        test_world.room().people = original_people;
+        viewer.in_room = NOWHERE;
+        target.in_room = NOWHERE;
+    }
+};
+
+// Saves/restores weather_info.snow[sector] around a show_room_weather test
+// (mirrors ScopedSunlight above) -- the monolithic runner shares one
+// weather_info across every suite.
+struct ScopedSnow {
+    // The sector index this guard touches, remembered so the destructor
+    // restores the SAME slot the constructor overwrote.
+    int sector;
+    // The snow value in effect before this guard, restored on scope exit.
+    int saved_value;
+
+    ScopedSnow(int sector_type, int value)
+        : sector(sector_type)
+        , saved_value(weather_info.snow[sector_type])
+    {
+        weather_info.snow[sector_type] = value;
+    }
+
+    ~ScopedSnow() { weather_info.snow[sector] = saved_value; }
+};
+
+// RoomWithExitContext's sibling for do_look's case 8 (full "look", no
+// argument) exit_mark[] pins that need a SECOND room -- exit_choice 5/6
+// (sunlit/shadowy) key off the EXIT TARGET room's flags while do_look's own
+// SUN_PENALTY check (fired after the exits render, act_info.cpp:1691-1693)
+// keys off the VIEWER's own room; room 0 is stamped INDOORS so SUN_PENALTY
+// stays false (OUTSIDE(ch) fails) regardless of race/sunlight, letting room 1
+// carry the sunlit/shadowy flags exit_choice 5/6 actually test without
+// do_orc_delay() firing and adding unrelated output.
+struct ExitMarkTwoRoomContext {
+    static constexpr int door_direction = 0; // NORTH
+
+    ScopedTestWorld test_world { 2 };
+    char_data character {};
+    descriptor_data descriptor {};
+    room_direction_data exit {};
+    byte knowledge[MAX_SKILLS] {};
+    char_data* original_people = nullptr;
+    // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
+    // leak sweep).
+    ScopedClearCharFields character_cleanup { character };
+    ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
+
+    ExitMarkTwoRoomContext()
+    {
+        clear_char(&character, MOB_VOID);
+        character_cleanup.release_knowledge_now();
+        reset_capturing_descriptor(descriptor, &character);
+        // See RoomCharacterContext's comment: do_look requires a non-zero fd.
+        descriptor.descriptor = 7;
+        character.knowledge = knowledge;
+
+        original_people = test_world.room().people;
+        character.in_room = 0;
+        character.next_in_room = nullptr;
+        test_world.room().people = &character;
+        test_world.room().dir_option[door_direction] = &exit;
+        test_world.room().room_flags = INDOORS;
+        exit.to_room = 1;
+
+        // See RoomWithExitContext's comment: show_blood_trail() needs a
+        // zeroed bleed_track.
+        std::memset(&test_world.room().bleed_track, 0, sizeof(test_world.room().bleed_track));
+
+        world[1].room_flags = 0;
+        world[1].light = 0;
+        world[1].sector_type = 0;
+
+        character.specials.position = POSITION_STANDING;
+        character.player.race = RACE_HUMAN;
+        character.player.level = 1;
+        character.desc = &descriptor;
+    }
+
+    ~ExitMarkTwoRoomContext()
+    {
+        world[1].room_flags = 0;
+        test_world.room().people = original_people;
+        test_world.room().dir_option[door_direction] = nullptr;
+        test_world.room().room_flags = 0;
+        character.in_room = NOWHERE;
+    }
+};
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// get_char_position_line (act_info.cpp:595) -- no sprintf of its own (pure
+// strcat()), pinned as the aliasing web's regression net (see the suite
+// comment above). `str' is passed as the global `buf' directly, matching
+// every real call site's `buf + strlen(buf)' aliasing (with buf pre-emptied,
+// so `str' and `buf' coincide exactly).
+// ---------------------------------------------------------------------------
+
+TEST(ActInfoDisplayCluster, GetCharPositionLineFormatsShapingLine)
+{
+    DisplayClusterContext context;
+    context.target.specials.position = POSITION_SHAPING;
+    buf[0] = '\0';
+
+    get_char_position_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf,
+        " is sitting here in deep meditation,\r\n"
+        "softly humming the ancient song of creation.");
+}
+
+TEST(ActInfoDisplayCluster, GetCharPositionLineFormatsStunnedLine)
+{
+    DisplayClusterContext context;
+    context.target.specials.position = POSITION_STUNNED;
+    buf[0] = '\0';
+
+    get_char_position_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " is lying here, stunned.");
+}
+
+TEST(ActInfoDisplayCluster, GetCharPositionLineFormatsIncapLine)
+{
+    DisplayClusterContext context;
+    context.target.specials.position = POSITION_INCAP;
+    buf[0] = '\0';
+
+    get_char_position_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " is lying here, mortally wounded.");
+}
+
+TEST(ActInfoDisplayCluster, GetCharPositionLineFormatsDeadLine)
+{
+    DisplayClusterContext context;
+    context.target.specials.position = POSITION_DEAD;
+    buf[0] = '\0';
+
+    get_char_position_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " is lying here, dead.");
+}
+
+TEST(ActInfoDisplayCluster, GetCharPositionLineFormatsStandingLine)
+{
+    DisplayClusterContext context;
+    context.target.specials.position = POSITION_STANDING;
+    buf[0] = '\0';
+
+    get_char_position_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " is standing here.");
+}
+
+TEST(ActInfoDisplayCluster, GetCharPositionLineFormatsSittingLine)
+{
+    DisplayClusterContext context;
+    context.target.specials.position = POSITION_SITTING;
+    buf[0] = '\0';
+
+    get_char_position_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " is sitting here.");
+}
+
+TEST(ActInfoDisplayCluster, GetCharPositionLineFormatsRestingLine)
+{
+    DisplayClusterContext context;
+    context.target.specials.position = POSITION_RESTING;
+    buf[0] = '\0';
+
+    get_char_position_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " is resting here.");
+}
+
+TEST(ActInfoDisplayCluster, GetCharPositionLineFormatsSleepingLine)
+{
+    DisplayClusterContext context;
+    context.target.specials.position = POSITION_SLEEPING;
+    buf[0] = '\0';
+
+    get_char_position_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " is sleeping here.");
+}
+
+// POSITION_FIGHTING against the viewer themselves -- pins the "YOU!" branch.
+TEST(ActInfoDisplayCluster, GetCharPositionLineFormatsFightingYouLine)
+{
+    DisplayClusterContext context;
+    context.target.specials.position = POSITION_FIGHTING;
+    context.target.specials.fighting = &context.viewer;
+    buf[0] = '\0';
+
+    get_char_position_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " is here, fighting YOU!");
+}
+
+// POSITION_FIGHTING against a third character in the same room -- pins the
+// buf-aliasing quirk the WAVE 3 TASK 9 SWEEP comment documents: this branch
+// strcat()s into the global `buf' directly instead of the `str' parameter,
+// which only produces correct output because `str' IS `buf' at every real
+// call site (reproduced here by passing `buf' itself as `str').
+TEST(ActInfoDisplayCluster, GetCharPositionLineFormatsFightingSomeoneElseLine)
+{
+    DisplayClusterContext context;
+    char_data enemy {};
+    enemy.player.name = const_cast<char*>("Aragorn");
+    enemy.player.race = RACE_HUMAN;
+
+    context.target.specials.position = POSITION_FIGHTING;
+    context.target.specials.fighting = &enemy;
+    buf[0] = '\0';
+
+    get_char_position_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " is here, fighting Aragorn.");
+}
+
+// POSITION_FIGHTING with a nil fighting pointer.
+TEST(ActInfoDisplayCluster, GetCharPositionLineFormatsFightingThinAirLine)
+{
+    DisplayClusterContext context;
+    context.target.specials.position = POSITION_FIGHTING;
+    context.target.specials.fighting = nullptr;
+    buf[0] = '\0';
+
+    get_char_position_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " is here struggling with thin air.");
+}
+
+// An out-of-range position value pins the switch's default branch.
+TEST(ActInfoDisplayCluster, GetCharPositionLineFormatsDefaultFloatingLine)
+{
+    DisplayClusterContext context;
+    context.target.specials.position = POSITION_STANDING + 1;
+    buf[0] = '\0';
+
+    get_char_position_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " is floating here.");
+}
+
+// ---------------------------------------------------------------------------
+// get_char_flag_line (act_info.cpp:648) -- no sprintf of its own (pure
+// strcat()); pinned as the aliasing web's regression net. Representative
+// hide/invisible/linkless combos per the task brief, not every one of this
+// function's dozen flag branches -- the rest need extra process-singleton or
+// race-table bootstrap unrelated to this task's actual sprintf sites (see
+// the suite comment above).
+// ---------------------------------------------------------------------------
+
+TEST(ActInfoDisplayCluster, GetCharFlagLineFormatsEmptyStringWhenNoFlagsSet)
+{
+    DisplayClusterContext context;
+    buf[0] = '\0';
+
+    get_char_flag_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, "");
+}
+
+TEST(ActInfoDisplayCluster, GetCharFlagLineFormatsHidingFlag)
+{
+    DisplayClusterContext context;
+    SET_BIT(context.target.specials.affected_by, AFF_HIDE);
+    buf[0] = '\0';
+
+    get_char_flag_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " (hiding)");
+}
+
+TEST(ActInfoDisplayCluster, GetCharFlagLineFormatsInvisibleFlag)
+{
+    DisplayClusterContext context;
+    SET_BIT(context.target.specials.affected_by, AFF_INVISIBLE);
+    buf[0] = '\0';
+
+    get_char_flag_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " (invisible)");
+}
+
+TEST(ActInfoDisplayCluster, GetCharFlagLineFormatsHidingAndInvisibleCombo)
+{
+    DisplayClusterContext context;
+    SET_BIT(context.target.specials.affected_by, AFF_HIDE);
+    SET_BIT(context.target.specials.affected_by, AFF_INVISIBLE);
+    buf[0] = '\0';
+
+    get_char_flag_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " (hiding) (invisible)");
+}
+
+// Linkless: a non-NPC target with no live descriptor (DisplayClusterContext
+// defaults `target.desc' to an "online" descriptor; this test overrides it).
+TEST(ActInfoDisplayCluster, GetCharFlagLineFormatsLinklessFlagWhenTargetHasNoDescriptor)
+{
+    DisplayClusterContext context;
+    context.target.desc = nullptr;
+    buf[0] = '\0';
+
+    get_char_flag_line(&context.viewer, &context.target, buf);
+
+    EXPECT_STREQ(buf, " (linkless)");
+}
+
+// ---------------------------------------------------------------------------
+// show_char_to_char (act_info.cpp:902) -- pins all four of this task's
+// pragma-guarded sprintf() sites: the long-descr/pos-line "no title" and
+// "with title" branches (act_info.cpp:938/941), and the caller-supplied-
+// pos_line branch (act_info.cpp:963); plus the plain long_descr branch (no
+// sprintf, included as a baseline sanity check that the aliasing web still
+// works end to end). mode 1's sprintf (act_info.cpp:1013) is NOT pinned here
+// -- see the suite comment above for why its bytes are provably
+// unobservable.
+// ---------------------------------------------------------------------------
+
+TEST(ActInfoDisplayCluster, ShowCharToCharFormatsLongDescriptionWhenPositionMatchesDefault)
+{
+    DisplayClusterContext context;
+    context.target.player.long_descr = const_cast<char*>("A weary traveler rests here.\r\n");
+    context.target.specials.position = POSITION_STANDING;
+    context.target.specials.default_pos = POSITION_STANDING;
+
+    show_char_to_char(&context.target, &context.viewer, 0);
+
+    EXPECT_STREQ(context.viewer_descriptor.output, "A weary traveler rests here.\r\n\n\r");
+}
+
+TEST(ActInfoDisplayCluster, ShowCharToCharFormatsNoTitleLineForNpcWithoutLongDescr)
+{
+    DisplayClusterContext context;
+    SET_BIT(context.target.specials2.act, MOB_ISNPC);
+    context.target.player.short_descr = const_cast<char*>("a wandering hermit");
+    context.target.specials.position = POSITION_STANDING;
+
+    show_char_to_char(&context.target, &context.viewer, 0);
+
+    EXPECT_STREQ(context.viewer_descriptor.output, "A wandering hermit is standing here.\n\r");
+}
+
+TEST(ActInfoDisplayCluster, ShowCharToCharFormatsTitleLineForPcWithoutLongDescr)
+{
+    DisplayClusterContext context;
+    context.target.player.name = const_cast<char*>("Bob");
+    context.target.player.title = const_cast<char*>("the Wanderer");
+    context.target.specials.position = POSITION_STANDING;
+
+    show_char_to_char(&context.target, &context.viewer, 0);
+
+    EXPECT_STREQ(context.viewer_descriptor.output, "Bob the Wanderer is standing here.\n\r");
+}
+
+TEST(ActInfoDisplayCluster, ShowCharToCharFormatsSuppliedPosLineForRider)
+{
+    DisplayClusterContext context;
+    context.target.player.name = const_cast<char*>("Bob");
+
+    show_char_to_char(
+        &context.target, &context.viewer, 0, const_cast<char*>(" is riding a horse"));
+
+    EXPECT_STREQ(context.viewer_descriptor.output, "Bob is riding a horse\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// list_char_to_char (act_info.cpp:1044) -- no sprintf of its own; a single
+// integration pin confirming its should_show/IS_RIDDEN dispatch reaches
+// show_char_to_char correctly (already pinned in isolation above) and skips
+// the viewer themselves.
+// ---------------------------------------------------------------------------
+
+TEST(ActInfoDisplayCluster, ListCharToCharSkipsViewerAndShowsOtherRoomOccupants)
+{
+    DisplayClusterContext context;
+    context.target.player.long_descr = const_cast<char*>("A quiet onlooker stands here.\r\n");
+    context.target.specials.position = POSITION_STANDING;
+    context.target.specials.default_pos = POSITION_STANDING;
+
+    list_char_to_char(context.test_world.room().people, &context.viewer, 0);
+
+    EXPECT_STREQ(context.viewer_descriptor.output, "A quiet onlooker stands here.\r\n\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// show_mount_to_char (act_info.cpp:719) -- no sprintf of its own; pinned as
+// the aliasing web's regression net (it accumulates directly into the
+// global `buf', same as show_char_to_char, and delegates to it for the
+// "riderless mount" case).
+// ---------------------------------------------------------------------------
+
+TEST(ActInfoDisplayCluster, ShowMountToCharFormatsSingleSelfRiderLine)
+{
+    DisplayClusterContext context;
+    char_data mount {};
+    clear_char(&mount, MOB_VOID);
+    ScopedClearCharFields mount_cleanup { mount };
+    // clear_char() sets in_room to NOWHERE unconditionally; CAN_SEE()'s
+    // "different room + NPC target" early-out (utility.cpp) treats NOWHERE
+    // as a room mismatch against the viewer's room 0 and returns false
+    // before HOLYLIGHT ever gets consulted, so this must be re-homed to
+    // room 0 same as DisplayClusterContext does for viewer/target.
+    mount.in_room = 0;
+    SET_BIT(mount.specials2.act, MOB_ISNPC);
+    mount.player.short_descr = const_cast<char*>("a horse");
+
+    mount.mount_data.rider = &context.viewer;
+    mount.mount_data.rider_number = 9001;
+    context.viewer.mount_data.next_rider = nullptr;
+    context.viewer.mount_data.next_rider_number = 0;
+    set_char_exists(9001);
+
+    show_mount_to_char(&mount, &context.viewer, " riding on ", " riding on ", FALSE);
+
+    remove_char_exists(9001);
+
+    EXPECT_STREQ(context.viewer_descriptor.output, "You are riding on a horse.\n\r");
+}
+
+TEST(ActInfoDisplayCluster, ShowMountToCharDelegatesToShowCharToCharWhenNoVisibleRiders)
+{
+    DisplayClusterContext context;
+    char_data mount {};
+    clear_char(&mount, MOB_VOID);
+    ScopedClearCharFields mount_cleanup { mount };
+    // See the self-rider test above: clear_char() leaves in_room at NOWHERE.
+    mount.in_room = 0;
+    SET_BIT(mount.specials2.act, MOB_ISNPC);
+    mount.player.short_descr = const_cast<char*>("a riderless pony");
+    mount.specials.position = POSITION_STANDING;
+    mount.specials.default_pos = POSITION_STANDING;
+
+    show_mount_to_char(&mount, &context.viewer, " riding on ", " riding on ", FALSE);
+
+    EXPECT_STREQ(context.viewer_descriptor.output, "A riderless pony is standing here.\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// show_room_affection (act_info.cpp:1072) -- pins both of this task's
+// pragma-guarded sprintf() sites: the self-referencing ROOMAFF_SPELL "stat
+// room" line (mode 1; also -Wrestrict, `str' aliases its own %s source) and
+// the non-self-referencing default-case line (mode 1). `location = -1' keeps
+// both independent of the un-booted skills[] table (this test binary never
+// runs boot_db()), same technique as shape_format_tests.cpp's
+// ShapeRoom.ListRoomFormatsAllFieldsWithNoExitsAndNegativeAffection.
+// ---------------------------------------------------------------------------
+
+TEST(ActInfoDisplayCluster, ShowRoomAffectionFormatsSelfReferencingSpellStatLine)
+{
+    char str[256];
+    strcpy(str, "Affections:\n\r");
+
+    affected_type affection {};
+    affection.type = ROOMAFF_SPELL;
+    affection.location = -1;
+    affection.modifier = -5;
+    affection.duration = 10;
+    affection.bitvector = 0;
+
+    show_room_affection(str, &affection, 1);
+
+    EXPECT_STREQ(str, "Affections:\n\r Spell none(-1) level -5, 10hrs, sets <NONE>.\r\n");
+}
+
+TEST(ActInfoDisplayCluster, ShowRoomAffectionFormatsUnknownAffectTypeDefaultLine)
+{
+    char str[256];
+    strcpy(str, "stale-data-overwritten");
+
+    affected_type affection {};
+    affection.type = 99; // neither ROOMAFF_SPELL nor ROOMAFF_EXIT
+
+    show_room_affection(str, &affection, 1);
+
+    EXPECT_STREQ(str, "Unknown room affect (99).\n\r");
+}
+
+// ---------------------------------------------------------------------------
+// show_room_weather (act_info.cpp:1168) -- pins this task's remaining
+// pragma-guarded (also -Wrestrict) self-referencing sprintf() site: `str'
+// aliases its own %s source, same class as show_room_affection's stat line
+// above.
+// ---------------------------------------------------------------------------
+
+TEST(ActInfoDisplayCluster, ShowRoomWeatherAppendsSelfReferencingSnowLine)
+{
+    DisplayClusterContext context;
+    context.test_world.room().sector_type = 0;
+    ScopedSnow snow(0, 1);
+
+    char str[64];
+    strcpy(str, "Weather: ");
+
+    show_room_weather(str, &context.viewer);
+
+    EXPECT_STREQ(str, "Weather: Snow lies upon the ground.\n\r");
+}
+
+TEST(ActInfoDisplayCluster, ShowRoomWeatherLeavesStringUnchangedWhenNoSnow)
+{
+    DisplayClusterContext context;
+    context.test_world.room().sector_type = 0;
+    ScopedSnow snow(0, 0);
+
+    char str[64];
+    strcpy(str, "Weather: ");
+
+    show_room_weather(str, &context.viewer);
+
+    EXPECT_STREQ(str, "Weather: ");
+}
+
+// ---------------------------------------------------------------------------
+// do_look (act_info.cpp:1223) case 8 ("look", no argument) -- exit_mark[]
+// table (act_info.cpp:1204). Pins this task's remaining pragma-guarded
+// sprintf() site: a runtime-selected format string from a small, file-local,
+// fully-enumerable 7-entry table (unlike add_prompt's prompt_text[]/
+// prompt_hit[]/etc., which are large tables in a DIFFERENT file -- see this
+// task's report for the reconciliation of the "same dynamic-format-string
+// class as add_prompt" comment this task's conversion supersedes).
+// exit_choice 1 (the plain, unmarked exit) is already pinned by
+// ActInfoPerception.DoExamineWithoutTargetRendersRoomViaLookExamDelegation
+// above; the six tests below cover the remaining exit_choice values 0-6
+// (0/2/3/4 via a single self-looping room+door, 5/6 via a two-room fixture so
+// SUN_PENALTY's own-room gate and IS_SUNLIT_EXIT/IS_SHADOWY_EXIT's
+// target-room gate can be independently controlled). None of these fixtures
+// sets PRF_SPAM, so (unlike the do_examine-delegated pin above) no room
+// description line follows the exits line.
+// ---------------------------------------------------------------------------
+
+TEST(ActInfoDisplayCluster, DoLookCaseEightExitMarkHidesHiddenClosedDoorFromMortal)
+{
+    RoomWithExitContext context;
+    context.exit.exit_info = EX_ISDOOR | EX_CLOSED | EX_ISHIDDEN;
+
+    do_look(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "The Testing Meadow    Exits are:\n\r");
+}
+
+TEST(ActInfoDisplayCluster, DoLookCaseEightExitMarkShowsClosedDoorInParens)
+{
+    RoomWithExitContext context;
+    context.exit.exit_info = EX_ISDOOR | EX_CLOSED;
+
+    do_look(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "The Testing Meadow    Exits are: (N)\n\r");
+}
+
+TEST(ActInfoDisplayCluster, DoLookCaseEightExitMarkShowsHiddenClosedDoorAsterisksForImmortal)
+{
+    RoomWithExitContext context;
+    context.character.player.level = LEVEL_GOD;
+    context.exit.exit_info = EX_ISDOOR | EX_CLOSED | EX_ISHIDDEN;
+
+    do_look(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "The Testing Meadow    Exits are: *N*\n\r");
+}
+
+TEST(ActInfoDisplayCluster, DoLookCaseEightExitMarkShowsNowalkBracesForImmortal)
+{
+    RoomWithExitContext context;
+    context.character.player.level = LEVEL_GOD;
+    context.exit.exit_info = EX_NOWALK;
+
+    do_look(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "The Testing Meadow    Exits are: {N}\n\r");
+}
+
+TEST(ActInfoDisplayCluster, DoLookCaseEightExitMarkShowsSunlitMarkerForOrc)
+{
+    ExitMarkTwoRoomContext context;
+    context.character.player.race = RACE_ORC;
+    ScopedSunlight sunlight(SUN_LIGHT);
+
+    do_look(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "The Testing Meadow    Exits are: #N#\n\r");
+}
+
+TEST(ActInfoDisplayCluster, DoLookCaseEightExitMarkShowsShadowyMarkerForOrc)
+{
+    ExitMarkTwoRoomContext context;
+    context.character.player.race = RACE_ORC;
+    world[1].room_flags = SHADOWY;
+    ScopedSunlight sunlight(SUN_LIGHT);
+
+    do_look(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "The Testing Meadow    Exits are: %N%\n\r");
+}
+
 
 // ---------------------------------------------------------------------------
 // do_score (act_info.cpp:1900)

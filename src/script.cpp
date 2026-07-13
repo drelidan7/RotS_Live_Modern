@@ -32,6 +32,7 @@
 #include "limits.h"
 #include "pkill.h"
 #include "protos.h"
+#include "safe_template.h"
 #include "script.h"
 #include "structs.h"
 #include "utils.h"
@@ -1045,35 +1046,29 @@ int run_script(struct info_script* info, struct script_data* position)
         case SCRIPT_DO_SAY:
             if (curr->text && curr->param[0]) {
                 txt1 = get_text_param(curr->param[1], info);
-                // Justified skip -- curr->text is a MUD-script-authored
-                // string used directly AS the printf-style format string
-                // (%s-style), not a literal. This is a genuinely dynamic
-                // runtime format string: std::format's format-string
-                // argument must satisfy std::format_string<Args...>, which
-                // is parsed at compile time, and even std::vformat's
-                // runtime path only understands "{}"-style syntax, not
-                // printf's "%s"-style syntax that curr->text contains.
-                // There is no std::format-family equivalent for this
-                // pattern in this codebase (vformat is unused everywhere
-                // else too); same shape repeats at script.cpp's other
+                // curr->text is a MUD-script-authored string (.mdl/.scr
+                // world data) used directly AS the printf-style format
+                // template (%s-style), not a literal -- std::format can't
+                // replace this (its format-string argument is
+                // compile-time-checked, and even std::vformat's runtime
+                // path only understands "{}"-style syntax, not curr->text's
+                // printf-style "%s"). Routed through
+                // safe_template::expand_checked_one() instead: a malformed
+                // template (wrong conversion count/type, an embedded %n)
+                // can no longer read past txt1 -- it falls back to
+                // curr->text displayed literally (never re-interpreted as a
+                // format string) and logs once via mudlog. A null txt1
+                // (get_text_param() can legitimately return one) is
+                // guarded with nz() -- substituting the glibc-parity literal
+                // "(null)" per the depot convention (utils.h) -- rather
+                // than hitting the UB a raw
+                // sprintf(output, curr->text, txt1) would. Same shape
+                // repeats at script.cpp's other
                 // SCRIPT_DO_YELL/SCRIPT_SEND_TO_CHAR/SCRIPT_SEND_TO_ROOM/
                 // SCRIPT_SEND_TO_ROOM_X cases below.
-#if defined(__clang__)
-#pragma clang diagnostic push
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#endif
-#if defined(__clang__)
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-                sprintf(output, curr->text, txt1);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+                strcpy(output, safe_template::expand_checked_one(curr->text, txt1, curr->text,
+                                   "script SCRIPT_DO_SAY")
+                                   .c_str());
                 tmpch = get_char_param(curr->param[0], info);
                 if (tmpch)
                     do_say(tmpch, output, 0, 0, 0);
@@ -1124,25 +1119,14 @@ int run_script(struct info_script* info, struct script_data* position)
         case SCRIPT_DO_YELL:
             if (curr->text && curr->param[0]) {
                 txt1 = get_text_param(curr->param[1], info);
-                // Justified skip -- see the comment at SCRIPT_DO_SAY above:
-                // curr->text is a dynamic runtime printf-style format
-                // string, not convertible to std::format.
-#if defined(__clang__)
-#pragma clang diagnostic push
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#endif
-#if defined(__clang__)
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-                sprintf(output, curr->text, txt1);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+                // See the comment at SCRIPT_DO_SAY above: curr->text is a
+                // dynamic runtime printf-style format template, routed
+                // through safe_template::expand_checked_one() so a
+                // malformed template or a null txt1 can no longer reach
+                // sprintf/UB.
+                strcpy(output, safe_template::expand_checked_one(curr->text, txt1, curr->text,
+                                   "script SCRIPT_DO_YELL")
+                                   .c_str());
                 tmpch = get_char_param(curr->param[0], info);
                 if (tmpch)
                     do_gen_com(tmpch, output, 0, 0, SCMD_YELL);
@@ -1543,25 +1527,14 @@ int run_script(struct info_script* info, struct script_data* position)
             if (curr->text && curr->param[0]) {
                 tmpch = get_char_param(curr->param[0], info);
                 txt1 = get_text_param(curr->param[1], info);
-                // Justified skip -- see the comment at SCRIPT_DO_SAY above:
-                // curr->text is a dynamic runtime printf-style format
-                // string, not convertible to std::format.
-#if defined(__clang__)
-#pragma clang diagnostic push
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#endif
-#if defined(__clang__)
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-                sprintf(output, curr->text, txt1);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+                // See the comment at SCRIPT_DO_SAY above: curr->text is a
+                // dynamic runtime printf-style format template, routed
+                // through safe_template::expand_checked_one() so a
+                // malformed template or a null txt1 can no longer reach
+                // sprintf/UB.
+                strcpy(output, safe_template::expand_checked_one(curr->text, txt1, curr->text,
+                                   "script SCRIPT_SEND_TO_CHAR")
+                                   .c_str());
                 if (tmpch) {
                     send_to_char(output, tmpch);
                     send_to_char("\n", tmpch);
@@ -1574,25 +1547,14 @@ int run_script(struct info_script* info, struct script_data* position)
             if (curr->text && curr->param[0]) {
                 tmprm = get_room_param(curr->param[0], info);
                 txt1 = get_text_param(curr->param[1], info);
-                // Justified skip -- see the comment at SCRIPT_DO_SAY above:
-                // curr->text is a dynamic runtime printf-style format
-                // string, not convertible to std::format.
-#if defined(__clang__)
-#pragma clang diagnostic push
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#endif
-#if defined(__clang__)
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-                sprintf(output, curr->text, txt1);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+                // See the comment at SCRIPT_DO_SAY above: curr->text is a
+                // dynamic runtime printf-style format template, routed
+                // through safe_template::expand_checked_one() so a
+                // malformed template or a null txt1 can no longer reach
+                // sprintf/UB.
+                strcpy(output, safe_template::expand_checked_one(curr->text, txt1, curr->text,
+                                   "script SCRIPT_SEND_TO_ROOM")
+                                   .c_str());
                 if (tmprm) {
                     send_to_room(output, real_room(tmprm->number));
                     send_to_room("\n", real_room(tmprm->number));
@@ -1606,25 +1568,14 @@ int run_script(struct info_script* info, struct script_data* position)
                 tmprm = get_room_param(curr->param[0], info);
                 tmpch = get_char_param(curr->param[1], info);
                 txt1 = get_text_param(curr->param[2], info);
-                // Justified skip -- see the comment at SCRIPT_DO_SAY above:
-                // curr->text is a dynamic runtime printf-style format
-                // string, not convertible to std::format.
-#if defined(__clang__)
-#pragma clang diagnostic push
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#endif
-#if defined(__clang__)
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-                sprintf(output, curr->text, txt1);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+                // See the comment at SCRIPT_DO_SAY above: curr->text is a
+                // dynamic runtime printf-style format template, routed
+                // through safe_template::expand_checked_one() so a
+                // malformed template or a null txt1 can no longer reach
+                // sprintf/UB.
+                strcpy(output, safe_template::expand_checked_one(curr->text, txt1, curr->text,
+                                   "script SCRIPT_SEND_TO_ROOM_X")
+                                   .c_str());
                 if (tmprm && tmpch) {
                     send_to_room_except(output, real_room(tmprm->number), tmpch);
                     send_to_room_except("\n", real_room(tmprm->number), tmpch);

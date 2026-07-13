@@ -3359,6 +3359,24 @@ char* fread_line(FILE* fp)
     return line;
 }
 
+// Releases the alias_list chain objsave.cpp's Crash_alias_load() builds
+// (each node CREATE1()'d, each with a CREATE()'d .command string) and
+// attaches to ch->specials.alias. Nothing else in the tree ever released
+// this list -- every character with saved aliases leaked it on every
+// free_char() (e.g. logout), a confirmed production leak (backlog T2,
+// disclosed at Phase 5 T6 via sanitize.supp). NULL-safe: `list` is 0 for a
+// freshly-cleared character and always 0 for mobs (structs.h: "aliases, 0
+// for mobs"), so this is a no-op for both.
+void free_alias_list(struct alias_list* list)
+{
+    while (list) {
+        struct alias_list* next = list->next;
+        RELEASE(list->command);
+        RELEASE(list);
+        list = next;
+    }
+}
+
 /* release memory allocated for a char struct */
 void free_char(struct char_data* ch)
 {
@@ -3366,6 +3384,9 @@ void free_char(struct char_data* ch)
 
     RELEASE(ch->specials.poofIn);
     RELEASE(ch->specials.poofOut);
+
+    free_alias_list(ch->specials.alias);
+    ch->specials.alias = 0;
 
     while (ch->affected)
         affect_remove(ch, ch->affected);

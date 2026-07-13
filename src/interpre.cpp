@@ -691,7 +691,7 @@ void target_data::operator=(const target_data& t2)
     choice = t2.choice;
 }
 
-int target_data::operator==(target_data t2)
+int target_data::operator==(const target_data& t2) const
 {
     if ((type == t2.type) && (ptr.other == t2.ptr.other) && (ch_num == t2.ch_num))
         return 1;

@@ -24,6 +24,17 @@ option(ROTS_LEGACY_32BIT "Build the legacy 32-bit (-m32) binary" ON)
 # OFF skips GoogleTest discovery and the ageland_tests target entirely — for
 # platforms where GTest isn't installed yet (e.g. the windows-msvc preset).
 option(ROTS_BUILD_TESTS "Build the ageland_tests GoogleTest binary" ON)
+# ON (set by the macos-arm64-asan preset only, Backlog T4): FetchContent-provision
+# GoogleTest from source instead of find_package()'s prebuilt brew package, so
+# gtest itself compiles under this configure's active CMAKE_CXX_FLAGS —
+# including the asan preset's -fsanitize=address,undefined — and comes out
+# ASan/UBSan-instrumented. See the GoogleTest provisioning block below for why
+# that matters (an uninstrumented static lib linked into an instrumented test
+# binary is exactly the "mixed instrumentation" scenario that false-positives
+# on ASan's container-overflow check). Off by default: every other preset
+# already has a fast prebuilt system GTest via find_package(), and rebuilding
+# GTest from source there would only add configure/build time for no benefit.
+option(ROTS_FETCH_GTEST "FetchContent-provision GoogleTest from source instead of find_package()" OFF)
 
 # Default to Debug: matches the Makefile, which always builds with -g and no -O.
 if(NOT CMAKE_BUILD_TYPE)
@@ -107,11 +118,18 @@ set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 # the same warnings).
 #
 # Per-class /wd suppression ledger (Phase 5 Task 9 census, run 29208716185):
-#   /wd4244 /wd4267  int-conversion narrowing (993 + 174 unique sites): pervasive
-#     benign legacy narrowing (int -> sh_int/byte/char assignments across the
-#     whole C-heritage codebase; size_t -> int lengths). Sampled per the task
-#     brief: the pattern is systemic, not localized bugs. Sanctioned suppression
-#     THIS phase; a future typed-fields effort may revisit.
+#   /wd4244 /wd4267  int-conversion narrowing (893 + 174 unique sites at the
+#     Backlog Cleanup T5 recount): pervasive benign legacy narrowing (int ->
+#     sh_int/byte/char assignments across the whole C-heritage codebase;
+#     size_t -> int lengths). Revisited rigorously in Backlog Cleanup Task 5
+#     (census run 29222339494, full site list, 84-site stratified read, every
+#     suspected-real site read in full): two latent-real classes fixed in
+#     source (target_data::ch_num widened to int; random_exit's romfl local),
+#     the idnum-into-sh_int sites in the frozen exploit/crime record formats
+#     escalated as format-migration work, everything else domain-provably
+#     benign and diffuse across ~59 files -- so the global suppression stays.
+#     See docs/BUILD.md "Warnings policy" for the full evidence and
+#     disposition. A future typed-fields effort remains the real fix.
 #   /wd4456 /wd4458 /wd4459  declaration shadowing (278 sites): parity with the
 #     GNU-family bar, where -Wshadow is deliberately NOT part of the Task 8
 #     -Wall -Wextra -Werror set. Same hygiene class, same deferral.
@@ -262,16 +280,32 @@ if(ROTS_BUILD_TESTS)
         tests/zone_tests.cpp
     )
 
-    # GoogleTest provisioning (Phase 3 Task 6): Linux/macOS CI installs GTest
-    # as a system package (apt/brew) ahead of configure, so find_package()
-    # there is a fast no-op. windows-2022 CI has no such package manager entry
-    # for GTest (no system-wide vcpkg baseline in the runner image), so pull
-    # it via FetchContent there instead -- source-built against the exact
-    # same MSVC/CRT the game target uses (avoiding any ABI mismatch a
-    # pre-built binary package could introduce), and cached by the CI
-    # workflow's actions/cache step keyed on this file's hash so a cache hit
-    # skips re-downloading/rebuilding GoogleTest on every run.
-    if(WIN32)
+    # GoogleTest provisioning (Phase 3 Task 6, extended Backlog T4): Linux/macOS
+    # CI installs GTest as a system package (apt/brew) ahead of configure, so
+    # find_package() there is a fast no-op. windows-2022 CI has no such package
+    # manager entry for GTest (no system-wide vcpkg baseline in the runner
+    # image), so pull it via FetchContent there instead -- source-built
+    # against the exact same MSVC/CRT the game target uses (avoiding any ABI
+    # mismatch a pre-built binary package could introduce), and cached by the
+    # CI workflow's actions/cache step keyed on this file's hash so a cache
+    # hit skips re-downloading/rebuilding GoogleTest on every run.
+    #
+    # ROTS_FETCH_GTEST generalizes the same "source-build against this
+    # configure's own flags" rationale to the macos-arm64-asan preset
+    # (Backlog T4): brew's libgtest.a is a prebuilt, uninstrumented static
+    # library. Linking it into an ASan-instrumented ageland_tests binary is a
+    # mixed-instrumentation build, which is documented to false-positive on
+    # ASan's container-overflow check (it fired inside gtest's own JSON
+    # test-list printer during ctest's PRE_TEST discovery) -- see
+    # https://github.com/google/sanitizers/wiki/AddressSanitizerContainerOverflow
+    # and the now-removed detect_container_overflow=0 override this replaced
+    # in .github/workflows/ci.yml's sanitize-macos job. FetchContent instead
+    # compiles gtest itself under this configure's CMAKE_CXX_FLAGS (the
+    # -fsanitize=address,undefined the asan preset sets), so it comes out
+    # instrumented like every other translation unit and the mismatch --
+    # hence the false positive -- goes away, letting container-overflow
+    # checking stay on (its default) for this job.
+    if(WIN32 OR ROTS_FETCH_GTEST)
         include(FetchContent)
         set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
         FetchContent_Declare(

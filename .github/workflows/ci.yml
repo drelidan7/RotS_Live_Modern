@@ -151,8 +151,20 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Install GoogleTest
-        run: brew install googletest
+      # GoogleTest is FetchContent-provisioned from source for this preset
+      # (ROTS_FETCH_GTEST=ON, set by macos-arm64-asan in src/CMakePresets.json;
+      # see src/CMakeLists.txt) instead of brew's prebuilt package, so gtest
+      # itself compiles under this configure's -fsanitize=address,undefined
+      # and comes out instrumented -- no "brew install googletest" step needed
+      # here (the plain macos-arm64 job above still installs it; that preset
+      # keeps find_package()). Cache the FetchContent download+build, keyed
+      # like the windows-msvc job's cache, so a cache hit skips
+      # re-downloading/rebuilding GoogleTest on every run.
+      - name: Cache GoogleTest FetchContent
+        uses: actions/cache@v4
+        with:
+          path: build/macos-arm64-asan/_deps
+          key: macos-arm64-asan-gtest-${{ hashFiles('src/CMakeLists.txt') }}
       - name: Configure
         run: cd src && cmake --preset macos-arm64-asan
       - name: Build
@@ -161,16 +173,19 @@ jobs:
       # leak detection is disabled here; the sanitize-linux job is the leak
       # gate (ASAN_OPTIONS detect_leaks=1 there). This job still catches
       # memory corruption (ASan) and UB (UBSan) on the macOS/AppleClang ABI.
-      # detect_container_overflow=0 (Phase 5 Task 9): the brew-installed
-      # GoogleTest static lib is NOT ASan-instrumented, and mixing it with the
-      # instrumented test binary + Apple's annotated libc++ produces the
-      # documented container-overflow false positive (fires inside gtest's own
-      # JSON test-list printer during ctest PRE_TEST discovery -- see
+      # container-overflow checking is back on (its default) as of Backlog T4:
+      # the previous detect_container_overflow=0 override (Phase 5 Task 9)
+      # papered over a mixed-instrumentation false positive caused by linking
+      # brew's uninstrumented prebuilt libgtest.a into an ASan-instrumented
+      # binary (fired inside gtest's own JSON test-list printer during ctest
+      # PRE_TEST discovery -- see
       # https://github.com/google/sanitizers/wiki/AddressSanitizerContainerOverflow).
-      # The fully-instrumented sanitize-linux job keeps container-overflow
-      # checking for the game's own code.
+      # Now that gtest itself is FetchContent-built under the same sanitizer
+      # flags (see the cache step above), the instrumentation mismatch is
+      # gone and this job verifies container-overflow like sanitize-linux
+      # does for the game's own code.
       - name: Test
-        run: cd src && ASAN_OPTIONS=detect_leaks=0:detect_container_overflow=0 ctest --preset macos-arm64-asan
+        run: cd src && ASAN_OPTIONS=detect_leaks=0 ctest --preset macos-arm64-asan
         env:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
 

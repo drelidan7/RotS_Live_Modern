@@ -118,11 +118,18 @@ set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 # the same warnings).
 #
 # Per-class /wd suppression ledger (Phase 5 Task 9 census, run 29208716185):
-#   /wd4244 /wd4267  int-conversion narrowing (993 + 174 unique sites): pervasive
-#     benign legacy narrowing (int -> sh_int/byte/char assignments across the
-#     whole C-heritage codebase; size_t -> int lengths). Sampled per the task
-#     brief: the pattern is systemic, not localized bugs. Sanctioned suppression
-#     THIS phase; a future typed-fields effort may revisit.
+#   /wd4244 /wd4267  int-conversion narrowing (893 + 174 unique sites at the
+#     Backlog Cleanup T5 recount): pervasive benign legacy narrowing (int ->
+#     sh_int/byte/char assignments across the whole C-heritage codebase;
+#     size_t -> int lengths). Revisited rigorously in Backlog Cleanup Task 5
+#     (census run 29222339494, full site list, 84-site stratified read, every
+#     suspected-real site read in full): two latent-real classes fixed in
+#     source (target_data::ch_num widened to int; random_exit's romfl local),
+#     the idnum-into-sh_int sites in the frozen exploit/crime record formats
+#     escalated as format-migration work, everything else domain-provably
+#     benign and diffuse across ~59 files -- so the global suppression stays.
+#     See docs/BUILD.md "Warnings policy" for the full evidence and
+#     disposition. A future typed-fields effort remains the real fix.
 #   /wd4456 /wd4458 /wd4459  declaration shadowing (278 sites): parity with the
 #     GNU-family bar, where -Wshadow is deliberately NOT part of the Task 8
 #     -Wall -Wextra -Werror set. Same hygiene class, same deferral.

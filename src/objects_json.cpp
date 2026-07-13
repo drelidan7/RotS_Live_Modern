@@ -1,6 +1,7 @@
 #include "objects_json.h"
 #include "json_utils.h"
 #include "legacy_salvage.h"
+#include "text_view.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -26,6 +27,7 @@ namespace {
     template <typename T>
     bool read_pod(const std::string &bytes, size_t *offset, T *value, std::string *error_message,
                   std::string_view label) {
+        label = rots::text::truncate_at_null(label);
         if (offset == nullptr || value == nullptr) {
             set_error(error_message, "Binary parse output parameter must not be null.");
             return false;
@@ -88,6 +90,7 @@ namespace {
 
     bool check_bounds(const std::string &bytes, size_t offset, size_t length,
                       std::string *error_message, std::string_view label) {
+        label = rots::text::truncate_at_null(label);
         if (offset + length > bytes.size()) {
             set_error(error_message, std::string("Truncated objects data while reading ") +
                                          std::string(label) + ".");
@@ -161,6 +164,7 @@ namespace {
     // Offsets: docs/data-formats/object-rent-files.md "obj_file_elem" table.
     bool read_obj_file_elem(const std::string &bytes, size_t *offset, DecodedObjFileElem *elem,
                             std::string *error_message, std::string_view label) {
+        label = rots::text::truncate_at_null(label);
         if (!check_bounds(bytes, *offset, kObjFileElemDiskSize, error_message, label))
             return false;
 
@@ -225,6 +229,7 @@ namespace {
     bool read_object_record_or_sentinel(const std::string &bytes, size_t *offset,
                                         ObjectRecord *record, bool *is_sentinel,
                                         std::string *error_message, std::string_view label) {
+        label = rots::text::truncate_at_null(label);
         DecodedObjFileElem raw_object {};
         if (!read_obj_file_elem(bytes, offset, &raw_object, error_message, label))
             return false;
@@ -263,6 +268,7 @@ namespace {
     template <typename TargetType>
     bool validate_narrowed_range(long long value, std::string_view field_name,
                                  std::string *error_message) {
+        field_name = rots::text::truncate_at_null(field_name);
         if (value < static_cast<long long>(std::numeric_limits<TargetType>::min())
             || value > static_cast<long long>(std::numeric_limits<TargetType>::max())) {
             set_error(error_message, std::string(field_name) + " is outside the supported storage range.");
@@ -305,7 +311,7 @@ namespace {
         ObjectAffectData parsed_affect;
         bool saw_location = false;
         bool saw_modifier = false;
-        if (!reader->parse_object([&parsed_affect, &saw_location, &saw_modifier](const std::string& key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([&parsed_affect, &saw_location, &saw_modifier](std::string_view key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
                 if (key == "location")
                     return saw_location = true, nested_reader->parse_integer(&parsed_affect.location, nested_error_message);
                 if (key == "modifier")
@@ -342,7 +348,7 @@ namespace {
         bool saw_wear_pos = false;
         bool saw_loaded_by = false;
         bool saw_affects = false;
-        if (!reader->parse_object([&parsed_record, &saw_item_number, &saw_values, &saw_extra_flags, &saw_weight, &saw_timer, &saw_bitvector, &saw_wear_pos, &saw_loaded_by, &saw_affects](const std::string& key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([&parsed_record, &saw_item_number, &saw_values, &saw_extra_flags, &saw_weight, &saw_timer, &saw_bitvector, &saw_wear_pos, &saw_loaded_by, &saw_affects](std::string_view key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
                 if (key == "item_number")
                     return saw_item_number = true, nested_reader->parse_integer(&parsed_record.item_number, nested_error_message);
                 if (key == "values") {
@@ -408,7 +414,7 @@ namespace {
         AliasData parsed_alias;
         bool saw_keyword = false;
         bool saw_command = false;
-        if (!reader->parse_object([&parsed_alias, &saw_keyword, &saw_command](const std::string& key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([&parsed_alias, &saw_keyword, &saw_command](std::string_view key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
                 if (key == "keyword")
                     return saw_keyword = true, nested_reader->parse_string(&parsed_alias.keyword, nested_error_message);
                 if (key == "command")
@@ -452,7 +458,7 @@ namespace {
         bool saw_spare1 = false;
         bool saw_spare2 = false;
         bool saw_objects = false;
-        if (!reader->parse_object([&parsed_follower, &saw_fol_vnum, &saw_mount_vnum, &saw_wimpy, &saw_exp, &saw_flag_config, &saw_spare1, &saw_spare2, &saw_objects](const std::string& key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([&parsed_follower, &saw_fol_vnum, &saw_mount_vnum, &saw_wimpy, &saw_exp, &saw_flag_config, &saw_spare1, &saw_spare2, &saw_objects](std::string_view key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
                 if (key == "fol_vnum")
                     return saw_fol_vnum = true, nested_reader->parse_integer(&parsed_follower.fol_vnum, nested_error_message);
                 if (key == "mount_vnum")
@@ -499,6 +505,7 @@ namespace {
 
     void write_object_record(std::ostringstream &output, const ObjectRecord &record,
                              std::string_view indent) {
+        indent = rots::text::truncate_at_null(indent);
         output << indent << "{\n";
         output << indent << "  \"item_number\": " << record.item_number << ",\n";
         output << indent << "  \"values\": [";
@@ -659,6 +666,7 @@ bool object_save_data_from_binary_impl(
 // sections (a follower's own object list).
 bool try_read_complete_object_list(const std::string &bytes, size_t *offset,
                                    std::vector<ObjectRecord> *records, std::string_view label) {
+    label = rots::text::truncate_at_null(label);
     size_t local_offset = *offset;
     std::vector<ObjectRecord> parsed_records;
     while (true) {
@@ -859,6 +867,15 @@ bool recover_object_save_data_from_binary_impl(
 }
 
 } // namespace
+
+#ifdef TESTING
+std::string format_object_record_for_testing(std::string_view indent)
+{
+    std::ostringstream output;
+    write_object_record(output, ObjectRecord {}, indent);
+    return output.str();
+}
+#endif
 
 bool object_save_data_from_binary(const std::string& bytes, ObjectSaveData* data, std::string* error_message)
 {
@@ -1091,7 +1108,7 @@ bool deserialize_objects_from_json(std::string_view json, ObjectSaveData *data,
     bool saw_aliases = false;
     bool saw_followers = false;
     json_utils::JsonReader reader(json);
-    if (!reader.parse_root_object([&parsed_data, &saw_rent, &saw_objects, &saw_board_points, &saw_aliases, &saw_followers](const std::string& key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
+    if (!reader.parse_root_object([&parsed_data, &saw_rent, &saw_objects, &saw_board_points, &saw_aliases, &saw_followers](std::string_view key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
             if (key == "version")
                 return nested_reader->parse_integer(&parsed_data.version, nested_error_message);
             if (key == "rent") {

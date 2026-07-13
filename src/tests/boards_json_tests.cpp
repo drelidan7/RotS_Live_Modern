@@ -13,6 +13,17 @@
 #include <string>
 #include <string_view>
 
+namespace boards_json {
+std::string binary_label_error_for_testing(std::string_view label);
+}
+
+TEST(BoardsJson, BinaryDiagnosticLabelsStopAtEmbeddedNull)
+{
+    constexpr std::string_view embedded_label("header\0ignored", 14);
+    EXPECT_EQ(boards_json::binary_label_error_for_testing(embedded_label),
+        "Truncated board file while reading header.");
+}
+
 // TDD coverage for Phase 2a Task 4: board persistence as JSON, plus the
 // one-time legacy-file boot converter.
 //

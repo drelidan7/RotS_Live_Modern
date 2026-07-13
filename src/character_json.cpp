@@ -309,6 +309,7 @@ namespace {
 
     bool require_string_length(const std::string &value, size_t max_length,
                                std::string_view field_name, std::string *error_message) {
+        field_name = rots::text::truncate_at_null(field_name);
         if (value.size() > max_length) {
             set_error(error_message, std::string(field_name) + " exceeds the maximum supported length.");
             return false;
@@ -318,6 +319,7 @@ namespace {
 
     bool require_no_embedded_nul(const std::string &value, std::string_view field_name,
                                  std::string *error_message) {
+        field_name = rots::text::truncate_at_null(field_name);
         if (value.find('\0') != std::string::npos) {
             set_error(error_message, std::string(field_name) + " must not contain embedded NUL bytes.");
             return false;
@@ -327,6 +329,7 @@ namespace {
 
     bool require_exact_array_size(const std::vector<int> &values, size_t expected_size,
                                   std::string_view field_name, std::string *error_message) {
+        field_name = rots::text::truncate_at_null(field_name);
         if (values.size() != expected_size) {
             set_error(error_message, std::string(field_name) + " must contain exactly " + std::to_string(expected_size) + " entries.");
             return false;
@@ -336,6 +339,7 @@ namespace {
 
     bool require_integer_range(long value, long min_value, long max_value,
                                std::string_view field_name, std::string *error_message) {
+        field_name = rots::text::truncate_at_null(field_name);
         if (value < min_value || value > max_value) {
             set_error(error_message, std::string(field_name) + " is out of the supported range.");
             return false;
@@ -393,6 +397,7 @@ namespace {
 
     bool validate_ability_data(const AbilityData &ability_data, std::string_view scope,
                                std::string *error_message) {
+        scope = rots::text::truncate_at_null(scope);
         return require_signed_char_range(ability_data.str, std::string(scope) + ".str",
                                          error_message) &&
                require_signed_char_range(ability_data.lea, std::string(scope) + ".lea",
@@ -434,6 +439,7 @@ namespace {
     bool validate_integer_array_range(const std::vector<int> &values, size_t expected_size,
                                       std::string_view field_name, bool is_byte,
                                       std::string *error_message) {
+        field_name = rots::text::truncate_at_null(field_name);
         if (!require_exact_array_size(values, expected_size, field_name, error_message))
             return false;
 
@@ -467,6 +473,7 @@ namespace {
 
     bool validate_color_value_data(const ColorValueData &value, std::string_view field_name,
                                    std::string *error_message) {
+        field_name = rots::text::truncate_at_null(field_name);
         if (!require_integer_range(value.mode, COLOR_VALUE_DEFAULT, COLOR_VALUE_TRUECOLOR, field_name, error_message))
             return false;
 
@@ -534,6 +541,7 @@ namespace {
     bool decode_flags(const std::vector<std::string> &names, const FlagDefinition *definitions,
                       size_t definition_count, long *flags, std::string_view flag_type,
                       std::string *error_message) {
+        flag_type = rots::text::truncate_at_null(flag_type);
         if (flags == nullptr) {
             set_error(error_message, std::string(flag_type) + " flags output parameter must not be null.");
             return false;
@@ -663,8 +671,9 @@ namespace {
         return "color_" + std::to_string(index);
     }
 
-    int talk_index_for_key(const std::string& key)
+    int talk_index_for_key(std::string_view key)
     {
+        key = rots::text::truncate_at_null(key);
         for (int index = 0; index < MAX_TOUNGE; ++index) {
             if (talk_key_for_index(index) == key)
                 return index;
@@ -672,8 +681,9 @@ namespace {
         return -1;
     }
 
-    int skill_index_for_key(const std::string& key)
+    int skill_index_for_key(std::string_view key)
     {
+        key = rots::text::truncate_at_null(key);
         for (int index = 0; index < MAX_SKILLS; ++index) {
             if (skill_key_for_index(index) == key)
                 return index;
@@ -681,8 +691,9 @@ namespace {
         return -1;
     }
 
-    int color_index_for_key(const std::string& key)
+    int color_index_for_key(std::string_view key)
     {
+        key = rots::text::truncate_at_null(key);
         for (int index = 0; index < MAX_COLOR_FIELDS; ++index) {
             if (color_key_for_index(index) == key)
                 return index;
@@ -690,8 +701,9 @@ namespace {
         return -1;
     }
 
-    int skill_index_for_key_memoized(const std::string& key)
+    int skill_index_for_key_memoized(std::string_view key)
     {
+        key = rots::text::truncate_at_null(key);
         // Lazy slug->index map for skills; built once, INSERT-IF-ABSENT so the LOWEST index wins on a
         // slug collision -- exactly matching skill_index_for_key's first-match linear scan.
         static const std::unordered_map<std::string, int> index_by_key = [] {
@@ -701,12 +713,13 @@ namespace {
                 table.emplace(skill_key_for_index(index), index);
             return table;
         }();
-        const auto found = index_by_key.find(key);
+        const auto found = index_by_key.find(std::string(key));
         return found != index_by_key.end() ? found->second : -1;
     }
 
-    int talk_index_for_key_memoized(const std::string& key)
+    int talk_index_for_key_memoized(std::string_view key)
     {
+        key = rots::text::truncate_at_null(key);
         // Lazy slug->index map for talks; INSERT-IF-ABSENT (lowest index wins) like talk_index_for_key.
         static const std::unordered_map<std::string, int> index_by_key = [] {
             std::unordered_map<std::string, int> table;
@@ -714,7 +727,7 @@ namespace {
                 table.emplace(talk_key_for_index(index), index);
             return table;
         }();
-        const auto found = index_by_key.find(key);
+        const auto found = index_by_key.find(std::string(key));
         return found != index_by_key.end() ? found->second : -1;
     }
 
@@ -784,7 +797,7 @@ namespace {
         bool saw_red = false;
         bool saw_green = false;
         bool saw_blue = false;
-        if (!reader->parse_object([&parsed, &saw_mode, &saw_value, &saw_red, &saw_green, &saw_blue](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([&parsed, &saw_mode, &saw_value, &saw_red, &saw_green, &saw_blue](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
                 if (key == "mode") {
                     std::string mode;
                     if (!nested_reader->parse_string(&mode, nested_error_message))
@@ -857,7 +870,7 @@ namespace {
         *setting = default_color_setting();
         bool saw_foreground = false;
         bool saw_background = false;
-        if (!reader->parse_object([&saw_foreground, &saw_background, setting](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([&saw_foreground, &saw_background, setting](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
                 if (key == "foreground")
                     return saw_foreground = true, parse_color_value_object(nested_reader, &setting->foreground, nested_error_message);
                 if (key == "background")
@@ -888,7 +901,7 @@ namespace {
 
         character->colors.assign(MAX_COLOR_FIELDS, 0);
         character->color_settings.assign(MAX_COLOR_FIELDS, default_color_setting());
-        return reader->parse_object([character](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        return reader->parse_object([character](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             const int index = color_index_for_key(key);
             if (index < 0) {
                 set_error(nested_error_message, "Unknown color key.");
@@ -927,6 +940,7 @@ namespace {
 
     void write_profession(std::ostringstream &output, std::string_view name,
                           const ProfessionData &profession) {
+        name = rots::text::truncate_at_null(name);
         output << "    \"" << name << "\": {\n";
         output << "      \"level\": " << profession.level << ",\n";
         output << "      \"points\": " << profession.points << ",\n";
@@ -1043,6 +1057,7 @@ namespace {
 
     void write_profession_v2(JsonWriter &writer, std::string_view name,
                              const ProfessionData &profession) {
+        name = rots::text::truncate_at_null(name);
         writer.raw("    \"");
         writer.raw(name);
         writer.raw("\": {\n");
@@ -1238,6 +1253,7 @@ namespace {
     template <class Reader>
     bool parse_integer_array(Reader *reader, std::vector<int> *values, size_t max_values,
                              std::string_view field_name, std::string *error_message) {
+        field_name = rots::text::truncate_at_null(field_name);
         if (reader == nullptr || values == nullptr) {
             set_error(error_message, "Integer array parser requires reader and output parameters.");
             return false;
@@ -1259,8 +1275,11 @@ namespace {
     }
 
     template <class Reader>
-    bool parse_named_integer_object(Reader* reader, std::vector<int>* values, size_t expected_size, const char* field_name, const std::function<int(const std::string&)>& index_for_key, std::string* error_message)
+    bool parse_named_integer_object(Reader* reader, std::vector<int>* values, size_t expected_size,
+        std::string_view field_name, const std::function<int(std::string_view)>& index_for_key,
+        std::string* error_message)
     {
+        field_name = rots::text::truncate_at_null(field_name);
         if (reader == nullptr || values == nullptr) {
             set_error(error_message, "Named integer object parser requires reader and output parameters.");
             return false;
@@ -1269,14 +1288,17 @@ namespace {
         values->assign(expected_size, 0);
         std::vector<bool> seen(expected_size, false);
 
-        return reader->parse_object([&](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        return reader->parse_object([&](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
+            key = rots::text::truncate_at_null(key);
             const int index = index_for_key(key);
             if (index < 0 || index >= static_cast<int>(expected_size)) {
-                set_error(nested_error_message, std::string("Unknown ") + field_name + " key '" + key + "'.");
+                set_error(nested_error_message, std::string("Unknown ") + std::string(field_name)
+                        + " key '" + std::string(key) + "'.");
                 return false;
             }
             if (seen[index]) {
-                set_error(nested_error_message, std::string("Duplicate ") + field_name + " key '" + key + "'.");
+                set_error(nested_error_message, std::string("Duplicate ") + std::string(field_name)
+                        + " key '" + std::string(key) + "'.");
                 return false;
             }
 
@@ -1308,7 +1330,7 @@ namespace {
         bool saw_hit = false;
         bool saw_mana = false;
         bool saw_move = false;
-        if (!reader->parse_object([ability, &saw_str, &saw_lea, &saw_intel, &saw_wil, &saw_dex, &saw_con, &saw_hit, &saw_mana, &saw_move](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([ability, &saw_str, &saw_lea, &saw_intel, &saw_wil, &saw_dex, &saw_con, &saw_hit, &saw_mana, &saw_move](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "str")
                 return saw_str = true, nested_reader->parse_integer(&ability->str, nested_error_message);
             if (key == "lea")
@@ -1364,7 +1386,7 @@ namespace {
         bool saw_willpower = false;
         bool saw_spell_pen = false;
         bool saw_spell_power = false;
-        if (!reader->parse_object([points, &saw_bodypart_hit, &saw_gold, &saw_experience, &saw_spirit, &saw_mana_regen, &saw_health_regen, &saw_move_regen, &saw_ob, &saw_damage, &saw_energy_regen, &saw_parry, &saw_dodge, &saw_encumbrance, &saw_willpower, &saw_spell_pen, &saw_spell_power](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([points, &saw_bodypart_hit, &saw_gold, &saw_experience, &saw_spirit, &saw_mana_regen, &saw_health_regen, &saw_move_regen, &saw_ob, &saw_damage, &saw_energy_regen, &saw_parry, &saw_dodge, &saw_encumbrance, &saw_willpower, &saw_spell_pen, &saw_spell_power](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "bodypart_hit")
                 return saw_bodypart_hit = true, parse_integer_array(nested_reader, &points->bodypart_hit, MAX_BODYPARTS, "points.bodypart_hit", nested_error_message);
             if (key == "gold")
@@ -1421,7 +1443,7 @@ namespace {
         bool saw_drunk = false;
         bool saw_full = false;
         bool saw_thirst = false;
-        if (!reader->parse_object([conditions, &saw_drunk, &saw_full, &saw_thirst](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([conditions, &saw_drunk, &saw_full, &saw_thirst](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "drunk")
                 return saw_drunk = true, nested_reader->parse_integer(&conditions->drunk, nested_error_message);
             if (key == "full")
@@ -1453,7 +1475,7 @@ namespace {
         bool saw_last_logon = false;
         bool saw_played_seconds = false;
         bool saw_retired_on = false;
-        if (!reader->parse_object([timers, &saw_birth, &saw_last_logon, &saw_played_seconds, &saw_retired_on](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([timers, &saw_birth, &saw_last_logon, &saw_played_seconds, &saw_retired_on](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "birth")
                 return saw_birth = true, nested_reader->parse_long(&timers->birth, nested_error_message);
             if (key == "last_logon")
@@ -1483,7 +1505,7 @@ namespace {
             return false;
         }
 
-        return reader->parse_object([profession](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        return reader->parse_object([profession](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "level")
                 return nested_reader->parse_integer(&profession->level, nested_error_message);
             if (key == "points")
@@ -1512,7 +1534,7 @@ namespace {
         bool saw_location = false;
         bool saw_counter = false;
         bool saw_flags = false;
-        if (!reader->parse_object([affect, &saw_type, &saw_duration, &saw_time_phase, &saw_modifier, &saw_location, &saw_counter, &saw_flags](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([affect, &saw_type, &saw_duration, &saw_time_phase, &saw_modifier, &saw_location, &saw_counter, &saw_flags](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "type")
                 return saw_type = true, nested_reader->parse_integer(&affect->type, nested_error_message);
             if (key == "duration")
@@ -1574,7 +1596,7 @@ namespace {
         bool saw_hometown = false;
         bool saw_weight = false;
         bool saw_height = false;
-        if (!reader->parse_object([character, &saw_idnum, &saw_race, &saw_sex, &saw_bodytype, &saw_language, &saw_hometown, &saw_weight, &saw_height](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([character, &saw_idnum, &saw_race, &saw_sex, &saw_bodytype, &saw_language, &saw_hometown, &saw_weight, &saw_height](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "idnum")
                 return saw_idnum = true, nested_reader->parse_long(&character->idnum, nested_error_message);
             if (key == "race")
@@ -1613,7 +1635,7 @@ namespace {
         bool saw_max_mini_level = false;
         bool saw_spells_to_learn = false;
         bool saw_rerolls = false;
-        if (!reader->parse_object([character, &saw_level, &saw_alignment, &saw_mini_level, &saw_max_mini_level, &saw_spells_to_learn, &saw_rerolls](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([character, &saw_level, &saw_alignment, &saw_mini_level, &saw_max_mini_level, &saw_spells_to_learn, &saw_rerolls](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "level")
                 return saw_level = true, nested_reader->parse_integer(&character->level, nested_error_message);
             if (key == "alignment")
@@ -1644,7 +1666,7 @@ namespace {
     {
         bool saw_temporary = false;
         bool saw_rolled = false;
-        if (!reader->parse_object([character, &saw_temporary, &saw_rolled](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([character, &saw_temporary, &saw_rolled](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "temporary")
                 return saw_temporary = true, parse_ability_object(nested_reader, &character->temporary_abilities, nested_error_message);
             if (key == "rolled")
@@ -1669,7 +1691,7 @@ namespace {
         bool saw_mystic = false;
         bool saw_ranger = false;
         bool saw_warrior = false;
-        if (!reader->parse_object([character, &saw_mage, &saw_mystic, &saw_ranger, &saw_warrior](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([character, &saw_mage, &saw_mystic, &saw_ranger, &saw_warrior](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "mage")
                 return saw_mage = true, parse_profession_object(nested_reader, &character->mage, nested_error_message);
             if (key == "mystic")
@@ -1702,7 +1724,7 @@ namespace {
         bool saw_preferences = false;
         bool saw_affected = false;
         bool saw_hide = false;
-        if (!reader->parse_object([character, &saw_player, &saw_preferences, &saw_affected, &saw_hide](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([character, &saw_player, &saw_preferences, &saw_affected, &saw_hide](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "player")
                 return saw_player = true, parse_string_array(nested_reader, &character->player_flags, nested_error_message);
             if (key == "preferences")
@@ -1729,7 +1751,7 @@ namespace {
     {
         bool saw_raw = false;
         bool saw_current = false;
-        if (!reader->parse_object([character, &saw_raw, &saw_current](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([character, &saw_raw, &saw_current](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "raw")
                 return saw_raw = true, nested_reader->parse_integer(&character->raw_perception, nested_error_message);
             if (key == "current")
@@ -1758,7 +1780,7 @@ namespace {
         bool saw_leg_encumbrance = false;
         bool saw_rp_flag = false;
         bool saw_will_teach = false;
-        if (!reader->parse_object([character, &saw_load_room, &saw_wimp_level, &saw_freeze_level, &saw_morale, &saw_owner, &saw_leg_encumbrance, &saw_rp_flag, &saw_will_teach](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+        if (!reader->parse_object([character, &saw_load_room, &saw_wimp_level, &saw_freeze_level, &saw_morale, &saw_owner, &saw_leg_encumbrance, &saw_rp_flag, &saw_will_teach](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "load_room")
                 return saw_load_room = true, nested_reader->parse_integer(&character->load_room, nested_error_message);
             if (key == "wimp_level")
@@ -1820,6 +1842,32 @@ namespace {
     }
 
 } // namespace
+
+#ifdef TESTING
+std::string format_profession_for_testing(std::string_view name)
+{
+    std::ostringstream output;
+    write_profession(output, name, ProfessionData {});
+    return output.str();
+}
+
+std::string character_field_error_for_testing(std::string_view field_name)
+{
+    std::string error_message;
+    require_integer_range(2, 0, 1, field_name, &error_message);
+    return error_message;
+}
+
+std::string skill_key_for_testing(int index)
+{
+    return skill_key_for_index(index);
+}
+
+int skill_index_for_testing(std::string_view key)
+{
+    return skill_index_for_key_memoized(key);
+}
+#endif
 
 CharacterData character_data_from_store(const char_file_u& stored_character)
 {
@@ -2752,7 +2800,7 @@ bool deserialize_character_from_json(std::string_view json, CharacterData *chara
     bool saw_affects = false;
     parsed_character.colors.assign(MAX_COLOR_FIELDS, 0);
     parsed_character.color_settings.assign(MAX_COLOR_FIELDS, default_color_setting());
-    if (!reader.parse_root_object([&parsed_character, &saw_schema_version, &saw_character_name, &saw_title, &saw_description, &saw_identity, &saw_progression, &saw_abilities, &saw_points, &saw_professions, &saw_flags, &saw_conditions, &saw_color_mask, &saw_colors, &saw_timers, &saw_perception, &saw_state, &saw_talks, &saw_skills, &saw_affects](const std::string& key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
+    if (!reader.parse_root_object([&parsed_character, &saw_schema_version, &saw_character_name, &saw_title, &saw_description, &saw_identity, &saw_progression, &saw_abilities, &saw_points, &saw_professions, &saw_flags, &saw_conditions, &saw_color_mask, &saw_colors, &saw_timers, &saw_perception, &saw_state, &saw_talks, &saw_skills, &saw_affects](std::string_view key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
             if (key == "schema_version")
                 return saw_schema_version = true, nested_reader->parse_integer(&parsed_character.schema_version, nested_error_message);
             if (key == "character_name")
@@ -2875,7 +2923,7 @@ bool deserialize_character_v2_dispatch(std::string_view json, CharacterData *cha
     bool saw_affects = false;
     parsed_character.colors.assign(MAX_COLOR_FIELDS, 0);
     parsed_character.color_settings.assign(MAX_COLOR_FIELDS, default_color_setting());
-    if (!reader.parse_root_object([&parsed_character, &saw_schema_version, &saw_character_name, &saw_title, &saw_description, &saw_identity, &saw_progression, &saw_abilities, &saw_points, &saw_professions, &saw_flags, &saw_conditions, &saw_color_mask, &saw_colors, &saw_timers, &saw_perception, &saw_state, &saw_talks, &saw_skills, &saw_affects](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+    if (!reader.parse_root_object([&parsed_character, &saw_schema_version, &saw_character_name, &saw_title, &saw_description, &saw_identity, &saw_progression, &saw_abilities, &saw_points, &saw_professions, &saw_flags, &saw_conditions, &saw_color_mask, &saw_colors, &saw_timers, &saw_perception, &saw_state, &saw_talks, &saw_skills, &saw_affects](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
             if (key == "schema_version")
                 return saw_schema_version = true, nested_reader->parse_integer(&parsed_character.schema_version, nested_error_message);
             if (key == "character_name")

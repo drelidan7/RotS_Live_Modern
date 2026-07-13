@@ -34,7 +34,7 @@ template <class Reader>
 bool parse_document(const std::string& json, ParsedDocument* out, std::string* error_message)
 {
     Reader reader(json);
-    return reader.parse_root_object([out](const std::string& key, Reader* nested_reader, std::string* nested_error_message) {
+    return reader.parse_root_object([out](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
         if (key == "name")
             return nested_reader->parse_string(&out->name, nested_error_message);
         if (key == "level")
@@ -48,7 +48,7 @@ bool parse_document(const std::string& json, ParsedDocument* out, std::string* e
         if (key == "tags")
             return nested_reader->parse_string_array(&out->tags, nested_error_message);
         if (key == "nested") {
-            return nested_reader->parse_object([out](const std::string& nested_key, Reader* inner_reader, std::string* inner_error_message) {
+            return nested_reader->parse_object([out](std::string_view nested_key, Reader* inner_reader, std::string* inner_error_message) {
                 if (nested_key == "x")
                     return inner_reader->parse_integer(&out->nested_x, inner_error_message);
                 if (nested_key == "y")

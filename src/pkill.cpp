@@ -31,6 +31,7 @@
 #include "db.h"
 #include "handler.h"
 #include "json_utils.h"
+#include "text_view.h"
 #include "pkill.h"
 #include "platform_compat.h"
 #include "structs.h"
@@ -72,6 +73,7 @@ namespace {
 
     bool read_i32_at(const std::string &bytes, size_t record_offset, size_t field_offset, int *value,
                      std::string *error_message, std::string_view label) {
+        label = rots::text::truncate_at_null(label);
         const size_t offset = record_offset + field_offset;
         if (offset + 4 > bytes.size()) {
             set_error(error_message,
@@ -88,6 +90,7 @@ namespace {
 
     bool read_u8_at(const std::string &bytes, size_t record_offset, size_t field_offset, unsigned char *value,
                     std::string *error_message, std::string_view label) {
+        label = rots::text::truncate_at_null(label);
         const size_t offset = record_offset + field_offset;
         if (offset + 1 > bytes.size()) {
             set_error(error_message,
@@ -243,7 +246,7 @@ bool deserialize_pkill_from_json(std::string_view json, PkillStoreData *data, st
 
     PkillStoreData parsed;
     const bool ok = json_utils::JsonReader(json).parse_root_object(
-        [&](const std::string& key, json_utils::JsonReader* reader, std::string* nested_error) {
+        [&](std::string_view key, json_utils::JsonReader* reader, std::string* nested_error) {
             if (key == "version")
                 return reader->parse_integer(&parsed.version, nested_error);
             if (key == "records") {

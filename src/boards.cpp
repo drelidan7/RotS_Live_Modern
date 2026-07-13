@@ -77,6 +77,7 @@ Send comments, bug reports, help requests, etc. to Jeremy Elson
 #include "handler.h"
 #include "interpre.h"
 #include "json_utils.h"
+#include "text_view.h"
 #include "structs.h"
 #include "utils.h"
 
@@ -766,6 +767,7 @@ namespace {
     // established convention, see objects_json.cpp's read_pod/read_u32le).
     bool read_i32(const std::string &bytes, size_t *offset, int *value,
                   std::string *error_message, std::string_view label) {
+        label = rots::text::truncate_at_null(label);
         if (*offset + 4 > bytes.size()) {
             set_error(error_message,
                       std::string("Truncated board file while reading ") + std::string(label) + ".");
@@ -783,6 +785,7 @@ namespace {
 
     bool skip_bytes(const std::string &bytes, size_t *offset, size_t length, std::string *error_message,
                     std::string_view label) {
+        label = rots::text::truncate_at_null(label);
         if (*offset + length > bytes.size()) {
             set_error(error_message,
                       std::string("Truncated board file while reading ") + std::string(label) + ".");
@@ -798,6 +801,7 @@ namespace {
     // computation below).
     bool read_text(const std::string &bytes, size_t *offset, size_t length_including_nul, std::string *out,
                    std::string *error_message, std::string_view label) {
+        label = rots::text::truncate_at_null(label);
         if (*offset + length_including_nul > bytes.size()) {
             set_error(error_message,
                       std::string("Truncated board file while reading ") + std::string(label) + ".");
@@ -936,6 +940,18 @@ namespace {
 
 } // namespace
 
+#ifdef TESTING
+std::string binary_label_error_for_testing(std::string_view label)
+{
+    const std::string bytes;
+    size_t offset = 0;
+    int value = 0;
+    std::string error_message;
+    read_i32(bytes, &offset, &value, &error_message, label);
+    return error_message;
+}
+#endif
+
 bool legacy_board_file_from_binary(const std::string& bytes, BoardSaveData* data, std::string* error_message)
 {
     if (data == nullptr) {
@@ -1018,7 +1034,7 @@ bool deserialize_board_from_json(std::string_view json, BoardSaveData *data, std
 
     BoardSaveData parsed;
     const bool ok = json_utils::JsonReader(json).parse_root_object(
-        [&](const std::string& key, json_utils::JsonReader* reader, std::string* nested_error) {
+        [&](std::string_view key, json_utils::JsonReader* reader, std::string* nested_error) {
             if (key == "version")
                 return reader->parse_integer(&parsed.version, nested_error);
             if (key == "last_message")

@@ -5,6 +5,10 @@
 #include <limits>
 #include <string_view>
 
+namespace objects_json {
+std::string format_object_record_for_testing(std::string_view indent);
+}
+
 namespace {
 
 objects_json::ObjectRecord make_object_record(int item_number, int wear_pos)
@@ -159,6 +163,40 @@ TEST(ObjectsJson, BinaryDecoderReadsFullPayloadPastEmbeddedNullBytes) {
     ASSERT_EQ(parsed.followers.size(), 1u);
     ASSERT_EQ(parsed.followers[0].objects.size(), 1u);
     EXPECT_EQ(parsed.followers[0].objects[0].item_number, 2200);
+}
+
+TEST(ObjectsJson, RecoveryReadsFullPayloadPastEmbeddedNullBytes)
+{
+    if (sizeof(long) != 4) {
+        GTEST_SKIP() << "native object binary encoding requires the 32-bit ABI";
+    }
+
+    const objects_json::ObjectSaveData original = make_object_save_data();
+    std::string bytes;
+    std::string error_message;
+    ASSERT_TRUE(objects_json::object_save_data_to_binary(original, &bytes, &error_message))
+        << error_message;
+    const std::size_t first_null_offset = bytes.find('\0');
+    ASSERT_NE(first_null_offset, std::string::npos);
+    ASSERT_LT(first_null_offset, bytes.size() - 1);
+
+    objects_json::ObjectSaveData recovered;
+    int dropped_partial_record_count = -1;
+    ASSERT_TRUE(objects_json::recover_object_save_data_from_binary(
+        bytes, &recovered, &dropped_partial_record_count, &error_message))
+        << error_message;
+    EXPECT_EQ(dropped_partial_record_count, 0);
+    ASSERT_EQ(recovered.followers.size(), 1u);
+    ASSERT_EQ(recovered.followers[0].objects.size(), 1u);
+    EXPECT_EQ(recovered.followers[0].objects[0].item_number, 2200);
+}
+
+TEST(ObjectsJson, ObjectRecordIndentStopsAtEmbeddedNull)
+{
+    constexpr std::string_view embedded_indent("  \0ignored", 11);
+    const std::string output = objects_json::format_object_record_for_testing(embedded_indent);
+    EXPECT_EQ(output.find("ignored"), std::string::npos);
+    EXPECT_EQ(output.rfind("  {", 0), 0u);
 }
 
 TEST(ObjectsJson, SerializesAndDeserializesJsonRoundTrip)

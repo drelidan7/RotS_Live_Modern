@@ -421,7 +421,7 @@ bool JsonReader::skip_value(std::string* error_message)
 
     if (current == '{') {
         ++m_position;
-        return parse_object_body([](const std::string&, JsonReader* reader, std::string* nested_error_message) {
+        return parse_object_body([](std::string_view, JsonReader* reader, std::string* nested_error_message) {
             return reader->skip_value(nested_error_message);
         },
             error_message);
@@ -493,7 +493,7 @@ bool JsonReader::parse_object_body(const ObjectPropertyParser& property_parser, 
         }
 
         skip_whitespace();
-        if (!property_parser(key, this, error_message))
+        if (!property_parser(rots::text::truncate_at_null(key), this, error_message))
             return false;
 
         first_property = false;
@@ -806,7 +806,7 @@ bool JsonReaderV2::skip_value(std::string* error_message)
 
     if (current == '{') {
         ++m_position;
-        return parse_object_body([](const std::string&, JsonReaderV2* reader, std::string* nested_error_message) {
+        return parse_object_body([](std::string_view, JsonReaderV2* reader, std::string* nested_error_message) {
             return reader->skip_value(nested_error_message);
         },
             error_message);
@@ -878,7 +878,7 @@ bool JsonReaderV2::parse_object_body(const ObjectPropertyParser& property_parser
         }
 
         skip_whitespace();
-        if (!property_parser(key, this, error_message))
+        if (!property_parser(rots::text::truncate_at_null(key), this, error_message))
             return false;
 
         first_property = false;

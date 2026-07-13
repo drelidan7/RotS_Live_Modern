@@ -8,6 +8,29 @@
 
 namespace {
 
+template <typename Reader>
+void expect_property_callback_stops_at_embedded_null()
+{
+    const std::string json = "{\"value\\u0000ignored\":42}";
+    std::string observed_key;
+    std::string error_message;
+    Reader reader(json);
+    ASSERT_TRUE(reader.parse_root_object(
+        [&](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
+            observed_key.assign(key);
+            return nested_reader->skip_value(nested_error_message);
+        },
+        &error_message))
+        << error_message;
+    EXPECT_EQ(observed_key, "value");
+}
+
+TEST(JsonUtils, PropertyCallbacksBorrowFirstNullTerminatedKeys)
+{
+    expect_property_callback_stops_at_embedded_null<json_utils::JsonReader>();
+    expect_property_callback_stops_at_embedded_null<json_utils::JsonReaderV2>();
+}
+
 TEST(JsonUtils, EscapesQuotesBackslashesAndControlCharacters)
 {
     const std::string raw = "\"slash\\\\\n\t\r\b\f";
@@ -77,7 +100,7 @@ TEST(JsonUtils, ParsesTypedObjectProperties)
     std::vector<std::string> aliases;
     std::string error_message;
 
-    ASSERT_TRUE(reader.parse_root_object([&](const std::string& key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
+    ASSERT_TRUE(reader.parse_root_object([&](std::string_view key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
         if (key == "name")
             return nested_reader->parse_string(&name, nested_error_message);
         if (key == "level")
@@ -109,7 +132,7 @@ TEST(JsonUtils, SkipsUnknownNestedValuesWithoutBreakingKnownFields)
     std::string name;
     std::string error_message;
 
-    ASSERT_TRUE(reader.parse_root_object([&](const std::string& key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
+    ASSERT_TRUE(reader.parse_root_object([&](std::string_view key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
         if (key == "name")
             return nested_reader->parse_string(&name, nested_error_message);
         return nested_reader->skip_value(nested_error_message);
@@ -142,7 +165,7 @@ TEST(JsonUtils, RejectsUnsupportedStringEscapes)
     std::string error_message;
 
     EXPECT_FALSE(reader.parse_root_object(
-        [&](const std::string& key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
+        [&](std::string_view key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
             if (key == "name")
                 return nested_reader->parse_string(&name, nested_error_message);
             return nested_reader->skip_value(nested_error_message);
@@ -159,7 +182,7 @@ TEST(JsonUtils, RejectsRawControlCharactersInsideStrings)
     std::string error_message;
 
     EXPECT_FALSE(reader.parse_root_object(
-        [&](const std::string& key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
+        [&](std::string_view key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
             if (key == "name")
                 return nested_reader->parse_string(&name, nested_error_message);
             return nested_reader->skip_value(nested_error_message);
@@ -176,7 +199,7 @@ TEST(JsonUtils, ParsesAsciiUnicodeEscapesProducedBySerializer)
     std::string error_message;
 
     ASSERT_TRUE(reader.parse_root_object(
-        [&](const std::string& key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
+        [&](std::string_view key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
             if (key == "name")
                 return nested_reader->parse_string(&name, nested_error_message);
             return nested_reader->skip_value(nested_error_message);
@@ -196,7 +219,7 @@ TEST(JsonUtils, RejectsIntegersOutsideIntRange)
     std::string error_message;
 
     EXPECT_FALSE(reader.parse_root_object(
-        [&](const std::string& key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
+        [&](std::string_view key, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
             if (key == "level")
                 return nested_reader->parse_integer(&level, nested_error_message);
             return nested_reader->skip_value(nested_error_message);

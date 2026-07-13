@@ -106,6 +106,7 @@ Send comments, bug reports, etc. to jelson@server.cs.jhu.edu
 #include "handler.h"
 #include "interpre.h"
 #include "json_utils.h"
+#include "text_view.h"
 #include "mail.h"
 #include "structs.h"
 #include "utils.h"
@@ -165,6 +166,7 @@ namespace {
     // established convention, see boards.cpp/objects_json.cpp).
     bool read_i32(const std::string &bytes, size_t *offset, long *value,
                   std::string *error_message, std::string_view label) {
+        label = rots::text::truncate_at_null(label);
         if (*offset + 4 > bytes.size()) {
             set_error(error_message, std::string("Truncated mail file while reading ") +
                                          std::string(label) + ".");
@@ -186,6 +188,7 @@ namespace {
     // the field is actually used.
     bool read_fixed_cstring(const std::string &bytes, size_t *offset, size_t field_size, std::string *out,
                             std::string *error_message, std::string_view label) {
+        label = rots::text::truncate_at_null(label);
         if (*offset + field_size > bytes.size()) {
             set_error(error_message, std::string("Truncated mail file while reading ") +
                                          std::string(label) + ".");
@@ -396,7 +399,7 @@ bool deserialize_mail_from_json(std::string_view json, MailStoreData *data, std:
 
     MailStoreData parsed;
     const bool ok = json_utils::JsonReader(json).parse_root_object(
-        [&](const std::string& key, json_utils::JsonReader* reader, std::string* nested_error) {
+        [&](std::string_view key, json_utils::JsonReader* reader, std::string* nested_error) {
             if (key == "messages") {
                 return reader->parse_array(
                     [&](json_utils::JsonReader* message_reader, std::string* message_error) {

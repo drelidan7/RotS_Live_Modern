@@ -7,7 +7,30 @@
 
 #include <gtest/gtest.h>
 
+namespace character_json {
+std::string format_profession_for_testing(std::string_view name);
+std::string character_field_error_for_testing(std::string_view field_name);
+std::string skill_key_for_testing(int index);
+int skill_index_for_testing(std::string_view key);
+}
+
 namespace {
+
+TEST(CharacterJson, InternalLabelsStopAtEmbeddedNull)
+{
+    constexpr std::string_view embedded_name("mage\0ignored", 12);
+    EXPECT_EQ(character_json::format_profession_for_testing(embedded_name).find("ignored"),
+        std::string::npos);
+    EXPECT_EQ(character_json::character_field_error_for_testing(embedded_name),
+        "mage is out of the supported range.");
+}
+
+TEST(CharacterJson, NamedKeyLookupStopsAtEmbeddedNull)
+{
+    const std::string key = character_json::skill_key_for_testing(0);
+    const std::string embedded_key = key + std::string("\0ignored", 8);
+    EXPECT_EQ(character_json::skill_index_for_testing(embedded_key), 0);
+}
 
 char_file_u make_stored_character()
 {

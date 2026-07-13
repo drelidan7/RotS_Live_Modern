@@ -1308,7 +1308,7 @@ void MSDPSendPair(
     const std::size_t required_buffer = apVariable.size() + apValue.size() + 12;
     if (required_buffer >= MAX_VARIABLE_LENGTH) {
         const std::string report
-            = required_buffer - apValue.size() < MAX_VARIABLE_LENGTH
+            = apVariable.size() < MAX_VARIABLE_LENGTH
             ? std::format("MSDPSendPair: {} {} bytes (exceeds MAX_VARIABLE_LENGTH of {}).\n",
                 apVariable, required_buffer, MAX_VARIABLE_LENGTH)
             : std::format("MSDPSendPair: Variable name has a length of {} bytes (exceeds "
@@ -1355,7 +1355,7 @@ void MSDPSendList(
     const std::size_t required_buffer = apVariable.size() + apValue.size() + 12;
     if (required_buffer >= MAX_VARIABLE_LENGTH) {
         const std::string report
-            = required_buffer - apValue.size() < MAX_VARIABLE_LENGTH
+            = apVariable.size() < MAX_VARIABLE_LENGTH
             ? std::format("MSDPSendList: {} {} bytes (exceeds MAX_VARIABLE_LENGTH of {}).\n",
                 apVariable, required_buffer, MAX_VARIABLE_LENGTH)
             : std::format("MSDPSendList: Variable name has a length of {} bytes (exceeds "

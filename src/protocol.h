@@ -395,10 +395,8 @@ void ProtocolInput(descriptor_t* apDescriptor, char* apData, int aSize, char* ap
  *    The baker offers to sell you a \t<send href="buy pie">pie\t</send>.
  *
  * Note that the MXP tags will automatically be removed if the user doesn't
- * support MXP, but it's very important you remember to close the tags.
- * The input is semantic text: a positive `apLength` bounds the available
- * storage, but the first null character still terminates the text. The return
- * value may reference shared protocol scratch storage.
+ * support MXP, but it's very important you remember to close the tags. The
+ * return value may reference shared protocol scratch storage.
  */
 const char* ProtocolOutput(descriptor_t* apDescriptor, const char* apData, int* apLength);
 

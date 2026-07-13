@@ -58,6 +58,10 @@ No code changed; no gate needed beyond "doc committed." (Reviewer verifies the c
 - [ ] **Step 2:** Owner rules. Record the ruling in this plan (amendment block) and the ledger. The default if kept-raw: instance-ownership converts the BLOCK, leaving the conditional string members raw with their existing free logic untouched.
 - [ ] **Step 3:** Only after the ruling is recorded do the instance-ownership conversion tasks (T6-class) become eligible. The safest conversion tasks (fixed-buffer, unconditional strings) may proceed in parallel — they don't touch conditional fields.
 
+#### T2 RULING (owner, 2026-07-13): KEEP-RAW-CONDITIONAL
+
+The 11 prototype-shared string fields (char: name/title/short_descr/long_descr/description; obj: name/description/short_description/action_description + ex_description keywords) stay **raw char* with their runtime-guarded free logic UNTOUCHED** this wave. Audit basis: genuinely runtime-determined sharing (IS_NPC/nr / item_number guards), already leak-safe (prototype owns, freed once), ~600 raw-char* read sites (GET_NAME alone 293 verified). Instance-block ownership (T6) wraps AROUND these fields without touching them. The 11 are recorded in ownership-map.md as ESCALATED-DEFERRED; a proper interned/shared-string model is a possible future funded effort (not scoped now). No T3-T6 task may convert a CONDITIONAL field.
+
 ---
 
 ### Conversion-task TEMPLATE (T3+ — instantiated from T1's greenlit set)

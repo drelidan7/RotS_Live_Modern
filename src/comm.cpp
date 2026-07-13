@@ -1212,47 +1212,60 @@ int get_from_q(struct txt_q* queue, char* dest)
     return (1);
 }
 
-void write_to_output(const char* txt, struct descriptor_data* t)
+void write_to_output(std::string_view text, descriptor_data* descriptor)
 {
-    int size;
+    text = text.substr(0, text.find('\0'));
 
-    size = strlen(txt);
-
-    /* if we're in the overflow state already, ignore this */
-    if (t->bufptr < 0)
+    // If the descriptor is already in the overflow state or there is no text,
+    // another write cannot change its observable output.
+    if (descriptor->bufptr < 0 || text.empty()) {
         return;
+    }
+
+    const std::size_t text_size = text.size();
 
     /* if we have enough space, just write to buffer and that's it! */
-    if (t->bufspace >= size) {
-        strcpy(t->output + t->bufptr, txt);
-        t->bufspace -= size;
-        t->bufptr += size;
-    } else { /* otherwise, try to switch to a large buffer */
-        if (t->large_outbuf || ((size + strlen(t->output)) > LARGE_BUFSIZE)) {
-            /* we're already using large buffer, or even the large buffer
-            in't big enough -- switch to overflow state */
-            t->bufptr = -1;
-            buf_overflows++;
-            return;
-        }
-
-        buf_switches++;
-        /* if the pool has a buffer in it, grab it */
-        if (bufpool) {
-            t->large_outbuf = bufpool;
-            bufpool = bufpool->next;
-        } else { /* else create one */
-            CREATE(t->large_outbuf, struct txt_block, 1);
-            CREATE(t->large_outbuf->text, char, LARGE_BUFSIZE);
-            buf_largecount++;
-        }
-
-        strcpy(t->large_outbuf->text, t->output);
-        t->output = t->large_outbuf->text;
-        strcpy(t->output + strlen(t->output), txt);
-        t->bufspace = LARGE_BUFSIZE - 1 - strlen(t->output);
-        t->bufptr = strlen(t->output);
+    if (text_size <= static_cast<std::size_t>(descriptor->bufspace)) {
+        // This output path runs for nearly every player message. Copy the known
+        // view length directly to avoid rescanning it or allocating a temporary.
+        std::memcpy(descriptor->output + descriptor->bufptr, text.data(), text_size);
+        descriptor->bufptr += static_cast<int>(text_size);
+        descriptor->bufspace -= static_cast<int>(text_size);
+        descriptor->output[descriptor->bufptr] = '\0';
+        return;
     }
+
+    /* otherwise, try to switch to a large buffer */
+    const std::size_t existing_size = static_cast<std::size_t>(descriptor->bufptr);
+    const std::size_t large_payload_capacity = LARGE_BUFSIZE - 1;
+    if (descriptor->large_outbuf || existing_size > large_payload_capacity
+        || text_size > large_payload_capacity - existing_size) {
+        /* we're already using large buffer, or even the large buffer
+        in't big enough -- switch to overflow state */
+        descriptor->bufptr = -1;
+        buf_overflows++;
+        return;
+    }
+
+    buf_switches++;
+    /* if the pool has a buffer in it, grab it */
+    if (bufpool) {
+        descriptor->large_outbuf = bufpool;
+        bufpool = bufpool->next;
+    } else { /* else create one */
+        CREATE(descriptor->large_outbuf, struct txt_block, 1);
+        CREATE(descriptor->large_outbuf->text, char, LARGE_BUFSIZE);
+        buf_largecount++;
+    }
+
+    // Preserve the existing payload before redirecting output to the pooled
+    // large buffer, then append the bounded view and restore C-string form.
+    std::memcpy(descriptor->large_outbuf->text, descriptor->output, existing_size);
+    std::memcpy(descriptor->large_outbuf->text + existing_size, text.data(), text_size);
+    descriptor->output = descriptor->large_outbuf->text;
+    descriptor->bufptr = static_cast<int>(existing_size + text_size);
+    descriptor->bufspace = LARGE_BUFSIZE - 1 - descriptor->bufptr;
+    descriptor->output[descriptor->bufptr] = '\0';
 }
 
 struct txt_block* get_from_txt_block_pool(const char* line)
@@ -1998,10 +2011,10 @@ void close_socket(descriptor_data* conn_descriptor, int drop_all)
 /* ****************************************************************
  *	Public routines for system-to-player-communication	  *
  *******************************************************************/
-void send_to_char(const char* message, char_data* character)
+void send_to_char(std::string_view message, char_data* character)
 {
     // Early out if we have no message or character.
-    if (message == nullptr || message[0] == 0 || character == nullptr) {
+    if (message.empty() || character == nullptr) {
         return;
     }
 
@@ -2010,21 +2023,41 @@ void send_to_char(const char* message, char_data* character)
         return;
     }
 
-    SEND_TO_Q(message, character->desc);
+    write_to_output(message, character->desc);
+}
+
+void send_to_char(const char* message, char_data* character)
+{
+    if (message == nullptr) {
+        return;
+    }
+
+    send_to_char(std::string_view(message), character);
+}
+
+void send_to_char(std::string_view message, int character_id)
+{
+    if (message.empty()) {
+        return;
+    }
+
+    for (descriptor_data* connection = descriptor_list; connection;
+        connection = connection->next) {
+        char_data* character = connection->character;
+        if (character && character->abs_number == character_id && connection->connected == CON_PLYNG) {
+            write_to_output(message, connection);
+            break;
+        }
+    }
 }
 
 void send_to_char(const char* message, int character_id)
 {
-    if (message && message[0] != 0) {
-        for (descriptor_data* connection = descriptor_list; connection;
-            connection = connection->next) {
-            char_data* character = connection->character;
-            if (character && character->abs_number == character_id && connection->connected == CON_PLYNG) {
-                SEND_TO_Q(message, connection);
-                break;
-            }
-        }
+    if (message == nullptr) {
+        return;
     }
+
+    send_to_char(std::string_view(message), character_id);
 }
 
 const char* get_char_name(int character_id)

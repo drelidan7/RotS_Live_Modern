@@ -12,6 +12,7 @@
 #define COMM_H
 
 #include <string>
+#include <string_view>
 #include <stdarg.h>
 
 #include "platdef.h" /* For SocketType */
@@ -30,7 +31,13 @@ struct StartupOptions {
 
 /* comm.c */
 void send_to_all(const char* messg);
-void send_to_char(const char* messg, struct char_data* ch);
+/// Queues a bounded message for a connected character without retaining the view.
+void send_to_char(std::string_view message, struct char_data* character);
+/// Queues a null-terminated message for a connected character, ignoring a null pointer.
+void send_to_char(const char* message, struct char_data* character);
+/// Queues a bounded message for the connected character with the specified absolute identifier.
+void send_to_char(std::string_view message, int character_id);
+/// Queues a null-terminated message by character identifier, ignoring a null pointer.
 void send_to_char(const char* message, int character_id);
 const char* get_char_name(int character_id);
 struct char_data* get_character(int character_id);
@@ -60,7 +67,8 @@ void act(const char* str, int hide_invisible, struct char_data* ch,
 
 int write_to_descriptor(SocketType desc, const char* txt);
 void write_to_q(char* txt, struct txt_q* queue);
-void write_to_output(const char* txt, struct descriptor_data* d);
+/// Appends a bounded message to a descriptor's output buffer without retaining the view.
+void write_to_output(std::string_view text, struct descriptor_data* descriptor);
 void page_string(struct descriptor_data* d, char* str, int keep_internal);
 bool parse_startup_options(int argc, char** argv, StartupOptions* options, std::string* error_message);
 

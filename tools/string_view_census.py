@@ -2,6 +2,7 @@
 """Inventory C++ declarations that still expose candidate string types."""
 
 import argparse
+import bisect
 import pathlib
 import re
 import sys
@@ -21,6 +22,8 @@ ALLOWED_REASONS = {
     "sentinel-table",
 }
 SOURCE_SUFFIXES = {".h", ".cpp"}
+RAW_STRING_PATTERN = re.compile(r'(?:u8|u|U|L)?R"([^ ()\\\t\r\n]{0,16})\(')
+QUOTED_LITERAL_PATTERN = re.compile(r'(?:u8|u|U|L)?(["\'])')
 
 
 def parse_arguments():
@@ -33,23 +36,98 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def strip_comments(source_text):
-    """Remove comments while retaining newlines and source offsets."""
-    token_pattern = re.compile(
-        r'"(?:\\.|[^"\\])*"'
-        r"|'(?:\\.|[^'\\])*'"
-        r"|//[^\n]*"
-        r"|/\*.*?\*/",
-        re.DOTALL,
-    )
+def raw_string_end(source_text, token_start):
+    """Return the end of a C++ raw string beginning at token_start, if present."""
+    raw_string_match = RAW_STRING_PATTERN.match(source_text, token_start)
+    if raw_string_match is None:
+        return None
+    delimiter = raw_string_match.group(1)
+    terminator = f'){delimiter}"'
+    contents_start = raw_string_match.end()
+    terminator_start = source_text.find(terminator, contents_start)
+    if terminator_start < 0:
+        return len(source_text)
+    return terminator_start + len(terminator)
 
-    def replace_comment(token_match):
-        token = token_match.group(0)
-        if not token.startswith(("//", "/*")):
-            return token
-        return "".join("\n" if character == "\n" else " " for character in token)
 
-    return token_pattern.sub(replace_comment, source_text)
+def quoted_literal_end(source_text, token_start):
+    """Return the end of a normal string or character literal, if present."""
+    prefix_match = QUOTED_LITERAL_PATTERN.match(source_text, token_start)
+    if prefix_match is None:
+        return None
+    quote_character = prefix_match.group(1)
+    character_offset = prefix_match.end()
+    while character_offset < len(source_text):
+        character = source_text[character_offset]
+        if character == "\\":
+            character_offset += 2
+            continue
+        character_offset += 1
+        if character == quote_character:
+            return character_offset
+    return len(source_text)
+
+
+def literal_end(source_text, token_start):
+    """Return the end of any C++ literal beginning at token_start, if present."""
+    return raw_string_end(source_text, token_start) or quoted_literal_end(source_text, token_start)
+
+
+def mask_comments_and_directives(source_text):
+    """Mask comments and directives while retaining offsets and literal contents."""
+    masked_characters = list(source_text)
+    character_offset = 0
+    line_contains_only_whitespace = True
+    while character_offset < len(source_text):
+        character = source_text[character_offset]
+        if character == "\n":
+            line_contains_only_whitespace = True
+            character_offset += 1
+            continue
+        if line_contains_only_whitespace and character in " \t\r":
+            character_offset += 1
+            continue
+        if line_contains_only_whitespace and character == "#":
+            masked_characters[character_offset] = ";"
+            directive_offset = character_offset + 1
+            continuing_directive = True
+            while directive_offset < len(source_text) and continuing_directive:
+                line_end = source_text.find("\n", directive_offset)
+                if line_end < 0:
+                    line_end = len(source_text)
+                line_contents = source_text[directive_offset:line_end].rstrip()
+                continuing_directive = line_contents.endswith("\\")
+                for masked_offset in range(directive_offset, line_end):
+                    masked_characters[masked_offset] = " "
+                directive_offset = line_end + 1
+            character_offset = directive_offset
+            line_contains_only_whitespace = True
+            continue
+        line_contains_only_whitespace = False
+
+        detected_literal_end = literal_end(source_text, character_offset)
+        if detected_literal_end is not None:
+            character_offset = detected_literal_end
+            continue
+        if source_text.startswith("//", character_offset):
+            comment_end = source_text.find("\n", character_offset)
+            if comment_end < 0:
+                comment_end = len(source_text)
+            for masked_offset in range(character_offset, comment_end):
+                masked_characters[masked_offset] = " "
+            character_offset = comment_end
+            continue
+        if source_text.startswith("/*", character_offset):
+            comment_end = source_text.find("*/", character_offset + 2)
+            comment_end = len(source_text) if comment_end < 0 else comment_end + 2
+            for masked_offset in range(character_offset, comment_end):
+                if masked_characters[masked_offset] != "\n":
+                    masked_characters[masked_offset] = " "
+            character_offset = comment_end
+            continue
+        character_offset += 1
+
+    return "".join(masked_characters)
 
 
 def normalize_declaration(declaration):
@@ -57,18 +135,32 @@ def normalize_declaration(declaration):
     return " ".join(declaration.split())
 
 
-def declaration_bounds(source_text, candidate_offset):
-    """Locate the surrounding declaration for a candidate type match."""
-    previous_boundaries = (
-        source_text.rfind(";", 0, candidate_offset),
-        source_text.rfind("{", 0, candidate_offset),
-        source_text.rfind("}", 0, candidate_offset),
-        source_text.rfind("\n\n", 0, candidate_offset),
-    )
-    declaration_start = max(previous_boundaries) + 1
+def lexical_delimiters(source_text):
+    """Return declaration delimiter offsets while ignoring literal contents."""
+    delimiter_offsets = []
+    character_offset = 0
+    while character_offset < len(source_text):
+        detected_literal_end = literal_end(source_text, character_offset)
+        if detected_literal_end is not None:
+            character_offset = detected_literal_end
+            continue
+        if source_text[character_offset] in ";{}":
+            delimiter_offsets.append(character_offset)
+        character_offset += 1
+    return delimiter_offsets
 
-    semicolon_offset = source_text.find(";", candidate_offset)
-    opening_brace_offset = source_text.find("{", candidate_offset)
+
+def declaration_bounds(source_text, candidate_offset, delimiter_offsets):
+    """Locate the surrounding declaration for a candidate type match."""
+    insertion_index = bisect.bisect_left(delimiter_offsets, candidate_offset)
+    declaration_start = delimiter_offsets[insertion_index - 1] + 1 if insertion_index else 0
+    following_delimiters = delimiter_offsets[insertion_index:]
+    semicolon_offset = next(
+        (offset for offset in following_delimiters if source_text[offset] == ";"), -1
+    )
+    opening_brace_offset = next(
+        (offset for offset in following_delimiters if source_text[offset] == "{"), -1
+    )
     is_function_definition = (
         opening_brace_offset >= 0
         and (semicolon_offset < 0 or opening_brace_offset < semicolon_offset)
@@ -82,6 +174,77 @@ def declaration_bounds(source_text, candidate_offset):
         declaration_end = len(source_text)
 
     return declaration_start, declaration_end
+
+
+def parenthesis_spans(declaration):
+    """Return matched parenthesis spans outside declaration literals."""
+    spans = []
+    opening_offsets = []
+    character_offset = 0
+    while character_offset < len(declaration):
+        detected_literal_end = literal_end(declaration, character_offset)
+        if detected_literal_end is not None:
+            character_offset = detected_literal_end
+            continue
+        if declaration[character_offset] == "(":
+            opening_offsets.append(character_offset)
+        elif declaration[character_offset] == ")" and opening_offsets:
+            spans.append((opening_offsets.pop(), character_offset))
+        character_offset += 1
+    return spans
+
+
+def is_function_parameter(declaration, candidate_offset):
+    """Return whether a candidate occurrence is part of a function parameter list."""
+    excluded_prefixes = {
+        "alignof",
+        "catch",
+        "decltype",
+        "for",
+        "if",
+        "return",
+        "sizeof",
+        "static_assert",
+        "switch",
+        "while",
+    }
+    for opening_offset, closing_offset in parenthesis_spans(declaration):
+        if not opening_offset < candidate_offset < closing_offset:
+            continue
+        declarator_prefix = declaration[:opening_offset].rstrip()
+        prefix_match = re.search(r"([A-Za-z_]\w*)$", declarator_prefix)
+        if prefix_match is not None and prefix_match.group(1) in excluded_prefixes:
+            continue
+        if declarator_prefix:
+            return True
+    return False
+
+
+def is_scalar_constant(declaration, candidate_offset):
+    """Return whether a candidate occurrence declares a scalar pointer constant."""
+    declaration_prefix = declaration[:candidate_offset]
+    if re.search(r"\bconstexpr\b", declaration_prefix):
+        return True
+    declaration_tail = declaration[candidate_offset:]
+    return re.match(r"const\s+char\s*\*\s*const\s+[A-Za-z_]\w*", declaration_tail) is not None
+
+
+def is_lookup_table(declaration, candidate_offset):
+    """Return whether a candidate occurrence declares a C-string lookup table."""
+    declaration_tail = declaration[candidate_offset:]
+    table_pattern = re.compile(
+        r"const\s+char\s*\*\s*(?:const\s+)?[A-Za-z_]\w*\s*\[[^\]]*\]"
+    )
+    return table_pattern.match(declaration_tail) is not None
+
+
+def is_target_declaration(declaration, candidate_offset):
+    """Return whether a candidate belongs to a requested census category."""
+    return (
+        is_function_parameter(declaration, candidate_offset)
+        or is_scalar_constant(declaration, candidate_offset)
+        or is_lookup_table(declaration, candidate_offset)
+    )
 
 
 def source_files(search_paths, repository_root):
@@ -105,11 +268,20 @@ def source_files(search_paths, repository_root):
 
 def findings_for_file(source_path, repository_root):
     """Return normalized candidate declarations and their source locations."""
-    source_text = strip_comments(source_path.read_text(encoding="utf-8", errors="replace"))
+    source_text = mask_comments_and_directives(
+        source_path.read_text(encoding="utf-8", errors="replace")
+    )
+    delimiter_offsets = lexical_delimiters(source_text)
     declaration_ranges = set()
     for candidate_pattern in CANDIDATE_PATTERNS:
         for candidate_match in candidate_pattern.finditer(source_text):
-            declaration_ranges.add(declaration_bounds(source_text, candidate_match.start()))
+            declaration_start, declaration_end = declaration_bounds(
+                source_text, candidate_match.start(), delimiter_offsets
+            )
+            declaration_text = source_text[declaration_start:declaration_end]
+            relative_candidate_offset = candidate_match.start() - declaration_start
+            if is_target_declaration(declaration_text, relative_candidate_offset):
+                declaration_ranges.add((declaration_start, declaration_end))
 
     findings = []
     for declaration_start, declaration_end in sorted(declaration_ranges):

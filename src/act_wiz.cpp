@@ -918,7 +918,7 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
     if (IS_MOB(k)) {
         send_to_char(std::format("Mob Spec-Proc: {},  Asima: {}; Script: {}; ",
                          (mob_index[k->nr].func ? "Exists" : "None"),
-                         ((!MOB_FLAGGED(k, MOB_SPEC) && (k->specials.union1.prog_number)) ? mobile_program_zone[PROG_NUMBER(k)] : -1),
+                         ((!MOB_FLAGGED(k, MOB_SPEC) && (k->specials.special_prog_number)) ? mobile_program_zone[PROG_NUMBER(k)] : -1),
                          k->specials.script_number)
                          .c_str(),
             ch);

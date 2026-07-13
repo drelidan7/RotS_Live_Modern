@@ -2371,7 +2371,7 @@ void complete_delay(struct char_data* ch)
         else if (ch->specials.store_prog_number) {
             tmpfunc = (SPECIAL(*))virt_program_number(ch->specials.store_prog_number);
             tmpfunc(ch, 0, ch->delay.cmd, mutable_arg(""), SPECIAL_DELAY, &(ch->delay));
-        } else if (ch->specials.union1.prog_number)
+        } else if (ch->specials.special_prog_number)
             intelligent(ch, 0, -1, mutable_arg(""), SPECIAL_DELAY, &(ch->delay));
     } else if (ch->delay.cmd > 0)
         command_interpreter(ch, mutable_arg(""), &(ch->delay));

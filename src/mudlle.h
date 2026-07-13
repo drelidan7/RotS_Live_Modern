@@ -18,9 +18,11 @@
 
 #define SPECIAL_CALLLIST 10
 #define SPECIAL_STACKLEN 50
-#define SPECIAL_STACK(ch) ((long*)((ch)->specials.poofIn))
-#define PROG_POINT(ch) (ch)->specials.union2.prog_point[(ch)->specials.tactics]
-#define PROG_NUMBER(ch) (ch)->specials.union1.prog_number[(ch)->specials.tactics]
+/* RAII T5a: these read dedicated typed fields on char_special_data instead
+ * of reinterpret_cast'ing the PC poof strings / reply-pointer unions. */
+#define SPECIAL_STACK(ch) ((ch)->specials.special_stack)
+#define PROG_POINT(ch) (ch)->specials.special_prog_point[(ch)->specials.tactics]
+#define PROG_NUMBER(ch) (ch)->specials.special_prog_number[(ch)->specials.tactics]
 #define SPECIAL_STACKPOINT(ch) ((ch)->specials.invis_level)
 #define SPECIAL_PROGRAM(ch) (mobile_program[PROG_NUMBER(ch)])
 
@@ -44,7 +46,7 @@ struct special_list {
 };
 
 #define SPECIAL_LIST_AREA(ch) \
-    ((struct special_list*)((ch)->specials.poofOut))
+    ((ch)->specials.special_list_area)
 
 #define SPECIAL_LIST_HEAD(ch) \
     (SPECIAL_LIST_AREA(ch)->head)

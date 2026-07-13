@@ -1461,7 +1461,6 @@ struct char_data* read_mobile(int nr, int type)
     int i, age, was_fixed;
     byte tmp;
     struct char_data* mob;
-    void* tmpptr;
     affected_type tmp_aff;
 
     if (type == VIRT) {
@@ -1544,19 +1543,20 @@ struct char_data* read_mobile(int nr, int type)
         mob->player.time.logon = time(0);
     }
     if ((mob->specials.store_prog_number != 0) && (!IS_SET(mob->specials2.act, MOB_SPEC))) {
-        //     mob->specials.poofIn=(char *)calloc(SPECIAL_STACKLEN,sizeof(long));
-        //     mob->specials.poofOut=(char*)calloc(1,sizeof(struct special_list));
-        CREATE(tmpptr, long, SPECIAL_STACKLEN);
-        mob->specials.poofIn = (char*)tmpptr;
-        CREATE1(tmpptr, special_list);
-        mob->specials.poofOut = (char*)tmpptr;
+        // RAII T5a: the special-mob script stack/list/call-list/call-point
+        // buffers now live in their own typed fields (special_stack,
+        // special_list_area, special_prog_number, special_prog_point) instead
+        // of being reinterpret_cast'd through poofIn/poofOut/union1/union2.
+        // poofIn/poofOut are PC-only strings and stay null for mobs.
+        CREATE(mob->specials.special_stack, long, SPECIAL_STACKLEN);
+        CREATE1(mob->specials.special_list_area, special_list);
 
         tmp = mob->specials.store_prog_number;
         mob->specials.store_prog_number = 0;
-        CREATE(mob->specials.union1.prog_number, int, SPECIAL_CALLLIST);
-        CREATE(mob->specials.union2.prog_point, int, SPECIAL_CALLLIST);
-        mob->specials.union1.prog_number[0] = tmp;
-        mob->specials.union2.prog_point[0] = 0;
+        CREATE(mob->specials.special_prog_number, int, SPECIAL_CALLLIST);
+        CREATE(mob->specials.special_prog_point, int, SPECIAL_CALLLIST);
+        mob->specials.special_prog_number[0] = tmp;
+        mob->specials.special_prog_point[0] = 0;
         mob->specials.tactics = 0;
 
         for (tmp = 0; tmp < SPECIAL_STACKLEN; tmp++) {
@@ -1571,9 +1571,13 @@ struct char_data* read_mobile(int nr, int type)
         mob->specials.invis_level = 0;
         CALL_MASK(mob) = 255;
     } else {
-        mob->specials.poofIn = 0;
-        mob->specials.poofOut = 0;
+        mob->specials.special_stack = 0;
+        mob->specials.special_list_area = 0;
+        mob->specials.special_prog_number = 0;
+        mob->specials.special_prog_point = 0;
     }
+    mob->specials.poofIn = 0;
+    mob->specials.poofOut = 0;
     mob->specials.recite_lines = NULL;
     /* insert in list */
     mob->next = character_list;
@@ -3423,6 +3427,18 @@ void free_char(struct char_data* ch)
 
     RELEASE(ch->specials.poofIn);
     RELEASE(ch->specials.poofOut);
+
+    // RAII T5a: free the special-mob script buffers, now in their own typed
+    // fields (were reinterpret_cast'd through poofIn/poofOut/union1/union2).
+    // All null for PCs and ordinary mobs, so RELEASE (null-safe) is
+    // unconditional. Releasing special_prog_number/special_prog_point here
+    // fixes the ownership-map section 2c leak: pre-T5a these aliased
+    // union1.prog_number / union2.prog_point, which free_char could not free
+    // without risking a PC's reply_ptr/reply_number in the same union storage.
+    RELEASE(ch->specials.special_stack);
+    RELEASE(ch->specials.special_list_area);
+    RELEASE(ch->specials.special_prog_number);
+    RELEASE(ch->specials.special_prog_point);
 
     // Explicitly destroys the owning alias-list member before RELEASE(ch)
     // (free_function(ch), below) frees the raw char_data storage without

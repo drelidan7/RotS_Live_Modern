@@ -1247,6 +1247,12 @@ private:
     struct alias_list* head_ = nullptr;
 };
 
+// Incomplete-type forward decl so char_special_data can hold a special_list*
+// (the mudlle script target list). The full definition lives in mudlle.h
+// (which #includes this header), so only a pointer is possible here -- RAII
+// T5a decoupled this storage out of the poofOut char* type-pun.
+struct special_list;
+
 struct char_special_data {
     struct char_data* fighting; /* Opponent                             */
     struct char_data* hunting; /* Hunting person..                     */
@@ -1281,9 +1287,28 @@ struct char_special_data {
     int invis_level; /* level of invisibility		       */
     /* also a stack pointer for special mobs   */
 
+    // Special-mob (mudlle script interpreter) storage, decoupled from the
+    // poofIn/poofOut/union1/union2 type-pun by RAII T5a. Each is heap-
+    // allocated in read_mobile() for a special mob (store_prog_number != 0)
+    // and null for PCs and ordinary mobs; all four are unconditionally
+    // RELEASE()'d in free_char() (null-safe). Before T5a these lived
+    // reinterpret_cast'd through poofIn (long*), poofOut (special_list*),
+    // union1.prog_number and union2.prog_point -- an aliasing hazard that
+    // blocked converting the PC poof strings to std::string and left
+    // prog_number/prog_point leaked (no free path could tell them apart from
+    // a PC's reply_ptr/reply_number). The SPECIAL_STACK/SPECIAL_LIST_AREA/
+    // PROG_NUMBER/PROG_POINT macros (mudlle.h) now read these fields directly.
+    long* special_stack; /* SPECIAL_STACK: SPECIAL_STACKLEN-long value stack */
+    struct special_list* special_list_area; /* SPECIAL_LIST_AREA: target list */
+    int* special_prog_number; /* PROG_NUMBER: mobile-program call list */
+    int* special_prog_point; /* PROG_POINT: per-call cmd-line cursor list */
+
+    // Single-member union retained (rather than a plain field) so PC reply-
+    // target call sites keep the `union1.reply_ptr` spelling unchanged; the
+    // special-mob prog_number member that shared this storage moved to
+    // special_prog_number above (RAII T5a).
     union {
         struct char_data* reply_ptr;
-        int* prog_number; /* also a call list pointer for special mobs */
     } union1;
 
     int store_prog_number; /* in database, stores prog_numbers for mobiles,*/
@@ -1293,9 +1318,10 @@ struct char_special_data {
     /* 0 if no script */
     int script_number; /* vnum of script */
 
+    // Single-member union retained for the same reason as union1 above; the
+    // special-mob prog_point member moved to special_prog_point (RAII T5a).
     union {
         int reply_number;
-        int* prog_point; /* and the call point list for that*/
     } union2;
 
     struct memory_rec* memory; /* List of attackers to remember */

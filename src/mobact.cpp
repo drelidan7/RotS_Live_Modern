@@ -135,7 +135,7 @@ void one_mobile_activity(char_data* ch)
             }
 
         } else {
-            if (ch->specials.union1.prog_number) {
+            if (ch->specials.special_prog_number) {
                 if (intelligent(ch, ch, 0, mutable_arg(""), SPECIAL_SELF, 0)) {
                     return;
                 }

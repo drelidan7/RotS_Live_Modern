@@ -111,3 +111,41 @@ All 428 are AppleClang deprecating `sprintf` itself — a census of the modules 
 - Judgment-heavy steps are framed as disposition/triage with escalation rules rather than fake precision (Task 1 instance dispositions, Task 9 MSVC classes) — counts and exemplar sites are real (census 2026-07-12); exact instance lists are extracted in-task from the same logged procedure.
 - Type consistency: preset names (`linux-x64-sanitize`, `macos-arm64-asan`), census command, and flag lists are used identically across tasks; Task 8's file:line anchors verified this session (CMakeLists 113/157/350; Makefile 17/32; tests/Makefile 26).
 - Task 3 partition (c) protects on-disk formats — objsave/boards/mail composition sites feeding files get pragma+skip, mirroring D2's lesson rather than repeating its risk without its round-trip pin.
+
+---
+
+## Phase 5 Exit (2026-07-13)
+
+**Final commit:** `b802b8b` (branch `modernization/phase-5-hardening`, ~35 commits off master `2e7782f`).
+**Merge decision:** owner's (pending at write time; final CI run on the exit commits in flight).
+
+### The headline
+
+**Zero warnings, enforced as errors, on every platform:** GNU-family `-Wall -Wextra -Werror` (AppleClang 21, g++14 x64, g++14 -m32) and MSVC `/W4 /WX`. Baseline was 5,203 AppleClang warnings + 1,948 MSVC /W4 sites. `-w` is deleted from every build path.
+
+### Battery actuals (exit)
+
+- macOS native: 1015/0/71 + boot golden; rots64: 1015/0/73 + boot golden — both under -Werror, green at every task.
+- i386 (first -m32 -Werror exercise): build zero stragglers; ctest 1015/0/7; monolithic 1008 pass/0 fail, ZERO SIGSEGVs; boot golden byte-identical. (Two qemu hangs across the phase, killed+reran per guidance.)
+- CI matrix: SIX required jobs (4 platforms + Linux ASan/UBSan+LSan + macOS ASan/UBSan) green with /WX at run 29210731880; T9 completed in 3 CI cycles (≤4 budget).
+- Boot/combat/JSON goldens byte-identical throughout; zero sanctioned golden changes; RNG discipline verified per task.
+
+### Real bugs fixed this phase (all individually disclosed in task reports/commits)
+
+Stack overflows: shapescript SCRIPTPARAMCHANGE input[3]→[4] (Wave 2 backlog CLOSED); player-name 7-byte overflow. Boot crashes (real world data): fread_string stack-underflow; affect_modify negative-shift; singleton construction order. Leaks: store_to_char double-allocation (every account char selection). Output engine: handler.cpp null-GET_NAME std::format crash. Logic: sprintbit multichar-sentinel OOB + consts affected_bits missing-comma (compounding pair); 3× copy-pasted sscanf format-string bug; fscanf %ld-into-int 64-bit stack write; do_blinding disabled guard; do_gen_com imm_side wild-pointer read; self-compare/no-op-operator trio; mudlle inverted logic; obj2html struct-through-%s UB; structs.h rule-of-three; 23 MSVC-found uninitialized locals (6 verified UB-path). Plus ~140 test-fixture memory fixes (test_char_cleanup.h RAII) and the JsonUtils dangling-temporary tests.
+
+### Deliverables beyond fixes
+
+sprintf conversion COMPLETE tree-wide (T3's 401 + prior waves; 27 ledgered pragma skips incl. the Wave-2 DO_SAY security-hardening remainder — still OWED, see backlog); const/string_view campaign (all string tables `const char* const`, ~25 signatures widened, mutable_arg helper, 4 write-through-literal bugs fixed with real storage); ASan/UBSan CI presets + 2 required jobs; sanitize.supp (3 ledgered entries); curated .clang-tidy + advisory CI job (parallelized after a 30-min-timeout root-cause); BUILD.md Warnings policy (-funsigned-char pin = accepted resolution; 32-bit retirement = own future phase on owner's live-data confirmation); tests-Makefile -MMD carried from Wave 4.
+
+### Suppression ledger (all documented in-code + reports)
+
+GNU: zero blanket flags; 3 pragma clusters (act_info aliasing 15, utility 7, script.cpp DO_SAY 5) + 3 -Wrestrict/-Wnonnull-compare singles. MSVC: /wd4244 /wd4267 (1,167 benign narrowing sites — future-revisit ledgered), /wd4456/4458/4459 (shadowing, GNU-parity), /wd4702, /wd4127, /wd4310 (/J-blind FP), _CRT_NONSTDC_NO_WARNINGS. macOS ASan CI: detect_container_overflow=0 (brew gtest uninstrumented — revisit on FetchContent).
+
+### Backlog (carried, prioritized candidates first)
+
+(1) script.cpp DO_SAY template-hardening (SECURITY: builder-authored format strings — safe_template treatment owed since Wave 2). (2) Crash_alias_load production leak (alias lifecycle). (3) The 2 FIXME likely-missing-break fallthroughs (fight.cpp:2041 whip→bludgeon, shapemob.cpp:98 easterling language) — behavior-fix candidates. (4) buf-aliasing display cluster conversion. (5) target_data operator== by-value (dead-code latent leak). (6) MSVC narrowing /wd4244/4267 revisit. (7) RAII lifecycle-audit wave. (8) 32-bit retirement phase (owner-triggered). (9) gtest FetchContent for macOS sanitize job.
+
+### Phase 5 status vs parent spec
+
+Warnings clean + enforced: DONE (beyond spec — all four platforms, not just GNU). Sanitizers in CI: DONE (required, not just present). -funsigned-char: RESOLVED by pin (sanctioned option). clang-tidy: DONE (advisory). 32-bit retirement: MOVED to its own phase. **The parent modernization spec's Phase 5 exit criteria are met**; remaining items live on the backlog above.

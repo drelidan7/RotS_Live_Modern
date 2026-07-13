@@ -103,3 +103,30 @@ Claude-Session: https://claude.ai/code/session_01W2FhYpeUrffvBxb6q3EGKi
 - T1's malformed-case tests are deliberately fail-first (they pin NEW contract behavior) while well-formed pins are pass-first characterization — both stated explicitly to avoid the reviewer flagging the inversion.
 - T5's census procedure avoids a broken-window push (census commit clearly labeled and reverted; /WX only off for that one labeled cycle).
 - Anchors verified this session: safe_template.h:48 expand_checked; script.cpp five SCRIPT_* sites (T3 pragma ledger); interpre.cpp:694 operator==; fight.cpp:2041/shapemob.cpp:98 FIXMEs; sanitize.supp Crash_alias_load entry; Windows FetchContent precedent in CMakeLists.
+
+---
+
+## Backlog Cleanup Exit (2026-07-13)
+
+**Final commit:** `fbd1f6b` (branch `modernization/backlog-cleanup`; ~16 commits off master `c7183ed`).
+**Merge decision:** owner's (pending; final CI on the exit commits in flight at write time).
+
+### Delivered
+
+- **T1 DO_SAY security hardening:** the five builder-authored-format-string sites route through `safe_template::expand_checked_one` (nz()-preserved "(null)" for null args per depot convention); pre-existing null-arg UB closed; security-notes entry RESOLVED. (+8 pins)
+- **T2:** Crash_alias_load production leak FIXED (free_alias_list in free_char; sanitize.supp entry removed, LSan-proof) — and the target_data operator== const& change closed a SECOND real leak (macro-obscured live caller at mudlle.cpp:324 leaked a pooled txt_block per TARGET_TEXT comparison; record corrected — it was never dead code). INVESTIGATE comments landed at both fallthrough sites incl. the owner's live-game whip observation.
+- **T3:** the thrice-deferred buf-aliasing display cluster converted (7 sprintf sites materialize-then-strcpy; do_look case-8 exit_mark table → compile-time switch, byte-verified ×7 and deleted). act_info.cpp pragma census = 1 (add_prompt, justified). (+34 pins)
+- **T4:** macOS ASan CI job runs FetchContent-instrumented gtest; detect_container_overflow re-enabled (Phase 5 FP diagnosis confirmed).
+- **T5 MSVC narrowing:** raw census 1,167 = Phase 5 T9 exactly (zero drift) → 1,067 unique sites; 84-site stratified read; **2 real fixes** (target_data::ch_num sh_int latent OOB — abs_number reaches 63,999 vs 32,767 — layout-neutral, unserialized; romfl flags snapshot); 48 sites escalated as parked format-migration work (11 idnum-into-sh_int in frozen exploit/crime formats; 37 Y2038 time_t); disposition: global /wd kept, 972 benign remain, evidence + reproducibility in BUILD.md, deduped site list preserved.
+
+### Battery actuals
+
+macOS 1057/0/71 + boot golden; rots64 1057/0/73 + boot golden (per task); i386 at exit: ctest 1057/0/7, monolithic 1050 pass/0 fail ZERO SIGSEGVs, boot golden byte-identical (one qemu hang killed+reran). CI: 7/7 jobs green ×2 cycles mid-wave (advisory clang-tidy's FIRST successes — the Phase 5 timeout fix works); final run on exit commits recorded in ledger. Goldens byte-identical throughout; suite 1015 → 1057.
+
+### Suppression net: −14
+
+Removed: 5 script.cpp deprecation pragma-pairs, 7 act_info.cpp cluster pairs (incl. the -Wrestrict pair inside show_room_*), 1 sanitize.supp entry, 1 ci.yml container-overflow override. Added: zero.
+
+### Carried / backlog
+
+utility.cpp's 7 unrelated pragma-pairs (check_*_proto/PERS cluster — separate future item); INVESTIGATE: whip fallthrough (live-game whip/lash observation — verify message-path provenance vs RotS_Live) + Easterling language; unbounded strcpy into output[500] at the script sites (pre-existing); mudlle comparison-path leak regression test; parked format-migration narrowings (11 idnum + 37 Y2038); root .clang-format vs WebKit mismatch + format-hook resolution; MSVC /wd4244/4267 evidence-based keep (revisit only with format-migration). Next effort: the RAII lifecycle-audit wave.

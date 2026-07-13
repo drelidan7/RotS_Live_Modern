@@ -54,6 +54,15 @@ TEST(ObjectData, ReportsNonContainerAsNotQuiver) {
         << "Expected only containers to be recognized as quivers.";
 }
 
+TEST(ObjectData, ReportsContainerWithNullNameAsNotQuiver)
+{
+    obj_data object {};
+    object.obj_flags.type_flag = ITEM_CONTAINER;
+    object.name = nullptr;
+
+    EXPECT_FALSE(object.is_quiver());
+}
+
 TEST(ObjectData, ReportsBowWeaponAsRangedWeapon) {
     obj_data object{};
     object.obj_flags = builders::ObjFlagDataBuilder()

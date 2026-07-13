@@ -798,13 +798,13 @@ int get_real_parry(struct char_data* ch)
         weapon_bonus = weapon->obj_flags.value[1];
 
         tmpskill = GET_RAW_KNOWLEDGE(ch, weapon_skill_num(weapon->obj_flags.value[3]));
-        if (isname("bow", weapon->name)) {
+        if (isname_nullable("bow", weapon->name)) {
             tmpskill = GET_RAW_SKILL(ch, SKILL_ARCHERY);
         }
 
         if (IS_TWOHANDED(ch)) {
             tmpskill = (tmpskill + GET_RAW_KNOWLEDGE(ch, SKILL_TWOHANDED)) / 2;
-            if (isname("bow", weapon->name)) {
+            if (isname_nullable("bow", weapon->name)) {
                 tmpskill = (tmpskill + GET_RAW_SKILL(ch, SKILL_ARCHERY)) / 2;
             }
         }
@@ -1195,6 +1195,17 @@ int str_cmp(std::string_view first, std::string_view second)
     return 0;
 }
 
+int str_cmp_nullable(const char* first, const char* second)
+{
+    if (first == nullptr || second == nullptr) {
+        if (first == second) {
+            return 0;
+        }
+        return first == nullptr ? -1 : 1;
+    }
+    return str_cmp(first, second);
+}
+
 /* returns: 0 if equal, 1 if arg1 > arg2, -1 if arg1 < arg2  */
 /* scan 'till found different, end of both, or n reached     */
 int strn_cmp(std::string_view first, std::string_view second, int count)
@@ -1222,6 +1233,17 @@ int strn_cmp(std::string_view first, std::string_view second, int count)
         return 0;
     }
     return first.size() < second.size() ? -1 : 1;
+}
+
+int strn_cmp_nullable(const char* first, const char* second, int count)
+{
+    if (first == nullptr || second == nullptr) {
+        if (first == second) {
+            return 0;
+        }
+        return first == nullptr ? -1 : 1;
+    }
+    return strn_cmp(first, second, count);
 }
 
 /* log a death trap hit */
@@ -1902,7 +1924,7 @@ int find_player_in_table(const char* name, int idnum)
     int i;
 
     for (i = 0; i <= top_of_p_table; i++)
-        if (((idnum < 0) && (!str_cmp((player_table + i)->name, name))) || ((player_table + i)->idnum == idnum))
+        if (((idnum < 0) && (!str_cmp_nullable((player_table + i)->name, name))) || ((player_table + i)->idnum == idnum))
             break;
 
     if ((i > top_of_p_table) || (IS_SET((player_table + i)->flags, PLR_DELETED)))
@@ -2057,13 +2079,13 @@ int compare_obj_to_proto(struct obj_data* obj)
         diff--;
     else {
         // Compare the easy stuff.
-        if (str_cmp(obj->name, tmp->name))
+        if (str_cmp_nullable(obj->name, tmp->name))
             diff++;
-        if (str_cmp(obj->description, tmp->description))
+        if (str_cmp_nullable(obj->description, tmp->description))
             diff++;
-        if (str_cmp(obj->short_description, tmp->short_description))
+        if (str_cmp_nullable(obj->short_description, tmp->short_description))
             diff++;
-        if (str_cmp(obj->action_description, tmp->action_description))
+        if (str_cmp_nullable(obj->action_description, tmp->action_description))
             diff++;
 
         // Compare extra descriptions.
@@ -2072,7 +2094,7 @@ int compare_obj_to_proto(struct obj_data* obj)
 
         if (edesc && tmp_edesc)
             do {
-                if (!((edesc->keyword == tmp_edesc->keyword) && (!str_cmp(edesc->description, tmp_edesc->description))))
+                if (!((edesc->keyword == tmp_edesc->keyword) && (!str_cmp_nullable(edesc->description, tmp_edesc->description))))
                     diff++;
                 edesc = edesc->next;
                 tmp_edesc = tmp_edesc->next;

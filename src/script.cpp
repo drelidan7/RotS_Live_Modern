@@ -1409,7 +1409,7 @@ int run_script(struct info_script* info, struct script_data* position)
             if (curr->param[0]) {
                 txt1 = get_text_param(curr->param[0], info);
                 if (txt1) {
-                    if (!str_cmp(txt1, curr->text)) {
+                    if (!str_cmp_nullable(txt1, curr->text)) {
                         curr = curr->next;
                     } else {
                         if (curr->next) {

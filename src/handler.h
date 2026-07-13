@@ -53,6 +53,8 @@ void affect_join(struct char_data* ch, struct affected_type* af,
 struct obj_data* create_money(int amount);
 /// Returns whether bounded `query` matches a word in `name_list` using legacy prefix rules.
 int isname(std::string_view query, std::string_view name_list, char full = 1);
+/// Matches nullable legacy text pointers without constructing a view from a null value.
+int isname_nullable(const char* query, const char* name_list, char full = 1);
 char* fname(char* namelist);
 
 /* ******** objects *********** */

@@ -1195,13 +1195,13 @@ ASPELL(spell_beacon)
 
     if (wtl->targ2.type == TARGET_TEXT) {
 
-        if (!str_cmp(wtl->targ2.ptr.text->text, "set"))
+        if (!str_cmp_nullable(wtl->targ2.ptr.text->text, "set"))
             mode = 1;
 
-        else if (!str_cmp(wtl->targ2.ptr.text->text, "return"))
+        else if (!str_cmp_nullable(wtl->targ2.ptr.text->text, "return"))
             mode = 2;
 
-        else if (!str_cmp(wtl->targ2.ptr.text->text, "release"))
+        else if (!str_cmp_nullable(wtl->targ2.ptr.text->text, "release"))
             mode = 3;
 
     } else if (wtl->targ2.type == TARGET_NONE) {

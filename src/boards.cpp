@@ -452,7 +452,7 @@ int board_info_type::show_board(struct char_data* ch,
     while (*arg1 && (*arg1 <= ' '))
         arg1++;
 
-    if (!*tmp || !isname(tmp, "board bulletin"))
+    if (!*tmp || !isname_nullable(tmp, "board bulletin"))
         return 0;
     if (*arg1 && !strcmp("all", arg1))
         allflag = 1;

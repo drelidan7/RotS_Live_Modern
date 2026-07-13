@@ -24,6 +24,9 @@ struct AccountData;
 
 #define MAX_CMD_LIST 350
 
+/// Lists interpreter filler words and ends with the legacy `"\n"` sentinel.
+extern const char* const fill[];
+
 // ACMD declares the fixed do_* command-handler signature; most implementations only use a
 // subset of the 5 parameters (e.g. ignore cmd/subcmd), so every parameter is annotated
 // [[maybe_unused]] here rather than at each of the ~510 call sites (-Wunused-parameter).

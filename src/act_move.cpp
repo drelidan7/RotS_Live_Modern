@@ -994,7 +994,7 @@ int find_door(struct char_data* ch, char* type, char* dir)
 
         if (EXIT(ch, door) && (EXIT(ch, door)->to_room != NOWHERE))
             if (EXIT(ch, door)->keyword)
-                if (isname(type, EXIT(ch, door)->keyword))
+                if (isname_nullable(type, EXIT(ch, door)->keyword))
                     return (door);
                 else {
                     send_to_char(std::format("I see no {} there.\n\r", type), ch);
@@ -1010,7 +1010,7 @@ int find_door(struct char_data* ch, char* type, char* dir)
         for (door = 0; door < NUM_OF_DIRS; door++)
             if (EXIT(ch, door) && (EXIT(ch, door)->to_room != NOWHERE))
                 if (EXIT(ch, door)->keyword)
-                    if (isname(type, EXIT(ch, door)->keyword))
+                    if (isname_nullable(type, EXIT(ch, door)->keyword))
                         return (door);
 
         send_to_char(std::format("I see no {} here.\n\r", type), ch);
@@ -1052,7 +1052,7 @@ ACMD(do_open)
                 return;
             }
             sscanf(EXIT(ch, d1)->keyword, "%s", type);
-            if (str_cmp(EXIT(ch, d2)->keyword, type)) {
+            if (str_cmp_nullable(EXIT(ch, d2)->keyword, type)) {
                 send_to_char(std::format("No {} in that direction.\n\r", static_cast<const char*>(type)), ch);
                 return;
             }
@@ -1163,7 +1163,7 @@ ACMD(do_close)
                 return;
             }
             sscanf(EXIT(ch, d1)->keyword, "%s", type);
-            if (str_cmp(EXIT(ch, d2)->keyword, type)) {
+            if (str_cmp_nullable(EXIT(ch, d2)->keyword, type)) {
                 send_to_char(std::format("No {} in that direction.\n\r", static_cast<const char*>(type)), ch);
                 return;
             }
@@ -1413,7 +1413,7 @@ ACMD(do_enter)
         for (door = 0; door < NUM_OF_DIRS; door++)
             if (EXIT(ch, door))
                 if (EXIT(ch, door)->keyword)
-                    if (!str_cmp(EXIT(ch, door)->keyword, buf)) {
+                    if (!str_cmp_nullable(EXIT(ch, door)->keyword, buf)) {
                         do_move(ch, mutable_arg(""), wtl, ++door, 0);
                         return;
                     }
@@ -1664,7 +1664,7 @@ ACMD(do_lose)
         send_to_char("Whom do you want to lose?\n\r", ch);
         return;
     }
-    if (!str_cmp(buf, "all"))
+    if (!str_cmp_nullable(buf, "all"))
         for (tmpfol = ch->followers; tmpfol; tmpfol = ch->followers)
             stop_follower(tmpfol->follower, FOLLOW_MOVE);
     else {
@@ -1691,7 +1691,7 @@ ACMD(do_follow)
     one_argument(argument, buf);
 
     if (*buf) {
-        if (!str_cmp(buf, "self")) {
+        if (!str_cmp_nullable(buf, "self")) {
             leader = ch;
         } else {
             leader = get_char_room_vis(ch, buf);

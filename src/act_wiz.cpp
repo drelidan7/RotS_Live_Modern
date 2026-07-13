@@ -329,7 +329,7 @@ ACMD(do_trans)
     one_argument(argument, buf);
     if (!*buf)
         send_to_char("Whom do you wish to transfer?\n\r", ch);
-    else if (str_cmp("all", buf)) {
+    else if (str_cmp_nullable("all", buf)) {
         if (!(victim = get_char_vis(ch, buf)))
             send_to_char("No-one by that name around.\n\r", ch);
         else if (victim == ch)
@@ -1235,17 +1235,17 @@ ACMD(do_shutdown)
         send_to_all(message.c_str());
         log(message);
         circle_shutdown = 1;
-    } else if (!str_cmp(arg, "reboot")) {
+    } else if (!str_cmp_nullable(arg, "reboot")) {
         log(std::format("(GC) Reboot by {}.", GET_NAME(ch)));
         send_to_all("Rebooting... come back in a minute or two.");
         circle_shutdown = circle_reboot = 1;
-    } else if (!str_cmp(arg, "die")) {
+    } else if (!str_cmp_nullable(arg, "die")) {
         const std::string message = std::format("(GC) Shutdown by {}. \n\r", GET_NAME(ch));
         send_to_all(message.c_str());
         log(message);
         touch_file("../.killscript");
         circle_shutdown = 1;
-    } else if (!str_cmp(arg, "pause")) {
+    } else if (!str_cmp_nullable(arg, "pause")) {
         const std::string message = std::format("(GC) Shutdown by {}. \n\r", GET_NAME(ch));
         send_to_all(message.c_str());
         log(message);
@@ -1979,7 +1979,7 @@ ACMD(do_force)
 
     if (!*name || !*to_force)
         send_to_char("Whom do you wish to force do what?\n\r", ch);
-    else if (str_cmp("all", name) && str_cmp("room", name)) {
+    else if (str_cmp_nullable("all", name) && str_cmp_nullable("room", name)) {
         if (!(vict = get_char_vis(ch, name)) || !CAN_SEE(ch, vict))
             send_to_char("No-one by that name here...\n\r", ch);
         else {
@@ -1998,7 +1998,7 @@ ACMD(do_force)
             } else
                 send_to_char("No, no, no!\n\r", ch);
         }
-    } else if (str_cmp("room", name)) {
+    } else if (str_cmp_nullable("room", name)) {
         send_to_char("Okay.\n\r", ch);
         if (GET_LEVEL(ch) < LEVEL_IMPL) {
             strcpy(buf,
@@ -2222,7 +2222,7 @@ ACMD(do_wizutil)
             return;
         }
         for (tmp = 0; tmp < num_of_wizutils; tmp++)
-            if (!str_cmp(wizutil_options[tmp].field, wtl->targ1.ptr.text->text))
+            if (!str_cmp_nullable(wizutil_options[tmp].field, wtl->targ1.ptr.text->text))
                 break;
 
         if ((tmp == num_of_wizutils) || (wtl->targ2.type != TARGET_CHAR)) {
@@ -2777,10 +2777,10 @@ ACMD(do_wizset)
     if (!strcmp(name, "file")) {
         is_file = 1;
         half_chop(buf, name, buf);
-    } else if (!str_cmp(name, "player")) {
+    } else if (!str_cmp_nullable(name, "player")) {
         is_player = 1;
         half_chop(buf, name, buf);
-    } else if (!str_cmp(name, "mob")) {
+    } else if (!str_cmp_nullable(name, "mob")) {
         half_chop(buf, name, buf);
     }
 
@@ -2951,11 +2951,11 @@ ACMD(do_wizset)
         affect_total(vict);
         break;
     case 17:
-        if (!str_cmp(val_arg, "male"))
+        if (!str_cmp_nullable(val_arg, "male"))
             vict->player.sex = SEX_MALE;
-        else if (!str_cmp(val_arg, "female"))
+        else if (!str_cmp_nullable(val_arg, "female"))
             vict->player.sex = SEX_FEMALE;
-        else if (!str_cmp(val_arg, "neutral"))
+        else if (!str_cmp_nullable(val_arg, "neutral"))
             vict->player.sex = SEX_NEUTRAL;
         else {
             send_to_char("Must be 'male', 'female', or 'neutral'.\n\r", ch);
@@ -3009,7 +3009,7 @@ ACMD(do_wizset)
     case 29:
     case 30:
     case 31:
-        if (!str_cmp(val_arg, "off")) {
+        if (!str_cmp_nullable(val_arg, "off")) {
             GET_COND(vict, (l - 29)) = (signed char)-1;
             strcpy(buf, std::format("{}'s {} now off.", GET_NAME(vict), fields[l].cmd).c_str());
         } else if (is_number(val_arg)) {
@@ -3059,9 +3059,9 @@ ACMD(do_wizset)
         SET_OR_REMOVE(PLR_FLAGS(vict), PLR_NOWIZLIST);
         break;
     case 42:
-        if (!str_cmp(val_arg, "on"))
+        if (!str_cmp_nullable(val_arg, "on"))
             SET_BIT(PLR_FLAGS(vict), PLR_LOADROOM);
-        else if (!str_cmp(val_arg, "off"))
+        else if (!str_cmp_nullable(val_arg, "off"))
             REMOVE_BIT(PLR_FLAGS(vict), PLR_LOADROOM);
         else {
             if (real_room(i = atoi(val_arg)) > -1) {
@@ -3277,7 +3277,7 @@ ACMD(do_account)
     std::string error_message;
     account::AccountData account_data;
 
-    if (!str_cmp(subcommand, "show")) {
+    if (!str_cmp_nullable(subcommand, "show")) {
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
             send_to_char((error_message + "\n\r"), ch);
@@ -3288,7 +3288,7 @@ ACMD(do_account)
         return;
     }
 
-    if (!str_cmp(subcommand, "block")) {
+    if (!str_cmp_nullable(subcommand, "block")) {
         if (!*value) {
             send_to_char("Usage: account block <email-or-account> <reason>\n\r", ch);
             return;
@@ -3311,7 +3311,7 @@ ACMD(do_account)
         return;
     }
 
-    if (!str_cmp(subcommand, "verify")) {
+    if (!str_cmp_nullable(subcommand, "verify")) {
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
             send_to_char((error_message + "\n\r"), ch);
@@ -3330,7 +3330,7 @@ ACMD(do_account)
         return;
     }
 
-    if (!str_cmp(subcommand, "unverify")) {
+    if (!str_cmp_nullable(subcommand, "unverify")) {
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
             send_to_char((error_message + "\n\r"), ch);
@@ -3349,7 +3349,7 @@ ACMD(do_account)
         return;
     }
 
-    if (!str_cmp(subcommand, "unblock")) {
+    if (!str_cmp_nullable(subcommand, "unblock")) {
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
             send_to_char((error_message + "\n\r"), ch);
@@ -3367,7 +3367,7 @@ ACMD(do_account)
         return;
     }
 
-    if (!str_cmp(subcommand, "passwd")) {
+    if (!str_cmp_nullable(subcommand, "passwd")) {
         if (!*value) {
             send_to_char("Usage: account passwd <email-or-account> <new-password>\n\r", ch);
             return;
@@ -3391,7 +3391,7 @@ ACMD(do_account)
         return;
     }
 
-    if (!str_cmp(subcommand, "addchar")) {
+    if (!str_cmp_nullable(subcommand, "addchar")) {
         if (!*value) {
             send_to_char("Usage: account addchar <email-or-account> <character>\n\r", ch);
             return;
@@ -3415,7 +3415,7 @@ ACMD(do_account)
         return;
     }
 
-    if (!str_cmp(subcommand, "migratechar")) {
+    if (!str_cmp_nullable(subcommand, "migratechar")) {
         account::CharacterMigrationData migration;
         if (!*value) {
             send_to_char("Usage: account migratechar <email-or-account> <character>\n\r", ch);
@@ -3441,7 +3441,7 @@ ACMD(do_account)
         return;
     }
 
-    if (!str_cmp(subcommand, "unlockselect")) {
+    if (!str_cmp_nullable(subcommand, "unlockselect")) {
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
             send_to_char((error_message + "\n\r"), ch);

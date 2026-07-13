@@ -96,7 +96,7 @@ ACMD(do_put)
         } else if (IS_SET(container->obj_flags.value[1], CONT_CLOSED)) {
             send_to_char("You'd better open it first!\n\r", ch);
         } else {
-            bool is_quiver = isname("quiver", container->name) != 0;
+            bool is_quiver = isname_nullable("quiver", container->name) != 0;
             if (obj_dotmode == FIND_ALL) { /* "put all <container>" case */
                 /* check and make sure the guy has something first */
                 if (container == ch->carrying && !ch->carrying->next_content) {

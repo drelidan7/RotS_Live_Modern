@@ -320,7 +320,7 @@ char* find_ex_description(char* word, struct extra_descr_data* list)
     struct extra_descr_data* i;
 
     for (i = list; i; i = i->next)
-        if (isname(word, i->keyword))
+        if (isname_nullable(word, i->keyword))
             return (i->description);
 
     return 0;
@@ -2267,7 +2267,7 @@ ACMD(do_help)
         for (;;) {
             mid = (bot + top) / 2;
 
-            if (!(chk = strn_cmp(argument, help_content[num].index[mid].keyword, minlen))) {
+            if (!(chk = strn_cmp_nullable(argument, help_content[num].index[mid].keyword, minlen))) {
                 fseek(help_content[num].file, help_content[num].index[mid].pos, SEEK_SET);
                 // fgets() writes into the shared global `buf` directly (a
                 // parser-adjacent buffer per transform idiom catalog item 8)
@@ -2436,7 +2436,7 @@ ACMD(do_who)
         if (other_side(ch, tch))
             continue;
         /* they're searching names and titles for `name_search' */
-        if (*name_search && str_cmp(GET_NAME(tch), name_search) && !strstr(GET_TITLE(tch), name_search))
+        if (*name_search && str_cmp_nullable(GET_NAME(tch), name_search) && !strstr(GET_TITLE(tch), name_search))
             continue;
         /* ch isn't big enough to see through tch's invisibility */
         if ((GET_LEVEL(ch) < GET_INVIS_LEV(tch)) || GET_LEVEL(tch) < low || GET_LEVEL(tch) > high)
@@ -2623,7 +2623,7 @@ ACMD(do_users)
 
             if (*host_search && !strstr(d->host, host_search))
                 continue;
-            if (*name_search && str_cmp(GET_NAME(tch), name_search) && !strstr(GET_TITLE(tch), name_search))
+            if (*name_search && str_cmp_nullable(GET_NAME(tch), name_search) && !strstr(GET_TITLE(tch), name_search))
                 continue;
             if (!CAN_SEE(ch, tch) || GET_LEVEL(tch) < low || GET_LEVEL(tch) > high)
                 continue;
@@ -2760,7 +2760,7 @@ void perform_mortal_where(struct char_data* ch, char* arg)
             }
     } else { /* print only FIRST char, not all. */
         for (i = character_list; i; i = i->next)
-            if ((i->in_room != NOWHERE) && (!IS_NPC(i)) && (world[i->in_room].zone == world[ch->in_room].zone) && (world[i->in_room].level == world[ch->in_room].level) && CAN_SEE(ch, i) && (!other_side(ch, i)) && isname(arg, i->player.name)) {
+            if ((i->in_room != NOWHERE) && (!IS_NPC(i)) && (world[i->in_room].zone == world[ch->in_room].zone) && (world[i->in_room].level == world[ch->in_room].level) && CAN_SEE(ch, i) && (!other_side(ch, i)) && isname_nullable(arg, i->player.name)) {
                 tmploc = ch->in_room;
                 ch->in_room = i->in_room;
                 std::string line = std::format(
@@ -2802,7 +2802,7 @@ void perform_immort_where(struct char_data* ch, char* arg)
             }
     } else {
         for (i = character_list; i; i = i->next)
-            if (CAN_SEE(ch, i) && i->in_room != NOWHERE && (isname(arg, i->player.name) || mob_index[i->nr].virt == atoi(arg))) {
+            if (CAN_SEE(ch, i) && i->in_room != NOWHERE && (isname_nullable(arg, i->player.name) || mob_index[i->nr].virt == atoi(arg))) {
                 found = 1;
                 send_to_char(std::format("{:3}. {:<25} - [{:5}] {}\n\r", ++num, GET_NAME(i),
                                  world[i->in_room].number, world[i->in_room].name)
@@ -2811,7 +2811,7 @@ void perform_immort_where(struct char_data* ch, char* arg)
             }
 
         for (num = 0, k = object_list; k; k = k->next)
-            if ((CAN_SEE_OBJ(ch, k) && isname(arg, k->name)) || (atoi(arg) == obj_index[k->item_number].virt && atoi(arg))) {
+            if ((CAN_SEE_OBJ(ch, k) && isname_nullable(arg, k->name)) || (atoi(arg) == obj_index[k->item_number].virt && atoi(arg))) {
                 found = 1;
                 tmp = NOWHERE;
                 tmpobj = 0;
@@ -3585,7 +3585,7 @@ ACMD(do_search)
         len = strlen(argument);
 
         for (tmp = 0; tmp < NUM_OF_DIRS; tmp++)
-            if (!strn_cmp(dirs[tmp], argument, len))
+            if (!strn_cmp_nullable(dirs[tmp], argument, len))
                 break;
 
         if (tmp >= NUM_OF_DIRS) {

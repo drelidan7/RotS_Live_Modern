@@ -614,7 +614,7 @@ ACMD(do_string)
                     ch->desc->str = &ed->description;
                     send_to_char("New field.\n\r", ch);
                     break;
-                } else if (!str_cmp(ed->keyword, string)) /* the field exists */ {
+                } else if (!str_cmp_nullable(ed->keyword, string)) /* the field exists */ {
                     RELEASE(ed->description);
                     ed->description = 0;
                     ch->desc->str = &ed->description;
@@ -634,7 +634,7 @@ ACMD(do_string)
                 if (!ed) {
                     send_to_char("No field with that keyword.\n\r", ch);
                     return;
-                } else if (!str_cmp(ed->keyword, string)) {
+                } else if (!str_cmp_nullable(ed->keyword, string)) {
                     RELEASE(ed->keyword);
                     RELEASE(ed->description);
 
@@ -759,7 +759,7 @@ build_help_index(FILE* fl, int* num, struct help_index_element** listpt)
     do {
         issorted = 1;
         for (i = 0; i < nr; i++) {
-            if (str_cmp(list[i].keyword, list[i + 1].keyword) > 0) {
+            if (str_cmp_nullable(list[i].keyword, list[i + 1].keyword) > 0) {
                 mem = list[i];
                 list[i] = list[i + 1];
                 list[i + 1] = mem;

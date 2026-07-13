@@ -306,6 +306,25 @@ const char* color_color[] = {
 
 int num_of_colors = sizeof(color_color) / sizeof(color_color[0]);
 
+const char* const color_sequence[] = {
+    "\x1B[0m",
+    "\x1B[31m",
+    "\x1B[32m",
+    "\x1B[33m",
+    "\x1B[34m",
+    "\x1B[35m",
+    "\x1B[36m",
+    "\x1B[37m",
+    "\x1B[01m\x1B[31m",
+    "\x1B[01m\x1B[32m",
+    "\x1B[01m\x1B[33m",
+    "\x1B[01m\x1B[34m",
+    "\x1B[01m\x1B[35m",
+    "\x1B[01m\x1B[36m",
+    "\x1B[01m\x1B[37m",
+    ""
+};
+
 int find_color_field(std::string_view field_name)
 {
     field_name = rots::text::truncate_at_null(field_name);
@@ -480,7 +499,7 @@ const char* get_color_sequence(struct char_data* ch, int col)
             ? static_cast<int>(foreground.ansi)
             : static_cast<int>(ch->profs->colors[col]);
         if (ansi_index != CNRM)
-            append_escape(buffer, kColorRenderBufferSize, &length, color_sequence[ansi_index].data());
+            append_escape(buffer, kColorRenderBufferSize, &length, color_sequence[ansi_index]);
     }
 
     if (background.mode == COLOR_VALUE_TRUECOLOR)
@@ -566,8 +585,8 @@ ACMD(do_color)
     }
 
     half_chop(arg, option, remainder);
-    if (!str_cmp(option, "fg") || !str_cmp(option, "bg")) {
-        const bool foreground = !str_cmp(option, "fg");
+    if (!str_cmp_nullable(option, "fg") || !str_cmp_nullable(option, "bg")) {
+        const bool foreground = !str_cmp_nullable(option, "fg");
         char mode[MAX_INPUT_LENGTH];
         char value_arguments[MAX_INPUT_LENGTH];
         half_chop(remainder, mode, value_arguments);
@@ -577,7 +596,7 @@ ACMD(do_color)
             return;
         }
 
-        if (!str_cmp(mode, "default")) {
+        if (!str_cmp_nullable(mode, "default")) {
             if (foreground) {
                 ch->profs->color_settings[num].foreground = color_value_data {};
                 ch->profs->colors[num] = CNRM;
@@ -589,7 +608,7 @@ ACMD(do_color)
             return;
         }
 
-        if (!str_cmp(mode, "ansi")) {
+        if (!str_cmp_nullable(mode, "ansi")) {
             col = find_ansi_color(value_arguments);
             if (col < 0) {
                 send_to_char("Possible colours are:", ch);
@@ -611,7 +630,7 @@ ACMD(do_color)
             return;
         }
 
-        if (!str_cmp(mode, "rgb")) {
+        if (!str_cmp_nullable(mode, "rgb")) {
             int red, green, blue;
             if (!parse_rgb_triplet(value_arguments, &red, &green, &blue)) {
                 send_to_char("RGB colours must be provided as three integers.\n\r", ch);
@@ -632,7 +651,7 @@ ACMD(do_color)
             return;
         }
 
-        if (!str_cmp(mode, "hex")) {
+        if (!str_cmp_nullable(mode, "hex")) {
             int red, green, blue;
             if (!parse_hex_triplet(value_arguments, &red, &green, &blue)) {
                 send_to_char("Hex colours must look like #RRGGBB.\n\r", ch);

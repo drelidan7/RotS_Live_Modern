@@ -379,7 +379,7 @@ ACMD(do_pour)
             return;
         }
 
-        if (!str_cmp(arg2, "out")) {
+        if (!str_cmp_nullable(arg2, "out")) {
             if (from_obj->obj_flags.type_flag == ITEM_FOUNTAIN) {
                 send_to_char("You can't empty this.\n\r", ch);
                 return;
@@ -1131,7 +1131,7 @@ ACMD(do_remove)
         else {
             found = 0;
             for (i = 0; i < MAX_WEAR; i++)
-                if (ch->equipment[i] && CAN_SEE_OBJ(ch, ch->equipment[i]) && isname(arg, ch->equipment[i]->name, 0)) {
+                if (ch->equipment[i] && CAN_SEE_OBJ(ch, ch->equipment[i]) && isname_nullable(arg, ch->equipment[i]->name, 0)) {
                     perform_remove(ch, i);
                     found = 1;
                 }
@@ -1142,7 +1142,7 @@ ACMD(do_remove)
     } else {
         for (i = 0; i < MAX_WEAR; i++)
             if (ch->equipment[i])
-                if (isname(arg, ch->equipment[i]->name, 0))
+                if (isname_nullable(arg, ch->equipment[i]->name, 0))
                     break;
         if (i < MAX_WEAR)
             perform_remove(ch, i);
@@ -1170,7 +1170,7 @@ ACMD(do_light)
         torch = get_obj_in_list_vis(ch, arg, world[ch->in_room].contents, 9999);
         if (!torch)
             for (i = 0; i < MAX_WEAR; i++)
-                if (ch->equipment[i] && CAN_SEE_OBJ(ch, ch->equipment[i]) && isname(arg, ch->equipment[i]->name, 0)) {
+                if (ch->equipment[i] && CAN_SEE_OBJ(ch, ch->equipment[i]) && isname_nullable(arg, ch->equipment[i]->name, 0)) {
                     torch = ch->equipment[i];
                     break;
                 }
@@ -1210,7 +1210,7 @@ ACMD(do_blowout)
         torch = ch->equipment[WEAR_LIGHT];
     else {
         for (i = 0; i < MAX_WEAR; i++)
-            if (ch->equipment[i] && CAN_SEE_OBJ(ch, ch->equipment[i]) && isname(arg, ch->equipment[i]->name, 0)) {
+            if (ch->equipment[i] && CAN_SEE_OBJ(ch, ch->equipment[i]) && isname_nullable(arg, ch->equipment[i]->name, 0)) {
                 torch = ch->equipment[i];
                 break;
             }

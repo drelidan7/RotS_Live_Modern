@@ -249,7 +249,7 @@ ACMD(do_reload)
 
     one_argument(argument, arg);
 
-    if (!str_cmp(arg, "all") || *arg == '*') {
+    if (!str_cmp_nullable(arg, "all") || *arg == '*') {
         file_to_string_alloc(NEWS_FILE, &news);
         file_to_string_alloc(CREDITS_FILE, &credits);
         file_to_string_alloc(MOTD_FILE, &motd);
@@ -267,41 +267,41 @@ ACMD(do_reload)
         file_to_string_alloc(ASIMA_FILE, &asima_tbl);
         file_to_string_alloc(SHAPE_FILE, &shape_tbl);
         file_to_string_alloc(MSDP_FILE, &msdp_tbl);
-    } else if (!str_cmp(arg, "wizlist"))
+    } else if (!str_cmp_nullable(arg, "wizlist"))
         file_to_string_alloc(WIZLIST_FILE, &wizlist);
-    else if (!str_cmp(arg, "immlist"))
+    else if (!str_cmp_nullable(arg, "immlist"))
         file_to_string_alloc(IMMLIST_FILE, &immlist);
-    else if (!str_cmp(arg, "news"))
+    else if (!str_cmp_nullable(arg, "news"))
         file_to_string_alloc(NEWS_FILE, &news);
-    else if (!str_cmp(arg, "credits"))
+    else if (!str_cmp_nullable(arg, "credits"))
         file_to_string_alloc(CREDITS_FILE, &credits);
-    else if (!str_cmp(arg, "motd"))
+    else if (!str_cmp_nullable(arg, "motd"))
         file_to_string_alloc(MOTD_FILE, &motd);
-    else if (!str_cmp(arg, "imotd"))
+    else if (!str_cmp_nullable(arg, "imotd"))
         file_to_string_alloc(IMOTD_FILE, &imotd);
-    else if (!str_cmp(arg, "help"))
+    else if (!str_cmp_nullable(arg, "help"))
         file_to_string_alloc(HELP_PAGE_FILE, &help);
-    else if (!str_cmp(arg, "info"))
+    else if (!str_cmp_nullable(arg, "info"))
         file_to_string_alloc(INFO_FILE, &info);
-    else if (!str_cmp(arg, "policy"))
+    else if (!str_cmp_nullable(arg, "policy"))
         file_to_string_alloc(POLICIES_FILE, &policies);
-    else if (!str_cmp(arg, "handbook"))
+    else if (!str_cmp_nullable(arg, "handbook"))
         file_to_string_alloc(HANDBOOK_FILE, &handbook);
-    else if (!str_cmp(arg, "background"))
+    else if (!str_cmp_nullable(arg, "background"))
         file_to_string_alloc(BACKGROUND_FILE, &background);
-    else if (!str_cmp(arg, "spel_tbl"))
+    else if (!str_cmp_nullable(arg, "spel_tbl"))
         file_to_string_alloc(SPELL_FILE, &spell_tbl);
-    else if (!str_cmp(arg, "pray_tbl"))
+    else if (!str_cmp_nullable(arg, "pray_tbl"))
         file_to_string_alloc(POWER_FILE, &power_tbl);
-    else if (!str_cmp(arg, "skil_tbl"))
+    else if (!str_cmp_nullable(arg, "skil_tbl"))
         file_to_string_alloc(SKILLS_FILE, &skill_tbl);
-    else if (!str_cmp(arg, "mudl_tbl"))
+    else if (!str_cmp_nullable(arg, "mudl_tbl"))
         file_to_string_alloc(ASIMA_FILE, &asima_tbl);
-    else if (!str_cmp(arg, "shap_tbl"))
+    else if (!str_cmp_nullable(arg, "shap_tbl"))
         file_to_string_alloc(SHAPE_FILE, &shape_tbl);
-    else if (!str_cmp(arg, "msdp_tbl"))
+    else if (!str_cmp_nullable(arg, "msdp_tbl"))
         file_to_string_alloc(MSDP_FILE, &msdp_tbl);
-    else if (!str_cmp(arg, "xhelp")) {
+    else if (!str_cmp_nullable(arg, "xhelp")) {
         for (tmp = 0; tmp < help_summary_length; tmp++) {
             if (help_content[tmp].file)
                 fclose(help_content[tmp].file);
@@ -559,7 +559,7 @@ int find_player_table_index_by_name(const char* name)
         return -1;
 
     for (int index = 0; index <= top_of_p_table; ++index) {
-        if (player_table[index].name && str_cmp(player_table[index].name, name) == 0)
+        if (player_table[index].name && str_cmp_nullable(player_table[index].name, name) == 0)
             return index;
     }
 
@@ -1442,7 +1442,7 @@ int vnum_mobile(char* searchname, struct char_data* ch)
     int nr, found = 0;
 
     for (nr = 0; nr <= top_of_mobt; nr++) {
-        if (isname(searchname, mob_proto[nr].player.name)) {
+        if (isname_nullable(searchname, mob_proto[nr].player.name)) {
             send_to_char(std::format("{:3}. [{:5}] {:<60.60}\n\r", ++found, mob_index[nr].virt,
                              nz(mob_proto[nr].player.short_descr))
                              ,
@@ -1458,7 +1458,7 @@ int vnum_object(char* searchname, struct char_data* ch)
     int nr, found = 0;
 
     for (nr = 0; nr <= top_of_objt; nr++) {
-        if (isname(searchname, obj_proto[nr].name)) {
+        if (isname_nullable(searchname, obj_proto[nr].name)) {
             send_to_char(std::format("{:3}. [{:5}] {:<60.60}\n\r", ++found, obj_index[nr].virt,
                              nz(obj_proto[nr].short_description))
                              ,
@@ -1649,7 +1649,7 @@ void load_mobiles(FILE* mob_f)
             tmpptr = mob_proto[i].player.short_descr = fread_string(mob_f, buf2);
 
             if (tmpptr && *tmpptr)
-                if (!str_cmp(fname(tmpptr), "a") || !str_cmp(fname(tmpptr), "an") || !str_cmp(fname(tmpptr), "the"))
+                if (!str_cmp_nullable(fname(tmpptr), "a") || !str_cmp_nullable(fname(tmpptr), "an") || !str_cmp_nullable(fname(tmpptr), "the"))
                     *tmpptr = tolower(*tmpptr);
 
             mob_proto[i].player.long_descr = fread_string(mob_f, buf2);
@@ -1866,7 +1866,7 @@ void load_objects(FILE* obj_f)
 
             tmpptr = obj_proto[i].short_description = fread_string(obj_f, buf2);
             if (*tmpptr)
-                if (!str_cmp(fname(tmpptr), "a") || !str_cmp(fname(tmpptr), "an") || !str_cmp(fname(tmpptr), "the"))
+                if (!str_cmp_nullable(fname(tmpptr), "a") || !str_cmp_nullable(fname(tmpptr), "an") || !str_cmp_nullable(fname(tmpptr), "the"))
                     *tmpptr = tolower(*tmpptr);
             tmpptr = obj_proto[i].description = fread_string(obj_f, buf2);
             if (tmpptr && *tmpptr)
@@ -2151,7 +2151,7 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
         *tmpchar = tolower(*tmpchar);
 
     for (tmp = 0; tmp <= top_of_p_table; tmp++)
-        if (!str_cmp((player_table + tmp)->name, name))
+        if (!str_cmp_nullable((player_table + tmp)->name, name))
             break;
 
     if (tmp > top_of_p_table) {
@@ -2442,7 +2442,7 @@ int load_player(char* name, struct char_file_u* char_element)
         name[tmp] = tolower(name[tmp]);
 
     for (tmp = 0; tmp <= top_of_p_table; tmp++)
-        if (!str_cmp((player_table + tmp)->name, name))
+        if (!str_cmp_nullable((player_table + tmp)->name, name))
             break;
 
     if (tmp > top_of_p_table) {
@@ -2750,7 +2750,7 @@ int ensure_player_index_entry(const char* name)
         return -1;
 
     for (int index = 0; index <= top_of_p_table; ++index) {
-        if (str_cmp((player_table + index)->name, name) == 0)
+        if (str_cmp_nullable((player_table + index)->name, name) == 0)
             return index;
     }
 
@@ -2889,7 +2889,7 @@ void delete_character_file(struct char_data* ch)
     int tmp;
 
     for (tmp = 0; tmp <= top_of_p_table; tmp++) {
-        if (!str_cmp((player_table + tmp)->name, ch->player.name))
+        if (!str_cmp_nullable((player_table + tmp)->name, ch->player.name))
             break;
     }
 
@@ -3173,7 +3173,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
 
     /* whois update block */
     for (tmp = 0; tmp <= top_of_p_table; tmp++)
-        if (!str_cmp((player_table + tmp)->name, ch->player.name))
+        if (!str_cmp_nullable((player_table + tmp)->name, ch->player.name))
             break;
 
     if (tmp > top_of_p_table) {

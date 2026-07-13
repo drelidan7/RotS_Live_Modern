@@ -7,11 +7,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
-#include <concepts>
 #include <string_view>
-#include <type_traits>
-
-static_assert(std::same_as<std::remove_cvref_t<decltype(color_sequence[0])>, std::string_view>);
 
 #include <cstring>
 #include <string>

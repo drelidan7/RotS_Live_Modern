@@ -376,6 +376,15 @@ class ScopedObjectPrototypeTable {
     obj_data *m_previous_object_list;
 };
 
+TEST(DbLoader, ComparesMatchingNullObjectTextFieldsWithoutConstructingViews)
+{
+    ScopedObjectPrototypeTable object_prototypes;
+    obj_data object = obj_proto[1];
+
+    ASSERT_EQ(object.action_description, nullptr);
+    EXPECT_EQ(compare_obj_to_proto(&object), 0);
+}
+
 void write_file(const std::string &path, const std::string &contents) {
     FILE *file = fopen(path.c_str(), "wb");
     ASSERT_NE(file, nullptr);

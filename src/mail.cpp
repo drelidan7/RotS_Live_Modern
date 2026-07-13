@@ -564,7 +564,7 @@ find_char_in_index(char* searchee)
     }
 
     for (temp_rec = mail_index;
-         (temp_rec && str_cmp(temp_rec->recipient, searchee));
+         (temp_rec && str_cmp_nullable(temp_rec->recipient, searchee));
          temp_rec = temp_rec->next)
         ;
 

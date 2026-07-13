@@ -394,13 +394,13 @@ int compare_list(struct char_data* host, struct target_data* it1,
         return (!tmp);
     }
     if (typ1 == TARGET_TEXT) {
-        if (isname(it1->ptr.text->text, str2, TRUE))
+        if (isname_nullable(it1->ptr.text->text, str2, TRUE))
             return 1;
         else
             return 0;
     }
     if (typ2 == TARGET_TEXT) {
-        if (isname(it2->ptr.text->text, str1, TRUE))
+        if (isname_nullable(it2->ptr.text->text, str1, TRUE))
             return 1;
         else
             return 0;

@@ -160,13 +160,13 @@ ACMD(do_ban)
         return;
     }
 
-    if (!(!str_cmp(flag, "select") || !str_cmp(flag, "all") || !str_cmp(flag, "new"))) {
+    if (!(!str_cmp_nullable(flag, "select") || !str_cmp_nullable(flag, "all") || !str_cmp_nullable(flag, "new"))) {
         send_to_char("Flag must be ALL, SELECT, or NEW.\n\r", ch);
         return;
     }
 
     for (ban_node = ban_list; ban_node; ban_node = ban_node->next) {
-        if (!str_cmp(ban_node->site, site)) {
+        if (!str_cmp_nullable(ban_node->site, site)) {
             send_to_char(
                 "That site has already been banned -- unban it to change the ban type.\n\r", ch);
             return;
@@ -183,7 +183,7 @@ ACMD(do_ban)
     ban_node->date = time(0);
 
     for (i = BAN_NEW; i <= BAN_ALL; i++)
-        if (!str_cmp(flag, ban_types[i]))
+        if (!str_cmp_nullable(flag, ban_types[i]))
             ban_node->type = i;
 
     ban_node->next = ban_list;
@@ -214,7 +214,7 @@ ACMD(do_unban)
 
     ban_node = ban_list;
     while (ban_node && !found) {
-        if (!str_cmp(ban_node->site, site))
+        if (!str_cmp_nullable(ban_node->site, site))
             found = 1;
         else
             ban_node = ban_node->next;
@@ -286,7 +286,7 @@ int valid_name(char* newname)
         return 0;
     }
 
-    if (str_cmp(newname, "all") == 0) {
+    if (str_cmp_nullable(newname, "all") == 0) {
         strcpy(buf, std::format("Invalid name '{}' (matched '{}')",
             newname, "all").c_str());
         mudlog(buf, NRM, LEVEL_GOD, TRUE);
@@ -315,7 +315,7 @@ int valid_name(char* newname)
             }
 
     for (i = 0; i < top_of_mobt; i++)
-        if (isname(newname, mob_proto[i].player.name))
+        if (isname_nullable(newname, mob_proto[i].player.name))
             break;
     if (i < top_of_mobt) {
         clear_invalid_list();
@@ -323,7 +323,7 @@ int valid_name(char* newname)
     }
 
     for (i = 0; i < top_of_objt; i++)
-        if (isname(newname, obj_proto[i].name))
+        if (isname_nullable(newname, obj_proto[i].name))
             break;
     if (i < top_of_objt) {
         clear_invalid_list();

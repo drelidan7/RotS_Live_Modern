@@ -3,7 +3,6 @@
 #ifndef COLOR_H
 #define COLOR_H
 
-#include <array>
 #include <string_view>
 
 /* Number big enough to hold the fields below */
@@ -66,30 +65,12 @@ struct color_slot_data {
 #define CC_USE(ch, col) \
     (clr(ch) ? get_color_sequence((ch), (col)) : "")
 #define CC_NORM(ch) \
-    (clr((ch)) ? color_sequence[0].data() : "")
+    (clr((ch)) ? color_sequence[0] : "")
 #define CC_FIX(ch, col) \
-    (clr((ch)) ? color_sequence[col].data() : "")
+    (clr((ch)) ? color_sequence[col] : "")
 
 extern const char* color_color[];
-/// Maps ANSI color indexes to their terminal escape sequences.
-inline constexpr std::array<std::string_view, 16> color_sequence {
-    "\x1B[0m",
-    "\x1B[31m",
-    "\x1B[32m",
-    "\x1B[33m",
-    "\x1B[34m",
-    "\x1B[35m",
-    "\x1B[36m",
-    "\x1B[37m",
-    "\x1B[01m\x1B[31m",
-    "\x1B[01m\x1B[32m",
-    "\x1B[01m\x1B[33m",
-    "\x1B[01m\x1B[34m",
-    "\x1B[01m\x1B[35m",
-    "\x1B[01m\x1B[36m",
-    "\x1B[01m\x1B[37m",
-    "",
-};
+extern const char* const color_sequence[];
 
 /// Returns the rendered escape sequence for a character color slot.
 const char* get_color_sequence(struct char_data*, int);

@@ -252,6 +252,14 @@ int isname(std::string_view query, std::string_view name_list, char full)
     return 0;
 }
 
+int isname_nullable(const char* query, const char* name_list, char full)
+{
+    if (query == nullptr || name_list == nullptr) {
+        return 0;
+    }
+    return isname(query, name_list, full);
+}
+
 void affect_modify_room(struct room_data* room, byte, int mod,
     long bitv, char add)
 {
@@ -1513,7 +1521,7 @@ struct obj_data* get_obj_in_list(char* name, struct obj_data* list)
         return (0);
 
     for (i = list, j = 1; i && (j <= number); i = i->next_content)
-        if (isname(tmp, i->name, 0)) {
+        if (isname_nullable(tmp, i->name, 0)) {
             if (j == number)
                 return (i);
             j++;
@@ -1592,7 +1600,7 @@ struct obj_data* get_obj(char* name)
         return (0);
 
     for (i = object_list, j = 1; i && (j <= number); i = i->next)
-        if (isname(tmp, i->name)) {
+        if (isname_nullable(tmp, i->name)) {
             if (j == number)
                 return (i);
             j++;
@@ -1627,7 +1635,7 @@ struct char_data* get_char_room(char* name, int room)
         return (0);
 
     for (i = world[room].people, j = 1; i && (j <= number); i = i->next_in_room)
-        if (isname(tmp, i->player.name)) {
+        if (isname_nullable(tmp, i->player.name)) {
             if (j == number)
                 return (i);
             j++;
@@ -1650,7 +1658,7 @@ struct char_data* get_char(const char* name)
         return (0);
 
     for (i = character_list, j = 1; i && (j <= number); i = i->next)
-        if (isname(tmp, i->player.name)) {
+        if (isname_nullable(tmp, i->player.name)) {
             if (j == number)
                 return (i);
             j++;
@@ -2091,9 +2099,9 @@ int keyword_matches_char(struct char_data* ch, struct char_data* vict, char* key
     int check;
 
     if (other_side(ch, vict)) {
-        check = isname(keyword, pc_race_keywords[GET_RACE(vict)]);
+        check = isname_nullable(keyword, pc_race_keywords[GET_RACE(vict)]);
     } else
-        check = isname(keyword, vict->player.name);
+        check = isname_nullable(keyword, vict->player.name);
 
     return check;
 }
@@ -2129,7 +2137,7 @@ struct char_data* get_player_vis(struct char_data* ch, char* name)
     struct char_data* i;
 
     for (i = character_list; i; i = i->next)
-        if (!IS_NPC(i) && !str_cmp(i->player.name, name) && CAN_SEE(ch, i))
+        if (!IS_NPC(i) && !str_cmp_nullable(i->player.name, name) && CAN_SEE(ch, i))
             return i;
 
     return 0;
@@ -2153,9 +2161,9 @@ struct char_data* get_char_vis(struct char_data* ch, char* name, int dark_ok)
 
     for (i = character_list, j = 1; i && (j <= number); i = i->next) {
         if (other_side(ch, i))
-            check = isname(tmp, pc_race_keywords[i->player.race]);
+            check = isname_nullable(tmp, pc_race_keywords[i->player.race]);
         else
-            check = isname(tmp, i->player.name);
+            check = isname_nullable(tmp, i->player.name);
 
         if (check)
             if (CAN_SEE(ch, i, dark_ok)) {
@@ -2188,7 +2196,7 @@ struct obj_data* get_obj_in_list_vis(struct char_data* ch, const char* name,
         return (0);
 
     for (i = list, j = 1; i && (j <= number); i = i->next_content)
-        if (isname(tmp, i->name, 0))
+        if (isname_nullable(tmp, i->name, 0))
             if (CAN_SEE_OBJ(ch, i)) {
                 if (j == number)
                     return (i);
@@ -2220,7 +2228,7 @@ struct obj_data* get_obj_vis(struct char_data* ch, char* name)
 
     /* ok.. no luck yet. scan the entire obj list   */
     for (i = object_list, j = 1; i && (j <= number); i = i->next)
-        if (isname(tmp, i->name, 0))
+        if (isname_nullable(tmp, i->name, 0))
             if (CAN_SEE_OBJ(ch, i)) {
                 if (j == number)
                     return (i);
@@ -2236,7 +2244,7 @@ struct obj_data* get_object_in_equip_vis(struct char_data* ch,
     for ((*j) = 0; (*j) < MAX_WEAR; (*j)++)
         if (equipment[(*j)])
             if (CAN_SEE_OBJ(ch, equipment[(*j)]))
-                if (isname(arg, equipment[(*j)]->name))
+                if (isname_nullable(arg, equipment[(*j)]->name))
                     return (equipment[(*j)]);
 
     return (0);
@@ -2379,9 +2387,9 @@ int generic_find(char* arg, int bitvector, struct char_data* ch,
     if (IS_SET(bitvector, FIND_OBJ_EQUIP)) {
         for (found = FALSE, i = 0; i < MAX_WEAR && !found; i++) {
             if (namelen > 2)
-                tmpfound = (ch->equipment[i] && strn_cmp(name, ch->equipment[i]->name, namelen) == 0);
+                tmpfound = (ch->equipment[i] && strn_cmp_nullable(name, ch->equipment[i]->name, namelen) == 0);
             else
-                tmpfound = (ch->equipment[i] && str_cmp(name, ch->equipment[i]->name) == 0);
+                tmpfound = (ch->equipment[i] && str_cmp_nullable(name, ch->equipment[i]->name) == 0);
             if (tmpfound) {
                 *tar_obj = ch->equipment[i];
                 found = TRUE;

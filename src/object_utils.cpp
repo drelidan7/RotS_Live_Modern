@@ -80,7 +80,7 @@ const char* get_weapon_name(weapon_type type)
 bool obj_data::is_quiver() const
 {
     if (obj_flags.type_flag == ITEM_CONTAINER) {
-        return isname("quiver", name);
+        return isname_nullable("quiver", name);
     }
     return false;
 }

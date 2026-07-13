@@ -2317,7 +2317,7 @@ bool can_ch_shoot(char_data* archer)
     }
 
     const obj_data* weapon = archer->equipment[WIELD];
-    if (!weapon || !isname("bow", weapon->name)) {
+    if (!weapon || !isname_nullable("bow", weapon->name)) {
         send_to_char("You must be wielding a bow to shoot.\r\n", archer);
         return false;
     }

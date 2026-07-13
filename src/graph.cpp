@@ -332,9 +332,9 @@ int show_tracks(char_data* ch, char* name, int mode)
         shall_show = (ch_num != 0) && ((mode == 1) || (tr_time < 3)) && (GET_SKILL(ch, SKILL_TRACK) + chance_factor - tr_time * 2 > number(0, 99));
         if (shall_show && name && *name) {
             if (ch_num > 0)
-                shall_show = isname(name, mob_proto[ch_num].player.name, 1);
+                shall_show = isname_nullable(name, mob_proto[ch_num].player.name, 1);
             else
-                shall_show = !str_cmp(name, pc_race_keywords[-ch_num]);
+                shall_show = !str_cmp_nullable(name, pc_race_keywords[-ch_num]);
         }
         if (shall_show) {
             count++;
@@ -386,9 +386,9 @@ int show_blood_trail(struct char_data* ch, char* name, int mode)
 
         if (shall_show && name && *name) {
             if (ch_num > 0) {
-                shall_show = isname(name, mob_proto[ch_num].player.name, 1);
+                shall_show = isname_nullable(name, mob_proto[ch_num].player.name, 1);
             } else {
-                shall_show = !str_cmp(name, pc_race_keywords[-ch_num]);
+                shall_show = !str_cmp_nullable(name, pc_race_keywords[-ch_num]);
             }
         }
 

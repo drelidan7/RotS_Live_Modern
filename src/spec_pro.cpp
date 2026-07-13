@@ -1256,7 +1256,7 @@ SPECIAL(ferry_boat)
     if (!*arg)
         return FALSE;
 
-    if (!isname(arg, hostobj->name))
+    if (!isname_nullable(arg, hostobj->name))
         return FALSE;
 
     num = hostobj->obj_flags.prog_number;
@@ -2715,7 +2715,7 @@ SPECIAL(resetter)
     if (wtl->targ1.ptr.ch != host || wtl->targ2.type != TARGET_TEXT)
         return 0;
 
-    if (!str_cmp(wtl->targ2.ptr.text->text, "pracreset")) {
+    if (!str_cmp_nullable(wtl->targ2.ptr.text->text, "pracreset")) {
         wtltmp.targ1.type = TARGET_CHAR;
         wtltmp.targ1.ptr.ch = ch;
         wtltmp.targ1.ch_num = ch->abs_number;
@@ -2728,7 +2728,7 @@ SPECIAL(resetter)
 
         return 0;
 
-    } else if (!str_cmp(wtl->targ2.ptr.text->text, "reroll")) {
+    } else if (!str_cmp_nullable(wtl->targ2.ptr.text->text, "reroll")) {
         wtltmp.targ1.type = TARGET_CHAR;
         wtltmp.targ1.ptr.ch = ch;
         wtltmp.targ1.ch_num = ch->abs_number;
@@ -3629,7 +3629,7 @@ SPECIAL(herald)
     // always set for a connected player.
     const std::string herald_line = safe_template::expand_checked(host->player.death_cry2,
         { safe_template::Conv::String, safe_template::Conv::String },
-        { std::string_view(ch->player.name), std::string_view(nz(ch->player.title)) },
+        { std::string_view(nz(ch->player.name)), std::string_view(nz(ch->player.title)) },
         "notices someone new arrive.", "herald death_cry2");
     snprintf(hbuf, HERALD_LEN - 1, "%s", herald_line.c_str());
     do_say(host, hbuf, 0, 0, 0);

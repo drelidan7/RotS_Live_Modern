@@ -569,7 +569,7 @@ const char* command[] = {
 /* CEND: search for me when you're looking for the end of the cmd list! :) */
 
 /* these words are effectively ignored */
-const char* const fill[] = {
+extern const char* const fill[] = {
     "in",
     "from",
     "with",
@@ -1075,7 +1075,7 @@ char* target_from_word(struct char_data* ch, char* argument, int mask, struct ta
     }
     if (IS_SET(mask, TAR_OBJ_EQUIP)) {
         for (tmp = 0; tmp < MAX_WEAR; tmp++)
-            if (ch->equipment[tmp] && isname(word, ch->equipment[tmp]->name)) {
+            if (ch->equipment[tmp] && isname_nullable(word, ch->equipment[tmp]->name)) {
                 t1->ptr.obj = ch->equipment[tmp];
                 t1->ch_num = 0;
                 t1->type = TARGET_OBJ;
@@ -1095,7 +1095,7 @@ char* target_from_word(struct char_data* ch, char* argument, int mask, struct ta
     }
     if (IS_SET(mask, TAR_DIR_NAME)) {
         for (tmp = 0; tmp < NUM_OF_DIRS; tmp++)
-            if (EXIT(ch, tmp) && !str_cmp(EXIT(ch, tmp)->keyword, word)) {
+            if (EXIT(ch, tmp) && !str_cmp_nullable(EXIT(ch, tmp)->keyword, word)) {
                 t1->ch_num = tmp;
                 t1->type = TARGET_DIR;
                 t1->choice = TAR_DIR_NAME;
@@ -2262,7 +2262,7 @@ int find_name(char* name)
     int i;
 
     for (i = 0; i <= top_of_p_table; i++)
-        if (!str_cmp((player_table + i)->name, name))
+        if (!str_cmp_nullable((player_table + i)->name, name))
             return i;
 
     return -1;
@@ -3752,7 +3752,7 @@ void nanny(struct descriptor_data* d, char* arg)
         for (; isspace(*arg); arg++)
             continue;
 
-        if (!*arg || strlen(arg) > MAX_PWD_LENGTH || strlen(arg) < 3 || !str_cmp(arg, GET_NAME(d->character))) {
+        if (!*arg || strlen(arg) > MAX_PWD_LENGTH || strlen(arg) < 3 || !str_cmp_nullable(arg, GET_NAME(d->character))) {
             SEND_TO_Q("\n\rIllegal password.\n\r", d);
             SEND_TO_Q("Password: ", d);
             return;
@@ -4204,7 +4204,7 @@ void nanny(struct descriptor_data* d, char* arg)
         for (; isspace(*arg); arg++)
             continue;
 
-        if (!*arg || strlen(arg) > MAX_PWD_LENGTH || strlen(arg) < 3 || !str_cmp(arg, GET_NAME(d->character))) {
+        if (!*arg || strlen(arg) > MAX_PWD_LENGTH || strlen(arg) < 3 || !str_cmp_nullable(arg, GET_NAME(d->character))) {
             SEND_TO_Q("\n\rIllegal password.\n\r", d);
             SEND_TO_Q("Password: ", d);
             return;

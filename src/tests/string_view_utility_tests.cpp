@@ -1,4 +1,5 @@
 #include "../handler.h"
+#include "../interpre.h"
 #include "../utils.h"
 
 #include <gtest/gtest.h>
@@ -13,6 +14,7 @@ static_assert(std::same_as<std::remove_cvref_t<decltype(month_name[0])>, std::st
 static_assert(std::same_as<std::remove_cvref_t<decltype(moon_phase[0])>, std::string_view>);
 
 extern const char* const dirs[];
+extern const char* const refer_dirs[];
 
 TEST(StringViewUtility, ComparesBoundedTextWithoutNullTermination)
 {
@@ -56,5 +58,26 @@ TEST(StringViewUtility, IsNameAcceptsBoundedAndEmbeddedNullViews)
 TEST(StringViewUtility, RetainsLegacySentinelTables)
 {
     EXPECT_STREQ(dirs[6], "\n");
+    EXPECT_STREQ(refer_dirs[6], "\n");
     EXPECT_STREQ(pc_races[21], "\n");
+    EXPECT_STREQ(pc_race_types[21], "\n");
+    EXPECT_STREQ(pc_race_keywords[21], "\n");
+    EXPECT_STREQ(pc_star_types[21], "\n");
+    EXPECT_STREQ(pc_named_star_types[21], "\n");
+    EXPECT_STREQ(color_color[15], "\n");
+    EXPECT_STREQ(fill[7], "\n");
+}
+
+TEST(StringViewUtility, NullableNameMatchingRejectsNullTextWithoutConstructingAView)
+{
+    EXPECT_EQ(isname_nullable(nullptr, "sword shield"), 0);
+    EXPECT_EQ(isname_nullable("sword", nullptr), 0);
+}
+
+TEST(StringViewUtility, NullableComparisonsPreserveDeterministicNullOrdering)
+{
+    EXPECT_EQ(str_cmp_nullable(nullptr, nullptr), 0);
+    EXPECT_LT(str_cmp_nullable(nullptr, "value"), 0);
+    EXPECT_GT(str_cmp_nullable("value", nullptr), 0);
+    EXPECT_EQ(strn_cmp_nullable(nullptr, nullptr, 5), 0);
 }

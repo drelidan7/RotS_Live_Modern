@@ -198,7 +198,7 @@ ACMD(do_recruit)
     }
 
     if (*arg) {
-        if (!str_cmp(arg, "all")) {
+        if (!str_cmp_nullable(arg, "all")) {
             send_to_char("Recruiting an army cannot be rushed, "
                          "choose one follower at a time.\r\n",
                 ch);
@@ -792,7 +792,7 @@ ACMD(do_use)
 
     argument = one_argument(argument, buf);
 
-    if (ch->equipment[HOLD] == 0 || !isname(buf, ch->equipment[HOLD]->name)) {
+    if (ch->equipment[HOLD] == 0 || !isname_nullable(buf, ch->equipment[HOLD]->name)) {
         act("You do not hold that item in your hand.", FALSE, ch, 0, 0, TO_CHAR);
         return;
     }
@@ -2021,7 +2021,7 @@ ACMD(do_fish)
             return;
         }
 
-        if (!ch->equipment[HOLD] || !isname("fishing", ch->equipment[HOLD]->name)) {
+        if (!ch->equipment[HOLD] || !isname_nullable("fishing", ch->equipment[HOLD]->name)) {
             send_to_char("You need to hold a fishing pole to fish.\n\r", ch);
             return;
         }
@@ -2086,7 +2086,7 @@ ACMD(do_apply)
         }
 
         for (tmp = 0; tmp < num_of_apply; tmp++) {
-            if (!str_cmp(apply_options[tmp].field, wtl->targ1.ptr.text->text))
+            if (!str_cmp_nullable(apply_options[tmp].field, wtl->targ1.ptr.text->text))
                 break;
         }
 

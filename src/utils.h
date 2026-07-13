@@ -81,8 +81,12 @@ inline const char* nz(const char* p)
 
 /// Compares bounded text case-insensitively using the legacy ASCII ordering.
 int str_cmp(std::string_view first, std::string_view second);
+/// Compares nullable legacy text pointers without constructing views from null values.
+int str_cmp_nullable(const char* first, const char* second);
 /// Compares at most `count` bounded characters using the legacy ASCII ordering.
 int strn_cmp(std::string_view first, std::string_view second, int count);
+/// Compares nullable legacy text pointers up to `count` characters without null-derived views.
+int strn_cmp_nullable(const char* first, const char* second, int count);
 /// Writes a bounded message to the server's timestamped stderr log.
 void log(std::string_view message);
 /// Writes a bounded message to stderr and eligible in-game log listeners.

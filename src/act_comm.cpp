@@ -403,7 +403,7 @@ ACMD(do_page)
         return;
     }
     half_chop(argument, buf, buf2);
-    if (!str_cmp(buf, "all") && (subcmd == SCMD_PAGE)) {
+    if (!str_cmp_nullable(buf, "all") && (subcmd == SCMD_PAGE)) {
         if (GET_LEVEL(ch) > LEVEL_GOD) {
             strcpy(buf, std::format("\007\007*{}* {}\n\r", GET_NAME(ch), static_cast<const char*>(buf2)).c_str());
             for (d = descriptor_list; d; d = d->next)

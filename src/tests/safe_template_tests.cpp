@@ -399,23 +399,26 @@ TEST(SafeTemplate, ScriptDoSayDanglingPercentFallsBackToLiteralTemplateText) {
     EXPECT_EQ(result, tmpl);
 }
 
-TEST(SafeTemplate, ScriptDoSayNullArgumentCoalescesToEmptyStringInsteadOfUB) {
+TEST(SafeTemplate, ScriptDoSayNullArgumentSubstitutesGlibcNullLiteralInsteadOfUB) {
     ScopedDescriptorListReset descriptor_list_reset;
 
     // get_text_param() can legitimately return a null char* (an unset
     // SCRIPT_PARAM_STRn, or a SCRIPT_PARAM_CHn_NAME whose target character
     // pointer is null) -- a pre-existing latent bug in the sprintf path
     // (constructing/reading a %s conversion against a null argument is
-    // undefined behavior; only glibc's printf happens to print "(null)").
+    // undefined behavior; glibc's printf happens to print "(null)").
     // expand_checked_one() must never construct std::string_view(nullptr);
-    // it substitutes an empty string and the template stays well-formed
-    // (does NOT fall back -- a null arg is not a malformed template).
+    // it guards the arg with nz() (utils.h), substituting the literal
+    // "(null)" byte-identical to the old glibc output -- the depot-wide
+    // convention for a nullable char* feeding a %s conversion -- and the
+    // template stays well-formed (does NOT fall back: a null arg is not a
+    // malformed template).
     const char *tmpl = "%s bows.";
 
     std::string result = safe_template::expand_checked_one(
         tmpl, nullptr, "fallback text", "script SCRIPT_DO_SAY family (null txt1)");
 
-    EXPECT_EQ(result, " bows.");
+    EXPECT_EQ(result, "(null) bows.");
     EXPECT_NE(result, "fallback text");
 }
 

@@ -135,9 +135,10 @@ new entry point also closes a second, previously-latent gap the `death_cry2`/`sh
 never had: `txt1` (`get_text_param()`'s return) can legitimately be a null `char*` (an unset
 `SCRIPT_PARAM_STRn`, or a `SCRIPT_PARAM_CHn_NAME` whose target character is gone) — the old
 `sprintf(output, curr->text, txt1)` read that null pointer as the `%s` argument (undefined
-behavior); `expand_checked_one()` coalesces a null `arg` to `""` before it ever reaches
-`std::string_view`, so the template stays well-formed and substitutes an empty string instead of
-hitting UB. The five `-Wdeprecated-declarations` justified-skip pragmas are removed; well-formed
+behavior); `expand_checked_one()` guards a null `arg` with `nz()` (`utils.h`) before it ever
+reaches `std::string_view`, so the template stays well-formed and substitutes the literal
+`"(null)"` — byte-identical to what glibc's `sprintf` printed on the old path, per the depot-wide
+`nz()` convention for a nullable `char*` feeding a `%s` — instead of hitting UB. The five `-Wdeprecated-declarations` justified-skip pragmas are removed; well-formed
 world data expands byte-identical to the old `sprintf` output (characterization-pinned), and
 `src/tests/safe_template_tests.cpp` carries both the pass-first well-formed pins and the fail-first
 malformed/null-arg pins for this family.

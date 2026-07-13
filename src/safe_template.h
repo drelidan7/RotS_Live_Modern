@@ -59,10 +59,11 @@ std::string expand_checked(const char *tmpl, std::initializer_list<Conv> expecte
 // legitimately return a null char* (an unset SCRIPT_PARAM_STRn, or a
 // SCRIPT_PARAM_CHn_NAME whose target character pointer is null) --
 // constructing std::string_view(nullptr) is undefined behavior. A null
-// `arg` is coalesced to an empty string here before it ever reaches
-// expand_checked(), so the template is still treated as well-formed and
-// simply substitutes "" for the missing text, rather than being rejected
-// or hitting UB.
+// `arg` is guarded with nz() (utils.h) here before it ever reaches
+// expand_checked(): the template is still treated as well-formed and
+// substitutes the literal "(null)" for the missing text -- byte-identical
+// to what glibc's sprintf("%s", NULL) printed on the old path, per the
+// depot-wide nz() convention -- rather than being rejected or hitting UB.
 std::string expand_checked_one(const char *tmpl, const char *arg, std::string_view fallback,
                                std::string_view context);
 } // namespace safe_template

@@ -1059,7 +1059,9 @@ int run_script(struct info_script* info, struct script_data* position)
                 // curr->text displayed literally (never re-interpreted as a
                 // format string) and logs once via mudlog. A null txt1
                 // (get_text_param() can legitimately return one) is
-                // coalesced to "" rather than hitting the UB a raw
+                // guarded with nz() -- substituting the glibc-parity literal
+                // "(null)" per the depot convention (utils.h) -- rather
+                // than hitting the UB a raw
                 // sprintf(output, curr->text, txt1) would. Same shape
                 // repeats at script.cpp's other
                 // SCRIPT_DO_YELL/SCRIPT_SEND_TO_CHAR/SCRIPT_SEND_TO_ROOM/

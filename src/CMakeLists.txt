@@ -155,7 +155,7 @@ endif()
 target_compile_options(ageland PRIVATE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
     $<${ROTS_GNULIKE}:-funsigned-char -fstrict-aliasing -Wall -Wextra -Werror -g>
-    $<$<CXX_COMPILER_ID:MSVC>:/J /W4 /wd4456 /wd4458 /wd4459 /wd4702 /wd4127 /wd4310 /Zc:strictStrings->
+    $<$<CXX_COMPILER_ID:MSVC>:/J /W4 /WX /wd4244 /wd4267 /wd4456 /wd4458 /wd4459 /wd4702 /wd4127 /wd4310 /Zc:strictStrings->
 )
 target_link_options(ageland PRIVATE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
@@ -394,7 +394,7 @@ if(ROTS_BUILD_TESTS)
     # etc.), so it hits the identical MSVC /std:c++20 string-literal-to-char*
     # strictness and the same /W4 warning classes (Phase 5 Task 9).
     target_compile_options(ageland_tests PRIVATE
-        $<$<CXX_COMPILER_ID:MSVC>:/W4 /wd4456 /wd4458 /wd4459 /wd4702 /wd4127 /wd4310 /Zc:strictStrings->
+        $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /wd4244 /wd4267 /wd4456 /wd4458 /wd4459 /wd4702 /wd4127 /wd4310 /Zc:strictStrings->
     )
     # _FILE_OFFSET_BITS=64: same EOVERFLOW-avoidance rationale as the ageland target
     # above — account-management tests do real opendir/readdir bucket scans under

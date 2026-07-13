@@ -200,6 +200,54 @@ void examine(const std::vector<std::string>& items, const char* source)
             self.assertNotIn("mutable_pointer", result.stdout)
             self.assertNotIn("local_alias", result.stdout)
 
+    def test_report_excludes_casts_and_calls_but_keeps_function_declarators(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository_root = pathlib.Path(temporary_directory)
+            source_directory = repository_root / "src"
+            source_directory.mkdir()
+            (source_directory / "sample.cpp").write_text(
+                """struct Handler
+{
+    Handler(const char* name);
+    Handler& operator=(const std::string& name);
+    void operator()(const char* text) const;
+};
+
+using Callback = void (*)(const char* text);
+
+void inspect(char* buffer)
+{
+    extern void local_declaration(const char* text);
+    void (*local_callback)(const char* text) = nullptr;
+    consume(static_cast<const char*>(buffer));
+    consume(reinterpret_cast<const char*>(buffer));
+    consume((const char*)buffer);
+}
+""",
+                encoding="utf-8",
+            )
+
+            result = self.run_census(repository_root)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Handler(const char* name);", result.stdout)
+            self.assertIn(
+                "Handler& operator=(const std::string& name);", result.stdout
+            )
+            self.assertIn("void operator()(const char* text) const;", result.stdout)
+            self.assertIn(
+                "using Callback = void (*)(const char* text);", result.stdout
+            )
+            self.assertIn(
+                "void (*local_callback)(const char* text) = nullptr;", result.stdout
+            )
+            self.assertIn(
+                "extern void local_declaration(const char* text);", result.stdout
+            )
+            self.assertNotIn("static_cast", result.stdout)
+            self.assertNotIn("reinterpret_cast", result.stdout)
+            self.assertNotIn("consume((const char*)buffer)", result.stdout)
+
     def run_census(self, repository_root, *arguments):
         return subprocess.run(
             [

@@ -194,8 +194,94 @@ def parenthesis_spans(declaration):
     return spans
 
 
-def is_function_parameter(declaration, candidate_offset):
+def function_body_ranges(source_text, delimiter_offsets):
+    """Return source ranges occupied by function and lambda bodies."""
+    scope_stack = []
+    ranges = []
+    previous_delimiter = -1
+    for delimiter_offset in delimiter_offsets:
+        delimiter = source_text[delimiter_offset]
+        if delimiter == "{":
+            scope_prefix = source_text[previous_delimiter + 1 : delimiter_offset]
+            inside_function = any(scope_kind == "function" for _, scope_kind in scope_stack)
+            is_type_or_namespace = re.search(
+                r"\b(?:class|enum|namespace|struct|union)\b", scope_prefix
+            )
+            if not inside_function and is_type_or_namespace is None and ")" in scope_prefix:
+                scope_kind = "function"
+            else:
+                scope_kind = "other"
+            scope_stack.append((delimiter_offset, scope_kind))
+        elif delimiter == "}" and scope_stack:
+            opening_offset, scope_kind = scope_stack.pop()
+            if scope_kind == "function":
+                ranges.append((opening_offset + 1, delimiter_offset))
+        previous_delimiter = delimiter_offset
+    return sorted(ranges)
+
+
+def offset_is_in_ranges(source_offset, source_ranges):
+    """Return whether an offset falls within any sorted source range."""
+    return any(range_start <= source_offset < range_end for range_start, range_end in source_ranges)
+
+
+def is_function_pointer_parameter(declaration, candidate_offset):
+    """Return whether a candidate is in a function-pointer declarator parameter list."""
+    pointer_declarator_pattern = re.compile(
+        r"\(\s*(?:[A-Za-z_]\w*::)?\*\s*(?:const\s+)?[A-Za-z_]*\w*\s*\)\s*$"
+    )
+    for opening_offset, closing_offset in parenthesis_spans(declaration):
+        if opening_offset < candidate_offset < closing_offset:
+            declarator_prefix = declaration[:opening_offset]
+            if pointer_declarator_pattern.search(declarator_prefix):
+                return True
+    return False
+
+
+def is_block_scope_function_parameter(declaration, candidate_offset):
+    """Return whether a candidate is in a block-scope function declaration."""
+    excluded_leading_keywords = {
+        "co_return",
+        "delete",
+        "if",
+        "new",
+        "return",
+        "sizeof",
+        "switch",
+        "throw",
+        "while",
+    }
+    for opening_offset, closing_offset in parenthesis_spans(declaration):
+        if not opening_offset < candidate_offset < closing_offset:
+            continue
+        declarator_prefix = declaration[:opening_offset].strip()
+        first_word_match = re.match(r"([A-Za-z_]\w*)", declarator_prefix)
+        if first_word_match is None or first_word_match.group(1) in excluded_leading_keywords:
+            continue
+        if any(character in declarator_prefix for character in "=.;?()"):
+            continue
+        function_declaration_pattern = re.compile(
+            r"^[~A-Za-z_][A-Za-z0-9_:<>,\s*&]*\s+[~A-Za-z_][A-Za-z0-9_]*$"
+        )
+        if function_declaration_pattern.match(declarator_prefix):
+            return True
+    return False
+
+
+def is_function_parameter(declaration, candidate_offset, inside_function_body):
     """Return whether a candidate occurrence is part of a function parameter list."""
+    cast_prefix = declaration[:candidate_offset]
+    if re.search(
+        r"\b(?:const_cast|dynamic_cast|reinterpret_cast|static_cast)\s*<[^>]*$",
+        cast_prefix,
+    ):
+        return False
+
+    if is_function_pointer_parameter(declaration, candidate_offset):
+        return True
+    if inside_function_body:
+        return is_block_scope_function_parameter(declaration, candidate_offset)
+
     excluded_prefixes = {
         "alignof",
         "catch",
@@ -214,6 +300,8 @@ def is_function_parameter(declaration, candidate_offset):
         declarator_prefix = declaration[:opening_offset].rstrip()
         prefix_match = re.search(r"([A-Za-z_]\w*)$", declarator_prefix)
         if prefix_match is not None and prefix_match.group(1) in excluded_prefixes:
+            continue
+        if "=" in declarator_prefix and "operator=" not in declarator_prefix:
             continue
         if declarator_prefix:
             return True
@@ -238,10 +326,10 @@ def is_lookup_table(declaration, candidate_offset):
     return table_pattern.match(declaration_tail) is not None
 
 
-def is_target_declaration(declaration, candidate_offset):
+def is_target_declaration(declaration, candidate_offset, inside_function_body):
     """Return whether a candidate belongs to a requested census category."""
     return (
-        is_function_parameter(declaration, candidate_offset)
+        is_function_parameter(declaration, candidate_offset, inside_function_body)
         or is_scalar_constant(declaration, candidate_offset)
         or is_lookup_table(declaration, candidate_offset)
     )
@@ -272,6 +360,7 @@ def findings_for_file(source_path, repository_root):
         source_path.read_text(encoding="utf-8", errors="replace")
     )
     delimiter_offsets = lexical_delimiters(source_text)
+    function_ranges = function_body_ranges(source_text, delimiter_offsets)
     declaration_ranges = set()
     for candidate_pattern in CANDIDATE_PATTERNS:
         for candidate_match in candidate_pattern.finditer(source_text):
@@ -280,7 +369,10 @@ def findings_for_file(source_path, repository_root):
             )
             declaration_text = source_text[declaration_start:declaration_end]
             relative_candidate_offset = candidate_match.start() - declaration_start
-            if is_target_declaration(declaration_text, relative_candidate_offset):
+            inside_function_body = offset_is_in_ranges(candidate_match.start(), function_ranges)
+            if is_target_declaration(
+                declaration_text, relative_candidate_offset, inside_function_body
+            ):
                 declaration_ranges.add((declaration_start, declaration_end))
 
     findings = []

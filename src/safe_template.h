@@ -23,6 +23,13 @@ namespace safe_template {
 // the only kind any current call site needs.
 enum class Conv { String };
 
+/// Replaces validated bare `%s` conversions with bounded argument text.
+///
+/// The template and each argument use only the prefix before their first null character. Callers
+/// must provide at least as many arguments as the validated template contains conversions.
+std::string substitute(std::string_view template_text,
+    std::initializer_list<std::string_view> arguments);
+
 // Validates that `tmpl`'s ordered run of conversions (ignoring literal "%%"
 // and any non-conversion text) is a PREFIX of `expected` -- same order, and
 // no MORE conversions than `expected` describes, with no unsupported
@@ -41,9 +48,9 @@ enum class Conv { String };
 // including the ignored-surplus-args case. On any mismatch (including a null
 // `tmpl`), logs one mudlog line tagged with `context` and returns `fallback`
 // unexpanded.
-std::string expand_checked(const char *tmpl, std::initializer_list<Conv> expected,
-                           std::initializer_list<std::string_view> args, std::string_view fallback,
-                           std::string_view context);
+std::string expand_checked(const char* tmpl, std::initializer_list<Conv> expected,
+    std::initializer_list<std::string_view> args, std::string_view fallback,
+    std::string_view context);
 
 // Convenience entry point for the "exactly one bare %s consuming one
 // argument" shape -- script.cpp's five SCRIPT_DO_SAY-family sites

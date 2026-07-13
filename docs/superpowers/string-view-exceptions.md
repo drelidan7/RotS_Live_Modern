@@ -19,3 +19,16 @@ Permitted reasons are `nullable-state`, `retains-storage`, `binary-data`, `print
 | `extern const char* const dirs[];` | `sentinel-table` | The shared direction table terminates with the legacy `"\n"` sentinel. |
 | `extern const char* const dirs[] = { "north", "east", "south", "west", "up", "down", "\n" };` | `sentinel-table` | The initializer explicitly contains the terminal legacy sentinel. |
 | `const char* const dirs[] = { "north", "east", "south", "west", "up", "down", "\n" };` | `sentinel-table` | The local direction-name table explicitly contains the terminal legacy sentinel. |
+| `extern const char* const refer_dirs[];` | `sentinel-table` | Direction-reference consumers stop at the terminal `"\n"` entry. |
+| `extern const char* const refer_dirs[] = { "the north", "the east", "the south", "the west", "above", "below", "\n" };` | `sentinel-table` | The initializer explicitly contains the terminal legacy sentinel. |
+| `extern const char* const pc_races[];` | `sentinel-table` | Race lookup consumers retain the terminal `"\n"` entry used by legacy search helpers. |
+| `extern const char* const pc_race_types[];` | `sentinel-table` | Race-type lookup consumers retain the terminal `"\n"` entry used by legacy search helpers. |
+| `extern const char* const pc_race_keywords[];` | `sentinel-table` | Race-keyword lookup consumers retain the terminal `"\n"` entry used by legacy search helpers. |
+| `extern const char* const pc_star_types[];` | `sentinel-table` | Race-display lookup consumers retain the terminal `"\n"` entry used by legacy search helpers. |
+| `extern const char* const pc_named_star_types[];` | `sentinel-table` | Named race-display lookup consumers retain the terminal `"\n"` entry used by legacy search helpers. |
+| `extern const char* color_color[];` | `sentinel-table` | The ANSI color-name table retains its terminal `"\n"` entry for legacy consumers. |
+| `int search_block(char* arg, const char* const* list, char exact);` | `sentinel-table` | The legacy search API discovers table length by scanning for a `"\n"` entry. |
+| `int search_block(char* arg, const char* const* list, char exact) {` | `sentinel-table` | The implementation stops only when the supplied table reaches its `"\n"` entry. |
+| `int old_search_block(char* argument, int begin, unsigned int length, const char** list, int mode);` | `sentinel-table` | The legacy search API discovers table length by scanning for a `"\n"` entry. |
+| `int old_search_block(char* argument, int begin, unsigned int length, const char** list, int mode) {` | `sentinel-table` | The implementation stops only when the supplied table reaches its `"\n"` entry. |
+| `const char* const fill[] = { "in", "from", "with", "the", "on", "at", "to", "\n" };` | `sentinel-table` | The interpreter filler-word table terminates with the legacy `"\n"` sentinel. |

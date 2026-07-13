@@ -15,6 +15,8 @@
 #include "structs.h" /* For the RENT_CRASH macro */
 #include "objects_json.h" /* For ObjectSaveData (account-backed object staging) */
 
+#include <string_view>
+
 /* handling the affected-structures */
 #define AFFECT_TOTAL_UPDATE 3
 #define AFFECT_TOTAL_SET 1
@@ -49,7 +51,8 @@ void affect_join(struct char_data* ch, struct affected_type* af,
 
 /* utility */
 struct obj_data* create_money(int amount);
-int isname(const char* str, const char* namelist, char full = 1);
+/// Returns whether bounded `query` matches a word in `name_list` using legacy prefix rules.
+int isname(std::string_view query, std::string_view name_list, char full = 1);
 char* fname(char* namelist);
 
 /* ******** objects *********** */

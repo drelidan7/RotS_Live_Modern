@@ -1,5 +1,6 @@
 #include "safe_template.h"
 
+#include "text_view.h"
 #include "utils.h" // vmudlog, BRF, nz
 
 #include <algorithm>
@@ -70,32 +71,37 @@ ScanResult scan_conversions(std::string_view tmpl) {
 // so `next_arg` can never run past `args.end()`. Produces byte-identical
 // output to sprintf(tmpl, args...) for these %s-only templates, since
 // there are no field-width/flag conversions in play.
-std::string substitute(std::string_view tmpl, std::initializer_list<std::string_view> args) {
-    std::string out;
-    out.reserve(tmpl.size());
+} // namespace
 
-    const std::string_view *next_arg = args.begin();
-    std::size_t i = 0;
-    while (i < tmpl.size()) {
-        if (tmpl[i] == '%' && i + 1 < tmpl.size()) {
-            if (tmpl[i + 1] == '%') {
-                out.push_back('%');
-                i += 2;
+std::string substitute(std::string_view template_text,
+    std::initializer_list<std::string_view> arguments)
+{
+    template_text = rots::text::truncate_at_null(template_text);
+
+    std::string output;
+    output.reserve(template_text.size());
+
+    const std::string_view* next_argument = arguments.begin();
+    std::size_t template_index = 0;
+    while (template_index < template_text.size()) {
+        if (template_text[template_index] == '%' && template_index + 1 < template_text.size()) {
+            if (template_text[template_index + 1] == '%') {
+                output.push_back('%');
+                template_index += 2;
                 continue;
             }
-            if (tmpl[i + 1] == 's') {
-                out.append(*next_arg);
-                ++next_arg;
-                i += 2;
+            if (template_text[template_index + 1] == 's') {
+                output.append(rots::text::truncate_at_null(*next_argument));
+                ++next_argument;
+                template_index += 2;
                 continue;
             }
         }
-        out.push_back(tmpl[i]);
-        ++i;
+        output.push_back(template_text[template_index]);
+        ++template_index;
     }
-    return out;
+    return output;
 }
-} // namespace
 
 std::string expand_checked(const char *tmpl, std::initializer_list<Conv> expected,
                            std::initializer_list<std::string_view> args, std::string_view fallback,

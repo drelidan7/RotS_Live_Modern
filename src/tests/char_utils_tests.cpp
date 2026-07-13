@@ -5,6 +5,9 @@
 #include "../utils.h"
 #include <gtest/gtest.h>
 
+#include <array>
+#include <string_view>
+
 namespace utils {
 int get_race_perception(const char_data& character);
 }
@@ -47,6 +50,27 @@ obj_data make_object(int type_flag, int weight = 0, int bulk = 0)
 }
 
 } // namespace
+
+TEST(CharUtils, StringHelpersAcceptBoundedViews)
+{
+    const std::array<char, 5> text_storage { 'a', 'l', 'p', 'h', 'a' };
+    const std::string_view text(text_storage.data(), text_storage.size());
+
+    EXPECT_TRUE(string_func::equals(text, "alpha"));
+    EXPECT_TRUE(string_func::contains(text, "pha"));
+    EXPECT_FALSE(string_func::contains(text, "beta"));
+}
+
+TEST(CharUtils, StringHelpersStopAtFirstEmbeddedNull)
+{
+    constexpr std::string_view text("name\0ignored", 12);
+
+    EXPECT_TRUE(string_func::equals(text, "name"));
+    EXPECT_TRUE(string_func::contains(text, "ame"));
+    EXPECT_FALSE(string_func::contains(text, "ignored"));
+    EXPECT_TRUE(string_func::equals({}, {}));
+    EXPECT_TRUE(string_func::contains({}, {}));
+}
 
 TEST(CharUtils, ReturnsNeutralPronounsForSexlessCharacters) {
     CharUtilsTestContext context;

@@ -79,8 +79,10 @@ inline const char* nz(const char* p)
     return p ? p : "(null)";
 }
 
-int str_cmp(const char* arg1, const char* arg2);
-int strn_cmp(const char* arg1, const char* arg2, int n);
+/// Compares bounded text case-insensitively using the legacy ASCII ordering.
+int str_cmp(std::string_view first, std::string_view second);
+/// Compares at most `count` bounded characters using the legacy ASCII ordering.
+int strn_cmp(std::string_view first, std::string_view second, int count);
 /// Writes a bounded message to the server's timestamped stderr log.
 void log(std::string_view message);
 /// Writes a bounded message to stderr and eligible in-game log listeners.
@@ -767,9 +769,11 @@ void add_character_to_group(struct char_data* character, struct char_data* group
 void remove_character_from_group(struct char_data* character, struct char_data* group_leader);
 
 namespace string_func {
-bool equals(const char* a, const char* b);
+/// Returns whether two bounded text values are byte-for-byte equal before their first nulls.
+bool equals(std::string_view first, std::string_view second);
 bool is_null_or_empty(const char* a);
-bool contains(const char* a, const char* b);
+/// Returns whether bounded `text` contains bounded `search_text` before either first null.
+bool contains(std::string_view text, std::string_view search_text);
 }
 
 #endif /* UTILS_H */

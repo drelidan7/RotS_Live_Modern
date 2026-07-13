@@ -13,6 +13,8 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
+
 #include <cstdio>
 #include <string>
 
@@ -43,6 +45,23 @@ class ScopedDescriptorListReset {
 };
 
 } // namespace
+
+TEST(SafeTemplate, SubstituteAcceptsBoundedTemplateAndArguments)
+{
+    const std::array<char, 5> argument_storage { 'a', 'l', 'p', 'h', 'a' };
+    const std::string_view argument(argument_storage.data(), argument_storage.size());
+
+    EXPECT_EQ(safe_template::substitute("value=%s", { argument }), "value=alpha");
+    EXPECT_EQ(safe_template::substitute({}, {}), "");
+}
+
+TEST(SafeTemplate, SubstituteStopsAtFirstEmbeddedNull)
+{
+    constexpr std::string_view text("name\0ignored", 12);
+    constexpr std::string_view template_text("value=%s\0ignored", 16);
+
+    EXPECT_EQ(safe_template::substitute(template_text, { text }), "value=name");
+}
 
 TEST(SafeTemplate, MatchingTwoStringSignatureExpandsByteIdenticalToSnprintf) {
     ScopedDescriptorListReset descriptor_list_reset;

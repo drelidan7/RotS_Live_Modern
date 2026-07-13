@@ -88,7 +88,6 @@ extern const char* const race_abbrevs[];
 extern const char* const room_bits[];
 extern int top_of_p_table;
 extern const char* const sector_types[];
-extern const char* const moon_phase[];
 extern long judppwd;
 extern int judpavailable;
 extern const char* const beornwhere[];
@@ -2111,7 +2110,6 @@ ACMD(do_time)
 {
     int weekday, sunrise, sunset, hours;
     extern int sun_events[12][2];
-    extern const char* const weekdays[];
     extern struct time_info_data time_info;
 
     std::string out;

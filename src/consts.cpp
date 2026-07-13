@@ -1734,10 +1734,10 @@ extern const char* const object_materials[] = {
 extern const char* const dirs[] = { "north", "east", "south", "west", "up", "down", "\n" };
 extern const char* const refer_dirs[] = { "the north", "the east", "the south", "the west", "above", "below", "\n" };
 // const
-extern const char* const weekdays[7] = { "Elenya", "Anarya", "Isilya", "Alduya", "Menelya", "Valanya", "Earenya" };
+extern const std::array<std::string_view, 7> weekdays { "Elenya", "Anarya", "Isilya", "Alduya", "Menelya", "Valanya", "Earenya" };
 
 // const
-extern const char* const month_name[17] = { "Narviny\xEB", /* 0 */
+extern const std::array<std::string_view, 17> month_name { "Narviny\xEB", /* 0 */
     "N\xE9nim\xEB",
     "S\xFAlim\xEB",
     "V\xEDress\xEB",
@@ -2423,7 +2423,7 @@ extern const char* const shooting[] = { "slow", "normal", "fast", "\n" };
 
 extern const char* const casting[] = { "slow", "normal", "fast", "\n" };
 
-extern const char* const moon_phase[8] = { "new", "new-born", "half-grown", "almost full",
+extern const std::array<std::string_view, 8> moon_phase { "new", "new-born", "half-grown", "almost full",
     "full", "slightly wane", "waning", "dying" };
 
 // Perm starting affects for races

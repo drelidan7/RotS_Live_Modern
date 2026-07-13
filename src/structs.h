@@ -11,6 +11,8 @@
 #ifndef STRUCTS_H
 #define STRUCTS_H
 
+#include <array>
+#include <string_view>
 #include <sys/types.h>
 
 #include <stdio.h>
@@ -909,6 +911,12 @@ const int constexpr RACE_HARADRIM = 18;
 // asctime() (Phase 3 Task 6). It is deliberately removed: every call site now
 // passes a real time_t*, so any new mismatch fails at compile time on MSVC.
 #ifndef CONSTANTSMARK
+/// Names the seven weekdays in calendar order.
+extern const std::array<std::string_view, 7> weekdays;
+/// Names the seventeen months in calendar order.
+extern const std::array<std::string_view, 17> month_name;
+/// Names the eight moon phases in progression order.
+extern const std::array<std::string_view, 8> moon_phase;
 extern const char* const pc_races[];
 extern const char* const pc_race_types[];
 extern const char* const pc_race_keywords[];

@@ -269,6 +269,7 @@ if(ROTS_BUILD_TESTS)
         tests/rots_net_tests.cpp
         tests/rots_rng_tests.cpp
         tests/safe_template_tests.cpp
+        tests/string_view_utility_tests.cpp
         tests/save_benchmark_tests.cpp
         tests/shape_format_tests.cpp
         tests/shapemob_tests.cpp

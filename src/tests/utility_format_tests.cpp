@@ -19,8 +19,6 @@
 #include <string_view>
 
 extern struct descriptor_data* descriptor_list;
-extern const char* const month_name[];
-
 namespace {
 
 // Mirrors ScopedDescriptorListReset (interpre_account_menu_tests.cpp) --

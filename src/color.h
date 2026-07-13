@@ -3,6 +3,9 @@
 #ifndef COLOR_H
 #define COLOR_H
 
+#include <array>
+#include <string_view>
+
 /* Number big enough to hold the fields below */
 #define MAX_COLOR_FIELDS 16
 
@@ -63,14 +66,37 @@ struct color_slot_data {
 #define CC_USE(ch, col) \
     (clr(ch) ? get_color_sequence((ch), (col)) : "")
 #define CC_NORM(ch) \
-    (clr((ch)) ? color_sequence[0] : "")
+    (clr((ch)) ? color_sequence[0].data() : "")
 #define CC_FIX(ch, col) \
-    (clr((ch)) ? color_sequence[col] : "")
+    (clr((ch)) ? color_sequence[col].data() : "")
 
 extern const char* color_color[];
-extern const char* const color_sequence[];
+/// Maps ANSI color indexes to their terminal escape sequences.
+inline constexpr std::array<std::string_view, 16> color_sequence {
+    "\x1B[0m",
+    "\x1B[31m",
+    "\x1B[32m",
+    "\x1B[33m",
+    "\x1B[34m",
+    "\x1B[35m",
+    "\x1B[36m",
+    "\x1B[37m",
+    "\x1B[01m\x1B[31m",
+    "\x1B[01m\x1B[32m",
+    "\x1B[01m\x1B[33m",
+    "\x1B[01m\x1B[34m",
+    "\x1B[01m\x1B[35m",
+    "\x1B[01m\x1B[36m",
+    "\x1B[01m\x1B[37m",
+    "",
+};
 
+/// Returns the rendered escape sequence for a character color slot.
 const char* get_color_sequence(struct char_data*, int);
+/// Finds a configurable color field using the legacy case-sensitive prefix rule.
+int find_color_field(std::string_view field_name);
+/// Finds an ANSI color using the legacy case-sensitive exact-match rule.
+int find_ansi_color(std::string_view color_name);
 void set_truecolor_foreground(struct char_data*, int, int, int, int);
 void set_truecolor_background(struct char_data*, int, int, int, int);
 void clear_color_background(struct char_data*, int);

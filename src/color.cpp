@@ -12,6 +12,7 @@
 #include "comm.h"
 #include "db.h"
 #include "interpre.h"
+#include "text_view.h"
 #include "utils.h"
 
 namespace {
@@ -305,24 +306,37 @@ const char* color_color[] = {
 
 int num_of_colors = sizeof(color_color) / sizeof(color_color[0]);
 
-const char* const color_sequence[] = {
-    "\x1B[0m",
-    "\x1B[31m",
-    "\x1B[32m",
-    "\x1B[33m",
-    "\x1B[34m",
-    "\x1B[35m",
-    "\x1B[36m",
-    "\x1B[37m",
-    "\x1B[01m\x1B[31m",
-    "\x1B[01m\x1B[32m",
-    "\x1B[01m\x1B[33m",
-    "\x1B[01m\x1B[34m",
-    "\x1B[01m\x1B[35m",
-    "\x1B[01m\x1B[36m",
-    "\x1B[01m\x1B[37m",
-    ""
-};
+int find_color_field(std::string_view field_name)
+{
+    field_name = rots::text::truncate_at_null(field_name);
+    if (field_name.empty()) {
+        return -1;
+    }
+
+    for (int field_index = 0; field_index < num_of_color_fields - 1; ++field_index) {
+        const std::string_view candidate(color_fields[field_index]);
+        if (field_name.size() <= candidate.size()
+            && candidate.substr(0, field_name.size()) == field_name) {
+            return field_index;
+        }
+    }
+    return -1;
+}
+
+int find_ansi_color(std::string_view color_name)
+{
+    color_name = rots::text::truncate_at_null(color_name);
+    if (color_name.empty()) {
+        return -1;
+    }
+
+    for (int color_index = 0; color_index < num_of_colors - 1; ++color_index) {
+        if (color_name == color_color[color_index]) {
+            return color_index;
+        }
+    }
+    return -1;
+}
 
 void convert_old_colormask(struct char_file_u* ch)
 {
@@ -466,7 +480,7 @@ const char* get_color_sequence(struct char_data* ch, int col)
             ? static_cast<int>(foreground.ansi)
             : static_cast<int>(ch->profs->colors[col]);
         if (ansi_index != CNRM)
-            append_escape(buffer, kColorRenderBufferSize, &length, color_sequence[ansi_index]);
+            append_escape(buffer, kColorRenderBufferSize, &length, color_sequence[ansi_index].data());
     }
 
     if (background.mode == COLOR_VALUE_TRUECOLOR)
@@ -521,7 +535,7 @@ ACMD(do_color)
         return;
     }
 
-    num = old_search_block(buf, 0, strlen(buf), color_fields, FALSE) - 1;
+    num = find_color_field(buf);
 
     if (num < 0) {
         send_to_char("Possible arguments are:\n\r", ch);
@@ -576,7 +590,7 @@ ACMD(do_color)
         }
 
         if (!str_cmp(mode, "ansi")) {
-            col = old_search_block(value_arguments, 0, strlen(value_arguments), color_color, TRUE) - 1;
+            col = find_ansi_color(value_arguments);
             if (col < 0) {
                 send_to_char("Possible colours are:", ch);
                 std::string message = join_with_leading_spaces(color_color, 8);
@@ -639,7 +653,7 @@ ACMD(do_color)
         return;
     }
 
-    col = old_search_block(arg, 0, strlen(arg), color_color, TRUE) - 1;
+    col = find_ansi_color(arg);
 
     if (col < 0) {
         send_to_char("Possible colours are:", ch);

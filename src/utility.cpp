@@ -40,6 +40,7 @@
 #include <time.h>
 
 #include "color.h"
+#include "text_view.h"
 #include "comm.h"
 #include "platform_compat.h"
 #include "rots_net.h"
@@ -1169,40 +1170,58 @@ int rots_remove(const char* path)
 
 /* returns: 0 if equal, 1 if arg1 > arg2, -1 if arg1 < arg2  */
 /* scan 'till found different or end of both                 */
-int str_cmp(const char* arg1, const char* arg2)
+int str_cmp(std::string_view first, std::string_view second)
 {
-    int chk, i;
+    first = rots::text::truncate_at_null(first);
+    second = rots::text::truncate_at_null(second);
 
-    for (i = 0; *(arg1 + i) || *(arg2 + i); i++)
-        if ((chk = LOWER(*(arg1 + i)) - LOWER(*(arg2 + i)))) {
-            if (chk < 0)
-                return (-1);
-            else
-                return (1);
+    const std::size_t shared_length = std::min(first.size(), second.size());
+    for (std::size_t index = 0; index < shared_length; ++index) {
+        const int difference = LOWER(first[index]) - LOWER(second[index]);
+        if (difference < 0) {
+            return -1;
         }
-    return (0);
+        if (difference > 0) {
+            return 1;
+        }
+    }
+
+    if (first.size() < second.size()) {
+        return -1;
+    }
+    if (first.size() > second.size()) {
+        return 1;
+    }
+    return 0;
 }
 
 /* returns: 0 if equal, 1 if arg1 > arg2, -1 if arg1 < arg2  */
 /* scan 'till found different, end of both, or n reached     */
-int strn_cmp(const char* arg1, const char* arg2, int n)
+int strn_cmp(std::string_view first, std::string_view second, int count)
 {
-    int chk, i;
+    if (count <= 0) {
+        return 0;
+    }
 
-    for (i = 0; (*(arg1 + i) || *(arg2 + i)) && (n > 0); i++, n--)
-        if ((chk = LOWER(*(arg1 + i)) - LOWER(*(arg2 + i)))) {
-            if (chk < 0)
-                return (-1);
-            else
-                return (1);
+    first = rots::text::truncate_at_null(first);
+    second = rots::text::truncate_at_null(second);
+
+    const std::size_t comparison_limit = static_cast<std::size_t>(count);
+    const std::size_t shared_length = std::min({ first.size(), second.size(), comparison_limit });
+    for (std::size_t index = 0; index < shared_length; ++index) {
+        const int difference = LOWER(first[index]) - LOWER(second[index]);
+        if (difference < 0) {
+            return -1;
         }
+        if (difference > 0) {
+            return 1;
+        }
+    }
 
-    return (0);
-}
-
-static std::string_view truncate_at_null(std::string_view message)
-{
-    return message.substr(0, message.find('\0'));
+    if (shared_length == comparison_limit || first.size() == second.size()) {
+        return 0;
+    }
+    return first.size() < second.size() ? -1 : 1;
 }
 
 /* log a death trap hit */
@@ -1230,7 +1249,7 @@ void log(std::string_view message)
     // time, a null return, and an asctime(nullptr) abort (Phase 3 Task 6 crash,
     // STATUS_STACK_BUFFER_OVERRUN). Identical width to the old `long` on both the
     // 32-bit legacy build and 64-bit POSIX, so this only changes Windows behavior.
-    message = truncate_at_null(message);
+    message = rots::text::truncate_at_null(message);
     time_t current_time;
     current_time = time(0);
     char* timestamp = asctime(localtime(&current_time));
@@ -1256,7 +1275,7 @@ void mudlog(std::string_view message_body, char type, sh_int level, byte file)
     time_t current_time;
     char log_preference;
 
-    message_body = truncate_at_null(message_body);
+    message_body = rots::text::truncate_at_null(message_body);
     current_time = time(0);
     timestamp = asctime(localtime(&current_time));
     // time_t ct(0);
@@ -1868,8 +1887,6 @@ void day_to_str(struct time_info_data* loc_time_info, char* str)
 {
     char* s;
     int day;
-    extern const char* const month_name[];
-
     day = loc_time_info->day + 1; /* day in [1..35] */
 
     s = nth(day);

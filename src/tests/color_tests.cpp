@@ -6,11 +6,30 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
+#include <concepts>
+#include <string_view>
+#include <type_traits>
+
+static_assert(std::same_as<std::remove_cvref_t<decltype(color_sequence[0])>, std::string_view>);
+
 #include <cstring>
 #include <string>
 
 void clear_char(struct char_data* ch, int mode);
 ACMD(do_color);
+
+TEST(Color, FindsFieldsAndAnsiColorsFromBoundedViews)
+{
+    const std::array<char, 5> field_storage { 'm', 'a', 'g', 'i', 'c' };
+    const std::string_view field_name(field_storage.data(), field_storage.size());
+    constexpr std::string_view embedded_color("cyan\0ignored", 12);
+
+    EXPECT_EQ(find_color_field(field_name), COLOR_MAGIC);
+    EXPECT_EQ(find_ansi_color(embedded_color), CCYN);
+    EXPECT_EQ(find_color_field({}), -1);
+    EXPECT_EQ(find_ansi_color("unknown"), -1);
+}
 // const char*, matching interpre.cpp's definition exactly (MSVC's decorated
 // names encode the element type, so a mismatched extern is a hard LNK2001
 // there; GCC/Clang linked it silently -- Phase 3 Task 6).

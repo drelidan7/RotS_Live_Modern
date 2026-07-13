@@ -3,6 +3,7 @@
 #include "environment_utils.h"
 #include "object_utils.h"
 #include "spells.h"
+#include "text_view.h"
 
 #include "db.h" // for get_encumb_table
 #include "handler.h" // for fname and other_side
@@ -1875,9 +1876,17 @@ void group_data::track_combat_time(char_data* character, float elapsed_seconds)
 
 //============================================================================
 namespace string_func {
-bool equals(const char* a, const char* b) { return strcmp(a, b) == 0; }
+bool equals(std::string_view first, std::string_view second)
+{
+    return rots::text::truncate_at_null(first) == rots::text::truncate_at_null(second);
+}
 
 bool is_null_or_empty(const char* a) { return !a || a[0] == '\0'; }
 
-bool contains(const char* a, const char* b) { return strstr(a, b) != NULL; }
+bool contains(std::string_view text, std::string_view search_text)
+{
+    text = rots::text::truncate_at_null(text);
+    search_text = rots::text::truncate_at_null(search_text);
+    return text.find(search_text) != std::string_view::npos;
+}
 }

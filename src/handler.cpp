@@ -44,6 +44,7 @@
 #include "interpre.h"
 #include "spells.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 #include "zone.h" /* For zone_table */
 
@@ -193,50 +194,62 @@ void recount_light_room(int room)
     world[room].light = count;
 }
 
-int isname(const char* str, const char* namelist, char full)
+int isname(std::string_view query, std::string_view name_list, char full)
 {
-    char *curname, *curstr;
-    int tmp;
+    query = rots::text::truncate_at_null(query);
+    name_list = rots::text::truncate_at_null(name_list);
 
-    while (*str && (*str <= ' '))
-        str++;
-
-    tmp = strlen(str);
-    if (!tmp)
-        return 0;
-
-    if ((tmp < 3) || (tmp > 4))
-        full = 1;
-
-    if (!namelist)
-        return 0;
-
-    curname = (char*)namelist;
-    for (;;) {
-        for (curstr = (char*)str;; curstr++, curname++) {
-            if (!*curstr && (!full || !isalpha(*curname)))
-                return 1;
-
-            if (!*curname)
-                return 0;
-
-            if (!*curstr || *curname == ' ')
-                break;
-
-            if (LOWER(*curstr) != LOWER(*curname))
-                break;
-        } /* skip to next name */
-
-        for (; isalpha(*curname); curname++)
-            ;
-
-        if (!*curname)
-            return 0;
-
-        /* first char of new name */
-        for (; *curname && (!isalpha(*curname) || (*curname == ' ')); curname++)
-            ;
+    std::size_t first_query_character = 0;
+    while (first_query_character < query.size() && query[first_query_character] <= ' ') {
+        ++first_query_character;
     }
+    if (first_query_character == query.size()) {
+        return 0;
+    }
+    query.remove_prefix(first_query_character);
+
+    if ((query.size() < 3) || (query.size() > 4)) {
+        full = 1;
+    }
+
+    std::size_t name_index = 0;
+    while (name_index < name_list.size()) {
+        while (name_index < name_list.size()
+            && (!std::isalpha(static_cast<unsigned char>(name_list[name_index])) || name_list[name_index] == ' ')) {
+            ++name_index;
+        }
+        if (name_index == name_list.size()) {
+            return 0;
+        }
+
+        std::size_t query_index = 0;
+        std::size_t candidate_index = name_index;
+        while (true) {
+            if (query_index == query.size()) {
+                const bool candidate_continues = candidate_index < name_list.size()
+                    && std::isalpha(static_cast<unsigned char>(name_list[candidate_index]));
+                if (!full || !candidate_continues) {
+                    return 1;
+                }
+                break;
+            }
+
+            if (candidate_index == name_list.size() || name_list[candidate_index] == ' '
+                || LOWER(query[query_index]) != LOWER(name_list[candidate_index])) {
+                break;
+            }
+
+            ++query_index;
+            ++candidate_index;
+        }
+
+        while (name_index < name_list.size()
+            && std::isalpha(static_cast<unsigned char>(name_list[name_index]))) {
+            ++name_index;
+        }
+    }
+
+    return 0;
 }
 
 void affect_modify_room(struct room_data* room, byte, int mod,

@@ -156,8 +156,6 @@ void another_hour(int mode);
 void weather_change(void);
 void weather_to_char(char_data* ch);
 
-extern const char* const moon_phase[];
-
 // weather_messages[] entries end in "\n\r" for direct display to the
 // terminal; MSDP values are discrete data, not display text, so strip it.
 std::string strip_trailing_line_break(const char* text)

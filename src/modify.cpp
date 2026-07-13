@@ -336,7 +336,9 @@ void string_add(struct descriptor_data* d, char* str)
             send_to_char("Your text so far:\n\r", d->character);
             tmp = *(*d->str + d->cur_str);
             *(*d->str + d->cur_str) = 0;
-            send_to_char(*d->str, d->character);
+            if (*d->str) {
+                send_to_char(*d->str, d->character);
+            }
             send_to_char(">>\n\r", d->character);
             *(*d->str + d->cur_str) = tmp;
             *(*d->str + d->len_str) = 0;
@@ -357,7 +359,9 @@ void string_add(struct descriptor_data* d, char* str)
                 tmp = replace_pattern(d, tmpstr, tmpstr2 + 1);
                 send_to_char(std::format("Replaced {} occurence{}.\n\rYour text is:\n\r", tmp,
                     !tmp ? "" : "s"), d->character);
-                send_to_char(*d->str, d->character);
+                if (*d->str) {
+                    send_to_char(*d->str, d->character);
+                }
                 tmpmark = d->cur_str;
             }
             *str = 0;
@@ -383,7 +387,9 @@ void string_add(struct descriptor_data* d, char* str)
             crmark = 0;
             *str = 0;
             send_to_char("Your text is formatted.\n\r", d->character);
-            send_to_char(*d->str, d->character);
+            if (*d->str) {
+                send_to_char(*d->str, d->character);
+            }
             break;
         case '%':
             strcpy(scan + 1, scan + 2);

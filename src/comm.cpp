@@ -46,6 +46,7 @@
 #include "skill_timer.h"
 #include "spells.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 #include "zone.h"
@@ -1214,7 +1215,7 @@ int get_from_q(struct txt_q* queue, char* dest)
 
 void write_to_output(std::string_view text, descriptor_data* descriptor)
 {
-    text = text.substr(0, text.find('\0'));
+    text = rots::text::truncate_at_null(text);
 
     // If the descriptor is already in the overflow state or there is no text,
     // another write cannot change its observable output.
@@ -1646,12 +1647,10 @@ int process_output(struct descriptor_data* t)
     return 1;
 }
 
-int write_to_descriptor(SocketType desc, const char* txt)
+int write_to_descriptor(SocketType descriptor, std::string_view text)
 {
-    int sofar, thisround, total;
-
-    total = strlen(txt);
-    sofar = 0;
+    text = rots::text::truncate_at_null(text);
+    std::size_t bytes_sent = 0;
 
     // Two sentinels to reject, both load-bearing (Phase 3 Task 6 review):
     // - 0 is this codebase's own "closed descriptor" marker: close_socket()
@@ -1665,19 +1664,20 @@ int write_to_descriptor(SocketType desc, const char* txt)
     //   kInvalidSocket is -1 on POSIX, while on Windows INVALID_SOCKET is a
     //   huge unsigned all-ones value that the old `<= 0` comparison could
     //   never catch (Phase 3 Task 4 finding).
-    if (desc == 0 || !rots_net::is_valid_socket(desc)) {
+    if (descriptor == 0 || !rots_net::is_valid_socket(descriptor)) {
         return 0;
     }
 
     try {
-        do {
-            thisround = static_cast<int>(rots_net::write_socket(desc, txt + sofar, total - sofar));
-            if (thisround < 0) {
+        while (bytes_sent < text.size()) {
+            const rots_net::ssize_type bytes_written = rots_net::write_socket(
+                descriptor, text.data() + bytes_sent, text.size() - bytes_sent);
+            if (bytes_written < 0) {
                 perror("Write to socket");
                 return (-1);
             }
-            sofar += thisround;
-        } while (sofar < total);
+            bytes_sent += static_cast<std::size_t>(bytes_written);
+        }
     } catch (...) {
         vmudlog(NRM, "Exception in write_to_descriptor");
         return -1;
@@ -2026,15 +2026,6 @@ void send_to_char(std::string_view message, char_data* character)
     write_to_output(message, character->desc);
 }
 
-void send_to_char(const char* message, char_data* character)
-{
-    if (message == nullptr) {
-        return;
-    }
-
-    send_to_char(std::string_view(message), character);
-}
-
 void send_to_char(std::string_view message, int character_id)
 {
     if (message.empty()) {
@@ -2049,15 +2040,6 @@ void send_to_char(std::string_view message, int character_id)
             break;
         }
     }
-}
-
-void send_to_char(const char* message, int character_id)
-{
-    if (message == nullptr) {
-        return;
-    }
-
-    send_to_char(std::string_view(message), character_id);
 }
 
 const char* get_char_name(int character_id)
@@ -2095,81 +2077,90 @@ void vsend_to_char(char_data* character, const char* format, ...)
     send_to_char(buf, character);
 }
 
-void send_to_all(const char* message)
+void send_to_all(std::string_view message)
 {
-    if (message) {
-        for (descriptor_data* i = descriptor_list; i; i = i->next) {
-            if (i->connected == CON_PLYNG) {
-                SEND_TO_Q(message, i);
+    for (descriptor_data* connection = descriptor_list; connection;
+        connection = connection->next) {
+        if (connection->connected == CON_PLYNG) {
+            SEND_TO_Q(message, connection);
+        }
+    }
+}
+
+void send_to_outdoor(std::string_view message, int mode)
+{
+    for (descriptor_data* connection = descriptor_list; connection;
+        connection = connection->next) {
+        if (!connection->connected && (connection->character->in_room != NOWHERE)) {
+            if ((OUTSIDE(connection->character)
+                    && ((mode != OUTDOORS_LIGHT)
+                        || !IS_SET(world[connection->character->in_room].room_flags, DARK)))
+                && (connection->character->specials.position > POSITION_SLEEPING)
+                && (!PLR_FLAGGED(connection->character, PLR_WRITING))) {
+                SEND_TO_Q(message, connection);
             }
         }
     }
 }
 
-void send_to_outdoor(const char* messg, int mode)
-{
-    struct descriptor_data* i;
-
-    if (messg)
-        for (i = descriptor_list; i; i = i->next)
-            if (!i->connected && (i->character->in_room != NOWHERE))
-                if ((OUTSIDE(i->character) && ((mode != OUTDOORS_LIGHT) || !IS_SET(world[i->character->in_room].room_flags, DARK))) && (i->character->specials.position > POSITION_SLEEPING) && (!PLR_FLAGGED(i->character, PLR_WRITING)))
-                    SEND_TO_Q(messg, i);
-}
-
 //  For weather messages - sends to outdoor sector
-void send_to_sector(const char* messg, int sector_type)
+void send_to_sector(std::string_view message, int sector_type)
 {
-    struct descriptor_data* i;
-
-    if (sector_type > 12 || sector_type < 0)
+    if (sector_type > 12 || sector_type < 0) {
         return;
-    if (messg)
-        for (i = descriptor_list; i; i = i->next)
-            if (!i->connected && (i->character->in_room != NOWHERE))
-                if ((world[i->character->in_room].sector_type == sector_type) && (i->character->specials.position > POSITION_SLEEPING) && (!PLR_FLAGGED(i->character, PLR_WRITING)) && OUTSIDE(i->character))
-                    SEND_TO_Q(messg, i);
+    }
+    for (descriptor_data* connection = descriptor_list; connection;
+        connection = connection->next) {
+        if (!connection->connected && (connection->character->in_room != NOWHERE)) {
+            if ((world[connection->character->in_room].sector_type == sector_type)
+                && (connection->character->specials.position > POSITION_SLEEPING)
+                && (!PLR_FLAGGED(connection->character, PLR_WRITING))
+                && OUTSIDE(connection->character)) {
+                SEND_TO_Q(message, connection);
+            }
+        }
+    }
 }
 
-void send_to_except(const char* messg, struct char_data* ch)
+void send_to_except(std::string_view message, char_data* excluded_character)
 {
-    struct descriptor_data* i;
-
-    if (messg)
-        for (i = descriptor_list; i; i = i->next)
-            if (ch->desc != i && !i->connected)
-                SEND_TO_Q(messg, i);
+    for (descriptor_data* connection = descriptor_list; connection;
+        connection = connection->next) {
+        if (excluded_character->desc != connection && !connection->connected) {
+            SEND_TO_Q(message, connection);
+        }
+    }
 }
 
-void send_to_room(const char* messg, int room)
+void send_to_room(std::string_view message, int room)
 {
-    struct char_data* i;
-
-    if (messg)
-        for (i = world[room].people; i; i = i->next_in_room)
-            if (i->desc)
-                SEND_TO_Q(messg, i->desc);
+    for (char_data* occupant = world[room].people; occupant;
+        occupant = occupant->next_in_room) {
+        if (occupant->desc) {
+            SEND_TO_Q(message, occupant->desc);
+        }
+    }
 }
 
-void send_to_room_except(const char* messg, int room, struct char_data* ch)
+void send_to_room_except(std::string_view message, int room, char_data* excluded_character)
 {
-    struct char_data* i;
-
-    if (messg)
-        for (i = world[room].people; i; i = i->next_in_room)
-            if (i != ch && i->desc)
-                SEND_TO_Q(messg, i->desc);
+    for (char_data* occupant = world[room].people; occupant;
+        occupant = occupant->next_in_room) {
+        if (occupant != excluded_character && occupant->desc) {
+            SEND_TO_Q(message, occupant->desc);
+        }
+    }
 }
 
-void send_to_room_except_two(const char* messg, int room, struct char_data* ch1,
-    struct char_data* ch2)
+void send_to_room_except_two(std::string_view message, int room,
+    char_data* excluded_first, char_data* excluded_second)
 {
-    struct char_data* i;
-
-    if (messg)
-        for (i = world[room].people; i; i = i->next_in_room)
-            if (i != ch1 && i != ch2 && i->desc)
-                SEND_TO_Q(messg, i->desc);
+    for (char_data* occupant = world[room].people; occupant;
+        occupant = occupant->next_in_room) {
+        if (occupant != excluded_first && occupant != excluded_second && occupant->desc) {
+            SEND_TO_Q(message, occupant->desc);
+        }
+    }
 }
 
 /*

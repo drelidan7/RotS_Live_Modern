@@ -1116,9 +1116,13 @@ ACMD(do_zone)
                      zone_table[tmp].y, zone_table[tmp].symbol, zone_table[tmp].level)
                      ,
         ch);
-    send_to_char(zone_table[tmp].description, ch);
+    if (zone_table[tmp].description) {
+        send_to_char(zone_table[tmp].description, ch);
+    }
     send_to_char("\n\r------------------------------------------\n\r", ch);
-    send_to_char(zone_table[tmp].map, ch);
+    if (zone_table[tmp].map) {
+        send_to_char(zone_table[tmp].map, ch);
+    }
     return;
 }
 
@@ -1232,7 +1236,7 @@ ACMD(do_shutdown)
 
     if (!*arg) {
         const std::string message = std::format("(GC) Shutdown by {}. \n\r", GET_NAME(ch));
-        send_to_all(message.c_str());
+        send_to_all(message);
         log(message);
         circle_shutdown = 1;
     } else if (!str_cmp_nullable(arg, "reboot")) {
@@ -1241,13 +1245,13 @@ ACMD(do_shutdown)
         circle_shutdown = circle_reboot = 1;
     } else if (!str_cmp_nullable(arg, "die")) {
         const std::string message = std::format("(GC) Shutdown by {}. \n\r", GET_NAME(ch));
-        send_to_all(message.c_str());
+        send_to_all(message);
         log(message);
         touch_file("../.killscript");
         circle_shutdown = 1;
     } else if (!str_cmp_nullable(arg, "pause")) {
         const std::string message = std::format("(GC) Shutdown by {}. \n\r", GET_NAME(ch));
-        send_to_all(message.c_str());
+        send_to_all(message);
         log(message);
         touch_file("../pause");
         circle_shutdown = 1;

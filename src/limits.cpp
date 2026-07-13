@@ -841,7 +841,7 @@ void point_update(void)
                     act("$n's $o went out.", TRUE, j->carried_by, j, 0, TO_ROOM);
                     recount_light_room(j->carried_by->in_room);
                 } else if (j->in_room != NOWHERE) {
-                    send_to_room(std::format("{} here went out.\n\r", j->short_description).c_str(), j->in_room);
+                    send_to_room(std::format("{} here went out.\n\r", j->short_description), j->in_room);
                     recount_light_room(j->in_room);
                 }
                 extract_obj(j);
@@ -853,7 +853,7 @@ void point_update(void)
                     act("$n's $o flickers weakly.", TRUE, j->carried_by, j, 0, TO_ROOM);
                     //	  recount_light_room(j->carried_by->in_room);
                 } else if (j->in_room != NOWHERE) {
-                    send_to_room(std::format("{} here flickers weakly.\n\r", j->short_description).c_str(), j->in_room);
+                    send_to_room(std::format("{} here flickers weakly.\n\r", j->short_description), j->in_room);
                     //	  recount_light_room(j->in_room);
                 }
             }
@@ -1511,7 +1511,7 @@ void affect_update_room(struct room_data* room)
                         newaf.location = SPELL_MIST_OF_BAAZUNGA;
                         newaf.bitvector = 0;
 
-                        send_to_room(std::format("The mists drift {}.\n\r", dirs[direction]).c_str(), room->number);
+                        send_to_room(std::format("The mists drift {}.\n\r", dirs[direction]), room->number);
 
                         affect_to_room(&world[roomnum], &newaf);
                         affect_remove_room(room, tmpaf);

@@ -1,12 +1,20 @@
 #include "../comm.h"
+#include "../rots_net.h"
 #include "../structs.h"
 #include "test_char_cleanup.h"
+#include "test_world.h"
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstring>
 #include <string>
 #include <string_view>
+#include <type_traits>
+
+#if defined(PREDEF_PLATFORM_LINUX)
+#include <sys/socket.h>
+#endif
 
 extern descriptor_data* descriptor_list;
 
@@ -57,16 +65,198 @@ struct ConnectedCharacterContext {
     }
 };
 
+#if defined(PREDEF_PLATFORM_LINUX)
+struct LocalSocketPair {
+    // Carries bytes written by write_to_descriptor to the peer socket.
+    SocketType writer = rots_net::kInvalidSocket;
+    // Receives bytes from the writer so tests can inspect exact write lengths.
+    SocketType reader = rots_net::kInvalidSocket;
+
+    LocalSocketPair()
+    {
+        int socket_handles[2] = { -1, -1 };
+        const int result = socketpair(AF_UNIX, SOCK_STREAM, 0, socket_handles);
+        EXPECT_EQ(result, 0) << "socketpair() setup failed";
+        writer = socket_handles[0];
+        reader = socket_handles[1];
+    }
+
+    ~LocalSocketPair()
+    {
+        if (rots_net::is_valid_socket(writer)) {
+            rots_net::close_socket(writer);
+        }
+        if (rots_net::is_valid_socket(reader)) {
+            rots_net::close_socket(reader);
+        }
+    }
+
+    LocalSocketPair(const LocalSocketPair&) = delete;
+    LocalSocketPair& operator=(const LocalSocketPair&) = delete;
+};
+#endif
+
+constexpr std::array<char, 8> bounded_message_storage { 'm', 'e', 's', 's', 'a', 'g', 'e', 'X' };
+constexpr std::array<char, 8> embedded_null_message_storage { 'm', 'e', 's', '\0', 'a', 'g', 'e', 'X' };
+
+std::string_view bounded_message()
+{
+    return std::string_view(bounded_message_storage.data(), 7);
+}
+
+std::string_view embedded_null_message()
+{
+    return std::string_view(embedded_null_message_storage.data(), 7);
+}
+
+template <typename Broadcast>
+void expect_bounded_and_embedded_null_output(Broadcast broadcast, descriptor_data& descriptor)
+{
+    broadcast(bounded_message());
+    EXPECT_STREQ(descriptor.output, "message");
+
+    reset_capturing_descriptor(descriptor, descriptor.character);
+    broadcast(embedded_null_message());
+    EXPECT_STREQ(descriptor.output, "mes");
+}
+
 } // namespace
 
-TEST(CommOutput, SendToCharNullPointerRemainsANoOp)
+TEST(CommOutput, CommunicationFunctionsExposeBoundedMessageSignatures)
 {
-    ConnectedCharacterContext context;
-
-    send_to_char(static_cast<const char*>(nullptr), &context.character);
-
-    EXPECT_STREQ(context.descriptor.output, "");
+    static_assert(std::is_same_v<decltype(&send_to_all), void (*)(std::string_view)>);
+    static_assert(std::is_same_v<decltype(&send_to_except),
+        void (*)(std::string_view, char_data*)>);
+    static_assert(std::is_same_v<decltype(&send_to_room), void (*)(std::string_view, int)>);
+    static_assert(std::is_same_v<decltype(&send_to_room_except),
+        void (*)(std::string_view, int, char_data*)>);
+    static_assert(std::is_same_v<decltype(&send_to_room_except_two),
+        void (*)(std::string_view, int, char_data*, char_data*)>);
+    static_assert(std::is_same_v<decltype(&send_to_outdoor),
+        void (*)(std::string_view, int)>);
+    static_assert(std::is_same_v<decltype(&send_to_sector),
+        void (*)(std::string_view, int)>);
+    static_assert(std::is_same_v<decltype(&perform_to_all),
+        void (*)(std::string_view, char_data*)>);
+    static_assert(std::is_same_v<decltype(&write_to_descriptor),
+        int (*)(SocketType, std::string_view)>);
 }
+
+TEST(CommOutput, SendToAllForwardsBoundedViewsAndEmbeddedNullSemantics)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+    ConnectedCharacterContext recipient;
+    descriptor_list = &recipient.descriptor;
+
+    expect_bounded_and_embedded_null_output(
+        [](std::string_view message) { send_to_all(message); }, recipient.descriptor);
+}
+
+TEST(CommOutput, SendToExceptForwardsBoundedViewsAndEmbeddedNullSemantics)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+    ConnectedCharacterContext recipient;
+    ConnectedCharacterContext excluded;
+    descriptor_list = &recipient.descriptor;
+
+    expect_bounded_and_embedded_null_output(
+        [&excluded](std::string_view message) { send_to_except(message, &excluded.character); },
+        recipient.descriptor);
+}
+
+TEST(CommOutput, SendToRoomForwardsBoundedViewsAndEmbeddedNullSemantics)
+{
+    ScopedTestWorld test_world;
+    ConnectedCharacterContext recipient;
+    test_world.room().people = &recipient.character;
+    recipient.character.in_room = 0;
+
+    expect_bounded_and_embedded_null_output(
+        [](std::string_view message) { send_to_room(message, 0); }, recipient.descriptor);
+}
+
+TEST(CommOutput, SendToRoomExceptForwardsBoundedViewsAndEmbeddedNullSemantics)
+{
+    ScopedTestWorld test_world;
+    ConnectedCharacterContext recipient;
+    ConnectedCharacterContext excluded;
+    test_world.room().people = &recipient.character;
+    recipient.character.in_room = 0;
+
+    expect_bounded_and_embedded_null_output(
+        [&excluded](std::string_view message) {
+            send_to_room_except(message, 0, &excluded.character);
+        },
+        recipient.descriptor);
+}
+
+TEST(CommOutput, SendToRoomExceptTwoForwardsBoundedViewsAndEmbeddedNullSemantics)
+{
+    ScopedTestWorld test_world;
+    ConnectedCharacterContext recipient;
+    ConnectedCharacterContext excluded_first;
+    ConnectedCharacterContext excluded_second;
+    test_world.room().people = &recipient.character;
+    recipient.character.in_room = 0;
+
+    expect_bounded_and_embedded_null_output(
+        [&excluded_first, &excluded_second](std::string_view message) {
+            send_to_room_except_two(
+                message, 0, &excluded_first.character, &excluded_second.character);
+        },
+        recipient.descriptor);
+}
+
+TEST(CommOutput, SendToOutdoorForwardsBoundedViewsAndEmbeddedNullSemantics)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+    ScopedTestWorld test_world;
+    ConnectedCharacterContext recipient;
+    recipient.character.in_room = 0;
+    recipient.character.specials.position = POSITION_STANDING;
+    descriptor_list = &recipient.descriptor;
+
+    expect_bounded_and_embedded_null_output(
+        [](std::string_view message) { send_to_outdoor(message, 0); }, recipient.descriptor);
+}
+
+TEST(CommOutput, SendToSectorForwardsBoundedViewsAndEmbeddedNullSemantics)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+    ScopedTestWorld test_world;
+    ConnectedCharacterContext recipient;
+    constexpr int sector_type = 3;
+    test_world.room().sector_type = sector_type;
+    recipient.character.in_room = 0;
+    recipient.character.specials.position = POSITION_STANDING;
+    descriptor_list = &recipient.descriptor;
+
+    expect_bounded_and_embedded_null_output(
+        [](std::string_view message) { send_to_sector(message, 3); },
+        recipient.descriptor);
+}
+
+#if defined(PREDEF_PLATFORM_LINUX)
+TEST(CommOutput, WriteToDescriptorUsesTheBoundedNormalizedLength)
+{
+    LocalSocketPair bounded_pair;
+
+    ASSERT_EQ(write_to_descriptor(bounded_pair.writer, bounded_message()), 0);
+    std::array<char, 16> bounded_output {};
+    const rots_net::ssize_type bounded_bytes_read = rots_net::read_socket(
+        bounded_pair.reader, bounded_output.data(), bounded_output.size());
+    ASSERT_EQ(bounded_bytes_read, 7);
+    EXPECT_EQ(std::string_view(bounded_output.data(), 7), "message");
+
+    LocalSocketPair embedded_null_pair;
+    ASSERT_EQ(write_to_descriptor(embedded_null_pair.writer, embedded_null_message()), 0);
+    std::array<char, 16> embedded_null_output {};
+    const rots_net::ssize_type embedded_null_bytes_read = rots_net::read_socket(
+        embedded_null_pair.reader, embedded_null_output.data(), embedded_null_output.size());
+    ASSERT_EQ(embedded_null_bytes_read, 3);
+    EXPECT_EQ(std::string_view(embedded_null_output.data(), 3), "mes");
+}
+#endif
 
 TEST(CommOutput, WriteToOutputAcceptsANonNullTerminatedSlice)
 {

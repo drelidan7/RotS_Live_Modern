@@ -1093,10 +1093,14 @@ void list_simple_proto(struct char_data* ch, struct char_data* mob)
     send_to_char(std::format("(1) alias(es)         :{}\n\r", mob->player.name), ch);
     send_to_char(std::format("(2) reference description  :{}\n\r", mob->player.short_descr), ch);
     send_to_char("(3) full  description   :\n\r", ch);
-    send_to_char(mob->player.long_descr, ch);
+    if (mob->player.long_descr) {
+        send_to_char(mob->player.long_descr, ch);
+    }
     send_to_char("\n\r", ch);
     send_to_char("(4) detailed description  :\n\r", ch);
-    send_to_char(mob->player.description, ch);
+    if (mob->player.description) {
+        send_to_char(mob->player.description, ch);
+    }
     send_to_char("\n\r", ch);
     send_to_char(std::format("(5) flag number  :{}\n\r", mob->specials2.act), ch);
     send_to_char(std::format("(6) affections   :{}\n\r", mob->specials.affected_by), ch);
@@ -1117,10 +1121,14 @@ void list_proto(struct char_data* ch, struct char_data* mob)
     send_to_char(std::format("(1) alias(es)         :{}\n\r", mob->player.name), ch);
     send_to_char(std::format("(2) reference description  :{}\n\r", mob->player.short_descr), ch);
     send_to_char("(3) full  description   :\n\r", ch);
-    send_to_char(mob->player.long_descr, ch);
+    if (mob->player.long_descr) {
+        send_to_char(mob->player.long_descr, ch);
+    }
     send_to_char("\n\r", ch);
     send_to_char("(4) detailed description  :\n\r", ch);
-    send_to_char(mob->player.description, ch);
+    if (mob->player.description) {
+        send_to_char(mob->player.description, ch);
+    }
     send_to_char("\n\r", ch);
     send_to_char(std::format("(5) flag number  :{}\n\r", mob->specials2.act), ch);
     send_to_char(std::format("(6) affections   :{}\n\r", mob->specials.affected_by), ch);

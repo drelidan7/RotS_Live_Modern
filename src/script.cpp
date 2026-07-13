@@ -1502,8 +1502,10 @@ int run_script(struct info_script* info, struct script_data* position)
                 tmpch = get_char_param(curr->param[0], info);
                 for (tmpint = 0; (tmpint <= top_of_zone_table) && (zone_table[tmpint].number != curr->param[1]); tmpint++)
                     ;
-                if ((tmpch) && (tmpint <= top_of_zone_table))
+                if ((tmpch) && (tmpint <= top_of_zone_table)
+                    && zone_table[tmpint].map) {
                     send_to_char(zone_table[tmpint].map, tmpch);
+                }
             }
             curr = curr->next;
             break;

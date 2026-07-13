@@ -30,24 +30,30 @@ struct StartupOptions {
 };
 
 /* comm.c */
-void send_to_all(const char* messg);
+/// Queues a bounded message for every connected player without retaining the view.
+void send_to_all(std::string_view message);
 /// Queues a bounded message for a connected character without retaining the view.
 void send_to_char(std::string_view message, struct char_data* character);
-/// Queues a null-terminated message for a connected character, ignoring a null pointer.
-void send_to_char(const char* message, struct char_data* character);
 /// Queues a bounded message for the connected character with the specified absolute identifier.
 void send_to_char(std::string_view message, int character_id);
-/// Queues a null-terminated message by character identifier, ignoring a null pointer.
-void send_to_char(const char* message, int character_id);
 const char* get_char_name(int character_id);
 struct char_data* get_character(int character_id);
-void send_to_except(const char* messg, struct char_data* ch);
-void send_to_room(const char* messg, int room);
-void send_to_room_except(const char* messg, int room, struct char_data* ch);
-void send_to_room_except_two(const char* messg, int room, struct char_data* ch1, struct char_data* ch2);
-void send_to_outdoor(const char* messg, int mode);
-void send_to_sector(const char* messg, int sector_type);
-void perform_to_all(char* messg, struct char_data* ch);
+/// Queues a bounded message for every connected player except the specified character.
+void send_to_except(std::string_view message, struct char_data* excluded_character);
+/// Queues a bounded message for every descriptor attached to a character in the room.
+void send_to_room(std::string_view message, int room);
+/// Queues a bounded message for room occupants other than the specified character.
+void send_to_room_except(
+    std::string_view message, int room, struct char_data* excluded_character);
+/// Queues a bounded message for room occupants other than two specified characters.
+void send_to_room_except_two(std::string_view message, int room,
+    struct char_data* excluded_first, struct char_data* excluded_second);
+/// Queues a bounded message for eligible outdoor players using the supplied light mode.
+void send_to_outdoor(std::string_view message, int mode);
+/// Queues a bounded message for eligible outdoor players in the supplied sector type.
+void send_to_sector(std::string_view message, int sector_type);
+/// Performs the legacy all-player delivery behavior for a bounded message.
+void perform_to_all(std::string_view message, struct char_data* character);
 void close_socket(struct descriptor_data* d, int drop_all = TRUE);
 void break_spell(struct char_data* ch);
 void abort_delay(char_data* wait_ch);
@@ -65,7 +71,8 @@ void act(const char* str, int hide_invisible, struct char_data* ch,
 #define TO_NOTVICT 2
 #define TO_CHAR 3
 
-int write_to_descriptor(SocketType desc, const char* txt);
+/// Writes a bounded message to a socket, retrying until every byte is sent or an error occurs.
+int write_to_descriptor(SocketType descriptor, std::string_view text);
 void write_to_q(char* txt, struct txt_q* queue);
 /// Appends a bounded message to a descriptor's output buffer without retaining the view.
 void write_to_output(std::string_view text, struct descriptor_data* descriptor);

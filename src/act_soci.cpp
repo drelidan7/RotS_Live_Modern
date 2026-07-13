@@ -296,14 +296,18 @@ ACMD(do_action)
     }
 
     if (!vict) {
-        send_to_char(action->char_no_arg, ch);
+        if (action->char_no_arg) {
+            send_to_char(action->char_no_arg, ch);
+        }
         send_to_char("\n\r", ch);
         act(action->others_no_arg, action->hide, ch, 0, 0, TO_ROOM);
         return;
     }
 
     if (vict == ch) {
-        send_to_char(action->char_auto, ch);
+        if (action->char_auto) {
+            send_to_char(action->char_auto, ch);
+        }
         send_to_char("\n\r", ch);
         act(action->others_auto, action->hide, ch, 0, 0, TO_ROOM);
     } else {

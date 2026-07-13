@@ -1103,7 +1103,7 @@ ACMD(do_open)
                     if (back->to_room == ch->in_room) {
                         REMOVE_BIT(back->exit_info, EX_CLOSED);
                         if (back->keyword) {
-                            send_to_room(std::format("The {} is opened from the other side.\n\r", fname(back->keyword)).c_str(), EXIT(ch, door)->to_room);
+                            send_to_room(std::format("The {} is opened from the other side.\n\r", fname(back->keyword)), EXIT(ch, door)->to_room);
                         } else
                             send_to_room("The door is opened from the other side.\n\r",
                                 EXIT(ch, door)->to_room);
@@ -1211,7 +1211,7 @@ ACMD(do_close)
                     if ((back->to_room == ch->in_room) && IS_SET(back->exit_info, EX_ISDOOR)) {
                         SET_BIT(back->exit_info, EX_CLOSED);
                         if (back->keyword) {
-                            send_to_room(std::format("The {} closes quietly.\n\r", back->keyword).c_str(), EXIT(ch, door)->to_room);
+                            send_to_room(std::format("The {} closes quietly.\n\r", back->keyword), EXIT(ch, door)->to_room);
                         } else
                             send_to_room("The door closes quietly.\n\r", EXIT(ch, door)->to_room);
                     }
@@ -1893,7 +1893,7 @@ ACMD(do_pull)
 
     if (IS_SET(room->dir_option[exit_num]->exit_info, EX_CLOSED)) {
         REMOVE_BIT(room->dir_option[exit_num]->exit_info, EX_CLOSED);
-        send_to_room(std::format("The {} opens slowly.\n\r", room->dir_option[exit_num]->keyword).c_str(), room_num);
+        send_to_room(std::format("The {} opens slowly.\n\r", room->dir_option[exit_num]->keyword), room_num);
 
         would_open = 1;
 
@@ -1902,7 +1902,7 @@ ACMD(do_pull)
         }
     } else {
         SET_BIT(room->dir_option[exit_num]->exit_info, EX_CLOSED);
-        send_to_room(std::format("The {} closes slowly.\n\r", room->dir_option[exit_num]->keyword).c_str(), room_num);
+        send_to_room(std::format("The {} closes slowly.\n\r", room->dir_option[exit_num]->keyword), room_num);
 
         would_open = 0;
 
@@ -1932,10 +1932,10 @@ ACMD(do_pull)
 
     if (IS_SET(next_room->dir_option[exit_num]->exit_info, EX_CLOSED) || would_open) {
         REMOVE_BIT(next_room->dir_option[exit_num]->exit_info, EX_CLOSED);
-        send_to_room(std::format("The {} opens slowly.\n\r", next_room->dir_option[exit_num]->keyword).c_str(), next_room_num);
+        send_to_room(std::format("The {} opens slowly.\n\r", next_room->dir_option[exit_num]->keyword), next_room_num);
 
     } else {
         SET_BIT(next_room->dir_option[exit_num]->exit_info, EX_CLOSED);
-        send_to_room(std::format("The {} closes slowly.\n\r", next_room->dir_option[exit_num]->keyword).c_str(), next_room_num);
+        send_to_room(std::format("The {} closes slowly.\n\r", next_room->dir_option[exit_num]->keyword), next_room_num);
     }
 }

@@ -1469,9 +1469,13 @@ void shape_center_zone(struct char_data* ch, char* arg)
                 owners += "\n\r\n\r";
                 send_to_char(owners, ch);
             }
-            send_to_char(SHAPE_ZONE(ch)->zone_descr, ch);
+            if (SHAPE_ZONE(ch)->zone_descr) {
+                send_to_char(SHAPE_ZONE(ch)->zone_descr, ch);
+            }
             send_to_char("\n\r-----------------------------------------------\n\r", ch);
-            send_to_char(SHAPE_ZONE(ch)->zone_map, ch);
+            if (SHAPE_ZONE(ch)->zone_map) {
+                send_to_char(SHAPE_ZONE(ch)->zone_map, ch);
+            }
             SHAPE_ZONE(ch)
                 ->editflag
                 = 0;

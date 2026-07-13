@@ -1018,7 +1018,9 @@ void list_room(struct char_data* ch, struct room_data* mob)
     long int flg;
     send_to_char(std::format("(1) name         :{}\n\r", mob->name), ch);
     send_to_char("(2) description  :\n\r", ch);
-    send_to_char(mob->description, ch);
+    if (mob->description) {
+        send_to_char(mob->description, ch);
+    }
     send_to_char("\n\r", ch);
     send_to_char(std::format("(3) room flag  :{}\n\r", mob->room_flags), ch);
     send_to_char(std::format("(4) sector type   :{}\n\r", mob->sector_type), ch);
@@ -1049,7 +1051,10 @@ void list_room(struct char_data* ch, struct room_data* mob)
         // nz() avoids crashing std::format's strlen(nullptr) here too.
         send_to_char(std::format("(8) exit keyword   :{}\n\r", nz(mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->keyword)), ch);
         send_to_char("(9) exit description  :\n\r", ch);
-        send_to_char(mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->general_description, ch);
+        if (mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->general_description) {
+            send_to_char(
+                mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->general_description, ch);
+        }
         send_to_char("\n\r", ch);
 
         send_to_char(std::format("(10) key number  :{}\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->key), ch);
@@ -1061,7 +1066,9 @@ void list_room(struct char_data* ch, struct room_data* mob)
     } else {
         send_to_char(std::format("(13) extra description keyword  :{}\n\r", mob->ex_description->keyword), ch);
         send_to_char("(14) extra description  :\n\r", ch);
-        send_to_char(mob->ex_description->description, ch);
+        if (mob->ex_description->description) {
+            send_to_char(mob->ex_description->description, ch);
+        }
         send_to_char("\n\r", ch);
     }
 

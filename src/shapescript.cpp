@@ -2264,7 +2264,9 @@ void shape_center_script(struct char_data* ch, char* arg)
                 SHAPE_SCRIPT(ch)->number, SHAPE_SCRIPT(ch)->name)
                              ,
                 ch);
-            send_to_char(SHAPE_SCRIPT(ch)->description, ch);
+            if (SHAPE_SCRIPT(ch)->description) {
+                send_to_char(SHAPE_SCRIPT(ch)->description, ch);
+            }
             SHAPE_SCRIPT(ch)
                 ->editflag
                 = 0;

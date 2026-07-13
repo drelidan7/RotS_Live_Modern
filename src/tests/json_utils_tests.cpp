@@ -169,7 +169,8 @@ TEST(JsonUtils, RejectsTrailingCharactersAfterRootObject)
     std::string error_message;
 
     EXPECT_FALSE(reader.parse_root_object(
-        [](const std::string&, json_utils::JsonReader* nested_reader, std::string* nested_error_message) {
+        [](std::string_view, json_utils::JsonReader* nested_reader,
+            std::string* nested_error_message) {
             return nested_reader->skip_value(nested_error_message);
         },
         &error_message));

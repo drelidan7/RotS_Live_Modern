@@ -263,11 +263,17 @@ re-affirmed (Backlog Cleanup Task 5, 2026-07-13).** Phase 5 Task 9 had suppresse
 the two int-narrowing classes on a 20-site sample; this revisit ran a dedicated
 census CI cycle (run 29222339494 — `/WX` and both `/wd` flags lifted by one
 clearly-labeled commit, reverted immediately after harvest) and captured the
-complete site list: **1,067 unique file:line sites (893 C4244 + 174 C4267) across
-59 files**, byte-identical in count to the Task 9 census (no drift since).
-Stratification: world-file loaders + OLC shape editors 436; combat/spell math 215;
-`size_t`→`int` lengths 171; `time_t` narrowing 37; misc (indices, flags, encumb,
-tolower) 190; test fixtures 18. An 84-site stratified sample was read in source,
+complete site list. The raw harvest was **1,167 deduplicated warning lines,
+exactly matching the Task 9 census count (993 C4244 + 174 C4267 — zero drift
+since)**; 100 of those lines are MSVC multi-line template-note continuations of
+other sites on the list (the `with [_Ty=int]` elaborations MSVC prints for
+template-argument conversions), so the census resolves to **1,067 unique
+file:line sites (893 C4244 + 174 C4267) across 59 files**. Stratification of
+the 1,067: world-file loaders + OLC shape editors 436; combat/spell math 215;
+sizes/lengths 171 (this stratum is 100% C4267 — `strlen()`/`size_t` narrowing;
+the remaining 3 of the 174 C4267 sites sit in the test-fixture stratum);
+`time_t` narrowing 37; misc (indices, flags, encumb, tolower) 190; test
+fixtures 18. An 84-site stratified sample was read in source,
 plus a full (not sampled) read of every suspected-real site. The framing fact:
 `sh_int`/`byte` are fixed-width on **all four platforms**, so C4244 truncation
 behavior is identical everywhere — MSVC is merely the only compiler that diagnoses
@@ -302,14 +308,23 @@ Real-truncation findings, three classes:
    piecemeal. (The interpreter's TARGET_GOLD amount-into-`ch_num` sites are
    dead code — no command mask ever sets `TAR_GOLD`.)
 
-**Disposition: the global `/wd4244 /wd4267` stays.** The ~1,050 remaining sites
-are diffuse (59 files) and domain-provably benign — stats bounded ≤ ~100 into
+**Disposition: the global `/wd4244 /wd4267` stays.** The 972 remaining sites
+(1,067 − 46 `ch_num` fixed − 1 `romfl` fixed − 11 idnum-record escalated − 37
+`time_t` escalated) are diffuse (spanning most of the 59 census files) and
+domain-provably benign — stats bounded ≤ ~100 into
 `signed char` (±127), hp/mana/move bounded ≤ ~32k into `sh_int`, `strlen()` of
 `MAX_STRING_LENGTH`-bounded strings into `int`, world-file stats parsed via
 `fscanf("%d")` into their canonical field widths. Narrowing the suppression to
 per-file pragmas would mean annotating essentially every legacy file to silence
 the same benign pattern — strictly worse than one ledgered global flag. The real
 fix remains a future typed-fields effort, as the Task 9 ledger already noted.
+
+The census is reproducible: repeat the labeled census-commit procedure (see
+commits `3953857` — lift `/WX /wd4244 /wd4267` on the MSVC blocks of both
+targets — and its revert `23c09d3`), push, and harvest the C4244/C4267 lines
+from the `windows-msvc` job log of the resulting run (reference run:
+29222339494; strip CRLF and the two-target vcxproj duplication, then drop the
+template-note continuation lines to get unique sites).
 
 **The i386 container leg (`-m32`, g++14 `debian:trixie`) is `-Werror`-clean too —
 verified at Phase 5 Task 10 (finalization), as planned, not silently skipped.** The

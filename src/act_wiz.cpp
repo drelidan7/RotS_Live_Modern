@@ -299,7 +299,7 @@ ACMD(do_goto)
 
     stop_riding(ch);
 
-    if (ch->specials.poofOut)
+    if (!ch->specials.poofOut.empty())
         strcpy(buf, std::format("{}", ch->specials.poofOut).c_str());
     else
         strcpy(buf, "$n disappears in a puff of smoke.");
@@ -308,7 +308,7 @@ ACMD(do_goto)
     char_from_room(ch);
     char_to_room(ch, location);
 
-    if (ch->specials.poofIn)
+    if (!ch->specials.poofIn.empty())
         strcpy(buf, std::format("{}", ch->specials.poofIn).c_str());
     else
         strcpy(buf, "A huge gate appears briefly and $n steps out.");
@@ -1702,7 +1702,11 @@ ACMD(do_gecho)
 
 ACMD(do_poofset)
 {
-    char** msg;
+    // RAII T5b: poofIn/poofOut are std::string; select the target by
+    // reference and assign directly (a blank argument yields an empty
+    // string, matching the old NULL-clears-the-message behavior). The
+    // std::string assignment frees the previous message.
+    std::string* msg;
     int i;
 
     switch (subcmd) {
@@ -1720,12 +1724,7 @@ ACMD(do_poofset)
     for (i = 0; *(argument + i) == ' '; i++)
         ;
 
-    RELEASE(*msg);
-
-    if (!*(argument + i))
-        *msg = NULL;
-    else
-        *msg = str_dup(argument + i);
+    *msg = (argument + i);
 
     send_to_char("Ok.\n\r", ch);
 }

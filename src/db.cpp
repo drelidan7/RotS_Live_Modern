@@ -1576,8 +1576,8 @@ struct char_data* read_mobile(int nr, int type)
         mob->specials.special_prog_number = 0;
         mob->specials.special_prog_point = 0;
     }
-    mob->specials.poofIn = 0;
-    mob->specials.poofOut = 0;
+    mob->specials.poofIn.clear();
+    mob->specials.poofOut.clear();
     mob->specials.recite_lines = NULL;
     /* insert in list */
     mob->next = character_list;
@@ -3425,8 +3425,15 @@ void free_char(struct char_data* ch)
 {
     clear_account_backed_object_bytes_for_character(ch);
 
-    RELEASE(ch->specials.poofIn);
-    RELEASE(ch->specials.poofOut);
+    // RAII T5b: poofIn/poofOut are owning std::string now (PC god poof
+    // messages). free_char() frees the char_data storage via free() WITHOUT
+    // running ~char_data() (ownership-map section 6), so their heap buffers
+    // must be released explicitly here. Move-assigning a fresh empty string
+    // (not .clear(), which can retain capacity) unambiguously selects
+    // operator=(std::string&&), deallocating the existing buffer -- mirrors
+    // the T3 skills/knowledge vector idiom below.
+    ch->specials.poofIn = std::string();
+    ch->specials.poofOut = std::string();
 
     // RAII T5a: free the special-mob script buffers, now in their own typed
     // fields (were reinterpret_cast'd through poofIn/poofOut/union1/union2).

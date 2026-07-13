@@ -2960,25 +2960,20 @@ TEST(ActWizComm, DoPoofsetStoresPoofinMessageAndAcksActor)
     SoloCharacterContext context;
     char argument[] = "  Ta-da!";
     do_poofset(&context.character, argument, nullptr, 0, SCMD_POOFIN);
-    ASSERT_NE(context.character.specials.poofIn, nullptr);
-    EXPECT_STREQ(context.character.specials.poofIn, "Ta-da!");
+    // RAII T5b: poofIn is an owning std::string now (was str_dup'd char*);
+    // it self-frees at fixture teardown, so no manual free is needed.
+    EXPECT_FALSE(context.character.specials.poofIn.empty());
+    EXPECT_EQ(context.character.specials.poofIn, "Ta-da!");
     EXPECT_EQ(std::string(context.descriptor.output), "Ok.\n\r");
-    // Freed directly (not via RELEASE()) so cleanup doesn't depend on the
-    // process-global global_release_flag toggle (RELEASE() only calls
-    // free_function() when that flag is set -- see do_setfree's "RELEASE is
-    // faked" message); str_dup()'s allocation is a plain malloc-compatible
-    // buffer (create_function()/CREATE()), so std::free() is always safe here.
-    std::free(context.character.specials.poofIn);
-    context.character.specials.poofIn = nullptr;
 }
 
 TEST(ActWizComm, DoPoofsetClearsPoofoutMessageWhenArgumentBlank)
 {
     SoloCharacterContext context;
-    context.character.specials.poofOut = str_dup("old message");
+    context.character.specials.poofOut = "old message";
     char argument[] = "   ";
     do_poofset(&context.character, argument, nullptr, 0, SCMD_POOFOUT);
-    EXPECT_EQ(context.character.specials.poofOut, nullptr);
+    EXPECT_TRUE(context.character.specials.poofOut.empty());
     EXPECT_EQ(std::string(context.descriptor.output), "Ok.\n\r");
 }
 

@@ -1280,10 +1280,14 @@ struct char_special_data {
 
     owned_alias_list alias; /* aliases, 0 for mobs -- RAII T4, was `struct alias_list *` */
 
-    char* poofIn; /* Description on arrival of a god.	       */
-    /* also a stack pointer for special mobs   */
-    char* poofOut; /* Description upon a god's exit.	       */
-    /* also a list pointer for special mobs    */
+    // RAII T5b: PC/god arrival & departure strings, now owning std::string
+    // (were str_dup'd char*). Empty for mobs. The special-mob script
+    // buffers that used to alias these fields moved to special_stack /
+    // special_list_area (above, RAII T5a). free_char() destroys these
+    // explicitly before the calloc/free teardown that bypasses
+    // ~char_data() (ownership-map section 6 dtor-order rule).
+    std::string poofIn; /* Description on arrival of a god. */
+    std::string poofOut; /* Description upon a god's exit.  */
     int invis_level; /* level of invisibility		       */
     /* also a stack pointer for special mobs   */
 

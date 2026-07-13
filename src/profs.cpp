@@ -729,7 +729,7 @@ void roll_abilities(char_data* character, int min_sum, int max_sum)
             character_name, abils.str, abils.intel,
             abils.wil, abils.dex,
             abils.con, abils.lea)
-                .c_str());
+                );
     }
 
     recalc_abilities(character);

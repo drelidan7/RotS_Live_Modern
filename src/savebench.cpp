@@ -85,7 +85,7 @@ ACMD(do_savebench)
             if (!log_line.empty() && log_line.back() == '\r')
                 log_line.pop_back();
             if (!log_line.empty())
-                log(log_line.c_str());
+                log(log_line);
             log_line.clear();
         } else {
             log_line.push_back(report_char);
@@ -94,6 +94,6 @@ ACMD(do_savebench)
     if (!log_line.empty() && log_line.back() == '\r')
         log_line.pop_back();
     if (!log_line.empty())
-        log(log_line.c_str());
+        log(log_line);
     log("savebench: ---- end report ----");
 }

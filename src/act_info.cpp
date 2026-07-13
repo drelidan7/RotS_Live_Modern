@@ -395,7 +395,7 @@ void show_obj_to_char(struct obj_data* object, struct char_data* ch, int mode)
     if (mode != 5)
         out += "\n\r";
 
-    send_to_char(out.c_str(), ch);
+    send_to_char(out, ch);
 }
 
 /** The 'show' flag is true for containers and false for rooms. */
@@ -405,7 +405,7 @@ void list_obj_to_char(obj_data* list, char_data* ch, int mode, bool show)
     if (show && use_formatter) {
         inventory_formatter formatter(list, ch);
         std::string inventory_message = formatter.format_inventory();
-        send_to_char(inventory_message.c_str(), ch);
+        send_to_char(inventory_message, ch);
     } else {
         bool found = show;
         for (obj_data* root_object = list; root_object; root_object = root_object->next_content) {
@@ -1188,14 +1188,14 @@ ACMD(do_look)
                  */
                 if (subcmd == SCMD_LOOK_EXAM) {
                     send_to_char(
-                        std::format("To the {} you see:\n\r", keywords[keyword_no]).c_str(), ch);
+                        std::format("To the {} you see:\n\r", keywords[keyword_no]), ch);
                     tmp = ch->in_room;
                     ch->in_room = EXIT(ch, keyword_no)->to_room;
 
                     /* Darkies can't see room contents or description if it's sunny */
                     if (SUN_PENALTY(ch)) {
                         send_to_char(
-                            std::format("{}\n\r", nz(world[ch->in_room].name)).c_str(), ch);
+                            std::format("{}\n\r", nz(world[ch->in_room].name)), ch);
                         send_to_char("The power of light makes it hard to see.\n\r", ch);
                         ch->in_room = tmp;
                         return;
@@ -1223,7 +1223,7 @@ ACMD(do_look)
                                 keywords[keyword_no],
                                 nz(world[EXIT(ch, keyword_no)->to_room].name));
                     }
-                    send_to_char(exit_message.c_str(), ch);
+                    send_to_char(exit_message, ch);
                 }
             } else { /* There's no room there.. maybe a door? */
                 if (EXIT(ch, keyword_no)->general_description && *(EXIT(ch, keyword_no)->general_description))
@@ -1245,20 +1245,20 @@ ACMD(do_look)
                 if (IS_SET(EXIT(ch, keyword_no)->exit_info, EX_ISBROKEN) && (EXIT(ch, keyword_no)->keyword)) { /* Broken door */
                     send_to_char(
                         std::format("The {} is broken.\n\r", fname(EXIT(ch, keyword_no)->keyword))
-                            .c_str(),
+                            ,
                         ch);
                 } else if (IS_SET(EXIT(ch, keyword_no)->exit_info, EX_CLOSED) && (EXIT(ch, keyword_no)->keyword)) { /* Closed door */
                     if (!IS_SET(EXIT(ch, keyword_no)->exit_info, EX_ISHIDDEN)) {
                         send_to_char(
                             std::format(
                                 "The {} is closed.\n\r", fname(EXIT(ch, keyword_no)->keyword))
-                                .c_str(),
+                                ,
                             ch);
                     }
                 } else if (IS_SET(EXIT(ch, keyword_no)->exit_info, EX_ISDOOR) && EXIT(ch, keyword_no)->keyword) { /* Open door */
                     send_to_char(
                         std::format("The {} is open.\n\r", fname(EXIT(ch, keyword_no)->keyword))
-                            .c_str(),
+                            ,
                         ch);
                 }
             }
@@ -1281,7 +1281,7 @@ ACMD(do_look)
                             temp = (tmp_object->obj_flags.value[1] * 3) / tmp_object->obj_flags.value[0];
                             send_to_char(std::format("It's {}full of a {} liquid.\n\r", fullness[temp],
                                              color_liquid[tmp_object->obj_flags.value[2]])
-                                             .c_str(),
+                                             ,
                                 ch);
                         } else
                             send_to_char("It's max_content is zero, beware!\n\r", ch);
@@ -1721,7 +1721,7 @@ ACMD(do_exits)
     send_to_char("Obvious exits:\n\r", ch);
 
     if (!out.empty())
-        send_to_char(out.c_str(), ch);
+        send_to_char(out, ch);
     else
         send_to_char(" None.\n\r", ch);
 }
@@ -1980,7 +1980,7 @@ ACMD(do_info)
     if (!GET_COND(ch, THIRST))
         out += "You are thirsty.\r\n";
 
-    send_to_char(out.c_str(), ch);
+    send_to_char(out, ch);
     do_affections(ch, mutable_arg(""), 0, 0, 0);
 }
 
@@ -2083,7 +2083,7 @@ ACMD(do_score)
         out += "You are getting thirsty.\r\n";
     }
 
-    send_to_char(out.c_str(), ch);
+    send_to_char(out, ch);
 }
 
 // Local RAII helper for this chunk's malloc'd-char* sites (transform idiom
@@ -2155,7 +2155,7 @@ ACMD(do_time)
         out += std::format("The sun will rise in about {} hour{}.\n\r", hours,
             hours == 1 ? "" : "s");
     }
-    send_to_char(out.c_str(), ch);
+    send_to_char(out, ch);
 }
 
 ACMD(do_weather)
@@ -2243,7 +2243,7 @@ ACMD(do_help)
                         line[0] = UPPER(line[0]);
                     out += line;
                 }
-            send_to_char(out.c_str(), ch);
+            send_to_char(out, ch);
             return;
         }
         num = tmp;
@@ -2289,7 +2289,7 @@ ACMD(do_help)
             } else if (bot >= top) {
                 send_to_char(std::format("There is no entry for '{}' in the {} chapter.\r\n",
                                  argument, help_content[num].keyword)
-                                 .c_str(),
+                                 ,
                     ch);
                 return;
             } else if (chk > 0)
@@ -2308,7 +2308,7 @@ ACMD(do_help)
         }
         if (tmp % 4)
             out += "\n\r";
-        send_to_char(out.c_str(), ch);
+        send_to_char(out, ch);
     } else /* They used help with no first argument */
         send_to_char(help, ch);
 
@@ -2678,12 +2678,12 @@ ACMD(do_users)
             line += "[Hostname unknown]\n\r";
 
         if (d->connected || (!d->connected && CAN_SEE(ch, d->character))) {
-            send_to_char(line.c_str(), ch);
+            send_to_char(line, ch);
             num_can_see++;
         }
     }
 
-    send_to_char(std::format("\n\r{} visible sockets connected.\n\r", num_can_see).c_str(), ch);
+    send_to_char(std::format("\n\r{} visible sockets connected.\n\r", num_can_see), ch);
 }
 
 ACMD(do_inventory)
@@ -2731,7 +2731,7 @@ ACMD(do_gen_ps)
         send_to_char(circlemud_version, ch);
         break;
     case SCMD_WHOAMI:
-        send_to_char(std::format("{}\n\r", nz(GET_NAME(ch))).c_str(), ch);
+        send_to_char(std::format("{}\n\r", nz(GET_NAME(ch))), ch);
         break;
     }
 }
@@ -2757,7 +2757,7 @@ void perform_mortal_where(struct char_data* ch, char* arg)
                     std::string line = std::format(
                         "{:<20} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere");
                     ch->in_room = tmploc;
-                    send_to_char(line.c_str(), ch);
+                    send_to_char(line, ch);
                 }
             }
     } else { /* print only FIRST char, not all. */
@@ -2768,7 +2768,7 @@ void perform_mortal_where(struct char_data* ch, char* arg)
                 std::string line = std::format(
                     "{:<25} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere");
                 ch->in_room = tmploc;
-                send_to_char(line.c_str(), ch);
+                send_to_char(line, ch);
                 return;
             }
         send_to_char("No-one around by that name.\n\r", ch);
@@ -2793,12 +2793,12 @@ void perform_immort_where(struct char_data* ch, char* arg)
                         send_to_char(std::format("{:<20} - [{:5}] {} (in {})\n\r", GET_NAME(i),
                                          world[d->character->in_room].number, world[d->character->in_room].name,
                                          GET_NAME(d->character))
-                                         .c_str(),
+                                         ,
                             ch);
                     else
                         send_to_char(std::format("{:<20} - [{:5}] {}\n\r", GET_NAME(i),
                                          world[i->in_room].number, world[i->in_room].name)
-                                         .c_str(),
+                                         ,
                             ch);
                 }
             }
@@ -2808,7 +2808,7 @@ void perform_immort_where(struct char_data* ch, char* arg)
                 found = 1;
                 send_to_char(std::format("{:3}. {:<25} - [{:5}] {}\n\r", ++num, GET_NAME(i),
                                  world[i->in_room].number, world[i->in_room].name)
-                                 .c_str(),
+                                 ,
                     ch);
             }
 
@@ -2836,7 +2836,7 @@ void perform_immort_where(struct char_data* ch, char* arg)
                         send_to_char(std::format("{:3}. {:<25} - [{:5}] >> Stored in {}\n\r", ++num,
                                          k->short_description, tmp < 0 ? tmp : world[tmp].number,
                                          tmpobj ? tmpobj->short_description : "Something")
-                                         .c_str(),
+                                         ,
                             ch);
                     }
                 }
@@ -2847,13 +2847,13 @@ void perform_immort_where(struct char_data* ch, char* arg)
                     send_to_char(std::format("{:3}. {:<25} - [{:5}] >> Carried by {}\n\r", ++num,
                                      k->short_description, tmp < 0 ? tmp : world[tmp].number,
                                      i ? GET_NAME(i) : "Somebody")
-                                     .c_str(),
+                                     ,
                         ch);
                 }
                 if (!tmpobj && !i) {
                     send_to_char(std::format("{:3}. {:<25} - [{:5}] {}\n\r", ++num, k->short_description,
                                      tmp < 0 ? tmp : world[tmp].number, tmp < 0 ? "Nowhere" : world[tmp].name)
-                                     .c_str(),
+                                     ,
                         ch);
                 }
             }
@@ -2946,7 +2946,7 @@ void report_mob_age(struct char_data* ch, struct char_data* victim)
     else
         str = std::format("{} has been here for a very long time.\r\n", GET_NAME(victim));
     str[0] = toupper(str[0]);
-    send_to_char(str.c_str(), ch);
+    send_to_char(str, ch);
 }
 
 ACMD(do_consider)
@@ -3062,7 +3062,7 @@ ACMD(do_toggle)
                      ONOFF(PRF_FLAGGED(ch, PRF_SWIM)), ONOFF(PRF_FLAGGED(ch, PRF_LATIN1)),
                      ONOFF(PRF_FLAGGED(ch, PRF_SPINNER)), ONOFF(PRF_FLAGGED(ch, PRF_ADVANCED_VIEW)),
                      ONOFF(PRF_FLAGGED(ch, PRF_ADVANCED_PROMPT)))
-                     .c_str(),
+                     ,
         ch);
 
     /* the special, immortal set list */
@@ -3074,13 +3074,13 @@ ACMD(do_toggle)
                          " Wiznet Channel: {:<3}\r\n",
                          ONOFF(PRF_FLAGGED(ch, PRF_ROOMFLAGS)), ONOFF(PRF_FLAGGED(ch, PRF_HOLYLIGHT)),
                          ONOFF(PRF_FLAGGED(ch, PRF_NOHASSLE)), ONOFF(PRF_FLAGGED(ch, PRF_WIZ)))
-                         .c_str(),
+                         ,
             ch);
     }
 
     send_to_char(std::format("\r\nYou are employing {} tactics, and are speaking {}.\r\n", buf3,
                      ch->player.language ? skills[ch->player.language].name : "common tongue")
-                     .c_str(),
+                     ,
         ch);
     if (GET_SPEC(ch) == PLRSPEC_ARCH) {
         switch (GET_SHOOTING(ch)) {
@@ -3097,7 +3097,7 @@ ACMD(do_toggle)
             buf3 = "shooting error, please notify IMMs!";
             break;
         }
-        send_to_char(std::format("You are using {} shooting speed.\r\n", buf3).c_str(), ch);
+        send_to_char(std::format("You are using {} shooting speed.\r\n", buf3), ch);
     }
     if (GET_SPEC(ch) == PLRSPEC_ARCANE) {
         switch (GET_CASTING(ch)) {
@@ -3114,7 +3114,7 @@ ACMD(do_toggle)
             buf3 = "casting error, please notify IMMs!";
             break;
         }
-        send_to_char(std::format("You are using {} casting speed.\r\n", buf3).c_str(), ch);
+        send_to_char(std::format("You are using {} casting speed.\r\n", buf3), ch);
     }
 }
 
@@ -3176,7 +3176,7 @@ ACMD(do_commands)
                 out += "\n\r";
         }
         out += "\n\r";
-        send_to_char(out.c_str(), ch);
+        send_to_char(out, ch);
         return;
     }
 
@@ -3201,7 +3201,7 @@ ACMD(do_commands)
     }
 
     out += "\n\r";
-    send_to_char(out.c_str(), ch);
+    send_to_char(out, ch);
 }
 
 ACMD(do_diagnose)
@@ -3414,7 +3414,7 @@ ACMD(do_whois)
     // preserved as the same toupper() call, just against str[0] now.
     if (!str.empty())
         str[0] = static_cast<char>(toupper(static_cast<unsigned char>(str[0])));
-    send_to_char(str.c_str(), ch);
+    send_to_char(str, ch);
 
     return;
 #undef P
@@ -3800,7 +3800,7 @@ ACMD(do_affections)
     if (SUN_PENALTY(ch))
         out += "You feel weak under the intensity of light.\n\r";
 
-    send_to_char(out.c_str(), ch);
+    send_to_char(out, ch);
 }
 
 /*
@@ -3920,7 +3920,7 @@ ACMD(do_fame)
         else
             out += std::format("{}\r\n", no_victory);
 
-        send_to_char(out.c_str(), ch);
+        send_to_char(out, ch);
         return;
     }
 
@@ -4014,7 +4014,7 @@ ACMD(do_fame)
         records == 1 ? "was" : "were", records, records == 1 ? "" : "s", display_name,
         player_table[idx].warpoints / 100);
 
-    send_to_char(out.c_str(), ch);
+    send_to_char(out, ch);
 }
 
 ACMD(do_rank)
@@ -4092,7 +4092,7 @@ ACMD(do_compare)
         // as a range, not a C string).
         send_to_char(
             std::format("You don't seem to have any {}.\n\r", static_cast<const char*>(str1))
-                .c_str(),
+                ,
             ch);
         return;
     }
@@ -4101,7 +4101,7 @@ ACMD(do_compare)
     if (!obj2) {
         send_to_char(
             std::format("You don't seem to have any {}.\n\r", static_cast<const char*>(str2))
-                .c_str(),
+                ,
             ch);
         return;
     }
@@ -4117,17 +4117,17 @@ ACMD(do_compare)
 
     if (lev < -10)
         send_to_char(
-            std::format("{} seems much better than {}.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+            std::format("{} seems much better than {}.\n\r", obj1_desc, obj2_desc), ch);
     else if (lev < -3)
-        send_to_char(std::format("{} seems better than {}.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+        send_to_char(std::format("{} seems better than {}.\n\r", obj1_desc, obj2_desc), ch);
     else if (lev <= 3)
         send_to_char(
-            std::format("{} and {} seems about the same.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+            std::format("{} and {} seems about the same.\n\r", obj1_desc, obj2_desc), ch);
     else if (lev < 10)
-        send_to_char(std::format("{} seems worse than {}.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+        send_to_char(std::format("{} seems worse than {}.\n\r", obj1_desc, obj2_desc), ch);
     else
         send_to_char(
-            std::format("{} seems much worse than {}.\n\r", obj1_desc, obj2_desc).c_str(), ch);
+            std::format("{} seems much worse than {}.\n\r", obj1_desc, obj2_desc), ch);
 
     return;
 }
@@ -4255,7 +4255,7 @@ ACMD(do_stat)
                          GET_STR(ch), GET_STR_BASE(ch), GET_INT(ch), GET_INT_BASE(ch), GET_WILL(ch),
                          GET_WILL_BASE(ch), GET_DEX(ch), GET_DEX_BASE(ch), GET_CON(ch),
                          GET_CON_BASE(ch), GET_LEA(ch), GET_LEA_BASE(ch))
-                         .c_str(),
+                         ,
             ch);
         return;
     }
@@ -4275,7 +4275,7 @@ void print_exploits(struct char_data* sendto, char* name)
     if (!load_exploit_records_for_character(".", name, &records, &error_message)) {
         std::string log_message = std::format(
             "print_exploits: failed to load exploit history for {}: {}", name, error_message);
-        mudlog(log_message.data(), NRM, LEVEL_IMMORT, TRUE);
+        mudlog(log_message, NRM, LEVEL_IMMORT, TRUE);
         send_to_char("You have accomplished nothing worthy of note.\n\r", sendto);
         return;
     }
@@ -4856,7 +4856,7 @@ void do_food_display(struct char_data* ch, struct obj_data* j)
     // std::format would otherwise crash on.
     send_to_char(std::format("{} {}. {}\r\n", nz(j->short_description),
                      food_messages[message_num], quality_note)
-                     .c_str(),
+                     ,
         ch);
 }
 
@@ -4868,7 +4868,7 @@ void do_light_display(struct char_data* ch, struct obj_data* j)
     duration_range = j->obj_flags.value[2];
     message_num = get_value_ranges(duration_range, 0, 6, 12, 19, 50, 150, 500, 1000);
     send_to_char(
-        std::format("This source of light is {}.\r\n", light_messages[message_num]).c_str(), ch);
+        std::format("This source of light is {}.\r\n", light_messages[message_num]), ch);
 }
 
 void do_flag_values_display(struct char_data* ch, struct obj_data* j)
@@ -4877,7 +4877,7 @@ void do_flag_values_display(struct char_data* ch, struct obj_data* j)
     int i;
 
     if (GET_ITEM_TYPE(j) == ITEM_ARMOR) {
-        send_to_char(std::format("Absorbtion\t\t {}.\r\n", armor_absorb(j)).c_str(), ch);
+        send_to_char(std::format("Absorbtion\t\t {}.\r\n", armor_absorb(j)), ch);
     }
 
     for (i = 0; i <= 4; i++) {
@@ -4898,9 +4898,9 @@ void do_flag_values_display(struct char_data* ch, struct obj_data* j)
             send_to_char(label, ch);
 
             if (j->obj_flags.value[i] < 0) /* Checks for negative for display purposes */
-                send_to_char(std::format("\t {}.\r\n", j->obj_flags.value[i]).c_str(), ch);
+                send_to_char(std::format("\t {}.\r\n", j->obj_flags.value[i]), ch);
             else
-                send_to_char(std::format("\t  {}.\r\n", j->obj_flags.value[i]).c_str(), ch);
+                send_to_char(std::format("\t  {}.\r\n", j->obj_flags.value[i]), ch);
         }
     }
 }
@@ -4915,7 +4915,7 @@ void do_weapon_display(struct char_data* ch, struct obj_data* j)
     send_to_char(std::format("The weapon you hold is a {} weapon.\r\n"
                              "\n\rDamage Rating \t   {}/10.\r\n",
                      weapon_types[j->obj_flags.value[3]], get_weapon_damage(j))
-                     .c_str(),
+                     ,
         ch);
 }
 
@@ -4956,13 +4956,13 @@ void do_identify_object(struct char_data* ch, struct obj_data* j)
     send_to_char(std::format("   You feel certain the object you have is {}. \r\n",
                      j->short_description ? j->short_description
                                           : "No object description found, please report. ")
-                     .c_str(),
+                     ,
         ch);
 
     send_to_char(std::format("{} \r\n",
                      j->action_description ? j->action_description
                                            : "No object description, please report. \r\n")
-                     .c_str(),
+                     ,
         ch);
 
     // sprintbit() fills the caller's buffer (buf2 here); left unconverted
@@ -4981,7 +4981,7 @@ void do_identify_object(struct char_data* ch, struct obj_data* j)
                          : "an unknown substance",
                      j->obj_flags.weight / 100., item_messages[GET_ITEM_TYPE(j)],
                      static_cast<const char*>(buf2))
-                     .c_str(),
+                     ,
         ch);
 
     /*
@@ -5006,7 +5006,7 @@ void do_identify_object(struct char_data* ch, struct obj_data* j)
 
     sprintbit(j->obj_flags.extra_flags, extra_messages, buf1, 1);
     send_to_char(
-        std::format("\r\nThis item {}\r\n", static_cast<const char*>(buf1)).c_str(), ch);
+        std::format("\r\nThis item {}\r\n", static_cast<const char*>(buf1)), ch);
 
     found = 0;
 
@@ -5025,7 +5025,7 @@ void do_identify_object(struct char_data* ch, struct obj_data* j)
                 " {:+d} to {}", j->affected[i].modifier, static_cast<const char*>(buf2));
             if (found == 1)
                 send_to_char("\r\nThis item has the following affections.\r\n", ch);
-            send_to_char(affect_line.c_str(), ch);
+            send_to_char(affect_line, ch);
             send_to_char("\r\n", ch);
         }
     if (!found)
@@ -5050,7 +5050,7 @@ void do_details(char_data* character, char* argument, waiting_type* wait_list, i
 
         if (strstr(details_argument, SPEC_FLAG)) {
             std::string spec_data = character->extra_specialization_data.to_string(*character);
-            send_to_char(spec_data.c_str(), character);
+            send_to_char(spec_data, character);
         } else if (strstr(details_argument, DAMAGE_FLAG)) {
             if (strstr(details_argument, RESET_FLAG)) {
                 character->damage_details.reset();
@@ -5066,7 +5066,7 @@ void do_details(char_data* character, char* argument, waiting_type* wait_list, i
                 send_to_char("Damage details have been reset.\r\n", character);
             } else {
                 std::string damage_data = character->damage_details.get_damage_report(character);
-                send_to_char(damage_data.c_str(), character);
+                send_to_char(damage_data, character);
 
                 for (follow_type* follower = character->followers; follower;
                     follower = follower->next) {
@@ -5074,7 +5074,7 @@ void do_details(char_data* character, char* argument, waiting_type* wait_list, i
                     if (utils::is_npc(*follow_char) && utils::is_affected_by(*follow_char, AFF_CHARM)) {
                         std::string follower_damage_data = follow_char->damage_details.get_damage_report(follow_char);
                         send_to_char("\n\r", character);
-                        send_to_char(follower_damage_data.c_str(), character);
+                        send_to_char(follower_damage_data, character);
                     }
                 }
             }
@@ -5090,7 +5090,7 @@ void do_details(char_data* character, char* argument, waiting_type* wait_list, i
                     }
                 } else {
                     std::string damage_data = group->get_damage_report();
-                    send_to_char(damage_data.c_str(), character);
+                    send_to_char(damage_data, character);
                 }
             } else {
                 send_to_char("You need to be in a group to get group damage details.\r\n",

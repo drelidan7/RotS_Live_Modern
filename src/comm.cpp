@@ -185,9 +185,9 @@ bool reject_banned_descriptor_host(descriptor_data* descriptor)
         return false;
 
     if (strcmp(descriptor->host, "shrout.org")) {
-        mudlog(const_cast<char*>(
+        mudlog(
                    std::format("Connection attempt denied from [{}]", static_cast<const char*>(descriptor->host))
-                       .c_str()),
+                       ,
             NRM, LEVEL_GOD, TRUE);
     }
 
@@ -465,7 +465,7 @@ int main(int argc, char** argv)
 
     if (!parse_startup_options(argc, argv, &startup_options, &parse_error)) {
         if (!parse_error.empty())
-            log(parse_error.c_str());
+            log(parse_error);
         fprintf(stderr, "Usage: %s [-m] [-q] [-r] [-s] [-x] [-d pathname] [-p port #] [ port # ]\n",
             argv[0]);
         exit(0);
@@ -496,9 +496,9 @@ int main(int argc, char** argv)
     // checked, so a failed write was already silent -- an unopenable file
     // is equally silent here (the stream's failure is simply not checked).
     std::ofstream(".ageland.pid", std::ios::out) << getpid() << "\n";
-    log(std::format("Running game as pid {}.", getpid()).c_str());
+    log(std::format("Running game as pid {}.", getpid()));
 
-    log(std::format("Running game on port {}.", startup_options.port).c_str());
+    log(std::format("Running game on port {}.", startup_options.port));
 
     // std::filesystem::current_path (the setter overload) is the portable stand-in
     // for chdir() (Phase 3 Task 5, MSVC bring-up round 2 -- found via the
@@ -512,7 +512,7 @@ int main(int argc, char** argv)
         }
     }
 
-    log(std::format("Using {} as data directory.", startup_options.dir.c_str()).c_str());
+    log(std::format("Using {} as data directory.", startup_options.dir.c_str()));
 
     // Open command log
     // Was system("mv -f last_cmds crash_cmds"); the return value was never
@@ -550,7 +550,7 @@ void run_the_game(sh_int port)
 
     boot_db();
 
-    log(std::format("The char_data size is {}.", sizeof(char_data)).c_str());
+    log(std::format("The char_data size is {}.", sizeof(char_data)));
     log("Entering game loop.");
 
     specialized_mages.clear();
@@ -799,7 +799,7 @@ void game_loop(SocketType s)
         if (retval == -1)
             log("SYSERR: unable to set table size");
         else {
-            log(std::format("{} {}\n", "dtablesize set to: ", retval).c_str());
+            log(std::format("{} {}\n", "dtablesize set to: ", retval));
         }
         avail_descs = getdtablesize() - 8;
     }
@@ -1156,7 +1156,7 @@ void game_loop(SocketType s)
 
             log(std::format("nusage: {:<3} sockets connected, {:<3} sockets playing", sockets_connected,
                 sockets_playing)
-                    .c_str());
+                    );
 
 #ifdef RUSAGE
             {
@@ -1166,7 +1166,7 @@ void game_loop(SocketType s)
                 log(std::format("rusage: {} {} {} {} {} {} {}", rusagedata.ru_utime.tv_sec,
                     rusagedata.ru_stime.tv_sec, rusagedata.ru_maxrss, rusagedata.ru_ixrss,
                     rusagedata.ru_ismrss, rusagedata.ru_idrss, rusagedata.ru_isrss)
-                        .c_str());
+                        );
             }
 #endif
         }
@@ -1439,7 +1439,7 @@ SocketType pnew_connection(SocketType s)
     // %d silently truncated/misprinted the handle there. Cast explicitly to a wide
     // signed type and use a matching, platform-identical format spec instead of relying
     // on SocketType's platform-dependent width/signedness.
-    mudlog(const_cast<char*>(std::format("Socket {} connected.", static_cast<long long>(t)).c_str()), NRM,
+    mudlog(std::format("Socket {} connected.", static_cast<long long>(t)), NRM,
         LEVEL_IMPL, TRUE);
 
     return (t);
@@ -1928,8 +1928,8 @@ void close_socket(descriptor_data* conn_descriptor, int drop_all)
     if (conn_descriptor->descriptor) {
         // Same SocketType-width issue as pnew_connection() above: cast explicitly and
         // use the same %lld spelling on both platforms.
-        mudlog(const_cast<char*>(
-                   std::format("Closing socket {}.", static_cast<long long>(conn_descriptor->descriptor)).c_str()),
+        mudlog(
+                   std::format("Closing socket {}.", static_cast<long long>(conn_descriptor->descriptor)),
             NRM, LEVEL_IMPL, TRUE);
 
         rots_net::close_socket(conn_descriptor->descriptor);
@@ -1959,9 +1959,9 @@ void close_socket(descriptor_data* conn_descriptor, int drop_all)
         if (conn_descriptor->connected == CON_PLYNG) {
             save_char(conn_descriptor->character, NOWHERE, 0);
             act("$n has lost $s link.", TRUE, conn_descriptor->character, 0, 0, TO_ROOM);
-            mudlog(const_cast<char*>(std::format("Closing link to: {} [{}].",
+            mudlog(std::format("Closing link to: {} [{}].",
                        GET_NAME(conn_descriptor->character), static_cast<const char*>(conn_descriptor->host))
-                           .c_str()),
+                           ,
                 NRM, std::max(LEVEL_IMMORT, GET_INVIS_LEV(conn_descriptor->character)), TRUE);
             //	 d->character->desc = 0;
             // Deliberate: this player was just flushed by the save_char above, then moved to
@@ -1979,7 +1979,7 @@ void close_socket(descriptor_data* conn_descriptor, int drop_all)
                 buf = std::format(
                     "Losing Unnamed player [{}].", static_cast<const char*>(conn_descriptor->host));
             }
-            mudlog(const_cast<char*>(buf.c_str()), NRM,
+            mudlog(buf, NRM,
                 std::max(LEVEL_IMMORT, GET_INVIS_LEV(conn_descriptor->character)), TRUE);
             free_char(conn_descriptor->character);
             drop_all = 1;
@@ -2308,7 +2308,7 @@ void convert_string(const char* str, int, struct char_data* ch, struct obj_data*
                 break;
             default:
                 log("SYSERR: Illegal $-code to act():");
-                log(std::format("SYSERR: {}", str).c_str());
+                log(std::format("SYSERR: {}", str));
                 break;
             }
             while ((*point = *(i++)))

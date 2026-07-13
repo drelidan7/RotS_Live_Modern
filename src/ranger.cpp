@@ -442,7 +442,7 @@ ACMD(do_gather_food)
             }
 
             send_to_char(std::format("You tried to gather {}, but could not find anything useful.\n\r",
-                gather_type).c_str(), ch);
+                gather_type), ch);
 
             return;
         } else {
@@ -1382,7 +1382,7 @@ ACMD(do_calm)
         send_to_char("You can only calm animals.\r\n", ch);
         return;
     } else if (GET_POS(victim) == POSITION_FIGHTING) {
-        send_to_char(std::format("{} is too enraged!\r\n", GET_NAME(victim)).c_str(), ch);
+        send_to_char(std::format("{} is too enraged!\r\n", GET_NAME(victim)), ch);
         return;
     } else if (GET_POS(victim) < POSITION_FIGHTING) {
         send_to_char("Your target needs to be standing.\r\n", ch);
@@ -1771,7 +1771,7 @@ ACMD(do_stalk)
     ch->delay.targ1.ch_num = dir;
 
     act("$n looks carefully at the ground.", TRUE, ch, 0, 0, TO_ROOM);
-    send_to_char(std::format("You look for a discreet way {}.\n\r", dirs[dir]).c_str(), ch);
+    send_to_char(std::format("You look for a discreet way {}.\n\r", dirs[dir]), ch);
     return;
 }
 
@@ -2825,7 +2825,7 @@ void do_recover(char_data* character, char*, waiting_type*, int, int)
     message_writer << "You recover " << num_recovered
                    << (num_recovered > 1 ? " arrows." : " arrow.") << std::endl;
     std::string message = message_writer.str();
-    send_to_char(message.c_str(), character);
+    send_to_char(message, character);
 
     act("$n recovers some arrows.\n\r", FALSE, character, NULL, NULL, TO_ROOM);
 }

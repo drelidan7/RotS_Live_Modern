@@ -291,12 +291,12 @@ void shopping_buy(char* arg, struct char_data* ch,
     }
 
     if ((IS_CARRYING_N(ch) + 1 > CAN_CARRY_N(ch))) {
-        send_to_char(std::format("{} : You can't carry that many items.\n\r", fname(temp1->name)).c_str(), ch);
+        send_to_char(std::format("{} : You can't carry that many items.\n\r", fname(temp1->name)), ch);
         return;
     }
 
     if ((IS_CARRYING_W(ch) + temp1->obj_flags.weight) > CAN_CARRY_W(ch)) {
-        send_to_char(std::format("{} : You can't carry that much weight.\n\r", fname(temp1->name)).c_str(), ch);
+        send_to_char(std::format("{} : You can't carry that much weight.\n\r", fname(temp1->name)), ch);
         return;
     }
 
@@ -311,7 +311,7 @@ void shopping_buy(char* arg, struct char_data* ch,
                 "Thanks for your business.", "shop message_buy"))
             .c_str());
     do_tell(keeper, buf, 0, 19, 0);
-    send_to_char(std::format("You now have {}.\n\r", temp1->short_description).c_str(), ch);
+    send_to_char(std::format("You now have {}.\n\r", temp1->short_description), ch);
     GET_GOLD(ch) -= (int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100);
 
     GET_GOLD(keeper) += (int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100);
@@ -393,7 +393,7 @@ void shopping_sell(char* arg, struct char_data* ch, struct char_data* keeper, in
                 "Thanks for the item.", "shop message_sell"))
             .c_str());
     do_tell(keeper, buf, 0, 19, 0);
-    send_to_char(std::format("The shopkeeper now has {}.\n\r", temp1->short_description).c_str(), ch);
+    send_to_char(std::format("The shopkeeper now has {}.\n\r", temp1->short_description), ch);
     GET_GOLD(ch) += (int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_sell / 100);
 
     /* Get money from the bank, buy the obj, then put money back. */

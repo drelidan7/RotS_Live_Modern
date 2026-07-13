@@ -527,7 +527,7 @@ ACMD(do_color)
         send_to_char("Possible arguments are:\n\r", ch);
         std::string message = join_with_leading_spaces(color_fields, num_of_color_fields - 1);
         message += "\n\r";
-        send_to_char(message.c_str(), ch);
+        send_to_char(message, ch);
         show_extended_color_usage(ch);
         return;
     }
@@ -582,7 +582,7 @@ ACMD(do_color)
                 std::string message = join_with_leading_spaces(color_color, 8);
                 message += ".\r\n";
                 message += "Additionally, you may prefix any of the above colours with 'bright'.\r\n";
-                send_to_char(message.c_str(), ch);
+                send_to_char(message, ch);
                 return;
             }
 
@@ -647,7 +647,7 @@ ACMD(do_color)
         message += ".\r\n";
         message += "Additionally, you may prefix any of the above "
                    "colours with 'bright'.\r\n";
-        send_to_char(message.c_str(), ch);
+        send_to_char(message, ch);
         return;
     }
 

@@ -159,7 +159,7 @@ int load_script(struct char_data* ch, char* arg)
     // Now to find the index of the script - if we can't then we create an empty script
 
     if ((index = find_script_by_number(number)) == -1) {
-        send_to_char(std::format(" could not find script #{}, created it.\n\r", number).c_str(), ch);
+        send_to_char(std::format(" could not find script #{}, created it.\n\r", number), ch);
         SHAPE_SCRIPT(ch)
             ->name
             = 0;
@@ -392,7 +392,7 @@ int append_script(struct char_data* ch, char* arg)
     }
     fseek(f2, -1, SEEK_CUR);
     write_script(f2, ch);
-    send_to_char(std::format("Script added to database as #{}.\n\r", i1 + 1).c_str(), ch);
+    send_to_char(std::format("Script added to database as #{}.\n\r", i1 + 1), ch);
     SHAPE_SCRIPT(ch)
         ->number
         = i1 + 1;
@@ -484,7 +484,7 @@ int replace_script(struct char_data* ch, char* arg)
             oldnum = i;
     } while ((i < num) && (check != EOF));
     if (check == EOF) {
-        send_to_char(std::format("no script #{} in this file\n\r", num).c_str(), ch);
+        send_to_char(std::format("no script #{} in this file\n\r", num), ch);
         fclose(f1);
         fclose(f2);
         return -1;
@@ -1182,7 +1182,7 @@ void extra_coms_script(struct char_data* ch, char* argument)
 #define SCRIPTDESCRCHANGE(line, addr)                                 \
     do {                                                              \
         if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_SIMPLE_ACTIVE)) {  \
-            send_to_char(std::format("You are about to change {}:\n\r", line).c_str(), ch); \
+            send_to_char(std::format("You are about to change {}:\n\r", line), ch); \
             SHAPE_SCRIPT(ch)                                          \
                 ->position                                            \
                 = shape_standup(ch, POSITION_SHAPING);                \
@@ -1215,7 +1215,7 @@ void extra_coms_script(struct char_data* ch, char* argument)
 #define SCRIPTLINECHANGE(line, addr)                                                        \
     do {                                                                                    \
         if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_DIGIT_ACTIVE)) {                         \
-            send_to_char(std::format("Enter line {}:\n\r[{}]\n\r", line, (addr) ? (char*)addr : "").c_str(), ch); \
+            send_to_char(std::format("Enter line {}:\n\r[{}]\n\r", line, (addr) ? (char*)addr : ""), ch); \
             SHAPE_SCRIPT(ch)                                                                \
                 ->position                                                                  \
                 = shape_standup(ch, POSITION_SHAPING);                                      \
@@ -1261,7 +1261,7 @@ void extra_coms_script(struct char_data* ch, char* argument)
 #define SCRIPTREALDIGCHANGE(line, addr)                                  \
     do {                                                                 \
         if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_DIGIT_ACTIVE)) {      \
-            send_to_char(std::format("Enter {} [{}]:\n\r", line, addr).c_str(), ch); \
+            send_to_char(std::format("Enter {} [{}]:\n\r", line, addr), ch); \
             SHAPE_SCRIPT(ch)                                             \
                 ->position                                               \
                 = shape_standup(ch, POSITION_SHAPING);                   \
@@ -2262,7 +2262,7 @@ void shape_center_script(struct char_data* ch, char* arg)
         case 51: // case 51: print name and description
             send_to_char(std::format("Script #{}: {}\n\r",
                 SHAPE_SCRIPT(ch)->number, SHAPE_SCRIPT(ch)->name)
-                             .c_str(),
+                             ,
                 ch);
             send_to_char(SHAPE_SCRIPT(ch)->description, ch);
             SHAPE_SCRIPT(ch)

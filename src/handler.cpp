@@ -1292,7 +1292,7 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
     if (character->equipment[item_slot]) {
         log(std::format("SYSERR: Char is already equipped: {}, {}", GET_NAME(character),
             item->short_description)
-                .c_str());
+                );
         return;
     }
 
@@ -2016,7 +2016,7 @@ void extract_char(struct char_data* ch, int new_room)
                 k->next = ch->next;
             else {
                 log(std::format("SYSERR: Trying to remove {} from character_list. (handler.c, extract_char)", GET_NAME(ch))
-                        .c_str());
+                        );
                 abort();
             }
         }

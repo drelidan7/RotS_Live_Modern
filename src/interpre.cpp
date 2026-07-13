@@ -4132,7 +4132,7 @@ void nanny(struct descriptor_data* d, char* arg)
                     out = "You may unretire now.\r\nType leave to leave the retirement home.\r\n";
                 }
 
-                send_to_char(out.c_str(), d->character);
+                send_to_char(out, d->character);
             }
             d->prompt_mode = 1;
             REMOVE_BIT(PRF_FLAGS(d->character), PRF_DISPTEXT);
@@ -4544,7 +4544,7 @@ void introduce_char(struct descriptor_data* d)
     if (d->pos < 0)
         d->pos = create_entry(GET_NAME(d->character));
     log(std::format("Char created: {}, idnum = {}", GET_NAME(d->character),
-        GET_IDNUM(d->character)).c_str());
+        GET_IDNUM(d->character)));
 
     SET_SHOOTING(d->character, SHOOTING_NORMAL);
     utils::set_specialization(*d->character, game_types::PS_None);

@@ -277,7 +277,7 @@ SPECIAL(guild) {
         ;
     if (!*arg) {
         act(guildmasters[prog].list_message, FALSE, host, 0, ch, TO_VICT);
-        send_to_char(std::format("You have {} practice sessions left.\n\r", ch->specials2.spells_to_learn).c_str(), ch);
+        send_to_char(std::format("You have {} practice sessions left.\n\r", ch->specials2.spells_to_learn), ch);
         for (tmp = 0; tmp < MAX_SKILLS; tmp++) {
             if (guildmasters[prog].knowledge[tmp] > 0) {
                 level = GET_PROF_LEVEL((int)skills[(int)tmp].type, ch);
@@ -287,7 +287,7 @@ SPECIAL(guild) {
                     send_to_char(std::format("{:<25} {:>3}%     Taught to: {:<12}\n\r",
                                       static_cast<const char*>(skills[tmp].name), ch->knowledge[tmp],
                                       how_good(guildmasters[prog].knowledge[tmp]))
-                                      .c_str(),
+                                      ,
                         ch);
                 }
             }
@@ -381,7 +381,7 @@ ACMD(do_practice)
     int tmp;
     char str2[30];
 
-    send_to_char(std::format("You have {} practice sessions left\n\r", ch->specials2.spells_to_learn).c_str(), ch);
+    send_to_char(std::format("You have {} practice sessions left\n\r", ch->specials2.spells_to_learn), ch);
     if (ch->skills.empty() || ch->knowledge.empty()) {
         send_to_char("But you don't have skill memory anyway.\n\r", ch);
         return;
@@ -425,7 +425,7 @@ ACMD(do_practice)
 
             send_to_char(std::format("{:<25} {:<12} {}\n\r", static_cast<const char*>(skills[tmp].name),
                                   how_good(ch->knowledge[tmp]), static_cast<const char*>(str2))
-                                  .c_str(),
+                                  ,
                 ch);
         }
 }
@@ -487,7 +487,7 @@ SPECIAL(pet_shops)
         for (pet = world[pet_room].people; pet; pet = pet->next_in_room) {
             send_to_char(std::format("{:<20} - {}\n\r", pet->player.short_descr,
                                   money_message(3 * GET_EXP(pet)))
-                                  .c_str(),
+                                  ,
                 ch);
         }
         return (TRUE);
@@ -2367,7 +2367,7 @@ SPECIAL(mob_jig)
     dance_desc = number(0, 5);
     strcpy(buf, std::format("$n {}.\r\n", dance_description[dance_desc][0]).c_str());
     act(buf, TRUE, host, 0, 0, TO_ROOM);
-    send_to_char(std::format("{}.\r\n", dance_description[dance_desc][1]).c_str(), ch);
+    send_to_char(std::format("{}.\r\n", dance_description[dance_desc][1]), ch);
 
     return FALSE;
 }
@@ -2750,7 +2750,7 @@ SPECIAL(resetter)
             // immediately to close the crash-to-reroll exploit (crashing after a bad reroll to retry).
             save_char(ch, NOWHERE, 0);
             reroll_count = 41 - ch->specials2.rerolls;
-            send_to_char(std::format("You have {} reroll attempts left.\n\r", reroll_count).c_str(), ch);
+            send_to_char(std::format("You have {} reroll attempts left.\n\r", reroll_count), ch);
             do_stat(ch, mutable_arg(""), 0, 0, 0);
             return 0;
         } else {

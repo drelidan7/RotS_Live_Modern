@@ -621,7 +621,7 @@ void initialize_weather()
 
     weather_info.sunlight = get_sunlight_level(time_info.hours, sun_rise_time, sun_set_time);
 
-    log(std::format("   Current Gametime: {}H {}D {}M {}Y.", time_info.hours, time_info.day, time_info.month, time_info.year).c_str());
+    log(std::format("   Current Gametime: {}H {}D {}M {}Y.", time_info.hours, time_info.day, time_info.month, time_info.year));
 
     weather_info.pressure = 960;
     weather_info.pressure += get_seasonal_pressure(time_info.month);

@@ -184,7 +184,7 @@ ACMD(do_wiztrack)
     case BFS_NO_PATH:
         send_to_char(std::format("You can't sense a trail to {} from here.\r\n",
                          HMHR(vict))
-                         .c_str(),
+                         ,
             ch);
         break;
     default:
@@ -205,7 +205,7 @@ ACMD(do_wiztrack)
             } while (!CAN_GO(ch, dir));
     }
 #endif
-        send_to_char(std::format("You sense a trail {} from here!\n\r", dirs[dir]).c_str(), ch);
+        send_to_char(std::format("You sense a trail {} from here!\n\r", dirs[dir]), ch);
         break;
     }
 }
@@ -349,7 +349,7 @@ int show_tracks(char_data* ch, char* name, int mode)
     if (count != 0) {
         if (mode == 1)
             send_to_char("You find some tracks of what went past here.\r\n", ch);
-        send_to_char(track_out.c_str(), ch);
+        send_to_char(track_out, ch);
     }
     return count;
 }
@@ -407,7 +407,7 @@ int show_blood_trail(struct char_data* ch, char* name, int mode)
         if (mode == 1) {
             send_to_char("You find some blood trails here.\r\n", ch);
         }
-        send_to_char(blood_out.c_str(), ch);
+        send_to_char(blood_out, ch);
     }
     return count;
 }

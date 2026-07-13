@@ -123,14 +123,14 @@ ACMD(do_ban)
         }
         send_to_char(std::format("{:<39.39}  {:<8.8}  {:<10.10}  {:<16.16}\n\r",
                          "Banned Site Name", "Ban Type", "Banned On", "Banned By")
-                         .c_str(),
+                         ,
             ch);
         send_to_char(std::format("{:<39.39}  {:<8.8}  {:<10.10}  {:<16.16}\n\r",
                          "----------------------------------------",
                          "----------------------------------------",
                          "----------------------------------------",
                          "----------------------------------------")
-                         .c_str(),
+                         ,
             ch);
 
         for (ban_node = ban_list; ban_node; ban_node = ban_node->next) {
@@ -148,7 +148,7 @@ ACMD(do_ban)
             send_to_char(std::format("{:<39.39}  {:<8.8}  {:<10.10}  {:<16.16}\n\r",
                              static_cast<const char*>(ban_node->site), ban_types[ban_node->type],
                              static_cast<const char*>(site), static_cast<const char*>(ban_node->name))
-                             .c_str(),
+                             ,
                 ch);
         }
         return;

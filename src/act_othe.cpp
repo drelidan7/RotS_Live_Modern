@@ -162,7 +162,7 @@ ACMD(do_linkaccount)
 
     std::string error_message;
     if (!account::is_valid_account_name(account_name, &error_message)) {
-        send_to_char((error_message + "\n\r").c_str(), ch);
+        send_to_char((error_message + "\n\r"), ch);
         return;
     }
 
@@ -1351,7 +1351,7 @@ void report_sort_choices_to(char_data* character)
     }
     message_writer << std::endl;
 
-    send_to_char(message_writer.str().c_str(), character);
+    send_to_char(message_writer.str(), character);
 }
 
 void report_inventory_sorting_to(char_data* character, const char* intro_string)

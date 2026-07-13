@@ -491,7 +491,7 @@ ASPELL(spell_locate_living)
                     (IS_NPC(mobs) ? GET_NAME(mobs) : pc_star_types[mobs->player.race]),
                     world[roomlist[tmp].number].name,
                     loclife_dir_convert(roomlist[tmp]))
-                                 .c_str(),
+                                 ,
                     caster);
             }
             bigcount++;
@@ -1558,7 +1558,7 @@ ASPELL(spell_cone_of_cold)
         } else {
             send_to_char(std::format("Your cone of cold hit {}, to no real effect.\n\r",
                              EXIT(caster, digit)->keyword)
-                             .c_str(),
+                             ,
                 caster);
             return;
         }
@@ -1569,7 +1569,7 @@ ASPELL(spell_cone_of_cold)
         return;
     }
 
-    send_to_char(std::format("You send a cone of cold to {}.\n\r", refer_dirs[digit]).c_str(), caster);
+    send_to_char(std::format("You send a cone of cold to {}.\n\r", refer_dirs[digit]), caster);
 
     strcpy(buf1, std::format("A sudden wave of cold strikes you, coming from {}.\n\r",
         refer_dirs[rev_dir[digit]]).c_str());

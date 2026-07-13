@@ -379,7 +379,7 @@ int perform_move_mount(struct char_data* ch, int dir)
 
         if (tmpch != ch->mount_data.rider) {
 
-            send_to_char(std::format("You are carried {} by {}.\n\r", dirs[dir], PERS(ch, tmpch, FALSE, FALSE)).c_str(), tmpch);
+            send_to_char(std::format("You are carried {} by {}.\n\r", dirs[dir], PERS(ch, tmpch, FALSE, FALSE)), tmpch);
         }
         char_from_room(tmpch);
         char_to_room(tmpch, new_room);
@@ -463,7 +463,7 @@ void parse_container_for_stay_zone(char_data* ch, obj_data* container, const int
         }
 
         if (IS_OBJ_STAT(item, ITEM_STAY_ZONE)) {
-            send_to_char(std::format("You drop {}.\n\r", OBJS(item, ch)).c_str(), ch);
+            send_to_char(std::format("You drop {}.\n\r", OBJS(item, ch)), ch);
             strcpy(buf, std::format("$n drops $p.").c_str());
             act(buf, TRUE, ch, item, 0, TO_ROOM);
             obj_from_obj(item);
@@ -496,7 +496,7 @@ void prohibit_item_stay_zone_move(char_data* ch, int room)
         }
 
         if (IS_OBJ_STAT(item, ITEM_STAY_ZONE)) {
-            send_to_char(std::format("You drop {}.\n\r", OBJS(item, ch)).c_str(), ch);
+            send_to_char(std::format("You drop {}.\n\r", OBJS(item, ch)), ch);
             strcpy(buf, std::format("$n drops $p.").c_str());
             act(buf, TRUE, ch, item, 0, TO_ROOM);
             obj_from_char(item);
@@ -689,9 +689,9 @@ ACMD(do_move)
                 return;
             } else if (EXIT(ch, cmd)->keyword) {
                 if (IS_SHADOW(ch))
-                    send_to_char(std::format("You cannot pass through the {}.\n\r", fname(EXIT(ch, cmd)->keyword)).c_str(), ch);
+                    send_to_char(std::format("You cannot pass through the {}.\n\r", fname(EXIT(ch, cmd)->keyword)), ch);
                 else
-                    send_to_char(std::format("The {} seems to be closed.\n\r", fname(EXIT(ch, cmd)->keyword)).c_str(), ch);
+                    send_to_char(std::format("The {} seems to be closed.\n\r", fname(EXIT(ch, cmd)->keyword)), ch);
                 return;
             } else {
                 send_to_char("It seems to be closed.\n\r", ch);
@@ -997,7 +997,7 @@ int find_door(struct char_data* ch, char* type, char* dir)
                 if (isname(type, EXIT(ch, door)->keyword))
                     return (door);
                 else {
-                    send_to_char(std::format("I see no {} there.\n\r", type).c_str(), ch);
+                    send_to_char(std::format("I see no {} there.\n\r", type), ch);
                     return (-1);
                 }
             else
@@ -1013,7 +1013,7 @@ int find_door(struct char_data* ch, char* type, char* dir)
                     if (isname(type, EXIT(ch, door)->keyword))
                         return (door);
 
-        send_to_char(std::format("I see no {} here.\n\r", type).c_str(), ch);
+        send_to_char(std::format("I see no {} here.\n\r", type), ch);
         return (-1);
     }
 }
@@ -1053,7 +1053,7 @@ ACMD(do_open)
             }
             sscanf(EXIT(ch, d1)->keyword, "%s", type);
             if (str_cmp(EXIT(ch, d2)->keyword, type)) {
-                send_to_char(std::format("No {} in that direction.\n\r", static_cast<const char*>(type)).c_str(), ch);
+                send_to_char(std::format("No {} in that direction.\n\r", static_cast<const char*>(type)), ch);
                 return;
             }
             door = d2;
@@ -1164,7 +1164,7 @@ ACMD(do_close)
             }
             sscanf(EXIT(ch, d1)->keyword, "%s", type);
             if (str_cmp(EXIT(ch, d2)->keyword, type)) {
-                send_to_char(std::format("No {} in that direction.\n\r", static_cast<const char*>(type)).c_str(), ch);
+                send_to_char(std::format("No {} in that direction.\n\r", static_cast<const char*>(type)), ch);
                 return;
             }
             door = d2;
@@ -1417,7 +1417,7 @@ ACMD(do_enter)
                         do_move(ch, mutable_arg(""), wtl, ++door, 0);
                         return;
                     }
-        send_to_char(std::format("There is no {} here.\n\r", static_cast<const char*>(buf)).c_str(), ch);
+        send_to_char(std::format("There is no {} here.\n\r", static_cast<const char*>(buf)), ch);
     } else if (IS_SET(world[ch->in_room].room_flags, INDOORS))
         send_to_char("You are already indoors.\n\r", ch);
     else {
@@ -1676,7 +1676,7 @@ ACMD(do_lose)
         if (tmpch->master == ch)
             stop_follower(tmpch, FOLLOW_MOVE);
         else {
-            send_to_char(std::format("But, {} is not following you!\n\r", HSSH(tmpch)).c_str(), ch);
+            send_to_char(std::format("But, {} is not following you!\n\r", HSSH(tmpch)), ch);
         }
     }
 }
@@ -1707,7 +1707,7 @@ ACMD(do_follow)
     }
 
     if (other_side(ch, leader) || (IS_NPC(leader) && MOB_FLAGGED(leader, MOB_MOUNT) && IS_AGGR_TO(leader, ch))) {
-        send_to_char(std::format("It doesn't want you to follow it.\n\r").c_str(), ch);
+        send_to_char(std::format("It doesn't want you to follow it.\n\r"), ch);
         return;
     }
 
@@ -1717,7 +1717,7 @@ ACMD(do_follow)
     }
 
     if (ch->master == leader) {
-        send_to_char(std::format("You are already following {}.\n\r", HMHR(leader)).c_str(), ch);
+        send_to_char(std::format("You are already following {}.\n\r", HMHR(leader)), ch);
         return;
     }
 

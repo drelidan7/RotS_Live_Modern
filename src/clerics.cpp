@@ -479,7 +479,7 @@ ACMD(do_concentrate)
         if (ch->specials.fighting) {
             victim = ch->specials.fighting;
             extra = (-GET_MENTAL_DELAY(ch) + number(0, PULSE_MENTAL_FIGHT - 1)) / PULSE_MENTAL_FIGHT;
-            send_to_char(std::format("You attack with extra will power! ({})\n\r", extra).c_str(), ch);
+            send_to_char(std::format("You attack with extra will power! ({})\n\r", extra), ch);
             act("$n lashes out his power!", FALSE, ch, 0, 0, TO_ROOM);
 
             extra = extra * GET_PERCEPTION(victim) / 100;

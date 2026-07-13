@@ -260,7 +260,7 @@ void implement_object(struct char_data* ch)
 #define DESCRCHANGE(line, addr)                                       \
     do {                                                              \
         if (!IS_SET(SHAPE_OBJECT(ch)->flags, SHAPE_SIMPLE_ACTIVE)) {  \
-            send_to_char(std::format("You are about to change {}:\n\r", line).c_str(), ch); \
+            send_to_char(std::format("You are about to change {}:\n\r", line), ch); \
             SHAPE_OBJECT(ch)                                          \
                 ->position                                            \
                 = shape_standup(ch, POSITION_SHAPING);                \
@@ -291,7 +291,7 @@ void implement_object(struct char_data* ch)
 
 #define LINECHANGE(line, addr)                                                    \
     if (!IS_SET(SHAPE_OBJECT(ch)->flags, SHAPE_DIGIT_ACTIVE)) {                   \
-        send_to_char(std::format("Enter line {}: \n\r[{}]\n\r", line, (addr) ? addr : "").c_str(), ch); \
+        send_to_char(std::format("Enter line {}: \n\r[{}]\n\r", line, (addr) ? addr : ""), ch); \
         SHAPE_OBJECT(ch)                                                          \
             ->position                                                            \
             = shape_standup(ch, POSITION_SHAPING);                                \
@@ -562,7 +562,7 @@ void shape_center_obj(struct char_data* ch, char* arg)
 
 #define DIGITCHANGE(line, addr)                                 \
     if (!IS_SET(SHAPE_OBJECT(ch)->flags, SHAPE_DIGIT_ACTIVE)) { \
-        send_to_char(std::format("enter {} [{}]:\n\r", line, addr).c_str(), ch); \
+        send_to_char(std::format("enter {} [{}]:\n\r", line, addr), ch); \
         SHAPE_OBJECT(ch)                                        \
             ->position                                          \
             = shape_standup(ch, POSITION_SHAPING);              \
@@ -911,13 +911,13 @@ void list_object(struct char_data* ch, struct obj_data* obj)
 
     int i;
 
-    send_to_char(std::format("(1) alias(es)    :{}\n\r", obj->name).c_str(), ch);
+    send_to_char(std::format("(1) alias(es)    :{}\n\r", obj->name), ch);
 
-    send_to_char(std::format("(2) reference description :{}\n\r", obj->short_description).c_str(), ch);
+    send_to_char(std::format("(2) reference description :{}\n\r", obj->short_description), ch);
 
-    send_to_char(std::format("(3) full  description     :{}\n\r", obj->description).c_str(), ch);
+    send_to_char(std::format("(3) full  description     :{}\n\r", obj->description), ch);
 
-    send_to_char(std::format("(4) action description  :\n\r{}\n\r", obj->action_description).c_str(), ch);
+    send_to_char(std::format("(4) action description  :\n\r{}\n\r", obj->action_description), ch);
 
     tmpdesc = obj->ex_description;
 
@@ -929,7 +929,7 @@ void list_object(struct char_data* ch, struct obj_data* obj)
 
             send_to_char(std::format("(6) Keyword:{}\n\r(7) Text:{}\n\r",
                 tmpdesc->keyword, tmpdesc->description)
-                             .c_str(),
+                             ,
                 ch);
         }
 
@@ -938,33 +938,33 @@ void list_object(struct char_data* ch, struct obj_data* obj)
     else
         send_to_char("No extra descriptions for this object\n\r", ch);
 
-    send_to_char(std::format("(9) type flag    :{}\n\r", obj->obj_flags.type_flag).c_str(), ch);
+    send_to_char(std::format("(9) type flag    :{}\n\r", obj->obj_flags.type_flag), ch);
 
-    send_to_char(std::format("(10) extra flag   :{}\n\r", obj->obj_flags.extra_flags).c_str(), ch);
+    send_to_char(std::format("(10) extra flag   :{}\n\r", obj->obj_flags.extra_flags), ch);
 
-    send_to_char(std::format("(11) wear flag    :{}\n\r", obj->obj_flags.wear_flags).c_str(), ch);
+    send_to_char(std::format("(11) wear flag    :{}\n\r", obj->obj_flags.wear_flags), ch);
 
     send_to_char(std::format("(12) values: {} {} {} {} {}\n\r", obj->obj_flags.value[0],
 
         obj->obj_flags.value[1], obj->obj_flags.value[2],
 
         obj->obj_flags.value[3], obj->obj_flags.value[4])
-                     .c_str(),
+                     ,
         ch);
 
-    send_to_char(std::format("(13) weight       :{}\n\r", obj->obj_flags.weight).c_str(), ch);
+    send_to_char(std::format("(13) weight       :{}\n\r", obj->obj_flags.weight), ch);
 
-    send_to_char(std::format("(14) cost         :{}\n\r", obj->obj_flags.cost).c_str(), ch);
+    send_to_char(std::format("(14) cost         :{}\n\r", obj->obj_flags.cost), ch);
 
-    send_to_char(std::format("(15) cost per day :{}\n\r", obj->obj_flags.cost_per_day).c_str(), ch);
+    send_to_char(std::format("(15) cost per day :{}\n\r", obj->obj_flags.cost_per_day), ch);
 
-    send_to_char(std::format("(16) level        :{}\n\r", obj->obj_flags.level).c_str(), ch);
+    send_to_char(std::format("(16) level        :{}\n\r", obj->obj_flags.level), ch);
 
-    send_to_char(std::format("(17) rarity       :{}\n\r", obj->obj_flags.rarity).c_str(), ch);
+    send_to_char(std::format("(17) rarity       :{}\n\r", obj->obj_flags.rarity), ch);
 
     send_to_char(std::format("(18) material     :{} ({})\n\r", obj->obj_flags.material,
         ((obj->obj_flags.material >= 0) && (obj->obj_flags.material < num_of_object_materials)) ? object_materials[obj->obj_flags.material] : "Unknown")
-                     .c_str(),
+                     ,
         ch);
 
     // Was sprintf(str, "(19) Affections:\n\r") followed by a loop of
@@ -980,11 +980,11 @@ void list_object(struct char_data* ch, struct obj_data* obj)
             obj->affected[i].modifier);
     }
 
-    send_to_char(affections.c_str(), ch);
+    send_to_char(affections, ch);
 
-    send_to_char(std::format("\n\r(20) program       :{}\n\r", obj->obj_flags.prog_number).c_str(), ch);
+    send_to_char(std::format("\n\r(20) program       :{}\n\r", obj->obj_flags.prog_number), ch);
 
-    send_to_char(std::format("(21) script        :{}\n\r", obj->obj_flags.script_number).c_str(), ch);
+    send_to_char(std::format("(21) script        :{}\n\r", obj->obj_flags.script_number), ch);
 }
 
 /*********--------------------------------*********/
@@ -1078,9 +1078,9 @@ int load_object(struct char_data* ch, char* arg)
             ->basenum
             = number;
         new_obj(ch);
-        send_to_char(std::format("Could not find obj #{}, created it.\n\r", number).c_str(), ch);
+        send_to_char(std::format("Could not find obj #{}, created it.\n\r", number), ch);
     } else {
-        send_to_char(std::format("loading object #{}\n\r", tmp).c_str(), ch);
+        send_to_char(std::format("loading object #{}\n\r", tmp), ch);
 
         number = tmp;
 
@@ -1450,7 +1450,7 @@ int replace_object(struct char_data* ch, char* arg)
     } while ((i < num) && (check != EOF));
 
     if (check == EOF) {
-        send_to_char(std::format("no mob #{} in this file\n\r", num).c_str(), ch);
+        send_to_char(std::format("no mob #{} in this file\n\r", num), ch);
 
         fclose(f1);
         fclose(f2);

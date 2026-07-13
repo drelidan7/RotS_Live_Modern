@@ -90,7 +90,7 @@ bool is_skill_valid(char_data* ch, const int& skill_id)
             break;
         }
 
-        send_to_char(message.c_str(), ch);
+        send_to_char(message, ch);
         return false;
     }
 

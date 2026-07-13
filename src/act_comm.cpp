@@ -333,16 +333,16 @@ ACMD(do_write)
     }
     if (*penname) /* there were two arguments */ {
         if (!(paper = get_obj_in_list_vis(ch, papername, ch->carrying, 9999))) {
-            send_to_char(std::format("You have no {}.\n\r", papername).c_str(), ch);
+            send_to_char(std::format("You have no {}.\n\r", papername), ch);
             return;
         }
         if (!(pen = get_obj_in_list_vis(ch, penname, ch->carrying, 9999))) {
-            send_to_char(std::format("You have no {}.\n\r", papername).c_str(), ch);
+            send_to_char(std::format("You have no {}.\n\r", papername), ch);
             return;
         }
     } else /* there was one arg.let's see what we can find */ {
         if (!(paper = get_obj_in_list_vis(ch, papername, ch->carrying, 9999))) {
-            send_to_char(std::format("There is no {} in your inventory.\n\r", papername).c_str(), ch);
+            send_to_char(std::format("There is no {} in your inventory.\n\r", papername), ch);
             return;
         }
         if (paper->obj_flags.type_flag == ITEM_PEN) /* oops, a pen.. */ {
@@ -355,7 +355,7 @@ ACMD(do_write)
 
         /* one object was found. Now for the other one. */
         if (!ch->equipment[HOLD]) {
-            send_to_char(std::format("You can't write with a {} alone.\n\r", papername).c_str(), ch);
+            send_to_char(std::format("You can't write with a {} alone.\n\r", papername), ch);
             return;
         }
         if (!CAN_SEE_OBJ(ch, ch->equipment[HOLD])) {
@@ -423,7 +423,7 @@ ACMD(do_page)
             GET_NAME(ch),
             (subcmd == SCMD_PAGE) ? "pages, '" : "",
             (subcmd == SCMD_PAGE) ? buf2 : "beeps you!",
-            (subcmd == SCMD_PAGE) ? "'" : "").c_str(), vict);
+            (subcmd == SCMD_PAGE) ? "'" : ""), vict);
         if (!PRF_FLAGGED(ch, PRF_ECHO))
             send_to_char("Ok.\n\r", ch);
         else {
@@ -432,7 +432,7 @@ ACMD(do_page)
                 GET_NAME(vict),
                 (subcmd == SCMD_PAGE) ? " with '" : "",
                 (subcmd == SCMD_PAGE) ? buf2 : "",
-                (subcmd == SCMD_PAGE) ? "'" : ".").c_str(), ch);
+                (subcmd == SCMD_PAGE) ? "'" : "."), ch);
         }
         return;
     } else
@@ -500,7 +500,7 @@ ACMD(do_gen_com)
 
     if (IS_NPC(ch) && MOB_FLAGGED(ch, MOB_PET)) {
         send_to_char(std::format("Sorry, tamed mobiles and orc followers can't {}.\n\r",
-            com_msgs[subcmd][1]).c_str(), ch);
+            com_msgs[subcmd][1]), ch);
         return;
     }
 
@@ -541,7 +541,7 @@ ACMD(do_gen_com)
         continue;
     if (!(*argument)) {
         send_to_char(std::format("Yes, {}, fine, {} we must, but WHAT???\n\r",
-            com_msgs[subcmd][1], com_msgs[subcmd][1]).c_str(), ch);
+            com_msgs[subcmd][1], com_msgs[subcmd][1]), ch);
         return;
     }
 
@@ -669,7 +669,7 @@ ACMD(do_alias)
         send_to_char("You have the following aliases defined:\n\r", ch);
         for (count = 0; list; list = list->next, count++) {
             // printf("list found: %s\n",buf);
-            send_to_char(std::format("{:<20}: {}\n\r", static_cast<const char*>(list->keyword), list->command).c_str(), ch);
+            send_to_char(std::format("{:<20}: {}\n\r", static_cast<const char*>(list->keyword), list->command), ch);
         }
         //    sprintf(buf,"You have %d of max %d aliases.\n\r",count,MAX_ALIAS);
         //  send_to_char(buf,ch);
@@ -692,7 +692,7 @@ ACMD(do_alias)
             send_to_char("You have no such alias.\n\r", ch);
             return;
         }
-        send_to_char(std::format("You removed the alias '{}'.\n\r", static_cast<const char*>(list->keyword)).c_str(), ch);
+        send_to_char(std::format("You removed the alias '{}'.\n\r", static_cast<const char*>(list->keyword)), ch);
 
         if (!list2)
             GET_ALIAS(ch) = list->next;
@@ -734,9 +734,9 @@ ACMD(do_alias)
     if (!list) {
         list2->next = ch->specials.alias;
         ch->specials.alias = list2;
-        send_to_char(std::format("You added the alias '{}'.\n\r", static_cast<const char*>(list2->keyword)).c_str(), ch);
+        send_to_char(std::format("You added the alias '{}'.\n\r", static_cast<const char*>(list2->keyword)), ch);
     } else {
-        send_to_char(std::format("You replaced the alias '{}'.\n\r", static_cast<const char*>(list2->keyword)).c_str(), ch);
+        send_to_char(std::format("You replaced the alias '{}'.\n\r", static_cast<const char*>(list2->keyword)), ch);
     }
 
     return;

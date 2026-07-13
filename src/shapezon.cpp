@@ -529,7 +529,7 @@ void implement_zone(struct char_data* ch)
 #define DESCRCHANGE(line, addr)                                       \
     do {                                                              \
         if (!IS_SET(SHAPE_ZONE(ch)->flags, SHAPE_SIMPLE_ACTIVE)) {    \
-            send_to_char(std::format("You are about to change {}:\n\r", line).c_str(), ch); \
+            send_to_char(std::format("You are about to change {}:\n\r", line), ch); \
             SHAPE_ZONE(ch)                                            \
                 ->position                                            \
                 = shape_standup(ch, POSITION_SHAPING);                \
@@ -561,7 +561,7 @@ void implement_zone(struct char_data* ch)
 #define LINECHANGE(line, addr)                                                              \
     do {                                                                                    \
         if (!IS_SET(SHAPE_ZONE(ch)->flags, SHAPE_DIGIT_ACTIVE)) {                           \
-            send_to_char(std::format("Enter line {}:\n\r[{}]\n\r", line, (addr) ? (char*)addr : "").c_str(), ch); \
+            send_to_char(std::format("Enter line {}:\n\r[{}]\n\r", line, (addr) ? (char*)addr : ""), ch); \
             SHAPE_ZONE(ch)                                                                  \
                 ->position                                                                  \
                 = shape_standup(ch, POSITION_SHAPING);                                      \
@@ -634,7 +634,7 @@ void implement_zone(struct char_data* ch)
 #define REALDIGCHANGE(line, addr)                                      \
     do {                                                               \
         if (!IS_SET(SHAPE_ZONE(ch)->flags, SHAPE_DIGIT_ACTIVE)) {      \
-            send_to_char(std::format("Enter {} [{}]:\n\r", line, addr).c_str(), ch); \
+            send_to_char(std::format("Enter {} [{}]:\n\r", line, addr), ch); \
             SHAPE_ZONE(ch)                                             \
                 ->position                                             \
                 = shape_standup(ch, POSITION_SHAPING);                 \
@@ -1358,7 +1358,7 @@ void shape_center_zone(struct char_data* ch, char* arg)
             if (!IS_SET(SHAPE_ZONE(ch)->flags, SHAPE_DIGIT_ACTIVE)) {
                 send_to_char(std::format("Enter zone map symbol:[{}]\n\r",
                     SHAPE_ZONE(ch)->symbol)
-                                 .c_str(),
+                                 ,
                     ch);
                 SHAPE_ZONE(ch)
                     ->position
@@ -1444,12 +1444,12 @@ void shape_center_zone(struct char_data* ch, char* arg)
             send_to_char(std::format("Zone #{}: {}\n\rReset time: {}; Reset mode: {}\n\r",
                 SHAPE_ZONE(ch)->zone_number, SHAPE_ZONE(ch)->zone_name,
                 SHAPE_ZONE(ch)->lifespan, SHAPE_ZONE(ch)->reset_mode)
-                             .c_str(),
+                             ,
                 ch);
             send_to_char(std::format("Symbol:'{}', Coords - x:{} y:{}, Level:{}\n\r",
                 SHAPE_ZONE(ch)->symbol, SHAPE_ZONE(ch)->x,
                 SHAPE_ZONE(ch)->y, SHAPE_ZONE(ch)->level)
-                             .c_str(),
+                             ,
                 ch);
 
             // Was sprintf(str, "Owners: ") followed by a loop of
@@ -1467,7 +1467,7 @@ void shape_center_zone(struct char_data* ch, char* arg)
                         tmpowner = tmpowner->next;
                     }
                 owners += "\n\r\n\r";
-                send_to_char(owners.c_str(), ch);
+                send_to_char(owners, ch);
             }
             send_to_char(SHAPE_ZONE(ch)->zone_descr, ch);
             send_to_char("\n\r-----------------------------------------------\n\r", ch);
@@ -1559,7 +1559,7 @@ void list_zone(struct char_data* ch)
     mask_line += (mask->arg5 != -1) ? std::format("{} ", mask->arg5) : "* ";
     mask_line += (mask->arg6 != -1) ? std::format("{} ", mask->arg6) : "* ";
     mask_line += (mask->arg7 != -1) ? std::format("{}\n\r", mask->arg7) : "*\n\r";
-    send_to_char(mask_line.c_str(), ch);
+    send_to_char(mask_line, ch);
     str[0] = 0;
     zon = SHAPE_ZONE(ch)->root;
     // printf("cur_room = %d\n",SHAPE_ZONE(ch)->cur_room);
@@ -1682,7 +1682,7 @@ int load_zone(struct char_data* ch, char* arg)
     get_text(f, &(SHAPE_ZONE(ch)->zone_name));
     get_text(f, &(SHAPE_ZONE(ch)->zone_descr));
     get_text(f, &(SHAPE_ZONE(ch)->zone_map));
-    send_to_char(std::format(" loading zone #{} {}\n\r", tmp, SHAPE_ZONE(ch)->zone_name).c_str(), ch);
+    send_to_char(std::format(" loading zone #{} {}\n\r", tmp, SHAPE_ZONE(ch)->zone_name), ch);
 
     CREATE1(SHAPE_ZONE(ch)->root_owner, owner_list);
     SHAPE_ZONE(ch)
@@ -1795,7 +1795,7 @@ int load_zone(struct char_data* ch, char* arg)
         RELEASE(zon);
         if (prv)
             prv->next = 0;
-        send_to_char(std::format("Zone loaded, {} commands found.\n\r", num).c_str(), ch);
+        send_to_char(std::format("Zone loaded, {} commands found.\n\r", num), ch);
     } else {
         send_to_char("Zone loaded, 0 commands found, fake command inserted.\n\r",
             ch);
@@ -1926,7 +1926,7 @@ int replace_zone(struct char_data* ch, char*)
     } while ((i != num) && (check));
 
     if (!check) {
-        send_to_char(std::format("no zone #{} in this file\n", num).c_str(), ch);
+        send_to_char(std::format("no zone #{} in this file\n", num), ch);
 
         fclose(f1);
         fclose(f2);

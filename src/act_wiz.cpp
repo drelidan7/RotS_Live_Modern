@@ -434,22 +434,22 @@ void do_stat_room(struct char_data* ch)
     }
 
     send_to_char(
-        std::format("Room name: {}{}{}\n\r", CC_USE(ch, COLOR_ROOM), rm->name, CC_NORM(ch)).c_str(),
+        std::format("Room name: {}{}{}\n\r", CC_USE(ch, COLOR_ROOM), rm->name, CC_NORM(ch)),
         ch);
 
     sprinttype(rm->sector_type, sector_types, buf2);
     send_to_char(std::format("Zone: [{:3}], VNum: [{:5}], RNum: [{:5}], Type: {}\n\r", rm->zone,
                      rm->number, ch->in_room, static_cast<const char*>(buf2))
-                     .c_str(),
+                     ,
         ch);
 
     sprintbit((long)rm->room_flags, room_bits, buf2, 0);
     send_to_char(std::format("SpecProc: {}, Flags: {}\n\r", (rm->funct) ? "Exists" : "No",
                      static_cast<const char*>(buf2))
-                     .c_str(),
+                     ,
         ch);
 
-    send_to_char(std::format("Level: {}, No. of lights: {}\n\r", rm->level, rm->light).c_str(), ch);
+    send_to_char(std::format("Level: {}, No. of lights: {}\n\r", rm->level, rm->light), ch);
 
     send_to_char("Description:\n\r", ch);
     if (rm->description)
@@ -465,7 +465,7 @@ void do_stat_room(struct char_data* ch)
         }
         extra_descs += CC_NORM(ch);
         extra_descs += "\n\r";
-        send_to_char(extra_descs.c_str(), ch);
+        send_to_char(extra_descs, ch);
     }
 
     {
@@ -480,14 +480,14 @@ void do_stat_room(struct char_data* ch)
             }
             if (line.size() >= 62) {
                 line += k->next_in_room ? ",\n\r" : "\n\r";
-                send_to_char(line.c_str(), ch);
+                send_to_char(line, ch);
                 line.clear();
                 found = 0;
             }
         }
 
         if (!line.empty())
-            send_to_char((line + "\n\r").c_str(), ch);
+            send_to_char((line + "\n\r"), ch);
         send_to_char(CC_NORM(ch), ch);
     }
 
@@ -512,14 +512,14 @@ void do_stat_room(struct char_data* ch)
                 static_cast<const char*>(buf1));
             if (line.size() >= 62) {
                 line += j->next_content ? ",\n\r" : "\n\r";
-                send_to_char(line.c_str(), ch);
+                send_to_char(line, ch);
                 line.clear();
                 found = 0;
             }
         }
 
         if (!line.empty())
-            send_to_char((line + "\n\r").c_str(), ch);
+            send_to_char((line + "\n\r"), ch);
         send_to_char(CC_NORM(ch), ch);
     }
 
@@ -534,7 +534,7 @@ void do_stat_room(struct char_data* ch)
                     dirs[i], to_room_text, rm->dir_option[i]->key,
                     rm->dir_option[i]->keyword ? rm->dir_option[i]->keyword : "None",
                     static_cast<const char*>(buf2))
-                    .c_str(),
+                    ,
                 ch);
             if (rm->dir_option[i]->general_description)
                 send_to_char(rm->dir_option[i]->general_description, ch);
@@ -567,16 +567,16 @@ void do_stat_object(struct char_data* ch, struct obj_data* j)
     send_to_char(std::format("Name: '{}{}{}', Aliases: {}\n\r", CC_FIX(ch, CYEL),
                      ((j->short_description) ? j->short_description : "<None>"),
                      CC_NORM(ch), j->name)
-                     .c_str(),
+                     ,
         ch);
     sprinttype(GET_ITEM_TYPE(j), item_types, buf1);
     const char* spec_proc = (j->item_number >= 0) ? (obj_index[j->item_number].func ? "Exists" : "None") : "None";
     send_to_char(std::format("VNum: [{}{:5}{}], RNum: [{:5}], Type: {}, SpecProc: {}\n\r",
                      CC_FIX(ch, CGRN), virt, CC_NORM(ch), j->item_number,
                      static_cast<const char*>(buf1), spec_proc)
-                     .c_str(),
+                     ,
         ch);
-    send_to_char(std::format("L-Des: {}\n\r", ((j->description) ? j->description : "None")).c_str(),
+    send_to_char(std::format("L-Des: {}\n\r", ((j->description) ? j->description : "None")),
         ch);
 
     if (j->ex_description) {
@@ -587,30 +587,30 @@ void do_stat_object(struct char_data* ch, struct obj_data* j)
         }
         extra_descs += CC_NORM(ch);
         extra_descs += "\n\r";
-        send_to_char(extra_descs.c_str(), ch);
+        send_to_char(extra_descs, ch);
     }
 
     sprintbit(j->obj_flags.wear_flags, wear_bits, buf, 0);
-    send_to_char(std::format("Can be worn on: {}\n\r", static_cast<const char*>(buf)).c_str(), ch);
+    send_to_char(std::format("Can be worn on: {}\n\r", static_cast<const char*>(buf)), ch);
 
     sprintbit(j->obj_flags.bitvector, affected_bits, buf, 0);
-    send_to_char(std::format("Set char bits : {}\n\r", static_cast<const char*>(buf)).c_str(), ch);
+    send_to_char(std::format("Set char bits : {}\n\r", static_cast<const char*>(buf)), ch);
 
     sprintbit(j->obj_flags.extra_flags, extra_bits, buf, 0);
-    send_to_char(std::format("Extra flags   : {}\n\r", static_cast<const char*>(buf)).c_str(), ch);
+    send_to_char(std::format("Extra flags   : {}\n\r", static_cast<const char*>(buf)), ch);
 
     send_to_char(std::format("Material: {}\n\r", ((j->obj_flags.material >= 0) && (j->obj_flags.material < num_of_object_materials)) ? object_materials[j->obj_flags.material] : "Unknown")
-                     .c_str(),
+                     ,
         ch);
 
     send_to_char(
         std::format("Weight: {}, Value: {}, Cost/day: {} (set to {}), Level {}, Timer: {}\n\r",
             j->obj_flags.weight, j->obj_flags.cost, cost_per_day(j),
             j->obj_flags.cost_per_day, j->obj_flags.level, j->obj_flags.timer)
-            .c_str(),
+            ,
         ch);
 
-    send_to_char(std::format("Script number: {}\n\r", j->obj_flags.script_number).c_str(), ch);
+    send_to_char(std::format("Script number: {}\n\r", j->obj_flags.script_number), ch);
 
     std::string location_line = "In room: ";
     if (j->in_room == NOWHERE)
@@ -629,7 +629,7 @@ void do_stat_object(struct char_data* ch, struct obj_data* j)
         }
     }
     location_line += "\n\r";
-    send_to_char(location_line.c_str(), ch);
+    send_to_char(location_line, ch);
 
     std::string type_specific_line;
     switch (j->obj_flags.type_flag) {
@@ -703,7 +703,7 @@ void do_stat_object(struct char_data* ch, struct obj_data* j)
             j->obj_flags.value[2], j->obj_flags.value[3], j->obj_flags.value[4]);
         break;
     }
-    send_to_char(type_specific_line.c_str(), ch);
+    send_to_char(type_specific_line, ch);
 
     if (j->contains) {
         std::string line = std::format("Contents:{}", CC_USE(ch, COLOR_OBJ));
@@ -711,14 +711,14 @@ void do_stat_object(struct char_data* ch, struct obj_data* j)
             line += std::format("{} {}", found++ ? "," : "", j2->short_description);
             if (line.size() >= 62) {
                 line += j2->next_content ? ",\n\r" : "\n\r";
-                send_to_char(line.c_str(), ch);
+                send_to_char(line, ch);
                 line.clear();
                 found = 0;
             }
         }
 
         if (!line.empty())
-            send_to_char((line + "\n\r").c_str(), ch);
+            send_to_char((line + "\n\r"), ch);
         send_to_char(CC_NORM(ch), ch);
     }
 
@@ -729,7 +729,7 @@ void do_stat_object(struct char_data* ch, struct obj_data* j)
             sprinttype(j->affected[i].location, apply_types, buf2);
             send_to_char(std::format("{} {:+d} to {}", found++ ? "," : "", j->affected[i].modifier,
                              static_cast<const char*>(buf2))
-                             .c_str(),
+                             ,
                 ch);
         }
     if (!found)
@@ -773,19 +773,19 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
         std::format("{} {} '{}'  IDNum: [{:5}], Player table index: [{}], In room [{:5}]\n\r",
             sex_label, (!IS_NPC(k) ? "PC" : (!IS_MOB(k) ? "NPC" : "MOB")), GET_NAME(k),
             GET_IDNUM(k), GET_INDEX(k), (k->in_room < 0) ? -1 : world[k->in_room].number)
-            .c_str(),
+            ,
         ch);
 
     if (IS_MOB(k)) {
         send_to_char(std::format("Alias: {}, VNum: [{:5}], RNum: [{:5}]\n\r", k->player.name,
                          mob_index[k->nr].virt, k->nr)
-                         .c_str(),
+                         ,
             ch);
     }
     send_to_char(std::format("Title: {}\n\rRace: {}, which is number {}\n\r",
                      (k->player.title ? k->player.title : "<None>"),
                      pc_race_types[GET_RACE(k)], GET_RACE(k))
-                     .c_str(),
+                     ,
         ch);
 
     send_to_char("L-Des: ", ch);
@@ -798,7 +798,7 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
         send_to_char(std::format("Class coofs : Mag:{} Cle:{} Ran:{} War:{}\n\r",
                          GET_PROF_COOF(PROF_MAGIC_USER, k), GET_PROF_COOF(PROF_CLERIC, k),
                          GET_PROF_COOF(PROF_RANGER, k), GET_PROF_COOF(PROF_WARRIOR, k))
-                         .c_str(),
+                         ,
             ch);
 
         send_to_char(
@@ -806,7 +806,7 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
                 GET_PROF_LEVEL(PROF_MAGIC_USER, k), GET_PROF_LEVEL(PROF_CLERIC, k),
                 GET_PROF_LEVEL(PROF_RANGER, k), GET_PROF_LEVEL(PROF_WARRIOR, k),
                 GET_MINI_LEVEL(k), GET_MAX_MINI_LEVEL(k))
-                .c_str(),
+                ,
             ch);
     } else {
         send_to_char("Class coofs are not defined for mobiles.\n\r", ch);
@@ -829,7 +829,7 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
     send_to_char(std::format("{}, Lev: [{}{:2}{}], XP: [{}{:7}{}], Align: [{:4}]\n\r",
                      spec_or_prof_prefix, CC_FIX(ch, CYEL), GET_LEVEL(k), CC_NORM(ch),
                      CC_FIX(ch, CYEL), GET_EXP(k), CC_NORM(ch), GET_ALIGNMENT(k))
-                     .c_str(),
+                     ,
         ch);
 
     if (!IS_NPC(k)) {
@@ -841,18 +841,18 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
                          static_cast<const char*>(buf1), static_cast<const char*>(buf2),
                          k->player.time.played / 3600, ((k->player.time.played / 60) % 60),
                          age(k).year)
-                         .c_str(),
+                         ,
             ch);
 
         send_to_char(std::format("Hometown: [{}], Speaks: [{}/{}/{}], (pracs left:[{}])\n\r",
                          k->player.hometown, k->player.talks[0], k->player.talks[1],
                          k->player.talks[2], SPELLS_TO_LEARN(k))
-                         .c_str(),
+                         ,
             ch);
     } else {
         send_to_char(std::format("Exists for {} ticks, Difficulty {}.\n\r",
                          MOB_AGE_TICKS(k, time(0)), GET_DIFFICULTY(k))
-                         .c_str(),
+                         ,
             ch);
     }
     send_to_char(std::format("Str:[{}/{}/{}] Int:[{}/{}/{}] Wil:[{}/{}/{}] Dex:[{}/{}/{}] Con: "
@@ -863,7 +863,7 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
                      (k)->constabilities.dex, GET_CON(k), GET_CON_BASE(k),
                      (k)->constabilities.con, GET_LEA(k), GET_LEA_BASE(k),
                      (k)->constabilities.lea)
-                     .c_str(),
+                     ,
         ch);
 
     send_to_char(
@@ -875,14 +875,14 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
             move_gain(k), get_bonus_move_gain(k), utils::get_spirits(k), 0,
             0, /*GET_MAX_SPIRIT(k), spirit_gain(k),*/
             (k)->constabilities.hit, (k)->constabilities.mana, (k)->constabilities.move)
-            .c_str(),
+            ,
         ch);
     send_to_char(std::format("Encumbrance {}, Leg_encu {}, Perception {}, Willpower {},\n\r",
                      utils::get_encumbrance(*k), utils::get_leg_encumbrance(*k),
                      GET_PERCEPTION(k), GET_WILLPOWER(k))
-                     .c_str(),
+                     ,
         ch);
-    send_to_char(std::format("Coins: [{:9}]\n\r", GET_GOLD(k)).c_str(), ch);
+    send_to_char(std::format("Coins: [{:9}]\n\r", GET_GOLD(k)), ch);
     send_to_char(std::format(" OB: {}({}), parry: {}({}), dodge: {}({}), c_parry {},  Saving "
                              "throws {},\n\r Mood {}, "
                              "ambush awareness {}, rerolls done: {}, absorb {}\n\r",
@@ -890,14 +890,14 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
                      get_real_dodge(k), GET_DODGE(k), GET_CURRENT_PARRY(k),
                      k->specials2.saving_throw, GET_TACTICS(k), GET_AMBUSHED(k),
                      GET_REROLLS(k), get_percent_absorb(ch))
-                     .c_str(),
+                     ,
         ch);
 
     send_to_char(
         std::format("ENERGY: {}, ENE_regen: {}, damage: {}, null_speed: {}, str_speed {}\n\r",
             k->specials.ENERGY, utils::get_energy_regen(*k), k->points.damage,
             k->specials.null_speed, k->specials.str_speed)
-            .c_str(),
+            ,
         ch);
 
     if (!utils::is_npc(*k)) {
@@ -912,7 +912,7 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
                     battle_mage_handler.get_bonus_spell_pen(k->points.get_spell_pen()),
                     battle_mage_handler.get_bonus_spell_power(k->points.get_spell_power()),
                     health_regen, mana_regen, move_regen)
-                    .c_str(),
+                    ,
                 ch);
         }
     }
@@ -926,12 +926,12 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
         pos_line += static_cast<const char*>(buf2);
     }
     pos_line += std::format("  Hide_value:{}.\n\r", k->specials.hide_value);
-    send_to_char(pos_line.c_str(), ch);
+    send_to_char(pos_line, ch);
 
     sprinttype((k->specials.default_pos), position_types, buf2);
     send_to_char(std::format("Default position: {}, Idle Timer (in tics) [{}]\n\r",
                      static_cast<const char*>(buf2), k->specials.timer)
-                     .c_str(),
+                     ,
         ch);
 
     if (IS_NPC(k)) {
@@ -939,14 +939,14 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
         send_to_char(std::format("NPC flags: ({}) {}, agg flag: {}, will_teach: {}\n\r",
                          MOB_FLAGS(k), static_cast<const char*>(buf2), (k)->specials2.pref,
                          (k)->specials2.will_teach)
-                         .c_str(),
+                         ,
             ch);
     } else {
         sprintbit(PLR_FLAGS(k), player_bits, buf2, 0);
-        send_to_char(std::format("PLR: {}\n\r", static_cast<const char*>(buf2)).c_str(), ch);
+        send_to_char(std::format("PLR: {}\n\r", static_cast<const char*>(buf2)), ch);
         sprintbit(PRF_FLAGS(k), preference_bits, buf2, 0);
-        send_to_char(std::format("PRF: {}\n\r", static_cast<const char*>(buf2)).c_str(), ch);
-        send_to_char(std::format("rp_flag: {}\n\r", k->specials2.rp_flag).c_str(), ch);
+        send_to_char(std::format("PRF: {}\n\r", static_cast<const char*>(buf2)), ch);
+        send_to_char(std::format("rp_flag: {}\n\r", k->specials2.rp_flag), ch);
     }
 
     if (IS_MOB(k)) {
@@ -956,7 +956,7 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
                                  ? mobile_program_zone[PROG_NUMBER(k)]
                                  : -1),
                          k->specials.script_number)
-                         .c_str(),
+                         ,
             ch);
     }
 
@@ -972,12 +972,12 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
         if (k->equipment[i])
             i2++;
     carried_line += std::format("eq: {}\n\r", i2);
-    send_to_char(carried_line.c_str(), ch);
+    send_to_char(carried_line, ch);
 
     send_to_char(std::format("Hunger: {}, Thirst: {}, Drunk: {}, Att.Level: {}\n\r",
                      GET_COND(k, FULL), GET_COND(k, THIRST), GET_COND(k, DRUNK),
                      k->specials.attacked_level)
-                     .c_str(),
+                     ,
         ch);
 
     {
@@ -988,19 +988,19 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
             line += std::format("{} {}", found++ ? "," : "", GET_NAME(fol->follower));
             if (line.size() >= 62) {
                 line += fol->next ? ",\n\r" : "\n\r";
-                send_to_char(line.c_str(), ch);
+                send_to_char(line, ch);
                 line.clear();
                 found = 0;
             }
         }
 
         if (!line.empty())
-            send_to_char((line + "\n\r").c_str(), ch);
+            send_to_char((line + "\n\r"), ch);
     }
 
     send_to_char(
         std::format("Delay command:{} delay_value:{}\n\r", k->delay.cmd, k->delay.wait_value)
-            .c_str(),
+            ,
         ch);
 
     if (!IS_NPC(k) || !k->specials.memory) {
@@ -1010,26 +1010,26 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
         for (tmprec = k->specials.memory; tmprec; tmprec = tmprec->next_on_mob)
             memories += std::format(" {}", tmprec->id);
         memories += "\n\r";
-        send_to_char(memories.c_str(), ch);
+        send_to_char(memories, ch);
     }
 
     /* Showing the bitvector */
     sprintbit(k->specials.affected_by, affected_bits, buf2, 0);
     send_to_char(std::format("AFF: {}{}{}\n\r", CC_FIX(ch, CYEL), static_cast<const char*>(buf2),
                      CC_NORM(ch))
-                     .c_str(),
+                     ,
         ch);
 
     sprintbit(GET_RESISTANCES(k), resistance_name, buf2, 0);
     send_to_char(
         std::format("RES: {}{}{} ", CC_FIX(ch, CYEL), static_cast<const char*>(buf2), CC_NORM(ch))
-            .c_str(),
+            ,
         ch);
 
     sprintbit(GET_VULNERABILITIES(k), vulnerability_name, buf2, 0);
     send_to_char(std::format("VUL: {}{}{}\n\r", CC_FIX(ch, CYEL), static_cast<const char*>(buf2),
                      CC_NORM(ch))
-                     .c_str(),
+                     ,
         ch);
 
     /* Routine to show what spells a char is affected by */
@@ -1048,7 +1048,7 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
                              CC_FIX(ch, CCYN),
                              static_cast<const char*>(skills[aff->type].name), CC_NORM(ch),
                              modifier_and_bits)
-                             .c_str(),
+                             ,
                 ch);
         }
     }
@@ -1093,7 +1093,7 @@ ACMD(do_zone)
         return;
     }
 
-    send_to_char(std::format("Zone #{}: {}\n\r", zonnum, zone_table[tmp].name).c_str(), ch);
+    send_to_char(std::format("Zone #{}: {}\n\r", zonnum, zone_table[tmp].name), ch);
 
     std::string owners_line = "Owners: ";
     tmpowner = zone_table[tmp].owners;
@@ -1111,10 +1111,10 @@ ACMD(do_zone)
             tmpowner = tmpowner->next;
         }
     owners_line += ".\n\r";
-    send_to_char(owners_line.c_str(), ch);
+    send_to_char(owners_line, ch);
     send_to_char(std::format("Coordinates: ({}, {}), symbol '{}' Level {}\n\r", zone_table[tmp].x,
                      zone_table[tmp].y, zone_table[tmp].symbol, zone_table[tmp].level)
-                     .c_str(),
+                     ,
         ch);
     send_to_char(zone_table[tmp].description, ch);
     send_to_char("\n\r------------------------------------------\n\r", ch);
@@ -1233,22 +1233,22 @@ ACMD(do_shutdown)
     if (!*arg) {
         const std::string message = std::format("(GC) Shutdown by {}. \n\r", GET_NAME(ch));
         send_to_all(message.c_str());
-        log(message.c_str());
+        log(message);
         circle_shutdown = 1;
     } else if (!str_cmp(arg, "reboot")) {
-        log(std::format("(GC) Reboot by {}.", GET_NAME(ch)).c_str());
+        log(std::format("(GC) Reboot by {}.", GET_NAME(ch)));
         send_to_all("Rebooting... come back in a minute or two.");
         circle_shutdown = circle_reboot = 1;
     } else if (!str_cmp(arg, "die")) {
         const std::string message = std::format("(GC) Shutdown by {}. \n\r", GET_NAME(ch));
         send_to_all(message.c_str());
-        log(message.c_str());
+        log(message);
         touch_file("../.killscript");
         circle_shutdown = 1;
     } else if (!str_cmp(arg, "pause")) {
         const std::string message = std::format("(GC) Shutdown by {}. \n\r", GET_NAME(ch));
         send_to_all(message.c_str());
-        log(message.c_str());
+        log(message);
         touch_file("../pause");
         circle_shutdown = 1;
     } else
@@ -1644,7 +1644,7 @@ ACMD(do_advance)
         if (GET_LEVEL(victim) < LEVEL_IMPL) {
             log(std::format("(GC) {} has advanced {} to level {} (from {})", GET_NAME(ch),
                 GET_NAME(victim), newlevel, GET_LEVEL(victim))
-                    .c_str());
+                    );
             if (adv > 0)
                 gain_exp_regardless(victim,
                     (xp_to_level(GET_LEVEL(victim) + adv) - GET_EXP(victim)));
@@ -1817,8 +1817,8 @@ ACMD(do_dc)
     }
 
     close_socket(d);
-    send_to_char(std::format("Connection #{} closed.\n\r", num_to_dc).c_str(), ch);
-    log(std::format("(GC) Connection closed by {}.", GET_NAME(ch)).c_str());
+    send_to_char(std::format("Connection #{} closed.\n\r", num_to_dc), ch);
+    log(std::format("(GC) Connection closed by {}.", GET_NAME(ch)));
 }
 
 // wizlock message shown to blocked connections (interpre.cpp's
@@ -1893,8 +1893,8 @@ ACMD(do_date)
     ct = time(0);
     tmstr = (char*)asctime(localtime(&ct));
     *(tmstr + strlen(tmstr) - 1) = '\0';
-    send_to_char(std::format("Current machine time: {}\n\r", tmstr).c_str(), ch);
-    send_to_char(std::format("Last reboot on: {}\n\r", asctime(localtime(&boot_time))).c_str(), ch);
+    send_to_char(std::format("Current machine time: {}\n\r", tmstr), ch);
+    send_to_char(std::format("Last reboot on: {}\n\r", asctime(localtime(&boot_time))), ch);
 }
 
 ACMD(do_uptime)
@@ -1919,7 +1919,7 @@ ACMD(do_uptime)
 
     send_to_char(
         std::format("Up since {}: {} day{}, {}:{:02}\n\r", tmstr, d, ((d == 1) ? "" : "s"), h, m)
-            .c_str(),
+            ,
         ch);
     send_to_char("The last minutes of the previous run:\n\r", ch);
     send_to_char(lastdeath, ch);
@@ -1955,7 +1955,7 @@ ACMD(do_last)
                      chdata.specials2.idnum, chdata.level, race_abbrevs[(int)chdata.race],
                      static_cast<const char*>(chdata.name),
                      static_cast<const char*>(chdata.host), ctime(&chdata.last_logon))
-                     .c_str(),
+                     ,
         ch);
 }
 
@@ -2174,7 +2174,7 @@ ACMD(do_zreset)
     }
     if (i >= 0 && i <= top_of_zone_table) {
         reset_zone(i);
-        send_to_char(std::format("Reset zone {}: {}.\n\r", i, zone_table[i].name).c_str(), ch);
+        send_to_char(std::format("Reset zone {}: {}.\n\r", i, zone_table[i].name), ch);
         strcpy(buf, std::format("(GC) {} reset zone {} ({})", GET_NAME(ch), zone_table[i].number, zone_table[i].name).c_str());
         mudlog(buf, NRM, (sh_int)MAX(LEVEL_GRGOD, GET_INVIS_LEV(ch)), TRUE);
     } else
@@ -2234,7 +2234,7 @@ ACMD(do_wizutil)
                 }
             usage_line.resize(usage_line.size() - 2);
             usage_line += ".\n\r";
-            send_to_char(usage_line.c_str(), ch);
+            send_to_char(usage_line, ch);
             return;
         }
         if (GET_LEVEL(ch) < wizutil_options[tmp].min_level) {
@@ -2320,7 +2320,7 @@ ACMD(do_wizutil)
         if (vict->specials2.freeze_level > GET_LEVEL(ch)) {
             send_to_char(std::format("Sorry, a level {} God froze {}... you can't unfreeze {}.\n\r",
                              vict->specials2.freeze_level, GET_NAME(vict), HMHR(vict))
-                             .c_str(),
+                             ,
                 ch);
             return;
         }
@@ -2351,7 +2351,7 @@ ACMD(do_wizutil)
         roll_abilities(vict, 80, 93);
         if (vict->desc)
             act("$n just rerolled you.", FALSE, ch, 0, vict, TO_VICT);
-        log(std::format("(GC) {} has rerolled {}.", GET_NAME(ch), GET_NAME(vict)).c_str());
+        log(std::format("(GC) {} has rerolled {}.", GET_NAME(ch), GET_NAME(vict)));
         vict->update_available_practice_sessions();
         break;
     case SCMD_RETIRE:
@@ -2362,7 +2362,7 @@ ACMD(do_wizutil)
         retire(vict);
         act("You are retired by $n.", FALSE, ch, 0, vict, TO_VICT);
         act("You retire $N.", FALSE, ch, 0, vict, TO_CHAR);
-        log(std::format("(GC) {} has retired {}.", GET_NAME(ch), GET_NAME(vict)).c_str());
+        log(std::format("(GC) {} has retired {}.", GET_NAME(ch), GET_NAME(vict)));
         break;
     case SCMD_REACTV:
         if (!PLR_FLAGGED(vict, PLR_RETIRED)) {
@@ -2372,7 +2372,7 @@ ACMD(do_wizutil)
         unretire(vict);
         act("You are reactivated by $n.", FALSE, ch, 0, vict, TO_VICT);
         act("You reactivate $N.", FALSE, ch, 0, vict, TO_CHAR);
-        log(std::format("(GC) {} has reactivated {}.", GET_NAME(ch), GET_NAME(vict)).c_str());
+        log(std::format("(GC) {} has reactivated {}.", GET_NAME(ch), GET_NAME(vict)));
         break;
     case SCMD_REHASH:
         do_rehash(ch, mutable_arg(""), 0, 0, 0);
@@ -2400,7 +2400,7 @@ ACMD(do_wizutil)
             return;
         }
         add_exploit_record(EXPLOIT_NOTE, vict, 0, c);
-        log(std::format("(GC) {} wrote a note about {}.", GET_NAME(ch), GET_NAME(vict)).c_str());
+        log(std::format("(GC) {} wrote a note about {}.", GET_NAME(ch), GET_NAME(vict)));
         send_to_char("OK.", ch);
         break;
     }
@@ -2468,7 +2468,7 @@ ACMD(do_show)
             if (fields[i].level <= GET_LEVEL(ch))
                 options_line += std::format("{:<15}{}", fields[i].cmd, (!(++j % 5) ? "\n\r" : ""));
         options_line += "\n\r";
-        send_to_char(options_line.c_str(), ch);
+        send_to_char(options_line, ch);
         return;
     }
     half_chop(argument, field, arg);
@@ -2524,7 +2524,7 @@ ACMD(do_show)
                          vbuf.specials2.spells_to_learn, static_cast<const char*>(birth),
                          ctime(&vbuf.last_logon), (int)(vbuf.played / 3600),
                          (int)(vbuf.played / 60 % 60))
-                         .c_str(),
+                         ,
             ch);
         break;
     case 3:
@@ -2575,7 +2575,7 @@ ACMD(do_show)
                 float(stat_darkie_counter) / stat_ticks_passed,
                 float(stat_darkie_legend_counter) / stat_ticks_passed);
         }
-        send_to_char(stats_line.c_str(), ch);
+        send_to_char(stats_line, ch);
 
         break;
     }
@@ -2586,7 +2586,7 @@ ACMD(do_show)
         for (i = 0, j = 0; i < top_of_world; i++)
             if (IS_SET(world[i].room_flags, DEATH))
                 death_traps += std::format("{:2}: [{:5}] {}\n\r", ++j, world[i].number, world[i].name);
-        send_to_char(death_traps.c_str(), ch);
+        send_to_char(death_traps, ch);
         break;
     }
     case 7: {
@@ -2595,7 +2595,7 @@ ACMD(do_show)
         for (i = 0, j = 0; i < top_of_world; i++)
             if (world[i].zone == GOD_ROOMS_ZONE)
                 godrooms += std::format("{:2}: [{:5}] {}\n\r", j++, world[i].number, world[i].name);
-        send_to_char(godrooms.c_str(), ch);
+        send_to_char(godrooms, ch);
         break;
     }
 
@@ -2620,7 +2620,7 @@ ACMD(do_show)
             count++;
         }
         affected_line += "\n\r";
-        send_to_char(affected_line.c_str(), ch);
+        send_to_char(affected_line, ch);
 
         break;
     }
@@ -2633,15 +2633,15 @@ ACMD(do_show)
         /* alias list */
         list = vict->specials.alias;
         if (!list) {
-            send_to_char(std::format("{} has no aliases defined.\n\r", GET_NAME(vict)).c_str(), ch);
+            send_to_char(std::format("{} has no aliases defined.\n\r", GET_NAME(vict)), ch);
             return;
         }
         send_to_char(
-            std::format("{} has the following aliases defined:\n\r", GET_NAME(vict)).c_str(), ch);
+            std::format("{} has the following aliases defined:\n\r", GET_NAME(vict)), ch);
         for (count = 0; list; list = list->next, count++) {
             send_to_char(std::format("{:<20}: {}\n\r", static_cast<const char*>(list->keyword),
                              list->command)
-                             .c_str(),
+                             ,
                 ch);
         }
         break;
@@ -3280,11 +3280,11 @@ ACMD(do_account)
     if (!str_cmp(subcommand, "show")) {
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
-        send_to_char(account::format_account_summary(account_data).c_str(), ch);
+        send_to_char(account::format_account_summary(account_data), ch);
         return;
     }
 
@@ -3296,13 +3296,13 @@ ACMD(do_account)
 
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
         if (!account::admin_block_account(root_directory, account_data.account_name, GET_NAME(ch),
                 value, time(0), &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
@@ -3314,13 +3314,13 @@ ACMD(do_account)
     if (!str_cmp(subcommand, "verify")) {
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
         if (!account::admin_verify_email(root_directory, account_data.account_name, GET_NAME(ch),
                 time(0), &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
@@ -3333,13 +3333,13 @@ ACMD(do_account)
     if (!str_cmp(subcommand, "unverify")) {
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
         if (!account::admin_unverify_email(root_directory, account_data.account_name, time(0),
                 &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
@@ -3352,13 +3352,13 @@ ACMD(do_account)
     if (!str_cmp(subcommand, "unblock")) {
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
         if (!account::admin_unblock_account(root_directory, account_data.account_name, time(0),
                 &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
@@ -3375,13 +3375,13 @@ ACMD(do_account)
 
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
         if (!account::admin_reset_password(root_directory, account_data.account_name, value,
                 GET_NAME(ch), time(0), &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
@@ -3399,13 +3399,13 @@ ACMD(do_account)
 
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
         if (!account::admin_link_character(root_directory, account_data.account_name, value,
                 time(0), &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
@@ -3424,14 +3424,14 @@ ACMD(do_account)
 
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
         if (!account::admin_link_and_migrate_character(root_directory, account_data.account_name,
                 value, time(0), &account_data, &migration,
                 &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
@@ -3444,12 +3444,12 @@ ACMD(do_account)
     if (!str_cmp(subcommand, "unlockselect")) {
         if (!account::read_account_file_by_identifier(root_directory, account_identifier,
                 &account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
         if (!grant_account_character_selection_unlock(account_data, &error_message)) {
-            send_to_char((error_message + "\n\r").c_str(), ch);
+            send_to_char((error_message + "\n\r"), ch);
             return;
         }
 
@@ -3558,7 +3558,7 @@ ACMD(do_whoacct)
             continue;
 
         if (displayed_sessions == 0)
-            send_to_char(line.c_str(), ch);
+            send_to_char(line, ch);
 
         std::string account_identifier = sanitize_whoacct_field(
             *descriptor->account_email ? descriptor->account_email : descriptor->account_name);
@@ -3582,7 +3582,7 @@ ACMD(do_whoacct)
 
         send_to_char(std::format("{:>3} {:<26.26} {:<12.12} {:<16.16} {}\n\r", descriptor->desc_num,
                          account_identifier, character_display, state_display, host_display)
-                         .c_str(),
+                         ,
             ch);
         ++displayed_sessions;
     }
@@ -3594,7 +3594,7 @@ ACMD(do_whoacct)
 
     send_to_char(std::format("\n\r{} visible account session{} connected.\n\r", displayed_sessions,
                      displayed_sessions == 1 ? "" : "s")
-                     .c_str(),
+                     ,
         ch);
 }
 
@@ -3659,7 +3659,7 @@ ACMD(do_register)
                 send_to_char(std::format("{:5}: {:<30}{}", vn,
                                  nz(mob_proto[tmp].player.short_descr),
                                  (sw) ? "| " : "\n\r")
-                                 .c_str(),
+                                 ,
                     ch);
                 sw = 1 - sw;
                 count++;
@@ -3679,7 +3679,7 @@ ACMD(do_register)
             if (vn / 100 == zonnum) {
                 send_to_char(std::format("{:5}: {:<30}{}", vn, nz(obj_proto[tmp].short_description),
                                  (sw) ? "| " : "\n\r")
-                                 .c_str(),
+                                 ,
                     ch);
                 sw = 1 - sw;
                 count++;
@@ -3700,7 +3700,7 @@ ACMD(do_register)
                 send_to_char(std::format("{:5}: {:<30}{}", world[tmp].number,
                                  nz(static_cast<const char*>(world[tmp].name)),
                                  (sw) ? "| " : "\n\r")
-                                 .c_str(),
+                                 ,
                     ch);
                 sw = 1 - sw;
                 count++;
@@ -3718,7 +3718,7 @@ ACMD(do_register)
             if ((player_table + tmp)->level == zonnum) {
                 send_to_char(
                     std::format("{}\n\r", nz(static_cast<const char*>((player_table + tmp)->name)))
-                        .c_str(),
+                        ,
                     ch);
             }
         return;
@@ -3815,7 +3815,7 @@ ACMD(do_register)
             top_header = std::format("Top {:2} {}Characters\n\r", zonnum, race_name);
         }
 
-        send_to_char(top_header.c_str(), ch);
+        send_to_char(top_header, ch);
         if (oldest == 1) {
             for (count = 0; count < 25; count++) {
                 lowest[count][0] = -1;
@@ -3846,7 +3846,7 @@ ACMD(do_register)
                     send_to_char(std::format("{:2} - {}\n\r", (player_table + lowest[i][0])->level,
                                      nz(static_cast<const char*>(
                                          (player_table + lowest[i][0])->name)))
-                                     .c_str(),
+                                     ,
                         ch);
                 }
             }
@@ -3863,7 +3863,7 @@ ACMD(do_register)
                         send_to_char(
                             std::format("{:2} - {}\n\r", (player_table + tmp)->level,
                                 nz(static_cast<const char*>((player_table + tmp)->name)))
-                                .c_str(),
+                                ,
                             ch);
                         count++;
                     }
@@ -3879,7 +3879,7 @@ ACMD(do_register)
             if (vn / 100 == zonnum) {
                 send_to_char(std::format("{:5}: {:<30}{}", vn, nz(script_table[tmp].name),
                                  (sw) ? "| " : "\n\r")
-                                 .c_str(),
+                                 ,
                     ch);
                 sw = 1 - sw;
                 count++;
@@ -3924,7 +3924,7 @@ ACMD(do_findzone)
             // 255 bytes; std::string::substr reproduces that cap without a
             // fixed-size buffer.
             line += std::string(zone_table[i].name).substr(0, 255);
-            send_to_char(line.c_str(), ch);
+            send_to_char(line, ch);
         }
     send_to_char("\n\rEnd of list.\n\r", ch);
 }
@@ -4038,7 +4038,7 @@ int advance_perm(struct char_data* ch, struct char_data* vict, int level)
     if (level + 3 > GET_LEVEL(ch)) {
         send_to_char(std::format("You do not have permission to advance {} to level {}.\r\n",
                          GET_NAME(vict), level)
-                         .c_str(),
+                         ,
             ch);
         return 0;
     }
@@ -4046,7 +4046,7 @@ int advance_perm(struct char_data* ch, struct char_data* vict, int level)
     if (GET_LEVEL(vict) + 3 > GET_LEVEL(ch)) {
         send_to_char(
             std::format("You do not have permission to change {}'s level.\r\n", GET_NAME(vict))
-                .c_str(),
+                ,
             ch);
         return 0;
     }
@@ -4180,7 +4180,7 @@ ACMD(do_top)
         header = std::format("Top {:2} {}Characters\n\r", zonnum, race_label);
     }
 
-    send_to_char(header.c_str(), ch);
+    send_to_char(header, ch);
     if (oldest == 1) {
         for (count = 0; count < 25; count++) {
             lowest[count][0] = -1;
@@ -4210,7 +4210,7 @@ ACMD(do_top)
             if ((lowest[i][0] >= 0) && (lowest[i][0] <= top_of_p_table)) {
                 send_to_char(std::format("{:2} - {}\n\r", (player_table + lowest[i][0])->level,
                                  (player_table + lowest[i][0])->name)
-                                 .c_str(),
+                                 ,
                     ch);
             }
         }
@@ -4226,7 +4226,7 @@ ACMD(do_top)
                     }
                     send_to_char(std::format("{:2} - {}\n\r", (player_table + tmp)->level,
                                      (player_table + tmp)->name)
-                                     .c_str(),
+                                     ,
                         ch);
                     count++;
                 }

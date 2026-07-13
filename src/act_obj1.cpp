@@ -86,11 +86,11 @@ ACMD(do_put)
         send_to_char("Put what in what?\n\r", ch);
     else if (!*arg2) {
         send_to_char(std::format("What do you want to put {} in?\n\r",
-            ((obj_dotmode != FIND_INDIV) ? "them" : "it")).c_str(), ch);
+            ((obj_dotmode != FIND_INDIV) ? "them" : "it")), ch);
     } else {
         generic_find(arg2, FIND_OBJ_INV | FIND_OBJ_ROOM, ch, &tmp_char, &container);
         if (!container) {
-            send_to_char(std::format("You don't see a {} here.\n\r", static_cast<const char*>(arg2)).c_str(), ch);
+            send_to_char(std::format("You don't see a {} here.\n\r", static_cast<const char*>(arg2)), ch);
         } else if (GET_ITEM_TYPE(container) != ITEM_CONTAINER) {
             act("$p is not a container.", FALSE, ch, container, 0, TO_CHAR);
         } else if (IS_SET(container->obj_flags.value[1], CONT_CLOSED)) {
@@ -115,7 +115,7 @@ ACMD(do_put)
                     }
             } else if (obj_dotmode == FIND_ALLDOT) { /* "put all.x <cont>" case */
                 if (!(obj = get_obj_in_list_vis(ch, arg1, ch->carrying, 9999))) {
-                    send_to_char(std::format("You don't seem to have any {}s.\n\r", static_cast<const char*>(arg1)).c_str(), ch);
+                    send_to_char(std::format("You don't seem to have any {}s.\n\r", static_cast<const char*>(arg1)), ch);
                 } else
                     while (obj) {
                         next_obj = get_obj_in_list_vis(ch, arg1, obj->next_content, 9999);
@@ -131,7 +131,7 @@ ACMD(do_put)
                     }
             } else { /* "put <thing> <container>" case */
                 if (!(obj = get_obj_in_list_vis(ch, arg1, ch->carrying, 9999))) {
-                    send_to_char(std::format("You aren't carrying {} {}.\n\r", AN(arg1), static_cast<const char*>(arg1)).c_str(), ch);
+                    send_to_char(std::format("You aren't carrying {} {}.\n\r", AN(arg1), static_cast<const char*>(arg1)), ch);
                 } else if (obj == container) {
                     send_to_char("You attempt to fold it into itself, but fail.\n\r", ch);
                 } else if (GET_ITEM_TYPE(obj) != ITEM_MISSILE && is_quiver) {
@@ -147,13 +147,13 @@ ACMD(do_put)
 int can_take_obj(char_data* character, obj_data* item)
 {
     if (IS_CARRYING_N(character) >= CAN_CARRY_N(character)) {
-        send_to_char(std::format("{}: You can't carry that many items.\n\r", OBJS(item, character)).c_str(), character);
+        send_to_char(std::format("{}: You can't carry that many items.\n\r", OBJS(item, character)), character);
         return 0;
     } else if ((IS_CARRYING_W(character) + GET_OBJ_WEIGHT(item)) > CAN_CARRY_W(character)) {
-        send_to_char(std::format("{}: You can't carry that much weight.\n\r", OBJS(item, character)).c_str(), character);
+        send_to_char(std::format("{}: You can't carry that much weight.\n\r", OBJS(item, character)), character);
         return 0;
     } else if (!(CAN_WEAR(item, ITEM_TAKE))) {
-        send_to_char(std::format("{}: You can't take that!\n\r", OBJS(item, character)).c_str(), character);
+        send_to_char(std::format("{}: You can't take that!\n\r", OBJS(item, character)), character);
         return 0;
     }
 
@@ -166,7 +166,7 @@ void get_check_money(struct char_data* ch, struct obj_data* obj)
         obj_from_char(obj);
         if (obj->obj_flags.value[0] > 1) {
             send_to_char(std::format("There were {}.\n\r",
-                money_message(obj->obj_flags.value[0], 1)).c_str(), ch);
+                money_message(obj->obj_flags.value[0], 1)), ch);
         }
         GET_GOLD(ch) += obj->obj_flags.value[0];
         extract_obj(obj);
@@ -333,7 +333,7 @@ void get_from_room(struct char_data* ch, char* arg)
             return;
         }
         if (!(obj = get_obj_in_list_vis(ch, arg, world[ch->in_room].contents, 9999))) {
-            send_to_char(std::format("You don't see any {}s here.\n\r", arg).c_str(), ch);
+            send_to_char(std::format("You don't see any {}s here.\n\r", arg), ch);
         } else
             while (obj) {
                 next_obj = get_obj_in_list_vis(ch, arg, obj->next_content, 9999);
@@ -342,7 +342,7 @@ void get_from_room(struct char_data* ch, char* arg)
             }
     } else {
         if (!(obj = get_obj_in_list_vis(ch, arg, world[ch->in_room].contents, 9999))) {
-            send_to_char(std::format("You don't see {} {} here.\n\r", AN(arg), arg).c_str(), ch);
+            send_to_char(std::format("You don't see {} {} here.\n\r", AN(arg), arg), ch);
         } else
             perform_get_from_room(ch, obj);
     }
@@ -408,12 +408,12 @@ ACMD(do_get)
                         cont = next_cont;
                     }
                     if (!found) {
-                        send_to_char(std::format("You can't seem to find any {}s here.\n\r", static_cast<const char*>(arg2)).c_str(), ch);
+                        send_to_char(std::format("You can't seem to find any {}s here.\n\r", static_cast<const char*>(arg2)), ch);
                     }
                 } else { /* get <items> <container> (no all or all.x) */
                     mode = generic_find(arg2, FIND_OBJ_INV | FIND_OBJ_ROOM, ch, &tmp_char, &cont);
                     if (!cont) {
-                        send_to_char(std::format("You don't have {} {}.\n\r", AN(arg2), static_cast<const char*>(arg2)).c_str(), ch);
+                        send_to_char(std::format("You don't have {} {}.\n\r", AN(arg2), static_cast<const char*>(arg2)), ch);
                     } else if (GET_ITEM_TYPE(cont) != ITEM_CONTAINER)
                         act("$p is not a container.", FALSE, ch, cont, 0, TO_CHAR);
                     else
@@ -447,11 +447,11 @@ void perform_drop_gold(struct char_data* ch, int amount, sh_int)
 int perform_drop(struct char_data* ch, struct obj_data* obj, sh_int)
 {
     if (IS_SET(obj->obj_flags.extra_flags, ITEM_NODROP)) {
-        send_to_char(std::format("You can't drop {}, it must be cursed!\n\r", OBJS(obj, ch)).c_str(), ch);
+        send_to_char(std::format("You can't drop {}, it must be cursed!\n\r", OBJS(obj, ch)), ch);
         return 0;
     }
 
-    send_to_char(std::format("You drop {}.\n\r", OBJS(obj, ch)).c_str(), ch);
+    send_to_char(std::format("You drop {}.\n\r", OBJS(obj, ch)), ch);
     strcpy(buf, std::format("$n drops $p.").c_str());
     act(buf, TRUE, ch, obj, 0, TO_ROOM);
 
@@ -481,7 +481,7 @@ ACMD(do_drop)
     while (*argument && *argument <= ' ')
         argument++;
     if (!*arg) {
-        send_to_char(std::format("What do you want to drop?\n\r").c_str(), ch);
+        send_to_char(std::format("What do you want to drop?\n\r"), ch);
         return;
     } else if (is_number(arg)) {
         amount = atoi(arg);
@@ -509,11 +509,11 @@ ACMD(do_drop)
                 }
         } else if (dotmode == FIND_ALLDOT) {
             if (!*arg) {
-                send_to_char(std::format("What do you want to drop all of?\n\r").c_str(), ch);
+                send_to_char(std::format("What do you want to drop all of?\n\r"), ch);
                 return;
             }
             if (!(obj = get_obj_in_list(arg, ch->carrying))) {
-                send_to_char(std::format("You don't seem to have any {}s.\n\r", static_cast<const char*>(arg)).c_str(), ch);
+                send_to_char(std::format("You don't seem to have any {}s.\n\r", static_cast<const char*>(arg)), ch);
             }
             while (obj) {
                 next_obj = get_obj_in_list(arg, obj->next_content);
@@ -522,7 +522,7 @@ ACMD(do_drop)
             }
         } else {
             if (!(obj = get_obj_in_list(arg, ch->carrying))) {
-                send_to_char(std::format("You don't seem to have {} {}.\n\r", AN(arg), static_cast<const char*>(arg)).c_str(), ch);
+                send_to_char(std::format("You don't seem to have {} {}.\n\r", AN(arg), static_cast<const char*>(arg)), ch);
             } else
                 amount += perform_drop(ch, obj, RDR);
         }
@@ -603,9 +603,9 @@ void perform_give_gold(struct char_data* ch, struct char_data* vict,
 
     send_to_char("Ok.\n\r", ch);
     send_to_char(std::format("{} gives you {}.\n\r", PERS(ch, vict, TRUE, FALSE),
-        money_message(amount, 1)).c_str(), vict);
+        money_message(amount, 1)), vict);
     send_to_char(std::format("You give {} to {}.\n\r", money_message(amount, 1),
-        PERS(vict, ch, FALSE, FALSE)).c_str(), ch);
+        PERS(vict, ch, FALSE, FALSE)), ch);
     act("$n gives some money to $N.", TRUE, ch, 0, vict, TO_NOTVICT);
 
     GET_GOLD(ch) -= amount;
@@ -648,7 +648,7 @@ ACMD(do_give)
             perform_give_gold(ch, vict, amount);
         else {
             /* code to give multiple items.  anyone want to write it? -je */
-            send_to_char(std::format("You don't seem to have a {}.\n\r", static_cast<const char*>(arg1)).c_str(), ch);
+            send_to_char(std::format("You don't seem to have a {}.\n\r", static_cast<const char*>(arg1)), ch);
             return;
         }
     } else {
@@ -670,7 +670,7 @@ ACMD(do_give)
                 return;
             }
             if (!(obj = get_obj_in_list_vis(ch, argument, ch->carrying, 9999))) {
-                send_to_char(std::format("You don't seem to have any {}s.\n\r", argument).c_str(), ch);
+                send_to_char(std::format("You don't seem to have any {}s.\n\r", argument), ch);
             } else
                 while (obj && vict) {
                     next_obj = get_obj_in_list_vis(ch, argument, obj->next_content, 9999);
@@ -686,7 +686,7 @@ ACMD(do_give)
                 }
         } else {
             if (!(obj = get_obj_in_list_vis(ch, argument, ch->carrying, 9999))) {
-                send_to_char(std::format("You don't seem to have {} {}.\n\r", AN(argument), argument).c_str(), ch);
+                send_to_char(std::format("You don't seem to have {} {}.\n\r", AN(argument), argument), ch);
             } else
                 perform_give(ch, vict, obj);
         }

@@ -322,7 +322,7 @@ void implement_room(struct char_data* ch)
 #define DESCRCHANGE(line, addr)                                       \
     do {                                                              \
         if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_SIMPLE_ACTIVE)) {    \
-            send_to_char(std::format("You are about to change {}:\n\r", line).c_str(), ch); \
+            send_to_char(std::format("You are about to change {}:\n\r", line), ch); \
             SHAPE_ROOM(ch)                                            \
                 ->position                                            \
                 = shape_standup(ch, POSITION_SHAPING);                \
@@ -354,7 +354,7 @@ void implement_room(struct char_data* ch)
 
 #define LINECHANGE(line, addr)                                                   \
     if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_DIGIT_ACTIVE)) {                    \
-        send_to_char(std::format("Enter line {}:\n\r[{}]\n\r", line, (addr) ? addr : "").c_str(), ch); \
+        send_to_char(std::format("Enter line {}:\n\r[{}]\n\r", line, (addr) ? addr : ""), ch); \
         SHAPE_ROOM(ch)                                                           \
             ->position                                                           \
             = shape_standup(ch, POSITION_SHAPING);                               \
@@ -551,7 +551,7 @@ void shape_center_room(struct char_data* ch, char* arg)
 
 #define DIGITCHANGE(line, addr)                               \
     if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_DIGIT_ACTIVE)) { \
-        send_to_char(std::format("enter {} [{}]:\n\r", line, addr).c_str(), ch); \
+        send_to_char(std::format("enter {} [{}]:\n\r", line, addr), ch); \
         SHAPE_ROOM(ch)                                        \
             ->position                                        \
             = shape_standup(ch, POSITION_SHAPING);            \
@@ -571,7 +571,7 @@ void shape_center_room(struct char_data* ch, char* arg)
         = 0;
 #define DIGITCHANGEL(line, addr)                              \
     if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_DIGIT_ACTIVE)) { \
-        send_to_char(std::format("enter {} [{}]:\n\r", line, addr).c_str(), ch); \
+        send_to_char(std::format("enter {} [{}]:\n\r", line, addr), ch); \
         SHAPE_ROOM(ch)                                        \
             ->position                                        \
             = shape_standup(ch, POSITION_SHAPING);            \
@@ -1016,12 +1016,12 @@ void list_room(struct char_data* ch, struct room_data* mob)
     static char str[MAX_STRING_LENGTH]; // st2[50];
     int i, i2;
     long int flg;
-    send_to_char(std::format("(1) name         :{}\n\r", mob->name).c_str(), ch);
+    send_to_char(std::format("(1) name         :{}\n\r", mob->name), ch);
     send_to_char("(2) description  :\n\r", ch);
     send_to_char(mob->description, ch);
     send_to_char("\n\r", ch);
-    send_to_char(std::format("(3) room flag  :{}\n\r", mob->room_flags).c_str(), ch);
-    send_to_char(std::format("(4) sector type   :{}\n\r", mob->sector_type).c_str(), ch);
+    send_to_char(std::format("(3) room flag  :{}\n\r", mob->room_flags), ch);
+    send_to_char(std::format("(4) sector type   :{}\n\r", mob->sector_type), ch);
     // Was sprintf(str, "Existing exits:") followed by a loop of
     // sprintf(str + strlen(str), ...) -- the same incremental-append-via-
     // sprintf-return-buffer-as-cursor anti-pattern converted elsewhere in
@@ -1037,29 +1037,29 @@ void list_room(struct char_data* ch, struct room_data* mob)
         exits = "No exits are made from this room\n\r";
     else
         exits += "\n\r";
-    send_to_char(exits.c_str(), ch);
+    send_to_char(exits, ch);
     if (SHAPE_ROOM(ch)->exit_chosen < 0) {
         send_to_char("No exit selected for editing.\n\r", ch);
     } else {
-        send_to_char(std::format("(5) exit selected  :{}\n\r", exit_convert(SHAPE_ROOM(ch)->exit_chosen)).c_str(), ch);
+        send_to_char(std::format("(5) exit selected  :{}\n\r", exit_convert(SHAPE_ROOM(ch)->exit_chosen)), ch);
         flg = mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->exit_info;
-        send_to_char(std::format("(6) exit type   :{}\n\r", flg /*convert_exit_flag(flg,1)*/).c_str(), ch);
+        send_to_char(std::format("(6) exit type   :{}\n\r", flg /*convert_exit_flag(flg,1)*/), ch);
         // Same nullable room_direction_data::keyword as the act_offe.cpp bash-door
         // sites (find_door treats a null keyword as a valid direction-only exit);
         // nz() avoids crashing std::format's strlen(nullptr) here too.
-        send_to_char(std::format("(8) exit keyword   :{}\n\r", nz(mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->keyword)).c_str(), ch);
+        send_to_char(std::format("(8) exit keyword   :{}\n\r", nz(mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->keyword)), ch);
         send_to_char("(9) exit description  :\n\r", ch);
         send_to_char(mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->general_description, ch);
         send_to_char("\n\r", ch);
 
-        send_to_char(std::format("(10) key number  :{}\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->key).c_str(), ch);
-        send_to_char(std::format("(11) exit to room  :{}\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->to_room).c_str(), ch);
-        send_to_char(std::format("(12) exit width  :{}\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->exit_width).c_str(), ch);
+        send_to_char(std::format("(10) key number  :{}\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->key), ch);
+        send_to_char(std::format("(11) exit to room  :{}\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->to_room), ch);
+        send_to_char(std::format("(12) exit width  :{}\n\r", mob->dir_option[SHAPE_ROOM(ch)->exit_chosen]->exit_width), ch);
     }
     if (!mob->ex_description) {
         send_to_char("No extra description exists.\n\r", ch);
     } else {
-        send_to_char(std::format("(13) extra description keyword  :{}\n\r", mob->ex_description->keyword).c_str(), ch);
+        send_to_char(std::format("(13) extra description keyword  :{}\n\r", mob->ex_description->keyword), ch);
         send_to_char("(14) extra description  :\n\r", ch);
         send_to_char(mob->ex_description->description, ch);
         send_to_char("\n\r", ch);
@@ -1136,9 +1136,9 @@ int load_room(struct char_data* ch, char* arg)
     }
     if (tmp > number) {
         new_room(ch, number);
-        send_to_char(std::format(" could not find room #{}, created it.\n\r", number).c_str(), ch);
+        send_to_char(std::format(" could not find room #{}, created it.\n\r", number), ch);
     } else {
-        send_to_char(std::format("loading room #{}\n\r", tmp).c_str(), ch);
+        send_to_char(std::format("loading room #{}\n\r", tmp), ch);
         number = tmp;
 
         /*  room_number=ch->in_room;*/
@@ -1327,7 +1327,7 @@ int create_room(struct char_data* ch, char* arg)
         return -1;
     }
 
-    send_to_char(std::format("creating room at zone {}\n\r", static_cast<const char*>(fname)).c_str(), ch);
+    send_to_char(std::format("creating room at zone {}\n\r", static_cast<const char*>(fname)), ch);
     new_room(ch, number);
     SET_BIT(SHAPE_ROOM(ch)->flags, SHAPE_ROOM_LOADED);
     SHAPE_ROOM(ch)
@@ -1339,7 +1339,7 @@ int create_room(struct char_data* ch, char* arg)
         = append_room(ch, arg);
     send_to_char(std::format("causing the eternal order to shiver, you created a room #{}\n\r",
         SHAPE_ROOM(ch)->room->number)
-                     .c_str(),
+                     ,
         ch);
     return number;
 }
@@ -1429,7 +1429,7 @@ int replace_room(struct char_data* ch, char*)
     } while ((i < num) && (check != EOF));
 
     if (check == EOF) {
-        send_to_char(std::format("no room #{} in this file\n\r", num).c_str(), ch);
+        send_to_char(std::format("no room #{} in this file\n\r", num), ch);
         fclose(f1);
         fclose(f2);
         return -1;
@@ -1443,10 +1443,10 @@ int replace_room(struct char_data* ch, char*)
     }
     if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_DELETE_ACTIVE)) {
         write_room(f2, SHAPE_ROOM(ch)->room, num);
-        send_to_char(std::format("Saved as room #{}\n\r", num).c_str(), ch);
+        send_to_char(std::format("Saved as room #{}\n\r", num), ch);
         REMOVE_BIT(SHAPE_ROOM(ch)->flags, SHAPE_DELETE_ACTIVE);
     } else {
-        send_to_char(std::format("Deleted room #{}\n\r", num).c_str(), ch);
+        send_to_char(std::format("Deleted room #{}\n\r", num), ch);
     }
     fprintf(f2, "#%-d", oldnum);
     for (; i != EOF;) {
@@ -1490,7 +1490,7 @@ int append_room(struct char_data* ch, char* arg)
         return -1;
     }
 
-    send_to_char(std::format("Adding a new room to zone file {}.\n\r", static_cast<const char*>(SHAPE_ROOM(ch)->f_from)).c_str(), ch);
+    send_to_char(std::format("Adding a new room to zone file {}.\n\r", static_cast<const char*>(SHAPE_ROOM(ch)->f_from)), ch);
     if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_ROOM_LOADED)) {
         send_to_char("you have no room to add...\n\r", ch);
         return -1;
@@ -1556,7 +1556,7 @@ int append_room(struct char_data* ch, char* arg)
     SHAPE_ROOM(ch)
         ->room->number
         = i1 + 1;
-    send_to_char(std::format("The room is added to database. New number is #{}\n\r", i1 + 1).c_str(), ch);
+    send_to_char(std::format("The room is added to database. New number is #{}\n\r", i1 + 1), ch);
     ch->specials.prompt_value = i1 + 1;
 
     fprintf(f2, "#99999\n\r$~\n\r");

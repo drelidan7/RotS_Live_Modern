@@ -329,7 +329,7 @@ bool write_player_objects_json(const char* player_name, const objects_json::Obje
 
     std::string mirror_error;
     if (!account::write_linked_character_object_json_file(".", player_name, data, &mirror_error) && !mirror_error.empty()) {
-        log(std::format("SYSERR: failed to refresh account-native object file for {}: {}", player_name, mirror_error).c_str());
+        log(std::format("SYSERR: failed to refresh account-native object file for {}: {}", player_name, mirror_error));
     }
 
     if (error)
@@ -348,7 +348,7 @@ FILE* Crash_get_file_by_name(const char* name, const char* mode)
         if (!suppress_missing_read_side_file) {
             log(std::format("SYSERR: unable to open crashsave file '{}' for {}: {}", buf, name,
                 strerror(errno))
-                    .c_str());
+                    );
         }
         return 0;
     }
@@ -551,7 +551,7 @@ void Crash_listrent(struct char_data* ch, char* name)
         if (objects_json::deserialize_objects_from_json(json_contents, &data, &error_message)) {
             have_data = true;
         } else {
-            log(std::format("SYSERR: corrupt objects JSON '{}' for listrent {}: {}", json_path, name, error_message).c_str());
+            log(std::format("SYSERR: corrupt objects JSON '{}' for listrent {}: {}", json_path, name, error_message));
         }
     }
 
@@ -567,7 +567,7 @@ void Crash_listrent(struct char_data* ch, char* name)
                 if (objects_json::legacy_object_save_data_from_binary(legacy_bytes, &data, &accepted_missing_follower_section, &decode_error)) {
                     have_data = true;
                 } else {
-                    log(std::format("SYSERR: corrupt legacy object file for listrent {}: {}", name, decode_error).c_str());
+                    log(std::format("SYSERR: corrupt legacy object file for listrent {}: {}", name, decode_error));
                 }
             }
         }
@@ -680,7 +680,7 @@ FILE* Crash_load(char_data* character)
     if (!json_path.empty() && read_binary_file_contents(json_path.c_str(), &json_contents)) {
         std::string error_message;
         if (!objects_json::deserialize_objects_from_json(json_contents, &data, &error_message)) {
-            log(std::format("SYSERR: corrupt objects JSON '{}' for {}: {}", json_path, GET_NAME(character), error_message).c_str());
+            log(std::format("SYSERR: corrupt objects JSON '{}' for {}: {}", json_path, GET_NAME(character), error_message));
             return fail_closed();
         }
         have_data = true;
@@ -696,14 +696,14 @@ FILE* Crash_load(char_data* character)
             const bool read_ok = read_open_file_contents(legacy_file, &legacy_bytes);
             std::fclose(legacy_file);
             if (!read_ok) {
-                log(std::format("SYSERR: unable to read legacy object file for {}.", GET_NAME(character)).c_str());
+                log(std::format("SYSERR: unable to read legacy object file for {}.", GET_NAME(character)));
                 return fail_closed();
             }
 
             bool accepted_missing_follower_section = false;
             std::string error_message;
             if (!objects_json::legacy_object_save_data_from_binary(legacy_bytes, &data, &accepted_missing_follower_section, &error_message)) {
-                log(std::format("SYSERR: corrupt legacy object file for {}: {}", GET_NAME(character), error_message).c_str());
+                log(std::format("SYSERR: corrupt legacy object file for {}: {}", GET_NAME(character), error_message));
                 return fail_closed();
             }
             have_data = true;
@@ -844,7 +844,7 @@ FILE* Crash_load(char_data* character)
     // `character` above.
     FILE* success_handle = std::tmpfile();
     if (success_handle == nullptr) {
-        log(std::format("SYSERR: unable to create success handle for {} after a successful load.", GET_NAME(character)).c_str());
+        log(std::format("SYSERR: unable to create success handle for {} after a successful load.", GET_NAME(character)));
     }
     return success_handle;
 }
@@ -1078,7 +1078,7 @@ void Crash_follower_load(struct char_data* ch, const objects_json::ObjectSaveDat
 
             obj = Crash_obj2char(mob, object);
             if (!obj) {
-                log(std::format("LOAD ERROR, equipment lost for follower of {}.", GET_NAME(ch)).c_str());
+                log(std::format("LOAD ERROR, equipment lost for follower of {}.", GET_NAME(ch)));
                 return;
             }
             equip_char(mob, obj, object.wear_pos);
@@ -1334,7 +1334,7 @@ void Crash_crashsave(struct char_data* ch, int rent_code)
 
     std::string error_message;
     if (!write_player_objects_json(GET_NAME(ch), data, &error_message)) {
-        log(std::format("SYSERR: crashsave: failed to write player objects for {}: {}", GET_NAME(ch), error_message).c_str());
+        log(std::format("SYSERR: crashsave: failed to write player objects for {}: {}", GET_NAME(ch), error_message));
         return;
     }
 
@@ -1368,7 +1368,7 @@ void Crash_idlesave(struct char_data* ch)
 
     std::string error_message;
     if (!write_player_objects_json(GET_NAME(ch), data, &error_message)) {
-        log(std::format("SYSERR: idlesave: failed to write player objects for {}: {}", GET_NAME(ch), error_message).c_str());
+        log(std::format("SYSERR: idlesave: failed to write player objects for {}: {}", GET_NAME(ch), error_message));
         return;
     }
 
@@ -1410,7 +1410,7 @@ void Crash_rentsave(struct char_data* ch, int cost)
 
     std::string error_message;
     if (!write_player_objects_json(GET_NAME(ch), data, &error_message)) {
-        log(std::format("SYSERR: rentsave: failed to write player objects for {}: {}", GET_NAME(ch), error_message).c_str());
+        log(std::format("SYSERR: rentsave: failed to write player objects for {}: {}", GET_NAME(ch), error_message));
         return;
     }
 

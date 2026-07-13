@@ -111,9 +111,9 @@ int load_mudlle(char_data* ch, char* arg)
             = real_program(number);
 
         if (!isnew) {
-            send_to_char(std::format("You uploaded the special program #{}.\n\r", number).c_str(), ch);
+            send_to_char(std::format("You uploaded the special program #{}.\n\r", number), ch);
         } else {
-            send_to_char(std::format("Could not find a program #{}, created it.\n\r", number).c_str(), ch);
+            send_to_char(std::format("Could not find a program #{}, created it.\n\r", number), ch);
         }
     }
 
@@ -238,7 +238,7 @@ void show_mudlle(struct char_data* ch)
     }
 
     send_to_char(std::format("Program #{} (real #{}).\n\rProgram text:\n\r",
-        SHAPE_MUDLLE(ch)->prog_num, SHAPE_MUDLLE(ch)->real_num).c_str(), ch);
+        SHAPE_MUDLLE(ch)->prog_num, SHAPE_MUDLLE(ch)->real_num), ch);
     send_to_char(SHAPE_MUDLLE(ch)->txt, ch);
     send_to_char("\n\r", ch);
 

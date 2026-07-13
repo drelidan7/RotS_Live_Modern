@@ -373,7 +373,7 @@ void boot_db(void)
                 &(help_content[tmp].index));
             log(std::format("Chapter {}, {} entries.", help_content[tmp].keyword,
                 help_content[tmp].top_of_helpt)
-                    .c_str());
+                    );
         }
     }
     log("Loading script table.");
@@ -572,7 +572,7 @@ int find_player_table_index_by_name(const char* name)
     log(std::format("Duplicate character '{}' found in both {} and {} while building player_table.",
         name ? name : "(null)", source_a ? source_a : "unknown source",
         source_b ? source_b : "unknown source")
-            .c_str());
+            );
     exit(1);
 }
 
@@ -673,7 +673,7 @@ void populate_player_index_entry_from_store(const char_file_u& stored_character,
             &error_message)) {
         log(std::format("Failed to add account-native character {} to the player index: {}",
             static_cast<const char*>(stored_character.name), error_message)
-                .c_str());
+                );
         exit(1);
     }
 
@@ -720,7 +720,7 @@ void build_account_native_player_index(void)
                     &error_message)) {
                 log(std::format("Failed to read account-native index source '{}': {}",
                     account_json_path, error_message)
-                        .c_str());
+                        );
                 exit(1);
             }
 
@@ -728,7 +728,7 @@ void build_account_native_player_index(void)
                 log(std::format(
                     "Account-native index source '{}' has mismatched normalized email '{}'.",
                     account_json_path, account_data.normalized_email)
-                        .c_str());
+                        );
                 exit(1);
             }
 
@@ -748,7 +748,7 @@ void build_account_native_player_index(void)
                             &account_character_exists, &inspect_error)) {
                         log(std::format("Failed to inspect account-native character file '{}': {}",
                             character_path, inspect_error)
-                                .c_str());
+                                );
                         exit(1);
                     }
 
@@ -757,7 +757,7 @@ void build_account_native_player_index(void)
 
                     log(std::format("Failed to read account-native character file '{}': {}",
                         character_path, read_error)
-                            .c_str());
+                            );
                     exit(1);
                 }
 
@@ -771,7 +771,7 @@ int load_player_from_account_json_path(char* name, const char* player_path,
     struct char_file_u* char_element)
 {
     if (player_path == nullptr || *player_path == '\0') {
-        log(std::format("Couldn't find account-native character file path for {}\n", name).c_str());
+        log(std::format("Couldn't find account-native character file path for {}\n", name));
         return -1;
     }
 
@@ -779,7 +779,7 @@ int load_player_from_account_json_path(char* name, const char* player_path,
     if (!read_text_file_contents(player_path, &json_text)) {
         log(std::format("Couldn't read account-native character file for {} from {}\n", name,
             player_path)
-                .c_str());
+                );
         return -1;
     }
 
@@ -791,13 +791,13 @@ int load_player_from_account_json_path(char* name, const char* player_path,
             &error_message)) {
         log(std::format("Couldn't parse account-native character file for {} from {}: {}\n", name,
             player_path, error_message)
-                .c_str());
+                );
         return -1;
     }
 
     const int player_index = find_player_table_index_by_name(name);
     if (player_index < 0) {
-        log(std::format("load_player: account-native player {} not in player_table", name).c_str());
+        log(std::format("load_player: account-native player {} not in player_table", name));
         return -1;
     }
 
@@ -912,7 +912,7 @@ void build_player_index(void)
 
     for (nr = 0; nr <= top_of_p_table; nr++) {
         if (enable_auto_delete && player_table[nr].level < 20 && (!IS_SET(player_table[nr].flags, PLR_DELETED)) && (!IS_SET(player_table[nr].flags, PLR_RETIRED)) && ((tt - player_table[nr].log_time) > SECS_PER_REAL_DAY * player_table[nr].level * 7) && (number(0, 100) < 51)) {
-            log(std::format("Mud auto-deleted char {}.", player_table[nr].name).c_str());
+            log(std::format("Mud auto-deleted char {}.", player_table[nr].name));
             Crash_delete_file(player_table[nr].name);
             delete_exploits_file(player_table[nr].name);
             move_char_deleted(nr);
@@ -1049,7 +1049,7 @@ void index_boot(int mode)
             perror(buf2);
             exit(1);
         }
-        log(std::format("opened file {}.", static_cast<const char*>(buf2)).c_str());
+        log(std::format("opened file {}.", static_cast<const char*>(buf2)));
         switch (mode) {
         case DB_BOOT_WLD:
             load_rooms(db_file);
@@ -1445,7 +1445,7 @@ int vnum_mobile(char* searchname, struct char_data* ch)
         if (isname(searchname, mob_proto[nr].player.name)) {
             send_to_char(std::format("{:3}. [{:5}] {:<60.60}\n\r", ++found, mob_index[nr].virt,
                              nz(mob_proto[nr].player.short_descr))
-                             .c_str(),
+                             ,
                 ch);
         }
     }
@@ -1461,7 +1461,7 @@ int vnum_object(char* searchname, struct char_data* ch)
         if (isname(searchname, obj_proto[nr].name)) {
             send_to_char(std::format("{:3}. [{:5}] {:<60.60}\n\r", ++found, obj_index[nr].virt,
                              nz(obj_proto[nr].short_description))
-                             .c_str(),
+                             ,
                 ch);
         }
     }
@@ -1770,7 +1770,7 @@ void load_mobiles(FILE* mob_f)
             mob_proto[i].desc = 0;
 
             if (!fscanf(mob_f, "%s\n", chk)) {
-                log(std::format("SYSERR: Format error in mob file near mob #{}", nr).c_str());
+                log(std::format("SYSERR: Format error in mob file near mob #{}", nr));
                 exit(1);
             }
 
@@ -1778,7 +1778,7 @@ void load_mobiles(FILE* mob_f)
         } else if (*chk == '$') /* EOF */
             break;
         else {
-            log(std::format("SYSERR: Format error in mob file near mob #{}", nr).c_str());
+            log(std::format("SYSERR: Format error in mob file near mob #{}", nr));
             exit(1);
         }
     }
@@ -1943,7 +1943,7 @@ void load_objects(FILE* obj_f)
         } else if (*chk == '$') /* EOF */
             break;
         else {
-            log(std::format("Format error in obj file at or near obj #{}", nr).c_str());
+            log(std::format("Format error in obj file at or near obj #{}", nr));
             exit(1);
         }
     }
@@ -2058,7 +2058,7 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
             position++, tmp1++)                                                                    \
             element[tmp1] = *position;                                                             \
         if (position >= input_end || *position != '~') {                                           \
-            log(std::format("load_player_from_text: malformed long string for {}", name).c_str()); \
+            log(std::format("load_player_from_text: malformed long string for {}", name)); \
             return -1;                                                                             \
         }                                                                                          \
         element[tmp1] = '\0';                                                                      \
@@ -2155,13 +2155,13 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
             break;
 
     if (tmp > top_of_p_table) {
-        log(std::format("load_player: player {} not in player_table", name).c_str());
+        log(std::format("load_player: player {} not in player_table", name));
         return -1;
     }
 
     char_element->player_index = tmp;
     if (player_text == nullptr) {
-        log(std::format("Couldn't parse character file text for {}\n", name).c_str());
+        log(std::format("Couldn't parse character file text for {}\n", name));
         return -1;
     }
     input_end = player_text + strlen(player_text);
@@ -2185,7 +2185,7 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
             log(std::format(
                 "load_player_from_text: malformed player data for {} (unexpected end of input)",
                 name)
-                    .c_str());
+                    );
             return -1;
         }
 
@@ -2197,7 +2197,7 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
             if (tmp1 >= static_cast<int>(sizeof(line) - 1)) {
                 log(std::format(
                     "load_player_from_text: malformed player data for {} (line too long)", name)
-                        .c_str());
+                        );
                 return -1;
             }
             line[tmp1] = *tmpchar;
@@ -2446,7 +2446,7 @@ int load_player(char* name, struct char_file_u* char_element)
             break;
 
     if (tmp > top_of_p_table) {
-        log(std::format("load_player: player {} not in player_table", name).c_str());
+        log(std::format("load_player: player {} not in player_table", name));
         return -1;
     }
 
@@ -2456,7 +2456,7 @@ int load_player(char* name, struct char_file_u* char_element)
 
     file_to_string_alloc(playerfname, &pf);
     if (!(pf)) {
-        log(std::format("Couldn't find character file for {} in the player_table\n", name).c_str());
+        log(std::format("Couldn't find character file for {} in the player_table\n", name));
         return -1;
     }
 
@@ -2783,7 +2783,7 @@ bool update_player_index_entry_from_store(struct char_file_u* stored_character,
                             "{} bytes; player index limit is {}",
                 static_cast<const char*>(stored_character->name), path_length,
                 path_capacity - 1)
-                    .c_str());
+                    );
             return false;
         }
     }
@@ -2897,7 +2897,7 @@ void delete_character_file(struct char_data* ch)
         send_to_char("Bug: you are not in the character list: cannot delete.\n", ch);
         log(std::format("delete_character_file: could not find player: cannot delete: {}\n",
             ch->player.name)
-                .c_str());
+                );
         return;
     }
 
@@ -3155,7 +3155,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
     char_file_u chd { };
 
     if (IS_NPC(ch) || (!ch->desc)) {
-        log(std::format("save_char: ({}) zero desc or is_npc\n", GET_NAME(ch)).c_str());
+        log(std::format("save_char: ({}) zero desc or is_npc\n", GET_NAME(ch)));
         return;
     }
 
@@ -3168,7 +3168,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
 
     //  Send player a msg if this is an autosave.
     if (notify_char) {
-        send_to_char(std::format("Saving {}.\n\r", GET_NAME(ch)).c_str(), ch);
+        send_to_char(std::format("Saving {}.\n\r", GET_NAME(ch)), ch);
     }
 
     /* whois update block */
@@ -3179,7 +3179,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
     if (tmp > top_of_p_table) {
         send_to_char("Error: you are not being saved.  Please contact an immortal.\n\r", ch);
         log(std::format("save_char: could not find player {}: Not saving.\n", ch->player.name)
-                .c_str());
+                );
         return;
     }
 
@@ -3209,13 +3209,13 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
                 log(std::format(
                     "save_char: failed to write account-native character file for {}: {}",
                     GET_NAME(ch), write_error)
-                        .c_str());
+                        );
             } else
                 wrote_account_character_file = true;
         } else if (!character_file_error.empty()) {
             log(std::format("save_char: failed to inspect account-native character file for {}: {}",
                 GET_NAME(ch), character_file_error)
-                    .c_str());
+                    );
         } else {
             std::string write_error;
             if (!account::write_account_character_file(".", owner_account_name, chd,
@@ -3223,7 +3223,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
                 log(std::format("save_char: failed to repair missing account-native character file "
                                 "for {}: {}",
                     GET_NAME(ch), write_error)
-                        .c_str());
+                        );
             } else
                 wrote_account_character_file = true;
         }
@@ -3235,7 +3235,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
                 log(std::format(
                     "save_char: failed to refresh account-native player index for {}: {}",
                     GET_NAME(ch), player_index_error)
-                        .c_str());
+                        );
             }
         }
     } else if (account_native_player_entry) {
@@ -4422,7 +4422,7 @@ void read_crime_file()
         std::string error_message;
         if (!crime_json::load_crime_json_store(json_path, &loaded_records, &error_message)) {
             log(("SYSERR: Crime JSON file '" + json_path + "' is malformed: " + error_message)
-                    .c_str());
+                    );
             CREATE1(crime_record, crime_record_type);
             return;
         }
@@ -4441,19 +4441,19 @@ void read_crime_file()
         std::string convert_error;
         if (!crime_json::convert_legacy_crime_file(CRIME_FILE, &convert_error)) {
             log(("SYSERR: Failed converting legacy crime file '" + std::string(CRIME_FILE) + "' to JSON: " + convert_error)
-                    .c_str());
+                    );
             CREATE1(crime_record, crime_record_type);
             return;
         }
         if (!convert_error.empty())
-            log(("Converted legacy crime file to JSON (warning: " + convert_error + ").").c_str());
+            log(("Converted legacy crime file to JSON (warning: " + convert_error + ")."));
         else
             log("Converted legacy crime file to JSON.");
 
         std::string load_error;
         if (!crime_json::load_crime_json_store(json_path, &loaded_records, &load_error)) {
             log(("SYSERR: Crime JSON file missing or malformed immediately after conversion: " + load_error)
-                    .c_str());
+                    );
             CREATE1(crime_record, crime_record_type);
             return;
         }
@@ -4496,7 +4496,7 @@ void add_crime(int criminal, int victim, int witness, int crime, int wit_type)
     crime_record[num_of_crimes].crime = crime;
     crime_record[num_of_crimes].witness_type = wit_type;
 
-    log(std::format("criminal: {}, victim: {}, witness: {}", criminal, victim, witness).c_str());
+    log(std::format("criminal: {}, victim: {}, witness: {}", criminal, victim, witness));
 
     // Phase 2a final-review Important 2: mirror pkill_update_file's
     // (pkill.cpp) fail-closed guard. If the on-disk store is present but
@@ -4511,7 +4511,7 @@ void add_crime(int criminal, int victim, int witness, int crime, int wit_type)
     std::string safety_error;
     if (!crime_json::crime_store_safe_to_overwrite(crime_json_path, &safety_error)) {
         log(("SYSERR: Crime JSON file '" + crime_json_path + "' is malformed, refusing to overwrite: " + safety_error)
-                .c_str());
+                );
     } else {
         /* Persist the whole live crime set as JSON (idnum-keyed, matching the
          * legacy on-disk format) -- the mail_json/boards_json/pkill_json
@@ -4600,7 +4600,7 @@ void forget_crimes(char_data* ch, int criminal)
     std::string safety_error;
     if (!crime_json::crime_store_safe_to_overwrite(crime_json_path, &safety_error)) {
         log(("SYSERR: Crime JSON file '" + crime_json_path + "' is malformed, refusing to overwrite: " + safety_error)
-                .c_str());
+                );
         return;
     }
 
@@ -4608,7 +4608,7 @@ void forget_crimes(char_data* ch, int criminal)
     if (!crime_json::write_crime_json_store(crime_json_path, to_write, &write_error))
         return;
 
-    log(std::format("Crimes rewritten:{}.", count).c_str());
+    log(std::format("Crimes rewritten:{}.", count));
     RELEASE(crime_record);
     read_crime_file();
 }
@@ -5425,7 +5425,7 @@ bool load_object_save_data_for_character(const std::string& root_directory,
                 legacy_bytes, &decoded, &accepted_missing_follower_section, &decode_error)) {
             log(std::format("SYSERR: unable to decode account-staged object data for {}: {}",
                 character_name, decode_error)
-                    .c_str());
+                    );
             *data = build_default_account_backed_object_data();
             set_db_error(error_message, "");
             return true;

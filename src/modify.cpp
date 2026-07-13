@@ -356,7 +356,7 @@ void string_add(struct descriptor_data* d, char* str)
                 *tmpstr2 = 0;
                 tmp = replace_pattern(d, tmpstr, tmpstr2 + 1);
                 send_to_char(std::format("Replaced {} occurence{}.\n\rYour text is:\n\r", tmp,
-                    !tmp ? "" : "s").c_str(), d->character);
+                    !tmp ? "" : "s"), d->character);
                 send_to_char(*d->str, d->character);
                 tmpmark = d->cur_str;
             }

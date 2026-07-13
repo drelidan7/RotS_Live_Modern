@@ -629,7 +629,7 @@ int board_info_type::display_msg(struct char_data* ch,
     }
 
     send_to_char(std::format("Message {:4} : {}\n\r", show_num,
-        MSG_HEADING(ind)).c_str(), ch);
+        MSG_HEADING(ind)), ch);
     page_string(ch->desc, msg_storage[MSG_SLOTNUM(ind)], 1);
     send_to_char("\n\r", ch);
 
@@ -1613,7 +1613,7 @@ void report_news(struct char_data* ch)
         send_to_char("There is 1 unread news.\n\r", ch);
         break;
     default:
-        send_to_char(std::format("There are {} unread news.\n\r", count).c_str(), ch);
+        send_to_char(std::format("There are {} unread news.\n\r", count), ch);
         break;
     }
 }

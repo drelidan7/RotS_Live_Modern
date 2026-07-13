@@ -1797,6 +1797,15 @@ TEST(ActWizInspection, DoShowFormatsAliasesListLine)
     EXPECT_NE(output.find("Sam has the following aliases defined:\n\r"), std::string::npos)
         << output;
     EXPECT_NE(output.find("gr                  : greet\n\r"), std::string::npos) << output;
+
+    // first_alias is a STACK object, not a CREATE1()'d heap node -- since RAII
+    // T4, target.specials.alias is an owning wrapper whose destructor calls
+    // free_alias_list() (db.cpp) when `target` (a genuine C++ local, not a
+    // calloc'd/placement-new'd stand-in) goes out of scope below. Reseating to
+    // nullptr here (a plain pointer overwrite -- see owned_alias_list's class
+    // comment in structs.h) avoids that destructor attempting to free() a
+    // stack address.
+    target.specials.alias = nullptr;
 }
 
 TEST(ActWizInspection, DoShowFormatsAliasesNoneDefinedLine)

@@ -1120,6 +1120,133 @@ struct char_point_data {
    saved and loaded with the playerfile, add it to char_special2_data.
 */
 
+// A single PC alias node (do_alias in act_comm.cpp, Crash_alias_load in
+// objsave.cpp). Moved above char_special_data (was originally declared after
+// it) so owned_alias_list below can use the complete type. keyword/command
+// shape and the char[20] width are unchanged by RAII T4 -- both the runtime
+// list shape and the on-disk format (which already goes through
+// objects_json::AliasData, a separate std::string-based DTO translated in
+// Crash_alias_load()/Crash_collect_alias_data(), objsave.cpp) are preserved
+// exactly; see ownership-map.md's alias entry / task-4-report.md for why.
+struct alias_list {
+    char keyword[20];
+    char* command;
+    struct alias_list* next;
+};
+
+// Releases the alias_list chain built by do_alias()/Crash_alias_load() (each
+// node CREATE1()'d, each with a CREATE()'d .command string). Declared here
+// (matching the db.h declaration exactly) rather than pulled in via #include
+// "db.h" to avoid a circular header dependency -- db.h itself needs
+// structs.h's char_data/alias_list types.
+void free_alias_list(struct alias_list* list);
+
+// RAII T4: owns the alias_list chain that used to be a bare
+// `alias_list* alias` field on char_special_data. do_alias()'s add/remove/
+// replace logic and Crash_alias_load()/Crash_collect_alias_data() all do
+// direct node-level surgery (unlink-then-manually-free, CREATE1()-then-link)
+// on the raw chain, so this type is deliberately NOT a general owning smart
+// pointer: it behaves exactly like the raw `alias_list*` it replaces at
+// every existing read/reseat call site --
+//   - implicitly converts to/from `alias_list*` (so `list = ch->specials.alias;`,
+//     `if (ch->specials.alias)`, `for (...; list; list = list->next)` etc. are
+//     unchanged at every call site: act_comm.cpp's do_alias, act_wiz.cpp's
+//     do_show "aliases" branch, interpre.cpp's replace_aliases(),
+//     objsave.cpp's Crash_alias_load()/Crash_collect_alias_data());
+//   - assigning a bare `alias_list*` (operator=(alias_list*)) is a PLAIN
+//     RESEAT -- it does NOT free the previous chain -- because do_alias()'s
+//     remove path (`GET_ALIAS(ch) = list->next;`) reseats the head past a
+//     node it frees itself, by hand, on the very next lines; an
+//     auto-freeing assignment here would double-free that node.
+// What this type adds beyond the raw pointer: a destructor that calls
+// free_alias_list(), so free_char() (db.cpp) no longer has to call it by
+// hand. Because free_char() releases char_data via calloc/free and never
+// runs ~char_data() (RAII audit T3's dtor-order rule, ownership-map.md §6),
+// free_char() must still explicitly call reset() on this member before
+// RELEASE(ch) -- see db.cpp.
+//
+// Copy/move: char_data instances are whole-struct-copied for NPCs/objects
+// (`*mob = mob_proto[i]`, db.cpp) and mob_proto's alias is always null (NPCs
+// never carry aliases -- see the `alias` field comment below), so this copy
+// path is never exercised with a non-empty chain in practice. Implemented as
+// a real deep clone anyway (rather than a shallow pointer copy) so
+// char_special_data's implicitly-generated copy assignment -- which the
+// whole-struct copy relies on -- stays well-defined instead of a
+// double-free-on-destruction landmine if that invariant is ever violated.
+class owned_alias_list {
+public:
+    owned_alias_list() noexcept = default;
+    owned_alias_list(struct alias_list* head) noexcept
+        : head_(head)
+    {
+    }
+
+    owned_alias_list(const owned_alias_list& other)
+        : head_(clone(other.head_))
+    {
+    }
+    owned_alias_list(owned_alias_list&& other) noexcept
+        : head_(other.head_)
+    {
+        other.head_ = nullptr;
+    }
+
+    owned_alias_list& operator=(const owned_alias_list& other)
+    {
+        if (this != &other) {
+            free_alias_list(head_);
+            head_ = clone(other.head_);
+        }
+        return *this;
+    }
+    owned_alias_list& operator=(owned_alias_list&& other) noexcept
+    {
+        if (this != &other) {
+            free_alias_list(head_);
+            head_ = other.head_;
+            other.head_ = nullptr;
+        }
+        return *this;
+    }
+    // Plain reseat, no free -- see the class comment above.
+    owned_alias_list& operator=(struct alias_list* head) noexcept
+    {
+        head_ = head;
+        return *this;
+    }
+
+    ~owned_alias_list() { free_alias_list(head_); }
+
+    operator struct alias_list*() const noexcept { return head_; }
+
+    // Lets `GET_ALIAS(ch)->keyword`-style call sites (utils.h's GET_ALIAS
+    // macro expands to a bare `ch->specials.alias`, so `->` is applied
+    // directly to this wrapper, not to a raw pointer) keep working
+    // unchanged: `->` resolution requires either a real pointer or an
+    // operator-> overload, unlike assignment/comparison/`if`, which the
+    // conversion operator above already covers.
+    struct alias_list* operator->() const noexcept { return head_; }
+
+    // Frees the chain and nulls the head. Used by free_char() to explicitly
+    // destroy this member ahead of the calloc/free teardown that bypasses
+    // ~char_data() (see class comment above).
+    void reset() noexcept
+    {
+        free_alias_list(head_);
+        head_ = nullptr;
+    }
+
+private:
+    // Deep-clones a chain node-by-node (CREATE1()'d nodes, CREATE()'d command
+    // strings) -- mirrors do_alias()'s/Crash_alias_load()'s own node
+    // construction exactly. Defined in db.cpp, next to free_alias_list().
+    static struct alias_list* clone(struct alias_list* src);
+
+    // Head of the owned chain; nullptr for mobs and for a freshly-cleared PC
+    // (matches the field's pre-RAII-T4 "aliases, 0 for mobs" contract below).
+    struct alias_list* head_ = nullptr;
+};
+
 struct char_special_data {
     struct char_data* fighting; /* Opponent                             */
     struct char_data* hunting; /* Hunting person..                     */
@@ -1145,7 +1272,7 @@ struct char_special_data {
     signed char last_direction; /* The last direction the monster went     */
     int attack_type; /* The Attack Type Bitvector for NPC's     */
 
-    struct alias_list* alias; /* aliases, 0 for mobs */
+    owned_alias_list alias; /* aliases, 0 for mobs -- RAII T4, was `struct alias_list *` */
 
     char* poofIn; /* Description on arrival of a god.	       */
     /* also a stack pointer for special mobs   */
@@ -1294,12 +1421,6 @@ struct mount_data_type {
 
     struct char_data* next_rider;
     int next_rider_number;
-};
-
-struct alias_list {
-    char keyword[20];
-    char* command;
-    struct alias_list* next;
 };
 
 struct char_prof_data {

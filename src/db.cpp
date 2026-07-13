@@ -3377,6 +3377,45 @@ void free_alias_list(struct alias_list* list)
     }
 }
 
+// Deep-clones an alias_list chain (owned_alias_list's copy ctor/assignment,
+// structs.h -- RAII T4). Mirrors do_alias()'s/Crash_alias_load()'s own node
+// construction: each node CREATE1()'d, each .command CREATE()'d and NUL-
+// terminated. In practice this only ever clones an empty (null) chain --
+// NPCs never carry a real one (mob_proto's alias is always null; see
+// structs.h's alias field comment) and no live PC char_data is ever
+// whole-struct-copied -- but it is implemented as a real clone (not a
+// shallow pointer copy) so char_special_data's copy assignment -- which
+// `*mob = mob_proto[i]` (db.cpp's read_mobile(), the char_data whole-struct
+// copy) relies on -- stays well-defined.
+struct alias_list* owned_alias_list::clone(struct alias_list* src)
+{
+    struct alias_list* head = nullptr;
+    struct alias_list* tail = nullptr;
+
+    for (struct alias_list* node = src; node; node = node->next) {
+        struct alias_list* copy;
+        CREATE1(copy, alias_list);
+        std::memcpy(copy->keyword, node->keyword, sizeof(copy->keyword));
+
+        const size_t command_length = node->command ? strlen(node->command) : 0;
+        CREATE(copy->command, char, command_length + 1);
+        if (node->command)
+            strcpy(copy->command, node->command);
+        else
+            copy->command[0] = '\0';
+
+        copy->next = nullptr;
+        if (!head)
+            head = tail = copy;
+        else {
+            tail->next = copy;
+            tail = copy;
+        }
+    }
+
+    return head;
+}
+
 /* release memory allocated for a char struct */
 void free_char(struct char_data* ch)
 {
@@ -3385,8 +3424,12 @@ void free_char(struct char_data* ch)
     RELEASE(ch->specials.poofIn);
     RELEASE(ch->specials.poofOut);
 
-    free_alias_list(ch->specials.alias);
-    ch->specials.alias = 0;
+    // Explicitly destroys the owning alias-list member before RELEASE(ch)
+    // (free_function(ch), below) frees the raw char_data storage without
+    // ever running ~char_data() -- RAII audit T3's dtor-order rule
+    // (ownership-map.md §6). reset() is free_alias_list() + null, exactly
+    // what this call site did by hand pre-RAII-T4.
+    ch->specials.alias.reset();
 
     while (ch->affected)
         affect_remove(ch, ch->affected);

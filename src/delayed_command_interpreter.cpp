@@ -48,7 +48,7 @@ void delayed_command_interpreter::run()
             int function_number = m_character->specials.store_prog_number;
             func_pointer = get_special_function(function_number);
             func_pointer(m_character, victim, m_character->delay.cmd, mutable_arg(""), SPECIAL_DELAY, delay);
-        } else if (m_character->specials.union1.prog_number) {
+        } else if (m_character->specials.special_prog_number) {
             intelligent(m_character, victim, -1, mutable_arg(""), SPECIAL_DELAY, delay);
         }
     } else if (m_character->delay.cmd > 0) {

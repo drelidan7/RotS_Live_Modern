@@ -14,14 +14,15 @@ namespace {
 struct CharUtilsTestContext {
     char_data character{};
     char_prof_data profs{};
-    byte skills[MAX_SKILLS]{};
-    byte knowledge[MAX_SKILLS]{};
 
     CharUtilsTestContext()
     {
         character.profs = &profs;
-        character.skills = skills;
-        character.knowledge = knowledge;
+        // character.skills/character.knowledge are owning std::vector<byte>
+        // (RAII T3); size them to MAX_SKILLS zeros the same way clear_char()
+        // would for a PC, since this fixture never calls clear_char().
+        character.skills.assign(MAX_SKILLS, 0);
+        character.knowledge.assign(MAX_SKILLS, 0);
         character.player.name = const_cast<char*>("player-name");
         character.player.short_descr = const_cast<char*>("mob-name");
     }
@@ -198,7 +199,7 @@ TEST(CharUtils, RecognizesTwoHandedFlagFromAffectedBits) {
 TEST(CharUtils, AppliesConfusePenaltyToKnowledgeAndSkillLookups) {
     CharUtilsTestContext context;
     context.character.specials.affected_by = AFF_CONFUSE;
-    context.knowledge[SKILL_SWIPE] = 80;
+    context.character.knowledge[SKILL_SWIPE] = 80;
 
     affected_type confuse = make_affect(SPELL_CONFUSE, 8);
     context.character.affected = &confuse;
@@ -329,7 +330,7 @@ TEST(CharUtils, CapsRankingTierAtFour) {
 TEST(CharUtils, UsesKnowledgeFallbackForRawKnowledgeAndRawSkill) {
     CharUtilsTestContext context;
     context.character.player.bodytype = 1;
-    context.knowledge[SKILL_SWIPE] = 61;
+    context.character.knowledge[SKILL_SWIPE] = 61;
 
     EXPECT_EQ(utils::get_raw_knowledge(context.character, SKILL_SWIPE), 61);
     EXPECT_EQ(utils::get_raw_skill(context.character, SKILL_SWIPE), 61);
@@ -345,8 +346,8 @@ TEST(CharUtils, SupportsSettingSkillsAndKnowledgeWhenArraysExist) {
     utils::set_skill(context.character, SKILL_SWIPE, 33);
     utils::set_knowledge(context.character, SKILL_SWIPE, 66);
 
-    EXPECT_EQ(context.skills[SKILL_SWIPE], 33);
-    EXPECT_EQ(context.knowledge[SKILL_SWIPE], 66);
+    EXPECT_EQ(context.character.skills[SKILL_SWIPE], 33);
+    EXPECT_EQ(context.character.knowledge[SKILL_SWIPE], 66);
 }
 
 TEST(CharUtils, ComputesCarryCapacityChecksFromWeightAndItems) {
@@ -574,9 +575,9 @@ TEST(CharDataMethods, TracksPracticeSpendingAndResetBehavior) {
     CharUtilsTestContext context;
     context.character.player.level = 10;
     context.character.abilities.lea = 15;
-    context.skills[1] = 3;
-    context.skills[2] = 4;
-    context.knowledge[1] = 9;
+    context.character.skills[1] = 3;
+    context.character.skills[2] = 4;
+    context.character.knowledge[1] = 9;
     context.character.specials2.spells_to_learn = 1;
 
     EXPECT_EQ(context.character.get_spent_practice_count(), 7);
@@ -586,8 +587,8 @@ TEST(CharDataMethods, TracksPracticeSpendingAndResetBehavior) {
     EXPECT_EQ(context.character.specials2.spells_to_learn, 63);
 
     context.character.reset_skills();
-    EXPECT_EQ(context.skills[1], 0);
-    EXPECT_EQ(context.knowledge[1], 0);
+    EXPECT_EQ(context.character.skills[1], 0);
+    EXPECT_EQ(context.character.knowledge[1], 0);
     EXPECT_EQ(context.character.specials2.spells_to_learn, 70);
     EXPECT_FALSE(context.character.is_affected());
 }

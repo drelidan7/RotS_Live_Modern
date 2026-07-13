@@ -1587,7 +1587,7 @@ int activate_char_special(char_data* character, char_data* victim, int cmd, char
             if (tmp_func && tmp_func(character, victim, cmd, argument, callflag, wait_data)) {
                 return 1;
             }
-        } else if (character->specials.union1.prog_number) {
+        } else if (character->specials.special_prog_number) {
             if (intelligent(character, victim, cmd, argument, callflag, wait_data)) {
                 return 1;
             }

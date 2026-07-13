@@ -58,6 +58,10 @@ No code changed; no gate needed beyond "doc committed." (Reviewer verifies the c
 - [ ] **Step 2:** Owner rules. Record the ruling in this plan (amendment block) and the ledger. The default if kept-raw: instance-ownership converts the BLOCK, leaving the conditional string members raw with their existing free logic untouched.
 - [ ] **Step 3:** Only after the ruling is recorded do the instance-ownership conversion tasks (T6-class) become eligible. The safest conversion tasks (fixed-buffer, unconditional strings) may proceed in parallel — they don't touch conditional fields.
 
+#### T2 RULING (owner, 2026-07-13): KEEP-RAW-CONDITIONAL
+
+The 11 prototype-shared string fields (char: name/title/short_descr/long_descr/description; obj: name/description/short_description/action_description + ex_description keywords) stay **raw char* with their runtime-guarded free logic UNTOUCHED** this wave. Audit basis: genuinely runtime-determined sharing (IS_NPC/nr / item_number guards), already leak-safe (prototype owns, freed once), ~600 raw-char* read sites (GET_NAME alone 293 verified). Instance-block ownership (T6) wraps AROUND these fields without touching them. The 11 are recorded in ownership-map.md as ESCALATED-DEFERRED; a proper interned/shared-string model is a possible future funded effort (not scoped now). No T3-T6 task may convert a CONDITIONAL field.
+
 ---
 
 ### Conversion-task TEMPLATE (T3+ — instantiated from T1's greenlit set)
@@ -88,3 +92,46 @@ Each greenlit boundary becomes one task shaped like this. The coordinator fills 
 - Audit-gated honesty: T3+ are deliberately a template + known-likely list rather than fully-enumerated tasks, because the spec's decision 3 makes the audit size the wave — enumerating exact conversion tasks pre-audit would be fabricated precision. The coordinator instantiates concrete tasks from T1's Step 6 output; this is stated, not hidden.
 - Anchors verified this session: clear_char db.cpp:3607 (placement-new comment), free_char :3363 (conditional string frees + commented NPC branch), free_obj :3411, read_mobile :1458, read_object :1771, CREATE/RELEASE utils.h:208-245, poofIn/poofOut structs.h:1150/1152, free_alias_list precedent (Backlog T2).
 - Type consistency: the deleter/factory naming (`unique_ptr<char_data, free_char_deleter>`), target types (std::string/std::vector), and the CONVERTED/HELD-RAW/ESCALATED verdict vocabulary are used identically across T1, the template, and exit.
+
+---
+
+## RAII Lifecycle-Audit Exit (2026-07-13)
+
+**Final commit:** `1b66334` (branch `modernization/raii-audit`; ~14 commits off master `b87aa62`).
+**Merge decision:** owner's (pending; finalization CI on the exit commits in flight at write time).
+
+### The audit-gated shape held
+
+T1 (read-only ownership map) sized the wave and gated everything; T2 (owner ruling) settled the prototype-string question BEFORE any instance-ownership code; T3-T6 converted only greenlit boundaries. **No conversion touched a CONDITIONAL or NON-OWNING field** — the world graph stayed raw, the prototype-shared strings stayed raw+conditional, exactly as designed.
+
+### Ownership-map final tally
+
+**10 CONVERTED · 28 HELD-RAW-FOREVER · 11 ESCALATED-DEFERRED** (+ `affected` GREENLIGHT-WITH-PREREQUISITE [pool + affected_list retirement first — no task converted it], `current_spec_info` already-RAII).
+
+### Delivered
+
+- **T3** skills/knowledge: `byte*` CREATE/RELEASE → `std::vector<byte>` (empty = PC-vs-NPC signal). Surfaced the move-assign-vs-`{}` capacity-leak idiom (the T6 dtor hazard in miniature).
+- **T4** alias list: raw owning ptr → `owned_alias_list` wrapper with **deep-clone copy** (the critical guard — char_data is memberwise-copied at mob spawn; a shallow copy would double-free). Persistence provably untouched (JSON-decoupled).
+- **T5** poof/union: **removed a type-pun** — special-mob mudlle-script buffers were reinterpret_cast through poofIn/poofOut/union1/union2; split to 4 dedicated typed fields behind unchanged macros; PC poof → `std::string`. Fixed the §2c leak that was *structurally impossible* to fix before (union-aliased with a PC's reply field). A `-fstrict-aliasing` win.
+- **T6 (capstone)** free_char now runs `~char_data()` before the raw free (symmetric with clear_char's placement-new); the double-free-the-prototype hazard is **provably impossible** (implicit dtor over POD `char*` strings = compile-time guarantee; IS_NPC-guarded RELEASE byte-unchanged and ordered before the dtor). Owning `char_data_ptr = unique_ptr<char_data, free_char_deleter>` factory + `make_char_data`; 2 clean-scope sites converted (a latent do_wizstat leak fixed en route), world-graph sites documented remaining-manual by design.
+
+### Battery actuals
+
+macOS 1071 + ASan (0 double-free/UAF) + boot golden; rots64 1069→1071 + LSan (0 RAII-attributable leaks; 2 pre-existing ShapeMob/DbLoader harness leaks documented) per-task; i386 at exit: canonical ctest 1071/0/7, monolithic 1064 pass/0 fail ZERO SIGSEGV, boot golden byte-identical (2 qemu hangs killed+reran). Goldens byte-identical throughout; suite 1057 → 1071.
+
+### Reviews
+
+T1 audit review (Opus): the wave's highest-leverage review — verified every classification against source, no double-free traps. T3-T5 (Opus/Sonnet) approved; T6 capstone (Opus): the double-free proof came back provably-safe. Zero fix loops on the conversions (one map-precision fix on the `affected` prereq).
+
+### Deferred / backlog
+
+- **The 11 prototype-shared strings** (interned/shared-immutable model) — a possible future funded effort per the T2 ruling.
+- `affected` chain conversion (retire the affected-type pool + global affected_list first).
+- The 2 pre-existing harness leaks (ShapeMob, DbLoader account-migration).
+- T4 hardening: mark `owned_alias_list`'s converting ctor `explicit` (latent two-way-conversion ambiguity).
+- T6 Minor: the test-only double-`~char_data()` on the stack victim in DamageTranscriptSeed42 (safe while the victim's containers stay empty — re-check if a future combat-map change populates the victim's damage_details).
+- World-graph instance sites remain manual `free_char` by design (documented in the map).
+
+### Finalization exposure
+
+windows-msvc / rots64 / LSan run at the finalization CI push — the T6 explicit-dtor + custom-deleter unique_ptr are MSVC-divergence-prone (the sanitizer + MSVC jobs are the net). Any divergence is fixed before the wave exits.

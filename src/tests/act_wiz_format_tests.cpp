@@ -1797,6 +1797,15 @@ TEST(ActWizInspection, DoShowFormatsAliasesListLine)
     EXPECT_NE(output.find("Sam has the following aliases defined:\n\r"), std::string::npos)
         << output;
     EXPECT_NE(output.find("gr                  : greet\n\r"), std::string::npos) << output;
+
+    // first_alias is a STACK object, not a CREATE1()'d heap node -- since RAII
+    // T4, target.specials.alias is an owning wrapper whose destructor calls
+    // free_alias_list() (db.cpp) when `target` (a genuine C++ local, not a
+    // calloc'd/placement-new'd stand-in) goes out of scope below. Reseating to
+    // nullptr here (a plain pointer overwrite -- see owned_alias_list's class
+    // comment in structs.h) avoids that destructor attempting to free() a
+    // stack address.
+    target.specials.alias = nullptr;
 }
 
 TEST(ActWizInspection, DoShowFormatsAliasesNoneDefinedLine)
@@ -2951,25 +2960,20 @@ TEST(ActWizComm, DoPoofsetStoresPoofinMessageAndAcksActor)
     SoloCharacterContext context;
     char argument[] = "  Ta-da!";
     do_poofset(&context.character, argument, nullptr, 0, SCMD_POOFIN);
-    ASSERT_NE(context.character.specials.poofIn, nullptr);
-    EXPECT_STREQ(context.character.specials.poofIn, "Ta-da!");
+    // RAII T5b: poofIn is an owning std::string now (was str_dup'd char*);
+    // it self-frees at fixture teardown, so no manual free is needed.
+    EXPECT_FALSE(context.character.specials.poofIn.empty());
+    EXPECT_EQ(context.character.specials.poofIn, "Ta-da!");
     EXPECT_EQ(std::string(context.descriptor.output), "Ok.\n\r");
-    // Freed directly (not via RELEASE()) so cleanup doesn't depend on the
-    // process-global global_release_flag toggle (RELEASE() only calls
-    // free_function() when that flag is set -- see do_setfree's "RELEASE is
-    // faked" message); str_dup()'s allocation is a plain malloc-compatible
-    // buffer (create_function()/CREATE()), so std::free() is always safe here.
-    std::free(context.character.specials.poofIn);
-    context.character.specials.poofIn = nullptr;
 }
 
 TEST(ActWizComm, DoPoofsetClearsPoofoutMessageWhenArgumentBlank)
 {
     SoloCharacterContext context;
-    context.character.specials.poofOut = str_dup("old message");
+    context.character.specials.poofOut = "old message";
     char argument[] = "   ";
     do_poofset(&context.character, argument, nullptr, 0, SCMD_POOFOUT);
-    EXPECT_EQ(context.character.specials.poofOut, nullptr);
+    EXPECT_TRUE(context.character.specials.poofOut.empty());
     EXPECT_EQ(std::string(context.descriptor.output), "Ok.\n\r");
 }
 

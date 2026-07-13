@@ -1,0 +1,446 @@
+# char_data / obj_data Ownership Map (RAII Lifecycle-Audit — Task 1, the gate)
+
+**Status:** FINALIZED at wave exit (2026-07-13). Originally a READ-ONLY audit (T1);
+now closed out with every boundary's terminal verdict recorded below, after T2's
+ruling and the T3-T6 conversions all landed. A mislabeled OWNING field that is
+actually prototype-shared becomes a double-free the moment a later task converts
+it, so every free/alloc claim below cites `file:line` against the source as it
+exists on branch `modernization/raii-audit`.
+
+## Exit summary (wave-final tally)
+
+Every ownership boundary enumerated in §2/§3 carries exactly one terminal verdict.
+Counts below are by **named field** (grouped rows such as `mount_data.mount/.rider/
+.next_rider` and the `equipment[MAX_WEAR]` array each count once as a single
+boundary); the fields backing each number are enumerated inline so the tally is
+self-checking against the §2/§3 tables.
+
+| Verdict | Count | Fields (enumerated) |
+|---|---|---|
+| **CONVERTED** | **10** | RAII-managed this wave: `skills`, `knowledge` (T3, →`std::vector<byte>`); `specials.alias` (T4, →`owned_alias_list`); `specials.poofIn`, `specials.poofOut` (T5b, →`std::string`); `special_stack`, `special_list_area`, `special_prog_number`, `special_prog_point` (T5a — the four typed fields decoupled off the poof/`union1`/`union2` overload, which also fixed the `prog_number`/`prog_point` leak) — that is 9 named fields; **plus** the `char_data` instance-ownership lifecycle itself (T6a teardown-symmetry `~char_data()` + T6b `char_data_ptr`/`make_char_data` factory), the 10th conversion. |
+| **HELD-RAW-FOREVER** | **28** | NON-OWNING world-graph cross-links / back-refs, plus members owned by a subsystem *other* than `free_char`/`free_obj` (`followers`, `group`, `memory`, `death_cry`/`death_cry2`). Char (22): `equipment[]`, `carrying`, `desc`, `next_in_room`, `next`, `next_fighting`, `next_fast_update`, `followers`, `master`, `mount_data.*`, `group`, `delay.next`, `next_die`, `specials.fighting`, `specials.hunting`, `union1.reply_ptr`, `memory`, `specials.recite_lines`, `specials.script_info`, `death_cry`, `death_cry2`, `damage_details.damage_map` keys. Obj (6): `carried_by`, `in_obj`, `contains`, `next_content`, `next`, `obj_flags.script_info`. Permanently out of scope per the global constraint — never revisit. Full reasoning in §4's HOLD-RAW-FOREVER section. |
+| **ESCALATED-DEFERRED** | **11** | The prototype-shared CONDITIONAL fields (char: `name`, `short_descr`, `long_descr`, `description`, `title`, `profs`; obj: `name`, `description`, `short_description`, `action_description`, `ex_description`). **T2 RULING (owner, 2026-07-13): KEEP-RAW-CONDITIONAL** — these stay raw `char*` with their existing `IS_NPC`/`item_number`-guarded free logic UNTOUCHED. NOT converted. Deferred to a possible future, separately-scoped, characterization-heavy effort (optional T7: interned/shared immutable prototype strings) — not scoped or committed to in this wave. See §5. |
+
+Two boundaries don't fit the three-way split above and are called out so the
+tally is exhaustive rather than silently dropping them:
+
+- **`specials.affected`** — **DEFERRED, PREREQUISITE-BLOCKED** (distinct from the T2 escalation above). It IS owning, but pool-mediated (`get_/put_to_affected_type_pool`) and mirrored in a global `affected_list` tracking structure; converting it to an owned-node container would double-free/desync until that pool and tracking structure are retired first. Not attempted this wave; §4 marks it GREENLIGHT-WITH-PREREQUISITE for a future task — a real owning boundary, just blocked on a predecessor refactor (neither CONVERTED nor HELD-RAW-FOREVER).
+- **`extra_specialization_data.current_spec_info`** — **ALREADY-SAFE, no wave action**. Pre-existing `new`/`delete` inside `specialization_data::set`/`::reset` is already leak-safe; a `std::unique_ptr` wrap is optional cosmetic tidy, not a correctness gap. Not counted as a wave "conversion" because nothing was unsafe to begin with.
+
+(`temp` (`void*` local scratch) and `union2.reply_number` (a value, not a pointer)
+are excluded from all counts — they were never ownership boundaries.)
+
+**Completeness:** 10 converted + 28 held-raw-forever + 11 escalated-deferred + the
+2 special cases above = every boundary in §2/§3 accounted for; none remain
+unclassified.
+
+## 0. The allocation model (load-bearing context)
+
+Everything hinges on how char_data/obj_data storage is obtained and released:
+
+- `CREATE`/`CREATE1` (`utils.h:208-217`) call `create_function`
+  (`utility.cpp:1470`) which is **`calloc`** — raw, zeroed, *unconstructed* storage.
+- `RELEASE` (`utils.h:218-223`) calls `free_function` (`utility.cpp:1495`) which is
+  **`free`** — and is gated by `global_release_flag`.
+- So char_data and obj_data are **C-allocated (calloc) and C-freed (free)**, not
+  `new`/`delete`.
+- `clear_char` (`db.cpp:3607`) runs a **placement-new** over the calloc'd storage
+  (`new (ch) char_data();`, `db.cpp:3626`) to properly construct the non-trivial
+  members (`specialization_data`, `player_damage_details::damage_map`), then
+  `CREATE1(ch->profs, ...)`. `read_mobile` does the same placement-new
+  (`db.cpp:1482`) before the prototype struct-copy.
+- **`free_char` (`db.cpp`; `free_alias_list` helper nearby).** *(Historical, pre-T6a:
+  it never ran `~char_data()` — it hand-freed a fixed set of members, manually
+  `->reset()`-ing the two heap-owning ones (`extra_specialization_data`,
+  `damage_details`) and move-assigning-empty the T3/T4/T5 members, then `RELEASE(ch)` =
+  `free(ch)`. The destructor was bypassed — a placement-**new**-on-construct /
+  **no**-placement-delete-on-teardown asymmetry.)* **RAII T6a fixed this asymmetry:
+  `free_char` now calls `ch->~char_data();` explicitly immediately before `RELEASE(ch)`,
+  so construct and teardown are symmetric (calloc + placement-new ↔ explicit-dtor +
+  gated free). The hand per-member resets/move-assigns were removed — the destructor
+  subsumes them. The conditional prototype-shared `char*` strings (and `profs`) are
+  still freed only under the `IS_NPC` guard BEFORE the destructor, which is what keeps a
+  normal NPC's aliased strings from being double-freed (§6). This asymmetry was the
+  central constraint for the instance-ownership verdict in §6 — now resolved.**
+
+The instance-copy mechanism for NPCs/objects is a **whole-struct assignment**:
+`*mob = mob_proto[i];` (`db.cpp:1484`) and `*obj = obj_proto[i];` (`db.cpp:1790`).
+This bitwise/memberwise-copies **every pointer field**, so an NPC instance and an
+object instance silently *alias* the prototype's `char*` strings (and, for NPCs,
+`profs`). This aliasing — not any per-field alloc — is the entire reason the
+string fields are CONDITIONAL and not OWNING.
+
+---
+
+## 1. Bucket definitions
+
+- **OWNING** — this instance allocates it and `free_char`/`free_obj`
+  unconditionally frees it (or a member destructor/reset does). Safe to convert.
+- **NON-OWNING** — world-graph cross-link or back-ref; freed by nobody through this
+  pointer (freed on a different path, or owned by another subsystem/the prototype).
+  Stays raw **forever**. OUT of scope for conversion (global constraint).
+- **CONDITIONAL** — freed only under a runtime test (`IS_NPC`/`item_number`),
+  because the pointer is prototype-shared for one population and instance-owned for
+  another. The prototype-string escalation set. Feeds T2.
+- **LOCAL-SCRATCH** — untyped/transient scratch, or allocated-and-freed inside one
+  function, never a durable owned resource of the instance.
+
+---
+
+## 2. char_data pointer fields
+
+### 2a. Top-level char_data (`structs.h:1732-1816`)
+
+| Field | Type | Role | Bucket | Evidence |
+|---|---|---|---|---|
+| `profs` | `char_prof_data*` | prof coefficients/colors/specialization | **CONDITIONAL** | Alloc'd for every char in `clear_char` (`db.cpp:3627` `CREATE1`). NPC instance **aliases the proto's** `profs` via `*mob = mob_proto[i]` (`db.cpp:1484`). Freed **only** in the `!IS_NPC || nr==-1` branch (`db.cpp:3401` `RELEASE(ch->profs)`) — normal NPCs (nr≥0) never free it, so the shared proto pointer is not double-freed. |
+| `skills` | `byte*` (array `MAX_SKILLS`=256) at audit time; **now `std::vector<byte>`, RAII T3 CONVERTED — see §4** | pracs spent per skill | **OWNING** | PC-only: `clear_char` allocates only when `mode != MOB_ISNPC` (`db.cpp:3651`). mob_proto built with `MOB_ISNPC` → NULL; NPC instance copies NULL. Freed if non-null (`db.cpp:3415-3419`, with a SYSERR log if an NPC ever had one). Never prototype-shared. |
+| `knowledge` | `byte*` (array `MAX_SKILLS`) at audit time; **now `std::vector<byte>`, RAII T3 CONVERTED — see §4** | computed knowledge | **OWNING** | Same as `skills`: `db.cpp:3652` alloc, `db.cpp:3420-3422` free. PC-only, never shared. |
+| `affected` | `affected_type*` | head of spell-affect list | **OWNING (POOL-MEDIATED — see caveat)** | Freed as a chain in `free_char`: `while (ch->affected) affect_remove(ch, ch->affected);` (`db.cpp:3391-3392`); also drained in `extract_char` (`handler.cpp:2051,2064`). **Nodes are NOT plainly `CREATE`'d/`RELEASE`'d per instance — they are pool-mediated:** allocated via `get_from_affected_type_pool()` → `CREATE`/calloc (`handler.cpp:612`, reached from `affect_to_char` at `handler.cpp:663`/`703`), freed via `put_to_affected_type_pool()` → `free()` (`handler.cpp:624`) inside the `affect_remove` drain (`handler.cpp:752`). AND `affect_remove` also unwinds a secondary **global** `affected_list` tracking structure (`handler.cpp:88`, unwound `handler.cpp:754-759`). So the naive `std::forward_list`/owned-nodes target below is **UNSAFE as written**. |
+| `equipment[MAX_WEAR]` | `obj_data*[22]` | worn items | **NON-OWNING** | World graph. `extract_char` moves each to room or extracts it separately (`handler.cpp:1993-2005`), then nulls the slots; `free_char` never touches them. |
+| `carrying` | `obj_data*` | inventory list head | **NON-OWNING** | World graph. Not freed by `free_char`; objects have independent lifecycle via `extract_obj`. |
+| `desc` | `descriptor_data*` | player connection (NULL for mobs) | **NON-OWNING** | Back-ref. `free_char` never touches `ch->desc` (asserted by every test fixture, e.g. `test_char_cleanup.h:16`; freed via `close_socket`). |
+| `next_in_room` | `char_data*` | room->people link | **NON-OWNING** | World-graph list link. |
+| `next` | `char_data*` | `character_list` link | **NON-OWNING** | World-graph list link; unlinked in `extract_char` (`handler.cpp:2010-2022`). |
+| `next_fighting` | `char_data*` | combat list link | **NON-OWNING** | World-graph list link. |
+| `next_fast_update` | `char_data*` | fast-update list link | **NON-OWNING** | World-graph list link. |
+| `followers` | `follow_type*` | list of this char's followers | **NON-OWNING** (via free_char) | Nodes `CREATE`'d in `handler.cpp:946` and released by the follow subsystem (stop/die_follower), **not** by `free_char`. Managed elsewhere. |
+| `master` | `char_data*` | who this char follows | **NON-OWNING** | Cross-link. |
+| `mount_data.mount` / `.rider` / `.next_rider` | `char_data*` | mount graph | **NON-OWNING** | Cross-links (`structs.h:1288-1297`). |
+| `group` | `group_data*` | group membership | **NON-OWNING** (via free_char) | `new group_data`/`delete group` live in the grouping subsystem (`act_othe.cpp:500,526,603`); `free_char` never frees it. Managed elsewhere. |
+| `temp` | `void*` | "any special structures if need be" | **LOCAL-SCRATCH** | Untyped transient scratch; no durable ownership contract. |
+| `delay.next` | `char_data*` | `waiting_list` link (inside `waiting_type delay`) | **NON-OWNING** | World-graph list link (`structs.h:398`, `handler.cpp:1982-1985`). |
+| `next_die` | `char_data*` | `death_waiting_list` link | **NON-OWNING** | World-graph list link (`structs.h:1809`). |
+
+`group` / `damage_details.damage_map` keys and `extra_specialization_data` are
+covered in §2d.
+
+### 2b. char_player_data (`player.*`, `structs.h:1044-1065`)
+
+| Field | Type | Bucket | Evidence |
+|---|---|---|---|
+| `name` | `char*` | **CONDITIONAL** | Prototype-shared for NPCs via `*mob = mob_proto[i]` (`db.cpp:1484`). Freed only in `!IS_NPC \|\| nr==-1`: `RELEASE(GET_NAME(ch))` (`db.cpp:3396`). See §5 for the `GET_NAME` NPC/PC divergence. |
+| `short_descr` | `char*` | **CONDITIONAL** | Prototype-shared; freed only in the guarded branch `db.cpp:3398`. For NPCs `GET_NAME` **reads this**, not `name` (`utils.h:355`). |
+| `long_descr` | `char*` | **CONDITIONAL** | Prototype-shared; freed only in the guarded branch `db.cpp:3399`. |
+| `description` | `char*` | **CONDITIONAL** | Prototype-shared; freed only in the guarded branch `db.cpp:3400`. |
+| `title` | `char*` | **CONDITIONAL** | Prototype-shared for NPCs; freed only in the guarded branch `db.cpp:3397`. |
+| `death_cry` | `char*` | **NON-OWNING** (proto-owned) | Allocated **only on mob_proto** (`db.cpp:1651` via `fread_string`, or 0 at `db.cpp:1654`); struct-copied (aliased) into NPC instances; **never freed by `free_char`** at all. The prototype owns it; the instance borrows it. Only read (`fight.cpp:861-871`). |
+| `death_cry2` | `char*` | **NON-OWNING** (proto-owned) | Same as `death_cry` (`db.cpp:1652,1655`, read `fight.cpp:870-871`). |
+
+The commented-out NPC `else` branch in `free_char` (`db.cpp:3402-3413`) is the
+historical proof of the sharing model: it would have freed `name/title/
+short_descr/long_descr/description` for an NPC **only if the instance pointer
+differed from `mob_proto[i]`'s** (`ch->player.name != mob_proto[i].player.name`).
+It is disabled — so today normal NPCs free none of these strings. That dead branch
+is exactly the "model the sharing explicitly" option T2 must weigh (§5).
+
+### 2c. char_special_data (`specials.*`, `structs.h:1123-1206`)
+
+| Field | Type | Bucket | Evidence |
+|---|---|---|---|
+| `fighting` | `char_data*` | **NON-OWNING** | Combat cross-link. |
+| `hunting` | `char_data*` | **NON-OWNING** | AI cross-link. |
+| `alias` | `owned_alias_list` (RAII T4 CONVERTED; was `alias_list*`) | **OWNING** | PC-only linked list built by `Crash_alias_load` (`objsave.cpp:1200-1217`, each node `CREATE1`'d with a `CREATE`'d `.command`). Freed via `free_alias_list` (`db.cpp:3370-3378`), now called from `owned_alias_list`'s destructor (`structs.h`) — run as part of the explicit `~char_data()` `free_char` invokes since RAII T6a — instead of by hand in `free_char` (T4 removed the hand `reset()`; T6a removed even the explicit member-`reset()` call). 0 for mobs and for freshly-cleared chars — NULL-safe. (This is the backlog-T2 leak that was fixed; T4 made the ownership RAII-explicit — see task-4-report.md.) |
+| `poofIn` | `std::string` (RAII T5b CONVERTED; was `char*`) | **OWNING — CONVERTED** | PC/god arrival string. **RAII T5a first decoupled** the special-mob overload (a `SPECIAL_STACKLEN`-long buffer that used to be `CREATE`'d here and `reinterpret_cast`'d back via `SPECIAL_STACK`) onto its own typed field `char_special_data::special_stack` (`db.cpp` read_mobile). With the type-pun gone, **T5b converted the PC string to `std::string`**: `do_poofset` assigns directly; the buffer is released by `~char_data()`, which `free_char` now runs explicitly before `RELEASE(ch)` (RAII T6a — was a per-member empty-string move-assign pre-T6a; dtor-order rule §6). Not serialized (no `CHAR_FILE_U` field). |
+| `poofOut` | `std::string` (RAII T5b CONVERTED; was `char*`) | **OWNING — CONVERTED** | Same shape as `poofIn`: the special-mob `special_list` buffer moved to `char_special_data::special_list_area` (T5a); the PC departure string is now `std::string` (T5b). |
+| `special_stack` / `special_list_area` | `long*` / `special_list*` (NEW, RAII T5a) | **OWNING** | Special-mob mudlle script value stack / target list. `CREATE`'d in `read_mobile` for special mobs (`store_prog_number!=0`), 0 otherwise; unconditionally `RELEASE`'d in `free_char` (null-safe). Dedicated typed fields that replaced the `poofIn`/`poofOut` type-pun (T5a). |
+| `union1.reply_ptr` | `char_data*` | **NON-OWNING** | Cross-link (PC reply target). After T5a the union is single-member (`reply_ptr` only); `prog_number` moved out (below). |
+| `special_prog_number` | `int*` (NEW, RAII T5a; was `union1.prog_number`) | **OWNING — LEAK FIXED** | Special-mob call list `CREATE`'d in `read_mobile`. **T5a decoupled it out of `union1`** (it used to alias `reply_ptr`, which is why `free_char` could not free it) and now unconditionally `RELEASE`'s it — the §2c leak is **fixed**. |
+| `union2.reply_number` | `int` | **N/A (value)** | Single-member union after T5a; `prog_point` moved out (below). |
+| `special_prog_point` | `int*` (NEW, RAII T5a; was `union2.prog_point`) | **OWNING — LEAK FIXED** | Special-mob call-point list; same disposition as `special_prog_number` — decoupled from `union2` and now freed in `free_char`. §2c leak fixed. |
+| `memory` | `memory_rec*` | **OWNING (freed off the free_char path)** | NPC attacker memory, nodes `CREATE`'d in `mobact.cpp:439`; freed via `clear_memory` in `extract_char` (`handler.cpp:2044`), **not** in `free_char`. |
+| `recite_lines` | `char*` | **NON-OWNING** (borrowed) | Points **into** an object's `ex_description->description` (`spec_pro.cpp:3579`) or is advanced within that buffer / NULL'd (`spec_pro.cpp:3555-3557`); nulled at load (`db.cpp:1577`). Borrowed pointer; never freed through the char. |
+| `script_info` | `info_script*` | **NON-OWNING** (proto/subsystem-owned) | Only ever set to 0 (`db.cpp:3639`); no `RELEASE`/`delete` of a char's `script_info` exists anywhere. Points at prototype/script-table data. |
+
+### 2d. Managed members holding heap (not raw pointer fields, noted for completeness)
+
+- `extra_specialization_data` (`specialization_data`, `structs.h:1782`) owns
+  `current_spec_info` (`specialization_info*`, `structs.h:1537`) — `new`'d in
+  `specialization_data::set` (`char_utils.cpp:1490-1508`), `delete`'d in
+  `::reset` (`char_utils.cpp:1475-1478`) and the member's own destructor
+  (`structs.h:1531`). `free_char` calls `.reset()` (`db.cpp:3425`). **Already
+  RAII-managed; safe.** NULL on all mob protos (set to `PS_None` in `clear_char`
+  `db.cpp:3644`), so the `*mob = mob_proto[i]` copy of this member never aliases a
+  live object — but note the raw copy-assignment *would* shallow-copy the pointer
+  if a proto ever held one (latent, currently harmless).
+- `damage_details` (`player_damage_details`) holds `std::map<char_data*, ...>`
+  (`structs.h:1681`); keys are **NON-OWNING** cross-links; `.reset()` just clears
+  (`structs.h:1676`, called `db.cpp:3426`).
+
+---
+
+## 3. obj_data pointer fields (`structs.h:477-521`)
+
+| Field | Type | Bucket | Evidence |
+|---|---|---|---|
+| `name` | `char*` | **CONDITIONAL** | Prototype-shared via `*obj = obj_proto[i]` (`db.cpp:1790`). Freed **only when `item_number == -1`** (`free_obj` `db.cpp:3437-3438`). Prototype-loaded objects have `item_number == i ≥ 0` → not freed. |
+| `description` | `char*` | **CONDITIONAL** | Same guard; freed `db.cpp:3439`. |
+| `short_description` | `char*` | **CONDITIONAL** | Same guard; freed `db.cpp:3440`. |
+| `action_description` | `char*` | **CONDITIONAL** | Same guard; freed `db.cpp:3441`. |
+| `ex_description` | `extra_descr_data*` | **CONDITIONAL** | List of `{keyword, description, next}` (`structs.h:377-381`). Freed as a chain **only when `item_number == -1`** (`db.cpp:3442-3448`). Prototype-shared otherwise. The dead NPC/obj `else` branch (`db.cpp:3449-3465`) mirrors the char one: would free only if the instance pointer `!= obj_proto[nr]`'s. |
+| `carried_by` | `char_data*` | **NON-OWNING** | Cross-link. |
+| `in_obj` | `obj_data*` | **NON-OWNING** | Container back-ref. |
+| `contains` | `obj_data*` | **NON-OWNING** | Contents-list head; contents extracted independently in `extract_obj` (`handler.cpp:1831-1832`). |
+| `next_content` | `obj_data*` | **NON-OWNING** | Contents-list link. |
+| `next` | `obj_data*` | **NON-OWNING** | `object_list` link (`db.cpp:1797`, unlinked `handler.cpp:1835-1845`). |
+
+### obj_flag_data (`structs.h:403-447`)
+
+| Field | Type | Bucket | Evidence |
+|---|---|---|---|
+| `script_info` | `info_script*` | **NON-OWNING** (proto/subsystem-owned) | Only ever set to 0 (`db.cpp:3665`); no per-object free exists. |
+
+---
+
+## 4. Per-boundary verdicts
+
+### GREENLIGHT-CONVERT (OWNING / LOCAL-SCRATCH)
+
+| Field(s) | Target type | Risk tier | Note |
+|---|---|---|---|
+| `skills`, `knowledge` | `std::vector<byte>` (RAII T3, converted) | **Low — CONVERTED** | PC-only, never aliased, unconditional free. `std::vector` (not `std::array`) chosen over the array alternative because "does this character even have a skill array" is a runtime property this codebase tests constantly (GET_SKILL/GET_KNOWLEDGE family, `recalc_skills`, `handle_pracs`, `char_data::reset_skills`/`get_spent_practice_count`) via a null-pointer check on the old `byte*` — `std::array<byte, MAX_SKILLS>` has no empty state to represent "NPC, never allocated," so every one of those call sites would need a parallel bool/sentinel; `std::vector` preserves the exact "empty ⟺ absent" contract (`.empty()` replaces the old truthiness check) with no new state. `free_char` (`db.cpp`) no longer `RELEASE()`s these two fields — their heap buffers are freed by `~char_data()`, which `free_char` now runs explicitly before `RELEASE(ch)` (RAII T6a; pre-T6a it hand-cleared them via a move-assign-empty because the destructor was bypassed — see §0/§6). `clear_char`/`store_to_char`/`init_char` use `.assign(MAX_SKILLS, 0)` in place of `CREATE(..., byte, MAX_SKILLS)`. JSON/text save-load (`character_json.cpp`, `char_file_u`) are untouched — they read/write the separate fixed-size `char_file_u::skills[MAX_SKILLS]` array, not this field, so the wire format is unaffected. |
+| `specials.alias` | `owned_alias_list` RAII wrapper (**CONVERTED, RAII T4**) | **Medium — CONVERTED** | Owned list; `Crash_alias_load` builds it, `free_alias_list` frees it. T4 chose the CONSERVATIVE-RAII mechanism (keep the intrusive `alias_list` node shape and the on-disk format exactly; wrap the owning head pointer in a small class whose destructor/`reset()` calls `free_alias_list`, with plain-reseat/deep-clone copy semantics — not a node-shape/container rewrite) over converting to `std::vector<alias_entry>`/`std::forward_list`, because `do_alias`'s remove path unlinks-then-manually-frees individual nodes and an auto-freeing assignment would have double-freed them; see task-4-report.md for the full reasoning and the persistence-format verification (on-disk aliases already go through `objects_json::AliasData`, decoupled from the runtime node shape). `MAX_ALIAS` overflow quirk and 20-byte `keyword` preserved byte-for-byte. |
+| `specials.poofIn`, `specials.poofOut` | `std::string` (PC path) — **CONVERTED, RAII T5** | **High — CONVERTED** | For PCs these are plain owned strings → `std::string`. The same fields were reused by special mobs as raw `long[]`/`special_list` buffers via `SPECIAL_LIST_AREA`/`SPECIAL_STACK` casts, so a blind conversion would corrupt the mudlle script stack. **T5a decoupled** the special-mob storage onto four dedicated typed fields (`special_stack`, `special_list_area`, `special_prog_number`, `special_prog_point`) — macro rewrite in `mudlle.h`, `read_mobile` CREATE + `free_char` RELEASE updated — which also **fixed the §2c `prog_number`/`prog_point` leak**. **T5b then converted** the now-single-meaning PC strings to `std::string`. Boot + combat + JSON goldens byte-identical; macOS ASan (build + full ctest + boot) clean. See task-5-report.md. |
+| `affected` | keep intrusive list; a `std::forward_list`/owned-nodes target is **only** valid AFTER the prerequisite below | **GREENLIGHT-WITH-PREREQUISITE** | **Prerequisite (blocking): retire the `affected_type` pool (`get_/put_to_affected_type_pool`, `handler.cpp:602-624`) AND the global `affected_list`/`affected_list_pool` tracking (`handler.cpp:88-89`, unwound in `affect_remove` at `handler.cpp:754-759`) FIRST.** Until both are retired, a node's storage is owned by the pool and its membership is mirrored in a global list — an owned-node/`forward_list` conversion would double-free (pool still `free()`s the node) and desync the global list. Also note `affected_type` is serialized in `CHAR_FILE_U` and walked widely; low payoff. **No T3+ task may take the `forward_list` suggestion literally without doing the pool/`affected_list` retirement as an explicit predecessor step.** |
+| `extra_specialization_data.current_spec_info` | already `new`/`delete`; could be `std::unique_ptr<specialization_info>` | **Low** | Cosmetic RAII tidy inside `specialization_data`; already leak-safe. |
+
+### HOLD-RAW-FOREVER (NON-OWNING) — reason: world graph / back-ref / other-owner
+
+All fields bucketed NON-OWNING in §2–§3: `equipment[]`, `carrying`, `desc`,
+`next_in_room`, `next`, `next_fighting`, `next_fast_update`, `master`,
+`mount_data.*`, `delay.next`, `next_die`, `specials.fighting`, `specials.hunting`,
+`union1.reply_ptr`, `specials.recite_lines` (borrowed), `specials.script_info`,
+`player.death_cry(2)` (proto-owned), `damage_map` keys; and obj `carried_by`,
+`in_obj`, `contains`, `next_content`, `next`, `obj_flags.script_info`.
+**Reason:** converting any of these to an owning smart pointer would make the
+world graph delete shared nodes (double-free / dangling), violating the global
+constraint "the world graph stays raw." `followers`, `group`, and `memory` are
+owned by *other subsystems* (follow / grouping / mob-memory), freed on paths other
+than `free_char` — they stay raw here.
+
+### ESCALATED-DEFERRED (CONDITIONAL) — T2 RULING: KEEP-RAW-CONDITIONAL (final, 2026-07-13)
+
+Char: `player.name`, `player.short_descr`, `player.long_descr`,
+`player.description`, `player.title`, and `profs` (same guarded branch).
+Obj: `name`, `description`, `short_description`, `action_description`,
+`ex_description`. 11 fields total. **NOT converted.** Deferred to an optional,
+separately-scoped future effort (T7); no T3-T6 task touched these. See §5 for
+the full escalation package and the ratified ruling text.
+
+---
+
+## 5. Escalation quantification (T2 owner decision package)
+
+### The shared-string set (CONDITIONAL)
+
+**Count of prototype-shared pointer fields: 11** —
+5 char strings (`name`, `short_descr`, `long_descr`, `description`, `title`),
++ char `profs` (same conditional), + 4 obj strings (`name`, `description`,
+`short_description`, `action_description`), + obj `ex_description` list.
+
+### The exact free-path logic (quote)
+
+Char (`db.cpp:3394-3413`):
+```c
+if (!IS_NPC(ch) || (IS_NPC(ch) && ch->nr == -1)) {
+    RELEASE(GET_NAME(ch));            // NPC: short_descr; PC: name  (utils.h:355)
+    RELEASE(ch->player.title);
+    RELEASE(ch->player.short_descr);
+    RELEASE(ch->player.long_descr);
+    RELEASE(ch->player.description);
+    RELEASE(ch->profs);
+} /* else if ((i = ch->nr) > -1) {  ...disabled per-pointer-diff branch... } */
+```
+Obj (`db.cpp:3437-3465`):
+```c
+if ((nr = obj->item_number) == -1) {
+    RELEASE(obj->name); RELEASE(obj->description);
+    RELEASE(obj->short_description); RELEASE(obj->action_description);
+    if (obj->ex_description) for (...) { RELEASE(keyword); RELEASE(description); RELEASE(node); }
+} /* else { ...disabled `!= obj_proto[nr]` branch... } */
+```
+The instance never owns these when it came from a prototype (`*mob = mob_proto[i]`
+/ `*obj = obj_proto[i]`); the guard is what prevents freeing the prototype's copy.
+
+### Read-site blast radius (why a type change is expensive)
+
+Counts (production `src/*.cpp`/`*.h`, tests excluded; grep-derived, approximate —
+they establish order of magnitude for the owner):
+
+| Field / accessor | Read sites | Notes |
+|---|---|---|
+| `GET_NAME(` macro | **~288** | `#define GET_NAME(ch) (IS_NPC(ch) ? (ch)->player.short_descr : (ch)->player.name)` (`utils.h:355`). A `std::string` migration must keep this ternary returning something `printf("%s")`/`strcpy`-compatible at all 288 sites. |
+| `player.name` (direct) | ~108 | |
+| `player.description` | ~32 | |
+| `player.short_descr` | ~27 | Also every NPC `GET_NAME`. |
+| `GET_TITLE(` / `player.title` | ~27 / ~14 | `#define GET_TITLE(ch) ((ch)->player.title)` (`utils.h:357`). |
+| `player.long_descr` | ~24 | |
+| obj `short_description` (any var) | ~91 | Accessed via many object variable names, not just `obj->`. |
+| obj `name` (`obj->name`) | ~31 | |
+| obj `action_description` (any var) | ~29 | |
+| obj `description` (`obj->description`) | ~23 | |
+| obj `ex_description` (`obj->`) | ~17 | Plus list-walk sites. |
+
+**Total order of magnitude: 600+ read sites**, the overwhelming majority
+consuming a raw `char*` through `printf("%s")`, `strcpy`, `str_cmp`, `strcat`,
+`std::format` with `static_cast<const char*>`, and passing to functions typed
+`char*`/`const char*`. This is the blast radius of changing the field type.
+
+### Preliminary recommendation: **KEEP-RAW-CONDITIONAL** (do NOT convert to `std::string` in this wave)
+
+Reasoning:
+1. **Sharing is real and load-bearing.** The prototype/instance aliasing via
+   whole-struct copy (`db.cpp:1484,1790`) means "who owns this string" is a runtime
+   property (`IS_NPC && nr` / `item_number`), not a static one. `std::string` has
+   single-owner value semantics; you cannot make an NPC instance's `std::string
+   name` *alias* the prototype's without a copy. Two escape hatches, both costly:
+   - **(a) Make every instance own a copy** (deep-copy strings at `read_mobile`/
+     `read_object`). Removes the conditional, but adds a heap alloc + copy per mob
+     spawn / per object load — a hot path (mobs respawn constantly). Measurable
+     runtime + memory regression on a MUD that spawns thousands of mobs.
+   - **(b) Model the sharing explicitly** with a shared/interned string type
+     (`std::shared_ptr<const std::string>` or a string-intern handle) so instances
+     cheaply share the prototype's immutable text. Cleaner long-term, but touches
+     all ~600 read sites and the save/load paths, and must interop with the
+     `GET_NAME` ternary and the C string APIs still pervasive in the codebase.
+2. **The dead per-pointer-diff branches** (`db.cpp:3402-3413`, `3449-3465`) show the
+   original authors already reasoned about `ptr != proto.ptr` sharing and chose to
+   disable per-instance freeing entirely. Any conversion must consciously replace
+   that model, not stumble into it.
+3. **Blast radius vs. payoff.** 600+ raw-`char*` read sites for a field set that is
+   already leak-safe (prototype owns; freed once at proto teardown). The RAII win
+   is marginal; the regression/behavior-drift risk (goldens are byte-pinned) is
+   high.
+
+**What the owner was asked at T2:** ratify KEEP-RAW-CONDITIONAL for the 11
+shared fields for this wave, OR fund option (b) (interned/shared immutable
+prototype strings) as its own separately-scoped, characterization-heavy sub-wave.
+Option (a) was not recommended (hot-path cost).
+
+#### T2 RULING (owner, 2026-07-13): KEEP-RAW-CONDITIONAL — FINAL
+
+The 11 prototype-shared string fields stay **raw `char*` with their existing
+runtime-guarded free logic UNTOUCHED** for this wave. Basis: genuinely
+runtime-determined sharing (`IS_NPC`/`nr` / `item_number` guards), already
+leak-safe (prototype owns, freed once at proto teardown), ~600 raw-`char*` read
+sites (`GET_NAME` alone ~288 verified). Instance-block ownership (T6) wraps
+*around* these fields without touching them — `~char_data()` is a no-op for POD
+pointer members, so the destructor introduced by T6 does not free these strings
+either; the `IS_NPC`-guarded `RELEASE` block in `free_char` remains the only
+thing that frees them, unchanged. **Verdict recorded: ESCALATED-DEFERRED.** These
+11 fields are explicitly excluded from T3-T6 and from this wave's greenlit set
+(§4 stands); a proper interned/shared-string model remains a possible future
+funded effort (optional T7), not scoped or committed to here.
+
+---
+
+## 6. Instance-ownership feasibility verdict (`unique_ptr<char_data, free_char_deleter>`)
+
+**Verdict: CONVERTED (RAII T6, 2026-07-13).** The teardown-symmetry fix and the
+factory both landed. See task-6-report.md for the full write-up.
+
+- **T6a — teardown symmetry.** `free_char` (`db.cpp`) now calls `ch->~char_data();`
+  immediately before `RELEASE(ch)`, replacing the per-member hand teardown
+  (the T3 `skills`/`knowledge` move-assign-empty, the T4 `alias.reset()`, the
+  T5b `poofIn`/`poofOut` empty-string assigns, `extra_specialization_data.reset()`,
+  `damage_details.reset()`). The implicit destructor destroys exactly those owning
+  members and **nothing else** — the CONDITIONAL prototype-shared `char*` strings
+  (`name`/`title`/`short_descr`/`long_descr`/`description`/`profs`) and the raw
+  special-mob script pointers are POD with no destructor, so the destructor leaves
+  them untouched and the existing `IS_NPC`-guarded `RELEASE` block (freeing them
+  only for PCs / `nr == -1`) is UNCHANGED. That guard is what prevents the
+  double-free-the-prototype hazard for a normal NPC whose strings alias
+  `mob_proto[nr]`. The `affected`-chain drain and the skills SYSERR diagnostic
+  still run before the destructor while `ch` is alive. Construct/teardown are now
+  symmetric: calloc + placement-new (`clear_char`/`read_mobile`) ↔ explicit-dtor +
+  gated free (`free_char`). ASan-clean across the full suite (incl. the stack-victim
+  `free_char` path in `CharacterizationCombatTest.DamageTranscriptSeed42`, safe
+  because the dying NPC victim's owning members are all empty).
+- **T6b — owning factory.** `char_data_ptr = std::unique_ptr<char_data,
+  free_char_deleter>` + `make_char_data(mode)` (db.h/db.cpp). `free_char_deleter`
+  calls the T6a-symmetric `free_char`. Clean-scope call sites CONVERTED:
+  `save_benchmark.cpp` (L5 store_to_char scratch) and `act_wiz.cpp` `do_wizstat`
+  "file" branch (also fixed a latent leak on its load-failure path). Sites that
+  remain MANUAL raw `CREATE`/`free_char` — world-graph / cross-function lifetime,
+  out of the single-owner model:
+  - `read_mobile` (`db.cpp:1474`) — NPC instances live on room people-lists.
+  - `interpre.cpp` (`:2931`, `:2957`, `:3737`) and `comm.cpp` (`:1971`) — the
+    login `d->character` body is bound to the descriptor (`->desc = d`,
+    `register_pc_char`) and lives across the connection; freed via `extract_char`.
+  - `handler.cpp` (`:2046`, `:2067`) — `extract_char`'s world-graph teardown.
+  - `act_wiz.cpp` `do_set` "file" (`:2740`) — `cbuf` aliases `vict` across a large
+    multi-exit command scope; not a clean single-owner region.
+  - `shapemob.cpp` (`:234`, `:1264`, `:1752`) — shape-proto storage owned by the
+    shape subsystem, not a local scope.
+  Two lifecycle unit tests added (`DbLoaderFactory.*`).
+
+**Original (pre-T6) verdict, retained for context: FEASIBLE but blocked on a
+teardown-symmetry fix; sequence it LAST (T6), and only after the CONDITIONAL
+question (T2) is settled.**
+
+- A `unique_ptr<char_data, free_char_deleter>` where `free_char_deleter` calls
+  `free_char(p)` is mechanically straightforward and would give factory call sites
+  (`read_mobile`, the PC-create paths) exception-safe, single-owner handles.
+- **The blocker is the construct/teardown asymmetry (§0).** `clear_char`/
+  `read_mobile` **placement-new** the object over calloc storage (`db.cpp:3626,
+  1482`), but `free_char` frees with `free_function(ch)` (`db.cpp:3428`) **without
+  running `~char_data()`**. It hand-destroys exactly the two heap-owning members
+  (`extra_specialization_data.reset()`, `damage_details.reset()`). This works today
+  only because every other durable member is a POD pointer freed explicitly. **The
+  moment any member becomes a type with a non-trivial destructor** (`std::string`,
+  `std::vector`, `std::unique_ptr` from a T3/T4/T5 conversion), `free_char` will
+  leak/UB unless it first invokes `ch->~char_data()` (or explicitly destroys that
+  member) before `free_function(ch)`.
+- Therefore the factory task must: (1) make `free_char` call the destructor
+  explicitly (`ch->~char_data();` then `free_function(ch)`), keeping the
+  calloc/placement-new/explicit-dtor/free lifecycle internally consistent, **or**
+  (2) migrate the whole allocation to `new`/`delete` (larger blast radius — every
+  `CREATE(mob,...)` site, and the `global_release_flag` gating semantics in
+  `RELEASE`). Option (1) is the minimal, lowest-risk path and is the natural home
+  for the `free_char_deleter`.
+- Because the destructor must correctly destroy whatever members earlier tasks
+  converted, **T6 (factory) must come after the member conversions it needs to
+  destroy**, and its acceptance is an ASan/LeakSanitizer proof (global constraint:
+  "same allocations freed, same order, no double-free, no leak").
+
+---
+
+## 7. Proposed T3+ task sizing (coordinator input)
+
+Derived from the greenlit set (§4). Each conversion task runs the dual local gate
++ macOS ASan gate (global constraints); output-visible ones get byte-pins that
+pass against unchanged source first.
+
+| Task | Scope | Risk tier | Depends on |
+|---|---|---|---|
+| **T3** | `skills` + `knowledge` → `std::vector<byte>` (see §4 for why `vector` over `array`). PC-only, unaliased, unconditional free. Preserve JSON/text save-load wire format. **DONE.** | **Low — CONVERTED** | T1 (this doc) |
+| **T4** | `specials.alias` list → owned `std::unique_ptr`/vector model. Preserve `MAX_ALIAS`/20-byte-keyword quirks. **DONE** (conservative RAII wrapper, not a node/container rewrite — see task-4-report.md). | **Medium — CONVERTED** | T1 |
+| **T5** | Decouple special-mob overload of `poofIn`/`poofOut`/`union1`/`union2` (the `SPECIAL_LIST_AREA` reuse) into typed fields, THEN convert the PC `poofIn`/`poofOut` to `std::string`. Also address the `union1.prog_number`/`union2.prog_point` leak (§2c) here. **DONE** — T5a (decouple onto `special_stack`/`special_list_area`/`special_prog_number`/`special_prog_point`, §2c leak fixed) + T5b (`std::string`). See task-5-report.md. | **High — CONVERTED** | T1 |
+| **T6** | `free_char` teardown-symmetry fix (explicit `~char_data()` before free) + `unique_ptr<char_data, free_char_deleter>` factory. ASan/Leak proof. **DONE** — T6a (symmetric dtor in `free_char`) + T6b (`char_data_ptr`/`make_char_data`, clean-scope sites converted). See §6 and task-6-report.md. | **High — CONVERTED** | T3, T4, T5 (must destroy whatever they converted) |
+| **T7 (optional / gated on T2)** | Only if the owner funds option (b): interned/shared immutable prototype strings for the 11 CONDITIONAL fields. Separately scoped, characterization-heavy. | **Very High** | T2 ruling |
+| **(No task)** | The NON-OWNING world graph — explicitly out of scope, stays raw forever. | — | — |
+
+Recommended per-wave contents (if T2 ratifies KEEP-RAW-CONDITIONAL): **T3, T4, T5,
+T6.** T7 only if the owner elects to model sharing.
+
+---
+
+## 8. UNRESOLVED
+
+Nothing blocks the classifications above from source. Two items are flagged as
+resolved-but-worth-owner-visibility rather than unresolved:
+
+- `specials.union1.prog_number` / `specials.union2.prog_point` — **RESOLVED by
+  RAII T5a.** These were confirmed OWNING special-mob allocations that `free_char`
+  could not free because each aliased a PC field in the same union (`reply_ptr` /
+  `reply_number`). T5a moved them to dedicated typed fields `special_prog_number`
+  / `special_prog_point`, which `free_char` now unconditionally `RELEASE`'s
+  (null-safe) — the leak is fixed. The `union1`/`union2` unions are now
+  single-member (`reply_ptr` / `reply_number` only).
+- `specials.script_info` / `obj_flags.script_info` (`info_script*`) — classified
+  NON-OWNING because no per-instance free exists anywhere (`db.cpp:3639,3665` only
+  null them). If a future reader believes the script subsystem transfers ownership
+  to the instance, that would need confirmation in the script-loading code
+  (`protos.h`/script tables) — but nothing on the char/obj teardown path frees it,
+  so for THIS audit's purpose (what `free_char`/`free_obj` may convert) it is
+  correctly HOLD-RAW.

@@ -54,8 +54,6 @@ struct OlogHaiTestContext {
     char_data extra_target{};
     char_data mount{};
     char_prof_data profs{};
-    byte skills[MAX_SKILLS]{};
-    byte knowledge[MAX_SKILLS]{};
     affected_type frenzy{};
     room_data room{};
     obj_data weapon{};
@@ -80,8 +78,11 @@ struct OlogHaiTestContext {
         }
 
         attacker.profs = &profs;
-        attacker.skills = skills;
-        attacker.knowledge = knowledge;
+        // attacker.skills/attacker.knowledge are owning std::vector<byte>
+        // (RAII T3); size them to MAX_SKILLS zeros the same way clear_char()
+        // would for a PC, since this fixture never calls clear_char().
+        attacker.skills.assign(MAX_SKILLS, 0);
+        attacker.knowledge.assign(MAX_SKILLS, 0);
         attacker.in_room = 7;
         // Zero-initialized position is POSITION_DEAD, and CAN_SEE() reports
         // blindness for anyone at or below POSITION_SLEEPING — stand everyone
@@ -197,7 +198,7 @@ TEST_F(OlogHaiProcTest, ComputesProbSkillFromStatsAndRandomRoll) {
     context.attacker.player.level = 20;
     context.original_victim.specials2.act = MOB_ISNPC;
     context.original_victim.player.level = 20;
-    context.knowledge[SKILL_SMASH] = 70;
+    context.attacker.knowledge[SKILL_SMASH] = 70;
 
     push_test_random_value(0.0);
     EXPECT_EQ(olog_hai::get_prob_skill(&context.attacker, &context.original_victim, SKILL_SMASH), -50)
@@ -211,7 +212,7 @@ TEST_F(OlogHaiProcTest, ComputesProbSkillFromStatsAndRandomRoll) {
 TEST(OlogHaiHelpers, RejectsSkillUseForNonOlogHaiCharacters) {
     OlogHaiTestContext context;
     context.attacker.player.race = RACE_HUMAN;
-    context.knowledge[SKILL_SMASH] = 50;
+    context.attacker.knowledge[SKILL_SMASH] = 50;
 
     EXPECT_FALSE(olog_hai::is_skill_valid(&context.attacker, SKILL_SMASH))
         << "Expected olog-hai skills to stay unavailable to other races.";
@@ -219,7 +220,7 @@ TEST(OlogHaiHelpers, RejectsSkillUseForNonOlogHaiCharacters) {
 
 TEST(OlogHaiHelpers, RejectsSkillUseForShadowCharacters) {
     OlogHaiTestContext context;
-    context.knowledge[SKILL_SMASH] = 50;
+    context.attacker.knowledge[SKILL_SMASH] = 50;
     context.attacker.specials2.act = PLR_ISSHADOW;
 
     EXPECT_FALSE(olog_hai::is_skill_valid(&context.attacker, SKILL_SMASH))
@@ -228,7 +229,7 @@ TEST(OlogHaiHelpers, RejectsSkillUseForShadowCharacters) {
 
 TEST(OlogHaiHelpers, RejectsSkillUseInPeaceRooms) {
     OlogHaiTestContext context;
-    context.knowledge[SKILL_SMASH] = 50;
+    context.attacker.knowledge[SKILL_SMASH] = 50;
     world[context.attacker.in_room].room_flags = PEACEROOM;
 
     EXPECT_FALSE(olog_hai::is_skill_valid(&context.attacker, SKILL_SMASH))
@@ -237,7 +238,7 @@ TEST(OlogHaiHelpers, RejectsSkillUseInPeaceRooms) {
 
 TEST(OlogHaiHelpers, RejectsSkillUseWhenSkillIsUntrained) {
     OlogHaiTestContext context;
-    context.knowledge[SKILL_SMASH] = 0;
+    context.attacker.knowledge[SKILL_SMASH] = 0;
 
     EXPECT_FALSE(olog_hai::is_skill_valid(&context.attacker, SKILL_SMASH))
         << "Expected skill validation to fail when the character has not learned the requested skill.";
@@ -245,7 +246,7 @@ TEST(OlogHaiHelpers, RejectsSkillUseWhenSkillIsUntrained) {
 
 TEST(OlogHaiHelpers, RejectsSkillUseWithoutWeaponEquipped) {
     OlogHaiTestContext context;
-    context.knowledge[SKILL_SMASH] = 50;
+    context.attacker.knowledge[SKILL_SMASH] = 50;
     context.attacker.equipment[WIELD] = nullptr;
 
     EXPECT_FALSE(olog_hai::is_skill_valid(&context.attacker, SKILL_SMASH))
@@ -254,7 +255,7 @@ TEST(OlogHaiHelpers, RejectsSkillUseWithoutWeaponEquipped) {
 
 TEST(OlogHaiHelpers, AcceptsSkillUseWhenAllValidationChecksPass) {
     OlogHaiTestContext context;
-    context.knowledge[SKILL_SMASH] = 50;
+    context.attacker.knowledge[SKILL_SMASH] = 50;
 
     EXPECT_TRUE(olog_hai::is_skill_valid(&context.attacker, SKILL_SMASH))
         << "Expected a trained olog-hai with a weapon in a non-peaceful room to pass skill validation.";

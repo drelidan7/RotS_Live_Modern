@@ -249,30 +249,26 @@ struct ScopedSunlight {
 // exits configured -- covers do_exits's "no exits" branch and do_search's
 // "no passage" replies (both only need ch->in_room to resolve to a real
 // room, not NOWHERE, which SoloCharacterContext-style fixtures leave unset).
-// A local `knowledge` array is wired up so do_search's GET_SKILL(ch,
-// SKILL_SEARCH) lookup (utils.h) reads real bytes instead of the
-// `ch->knowledge == nullptr` fallback (utils.h's 80-and-no-confuse-modifier
-// default), matching char_utils_tests.cpp's convention for setting a
-// deterministic skill value.
+// clear_char(&character, MOB_VOID) sizes character.knowledge to MAX_SKILLS
+// zeros (mode != MOB_ISNPC), so do_search's GET_SKILL(ch, SKILL_SEARCH)
+// lookup (utils.h) reads real bytes instead of the empty-vector 80-and-no-
+// confuse-modifier fallback; tests set a deterministic value directly on
+// character.knowledge, matching char_utils_tests.cpp's convention.
 struct RoomCharacterContext {
     ScopedTestWorld test_world;
     char_data character {};
     descriptor_data descriptor {};
-    byte knowledge[MAX_SKILLS] {};
     char_data* original_people = nullptr;
-    // Releases character.profs/skills (clear_char() heap allocations) when
-    // this context goes out of scope (Phase 5 T6 leak sweep); character's
-    // OWN knowledge allocation is released right after clear_char() below,
-    // before it gets overwritten with the stack `knowledge` array above, so
-    // the destructor's RELEASE(character.knowledge) is then a no-op on the
-    // (non-owned) stack pointer.
+    // Releases character.profs (clear_char() heap allocation) when this
+    // context goes out of scope (Phase 5 T6 leak sweep); character.skills/
+    // character.knowledge are owning std::vector<byte> members (RAII T3) that
+    // release themselves automatically when `character` goes out of scope.
     ScopedClearCharFields character_cleanup { character };
     ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
 
     RoomCharacterContext()
     {
         clear_char(&character, MOB_VOID);
-        character_cleanup.release_knowledge_now();
         reset_capturing_descriptor(descriptor, &character);
         // do_look (and, transitively, do_read/do_examine) bails out at its
         // very first line unless ch->desc->descriptor is non-zero (a real
@@ -281,7 +277,6 @@ struct RoomCharacterContext {
         // it), so this chunk's own fixtures must, same as
         // interpre_account_menu_tests.cpp's descriptor fixtures do.
         descriptor.descriptor = 7;
-        character.knowledge = knowledge;
 
         original_people = test_world.room().people;
         character.in_room = 0;
@@ -313,7 +308,6 @@ struct RoomWithExitContext {
     char_data character {};
     descriptor_data descriptor {};
     room_direction_data exit {};
-    byte knowledge[MAX_SKILLS] {};
     char_data* original_people = nullptr;
     // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
     // leak sweep).
@@ -323,11 +317,9 @@ struct RoomWithExitContext {
     RoomWithExitContext()
     {
         clear_char(&character, MOB_VOID);
-        character_cleanup.release_knowledge_now();
         reset_capturing_descriptor(descriptor, &character);
         // See RoomCharacterContext's comment: do_look requires a non-zero fd.
         descriptor.descriptor = 7;
-        character.knowledge = knowledge;
 
         original_people = test_world.room().people;
         character.in_room = 0;
@@ -379,7 +371,6 @@ struct TwoRoomLookContext {
     char_data character {};
     descriptor_data descriptor {};
     room_direction_data exit {};
-    byte knowledge[MAX_SKILLS] {};
     char_data* original_people = nullptr;
     // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
     // leak sweep).
@@ -389,11 +380,9 @@ struct TwoRoomLookContext {
     TwoRoomLookContext()
     {
         clear_char(&character, MOB_VOID);
-        character_cleanup.release_knowledge_now();
         reset_capturing_descriptor(descriptor, &character);
         // See RoomCharacterContext's comment: do_look requires a non-zero fd.
         descriptor.descriptor = 7;
-        character.knowledge = knowledge;
 
         original_people = test_world.room().people;
         character.in_room = 0;
@@ -435,11 +424,9 @@ struct RoomWithBystanderContext {
     char_data bystander {};
     descriptor_data actor_descriptor {};
     descriptor_data bystander_descriptor {};
-    byte knowledge[MAX_SKILLS] {};
     char_data* original_people = nullptr;
     // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
-    // leak sweep); `bystander` never overwrites its knowledge pointer, so
-    // its guard releases all three clear_char() fields at scope exit as-is.
+    // leak sweep).
     ScopedClearCharFields actor_cleanup { actor };
     ScopedClearCharFields bystander_cleanup { bystander };
     ScopedDescriptorLargeOutbufReturn actor_descriptor_large_outbuf_cleanup { actor_descriptor };
@@ -449,12 +436,10 @@ struct RoomWithBystanderContext {
     {
         clear_char(&actor, MOB_VOID);
         clear_char(&bystander, MOB_VOID);
-        actor_cleanup.release_knowledge_now();
         reset_capturing_descriptor(actor_descriptor, &actor);
         reset_capturing_descriptor(bystander_descriptor, &bystander);
         actor_descriptor.descriptor = 7;
         bystander_descriptor.descriptor = 7;
-        actor.knowledge = knowledge;
 
         original_people = test_world.room().people;
         actor.in_room = 0;
@@ -870,7 +855,7 @@ TEST(ActInfoPerception, DoExitsSendsNoneLineWhenNoExitsConfigured)
 TEST(ActInfoPerception, DoSearchCase1FormatsNoPassageMessageWhenExitMissing)
 {
     RoomCharacterContext context;
-    context.knowledge[SKILL_SEARCH] = 200;
+    context.character.knowledge[SKILL_SEARCH] = 200;
 
     waiting_type wtl {};
     wtl.flg = 0; // NORTH
@@ -886,7 +871,7 @@ TEST(ActInfoPerception, DoSearchCase1FormatsNoPassageMessageWhenExitMissing)
 TEST(ActInfoPerception, DoSearchCase1FormatsFoundKeywordMessageWithApostrophe)
 {
     RoomWithExitContext context;
-    context.knowledge[SKILL_SEARCH] = 200;
+    context.character.knowledge[SKILL_SEARCH] = 200;
     context.exit.keyword = const_cast<char*>("O'Rourke's Gate");
     context.exit.exit_info = EX_ISDOOR;
 
@@ -903,7 +888,7 @@ TEST(ActInfoPerception, DoSearchCase1FormatsFoundKeywordMessageWithApostrophe)
 TEST(ActInfoPerception, DoSearchCase1FormatsUnnamedExitMessageWhenKeywordIsNull)
 {
     RoomWithExitContext context;
-    context.knowledge[SKILL_SEARCH] = 200;
+    context.character.knowledge[SKILL_SEARCH] = 200;
     ASSERT_EQ(context.exit.keyword, nullptr);
     context.exit.exit_info = EX_ISDOOR;
 
@@ -926,7 +911,7 @@ TEST(ActInfoPerception, DoSearchCase1FormatsUnnamedExitMessageWhenKeywordIsNull)
 TEST(ActInfoPerception, DoSearchCase1SendsSearchAnnouncementToRoomBystander)
 {
     RoomWithBystanderContext context;
-    context.knowledge[SKILL_SEARCH] = 200;
+    context.actor.knowledge[SKILL_SEARCH] = 200;
 
     waiting_type wtl {};
     wtl.flg = 0; // NORTH
@@ -1204,7 +1189,6 @@ struct DisplayClusterContext {
     char_data target {};
     descriptor_data viewer_descriptor {};
     descriptor_data target_descriptor {};
-    byte knowledge[MAX_SKILLS] {};
     char_data* original_people = nullptr;
     // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
     // leak sweep).
@@ -1216,12 +1200,10 @@ struct DisplayClusterContext {
     {
         clear_char(&viewer, MOB_VOID);
         clear_char(&target, MOB_VOID);
-        viewer_cleanup.release_knowledge_now();
         reset_capturing_descriptor(viewer_descriptor, &viewer);
         reset_capturing_descriptor(target_descriptor, &target);
         viewer_descriptor.descriptor = 7;
         target_descriptor.descriptor = 7;
-        viewer.knowledge = knowledge;
 
         original_people = test_world.room().people;
         viewer.in_room = 0;
@@ -1290,7 +1272,6 @@ struct ExitMarkTwoRoomContext {
     char_data character {};
     descriptor_data descriptor {};
     room_direction_data exit {};
-    byte knowledge[MAX_SKILLS] {};
     char_data* original_people = nullptr;
     // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
     // leak sweep).
@@ -1300,11 +1281,9 @@ struct ExitMarkTwoRoomContext {
     ExitMarkTwoRoomContext()
     {
         clear_char(&character, MOB_VOID);
-        character_cleanup.release_knowledge_now();
         reset_capturing_descriptor(descriptor, &character);
         // See RoomCharacterContext's comment: do_look requires a non-zero fd.
         descriptor.descriptor = 7;
-        character.knowledge = knowledge;
 
         original_people = test_world.room().people;
         character.in_room = 0;

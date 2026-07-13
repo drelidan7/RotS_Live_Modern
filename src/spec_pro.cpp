@@ -126,7 +126,7 @@ void recalc_skills(struct char_data* ch)
 {
 
     int skill_no, pracs_used, tmps, tmp, difficulty, skill_level;
-    if (!ch->knowledge || !ch->skills)
+    if (ch->knowledge.empty() || ch->skills.empty())
         return;
 
     for (skill_no = 1; skill_no < MAX_SKILLS; skill_no++) {
@@ -248,7 +248,7 @@ SPECIAL(guild) {
     if (GET_POS(ch) < POSITION_STANDING)
         return FALSE;
 
-    if (!ch->skills || !ch->knowledge) {
+    if (ch->skills.empty() || ch->knowledge.empty()) {
         send_to_char("You are dumb as a mob. Go away.\n\r", ch);
         return TRUE;
     }
@@ -382,7 +382,7 @@ ACMD(do_practice)
     char str2[30];
 
     send_to_char(std::format("You have {} practice sessions left\n\r", ch->specials2.spells_to_learn).c_str(), ch);
-    if (!ch->skills || !ch->knowledge) {
+    if (ch->skills.empty() || ch->knowledge.empty()) {
         send_to_char("But you don't have skill memory anyway.\n\r", ch);
         return;
     }
@@ -452,7 +452,7 @@ ACMD(do_pracreset)
         send_to_char("No such person.\n\r", ch);
         return;
     }
-    if (IS_NPC(vict) || !vict->knowledge || !vict->skills) {
+    if (IS_NPC(vict) || vict->knowledge.empty() || vict->skills.empty()) {
         send_to_char("This person cannot learn anything, don't bother yourself.\n\r", ch);
         return;
     }

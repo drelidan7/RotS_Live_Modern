@@ -5,27 +5,23 @@
 #include "../utils.h"
 
 // clear_char() (db.cpp) heap-allocates ch->profs (always, via CREATE1) and,
-// when mode != MOB_ISNPC, also ch->skills and ch->knowledge (via CREATE(),
-// which wraps create_function()/calloc). Production code always eventually
-// calls free_char() (db.cpp), which releases those same three fields via the
-// RELEASE() macro (utils.h) before freeing the char_data itself.
+// when mode != MOB_ISNPC, sizes ch->skills/ch->knowledge to MAX_SKILLS.
+// ch->skills/ch->knowledge are owning std::vector<byte> members (RAII T3;
+// were CREATE()/RELEASE()'d byte* before) -- their own destructors release
+// their heap buffers automatically whenever the enclosing char_data goes out
+// of scope, so a stack-allocated test fixture that never calls free_char()
+// no longer leaks them (nothing left for this guard to do for those two
+// fields). ch->profs is still a raw pointer (CONDITIONAL per the RAII audit's
+// T2 ruling -- prototype-shared for NPCs, out of scope for conversion), so
+// production code still frees it explicitly via free_char()'s RELEASE()
+// macro (utils.h), and this guard still exists to do the same at scope exit
+// for fixtures that can't call free_char() on a stack object (its RELEASE(ch)
+// would free() a stack address).
 //
-// Test fixtures instead call clear_char() directly on an already
-// stack-allocated char_data (documented as safe by clear_char()'s own
-// comment: its placement-new has nothing live to leak/double-free on a fresh
-// stack object). But they can't call free_char() on that object -- its
-// RELEASE(ch) would free() a stack address -- so without this guard,
-// ch->profs/skills/knowledge leak on every such test (LeakSanitizer, Phase 5
-// T6 sweep).
-//
-// Usage: construct immediately after clear_char(&ch, mode). If the fixture
-// is about to overwrite ch.knowledge with a non-owned pointer (e.g. a local
-// byte[MAX_SKILLS] array, a common pattern in this test suite), call
-// release_knowledge_now() first so the heap allocation clear_char() gave it
-// isn't orphaned by the overwrite instead of released.
+// Usage: construct immediately after clear_char(&ch, mode).
 struct ScopedClearCharFields {
-    // The char_data whose clear_char()-allocated fields this guard owns the
-    // release of; never the object itself (that stays stack-owned by the
+    // The char_data whose clear_char()-allocated ch->profs this guard owns
+    // the release of; never the object itself (that stays stack-owned by the
     // caller).
     char_data& ch;
 
@@ -37,26 +33,13 @@ struct ScopedClearCharFields {
     ScopedClearCharFields(const ScopedClearCharFields&) = delete;
     ScopedClearCharFields& operator=(const ScopedClearCharFields&) = delete;
 
-    // Releases ch.knowledge right away, before a later assignment replaces
-    // the pointer with one this guard doesn't own (else clear_char()'s
-    // allocation is orphaned at that assignment -- leaked either way, but
-    // NOT calling this first would otherwise leave the destructor below
-    // RELEASE()-ing, i.e. free()-ing, whatever non-owned pointer (e.g. a
-    // stack array) the fixture later assigned into ch.knowledge -- a
-    // heap-corruption bug, not just a leak). Sets m_knowledge_released so
-    // the destructor skips its own RELEASE(ch.knowledge) afterward.
-    void release_knowledge_now()
-    {
-        RELEASE(ch.knowledge);
-        m_knowledge_released = true;
-    }
-
-    // Same idea as release_knowledge_now(), for ch.profs -- some fixtures
-    // (e.g. act_wiz_format_tests.cpp's PcTargetContext) overwrite
-    // character.profs with the address of a stack char_prof_data member
-    // right after clear_char(), which would otherwise both leak the heap
-    // allocation AND, without this guard, have the destructor free() the
-    // stack member's address.
+    // Releases ch.profs right away -- some fixtures (e.g.
+    // act_wiz_format_tests.cpp's PcTargetContext) overwrite character.profs
+    // with the address of a stack char_prof_data member right after
+    // clear_char(), which would otherwise both leak the heap allocation AND,
+    // without this guard, have the destructor free() the stack member's
+    // address. Sets m_profs_released so the destructor skips its own
+    // RELEASE(ch.profs) afterward.
     void release_profs_now()
     {
         RELEASE(ch.profs);
@@ -67,17 +50,12 @@ struct ScopedClearCharFields {
     {
         if (!m_profs_released)
             RELEASE(ch.profs);
-        RELEASE(ch.skills);
-        if (!m_knowledge_released)
-            RELEASE(ch.knowledge);
     }
 
 private:
-    // Set by release_knowledge_now()/release_profs_now() once the
-    // corresponding field has already been released (and possibly
-    // overwritten with a non-owned pointer by the caller) -- guards the
-    // destructor against releasing that pointer too.
-    bool m_knowledge_released = false;
+    // Set by release_profs_now() once ch.profs has already been released
+    // (and possibly overwritten with a non-owned pointer by the caller) --
+    // guards the destructor against releasing that pointer too.
     bool m_profs_released = false;
 };
 

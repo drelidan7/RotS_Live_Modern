@@ -30,18 +30,18 @@
 #include <unistd.h>
 #endif
 
-extern struct player_index_element* player_table;
+extern struct player_index_element *player_table;
 extern struct room_data world;
-extern struct index_data* obj_index;
-extern struct obj_data* obj_proto;
-extern struct obj_data* object_list;
+extern struct index_data *obj_index;
+extern struct obj_data *obj_proto;
+extern struct obj_data *object_list;
 extern int top_of_p_table;
 extern int top_of_world;
 extern int top_of_objt;
 void build_player_index(void);
-void clear_char(struct char_data* ch, int mode);
-void save_player(struct char_data* ch, int load_room, int index_pos);
-void store_to_char(struct char_file_u* st, struct char_data* ch);
+void clear_char(struct char_data *ch, int mode);
+void save_player(struct char_data *ch, int load_room, int index_pos);
+void store_to_char(struct char_file_u *st, struct char_data *ch);
 
 namespace {
 
@@ -54,17 +54,15 @@ namespace {
 // entirely: staging just forwards an already-decoded ObjectSaveData, so this
 // helper (renamed from stage_legacy_object_bytes_for_character) no longer
 // needs a binary decode step of its own either.
-void stage_object_data_for_character(const char_data* character, const objects_json::ObjectSaveData& data)
-{
+void stage_object_data_for_character(const char_data *character,
+                                     const objects_json::ObjectSaveData &data) {
     stage_account_backed_object_data_for_character(character, data);
 }
 
 class ScopedPlayerTableEntry {
-public:
-    explicit ScopedPlayerTableEntry(const char* name = "aragorn")
-        : m_previous_player_table(player_table)
-        , m_previous_top_of_p_table(top_of_p_table)
-    {
+  public:
+    explicit ScopedPlayerTableEntry(const char *name = "aragorn")
+        : m_previous_player_table(player_table), m_previous_top_of_p_table(top_of_p_table) {
         // CREATE(), not `new[]` -- some of this fixture's tests exercise
         // migration/hydration paths that call db.cpp's inc_p_table() to grow
         // the table for a second entry, which does
@@ -82,8 +80,7 @@ public:
         player_table[0].idnum = 1234;
     }
 
-    ~ScopedPlayerTableEntry()
-    {
+    ~ScopedPlayerTableEntry() {
         // Releases every entry's .name (not just index 0 -- migration/
         // hydration paths can grow the table past the seeded entry via
         // create_entry()/inc_p_table(), Phase 5 T6 leak sweep) plus the
@@ -99,24 +96,22 @@ public:
         top_of_p_table = m_previous_top_of_p_table;
     }
 
-private:
-    player_index_element* m_previous_player_table;
+  private:
+    player_index_element *m_previous_player_table;
     int m_previous_top_of_p_table;
 };
 
 class TemporaryDirectory {
-public:
-    TemporaryDirectory()
-    {
+  public:
+    TemporaryDirectory() {
         char path_template[] = "/tmp/rots-db-loader-XXXXXX";
-        char* created_path = rots_mkdtemp(path_template);
+        char *created_path = rots_mkdtemp(path_template);
         EXPECT_NE(created_path, nullptr);
         if (created_path)
             m_path = created_path;
     }
 
-    ~TemporaryDirectory()
-    {
+    ~TemporaryDirectory() {
         if (!m_path.empty()) {
             // std::filesystem::remove_all, not system("rm -rf ..."): portable to
             // Windows (cmd.exe has no rm), and already the pattern
@@ -126,15 +121,14 @@ public:
         }
     }
 
-    const std::string& path() const { return m_path; }
+    const std::string &path() const { return m_path; }
 
-private:
+  private:
     std::string m_path;
 };
 
-std::string read_file_contents(const std::string& path)
-{
-    FILE* file = std::fopen(path.c_str(), "rb");
+std::string read_file_contents(const std::string &path) {
+    FILE *file = std::fopen(path.c_str(), "rb");
     EXPECT_NE(file, nullptr);
     if (file == nullptr)
         return "";
@@ -155,8 +149,7 @@ std::string read_file_contents(const std::string& path)
     return contents;
 }
 
-std::string replace_once(std::string text, const std::string& from, const std::string& to)
-{
+std::string replace_once(std::string text, const std::string &from, const std::string &to) {
     const size_t position = text.find(from);
     if (position == std::string::npos)
         return text;
@@ -164,9 +157,12 @@ std::string replace_once(std::string text, const std::string& from, const std::s
     return text;
 }
 
-std::string rooted_account_json_path(const std::string& root_directory, const std::string& normalized_email)
-{
-    const char first = normalized_email.empty() ? 'A' : static_cast<char>(std::toupper(static_cast<unsigned char>(normalized_email[0])));
+std::string rooted_account_json_path(const std::string &root_directory,
+                                     const std::string &normalized_email) {
+    const char first =
+        normalized_email.empty()
+            ? 'A'
+            : static_cast<char>(std::toupper(static_cast<unsigned char>(normalized_email[0])));
     std::string bucket = "U-Z";
     if (first >= 'A' && first <= 'E')
         bucket = "A-E";
@@ -180,22 +176,21 @@ std::string rooted_account_json_path(const std::string& root_directory, const st
 }
 
 class ScopedWorkingDirectory {
-public:
+  public:
     // std::filesystem::current_path() is both the getter and (with a path argument)
     // the setter -- a direct, portable stand-in for the getcwd()/chdir() pair (Phase 3
     // Task 5/6: POSIX-ism cleanup for MSVC bring-up).
-    explicit ScopedWorkingDirectory(const std::string& path)
-    {
+    explicit ScopedWorkingDirectory(const std::string &path) {
         std::error_code ec;
         m_original_path = std::filesystem::current_path(ec);
-        EXPECT_FALSE(ec) << "Expected current_path() to report this test process's working directory.";
+        EXPECT_FALSE(ec)
+            << "Expected current_path() to report this test process's working directory.";
 
         std::filesystem::current_path(path, ec);
         EXPECT_FALSE(ec) << "Expected current_path(" << path << ") to succeed.";
     }
 
-    ~ScopedWorkingDirectory()
-    {
+    ~ScopedWorkingDirectory() {
         if (!m_original_path.empty()) {
             std::error_code ec;
             std::filesystem::current_path(m_original_path, ec);
@@ -203,15 +198,13 @@ public:
         }
     }
 
-private:
+  private:
     std::filesystem::path m_original_path;
 };
 
 class ScopedStderrRedirect {
-public:
-    explicit ScopedStderrRedirect(const std::string& path)
-        : m_path(path)
-    {
+  public:
+    explicit ScopedStderrRedirect(const std::string &path) : m_path(path) {
         m_original_stderr_fd = rots_dup(STDERR_FILENO);
         EXPECT_GE(m_original_stderr_fd, 0);
 
@@ -222,8 +215,7 @@ public:
         }
     }
 
-    ~ScopedStderrRedirect()
-    {
+    ~ScopedStderrRedirect() {
         if (m_original_stderr_fd >= 0) {
             fflush(stderr);
             EXPECT_GE(rots_dup2(m_original_stderr_fd, STDERR_FILENO), 0);
@@ -233,24 +225,23 @@ public:
             rots_close_fd(m_redirect_fd);
     }
 
-    std::string read_contents() const
-    {
+    std::string read_contents() const {
         fflush(stderr);
         return read_file_contents(m_path);
     }
 
-private:
+  private:
     std::string m_path;
     int m_original_stderr_fd = -1;
     int m_redirect_fd = -1;
 };
 
-char_file_u make_stored_character(const char* name = "aragorn")
-{
-    char_file_u stored_character {};
+char_file_u make_stored_character(const char *name = "aragorn") {
+    char_file_u stored_character{};
     std::snprintf(stored_character.name, sizeof(stored_character.name), "%s", name);
     std::snprintf(stored_character.title, sizeof(stored_character.title), "%s", "the Ranger");
-    std::snprintf(stored_character.description, sizeof(stored_character.description), "%s", "A ranger from the north.");
+    std::snprintf(stored_character.description, sizeof(stored_character.description), "%s",
+                  "A ranger from the north.");
     stored_character.sex = SEX_MALE;
     stored_character.race = RACE_HUMAN;
     stored_character.bodytype = 1;
@@ -290,17 +281,14 @@ char_file_u make_stored_character(const char* name = "aragorn")
 }
 
 class ScopedPlayerTableReset {
-public:
+  public:
     ScopedPlayerTableReset()
-        : m_previous_player_table(player_table)
-        , m_previous_top_of_p_table(top_of_p_table)
-    {
+        : m_previous_player_table(player_table), m_previous_top_of_p_table(top_of_p_table) {
         player_table = nullptr;
         top_of_p_table = -1;
     }
 
-    ~ScopedPlayerTableReset()
-    {
+    ~ScopedPlayerTableReset() {
         if (player_table != nullptr) {
             for (int index = 0; index <= top_of_p_table; ++index)
                 RELEASE(player_table[index].name);
@@ -311,30 +299,27 @@ public:
         top_of_p_table = m_previous_top_of_p_table;
     }
 
-private:
-    player_index_element* m_previous_player_table;
+  private:
+    player_index_element *m_previous_player_table;
     int m_previous_top_of_p_table;
 };
 
 class ScopedObjectPrototypeTable {
-public:
+  public:
     ScopedObjectPrototypeTable()
-        : m_previous_obj_index(obj_index)
-        , m_previous_obj_proto(obj_proto)
-        , m_previous_top_of_objt(top_of_objt)
-        , m_previous_object_list(object_list)
-    {
-        obj_index = new index_data[2] {};
-        obj_proto = new obj_data[2] {};
+        : m_previous_obj_index(obj_index), m_previous_obj_proto(obj_proto),
+          m_previous_top_of_objt(top_of_objt), m_previous_object_list(object_list) {
+        obj_index = new index_data[2]{};
+        obj_proto = new obj_data[2]{};
         top_of_objt = 1;
         object_list = nullptr;
 
         initialize_prototype(0, 1001, "steel-helm", "a steel helm", ITEM_ARMOR, WEAR_HEAD, 7, 15);
-        initialize_prototype(1, 1002, "travel-pack", "a travel pack", ITEM_CONTAINER, ITEM_TAKE, 4, 5);
+        initialize_prototype(1, 1002, "travel-pack", "a travel pack", ITEM_CONTAINER, ITEM_TAKE, 4,
+                             5);
     }
 
-    ~ScopedObjectPrototypeTable()
-    {
+    ~ScopedObjectPrototypeTable() {
         // free_obj() (db.cpp), not `delete` -- object_list's nodes come from
         // read_object() (create_function()-based, i.e. calloc), matching
         // production's own object lifecycle; free_obj() also releases the
@@ -343,7 +328,7 @@ public:
         // family mismatch AND leaked those inner fields (Phase 5 T6 ASan
         // alloc-dealloc-mismatch fix).
         while (object_list != nullptr) {
-            obj_data* next = object_list->next;
+            obj_data *next = object_list->next;
             free_obj(object_list);
             object_list = next;
         }
@@ -366,9 +351,9 @@ public:
         object_list = m_previous_object_list;
     }
 
-private:
-    void initialize_prototype(int index, int virt, const char* name, const char* short_description, int type_flag, long wear_flags, int weight, int value_two)
-    {
+  private:
+    void initialize_prototype(int index, int virt, const char *name, const char *short_description,
+                              int type_flag, long wear_flags, int weight, int value_two) {
         obj_index[index].virt = virt;
         obj_index[index].number = 0;
         obj_index[index].func = 0;
@@ -385,15 +370,14 @@ private:
         obj_proto[index].obj_flags.value[2] = value_two;
     }
 
-    index_data* m_previous_obj_index;
-    obj_data* m_previous_obj_proto;
+    index_data *m_previous_obj_index;
+    obj_data *m_previous_obj_proto;
     int m_previous_top_of_objt;
-    obj_data* m_previous_object_list;
+    obj_data *m_previous_object_list;
 };
 
-void write_file(const std::string& path, const std::string& contents)
-{
-    FILE* file = fopen(path.c_str(), "wb");
+void write_file(const std::string &path, const std::string &contents) {
+    FILE *file = fopen(path.c_str(), "wb");
     ASSERT_NE(file, nullptr);
     ASSERT_EQ(fwrite(contents.data(), sizeof(char), contents.size(), file), contents.size());
     ASSERT_EQ(fclose(file), 0);
@@ -402,8 +386,7 @@ void write_file(const std::string& path, const std::string& contents)
 // Count files in dir whose names begin with "<base_name>." (dot-anchored, matching
 // save_player's versioned-file naming convention). Uses std::filesystem::directory_iterator
 // for consistency with finalize_player_file_rename's rename-then-enumerate behavior.
-int count_versioned_files_for(const std::string& dir, const std::string& base_name)
-{
+int count_versioned_files_for(const std::string &dir, const std::string &base_name) {
     namespace fs = std::filesystem;
     std::error_code ec;
     fs::directory_iterator it(dir, ec);
@@ -429,13 +412,14 @@ int count_versioned_files_for(const std::string& dir, const std::string& base_na
     return count;
 }
 
-std::string write_valid_legacy_player_file(const std::string& root_directory, const char_file_u& stored_character, const std::string& destination_path = "")
-{
+std::string write_valid_legacy_player_file(const std::string &root_directory,
+                                           const char_file_u &stored_character,
+                                           const std::string &destination_path = "") {
     ScopedWorkingDirectory working_directory(root_directory);
-    player_index_element* previous_player_table = player_table;
+    player_index_element *previous_player_table = player_table;
     const int previous_top_of_p_table = top_of_p_table;
 
-    player_table = new player_index_element[1] {};
+    player_table = new player_index_element[1]{};
     top_of_p_table = 0;
     player_table[0].name = strdup(stored_character.name);
 
@@ -449,14 +433,14 @@ std::string write_valid_legacy_player_file(const std::string& root_directory, co
     // match free_char()'s free()-based deallocation below (Phase 5 T6
     // alloc-dealloc-mismatch fix; see account_management_tests.cpp's
     // identical fix for the full rationale).
-    char_data* character;
+    char_data *character;
     CREATE1(character, char_data);
     clear_char(character, MOB_VOID);
 
     char_file_u mutable_store = stored_character;
     store_to_char(&mutable_store, character);
 
-    descriptor_data descriptor {};
+    descriptor_data descriptor{};
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "LegacyPw1");
     std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "test-host");
     character->desc = &descriptor;
@@ -471,14 +455,17 @@ std::string write_valid_legacy_player_file(const std::string& root_directory, co
         if (slash != std::string::npos) {
             const std::string bucket_dir = generated_path.substr(0, slash);
             std::string base_lower = stored_character.name;
-            for (char& c : base_lower)
+            for (char &c : base_lower)
                 c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
             EXPECT_EQ(count_versioned_files_for(bucket_dir, base_lower), 1);
         }
     }
 
     const std::string player_text = read_file_contents(generated_path);
-    const std::string final_path = destination_path.empty() ? account::legacy_player_file_path(root_directory, stored_character.name) : destination_path;
+    const std::string final_path =
+        destination_path.empty()
+            ? account::legacy_player_file_path(root_directory, stored_character.name)
+            : destination_path;
     write_file(final_path, player_text);
     if (generated_path != final_path)
         std::remove(generated_path.c_str());
@@ -506,14 +493,13 @@ std::string write_valid_legacy_player_file(const std::string& root_directory, co
     return player_text;
 }
 
-std::string serialize_record(const exploit_record& record)
-{
-    return std::string(reinterpret_cast<const char*>(&record), sizeof(exploit_record));
+std::string serialize_record(const exploit_record &record) {
+    return std::string(reinterpret_cast<const char *>(&record), sizeof(exploit_record));
 }
 
-exploit_record make_record(int type, const char* timestamp, const char* victim_name, int victim_level, int killer_level, int int_param)
-{
-    exploit_record record {};
+exploit_record make_record(int type, const char *timestamp, const char *victim_name,
+                           int victim_level, int killer_level, int int_param) {
+    exploit_record record{};
     record.type = type;
     strncpy(record.chtime, timestamp, sizeof(record.chtime) - 1);
     strncpy(record.chVictimName, victim_name, sizeof(record.chVictimName) - 1);
@@ -523,31 +509,33 @@ exploit_record make_record(int type, const char* timestamp, const char* victim_n
     return record;
 }
 
-std::string make_valid_object_bytes(int item_number = 1234, int wear_pos = WEAR_HEAD)
-{
+std::string make_valid_object_bytes(int item_number = 1234, int wear_pos = WEAR_HEAD) {
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
-    object_data.objects.push_back(objects_json::ObjectRecord {});
+    object_data.objects.push_back(objects_json::ObjectRecord{});
     object_data.objects[0].item_number = item_number;
     object_data.objects[0].wear_pos = wear_pos;
 
     std::string error_message;
     std::string object_bytes;
-    EXPECT_TRUE(objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message)) << error_message;
+    EXPECT_TRUE(
+        objects_json::object_save_data_to_binary(object_data, &object_bytes, &error_message))
+        << error_message;
     return object_bytes;
 }
 
-void expect_object_save_data_equal(const objects_json::ObjectSaveData& expected, const objects_json::ObjectSaveData& actual)
-{
+void expect_object_save_data_equal(const objects_json::ObjectSaveData &expected,
+                                   const objects_json::ObjectSaveData &actual) {
     EXPECT_EQ(actual.rent.time, expected.rent.time);
     EXPECT_EQ(actual.rent.rentcode, expected.rent.rentcode);
     EXPECT_EQ(actual.rent.net_cost_per_hour, expected.rent.net_cost_per_hour);
     EXPECT_EQ(actual.rent.gold, expected.rent.gold);
     EXPECT_EQ(actual.rent.nitems, expected.rent.nitems);
     EXPECT_EQ(actual.objects.size(), expected.objects.size());
-    for (size_t index = 0; index < expected.objects.size() && index < actual.objects.size(); ++index) {
-        const auto& expected_object = expected.objects[index];
-        const auto& actual_object = actual.objects[index];
+    for (size_t index = 0; index < expected.objects.size() && index < actual.objects.size();
+         ++index) {
+        const auto &expected_object = expected.objects[index];
+        const auto &actual_object = actual.objects[index];
         EXPECT_EQ(actual_object.item_number, expected_object.item_number);
         EXPECT_EQ(actual_object.values, expected_object.values);
         EXPECT_EQ(actual_object.extra_flags, expected_object.extra_flags);
@@ -556,9 +544,12 @@ void expect_object_save_data_equal(const objects_json::ObjectSaveData& expected,
         EXPECT_EQ(actual_object.bitvector, expected_object.bitvector);
         EXPECT_EQ(actual_object.wear_pos, expected_object.wear_pos);
         EXPECT_EQ(actual_object.loaded_by, expected_object.loaded_by);
-        for (size_t affect_index = 0; affect_index < expected_object.affects.size(); ++affect_index) {
-            EXPECT_EQ(actual_object.affects[affect_index].location, expected_object.affects[affect_index].location);
-            EXPECT_EQ(actual_object.affects[affect_index].modifier, expected_object.affects[affect_index].modifier);
+        for (size_t affect_index = 0; affect_index < expected_object.affects.size();
+             ++affect_index) {
+            EXPECT_EQ(actual_object.affects[affect_index].location,
+                      expected_object.affects[affect_index].location);
+            EXPECT_EQ(actual_object.affects[affect_index].modifier,
+                      expected_object.affects[affect_index].modifier);
         }
     }
 
@@ -571,8 +562,8 @@ void expect_object_save_data_equal(const objects_json::ObjectSaveData& expected,
 
     ASSERT_EQ(actual.followers.size(), expected.followers.size());
     for (size_t index = 0; index < expected.followers.size(); ++index) {
-        const auto& expected_follower = expected.followers[index];
-        const auto& actual_follower = actual.followers[index];
+        const auto &expected_follower = expected.followers[index];
+        const auto &actual_follower = actual.followers[index];
         EXPECT_EQ(actual_follower.fol_vnum, expected_follower.fol_vnum);
         EXPECT_EQ(actual_follower.mount_vnum, expected_follower.mount_vnum);
         EXPECT_EQ(actual_follower.wimpy, expected_follower.wimpy);
@@ -581,20 +572,58 @@ void expect_object_save_data_equal(const objects_json::ObjectSaveData& expected,
         EXPECT_EQ(actual_follower.spare1, expected_follower.spare1);
         EXPECT_EQ(actual_follower.spare2, expected_follower.spare2);
         ASSERT_EQ(actual_follower.objects.size(), expected_follower.objects.size());
-        for (size_t object_index = 0; object_index < expected_follower.objects.size(); ++object_index) {
-            EXPECT_EQ(actual_follower.objects[object_index].item_number, expected_follower.objects[object_index].item_number);
-            EXPECT_EQ(actual_follower.objects[object_index].wear_pos, expected_follower.objects[object_index].wear_pos);
+        for (size_t object_index = 0; object_index < expected_follower.objects.size();
+             ++object_index) {
+            EXPECT_EQ(actual_follower.objects[object_index].item_number,
+                      expected_follower.objects[object_index].item_number);
+            EXPECT_EQ(actual_follower.objects[object_index].wear_pos,
+                      expected_follower.objects[object_index].wear_pos);
         }
     }
 }
 
 } // namespace
 
-TEST(DbLoader, RejectsMalformedPlayerTextWithoutLongStringTerminator)
-{
+// RAII T6b: the owning char_data factory. Exercises the full clean-scope
+// lifecycle -- CREATE()+clear_char() construction inside make_char_data(),
+// use, then automatic free_char() (running ~char_data() before the raw free,
+// per T6a) when the handle leaves scope. The heap-owning members clear_char()
+// populates for a MOB_VOID (PC-shaped) char -- the skills/knowledge vectors --
+// must be non-empty so the destructor actually has buffers to release; this is
+// what AddressSanitizer/LeakSanitizer prove clean (no leak, no double-free).
+TEST(DbLoaderFactory, MakeCharDataConstructsUsableCharAndReleasesOnScopeExit) {
+    char_data_ptr character = make_char_data(MOB_VOID);
+    ASSERT_NE(character.get(), nullptr);
+    // clear_char(MOB_VOID) sizes the skills/knowledge vectors to MAX_SKILLS
+    // (the load-bearing "this char has a skill array" contract, RAII T3).
+    EXPECT_EQ(static_cast<int>(character->skills.size()), MAX_SKILLS);
+    EXPECT_EQ(static_cast<int>(character->knowledge.size()), MAX_SKILLS);
+    // Touch an owning member to confirm the object is fully constructed and
+    // its heap buffer is live (the destructor must free exactly this).
+    character->skills[0] = 7;
+    EXPECT_EQ(static_cast<int>(character->skills[0]), 7);
+    // Handle drops here: free_char runs ~char_data() (frees skills/knowledge)
+    // then the raw storage. ASan is the backstop for leak/double-free.
+}
+
+// The factory hands back a movable single-owner handle: transferring ownership
+// must not double-free, and the moved-from handle must be null.
+TEST(DbLoaderFactory, MakeCharDataHandleIsMovableWithoutDoubleFree) {
+    char_data_ptr original = make_char_data(MOB_ISNPC);
+    ASSERT_NE(original.get(), nullptr);
+    // A MOB_ISNPC char leaves skills/knowledge empty (NPCs never carry them).
+    EXPECT_TRUE(original->skills.empty());
+    char_data *raw = original.get();
+    char_data_ptr moved = std::move(original);
+    EXPECT_EQ(original.get(), nullptr);
+    EXPECT_EQ(moved.get(), raw);
+    // Only `moved` frees the char (single owner); ASan proves no double-free.
+}
+
+TEST(DbLoader, RejectsMalformedPlayerTextWithoutLongStringTerminator) {
     ScopedPlayerTableEntry player_table_entry;
     char player_name[] = "aragorn";
-    char_file_u character_data {};
+    char_file_u character_data{};
     const char malformed_player_text[] = "#player\n"
                                          "name        aragorn\n"
                                          "description \n"
@@ -604,17 +633,17 @@ TEST(DbLoader, RejectsMalformedPlayerTextWithoutLongStringTerminator)
     EXPECT_LT(load_char_from_text(player_name, malformed_player_text, &character_data), 0);
 }
 
-TEST(DbLoader, LegacyPlayerTextRoundTripPreservesCombatState)
-{
+TEST(DbLoader, LegacyPlayerTextRoundTripPreservesCombatState) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     char_file_u original = make_stored_character("aragorn");
     const std::string player_text = write_valid_legacy_player_file(temp_directory.path(), original);
 
     char player_name[] = "aragorn";
-    char_file_u loaded {};
+    char_file_u loaded{};
     ScopedPlayerTableEntry player_table_entry("aragorn");
     ASSERT_EQ(load_player_from_text(player_name, player_text.c_str(), &loaded), 1);
 
@@ -623,15 +652,15 @@ TEST(DbLoader, LegacyPlayerTextRoundTripPreservesCombatState)
     EXPECT_EQ(loaded.specials2.casting, original.specials2.casting);
     EXPECT_EQ(loaded.specials2.two_handed, original.specials2.two_handed);
 
-    char_data live_character {};
+    char_data live_character{};
     clear_char(&live_character, MOB_VOID);
     // Releases live_character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields live_character_cleanup { live_character };
+    ScopedClearCharFields live_character_cleanup{live_character};
     store_to_char(&loaded, &live_character);
     // Releases live_character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields live_character_store_cleanup { live_character };
+    ScopedStoreToCharFields live_character_store_cleanup{live_character};
 
     EXPECT_EQ(utils::get_tactics(live_character), original.specials2.tactics);
     EXPECT_EQ(utils::get_shooting(live_character), original.specials2.shooting);
@@ -639,41 +668,49 @@ TEST(DbLoader, LegacyPlayerTextRoundTripPreservesCombatState)
     EXPECT_TRUE(IS_TWOHANDED(&live_character));
 }
 
-TEST(DbLoader, LegacyPlayerTextRoundTripPreservesStructuredColorSettings)
-{
+TEST(DbLoader, LegacyPlayerTextRoundTripPreservesStructuredColorSettings) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     char_file_u original = make_stored_character("aragorn");
     const std::string player_text = write_valid_legacy_player_file(temp_directory.path(), original);
 
     char player_name[] = "aragorn";
-    char_file_u loaded {};
+    char_file_u loaded{};
     ScopedPlayerTableEntry player_table_entry("aragorn");
     ASSERT_EQ(load_player_from_text(player_name, player_text.c_str(), &loaded), 1);
 
     EXPECT_EQ(loaded.profs.colors[COLOR_MAGIC], original.profs.colors[COLOR_MAGIC]);
     EXPECT_EQ(loaded.profs.color_settings[COLOR_MAGIC].foreground.mode, COLOR_VALUE_TRUECOLOR);
-    EXPECT_EQ(loaded.profs.color_settings[COLOR_MAGIC].foreground.ansi, original.profs.color_settings[COLOR_MAGIC].foreground.ansi);
-    EXPECT_EQ(loaded.profs.color_settings[COLOR_MAGIC].foreground.red, original.profs.color_settings[COLOR_MAGIC].foreground.red);
-    EXPECT_EQ(loaded.profs.color_settings[COLOR_MAGIC].foreground.green, original.profs.color_settings[COLOR_MAGIC].foreground.green);
-    EXPECT_EQ(loaded.profs.color_settings[COLOR_MAGIC].foreground.blue, original.profs.color_settings[COLOR_MAGIC].foreground.blue);
+    EXPECT_EQ(loaded.profs.color_settings[COLOR_MAGIC].foreground.ansi,
+              original.profs.color_settings[COLOR_MAGIC].foreground.ansi);
+    EXPECT_EQ(loaded.profs.color_settings[COLOR_MAGIC].foreground.red,
+              original.profs.color_settings[COLOR_MAGIC].foreground.red);
+    EXPECT_EQ(loaded.profs.color_settings[COLOR_MAGIC].foreground.green,
+              original.profs.color_settings[COLOR_MAGIC].foreground.green);
+    EXPECT_EQ(loaded.profs.color_settings[COLOR_MAGIC].foreground.blue,
+              original.profs.color_settings[COLOR_MAGIC].foreground.blue);
     EXPECT_EQ(loaded.profs.color_settings[COLOR_WEATHER].background.mode, COLOR_VALUE_TRUECOLOR);
-    EXPECT_EQ(loaded.profs.color_settings[COLOR_WEATHER].background.ansi, original.profs.color_settings[COLOR_WEATHER].background.ansi);
-    EXPECT_EQ(loaded.profs.color_settings[COLOR_WEATHER].background.red, original.profs.color_settings[COLOR_WEATHER].background.red);
-    EXPECT_EQ(loaded.profs.color_settings[COLOR_WEATHER].background.green, original.profs.color_settings[COLOR_WEATHER].background.green);
-    EXPECT_EQ(loaded.profs.color_settings[COLOR_WEATHER].background.blue, original.profs.color_settings[COLOR_WEATHER].background.blue);
+    EXPECT_EQ(loaded.profs.color_settings[COLOR_WEATHER].background.ansi,
+              original.profs.color_settings[COLOR_WEATHER].background.ansi);
+    EXPECT_EQ(loaded.profs.color_settings[COLOR_WEATHER].background.red,
+              original.profs.color_settings[COLOR_WEATHER].background.red);
+    EXPECT_EQ(loaded.profs.color_settings[COLOR_WEATHER].background.green,
+              original.profs.color_settings[COLOR_WEATHER].background.green);
+    EXPECT_EQ(loaded.profs.color_settings[COLOR_WEATHER].background.blue,
+              original.profs.color_settings[COLOR_WEATHER].background.blue);
 
-    char_data live_character {};
+    char_data live_character{};
     clear_char(&live_character, MOB_VOID);
     // Releases live_character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields live_character_cleanup { live_character };
+    ScopedClearCharFields live_character_cleanup{live_character};
     store_to_char(&loaded, &live_character);
     // Releases live_character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields live_character_store_cleanup { live_character };
+    ScopedStoreToCharFields live_character_store_cleanup{live_character};
 
     const std::string magic_sequence = get_color_sequence(&live_character, COLOR_MAGIC);
     const std::string weather_sequence = get_color_sequence(&live_character, COLOR_WEATHER);
@@ -681,11 +718,11 @@ TEST(DbLoader, LegacyPlayerTextRoundTripPreservesStructuredColorSettings)
     EXPECT_NE(weather_sequence.find("\x1B[48;2;10;20;35m"), std::string::npos) << weather_sequence;
 }
 
-TEST(DbLoader, LegacyPlayerTextNormalizesOutOfRangeCombatStateValues)
-{
+TEST(DbLoader, LegacyPlayerTextNormalizesOutOfRangeCombatStateValues) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
 
     char_file_u original = make_stored_character("aragorn");
     std::string player_text = write_valid_legacy_player_file(temp_directory.path(), original);
@@ -695,7 +732,7 @@ TEST(DbLoader, LegacyPlayerTextNormalizesOutOfRangeCombatStateValues)
     player_text = replace_once(player_text, "twohanded   1", "twohanded   4");
 
     char player_name[] = "aragorn";
-    char_file_u loaded {};
+    char_file_u loaded{};
     ScopedPlayerTableEntry player_table_entry("aragorn");
     ASSERT_EQ(load_player_from_text(player_name, player_text.c_str(), &loaded), 1);
 
@@ -704,15 +741,15 @@ TEST(DbLoader, LegacyPlayerTextNormalizesOutOfRangeCombatStateValues)
     EXPECT_EQ(loaded.specials2.casting, CASTING_NORMAL);
     EXPECT_EQ(loaded.specials2.two_handed, 1);
 
-    char_data live_character {};
+    char_data live_character{};
     clear_char(&live_character, MOB_VOID);
     // Releases live_character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields live_character_cleanup { live_character };
+    ScopedClearCharFields live_character_cleanup{live_character};
     store_to_char(&loaded, &live_character);
     // Releases live_character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields live_character_store_cleanup { live_character };
+    ScopedStoreToCharFields live_character_store_cleanup{live_character};
 
     EXPECT_EQ(utils::get_tactics(live_character), TACTICS_NORMAL);
     EXPECT_EQ(utils::get_shooting(live_character), SHOOTING_NORMAL);
@@ -720,34 +757,50 @@ TEST(DbLoader, LegacyPlayerTextNormalizesOutOfRangeCombatStateValues)
     EXPECT_TRUE(IS_TWOHANDED(&live_character));
 }
 
-TEST(DbLoader, LoadsExploitRecordsFromAccountNativeJsonWhenRuntimeFileIsMissing)
-{
+TEST(DbLoader, LoadsExploitRecordsFromAccountNativeJsonWhenRuntimeFileIsMissing) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/account_characters").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/account_characters/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/account_characters").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory(
+        (temp_directory.path() + "/account_characters/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
-    const exploit_record expected_record = make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20);
-    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"), serialize_record(expected_record));
+    const exploit_record expected_record =
+        make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20);
+    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"),
+               serialize_record(expected_record));
 
     account::CharacterMigrationData migration;
-    ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message)) << error_message;
-    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
+    ASSERT_TRUE(account::migrate_legacy_character_by_name(
+        temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message))
+        << error_message;
+    EXPECT_FALSE(std::filesystem::exists(
+        account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
 
     std::vector<exploit_record> records;
-    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records, &error_message)) << error_message;
+    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records,
+                                                   &error_message))
+        << error_message;
     ASSERT_EQ(records.size(), 1u);
     EXPECT_EQ(records[0].type, expected_record.type);
     EXPECT_STREQ(records[0].chtime, expected_record.chtime);
@@ -755,154 +808,219 @@ TEST(DbLoader, LoadsExploitRecordsFromAccountNativeJsonWhenRuntimeFileIsMissing)
     EXPECT_EQ(records[0].iIntParam, expected_record.iIntParam);
 }
 
-TEST(DbLoader, LoadsExploitRecordsFromAccountNativeJsonWhenPresent)
-{
+TEST(DbLoader, LoadsExploitRecordsFromAccountNativeJsonWhenPresent) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     std::vector<exploit_record> expected_records;
-    expected_records.push_back(make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20));
-    ASSERT_TRUE(account::write_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn", expected_records, &error_message)) << error_message;
+    expected_records.push_back(
+        make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20));
+    ASSERT_TRUE(account::write_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn",
+                                                    expected_records, &error_message))
+        << error_message;
 
     std::vector<exploit_record> records;
-    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records, &error_message)) << error_message;
+    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records,
+                                                   &error_message))
+        << error_message;
     ASSERT_EQ(records.size(), 1u);
     EXPECT_EQ(records[0].type, expected_records[0].type);
     EXPECT_EQ(records[0].iIntParam, expected_records[0].iIntParam);
 }
 
-TEST(DbLoader, ReturnsEmptyExploitHistoryForLinkedCharacterWithoutAccountNativeOrRuntimeFile)
-{
+TEST(DbLoader, ReturnsEmptyExploitHistoryForLinkedCharacterWithoutAccountNativeOrRuntimeFile) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     std::vector<exploit_record> records;
-    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records, &error_message)) << error_message;
+    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records,
+                                                   &error_message))
+        << error_message;
     EXPECT_TRUE(records.empty());
 }
 
-TEST(DbLoader, LoadsObjectAndExploitDataFromRuntimeLegacyFilesWhenAccountNativeJsonIsAbsent)
-{
+TEST(DbLoader, LoadsObjectAndExploitDataFromRuntimeLegacyFilesWhenAccountNativeJsonIsAbsent) {
     if (sizeof(long) != 4)
-        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+        GTEST_SKIP()
+            << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     const std::string runtime_object_bytes = make_valid_object_bytes();
-    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), runtime_object_bytes);
+    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"),
+               runtime_object_bytes);
 
-    const exploit_record runtime_record = make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20);
-    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"), serialize_record(runtime_record));
+    const exploit_record runtime_record =
+        make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20);
+    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"),
+               serialize_record(runtime_record));
 
     objects_json::ObjectSaveData expected_object_data;
     bool accepted_missing_follower_section = false;
-    ASSERT_TRUE(objects_json::legacy_object_save_data_from_binary(runtime_object_bytes, &expected_object_data, &accepted_missing_follower_section, &error_message)) << error_message;
+    ASSERT_TRUE(objects_json::legacy_object_save_data_from_binary(
+        runtime_object_bytes, &expected_object_data, &accepted_missing_follower_section,
+        &error_message))
+        << error_message;
 
     objects_json::ObjectSaveData object_data;
-    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message)) << error_message;
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data,
+                                                    &error_message))
+        << error_message;
     expect_object_save_data_equal(expected_object_data, object_data);
 
     std::vector<exploit_record> records;
-    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records, &error_message)) << error_message;
+    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records,
+                                                   &error_message))
+        << error_message;
     ASSERT_EQ(records.size(), 1u);
     EXPECT_EQ(records[0].type, runtime_record.type);
     EXPECT_STREQ(records[0].chtime, runtime_record.chtime);
 }
 
-TEST(DbLoader, PrefersAccountNativeObjectAndExploitJsonOverConflictingRuntimeLegacyFiles)
-{
+TEST(DbLoader, PrefersAccountNativeObjectAndExploitJsonOverConflictingRuntimeLegacyFiles) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     objects_json::ObjectSaveData account_object_data;
     account_object_data.rent.rentcode = RENT_CRASH;
-    account_object_data.objects.push_back(objects_json::ObjectRecord {});
+    account_object_data.objects.push_back(objects_json::ObjectRecord{});
     account_object_data.objects[0].item_number = 4321;
     account_object_data.objects[0].wear_pos = WEAR_HEAD;
 
-    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", account_object_data, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn",
+                                                   account_object_data, &error_message))
+        << error_message;
     // Stale legacy .obj bytes: written only to prove the account-native JSON
     // takes precedence and this file is never opened/decoded, so its
     // contents don't need to be a real (32-bit-only) legacy encode.
-    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), "stale-legacy-object-data");
+    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"),
+               "stale-legacy-object-data");
 
     std::vector<exploit_record> account_records;
-    account_records.push_back(make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "authoritative", 10, 0, 20));
-    ASSERT_TRUE(account::write_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn", account_records, &error_message)) << error_message;
-    const exploit_record stale_runtime_record = make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "stale", 11, 0, 0);
-    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"), serialize_record(stale_runtime_record));
+    account_records.push_back(
+        make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "authoritative", 10, 0, 20));
+    ASSERT_TRUE(account::write_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn",
+                                                    account_records, &error_message))
+        << error_message;
+    const exploit_record stale_runtime_record =
+        make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "stale", 11, 0, 0);
+    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"),
+               serialize_record(stale_runtime_record));
 
     objects_json::ObjectSaveData object_data;
-    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message)) << error_message;
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data,
+                                                    &error_message))
+        << error_message;
     expect_object_save_data_equal(account_object_data, object_data);
 
     std::vector<exploit_record> loaded_records;
-    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &loaded_records, &error_message)) << error_message;
+    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn",
+                                                   &loaded_records, &error_message))
+        << error_message;
     ASSERT_EQ(loaded_records.size(), 1u);
     EXPECT_EQ(loaded_records[0].type, account_records[0].type);
     EXPECT_STREQ(loaded_records[0].chVictimName, account_records[0].chVictimName);
 }
 
-TEST(DbLoader, FailsClosedWhenAccountNativeExploitJsonIsMalformed)
-{
+TEST(DbLoader, FailsClosedWhenAccountNativeExploitJsonIsMalformed) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     std::vector<exploit_record> expected_records;
-    expected_records.push_back(make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20));
-    ASSERT_TRUE(account::write_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn", expected_records, &error_message)) << error_message;
-    write_file(account::account_character_exploits_path(temp_directory.path(), "alpha-admin", "aragorn"), "{bad-json");
+    expected_records.push_back(
+        make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20));
+    ASSERT_TRUE(account::write_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn",
+                                                    expected_records, &error_message))
+        << error_message;
+    write_file(
+        account::account_character_exploits_path(temp_directory.path(), "alpha-admin", "aragorn"),
+        "{bad-json");
 
-    const exploit_record stale_runtime_record = make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "stale", 11, 0, 0);
-    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"), serialize_record(stale_runtime_record));
+    const exploit_record stale_runtime_record =
+        make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "stale", 11, 0, 0);
+    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"),
+               serialize_record(stale_runtime_record));
 
     std::vector<exploit_record> records;
-    EXPECT_FALSE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records, &error_message));
+    EXPECT_FALSE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records,
+                                                    &error_message));
     EXPECT_FALSE(error_message.empty());
-    EXPECT_TRUE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()))
-        << "Failing closed on authoritative account-native exploit JSON should not silently consume or retire the stale legacy runtime file.";
+    EXPECT_TRUE(std::filesystem::exists(
+        account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()))
+        << "Failing closed on authoritative account-native exploit JSON should not silently "
+           "consume or retire the stale legacy runtime file.";
 }
 
-TEST(DbLoader, BuildPlayerIndexIncludesLegacyAndAccountNativeCharacters)
-{
+TEST(DbLoader, BuildPlayerIndexIncludesLegacyAndAccountNativeCharacters) {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
@@ -920,17 +1038,23 @@ TEST(DbLoader, BuildPlayerIndexIncludesLegacyAndAccountNativeCharacters)
     write_file("players/A-E/aragorn.20.2.111.1700010000.0", "");
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "legolas", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1",
+                                        1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "legolas", 1700010102, nullptr,
+                                              &error_message))
+        << error_message;
 
-    char_file_u stored_character {};
+    char_file_u stored_character{};
     std::snprintf(stored_character.name, sizeof(stored_character.name), "%s", "legolas");
     stored_character.level = 25;
     stored_character.race = 3;
     stored_character.last_logon = 1700010200;
     stored_character.specials2.idnum = 222;
     stored_character.specials2.act = 0;
-    ASSERT_TRUE(account::write_account_character_file(".", "alpha-admin", stored_character, &error_message)) << error_message;
+    ASSERT_TRUE(
+        account::write_account_character_file(".", "alpha-admin", stored_character, &error_message))
+        << error_message;
 
     build_player_index();
 
@@ -940,18 +1064,18 @@ TEST(DbLoader, BuildPlayerIndexIncludesLegacyAndAccountNativeCharacters)
     EXPECT_EQ(player_table[1].idnum, 222);
     EXPECT_EQ(player_table[1].level, 25);
     EXPECT_EQ(player_table[1].race, 3);
-    EXPECT_NE(std::string(player_table[1].ch_file).find("legolas.character.json"), std::string::npos);
+    EXPECT_NE(std::string(player_table[1].ch_file).find("legolas.character.json"),
+              std::string::npos);
 
     char lookup_name[] = "legolas";
-    char_file_u loaded_character {};
+    char_file_u loaded_character{};
     ASSERT_EQ(load_player(lookup_name, &loaded_character), 1);
     EXPECT_STREQ(loaded_character.name, "legolas");
     EXPECT_EQ(loaded_character.specials2.idnum, 222);
     EXPECT_EQ(loaded_character.player_index, 1);
 }
 
-TEST(DbLoader, BuildPlayerIndexFailsClosedWhenAccountNativePathDoesNotFitPlayerIndex)
-{
+TEST(DbLoader, BuildPlayerIndexFailsClosedWhenAccountNativePathDoesNotFitPlayerIndex) {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
@@ -965,26 +1089,32 @@ TEST(DbLoader, BuildPlayerIndexFailsClosedWhenAccountNativePathDoesNotFitPlayerI
     ASSERT_TRUE(std::filesystem::create_directory("accounts"));
     ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
-    const char* account_name = "abcdefghijklmnopqrst";
-    const char* long_email = "abcdefghijklmnopqrst123456789012345678901234567890@example.com";
+    const char *account_name = "abcdefghijklmnopqrst";
+    const char *long_email = "abcdefghijklmnopqrst123456789012345678901234567890@example.com";
     std::string error_message;
-    ASSERT_TRUE(account::create_account(".", account_name, long_email, "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(".", account_name, "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(".", account_name, long_email, "ValidPass1", 1700010101,
+                                        nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", account_name, "aragorn", 1700010102, nullptr,
+                                              &error_message))
+        << error_message;
 
     char_file_u stored_character = make_stored_character("aragorn");
     stored_character.specials2.idnum = 222;
-    ASSERT_TRUE(account::write_account_character_file(".", account_name, stored_character, &error_message)) << error_message;
-    ASSERT_GE(account::account_character_player_path(".", account_name, "aragorn").size(), sizeof(player_table[0].ch_file))
+    ASSERT_TRUE(
+        account::write_account_character_file(".", account_name, stored_character, &error_message))
+        << error_message;
+    ASSERT_GE(account::account_character_player_path(".", account_name, "aragorn").size(),
+              sizeof(player_table[0].ch_file))
         << "Test setup must exceed the legacy player index path buffer.";
 
     EXPECT_EXIT(build_player_index(), ::testing::ExitedWithCode(1),
-        "too long for the live player index");
-    EXPECT_EQ(top_of_p_table, -1)
-        << "Boot index failure should leave the parent test process without a truncated live entry.";
+                "too long for the live player index");
+    EXPECT_EQ(top_of_p_table, -1) << "Boot index failure should leave the parent test process "
+                                     "without a truncated live entry.";
 }
 
-TEST(DbLoader, BuildPlayerIndexPrefersVersionedLegacyPlayerSaveOverFlatArtifactBeforeMigration)
-{
+TEST(DbLoader, BuildPlayerIndexPrefersVersionedLegacyPlayerSaveOverFlatArtifactBeforeMigration) {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
@@ -1003,18 +1133,21 @@ TEST(DbLoader, BuildPlayerIndexPrefersVersionedLegacyPlayerSaveOverFlatArtifactB
     versioned_character.specials2.idnum = 2222;
     const long recent_log_time = time(0);
     versioned_character.last_logon = recent_log_time;
-    write_valid_legacy_player_file(".", versioned_character, account::legacy_player_file_path(".", "aragorn") + ".1.1.2222." + std::to_string(recent_log_time) + ".0");
+    write_valid_legacy_player_file(".", versioned_character,
+                                   account::legacy_player_file_path(".", "aragorn") + ".1.1.2222." +
+                                       std::to_string(recent_log_time) + ".0");
 
     build_player_index();
 
     ASSERT_EQ(top_of_p_table, 0);
     EXPECT_STREQ(player_table[0].name, "aragorn");
     EXPECT_EQ(player_table[0].idnum, 2222);
-    EXPECT_NE(std::string(player_table[0].ch_file).find(".1.1.2222." + std::to_string(recent_log_time) + ".0"), std::string::npos);
+    EXPECT_NE(std::string(player_table[0].ch_file)
+                  .find(".1.1.2222." + std::to_string(recent_log_time) + ".0"),
+              std::string::npos);
 }
 
-TEST(DbLoader, BuildPlayerIndexRemainsConsistentAfterVersionedMigrationRetiresStaleFlatFile)
-{
+TEST(DbLoader, BuildPlayerIndexRemainsConsistentAfterVersionedMigrationRetiresStaleFlatFile) {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableReset player_table_reset;
@@ -1029,8 +1162,12 @@ TEST(DbLoader, BuildPlayerIndexRemainsConsistentAfterVersionedMigrationRetiresSt
     ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1",
+                                        1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr,
+                                              &error_message))
+        << error_message;
 
     char_file_u stale_flat_character = make_stored_character("aragorn");
     stale_flat_character.points.gold = 111;
@@ -1040,121 +1177,165 @@ TEST(DbLoader, BuildPlayerIndexRemainsConsistentAfterVersionedMigrationRetiresSt
     char_file_u versioned_character = make_stored_character("aragorn");
     versioned_character.points.gold = 222;
     versioned_character.specials2.idnum = 2222;
-    write_valid_legacy_player_file(".", versioned_character, account::legacy_player_file_path(".", "aragorn") + ".1.1.2222.1700010000.0");
+    write_valid_legacy_player_file(".", versioned_character,
+                                   account::legacy_player_file_path(".", "aragorn") +
+                                       ".1.1.2222.1700010000.0");
 
     account::CharacterMigrationData migration;
-    ASSERT_TRUE(account::migrate_legacy_character_by_name(".", "alpha-admin", "aragorn", 1700010103, &migration, &error_message)) << error_message;
+    ASSERT_TRUE(account::migrate_legacy_character_by_name(".", "alpha-admin", "aragorn", 1700010103,
+                                                          &migration, &error_message))
+        << error_message;
 
     build_player_index();
 
     ASSERT_EQ(top_of_p_table, 0);
     EXPECT_STREQ(player_table[0].name, "aragorn");
     EXPECT_EQ(player_table[0].idnum, 2222);
-    EXPECT_NE(std::string(player_table[0].ch_file).find("aragorn.character.json"), std::string::npos);
+    EXPECT_NE(std::string(player_table[0].ch_file).find("aragorn.character.json"),
+              std::string::npos);
 }
 
-TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenRuntimeFileIsMissing)
-{
+TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenRuntimeFileIsMissing) {
     if (sizeof(long) != 4)
-        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+        GTEST_SKIP()
+            << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/account_characters").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/account_characters/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/account_characters").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory(
+        (temp_directory.path() + "/account_characters/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
     const std::string expected_bytes = make_valid_object_bytes();
     write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), expected_bytes);
 
     account::CharacterMigrationData migration;
-    ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message)) << error_message;
-    EXPECT_FALSE(std::filesystem::exists(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str()));
+    ASSERT_TRUE(account::migrate_legacy_character_by_name(
+        temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message))
+        << error_message;
+    EXPECT_FALSE(std::filesystem::exists(
+        account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str()));
 
     objects_json::ObjectSaveData expected_object_data;
     bool accepted_missing_follower_section = false;
-    ASSERT_TRUE(objects_json::legacy_object_save_data_from_binary(expected_bytes, &expected_object_data, &accepted_missing_follower_section, &error_message)) << error_message;
+    ASSERT_TRUE(objects_json::legacy_object_save_data_from_binary(
+        expected_bytes, &expected_object_data, &accepted_missing_follower_section, &error_message))
+        << error_message;
 
     objects_json::ObjectSaveData object_data;
-    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message)) << error_message;
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data,
+                                                    &error_message))
+        << error_message;
     expect_object_save_data_equal(expected_object_data, object_data);
 }
 
-TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenPresent)
-{
+TEST(DbLoader, LoadsObjectSaveBytesFromAccountNativeJsonWhenPresent) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     objects_json::ObjectSaveData expected_object_data;
     expected_object_data.rent.rentcode = RENT_CRASH;
-    expected_object_data.objects.push_back(objects_json::ObjectRecord {});
+    expected_object_data.objects.push_back(objects_json::ObjectRecord{});
     expected_object_data.objects[0].item_number = 4321;
     expected_object_data.objects[0].wear_pos = WEAR_HEAD;
 
-    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", expected_object_data, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn",
+                                                   expected_object_data, &error_message))
+        << error_message;
 
     objects_json::ObjectSaveData object_data;
-    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message)) << error_message;
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data,
+                                                    &error_message))
+        << error_message;
     expect_object_save_data_equal(expected_object_data, object_data);
 }
 
-TEST(DbLoader, FailsClosedWhenAccountNativeObjectJsonIsMalformed)
-{
+TEST(DbLoader, FailsClosedWhenAccountNativeObjectJsonIsMalformed) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     objects_json::ObjectSaveData account_object_data;
     account_object_data.rent.rentcode = RENT_CRASH;
-    account_object_data.objects.push_back(objects_json::ObjectRecord {});
+    account_object_data.objects.push_back(objects_json::ObjectRecord{});
     account_object_data.objects[0].item_number = 4321;
     account_object_data.objects[0].wear_pos = WEAR_HEAD;
 
-    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", account_object_data, &error_message)) << error_message;
-    write_file(account::account_character_object_path(temp_directory.path(), "alpha-admin", "aragorn"), "{bad-json");
+    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn",
+                                                   account_object_data, &error_message))
+        << error_message;
+    write_file(
+        account::account_character_object_path(temp_directory.path(), "alpha-admin", "aragorn"),
+        "{bad-json");
     // Stale legacy .obj bytes: failing closed on the (corrupt) authoritative
     // account-native JSON must never fall through to this file, so its
     // contents don't need to be a real (32-bit-only) legacy encode.
-    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), "stale-legacy-object-data");
+    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"),
+               "stale-legacy-object-data");
 
     objects_json::ObjectSaveData object_data;
-    EXPECT_FALSE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message));
+    EXPECT_FALSE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data,
+                                                     &error_message));
     EXPECT_FALSE(error_message.empty());
-    EXPECT_TRUE(std::filesystem::exists(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str()))
-        << "Failing closed on authoritative account-native object JSON should not silently consume the stale runtime object file.";
+    EXPECT_TRUE(std::filesystem::exists(
+        account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str()))
+        << "Failing closed on authoritative account-native object JSON should not silently consume "
+           "the stale runtime object file.";
 }
 
-TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead)
-{
+TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead) {
     // This test injects read failures via rots_chmod(0000)/rots_chmod(0500); root bypasses
     // file permissions, so the failure path is unreachable when running as root
     // (e.g. inside the build container).
 #if defined(_WIN32)
-    GTEST_SKIP() << "chmod-based failure injection has no Windows ACL equivalent (documented gap, Phase 3 Task 6).";
+    GTEST_SKIP() << "chmod-based failure injection has no Windows ACL equivalent (documented gap, "
+                    "Phase 3 Task 6).";
 #else
     if (geteuid() == 0)
         GTEST_SKIP() << "chmod-based failure injection does not work as root.";
@@ -1162,86 +1343,114 @@ TEST(DbLoader, FailsClosedWhenAccountNativeObjectOrExploitJsonCannotBeRead)
 
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
-    object_data.objects.push_back(objects_json::ObjectRecord {});
+    object_data.objects.push_back(objects_json::ObjectRecord{});
     object_data.objects[0].item_number = 4321;
     object_data.objects[0].wear_pos = WEAR_HEAD;
 
-    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", object_data, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn",
+                                                   object_data, &error_message))
+        << error_message;
 
     std::vector<exploit_record> account_records;
-    account_records.push_back(make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "authoritative", 10, 0, 20));
-    ASSERT_TRUE(account::write_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn", account_records, &error_message)) << error_message;
+    account_records.push_back(
+        make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "authoritative", 10, 0, 20));
+    ASSERT_TRUE(account::write_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn",
+                                                    account_records, &error_message))
+        << error_message;
 
     // Stale legacy .obj/.exploits bytes: the rots_chmod(0000) below fails closed on
     // the authoritative account-native files before either stale file is ever
     // opened, so their contents don't need to be a real (32-bit-only) encode.
-    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), "stale-legacy-object-data");
-    const exploit_record stale_runtime_record = make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "stale", 11, 0, 0);
-    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"), serialize_record(stale_runtime_record));
+    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"),
+               "stale-legacy-object-data");
+    const exploit_record stale_runtime_record =
+        make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "stale", 11, 0, 0);
+    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"),
+               serialize_record(stale_runtime_record));
 
-    const std::string account_object_path = account::account_character_object_path(temp_directory.path(), "alpha-admin", "aragorn");
-    const std::string account_exploits_path = account::account_character_exploits_path(temp_directory.path(), "alpha-admin", "aragorn");
+    const std::string account_object_path =
+        account::account_character_object_path(temp_directory.path(), "alpha-admin", "aragorn");
+    const std::string account_exploits_path =
+        account::account_character_exploits_path(temp_directory.path(), "alpha-admin", "aragorn");
     ASSERT_EQ(rots_chmod(account_object_path.c_str(), 0000), 0);
     ASSERT_EQ(rots_chmod(account_exploits_path.c_str(), 0000), 0);
 
     objects_json::ObjectSaveData loaded_object_data;
-    EXPECT_FALSE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &loaded_object_data, &error_message));
+    EXPECT_FALSE(load_object_save_data_for_character(temp_directory.path(), "aragorn",
+                                                     &loaded_object_data, &error_message));
     EXPECT_NE(error_message.find("Failed to open file"), std::string::npos);
 
     std::vector<exploit_record> loaded_records;
-    EXPECT_FALSE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &loaded_records, &error_message));
+    EXPECT_FALSE(load_exploit_records_for_character(temp_directory.path(), "aragorn",
+                                                    &loaded_records, &error_message));
     EXPECT_NE(error_message.find("Failed to open file"), std::string::npos);
 
     ASSERT_EQ(rots_chmod(account_object_path.c_str(), 0600), 0);
     ASSERT_EQ(rots_chmod(account_exploits_path.c_str(), 0600), 0);
-    EXPECT_TRUE(std::filesystem::exists(account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str()));
-    EXPECT_TRUE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
+    EXPECT_TRUE(std::filesystem::exists(
+        account::legacy_object_file_path(temp_directory.path(), "aragorn").c_str()));
+    EXPECT_TRUE(std::filesystem::exists(
+        account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
 }
 
-TEST(DbLoader, ReturnsEmptyObjectSaveBytesForLinkedCharacterWithoutAccountNativeOrRuntimeFile)
-{
+TEST(DbLoader, ReturnsEmptyObjectSaveBytesForLinkedCharacterWithoutAccountNativeOrRuntimeFile) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     objects_json::ObjectSaveData object_data;
-    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message)) << error_message;
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data,
+                                                    &error_message))
+        << error_message;
     expect_object_save_data_equal(build_default_account_backed_object_data(), object_data);
 }
 
-TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
-{
+TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail) {
     ScopedTestWorld test_world;
     test_world.room().number = 3001;
 
-    char_data character {};
+    char_data character{};
     clear_char(&character, MOB_VOID);
     // Releases character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields character_cleanup { character };
+    ScopedClearCharFields character_cleanup{character};
 
-    char_file_u stored_character {};
+    char_file_u stored_character{};
     std::snprintf(stored_character.name, sizeof(stored_character.name), "%s", "aragorn");
     std::snprintf(stored_character.title, sizeof(stored_character.title), "%s", "the Ranger");
-    std::snprintf(stored_character.description, sizeof(stored_character.description), "%s", "A ranger.");
+    std::snprintf(stored_character.description, sizeof(stored_character.description), "%s",
+                  "A ranger.");
     stored_character.sex = SEX_MALE;
     stored_character.race = RACE_HUMAN;
     stored_character.bodytype = 1;
@@ -1253,15 +1462,15 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
     store_to_char(&stored_character, &character);
     // Releases character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields character_store_cleanup { character };
+    ScopedStoreToCharFields character_store_cleanup{character};
 
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
     object_data.board_points[0] = 77;
-    object_data.aliases.push_back({ "assist", "kill orc" });
+    object_data.aliases.push_back({"assist", "kill orc"});
 
     stage_object_data_for_character(&character, object_data);
-    FILE* fp = Crash_load(&character);
+    FILE *fp = Crash_load(&character);
     ASSERT_NE(fp, nullptr);
     // Crash_load now applies board points/aliases directly from its
     // in-memory ObjectSaveData -- there's no separate Crash_alias_load(ch,
@@ -1271,7 +1480,7 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
     // character.specials.alias; this fixture never runs `character` through
     // free_char(), so release it explicitly (backlog T2 -- see
     // ScopedAliasListRelease's comment in test_char_cleanup.h).
-    ScopedAliasListRelease character_alias_cleanup { character };
+    ScopedAliasListRelease character_alias_cleanup{character};
 
     EXPECT_EQ(character.specials.board_point[0], 77);
     ASSERT_NE(GET_ALIAS(&character), nullptr);
@@ -1279,22 +1488,22 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndLoadsAliasTail)
     EXPECT_STREQ(GET_ALIAS(&character)->command, "kill orc");
 }
 
-TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndEquipsWearableItems)
-{
+TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndEquipsWearableItems) {
     ScopedObjectPrototypeTable object_prototypes;
     ScopedTestWorld test_world;
     test_world.room().number = 3001;
 
-    char_data character {};
+    char_data character{};
     clear_char(&character, MOB_VOID);
     // Releases character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields character_cleanup { character };
+    ScopedClearCharFields character_cleanup{character};
 
-    char_file_u stored_character {};
+    char_file_u stored_character{};
     std::snprintf(stored_character.name, sizeof(stored_character.name), "%s", "aragorn");
     std::snprintf(stored_character.title, sizeof(stored_character.title), "%s", "the Ranger");
-    std::snprintf(stored_character.description, sizeof(stored_character.description), "%s", "A ranger.");
+    std::snprintf(stored_character.description, sizeof(stored_character.description), "%s",
+                  "A ranger.");
     stored_character.sex = SEX_MALE;
     stored_character.race = RACE_HUMAN;
     stored_character.bodytype = 1;
@@ -1306,24 +1515,24 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndEquipsWearableI
     store_to_char(&stored_character, &character);
     // Releases character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields character_store_cleanup { character };
+    ScopedStoreToCharFields character_store_cleanup{character};
 
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
-    object_data.objects.push_back(objects_json::ObjectRecord {});
+    object_data.objects.push_back(objects_json::ObjectRecord{});
     object_data.objects[0].item_number = 1001;
     object_data.objects[0].wear_pos = WEAR_HEAD;
     object_data.objects[0].weight = 7;
-    object_data.objects[0].values = { 0, 0, 2, 0, 0 };
+    object_data.objects[0].values = {0, 0, 2, 0, 0};
 
-    object_data.objects.push_back(objects_json::ObjectRecord {});
+    object_data.objects.push_back(objects_json::ObjectRecord{});
     object_data.objects[1].item_number = 1002;
     object_data.objects[1].wear_pos = MAX_WEAR;
     object_data.objects[1].weight = 4;
-    object_data.objects[1].values = { 0, 0, 1, 0, 0 };
+    object_data.objects[1].values = {0, 0, 1, 0, 0};
 
     stage_object_data_for_character(&character, object_data);
-    FILE* fp = Crash_load(&character);
+    FILE *fp = Crash_load(&character);
     ASSERT_NE(fp, nullptr);
     ASSERT_EQ(std::fclose(fp), 0);
 
@@ -1335,59 +1544,71 @@ TEST(DbLoader, CrashLoadConsumesStagedAccountBackedObjectBytesAndEquipsWearableI
     EXPECT_EQ(character.carrying->obj_flags.weight, 4);
 }
 
-TEST(DbLoader, AccountNativeCharacterAndObjectsJsonSupportEquippedLoginWithoutMigration)
-{
+TEST(DbLoader, AccountNativeCharacterAndObjectsJsonSupportEquippedLoginWithoutMigration) {
     ScopedObjectPrototypeTable object_prototypes;
     ScopedTestWorld test_world;
     test_world.room().number = 3001;
 
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     char_file_u stored_character = make_stored_character("aragorn");
     stored_character.specials2.load_room = 3001;
-    ASSERT_TRUE(account::write_account_character_file(temp_directory.path(), "alpha-admin", stored_character, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_character_file(temp_directory.path(), "alpha-admin",
+                                                      stored_character, &error_message))
+        << error_message;
 
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
-    object_data.objects.push_back(objects_json::ObjectRecord {});
+    object_data.objects.push_back(objects_json::ObjectRecord{});
     object_data.objects[0].item_number = 1001;
     object_data.objects[0].wear_pos = WEAR_HEAD;
     object_data.objects[0].weight = 7;
-    object_data.objects[0].values = { 0, 0, 2, 0, 0 };
+    object_data.objects[0].values = {0, 0, 2, 0, 0};
 
-    object_data.objects.push_back(objects_json::ObjectRecord {});
+    object_data.objects.push_back(objects_json::ObjectRecord{});
     object_data.objects[1].item_number = 1002;
     object_data.objects[1].wear_pos = MAX_WEAR;
     object_data.objects[1].weight = 4;
-    object_data.objects[1].values = { 0, 0, 1, 0, 0 };
+    object_data.objects[1].values = {0, 0, 1, 0, 0};
 
-    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", object_data, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_data(temp_directory.path(), "alpha-admin", "aragorn",
+                                                   object_data, &error_message))
+        << error_message;
 
-    char_file_u loaded_store {};
-    ASSERT_TRUE(account::read_account_character_file(temp_directory.path(), "alpha-admin", "aragorn", &loaded_store, &error_message)) << error_message;
+    char_file_u loaded_store{};
+    ASSERT_TRUE(account::read_account_character_file(temp_directory.path(), "alpha-admin",
+                                                     "aragorn", &loaded_store, &error_message))
+        << error_message;
 
     objects_json::ObjectSaveData loaded_object_data;
-    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &loaded_object_data, &error_message)) << error_message;
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn",
+                                                    &loaded_object_data, &error_message))
+        << error_message;
     expect_object_save_data_equal(object_data, loaded_object_data);
 
-    char_data character {};
+    char_data character{};
     clear_char(&character, MOB_VOID);
     // Releases character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields character_cleanup { character };
+    ScopedClearCharFields character_cleanup{character};
     store_to_char(&loaded_store, &character);
     // Releases character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields character_store_cleanup { character };
+    ScopedStoreToCharFields character_store_cleanup{character};
 
     stage_object_data_for_character(&character, loaded_object_data);
-    FILE* fp = Crash_load(&character);
+    FILE *fp = Crash_load(&character);
     ASSERT_NE(fp, nullptr);
     ASSERT_EQ(std::fclose(fp), 0);
 
@@ -1397,8 +1618,7 @@ TEST(DbLoader, AccountNativeCharacterAndObjectsJsonSupportEquippedLoginWithoutMi
     EXPECT_EQ(obj_index[character.carrying->item_number].virt, 1002);
 }
 
-TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallbackSucceeds)
-{
+TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallbackSucceeds) {
     ScopedObjectPrototypeTable object_prototypes;
     ScopedTestWorld test_world;
     test_world.room().number = 3001;
@@ -1411,40 +1631,50 @@ TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallba
     ASSERT_TRUE(std::filesystem::create_directory("plrobjs/A-E"));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1",
+                                        1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr,
+                                              &error_message))
+        << error_message;
 
     char_file_u stored_character = make_stored_character("aragorn");
     stored_character.specials2.load_room = 3001;
-    ASSERT_TRUE(account::write_account_character_file(".", "alpha-admin", stored_character, &error_message)) << error_message;
+    ASSERT_TRUE(
+        account::write_account_character_file(".", "alpha-admin", stored_character, &error_message))
+        << error_message;
 
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
-    object_data.objects.push_back(objects_json::ObjectRecord {});
+    object_data.objects.push_back(objects_json::ObjectRecord{});
     object_data.objects[0].item_number = 1001;
     object_data.objects[0].wear_pos = WEAR_HEAD;
     object_data.objects[0].weight = 7;
-    object_data.objects[0].values = { 0, 0, 2, 0, 0 };
+    object_data.objects[0].values = {0, 0, 2, 0, 0};
 
-    ASSERT_TRUE(account::write_account_object_data(".", "alpha-admin", "aragorn", object_data, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_data(".", "alpha-admin", "aragorn", object_data,
+                                                   &error_message))
+        << error_message;
 
-    char_file_u loaded_store {};
-    ASSERT_TRUE(account::read_account_character_file(".", "alpha-admin", "aragorn", &loaded_store, &error_message)) << error_message;
+    char_file_u loaded_store{};
+    ASSERT_TRUE(account::read_account_character_file(".", "alpha-admin", "aragorn", &loaded_store,
+                                                     &error_message))
+        << error_message;
 
-    char_data character {};
+    char_data character{};
     clear_char(&character, MOB_VOID);
     // Releases character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields character_cleanup { character };
+    ScopedClearCharFields character_cleanup{character};
     store_to_char(&loaded_store, &character);
     // Releases character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields character_store_cleanup { character };
+    ScopedStoreToCharFields character_store_cleanup{character};
 
     stage_object_data_for_character(&character, object_data);
 
     const std::string stderr_path = temp_directory.path() + "/account-native-crash-load.stderr";
-    FILE* fp = nullptr;
+    FILE *fp = nullptr;
     std::string stderr_output;
     {
         ScopedStderrRedirect stderr_redirect(stderr_path);
@@ -1455,13 +1685,13 @@ TEST(DbLoader, AccountNativeCrashLoadDoesNotLogMissingLegacyObjectFileWhenFallba
     ASSERT_EQ(std::fclose(fp), 0);
 
     EXPECT_EQ(stderr_output.find("crashsave: mark0"), std::string::npos) << stderr_output;
-    EXPECT_EQ(stderr_output.find("SYSERR: unable to open crashsave file"), std::string::npos) << stderr_output;
+    EXPECT_EQ(stderr_output.find("SYSERR: unable to open crashsave file"), std::string::npos)
+        << stderr_output;
     ASSERT_NE(character.equipment[WEAR_HEAD], nullptr);
     EXPECT_EQ(obj_index[character.equipment[WEAR_HEAD]->item_number].virt, 1001);
 }
 
-TEST(DbLoader, AccountNativeCrashLoadStillLogsNonMissingLegacyObjectOpenFailures)
-{
+TEST(DbLoader, AccountNativeCrashLoadStillLogsNonMissingLegacyObjectOpenFailures) {
     ScopedObjectPrototypeTable object_prototypes;
     ScopedTestWorld test_world;
     test_world.room().number = 3001;
@@ -1474,36 +1704,47 @@ TEST(DbLoader, AccountNativeCrashLoadStillLogsNonMissingLegacyObjectOpenFailures
     ASSERT_TRUE(std::filesystem::create_directory("plrobjs/A-E"));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1",
+                                        1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr,
+                                              &error_message))
+        << error_message;
 
     char_file_u stored_character = make_stored_character("aragorn");
     stored_character.specials2.load_room = 3001;
-    ASSERT_TRUE(account::write_account_character_file(".", "alpha-admin", stored_character, &error_message)) << error_message;
+    ASSERT_TRUE(
+        account::write_account_character_file(".", "alpha-admin", stored_character, &error_message))
+        << error_message;
 
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
-    ASSERT_TRUE(account::write_account_object_data(".", "alpha-admin", "aragorn", object_data, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_object_data(".", "alpha-admin", "aragorn", object_data,
+                                                   &error_message))
+        << error_message;
 
     ASSERT_TRUE(std::filesystem::create_directory("plrobjs/A-E/aragorn.obj"));
 
-    char_file_u loaded_store {};
-    ASSERT_TRUE(account::read_account_character_file(".", "alpha-admin", "aragorn", &loaded_store, &error_message)) << error_message;
+    char_file_u loaded_store{};
+    ASSERT_TRUE(account::read_account_character_file(".", "alpha-admin", "aragorn", &loaded_store,
+                                                     &error_message))
+        << error_message;
 
-    char_data character {};
+    char_data character{};
     clear_char(&character, MOB_VOID);
     // Releases character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields character_cleanup { character };
+    ScopedClearCharFields character_cleanup{character};
     store_to_char(&loaded_store, &character);
     // Releases character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields character_store_cleanup { character };
+    ScopedStoreToCharFields character_store_cleanup{character};
 
     stage_object_data_for_character(&character, object_data);
 
-    const std::string stderr_path = temp_directory.path() + "/account-native-crash-load-open-failure.stderr";
-    FILE* fp = nullptr;
+    const std::string stderr_path =
+        temp_directory.path() + "/account-native-crash-load-open-failure.stderr";
+    FILE *fp = nullptr;
     std::string stderr_output;
     {
         ScopedStderrRedirect stderr_redirect(stderr_path);
@@ -1513,45 +1754,54 @@ TEST(DbLoader, AccountNativeCrashLoadStillLogsNonMissingLegacyObjectOpenFailures
     }
     ASSERT_EQ(std::fclose(fp), 0);
 
-    EXPECT_NE(stderr_output.find("SYSERR: unable to open crashsave file"), std::string::npos) << stderr_output;
+    EXPECT_NE(stderr_output.find("SYSERR: unable to open crashsave file"), std::string::npos)
+        << stderr_output;
     EXPECT_NE(stderr_output.find("aragorn"), std::string::npos) << stderr_output;
 }
 
-TEST(DbLoader, AccountNativeCharacterLoadDoesNotPropagateGarbageColorStateIntoLiveCharacter)
-{
+TEST(DbLoader, AccountNativeCharacterLoadDoesNotPropagateGarbageColorStateIntoLiveCharacter) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     char_file_u stored_character = make_stored_character("aragorn");
     stored_character.specials2.pref = PRF_COLOR;
-    ASSERT_TRUE(account::write_account_character_file(temp_directory.path(), "alpha-admin", stored_character, &error_message)) << error_message;
+    ASSERT_TRUE(account::write_account_character_file(temp_directory.path(), "alpha-admin",
+                                                      stored_character, &error_message))
+        << error_message;
 
-    char_file_u loaded_store {};
+    char_file_u loaded_store{};
     loaded_store.profs.color_mask = 0x5a5a5a5a;
     for (int index = 0; index < MAX_COLOR_FIELDS; ++index)
         loaded_store.profs.colors[index] = 0x5a;
-    ASSERT_TRUE(account::read_account_character_file(temp_directory.path(), "alpha-admin", "aragorn", &loaded_store, &error_message)) << error_message;
+    ASSERT_TRUE(account::read_account_character_file(temp_directory.path(), "alpha-admin",
+                                                     "aragorn", &loaded_store, &error_message))
+        << error_message;
 
-    char_data character {};
+    char_data character{};
     clear_char(&character, MOB_VOID);
     // Releases character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields character_cleanup { character };
+    ScopedClearCharFields character_cleanup{character};
     store_to_char(&loaded_store, &character);
     // Releases character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields character_store_cleanup { character };
+    ScopedStoreToCharFields character_store_cleanup{character};
 
     EXPECT_EQ(get_colornum(&character, COLOR_ROOM), CNRM);
 }
 
-TEST(DbLoader, SavingAccountNativeCharacterDoesNotAttemptLegacySnapshotRefreshAfterMigrationRetirement)
-{
+TEST(DbLoader,
+     SavingAccountNativeCharacterDoesNotAttemptLegacySnapshotRefreshAfterMigrationRetirement) {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableEntry player_table_entry("aragorn");
@@ -1564,12 +1814,18 @@ TEST(DbLoader, SavingAccountNativeCharacterDoesNotAttemptLegacySnapshotRefreshAf
     ASSERT_TRUE(std::filesystem::create_directory("players/A-E"));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1",
+                                        1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr,
+                                              &error_message))
+        << error_message;
 
     char_file_u stored_character = make_stored_character("aragorn");
     stored_character.specials2.load_room = 3001;
-    ASSERT_TRUE(account::write_account_character_file(".", "alpha-admin", stored_character, &error_message)) << error_message;
+    ASSERT_TRUE(
+        account::write_account_character_file(".", "alpha-admin", stored_character, &error_message))
+        << error_message;
 
     player_table[0].level = stored_character.level;
     player_table[0].race = stored_character.race;
@@ -1577,17 +1833,17 @@ TEST(DbLoader, SavingAccountNativeCharacterDoesNotAttemptLegacySnapshotRefreshAf
     player_table[0].log_time = stored_character.last_logon;
     player_table[0].flags = stored_character.specials2.act;
 
-    char_data character {};
+    char_data character{};
     clear_char(&character, MOB_VOID);
     // Releases character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields character_cleanup { character };
+    ScopedClearCharFields character_cleanup{character};
     store_to_char(&stored_character, &character);
     // Releases character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields character_store_cleanup { character };
+    ScopedStoreToCharFields character_store_cleanup{character};
 
-    descriptor_data descriptor {};
+    descriptor_data descriptor{};
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "LegacyPw1");
     std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "test-host");
     character.desc = &descriptor;
@@ -1602,8 +1858,7 @@ TEST(DbLoader, SavingAccountNativeCharacterDoesNotAttemptLegacySnapshotRefreshAf
     EXPECT_EQ(stderr_output.find("failed to refresh account snapshot"), std::string::npos);
 }
 
-TEST(DbLoader, SavingLinkedCharacterRefreshesStalePlayerIndexToAccountNativePath)
-{
+TEST(DbLoader, SavingLinkedCharacterRefreshesStalePlayerIndexToAccountNativePath) {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableEntry player_table_entry("aragorn");
@@ -1616,42 +1871,48 @@ TEST(DbLoader, SavingLinkedCharacterRefreshesStalePlayerIndexToAccountNativePath
     ASSERT_TRUE(std::filesystem::create_directory("players/A-E"));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1",
+                                        1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr,
+                                              &error_message))
+        << error_message;
 
     char_file_u stored_character = make_stored_character("aragorn");
     stored_character.specials2.load_room = 3001;
     stored_character.points.gold = 321;
-    ASSERT_TRUE(account::write_account_character_file(".", "alpha-admin", stored_character, &error_message)) << error_message;
+    ASSERT_TRUE(
+        account::write_account_character_file(".", "alpha-admin", stored_character, &error_message))
+        << error_message;
     std::snprintf(player_table[0].ch_file, sizeof(player_table[0].ch_file), "%s",
-        account::legacy_player_file_path(".", "aragorn").c_str());
+                  account::legacy_player_file_path(".", "aragorn").c_str());
 
-    char_data character {};
+    char_data character{};
     clear_char(&character, MOB_VOID);
     // Releases character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields character_cleanup { character };
+    ScopedClearCharFields character_cleanup{character};
     store_to_char(&stored_character, &character);
     // Releases character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields character_store_cleanup { character };
+    ScopedStoreToCharFields character_store_cleanup{character};
 
-    descriptor_data descriptor {};
+    descriptor_data descriptor{};
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "LegacyPw1");
     std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "test-host");
     character.desc = &descriptor;
 
     save_char(&character, stored_character.specials2.load_room, 0);
 
-    const std::string account_character_path = account::account_character_player_path(".", "alpha-admin", "aragorn");
+    const std::string account_character_path =
+        account::account_character_player_path(".", "alpha-admin", "aragorn");
     EXPECT_STREQ(player_table[0].ch_file, account_character_path.c_str());
     EXPECT_TRUE(std::filesystem::exists(account_character_path.c_str()));
     EXPECT_FALSE(std::filesystem::exists(account::legacy_player_file_path(".", "aragorn").c_str()))
         << "Linked account-native saves should not revive a legacy player file.";
 }
 
-TEST(DbLoader, SavingLinkedCharacterRepairsMissingAccountNativeCharacterFileDirectly)
-{
+TEST(DbLoader, SavingLinkedCharacterRepairsMissingAccountNativeCharacterFileDirectly) {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableEntry player_table_entry("aragorn");
@@ -1664,9 +1925,14 @@ TEST(DbLoader, SavingLinkedCharacterRepairsMissingAccountNativeCharacterFileDire
     ASSERT_TRUE(std::filesystem::create_directory("players/A-E"));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
-    write_file(account::account_character_snapshot_path(".", "alpha-admin", "aragorn"), "{bad-json");
+    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1",
+                                        1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr,
+                                              &error_message))
+        << error_message;
+    write_file(account::account_character_snapshot_path(".", "alpha-admin", "aragorn"),
+               "{bad-json");
 
     char_file_u stored_character = make_stored_character("aragorn");
     stored_character.specials2.load_room = 3001;
@@ -1678,17 +1944,17 @@ TEST(DbLoader, SavingLinkedCharacterRepairsMissingAccountNativeCharacterFileDire
     player_table[0].log_time = stored_character.last_logon;
     player_table[0].flags = stored_character.specials2.act;
 
-    char_data character {};
+    char_data character{};
     clear_char(&character, MOB_VOID);
     // Releases character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields character_cleanup { character };
+    ScopedClearCharFields character_cleanup{character};
     store_to_char(&stored_character, &character);
     // Releases character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields character_store_cleanup { character };
+    ScopedStoreToCharFields character_store_cleanup{character};
 
-    descriptor_data descriptor {};
+    descriptor_data descriptor{};
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "LegacyPw1");
     std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "test-host");
     character.desc = &descriptor;
@@ -1699,21 +1965,26 @@ TEST(DbLoader, SavingLinkedCharacterRepairsMissingAccountNativeCharacterFileDire
         save_char(&character, stored_character.specials2.load_room, 0);
     }
 
-    char_file_u repaired_store {};
-    ASSERT_TRUE(account::read_account_character_file(".", "alpha-admin", "aragorn", &repaired_store, &error_message)) << error_message;
+    char_file_u repaired_store{};
+    ASSERT_TRUE(account::read_account_character_file(".", "alpha-admin", "aragorn", &repaired_store,
+                                                     &error_message))
+        << error_message;
     EXPECT_EQ(repaired_store.points.gold, stored_character.points.gold);
 
     EXPECT_FALSE(std::filesystem::exists(account::legacy_player_file_path(".", "aragorn").c_str()));
-    EXPECT_TRUE(std::filesystem::exists(account::account_character_snapshot_path(".", "alpha-admin", "aragorn").c_str()))
-        << "Existing transitional snapshot artifacts are tolerated on the repair path, but should not be required.";
+    EXPECT_TRUE(std::filesystem::exists(
+        account::account_character_snapshot_path(".", "alpha-admin", "aragorn").c_str()))
+        << "Existing transitional snapshot artifacts are tolerated on the repair path, but should "
+           "not be required.";
 
     const std::string stderr_output = read_file_contents(stderr_path);
     EXPECT_EQ(stderr_output.find("failed to refresh account snapshot"), std::string::npos);
-    EXPECT_EQ(stderr_output.find("failed to repair missing account-native character file"), std::string::npos);
+    EXPECT_EQ(stderr_output.find("failed to repair missing account-native character file"),
+              std::string::npos);
 }
 
-TEST(DbLoader, SavingAccountNativeCharacterWithUnreadableAccountRecordDoesNotReviveLegacyPlayerFile)
-{
+TEST(DbLoader,
+     SavingAccountNativeCharacterWithUnreadableAccountRecordDoesNotReviveLegacyPlayerFile) {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ScopedPlayerTableEntry player_table_entry("aragorn");
@@ -1726,15 +1997,21 @@ TEST(DbLoader, SavingAccountNativeCharacterWithUnreadableAccountRecordDoesNotRev
     ASSERT_TRUE(std::filesystem::create_directory("players/A-E"));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(".", "alpha-admin", "player@example.com", "ValidPass1",
+                                        1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(".", "alpha-admin", "aragorn", 1700010102, nullptr,
+                                              &error_message))
+        << error_message;
 
     char_file_u stored_character = make_stored_character("aragorn");
     stored_character.specials2.load_room = 3001;
-    ASSERT_TRUE(account::write_account_character_file(".", "alpha-admin", stored_character, &error_message)) << error_message;
+    ASSERT_TRUE(
+        account::write_account_character_file(".", "alpha-admin", stored_character, &error_message))
+        << error_message;
 
     std::snprintf(player_table[0].ch_file, sizeof(player_table[0].ch_file), "%s",
-        account::account_character_player_path(".", "alpha-admin", "aragorn").c_str());
+                  account::account_character_player_path(".", "alpha-admin", "aragorn").c_str());
     player_table[0].level = stored_character.level;
     player_table[0].race = stored_character.race;
     player_table[0].idnum = stored_character.specials2.idnum;
@@ -1743,17 +2020,17 @@ TEST(DbLoader, SavingAccountNativeCharacterWithUnreadableAccountRecordDoesNotRev
 
     write_file(rooted_account_json_path(".", "player@example.com"), "{bad-json");
 
-    char_data character {};
+    char_data character{};
     clear_char(&character, MOB_VOID);
     // Releases character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields character_cleanup { character };
+    ScopedClearCharFields character_cleanup{character};
     store_to_char(&stored_character, &character);
     // Releases character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields character_store_cleanup { character };
+    ScopedStoreToCharFields character_store_cleanup{character};
 
-    descriptor_data descriptor {};
+    descriptor_data descriptor{};
     std::snprintf(descriptor.pwd, sizeof(descriptor.pwd), "%s", "LegacyPw1");
     std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "test-host");
     character.desc = &descriptor;
@@ -1767,11 +2044,11 @@ TEST(DbLoader, SavingAccountNativeCharacterWithUnreadableAccountRecordDoesNotRev
     EXPECT_FALSE(std::filesystem::exists(account::legacy_player_file_path(".", "aragorn").c_str()));
 
     const std::string stderr_output = read_file_contents(stderr_path);
-    EXPECT_NE(stderr_output.find("refusing legacy fallback for account-native character"), std::string::npos);
+    EXPECT_NE(stderr_output.find("refusing legacy fallback for account-native character"),
+              std::string::npos);
 }
 
-TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacter)
-{
+TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacter) {
     TemporaryDirectory temp_directory;
     ScopedWorkingDirectory working_directory(temp_directory.path());
     ASSERT_TRUE(std::filesystem::create_directory("plrobjs"));
@@ -1779,12 +2056,12 @@ TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacte
     ScopedTestWorld test_world;
     test_world.room().number = 3001;
 
-    char_data staged_character {};
+    char_data staged_character{};
     clear_char(&staged_character, MOB_VOID);
     // Releases staged_character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields staged_character_cleanup { staged_character };
-    char_file_u staged_store {};
+    ScopedClearCharFields staged_character_cleanup{staged_character};
+    char_file_u staged_store{};
     std::snprintf(staged_store.name, sizeof(staged_store.name), "%s", "aragorn");
     std::snprintf(staged_store.title, sizeof(staged_store.title), "%s", "the Ranger");
     std::snprintf(staged_store.description, sizeof(staged_store.description), "%s", "A ranger.");
@@ -1797,22 +2074,22 @@ TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacte
     store_to_char(&staged_store, &staged_character);
     // Releases staged_character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields staged_character_store_cleanup { staged_character };
+    ScopedStoreToCharFields staged_character_store_cleanup{staged_character};
 
     objects_json::ObjectSaveData object_data;
     object_data.rent.rentcode = RENT_CRASH;
-    object_data.objects.push_back(objects_json::ObjectRecord {});
+    object_data.objects.push_back(objects_json::ObjectRecord{});
     object_data.objects[0].item_number = 1001;
     object_data.objects[0].wear_pos = WEAR_HEAD;
 
     stage_object_data_for_character(&staged_character, object_data);
 
-    char_data later_character {};
+    char_data later_character{};
     clear_char(&later_character, MOB_VOID);
     // Releases later_character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedClearCharFields later_character_cleanup { later_character };
-    char_file_u later_store {};
+    ScopedClearCharFields later_character_cleanup{later_character};
+    char_file_u later_store{};
     std::snprintf(later_store.name, sizeof(later_store.name), "%s", "boromir");
     std::snprintf(later_store.title, sizeof(later_store.title), "%s", "of Gondor");
     std::snprintf(later_store.description, sizeof(later_store.description), "%s", "A captain.");
@@ -1825,30 +2102,38 @@ TEST(DbLoader, CrashLoadDoesNotConsumeStaleStagedObjectBytesForDifferentCharacte
     store_to_char(&later_store, &later_character);
     // Releases later_character.player.title/description/name (store_to_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
-    ScopedStoreToCharFields later_character_store_cleanup { later_character };
+    ScopedStoreToCharFields later_character_store_cleanup{later_character};
 
     EXPECT_EQ(Crash_load(&later_character), nullptr);
     clear_account_backed_object_bytes_for_character(&staged_character);
 }
 
-TEST(DbLoader, MigratedLegacyObjectPayloadMatchesAccountNativeObjectsJson)
-{
+TEST(DbLoader, MigratedLegacyObjectPayloadMatchesAccountNativeObjectsJson) {
     if (sizeof(long) != 4)
-        GTEST_SKIP() << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
+        GTEST_SKIP()
+            << "legacy object fixture bytes encode the 32-bit ABI; run in the i386 container";
 
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
 
@@ -1856,83 +2141,114 @@ TEST(DbLoader, MigratedLegacyObjectPayloadMatchesAccountNativeObjectsJson)
     expected_object_data.rent.time = 1700010000;
     expected_object_data.rent.rentcode = RENT_CRASH;
     expected_object_data.rent.net_cost_per_hour = 25;
-    expected_object_data.objects.push_back(objects_json::ObjectRecord {});
+    expected_object_data.objects.push_back(objects_json::ObjectRecord{});
     expected_object_data.objects[0].item_number = 1001;
     expected_object_data.objects[0].wear_pos = WEAR_HEAD;
-    expected_object_data.objects[0].values = { 1, 2, 3, 4, 5 };
+    expected_object_data.objects[0].values = {1, 2, 3, 4, 5};
     expected_object_data.objects[0].extra_flags = 9;
     expected_object_data.objects[0].weight = 7;
     expected_object_data.objects[0].timer = 12;
     expected_object_data.board_points[0] = 42;
-    expected_object_data.aliases.push_back({ "assist", "kill orc" });
+    expected_object_data.aliases.push_back({"assist", "kill orc"});
 
     objects_json::FollowerData follower;
     follower.fol_vnum = 4444;
     follower.wimpy = 10;
-    follower.objects.push_back(objects_json::ObjectRecord {});
+    follower.objects.push_back(objects_json::ObjectRecord{});
     follower.objects[0].item_number = 1002;
     follower.objects[0].wear_pos = MAX_WEAR;
     expected_object_data.followers.push_back(follower);
 
     std::string legacy_object_bytes;
-    ASSERT_TRUE(objects_json::object_save_data_to_binary(expected_object_data, &legacy_object_bytes, &error_message)) << error_message;
-    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"), legacy_object_bytes);
+    ASSERT_TRUE(objects_json::object_save_data_to_binary(expected_object_data, &legacy_object_bytes,
+                                                         &error_message))
+        << error_message;
+    write_file(account::legacy_object_file_path(temp_directory.path(), "aragorn"),
+               legacy_object_bytes);
 
     account::CharacterMigrationData migration;
-    ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message)) << error_message;
+    ASSERT_TRUE(account::migrate_legacy_character_by_name(
+        temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message))
+        << error_message;
 
     objects_json::ObjectSaveData migrated_object_data;
-    ASSERT_TRUE(account::read_account_object_data(temp_directory.path(), "alpha-admin", "aragorn", &migrated_object_data, &error_message)) << error_message;
+    ASSERT_TRUE(account::read_account_object_data(temp_directory.path(), "alpha-admin", "aragorn",
+                                                  &migrated_object_data, &error_message))
+        << error_message;
     expect_object_save_data_equal(expected_object_data, migrated_object_data);
 }
 
-TEST(DbLoader, ReturnsEmptyObjectSaveBytesWhenNoRuntimeOrSnapshotExists)
-{
+TEST(DbLoader, ReturnsEmptyObjectSaveBytesWhenNoRuntimeOrSnapshotExists) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/account_characters").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/account_characters/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/account_characters").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory(
+        (temp_directory.path() + "/account_characters/A-E").c_str()));
 
     objects_json::ObjectSaveData object_data;
     std::string error_message;
-    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data, &error_message)) << error_message;
+    ASSERT_TRUE(load_object_save_data_for_character(temp_directory.path(), "aragorn", &object_data,
+                                                    &error_message))
+        << error_message;
     expect_object_save_data_equal(build_default_account_backed_object_data(), object_data);
 }
 
-TEST(DbLoader, SeedsLegacyExploitFileFromAccountSnapshotWhenAppendingNewRecord)
-{
+TEST(DbLoader, SeedsLegacyExploitFileFromAccountSnapshotWhenAppendingNewRecord) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/account_characters").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/account_characters/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/account_characters").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory(
+        (temp_directory.path() + "/account_characters/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
-    const exploit_record existing_record = make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20);
-    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"), serialize_record(existing_record));
+    const exploit_record existing_record =
+        make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20);
+    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"),
+               serialize_record(existing_record));
 
     account::CharacterMigrationData migration;
-    ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message)) << error_message;
-    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
+    ASSERT_TRUE(account::migrate_legacy_character_by_name(
+        temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message))
+        << error_message;
+    EXPECT_FALSE(std::filesystem::exists(
+        account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
 
-    const exploit_record new_record = make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "Won a battle", 11, 0, 0);
-    ASSERT_TRUE(write_exploit_record_for_character(temp_directory.path(), "aragorn", new_record, &error_message)) << error_message;
+    const exploit_record new_record =
+        make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "Won a battle", 11, 0, 0);
+    ASSERT_TRUE(write_exploit_record_for_character(temp_directory.path(), "aragorn", new_record,
+                                                   &error_message))
+        << error_message;
 
     std::vector<exploit_record> records;
-    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records, &error_message)) << error_message;
+    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records,
+                                                   &error_message))
+        << error_message;
     ASSERT_EQ(records.size(), 2u);
     EXPECT_EQ(records[0].type, new_record.type);
     EXPECT_STREQ(records[0].chVictimName, new_record.chVictimName);
@@ -1940,84 +2256,117 @@ TEST(DbLoader, SeedsLegacyExploitFileFromAccountSnapshotWhenAppendingNewRecord)
     EXPECT_STREQ(records[1].chtime, existing_record.chtime);
 }
 
-TEST(DbLoader, WritesExploitRecordsIntoAccountNativeJsonForLinkedCharacters)
-{
+TEST(DbLoader, WritesExploitRecordsIntoAccountNativeJsonForLinkedCharacters) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     std::vector<exploit_record> existing_records;
-    existing_records.push_back(make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20));
-    ASSERT_TRUE(account::write_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn", existing_records, &error_message)) << error_message;
+    existing_records.push_back(
+        make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20));
+    ASSERT_TRUE(account::write_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn",
+                                                    existing_records, &error_message))
+        << error_message;
     write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"), "stale");
 
-    const exploit_record new_record = make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "Won a battle", 11, 0, 0);
-    ASSERT_TRUE(write_exploit_record_for_character(temp_directory.path(), "aragorn", new_record, &error_message)) << error_message;
+    const exploit_record new_record =
+        make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "Won a battle", 11, 0, 0);
+    ASSERT_TRUE(write_exploit_record_for_character(temp_directory.path(), "aragorn", new_record,
+                                                   &error_message))
+        << error_message;
 
     std::vector<exploit_record> loaded_records;
-    ASSERT_TRUE(account::read_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn", &loaded_records, &error_message)) << error_message;
+    ASSERT_TRUE(account::read_account_exploit_file(temp_directory.path(), "alpha-admin", "aragorn",
+                                                   &loaded_records, &error_message))
+        << error_message;
     ASSERT_EQ(loaded_records.size(), 2u);
     EXPECT_EQ(loaded_records[0].type, EXPLOIT_ACHIEVEMENT);
     EXPECT_EQ(loaded_records[1].type, EXPLOIT_LEVEL);
-    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(
+        account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
 }
 
-TEST(DbLoader, FallsBackToAccountSnapshotWhenRuntimeExploitFileIsMalformed)
-{
+TEST(DbLoader, FallsBackToAccountSnapshotWhenRuntimeExploitFileIsMalformed) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/account_characters").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/account_characters/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/accounts/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/account_characters").c_str()));
+    ASSERT_TRUE(std::filesystem::create_directory(
+        (temp_directory.path() + "/account_characters/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/plrobjs/A-E").c_str()));
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     std::string error_message;
-    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com", "ValidPass1", 1700010101, nullptr, &error_message)) << error_message;
-    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn", 1700010102, nullptr, &error_message)) << error_message;
+    ASSERT_TRUE(account::create_account(temp_directory.path(), "alpha-admin", "player@example.com",
+                                        "ValidPass1", 1700010101, nullptr, &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_link_character(temp_directory.path(), "alpha-admin", "aragorn",
+                                              1700010102, nullptr, &error_message))
+        << error_message;
 
     write_valid_legacy_player_file(temp_directory.path(), make_stored_character("aragorn"));
-    const exploit_record expected_record = make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20);
-    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"), serialize_record(expected_record));
+    const exploit_record expected_record =
+        make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20);
+    write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"),
+               serialize_record(expected_record));
 
     account::CharacterMigrationData migration;
-    ASSERT_TRUE(account::migrate_legacy_character_by_name(temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message)) << error_message;
+    ASSERT_TRUE(account::migrate_legacy_character_by_name(
+        temp_directory.path(), "alpha-admin", "aragorn", 1700010103, &migration, &error_message))
+        << error_message;
     write_file(account::legacy_exploits_file_path(temp_directory.path(), "aragorn"), "bad");
 
     std::vector<exploit_record> records;
-    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records, &error_message)) << error_message;
+    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records,
+                                                   &error_message))
+        << error_message;
     ASSERT_EQ(records.size(), 1u);
     EXPECT_EQ(records[0].type, expected_record.type);
-    EXPECT_FALSE(std::filesystem::exists(account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
+    EXPECT_FALSE(std::filesystem::exists(
+        account::legacy_exploits_file_path(temp_directory.path(), "aragorn").c_str()));
 }
 
-TEST(DbLoader, FailsClosedWhenTemporaryExploitPathAlreadyExists)
-{
+TEST(DbLoader, FailsClosedWhenTemporaryExploitPathAlreadyExists) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
     // Phase 2a Task 6: the non-linked runtime exploit store moved from
     // '<name>.exploits' (binary) to '<name>.exploits.json'. The temporary
     // file that write_exploit_record_for_character writes through via
     // O_EXCL moved along with it, from '<name>.exploits.tmp' to
     // '<name>.exploits.json.tmp'.
-    const std::string temp_path = account::legacy_exploits_file_path(temp_directory.path(), "aragorn") + ".json.tmp";
+    const std::string temp_path =
+        account::legacy_exploits_file_path(temp_directory.path(), "aragorn") + ".json.tmp";
     write_file(temp_path, "occupied");
 
-    const exploit_record new_record = make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "Won a battle", 11, 0, 0);
+    const exploit_record new_record =
+        make_record(EXPLOIT_ACHIEVEMENT, "Tue Jan  2 00:00:00 2024", "Won a battle", 11, 0, 0);
     std::string error_message;
-    EXPECT_FALSE(write_exploit_record_for_character(temp_directory.path(), "aragorn", new_record, &error_message));
+    EXPECT_FALSE(write_exploit_record_for_character(temp_directory.path(), "aragorn", new_record,
+                                                    &error_message));
     EXPECT_NE(error_message.find("temporary exploit file"), std::string::npos);
 }
 
@@ -2028,14 +2377,16 @@ TEST(DbLoader, FailsClosedWhenTemporaryExploitPathAlreadyExists)
 // must still be able to play this session by decoding the legacy bytes
 // in-memory instead of converting them. Conversion is retried on the next
 // login once the blocking tmp is gone.
-TEST(DbLoader, ConversionWriteFailureLeavesLegacyExploitFileIntact)
-{
+TEST(DbLoader, ConversionWriteFailureLeavesLegacyExploitFileIntact) {
     TemporaryDirectory temp_directory;
     ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits").c_str()));
-    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/exploits/A-E").c_str()));
 
-    const std::string legacy_path = account::legacy_exploits_file_path(temp_directory.path(), "aragorn");
-    const exploit_record expected_record = make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20);
+    const std::string legacy_path =
+        account::legacy_exploits_file_path(temp_directory.path(), "aragorn");
+    const exploit_record expected_record =
+        make_record(EXPLOIT_LEVEL, "Mon Jan  1 00:00:00 2024", "level", 10, 0, 20);
     write_file(legacy_path, serialize_record(expected_record));
 
     // Pre-create the conversion's temp path as a directory: O_EXCL fails
@@ -2048,7 +2399,9 @@ TEST(DbLoader, ConversionWriteFailureLeavesLegacyExploitFileIntact)
 
     std::vector<exploit_record> records;
     std::string error_message;
-    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records, &error_message)) << error_message;
+    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &records,
+                                                   &error_message))
+        << error_message;
     ASSERT_EQ(records.size(), 1u);
     EXPECT_EQ(records[0].type, expected_record.type);
     EXPECT_STREQ(records[0].chVictimName, expected_record.chVictimName);
@@ -2064,7 +2417,9 @@ TEST(DbLoader, ConversionWriteFailureLeavesLegacyExploitFileIntact)
     ASSERT_TRUE(std::filesystem::remove(temp_path.c_str()));
     std::vector<exploit_record> retried_records;
     std::string retry_error;
-    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn", &retried_records, &retry_error)) << retry_error;
+    ASSERT_TRUE(load_exploit_records_for_character(temp_directory.path(), "aragorn",
+                                                   &retried_records, &retry_error))
+        << retry_error;
     ASSERT_EQ(retried_records.size(), 1u);
     EXPECT_EQ(retried_records[0].type, expected_record.type);
     EXPECT_FALSE(std::filesystem::exists(legacy_path.c_str()));

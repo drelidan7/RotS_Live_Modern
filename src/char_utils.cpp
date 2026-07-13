@@ -897,7 +897,7 @@ int get_skill(const char_data& character, int skill_index)
 //============================================================================
 void set_skill(char_data& character, int skill_index, byte value)
 {
-    if (character.skills) {
+    if (!character.skills.empty()) {
         character.skills[skill_index] = value;
     }
 }
@@ -905,7 +905,7 @@ void set_skill(char_data& character, int skill_index, byte value)
 //============================================================================
 int get_raw_knowledge(const char_data& character, int skill_index)
 {
-    if (!character.knowledge)
+    if (character.knowledge.empty())
         return 80;
 
     return character.knowledge[skill_index];
@@ -926,7 +926,7 @@ int get_knowledge(const char_data& character, int skill_index)
 //============================================================================
 void set_knowledge(char_data& character, int skill_index, byte value)
 {
-    if (character.knowledge) {
+    if (!character.knowledge.empty()) {
         character.knowledge[skill_index] = value;
     }
 }
@@ -1381,7 +1381,7 @@ int get_energy_regen(const char_data& character)
 //============================================================================
 int char_data::get_spent_practice_count() const
 {
-    if (skills == NULL)
+    if (skills.empty())
         return 0;
 
     int count = 0;
@@ -1412,7 +1412,7 @@ void char_data::update_available_practice_sessions()
 //============================================================================
 void char_data::reset_skills()
 {
-    if (skills == NULL || knowledge == NULL)
+    if (skills.empty() || knowledge.empty())
         return;
 
     for (int index = 0; index < MAX_SKILLS; ++index) {

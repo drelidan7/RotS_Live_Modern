@@ -18,8 +18,7 @@ namespace savebench {
 namespace {
 
 // Time `body` `iterations` times; return {min, avg, max} microseconds (share filled later).
-StageTiming time_stage(const std::string& name, int iterations,
-                       const std::function<void()>& body) {
+StageTiming time_stage(const std::string &name, int iterations, const std::function<void()> &body) {
     StageTiming t;
     t.name = name;
     long sum = 0;
@@ -32,8 +31,10 @@ StageTiming time_stage(const std::string& name, int iterations,
         sw.stop();
         const long us = static_cast<long>(sw.elapsed<std::chrono::microseconds>().count());
         sum += us;
-        if (us < lo) lo = us;
-        if (us > hi) hi = us;
+        if (us < lo)
+            lo = us;
+        if (us > hi)
+            hi = us;
     }
     t.min_us = (iterations > 0) ? lo : 0;
     t.max_us = hi;
@@ -44,19 +45,22 @@ StageTiming time_stage(const std::string& name, int iterations,
 // Fill each stage's share and the "other" remainder = max(0, end-to-end total - sum(named)).
 // The share denominator is stage_sum + other_us so per-stage and other shares always sum to
 // ~100%, allowing a reader to reconcile every share% against the printed footer denominator.
-void finalize_shares(PipelineReport* r) {
+void finalize_shares(PipelineReport *r) {
     long stage_sum = 0;
-    for (const StageTiming& s : r->stages) stage_sum += s.avg_us;
+    for (const StageTiming &s : r->stages)
+        stage_sum += s.avg_us;
     r->other.name = "other (validate/mkdir/path/owner/index)";
     // other_us: uninstrumented middle steps — the part of the end-to-end pass NOT covered by
     // named stages. Clamped to zero when per-stage instrumentation overhead causes stage_sum to
     // exceed the combined pass (routine under QEMU emulation).
     long other_us = r->total.avg_us - stage_sum;
-    if (other_us < 0) other_us = 0;
+    if (other_us < 0)
+        other_us = 0;
     r->other.avg_us = other_us;
     const long denom_us = stage_sum + other_us;
     const double denom = (denom_us > 0) ? static_cast<double>(denom_us) : 1.0;
-    for (StageTiming& s : r->stages) s.share = 100.0 * s.avg_us / denom;
+    for (StageTiming &s : r->stages)
+        s.share = 100.0 * s.avg_us / denom;
     r->other.share = 100.0 * other_us / denom;
     // r->total.avg_us retains the end-to-end single-pass average; format_report prints it
     // in a second footer line alongside the share denominator so both figures and their
@@ -65,11 +69,12 @@ void finalize_shares(PipelineReport* r) {
 
 } // namespace
 
-bool profile_save(const char_file_u& chd, const std::string& root,
-                  const std::string& account_name, const std::string& character_name,
-                  const std::string& scratch_path, int iterations,
-                  PipelineReport* out, std::string* error, PipelineReport* compare) {
-    if (iterations < 1) iterations = 1;
+bool profile_save(const char_file_u &chd, const std::string &root, const std::string &account_name,
+                  const std::string &character_name, const std::string &scratch_path,
+                  int iterations, PipelineReport *out, std::string *error,
+                  PipelineReport *compare) {
+    if (iterations < 1)
+        iterations = 1;
     std::string err;
     account::AccountData account;
 
@@ -103,27 +108,28 @@ bool profile_save(const char_file_u& chd, const std::string& root,
     std::remove(scratch_path.c_str()); // clean up the throwaway
     // COMPARE (opt-in): A/B the parallel cache + serialize variants against v1 in a SEPARATE report
     // so finalize_shares/format_report stay valid on the canonical breakdown above. Pure in-memory:
-    // the resolvers read read-only; serialize is a string transform -- no live write. compare->total
-    // runs every compared item once so its shares reconcile to ~100%.
+    // the resolvers read read-only; serialize is a string transform -- no live write.
+    // compare->total runs every compared item once so its shares reconcile to ~100%.
     if (compare) {
         std::string cmp_err;
         account::AccountData cmp_account;
-        compare->stages.push_back(time_stage("S2  read_account_file        (v1)", iterations, [&]() {
-            account::read_account_file(root, account_name, &cmp_account, &cmp_err);
-        }));
+        compare->stages.push_back(
+            time_stage("S2  read_account_file        (v1)", iterations, [&]() {
+                account::read_account_file(root, account_name, &cmp_account, &cmp_err);
+            }));
         compare->stages.push_back(time_stage("S2c read_account_file_cached", iterations, [&]() {
             account_cache::read_account_file_cached(root, account_name, &cmp_account, &cmp_err);
         }));
         std::string cmp_json;
-        compare->stages.push_back(time_stage("S4  serialize_character_to_json     (v1)", iterations, [&]() {
-            cmp_json = character_json::serialize_character_to_json(cd);
-        }));
-        compare->stages.push_back(time_stage("S4a serialize_character_to_json_v2a", iterations, [&]() {
-            cmp_json = character_json::serialize_character_to_json_v2a(cd);
-        }));
-        compare->stages.push_back(time_stage("S4b serialize_character_to_json_v2b", iterations, [&]() {
-            cmp_json = character_json::serialize_character_to_json_v2b(cd);
-        }));
+        compare->stages.push_back(
+            time_stage("S4  serialize_character_to_json     (v1)", iterations,
+                       [&]() { cmp_json = character_json::serialize_character_to_json(cd); }));
+        compare->stages.push_back(
+            time_stage("S4a serialize_character_to_json_v2a", iterations,
+                       [&]() { cmp_json = character_json::serialize_character_to_json_v2a(cd); }));
+        compare->stages.push_back(
+            time_stage("S4b serialize_character_to_json_v2b", iterations,
+                       [&]() { cmp_json = character_json::serialize_character_to_json_v2b(cd); }));
         compare->total = time_stage("TOTAL save compare", iterations, [&]() {
             account::AccountData a;
             account::read_account_file(root, account_name, &a, &cmp_err);
@@ -137,20 +143,22 @@ bool profile_save(const char_file_u& chd, const std::string& root,
     finalize_shares(out);
     (void)character_name;
     if (!err_S5.empty()) {
-        if (error) *error = err_S5;
+        if (error)
+            *error = err_S5;
         return false;
     }
     return true;
 }
 
-bool profile_load(const std::string& root, const std::string& account_name,
-                  const std::string& character_name, int iterations,
-                  bool include_store_to_char, PipelineReport* out, std::string* error,
-                  PipelineReport* compare) {
-    if (iterations < 1) iterations = 1;
+bool profile_load(const std::string &root, const std::string &account_name,
+                  const std::string &character_name, int iterations, bool include_store_to_char,
+                  PipelineReport *out, std::string *error, PipelineReport *compare) {
+    if (iterations < 1)
+        iterations = 1;
     std::string err;
     account::AccountData account;
-    const std::string path = account::account_character_player_path(root, account_name, character_name);
+    const std::string path =
+        account::account_character_player_path(root, account_name, character_name);
 
     // L1: read + parse account.json (non-fatal: may miss in test/degraded environments).
     out->stages.push_back(time_stage("L1 read_account_file", iterations, [&]() {
@@ -159,18 +167,17 @@ bool profile_load(const std::string& root, const std::string& account_name,
     // L2: read character.json bytes.
     std::string json;
     std::string err_L2;
-    out->stages.push_back(time_stage("L2 read_text_file", iterations, [&]() {
-        account::read_text_file(path, &json, &err_L2);
-    }));
+    out->stages.push_back(time_stage("L2 read_text_file", iterations,
+                                     [&]() { account::read_text_file(path, &json, &err_L2); }));
     // L3: JSON -> CharacterData.
     character_json::CharacterData cd;
     std::string err_L3;
     out->stages.push_back(time_stage("L3 deserialize_character_from_json", iterations, [&]() {
-        cd = character_json::CharacterData {};
+        cd = character_json::CharacterData{};
         character_json::deserialize_character_from_json(json, &cd, &err_L3);
     }));
     // L4: CharacterData -> char_file_u.
-    char_file_u chd {};
+    char_file_u chd{};
     std::string err_L4;
     out->stages.push_back(time_stage("L4 apply_character_data_to_store", iterations, [&]() {
         character_json::apply_character_data_to_store(cd, &chd, &err_L4);
@@ -187,94 +194,103 @@ bool profile_load(const std::string& root, const std::string& account_name,
     // operator-new/free() the way account_management_tests.cpp's identical
     // pre-Phase-5-T6 bug did).
     if (include_store_to_char) {
-        char_data* scratch;
-        CREATE1(scratch, char_data);
-        clear_char(scratch, MOB_VOID);
-        out->stages.push_back(time_stage("L5 store_to_char", iterations, [&]() {
-            store_to_char(&chd, scratch);
-        }));
-        free_char(scratch);
+        // RAII T6b: clean-scope scratch char -- allocated, written by
+        // store_to_char() across the timed iterations, and discarded here with
+        // no world-graph handoff. The owning char_data_ptr replaces the manual
+        // CREATE1()/free_char() pair; free_char runs on scope exit (matching
+        // CREATE1()'s calloc allocation, not a plain delete).
+        char_data_ptr scratch = make_char_data(MOB_VOID);
+        out->stages.push_back(time_stage("L5 store_to_char", iterations,
+                                         [&]() { store_to_char(&chd, scratch.get()); }));
     }
     out->total = time_stage("TOTAL load", iterations, [&]() {
         account::AccountData a;
         account::read_account_file(root, account_name, &a, &err);
         std::string j;
         account::read_text_file(path, &j, &err);
-        character_json::CharacterData c {};
+        character_json::CharacterData c{};
         character_json::deserialize_character_from_json(j, &c, &err);
-        char_file_u s {};
+        char_file_u s{};
         character_json::apply_character_data_to_store(c, &s, &err);
     });
     finalize_shares(out);
     // COMPARE (opt-in): A/B the cache + deserialize variants against v1 in a SEPARATE report. Pure
-    // in-memory (deserialize over the already-read `json`); compare->total runs each item once so its
-    // shares reconcile to ~100%. Canonical out/* error semantics are unchanged.
+    // in-memory (deserialize over the already-read `json`); compare->total runs each item once so
+    // its shares reconcile to ~100%. Canonical out/* error semantics are unchanged.
     if (compare) {
         std::string cmp_err;
         account::AccountData cmp_account;
-        compare->stages.push_back(time_stage("L1  read_account_file        (v1)", iterations, [&]() {
-            account::read_account_file(root, account_name, &cmp_account, &cmp_err);
-        }));
+        compare->stages.push_back(
+            time_stage("L1  read_account_file        (v1)", iterations, [&]() {
+                account::read_account_file(root, account_name, &cmp_account, &cmp_err);
+            }));
         compare->stages.push_back(time_stage("L1c read_account_file_cached", iterations, [&]() {
             account_cache::read_account_file_cached(root, account_name, &cmp_account, &cmp_err);
         }));
         character_json::CharacterData cmp_cd;
-        compare->stages.push_back(time_stage("L3  deserialize_character_from_json     (v1)", iterations, [&]() {
-            cmp_cd = character_json::CharacterData {};
-            character_json::deserialize_character_from_json(json, &cmp_cd, &cmp_err);
-        }));
-        compare->stages.push_back(time_stage("L3a deserialize_character_from_json_v2a", iterations, [&]() {
-            cmp_cd = character_json::CharacterData {};
-            character_json::deserialize_character_from_json_v2a(json, &cmp_cd, &cmp_err);
-        }));
-        compare->stages.push_back(time_stage("L3b deserialize_character_from_json_v2b", iterations, [&]() {
-            cmp_cd = character_json::CharacterData {};
-            character_json::deserialize_character_from_json_v2b(json, &cmp_cd, &cmp_err);
-        }));
+        compare->stages.push_back(
+            time_stage("L3  deserialize_character_from_json     (v1)", iterations, [&]() {
+                cmp_cd = character_json::CharacterData{};
+                character_json::deserialize_character_from_json(json, &cmp_cd, &cmp_err);
+            }));
+        compare->stages.push_back(
+            time_stage("L3a deserialize_character_from_json_v2a", iterations, [&]() {
+                cmp_cd = character_json::CharacterData{};
+                character_json::deserialize_character_from_json_v2a(json, &cmp_cd, &cmp_err);
+            }));
+        compare->stages.push_back(
+            time_stage("L3b deserialize_character_from_json_v2b", iterations, [&]() {
+                cmp_cd = character_json::CharacterData{};
+                character_json::deserialize_character_from_json_v2b(json, &cmp_cd, &cmp_err);
+            }));
         compare->total = time_stage("TOTAL load compare", iterations, [&]() {
             account::AccountData a;
             account::read_account_file(root, account_name, &a, &cmp_err);
             account_cache::read_account_file_cached(root, account_name, &a, &cmp_err);
-            character_json::CharacterData c1 {};
+            character_json::CharacterData c1{};
             character_json::deserialize_character_from_json(json, &c1, &cmp_err);
-            character_json::CharacterData c2 {};
+            character_json::CharacterData c2{};
             character_json::deserialize_character_from_json_v2a(json, &c2, &cmp_err);
-            character_json::CharacterData c3 {};
+            character_json::CharacterData c3{};
             character_json::deserialize_character_from_json_v2b(json, &c3, &cmp_err);
         });
         finalize_shares(compare);
     }
     if (!err_L2.empty()) {
-        if (error) *error = err_L2;
+        if (error)
+            *error = err_L2;
         return false;
     }
     if (!err_L3.empty()) {
-        if (error) *error = err_L3;
+        if (error)
+            *error = err_L3;
         return false;
     }
     if (!err_L4.empty()) {
-        if (error) *error = err_L4;
+        if (error)
+            *error = err_L4;
         return false;
     }
     return true;
 }
 
-std::string format_report(const std::string& title, const PipelineReport& r) {
+std::string format_report(const std::string &title, const PipelineReport &r) {
     char line[160];
     std::string out = "\n=== " + title + " pipeline (microseconds) ===\n";
     out += "  stage                                    min     avg     max   share%\n";
-    for (const StageTiming& s : r.stages) {
-        snprintf(line, sizeof(line), "  %-38s %6ld  %6ld  %6ld   %5.1f\n",
-                 s.name.c_str(), s.min_us, s.avg_us, s.max_us, s.share);
+    for (const StageTiming &s : r.stages) {
+        snprintf(line, sizeof(line), "  %-38s %6ld  %6ld  %6ld   %5.1f\n", s.name.c_str(), s.min_us,
+                 s.avg_us, s.max_us, s.share);
         out += line;
     }
-    snprintf(line, sizeof(line), "  %-38s %6ld  %6ld  %6ld   %5.1f\n",
-             r.other.name.c_str(), r.other.min_us, r.other.avg_us, r.other.max_us, r.other.share);
+    snprintf(line, sizeof(line), "  %-38s %6ld  %6ld  %6ld   %5.1f\n", r.other.name.c_str(),
+             r.other.min_us, r.other.avg_us, r.other.max_us, r.other.share);
     out += line;
     // Footer 1: share denominator (stage_sum + other_us) — every share% reconciles against
     // this value: share% = stage.avg_us / denom * 100, and all shares together sum to ~100%.
     long stage_sum = 0;
-    for (const StageTiming& s : r.stages) stage_sum += s.avg_us;
+    for (const StageTiming &s : r.stages)
+        stage_sum += s.avg_us;
     const long denom_us = stage_sum + r.other.avg_us;
     const long end_to_end_us = r.total.avg_us;
     snprintf(line, sizeof(line),
@@ -287,8 +303,7 @@ std::string format_report(const std::string& title, const PipelineReport& r) {
                  "  end-to-end single pass   = %ld us  (per-stage timing overhead ~%ld us)\n",
                  end_to_end_us, stage_sum - end_to_end_us);
     } else {
-        snprintf(line, sizeof(line),
-                 "  end-to-end single pass   = %ld us\n", end_to_end_us);
+        snprintf(line, sizeof(line), "  end-to-end single pass   = %ld us\n", end_to_end_us);
     }
     out += line;
     return out;

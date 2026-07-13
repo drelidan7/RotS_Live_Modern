@@ -3506,6 +3506,20 @@ void free_char(struct char_data *ch) {
     RELEASE(ch);
 }
 
+// RAII T6b: owning factory for a clean-scope char_data instance. Mirrors the
+// canonical hand-written `CREATE(x, char_data, 1); clear_char(x, mode);`
+// allocation (calloc storage + placement-new construction) and wraps the result
+// in a char_data_ptr whose deleter is free_char -- so the whole
+// allocate/construct/use/free lifecycle is single-owner and exception-safe.
+// `mode` is passed straight to clear_char (MOB_VOID for a PC-shaped scratch
+// char, MOB_ISNPC for a mob). See db.h for the world-graph caveat.
+char_data_ptr make_char_data(int mode) {
+    struct char_data *ch;
+    CREATE(ch, struct char_data, 1);
+    clear_char(ch, mode);
+    return char_data_ptr(ch);
+}
+
 /* release memory allocated for an obj struct */
 void free_obj(struct obj_data *obj) {
     int nr;

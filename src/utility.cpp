@@ -1200,6 +1200,11 @@ int strn_cmp(const char* arg1, const char* arg2, int n)
     return (0);
 }
 
+static std::string_view truncate_at_null(std::string_view message)
+{
+    return message.substr(0, message.find('\0'));
+}
+
 /* log a death trap hit */
 void log_death_trap(struct char_data* ch)
 {
@@ -1207,11 +1212,11 @@ void log_death_trap(struct char_data* ch)
 
     std::string message = std::format("{} hit death trap #{} ({})", GET_NAME(ch),
         world[ch->in_room].number, world[ch->in_room].name);
-    mudlog(message.data(), BRF, LEVEL_IMMORT, TRUE);
+    mudlog(message, BRF, LEVEL_IMMORT, TRUE);
 }
 
 /* writes a string to the log */
-void log(const char* str)
+void log(std::string_view message)
 {
     // time_t ct(0);
     // char* time_string = asctime(localtime(&ct));
@@ -1225,52 +1230,68 @@ void log(const char* str)
     // time, a null return, and an asctime(nullptr) abort (Phase 3 Task 6 crash,
     // STATUS_STACK_BUFFER_OVERRUN). Identical width to the old `long` on both the
     // 32-bit legacy build and 64-bit POSIX, so this only changes Windows behavior.
-    time_t ct;
-    char* tmstr;
-    ct = time(0);
-    tmstr = asctime(localtime(&ct));
-    *(tmstr + strlen(tmstr) - 1) = '\0';
-    fprintf(stderr, "%-19.19s :: %s\n", tmstr, str);
+    message = truncate_at_null(message);
+    time_t current_time;
+    current_time = time(0);
+    char* timestamp = asctime(localtime(&current_time));
+    *(timestamp + strlen(timestamp) - 1) = '\0';
+    std::fprintf(stderr, "%-19.19s :: ", timestamp);
+    if (!message.empty()) {
+        // The view may not have a terminator, so write its known length instead
+        // of rescanning it or allocating a temporary C string.
+        std::fwrite(message.data(), sizeof(char), message.size(), stderr);
+    }
+    std::fputc('\n', stderr);
 }
 
-void mudlog(const char* str, char type, sh_int level, byte file)
+void mudlog(std::string_view message_body, char type, sh_int level, byte file)
 {
     extern struct descriptor_data* descriptor_list;
-    struct descriptor_data* i;
-    char* tmp;
+    struct descriptor_data* connection;
+    char* timestamp;
     // time_t (not long): see log() above -- a `long*` passed to localtime() is
     // only 4 of the 8 bytes it reads on Windows LLP64, aborting in asctime().
     // This is the mudlog on nearly every logging path, so the bug crashed ~60
     // tests (Phase 3 Task 6).
-    time_t ct;
-    char tp;
+    time_t current_time;
+    char log_preference;
 
-    ct = time(0);
-    tmp = asctime(localtime(&ct));
+    message_body = truncate_at_null(message_body);
+    current_time = time(0);
+    timestamp = asctime(localtime(&current_time));
     // time_t ct(0);
     // char* tmp = asctime(localtime(&ct));
 
-    if (file)
-        fprintf(stderr, "%d, %-19.19s :: %s\n", type, tmp, str);
-    if (level < 0)
+    if (file) {
+        std::fprintf(stderr, "%d, %-19.19s :: ", type, timestamp);
+        if (!message_body.empty()) {
+            // Keep stderr output bounded by the view rather than assuming its
+            // data pointer reaches a null terminator.
+            std::fwrite(message_body.data(), sizeof(char), message_body.size(), stderr);
+        }
+        std::fputc('\n', stderr);
+    }
+    if (level < 0) {
         return;
+    }
 
-    if (level < LEVEL_AREAGOD)
+    if (level < LEVEL_AREAGOD) {
         level = LEVEL_AREAGOD;
+    }
 
-    const std::string message = std::format("[ {} ]\n\r", str);
+    const std::string message = std::format("[ {} ]\n\r", message_body);
 
-    for (i = descriptor_list; i; i = i->next)
-        if (!i->connected && !PLR_FLAGGED(i->character, PLR_WRITING)) {
-            tp = ((PRF_FLAGGED(i->character, PRF_LOG1) ? 1 : 0) + (PRF_FLAGGED(i->character, PRF_LOG2) ? 2 : 0) + (PRF_FLAGGED(i->character, PRF_LOG3) ? 4 : 0));
+    for (connection = descriptor_list; connection; connection = connection->next) {
+        if (!connection->connected && !PLR_FLAGGED(connection->character, PLR_WRITING)) {
+            log_preference = ((PRF_FLAGGED(connection->character, PRF_LOG1) ? 1 : 0) + (PRF_FLAGGED(connection->character, PRF_LOG2) ? 2 : 0) + (PRF_FLAGGED(connection->character, PRF_LOG3) ? 4 : 0));
 
-            if ((GET_LEVEL(i->character) >= level) && (tp >= type)) {
-                send_to_char(CC_FIX(i->character, CGRN), i->character);
-                send_to_char(message.c_str(), i->character);
-                send_to_char(CC_NORM(i->character), i->character);
+            if ((GET_LEVEL(connection->character) >= level) && (log_preference >= type)) {
+                send_to_char(CC_FIX(connection->character, CGRN), connection->character);
+                send_to_char(message, connection->character);
+                send_to_char(CC_NORM(connection->character), connection->character);
             }
         }
-    return;
+    }
 }
 
 void mudlog_debug_mob(const char* buf, char_data* ch)

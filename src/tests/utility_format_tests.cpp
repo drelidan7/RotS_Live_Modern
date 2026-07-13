@@ -16,6 +16,7 @@
 
 #include <cstring>
 #include <string>
+#include <string_view>
 
 extern struct descriptor_data* descriptor_list;
 extern const char* const month_name[];
@@ -119,6 +120,54 @@ TEST(UtilityFormat, MudlogTreatsBracesInsideMessageAsLiteralText)
     mudlog(message, BRF, LEVEL_GOD, FALSE);
 
     EXPECT_EQ(std::string(listener.descriptor.output), "[ value is {0} and {} ]\n\r");
+}
+
+TEST(UtilityFormat, MudlogAcceptsANonNullTerminatedSlice)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+    MudlogListenerContext listener;
+    descriptor_list = &listener.descriptor;
+    const std::string storage = "prefix-message-suffix";
+
+    mudlog(std::string_view(storage).substr(7, 7), BRF, LEVEL_GOD, FALSE);
+
+    EXPECT_STREQ(listener.descriptor.output, "[ message ]\n\r");
+}
+
+TEST(UtilityFormat, MudlogTruncatesAViewAtAnEmbeddedNull)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+    MudlogListenerContext listener;
+    descriptor_list = &listener.descriptor;
+    const char storage[] = { 'o', 'k', '\0', 'n', 'o' };
+
+    mudlog(std::string_view(storage, sizeof(storage)), BRF, LEVEL_GOD, FALSE);
+
+    EXPECT_STREQ(listener.descriptor.output, "[ ok ]\n\r");
+}
+
+TEST(UtilityFormat, LogWritesOnlyTheSelectedViewToStderr)
+{
+    const std::string storage = "prefix-message-suffix";
+    testing::internal::CaptureStderr();
+
+    log(std::string_view(storage).substr(7, 7));
+
+    const std::string output = testing::internal::GetCapturedStderr();
+    EXPECT_TRUE(output.ends_with(" :: message\n"));
+    EXPECT_EQ(output.find("suffix"), std::string::npos);
+}
+
+TEST(UtilityFormat, LogTruncatesAViewAtAnEmbeddedNull)
+{
+    const char storage[] = { 'o', 'k', '\0', 'n', 'o' };
+    testing::internal::CaptureStderr();
+
+    log(std::string_view(storage, sizeof(storage)));
+
+    const std::string output = testing::internal::GetCapturedStderr();
+    EXPECT_TRUE(output.ends_with(" :: ok\n"));
+    EXPECT_EQ(output.find("no"), std::string::npos);
 }
 
 TEST(UtilityFormat, LogDeathTrapReportsCharacterNameRoomNumberAndName)

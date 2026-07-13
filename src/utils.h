@@ -12,6 +12,7 @@
 #define UTILS_H
 
 #include <cstring>
+#include <string_view>
 
 #include "platdef.h" /* For byte, sh_int, ush_int, etc. */
 #include "structs.h" /* For time_info_data */
@@ -80,8 +81,10 @@ inline const char* nz(const char* p)
 
 int str_cmp(const char* arg1, const char* arg2);
 int strn_cmp(const char* arg1, const char* arg2, int n);
-void log(const char* str);
-void mudlog(const char* str, char type, sh_int level, byte file);
+/// Writes a bounded message to the server's timestamped stderr log.
+void log(std::string_view message);
+/// Writes a bounded message to stderr and eligible in-game log listeners.
+void mudlog(std::string_view message, char type, sh_int level, byte file);
 void mudlog_debug_mob(const char* buf, char_data* ch);
 void mudlog_aliased_mob(const char* buf, char_data* ch, const char* mob_alias);
 void vmudlog(char type, const char* format, ...);

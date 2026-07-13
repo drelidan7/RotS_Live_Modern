@@ -501,23 +501,27 @@ extern struct race_bodypart_data bodyparts[MAX_BODYTYPES];
 
 #define AWAKE(ch) (GET_POS(ch) > POSITION_SLEEPING)
 
-#define GET_RAW_SKILL(ch, i) ((ch)->knowledge ? (GET_BODYTYPE(ch) == 2) ? 0 : (((ch)->knowledge)[i]) : 80)
-#define GET_SKILL(ch, i) (IS_AFFECTED(ch, AFF_CONFUSE) ? ((((ch)->knowledge ? (GET_BODYTYPE((ch)) == 2) ? 0 : (((ch)->knowledge)[i]) : 80)) - get_confuse_modifier((ch))) : ((ch)->knowledge ? (GET_BODYTYPE(ch) == 2) ? 0 : (((ch)->knowledge)[i]) : 80))
+// NOTE (RAII T3): `knowledge`/`skills` became owning std::vector<byte>
+// members (structs.h); an empty vector is the PC/NPC-absent sentinel that
+// used to be a null `byte*`, so every former truthiness check below is now
+// an emptiness check.
+#define GET_RAW_SKILL(ch, i) (!(ch)->knowledge.empty() ? (GET_BODYTYPE(ch) == 2) ? 0 : (((ch)->knowledge)[i]) : 80)
+#define GET_SKILL(ch, i) (IS_AFFECTED(ch, AFF_CONFUSE) ? (((!(ch)->knowledge.empty() ? (GET_BODYTYPE((ch)) == 2) ? 0 : (((ch)->knowledge)[i]) : 80)) - get_confuse_modifier((ch))) : (!(ch)->knowledge.empty() ? (GET_BODYTYPE(ch) == 2) ? 0 : (((ch)->knowledge)[i]) : 80))
 
 //*- temporarily prevented pets from having skills.. will need to address it later in a proper way
-#define SET_SKILL(ch, i, pct)      \
-    {                              \
-        if ((ch)->skills)          \
-            (ch)->skills[i] = pct; \
+#define SET_SKILL(ch, i, pct)         \
+    {                                 \
+        if (!(ch)->skills.empty())    \
+            (ch)->skills[i] = pct;    \
     }
 
-#define GET_RAW_KNOWLEDGE(ch, i) ((ch)->knowledge ? (((ch)->knowledge)[i]) : 80)
-#define GET_KNOWLEDGE(ch, i) (IS_AFFECTED(ch, AFF_CONFUSE) ? ((((ch)->knowledge ? (((ch)->knowledge)[i]) : 80)) - get_confuse_modifier((ch))) : ((ch)->knowledge ? (((ch)->knowledge)[i]) : 80))
+#define GET_RAW_KNOWLEDGE(ch, i) (!(ch)->knowledge.empty() ? (((ch)->knowledge)[i]) : 80)
+#define GET_KNOWLEDGE(ch, i) (IS_AFFECTED(ch, AFF_CONFUSE) ? (((!(ch)->knowledge.empty() ? (((ch)->knowledge)[i]) : 80)) - get_confuse_modifier((ch))) : (!(ch)->knowledge.empty() ? (((ch)->knowledge)[i]) : 80))
 
-#define SET_KNOWLEDGE(ch, i, pct)     \
-    {                                 \
-        if ((ch)->knowledge)          \
-            (ch)->knowledge[i] = pct; \
+#define SET_KNOWLEDGE(ch, i, pct)        \
+    {                                    \
+        if (!(ch)->knowledge.empty())    \
+            (ch)->knowledge[i] = pct;    \
     }
 
 #define GET_ABS_NUM(ch) ((ch)->abs_number)

@@ -35,20 +35,19 @@ constexpr int kSkillIndex = 1;
 // point somewhere (char_data::profs is a raw pointer; GET_PROF_COOF/
 // GET_PROF_LEVEL dereference it for every non-PROF_WARRIOR, non-PROF_GENERAL
 // skill recalc_skills() walks over, including entries unrelated to
-// kSkillIndex), and skills/knowledge (also raw pointers, not arrays, on the
-// live char_data) must point at caller-owned storage.
+// kSkillIndex), and skills/knowledge (owning std::vector<byte> on the live
+// char_data, RAII T3) must be sized to MAX_SKILLS the way clear_char() would
+// for a PC, since this fixture never calls clear_char().
 struct GuildPracticeContext {
     char_data host {};
     char_data ch {};
     char_prof_data ch_profs {};
-    byte ch_skills[MAX_SKILLS] {};
-    byte ch_knowledge[MAX_SKILLS] {};
 
     GuildPracticeContext()
     {
         ch.profs = &ch_profs;
-        ch.skills = ch_skills;
-        ch.knowledge = ch_knowledge;
+        ch.skills.assign(MAX_SKILLS, 0);
+        ch.knowledge.assign(MAX_SKILLS, 0);
         ch.specials2.spells_to_learn = 5;
 
         // handle_pracs()'s act(..., TO_NOTVICT) call resolves its recipient
@@ -67,7 +66,7 @@ TEST(HandlePracs, IncrementsSkillAndDecrementsSpellsToLearnByOnePerCall) {
 
     const bool capped = handle_pracs(&context.host, &context.ch, kSkillIndex, kGuildmasterIndex);
 
-    EXPECT_EQ(context.ch_skills[kSkillIndex], 1);
+    EXPECT_EQ(context.ch.skills[kSkillIndex], 1);
     EXPECT_EQ(context.ch.specials2.spells_to_learn, 4);
     EXPECT_FALSE(capped) << "One practice session shouldn't reach the knowledge cap.";
 }
@@ -92,7 +91,7 @@ TEST(HandlePracs, ClampsKnowledgeToGuildmasterCapAndSignalsStop) {
 
     ASSERT_TRUE(capped) << "Expected the knowledge cap to be reached within "
                          << kMaxIterations << " practice attempts.";
-    EXPECT_EQ(context.ch_knowledge[kSkillIndex], guildmasters[kGuildmasterIndex].knowledge[kSkillIndex]);
+    EXPECT_EQ(context.ch.knowledge[kSkillIndex], guildmasters[kGuildmasterIndex].knowledge[kSkillIndex]);
 }
 
 TEST(HandlePracs, RepeatedCallsNeverDriveSpellsToLearnNegative) {

@@ -2560,12 +2560,12 @@ void store_to_char(struct char_file_u* st, struct char_data* ch)
 
     /* New dynamic skill system: only PCs have a skill array allocated. */
 
-    if (!ch->skills)
-        CREATE(ch->skills, byte, MAX_SKILLS);
+    if (ch->skills.empty())
+        ch->skills.assign(MAX_SKILLS, 0);
     for (i = 0; i < MAX_SKILLS; i++)
         SET_SKILL(ch, i, st->skills[i]);
-    if (!ch->knowledge)
-        CREATE(ch->knowledge, byte, MAX_SKILLS);
+    if (ch->knowledge.empty())
+        ch->knowledge.assign(MAX_SKILLS, 0);
     recalc_skills(ch);
 
     ch->specials.carry_weight = 0;
@@ -3412,14 +3412,32 @@ void free_char(struct char_data* ch)
    mob_proto[i].player.description) RELEASE(ch->player.description);
    } */
 
-    if (ch->skills) {
-        RELEASE(ch->skills);
-        if (IS_NPC(ch))
-            log("SYSERR: Mob had skills array allocated!");
-    }
-    if (ch->knowledge) {
-        RELEASE(ch->knowledge);
-    }
+    // ch->skills/ch->knowledge are now owning std::vector<byte> members
+    // (RAII T3; were CREATE()/RELEASE()'d byte* before). free_char() frees
+    // the raw char_data storage below via RELEASE(ch) = free_function(ch)
+    // WITHOUT running ~char_data() (see the class-scope comment on
+    // structs.h's skills/knowledge fields and db.cpp's clear_char()) -- so a
+    // non-empty vector's heap buffer would leak (or double-free/UB against
+    // the calloc'd storage on the next clear_char()) unless explicitly
+    // released here first, mirroring the extra_specialization_data.reset()/
+    // damage_details.reset() pattern a few lines below.
+    //
+    // NOTE: `ch->skills = {};` looks equivalent but is NOT -- `{}` there
+    // resolves to vector::operator=(std::initializer_list<byte>), which is
+    // spec'd as assign(ilist.begin(), ilist.end()): it resets size() to 0 but
+    // is free to (and, per libstdc++, does) keep the already-reserved 256-
+    // byte capacity() allocated for reuse. That capacity would then never be
+    // freed, since the enclosing char_data's storage is free()'d below
+    // without running ~vector() (confirmed by LeakSanitizer under the linux
+    // sanitize preset: 512 bytes/2 allocations leaked per PC free_char() call
+    // with the `= {}` form). Move-assigning an actual (non-allocating)
+    // temporary vector instead unambiguously selects
+    // vector::operator=(vector&&), which deallocates the target's existing
+    // buffer before taking over the moved-from temporary's null one.
+    if (!ch->skills.empty() && IS_NPC(ch))
+        log("SYSERR: Mob had skills array allocated!");
+    ch->skills = std::vector<byte>();
+    ch->knowledge = std::vector<byte>();
     // printf("skills freed, and others\n");
 
     ch->extra_specialization_data.reset();
@@ -3648,8 +3666,8 @@ void clear_char(struct char_data* ch, int mode)
         ch->abilities.mana = 100;
 
     if (mode != MOB_ISNPC) {
-        CREATE(ch->skills, byte, MAX_SKILLS);
-        CREATE(ch->knowledge, byte, MAX_SKILLS);
+        ch->skills.assign(MAX_SKILLS, 0);
+        ch->knowledge.assign(MAX_SKILLS, 0);
         if (ch->desc)
             memset(ch->desc->pwd, 0, MAX_PWD_LENGTH);
     }
@@ -3704,8 +3722,8 @@ void init_char(struct char_data* ch)
 
     ch->specials2.idnum = ++top_idnum;
 
-    if (!ch->skills)
-        CREATE(ch->skills, byte, MAX_SKILLS);
+    if (ch->skills.empty())
+        ch->skills.assign(MAX_SKILLS, 0);
 
     for (i = 0; i < MAX_SKILLS; i++) {
         SET_SKILL(ch, i, 0);

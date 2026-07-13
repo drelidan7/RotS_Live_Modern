@@ -1781,11 +1781,18 @@ public:
     struct char_prof_data* profs; /* prof cooficients */
     specialization_data extra_specialization_data; /* extra data used by some specializations */
     player_damage_details damage_details; /* structure for storing damage data */
-    byte* skills; /* dynam. alloc. array of pracs spent                                         on
-                     skills */
-    byte* knowledge; /* array of knowledge, computed from
-                                                                                        pracs spent
-                        at logon */
+    // Pracs spent per skill. PC-only: clear_char() sizes this to MAX_SKILLS
+    // (mode != MOB_ISNPC); NPCs (and mob_proto, which copies into every NPC
+    // instance via `*mob = mob_proto[i]`) always leave it empty. Emptiness is
+    // the load-bearing "does this character have a skill array at all?" test
+    // GET_SKILL/SET_SKILL (utils.h) and recalc_skills()/handle_pracs()
+    // (spec_pro.cpp) branch on -- it stands in for the old null-pointer check
+    // (RAII T3; was `byte*`, CREATE()/RELEASE()'d by hand).
+    std::vector<byte> skills;
+    // Computed knowledge per skill (derived from `skills` at logon by
+    // recalc_skills()). Same PC-only/empty-means-absent contract as `skills`
+    // above (RAII T3; was `byte*`).
+    std::vector<byte> knowledge;
     struct affected_type* affected; /* affected by what spells       */
     struct obj_data* equipment[MAX_WEAR]; /* Equipment array               */
 

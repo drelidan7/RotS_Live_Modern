@@ -22,13 +22,15 @@ struct FightProcTestContext {
     char_data attacker{};
     char_data victim{};
     char_prof_data profs{};
-    byte skills[MAX_SKILLS]{};
     obj_data weapon{};
 
     FightProcTestContext()
     {
         attacker.profs = &profs;
-        attacker.skills = skills;
+        // attacker.skills is an owning std::vector<byte> (RAII T3); size it to
+        // MAX_SKILLS zeros the same way clear_char() would for a PC, since
+        // this fixture never calls clear_char().
+        attacker.skills.assign(MAX_SKILLS, 0);
         attacker.in_room = 1001;
 
         victim.in_room = 1001;
@@ -150,9 +152,8 @@ TEST_F(FightProcTest, BeorningSwipeProcUsesCombinedWarriorSkillAndLevelChance) {
     FightProcTestContext context;
     context.attacker.player.level = 30;
     context.attacker.profs = &context.profs;
-    context.attacker.skills = context.skills;
     context.profs.prof_level[PROF_WARRIOR] = 18;
-    context.skills[SKILL_SWIPE] = 70;
+    context.attacker.skills[SKILL_SWIPE] = 70;
 
     push_test_random_value(0.16);
     EXPECT_TRUE(does_beorning_swipe_proc(&context.attacker))

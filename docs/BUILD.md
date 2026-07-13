@@ -338,8 +338,13 @@ no-third-party-libraries decision; `platdef.h`'s Windows scaffold (winsock2 incl
 exception — it is test-only tooling, never linked into the shipping game binary, and on
 Windows CI it is provisioned via CMake `FetchContent` (source-built against the exact
 MSVC/CRT, cached in `actions/cache` keyed on `src/CMakeLists.txt`) since the windows-2022
-runner carries no system GTest package; Linux/macOS keep `find_package(GTest REQUIRED)`
-against apt/brew packages.
+runner carries no system GTest package; the non-sanitizing Linux/macOS presets keep
+`find_package(GTest REQUIRED)` against apt/brew packages. The `macos-arm64-asan` preset
+(Backlog T4) also opts into `FetchContent` via the `ROTS_FETCH_GTEST` cache option (set
+`ON` only by that preset) so gtest itself compiles under `-fsanitize=address,undefined`
+instead of linking brew's uninstrumented prebuilt static lib — see
+`src/CMakeLists.txt`'s GoogleTest-provisioning comment and the `sanitize-macos` job in
+`.github/workflows/ci.yml` for the mixed-instrumentation false positive this fixes.
 
 What Windows CI verifies today: `cmake --preset windows-msvc`, build, and
 `ctest --preset windows-msvc` — the full unit suite including the characterization

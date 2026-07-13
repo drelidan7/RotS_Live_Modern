@@ -24,6 +24,17 @@ option(ROTS_LEGACY_32BIT "Build the legacy 32-bit (-m32) binary" ON)
 # OFF skips GoogleTest discovery and the ageland_tests target entirely — for
 # platforms where GTest isn't installed yet (e.g. the windows-msvc preset).
 option(ROTS_BUILD_TESTS "Build the ageland_tests GoogleTest binary" ON)
+# ON (set by the macos-arm64-asan preset only, Backlog T4): FetchContent-provision
+# GoogleTest from source instead of find_package()'s prebuilt brew package, so
+# gtest itself compiles under this configure's active CMAKE_CXX_FLAGS —
+# including the asan preset's -fsanitize=address,undefined — and comes out
+# ASan/UBSan-instrumented. See the GoogleTest provisioning block below for why
+# that matters (an uninstrumented static lib linked into an instrumented test
+# binary is exactly the "mixed instrumentation" scenario that false-positives
+# on ASan's container-overflow check). Off by default: every other preset
+# already has a fast prebuilt system GTest via find_package(), and rebuilding
+# GTest from source there would only add configure/build time for no benefit.
+option(ROTS_FETCH_GTEST "FetchContent-provision GoogleTest from source instead of find_package()" OFF)
 
 # Default to Debug: matches the Makefile, which always builds with -g and no -O.
 if(NOT CMAKE_BUILD_TYPE)
@@ -262,16 +273,32 @@ if(ROTS_BUILD_TESTS)
         tests/zone_tests.cpp
     )
 
-    # GoogleTest provisioning (Phase 3 Task 6): Linux/macOS CI installs GTest
-    # as a system package (apt/brew) ahead of configure, so find_package()
-    # there is a fast no-op. windows-2022 CI has no such package manager entry
-    # for GTest (no system-wide vcpkg baseline in the runner image), so pull
-    # it via FetchContent there instead -- source-built against the exact
-    # same MSVC/CRT the game target uses (avoiding any ABI mismatch a
-    # pre-built binary package could introduce), and cached by the CI
-    # workflow's actions/cache step keyed on this file's hash so a cache hit
-    # skips re-downloading/rebuilding GoogleTest on every run.
-    if(WIN32)
+    # GoogleTest provisioning (Phase 3 Task 6, extended Backlog T4): Linux/macOS
+    # CI installs GTest as a system package (apt/brew) ahead of configure, so
+    # find_package() there is a fast no-op. windows-2022 CI has no such package
+    # manager entry for GTest (no system-wide vcpkg baseline in the runner
+    # image), so pull it via FetchContent there instead -- source-built
+    # against the exact same MSVC/CRT the game target uses (avoiding any ABI
+    # mismatch a pre-built binary package could introduce), and cached by the
+    # CI workflow's actions/cache step keyed on this file's hash so a cache
+    # hit skips re-downloading/rebuilding GoogleTest on every run.
+    #
+    # ROTS_FETCH_GTEST generalizes the same "source-build against this
+    # configure's own flags" rationale to the macos-arm64-asan preset
+    # (Backlog T4): brew's libgtest.a is a prebuilt, uninstrumented static
+    # library. Linking it into an ASan-instrumented ageland_tests binary is a
+    # mixed-instrumentation build, which is documented to false-positive on
+    # ASan's container-overflow check (it fired inside gtest's own JSON
+    # test-list printer during ctest's PRE_TEST discovery) -- see
+    # https://github.com/google/sanitizers/wiki/AddressSanitizerContainerOverflow
+    # and the now-removed detect_container_overflow=0 override this replaced
+    # in .github/workflows/ci.yml's sanitize-macos job. FetchContent instead
+    # compiles gtest itself under this configure's CMAKE_CXX_FLAGS (the
+    # -fsanitize=address,undefined the asan preset sets), so it comes out
+    # instrumented like every other translation unit and the mismatch --
+    # hence the false positive -- goes away, letting container-overflow
+    # checking stay on (its default) for this job.
+    if(WIN32 OR ROTS_FETCH_GTEST)
         include(FetchContent)
         set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
         FetchContent_Declare(

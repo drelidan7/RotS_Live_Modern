@@ -3,11 +3,16 @@
 
 #include "account_management_types.h"
 
+#include <string_view>
+
 namespace account {
 
-std::string format_character_name_for_display(const std::string& character_name);
-std::string format_account_character_prompt(const std::string& root_directory, const AccountData& account);
-std::string format_account_character_list(const std::string& root_directory, const AccountData& account);
+/// Formats a bounded character name for display after first-null normalization.
+std::string format_character_name_for_display(std::string_view character_name);
+/// Builds the linked-character prompt using a nonretained bounded storage root.
+std::string format_account_character_prompt(std::string_view root_directory, const AccountData& account);
+/// Builds the linked-character list using a nonretained bounded storage root.
+std::string format_account_character_list(std::string_view root_directory, const AccountData& account);
 std::string format_account_summary(const AccountData& account);
 
 } // namespace account

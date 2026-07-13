@@ -7,6 +7,7 @@
 #include "platform_compat.h"
 #include "platdef.h"
 #include "rots_crypt.h"
+#include "text_view.h"
 #include "utils.h"
 
 #include <cerrno>
@@ -41,6 +42,7 @@
 #include <filesystem>
 #include <limits>
 #include <sstream>
+#include <string_view>
 #include <system_error>
 #include <utility>
 
@@ -52,8 +54,9 @@ namespace {
 
     using CharacterLinkReference = AccountData::CharacterLinkReference;
 
-    std::string trim_copy(const std::string& value)
+    std::string trim_copy(std::string_view value)
     {
+        value = rots::text::truncate_at_null(value);
         size_t start = 0;
         while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start])))
             ++start;
@@ -62,15 +65,20 @@ namespace {
         while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1])))
             --end;
 
-        return value.substr(start, end - start);
+        return std::string(value.substr(start, end - start));
     }
 
-    std::string to_lower_copy(const std::string& value)
+    std::string to_lower_copy(std::string_view value)
     {
-        std::string normalized = value;
+        std::string normalized(rots::text::truncate_at_null(value));
         std::transform(normalized.begin(), normalized.end(), normalized.begin(),
             [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
         return normalized;
+    }
+
+    std::string owned_text(std::string_view value)
+    {
+        return std::string(rots::text::truncate_at_null(value));
     }
 
     void set_error(std::string* error_message, const std::string& message)
@@ -84,22 +92,22 @@ namespace {
         return path.empty() ? "" : path;
     }
 
-    std::string character_asset_slug(const std::string& character_name)
+    std::string character_asset_slug(std::string_view character_name)
     {
         return normalize_account_name(character_name);
     }
 
-    std::string character_json_file_name(const std::string& character_name)
+    std::string character_json_file_name(std::string_view character_name)
     {
         return character_asset_slug(character_name) + ".character.json";
     }
 
-    std::string objects_json_file_name(const std::string& character_name)
+    std::string objects_json_file_name(std::string_view character_name)
     {
         return character_asset_slug(character_name) + ".objects.json";
     }
 
-    std::string exploits_json_file_name(const std::string& character_name)
+    std::string exploits_json_file_name(std::string_view character_name)
     {
         return character_asset_slug(character_name) + ".exploits.json";
     }
@@ -111,7 +119,7 @@ namespace {
         return ::race_abbrevs[race];
     }
 
-    std::string format_account_character_short_entry(const std::string& root_directory, const AccountData& account, size_t index, const std::string& character_name)
+    std::string format_account_character_short_entry(std::string_view root_directory, const AccountData& account, size_t index, std::string_view character_name)
     {
         const std::string display_name = format_character_name_for_display(character_name);
 
@@ -129,7 +137,7 @@ namespace {
         return line;
     }
 
-    std::string format_account_character_short_roster(const std::string& root_directory, const AccountData& account)
+    std::string format_account_character_short_roster(std::string_view root_directory, const AccountData& account)
     {
         if (account.characters.empty())
             return "\n\rNo linked characters yet.\n\r";
@@ -198,7 +206,7 @@ namespace {
         return salt;
     }
 
-    bool generate_hash_for_secret(const std::string& secret, std::string* secret_hash, std::string* secret_salt, std::string* error_message)
+    bool generate_hash_for_secret(std::string_view secret, std::string* secret_hash, std::string* secret_salt, std::string* error_message)
     {
         if (secret_hash == nullptr || secret_salt == nullptr) {
             set_error(error_message, "Secret hash and salt outputs must not be null.");
@@ -213,7 +221,8 @@ namespace {
 
         *secret_salt = encode_salt(random_bytes);
         const std::string salt_spec = "$6$" + *secret_salt + "$";
-        const char* hashed_secret = rots_crypt(secret.c_str(), salt_spec.c_str());
+        const std::string secret_owner(rots::text::truncate_at_null(secret));
+        const char* hashed_secret = rots_crypt(secret_owner.c_str(), salt_spec.c_str());
         if (hashed_secret == nullptr) {
             set_error(error_message, "Failed to hash credential.");
             return false;
@@ -445,7 +454,7 @@ namespace {
 #endif
     }
 
-    bool send_verification_email(const AccountData& account, const std::string& verification_code, std::string* error_message)
+    bool send_verification_email(const AccountData& account, std::string_view verification_code, std::string* error_message)
     {
         std::ostringstream body;
         body << "A verification code was requested for your RotS account.\n\n";
@@ -608,8 +617,9 @@ namespace {
         return false;
     }
 
-    bool validate_identifier_for_path(const std::string& value, const char* identifier_label, std::string* error_message)
+    bool validate_identifier_for_path(std::string_view value, const char* identifier_label, std::string* error_message)
     {
+        value = rots::text::truncate_at_null(value);
         if (!is_valid_account_name(value, error_message)) {
             if (error_message && !error_message->empty())
                 *error_message = std::string(identifier_label) + " " + *error_message;
@@ -648,24 +658,24 @@ namespace {
         return deserialize_account_from_json(json, account, error_message);
     }
 
-    std::string account_directory_path_from_email(const std::string& root_directory, const std::string& email)
+    std::string account_directory_path_from_email(std::string_view root_directory, std::string_view email)
     {
         const std::string normalized_email = normalize_email(email);
-        return root_directory + "/accounts/" + account_bucket_for_name(normalized_email) + "/" + normalized_email;
+        return owned_text(root_directory) + "/accounts/" + account_bucket_for_name(normalized_email) + "/" + normalized_email;
     }
 
-    std::string account_file_path_from_email(const std::string& root_directory, const std::string& email)
+    std::string account_file_path_from_email(std::string_view root_directory, std::string_view email)
     {
         return account_directory_path_from_email(root_directory, email) + "/account.json";
     }
 
-    std::string legacy_account_file_path_from_account_name(const std::string& root_directory, const std::string& account_name)
+    std::string legacy_account_file_path_from_account_name(std::string_view root_directory, std::string_view account_name)
     {
         const std::string normalized_name = normalize_account_name(account_name);
-        return root_directory + "/accounts/" + account_bucket_for_name(normalized_name) + "/" + normalized_name + ".json";
+        return owned_text(root_directory) + "/accounts/" + account_bucket_for_name(normalized_name) + "/" + normalized_name + ".json";
     }
 
-    std::string resolve_account_storage_key(const std::string& root_directory, const std::string& account_identifier)
+    std::string resolve_account_storage_key(std::string_view root_directory, std::string_view account_identifier)
     {
         if (account_identifier.find('@') != std::string::npos) {
             if (!is_valid_email(account_identifier, nullptr))
@@ -725,7 +735,7 @@ namespace {
         return stat(entry_path.c_str(), &entry_info) == 0 && S_ISDIR(entry_info.st_mode);
     }
 
-    bool find_account_file_path_by_account_name(const std::string& root_directory, const std::string& account_name, std::string* account_path, std::string* error_message)
+    bool find_account_file_path_by_account_name(std::string_view root_directory, std::string_view account_name, std::string* account_path, std::string* error_message)
     {
         if (account_path == nullptr) {
             set_error(error_message, "Account-path output parameter must not be null.");
@@ -733,7 +743,7 @@ namespace {
         }
 
         const std::string normalized_account_name = normalize_account_name(account_name);
-        const std::string accounts_directory = root_directory + "/accounts";
+        const std::string accounts_directory = owned_text(root_directory) + "/accounts";
         namespace fs = std::filesystem;
         std::error_code accounts_ec;
         fs::directory_iterator accounts_it(accounts_directory, accounts_ec);
@@ -813,7 +823,7 @@ namespace {
         return true;
     }
 
-    bool find_character_owner_account(const std::string& root_directory, const std::string& character_name, std::string* owner_account_name, std::string* error_message)
+    bool find_character_owner_account(std::string_view root_directory, std::string_view character_name, std::string* owner_account_name, std::string* error_message)
     {
         if (owner_account_name == nullptr) {
             set_error(error_message, "Owner-account output parameter must not be null.");
@@ -822,7 +832,7 @@ namespace {
 
         owner_account_name->clear();
 
-        const std::string accounts_directory = root_directory + "/accounts";
+        const std::string accounts_directory = owned_text(root_directory) + "/accounts";
         namespace fs = std::filesystem;
         std::error_code accounts_ec;
         fs::directory_iterator accounts_it(accounts_directory, accounts_ec);
@@ -882,7 +892,7 @@ namespace {
         return true;
     }
 
-    bool find_account_by_email_internal(const std::string& root_directory, const std::string& email, AccountData* account, std::string* error_message)
+    bool find_account_by_email_internal(std::string_view root_directory, std::string_view email, AccountData* account, std::string* error_message)
     {
         if (account == nullptr) {
             set_error(error_message, "Account output parameter must not be null.");
@@ -890,7 +900,7 @@ namespace {
         }
 
         const std::string normalized_email = normalize_email(email);
-        const std::string accounts_directory = root_directory + "/accounts";
+        const std::string accounts_directory = owned_text(root_directory) + "/accounts";
         namespace fs = std::filesystem;
         std::error_code accounts_ec;
         fs::directory_iterator accounts_it(accounts_directory, accounts_ec);
@@ -964,9 +974,9 @@ namespace {
         return false;
     }
 
-    bool account_storage_contains_unreadable_records(const std::string& root_directory, std::string* error_message)
+    bool account_storage_contains_unreadable_records(std::string_view root_directory, std::string* error_message)
     {
-        const std::string accounts_directory = root_directory + "/accounts";
+        const std::string accounts_directory = owned_text(root_directory) + "/accounts";
         namespace fs = std::filesystem;
         std::error_code accounts_ec;
         fs::directory_iterator accounts_it(accounts_directory, accounts_ec);
@@ -1097,7 +1107,7 @@ namespace {
         return stat(path.c_str(), &file_info) == 0;
     }
 
-    bool find_versioned_legacy_player_file_path(const std::string& root_directory, const std::string& character_name, std::string* resolved_path, bool* found, std::string* error_message)
+    bool find_versioned_legacy_player_file_path(std::string_view root_directory, std::string_view character_name, std::string* resolved_path, bool* found, std::string* error_message)
     {
         if (resolved_path == nullptr) {
             set_error(error_message, "Resolved player-file path output must not be null.");
@@ -1111,7 +1121,7 @@ namespace {
         *found = false;
 
         const std::string normalized_name = normalize_account_name(character_name);
-        const std::string directory_path = root_directory + "/players/" + account_bucket_for_name(normalized_name);
+        const std::string directory_path = owned_text(root_directory) + "/players/" + account_bucket_for_name(normalized_name);
         namespace fs = std::filesystem;
         std::error_code directory_ec;
         fs::directory_iterator directory_it(directory_path, directory_ec);
@@ -1192,7 +1202,7 @@ namespace {
         return true;
     }
 
-    bool resolve_legacy_player_file_path(const std::string& root_directory, const std::string& character_name, std::string* resolved_path, std::string* error_message)
+    bool resolve_legacy_player_file_path(std::string_view root_directory, std::string_view character_name, std::string* resolved_path, std::string* error_message)
     {
         if (resolved_path == nullptr) {
             set_error(error_message, "Resolved player-file path output must not be null.");
@@ -1518,7 +1528,7 @@ bool write_text_file_atomically(const std::string& path, const std::string& text
 
 namespace {
 
-    bool validate_migration_identity(const CharacterMigrationData& migration, const std::string& expected_account_name, const std::string& expected_character_name, std::string* error_message)
+    bool validate_migration_identity(const CharacterMigrationData& migration, std::string_view expected_account_name, std::string_view expected_character_name, std::string* error_message)
     {
         if (!is_valid_account_name(migration.account_name, error_message))
             return false;

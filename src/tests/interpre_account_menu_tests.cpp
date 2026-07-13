@@ -22,6 +22,7 @@
 #include <filesystem>
 #include <limits.h>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // <sys/socket.h>/socketpair() (write_and_process_snooped_input's AF_UNIX
@@ -62,6 +63,8 @@ void save_player(struct char_data* ch, int load_room, int index_pos);
 int process_input(struct descriptor_data* t);
 int get_from_q(struct txt_q* queue, char* dest);
 void reset_account_character_selection_unlocks_for_testing();
+void copy_account_text_for_testing(
+    char* destination, std::size_t destination_capacity, std::string_view text);
 
 namespace {
 
@@ -5404,3 +5407,13 @@ TEST(InterpreAccountMenu, AdvanceLevelStillPersistsWhenAccountOwnershipLookupFai
 }
 
 } // namespace
+
+TEST(InterpreAccountMenu, EmptyBoundedAccountTextWritesOnlyTheTerminator)
+{
+    char destination[4] { 'x', 'y', 'z', '\0' };
+
+    copy_account_text_for_testing(destination, sizeof(destination), {});
+
+    EXPECT_EQ(destination[0], '\0');
+    EXPECT_EQ(destination[1], 'y');
+}

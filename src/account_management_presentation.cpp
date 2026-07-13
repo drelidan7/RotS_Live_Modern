@@ -35,7 +35,7 @@ std::string format_account_timestamp(long timestamp)
 
 } // namespace
 
-std::string format_account_character_prompt(const std::string& root_directory, const AccountData& account)
+std::string format_account_character_prompt(std::string_view root_directory, const AccountData& account)
 {
     std::ostringstream output;
     output << "\n\rLinked characters for your account:\n\r";
@@ -45,7 +45,7 @@ std::string format_account_character_prompt(const std::string& root_directory, c
     return output.str();
 }
 
-std::string format_account_character_list(const std::string& root_directory, const AccountData& account)
+std::string format_account_character_list(std::string_view root_directory, const AccountData& account)
 {
     if (account.characters.empty())
         return "\n\rNo linked characters yet.\n\r";

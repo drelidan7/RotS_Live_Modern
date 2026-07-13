@@ -14,7 +14,7 @@ CharacterMigrationData sanitized_migration_for_persistence(const CharacterMigrat
 
 } // namespace
 
-bool migrate_legacy_character_by_name(const std::string& root_directory, const std::string& account_name, const std::string& character_name, long migrated_at, CharacterMigrationData* migration, std::string* error_message)
+bool migrate_legacy_character_by_name(std::string_view root_directory, std::string_view account_name, std::string_view character_name, long migrated_at, CharacterMigrationData* migration, std::string* error_message)
 {
     std::string player_file_path;
     if (!resolve_legacy_player_file_path(root_directory, character_name, &player_file_path, error_message))
@@ -33,7 +33,7 @@ bool migrate_legacy_character_by_name(const std::string& root_directory, const s
         migrated_at, migration, error_message);
 }
 
-bool read_character_migration(const std::string& root_directory, const std::string& account_name, const std::string& character_name, CharacterMigrationData* migration, std::string* error_message)
+bool read_character_migration(std::string_view root_directory, std::string_view account_name, std::string_view character_name, CharacterMigrationData* migration, std::string* error_message)
 {
     if (migration == nullptr) {
         set_error(error_message, "Migration output parameter must not be null.");
@@ -82,7 +82,7 @@ bool read_character_migration(const std::string& root_directory, const std::stri
     return true;
 }
 
-bool ensure_character_migration(const std::string& root_directory, const std::string& account_name, const std::string& character_name, long migrated_at, CharacterMigrationData* migration, std::string* error_message)
+bool ensure_character_migration(std::string_view root_directory, std::string_view account_name, std::string_view character_name, long migrated_at, CharacterMigrationData* migration, std::string* error_message)
 {
     bool account_character_exists = false;
     if (!inspect_account_character_file(root_directory, account_name, character_name, &account_character_exists, error_message))
@@ -93,7 +93,7 @@ bool ensure_character_migration(const std::string& root_directory, const std::st
     return migrate_legacy_character_by_name(root_directory, account_name, character_name, migrated_at, migration, error_message);
 }
 
-bool restore_character_migration(const std::string& root_directory, const std::string& expected_account_name, const std::string& expected_character_name, const CharacterMigrationData& migration, std::string* error_message)
+bool restore_character_migration(std::string_view root_directory, std::string_view expected_account_name, std::string_view expected_character_name, const CharacterMigrationData& migration, std::string* error_message)
 {
     if (!validate_migration_identity(migration, expected_account_name, expected_character_name, error_message))
         return false;
@@ -109,7 +109,7 @@ bool restore_character_migration(const std::string& root_directory, const std::s
     return true;
 }
 
-bool clear_character_runtime_support_files_for_account_play(const std::string& root_directory, const std::string& expected_account_name, const std::string& expected_character_name, const CharacterMigrationData& migration, std::string* error_message)
+bool clear_character_runtime_support_files_for_account_play(std::string_view root_directory, std::string_view expected_account_name, std::string_view expected_character_name, const CharacterMigrationData& migration, std::string* error_message)
 {
     if (!validate_migration_identity(migration, expected_account_name, expected_character_name, error_message))
         return false;
@@ -117,7 +117,7 @@ bool clear_character_runtime_support_files_for_account_play(const std::string& r
     return clear_account_character_runtime_support_files(root_directory, migration.character_name, error_message);
 }
 
-bool refresh_linked_character_snapshot(const std::string& root_directory, const std::string& character_name, long migrated_at, CharacterMigrationData* migration, std::string* error_message)
+bool refresh_linked_character_snapshot(std::string_view root_directory, std::string_view character_name, long migrated_at, CharacterMigrationData* migration, std::string* error_message)
 {
     std::string owner_account_name;
     if (!find_linked_character_owner_account(root_directory, character_name, &owner_account_name, error_message))

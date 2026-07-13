@@ -1,6 +1,7 @@
 #include "account_cache.h"
 
 #include "account_management.h"
+#include "text_view.h"
 
 #include <string>
 #include <unordered_map>
@@ -36,7 +37,7 @@ std::unordered_map<std::string, OwnerResolution> g_owner_cache;
 // in a filesystem path component, so (root, name) pairs never collide or bleed across roots.
 const char kKeySeparator = '\x1f';
 
-std::string compose_key(const std::string& root_directory, const std::string& name)
+std::string compose_key(std::string_view root_directory, std::string_view name)
 {
     std::string key;
     key.reserve(root_directory.size() + 1 + name.size());
@@ -60,9 +61,11 @@ OwnerResolverFn g_owner_resolver = &account::find_linked_character_owner_account
 
 } // namespace
 
-bool read_account_file_cached(const std::string& root_directory, const std::string& account_name,
+bool read_account_file_cached(std::string_view root_directory, std::string_view account_name,
                               account::AccountData* account, std::string* error_message)
 {
+    root_directory = rots::text::truncate_at_null(root_directory);
+    account_name = rots::text::truncate_at_null(account_name);
     if (account == nullptr)
     {
         return g_account_reader(root_directory, account_name, account, error_message);
@@ -91,9 +94,11 @@ bool read_account_file_cached(const std::string& root_directory, const std::stri
     return true;
 }
 
-bool find_linked_character_owner_account_cached(const std::string& root_directory, const std::string& character_name,
+bool find_linked_character_owner_account_cached(std::string_view root_directory, std::string_view character_name,
                                                 std::string* owner_account_name, std::string* error_message)
 {
+    root_directory = rots::text::truncate_at_null(root_directory);
+    character_name = rots::text::truncate_at_null(character_name);
     if (owner_account_name == nullptr)
     {
         // Preserve the underlying null-guard behavior exactly; nothing to cache without an out-param.

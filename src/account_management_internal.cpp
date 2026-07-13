@@ -1,6 +1,6 @@
 // Internal account-management helpers shared across split public fragments.
 namespace {
-    CharacterLinkReference* find_character_link_reference(AccountData* account, const std::string& character_name)
+    CharacterLinkReference* find_character_link_reference(AccountData* account, std::string_view character_name)
     {
         if (account == nullptr)
             return nullptr;
@@ -14,7 +14,7 @@ namespace {
         return nullptr;
     }
 
-    const CharacterLinkReference* find_character_link_reference(const AccountData& account, const std::string& character_name)
+    const CharacterLinkReference* find_character_link_reference(const AccountData& account, std::string_view character_name)
     {
         const std::string normalized_character_name = normalize_account_name(character_name);
         for (const CharacterLinkReference& link : account.character_links) {
@@ -25,12 +25,12 @@ namespace {
         return nullptr;
     }
 
-    std::string resolved_character_path(const AccountData& account, const std::string& root_directory, const std::string& character_name)
+    std::string resolved_character_path(const AccountData& account, std::string_view root_directory, std::string_view character_name)
     {
         return account_character_player_path(root_directory, account.account_name, character_name);
     }
 
-    std::string resolved_object_path(const AccountData& account, const std::string& root_directory, const std::string& character_name)
+    std::string resolved_object_path(const AccountData& account, std::string_view root_directory, std::string_view character_name)
     {
         const CharacterLinkReference* link = find_character_link_reference(account, character_name);
         if (link != nullptr && !link->object_path.empty())
@@ -38,7 +38,7 @@ namespace {
         return account_character_object_path(root_directory, account.account_name, character_name);
     }
 
-    std::string resolved_exploits_path(const AccountData& account, const std::string& root_directory, const std::string& character_name)
+    std::string resolved_exploits_path(const AccountData& account, std::string_view root_directory, std::string_view character_name)
     {
         const CharacterLinkReference* link = find_character_link_reference(account, character_name);
         if (link != nullptr && !link->exploits_path.empty())
@@ -73,7 +73,7 @@ namespace {
         return object_path;
     }
 
-    bool validate_account_owned_object_path(const AccountData& account, const std::string& character_name, std::string* error_message)
+    bool validate_account_owned_object_path(const AccountData& account, std::string_view character_name, std::string* error_message)
     {
         const CharacterLinkReference* link = find_character_link_reference(account, character_name);
         if (link == nullptr || link->object_path.empty()) {
@@ -91,7 +91,7 @@ namespace {
         return true;
     }
 
-    bool validate_account_owned_character_path(const AccountData& account, const std::string& character_name, std::string* error_message)
+    bool validate_account_owned_character_path(const AccountData& account, std::string_view character_name, std::string* error_message)
     {
         const CharacterLinkReference* link = find_character_link_reference(account, character_name);
         if (link == nullptr || link->character_path.empty()) {
@@ -109,7 +109,7 @@ namespace {
         return true;
     }
 
-    bool validate_account_owned_exploits_path(const AccountData& account, const std::string& character_name, std::string* error_message)
+    bool validate_account_owned_exploits_path(const AccountData& account, std::string_view character_name, std::string* error_message)
     {
         const CharacterLinkReference* link = find_character_link_reference(account, character_name);
         if (link == nullptr || link->exploits_path.empty()) {
@@ -154,7 +154,7 @@ namespace {
             populate_default_character_link_paths(&link);
         }
 
-        for (const std::string& character_name : account->characters) {
+        for (std::string_view character_name : account->characters) {
             if (find_character_link_reference(account, character_name) != nullptr)
                 continue;
 
@@ -165,7 +165,7 @@ namespace {
         }
     }
 
-    bool write_character_migration_snapshot(const std::string& root_directory, const CharacterMigrationData& snapshot_data, CharacterMigrationData* migration, std::string* error_message)
+    bool write_character_migration_snapshot(std::string_view root_directory, const CharacterMigrationData& snapshot_data, CharacterMigrationData* migration, std::string* error_message)
     {
         CharacterMigrationData persisted_snapshot = snapshot_data;
         // The authoritative migrated player state lives in character.json. Keep
@@ -174,7 +174,7 @@ namespace {
         persisted_snapshot.player_file = LegacyAssetSnapshot {};
 
         const std::string account_storage_key = resolve_account_storage_key(root_directory, snapshot_data.account_name);
-        const std::string account_root = root_directory + "/accounts";
+        const std::string account_root = owned_text(root_directory) + "/accounts";
         const std::string bucket_directory = account_root + "/" + account_bucket_for_name(account_storage_key);
         const std::string account_directory = account_character_directory(root_directory, snapshot_data.account_name, snapshot_data.character_name);
         const std::string final_path = account_character_snapshot_path(root_directory, snapshot_data.account_name, snapshot_data.character_name);
@@ -213,7 +213,7 @@ namespace {
         return true;
     }
 
-    bool retire_character_migration_snapshot_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::string* error_message)
+    bool retire_character_migration_snapshot_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string* error_message)
     {
         const std::string path = account_character_snapshot_path(root_directory, account_name, character_name);
         if (std::remove(path.c_str()) != 0 && errno != ENOENT) {
@@ -225,7 +225,7 @@ namespace {
         return true;
     }
 
-    bool retire_previous_account_object_path(const std::string& root_directory, const std::string& account_name, const std::string& character_name, const std::string& previous_object_path, std::string* error_message)
+    bool retire_previous_account_object_path(std::string_view root_directory, std::string_view account_name, std::string_view character_name, const std::string& previous_object_path, std::string* error_message)
     {
         const std::string expected_object_path = objects_json_file_name(character_name);
         if (previous_object_path.empty() || previous_object_path == expected_object_path) {
@@ -250,7 +250,7 @@ namespace {
         return true;
     }
 
-    bool prepare_account_object_file_destination(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::string* final_path, std::string* previous_object_path, std::string* error_message)
+    bool prepare_account_object_file_destination(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string* final_path, std::string* previous_object_path, std::string* error_message)
     {
         if (final_path == nullptr || previous_object_path == nullptr) {
             set_error(error_message, "Object-file destination outputs must not be null.");
@@ -276,9 +276,9 @@ namespace {
         }
 
         const std::string account_directory = account_character_directory(root_directory, account_name, character_name);
-        if (!create_directory_if_missing(root_directory + "/accounts", error_message))
+        if (!create_directory_if_missing(owned_text(root_directory) + "/accounts", error_message))
             return false;
-        if (!create_directory_if_missing(root_directory + "/accounts/" + account_bucket_for_name(resolve_account_storage_key(root_directory, account_name)), error_message))
+        if (!create_directory_if_missing(owned_text(root_directory) + "/accounts/" + account_bucket_for_name(resolve_account_storage_key(root_directory, account_name)), error_message))
             return false;
         if (!create_directory_if_missing(account_directory, error_message))
             return false;
@@ -288,7 +288,7 @@ namespace {
         return true;
     }
 
-    bool normalize_account_object_path_after_successful_write(const std::string& root_directory, const std::string& account_name, const std::string& character_name, const std::string& previous_object_path, std::string* error_message)
+    bool normalize_account_object_path_after_successful_write(std::string_view root_directory, std::string_view account_name, std::string_view character_name, const std::string& previous_object_path, std::string* error_message)
     {
         const std::string expected_object_path = objects_json_file_name(character_name);
         if (previous_object_path.empty() || previous_object_path == expected_object_path) {
@@ -304,7 +304,7 @@ namespace {
 
         CharacterLinkReference* link = find_character_link_reference(&account, character_name);
         if (link == nullptr) {
-            set_error(error_message, "Character '" + character_name + "' is not linked to account '" + account_name + "'.");
+            set_error(error_message, "Character '" + owned_text(character_name) + "' is not linked to account '" + owned_text(account_name) + "'.");
             return false;
         }
 
@@ -316,7 +316,7 @@ namespace {
         return true;
     }
 
-    bool write_account_object_json_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, const objects_json::ObjectSaveData& object_data, std::string* error_message)
+    bool write_account_object_json_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, const objects_json::ObjectSaveData& object_data, std::string* error_message)
     {
         std::string final_path;
         std::string previous_object_path;
@@ -336,8 +336,10 @@ namespace {
         return true;
     }
 
-    bool hydrate_account_native_object_file_from_migration(const std::string& root_directory, const std::string& account_name, const std::string& character_name, const CharacterMigrationData& snapshot_data, std::string* error_message)
+    bool hydrate_account_native_object_file_from_migration(std::string_view root_directory, std::string_view account_name, std::string_view character_name, const CharacterMigrationData& snapshot_data, std::string* error_message)
     {
+        const std::string account_name_owner(rots::text::truncate_at_null(account_name));
+        const std::string character_name_owner(rots::text::truncate_at_null(character_name));
         if (!snapshot_data.object_file.present)
             return write_default_account_object_file(root_directory, account_name, character_name, error_message);
 
@@ -353,34 +355,35 @@ namespace {
             char log_buffer[MAX_STRING_LENGTH];
             std::snprintf(log_buffer, sizeof(log_buffer),
                 "Accepted legacy object file without follower section while migrating %s for account %s.",
-                character_name.c_str(), account_name.c_str());
+                character_name_owner.c_str(), account_name_owner.c_str());
             log(log_buffer);
         }
 
         return write_account_object_json_file(root_directory, account_name, character_name, object_data, error_message);
     }
 
-    bool hydrate_account_native_character_file_from_migration(const std::string& root_directory, const std::string& account_name, const std::string& character_name, const CharacterMigrationData& snapshot_data, std::string* error_message)
+    bool hydrate_account_native_character_file_from_migration(std::string_view root_directory, std::string_view account_name, std::string_view character_name, const CharacterMigrationData& snapshot_data, std::string* error_message)
     {
+        const std::string character_name_owner(rots::text::truncate_at_null(character_name));
         std::string player_text;
         if (!decode_snapshot_content(snapshot_data.player_file, &player_text, error_message))
             return false;
 
-        ensure_player_index_entry(character_name.c_str());
+        ensure_player_index_entry(character_name_owner.c_str());
 
         char normalized_name[MAX_INPUT_LENGTH];
-        std::snprintf(normalized_name, sizeof(normalized_name), "%s", character_name.c_str());
+        std::snprintf(normalized_name, sizeof(normalized_name), "%s", character_name_owner.c_str());
 
         char_file_u stored_character {};
         if (load_char_from_text(normalized_name, player_text.c_str(), &stored_character) < 0) {
-            set_error(error_message, "Legacy player data for '" + character_name + "' could not be converted into account-native character storage.");
+            set_error(error_message, "Legacy player data for '" + owned_text(character_name) + "' could not be converted into account-native character storage.");
             return false;
         }
 
         return write_account_character_file(root_directory, account_name, stored_character, error_message);
     }
 
-    bool write_account_exploits_json_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, const exploits_json::ExploitHistoryData& exploit_history, std::string* error_message)
+    bool write_account_exploits_json_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, const exploits_json::ExploitHistoryData& exploit_history, std::string* error_message)
     {
         if (!validate_identifier_for_path(account_name, "Account name", error_message))
             return false;
@@ -394,9 +397,9 @@ namespace {
             return false;
 
         const std::string account_directory = account_character_directory(root_directory, account_name, character_name);
-        if (!create_directory_if_missing(root_directory + "/accounts", error_message))
+        if (!create_directory_if_missing(owned_text(root_directory) + "/accounts", error_message))
             return false;
-        if (!create_directory_if_missing(root_directory + "/accounts/" + account_bucket_for_name(resolve_account_storage_key(root_directory, account_name)), error_message))
+        if (!create_directory_if_missing(owned_text(root_directory) + "/accounts/" + account_bucket_for_name(resolve_account_storage_key(root_directory, account_name)), error_message))
             return false;
         if (!create_directory_if_missing(account_directory, error_message))
             return false;
@@ -404,7 +407,7 @@ namespace {
         return write_text_file_atomically(resolved_exploits_path(account, root_directory, character_name), exploits_json::serialize_exploits_to_json(exploit_history), error_message);
     }
 
-    bool hydrate_account_native_exploit_file_from_migration(const std::string& root_directory, const std::string& account_name, const std::string& character_name, const CharacterMigrationData& snapshot_data, std::string* error_message)
+    bool hydrate_account_native_exploit_file_from_migration(std::string_view root_directory, std::string_view account_name, std::string_view character_name, const CharacterMigrationData& snapshot_data, std::string* error_message)
     {
         if (!snapshot_data.exploits_file.present)
             return write_default_account_exploit_file(root_directory, account_name, character_name, error_message);
@@ -493,7 +496,7 @@ namespace {
         return true;
     }
 
-    void cleanup_account_native_migration_outputs(const std::string& root_directory, const std::string& account_name, const std::string& character_name)
+    void cleanup_account_native_migration_outputs(std::string_view root_directory, std::string_view account_name, std::string_view character_name)
     {
         std::remove(account_character_player_path(root_directory, account_name, character_name).c_str());
         std::remove(account_character_object_path(root_directory, account_name, character_name).c_str());
@@ -501,7 +504,7 @@ namespace {
         std::remove(account_character_snapshot_path(root_directory, account_name, character_name).c_str());
     }
 
-    bool migrate_legacy_character_files_internal(const std::string& root_directory, const std::string& account_name, const std::string& character_name, const std::string& player_file_path, const std::string& stale_flat_player_file_path, const std::string& object_file_path, const std::string& exploits_file_path, long migrated_at, CharacterMigrationData* migration, std::string* error_message)
+    bool migrate_legacy_character_files_internal(std::string_view root_directory, std::string_view account_name, std::string_view character_name, const std::string& player_file_path, const std::string& stale_flat_player_file_path, const std::string& object_file_path, const std::string& exploits_file_path, long migrated_at, CharacterMigrationData* migration, std::string* error_message)
     {
         CharacterMigrationData snapshot_data;
         snapshot_data.account_name = normalize_account_name(account_name);

@@ -1,4 +1,4 @@
-bool write_account_character_file(const std::string& root_directory, const std::string& account_name, const char_file_u& stored_character, std::string* error_message)
+bool write_account_character_file(std::string_view root_directory, std::string_view account_name, const char_file_u& stored_character, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;
@@ -12,9 +12,9 @@ bool write_account_character_file(const std::string& root_directory, const std::
         return false;
 
     const std::string account_directory = account_character_directory(root_directory, account_name, stored_character.name);
-    if (!create_directory_if_missing(root_directory + "/accounts", error_message))
+    if (!create_directory_if_missing(owned_text(root_directory) + "/accounts", error_message))
         return false;
-    if (!create_directory_if_missing(root_directory + "/accounts/" + account_bucket_for_name(resolve_account_storage_key(root_directory, account_name)), error_message))
+    if (!create_directory_if_missing(owned_text(root_directory) + "/accounts/" + account_bucket_for_name(resolve_account_storage_key(root_directory, account_name)), error_message))
         return false;
     if (!create_directory_if_missing(account_directory, error_message))
         return false;
@@ -29,7 +29,7 @@ bool write_account_character_file(const std::string& root_directory, const std::
     return write_text_file_atomically(final_path, json, error_message);
 }
 
-bool write_linked_character_file(const std::string& root_directory, const std::string& character_name, const char_file_u& stored_character, std::string* error_message)
+bool write_linked_character_file(std::string_view root_directory, std::string_view character_name, const char_file_u& stored_character, std::string* error_message)
 {
     std::string owner_account_name;
     if (!find_linked_character_owner_account(root_directory, character_name, &owner_account_name, error_message))
@@ -42,7 +42,7 @@ bool write_linked_character_file(const std::string& root_directory, const std::s
     return write_account_character_file(root_directory, owner_account_name, stored_character, error_message);
 }
 
-bool read_account_character_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, char_file_u* stored_character, std::string* error_message)
+bool read_account_character_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, char_file_u* stored_character, std::string* error_message)
 {
     if (stored_character == nullptr) {
         set_error(error_message, "Stored character output parameter must not be null.");
@@ -70,7 +70,7 @@ bool read_account_character_file(const std::string& root_directory, const std::s
     return true;
 }
 
-bool account_character_file_exists(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::string* error_message)
+bool account_character_file_exists(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string* error_message)
 {
     bool exists = false;
     if (!inspect_account_character_file(root_directory, account_name, character_name, &exists, error_message))
@@ -78,7 +78,7 @@ bool account_character_file_exists(const std::string& root_directory, const std:
     return exists;
 }
 
-bool inspect_account_character_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, bool* exists, std::string* error_message)
+bool inspect_account_character_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, bool* exists, std::string* error_message)
 {
     AccountData account;
     if (!read_account_file(root_directory, account_name, &account, error_message))
@@ -89,7 +89,7 @@ bool inspect_account_character_file(const std::string& root_directory, const std
     return inspect_path_existence(resolved_character_path(account, root_directory, character_name), "account character file", exists, error_message);
 }
 
-bool remove_account_character_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::string* error_message)
+bool remove_account_character_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string* error_message)
 {
     AccountData account;
     if (!read_account_file(root_directory, account_name, &account, error_message))
@@ -110,19 +110,19 @@ bool remove_account_character_file(const std::string& root_directory, const std:
     return true;
 }
 
-bool write_account_object_data(const std::string& root_directory, const std::string& account_name, const std::string& character_name, const objects_json::ObjectSaveData& object_data, std::string* error_message)
+bool write_account_object_data(std::string_view root_directory, std::string_view account_name, std::string_view character_name, const objects_json::ObjectSaveData& object_data, std::string* error_message)
 {
     return write_account_object_json_file(root_directory, account_name, character_name, object_data, error_message);
 }
 
-bool write_default_account_object_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::string* error_message)
+bool write_default_account_object_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string* error_message)
 {
     objects_json::ObjectSaveData empty_object_data;
     empty_object_data.rent.rentcode = RENT_CRASH;
     return write_account_object_json_file(root_directory, account_name, character_name, empty_object_data, error_message);
 }
 
-bool write_linked_character_object_json_file(const std::string& root_directory, const std::string& character_name, const objects_json::ObjectSaveData& object_data, std::string* error_message)
+bool write_linked_character_object_json_file(std::string_view root_directory, std::string_view character_name, const objects_json::ObjectSaveData& object_data, std::string* error_message)
 {
     std::string owner_account_name;
     if (!find_linked_character_owner_account(root_directory, character_name, &owner_account_name, error_message))
@@ -135,7 +135,7 @@ bool write_linked_character_object_json_file(const std::string& root_directory, 
     return write_account_object_json_file(root_directory, owner_account_name, character_name, object_data, error_message);
 }
 
-bool read_account_object_data(const std::string& root_directory, const std::string& account_name, const std::string& character_name, objects_json::ObjectSaveData* data, std::string* error_message)
+bool read_account_object_data(std::string_view root_directory, std::string_view account_name, std::string_view character_name, objects_json::ObjectSaveData* data, std::string* error_message)
 {
     if (data == nullptr) {
         set_error(error_message, "Objects data output parameter must not be null.");
@@ -160,7 +160,7 @@ bool read_account_object_data(const std::string& root_directory, const std::stri
     return true;
 }
 
-bool account_object_file_exists(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::string* error_message)
+bool account_object_file_exists(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string* error_message)
 {
     bool exists = false;
     if (!inspect_account_object_file(root_directory, account_name, character_name, &exists, error_message))
@@ -168,7 +168,7 @@ bool account_object_file_exists(const std::string& root_directory, const std::st
     return exists;
 }
 
-bool inspect_account_object_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, bool* exists, std::string* error_message)
+bool inspect_account_object_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, bool* exists, std::string* error_message)
 {
     AccountData account;
     if (!read_account_file(root_directory, account_name, &account, error_message))
@@ -179,7 +179,7 @@ bool inspect_account_object_file(const std::string& root_directory, const std::s
     return inspect_path_existence(resolved_object_path(account, root_directory, character_name), "account object file", exists, error_message);
 }
 
-bool remove_account_object_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::string* error_message)
+bool remove_account_object_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string* error_message)
 {
     AccountData account;
     if (!read_account_file(root_directory, account_name, &account, error_message))
@@ -200,20 +200,20 @@ bool remove_account_object_file(const std::string& root_directory, const std::st
     return true;
 }
 
-bool write_account_exploit_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, const std::vector<exploit_record>& records, std::string* error_message)
+bool write_account_exploit_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, const std::vector<exploit_record>& records, std::string* error_message)
 {
     exploits_json::ExploitHistoryData exploit_history;
     exploit_history.records = records;
     return write_account_exploits_json_file(root_directory, account_name, character_name, exploit_history, error_message);
 }
 
-bool write_default_account_exploit_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::string* error_message)
+bool write_default_account_exploit_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string* error_message)
 {
     const exploits_json::ExploitHistoryData empty_history;
     return write_account_exploits_json_file(root_directory, account_name, character_name, empty_history, error_message);
 }
 
-bool write_linked_character_exploit_file(const std::string& root_directory, const std::string& character_name, const std::vector<exploit_record>& records, std::string* error_message)
+bool write_linked_character_exploit_file(std::string_view root_directory, std::string_view character_name, const std::vector<exploit_record>& records, std::string* error_message)
 {
     std::string owner_account_name;
     if (!find_linked_character_owner_account(root_directory, character_name, &owner_account_name, error_message))
@@ -226,7 +226,7 @@ bool write_linked_character_exploit_file(const std::string& root_directory, cons
     return write_account_exploit_file(root_directory, owner_account_name, character_name, records, error_message);
 }
 
-bool read_account_exploit_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::vector<exploit_record>* records, std::string* error_message)
+bool read_account_exploit_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::vector<exploit_record>* records, std::string* error_message)
 {
     if (records == nullptr) {
         set_error(error_message, "Exploit-record output parameter must not be null.");
@@ -252,7 +252,7 @@ bool read_account_exploit_file(const std::string& root_directory, const std::str
     return true;
 }
 
-bool account_exploit_file_exists(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::string* error_message)
+bool account_exploit_file_exists(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string* error_message)
 {
     bool exists = false;
     if (!inspect_account_exploit_file(root_directory, account_name, character_name, &exists, error_message))
@@ -260,7 +260,7 @@ bool account_exploit_file_exists(const std::string& root_directory, const std::s
     return exists;
 }
 
-bool inspect_account_exploit_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, bool* exists, std::string* error_message)
+bool inspect_account_exploit_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, bool* exists, std::string* error_message)
 {
     AccountData account;
     if (!read_account_file(root_directory, account_name, &account, error_message))
@@ -271,7 +271,7 @@ bool inspect_account_exploit_file(const std::string& root_directory, const std::
     return inspect_path_existence(resolved_exploits_path(account, root_directory, character_name), "account exploits file", exists, error_message);
 }
 
-bool remove_account_exploit_file(const std::string& root_directory, const std::string& account_name, const std::string& character_name, std::string* error_message)
+bool remove_account_exploit_file(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string* error_message)
 {
     AccountData account;
     if (!read_account_file(root_directory, account_name, &account, error_message))
@@ -292,7 +292,7 @@ bool remove_account_exploit_file(const std::string& root_directory, const std::s
     return true;
 }
 
-bool clear_account_character_runtime_support_files(const std::string& root_directory, const std::string& character_name, std::string* error_message)
+bool clear_account_character_runtime_support_files(std::string_view root_directory, std::string_view character_name, std::string* error_message)
 {
     if (!validate_identifier_for_path(character_name, "Character name", error_message))
         return false;

@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
@@ -15,6 +16,7 @@
 #include <limits.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <string_view>
 
 // geteuid() (chmod-based fault-injection tests below) is POSIX-only; those
 // tests skip entirely on Windows before reaching it (no owner/group/other
@@ -375,6 +377,68 @@ void make_file_executable(const std::string& path)
 TEST(AccountManagement, NormalizesEmailByTrimmingAndLowercasing)
 {
     EXPECT_EQ(account::normalize_email("  Player@Example.COM "), "player@example.com");
+}
+
+TEST(AccountManagement, BoundedIdentityInputsMatchTerminatedInputs)
+{
+    const std::array<char, 13> account_storage {
+        ' ', 'A', 'l', 'p', 'h', 'a', '-', 'A', 'd', 'm', 'i', 'n', ' '
+    };
+    const std::array<char, 18> email_storage {
+        ' ', 'U', 's', 'e', 'r', '@', 'E', 'x', 'a', 'm', 'p', 'l', 'e', '.', 'c', 'o', 'm', ' '
+    };
+    const std::array<char, 14> password_storage {
+        'S', 't', 'r', 'o', 'n', 'g', 'P', 'a', 's', 's', '1', '!', 'X', 'X'
+    };
+
+    EXPECT_EQ(account::normalize_account_name(
+                  std::string_view(account_storage.data(), account_storage.size())),
+        "alpha-admin");
+    EXPECT_EQ(account::normalize_email(
+                  std::string_view(email_storage.data(), email_storage.size())),
+        "user@example.com");
+    EXPECT_TRUE(account::is_valid_password(std::string_view(password_storage.data(), 12)));
+    constexpr std::string_view weak_password_with_strong_suffix("weak\0StrongPass1!", 17);
+    EXPECT_FALSE(account::is_valid_password(weak_password_with_strong_suffix));
+}
+
+TEST(AccountManagement, EmbeddedNullIdentityAuditAndReasonInputsIgnoreSuffixes)
+{
+    constexpr std::string_view account_name("Alpha-Admin\0ignored", 19);
+    constexpr std::string_view email("User@Example.com\0ignored", 24);
+    constexpr std::string_view password("StrongPass1!\0ignored", 20);
+    constexpr std::string_view character_name("Aragorn\0ignored", 15);
+    constexpr std::string_view administrator("Gandalf\0ignored", 15);
+    constexpr std::string_view reason("policy\0ignored", 14);
+    account::AccountData account_data;
+    std::string error_message;
+
+    ASSERT_TRUE(account::initialize_new_account(
+        account_name, email, password, 100, &account_data, &error_message));
+    EXPECT_EQ(account_data.account_name, "alpha-admin");
+    EXPECT_EQ(account_data.normalized_email, "user@example.com");
+    ASSERT_TRUE(account::add_character_to_account(&account_data, character_name, &error_message));
+    EXPECT_EQ(account_data.characters, std::vector<std::string>({ "aragorn" }));
+
+    account::block_account(&account_data, administrator, reason, 101);
+    EXPECT_EQ(account_data.blocked_by, "Gandalf");
+    EXPECT_EQ(account_data.block_reason, "policy");
+    EXPECT_TRUE(account::verify_password(password, account_data.password_hash));
+}
+
+TEST(AccountManagement, BoundedPathsAndPresentationMatchTerminatedInputs)
+{
+    const std::array<char, 9> root_storage { '/', 't', 'm', 'p', '/', 'r', 'o', 'o', 't' };
+    const std::array<char, 11> account_storage { 'A', 'l', 'p', 'h', 'a', '-', 'A', 'd', 'm', 'i', 'n' };
+    constexpr std::string_view character_name("aragorn\0ignored", 15);
+
+    const std::string_view root_directory(root_storage.data(), root_storage.size());
+    const std::string_view account_name(account_storage.data(), account_storage.size());
+    EXPECT_EQ(account::account_file_path(root_directory, account_name),
+        account::account_file_path("/tmp/root", "Alpha-Admin"));
+    EXPECT_EQ(account::account_character_player_path(root_directory, account_name, character_name),
+        account::account_character_player_path("/tmp/root", "Alpha-Admin", "aragorn"));
+    EXPECT_EQ(account::format_character_name_for_display(character_name), "Aragorn");
 }
 
 TEST(AccountManagement, AcceptsReasonableEmailAddresses)

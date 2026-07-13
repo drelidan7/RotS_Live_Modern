@@ -1,9 +1,11 @@
 #include "../player_file_finalize.h"
 #include <gtest/gtest.h>
 
+#include <array>
 #include <filesystem>
 #include <stdio.h>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -104,4 +106,26 @@ TEST(PlayerFinalize, ByteIdenticalAndSingleFile) {
     std::filesystem::remove("pf_test_new_scratch");
     std::filesystem::remove(legacy_dir);
     std::filesystem::remove(new_dir);
+}
+
+TEST(PlayerFinalize, AcceptsBoundedPathsAndTruncatesEmbeddedNullSuffixes)
+{
+    const std::array<char, 26> scratch_storage {
+        'p', 'f', '_', 'b', 'o', 'u', 'n', 'd', 'e', 'd', '_', 's', 'c', 'r', 'a', 't', 'c', 'h',
+        'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X'
+    };
+    const std::string_view scratch_path(scratch_storage.data(), 18);
+    constexpr std::string_view directory_path("pf_bounded\0ignored", 19);
+    constexpr std::string_view base_name("probe\0ignored", 13);
+    constexpr std::string_view versioned_path("pf_bounded/probe.1\0ignored", 27);
+
+    std::filesystem::create_directory("pf_bounded");
+    write_file("pf_bounded_scratch", "PLAYER-BYTES-V2\n");
+
+    ASSERT_TRUE(finalize_player_file_rename(
+        scratch_path, directory_path, base_name, versioned_path));
+    EXPECT_EQ(read_file("pf_bounded/probe.1"), "PLAYER-BYTES-V2\n");
+
+    std::filesystem::remove("pf_bounded/probe.1");
+    std::filesystem::remove("pf_bounded");
 }

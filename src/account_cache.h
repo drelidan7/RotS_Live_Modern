@@ -4,17 +4,20 @@
 #include "account_management_types.h"
 
 #include <string>
+#include <string_view>
 
 namespace account_cache {
 
 // Memoized parallel of account::read_account_file. On a hit, copies the cached AccountData with
 // zero filesystem work; on a miss, delegates to account::read_account_file, stores a copy, returns.
-bool read_account_file_cached(const std::string& root_directory, const std::string& account_name,
+/// Reads an account through the owning cache, treating each borrowed text input as ending at its first null.
+bool read_account_file_cached(std::string_view root_directory, std::string_view account_name,
                               account::AccountData* account, std::string* error_message);
 
 // Memoized parallel of account::find_linked_character_owner_account, with negative ("not linked")
 // caching so a repeat unlinked lookup short-circuits the O(N) account-directory scan.
-bool find_linked_character_owner_account_cached(const std::string& root_directory, const std::string& character_name,
+/// Resolves a character owner through the cache and copies normalized keys before retaining them.
+bool find_linked_character_owner_account_cached(std::string_view root_directory, std::string_view character_name,
                                                 std::string* owner_account_name, std::string* error_message);
 
 // Empties both memo maps. Call in test-fixture SetUp() for isolation.
@@ -37,8 +40,10 @@ void invalidate_all();
 // Signatures of the two on-disk resolvers the cache delegates to on a miss; default to the real
 // account:: functions. They are seams (below) only because the on-disk account-directory readdir
 // scan does not resolve under QEMU i386 emulation, so offline unit tests must inject fakes.
-using AccountReaderFn = bool (*)(const std::string&, const std::string&, account::AccountData*, std::string*);
-using OwnerResolverFn = bool (*)(const std::string&, const std::string&, std::string*, std::string*);
+/// Defines the nonretaining account-reader callback contract used on cache misses.
+using AccountReaderFn = bool (*)(std::string_view, std::string_view, account::AccountData*, std::string*);
+/// Defines the nonretaining character-owner callback contract used on cache misses.
+using OwnerResolverFn = bool (*)(std::string_view, std::string_view, std::string*, std::string*);
 
 // Test-only seam: override the backing resolvers the cache calls on a miss. Pass nullptr for either
 // argument to restore that resolver's real account:: default. Production never calls this; it lets

@@ -1,24 +1,25 @@
-std::string format_character_name_for_display(const std::string& character_name)
+std::string format_character_name_for_display(std::string_view character_name)
 {
+    character_name = rots::text::truncate_at_null(character_name);
     if (character_name.empty())
-        return character_name;
+        return {};
 
-    std::string formatted_name = character_name;
+    std::string formatted_name(character_name);
     formatted_name[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(formatted_name[0])));
     return formatted_name;
 }
 
-std::string normalize_account_name(const std::string& account_name)
+std::string normalize_account_name(std::string_view account_name)
 {
     return to_lower_copy(trim_copy(account_name));
 }
 
-std::string normalize_email(const std::string& email)
+std::string normalize_email(std::string_view email)
 {
     return to_lower_copy(trim_copy(email));
 }
 
-bool is_valid_account_name(const std::string& account_name, std::string* error_message)
+bool is_valid_account_name(std::string_view account_name, std::string* error_message)
 {
     const std::string normalized_name = normalize_account_name(account_name);
     if (normalized_name.length() < MIN_ACCOUNT_NAME_LENGTH) {
@@ -42,7 +43,7 @@ bool is_valid_account_name(const std::string& account_name, std::string* error_m
     return true;
 }
 
-bool is_valid_email(const std::string& email, std::string* error_message)
+bool is_valid_email(std::string_view email, std::string* error_message)
 {
     const std::string normalized_email = normalize_email(email);
     const size_t at_position = normalized_email.find('@');
@@ -113,8 +114,9 @@ bool is_valid_email(const std::string& email, std::string* error_message)
     return true;
 }
 
-bool is_valid_password(const std::string& password, std::string* error_message)
+bool is_valid_password(std::string_view password, std::string* error_message)
 {
+    password = rots::text::truncate_at_null(password);
     if (static_cast<int>(password.length()) < MIN_PASSWORD_LENGTH) {
         set_error(error_message, "Passwords must be at least 8 characters long.");
         return false;
@@ -150,7 +152,7 @@ bool is_valid_password(const std::string& password, std::string* error_message)
     return true;
 }
 
-bool generate_password_credentials(const std::string& password, std::string* password_hash, std::string* password_salt, std::string* error_message)
+bool generate_password_credentials(std::string_view password, std::string* password_hash, std::string* password_salt, std::string* error_message)
 {
     if (password_hash == nullptr || password_salt == nullptr) {
         set_error(error_message, "Password hash and salt outputs must not be null.");
@@ -166,19 +168,21 @@ bool generate_password_credentials(const std::string& password, std::string* pas
     return generate_hash_for_secret(password, password_hash, password_salt, error_message);
 }
 
-bool verify_password(const std::string& password, const std::string& password_hash)
+bool verify_password(std::string_view password, std::string_view password_hash)
 {
-    if (password_hash.empty())
+    const std::string password_owner(rots::text::truncate_at_null(password));
+    const std::string password_hash_owner(rots::text::truncate_at_null(password_hash));
+    if (password_hash_owner.empty())
         return false;
 
-    const char* hashed_password = rots_crypt(password.c_str(), password_hash.c_str());
+    const char* hashed_password = rots_crypt(password_owner.c_str(), password_hash_owner.c_str());
     if (hashed_password == nullptr)
         return false;
 
-    return password_hash == hashed_password;
+    return password_hash_owner == hashed_password;
 }
 
-bool initialize_new_account(const std::string& account_name, const std::string& email, const std::string& password, long created_at, AccountData* account, std::string* error_message)
+bool initialize_new_account(std::string_view account_name, std::string_view email, std::string_view password, long created_at, AccountData* account, std::string* error_message)
 {
     if (account == nullptr) {
         set_error(error_message, "Account output parameter must not be null.");
@@ -235,7 +239,7 @@ bool prepare_email_verification_code(AccountData* account, long sent_at, std::st
     return true;
 }
 
-bool confirm_email_verification_code(AccountData* account, const std::string& verification_code, const std::string& verified_by, long verified_at, std::string* error_message)
+bool confirm_email_verification_code(AccountData* account, std::string_view verification_code, std::string_view verified_by, long verified_at, std::string* error_message)
 {
     if (account == nullptr) {
         set_error(error_message, "Account output parameter must not be null.");
@@ -283,13 +287,13 @@ bool confirm_email_verification_code(AccountData* account, const std::string& ve
     return true;
 }
 
-void verify_email(AccountData* account, const std::string& verified_by, long verified_at)
+void verify_email(AccountData* account, std::string_view verified_by, long verified_at)
 {
     if (account == nullptr)
         return;
 
     account->email_verified = true;
-    account->email_verified_by = verified_by;
+    account->email_verified_by.assign(rots::text::truncate_at_null(verified_by));
     account->email_verified_at = verified_at;
     account->verification_code_hash.clear();
     account->verification_code_sent_at = 0;
@@ -314,7 +318,7 @@ void unverify_email(AccountData* account)
     account->verification_last_attempt_at = 0;
 }
 
-bool account_has_character(const AccountData& account, const std::string& character_name)
+bool account_has_character(const AccountData& account, std::string_view character_name)
 {
     const std::string normalized_character_name = normalize_account_name(character_name);
     return std::find_if(account.characters.begin(), account.characters.end(),
@@ -324,7 +328,7 @@ bool account_has_character(const AccountData& account, const std::string& charac
         != account.characters.end();
 }
 
-bool select_linked_character(const AccountData& account, const std::string& character_name, std::string* normalized_character_name, std::string* error_message)
+bool select_linked_character(const AccountData& account, std::string_view character_name, std::string* normalized_character_name, std::string* error_message)
 {
     if (normalized_character_name == nullptr) {
         set_error(error_message, "Character output parameter must not be null.");
@@ -363,7 +367,7 @@ bool select_linked_character(const AccountData& account, const std::string& char
     return false;
 }
 
-bool add_character_to_account(AccountData* account, const std::string& character_name, std::string* error_message)
+bool add_character_to_account(AccountData* account, std::string_view character_name, std::string* error_message)
 {
     if (account == nullptr) {
         set_error(error_message, "Account output parameter must not be null.");
@@ -387,14 +391,14 @@ bool add_character_to_account(AccountData* account, const std::string& character
     return true;
 }
 
-void block_account(AccountData* account, const std::string& blocked_by, const std::string& block_reason, long blocked_at)
+void block_account(AccountData* account, std::string_view blocked_by, std::string_view block_reason, long blocked_at)
 {
     if (account == nullptr)
         return;
 
     account->blocked = true;
-    account->blocked_by = blocked_by;
-    account->block_reason = block_reason;
+    account->blocked_by.assign(rots::text::truncate_at_null(blocked_by));
+    account->block_reason.assign(rots::text::truncate_at_null(block_reason));
     account->blocked_at = blocked_at;
     account->updated_at = blocked_at;
 }
@@ -410,7 +414,7 @@ void unblock_account(AccountData* account)
     account->blocked_at = 0;
 }
 
-bool reset_account_password(AccountData* account, const std::string& new_password, const std::string& reset_by, long reset_at, std::string* error_message)
+bool reset_account_password(AccountData* account, std::string_view new_password, std::string_view reset_by, long reset_at, std::string* error_message)
 {
     if (account == nullptr) {
         set_error(error_message, "Account output parameter must not be null.");
@@ -424,7 +428,7 @@ bool reset_account_password(AccountData* account, const std::string& new_passwor
 
     account->password_hash = password_hash;
     account->password_salt = password_salt;
-    account->password_reset_by = reset_by;
+    account->password_reset_by.assign(rots::text::truncate_at_null(reset_by));
     account->password_reset_at = reset_at;
     account->updated_at = reset_at;
 
@@ -432,7 +436,7 @@ bool reset_account_password(AccountData* account, const std::string& new_passwor
     return true;
 }
 
-bool create_account(const std::string& root_directory, const std::string& account_name, const std::string& email, const std::string& password, long created_at, AccountData* account, std::string* error_message)
+bool create_account(std::string_view root_directory, std::string_view account_name, std::string_view email, std::string_view password, long created_at, AccountData* account, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;
@@ -478,7 +482,7 @@ bool create_account(const std::string& root_directory, const std::string& accoun
     return true;
 }
 
-bool create_account_for_email(const std::string& root_directory, const std::string& email, const std::string& password, long created_at, AccountData* account, std::string* error_message)
+bool create_account_for_email(std::string_view root_directory, std::string_view email, std::string_view password, long created_at, AccountData* account, std::string* error_message)
 {
     if (!is_valid_email(email, error_message))
         return false;
@@ -518,7 +522,7 @@ bool create_account_for_email(const std::string& root_directory, const std::stri
     return false;
 }
 
-bool authenticate_account(const std::string& root_directory, const std::string& account_name, const std::string& password, AccountData* account, std::string* error_message)
+bool authenticate_account(std::string_view root_directory, std::string_view account_name, std::string_view password, AccountData* account, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;
@@ -553,7 +557,7 @@ bool authenticate_account(const std::string& root_directory, const std::string& 
     return true;
 }
 
-bool authenticate_account_by_email(const std::string& root_directory, const std::string& email, const std::string& password, AccountData* account, std::string* error_message)
+bool authenticate_account_by_email(std::string_view root_directory, std::string_view email, std::string_view password, AccountData* account, std::string* error_message)
 {
     if (!is_valid_email(email, error_message))
         return false;
@@ -567,7 +571,7 @@ bool authenticate_account_by_email(const std::string& root_directory, const std:
     return authenticate_account(root_directory, stored_account.account_name, password, account, error_message);
 }
 
-bool start_email_verification(const std::string& root_directory, const std::string& account_name, long sent_at, AccountData* account, std::string* error_message)
+bool start_email_verification(std::string_view root_directory, std::string_view account_name, long sent_at, AccountData* account, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;
@@ -607,7 +611,7 @@ bool start_email_verification(const std::string& root_directory, const std::stri
     return true;
 }
 
-bool complete_email_verification(const std::string& root_directory, const std::string& account_name, const std::string& verification_code, const std::string& verified_by, long verified_at, AccountData* account, std::string* error_message)
+bool complete_email_verification(std::string_view root_directory, std::string_view account_name, std::string_view verification_code, std::string_view verified_by, long verified_at, AccountData* account, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;
@@ -644,7 +648,7 @@ bool complete_email_verification(const std::string& root_directory, const std::s
     return true;
 }
 
-bool find_linked_character_owner_account_uncached(const std::string& root_directory, const std::string& character_name, std::string* owner_account_name, std::string* error_message)
+bool find_linked_character_owner_account_uncached(std::string_view root_directory, std::string_view character_name, std::string* owner_account_name, std::string* error_message)
 {
     if (!validate_identifier_for_path(character_name, "Character name", error_message))
         return false;
@@ -652,7 +656,7 @@ bool find_linked_character_owner_account_uncached(const std::string& root_direct
     return find_character_owner_account(root_directory, character_name, owner_account_name, error_message);
 }
 
-bool find_linked_character_owner_account(const std::string& root_directory, const std::string& character_name, std::string* owner_account_name, std::string* error_message)
+bool find_linked_character_owner_account(std::string_view root_directory, std::string_view character_name, std::string* owner_account_name, std::string* error_message)
 {
     // Route through the owner cache when enabled (live server); otherwise behave as the uncached
     // resolver. The cache's backing resolver is the uncached function above (no recursion).
@@ -661,7 +665,7 @@ bool find_linked_character_owner_account(const std::string& root_directory, cons
     return find_linked_character_owner_account_uncached(root_directory, character_name, owner_account_name, error_message);
 }
 
-bool admin_link_character(const std::string& root_directory, const std::string& account_name, const std::string& character_name, long updated_at, AccountData* account, std::string* error_message)
+bool admin_link_character(std::string_view root_directory, std::string_view account_name, std::string_view character_name, long updated_at, AccountData* account, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;
@@ -694,7 +698,7 @@ bool admin_link_character(const std::string& root_directory, const std::string& 
     return true;
 }
 
-bool admin_link_and_migrate_character(const std::string& root_directory, const std::string& account_name, const std::string& character_name, long updated_at, AccountData* account, CharacterMigrationData* migration, std::string* error_message)
+bool admin_link_and_migrate_character(std::string_view root_directory, std::string_view account_name, std::string_view character_name, long updated_at, AccountData* account, CharacterMigrationData* migration, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;
@@ -739,7 +743,7 @@ bool admin_link_and_migrate_character(const std::string& root_directory, const s
     return true;
 }
 
-bool admin_block_account(const std::string& root_directory, const std::string& account_name, const std::string& blocked_by, const std::string& block_reason, long blocked_at, AccountData* account, std::string* error_message)
+bool admin_block_account(std::string_view root_directory, std::string_view account_name, std::string_view blocked_by, std::string_view block_reason, long blocked_at, AccountData* account, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;
@@ -759,7 +763,7 @@ bool admin_block_account(const std::string& root_directory, const std::string& a
     return true;
 }
 
-bool admin_verify_email(const std::string& root_directory, const std::string& account_name, const std::string& verified_by, long verified_at, AccountData* account, std::string* error_message)
+bool admin_verify_email(std::string_view root_directory, std::string_view account_name, std::string_view verified_by, long verified_at, AccountData* account, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;
@@ -779,7 +783,7 @@ bool admin_verify_email(const std::string& root_directory, const std::string& ac
     return true;
 }
 
-bool admin_unverify_email(const std::string& root_directory, const std::string& account_name, long updated_at, AccountData* account, std::string* error_message)
+bool admin_unverify_email(std::string_view root_directory, std::string_view account_name, long updated_at, AccountData* account, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;
@@ -800,7 +804,7 @@ bool admin_unverify_email(const std::string& root_directory, const std::string& 
     return true;
 }
 
-bool admin_unblock_account(const std::string& root_directory, const std::string& account_name, long updated_at, AccountData* account, std::string* error_message)
+bool admin_unblock_account(std::string_view root_directory, std::string_view account_name, long updated_at, AccountData* account, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;
@@ -821,7 +825,7 @@ bool admin_unblock_account(const std::string& root_directory, const std::string&
     return true;
 }
 
-bool admin_reset_password(const std::string& root_directory, const std::string& account_name, const std::string& new_password, const std::string& reset_by, long reset_at, AccountData* account, std::string* error_message)
+bool admin_reset_password(std::string_view root_directory, std::string_view account_name, std::string_view new_password, std::string_view reset_by, long reset_at, AccountData* account, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;
@@ -843,7 +847,7 @@ bool admin_reset_password(const std::string& root_directory, const std::string& 
     return true;
 }
 
-bool admin_delete_linked_character(const std::string& root_directory, const std::string& account_name, const std::string& character_name, long updated_at, AccountData* account, std::string* error_message)
+bool admin_delete_linked_character(std::string_view root_directory, std::string_view account_name, std::string_view character_name, long updated_at, AccountData* account, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;
@@ -958,7 +962,7 @@ bool admin_delete_linked_character(const std::string& root_directory, const std:
     return true;
 }
 
-bool link_and_migrate_character(const std::string& root_directory, const std::string& account_name, const std::string& password, const std::string& character_name, long updated_at, AccountData* account, CharacterMigrationData* migration, std::string* error_message)
+bool link_and_migrate_character(std::string_view root_directory, std::string_view account_name, std::string_view password, std::string_view character_name, long updated_at, AccountData* account, CharacterMigrationData* migration, std::string* error_message)
 {
     if (!validate_identifier_for_path(account_name, "Account name", error_message))
         return false;

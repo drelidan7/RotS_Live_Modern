@@ -53,6 +53,10 @@ Permitted reasons are `nullable-state`, `retains-storage`, `binary-data`, `print
 | `int old_search_block(char* argument, int begin, unsigned int length, const char** list, int mode) {` | `sentinel-table` | The implementation stops only when the supplied table reaches its `"\n"` entry. |
 | `extern const char* const fill[] = { "in", "from", "with", "the", "on", "at", "to", "\n" };` | `sentinel-table` | The interpreter filler-word table terminates with the legacy `"\n"` sentinel. |
 | `extern const char* const fill[];` | `sentinel-table` | Interpreter word filtering scans until the table's terminal `"\n"` entry. |
+| `std::string format_account_character_name_for_display(const char* character_name) {` | `nullable-state` | Active-session rendering accepts missing legacy character names and preserves the empty-display fallback before calling the bounded account presentation API. |
+| `bool account_links_character(const account::AccountData& account_data, const char* character_name) {` | `nullable-state` | Descriptor and character records can expose a missing name; the helper rejects null before normalizing the bounded account name. |
+| `AccountCharacterSessionMatch descriptor_or_character_matches_account( const descriptor_data* descriptor, const account::AccountData& account_data, const char* character_name) {` | `nullable-state` | Session matching preserves the distinct missing-character-name state while forwarding non-null names to bounded helpers. |
+| `void mudlog_account_event(struct descriptor_data* d, std::string_view action, const char* email_override = nullptr) {` | `nullable-state` | A null email override explicitly requests fallback to descriptor email and then the legacy unknown-account label. |
 
 ## Mutable gameplay buffers outside the read-only census
 

@@ -1,4 +1,4 @@
-std::string account_bucket_for_name(const std::string& name)
+std::string account_bucket_for_name(std::string_view name)
 {
     const std::string normalized_name = normalize_account_name(name);
     if (normalized_name.empty())
@@ -41,27 +41,27 @@ std::string account_bucket_for_name(const std::string& name)
     }
 }
 
-std::string account_file_path(const std::string& root_directory, const std::string& account_name)
+std::string account_file_path(std::string_view root_directory, std::string_view account_name)
 {
     return account_file_path_from_email(root_directory, account_name);
 }
 
-std::string legacy_player_file_path(const std::string& root_directory, const std::string& character_name)
+std::string legacy_player_file_path(std::string_view root_directory, std::string_view character_name)
 {
     const std::string normalized_name = normalize_account_name(character_name);
-    return root_directory + "/players/" + account_bucket_for_name(normalized_name) + "/" + normalized_name;
+    return owned_text(root_directory) + "/players/" + account_bucket_for_name(normalized_name) + "/" + normalized_name;
 }
 
-std::string legacy_object_file_path(const std::string& root_directory, const std::string& character_name)
+std::string legacy_object_file_path(std::string_view root_directory, std::string_view character_name)
 {
     const std::string normalized_name = normalize_account_name(character_name);
-    return root_directory + "/plrobjs/" + account_bucket_for_name(normalized_name) + "/" + normalized_name + ".obj";
+    return owned_text(root_directory) + "/plrobjs/" + account_bucket_for_name(normalized_name) + "/" + normalized_name + ".obj";
 }
 
-std::string legacy_exploits_file_path(const std::string& root_directory, const std::string& character_name)
+std::string legacy_exploits_file_path(std::string_view root_directory, std::string_view character_name)
 {
     const std::string normalized_name = normalize_account_name(character_name);
-    return root_directory + "/exploits/" + account_bucket_for_name(normalized_name) + "/" + normalized_name + ".exploits";
+    return owned_text(root_directory) + "/exploits/" + account_bucket_for_name(normalized_name) + "/" + normalized_name + ".exploits";
 }
 
 std::string serialize_account_to_json(const AccountData& account)
@@ -155,14 +155,14 @@ bool deserialize_account_from_json(const std::string& json, AccountData* account
     return true;
 }
 
-bool write_account_file(const std::string& root_directory, const AccountData& account, std::string* error_message)
+bool write_account_file(std::string_view root_directory, const AccountData& account, std::string* error_message)
 {
     if (!validate_identifier_for_path(account.account_name, "Account name", error_message))
         return false;
     if (!is_valid_email(account.normalized_email, error_message))
         return false;
 
-    const std::string accounts_directory = root_directory + "/accounts";
+    const std::string accounts_directory = owned_text(root_directory) + "/accounts";
     const std::string normalized_email = normalize_email(account.normalized_email);
     const std::string bucket_directory = accounts_directory + "/" + account_bucket_for_name(normalized_email);
     const std::string account_directory = account_directory_path_from_email(root_directory, normalized_email);
@@ -245,7 +245,7 @@ bool write_account_file(const std::string& root_directory, const AccountData& ac
     return true;
 }
 
-bool read_account_file_uncached(const std::string& root_directory, const std::string& account_name, AccountData* account, std::string* error_message)
+bool read_account_file_uncached(std::string_view root_directory, std::string_view account_name, AccountData* account, std::string* error_message)
 {
     if (account == nullptr) {
         set_error(error_message, "Account output parameter must not be null.");
@@ -262,7 +262,7 @@ bool read_account_file_uncached(const std::string& root_directory, const std::st
     return read_account_file_from_path(account_path, account, error_message);
 }
 
-bool read_account_file(const std::string& root_directory, const std::string& account_name, AccountData* account, std::string* error_message)
+bool read_account_file(std::string_view root_directory, std::string_view account_name, AccountData* account, std::string* error_message)
 {
     // When the cache is enabled (live server) route through it; otherwise (tests, non-server callers)
     // behave exactly as the uncached read. read_account_file_cached's backing resolver is the uncached
@@ -272,7 +272,7 @@ bool read_account_file(const std::string& root_directory, const std::string& acc
     return read_account_file_uncached(root_directory, account_name, account, error_message);
 }
 
-bool read_account_file_by_email(const std::string& root_directory, const std::string& email, AccountData* account, std::string* error_message)
+bool read_account_file_by_email(std::string_view root_directory, std::string_view email, AccountData* account, std::string* error_message)
 {
     if (!is_valid_email(email, error_message))
         return false;
@@ -280,7 +280,7 @@ bool read_account_file_by_email(const std::string& root_directory, const std::st
     return find_account_by_email_internal(root_directory, email, account, error_message);
 }
 
-bool read_account_file_by_identifier(const std::string& root_directory, const std::string& identifier, AccountData* account, std::string* error_message)
+bool read_account_file_by_identifier(std::string_view root_directory, std::string_view identifier, AccountData* account, std::string* error_message)
 {
     if (identifier.find('@') != std::string::npos)
         return read_account_file_by_email(root_directory, identifier, account, error_message);
@@ -288,30 +288,30 @@ bool read_account_file_by_identifier(const std::string& root_directory, const st
     return read_account_file(root_directory, identifier, account, error_message);
 }
 
-std::string account_character_directory(const std::string& root_directory, const std::string& account_name, const std::string&)
+std::string account_character_directory(std::string_view root_directory, std::string_view account_name, std::string_view)
 {
     const std::string account_storage_key = resolve_account_storage_key(root_directory, account_name);
     if (account_storage_key.empty())
-        return root_directory + "/accounts/__invalid_account__";
-    return root_directory + "/accounts/" + account_bucket_for_name(account_storage_key) + "/" + account_storage_key;
+        return owned_text(root_directory) + "/accounts/__invalid_account__";
+    return owned_text(root_directory) + "/accounts/" + account_bucket_for_name(account_storage_key) + "/" + account_storage_key;
 }
 
-std::string account_character_snapshot_path(const std::string& root_directory, const std::string& account_name, const std::string& character_name)
+std::string account_character_snapshot_path(std::string_view root_directory, std::string_view account_name, std::string_view character_name)
 {
     return account_character_directory(root_directory, account_name, character_name) + "/" + character_asset_slug(character_name) + ".migration.json";
 }
 
-std::string account_character_player_path(const std::string& root_directory, const std::string& account_name, const std::string& character_name)
+std::string account_character_player_path(std::string_view root_directory, std::string_view account_name, std::string_view character_name)
 {
     return account_character_directory(root_directory, account_name, character_name) + "/" + character_json_file_name(character_name);
 }
 
-std::string account_character_object_path(const std::string& root_directory, const std::string& account_name, const std::string& character_name)
+std::string account_character_object_path(std::string_view root_directory, std::string_view account_name, std::string_view character_name)
 {
     return account_character_directory(root_directory, account_name, character_name) + "/" + objects_json_file_name(character_name);
 }
 
-std::string account_character_exploits_path(const std::string& root_directory, const std::string& account_name, const std::string& character_name)
+std::string account_character_exploits_path(std::string_view root_directory, std::string_view account_name, std::string_view character_name)
 {
     return account_character_directory(root_directory, account_name, character_name) + "/" + exploits_json_file_name(character_name);
 }

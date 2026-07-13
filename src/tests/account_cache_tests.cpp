@@ -3,7 +3,9 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <string>
+#include <string_view>
 
 // These tests exercise the cache's own logic (hit/miss/negative caching/(root,name) keying/clear)
 // through the account_cache::set_backing_resolvers_for_testing seam, driving COUNTING FAKE resolvers
@@ -22,12 +24,14 @@ int g_account_reader_calls = 0;
 account::AccountData g_account_reader_result;
 // When false, the fake account reader reports a miss (returns false) so "misses are not cached" is testable.
 bool g_account_reader_succeeds = true;
+std::string g_account_reader_root;
+std::string g_account_reader_name;
 
-bool counting_account_reader(const std::string& root_directory, const std::string& account_name,
+bool counting_account_reader(std::string_view root_directory, std::string_view account_name,
                              account::AccountData* account, std::string* error_message)
 {
-    (void)root_directory;
-    (void)account_name;
+    g_account_reader_root.assign(root_directory);
+    g_account_reader_name.assign(account_name);
     ++g_account_reader_calls;
     if (!g_account_reader_succeeds)
     {
@@ -54,12 +58,14 @@ int g_owner_resolver_calls = 0;
 std::string g_owner_resolver_owner;
 // When false, the fake owner resolver reports a genuine error (returns false), which must NOT be cached.
 bool g_owner_resolver_succeeds = true;
+std::string g_owner_resolver_root;
+std::string g_owner_resolver_character_name;
 
-bool counting_owner_resolver(const std::string& root_directory, const std::string& character_name,
+bool counting_owner_resolver(std::string_view root_directory, std::string_view character_name,
                              std::string* owner_account_name, std::string* error_message)
 {
-    (void)root_directory;
-    (void)character_name;
+    g_owner_resolver_root.assign(root_directory);
+    g_owner_resolver_character_name.assign(character_name);
     ++g_owner_resolver_calls;
     if (!g_owner_resolver_succeeds)
     {
@@ -91,9 +97,13 @@ protected:
         g_account_reader_calls = 0;
         g_account_reader_succeeds = true;
         g_account_reader_result = account::AccountData{};
+        g_account_reader_root.clear();
+        g_account_reader_name.clear();
         g_owner_resolver_calls = 0;
         g_owner_resolver_succeeds = true;
         g_owner_resolver_owner.clear();
+        g_owner_resolver_root.clear();
+        g_owner_resolver_character_name.clear();
         account_cache::set_backing_resolvers_for_testing(counting_account_reader, counting_owner_resolver);
     }
 
@@ -119,6 +129,49 @@ TEST_F(AccountCache, CachedReadReplaysResolverResultAndMemoizesAfterFirstCall) {
     ASSERT_TRUE(account_cache::read_account_file_cached("root", "alpha-admin", &second, &error_message)) << error_message;
     EXPECT_EQ(second.normalized_email, "player@example.com");
     EXPECT_EQ(g_account_reader_calls, 1) << "Second read must be served from cache (no rescan).";
+}
+
+TEST_F(AccountCache, BoundedKeysAndCallbackArgumentsAreOwnedByTheCache)
+{
+    g_account_reader_result.normalized_email = "player@example.com";
+    std::array<char, 12> root_storage { 'c', 'a', 'c', 'h', 'e', '-', 'r', 'o', 'o', 't', 'X', 'X' };
+    std::array<char, 13> account_storage { 'a', 'l', 'p', 'h', 'a', '-', 'a', 'd', 'm', 'i', 'n', 'X', 'X' };
+    const std::string_view root_directory(root_storage.data(), 10);
+    const std::string_view account_name(account_storage.data(), 11);
+    std::string error_message;
+
+    account::AccountData first;
+    ASSERT_TRUE(account_cache::read_account_file_cached(root_directory, account_name, &first, &error_message));
+    EXPECT_EQ(g_account_reader_calls, 1);
+
+    root_storage.fill('z');
+    account_storage.fill('z');
+
+    account::AccountData second;
+    ASSERT_TRUE(account_cache::read_account_file_cached("cache-root", "alpha-admin", &second, &error_message));
+    EXPECT_EQ(g_account_reader_calls, 1);
+    EXPECT_EQ(second.normalized_email, "player@example.com");
+}
+
+TEST_F(AccountCache, EmbeddedNullSuffixDoesNotAffectCacheKeys)
+{
+    g_owner_resolver_owner = "alpha-admin";
+    constexpr std::string_view root_directory("cache-root\0ignored", 18);
+    constexpr std::string_view character_name("aragorn\0ignored", 15);
+    std::string error_message;
+    std::string first_owner;
+
+    ASSERT_TRUE(account_cache::find_linked_character_owner_account_cached(
+        root_directory, character_name, &first_owner, &error_message));
+    EXPECT_EQ(g_owner_resolver_calls, 1);
+    EXPECT_EQ(g_owner_resolver_root, "cache-root");
+    EXPECT_EQ(g_owner_resolver_character_name, "aragorn");
+
+    std::string second_owner;
+    ASSERT_TRUE(account_cache::find_linked_character_owner_account_cached(
+        "cache-root", "aragorn", &second_owner, &error_message));
+    EXPECT_EQ(g_owner_resolver_calls, 1);
+    EXPECT_EQ(second_owner, "alpha-admin");
 }
 
 TEST_F(AccountCache, FailedAccountReadIsNotCachedSoItRetries) {

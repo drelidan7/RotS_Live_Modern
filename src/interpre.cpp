@@ -9,12 +9,14 @@
  **************************************************************************/
 
 #include "platdef.h"
+#include <algorithm>
 #include <ctype.h>
 #include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -2332,22 +2334,31 @@ void clear_account_login_state(struct descriptor_data* d)
     *d->account_character_name = '\0';
 }
 
-void set_account_login_name(struct descriptor_data* d, const std::string& account_name)
+void copy_account_text(char* destination, std::size_t destination_capacity, std::string_view text)
 {
-    strncpy(d->account_name, account_name.c_str(), MAX_INPUT_LENGTH - 1);
-    d->account_name[MAX_INPUT_LENGTH - 1] = '\0';
+    if (destination == nullptr || destination_capacity == 0)
+        return;
+
+    text = rots::text::truncate_at_null(text);
+    const std::size_t copied_length = std::min(text.size(), destination_capacity - 1);
+    if (copied_length > 0)
+        std::memcpy(destination, text.data(), copied_length);
+    destination[copied_length] = '\0';
 }
 
-void set_account_login_email(struct descriptor_data* d, const std::string& email)
+void set_account_login_name(struct descriptor_data* descriptor, std::string_view account_name)
 {
-    strncpy(d->account_email, email.c_str(), MAX_INPUT_LENGTH - 1);
-    d->account_email[MAX_INPUT_LENGTH - 1] = '\0';
+    copy_account_text(descriptor->account_name, MAX_INPUT_LENGTH, account_name);
 }
 
-void set_account_character_name(struct descriptor_data* d, const std::string& character_name)
+void set_account_login_email(struct descriptor_data* descriptor, std::string_view email)
 {
-    strncpy(d->account_character_name, character_name.c_str(), MAX_INPUT_LENGTH - 1);
-    d->account_character_name[MAX_INPUT_LENGTH - 1] = '\0';
+    copy_account_text(descriptor->account_email, MAX_INPUT_LENGTH, email);
+}
+
+void set_account_character_name(struct descriptor_data* descriptor, std::string_view character_name)
+{
+    copy_account_text(descriptor->account_character_name, MAX_INPUT_LENGTH, character_name);
 }
 
 void set_account_only_character_password(struct descriptor_data* d)
@@ -2395,7 +2406,7 @@ bool is_active_account_character_state(int connection_state)
 }
 
 bool linked_character_owner_matches_account(
-    const account::AccountData& account_data, const std::string& character_name)
+    const account::AccountData& account_data, std::string_view character_name)
 {
     std::string owner_account_name;
     if (!account::find_linked_character_owner_account(
@@ -2526,7 +2537,7 @@ const ActiveAccountCharacterSession* first_restricting_active_account_session_fo
 }
 
 bool selected_character_is_active_account_session(
-    const std::vector<ActiveAccountCharacterSession>& sessions, const std::string& selected_character_name)
+    const std::vector<ActiveAccountCharacterSession>& sessions, std::string_view selected_character_name)
 {
     const std::string normalized_selection = account::normalize_account_name(selected_character_name);
     for (const ActiveAccountCharacterSession& session : sessions) {
@@ -2599,7 +2610,7 @@ AccountCharacterSelectionUnlock build_account_character_selection_unlock(
 
 bool account_session_allows_character_selection(
     const account::AccountData& account_data,
-    const std::vector<ActiveAccountCharacterSession>& sessions, const std::string& selected_character_name)
+    const std::vector<ActiveAccountCharacterSession>& sessions, std::string_view selected_character_name)
 {
     if (first_restricting_active_account_session_for_account(account_data, sessions) == nullptr)
         return true;
@@ -2610,7 +2621,7 @@ bool account_session_allows_character_selection(
 bool account_session_allows_character_selection_with_unlock(
     const account::AccountData& account_data,
     const std::vector<ActiveAccountCharacterSession>& sessions,
-    const std::string& selected_character_name)
+    std::string_view selected_character_name)
 {
     if (account_session_allows_character_selection(account_data, sessions, selected_character_name))
         return true;
@@ -2621,7 +2632,7 @@ bool account_session_allows_character_selection_with_unlock(
 bool consume_account_character_selection_unlock(
     const account::AccountData& account_data,
     const std::vector<ActiveAccountCharacterSession>& sessions,
-    const std::string& selected_character_name)
+    std::string_view selected_character_name)
 {
     if (account_session_allows_character_selection(account_data, sessions, selected_character_name))
         return true;
@@ -2630,8 +2641,9 @@ bool consume_account_character_selection_unlock(
         return false;
 
     g_account_character_selection_unlocks.erase(account_character_selection_unlock_key(account_data));
+    const std::string selected_character_name_owner(rots::text::truncate_at_null(selected_character_name));
     vmudlog(BRF, "Account linked-character selection unlock consumed for %s selecting %s",
-        account_data.account_name.c_str(), selected_character_name.c_str());
+        account_data.account_name.c_str(), selected_character_name_owner.c_str());
     return true;
 }
 
@@ -2684,8 +2696,9 @@ void discard_descriptor_character_selection(struct descriptor_data* d)
     d->pos = -1;
 }
 
-void mudlog_account_event(struct descriptor_data* d, const char* action, const char* email_override = nullptr)
+void mudlog_account_event(struct descriptor_data* d, std::string_view action, const char* email_override = nullptr)
 {
+    const std::string action_owner(rots::text::truncate_at_null(action));
     const char* account_email = email_override;
     if ((account_email == nullptr || !*account_email) && d != nullptr)
         account_email = d->account_email;
@@ -2693,7 +2706,7 @@ void mudlog_account_event(struct descriptor_data* d, const char* action, const c
         account_email = "<unknown-account>";
 
     const char* host = (d != nullptr && *d->host) ? d->host : "<unknown-host>";
-    vmudlog(BRF, "%s for %s [%s]", const_cast<char*>(action), const_cast<char*>(account_email), const_cast<char*>(host));
+    vmudlog(BRF, "%s for %s [%s]", action_owner.c_str(), account_email, host);
 }
 
 void show_character_menu_impl(struct descriptor_data* d)
@@ -2848,7 +2861,7 @@ void handle_account_authenticated(struct descriptor_data* d, const account::Acco
     STATE(d) = CON_ACCTMENU;
 }
 
-void start_account_login(struct descriptor_data* d, const char* email)
+void start_account_login(struct descriptor_data* d, std::string_view email)
 {
     std::string error_message;
     if (!account::is_valid_email(email, &error_message)) {
@@ -2867,6 +2880,14 @@ void start_account_login(struct descriptor_data* d, const char* email)
 } // namespace
 
 #ifdef TESTING
+// Test seam for the descriptor-field ownership boundary. It specifically allows a
+// default empty view (whose data pointer may be null) to exercise the zero-byte copy path.
+void copy_account_text_for_testing(
+    char* destination, std::size_t destination_capacity, std::string_view text)
+{
+    copy_account_text(destination, destination_capacity, text);
+}
+
 // Test seam: clears g_account_character_selection_unlocks, the process-lifetime map
 // tracking per-account "linked-character selection unlock" grants. Nothing else ever
 // clears entries left behind by a test that grants but doesn't fully consume an unlock,

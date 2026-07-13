@@ -13,6 +13,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // Phase 2a Task 6: the "low-risk POD trio" -- pkill records, crime records,
@@ -178,6 +179,24 @@ TEST(PkillJson, DecodesLegacyRecordsFieldForField)
     EXPECT_EQ(records[1].victim_level, 255);
 }
 
+TEST(PkillJson, BinaryDecoderReadsFullPayloadPastEmbeddedNullBytes) {
+    if (sizeof(long) != 4) {
+        GTEST_SKIP() << "legacy player-kill fixtures require the 32-bit ABI";
+    }
+
+    const std::string bytes = build_pkill_fixture_bytes();
+    const std::size_t first_null_offset = bytes.find('\0');
+    ASSERT_NE(first_null_offset, std::string::npos);
+    ASSERT_LT(first_null_offset, bytes.size() - 1);
+
+    std::vector<PKILL> parsed;
+    std::string error_message;
+    ASSERT_TRUE(pkill_json::legacy_pkill_file_from_binary(bytes, &parsed, &error_message))
+        << error_message;
+    ASSERT_EQ(parsed.size(), 2u);
+    EXPECT_EQ(parsed[1].victim_level, 255);
+}
+
 TEST(PkillJson, RejectsSizeNotMultipleOfRecordSize)
 {
     if (sizeof(long) != 4)
@@ -208,6 +227,24 @@ TEST(PkillJson, JsonRoundTripPreservesAllFields)
     pkill_json::PkillStoreData parsed;
     ASSERT_TRUE(pkill_json::deserialize_pkill_from_json(json, &parsed, &error)) << error;
     ASSERT_TRUE(pkill_json::pkill_records_equal(records, parsed.records));
+}
+
+TEST(PkillJson, DeserializeAcceptsBoundedTextAndStopsAtEmbeddedNull) {
+    pkill_json::PkillStoreData original;
+    original.records.push_back(make_pkill(1700000000, 101, 202, 50, 45, 12000, -12000));
+    const std::string json = pkill_json::serialize_pkill_to_json(original);
+    std::string bounded_storage = json + "ignored";
+    std::string embedded_null_storage = json + std::string("\0ignored", 8);
+
+    for (const std::string_view json_view :
+         {std::string_view(bounded_storage.data(), json.size()),
+          std::string_view(embedded_null_storage.data(), embedded_null_storage.size())}) {
+        pkill_json::PkillStoreData parsed;
+        std::string error_message;
+        ASSERT_TRUE(pkill_json::deserialize_pkill_from_json(json_view, &parsed, &error_message))
+            << error_message;
+        EXPECT_TRUE(pkill_json::pkill_records_equal(original.records, parsed.records));
+    }
 }
 
 TEST(PkillJson, RejectsOutOfRangeLevelInJson)
@@ -348,6 +385,24 @@ TEST(CrimeJson, DecodesLegacyRecordsFieldForField)
     EXPECT_EQ(records[1].witness, -3);
 }
 
+TEST(CrimeJson, BinaryDecoderReadsFullPayloadPastEmbeddedNullBytes) {
+    if (sizeof(long) != 4) {
+        GTEST_SKIP() << "legacy crime fixtures require the 32-bit ABI";
+    }
+
+    const std::string bytes = build_crime_fixture_bytes();
+    const std::size_t first_null_offset = bytes.find('\0');
+    ASSERT_NE(first_null_offset, std::string::npos);
+    ASSERT_LT(first_null_offset, bytes.size() - 1);
+
+    std::vector<crime_record_type> parsed;
+    std::string error_message;
+    ASSERT_TRUE(crime_json::legacy_crime_file_from_binary(bytes, &parsed, &error_message))
+        << error_message;
+    ASSERT_EQ(parsed.size(), 2u);
+    EXPECT_EQ(parsed[1].witness_type, 2);
+}
+
 TEST(CrimeJson, RejectsSizeNotMultipleOfRecordSize)
 {
     if (sizeof(long) != 4)
@@ -378,6 +433,24 @@ TEST(CrimeJson, JsonRoundTripPreservesAllFields)
     crime_json::CrimeStoreData parsed;
     ASSERT_TRUE(crime_json::deserialize_crime_from_json(json, &parsed, &error)) << error;
     ASSERT_TRUE(crime_json::crime_records_equal(records, parsed.records));
+}
+
+TEST(CrimeJson, DeserializeAcceptsBoundedTextAndStopsAtEmbeddedNull) {
+    crime_json::CrimeStoreData original;
+    original.records.push_back(make_crime(1700000000, 101, 202, 3, 303, 1));
+    const std::string json = crime_json::serialize_crime_to_json(original);
+    std::string bounded_storage = json + "ignored";
+    std::string embedded_null_storage = json + std::string("\0ignored", 8);
+
+    for (const std::string_view json_view :
+         {std::string_view(bounded_storage.data(), json.size()),
+          std::string_view(embedded_null_storage.data(), embedded_null_storage.size())}) {
+        crime_json::CrimeStoreData parsed;
+        std::string error_message;
+        ASSERT_TRUE(crime_json::deserialize_crime_from_json(json_view, &parsed, &error_message))
+            << error_message;
+        EXPECT_TRUE(crime_json::crime_records_equal(original.records, parsed.records));
+    }
 }
 
 TEST(CrimeJson, RejectsOutOfRangeFieldInJson)

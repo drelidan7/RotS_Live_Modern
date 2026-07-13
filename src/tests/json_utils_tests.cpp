@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -17,6 +18,47 @@ TEST(JsonUtils, EscapesOtherControlCharactersAsUnicodeEscapes)
 {
     const std::string raw(1, '\v');
     EXPECT_EQ(json_utils::escape_json_string(raw), "\\u000b");
+}
+
+TEST(JsonUtils, EscapesBoundedTextAndStopsAtEmbeddedNull) {
+    const char bounded_storage[] = {'a', '"', 'b', 'x'};
+    const std::string_view bounded_value(bounded_storage, 3);
+    constexpr std::string_view embedded_null_value("alpha\0ignored", 13);
+
+    EXPECT_EQ(json_utils::escape_json_string(bounded_value), "a\\\"b");
+    EXPECT_EQ(json_utils::escape_json_string(embedded_null_value), "alpha");
+
+    std::string output = "prefix:";
+    json_utils::append_escaped_json_string(output, bounded_value);
+    json_utils::append_escaped_json_string(output, embedded_null_value);
+    EXPECT_EQ(output, "prefix:a\\\"balpha");
+}
+
+TEST(JsonUtils, ReaderAcceptsBoundedTextAndStopsAtEmbeddedNull) {
+    const char bounded_storage[] = {'{', '"', 'v', 'a', 'l', 'u', 'e',
+                                    '"', ':', '4', '2', '}', 'x'};
+    const std::string_view bounded_json(bounded_storage, 12);
+    constexpr std::string_view embedded_null_json("{\"value\":42}\0ignored", 20);
+
+    const auto parse_value = [](std::string_view json) {
+        int value = 0;
+        std::string error_message;
+        json_utils::JsonReader reader(json);
+        EXPECT_TRUE(reader.parse_root_object(
+            [&](std::string_view key, json_utils::JsonReader *nested_reader,
+                std::string *nested_error_message) {
+                if (key == "value") {
+                    return nested_reader->parse_integer(&value, nested_error_message);
+                }
+                return nested_reader->skip_value(nested_error_message);
+            },
+            &error_message))
+            << error_message;
+        return value;
+    };
+
+    EXPECT_EQ(parse_value(bounded_json), 42);
+    EXPECT_EQ(parse_value(embedded_null_json), 42);
 }
 
 TEST(JsonUtils, ParsesTypedObjectProperties)

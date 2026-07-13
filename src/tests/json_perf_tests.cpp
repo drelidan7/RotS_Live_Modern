@@ -173,7 +173,7 @@ char_file_u make_perf_character(bool heavy)
     return stored;
 }
 
-using DeserializeFn = bool (*)(const std::string&, character_json::CharacterData*, std::string*);
+using DeserializeFn = bool (*)(std::string_view, character_json::CharacterData *, std::string *);
 
 // Deserialize json with fn, then apply into a zeroed char_file_u so two paths can be byte-compared.
 bool deserialize_and_apply(DeserializeFn fn, const std::string& json, char_file_u* out, std::string* error)

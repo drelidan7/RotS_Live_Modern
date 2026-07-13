@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <string_view>
 
 #include <gtest/gtest.h>
 
@@ -153,6 +154,27 @@ char_file_u make_stored_character()
 std::string make_valid_character_json()
 {
     return character_json::serialize_character_to_json(character_json::character_data_from_store(make_stored_character()));
+}
+
+TEST(CharacterJson, DeserializersAcceptBoundedTextAndStopAtEmbeddedNull) {
+    const std::string json = make_valid_character_json();
+    std::string bounded_storage = json + "ignored";
+    std::string embedded_null_storage = json + std::string("\0ignored", 8);
+
+    const auto verify_deserializer = [&](auto deserialize) {
+        for (const std::string_view json_view :
+             {std::string_view(bounded_storage.data(), json.size()),
+              std::string_view(embedded_null_storage.data(), embedded_null_storage.size())}) {
+            character_json::CharacterData character;
+            std::string error_message;
+            ASSERT_TRUE(deserialize(json_view, &character, &error_message)) << error_message;
+            EXPECT_EQ(character.character_name, "aragorn");
+        }
+    };
+
+    verify_deserializer(character_json::deserialize_character_from_json);
+    verify_deserializer(character_json::deserialize_character_from_json_v2a);
+    verify_deserializer(character_json::deserialize_character_from_json_v2b);
 }
 
 std::string replace_once(std::string text, const std::string& from, const std::string& to)

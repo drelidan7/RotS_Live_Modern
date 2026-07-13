@@ -4031,12 +4031,12 @@ namespace {
     constexpr size_t kWitnessTypeOffset = offsetof(crime_record_type, witness_type);
     constexpr size_t kRecordSize = sizeof(crime_record_type);
 
-    bool read_i32_at(const std::string& bytes, size_t record_offset, size_t field_offset, int* value,
-        std::string* error_message, const char* label)
-    {
+    bool read_i32_at(const std::string &bytes, size_t record_offset, size_t field_offset,
+                     int *value, std::string *error_message, std::string_view label) {
         const size_t offset = record_offset + field_offset;
         if (offset + 4 > bytes.size()) {
-            set_error(error_message, std::string("Truncated crime file while reading ") + label + ".");
+            set_error(error_message, std::string("Truncated crime file while reading ") +
+                                         std::string(label) + ".");
             return false;
         }
         const uint32_t raw = static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset])) | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8) | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 2])) << 16) | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 3])) << 24);
@@ -4044,12 +4044,12 @@ namespace {
         return true;
     }
 
-    bool read_i16_at(const std::string& bytes, size_t record_offset, size_t field_offset, sh_int* value,
-        std::string* error_message, const char* label)
-    {
+    bool read_i16_at(const std::string &bytes, size_t record_offset, size_t field_offset,
+                     sh_int *value, std::string *error_message, std::string_view label) {
         const size_t offset = record_offset + field_offset;
         if (offset + 2 > bytes.size()) {
-            set_error(error_message, std::string("Truncated crime file while reading ") + label + ".");
+            set_error(error_message, std::string("Truncated crime file while reading ") +
+                                         std::string(label) + ".");
             return false;
         }
         const uint16_t raw = static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset])) | (static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8);
@@ -4198,9 +4198,8 @@ std::string serialize_crime_to_json(const CrimeStoreData& data)
     return output.str();
 }
 
-bool deserialize_crime_from_json(const std::string& json, CrimeStoreData* data,
-    std::string* error_message)
-{
+bool deserialize_crime_from_json(std::string_view json, CrimeStoreData *data,
+                                 std::string *error_message) {
     if (data == nullptr) {
         set_error(error_message, "Crime store output parameter must not be null.");
         return false;

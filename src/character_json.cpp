@@ -2,6 +2,7 @@
 
 #include "json_utils.h"
 #include "spells.h"
+#include "text_view.h"
 #include "utils.h"
 
 #include <algorithm>
@@ -306,8 +307,8 @@ namespace {
             *error_message = message;
     }
 
-    bool require_string_length(const std::string& value, size_t max_length, const char* field_name, std::string* error_message)
-    {
+    bool require_string_length(const std::string &value, size_t max_length,
+                               std::string_view field_name, std::string *error_message) {
         if (value.size() > max_length) {
             set_error(error_message, std::string(field_name) + " exceeds the maximum supported length.");
             return false;
@@ -315,8 +316,8 @@ namespace {
         return true;
     }
 
-    bool require_no_embedded_nul(const std::string& value, const char* field_name, std::string* error_message)
-    {
+    bool require_no_embedded_nul(const std::string &value, std::string_view field_name,
+                                 std::string *error_message) {
         if (value.find('\0') != std::string::npos) {
             set_error(error_message, std::string(field_name) + " must not contain embedded NUL bytes.");
             return false;
@@ -324,8 +325,8 @@ namespace {
         return true;
     }
 
-    bool require_exact_array_size(const std::vector<int>& values, size_t expected_size, const char* field_name, std::string* error_message)
-    {
+    bool require_exact_array_size(const std::vector<int> &values, size_t expected_size,
+                                  std::string_view field_name, std::string *error_message) {
         if (values.size() != expected_size) {
             set_error(error_message, std::string(field_name) + " must contain exactly " + std::to_string(expected_size) + " entries.");
             return false;
@@ -333,8 +334,8 @@ namespace {
         return true;
     }
 
-    bool require_integer_range(long value, long min_value, long max_value, const char* field_name, std::string* error_message)
-    {
+    bool require_integer_range(long value, long min_value, long max_value,
+                               std::string_view field_name, std::string *error_message) {
         if (value < min_value || value > max_value) {
             set_error(error_message, std::string(field_name) + " is out of the supported range.");
             return false;
@@ -342,28 +343,25 @@ namespace {
         return true;
     }
 
-    bool require_signed_char_range(int value, const char* field_name, std::string* error_message)
-    {
+    bool require_signed_char_range(int value, std::string_view field_name,
+                                   std::string *error_message) {
         return require_integer_range(value, std::numeric_limits<signed char>::min(), std::numeric_limits<signed char>::max(), field_name, error_message);
     }
 
-    bool require_byte_range(int value, const char* field_name, std::string* error_message)
-    {
+    bool require_byte_range(int value, std::string_view field_name, std::string *error_message) {
         return require_integer_range(value, std::numeric_limits<byte>::min(), std::numeric_limits<byte>::max(), field_name, error_message);
     }
 
-    bool require_ubyte_range(int value, const char* field_name, std::string* error_message)
-    {
+    bool require_ubyte_range(int value, std::string_view field_name, std::string *error_message) {
         return require_integer_range(value, std::numeric_limits<ubyte>::min(), std::numeric_limits<ubyte>::max(), field_name, error_message);
     }
 
-    bool require_color_value_range(int value, const char* field_name, std::string* error_message)
-    {
+    bool require_color_value_range(int value, std::string_view field_name,
+                                   std::string *error_message) {
         return require_integer_range(value, CNRM, CBWHT, field_name, error_message);
     }
 
-    bool require_short_range(int value, const char* field_name, std::string* error_message)
-    {
+    bool require_short_range(int value, std::string_view field_name, std::string *error_message) {
         return require_integer_range(value, std::numeric_limits<sh_int>::min(), std::numeric_limits<sh_int>::max(), field_name, error_message);
     }
 
@@ -393,16 +391,23 @@ namespace {
             && require_integer_range(character.specialization, PLRSPEC_NONE, game_types::PS_Count - 1, "state.specialization", error_message);
     }
 
-    bool validate_ability_data(const AbilityData& ability_data, const char* scope, std::string* error_message)
-    {
-        return require_signed_char_range(ability_data.str, (std::string(scope) + ".str").c_str(), error_message)
-            && require_signed_char_range(ability_data.lea, (std::string(scope) + ".lea").c_str(), error_message)
-            && require_signed_char_range(ability_data.intel, (std::string(scope) + ".intel").c_str(), error_message)
-            && require_signed_char_range(ability_data.wil, (std::string(scope) + ".wil").c_str(), error_message)
-            && require_signed_char_range(ability_data.dex, (std::string(scope) + ".dex").c_str(), error_message)
-            && require_signed_char_range(ability_data.con, (std::string(scope) + ".con").c_str(), error_message)
-            && require_short_range(ability_data.mana, (std::string(scope) + ".mana").c_str(), error_message)
-            && require_short_range(ability_data.move, (std::string(scope) + ".move").c_str(), error_message);
+    bool validate_ability_data(const AbilityData &ability_data, std::string_view scope,
+                               std::string *error_message) {
+        return require_signed_char_range(ability_data.str, std::string(scope) + ".str",
+                                         error_message) &&
+               require_signed_char_range(ability_data.lea, std::string(scope) + ".lea",
+                                         error_message) &&
+               require_signed_char_range(ability_data.intel, std::string(scope) + ".intel",
+                                         error_message) &&
+               require_signed_char_range(ability_data.wil, std::string(scope) + ".wil",
+                                         error_message) &&
+               require_signed_char_range(ability_data.dex, std::string(scope) + ".dex",
+                                         error_message) &&
+               require_signed_char_range(ability_data.con, std::string(scope) + ".con",
+                                         error_message) &&
+               require_short_range(ability_data.mana, std::string(scope) + ".mana",
+                                   error_message) &&
+               require_short_range(ability_data.move, std::string(scope) + ".move", error_message);
     }
 
     bool validate_point_data(const PointData& point_data, std::string* error_message)
@@ -426,8 +431,9 @@ namespace {
             && require_short_range(point_data.spell_power, "points.spell_power", error_message);
     }
 
-    bool validate_integer_array_range(const std::vector<int>& values, size_t expected_size, const char* field_name, bool is_byte, std::string* error_message)
-    {
+    bool validate_integer_array_range(const std::vector<int> &values, size_t expected_size,
+                                      std::string_view field_name, bool is_byte,
+                                      std::string *error_message) {
         if (!require_exact_array_size(values, expected_size, field_name, error_message))
             return false;
 
@@ -459,8 +465,8 @@ namespace {
         return true;
     }
 
-    bool validate_color_value_data(const ColorValueData& value, const char* field_name, std::string* error_message)
-    {
+    bool validate_color_value_data(const ColorValueData &value, std::string_view field_name,
+                                   std::string *error_message) {
         if (!require_integer_range(value.mode, COLOR_VALUE_DEFAULT, COLOR_VALUE_TRUECOLOR, field_name, error_message))
             return false;
 
@@ -470,9 +476,10 @@ namespace {
         if (value.mode == COLOR_VALUE_ANSI16)
             return require_color_value_range(value.value, field_name, error_message);
 
-        return require_ubyte_range(value.red, (std::string(field_name) + ".red").c_str(), error_message)
-            && require_ubyte_range(value.green, (std::string(field_name) + ".green").c_str(), error_message)
-            && require_ubyte_range(value.blue, (std::string(field_name) + ".blue").c_str(), error_message);
+        return require_ubyte_range(value.red, std::string(field_name) + ".red", error_message) &&
+               require_ubyte_range(value.green, std::string(field_name) + ".green",
+                                   error_message) &&
+               require_ubyte_range(value.blue, std::string(field_name) + ".blue", error_message);
     }
 
     bool validate_color_settings(const std::vector<ColorSettingData>& settings, std::string* error_message)
@@ -524,8 +531,9 @@ namespace {
         return names;
     }
 
-    bool decode_flags(const std::vector<std::string>& names, const FlagDefinition* definitions, size_t definition_count, long* flags, const char* flag_type, std::string* error_message)
-    {
+    bool decode_flags(const std::vector<std::string> &names, const FlagDefinition *definitions,
+                      size_t definition_count, long *flags, std::string_view flag_type,
+                      std::string *error_message) {
         if (flags == nullptr) {
             set_error(error_message, std::string(flag_type) + " flags output parameter must not be null.");
             return false;
@@ -917,8 +925,8 @@ namespace {
         output << "    }";
     }
 
-    void write_profession(std::ostringstream& output, const char* name, const ProfessionData& profession)
-    {
+    void write_profession(std::ostringstream &output, std::string_view name,
+                          const ProfessionData &profession) {
         output << "    \"" << name << "\": {\n";
         output << "      \"level\": " << profession.level << ",\n";
         output << "      \"points\": " << profession.points << ",\n";
@@ -958,22 +966,18 @@ namespace {
             m_out.reserve(reserve_hint);
         }
 
-        // Appends a NUL-terminated literal fragment verbatim (punctuation, field names, bool literals).
-        void raw(const char* literal)
-        {
-            m_out.append(literal);
-        }
-
         // Appends a single character verbatim.
         void raw(char character)
         {
             m_out.push_back(character);
         }
 
-        // Appends a std::string fragment verbatim (no escaping).
-        void raw(const std::string& fragment)
-        {
-            m_out.append(fragment);
+        // Appends a bounded textual fragment verbatim (no escaping) through its first null.
+        void raw(std::string_view fragment) {
+            fragment = rots::text::truncate_at_null(fragment);
+            if (!fragment.empty()) {
+                m_out.append(fragment.data(), fragment.size());
+            }
         }
 
         // Appends the decimal text of a signed integer via std::to_chars (locale-free, allocation-free),
@@ -1037,8 +1041,8 @@ namespace {
         writer.raw("    }");
     }
 
-    void write_profession_v2(JsonWriter& writer, const char* name, const ProfessionData& profession)
-    {
+    void write_profession_v2(JsonWriter &writer, std::string_view name,
+                             const ProfessionData &profession) {
         writer.raw("    \"");
         writer.raw(name);
         writer.raw("\": {\n");
@@ -1232,8 +1236,8 @@ namespace {
     }
 
     template <class Reader>
-    bool parse_integer_array(Reader* reader, std::vector<int>* values, size_t max_values, const char* field_name, std::string* error_message)
-    {
+    bool parse_integer_array(Reader *reader, std::vector<int> *values, size_t max_values,
+                             std::string_view field_name, std::string *error_message) {
         if (reader == nullptr || values == nullptr) {
             set_error(error_message, "Integer array parser requires reader and output parameters.");
             return false;
@@ -2718,8 +2722,8 @@ std::string serialize_character_to_json_v2b(const CharacterData& character)
     return writer.take();
 }
 
-bool deserialize_character_from_json(const std::string& json, CharacterData* character, std::string* error_message)
-{
+bool deserialize_character_from_json(std::string_view json, CharacterData *character,
+                                     std::string *error_message) {
     if (character == nullptr) {
         set_error(error_message, "Character output parameter must not be null.");
         return false;
@@ -2841,8 +2845,8 @@ bool deserialize_character_from_json(const std::string& json, CharacterData* cha
 }
 
 template <class Reader>
-bool deserialize_character_v2_dispatch(const std::string& json, CharacterData* character, std::string* error_message)
-{
+bool deserialize_character_v2_dispatch(std::string_view json, CharacterData *character,
+                                       std::string *error_message) {
     if (character == nullptr) {
         set_error(error_message, "Character output parameter must not be null.");
         return false;
@@ -2963,13 +2967,13 @@ bool deserialize_character_v2_dispatch(const std::string& json, CharacterData* c
     return true;
 }
 
-bool deserialize_character_from_json_v2a(const std::string& json, CharacterData* character, std::string* error_message)
-{
+bool deserialize_character_from_json_v2a(std::string_view json, CharacterData *character,
+                                         std::string *error_message) {
     return deserialize_character_v2_dispatch<json_utils::JsonReader>(json, character, error_message);
 }
 
-bool deserialize_character_from_json_v2b(const std::string& json, CharacterData* character, std::string* error_message)
-{
+bool deserialize_character_from_json_v2b(std::string_view json, CharacterData *character,
+                                         std::string *error_message) {
     return deserialize_character_v2_dispatch<json_utils::JsonReaderV2>(json, character, error_message);
 }
 

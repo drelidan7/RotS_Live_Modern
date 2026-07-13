@@ -16,6 +16,7 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -124,6 +125,20 @@ bool read_character_file_directly(const std::string& path, char_file_u* stored_c
 }
 
 } // namespace
+
+TEST(SaveBenchmark, FormatReportAcceptsBoundedTitleAndStopsAtEmbeddedNull) {
+    savebench::PipelineReport report;
+    const char bounded_storage[] = {'S', 'A', 'V', 'E', 'x'};
+    constexpr std::string_view embedded_null_title("SAVE\0ignored", 12);
+
+    const std::string bounded_report =
+        savebench::format_report(std::string_view(bounded_storage, 4), report);
+    const std::string embedded_null_report = savebench::format_report(embedded_null_title, report);
+
+    EXPECT_EQ(bounded_report, embedded_null_report);
+    EXPECT_NE(bounded_report.find("=== SAVE pipeline"), std::string::npos);
+    EXPECT_EQ(bounded_report.find("ignored"), std::string::npos);
+}
 
 // Stages an account-owned character "aragorn" under a TemporaryDirectory using direct path
 // I/O, profiles both the SAVE and LOAD pipelines, and asserts the on-disk bytes round-trip.

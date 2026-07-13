@@ -14,6 +14,7 @@
 #include <memory>  /* For std::unique_ptr (char_data_ptr, RAII T6b) */
 #include <stdio.h> /* For the FILE structure */
 #include <string>
+#include <string_view> // Bounded persistence text does not require a terminator.
 #include <vector>
 
 #include "interpre.h"     /* For the SPECIAL macro */
@@ -203,8 +204,9 @@ bool legacy_crime_file_from_binary(const std::string &bytes,
                                    std::vector<crime_record_type> *records,
                                    std::string *error_message = nullptr);
 std::string serialize_crime_to_json(const CrimeStoreData &data);
-bool deserialize_crime_from_json(const std::string &json, CrimeStoreData *data,
-                                 std::string *error_message = nullptr);
+/// Deserializes bounded crime JSON, stopping at its first embedded null byte.
+bool deserialize_crime_from_json(
+    std::string_view json, CrimeStoreData *data, std::string *error_message = nullptr);
 bool crime_records_equal(const std::vector<crime_record_type> &a,
                          const std::vector<crime_record_type> &b);
 std::string crime_json_path(const std::string &legacy_path);

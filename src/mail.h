@@ -12,6 +12,7 @@
 #define MAIL_H
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 /******* MUD MAIL SYSTEM HEADER FILE ****************************
@@ -100,7 +101,9 @@ struct MailStoreData {
 bool legacy_mail_file_from_binary(const std::string& bytes, MailStoreData* data, std::string* error_message = nullptr);
 
 std::string serialize_mail_to_json(const MailStoreData& data);
-bool deserialize_mail_from_json(const std::string& json, MailStoreData* data, std::string* error_message = nullptr);
+/// Deserializes a bounded mail JSON document, stopping at its first embedded null byte.
+bool deserialize_mail_from_json(std::string_view json, MailStoreData *data,
+                                std::string *error_message = nullptr);
 
 // Field-for-field structural equality (not a re-serialization/string
 // compare) -- used by the converter's decode/serialize/re-decode/verify

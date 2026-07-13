@@ -764,10 +764,11 @@ namespace {
     // Little-endian 4-byte int read at an explicit offset -- portable
     // regardless of the reading process's own endianness/ABI (this repo's
     // established convention, see objects_json.cpp's read_pod/read_u32le).
-    bool read_i32(const std::string& bytes, size_t* offset, int* value, std::string* error_message, const char* label)
-    {
+    bool read_i32(const std::string &bytes, size_t *offset, int *value,
+                  std::string *error_message, std::string_view label) {
         if (*offset + 4 > bytes.size()) {
-            set_error(error_message, std::string("Truncated board file while reading ") + label + ".");
+            set_error(error_message,
+                      std::string("Truncated board file while reading ") + std::string(label) + ".");
             return false;
         }
 
@@ -780,10 +781,11 @@ namespace {
         return true;
     }
 
-    bool skip_bytes(const std::string& bytes, size_t* offset, size_t length, std::string* error_message, const char* label)
-    {
+    bool skip_bytes(const std::string &bytes, size_t *offset, size_t length, std::string *error_message,
+                    std::string_view label) {
         if (*offset + length > bytes.size()) {
-            set_error(error_message, std::string("Truncated board file while reading ") + label + ".");
+            set_error(error_message,
+                      std::string("Truncated board file while reading ") + std::string(label) + ".");
             return false;
         }
         *offset += length;
@@ -794,10 +796,11 @@ namespace {
     // strips the trailing NUL byte the legacy writer always included (it
     // wrote strlen(text)+1 bytes -- see save_board's heading_len/message_len
     // computation below).
-    bool read_text(const std::string& bytes, size_t* offset, size_t length_including_nul, std::string* out, std::string* error_message, const char* label)
-    {
+    bool read_text(const std::string &bytes, size_t *offset, size_t length_including_nul, std::string *out,
+                   std::string *error_message, std::string_view label) {
         if (*offset + length_including_nul > bytes.size()) {
-            set_error(error_message, std::string("Truncated board file while reading ") + label + ".");
+            set_error(error_message,
+                      std::string("Truncated board file while reading ") + std::string(label) + ".");
             return false;
         }
         if (length_including_nul == 0) {
@@ -1007,8 +1010,7 @@ std::string serialize_board_to_json(const BoardSaveData& data)
     return output.str();
 }
 
-bool deserialize_board_from_json(const std::string& json, BoardSaveData* data, std::string* error_message)
-{
+bool deserialize_board_from_json(std::string_view json, BoardSaveData *data, std::string *error_message) {
     if (data == nullptr) {
         set_error(error_message, "Board data output parameter must not be null.");
         return false;

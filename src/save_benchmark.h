@@ -2,6 +2,7 @@
 #define SAVE_BENCHMARK_H
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct char_file_u;
@@ -54,7 +55,8 @@ bool profile_load(const std::string& root, const std::string& account_name,
                   PipelineReport* compare = nullptr);
 
 // Render a report as a fixed-width table (stage | min | avg | max | share%).
-std::string format_report(const std::string& title, const PipelineReport& report);
+/// Renders a report with a bounded title, stopping the title at its first embedded null byte.
+std::string format_report(std::string_view title, const PipelineReport &report);
 
 } // namespace savebench
 

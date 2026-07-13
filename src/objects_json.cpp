@@ -24,15 +24,16 @@ namespace {
     // (changes size on LP64) with structure padding baked into the on-disk
     // format. Those three are decoded by the explicit-offset readers instead.
     template <typename T>
-    bool read_pod(const std::string& bytes, size_t* offset, T* value, std::string* error_message, const char* label)
-    {
+    bool read_pod(const std::string &bytes, size_t *offset, T *value, std::string *error_message,
+                  std::string_view label) {
         if (offset == nullptr || value == nullptr) {
             set_error(error_message, "Binary parse output parameter must not be null.");
             return false;
         }
 
         if (*offset + sizeof(T) > bytes.size()) {
-            set_error(error_message, std::string("Truncated objects data while reading ") + label + ".");
+            set_error(error_message, std::string("Truncated objects data while reading ") +
+                                         std::string(label) + ".");
             return false;
         }
 
@@ -85,10 +86,11 @@ namespace {
             | (static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8));
     }
 
-    bool check_bounds(const std::string& bytes, size_t offset, size_t length, std::string* error_message, const char* label)
-    {
+    bool check_bounds(const std::string &bytes, size_t offset, size_t length,
+                      std::string *error_message, std::string_view label) {
         if (offset + length > bytes.size()) {
-            set_error(error_message, std::string("Truncated objects data while reading ") + label + ".");
+            set_error(error_message, std::string("Truncated objects data while reading ") +
+                                         std::string(label) + ".");
             return false;
         }
         return true;
@@ -157,8 +159,8 @@ namespace {
     };
 
     // Offsets: docs/data-formats/object-rent-files.md "obj_file_elem" table.
-    bool read_obj_file_elem(const std::string& bytes, size_t* offset, DecodedObjFileElem* elem, std::string* error_message, const char* label)
-    {
+    bool read_obj_file_elem(const std::string &bytes, size_t *offset, DecodedObjFileElem *elem,
+                            std::string *error_message, std::string_view label) {
         if (!check_bounds(bytes, *offset, kObjFileElemDiskSize, error_message, label))
             return false;
 
@@ -220,8 +222,9 @@ namespace {
     // vnum in the narrower item_number_deprecated field and left the later,
     // widened item_number field as stack garbage). Sets *is_sentinel and
     // leaves *record untouched when the record is the -17 list terminator.
-    bool read_object_record_or_sentinel(const std::string& bytes, size_t* offset, ObjectRecord* record, bool* is_sentinel, std::string* error_message, const char* label)
-    {
+    bool read_object_record_or_sentinel(const std::string &bytes, size_t *offset,
+                                        ObjectRecord *record, bool *is_sentinel,
+                                        std::string *error_message, std::string_view label) {
         DecodedObjFileElem raw_object {};
         if (!read_obj_file_elem(bytes, offset, &raw_object, error_message, label))
             return false;
@@ -258,8 +261,8 @@ namespace {
     }
 
     template <typename TargetType>
-    bool validate_narrowed_range(long long value, const char* field_name, std::string* error_message)
-    {
+    bool validate_narrowed_range(long long value, std::string_view field_name,
+                                 std::string *error_message) {
         if (value < static_cast<long long>(std::numeric_limits<TargetType>::min())
             || value > static_cast<long long>(std::numeric_limits<TargetType>::max())) {
             set_error(error_message, std::string(field_name) + " is outside the supported storage range.");
@@ -494,8 +497,8 @@ namespace {
         return true;
     }
 
-    void write_object_record(std::ostringstream& output, const ObjectRecord& record, const char* indent)
-    {
+    void write_object_record(std::ostringstream &output, const ObjectRecord &record,
+                             std::string_view indent) {
         output << indent << "{\n";
         output << indent << "  \"item_number\": " << record.item_number << ",\n";
         output << indent << "  \"values\": [";
@@ -654,8 +657,8 @@ bool object_save_data_from_binary_impl(
 // UNCHANGED (the caller's local scan offset, not the real cursor) and false
 // is returned -- used by recovery's "fully intact or dropped wholesale"
 // sections (a follower's own object list).
-bool try_read_complete_object_list(const std::string& bytes, size_t* offset, std::vector<ObjectRecord>* records, const char* label)
-{
+bool try_read_complete_object_list(const std::string &bytes, size_t *offset,
+                                   std::vector<ObjectRecord> *records, std::string_view label) {
     size_t local_offset = *offset;
     std::vector<ObjectRecord> parsed_records;
     while (true) {
@@ -1074,8 +1077,8 @@ std::string serialize_objects_to_json(const ObjectSaveData& data)
     return output.str();
 }
 
-bool deserialize_objects_from_json(const std::string& json, ObjectSaveData* data, std::string* error_message)
-{
+bool deserialize_objects_from_json(std::string_view json, ObjectSaveData *data,
+                                   std::string *error_message) {
     if (data == nullptr) {
         set_error(error_message, "Objects data output parameter must not be null.");
         return false;

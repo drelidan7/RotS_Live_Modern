@@ -2,6 +2,7 @@
 #define __PKILL_H__
 
 #include <string>
+#include <string_view> // Bounded JSON and decoder labels do not require terminators.
 #include <vector>
 
 /*
@@ -41,7 +42,8 @@ struct PkillStoreData {
 
 bool legacy_pkill_file_from_binary(const std::string& bytes, std::vector<PKILL>* records, std::string* error_message = nullptr);
 std::string serialize_pkill_to_json(const PkillStoreData& data);
-bool deserialize_pkill_from_json(const std::string& json, PkillStoreData* data, std::string* error_message = nullptr);
+/// Deserializes bounded player-kill JSON, stopping at its first embedded null byte.
+bool deserialize_pkill_from_json(std::string_view json, PkillStoreData *data, std::string *error_message = nullptr);
 bool pkill_records_equal(const std::vector<PKILL>& a, const std::vector<PKILL>& b);
 std::string pkill_json_path(const std::string& legacy_path);
 bool convert_legacy_pkill_file(const char* legacy_path, std::string* error_message = nullptr);

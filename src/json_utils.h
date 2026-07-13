@@ -3,23 +3,28 @@
 
 #include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace json_utils {
 
-std::string escape_json_string(const std::string& value);
+/// Escapes the first-null-terminated prefix of bounded text for inclusion in a JSON string.
+std::string escape_json_string(std::string_view value);
 
 // Fast-path JSON string escaper for serialize v2. Scans value once; if it contains no character
 // that needs escaping ('"', '\\', or a control char < 0x20) the bytes are appended to out verbatim,
-// otherwise it falls back to the same escaping escape_json_string produces. Appends (no return copy).
-void append_escaped_json_string(std::string& out, const std::string& value);
+// otherwise it falls back to the same escaping escape_json_string produces. Appends (no return
+// copy).
+/// Appends the JSON-escaped first-null-terminated prefix of bounded text to an owning buffer.
+void append_escaped_json_string(std::string &out, std::string_view value);
 
 class JsonReader {
 public:
     using ObjectPropertyParser = std::function<bool(const std::string&, JsonReader*, std::string*)>;
     using ArrayValueParser = std::function<bool(JsonReader*, std::string*)>;
 
-    explicit JsonReader(const std::string& input);
+    /// Borrows a bounded JSON document and parses only its prefix before the first null byte.
+    explicit JsonReader(std::string_view input);
 
     bool parse_root_object(const ObjectPropertyParser& property_parser, std::string* error_message);
     bool parse_object(const ObjectPropertyParser& property_parser, std::string* error_message);
@@ -34,11 +39,12 @@ public:
 private:
     bool parse_object_body(const ObjectPropertyParser& property_parser, std::string* error_message);
     bool consume(char expected);
-    bool match_literal(const char* literal);
+    bool match_literal(std::string_view literal);
     void skip_whitespace();
     bool is_at_end() const;
 
-    const std::string& m_input;
+    // Bounded JSON prefix borrowed from the caller; never includes bytes after the first null.
+    std::string_view m_input;
     size_t m_position = 0;
 };
 
@@ -51,7 +57,8 @@ public:
     using ObjectPropertyParser = std::function<bool(const std::string&, JsonReaderV2*, std::string*)>;
     using ArrayValueParser = std::function<bool(JsonReaderV2*, std::string*)>;
 
-    explicit JsonReaderV2(const std::string& input);
+    /// Borrows a bounded JSON document and parses only its prefix before the first null byte.
+    explicit JsonReaderV2(std::string_view input);
 
     bool parse_root_object(const ObjectPropertyParser& property_parser, std::string* error_message);
     bool parse_object(const ObjectPropertyParser& property_parser, std::string* error_message);
@@ -66,12 +73,12 @@ public:
 private:
     bool parse_object_body(const ObjectPropertyParser& property_parser, std::string* error_message);
     bool consume(char expected);
-    bool match_literal(const char* literal, size_t literal_length);
+    bool match_literal(std::string_view literal);
     void skip_whitespace();
     bool is_at_end() const;
 
     // Immutable view of the JSON text being parsed; owned by the caller and must outlive this reader.
-    const std::string& m_input;
+    std::string_view m_input;
     // Cursor into m_input of the next unconsumed character; advanced by every consume/parse step.
     size_t m_position = 0;
 };

@@ -1,5 +1,7 @@
 #include "json_utils.h"
 
+#include "text_view.h"
+
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -56,8 +58,8 @@ namespace {
 
 } // namespace
 
-std::string escape_json_string(const std::string& value)
-{
+std::string escape_json_string(std::string_view value) {
+    value = rots::text::truncate_at_null(value);
     std::string escaped;
     escaped.reserve(value.size() + 8);
 
@@ -99,8 +101,8 @@ std::string escape_json_string(const std::string& value)
     return escaped;
 }
 
-void append_escaped_json_string(std::string& out, const std::string& value)
-{
+void append_escaped_json_string(std::string &out, std::string_view value) {
+    value = rots::text::truncate_at_null(value);
     bool needs_escape = false;
     for (char character : value) {
         if (character == '"' || character == '\\' || static_cast<unsigned char>(character) < 0x20) {
@@ -110,7 +112,9 @@ void append_escaped_json_string(std::string& out, const std::string& value)
     }
 
     if (!needs_escape) {
-        out += value;
+        if (!value.empty()) {
+            out.append(value.data(), value.size());
+        }
         return;
     }
 
@@ -150,10 +154,7 @@ void append_escaped_json_string(std::string& out, const std::string& value)
     }
 }
 
-JsonReader::JsonReader(const std::string& input)
-    : m_input(input)
-{
-}
+JsonReader::JsonReader(std::string_view input) : m_input(rots::text::truncate_at_null(input)) {}
 
 bool JsonReader::parse_root_object(const ObjectPropertyParser& property_parser, std::string* error_message)
 {
@@ -363,7 +364,7 @@ bool JsonReader::parse_long(long* value, std::string* error_message)
     while (m_position < m_input.size() && std::isdigit(static_cast<unsigned char>(m_input[m_position])))
         ++m_position;
 
-    std::string number_text = m_input.substr(start, m_position - start);
+    const std::string number_text(m_input.substr(start, m_position - start));
     char* end_ptr = nullptr;
     errno = 0;
     // Parse as long long so 32-bit builds (long == 32 bits) can still detect and
@@ -508,13 +509,11 @@ bool JsonReader::consume(char expected)
     return true;
 }
 
-bool JsonReader::match_literal(const char* literal)
-{
-    size_t literal_length = std::strlen(literal);
-    if (m_input.compare(m_position, literal_length, literal) != 0)
+bool JsonReader::match_literal(std::string_view literal) {
+    if (m_input.substr(m_position, literal.size()) != literal)
         return false;
 
-    m_position += literal_length;
+    m_position += literal.size();
     return true;
 }
 
@@ -529,10 +528,7 @@ bool JsonReader::is_at_end() const
     return m_position >= m_input.size();
 }
 
-JsonReaderV2::JsonReaderV2(const std::string& input)
-    : m_input(input)
-{
-}
+JsonReaderV2::JsonReaderV2(std::string_view input) : m_input(rots::text::truncate_at_null(input)) {}
 
 bool JsonReaderV2::parse_root_object(const ObjectPropertyParser& property_parser, std::string* error_message)
 {
@@ -606,7 +602,7 @@ bool JsonReaderV2::parse_string(std::string* value, std::string* error_message)
     while (scan < size) {
         const char character = m_input[scan];
         if (character == '"') {
-            value->assign(m_input, m_position, scan - m_position);
+            value->assign(m_input.data() + m_position, scan - m_position);
             m_position = scan + 1;
             return true;
         }
@@ -619,7 +615,7 @@ bool JsonReaderV2::parse_string(std::string* value, std::string* error_message)
     // the clean prefix already scanned, then resume the original character-by-character loop.
     std::string parsed;
     parsed.reserve((scan - m_position) + 16);
-    parsed.assign(m_input, m_position, scan - m_position);
+    parsed.assign(m_input.data() + m_position, scan - m_position);
     m_position = scan;
     while (!is_at_end()) {
         const char character = m_input[m_position++];
@@ -705,12 +701,12 @@ bool JsonReaderV2::parse_bool(bool* value, std::string* error_message)
         return false;
     }
 
-    if (match_literal("true", 4)) {
+    if (match_literal("true")) {
         *value = true;
         return true;
     }
 
-    if (match_literal("false", 5)) {
+    if (match_literal("false")) {
         *value = false;
         return true;
     }
@@ -898,12 +894,11 @@ bool JsonReaderV2::consume(char expected)
     return true;
 }
 
-bool JsonReaderV2::match_literal(const char* literal, size_t literal_length)
-{
-    if (m_input.compare(m_position, literal_length, literal) != 0)
+bool JsonReaderV2::match_literal(std::string_view literal) {
+    if (m_input.substr(m_position, literal.size()) != literal)
         return false;
 
-    m_position += literal_length;
+    m_position += literal.size();
     return true;
 }
 

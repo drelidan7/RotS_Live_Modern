@@ -14,6 +14,7 @@
 #include "platdef.h" /* For byte typedefs */
 
 #include <string>
+#include <string_view> // Bounded JSON and decoder labels do not require terminators.
 #include <vector>
 
 #define NUM_OF_BOARDS 24
@@ -154,7 +155,8 @@ struct BoardSaveData {
 bool legacy_board_file_from_binary(const std::string& bytes, BoardSaveData* data, std::string* error_message = nullptr);
 
 std::string serialize_board_to_json(const BoardSaveData& data);
-bool deserialize_board_from_json(const std::string& json, BoardSaveData* data, std::string* error_message = nullptr);
+/// Deserializes bounded board JSON, stopping at its first embedded null byte.
+bool deserialize_board_from_json(std::string_view json, BoardSaveData *data, std::string *error_message = nullptr);
 
 // Field-for-field structural equality (not a re-serialization/string
 // compare) -- used by the converter's decode/serialize/re-decode/verify

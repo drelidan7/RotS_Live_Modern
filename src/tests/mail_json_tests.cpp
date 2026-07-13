@@ -11,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 // TDD coverage for Phase 2a Task 5: mail persistence as JSON, plus the
 // one-time legacy-block-file boot converter.
@@ -214,6 +215,20 @@ TEST(MailJson, DecodesLegacyRecordsSingleAndChainedMessages)
     EXPECT_EQ(kChainedBody, chained.body);
 }
 
+TEST(MailJson, BinaryDecoderReadsFullPayloadPastEmbeddedNullBytes) {
+    const std::string bytes = build_two_message_mail_bytes();
+    const std::size_t first_null_offset = bytes.find('\0');
+    ASSERT_NE(first_null_offset, std::string::npos);
+    ASSERT_LT(first_null_offset, bytes.size() - 1);
+
+    mail_json::MailStoreData parsed;
+    std::string error_message;
+    ASSERT_TRUE(mail_json::legacy_mail_file_from_binary(bytes, &parsed, &error_message))
+        << error_message;
+    ASSERT_EQ(parsed.messages.size(), 2u);
+    EXPECT_EQ(parsed.messages[1].body, kChainedBody);
+}
+
 TEST(MailJson, RejectsFileSizeNotMultipleOfBlockSize)
 {
     if (sizeof(long) != 4)
@@ -295,6 +310,24 @@ TEST(MailJson, JsonRoundTripPreservesAllFields)
     ASSERT_TRUE(mail_json::deserialize_mail_from_json(json, &roundtripped, &json_error)) << json_error;
 
     EXPECT_TRUE(mail_json::mail_store_data_equal(decoded, roundtripped));
+}
+
+TEST(MailJson, DeserializeAcceptsBoundedTextAndStopsAtEmbeddedNull) {
+    mail_json::MailStoreData original;
+    original.messages.push_back({"frodo", "aragorn", 1700000000, "bounded body"});
+    const std::string json = mail_json::serialize_mail_to_json(original);
+    std::string bounded_storage = json + "ignored";
+    std::string embedded_null_storage = json + std::string("\0ignored", 8);
+
+    for (const std::string_view json_view :
+         {std::string_view(bounded_storage.data(), json.size()),
+          std::string_view(embedded_null_storage.data(), embedded_null_storage.size())}) {
+        mail_json::MailStoreData parsed;
+        std::string error_message;
+        ASSERT_TRUE(mail_json::deserialize_mail_from_json(json_view, &parsed, &error_message))
+            << error_message;
+        EXPECT_TRUE(mail_json::mail_store_data_equal(original, parsed));
+    }
 }
 
 TEST(MailJson, DeserializeMissingMessagesFieldYieldsEmptyStore)

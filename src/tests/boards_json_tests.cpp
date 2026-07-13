@@ -11,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 // TDD coverage for Phase 2a Task 4: board persistence as JSON, plus the
 // one-time legacy-file boot converter.
@@ -216,6 +217,24 @@ TEST(BoardsJson, DecodesLegacyRecordsFieldForFieldAndDiscardsHeadingPointer)
     EXPECT_EQ("", second.message);
 }
 
+TEST(BoardsJson, BinaryDecoderReadsFullPayloadPastEmbeddedNullBytes) {
+    if (sizeof(long) != 4 || sizeof(void *) != 4) {
+        GTEST_SKIP() << "legacy board fixtures require the 32-bit ABI";
+    }
+
+    const std::string bytes = build_two_message_board_bytes();
+    const std::size_t first_null_offset = bytes.find('\0');
+    ASSERT_NE(first_null_offset, std::string::npos);
+    ASSERT_LT(first_null_offset, bytes.size() - 1);
+
+    boards_json::BoardSaveData parsed;
+    std::string error_message;
+    ASSERT_TRUE(boards_json::legacy_board_file_from_binary(bytes, &parsed, &error_message))
+        << error_message;
+    ASSERT_EQ(parsed.messages.size(), 2u);
+    EXPECT_EQ(parsed.messages[1].heading, "A heading with no body yet");
+}
+
 TEST(BoardsJson, RejectsTruncatedFile)
 {
     if (sizeof(long) != 4 || sizeof(void*) != 4)
@@ -276,6 +295,25 @@ TEST(BoardsJson, JsonRoundTripPreservesAllFieldsIncludingAbsentMessage)
     ASSERT_TRUE(boards_json::deserialize_board_from_json(json, &roundtripped, &json_error)) << json_error;
 
     EXPECT_TRUE(boards_json::board_save_data_equal(decoded, roundtripped));
+}
+
+TEST(BoardsJson, DeserializeAcceptsBoundedTextAndStopsAtEmbeddedNull) {
+    boards_json::BoardSaveData original;
+    original.last_message = 7;
+    original.messages.push_back({3, 7, 42, 1700000000, "bounded heading", true, "bounded body"});
+    const std::string json = boards_json::serialize_board_to_json(original);
+    std::string bounded_storage = json + "ignored";
+    std::string embedded_null_storage = json + std::string("\0ignored", 8);
+
+    for (const std::string_view json_view :
+         {std::string_view(bounded_storage.data(), json.size()),
+          std::string_view(embedded_null_storage.data(), embedded_null_storage.size())}) {
+        boards_json::BoardSaveData parsed;
+        std::string error_message;
+        ASSERT_TRUE(boards_json::deserialize_board_from_json(json_view, &parsed, &error_message))
+            << error_message;
+        EXPECT_TRUE(boards_json::board_save_data_equal(original, parsed));
+    }
 }
 
 TEST(BoardsJson, DeserializeRejectsInconsistentHasMessageFalseWithNonEmptyMessage)

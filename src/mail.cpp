@@ -163,10 +163,11 @@ namespace {
     // Little-endian 4-byte int read at an explicit offset -- portable
     // regardless of the reading process's own endianness/ABI (this repo's
     // established convention, see boards.cpp/objects_json.cpp).
-    bool read_i32(const std::string& bytes, size_t* offset, long* value, std::string* error_message, const char* label)
-    {
+    bool read_i32(const std::string &bytes, size_t *offset, long *value,
+                  std::string *error_message, std::string_view label) {
         if (*offset + 4 > bytes.size()) {
-            set_error(error_message, std::string("Truncated mail file while reading ") + label + ".");
+            set_error(error_message, std::string("Truncated mail file while reading ") +
+                                         std::string(label) + ".");
             return false;
         }
 
@@ -183,10 +184,11 @@ namespace {
     // (or the whole field, if none) -- matches how from/to/txt were always
     // written (strncpy + explicit trailing NUL), regardless of how much of
     // the field is actually used.
-    bool read_fixed_cstring(const std::string& bytes, size_t* offset, size_t field_size, std::string* out, std::string* error_message, const char* label)
-    {
+    bool read_fixed_cstring(const std::string &bytes, size_t *offset, size_t field_size, std::string *out,
+                            std::string *error_message, std::string_view label) {
         if (*offset + field_size > bytes.size()) {
-            set_error(error_message, std::string("Truncated mail file while reading ") + label + ".");
+            set_error(error_message, std::string("Truncated mail file while reading ") +
+                                         std::string(label) + ".");
             return false;
         }
         const char* field_start = bytes.data() + *offset;
@@ -386,8 +388,7 @@ std::string serialize_mail_to_json(const MailStoreData& data)
     return output.str();
 }
 
-bool deserialize_mail_from_json(const std::string& json, MailStoreData* data, std::string* error_message)
-{
+bool deserialize_mail_from_json(std::string_view json, MailStoreData *data, std::string *error_message) {
     if (data == nullptr) {
         set_error(error_message, "Mail data output parameter must not be null.");
         return false;

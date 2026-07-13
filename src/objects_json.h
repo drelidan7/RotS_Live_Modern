@@ -5,6 +5,7 @@
 
 #include <array>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace objects_json {
@@ -109,7 +110,9 @@ bool recover_object_save_data_from_binary(
 
 bool object_save_data_to_binary(const ObjectSaveData& data, std::string* bytes, std::string* error_message = nullptr);
 std::string serialize_objects_to_json(const ObjectSaveData& data);
-bool deserialize_objects_from_json(const std::string& json, ObjectSaveData* data, std::string* error_message = nullptr);
+/// Deserializes a bounded object-save JSON document, stopping at its first embedded null byte.
+bool deserialize_objects_from_json(std::string_view json, ObjectSaveData *data,
+                                   std::string *error_message = nullptr);
 
 // Field-for-field structural equality (not a re-serialization/string compare):
 // used by the plrobjs conversion sweep (convert_plrobjs.cpp) to verify a

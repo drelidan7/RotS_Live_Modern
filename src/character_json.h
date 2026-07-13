@@ -5,6 +5,7 @@
 
 #include <array>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace character_json {
@@ -149,7 +150,9 @@ CharacterData character_data_from_store(const char_file_u& stored_character);
 bool apply_character_data_to_store(const CharacterData& json_character, char_file_u* stored_character, std::string* error_message = nullptr);
 
 std::string serialize_character_to_json(const CharacterData& character);
-bool deserialize_character_from_json(const std::string& json, CharacterData* character, std::string* error_message = nullptr);
+/// Deserializes a bounded character JSON document, stopping at its first embedded null byte.
+bool deserialize_character_from_json(std::string_view json, CharacterData *character,
+                                     std::string *error_message = nullptr);
 
 // Parallel, profileable v2 implementations (v1 above is the untouched baseline). serialize v2a/v2b
 // produce byte-identical output to v1; deserialize v2a/v2b produce an identical CharacterData. v2a
@@ -157,8 +160,12 @@ bool deserialize_character_from_json(const std::string& json, CharacterData* cha
 // keys. Profiled head-to-head against v1 via savebench; no live caller uses them in this branch.
 std::string serialize_character_to_json_v2a(const CharacterData& character);
 std::string serialize_character_to_json_v2b(const CharacterData& character);
-bool deserialize_character_from_json_v2a(const std::string& json, CharacterData* character, std::string* error_message = nullptr);
-bool deserialize_character_from_json_v2b(const std::string& json, CharacterData* character, std::string* error_message = nullptr);
+/// Deserializes bounded character JSON with memoized lookup tables and baseline parsing.
+bool deserialize_character_from_json_v2a(std::string_view json, CharacterData *character,
+                                         std::string *error_message = nullptr);
+/// Deserializes bounded character JSON with memoized lookup tables and the optimized reader.
+bool deserialize_character_from_json_v2b(std::string_view json, CharacterData *character,
+                                         std::string *error_message = nullptr);
 
 std::vector<std::string> encode_player_flags(long flags);
 std::vector<std::string> encode_preference_flags(long flags);

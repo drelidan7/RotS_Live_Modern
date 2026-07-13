@@ -6,6 +6,7 @@
 #include "db.h"
 #include "stopwatch.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 
 #include <cstdio>
@@ -18,9 +19,12 @@ namespace savebench {
 namespace {
 
 // Time `body` `iterations` times; return {min, avg, max} microseconds (share filled later).
-StageTiming time_stage(const std::string &name, int iterations, const std::function<void()> &body) {
+StageTiming time_stage(std::string_view name, int iterations, const std::function<void()> &body) {
     StageTiming t;
-    t.name = name;
+    name = rots::text::truncate_at_null(name);
+    if (!name.empty()) {
+        t.name.assign(name.data(), name.size());
+    }
     long sum = 0;
     long lo = std::numeric_limits<long>::max();
     long hi = 0;
@@ -274,9 +278,14 @@ bool profile_load(const std::string &root, const std::string &account_name,
     return true;
 }
 
-std::string format_report(const std::string &title, const PipelineReport &r) {
+std::string format_report(std::string_view title, const PipelineReport &r) {
+    title = rots::text::truncate_at_null(title);
     char line[160];
-    std::string out = "\n=== " + title + " pipeline (microseconds) ===\n";
+    std::string out = "\n=== ";
+    if (!title.empty()) {
+        out.append(title.data(), title.size());
+    }
+    out += " pipeline (microseconds) ===\n";
     out += "  stage                                    min     avg     max   share%\n";
     for (const StageTiming &s : r.stages) {
         snprintf(line, sizeof(line), "  %-38s %6ld  %6ld  %6ld   %5.1f\n", s.name.c_str(), s.min_us,

@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <limits>
+#include <string_view>
 
 namespace {
 
@@ -138,6 +139,28 @@ TEST(ObjectsJson, SerializesAndDeserializesBinaryRoundTrip)
     EXPECT_EQ(parsed.followers[0].objects[0].item_number, 2200);
 }
 
+TEST(ObjectsJson, BinaryDecoderReadsFullPayloadPastEmbeddedNullBytes) {
+    if (sizeof(long) != 4) {
+        GTEST_SKIP() << "native object binary encoding requires the 32-bit ABI";
+    }
+
+    const objects_json::ObjectSaveData original = make_object_save_data();
+    std::string bytes;
+    std::string error_message;
+    ASSERT_TRUE(objects_json::object_save_data_to_binary(original, &bytes, &error_message))
+        << error_message;
+    const std::size_t first_null_offset = bytes.find('\0');
+    ASSERT_NE(first_null_offset, std::string::npos);
+    ASSERT_LT(first_null_offset, bytes.size() - 1);
+
+    objects_json::ObjectSaveData parsed;
+    ASSERT_TRUE(objects_json::object_save_data_from_binary(bytes, &parsed, &error_message))
+        << error_message;
+    ASSERT_EQ(parsed.followers.size(), 1u);
+    ASSERT_EQ(parsed.followers[0].objects.size(), 1u);
+    EXPECT_EQ(parsed.followers[0].objects[0].item_number, 2200);
+}
+
 TEST(ObjectsJson, SerializesAndDeserializesJsonRoundTrip)
 {
     const objects_json::ObjectSaveData original = make_object_save_data();
@@ -153,6 +176,23 @@ TEST(ObjectsJson, SerializesAndDeserializesJsonRoundTrip)
     EXPECT_EQ(parsed.objects[1].item_number, original.objects[1].item_number);
     EXPECT_EQ(parsed.aliases[1].command, original.aliases[1].command);
     EXPECT_EQ(parsed.followers[0].objects[0].wear_pos, original.followers[0].objects[0].wear_pos);
+}
+
+TEST(ObjectsJson, DeserializeAcceptsBoundedTextAndStopsAtEmbeddedNull) {
+    const objects_json::ObjectSaveData original = make_object_save_data();
+    const std::string json = objects_json::serialize_objects_to_json(original);
+    std::string bounded_storage = json + "ignored";
+    std::string embedded_null_storage = json + std::string("\0ignored", 8);
+
+    for (const std::string_view json_view :
+         {std::string_view(bounded_storage.data(), json.size()),
+          std::string_view(embedded_null_storage.data(), embedded_null_storage.size())}) {
+        objects_json::ObjectSaveData parsed;
+        std::string error_message;
+        ASSERT_TRUE(objects_json::deserialize_objects_from_json(json_view, &parsed, &error_message))
+            << error_message;
+        expect_object_save_data_equal(original, parsed);
+    }
 }
 
 TEST(ObjectsJson, PreservesObjectAliasAndFollowerOrderingAcrossJsonRoundTrip)

@@ -509,6 +509,55 @@ TEST(AccountManagement, AcceptsPasswordsMeetingConfiguredPolicy)
     EXPECT_TRUE(error_message.empty());
 }
 
+TEST(AccountManagement, BoundedAndEmbeddedNullValidationErrorsMatchTerminatedPrefixesExactly)
+{
+    std::string terminated_error;
+    std::string bounded_error;
+    std::string embedded_null_error;
+
+    EXPECT_FALSE(account::is_valid_account_name("ab", &terminated_error));
+    const std::array<char, 2> bounded_account_name { 'a', 'b' };
+    EXPECT_FALSE(account::is_valid_account_name(
+        std::string_view(bounded_account_name.data(), bounded_account_name.size()),
+        &bounded_error));
+    constexpr char account_name_storage[] = "ab\0valid-name";
+    EXPECT_FALSE(account::is_valid_account_name(
+        std::string_view(account_name_storage, sizeof(account_name_storage) - 1),
+        &embedded_null_error));
+    EXPECT_EQ(bounded_error, terminated_error);
+    EXPECT_EQ(embedded_null_error, terminated_error);
+
+    terminated_error.clear();
+    bounded_error.clear();
+    embedded_null_error.clear();
+    EXPECT_FALSE(account::is_valid_email("invalid", &terminated_error));
+    const std::array<char, 7> bounded_email { 'i', 'n', 'v', 'a', 'l', 'i', 'd' };
+    EXPECT_FALSE(account::is_valid_email(
+        std::string_view(bounded_email.data(), bounded_email.size()),
+        &bounded_error));
+    constexpr char email_storage[] = "invalid\0@example.com";
+    EXPECT_FALSE(account::is_valid_email(
+        std::string_view(email_storage, sizeof(email_storage) - 1),
+        &embedded_null_error));
+    EXPECT_EQ(bounded_error, terminated_error);
+    EXPECT_EQ(embedded_null_error, terminated_error);
+
+    terminated_error.clear();
+    bounded_error.clear();
+    embedded_null_error.clear();
+    EXPECT_FALSE(account::is_valid_password("weak", &terminated_error));
+    const std::array<char, 4> bounded_password { 'w', 'e', 'a', 'k' };
+    EXPECT_FALSE(account::is_valid_password(
+        std::string_view(bounded_password.data(), bounded_password.size()),
+        &bounded_error));
+    constexpr char password_storage[] = "weak\0StrongPass1";
+    EXPECT_FALSE(account::is_valid_password(
+        std::string_view(password_storage, sizeof(password_storage) - 1),
+        &embedded_null_error));
+    EXPECT_EQ(bounded_error, terminated_error);
+    EXPECT_EQ(embedded_null_error, terminated_error);
+}
+
 TEST(AccountManagement, GeneratesOneWayPasswordCredentialsThatVerifySuccessfully)
 {
     std::string password_hash;
@@ -1160,6 +1209,52 @@ TEST(AccountManagement, FormatsCharacterPromptWithLinkedCharacterList)
         "\n\rCharacter number: ");
 }
 
+TEST(AccountManagement, CharacterPromptAndListMatchForBoundedAndEmbeddedNullRoots)
+{
+    TemporaryDirectory temp_directory;
+    account::AccountData account_data;
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(
+        temp_directory.path(),
+        "alpha-admin",
+        "player@example.com",
+        "ValidPass1",
+        1700010200,
+        &account_data,
+        &error_message))
+        << error_message;
+    ASSERT_TRUE(account::add_character_to_account(&account_data, "aragorn", &error_message))
+        << error_message;
+    ASSERT_TRUE(account::write_account_file(temp_directory.path(), account_data, &error_message))
+        << error_message;
+
+    char_file_u aragorn = make_stored_character("aragorn");
+    aragorn.level = 50;
+    aragorn.race = RACE_WOOD;
+    ASSERT_TRUE(account::write_account_character_file(
+        temp_directory.path(), account_data.account_name, aragorn, &error_message))
+        << error_message;
+
+    const std::vector<char> bounded_root_storage(
+        temp_directory.path().begin(), temp_directory.path().end());
+    const std::string_view bounded_root(
+        bounded_root_storage.data(), bounded_root_storage.size());
+    std::string embedded_null_root_storage = temp_directory.path();
+    embedded_null_root_storage.append("\0ignored", 8);
+    const std::string_view embedded_null_root(
+        embedded_null_root_storage.data(), embedded_null_root_storage.size());
+
+    const std::string terminated_prompt = account::format_account_character_prompt(
+        temp_directory.path(), account_data);
+    EXPECT_EQ(account::format_account_character_prompt(bounded_root, account_data), terminated_prompt);
+    EXPECT_EQ(account::format_account_character_prompt(embedded_null_root, account_data), terminated_prompt);
+
+    const std::string terminated_list = account::format_account_character_list(
+        temp_directory.path(), account_data);
+    EXPECT_EQ(account::format_account_character_list(bounded_root, account_data), terminated_list);
+    EXPECT_EQ(account::format_account_character_list(embedded_null_root, account_data), terminated_list);
+}
+
 TEST(AccountManagement, RejectsMalformedJsonInput)
 {
     account::AccountData parsed_account;
@@ -1342,6 +1437,145 @@ TEST(AccountManagement, AuthenticatesAccountsByEmailAddress)
 
     EXPECT_FALSE(account::authenticate_account_by_email(temp_directory.path(), "player@example.com", "WrongPass1", nullptr, &error_message));
     EXPECT_EQ(error_message, "Account authentication failed.");
+}
+
+TEST(AccountManagement, AuthenticationMatchesBoundedAndEmbeddedNullInputsAndErrors)
+{
+    TemporaryDirectory temp_directory;
+    std::string error_message;
+    account::AccountData created_account;
+    ASSERT_TRUE(account::create_account(
+        temp_directory.path(),
+        "alpha-admin",
+        "player@example.com",
+        "ValidPass1",
+        1700005650,
+        &created_account,
+        &error_message))
+        << error_message;
+    ASSERT_TRUE(account::admin_verify_email(
+        temp_directory.path(),
+        "alpha-admin",
+        "VerifierAdmin",
+        1700005651,
+        nullptr,
+        &error_message))
+        << error_message;
+
+    const std::vector<char> bounded_root_storage(
+        temp_directory.path().begin(), temp_directory.path().end());
+    const std::string_view bounded_root(
+        bounded_root_storage.data(), bounded_root_storage.size());
+    std::string embedded_null_root_storage = temp_directory.path();
+    embedded_null_root_storage.append("\0ignored", 8);
+    const std::string_view embedded_null_root(
+        embedded_null_root_storage.data(), embedded_null_root_storage.size());
+    const std::array<char, 11> bounded_account_name {
+        'a', 'l', 'p', 'h', 'a', '-', 'a', 'd', 'm', 'i', 'n'
+    };
+    const std::array<char, 18> bounded_email {
+        'p', 'l', 'a', 'y', 'e', 'r', '@', 'e', 'x', 'a', 'm', 'p', 'l', 'e', '.', 'c', 'o', 'm'
+    };
+    const std::array<char, 10> bounded_password {
+        'V', 'a', 'l', 'i', 'd', 'P', 'a', 's', 's', '1'
+    };
+    const std::array<char, 10> bounded_wrong_password {
+        'W', 'r', 'o', 'n', 'g', 'P', 'a', 's', 's', '1'
+    };
+    constexpr char embedded_account_name_storage[] = "alpha-admin\0ignored";
+    constexpr char embedded_email_storage[] = "player@example.com\0ignored";
+    constexpr char embedded_password_storage[] = "ValidPass1\0ignored";
+    constexpr char embedded_wrong_password_storage[] = "WrongPass1\0ignored";
+
+    account::AccountData terminated_name_account;
+    ASSERT_TRUE(account::authenticate_account(
+        temp_directory.path(), "alpha-admin", "ValidPass1", &terminated_name_account, &error_message))
+        << error_message;
+    account::AccountData bounded_name_account;
+    ASSERT_TRUE(account::authenticate_account(
+        bounded_root,
+        std::string_view(bounded_account_name.data(), bounded_account_name.size()),
+        std::string_view(bounded_password.data(), bounded_password.size()),
+        &bounded_name_account,
+        &error_message))
+        << error_message;
+    account::AccountData embedded_name_account;
+    ASSERT_TRUE(account::authenticate_account(
+        embedded_null_root,
+        std::string_view(embedded_account_name_storage, sizeof(embedded_account_name_storage) - 1),
+        std::string_view(embedded_password_storage, sizeof(embedded_password_storage) - 1),
+        &embedded_name_account,
+        &error_message))
+        << error_message;
+    EXPECT_EQ(account::serialize_account_to_json(bounded_name_account),
+        account::serialize_account_to_json(terminated_name_account));
+    EXPECT_EQ(account::serialize_account_to_json(embedded_name_account),
+        account::serialize_account_to_json(terminated_name_account));
+
+    std::string terminated_name_error;
+    std::string bounded_name_error;
+    std::string embedded_name_error;
+    EXPECT_FALSE(account::authenticate_account(
+        temp_directory.path(), "alpha-admin", "WrongPass1", nullptr, &terminated_name_error));
+    EXPECT_FALSE(account::authenticate_account(
+        bounded_root,
+        std::string_view(bounded_account_name.data(), bounded_account_name.size()),
+        std::string_view(bounded_wrong_password.data(), bounded_wrong_password.size()),
+        nullptr,
+        &bounded_name_error));
+    EXPECT_FALSE(account::authenticate_account(
+        embedded_null_root,
+        std::string_view(embedded_account_name_storage, sizeof(embedded_account_name_storage) - 1),
+        std::string_view(embedded_wrong_password_storage, sizeof(embedded_wrong_password_storage) - 1),
+        nullptr,
+        &embedded_name_error));
+    EXPECT_EQ(bounded_name_error, terminated_name_error);
+    EXPECT_EQ(embedded_name_error, terminated_name_error);
+
+    account::AccountData terminated_email_account;
+    ASSERT_TRUE(account::authenticate_account_by_email(
+        temp_directory.path(), "player@example.com", "ValidPass1", &terminated_email_account, &error_message))
+        << error_message;
+    account::AccountData bounded_email_account;
+    ASSERT_TRUE(account::authenticate_account_by_email(
+        bounded_root,
+        std::string_view(bounded_email.data(), bounded_email.size()),
+        std::string_view(bounded_password.data(), bounded_password.size()),
+        &bounded_email_account,
+        &error_message))
+        << error_message;
+    account::AccountData embedded_email_account;
+    ASSERT_TRUE(account::authenticate_account_by_email(
+        embedded_null_root,
+        std::string_view(embedded_email_storage, sizeof(embedded_email_storage) - 1),
+        std::string_view(embedded_password_storage, sizeof(embedded_password_storage) - 1),
+        &embedded_email_account,
+        &error_message))
+        << error_message;
+    EXPECT_EQ(account::serialize_account_to_json(bounded_email_account),
+        account::serialize_account_to_json(terminated_email_account));
+    EXPECT_EQ(account::serialize_account_to_json(embedded_email_account),
+        account::serialize_account_to_json(terminated_email_account));
+
+    std::string terminated_email_error;
+    std::string bounded_email_error;
+    std::string embedded_email_error;
+    EXPECT_FALSE(account::authenticate_account_by_email(
+        temp_directory.path(), "player@example.com", "WrongPass1", nullptr, &terminated_email_error));
+    EXPECT_FALSE(account::authenticate_account_by_email(
+        bounded_root,
+        std::string_view(bounded_email.data(), bounded_email.size()),
+        std::string_view(bounded_wrong_password.data(), bounded_wrong_password.size()),
+        nullptr,
+        &bounded_email_error));
+    EXPECT_FALSE(account::authenticate_account_by_email(
+        embedded_null_root,
+        std::string_view(embedded_email_storage, sizeof(embedded_email_storage) - 1),
+        std::string_view(embedded_wrong_password_storage, sizeof(embedded_wrong_password_storage) - 1),
+        nullptr,
+        &embedded_email_error));
+    EXPECT_EQ(bounded_email_error, terminated_email_error);
+    EXPECT_EQ(embedded_email_error, terminated_email_error);
 }
 
 TEST(AccountManagement, SupportsAccountPasswordsLongerThanLegacyCharacterLimit)
@@ -2014,6 +2248,112 @@ TEST(AccountManagement, RemovesAccountNativeCharacterFile)
 
     ASSERT_TRUE(account::remove_account_character_file(temp_directory.path(), "alpha-admin", "aragorn", &error_message)) << error_message;
     EXPECT_FALSE(account::account_character_file_exists(temp_directory.path(), "alpha-admin", "aragorn", &error_message));
+}
+
+TEST(AccountManagement, MigrationSelectionApisMatchBoundedAndEmbeddedNullInputs)
+{
+    TemporaryDirectory temp_directory;
+    std::string setup_error;
+    ASSERT_TRUE(account::create_account(
+        temp_directory.path(),
+        "alpha-admin",
+        "player@example.com",
+        "ValidPass1",
+        1700007776,
+        nullptr,
+        &setup_error))
+        << setup_error;
+
+    const std::vector<char> bounded_root_storage(
+        temp_directory.path().begin(), temp_directory.path().end());
+    const std::string_view bounded_root(
+        bounded_root_storage.data(), bounded_root_storage.size());
+    std::string embedded_null_root_storage = temp_directory.path();
+    embedded_null_root_storage.append("\0ignored", 8);
+    const std::string_view embedded_null_root(
+        embedded_null_root_storage.data(), embedded_null_root_storage.size());
+    const std::array<char, 11> bounded_account_name {
+        'a', 'l', 'p', 'h', 'a', '-', 'a', 'd', 'm', 'i', 'n'
+    };
+    const std::array<char, 7> bounded_character_name {
+        'a', 'r', 'a', 'g', 'o', 'r', 'n'
+    };
+    const std::string_view bounded_account(
+        bounded_account_name.data(), bounded_account_name.size());
+    const std::string_view bounded_character(
+        bounded_character_name.data(), bounded_character_name.size());
+    constexpr char embedded_account_name_storage[] = "alpha-admin\0ignored";
+    constexpr char embedded_character_name_storage[] = "aragorn\0ignored";
+    const std::string_view embedded_account(
+        embedded_account_name_storage, sizeof(embedded_account_name_storage) - 1);
+    const std::string_view embedded_character(
+        embedded_character_name_storage, sizeof(embedded_character_name_storage) - 1);
+
+    const auto migrate_error = [](std::string_view root_directory,
+                                   std::string_view account_name,
+                                   std::string_view character_name) {
+        account::CharacterMigrationData migration;
+        std::string error_message;
+        EXPECT_FALSE(account::migrate_legacy_character_by_name(
+            root_directory, account_name, character_name, 1700007777, &migration, &error_message));
+        return error_message;
+    };
+    const std::string terminated_migrate_error = migrate_error(
+        temp_directory.path(), "alpha-admin", "aragorn");
+    EXPECT_EQ(migrate_error(bounded_root, bounded_account, bounded_character),
+        terminated_migrate_error);
+    EXPECT_EQ(migrate_error(embedded_null_root, embedded_account, embedded_character),
+        terminated_migrate_error);
+
+    const auto ensure_error = [](std::string_view root_directory,
+                                  std::string_view account_name,
+                                  std::string_view character_name) {
+        account::CharacterMigrationData migration;
+        std::string error_message;
+        EXPECT_FALSE(account::ensure_character_migration(
+            root_directory, account_name, character_name, 1700007777, &migration, &error_message));
+        return error_message;
+    };
+    const std::string terminated_ensure_error = ensure_error(
+        temp_directory.path(), "alpha-admin", "aragorn");
+    EXPECT_EQ(ensure_error(bounded_root, bounded_account, bounded_character),
+        terminated_ensure_error);
+    EXPECT_EQ(ensure_error(embedded_null_root, embedded_account, embedded_character),
+        terminated_ensure_error);
+
+    const auto read_error = [](std::string_view root_directory,
+                                std::string_view account_name,
+                                std::string_view character_name) {
+        account::CharacterMigrationData migration;
+        std::string error_message;
+        EXPECT_FALSE(account::read_character_migration(
+            root_directory, account_name, character_name, &migration, &error_message));
+        return error_message;
+    };
+    const std::string terminated_read_error = read_error(
+        temp_directory.path(), "alpha-admin", "aragorn");
+    EXPECT_EQ(read_error(bounded_root, bounded_account, bounded_character),
+        terminated_read_error);
+    EXPECT_EQ(read_error(embedded_null_root, embedded_account, embedded_character),
+        terminated_read_error);
+
+    account::CharacterMigrationData missing_snapshot;
+    missing_snapshot.account_name = "alpha-admin";
+    missing_snapshot.character_name = "aragorn";
+    const auto restore_error = [&missing_snapshot](std::string_view root_directory,
+                                   std::string_view account_name,
+                                   std::string_view character_name) {
+        std::string error_message;
+        EXPECT_FALSE(account::restore_character_migration(
+            root_directory, account_name, character_name, missing_snapshot, &error_message));
+        return error_message;
+    };
+    const std::string terminated_restore_error = restore_error(
+        temp_directory.path(), "alpha-admin", "aragorn");
+    EXPECT_EQ(restore_error(bounded_root, bounded_account, bounded_character),
+        terminated_restore_error);
+    EXPECT_EQ(restore_error(embedded_null_root, embedded_account, embedded_character),
+        terminated_restore_error);
 }
 
 TEST(AccountManagement, MigratesLegacyCharacterFilesIntoAccountNativeAssetsWithoutPersistingSnapshotFile)

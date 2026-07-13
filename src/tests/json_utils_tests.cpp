@@ -31,6 +31,25 @@ TEST(JsonUtils, PropertyCallbacksBorrowFirstNullTerminatedKeys)
     expect_property_callback_stops_at_embedded_null<json_utils::JsonReaderV2>();
 }
 
+template <typename Reader>
+void expect_literal_matcher_stops_at_embedded_null()
+{
+    Reader reader("true42");
+    constexpr std::string_view embedded_null_literal("true\0ignored", 12);
+    ASSERT_TRUE(reader.match_literal_for_testing(embedded_null_literal));
+
+    int trailing_value = 0;
+    std::string error_message;
+    ASSERT_TRUE(reader.parse_integer(&trailing_value, &error_message)) << error_message;
+    EXPECT_EQ(trailing_value, 42);
+}
+
+TEST(JsonUtils, LiteralMatchersStopAtEmbeddedNullAndAdvanceByPrefix)
+{
+    expect_literal_matcher_stops_at_embedded_null<json_utils::JsonReader>();
+    expect_literal_matcher_stops_at_embedded_null<json_utils::JsonReaderV2>();
+}
+
 TEST(JsonUtils, EscapesQuotesBackslashesAndControlCharacters)
 {
     const std::string raw = "\"slash\\\\\n\t\r\b\f";

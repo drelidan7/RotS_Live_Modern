@@ -1113,7 +1113,7 @@ bool deserialize_objects_from_json(std::string_view json, ObjectSaveData *data,
                 return nested_reader->parse_integer(&parsed_data.version, nested_error_message);
             if (key == "rent") {
                 saw_rent = true;
-                return nested_reader->parse_object([&parsed_data](const std::string& rent_key, json_utils::JsonReader* rent_reader, std::string* rent_error_message) {
+                return nested_reader->parse_object([&parsed_data](std::string_view rent_key, json_utils::JsonReader* rent_reader, std::string* rent_error_message) {
                     if (rent_key == "time")
                         return rent_reader->parse_integer(&parsed_data.rent.time, rent_error_message);
                     if (rent_key == "rentcode")

@@ -4219,7 +4219,7 @@ bool deserialize_crime_from_json(std::string_view json, CrimeStoreData *data,
                         crime_record_type record { };
                         int criminal = 0, victim = 0, witness = 0, witness_type = 0;
                         const bool record_ok = record_reader->parse_object(
-                            [&](const std::string& record_key,
+                            [&](std::string_view record_key,
                                 json_utils::JsonReader* nested_reader,
                                 std::string* nested_record_error) {
                                 if (record_key == "crime_time")

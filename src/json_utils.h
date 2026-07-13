@@ -53,6 +53,10 @@ public:
     bool parse_long(long* value, std::string* error_message);
     bool parse_string_array(std::vector<std::string>* values, std::string* error_message);
     bool skip_value(std::string* error_message);
+#ifdef TESTING
+    /// Exercises bounded literal matching directly for characterization tests.
+    bool match_literal_for_testing(std::string_view literal);
+#endif
 
 private:
     template <typename LegacyPropertyParser>
@@ -99,6 +103,10 @@ public:
     bool parse_long(long* value, std::string* error_message);
     bool parse_string_array(std::vector<std::string>* values, std::string* error_message);
     bool skip_value(std::string* error_message);
+#ifdef TESTING
+    /// Exercises bounded literal matching directly for optimized-reader characterization tests.
+    bool match_literal_for_testing(std::string_view literal);
+#endif
 
 private:
     bool parse_object_body(const ObjectPropertyParser& property_parser, std::string* error_message);

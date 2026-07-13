@@ -510,12 +510,20 @@ bool JsonReader::consume(char expected)
 }
 
 bool JsonReader::match_literal(std::string_view literal) {
+    literal = rots::text::truncate_at_null(literal);
     if (m_input.substr(m_position, literal.size()) != literal)
         return false;
 
     m_position += literal.size();
     return true;
 }
+
+#ifdef TESTING
+bool JsonReader::match_literal_for_testing(std::string_view literal)
+{
+    return match_literal(literal);
+}
+#endif
 
 void JsonReader::skip_whitespace()
 {
@@ -895,12 +903,20 @@ bool JsonReaderV2::consume(char expected)
 }
 
 bool JsonReaderV2::match_literal(std::string_view literal) {
+    literal = rots::text::truncate_at_null(literal);
     if (m_input.substr(m_position, literal.size()) != literal)
         return false;
 
     m_position += literal.size();
     return true;
 }
+
+#ifdef TESTING
+bool JsonReaderV2::match_literal_for_testing(std::string_view literal)
+{
+    return match_literal(literal);
+}
+#endif
 
 void JsonReaderV2::skip_whitespace()
 {

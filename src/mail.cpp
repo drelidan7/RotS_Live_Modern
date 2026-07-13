@@ -405,7 +405,7 @@ bool deserialize_mail_from_json(std::string_view json, MailStoreData *data, std:
                     [&](json_utils::JsonReader* message_reader, std::string* message_error) {
                         MailMessageData message;
                         const bool message_ok = message_reader->parse_object(
-                            [&](const std::string& message_key, json_utils::JsonReader* nested_reader, std::string* nested_message_error) {
+                            [&](std::string_view message_key, json_utils::JsonReader* nested_reader, std::string* nested_message_error) {
                                 if (message_key == "to")
                                     return nested_reader->parse_string(&message.to, nested_message_error);
                                 if (message_key == "from")

@@ -256,7 +256,7 @@ bool deserialize_pkill_from_json(std::string_view json, PkillStoreData *data, st
                         int killer_level = 0;
                         int victim_level = 0;
                         const bool record_ok = record_reader->parse_object(
-                            [&](const std::string& record_key, json_utils::JsonReader* nested_reader, std::string* nested_record_error) {
+                            [&](std::string_view record_key, json_utils::JsonReader* nested_reader, std::string* nested_record_error) {
                                 if (record_key == "kill_time")
                                     return nested_reader->parse_integer(&record.kill_time, nested_record_error);
                                 if (record_key == "killer")

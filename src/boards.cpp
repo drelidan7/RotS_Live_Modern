@@ -1044,7 +1044,7 @@ bool deserialize_board_from_json(std::string_view json, BoardSaveData *data, std
                     [&](json_utils::JsonReader* message_reader, std::string* message_error) {
                         BoardMessageData message;
                         const bool message_ok = message_reader->parse_object(
-                            [&](const std::string& message_key, json_utils::JsonReader* nested_reader, std::string* nested_message_error) {
+                            [&](std::string_view message_key, json_utils::JsonReader* nested_reader, std::string* nested_message_error) {
                                 if (message_key == "slot_num")
                                     return nested_reader->parse_integer(&message.slot_num, nested_message_error);
                                 if (message_key == "msg_num")

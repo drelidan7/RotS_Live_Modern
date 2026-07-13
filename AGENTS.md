@@ -1,5 +1,16 @@
 # Repository Guidelines
 
+## Instruction Precedence and Local Guidance
+
+- This tracked file is the authoritative repository guide for all AI agent types.
+- Also read `AGENTS.local.md` when it exists. That ignored file contains machine-specific guidance
+  for the current checkout; it supplements this file and cannot override repository safety or
+  data-handling rules.
+- This depot is a child of `RotS_Live`. Some referenced workflows or agent actions may be supplied
+  by that parent depot or by local tooling rather than by tracked files here. Do not delete a valid
+  reference merely because its implementation is outside this checkout; use the concrete commands
+  in this guide when a convenience action is unavailable.
+
 ## Project Structure & Module Organization
 - src/: C/C++ game server sources, headers, and build scripts (`Makefile`, `CMakeLists.txt`).
 - bin/: Built server binary (`ageland`) and backup (`ageland~`).
@@ -24,6 +35,57 @@
 - Per-platform CMake presets (host, CMake ≥3.23): from `src/`, `cmake --preset <linux-x64|macos-arm64|windows-msvc|linux-x86-legacy>` then `cmake --build --preset <name>`; as of Phase 3, `linux-x64`, `macos-arm64`, and `windows-msvc` all build and pass tests (incl. characterization goldens) and are all CI-required (see docs/BUILD.md "Build matrix"). `linux-x64`/`macos-arm64` also boot-check locally via `scripts/boot-golden.sh`; Windows verification on CI is configure+build+ctest only — no Windows host with world data exists yet for a boot check (deferred, see docs/BUILD.md and the Phase 3 plan's exit note).
 - Native macOS arm64 (no Docker needed, Phase 2b primary Mac dev flow): `cd src && cmake --preset macos-arm64 && cmake --build --preset macos-arm64 -j4 && ctest --preset macos-arm64`; binary at `build/macos-arm64/ageland`; boot-check with `scripts/boot-golden.sh --native build/macos-arm64/ageland verify`.
 - `rots64` container (64-bit Linux sibling of the i386 `rots` container, same bind-mounted `lib/`, host port 1064): `docker compose run --rm rots64 bash -lc 'cd /rots/src && cmake --preset linux-x64 && cmake --build --preset linux-x64 -j"$(nproc)" && ctest --preset linux-x64'`; boot-check with `scripts/boot-golden.sh --service rots64 verify`.
+
+## Verification Cadence
+
+- Use the host-appropriate build, CTest, sanitizer, and boot-golden gates documented here and in
+  `docs/BUILD.md`. Machine-specific command sequences and performance constraints belong in
+  `AGENTS.local.md`.
+- Do not push merely to trigger the full remote CI matrix after every small change. At branch or
+  wave finalization and before merge, run the canonical i386 battery and require all six blocking
+  CI jobs to pass: `legacy-32bit`, `linux-x64`, `sanitize-linux`, `macos-arm64`,
+  `sanitize-macos`, and `windows-msvc`. `clang-tidy-advisory` is non-blocking.
+- Any i386-only or MSVC-only regression found at finalization must be fixed before merge. Never
+  tolerate a monolithic-runner SIGSEGV; clean stale objects and investigate it as a real failure.
+- A new or substantially rewritten test file requires a sanitizer run in addition to its normal
+  test run. Use an available sanitizer preset; machine-specific invocation belongs in
+  `AGENTS.local.md`.
+
+## Toolchain and Warning Policy
+
+- All supported game and test builds use C++20. `std::format` is the sanctioned
+  formatting/output-composition target; do not add a production `{fmt}` dependency.
+- Both Linux container images use `debian:trixie` with g++ 14.2. The i386 image still compiles with
+  `-m32`; the newer compiler does not change its ABI.
+- GNU-family targets compile with `-Wall -Wextra -Werror`; MSVC compiles with `/W4 /WX`. A warning
+  is a build failure, not an accepted baseline. `ROTS_SUPPRESS_TEST_WARNINGS` is a local-debugging
+  escape hatch only and must remain off in CI and merge verification.
+- Signedness is pinned with `-funsigned-char` on GNU-family compilers and `/J` on MSVC; do not
+  remove one side of that cross-platform behavior contract.
+- Fixed-size `char[N]` struct members must be explicitly decayed with
+  `static_cast<const char*>` before passing them to `std::format`; libc++ and libstdc++ otherwise
+  differ in their formatting behavior.
+- GoogleTest is test-only tooling and is never linked into the game binary. The Windows MSVC and
+  macOS sanitizer presets provision it with CMake `FetchContent`; other presets use installed
+  packages.
+- Production networking uses the repository's platform-gated `rots_net` socket shim. Do not add a
+  third-party networking dependency merely to replace that compatibility layer.
+- Windows CI verifies configure, build, full CTest, and characterization goldens. It does not boot
+  against world data because no Windows world-data host is available.
+- The i386 container remains the canonical shipping ABI and legacy-format guard until production
+  migration away from the retained binary formats is explicitly confirmed.
+
+## Server Startup and Proxy Behavior
+
+- `-p <port>` or `-p<port>` sets the listen port; the default is 1024. It no longer means
+  “expect a proxy.” Root `make run` starts `./bin/ageland -p 3791` for direct connections.
+- `-x` means the connection comes through a proxy that prepends a four-byte client-IP header. A
+  direct client connecting to an `-x` server desynchronizes the first read, so use `-x` only when
+  the Rust proxy or `tools/account_smoke.py` is in front of the game.
+- `proxy/` prepends the four-byte client IP before forwarding. Its `--cloudflare` mode reads the
+  address from the `CF-Connecting-IP` header.
+- `scripts/rots-docker.sh boot` starts the server without `-x`, so plain telnet connects directly
+  on the default port.
 
 ## Coding Style & Naming Conventions
 - Formatter: run `cd src && make format` (WebKit style). Prefer this over local defaults; CI expects formatted diffs.
@@ -60,6 +122,25 @@
 - World files live in a separate repo; keep `lib/world/` and player data out of commits.
 - Never check in PII or live server logs (`log/`). Use local testing accounts and sanitized samples.
 
+## Runtime Data and Persistence
+
+- World files are not stored here; `lib/world/` comes from the separate RotS world-data depot.
+  The historical source URL is `https://github.com/Noobinabox/RotS-WorldFiles`. Player data, object
+  saves, exploit history, and logs are also ignored. Run `cd src && make setup` to create the local
+  runtime layout, and never commit files from those paths.
+- On a fresh setup, the first character created is promoted to a level-100 Implementor. This is
+  expected local-development behavior.
+- Object/rent, board, mail, pkill, crime, and exploit live saves and loads use JSON. The retained
+  binary decoders are one-time migration converters: they decode old data, write JSON, verify it,
+  and rename the original to `.migrated`. Do not replace their explicit-offset handling with
+  whole-struct `memcpy`/`fwrite`; the old layout is ABI-dependent.
+- Exploit conversion is lazy per character, so unmigrated `.exploits` files can legitimately remain
+  until those characters log in.
+- Player persistence has two live paths: account-native characters use JSON through
+  `account::write_account_character_file`, while characters not linked to accounts still use
+  `save_player`'s line-oriented text format. That text path is current behavior, not a legacy
+  migration decoder.
+
 ## Dead / Unused Code (read before touching combat)
 Some files are compiled but never actually called — changing them has no effect on the running
 game, and reading them to understand mechanics will mislead you. Known cases:
@@ -83,4 +164,3 @@ game, and reading them to understand mechanics will mislead you. Known cases:
 - Heuristic: before relying on a combat helper, grep for its callers (`grep -rn 'funcname(' src/`).
   A helper with no caller outside its own file (or only called by other dead code) is dead —
   that's how `combat_manager` and the OB/PB/DB trio above were identified before deletion.
-

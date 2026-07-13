@@ -454,8 +454,10 @@ namespace {
 #endif
     }
 
-    bool send_verification_email(const AccountData& account, std::string_view verification_code, std::string* error_message)
+    std::string format_verification_email_body(
+        const AccountData& account, std::string_view verification_code)
     {
+        verification_code = rots::text::truncate_at_null(verification_code);
         std::ostringstream body;
         body << "A verification code was requested for your RotS account.\n\n";
         body << "Email: " << account.normalized_email << "\n";
@@ -463,7 +465,15 @@ namespace {
         body << "This code is valid for 15 minutes.\n\n";
         body << "If you did not request this code, you can ignore this email.";
 
-        return send_email_message(account.normalized_email, "RotS account verification code", body.str(), error_message);
+        return body.str();
+    }
+
+    bool send_verification_email(const AccountData& account, std::string_view verification_code, std::string* error_message)
+    {
+        return send_email_message(account.normalized_email,
+            "RotS account verification code",
+            format_verification_email_body(account, verification_code),
+            error_message);
     }
 
     std::string hex_encode(const std::string& bytes)
@@ -677,6 +687,7 @@ namespace {
 
     std::string resolve_account_storage_key(std::string_view root_directory, std::string_view account_identifier)
     {
+        account_identifier = rots::text::truncate_at_null(account_identifier);
         if (account_identifier.find('@') != std::string::npos) {
             if (!is_valid_email(account_identifier, nullptr))
                 return "";
@@ -1453,6 +1464,14 @@ namespace {
     }
 
 } // namespace
+
+#ifdef TESTING
+std::string format_verification_email_body_for_testing(
+    const AccountData& account, std::string_view verification_code)
+{
+    return format_verification_email_body(account, verification_code);
+}
+#endif
 
 // Read an entire text file into *contents (POSIX-backed). Exposed for stage-timing the
 // LOAD pipeline's file-read step.

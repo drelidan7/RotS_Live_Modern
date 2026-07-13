@@ -15,8 +15,8 @@ std::string legacy_player_file_path(std::string_view root_directory, std::string
 std::string legacy_object_file_path(std::string_view root_directory, std::string_view character_name);
 /// Builds the legacy exploit path from bounded root and character inputs.
 std::string legacy_exploits_file_path(std::string_view root_directory, std::string_view character_name);
-/// Builds the account JSON path from bounded root and account inputs.
-std::string account_file_path(std::string_view root_directory, std::string_view account_name);
+/// Builds the account JSON path from bounded root and email-or-storage-key inputs.
+std::string account_file_path(std::string_view root_directory, std::string_view email_or_storage_key);
 /// Builds the owning account-character directory path from bounded text inputs.
 std::string account_character_directory(std::string_view root_directory, std::string_view account_name, std::string_view character_name);
 /// Builds the migration snapshot path from bounded account-character inputs.

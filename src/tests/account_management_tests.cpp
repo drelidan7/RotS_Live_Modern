@@ -36,6 +36,13 @@ void save_player(struct char_data* ch, int load_room, int index_pos);
 // released leaks (LeakSanitizer, Phase 5 T6).
 void free_char(struct char_data* ch);
 
+namespace account {
+
+std::string format_verification_email_body_for_testing(
+    const AccountData& account, std::string_view verification_code);
+
+} // namespace account
+
 namespace {
 
 class TemporaryDirectory {
@@ -1039,6 +1046,81 @@ TEST(AccountManagement, ReadsAccountFileByIdentifierUsingEmailOrInternalName)
         << error_message;
     EXPECT_EQ(loaded_by_name.account_name, "alpha-admin");
     EXPECT_EQ(loaded_by_name.normalized_email, "player@example.com");
+}
+
+TEST(AccountManagement, EmbeddedNullIdentifierDispatchesUsingTheTerminatedAccountName)
+{
+    TemporaryDirectory temp_directory;
+    std::string error_message;
+    account::AccountData created_account;
+    ASSERT_TRUE(account::create_account(
+        temp_directory.path(),
+        "alpha-admin",
+        "player@example.com",
+        "ValidPass1",
+        1700010200,
+        &created_account,
+        &error_message))
+        << error_message;
+
+    constexpr char identifier_storage[] = "alpha-admin\0@ignored";
+    const std::string_view identifier(identifier_storage, sizeof(identifier_storage) - 1);
+    account::AccountData loaded_account;
+    ASSERT_TRUE(account::read_account_file_by_identifier(
+        temp_directory.path(), identifier, &loaded_account, &error_message))
+        << error_message;
+    EXPECT_EQ(loaded_account.account_name, "alpha-admin");
+    EXPECT_EQ(loaded_account.normalized_email, "player@example.com");
+}
+
+TEST(AccountManagement, EmbeddedNullAccountIdentifierRoutesCharacterPathsUsingTheTerminatedPrefix)
+{
+    TemporaryDirectory temp_directory;
+    std::string error_message;
+    account::AccountData created_account;
+    ASSERT_TRUE(account::create_account(
+        temp_directory.path(),
+        "alpha-admin",
+        "player@example.com",
+        "ValidPass1",
+        1700010200,
+        &created_account,
+        &error_message))
+        << error_message;
+
+    constexpr char identifier_storage[] = "alpha-admin\0@ignored";
+    const std::string_view identifier(identifier_storage, sizeof(identifier_storage) - 1);
+    const std::string expected_directory = account::account_character_directory(
+        temp_directory.path(), "alpha-admin", "aragorn");
+    EXPECT_EQ(account::account_character_directory(temp_directory.path(), identifier, "aragorn"),
+        expected_directory);
+    EXPECT_EQ(account::account_character_snapshot_path(temp_directory.path(), identifier, "aragorn"),
+        account::account_character_snapshot_path(temp_directory.path(), "alpha-admin", "aragorn"));
+    EXPECT_EQ(account::account_character_player_path(temp_directory.path(), identifier, "aragorn"),
+        account::account_character_player_path(temp_directory.path(), "alpha-admin", "aragorn"));
+    EXPECT_EQ(account::account_character_object_path(temp_directory.path(), identifier, "aragorn"),
+        account::account_character_object_path(temp_directory.path(), "alpha-admin", "aragorn"));
+    EXPECT_EQ(account::account_character_exploits_path(temp_directory.path(), identifier, "aragorn"),
+        account::account_character_exploits_path(temp_directory.path(), "alpha-admin", "aragorn"));
+    EXPECT_EQ(expected_directory.find("__invalid_account__"), std::string::npos);
+}
+
+TEST(AccountManagement, VerificationEmailBodyIgnoresCodeSuffixAfterEmbeddedNull)
+{
+    account::AccountData account_data = make_account();
+    const std::array<char, 6> bounded_code { '1', '2', '3', '4', '5', '6' };
+    constexpr char embedded_null_code_storage[] = "123456\0ignored";
+    const std::string_view embedded_null_code(
+        embedded_null_code_storage, sizeof(embedded_null_code_storage) - 1);
+
+    const std::string bounded_body = account::format_verification_email_body_for_testing(
+        account_data, std::string_view(bounded_code.data(), bounded_code.size()));
+    const std::string embedded_null_body = account::format_verification_email_body_for_testing(
+        account_data, embedded_null_code);
+
+    EXPECT_EQ(embedded_null_body, bounded_body);
+    EXPECT_NE(bounded_body.find("Verification code: 123456\n"), std::string::npos);
+    EXPECT_EQ(bounded_body.find("ignored"), std::string::npos);
 }
 
 TEST(AccountManagement, FormatsCharacterNamesForDisplayByOnlyUppercasingTheFirstByte)

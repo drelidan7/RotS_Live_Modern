@@ -41,9 +41,9 @@ std::string account_bucket_for_name(std::string_view name)
     }
 }
 
-std::string account_file_path(std::string_view root_directory, std::string_view account_name)
+std::string account_file_path(std::string_view root_directory, std::string_view email_or_storage_key)
 {
-    return account_file_path_from_email(root_directory, account_name);
+    return account_file_path_from_email(root_directory, email_or_storage_key);
 }
 
 std::string legacy_player_file_path(std::string_view root_directory, std::string_view character_name)
@@ -282,6 +282,7 @@ bool read_account_file_by_email(std::string_view root_directory, std::string_vie
 
 bool read_account_file_by_identifier(std::string_view root_directory, std::string_view identifier, AccountData* account, std::string* error_message)
 {
+    identifier = rots::text::truncate_at_null(identifier);
     if (identifier.find('@') != std::string::npos)
         return read_account_file_by_email(root_directory, identifier, account, error_message);
 

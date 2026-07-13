@@ -71,107 +71,107 @@ char buf1[MAX_STRING_LENGTH];
 char buf2[MAX_STRING_LENGTH];
 char arg[MAX_STRING_LENGTH];
 
-room_data *room_data::BASE_WORLD = 0;
+room_data* room_data::BASE_WORLD = 0;
 int room_data::BASE_LENGTH = 0;
 int room_data::TOTAL_LENGTH = 0;
-room_data_extension *room_data::BASE_EXTENSION = 0;
+room_data_extension* room_data::BASE_EXTENSION = 0;
 
 struct room_data world; // = 0;  new room_data; /* class of rooms      	*/
-int top_of_world = 0;   /* ref to the top element of world	*/
+int top_of_world = 0; /* ref to the top element of world	*/
 
-struct char_data *character_list = 0; /* global linked list of chars	*/
-struct index_data *mob_index;         /* index table for mobile file	*/
-struct char_data *mob_proto;          /* prototypes for mobs		*/
-int top_of_mobt = 0;                  /* top of mobile index table	*/
+struct char_data* character_list = 0; /* global linked list of chars	*/
+struct index_data* mob_index; /* index table for mobile file	*/
+struct char_data* mob_proto; /* prototypes for mobs		*/
+int top_of_mobt = 0; /* top of mobile index table	*/
 
-struct obj_data *object_list = 0; /* the global linked list of objs	*/
-struct index_data *obj_index;     /* index table for object file	*/
-struct obj_data *obj_proto;       /* prototypes for objs		*/
-int top_of_objt = 0;              /* top of object index table	*/
+struct obj_data* object_list = 0; /* the global linked list of objs	*/
+struct index_data* obj_index; /* index table for object file	*/
+struct obj_data* obj_proto; /* prototypes for objs		*/
+int top_of_objt = 0; /* top of object index table	*/
 
 struct message_list fight_messages[MAX_MESSAGES]; /* fighting messages	*/
 
-struct script_head *script_table = 0;
+struct script_head* script_table = 0;
 int top_of_script_table = 0;
 
-extern const char *const mobile_program_base[];
-char **mobile_program;
-int *mobile_program_zone;
+extern const char* const mobile_program_base[];
+char** mobile_program;
+int* mobile_program_zone;
 int num_of_programs;
 
-struct player_index_element *player_table = 0; /* index to player file	*/
-FILE *player_fl = 0;                           /* file desc of player file	*/
-int top_of_p_table = 0;                        /* ref to top of table		*/
-int top_of_p_file = 0;                         /* ref of size of p file	*/
-long top_idnum = 0;                            /* highest idnum in use		*/
+struct player_index_element* player_table = 0; /* index to player file	*/
+FILE* player_fl = 0; /* file desc of player file	*/
+int top_of_p_table = 0; /* ref to top of table		*/
+int top_of_p_file = 0; /* ref of size of p file	*/
+long top_idnum = 0; /* highest idnum in use		*/
 
-struct crime_record_type *crime_record = 0;
-FILE *crime_file = 0;
+struct crime_record_type* crime_record = 0;
+FILE* crime_file = 0;
 int num_of_crimes = 0;
 
-int no_mail = 0;  /* mail disabled?		*/
+int no_mail = 0; /* mail disabled?		*/
 int mini_mud = 0; /* mini-mud mode?		*/
 int new_mud = 0;
 int no_rent_check = 0; /* skip rent check on boot?	*/
-time_t boot_time = 0;  /* time of mud boot; time_t (not long) so &boot_time is a valid time_t* for
-                          localtime() on Windows LLP64 -- Phase 3 Task 6 */
-int restrict = 0;      /* level of game restriction	*/
-int boot_mode = 0;     /* local var, to let know that reboot goes on */
+time_t boot_time = 0; /* time of mud boot; time_t (not long) so &boot_time is a valid time_t* for
+                         localtime() on Windows LLP64 -- Phase 3 Task 6 */
+int restrict = 0; /* level of game restriction	*/
+int boot_mode = 0; /* local var, to let know that reboot goes on */
 extern int r_mortal_start_room[]; /* rnum of mortal start room	*/
-extern int r_mortal_idle_room[];  /* rnum of mortal idle room	*/
-int r_immort_start_room;          /* rnum of immort start room	*/
-int r_frozen_start_room;          /* rnum of frozen start room	*/
-int r_retirement_home_room;       /* rnum of retirement home      */
-char *credits = 0;                /* game credits			*/
-char *news = 0;                   /* mud news			*/
-char *motd = 0;                   /* message of the day - mortals */
-char *imotd = 0;                  /* message of the day - immorts */
-char *help = 0;                   /* help screen			*/
-char *info = 0;                   /* info page			*/
-char *wizlist = 0;                /* list of higher gods		*/
-char *immlist = 0;                /* list of peon gods		*/
-char *background = 0;             /* background story		*/
-char *handbook = 0;               /* handbook for new immortals	*/
-char *policies = 0;               /* policies page		*/
-char *lastdeath = 0;              /* policies page		*/
-char *spell_tbl = 0;              /* spells help			*/
-char *power_tbl = 0;              /* powers help			*/
-char *skill_tbl = 0;              /* skills help			*/
-char *asima_tbl = 0;              /* ASIMA help			*/
-char *shape_tbl = 0;              /* shape help			*/
-char *msdp_tbl = 0;               /* msdp help */
+extern int r_mortal_idle_room[]; /* rnum of mortal idle room	*/
+int r_immort_start_room; /* rnum of immort start room	*/
+int r_frozen_start_room; /* rnum of frozen start room	*/
+int r_retirement_home_room; /* rnum of retirement home      */
+char* credits = 0; /* game credits			*/
+char* news = 0; /* mud news			*/
+char* motd = 0; /* message of the day - mortals */
+char* imotd = 0; /* message of the day - immorts */
+char* help = 0; /* help screen			*/
+char* info = 0; /* info page			*/
+char* wizlist = 0; /* list of higher gods		*/
+char* immlist = 0; /* list of peon gods		*/
+char* background = 0; /* background story		*/
+char* handbook = 0; /* handbook for new immortals	*/
+char* policies = 0; /* policies page		*/
+char* lastdeath = 0; /* policies page		*/
+char* spell_tbl = 0; /* spells help			*/
+char* power_tbl = 0; /* powers help			*/
+char* skill_tbl = 0; /* skills help			*/
+char* asima_tbl = 0; /* ASIMA help			*/
+char* shape_tbl = 0; /* shape help			*/
+char* msdp_tbl = 0; /* msdp help */
 
-FILE *help_fl = 0;                         /* file for help text		*/
-struct help_index_element *help_index = 0; /* the help table		*/
-int top_of_helpt;                          /* top of help index table	*/
+FILE* help_fl = 0; /* file for help text		*/
+struct help_index_element* help_index = 0; /* the help table		*/
+int top_of_helpt; /* top of help index table	*/
 
 long beginning_of_time = 650336715;
-struct time_info_data time_info;  /* the infomation about the time   */
+struct time_info_data time_info; /* the infomation about the time   */
 struct weather_data weather_info; /* the infomation about the weather */
 
-struct char_data *waiting_list = 0;       /*list of those with delayed commands*/
-struct char_data *fast_update_list = 0;   /* list for fast updating */
-struct char_data *death_waiting_list = 0; /* list of those flagged to die... */
+struct char_data* waiting_list = 0; /*list of those with delayed commands*/
+struct char_data* fast_update_list = 0; /* list for fast updating */
+struct char_data* death_waiting_list = 0; /* list of those flagged to die... */
 
 char world_map[WORLD_AREA + 1];
 char small_map[2 * SMALL_WORLD_RADIUS + 3]
               [4 * SMALL_WORLD_RADIUS + 7]; // Ingolemo small_map addition
 
-long judppwd;      // password for JUDP IP registration
+long judppwd; // password for JUDP IP registration
 int judpavailable; // 1 if JUDP is available, 0 otherwise
 
 /* local functions */
-void setup_dir(FILE *fl, int room, int dir);
+void setup_dir(FILE* fl, int room, int dir);
 void index_boot(int mode);
-void load_rooms(FILE *fl);
-void load_mobiles(FILE *mob_f);
-void load_objects(FILE *obj_f);
-void load_mudlle(FILE *fp);
-void load_scripts(FILE *fl);
+void load_rooms(FILE* fl);
+void load_mobiles(FILE* mob_f);
+void load_objects(FILE* obj_f);
+void load_mudlle(FILE* fp);
+void load_scripts(FILE* fl);
 void draw_map();
 void initialiaze_small_map();
 void reset_small_map();
-void boot_the_shops(FILE *shop_f, char *filename);
+void boot_the_shops(FILE* shop_f, char* filename);
 void assign_mobiles(void);
 void assign_objects(void);
 void assign_rooms(void);
@@ -179,20 +179,20 @@ void assign_the_shopkeepers(void);
 void build_player_index(void);
 void boot_mudlle();
 void boot_crimes();
-int file_to_string(const char *name, char *buf);
-int file_to_string_alloc(const char *name, char **buf);
+int file_to_string(const char* name, char* buf);
+int file_to_string_alloc(const char* name, char** buf);
 void check_start_rooms(void);
 void renum_world(void);
 void reset_time(void);
-void clear_char(struct char_data *ch, int mode);
+void clear_char(struct char_data* ch, int mode);
 void init_boards(void);
 void initialize_buffers();
 // void        add_follower(struct char_data *ch, struct char_data *leader);
-char *fread_line(FILE *fp);
+char* fread_line(FILE* fp);
 void move_char_deleted(int index);
 
 /* external functions */
-extern struct descriptor_data *descriptor_list;
+extern struct descriptor_data* descriptor_list;
 void load_messages(void);
 void weather_and_time(int mode);
 void assign_command_pointers(void);
@@ -202,8 +202,8 @@ void update_obj_file(void); /* In objsave.c */
 void sort_commands(void);
 void load_banned(void);
 // void	Read_Invalid_List(void);
-struct help_index_element *build_help_index(FILE *fl, int *num, struct help_index_element **listpt);
-void decrypt_line(unsigned char *line, int len);
+struct help_index_element* build_help_index(FILE* fl, int* num, struct help_index_element** listpt);
+void decrypt_line(unsigned char* line, int len);
 
 extern struct skill_data skills[MAX_SKILLS];
 extern byte language_number;
@@ -213,10 +213,10 @@ extern struct help_index_summary help_content[];
 extern int help_summary_length;
 
 extern long race_affect[];
-extern struct char_data *combat_list;
+extern struct char_data* combat_list;
 
-extern universal_list *affected_list;
-extern universal_list *affected_list_pool;
+extern universal_list* affected_list;
+extern universal_list* affected_list_pool;
 
 #define SAVEBUFLEN 3400
 
@@ -237,12 +237,14 @@ unsigned char pwdcrypt[MAX_PWD_LENGTH + 1];
  *********************************************************************** */
 
 /* thith is necessary for the autowiz system */
-void reboot_wizlists(void) {
+void reboot_wizlists(void)
+{
     file_to_string_alloc(WIZLIST_FILE, &wizlist);
     file_to_string_alloc(IMMLIST_FILE, &immlist);
 }
 
-ACMD(do_reload) {
+ACMD(do_reload)
+{
     int i, tmp;
 
     one_argument(argument, arg);
@@ -311,7 +313,7 @@ ACMD(do_reload) {
                     RELEASE(help_content[tmp].index[i].keyword);
                 RELEASE(help_content[tmp].index);
                 build_help_index(help_content[tmp].file, &(help_content[tmp].top_of_helpt),
-                                 &(help_content[tmp].index));
+                    &(help_content[tmp].index));
             }
         }
     } else {
@@ -323,11 +325,12 @@ ACMD(do_reload) {
 }
 
 /* body of the booting system */
-char *mudlle_converter(char *);
-void boot_db(void) {
+char* mudlle_converter(char*);
+void boot_db(void)
+{
     int i, tmp;
     extern int no_specials;
-    FILE *f;
+    FILE* f;
 
     log("Boot db -- BEGIN.");
     boot_mode = 1;
@@ -367,9 +370,9 @@ void boot_db(void) {
             log("   Could not open help file.");
         else {
             build_help_index(help_content[tmp].file, &(help_content[tmp].top_of_helpt),
-                             &(help_content[tmp].index));
+                &(help_content[tmp].index));
             log(std::format("Chapter {}, {} entries.", help_content[tmp].keyword,
-                            help_content[tmp].top_of_helpt)
+                help_content[tmp].top_of_helpt)
                     .c_str());
         }
     }
@@ -473,7 +476,7 @@ void boot_db(void) {
 
     for (i = 0; i <= top_of_zone_table; i++) {
         vmudlog(NRM, "Resetting %s (rooms %d-%d).", zone_table[i].name,
-                i ? (zone_table[i - 1].top + 1) : 0, zone_table[i].top);
+            i ? (zone_table[i - 1].top + 1) : 0, zone_table[i].top);
         reset_zone(i);
     }
 
@@ -523,7 +526,8 @@ void boot_db(void) {
 }
 
 /* reset the time in the game from file */
-void reset_time(void) {
+void reset_time(void)
+{
 
     void initialize_weather();
 
@@ -531,8 +535,9 @@ void reset_time(void) {
     initialize_weather();
 }
 
-void inc_p_table(void) {
-    struct player_index_element *tmpel;
+void inc_p_table(void)
+{
+    struct player_index_element* tmpel;
 
     CREATE(tmpel, struct player_index_element, top_of_p_table + 2);
     if (!tmpel) {
@@ -548,7 +553,8 @@ void inc_p_table(void) {
 
 namespace {
 
-int find_player_table_index_by_name(const char *name) {
+int find_player_table_index_by_name(const char* name)
+{
     if (name == nullptr || *name == '\0')
         return -1;
 
@@ -560,20 +566,22 @@ int find_player_table_index_by_name(const char *name) {
     return -1;
 }
 
-[[noreturn]] void fail_duplicate_player_index_entry(const char *name, const char *source_a,
-                                                    const char *source_b) {
+[[noreturn]] void fail_duplicate_player_index_entry(const char* name, const char* source_a,
+    const char* source_b)
+{
     log(std::format("Duplicate character '{}' found in both {} and {} while building player_table.",
-                    name ? name : "(null)", source_a ? source_a : "unknown source",
-                    source_b ? source_b : "unknown source")
+        name ? name : "(null)", source_a ? source_a : "unknown source",
+        source_b ? source_b : "unknown source")
             .c_str());
     exit(1);
 }
 
-bool read_text_file_contents(const std::string &path, std::string *contents) {
+bool read_text_file_contents(const std::string& path, std::string* contents)
+{
     if (contents == nullptr)
         return false;
 
-    FILE *file = std::fopen(path.c_str(), "rb");
+    FILE* file = std::fopen(path.c_str(), "rb");
     if (file == nullptr)
         return false;
 
@@ -598,21 +606,21 @@ bool read_text_file_contents(const std::string &path, std::string *contents) {
     return true;
 }
 
-bool has_suffix(const std::string &value, const std::string &suffix) {
-    return value.size() >= suffix.size() &&
-           value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+bool has_suffix(const std::string& value, const std::string& suffix)
+{
+    return value.size() >= suffix.size() && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
-bool is_versioned_legacy_player_entry_name(const char *entry_name, const char *normalized_name) {
+bool is_versioned_legacy_player_entry_name(const char* entry_name, const char* normalized_name)
+{
     if (entry_name == nullptr || normalized_name == nullptr)
         return false;
 
     const size_t normalized_length = strlen(normalized_name);
-    if (strncmp(entry_name, normalized_name, normalized_length) != 0 ||
-        entry_name[normalized_length] != '.')
+    if (strncmp(entry_name, normalized_name, normalized_length) != 0 || entry_name[normalized_length] != '.')
         return false;
 
-    const char *suffix = entry_name + normalized_length + 1;
+    const char* suffix = entry_name + normalized_length + 1;
     for (int field_index = 0; field_index < 5; ++field_index) {
         if (*suffix == '\0')
             return false;
@@ -633,8 +641,9 @@ bool is_versioned_legacy_player_entry_name(const char *entry_name, const char *n
     return *suffix == '\0';
 }
 
-bool directory_has_versioned_legacy_player_entry(const char *directory_path,
-                                                 const char *normalized_name) {
+bool directory_has_versioned_legacy_player_entry(const char* directory_path,
+    const char* normalized_name)
+{
     namespace fs = std::filesystem;
     std::error_code ec;
     fs::directory_iterator it(directory_path, ec);
@@ -644,26 +653,26 @@ bool directory_has_versioned_legacy_player_entry(const char *directory_path,
     const fs::directory_iterator end;
     for (; it != end; it.increment(ec)) {
         const std::string entry_name = it->path().filename().string();
-        if (!entry_name.empty() && entry_name[0] != '.' &&
-            is_versioned_legacy_player_entry_name(entry_name.c_str(), normalized_name))
+        if (!entry_name.empty() && entry_name[0] != '.' && is_versioned_legacy_player_entry_name(entry_name.c_str(), normalized_name))
             return true;
     }
 
     return false;
 }
 
-void populate_player_index_entry_from_store(const char_file_u &stored_character,
-                                            const std::string &character_path) {
+void populate_player_index_entry_from_store(const char_file_u& stored_character,
+    const std::string& character_path)
+{
     if (find_player_table_index_by_name(stored_character.name) >= 0)
         fail_duplicate_player_index_entry(stored_character.name, "legacy player index",
-                                          character_path.c_str());
+            character_path.c_str());
 
     char_file_u indexed_character = stored_character;
     std::string error_message;
     if (!update_player_index_entry_from_store(&indexed_character, character_path.c_str(),
-                                              &error_message)) {
+            &error_message)) {
         log(std::format("Failed to add account-native character {} to the player index: {}",
-                        static_cast<const char *>(stored_character.name), error_message)
+            static_cast<const char*>(stored_character.name), error_message)
                 .c_str());
         exit(1);
     }
@@ -671,7 +680,8 @@ void populate_player_index_entry_from_store(const char_file_u &stored_character,
     top_idnum = MAX(top_idnum, indexed_character.specials2.idnum);
 }
 
-void build_account_native_player_index(void) {
+void build_account_native_player_index(void)
+{
     namespace fs = std::filesystem;
     std::error_code accounts_ec;
     fs::directory_iterator accounts_it("accounts", accounts_ec);
@@ -698,8 +708,7 @@ void build_account_native_player_index(void) {
                 continue;
             }
 
-            const std::string account_json_path =
-                bucket_path + "/" + account_entry_name + "/account.json";
+            const std::string account_json_path = bucket_path + "/" + account_entry_name + "/account.json";
             std::string account_json_text;
             if (!read_text_file_contents(account_json_path, &account_json_text)) {
                 continue;
@@ -708,29 +717,29 @@ void build_account_native_player_index(void) {
             account::AccountData account_data;
             std::string error_message;
             if (!account::deserialize_account_from_json(account_json_text, &account_data,
-                                                        &error_message)) {
+                    &error_message)) {
                 log(std::format("Failed to read account-native index source '{}': {}",
-                                account_json_path, error_message)
+                    account_json_path, error_message)
                         .c_str());
                 exit(1);
             }
 
             if (account::normalize_email(account_data.normalized_email) != account_entry_name) {
                 log(std::format(
-                        "Account-native index source '{}' has mismatched normalized email '{}'.",
-                        account_json_path, account_data.normalized_email)
+                    "Account-native index source '{}' has mismatched normalized email '{}'.",
+                    account_json_path, account_data.normalized_email)
                         .c_str());
                 exit(1);
             }
 
-            for (const std::string &character_name : account_data.characters) {
+            for (const std::string& character_name : account_data.characters) {
                 const std::string character_path = account::account_character_player_path(
                     ".", account_data.account_name, character_name);
 
-                char_file_u stored_character{};
+                char_file_u stored_character { };
                 if (!account::read_account_character_file(".", account_data.account_name,
-                                                          character_name, &stored_character,
-                                                          &error_message)) {
+                        character_name, &stored_character,
+                        &error_message)) {
                     const std::string read_error = error_message;
                     bool account_character_exists = false;
                     std::string inspect_error;
@@ -738,7 +747,7 @@ void build_account_native_player_index(void) {
                             ".", account_data.account_name, character_name,
                             &account_character_exists, &inspect_error)) {
                         log(std::format("Failed to inspect account-native character file '{}': {}",
-                                        character_path, inspect_error)
+                            character_path, inspect_error)
                                 .c_str());
                         exit(1);
                     }
@@ -747,7 +756,7 @@ void build_account_native_player_index(void) {
                         continue;
 
                     log(std::format("Failed to read account-native character file '{}': {}",
-                                    character_path, read_error)
+                        character_path, read_error)
                             .c_str());
                     exit(1);
                 }
@@ -758,8 +767,9 @@ void build_account_native_player_index(void) {
     }
 }
 
-int load_player_from_account_json_path(char *name, const char *player_path,
-                                       struct char_file_u *char_element) {
+int load_player_from_account_json_path(char* name, const char* player_path,
+    struct char_file_u* char_element)
+{
     if (player_path == nullptr || *player_path == '\0') {
         log(std::format("Couldn't find account-native character file path for {}\n", name).c_str());
         return -1;
@@ -768,7 +778,7 @@ int load_player_from_account_json_path(char *name, const char *player_path,
     std::string json_text;
     if (!read_text_file_contents(player_path, &json_text)) {
         log(std::format("Couldn't read account-native character file for {} from {}\n", name,
-                        player_path)
+            player_path)
                 .c_str());
         return -1;
     }
@@ -776,11 +786,11 @@ int load_player_from_account_json_path(char *name, const char *player_path,
     character_json::CharacterData character_data;
     std::string error_message;
     if (!character_json::deserialize_character_from_json(json_text, &character_data,
-                                                         &error_message) ||
-        !character_json::apply_character_data_to_store(character_data, char_element,
-                                                       &error_message)) {
+            &error_message)
+        || !character_json::apply_character_data_to_store(character_data, char_element,
+            &error_message)) {
         log(std::format("Couldn't parse account-native character file for {} from {}: {}\n", name,
-                        player_path, error_message)
+            player_path, error_message)
                 .c_str());
         return -1;
     }
@@ -799,7 +809,8 @@ int load_player_from_account_json_path(char *name, const char *player_path,
 
 //  Reads a field from the player filename format (using FAT as index)
 
-int read_filename_field(int pos, char *field, char *fname) {
+int read_filename_field(int pos, char* field, char* fname)
+{
     int field_pos;
 
     memset(field, 0, 99);
@@ -814,9 +825,10 @@ int read_filename_field(int pos, char *field, char *fname) {
 }
 
 /* New index build for the new player files */
-void build_directory(const char *TheDir) {
+void build_directory(const char* TheDir)
+{
     namespace fs = std::filesystem;
-    char *tmpch;
+    char* tmpch;
     int i;
 
     // read_filename_field's terminator check is commented out (see above), so
@@ -843,8 +855,7 @@ void build_directory(const char *TheDir) {
 
         i = read_filename_field(0, tmpch, entry_name_buf);
         tmpch[i] = 0;
-        if (!is_versioned_legacy_player_entry_name(entry_name_buf, tmpch) &&
-            directory_has_versioned_legacy_player_entry(TheDir, tmpch)) {
+        if (!is_versioned_legacy_player_entry_name(entry_name_buf, tmpch) && directory_has_versioned_legacy_player_entry(TheDir, tmpch)) {
             continue;
         }
         if (find_player_table_index_by_name(tmpch) >= 0)
@@ -867,7 +878,7 @@ void build_directory(const char *TheDir) {
         player_table[top_of_p_table].flags = atoi(tmpch);
 
         strcpy(player_table[top_of_p_table].ch_file,
-               std::format("{}{}", TheDir, static_cast<const char *>(entry_name_buf)).c_str());
+            std::format("{}{}", TheDir, static_cast<const char*>(entry_name_buf)).c_str());
 
         top_idnum = MAX(top_idnum, player_table[top_of_p_table].idnum);
     } // for (; it != end; it.increment(ec))
@@ -875,7 +886,8 @@ void build_directory(const char *TheDir) {
     RELEASE(tmpch);
 }
 
-void build_player_index(void) {
+void build_player_index(void)
+{
     int nr, tt;
 
     top_of_p_file = top_of_p_table = -1;
@@ -899,11 +911,7 @@ void build_player_index(void) {
     const bool enable_auto_delete = false;
 
     for (nr = 0; nr <= top_of_p_table; nr++) {
-        if (enable_auto_delete && player_table[nr].level < 20 &&
-            (!IS_SET(player_table[nr].flags, PLR_DELETED)) &&
-            (!IS_SET(player_table[nr].flags, PLR_RETIRED)) &&
-            ((tt - player_table[nr].log_time) > SECS_PER_REAL_DAY * player_table[nr].level * 7) &&
-            (number(0, 100) < 51)) {
+        if (enable_auto_delete && player_table[nr].level < 20 && (!IS_SET(player_table[nr].flags, PLR_DELETED)) && (!IS_SET(player_table[nr].flags, PLR_RETIRED)) && ((tt - player_table[nr].log_time) > SECS_PER_REAL_DAY * player_table[nr].level * 7) && (number(0, 100) < 51)) {
             log(std::format("Mud auto-deleted char {}.", player_table[nr].name).c_str());
             Crash_delete_file(player_table[nr].name);
             delete_exploits_file(player_table[nr].name);
@@ -915,7 +923,8 @@ void build_player_index(void) {
 }
 
 /* function to count how many hash-mark delimited records exist in a file */
-int count_hash_records(FILE *fl) {
+int count_hash_records(FILE* fl)
+{
     char buf[120];
     int count = 0;
 
@@ -932,7 +941,8 @@ int count_hash_records(FILE *fl) {
     return (count - 1);
 }
 
-void index_boot(int mode) {
+void index_boot(int mode)
+{
     const char *index_filename, *prefix = NULL;
     FILE *index, *db_file;
     int rec_count = 0;
@@ -978,14 +988,14 @@ void index_boot(int mode) {
 
     if (!(index = fopen(buf2, "r"))) {
         perror(
-            std::format("Error opening index file '{}'", static_cast<const char *>(buf2)).c_str());
+            std::format("Error opening index file '{}'", static_cast<const char*>(buf2)).c_str());
         exit(1);
     }
     /* first, count the number of records in the file so we can malloc */
     if (mode != DB_BOOT_SHP) {
         fscanf(index, "%s\n", buf1);
         while (*buf1 != '$') {
-            strcpy(buf2, std::format("{}/{}", prefix, static_cast<const char *>(buf1)).c_str());
+            strcpy(buf2, std::format("{}/{}", prefix, static_cast<const char*>(buf1)).c_str());
             if (!(db_file = fopen(buf2, "r"))) {
                 perror(buf2);
                 exit(1);
@@ -1022,7 +1032,7 @@ void index_boot(int mode) {
             CREATE(zone_table, struct zone_data, rec_count + 1);
             break;
         case DB_BOOT_MDL:
-            CREATE(mobile_program, char *, rec_count + 1);
+            CREATE(mobile_program, char*, rec_count + 1);
             CREATE(mobile_program_zone, int, rec_count + 1);
             num_of_programs = 0;
             break;
@@ -1034,12 +1044,12 @@ void index_boot(int mode) {
     rewind(index);
     fscanf(index, "%s\n", buf1);
     while (*buf1 != '$') {
-        strcpy(buf2, std::format("{}/{}", prefix, static_cast<const char *>(buf1)).c_str());
+        strcpy(buf2, std::format("{}/{}", prefix, static_cast<const char*>(buf1)).c_str());
         if (!(db_file = fopen(buf2, "r"))) {
             perror(buf2);
             exit(1);
         }
-        log(std::format("opened file {}.", static_cast<const char *>(buf2)).c_str());
+        log(std::format("opened file {}.", static_cast<const char*>(buf2)).c_str());
         switch (mode) {
         case DB_BOOT_WLD:
             load_rooms(db_file);
@@ -1071,14 +1081,15 @@ void index_boot(int mode) {
 }
 
 /* load the rooms */
-void load_rooms(FILE *fl) {
+void load_rooms(FILE* fl)
+{
     extern char num_of_sector_types;
     static int room_nr = 0, zone = 0, virt_nr, flag, tmp, tmp2, tmp3, tmp4;
     int aff_set;
     char *temp, *temp2, chk[50];
-    struct extra_descr_data *new_descr;
-    struct affected_type *base_af;
-    universal_list *tmplist;
+    struct extra_descr_data* new_descr;
+    struct affected_type* base_af;
+    universal_list* tmplist;
 
     do {
         fscanf(fl, "#%d", &virt_nr);
@@ -1103,7 +1114,7 @@ void load_rooms(FILE *fl) {
 
                 if (world[room_nr].number <= (zone ? zone_table[zone - 1].top : -1)) {
                     fprintf(stderr, "Room nr %d is below zone top %d.\n", virt_nr,
-                            (zone ? zone_table[zone - 1].number : -1));
+                        (zone ? zone_table[zone - 1].number : -1));
                     exit(0);
                 }
                 while (world[room_nr].number > zone_table[zone].top)
@@ -1172,10 +1183,10 @@ void load_rooms(FILE *fl) {
                         aff_set = 1;
                     }
 
-                    base_af->type = tmp;      // ROOMAFF_SPELL;
+                    base_af->type = tmp; // ROOMAFF_SPELL;
                     base_af->location = tmp2; // SPELL_NONE;
                     base_af->duration = -1;
-                    base_af->modifier = tmp3;               // spell level
+                    base_af->modifier = tmp3; // spell level
                     base_af->bitvector = tmp4 | PERMAFFECT; // what flags to set
 
                     base_af->next = world[room_nr].affected;
@@ -1198,7 +1209,8 @@ void load_rooms(FILE *fl) {
 }
 
 /* read direction data */
-void setup_dir(FILE *fl, int room, int dir) {
+void setup_dir(FILE* fl, int room, int dir)
+{
     int tmp;
 
     strcpy(buf2, std::format("Room #{}, direction D{}", world[room].number, dir).c_str());
@@ -1222,7 +1234,8 @@ void setup_dir(FILE *fl, int room, int dir) {
     /*UPDATE*/
 }
 
-void check_start_rooms(void) {
+void check_start_rooms(void)
+{
     extern int mortal_start_room[];
     extern int mortal_idle_room[];
     extern int retirement_home_room;
@@ -1257,24 +1270,26 @@ void check_start_rooms(void) {
     }
 }
 
-void renum_world(void) {
+void renum_world(void)
+{
     int room, door;
 
     for (room = 0; room <= top_of_world; room++)
         for (door = 0; door <= 5; door++)
             if (world[room].dir_option[door])
                 if (world[room].dir_option[door]->to_room != NOWHERE)
-                    world[room].dir_option[door]->to_room =
-                        real_room(world[room].dir_option[door]->to_room);
+                    world[room].dir_option[door]->to_room = real_room(world[room].dir_option[door]->to_room);
 }
 
-void symbol_to_map(int x, int y, int symb) {
+void symbol_to_map(int x, int y, int symb)
+{
     if (x > WORLD_SIZE_X / 2)
         x = WORLD_SIZE_X / 2;
     world_map[(y + 1) * (WORLD_SIZE_X + 4) + x * 2 + 1] = symb;
 }
 
-void draw_map() {
+void draw_map()
+{
     int tmp;
 
     memset(world_map, ' ', WORLD_AREA);
@@ -1318,7 +1333,8 @@ void draw_map() {
 }
 
 //************begin Ingolemo small map addition************
-void reset_small_map() {
+void reset_small_map()
+{
     for (int tmp1 = 1; tmp1 <= 2 * SMALL_WORLD_RADIUS + 1; tmp1++) {
         for (int tmp2 = 1; tmp2 <= (2 * SMALL_WORLD_RADIUS + 1) * 2 + 1; tmp2++) {
             small_map[tmp1][tmp2] = ' ';
@@ -1326,7 +1342,8 @@ void reset_small_map() {
     }
 }
 
-void initialiaze_small_map() {
+void initialiaze_small_map()
+{
     reset_small_map();
     small_map[0][0] = '+';
     small_map[0][4 * SMALL_WORLD_RADIUS + 4] = '+';
@@ -1353,12 +1370,13 @@ void initialiaze_small_map() {
 }
 //************end Ingolemo small map addition************
 
-void load_scripts(FILE *fl) {
+void load_scripts(FILE* fl)
+{
     static int script_no = 0;
     int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7, tmp8;
-    char *check;
-    script_data *newscript;
-    script_data *lastcmd;
+    char* check;
+    script_data* newscript;
+    script_data* lastcmd;
 
     for (;;) {
         fscanf(fl, "#%d\n", &tmp);
@@ -1380,7 +1398,7 @@ void load_scripts(FILE *fl) {
 
         for (;;) {
             fscanf(fl, "%d %d %d %d %d %d %d %d\n", &tmp1, &tmp2, &tmp3, &tmp4, &tmp5, &tmp6, &tmp7,
-                   &tmp8);
+                &tmp8);
 
             if (tmp1 == 999)
                 break;
@@ -1419,41 +1437,44 @@ void load_scripts(FILE *fl) {
  *  procedures for resetting, both play-time and boot-time	 	 *
  *********************************************************************** */
 
-int vnum_mobile(char *searchname, struct char_data *ch) {
+int vnum_mobile(char* searchname, struct char_data* ch)
+{
     int nr, found = 0;
 
     for (nr = 0; nr <= top_of_mobt; nr++) {
         if (isname(searchname, mob_proto[nr].player.name)) {
             send_to_char(std::format("{:3}. [{:5}] {:<60.60}\n\r", ++found, mob_index[nr].virt,
-                                     nz(mob_proto[nr].player.short_descr))
+                             nz(mob_proto[nr].player.short_descr))
                              .c_str(),
-                         ch);
+                ch);
         }
     }
 
     return (found);
 }
 
-int vnum_object(char *searchname, struct char_data *ch) {
+int vnum_object(char* searchname, struct char_data* ch)
+{
     int nr, found = 0;
 
     for (nr = 0; nr <= top_of_objt; nr++) {
         if (isname(searchname, obj_proto[nr].name)) {
             send_to_char(std::format("{:3}. [{:5}] {:<60.60}\n\r", ++found, obj_index[nr].virt,
-                                     nz(obj_proto[nr].short_description))
+                             nz(obj_proto[nr].short_description))
                              .c_str(),
-                         ch);
+                ch);
         }
     }
     return (found);
 }
 
 /* create a new mobile from a prototype */
-struct char_data *read_mobile(int nr, int type) {
+struct char_data* read_mobile(int nr, int type)
+{
     extern int average_mob_life;
     int i, age, was_fixed;
     byte tmp;
-    struct char_data *mob;
+    struct char_data* mob;
     affected_type tmp_aff;
 
     if (type == VIRT) {
@@ -1516,8 +1537,8 @@ struct char_data *read_mobile(int nr, int type) {
     }
     if (was_fixed) {
         strcpy(buf,
-               std::format("Mobile {} had its stats fixed.", (nr >= 0) ? mob_index[nr].virt : -1)
-                   .c_str());
+            std::format("Mobile {} had its stats fixed.", (nr >= 0) ? mob_index[nr].virt : -1)
+                .c_str());
         mudlog(buf, CMP, LEVEL_GRGOD, TRUE);
     }
 
@@ -1596,7 +1617,8 @@ struct char_data *read_mobile(int nr, int type) {
     return mob;
 }
 
-void load_mobiles(FILE *mob_f) {
+void load_mobiles(FILE* mob_f)
+{
     static int i = 0;
     int nr, j;
     int tmp, tmp2, tmp3, tmp4, tmp5, tmp6;
@@ -1627,8 +1649,7 @@ void load_mobiles(FILE *mob_f) {
             tmpptr = mob_proto[i].player.short_descr = fread_string(mob_f, buf2);
 
             if (tmpptr && *tmpptr)
-                if (!str_cmp(fname(tmpptr), "a") || !str_cmp(fname(tmpptr), "an") ||
-                    !str_cmp(fname(tmpptr), "the"))
+                if (!str_cmp(fname(tmpptr), "a") || !str_cmp(fname(tmpptr), "an") || !str_cmp(fname(tmpptr), "the"))
                     *tmpptr = tolower(*tmpptr);
 
             mob_proto[i].player.long_descr = fread_string(mob_f, buf2);
@@ -1718,7 +1739,7 @@ void load_mobiles(FILE *mob_f) {
 
                 int tmp7 = 0;
                 fscanf(mob_f, " %d %d %d %d %d %d %d", &tmp, &tmp2, &tmp3, &tmp4, &tmp5, &tmp6,
-                       &tmp7);
+                    &tmp7);
                 if ((tmp > language_number) || (tmp <= 0)) {
                     mob_proto[i].player.language = 0;
                 } else {
@@ -1765,8 +1786,9 @@ void load_mobiles(FILE *mob_f) {
 }
 
 /* create a new object from a prototype */
-struct obj_data *read_object(int nr, int type) {
-    struct obj_data *obj;
+struct obj_data* read_object(int nr, int type)
+{
+    struct obj_data* obj;
     int i;
 
     if (nr < 0) {
@@ -1808,11 +1830,12 @@ struct obj_data *read_object(int nr, int type) {
 }
 
 /* read all objects from obj file; generate index and prototypes */
-void load_objects(FILE *obj_f) {
+void load_objects(FILE* obj_f)
+{
     static int i = 0;
     int tmp, tmp2, tmp3, tmp4, tmp5, j, nr;
     char chk[50], *tmpptr;
-    struct extra_descr_data *new_descr;
+    struct extra_descr_data* new_descr;
 
     if (!fscanf(obj_f, "%s\n", chk)) {
         perror("load_objects");
@@ -1843,8 +1866,7 @@ void load_objects(FILE *obj_f) {
 
             tmpptr = obj_proto[i].short_description = fread_string(obj_f, buf2);
             if (*tmpptr)
-                if (!str_cmp(fname(tmpptr), "a") || !str_cmp(fname(tmpptr), "an") ||
-                    !str_cmp(fname(tmpptr), "the"))
+                if (!str_cmp(fname(tmpptr), "a") || !str_cmp(fname(tmpptr), "an") || !str_cmp(fname(tmpptr), "the"))
                     *tmpptr = tolower(*tmpptr);
             tmpptr = obj_proto[i].description = fread_string(obj_f, buf2);
             if (tmpptr && *tmpptr)
@@ -1887,7 +1909,7 @@ void load_objects(FILE *obj_f) {
 
             strcpy(
                 buf2,
-                std::format("{} - extra desc. section", static_cast<const char *>(buf2)).c_str());
+                std::format("{} - extra desc. section", static_cast<const char*>(buf2)).c_str());
 
             while (fscanf(obj_f, " %s \n", chk), *chk == 'E') {
                 CREATE(new_descr, struct extra_descr_data, 1);
@@ -1930,10 +1952,11 @@ void load_objects(FILE *obj_f) {
 
 /* execute the reset command table of a given zone */
 //************************************************************************
-int set_exit_state(struct room_data *room, int dir, int newstate) {
+int set_exit_state(struct room_data* room, int dir, int newstate)
+{
     const int door_mask = (EX_CLOSED | EX_LOCKED);
     int tmp, tmp2;
-    struct char_data *tmpmob;
+    struct char_data* tmpmob;
 
     if (!room)
         return 0;
@@ -1962,7 +1985,7 @@ int set_exit_state(struct room_data *room, int dir, int newstate) {
     tmp2 = (tmp & ~door_mask) | (tmp2 & door_mask);
     if (IS_SET(tmp, EX_ISBROKEN)) {
         strcpy(buf,
-               std::format("The {} blurs briefly.", nz(room->dir_option[dir]->keyword)).c_str());
+            std::format("The {} blurs briefly.", nz(room->dir_option[dir]->keyword)).c_str());
         tmpmob = room->people;
         if (tmpmob) {
             act(buf, FALSE, tmpmob, 0, 0, TO_ROOM);
@@ -1972,7 +1995,7 @@ int set_exit_state(struct room_data *room, int dir, int newstate) {
     }
     if (IS_SET(tmp2, EX_CLOSED) && !IS_SET(tmp, EX_CLOSED)) {
         strcpy(buf,
-               std::format("The {} closes quietly.", nz(room->dir_option[dir]->keyword)).c_str());
+            std::format("The {} closes quietly.", nz(room->dir_option[dir]->keyword)).c_str());
         tmpmob = room->people;
         if (tmpmob) {
             act(buf, FALSE, tmpmob, 0, 0, TO_ROOM);
@@ -2013,26 +2036,26 @@ int set_exit_state(struct room_data *room, int dir, int newstate) {
 
 // New load system (Fingolfin) under construction
 
-#define KEY_INT(the_field, element)                                                                \
-    if (!strcmp(line, the_field)) {                                                                \
-        tmp1 = atoi(value);                                                                        \
-        element = tmp1;                                                                            \
-        break;                                                                                     \
+#define KEY_INT(the_field, element) \
+    if (!strcmp(line, the_field)) { \
+        tmp1 = atoi(value);         \
+        element = tmp1;             \
+        break;                      \
     }
 
-#define KEY_STR(the_field, element, length)                                                        \
-    if (!strcmp(line, the_field)) {                                                                \
-        memcpy(element, value, length);                                                            \
-        for (ctmp = element; ctmp < element + length; ctmp++)                                      \
-            if (*ctmp == '\n')                                                                     \
-                *ctmp = '\0';                                                                      \
-        break;                                                                                     \
+#define KEY_STR(the_field, element, length)                   \
+    if (!strcmp(line, the_field)) {                           \
+        memcpy(element, value, length);                       \
+        for (ctmp = element; ctmp < element + length; ctmp++) \
+            if (*ctmp == '\n')                                \
+                *ctmp = '\0';                                 \
+        break;                                                \
     }
 
 #define KEY_LONG_STR(the_field, element, length)                                                   \
     if (!strcmp(line, the_field)) {                                                                \
         for (tmp1 = 0; position < input_end && *position != '~' && tmp1 < (length - 1);            \
-             position++, tmp1++)                                                                   \
+            position++, tmp1++)                                                                    \
             element[tmp1] = *position;                                                             \
         if (position >= input_end || *position != '~') {                                           \
             log(std::format("load_player_from_text: malformed long string for {}", name).c_str()); \
@@ -2045,61 +2068,65 @@ int set_exit_state(struct room_data *room, int dir, int newstate) {
         break;                                                                                     \
     }
 
-#define KEY_AFF(the_field)                                                                         \
-    if (!strcmp(line, the_field)) {                                                                \
-        sscanf(value, "%d %d %d %d %d %d", &tmp1, &tmp2, &tmp3, &tmp4, &tmp5, &tmp6);              \
-        char_element->affected[tmp1].type = tmp2;                                                  \
-        char_element->affected[tmp1].duration = tmp3;                                              \
-        char_element->affected[tmp1].modifier = tmp4;                                              \
-        char_element->affected[tmp1].location = tmp5;                                              \
-        char_element->affected[tmp1].bitvector = tmp6;                                             \
-        break;                                                                                     \
+#define KEY_AFF(the_field)                                                            \
+    if (!strcmp(line, the_field)) {                                                   \
+        sscanf(value, "%d %d %d %d %d %d", &tmp1, &tmp2, &tmp3, &tmp4, &tmp5, &tmp6); \
+        char_element->affected[tmp1].type = tmp2;                                     \
+        char_element->affected[tmp1].duration = tmp3;                                 \
+        char_element->affected[tmp1].modifier = tmp4;                                 \
+        char_element->affected[tmp1].location = tmp5;                                 \
+        char_element->affected[tmp1].bitvector = tmp6;                                \
+        break;                                                                        \
     }
 
-#define KEY_STATS(the_field, e1, e2, e3, e4, e5, e6)                                               \
-    if (!strcmp(line, the_field)) {                                                                \
-        sscanf(value, "%d %d %d %d %d %d", &tmp1, &tmp2, &tmp3, &tmp4, &tmp5, &tmp6);              \
-        e1 = tmp1;                                                                                 \
-        e2 = tmp2;                                                                                 \
-        e3 = tmp3;                                                                                 \
-        e4 = tmp4;                                                                                 \
-        e5 = tmp5;                                                                                 \
-        e6 = tmp6;                                                                                 \
-        break;                                                                                     \
+#define KEY_STATS(the_field, e1, e2, e3, e4, e5, e6)                                  \
+    if (!strcmp(line, the_field)) {                                                   \
+        sscanf(value, "%d %d %d %d %d %d", &tmp1, &tmp2, &tmp3, &tmp4, &tmp5, &tmp6); \
+        e1 = tmp1;                                                                    \
+        e2 = tmp2;                                                                    \
+        e3 = tmp3;                                                                    \
+        e4 = tmp4;                                                                    \
+        e5 = tmp5;                                                                    \
+        e6 = tmp6;                                                                    \
+        break;                                                                        \
     }
 
-#define KEY_AB(the_field, e1, e2, e3, e4)                                                          \
-    if (!strcmp(line, the_field)) {                                                                \
-        sscanf(value, "%d %d %d %d", &tmp1, &tmp2, &tmp3, &tmp4);                                  \
-        e1 = tmp1;                                                                                 \
-        e2 = tmp2;                                                                                 \
-        e3 = tmp3;                                                                                 \
-        e4 = tmp4;                                                                                 \
-        break;                                                                                     \
+#define KEY_AB(the_field, e1, e2, e3, e4)                         \
+    if (!strcmp(line, the_field)) {                               \
+        sscanf(value, "%d %d %d %d", &tmp1, &tmp2, &tmp3, &tmp4); \
+        e1 = tmp1;                                                \
+        e2 = tmp2;                                                \
+        e3 = tmp3;                                                \
+        e4 = tmp4;                                                \
+        break;                                                    \
     }
 
-#define KEY_ARRAY(the_field, element)                                                              \
-    if (!strcmp(line, the_field)) {                                                                \
-        sscanf(value, "%d %d", &tmp1, &tmp2);                                                      \
-        element[tmp1] = tmp2;                                                                      \
-        break;                                                                                     \
+#define KEY_ARRAY(the_field, element)         \
+    if (!strcmp(line, the_field)) {           \
+        sscanf(value, "%d %d", &tmp1, &tmp2); \
+        element[tmp1] = tmp2;                 \
+        break;                                \
     }
 
 namespace {
 
-int normalize_tactics_value(int value) {
+int normalize_tactics_value(int value)
+{
     return (value >= TACTICS_DEFENSIVE && value <= TACTICS_BERSERK) ? value : TACTICS_NORMAL;
 }
 
-int normalize_shooting_value(int value) {
+int normalize_shooting_value(int value)
+{
     return (value >= SHOOTING_SLOW && value <= SHOOTING_FAST) ? value : SHOOTING_NORMAL;
 }
 
-int normalize_casting_value(int value) {
+int normalize_casting_value(int value)
+{
     return (value >= CASTING_SLOW && value <= CASTING_FAST) ? value : CASTING_NORMAL;
 }
 
-void sanitize_persisted_combat_state(struct char_special2_data *specials2) {
+void sanitize_persisted_combat_state(struct char_special2_data* specials2)
+{
     if (specials2 == nullptr)
         return;
 
@@ -2111,13 +2138,14 @@ void sanitize_persisted_combat_state(struct char_special2_data *specials2) {
 
 } // namespace
 
-int load_player_from_text(char *name, const char *player_text, struct char_file_u *char_element) {
+int load_player_from_text(char* name, const char* player_text, struct char_file_u* char_element)
+{
     int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, end;
     char line[100];
     char *tmpchar, *value, *ctmp, *position;
-    const char *input_end = nullptr;
+    const char* input_end = nullptr;
 
-    memset((char *)char_element, 0, sizeof(struct char_file_u));
+    memset((char*)char_element, 0, sizeof(struct char_file_u));
 
     for (tmpchar = name; *tmpchar; tmpchar++)
         *tmpchar = tolower(*tmpchar);
@@ -2150,13 +2178,13 @@ int load_player_from_text(char *name, const char *player_text, struct char_file_
         char_element->skills[tmp1] = 0;
 
     end = FALSE;
-    position = const_cast<char *>(player_text);
+    position = const_cast<char*>(player_text);
     memset(char_element->description, 0, 512);
     while (end == FALSE) {
         if (position >= input_end) {
             log(std::format(
-                    "load_player_from_text: malformed player data for {} (unexpected end of input)",
-                    name)
+                "load_player_from_text: malformed player data for {} (unexpected end of input)",
+                name)
                     .c_str());
             return -1;
         }
@@ -2164,11 +2192,11 @@ int load_player_from_text(char *name, const char *player_text, struct char_file_
         /* clear line, then read off a line */
         memset(line, 0, 99);
         for (tmpchar = position, tmp1 = 0;
-             tmpchar < input_end && (*tmpchar != '\n') && (*tmpchar != '\r') && (*tmpchar != '\0');
-             tmpchar++, tmp1++) {
+            tmpchar < input_end && (*tmpchar != '\n') && (*tmpchar != '\r') && (*tmpchar != '\0');
+            tmpchar++, tmp1++) {
             if (tmp1 >= static_cast<int>(sizeof(line) - 1)) {
                 log(std::format(
-                        "load_player_from_text: malformed player data for {} (line too long)", name)
+                    "load_player_from_text: malformed player data for {} (line too long)", name)
                         .c_str());
                 return -1;
             }
@@ -2216,19 +2244,12 @@ int load_player_from_text(char *name, const char *player_text, struct char_file_
                 int red = 0;
                 int green = 0;
                 int blue = 0;
-                if (sscanf(value, "%d %d %d %d %d %d", &index, &mode, &ansi, &red, &green, &blue) ==
-                        6 &&
-                    index >= 0 && index < MAX_COLOR_FIELDS) {
-                    char_element->profs.color_settings[index].foreground.mode =
-                        static_cast<unsigned char>(mode);
-                    char_element->profs.color_settings[index].foreground.ansi =
-                        static_cast<unsigned char>(ansi);
-                    char_element->profs.color_settings[index].foreground.red =
-                        static_cast<unsigned char>(red);
-                    char_element->profs.color_settings[index].foreground.green =
-                        static_cast<unsigned char>(green);
-                    char_element->profs.color_settings[index].foreground.blue =
-                        static_cast<unsigned char>(blue);
+                if (sscanf(value, "%d %d %d %d %d %d", &index, &mode, &ansi, &red, &green, &blue) == 6 && index >= 0 && index < MAX_COLOR_FIELDS) {
+                    char_element->profs.color_settings[index].foreground.mode = static_cast<unsigned char>(mode);
+                    char_element->profs.color_settings[index].foreground.ansi = static_cast<unsigned char>(ansi);
+                    char_element->profs.color_settings[index].foreground.red = static_cast<unsigned char>(red);
+                    char_element->profs.color_settings[index].foreground.green = static_cast<unsigned char>(green);
+                    char_element->profs.color_settings[index].foreground.blue = static_cast<unsigned char>(blue);
                     char_element->profs.colors[index] = static_cast<char>(ansi);
                 }
                 break;
@@ -2240,19 +2261,12 @@ int load_player_from_text(char *name, const char *player_text, struct char_file_
                 int red = 0;
                 int green = 0;
                 int blue = 0;
-                if (sscanf(value, "%d %d %d %d %d %d", &index, &mode, &ansi, &red, &green, &blue) ==
-                        6 &&
-                    index >= 0 && index < MAX_COLOR_FIELDS) {
-                    char_element->profs.color_settings[index].background.mode =
-                        static_cast<unsigned char>(mode);
-                    char_element->profs.color_settings[index].background.ansi =
-                        static_cast<unsigned char>(ansi);
-                    char_element->profs.color_settings[index].background.red =
-                        static_cast<unsigned char>(red);
-                    char_element->profs.color_settings[index].background.green =
-                        static_cast<unsigned char>(green);
-                    char_element->profs.color_settings[index].background.blue =
-                        static_cast<unsigned char>(blue);
+                if (sscanf(value, "%d %d %d %d %d %d", &index, &mode, &ansi, &red, &green, &blue) == 6 && index >= 0 && index < MAX_COLOR_FIELDS) {
+                    char_element->profs.color_settings[index].background.mode = static_cast<unsigned char>(mode);
+                    char_element->profs.color_settings[index].background.ansi = static_cast<unsigned char>(ansi);
+                    char_element->profs.color_settings[index].background.red = static_cast<unsigned char>(red);
+                    char_element->profs.color_settings[index].background.green = static_cast<unsigned char>(green);
+                    char_element->profs.color_settings[index].background.blue = static_cast<unsigned char>(blue);
                 }
                 break;
             }
@@ -2351,11 +2365,11 @@ int load_player_from_text(char *name, const char *player_text, struct char_file_
                 break;
             }
             KEY_STATS("permstats", char_element->constabilities.str,
-                      char_element->constabilities.lea, char_element->constabilities.intel,
-                      char_element->constabilities.wil, char_element->constabilities.dex,
-                      char_element->constabilities.con);
+                char_element->constabilities.lea, char_element->constabilities.intel,
+                char_element->constabilities.wil, char_element->constabilities.dex,
+                char_element->constabilities.con);
             KEY_AB("permabil", char_element->constabilities.hit, char_element->constabilities.mana,
-                   char_element->constabilities.move, tmp);
+                char_element->constabilities.move, tmp);
             KEY_ARRAY("prof_coef", char_element->profs.prof_coof);
             KEY_ARRAY("prof_level", char_element->profs.prof_level);
             KEY_ARRAY("prof_exp", char_element->profs.prof_exp);
@@ -2385,10 +2399,10 @@ int load_player_from_text(char *name, const char *player_text, struct char_file_
             KEY_ARRAY("talks", char_element->talks);
             KEY_INT("twohanded", char_element->specials2.two_handed);
             KEY_STATS("tmpstats", char_element->tmpabilities.str, char_element->tmpabilities.lea,
-                      char_element->tmpabilities.intel, char_element->tmpabilities.wil,
-                      char_element->tmpabilities.dex, char_element->tmpabilities.con);
+                char_element->tmpabilities.intel, char_element->tmpabilities.wil,
+                char_element->tmpabilities.dex, char_element->tmpabilities.con);
             KEY_AB("tmpabil", char_element->tmpabilities.hit, char_element->tmpabilities.mana,
-                   char_element->tmpabilities.move, char_element->points.spirit);
+                char_element->tmpabilities.move, char_element->points.spirit);
             break;
 
         case 'U':
@@ -2412,16 +2426,17 @@ int load_player_from_text(char *name, const char *player_text, struct char_file_
             break;
         }
     }
-    decrypt_line((unsigned char *)char_element->pwd, MAX_PWD_LENGTH);
+    decrypt_line((unsigned char*)char_element->pwd, MAX_PWD_LENGTH);
     sanitize_persisted_combat_state(&char_element->specials2);
 
     return 1;
 }
 
-int load_player(char *name, struct char_file_u *char_element) {
+int load_player(char* name, struct char_file_u* char_element)
+{
     int tmp;
     char playerfname[100];
-    char *pf = 0;
+    char* pf = 0;
 
     for (tmp = 0; name[tmp]; ++tmp)
         name[tmp] = tolower(name[tmp]);
@@ -2450,12 +2465,13 @@ int load_player(char *name, struct char_file_u *char_element) {
     return result;
 }
 
-int find_name(char *name);
+int find_name(char* name);
 
 /* Load a char, TRUE if loaded, FALSE if not */
-int load_char(char *name, struct char_file_u *char_element) {
+int load_char(char* name, struct char_file_u* char_element)
+{
     int ret;
-    extern void convert_old_colormask(struct char_file_u *);
+    extern void convert_old_colormask(struct char_file_u*);
 
     if (*name == '\0')
         return -1;
@@ -2468,9 +2484,10 @@ int load_char(char *name, struct char_file_u *char_element) {
     return ret;
 }
 
-int load_char_from_text(char *name, const char *player_text, struct char_file_u *char_element) {
+int load_char_from_text(char* name, const char* player_text, struct char_file_u* char_element)
+{
     int ret;
-    extern void convert_old_colormask(struct char_file_u *);
+    extern void convert_old_colormask(struct char_file_u*);
 
     if (*name == '\0')
         return -1;
@@ -2484,7 +2501,8 @@ int load_char_from_text(char *name, const char *player_text, struct char_file_u 
 }
 
 /* copy data from the file structure to a char struct */
-void store_to_char(struct char_file_u *st, struct char_data *ch) {
+void store_to_char(struct char_file_u* st, struct char_data* ch)
+{
     int i;
 
     ch->player_index = st->player_index;
@@ -2612,16 +2630,16 @@ void store_to_char(struct char_file_u *st, struct char_data *ch) {
     /* If you're not poisioned and you've been away for more than
       an hour, we'll set your HMV back to full */
 
-    if (!IS_AFFECTED(ch, AFF_POISON) &&
-        (((long)(time(0) - st->last_logon)) >= SECS_PER_REAL_HOUR)) {
+    if (!IS_AFFECTED(ch, AFF_POISON) && (((long)(time(0) - st->last_logon)) >= SECS_PER_REAL_HOUR)) {
         ch->tmpabilities = ch->abilities;
     }
 }
 
 /* copy vital data from a players char-structure to the file structure */
-void char_to_store(struct char_data *ch, struct char_file_u *st) {
+void char_to_store(struct char_data* ch, struct char_file_u* st)
+{
     int i;
-    struct affected_type *af;
+    struct affected_type* af;
 
     /* Unaffect everything a character can be affected by */
     affect_total(ch, AFFECT_TOTAL_REMOVE);
@@ -2704,7 +2722,8 @@ void char_to_store(struct char_data *ch, struct char_file_u *st) {
     affect_total(ch, AFFECT_TOTAL_SET);
 } /* Char to store */
 
-int create_entry(char *name) {
+int create_entry(char* name)
+{
     int i;
 
     if (top_of_p_table == -1) {
@@ -2725,7 +2744,8 @@ int create_entry(char *name) {
     return (top_of_p_table);
 }
 
-int ensure_player_index_entry(const char *name) {
+int ensure_player_index_entry(const char* name)
+{
     if (name == nullptr || *name == '\0')
         return -1;
 
@@ -2739,12 +2759,14 @@ int ensure_player_index_entry(const char *name) {
     return create_entry(normalized_name);
 }
 
-void update_player_index_entry_from_store(struct char_file_u *stored_character) {
+void update_player_index_entry_from_store(struct char_file_u* stored_character)
+{
     update_player_index_entry_from_store(stored_character, nullptr, nullptr);
 }
 
-bool update_player_index_entry_from_store(struct char_file_u *stored_character,
-                                          const char *character_path, std::string *error_message) {
+bool update_player_index_entry_from_store(struct char_file_u* stored_character,
+    const char* character_path, std::string* error_message)
+{
     if (stored_character == nullptr || stored_character->name[0] == '\0') {
         if (error_message != nullptr)
             *error_message = "Cannot update player index for an empty stored character.";
@@ -2756,12 +2778,11 @@ bool update_player_index_entry_from_store(struct char_file_u *stored_character,
         const size_t path_capacity = sizeof(player_table[0].ch_file);
         if (path_length >= path_capacity) {
             if (error_message != nullptr)
-                *error_message =
-                    "Account character storage path is too long for the live player index.";
+                *error_message = "Account character storage path is too long for the live player index.";
             log(std::format("update_player_index_entry_from_store: account-native path for {} is "
                             "{} bytes; player index limit is {}",
-                            static_cast<const char *>(stored_character->name), path_length,
-                            path_capacity - 1)
+                static_cast<const char*>(stored_character->name), path_length,
+                path_capacity - 1)
                     .c_str());
             return false;
         }
@@ -2782,16 +2803,17 @@ bool update_player_index_entry_from_store(struct char_file_u *stored_character,
     player_table[player_index].flags = stored_character->specials2.act;
     if (character_path != nullptr && *character_path != '\0')
         std::snprintf(player_table[player_index].ch_file,
-                      sizeof(player_table[player_index].ch_file), "%s", character_path);
+            sizeof(player_table[player_index].ch_file), "%s", character_path);
     if (error_message != nullptr)
         error_message->clear();
     return true;
 }
 
 /* create a new entry in the in-memory index table for the player file */
-int old_create_entry(char *name) {
+int old_create_entry(char* name)
+{
     int i, num;
-    struct player_index_element *tmpel;
+    struct player_index_element* tmpel;
 
     //   printf("create_entry: top=%d\n",top_of_p_table);
     if (top_of_p_table == -1) {
@@ -2819,7 +2841,7 @@ int old_create_entry(char *name) {
                                                                                 // leak
                                                                                 // here
             CREATE(tmpel, struct player_index_element,
-                   top_of_p_table + 1); // old player_table is not freed
+                top_of_p_table + 1); // old player_table is not freed
             if (!tmpel) {
                 perror("create entry");
                 exit(1);
@@ -2850,18 +2872,20 @@ int old_create_entry(char *name) {
 //  Moves a valid character file to the /zzz/ directory and deletes their
 //  in-memory index record
 
-void move_char_deleted(int index) {
+void move_char_deleted(int index)
+{
     // Was system("mv <ch_file> players/ZZZ/<name>"); the return value was
     // never checked, so a failed move was already silent -- ec is discarded
     // here to match.
     std::error_code rename_ec;
     std::filesystem::rename((player_table + index)->ch_file,
-                            std::string("players/ZZZ/") + (player_table + index)->name, rename_ec);
+        std::string("players/ZZZ/") + (player_table + index)->name, rename_ec);
     player_table[index].name[0] = 0;
     player_table[index].idnum = 0;
 }
 
-void delete_character_file(struct char_data *ch) {
+void delete_character_file(struct char_data* ch)
+{
     int tmp;
 
     for (tmp = 0; tmp <= top_of_p_table; tmp++) {
@@ -2872,7 +2896,7 @@ void delete_character_file(struct char_data *ch) {
     if (tmp > top_of_p_table) {
         send_to_char("Bug: you are not in the character list: cannot delete.\n", ch);
         log(std::format("delete_character_file: could not find player: cannot delete: {}\n",
-                        ch->player.name)
+            ch->player.name)
                 .c_str());
         return;
     }
@@ -2882,13 +2906,14 @@ void delete_character_file(struct char_data *ch) {
 
 /* write the vital data of a player to the player file */
 
-void encrypt_line(unsigned char *line, int len);
+void encrypt_line(unsigned char* line, int len);
 
 // Serialize ch to scratch_path in the legacy versioned-text format. Returns false and
 // removes the partial scratch on any write/close error, so the caller skips finalize and
 // never destroys the live file. Body is the former save_player serialization, unchanged,
 // so its bytes stay identical to the legacy path (pinned by the A/B oracle + round-trip test).
-bool write_player_text(struct char_data *ch, int load_room, const char *scratch_path) {
+bool write_player_text(struct char_data* ch, int load_room, const char* scratch_path)
+{
     // {}: char_to_store() below populates every char_file_u field except pwd/host
     // (set explicitly right after it returns); leaving chd uninitialized meant
     // chd.pwd's bytes past the password's null terminator (up to MAX_PWD_LENGTH) were
@@ -2901,13 +2926,13 @@ bool write_player_text(struct char_data *ch, int load_room, const char *scratch_
     // trailing pwd bytes deterministic zero instead of undefined. Pre-existing bug,
     // unrelated to and untouched by the sprintf/strcpy->std::format conversion in the
     // surrounding functions.
-    struct char_file_u chd{};
+    struct char_file_u chd { };
     int tmp;
 
     // "wb": this serialization is pinned byte-for-byte (A/B oracle + round-trip
     // test); CRT text mode on Windows would expand every '\n' to "\r\n" and
     // silently fork the on-disk format from the POSIX builds (Phase 3 Task 6).
-    FILE *pf = fopen(scratch_path, "wb");
+    FILE* pf = fopen(scratch_path, "wb");
     if (!pf) {
         return false;
     }
@@ -2936,7 +2961,7 @@ bool write_player_text(struct char_data *ch, int load_room, const char *scratch_
     fprintf(pf, "description \n%s~\n", chd.description);
     fprintf(pf, "last_logon  %lld\n", static_cast<long long>(chd.last_logon));
     memcpy(pwdcrypt, chd.pwd, MAX_PWD_LENGTH);
-    encrypt_line((unsigned char *)pwdcrypt, MAX_PWD_LENGTH);
+    encrypt_line((unsigned char*)pwdcrypt, MAX_PWD_LENGTH);
     pwdcrypt[MAX_PWD_LENGTH] = '\0'; // terminate explicitly -- see the pwdcrypt declaration comment
     fprintf(pf, "password    %s\n", pwdcrypt);
     fprintf(pf, "host        %s\n", chd.host);
@@ -2978,14 +3003,14 @@ bool write_player_text(struct char_data *ch, int load_room, const char *scratch_
         if (chd.profs.colors[tmp] != CNRM)
             fprintf(pf, "color       %d %d\n", tmp, chd.profs.colors[tmp]);
     for (tmp = 0; tmp < MAX_COLOR_FIELDS; ++tmp) {
-        const color_value_data &foreground = chd.profs.color_settings[tmp].foreground;
-        const color_value_data &background = chd.profs.color_settings[tmp].background;
+        const color_value_data& foreground = chd.profs.color_settings[tmp].foreground;
+        const color_value_data& background = chd.profs.color_settings[tmp].background;
         if (foreground.mode != COLOR_VALUE_DEFAULT)
             fprintf(pf, "colorfg     %d %d %d %d %d %d\n", tmp, foreground.mode, foreground.ansi,
-                    foreground.red, foreground.green, foreground.blue);
+                foreground.red, foreground.green, foreground.blue);
         if (background.mode != COLOR_VALUE_DEFAULT)
             fprintf(pf, "colorbg     %d %d %d %d %d %d\n", tmp, background.mode, background.ansi,
-                    background.red, background.green, background.blue);
+                background.red, background.green, background.blue);
     }
 
     for (tmp = 0; tmp < MAX_TOUNGE; tmp++)
@@ -2998,26 +3023,26 @@ bool write_player_text(struct char_data *ch, int load_room, const char *scratch_
     for (tmp = 0; tmp < MAX_AFFECT; tmp++)
         if (chd.affected[tmp].duration != 0) {
             fprintf(pf, "affect      %d %d %d %d %d %ld\n", tmp, chd.affected[tmp].type,
-                    chd.affected[tmp].duration, chd.affected[tmp].modifier,
-                    chd.affected[tmp].location, chd.affected[tmp].bitvector);
+                chd.affected[tmp].duration, chd.affected[tmp].modifier,
+                chd.affected[tmp].location, chd.affected[tmp].bitvector);
         }
 
     for (tmp = 0; tmp < MAX_BODYPARTS; tmp++)
         fprintf(pf, "bodyparts   %d %d\n", tmp, chd.points.bodypart_hit[tmp]);
 
     fprintf(pf, "tmpstats    %d %d %d %d %d %d\n", chd.tmpabilities.str, chd.tmpabilities.lea,
-            chd.tmpabilities.intel, chd.tmpabilities.wil, chd.tmpabilities.dex,
-            chd.tmpabilities.con);
+        chd.tmpabilities.intel, chd.tmpabilities.wil, chd.tmpabilities.dex,
+        chd.tmpabilities.con);
 
     fprintf(pf, "tmpabil     %d %d %d %d\n", chd.tmpabilities.hit, chd.tmpabilities.mana,
-            chd.tmpabilities.move, chd.points.spirit);
+        chd.tmpabilities.move, chd.points.spirit);
 
     fprintf(pf, "permstats    %d %d %d %d %d %d\n", chd.constabilities.str, chd.constabilities.lea,
-            chd.constabilities.intel, chd.constabilities.wil, chd.constabilities.dex,
-            chd.constabilities.con);
+        chd.constabilities.intel, chd.constabilities.wil, chd.constabilities.dex,
+        chd.constabilities.con);
 
     fprintf(pf, "permabil     %d %d %d %d\n", chd.constabilities.hit, chd.constabilities.mana,
-            chd.constabilities.move, 0);
+        chd.constabilities.move, 0);
 
     for (tmp = 0; tmp < MAX_PROFS + 1; tmp++)
         fprintf(pf, "prof_coef   %d %d\n", tmp, chd.profs.prof_coof[tmp]);
@@ -3044,9 +3069,10 @@ bool write_player_text(struct char_data *ch, int load_room, const char *scratch_
 
 /* New player save (Fingolfin) under construction */
 
-void save_player(struct char_data *ch, int load_room, int index_pos) {
+void save_player(struct char_data* ch, int load_room, int index_pos)
+{
     char name[255];
-    char *tmpchar;
+    char* tmpchar;
     char playerfname[100];
 
     strcpy(name, GET_NAME(ch));
@@ -3059,28 +3085,28 @@ void save_player(struct char_data *ch, int load_room, int index_pos) {
     case 'c':
     case 'd':
     case 'e':
-        strcpy(playerfname, std::format("players/A-E/{}", static_cast<const char *>(name)).c_str());
+        strcpy(playerfname, std::format("players/A-E/{}", static_cast<const char*>(name)).c_str());
         break;
     case 'f':
     case 'g':
     case 'h':
     case 'i':
     case 'j':
-        strcpy(playerfname, std::format("players/F-J/{}", static_cast<const char *>(name)).c_str());
+        strcpy(playerfname, std::format("players/F-J/{}", static_cast<const char*>(name)).c_str());
         break;
     case 'k':
     case 'l':
     case 'm':
     case 'n':
     case 'o':
-        strcpy(playerfname, std::format("players/K-O/{}", static_cast<const char *>(name)).c_str());
+        strcpy(playerfname, std::format("players/K-O/{}", static_cast<const char*>(name)).c_str());
         break;
     case 'p':
     case 'q':
     case 'r':
     case 's':
     case 't':
-        strcpy(playerfname, std::format("players/P-T/{}", static_cast<const char *>(name)).c_str());
+        strcpy(playerfname, std::format("players/P-T/{}", static_cast<const char*>(name)).c_str());
         break;
     case 'u':
     case 'v':
@@ -3088,10 +3114,10 @@ void save_player(struct char_data *ch, int load_room, int index_pos) {
     case 'x':
     case 'y':
     case 'z':
-        strcpy(playerfname, std::format("players/U-Z/{}", static_cast<const char *>(name)).c_str());
+        strcpy(playerfname, std::format("players/U-Z/{}", static_cast<const char*>(name)).c_str());
         break;
     default:
-        strcpy(playerfname, std::format("players/ZZZ/{}", static_cast<const char *>(name)).c_str());
+        strcpy(playerfname, std::format("players/ZZZ/{}", static_cast<const char*>(name)).c_str());
         break;
     }
 
@@ -3105,15 +3131,14 @@ void save_player(struct char_data *ch, int load_room, int index_pos) {
     // truncated silently past 119 bytes -- a real-if-unlikely player-file-naming corruption
     // for a long enough playerfname/idnum/log_time combination. A std::string composes the
     // same "{}.{}.{}.{}.{}.{}" text with no artificial ceiling and no truncation risk.
-    const std::string versioned =
-        std::format("{}.{}.{}.{}.{}.{}", static_cast<const char *>(playerfname),
-                    (player_table + index_pos)->level, (player_table + index_pos)->race,
-                    (player_table + index_pos)->idnum, (long)(player_table + index_pos)->log_time,
-                    (player_table + index_pos)->flags);
+    const std::string versioned = std::format("{}.{}.{}.{}.{}.{}", static_cast<const char*>(playerfname),
+        (player_table + index_pos)->level, (player_table + index_pos)->race,
+        (player_table + index_pos)->idnum, (long)(player_table + index_pos)->log_time,
+        (player_table + index_pos)->flags);
 
     char dirpath[100];
     strcpy(dirpath, playerfname);
-    char *dirslash = strrchr(dirpath, '/');
+    char* dirslash = strrchr(dirpath, '/');
     if (dirslash) {
         *dirslash = '\0';
     }
@@ -3124,9 +3149,10 @@ void save_player(struct char_data *ch, int load_room, int index_pos) {
     }
 }
 
-void save_char(struct char_data *ch, int load_room, int notify_char) {
+void save_char(struct char_data* ch, int load_room, int notify_char)
+{
     int tmp;
-    char_file_u chd{};
+    char_file_u chd { };
 
     if (IS_NPC(ch) || (!ch->desc)) {
         log(std::format("save_char: ({}) zero desc or is_npc\n", GET_NAME(ch)).c_str());
@@ -3167,11 +3193,10 @@ void save_char(struct char_data *ch, int load_room, int notify_char) {
 
     std::string owner_account_name;
     std::string account_error;
-    const bool account_native_player_entry =
-        has_suffix((player_table + tmp)->ch_file, ".character.json");
+    const bool account_native_player_entry = has_suffix((player_table + tmp)->ch_file, ".character.json");
     const bool linked_character = account::find_linked_character_owner_account(
-                                      ".", GET_NAME(ch), &owner_account_name, &account_error) &&
-                                  !owner_account_name.empty();
+                                      ".", GET_NAME(ch), &owner_account_name, &account_error)
+        && !owner_account_name.empty();
     if (linked_character) {
         bool wrote_account_character_file = false;
         std::string character_file_error;
@@ -3180,37 +3205,36 @@ void save_char(struct char_data *ch, int load_room, int notify_char) {
         if (has_account_character_file) {
             std::string write_error;
             if (!account::write_account_character_file(".", owner_account_name, chd,
-                                                       &write_error)) {
+                    &write_error)) {
                 log(std::format(
-                        "save_char: failed to write account-native character file for {}: {}",
-                        GET_NAME(ch), write_error)
+                    "save_char: failed to write account-native character file for {}: {}",
+                    GET_NAME(ch), write_error)
                         .c_str());
             } else
                 wrote_account_character_file = true;
         } else if (!character_file_error.empty()) {
             log(std::format("save_char: failed to inspect account-native character file for {}: {}",
-                            GET_NAME(ch), character_file_error)
+                GET_NAME(ch), character_file_error)
                     .c_str());
         } else {
             std::string write_error;
             if (!account::write_account_character_file(".", owner_account_name, chd,
-                                                       &write_error)) {
+                    &write_error)) {
                 log(std::format("save_char: failed to repair missing account-native character file "
                                 "for {}: {}",
-                                GET_NAME(ch), write_error)
+                    GET_NAME(ch), write_error)
                         .c_str());
             } else
                 wrote_account_character_file = true;
         }
         if (wrote_account_character_file) {
-            const std::string account_character_path =
-                account::account_character_player_path(".", owner_account_name, GET_NAME(ch));
+            const std::string account_character_path = account::account_character_player_path(".", owner_account_name, GET_NAME(ch));
             std::string player_index_error;
             if (!update_player_index_entry_from_store(&chd, account_character_path.c_str(),
-                                                      &player_index_error)) {
+                    &player_index_error)) {
                 log(std::format(
-                        "save_char: failed to refresh account-native player index for {}: {}",
-                        GET_NAME(ch), player_index_error)
+                    "save_char: failed to refresh account-native player index for {}: {}",
+                    GET_NAME(ch), player_index_error)
                         .c_str());
             }
         }
@@ -3218,14 +3242,14 @@ void save_char(struct char_data *ch, int load_room, int notify_char) {
         if (account_error.empty())
             strcpy(buf, std::format("save_char: refusing legacy fallback for account-native "
                                     "character {} because linked ownership could not be resolved",
-                                    GET_NAME(ch))
+                            GET_NAME(ch))
                             .c_str());
         else
             strcpy(buf,
-                   std::format(
-                       "save_char: refusing legacy fallback for account-native character {}: {}",
-                       GET_NAME(ch), account_error)
-                       .c_str());
+                std::format(
+                    "save_char: refusing legacy fallback for account-native character {}: {}",
+                    GET_NAME(ch), account_error)
+                    .c_str());
         log(buf);
     } else {
         save_player(ch, load_room, tmp); // New save into individual files
@@ -3237,9 +3261,10 @@ void save_char(struct char_data *ch, int load_room, int notify_char) {
  ********************************************************************** */
 
 /* read and allocate space for a '~'-terminated string from a given file */
-char *fread_string(FILE *fl, const char *error) {
+char* fread_string(FILE* fl, const char* error)
+{
     char buf[MAX_STRING_LENGTH], tmp[MAX_STRING_LENGTH];
-    char *rslt;
+    char* rslt;
     char *point, *tmppoint;
     int flag, markfirst;
 
@@ -3312,9 +3337,10 @@ char *fread_string(FILE *fl, const char *error) {
  * simple and we could have written it ourselves :)
  */
 
-char *fread_line(FILE *fp) {
+char* fread_line(FILE* fp)
+{
     static char line[MAX_STRING_LENGTH];
-    char *pline;
+    char* pline;
     char c;
     int ln;
 
@@ -3368,9 +3394,10 @@ char *fread_line(FILE *fp) {
 // disclosed at Phase 5 T6 via sanitize.supp). NULL-safe: `list` is 0 for a
 // freshly-cleared character and always 0 for mobs (structs.h: "aliases, 0
 // for mobs"), so this is a no-op for both.
-void free_alias_list(struct alias_list *list) {
+void free_alias_list(struct alias_list* list)
+{
     while (list) {
-        struct alias_list *next = list->next;
+        struct alias_list* next = list->next;
         RELEASE(list->command);
         RELEASE(list);
         list = next;
@@ -3387,12 +3414,13 @@ void free_alias_list(struct alias_list *list) {
 // shallow pointer copy) so char_special_data's copy assignment -- which
 // `*mob = mob_proto[i]` (db.cpp's read_mobile(), the char_data whole-struct
 // copy) relies on -- stays well-defined.
-struct alias_list *owned_alias_list::clone(struct alias_list *src) {
-    struct alias_list *head = nullptr;
-    struct alias_list *tail = nullptr;
+struct alias_list* owned_alias_list::clone(struct alias_list* src)
+{
+    struct alias_list* head = nullptr;
+    struct alias_list* tail = nullptr;
 
-    for (struct alias_list *node = src; node; node = node->next) {
-        struct alias_list *copy;
+    for (struct alias_list* node = src; node; node = node->next) {
+        struct alias_list* copy;
         CREATE1(copy, alias_list);
         std::memcpy(copy->keyword, node->keyword, sizeof(copy->keyword));
 
@@ -3416,7 +3444,8 @@ struct alias_list *owned_alias_list::clone(struct alias_list *src) {
 }
 
 /* release memory allocated for a char struct */
-void free_char(struct char_data *ch) {
+void free_char(struct char_data* ch)
+{
     clear_account_backed_object_bytes_for_character(ch);
 
     // RAII T6a: this function frees the char_data storage with a raw free()
@@ -3513,15 +3542,17 @@ void free_char(struct char_data *ch) {
 // allocate/construct/use/free lifecycle is single-owner and exception-safe.
 // `mode` is passed straight to clear_char (MOB_VOID for a PC-shaped scratch
 // char, MOB_ISNPC for a mob). See db.h for the world-graph caveat.
-char_data_ptr make_char_data(int mode) {
-    struct char_data *ch;
+char_data_ptr make_char_data(int mode)
+{
+    struct char_data* ch;
     CREATE(ch, struct char_data, 1);
     clear_char(ch, mode);
     return char_data_ptr(ch);
 }
 
 /* release memory allocated for an obj struct */
-void free_obj(struct obj_data *obj) {
+void free_obj(struct obj_data* obj)
+{
     int nr;
     struct extra_descr_data *thith, *next_one;
 
@@ -3559,7 +3590,8 @@ void free_obj(struct obj_data *obj) {
 }
 
 /* read contets of a text file, alloc space, point buf to it */
-int file_to_string_alloc(const char *name, char **buf) {
+int file_to_string_alloc(const char* name, char** buf)
+{
     char temp[MAX_STRING_LENGTH];
 
     if (file_to_string(name, temp) < 0)
@@ -3572,8 +3604,9 @@ int file_to_string_alloc(const char *name, char **buf) {
 }
 
 /* read contents of a text file, and place in buf */
-int file_to_string(const char *name, char *buf) {
-    FILE *fl;
+int file_to_string(const char* name, char* buf)
+{
+    FILE* fl;
     char tmp[100];
 
     *buf = '\0';
@@ -3605,7 +3638,8 @@ int file_to_string(const char *name, char *buf) {
     return (0);
 }
 
-int get_char_directory(char *orig_name, char *filename) {
+int get_char_directory(char* orig_name, char* filename)
+{
     char *ptr, name[30];
 
     if (!*orig_name)
@@ -3661,7 +3695,8 @@ int get_char_directory(char *orig_name, char *filename) {
 }
 
 /* clear some of the the working variables of a char */
-void reset_char(struct char_data *ch) {
+void reset_char(struct char_data* ch)
+{
     int i;
 
     for (i = 0; i < MAX_WEAR; i++) /* Initialisering */
@@ -3691,7 +3726,8 @@ void reset_char(struct char_data *ch) {
 
 /* clear ALL the working variables of a char and do NOT free any space
  * alloc'ed*/
-void clear_char(struct char_data *ch, int mode) {
+void clear_char(struct char_data* ch, int mode)
+{
     /* At every production call site, ch points to memory obtained via
      * CREATE()/calloc (raw, unconstructed storage), never to a char_data that has
      * already run its constructor. Placement-new value-initializes it in place:
@@ -3740,8 +3776,9 @@ void clear_char(struct char_data *ch, int mode) {
     }
 }
 
-void clear_object(struct obj_data *obj) {
-    memset((char *)obj, 0, (size_t)sizeof(struct obj_data));
+void clear_object(struct obj_data* obj)
+{
+    memset((char*)obj, 0, (size_t)sizeof(struct obj_data));
 
     obj->item_number = -1;
     obj->in_room = NOWHERE;
@@ -3750,7 +3787,8 @@ void clear_object(struct obj_data *obj) {
 }
 
 /* initialize a new character only if prof is set */
-void init_char(struct char_data *ch) {
+void init_char(struct char_data* ch)
+{
     int i;
 
     set_title(ch);
@@ -3806,12 +3844,12 @@ void init_char(struct char_data *ch) {
     ch->damage_details.reset();
 
     /* The default preference flags */
-    PRF_FLAGS(ch) |= PRF_SPAM | PRF_NARRATE | PRF_CHAT | PRF_WIZ | PRF_SING | PRF_PROMPT |
-                     PRF_ECHO | PRF_SPINNER;
+    PRF_FLAGS(ch) |= PRF_SPAM | PRF_NARRATE | PRF_CHAT | PRF_WIZ | PRF_SING | PRF_PROMPT | PRF_ECHO | PRF_SPINNER;
 }
 
 /* returns the real number of the room with given virt number */
-int real_room(int virt) {
+int real_room(int virt)
+{
     int bot, top, mid;
 
     bot = 0;
@@ -3838,7 +3876,8 @@ int real_room(int virt) {
 }
 
 /* returns the real number of the monster with given virt number */
-int real_mobile(int virt) {
+int real_mobile(int virt)
+{
     int bot, top, mid;
     bot = 0;
     top = top_of_mobt;
@@ -3862,7 +3901,8 @@ int real_mobile(int virt) {
 }
 
 /* returns the real number of the object with given virt number */
-int real_object(int virt) {
+int real_object(int virt)
+{
     int bot, top, mid;
 
     bot = 0;
@@ -3886,7 +3926,8 @@ int real_object(int virt) {
     }
 }
 
-int real_program(int virt) {
+int real_program(int virt)
+{
     int tmp = 0;
 
     for (tmp = 0; tmp <= num_of_programs; tmp++) {
@@ -3902,10 +3943,11 @@ int real_program(int virt) {
     return tmp;
 }
 
-void load_mudlle(FILE *fp) {
+void load_mudlle(FILE* fp)
+{
     int tmp;
     char str[MAX_STRING_LENGTH];
-    char *tmpstr;
+    char* tmpstr;
 
     fgets(str, MAX_STRING_LENGTH, fp);
     tmpstr = str;
@@ -3929,9 +3971,10 @@ void load_mudlle(FILE *fp) {
     } while (1);
 }
 
-void boot_mudlle() {
+void boot_mudlle()
+{
     int i;
-    char *tmpstr;
+    char* tmpstr;
 
     for (i = 1; i <= num_of_programs; i++) {
         tmpstr = mobile_program[i];
@@ -3964,126 +4007,124 @@ void boot_crimes() { read_crime_file(); }
 namespace crime_json {
 namespace {
 
-void set_error(std::string *error_message, const std::string &message) {
-    if (error_message)
-        *error_message = message;
-}
-
-// Legacy on-disk format: CRIME_FILE (misc/crimelist) is a raw
-// concatenation of fwrite(crime_record + i, sizeof(crime_record_type), 1,
-// f) records (add_crime/forget_crimes, below). crime_record_type (db.h)
-// holds only int/sh_int fields, so its layout -- including any compiler-
-// inserted padding -- is identical on 32-bit and 64-bit x86 builds.
-// These offsetof-derived offsets therefore describe the real on-disk
-// bytes regardless of which ABI compiles this reader (the Task 1 ABI-
-// portability convention, applied via offsetof since crime_record_type is
-// a real, already-declared struct rather than a hand-reconstructed
-// historical format).
-constexpr size_t kCrimeTimeOffset = offsetof(crime_record_type, crime_time);
-constexpr size_t kCriminalOffset = offsetof(crime_record_type, criminal);
-constexpr size_t kVictimOffset = offsetof(crime_record_type, victim);
-constexpr size_t kCrimeOffset = offsetof(crime_record_type, crime);
-constexpr size_t kWitnessOffset = offsetof(crime_record_type, witness);
-constexpr size_t kWitnessTypeOffset = offsetof(crime_record_type, witness_type);
-constexpr size_t kRecordSize = sizeof(crime_record_type);
-
-bool read_i32_at(const std::string &bytes, size_t record_offset, size_t field_offset, int *value,
-                 std::string *error_message, const char *label) {
-    const size_t offset = record_offset + field_offset;
-    if (offset + 4 > bytes.size()) {
-        set_error(error_message, std::string("Truncated crime file while reading ") + label + ".");
-        return false;
+    void set_error(std::string* error_message, const std::string& message)
+    {
+        if (error_message)
+            *error_message = message;
     }
-    const uint32_t raw =
-        static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset])) |
-        (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8) |
-        (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 2])) << 16) |
-        (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 3])) << 24);
-    *value = static_cast<int>(raw);
-    return true;
-}
 
-bool read_i16_at(const std::string &bytes, size_t record_offset, size_t field_offset, sh_int *value,
-                 std::string *error_message, const char *label) {
-    const size_t offset = record_offset + field_offset;
-    if (offset + 2 > bytes.size()) {
-        set_error(error_message, std::string("Truncated crime file while reading ") + label + ".");
-        return false;
-    }
-    const uint16_t raw =
-        static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset])) |
-        (static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8);
-    *value = static_cast<sh_int>(static_cast<int16_t>(raw));
-    return true;
-}
+    // Legacy on-disk format: CRIME_FILE (misc/crimelist) is a raw
+    // concatenation of fwrite(crime_record + i, sizeof(crime_record_type), 1,
+    // f) records (add_crime/forget_crimes, below). crime_record_type (db.h)
+    // holds only int/sh_int fields, so its layout -- including any compiler-
+    // inserted padding -- is identical on 32-bit and 64-bit x86 builds.
+    // These offsetof-derived offsets therefore describe the real on-disk
+    // bytes regardless of which ABI compiles this reader (the Task 1 ABI-
+    // portability convention, applied via offsetof since crime_record_type is
+    // a real, already-declared struct rather than a hand-reconstructed
+    // historical format).
+    constexpr size_t kCrimeTimeOffset = offsetof(crime_record_type, crime_time);
+    constexpr size_t kCriminalOffset = offsetof(crime_record_type, criminal);
+    constexpr size_t kVictimOffset = offsetof(crime_record_type, victim);
+    constexpr size_t kCrimeOffset = offsetof(crime_record_type, crime);
+    constexpr size_t kWitnessOffset = offsetof(crime_record_type, witness);
+    constexpr size_t kWitnessTypeOffset = offsetof(crime_record_type, witness_type);
+    constexpr size_t kRecordSize = sizeof(crime_record_type);
 
-bool read_whole_file_contents(const char *path, std::string *bytes) {
-    FILE *file = std::fopen(path, "rb");
-    if (file == nullptr)
-        return false;
-
-    std::string loaded_bytes;
-    char buffer[4096];
-    bool read_ok = true;
-    while (true) {
-        const size_t bytes_read = std::fread(buffer, sizeof(char), sizeof(buffer), file);
-        if (bytes_read > 0)
-            loaded_bytes.append(buffer, bytes_read);
-        if (bytes_read < sizeof(buffer)) {
-            if (std::ferror(file))
-                read_ok = false;
-            break;
+    bool read_i32_at(const std::string& bytes, size_t record_offset, size_t field_offset, int* value,
+        std::string* error_message, const char* label)
+    {
+        const size_t offset = record_offset + field_offset;
+        if (offset + 4 > bytes.size()) {
+            set_error(error_message, std::string("Truncated crime file while reading ") + label + ".");
+            return false;
         }
-    }
-    std::fclose(file);
-
-    if (!read_ok)
-        return false;
-
-    *bytes = std::move(loaded_bytes);
-    return true;
-}
-
-// Temp-file + rename atomic write, matching mail.cpp/boards.cpp/pkill.cpp's pattern.
-bool write_file_contents_atomically(const std::string &path, const std::string &contents,
-                                    std::string *error_message) {
-    const std::string temp_path = path + ".tmp";
-
-    FILE *temp_file = std::fopen(temp_path.c_str(), "wb");
-    if (temp_file == nullptr) {
-        set_error(error_message, std::string("Unable to open temporary crime file '") + temp_path +
-                                     "': " + strerror(errno));
-        return false;
+        const uint32_t raw = static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset])) | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8) | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 2])) << 16) | (static_cast<uint32_t>(static_cast<unsigned char>(bytes[offset + 3])) << 24);
+        *value = static_cast<int>(raw);
+        return true;
     }
 
-    const size_t bytes_written =
-        contents.empty() ? 0
-                         : std::fwrite(contents.data(), sizeof(char), contents.size(), temp_file);
-    const int flush_result = std::fflush(temp_file);
-    const int close_result = std::fclose(temp_file);
-
-    if (bytes_written != contents.size() || flush_result != 0 || close_result != 0) {
-        std::remove(temp_path.c_str());
-        set_error(error_message,
-                  std::string("Failed to write temporary crime file '") + temp_path + "'.");
-        return false;
+    bool read_i16_at(const std::string& bytes, size_t record_offset, size_t field_offset, sh_int* value,
+        std::string* error_message, const char* label)
+    {
+        const size_t offset = record_offset + field_offset;
+        if (offset + 2 > bytes.size()) {
+            set_error(error_message, std::string("Truncated crime file while reading ") + label + ".");
+            return false;
+        }
+        const uint16_t raw = static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset])) | (static_cast<uint16_t>(static_cast<unsigned char>(bytes[offset + 1])) << 8);
+        *value = static_cast<sh_int>(static_cast<int16_t>(raw));
+        return true;
     }
 
-    if (rots_rename_replace(temp_path.c_str(), path.c_str()) != 0) {
-        const std::string rename_error = strerror(errno);
-        std::remove(temp_path.c_str());
-        set_error(error_message, "Failed to move temporary crime file into place: " + rename_error);
-        return false;
+    bool read_whole_file_contents(const char* path, std::string* bytes)
+    {
+        FILE* file = std::fopen(path, "rb");
+        if (file == nullptr)
+            return false;
+
+        std::string loaded_bytes;
+        char buffer[4096];
+        bool read_ok = true;
+        while (true) {
+            const size_t bytes_read = std::fread(buffer, sizeof(char), sizeof(buffer), file);
+            if (bytes_read > 0)
+                loaded_bytes.append(buffer, bytes_read);
+            if (bytes_read < sizeof(buffer)) {
+                if (std::ferror(file))
+                    read_ok = false;
+                break;
+            }
+        }
+        std::fclose(file);
+
+        if (!read_ok)
+            return false;
+
+        *bytes = std::move(loaded_bytes);
+        return true;
     }
 
-    return true;
-}
+    // Temp-file + rename atomic write, matching mail.cpp/boards.cpp/pkill.cpp's pattern.
+    bool write_file_contents_atomically(const std::string& path, const std::string& contents,
+        std::string* error_message)
+    {
+        const std::string temp_path = path + ".tmp";
+
+        FILE* temp_file = std::fopen(temp_path.c_str(), "wb");
+        if (temp_file == nullptr) {
+            set_error(error_message, std::string("Unable to open temporary crime file '") + temp_path + "': " + strerror(errno));
+            return false;
+        }
+
+        const size_t bytes_written = contents.empty() ? 0
+                                                      : std::fwrite(contents.data(), sizeof(char), contents.size(), temp_file);
+        const int flush_result = std::fflush(temp_file);
+        const int close_result = std::fclose(temp_file);
+
+        if (bytes_written != contents.size() || flush_result != 0 || close_result != 0) {
+            std::remove(temp_path.c_str());
+            set_error(error_message,
+                std::string("Failed to write temporary crime file '") + temp_path + "'.");
+            return false;
+        }
+
+        if (rots_rename_replace(temp_path.c_str(), path.c_str()) != 0) {
+            const std::string rename_error = strerror(errno);
+            std::remove(temp_path.c_str());
+            set_error(error_message, "Failed to move temporary crime file into place: " + rename_error);
+            return false;
+        }
+
+        return true;
+    }
 
 } // namespace
 
-bool legacy_crime_file_from_binary(const std::string &bytes,
-                                   std::vector<crime_record_type> *records,
-                                   std::string *error_message) {
+bool legacy_crime_file_from_binary(const std::string& bytes,
+    std::vector<crime_record_type>* records,
+    std::string* error_message)
+{
     if (records == nullptr) {
         set_error(error_message, "Crime records output parameter must not be null.");
         return false;
@@ -4099,14 +4140,14 @@ bool legacy_crime_file_from_binary(const std::string &bytes,
     parsed.reserve(num_records);
     for (size_t index = 0; index < num_records; ++index) {
         const size_t record_offset = index * kRecordSize;
-        crime_record_type record{};
+        crime_record_type record { };
         int crime_time = 0, crime = 0;
         sh_int criminal = 0, victim = 0, witness = 0, witness_type = 0;
         if (!read_i32_at(bytes, record_offset, kCrimeTimeOffset, &crime_time, error_message,
-                         "crime_time"))
+                "crime_time"))
             return false;
         if (!read_i16_at(bytes, record_offset, kCriminalOffset, &criminal, error_message,
-                         "criminal"))
+                "criminal"))
             return false;
         if (!read_i16_at(bytes, record_offset, kVictimOffset, &victim, error_message, "victim"))
             return false;
@@ -4115,7 +4156,7 @@ bool legacy_crime_file_from_binary(const std::string &bytes,
         if (!read_i16_at(bytes, record_offset, kWitnessOffset, &witness, error_message, "witness"))
             return false;
         if (!read_i16_at(bytes, record_offset, kWitnessTypeOffset, &witness_type, error_message,
-                         "witness_type"))
+                "witness_type"))
             return false;
 
         record.crime_time = crime_time;
@@ -4132,13 +4173,14 @@ bool legacy_crime_file_from_binary(const std::string &bytes,
     return true;
 }
 
-std::string serialize_crime_to_json(const CrimeStoreData &data) {
+std::string serialize_crime_to_json(const CrimeStoreData& data)
+{
     std::ostringstream output;
     output << "{\n";
     output << "  \"version\": " << data.version << ",\n";
     output << "  \"records\": [\n";
     for (size_t index = 0; index < data.records.size(); ++index) {
-        const crime_record_type &record = data.records[index];
+        const crime_record_type& record = data.records[index];
         output << "    {\n";
         output << "      \"crime_time\": " << record.crime_time << ",\n";
         output << "      \"criminal\": " << record.criminal << ",\n";
@@ -4156,8 +4198,9 @@ std::string serialize_crime_to_json(const CrimeStoreData &data) {
     return output.str();
 }
 
-bool deserialize_crime_from_json(const std::string &json, CrimeStoreData *data,
-                                 std::string *error_message) {
+bool deserialize_crime_from_json(const std::string& json, CrimeStoreData* data,
+    std::string* error_message)
+{
     if (data == nullptr) {
         set_error(error_message, "Crime store output parameter must not be null.");
         return false;
@@ -4165,42 +4208,42 @@ bool deserialize_crime_from_json(const std::string &json, CrimeStoreData *data,
 
     CrimeStoreData parsed;
     const bool ok = json_utils::JsonReader(json).parse_root_object(
-        [&](const std::string &key, json_utils::JsonReader *reader, std::string *nested_error) {
+        [&](const std::string& key, json_utils::JsonReader* reader, std::string* nested_error) {
             if (key == "version")
                 return reader->parse_integer(&parsed.version, nested_error);
             if (key == "records") {
                 return reader->parse_array(
-                    [&](json_utils::JsonReader *record_reader, std::string *record_error) {
-                        crime_record_type record{};
+                    [&](json_utils::JsonReader* record_reader, std::string* record_error) {
+                        crime_record_type record { };
                         int criminal = 0, victim = 0, witness = 0, witness_type = 0;
                         const bool record_ok = record_reader->parse_object(
-                            [&](const std::string &record_key,
-                                json_utils::JsonReader *nested_reader,
-                                std::string *nested_record_error) {
+                            [&](const std::string& record_key,
+                                json_utils::JsonReader* nested_reader,
+                                std::string* nested_record_error) {
                                 if (record_key == "crime_time")
                                     return nested_reader->parse_integer(&record.crime_time,
-                                                                        nested_record_error);
+                                        nested_record_error);
                                 if (record_key == "criminal")
                                     return nested_reader->parse_integer(&criminal,
-                                                                        nested_record_error);
+                                        nested_record_error);
                                 if (record_key == "victim")
                                     return nested_reader->parse_integer(&victim,
-                                                                        nested_record_error);
+                                        nested_record_error);
                                 if (record_key == "crime")
                                     return nested_reader->parse_integer(&record.crime,
-                                                                        nested_record_error);
+                                        nested_record_error);
                                 if (record_key == "witness")
                                     return nested_reader->parse_integer(&witness,
-                                                                        nested_record_error);
+                                        nested_record_error);
                                 if (record_key == "witness_type")
                                     return nested_reader->parse_integer(&witness_type,
-                                                                        nested_record_error);
+                                        nested_record_error);
                                 return nested_reader->skip_value(nested_record_error);
                             },
                             record_error);
                         if (!record_ok)
                             return false;
-                        for (int narrow_value : {criminal, victim, witness, witness_type}) {
+                        for (int narrow_value : { criminal, victim, witness, witness_type }) {
                             if (narrow_value < -32768 || narrow_value > 32767) {
                                 set_error(record_error, "criminal/victim/witness/witness_type must "
                                                         "fit in a signed 16-bit field.");
@@ -4233,13 +4276,14 @@ bool deserialize_crime_from_json(const std::string &json, CrimeStoreData *data,
     return true;
 }
 
-bool crime_record_equal(const crime_record_type &a, const crime_record_type &b) {
-    return a.crime_time == b.crime_time && a.criminal == b.criminal && a.victim == b.victim &&
-           a.crime == b.crime && a.witness == b.witness && a.witness_type == b.witness_type;
+bool crime_record_equal(const crime_record_type& a, const crime_record_type& b)
+{
+    return a.crime_time == b.crime_time && a.criminal == b.criminal && a.victim == b.victim && a.crime == b.crime && a.witness == b.witness && a.witness_type == b.witness_type;
 }
 
-bool crime_records_equal(const std::vector<crime_record_type> &a,
-                         const std::vector<crime_record_type> &b) {
+bool crime_records_equal(const std::vector<crime_record_type>& a,
+    const std::vector<crime_record_type>& b)
+{
     if (a.size() != b.size())
         return false;
     for (size_t index = 0; index < a.size(); ++index)
@@ -4248,10 +4292,11 @@ bool crime_records_equal(const std::vector<crime_record_type> &a,
     return true;
 }
 
-std::string crime_json_path(const std::string &legacy_path) { return legacy_path + ".json"; }
+std::string crime_json_path(const std::string& legacy_path) { return legacy_path + ".json"; }
 
-bool load_crime_json_store(const std::string &json_path, std::vector<crime_record_type> *records,
-                           std::string *error_message) {
+bool load_crime_json_store(const std::string& json_path, std::vector<crime_record_type>* records,
+    std::string* error_message)
+{
     std::string json_text;
     if (!read_whole_file_contents(json_path.c_str(), &json_text))
         return false;
@@ -4264,16 +4309,18 @@ bool load_crime_json_store(const std::string &json_path, std::vector<crime_recor
     return true;
 }
 
-bool write_crime_json_store(const std::string &json_path,
-                            const std::vector<crime_record_type> &records,
-                            std::string *error_message) {
+bool write_crime_json_store(const std::string& json_path,
+    const std::vector<crime_record_type>& records,
+    std::string* error_message)
+{
     CrimeStoreData data;
     data.records = records;
     return write_file_contents_atomically(json_path, serialize_crime_to_json(data), error_message);
 }
 
-bool crime_store_safe_to_overwrite(const std::string &json_path, std::string *error_message) {
-    FILE *probe = std::fopen(json_path.c_str(), "rb");
+bool crime_store_safe_to_overwrite(const std::string& json_path, std::string* error_message)
+{
+    FILE* probe = std::fopen(json_path.c_str(), "rb");
     if (probe == nullptr) {
         set_error(error_message, "");
         return true;
@@ -4284,7 +4331,8 @@ bool crime_store_safe_to_overwrite(const std::string &json_path, std::string *er
     return load_crime_json_store(json_path, &existing_records, error_message);
 }
 
-bool convert_legacy_crime_file(const char *legacy_path, std::string *error_message) {
+bool convert_legacy_crime_file(const char* legacy_path, std::string* error_message)
+{
     if (legacy_path == nullptr || !*legacy_path) {
         set_error(error_message, "Legacy crime path must not be empty.");
         return false;
@@ -4292,8 +4340,7 @@ bool convert_legacy_crime_file(const char *legacy_path, std::string *error_messa
 
     std::string legacy_bytes;
     if (!read_whole_file_contents(legacy_path, &legacy_bytes)) {
-        set_error(error_message, std::string("Failed to read legacy crime file '") + legacy_path +
-                                     "': " + strerror(errno));
+        set_error(error_message, std::string("Failed to read legacy crime file '") + legacy_path + "': " + strerror(errno));
         return false;
     }
 
@@ -4314,13 +4361,13 @@ bool convert_legacy_crime_file(const char *legacy_path, std::string *error_messa
     std::string verify_error;
     if (!deserialize_crime_from_json(json, &reparsed, &verify_error)) {
         set_error(error_message,
-                  "Verify-decode of freshly serialized JSON failed: " + verify_error);
+            "Verify-decode of freshly serialized JSON failed: " + verify_error);
         return false;
     }
 
     if (!crime_records_equal(decoded, reparsed.records)) {
         set_error(error_message,
-                  "Verify mismatch: re-decoded JSON does not equal the original legacy decode.");
+            "Verify mismatch: re-decoded JSON does not equal the original legacy decode.");
         return false;
     }
 
@@ -4336,8 +4383,7 @@ bool convert_legacy_crime_file(const char *legacy_path, std::string *error_messa
         // JSON is written and verified; the legacy file simply couldn't be
         // retired (matches mail_json/boards_json/pkill_json's "partial
         // success" contract -- report but don't fail, nothing is at risk).
-        set_error(error_message, std::string("Crime file converted but legacy rename to '") +
-                                     migrated_path + "' failed: " + strerror(errno));
+        set_error(error_message, std::string("Crime file converted but legacy rename to '") + migrated_path + "' failed: " + strerror(errno));
         return true;
     }
 
@@ -4347,8 +4393,9 @@ bool convert_legacy_crime_file(const char *legacy_path, std::string *error_messa
 
 } // namespace crime_json
 
-void record_crime(char_data *criminal, char_data *victim, int crime, int wit_type) {
-    struct char_data *tmpchar;
+void record_crime(char_data* criminal, char_data* victim, int crime, int wit_type)
+{
+    struct char_data* tmpchar;
 
     if (IS_NPC(victim) || (GET_LEVEL(victim) >= LEVEL_IMMORT) || (IS_NPC(criminal)))
         return;
@@ -4356,19 +4403,20 @@ void record_crime(char_data *criminal, char_data *victim, int crime, int wit_typ
         if ((tmpchar == criminal) || (IS_NPC(tmpchar)) || (GET_LEVEL(tmpchar) >= LEVEL_IMMORT))
             continue;
         add_crime(criminal->specials2.idnum, victim->specials2.idnum, tmpchar->specials2.idnum,
-                  crime, wit_type);
+            crime, wit_type);
     }
     return;
 }
 
-void read_crime_file() {
+void read_crime_file()
+{
     int tmp;
 
     num_of_crimes = 0;
     const std::string json_path = crime_json::crime_json_path(CRIME_FILE);
     std::vector<crime_record_type> loaded_records;
 
-    FILE *json_probe = fopen(json_path.c_str(), "rb");
+    FILE* json_probe = fopen(json_path.c_str(), "rb");
     if (json_probe != NULL) {
         fclose(json_probe);
         std::string error_message;
@@ -4382,7 +4430,7 @@ void read_crime_file() {
         /* No JSON store yet -- either a fresh install (no legacy file
          * either) or a legacy binary file waiting for its one-time
          * conversion. */
-        FILE *legacy_probe = fopen(CRIME_FILE, "rb");
+        FILE* legacy_probe = fopen(CRIME_FILE, "rb");
         if (legacy_probe == NULL) {
             log("Crime file does not exist, creating it.");
             CREATE1(crime_record, crime_record_type);
@@ -4392,8 +4440,7 @@ void read_crime_file() {
 
         std::string convert_error;
         if (!crime_json::convert_legacy_crime_file(CRIME_FILE, &convert_error)) {
-            log(("SYSERR: Failed converting legacy crime file '" + std::string(CRIME_FILE) +
-                 "' to JSON: " + convert_error)
+            log(("SYSERR: Failed converting legacy crime file '" + std::string(CRIME_FILE) + "' to JSON: " + convert_error)
                     .c_str());
             CREATE1(crime_record, crime_record_type);
             return;
@@ -4405,8 +4452,7 @@ void read_crime_file() {
 
         std::string load_error;
         if (!crime_json::load_crime_json_store(json_path, &loaded_records, &load_error)) {
-            log(("SYSERR: Crime JSON file missing or malformed immediately after conversion: " +
-                 load_error)
+            log(("SYSERR: Crime JSON file missing or malformed immediately after conversion: " + load_error)
                     .c_str());
             CREATE1(crime_record, crime_record_type);
             return;
@@ -4429,12 +4475,13 @@ void read_crime_file() {
     }
 }
 
-void add_crime(int criminal, int victim, int witness, int crime, int wit_type) {
+void add_crime(int criminal, int victim, int witness, int crime, int wit_type)
+{
     int time_kill;
-    crime_record_type *tmprecord;
+    crime_record_type* tmprecord;
 
     if (know_of_crime(find_player_in_table("", criminal), find_player_in_table("", victim),
-                      find_player_in_table("", witness)))
+            find_player_in_table("", witness)))
         return;
     CREATE(tmprecord, crime_record_type, num_of_crimes + 1);
     memcpy(tmprecord, crime_record, num_of_crimes * sizeof(crime_record_type));
@@ -4463,8 +4510,7 @@ void add_crime(int criminal, int victim, int witness, int crime, int wit_type) {
     const std::string crime_json_path = crime_json::crime_json_path(CRIME_FILE);
     std::string safety_error;
     if (!crime_json::crime_store_safe_to_overwrite(crime_json_path, &safety_error)) {
-        log(("SYSERR: Crime JSON file '" + crime_json_path +
-             "' is malformed, refusing to overwrite: " + safety_error)
+        log(("SYSERR: Crime JSON file '" + crime_json_path + "' is malformed, refusing to overwrite: " + safety_error)
                 .c_str());
     } else {
         /* Persist the whole live crime set as JSON (idnum-keyed, matching the
@@ -4497,17 +4543,18 @@ void add_crime(int criminal, int victim, int witness, int crime, int wit_type) {
     num_of_crimes++;
 }
 
-int know_of_crime(int criminal, int victim, int witness) {
+int know_of_crime(int criminal, int victim, int witness)
+{
     int tmp;
 
     for (tmp = 0; tmp < num_of_crimes; tmp++)
-        if ((criminal == crime_record[tmp].criminal) && (victim == crime_record[tmp].victim) &&
-            (witness == crime_record[tmp].witness))
+        if ((criminal == crime_record[tmp].criminal) && (victim == crime_record[tmp].victim) && (witness == crime_record[tmp].witness))
             return 1;
     return 0;
 }
 
-void forget_crimes(char_data *ch, int criminal) {
+void forget_crimes(char_data* ch, int criminal)
+{
     int tmp, count, not_write;
 
     if (IS_NPC(ch) || !RACE_GOOD(ch))
@@ -4519,8 +4566,7 @@ void forget_crimes(char_data *ch, int criminal) {
                 count = 1;
     if (!(criminal == -1))
         for (tmp = 0; tmp < num_of_crimes; tmp++)
-            if ((crime_record[tmp].witness == find_player_in_table("", ch->specials2.idnum)) &&
-                (crime_record[tmp].criminal == find_player_in_table("", criminal)))
+            if ((crime_record[tmp].witness == find_player_in_table("", ch->specials2.idnum)) && (crime_record[tmp].criminal == find_player_in_table("", criminal)))
                 count = 1;
     if (!count)
         return;
@@ -4530,14 +4576,11 @@ void forget_crimes(char_data *ch, int criminal) {
 
     for (tmp = 0; tmp < num_of_crimes; tmp++) {
         if (criminal == -1) // -1 is forget all - player has died etc
-            not_write =
-                !(crime_record[tmp].witness == find_player_in_table("", ch->specials2.idnum));
+            not_write = !(crime_record[tmp].witness == find_player_in_table("", ch->specials2.idnum));
         else
-            not_write =
-                !((crime_record[tmp].witness == find_player_in_table("", ch->specials2.idnum)) &&
-                  (crime_record[tmp].criminal == find_player_in_table("", criminal)));
+            not_write = !((crime_record[tmp].witness == find_player_in_table("", ch->specials2.idnum)) && (crime_record[tmp].criminal == find_player_in_table("", criminal)));
         if (not_write) {
-            crime_record_type record{};
+            crime_record_type record { };
             record.crime_time = crime_record[tmp].crime_time;
             record.criminal = (player_table + crime_record[tmp].criminal)->idnum;
             record.victim = (player_table + crime_record[tmp].victim)->idnum;
@@ -4556,8 +4599,7 @@ void forget_crimes(char_data *ch, int criminal) {
     const std::string crime_json_path = crime_json::crime_json_path(CRIME_FILE);
     std::string safety_error;
     if (!crime_json::crime_store_safe_to_overwrite(crime_json_path, &safety_error)) {
-        log(("SYSERR: Crime JSON file '" + crime_json_path +
-             "' is malformed, refusing to overwrite: " + safety_error)
+        log(("SYSERR: Crime JSON file '" + crime_json_path + "' is malformed, refusing to overwrite: " + safety_error)
                 .c_str());
         return;
     }
@@ -4574,7 +4616,8 @@ void forget_crimes(char_data *ch, int criminal) {
 //*************************************************************************
 //*************************************************************************
 
-room_data::room_data() {
+room_data::room_data()
+{
     number = -1;
     zone = 0;
     level = 0;
@@ -4583,7 +4626,8 @@ room_data::room_data() {
     affected = NULL;
 }
 
-void dummy_room_data(room_data *room) {
+void dummy_room_data(room_data* room)
+{
     int tmp;
 
     room->name = str_dup("New room");
@@ -4601,20 +4645,23 @@ void dummy_room_data(room_data *room) {
     room->room_flags = 0;
     room->light = 0;
 }
-room_data_extension::room_data_extension() {
+room_data_extension::room_data_extension()
+{
     int tmp;
     CREATE(extension_world, room_data, EXTENSION_SIZE);
     for (tmp = 0; tmp < EXTENSION_SIZE; tmp++)
         dummy_room_data(extension_world + tmp);
     extension_next = 0;
 }
-room_data_extension::~room_data_extension() {
+room_data_extension::~room_data_extension()
+{
     if (extension_next)
         delete extension_next;
     RELEASE(extension_world);
 }
 
-void room_data::create_exit(int dir, int room, char connect) {
+void room_data::create_exit(int dir, int room, char connect)
+{
     int this_room;
     extern int rev_dir[];
 
@@ -4646,12 +4693,13 @@ void room_data::create_exit(int dir, int room, char connect) {
     //  printf("create exift returns\n");
 }
 //************************************************************************
-int room_data::create_room(int zone) {
+int room_data::create_room(int zone)
+{
     // here adding a room, returns the real number of the room
 
     int place;
-    room_data_extension *ext;
-    room_data *new_room;
+    room_data_extension* ext;
+    room_data* new_room;
     // checking the base first
 
     new_room = 0;
@@ -4710,7 +4758,8 @@ int room_data::create_room(int zone) {
  * database have been counted.  It allocates as many rooms as
  * are needed on boot.
  */
-void room_data::create_bulk(int amount) {
+void room_data::create_bulk(int amount)
+{
     int tmp;
 
     if (BASE_WORLD != 0) {
@@ -4737,15 +4786,17 @@ void room_data::create_bulk(int amount) {
     BASE_EXTENSION = 0;
 }
 //**********************************************************************
-void room_data::delete_room() {
+void room_data::delete_room()
+{
     printf("room_data desctructor was called.\n");
     if (BASE_EXTENSION)
         delete BASE_EXTENSION;
 }
 
-room_data &room_data::operator[](int i) {
+room_data& room_data::operator[](int i)
+{
     int offset;
-    room_data_extension *ext;
+    room_data_extension* ext;
 
     if (!BASE_WORLD) {
         // Was exit(0): a filtered/subset gtest run that reaches world[]
@@ -4775,7 +4826,7 @@ room_data &room_data::operator[](int i) {
         }
         if (!ext) {
             strcpy(buf,
-                   std::format("room_data called for a room outside the world, {}\n", i).c_str());
+                std::format("room_data called for a room outside the world, {}\n", i).c_str());
             mudlog(buf, NRM, LEVEL_GRGOD, TRUE);
             if (i == r_immort_start_room)
                 exit(0);
@@ -4789,22 +4840,21 @@ room_data &room_data::operator[](int i) {
     return *(BASE_WORLD + i);
 }
 
-void write_exploits(char_data *ch, exploit_record *record) {
+void write_exploits(char_data* ch, exploit_record* record)
+{
     if (ch != nullptr && ch->desc != nullptr && *ch->desc->account_name != '\0') {
         account::AccountData account_data;
         std::string account_error;
         if (account::read_account_file(".", ch->desc->account_name, &account_data,
-                                       &account_error) &&
-            !account::account_has_character(account_data, GET_NAME(ch))) {
+                &account_error)
+            && !account::account_has_character(account_data, GET_NAME(ch))) {
             return;
         }
     }
 
     std::string error_message;
     if (!write_exploit_record_for_character(".", GET_NAME(ch), *record, &error_message)) {
-        strcpy(buf, std::format("**ERROR: Could not persist exploit file for character: {}",
-                                error_message)
-                        .c_str());
+        strcpy(buf, std::format("**ERROR: Could not persist exploit file for character: {}", error_message).c_str());
         mudlog(buf, NRM, LEVEL_IMMORT, TRUE);
     } else {
         // Anti-rollback: an exploit record (PK -> killer; death/level/stat/birth/... -> victim)
@@ -4818,7 +4868,8 @@ void write_exploits(char_data *ch, exploit_record *record) {
 
 namespace {
 
-void set_db_error(std::string *error_message, const std::string &message) {
+void set_db_error(std::string* error_message, const std::string& message)
+{
     if (error_message)
         *error_message = message;
 }
@@ -4835,31 +4886,32 @@ enum class LegacyExploitConversionOutcome {
     kSuccess, // Converted (and, unless the trailing rename itself failed, retired the legacy file).
     kContentCorrupt, // Legacy bytes are malformed (size isn't a multiple of the record size):
                      // unrecoverable, safe to discard.
-    kInfraFailure,   // Read/verify/write failure unrelated to the legacy file's content: leave the
-                     // legacy file untouched.
+    kInfraFailure, // Read/verify/write failure unrelated to the legacy file's content: leave the
+                   // legacy file untouched.
 };
 
 // Forward declarations: Task 6's runtime-exploit-file JSON helpers are
 // defined below (near open_secure_temp_output_file, which they build on),
 // but load_exploit_history_bytes (defined above that point) needs to call
 // them.
-std::string exploits_json_path_for_legacy(const std::string &legacy_path);
+std::string exploits_json_path_for_legacy(const std::string& legacy_path);
 LegacyExploitConversionOutcome
-convert_legacy_runtime_exploit_file(const std::string &legacy_path,
-                                    std::vector<exploit_record> *decoded_records,
-                                    std::string *error_message);
+convert_legacy_runtime_exploit_file(const std::string& legacy_path,
+    std::vector<exploit_record>* decoded_records,
+    std::string* error_message);
 
-bool read_binary_file_contents(const std::string &path, std::string *contents,
-                               std::string *error_message) {
+bool read_binary_file_contents(const std::string& path, std::string* contents,
+    std::string* error_message)
+{
     if (contents == nullptr) {
         set_db_error(error_message, "Output buffer must not be null.");
         return false;
     }
 
-    FILE *file = std::fopen(path.c_str(), "rb");
+    FILE* file = std::fopen(path.c_str(), "rb");
     if (file == nullptr) {
         set_db_error(error_message,
-                     "Failed to open file '" + path + "': " + std::string(strerror(errno)));
+            "Failed to open file '" + path + "': " + std::string(strerror(errno)));
         return false;
     }
 
@@ -4885,9 +4937,10 @@ bool read_binary_file_contents(const std::string &path, std::string *contents,
     return true;
 }
 
-bool load_exploit_history_bytes(const std::string &root_directory,
-                                const std::string &character_name, std::string *bytes,
-                                std::string *error_message) {
+bool load_exploit_history_bytes(const std::string& root_directory,
+    const std::string& character_name, std::string* bytes,
+    std::string* error_message)
+{
     if (bytes == nullptr) {
         set_db_error(error_message, "Exploit history output buffer must not be null.");
         return false;
@@ -4895,22 +4948,19 @@ bool load_exploit_history_bytes(const std::string &root_directory,
 
     std::string owner_account_name;
     if (!account::find_linked_character_owner_account(root_directory, character_name,
-                                                      &owner_account_name, error_message))
+            &owner_account_name, error_message))
         return false;
 
     if (!owner_account_name.empty()) {
         std::vector<exploit_record> account_records;
         if (account::read_account_exploit_file(root_directory, owner_account_name, character_name,
-                                               &account_records, error_message)) {
+                &account_records, error_message)) {
             if (!exploits_json::exploit_records_to_binary(account_records, bytes, error_message))
                 return false;
 
-            const std::string runtime_path =
-                account::legacy_exploits_file_path(root_directory, character_name);
+            const std::string runtime_path = account::legacy_exploits_file_path(root_directory, character_name);
             if (std::remove(runtime_path.c_str()) != 0 && errno != ENOENT) {
-                set_db_error(error_message, "Failed to retire legacy exploit file '" +
-                                                runtime_path +
-                                                "': " + std::string(strerror(errno)));
+                set_db_error(error_message, "Failed to retire legacy exploit file '" + runtime_path + "': " + std::string(strerror(errno)));
                 return false;
             }
 
@@ -4921,8 +4971,8 @@ bool load_exploit_history_bytes(const std::string &root_directory,
         bool account_file_exists = false;
         std::string inspect_error;
         if (!account::inspect_account_exploit_file(root_directory, owner_account_name,
-                                                   character_name, &account_file_exists,
-                                                   &inspect_error)) {
+                character_name, &account_file_exists,
+                &inspect_error)) {
             set_db_error(error_message, inspect_error);
             return false;
         }
@@ -4940,11 +4990,10 @@ bool load_exploit_history_bytes(const std::string &root_directory,
     // non-linked characters and by linked-but-not-yet-account-native
     // characters (see the fall-through above) -- both cases share the same
     // on-disk runtime file, so both benefit from the same JSON storage.
-    const std::string runtime_path =
-        account::legacy_exploits_file_path(root_directory, character_name);
+    const std::string runtime_path = account::legacy_exploits_file_path(root_directory, character_name);
     const std::string runtime_json_path = exploits_json_path_for_legacy(runtime_path);
 
-    FILE *json_file = std::fopen(runtime_json_path.c_str(), "rb");
+    FILE* json_file = std::fopen(runtime_json_path.c_str(), "rb");
     if (json_file != nullptr) {
         std::fclose(json_file);
         std::string json_text;
@@ -4957,8 +5006,7 @@ bool load_exploit_history_bytes(const std::string &root_directory,
             // Fail closed on malformed authoritative JSON: don't silently
             // discard runtime exploit history (matches the account-native
             // JSON handling above).
-            set_db_error(error_message, "Exploit JSON file '" + runtime_json_path +
-                                            "' is malformed: " + json_error);
+            set_db_error(error_message, "Exploit JSON file '" + runtime_json_path + "' is malformed: " + json_error);
             return false;
         }
 
@@ -4969,22 +5017,19 @@ bool load_exploit_history_bytes(const std::string &root_directory,
         return true;
     }
     if (errno != ENOENT) {
-        set_db_error(error_message, "Failed to open exploit file '" + runtime_json_path +
-                                        "': " + std::string(strerror(errno)));
+        set_db_error(error_message, "Failed to open exploit file '" + runtime_json_path + "': " + std::string(strerror(errno)));
         return false;
     }
 
-    FILE *runtime_file = std::fopen(runtime_path.c_str(), "rb");
+    FILE* runtime_file = std::fopen(runtime_path.c_str(), "rb");
     if (runtime_file != nullptr) {
         std::fclose(runtime_file);
 
         std::vector<exploit_record> decoded_records;
         std::string convert_error;
-        const LegacyExploitConversionOutcome outcome =
-            convert_legacy_runtime_exploit_file(runtime_path, &decoded_records, &convert_error);
+        const LegacyExploitConversionOutcome outcome = convert_legacy_runtime_exploit_file(runtime_path, &decoded_records, &convert_error);
 
-        if (outcome == LegacyExploitConversionOutcome::kSuccess ||
-            outcome == LegacyExploitConversionOutcome::kInfraFailure) {
+        if (outcome == LegacyExploitConversionOutcome::kSuccess || outcome == LegacyExploitConversionOutcome::kInfraFailure) {
             // kSuccess: the JSON store now holds this data (converted and,
             // barring a failed retirement rename, the legacy file is gone).
             // kInfraFailure: an environmental problem (read I/O error,
@@ -5008,13 +5053,11 @@ bool load_exploit_history_bytes(const std::string &root_directory,
         // forever -- there is no authoritative alternative to fail closed
         // to, for a character with no account-native history.
         if (std::remove(runtime_path.c_str()) != 0 && errno != ENOENT) {
-            set_db_error(error_message, "Failed to remove malformed exploit file '" + runtime_path +
-                                            "': " + std::string(strerror(errno)));
+            set_db_error(error_message, "Failed to remove malformed exploit file '" + runtime_path + "': " + std::string(strerror(errno)));
             return false;
         }
     } else if (errno != ENOENT) {
-        set_db_error(error_message, "Failed to open exploit file '" + runtime_path +
-                                        "': " + std::string(strerror(errno)));
+        set_db_error(error_message, "Failed to open exploit file '" + runtime_path + "': " + std::string(strerror(errno)));
         return false;
     }
 
@@ -5023,21 +5066,21 @@ bool load_exploit_history_bytes(const std::string &root_directory,
     return true;
 }
 
-FILE *open_secure_temp_output_file(const std::string &path, std::string *error_message) {
+FILE* open_secure_temp_output_file(const std::string& path, std::string* error_message)
+{
 #if defined PREDEF_PLATFORM_LINUX
     const int file_descriptor = open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
     if (file_descriptor < 0) {
-        set_db_error(error_message, "Failed to open temporary exploit file '" + path +
-                                        "': " + std::string(strerror(errno)));
+        set_db_error(error_message, "Failed to open temporary exploit file '" + path + "': " + std::string(strerror(errno)));
         return nullptr;
     }
 
-    FILE *file = fdopen(file_descriptor, "wb");
+    FILE* file = fdopen(file_descriptor, "wb");
     if (file == nullptr) {
         close(file_descriptor);
         std::remove(path.c_str());
         set_db_error(error_message,
-                     "Failed to create stream for temporary exploit file '" + path + "'.");
+            "Failed to create stream for temporary exploit file '" + path + "'.");
         return nullptr;
     }
 
@@ -5058,21 +5101,19 @@ FILE *open_secure_temp_output_file(const std::string &path, std::string *error_m
     // actually needs (never silently overwrite something already at `path`)
     // holds without a separate check.
     int file_descriptor = -1;
-    const errno_t open_error =
-        _sopen_s(&file_descriptor, path.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY,
-                 _SH_DENYNO, _S_IREAD | _S_IWRITE);
+    const errno_t open_error = _sopen_s(&file_descriptor, path.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY,
+        _SH_DENYNO, _S_IREAD | _S_IWRITE);
     if (open_error != 0) {
-        set_db_error(error_message, "Failed to open temporary exploit file '" + path +
-                                        "': " + std::string(strerror(open_error)));
+        set_db_error(error_message, "Failed to open temporary exploit file '" + path + "': " + std::string(strerror(open_error)));
         return nullptr;
     }
 
-    FILE *file = _fdopen(file_descriptor, "wb");
+    FILE* file = _fdopen(file_descriptor, "wb");
     if (file == nullptr) {
         _close(file_descriptor);
         std::remove(path.c_str());
         set_db_error(error_message,
-                     "Failed to create stream for temporary exploit file '" + path + "'.");
+            "Failed to create stream for temporary exploit file '" + path + "'.");
         return nullptr;
     }
 
@@ -5090,22 +5131,23 @@ FILE *open_secure_temp_output_file(const std::string &path, std::string *error_m
 // -> rename legacy to '.migrated'), mirroring the mail_json/boards_json/
 // pkill_json/crime_json converters. Account-linked behavior (the
 // `!owner_account_name.empty()` branches above/below) is unchanged.
-std::string exploits_json_path_for_legacy(const std::string &legacy_path) {
+std::string exploits_json_path_for_legacy(const std::string& legacy_path)
+{
     return legacy_path + ".json";
 }
 
 // Generalizes open_secure_temp_output_file's temp+rename write for text
 // (JSON) content, rather than exploit_record binary bytes.
-bool write_text_file_atomically(const std::string &path, const std::string &contents,
-                                std::string *error_message) {
+bool write_text_file_atomically(const std::string& path, const std::string& contents,
+    std::string* error_message)
+{
     const std::string temp_path = path + ".tmp";
 
-    FILE *file = open_secure_temp_output_file(temp_path, error_message);
+    FILE* file = open_secure_temp_output_file(temp_path, error_message);
     if (file == nullptr)
         return false;
 
-    const size_t bytes_written =
-        contents.empty() ? 0 : std::fwrite(contents.data(), sizeof(char), contents.size(), file);
+    const size_t bytes_written = contents.empty() ? 0 : std::fwrite(contents.data(), sizeof(char), contents.size(), file);
     const int close_result = std::fclose(file);
 
     if (bytes_written != contents.size() || close_result != 0) {
@@ -5116,8 +5158,7 @@ bool write_text_file_atomically(const std::string &path, const std::string &cont
 
     if (rots_rename_replace(temp_path.c_str(), path.c_str()) != 0) {
         std::remove(temp_path.c_str());
-        set_db_error(error_message, "Failed to move temporary exploit file into place: " +
-                                        std::string(strerror(errno)));
+        set_db_error(error_message, "Failed to move temporary exploit file into place: " + std::string(strerror(errno)));
         return false;
     }
 
@@ -5135,15 +5176,16 @@ bool write_text_file_atomically(const std::string &path, const std::string &cont
 // playing right now) must keep failing closed on a pre-existing tmp instead
 // (see DbLoader.FailsClosedWhenTemporaryExploitPathAlreadyExists), so it
 // calls write_text_file_atomically directly rather than through this helper.
-bool write_text_file_atomically_clearing_stale_tmp(const std::string &path,
-                                                   const std::string &contents,
-                                                   std::string *error_message) {
+bool write_text_file_atomically_clearing_stale_tmp(const std::string& path,
+    const std::string& contents,
+    std::string* error_message)
+{
     if (write_text_file_atomically(path, contents, error_message))
         return true;
 
     const std::string temp_path = path + ".tmp";
 #if defined PREDEF_PLATFORM_LINUX
-    struct stat temp_stat{};
+    struct stat temp_stat { };
     // lstat (not stat): only clear a stale plain file, never follow/remove a
     // symlink planted at the tmp path.
     if (lstat(temp_path.c_str(), &temp_stat) != 0 || !S_ISREG(temp_stat.st_mode))
@@ -5160,8 +5202,7 @@ bool write_text_file_atomically_clearing_stale_tmp(const std::string &path,
     // POSIX branch. Only clear a plain file (reject missing paths,
     // directories, and reparse points).
     const DWORD attributes = GetFileAttributesA(temp_path.c_str());
-    if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) ||
-        (attributes & FILE_ATTRIBUTE_REPARSE_POINT))
+    if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) || (attributes & FILE_ATTRIBUTE_REPARSE_POINT))
         return false;
 #endif
 
@@ -5178,9 +5219,10 @@ bool write_text_file_atomically_clearing_stale_tmp(const std::string &path,
 // and why they must be handled differently -- in short: kContentCorrupt is
 // the only outcome where it is safe to discard the legacy file.
 LegacyExploitConversionOutcome
-convert_legacy_runtime_exploit_file(const std::string &legacy_path,
-                                    std::vector<exploit_record> *decoded_records,
-                                    std::string *error_message) {
+convert_legacy_runtime_exploit_file(const std::string& legacy_path,
+    std::vector<exploit_record>* decoded_records,
+    std::string* error_message)
+{
     std::string legacy_bytes;
     if (!read_binary_file_contents(legacy_path, &legacy_bytes, error_message)) {
         // Could not even read the legacy file (I/O error, permissions,
@@ -5193,7 +5235,7 @@ convert_legacy_runtime_exploit_file(const std::string &legacy_path,
 
     if (!exploits_json::exploit_records_from_binary(legacy_bytes, decoded_records, error_message)) {
         set_db_error(error_message,
-                     "Decode failed: " + (error_message ? *error_message : std::string()));
+            "Decode failed: " + (error_message ? *error_message : std::string()));
         return LegacyExploitConversionOutcome::kContentCorrupt;
     }
 
@@ -5211,12 +5253,12 @@ convert_legacy_runtime_exploit_file(const std::string &legacy_path,
     std::string verify_error;
     if (!exploits_json::deserialize_exploits_from_json(json, &reparsed, &verify_error)) {
         set_db_error(error_message,
-                     "Verify-decode of freshly serialized JSON failed: " + verify_error);
+            "Verify-decode of freshly serialized JSON failed: " + verify_error);
         return LegacyExploitConversionOutcome::kInfraFailure;
     }
     if (!exploits_json::exploit_records_equal(*decoded_records, reparsed.records)) {
         set_db_error(error_message,
-                     "Verify mismatch: re-decoded JSON does not equal the original legacy decode.");
+            "Verify mismatch: re-decoded JSON does not equal the original legacy decode.");
         return LegacyExploitConversionOutcome::kInfraFailure;
     }
 
@@ -5236,9 +5278,7 @@ convert_legacy_runtime_exploit_file(const std::string &legacy_path,
         // JSON is written and verified; the legacy file simply couldn't be
         // retired (matches the other Task 6 converters' "partial success"
         // contract -- report but don't fail, nothing is at risk).
-        set_db_error(error_message, "Exploit file converted but legacy rename to '" +
-                                        migrated_path +
-                                        "' failed: " + std::string(strerror(errno)));
+        set_db_error(error_message, "Exploit file converted but legacy rename to '" + migrated_path + "' failed: " + std::string(strerror(errno)));
         return LegacyExploitConversionOutcome::kSuccess;
     }
 
@@ -5248,10 +5288,11 @@ convert_legacy_runtime_exploit_file(const std::string &legacy_path,
 
 } // namespace
 
-bool load_exploit_records_for_character(const std::string &root_directory,
-                                        const std::string &character_name,
-                                        std::vector<exploit_record> *records,
-                                        std::string *error_message) {
+bool load_exploit_records_for_character(const std::string& root_directory,
+    const std::string& character_name,
+    std::vector<exploit_record>* records,
+    std::string* error_message)
+{
     if (records == nullptr) {
         set_db_error(error_message, "Exploit record output vector must not be null.");
         return false;
@@ -5269,31 +5310,30 @@ bool load_exploit_records_for_character(const std::string &root_directory,
     return true;
 }
 
-bool write_exploit_record_for_character(const std::string &root_directory,
-                                        const std::string &character_name,
-                                        const exploit_record &record, std::string *error_message) {
+bool write_exploit_record_for_character(const std::string& root_directory,
+    const std::string& character_name,
+    const exploit_record& record, std::string* error_message)
+{
     std::vector<exploit_record> records;
     if (!load_exploit_records_for_character(root_directory, character_name, &records,
-                                            error_message))
+            error_message))
         return false;
 
     records.insert(records.begin(), record);
 
     std::string owner_account_name;
     if (!account::find_linked_character_owner_account(root_directory, character_name,
-                                                      &owner_account_name, error_message))
+            &owner_account_name, error_message))
         return false;
 
     if (!owner_account_name.empty()) {
         if (!account::write_account_exploit_file(root_directory, owner_account_name, character_name,
-                                                 records, error_message))
+                records, error_message))
             return false;
 
-        const std::string runtime_path =
-            account::legacy_exploits_file_path(root_directory, character_name);
+        const std::string runtime_path = account::legacy_exploits_file_path(root_directory, character_name);
         if (std::remove(runtime_path.c_str()) != 0 && errno != ENOENT) {
-            set_db_error(error_message, "Failed to retire legacy exploit file '" + runtime_path +
-                                            "': " + std::string(strerror(errno)));
+            set_db_error(error_message, "Failed to retire legacy exploit file '" + runtime_path + "': " + std::string(strerror(errno)));
             return false;
         }
 
@@ -5308,8 +5348,7 @@ bool write_exploit_record_for_character(const std::string &root_directory,
     history.records = records;
     const std::string json = exploits_json::serialize_exploits_to_json(history);
 
-    const std::string runtime_path =
-        account::legacy_exploits_file_path(root_directory, character_name);
+    const std::string runtime_path = account::legacy_exploits_file_path(root_directory, character_name);
     const std::string runtime_json_path = exploits_json_path_for_legacy(runtime_path);
 
     if (!write_text_file_atomically(runtime_json_path, json, error_message))
@@ -5319,8 +5358,7 @@ bool write_exploit_record_for_character(const std::string &root_directory,
     // will already have migrated/retired any legacy binary file it found,
     // but remove it here too in case one reappeared since then.
     if (std::remove(runtime_path.c_str()) != 0 && errno != ENOENT) {
-        set_db_error(error_message, "Failed to retire legacy exploit file '" + runtime_path +
-                                        "': " + std::string(strerror(errno)));
+        set_db_error(error_message, "Failed to retire legacy exploit file '" + runtime_path + "': " + std::string(strerror(errno)));
         return false;
     }
 
@@ -5328,10 +5366,11 @@ bool write_exploit_record_for_character(const std::string &root_directory,
     return true;
 }
 
-bool load_object_save_data_for_character(const std::string &root_directory,
-                                         const std::string &character_name,
-                                         objects_json::ObjectSaveData *data,
-                                         std::string *error_message) {
+bool load_object_save_data_for_character(const std::string& root_directory,
+    const std::string& character_name,
+    objects_json::ObjectSaveData* data,
+    std::string* error_message)
+{
     if (data == nullptr) {
         set_db_error(error_message, "Object-save output parameter must not be null.");
         return false;
@@ -5339,20 +5378,20 @@ bool load_object_save_data_for_character(const std::string &root_directory,
 
     std::string owner_account_name;
     if (!account::find_linked_character_owner_account(root_directory, character_name,
-                                                      &owner_account_name, error_message))
+            &owner_account_name, error_message))
         return false;
 
     if (!owner_account_name.empty()) {
         if (account::read_account_object_data(root_directory, owner_account_name, character_name,
-                                              data, error_message))
+                data, error_message))
             return true;
 
         const std::string read_error = error_message ? *error_message : "";
         bool account_object_exists = false;
         std::string inspect_error;
         if (!account::inspect_account_object_file(root_directory, owner_account_name,
-                                                  character_name, &account_object_exists,
-                                                  &inspect_error)) {
+                character_name, &account_object_exists,
+                &inspect_error)) {
             set_db_error(error_message, inspect_error);
             return false;
         }
@@ -5362,9 +5401,8 @@ bool load_object_save_data_for_character(const std::string &root_directory,
         }
     }
 
-    const std::string runtime_path =
-        account::legacy_object_file_path(root_directory, character_name);
-    FILE *runtime_file = std::fopen(runtime_path.c_str(), "rb");
+    const std::string runtime_path = account::legacy_object_file_path(root_directory, character_name);
+    FILE* runtime_file = std::fopen(runtime_path.c_str(), "rb");
     if (runtime_file != nullptr) {
         std::fclose(runtime_file);
 
@@ -5386,7 +5424,7 @@ bool load_object_save_data_for_character(const std::string &root_directory,
         if (!objects_json::legacy_object_save_data_from_binary(
                 legacy_bytes, &decoded, &accepted_missing_follower_section, &decode_error)) {
             log(std::format("SYSERR: unable to decode account-staged object data for {}: {}",
-                            character_name, decode_error)
+                character_name, decode_error)
                     .c_str());
             *data = build_default_account_backed_object_data();
             set_db_error(error_message, "");
@@ -5399,8 +5437,7 @@ bool load_object_save_data_for_character(const std::string &root_directory,
     }
 
     if (errno != ENOENT) {
-        set_db_error(error_message, "Failed to open object file '" + runtime_path +
-                                        "': " + std::string(strerror(errno)));
+        set_db_error(error_message, "Failed to open object file '" + runtime_path + "': " + std::string(strerror(errno)));
         return false;
     }
 
@@ -5409,33 +5446,33 @@ bool load_object_save_data_for_character(const std::string &root_directory,
     return true;
 }
 
-void add_exploit_record(int recordtype, char_data *victim, int iIntParam, const char *chParam) {
-    struct char_data *killer;
+void add_exploit_record(int recordtype, char_data* victim, int iIntParam, const char* chParam)
+{
+    struct char_data* killer;
     struct exploit_record exploitrec;
     int iFirstDeath = 0;
     // time_t (not long) for localtime() on Windows LLP64 -- Phase 3 Task 6.
     time_t ct;
-    char *tmstr;
+    char* tmstr;
 
     if (IS_NPC(victim) || (GET_LEVEL(victim) >= LEVEL_IMMORT))
         return;
 
     /* get time as a string */
     ct = time(0);
-    tmstr = (char *)asctime(localtime(&ct));
+    tmstr = (char*)asctime(localtime(&ct));
     *(tmstr + strlen(tmstr) - 1) = '\0';
     strcpy(exploitrec.chtime, std::format("{}", tmstr).c_str());
 
     // It's a PK record
     switch (recordtype) {
     case EXPLOIT_PK: {
-        std::set<char_data *> seen_chars;
+        std::set<char_data*> seen_chars;
         for (killer = combat_list; killer; killer = killer->next_fighting) {
             if (killer->specials.fighting == victim) {
-                char_data *cur_killer = killer;
+                char_data* cur_killer = killer;
                 if (IS_NPC(killer)) {
-                    if (killer->master &&
-                        (MOB_FLAGGED(killer, MOB_PET) || MOB_FLAGGED(killer, MOB_ORC_FRIEND))) {
+                    if (killer->master && (MOB_FLAGGED(killer, MOB_PET) || MOB_FLAGGED(killer, MOB_ORC_FRIEND))) {
                         cur_killer = killer->master;
                     }
                 }
@@ -5459,13 +5496,12 @@ void add_exploit_record(int recordtype, char_data *victim, int iIntParam, const 
     } break;
 
     case EXPLOIT_DEATH: {
-        std::set<char_data *> seen_chars;
+        std::set<char_data*> seen_chars;
         for (killer = combat_list; killer; killer = killer->next_fighting) {
             if (killer->specials.fighting == victim) {
-                char_data *cur_killer = killer;
+                char_data* cur_killer = killer;
                 if (IS_NPC(killer)) {
-                    if (killer->master &&
-                        (MOB_FLAGGED(killer, MOB_PET) || MOB_FLAGGED(killer, MOB_ORC_FRIEND))) {
+                    if (killer->master && (MOB_FLAGGED(killer, MOB_PET) || MOB_FLAGGED(killer, MOB_ORC_FRIEND))) {
                         cur_killer = killer->master;
                     }
                 }
@@ -5477,7 +5513,7 @@ void add_exploit_record(int recordtype, char_data *victim, int iIntParam, const 
                     exploitrec.shintVictimID = GET_IDNUM(cur_killer);
                     // killed by..
                     strcpy(exploitrec.chVictimName,
-                           std::format("{}", GET_NAME(cur_killer)).c_str());
+                        std::format("{}", GET_NAME(cur_killer)).c_str());
                     exploitrec.iVictimLevel = GET_LEVEL(victim);
                     exploitrec.iKillerLevel = GET_LEVEL(cur_killer);
                     // used to indicate separators between subsequent deaths.
@@ -5551,10 +5587,11 @@ void add_exploit_record(int recordtype, char_data *victim, int iIntParam, const 
     return;
 }
 
-int delete_exploits_file(char *name) {
+int delete_exploits_file(char* name)
+{
     char filename[70];
     char tname[60];
-    char *tmpchar;
+    char* tmpchar;
     char temp[100];
     strcpy(tname, name);
     for (tmpchar = tname; *tmpchar; tmpchar++)
@@ -5567,7 +5604,7 @@ int delete_exploits_file(char *name) {
     case 'd':
     case 'e':
         strcpy(filename,
-               std::format("exploits/A-E/{}.exploits", static_cast<const char *>(tname)).c_str());
+            std::format("exploits/A-E/{}.exploits", static_cast<const char*>(tname)).c_str());
         break;
     case 'f':
     case 'g':
@@ -5575,7 +5612,7 @@ int delete_exploits_file(char *name) {
     case 'i':
     case 'j':
         strcpy(filename,
-               std::format("exploits/F-J/{}.exploits", static_cast<const char *>(tname)).c_str());
+            std::format("exploits/F-J/{}.exploits", static_cast<const char*>(tname)).c_str());
         break;
     case 'k':
     case 'l':
@@ -5583,7 +5620,7 @@ int delete_exploits_file(char *name) {
     case 'n':
     case 'o':
         strcpy(filename,
-               std::format("exploits/K-O/{}.exploits", static_cast<const char *>(tname)).c_str());
+            std::format("exploits/K-O/{}.exploits", static_cast<const char*>(tname)).c_str());
         break;
     case 'p':
     case 'q':
@@ -5591,7 +5628,7 @@ int delete_exploits_file(char *name) {
     case 's':
     case 't':
         strcpy(filename,
-               std::format("exploits/P-T/{}.exploits", static_cast<const char *>(tname)).c_str());
+            std::format("exploits/P-T/{}.exploits", static_cast<const char*>(tname)).c_str());
         break;
     case 'u':
     case 'v':
@@ -5600,14 +5637,14 @@ int delete_exploits_file(char *name) {
     case 'y':
     case 'z':
         strcpy(filename,
-               std::format("exploits/U-Z/{}.exploits", static_cast<const char *>(tname)).c_str());
+            std::format("exploits/U-Z/{}.exploits", static_cast<const char*>(tname)).c_str());
         break;
     default:
         strcpy(filename,
-               std::format("exploits/ZZZ/{}.exploits", static_cast<const char *>(tname)).c_str());
+            std::format("exploits/ZZZ/{}.exploits", static_cast<const char*>(tname)).c_str());
         break;
     }
-    strcpy(temp, std::format("Deleting trophy file: {}", static_cast<const char *>(tname)).c_str());
+    strcpy(temp, std::format("Deleting trophy file: {}", static_cast<const char*>(tname)).c_str());
     mudlog(temp, NRM, LEVEL_IMMORT, TRUE);
 
     // no checks, because file might not even exist
@@ -5624,12 +5661,12 @@ int delete_exploits_file(char *name) {
     return (1);
 }
 
-int rename_char(struct char_data *ch, char *newname) {
+int rename_char(struct char_data* ch, char* newname)
+{
     char namebuf[64], *c, new_exploit_file[64], old_exploit_file[64];
     int player_i, i;
 
-    if ((!*newname || !ch) || (find_player_in_table(newname, -1) != -1) ||
-        (!Crash_get_filename(GET_NAME(ch), buf)) || ((player_i = find_name(GET_NAME(ch))) < 0))
+    if ((!*newname || !ch) || (find_player_in_table(newname, -1) != -1) || (!Crash_get_filename(GET_NAME(ch), buf)) || ((player_i = find_name(GET_NAME(ch))) < 0))
         return -1;
 
     /* note this in exploits, i hate the ! on NOTE, so we use ACHIEVEMENT */
@@ -5653,7 +5690,7 @@ int rename_char(struct char_data *ch, char *newname) {
     get_char_directory(newname, namebuf);
     strcpy(
         new_exploit_file,
-        std::format("exploits{}{}.exploits", static_cast<const char *>(namebuf), newname).c_str());
+        std::format("exploits{}{}.exploits", static_cast<const char*>(namebuf), newname).c_str());
 
     /* get the name of the old exploit file */
     get_char_directory(GET_NAME(ch), namebuf);
@@ -5662,9 +5699,9 @@ int rename_char(struct char_data *ch, char *newname) {
         *c = tolower(unaccent(*c));
 
     strcpy(old_exploit_file,
-           std::format("exploits{}{}.exploits", static_cast<const char *>(namebuf),
-                       static_cast<const char *>(buf))
-               .c_str());
+        std::format("exploits{}{}.exploits", static_cast<const char*>(namebuf),
+            static_cast<const char*>(buf))
+            .c_str());
 
     /* now move the exploits */
     // Was system("mv <old_exploit_file> <new_exploit_file>"); the return

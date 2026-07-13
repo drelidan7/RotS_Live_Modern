@@ -149,3 +149,10 @@ GNU: zero blanket flags; 3 pragma clusters (act_info aliasing 15, utility 7, scr
 ### Phase 5 status vs parent spec
 
 Warnings clean + enforced: DONE (beyond spec — all four platforms, not just GNU). Sanitizers in CI: DONE (required, not just present). -funsigned-char: RESOLVED by pin (sanctioned option). clang-tidy: DONE (advisory). 32-bit retirement: MOVED to its own phase. **The parent modernization spec's Phase 5 exit criteria are met**; remaining items live on the backlog above.
+
+### Exit-note amendment (final-review M1-M5, 2026-07-13)
+
+- Suppression ledger addendum: the script.cpp tautological-compare pragma (T5) and C4804 fix-vs-suppress pair (T9) are ledgered in their task reports; recorded here for completeness (M1).
+- Backlog additions from review-logged Minors (M2-M4): gtest_main nullptr-world first-call-wins semantics (comment recommended); interpre.cpp incidental whitespace-format spots (Wave 3 carry); report-accuracy nits are recorded in the ledger only.
+- Correction (M5): T9's /WX validation cited run 29210731880 — its six REQUIRED jobs were green; the run-level conclusion reads "cancelled" solely because the ADVISORY clang-tidy job hit its (since-fixed) 30-min timeout. Job-level claims stand; final validation is run 29214544984 on tip e4caad0.
+- Re-homed: Phase 3's "consolidate Windows operational gaps" recommendation now lives on the parent-spec backlog (Windows boot smoke still deferred pending a Windows host + world data).

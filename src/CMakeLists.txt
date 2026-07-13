@@ -277,6 +277,7 @@ if(ROTS_BUILD_TESTS)
         tests/startup_options_tests.cpp
         tests/test_random_utils.cpp
         tests/test_random_utils_tests.cpp
+        tests/text_view_tests.cpp
         tests/utility_format_tests.cpp
         tests/weapon_master_handler_tests.cpp
         tests/zone_tests.cpp

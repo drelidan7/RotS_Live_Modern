@@ -287,8 +287,47 @@ fields are explicitly excluded from T3+ and the audit's greenlit set stands as �
 
 ## 6. Instance-ownership feasibility verdict (`unique_ptr<char_data, free_char_deleter>`)
 
-**Verdict: FEASIBLE but blocked on a teardown-symmetry fix; sequence it LAST (T6),
-and only after the CONDITIONAL question (T2) is settled.**
+**Verdict: CONVERTED (RAII T6, 2026-07-13).** The teardown-symmetry fix and the
+factory both landed. See task-6-report.md for the full write-up.
+
+- **T6a — teardown symmetry.** `free_char` (`db.cpp`) now calls `ch->~char_data();`
+  immediately before `RELEASE(ch)`, replacing the per-member hand teardown
+  (the T3 `skills`/`knowledge` move-assign-empty, the T4 `alias.reset()`, the
+  T5b `poofIn`/`poofOut` empty-string assigns, `extra_specialization_data.reset()`,
+  `damage_details.reset()`). The implicit destructor destroys exactly those owning
+  members and **nothing else** — the CONDITIONAL prototype-shared `char*` strings
+  (`name`/`title`/`short_descr`/`long_descr`/`description`/`profs`) and the raw
+  special-mob script pointers are POD with no destructor, so the destructor leaves
+  them untouched and the existing `IS_NPC`-guarded `RELEASE` block (freeing them
+  only for PCs / `nr == -1`) is UNCHANGED. That guard is what prevents the
+  double-free-the-prototype hazard for a normal NPC whose strings alias
+  `mob_proto[nr]`. The `affected`-chain drain and the skills SYSERR diagnostic
+  still run before the destructor while `ch` is alive. Construct/teardown are now
+  symmetric: calloc + placement-new (`clear_char`/`read_mobile`) ↔ explicit-dtor +
+  gated free (`free_char`). ASan-clean across the full suite (incl. the stack-victim
+  `free_char` path in `CharacterizationCombatTest.DamageTranscriptSeed42`, safe
+  because the dying NPC victim's owning members are all empty).
+- **T6b — owning factory.** `char_data_ptr = std::unique_ptr<char_data,
+  free_char_deleter>` + `make_char_data(mode)` (db.h/db.cpp). `free_char_deleter`
+  calls the T6a-symmetric `free_char`. Clean-scope call sites CONVERTED:
+  `save_benchmark.cpp` (L5 store_to_char scratch) and `act_wiz.cpp` `do_wizstat`
+  "file" branch (also fixed a latent leak on its load-failure path). Sites that
+  remain MANUAL raw `CREATE`/`free_char` — world-graph / cross-function lifetime,
+  out of the single-owner model:
+  - `read_mobile` (`db.cpp:1474`) — NPC instances live on room people-lists.
+  - `interpre.cpp` (`:2931`, `:2957`, `:3737`) and `comm.cpp` (`:1971`) — the
+    login `d->character` body is bound to the descriptor (`->desc = d`,
+    `register_pc_char`) and lives across the connection; freed via `extract_char`.
+  - `handler.cpp` (`:2046`, `:2067`) — `extract_char`'s world-graph teardown.
+  - `act_wiz.cpp` `do_set` "file" (`:2740`) — `cbuf` aliases `vict` across a large
+    multi-exit command scope; not a clean single-owner region.
+  - `shapemob.cpp` (`:234`, `:1264`, `:1752`) — shape-proto storage owned by the
+    shape subsystem, not a local scope.
+  Two lifecycle unit tests added (`DbLoaderFactory.*`).
+
+**Original (pre-T6) verdict, retained for context: FEASIBLE but blocked on a
+teardown-symmetry fix; sequence it LAST (T6), and only after the CONDITIONAL
+question (T2) is settled.**
 
 - A `unique_ptr<char_data, free_char_deleter>` where `free_char_deleter` calls
   `free_char(p)` is mechanically straightforward and would give factory call sites
@@ -328,7 +367,7 @@ pass against unchanged source first.
 | **T3** | `skills` + `knowledge` → `std::vector<byte>` (see §4 for why `vector` over `array`). PC-only, unaliased, unconditional free. Preserve JSON/text save-load wire format. **DONE.** | **Low — CONVERTED** | T1 (this doc) |
 | **T4** | `specials.alias` list → owned `std::unique_ptr`/vector model. Preserve `MAX_ALIAS`/20-byte-keyword quirks. **DONE** (conservative RAII wrapper, not a node/container rewrite — see task-4-report.md). | **Medium — CONVERTED** | T1 |
 | **T5** | Decouple special-mob overload of `poofIn`/`poofOut`/`union1`/`union2` (the `SPECIAL_LIST_AREA` reuse) into typed fields, THEN convert the PC `poofIn`/`poofOut` to `std::string`. Also address the `union1.prog_number`/`union2.prog_point` leak (§2c) here. **DONE** — T5a (decouple onto `special_stack`/`special_list_area`/`special_prog_number`/`special_prog_point`, §2c leak fixed) + T5b (`std::string`). See task-5-report.md. | **High — CONVERTED** | T1 |
-| **T6** | `free_char` teardown-symmetry fix (explicit `~char_data()` before free) + `unique_ptr<char_data, free_char_deleter>` factory. ASan/Leak proof. | **High** | T3, T4, T5 (must destroy whatever they converted) |
+| **T6** | `free_char` teardown-symmetry fix (explicit `~char_data()` before free) + `unique_ptr<char_data, free_char_deleter>` factory. ASan/Leak proof. **DONE** — T6a (symmetric dtor in `free_char`) + T6b (`char_data_ptr`/`make_char_data`, clean-scope sites converted). See §6 and task-6-report.md. | **High — CONVERTED** | T3, T4, T5 (must destroy whatever they converted) |
 | **T7 (optional / gated on T2)** | Only if the owner funds option (b): interned/shared immutable prototype strings for the 11 CONDITIONAL fields. Separately scoped, characterization-heavy. | **Very High** | T2 ruling |
 | **(No task)** | The NON-OWNING world graph — explicitly out of scope, stays raw forever. | — | — |
 

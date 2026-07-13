@@ -1421,6 +1421,24 @@ TEST(ActWizInspection, DoUptimeFormatsUpSinceLineAndLastdeathBody)
     EXPECT_NE(output.find("Slain by a troll.\n\r"), std::string::npos) << output;
 }
 
+TEST(ActWizInspection, DoUptimeTreatsMissingLastdeathTextAsNoAdditionalOutput)
+{
+    SoloCharacterContext viewer;
+    const time_t previous_boot_time = boot_time;
+    char* previous_lastdeath = lastdeath;
+    boot_time = std::time(nullptr) - 5;
+    lastdeath = nullptr;
+    char argument[] = "";
+
+    do_uptime(&viewer.character, argument, nullptr, 0, 0);
+
+    boot_time = previous_boot_time;
+    lastdeath = previous_lastdeath;
+    const std::string output = viewer.descriptor.output;
+    EXPECT_NE(output.find("The last minutes of the previous run:\n\r"), std::string::npos)
+        << output;
+}
+
 // ---------------------------------------------------------------------------
 // do_vnum (act_wiz.cpp:397) -- no format site of its own; see file-header
 // exclusion note. Exercised lightly for completeness since it's in range.

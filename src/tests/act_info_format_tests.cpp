@@ -117,6 +117,7 @@ ACMD(do_rank);
 ACMD(do_compare);
 ACMD(do_stat);
 ACMD(do_exploits);
+ACMD(do_help);
 
 // Plain (non-ACMD) object-display helpers reached via do_identify_object's
 // ITEM_LIGHT/ITEM_FOOD/ITEM_WEAPON switch (act_info.cpp) -- exercised
@@ -155,6 +156,7 @@ extern struct time_info_data time_info;
 extern struct player_index_element* player_table;
 extern int top_of_p_table;
 extern struct descriptor_data* descriptor_list;
+extern char* help;
 
 namespace {
 
@@ -2382,6 +2384,19 @@ TEST(ActInfoSelfStatus, DoGenPsWhoamiEchoesCharacterNameWithCrlf)
 //    helper, is textually adjacent to do_whois but is NOT in this chunk's
 //    function list -- not converted or tested here (same exclusion pattern
 //    as Task 1/2's out-of-list static helpers).
+
+TEST(ActInfoWorldSocial, DoHelpTreatsMissingGlobalHelpTextAsNoOutput)
+{
+    SoloCharacterContext context;
+    char* previous_help = help;
+    help = nullptr;
+    char argument[] = "";
+
+    do_help(&context.character, argument, nullptr, 0, 0);
+
+    help = previous_help;
+    EXPECT_STREQ(context.descriptor.output, "");
+}
 
 TEST(ActInfoWorldSocial, DoTimeFormatsStewardsReckoningYearWithNthOrdinalSuffix)
 {

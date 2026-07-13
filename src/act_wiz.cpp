@@ -1926,7 +1926,9 @@ ACMD(do_uptime)
             ,
         ch);
     send_to_char("The last minutes of the previous run:\n\r", ch);
-    send_to_char(lastdeath, ch);
+    if (lastdeath) {
+        send_to_char(lastdeath, ch);
+    }
 }
 
 ACMD(do_last)

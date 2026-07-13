@@ -2307,8 +2307,9 @@ ACMD(do_help)
         if (tmp % 4)
             out += "\n\r";
         send_to_char(out, ch);
-    } else /* They used help with no first argument */
+    } else if (help) { /* They used help with no first argument */
         send_to_char(help, ch);
+    }
 
     return;
 }

@@ -150,7 +150,7 @@ namespace {
             return false;
         }
 
-        if (rots_rename_replace(temp_path.c_str(), path.c_str()) != 0) {
+        if (rots_rename_replace(temp_path, path) != 0) {
             const std::string rename_error = std::strerror(errno);
             std::remove(temp_path.c_str());
             set_error(error_message, "Failed to move temporary pkill file into place: " + rename_error);
@@ -397,7 +397,7 @@ bool convert_legacy_pkill_file(const char* legacy_path, std::string* error_messa
     }
 
     const std::string migrated_path = std::string(legacy_path) + ".migrated";
-    if (rots_rename_replace(legacy_path, migrated_path.c_str()) != 0) {
+    if (rots_rename_replace(legacy_path, migrated_path) != 0) {
         // JSON is written and verified; the legacy file simply couldn't be
         // retired (matches mail_json/boards_json's "partial success"
         // contract -- report but don't fail, nothing is at risk).

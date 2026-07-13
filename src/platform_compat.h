@@ -30,7 +30,7 @@ int rots_asprintf(char** out, const char* fmt, ...);
 // success, nonzero with errno set on failure -- same contract as
 // std::rename(), so call sites are a drop-in rename.
 /// Replaces a destination path with a source path using platform-native rename semantics.
-int rots_rename_replace(std::string_view from, std::string_view to);
+int rots_rename_replace(std::string_view source_path, std::string_view destination_path);
 
 // rots_remove: remove() with POSIX semantics on every platform. POSIX
 // remove(3) deletes a file OR an empty directory (it is unlink-then-rmdir);

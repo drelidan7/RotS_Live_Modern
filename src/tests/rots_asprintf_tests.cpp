@@ -5,6 +5,7 @@
 #include <cstring>
 #include <filesystem>
 #include <gtest/gtest.h>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -14,6 +15,44 @@
 // nullptr + -1 on failure) so the mechanical asprintf-call-site replacement across the
 // game sources (act_info.cpp, fight.cpp, spec_pro.cpp, pkill.cpp, utility.cpp) is
 // behavior-preserving.
+
+namespace {
+
+class TemporaryDirectory {
+public:
+    TemporaryDirectory()
+    {
+        char path_template[] = "/tmp/rots-platform-compat-XXXXXX";
+        char* created_path = rots_mkdtemp(path_template);
+        EXPECT_NE(created_path, nullptr);
+        if (created_path != nullptr) {
+            path_ = created_path;
+        }
+    }
+
+    ~TemporaryDirectory()
+    {
+        std::error_code cleanup_error;
+        std::filesystem::remove_all(path_, cleanup_error);
+    }
+
+    [[nodiscard]] const std::filesystem::path& path() const { return path_; }
+
+private:
+    // Identifies the test-owned directory removed when the fixture leaves scope.
+    std::filesystem::path path_;
+};
+
+void close_file(FILE* file)
+{
+    if (file != nullptr) {
+        std::fclose(file);
+    }
+}
+
+using ScopedFile = std::unique_ptr<FILE, decltype(&close_file)>;
+
+} // namespace
 
 TEST(RotsAsprintf, FormatsSimpleString) {
     char* out = nullptr;
@@ -72,18 +111,14 @@ TEST(RotsAsprintf, NullTerminatesExactlyAtWrittenLength) {
 
 TEST(RotsAsprintf, PlatformPathsAcceptBoundedAndEmbeddedNullViews)
 {
-    char path_template[] = "/tmp/rots-platform-compat-XXXXXX";
-    char* created_path = rots_mkdtemp(path_template);
-    ASSERT_NE(created_path, nullptr);
-    const std::filesystem::path temporary_directory(created_path);
+    TemporaryDirectory temporary_directory;
+    ASSERT_FALSE(temporary_directory.path().empty());
 
-    const std::string source_path = (temporary_directory / "source").string();
-    const std::string destination_path = (temporary_directory / "destination").string();
-    {
-        FILE* source_file = std::fopen(source_path.c_str(), "wb");
-        ASSERT_NE(source_file, nullptr);
-        EXPECT_EQ(std::fclose(source_file), 0);
-    }
+    const std::string source_path = (temporary_directory.path() / "source").string();
+    const std::string destination_path = (temporary_directory.path() / "destination").string();
+    ScopedFile source_file(std::fopen(source_path.c_str(), "wb"), &close_file);
+    ASSERT_NE(source_file, nullptr);
+    source_file.reset();
 
     std::string source_storage = source_path + "ignored-without-a-terminator";
     const std::string_view bounded_source(source_storage.data(), source_path.size());
@@ -98,15 +133,14 @@ TEST(RotsAsprintf, PlatformPathsAcceptBoundedAndEmbeddedNullViews)
     EXPECT_EQ(rots_remove(bounded_destination), 0);
     EXPECT_FALSE(std::filesystem::exists(destination_path));
 
-    std::error_code cleanup_error;
-    std::filesystem::remove_all(temporary_directory, cleanup_error);
 }
 
 TEST(MobCsv, WritesOnlyTheBoundedTextualPrefix)
 {
     mob_csv_extract exporter;
-    exporter.file = std::tmpfile();
-    ASSERT_NE(exporter.file, nullptr);
+    ScopedFile output_file(std::tmpfile(), &close_file);
+    ASSERT_NE(output_file, nullptr);
+    exporter.file = output_file.get();
 
     const std::string text_storage("alpha,beta\0ignored", 18);
     exporter.write_to_file(nullptr, std::string_view(text_storage));
@@ -116,6 +150,7 @@ TEST(MobCsv, WritesOnlyTheBoundedTextualPrefix)
     char contents[32] {};
     const std::size_t bytes_read = std::fread(contents, sizeof(char), sizeof(contents), exporter.file);
     EXPECT_EQ(std::string_view(contents, bytes_read), "alpha,beta");
-    EXPECT_EQ(std::fclose(exporter.file), 0);
-    exporter.file = nullptr;
+    output_file.release();
+    exporter.close_file(nullptr);
+    EXPECT_EQ(exporter.file, nullptr);
 }

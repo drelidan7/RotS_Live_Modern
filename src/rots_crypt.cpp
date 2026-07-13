@@ -4,9 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cerrno>
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -251,14 +249,23 @@ const char* rots_crypt(const char* key, const char* setting)
     if (key == nullptr || setting == nullptr)
         return nullptr;
 
-    const char* cursor = setting;
-    if (std::strncmp(cursor, kSha512CryptPrefix, sizeof(kSha512CryptPrefix) - 1) != 0)
+    return rots_crypt(std::string_view(key), std::string_view(setting));
+}
+
+const char* rots_crypt(std::string_view key, std::string_view setting)
+{
+    key = rots::text::truncate_at_null(key);
+    setting = rots::text::truncate_at_null(setting);
+
+    constexpr std::string_view sha512_crypt_prefix(kSha512CryptPrefix, sizeof(kSha512CryptPrefix) - 1);
+    constexpr std::string_view rounds_prefix(kRoundsPrefix, sizeof(kRoundsPrefix) - 1);
+    if (!setting.starts_with(sha512_crypt_prefix))
         return nullptr;
-    cursor += sizeof(kSha512CryptPrefix) - 1;
+    size_t cursor = sha512_crypt_prefix.size();
 
     unsigned long rounds = kRoundsDefault;
     bool rounds_custom = false;
-    if (std::strncmp(cursor, kRoundsPrefix, sizeof(kRoundsPrefix) - 1) == 0) {
+    if (setting.substr(cursor).starts_with(rounds_prefix)) {
         // A malformed "rounds=" spec REJECTS the whole setting rather than
         // clamping or falling back: empty/non-numeric digits, a missing '$'
         // terminator, and values outside [kRoundsMin, kRoundsMax] all return
@@ -270,27 +277,35 @@ const char* rots_crypt(const char* key, const char* setting)
         // glibc clamped out-of-range values instead; stored hashes only ever
         // echo canonical in-range values, so the difference is unreachable
         // through real account data.)
-        const char* num_start = cursor + (sizeof(kRoundsPrefix) - 1);
-        if (!std::isdigit(static_cast<unsigned char>(*num_start)))
+        cursor += rounds_prefix.size();
+        if (cursor >= setting.size() || !std::isdigit(static_cast<unsigned char>(setting[cursor])))
             return nullptr;
-        char* end_ptr = nullptr;
-        errno = 0;
-        unsigned long parsed_rounds = std::strtoul(num_start, &end_ptr, 10);
-        if (errno != 0 || *end_ptr != '$' || parsed_rounds < kRoundsMin || parsed_rounds > kRoundsMax)
+
+        unsigned long parsed_rounds = 0;
+        while (cursor < setting.size() && std::isdigit(static_cast<unsigned char>(setting[cursor]))) {
+            const unsigned long digit = static_cast<unsigned long>(setting[cursor] - '0');
+            if (parsed_rounds > (kRoundsMax - digit) / 10)
+                return nullptr;
+            parsed_rounds = parsed_rounds * 10 + digit;
+            ++cursor;
+        }
+        if (cursor >= setting.size() || setting[cursor] != '$'
+            || parsed_rounds < kRoundsMin || parsed_rounds > kRoundsMax)
             return nullptr;
-        cursor = end_ptr + 1;
+        ++cursor;
         rounds = parsed_rounds;
         rounds_custom = true;
     }
 
-    const char* salt_start = cursor;
-    size_t salt_len = 0;
-    while (salt_len < kSaltLenMax && salt_start[salt_len] != '\0' && salt_start[salt_len] != '$')
-        ++salt_len;
-    const std::string salt(salt_start, salt_len);
+    const size_t salt_delimiter = setting.find('$', cursor);
+    const size_t available_salt_length = salt_delimiter == std::string_view::npos
+        ? setting.size() - cursor
+        : salt_delimiter - cursor;
+    const size_t salt_len = std::min(kSaltLenMax, available_salt_length);
+    const std::string_view salt = setting.substr(cursor, salt_len);
 
-    const size_t key_len = std::strlen(key);
-    const unsigned char* key_bytes = reinterpret_cast<const unsigned char*>(key);
+    const size_t key_len = key.size();
+    const unsigned char* key_bytes = reinterpret_cast<const unsigned char*>(key.data());
     const unsigned char* salt_bytes = reinterpret_cast<const unsigned char*>(salt.data());
 
     // Step 4-8: digest B = SHA512(key + salt + key).
@@ -420,11 +435,4 @@ const char* rots_crypt(const char* key, const char* setting)
     std::fill(s_bytes.begin(), s_bytes.end(), '\0');
 
     return out.c_str();
-}
-
-const char* rots_crypt(std::string_view key, std::string_view setting)
-{
-    const std::string key_owner(rots::text::truncate_at_null(key));
-    const std::string setting_owner(rots::text::truncate_at_null(setting));
-    return rots_crypt(key_owner.c_str(), setting_owner.c_str());
 }

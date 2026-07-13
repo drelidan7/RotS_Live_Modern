@@ -222,7 +222,7 @@ namespace {
         *secret_salt = encode_salt(random_bytes);
         const std::string salt_spec = "$6$" + *secret_salt + "$";
         const std::string secret_owner(rots::text::truncate_at_null(secret));
-        const char* hashed_secret = rots_crypt(secret_owner.c_str(), salt_spec.c_str());
+        const char* hashed_secret = rots_crypt(secret_owner, salt_spec);
         if (hashed_secret == nullptr) {
             set_error(error_message, "Failed to hash credential.");
             return false;
@@ -1321,7 +1321,7 @@ namespace {
             return false;
         }
 
-        if (rots_rename_replace(temp_path.c_str(), path.c_str()) != 0) {
+        if (rots_rename_replace(temp_path, path) != 0) {
             std::remove(temp_path.c_str());
             set_error(error_message, "Failed to move restored legacy file into place '" + path + "': " + std::strerror(errno));
             return false;
@@ -1528,7 +1528,7 @@ bool write_text_file_atomically(const std::string& path, const std::string& text
         return false;
     }
 
-    if (rots_rename_replace(temp_path.c_str(), path.c_str()) != 0) {
+    if (rots_rename_replace(temp_path, path) != 0) {
         std::remove(temp_path.c_str());
         set_error(error_message, "Failed to move temporary file into place: " + std::string(std::strerror(errno)));
         return false;

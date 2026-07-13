@@ -1093,16 +1093,16 @@ int rots_asprintf(char** out, const char* fmt, ...)
 // platform_compat.h for the full rationale -- std::rename() refuses to
 // overwrite an existing destination on Windows, breaking every temp+rename
 // atomic write on the second save of any file).
-int rots_rename_replace(std::string_view from, std::string_view to)
+int rots_rename_replace(std::string_view source_path, std::string_view destination_path)
 {
-    const std::string from_owner(rots::text::truncate_at_null(from));
-    const std::string to_owner(rots::text::truncate_at_null(to));
+    const std::string source_path_owner(rots::text::truncate_at_null(source_path));
+    const std::string destination_path_owner(rots::text::truncate_at_null(destination_path));
 #if defined PREDEF_PLATFORM_WINDOWS
     // MoveFileExA + MOVEFILE_REPLACE_EXISTING is the Win32 primitive with
     // exactly POSIX rename()'s replace behavior (atomic on NTFS same-volume
     // moves, which every persistence-layer temp file is -- the temp lives
     // next to its final path by construction).
-    if (MoveFileExA(from_owner.c_str(), to_owner.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+    if (MoveFileExA(source_path_owner.c_str(), destination_path_owner.c_str(), MOVEFILE_REPLACE_EXISTING)) {
         return 0;
     }
 
@@ -1124,7 +1124,7 @@ int rots_rename_replace(std::string_view from, std::string_view to)
     }
     return -1;
 #else
-    return std::rename(from_owner.c_str(), to_owner.c_str());
+    return std::rename(source_path_owner.c_str(), destination_path_owner.c_str());
 #endif
 }
 
@@ -1338,15 +1338,18 @@ void mudlog(std::string_view message_body, char type, sh_int level, byte file)
     }
 }
 
-void mudlog_debug_mob(const char* buf, char_data* ch)
+void mudlog_debug_mob(std::string_view message, char_data* ch)
 {
-    mudlog_aliased_mob(buf, ch, "debug");
+    mudlog_aliased_mob(message, ch, "debug");
 }
 
-void mudlog_aliased_mob(const char* buf, char_data* ch, const char* mob_alias)
+void mudlog_aliased_mob(std::string_view message, char_data* ch, std::string_view mob_alias)
 {
-    if (strstr(ch->player.name, mob_alias)) {
-        mudlog(buf, SPL, LEVEL_GOD, FALSE);
+    message = rots::text::truncate_at_null(message);
+    mob_alias = rots::text::truncate_at_null(mob_alias);
+    const std::string_view aliases = rots::text::truncate_at_null(ch->player.name);
+    if (aliases.find(mob_alias) != std::string_view::npos) {
+        mudlog(message, SPL, LEVEL_GOD, FALSE);
     }
 }
 
@@ -1532,7 +1535,7 @@ void echo_on(SocketType sock)
 
 void* create_pointer = 0;
 
-void* create_function(int elem_size, int elem_num, int line, const char* file)
+void* create_function(int elem_size, int elem_num, int line, std::string_view file)
 {
 
     //  printf("want to allocate size=%d, num=%d\n",elem_size,elem_num);
@@ -1548,8 +1551,9 @@ void* create_function(int elem_size, int elem_num, int line, const char* file)
     //   create_pointer = malloc(elem_size * elem_num);
 
     if (!create_pointer) {
+        const std::string file_owner(rots::text::truncate_at_null(file));
         printf("CREATE: could not allocate memory %d size %d elements at line %d, file %s.\n",
-            elem_size, elem_num, line, file);
+            elem_size, elem_num, line, file_owner.c_str());
         exit(0);
     }
     //   for(i = 0; i<10; i++) j = random();
@@ -2571,9 +2575,11 @@ char* PERS(struct char_data* target, struct char_data* observer,
     return name;
 }
 
-int has_alias(char_data* host, const char* keyword)
+int has_alias(char_data* host, std::string_view keyword)
 {
-    if (strstr(host->player.name, keyword)) {
+    keyword = rots::text::truncate_at_null(keyword);
+    const std::string_view aliases = rots::text::truncate_at_null(host->player.name);
+    if (aliases.find(keyword) != std::string_view::npos) {
         return 1;
     } else {
         return 0;

@@ -101,7 +101,7 @@ bool remove_account_character_file(std::string_view root_directory, std::string_
     // rots_remove (not std::remove): POSIX remove() also deletes an empty
     // directory; the CRT one refuses, leaking rollback leftovers on Windows
     // (see platform_compat.h -- Phase 3 Task 6).
-    if (rots_remove(path.c_str()) != 0 && errno != ENOENT) {
+    if (rots_remove(path) != 0 && errno != ENOENT) {
         set_error(error_message, "Failed to remove account character file '" + path + "': " + std::strerror(errno));
         return false;
     }
@@ -191,7 +191,7 @@ bool remove_account_object_file(std::string_view root_directory, std::string_vie
     // rots_remove (not std::remove): POSIX remove() also deletes an empty
     // directory; the CRT one refuses, leaking rollback leftovers on Windows
     // (see platform_compat.h -- Phase 3 Task 6).
-    if (rots_remove(path.c_str()) != 0 && errno != ENOENT) {
+    if (rots_remove(path) != 0 && errno != ENOENT) {
         set_error(error_message, "Failed to remove account object file '" + path + "': " + std::strerror(errno));
         return false;
     }
@@ -283,7 +283,7 @@ bool remove_account_exploit_file(std::string_view root_directory, std::string_vi
     // rots_remove (not std::remove): POSIX remove() also deletes an empty
     // directory; the CRT one refuses, leaking rollback leftovers on Windows
     // (see platform_compat.h -- Phase 3 Task 6).
-    if (rots_remove(path.c_str()) != 0 && errno != ENOENT) {
+    if (rots_remove(path) != 0 && errno != ENOENT) {
         set_error(error_message, "Failed to remove account exploits file '" + path + "': " + std::strerror(errno));
         return false;
     }

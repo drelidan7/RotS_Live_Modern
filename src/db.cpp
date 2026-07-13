@@ -4112,7 +4112,7 @@ namespace {
             return false;
         }
 
-        if (rots_rename_replace(temp_path.c_str(), path.c_str()) != 0) {
+        if (rots_rename_replace(temp_path, path) != 0) {
             const std::string rename_error = strerror(errno);
             std::remove(temp_path.c_str());
             set_error(error_message, "Failed to move temporary crime file into place: " + rename_error);
@@ -4381,7 +4381,7 @@ bool convert_legacy_crime_file(const char* legacy_path, std::string* error_messa
     }
 
     const std::string migrated_path = std::string(legacy_path) + ".migrated";
-    if (rots_rename_replace(legacy_path, migrated_path.c_str()) != 0) {
+    if (rots_rename_replace(legacy_path, migrated_path) != 0) {
         // JSON is written and verified; the legacy file simply couldn't be
         // retired (matches mail_json/boards_json/pkill_json's "partial
         // success" contract -- report but don't fail, nothing is at risk).
@@ -5158,7 +5158,7 @@ bool write_text_file_atomically(const std::string& path, const std::string& cont
         return false;
     }
 
-    if (rots_rename_replace(temp_path.c_str(), path.c_str()) != 0) {
+    if (rots_rename_replace(temp_path, path) != 0) {
         std::remove(temp_path.c_str());
         set_db_error(error_message, "Failed to move temporary exploit file into place: " + std::string(strerror(errno)));
         return false;
@@ -5276,7 +5276,7 @@ convert_legacy_runtime_exploit_file(const std::string& legacy_path,
     }
 
     const std::string migrated_path = legacy_path + ".migrated";
-    if (rots_rename_replace(legacy_path.c_str(), migrated_path.c_str()) != 0) {
+    if (rots_rename_replace(legacy_path, migrated_path) != 0) {
         // JSON is written and verified; the legacy file simply couldn't be
         // retired (matches the other Task 6 converters' "partial success"
         // contract -- report but don't fail, nothing is at risk).

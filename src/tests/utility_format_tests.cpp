@@ -144,6 +144,54 @@ TEST(UtilityFormat, MudlogTruncatesAViewAtAnEmbeddedNull)
     EXPECT_STREQ(listener.descriptor.output, "[ ok ]\n\r");
 }
 
+TEST(UtilityFormat, MobLogHelpersAcceptBoundedAndEmbeddedNullText)
+{
+    ScopedDescriptorListReset descriptor_list_reset;
+    MudlogListenerContext listener;
+    descriptor_list = &listener.descriptor;
+
+    char_data mobile {};
+    mobile.player.name = const_cast<char*>("debug progdebug");
+    const std::string message_storage = "prefix-bounded-suffix";
+    mudlog_debug_mob(std::string_view(message_storage).substr(7, 7), &mobile);
+    EXPECT_STREQ(listener.descriptor.output, "[ bounded ]\n\r");
+
+    listener.descriptor.output[0] = '\0';
+    listener.descriptor.bufptr = 0;
+    listener.descriptor.bufspace = SMALL_BUFSIZE - 1;
+    const char alias_storage[] = { 'p', 'r', 'o', 'g', 'd', 'e', 'b', 'u', 'g', '\0', 'x' };
+    const char log_storage[] = { 'o', 'k', '\0', 'n', 'o' };
+    mudlog_aliased_mob(std::string_view(log_storage, sizeof(log_storage)), &mobile,
+        std::string_view(alias_storage, sizeof(alias_storage)));
+    EXPECT_STREQ(listener.descriptor.output, "[ ok ]\n\r");
+}
+
+TEST(UtilityFormat, HasAliasAcceptsBoundedAndEmbeddedNullKeywords)
+{
+    char_data mobile {};
+    mobile.player.name = const_cast<char*>("spells p_hide");
+    const std::string keyword_storage = "p_hide-ignored";
+    EXPECT_EQ(has_alias(&mobile, std::string_view(keyword_storage).substr(0, 6)), 1);
+
+    const char embedded_keyword[] = { 's', 'p', 'e', 'l', 'l', 's', '\0', 'x' };
+    EXPECT_EQ(has_alias(&mobile, std::string_view(embedded_keyword, sizeof(embedded_keyword))), 1);
+}
+
+TEST(UtilityFormat, CreateFunctionAcceptsBoundedAndEmbeddedNullFileText)
+{
+    const std::string file_storage = "bounded.cpp-ignored";
+    void* bounded_allocation = create_function(1, 1, 42,
+        std::string_view(file_storage).substr(0, 11));
+    ASSERT_NE(bounded_allocation, nullptr);
+    free_function(bounded_allocation);
+
+    const char embedded_file[] = { 'f', 'i', 'l', 'e', '.', 'c', 'p', 'p', '\0', 'x' };
+    void* embedded_allocation = create_function(1, 1, 42,
+        std::string_view(embedded_file, sizeof(embedded_file)));
+    ASSERT_NE(embedded_allocation, nullptr);
+    free_function(embedded_allocation);
+}
+
 TEST(UtilityFormat, LogWritesOnlyTheSelectedViewToStderr)
 {
     const std::string storage = "prefix-message-suffix";

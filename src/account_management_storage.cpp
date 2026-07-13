@@ -219,7 +219,7 @@ bool write_account_file(std::string_view root_directory, const AccountData& acco
         return false;
     }
 
-    if (rots_rename_replace(temp_path.c_str(), final_path.c_str()) != 0) {
+    if (rots_rename_replace(temp_path, final_path) != 0) {
         std::remove(temp_path.c_str());
         set_error(error_message, "Failed to move temporary account file into place: " + std::string(std::strerror(errno)));
         return false;

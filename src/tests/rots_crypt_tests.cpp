@@ -77,7 +77,7 @@ TEST(RotsCrypt, MatchesGlibcVectorMultiBlockPassword)
     for (int i = 0; i < 130; ++i)
         long_password += static_cast<char>('a' + (i % 26));
 
-    const char* result = rots_crypt(long_password.c_str(), "$6$longkeysalt16ch$");
+    const char* result = rots_crypt(long_password, "$6$longkeysalt16ch$");
     ASSERT_NE(result, nullptr);
     EXPECT_STREQ(result,
         "$6$longkeysalt16ch$VS24p3IpC0d1VwWh1kjP5ofogbvsricGp/CjZj.OYZMCSp0Hi14T8.NKY1e/HduJy6Zns/JaoFeDqe4oyfOnG1");
@@ -159,7 +159,7 @@ TEST(RotsCrypt, VerifyingAgainstFullStoredHashSucceeds)
 
     // rots_crypt must accept the *full* stored hash (salt + digest) as the
     // setting, exactly like libc crypt() — it only reads through the salt.
-    const char* recomputed = rots_crypt("password123", stored_hash.c_str());
+    const char* recomputed = rots_crypt("password123", stored_hash);
     ASSERT_NE(recomputed, nullptr);
     EXPECT_STREQ(recomputed, stored_hash.c_str());
 }
@@ -170,7 +170,7 @@ TEST(RotsCrypt, WrongPasswordProducesDifferentHash)
     ASSERT_NE(correct, nullptr);
     std::string correct_hash = correct;
 
-    const char* wrong = rots_crypt("wrongpassword", correct_hash.c_str());
+    const char* wrong = rots_crypt("wrongpassword", correct_hash);
     ASSERT_NE(wrong, nullptr);
     EXPECT_STRNE(wrong, correct_hash.c_str());
 }

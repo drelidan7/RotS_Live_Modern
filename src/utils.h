@@ -91,8 +91,10 @@ int strn_cmp_nullable(const char* first, const char* second, int count);
 void log(std::string_view message);
 /// Writes a bounded message to stderr and eligible in-game log listeners.
 void mudlog(std::string_view message, char type, sh_int level, byte file);
-void mudlog_debug_mob(const char* buf, char_data* ch);
-void mudlog_aliased_mob(const char* buf, char_data* ch, const char* mob_alias);
+/// Writes bounded debug text when the mobile has the debug alias.
+void mudlog_debug_mob(std::string_view message, char_data* ch);
+/// Writes bounded log text when the mobile's alias list contains the bounded alias.
+void mudlog_aliased_mob(std::string_view message, char_data* ch, std::string_view mob_alias);
 void vmudlog(char type, const char* format, ...);
 void log_death_trap(struct char_data* ch);
 int number(int from, int to);
@@ -117,7 +119,8 @@ int find_player_in_table(const char* name, int idnum);
 char* strcpy_lang(char* targ, char* src, byte freq, int maxlen);
 void reshuffle(int* arr, int len);
 
-void* create_function(int elem_size, int elem_num, int line, const char* file);
+/// Allocates zeroed legacy storage and reports failures with bounded source-file text.
+void* create_function(int elem_size, int elem_num, int line, std::string_view file);
 void free_function(void* pnt);
 
 int get_total_fame(char_data* ch);
@@ -137,7 +140,8 @@ struct time_info_data age(struct char_data* ch);
 void track_specialized_mage(char_data* mage);
 void untrack_specialized_mage(char_data* mage);
 
-int has_alias(char_data* host, const char* keyword);
+/// Returns whether a mobile's alias list contains the bounded keyword text.
+int has_alias(char_data* host, std::string_view keyword);
 int has_program(char_data* host, int num);
 
 /* defines for fseek */

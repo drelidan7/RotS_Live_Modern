@@ -136,9 +136,10 @@ void mob_csv_extract::create_file(char_data* ch)
     std::filesystem::permissions("../mobs/mob.csv", std::filesystem::perms::all, permissions_ec);
 }
 
-void mob_csv_extract::close_file(char_data*) const
+void mob_csv_extract::close_file(char_data*)
 {
     fclose(file);
+    file = nullptr;
 }
 
 void mob_csv_extract::write_to_file(char_data*, std::string_view mob_data) const

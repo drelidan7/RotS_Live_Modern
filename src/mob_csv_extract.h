@@ -19,8 +19,8 @@ public:
     void create_file(char_data* ch);
     /// Writes the fixed CSV column header to the active export stream.
     void create_header(char_data* ch) const;
-    /// Closes the active export stream.
-    void close_file(char_data* ch) const;
+    /// Closes and clears the active export stream.
+    void close_file(char_data* ch);
     /// Writes the first-null-terminated prefix of bounded CSV row text.
     void write_to_file(char_data* ch, std::string_view mob_data) const;
 };

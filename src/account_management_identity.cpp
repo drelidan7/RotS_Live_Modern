@@ -175,7 +175,7 @@ bool verify_password(std::string_view password, std::string_view password_hash)
     if (password_hash_owner.empty())
         return false;
 
-    const char* hashed_password = rots_crypt(password_owner.c_str(), password_hash_owner.c_str());
+    const char* hashed_password = rots_crypt(password_owner, password_hash_owner);
     if (hashed_password == nullptr)
         return false;
 
@@ -906,7 +906,7 @@ bool admin_delete_linked_character(std::string_view root_directory, std::string_
             return false;
         }
 
-        if (rots_rename_replace(staged_removal->original_path.c_str(), staged_removal->staged_path.c_str()) != 0) {
+        if (rots_rename_replace(staged_removal->original_path, staged_removal->staged_path) != 0) {
             set_error(error_message, std::string("Failed to stage ") + staged_removal->label + " '" + staged_removal->original_path + "' for deletion: " + std::strerror(errno));
             return false;
         }
@@ -918,7 +918,7 @@ bool admin_delete_linked_character(std::string_view root_directory, std::string_
         for (auto it = staged_removals.rbegin(); it != staged_removals.rend(); ++it) {
             if (!it->existed)
                 continue;
-            if (rots_rename_replace(it->staged_path.c_str(), it->original_path.c_str()) != 0) {
+            if (rots_rename_replace(it->staged_path, it->original_path) != 0) {
                 std::fprintf(stderr, "SYSERR: Failed to restore staged account deletion path '%s': %s\n",
                     it->original_path.c_str(), std::strerror(errno));
             }

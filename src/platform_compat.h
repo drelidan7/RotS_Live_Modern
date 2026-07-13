@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <string_view>
+
 // rots_asprintf: portable replacement for the asprintf() extension (POSIX/BSD/glibc,
 // available for free on Linux and macOS but absent from MSVC's CRT). Implemented via
 // vsnprintf-size-then-malloc in utility.cpp. Ownership contract matches asprintf(3):
@@ -13,6 +15,7 @@
 // and must free(); on failure (encoding error or allocation failure), *out is set to
 // nullptr and -1 is returned. The return value on success is the number of characters
 // written, excluding the terminating NUL (same as asprintf(3) / vsnprintf(3)).
+/// Formats C varargs into newly allocated null-terminated storage owned by the caller.
 int rots_asprintf(char** out, const char* fmt, ...);
 
 // rots_rename_replace: rename() with POSIX semantics on every platform --
@@ -26,7 +29,8 @@ int rots_asprintf(char** out, const char* fmt, ...);
 // existing strerror(errno)-based error messages stay meaningful. Returns 0 on
 // success, nonzero with errno set on failure -- same contract as
 // std::rename(), so call sites are a drop-in rename.
-int rots_rename_replace(const char* from, const char* to);
+/// Replaces a destination path with a source path using platform-native rename semantics.
+int rots_rename_replace(std::string_view from, std::string_view to);
 
 // rots_remove: remove() with POSIX semantics on every platform. POSIX
 // remove(3) deletes a file OR an empty directory (it is unlink-then-rmdir);
@@ -39,4 +43,5 @@ int rots_rename_replace(const char* from, const char* to);
 // GetLastError() onto errno (ENOENT/ENOTEMPTY/EACCES).
 // Returns 0 on success, nonzero with errno set on failure -- same contract as
 // std::remove(), so call sites are a drop-in rename.
-int rots_remove(const char* path);
+/// Removes a file or empty directory through the platform compatibility layer.
+int rots_remove(std::string_view path);

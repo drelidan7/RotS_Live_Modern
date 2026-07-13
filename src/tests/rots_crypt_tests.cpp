@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <string_view>
 
 // Reference vectors were captured directly from crypt() in the project's
 // i386 container (Debian 11; libcrypt is libxcrypt 4.4.18 — the library that
@@ -107,6 +108,36 @@ TEST(RotsCrypt, NullArgumentsReturnNull)
 {
     EXPECT_EQ(rots_crypt(nullptr, "$6$salt$"), nullptr);
     EXPECT_EQ(rots_crypt("key", nullptr), nullptr);
+}
+
+TEST(RotsCrypt, BoundedPasswordAndSettingSlicesMatchTerminatedInputs)
+{
+    const std::string password_storage = "password123ignored";
+    const std::string setting_storage = "$6$abcdefghijklmnop$ignored";
+    const std::string_view password(password_storage.data(), std::strlen("password123"));
+    const std::string_view setting(setting_storage.data(), std::strlen("$6$abcdefghijklmnop$"));
+
+    const char* bounded_result = rots_crypt(password, setting);
+    ASSERT_NE(bounded_result, nullptr);
+    const std::string bounded_hash = bounded_result;
+
+    const char* terminated_result = rots_crypt("password123", "$6$abcdefghijklmnop$");
+    ASSERT_NE(terminated_result, nullptr);
+    EXPECT_EQ(bounded_hash, terminated_result);
+}
+
+TEST(RotsCrypt, EmbeddedNullPasswordAndSettingUseTextualPrefixes)
+{
+    const std::string password_storage("password123\0ignored", 19);
+    const std::string setting_storage("$6$abcdefghijklmnop$\0ignored", 29);
+    const char* bounded_result = rots_crypt(
+        std::string_view(password_storage), std::string_view(setting_storage));
+    ASSERT_NE(bounded_result, nullptr);
+    const std::string bounded_hash = bounded_result;
+
+    const char* terminated_result = rots_crypt("password123", "$6$abcdefghijklmnop$");
+    ASSERT_NE(terminated_result, nullptr);
+    EXPECT_EQ(bounded_hash, terminated_result);
 }
 
 TEST(RotsCrypt, RoundsAreEchoedOnlyWhenExplicit)

@@ -12,6 +12,19 @@ Permitted reasons are `nullable-state`, `retains-storage`, `binary-data`, `print
 | --- | --- | --- |
 | `int rots_asprintf(char** out, const char* fmt, ...);` | `printf-varargs` | The format parameter is consumed by `va_start` and passed to `vsnprintf`. |
 | `int rots_asprintf(char** out, const char* fmt, ...) {` | `printf-varargs` | The implementation uses the format parameter as the final named argument for C varargs. |
+| `const char* rots_crypt(const char* key, const char* setting);` | `nullable-state` | The compatibility overload preserves crypt-style null failure semantics before bounded text reaches the view overload. |
+| `const char* rots_crypt(const char* key, const char* setting) {` | `nullable-state` | Null key and setting pointers remain distinct invalid states and return null before any view is constructed. |
+| `char* str_dup(const char* source) {` | `nullable-state` | The legacy allocator returns null for a null source and allocated storage for an empty source. |
+| `bool fixed_width_field_has_no_nul(const char* field, size_t width) {` | `binary-data` | The explicit width governs inspection of the complete fixed-size legacy field, including internal and trailing zero bytes. |
+| `std::string sanitize_fixed_width_field(const char* field, size_t width) {` | `binary-data` | Recovery sanitization consumes a declared binary field width and deliberately caps the preserved prefix at width minus one. |
+| `bool legacy_plrobj_bytes_round_trip_losslessly(const std::string& legacy_bytes) {` | `binary-data` | Strict recovery qualification must decode the complete ABI-sensitive object payload, including internal zero bytes. |
+| `void mudlog_debug_mob(const char* buf, char_data* ch) {` | `c-boundary` | The helper forwards null-terminated log text into legacy logging APIs. |
+| `void mudlog_aliased_mob(const char* buf, char_data* ch, const char* mob_alias) {` | `c-boundary` | Both inputs are consumed by legacy `strstr` and logging boundaries that require terminated pointers. |
+| `void sprintbit(long vektor, const char* const names[], char* result, int var) {` | `sentinel-table` | The lookup table is terminated by a legacy newline sentinel and the output remains a caller-owned mutable C buffer. |
+| `void sprinttype(int type, const char* const names[], char* result) {` | `sentinel-table` | The lookup table length is discovered through its terminal newline entry and output is copied into mutable caller storage. |
+| `void* create_function(int elem_size, int elem_num, int line, const char* file) {` | `c-boundary` | The macro-provided `__FILE__` string is used only by the allocation-failure `printf` diagnostic. |
+| `int find_player_in_table(const char* name, int idnum) {` | `nullable-state` | Name lookup intentionally accepts null through `str_cmp_nullable`, while negative IDs select name-based lookup. |
+| `int has_alias(char_data* host, const char* keyword) {` | `c-boundary` | The keyword is consumed directly by legacy `strstr` against the mobile alias C field. |
 | `void page_string_borrowed(struct descriptor_data* descriptor, char* text);` | `retains-storage` | This explicitly named legacy pager path retains caller-owned mutable storage until paging completes; normal `page_string` copies a bounded view instead. |
 | `void page_string_borrowed(struct descriptor_data* descriptor, char* text) {` | `retains-storage` | The implementation exposes the borrowed lifetime by name and is used only with long-lived world or global help text. |
 | `void vmudlog(char type, const char* format, ...);` | `printf-varargs` | The format parameter is the final named argument for C varargs. |

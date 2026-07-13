@@ -7,6 +7,7 @@
 #include "objects_json.h"
 #include "platform_compat.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 
 #include <algorithm>
@@ -24,8 +25,10 @@ namespace {
 // True iff `value` ends with exactly `suffix` (used to find legacy `.obj`
 // files without also matching `.obj.migrated`/`.objs.json`, and to find
 // `.obj.migrated` files for the delete_after pass).
-bool ends_with(const std::string& value, const std::string& suffix)
+bool ends_with(std::string_view value, std::string_view suffix)
 {
+    value = rots::text::truncate_at_null(value);
+    suffix = rots::text::truncate_at_null(suffix);
     if (suffix.size() > value.size())
         return false;
     return std::equal(suffix.rbegin(), suffix.rend(), value.rbegin());
@@ -40,11 +43,13 @@ bool ends_with(const std::string& value, const std::string& suffix)
 // plrobjs/ is shallow in practice (bucket subdirectories one level down, plus
 // a few stray top-level files -- see lib/plrobjs/*.obj) but this recurses to
 // any depth defensively rather than assuming a fixed layout.
-void collect_files_with_suffix(const std::string& dir_path, const std::string& suffix, std::vector<std::string>* out_paths)
+void collect_files_with_suffix(std::string_view dir_path, std::string_view suffix, std::vector<std::string>* out_paths)
 {
     namespace fs = std::filesystem;
+    const std::string dir_path_owner(rots::text::truncate_at_null(dir_path));
+    suffix = rots::text::truncate_at_null(suffix);
     std::error_code ec;
-    fs::directory_iterator it(dir_path, ec);
+    fs::directory_iterator it(dir_path_owner, ec);
     if (ec)
         return;
 
@@ -70,9 +75,10 @@ void collect_files_with_suffix(const std::string& dir_path, const std::string& s
 // unit needing this to keep its own copy rather than add cross-TU coupling
 // for a few lines of file I/O (see db.cpp's own separate
 // read_binary_file_contents for another example of the same convention).
-bool read_binary_file_contents(const char* path, std::string* bytes)
+bool read_binary_file_contents(std::string_view path, std::string* bytes)
 {
-    FILE* file = std::fopen(path, "rb");
+    const std::string path_owner(rots::text::truncate_at_null(path));
+    FILE* file = std::fopen(path_owner.c_str(), "rb");
     if (file == nullptr)
         return false;
 
@@ -102,9 +108,11 @@ bool read_binary_file_contents(const char* path, std::string* bytes)
 // Writes `contents` to `path` via temp-file + rename (crash-safe: a reader
 // never observes a partial write), matching write_player_objects_json's
 // pattern in objsave.cpp for the same on-disk convention.
-bool write_file_contents_atomically(const std::string& path, const std::string& contents, std::string* error)
+bool write_file_contents_atomically(std::string_view path, std::string_view contents, std::string* error)
 {
-    const std::string temp_path = path + ".tmp";
+    const std::string path_owner(rots::text::truncate_at_null(path));
+    contents = rots::text::truncate_at_null(contents);
+    const std::string temp_path = path_owner + ".tmp";
 
     FILE* temp_file = std::fopen(temp_path.c_str(), "wb");
     if (temp_file == nullptr) {
@@ -124,7 +132,7 @@ bool write_file_contents_atomically(const std::string& path, const std::string& 
         return false;
     }
 
-    if (rots_rename_replace(temp_path.c_str(), path.c_str()) != 0) {
+    if (rots_rename_replace(temp_path, path_owner) != 0) {
         const std::string rename_error = std::strerror(errno);
         std::remove(temp_path.c_str());
         if (error)
@@ -139,10 +147,11 @@ bool write_file_contents_atomically(const std::string& path, const std::string& 
 // ".obj", not ".obj.migrated"). Appends exactly one line to `*report`
 // describing the outcome. Returns true iff a file was actually converted
 // (JSON written and legacy file renamed to .obj.migrated).
-bool convert_one_legacy_plrobj_file(const std::string& legacy_path, std::ostringstream* report)
+bool convert_one_legacy_plrobj_file(std::string_view legacy_path, std::ostringstream* report)
 {
+    legacy_path = rots::text::truncate_at_null(legacy_path);
     std::string legacy_bytes;
-    if (!read_binary_file_contents(legacy_path.c_str(), &legacy_bytes)) {
+    if (!read_binary_file_contents(legacy_path, &legacy_bytes)) {
         *report << "SKIP " << legacy_path << ": failed to read file: " << std::strerror(errno) << "\n";
         return false;
     }
@@ -176,7 +185,7 @@ bool convert_one_legacy_plrobj_file(const std::string& legacy_path, std::ostring
     // filter), so stripping the last 4 characters gives the extensionless
     // base path -- the same convention player_objects_json_path (objsave.cpp)
     // uses for the live writer.
-    const std::string base_path = legacy_path.substr(0, legacy_path.size() - 4);
+    const std::string base_path(legacy_path.substr(0, legacy_path.size() - 4));
     const std::string json_path = base_path + ".objs.json";
 
     std::string write_error;
@@ -185,8 +194,8 @@ bool convert_one_legacy_plrobj_file(const std::string& legacy_path, std::ostring
         return false;
     }
 
-    const std::string migrated_path = legacy_path + ".migrated";
-    if (rots_rename_replace(legacy_path.c_str(), migrated_path.c_str()) != 0) {
+    const std::string migrated_path = std::string(legacy_path) + ".migrated";
+    if (rots_rename_replace(legacy_path, migrated_path) != 0) {
         // The JSON is written and verified at this point -- data is not at
         // risk -- but the legacy file could not be retired. Report it as a
         // partial success rather than a skip: the .obj is left in place
@@ -228,10 +237,11 @@ bool legacy_plrobj_bytes_round_trip_losslessly(const std::string& legacy_bytes)
 // rejects. See convert_plrobjs.h for the full contract. Appends exactly one
 // line to `*report`. Returns true iff a file was actually salvaged (JSON
 // written and legacy file renamed to `.obj.salvaged-from`).
-bool recover_one_legacy_plrobj_file(const std::string& legacy_path, std::ostringstream* report)
+bool recover_one_legacy_plrobj_file(std::string_view legacy_path, std::ostringstream* report)
 {
+    legacy_path = rots::text::truncate_at_null(legacy_path);
     std::string legacy_bytes;
-    if (!read_binary_file_contents(legacy_path.c_str(), &legacy_bytes)) {
+    if (!read_binary_file_contents(legacy_path, &legacy_bytes)) {
         *report << "SKIP (recovery) " << legacy_path << ": failed to read file: " << std::strerror(errno) << "\n";
         return false;
     }
@@ -273,7 +283,7 @@ bool recover_one_legacy_plrobj_file(const std::string& legacy_path, std::ostring
 
     // legacy_path ends in ".obj" (guaranteed by the caller's collection
     // filter), same JSON-path convention as the strict sweep.
-    const std::string base_path = legacy_path.substr(0, legacy_path.size() - 4);
+    const std::string base_path(legacy_path.substr(0, legacy_path.size() - 4));
     const std::string json_path = base_path + ".objs.json";
 
     std::string write_error;
@@ -282,8 +292,8 @@ bool recover_one_legacy_plrobj_file(const std::string& legacy_path, std::ostring
         return false;
     }
 
-    const std::string salvaged_from_path = legacy_path + ".salvaged-from";
-    if (rots_rename_replace(legacy_path.c_str(), salvaged_from_path.c_str()) != 0) {
+    const std::string salvaged_from_path = std::string(legacy_path) + ".salvaged-from";
+    if (rots_rename_replace(legacy_path, salvaged_from_path) != 0) {
         // Same partial-success handling as the strict path: the JSON is
         // written and verified -- data is safe -- but the legacy file
         // couldn't be retired, so it's left in place rather than treated as
@@ -303,11 +313,13 @@ bool recover_one_legacy_plrobj_file(const std::string& legacy_path, std::ostring
 
 } // namespace
 
-int convert_all_legacy_plrobjs(const char* plrobjs_root, bool delete_after, std::string* report)
+int convert_all_legacy_plrobjs(std::string_view plrobjs_root, bool delete_after, std::string* report)
 {
     std::ostringstream report_stream;
 
-    if (plrobjs_root == nullptr || !*plrobjs_root) {
+    plrobjs_root = rots::text::truncate_at_null(plrobjs_root);
+
+    if (plrobjs_root.empty()) {
         if (report)
             *report = "SKIP: plrobjs_root must not be empty.\n";
         return 0;
@@ -328,7 +340,7 @@ int convert_all_legacy_plrobjs(const char* plrobjs_root, bool delete_after, std:
         collect_files_with_suffix(plrobjs_root, ".obj.migrated", &migrated_paths);
         std::sort(migrated_paths.begin(), migrated_paths.end());
         for (const std::string& migrated_path : migrated_paths) {
-            if (std::remove(migrated_path.c_str()) == 0) {
+            if (rots_remove(migrated_path) == 0) {
                 report_stream << "DELETED " << migrated_path << "\n";
             } else {
                 report_stream << "WARN failed to delete " << migrated_path << ": " << std::strerror(errno) << "\n";
@@ -343,11 +355,13 @@ int convert_all_legacy_plrobjs(const char* plrobjs_root, bool delete_after, std:
     return converted_count;
 }
 
-int recover_all_legacy_plrobjs(const char* plrobjs_root, std::string* report)
+int recover_all_legacy_plrobjs(std::string_view plrobjs_root, std::string* report)
 {
     std::ostringstream report_stream;
 
-    if (plrobjs_root == nullptr || !*plrobjs_root) {
+    plrobjs_root = rots::text::truncate_at_null(plrobjs_root);
+
+    if (plrobjs_root.empty()) {
         if (report)
             *report = "SKIP: plrobjs_root must not be empty.\n";
         return 0;

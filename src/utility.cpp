@@ -1093,14 +1093,16 @@ int rots_asprintf(char** out, const char* fmt, ...)
 // platform_compat.h for the full rationale -- std::rename() refuses to
 // overwrite an existing destination on Windows, breaking every temp+rename
 // atomic write on the second save of any file).
-int rots_rename_replace(const char* from, const char* to)
+int rots_rename_replace(std::string_view from, std::string_view to)
 {
+    const std::string from_owner(rots::text::truncate_at_null(from));
+    const std::string to_owner(rots::text::truncate_at_null(to));
 #if defined PREDEF_PLATFORM_WINDOWS
     // MoveFileExA + MOVEFILE_REPLACE_EXISTING is the Win32 primitive with
     // exactly POSIX rename()'s replace behavior (atomic on NTFS same-volume
     // moves, which every persistence-layer temp file is -- the temp lives
     // next to its final path by construction).
-    if (MoveFileExA(from, to, MOVEFILE_REPLACE_EXISTING)) {
+    if (MoveFileExA(from_owner.c_str(), to_owner.c_str(), MOVEFILE_REPLACE_EXISTING)) {
         return 0;
     }
 
@@ -1122,17 +1124,18 @@ int rots_rename_replace(const char* from, const char* to)
     }
     return -1;
 #else
-    return std::rename(from, to);
+    return std::rename(from_owner.c_str(), to_owner.c_str());
 #endif
 }
 
 // rots_remove: POSIX-remove-semantics deletion on every platform (see
 // platform_compat.h -- POSIX remove(3) also deletes empty directories, MSVC's
 // CRT remove() refuses them, leaking directories from rollback paths).
-int rots_remove(const char* path)
+int rots_remove(std::string_view path)
 {
+    const std::string path_owner(rots::text::truncate_at_null(path));
 #if defined PREDEF_PLATFORM_WINDOWS
-    if (std::remove(path) == 0) {
+    if (std::remove(path_owner.c_str()) == 0) {
         return 0;
     }
 
@@ -1140,9 +1143,9 @@ int rots_remove(const char* path)
     // way POSIX remove() falls back to rmdir(). RemoveDirectoryA is the Win32
     // primitive (same header set MoveFileExA above comes from); map its common
     // failures onto errno so callers' strerror(errno) messages stay meaningful.
-    const DWORD attributes = GetFileAttributesA(path);
+    const DWORD attributes = GetFileAttributesA(path_owner.c_str());
     if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
-        if (RemoveDirectoryA(path)) {
+        if (RemoveDirectoryA(path_owner.c_str())) {
             return 0;
         }
         switch (GetLastError()) {
@@ -1164,7 +1167,7 @@ int rots_remove(const char* path)
     }
     return -1;
 #else
-    return std::remove(path);
+    return std::remove(path_owner.c_str());
 #endif
 }
 

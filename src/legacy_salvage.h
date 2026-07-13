@@ -23,11 +23,16 @@
 
 namespace legacy_salvage {
 
+/// Returns whether a byte is within the printable seven-bit ASCII range.
 inline bool is_printable_ascii(unsigned char byte)
 {
     return byte >= 0x20 && byte <= 0x7E;
 }
 
+/// Reports whether a fixed-width binary field contains no null byte in its complete declared range.
+///
+/// The pointer and explicit width intentionally remain a binary-data contract: embedded and trailing
+/// null bytes participate in the result and must not be truncated through a textual view.
 // True iff `field` (exactly `width` bytes) has no NUL byte anywhere within
 // its declared width -- i.e. is a candidate for sanitize_fixed_width_field.
 // A field that DOES have an in-width NUL is not touched by recovery: the
@@ -38,6 +43,10 @@ inline bool fixed_width_field_has_no_nul(const char* field, size_t width)
     return std::memchr(field, '\0', width) == nullptr;
 }
 
+/// Recovers the printable prefix of a complete fixed-width binary field.
+///
+/// The explicit width remains authoritative so recovery can distinguish unterminated legacy storage
+/// from normal text; callers must provide readable storage for the full declared range.
 // Applies the locked sanitization policy to a fixed-width field already
 // known (via fixed_width_field_has_no_nul) to have no NUL within `width`.
 // Safe to call even if that precondition doesn't hold -- it just stops at

@@ -10,6 +10,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 // TDD coverage for the plrobjs conversion sweep (Phase 2a Task 3). Uses
 // legacy_rent_fixture.h's byte builders (shared with objects_json_layout_tests.cpp)
@@ -76,6 +77,26 @@ std::string read_file(const std::string& path)
 }
 
 } // namespace
+
+TEST(ConvertPlrobjs, UsesBoundedRootPathAndIgnoresEmbeddedNullSuffix)
+{
+    TemporaryDirectory root;
+    const std::string corrupt_path = root.path() + "/bounded.obj";
+    write_file(corrupt_path, "corrupt");
+
+    std::string bounded_storage = root.path() + "ignored-without-a-terminator";
+    const std::string_view bounded_root(bounded_storage.data(), root.path().size());
+    std::string report;
+    EXPECT_EQ(0, convert_all_legacy_plrobjs(bounded_root, false, &report));
+    EXPECT_NE(report.find(corrupt_path), std::string::npos);
+
+    const std::string second_corrupt_path = root.path() + "/embedded.obj";
+    write_file(second_corrupt_path, "corrupt");
+    const std::string embedded_null_root = root.path() + std::string("\0ignored", 8);
+    report.clear();
+    EXPECT_EQ(0, convert_all_legacy_plrobjs(std::string_view(embedded_null_root), false, &report));
+    EXPECT_NE(report.find(second_corrupt_path), std::string::npos);
+}
 
 TEST(ConvertPlrobjs, ConvertsValidFileAndSkipsCorruptFileLeavingItUntouched)
 {

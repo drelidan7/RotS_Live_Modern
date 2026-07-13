@@ -1,5 +1,7 @@
 #include "rots_crypt.h"
 
+#include "text_view.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
@@ -418,4 +420,11 @@ const char* rots_crypt(const char* key, const char* setting)
     std::fill(s_bytes.begin(), s_bytes.end(), '\0');
 
     return out.c_str();
+}
+
+const char* rots_crypt(std::string_view key, std::string_view setting)
+{
+    const std::string key_owner(rots::text::truncate_at_null(key));
+    const std::string setting_owner(rots::text::truncate_at_null(setting));
+    return rots_crypt(key_owner.c_str(), setting_owner.c_str());
 }

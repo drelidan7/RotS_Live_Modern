@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string_view>
+
 // Portable, self-contained SHA-512-crypt ($6$), vendored so account
 // credentials hash and verify byte-identically on every platform (glibc,
 // macOS libc, and eventually Windows) rather than depending on glibc's
@@ -22,4 +24,9 @@
 // Role: single-threaded server (see AGENTS.md/CLAUDE.md) — like libc's
 // crypt(), the result points at a static buffer that the next call
 // overwrites. Copy it out (e.g. into a std::string) before calling again.
+/// Hashes nullable C-string inputs, returning null when either pointer is null or the setting is
+/// invalid.
 const char* rots_crypt(const char* key, const char* setting);
+
+/// Hashes bounded password and setting text after truncating each at its first null character.
+const char* rots_crypt(std::string_view key, std::string_view setting);

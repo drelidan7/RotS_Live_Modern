@@ -3,6 +3,7 @@
 #include "interpre.h"
 
 #include <string>
+#include <string_view>
 
 // One-shot converter (Phase 2a Task 3): walks `plrobjs_root` recursively,
 // converts every legacy `<name>.obj` rent file it finds to `<name>.objs.json`
@@ -32,7 +33,9 @@
 // is replaced (not appended to) with one line per file processed
 // (converted/skipped/deleted), plus one line per file deleted if
 // `delete_after` was set.
-int convert_all_legacy_plrobjs(const char* plrobjs_root, bool delete_after, std::string* report);
+/// Converts every losslessly decodable legacy object file beneath a bounded root path.
+int convert_all_legacy_plrobjs(std::string_view plrobjs_root, bool delete_after,
+    std::string* report);
 
 // Corrupt Legacy File Recovery (2026-07-07): a lossy salvage pass for `.obj`
 // rent files that fail even legacy_object_save_data_from_binary (the 273
@@ -62,7 +65,8 @@ int convert_all_legacy_plrobjs(const char* plrobjs_root, bool delete_after, std:
 // All outcomes are named in `*report`. Returns the count of files
 // successfully salvaged. `report`, if non-null, is replaced (not appended
 // to).
-int recover_all_legacy_plrobjs(const char* plrobjs_root, std::string* report);
+/// Salvages eligible corrupt legacy object files beneath a bounded root path.
+int recover_all_legacy_plrobjs(std::string_view plrobjs_root, std::string* report);
 
 // Wizard command wiring (mirrors mob_csv_extract.cpp's do_mob_csv_extract):
 // LEVEL_IMPL only. `argument`, if it contains the word "delete", sets

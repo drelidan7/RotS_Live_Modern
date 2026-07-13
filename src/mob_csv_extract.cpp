@@ -4,6 +4,7 @@
 #include "db.h"
 #include "handler.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 #include <filesystem>
 #include <sstream>
@@ -140,9 +141,10 @@ void mob_csv_extract::close_file(char_data*) const
     fclose(file);
 }
 
-void mob_csv_extract::write_to_file(char_data*, const std::string& mob_data) const
+void mob_csv_extract::write_to_file(char_data*, std::string_view mob_data) const
 {
-    fprintf(file, "%s", mob_data.c_str());
+    const std::string mob_data_owner(rots::text::truncate_at_null(mob_data));
+    fprintf(file, "%s", mob_data_owner.c_str());
 }
 
 std::string mob_csv_extract::generate_npc_stat(char_data* mob)

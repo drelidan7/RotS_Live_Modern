@@ -1,7 +1,12 @@
 #include "../platform_compat.h"
+#include "../mob_csv_extract.h"
+#include "test_platform_compat.h"
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <gtest/gtest.h>
+#include <string>
+#include <string_view>
 
 // rots_asprintf is a portable drop-in for the POSIX/BSD/glibc asprintf() extension,
 // which MSVC's CRT does not provide (Phase 3 Task 5: MSVC bring-up). These pin its
@@ -63,4 +68,54 @@ TEST(RotsAsprintf, NullTerminatesExactlyAtWrittenLength) {
     EXPECT_EQ(written, 6);
     EXPECT_EQ(out[written], '\0');
     std::free(out);
+}
+
+TEST(RotsAsprintf, PlatformPathsAcceptBoundedAndEmbeddedNullViews)
+{
+    char path_template[] = "/tmp/rots-platform-compat-XXXXXX";
+    char* created_path = rots_mkdtemp(path_template);
+    ASSERT_NE(created_path, nullptr);
+    const std::filesystem::path temporary_directory(created_path);
+
+    const std::string source_path = (temporary_directory / "source").string();
+    const std::string destination_path = (temporary_directory / "destination").string();
+    {
+        FILE* source_file = std::fopen(source_path.c_str(), "wb");
+        ASSERT_NE(source_file, nullptr);
+        EXPECT_EQ(std::fclose(source_file), 0);
+    }
+
+    std::string source_storage = source_path + "ignored-without-a-terminator";
+    const std::string_view bounded_source(source_storage.data(), source_path.size());
+    const std::string embedded_destination = destination_path + std::string("\0ignored", 8);
+    EXPECT_EQ(rots_rename_replace(
+                  bounded_source, std::string_view(embedded_destination)),
+        0);
+    EXPECT_TRUE(std::filesystem::exists(destination_path));
+
+    std::string destination_storage = destination_path + "ignored-without-a-terminator";
+    const std::string_view bounded_destination(destination_storage.data(), destination_path.size());
+    EXPECT_EQ(rots_remove(bounded_destination), 0);
+    EXPECT_FALSE(std::filesystem::exists(destination_path));
+
+    std::error_code cleanup_error;
+    std::filesystem::remove_all(temporary_directory, cleanup_error);
+}
+
+TEST(MobCsv, WritesOnlyTheBoundedTextualPrefix)
+{
+    mob_csv_extract exporter;
+    exporter.file = std::tmpfile();
+    ASSERT_NE(exporter.file, nullptr);
+
+    const std::string text_storage("alpha,beta\0ignored", 18);
+    exporter.write_to_file(nullptr, std::string_view(text_storage));
+    ASSERT_EQ(std::fflush(exporter.file), 0);
+    ASSERT_EQ(std::fseek(exporter.file, 0, SEEK_SET), 0);
+
+    char contents[32] {};
+    const std::size_t bytes_read = std::fread(contents, sizeof(char), sizeof(contents), exporter.file);
+    EXPECT_EQ(std::string_view(contents, bytes_read), "alpha,beta");
+    EXPECT_EQ(std::fclose(exporter.file), 0);
+    exporter.file = nullptr;
 }

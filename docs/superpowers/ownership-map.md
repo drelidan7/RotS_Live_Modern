@@ -1,11 +1,38 @@
 # char_data / obj_data Ownership Map (RAII Lifecycle-Audit — Task 1, the gate)
 
-**Status:** READ-ONLY audit. No code changed. This document is the greenlight
-source that T3+ conversion tasks consume, and the escalation input T2 brings to
-the owner. A mislabeled OWNING field that is actually prototype-shared becomes a
-double-free the moment a later task converts it, so every free/alloc claim below
-cites `file:line` against the source as it exists on branch
-`modernization/raii-audit`.
+**Status:** FINALIZED at wave exit (2026-07-13). Originally a READ-ONLY audit (T1);
+now closed out with every boundary's terminal verdict recorded below, after T2's
+ruling and the T3-T6 conversions all landed. A mislabeled OWNING field that is
+actually prototype-shared becomes a double-free the moment a later task converts
+it, so every free/alloc claim below cites `file:line` against the source as it
+exists on branch `modernization/raii-audit`.
+
+## Exit summary (wave-final tally)
+
+Every ownership boundary enumerated in §2/§3 carries exactly one terminal verdict.
+Counts below are by **named field** (grouped rows such as `mount_data.mount/.rider/
+.next_rider` and the `equipment[MAX_WEAR]` array each count once as a single
+boundary); the fields backing each number are enumerated inline so the tally is
+self-checking against the §2/§3 tables.
+
+| Verdict | Count | Fields (enumerated) |
+|---|---|---|
+| **CONVERTED** | **10** | RAII-managed this wave: `skills`, `knowledge` (T3, →`std::vector<byte>`); `specials.alias` (T4, →`owned_alias_list`); `specials.poofIn`, `specials.poofOut` (T5b, →`std::string`); `special_stack`, `special_list_area`, `special_prog_number`, `special_prog_point` (T5a — the four typed fields decoupled off the poof/`union1`/`union2` overload, which also fixed the `prog_number`/`prog_point` leak) — that is 9 named fields; **plus** the `char_data` instance-ownership lifecycle itself (T6a teardown-symmetry `~char_data()` + T6b `char_data_ptr`/`make_char_data` factory), the 10th conversion. |
+| **HELD-RAW-FOREVER** | **28** | NON-OWNING world-graph cross-links / back-refs, plus members owned by a subsystem *other* than `free_char`/`free_obj` (`followers`, `group`, `memory`, `death_cry`/`death_cry2`). Char (22): `equipment[]`, `carrying`, `desc`, `next_in_room`, `next`, `next_fighting`, `next_fast_update`, `followers`, `master`, `mount_data.*`, `group`, `delay.next`, `next_die`, `specials.fighting`, `specials.hunting`, `union1.reply_ptr`, `memory`, `specials.recite_lines`, `specials.script_info`, `death_cry`, `death_cry2`, `damage_details.damage_map` keys. Obj (6): `carried_by`, `in_obj`, `contains`, `next_content`, `next`, `obj_flags.script_info`. Permanently out of scope per the global constraint — never revisit. Full reasoning in §4's HOLD-RAW-FOREVER section. |
+| **ESCALATED-DEFERRED** | **11** | The prototype-shared CONDITIONAL fields (char: `name`, `short_descr`, `long_descr`, `description`, `title`, `profs`; obj: `name`, `description`, `short_description`, `action_description`, `ex_description`). **T2 RULING (owner, 2026-07-13): KEEP-RAW-CONDITIONAL** — these stay raw `char*` with their existing `IS_NPC`/`item_number`-guarded free logic UNTOUCHED. NOT converted. Deferred to a possible future, separately-scoped, characterization-heavy effort (optional T7: interned/shared immutable prototype strings) — not scoped or committed to in this wave. See §5. |
+
+Two boundaries don't fit the three-way split above and are called out so the
+tally is exhaustive rather than silently dropping them:
+
+- **`specials.affected`** — **DEFERRED, PREREQUISITE-BLOCKED** (distinct from the T2 escalation above). It IS owning, but pool-mediated (`get_/put_to_affected_type_pool`) and mirrored in a global `affected_list` tracking structure; converting it to an owned-node container would double-free/desync until that pool and tracking structure are retired first. Not attempted this wave; §4 marks it GREENLIGHT-WITH-PREREQUISITE for a future task — a real owning boundary, just blocked on a predecessor refactor (neither CONVERTED nor HELD-RAW-FOREVER).
+- **`extra_specialization_data.current_spec_info`** — **ALREADY-SAFE, no wave action**. Pre-existing `new`/`delete` inside `specialization_data::set`/`::reset` is already leak-safe; a `std::unique_ptr` wrap is optional cosmetic tidy, not a correctness gap. Not counted as a wave "conversion" because nothing was unsafe to begin with.
+
+(`temp` (`void*` local scratch) and `union2.reply_number` (a value, not a pointer)
+are excluded from all counts — they were never ownership boundaries.)
+
+**Completeness:** 10 converted + 28 held-raw-forever + 11 escalated-deferred + the
+2 special cases above = every boundary in §2/§3 accounted for; none remain
+unclassified.
 
 ## 0. The allocation model (load-bearing context)
 
@@ -185,12 +212,14 @@ constraint "the world graph stays raw." `followers`, `group`, and `memory` are
 owned by *other subsystems* (follow / grouping / mob-memory), freed on paths other
 than `free_char` — they stay raw here.
 
-### ESCALATE (CONDITIONAL) → feeds T2
+### ESCALATED-DEFERRED (CONDITIONAL) — T2 RULING: KEEP-RAW-CONDITIONAL (final, 2026-07-13)
 
 Char: `player.name`, `player.short_descr`, `player.long_descr`,
 `player.description`, `player.title`, and `profs` (same guarded branch).
 Obj: `name`, `description`, `short_description`, `action_description`,
-`ex_description`. See §5 for the full escalation package.
+`ex_description`. 11 fields total. **NOT converted.** Deferred to an optional,
+separately-scoped future effort (T7); no T3-T6 task touched these. See §5 for
+the full escalation package and the ratified ruling text.
 
 ---
 
@@ -277,11 +306,25 @@ Reasoning:
    is marginal; the regression/behavior-drift risk (goldens are byte-pinned) is
    high.
 
-**What the owner is being asked at T2:** ratify KEEP-RAW-CONDITIONAL for the 11
+**What the owner was asked at T2:** ratify KEEP-RAW-CONDITIONAL for the 11
 shared fields for this wave, OR fund option (b) (interned/shared immutable
 prototype strings) as its own separately-scoped, characterization-heavy sub-wave.
-Option (a) is not recommended (hot-path cost). If KEEP-RAW is ratified, these 11
-fields are explicitly excluded from T3+ and the audit's greenlit set stands as §4.
+Option (a) was not recommended (hot-path cost).
+
+#### T2 RULING (owner, 2026-07-13): KEEP-RAW-CONDITIONAL — FINAL
+
+The 11 prototype-shared string fields stay **raw `char*` with their existing
+runtime-guarded free logic UNTOUCHED** for this wave. Basis: genuinely
+runtime-determined sharing (`IS_NPC`/`nr` / `item_number` guards), already
+leak-safe (prototype owns, freed once at proto teardown), ~600 raw-`char*` read
+sites (`GET_NAME` alone ~288 verified). Instance-block ownership (T6) wraps
+*around* these fields without touching them — `~char_data()` is a no-op for POD
+pointer members, so the destructor introduced by T6 does not free these strings
+either; the `IS_NPC`-guarded `RELEASE` block in `free_char` remains the only
+thing that frees them, unchanged. **Verdict recorded: ESCALATED-DEFERRED.** These
+11 fields are explicitly excluded from T3-T6 and from this wave's greenlit set
+(§4 stands); a proper interned/shared-string model remains a possible future
+funded effort (optional T7), not scoped or committed to here.
 
 ---
 

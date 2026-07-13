@@ -108,6 +108,16 @@ proxy in front of the game.
   the registry check entirely.
 - The Rust proxy (`proxy/`) is not needed for telnet play; it builds natively on macOS
   with `cargo build -p proxy` if you later want browser-client access.
+- **The canonical i386 test gate is `make test` (ctest), not a bare `./bin/tests`
+  invocation.** `make test` runs the suite via ctest, which honors each test's
+  `WORKING_DIRECTORY` (`gtest_discover_tests(... WORKING_DIRECTORY ...)` in
+  `src/CMakeLists.txt`); the characterization goldens (`src/tests/goldens/`) are read
+  with paths relative to that directory. Running `bin/tests` directly from the wrong
+  cwd bypasses that `WORKING_DIRECTORY` and produces **false golden-read failures**
+  that look like a real regression but are purely an invocation artifact — the RAII
+  Lifecycle-Audit wave (T6) hit exactly this. Same reasoning is why the monolithic
+  runner must be invoked `cd src/tests && make tests && ../../bin/tests` (run from
+  `src/tests`, not the repo root) — golden paths resolve relative to that cwd too.
 
 ## Native macOS arm64 build (Phase 2b, primary Mac dev flow)
 
@@ -432,3 +442,26 @@ Windows CI runner willing to accept a long-running background process) with `lib
 staged onto it, and (2) either a `boot-golden.sh` Windows/PowerShell port or a
 cross-platform rewrite of that script, since it currently shells out to POSIX tools
 (`nc`/process-signaling) that don't exist on Windows as-is.
+
+## Lifecycle lesson: placement-new construction demands a matching explicit destructor call (RAII Lifecycle-Audit)
+
+`char_data`/`obj_data` are `calloc`'d raw storage (`CREATE`/`CREATE1`, `utils.h`) that
+`clear_char`/`read_mobile` construct in place with `new (ch) char_data();`
+(`db.cpp`) — this is required because those types carry non-trivial members
+(`specialization_data`, `player_damage_details::damage_map`, and, after the RAII
+Lifecycle-Audit wave, `owned_alias_list`/`std::string`/`std::vector<byte>` fields
+too). Before that wave, teardown (`free_char`) never called `~char_data()` — it
+hand-freed a fixed set of members and then `free()`'d the raw storage, working only
+because every durable member was a POD pointer with nothing for a destructor to do.
+**The construct/teardown asymmetry becomes a live bug the moment any member gains a
+non-trivial destructor**: skip the explicit dtor call and a `std::string`/
+`std::vector`/RAII wrapper member leaks (or, worse, its destructor never runs but the
+storage is freed out from under it). RAII T6 fixed this for good: `free_char` now
+calls `ch->~char_data();` immediately before `RELEASE(ch)` (`free_function`/`free`),
+restoring symmetry — calloc + placement-new on construction, explicit destructor call
++ `free` on teardown. The general lesson for any type built with placement-new over
+non-`new`-allocated storage: the destructor call is not optional busywork once a
+non-trivial member exists, and adding such a member without auditing the paired
+teardown path is the exact bug class this wave's ASan/LeakSanitizer gate (`macOS ASan`
++ `linux-x64-sanitize`) exists to catch. See `docs/superpowers/ownership-map.md` §0/§6
+and `.superpowers/sdd/task-6-report.md` for the full before/after.

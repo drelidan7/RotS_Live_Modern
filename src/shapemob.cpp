@@ -97,12 +97,11 @@ void recalculate_mob(struct char_data* ch)
         break;
     case RACE_EASTERLING:
         mob->player.language = LANG_BASIC;
-        [[fallthrough]]; // FIXME: likely a historical missing break, not intent --
-                          // spec_pro.cpp's race->language switch gives RACE_EASTERLING its
-                          // own LANG_BASIC + break, so falling into default's LANG_ANIMAL
-                          // here looks like a bug. Preserved byte-for-byte per the Phase 5
-                          // byte-identical constraint; behavior-fix candidate for a future
-                          // disclosed-delta effort.
+        [[fallthrough]]; // INVESTIGATE (owner, 2026-07-13): behavior ruling pending more
+                          // information; preserved byte-for-byte. spec_pro.cpp's
+                          // race->language switch gives RACE_EASTERLING its own LANG_BASIC
+                          // + break, so falling into default's LANG_ANIMAL here looks like a
+                          // bug.
     default:
         mob->player.language = LANG_ANIMAL;
         break;

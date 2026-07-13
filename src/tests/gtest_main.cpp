@@ -63,6 +63,15 @@ int main(int argc, char* argv[]) {
     // Each create()'s storage is a function-local static, so this is a one-time,
     // idempotent, harness-only bootstrap -- it does not model boot's real
     // weather_info/world wiring and has no effect on shipped game behavior.
+    // FIRST-CALL-WINS (singleton.h's world_singleton<T>::create): `static T
+    // theInstance(&weather, world)` inside create() is a function-local
+    // static, constructed exactly once on the first call that reaches it;
+    // every later create() call -- here or in any test that adds its own --
+    // just re-points m_pInstance at that same already-constructed instance
+    // and silently ignores whatever (weather, world) args it was passed. A
+    // future world-booting test that calls create() expecting a *different*
+    // room_data*/weather_data& to take effect will get this process's
+    // first-ever args instead, with no error or warning.
     game_timer::skill_timer::create(weather_info, nullptr);
     game_rules::big_brother::create(weather_info, nullptr);
     ::testing::InitGoogleTest(&argc, argv);

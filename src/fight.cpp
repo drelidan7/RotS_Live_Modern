@@ -2039,12 +2039,14 @@ int weapon_hit_type(int weapon_type)
         break;
     case 13:
         w_type = TYPE_WHIP;
-        [[fallthrough]]; // FIXME: likely a historical missing break, not intent -- spells.h's
-                          // weapon_skill_num gives case 13 (SKILL_WHIP) and case 14
-                          // (SKILL_CONCUSSION) distinct skills, so collapsing 13 into
-                          // TYPE_BLUDGEON here looks like a bug. Preserved byte-for-byte per
-                          // the Phase 5 byte-identical constraint; behavior-fix candidate for
-                          // a future disclosed-delta effort.
+        [[fallthrough]]; // INVESTIGATE (owner, 2026-07-13): behavior ruling pending more
+                          // information; preserved byte-for-byte. spells.h's weapon_skill_num
+                          // gives case 13 (SKILL_WHIP) and case 14 (SKILL_CONCUSSION) distinct
+                          // skills, so collapsing 13 into TYPE_BLUDGEON here looks like a bug.
+                          // Live-game whips display whip/lash (not crush/pound) messages --
+                          // the fallthrough may be dead code or the message path may not flow
+                          // from this assignment; verify message-path provenance before
+                          // ruling.
     case 14:
         w_type = TYPE_BLUDGEON;
         break;

@@ -346,7 +346,7 @@ struct target_data {
     int choice; /* what kind of target is this   */
     void cleanup(); /* cleans the target data, releases the text if nec. */
     void operator=(const target_data& t2);
-    int operator==(target_data t2);
+    int operator==(const target_data& t2) const;
 
     target_data()
     {

@@ -35,6 +35,7 @@
 #include "savebench.h"
 #include "spells.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 
 #include "big_brother.h"
@@ -1531,15 +1532,20 @@ int fill_word(char* argument)
     return (search_block(argument, fill, TRUE) >= 0);
 }
 
-int is_abbrev(const char* arg1, const char* arg2)
+int is_abbrev(std::string_view abbreviation, std::string_view word)
 /* determine if a given string is an abbreviation of another string */
 {
-    if (!*arg1)
+    abbreviation = rots::text::truncate_at_null(abbreviation);
+    word = rots::text::truncate_at_null(word);
+
+    if (abbreviation.empty() || abbreviation.size() > word.size())
         return (0);
 
-    for (; *arg1; arg1++, arg2++)
-        if (LOWER(*arg1) != LOWER(*arg2))
+    for (std::size_t character_index = 0; character_index < abbreviation.size();
+         ++character_index) {
+        if (LOWER(abbreviation[character_index]) != LOWER(word[character_index]))
             return (0);
+    }
 
     return (1);
 }

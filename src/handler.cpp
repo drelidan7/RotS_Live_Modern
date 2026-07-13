@@ -1645,24 +1645,28 @@ struct char_data* get_char_room(char* name, int room)
 }
 
 /* search all over the world for a char, and return a pointer if found */
-struct char_data* get_char(const char* name)
+struct char_data* get_char(std::string_view name)
 {
-    struct char_data* i;
-    int j, number;
-    char tmpname[MAX_INPUT_LENGTH];
-    char* tmp;
-
-    strcpy(tmpname, name);
-    tmp = tmpname;
-    if (!(number = get_number(&tmp)))
+    // The legacy numbered-name parser tokenizes in place, so one owned copy keeps the public
+    // lookup bounded without forcing mutable storage through the rest of the read-only chain.
+    std::string mutable_name(rots::text::truncate_at_null(name));
+    char* mutable_name_cursor = mutable_name.data();
+    const int requested_match_number = get_number(&mutable_name_cursor);
+    if (requested_match_number == 0) {
         return (0);
+    }
 
-    for (i = character_list, j = 1; i && (j <= number); i = i->next)
-        if (isname_nullable(tmp, i->player.name)) {
-            if (j == number)
-                return (i);
-            j++;
+    int match_index = 1;
+    for (char_data* candidate = character_list;
+         candidate != nullptr && match_index <= requested_match_number;
+         candidate = candidate->next) {
+        if (isname_nullable(mutable_name_cursor, candidate->player.name)) {
+            if (match_index == requested_match_number) {
+                return candidate;
+            }
+            ++match_index;
         }
+    }
 
     return (0);
 }
@@ -2176,32 +2180,38 @@ struct char_data* get_char_vis(struct char_data* ch, char* name, int dark_ok)
     return (0);
 }
 
-struct obj_data* get_obj_in_list_vis(struct char_data* ch, const char* name,
+struct obj_data* get_obj_in_list_vis(struct char_data* ch, std::string_view name,
     struct obj_data* list, int num)
 {
-    struct obj_data* i;
-    int j, number;
-    char tmpname[MAX_INPUT_LENGTH];
-    char* tmp;
-
     if (num < 9999) {
-        for (i = list, j = 1; i && (j < num); i = i->next_content, j++)
-            ;
-        return (i);
+        obj_data* indexed_object = list;
+        for (int list_index = 1; indexed_object != nullptr && list_index < num; ++list_index) {
+            indexed_object = indexed_object->next_content;
+        }
+        return indexed_object;
     }
 
-    strcpy(tmpname, name);
-    tmp = tmpname;
-    if (!(number = get_number(&tmp)))
+    // The legacy numbered-name parser tokenizes in place, so one owned copy keeps the public
+    // lookup bounded without forcing mutable storage through the rest of the read-only chain.
+    std::string mutable_name(rots::text::truncate_at_null(name));
+    char* mutable_name_cursor = mutable_name.data();
+    const int requested_match_number = get_number(&mutable_name_cursor);
+    if (requested_match_number == 0) {
         return (0);
+    }
 
-    for (i = list, j = 1; i && (j <= number); i = i->next_content)
-        if (isname_nullable(tmp, i->name, 0))
-            if (CAN_SEE_OBJ(ch, i)) {
-                if (j == number)
-                    return (i);
-                j++;
+    int match_index = 1;
+    for (obj_data* candidate_object = list;
+         candidate_object != nullptr && match_index <= requested_match_number;
+         candidate_object = candidate_object->next_content) {
+        if (isname_nullable(mutable_name_cursor, candidate_object->name, 0)
+            && CAN_SEE_OBJ(ch, candidate_object)) {
+            if (match_index == requested_match_number) {
+                return candidate_object;
             }
+            ++match_index;
+        }
+    }
     return (0);
 }
 

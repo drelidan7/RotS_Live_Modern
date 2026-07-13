@@ -5,9 +5,11 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 // TESTING seam in zone.cpp (same convention as fight.cpp's
 // reset_perform_violence_timing_for_testing): resets the static cursor
@@ -15,6 +17,7 @@
 // zone_table at slot 0 instead of wherever a previous load_zones() call
 // (same test under --gtest_repeat, or another test) left it.
 void reset_zone_load_cursor_for_testing();
+std::string strip_trailing_line_break(std::string_view text);
 
 namespace {
 
@@ -186,4 +189,16 @@ TEST(ZoneLoad, NegativeOneArgumentParsesAsSignedNegativeOne)
     EXPECT_EQ(zone_table[0].cmd[1].arg4, 0);
     EXPECT_EQ(zone_table[0].cmd[1].arg5, 100);
     EXPECT_EQ(zone_table[0].cmd[1].arg6, -1); // call site 3; pre-fix: 65535
+}
+
+TEST(ZoneWeatherText, AcceptsBoundedTextAndStopsAtEmbeddedNull)
+{
+    const std::array<char, 18> weather_text {
+        'C', 'l', 'o', 'u', 'd', 's', '.', '\n', '\r', '\0',
+        'i', 'g', 'n', 'o', 'r', 'e', 'd', '!'
+    };
+
+    EXPECT_EQ(strip_trailing_line_break(
+                  std::string_view(weather_text.data(), weather_text.size())),
+        "Clouds.");
 }

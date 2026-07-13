@@ -3,6 +3,7 @@
 #include "../object_utils.h"
 #include "../spells.h"
 #include "../utils.h"
+#include "test_world.h"
 #include <gtest/gtest.h>
 
 #include <array>
@@ -11,6 +12,8 @@
 namespace utils {
 int get_race_perception(const char_data& character);
 }
+
+extern char_data* character_list;
 
 namespace {
 
@@ -749,4 +752,52 @@ TEST(DamageReports, GroupReportPadsCharacterNameAndFormatsDps) {
         "Total Damage: 80\n"
         "-------------------------------------------------------------------------------\n")
         << report;
+}
+
+TEST(GameplayNameLookup, AcceptsBoundedCharacterNamesAndStopsAtEmbeddedNull)
+{
+    char_data matching_character {};
+    matching_character.player.name = const_cast<char*>("ranger scout");
+    matching_character.next = nullptr;
+
+    char_data* previous_character_list = character_list;
+    character_list = &matching_character;
+
+    const std::array<char, 6> bounded_name { 'r', 'a', 'n', 'g', 'e', 'r' };
+    const std::array<char, 13> embedded_null_name {
+        'r', 'a', 'n', 'g', 'e', 'r', '\0', 'i', 'g', 'n', 'o', 'r', 'e'
+    };
+
+    EXPECT_EQ(get_char(std::string_view(bounded_name.data(), bounded_name.size())),
+        &matching_character);
+    EXPECT_EQ(get_char(std::string_view(embedded_null_name.data(), embedded_null_name.size())),
+        &matching_character);
+
+    character_list = previous_character_list;
+}
+
+TEST(GameplayKeywordLookup, ShopObjectSelectionAcceptsBoundedNamesAndStopsAtEmbeddedNull)
+{
+    ScopedTestWorld test_world;
+    CharUtilsTestContext character_context;
+    character_context.character.in_room = 0;
+    SET_BIT(character_context.character.specials2.pref, PRF_HOLYLIGHT);
+
+    obj_data shop_object {};
+    shop_object.name = const_cast<char*>("healing potion");
+    shop_object.next_content = nullptr;
+
+    const std::array<char, 7> bounded_keyword { 'h', 'e', 'a', 'l', 'i', 'n', 'g' };
+    const std::array<char, 14> embedded_null_keyword {
+        'h', 'e', 'a', 'l', 'i', 'n', 'g', '\0', 'i', 'g', 'n', 'o', 'r', 'e'
+    };
+
+    EXPECT_EQ(get_obj_in_list_vis(&character_context.character,
+                  std::string_view(bounded_keyword.data(), bounded_keyword.size()), &shop_object,
+                  9999),
+        &shop_object);
+    EXPECT_EQ(get_obj_in_list_vis(&character_context.character,
+                  std::string_view(embedded_null_keyword.data(), embedded_null_keyword.size()),
+                  &shop_object, 9999),
+        &shop_object);
 }

@@ -25,6 +25,7 @@
 #include "script.h"
 #include "spells.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 #include "zone.h" /* For zone_table */
@@ -1317,53 +1318,62 @@ void group_gain(char_data* killer, char_data* dead_man)
 
 char replace_string_buf[500];
 
-char* replace_string(const char* str, const char* weapon_singular, const char* weapon_plural, const char* bodypart)
+char* replace_string(std::string_view format, std::string_view weapon_singular,
+    std::string_view weapon_plural, std::string_view bodypart)
 {
-    char* buf;
-    char* cp;
+    format = rots::text::truncate_at_null(format);
+    weapon_singular = rots::text::truncate_at_null(weapon_singular);
+    weapon_plural = rots::text::truncate_at_null(weapon_plural);
+    bodypart = rots::text::truncate_at_null(bodypart);
 
-    buf = replace_string_buf;
-    cp = buf;
+    char* output_cursor = replace_string_buf;
+    const auto append_text = [&output_cursor](std::string_view text) {
+        for (const char character : text) {
+            *output_cursor++ = character;
+        }
+    };
 
-    for (; *str; str++) {
-        if (*str == '#') {
-            switch (*(++str)) {
+    for (std::size_t format_index = 0; format_index < format.size(); ++format_index) {
+        if (format[format_index] == '#') {
+            if (format_index + 1 >= format.size()) {
+                *output_cursor++ = '#';
+                continue;
+            }
+
+            switch (format[++format_index]) {
             case 'W':
-                for (; *weapon_plural; *(cp++) = *(weapon_plural++))
-                    continue;
+                append_text(weapon_plural);
                 break;
             case 'w':
-                for (; *weapon_singular; *(cp++) = *(weapon_singular++))
-                    continue;
+                append_text(weapon_singular);
                 break;
             case 'b':
-                if (bodypart[0]) {
-                    *(cp++) = ' ';
-                    for (; *bodypart; *(cp++) = *(bodypart++))
-                        continue;
+                if (!bodypart.empty()) {
+                    *output_cursor++ = ' ';
+                    append_text(bodypart);
                 }
                 break;
             case 's':
-                if (bodypart[0]) {
-                    *(cp++) = '\'';
-                    *(cp++) = 's';
+                if (!bodypart.empty()) {
+                    *output_cursor++ = '\'';
+                    *output_cursor++ = 's';
                 }
                 break;
             case 'r':
-                if (bodypart[0])
-                    *(cp++) = 'r';
+                if (!bodypart.empty())
+                    *output_cursor++ = 'r';
                 break;
             default:
-                *(cp++) = '#';
+                *output_cursor++ = '#';
                 break;
             }
-        } else
-            *(cp++) = *str;
-
-        *cp = 0;
+        } else {
+            *output_cursor++ = format[format_index];
+        }
     }
 
-    return buf;
+    *output_cursor = '\0';
+    return replace_string_buf;
 }
 
 /* use #w for singular (i.e. "slash") and #W for plural (i.e. "slashes") */
@@ -1450,7 +1460,8 @@ const attack_hit_type& get_hit_text(int w_type)
     return attack_hit_text[w_type];
 }
 
-void dam_message(int damage, char_data* attacker, char_data* victim, int w_type, const char* bodypart)
+void dam_message(int damage, char_data* attacker, char_data* victim, int w_type,
+    std::string_view bodypart)
 {
     obj_data* wield = attacker->equipment[WIELD];
 

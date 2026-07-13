@@ -7,6 +7,7 @@
 
 #include <map>
 #include <set>
+#include <string_view>
 #include <time.h>
 
 #ifndef USE_BIG_BROTHER
@@ -36,10 +37,10 @@ public:
     // This enforces our PK engagement rules.
     bool is_target_valid(char_data* attacker, const char_data* victim, int skill_id) const;
 
-    // Redirects in an attempt to find a suitable target for the attacker in the case
-    // that their original target was not valid.  If no suitable target is found, NULL
-    // is returned.
-    char_data* get_valid_target(char_data* attacker, const char_data* victim, const char* argument) const;
+    /// Redirects an attack to a suitable target when the original target is invalid.
+    /// Returns null when no target matches the bounded command argument.
+    char_data* get_valid_target(
+        char_data* attacker, const char_data* victim, std::string_view argument) const;
 
     // Called when a character dies to create information about loot rules.
     void on_character_died(char_data* character, char_data* killer, obj_data* corpse);

@@ -6,11 +6,13 @@
 #include "damage_test_context.h"
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstdlib>
 #include <fstream>
 #include <new> // placement-new (reconstruct the stack victim after free_char, RAII T6 MSVC fix)
 #include <sstream>
 #include <string>
+#include <string_view>
 
 // Note on floating point: this test binary is built with -msse2 -mfpmath=sse
 // (see src/tests/Makefile), so number()'s double arithmetic runs SSE, while
@@ -22,6 +24,8 @@
 // golden is the correct long-term characterization basis, not a compromise.
 
 int damage(char_data *attacker, char_data *victim, int dam, int attacktype, int hit_location);
+char* replace_string(std::string_view format, std::string_view weapon_singular,
+    std::string_view weapon_plural, std::string_view bodypart);
 
 extern char_data *combat_list;
 extern char_data *combat_next_dude;
@@ -247,4 +251,17 @@ TEST_F(CharacterizationCombatTest, DamageTranscriptSeed42) {
     EXPECT_EQ(read_file(kGoldenPath), transcript.str())
         << "Combat transcript drifted from golden. If the change is intentional, "
            "rerun with UPDATE_GOLDENS=1 and commit the new golden.";
+}
+
+TEST(CharacterizationCombatText, ReplacementAcceptsBoundedSlicesAndStopsAtEmbeddedNull)
+{
+    const std::array<char, 8> bounded_format { '#', 'w', ' ', 'h', 'i', 't', 's', '#' };
+    const std::array<char, 12> embedded_null_bodypart {
+        's', 'h', 'o', 'u', 'l', 'd', 'e', 'r', '\0', 'a', 'r', 'm'
+    };
+
+    EXPECT_STREQ(replace_string(std::string_view(bounded_format.data(), bounded_format.size()),
+                     "slash", "slashes",
+                     std::string_view(embedded_null_bodypart.data(), embedded_null_bodypart.size())),
+        "slash hits#");
 }

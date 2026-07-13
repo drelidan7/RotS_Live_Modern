@@ -53,3 +53,16 @@ Permitted reasons are `nullable-state`, `retains-storage`, `binary-data`, `print
 | `int old_search_block(char* argument, int begin, unsigned int length, const char** list, int mode) {` | `sentinel-table` | The implementation stops only when the supplied table reaches its `"\n"` entry. |
 | `extern const char* const fill[] = { "in", "from", "with", "the", "on", "at", "to", "\n" };` | `sentinel-table` | The interpreter filler-word table terminates with the legacy `"\n"` sentinel. |
 | `extern const char* const fill[];` | `sentinel-table` | Interpreter word filtering scans until the table's terminal `"\n"` entry. |
+
+## Mutable gameplay buffers outside the read-only census
+
+These declarations are intentionally absent from the read-only candidate census. They mutate
+caller-provided storage and require a separate immutable-parser design rather than a cast or view
+adapter.
+
+- `int get_number(char** name);` advances and rewrites the caller's numbered-name cursor in place.
+- `int find_all_dots(char* arg);` rewrites command arguments while classifying `all` forms.
+- `char* one_argument(char* argument, char* first_arg);` tokenizes a command buffer and writes the
+  extracted token into caller-owned storage.
+- ACMD command handlers retain mutable `char* argument` parameters because many handlers split or
+  rewrite the interpreter-owned command buffer in place.

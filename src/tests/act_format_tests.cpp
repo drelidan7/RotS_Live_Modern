@@ -10,9 +10,11 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstring>
 #include <format>
 #include <string>
+#include <string_view>
 
 // Characterization tests for Phase 4 Wave 2 Task 4 (std::format population on
 // act_othe.cpp / act_soci.cpp / act_offe.cpp -- player-facing social/emote/
@@ -34,6 +36,16 @@ ACMD(do_order);
 ACMD(do_bash);
 ACMD(do_insult);
 ACMD(do_action);
+ACMD(do_inventory_sort);
+
+void say_to_char(char_data* speaker, char_data* audience, std::string_view color,
+    std::string_view action, std::string_view ending, char* text, int force_visible);
+
+#ifdef TESTING
+bool inventory_sort_has_argument_for_testing(std::string_view argument);
+int inventory_sort_index_for_testing(std::string_view argument);
+void report_inventory_sorting_for_testing(char_data* character, std::string_view introduction);
+#endif
 
 extern social_messg* soc_mess_list;
 
@@ -678,3 +690,85 @@ TEST(ActOffe, DoBashHeavyDoorFormatsNullKeywordAsGlibcNullLiteral)
     EXPECT_EQ(std::string(ctx.descriptor.output),
         "You throw yourself on the (null).\n\rThe (null) would not budge.\n\r");
 }
+
+TEST(GameplayKeywordLookup, AbbreviationAcceptsBoundedSlicesAndStopsAtEmbeddedNull)
+{
+    const std::array<char, 3> bounded_abbreviation { 'f', 'o', 'l' };
+    const std::array<char, 11> embedded_null_word {
+        'f', 'o', 'l', 'l', 'o', 'w', '\0', 'o', 't', 'h', 'e'
+    };
+
+    EXPECT_TRUE(is_abbrev(
+        std::string_view(bounded_abbreviation.data(), bounded_abbreviation.size()), "followers"));
+    EXPECT_TRUE(is_abbrev("follow",
+        std::string_view(embedded_null_word.data(), embedded_null_word.size())));
+    EXPECT_FALSE(is_abbrev("following",
+        std::string_view(embedded_null_word.data(), embedded_null_word.size())));
+}
+
+TEST(GameplaySpeechText, SayToCharAcceptsBoundedFragmentsAndStopsAtEmbeddedNull)
+{
+    RoomPairContext context;
+    context.actor.player.name = const_cast<char*>("speaker");
+    context.victim.player.name = const_cast<char*>("listener");
+
+    const std::array<char, 10> color { '$', 'C', 'S', '\0', 'i', 'g', 'n', 'o', 'r', 'e' };
+    const std::array<char, 9> action { 's', 'a', 'y', '\0', 'o', 't', 'h', 'e', 'r' };
+    const std::array<char, 8> ending { '!', '\0', 'i', 'g', 'n', 'o', 'r', 'e' };
+    char spoken_text[] = "hello";
+
+    say_to_char(&context.actor, &context.victim,
+        std::string_view(color.data(), color.size()),
+        std::string_view(action.data(), action.size()),
+        std::string_view(ending.data(), ending.size()), spoken_text, FALSE);
+
+    EXPECT_EQ(std::string(context.victim_descriptor.output), "Speaker says 'hello'!\n\r");
+}
+
+TEST(GameplaySpeechText, SayToCharBoundsAnOversizedEndingFragment)
+{
+    RoomPairContext context;
+    context.actor.player.name = const_cast<char*>("speaker");
+    context.victim.player.name = const_cast<char*>("listener");
+    char spoken_text[] = "hello";
+    const std::string oversized_ending(700, '!');
+
+    say_to_char(&context.actor, &context.victim, "", "say", oversized_ending, spoken_text,
+        FALSE);
+
+    // act() expands the two-byte "$N" token to "Speaker" after say_to_char's 599-byte cap.
+    EXPECT_LE(std::string(context.victim_descriptor.output).size(), 610u);
+}
+
+#ifdef TESTING
+TEST(GameplayInventorySort, HelpersAcceptBoundedTextAndStopAtEmbeddedNull)
+{
+    const std::array<char, 3> bounded_sort_name { 'a', 'l', 'p' };
+    const std::array<char, 13> embedded_null_sort_name {
+        'a', 'l', 'p', 'h', 'a', '\0', 'i', 'g', 'n', 'o', 'r', 'e', 'd'
+    };
+
+    EXPECT_TRUE(inventory_sort_has_argument_for_testing(
+        std::string_view(bounded_sort_name.data(), bounded_sort_name.size())));
+    EXPECT_EQ(inventory_sort_index_for_testing(
+                  std::string_view(bounded_sort_name.data(), bounded_sort_name.size())),
+        2);
+    EXPECT_EQ(inventory_sort_index_for_testing(std::string_view(
+                  embedded_null_sort_name.data(), embedded_null_sort_name.size())),
+        2);
+}
+
+TEST(GameplayInventorySort, ReportIntroductionStopsAtEmbeddedNull)
+{
+    SoloCharacterContext context;
+    const std::array<char, 23> introduction {
+        'C', 'u', 'r', 'r', 'e', 'n', 't', '\0', 'i', 'g', 'n', 'o', 'r', 'e', 'd',
+        ' ', 's', 'u', 'f', 'f', 'i', 'x', '!'
+    };
+
+    report_inventory_sorting_for_testing(
+        &context.character, std::string_view(introduction.data(), introduction.size()));
+
+    EXPECT_EQ(std::string(context.descriptor.output), "Current default.\r\n");
+}
+#endif

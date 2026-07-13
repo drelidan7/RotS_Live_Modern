@@ -7,14 +7,16 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstring>
 #include <string>
+#include <string_view>
 
 extern struct room_data world;
 extern int top_of_world;
 void clear_char(struct char_data* ch, int mode);
 void say_spell(struct char_data* caster, int spell_index);
-void send_magic_room_message(struct char_data* caster, const char* message);
+void send_magic_room_message(struct char_data* caster, std::string_view message);
 
 namespace {
 
@@ -133,4 +135,32 @@ TEST(SpellParser, MagicRoomMessageOmitsColorCodesForObserversWithoutColorEnabled
     EXPECT_EQ(output.find(color_sequence[CBBLU]), std::string::npos) << output;
     EXPECT_EQ(output.find(color_sequence[CNRM]), std::string::npos) << output;
     EXPECT_NE(output.find("Caster begins quietly muttering some strange, powerful words."), std::string::npos) << output;
+}
+
+TEST(SpellParser, MagicRoomMessageAcceptsBoundedTextAndStopsAtEmbeddedNull)
+{
+    ScopedTestWorld test_world;
+
+    char_data caster {};
+    char_data observer {};
+    descriptor_data observer_descriptor = make_descriptor();
+    observer_descriptor.output = observer_descriptor.small_outbuf;
+
+    initialize_player_character(&caster, "caster");
+    ScopedClearCharFields caster_cleanup { caster };
+    initialize_player_character(&observer, "observer");
+    ScopedClearCharFields observer_cleanup { observer };
+    observer.desc = &observer_descriptor;
+
+    attach_character_to_room(&observer, 0, nullptr);
+    attach_character_to_room(&caster, 0, &observer);
+    world[0].people = &caster;
+
+    const std::array<char, 20> message {
+        '$', 'n', ' ', 'c', 'a', 's', 't', 's', '.', '\n', '\r', '\0',
+        'i', 'g', 'n', 'o', 'r', 'e', 'd', '!'
+    };
+    send_magic_room_message(&caster, std::string_view(message.data(), message.size()));
+
+    EXPECT_EQ(std::string(observer_descriptor.output), "Caster casts.\n\r\n\r");
 }

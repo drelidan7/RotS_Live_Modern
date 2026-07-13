@@ -11,7 +11,9 @@
 #include <format>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
 #include <string.h>
+#include <string_view>
 
 #include "big_brother.h"
 #include "char_utils.h"
@@ -23,6 +25,7 @@
 #include "script.h"
 #include "spells.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 
 extern struct room_data world;
@@ -35,9 +38,13 @@ ACMD(do_petitio)
 }
 
 void say_to_char(struct char_data* speaker, struct char_data* aud,
-    const char* color, const char* action,
-    const char* end, char* text, int force_visible)
+    std::string_view color, std::string_view action,
+    std::string_view end, char* text, int force_visible)
 {
+    color = rots::text::truncate_at_null(color);
+    action = rots::text::truncate_at_null(action);
+    end = rots::text::truncate_at_null(end);
+
     char speech[600];
     int freq, l;
 
@@ -54,16 +61,18 @@ void say_to_char(struct char_data* speaker, struct char_data* aud,
     } else
         freq = 100;
 
-    strcpy(speech, std::format("{}{} {}s '",
+    std::string speech_header = std::format("{}{} {}s '",
         color,
         force_visible ? "$K" : "$N",
-        action).c_str());
+        action);
 
-    if (strlen(speech) > 100) {
+    if (speech_header.size() > 100) {
         mudlog("SYSERR: say_to_char header overflow",
             NRM, LEVEL_IMMORT, FALSE);
-        speech[99] = 0;
+        speech_header.resize(99);
     }
+    memcpy(speech, speech_header.data(), speech_header.size());
+    speech[speech_header.size()] = '\0';
 
     if (freq >= 100)
         strcpy(speech + strlen(speech), text);
@@ -74,7 +83,14 @@ void say_to_char(struct char_data* speaker, struct char_data* aud,
         strcpy(speech + strlen(speech), text + 499);
 
     strcat(speech, "'");
-    strcat(speech, end);
+    if (!end.empty()) {
+        const std::size_t speech_length = strlen(speech);
+        const std::size_t available_length = sizeof(speech) - speech_length - 1;
+        const std::size_t copied_length
+            = end.size() < available_length ? end.size() : available_length;
+        memcpy(speech + speech_length, end.data(), copied_length);
+        speech[speech_length + copied_length] = '\0';
+    }
     act(speech, FALSE, aud, 0, speaker, TO_CHAR);
 }
 

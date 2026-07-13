@@ -20,6 +20,7 @@
 #include "interpre.h"
 #include "spells.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 
@@ -51,19 +52,21 @@ void check_break_prep(struct char_data* ch);
 
 ACMD(do_flee);
 
-void send_magic_room_message(char_data* caster, const char* message)
+void send_magic_room_message(char_data* caster, std::string_view message)
 {
-    if (caster == nullptr || message == nullptr || caster->in_room < 0)
+    if (caster == nullptr || caster->in_room < 0)
         return;
+
+    message = rots::text::truncate_at_null(message);
 
     const room_data& room = world[caster->in_room];
     for (char_data* receiver = room.people; receiver; receiver = receiver->next_in_room) {
         if (receiver == caster || GET_POS(receiver) <= POSITION_SLEEPING)
             continue;
 
-        std::snprintf(buf, sizeof(buf), "%s%s%s",
+        const std::string colored_message = std::format("{}{}{}",
             CC_USE(receiver, COLOR_MAGIC), message, CC_NORM(receiver));
-        act(buf, FALSE, caster, 0, receiver, TO_VICT);
+        act(colored_message, FALSE, caster, 0, receiver, TO_VICT);
     }
 }
 

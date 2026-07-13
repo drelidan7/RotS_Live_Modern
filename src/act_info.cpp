@@ -29,6 +29,7 @@
 #include "skill_timer.h"
 #include "spells.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 #include "zone.h" /* For zone_table */
@@ -42,6 +43,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 /* extern variables */
@@ -714,9 +716,12 @@ void get_char_flag_line(char_data* viewer, char_data* viewed, char* character_me
  *
  * If 'color' is true, then we color this message.
  */
-void show_mount_to_char(struct char_data* i, struct char_data* ch, const char* line1, const char* line2,
-    int color)
+void show_mount_to_char(struct char_data* i, struct char_data* ch, std::string_view line1,
+    std::string_view line2, int color)
 {
+    line1 = rots::text::truncate_at_null(line1);
+    line2 = rots::text::truncate_at_null(line2);
+
     int vis_count, tmpnum, you_are_riding, riderno;
     int special_message;
     struct char_data *tmpch, *last_rider = 0;
@@ -875,10 +880,23 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, const char* l
             }
         }
 
-        if ((vis_count == 1) && !you_are_riding)
-            strcat(buf, line1);
-        else
-            strcat(buf, line2);
+        const std::string_view rider_text
+            = (vis_count == 1) && !you_are_riding ? line1 : line2;
+        if (!rider_text.empty()) {
+            // This display path is frequent, so append the known bounded extent directly instead
+            // of allocating a temporary null-terminated string solely for legacy `buf`. Keep
+            // capacity for the mount name, flags, punctuation, and terminal color appended below.
+            constexpr std::size_t trailing_capacity_reserve = 1024;
+            const std::size_t message_length = strlen(buf);
+            const std::size_t available_length = MAX_STRING_LENGTH - message_length - 1;
+            const std::size_t rider_capacity = available_length > trailing_capacity_reserve
+                ? available_length - trailing_capacity_reserve
+                : 0;
+            const std::size_t copied_length
+                = rider_text.size() < rider_capacity ? rider_text.size() : rider_capacity;
+            memcpy(buf + message_length, rider_text.data(), copied_length);
+            buf[message_length + copied_length] = '\0';
+        }
         strcat(buf, PERS(i, ch, FALSE, FALSE));
         get_char_flag_line(ch, i, buf + strlen(buf));
         strcat(buf, ".\n\r");

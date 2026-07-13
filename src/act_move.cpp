@@ -11,6 +11,7 @@
 #include <format>
 #include <stdio.h>
 #include <string.h>
+#include <string_view>
 
 #include "char_utils.h"
 #include "comm.h"
@@ -310,7 +311,8 @@ int perform_move_mount(struct char_data* ch, int dir)
     int was_in, new_room, num2, is_death, move_cost, tmp, should_show;
     char buff[1000];
     char buff2[1000];
-    void show_mount_to_char(struct char_data*, struct char_data*, const char*, const char*, int);
+    void show_mount_to_char(
+        struct char_data*, struct char_data*, std::string_view, std::string_view, int);
 
     if (!EXIT(ch, dir) || !ch->mount_data.rider)
         return 0;

@@ -15,11 +15,14 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <format>
 #include <string>
+#include <string_view>
+#include <type_traits>
 
 // Characterization tests for Phase 4 Wave 3 Task 1 (Chunk I1 -- act_info.cpp
 // perception/do_look family: do_look, do_read, do_examine, do_exits,
@@ -141,8 +144,8 @@ void do_details(char_data* character, char* argument, waiting_type* wait_list, i
 // the convention above for do_food_display/do_light_display/etc.
 void get_char_position_line(struct char_data* ch, struct char_data* i, char* str);
 void get_char_flag_line(char_data* viewer, char_data* viewed, char* character_message);
-void show_mount_to_char(struct char_data* i, struct char_data* ch, const char* line1,
-    const char* line2, int color);
+void show_mount_to_char(struct char_data* mount, struct char_data* viewer,
+    std::string_view single_rider_text, std::string_view multiple_rider_text, int color);
 void list_char_to_char(struct char_data* list, struct char_data* ch, int mode);
 void show_room_affection(char* str, struct affected_type* aff, int mode);
 void show_room_weather(char* str, struct char_data* ch);
@@ -1649,11 +1652,72 @@ TEST(ActInfoDisplayCluster, ShowMountToCharFormatsSingleSelfRiderLine)
     context.viewer.mount_data.next_rider_number = 0;
     set_char_exists(9001);
 
-    show_mount_to_char(&mount, &context.viewer, " riding on ", " riding on ", FALSE);
+    const std::array<char, 11> single_rider_text {
+        ' ', 'r', 'i', 'd', 'i', 'n', 'g', ' ', 'o', 'n', ' '
+    };
+    const std::array<char, 19> multiple_rider_text {
+        ' ', 'r', 'i', 'd', 'i', 'n', 'g', ' ', 'o', 'n', ' ', '\0',
+        'i', 'g', 'n', 'o', 'r', 'e', 'd'
+    };
+    show_mount_to_char(&mount, &context.viewer,
+        std::string_view(single_rider_text.data(), single_rider_text.size()),
+        std::string_view(multiple_rider_text.data(), multiple_rider_text.size()), FALSE);
 
     remove_char_exists(9001);
 
     EXPECT_STREQ(context.viewer_descriptor.output, "You are riding on a horse.\n\r");
+}
+
+TEST(ActInfoDisplayCluster, ShowMountToCharUsesBoundedSingleRiderText)
+{
+    DisplayClusterContext context;
+    context.target.player.name = const_cast<char*>("Bob");
+
+    char_data mount {};
+    clear_char(&mount, MOB_VOID);
+    ScopedClearCharFields mount_cleanup { mount };
+    mount.in_room = 0;
+    SET_BIT(mount.specials2.act, MOB_ISNPC);
+    mount.player.short_descr = const_cast<char*>("a horse");
+    mount.mount_data.rider = &context.target;
+    mount.mount_data.rider_number = 9002;
+    context.target.mount_data.next_rider = nullptr;
+    context.target.mount_data.next_rider_number = 0;
+    set_char_exists(9002);
+
+    const std::array<char, 23> single_rider_text {
+        ' ', 'r', 'i', 'd', 'i', 'n', 'g', ' ', 'b', 'e', 's', 'i', 'd', 'e', ' ', '\0',
+        'i', 'g', 'n', 'o', 'r', 'e', 'd'
+    };
+    show_mount_to_char(&mount, &context.viewer,
+        std::string_view(single_rider_text.data(), single_rider_text.size()), " unused ", FALSE);
+
+    EXPECT_STREQ(context.viewer_descriptor.output, "Bob is riding beside a horse.\n\r");
+
+    reset_capturing_descriptor(context.viewer_descriptor, &context.viewer);
+    const std::string oversized_rider_text(MAX_STRING_LENGTH + 100, 'x');
+    show_mount_to_char(
+        &mount, &context.viewer, oversized_rider_text, " unused ", FALSE);
+
+    remove_char_exists(9002);
+
+    EXPECT_LT(strlen(context.viewer_descriptor.output), static_cast<std::size_t>(MAX_STRING_LENGTH));
+}
+
+TEST(GameplayBigBrother, TargetRedirectSignatureAcceptsBoundedText)
+{
+    using ExpectedSignature = char_data* (game_rules::big_brother::*)(
+        char_data*, const char_data*, std::string_view) const;
+    static_assert(std::is_same_v<decltype(static_cast<ExpectedSignature>(
+                                     &game_rules::big_brother::get_valid_target)),
+        ExpectedSignature>);
+
+    const std::array<char, 12> argument {
+        't', 'a', 'r', 'g', 'e', 't', '\0', 'o', 't', 'h', 'e', 'r'
+    };
+    EXPECT_EQ(game_rules::big_brother::instance().get_valid_target(
+                  nullptr, nullptr, std::string_view(argument.data(), argument.size())),
+        nullptr);
 }
 
 TEST(ActInfoDisplayCluster, ShowMountToCharDelegatesToShowCharToCharWhenNoVisibleRiders)

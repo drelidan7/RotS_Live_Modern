@@ -16,6 +16,7 @@
 #include "interpre.h"
 #include "protocol.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 
 #define WEATHER_MESSAGE_RISE 0
@@ -158,9 +159,9 @@ void weather_to_char(char_data* ch);
 
 // weather_messages[] entries end in "\n\r" for direct display to the
 // terminal; MSDP values are discrete data, not display text, so strip it.
-std::string strip_trailing_line_break(const char* text)
+std::string strip_trailing_line_break(std::string_view text)
 {
-    std::string result(text);
+    std::string result(rots::text::truncate_at_null(text));
     while (!result.empty() && (result.back() == '\n' || result.back() == '\r')) {
         result.pop_back();
     }

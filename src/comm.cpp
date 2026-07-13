@@ -732,7 +732,7 @@ void msdp_update()
         // declaration was a hard LNK2001 there; GCC/Clang linked it silently
         // -- Phase 3 Task 6).
         extern const char* weather_messages[8][13];
-        extern std::string strip_trailing_line_break(const char* text);
+        extern std::string strip_trailing_line_break(std::string_view text);
 
         if (OUTSIDE(desc->character)) {
             MSDPSetString(desc, eMDSP_WEATHER,

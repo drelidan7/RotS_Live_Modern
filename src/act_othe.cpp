@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string_view>
 #include <time.h>
 
 #include "account_management.h"
@@ -31,6 +32,7 @@
 #include "profs.h"
 #include "spells.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 
@@ -1311,10 +1313,14 @@ ACMD(do_shooting)
 std::array<std::string_view, 4> inv_sorting = { "default", "grouped", "alpha", "length" };
 
 namespace {
-bool has_argument(const char* argument) { return *argument != 0; }
-
-int get_sort_index(const char* argument)
+bool has_argument(std::string_view argument)
 {
+    return !rots::text::truncate_at_null(argument).empty();
+}
+
+int get_sort_index(std::string_view argument)
+{
+    argument = rots::text::truncate_at_null(argument);
     for (int index = 0; index < static_cast<int>(inv_sorting.size()); ++index) {
         if (inv_sorting[index].find(argument) != std::string::npos) {
             return index;
@@ -1354,19 +1360,41 @@ void report_sort_choices_to(char_data* character)
     send_to_char(message_writer.str(), character);
 }
 
-void report_inventory_sorting_to(char_data* character, const char* intro_string)
+void report_inventory_sorting_to(char_data* character, std::string_view intro_string)
 {
+    intro_string = rots::text::truncate_at_null(intro_string);
     bool high_bit_set = PRF_FLAGGED(character, PRF_INV_SORT2) != 0;
     bool low_bit_set = PRF_FLAGGED(character, PRF_INV_SORT1) != 0;
 
     int sort_value = (static_cast<int>(high_bit_set) << 1) | static_cast<int>(low_bit_set);
 
-    const char* sort_name = inv_sorting[sort_value].data();
+    const std::string_view sort_name = inv_sorting[sort_value];
 
     strcpy(buf, std::format("{} {}.\r\n", intro_string, sort_name).c_str());
     send_to_char(buf, character);
 }
 } // namespace
+
+#ifdef TESTING
+// These test-build-only seams provide external linkage to the otherwise file-local helpers so
+// bounded-view contracts can be exercised directly. They are absent from production builds and
+// intentionally have no public production header declarations.
+bool inventory_sort_has_argument_for_testing(std::string_view argument)
+{
+    return has_argument(argument);
+}
+
+int inventory_sort_index_for_testing(std::string_view argument)
+{
+    return get_sort_index(argument);
+}
+
+void report_inventory_sorting_for_testing(
+    char_data* character, std::string_view introduction)
+{
+    report_inventory_sorting_to(character, introduction);
+}
+#endif
 
 ACMD(do_inventory_sort)
 {
@@ -1375,13 +1403,15 @@ ACMD(do_inventory_sort)
         if (sort_index >= 0) {
             set_sort_value(sort_index, ch);
 
-            static const char* report_new_sort_string = "Your new inventory sorting method is";
+            static constexpr std::string_view report_new_sort_string
+                = "Your new inventory sorting method is";
             report_inventory_sorting_to(ch, report_new_sort_string);
         } else {
             report_sort_choices_to(ch);
         }
     } else {
-        static const char* report_sort_string = "Your current inventory sorting method is";
+        static constexpr std::string_view report_sort_string
+            = "Your current inventory sorting method is";
         report_inventory_sorting_to(ch, report_sort_string);
         report_sort_choices_to(ch);
     }

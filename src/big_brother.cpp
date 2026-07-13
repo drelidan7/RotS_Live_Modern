@@ -424,7 +424,8 @@ bool big_brother::is_same_side_race_war(int attacker_race, int victim_race) cons
 }
 
 //============================================================================
-char_data* big_brother::get_valid_target(char_data*, const char_data*, const char*) const
+char_data* big_brother::get_valid_target(
+    char_data*, const char_data*, [[maybe_unused]] std::string_view argument) const
 {
     // TODO(drelidan):  Implement logic here.
     return NULL;

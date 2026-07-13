@@ -90,7 +90,8 @@ int other_side_num(int ch_race, int i_race);
 
 struct char_data* get_char_room(char* name, int room);
 struct char_data* get_char_num(int nr);
-struct char_data* get_char(const char* name);
+/// Finds a world character whose name matches the bounded lookup text.
+struct char_data* get_char(std::string_view name);
 
 void char_from_room(struct char_data* ch);
 void char_to_room(struct char_data* ch, int room);
@@ -105,7 +106,8 @@ struct char_data* get_char_room_vis(struct char_data* ch, char* name,
 struct char_data* get_player_vis(struct char_data* ch, char* name);
 struct char_data* get_char_vis(struct char_data* ch, char* name,
     int dark_ok = 0);
-struct obj_data* get_obj_in_list_vis(struct char_data* ch, const char* name,
+/// Finds a visible object whose keywords match the bounded lookup text.
+struct obj_data* get_obj_in_list_vis(struct char_data* ch, std::string_view name,
     struct obj_data* list, int num);
 struct obj_data* get_obj_vis(struct char_data* ch, char* name);
 struct obj_data* get_object_in_equip_vis(struct char_data* ch,

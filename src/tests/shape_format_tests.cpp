@@ -4,6 +4,7 @@
 #include "../structs.h"
 #include "../utils.h"
 #include "../zone.h"
+#include "test_char_cleanup.h"
 #include "test_platform_compat.h"
 
 #include <gtest/gtest.h>
@@ -192,6 +193,9 @@ TEST(ShapeMudlle, LoadThenSaveRoundTripsMdlFileByteForByte)
 
     char_data editor {};
     clear_char(&editor, MOB_VOID);
+    // Releases editor.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields editor_cleanup { editor };
     descriptor_data descriptor {};
     reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
@@ -272,6 +276,9 @@ TEST(ShapeMudlle, LoadOfUnknownProgramNumberCreatesNewProgramMessage)
 
     char_data editor {};
     clear_char(&editor, MOB_VOID);
+    // Releases editor.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields editor_cleanup { editor };
     descriptor_data descriptor {};
     reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
@@ -306,6 +313,9 @@ TEST(ShapeMudlle, ShowMudlleFormatsNegativeRealNumCorrectly)
 {
     char_data editor {};
     clear_char(&editor, MOB_VOID);
+    // Releases editor.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields editor_cleanup { editor };
     descriptor_data descriptor {};
     reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
@@ -340,9 +350,16 @@ TEST(ShapeObj, ListObjectFormatsAllFieldsIncludingNegativeAffections)
 {
     char_data editor {};
     clear_char(&editor, MOB_VOID);
+    // Releases editor.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields editor_cleanup { editor };
     descriptor_data descriptor {};
     reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
+    // list_object's field-by-field listing overflows descriptor.small_outbuf,
+    // promoting it to a heap-allocated large_outbuf block (Phase 5 T6 leak
+    // sweep; see test_char_cleanup.h).
+    ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
 
     obj_data object {};
     object.name = const_cast<char*>("a shiny widget");
@@ -399,6 +416,9 @@ TEST(ShapeRoom, ListRoomFormatsAllFieldsWithNoExitsAndNegativeAffection)
 {
     char_data editor {};
     clear_char(&editor, MOB_VOID);
+    // Releases editor.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields editor_cleanup { editor };
     descriptor_data descriptor {};
     reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
@@ -490,12 +510,18 @@ TEST(ShapeMob, ListSimpleProtoFormatsAllFields)
 {
     char_data editor {};
     clear_char(&editor, MOB_VOID);
+    // Releases editor.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields editor_cleanup { editor };
     descriptor_data descriptor {};
     reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
 
     char_data mob {};
     clear_char(&mob, MOB_ISNPC);
+    // Releases mob.profs (clear_char()'s only heap allocation for
+    // MOB_ISNPC) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields mob_cleanup { mob };
     mob.player.name = const_cast<char*>("a stone golem");
     mob.player.short_descr = const_cast<char*>("a stone golem");
     mob.player.long_descr = const_cast<char*>("A stone golem stands here.\n\r");
@@ -527,12 +553,22 @@ TEST(ShapeMob, ListProtoRoleplayFlagLinePreservesNonStandardLineEnding)
 {
     char_data editor {};
     clear_char(&editor, MOB_VOID);
+    // Releases editor.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields editor_cleanup { editor };
     descriptor_data descriptor {};
     reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;
+    // list_proto's field-by-field listing overflows descriptor.small_outbuf,
+    // promoting it to a heap-allocated large_outbuf block (Phase 5 T6 leak
+    // sweep; see test_char_cleanup.h).
+    ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
 
     char_data mob {};
     clear_char(&mob, MOB_ISNPC);
+    // Releases mob.profs (clear_char()'s only heap allocation for
+    // MOB_ISNPC) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields mob_cleanup { mob };
     mob.player.name = const_cast<char*>("a stone golem");
     mob.player.short_descr = const_cast<char*>("a stone golem");
     mob.player.long_descr = const_cast<char*>("A stone golem stands here.\n\r");
@@ -564,6 +600,9 @@ TEST(ShapeScript, ShowCommandFormatsTrigAssignEqSayAndReversedLineEnding)
 {
     char_data editor {};
     clear_char(&editor, MOB_VOID);
+    // Releases editor.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields editor_cleanup { editor };
     descriptor_data descriptor {};
     reset_capturing_descriptor(descriptor, &editor);
     editor.desc = &descriptor;

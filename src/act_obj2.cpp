@@ -10,6 +10,7 @@
 
 #include "platdef.h"
 #include <assert.h>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,7 +27,7 @@
 
 /* extern variables */
 extern struct room_data world;
-extern char* drinks[];
+extern const char* const drinks[];
 extern int drink_aff[][3];
 ACMD(do_twohand);
 
@@ -71,10 +72,10 @@ void name_to_drinkcon(struct obj_data* obj, int type)
 {
     char* new_name;
     extern struct obj_data* obj_proto;
-    extern char* drinknames[];
+    extern const char* const drinknames[];
 
     CREATE(new_name, char, strlen(obj->name) + strlen(drinknames[type]) + 2);
-    sprintf(new_name, "%s %s", drinknames[type], obj->name);
+    strcpy(new_name, std::format("{} {}", drinknames[type], obj->name).c_str());
     if (obj->item_number < 0 || obj->name != obj_proto[obj->item_number].name)
         RELEASE(obj->name);
     obj->name = new_name;
@@ -148,12 +149,11 @@ ACMD(do_drink)
 
     if (subcmd == SCMD_DRINK) {
         if (temp->obj_flags.type_flag != ITEM_FOUNTAIN) {
-            sprintf(buf, "$n drinks %s from $p.", drinks[temp->obj_flags.value[2]]);
+            strcpy(buf, std::format("$n drinks {} from $p.", drinks[temp->obj_flags.value[2]]).c_str());
             act(buf, TRUE, ch, temp, 0, TO_ROOM);
         }
 
-        sprintf(buf, "You drink the %s.\n\r", drinks[temp->obj_flags.value[2]]);
-        send_to_char(buf, ch);
+        send_to_char(std::format("You drink the {}.\n\r", drinks[temp->obj_flags.value[2]]).c_str(), ch);
 
         if (drink_aff[temp->obj_flags.value[2]][DRUNK] > 0)
             amount = (25 - GET_COND(ch, THIRST)) / drink_aff[temp->obj_flags.value[2]][DRUNK];
@@ -162,8 +162,7 @@ ACMD(do_drink)
 
     } else {
         act("$n sips from the $o.", TRUE, ch, temp, 0, TO_ROOM);
-        sprintf(buf, "It tastes like %s.\n\r", drinks[temp->obj_flags.value[2]]);
-        send_to_char(buf, ch);
+        send_to_char(std::format("It tastes like {}.\n\r", drinks[temp->obj_flags.value[2]]).c_str(), ch);
         amount = 1;
     }
 
@@ -425,10 +424,9 @@ ACMD(do_pour)
     }
 
     if (subcmd == SCMD_POUR) {
-        sprintf(buf, "You pour some %s into the %s.\n\r",
-            drinks[from_obj->obj_flags.value[2]], arg2);
-        send_to_char(buf, ch);
-        sprintf(buf, "$n pours some %s into a %s.", drinks[from_obj->obj_flags.value[2]], arg2);
+        send_to_char(std::format("You pour some {} into the {}.\n\r",
+            drinks[from_obj->obj_flags.value[2]], static_cast<const char*>(arg2)).c_str(), ch);
+        strcpy(buf, std::format("$n pours some {} into a {}.", drinks[from_obj->obj_flags.value[2]], static_cast<const char*>(arg2)).c_str());
         act(buf, TRUE, ch, 0, 0, TO_ROOM);
     }
 
@@ -475,7 +473,7 @@ ACMD(do_pour)
 
 void wear_message(struct char_data* ch, struct obj_data* obj, int where)
 {
-    char* wear_messages[][2] = {
+    const char* const wear_messages[][2] = {
         { "$n lights $p and holds it.",
             "You light $p and hold it." },
 
@@ -545,7 +543,7 @@ void wear_message(struct char_data* ch, struct obj_data* obj, int where)
             "You fasten $p on your belt." }
     };
 
-    char* beorn_wear_messages[][2] = {
+    const char* const beorn_wear_messages[][2] = {
         { "$n lights $p and holds it.",
             "You light $p and hold it." },
 
@@ -824,7 +822,7 @@ int find_eq_pos(struct char_data* ch, struct obj_data* obj, char* arg)
 {
     int where = -1;
 
-    static char* keywords[] = {
+    static const char* const keywords[] = {
         "!RESERVED!",
         "finger",
         "!RESERVED!",
@@ -881,8 +879,7 @@ int find_eq_pos(struct char_data* ch, struct obj_data* obj, char* arg)
             where = WEAR_BELT_1;
     } else {
         if ((where = search_block(arg, keywords, FALSE)) < 0) {
-            sprintf(buf, "'%s'?  What part of your body is THAT?\n\r", arg);
-            send_to_char(buf, ch);
+            send_to_char(std::format("'{}'?  What part of your body is THAT?\n\r", arg).c_str(), ch);
         }
     }
 
@@ -937,8 +934,7 @@ ACMD(do_wear)
             return;
         }
         if (!(obj = get_obj_in_list(arg1, ch->carrying))) {
-            sprintf(buf, "You don't seem to have any %ss.\n\r", arg1);
-            send_to_char(buf, ch);
+            send_to_char(std::format("You don't seem to have any {}s.\n\r", static_cast<const char*>(arg1)).c_str(), ch);
         } else
             while (obj) {
                 next_obj = get_obj_in_list_vis(ch, arg1, obj->next_content, 9999);
@@ -950,8 +946,7 @@ ACMD(do_wear)
             }
     } else {
         if (!(obj = get_obj_in_list_vis(ch, arg1, ch->carrying, 9999))) {
-            sprintf(buf, "You don't seem to have %s %s.\n\r", AN(arg1), arg1);
-            send_to_char(buf, ch);
+            send_to_char(std::format("You don't seem to have {} {}.\n\r", AN(arg1), static_cast<const char*>(arg1)).c_str(), ch);
         } else {
             if ((where = find_eq_pos(ch, obj, arg2)) >= 0)
                 perform_wear(ch, obj, where);
@@ -980,8 +975,7 @@ ACMD(do_wield)
     if (!*arg) {
         send_to_char("Wield what?\n\r", ch);
     } else if (!(obj = get_obj_in_list(arg, ch->carrying))) {
-        sprintf(buf, "You don't seem to have %s %s.\n\r", AN(arg), arg);
-        send_to_char(buf, ch);
+        send_to_char(std::format("You don't seem to have {} {}.\n\r", AN(arg), static_cast<const char*>(arg)).c_str(), ch);
     } else {
         if (!CAN_WEAR(obj, ITEM_WIELD)) {
             char_data* message_receiver = ch;
@@ -1019,8 +1013,7 @@ ACMD(do_grab)
     if (!*arg)
         send_to_char("Hold what?\n\r", ch);
     else if (!(obj = get_obj_in_list(arg, ch->carrying))) {
-        sprintf(buf, "You don't seem to have %s %s.\n\r", AN(arg), arg);
-        send_to_char(buf, ch);
+        send_to_char(std::format("You don't seem to have {} {}.\n\r", AN(arg), static_cast<const char*>(arg)).c_str(), ch);
     } else {
         if ((GET_ITEM_TYPE(obj) == ITEM_LIGHT) && (obj->obj_flags.value[2] != 0) && (!ch->equipment[WEAR_LIGHT])) {
             perform_wear(ch, obj, WEAR_LIGHT);
@@ -1143,8 +1136,7 @@ ACMD(do_remove)
                     found = 1;
                 }
             if (!found) {
-                sprintf(buf, "You don't seem to be using any %ss.\n\r", arg);
-                send_to_char(buf, ch);
+                send_to_char(std::format("You don't seem to be using any {}s.\n\r", static_cast<const char*>(arg)).c_str(), ch);
             }
         }
     } else {
@@ -1155,8 +1147,7 @@ ACMD(do_remove)
         if (i < MAX_WEAR)
             perform_remove(ch, i);
         else {
-            sprintf(buf, "You don't seem to be using %s %s.\n\r", AN(arg), arg);
-            send_to_char(buf, ch);
+            send_to_char(std::format("You don't seem to be using {} {}.\n\r", AN(arg), static_cast<const char*>(arg)).c_str(), ch);
         }
     }
 }

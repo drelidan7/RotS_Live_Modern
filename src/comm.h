@@ -45,10 +45,10 @@ void close_socket(struct descriptor_data* d, int drop_all = TRUE);
 void break_spell(struct char_data* ch);
 void abort_delay(char_data* wait_ch);
 void complete_delay(struct char_data* ch);
-struct txt_block* get_from_txt_block_pool(char* line = 0);
+struct txt_block* get_from_txt_block_pool(const char* line = 0);
 void put_to_txt_block_pool(struct txt_block*);
 
-void vsend_to_char(struct char_data* ch, char* format, ...);
+void vsend_to_char(struct char_data* ch, const char* format, ...);
 
 void act(const char* str, int hide_invisible, struct char_data* ch,
     struct obj_data* obj, void* vict_obj, int type, char spam_only = FALSE);
@@ -58,7 +58,7 @@ void act(const char* str, int hide_invisible, struct char_data* ch,
 #define TO_NOTVICT 2
 #define TO_CHAR 3
 
-int write_to_descriptor(SocketType desc, char* txt);
+int write_to_descriptor(SocketType desc, const char* txt);
 void write_to_q(char* txt, struct txt_q* queue);
 void write_to_output(const char* txt, struct descriptor_data* d);
 void page_string(struct descriptor_data* d, char* str, int keep_internal);

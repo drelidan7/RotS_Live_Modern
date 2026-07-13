@@ -2,6 +2,7 @@
 #include "../spells.h"
 #include "../structs.h"
 #include "../utils.h"
+#include "test_char_cleanup.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
@@ -69,7 +70,15 @@ TEST(SpellParser, SaySpellUsesMagicColorForColorEnabledObservers)
     observer_descriptor.output = observer_descriptor.small_outbuf;
 
     initialize_player_character(&caster, "caster");
+    // Releases caster.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields caster_cleanup { caster };
     initialize_player_character(&observer, "observer");
+    // Releases observer.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields observer_cleanup { observer };
     observer.desc = &observer_descriptor;
     SET_BIT(PRF_FLAGS(&observer), PRF_COLOR);
     set_colornum(&observer, COLOR_MAGIC, CBBLU);
@@ -101,7 +110,15 @@ TEST(SpellParser, MagicRoomMessageOmitsColorCodesForObserversWithoutColorEnabled
     observer_descriptor.output = observer_descriptor.small_outbuf;
 
     initialize_player_character(&caster, "caster");
+    // Releases caster.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields caster_cleanup { caster };
     initialize_player_character(&observer, "observer");
+    // Releases observer.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_player_character()) at scope exit
+    // (Phase 5 T6 leak sweep).
+    ScopedClearCharFields observer_cleanup { observer };
     observer.desc = &observer_descriptor;
     REMOVE_BIT(PRF_FLAGS(&observer), PRF_COLOR);
     set_colornum(&observer, COLOR_MAGIC, CBBLU);

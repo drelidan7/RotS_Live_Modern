@@ -2,11 +2,12 @@
 #include "char_utils.h"
 #include "structs.h"
 
-template <>
-game_timer::skill_timer* world_singleton<game_timer::skill_timer>::m_pInstance(0);
+#include <cstring>
+#include <format>
 
-template <>
-bool world_singleton<game_timer::skill_timer>::m_bDestroyed(false);
+// m_pInstance/m_bDestroyed are now `inline static` members defined directly
+// in singleton.h (Phase 5 T1) -- no out-of-line explicit specialization
+// needed here anymore.
 
 namespace game_timer {
 void skill_timer::add_skill_timer(const char_data& ch, const int skill_id, const int counter)
@@ -27,12 +28,12 @@ void skill_timer::add_skill_timer(const char_data& ch, const int skill_id, const
 int skill_timer::report_skill_status(int player_id, char* buffer)
 {
     char str[255];
-    for (int i = 0; i < m_skill_timer.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(m_skill_timer.size()); ++i) {
         auto& data = m_skill_timer[i];
 
         if (data.player_id == player_id && data.skill_id != GLOBAL_SKILL) {
-            sprintf(str, "%-30s %-3d (seconds)\n\r", utils::get_skill_name(data.skill_id), data.counter);
-            sprintf(buffer, "%s%s", buffer, str);
+            strcpy(str, std::format("{:<30} {:<3} (seconds)\n\r", utils::get_skill_name(data.skill_id), data.counter).c_str());
+            strcpy(buffer, std::format("{}{}", buffer, static_cast<const char*>(str)).c_str());
         }
     }
     return 1;
@@ -40,7 +41,7 @@ int skill_timer::report_skill_status(int player_id, char* buffer)
 
 void skill_timer::update_skill_timer()
 {
-    for (int i = 0; i < m_skill_timer.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(m_skill_timer.size()); ++i) {
         auto& data = m_skill_timer[i];
         if (data.counter > 0) {
             data.counter -= 1;
@@ -67,7 +68,7 @@ bool skill_timer::is_skill_allowed(const char_data& ch, const int skill_id)
 
     int player_id = utils::get_idnum(ch);
 
-    for (int i = 0; i < m_skill_timer.size(); ++i) {
+    for (int i = 0; i < static_cast<int>(m_skill_timer.size()); ++i) {
         auto data = m_skill_timer[i];
         if (data.player_id == player_id && (data.skill_id == skill_id || data.skill_id == GLOBAL_SKILL)) {
             return false;

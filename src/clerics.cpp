@@ -20,6 +20,7 @@
 #include "object_utils.h"
 #include "warrior_spec_handlers.h"
 #include <algorithm>
+#include <format>
 
 const int MIN_SAFE_STAT = 3;
 
@@ -86,7 +87,7 @@ void report_char_mentals(struct char_data*, char*, int);
 void appear(struct char_data*);
 combat_result_struct damage_stat(struct char_data*, struct char_data*, int, int);
 
-void do_mental(struct char_data* ch, char* argument, struct waiting_type* wtl, int cmd, int subcmd)
+ACMD(do_mental)
 {
     char_data* victim;
     int tmp, damg, not_ready;
@@ -213,13 +214,13 @@ void do_mental(struct char_data* ch, char* argument, struct waiting_type* wtl, i
         if (!(check_mind_block(victim, ch, damg, tmp)))
             return;
 
-        sprintf(buf, "$CHYou force your Will against $N's %s!", stat_word[tmp]);
+        strcpy(buf, std::format("$CHYou force your Will against $N's {}!", stat_word[tmp]).c_str());
         act(buf, FALSE, ch, NULL, victim, TO_CHAR);
 
-        sprintf(buf, "$CD$n forces $s Will against your %s!", stat_word[tmp]);
+        strcpy(buf, std::format("$CD$n forces $s Will against your {}!", stat_word[tmp]).c_str());
         act(buf, FALSE, ch, NULL, victim, TO_VICT);
 
-        sprintf(buf, "$n forces $s Will against $N's %s!", stat_word[tmp]);
+        strcpy(buf, std::format("$n forces $s Will against $N's {}!", stat_word[tmp]).c_str());
         act(buf, TRUE, ch, 0, victim, TO_NOTVICT);
 
         damage_result = damage_stat(ch, victim, tmp, damg);
@@ -232,7 +233,7 @@ void do_mental(struct char_data* ch, char* argument, struct waiting_type* wtl, i
             }
 
             if (damage_result.wants_to_flee) {
-                do_flee(victim, "", NULL, 0, 0);
+                do_flee(victim, mutable_arg(""), NULL, 0, 0);
             }
 
             if (victim->delay.cmd == CMD_PREPARE && (victim->delay.targ1.type == TARGET_IGNORE)) {
@@ -257,7 +258,7 @@ void do_mental(struct char_data* ch, char* argument, struct waiting_type* wtl, i
             if (!damage_result.will_die) {
                 check_break_prep(ch);
                 if (damage_result.wants_to_flee) {
-                    do_flee(ch, "", NULL, 0, 0);
+                    do_flee(ch, mutable_arg(""), NULL, 0, 0);
                 }
             }
 
@@ -301,7 +302,7 @@ combat_result_struct damage_stat(struct char_data* killer, struct char_data* vic
         wait_data.targ1.type = TARGET_CHAR;
         wait_data.targ2.ptr.other = NULL;
         wait_data.targ2.type = TARGET_NONE;
-        int special_index = special(killer, 0, "", SPECIAL_DAMAGE, &wait_data);
+        int special_index = special(killer, 0, mutable_arg(""), SPECIAL_DAMAGE, &wait_data);
         if (special_index) {
             if (killer->specials.fighting == victim) {
                 stop_fighting(killer);
@@ -467,7 +468,6 @@ int restore_stat(char_data* character, int stat_num, int amount)
 
 ACMD(do_concentrate)
 {
-    char str[255];
     int i, tmp, extra;
     struct char_data* victim;
     int stat_damage[6];
@@ -479,8 +479,7 @@ ACMD(do_concentrate)
         if (ch->specials.fighting) {
             victim = ch->specials.fighting;
             extra = (-GET_MENTAL_DELAY(ch) + number(0, PULSE_MENTAL_FIGHT - 1)) / PULSE_MENTAL_FIGHT;
-            sprintf(str, "You attack with extra will power! (%d)\n\r", extra);
-            send_to_char(str, ch);
+            send_to_char(std::format("You attack with extra will power! ({})\n\r", extra).c_str(), ch);
             act("$n lashes out his power!", FALSE, ch, 0, 0, TO_ROOM);
 
             extra = extra * GET_PERCEPTION(victim) / 100;
@@ -507,7 +506,7 @@ ACMD(do_concentrate)
             }
 
             if (victim_flees) {
-                do_flee(victim, "", NULL, 0, 0);
+                do_flee(victim, mutable_arg(""), NULL, 0, 0);
             }
         } else {
             send_to_char("You release your concentration.\n\r", ch);
@@ -570,7 +569,7 @@ bool weapon_willpower_damage(char_data* attacker, char_data* victim)
 
         combat_result_struct combat_result = damage_stat(attacker, victim, stat_targeted, stat_damage);
         if (combat_result.wants_to_flee && !combat_result.will_die) {
-            do_flee(victim, "", NULL, 0, 0);
+            do_flee(victim, mutable_arg(""), NULL, 0, 0);
         }
 
         return true;

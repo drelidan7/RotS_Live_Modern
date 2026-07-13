@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -84,7 +85,7 @@ void append_record(std::string* bytes, int slot_num, int msg_num, int level, int
     // Garbage, deliberately non-null and never a valid pointer this process
     // owns -- proves the decoder reads past this field and discards it
     // rather than dereferencing it.
-    record.heading = reinterpret_cast<char*>(0xdeadbeef);
+    record.heading = reinterpret_cast<char*>(static_cast<std::uintptr_t>(0xdeadbeef));
     record.level = level;
     record.post_time = post_time;
     record.heading_len = static_cast<int>(heading.size()) + 1;
@@ -244,7 +245,7 @@ TEST(BoardsJson, RejectsZeroHeadingLenAsCorrupt)
     board_msginfo record {};
     record.slot_num = 1;
     record.msg_num = 1;
-    record.heading = reinterpret_cast<char*>(0xdeadbeef);
+    record.heading = reinterpret_cast<char*>(static_cast<std::uintptr_t>(0xdeadbeef));
     record.level = 1;
     record.post_time = 1;
     record.heading_len = 0;

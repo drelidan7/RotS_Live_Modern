@@ -16,6 +16,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include <format>
 #include <iostream>
 #include <regex>
 
@@ -38,7 +39,7 @@ extern int get_number(char** name);
 extern int num_of_ferries;
 extern int num_of_captains;
 extern char guildmaster_number;
-extern char* dirs[];
+extern const char* const dirs[];
 extern void raw_kill(char_data* ch, char_data* killer, int attacktype);
 extern int mark_calculate_wait(const char_data* ch);
 extern int shoot_calculate_wait(const char_data* archer);
@@ -238,7 +239,7 @@ SPECIAL(guild) {
     int tmp, prog, len, request, level;
     int times = 1;
     bool res = false;
-    char str[255], str2[255]; 
+    char str2[255];
     char arg2[255] = "";
 
     if (IS_NPC(ch) || ((cmd != CMD_PRACTICE) && (cmd != CMD_PRACTISE)))
@@ -253,17 +254,17 @@ SPECIAL(guild) {
     }
 
     if (!WILL_TEACH(host, ch)) {
-        do_say(host, "Go away, I won't teach you anything!", 0, 0, 0);
+        do_say(host, mutable_arg("Go away, I won't teach you anything!"), 0, 0, 0);
         return TRUE;
     }
 
     if (IS_SHADOW(ch)) {
-        do_say(host, "Ugh!  I'm not teaching YOU!", 0, 0, 0);
+        do_say(host, mutable_arg("Ugh!  I'm not teaching YOU!"), 0, 0, 0);
         return TRUE;
     }
 
     if (!RP_RACE_CHECK(host, ch)) {
-        do_say(host, "Sorry, I can't teach you.", 0, 0, 0);
+        do_say(host, mutable_arg("Sorry, I can't teach you."), 0, 0, 0);
         return TRUE;
     }
 
@@ -276,17 +277,18 @@ SPECIAL(guild) {
         ;
     if (!*arg) {
         act(guildmasters[prog].list_message, FALSE, host, 0, ch, TO_VICT);
-        sprintf(str, "You have %d practice sessions left.\n\r", ch->specials2.spells_to_learn);
-        send_to_char(str, ch);
+        send_to_char(std::format("You have {} practice sessions left.\n\r", ch->specials2.spells_to_learn).c_str(), ch);
         for (tmp = 0; tmp < MAX_SKILLS; tmp++) {
             if (guildmasters[prog].knowledge[tmp] > 0) {
                 level = GET_PROF_LEVEL((int)skills[(int)tmp].type, ch);
 
                 if ((skills[tmp].level <= level) && (!IS_SET(skills[tmp].learn_type, LEARN_SPEC) || (GET_SPEC(ch) == skills[tmp].skill_spec))) {
 
-                    sprintf(str, "%-25s %3d%%     Taught to: %-12s\n\r", skills[tmp].name,
-                        ch->knowledge[tmp], how_good(guildmasters[prog].knowledge[tmp]));
-                    send_to_char(str, ch);
+                    send_to_char(std::format("{:<25} {:>3}%     Taught to: {:<12}\n\r",
+                                      static_cast<const char*>(skills[tmp].name), ch->knowledge[tmp],
+                                      how_good(guildmasters[prog].knowledge[tmp]))
+                                      .c_str(),
+                        ch);
                 }
             }
         }
@@ -306,8 +308,7 @@ SPECIAL(guild) {
             } else if(!strncmp(str2, "all",  strlen(str2)) ) {
                 times = 200;
             } else {
-                sprintf(str, " %s", str2);
-                strcat(arg2, str);
+                strcat(arg2, std::format(" {}", static_cast<const char*>(str2)).c_str());
             }
         }
         memmove(arg2, arg2 + 1, strlen(arg2)); // remove leading space
@@ -378,10 +379,9 @@ SPECIAL(guild) {
 ACMD(do_practice)
 {
     int tmp;
-    char str[255], str2[30];
+    char str2[30];
 
-    sprintf(str, "You have %d practice sessions left\n\r", ch->specials2.spells_to_learn);
-    send_to_char(str, ch);
+    send_to_char(std::format("You have {} practice sessions left\n\r", ch->specials2.spells_to_learn).c_str(), ch);
     if (!ch->skills || !ch->knowledge) {
         send_to_char("But you don't have skill memory anyway.\n\r", ch);
         return;
@@ -402,28 +402,31 @@ ACMD(do_practice)
                     mana_cost = (mana_cost * 1 + 1) / 2;
                 }
 
-                sprintf(str2, "(%3d time,   %3d stamina)", casting_time, mana_cost);
+                strcpy(str2, std::format("({:>3} time,   {:>3} stamina)", casting_time, mana_cost).c_str());
             } else if (skills[tmp].type == PROF_CLERIC) {
-                sprintf(str2, "(%3d time, %3d spirit)", CASTING_TIME(ch, tmp), USE_SPIRIT(ch, tmp));
+                strcpy(str2, std::format("({:>3} time, {:>3} spirit)", CASTING_TIME(ch, tmp), USE_SPIRIT(ch, tmp)).c_str());
             } else if (tmp == SKILL_BEND_TIME) {
-                sprintf(str2, "(%3d time,   %3d stamina)", skills[tmp].beats, ch->abilities.mana);
+                strcpy(str2, std::format("({:>3} time,   {:>3} stamina)", skills[tmp].beats, ch->abilities.mana).c_str());
             } else if (tmp == SKILL_MARK) {
-                sprintf(str2, "(%3d time,   %3d stamina)", mark_calculate_wait(ch),
-                    skills[tmp].min_usesmana);
+                strcpy(str2, std::format("({:>3} time,   {:>3} stamina)", mark_calculate_wait(ch),
+                                  skills[tmp].min_usesmana)
+                                  .c_str());
             } else if (tmp == SKILL_ARCHERY) {
-                sprintf(str2, "(%3d time)", shoot_calculate_wait(ch));
+                strcpy(str2, std::format("({:>3} time)", shoot_calculate_wait(ch)).c_str());
             } else if (skills[tmp].type == PROF_RANGER && skills[tmp].min_usesmana > 10) {
-                sprintf(str2, "(%3d time,   %3d stamina)", skills[tmp].beats,
-                    skills[tmp].min_usesmana);
+                strcpy(str2, std::format("({:>3} time,   {:>3} stamina)", skills[tmp].beats,
+                                  skills[tmp].min_usesmana)
+                                  .c_str());
             } else if (CASTING_TIME(ch, tmp)) {
-                sprintf(str2, "(%3d time)", skills[tmp].beats);
+                strcpy(str2, std::format("({:>3} time)", skills[tmp].beats).c_str());
             } else {
                 strcpy(str2, "");
             }
 
-            sprintf(str, "%-25s %-12s %s\n\r", skills[tmp].name, how_good(ch->knowledge[tmp]),
-                str2);
-            send_to_char(str, ch);
+            send_to_char(std::format("{:<25} {:<12} {}\n\r", static_cast<const char*>(skills[tmp].name),
+                                  how_good(ch->knowledge[tmp]), static_cast<const char*>(str2))
+                                  .c_str(),
+                ch);
         }
 }
 
@@ -482,9 +485,10 @@ SPECIAL(pet_shops)
     if (cmd == CMD_LIST) { /* List */
         send_to_char("Available pets are:\n\r", ch);
         for (pet = world[pet_room].people; pet; pet = pet->next_in_room) {
-            sprintf(buf, "%-20s - %s\n\r", pet->player.short_descr,
-                money_message(3 * GET_EXP(pet)));
-            send_to_char(buf, ch);
+            send_to_char(std::format("{:<20} - {}\n\r", pet->player.short_descr,
+                                  money_message(3 * GET_EXP(pet)))
+                                  .c_str(),
+                ch);
         }
         return (TRUE);
     } else if (cmd == CMD_BUY) { /* Buy */
@@ -733,7 +737,7 @@ SPECIAL(snake)
     if (host->specials.fighting && (host->specials.fighting->in_room == host->in_room) && (number(0, 42 - GET_LEVEL(host)) < std::min(1 + GET_LEVEL(host) / 4, 4))) {
         act("$n bites $N!", 1, host, 0, host->specials.fighting, TO_NOTVICT);
         act("$n bites you!", 1, host, 0, host->specials.fighting, TO_VICT);
-        spell_poison(host, "", SPELL_TYPE_SPELL, host->specials.fighting, 0, 0, 0);
+        spell_poison(host, mutable_arg(""), SPELL_TYPE_SPELL, host->specials.fighting, 0, 0, 0);
         return TRUE;
     }
     return FALSE;
@@ -794,7 +798,7 @@ SPECIAL(gatekeeper)
             return FALSE;
 
         if (!CAN_SEE(host, ch)) {
-            do_gen_com(host, "Who is out there?", 0, 0, SCMD_YELL);
+            do_gen_com(host, mutable_arg("Who is out there?"), 0, 0, SCMD_YELL);
             return FALSE;
         }
 
@@ -810,7 +814,7 @@ SPECIAL(gatekeeper)
 
             if (!*arg || strncmp(arg, "open", 4)) {
                 if (number(1, 10) == 5)
-                    do_say(host, "Stop loitering here, I have a job to do.", 0, 0, 0);
+                    do_say(host, mutable_arg("Stop loitering here, I have a job to do."), 0, 0, 0);
                 return FALSE;
             }
 
@@ -826,7 +830,7 @@ SPECIAL(gatekeeper)
                         break;
 
             if (doordir == NUM_OF_DIRS) {
-                do_say(host, "There is nothing such to open.", 0, 0, 0);
+                do_say(host, mutable_arg("There is nothing such to open."), 0, 0, 0);
                 return FALSE;
             }
 
@@ -842,19 +846,19 @@ SPECIAL(gatekeeper)
     }
 
     if (!host->delay.cmd || !host->delay.subcmd) {
-        do_say(host, "Ugh, I forgot what I'm doing.", 0, 0, 0);
+        do_say(host, mutable_arg("Ugh, I forgot what I'm doing."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
 
     if (host->delay.targ2.ch_num == -1) {
-        do_say(host, "There is nothing like that here.", 0, 0, 0);
+        do_say(host, mutable_arg("There is nothing like that here."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
 
     if (host->delay.targ2.ch_num == -2) {
-        do_say(host, "Ah, there is no door for me to open.", 0, 0, 0);
+        do_say(host, mutable_arg("Ah, there is no door for me to open."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
@@ -891,7 +895,7 @@ SPECIAL(gatekeeper)
 
     if (host->delay.subcmd == 2) {
         if (CAN_GO(host, doordir)) {
-            do_say(host, "Ah, the door is open. You are free to go.", 0, 0, 0);
+            do_say(host, mutable_arg("Ah, the door is open. You are free to go."), 0, 0, 0);
             host->delay.cmd = host->delay.subcmd = 0;
             return FALSE;
         }
@@ -1025,7 +1029,7 @@ SPECIAL(gatekeeper2)
 
         /* Don't trust someone you can't see */
         if (!CAN_SEE(host, ch)) {
-            do_gen_com(host, "Who is out there?", 0, 0, SCMD_YELL);
+            do_gen_com(host, mutable_arg("Who is out there?"), 0, 0, SCMD_YELL);
 
             return FALSE;
         }
@@ -1044,7 +1048,7 @@ SPECIAL(gatekeeper2)
 
             if (!*arg || strncmp(arg, "open", 4)) {
                 if (number(1, 10) == 5)
-                    do_say(host, "Stop loitering here, I have a job to do.", 0, 0, 0);
+                    do_say(host, mutable_arg("Stop loitering here, I have a job to do."), 0, 0, 0);
                 return FALSE;
             }
 
@@ -1059,7 +1063,7 @@ SPECIAL(gatekeeper2)
                         break;
 
             if (doordir == NUM_OF_DIRS) {
-                do_say(host, "There is nothing such to open.", 0, 0, 0);
+                do_say(host, mutable_arg("There is nothing such to open."), 0, 0, 0);
                 return FALSE;
             }
 
@@ -1087,19 +1091,19 @@ SPECIAL(gatekeeper2)
      * bash (or anything else, for that matter)
      */
     if (!host->delay.cmd || !host->delay.subcmd) {
-        do_say(host, "Ugh, I forgot what I'm doing.", 0, 0, 0);
+        do_say(host, mutable_arg("Ugh, I forgot what I'm doing."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
 
     if (host->delay.targ2.ch_num == -1) {
-        do_say(host, "There is nothing like that here.", 0, 0, 0);
+        do_say(host, mutable_arg("There is nothing like that here."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
 
     if (host->delay.targ2.ch_num == -2) {
-        do_say(host, "Ah, there is no door for me to open.", 0, 0, 0);
+        do_say(host, mutable_arg("Ah, there is no door for me to open."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
@@ -1129,7 +1133,7 @@ SPECIAL(gatekeeper2)
 
     if (host->delay.subcmd == 2) {
         if (CAN_GO(host, doordir)) {
-            do_say(host, "Ah, the door is open. You are free to go.", 0, 0, 0);
+            do_say(host, mutable_arg("Ah, the door is open. You are free to go."), 0, 0, 0);
             host->delay.cmd = host->delay.subcmd = 0;
             return FALSE;
         }
@@ -1225,7 +1229,7 @@ void _recursive_move(struct char_data* ch, struct obj_data* hostobj)
     act("$n enters $o.", TRUE, ch, hostobj, 0, TO_ROOM);
     char_from_room(ch);
     char_to_room(ch, ferry_boat_data[num].to_room[tmp]);
-    do_look(ch, "", 0, 0, 0);
+    do_look(ch, mutable_arg(""), 0, 0, 0);
     act("$n comes aboard.", TRUE, ch, 0, 0, TO_ROOM);
     for (tmpfol = ch->followers; tmpfol; tmpfol = tmpfol->next)
         if (tmpfol->follower->in_room == was_in) {
@@ -1240,15 +1244,13 @@ void _recursive_move(struct char_data* ch, struct obj_data* hostobj)
 SPECIAL(ferry_boat)
 {
     struct obj_data* hostobj = (struct obj_data*)host;
-    int tmp, num, was_in;
+    int tmp, num;
 
     if ((cmd != CMD_ENTER) || !ch)
         return FALSE;
 
     if (ch->in_room != hostobj->in_room)
         return FALSE;
-
-    was_in = ch->in_room;
     while (*arg && (*arg <= ' '))
         arg++;
     if (!*arg)
@@ -1283,8 +1285,8 @@ SPECIAL(ferry_captain)
         return FALSE;
 
     if (GET_POS(host) < POSITION_FIGHTING) {
-        do_wake(host, "", 0, 0, 0);
-        do_stand(host, "", 0, 0, 0);
+        do_wake(host, mutable_arg(""), 0, 0, 0);
+        do_stand(host, mutable_arg(""), 0, 0, 0);
     }
     if (GET_POS(host) < POSITION_STANDING)
         return FALSE;
@@ -1302,7 +1304,7 @@ SPECIAL(ferry_captain)
 
     if (!ferryobj) {
         if (!number(0, 5))
-            do_say(host, "I wonder where my ship is?", 0, 0, 0);
+            do_say(host, mutable_arg("I wonder where my ship is?"), 0, 0, 0);
         return FALSE;
     }
 
@@ -1602,7 +1604,7 @@ SPECIAL(mob_cleric)
     wtl_base.targ2.type = TARGET_CHAR;
     wtl_base.targ2.choice = TAR_CHAR_ROOM;
     wtl_base.flg = 1;
-    do_cast(host, "", &wtl_base, CMD_CAST, 0);
+    do_cast(host, mutable_arg(""), &wtl_base, CMD_CAST, 0);
     return FALSE;
 }
 
@@ -1633,7 +1635,7 @@ SPECIAL(mob_magic_user)
     wtl_base.targ2.type = TARGET_CHAR;
     wtl_base.targ2.choice = TAR_CHAR_ROOM;
     wtl_base.flg = 1;
-    do_cast(host, "", &wtl_base, CMD_CAST, 0);
+    do_cast(host, mutable_arg(""), &wtl_base, CMD_CAST, 0);
     return FALSE;
 }
 
@@ -1695,17 +1697,17 @@ int pick_a_spell(int* spell_list, char_data* host)
 {
     if (spell_list[0] > 0) {
         if (has_alias(host, "spells")) {
-            sprintf(buf, "----------");
+            strcpy(buf, std::format("----------").c_str());
             mudlog_aliased_mob(buf, host, "spells");
             for (int i = 1; i <= spell_list[0]; i++) {
-                sprintf(buf, "Spell: %d", spell_list[i]);
+                strcpy(buf, std::format("Spell: {}", spell_list[i]).c_str());
                 mudlog_aliased_mob(buf, host, "spells");
             }
         }
         int chance = number(1, spell_list[0]);
         return spell_list[chance];
     } else {
-        sprintf(buf, "--- NO MAGE KEYWORDS FOUND ---");
+        strcpy(buf, std::format("--- NO MAGE KEYWORDS FOUND ---").c_str());
         mudlog_aliased_mob(buf, host, "spells");
         return 0;
     }
@@ -1722,7 +1724,7 @@ void add_spell_to_list(int* spell_list, int spell, char_data* host)
         }
     }
     if (found == 0) {
-        sprintf(buf, "ADDING: %d", spell);
+        strcpy(buf, std::format("ADDING: {}", spell).c_str());
         mudlog_aliased_mob(buf, host, "spells");
         spell_list[0] += 1;
         spell_list[spell_list[0]] = spell;
@@ -1732,7 +1734,7 @@ void add_spell_to_list(int* spell_list, int spell, char_data* host)
 // fetch spells from hp bracket
 void get_spells(int* spell_list, int mage_type, int health, char_data* host)
 {
-    sprintf(buf, "MType: %d,    Spell_Tier: %d, Pct: %.2f", mage_type, health, percents[health]);
+    strcpy(buf, std::format("MType: {},    Spell_Tier: {}, Pct: {:.2f}", mage_type, health, percents[health]).c_str());
     mudlog_aliased_mob(buf, host, "spells");
     for (int i = 0; i < indvidual_spells_length; i++) {
         if (new_spell_list[mage_type][health][i] != 0) {
@@ -1746,7 +1748,7 @@ void add_leveled_spell_to_list(int* spell_list, int spell, int mage_type, int cu
     char* keyword, char_data* host, int min_level)
 {
     if (GET_LEVEL(host) >= min_level && mage_type == cur_mage_type && has_alias(host, keyword)) {
-        sprintf(buf, "MType: %d    (HL_SPELL)", mage_type);
+        strcpy(buf, std::format("MType: {}    (HL_SPELL)", mage_type).c_str());
         mudlog_aliased_mob(buf, host, "spells");
         add_spell_to_list(spell_list, spell, host);
     }
@@ -1754,7 +1756,7 @@ void add_leveled_spell_to_list(int* spell_list, int spell, int mage_type, int cu
 
 // lookup spells by mage type and hp thresholds
 void get_combat_spells(char_data* host, int* spell_list, double current_health_pct,
-    double current_mana_pct)
+    double)
 {
     for (int mage_type = 0; mage_type < mage_types; mage_type++) {
         char* keyword = (char*)mage_aliases[mage_type];
@@ -1802,8 +1804,8 @@ SPECIAL(mob_magic_user_spec)
         return FALSE;
     }
 
-    struct char_data *tmpch, *tmpch_next;
-    char_data* target;
+    struct char_data* tmpch;
+    char_data* target = nullptr;
     int spell_list[20]; // the first index is the count of spells
     int tgt = 0;
     int spell_number = 0;
@@ -1903,8 +1905,9 @@ SPECIAL(mob_magic_user_spec)
         return FALSE;
     }
 
-    sprintf(buf, "PROG::MAGE    -> Tgt: %s, Spell: %d, TgtType: %d, InterruptCnt: %d, Hit%: %.2f",
-        GET_NAME(target), spell_number, tgt, host->interrupt_count, current_health_pct);
+    strcpy(buf, std::format("PROG::MAGE    -> Tgt: {}, Spell: {}, TgtType: {}, InterruptCnt: {}, Hit%: {:.2f}",
+                       GET_NAME(target), spell_number, tgt, host->interrupt_count, current_health_pct)
+                       .c_str());
     mudlog_debug_mob(buf, host);
 
     waiting_type wtl_base;
@@ -1917,7 +1920,7 @@ SPECIAL(mob_magic_user_spec)
     wtl_base.targ2.type = TARGET_CHAR;
     wtl_base.targ2.choice = TAR_CHAR_ROOM;
     wtl_base.flg = 1;
-    do_cast(host, "", &wtl_base, CMD_CAST, 0);
+    do_cast(host, mutable_arg(""), &wtl_base, CMD_CAST, 0);
     return TRUE;
 }
 
@@ -2019,13 +2022,13 @@ SPECIAL(mob_ranger)
         tmpwtl.targ1.type = TARGET_CHAR;
         tmpwtl.targ1.ptr.ch = tmpch;
         tmpwtl.targ1.ch_num = tmpch->abs_number;
-        do_ambush(host, "", &tmpwtl, CMD_AMBUSH, 0);
+        do_ambush(host, mutable_arg(""), &tmpwtl, CMD_AMBUSH, 0);
         tmpwtl.targ1.cleanup();
         return 1;
     }
 
-    if (((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host) || IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) && ch->delay.wait_value == 0)
-        do_hide(host, "", 0, 0, 0);
+    if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) || IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) && ch->delay.wait_value == 0)
+        do_hide(host, mutable_arg(""), 0, 0, 0);
 
     tmproom = &world[host->in_room];
     mintime = 999;
@@ -2044,7 +2047,7 @@ SPECIAL(mob_ranger)
         // char, skipping the ON_ENTER call for each in-between room,
         //   likely doesnt leave tracks in the middle rooms either, also it moves rather instantly
         //   since its looping in a single one_mobile_activity call
-        do_move(host, "", &tmpwtl, (tmproom->room_track[mintmp].data & 7) + 1, 0);
+        do_move(host, mutable_arg(""), &tmpwtl, (tmproom->room_track[mintmp].data & 7) + 1, 0);
         tmpwtl.targ1.cleanup();
         return 0;
     }
@@ -2052,7 +2055,7 @@ SPECIAL(mob_ranger)
         tmpwtl.cmd = number(1, NUM_OF_DIRS);
         tmpwtl.subcmd = 0;
         if (CAN_GO(host, tmpwtl.cmd - 1))
-            do_move(host, "", &tmpwtl, tmpwtl.cmd, 0);
+            do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
     }
     return 0; // Because this isn't a 1: If the mob moves above, when it leaves this prog it can
@@ -2062,7 +2065,7 @@ SPECIAL(mob_ranger)
 /* Created for the new ranger prog */
 bool see_hidden(char_data* host, char_data* tmpch)
 {
-    int hide, vuln_st, my_hide, orig_hide, see_hide;
+    int hide, vuln_st, orig_hide, see_hide;
 
     orig_hide = see_hiding(host);
     see_hide = orig_hide;
@@ -2076,7 +2079,6 @@ bool see_hidden(char_data* host, char_data* tmpch)
     }
     hide = 0;
     hide = GET_HIDING(tmpch);
-    my_hide = GET_HIDING(host);
     return (!(hide > 0) || (hide > 0 && (see_hide > hide)));
 }
 
@@ -2085,7 +2087,7 @@ bool see_hidden(char_data* host, char_data* tmpch)
 bool should_attack(char_data* host, char_data* tmpch)
 {
     int is_aggressive = IS_SET(host->specials2.act, MOB_AGGRESSIVE);
-    return (tmpch && tmpch != host && CAN_SEE(host, tmpch) && see_hidden(host, tmpch) && see_hidden(host, tmpch) && !PRF_FLAGGED(tmpch, PRF_NOHASSLE) && (IS_AGGR_TO(host, tmpch) || (is_aggressive && !IS_NPC(tmpch)) || host->specials.fighting && (GET_POS(host) > POSITION_SITTING)));
+    return (tmpch && tmpch != host && CAN_SEE(host, tmpch) && see_hidden(host, tmpch) && see_hidden(host, tmpch) && !PRF_FLAGGED(tmpch, PRF_NOHASSLE) && (IS_AGGR_TO(host, tmpch) || (is_aggressive && !IS_NPC(tmpch)) || (host->specials.fighting && (GET_POS(host) > POSITION_SITTING))));
 }
 
 void do_spec_ambush(char_data* host, char_data* tmpch)
@@ -2097,7 +2099,7 @@ void do_spec_ambush(char_data* host, char_data* tmpch)
     tmpwtl.targ1.type = TARGET_CHAR;
     tmpwtl.targ1.ptr.ch = tmpch;
     tmpwtl.targ1.ch_num = tmpch->abs_number;
-    do_ambush(host, "", &tmpwtl, CMD_AMBUSH, 0);
+    do_ambush(host, mutable_arg(""), &tmpwtl, CMD_AMBUSH, 0);
     tmpwtl.targ1.cleanup();
     host->spec_busy = false;
 }
@@ -2157,7 +2159,7 @@ SPECIAL(mob_ranger_new)
 
     const int wimpy_health_limit = GET_MAX_HIT(host) / 5;
     if (GET_HIT(host) <= wimpy_health_limit) {
-        sprintf(buf, "WIMPY --> health: %d, wimpy: %d", GET_HIT(host), wimpy_health_limit);
+        strcpy(buf, std::format("WIMPY --> health: {}, wimpy: {}", GET_HIT(host), wimpy_health_limit).c_str());
         mudlog_debug_mob(buf, host);
         is_wimpy = 1;
     }
@@ -2168,10 +2170,10 @@ SPECIAL(mob_ranger_new)
 
     if (is_not_engaged) {
         // hide here for pop or after fighting and didnt move
-        if (((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host) ||
+        if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) ||
              IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) &&
             host->delay.wait_value == 0 && has_alias(host, "p_hide")) {
-            do_hide(host, "", 0, 0, 0);
+            do_hide(host, mutable_arg(""), 0, 0, 0);
         }
 
         if ((callflag == SPECIAL_ENTER) && ch && !is_wimpy && !PRF_FLAGGED(ch, PRF_NOHASSLE) && (IS_AGGR_TO(host, ch) || IS_SET(ch->specials2.act, MOB_AGGRESSIVE))) {
@@ -2247,9 +2249,9 @@ SPECIAL(mob_ranger_new)
                     tmp = BFS_NO_PATH;
                 }
                 if (tmp >= 0) {
-                    do_move(ch, "", 0, tmp + 1, 0);
+                    do_move(ch, mutable_arg(""), 0, tmp + 1, 0);
                     if(has_alias(host, "p_hide")) {
-                        do_hide(host, "", 0, 0, 0);
+                        do_hide(host, mutable_arg(""), 0, 0, 0);
                     }
                     host->spec_busy = false;
                     return 1;
@@ -2284,11 +2286,11 @@ SPECIAL(mob_ranger_new)
             if (mintmp < NUM_OF_TRACKS) {
                 tmpwtl.cmd = (tmproom->room_track[mintmp].data & 7) + 1;
                 tmpwtl.subcmd = 0;
-                do_move(host, "", &tmpwtl, tmpwtl.cmd, 0);
-                if (((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host) ||
+                do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
+                if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) ||
                      IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) &&
                     host->delay.wait_value == 0 && has_alias(host, "p_hide")) {
-                    do_hide(host, "", 0, 0, 0);
+                    do_hide(host, mutable_arg(""), 0, 0, 0);
                 }
                 tmpwtl.targ1.cleanup();
                 ch->spec_busy = false;
@@ -2301,11 +2303,11 @@ SPECIAL(mob_ranger_new)
             tmpwtl.cmd = number(1, NUM_OF_DIRS);
             tmpwtl.subcmd = 0;
             if (CAN_GO(host, tmpwtl.cmd - 1)) {
-                do_move(host, "", &tmpwtl, tmpwtl.cmd, tmpwtl.subcmd);
-                if (((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host) ||
+                do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, tmpwtl.subcmd);
+                if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) ||
                      IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) &&
                     host->delay.wait_value == 0 && has_alias(host, "p_hide")) {
-                    do_hide(host, "", 0, 0, 0);
+                    do_hide(host, mutable_arg(""), 0, 0, 0);
                 }
                 tmpwtl.targ1.cleanup();
                 return 1;
@@ -2325,7 +2327,7 @@ SPECIAL(mob_ranger_new)
  * and to the room.
  */
 
-char* dance_description[][2] = {
+const char* const dance_description[][2] = {
     { "jumps merrily up and down, dancing happily.", "You happily jump up and down" },
     { "steps in a little circle, clapping $s hands together",
         "You step in a little circle, clapping your hands together" },
@@ -2363,10 +2365,9 @@ SPECIAL(mob_jig)
         return FALSE;
 
     dance_desc = number(0, 5);
-    sprintf(buf, "$n %s.\r\n", dance_description[dance_desc][0]);
-    sprintf(buf1, "%s.\r\n", dance_description[dance_desc][1]);
+    strcpy(buf, std::format("$n {}.\r\n", dance_description[dance_desc][0]).c_str());
     act(buf, TRUE, host, 0, 0, TO_ROOM);
-    send_to_char(buf1, ch);
+    send_to_char(std::format("{}.\r\n", dance_description[dance_desc][1]).c_str(), ch);
 
     return FALSE;
 }
@@ -2723,7 +2724,7 @@ SPECIAL(resetter)
 
         for (tmpfol = ch->followers; tmpfol; tmpfol = ch->followers)
             stop_follower(tmpfol->follower, FOLLOW_MOVE);
-        do_pracreset(host, "", &wtltmp, CMD_PRACRESET, 0);
+        do_pracreset(host, mutable_arg(""), &wtltmp, CMD_PRACRESET, 0);
 
         return 0;
 
@@ -2738,7 +2739,7 @@ SPECIAL(resetter)
                     "Sorry, you have exceeded the amount of times you can reroll statistics.");
                 wtltmp.cmd = CMD_TELL;
                 wtltmp.subcmd = 0;
-                do_tell(host, "", &wtltmp, CMD_TELL, 0);
+                do_tell(host, mutable_arg(""), &wtltmp, CMD_TELL, 0);
                 wtltmp.targ2.cleanup();
                 return 0;
             }
@@ -2749,15 +2750,14 @@ SPECIAL(resetter)
             // immediately to close the crash-to-reroll exploit (crashing after a bad reroll to retry).
             save_char(ch, NOWHERE, 0);
             reroll_count = 41 - ch->specials2.rerolls;
-            sprintf(buf, "You have %d reroll attempts left.\n\r", reroll_count);
-            send_to_char(buf, ch);
-            do_stat(ch, "", 0, 0, 0);
+            send_to_char(std::format("You have {} reroll attempts left.\n\r", reroll_count).c_str(), ch);
+            do_stat(ch, mutable_arg(""), 0, 0, 0);
             return 0;
         } else {
             wtltmp.targ2.type = TARGET_TEXT;
             wtltmp.targ2.ptr.text = get_from_txt_block_pool("Only level 6 characters may reroll statistics.");
             wtltmp.cmd = 0;
-            do_tell(host, "", &wtltmp, CMD_TELL, 0);
+            do_tell(host, mutable_arg(""), &wtltmp, CMD_TELL, 0);
             wtltmp.targ2.cleanup();
             return 0;
         }
@@ -2769,7 +2769,7 @@ SPECIAL(resetter)
         wtltmp.targ2.ptr.text = get_from_txt_block_pool("You may ask me for a pracreset and rerolls.");
         wtltmp.cmd = CMD_TELL;
         wtltmp.subcmd = 0;
-        do_tell(host, "", &wtltmp, CMD_TELL, 0);
+        do_tell(host, mutable_arg(""), &wtltmp, CMD_TELL, 0);
         wtltmp.targ2.cleanup();
         return 0;
     }
@@ -2804,7 +2804,7 @@ SPECIAL(react_trap)
     /* See if they abandon their trap */
     if (callflag == SPECIAL_COMMAND) {
         if (cmd_info[cmd].minimum_position > POSITION_SITTING && ch == host && cmd != CMD_TRAP)
-            do_trap(host, "", NULL, CMD_TRAP, -1);
+            do_trap(host, mutable_arg(""), NULL, CMD_TRAP, -1);
         return FALSE;
     }
 
@@ -2823,7 +2823,7 @@ SPECIAL(react_trap)
      * trap.  Can this be dealt with in do_trap()?
      */
     target_check(host, CMD_TRAP, &w.targ1, &w.targ2);
-    do_trap(host, "", &w, CMD_TRAP, w.subcmd);
+    do_trap(host, mutable_arg(""), &w, CMD_TRAP, w.subcmd);
 
     return FALSE;
 }
@@ -2839,35 +2839,37 @@ SPECIAL(ar_tarthalon)
         return FALSE;
     if (number(0, 1)) {
         victim = get_char("balkazor");
-        if (victim)
+        if (victim) {
             if (world[victim->in_room].number != 8483)
-                do_say(host, "Balkazor my sorcerer, I command you to aid me!", 0, 0, 0);
+                do_say(host, mutable_arg("Balkazor my sorcerer, I command you to aid me!"), 0, 0, 0);
             else
                 switch (number(0, 6)) {
                 case 4:
-                    do_say(host, "Turn these intruders to dust, my faithful wizard!", 0, 0, 0);
+                    do_say(host, mutable_arg("Turn these intruders to dust, my faithful wizard!"), 0, 0, 0);
                     break;
                 case 5:
-                    do_say(host, "Balkazor, burn these infidels into eternity!", 0, 0, 0);
+                    do_say(host, mutable_arg("Balkazor, burn these infidels into eternity!"), 0, 0, 0);
                     break;
                 }
+        }
     } else {
         victim = get_char("karahaz");
-        if (victim)
+        if (victim) {
             if (world[victim->in_room].number != 8483)
-                do_say(host, "Karahaz!  Master swordsman, Come!  Rid my tomb of these intruders!",
+                do_say(host, mutable_arg("Karahaz!  Master swordsman, Come!  Rid my tomb of these intruders!"),
                     0, 0, 0);
             else
                 switch (number(0, 6)) {
                 case 4:
-                    do_say(host, "Karahaz, may these mere mortals feel the power of your blade!", 0,
+                    do_say(host, mutable_arg("Karahaz, may these mere mortals feel the power of your blade!"), 0,
                         0, 0);
                     break;
                 case 5:
-                    do_say(host, "I require your service once again Karahaz - do not fail me.", 0,
+                    do_say(host, mutable_arg("I require your service once again Karahaz - do not fail me."), 0,
                         0, 0);
                     break;
                 }
+        }
     }
     if (!victim)
         return 0;
@@ -2875,13 +2877,13 @@ SPECIAL(ar_tarthalon)
         switch (world[victim->in_room].number) {
         case 8484:
             tmpwtl.cmd = 3;
-            do_unlock(victim, "northdoor", 0, 0, 0);
-            do_open(victim, "northdoor", 0, 0, 0);
+            do_unlock(victim, mutable_arg("northdoor"), 0, 0, 0);
+            do_open(victim, mutable_arg("northdoor"), 0, 0, 0);
             break;
         case 8485:
             tmpwtl.cmd = 1;
-            do_unlock(victim, "southdoor", 0, 0, 0);
-            do_open(victim, "southdoor", 0, 0, 0);
+            do_unlock(victim, mutable_arg("southdoor"), 0, 0, 0);
+            do_open(victim, mutable_arg("southdoor"), 0, 0, 0);
             break;
         case 8482:
             tmpwtl.cmd = 2;
@@ -2912,7 +2914,7 @@ SPECIAL(ar_tarthalon)
         }
         tmpwtl.subcmd = 0;
         if (CAN_GO(victim, tmpwtl.cmd - 1))
-            do_move(victim, "", &tmpwtl, tmpwtl.cmd, 0);
+            do_move(victim, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
     }
 
@@ -3165,7 +3167,7 @@ SPECIAL(vampire_huntress)
                     SET_BIT(room->dir_option[2]->exit_info, EX_CLOSED);
                     SET_BIT(room->dir_option[2]->exit_info, EX_LOCKED);
                     send_to_room("The iron door slams shut.\n\r\n", real_room(room->number));
-                    do_look(victim, "", wtl, 0, 0);
+                    do_look(victim, mutable_arg(""), wtl, 0, 0);
                     WAIT_STATE_FULL(host, 200, 0, 0, 59, 0, 0, 0, AFF_WAITING, TARGET_NONE);
                 } else if (tmpno == 2 && GET_LEVEL(victim) < LEVEL_GOD)
                     hit(host, victim, TYPE_UNDEFINED);
@@ -3197,11 +3199,11 @@ SPECIAL(vampire_huntress)
             obj_to_char(obj, mob);
         if ((obj = read_object(6510, VIRT)))
             obj_to_char(obj, mob);
-        do_wear(mob, "all", 0, 0, 0);
+        do_wear(mob, mutable_arg("all"), 0, 0, 0);
         tmpwtl.subcmd = 0;
         tmpwtl.cmd = 6;
         if (CAN_GO(mob, tmpwtl.cmd - 1))
-            do_move(mob, "", &tmpwtl, tmpwtl.cmd, 0);
+            do_move(mob, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
         host = mob; // Maybe this will avoid the error, pointing to the new mob - nope :-)
         return 1;
@@ -3226,7 +3228,7 @@ SPECIAL(thuringwethil)
             break;
 
     if (GET_HIT(host) <= 500) {
-        do_say(host, "Curse you all, I will remember this outrage!\n\r", 0, 0, 0);
+        do_say(host, mutable_arg("Curse you all, I will remember this outrage!\n\r"), 0, 0, 0);
         if (obj)
             act("$n hides her face from the glowing plate!", FALSE, host, 0, 0, TO_ROOM);
         for (tmpch = combat_list; tmpch; tmpch = tmpch->next_fighting)
@@ -3301,24 +3303,28 @@ SPECIAL(vampire_doorkeep)
     if (close_it)
         if (!IS_SET(room->dir_option[2]->exit_info, EX_CLOSED)) {
             SET_BIT(room->dir_option[2]->exit_info, EX_CLOSED);
-            sprintf(buf, "The %s blurs for a second... then closes.\n\r",
-                room->dir_option[2]->keyword);
-            send_to_room(buf, real_room(15345));
+            send_to_room(std::format("The {} blurs for a second... then closes.\n\r",
+                             room->dir_option[2]->keyword)
+                             .c_str(),
+                real_room(15345));
             SET_BIT(room2->dir_option[0]->exit_info, EX_CLOSED);
-            sprintf(buf, "The %s blurs for a second... then closes.\n\r",
-                room2->dir_option[0]->keyword);
-            send_to_room(buf, real_room(15355));
+            send_to_room(std::format("The {} blurs for a second... then closes.\n\r",
+                             room2->dir_option[0]->keyword)
+                             .c_str(),
+                real_room(15355));
         }
     if (!close_it)
         if (IS_SET(room->dir_option[2]->exit_info, EX_CLOSED)) {
             REMOVE_BIT(room->dir_option[2]->exit_info, EX_CLOSED);
-            sprintf(buf, "The %s blurs for a second... then opens..\n\r",
-                room->dir_option[2]->keyword);
-            send_to_room(buf, real_room(15345));
+            send_to_room(std::format("The {} blurs for a second... then opens..\n\r",
+                             room->dir_option[2]->keyword)
+                             .c_str(),
+                real_room(15345));
             REMOVE_BIT(room2->dir_option[0]->exit_info, EX_CLOSED);
-            sprintf(buf, "The %s blurs for a second... then opens.\n\r",
-                room2->dir_option[0]->keyword);
-            send_to_room(buf, real_room(15355));
+            send_to_room(std::format("The {} blurs for a second... then opens.\n\r",
+                             room2->dir_option[0]->keyword)
+                             .c_str(),
+                real_room(15355));
         }
     return 0;
 }
@@ -3342,8 +3348,9 @@ SPECIAL(vampire_killer)
             "\n\rYou feel a moment of intense pain... as your numb body slumps to the floor.\n\r\n",
             victim);
         send_to_char("You are dead, sorry...\n\r", victim);
-        sprintf(buf, "%s killed by %s at %s", GET_NAME(victim), GET_NAME(host),
-            world[victim->in_room].name);
+        strcpy(buf, std::format("{} killed by {} at {}", GET_NAME(victim), GET_NAME(host),
+                           world[victim->in_room].name)
+                           .c_str());
         mudlog(buf, BRF, LEVEL_GOD, TRUE);
         add_exploit_record(EXPLOIT_MOBDEATH, victim, GET_IDNUM(host), GET_NAME(host));
         raw_kill(victim, host, 0);
@@ -3382,12 +3389,12 @@ SPECIAL(vampire_killer)
         tmpwtl.subcmd = 0;
         if (tmpwtl.cmd == 1) {
             if (IS_SET(room->dir_option[0]->exit_info, EX_CLOSED)) {
-                do_unlock(host, "irondoor", 0, 0, 0);
-                do_open(host, "irondoor", 0, 0, 0);
+                do_unlock(host, mutable_arg("irondoor"), 0, 0, 0);
+                do_open(host, mutable_arg("irondoor"), 0, 0, 0);
             }
         }
         if (CAN_GO(host, tmpwtl.cmd - 1))
-            do_move(host, "", &tmpwtl, tmpwtl.cmd, 0);
+            do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
         return 0;
     } else {
@@ -3414,8 +3421,8 @@ SPECIAL(vampire_killer)
             else {
                 room = &world[real_room(15396)];
                 if (IS_SET(room->dir_option[2]->exit_info, EX_CLOSED)) {
-                    do_unlock(host, "irondoor", 0, 0, 0);
-                    do_open(host, "irondoor", 0, 0, 0);
+                    do_unlock(host, mutable_arg("irondoor"), 0, 0, 0);
+                    do_open(host, mutable_arg("irondoor"), 0, 0, 0);
                 } else
                     tmpwtl.cmd = 3;
             }
@@ -3427,8 +3434,8 @@ SPECIAL(vampire_killer)
             else {
                 room = &world[real_room(15397)];
                 if (IS_SET(room->dir_option[2]->exit_info, EX_CLOSED)) {
-                    do_unlock(host, "irondoor", 0, 0, 0);
-                    do_open(host, "irondoor", 0, 0, 0);
+                    do_unlock(host, mutable_arg("irondoor"), 0, 0, 0);
+                    do_open(host, mutable_arg("irondoor"), 0, 0, 0);
                 } else
                     tmpwtl.cmd = 3;
             }
@@ -3439,7 +3446,7 @@ SPECIAL(vampire_killer)
         }
         tmpwtl.subcmd = 0;
         if (CAN_GO(host, tmpwtl.cmd - 1))
-            do_move(host, "", &tmpwtl, tmpwtl.cmd, 0);
+            do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
     }
     return 0;
@@ -3532,7 +3539,7 @@ SPECIAL(reciter)
         quitting = 1;
         goto remove_scroll;
     } // Hm, sbdy just has spoken his last line...
-    if ((GET_POS(host) == POSITION_FIGHTING))
+    if (GET_POS(host) == POSITION_FIGHTING)
         return 0;
     if (number(0, 100) < 50)
         return 0;
@@ -3580,7 +3587,7 @@ remove_scroll:
 SPECIAL(herald)
 {
     char hbuf[HERALD_LEN];
-    struct memory_rec *mr, *pr;
+    struct memory_rec* mr;
 
     if (GET_HIT(host) < 1) { /* herald dead? */
         host->player.death_cry2 = NULL;
@@ -3599,10 +3606,9 @@ SPECIAL(herald)
      * track of people entering and leaving the room
      * ok, let's see... did we announce 'host' yet?
      */
-    pr = mr = host->specials.memory;
+    mr = host->specials.memory;
     while (mr) {
         if (mr->enemy != ch) {
-            pr = mr;
             mr = mr->next_on_mob;
         } else
             return 0;

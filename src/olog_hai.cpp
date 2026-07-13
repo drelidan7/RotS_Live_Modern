@@ -1,5 +1,7 @@
+#include <format>
 #include <iostream>
 #include <string>
+#include <string.h>
 
 #include "base_utils.h"
 #include "big_brother.h"
@@ -228,11 +230,11 @@ int calculate_smash_damage(char_data& attacker, int prob)
 
 void generate_smash_dismount_messages(char_data* attacker, char_data* victim)
 {
-    sprintf(buf, "You smash into $N so hard, it knocks $M to the ground!");
+    strcpy(buf, std::format("You smash into $N so hard, it knocks $M to the ground!").c_str());
     act(buf, FALSE, attacker, NULL, victim, TO_CHAR);
-    sprintf(buf, "$n smashes into you so hard, it knocks prone to the ground!");
+    strcpy(buf, std::format("$n smashes into you so hard, it knocks prone to the ground!").c_str());
     act(buf, FALSE, attacker, NULL, victim, TO_VICT);
-    sprintf(buf, "$n smashes into $N so hard, it knocks $M to the ground!");
+    strcpy(buf, std::format("$n smashes into $N so hard, it knocks $M to the ground!").c_str());
     act(buf, TRUE, attacker, 0, victim, TO_NOTVICT);
 }
 
@@ -244,7 +246,7 @@ void apply_smash_damage(char_data* attacker, char_data* victim, int prob)
         char_data* mount = victim->mount_data.mount;
         damage(attacker, victim, dam, SKILL_SMASH, 0);
         generate_smash_dismount_messages(attacker, victim);
-        do_dismount(victim, "", 0, 0, 0);
+        do_dismount(victim, mutable_arg(""), 0, 0, 0);
         if (number() >= 0.50) {
             damage(attacker, mount, dam / 2, SKILL_SMASH, 0);
         }
@@ -334,10 +336,11 @@ void apply_cleave_damage(char_data* attacker, char_data* victim)
 
 void generate_frenzy_message(char_data* character)
 {
-    sprintf(buf, "You enter a frenzied state, filling your body with "
-                 "overwhelming power!\r\n");
+    strcpy(buf, std::format("You enter a frenzied state, filling your body with "
+                             "overwhelming power!\r\n")
+                    .c_str());
     act(buf, FALSE, character, NULL, NULL, TO_CHAR);
-    sprintf(buf, "$n enters a frenzied state, making $s strikes grow with fervor!\r\n");
+    strcpy(buf, std::format("$n enters a frenzied state, making $s strikes grow with fervor!\r\n").c_str());
     act(buf, TRUE, character, 0, NULL, TO_ROOM);
 }
 
@@ -453,9 +456,9 @@ bool is_direction_valid(char_data* ch, int cmd)
             return false;
         } else if (EXIT(ch, cmd)->keyword) {
             if (IS_SHADOW(ch))
-                sprintf(buf2, "You cannot pass through the %s.\n\r", fname(EXIT(ch, cmd)->keyword));
+                strcpy(buf2, std::format("You cannot pass through the {}.\n\r", fname(EXIT(ch, cmd)->keyword)).c_str());
             else
-                sprintf(buf2, "The %s seems to be closed.\n\r", fname(EXIT(ch, cmd)->keyword));
+                strcpy(buf2, std::format("The {} seems to be closed.\n\r", fname(EXIT(ch, cmd)->keyword)).c_str());
             send_to_char(buf2, ch);
             return false;
         } else {
@@ -513,7 +516,6 @@ ACMD(do_overrun)
         return;
     }
     int total_moves = utils::get_prof_level(PROF_WARRIOR, *ch) / 8 + number(-1, 1);
-    int loop_moves = 0;
     int dis;
     char_data* tmpch = nullptr;
 
@@ -536,7 +538,7 @@ ACMD(do_overrun)
         }
 
         stop_fighting(ch);
-        do_move(ch, "", 0, cmd + 1, 0);
+        do_move(ch, mutable_arg(""), 0, cmd + 1, 0);
     }
 
     if (dis < total_moves) {

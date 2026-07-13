@@ -9,6 +9,7 @@
  ************************************************************************ */
 
 #include <ctype.h>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -84,14 +85,12 @@ ACMD(do_put)
     else if (!*arg1)
         send_to_char("Put what in what?\n\r", ch);
     else if (!*arg2) {
-        sprintf(buf, "What do you want to put %s in?\n\r",
-            ((obj_dotmode != FIND_INDIV) ? "them" : "it"));
-        send_to_char(buf, ch);
+        send_to_char(std::format("What do you want to put {} in?\n\r",
+            ((obj_dotmode != FIND_INDIV) ? "them" : "it")).c_str(), ch);
     } else {
         generic_find(arg2, FIND_OBJ_INV | FIND_OBJ_ROOM, ch, &tmp_char, &container);
         if (!container) {
-            sprintf(buf, "You don't see a %s here.\n\r", arg2);
-            send_to_char(buf, ch);
+            send_to_char(std::format("You don't see a {} here.\n\r", static_cast<const char*>(arg2)).c_str(), ch);
         } else if (GET_ITEM_TYPE(container) != ITEM_CONTAINER) {
             act("$p is not a container.", FALSE, ch, container, 0, TO_CHAR);
         } else if (IS_SET(container->obj_flags.value[1], CONT_CLOSED)) {
@@ -116,8 +115,7 @@ ACMD(do_put)
                     }
             } else if (obj_dotmode == FIND_ALLDOT) { /* "put all.x <cont>" case */
                 if (!(obj = get_obj_in_list_vis(ch, arg1, ch->carrying, 9999))) {
-                    sprintf(buf, "You don't seem to have any %ss.\n\r", arg1);
-                    send_to_char(buf, ch);
+                    send_to_char(std::format("You don't seem to have any {}s.\n\r", static_cast<const char*>(arg1)).c_str(), ch);
                 } else
                     while (obj) {
                         next_obj = get_obj_in_list_vis(ch, arg1, obj->next_content, 9999);
@@ -133,8 +131,7 @@ ACMD(do_put)
                     }
             } else { /* "put <thing> <container>" case */
                 if (!(obj = get_obj_in_list_vis(ch, arg1, ch->carrying, 9999))) {
-                    sprintf(buf, "You aren't carrying %s %s.\n\r", AN(arg1), arg1);
-                    send_to_char(buf, ch);
+                    send_to_char(std::format("You aren't carrying {} {}.\n\r", AN(arg1), static_cast<const char*>(arg1)).c_str(), ch);
                 } else if (obj == container) {
                     send_to_char("You attempt to fold it into itself, but fail.\n\r", ch);
                 } else if (GET_ITEM_TYPE(obj) != ITEM_MISSILE && is_quiver) {
@@ -150,16 +147,13 @@ ACMD(do_put)
 int can_take_obj(char_data* character, obj_data* item)
 {
     if (IS_CARRYING_N(character) >= CAN_CARRY_N(character)) {
-        sprintf(buf, "%s: You can't carry that many items.\n\r", OBJS(item, character));
-        send_to_char(buf, character);
+        send_to_char(std::format("{}: You can't carry that many items.\n\r", OBJS(item, character)).c_str(), character);
         return 0;
     } else if ((IS_CARRYING_W(character) + GET_OBJ_WEIGHT(item)) > CAN_CARRY_W(character)) {
-        sprintf(buf, "%s: You can't carry that much weight.\n\r", OBJS(item, character));
-        send_to_char(buf, character);
+        send_to_char(std::format("{}: You can't carry that much weight.\n\r", OBJS(item, character)).c_str(), character);
         return 0;
     } else if (!(CAN_WEAR(item, ITEM_TAKE))) {
-        sprintf(buf, "%s: You can't take that!\n\r", OBJS(item, character));
-        send_to_char(buf, character);
+        send_to_char(std::format("{}: You can't take that!\n\r", OBJS(item, character)).c_str(), character);
         return 0;
     }
 
@@ -171,9 +165,8 @@ void get_check_money(struct char_data* ch, struct obj_data* obj)
     if ((GET_ITEM_TYPE(obj) == ITEM_MONEY) && (obj->obj_flags.value[0] > 0)) {
         obj_from_char(obj);
         if (obj->obj_flags.value[0] > 1) {
-            sprintf(buf, "There were %s.\n\r",
-                money_message(obj->obj_flags.value[0], 1));
-            send_to_char(buf, ch);
+            send_to_char(std::format("There were {}.\n\r",
+                money_message(obj->obj_flags.value[0], 1)).c_str(), ch);
         }
         GET_GOLD(ch) += obj->obj_flags.value[0];
         extract_obj(obj);
@@ -198,7 +191,7 @@ void perform_get_from_container(char_data* character, obj_data* item, obj_data* 
         }
 
         if (IS_CARRYING_N(character) >= CAN_CARRY_N(character)) {
-            sprintf(buf, "%s: You can't hold any more items.\n\r", OBJS(item, character));
+            strcpy(buf, std::format("{}: You can't hold any more items.\n\r", OBJS(item, character)).c_str());
         } else {
             obj_from_obj(item);
             obj_to_char(item, character);
@@ -269,12 +262,12 @@ void get_from_container(struct char_data* ch, struct obj_data* cont, char* arg, 
         }
 
         if (!found) {
-            sprintf(buf, "You can't find any %ss in $p.", arg_copy);
+            strcpy(buf, std::format("You can't find any {}s in $p.", static_cast<const char*>(arg_copy)).c_str());
             act(buf, FALSE, ch, cont, 0, TO_CHAR);
         }
     } else {
         if (!(obj = get_obj_in_list(arg_copy, cont->contains))) {
-            sprintf(buf, "There doesn't seem to be %s %s in $p.", AN(arg_copy), arg_copy);
+            strcpy(buf, std::format("There doesn't seem to be {} {} in $p.", AN(arg_copy), static_cast<const char*>(arg_copy)).c_str());
             act(buf, FALSE, ch, cont, 0, TO_CHAR);
         } else {
             perform_get_from_container(ch, obj, cont, mode);
@@ -340,8 +333,7 @@ void get_from_room(struct char_data* ch, char* arg)
             return;
         }
         if (!(obj = get_obj_in_list_vis(ch, arg, world[ch->in_room].contents, 9999))) {
-            sprintf(buf, "You don't see any %ss here.\n\r", arg);
-            send_to_char(buf, ch);
+            send_to_char(std::format("You don't see any {}s here.\n\r", arg).c_str(), ch);
         } else
             while (obj) {
                 next_obj = get_obj_in_list_vis(ch, arg, obj->next_content, 9999);
@@ -350,8 +342,7 @@ void get_from_room(struct char_data* ch, char* arg)
             }
     } else {
         if (!(obj = get_obj_in_list_vis(ch, arg, world[ch->in_room].contents, 9999))) {
-            sprintf(buf, "You don't see %s %s here.\n\r", AN(arg), arg);
-            send_to_char(buf, ch);
+            send_to_char(std::format("You don't see {} {} here.\n\r", AN(arg), arg).c_str(), ch);
         } else
             perform_get_from_room(ch, obj);
     }
@@ -417,14 +408,12 @@ ACMD(do_get)
                         cont = next_cont;
                     }
                     if (!found) {
-                        sprintf(buf, "You can't seem to find any %ss here.\n\r", arg2);
-                        send_to_char(buf, ch);
+                        send_to_char(std::format("You can't seem to find any {}s here.\n\r", static_cast<const char*>(arg2)).c_str(), ch);
                     }
                 } else { /* get <items> <container> (no all or all.x) */
                     mode = generic_find(arg2, FIND_OBJ_INV | FIND_OBJ_ROOM, ch, &tmp_char, &cont);
                     if (!cont) {
-                        sprintf(buf, "You don't have %s %s.\n\r", AN(arg2), arg2);
-                        send_to_char(buf, ch);
+                        send_to_char(std::format("You don't have {} {}.\n\r", AN(arg2), static_cast<const char*>(arg2)).c_str(), ch);
                     } else if (GET_ITEM_TYPE(cont) != ITEM_CONTAINER)
                         act("$p is not a container.", FALSE, ch, cont, 0, TO_CHAR);
                     else
@@ -435,7 +424,7 @@ ACMD(do_get)
     }
 }
 
-void perform_drop_gold(struct char_data* ch, int amount, sh_int RDR)
+void perform_drop_gold(struct char_data* ch, int amount, sh_int)
 {
     struct obj_data* obj;
 
@@ -455,17 +444,15 @@ void perform_drop_gold(struct char_data* ch, int amount, sh_int RDR)
     }
 }
 
-int perform_drop(struct char_data* ch, struct obj_data* obj, sh_int RDR)
+int perform_drop(struct char_data* ch, struct obj_data* obj, sh_int)
 {
     if (IS_SET(obj->obj_flags.extra_flags, ITEM_NODROP)) {
-        sprintf(buf, "You can't drop %s, it must be cursed!\n\r", OBJS(obj, ch));
-        send_to_char(buf, ch);
+        send_to_char(std::format("You can't drop {}, it must be cursed!\n\r", OBJS(obj, ch)).c_str(), ch);
         return 0;
     }
 
-    sprintf(buf, "You drop %s.\n\r", OBJS(obj, ch));
-    send_to_char(buf, ch);
-    sprintf(buf, "$n drops $p.");
+    send_to_char(std::format("You drop {}.\n\r", OBJS(obj, ch)).c_str(), ch);
+    strcpy(buf, std::format("$n drops $p.").c_str());
     act(buf, TRUE, ch, obj, 0, TO_ROOM);
 
     obj_from_char(obj);
@@ -494,8 +481,7 @@ ACMD(do_drop)
     while (*argument && *argument <= ' ')
         argument++;
     if (!*arg) {
-        sprintf(buf, "What do you want to drop?\n\r");
-        send_to_char(buf, ch);
+        send_to_char(std::format("What do you want to drop?\n\r").c_str(), ch);
         return;
     } else if (is_number(arg)) {
         amount = atoi(arg);
@@ -523,13 +509,11 @@ ACMD(do_drop)
                 }
         } else if (dotmode == FIND_ALLDOT) {
             if (!*arg) {
-                sprintf(buf, "What do you want to drop all of?\n\r");
-                send_to_char(buf, ch);
+                send_to_char(std::format("What do you want to drop all of?\n\r").c_str(), ch);
                 return;
             }
             if (!(obj = get_obj_in_list(arg, ch->carrying))) {
-                sprintf(buf, "You don't seem to have any %ss.\n\r", arg);
-                send_to_char(buf, ch);
+                send_to_char(std::format("You don't seem to have any {}s.\n\r", static_cast<const char*>(arg)).c_str(), ch);
             }
             while (obj) {
                 next_obj = get_obj_in_list(arg, obj->next_content);
@@ -538,8 +522,7 @@ ACMD(do_drop)
             }
         } else {
             if (!(obj = get_obj_in_list(arg, ch->carrying))) {
-                sprintf(buf, "You don't seem to have %s %s.\n\r", AN(arg), arg);
-                send_to_char(buf, ch);
+                send_to_char(std::format("You don't seem to have {} {}.\n\r", AN(arg), static_cast<const char*>(arg)).c_str(), ch);
             } else
                 amount += perform_drop(ch, obj, RDR);
         }
@@ -619,12 +602,10 @@ void perform_give_gold(struct char_data* ch, struct char_data* vict,
     }
 
     send_to_char("Ok.\n\r", ch);
-    sprintf(buf, "%s gives you %s.\n\r", PERS(ch, vict, TRUE, FALSE),
-        money_message(amount, 1));
-    send_to_char(buf, vict);
-    sprintf(buf, "You give %s to %s.\n\r", money_message(amount, 1),
-        PERS(vict, ch, FALSE, FALSE));
-    send_to_char(buf, ch);
+    send_to_char(std::format("{} gives you {}.\n\r", PERS(ch, vict, TRUE, FALSE),
+        money_message(amount, 1)).c_str(), vict);
+    send_to_char(std::format("You give {} to {}.\n\r", money_message(amount, 1),
+        PERS(vict, ch, FALSE, FALSE)).c_str(), ch);
     act("$n gives some money to $N.", TRUE, ch, 0, vict, TO_NOTVICT);
 
     GET_GOLD(ch) -= amount;
@@ -667,8 +648,7 @@ ACMD(do_give)
             perform_give_gold(ch, vict, amount);
         else {
             /* code to give multiple items.  anyone want to write it? -je */
-            sprintf(arg2, "You don't seem to have a %s.\n\r", arg1);
-            send_to_char(arg2, ch);
+            send_to_char(std::format("You don't seem to have a {}.\n\r", static_cast<const char*>(arg1)).c_str(), ch);
             return;
         }
     } else {
@@ -690,8 +670,7 @@ ACMD(do_give)
                 return;
             }
             if (!(obj = get_obj_in_list_vis(ch, argument, ch->carrying, 9999))) {
-                sprintf(buf, "You don't seem to have any %ss.\n\r", argument);
-                send_to_char(buf, ch);
+                send_to_char(std::format("You don't seem to have any {}s.\n\r", argument).c_str(), ch);
             } else
                 while (obj && vict) {
                     next_obj = get_obj_in_list_vis(ch, argument, obj->next_content, 9999);
@@ -707,8 +686,7 @@ ACMD(do_give)
                 }
         } else {
             if (!(obj = get_obj_in_list_vis(ch, argument, ch->carrying, 9999))) {
-                sprintf(buf, "You don't seem to have %s %s.\n\r", AN(argument), argument);
-                send_to_char(buf, ch);
+                send_to_char(std::format("You don't seem to have {} {}.\n\r", AN(argument), argument).c_str(), ch);
             } else
                 perform_give(ch, vict, obj);
         }
@@ -772,6 +750,10 @@ ACMD(do_butcher)
         if (!tool) {
             if (GET_RACE(ch) == RACE_BEORNING) {
                 chance = 50 + (GET_PROF_LEVEL(PROF_RANGER, ch) + 2);
+                // Butchering with natural claws: no tool wielded. Previously left
+                // indeterminate on this branch (MSVC C4701/UB) -- the later
+                // `!no_tool` food-bonus check read garbage for Beornings.
+                no_tool = 1;
             } else {
                 chance = 0;
                 no_tool = 1;
@@ -838,7 +820,7 @@ ACMD(do_butcher)
             trophy = 0;
             obj->obj_flags.value[4] = 0;
             obj->description[strlen(obj->description) - 1] = 0;
-            sprintf(buf2, "%s, its head a bloody mess.", obj->description);
+            strcpy(buf2, std::format("{}, its head a bloody mess.", obj->description).c_str());
             RELEASE(obj->description);
             obj->description = str_dup(buf2);
         } else {
@@ -854,7 +836,7 @@ ACMD(do_butcher)
                 return;
             }
             obj->description[strlen(obj->description) - 1] = 0;
-            sprintf(buf2, "%s, its head missing.", obj->description);
+            strcpy(buf2, std::format("{}, its head missing.", obj->description).c_str());
             RELEASE(obj->description);
             obj->description = str_dup(buf2);
         }
@@ -924,14 +906,14 @@ obj_data* load_scalp(int number)
         scalp->name = str_dup("head skull");
     } else {
         scalp->name = str_dup("head");
-        sprintf(buf2, "A severed head of %s is lying here.",
-            (w_type) ? player_table[trophy_num].name : mob_proto[trophy_num].player.short_descr);
+        strcpy(buf2, std::format("A severed head of {} is lying here.",
+            (w_type) ? player_table[trophy_num].name : mob_proto[trophy_num].player.short_descr).c_str());
         if (w_type)
             buf2[18] = toupper(buf2[18]);
         scalp->description = str_dup(buf2);
 
-        sprintf(buf2, "A severed head of %s",
-            (w_type) ? player_table[trophy_num].name : mob_proto[trophy_num].player.short_descr);
+        strcpy(buf2, std::format("A severed head of {}",
+            (w_type) ? player_table[trophy_num].name : mob_proto[trophy_num].player.short_descr).c_str());
         if (w_type)
             buf2[18] = toupper(buf2[18]);
         scalp->short_description = str_dup(buf2);

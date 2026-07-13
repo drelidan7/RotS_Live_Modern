@@ -33,6 +33,7 @@
 #include "platdef.h"
 #include <assert.h>
 #include <ctype.h>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -60,7 +61,7 @@ extern struct index_data* mob_index;
 extern struct index_data* obj_index;
 extern struct descriptor_data* descriptor_list;
 extern struct char_data* fast_update_list;
-extern char* MENU;
+extern const char* MENU;
 extern int top_of_world;
 extern struct skill_data skills[];
 extern sh_int encumb_table[MAX_WEAR];
@@ -238,7 +239,7 @@ int isname(const char* str, const char* namelist, char full)
     }
 }
 
-void affect_modify_room(struct room_data* room, byte loc, int mod,
+void affect_modify_room(struct room_data* room, byte, int mod,
     long bitv, char add)
 {
     bitv = bitv & (~PERMAFFECT);
@@ -253,7 +254,7 @@ void affect_modify_room(struct room_data* room, byte loc, int mod,
 
 void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add, sh_int counter)
 {
-    int maxabil, tmp, tmp2;
+    int tmp, tmp2;
 
     if (add == AFFECT_MODIFY_SET) {
         SET_BIT(ch->specials.affected_by, bitv);
@@ -269,8 +270,6 @@ void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add,
         mod = -mod;
     }
     ch->specials.affected_by |= race_affect[GET_RACE(ch)];
-
-    maxabil = (IS_NPC(ch) ? 25 : 25);
 
     if (add == AFFECT_MODIFY_TIME) {
         return; /* so, usual affects are not modified in this call */
@@ -452,9 +451,9 @@ void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add,
             break;
 
         if (add)
-            skills[tmp].spell_pointer(ch, "", SPELL_TYPE_SPELL, ch, 0, 0, 1);
+            skills[tmp].spell_pointer(ch, mutable_arg(""), SPELL_TYPE_SPELL, ch, 0, 0, 1);
         else
-            skills[tmp].spell_pointer(ch, "", SPELL_TYPE_ANTI, ch, 0, 0, 1);
+            skills[tmp].spell_pointer(ch, mutable_arg(""), SPELL_TYPE_ANTI, ch, 0, 0, 1);
         break;
 
     case APPLY_BITVECTOR:
@@ -475,17 +474,25 @@ void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add,
         break;
 
     case APPLY_RESIST:
+        // Fixed-bug (Phase 5 T6, UBSan negative-shift-exponent): AFFECT_MODIFY_REMOVE
+        // above negates `mod` (it's a bit position here, e.g. PLRSPEC_FIRE,
+        // not a numeric stat delta -- the negation is this function's generic
+        // "undo an add" convention for every APPLY_* case, not specific to
+        // this one). `1 << mod` with mod now negative is UB (confirmed live:
+        // an APPLY_VULN affect wearing off during a real world-data boot hit
+        // this under UBSan); negate back to recover the original bit
+        // position before shifting.
         if (mod >= 0)
             GET_RESISTANCES(ch) |= (1 << mod);
         else
-            GET_RESISTANCES(ch) &= ~(1 << mod);
+            GET_RESISTANCES(ch) &= ~(1 << (-mod));
         break;
 
     case APPLY_VULN:
         if (mod >= 0)
             GET_VULNERABILITIES(ch) |= (1 << mod);
         else
-            GET_VULNERABILITIES(ch) &= ~(1 << mod);
+            GET_VULNERABILITIES(ch) &= ~(1 << (-mod));
         break;
 
     default:
@@ -497,7 +504,7 @@ void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add,
 /* This updates a character by subtracting everything he is affected by */
 /* restoring original abilities, and then affecting all again     ?????      */
 
-void affect_total_room(struct room_data* room, int mode)
+void affect_total_room(struct room_data*, int)
 {
 }
 
@@ -644,7 +651,12 @@ void affect_to_char(struct char_data* ch, struct affected_type* af)
         tmplist->number = ch->abs_number;
         tmplist->type = TARGET_CHAR;
 
-        sprintf(mybuf, "Char to aff_list: %s\n\r", GET_NAME(ch));
+        // nz(): GET_NAME(ch) can be null for a bare/uninitialized char_data
+        // (e.g. a test fixture) -- glibc's old sprintf("%s", NULL) printed
+        // "(null)" here without crashing; std::format calls strlen()
+        // unconditionally and crashes on a null char*, so nz() preserves
+        // the old byte-identical output instead (utils.h).
+        strcpy(mybuf, std::format("Char to aff_list: {}\n\r", nz(GET_NAME(ch))).c_str());
     }
 
     // 2
@@ -752,7 +764,7 @@ void affect_remove(struct char_data* ch, struct affected_type* af)
 
 void affect_remove_notify(struct char_data* ch, struct affected_type* af)
 {
-    extern char* spell_wear_off_msg[];
+    extern const char* const spell_wear_off_msg[];
 
     if (*spell_wear_off_msg[af->type] && !PLR_FLAGGED(ch, PLR_WRITING))
         vsend_to_char(ch, "%s\n", spell_wear_off_msg[af->type]);
@@ -832,7 +844,7 @@ int in_affected_list(struct char_data* ch)
  */
 void affect_from_char_notify(struct char_data* ch, byte skill)
 {
-    extern char* spell_wear_off_msg[];
+    extern const char* const spell_wear_off_msg[];
 
     if (*spell_wear_off_msg[skill] && !PLR_FLAGGED(ch, PLR_WRITING))
         vsend_to_char(ch, "%s\n", spell_wear_off_msg[skill]);
@@ -892,7 +904,7 @@ affected_type* room_affected_by_spell(const room_data* room, int spell)
    duration and average modifier are not implemented for some reason.*/
 
 void affect_join(struct char_data* ch, struct affected_type* af,
-    char avg_dur, char avg_mod)
+    char, char)
 {
     struct affected_type* hjp;
     char found = FALSE;
@@ -1073,7 +1085,7 @@ void stop_follower(struct char_data* ch, int mode)
 
 /* Check if making CH follow VICTIM will create an illegal */
 /* Follow "Loop/circle"                                    */
-char circle_follow(struct char_data* ch, struct char_data* victim, int mode)
+char circle_follow(struct char_data* ch, struct char_data* victim, int)
 {
     for (char_data* character = victim; character; character = character->master) {
         if (character == ch) {
@@ -1165,8 +1177,8 @@ void char_from_room(struct char_data* ch)
         stop_fighting(ch);
     }
     if (tmp == 100) {
-        sprintf(buf, "Char_from_room: could not stop fighting for %s.\n",
-            GET_NAME(ch));
+        strcpy(buf, std::format("Char_from_room: could not stop fighting for {}.\n",
+            GET_NAME(ch)).c_str());
         mudlog(buf, NRM, LEVEL_GOD, TRUE);
     }
 }
@@ -1278,9 +1290,9 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
     assert(item_slot >= 0 && item_slot < MAX_WEAR);
 
     if (character->equipment[item_slot]) {
-        sprintf(buf, "SYSERR: Char is already equipped: %s, %s", GET_NAME(character),
-            item->short_description);
-        log(buf);
+        log(std::format("SYSERR: Char is already equipped: {}, {}", GET_NAME(character),
+            item->short_description)
+                .c_str());
         return;
     }
 
@@ -1612,7 +1624,7 @@ struct char_data* get_char_room(char* name, int room)
 }
 
 /* search all over the world for a char, and return a pointer if found */
-struct char_data* get_char(char* name)
+struct char_data* get_char(const char* name)
 {
     struct char_data* i;
     int j, number;
@@ -1657,7 +1669,7 @@ void obj_to_room(struct obj_data* object, int room)
 
     for (tmpobj = world[room].contents; tmpobj; tmpobj = tmpobj->next_content)
         if (tmpobj == object) {
-            sprintf(buf, "obj_to_room: double call for room %d, object %s\n", world[room].number, object->short_description);
+            strcpy(buf, std::format("obj_to_room: double call for room {}, object {}\n", world[room].number, object->short_description).c_str());
             mudlog(buf, NRM, LEVEL_IMPL, TRUE);
             return;
         }
@@ -1899,7 +1911,7 @@ void extract_char(struct char_data* ch, int new_room)
     if (!IS_NPC(ch) && !ch->desc) {
         for (t_desc = descriptor_list; t_desc; t_desc = t_desc->next)
             if (t_desc->original == ch)
-                do_return(t_desc->character, "", 0, 0, 0);
+                do_return(t_desc->character, mutable_arg(""), 0, 0, 0);
     }
 
     if (ch->followers || ch->master || ch->group)
@@ -2003,9 +2015,8 @@ void extract_char(struct char_data* ch, int new_room)
             if (k)
                 k->next = ch->next;
             else {
-                char log_buf[1024];
-                sprintf(log_buf, "SYSERR: Trying to remove %s from character_list. (handler.c, extract_char)%c", GET_NAME(ch), '\0');
-                log(log_buf);
+                log(std::format("SYSERR: Trying to remove {} from character_list. (handler.c, extract_char)", GET_NAME(ch))
+                        .c_str());
                 abort();
             }
         }
@@ -2013,7 +2024,7 @@ void extract_char(struct char_data* ch, int new_room)
 
     if (ch->desc) {
         if (ch->desc->original) {
-            do_return(ch, "", 0, 0, 0);
+            do_return(ch, mutable_arg(""), 0, 0, 0);
         } else
             save_char(ch, (new_room < 0) ? ((was_in == NOWHERE) ? -1 : world[was_in].number) : new_room, 0);
     }
@@ -2044,7 +2055,7 @@ void extract_char(struct char_data* ch, int new_room)
             send_to_char("Your spirit found a new body to wear.\n\r", ch);
             SET_POS(ch) = POSITION_RESTING;
             utils::set_spirits(ch, utils::get_spirits(ch) / 2);
-            do_look(ch, "", 0, 0, 0);
+            do_look(ch, mutable_arg(""), 0, 0, 0);
         } else {
             ch->desc->connected = CON_SLCT;
             show_character_menu(ch->desc);
@@ -2144,7 +2155,7 @@ struct char_data* get_char_vis(struct char_data* ch, char* name, int dark_ok)
     return (0);
 }
 
-struct obj_data* get_obj_in_list_vis(struct char_data* ch, char* name,
+struct obj_data* get_obj_in_list_vis(struct char_data* ch, const char* name,
     struct obj_data* list, int num)
 {
     struct obj_data* i;
@@ -2220,8 +2231,6 @@ struct obj_data* get_object_in_equip_vis(struct char_data* ch,
 
 struct obj_data* create_money(int amount)
 {
-    char buf[200];
-
     struct obj_data* obj;
     struct extra_descr_data* new_descr;
 
@@ -2260,18 +2269,17 @@ struct obj_data* create_money(int amount)
 
         new_descr->keyword = str_dup("coins money gold");
         if (amount < COPP_IN_SILV) {
-            sprintf(buf, "There are %d copper coins.", amount);
-            new_descr->description = str_dup(buf);
+            new_descr->description = str_dup(std::format("There are {} copper coins.", amount).c_str());
         } else if (amount < COPP_IN_GOLD) {
-            sprintf(buf, "There are about %d silver coins.", (amount / COPP_IN_SILV));
-            new_descr->description = str_dup(buf);
+            new_descr->description = str_dup(
+                std::format("There are about {} silver coins.", (amount / COPP_IN_SILV)).c_str());
         } else if (amount < 10 * COPP_IN_GOLD) {
-            sprintf(buf, "It looks to be about %d gold coins.", (amount / COPP_IN_GOLD));
-            new_descr->description = str_dup(buf);
+            new_descr->description = str_dup(
+                std::format("It looks to be about {} gold coins.", (amount / COPP_IN_GOLD)).c_str());
         } else if (amount < 100 * COPP_IN_GOLD) {
-            sprintf(buf, "You guess there are, maybe, %d gold coins.",
-                10 * ((amount / 10 / COPP_IN_GOLD)));
-            new_descr->description = str_dup(buf);
+            new_descr->description = str_dup(std::format("You guess there are, maybe, {} gold coins.",
+                10 * ((amount / 10 / COPP_IN_GOLD)))
+                                                  .c_str());
         } else
             new_descr->description = str_dup("There is a lot of gold.");
     }
@@ -2308,7 +2316,7 @@ struct obj_data* create_money(int amount)
 int generic_find(char* arg, int bitvector, struct char_data* ch,
     struct char_data** tar_ch, struct obj_data** tar_obj)
 {
-    char* ignore[] = {
+    static const char* const ignore[] = {
         "the",
         "in",
         "on",
@@ -2413,7 +2421,7 @@ char* money_message(int sum, int mode)
     *moneystr = 0;
 
     if (sum < 0) {
-        sprintf(moneystr, "%d copper coins", sum);
+        strcpy(moneystr, std::format("{} copper coins", sum).c_str());
         return moneystr;
     }
 
@@ -2422,23 +2430,25 @@ char* money_message(int sum, int mode)
     s = c / COPP_IN_SILV;
     c = c % COPP_IN_SILV;
 
+    std::string out;
     if (g)
-        sprintf(moneystr, "%d gold", g);
+        out += std::format("{} gold", g);
     if (g && c && s)
-        strcat(moneystr, ", ");
+        out += ", ";
     if (!c && s && g)
-        strcat(moneystr, " and ");
+        out += " and ";
     if (s)
-        sprintf(moneystr + strlen(moneystr), "%d silver", s);
+        out += std::format("{} silver", s);
     if ((g || s) && c)
-        strcat(moneystr, " and ");
+        out += " and ";
     if (c || (!sum))
-        sprintf(moneystr + strlen(moneystr), "%d copper", c);
+        out += std::format("{} copper", c);
 
     if (mode)
-        sprintf(moneystr + strlen(moneystr), " coin%s",
+        out += std::format(" coin{}",
             ((g == 1) && (s == 1)) || c == 1 ? "" : "s");
 
+    strcpy(moneystr, out.c_str());
     return moneystr;
 }
 

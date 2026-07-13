@@ -50,8 +50,8 @@ extern struct descriptor_data* descriptor_list;
 extern struct char_data* character_list;
 extern struct obj_data* object_list;
 extern struct command_info cmd_info[];
-extern char* room_spell_message[];
-extern char* room_bits_message[];
+extern const char* const room_spell_message[];
+extern const char* const room_bits_message[];
 extern struct player_index_element* player_table;
 extern struct skill_data skills[];
 extern char world_map[];
@@ -71,34 +71,34 @@ extern char* wizlist;
 extern char* immlist;
 extern char* policies;
 extern char* handbook;
-extern char* dirs[];
-extern char* refer_dirs[];
-extern char* where[];
-extern char* color_liquid[];
-extern char* fullness[];
-extern char* connected_types[];
+extern const char* const dirs[];
+extern const char* const refer_dirs[];
+extern const char* const where[];
+extern const char* const color_liquid[];
+extern const char* const fullness[];
+extern const char* const connected_types[];
 // const char*, matching interpre.cpp's definition exactly. The old
 // `extern char* command[]` mismatch linked anyway on GCC/Clang (Itanium ABI
 // variable mangling carries no type), but MSVC encodes the element type in
 // the decorated name, so the mismatched declaration is a hard LNK2001 there
 // (Phase 3 Task 6).
 extern const char* command[];
-extern char* prof_abbrevs[];
-extern char* race_abbrevs[];
-extern char* room_bits[];
+extern const char* const prof_abbrevs[];
+extern const char* const race_abbrevs[];
+extern const char* const room_bits[];
 extern int top_of_p_table;
-extern char* sector_types[];
-extern char* moon_phase[];
+extern const char* const sector_types[];
+extern const char* const moon_phase[];
 extern long judppwd;
 extern int judpavailable;
-extern char* beornwhere[];
+extern const char* const beornwhere[];
 
-extern char* extra_bits[];
+extern const char* const extra_bits[];
 extern int num_of_object_materials;
-extern char* apply_types[];
-extern char* drinks[];
-extern char* pc_arda_fame_identifier[];
-extern char* pc_evil_fame_identifier[];
+extern const char* const apply_types[];
+extern const char* const drinks[];
+extern const char* const pc_arda_fame_identifier[];
+extern const char* const pc_evil_fame_identifier[];
 
 void symbol_to_map(int, int, int);
 void reset_small_map();
@@ -290,8 +290,8 @@ private:
 /* Procedures related to 'look' */
 void argument_split_2(char* argument, char* first_arg, char* second_arg)
 {
-    int look_at, found, begin;
-    found = begin = 0;
+    int look_at, begin;
+    begin = 0;
 
     /* Find first non blank */
     for (; *(argument + begin) == ' '; begin++)
@@ -716,12 +716,12 @@ void get_char_flag_line(char_data* viewer, char_data* viewed, char* character_me
  *
  * If 'color' is true, then we color this message.
  */
-void show_mount_to_char(struct char_data* i, struct char_data* ch, char* line1, char* line2,
+void show_mount_to_char(struct char_data* i, struct char_data* ch, const char* line1, const char* line2,
     int color)
 {
     int vis_count, tmpnum, you_are_riding, riderno;
     int special_message;
-    struct char_data *tmpch, *last_rider;
+    struct char_data *tmpch, *last_rider = 0;
 
     you_are_riding = special_message = vis_count = 0;
     *buf = 0;
@@ -890,7 +890,7 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, char* line1, 
     }
 }
 
-extern char* spec_pro_message[];
+extern const char* const spec_pro_message[];
 
 /*
  * `i' is the character being shown; `ch' is the character who is
@@ -901,7 +901,6 @@ extern char* spec_pro_message[];
  */
 void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char* pos_line)
 {
-    int found;
     struct obj_data* tmp_obj;
 
     /* 'ch' looked at a room, and 'i' is in that room */
@@ -922,15 +921,51 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
          */
         if ((!i->player.long_descr || GET_POS(i) != i->specials.default_pos || pos_line) || (IS_NPC(i) && MOB_FLAGGED(i, MOB_ORC_FRIEND) && MOB_FLAGGED(i, MOB_PET) && other_side(ch, i))) {
             if (!pos_line) {
+                // Justified skip -- see the "WAVE 3 TASK 9 SWEEP" block comment
+                // above get_char_position_line (act_info.cpp:549-587): this whole
+                // function web relies on pointer aliasing into the global `buf',
+                // and the only safe conversion unit is all of it at once.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(buf, "%s%s%s", CC_USE(ch, COLOR_CHAR), PERS(i, ch, TRUE, FALSE),
                     CC_USE(ch, COLOR_CHAR));
                 if (!IS_NPC(i) && !other_side(ch, i))
                     sprintf(buf + strlen(buf), " %s", GET_TITLE(i));
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
                 get_char_flag_line(ch, i, buf + strlen(buf));
                 get_char_position_line(ch, i, buf + strlen(buf));
             } else {
+                // Justified skip -- same aliasing web, see the block comment
+                // above get_char_position_line (act_info.cpp:549-587).
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(buf, "%s", PERS(i, ch, TRUE, FALSE));
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
                 get_char_flag_line(ch, i, buf + strlen(buf));
                 strcat(buf, pos_line);
             }
@@ -960,7 +995,27 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
         } else {
             log("show_char: No description.");
             if (GET_NAME(i))
+                // Justified skip -- same aliasing web, see the block comment
+                // above get_char_position_line (act_info.cpp:549-587). (The
+                // result is clobbered by `*buf = 0;` a few lines below --
+                // that's pre-existing behavior, not something this task
+                // changes.)
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(buf, "show_char: No description on %s.\n", GET_NAME(i));
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             act("You see nothing special about $m.", FALSE, i, 0, ch, TO_VICT);
         }
 
@@ -973,12 +1028,10 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
 
         /* Immortals and thieves get a chance to look at inventories */
         if ((GET_PROF(ch) == PROF_THIEF || GET_LEVEL(ch) >= LEVEL_IMMORT) && ch != i) {
-            found = FALSE;
             send_to_char("\n\rYou attempt to peek at the inventory:\n\r", ch);
             for (tmp_obj = i->carrying; tmp_obj; tmp_obj = tmp_obj->next_content) {
                 if (CAN_SEE_OBJ(ch, tmp_obj) && (number(0, 20) < GET_LEVEL(ch))) {
                     show_obj_to_char(tmp_obj, ch, 1);
-                    found = TRUE;
                 }
             }
         }
@@ -1049,11 +1102,36 @@ void show_room_affection(char* str, struct affected_type* aff, int mode)
         case ROOMAFF_SPELL:
             *buf2 = 0;
             sprintbit(aff->bitvector, room_bits, buf2, 0);
+            // Justified skip -- same aliasing web, see the "WAVE 3 TASK 9
+            // SWEEP" block comment above get_char_position_line
+            // (act_info.cpp:549-587), which names show_room_affection
+            // explicitly: `str' is both destination and source here
+            // (self-referencing "%s...", str, ... overlap).
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+// GCC also flags this call's self-referencing `str` (dest==source) via
+// -Wrestrict; pre-existing, deliberately-reviewed pattern (see the
+// "Justified skip" comment above) -- not rewritten this task, see the
+// Phase 5 T5 report's "Concerns" section.
+#pragma GCC diagnostic ignored "-Wrestrict"
+#endif
             sprintf(str, "%s Spell %s(%d) level %d, %dhrs, sets %s.\r\n", str,
                 ((aff->location >= 0) && (aff->location < MAX_SKILLS))
                     ? skills[aff->location].name
                     : "none",
                 aff->location, aff->modifier, aff->duration, buf2);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             break;
 
         case ROOMAFF_EXIT:
@@ -1061,7 +1139,24 @@ void show_room_affection(char* str, struct affected_type* aff, int mode)
             break;
 
         default:
+            // Justified skip -- same aliasing web, see the block comment
+            // above get_char_position_line (act_info.cpp:549-587).
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
             sprintf(str, "Unknown room affect (%d).\n\r", aff->type);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             break;
         }
     }
@@ -1073,8 +1168,32 @@ void show_room_affection(char* str, struct affected_type* aff, int mode)
 void show_room_weather(char* str, struct char_data* ch)
 {
     /* Is it snowy? */
+    // Justified skip -- same aliasing web, see the block comment above
+    // get_char_position_line (act_info.cpp:549-587), which names
+    // show_room_weather explicitly: `str' is both destination and source
+    // here (self-referencing "%s...", str overlap).
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+// GCC also flags this call's self-referencing `str` (dest==source) via
+// -Wrestrict; pre-existing, deliberately-reviewed pattern (see the
+// "Justified skip" comment above) -- not rewritten this task, see the
+// Phase 5 T5 report's "Concerns" section.
+#pragma GCC diagnostic ignored "-Wrestrict"
+#endif
     if (weather_info.snow[world[ch->in_room].sector_type])
         sprintf(str, "%sSnow lies upon the ground.\n\r", str);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 }
 
 /*
@@ -1082,7 +1201,7 @@ void show_room_weather(char* str, struct char_data* ch)
  * symbol when using the look <no argument> command; i.e.:
  * Exits are: E (W) *S* #U# %D%
  */
-char* exit_mark[] = {
+const char* const exit_mark[] = {
     "", /* A hidden exit */
     " %c", /* A plain, boring link to another room */
     " (%c)", /* A closed, non-broken door */
@@ -1096,7 +1215,7 @@ char* exit_mark[] = {
  * A list of valid arguments to look; i.e.: look north,
  * look at <thing>, look (no argument), etc.
  */
-char* keywords[] = { "north", "east", "south", "west", "up",
+const char* const keywords[] = { "north", "east", "south", "west", "up",
     "down", "in", "at", "", /* Look at '' case */
     "\n" };
 
@@ -1107,7 +1226,7 @@ ACMD(do_look)
     int keyword_no;
     int j, bits = 0, temp, tmp;
     char found;
-    struct obj_data *tmp_object, *found_object;
+    struct obj_data *tmp_object, *found_object = 0;
     struct char_data* tmp_char;
     struct affected_type* tmpaf;
     char* tmp_desc;
@@ -1177,7 +1296,7 @@ ACMD(do_look)
                         return;
                     }
                     if (ch->in_room != NOWHERE)
-                        do_look(ch, "", wtl, 15, 0);
+                        do_look(ch, mutable_arg(""), wtl, 15, 0);
                     else
                         send_to_char("You see nothing special.\n\r", ch);
                     ch->in_room = tmp;
@@ -1429,7 +1548,7 @@ ACMD(do_look)
         } else if (PRF_FLAGGED(ch, PRF_ADVANCED_VIEW)) {
             if (IS_SET(world[ch->in_room].room_flags, HIDE_VNUM)) {
                 strcpy(buf2,
-                    std::format("{} (???) [ {} ]", static_cast<const char*>(buf2),
+                    std::format("{} (??\?) [ {} ]", static_cast<const char*>(buf2),
                         sector_types[world[ch->in_room].sector_type])
                         .c_str());
             } else {
@@ -1494,6 +1613,24 @@ ACMD(do_look)
                      * Generate the direction letter and any surrounding symbols
                      * based on the information we've gathered with exit_choice
                      */
+                    // Justified skip -- exit_mark[] (act_info.cpp) is a
+                    // runtime-indexed table of printf-style format strings
+                    // selected by `exit_choice', not a compile-time string
+                    // literal, so std::format's constant-evaluated format
+                    // string requirement can't apply here without also
+                    // rewriting exit_mark[]'s stored strings from %c to {}
+                    // -- same dynamic-format-string class as add_prompt's
+                    // prompt_text[] use below (see that comment).
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                     switch (i) {
                     case 0:
                         sprintf(exit_line, exit_mark[exit_choice], 'N');
@@ -1514,6 +1651,11 @@ ACMD(do_look)
                         sprintf(exit_line, exit_mark[exit_choice], 'D');
                         break;
                     };
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
                     strcat(buf2, exit_line);
                 }
@@ -1548,7 +1690,7 @@ ACMD(do_look)
 
         /* ORC DELAY - URUK DELAY - a nasty hack, but what else can i do.. */
         if (SUN_PENALTY(ch) && !IS_AFFECTED(ch, AFF_WAITING) && !(IS_AFFECTED((ch), AFF_BLIND)))
-            do_orc_delay(ch, "", 0, 0, 0);
+            do_orc_delay(ch, mutable_arg(""), 0, 0, 0);
 
         /*
          * If you're hunting, have no sun penalty, and aren't confused,
@@ -1589,7 +1731,6 @@ ACMD(do_read)
 ACMD(do_examine)
 {
     char name[100], buf[100];
-    int bits;
     struct char_data* tmp_char;
     struct obj_data* tmp_object;
 
@@ -1607,7 +1748,7 @@ ACMD(do_examine)
         return;
     }
 
-    bits = generic_find(name, FIND_OBJ_INV | FIND_OBJ_ROOM | FIND_OBJ_EQUIP, ch, &tmp_char,
+    generic_find(name, FIND_OBJ_INV | FIND_OBJ_ROOM | FIND_OBJ_EQUIP, ch, &tmp_char,
         &tmp_object);
 
     if (tmp_object) {
@@ -1739,7 +1880,7 @@ ACMD(do_info)
     struct time_info_data playing_time;
     int room_move_cost(struct char_data*, struct room_data*);
     struct time_info_data real_time_passed(time_t, time_t);
-    extern const char* specialize_name[];
+    extern const char* const specialize_name[];
 
     std::string out;
 
@@ -1938,7 +2079,7 @@ ACMD(do_info)
         out += "You are thirsty.\r\n";
 
     send_to_char(out.c_str(), ch);
-    do_affections(ch, "", 0, 0, 0);
+    do_affections(ch, mutable_arg(""), 0, 0, 0);
 }
 
 /*
@@ -2068,9 +2209,8 @@ ACMD(do_time)
 {
     int weekday, sunrise, sunset, hours;
     extern int sun_events[12][2];
-    extern char* weekdays[];
+    extern const char* const weekdays[];
     extern struct time_info_data time_info;
-    int get_season();
 
     std::string out;
     out += std::format("It is about {}:00 {} on ",
@@ -2116,13 +2256,9 @@ ACMD(do_time)
     send_to_char(out.c_str(), ch);
 }
 
-char* sky_look[6] = {
-    "cloudless", "cloudy", "rainy", "lit by flashes of lightning", "snowy", "full of driving snow"
-};
-
 ACMD(do_weather)
 {
-    int get_season();
+    extern int get_season();
     void weather_to_char(char_data * ch);
 
     if (ch->in_room == NOWHERE)
@@ -2296,7 +2432,7 @@ ACMD(do_who)
     // item 3's page_string note) rather than switching to the smaller
     // global and risking a truncation/overflow regression.
     char buf2[16384];
-    extern char* imm_abbrevs[];
+    extern const char* const imm_abbrevs[];
 
     *name_search = '\0';
     std::string out;
@@ -2496,7 +2632,7 @@ ACMD(do_users)
     int showprof = 0, num_can_see = 0, playing = 0, deadweight = 0;
     struct char_data* tch;
     struct descriptor_data* d;
-    extern char* connected_types[];
+    extern const char* const connected_types[];
 
     name_search[0] = '\0';
     host_search[0] = '\0';
@@ -2632,7 +2768,7 @@ ACMD(do_users)
             line = std::format("{:3} {:<9} {:<12} {:<14} {:<3} {:<8} ", d->desc_num, "   -   ",
                 "UNDEFINED", state, idletime, timeptr);
 
-        if (d->host && *d->host)
+        if (*d->host)
             // char[N] member decay: descriptor_data::host is char[50]
             // (structs.h) -- cast before std::format (BUILD.md "Formatting").
             line += std::format("[{}]\n\r", static_cast<const char*>(d->host));
@@ -2775,7 +2911,7 @@ void perform_immort_where(struct char_data* ch, char* arg)
             }
 
         for (num = 0, k = object_list; k; k = k->next)
-            if (CAN_SEE_OBJ(ch, k) && isname(arg, k->name) || (atoi(arg) == obj_index[k->item_number].virt && atoi(arg))) {
+            if ((CAN_SEE_OBJ(ch, k) && isname(arg, k->name)) || (atoi(arg) == obj_index[k->item_number].virt && atoi(arg))) {
                 found = 1;
                 tmp = NOWHERE;
                 tmpobj = 0;
@@ -2958,9 +3094,9 @@ ACMD(do_consider)
 
 ACMD(do_toggle)
 {
-    extern char* tactics[];
-    extern char* shooting[];
-    extern char* casting[];
+    extern const char* const tactics[];
+    extern const char* const shooting[];
+    extern const char* const casting[];
 
     if (IS_NPC(ch))
         return;
@@ -3186,7 +3322,7 @@ ACMD(do_diagnose)
     }
 }
 
-extern char* prompt_text[];
+extern const char* const prompt_text[];
 extern struct prompt_type prompt_hit[];
 extern struct prompt_type prompt_mana[];
 extern struct prompt_type prompt_move[];
@@ -3204,10 +3340,25 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
         // (would need prompt_text[]/prompt_hit[]/prompt_mana[]/
         // prompt_move[]/prompt_mount[]'s stored strings rewritten from %d to
         // {} too, which is out of this file's/task's scope).
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
         if (ch->specials.prompt_value >= 0)
             sprintf(str, prompt_text[ch->specials.prompt_number], ch->specials.prompt_value);
         else
             sprintf(str, prompt_text[ch->specials.prompt_number], -1);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
         // The trailing "%c", 0 in the old sprintf(prompt, "%s%s%c", prompt,
         // str, 0) embedded a redundant explicit NUL byte right where
         // sprintf's own terminating NUL already goes -- invisible to any
@@ -3807,11 +3958,11 @@ ACMD(do_fame)
     int records;
     char leaderstr[MAX_LEADER_STRING];
     char name[MAX_INPUT_LENGTH];
-    char* warheader = "Status of the War in Middle-earth";
-    char* good_victory = "The free peoples of Middle-earth are victorious "
+    const char* warheader = "Status of the War in Middle-earth";
+    const char* good_victory = "The free peoples of Middle-earth are victorious "
                          "over the forces of the Shadow.";
-    char* evil_victory = "The power of the Shadow falls over Middle-earth.";
-    char* no_victory = "The war in Middle-earth favors neither the "
+    const char* evil_victory = "The power of the Shadow falls over Middle-earth.";
+    const char* no_victory = "The war in Middle-earth favors neither the "
                        "Shadow nor the free peoples.";
     PKILL* pkills;
     LEADER *ldr1, *ldr2;
@@ -4079,7 +4230,7 @@ ACMD(do_compare)
     return;
 }
 
-static char* stat_defects[] = {
+static const char* const stat_defects[] = {
     "weakened",
     "duped",
     "dispirited",
@@ -4089,7 +4240,7 @@ static char* stat_defects[] = {
     "\n",
 };
 
-static char* stat_attrs[] = { "horribly", "strongly", "strongly", "seriously", "seriously", "quite",
+static const char* const stat_attrs[] = { "horribly", "strongly", "strongly", "seriously", "seriously", "quite",
     "somewhat", "somewhat", "slightly", "barely", "not at all" };
 
 void report_char_mentals(char_data* ch, char* str, int brief_mode)
@@ -4419,7 +4570,7 @@ ACMD(do_exploits)
  * Arrarys used for identify, this is just a temporary
  * place of residence.
  */
-char* light_messages[] = {
+const char* const light_messages[] = {
 
     "extremely weak, and will not last very long",
     "weak, and will not last very long",
@@ -4432,7 +4583,7 @@ char* light_messages[] = {
 
 };
 
-char* food_messages[] = {
+const char* const food_messages[] = {
 
     "is barely a morsel of food, and will\r\ndo little to aid against the pangs of hunger",
     "is not very filling, and will do little\r\nto keep hunger at bay",
@@ -4444,7 +4595,7 @@ char* food_messages[] = {
     "is extremely filling, and will keep you \r\nfull all day and night",
 
 };
-char* wear_messages[] = {
+const char* const wear_messages[] = {
 
     "taken",
     "worn on your finger",
@@ -4466,7 +4617,7 @@ char* wear_messages[] = {
     "worn on a belt",
 };
 
-char* material_messages[] = {
+const char* const material_messages[] = {
 
     "of the usual stuff",
     "of cloth",
@@ -4486,7 +4637,7 @@ char* material_messages[] = {
     "Blurp3",
 };
 
-char* item_messages[] = {
+const char* const item_messages[] = {
     "Unidentified",
     "light source",
     "scroll",
@@ -4515,7 +4666,7 @@ char* item_messages[] = {
     "lever",
 };
 
-char* extra_messages[] = {
+const char* const extra_messages[] = {
 
     "It glows brigtly",
     "It hums softly",
@@ -4540,7 +4691,7 @@ char* extra_messages[] = {
  * This array is used as a generic value_flag display
  * for all items, with the exception of food/light.
  */
-char* value_array[][5] = {
+const char* const value_array[][5] = {
 
     {
         "",
@@ -4726,7 +4877,7 @@ char* value_array[][5] = {
     }, /* Lever */
 };
 
-char* weapon_types[] = {
+const char* const weapon_types[] = {
 
     "Error, Unsed weapon type, contact Imms",
     "Error, Unsed weapon type, contact Imms",
@@ -4981,8 +5132,7 @@ void do_identify_object(struct char_data* ch, struct obj_data* j)
     send_to_char("\r\n", ch);
 }
 
-void do_details(char_data* character, char* argument, waiting_type* wait_list, int command,
-    int sub_command)
+void do_details(char_data* character, char* argument, waiting_type* wait_list, int, int)
 {
     const char* SPEC_FLAG = "spec";
     const char* GROUP_FLAG = "group";

@@ -32,6 +32,7 @@
 #include <string.h>
 
 #include <algorithm>
+#include <format>
 #include <iostream>
 #include <sstream>
 
@@ -46,11 +47,11 @@ extern struct obj_data* obj_proto;
 extern struct char_data* character_list;
 extern int top_of_world;
 extern int rev_dir[];
-extern char* dirs[];
-extern char* room_bits[];
-extern char* sector_types[];
+extern const char* const dirs[];
+extern const char* const room_bits[];
+extern const char* const sector_types[];
 extern int guardian_mob[][3];
-extern char* race_abbrevs[];
+extern const char* const race_abbrevs[];
 /*
  *External functions
  */
@@ -194,7 +195,7 @@ ASPELL(spell_curse)
 
     // Only flee after the curse has completed attacking all of its stats.
     if (!victim_died && victim_flees) {
-        do_flee(victim, "", NULL, 0, 0);
+        do_flee(victim, mutable_arg(""), NULL, 0, 0);
     }
 
     set_mental_delay(caster, actual_count * PULSE_MENTAL_FIGHT);
@@ -611,9 +612,9 @@ ASPELL(spell_divination)
 
     const room_data& cur_room = world[caster->in_room];
 
-    sprintf(buff, "You feel confident about your location.\n\r");
+    strcpy(buff, std::format("You feel confident about your location.\n\r").c_str());
     sprintbit(cur_room.room_flags, room_bits, buf, 0);
-    sprintf(buff, "%s (#%d) [ %s, %s], Exits are:\n\r", buff, cur_room.number, sector_types[cur_room.sector_type], buf);
+    strcpy(buff, std::format("{} (#{}) [ {}, {}], Exits are:\n\r", static_cast<const char*>(buff), cur_room.number, sector_types[cur_room.sector_type], static_cast<const char*>(buf)).c_str());
     send_to_char(buff, caster);
 
     bool found = false;
@@ -623,7 +624,7 @@ ASPELL(spell_divination)
             const room_data& exit_room = world[exit->to_room];
 
             found = true;
-            sprintf(buff, "%5s: to %s (#%d)\n\r", dirs[dir], exit_room.name, exit_room.number);
+            strcpy(buff, std::format("{:>5}: to {} (#{})\n\r", dirs[dir], exit_room.name, exit_room.number).c_str());
             if (exit->exit_info != 0) {
                 const char* keyword = exit->keyword ? exit->keyword : "";
                 const char* key_name = "None";
@@ -641,7 +642,7 @@ ASPELL(spell_divination)
                     }
                 }
 
-                sprintf(buff, "%s     door '%s', key '%s'.\n\r", buff, keyword, key_name);
+                strcpy(buff, std::format("{}     door '{}', key '{}'.\n\r", static_cast<const char*>(buff), keyword, key_name).c_str());
             }
             send_to_char(buff, caster);
         }
@@ -650,7 +651,7 @@ ASPELL(spell_divination)
         send_to_char("None.\n\r", caster);
     }
 
-    sprintf(buff, "Living beings in the room:\n\r");
+    strcpy(buff, std::format("Living beings in the room:\n\r").c_str());
     if (cur_room.people) {
         for (char_data* character = cur_room.people; character; character = character->next_in_room) {
             if (caster->player.level >= GET_INVIS_LEV(character)) {
@@ -668,7 +669,7 @@ ASPELL(spell_divination)
     }
 
     if (cur_room.contents) {
-        sprintf(buff, "Objects in the room:\n\r");
+        strcpy(buff, std::format("Objects in the room:\n\r").c_str());
         for (obj_data* item = cur_room.contents; item; item = item->next_content) {
             if (CAN_SEE_OBJ(caster, item)) {
                 strcat(buff, item->short_description);
@@ -1033,14 +1034,15 @@ ASPELL(spell_mass_insight)
 ASPELL(spell_hallucinate)
 {
     struct affected_type af;
-    int loc_level, my_duration;
+    int my_duration;
     int modifier;
 
     if (!victim)
         return;
 
-    int level = get_mystic_caster_level(caster);
-    loc_level = level;
+    // Result intentionally unused here -- call kept for its number()-driven RNG draw
+    // (Phase 5 T5 RNG discipline: never remove/reorder a live number() call).
+    [[maybe_unused]] int level = get_mystic_caster_level(caster);
     if (affected_by_spell(victim, SPELL_HALLUCINATE))
         send_to_char("They are already hallucinating!\n\r", caster);
 
@@ -1443,7 +1445,7 @@ ASPELL(spell_death_ward)
 ASPELL(spell_confuse)
 {
     struct affected_type af;
-    int loc_level, my_duration, tmp;
+    int my_duration, tmp;
     affected_type* tmpaf;
     int modifier;
 
@@ -1466,7 +1468,6 @@ ASPELL(spell_confuse)
     }
 
     int level = get_mystic_caster_level(caster);
-    loc_level = level;
 
     if (is_object)
         my_duration = -1;
@@ -1612,7 +1613,7 @@ ASPELL(spell_guardian)
      * Guardian mob cast by the user
      */
 
-    static char* guardian_type[] = {
+    static const char* const guardian_type[] = {
         "aggressive",
         "defensive",
         "mystic",
@@ -1716,7 +1717,7 @@ ASPELL(spell_shift)
 
 ASPELL(spell_protection)
 {
-    static char* protection_sphere[] = {
+    static const char* const protection_sphere[] = {
         "fire",
         "cold",
         "lightning",
@@ -1830,7 +1831,7 @@ ASPELL(spell_protection)
     };
 }
 
-void do_renounce(char_data* character, char* argument, waiting_type* wait_list, int command, int sub_command)
+void do_renounce(char_data* character, char*, waiting_type*, int, int)
 {
 
     if (utils::is_affected_by_spell(*character, SPELL_SANCTUARY)) {

@@ -117,7 +117,7 @@ void signal_setup(void)
 #endif
 }
 
-void checkpointing(int fake)
+void checkpointing(int)
 {
     extern int tics;
 
@@ -128,7 +128,7 @@ void checkpointing(int fake)
         tics = 0;
 }
 
-void reread_wizlists(int fake)
+void reread_wizlists(int)
 {
     void reboot_wizlists(void);
 
@@ -141,7 +141,7 @@ void reread_wizlists(int fake)
     reboot_wizlists();
 }
 
-void unrestrict_game(int fake)
+void unrestrict_game(int)
 {
     extern int restrict;
     extern int num_invalid;
@@ -153,7 +153,6 @@ void unrestrict_game(int fake)
 #endif
     mudlog("Received SIGUSR2 - unrestricting game (emergent)",
         BRF, LEVEL_IMMORT, TRUE);
-    int ban_list = 0;
     restrict = 0;
     num_invalid = 0;
 }
@@ -162,7 +161,7 @@ void unrestrict_game(int fake)
 
 void close_sockets(SocketType s);
 
-void hupsig(int fake)
+void hupsig(int)
 {
     extern SocketType mother_desc;
     log("Received SIGHUP, SIGINT, or SIGTERM.  Shutting down...");
@@ -171,7 +170,7 @@ void hupsig(int fake)
     exit(0); /* something more elegant should perhaps be substituted */
 }
 
-void badcrash(int fake)
+void badcrash(int)
 {
     void close_socket(struct descriptor_data * d);
     struct descriptor_data* desc;
@@ -193,11 +192,11 @@ void badcrash(int fake)
     abort();
 }
 
-void logsig(int fake)
+void logsig(int)
 {
     log("Signal received.  Ignoring.");
 }
-void diesig(int fake)
+void diesig(int)
 {
     // Try to save everyone.
     Emergency_save();

@@ -4,6 +4,7 @@
 #include "../rots_net.h"
 #include "../structs.h"
 #include "../utils.h"
+#include "test_char_cleanup.h"
 
 // IAC/DO/WILL/TELOPT_TTYPE: from <arpa/telnet.h> on POSIX; that header does
 // not exist on Windows, where platdef.h hand-declares the same fixed RFC
@@ -29,8 +30,8 @@ extern descriptor_data* descriptor_list;
 extern int top_of_world;
 extern room_data world;
 extern weather_data weather_info;
-extern char* pc_races[];
-extern char* pc_star_types[];
+extern const char* const pc_races[];
+extern const char* const pc_star_types[];
 
 void clear_char(struct char_data* ch, int mode);
 void msdp_update();
@@ -137,6 +138,16 @@ public:
             rots_net::close_socket(descriptor.descriptor);
         if (rots_net::is_valid_socket(m_capture_socket))
             rots_net::close_socket(m_capture_socket);
+        // initialize_msdp_player() (below) strdup()s a name straight into
+        // character.player.name -- not one of the fields ScopedClearCharFields
+        // owns (it only mirrors clear_char()'s own allocations), so it must be
+        // released here explicitly (Phase 5 T6 leak sweep). RELEASE() is a
+        // no-op for the many ProtocolDescriptor instances that never call
+        // initialize_msdp_player() at all. character.player.short_descr is
+        // strdup()'d directly by one test (MsdpUpdateSkipsInvalidDescriptors
+        // WithoutStoppingList) and released here for the same reason.
+        RELEASE(character.player.name);
+        RELEASE(character.player.short_descr);
     }
 
     std::string read_output()
@@ -169,6 +180,12 @@ public:
 
     descriptor_data descriptor {};
     char_data character {};
+    // Releases character.profs/skills/knowledge (heap-allocated by
+    // clear_char(), called either directly or via initialize_msdp_player()
+    // below) at scope exit -- safe as a no-op (RELEASE() on a null pointer)
+    // for the many ProtocolDescriptor instances that never call clear_char()
+    // at all (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
 
 private:
 #if defined(_WIN32)
@@ -1119,6 +1136,9 @@ TEST(MSDPProtocol, MsdpUpdateSkipsInvalidDescriptorsWithoutStoppingList)
     char_data missing_protocol_character {};
 
     clear_char(&missing_protocol_character, MOB_VOID);
+    // Releases missing_protocol_character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields missing_protocol_character_cleanup { missing_protocol_character };
     missing_protocol_character.player.name = strdup("NoProtocol");
     missing_protocol_character.in_room = 0;
     missing_protocol.character = &missing_protocol_character;
@@ -1150,6 +1170,11 @@ TEST(MSDPProtocol, MsdpUpdateSkipsInvalidDescriptorsWithoutStoppingList)
     EXPECT_EQ(nowhere_context.read_output(), "");
     EXPECT_FALSE(valid_context.descriptor.pProtocol->pVariables[eMSDP_CHARACTER_NAME]->bDirty);
     EXPECT_FALSE(valid_context.descriptor.pProtocol->pVariables[eMSDP_HEALTH]->bDirty);
+
+    // Releases missing_protocol_character.player.name (strdup() above) at
+    // scope exit (Phase 5 T6 leak sweep) -- not one of ScopedClearCharFields's
+    // fields.
+    RELEASE(missing_protocol_character.player.name);
 }
 
 TEST(MSDPProtocol, MsdpUpdateSkipsOutOfRangeRoomsWithoutStoppingList)
@@ -1420,6 +1445,9 @@ TEST(MSDPProtocol, MsdpUpdateEmitsNpcOpponentDetails)
 
     initialize_msdp_player(&context.character, "Aragorn");
     clear_char(&opponent, MOB_ISNPC);
+    // Releases opponent.profs (clear_char()'s only heap allocation for
+    // MOB_ISNPC) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields opponent_cleanup { opponent };
     SET_BIT(opponent.specials2.act, MOB_ISNPC);
     opponent.player.short_descr = strdup("a snarling orc");
     opponent.player.level = 12;
@@ -1439,6 +1467,10 @@ TEST(MSDPProtocol, MsdpUpdateEmitsNpcOpponentDetails)
     EXPECT_EQ(context.read_output(),
         expected_msdp_pair("OPPONENT_HEALTH", "25") + expected_msdp_pair("OPPONENT_LEVEL", "12")
             + expected_msdp_pair("OPPONENT_NAME", "a snarling orc"));
+
+    // Releases opponent.player.short_descr (strdup() above) at scope exit
+    // (Phase 5 T6 leak sweep) -- not one of ScopedClearCharFields's fields.
+    RELEASE(opponent.player.short_descr);
 }
 
 TEST(MSDPProtocol, MsdpUpdateHandlesOpponentWithInvalidMaxHealth)
@@ -1450,6 +1482,9 @@ TEST(MSDPProtocol, MsdpUpdateHandlesOpponentWithInvalidMaxHealth)
 
     initialize_msdp_player(&context.character, "Aragorn");
     clear_char(&opponent, MOB_ISNPC);
+    // Releases opponent.profs (clear_char()'s only heap allocation for
+    // MOB_ISNPC) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields opponent_cleanup { opponent };
     SET_BIT(opponent.specials2.act, MOB_ISNPC);
     opponent.player.short_descr = strdup("a wounded orc");
     opponent.player.level = 12;
@@ -1464,6 +1499,10 @@ TEST(MSDPProtocol, MsdpUpdateHandlesOpponentWithInvalidMaxHealth)
 
     EXPECT_EQ(context.descriptor.pProtocol->pVariables[eMSDP_OPPONENT_HEALTH]->ValueInt, 0);
     EXPECT_EQ(context.read_output(), expected_msdp_pair("OPPONENT_HEALTH", "0"));
+
+    // Releases opponent.player.short_descr (strdup() above) at scope exit
+    // (Phase 5 T6 leak sweep) -- not one of ScopedClearCharFields's fields.
+    RELEASE(opponent.player.short_descr);
 }
 
 TEST(MSDPProtocol, MsdpUpdateMasksPlayerOpponentDetails)
@@ -1475,6 +1514,13 @@ TEST(MSDPProtocol, MsdpUpdateMasksPlayerOpponentDetails)
 
     initialize_msdp_player(&context.character, "Aragorn");
     initialize_msdp_player(&opponent, "Boromir");
+    // Releases opponent.profs/skills/knowledge (clear_char() heap
+    // allocations, via initialize_msdp_player()) at scope exit (Phase 5 T6
+    // leak sweep). opponent.player.name (also strdup()'d by
+    // initialize_msdp_player()) is released explicitly below -- not one of
+    // ScopedClearCharFields's fields, and `opponent` (unlike context.character)
+    // has no ProtocolDescriptor destructor to release it for it.
+    ScopedClearCharFields opponent_cleanup { opponent };
     opponent.player.level = 18;
     opponent.player.race = RACE_HUMAN;
     opponent.abilities.hit = 120;
@@ -1494,6 +1540,8 @@ TEST(MSDPProtocol, MsdpUpdateMasksPlayerOpponentDetails)
     EXPECT_EQ(context.read_output(),
         expected_msdp_pair("OPPONENT_HEALTH", "25") + expected_msdp_pair("OPPONENT_LEVEL", "???")
             + expected_msdp_pair("OPPONENT_NAME", pc_star_types[RACE_HUMAN]));
+
+    RELEASE(opponent.player.name);
 }
 
 } // namespace

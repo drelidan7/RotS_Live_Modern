@@ -11,8 +11,31 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <cstring>
+
 #include "platdef.h" /* For byte, sh_int, ush_int, etc. */
 #include "structs.h" /* For time_info_data */
+
+// Short-lived mutable copy of a string literal, for legacy char*-typed APIs
+// (most commonly ACMD's `argument` parameter) that a per-callsite audit has
+// confirmed are never actually written through for the call in question --
+// widening those signatures wholesale is out of scope (see Phase 5 Task 4's
+// report: do_give/find_all_dots is a real counter-example elsewhere in the
+// command-dispatch surface), so the literal side is fixed instead. The
+// temporary's lifetime spans the full enclosing expression (a standard
+// C++ guarantee), which covers the entire call it is passed into.
+class mutable_arg {
+public:
+    explicit mutable_arg(const char* text)
+    {
+        std::strncpy(buf_, text, sizeof(buf_) - 1);
+        buf_[sizeof(buf_) - 1] = '\0';
+    }
+    operator char*() { return buf_; }
+
+private:
+    char buf_[MAX_INPUT_LENGTH];
+};
 
 extern struct weather_data weather_info;
 extern sh_int square_root[];
@@ -58,15 +81,15 @@ inline const char* nz(const char* p)
 int str_cmp(const char* arg1, const char* arg2);
 int strn_cmp(const char* arg1, const char* arg2, int n);
 void log(const char* str);
-void mudlog(char* str, char type, sh_int level, byte file);
-void mudlog_debug_mob(char* buf, char_data* ch);
-void mudlog_aliased_mob(char* buf, char_data* ch, char* mob_alias);
-void vmudlog(char type, char* format, ...);
+void mudlog(const char* str, char type, sh_int level, byte file);
+void mudlog_debug_mob(const char* buf, char_data* ch);
+void mudlog_aliased_mob(const char* buf, char_data* ch, const char* mob_alias);
+void vmudlog(char type, const char* format, ...);
 void log_death_trap(struct char_data* ch);
 int number(int from, int to);
 int dice(int number, int size);
-void sprintbit(long vektor, char* names[], char* result, int var);
-void sprinttype(int type, char* names[], char* result);
+void sprintbit(long vektor, const char* const names[], char* result, int var);
+void sprinttype(int type, const char* const names[], char* result);
 int get_real_OB(struct char_data* ch);
 int get_real_dodge(struct char_data* ch);
 int get_real_parry(struct char_data* ch);
@@ -80,7 +103,7 @@ void string_add(struct descriptor_data*, char*);
 int string_to_new_value(char* arg, int* value);
 char* nth(int);
 void day_to_str(time_info_data* loc_time_info, char* str);
-int find_player_in_table(char* name, int idnum);
+int find_player_in_table(const char* name, int idnum);
 
 char* strcpy_lang(char* targ, char* src, byte freq, int maxlen);
 void reshuffle(int* arr, int len);
@@ -105,7 +128,7 @@ struct time_info_data age(struct char_data* ch);
 void track_specialized_mage(char_data* mage);
 void untrack_specialized_mage(char_data* mage);
 
-int has_alias(char_data* host, char* keyword);
+int has_alias(char_data* host, const char* keyword);
 int has_program(char_data* host, int num);
 
 /* defines for fseek */
@@ -665,7 +688,7 @@ int CAN_SEE_OBJ(char_data* sub, obj_data* obj);
 #define WILL_TEACH(ch, vict) \
     (IS_NPC(ch) && (((ch)->specials2.will_teach & (1 << GET_RACE(vict))) || ((other_side(ch, vict) && !IS_NPC(vict)) && GET_RACE(ch) != 0)))
 
-#define RP_RACE_CHECK(ch, vict) (IS_NPC(ch) && (!(ch)->specials2.rp_flag) || ((ch)->specials2.rp_flag & (1 << GET_RACE(vict))))
+#define RP_RACE_CHECK(ch, vict) ((IS_NPC(ch) && (!(ch)->specials2.rp_flag)) || ((ch)->specials2.rp_flag & (1 << GET_RACE(vict))))
 
 #define GET_RP_FLAG(ch) ((ch)->specials2.rp_flag)
 

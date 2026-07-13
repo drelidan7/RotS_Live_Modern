@@ -1,4 +1,5 @@
 #include "../db.h"
+#include "../utils.h"
 #include "../zone.h"
 #include "test_platform_compat.h"
 
@@ -71,6 +72,27 @@ public:
 
     ~ScopedZoneTable()
     {
+        // Releases each populated entry's load_zones()-allocated fields
+        // (name/description/map via fread_string(), cmd via CREATE(), owners
+        // via a CREATE1()'d linked list) before the array itself is deleted --
+        // matches the per-field RELEASE() idiom shapezon.cpp's zone editor
+        // already uses when replacing a zone_table entry's contents (Phase 5
+        // T6 leak sweep). The fixture's own constructor only ever allocates
+        // a single slot (`new zone_data[1]`), so top_of_zone_table (0 if
+        // load_zones() populated it, unmodified otherwise) is exactly the
+        // valid index range to walk here.
+        if (top_of_zone_table >= 0) {
+            RELEASE(zone_table[0].name);
+            RELEASE(zone_table[0].description);
+            RELEASE(zone_table[0].map);
+            RELEASE(zone_table[0].cmd);
+            struct owner_list* owner = zone_table[0].owners;
+            while (owner) {
+                struct owner_list* next_owner = owner->next;
+                RELEASE(owner);
+                owner = next_owner;
+            }
+        }
         delete[] zone_table;
         zone_table = m_previous_zone_table;
         top_of_zone_table = m_previous_top_of_zone_table;

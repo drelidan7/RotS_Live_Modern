@@ -44,7 +44,7 @@
 #include <system_error>
 #include <utility>
 
-extern char* race_abbrevs[];
+extern const char* const race_abbrevs[];
 
 namespace account {
 namespace {

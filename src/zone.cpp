@@ -1,5 +1,6 @@
 /* zone.cc */
 
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h> /* memmove */
@@ -66,11 +67,11 @@ void load_zones(FILE* fl)
     int cmd_no;
     char buf[81], command;
     struct owner_list* owner;
-    extern char* fread_string(FILE*, char*);
+    extern char* fread_string(FILE*, const char*);
 
     memset(&zone_table[zone_load_cursor], 0, sizeof(struct zone_data));
     fscanf(fl, " #%d\n", &zone_table[zone_load_cursor].number);
-    sprintf(buf2, "beginning of zone #%d", zone_table[zone_load_cursor].number);
+    strcpy(buf2, std::format("beginning of zone #{}", zone_table[zone_load_cursor].number).c_str());
 
     zone_table[zone_load_cursor].name = fread_string(fl, buf2);
     zone_table[zone_load_cursor].description = fread_string(fl, buf2);
@@ -853,7 +854,7 @@ void reset_zone(int zone)
                     obj = read_object(ZCMD.arg7, REAL);
                     obj_to_char(obj, mob);
                 }
-                do_wear(mob, "all", 0, 0, 0);
+                do_wear(mob, mutable_arg("all"), 0, 0, 0);
                 last_cmd = 1;
                 last_obj = 0;
                 break;

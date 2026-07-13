@@ -11,6 +11,7 @@
 #include "platdef.h"
 #include <ctype.h>
 #include <errno.h>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,7 +25,7 @@
 #include "utils.h"
 
 struct ban_list_element* ban_list = 0;
-extern char* ban_types[];
+extern const char* const ban_types[];
 
 void load_banned(void)
 {
@@ -105,7 +106,7 @@ void write_ban_list(void)
 
 ACMD(do_ban)
 {
-    char flag[80], site[80], format[50], *nextchar, *timestr;
+    char flag[80], site[80], *nextchar, *timestr;
     int i;
     struct ban_list_element* ban_node;
 
@@ -120,19 +121,17 @@ ACMD(do_ban)
             send_to_char("No sites are banned.\n\r", ch);
             return;
         }
-        strcpy(format, "%-39.39s  %-8.8s  %-10.10s  %-16.16s\n\r");
-        sprintf(buf, format,
-            "Banned Site Name",
-            "Ban Type",
-            "Banned On",
-            "Banned By");
-        send_to_char(buf, ch);
-        sprintf(buf, format,
-            "----------------------------------------",
-            "----------------------------------------",
-            "----------------------------------------",
-            "----------------------------------------");
-        send_to_char(buf, ch);
+        send_to_char(std::format("{:<39.39}  {:<8.8}  {:<10.10}  {:<16.16}\n\r",
+                         "Banned Site Name", "Ban Type", "Banned On", "Banned By")
+                         .c_str(),
+            ch);
+        send_to_char(std::format("{:<39.39}  {:<8.8}  {:<10.10}  {:<16.16}\n\r",
+                         "----------------------------------------",
+                         "----------------------------------------",
+                         "----------------------------------------",
+                         "----------------------------------------")
+                         .c_str(),
+            ch);
 
         for (ban_node = ban_list; ban_node; ban_node = ban_node->next) {
             if (ban_node->date) {
@@ -146,9 +145,11 @@ ACMD(do_ban)
                 strcpy(site, timestr);
             } else
                 strcpy(site, "Unknown");
-            sprintf(buf, format, ban_node->site, ban_types[ban_node->type], site,
-                ban_node->name);
-            send_to_char(buf, ch);
+            send_to_char(std::format("{:<39.39}  {:<8.8}  {:<10.10}  {:<16.16}\n\r",
+                             static_cast<const char*>(ban_node->site), ban_types[ban_node->type],
+                             static_cast<const char*>(site), static_cast<const char*>(ban_node->name))
+                             .c_str(),
+                ch);
         }
         return;
     }
@@ -188,8 +189,8 @@ ACMD(do_ban)
     ban_node->next = ban_list;
     ban_list = ban_node;
 
-    sprintf(buf, "%s has banned %s for %s players.", GET_NAME(ch), site,
-        ban_types[ban_node->type]);
+    strcpy(buf, std::format("{} has banned {} for {} players.", GET_NAME(ch),
+        static_cast<const char*>(site), ban_types[ban_node->type]).c_str());
     mudlog(buf, NRM, (sh_int)MAX(LEVEL_GOD, GET_INVIS_LEV(ch)), TRUE);
     send_to_char("Site banned.\n\r", ch);
     write_ban_list();
@@ -236,8 +237,8 @@ ACMD(do_unban)
     }
 
     send_to_char("Site unbanned.\n\r", ch);
-    sprintf(buf, "%s removed the %s-player ban on %s.",
-        GET_NAME(ch), ban_types[ban_node->type], ban_node->site);
+    strcpy(buf, std::format("{} removed the {}-player ban on {}.",
+        GET_NAME(ch), ban_types[ban_node->type], static_cast<const char*>(ban_node->site)).c_str());
     mudlog(buf, NRM, (sh_int)MAX(LEVEL_GOD, GET_INVIS_LEV(ch)), TRUE);
 
     RELEASE(ban_node);
@@ -286,8 +287,8 @@ int valid_name(char* newname)
     }
 
     if (str_cmp(newname, "all") == 0) {
-        sprintf(buf, "Invalid name '%s' (matched '%s')",
-            newname, "all");
+        strcpy(buf, std::format("Invalid name '{}' (matched '{}')",
+            newname, "all").c_str());
         mudlog(buf, NRM, LEVEL_GOD, TRUE);
         clear_invalid_list();
         return 0;
@@ -306,8 +307,8 @@ int valid_name(char* newname)
         /* If invalid_list[i] is a null string, don't compare it */
         if (*invalid_list[i])
             if (strstr(tempname, invalid_list[i])) {
-                sprintf(buf, "Invalid name '%s' (matched '%s')",
-                    newname, invalid_list[i]);
+                strcpy(buf, std::format("Invalid name '{}' (matched '{}')",
+                    newname, invalid_list[i]).c_str());
                 mudlog(buf, NRM, LEVEL_GOD, TRUE);
                 clear_invalid_list();
                 return 0;

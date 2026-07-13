@@ -94,7 +94,7 @@ struct message_list fight_messages[MAX_MESSAGES]; /* fighting messages	*/
 struct script_head* script_table = 0;
 int top_of_script_table = 0;
 
-extern char* mobile_program_base[];
+extern const char* const mobile_program_base[];
 char** mobile_program;
 int* mobile_program_zone;
 int num_of_programs;
@@ -178,8 +178,8 @@ void assign_the_shopkeepers(void);
 void build_player_index(void);
 void boot_mudlle();
 void boot_crimes();
-int file_to_string(char* name, char* buf);
-int file_to_string_alloc(char* name, char** buf);
+int file_to_string(const char* name, char* buf);
+int file_to_string_alloc(const char* name, char** buf);
 void check_start_rooms(void);
 void renum_world(void);
 void reset_time(void);
@@ -457,6 +457,24 @@ void boot_db(void)
         log("Done.");
     }
 
+    // Fixed-bug (Phase 5 T6, UBSan reference-binding-to-null-pointer):
+    // big_brother::create()/skill_timer::create() used to run at the very
+    // end of this function (see the comment near "Boot db -- DONE." below,
+    // which explains why the calls moved), well AFTER this reset_zone()
+    // loop -- but reset_zone() (spawning/positioning mobiles and running zone
+    // commands/scripts for a fresh boot) can reach code that calls
+    // game_rules::big_brother::instance()/game_timer::skill_timer::instance()
+    // (confirmed live: a real Mirkwood zone hit this during a real
+    // world-data boot under UBSan), which dereferences a still-null
+    // singleton pointer -- undefined behavior in every boot that reaches
+    // that path, sanitized or not. Both singletons only need weather_info
+    // (a file-scope global, always valid) and `world` (populated by
+    // renum_world() above, well before this loop), so constructing them
+    // here instead is safe and satisfies every caller reset_zone() can
+    // reach.
+    game_rules::big_brother::create(weather_info, &world);
+    game_timer::skill_timer::create(weather_info, &world);
+
     for (i = 0; i <= top_of_zone_table; i++) {
         vmudlog(NRM, "Resetting %s (rooms %d-%d).", zone_table[i].name,
             i ? (zone_table[i - 1].top + 1) : 0, zone_table[i].top);
@@ -498,10 +516,14 @@ void boot_db(void)
     log("Boot db -- DONE.");
     boot_mode = 0;
 
-    // Initialize the Big Brother system after we have our weather data and
-    // our map.
-    game_rules::big_brother::create(weather_info, &world);
-    game_timer::skill_timer::create(weather_info, &world);
+    // Big Brother/skill_timer are now constructed earlier, right before the
+    // zone-reset loop above (Phase 5 T6 fix) -- reset_zone() can reach code
+    // that needs them mid-loop, so constructing them only after the loop
+    // finished was too late. create()'s storage is a function-local static,
+    // so this is intentionally left uncalled here rather than removed
+    // outright: nothing about this comment block is load-bearing, but a
+    // future reader diffing db.cpp against upstream should see exactly where
+    // the call used to live and why it moved.
 }
 
 /* reset the time in the game from file */
@@ -788,7 +810,7 @@ int read_filename_field(int pos, char* field, char* fname)
 }
 
 /* New index build for the new player files */
-void build_directory(char* TheDir)
+void build_directory(const char* TheDir)
 {
     namespace fs = std::filesystem;
     char* tmpch;
@@ -908,7 +930,7 @@ int count_hash_records(FILE* fl)
 
 void index_boot(int mode)
 {
-    char *index_filename, *prefix = NULL;
+    const char *index_filename, *prefix = NULL;
     FILE *index, *db_file;
     int rec_count = 0;
 
@@ -2097,7 +2119,7 @@ void sanitize_persisted_combat_state(struct char_special2_data* specials2)
 
 int load_player_from_text(char* name, const char* player_text, struct char_file_u* char_element)
 {
-    int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, end, return_value;
+    int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, end;
     char line[100];
     char *tmpchar, *value, *ctmp, *position;
     const char* input_end = nullptr;
@@ -2111,7 +2133,6 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
         if (!str_cmp((player_table + tmp)->name, name))
             break;
 
-    return_value = 0;
 
     if (tmp > top_of_p_table) {
         log(std::format("load_player: player {} not in player_table", name).c_str());
@@ -2262,7 +2283,6 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
         case 'I':
             if (!strcmp(line, "idnum")) {
                 char_element->specials2.idnum = atoi(value);
-                return_value = atoi(value);
                 break;
             }
             break;
@@ -2292,7 +2312,14 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
             break;
 
         case 'N':
-            KEY_STR("name", char_element->name, 20);
+            // Fixed-bug (Phase 5 T6, UBSan array-bounds): char_element->name is
+            // char[MAX_NAME_LENGTH + 1] (13 bytes); the literal 20 here overran the
+            // array by 7 bytes into the adjacent char_element->pwd field on every
+            // player-file load (memcpy in the KEY_STR macro). Matches the
+            // (array_size - 1)-length convention used by the "host"/"password"
+            // KEY_STR calls above/below (which leave the struct's pre-zeroed final
+            // byte as the terminator).
+            KEY_STR("name", char_element->name, MAX_NAME_LENGTH);
             break;
 
         case 'O':
@@ -2472,12 +2499,22 @@ void store_to_char(struct char_file_u* st, struct char_data* ch)
     ch->player.short_descr = 0;
     ch->player.long_descr = 0;
 
+    // Fixed-bug (Phase 5 T6, LeakSanitizer): store_to_char() can run more
+    // than once against the SAME char_data (e.g. interpre.cpp's login flow
+    // re-verifies and re-stores an already-loaded d->character), and title/
+    // description were unconditionally (re-)CREATE()'d every time, orphaning
+    // whatever the PRIOR call had allocated -- the same leak class as the
+    // ch->profs fix above, just for these two fields. RELEASE() first (a
+    // no-op via its own null check the first time through) so a repeat call
+    // frees the old buffer before allocating its replacement.
+    RELEASE(ch->player.title);
     if (*st->title) {
         CREATE(ch->player.title, char, strlen(st->title) + 1);
         strcpy(ch->player.title, st->title);
     } else
         GET_TITLE(ch) = 0;
 
+    RELEASE(ch->player.description);
     if (*st->description) {
         CREATE(ch->player.description, char, strlen(st->description) + 1);
         strcpy(ch->player.description, st->description);
@@ -2495,7 +2532,17 @@ void store_to_char(struct char_file_u* st, struct char_data* ch)
     for (i = 0; i < MAX_TOUNGE; i++)
         ch->player.talks[i] = st->talks[i];
 
-    CREATE1(ch->profs, char_prof_data);
+    // Fixed-bug (Phase 5 T6, LeakSanitizer): every real call site
+    // (interpre.cpp's account-character selection, act_wiz.cpp's `stat
+    // file`/player-file lookups) calls clear_char() -- which already
+    // CREATE1()s ch->profs -- immediately before store_to_char(), so this was
+    // unconditionally allocating a SECOND char_prof_data and orphaning the
+    // first one on every single call (one char_prof_data leaked per account
+    // character selection in the live game). Only allocate if ch->profs is
+    // still null; either way the final contents are identical (byte-copied
+    // from st->profs below).
+    if (!ch->profs)
+        CREATE1(ch->profs, char_prof_data);
     memcpy(ch->profs, &(st->profs), sizeof(struct char_prof_data));
     ch->specials.alias = 0;
 
@@ -2539,6 +2586,10 @@ void store_to_char(struct char_file_u* st, struct char_data* ch)
     utils::set_specialization(*ch, game_types::player_specs(spec));
     utils::set_casting(*ch, ch->specials2.casting);
 
+    // Same leak class as title/description above -- RELEASE() first so a
+    // repeat store_to_char() call on the same char_data doesn't orphan the
+    // previous ch->player.name allocation.
+    RELEASE(ch->player.name);
     CREATE(ch->player.name, char, strlen(st->name) + 1);
     strcpy(ch->player.name, st->name);
 
@@ -2754,9 +2805,8 @@ int old_create_entry(char* name)
         i = 0;
     } else {
         for (i = 0; i <= top_of_p_table; i++)
-            if (player_table + i)
-                if (IS_SET((player_table + i)->flags, PLR_DELETED))
-                    break;
+            if (IS_SET((player_table + i)->flags, PLR_DELETED))
+                break;
 
         if (i > top_of_p_table) {
             log("Could not find a deleted player, reallocating player_table."); // Fingolfin
@@ -2887,14 +2937,14 @@ bool write_player_text(struct char_data* ch, int load_room, const char* scratch_
     fprintf(pf, "bodytype    %d\n", chd.bodytype);
     fprintf(pf, "level       %d\n", chd.level);
     fprintf(pf, "language    %d\n", chd.language);
-    fprintf(pf, "birth       %ld\n", chd.birth);
+    fprintf(pf, "birth       %lld\n", static_cast<long long>(chd.birth));
     fprintf(pf, "played      %d\n", chd.played);
     fprintf(pf, "weight      %d\n", chd.weight);
     fprintf(pf, "height      %d\n", chd.height);
     fprintf(pf, "title       %s\n", chd.title);
     fprintf(pf, "hometown    %d\n", chd.hometown);
     fprintf(pf, "description \n%s~\n", chd.description);
-    fprintf(pf, "last_logon  %ld\n", chd.last_logon);
+    fprintf(pf, "last_logon  %lld\n", static_cast<long long>(chd.last_logon));
     memcpy(pwdcrypt, chd.pwd, MAX_PWD_LENGTH);
     encrypt_line((unsigned char*)pwdcrypt, MAX_PWD_LENGTH);
     pwdcrypt[MAX_PWD_LENGTH] = '\0'; // terminate explicitly -- see the pwdcrypt declaration comment
@@ -3183,7 +3233,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
  ********************************************************************** */
 
 /* read and allocate space for a '~'-terminated string from a given file */
-char* fread_string(FILE* fl, char* error)
+char* fread_string(FILE* fl, const char* error)
 {
     char buf[MAX_STRING_LENGTH], tmp[MAX_STRING_LENGTH];
     char* rslt;
@@ -3220,7 +3270,21 @@ char* fread_string(FILE* fl, char* error)
         for (point = buf + strlen(buf) - 2; point >= buf && isspace(*point);
             point--)
             continue;
-        if ((flag = (*point == '~')))
+        // Fixed-bug (Phase 5 T6, ASan stack-buffer-underflow): when buf is
+        // empty or 1 byte after trimming, the loop above leaves `point`
+        // below `buf` (buf + strlen(buf) - 2, e.g. buf-2 or buf-1) without
+        // ever dereferencing it (short-circuited by `point >= buf`) -- but
+        // the old `*point == '~'` here dereferenced it unconditionally,
+        // reading stack memory before the buffer (confirmed live: a real
+        // zone file line hit this during a real world-data boot under ASan).
+        // `flag` was also read uninitialized in that same case (never
+        // assigned before this line ran). Bounds-check first: an
+        // out-of-range `point` can't be the '~' terminator, so this matches
+        // the previous behavior for every case that wasn't already
+        // undefined (garbage stack bytes essentially never equal '~', so
+        // real-world output is unaffected).
+        flag = (point >= buf && *point == '~');
+        if (flag)
             *point = 0;
         else if (strlen(buf)) {
             *(buf + strlen(buf) + 1) = '\0';
@@ -3383,7 +3447,7 @@ void free_obj(struct obj_data* obj)
 }
 
 /* read contets of a text file, alloc space, point buf to it */
-int file_to_string_alloc(char* name, char** buf)
+int file_to_string_alloc(const char* name, char** buf)
 {
     char temp[MAX_STRING_LENGTH];
 
@@ -3397,7 +3461,7 @@ int file_to_string_alloc(char* name, char** buf)
 }
 
 /* read contents of a text file, and place in buf */
-int file_to_string(char* name, char* buf)
+int file_to_string(const char* name, char* buf)
 {
     FILE* fl;
     char tmp[100];
@@ -4193,7 +4257,7 @@ void record_crime(char_data* criminal, char_data* victim, int crime,
 
 void read_crime_file()
 {
-    int tmp, count;
+    int tmp;
 
     num_of_crimes = 0;
     const std::string json_path = crime_json::crime_json_path(CRIME_FILE);
@@ -4248,7 +4312,7 @@ void read_crime_file()
             crime_record[tmp] = loaded_records[tmp];
     }
 
-    for (tmp = 0, count = 0; tmp < num_of_crimes; tmp++) {
+    for (tmp = 0; tmp < num_of_crimes; tmp++) {
         crime_record[tmp].criminal = find_player_in_table("", crime_record[tmp].criminal);
         crime_record[tmp].victim = find_player_in_table("", crime_record[tmp].victim);
         crime_record[tmp].witness = find_player_in_table("", crime_record[tmp].witness);
@@ -5185,7 +5249,7 @@ bool load_object_save_data_for_character(const std::string& root_directory, cons
 }
 
 void add_exploit_record(int recordtype, char_data* victim, int iIntParam,
-    char* chParam)
+    const char* chParam)
 {
     struct char_data* killer;
     struct exploit_record exploitrec;
@@ -5201,7 +5265,7 @@ void add_exploit_record(int recordtype, char_data* victim, int iIntParam,
     ct = time(0);
     tmstr = (char*)asctime(localtime(&ct));
     *(tmstr + strlen(tmstr) - 1) = '\0';
-    sprintf(exploitrec.chtime, "%s", tmstr);
+    strcpy(exploitrec.chtime, std::format("{}", tmstr).c_str());
 
     // It's a PK record
     switch (recordtype) {
@@ -5221,9 +5285,9 @@ void add_exploit_record(int recordtype, char_data* victim, int iIntParam,
                     // only trophies for chars
                     // CREATE A TROPHY RECORD
                     exploitrec.type = EXPLOIT_PK;
-                    sprintf(exploitrec.chtime, "%s", tmstr);
+                    strcpy(exploitrec.chtime, std::format("{}", tmstr).c_str());
                     exploitrec.shintVictimID = GET_IDNUM(victim);
-                    sprintf(exploitrec.chVictimName, "%s", GET_NAME(victim));
+                    strcpy(exploitrec.chVictimName, std::format("{}", GET_NAME(victim)).c_str());
                     exploitrec.iVictimLevel = GET_LEVEL(victim);
                     exploitrec.iKillerLevel = GET_LEVEL(cur_killer);
 
@@ -5251,7 +5315,7 @@ void add_exploit_record(int recordtype, char_data* victim, int iIntParam,
                     exploitrec.type = EXPLOIT_DEATH;
                     exploitrec.shintVictimID = GET_IDNUM(cur_killer);
                     // killed by..
-                    sprintf(exploitrec.chVictimName, "%s", GET_NAME(cur_killer));
+                    strcpy(exploitrec.chVictimName, std::format("{}", GET_NAME(cur_killer)).c_str());
                     exploitrec.iVictimLevel = GET_LEVEL(victim);
                     exploitrec.iKillerLevel = GET_LEVEL(cur_killer);
                     // used to indicate separators between subsequent deaths.
@@ -5282,14 +5346,14 @@ void add_exploit_record(int recordtype, char_data* victim, int iIntParam,
 
     case EXPLOIT_STAT:
         exploitrec.type = EXPLOIT_STAT;
-        sprintf(exploitrec.chVictimName, "%s", chParam);
+        strcpy(exploitrec.chVictimName, std::format("{}", chParam).c_str());
         exploitrec.iIntParam = iIntParam;
         write_exploits(victim, &exploitrec);
         break;
 
     case EXPLOIT_MOBDEATH:
         exploitrec.type = EXPLOIT_MOBDEATH;
-        sprintf(exploitrec.chVictimName, "%s", chParam);
+        strcpy(exploitrec.chVictimName, std::format("{}", chParam).c_str());
         exploitrec.iVictimLevel = GET_LEVEL(victim);
         exploitrec.iIntParam = iIntParam;
         write_exploits(victim, &exploitrec);
@@ -5302,13 +5366,13 @@ void add_exploit_record(int recordtype, char_data* victim, int iIntParam,
 
     case EXPLOIT_ACHIEVEMENT:
         exploitrec.type = EXPLOIT_ACHIEVEMENT;
-        sprintf(exploitrec.chVictimName, "%s", chParam);
+        strcpy(exploitrec.chVictimName, std::format("{}", chParam).c_str());
         write_exploits(victim, &exploitrec);
         break;
 
     case EXPLOIT_NOTE:
         exploitrec.type = EXPLOIT_NOTE;
-        sprintf(exploitrec.chVictimName, "%s", chParam);
+        strcpy(exploitrec.chVictimName, std::format("{}", chParam).c_str());
         write_exploits(victim, &exploitrec);
         break;
 

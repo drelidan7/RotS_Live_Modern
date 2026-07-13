@@ -232,7 +232,7 @@ void show_mudlle(struct char_data* ch)
 {
     if (!SHAPE_MUDLLE(ch))
         return;
-    if ((!SHAPE_MUDLLE(ch)->txt) || (!SHAPE_MUDLLE(ch)->prog_num < 0)) {
+    if ((!SHAPE_MUDLLE(ch)->txt) || (SHAPE_MUDLLE(ch)->prog_num < 0)) {
         send_to_char("You have no program to shape.\n\r", ch);
         return;
     }

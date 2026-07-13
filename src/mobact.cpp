@@ -9,8 +9,11 @@
  ************************************************************************ */
 
 #include "platdef.h"
+#include <cstdint>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "char_utils.h"
 #include "comm.h"
@@ -57,7 +60,7 @@ void mobile_activity(void)
                 tmpfunc = (SPECIAL(*))
                     virt_program_number(ch->specials.store_prog_number);
                 if (tmpfunc)
-                    tmpfunc(ch, ch, 0, "", SPECIAL_SELF, 0);
+                    tmpfunc(ch, ch, 0, mutable_arg(""), SPECIAL_SELF, 0);
             }
         }
 }
@@ -82,8 +85,8 @@ void one_mobile_activity(char_data* ch)
         return;
 
     if ((ch->in_room < 0) || (ch->in_room > top_of_world)) {
-        sprintf(buf, "mobile_act called for %s in %d.",
-            GET_NAME(ch), ch->in_room);
+        strcpy(buf, std::format("mobile_act called for {} in {}.",
+            GET_NAME(ch), ch->in_room).c_str());
         mudlog(buf, NRM, LEVEL_IMPL, FALSE);
         return;
     }
@@ -114,18 +117,18 @@ void one_mobile_activity(char_data* ch)
 
         /* Examine call for special procedure */
         if (IS_SET(ch->specials2.act, MOB_SPEC) && !no_specials) {
-            sprintf(buf, "%s - find prog: %d, func:%d", GET_NAME(ch), ch->specials2.act, mob_index[ch->nr].func);
+            strcpy(buf, std::format("{} - find prog: {}, func:{}", GET_NAME(ch), ch->specials2.act, reinterpret_cast<std::intptr_t>(mob_index[ch->nr].func)).c_str());
             mudlog_aliased_mob(buf, ch, "progdebug");
             if (!mob_index[ch->nr].func && ch->specials.store_prog_number) {
                 tmpfunc = (SPECIAL(*))virt_program_number(ch->specials.store_prog_number);
                 if (tmpfunc) {
-                    if (tmpfunc(ch, ch, 0, "", SPECIAL_SELF, 0)) {
+                    if (tmpfunc(ch, ch, 0, mutable_arg(""), SPECIAL_SELF, 0)) {
                         return;
                     }
                 }
             } else {
                 if (mob_index[ch->nr].func) {
-                    if ((*mob_index[ch->nr].func)(ch, ch, 0, "", SPECIAL_SELF, 0)) {
+                    if ((*mob_index[ch->nr].func)(ch, ch, 0, mutable_arg(""), SPECIAL_SELF, 0)) {
                         return;
                     }
                 }
@@ -133,7 +136,7 @@ void one_mobile_activity(char_data* ch)
 
         } else {
             if (ch->specials.union1.prog_number) {
-                if (intelligent(ch, ch, 0, "", SPECIAL_SELF, 0)) {
+                if (intelligent(ch, ch, 0, mutable_arg(""), SPECIAL_SELF, 0)) {
                     return;
                 }
             }
@@ -178,13 +181,13 @@ void one_mobile_activity(char_data* ch)
 
                     if (assist) {
                         if (GET_INT_BASE(ch) >= 7) {
-                            do_say(ch, "I must protect my friend!", 0, 0, 0);
+                            do_say(ch, mutable_arg("I must protect my friend!"), 0, 0, 0);
                         }
                         wtl.targ1.type = TARGET_CHAR;
                         wtl.targ1.ptr.ch = ally;
                         wtl.targ1.ch_num = ally->abs_number;
                         wtl.cmd = CMD_ASSIST;
-                        do_assist(ch, "", &wtl, 0, 0);
+                        do_assist(ch, mutable_arg(""), &wtl, 0, 0);
                         break;
                     }
                 }
@@ -195,7 +198,7 @@ void one_mobile_activity(char_data* ch)
         if (AWAKE(ch) && IS_SET(ch->specials2.act, MOB_BODYGUARD) && ch->master && (ch->master->in_room == ch->in_room)) {
 
             if (GET_POS(ch) < POSITION_FIGHTING)
-                do_stand(ch, "", 0, 0, 0);
+                do_stand(ch, mutable_arg(""), 0, 0, 0);
 
             tmp_ch = (ch->master)->specials.fighting;
 
@@ -221,7 +224,7 @@ void one_mobile_activity(char_data* ch)
         /* bodyguard - master */
         if (AWAKE(ch) && IS_SET(ch->specials2.act, MOB_BODYGUARD) && ch->followers) {
             if (GET_POS(ch) < POSITION_FIGHTING)
-                do_stand(ch, "", 0, 0, 0);
+                do_stand(ch, mutable_arg(""), 0, 0, 0);
 
             for (tmpfol = ch->followers; tmpfol; tmpfol = tmpfol->next) {
                 tmp_ch = (tmpfol->follower)->specials.fighting;
@@ -242,14 +245,14 @@ void one_mobile_activity(char_data* ch)
             if (ch->master->in_room == ch->in_room && ch->master->specials.fighting && ch->specials.fighting == NULL) {
                 if (CAN_SEE(ch, ch->master)) {
                     if (GET_POS(ch) < POSITION_FIGHTING) {
-                        do_stand(ch, "", NULL, 0, 0);
+                        do_stand(ch, mutable_arg(""), NULL, 0, 0);
                     }
 
                     wtl.targ1.type = TARGET_CHAR;
                     wtl.targ1.ptr.ch = ch->master;
                     wtl.targ1.ch_num = ch->master->abs_number;
                     wtl.cmd = CMD_ASSIST;
-                    do_assist(ch, "", &wtl, 0, 0);
+                    do_assist(ch, mutable_arg(""), &wtl, 0, 0);
                 }
             }
         }
@@ -257,7 +260,7 @@ void one_mobile_activity(char_data* ch)
         /* Guardians, special case */
         if (utils::is_guardian(*ch) && ch->master && ch->specials.fighting) {
             if (ch->master->in_room != ch->in_room) {
-                do_flee(ch, "", NULL, 0, 0);
+                do_flee(ch, mutable_arg(""), NULL, 0, 0);
             }
         }
 
@@ -289,7 +292,7 @@ void one_mobile_activity(char_data* ch)
                                             obj_to_char(inside, ch);
                                             act("$n gets $p from $P.",
                                                 TRUE, ch, inside, obj, TO_ROOM);
-                                            do_wear(ch, "all", 0, 0, 0);
+                                            do_wear(ch, mutable_arg("all"), 0, 0, 0);
                                         }
                                 }
                         }
@@ -310,7 +313,7 @@ void one_mobile_activity(char_data* ch)
                     /* checking for STAY flags */
                     if ((!IS_SET(ch->specials2.act, MOB_STAY_ZONE) || (world[EXIT(ch, door)->to_room].zone == world[ch->in_room].zone)) && (!IS_SET(ch->specials2.act, MOB_STAY_TYPE) || (world[EXIT(ch, door)->to_room].sector_type == world[ch->in_room].sector_type))) {
                         ch->specials.last_direction = door;
-                        do_move(ch, "", 0, ++door, 0);
+                        do_move(ch, mutable_arg(""), 0, ++door, 0);
                     }
                 }
             } /* if can go */
@@ -367,7 +370,7 @@ void one_mobile_activity(char_data* ch)
             if ((IS_SET(ch->specials2.act, MOB_MEMORY) || IS_SET(ch->specials2.act, MOB_HUNTER) || (IS_AFFECTED(ch, AFF_HUNT))) && ch->specials.memory) {
                 /* we assume pets do not hunt by themselves */
                 if (MOB_FLAGGED(ch, MOB_PET) && (GET_POS(ch) == POSITION_FIGHTING))
-                    do_flee(ch, "", 0, 0, 0);
+                    do_flee(ch, mutable_arg(""), 0, 0, 0);
 
                 /* checking memory */
                 if (!IS_SET(ch->specials2.act, MOB_SENTINEL) && (GET_POS(ch) == POSITION_STANDING)) {
@@ -409,7 +412,7 @@ void one_mobile_activity(char_data* ch)
                         else
                             tmp = BFS_NO_PATH;
                         if (tmp >= 0) { // found the way, moving there
-                            do_move(ch, "", 0, tmp + 1, 0);
+                            do_move(ch, mutable_arg(""), 0, tmp + 1, 0);
                             break;
                         }
                     }
@@ -563,23 +566,23 @@ void enforce_position(struct char_data* ch, int new_pos)
         return;
 
     if ((GET_POS(ch) <= POSITION_SLEEPING) && (new_pos > POSITION_SLEEPING))
-        do_wake(ch, "", 0, 0, 0);
+        do_wake(ch, mutable_arg(""), 0, 0, 0);
 
     switch (new_pos) {
     case POSITION_SLEEPING:
-        do_sleep(ch, "", 0, 0, 0);
+        do_sleep(ch, mutable_arg(""), 0, 0, 0);
         break;
 
     case POSITION_RESTING:
-        do_rest(ch, "", 0, 0, 0);
+        do_rest(ch, mutable_arg(""), 0, 0, 0);
         break;
 
     case POSITION_SITTING:
-        do_sit(ch, "", 0, 0, 0);
+        do_sit(ch, mutable_arg(""), 0, 0, 0);
         break;
 
     case POSITION_STANDING:
-        do_stand(ch, "", 0, 0, 0);
+        do_stand(ch, mutable_arg(""), 0, 0, 0);
         break;
     }
 }

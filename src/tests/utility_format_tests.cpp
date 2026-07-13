@@ -18,7 +18,7 @@
 #include <string>
 
 extern struct descriptor_data* descriptor_list;
-extern char* month_name[];
+extern const char* const month_name[];
 
 namespace {
 

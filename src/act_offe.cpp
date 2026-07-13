@@ -32,7 +32,7 @@
 extern struct room_data world;
 extern struct descriptor_data* descriptor_list;
 extern struct char_data* waiting_list;
-extern char* dirs[];
+extern const char* const dirs[];
 extern int rev_dir[];
 extern struct skill_data skills[MAX_SKILLS];
 
@@ -310,7 +310,7 @@ ACMD(do_order)
                 command_interpreter(victim, message);
             }
         } else { /* This is order "followers" */
-            sprintf(buf, "$n issues an order.");
+            strcpy(buf, std::format("$n issues an order.").c_str());
             act(buf, FALSE, ch, 0, victim, TO_ROOM);
 
             org_room = ch->in_room;
@@ -346,7 +346,7 @@ ACMD(do_flee)
         return;
 
     if (GET_POS(ch) < POSITION_FIGHTING)
-        do_stand(ch, "", 0, 0, 0);
+        do_stand(ch, mutable_arg(""), 0, 0, 0);
 
     for (i = 0; i < 6; i++) {
         attempt = number(0, NUM_OF_DIRS - 1);
@@ -363,7 +363,7 @@ ACMD(do_flee)
             act("$n panics, and attempts to flee!", TRUE, ch, 0, 0, TO_ROOM);
 
             die = check_simple_move(ch, attempt, &move_cost, SCMD_FLEE);
-            if (!special(ch, cmd + 1, "", SPECIAL_COMMAND, 0) && number(0, 1) && die) {
+            if (!special(ch, cmd + 1, mutable_arg(""), SPECIAL_COMMAND, 0) && number(0, 1) && die) {
                 /* The escape has not succeded */
                 switch (die) {
                 case 1:
@@ -402,7 +402,17 @@ ACMD(do_flee)
 
                 send_to_char("You flee head over heels.\n\r", ch);
                 act("$n flees head over heels!", FALSE, ch, 0, 0, TO_ROOM);
-                do_move(ch, dirs[attempt], 0, attempt + 1, SCMD_FLEE);
+                // do_move()'s argument is a mutable char*; dirs[] is now a
+                // const string table, so copy the direction name into a
+                // small mutable buffer before passing it (do_move never
+                // writes through argument for the flee path, this is purely
+                // to satisfy the parameter type).
+                {
+                    char flee_dir[16];
+                    strncpy(flee_dir, dirs[attempt], sizeof(flee_dir) - 1);
+                    flee_dir[sizeof(flee_dir) - 1] = '\0';
+                    do_move(ch, flee_dir, 0, attempt + 1, SCMD_FLEE);
+                }
                 return;
             }
             break;
@@ -577,7 +587,7 @@ ACMD(do_bash)
             act("$n has recovered from a bash!", TRUE, ch, 0, 0, TO_ROOM);
             act("You have regained your balance!", TRUE, ch, 0, 0, TO_CHAR);
             if (GET_POS(ch) < POSITION_FIGHTING)
-                do_stand(ch, "", 0, 0, 0);
+                do_stand(ch, mutable_arg(""), 0, 0, 0);
         }
         break;
 
@@ -664,7 +674,7 @@ ACMD(do_bash)
             stop_riding(ch);
             char_from_room(ch);
             char_to_room(ch, other_room);
-            do_look(ch, "\0", 0, 0, 0);
+            do_look(ch, mutable_arg("\0"), 0, 0, 0);
             act("$n falls in.", TRUE, ch, 0, 0, TO_ROOM);
         }
         GET_POS(ch) = POSITION_SITTING;
@@ -680,7 +690,7 @@ ACMD(do_bash)
     }
 }
 
-char* rescue_message[MAX_RACES][2] = {
+const char* const rescue_message[MAX_RACES][2] = {
     { "Fearless, you leap into harms way!\r\n", "$n rescues $N.\r\n" },
     { "Shouting 'Elendil!', you leap to the rescue!\r\n",
         "Shouting 'Elendil', $n fearlessly rescues $N.\r\n" },
@@ -809,8 +819,7 @@ int get_prob_skill(char_data* attacker, char_data* victim, int skill)
 ACMD(do_kick)
 {
     struct char_data* victim;
-    struct char_data* t;
-    sh_int prob, num, dam;
+    sh_int prob, dam;
     int attacktype;
 
     if (IS_SHADOW(ch)) {
@@ -924,7 +933,6 @@ ACMD(do_kick)
         damage(ch, victim, dam, attacktype, 0);
     }
 
-delay:
     WAIT_STATE_FULL(ch, PULSE_VIOLENCE * 4 / 3 + number(0, PULSE_VIOLENCE), 0, 0, 59, 0, 0, 0,
         AFF_WAITING, TARGET_NONE);
 }

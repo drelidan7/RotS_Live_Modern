@@ -11,6 +11,7 @@
 
 #include "platdef.h"
 #include <ctype.h>
+#include <format>
 #include <stdio.h>
 #include <string.h>
 
@@ -50,7 +51,7 @@ extern int get_real_stealth(struct char_data*);
 extern int rev_dir[];
 extern int show_tracks(struct char_data* ch, char* name, int mode);
 extern int top_of_world;
-extern char* dirs[];
+extern const char* const dirs[];
 extern void appear(struct char_data* ch);
 extern void check_break_prep(struct char_data*);
 extern void stop_hiding(struct char_data* ch, char);
@@ -122,7 +123,7 @@ ACMD(do_ride)
             return;
         }
 
-        if (IS_NPC(potential_mount) && !IS_SET(potential_mount->specials2.act, MOB_MOUNT) || !IS_NPC(potential_mount)) {
+        if ((IS_NPC(potential_mount) && !IS_SET(potential_mount->specials2.act, MOB_MOUNT)) || !IS_NPC(potential_mount)) {
             send_to_char("You can not ride this.\n\r", ch);
             return;
         }
@@ -203,7 +204,7 @@ ACMD(do_ride)
 ACMD(do_dismount)
 {
     if (ch == NULL) {
-        sprintf(buf, "Dismount called without a character.  Exiting.");
+        strcpy(buf, std::format("Dismount called without a character.  Exiting.").c_str());
         mudlog(buf, NRM, LEVEL_IMMORT, TRUE);
         return;
     }
@@ -217,7 +218,7 @@ ACMD(do_dismount)
             if (IS_RIDDEN(mount)) {
                 were_rider = mount->mount_data.rider;
             } else {
-                sprintf(buf, "Screwed mount %s, all be wary!", GET_NAME(mount));
+                strcpy(buf, std::format("Screwed mount {}, all be wary!", GET_NAME(mount)).c_str());
                 mudlog(buf, NRM, LEVEL_IMMORT, TRUE);
                 were_rider = NULL;
             }
@@ -373,7 +374,7 @@ ACMD(do_gather_food)
      * a neat little array, and used search_block to get the desired
      * values.
      */
-    static char* gather_type[] = { "", "food", "light", "healing", "energy", "bow",
+    static const char* const gather_type[] = { "", "food", "light", "healing", "energy", "bow",
         "arrows", "dust", "poison", "antidote", "\n" };
 
     if (IS_SHADOW(ch)) {
@@ -440,9 +441,8 @@ ACMD(do_gather_food)
                 break;
             }
 
-            sprintf(buf, "You tried to gather %s, but could not find anything useful.\n\r",
-                gather_type);
-            send_to_char(buf, ch);
+            send_to_char(std::format("You tried to gather {}, but could not find anything useful.\n\r",
+                gather_type).c_str(), ch);
 
             return;
         } else {
@@ -594,7 +594,7 @@ ACMD(do_pick)
             act("$n fiddles with $p.", FALSE, ch, obj, 0, TO_ROOM);
         }
 
-    else if ((door = find_door(ch, type, dir)) >= 0)
+    else if ((door = find_door(ch, type, dir)) >= 0) {
         if (!IS_SET(EXIT(ch, door)->exit_info, EX_ISDOOR))
             send_to_char("That's absurd.\n\r", ch);
         else if (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED))
@@ -627,6 +627,7 @@ ACMD(do_pick)
                     if (back->to_room == ch->in_room)
                         REMOVE_BIT(back->exit_info, EX_LOCKED);
         }
+    }
 }
 
 void stop_hiding(struct char_data* ch, char mode)
@@ -756,7 +757,7 @@ ACMD(do_sneak)
  */
 struct char_data* ambush_get_valid_victim(struct char_data* ch, struct waiting_type* target)
 {
-    struct char_data* victim;
+    struct char_data* victim = nullptr;
 
     if (target->targ1.type == TARGET_TEXT)
         victim = get_char_room_vis(ch, target->targ1.ptr.text->text);
@@ -884,7 +885,7 @@ int ambush_calculate_damage(char_data* attacker, char_data* victim, int modifier
     }
 
     if (utils::is_pc(*attacker)) {
-        sprintf(buf, "%s ambush damage of %3d.", GET_NAME(attacker), damage_dealt);
+        strcpy(buf, std::format("{} ambush damage of {:>3}.", GET_NAME(attacker), damage_dealt).c_str());
         mudlog(buf, NRM, LEVEL_GRGOD, TRUE);
     }
 
@@ -1037,7 +1038,7 @@ ACMD(do_ambush)
 struct char_data* trap_get_valid_victim(struct char_data* ch, struct waiting_type* target)
 {
     char* keyword;
-    struct char_data* victim;
+    struct char_data* victim = nullptr;
 
     if (target->targ1.type == TARGET_NONE)
         victim = target->targ2.ptr.ch;
@@ -1094,12 +1095,12 @@ bool can_do_trap(char_data& character, int subcmd)
 {
     const int max_trap_weapon_bulk = 2;
 
-    if (IS_SHADOW(&character)) {
+    if (utils::is_shadow(character)) {
         send_to_char("Shadows can't trap!\n\r", &character);
         return false;
     }
 
-    if (IS_NPC(&character) && MOB_FLAGGED(&character, MOB_ORC_FRIEND)) {
+    if (utils::is_npc(character) && utils::is_mob_flagged(character, MOB_ORC_FRIEND)) {
         send_to_char("Leave that to your leader.\r\n", &character);
         return false;
     }
@@ -1276,7 +1277,7 @@ ACMD(do_trap)
         victim = trap_get_valid_victim(ch, wtl);
         if (victim == NULL) {
             /* Reset the trap.  do_trap subcmd=1 does exactly this. */
-            do_trap(ch, "", wtl, CMD_TRAP, 1);
+            do_trap(ch, mutable_arg(""), wtl, CMD_TRAP, 1);
             return;
         }
 
@@ -1292,7 +1293,7 @@ ACMD(do_trap)
                 ch);
 
             /* Reset the trap.  do_trap subcmd=1 does exactly this. */
-            do_trap(ch, "", wtl, CMD_TRAP, 1);
+            do_trap(ch, mutable_arg(""), wtl, CMD_TRAP, 1);
             return;
         }
 
@@ -1362,7 +1363,7 @@ ACMD(do_calm)
         victim = (struct char_data*)wtl->targ1.ptr.ch;
         break;
     default:
-        sprintf(buf2, "do_calm: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_calm: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         return;
     }
@@ -1381,8 +1382,7 @@ ACMD(do_calm)
         send_to_char("You can only calm animals.\r\n", ch);
         return;
     } else if (GET_POS(victim) == POSITION_FIGHTING) {
-        sprintf(buf, "%s is too enraged!\r\n", GET_NAME(victim));
-        send_to_char(buf, ch);
+        send_to_char(std::format("{} is too enraged!\r\n", GET_NAME(victim)).c_str(), ch);
         return;
     } else if (GET_POS(victim) < POSITION_FIGHTING) {
         send_to_char("Your target needs to be standing.\r\n", ch);
@@ -1431,7 +1431,7 @@ ACMD(do_calm)
         break;
 
     default: /* Shouldn't ever happen */
-        sprintf(buf2, "do_calm: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_calm: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
         return;
@@ -1444,7 +1444,7 @@ bool is_strong_enough_to_tame(char_data* tamer, char_data* animal, bool include_
 
     int levels_over_required = (GET_PROF_LEVEL(PROF_RANGER, tamer) / 3 + tame_skill / 30 - GET_LEVEL(animal));
     if (include_current_followers) {
-        levels_over_required - get_followers_level(tamer);
+        levels_over_required -= get_followers_level(tamer);
     }
 
     if (affected_by_spell(animal, SKILL_CALM))
@@ -1642,6 +1642,8 @@ ACMD(do_tame)
             tmpwtl.cmd = CMD_HIT;
             do_hit(victim, buf, &tmpwtl, 0, 0);
         }
+        [[fallthrough]]; // intentional: case 1 always falls into default's abort_delay(),
+                          // whether the tame attempt succeeded or failed.
 
     default:
         abort_delay(ch);
@@ -1698,7 +1700,7 @@ ACMD(do_whistle)
                     if (GET_POS(tmpch) == POSITION_FIGHTING) {
                         /* in combat: just try to disengage this whistle; the
                          * normal recall runs next time it's whistled while not fighting */
-                        do_flee(tmpch, "", 0, 0, 0);
+                        do_flee(tmpch, mutable_arg(""), 0, 0, 0);
                         continue;
                     }
 
@@ -1740,7 +1742,7 @@ ACMD(do_stalk)
 
     dir = wtl->targ1.ch_num;
 
-    if (special(ch, dir + 1, "", SPECIAL_COMMAND, 0))
+    if (special(ch, dir + 1, mutable_arg(""), SPECIAL_COMMAND, 0))
         return;
 
     if (GET_KNOWLEDGE(ch, SKILL_STALK) <= 0) {
@@ -1769,15 +1771,14 @@ ACMD(do_stalk)
     ch->delay.targ1.ch_num = dir;
 
     act("$n looks carefully at the ground.", TRUE, ch, 0, 0, TO_ROOM);
-    sprintf(buf, "You look for a discreet way %s.\n\r", dirs[dir]);
-    send_to_char(buf, ch);
+    send_to_char(std::format("You look for a discreet way {}.\n\r", dirs[dir]).c_str(), ch);
     return;
 }
 
 ACMD(do_cover)
 {
     room_data* tmproom;
-    int tmp, dir, dt, tr_time;
+    int tmp, dt, tr_time;
 
     if (IS_SHADOW(ch)) {
         send_to_char("You are too insubstantial to do that.\r\n", ch);
@@ -1813,7 +1814,6 @@ ACMD(do_cover)
         if (tmproom->room_track[tmp].char_number != 0 && GET_KNOWLEDGE(ch, SKILL_STALK) * 2 > number(1, 100)) {
             dt = number(1, 20);
             tr_time = tmproom->room_track[tmp].condition;
-            dir = tmproom->room_track[tmp].data & 7;
             if (dt + tr_time >= 24) {
                 /* Tracks being removed in this if*/
                 tmproom->room_track[tmp].char_number = 0;
@@ -1998,7 +1998,7 @@ int see_hiding(struct char_data* seeker)
     return can_see;
 }
 
-bool check_archery_accuracy(const char_data& archer, const char_data& victim)
+bool check_archery_accuracy(const char_data& archer, const char_data&)
 {
     using namespace utils;
 
@@ -2436,8 +2436,8 @@ void on_arrow_hit(char_data* archer, char_data* victim, obj_data* arrow)
     } else if (GET_SHOOTING(archer) == SHOOTING_SLOW) {
         damage_dealt = damage_dealt * 2;
     }
-    sprintf(buf, "%s archery damage of %3d to %s.", GET_NAME(archer), damage_dealt,
-        GET_NAME(victim));
+    strcpy(buf, std::format("{} archery damage of {:>3} to {}.", GET_NAME(archer), damage_dealt,
+        GET_NAME(victim)).c_str());
     mudlog(buf, NRM, LEVEL_GRGOD, TRUE);
 
     damage(archer, victim, damage_dealt, SKILL_ARCHERY, hit_location);
@@ -2677,7 +2677,7 @@ ACMD(do_shoot)
         wtl->targ2.cleanup();
     } break;
     default:
-        sprintf(buf2, "do_shoot: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_shoot: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
         break;
@@ -2755,8 +2755,7 @@ void get_corpse_tagged_arrows(const char_data* character, std::vector<obj_data*>
 // Recovers arrows that have been tagged by a player from the room that the
 // player is in, and any corpses within the room.
 //============================================================================
-void do_recover(char_data* character, char* argument, waiting_type* wait_list, int command,
-    int sub_command)
+void do_recover(char_data* character, char*, waiting_type*, int, int)
 {
     if (character == NULL)
         return;
@@ -2840,8 +2839,7 @@ void do_recover(char_data* character, char* argument, waiting_type* wait_list, i
    ------------------------------Change Log---------------------------------------
    slyon: Sept 6, 2017 - Documented
 ==================================================================================*/
-void do_scan(char_data* character, char* argument, waiting_type* wait_list, int command,
-    int sub_command)
+void do_scan(char_data* character, char*, waiting_type*, int, int)
 {
     struct char_data* i;
     int is_in, dir, dis, maxdis, found = 0;
@@ -2893,12 +2891,12 @@ void do_scan(char_data* character, char* argument, waiting_type* wait_list, int 
                 for (i = world[character->in_room].people; i; i = i->next_in_room) {
                     if ((!((character == i) && (dis == 0))) && CAN_SEE(character, i)) {
                         if (dis > 0) {
-                            sprintf(buf, "%33s: %s%s%s%s",
+                            strcpy(buf, std::format("{:>33}: {}{}{}{}",
                                 (IS_NPC(i) ? GET_NAME(i) : pc_star_types[i->player.race]),
                                 distance[dis],
                                 ((dis > 0) && (dir < (NUM_OF_DIRS - 2))) ? "to the " : "",
                                 (dis > 0) ? dirs[dir] : "",
-                                ((dis > 0) && (dir > (NUM_OF_DIRS - 3))) ? "wards" : "");
+                                ((dis > 0) && (dir > (NUM_OF_DIRS - 3))) ? "wards" : "").c_str());
                             act(buf, TRUE, character, 0, 0, TO_CHAR);
                         }
                         found++;
@@ -2937,7 +2935,7 @@ int mark_calculate_duration(char_data* marker)
    ------------------------------Change Log---------------------------------------
    slyon: Sept 5, 2017 - Created
 ==================================================================================*/
-int mark_calculate_damage(char_data* marker, char_data* victim)
+int mark_calculate_damage(char_data* marker, char_data*)
 {
     int ranger_level = utils::get_prof_level(PROF_RANGER, *marker);
     int str_factor = marker->tmpabilities.str / 5;
@@ -3203,7 +3201,7 @@ ACMD(do_mark)
         wtl->targ2.cleanup();
     } break;
     default:
-        sprintf(buf2, "do_mark: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_mark: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
         break;
@@ -3329,8 +3327,6 @@ int harad_skill_calculate_save(char_data* ch, char_data* victim, int skill_check
 
 void on_dust_miss(char_data* ch, char_data* victim, int mana_cost)
 {
-    byte sex = ch->player.sex;
-
     GET_MANA(ch) -= (mana_cost >> 1);
     damage(ch, victim, 0, SKILL_BLINDING, 0);
 }
@@ -3400,7 +3396,7 @@ ACMD(do_blinding)
         act("$n renounces $s sanctuary!", FALSE, ch, 0, 0, TO_ROOM);
     }
 
-    if (affected_by_spell(victim, AFF_BLIND)) {
+    if (IS_AFFECTED(victim, AFF_BLIND)) {
         act("$N is already blind.\r\n", FALSE, ch, 0, victim, TO_CHAR);
         return;
     }
@@ -3462,7 +3458,7 @@ ACMD(do_blinding)
     } break;
 
     default:
-        sprintf(buf2, "do_blinding: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_blinding: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
         break;
@@ -3596,7 +3592,7 @@ ACMD(do_bendtime)
     } break;
 
     default: {
-        sprintf(buf2, "do_bendtime: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_bendtime: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
     } break;
@@ -3649,7 +3645,17 @@ void on_windblast_hit(char_data* ch)
                 act("$n gets sweep out from the wave of thunderous force!", FALSE, ch, 0, 0,
                     TO_ROOM);
 
-                do_move(ch, dirs[attempt], 0, attempt + 1, SCMD_FLEE);
+                // do_move()'s argument is a mutable char*; dirs[] is now a
+                // const string table, so copy the direction name into a
+                // small mutable buffer before passing it (do_move never
+                // writes through argument for the flee path, this is purely
+                // to satisfy the parameter type).
+                {
+                    char flee_dir[16];
+                    strncpy(flee_dir, dirs[attempt], sizeof(flee_dir) - 1);
+                    flee_dir[sizeof(flee_dir) - 1] = '\0';
+                    do_move(ch, flee_dir, 0, attempt + 1, SCMD_FLEE);
+                }
                 return;
             }
         }
@@ -3662,9 +3668,8 @@ void on_windblast_hit(char_data* ch)
 
 void on_windblast_success(char_data* ch, int mana_cost, int move_cost)
 {
-    int dam_value, tmp, power_level;
+    int dam_value, power_level;
     struct char_data *tmpch, *tmpch_next;
-    room_data* cur_room;
 
     GET_MANA(ch) -= mana_cost;
     GET_MOVE(ch) -= move_cost;
@@ -3673,8 +3678,6 @@ void on_windblast_success(char_data* ch, int mana_cost, int move_cost)
         return;
 
     power_level = utils::get_prof_level(PROF_RANGER, *ch) / 2;
-
-    cur_room = &world[ch->in_room];
 
     dam_value = number(1, 30) + power_level;
 
@@ -3693,7 +3696,7 @@ void on_windblast_success(char_data* ch, int mana_cost, int move_cost)
 
             int saved = harad_skill_calculate_save(ch, tmpch, 0);
             if (saved < 0) {
-                dam_value >> 1;
+                dam_value >>= 1;
                 damage(ch, tmpch, dam_value, SKILL_WINDBLAST, 0);
             } else {
                 on_windblast_hit(tmpch);
@@ -3753,7 +3756,7 @@ ACMD(do_windblast)
         }
     } break;
     default: {
-        sprintf(buf2, "do_windblast: illegal subcommand '%d'.\r\n", subcmd);
+        strcpy(buf2, std::format("do_windblast: illegal subcommand '{}'.\r\n", subcmd).c_str());
         mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
     } break;

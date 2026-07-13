@@ -120,7 +120,7 @@ void free_char(struct char_data*);
 void free_obj(struct obj_data*);
 int real_room(int);
 int real_program(int);
-char* fread_string(FILE*, char*);
+char* fread_string(FILE*, const char*);
 int real_object(int);
 int real_mobile(int);
 int vnum_mobile(char*, struct char_data*);
@@ -128,7 +128,7 @@ int vnum_object(char*, struct char_data*);
 void record_crime(struct char_data*, struct char_data*, int, int);
 void add_crime(int, int, int, int, int);
 void forget_crimes(struct char_data*, int);
-void add_exploit_record(int, struct char_data*, int, char*);
+void add_exploit_record(int, struct char_data*, int, const char*);
 int delete_exploits_file(char*);
 void delete_character_file(struct char_data*);
 void move_char_deleted(int);
@@ -246,9 +246,9 @@ struct help_index_element {
 };
 
 struct help_index_summary {
-    char* keyword;
-    char* descr;
-    char* filename;
+    const char* keyword;
+    const char* descr;
+    const char* filename;
     FILE* file;
     int top_of_helpt;
     char imm_only;

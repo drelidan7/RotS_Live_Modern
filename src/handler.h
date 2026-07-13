@@ -85,7 +85,7 @@ int other_side_num(int ch_race, int i_race);
 
 struct char_data* get_char_room(char* name, int room);
 struct char_data* get_char_num(int nr);
-struct char_data* get_char(char* name);
+struct char_data* get_char(const char* name);
 
 void char_from_room(struct char_data* ch);
 void char_to_room(struct char_data* ch, int room);
@@ -100,7 +100,7 @@ struct char_data* get_char_room_vis(struct char_data* ch, char* name,
 struct char_data* get_player_vis(struct char_data* ch, char* name);
 struct char_data* get_char_vis(struct char_data* ch, char* name,
     int dark_ok = 0);
-struct obj_data* get_obj_in_list_vis(struct char_data* ch, char* name,
+struct obj_data* get_obj_in_list_vis(struct char_data* ch, const char* name,
     struct obj_data* list, int num);
 struct obj_data* get_obj_vis(struct char_data* ch, char* name);
 struct obj_data* get_object_in_equip_vis(struct char_data* ch,
@@ -138,8 +138,8 @@ int generic_find(char* arg, int bitvector, struct char_data* ch,
 
 /* prototypes from crash save system */
 
-int Crash_get_filename(char* orig_name, char* filename);
-int Crash_delete_file(char* name);
+int Crash_get_filename(const char* orig_name, char* filename);
+int Crash_delete_file(const char* name);
 int Crash_delete_crashfile(struct char_data* ch);
 int Crash_clean_file(char* name);
 void Crash_listrent(struct char_data* ch, char* name);
@@ -147,7 +147,7 @@ void Crash_listrent(struct char_data* ch, char* name);
 void Crash_crashsave(struct char_data* ch, int rent_code = RENT_CRASH);
 void Crash_idlesave(struct char_data* ch);
 void Crash_save_all(void);
-FILE* Crash_get_file_by_name(char* name, char* mode);
+FILE* Crash_get_file_by_name(const char* name, const char* mode);
 FILE* Crash_load(struct char_data* ch);
 void stage_account_backed_object_data_for_character(const struct char_data* ch, const objects_json::ObjectSaveData& data);
 void clear_account_backed_object_bytes_for_character(const struct char_data* ch);

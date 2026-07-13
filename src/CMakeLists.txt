@@ -90,8 +90,41 @@ set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 #     switch (the flag MSVC itself provides for exactly this legacy-code
 #     scenario), not a rewrite -- the pointed-to data and every call site are
 #     unchanged, so it cannot affect runtime behavior or goldens.
-# GNU-family flags: -funsigned-char / -fstrict-aliasing / -w / -g are identical
-# on GCC, Clang, and AppleClang.
+# GNU-family flags: -funsigned-char / -fstrict-aliasing / -Wall -Wextra -Werror / -g
+# are identical on GCC, Clang, and AppleClang. Phase 5 Task 8 flips the historical
+# -w (suppress everything) to -Wall -Wextra -Werror once the GNU-family warning
+# census (Tasks 1-7) reached zero on every locally-built configuration; see
+# docs/BUILD.md's "Warnings policy" section for the pinned-toolchain rationale and
+# the i386 (-m32, g++14 container) exposure, which is deferred to Task 10.
+# MSVC: Phase 5 Task 9 flips the historical /w (suppress everything) to /W4 the
+# same way Task 8 did for GNU-family -- census first (no /WX), then triage: real
+# bugs fixed in source (uninitialized locals C4700/C4701/C4703, format-string
+# mismatches C4477, bool arithmetic C4804/C4805, function-pointer tests C4550,
+# constant truncation C4309, int-to-pointer C4312, and the specialize_name
+# extern-type-mismatch LNK2001), and the remaining classes suppressed per-class
+# below, each with a rationale. Applied to both the ageland and ageland_tests
+# targets (the latter compiles every ROTS_SERVER_SOURCES file too, so it hits
+# the same warnings).
+#
+# Per-class /wd suppression ledger (Phase 5 Task 9 census, run 29208716185):
+#   /wd4244 /wd4267  int-conversion narrowing (993 + 174 unique sites): pervasive
+#     benign legacy narrowing (int -> sh_int/byte/char assignments across the
+#     whole C-heritage codebase; size_t -> int lengths). Sampled per the task
+#     brief: the pattern is systemic, not localized bugs. Sanctioned suppression
+#     THIS phase; a future typed-fields effort may revisit.
+#   /wd4456 /wd4458 /wd4459  declaration shadowing (278 sites): parity with the
+#     GNU-family bar, where -Wshadow is deliberately NOT part of the Task 8
+#     -Wall -Wextra -Werror set. Same hygiene class, same deferral.
+#   /wd4702  unreachable code (228 sites): legacy return-then-break switch arms
+#     and defensive tails; GNU has no equivalent enabled, and C4702 is
+#     notoriously optimizer/version-dependent on MSVC.
+#   /wd4127  constant conditional (73 sites, mostly tests): do/while(0) macro
+#     idiom and sizeof-based compile-time checks; intentional.
+#   /wd4310  cast truncates constant (85 sites): telnet protocol byte constants
+#     ((char)IAC == (char)0xFF etc. in protocol.cpp/utility.cpp). char is
+#     pinned unsigned via /J, so the values are preserved -- but MSVC's
+#     C4310/C4309 checks ignore /J (they assume signed char), making every one
+#     of these a false positive here.
 #   -D_FILE_OFFSET_BITS=64  32-bit glibc's legacy readdir()/stat() use a 32-bit
 #     ino_t/off_t; against modern filesystems with 64-bit inode numbers (ext4,
 #     overlay2) readdir() fails with EOVERFLOW. Switches libc to the 64-bit-safe
@@ -110,8 +143,8 @@ else()
 endif()
 target_compile_options(ageland PRIVATE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
-    $<${ROTS_GNULIKE}:-funsigned-char -fstrict-aliasing -w -g>
-    $<$<CXX_COMPILER_ID:MSVC>:/J /w /Zc:strictStrings->
+    $<${ROTS_GNULIKE}:-funsigned-char -fstrict-aliasing -Wall -Wextra -Werror -g>
+    $<$<CXX_COMPILER_ID:MSVC>:/J /W4 /WX /wd4244 /wd4267 /wd4456 /wd4458 /wd4459 /wd4702 /wd4127 /wd4310 /Zc:strictStrings->
 )
 target_link_options(ageland PRIVATE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
@@ -131,9 +164,14 @@ target_link_libraries(ageland PRIVATE $<$<PLATFORM_ID:Windows>:ws2_32>)
 # configs) without this. A real localtime_s()/strcpy_s() conversion is out of scope
 # for this phase (Phase 5 owns warning hygiene per the plan) -- this only silences
 # the deprecation so the existing, behaviorally-unchanged calls compile.
+# _CRT_NONSTDC_NO_WARNINGS (Phase 5 Task 9, /W4 campaign): companion knob for
+# the POSIX-name deprecations (C4996 on strdup/unlink/getpid/...); MSVC wants
+# the underscore-prefixed ISO names, but the plain POSIX spellings are the
+# portable ones every other platform uses. Same silence-not-rewrite rationale
+# as _CRT_SECURE_NO_WARNINGS above.
 target_compile_definitions(ageland PRIVATE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:_FILE_OFFSET_BITS=64>
-    $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
+    $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS>
 )
 
 # Per-configuration optimization (the common flags above apply to every config).
@@ -154,7 +192,7 @@ target_compile_options(ageland PRIVATE
 if(ROTS_BUILD_TESTS)
     include(CTest)
 
-    option(ROTS_SUPPRESS_TEST_WARNINGS "Suppress compiler warnings when building the ageland_tests target" ON)
+    option(ROTS_SUPPRESS_TEST_WARNINGS "Suppress compiler warnings when building the ageland_tests target" OFF)
 
     # Explicit list, matching the style above — no file(GLOB).
     set(ROTS_TEST_SOURCES
@@ -323,12 +361,13 @@ if(ROTS_BUILD_TESTS)
     target_compile_options(ageland_tests PRIVATE
         $<${ROTS_GNULIKE}:-funsigned-char>
     )
-    # /Zc:strictStrings-: same rationale as the ageland target above -- this
-    # target ALSO compiles every ROTS_SERVER_SOURCES file (act_comm.cpp,
-    # act_info.cpp, etc.), so it hits the identical MSVC /std:c++20
-    # string-literal-to-char* strictness without this.
+    # /Zc:strictStrings- / /W4 + per-class /wd suppressions: same rationale and
+    # suppression ledger as the ageland target above -- this target ALSO
+    # compiles every ROTS_SERVER_SOURCES file (act_comm.cpp, act_info.cpp,
+    # etc.), so it hits the identical MSVC /std:c++20 string-literal-to-char*
+    # strictness and the same /W4 warning classes (Phase 5 Task 9).
     target_compile_options(ageland_tests PRIVATE
-        $<$<CXX_COMPILER_ID:MSVC>:/Zc:strictStrings->
+        $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX /wd4244 /wd4267 /wd4456 /wd4458 /wd4459 /wd4702 /wd4127 /wd4310 /Zc:strictStrings->
     )
     # _FILE_OFFSET_BITS=64: same EOVERFLOW-avoidance rationale as the ageland target
     # above — account-management tests do real opendir/readdir bucket scans under
@@ -337,7 +376,7 @@ if(ROTS_BUILD_TESTS)
     target_compile_definitions(ageland_tests PRIVATE TESTING)
     target_compile_definitions(ageland_tests PRIVATE
         $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:_FILE_OFFSET_BITS=64>
-        $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
+        $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS>
     )
     # gtest_discover_tests (below) runs the binary with WORKING_DIRECTORY set to the
     # repo root, not src/tests/ — so the characterization tests' plain relative
@@ -349,7 +388,7 @@ if(ROTS_BUILD_TESTS)
     if(ROTS_SUPPRESS_TEST_WARNINGS)
         target_compile_options(ageland_tests PRIVATE $<${ROTS_GNULIKE}:-w>)
     else()
-        target_compile_options(ageland_tests PRIVATE $<${ROTS_GNULIKE}:-Wall -Wextra>)
+        target_compile_options(ageland_tests PRIVATE $<${ROTS_GNULIKE}:-Wall -Wextra -Werror>)
     endif()
     # SSE float math for the tests (mirrors src/tests/Makefile): i386 g++ defaults to
     # x87 extended-precision FP, which rounds differently from the SSE math of every

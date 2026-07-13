@@ -249,8 +249,12 @@ void assign_objects(void)
     generic_water.obj_flags.value[1] = 100;
     generic_poison.obj_flags.value[1] = 100;
 
-    generic_water.name = "water";
-    generic_poison.name = "water";
+    // obj_data::name is genuinely mutable char* elsewhere (dynamically allocated/freed for
+    // most objects), so it cannot bind a string literal directly; these two globals live for
+    // the program's duration, so static storage here matches their lifetime exactly.
+    static char generic_fountain_name[] = "water";
+    generic_water.name = generic_fountain_name;
+    generic_poison.name = generic_fountain_name;
 
     generic_water.obj_flags.value[2] = LIQ_WATER;
     generic_poison.obj_flags.value[2] = LIQ_WATER;
@@ -270,7 +274,7 @@ void assign_rooms(void)
     ASSIGNROOM(1122, pet_shops);
 }
 
-char* spec_pro_message[] = {
+extern const char* const spec_pro_message[] = {
     "", /* 0 */
     "",
     "",

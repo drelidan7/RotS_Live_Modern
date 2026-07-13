@@ -9,6 +9,7 @@
  ************************************************************************ */
 
 #include "platdef.h"
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -105,7 +106,7 @@ void closing_time(struct char_data* keeper)
             char_from_room(tmpch);
             char_to_room(tmpch, EXIT(keeper, dir)->to_room);
             act("$n is pushed in.", TRUE, tmpch, 0, 0, TO_ROOM);
-            do_look(tmpch, "", 0, 0, 0);
+            do_look(tmpch, mutable_arg(""), 0, 0, 0);
         }
     }
     for (tmp = 0; tmp < NUM_OF_DIRS; tmp++)
@@ -130,42 +131,44 @@ int is_ok(struct char_data* keeper, struct char_data* ch, int shop_nr)
 {
     if (keeper && ch) {
         if (IS_AGGR_TO(keeper, ch)) {
-            do_say(keeper, "Go away, I won't deal with you!", 0, 0, 0);
+            do_say(keeper, mutable_arg("Go away, I won't deal with you!"), 0, 0, 0);
             return FALSE;
         }
     }
     if (ch)
         if (IS_SHADOW(ch)) {
-            do_say(keeper, "Ugh!  I'm not serving you!", 0, 0, 0);
+            do_say(keeper, mutable_arg("Ugh!  I'm not serving you!"), 0, 0, 0);
             return FALSE;
         }
 
     if ((ch) && (!RP_RACE_CHECK(keeper, ch))) {
-        do_say(keeper, "Sorry, I can't serve you!", 0, 0, 0);
+        do_say(keeper, mutable_arg("Sorry, I can't serve you!"), 0, 0, 0);
         return FALSE;
     }
 
-    if (!shop_index[shop_nr].is_open)
+    if (!shop_index[shop_nr].is_open) {
         if (shop_index[shop_nr].open1 > time_info.hours) {
             if (keeper)
-                do_say(keeper, "Come back later!", 0, 17, 0);
+                do_say(keeper, mutable_arg("Come back later!"), 0, 17, 0);
             return (FALSE);
-        } else if (shop_index[shop_nr].close1 <= time_info.hours)
+        } else if (shop_index[shop_nr].close1 <= time_info.hours) {
             if (shop_index[shop_nr].open2 > time_info.hours) {
                 if (keeper)
-                    do_say(keeper, "Sorry, we have closed, but come back later.", 0, 17, 0);
+                    do_say(keeper, mutable_arg("Sorry, we have closed, but come back later."), 0, 17, 0);
                 return (FALSE);
             } else if (shop_index[shop_nr].close2 <= time_info.hours) {
                 if (keeper)
-                    do_say(keeper, "Sorry, come back tomorrow.", 0, 17, 0);
+                    do_say(keeper, mutable_arg("Sorry, come back tomorrow."), 0, 17, 0);
                 return (FALSE);
-            };
+            }
+        }
+    }
 
     if (!keeper)
         return TRUE;
 
     if (!(CAN_SEE(keeper, ch))) {
-        do_say(keeper, "I don't trade with someone I can't see!", 0, 17, 0);
+        do_say(keeper, mutable_arg("I don't trade with someone I can't see!"), 0, 17, 0);
         return (FALSE);
     };
 
@@ -235,7 +238,7 @@ void shopping_buy(char* arg, struct char_data* ch,
 
     one_argument(arg, argm);
     if (!(*argm)) {
-        sprintf(buf, "%s what do you want to buy??", GET_NAME(ch));
+        strcpy(buf, std::format("{} what do you want to buy??", GET_NAME(ch)).c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
     };
@@ -250,18 +253,18 @@ void shopping_buy(char* arg, struct char_data* ch,
         // no_such_item1/2, missing_cash1/2, do_not_buy, message_buy/sell are
         // builder shop-file strings (structs.h-adjacent shop_data fields) --
         // validate before expanding, same reasoning as death_cry2 above.
-        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].no_such_item1,
+        strcpy(buf, std::format("{}", safe_template::expand_checked(shop_index[shop_nr].no_such_item1,
                                 { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
-                                "We don't have that.", "shop no_such_item1 (buy: no item)")
+                                "We don't have that.", "shop no_such_item1 (buy: no item)"))
                                 .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
     }
 
     if (temp1->obj_flags.cost <= 0) {
-        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].no_such_item1,
+        strcpy(buf, std::format("{}", safe_template::expand_checked(shop_index[shop_nr].no_such_item1,
                                 { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
-                                "We don't have that.", "shop no_such_item1 (buy: not for sale)")
+                                "We don't have that.", "shop no_such_item1 (buy: not for sale)"))
                                 .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         extract_obj(temp1);
@@ -269,9 +272,9 @@ void shopping_buy(char* arg, struct char_data* ch,
     }
 
     if (GET_GOLD(ch) < (int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100) /*&& GET_LEVEL(ch) < LEVEL_GOD*/) {
-        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].missing_cash2,
+        strcpy(buf, std::format("{}", safe_template::expand_checked(shop_index[shop_nr].missing_cash2,
                                 { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
-                                "You don't have enough cash.", "shop missing_cash2 (buy)")
+                                "You don't have enough cash.", "shop missing_cash2 (buy)"))
                                 .c_str());
         do_tell(keeper, buf, 0, 19, 0);
 
@@ -280,7 +283,7 @@ void shopping_buy(char* arg, struct char_data* ch,
             do_action(keeper, GET_NAME(ch), 0, 30, 0);
             return;
         case 1:
-            do_emote(keeper, "smokes on his joint.", 0, 36, 0);
+            do_emote(keeper, mutable_arg("smokes on his joint."), 0, 36, 0);
             return;
         default:
             return;
@@ -288,30 +291,27 @@ void shopping_buy(char* arg, struct char_data* ch,
     }
 
     if ((IS_CARRYING_N(ch) + 1 > CAN_CARRY_N(ch))) {
-        sprintf(buf, "%s : You can't carry that many items.\n\r", fname(temp1->name));
-        send_to_char(buf, ch);
+        send_to_char(std::format("{} : You can't carry that many items.\n\r", fname(temp1->name)).c_str(), ch);
         return;
     }
 
     if ((IS_CARRYING_W(ch) + temp1->obj_flags.weight) > CAN_CARRY_W(ch)) {
-        sprintf(buf, "%s : You can't carry that much weight.\n\r", fname(temp1->name));
-
-        send_to_char(buf, ch);
+        send_to_char(std::format("{} : You can't carry that much weight.\n\r", fname(temp1->name)).c_str(), ch);
         return;
     }
 
     act("$n buys $p.", FALSE, ch, temp1, 0, TO_ROOM);
 
-    sprintf(buf, "%s",
-        safe_template::expand_checked(shop_index[shop_nr].message_buy,
-            { safe_template::Conv::String, safe_template::Conv::String },
-            { std::string_view(GET_NAME(ch)),
-                std::string_view(money_message((int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100))) },
-            "Thanks for your business.", "shop message_buy")
+    strcpy(buf,
+        std::format("{}",
+            safe_template::expand_checked(shop_index[shop_nr].message_buy,
+                { safe_template::Conv::String, safe_template::Conv::String },
+                { std::string_view(GET_NAME(ch)),
+                    std::string_view(money_message((int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100))) },
+                "Thanks for your business.", "shop message_buy"))
             .c_str());
     do_tell(keeper, buf, 0, 19, 0);
-    sprintf(buf, "You now have %s.\n\r", temp1->short_description);
-    send_to_char(buf, ch);
+    send_to_char(std::format("You now have {}.\n\r", temp1->short_description).c_str(), ch);
     GET_GOLD(ch) -= (int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100);
 
     GET_GOLD(keeper) += (int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100);
@@ -345,15 +345,15 @@ void shopping_sell(char* arg, struct char_data* ch, struct char_data* keeper, in
     one_argument(arg, argm);
 
     if (!(*argm)) {
-        sprintf(buf, "%s What do you want to sell??", GET_NAME(ch));
+        strcpy(buf, std::format("{} What do you want to sell??", GET_NAME(ch)).c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
     }
 
     if (!(temp1 = get_obj_in_list_vis(ch, argm, ch->carrying, 9999))) {
-        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].no_such_item2,
+        strcpy(buf, std::format("{}", safe_template::expand_checked(shop_index[shop_nr].no_such_item2,
                                 { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
-                                "You don't have that.", "shop no_such_item2 (sell)")
+                                "You don't have that.", "shop no_such_item2 (sell)"))
                                 .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
@@ -365,18 +365,18 @@ void shopping_sell(char* arg, struct char_data* ch, struct char_data* keeper, in
     }
 
     if (!(trade_with(temp1, shop_nr)) || (temp1->obj_flags.cost < 1)) {
-        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].do_not_buy,
+        strcpy(buf, std::format("{}", safe_template::expand_checked(shop_index[shop_nr].do_not_buy,
                                 { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
-                                "I don't buy that kind of thing.", "shop do_not_buy (sell)")
+                                "I don't buy that kind of thing.", "shop do_not_buy (sell)"))
                                 .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
     }
 
     if ((GET_GOLD(keeper) + shop_index[shop_nr].bankAccount) < (int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_sell / 100)) {
-        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].missing_cash1,
+        strcpy(buf, std::format("{}", safe_template::expand_checked(shop_index[shop_nr].missing_cash1,
                                 { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
-                                "I don't have enough cash for that.", "shop missing_cash1 (sell)")
+                                "I don't have enough cash for that.", "shop missing_cash1 (sell)"))
                                 .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
@@ -384,16 +384,16 @@ void shopping_sell(char* arg, struct char_data* ch, struct char_data* keeper, in
 
     act("$n sells $p.", FALSE, ch, temp1, 0, TO_ROOM);
 
-    sprintf(buf, "%s",
-        safe_template::expand_checked(shop_index[shop_nr].message_sell,
-            { safe_template::Conv::String, safe_template::Conv::String },
-            { std::string_view(GET_NAME(ch)),
-                std::string_view(money_message((int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_sell / 100))) },
-            "Thanks for the item.", "shop message_sell")
+    strcpy(buf,
+        std::format("{}",
+            safe_template::expand_checked(shop_index[shop_nr].message_sell,
+                { safe_template::Conv::String, safe_template::Conv::String },
+                { std::string_view(GET_NAME(ch)),
+                    std::string_view(money_message((int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_sell / 100))) },
+                "Thanks for the item.", "shop message_sell"))
             .c_str());
     do_tell(keeper, buf, 0, 19, 0);
-    sprintf(buf, "The shopkeeper now has %s.\n\r", temp1->short_description);
-    send_to_char(buf, ch);
+    send_to_char(std::format("The shopkeeper now has {}.\n\r", temp1->short_description).c_str(), ch);
     GET_GOLD(ch) += (int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_sell / 100);
 
     /* Get money from the bank, buy the obj, then put money back. */
@@ -431,7 +431,7 @@ void shopping_value(char* arg, struct char_data* ch,
 
     one_argument(arg, argm);
     if (!(*argm)) {
-        sprintf(buf, "%s What do you want me to valuate??", GET_NAME(ch));
+        strcpy(buf, std::format("{} What do you want me to valuate??", GET_NAME(ch)).c_str());
         // printf("buff:%s.\n",buf);
         do_tell(keeper, buf, 0, 19, 0);
         return;
@@ -439,9 +439,9 @@ void shopping_value(char* arg, struct char_data* ch,
 
     if (!(temp1 = get_obj_in_list_vis(ch, argm, ch->carrying, 9999))) {
         // printf("no such item\n");
-        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].no_such_item2,
+        strcpy(buf, std::format("{}", safe_template::expand_checked(shop_index[shop_nr].no_such_item2,
                                 { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
-                                "You don't have that.", "shop no_such_item2 (value)")
+                                "You don't have that.", "shop no_such_item2 (value)"))
                                 .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
@@ -449,15 +449,15 @@ void shopping_value(char* arg, struct char_data* ch,
 
     if (!(trade_with(temp1, shop_nr))) {
         // printf("no trade with you\n");
-        sprintf(buf, "%s", safe_template::expand_checked(shop_index[shop_nr].do_not_buy,
+        strcpy(buf, std::format("{}", safe_template::expand_checked(shop_index[shop_nr].do_not_buy,
                                 { safe_template::Conv::String }, { std::string_view(GET_NAME(ch)) },
-                                "I don't buy that kind of thing.", "shop do_not_buy (value)")
+                                "I don't buy that kind of thing.", "shop do_not_buy (value)"))
                                 .c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
     }
     // printf("numbers: cost:%d, profit:%d\n",temp1->obj_flags.cost, shop_index[shop_nr].profit_sell);
-    sprintf(buf, "%s I'll give you %s for that!", GET_NAME(ch), money_message((int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_sell / 100)));
+    strcpy(buf, std::format("{} I'll give you {} for that!", GET_NAME(ch), money_message((int)(temp1->obj_flags.cost * shop_index[shop_nr].profit_sell / 100))).c_str());
     do_tell(keeper, buf, 0, 19, 0);
 
     return;
@@ -468,7 +468,7 @@ void shopping_list(char* arg, struct char_data* ch,
 {
     char buf[MAX_STRING_LENGTH], buf2[100], buf3[100];
     struct obj_data* temp1;
-    extern char* drinks[];
+    extern const char* const drinks[];
     int found_obj;
     int count;
 
@@ -486,16 +486,16 @@ void shopping_list(char* arg, struct char_data* ch,
 
                 found_obj = TRUE;
                 if (temp1->obj_flags.type_flag != ITEM_DRINKCON)
-                    sprintf(buf2, "%d. %s for %s.\n\r",
-                        count, (temp1->short_description), money_message((int)((long)temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100)));
+                    strcpy(buf2, std::format("{}. {} for {}.\n\r",
+                        count, (temp1->short_description), money_message((int)((long)temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100))).c_str());
                 else {
                     if (temp1->obj_flags.value[1])
-                        sprintf(buf3, "%d. %s of %s", count,
+                        strcpy(buf3, std::format("{}. {} of {}", count,
                             (temp1->short_description),
-                            drinks[temp1->obj_flags.value[2]]);
+                            drinks[temp1->obj_flags.value[2]]).c_str());
                     else
-                        sprintf(buf3, "%d. %s", count, (temp1->short_description));
-                    sprintf(buf2, "%s for %s.\n\r", buf3, money_message((int)((long)temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100), 0));
+                        strcpy(buf3, std::format("{}. {}", count, (temp1->short_description)).c_str());
+                    strcpy(buf2, std::format("{} for {}.\n\r", static_cast<const char*>(buf3), money_message((int)((long)temp1->obj_flags.cost * shop_index[shop_nr].profit_buy / 100), 0)).c_str());
                 }
                 if (!*arg || isname(arg, temp1->name)) {
                     CAP(buf2);
@@ -509,19 +509,19 @@ void shopping_list(char* arg, struct char_data* ch,
     return;
 }
 
-void shopping_kill(char* arg, struct char_data* ch,
+void shopping_kill(char*, struct char_data* ch,
     struct char_data* keeper, int shop_nr)
 {
     char buf[100];
 
     switch (shop_index[shop_nr].temper2) {
     case 0:
-        sprintf(buf, "%s Don't ever try that again!", GET_NAME(ch));
+        strcpy(buf, std::format("{} Don't ever try that again!", GET_NAME(ch)).c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
 
     case 1:
-        sprintf(buf, "%s Scram - midget!", GET_NAME(ch));
+        strcpy(buf, std::format("{} Scram - midget!", GET_NAME(ch)).c_str());
         do_tell(keeper, buf, 0, 19, 0);
         return;
 
@@ -533,7 +533,6 @@ void shopping_kill(char* arg, struct char_data* ch,
 // int	shop_keeper(struct char_data *ch, int cmd, char *arg)
 SPECIAL(shop_keeper)
 {
-    struct char_data* temp_char;
     struct char_data* keeper;
     int shop_nr;
     waiting_type tmpwtl;
@@ -544,7 +543,6 @@ SPECIAL(shop_keeper)
     if (IS_MOB(temp_char))
     if (mob_index[temp_char->nr].func == shop_keeper)
     */
-    keeper = temp_char;
     keeper = host;
     for (shop_nr = 0; shop_index[shop_nr].keeper != keeper->nr; shop_nr++)
         ;
@@ -563,7 +561,7 @@ SPECIAL(shop_keeper)
         tmpwtl.targ2.ptr.text = get_from_txt_block_pool("Don't even think about it.");
         tmpwtl.targ2.type = TARGET_TEXT;
         tmpwtl.cmd = CMD_TELL;
-        do_tell(host, "", &tmpwtl, CMD_TELL, 0);
+        do_tell(host, mutable_arg(""), &tmpwtl, CMD_TELL, 0);
         tmpwtl.targ1.cleanup();
         tmpwtl.targ2.cleanup();
 
@@ -629,7 +627,7 @@ void boot_the_shops(FILE* shop_f, char* filename)
     char* tmpbuf;
     int temp, count, nr;
 
-    sprintf(buf2, "beginning of shop file %s", filename);
+    strcpy(buf2, std::format("beginning of shop file {}", filename).c_str());
 
     for (;;) {
         buf = fread_string(shop_f, buf2);
@@ -645,7 +643,7 @@ void boot_the_shops(FILE* shop_f, char* filename)
             }
 
             sscanf(tmpbuf, "#%d", &nr);
-            sprintf(buf2, "shop #%d in shop file %s", nr, filename);
+            strcpy(buf2, std::format("shop #{} in shop file {}", nr, filename).c_str());
 
             for (count = 0; count < MAX_PROD; count++) {
                 fscanf(shop_f, "%d", &temp);

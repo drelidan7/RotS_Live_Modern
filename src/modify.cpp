@@ -10,6 +10,7 @@
 
 #include "platdef.h"
 #include <ctype.h>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,14 +48,6 @@ unsigned int length[] = {
     256,
     240,
     60
-};
-
-char* skill_fields[] = {
-    "learned",
-    "affected",
-    "duration",
-    "recognize",
-    "\n"
 };
 
 int max_value[] = {
@@ -332,6 +325,8 @@ void string_add(struct descriptor_data* d, char* str)
             *(scan + 1) = 0;
             if (!IS_SET(PRF_FLAGS(d->character), PRF_SPAM))
                 break;
+            [[fallthrough]]; // intentional: with PRF_SPAM set, 'l' (list) falls through
+                              // into 'r' (redisplay) to show the trimmed text.
         case 'r':
             if ((int)d->len_str == 0) {
                 send_to_char("Display what?\n\r", d->character);
@@ -360,9 +355,8 @@ void string_add(struct descriptor_data* d, char* str)
             else {
                 *tmpstr2 = 0;
                 tmp = replace_pattern(d, tmpstr, tmpstr2 + 1);
-                sprintf(buf, "Replaced %d occurence%s.\n\rYour text is:\n\r", tmp,
-                    !tmp ? "" : "s");
-                send_to_char(buf, d->character);
+                send_to_char(std::format("Replaced {} occurence{}.\n\rYour text is:\n\r", tmp,
+                    !tmp ? "" : "s").c_str(), d->character);
                 send_to_char(*d->str, d->character);
                 tmpmark = d->cur_str;
             }
@@ -692,8 +686,8 @@ ACMD(do_string)
 
 char* one_word(char* argument, char* first_arg)
 {
-    int found, begin, look_at;
-    found = begin = 0;
+    int begin, look_at;
+    begin = 0;
 
     do {
         for (; isspace(*(argument + begin)); begin++)
@@ -791,7 +785,7 @@ void page_string(struct descriptor_data* d, char* str, int keep_internal)
     } else
         d->showstr_point = str;
 
-    show_string(d, "");
+    show_string(d, mutable_arg(""));
 }
 
 void show_string(struct descriptor_data* d, char* input)

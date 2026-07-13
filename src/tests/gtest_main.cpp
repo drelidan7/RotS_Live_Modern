@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 
+#include "../big_brother.h"
 #include "../rots_net.h"
+#include "../skill_timer.h"
+#include "../utils.h"
 
 #if defined(_WIN32)
 #include <crtdbg.h>
@@ -46,6 +49,22 @@ int main(int argc, char* argv[]) {
     // WSANOTINITIALISED and rots_net::is_valid_socket() reports the returned
     // INVALID_SOCKET. No-op on POSIX (rots_net::startup() is empty there).
     rots_net::startup();
+    // Construct the process-wide skill_timer/big_brother singletons before any
+    // test runs (Phase 5 T6, ASan/UBSan sweep). Production reaches these via
+    // boot-time skill_timer::create()/big_brother::create() calls (db.cpp) that
+    // this test harness's main() never runs; a test that transitively calls
+    // fight.cpp's damage() or act_info.cpp's do_affections/do_info without them
+    // hits world_singleton<T>::instance() returning `*m_pInstance` while
+    // m_pInstance is still null -- a reference-binding-to-null-pointer UB that
+    // UBSan flags (previously papered over per-suite by the act_info_format_tests.cpp
+    // ensure_skill_timer_created() helper; doing it once here for the whole
+    // process closes the gap for every OTHER suite, e.g. mage_tests.cpp's
+    // MageProcTest, that also reaches damage() without realizing it needs this).
+    // Each create()'s storage is a function-local static, so this is a one-time,
+    // idempotent, harness-only bootstrap -- it does not model boot's real
+    // weather_info/world wiring and has no effect on shipped game behavior.
+    game_timer::skill_timer::create(weather_info, nullptr);
+    game_rules::big_brother::create(weather_info, nullptr);
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

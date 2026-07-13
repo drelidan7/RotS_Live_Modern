@@ -397,7 +397,7 @@ void implement_room(struct char_data* ch)
         ->editflag                                                               \
         = 0;
 
-char* exit_convert(int i)
+const char* exit_convert(int i)
 {
     switch (i) {
     case UP:
@@ -422,14 +422,13 @@ void shape_center_room(struct char_data* ch, char* arg)
 {
 
     char str[1000];
-    int tmp, choice, tmp1, tmp2, tmp3;
+    int tmp, tmp1, tmp2, tmp3;
     struct room_data* mob;
     struct extra_descr_data* tmpdescr;
     struct affected_type* tmpaf;
 
     // char key;
     // char * tmppt;
-    choice = 0;
     tmp = SHAPE_ROOM(ch)->procedure;
     mob = SHAPE_ROOM(ch)->room;
     //  SHAPE_ROOM(ch)->procedure=SHAPE_EDIT;
@@ -1346,13 +1345,12 @@ int create_room(struct char_data* ch, char* arg)
 }
 /*****************----------------------------------******************/
 // #define min(a,b) (((a)<(b))? (a):(b))
-int replace_room(struct char_data* ch, char* arg)
+int replace_room(struct char_data* ch, char*)
 {
     /* copy f1 to f2, replacing mob #num with new mob */
-    char str[255];
     char *f_from, *f_old;
     char c;
-    int i, check, num, oldnum;
+    int i, check, num, oldnum = 0;
     FILE* f1;
     FILE* f2;
     /*  if(3!=sscanf(arg,"%s %s %s",str,f_from,f_old)){
@@ -1467,7 +1465,7 @@ int append_room(struct char_data* ch, char* arg)
     char* f_from;
     char* f_old;
     char c;
-    int i, i1, check;
+    int i = 0, i1, check;
     FILE* f1;
     FILE* f2;
     /*  if(3!=sscanf(arg,"%s %s %s",str,f_from,f_old)){
@@ -1475,7 +1473,7 @@ int append_room(struct char_data* ch, char* arg)
     return -1;
   }*/
     if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_FILENAME)) {
-        if (2 != sscanf("%s %s", str, fname)) {
+        if (2 != sscanf(arg, "%s %s", str, fname)) {
             if (!IS_SET(SHAPE_ROOM(ch)->flags, SHAPE_FILENAME)) {
                 send_to_char("No file defined to write into. Use 'add <filename>\n\r'",
                     ch);
@@ -1621,10 +1619,9 @@ void extra_coms_room(struct char_data* ch, char* argument)
 
     /*  extern struct room_data *character_list;*/
     //  extern struct room_data world;
-    int comm_key, room_number;
+    int comm_key;
     char str[1000];
 
-    room_number = ch->in_room;
     /*  printf("shape center: flags=%d\n\r",SHAPE_ROOM(ch)->flags);
      */
     if (SHAPE_ROOM(ch)->procedure == SHAPE_EDIT) {
@@ -1755,7 +1752,7 @@ void extra_coms_room(struct char_data* ch, char* argument)
             implement_room(ch);
         } else
             send_to_char("You have nothing to save.\n\r", ch);
-        extra_coms_room(ch, "free");
+        extra_coms_room(ch, mutable_arg("free"));
         break;
     }
     return;

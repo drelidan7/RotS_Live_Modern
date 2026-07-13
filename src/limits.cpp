@@ -21,6 +21,7 @@
 #include "utils.h"
 #include <assert.h>
 #include <ctype.h>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,7 +31,7 @@
 #include <algorithm>
 #include <cmath>
 
-extern char* pc_race_types[];
+extern const char* const pc_race_types[];
 
 #define READ_TITLE(ch) pc_race_types[GET_RACE(ch)]
 
@@ -40,7 +41,7 @@ extern struct room_data world;
 extern int top_of_world;
 extern struct time_info_data time_info;
 extern struct skill_data skills[];
-extern char* spell_wear_off_msg[];
+extern const char* const spell_wear_off_msg[];
 extern struct char_data* fast_update_list;
 extern int circle_shutdown;
 extern struct char_data* death_waiting_list;
@@ -370,7 +371,7 @@ void set_title(char_data* character)
         RELEASE(GET_TITLE(character));
     CREATE(GET_TITLE(character), char, strlen(READ_TITLE(character)) + 5);
 
-    sprintf(GET_TITLE(character), "the %s", READ_TITLE(character));
+    strcpy(GET_TITLE(character), std::format("the {}", READ_TITLE(character)).c_str());
     *(GET_TITLE(character) + 4) = toupper(*(GET_TITLE(character) + 4));
 }
 
@@ -384,14 +385,13 @@ void set_title(char_data* character)
 #if defined PREDEF_PLATFORM_LINUX
 void check_autowiz(struct char_data* ch)
 {
-    char buf[100];
     extern int min_wizlist_lev;
 
     if (GET_LEVEL(ch) >= LEVEL_IMMORT) {
-        sprintf(buf, "nice ../bin/autowiz %d %s %d %s %d &", min_wizlist_lev, WIZLIST_FILE,
-            LEVEL_IMMORT, IMMLIST_FILE, getpid());
+        std::string autowiz_cmd = std::format("nice ../bin/autowiz {} {} {} {} {} &",
+            min_wizlist_lev, WIZLIST_FILE, LEVEL_IMMORT, IMMLIST_FILE, getpid());
         mudlog("Initiating autowiz.", NRM, LEVEL_IMMORT, FALSE);
-        system(buf);
+        system(autowiz_cmd.c_str());
     }
 }
 #endif
@@ -581,7 +581,7 @@ int check_idling(char_data* character)
             character->specials.was_in_room = NOWHERE;
         }
         Crash_idlesave(character);
-        sprintf(buf, "%s force-rented and extracted (idle).", GET_NAME(character));
+        strcpy(buf, std::format("{} force-rented and extracted (idle).", GET_NAME(character)).c_str());
         mudlog(buf, NRM, LEVEL_GOD, TRUE);
 
         for (int j = 0; j < MAX_WEAR; j++) {
@@ -684,11 +684,12 @@ void point_update(void)
             update_pos(i); // Added by Fingolfin 30th December 2001
 
         if (GET_POS(i) >= POSITION_STUNNED) {
-            if (GET_AMBUSHED(i))
+            if (GET_AMBUSHED(i)) {
                 if (IS_NPC(i))
                     GET_AMBUSHED(i) -= GET_AMBUSHED(i) / (GET_LEVELA(i) + 5) + 1;
                 else
                     GET_AMBUSHED(i) -= GET_AMBUSHED(i) / 10 + 1;
+            }
 
             recalc_flag = 0;
 
@@ -840,8 +841,7 @@ void point_update(void)
                     act("$n's $o went out.", TRUE, j->carried_by, j, 0, TO_ROOM);
                     recount_light_room(j->carried_by->in_room);
                 } else if (j->in_room != NOWHERE) {
-                    sprintf(buf, "%s here went out.\n\r", j->short_description);
-                    send_to_room(buf, j->in_room);
+                    send_to_room(std::format("{} here went out.\n\r", j->short_description).c_str(), j->in_room);
                     recount_light_room(j->in_room);
                 }
                 extract_obj(j);
@@ -853,8 +853,7 @@ void point_update(void)
                     act("$n's $o flickers weakly.", TRUE, j->carried_by, j, 0, TO_ROOM);
                     //	  recount_light_room(j->carried_by->in_room);
                 } else if (j->in_room != NOWHERE) {
-                    sprintf(buf, "%s here flickers weakly.\n\r", j->short_description);
-                    send_to_room(buf, j->in_room);
+                    send_to_room(std::format("{} here flickers weakly.\n\r", j->short_description).c_str(), j->in_room);
                     //	  recount_light_room(j->in_room);
                 }
             }
@@ -1215,7 +1214,7 @@ void assign_pk_bonuses(struct char_data* ch, int coeff, int tier, bool mode)
     }
 }
 
-void remove_fame_war_bonuses(struct char_data* ch, struct affected_type* pkaff)
+void remove_fame_war_bonuses(struct char_data* ch, struct affected_type*)
 {
     int coeff = utils::get_highest_coeffs(*ch);
     affected_type* aff = affected_by_spell(ch, SPELL_FAME_WAR);
@@ -1331,7 +1330,7 @@ void affect_update_person(struct char_data* i, int mode)
     // mode != 0 for fast_update
 
     static struct affected_type *af, *next_af_dude;
-    int tmp, freq, val, time_phase;
+    int time_phase;
 
     if (i->desc && i->desc->connected && (i->desc->connected != CON_LINKLS))
         return; // PC is not in 'playing' mode
@@ -1362,7 +1361,7 @@ void affect_update_person(struct char_data* i, int mode)
                     // handled by hit_gain and move_gain now.
                     break;
                 case SPELL_FEAR:
-                    do_flee(i, "", 0, 0, 0);
+                    do_flee(i, mutable_arg(""), 0, 0, 0);
                     if (saves_spell(i, af->modifier -= 2, 0))
                         af->duration = 0;
                     break;
@@ -1375,6 +1374,8 @@ void affect_update_person(struct char_data* i, int mode)
                 case SPELL_ACTIVITY:
                     if (IS_NPC(i))
                         one_mobile_activity(i);
+                    [[fallthrough]]; // intentional: SPELL_ACTIVITY also gets SPELL_CONFUSE's
+                                      // concentration-duration handling below.
                 case SPELL_CONFUSE:
                     if (IS_AFFECTED(i, AFF_CONCENTRATION) && (af->duration >= 10))
                         af->duration -= 3;
@@ -1421,12 +1422,13 @@ void affect_update_person(struct char_data* i, int mode)
                 if (GET_POS(i) == POSITION_STUNNED)
                     update_pos(i);
             } else {
-                if (af->type > 0 && af->type < MAX_SKILLS)
+                if (af->type > 0 && af->type < MAX_SKILLS) {
                     /* It must be a spell */
                     if (!af->next || af->next->type != af->type || af->next->duration > 0)
                         affect_remove_notify(i, af);
                     else
                         affect_remove(i, af);
+                }
 
                 if (af->type == SPELL_ANGER)
                     i->specials.attacked_level = 0;
@@ -1443,7 +1445,7 @@ void affect_update_room(struct room_data* room)
     struct affected_type newaf;
     struct char_data *tmpch, *next_tmpch;
     int time_phase, tmp, direction, mod, roomnum, movechance;
-    extern char* dirs[];
+    extern const char* const dirs[];
 
     time_phase = get_current_time_phase();
 
@@ -1465,13 +1467,13 @@ void affect_update_room(struct room_data* room)
 
                         /* 1 in 13 chance that a room spell won't do anything */
                         if (!(tmp = number(0, 12)) || (skills[tmpaf->location].is_fast && !number(0, 2))) {
-                            (skills[tmpaf->location].spell_pointer)(tmpch, "", SPELL_TYPE_SPELL,
+                            (skills[tmpaf->location].spell_pointer)(tmpch, mutable_arg(""), SPELL_TYPE_SPELL,
                                 tmpch, 0, 0, 0);
                         }
                     }
                 } else {
-                    sprintf(buf2, "Attempt to cast spell %d in room %d", tmpaf->location,
-                        room->number);
+                    strcpy(buf2, std::format("Attempt to cast spell {} in room {}", tmpaf->location,
+                        room->number).c_str());
                     mudlog(buf2, NRM, LEVEL_GOD, FALSE);
                 }
             }
@@ -1481,13 +1483,13 @@ void affect_update_room(struct room_data* room)
             tmpaf->duration--;
         if (tmpaf->location == SPELL_MIST_OF_BAAZUNGA && tmpaf->duration > 0 && time_phase == tmpaf->time_phase) {
             /* 70% chance of mist thinking about moving */
-            sprintf(buf, "check mist movement");
+            strcpy(buf, std::format("check mist movement").c_str());
             mudlog(buf, NRM, LEVEL_GOD, FALSE);
             if (movechance < 75) {
                 direction = number(0, NUM_OF_DIRS - 1);
                 /* Decide if the random direction is legal, if so, move the mist */
                 if (!(room->dir_option[direction])) {
-                    sprintf(buf, "no option for movement");
+                    strcpy(buf, std::format("no option for movement").c_str());
                     mudlog(buf, NRM, LEVEL_GOD, FALSE);
                 } else if (room->dir_option[direction]->to_room != NOWHERE) {
                     roomnum = room->dir_option[direction]->to_room;
@@ -1496,7 +1498,7 @@ void affect_update_room(struct room_data* room)
                             REMOVE_BIT(room->room_flags, SHADOWY);
                         if ((checkaf = room_affected_by_spell(&world[roomnum], SPELL_MIST_OF_BAAZUNGA))) {
                             mod = checkaf->modifier;
-                            sprintf(buf, "WARNING LOMAN: Mist already in move to room");
+                            strcpy(buf, std::format("WARNING LOMAN: Mist already in move to room").c_str());
                             mudlog(buf, NRM, LEVEL_GOD, FALSE);
                         } else if (IS_SET(world[roomnum].room_flags, SHADOWY))
                             mod = 1;
@@ -1509,8 +1511,7 @@ void affect_update_room(struct room_data* room)
                         newaf.location = SPELL_MIST_OF_BAAZUNGA;
                         newaf.bitvector = 0;
 
-                        sprintf(buf, "The mists drift %s.\n\r", dirs[direction]);
-                        send_to_room(buf, room->number);
+                        send_to_room(std::format("The mists drift {}.\n\r", dirs[direction]).c_str(), room->number);
 
                         affect_to_room(&world[roomnum], &newaf);
                         affect_remove_room(room, tmpaf);
@@ -1534,11 +1535,9 @@ extern universal_list* affected_list_pool;
 
 void affect_update()
 {
-    universal_list *tmplist, *tmplist2, *tmplist3;
-    ;
+    universal_list *tmplist, *tmplist2;
     char mybuf[1000];
 
-    tmplist3 = 0;
     for (tmplist = affected_list; tmplist; tmplist = tmplist2) {
         tmplist2 = tmplist->next;
 
@@ -1548,7 +1547,7 @@ void affect_update()
                 affect_update_person(tmplist->ptr.ch, 0);
             } else {
                 if (char_exists(tmplist->number))
-                    sprintf(mybuf, "Getting %s off the affected_list.", GET_NAME(tmplist->ptr.ch));
+                    strcpy(mybuf, std::format("Getting {} off the affected_list.", GET_NAME(tmplist->ptr.ch)).c_str());
                 else
                     strcpy(mybuf, "Getting Unknown char off the affected_list.");
                 mudlog(mybuf, CMP, LEVEL_GRGOD, TRUE);
@@ -1557,7 +1556,6 @@ void affect_update()
         } else if (tmplist->type == TARGET_ROOM) {
             affect_update_room(tmplist->ptr.room);
         }
-        tmplist3 = tmplist; /* prev item */
     }
 }
 

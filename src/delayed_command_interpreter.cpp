@@ -6,6 +6,7 @@
 #include "db.h" // for complete-delay functionality
 #include "interpre.h" // for complete-delay functionality
 #include "mudlle.h" // for complete-delay functionality
+#include "utils.h" // for mutable_arg
 #include "script.h" // for complete-delay functionality
 
 #include <algorithm>
@@ -42,16 +43,16 @@ void delayed_command_interpreter::run()
         // Here calls special procedure
         func_pointer = mob_index[index].func;
         if (func_pointer != NULL) {
-            func_pointer(m_character, victim, -1, "", SPECIAL_NONE, delay);
+            func_pointer(m_character, victim, -1, mutable_arg(""), SPECIAL_NONE, delay);
         } else if (m_character->specials.store_prog_number) {
             int function_number = m_character->specials.store_prog_number;
             func_pointer = get_special_function(function_number);
-            func_pointer(m_character, victim, m_character->delay.cmd, "", SPECIAL_DELAY, delay);
+            func_pointer(m_character, victim, m_character->delay.cmd, mutable_arg(""), SPECIAL_DELAY, delay);
         } else if (m_character->specials.union1.prog_number) {
-            intelligent(m_character, victim, -1, "", SPECIAL_DELAY, delay);
+            intelligent(m_character, victim, -1, mutable_arg(""), SPECIAL_DELAY, delay);
         }
     } else if (m_character->delay.cmd > 0) {
-        command_interpreter(m_character, "", delay);
+        command_interpreter(m_character, mutable_arg(""), delay);
     }
 }
 }

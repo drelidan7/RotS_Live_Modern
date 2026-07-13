@@ -9,6 +9,7 @@
  **************************************************************************/
 
 #include "platdef.h"
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,8 +32,8 @@ extern struct char_data* character_list;
 extern struct char_data* waiting_list;
 extern struct skill_data skills[];
 extern struct room_data world;
-extern char* spell_wear_off_msg[];
-extern char* dirs[];
+extern const char* const spell_wear_off_msg[];
+extern const char* const dirs[];
 
 char* target_from_word(struct char_data*, char*, int, struct target_data*);
 int check_hallucinate(struct char_data*, struct char_data*);
@@ -83,9 +84,9 @@ void say_spell(char_data* caster, int spell_index)
     // Reset the buffer.
     strcpy(buf, "");
     if (GET_RACE(caster) != RACE_HARADRIM) {
-        sprintf(buf, "$n utters a strange command, '%s'", spell_name);
+        strcpy(buf, std::format("$n utters a strange command, '{}'", spell_name).c_str());
     } else {
-        sprintf(buf, "$n utters a foreign command, '%s'", spell_name);
+        strcpy(buf, std::format("$n utters a foreign command, '{}'", spell_name).c_str());
     }
 
     send_magic_room_message(caster, buf);
@@ -291,7 +292,7 @@ void check_break_prep(struct char_data* ch)
     } else if (ch->delay.cmd == CMD_TRAP) {
         act("Your carefully planned trap has been ruined.", FALSE, ch, 0, 0, TO_CHAR);
         act("$n's carefully constructed trap is ruined!", FALSE, ch, 0, ch, TO_NOTVICT);
-        do_trap(ch, "", NULL, CMD_TRAP, -1);
+        do_trap(ch, mutable_arg(""), NULL, CMD_TRAP, -1);
     }
 }
 
@@ -370,11 +371,12 @@ char saves_leadership(struct char_data* victim)
 {
     int save;
 
-    if (!(save = saves_mystic(victim)))
+    if (!(save = saves_mystic(victim))) {
         if (victim->master)
             save = (number(1, 115) <= GET_SKILL(victim->master, SKILL_LEADERSHIP));
         else if (IS_RIDDEN(victim))
             save = (number(1, 100) <= GET_SKILL(victim->mount_data.rider, SKILL_RIDE));
+    }
 
     return save;
 }
@@ -493,7 +495,19 @@ bool can_cast_spell(char_data& character, int spell_index, const skill_data& spe
         return false;
     }
 
+    // USE_MANA expands GET_PROF_LEVEL's IS_NPC(ch) null-guard against &character, which GCC
+    // proves can never be null (address-of-reference) -- provably safe tautology, not a bug
+    // (Phase 5 T5 -Wnonnull-compare; the sibling call sites in this function were fixed by
+    // switching to the reference-taking utils:: helpers, but USE_MANA is a tree-wide macro
+    // used elsewhere with genuinely-nullable char_data* and isn't safe to change here).
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnonnull-compare"
+#endif
     if (spell.type == PROF_MAGE && (character.tmpabilities.mana < USE_MANA(&character, spell_index))) {
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
         send_to_char("You can't summon enough energy to cast the spell.\n\r", &character);
         return false;
     }
@@ -512,7 +526,7 @@ bool can_cast_spell(char_data& character, int spell_index, const skill_data& spe
         return false;
     }
 
-    if (IS_SHADOW(&character) && spell.min_usesmana != 55) {
+    if (utils::is_shadow(character) && spell.min_usesmana != 55) {
         send_to_char("You cannot cast this whilst dwelling in the shadow world.\n\r", &character);
         return false;
     }
@@ -520,23 +534,6 @@ bool can_cast_spell(char_data& character, int spell_index, const skill_data& spe
     return true;
 }
 
-//============================================================================
-// Returns the effective casting level for this caster and spell.
-//============================================================================
-double get_casting_level(const char_data* caster, int casting_level, int casting_stat,
-    int spec_number)
-{
-    double final_level(casting_level);
-
-    /* a bonus for anyone who is specialized in this spell's spec */
-    if (utils::get_specialization(*caster) == spec_number) {
-        final_level += (40.0 - final_level) * utils::get_level_legend_cap(*caster) / 150.0;
-    }
-
-    /* we give one level bonus for each 5 int */
-    final_level += casting_stat / 5.0;
-    return final_level;
-}
 } // namespace
 
 /* Assumes that *argument does start with first letter of chopped string */

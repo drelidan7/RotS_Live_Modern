@@ -42,11 +42,11 @@ extern struct skill_data skills[];
 extern struct room_data world;
 extern byte language_skills[];
 extern byte language_number;
-extern char* prof_abbrevs[];
-extern char* race_abbrevs[];
+extern const char* const prof_abbrevs[];
+extern const char* const race_abbrevs[];
 extern int top_of_world;
 extern int rev_dir[];
-extern char* dirs[];
+extern const char* const dirs[];
 
 /* extern procedures */
 extern int old_search_block(char*, int, unsigned int, const char**, int);
@@ -805,8 +805,8 @@ ACMD(do_use)
 
         if (stick->obj_flags.value[2] > 0) { /* Is there any charges left? */
             stick->obj_flags.value[2]--;
-            if (*skills[stick->obj_flags.value[3]].spell_pointer)
-                ((*skills[stick->obj_flags.value[3]].spell_pointer)(ch, "", SPELL_TYPE_STAFF, 0, 0,
+            if (skills[stick->obj_flags.value[3]].spell_pointer)
+                ((*skills[stick->obj_flags.value[3]].spell_pointer)(ch, mutable_arg(""), SPELL_TYPE_STAFF, 0, 0,
                     0, 0));
 
         } else
@@ -825,9 +825,9 @@ ACMD(do_use)
 
             if (stick->obj_flags.value[2] > 0) { /* Is there any charges left? */
                 stick->obj_flags.value[2]--;
-                if (*skills[stick->obj_flags.value[3]].spell_pointer)
+                if (skills[stick->obj_flags.value[3]].spell_pointer)
                     ((*skills[stick->obj_flags.value[3]].spell_pointer)(
-                        ch, "", SPELL_TYPE_WAND, tmp_char, tmp_object, 0, 0));
+                        ch, mutable_arg(""), SPELL_TYPE_WAND, tmp_char, tmp_object, 0, 0));
             } else
                 send_to_char("The wand seems powerless.\n\r", ch);
         } else
@@ -872,7 +872,7 @@ ACMD(do_wimpy)
         send_to_char("At how many hit points do you wish to flee?\n\r", ch);
 }
 
-char* logtypes[] = { "off", "brief", "normal", "spell", "complete", "\n" };
+const char* const logtypes[] = { "off", "brief", "normal", "spell", "complete", "\n" };
 
 ACMD(do_syslog)
 {
@@ -890,7 +890,7 @@ ACMD(do_syslog)
         return;
     }
 
-    if (((tp = search_block(arg, logtypes, FALSE)) == -1)) {
+    if ((tp = search_block(arg, logtypes, FALSE)) == -1) {
         send_to_char("Usage: syslog { Off | Brief | Normal | Spell | Complete }\n\r", ch);
         return;
     }
@@ -908,7 +908,7 @@ ACMD(do_syslog)
 
 #define PRF_TOG_CHK(ch, flag) ((TOGGLE_BIT(PRF_FLAGS(ch), (flag))) & (flag))
 
-int flag_on(struct char_data* ch, int flag, char** message, int which)
+int flag_on(struct char_data* ch, int flag, const char* const* message, int which)
 {
     if (!which)
         SET_BIT(PRF_FLAGS(ch), (flag));
@@ -919,7 +919,7 @@ int flag_on(struct char_data* ch, int flag, char** message, int which)
     return 1;
 }
 
-int flag_off(struct char_data* ch, int flag, char** message, int which)
+int flag_off(struct char_data* ch, int flag, const char* const* message, int which)
 {
     if (!which)
         REMOVE_BIT(PRF_FLAGS(ch), (flag));
@@ -929,7 +929,7 @@ int flag_off(struct char_data* ch, int flag, char** message, int which)
     return 0;
 }
 
-int flag_toggle(struct char_data* ch, int flag, char** message, int which)
+int flag_toggle(struct char_data* ch, int flag, const char* const* message, int which)
 {
     int i;
     if (!which) {
@@ -946,7 +946,7 @@ int flag_toggle(struct char_data* ch, int flag, char** message, int which)
     return i;
 }
 
-int flag_void(struct char_data* ch, int flag, char** message, int which)
+int flag_void(struct char_data* ch, int flag, const char* const* message, int which)
 {
     int i;
     if (!which)
@@ -962,8 +962,8 @@ int flag_void(struct char_data* ch, int flag, char** message, int which)
     return i;
 }
 
-int (*flag_modify)(struct char_data*, int, char**, int);
-char* tog_messages[][4] = {
+int (*flag_modify)(struct char_data*, int, const char* const*, int);
+const char* const tog_messages[][4] = {
     { "You are now safe from summoning by other players.\n\r",
         "You may now be summoned by other players.\n\r",
         "You are safe from summoning by other players.\n\r",
@@ -1172,16 +1172,16 @@ ACMD(do_gen_tog)
     }
 }
 
-extern char* casting[];
+extern const char* const casting[];
 ACMD(do_casting)
 {
     if (GET_SPEC(ch) != PLRSPEC_ARCANE) {
         send_to_char("Only players specialized in arcane may set their casting speed.\n\r", ch);
         return;
     }
-    char* s1 = "You are presently using";
-    char* s2 = "You are now using";
-    char* s;
+    const char* s1 = "You are presently using";
+    const char* s2 = "You are now using";
+    const char* s;
     int tmp, len;
     if (!*argument) {
         s = s1;
@@ -1239,17 +1239,17 @@ ACMD(do_casting)
     send_to_char(buf, ch);
 }
 
-extern char* shooting[];
+extern const char* const shooting[];
 ACMD(do_shooting)
 {
     if (GET_SPEC(ch) != PLRSPEC_ARCH) {
         send_to_char("Only players specialized in archery may set their speed.\n\r", ch);
         return;
     }
-    char* s1 = "You are presently using";
-    char* s2 = "You are now using";
+    const char* s1 = "You are presently using";
+    const char* s2 = "You are now using";
 
-    char* s;
+    const char* s;
     int tmp, len;
     if (!*argument)
         s = s1;
@@ -1315,7 +1315,7 @@ bool has_argument(const char* argument) { return *argument != 0; }
 
 int get_sort_index(const char* argument)
 {
-    for (int index = 0; index < inv_sorting.size(); ++index) {
+    for (int index = 0; index < static_cast<int>(inv_sorting.size()); ++index) {
         if (inv_sorting[index].find(argument) != std::string::npos) {
             return index;
         }
@@ -1359,7 +1359,7 @@ void report_inventory_sorting_to(char_data* character, const char* intro_string)
     bool high_bit_set = PRF_FLAGGED(character, PRF_INV_SORT2) != 0;
     bool low_bit_set = PRF_FLAGGED(character, PRF_INV_SORT1) != 0;
 
-    int sort_value = high_bit_set << 1 | low_bit_set;
+    int sort_value = (static_cast<int>(high_bit_set) << 1) | static_cast<int>(low_bit_set);
 
     const char* sort_name = inv_sorting[sort_value].data();
 
@@ -1387,12 +1387,12 @@ ACMD(do_inventory_sort)
     }
 }
 
-extern char* tactics[];
+extern const char* const tactics[];
 ACMD(do_tactics)
 {
-    char* s1 = "You are presently employing";
-    char* s2 = "You are now employing";
-    char* s;
+    const char* s1 = "You are presently employing";
+    const char* s2 = "You are now employing";
+    const char* s;
     int tmp, len;
 
     if (utils::is_affected_by_spell(*ch, SKILL_FRENZY) && utils::get_race(*ch) == RACE_OLOGHAI) {
@@ -1539,7 +1539,7 @@ ACMD(do_language)
 
 #define SORTING_COMMAND_INDEX 30
 
-char* change_comm[] = {
+const char* const change_comm[] = {
     "prompt", /* 0 */
     "tactics", "nosummon", "echo", "brief", "spam", /* 5 */
     "compact", "notell", "narrate", "chat", "title", /* 10 */
@@ -1560,7 +1560,7 @@ ACMD(do_set)
     char arg[250];
 
     // What the fuck is tmp and tmp2?!?!?!?!?
-    int change_index, tmp2, len;
+    int change_index, len;
 
     if (IS_NPC(ch)) {
         send_to_char("Sorry, NPCs can't do that.\n\r", ch);
@@ -1572,7 +1572,7 @@ ACMD(do_set)
     len = strlen(command);
 
     if (!*command) {
-        do_toggle(ch, "", wtl, 0, 0);
+        do_toggle(ch, mutable_arg(""), wtl, 0, 0);
         return;
     }
 
@@ -1921,7 +1921,7 @@ ACMD(do_block)
 
 ACMD(do_specialize)
 {
-    extern const char* specialize_name[];
+    extern const char* const specialize_name[];
 
     if (GET_LEVEL(ch) < 12) {
         send_to_char("You are too young to specialize.\n\r", ch);
@@ -2055,7 +2055,7 @@ ACMD(do_fish)
 }
 
 struct {
-    char* field;
+    const char* field;
     int subcmd;
 } apply_options[] = { { "poison", SCMD_APPLY_POISON }, { "antidote", SCMD_APPLY_ANTIDOTE } };
 
@@ -2072,9 +2072,7 @@ const int num_of_apply = 2;
 ==================================================================================*/
 ACMD(do_apply)
 {
-    struct char_data* vict;
-    struct obj_data* tmp_object;
-    int percent, bits, tmp;
+    int tmp;
 
     if (IS_NPC(ch)) {
         send_to_char("You're just a dumb NPC.\n\r", ch);
@@ -2092,7 +2090,7 @@ ACMD(do_apply)
                 break;
         }
 
-        if ((tmp == num_of_apply)) {
+        if (tmp == num_of_apply) {
             std::string apply_fields = "The format is 'apply <type> <object>', \n\rPossible fields are:\n\r";
             for (tmp = 0; tmp < num_of_apply; tmp++) {
                 apply_fields += apply_options[tmp].field;

@@ -1,6 +1,7 @@
 #include "../protos.h"
 #include "../structs.h"
 #include "../utils.h"
+#include "test_char_cleanup.h"
 #include <gtest/gtest.h>
 
 #include <new>
@@ -53,6 +54,9 @@ TEST(ShapeMob, ImplementProtoCopiesMobProtoWithoutCorruptingItsDamageMap)
     // std::map, standing in for the real per-boot prototype table.
     struct char_data fake_mob_proto[1];
     clear_char(&fake_mob_proto[0], MOB_ISNPC);
+    // Releases fake_mob_proto[0].profs (clear_char()'s only heap allocation
+    // for MOB_ISNPC) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields fake_mob_proto_cleanup { fake_mob_proto[0] };
     mob_proto = fake_mob_proto;
 
     // real_program() is reached (new_mob() below never sets MOB_SPEC), but its
@@ -71,6 +75,9 @@ TEST(ShapeMob, ImplementProtoCopiesMobProtoWithoutCorruptingItsDamageMap)
     // The shape-editor character driving `shape mobile` / `implement`.
     struct char_data editor;
     clear_char(&editor, MOB_VOID);
+    // Releases editor.profs/skills/knowledge (clear_char() heap allocations)
+    // at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields editor_cleanup { editor };
 
     struct shape_proto sp {
     };

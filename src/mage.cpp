@@ -19,6 +19,7 @@
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 #include "zone.h" /* For zone_table */
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -129,10 +130,10 @@ extern struct char_data* character_list;
 extern void prohibit_item_stay_zone_move(char_data* ch, int was_in);
 extern int rev_dir[];
 extern int top_of_world;
-extern char* dirs[];
-extern char* refer_dirs[];
-extern char* room_bits[];
-extern char* sector_types[];
+extern const char* const dirs[];
+extern const char* const refer_dirs[];
+extern const char* const room_bits[];
+extern const char* const sector_types[];
 
 /*
  * external functions
@@ -447,7 +448,6 @@ ASPELL(spell_locate_living)
     struct char_data* mobs;
     int isscanned[255];
     int tmp, tmp2, roomnum, num, notscanned, bigcount, roomrange, mobrange;
-    char buf[255];
     loclife_coord roomlist[255];
     loclife_coord new_room;
 
@@ -479,17 +479,20 @@ ASPELL(spell_locate_living)
         bigcount++;
     }
 
-    int caster_level = get_mage_caster_level(caster);
+    // Result intentionally unused here -- call kept for its number()-driven RNG draw
+    // (Phase 5 T5 RNG discipline: never remove/reorder a live number() call).
+    [[maybe_unused]] int caster_level = get_mage_caster_level(caster);
     bigcount = 0;
     for (tmp = 0; (tmp < roomnum) && (bigcount < mobrange); tmp++) {
         mobs = world[roomlist[tmp].number].people;
         while (mobs && (bigcount < mobrange)) {
             if (!new_saves_spell(caster, mobs, 0)) {
-                sprintf(buf, "%s at %s to the %s.\n\r",
+                send_to_char(std::format("{} at {} to the {}.\n\r",
                     (IS_NPC(mobs) ? GET_NAME(mobs) : pc_star_types[mobs->player.race]),
                     world[roomlist[tmp].number].name,
-                    loclife_dir_convert(roomlist[tmp]));
-                send_to_char(buf, caster);
+                    loclife_dir_convert(roomlist[tmp]))
+                                 .c_str(),
+                    caster);
             }
             bigcount++;
             mobs = mobs->next_in_room;
@@ -678,7 +681,9 @@ ASPELL(spell_flash)
     if (caster->in_room < 0)
         return;
 
-    int caster_level = get_mage_caster_level(caster);
+    // Result intentionally unused here -- call kept for its number()-driven RNG draw
+    // (Phase 5 T5 RNG discipline: never remove/reorder a live number() call).
+    [[maybe_unused]] int caster_level = get_mage_caster_level(caster);
 
     for (tmpch = world[caster->in_room].people; tmpch; tmpch = tmpch->next_in_room) {
         if (tmpch != caster)
@@ -823,7 +828,7 @@ ASPELL(spell_summon)
         char_from_room(victim);
         char_to_room(victim, caster->in_room);
         act("$N summons you!", FALSE, victim, 0, caster, TO_CHAR);
-        do_look(victim, "", 0, 0, 0);
+        do_look(victim, mutable_arg(""), 0, 0, 0);
         extern void msdp_room_update(char_data * ch);
 
         msdp_room_update(victim);
@@ -841,8 +846,6 @@ ASPELL(spell_summon)
 
 ASPELL(spell_identify)
 {
-    struct affected_type af;
-
     if (!obj) {
         send_to_char("You should cast this on objects only.\n\r", caster);
         return;
@@ -957,7 +960,7 @@ ASPELL(spell_blink)
         act("$n disappeared in a flash of light.\n\r", TRUE, victim, 0, 0, TO_ROOM);
         char_from_room(victim);
         char_to_room(victim, room);
-        do_look(victim, "", 0, 15, 0);
+        do_look(victim, mutable_arg(""), 0, 15, 0);
         extern void msdp_room_update(char_data * ch);
 
         msdp_room_update(victim);
@@ -1176,7 +1179,7 @@ ASPELL(spell_relocate)
                 TRUE, caster, 0, 0, TO_CHAR);
             act("$n staggers, overcome by dizziness!", FALSE, caster, 0, 0, TO_ROOM);
         }
-        do_look(caster, "", 0, 0, 0);
+        do_look(caster, mutable_arg(""), 0, 0, 0);
     }
 }
 
@@ -1271,7 +1274,7 @@ ASPELL(spell_beacon)
             act("$n appears in bright spectral halo.", FALSE, caster, 0, 0, TO_ROOM);
 
             send_to_char("You return to your beacon!\n\r", caster);
-            do_look(caster, "", 0, 0, 0);
+            do_look(caster, mutable_arg(""), 0, 0, 0);
 
             affect_from_char(caster, SPELL_BEACON);
             return;
@@ -1553,9 +1556,10 @@ ASPELL(spell_cone_of_cold)
             send_to_char("There is nothing in that direction.\n\r", caster);
             return;
         } else {
-            sprintf(buf1, "Your cone of cold hit %s, to no real effect.\n\r",
-                EXIT(caster, digit)->keyword);
-            send_to_char(buf1, caster);
+            send_to_char(std::format("Your cone of cold hit {}, to no real effect.\n\r",
+                             EXIT(caster, digit)->keyword)
+                             .c_str(),
+                caster);
             return;
         }
     }
@@ -1565,13 +1569,12 @@ ASPELL(spell_cone_of_cold)
         return;
     }
 
-    sprintf(buf1, "You send a cone of cold to %s.\n\r", refer_dirs[digit]);
-    send_to_char(buf1, caster);
+    send_to_char(std::format("You send a cone of cold to {}.\n\r", refer_dirs[digit]).c_str(), caster);
 
-    sprintf(buf1, "A sudden wave of cold strikes you, coming from %s.\n\r",
-        refer_dirs[rev_dir[digit]]);
-    sprintf(buf2, "You feel a sudden wave of cold coming from %s.\n\r",
-        refer_dirs[rev_dir[digit]]);
+    strcpy(buf1, std::format("A sudden wave of cold strikes you, coming from {}.\n\r",
+        refer_dirs[rev_dir[digit]]).c_str());
+    strcpy(buf2, std::format("You feel a sudden wave of cold coming from {}.\n\r",
+        refer_dirs[rev_dir[digit]]).c_str());
 
     struct char_data* tmpch;
     for (tmpch = world[EXIT(caster, digit)->to_room].people;
@@ -1694,7 +1697,7 @@ ASPELL(spell_earthquake)
         for (tmpch = cur_room->people; tmpch; tmpch = tmpch_next) {
             bool saved = new_saves_spell(caster, tmpch, tmpch->tmpabilities.dex / 4);
             tmpch_next = tmpch->next_in_room;
-            if (!saved && (tmpch != caster) || (!number(0, 1))) {
+            if ((!saved && (tmpch != caster)) || (!number(0, 1))) {
                 act("$n loses balance and falls down!", TRUE, tmpch, 0, 0, TO_ROOM);
                 send_to_char("The earthquake throws you down!\n\r", tmpch);
                 stop_riding(tmpch);
@@ -2137,8 +2140,9 @@ ASPELL(spell_spear_of_darkness)
         dam += dam / 20;
     }
 
-    // Just run through new_saves_spell for logging.
-    bool saved = new_saves_spell(caster, victim, -20);
+    // Just run through new_saves_spell for logging (return value intentionally unused;
+    // new_saves_spell still draws its number() roll and writes the spllog_* globals).
+    new_saves_spell(caster, victim, -20);
     damage(caster, victim, dam, SPELL_SPEAR_OF_DARKNESS, 0);
 }
 
@@ -2168,7 +2172,6 @@ ASPELL(spell_blaze)
     int dam;
 
     int level = get_mage_caster_level(caster);
-    bool is_fire_spec = utils::get_specialization(*caster) == game_types::PS_Fire;
 
     if (!victim && !obj) { /* there was no target, hit the room */
         if (!caster)
@@ -2268,12 +2271,12 @@ ASPELL(spell_freeze)
     if (IS_SET(EXIT(caster, digit)->exit_info, EX_CLOSED)) {
         /* Did they use "east", "west", etc. to target this direction? */
         if (caster->delay.targ2.choice == TAR_DIR_WAY)
-            sprintf(buf, "A thick sheet of hardened frost forms %s%s%s.\r\n",
+            strcpy(buf, std::format("A thick sheet of hardened frost forms {}{}{}.\r\n",
                 digit != UP && digit != DOWN ? "to " : "", refer_dirs[digit],
-                digit != UP && digit != DOWN ? "" : " you");
+                digit != UP && digit != DOWN ? "" : " you").c_str());
         /* Or did they actually know the name of the door? */
         else if (caster->delay.targ2.choice == TAR_DIR_NAME)
-            sprintf(buf, "The %s is frozen shut.\r\n", EXIT(caster, digit)->keyword);
+            strcpy(buf, std::format("The {} is frozen shut.\r\n", EXIT(caster, digit)->keyword).c_str());
         send_to_room(buf, caster->in_room);
         return;
     } else
@@ -2411,7 +2414,7 @@ const char* get_expose_spell_message(int spell_id)
     }
 }
 
-void spell_expose_elements(char_data* caster, char* arg, int type, char_data* victim, obj_data* obj, int digit, int is_object)
+ASPELL(spell_expose_elements)
 {
     const int max_valid_specs = 6;
     if (!victim || !caster)

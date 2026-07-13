@@ -65,7 +65,7 @@ int get_command(char* command);
 // Local declarations
 int replace_script(struct char_data* ch, char* arg);
 int get_parameter(char* param);
-char* get_param_text(int param);
+const char* get_param_text(int param);
 
 /* Free the temporary structures associated with shaping a script.
    If the script should be implemented/saved, then this should
@@ -111,7 +111,7 @@ void free_script_list(script_data* root)
     }
 }
 
-void new_script(struct char_data* ch)
+void new_script(struct char_data*)
 {
 
     // Should CREATE1 a script and initialise all variables
@@ -318,7 +318,7 @@ int append_script(struct char_data* ch, char* arg)
         replace_script(ch, arg);
         return -1;
     }
-    if (2 != sscanf("%s %s", str, fname)) {
+    if (2 != sscanf(arg, "%s %s", str, fname)) {
         if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_FILENAME)) {
             send_to_char("No file defined to write into. Use 'add <filename>\n\r'", ch);
             return -1;
@@ -368,7 +368,10 @@ int append_script(struct char_data* ch, char* arg)
     if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_FILENAME))
         i = atoi(fname) * 100 + 1;
     else {
-        for (c = 0; (f_from[c] < '0' || f_from[c] > '9') && f_from[c]; c++)
+        // static_cast<unsigned char> makes explicit what -funsigned-char already
+        // guarantees (c is never negative); silences -Wchar-subscripts without
+        // changing behavior (Phase 5 T1).
+        for (c = 0; (f_from[static_cast<unsigned char>(c)] < '0' || f_from[static_cast<unsigned char>(c)] > '9') && f_from[static_cast<unsigned char>(c)]; c++)
             ;
         sscanf(f_from + c, "%d", &i);
         i = i * 100;
@@ -407,9 +410,8 @@ int replace_script(struct char_data* ch, char* arg)
     FILE* f1;
     FILE* f2;
     char *f_from, *f_old;
-    int num, check, i, oldnum;
+    int num, check, i = 0, oldnum = 0;
     char c;
-    char str[255];
 
     if (!IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_FILENAME)) {
         send_to_char("How strange... you have no file defined to write to.\n\r", ch);
@@ -1002,7 +1004,7 @@ void renum_commands(struct script_data* script)
     }
 }
 
-void check_script_syntax(struct char_data* ch)
+void check_script_syntax(struct char_data*)
 {
 
     // add checks for: unterminated scripts, untriggered sections, unconditional use of conditional commands
@@ -1012,9 +1014,8 @@ void extra_coms_script(struct char_data* ch, char* argument)
 {
 
     char str[255], str2[50];
-    int room_number, comm_key, zonnum;
+    int comm_key, zonnum;
 
-    room_number = ch->in_room;
 
     if (SHAPE_SCRIPT(ch)->procedure == SHAPE_EDIT) {
 
@@ -1115,7 +1116,7 @@ void extra_coms_script(struct char_data* ch, char* argument)
             ->editflag
             = 49;
         send_to_char("OK. You created a new script. Do '/save' to assign a number to your script\n\r", ch);
-        shape_center_script(ch, "");
+        shape_center_script(ch, mutable_arg(""));
         break;
 
     case SHAPE_LOAD:
@@ -1172,7 +1173,7 @@ void extra_coms_script(struct char_data* ch, char* argument)
     case SHAPE_DONE:
         replace_script(ch, argument);
         implement_script(ch);
-        extra_coms_script(ch, "free");
+        extra_coms_script(ch, mutable_arg("free"));
         break;
     }
     return;
@@ -1372,7 +1373,13 @@ void shape_center_script(struct char_data* ch, char* arg)
     int tmp, itmp[8], tmp1, tmp2, i;
     char st1[50];
     char* ptr;
-    char input[3][50];
+    // Sized for 4, not 3: the SCRIPTPARAMCHANGE macro unconditionally
+    // memset()s input[0..3] and the num==4 call sites (SCRIPT_ASSIGN_EQ,
+    // SCRIPT_ASSIGN_INV, SCRIPT_ASSIGN_ROOM) index up to input[3]. The
+    // previous char[3][50] sizing was a one-element-short stack buffer
+    // overflow on every SCRIPTPARAMCHANGE invocation (Phase 5 T1 latent-bug
+    // fix -- see task-1-report.md).
+    char input[4][50];
     script_data* tmpscript;
 
     script = SHAPE_SCRIPT(ch)->script;
@@ -2482,6 +2489,8 @@ int get_parameter(char* param)
         if (!strcmp(param, "INT3"))
             return SCRIPT_PARAM_INT3;
 
+        [[fallthrough]]; // intentional: cascading param-name checks; no match under 'I' falls
+                          // through to try the 'S'/'R'/'O'/'C' checks too.
     case 'S':
         if (!strcmp(param, "STR1"))
             return SCRIPT_PARAM_STR1;
@@ -2490,6 +2499,8 @@ int get_parameter(char* param)
         if (!strcmp(param, "STR3"))
             return SCRIPT_PARAM_STR3;
 
+        [[fallthrough]]; // intentional: cascading param-name checks; no match under 'S' falls
+                          // through to try the 'R'/'O'/'C' checks too.
     case 'R':
         if (!strcmp(param, "RM1"))
             return SCRIPT_PARAM_RM1;
@@ -2505,6 +2516,8 @@ int get_parameter(char* param)
         if (!strcmp(param, "RM3.NAME"))
             return SCRIPT_PARAM_RM3_NAME;
 
+        [[fallthrough]]; // intentional: cascading param-name checks; no match under 'R' falls
+                          // through to try the 'O'/'C' checks too.
     case 'O':
         if (!strcmp(param, "OB1"))
             return SCRIPT_PARAM_OB1;
@@ -2527,6 +2540,8 @@ int get_parameter(char* param)
         if (!strcmp(param, "OB3.VNUM"))
             return SCRIPT_PARAM_OB3_VNUM;
 
+        [[fallthrough]]; // intentional: cascading param-name checks; no match under 'O' falls
+                          // through to try the 'C' checks too.
     case 'C':
 
         if (!strcmp(param, "CH1"))
@@ -2584,12 +2599,14 @@ int get_parameter(char* param)
         if (!strcmp(param, "CH3.RANK"))
             return SCRIPT_PARAM_CH3_RANK;
 
+        [[fallthrough]]; // intentional: cascading param-name checks; no match under 'C' falls
+                          // through to the default 0-return.
     default:
         return 0;
     } // switch * param
 }
 
-char* get_param_text(int param)
+const char* get_param_text(int param)
 {
     switch (param) {
     case SCRIPT_PARAM_STR1:

@@ -5,6 +5,7 @@
 #include "../interpre.h"
 #include "../structs.h"
 #include "../utils.h"
+#include "test_char_cleanup.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
@@ -140,6 +141,9 @@ struct RoomPairContext {
 struct SelfColorContext {
     char_data character { };
     descriptor_data descriptor { };
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
 
     SelfColorContext()
     {

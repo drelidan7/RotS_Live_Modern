@@ -150,11 +150,13 @@ char unaccent(char c)
         return 'u';
 
 #undef B
-    return 255;
+    // '\xff' == 255: char is pinned unsigned everywhere (-funsigned-char, /J);
+    // spelled as a char literal because MSVC's C4309 check ignores /J.
+    return '\xff';
 }
 
 inline int
-do_squareroot(int i, struct char_data* ch)
+do_squareroot(int i, struct char_data*)
 {
     if (i / 4 > 170)
         i = 170 * 4;
@@ -663,7 +665,7 @@ int get_real_OB(char_data* ch)
     }
 
     int sun_mod = 0;
-    int tmpob, tactics, weapon_skill = 0;
+    int tmpob, tactics = 0, weapon_skill = 0;
 
     obj_data* weapon = ch->equipment[WIELD];
 
@@ -770,11 +772,12 @@ int get_real_parry(struct char_data* ch)
 {
     int sun_mod = 0;
 
-    if (IS_NPC(ch))
+    if (IS_NPC(ch)) {
         if (IS_AFFECTED(ch, AFF_CONFUSE))
             return (GET_PARRY(ch) + GET_LEVEL(ch) / 2 + 15) - (get_confuse_modifier(ch) * 2 / 3);
         else
             return (GET_PARRY(ch) + GET_LEVEL(ch) / 2 + 15);
+    }
 
     int tmpparry, tmpskill, tactics, bonus, weapon_bonus = 0;
     struct obj_data* weapon;
@@ -869,11 +872,12 @@ int get_real_dodge(struct char_data* ch)
 {
     int sun_mod = 0;
 
-    if (IS_NPC(ch))
+    if (IS_NPC(ch)) {
         if (IS_AFFECTED(ch, AFF_CONFUSE))
             return (GET_DODGE(ch) + GET_DEX(ch) - 5 + GET_LEVEL(ch) / 2) - (get_confuse_modifier(ch) * 2 / 3);
         else
             return (GET_DODGE(ch) + GET_DEX(ch) - 5 + GET_LEVEL(ch) / 2);
+    }
 
     int dodge = ((GET_SKILL(ch, SKILL_DODGE) + GET_SKILL(ch, SKILL_STEALTH) / 2 + 60) * GET_PROF_LEVEL(PROF_RANGER, ch) / 200 + (GET_SKILL(ch, SKILL_DODGE) + GET_SKILL(ch, SKILL_STEALTH) / 4) / 20);
     dodge -= utils::get_dodge_penalty(*ch);
@@ -1170,11 +1174,12 @@ int str_cmp(const char* arg1, const char* arg2)
     int chk, i;
 
     for (i = 0; *(arg1 + i) || *(arg2 + i); i++)
-        if ((chk = LOWER(*(arg1 + i)) - LOWER(*(arg2 + i))))
+        if ((chk = LOWER(*(arg1 + i)) - LOWER(*(arg2 + i)))) {
             if (chk < 0)
                 return (-1);
             else
                 return (1);
+        }
     return (0);
 }
 
@@ -1185,11 +1190,12 @@ int strn_cmp(const char* arg1, const char* arg2, int n)
     int chk, i;
 
     for (i = 0; (*(arg1 + i) || *(arg2 + i)) && (n > 0); i++, n--)
-        if ((chk = LOWER(*(arg1 + i)) - LOWER(*(arg2 + i))))
+        if ((chk = LOWER(*(arg1 + i)) - LOWER(*(arg2 + i)))) {
             if (chk < 0)
                 return (-1);
             else
                 return (1);
+        }
 
     return (0);
 }
@@ -1227,7 +1233,7 @@ void log(const char* str)
     fprintf(stderr, "%-19.19s :: %s\n", tmstr, str);
 }
 
-void mudlog(char* str, char type, sh_int level, byte file)
+void mudlog(const char* str, char type, sh_int level, byte file)
 {
     extern struct descriptor_data* descriptor_list;
     struct descriptor_data* i;
@@ -1267,19 +1273,19 @@ void mudlog(char* str, char type, sh_int level, byte file)
     return;
 }
 
-void mudlog_debug_mob(char* buf, char_data* ch)
+void mudlog_debug_mob(const char* buf, char_data* ch)
 {
     mudlog_aliased_mob(buf, ch, "debug");
 }
 
-void mudlog_aliased_mob(char* buf, char_data* ch, char* mob_alias)
+void mudlog_aliased_mob(const char* buf, char_data* ch, const char* mob_alias)
 {
     if (strstr(ch->player.name, mob_alias)) {
         mudlog(buf, SPL, LEVEL_GOD, FALSE);
     }
 }
 
-void vmudlog(char type, char* format, ...)
+void vmudlog(char type, const char* format, ...)
 {
 #define BUFSIZE 2048
     char buf[BUFSIZE];
@@ -1297,7 +1303,7 @@ void vmudlog(char type, char* format, ...)
  * Sprintbit now contains an extra variable (int var) so it can
  * discern when identify is using it.
  */
-void sprintbit(long vektor, char* names[], char* result, int var)
+void sprintbit(long vektor, const char* const names[], char* result, int var)
 {
     long nr;
     int count;
@@ -1344,7 +1350,7 @@ void sprintbit(long vektor, char* names[], char* result, int var)
                 composed += "UNDEFINE ";
             }
         }
-        if (*names[nr] != '\r\n')
+        if (*names[nr] != '\n')
             nr++;
     }
 
@@ -1355,7 +1361,7 @@ void sprintbit(long vektor, char* names[], char* result, int var)
     strcpy(result, composed.c_str());
 }
 
-void sprinttype(int type, char* names[], char* result)
+void sprinttype(int type, const char* const names[], char* result)
 {
     int nr;
 
@@ -1723,11 +1729,12 @@ int CAN_SEE_OBJ(char_data* sub, obj_data* obj)
     if (!sub || !obj)
         return 0;
 
-    if (IS_SHADOW(sub))
+    if (IS_SHADOW(sub)) {
         if (IS_SET((obj)->obj_flags.extra_flags, ITEM_MAGIC) || IS_SET((obj)->obj_flags.extra_flags, ITEM_WILLPOWER))
             return 1;
         else
             return 0;
+    }
 
     if ((!IS_SET((obj)->obj_flags.extra_flags, ITEM_INVISIBLE) || IS_AFFECTED((sub), AFF_DETECT_INVISIBLE)) && CAN_SEE(sub))
         return 1;
@@ -1805,11 +1812,12 @@ int can_breathe(struct char_data* ch)
  */
 char* nth(int n)
 {
-    char *s, *r;
-    char* first = "st";
-    char* second = "nd";
-    char* third = "rd";
-    char* other = "th";
+    const char *s;
+    char* r;
+    const char* first = "st";
+    const char* second = "nd";
+    const char* third = "rd";
+    const char* other = "th";
 
     /* 11, 12 and 13 don't follow the general rule */
     if (n == 11 || n == 12 || n == 13)
@@ -1839,7 +1847,7 @@ void day_to_str(struct time_info_data* loc_time_info, char* str)
 {
     char* s;
     int day;
-    extern char* month_name[];
+    extern const char* const month_name[];
 
     day = loc_time_info->day + 1; /* day in [1..35] */
 
@@ -1851,7 +1859,7 @@ void day_to_str(struct time_info_data* loc_time_info, char* str)
     free(s);
 }
 
-int find_player_in_table(char* name, int idnum)
+int find_player_in_table(const char* name, int idnum)
 {
     int i;
 
@@ -1930,7 +1938,7 @@ pool_to_list(struct universal_list** list, struct universal_list** head)
  * and removes it from the list and adds it to the head of the
  * pool
  */
-void from_list_to_pool(universal_list** list, universal_list** head, universal_list* body)
+void from_list_to_pool(universal_list** list, universal_list**, universal_list* body)
 {
     if (*list == body) {
         *list = body->next;
@@ -1964,7 +1972,7 @@ int check_resistances(char_data* victim, int attack_type)
     if ((attack_type < MAX_SKILLS) && IS_VULNERABLE(victim, skills[attack_type].skill_spec))
         return -1;
 
-    if ((attack_type >= TYPE_HIT) && (attack_type <= TYPE_CRUSH) || attack_type == SKILL_ARCHERY) {
+    if (((attack_type >= TYPE_HIT) && (attack_type <= TYPE_CRUSH)) || attack_type == SKILL_ARCHERY) {
         if (IS_RESISTANT(victim, PLRSPEC_WILD))
             return 1;
 
@@ -2266,14 +2274,51 @@ void check_inventory_proto(struct char_data* ch)
         if (result > 0) {
             char buf[1024];
 
+            // Justified skip -- see the block comment above
+            // check_inventory_proto (utility.cpp:2252-2260): left unconverted
+            // for Phase 4 Wave 1 Task 5 pending a dedicated
+            // object_utils/objsave characterization wave.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
             sprintf(buf, " - An object in your inventory, %s, was updated.\n\r", tmp->short_description);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             send_to_char(buf, ch);
             obj_to_char(obj_to_proto(tmp), ch);
         } else if (result < 0) {
             char buf[1024];
 
+            // Justified skip -- same as above; this branch's `buf` is
+            // additionally a pre-existing dead store (never sent), matching
+            // current behavior exactly either way.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
             sprintf(buf, " - An object in your inventory, %s, has no prototype.  Please notify imps.\n\r",
                 tmp->short_description);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
         }
     }
 }
@@ -2294,14 +2339,47 @@ void check_equipment_proto(struct char_data* ch)
             if (result > 0) {
                 char buf[1024];
 
+                // Justified skip -- see the block comment above
+                // check_inventory_proto (utility.cpp:2252-2260).
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(buf, " - An object in your equipment, %s, was updated.\n\r", tmp->short_description);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
                 send_to_char(buf, ch);
                 obj_to_char(obj_to_proto(tmp), ch);
             } else if (result < 0) {
                 char buf[1024];
 
+                // Justified skip -- same as above; pre-existing dead store.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
                 sprintf(buf, " - An object in your inventory, %s, has no prototype.  Please notify imps.\n\r",
                     tmp->short_description);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             }
         }
     }
@@ -2320,14 +2398,47 @@ static void check_container_proto(struct obj_data* obj, struct char_data* ch)
         if (result > 0) {
             char buf[1024];
 
+            // Justified skip -- see the block comment above
+            // check_inventory_proto (utility.cpp:2252-2260).
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
             sprintf(buf, " - An object in %s, %s, was updated.\n\r", obj->short_description, tmp->short_description);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
             send_to_char(buf, ch);
             obj_to_char(obj_to_proto(tmp), ch);
         } else if (result < 0) {
             char buf[1024];
 
+            // Justified skip -- same as above; pre-existing dead store.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
             sprintf(buf, " - An object in your inventory, %s, has no prototype.  Please notify imps.\n\r",
                 tmp->short_description);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
         }
     }
 }
@@ -2374,7 +2485,22 @@ char* PERS(struct char_data* target, struct char_data* observer,
         // leaf-module wave. Trivial single-literal, no format args, no
         // aliasing -- low risk, deferred pending a lighter PERS-specific
         // fixture.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#endif
+#if defined(__clang__)
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
         sprintf(name, "someone");
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
     if (capitalize)
         CAP(name);
@@ -2382,7 +2508,7 @@ char* PERS(struct char_data* target, struct char_data* observer,
     return name;
 }
 
-int has_alias(char_data* host, char* keyword)
+int has_alias(char_data* host, const char* keyword)
 {
     if (strstr(host->player.name, keyword)) {
         return 1;

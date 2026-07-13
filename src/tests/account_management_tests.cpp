@@ -26,6 +26,13 @@
 extern struct player_index_element* player_table;
 extern int top_of_p_table;
 void save_player(struct char_data* ch, int load_room, int index_pos);
+// db.cpp's free_char() -- releases GET_NAME/title/description/profs/skills/
+// knowledge and the char_data itself. write_valid_legacy_player_file() below
+// allocates a char_data via clear_char()/store_to_char() (which in turn
+// allocate profs and other fields through create_function()) and must free it
+// the same way production code does, or every field free_char would have
+// released leaks (LeakSanitizer, Phase 5 T6).
+void free_char(struct char_data* ch);
 
 namespace {
 
@@ -313,7 +320,15 @@ std::string write_valid_legacy_player_file(const std::string& root_directory, co
     player_table[0].log_time = stored_character.last_logon;
     player_table[0].flags = stored_character.specials2.act;
 
-    char_data* character = new char_data {};
+    // CREATE1() (create_function()-based, i.e. calloc), not `new` -- this
+    // must match free_char()'s free()-based deallocation below (an
+    // operator-new/free() mismatch is UB and ASan's alloc-dealloc-mismatch
+    // check flags it, Phase 5 T6). Mirrors production's own real
+    // char_data-allocation idiom (see clear_char()'s doc comment: callers
+    // hand it raw CREATE()/calloc storage, which its placement-new then
+    // constructs in place).
+    char_data* character;
+    CREATE1(character, char_data);
     clear_char(character, MOB_VOID);
 
     char_file_u mutable_store = stored_character;
@@ -331,6 +346,10 @@ std::string write_valid_legacy_player_file(const std::string& root_directory, co
     write_text_file(final_path, player_text);
     if (generated_path != final_path)
         std::remove(generated_path.c_str());
+
+    // character->desc still points at the stack-local `descriptor` here (still
+    // in scope) -- free_char() never touches ch->desc, so this is safe.
+    free_char(character);
 
     free(player_table[0].name);
     delete[] player_table;
@@ -1898,7 +1917,7 @@ TEST(AccountManagement, PersistedMigrationSnapshotOmitsLegacyPlayerPasswordAndHo
 
     char_file_u stored_character = make_stored_character("aragorn");
     std::snprintf(stored_character.host, sizeof(stored_character.host), "%s", "legacy.example.org");
-    std::snprintf(stored_character.pwd, sizeof(stored_character.pwd), "%s", "legacy-password");
+    std::snprintf(stored_character.pwd, sizeof(stored_character.pwd), "%s", "LegacyPwd1");
     write_valid_legacy_player_file(temp_directory.path(), stored_character);
 
     account::CharacterMigrationData migration;

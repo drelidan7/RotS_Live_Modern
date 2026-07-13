@@ -23,7 +23,7 @@ CXX = g++
 # code and crashed the monolithic runner with a wild free() — see the wave 4
 # plan's exit section. The hand-written prerequisites below are retained but
 # are now redundant (auto-deps supersede them); new TUs do NOT need one.
-CXXFLAGS = -std=c++20 -Wall -Wextra -D TESTING -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -funsigned-char -MMD -MP
+CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -funsigned-char -MMD -MP
 # -idirafter .. lets the account_management_*_header_compile.cpp probes (and
 # every other tests/*.cpp) use bare #include "account_management_assets.h" /
 # "structs.h" (etc.) to reach the product headers one directory up; mirrors

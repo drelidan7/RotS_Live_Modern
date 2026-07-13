@@ -67,10 +67,10 @@ extern int max_race_str[];
 extern bool weapon_willpower_damage(char_data* ch, char_data* victim);
 extern void check_break_prep(struct char_data*);
 extern int max_npc_corpse_time, max_pc_corpse_time;
-extern char* pc_star_types[];
+extern const char* const pc_star_types[];
 
 /* External procedures */
-char* fread_string(FILE* fl, char* error);
+char* fread_string(FILE* fl, const char* error);
 int check_resistances(char_data* ch, int attacktype);
 void stop_hiding(struct char_data*, char);
 void break_meditation(char_data* ch);
@@ -285,7 +285,7 @@ void stop_fighting(struct char_data* ch)
      * has mental delay, and ch is alive (stunned or better), ch is no longer
      * fighting anyone, and we return.
      */
-    if (!tmp && GET_ENERGY(ch) < ENE_TO_HIT || GET_MENTAL_DELAY(ch) && GET_POS(ch) > POSITION_STUNNED) {
+    if ((!tmp && GET_ENERGY(ch) < ENE_TO_HIT) || (GET_MENTAL_DELAY(ch) && GET_POS(ch) > POSITION_STUNNED)) {
         ch->specials.fighting = 0;
         GET_POS(ch) = POSITION_STANDING;
         update_pos(ch);
@@ -557,7 +557,7 @@ void move_gold(struct char_data* ch, struct obj_data* object, int option)
     struct obj_data* money;
 
     if (GET_GOLD(ch) > 0) {
-        if (option == 0)
+        if (option == 0) {
             if (IS_NPC(ch) || (!IS_NPC(ch) && ch->desc)) {
                 money = create_money(GET_GOLD(ch));
                 obj_to_obj(money, object);
@@ -565,6 +565,7 @@ void move_gold(struct char_data* ch, struct obj_data* object, int option)
                 money = create_money(GET_GOLD(ch));
                 obj_to_room(money, ch->in_room);
             }
+        }
     }
     GET_GOLD(ch) = 0;
 }
@@ -894,7 +895,7 @@ void raw_kill(char_data* dead_man, char_data* killer, int attack_type)
         stop_fighting(dead_man);
     }
 
-    if (special(dead_man, 0, "", SPECIAL_DEATH, &tmpwtl))
+    if (special(dead_man, 0, mutable_arg(""), SPECIAL_DEATH, &tmpwtl))
         return;
 
     if (IS_RIDING(dead_man))
@@ -925,7 +926,7 @@ void raw_kill(char_data* dead_man, char_data* killer, int attack_type)
         // Restore them.
         // TODO(drelidan):  When we can track the origin of status effects, include that
         // here so we can determine if the 'poisoned' kill type was actually from a player.
-        bool died_to_player = attack_type == SPELL_POISON || killer != NULL && !IS_NPC(killer);
+        bool died_to_player = attack_type == SPELL_POISON || (killer != NULL && !IS_NPC(killer));
         char_ability_data& cur_abils = dead_man->tmpabilities;
         char_ability_data& max_abils = dead_man->abilities;
         cur_abils = max_abils;
@@ -1316,7 +1317,7 @@ void group_gain(char_data* killer, char_data* dead_man)
 
 char replace_string_buf[500];
 
-char* replace_string(char* str, char* weapon_singular, char* weapon_plural, char* bodypart)
+char* replace_string(const char* str, const char* weapon_singular, const char* weapon_plural, const char* bodypart)
 {
     char* buf;
     char* cp;
@@ -1367,9 +1368,9 @@ char* replace_string(char* str, char* weapon_singular, char* weapon_plural, char
 
 /* use #w for singular (i.e. "slash") and #W for plural (i.e. "slashes") */
 static struct dam_weapon_type {
-    char* to_room;
-    char* to_char;
-    char* to_victim;
+    const char* to_room;
+    const char* to_char;
+    const char* to_victim;
 } dam_weapons[] = {
     { "$n misses $N#s#b with $s #w.", /* 0: 0     */
         "$CHYou miss $N#s#b with your #w.",
@@ -1449,7 +1450,7 @@ const attack_hit_type& get_hit_text(int w_type)
     return attack_hit_text[w_type];
 }
 
-void dam_message(int damage, char_data* attacker, char_data* victim, int w_type, char* bodypart)
+void dam_message(int damage, char_data* attacker, char_data* victim, int w_type, const char* bodypart)
 {
     obj_data* wield = attacker->equipment[WIELD];
 
@@ -1477,7 +1478,7 @@ void generate_damage_message(char_data* attacker, char_data* victim, int damage,
     struct message_type* messages;
 
     const race_bodypart_data& part = bodyparts[GET_BODYTYPE(victim)];
-    char* body_part = part.parts[hit_location];
+    const char* body_part = part.parts[hit_location];
     if (IS_PHYSICAL(attacktype)) {
         if (!attacker->equipment[WIELD]) {
             if (GET_RACE(attacker) == RACE_BEORNING) {
@@ -1495,8 +1496,8 @@ void generate_damage_message(char_data* attacker, char_data* victim, int damage,
 
         int msg_num = get_damage_message_number(damage);
         const dam_weapon_type& weap = dam_weapons[msg_num];
-        char* singular = "shot";
-        char* plural = "shot";
+        const char* singular = "shot";
+        const char* plural = "shot";
         if (damage < 34) {
             singular = "shoot";
             plural = "shoots";
@@ -1651,7 +1652,7 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
         tmpwtl.targ1.type = TARGET_CHAR;
         tmpwtl.targ2.ptr.other = 0;
         tmpwtl.targ2.type = TARGET_NONE;
-        i = special(attacker, 0, "", SPECIAL_DAMAGE, &tmpwtl);
+        i = special(attacker, 0, mutable_arg(""), SPECIAL_DAMAGE, &tmpwtl);
         if (i) {
             if (attacker->specials.fighting == victim)
                 stop_fighting(attacker);
@@ -1905,7 +1906,7 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
             if (IS_NPC(victim)) {
                 if (IS_SET(victim->specials2.act, MOB_WIMPY))
                     if (GET_POSITION(victim) > POSITION_SLEEPING)
-                        do_flee(victim, "", 0, 0, 0);
+                        do_flee(victim, mutable_arg(""), 0, 0, 0);
             }
         }
 
@@ -1913,12 +1914,12 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
             if (GET_POSITION(victim) > POSITION_SLEEPING && GET_TACTICS(victim) != TACTICS_BERSERK) {
                 send_to_char("You wimp out, and attempt to flee!\n\r",
                     victim);
-                do_flee(victim, "", 0, 0, 0);
+                do_flee(victim, mutable_arg(""), 0, 0, 0);
             }
     }
 
     if (!IS_NPC(victim) && !(victim->desc && victim->desc->descriptor) && (victim->specials.fighting) && GET_POS(victim) > POSITION_INCAP) {
-        do_flee(victim, "", 0, 0, 0);
+        do_flee(victim, mutable_arg(""), 0, 0, 0);
         victim->specials.was_in_room = victim->in_room;
     }
 
@@ -1951,7 +1952,7 @@ bool does_victim_save_on_weapon_poison(struct char_data* victim, struct obj_data
 }
 
 /*UPDATE* integreate parry message with other messages */
-void do_parry(struct char_data* ch, struct char_data* victim, int type)
+void do_parry(struct char_data* ch, struct char_data* victim, int)
 {
     act("$N deflects $n's attack.",
         FALSE, ch, 0, victim, TO_NOTVICT, TRUE);
@@ -1961,7 +1962,7 @@ void do_parry(struct char_data* ch, struct char_data* victim, int type)
         FALSE, ch, 0, victim, TO_VICT, TRUE);
 }
 
-void do_dodge(struct char_data* ch, struct char_data* victim, int type)
+void do_dodge(struct char_data* ch, struct char_data* victim, int)
 {
     act("$N dodges $n's attack.",
         FALSE, ch, 0, victim, TO_NOTVICT, TRUE);
@@ -1971,7 +1972,7 @@ void do_dodge(struct char_data* ch, struct char_data* victim, int type)
         FALSE, ch, 0, victim, TO_VICT, TRUE);
 }
 
-void do_evade(struct char_data* ch, struct char_data* victim, int type)
+void do_evade(struct char_data* ch, struct char_data* victim, int)
 {
     act("$N distracts $n into missing $M.",
         FALSE, ch, 0, victim, TO_NOTVICT, TRUE);
@@ -1981,7 +1982,7 @@ void do_evade(struct char_data* ch, struct char_data* victim, int type)
         FALSE, ch, 0, victim, TO_VICT, TRUE);
 }
 
-void do_pass_through(struct char_data* ch, struct char_data* victim, int type)
+void do_pass_through(struct char_data* ch, struct char_data* victim, int)
 {
     act("$n's attack passes clean through $N.",
         FALSE, ch, 0, victim, TO_NOTVICT, FALSE);
@@ -2038,6 +2039,12 @@ int weapon_hit_type(int weapon_type)
         break;
     case 13:
         w_type = TYPE_WHIP;
+        [[fallthrough]]; // FIXME: likely a historical missing break, not intent -- spells.h's
+                          // weapon_skill_num gives case 13 (SKILL_WHIP) and case 14
+                          // (SKILL_CONCUSSION) distinct skills, so collapsing 13 into
+                          // TYPE_BLUDGEON here looks like a bug. Preserved byte-for-byte per
+                          // the Phase 5 byte-identical constraint; behavior-fix candidate for
+                          // a future disclosed-delta effort.
     case 14:
         w_type = TYPE_BLUDGEON;
         break;
@@ -2378,7 +2385,7 @@ int natural_attack_dam(struct char_data* attacker)
 }
 
 //============================================================================
-void hit(char_data* ch, char_data* victim, int type)
+void hit(char_data* ch, char_data* victim, int)
 {
     obj_data* wielded = 0; /* weapon that ch wields */
     int w_type; /* weapon type, like TYPE_SLASH */
@@ -2592,7 +2599,7 @@ void hit(char_data* ch, char_data* victim, int type)
         tmpwtl.targ1.type = TARGET_CHAR;
         tmpwtl.targ2.ptr.other = 0;
         tmpwtl.targ2.type = TARGET_NONE;
-        tmp = special(ch, 0, "", SPECIAL_DAMAGE, &tmpwtl);
+        tmp = special(ch, 0, mutable_arg(""), SPECIAL_DAMAGE, &tmpwtl);
         if (tmp) {
             if (ch->specials.fighting == victim)
                 stop_fighting(ch);
@@ -2620,18 +2627,18 @@ void hit(char_data* ch, char_data* victim, int type)
         if (IS_NPC(victim))
             if (IS_SET(victim->specials2.act, MOB_WIMPY))
                 if (GET_POSITION(victim) > POSITION_SLEEPING)
-                    do_flee(victim, "", 0, 0, 0);
+                    do_flee(victim, mutable_arg(""), 0, 0, 0);
     }
 
     if (!IS_NPC(victim) && WIMP_LEVEL(victim) && victim != ch && GET_HIT(victim) < WIMP_LEVEL(victim)) {
         if (GET_POSITION(victim) > POSITION_SLEEPING) {
             send_to_char("You wimp out, and attempt to flee!\n\r", victim);
-            do_flee(victim, "", 0, 0, 0);
+            do_flee(victim, mutable_arg(""), 0, 0, 0);
         }
     }
 
     if (!IS_NPC(victim) && !(victim->desc && victim->desc->descriptor) && victim->specials.fighting && GET_POS(victim) > POSITION_INCAP) {
-        do_flee(victim, "", 0, 0, 0);
+        do_flee(victim, mutable_arg(""), 0, 0, 0);
         victim->specials.was_in_room = victim->in_room;
     }
 }
@@ -2670,7 +2677,7 @@ bool can_double_hit(const char_data* character)
     return is_victim_around(character);
 }
 
-bool does_double_hit_proc(const char_data* character)
+bool does_double_hit_proc(const char_data*)
 {
     // Double-hit has a 20% proc chance.
     return number() >= 0.80;
@@ -2728,7 +2735,7 @@ void reset_perform_violence_timing_for_testing()
 /*
  * Control all of the fights going on; works on PULSE_VIOLENCE
  */
-void perform_violence(int mini_tics)
+void perform_violence(int)
 {
     last_time = current_time;
     current_time = std::chrono::steady_clock::now();
@@ -2768,7 +2775,7 @@ void perform_violence(int mini_tics)
 
         if (fighter->specials.fighting && (IS_MENTAL(fighter) || (IS_NPC(fighter) && IS_SHADOW(fighter->specials.fighting)))) {
             if ((GET_POS(fighter) >= POSITION_FIGHTING) && !IS_AFFECTED(fighter, AFF_WAITING)) {
-                do_mental(fighter, "", 0, 0, 0);
+                do_mental(fighter, mutable_arg(""), 0, 0, 0);
             }
             continue; // have in mind, the ch could die himself
         }
@@ -2777,7 +2784,7 @@ void perform_violence(int mini_tics)
             if ((GET_POS(fighter) >= POSITION_FIGHTING) && (fighter->specials.ENERGY <= ENE_TO_HIT)) {
                 fighter->specials.ENERGY += utils::get_energy_regen(*fighter);
             } else if (IS_NPC(fighter) && !fighter->delay.wait_value) {
-                do_stand(fighter, "", 0, 0, 0);
+                do_stand(fighter, mutable_arg(""), 0, 0, 0);
             }
 
             if (fighter->specials.ENERGY > ENE_TO_HIT) {

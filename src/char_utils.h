@@ -31,7 +31,7 @@ bool is_player_mode_on(const char_data& character, long flag);
 
 bool is_affected_by(const char_data& character, long skill_id);
 
-const bool is_fighting(const char_data& character);
+bool is_fighting(const char_data& character);
 
 affected_type* is_affected_by_spell(char_data& character, int skill_id);
 

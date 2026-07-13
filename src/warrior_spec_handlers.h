@@ -68,7 +68,6 @@ public:
     bool does_mental_attack_interrupt_spell() const;
 
 private:
-    char_data* character = nullptr;
     bool is_battle_spec = false;
     int tactics = 0;
     int mage_level = 0;

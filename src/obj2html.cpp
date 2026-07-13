@@ -20,7 +20,7 @@
 extern struct index_data* obj_index;
 extern struct obj_data* obj_proto;
 extern int top_of_objt;
-extern char* object_materials[];
+extern const char* const object_materials[];
 extern int num_of_object_materials;
 
 int tables; /* The number of tables written so far */
@@ -60,8 +60,8 @@ int dump_all; /* If asserted, then we dump /all objects/ */
  * erent.
  */
 struct obj2html_type {
-    char* title; /* Title for a table of this type */
-    char** keywords;
+    const char* title; /* Title for a table of this type */
+    const char* const* keywords;
     unsigned long typemask;
     unsigned long (*get_typemask)(struct obj_data*);
     struct obj2html_type* subtypes;
@@ -78,7 +78,7 @@ struct obj2html_type {
  * greater than 4.  In order to allow our user to specify multiple
  * bulks, we have to shift this into a bitvector.
  */
-char* handed_keywords[][3] = {
+const char* const handed_keywords[][3] = {
     { "2h", "two-handed", NULL },
     { "1h", "one-handed", NULL }
 };
@@ -166,7 +166,7 @@ struct obj2html_type spear_subtypes[] = {
  * each type value before shifting; that way we end up with a range
  * of values between 0-31, enough to fit in a 32 bit vector.
  */
-char* weapon_keywords[][4] = {
+const char* const weapon_keywords[][4] = {
     { "whip", "flail", NULL },
     { "slash", NULL },
     { "pierce", NULL },
@@ -216,7 +216,7 @@ struct obj2html_type weapon_subtypes[] = {
  * so there's no need to shift it into a bitvector.  The bitvector
  * in question is stored in (object)->obj_flags.wear_flags.
  */
-char* armor_keywords[][2] = {
+const char* const armor_keywords[][2] = {
     { "head", NULL },
     { "neck", NULL },
     { "about", NULL },
@@ -282,7 +282,7 @@ struct obj2html_type armor_subtypes[] = {
  * user to specify multiple items, we shift the GET_ITEM_TYPE values
  * into a bit vector.  Note that there is no item of type 0.
  */
-char* type_keywords[][2] = {
+const char* const type_keywords[][2] = {
     { NULL },
     { "light", NULL },
     { "scroll", NULL },
@@ -471,7 +471,7 @@ void obj2html_newtable(struct char_data* ch, FILE* f,
             "          <TH> DB </TH>\n"
             "          <TH> PB </TH>\n"
             "          <TH> Skill Enc. </TH>\n"
-            "          <TH> Block % </TH>\n");
+            "          <TH> Block %% </TH>\n");
         break;
     case ITEM_LEVER:
         fprintf(f,
@@ -511,7 +511,7 @@ void obj2html_endtable(struct char_data* ch, FILE* f,
 int obj2html(FILE* f, struct obj_data* o)
 {
     int i, found;
-    extern char* apply_types[];
+    extern const char* const apply_types[];
 
     /* Header */
     /* We highlight it purple if it's magical already */
@@ -539,7 +539,7 @@ int obj2html(FILE* f, struct obj_data* o)
         fprintf(f, "          <TD> %d </TD>\n", o->obj_flags.value[1]);
         fprintf(f, "          <TD> %d </TD>\n", o->obj_flags.value[2]);
         fprintf(f, "          <TD> %s </TD>\n",
-            attack_hit_text[weapon_hit_type(o->obj_flags.value[3]) - TYPE_HIT]);
+            attack_hit_text[weapon_hit_type(o->obj_flags.value[3]) - TYPE_HIT].singular);
         fprintf(f, "          <TD> %.1f </TD>\n", get_weapon_damage(o) / 10.0);
         break;
     case ITEM_ARMOR:
@@ -582,7 +582,7 @@ int obj2html(FILE* f, struct obj_data* o)
         fprintf(f, "         <TD> %d </TD>\n", o->obj_flags.value[3]);
         break;
     case ITEM_LEVER:
-        extern char* dirs[];
+        extern const char* const dirs[];
         fprintf(f, "         <TD> %d </TD>\n", o->obj_flags.value[0]);
         fprintf(f, "         <TD> %s </TD>\n", dirs[o->obj_flags.value[1]]);
         break;
@@ -629,7 +629,6 @@ int check_keywords(struct obj2html_type* list, char* arg)
 {
     int i, j;
     int types_selected;
-    char* c;
 
     types_selected = 0;
 
@@ -873,5 +872,8 @@ FILE* obj2html_finish(struct char_data* ch, FILE* f)
     entries = 0;
     total_entries = 0;
 
-    return f;
+    // f is closed above; the caller (do_obj2html) never dereferences its
+    // return value, but returning the stale/closed pointer is a dangling-
+    // pointer footgun for any future caller (GCC -Wuse-after-free).
+    return nullptr;
 }

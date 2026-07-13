@@ -370,12 +370,12 @@ struct skill_data {
 };
 
 struct skill_teach_data {
-    char* list_message;
-    char* reject_message;
-    char* practice_message;
-    char* practice_msg_to_char;
-    char* limit_message;
-    char* learned_message;
+    const char* list_message;
+    const char* reject_message;
+    const char* practice_message;
+    const char* practice_msg_to_char;
+    const char* limit_message;
+    const char* learned_message;
     byte knowledge[MAX_SKILLS];
 };
 
@@ -388,17 +388,21 @@ struct skill_teach_data {
 
 /* Attack types with grammar */
 struct attack_hit_type {
-    char* singular;
-    char* plural;
+    const char* singular;
+    const char* plural;
 };
 
 void recalc_skills(struct char_data*);
 
-#define ASPELL(castname)                             \
-    void                                             \
-    castname(char_data* caster, char* arg, int type, \
-        char_data* victim, obj_data* obj, int digit, \
-        int is_object)
+// ASPELL declares the fixed spell_* cast-handler signature; most implementations only use
+// caster/victim (see ACMD/SPECIAL in interpre.h for the same rationale), so the whole
+// parameter list is [[maybe_unused]] rather than suppressing per spell_* definition.
+#define ASPELL(castname)                                                                        \
+    void                                                                                         \
+    castname([[maybe_unused]] char_data* caster, [[maybe_unused]] char* arg,                     \
+        [[maybe_unused]] int type, [[maybe_unused]] char_data* victim,                           \
+        [[maybe_unused]] obj_data* obj, [[maybe_unused]] int digit,                              \
+        [[maybe_unused]] int is_object)
 
 /* Mage spell prototypes */
 ASPELL(spell_blink);

@@ -8,16 +8,15 @@
 #include "structs.h"
 
 #include <assert.h>
+#include <cstring>
+#include <format>
 #include <string>
 
 /********************************************************************
- * Singleton Implementation
+ * Singleton Implementation: m_pInstance/m_bDestroyed are now `inline
+ * static` members defined directly in singleton.h (Phase 5 T1) -- no
+ * out-of-line explicit specialization needed here anymore.
  *********************************************************************/
-template <>
-game_rules::big_brother* world_singleton<game_rules::big_brother>::m_pInstance(0);
-
-template <>
-bool world_singleton<game_rules::big_brother>::m_bDestroyed(false);
 
 namespace game_rules {
 //============================================================================
@@ -175,7 +174,7 @@ bool big_brother::on_loot_item(char_data* looter, obj_data* corpse, obj_data* it
             const char* char_name = get_char_name(corpse_data.player_id);
             if (char_name != NULL) {
                 char local_buf[128];
-                sprintf(local_buf, "Big Brother:  %s no longer has looting protection.  Corpse is empty or player looted.", char_name);
+                strcpy(local_buf, std::format("Big Brother:  {} no longer has looting protection.  Corpse is empty or player looted.", char_name).c_str());
                 mudlog(local_buf, NRM, LEVEL_GRGOD, TRUE);
             }
 
@@ -209,13 +208,13 @@ void big_brother::log_item_looted(const char_data* looter, corpse_map::iterator&
         int looter_id = looter->abs_number;
         if (looter_id == corpse_data.player_id) {
             char local_buf[128];
-            sprintf(local_buf, "Big Brother:  %s looted item %s from their own corpse.", looter_name, item->short_description);
+            strcpy(local_buf, std::format("Big Brother:  {} looted item {} from their own corpse.", looter_name, item->short_description).c_str());
             mudlog(local_buf, NRM, LEVEL_GRGOD, TRUE);
         } else {
             const char* corpse_name = get_char_name(corpse_data.player_id);
             if (corpse_name) {
                 char local_buf[128];
-                sprintf(local_buf, "Big Brother:  %s looted item %s from the corpse of %s.", looter_name, item->short_description, corpse_name);
+                strcpy(local_buf, std::format("Big Brother:  {} looted item {} from the corpse of {}.", looter_name, item->short_description, corpse_name).c_str());
                 mudlog(local_buf, NRM, LEVEL_GRGOD, TRUE);
             }
 
@@ -224,9 +223,9 @@ void big_brother::log_item_looted(const char_data* looter, corpse_map::iterator&
             // took it.
             char to_player_buf[128];
             if (is_same_side_race_war(looter->player.race, corpse_data.player_race)) {
-                sprintf(to_player_buf, "Big Brother Alert: %s looted the item '%s' from your corpse.\r\n", looter_name, item->short_description);
+                strcpy(to_player_buf, std::format("Big Brother Alert: {} looted the item '{}' from your corpse.\r\n", looter_name, item->short_description).c_str());
             } else {
-                sprintf(to_player_buf, "Big Brother Alert: An enemy looted the item '%s' from your corpse.\r\n", item->short_description);
+                strcpy(to_player_buf, std::format("Big Brother Alert: An enemy looted the item '{}' from your corpse.\r\n", item->short_description).c_str());
             }
 
             send_to_char(to_player_buf, corpse_data.player_id);
@@ -425,7 +424,7 @@ bool big_brother::is_same_side_race_war(int attacker_race, int victim_race) cons
 }
 
 //============================================================================
-char_data* big_brother::get_valid_target(char_data* attacker, const char_data* victim, const char* argument) const
+char_data* big_brother::get_valid_target(char_data*, const char_data*, const char*) const
 {
     // TODO(drelidan):  Implement logic here.
     return NULL;
@@ -556,7 +555,7 @@ void big_brother::on_character_disconnected(const char_data* character)
     for (corpse_iter iter = m_corpse_map.begin(); iter != m_corpse_map.end(); ++iter) {
         if (!iter->second.is_npc && iter->second.player_id == character->abs_number) {
             char local_buf[80];
-            sprintf(local_buf, "%s no longer has looting protection.  Player disconnected.", character->player.name);
+            strcpy(local_buf, std::format("{} no longer has looting protection.  Player disconnected.", character->player.name).c_str());
             mudlog(local_buf, NRM, LEVEL_GRGOD, TRUE);
 
             m_corpse_map.erase(iter);
@@ -593,7 +592,7 @@ void big_brother::remove_character_from_looting_set(int char_id)
         const char* char_name = get_char_name(*char_iter);
         if (char_name != NULL) {
             char local_buf[128];
-            sprintf(local_buf, "Big Brother:  %s no longer has looting protection.", char_name);
+            strcpy(local_buf, std::format("Big Brother:  {} no longer has looting protection.", char_name).c_str());
             mudlog(local_buf, NRM, LEVEL_GRGOD, TRUE);
         }
 

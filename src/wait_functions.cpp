@@ -183,7 +183,7 @@ void wait_list::complete_delay(char_data* character)
 //============================================================================
 void wait_list::update()
 {
-    static char* wait_wheel[8] = { "\r|\r", "\r\\\r", "\r-\r", "\r/\r", "\r|\r", "\r\\\r", "\r-\r", "\r/\r" };
+    static const char* const wait_wheel[8] = { "\r|\r", "\r\\\r", "\r-\r", "\r/\r", "\r|\r", "\r\\\r", "\r-\r", "\r/\r" };
 
     // Clean up pending deletes.
     for (delete_list_iter iter = m_pendingDeletes.begin(); iter != m_pendingDeletes.end(); ++iter) {

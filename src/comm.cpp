@@ -72,7 +72,7 @@ extern int mini_mud;
 extern int new_mud;
 extern int no_rent_check;
 extern FILE* player_fl;
-extern char* DFLT_DIR;
+extern const char* DFLT_DIR;
 extern int mortal_start_room[];
 extern struct room_data world; /* In db.c */
 extern struct char_data* character_list; /* In db.c */
@@ -116,7 +116,7 @@ int txt_block_counter = 0;
 
 extern int nameserver_is_slow; /* see config.c */
 extern int autosave_time; /* see config.c */
-extern char* GREETINGS;
+extern const char* GREETINGS;
 
 int process_output(struct descriptor_data* t);
 int isbanned(char* hostname);
@@ -410,7 +410,7 @@ void touch_file(const char* path)
 
 ACMD(do_cast);
 SPECIAL(intelligent);
-char* wait_wheel[8] = { "\r|\r", "\r\\\r", "\r-\r", "\r/\r", "\r|\r", "\r\\\r", "\r-\r", "\r/\r" };
+const char* const wait_wheel[8] = { "\r|\r", "\r\\\r", "\r-\r", "\r/\r", "\r|\r", "\r\\\r", "\r-\r", "\r/\r" };
 
 void sigsegv_handler(int sig)
 {
@@ -711,7 +711,7 @@ void msdp_update()
         MSDPSetNumber(desc, eMDSP_DODGE, get_real_dodge(desc->character));
         MSDPSetNumber(desc, eMDSP_ATTACK_SPEED, utils::get_energy_regen(*desc->character) / 5);
 
-        extern char* tactics[];
+        extern const char* const tactics[];
         MSDPSetString(desc, eMDSP_TACTIC, tactics[GET_TACTICS(desc->character) - 1]);
 
         MSDPSetNumber(desc, eMDSP_PERCEPTION, GET_PERCEPTION(desc->character));
@@ -779,8 +779,8 @@ void game_loop(SocketType s)
     struct char_data *wait_ch, *wait_tmp;
     AutosaveTimer autosave_timer;
     int sockets_connected, sockets_playing;
-    int tmp, was_updated;
-    char disp, tmpflag;
+    int tmp;
+    char tmpflag;
 
     null_time.tv_sec = 0;
     null_time.tv_usec = 0;
@@ -1012,7 +1012,6 @@ void game_loop(SocketType s)
 
                         if (GET_INVIS_LEV(point->character)) {
                             strcpy(prompt, std::format("i{}", GET_INVIS_LEV(point->character)).c_str());
-                            disp = FALSE;
                         } else
                             prompt[0] = 0;
 
@@ -1083,7 +1082,6 @@ void game_loop(SocketType s)
                         if (prompt[strlen(prompt) - 1] == ' ')
                             prompt[strlen(prompt) - 1] = '\0';
 
-                        disp = TRUE;
                         if (point->character->specials.position == POSITION_SHAPING)
                             strcpy(prompt, std::format("{}]", static_cast<const char*>(prompt)).c_str());
                         else
@@ -1104,14 +1102,12 @@ void game_loop(SocketType s)
         /* Note: pulse now changes every 1/4 sec  */
 
         pulse++;
-        was_updated = 0;
 
         if (!((pulse + 3) % PULSE_ZONE)) {
             zone_update();
         }
         if (!((pulse + 9) % PULSE_MOBILE)) {
             mobile_activity();
-            was_updated = 1;
         }
         perform_violence(pulse % (PULSE_VIOLENCE * 2));
         /* parry is restored in 2 combat (PULSE_VIOLENCE) rounds */
@@ -1120,9 +1116,8 @@ void game_loop(SocketType s)
             weather_and_time(1);
             point_update(); // putting affect_total call in point_update.
             stat_update();
-            was_updated = 1;
         }
-        if (!(pulse % (PULSE_FAST_UPDATE)) /*&& !was_updated*/) {
+        if (!(pulse % (PULSE_FAST_UPDATE))) {
             // now increasing hp/mp/mana/spirit fast in fast_update..
             fast_update();
             affect_update();
@@ -1260,7 +1255,7 @@ void write_to_output(const char* txt, struct descriptor_data* t)
     }
 }
 
-struct txt_block* get_from_txt_block_pool(char* line)
+struct txt_block* get_from_txt_block_pool(const char* line)
 {
     struct txt_block* pnew;
     int tmp;
@@ -1442,9 +1437,8 @@ SocketType pnew_descriptor(SocketType s)
     SocketType desc;
     struct descriptor_data *pnewd, *point, *next_point;
     socklen_t size;
-    int sockets_connected, sockets_playing, i;
-    struct sockaddr_in sock;
-    extern char* GREETINGS;
+    int sockets_connected, sockets_playing;
+    struct sockaddr_in sock = {};
 
     if ((desc = pnew_connection(s)) == 0) // here was <0, too bad
         return (0); // here was -1, too bad...
@@ -1546,7 +1540,6 @@ SocketType pnew_descriptor(SocketType s)
 
     /* prepend to list */
 
-    descriptor_data* cur_list = descriptor_list;
     descriptor_list = pnewd;
 
     if (!pnewd->waiting_for_proxy_header && send_initial_login_output(pnewd) < 0) {
@@ -1640,7 +1633,7 @@ int process_output(struct descriptor_data* t)
     return 1;
 }
 
-int write_to_descriptor(SocketType desc, char* txt)
+int write_to_descriptor(SocketType desc, const char* txt)
 {
     int sofar, thisround, total;
 
@@ -1700,7 +1693,7 @@ void break_spell(struct char_data* ch)
     //     }
     //     else if(ch->delay.cmd > 0){
     //       //	      printf("gonna interpret, name=%s, delay=%p\n",wait_ch->player.name,
-    //       &(wait_ch->delay)); command_interpreter(ch, "", &(ch->delay));
+    //       &(wait_ch->delay)); command_interpreter(ch, mutable_arg(""), &(ch->delay));
     //     }
     //  }
     //  else{
@@ -1831,7 +1824,7 @@ int process_input(struct descriptor_data* t)
             }
 
             if ((t->connected == CON_PLYNG) && (t->character))
-                fprintf(fpCommand, "%3d %-16s: %s\n", t->descriptor, GET_NAME(t->character), tmp);
+                fprintf(fpCommand, "%3lld %-16s: %s\n", static_cast<long long>(t->descriptor), GET_NAME(t->character), tmp);
 
             iCommands++;
             fflush(fpCommand);
@@ -2055,7 +2048,7 @@ char_data* get_character(int character_id)
     return NULL;
 }
 
-void vsend_to_char(char_data* character, char* format, ...)
+void vsend_to_char(char_data* character, const char* format, ...)
 {
 #define BUFSIZE 2048
     char buf[BUFSIZE];
@@ -2160,7 +2153,7 @@ void send_to_room_except_two(const char* messg, int room, struct char_data* ch1,
  * But we don't want to have:
  *   <NORM>You wield <OBJ>a shadowy blade<NORM><NORM>.<NORM>
  */
-void convert_string(const char* str, int hide_invisible, struct char_data* ch, struct obj_data* obj,
+void convert_string(const char* str, int, struct char_data* ch, struct obj_data* obj,
     void* vict_obj, struct char_data* to, const char* buf)
 {
     int clobbered_color;
@@ -2374,14 +2367,14 @@ void complete_delay(struct char_data* ch)
     if (ch->delay.cmd == -1 && IS_NPC(ch)) {
         /* Here calls special procedure */
         if (mob_index[ch->nr].func)
-            (*mob_index[ch->nr].func)(ch, 0, -1, "", SPECIAL_NONE, &(ch->delay));
+            (*mob_index[ch->nr].func)(ch, 0, -1, mutable_arg(""), SPECIAL_NONE, &(ch->delay));
         else if (ch->specials.store_prog_number) {
             tmpfunc = (SPECIAL(*))virt_program_number(ch->specials.store_prog_number);
-            tmpfunc(ch, 0, ch->delay.cmd, "", SPECIAL_DELAY, &(ch->delay));
+            tmpfunc(ch, 0, ch->delay.cmd, mutable_arg(""), SPECIAL_DELAY, &(ch->delay));
         } else if (ch->specials.union1.prog_number)
-            intelligent(ch, 0, -1, "", SPECIAL_DELAY, &(ch->delay));
+            intelligent(ch, 0, -1, mutable_arg(""), SPECIAL_DELAY, &(ch->delay));
     } else if (ch->delay.cmd > 0)
-        command_interpreter(ch, "", &(ch->delay));
+        command_interpreter(ch, mutable_arg(""), &(ch->delay));
 }
 
 int in_waiting_list(char_data* ch)

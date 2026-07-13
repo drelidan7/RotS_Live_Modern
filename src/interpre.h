@@ -24,8 +24,13 @@ struct AccountData;
 
 #define MAX_CMD_LIST 350
 
-#define ACMD(c) \
-    void(c)(struct char_data * ch, char* argument, struct waiting_type* wtl, int cmd, int subcmd)
+// ACMD declares the fixed do_* command-handler signature; most implementations only use a
+// subset of the 5 parameters (e.g. ignore cmd/subcmd), so every parameter is annotated
+// [[maybe_unused]] here rather than at each of the ~510 call sites (-Wunused-parameter).
+#define ACMD(c)                                                                                 \
+    void(c)([[maybe_unused]] struct char_data * ch, [[maybe_unused]] char* argument,            \
+        [[maybe_unused]] struct waiting_type* wtl, [[maybe_unused]] int cmd,                    \
+        [[maybe_unused]] int subcmd)
 
 // #define CRYPT(a,b) ((char *) crypt((a),(b)))
 
@@ -33,9 +38,13 @@ struct AccountData;
 
 typedef int (*special_func)(char_data* host, char_data* character, int cmd, char* argument,
     int callflag, waiting_type* wait_data);
+// SPECIAL declares the fixed spec-proc signature (address-taken into mob/room/obj spec
+// tables), most of which ignore several of the 6 parameters by design; see ACMD above for
+// why the whole parameter list is [[maybe_unused]] instead of suppressing per call site.
 #define SPECIAL(cname)                                                                           \
-    int(cname)(struct char_data * host, struct char_data * ch, int cmd, char* arg, int callflag, \
-        waiting_type* wtl)
+    int(cname)([[maybe_unused]] struct char_data * host, [[maybe_unused]] struct char_data * ch, \
+        [[maybe_unused]] int cmd, [[maybe_unused]] char* arg, [[maybe_unused]] int callflag,     \
+        [[maybe_unused]] waiting_type* wtl)
 
 #define SPECIAL_NONE 0
 #define SPECIAL_COMMAND 1
@@ -77,7 +86,7 @@ typedef int (*special_func)(char_data* host, char_data* character, int cmd, char
     }
 
 void command_interpreter(struct char_data* ch, char* arg_chr, struct waiting_type* arg_wtl = 0);
-int search_block(char* arg, char** list, char exact);
+int search_block(char* arg, const char* const* list, char exact);
 int old_search_block(char* argument, int begin, unsigned int length, const char** list, int mode);
 char lower(char c);
 void argument_interpreter(char* argument, char* first_arg, char* second_arg);
@@ -90,7 +99,7 @@ char* one_argument(char* argument, char* first_arg);
 int fill_word(char* argument);
 void half_chop(char* string, char* arg1, char* arg2);
 void nanny(struct descriptor_data* d, char* arg);
-int is_abbrev(char* arg1, char* arg2);
+int is_abbrev(const char* arg1, const char* arg2);
 int is_number(char* str);
 
 void virt_assignmob(struct char_data*);

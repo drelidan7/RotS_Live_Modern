@@ -10,6 +10,7 @@
 
 #include "platdef.h"
 #include <ctype.h>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,18 +67,18 @@ extern struct index_data* obj_index;
 extern struct room_data world;
 
 extern int social_command_number;
-extern char* wizlock_default;
+extern const char* const wizlock_default;
 extern std::string wizlock_msg;
 extern int top_of_p_table;
-extern char* START_MESSG;
-extern char* WELC_MESSG;
+extern const char* START_MESSG;
+extern const char* WELC_MESSG;
 extern char* background;
 extern int no_specials;
 extern int restrict;
-extern char* dirs[];
+extern const char* const dirs[];
 extern char* imotd;
 extern char* motd;
-extern char* MENU;
+extern const char* MENU;
 
 struct command_info cmd_info[MAX_CMD_LIST];
 
@@ -568,7 +569,7 @@ const char* command[] = {
 /* CEND: search for me when you're looking for the end of the cmd list! :) */
 
 /* these words are effectively ignored */
-char* fill[] = {
+const char* const fill[] = {
     "in",
     "from",
     "with",
@@ -579,7 +580,7 @@ char* fill[] = {
     "\n"
 };
 
-int search_block(char* arg, char** list, char exact)
+int search_block(char* arg, const char* const* list, char exact)
 {
     int i, l;
 
@@ -676,7 +677,7 @@ void target_data::cleanup()
     ch_num = 0;
 }
 
-void target_data::operator=(target_data t2)
+void target_data::operator=(const target_data& t2)
 {
     cleanup();
     if (t2.type == TARGET_TEXT) {
@@ -1125,10 +1126,8 @@ char* target_from_word(struct char_data* ch, char* argument, int mask, struct ta
 int target_check(struct char_data* ch, int cmd, struct target_data* t1,
     struct target_data* t2)
 {
-    struct command_info* this_command;
     int tmp, tc, res, last_tc, check, last_check;
 
-    this_command = &cmd_info[cmd];
     last_check = last_tc = check = res = 0;
 
     for (tc = 0; tc < 32; tc++) {
@@ -1171,11 +1170,8 @@ int target_check(struct char_data* ch, int cmd, struct target_data* t1,
 int target_parser(struct char_data* ch, int cmd, char* argument,
     struct target_data* t1, struct target_data* t2)
 {
-    struct command_info* this_command;
     int tmp, tc, res, last_tc = 0, target_modif;
     char *newarg, *last_newarg;
-
-    this_command = &cmd_info[cmd];
 
     t1->ptr.other = 0;
     t1->type = TARGET_NONE;
@@ -1225,7 +1221,7 @@ void replace_aliases(struct char_data* ch, char* line)
     int begin, tmp;
     struct alias_list* list;
 
-    for (begin = 0; (*(line + begin) == ' '); begin++)
+    for (begin = 0; *(line + begin) == ' '; begin++)
         ;
     new_line[0] = 0;
 
@@ -1252,7 +1248,12 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
     int look_at, cmd, subcmd, begin, mode, may_not_perform;
     char argument[MAX_INPUT_LENGTH];
     char local_buf[MAX_INPUT_LENGTH];
-    char* argument_raw = "";
+    // Genuinely-writable empty-string storage for argument_raw below: shape_center()
+    // (and its shape_center_proto/obj/room/zone/mudlle/script fan-out) takes char*
+    // argument and is not cleared for a const-widening pass (task-4-report.md), so
+    // argument_raw must stay char*; this avoids binding a literal to it directly.
+    static char empty_argument[] = "";
+    char* argument_raw = empty_argument;
     struct waiting_type *argument_info, interp_argument_info;
     extern int no_specials;
 
@@ -1267,7 +1268,7 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
 
     if (argument_wtl) {
         argument_info = argument_wtl;
-        argument_raw = "";
+        argument_raw = empty_argument;
         mode = 1;
     } else {
         argument_raw = argument_chr;
@@ -1289,7 +1290,7 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
         memset(argument, 0, MAX_INPUT_LENGTH);
 
         /* Find first non blank */
-        for (begin = 0; (*(argument_raw + begin) == ' '); begin++)
+        for (begin = 0; *(argument_raw + begin) == ' '; begin++)
             ;
         strcpy(argument, argument_raw + begin);
         begin = 0;
@@ -1443,9 +1444,9 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
 
 void argument_interpreter(char* argument, char* first_arg, char* second_arg)
 {
-    int look_at, found, begin;
+    int look_at, begin;
 
-    found = begin = 0;
+    begin = 0;
 
     do {
         /* Find first non blank */
@@ -1496,9 +1497,9 @@ char* one_argument(char* argument, char* first_arg)
  * in primary argument, following the sub-arg
  */
 {
-    int found, begin, look_at;
+    int begin, look_at;
 
-    found = begin = 0;
+    begin = 0;
 
     do {
         /* Find first non blank */
@@ -1530,7 +1531,7 @@ int fill_word(char* argument)
     return (search_block(argument, fill, TRUE) >= 0);
 }
 
-int is_abbrev(char* arg1, char* arg2)
+int is_abbrev(const char* arg1, const char* arg2)
 /* determine if a given string is an abbreviation of another string */
 {
     if (!*arg1)
@@ -1571,7 +1572,7 @@ void half_chop(char* string, char* arg1, char* arg2)
 void* virt_program_number(int);
 
 int activate_char_special(char_data* character, char_data* victim, int cmd, char* argument,
-    int callflag, waiting_type* wait_data, int in_room)
+    int callflag, waiting_type* wait_data, int)
 {
     special_func tmp_func;
 
@@ -2734,7 +2735,6 @@ void show_account_character_list(struct descriptor_data* d, const account::Accou
 
 void complete_existing_character_login(struct descriptor_data* d, int load_result)
 {
-    char buf[1000];
     struct char_data* tmp_ch;
 
     if (isbanned(d->host) == BAN_SELECT && !PLR_FLAGGED(d->character, PLR_SITEOK)) {
@@ -2818,9 +2818,8 @@ void complete_existing_character_login(struct descriptor_data* d, int load_resul
         SEND_TO_Q(motd, d);
 
     if (load_result) {
-        sprintf(buf, "\n\r\n\r%s%d LOGIN FAILURE%s SINCE LAST SUCCESSFUL LOGIN.%s\n\r",
-            CC_FIX(d->character, CRED), load_result, (load_result > 1) ? "S" : "", CC_NORM(d->character));
-        SEND_TO_Q(buf, d);
+        SEND_TO_Q(std::format("\n\r\n\r{}{} LOGIN FAILURE{} SINCE LAST SUCCESSFUL LOGIN.{}\n\r",
+            CC_FIX(d->character, CRED), load_result, (load_result > 1) ? "S" : "", CC_NORM(d->character)).c_str(), d);
     }
 
     show_character_menu_impl(d);
@@ -3032,9 +3031,8 @@ void nanny(struct descriptor_data* d, char* arg)
                 SEND_TO_Q("What is your sex (M/F)? ", d);
                 STATE(d) = CON_QSEX;
             } else {
-                sprintf(buf, "Please enter a password for %s: ",
-                    GET_NAME(d->character));
-                SEND_TO_Q(buf, d);
+                SEND_TO_Q(std::format("Please enter a password for {}: ",
+                    GET_NAME(d->character)).c_str(), d);
                 echo_off(d->descriptor);
                 STATE(d) = CON_PWDGET;
             }
@@ -3745,10 +3743,9 @@ void nanny(struct descriptor_data* d, char* arg)
         CREATE(d->character->player.name, char, strlen(tmp_name) + 1);
         CAP(tmp_name);
         strcpy(d->character->player.name, tmp_name);
-        sprintf(buf, "\n\rA new character will be created if you enter 'Y'.\n\r"
-                     "Is %s a suitable name for roleplay in Middle-earth (Y/N)? ",
-            tmp_name);
-        SEND_TO_Q(buf, d);
+        SEND_TO_Q(std::format("\n\rA new character will be created if you enter 'Y'.\n\r"
+                              "Is {} a suitable name for roleplay in Middle-earth (Y/N)? ",
+            static_cast<const char*>(tmp_name)).c_str(), d);
         STATE(d) = CON_NMECNF;
         break;
     case CON_PWDGET: /* get pwd for new player */
@@ -3966,17 +3963,16 @@ void nanny(struct descriptor_data* d, char* arg)
             break;
         }
 
-        sprintf(buf, "\r\n"
-                     "We allow players to use the latin-1 character set to better\r\n"
-                     "represent the alphabet common in Tolkien's works.  You may\r\n"
-                     "want to enable latin-1 encoding here if your terminal passes\r\n"
-                     "the test below--but remember that you can change your latin-1\r\n"
-                     "preferences at any time during normal game play via the\r\n"
-                     "'set latin-1' command.\r\n"
-                     "\r\nDo you see an 'a' with "
-                     "a pair of dots above it: %c (Y/N)? ",
-            228);
-        SEND_TO_Q(buf, d);
+        SEND_TO_Q(std::format("\r\n"
+                              "We allow players to use the latin-1 character set to better\r\n"
+                              "represent the alphabet common in Tolkien's works.  You may\r\n"
+                              "want to enable latin-1 encoding here if your terminal passes\r\n"
+                              "the test below--but remember that you can change your latin-1\r\n"
+                              "preferences at any time during normal game play via the\r\n"
+                              "'set latin-1' command.\r\n"
+                              "\r\nDo you see an 'a' with "
+                              "a pair of dots above it: {} (Y/N)? ",
+            static_cast<char>(228)).c_str(), d);
         STATE(d) = CON_LATIN;
         break;
     case CON_LATIN:
@@ -4113,29 +4109,30 @@ void nanny(struct descriptor_data* d, char* arg)
             extern void msdp_room_update(char_data * ch);
             msdp_room_update(d->character);
 
-            do_look(d->character, "", 0, 0, 0);
+            do_look(d->character, mutable_arg(""), 0, 0, 0);
 
             /* report how long they must wait until unretire */
             if (IS_SET(PLR_FLAGS(d->character), PLR_RETIRED)) {
+                std::string out;
                 if ((s = secs_to_unretire(d->character)) > 0) {
-                    sprintf(buf, "You may unretire in ");
+                    out = "You may unretire in ";
                     if ((tmp = (int)(s / 86400)))
-                        sprintf(buf + strlen(buf), "%d day%s.\r\n", tmp,
+                        out += std::format("{} day{}.\r\n", tmp,
                             tmp == 1 ? "" : "s");
                     else if ((tmp = (int)(s / 3600)))
-                        sprintf(buf + strlen(buf), "%d hour%s.\r\n", tmp,
+                        out += std::format("{} hour{}.\r\n", tmp,
                             tmp == 1 ? "" : "s");
                     else if ((tmp = (int)(s / 60)))
-                        sprintf(buf + strlen(buf), "%d minute%s.\r\n", tmp,
+                        out += std::format("{} minute{}.\r\n", tmp,
                             tmp == 1 ? "" : "s");
                     else
-                        sprintf(buf + strlen(buf), "%ld second%s.\r\n", s,
+                        out += std::format("{} second{}.\r\n", s,
                             s == 1 ? "" : "s");
                 } else {
-                    sprintf(buf, "You may unretire now.\r\nType leave to leave the retirement home.\r\n");
+                    out = "You may unretire now.\r\nType leave to leave the retirement home.\r\n";
                 }
 
-                send_to_char(buf, d->character);
+                send_to_char(out.c_str(), d->character);
             }
             d->prompt_mode = 1;
             REMOVE_BIT(PRF_FLAGS(d->character), PRF_DISPTEXT);
@@ -4321,9 +4318,8 @@ void nanny(struct descriptor_data* d, char* arg)
             std::snprintf(deleted_character_name, sizeof(deleted_character_name), "%s", GET_NAME(d->character));
             const int deleted_character_level = GET_LEVEL(d->character);
 
-            sprintf(buf, "Character '%s' deleted!\n\r",
-                deleted_character_name);
-            SEND_TO_Q(buf, d);
+            SEND_TO_Q(std::format("Character '{}' deleted!\n\r",
+                static_cast<const char*>(deleted_character_name)).c_str(), d);
             vmudlog(NRM, "%s (lev %d) has self-deleted.",
                 deleted_character_name, deleted_character_level);
             if (*d->account_name) {
@@ -4363,10 +4359,9 @@ int new_player_select(struct descriptor_data* d, char* arg)
  * returns CON_CREATE to continue creation, CON_SLCT to end
  */
 {
-    int tmp, tmp2, i, classpoints;
+    int tmp, i, classpoints;
 
     if (STATE(d) == CON_CREATE) {
-        tmp2 = 0;
         if ((*arg == 'l') && (*(arg + 1) == '\0')) {
             SEND_TO_Q("\r\n"
                       "To become more proficient in a class, enter the number of\r\n"
@@ -4394,9 +4389,8 @@ int new_player_select(struct descriptor_data* d, char* arg)
                     draw_coofs(buf, d->character);
                     SEND_TO_Q("Ok, your abilities are now as follows:\n\r", d);
                     SEND_TO_Q(buf, d);
-                    sprintf(buf, "Points remaining: %d\n\r",
-                        150 - points_used(d->character));
-                    SEND_TO_Q(buf, d);
+                    SEND_TO_Q(std::format("Points remaining: {}\n\r",
+                        150 - points_used(d->character)).c_str(), d);
                     SEND_TO_Q("Your choice: ", d);
                     return CON_CREATE;
                 }
@@ -4441,8 +4435,7 @@ int new_player_select(struct descriptor_data* d, char* arg)
             SEND_TO_Q("Your current abilities are:\n\r", d);
             draw_coofs(buf, d->character);
             SEND_TO_Q(buf, d);
-            sprintf(buf, "Points remaining: %d\n\r", 150 - points_used(d->character));
-            SEND_TO_Q(buf, d);
+            SEND_TO_Q(std::format("Points remaining: {}\n\r", 150 - points_used(d->character)).c_str(), d);
             SEND_TO_Q("\n\rYour Choice: ", d);
             return CON_CREATE;
         }
@@ -4469,14 +4462,12 @@ int new_player_select(struct descriptor_data* d, char* arg)
             break;
 
         default:
-            sprintf(buf, "Invalid ability: %c\n\r", *arg);
-            SEND_TO_Q(buf, d);
+            SEND_TO_Q(std::format("Invalid ability: {}\n\r", *arg).c_str(), d);
             break;
         }
         draw_coofs(buf, d->character);
         SEND_TO_Q(buf, d);
-        sprintf(buf, "Points remaining: %d\n\r", 150 - points_used(d->character));
-        SEND_TO_Q(buf, d);
+        SEND_TO_Q(std::format("Points remaining: {}\n\r", 150 - points_used(d->character)).c_str(), d);
         SEND_TO_Q("Ok.\n\rYour choice: ", d);
     } else {
         log("Illegal call to new_player_select.");
@@ -4552,9 +4543,8 @@ void introduce_char(struct descriptor_data* d)
 
     if (d->pos < 0)
         d->pos = create_entry(GET_NAME(d->character));
-    sprintf(buf, "Char created: %s, idnum = %ld", GET_NAME(d->character),
-        GET_IDNUM(d->character));
-    log(buf);
+    log(std::format("Char created: {}, idnum = {}", GET_NAME(d->character),
+        GET_IDNUM(d->character)).c_str());
 
     SET_SHOOTING(d->character, SHOOTING_NORMAL);
     utils::set_specialization(*d->character, game_types::PS_None);

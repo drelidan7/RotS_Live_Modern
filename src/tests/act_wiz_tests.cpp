@@ -5,6 +5,7 @@
 #include "../interpre.h"
 #include "../objects_json.h"
 #include "../structs.h"
+#include "test_char_cleanup.h"
 #include "test_platform_compat.h"
 
 #include <gtest/gtest.h>
@@ -159,7 +160,14 @@ descriptor_data make_descriptor()
 char_data* attach_active_character(
     descriptor_data* descriptor, const char* name, int level, long idnum, int race = RACE_HUMAN)
 {
-    char_data* character = new char_data {};
+    // CREATE1() (create_function()-based, i.e. calloc), not `new` -- must
+    // match free_char()'s free()-based deallocation, which every caller of
+    // this helper uses on the returned pointer (a pre-existing operator-new/
+    // free() mismatch that ASan's alloc-dealloc-mismatch check flags, Phase 5
+    // T6; see account_management_tests.cpp's identical fix for the full
+    // rationale).
+    char_data* character;
+    CREATE1(character, char_data);
     clear_char(character, MOB_VOID);
     character->player.name = strdup(name);
     character->player.level = level;
@@ -216,7 +224,10 @@ std::string write_valid_legacy_player_file(const std::string& root_directory, co
     player_table[0].log_time = stored_character.last_logon;
     player_table[0].flags = stored_character.specials2.act;
 
-    char_data* character = new char_data {};
+    // CREATE1(), not `new` -- see attach_active_character's comment above
+    // (Phase 5 T6 alloc-dealloc-mismatch fix).
+    char_data* character;
+    CREATE1(character, char_data);
     clear_char(character, MOB_VOID);
 
     char_file_u mutable_store = stored_character;
@@ -235,7 +246,15 @@ std::string write_valid_legacy_player_file(const std::string& root_directory, co
     if (generated_path != final_path)
         std::remove(generated_path.c_str());
 
-    delete character;
+    // free_char() (not `delete character`) -- releases GET_NAME/title/
+    // description/profs/skills/knowledge (all heap-allocated via clear_char()
+    // above) before freeing the char_data itself; a plain `delete` only frees
+    // the char_data shell and orphans everything clear_char() allocated
+    // (LeakSanitizer, Phase 5 T6 -- same fix as account_management_tests.cpp's
+    // write_valid_legacy_player_file()). character->desc still points at the
+    // stack-local `descriptor` here (still in scope) -- free_char() never
+    // touches ch->desc, so this is safe.
+    free_char(character);
     free(player_table[0].name);
     delete[] player_table;
     player_table = previous_player_table;
@@ -774,6 +793,9 @@ TEST(ActWiz, WhoAcctShowsAuthenticatedAccountsAndCurrentCharacterOrMenuState)
 
     char_data playing_character {};
     clear_char(&playing_character, MOB_VOID);
+    // Releases playing_character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields playing_character_cleanup { playing_character };
     playing_character.player.name = strdup("aragorn");
     playing_descriptor.character = &playing_character;
 
@@ -797,6 +819,9 @@ TEST(ActWiz, WhoAcctShowsAuthenticatedAccountsAndCurrentCharacterOrMenuState)
 
     char_data character_menu_character {};
     clear_char(&character_menu_character, MOB_VOID);
+    // Releases character_menu_character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_menu_character_cleanup { character_menu_character };
     character_menu_character.player.name = strdup("legolas");
     character_menu_descriptor.character = &character_menu_character;
 
@@ -809,6 +834,9 @@ TEST(ActWiz, WhoAcctShowsAuthenticatedAccountsAndCurrentCharacterOrMenuState)
 
     char_data legacy_character {};
     clear_char(&legacy_character, MOB_VOID);
+    // Releases legacy_character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields legacy_character_cleanup { legacy_character };
     legacy_character.player.name = strdup("boromir");
     legacy_descriptor.character = &legacy_character;
 
@@ -874,6 +902,9 @@ TEST(ActWiz, WhoAcctReportsWhenNoAuthenticatedAccountsAreConnected)
 
     char_data legacy_character {};
     clear_char(&legacy_character, MOB_VOID);
+    // Releases legacy_character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields legacy_character_cleanup { legacy_character };
     legacy_character.player.name = strdup("boromir");
     legacy_descriptor.character = &legacy_character;
 
@@ -925,6 +956,9 @@ TEST(ActWiz, WhoAcctListsDuplicateAuthenticatedSessionsSeparatelyAndSkipsClosing
 
     char_data playing_character {};
     clear_char(&playing_character, MOB_VOID);
+    // Releases playing_character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields playing_character_cleanup { playing_character };
     playing_character.player.name = strdup("aragorn");
     playing_descriptor.character = &playing_character;
 

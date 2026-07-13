@@ -108,7 +108,7 @@ struct mob_csv_data {
     }
 };
 
-void mob_csv_extract::create_header(char_data* ch) const
+void mob_csv_extract::create_header(char_data*) const
 {
     fprintf(file,
         "\"vnum\",\"name\",\"aliases\",\"title\",\"race\","
@@ -135,12 +135,12 @@ void mob_csv_extract::create_file(char_data* ch)
     std::filesystem::permissions("../mobs/mob.csv", std::filesystem::perms::all, permissions_ec);
 }
 
-void mob_csv_extract::close_file(char_data* ch) const
+void mob_csv_extract::close_file(char_data*) const
 {
     fclose(file);
 }
 
-void mob_csv_extract::write_to_file(char_data* ch, const std::string& mob_data) const
+void mob_csv_extract::write_to_file(char_data*, const std::string& mob_data) const
 {
     fprintf(file, "%s", mob_data.c_str());
 }

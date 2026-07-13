@@ -68,7 +68,7 @@ struct color_slot_data {
     (clr((ch)) ? color_sequence[col] : "")
 
 extern const char* color_color[];
-extern char* color_sequence[];
+extern const char* const color_sequence[];
 
 const char* get_color_sequence(struct char_data*, int);
 void set_truecolor_foreground(struct char_data*, int, int, int, int);

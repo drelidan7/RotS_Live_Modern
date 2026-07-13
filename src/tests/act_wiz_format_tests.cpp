@@ -4,6 +4,7 @@
 #include "../structs.h"
 #include "../utils.h"
 #include "../zone.h"
+#include "test_char_cleanup.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
@@ -106,7 +107,7 @@ ACMD(do_wiznet);
 // extern of its own that would otherwise have to be edited in lockstep with
 // the production type change.
 extern int restrict;
-extern char* wizlock_default;
+extern const char* const wizlock_default;
 extern int global_release_flag;
 extern struct player_index_element* player_table;
 extern int top_of_p_table;
@@ -166,6 +167,14 @@ void reset_capturing_descriptor(descriptor_data& descriptor, char_data* characte
 struct SoloCharacterContext {
     char_data character { };
     descriptor_data descriptor { };
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
+    // Returns descriptor.large_outbuf to bufpool at scope exit -- do_stat_
+    // character's output routinely overflows descriptor.small_outbuf, which
+    // promotes it to a heap-allocated large_outbuf block (Phase 5 T6 leak
+    // sweep; see test_char_cleanup.h for the full rationale).
+    ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
 
     SoloCharacterContext()
     {
@@ -189,10 +198,17 @@ struct SoloCharacterContext {
 struct PcTargetContext {
     char_data character { };
     char_prof_data profs { };
+    // Releases character.skills/knowledge (clear_char() heap allocations) at
+    // scope exit; character's OWN heap-allocated profs is released right
+    // after clear_char() below, before it gets overwritten with the stack
+    // `profs` member above, so the destructor's RELEASE(character.profs) is
+    // then a no-op on the (non-owned) stack pointer (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
 
     PcTargetContext()
     {
         clear_char(&character, MOB_VOID);
+        character_cleanup.release_profs_now();
         character.profs = &profs;
         character.player.race = RACE_HUMAN;
         character.player.level = 50;
@@ -211,6 +227,10 @@ struct PcTargetContext {
 // leaving mob_index null.
 struct NpcTargetContext {
     char_data character { };
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations -- mode is MOB_VOID here despite the struct's name; NPC-
+    // ness is set manually below) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
 
     NpcTargetContext()
     {
@@ -328,6 +348,9 @@ struct RoomStatContext {
     char_data character { };
     descriptor_data descriptor { };
     char_data* original_people = nullptr;
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
 
     RoomStatContext()
     {
@@ -479,6 +502,9 @@ TEST(ActWizInspection, StatRoomFormatsCharsPresentLineForSecondPc)
     RoomStatContext context;
     char_data bystander { };
     clear_char(&bystander, MOB_VOID);
+    // Releases bystander.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields bystander_cleanup { bystander };
     bystander.player.name = const_cast<char*>("Legolas");
     bystander.in_room = 0;
     bystander.next_in_room = context.test_world.room().people;
@@ -496,6 +522,9 @@ TEST(ActWizInspection, StatRoomFormatsCharsPresentLineForMob)
     ScopedMobIndexEntry mob_index_entry(1234, false);
     char_data mob { };
     clear_char(&mob, MOB_VOID);
+    // Releases mob.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields mob_cleanup { mob };
     mob.specials2.act = MOB_ISNPC;
     mob.nr = 0;
     mob.in_room = 0;
@@ -1250,11 +1279,17 @@ TEST(ActWizInspection, StatCharacterFormatsMasterFollowersWithEntriesLine)
     PcTargetContext target;
     char_data leader { };
     clear_char(&leader, MOB_VOID);
+    // Releases leader.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields leader_cleanup { leader };
     leader.player.name = const_cast<char*>("Gandalf");
     target.character.master = &leader;
 
     char_data follower_char { };
     clear_char(&follower_char, MOB_VOID);
+    // Releases follower_char.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields follower_char_cleanup { follower_char };
     follower_char.player.name = const_cast<char*>("Sam");
     follow_type follower { };
     follower.follower = &follower_char;
@@ -1739,6 +1774,9 @@ TEST(ActWizInspection, DoShowFormatsAliasesListLine)
     viewer.character.in_room = 0;
     char_data target { };
     clear_char(&target, MOB_VOID);
+    // Releases target.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields target_cleanup { target };
     target.player.name = const_cast<char*>("Sam");
     target.in_room = 0;
     target.next = character_list;
@@ -1770,6 +1808,9 @@ TEST(ActWizInspection, DoShowFormatsAliasesNoneDefinedLine)
     viewer.character.in_room = 0;
     char_data target { };
     clear_char(&target, MOB_VOID);
+    // Releases target.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields target_cleanup { target };
     target.player.name = const_cast<char*>("Sam");
     target.in_room = 0;
     target.next = character_list;
@@ -1961,6 +2002,9 @@ TEST(ActWizWorldManip, DoZresetRejectsNpcCaller)
     char_data npc { };
     descriptor_data npc_descriptor { };
     clear_char(&npc, MOB_ISNPC);
+    // Releases npc.profs (clear_char()'s only heap allocation for
+    // MOB_ISNPC) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields npc_cleanup { npc };
     npc.specials2.act = MOB_ISNPC;
     reset_capturing_descriptor(npc_descriptor, &npc);
     npc.desc = &npc_descriptor;
@@ -2309,6 +2353,9 @@ TEST(ActWizPlayerAdmin, DoInvisRejectsNpcCaller)
     char_data npc { };
     descriptor_data npc_descriptor { };
     clear_char(&npc, MOB_ISNPC);
+    // Releases npc.profs (clear_char()'s only heap allocation for
+    // MOB_ISNPC) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields npc_cleanup { npc };
     npc.specials2.act = MOB_ISNPC;
     reset_capturing_descriptor(npc_descriptor, &npc);
     npc.desc = &npc_descriptor;
@@ -2370,6 +2417,9 @@ TEST(ActWizPlayerAdmin, DoDcRejectsNpcCaller)
     char_data npc { };
     descriptor_data npc_descriptor { };
     clear_char(&npc, MOB_ISNPC);
+    // Releases npc.profs (clear_char()'s only heap allocation for
+    // MOB_ISNPC) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields npc_cleanup { npc };
     npc.specials2.act = MOB_ISNPC;
     reset_capturing_descriptor(npc_descriptor, &npc);
     npc.desc = &npc_descriptor;
@@ -2405,6 +2455,9 @@ TEST(ActWizPlayerAdmin, DoWizutilRejectsNpcCaller)
     char_data npc { };
     descriptor_data npc_descriptor { };
     clear_char(&npc, MOB_ISNPC);
+    // Releases npc.profs (clear_char()'s only heap allocation for
+    // MOB_ISNPC) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields npc_cleanup { npc };
     npc.specials2.act = MOB_ISNPC;
     reset_capturing_descriptor(npc_descriptor, &npc);
     npc.desc = &npc_descriptor;
@@ -2457,6 +2510,9 @@ TEST(ActWizPlayerAdmin, DoWizsetRejectsNpcCaller)
     char_data npc { };
     descriptor_data npc_descriptor { };
     clear_char(&npc, MOB_ISNPC);
+    // Releases npc.profs (clear_char()'s only heap allocation for
+    // MOB_ISNPC) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields npc_cleanup { npc };
     npc.specials2.act = MOB_ISNPC;
     reset_capturing_descriptor(npc_descriptor, &npc);
     npc.desc = &npc_descriptor;
@@ -2569,6 +2625,13 @@ TEST(ActWizPlayerAdmin, DoSetfreeReportsFakedStateWhenFlagIsClear)
     char argument[] = "";
     do_setfree(&context.character, argument, nullptr, 0, 0);
     EXPECT_EQ(std::string(context.descriptor.output), "RELEASE is faked - be careful.\n\r");
+    // Restore before `context` (declared above) is destroyed below: its
+    // RAII cleanup members RELEASE() context's clear_char()/large_outbuf
+    // allocations, which -- correctly, matching production's own RELEASE()
+    // macro -- become no-ops while global_release_flag is 0 (Phase 5 T6
+    // leak sweep; this test's own point is to verify that no-op behavior for
+    // do_setfree's *own* effect, not to leave it disabled for teardown too).
+    global_release_flag = 1;
 }
 
 TEST(ActWizPlayerAdmin, DoSetfreeEnablesReleaseOnArgumentOn)
@@ -2589,6 +2652,9 @@ TEST(ActWizPlayerAdmin, DoSetfreeDisablesReleaseOnArgumentOff)
     do_setfree(&context.character, argument, nullptr, 0, 0);
     EXPECT_EQ(std::string(context.descriptor.output), "You disabled pointer release.\n\r");
     EXPECT_EQ(global_release_flag, 0);
+    // See DoSetfreeReportsFakedStateWhenFlagIsClear's comment above (Phase 5
+    // T6 leak sweep) -- restore before `context`'s RAII cleanup runs below.
+    global_release_flag = 1;
 }
 
 TEST(ActWizPlayerAdmin, DoSetfreeReportsUsageForUnrecognizedArgument)
@@ -2646,6 +2712,10 @@ struct RoomPairContext {
     descriptor_data actor_descriptor { };
     descriptor_data victim_descriptor { };
     char_data* original_people = nullptr;
+    // Releases actor/victim.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields actor_cleanup { actor };
+    ScopedClearCharFields victim_cleanup { victim };
 
     RoomPairContext()
     {
@@ -2829,6 +2899,9 @@ TEST(ActWizComm, DoGechoDeliversToConnectedDescriptorsAndAcksActorWithoutEcho)
     SoloCharacterContext actor_context;
     char_data receiver { };
     clear_char(&receiver, MOB_VOID);
+    // Releases receiver.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields receiver_cleanup { receiver };
     descriptor_data receiver_descriptor { };
     reset_capturing_descriptor(receiver_descriptor, &receiver);
     receiver.desc = &receiver_descriptor;
@@ -2854,6 +2927,9 @@ TEST(ActWizComm, DoGechoSkipsDescriptorsStillConnecting)
     SoloCharacterContext actor_context;
     char_data connecting_char { };
     clear_char(&connecting_char, MOB_VOID);
+    // Releases connecting_char.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields connecting_char_cleanup { connecting_char };
     descriptor_data connecting_descriptor { };
     reset_capturing_descriptor(connecting_descriptor, &connecting_char);
     connecting_descriptor.connected = 1; // still at a menu, not CON_PLAYING
@@ -2920,6 +2996,9 @@ TEST(ActWizComm,
 
     char_data actor { };
     clear_char(&actor, MOB_VOID);
+    // Releases actor.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields actor_cleanup { actor };
     descriptor_data actor_descriptor { };
     reset_capturing_descriptor(actor_descriptor, &actor);
     actor.desc = &actor_descriptor;
@@ -2932,6 +3011,9 @@ TEST(ActWizComm,
 
     char_data receiver { };
     clear_char(&receiver, MOB_VOID);
+    // Releases receiver.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields receiver_cleanup { receiver };
     descriptor_data receiver_descriptor { };
     reset_capturing_descriptor(receiver_descriptor, &receiver);
     receiver.desc = &receiver_descriptor;

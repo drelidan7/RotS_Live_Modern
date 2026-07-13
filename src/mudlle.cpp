@@ -1,5 +1,6 @@
 #include "platdef.h"
 #include <algorithm>
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,7 +31,7 @@ extern int top_of_world;
 
 char mudlle_dummy[] = "Overflowed  buffer overflow.";
 
-extern char* dirs[];
+extern const char* const dirs[];
 
 char* mudalloc(char* str);
 void muddealloc(char* str);
@@ -56,8 +57,8 @@ int compare_list(char_data* host, target_data* it1, target_data* it2);
     CALL_MASK(host) = 0;
 #define POST_COMMAND CALL_MASK(host) = tmp_mask;
 
-void service_commands(struct char_data* host, char* arg, int cmd,
-    int callflag, struct waiting_type* wtl)
+void service_commands(struct char_data* host, char* arg, int,
+    int, struct waiting_type*)
 {
     int tmp, tmp2, value;
     char tmp_mask;
@@ -122,7 +123,7 @@ void service_commands(struct char_data* host, char* arg, int cmd,
     case 'X':
         if (SPECIAL_LIST_NEXT(host) < 0) {
             PRE_COMMAND;
-            do_say(host, "Not enough elements in the list to switch. :(", 0, 0, 0);
+            do_say(host, mutable_arg("Not enough elements in the list to switch. :("), 0, 0, 0);
             POST_COMMAND;
             break;
         }
@@ -341,7 +342,7 @@ void int_tostack(struct char_data* host, char* arg, int cmd,
 }
 
 void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
-    char* arg, int cmd, int callflag, struct waiting_type* wtl)
+    char* arg, int, int, struct waiting_type* wtl)
 {
     struct char_data* tmpch;
     int tmpvar, tmp;
@@ -378,7 +379,7 @@ void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
 
     case 'i':
         tmpvar = FROM_STACK(host);
-        sprintf(str, "%d%c", tmpvar, 0);
+        strcpy(str, std::format("{}", tmpvar).c_str());
         //    printf("f-i command, goind to list:%s.\n",str);
         TO_LIST(host, get_from_txt_block_pool(str), TARGET_TEXT);
         break;
@@ -491,7 +492,7 @@ void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
         break;
 
     default:
-        sprintf(buf, "Wrong to-list command '%c', sorry.\n\r", *arg);
+        strcpy(buf, std::format("Wrong to-list command '{}', sorry.\n\r", *arg).c_str());
         do_say(host, buf, 0, 0, 0);
         break;
     }
@@ -502,8 +503,8 @@ void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
     //     else printf("got to list:0.\n");
 }
 
-void service_get_old(struct char_data* host, struct char_data* ch, char* cmdline,
-    char* arg, int cmd, int callflag, struct waiting_type* wtl)
+void service_get_old(struct char_data* host, struct char_data* ch, char*,
+    char* arg, int, int, struct waiting_type*)
 {
     switch (*arg) {
     case 'I': /* sets call mask */
@@ -527,8 +528,8 @@ void service_get_old(struct char_data* host, struct char_data* ch, char* cmdline
     }
 }
 
-void service_set_old(struct char_data* host, struct char_data* ch, char* cmdline,
-    char* arg, int cmd, int callflag, struct waiting_type* wtl)
+void service_set_old(struct char_data* host, struct char_data*, char*,
+    char* arg, int, int, struct waiting_type*)
 {
     int tmpvar;
 
@@ -552,42 +553,45 @@ void question_proc(struct char_data* host)
     char tmpstr[255];
     struct target_data* tmplist;
 
-    sprintf(tmpstr, "My stack is:[");
-    for (tmp = SPECIAL_STACKPOINT(host) - 1; tmp >= 0; tmp--)
-        sprintf(tmpstr + strlen(tmpstr), " %ld", SPECIAL_STACK(host)[tmp]);
-    sprintf(tmpstr + strlen(tmpstr), "]");
+    {
+        std::string stack_str = "My stack is:[";
+        for (tmp = SPECIAL_STACKPOINT(host) - 1; tmp >= 0; tmp--)
+            stack_str += std::format(" {}", SPECIAL_STACK(host)[tmp]);
+        stack_str += "]";
+        strcpy(tmpstr, stack_str.c_str());
+    }
     PRE_COMMAND;
     do_say(host, tmpstr, 0, 0, 0);
 
     tmp = SPECIAL_LIST_HEAD(host);
-    do_say(host, "My list is:", 0, 0, 0);
+    do_say(host, mutable_arg("My list is:"), 0, 0, 0);
     while (tmp >= 0) {
         tmpstr[0] = 0;
         tmplist = SPECIAL_LIST_AREA(host)->field + tmp;
         switch (SPECIAL_LIST_AREA(host)->field[tmp].type) {
         case SPECIAL_MARK:
-            sprintf(tmpstr, "mark_record");
+            strcpy(tmpstr, "mark_record");
             break;
 
         case SPECIAL_NULL:
             //	    sprintf(tmpstr,"Null :%ld",tmplist.str);
-            sprintf(tmpstr, "null_record");
+            strcpy(tmpstr, "null_record");
             break;
 
         case TARGET_TEXT:
-            sprintf(tmpstr, "Str :%s", tmplist->ptr.text->text);
+            strcpy(tmpstr, std::format("Str :{}", tmplist->ptr.text->text).c_str());
             break;
 
         case TARGET_OBJ:
-            sprintf(tmpstr, "Obj :%s", tmplist->ptr.obj->name);
+            strcpy(tmpstr, std::format("Obj :{}", tmplist->ptr.obj->name).c_str());
             break;
 
         case TARGET_CHAR:
-            sprintf(tmpstr, "Char:%s", GET_NAME(tmplist->ptr.ch));
+            strcpy(tmpstr, std::format("Char:{}", GET_NAME(tmplist->ptr.ch)).c_str());
             break;
 
         case TARGET_ROOM:
-            sprintf(tmpstr, "Room:%s", tmplist->ptr.room->name);
+            strcpy(tmpstr, std::format("Room:{}", tmplist->ptr.room->name).c_str());
             break;
         }
         //	  printf("'?': tmpstr=%s, next=%ld\n",tmpstr,tmplist->next);
@@ -595,7 +599,7 @@ void question_proc(struct char_data* host)
         tmp = SPECIAL_LIST_AREA(host)->next[tmp];
         //	  printf("new tmplist=%ld\n",tmplist);
     }
-    do_say(host, "End of list", 0, 0, 0);
+    do_say(host, mutable_arg("End of list"), 0, 0, 0);
     POST_COMMAND;
     //	printf("'?' passed\n");
 }
@@ -614,8 +618,8 @@ static const int MAX_MUDLLE_HIT_VALUE = 1000000;
  * Sets parameters of the item in list, taking
  * them from the stack.
  */
-void int_fromstack(struct char_data* host, char* arg, int cmd,
-    int callflag, struct waiting_type* wtl)
+void int_fromstack(struct char_data* host, char* arg, int,
+    int, struct waiting_type*)
 {
     int val;
 
@@ -775,7 +779,7 @@ SPECIAL(intelligent)
 
             default:
                 PRE_COMMAND;
-                do_say(host, "My string is too long.", 0, 0, 0);
+                do_say(host, mutable_arg("My string is too long."), 0, 0, 0);
                 POST_COMMAND;
                 PROG_POINT(host) = 0;
                 return FALSE;
@@ -850,7 +854,7 @@ SPECIAL(intelligent)
             }
             PRE_COMMAND;
             //      do_move(host,dirs[tmpvar], 0, tmpvar+1, 0);
-            command_interpreter(host, "", &tmpwtl);
+            command_interpreter(host, mutable_arg(""), &tmpwtl);
             POST_COMMAND;
             tmpwtl.targ1.cleanup();
             tmpwtl.targ2.cleanup();
@@ -971,7 +975,7 @@ SPECIAL(intelligent)
                 POST_COMMAND;
             } else {
                 PRE_COMMAND;
-                do_say(host, "What can I say if there is nothing to say?..", 0, 0, 0);
+                do_say(host, mutable_arg("What can I say if there is nothing to say?.."), 0, 0, 0);
                 POST_COMMAND;
             }
             REMOVE_LIST(host);
@@ -1055,7 +1059,7 @@ SPECIAL(intelligent)
                 tmpvar2 = FROM_STACK(host);
                 if (tmpvar == 0) {
                     PRE_COMMAND;
-                    do_say(host, "I tried to divide by zero. Zero put in stack.",
+                    do_say(host, mutable_arg("I tried to divide by zero. Zero put in stack."),
                         0, 0, 0);
                     POST_COMMAND;
                     TO_STACK(host, 0);
@@ -1203,7 +1207,7 @@ SPECIAL(intelligent)
 
         default:
             PRE_COMMAND;
-            sprintf(buf2, "I can't understand my command (%c), alas :(", key);
+            strcpy(buf2, std::format("I can't understand my command ({}), alas :(", key).c_str());
             do_say(host, buf2, 0, 0, 0);
             POST_COMMAND;
             break;
@@ -1318,12 +1322,12 @@ char* mudlle_converter(char* source)
                     if (tmp == markn) {
                         RELEASE(newl);
                         CREATE(newl, char, 1000);
-                        sprintf(newl, "Mark not found:");
+                        strcpy(newl, "Mark not found:");
                         strncat(newl, source + i, 5);
                         strcat(newl, "\n\r");
                         return newl;
                     }
-                    sprintf(newl + len2, "%4.4d", mark_adr[tmp]);
+                    strcpy(newl + len2, std::format("{:04}", mark_adr[tmp]).c_str());
                     len2 += 4;
                     i += 3;
                 } else
@@ -1340,7 +1344,7 @@ char* mudlle_converter(char* source)
                             break;
                     if (tmp == num_of_programs)
                         tmp = 99999;
-                    sprintf(newl + len2, "%6.6d", tmp);
+                    strcpy(newl + len2, std::format("{:06}", tmp).c_str());
                     len2 += 6;
                     i += 5;
                 } else

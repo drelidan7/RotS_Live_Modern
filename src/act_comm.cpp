@@ -8,6 +8,7 @@
  *  CircleMUD is based on DikuMUD, Copyright (C) 1990, 1991.               *
  **************************************************************************/
 
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,10 +54,10 @@ void say_to_char(struct char_data* speaker, struct char_data* aud,
     } else
         freq = 100;
 
-    sprintf(speech, "%s%s %ss '",
+    strcpy(speech, std::format("{}{} {}s '",
         color,
         force_visible ? "$K" : "$N",
-        action);
+        action).c_str());
 
     if (strlen(speech) > 100) {
         mudlog("SYSERR: say_to_char header overflow",
@@ -103,8 +104,8 @@ ACMD(do_say)
                 say_to_char(ch, s, "$CS", "say", "", talk_line, FALSE);
 
         if (PRF_FLAGGED(ch, PRF_ECHO)) {
-            sprintf(buf, "%sYou say '%s'%s",
-                CC_USE(ch, COLOR_SAY), talk_line, CC_NORM(ch));
+            strcpy(buf, std::format("{}You say '{}'{}",
+                CC_USE(ch, COLOR_SAY), talk_line, CC_NORM(ch)).c_str());
             act(buf, FALSE, ch, 0, 0, TO_CHAR);
         } else
             send_to_char("Ok.\n\r", ch);
@@ -136,7 +137,7 @@ ACMD(do_gsay)
         send_to_char("Yes, but WHAT do you want to group-say?\n\r", ch);
     } else {
         // Send the message to the group.
-        sprintf(buf, "$CG%s group-says '%s'\n\r", GET_NAME(ch), argument + message_index);
+        strcpy(buf, std::format("$CG{} group-says '{}'\n\r", GET_NAME(ch), argument + message_index).c_str());
         for (char_iter iter = group->begin(); iter != group->end(); ++iter) {
             char_data* member = *iter;
             if (member != ch) {
@@ -147,7 +148,7 @@ ACMD(do_gsay)
 
         // Alert the player that their message has been sent.
         if (PRF_FLAGGED(ch, PRF_ECHO)) {
-            sprintf(buf, "$CGYou group-say '%s'\n\r", argument + message_index);
+            strcpy(buf, std::format("$CGYou group-say '{}'\n\r", argument + message_index).c_str());
             char* str = act_buffer;
             // Had to mimic act() but can't use it because of position check and
             // send_to_char won't do coloring.
@@ -158,7 +159,7 @@ ACMD(do_gsay)
         }
 
         // Other people in the room hear this as well.
-        sprintf(buf, "$CS$n says '%s'\n\r", argument + message_index);
+        strcpy(buf, std::format("$CS$n says '{}'\n\r", argument + message_index).c_str());
         for (char_data* bystander = world[ch->in_room].people; bystander; bystander = bystander->next_in_room) {
             if (group != bystander->group && utils::is_pc(*bystander)) {
                 act(buf, FALSE, ch, 0, bystander, TO_VICT);
@@ -236,7 +237,7 @@ ACMD(do_tell)
     if (!vict)
         return;
 
-    if (other_side(ch, vict) || (!CAN_SEE(ch, vict, 1)) && (subcmd != SCMD_REPLY))
+    if (other_side(ch, vict) || ((!CAN_SEE(ch, vict, 1)) && (subcmd != SCMD_REPLY)))
         send_to_char("Nobody by that name.\n\r", ch);
     else if (ch == vict)
         send_to_char("You try to tell yourself something.\n\r", ch);
@@ -253,11 +254,11 @@ ACMD(do_tell)
         if (PLR_FLAGGED(vict, PLR_ISAFK))
             act("$E is away from keyboard.", FALSE, ch, 0, vict, TO_CHAR);
 
-        sprintf(buf, "$CT$n tells you '%s'", buf2);
+        strcpy(buf, std::format("$CT$n tells you '{}'", static_cast<const char*>(buf2)).c_str());
         act(buf, FALSE, ch, NULL, vict, TO_VICT);
 
         if (PRF_FLAGGED(ch, PRF_ECHO)) {
-            sprintf(buf, "$CTYou tell $N '%s'", buf2);
+            strcpy(buf, std::format("$CTYou tell $N '{}'", static_cast<const char*>(buf2)).c_str());
             act(buf, FALSE, ch, 0, vict, TO_CHAR);
         } else
             send_to_char("Ok.\n\r", ch);
@@ -283,7 +284,7 @@ ACMD(do_whisper)
         act("$n whispers quietly to $mself.", FALSE, ch, 0, 0, TO_ROOM);
         send_to_char("You can't seem to get your mouth close enough to your ear...\n\r", ch);
     } else {
-        sprintf(buf, "$n whispers to you, '%s'", buf2);
+        strcpy(buf, std::format("$n whispers to you, '{}'", static_cast<const char*>(buf2)).c_str());
         act(buf, FALSE, ch, 0, vict, TO_VICT);
         send_to_char("Ok.\n\r", ch);
         act("$n whispers something to $N.", FALSE, ch, 0, vict, TO_NOTVICT);
@@ -304,7 +305,7 @@ ACMD(do_ask)
         act("$n quietly asks $mself a question.", FALSE, ch, 0, 0, TO_ROOM);
         send_to_char("You think about it for a while...\n\r", ch);
     } else {
-        sprintf(buf, "$n asks you '%s'", buf2);
+        strcpy(buf, std::format("$n asks you '{}'", static_cast<const char*>(buf2)).c_str());
         act(buf, FALSE, ch, 0, vict, TO_VICT);
         send_to_char("Ok.\n\r", ch);
         act("$n asks $N a question.", FALSE, ch, 0, vict, TO_NOTVICT);
@@ -332,19 +333,16 @@ ACMD(do_write)
     }
     if (*penname) /* there were two arguments */ {
         if (!(paper = get_obj_in_list_vis(ch, papername, ch->carrying, 9999))) {
-            sprintf(buf, "You have no %s.\n\r", papername);
-            send_to_char(buf, ch);
+            send_to_char(std::format("You have no {}.\n\r", papername).c_str(), ch);
             return;
         }
         if (!(pen = get_obj_in_list_vis(ch, penname, ch->carrying, 9999))) {
-            sprintf(buf, "You have no %s.\n\r", papername);
-            send_to_char(buf, ch);
+            send_to_char(std::format("You have no {}.\n\r", papername).c_str(), ch);
             return;
         }
     } else /* there was one arg.let's see what we can find */ {
         if (!(paper = get_obj_in_list_vis(ch, papername, ch->carrying, 9999))) {
-            sprintf(buf, "There is no %s in your inventory.\n\r", papername);
-            send_to_char(buf, ch);
+            send_to_char(std::format("There is no {} in your inventory.\n\r", papername).c_str(), ch);
             return;
         }
         if (paper->obj_flags.type_flag == ITEM_PEN) /* oops, a pen.. */ {
@@ -357,8 +355,7 @@ ACMD(do_write)
 
         /* one object was found. Now for the other one. */
         if (!ch->equipment[HOLD]) {
-            sprintf(buf, "You can't write with a %s alone.\n\r", papername);
-            send_to_char(buf, ch);
+            send_to_char(std::format("You can't write with a {} alone.\n\r", papername).c_str(), ch);
             return;
         }
         if (!CAN_SEE_OBJ(ch, ch->equipment[HOLD])) {
@@ -408,7 +405,7 @@ ACMD(do_page)
     half_chop(argument, buf, buf2);
     if (!str_cmp(buf, "all") && (subcmd == SCMD_PAGE)) {
         if (GET_LEVEL(ch) > LEVEL_GOD) {
-            sprintf(buf, "\007\007*%s* %s\n\r", GET_NAME(ch), buf2);
+            strcpy(buf, std::format("\007\007*{}* {}\n\r", GET_NAME(ch), static_cast<const char*>(buf2)).c_str());
             for (d = descriptor_list; d; d = d->next)
                 if (!d->connected)
                     SEND_TO_Q(buf, d);
@@ -422,23 +419,20 @@ ACMD(do_page)
             act("$E can't hear you.", FALSE, ch, 0, vict, TO_CHAR);
             return;
         }
-        sprintf(buf, "\007\007*%s* %s%s%s\n\r",
+        send_to_char(std::format("\007\007*{}* {}{}{}\n\r",
             GET_NAME(ch),
             (subcmd == SCMD_PAGE) ? "pages, '" : "",
             (subcmd == SCMD_PAGE) ? buf2 : "beeps you!",
-            (subcmd == SCMD_PAGE) ? "'" : "");
-
-        send_to_char(buf, vict);
+            (subcmd == SCMD_PAGE) ? "'" : "").c_str(), vict);
         if (!PRF_FLAGGED(ch, PRF_ECHO))
             send_to_char("Ok.\n\r", ch);
         else {
-            sprintf(buf, "You %s %s%s%s%s\n\r",
+            send_to_char(std::format("You {} {}{}{}{}\n\r",
                 (subcmd == SCMD_PAGE) ? "page" : "beep",
                 GET_NAME(vict),
                 (subcmd == SCMD_PAGE) ? " with '" : "",
                 (subcmd == SCMD_PAGE) ? buf2 : "",
-                (subcmd == SCMD_PAGE) ? "'" : ".");
-            send_to_char(buf, ch);
+                (subcmd == SCMD_PAGE) ? "'" : ".").c_str(), ch);
         }
         return;
     } else
@@ -456,7 +450,7 @@ int channels[] = {
     PRF_SING
 };
 
-char* com_msgs[][3] = {
+const char* const com_msgs[][3] = {
     { "You tried to narrate but could not make a sound\n\r",
         "narrate",
         "You aren't even on the channel!\n\r" },
@@ -471,7 +465,7 @@ char* com_msgs[][3] = {
         "You aren't even on the channel!\n\r" }
 };
 
-char* com_msgs_col[] = {
+const char* const com_msgs_col[] = {
     "$CN",
     "$CC",
     "$CY",
@@ -481,14 +475,17 @@ char* com_msgs_col[] = {
 ACMD(do_gen_com)
 {
     struct descriptor_data* i;
-    char* color;
-    int imm_to_race, imm_side;
+    const char* color;
+    // = 0: deterministic defaults (imm_side 0 -> imm_side_message[0], the empty
+    // suffix) for the paths where the assignment chains below don't cover the
+    // speaker's race -- previously an indeterminate read (MSVC C4701/UB).
+    int imm_to_race = 0, imm_side = 0;
     struct room_data* tmproom;
     int myzone, tmp;
 
     void stop_hiding(struct char_data*, char);
 
-    static char* imm_side_message[] = {
+    static const char* const imm_side_message[] = {
         "",
         " to the Light.",
         " to the Dark.",
@@ -502,9 +499,8 @@ ACMD(do_gen_com)
     }
 
     if (IS_NPC(ch) && MOB_FLAGGED(ch, MOB_PET)) {
-        sprintf(buf1, "Sorry, tamed mobiles and orc followers can't %s.\n\r",
-            com_msgs[subcmd][1]);
-        send_to_char(buf1, ch);
+        send_to_char(std::format("Sorry, tamed mobiles and orc followers can't {}.\n\r",
+            com_msgs[subcmd][1]).c_str(), ch);
         return;
     }
 
@@ -544,9 +540,8 @@ ACMD(do_gen_com)
     for (; *argument == ' '; argument++)
         continue;
     if (!(*argument)) {
-        sprintf(buf1, "Yes, %s, fine, %s we must, but WHAT???\n\r",
-            com_msgs[subcmd][1], com_msgs[subcmd][1]);
-        send_to_char(buf1, ch);
+        send_to_char(std::format("Yes, {}, fine, {} we must, but WHAT???\n\r",
+            com_msgs[subcmd][1], com_msgs[subcmd][1]).c_str(), ch);
         return;
     }
 
@@ -597,11 +592,11 @@ ACMD(do_gen_com)
     if (!PRF_FLAGGED(ch, PRF_ECHO))
         send_to_char("Ok.\n\r", ch);
     else {
-        sprintf(buf, "%sYou %s '%s'%s",
+        strcpy(buf, std::format("{}You {} '{}'{}",
             color,
             com_msgs[subcmd][1],
             argument,
-            subcmd != SCMD_YELL && GET_LEVEL(ch) >= LEVEL_IMMORT ? imm_side_message[imm_side] : "");
+            subcmd != SCMD_YELL && GET_LEVEL(ch) >= LEVEL_IMMORT ? imm_side_message[imm_side] : "").c_str());
         act(buf, FALSE, ch, NULL, NULL, TO_CHAR);
     }
 
@@ -673,9 +668,8 @@ ACMD(do_alias)
         }
         send_to_char("You have the following aliases defined:\n\r", ch);
         for (count = 0; list; list = list->next, count++) {
-            sprintf(buf, "%-20s: %s\n\r", list->keyword, list->command);
             // printf("list found: %s\n",buf);
-            send_to_char(buf, ch);
+            send_to_char(std::format("{:<20}: {}\n\r", static_cast<const char*>(list->keyword), list->command).c_str(), ch);
         }
         //    sprintf(buf,"You have %d of max %d aliases.\n\r",count,MAX_ALIAS);
         //  send_to_char(buf,ch);
@@ -698,8 +692,7 @@ ACMD(do_alias)
             send_to_char("You have no such alias.\n\r", ch);
             return;
         }
-        sprintf(buf, "You removed the alias '%s'.\n\r", list->keyword);
-        send_to_char(buf, ch);
+        send_to_char(std::format("You removed the alias '{}'.\n\r", static_cast<const char*>(list->keyword)).c_str(), ch);
 
         if (!list2)
             GET_ALIAS(ch) = list->next;
@@ -741,11 +734,9 @@ ACMD(do_alias)
     if (!list) {
         list2->next = ch->specials.alias;
         ch->specials.alias = list2;
-        sprintf(buf, "You added the alias '%s'.\n\r", list2->keyword);
-        send_to_char(buf, ch);
+        send_to_char(std::format("You added the alias '{}'.\n\r", static_cast<const char*>(list2->keyword)).c_str(), ch);
     } else {
-        sprintf(buf, "You replaced the alias '%s'.\n\r", list2->keyword);
-        send_to_char(buf, ch);
+        send_to_char(std::format("You replaced the alias '{}'.\n\r", static_cast<const char*>(list2->keyword)).c_str(), ch);
     }
 
     return;

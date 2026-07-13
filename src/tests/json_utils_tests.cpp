@@ -80,7 +80,8 @@ TEST(JsonUtils, SkipsUnknownNestedValuesWithoutBreakingKnownFields)
 
 TEST(JsonUtils, RejectsTrailingCharactersAfterRootObject)
 {
-    json_utils::JsonReader reader("{\"name\":\"Aragorn\"} trailing");
+    const std::string json = "{\"name\":\"Aragorn\"} trailing";
+    json_utils::JsonReader reader(json);
     std::string error_message;
 
     EXPECT_FALSE(reader.parse_root_object(
@@ -93,7 +94,8 @@ TEST(JsonUtils, RejectsTrailingCharactersAfterRootObject)
 
 TEST(JsonUtils, RejectsUnsupportedStringEscapes)
 {
-    json_utils::JsonReader reader("{\"name\":\"bad\\u263A\"}");
+    const std::string json = "{\"name\":\"bad\\u263A\"}";
+    json_utils::JsonReader reader(json);
     std::string name;
     std::string error_message;
 

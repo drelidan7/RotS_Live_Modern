@@ -9,6 +9,7 @@
 #include "../structs.h"
 #include "../utils.h"
 #include "ObjFlagDataBuilder.h"
+#include "test_char_cleanup.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
@@ -189,6 +190,16 @@ void reset_capturing_descriptor(descriptor_data& descriptor, char_data* characte
 struct SoloCharacterContext {
     char_data character {};
     descriptor_data descriptor {};
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations) when this context goes out of scope (Phase 5 T6 leak
+    // sweep); declared last so it is destroyed BEFORE `character` and
+    // `descriptor` above it.
+    ScopedClearCharFields character_cleanup { character };
+    // Returns descriptor.large_outbuf to bufpool at scope exit -- some of
+    // this suite's renders (do_info, do_toggle, etc.) overflow
+    // descriptor.small_outbuf, promoting it to a heap-allocated large_outbuf
+    // block (Phase 5 T6 leak sweep; see test_char_cleanup.h).
+    ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
 
     SoloCharacterContext()
     {
@@ -235,10 +246,19 @@ struct RoomCharacterContext {
     descriptor_data descriptor {};
     byte knowledge[MAX_SKILLS] {};
     char_data* original_people = nullptr;
+    // Releases character.profs/skills (clear_char() heap allocations) when
+    // this context goes out of scope (Phase 5 T6 leak sweep); character's
+    // OWN knowledge allocation is released right after clear_char() below,
+    // before it gets overwritten with the stack `knowledge` array above, so
+    // the destructor's RELEASE(character.knowledge) is then a no-op on the
+    // (non-owned) stack pointer.
+    ScopedClearCharFields character_cleanup { character };
+    ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
 
     RoomCharacterContext()
     {
         clear_char(&character, MOB_VOID);
+        character_cleanup.release_knowledge_now();
         reset_capturing_descriptor(descriptor, &character);
         // do_look (and, transitively, do_read/do_examine) bails out at its
         // very first line unless ch->desc->descriptor is non-zero (a real
@@ -281,10 +301,15 @@ struct RoomWithExitContext {
     room_direction_data exit {};
     byte knowledge[MAX_SKILLS] {};
     char_data* original_people = nullptr;
+    // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
+    // leak sweep).
+    ScopedClearCharFields character_cleanup { character };
+    ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
 
     RoomWithExitContext()
     {
         clear_char(&character, MOB_VOID);
+        character_cleanup.release_knowledge_now();
         reset_capturing_descriptor(descriptor, &character);
         // See RoomCharacterContext's comment: do_look requires a non-zero fd.
         descriptor.descriptor = 7;
@@ -342,10 +367,15 @@ struct TwoRoomLookContext {
     room_direction_data exit {};
     byte knowledge[MAX_SKILLS] {};
     char_data* original_people = nullptr;
+    // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
+    // leak sweep).
+    ScopedClearCharFields character_cleanup { character };
+    ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
 
     TwoRoomLookContext()
     {
         clear_char(&character, MOB_VOID);
+        character_cleanup.release_knowledge_now();
         reset_capturing_descriptor(descriptor, &character);
         // See RoomCharacterContext's comment: do_look requires a non-zero fd.
         descriptor.descriptor = 7;
@@ -393,11 +423,19 @@ struct RoomWithBystanderContext {
     descriptor_data bystander_descriptor {};
     byte knowledge[MAX_SKILLS] {};
     char_data* original_people = nullptr;
+    // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
+    // leak sweep); `bystander` never overwrites its knowledge pointer, so
+    // its guard releases all three clear_char() fields at scope exit as-is.
+    ScopedClearCharFields actor_cleanup { actor };
+    ScopedClearCharFields bystander_cleanup { bystander };
+    ScopedDescriptorLargeOutbufReturn actor_descriptor_large_outbuf_cleanup { actor_descriptor };
+    ScopedDescriptorLargeOutbufReturn bystander_descriptor_large_outbuf_cleanup { bystander_descriptor };
 
     RoomWithBystanderContext()
     {
         clear_char(&actor, MOB_VOID);
         clear_char(&bystander, MOB_VOID);
+        actor_cleanup.release_knowledge_now();
         reset_capturing_descriptor(actor_descriptor, &actor);
         reset_capturing_descriptor(bystander_descriptor, &bystander);
         actor_descriptor.descriptor = 7;
@@ -505,6 +543,11 @@ struct RankedCharacterContext {
     player_index_element entry {};
     player_index_element* saved_player_table;
     int saved_top_of_p_table;
+    // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
+    // leak sweep); no knowledge override here, so the guard releases all
+    // three clear_char() fields as-is.
+    ScopedClearCharFields character_cleanup { character };
+    ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
 
     explicit RankedCharacterContext(int race)
     {
@@ -569,6 +612,13 @@ struct WhoDescriptorListContext {
     char_data other {};
     descriptor_data viewer_descriptor {};
     descriptor_data other_descriptor {};
+    // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
+    // leak sweep); neither char overrides its knowledge pointer, so both
+    // guards release all three clear_char() fields as-is.
+    ScopedClearCharFields viewer_cleanup { viewer };
+    ScopedClearCharFields other_cleanup { other };
+    ScopedDescriptorLargeOutbufReturn viewer_descriptor_large_outbuf_cleanup { viewer_descriptor };
+    ScopedDescriptorLargeOutbufReturn other_descriptor_large_outbuf_cleanup { other_descriptor };
 
     WhoDescriptorListContext()
     {

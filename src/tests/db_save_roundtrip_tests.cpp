@@ -28,6 +28,7 @@
 #include "../db.h"
 #include "../structs.h"
 #include "../utils.h"
+#include "test_char_cleanup.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
@@ -184,6 +185,14 @@ TEST(SavePlayerRoundTrip, FixtureCharacterSerializesToStableBytes)
     char_data character {};
     descriptor_data descriptor {};
     build_round_trip_character(character, descriptor, fixture);
+    // Releases character.profs/skills/knowledge (clear_char() heap
+    // allocations, via build_round_trip_character's clear_char() call) at
+    // scope exit (Phase 5 T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
+    // Releases character.player.title/description/name
+    // (store_to_char() heap allocations, via build_round_trip_character's
+    // store_to_char() call) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields character_store_cleanup { character };
 
     ASSERT_TRUE(write_player_text(&character, /*load_room=*/9001, scratch.c_str()));
     const std::string first = read_entire_file(scratch);
@@ -234,6 +243,13 @@ TEST(SavePlayerRoundTrip, PrintsStableFormatHash)
     char_data character {};
     descriptor_data descriptor {};
     build_round_trip_character(character, descriptor, fixture);
+    // See the FixtureCharacterSerializesToStableBytes comment above (Phase 5
+    // T6 leak sweep).
+    ScopedClearCharFields character_cleanup { character };
+    // Releases character.player.title/description/name
+    // (store_to_char() heap allocations, via build_round_trip_character's
+    // store_to_char() call) at scope exit (Phase 5 T6 leak sweep).
+    ScopedStoreToCharFields character_store_cleanup { character };
 
     ASSERT_TRUE(write_player_text(&character, /*load_room=*/9001, scratch.c_str()));
     static std::string pre_transform_bytes = normalize_time_variant_fields(read_entire_file(scratch));

@@ -6,6 +6,7 @@
 #include "db.h"
 #include "stopwatch.h"
 #include "structs.h"
+#include "utils.h"
 
 #include <cstdio>
 #include <functional>
@@ -176,17 +177,23 @@ bool profile_load(const std::string& root, const std::string& account_name,
     }));
     // L5: char_file_u -> live char (OFFLINE only; store_to_char allocates into the char).
     // Build the scratch char the project's way and reuse one struct across iterations.
-    // NOTE: store_to_char unconditionally CREATE()s title/description/profs/name on every
-    // call with no prior free, so per-iteration inner allocations leak; delete scratch frees
-    // only the struct shell. The leak is bounded and acceptable for a short-lived offline
-    // benchmark — matches the existing db_loader_tests idiom.
+    // store_to_char() now RELEASE()s title/description/profs/name before
+    // re-CREATE()ing them (Phase 5 T6 LeakSanitizer fix, db.cpp), so repeated
+    // calls on the same scratch object across `iterations` no longer leak
+    // one allocation per iteration -- only the final iteration's fields
+    // remain live once the loop ends, released below via free_char()
+    // (matching CREATE1()'s calloc-based allocation; a plain `delete` here
+    // would only free the struct shell and still leak those, plus mismatch
+    // operator-new/free() the way account_management_tests.cpp's identical
+    // pre-Phase-5-T6 bug did).
     if (include_store_to_char) {
-        char_data* scratch = new char_data {};
+        char_data* scratch;
+        CREATE1(scratch, char_data);
         clear_char(scratch, MOB_VOID);
         out->stages.push_back(time_stage("L5 store_to_char", iterations, [&]() {
             store_to_char(&chd, scratch);
         }));
-        delete scratch;
+        free_char(scratch);
     }
     out->total = time_stage("TOTAL load", iterations, [&]() {
         account::AccountData a;

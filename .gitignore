@@ -110,6 +110,7 @@ lib-backup-*.tar.gz
 
 # Superpowers scratch directory
 .superpowers/
+.worktrees/
 
 cmake_test_discovery*.json
 

@@ -1159,11 +1159,11 @@ void free_alias_list(struct alias_list* list);
 //     node it frees itself, by hand, on the very next lines; an
 //     auto-freeing assignment here would double-free that node.
 // What this type adds beyond the raw pointer: a destructor that calls
-// free_alias_list(), so free_char() (db.cpp) no longer has to call it by
-// hand. Because free_char() releases char_data via calloc/free and never
-// runs ~char_data() (RAII audit T3's dtor-order rule, ownership-map.md §6),
-// free_char() must still explicitly call reset() on this member before
-// RELEASE(ch) -- see db.cpp.
+// free_alias_list(), so nothing has to free this chain by hand. Since RAII
+// T6a, free_char() (db.cpp) runs an explicit `ch->~char_data();` before it
+// releases the calloc storage, so this member's destructor runs as part of
+// that teardown -- free_char() no longer resets it by hand (ownership-map.md
+// §6). reset() remains available for explicit mid-life clearing.
 //
 // Copy/move: char_data instances are whole-struct-copied for NPCs/objects
 // (`*mob = mob_proto[i]`, db.cpp) and mob_proto's alias is always null (NPCs
@@ -1227,9 +1227,10 @@ public:
     // conversion operator above already covers.
     struct alias_list* operator->() const noexcept { return head_; }
 
-    // Frees the chain and nulls the head. Used by free_char() to explicitly
-    // destroy this member ahead of the calloc/free teardown that bypasses
-    // ~char_data() (see class comment above).
+    // Frees the chain and nulls the head. No longer called by free_char()
+    // (RAII T6a: the char_data destructor -- now invoked explicitly before the
+    // calloc/free teardown -- runs ~owned_alias_list() instead). Retained for
+    // any caller that needs to clear this member mid-life; see class comment.
     void reset() noexcept
     {
         free_alias_list(head_);
@@ -1283,9 +1284,9 @@ struct char_special_data {
     // RAII T5b: PC/god arrival & departure strings, now owning std::string
     // (were str_dup'd char*). Empty for mobs. The special-mob script
     // buffers that used to alias these fields moved to special_stack /
-    // special_list_area (above, RAII T5a). free_char() destroys these
-    // explicitly before the calloc/free teardown that bypasses
-    // ~char_data() (ownership-map section 6 dtor-order rule).
+    // special_list_area (above, RAII T5a). Destroyed by ~char_data(), which
+    // free_char() now invokes explicitly before releasing the calloc storage
+    // (RAII T6a; ownership-map section 6 dtor-order rule).
     std::string poofIn; /* Description on arrival of a god. */
     std::string poofOut; /* Description upon a god's exit.  */
     int invis_level; /* level of invisibility		       */

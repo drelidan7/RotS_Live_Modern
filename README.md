@@ -315,22 +315,15 @@ sending at higher scale:
 
 ## GitHub Actions
 
-This repository includes a GitHub Actions workflow (`.github/workflows/ci.yml`)
-that runs on pushes to `master` and pull requests targeting `master`. It builds
-the game and runs the C++ unit tests (including the characterization goldens)
-across six required jobs — Linux i386 legacy, Linux x64, macOS arm64, Windows
-MSVC, plus Linux x64 and macOS arm64 builds under AddressSanitizer/UBSan — and
-one advisory `clang-tidy` job that never blocks a merge. CI does not run the
-proxy-backed account smoke flow (`make smoke-account`); that needs `lib/world/`
-and the Rust proxy, neither of which the runners have, so run it locally for
-account/login/authentication changes.
+This repository includes a GitHub Actions workflow that runs on pushes to
+`master` and pull requests targeting `master`. It builds the game, runs the C++
+unit tests, and then runs the proxy-backed account smoke flow.
 
 If you want GitHub to block merges until those checks pass, enable branch
-protection for `master` in the repository settings and mark the required jobs
-above (not `clang-tidy (advisory, not required)`) from the CI workflow as
-required status checks. If you also want to block direct pushes to `master`,
-make sure your branch protection or ruleset disables direct-push bypass as
-well.
+protection for `master` in the repository settings and mark the `Build, Unit
+Tests, and Smoke Tests` job from the CI workflow as a required status check.
+If you also want to block direct pushes to `master`, make sure your branch
+protection or ruleset disables direct-push bypass as well.
 
 #### Step 5: Running the Game
 

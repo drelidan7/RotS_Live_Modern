@@ -94,7 +94,9 @@ proxy in front of the game.
 
 - Build artifacts (`bin/ageland`, `*.o`) land on the host via the bind mount, but the
   binary is a Linux i386 ELF — it only runs inside the container.
-- "deprecated function" warnings during `make all` are expected and harmless.
+- `make all` builds warning-clean under `-Wall -Wextra -Werror` (Phase 5) — the old
+  "deprecated function warnings are expected" caveat no longer applies; any warning
+  is now a build failure (see "Warnings policy" below).
 - **`docker compose run` can hang at "Image ... Pulling" even when the image already
   exists locally** (`docker images` shows it) — Compose still probes the registry for a
   newer version before falling back to the local image, and that probe can hang
@@ -240,25 +242,28 @@ floated auditing char-signedness assumptions away entirely, but that audit is no
 being pursued. `char` stays pinned unsigned on every platform this project builds
 for; do not remove or gate the pin.
 
-**MSVC gets its own campaign, not this flip.** `/W4 /WX` for the `windows-msvc`
-preset is Phase 5 Task 9's job — a staged effort (CI-driven census, triage,
-documented `/wd` suppressions for any genuinely MSVC-only noise class, then the
-flip), tracked separately because MSVC's warning set and diagnostic text don't line
-up 1:1 with GCC/Clang's. Until Task 9 lands, `windows-msvc` is not `-Werror`-clean
-by policy — it happens to build warning-visible-but-not-error today, which is a
-different guarantee.
+**MSVC got its own campaign, not this flip.** `/W4 /WX` for the `windows-msvc`
+preset was Phase 5 Task 9's job — a staged effort (CI-driven census across 3 cycles,
+triage, ~30 real fixes including UB-path bugs, documented `/wd` suppressions for
+genuinely MSVC-only noise classes, then the flip), run separately because MSVC's
+warning set and diagnostic text don't line up 1:1 with GCC/Clang's. As of Task 9,
+`windows-msvc` builds with `/W4 /WX` and is required-green in CI alongside the
+GNU-family `-Werror` jobs — both warnings-as-errors policies are now live
+simultaneously.
 
-**The i386 container leg (`-m32`, g++14 `debian:trixie`) is explicitly deferred to
-Phase 5 Task 10 (finalization), not silently skipped.** The per-task verification
-cadence for this phase runs macOS native + `rots64` only (see CLAUDE.md's
-verification-cadence gotcha); the i386 container battery — including its own build
-under `-w` today, `-Werror` starting at Task 10 — runs at the wave/branch
-finalization pass. Its `-m32` translation-unit set and its slightly different
-warning surface (32-bit pointer/size_t widths change what `-Wformat`,
-`-Wsign-compare`, etc. can flag) are a real, disclosed exposure: a straggler
-specific to that ABI may still surface there and will be fixed as part of Task 10,
-the same disposition rigor (real fix or restructure; pragma+comment+ledger only as
-last resort) applying there too.
+**The i386 container leg (`-m32`, g++14 `debian:trixie`) is `-Werror`-clean too —
+verified at Phase 5 Task 10 (finalization), as planned, not silently skipped.** The
+per-task verification cadence for this phase ran macOS native + `rots64` only (see
+CLAUDE.md's verification-cadence gotcha), deferring the i386 container battery to the
+finalization pass; that pass has now run. Despite the `-m32` translation-unit set's
+slightly different warning surface (32-bit pointer/size_t widths change what
+`-Wformat`, `-Wsign-compare`, etc. can flag), the first full i386 build under
+`-Wall -Wextra -Werror` — both the CMake `ageland`/`ageland_tests` targets and the
+`src/tests/Makefile` path — compiled with **zero** target-specific stragglers: the
+Tasks 1-8 sweeps (which included g++14 on `rots64`) had already covered everything
+the 32-bit ABI could flag. Should a future change introduce an i386-only warning,
+the same disposition rigor applies (real fix or restructure; pragma+comment+ledger
+only as last resort).
 
 **32-bit retirement is a future-phase trigger, not part of this warnings policy.**
 The i386 preset/container/CI leg stays required — including once it starts

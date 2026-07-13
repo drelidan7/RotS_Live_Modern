@@ -8,6 +8,7 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <new> // placement-new (reconstruct the stack victim after free_char, RAII T6 MSVC fix)
 #include <sstream>
 #include <string>
 
@@ -20,14 +21,14 @@
 // Every future build of this repo (and any 64-bit successor) is SSE, so this
 // golden is the correct long-term characterization basis, not a compromise.
 
-int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int hit_location);
+int damage(char_data *attacker, char_data *victim, int dam, int attacktype, int hit_location);
 
-extern char_data* combat_list;
-extern char_data* combat_next_dude;
-extern char_data* character_list;
-extern obj_data* object_list;
+extern char_data *combat_list;
+extern char_data *combat_next_dude;
+extern char_data *character_list;
+extern obj_data *object_list;
 extern int global_release_flag;
-extern index_data* mob_index;
+extern index_data *mob_index;
 extern int top_of_mobt;
 
 namespace {
@@ -39,13 +40,12 @@ namespace {
 // falls back to the plain relative path it has always used (cwd is src/tests/
 // there).
 #ifdef ROTS_GOLDEN_DIR
-const char* const kGoldenPath = ROTS_GOLDEN_DIR "/combat_transcript_seed42.txt";
+const char *const kGoldenPath = ROTS_GOLDEN_DIR "/combat_transcript_seed42.txt";
 #else
-const char* const kGoldenPath = "goldens/combat_transcript_seed42.txt";
+const char *const kGoldenPath = "goldens/combat_transcript_seed42.txt";
 #endif
 
-std::string read_file(const char* path)
-{
+std::string read_file(const char *path) {
     std::ifstream in(path);
     std::ostringstream contents;
     contents << in.rdbuf();
@@ -57,15 +57,9 @@ std::string read_file(const char* path)
 struct ReleaseFlagGuard {
     int saved_value = global_release_flag;
 
-    explicit ReleaseFlagGuard(int temporary_value)
-    {
-        global_release_flag = temporary_value;
-    }
+    explicit ReleaseFlagGuard(int temporary_value) { global_release_flag = temporary_value; }
 
-    ~ReleaseFlagGuard()
-    {
-        global_release_flag = saved_value;
-    }
+    ~ReleaseFlagGuard() { global_release_flag = saved_value; }
 };
 
 // db_boot() normally populates mob_index (one slot per mob-file prototype)
@@ -75,8 +69,7 @@ struct ReleaseFlagGuard {
 // that might die needs a real (if fabricated) slot rather than nr == -1.
 // Idempotent/leaked-on-purpose: this is a one-time, process-lifetime table,
 // exactly like the real db_boot() call it stands in for.
-void ensure_test_mob_index()
-{
+void ensure_test_mob_index() {
     if (mob_index) {
         return;
     }
@@ -92,8 +85,7 @@ void ensure_test_mob_index()
 
 class CharacterizationCombatTest : public ::testing::Test {
   protected:
-    void TearDown() override
-    {
+    void TearDown() override {
         combat_list = nullptr;
         combat_next_dude = nullptr;
         character_list = nullptr;
@@ -134,14 +126,13 @@ class CharacterizationCombatTest : public ::testing::Test {
     // Corpse make_physical_corpse() (fight.cpp) allocated during the test, if
     // the seed-42 transcript killed the victim; set by the test body once
     // it's unlinked from object_list/world[room].contents, freed above.
-    obj_data* corpse_to_free = nullptr;
+    obj_data *corpse_to_free = nullptr;
 };
 
 // Characterization, not specification: this pins CURRENT behavior of the live
 // damage path (fight.cpp::damage()) under a fixed PRNG seed. If a refactor
 // changes this transcript, the refactor changed game behavior.
-TEST_F(CharacterizationCombatTest, DamageTranscriptSeed42)
-{
+TEST_F(CharacterizationCombatTest, DamageTranscriptSeed42) {
     // Reuse the exact context type from damage_tests.cpp, lifted into
     // damage_test_context.h so both TUs share one definition.
     DamageTestContext context;
@@ -181,6 +172,9 @@ TEST_F(CharacterizationCombatTest, DamageTranscriptSeed42)
     rots_rng::seed(42u);
 
     std::ostringstream transcript;
+    // Set once the live death path frees the stack victim; drives the
+    // in-place reconstruction after the loop (RAII T6 MSVC double-dtor fix).
+    bool victim_perished = false;
     for (int round = 0; round < 100; ++round) {
         // Rolls drive dam and hit_location through the same public RNG the
         // game uses, so the transcript covers armor/location/death handling.
@@ -193,12 +187,40 @@ TEST_F(CharacterizationCombatTest, DamageTranscriptSeed42)
         int dam = number(1, 60);
         int location = number(0, MAX_BODYPARTS - 1);
         int result = damage(&context.attacker, &context.victim, dam, TYPE_HIT, location);
-        transcript << round << ' ' << dam << ' ' << location << ' ' << result
-                   << ' ' << GET_HIT(&context.victim) << '\n';
+        // NOTE: when this call kills the victim it runs the live death path
+        // (die -> raw_kill -> extract_char -> free_char) on the STACK victim,
+        // so by the time damage() returns `context.victim` has ALREADY had its
+        // ~char_data() run (global_release_flag=0 skips only free(), not the
+        // RAII T6a explicit destructor). The GET_HIT/GET_POSITION reads below
+        // touch only POD members, which survive intact in the un-free()'d
+        // storage -- but see victim_perished handling after the loop.
+        transcript << round << ' ' << dam << ' ' << location << ' ' << result << ' '
+                   << GET_HIT(&context.victim) << '\n';
         if (GET_POSITION(&context.victim) == POSITION_DEAD) {
             transcript << "victim dead at round " << round << '\n';
+            victim_perished = true;
             break;
         }
+    }
+
+    // RAII T6 MSVC fix: if the fight killed the victim, free_char() already ran
+    // ~char_data() on `context.victim` (destroying its owning members --
+    // damage_details' std::map, the alias/poof/skills members, etc.). The
+    // victim is a stack member of DamageTestContext (damage_test_context.h),
+    // so scope exit will run ~char_data() on it a SECOND time -- a double
+    // destruction. glibc/libc++ tolerated it because the members were logically
+    // empty on this path, but MSVC's std::map keeps a heap-allocated sentinel
+    // node even when empty, so the second destructor double-frees it (observed
+    // as SEH 0xc0000005 on the windows-msvc CI job; ASan/glibc stayed silent).
+    // Reconstruct the object in place so scope exit destroys a fresh, validly
+    // constructed empty char_data exactly once -- the destruction-side mirror
+    // of clear_char()/read_mobile()'s placement-new construction contract, and
+    // the symmetric partner to the explicit ~char_data() T6a added to
+    // free_char(). Guarded on victim_perished: if the victim never died,
+    // free_char() never ran, the object is still live, and reconstructing over
+    // it would leak -- so we leave it untouched for its single normal dtor.
+    if (victim_perished) {
+        new (&context.victim) char_data();
     }
 
     // The death path built a corpse object and pushed it onto two globals
@@ -208,7 +230,7 @@ TEST_F(CharacterizationCombatTest, DamageTranscriptSeed42)
     // objects between the kill and here, so the corpse is at the head of
     // both lists when it exists. Handed to TearDown() (corpse_to_free) for
     // the actual deallocation.
-    obj_data* corpse = world[DamageTestContext::room_number].contents;
+    obj_data *corpse = world[DamageTestContext::room_number].contents;
     if (corpse != nullptr && corpse == object_list) {
         world[DamageTestContext::room_number].contents = corpse->next_content;
         object_list = corpse->next;

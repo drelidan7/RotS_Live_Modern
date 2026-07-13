@@ -265,3 +265,35 @@ TEST(CharacterizationCombatText, ReplacementAcceptsBoundedSlicesAndStopsAtEmbedd
                      std::string_view(embedded_null_bodypart.data(), embedded_null_bodypart.size())),
         "slash hits#");
 }
+
+TEST(CharacterizationCombatText, ReplacementTruncatesOversizedLiteralFormatAtBufferCapacity)
+{
+    const std::string oversized_format(700, 'x');
+
+    const char* replacement = replace_string(oversized_format, "slash", "slashes", "shoulder");
+
+    EXPECT_EQ(strlen(replacement), 499U);
+    EXPECT_EQ(std::string_view(replacement), std::string_view(oversized_format).substr(0, 499));
+}
+
+TEST(CharacterizationCombatText, ReplacementTruncatesOversizedTokensAndBodypartSuffixesSafely)
+{
+    const std::string oversized_weapon(700, 'w');
+    const std::string oversized_bodypart(700, 'b');
+
+    const char* weapon_replacement = replace_string("prefix #w suffix", oversized_weapon,
+        "slashes", "shoulder");
+    EXPECT_EQ(strlen(weapon_replacement), 499U);
+    EXPECT_TRUE(std::string_view(weapon_replacement).starts_with("prefix "));
+
+    const char* bodypart_replacement = replace_string("hit#b#s#r", "slash", "slashes",
+        oversized_bodypart);
+    EXPECT_EQ(strlen(bodypart_replacement), 499U);
+    EXPECT_TRUE(std::string_view(bodypart_replacement).starts_with("hit "));
+
+    const std::string suffix_boundary_format = std::string(497, 'x') + "#s#r";
+    const char* suffix_replacement
+        = replace_string(suffix_boundary_format, "slash", "slashes", "shoulder");
+    EXPECT_EQ(strlen(suffix_replacement), 499U);
+    EXPECT_TRUE(std::string_view(suffix_replacement).ends_with("'s"));
+}

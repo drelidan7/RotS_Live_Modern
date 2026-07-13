@@ -710,77 +710,79 @@ void get_char_flag_line(char_data* viewer, char_data* viewed, char* character_me
  * through the rider list so that will_have_special_message is set
  * appropriately.
  *
- * On line1 and line2: nowhere in the code does line1 differ from
- * line2.  It is unclear what the purpose of splitting these two
- * arguments is.
+ * The singular and plural rider text are currently identical at every call site. It is unclear
+ * what purpose the split arguments originally served.
  *
  * If 'color' is true, then we color this message.
  */
-void show_mount_to_char(struct char_data* i, struct char_data* ch, std::string_view line1,
-    std::string_view line2, int color)
+void show_mount_to_char(struct char_data* mount, struct char_data* viewer,
+    std::string_view singular_rider_text, std::string_view plural_rider_text, int color)
 {
-    line1 = rots::text::truncate_at_null(line1);
-    line2 = rots::text::truncate_at_null(line2);
+    singular_rider_text = rots::text::truncate_at_null(singular_rider_text);
+    plural_rider_text = rots::text::truncate_at_null(plural_rider_text);
 
-    int vis_count, tmpnum, you_are_riding, riderno;
+    int visible_rider_count, current_rider_number, viewer_is_riding, rider_index;
     int special_message;
-    struct char_data *tmpch, *last_rider = 0;
+    struct char_data *current_rider, *last_rider = 0;
 
-    you_are_riding = special_message = vis_count = 0;
+    viewer_is_riding = special_message = visible_rider_count = 0;
     *buf = 0;
 
     if (color)
-        strcat(buf, CC_USE(ch, COLOR_CHAR));
+        strcat(buf, CC_USE(viewer, COLOR_CHAR));
 
     /*
      * We NEED to know if there are multiple people riding one mount and
      * whether or not ANY of those riders will generate a special message
      */
-    tmpch = i->mount_data.rider;
-    tmpnum = i->mount_data.rider_number;
-    for (riderno = 0; tmpch && char_exists(tmpnum);
-        tmpch = tmpch->mount_data.next_rider, ++riderno) {
-        if (CAN_SEE(ch, tmpch)) {
-            tmpnum = tmpch->mount_data.next_rider_number;
-            if (GET_POS(tmpch) == POSITION_FIGHTING || GET_POS(tmpch) == POSITION_RESTING)
+    current_rider = mount->mount_data.rider;
+    current_rider_number = mount->mount_data.rider_number;
+    for (rider_index = 0; current_rider && char_exists(current_rider_number);
+        current_rider = current_rider->mount_data.next_rider, ++rider_index) {
+        if (CAN_SEE(viewer, current_rider)) {
+            current_rider_number = current_rider->mount_data.next_rider_number;
+            if (GET_POS(current_rider) == POSITION_FIGHTING
+                || GET_POS(current_rider) == POSITION_RESTING)
                 special_message = 1;
         } else
-            --riderno;
+            --rider_index;
     }
 
-    tmpch = i->mount_data.rider;
-    tmpnum = i->mount_data.rider_number;
-    for (; tmpch && char_exists(tmpnum); tmpch = tmpch->mount_data.next_rider) {
-        if (CAN_SEE(ch, tmpch)) {
+    current_rider = mount->mount_data.rider;
+    current_rider_number = mount->mount_data.rider_number;
+    for (; current_rider && char_exists(current_rider_number);
+        current_rider = current_rider->mount_data.next_rider) {
+        if (CAN_SEE(viewer, current_rider)) {
             /* This block facilitates the junctions between multiple riders */
-            if (vis_count == riderno - 1 && vis_count)
+            if (visible_rider_count == rider_index - 1 && visible_rider_count)
                 strcat(buf, " and ");
             /* The special messages have commas */
-            else if (vis_count) {
+            else if (visible_rider_count) {
                 if (!special_message)
                     strcat(buf, ", ");
                 else /* But they don't have spaces */
                     strcat(buf, " ");
             }
 
-            if (ch == tmpch) {
+            if (viewer == current_rider) {
                 // "%cou" ('Y'/'y' + "ou") is a two-way literal choice, not
                 // real interpolation -- a plain strcat of the whole word
                 // avoids a std::format call for something that isn't
                 // actually formatting.
-                strcat(buf, !vis_count ? "You" : "you");
-                you_are_riding = 1;
+                strcat(buf, !visible_rider_count ? "You" : "you");
+                viewer_is_riding = 1;
             } else {
                 /* Unfortunately, act can't take arbitrary numbers of riders */
                 strcat(buf,
-                    !vis_count ? PERS(tmpch, ch, TRUE, FALSE) : PERS(tmpch, ch, FALSE, FALSE));
+                    !visible_rider_count ? PERS(current_rider, viewer, TRUE, FALSE)
+                                         : PERS(current_rider, viewer, FALSE, FALSE));
                 if (color)
-                    strcat(buf, CC_USE(ch, COLOR_CHAR));
+                    strcat(buf, CC_USE(viewer, COLOR_CHAR));
             }
 
-            get_char_flag_line(ch, tmpch, buf + strlen(buf));
+            get_char_flag_line(viewer, current_rider, buf + strlen(buf));
 
-            switch (GET_POS(tmpch)) {
+            switch (GET_POS(current_rider)) {
             case POSITION_RESTING:
                 /*
                  * If special_message is 0, then the last person in the list
@@ -789,7 +791,7 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, std::string_v
                  * 'is'.  This is the is/are if block mentioned in the comment
                  * heading this function.
                  */
-                if (tmpch == ch || (!special_message && vis_count))
+                if (current_rider == viewer || (!special_message && visible_rider_count))
                     strcat(buf, " are");
                 else /* tmpch is not the viewer */
                     strcat(buf, " is");
@@ -798,19 +800,20 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, std::string_v
 
             case POSITION_FIGHTING:
                 /* Same is/are block as above */
-                if (tmpch == ch || (!special_message && vis_count))
+                if (current_rider == viewer || (!special_message && visible_rider_count))
                     strcat(buf, " are");
                 else /* tmpch is not the viewer */
                     strcat(buf, " is");
-                if (tmpch->specials.fighting) {
+                if (current_rider->specials.fighting) {
                     strcat(buf, " here, fighting ");
-                    if (tmpch->specials.fighting == ch)
+                    if (current_rider->specials.fighting == viewer)
                         strcat(buf, "YOU");
                     else {
-                        if (tmpch->in_room == tmpch->specials.fighting->in_room) {
-                            strcat(buf, PERS(tmpch->specials.fighting, ch, FALSE, FALSE));
+                        if (current_rider->in_room == current_rider->specials.fighting->in_room) {
+                            strcat(buf,
+                                PERS(current_rider->specials.fighting, viewer, FALSE, FALSE));
                             if (color)
-                                strcat(buf, CC_USE(ch, COLOR_CHAR));
+                                strcat(buf, CC_USE(viewer, COLOR_CHAR));
                         } else
                             strcat(buf, "SOMEONE THAT ALREADY LEFT! *BUG*");
                     }
@@ -827,8 +830,8 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, std::string_v
                  * affected by the same message, so they ALL get the special
                  * message "is here," if they didn't get one already.
                  */
-                if (riderno > 1 && special_message) {
-                    if (ch == tmpch)
+                if (rider_index > 1 && special_message) {
+                    if (viewer == current_rider)
                         strcat(buf, " are");
                     else
                         strcat(buf, " is");
@@ -836,29 +839,30 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, std::string_v
                 }
                 break;
             }
-            vis_count++;
+            visible_rider_count++;
         }
-        last_rider = tmpch;
-        tmpnum = tmpch->mount_data.next_rider_number;
+        last_rider = current_rider;
+        current_rider_number = current_rider->mount_data.next_rider_number;
     }
 
     /* It's just a mount, standing there, with no one on it */
-    if (!vis_count) {
-        tmpch = i->mount_data.rider;
-        tmpnum = i->mount_data.rider_number;
-        i->mount_data.rider = 0;
-        i->mount_data.rider_number = 0;
-        show_char_to_char(i, ch, 0);
-        i->mount_data.rider = tmpch;
-        i->mount_data.rider_number = tmpnum;
+    if (!visible_rider_count) {
+        current_rider = mount->mount_data.rider;
+        current_rider_number = mount->mount_data.rider_number;
+        mount->mount_data.rider = 0;
+        mount->mount_data.rider_number = 0;
+        show_char_to_char(mount, viewer, 0);
+        mount->mount_data.rider = current_rider;
+        mount->mount_data.rider_number = current_rider_number;
 
         return;
     } else { /* It's a ridden mount */
         /* None of the riders had a special message */
         if (!special_message) {
-            if (last_rider == ch || you_are_riding || (!you_are_riding && riderno > 1))
+            if (last_rider == viewer || viewer_is_riding
+                || (!viewer_is_riding && rider_index > 1))
                 strcat(buf, " are");
-            else if (vis_count == 1)
+            else if (visible_rider_count == 1)
                 strcat(buf, " is");
         }
 
@@ -867,13 +871,13 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, std::string_v
          * would seem as though only the last person in our list is
          * actually riding on the mount
          */
-        if (riderno > 1) {
-            if (riderno == 2)
+        if (rider_index > 1) {
+            if (rider_index == 2)
                 strcat(buf, " both");
-            else if (riderno > 2)
+            else if (rider_index > 2)
                 strcat(buf, " all");
             if (special_message) {
-                if (you_are_riding)
+                if (viewer_is_riding)
                     strcat(buf, " of you");
                 else
                     strcat(buf, " of them");
@@ -881,7 +885,8 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, std::string_v
         }
 
         const std::string_view rider_text
-            = (vis_count == 1) && !you_are_riding ? line1 : line2;
+            = (visible_rider_count == 1) && !viewer_is_riding ? singular_rider_text
+                                                              : plural_rider_text;
         if (!rider_text.empty()) {
             // This display path is frequent, so append the known bounded extent directly instead
             // of allocating a temporary null-terminated string solely for legacy `buf`. Keep
@@ -897,12 +902,12 @@ void show_mount_to_char(struct char_data* i, struct char_data* ch, std::string_v
             memcpy(buf + message_length, rider_text.data(), copied_length);
             buf[message_length + copied_length] = '\0';
         }
-        strcat(buf, PERS(i, ch, FALSE, FALSE));
-        get_char_flag_line(ch, i, buf + strlen(buf));
+        strcat(buf, PERS(mount, viewer, FALSE, FALSE));
+        get_char_flag_line(viewer, mount, buf + strlen(buf));
         strcat(buf, ".\n\r");
-        strcat(buf, CC_NORM(ch));
+        strcat(buf, CC_NORM(viewer));
         CAP(buf);
-        send_to_char(buf, ch);
+        send_to_char(buf, viewer);
     }
 }
 

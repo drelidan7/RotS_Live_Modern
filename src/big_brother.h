@@ -37,8 +37,8 @@ public:
     // This enforces our PK engagement rules.
     bool is_target_valid(char_data* attacker, const char_data* victim, int skill_id) const;
 
-    /// Redirects an attack to a suitable target when the original target is invalid.
-    /// Returns null when no target matches the bounded command argument.
+    /// Reserved target-redirection hook that is not yet implemented.
+    /// The stub always returns null and currently ignores the bounded command argument.
     char_data* get_valid_target(
         char_data* attacker, const char_data* victim, std::string_view argument) const;
 

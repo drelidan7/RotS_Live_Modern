@@ -145,7 +145,7 @@ void do_details(char_data* character, char* argument, waiting_type* wait_list, i
 void get_char_position_line(struct char_data* ch, struct char_data* i, char* str);
 void get_char_flag_line(char_data* viewer, char_data* viewed, char* character_message);
 void show_mount_to_char(struct char_data* mount, struct char_data* viewer,
-    std::string_view single_rider_text, std::string_view multiple_rider_text, int color);
+    std::string_view singular_rider_text, std::string_view plural_rider_text, int color);
 void list_char_to_char(struct char_data* list, struct char_data* ch, int mode);
 void show_room_affection(char* str, struct affected_type* aff, int mode);
 void show_room_weather(char* str, struct char_data* ch);

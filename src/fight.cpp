@@ -1327,16 +1327,28 @@ char* replace_string(std::string_view format, std::string_view weapon_singular,
     bodypart = rots::text::truncate_at_null(bodypart);
 
     char* output_cursor = replace_string_buf;
-    const auto append_text = [&output_cursor](std::string_view text) {
-        for (const char character : text) {
-            *output_cursor++ = character;
+    std::size_t remaining_capacity = sizeof(replace_string_buf) - 1;
+    // Combat messages historically return this shared fixed buffer. Preserve that ownership and
+    // ordinary expansion behavior, but truncate at 499 bytes rather than allocating or overrunning;
+    // every append shares the same remaining-capacity contract and the final byte stays reserved
+    // for the null terminator.
+    const auto append_text = [&output_cursor, &remaining_capacity](std::string_view text) {
+        const std::size_t copied_length
+            = text.size() < remaining_capacity ? text.size() : remaining_capacity;
+        if (copied_length > 0) {
+            memcpy(output_cursor, text.data(), copied_length);
+            output_cursor += copied_length;
+            remaining_capacity -= copied_length;
         }
+    };
+    const auto append_character = [&append_text](char character) {
+        append_text(std::string_view(&character, 1));
     };
 
     for (std::size_t format_index = 0; format_index < format.size(); ++format_index) {
         if (format[format_index] == '#') {
             if (format_index + 1 >= format.size()) {
-                *output_cursor++ = '#';
+                append_character('#');
                 continue;
             }
 
@@ -1349,26 +1361,26 @@ char* replace_string(std::string_view format, std::string_view weapon_singular,
                 break;
             case 'b':
                 if (!bodypart.empty()) {
-                    *output_cursor++ = ' ';
+                    append_character(' ');
                     append_text(bodypart);
                 }
                 break;
             case 's':
                 if (!bodypart.empty()) {
-                    *output_cursor++ = '\'';
-                    *output_cursor++ = 's';
+                    append_text("'s");
                 }
                 break;
             case 'r':
-                if (!bodypart.empty())
-                    *output_cursor++ = 'r';
+                if (!bodypart.empty()) {
+                    append_character('r');
+                }
                 break;
             default:
-                *output_cursor++ = '#';
+                append_character('#');
                 break;
             }
         } else {
-            *output_cursor++ = format[format_index];
+            append_character(format[format_index]);
         }
     }
 

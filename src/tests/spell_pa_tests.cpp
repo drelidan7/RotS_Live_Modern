@@ -47,18 +47,6 @@ void initialize_player_character(char_data* character, const char* name)
 
 TEST(SpellParser, SaySpellUsesMagicColorForColorEnabledObservers)
 {
-    // KNOWN LIVE BUG (phase 0: production code frozen, so skip instead of fix):
-    // say_spell (spell_pa.cpp) builds its message in the global `buf` and passes
-    // it to send_magic_room_message, which then snprintf's INTO that same `buf`
-    // ("%s%s%s", color, message, ...) — an overlapping-copy UB. For color-enabled
-    // observers the color prefix clobbers the message as it is copied, so the
-    // observer receives repeated color codes and no text (the non-color test
-    // below survives because CC_USE expands to ""). Un-skip once
-    // send_magic_room_message formats into a distinct buffer.
-    GTEST_SKIP() << "say_spell/send_magic_room_message share the global buf; "
-                    "overlapping snprintf garbles color-enabled output (live bug, "
-                    "production frozen in phase 0)";
-
     ScopedTestWorld test_world;
     test_world.room().number = 3001;
 
@@ -93,7 +81,8 @@ TEST(SpellParser, SaySpellUsesMagicColorForColorEnabledObservers)
 
     const std::string output = observer_descriptor.output;
     EXPECT_NE(output.find(color_sequence[CBBLU]), std::string::npos) << output;
-    EXPECT_NE(output.find("A strange command, 'magic missile'"), std::string::npos) << output;
+    EXPECT_NE(output.find("Caster utters a strange command, 'magic missile'"), std::string::npos)
+        << output;
     EXPECT_NE(output.find(color_sequence[CNRM]), std::string::npos) << output;
 }
 

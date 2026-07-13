@@ -18,6 +18,11 @@ ownership) runs AFTER this wave merges.
    `INVESTIGATE (owner, 2026-07-13): behavior ruling pending more information; preserved
    byte-for-byte` (keeping the corroborating-evidence citations). No behavior change to either
    site this wave.
+   **Owner observation (2026-07-13, investigation input):** in the LIVE game, whips display
+   whip/lash messages, not crush/pound — contradicting the naive missing-break reading. The
+   fallthrough may be dead code (message selection may not flow from this w_type assignment)
+   or the live RotS_Live code may differ at this site. T2 records this observation in the
+   INVESTIGATE comment at fight.cpp:2041.
 
 ## Tasks
 

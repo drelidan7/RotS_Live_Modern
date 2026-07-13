@@ -248,6 +248,59 @@ void inspect(char* buffer)
             self.assertNotIn("reinterpret_cast", result.stdout)
             self.assertNotIn("consume((const char*)buffer)", result.stdout)
 
+    def test_report_recognizes_template_function_body_scope(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository_root = pathlib.Path(temporary_directory)
+            source_directory = repository_root / "src"
+            source_directory.mkdir()
+            (source_directory / "sample.cpp").write_text(
+                """template <class Reader>
+bool parse_value(Reader* reader, const char* label)
+{
+    consume([](const std::string& key) { return key; });
+    consume((const char*)reader);
+    return label != nullptr;
+}
+""",
+                encoding="utf-8",
+            )
+
+            result = self.run_census(repository_root)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(
+                "template <class Reader> bool parse_value(Reader* reader, const char* label) {",
+                result.stdout,
+            )
+            self.assertNotIn("const std::string& key", result.stdout)
+            self.assertNotIn("consume((const char*)reader)", result.stdout)
+
+    def test_report_recognizes_elaborated_parameter_function_body_scope(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository_root = pathlib.Path(temporary_directory)
+            source_directory = repository_root / "src"
+            source_directory.mkdir()
+            (source_directory / "sample.cpp").write_text(
+                """void inspect_character(struct char_data* character, const char* label)
+{
+    consume([](const std::string& key) { return key; });
+    consume((const char*)character);
+    consume(label);
+}
+""",
+                encoding="utf-8",
+            )
+
+            result = self.run_census(repository_root)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(
+                "void inspect_character(struct char_data* character, const char* label) {",
+                result.stdout,
+            )
+            self.assertNotIn("const std::string& key", result.stdout)
+            self.assertNotIn("consume((const char*)character)", result.stdout)
+
     def run_census(self, repository_root, *arguments):
         return subprocess.run(
             [

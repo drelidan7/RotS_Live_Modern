@@ -194,6 +194,44 @@ def parenthesis_spans(declaration):
     return spans
 
 
+def strip_leading_template_clauses(declaration_prefix):
+    """Remove leading template clauses before classifying a declaration owner."""
+    remaining_prefix = declaration_prefix.lstrip()
+    while re.match(r"template\b", remaining_prefix):
+        opening_angle = remaining_prefix.find("<")
+        if opening_angle < 0:
+            break
+        angle_depth = 0
+        closing_angle = None
+        character_offset = opening_angle
+        while character_offset < len(remaining_prefix):
+            detected_literal_end = literal_end(remaining_prefix, character_offset)
+            if detected_literal_end is not None:
+                character_offset = detected_literal_end
+                continue
+            if remaining_prefix[character_offset] == "<":
+                angle_depth += 1
+            elif remaining_prefix[character_offset] == ">":
+                angle_depth -= 1
+                if angle_depth == 0:
+                    closing_angle = character_offset
+                    break
+            character_offset += 1
+        if closing_angle is None:
+            break
+        remaining_prefix = remaining_prefix[closing_angle + 1 :].lstrip()
+    return remaining_prefix
+
+
+def declaration_opens_type_or_namespace_scope(declaration_prefix):
+    """Return whether the declaration itself owns a named or anonymous type scope."""
+    owner_prefix = strip_leading_template_clauses(declaration_prefix)
+    scope_owner_pattern = re.compile(
+        r"^(?:(?:export|inline)\s+)*namespace\b|^(?:class|enum|struct|union)\b"
+    )
+    return scope_owner_pattern.match(owner_prefix) is not None
+
+
 def function_body_ranges(source_text, delimiter_offsets):
     """Return source ranges occupied by function and lambda bodies."""
     scope_stack = []
@@ -204,10 +242,8 @@ def function_body_ranges(source_text, delimiter_offsets):
         if delimiter == "{":
             scope_prefix = source_text[previous_delimiter + 1 : delimiter_offset]
             inside_function = any(scope_kind == "function" for _, scope_kind in scope_stack)
-            is_type_or_namespace = re.search(
-                r"\b(?:class|enum|namespace|struct|union)\b", scope_prefix
-            )
-            if not inside_function and is_type_or_namespace is None and ")" in scope_prefix:
+            opens_type_or_namespace = declaration_opens_type_or_namespace_scope(scope_prefix)
+            if not inside_function and not opens_type_or_namespace and ")" in scope_prefix:
                 scope_kind = "function"
             else:
                 scope_kind = "other"

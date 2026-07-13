@@ -39,6 +39,10 @@ void clear_char(struct char_data* ch, int mode);
 void msdp_update();
 int get_percent_absorb(char_data* character);
 
+namespace protocol_testing {
+void write_packet(descriptor_t* descriptor, std::string_view packet);
+}
+
 namespace {
 
 class ProtocolDescriptor {
@@ -558,6 +562,33 @@ TEST(MSDPProtocol, SanitizesStringValuesForJsonLikeConsumers)
     EXPECT_EQ(MSDPSanitizeValue(std::string_view()), "");
 }
 
+TEST(MSDPProtocol, SanitizeValueAcceptsANonTerminatedBoundedSlice)
+{
+    const char storage[] = { 'x', 'A', '\n', 'B', 'y' };
+
+    EXPECT_EQ(MSDPSanitizeValue(std::string_view(storage + 1, 3)), "A\\nB");
+}
+
+TEST(MSDPProtocol, SanitizeValueTruncatesSemanticTextAtEmbeddedNull)
+{
+    const char storage[] = { 'A', '\0', 'B' };
+
+    EXPECT_EQ(MSDPSanitizeValue(std::string_view(storage, sizeof(storage))), "A");
+}
+
+TEST(MSDPProtocol, ProtocolOutputTreatsNullAsTextTerminatorDespitePositiveLength)
+{
+    ProtocolDescriptor context;
+    const char storage[] = { 'A', '\0', 'B' };
+    int output_length = static_cast<int>(sizeof(storage));
+
+    const char* output = ProtocolOutput(&context.descriptor, storage, &output_length);
+
+    ASSERT_NE(output, nullptr);
+    EXPECT_EQ(std::string_view(output, static_cast<std::size_t>(output_length)), "A");
+    EXPECT_EQ(output_length, 1);
+}
+
 TEST(MSDPProtocol, ProtocolCreateInitializesExpectedDefaults)
 {
     ProtocolDescriptor context;
@@ -738,6 +769,18 @@ TEST(MSDPProtocol, SendPairTruncatesSemanticTextAtEmbeddedNull)
     EXPECT_EQ(context.read_output(), expected_msdp_pair("NAME", "A"));
 }
 
+TEST(MSDPProtocol, SendPairAcceptsNonTerminatedBoundedText)
+{
+    ProtocolDescriptor context;
+    const char variable_storage[] = { 'x', 'N', 'A', 'M', 'E', 'y' };
+    const char value_storage[] = { 'x', 'A', 'B', 'y' };
+
+    MSDPSendPair(&context.descriptor, std::string_view(variable_storage + 1, 4),
+        std::string_view(value_storage + 1, 2));
+
+    EXPECT_EQ(context.read_output(), expected_msdp_pair("NAME", "AB"));
+}
+
 TEST(MSDPProtocol, SendListTruncatesSemanticTextAtEmbeddedNull)
 {
     ProtocolDescriptor context;
@@ -751,6 +794,18 @@ TEST(MSDPProtocol, SendListTruncatesSemanticTextAtEmbeddedNull)
     EXPECT_EQ(context.read_output(), expected_msdp_array_pair("LIST", { "A", "B" }));
 }
 
+TEST(MSDPProtocol, SendListAcceptsNonTerminatedBoundedText)
+{
+    ProtocolDescriptor context;
+    const char variable_storage[] = { 'x', 'L', 'I', 'S', 'T', 'y' };
+    const char value_storage[] = { 'x', 'A', ' ', 'B', 'y' };
+
+    MSDPSendList(&context.descriptor, std::string_view(variable_storage + 1, 4),
+        std::string_view(value_storage + 1, 3));
+
+    EXPECT_EQ(context.read_output(), expected_msdp_array_pair("LIST", { "A", "B" }));
+}
+
 TEST(MSDPProtocol, MxpSendTagTruncatesSemanticTextAtEmbeddedNull)
 {
     ProtocolDescriptor context;
@@ -760,6 +815,27 @@ TEST(MSDPProtocol, MxpSendTagTruncatesSemanticTextAtEmbeddedNull)
     MXPSendTag(&context.descriptor, std::string_view(tag_storage + 1, 5));
 
     EXPECT_EQ(context.read_output(), "\033[1z<A\033[7z\r\n");
+}
+
+TEST(MSDPProtocol, MxpSendTagAcceptsNonTerminatedBoundedText)
+{
+    ProtocolDescriptor context;
+    context.descriptor.pProtocol->pVariables[eMSDP_MXP]->ValueInt = 1;
+    const char tag_storage[] = { 'x', '<', 'A', '>', 'y' };
+
+    MXPSendTag(&context.descriptor, std::string_view(tag_storage + 1, 3));
+
+    EXPECT_EQ(context.read_output(), "\033[1z<A>\033[7z\r\n");
+}
+
+TEST(MSDPProtocol, InternalPacketWriterPreservesEmbeddedNullBytes)
+{
+    ProtocolDescriptor context;
+    const std::string packet("A\0B", 3);
+
+    protocol_testing::write_packet(&context.descriptor, packet);
+
+    EXPECT_EQ(context.read_output(), packet);
 }
 
 TEST(MSDPProtocol, SendsStringAndNumberVariablesAsMSDPPackets)

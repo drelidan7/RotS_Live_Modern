@@ -78,12 +78,25 @@ static void Write(descriptor_t* apDescriptor, std::string_view data)
     while (bytes_sent < data.size()) {
         const rots_net::ssize_type bytes_written = rots_net::write_socket(
             apDescriptor->descriptor, data.data() + bytes_sent, data.size() - bytes_sent);
-        if (bytes_written <= 0) {
+        if (bytes_written < 0) {
+            perror("Protocol write to socket");
+            return;
+        }
+        if (bytes_written == 0) {
             return;
         }
         bytes_sent += static_cast<std::size_t>(bytes_written);
     }
 }
+
+#if defined(TESTING)
+namespace protocol_testing {
+void write_packet(descriptor_t* descriptor, std::string_view packet)
+{
+    Write(descriptor, packet);
+}
+}
+#endif
 
 static void ReportBug(const char* apText) { vmudlog(NRM, apText); }
 
@@ -1294,7 +1307,8 @@ void MSDPSendPair(
 
     const std::size_t required_buffer = apVariable.size() + apValue.size() + 12;
     if (required_buffer >= MAX_VARIABLE_LENGTH) {
-        const std::string report = apVariable.size() < MAX_VARIABLE_LENGTH
+        const std::string report
+            = required_buffer - apValue.size() < MAX_VARIABLE_LENGTH
             ? std::format("MSDPSendPair: {} {} bytes (exceeds MAX_VARIABLE_LENGTH of {}).\n",
                 apVariable, required_buffer, MAX_VARIABLE_LENGTH)
             : std::format("MSDPSendPair: Variable name has a length of {} bytes (exceeds "
@@ -1340,7 +1354,8 @@ void MSDPSendList(
 
     const std::size_t required_buffer = apVariable.size() + apValue.size() + 12;
     if (required_buffer >= MAX_VARIABLE_LENGTH) {
-        const std::string report = apVariable.size() < MAX_VARIABLE_LENGTH
+        const std::string report
+            = required_buffer - apValue.size() < MAX_VARIABLE_LENGTH
             ? std::format("MSDPSendList: {} {} bytes (exceeds MAX_VARIABLE_LENGTH of {}).\n",
                 apVariable, required_buffer, MAX_VARIABLE_LENGTH)
             : std::format("MSDPSendList: Variable name has a length of {} bytes (exceeds "

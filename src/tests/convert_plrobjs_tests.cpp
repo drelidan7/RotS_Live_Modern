@@ -81,7 +81,9 @@ std::string read_file(const std::string& path)
 TEST(ConvertPlrobjs, UsesBoundedRootPathAndIgnoresEmbeddedNullSuffix)
 {
     TemporaryDirectory root;
-    const std::string corrupt_path = root.path() + "/bounded.obj";
+    // Compose with std::filesystem so the expected text matches the native
+    // separators the converter's directory_iterator reports on every platform.
+    const std::string corrupt_path = (std::filesystem::path(root.path()) / "bounded.obj").string();
     write_file(corrupt_path, "corrupt");
 
     std::string bounded_storage = root.path() + "ignored-without-a-terminator";
@@ -90,7 +92,8 @@ TEST(ConvertPlrobjs, UsesBoundedRootPathAndIgnoresEmbeddedNullSuffix)
     EXPECT_EQ(0, convert_all_legacy_plrobjs(bounded_root, false, &report));
     EXPECT_NE(report.find(corrupt_path), std::string::npos);
 
-    const std::string second_corrupt_path = root.path() + "/embedded.obj";
+    const std::string second_corrupt_path
+        = (std::filesystem::path(root.path()) / "embedded.obj").string();
     write_file(second_corrupt_path, "corrupt");
     const std::string embedded_null_root = root.path() + std::string("\0ignored", 8);
     report.clear();

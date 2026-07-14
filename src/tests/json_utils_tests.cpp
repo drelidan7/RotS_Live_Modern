@@ -37,11 +37,7 @@ TEST(JsonUtils, PropertyCallbacksBorrowFirstNullTerminatedKeys)
 template <typename Reader>
 void expect_literal_matcher_stops_at_embedded_null()
 {
-    // Named lvalue (not a temporary) so it binds to the string_view constructor unambiguously;
-    // a string-literal argument is otherwise equally convertible to string_view and to the
-    // deleted std::string&& overload.
-    const std::string literal_document = "true42";
-    Reader reader(literal_document);
+    Reader reader("true42");
     constexpr std::string_view embedded_null_literal("true\0ignored", 12);
     ASSERT_TRUE(reader.match_literal_for_testing(embedded_null_literal));
 
@@ -140,6 +136,8 @@ static_assert(!std::is_constructible_v<json_utils::JsonReader, std::string&&>);
 static_assert(!std::is_constructible_v<json_utils::JsonReaderV2, std::string&&>);
 static_assert(std::is_constructible_v<json_utils::JsonReader, const std::string&>);
 static_assert(std::is_constructible_v<json_utils::JsonReaderV2, const std::string&>);
+static_assert(std::is_constructible_v<json_utils::JsonReader, const char*>);
+static_assert(std::is_constructible_v<json_utils::JsonReaderV2, const char*>);
 
 TEST(JsonUtils, ParsesTypedObjectProperties)
 {

@@ -30,6 +30,12 @@ public:
     explicit JsonReader(std::string_view input);
     /// Binding a reader to a std::string temporary would dangle immediately.
     explicit JsonReader(std::string&&) = delete;
+    /// Null-terminated C strings are always safe to borrow; this disambiguates them
+    /// from the deleted std::string temporary overload.
+    explicit JsonReader(const char* input)
+        : JsonReader(std::string_view(input))
+    {
+    }
 
     bool parse_root_object(const ObjectPropertyParser& property_parser, std::string* error_message);
     bool parse_object(const ObjectPropertyParser& property_parser, std::string* error_message);
@@ -102,6 +108,12 @@ public:
     explicit JsonReaderV2(std::string_view input);
     /// Binding a reader to a std::string temporary would dangle immediately.
     explicit JsonReaderV2(std::string&&) = delete;
+    /// Null-terminated C strings are always safe to borrow; this disambiguates them
+    /// from the deleted std::string temporary overload.
+    explicit JsonReaderV2(const char* input)
+        : JsonReaderV2(std::string_view(input))
+    {
+    }
 
     bool parse_root_object(const ObjectPropertyParser& property_parser, std::string* error_message);
     bool parse_object(const ObjectPropertyParser& property_parser, std::string* error_message);

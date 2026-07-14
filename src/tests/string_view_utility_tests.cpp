@@ -207,17 +207,28 @@ TEST(StringViewUtility, ParseNumberedNameMatchesLegacyGetNumber)
     }
 }
 
+// Restores character_list on scope exit so a failing assertion cannot leak a
+// dangling stack pointer into later tests.
+struct ScopedCharacterListSwap {
+    // The character_list value to restore at destruction.
+    char_data* saved_character_list;
+
+    explicit ScopedCharacterListSwap(char_data* replacement)
+        : saved_character_list(character_list)
+    {
+        character_list = replacement;
+    }
+    ~ScopedCharacterListSwap() { character_list = saved_character_list; }
+};
+
 TEST(StringViewUtility, GetCharLookupPerformsNoHeapAllocations)
 {
     char_data lookup_target { };
     lookup_target.player.name = const_cast<char*>("silverbeard-the-elder-of-erebor");
-    char_data* const saved_character_list = character_list;
-    character_list = &lookup_target;
+    ScopedCharacterListSwap character_list_guard(&lookup_target);
 
     rots_test::ScopedAllocationCounter counter;
     char_data* const found = get_char("1.silverbeard-the-elder-of-erebor");
     EXPECT_EQ(counter.allocations(), 0u);
     EXPECT_EQ(found, &lookup_target);
-
-    character_list = saved_character_list;
 }

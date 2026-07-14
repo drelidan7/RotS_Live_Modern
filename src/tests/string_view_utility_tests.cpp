@@ -2,10 +2,13 @@
 #include "../interpre.h"
 #include "../utils.h"
 
+#include "scoped_allocation_counter.h"
+
 #include <gtest/gtest.h>
 
 #include <array>
 #include <concepts>
+#include <cstring>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
@@ -17,6 +20,14 @@ static_assert(std::same_as<std::remove_cvref_t<decltype(moon_phase[0])>, std::st
 
 extern const std::string_view dirs[];
 extern const std::string_view refer_dirs[];
+
+// Legacy in-place "N.keyword" tokenizer being replaced by parse_numbered_name; not declared
+// in any header (each .cpp that calls it forward-declares it locally the same way).
+extern int get_number(char** name);
+
+// Global linked list of all characters in the game (defined in db.cpp); declared extern
+// locally here the same way every other .cpp consuming it does (it has no header declaration).
+extern struct char_data* character_list;
 
 TEST(StringViewUtility, ComparesBoundedTextWithoutNullTermination)
 {
@@ -39,9 +50,9 @@ TEST(StringViewUtility, ComparisonStopsAtFirstEmbeddedNull)
 
 TEST(StringViewUtility, ComparisonHandlesEmptyViewsAndOrdering)
 {
-    EXPECT_EQ(str_cmp({}, {}), 0);
-    EXPECT_LT(str_cmp({}, "value"), 0);
-    EXPECT_GT(str_cmp("value", {}), 0);
+    EXPECT_EQ(str_cmp({ }, { }), 0);
+    EXPECT_LT(str_cmp({ }, "value"), 0);
+    EXPECT_GT(str_cmp("value", { }), 0);
     EXPECT_EQ(strn_cmp("different", "values", 0), 0);
 }
 
@@ -54,7 +65,7 @@ TEST(StringViewUtility, IsNameAcceptsBoundedAndEmbeddedNullViews)
 
     EXPECT_EQ(isname(query, "sword shield"), 1);
     EXPECT_EQ(isname(embedded_query, embedded_names), 1);
-    EXPECT_EQ(isname({}, "sword shield"), 0);
+    EXPECT_EQ(isname({ }, "sword shield"), 0);
 }
 
 TEST(StringViewUtility, OldSearchBlockRejectsWordsLongerThanBoundedEntries)
@@ -173,4 +184,40 @@ TEST(StringViewUtility, NullableComparisonsMatchViewComparisons)
                 << first << " vs " << second << " n=" << count;
         }
     }
+}
+
+TEST(StringViewUtility, ParseNumberedNameMatchesLegacyGetNumber)
+{
+    constexpr std::array<const char*, 11> numbered_cases {
+        "sword", "2.sword", ".sword", "x.sword", "2.3.sword", "0.sword", "12.long name", "7.",
+        "", "-1.sword", "+2.sword"
+    };
+
+    for (const char* text : numbered_cases) {
+        char legacy_buffer[MAX_INPUT_LENGTH];
+        std::strcpy(legacy_buffer, text);
+        char* legacy_cursor = legacy_buffer;
+        const int legacy_number = get_number(&legacy_cursor);
+
+        const auto parsed = parse_numbered_name(text);
+        EXPECT_EQ(parsed.match_number, legacy_number) << text;
+        if (legacy_number != 0) {
+            EXPECT_EQ(parsed.name, std::string_view(legacy_cursor)) << text;
+        }
+    }
+}
+
+TEST(StringViewUtility, GetCharLookupPerformsNoHeapAllocations)
+{
+    char_data lookup_target { };
+    lookup_target.player.name = const_cast<char*>("silverbeard-the-elder-of-erebor");
+    char_data* const saved_character_list = character_list;
+    character_list = &lookup_target;
+
+    rots_test::ScopedAllocationCounter counter;
+    char_data* const found = get_char("1.silverbeard-the-elder-of-erebor");
+    EXPECT_EQ(counter.allocations(), 0u);
+    EXPECT_EQ(found, &lookup_target);
+
+    character_list = saved_character_list;
 }

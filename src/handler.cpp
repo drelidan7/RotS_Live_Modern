@@ -32,6 +32,8 @@
 
 #include "platdef.h"
 #include <assert.h>
+#include <cctype>
+#include <charconv>
 #include <ctype.h>
 #include <format>
 #include <stdio.h>
@@ -1548,7 +1550,11 @@ int get_number(char** name)
     if ((ppos = strchr(*name, '.'))) {
         *ppos++ = '\0';
         strcpy(number, *name);
-        strcpy(*name, ppos);
+        // *name and ppos alias the same caller buffer (ppos = *name + prefix length),
+        // so this in-place left-shift needs an overlap-safe copy; strcpy's parameters
+        // may not overlap per the C standard, and ASan's strcpy-param-overlap check
+        // catches it even though a naive forward byte copy happens to be correct here.
+        memmove(*name, ppos, strlen(ppos) + 1);
 
         for (i = 0; *(number + i); i++)
             if (!isdigit(*(number + i)))
@@ -1558,6 +1564,33 @@ int get_number(char** name)
     }
 
     return (1);
+}
+
+NumberedName parse_numbered_name(std::string_view input)
+{
+    input = rots::text::truncate_at_null(input);
+    const std::size_t dot_position = input.find('.');
+    if (dot_position == std::string_view::npos) {
+        return { 1, input };
+    }
+
+    const std::string_view digits = input.substr(0, dot_position);
+    const std::string_view remainder = input.substr(dot_position + 1);
+    if (digits.empty() || !std::isdigit(static_cast<unsigned char>(digits.front()))) {
+        // Empty (".") or non-digit-led prefix (including a '-' sign, which
+        // std::from_chars would otherwise accept for int): legacy get_number's
+        // isdigit loop produced 0 (no match) for every such input.
+        return { 0, remainder };
+    }
+    int parsed_number = 0;
+    const auto [parse_end, parse_error]
+        = std::from_chars(digits.data(), digits.data() + digits.size(), parsed_number);
+    if (parse_error != std::errc() || parse_end != digits.data() + digits.size()) {
+        // Interior non-digit or overflowing prefix: legacy atoi produced 0 (no
+        // match) for the former; overflow is tightened to the same result.
+        return { 0, remainder };
+    }
+    return { parsed_number, remainder };
 }
 
 /* Search a given list for an object, and return a pointer to that object */
@@ -1700,11 +1733,7 @@ struct char_data* get_char_room(char* name, int room)
 /* search all over the world for a char, and return a pointer if found */
 struct char_data* get_char(std::string_view name)
 {
-    // The legacy numbered-name parser tokenizes in place, so one owned copy keeps the public
-    // lookup bounded without forcing mutable storage through the rest of the read-only chain.
-    std::string mutable_name(rots::text::truncate_at_null(name));
-    char* mutable_name_cursor = mutable_name.data();
-    const int requested_match_number = get_number(&mutable_name_cursor);
+    const auto [requested_match_number, query] = parse_numbered_name(name);
     if (requested_match_number == 0) {
         return (0);
     }
@@ -1713,7 +1742,7 @@ struct char_data* get_char(std::string_view name)
     for (char_data* candidate = character_list;
          candidate != nullptr && match_index <= requested_match_number;
          candidate = candidate->next) {
-        if (isname_nullable(mutable_name_cursor, candidate->player.name)) {
+        if (candidate->player.name != nullptr && isname(query, candidate->player.name)) {
             if (match_index == requested_match_number) {
                 return candidate;
             }
@@ -2244,11 +2273,7 @@ struct obj_data* get_obj_in_list_vis(struct char_data* ch, std::string_view name
         return indexed_object;
     }
 
-    // The legacy numbered-name parser tokenizes in place, so one owned copy keeps the public
-    // lookup bounded without forcing mutable storage through the rest of the read-only chain.
-    std::string mutable_name(rots::text::truncate_at_null(name));
-    char* mutable_name_cursor = mutable_name.data();
-    const int requested_match_number = get_number(&mutable_name_cursor);
+    const auto [requested_match_number, query] = parse_numbered_name(name);
     if (requested_match_number == 0) {
         return (0);
     }
@@ -2257,7 +2282,7 @@ struct obj_data* get_obj_in_list_vis(struct char_data* ch, std::string_view name
     for (obj_data* candidate_object = list;
          candidate_object != nullptr && match_index <= requested_match_number;
          candidate_object = candidate_object->next_content) {
-        if (isname_nullable(mutable_name_cursor, candidate_object->name, 0)
+        if (candidate_object->name != nullptr && isname(query, candidate_object->name, 0)
             && CAN_SEE_OBJ(ch, candidate_object)) {
             if (match_index == requested_match_number) {
                 return candidate_object;

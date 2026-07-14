@@ -55,6 +55,17 @@ struct obj_data* create_money(int amount);
 int isname(std::string_view query, std::string_view name_list, char full = 1);
 /// Matches nullable legacy text pointers without constructing a view from a null value.
 int isname_nullable(const char* query, const char* name_list, char full = 1);
+
+// Non-mutating replacement for get_number's "N.keyword" prefix parse.
+struct NumberedName {
+    // Requested match ordinal from the "N." prefix: 0 = malformed prefix
+    // (legacy no-match), 1 = no prefix present.
+    int match_number;
+    // Keyword after the prefix (whole input when no prefix); borrows the
+    // caller's storage, bounded and first-null-normalized.
+    std::string_view name;
+};
+NumberedName parse_numbered_name(std::string_view input);
 char* fname(char* namelist);
 
 /* ******** objects *********** */

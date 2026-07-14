@@ -438,7 +438,7 @@ TEST(CrimeJson, BinaryDecoderReadsFullPayloadPastEmbeddedNullBytes) {
     ASSERT_TRUE(crime_json::legacy_crime_file_from_binary(bytes, &parsed, &error_message))
         << error_message;
     ASSERT_EQ(parsed.size(), 2u);
-    EXPECT_EQ(parsed[1].witness_type, 2);
+    EXPECT_EQ(parsed[1].witness, -3);
 }
 
 TEST(CrimeJson, RejectsSizeNotMultipleOfRecordSize)

@@ -2074,7 +2074,7 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
 #define KEY_STR(the_field, element, length)                   \
     if (!strcmp(line, the_field)) {                           \
         memcpy(element, value, length);                       \
-        for (ctmp = element; ctmp < element + length; ctmp++) \
+        for (char* ctmp = element; ctmp < element + length; ctmp++) \
             if (*ctmp == '\n')                                \
                 *ctmp = '\0';                                 \
         break;                                                \
@@ -2168,10 +2168,11 @@ void sanitize_persisted_combat_state(struct char_special2_data* specials2)
 
 int load_player_from_text(char* name, std::string_view player_text, struct char_file_u* char_element)
 {
-    std::string player_text_owner(rots::text::truncate_at_null(player_text));
+    player_text = rots::text::truncate_at_null(player_text);
     int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, end;
     char line[100];
-    char *tmpchar, *value, *ctmp, *position;
+    char* tmpchar;
+    const char *value, *position;
     const char* input_end = nullptr;
 
     memset((char*)char_element, 0, sizeof(struct char_file_u));
@@ -2189,11 +2190,11 @@ int load_player_from_text(char* name, std::string_view player_text, struct char_
     }
 
     char_element->player_index = tmp;
-    if (player_text_owner.empty()) {
+    if (player_text.empty()) {
         log(std::format("Couldn't parse character file text for {}\n", name));
         return -1;
     }
-    input_end = player_text_owner.data() + player_text_owner.size();
+    input_end = player_text.data() + player_text.size();
 
     for (tmp1 = 0; tmp1 < MAX_AFFECT; tmp1++) {
         char_element->affected[tmp1].type = 0;
@@ -2207,7 +2208,7 @@ int load_player_from_text(char* name, std::string_view player_text, struct char_
         char_element->skills[tmp1] = 0;
 
     end = FALSE;
-    position = player_text_owner.data();
+    position = player_text.data();
     memset(char_element->description, 0, 512);
     while (end == FALSE) {
         if (position >= input_end) {
@@ -2220,19 +2221,18 @@ int load_player_from_text(char* name, std::string_view player_text, struct char_
 
         /* clear line, then read off a line */
         memset(line, 0, 99);
-        for (tmpchar = position, tmp1 = 0;
-            tmpchar < input_end && (*tmpchar != '\n') && (*tmpchar != '\r') && (*tmpchar != '\0');
-            tmpchar++, tmp1++) {
+        for (tmp1 = 0;
+            position < input_end && (*position != '\n') && (*position != '\r') && (*position != '\0');
+            position++, tmp1++) {
             if (tmp1 >= static_cast<int>(sizeof(line) - 1)) {
                 log(std::format(
                     "load_player_from_text: malformed player data for {} (line too long)", name)
                         );
                 return -1;
             }
-            line[tmp1] = *tmpchar;
+            line[tmp1] = *position;
         }
 
-        position = tmpchar;
         while (position < input_end && (*position == '\r' || *position == '\n'))
             ++position;
 

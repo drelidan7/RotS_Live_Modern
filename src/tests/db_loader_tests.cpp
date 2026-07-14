@@ -6,6 +6,7 @@
 #include "../handler.h"
 #include "../objects_json.h"
 #include "../utils.h"
+#include "scoped_allocation_counter.h"
 #include "test_char_cleanup.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
@@ -2442,4 +2443,23 @@ TEST(DbLoader, ConversionWriteFailureLeavesLegacyExploitFileIntact) {
     EXPECT_EQ(retried_records[0].type, expected_record.type);
     EXPECT_FALSE(std::filesystem::exists(legacy_path.c_str()));
     EXPECT_TRUE(std::filesystem::exists((legacy_path + ".json").c_str()));
+}
+
+TEST(DbLoader, LegacyPlayerTextLoadPerformsNoHeapAllocations)
+{
+    TemporaryDirectory temp_directory;
+    ASSERT_TRUE(std::filesystem::create_directory((temp_directory.path() + "/players").c_str()));
+    ASSERT_TRUE(
+        std::filesystem::create_directory((temp_directory.path() + "/players/A-E").c_str()));
+
+    char_file_u original = make_stored_character("aragorn");
+    const std::string player_text = write_valid_legacy_player_file(temp_directory.path(), original);
+
+    char player_name[] = "aragorn";
+    char_file_u loaded {};
+    ScopedPlayerTableEntry player_table_entry("aragorn");
+
+    rots_test::ScopedAllocationCounter counter;
+    ASSERT_EQ(load_player_from_text(player_name, player_text, &loaded), 1);
+    EXPECT_EQ(counter.allocations(), 0u);
 }

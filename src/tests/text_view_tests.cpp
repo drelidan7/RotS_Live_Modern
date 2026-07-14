@@ -1,4 +1,4 @@
-#include "text_view.h"
+#include "../text_view.h"
 
 #include <gtest/gtest.h>
 

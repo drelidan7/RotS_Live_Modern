@@ -271,6 +271,8 @@ if(ROTS_BUILD_TESTS)
         tests/safe_template_tests.cpp
         tests/string_view_utility_tests.cpp
         tests/save_benchmark_tests.cpp
+        tests/scoped_allocation_counter.cpp
+        tests/scoped_allocation_counter_tests.cpp
         tests/shape_format_tests.cpp
         tests/shapemob_tests.cpp
         tests/spec_pro_tests.cpp

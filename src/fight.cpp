@@ -532,14 +532,14 @@ void get_corpse_desc(struct obj_data* corpse, struct char_data* ch,
     if (world[ch->in_room].sector_type == SECT_WATER_NOSWIM || world[ch->in_room].sector_type == SECT_WATER_SWIM || world[ch->in_room].sector_type == SECT_UNDERWATER)
         rots_asprintf(&(corpse->description), "The %s corpse of %s is floating here.",
             condition,
-            IS_NPC(ch) ? GET_NAME(ch) : pc_star_types[GET_RACE(ch)]);
+            IS_NPC(ch) ? GET_NAME(ch) : pc_star_types[GET_RACE(ch)].data());
     else
         rots_asprintf(&(corpse->description), "The %s corpse of %s is lying here.",
             condition,
-            IS_NPC(ch) ? GET_NAME(ch) : pc_star_types[GET_RACE(ch)]);
+            IS_NPC(ch) ? GET_NAME(ch) : pc_star_types[GET_RACE(ch)].data());
 
     rots_asprintf(&(corpse->short_description), "the %s corpse of %s", condition,
-        IS_NPC(ch) ? GET_NAME(ch) : pc_star_types[GET_RACE(ch)]);
+        IS_NPC(ch) ? GET_NAME(ch) : pc_star_types[GET_RACE(ch)].data());
 }
 
 /*

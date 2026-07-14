@@ -194,6 +194,58 @@ void recount_light_room(int room)
     world[room].light = count;
 }
 
+namespace {
+
+// Nullable legacy callers already provide null-terminated strings. Keeping their sentinel walk
+// here avoids constructing two views (and then scanning both again for first-null normalization)
+// on this hot lookup path, while the public view overload retains bounded-input safety.
+int isname_c_string(const char* query, const char* name_list, char full)
+{
+    while (*query && *query <= ' ') {
+        ++query;
+    }
+    const std::size_t query_length = std::strlen(query);
+    if (query_length == 0) {
+        return 0;
+    }
+    if ((query_length < 3) || (query_length > 4)) {
+        full = 1;
+    }
+
+    const char* current_name = name_list;
+    for (;;) {
+        const char* current_query = query;
+        for (;;) {
+            if (!*current_query
+                && (!full || !std::isalpha(static_cast<unsigned char>(*current_name)))) {
+                return 1;
+            }
+            if (!*current_name) {
+                return 0;
+            }
+            if (!*current_query || *current_name == ' '
+                || LOWER(*current_query) != LOWER(*current_name)) {
+                break;
+            }
+            ++current_query;
+            ++current_name;
+        }
+
+        while (std::isalpha(static_cast<unsigned char>(*current_name))) {
+            ++current_name;
+        }
+        if (!*current_name) {
+            return 0;
+        }
+        while (*current_name
+            && (!std::isalpha(static_cast<unsigned char>(*current_name)) || *current_name == ' ')) {
+            ++current_name;
+        }
+    }
+}
+
+} // namespace
+
 int isname(std::string_view query, std::string_view name_list, char full)
 {
     query = rots::text::truncate_at_null(query);
@@ -257,7 +309,7 @@ int isname_nullable(const char* query, const char* name_list, char full)
     if (query == nullptr || name_list == nullptr) {
         return 0;
     }
-    return isname(query, name_list, full);
+    return isname_c_string(query, name_list, full);
 }
 
 void affect_modify_room(struct room_data* room, byte, int mod,
@@ -788,7 +840,7 @@ void affect_remove_notify(struct char_data* ch, struct affected_type* af)
     extern const std::string_view spell_wear_off_msg[];
 
     if (!spell_wear_off_msg[af->type].empty() && !PLR_FLAGGED(ch, PLR_WRITING))
-        vsend_to_char(ch, "%s\n", spell_wear_off_msg[af->type]);
+        vsend_to_char(ch, "%s\n", spell_wear_off_msg[af->type].data());
 
     affect_remove(ch, af);
 }
@@ -868,7 +920,7 @@ void affect_from_char_notify(struct char_data* ch, byte skill)
     extern const std::string_view spell_wear_off_msg[];
 
     if (!spell_wear_off_msg[skill].empty() && !PLR_FLAGGED(ch, PLR_WRITING))
-        vsend_to_char(ch, "%s\n", spell_wear_off_msg[skill]);
+        vsend_to_char(ch, "%s\n", spell_wear_off_msg[skill].data());
 
     affect_from_char(ch, skill);
 }

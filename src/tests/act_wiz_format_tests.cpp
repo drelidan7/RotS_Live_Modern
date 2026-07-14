@@ -107,7 +107,7 @@ ACMD(do_wiznet);
 // extern of its own that would otherwise have to be edited in lockstep with
 // the production type change.
 extern int restrict;
-extern const char* const wizlock_default;
+extern const std::string_view wizlock_default;
 extern int global_release_flag;
 extern struct player_index_element* player_table;
 extern int top_of_p_table;
@@ -2300,7 +2300,8 @@ TEST(ActWizPlayerAdmin, DoWizlockFormatsClosedToNewPlayersStatusLineWithDefaultM
     SoloCharacterContext context;
     char argument[] = "1";
     do_wizlock(&context.character, argument, nullptr, 0, 0);
-    const std::string expected = std::string("The game is now closed to new players.\n") + "Message set to:  " + wizlock_default;
+    std::string expected = "The game is now closed to new players.\nMessage set to:  ";
+    expected += wizlock_default;
     EXPECT_EQ(std::string(context.descriptor.output), expected);
 }
 

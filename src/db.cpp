@@ -2792,7 +2792,7 @@ int ensure_player_index_entry(std::string_view name)
 
 void update_player_index_entry_from_store(struct char_file_u* stored_character)
 {
-    update_player_index_entry_from_store(stored_character, nullptr, nullptr);
+    update_player_index_entry_from_store(stored_character, {}, nullptr);
 }
 
 bool update_player_index_entry_from_store(struct char_file_u* stored_character,

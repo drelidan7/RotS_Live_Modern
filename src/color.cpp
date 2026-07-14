@@ -627,7 +627,7 @@ ACMD(do_color)
                 set_colornum(ch, num, col);
                 vsend_to_char(ch, "You set %s foreground to %s%s%s.\n\r",
                     color_fields[num].data(), CC_USE(ch, num), color_color[col].data(),
-                    CC_NORM(ch));
+                    CC_NORM(ch).data());
             } else {
                 set_ansi_background(ch, num, col);
                 vsend_to_char(ch, "You set %s background to %s.\n\r", color_fields[num].data(),
@@ -700,5 +700,5 @@ ACMD(do_color)
         color_fields[num].data(),
         CC_USE(ch, num),
         color_color[col].data(),
-        CC_NORM(ch));
+        CC_NORM(ch).data());
 }

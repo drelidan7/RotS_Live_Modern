@@ -7,6 +7,7 @@
 #include <array>
 #include <concepts>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 
 static_assert(std::same_as<std::remove_cvref_t<decltype(weekdays[0])>, std::string_view>);
@@ -72,6 +73,27 @@ TEST(StringViewUtility, NullableNameMatchingRejectsNullTextWithoutConstructingAV
 {
     EXPECT_EQ(isname_nullable(nullptr, "sword shield"), 0);
     EXPECT_EQ(isname_nullable("sword", nullptr), 0);
+}
+
+TEST(StringViewUtility, NullableNameMatchingMatchesBoundedLegacyRules)
+{
+    constexpr std::array matching_cases {
+        std::tuple { std::string_view("  sword"), std::string_view("sword shield"), char(1) },
+        std::tuple { std::string_view("sword"), std::string_view("sword shield"), char(1) },
+        std::tuple { std::string_view("swor"), std::string_view("sword shield"), char(0) },
+        std::tuple { std::string_view("swor"), std::string_view("sword shield"), char(1) },
+        std::tuple { std::string_view("SWORD"), std::string_view("blade,sword"), char(1) },
+        std::tuple { std::string_view(""), std::string_view("sword shield"), char(1) },
+        std::tuple { std::string_view("mace"), std::string_view("sword shield"), char(1) },
+    };
+
+    for (const auto& [query, name_list, full] : matching_cases) {
+        EXPECT_EQ(isname_nullable(query.data(), name_list.data(), full),
+            isname(query, name_list, full));
+    }
+
+    constexpr char embedded_name_list[] = "blade\0sword";
+    EXPECT_EQ(isname_nullable("sword", embedded_name_list), 0);
 }
 
 TEST(StringViewUtility, NullableComparisonsPreserveDeterministicNullOrdering)

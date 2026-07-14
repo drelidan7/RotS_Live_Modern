@@ -10,7 +10,7 @@ import sys
 
 
 CANDIDATE_PATTERNS = (
-    re.compile(r"\bconst\s+char\s*\*"),
+    re.compile(r"\b(?:const\s+char|char\s+const)\s*\*"),
     re.compile(r"\bconst\s+std::string\s*&"),
 )
 ALLOWED_REASONS = {
@@ -233,11 +233,17 @@ def strip_leading_template_clauses(declaration_prefix):
 
 def declaration_opens_type_or_namespace_scope(declaration_prefix):
     """Return whether the declaration itself owns a named or anonymous type scope."""
+    return declaration_scope_owner_kind(declaration_prefix) is not None
+
+
+def declaration_scope_owner_kind(declaration_prefix):
+    """Classify a declaration that opens a namespace or type scope."""
     owner_prefix = strip_leading_template_clauses(declaration_prefix)
-    scope_owner_pattern = re.compile(
-        r"^(?:(?:export|inline)\s+)*namespace\b|^(?:class|enum|struct|union)\b"
-    )
-    return scope_owner_pattern.match(owner_prefix) is not None
+    if re.match(r"^(?:(?:export|inline)\s+)*namespace\b", owner_prefix):
+        return "namespace"
+    if re.match(r"^(?:class|enum|struct|union)\b", owner_prefix):
+        return "type"
+    return None
 
 
 def function_body_ranges(source_text, delimiter_offsets):
@@ -259,6 +265,25 @@ def function_body_ranges(source_text, delimiter_offsets):
         elif delimiter == "}" and scope_stack:
             opening_offset, scope_kind = scope_stack.pop()
             if scope_kind == "function":
+                ranges.append((opening_offset + 1, delimiter_offset))
+        previous_delimiter = delimiter_offset
+    return sorted(ranges)
+
+
+def type_scope_ranges(source_text, delimiter_offsets):
+    """Return source ranges occupied by class, struct, union, and enum bodies."""
+    scope_stack = []
+    ranges = []
+    previous_delimiter = -1
+    for delimiter_offset in delimiter_offsets:
+        delimiter = source_text[delimiter_offset]
+        if delimiter == "{":
+            scope_prefix = source_text[previous_delimiter + 1 : delimiter_offset]
+            scope_kind = declaration_scope_owner_kind(scope_prefix)
+            scope_stack.append((delimiter_offset, scope_kind))
+        elif delimiter == "}" and scope_stack:
+            opening_offset, scope_kind = scope_stack.pop()
+            if scope_kind == "type":
                 ranges.append((opening_offset + 1, delimiter_offset))
         previous_delimiter = delimiter_offset
     return sorted(ranges)
@@ -358,24 +383,79 @@ def is_scalar_constant(declaration, candidate_offset):
     if re.search(r"\bconstexpr\b", declaration_prefix):
         return True
     declaration_tail = declaration[candidate_offset:]
-    return re.match(r"const\s+char\s*\*\s*const\s+[A-Za-z_]\w*", declaration_tail) is not None
+    scalar_constant_pattern = re.compile(
+        r"(?:const\s+char|char\s+const)\s*\*\s*const\s+[A-Za-z_]\w*"
+    )
+    return scalar_constant_pattern.match(declaration_tail) is not None
+
+
+def string_literal_end(source_text, token_start):
+    """Return the end of a C++ string literal, excluding character literals."""
+    raw_literal_end = raw_string_end(source_text, token_start)
+    if raw_literal_end is not None:
+        return raw_literal_end
+    prefix_match = QUOTED_LITERAL_PATTERN.match(source_text, token_start)
+    if prefix_match is None or prefix_match.group(1) != '"':
+        return None
+    return quoted_literal_end(source_text, token_start)
+
+
+def is_literal_sequence(initializer):
+    """Return whether an initializer consists solely of adjacent string literals."""
+    initializer_offset = 0
+    found_literal = False
+    while initializer_offset < len(initializer):
+        while initializer_offset < len(initializer) and initializer[initializer_offset].isspace():
+            initializer_offset += 1
+        if initializer_offset == len(initializer):
+            break
+        detected_literal_end = string_literal_end(initializer, initializer_offset)
+        if detected_literal_end is None:
+            return False
+        found_literal = True
+        initializer_offset = detected_literal_end
+    return found_literal
+
+
+def is_literal_backed_file_scope_scalar(
+    declaration, candidate_offset, inside_function_body, inside_type_scope
+):
+    """Return whether a namespace-scope scalar text pointer is initialized by literals."""
+    if inside_function_body or inside_type_scope:
+        return False
+    declaration_tail = declaration[candidate_offset:]
+    initialized_pointer_pattern = re.compile(
+        r"(?:const\s+char|char\s+const)\s*\*\s*(?:const\s+)?"
+        r"[A-Za-z_]\w*\s*=\s*(.*);\s*$",
+        re.DOTALL,
+    )
+    initialized_pointer_match = initialized_pointer_pattern.match(declaration_tail)
+    if initialized_pointer_match is None:
+        return False
+    return is_literal_sequence(initialized_pointer_match.group(1))
 
 
 def is_lookup_table(declaration, candidate_offset):
     """Return whether a candidate occurrence declares a C-string lookup table."""
     declaration_tail = declaration[candidate_offset:]
     table_pattern = re.compile(
-        r"const\s+char\s*\*\s*(?:const\s+)?[A-Za-z_]\w*\s*\[[^\]]*\]"
+        r"(?:const\s+char|char\s+const)\s*\*\s*(?:const\s+)?"
+        r"[A-Za-z_]\w*\s*\[[^\]]*\]"
     )
     return table_pattern.match(declaration_tail) is not None
 
 
-def is_target_declaration(declaration, candidate_offset, inside_function_body):
+def is_target_declaration(
+    declaration, candidate_offset, inside_function_body, inside_type_scope
+):
     """Return whether a candidate belongs to a requested census category."""
     return (
         is_function_parameter(declaration, candidate_offset, inside_function_body)
         or is_scalar_constant(declaration, candidate_offset)
         or is_lookup_table(declaration, candidate_offset)
+        or is_literal_backed_file_scope_scalar(
+            declaration, candidate_offset, inside_function_body, inside_type_scope
+        )
     )
 
 
@@ -405,6 +485,7 @@ def findings_for_file(source_path, repository_root):
     )
     delimiter_offsets = lexical_delimiters(source_text)
     function_ranges = function_body_ranges(source_text, delimiter_offsets)
+    type_ranges = type_scope_ranges(source_text, delimiter_offsets)
     declaration_ranges = set()
     for candidate_pattern in CANDIDATE_PATTERNS:
         for candidate_match in candidate_pattern.finditer(source_text):
@@ -414,8 +495,12 @@ def findings_for_file(source_path, repository_root):
             declaration_text = source_text[declaration_start:declaration_end]
             relative_candidate_offset = candidate_match.start() - declaration_start
             inside_function_body = offset_is_in_ranges(candidate_match.start(), function_ranges)
+            inside_type_scope = offset_is_in_ranges(candidate_match.start(), type_ranges)
             if is_target_declaration(
-                declaration_text, relative_candidate_offset, inside_function_body
+                declaration_text,
+                relative_candidate_offset,
+                inside_function_body,
+                inside_type_scope,
             ):
                 declaration_ranges.add((declaration_start, declaration_end))
 

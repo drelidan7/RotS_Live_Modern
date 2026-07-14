@@ -518,8 +518,8 @@ Crash_obj2char(struct char_data*, const objects_json::ObjectRecord& object)
     return 0;
 }
 
-const char* overflow_str = "The buffer was overflowed, aborting.\r\n";
-const size_t overflow_len = strlen(overflow_str) + 1;
+constexpr std::string_view overflow_str = "The buffer was overflowed, aborting.\r\n";
+constexpr size_t overflow_len = overflow_str.size() + 1;
 
 // Reader order mirrors Crash_load (design constraint carried over from Task
 // 2): <name>.objs.json first (deserialize -- a corrupt JSON file is reported
@@ -596,7 +596,7 @@ void Crash_listrent(struct char_data* ch, char* name)
             if (bufpt >= max_space - strlen(obj->short_description) - 1) {
                 // overflow_str is fixed data, not a format string -- "%s" form for
                 // non-literal-format-string hygiene (it contains no '%' today).
-                snprintf(buf + bufpt, overflow_len, "%s", overflow_str);
+                snprintf(buf + bufpt, overflow_len, "%s", overflow_str.data());
                 send_to_char(buf, ch);
                 extract_obj(obj);
                 return;

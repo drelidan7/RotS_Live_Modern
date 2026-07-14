@@ -73,15 +73,15 @@ extern int social_command_number;
 extern const std::string_view wizlock_default;
 extern std::string wizlock_msg;
 extern int top_of_p_table;
-extern const char* START_MESSG;
-extern const char* WELC_MESSG;
+extern const std::string_view START_MESSG;
+extern const std::string_view WELC_MESSG;
 extern char* background;
 extern int no_specials;
 extern int restrict;
 extern const std::string_view dirs[];
 extern char* imotd;
 extern char* motd;
-extern const char* MENU;
+extern const std::string_view MENU;
 
 struct command_info cmd_info[MAX_CMD_LIST];
 
@@ -2299,8 +2299,8 @@ int _parse_name(char* arg, char* name)
 
 namespace {
 
-const char* kAccountStorageRoot = ".";
-const char* kAccountOnlyPasswordMarker = "*ACCOUNT*";
+constexpr std::string_view kAccountStorageRoot = ".";
+constexpr std::string_view kAccountOnlyPasswordMarker = "*ACCOUNT*";
 const int kAccountActiveSessionAlternateCharacterLevel = 91;
 
 struct AccountCharacterSelectionUnlock {
@@ -2364,7 +2364,7 @@ void set_account_character_name(struct descriptor_data* descriptor, std::string_
 
 void set_account_only_character_password(struct descriptor_data* d)
 {
-    std::snprintf(d->pwd, sizeof(d->pwd), "%s", kAccountOnlyPasswordMarker);
+    std::snprintf(d->pwd, sizeof(d->pwd), "%s", kAccountOnlyPasswordMarker.data());
 }
 
 std::string format_account_character_name_for_display(const char* character_name)

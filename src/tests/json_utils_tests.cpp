@@ -103,6 +103,38 @@ TEST(JsonUtils, ReaderAcceptsBoundedTextAndStopsAtEmbeddedNull) {
     EXPECT_EQ(parse_value(embedded_null_json), 42);
 }
 
+template <typename Reader>
+void expect_reader_owns_short_lived_input()
+{
+    const auto create_reader = []() {
+        std::string short_lived_json(256, ' ');
+        short_lived_json += "{\"value\":42}";
+        short_lived_json.push_back('\0');
+        short_lived_json += "ignored";
+        return Reader(short_lived_json);
+    };
+
+    Reader reader = create_reader();
+    int value = 0;
+    std::string error_message;
+    ASSERT_TRUE(reader.parse_root_object(
+        [&](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
+            if (key == "value") {
+                return nested_reader->parse_integer(&value, nested_error_message);
+            }
+            return nested_reader->skip_value(nested_error_message);
+        },
+        &error_message))
+        << error_message;
+    EXPECT_EQ(value, 42);
+}
+
+TEST(JsonUtils, ReadersOwnShortLivedFirstNullTerminatedInput)
+{
+    expect_reader_owns_short_lived_input<json_utils::JsonReader>();
+    expect_reader_owns_short_lived_input<json_utils::JsonReaderV2>();
+}
+
 TEST(JsonUtils, ParsesTypedObjectProperties)
 {
     const std::string json = R"({

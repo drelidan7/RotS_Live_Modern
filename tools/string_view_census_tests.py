@@ -41,6 +41,50 @@ constexpr const char* greeting = \"hello\";
             self.assertIn('constexpr const char* greeting = "hello";', result.stdout)
             self.assertNotIn("mutable_buffer", result.stdout)
 
+    def test_report_finds_literal_backed_file_and_namespace_scope_text_pointers(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository_root = pathlib.Path(temporary_directory)
+            source_directory = repository_root / "src"
+            source_directory.mkdir()
+            (source_directory / "sample.cpp").write_text(
+                '''const char* file_text = "file";
+char const *alternate_spelling = R"(alternate)";
+
+namespace detail {
+const char * namespace_text = "namespace " "text";
+}
+
+struct Holder
+{
+    const char* member_text = "member";
+};
+
+const char* runtime_text = load_text();
+const char* nullable_text = nullptr;
+
+void inspect()
+{
+    const char* local_text = "local";
+}
+''',
+                encoding="utf-8",
+            )
+
+            result = self.run_census(repository_root)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('const char* file_text = "file";', result.stdout)
+            self.assertIn(
+                'char const* alternate_spelling = R"(alternate)";', result.stdout
+            )
+            self.assertIn(
+                'const char* namespace_text = "namespace " "text";', result.stdout
+            )
+            self.assertNotIn("member_text", result.stdout)
+            self.assertNotIn("runtime_text", result.stdout)
+            self.assertNotIn("nullable_text", result.stdout)
+            self.assertNotIn("local_text", result.stdout)
+
     def test_check_fails_for_unclassified_finding(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             repository_root = pathlib.Path(temporary_directory)

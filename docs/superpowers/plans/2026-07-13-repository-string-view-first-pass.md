@@ -716,7 +716,7 @@ Run:
 ```bash
 cmake --build --preset macos-arm64 -j4
 ctest --preset macos-arm64 --output-on-failure
-git diff --check
+git -c core.whitespace=cr-at-eol diff --check master..HEAD
 ```
 
 Expected: build succeeds, all discovered tests pass, and no whitespace errors are reported.
@@ -788,12 +788,13 @@ Run:
 ```bash
 python3 tools/string_view_census.py --check
 python3 -m unittest tools/string_view_census_tests.py
-git diff --check
+git -c core.whitespace=cr-at-eol diff --check master..HEAD
 git status --short --branch
 git diff --name-only origin/master..HEAD -- 'src/tests/goldens/legacy_*_fixture.bin'
 ```
 
-Expected: census and Python tests pass; diff check is silent; working tree is clean; legacy fixture command prints nothing.
+Expected: census and Python tests pass; the CRLF-aware full-range diff check is silent; working tree
+is clean; legacy fixture command prints nothing.
 
 - [x] **Step 7: Append evidence and commit the results**
 
@@ -805,16 +806,18 @@ git diff --cached --check
 git commit -m "docs: record string-view migration verification"
 ```
 
-- [ ] **Step 8: Request final code review**
+- [x] **Step 8: Request final code review**
 
 Use `superpowers:requesting-code-review` against the complete commit range. Resolve correctness, lifetime, embedded-null, binary-data, and C-boundary findings before offering integration options through `superpowers:finishing-a-development-branch`.
 
 #### Task 10 verification evidence (2026-07-13)
 
 - Census: the initial raw pointer/reference search recorded 1,359 lines. The enforced census had
-  506 candidates after Task 8, 83 classified exceptions after Task 9, and finishes with 84
-  classified exceptions and zero unclassified candidates. The additional final exception is the
-  measured `isname_nullable` terminated-pointer hot path. All 14 census-tool tests pass.
+  506 candidates after Task 8, 83 classified exceptions after Task 9, and 84 after the measured
+  `isname_nullable` terminated-pointer hot-path correction. Final review expanded file-scope
+  constant detection and added constrained protocol compatibility adapters that preserve null
+  behavior without exposing additional C-string declarations. The final ledger therefore remains
+  at 84 classified exceptions with zero unclassified candidates. All 15 census-tool tests pass.
 - Representative performance: an identical AppleClang Release `-O2` harness compared baseline
   `c808cb1` with migrated `8fbff01`, using observable checksums, two warmups, and 11 samples per
   path. Median prompt composition was 146.958 to 149.506 ns/op (+1.73%); a six-recipient room
@@ -839,6 +842,21 @@ Use `superpowers:requesting-code-review` against the complete commit range. Reso
   untracked Docker-visible copy; no live server was contacted.
 - Repository integrity: no legacy binary fixture or other characterization golden changed. The
   repository formatter was not run as a final bulk rewrite because several legacy files retain
-  intentional mixed line endings; changes stayed localized and the CRLF-aware whitespace check is
-  clean. Generated root-build state was restored after i386 verification, and temporary runtime
-  data and binaries were removed from the worktree.
+  intentional mixed line endings; changes stayed localized, and
+  `git -c core.whitespace=cr-at-eol diff --check master..HEAD` is silent. Generated root-build state
+  was restored after i386 verification, and temporary runtime data and binaries were removed from
+  the worktree.
+- Final-review corrections: both incremental JSON readers now own one first-null-truncated input
+  copy, with an ASan regression test that reproduced the prior dangling-view use-after-free before
+  the fix. All bounded protocol overloads remain available while constrained adapters preserve the
+  11 historical null contracts and direct raw-array extents; ASan reproduced the former raw-array
+  `strlen` over-read before that correction. The expanded census also migrated newly visible
+  literal-backed file-scope constants in `config.cpp`, `comm.cpp`, `handler.cpp`, `interpre.cpp`,
+  and `objsave.cpp`. Normal and ASan focused suites pass 70/70. Two paired optimized benchmark runs
+  measured JSON at
+  236.604 to 235.088 ns/op (-0.6%) and 234.642 to 235.583 ns/op (+0.4%), showing no material cost
+  from the required ownership copy. The post-correction macOS suite passes all 1,216 discovered
+  tests (1,141 executed passes and 75 platform skips), and Linux x64 passes all 1,216 (1,139
+  executed passes and 77 platform skips). The post-correction shipping-ABI i386 suite also passes
+  all 1,216 discovered tests (1,210 executed passes and 6 platform skips). Final review reported no
+  critical, important, or minor findings and approved the branch for integration.

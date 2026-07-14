@@ -5,6 +5,11 @@ This ledger records every production declaration that intentionally retains a C-
 owner file plus the census tool's normalized declaration; check mode also requires an allowed
 reason and a nonempty, declaration-specific contract.
 
+The census includes function parameters, scalar pointer constants, lookup tables, and
+literal-backed `const char*`/`char const*` scalars at file or namespace scope. Literal-backed
+locals, type members, runtime-initialized pointers, and nullable pointers are not inferred to be
+immutable constants by this heuristic.
+
 Permitted reasons are `nullable-state`, `retains-storage`, `binary-data`, `printf-varargs`,
 `c-boundary`, `hot-path`, `abi-layout`, and `sentinel-table`. Inconvenience alone is not an
 exception; a `hot-path` entry requires measured evidence that the view boundary causes a material

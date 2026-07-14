@@ -25,7 +25,7 @@ public:
     using ObjectPropertyParser = std::function<bool(std::string_view, JsonReader*, std::string*)>;
     using ArrayValueParser = std::function<bool(JsonReader*, std::string*)>;
 
-    /// Borrows a bounded JSON document and parses only its prefix before the first null byte.
+    /// Copies a bounded JSON document and parses only its prefix before the first null byte.
     explicit JsonReader(std::string_view input);
 
     bool parse_root_object(const ObjectPropertyParser& property_parser, std::string* error_message);
@@ -77,8 +77,9 @@ private:
     void skip_whitespace();
     bool is_at_end() const;
 
-    // Bounded JSON prefix borrowed from the caller; never includes bytes after the first null.
-    std::string_view m_input;
+    // Owns the bounded JSON prefix being parsed; never includes bytes after the first null.
+    std::string m_input;
+    // Identifies the next unconsumed byte in m_input and advances as parsing consumes text.
     size_t m_position = 0;
 };
 
@@ -91,7 +92,7 @@ public:
     using ObjectPropertyParser = std::function<bool(std::string_view, JsonReaderV2*, std::string*)>;
     using ArrayValueParser = std::function<bool(JsonReaderV2*, std::string*)>;
 
-    /// Borrows a bounded JSON document and parses only its prefix before the first null byte.
+    /// Copies a bounded JSON document and parses only its prefix before the first null byte.
     explicit JsonReaderV2(std::string_view input);
 
     bool parse_root_object(const ObjectPropertyParser& property_parser, std::string* error_message);
@@ -115,8 +116,8 @@ private:
     void skip_whitespace();
     bool is_at_end() const;
 
-    // Immutable view of the JSON text being parsed; owned by the caller and must outlive this reader.
-    std::string_view m_input;
+    // Owns the bounded JSON prefix being parsed; never includes bytes after the first null.
+    std::string m_input;
     // Cursor into m_input of the next unconsumed character; advanced by every consume/parse step.
     size_t m_position = 0;
 };

@@ -53,6 +53,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 /* external vars */
 extern struct room_data world;
@@ -62,7 +63,7 @@ extern struct index_data* mob_index;
 extern struct index_data* obj_index;
 extern struct descriptor_data* descriptor_list;
 extern struct char_data* fast_update_list;
-extern const char* MENU;
+extern const std::string_view MENU;
 extern int top_of_world;
 extern struct skill_data skills[];
 extern sh_int encumb_table[MAX_WEAR];

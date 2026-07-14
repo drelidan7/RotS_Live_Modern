@@ -576,6 +576,13 @@ TEST(MSDPProtocol, SanitizeValueTruncatesSemanticTextAtEmbeddedNull)
     EXPECT_EQ(MSDPSanitizeValue(std::string_view(storage, sizeof(storage))), "A");
 }
 
+TEST(MSDPProtocol, SanitizeValueAcceptsADirectUnterminatedRawArray)
+{
+    const char value[] = { 'A', '\n', 'B' };
+
+    EXPECT_EQ(MSDPSanitizeValue(value), "A\\nB");
+}
+
 TEST(MSDPProtocol, ProtocolOutputUsesLengthAsProcessingLimitForTerminatedText)
 {
     ProtocolDescriptor context;
@@ -732,16 +739,125 @@ TEST(MSDPProtocol, SetStringSanitizesAndMarksDirtyOnlyWhenValueChanges)
 
 TEST(MSDPProtocol, TextHelpersExposeBoundedSignatures)
 {
-    static_assert(std::is_same_v<decltype(&MSDPSanitizeValue),
+    static_assert(std::is_same_v<decltype(static_cast<std::string (*)(std::string_view)>(
+                                     &MSDPSanitizeValue)),
         std::string (*)(std::string_view)>);
-    static_assert(std::is_same_v<decltype(&MSDPSetString),
+    static_assert(std::is_same_v<decltype(static_cast<void (*)(descriptor_t*, variable_t,
+                                     std::string_view)>(&MSDPSetString)),
         void (*)(descriptor_t*, variable_t, std::string_view)>);
-    static_assert(std::is_same_v<decltype(&MSDPSendPair),
+    static_assert(std::is_same_v<decltype(static_cast<void (*)(descriptor_t*, std::string_view,
+                                     std::string_view)>(&MSDPSendPair)),
         void (*)(descriptor_t*, std::string_view, std::string_view)>);
-    static_assert(std::is_same_v<decltype(&MSDPSendList),
+    static_assert(std::is_same_v<decltype(static_cast<void (*)(descriptor_t*, std::string_view,
+                                     std::string_view)>(&MSDPSendList)),
         void (*)(descriptor_t*, std::string_view, std::string_view)>);
-    static_assert(std::is_same_v<decltype(&MXPSendTag),
+    static_assert(std::is_same_v<decltype(static_cast<void (*)(descriptor_t*, std::string_view)>(
+                                     &MXPSendTag)),
         void (*)(descriptor_t*, std::string_view)>);
+}
+
+TEST(MSDPProtocol, NullableCompatibilityOverloadsAcceptPointerArguments)
+{
+    static_assert(requires(descriptor_t* descriptor, variable_t variable, const char* text) {
+        CopyoverSet(descriptor, text);
+        MSDPSanitizeValue(text);
+        MSDPSetString(descriptor, variable, text);
+        MSDPSendPair(descriptor, text, text);
+        MSDPSendList(descriptor, text, text);
+        MSDPSetTable(descriptor, variable, text);
+        MSDPSendTable(descriptor, variable, text);
+        MSDPSetArray(descriptor, variable, text);
+        MXPSendTag(descriptor, text);
+        SoundSend(descriptor, text);
+        ColourRGB(descriptor, text);
+    });
+}
+
+TEST(MSDPProtocol, NullSetInputsLeaveProtocolStateUnchanged)
+{
+    ProtocolDescriptor context;
+    protocol_t* protocol = context.descriptor.pProtocol;
+    const char* null_text = nullptr;
+    std::string expected_table(1, static_cast<char>(MSDP_TABLE_OPEN));
+    expected_table += "existing table";
+    expected_table += static_cast<char>(MSDP_TABLE_CLOSE);
+    std::string expected_array(1, static_cast<char>(MSDP_ARRAY_OPEN));
+    expected_array += "existing array";
+    expected_array += static_cast<char>(MSDP_ARRAY_CLOSE);
+
+    MSDPSetString(&context.descriptor, eMSDP_CHARACTER_NAME, "existing string");
+    MSDPSetTable(&context.descriptor, eMSDP_ROOM, "existing table");
+    MSDPSetArray(&context.descriptor, eMSDP_ROOM_EXITS, "existing array");
+    protocol->pVariables[eMSDP_CHARACTER_NAME]->bDirty = false;
+    protocol->pVariables[eMSDP_ROOM]->bDirty = false;
+    protocol->pVariables[eMSDP_ROOM_EXITS]->bDirty = false;
+
+    MSDPSetString(&context.descriptor, eMSDP_CHARACTER_NAME, nullptr);
+    MSDPSetTable(&context.descriptor, eMSDP_ROOM, nullptr);
+    MSDPSendTable(&context.descriptor, eMSDP_ROOM, nullptr);
+    MSDPSetArray(&context.descriptor, eMSDP_ROOM_EXITS, nullptr);
+    MSDPSetString(&context.descriptor, eMSDP_CHARACTER_NAME, null_text);
+    MSDPSetTable(&context.descriptor, eMSDP_ROOM, null_text);
+    MSDPSendTable(&context.descriptor, eMSDP_ROOM, null_text);
+    MSDPSetArray(&context.descriptor, eMSDP_ROOM_EXITS, null_text);
+
+    EXPECT_STREQ(protocol->pVariables[eMSDP_CHARACTER_NAME]->pValueString, "existing string");
+    EXPECT_EQ(protocol->pVariables[eMSDP_ROOM]->pValueString, expected_table);
+    EXPECT_EQ(protocol->pVariables[eMSDP_ROOM_EXITS]->pValueString, expected_array);
+    EXPECT_FALSE(protocol->pVariables[eMSDP_CHARACTER_NAME]->bDirty);
+    EXPECT_FALSE(protocol->pVariables[eMSDP_ROOM]->bDirty);
+    EXPECT_FALSE(protocol->pVariables[eMSDP_ROOM_EXITS]->bDirty);
+    EXPECT_EQ(context.read_output(), "");
+}
+
+TEST(MSDPProtocol, NullOutputInputsRemainNoOps)
+{
+    ProtocolDescriptor context;
+    protocol_t* protocol = context.descriptor.pProtocol;
+    const char* null_text = nullptr;
+    protocol->pVariables[eMSDP_MXP]->ValueInt = 1;
+    protocol->pVariables[eMSDP_SOUND]->ValueInt = 1;
+
+    MSDPSendPair(&context.descriptor, nullptr, "value");
+    MSDPSendPair(&context.descriptor, "VARIABLE", nullptr);
+    MSDPSendList(&context.descriptor, nullptr, "value");
+    MSDPSendList(&context.descriptor, "VARIABLE", nullptr);
+    MXPSendTag(&context.descriptor, nullptr);
+    SoundSend(&context.descriptor, nullptr);
+    MSDPSendPair(&context.descriptor, null_text, "value");
+    MSDPSendPair(&context.descriptor, "VARIABLE", null_text);
+    MSDPSendList(&context.descriptor, null_text, "value");
+    MSDPSendList(&context.descriptor, "VARIABLE", null_text);
+    MXPSendTag(&context.descriptor, null_text);
+    SoundSend(&context.descriptor, null_text);
+
+    EXPECT_EQ(context.read_output(), "");
+}
+
+TEST(MSDPProtocol, NullCopyoverInputLeavesSettingsUnchanged)
+{
+    ProtocolDescriptor context;
+    protocol_t* protocol = context.descriptor.pProtocol;
+    const char* null_text = nullptr;
+    protocol->ScreenWidth = 80;
+    protocol->ScreenHeight = 24;
+
+    CopyoverSet(&context.descriptor, nullptr);
+    CopyoverSet(&context.descriptor, null_text);
+
+    EXPECT_EQ(protocol->ScreenWidth, 80);
+    EXPECT_EQ(protocol->ScreenHeight, 24);
+}
+
+TEST(MSDPProtocol, NullSanitizeAndColourInputsPreserveLegacyResults)
+{
+    ProtocolDescriptor context;
+    const char* null_text = nullptr;
+
+    EXPECT_EQ(MSDPSanitizeValue(nullptr), "");
+    EXPECT_STREQ(ColourRGB(&context.descriptor, nullptr), "\033[0;00m");
+    EXPECT_EQ(MSDPSanitizeValue(null_text), "");
+    EXPECT_STREQ(ColourRGB(&context.descriptor, null_text), "\033[0;00m");
 }
 
 TEST(MSDPProtocol, SetStringCopiesAndSanitizesABoundedValue)
@@ -794,6 +910,27 @@ TEST(MSDPProtocol, SendPairAcceptsNonTerminatedBoundedText)
     EXPECT_EQ(context.read_output(), expected_msdp_pair("NAME", "AB"));
 }
 
+TEST(MSDPProtocol, SendPairAcceptsDirectUnterminatedRawArrayCombinations)
+{
+    ProtocolDescriptor context;
+    const char variable[] = { 'N', 'A', 'M', 'E' };
+    const char value[] = { 'A', 'B' };
+    const std::string_view variable_view(variable, sizeof(variable));
+    const std::string_view value_view(value, sizeof(value));
+    const char* terminated_variable = "NAME";
+    const char* terminated_value = "AB";
+
+    MSDPSendPair(&context.descriptor, variable, value);
+    MSDPSendPair(&context.descriptor, variable, value_view);
+    MSDPSendPair(&context.descriptor, variable_view, value);
+    MSDPSendPair(&context.descriptor, variable, terminated_value);
+    MSDPSendPair(&context.descriptor, terminated_variable, value);
+
+    const std::string expected_output = expected_msdp_pair("NAME", "AB");
+    EXPECT_EQ(context.read_output(), expected_output + expected_output + expected_output
+            + expected_output + expected_output);
+}
+
 TEST(MSDPProtocol, SendListTruncatesSemanticTextAtEmbeddedNull)
 {
     ProtocolDescriptor context;
@@ -817,6 +954,27 @@ TEST(MSDPProtocol, SendListAcceptsNonTerminatedBoundedText)
         std::string_view(value_storage + 1, 3));
 
     EXPECT_EQ(context.read_output(), expected_msdp_array_pair("LIST", { "A", "B" }));
+}
+
+TEST(MSDPProtocol, SendListAcceptsDirectUnterminatedRawArrayCombinations)
+{
+    ProtocolDescriptor context;
+    const char variable[] = { 'L', 'I', 'S', 'T' };
+    const char value[] = { 'A', ' ', 'B' };
+    const std::string_view variable_view(variable, sizeof(variable));
+    const std::string_view value_view(value, sizeof(value));
+    const char* terminated_variable = "LIST";
+    const char* terminated_value = "A B";
+
+    MSDPSendList(&context.descriptor, variable, value);
+    MSDPSendList(&context.descriptor, variable, value_view);
+    MSDPSendList(&context.descriptor, variable_view, value);
+    MSDPSendList(&context.descriptor, variable, terminated_value);
+    MSDPSendList(&context.descriptor, terminated_variable, value);
+
+    const std::string expected_output = expected_msdp_array_pair("LIST", { "A", "B" });
+    EXPECT_EQ(context.read_output(), expected_output + expected_output + expected_output
+            + expected_output + expected_output);
 }
 
 TEST(MSDPProtocol, MxpSendTagTruncatesSemanticTextAtEmbeddedNull)

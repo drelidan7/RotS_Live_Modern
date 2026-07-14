@@ -16,6 +16,7 @@
 ************************************************************************ */
 
 #include <stdio.h>
+#include <string_view>
 
 #include "platdef.h"
 #include "structs.h"
@@ -52,12 +53,12 @@ int immort_start_room = 1101;
 /* virtual number of room that frozen players should enter at */
 int frozen_start_room = 1110;
 
-const char* NOEFFECT = "Nothing seems to happen.\r\n";
+extern const std::string_view NOEFFECT = "Nothing seems to happen.\r\n";
 
 /* GAME OPERATION OPTIONS */
 
 /* default directory to use as data directory */
-const char* DFLT_DIR = "lib";
+extern const std::string_view DFLT_DIR = "lib";
 
 /* Some nameservers (such as the one here at JHU) are slow and cause the
    game to lag terribly every time someone logs in.  The lag is caused by
@@ -79,7 +80,7 @@ const char* DFLT_DIR = "lib";
 
 int nameserver_is_slow = YES;
 
-const char* MENU = "\n\r"
+extern const std::string_view MENU = "\n\r"
              "Welcome to Arda!\n\r"
              "0) Exit from the MUD.\n\r"
              "1) Enter the game.\n\r"
@@ -90,7 +91,7 @@ const char* MENU = "\n\r"
              "\n\r"
              "   Make your choice: ";
 
-const char* GREETINGS = "\n\r"
+extern const std::string_view GREETINGS = "\n\r"
                   "\n\r"
                   "                               Welcome to\n\r"
                   "                          RETURN OF THE SHADOW\n\r"
@@ -105,11 +106,11 @@ const char* GREETINGS = "\n\r"
                   "          Log in with your account email address at the prompt.\n\r"
                   "\n\r";
 
-const char* WELC_MESSG = "\n\r"
+extern const std::string_view WELC_MESSG = "\n\r"
                    "Here we go..."
                    "\n\r";
 
-const char* START_MESSG = "Welcome.  This is your new MUD character.\n\r"
+extern const std::string_view START_MESSG = "Welcome.  This is your new MUD character.\n\r"
                     "Don't forget to role play!\n\r";
 
 /* AUTOWIZ OPTIONS */

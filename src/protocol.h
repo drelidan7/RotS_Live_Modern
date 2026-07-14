@@ -10,8 +10,11 @@
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
+#include <cstddef>
 #include <string>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 
 /******************************************************************************
  Set your MUD_NAME, and change descriptor_t if necessary.
@@ -20,6 +23,48 @@
 #define MUD_NAME "Return of the Shadow"
 
 typedef struct descriptor_data descriptor_t;
+
+namespace protocol_detail {
+
+// Centralize text adaptation so raw arrays retain their bounds instead of losing them to pointer
+// decay, while legacy pointer calls can still preserve their explicit null behavior.
+template <typename Text>
+using text_argument_type = std::remove_reference_t<Text>;
+
+template <typename Text>
+concept TextArgument
+    = (std::is_array_v<text_argument_type<Text>>
+          && std::is_same_v<std::remove_cv_t<std::remove_extent_t<text_argument_type<Text>>>, char>)
+    || (std::is_pointer_v<text_argument_type<Text>>
+        && std::is_convertible_v<Text, const char*>)
+    || std::is_same_v<std::remove_cvref_t<Text>, std::nullptr_t>
+    || std::is_convertible_v<Text, std::string_view>;
+
+template <TextArgument Text>
+bool is_null_text(Text&& text)
+{
+    if constexpr (std::is_same_v<std::remove_cvref_t<Text>, std::nullptr_t>) {
+        return true;
+    } else if constexpr (std::is_pointer_v<text_argument_type<Text>>) {
+        return text == nullptr;
+    } else {
+        return false;
+    }
+}
+
+template <TextArgument Text>
+std::string_view text_view(Text&& text)
+{
+    if constexpr (std::is_array_v<text_argument_type<Text>>) {
+        return std::string_view(text, std::extent_v<text_argument_type<Text>>);
+    } else if constexpr (std::is_same_v<std::remove_cvref_t<Text>, std::nullptr_t>) {
+        return {};
+    } else {
+        return std::string_view(std::forward<Text>(text));
+    }
+}
+
+} // namespace protocol_detail
 
 /******************************************************************************
  If you wish to support traditional mud colour codes, uncomment COLOUR_CHAR.
@@ -425,8 +470,20 @@ const char* CopyoverGet(descriptor_t* apDescriptor);
  *
  * Client name and version are not saved.  It is recommended you save these in
  * the player file, as then you can grep to collect client usage stats.
+ * A null compatibility pointer is ignored, preserving the original API behavior.
+ * Direct raw arrays retain their compile-time extent and need not be null-terminated.
  */
 void CopyoverSet(descriptor_t* apDescriptor, std::string_view data);
+
+template <protocol_detail::TextArgument Data>
+void CopyoverSet(descriptor_t* apDescriptor, Data&& data)
+{
+    if (protocol_detail::is_null_text(data)) {
+        return;
+    }
+
+    CopyoverSet(apDescriptor, protocol_detail::text_view(std::forward<Data>(data)));
+}
 
 /******************************************************************************
  MSDP functions.
@@ -463,9 +520,22 @@ void MSDPSend(descriptor_t* apDescriptor, variable_t aMSDP);
  * Send the specified strings to the user as an MSDP variable/value pair.  This
  * will automatically use ATCP instead if MSDP is not supported by the client.
  * Both textual inputs end at their first null character.
+ * The compatibility overload ignores the call if either pointer is null.
+ * Direct raw arrays retain their compile-time extents and need not be null-terminated.
  */
 void MSDPSendPair(
     descriptor_t* apDescriptor, std::string_view apVariable, std::string_view apValue);
+
+template <protocol_detail::TextArgument Variable, protocol_detail::TextArgument Value>
+void MSDPSendPair(descriptor_t* apDescriptor, Variable&& variable, Value&& value)
+{
+    if (protocol_detail::is_null_text(variable) || protocol_detail::is_null_text(value)) {
+        return;
+    }
+
+    MSDPSendPair(apDescriptor, protocol_detail::text_view(std::forward<Variable>(variable)),
+        protocol_detail::text_view(std::forward<Value>(value)));
+}
 
 /* Function: MSDPSendList
  *
@@ -473,9 +543,22 @@ void MSDPSendPair(
  *
  * apValue should be a list of values separated by spaces.
  * Both textual inputs end at their first null character.
+ * The compatibility overload ignores the call if either pointer is null.
+ * Direct raw arrays retain their compile-time extents and need not be null-terminated.
  */
 void MSDPSendList(
     descriptor_t* apDescriptor, std::string_view apVariable, std::string_view apValue);
+
+template <protocol_detail::TextArgument Variable, protocol_detail::TextArgument Value>
+void MSDPSendList(descriptor_t* apDescriptor, Variable&& variable, Value&& value)
+{
+    if (protocol_detail::is_null_text(variable) || protocol_detail::is_null_text(value)) {
+        return;
+    }
+
+    MSDPSendList(apDescriptor, protocol_detail::text_view(std::forward<Variable>(variable)),
+        protocol_detail::text_view(std::forward<Value>(value)));
+}
 
 /* Function: MSDPSetNumber
  *
@@ -498,8 +581,20 @@ void MSDPSetNumber(descriptor_t* apDescriptor, variable_t aMSDP, int aValue);
  * The value is passed through MSDPSanitizeValue() first, so it stays a
  * valid JSON string for clients that convert MSDP into JSON.
  * The textual value ends at its first null character and is copied into protocol state.
+ * A null compatibility pointer leaves the existing protocol value unchanged.
+ * A direct raw array retains its compile-time extent and need not be null-terminated.
  */
 void MSDPSetString(descriptor_t* apDescriptor, variable_t aMSDP, std::string_view apValue);
+
+template <protocol_detail::TextArgument Value>
+void MSDPSetString(descriptor_t* apDescriptor, variable_t aMSDP, Value&& value)
+{
+    if (protocol_detail::is_null_text(value)) {
+        return;
+    }
+
+    MSDPSetString(apDescriptor, aMSDP, protocol_detail::text_view(std::forward<Value>(value)));
+}
 
 /* Function: MSDPSanitizeValue
  *
@@ -510,8 +605,20 @@ void MSDPSetString(descriptor_t* apDescriptor, variable_t aMSDP, std::string_vie
  * (see MSDPSetTable) that embeds freeform text, since those bypass
  * MSDPSetString().
  * The textual value ends at its first null character.
+ * A null compatibility pointer produces an empty result.
+ * A direct raw array retains its compile-time extent and need not be null-terminated.
  */
 std::string MSDPSanitizeValue(std::string_view apValue);
+
+template <protocol_detail::TextArgument Value>
+std::string MSDPSanitizeValue(Value&& value)
+{
+    if (protocol_detail::is_null_text(value)) {
+        return {};
+    }
+
+    return MSDPSanitizeValue(protocol_detail::text_view(std::forward<Value>(value)));
+}
 
 /* Function: MSDPSetTable
  *
@@ -521,16 +628,40 @@ std::string MSDPSanitizeValue(std::string_view apValue);
  *
  * sprintf( Buffer, "%c%s%c%s", (char)MSDP_VAR, Name, (char)MSDP_VAL, Value );
  * MSDPSetTable( d, eMSDP_TEST, Buffer );
+ * A null compatibility pointer leaves the existing protocol value unchanged.
+ * A direct raw array retains its compile-time extent and need not be null-terminated.
  */
 void MSDPSetTable(descriptor_t* apDescriptor, variable_t aMSDP, std::string_view value);
+
+template <protocol_detail::TextArgument Value>
+void MSDPSetTable(descriptor_t* apDescriptor, variable_t aMSDP, Value&& value)
+{
+    if (protocol_detail::is_null_text(value)) {
+        return;
+    }
+
+    MSDPSetTable(apDescriptor, aMSDP, protocol_detail::text_view(std::forward<Value>(value)));
+}
 
 /* Function: MSDPSendTable
  *
  * Works like MSDPSetTable, but the data is sent instantly. Useful for
  * automappers, comm channels, etc.
+ * A null compatibility pointer leaves protocol state unchanged and sends nothing.
+ * A direct raw array retains its compile-time extent and need not be null-terminated.
  */
 
 void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, std::string_view value);
+
+template <protocol_detail::TextArgument Value>
+void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, Value&& value)
+{
+    if (protocol_detail::is_null_text(value)) {
+        return;
+    }
+
+    MSDPSendTable(apDescriptor, aMSDP, protocol_detail::text_view(std::forward<Value>(value)));
+}
 
 /* Function: MSDPSetArray
  *
@@ -540,8 +671,20 @@ void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, std::string_vie
  *
  * sprintf( Buffer, "%c%s%c%s", (char)MSDP_VAL, Val1, (char)MSDP_VAL, Val2 );
  * MSDPSetArray( d, eMSDP_TEST, Buffer );
+ * A null compatibility pointer leaves the existing protocol value unchanged.
+ * A direct raw array retains its compile-time extent and need not be null-terminated.
  */
 void MSDPSetArray(descriptor_t* apDescriptor, variable_t aMSDP, std::string_view value);
+
+template <protocol_detail::TextArgument Value>
+void MSDPSetArray(descriptor_t* apDescriptor, variable_t aMSDP, Value&& value)
+{
+    if (protocol_detail::is_null_text(value)) {
+        return;
+    }
+
+    MSDPSetArray(apDescriptor, aMSDP, protocol_detail::text_view(std::forward<Value>(value)));
+}
 
 bool MSDPIsValidVariable(variable_t aMSDP);
 
@@ -575,8 +718,20 @@ const char* MXPCreateTag(descriptor_t* apDescriptor, const char* apTag);
  * This works like MXPCreateTag, but instead of returning the string it sends
  * it directly to the user.  This is mainly useful for the <VERSION> tag.
  * The textual tag ends at its first null character.
+ * A null compatibility pointer is ignored.
+ * A direct raw array retains its compile-time extent and need not be null-terminated.
  */
 void MXPSendTag(descriptor_t* apDescriptor, std::string_view apTag);
+
+template <protocol_detail::TextArgument Tag>
+void MXPSendTag(descriptor_t* apDescriptor, Tag&& tag)
+{
+    if (protocol_detail::is_null_text(tag)) {
+        return;
+    }
+
+    MXPSendTag(apDescriptor, protocol_detail::text_view(std::forward<Tag>(tag)));
+}
 
 /******************************************************************************
  Sound functions.
@@ -587,8 +742,20 @@ void MXPSendTag(descriptor_t* apDescriptor, std::string_view apTag);
  * Sends the specified sound trigger to the player, using MSDP or ATCP if
  * supported, MSP if not.  The trigger string itself is a relative path and
  * filename, eg: SoundSend( pDesc, "monster/growl.wav" );
+ * A null compatibility pointer is ignored.
+ * A direct raw array retains its compile-time extent and need not be null-terminated.
  */
 void SoundSend(descriptor_t* apDescriptor, std::string_view trigger);
+
+template <protocol_detail::TextArgument Trigger>
+void SoundSend(descriptor_t* apDescriptor, Trigger&& trigger)
+{
+    if (protocol_detail::is_null_text(trigger)) {
+        return;
+    }
+
+    SoundSend(apDescriptor, protocol_detail::text_view(std::forward<Trigger>(trigger)));
+}
 
 /******************************************************************************
  Colour functions.
@@ -608,8 +775,21 @@ void SoundSend(descriptor_t* apDescriptor, std::string_view trigger);
  * best-fit ANSI colour instead.
  *
  * If you wish to embed colours in strings, use ProtocolOutput().
+ * A null compatibility pointer is treated as an invalid colour, matching the
+ * original API behavior.
+ * A direct raw array retains its compile-time extent and need not be null-terminated.
  */
 const char* ColourRGB(descriptor_t* apDescriptor, std::string_view rgb);
+
+template <protocol_detail::TextArgument Rgb>
+const char* ColourRGB(descriptor_t* apDescriptor, Rgb&& rgb)
+{
+    if (protocol_detail::is_null_text(rgb)) {
+        return ColourRGB(apDescriptor, std::string_view());
+    }
+
+    return ColourRGB(apDescriptor, protocol_detail::text_view(std::forward<Rgb>(rgb)));
+}
 
 /******************************************************************************
  Unicode (UTF-8 conversion) functions.

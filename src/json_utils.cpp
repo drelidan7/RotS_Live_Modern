@@ -154,7 +154,12 @@ void append_escaped_json_string(std::string &out, std::string_view value) {
     }
 }
 
-JsonReader::JsonReader(std::string_view input) : m_input(rots::text::truncate_at_null(input)) {}
+JsonReader::JsonReader(std::string_view input)
+    // Readers retain their input throughout incremental parsing, so one construction-time copy is
+    // preferable to imposing a fragile caller-lifetime contract despite its allocation cost.
+    : m_input(rots::text::truncate_at_null(input))
+{
+}
 
 bool JsonReader::parse_root_object(const ObjectPropertyParser& property_parser, std::string* error_message)
 {
@@ -511,7 +516,7 @@ bool JsonReader::consume(char expected)
 
 bool JsonReader::match_literal(std::string_view literal) {
     literal = rots::text::truncate_at_null(literal);
-    if (m_input.substr(m_position, literal.size()) != literal)
+    if (std::string_view(m_input).substr(m_position, literal.size()) != literal)
         return false;
 
     m_position += literal.size();
@@ -536,7 +541,12 @@ bool JsonReader::is_at_end() const
     return m_position >= m_input.size();
 }
 
-JsonReaderV2::JsonReaderV2(std::string_view input) : m_input(rots::text::truncate_at_null(input)) {}
+JsonReaderV2::JsonReaderV2(std::string_view input)
+    // Readers retain their input throughout incremental parsing, so one construction-time copy is
+    // preferable to imposing a fragile caller-lifetime contract despite its allocation cost.
+    : m_input(rots::text::truncate_at_null(input))
+{
+}
 
 bool JsonReaderV2::parse_root_object(const ObjectPropertyParser& property_parser, std::string* error_message)
 {
@@ -905,7 +915,7 @@ bool JsonReaderV2::consume(char expected)
 
 bool JsonReaderV2::match_literal(std::string_view literal) {
     literal = rots::text::truncate_at_null(literal);
-    if (m_input.substr(m_position, literal.size()) != literal)
+    if (std::string_view(m_input).substr(m_position, literal.size()) != literal)
         return false;
 
     m_position += literal.size();

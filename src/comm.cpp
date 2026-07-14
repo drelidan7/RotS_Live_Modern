@@ -59,6 +59,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <string_view>
 #include <system_error>
 #include <thread>
 #include <vector>
@@ -75,7 +76,7 @@ extern int mini_mud;
 extern int new_mud;
 extern int no_rent_check;
 extern FILE* player_fl;
-extern const char* DFLT_DIR;
+extern const std::string_view DFLT_DIR;
 extern int mortal_start_room[];
 extern struct room_data world; /* In db.c */
 extern struct char_data* character_list; /* In db.c */
@@ -119,7 +120,7 @@ int txt_block_counter = 0;
 
 extern int nameserver_is_slow; /* see config.c */
 extern int autosave_time; /* see config.c */
-extern const char* GREETINGS;
+extern const std::string_view GREETINGS;
 
 int process_output(struct descriptor_data* t);
 int isbanned(char* hostname);

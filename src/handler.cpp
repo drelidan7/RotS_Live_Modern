@@ -265,44 +265,44 @@ int isname(std::string_view query, std::string_view name_list, char full)
         full = 1;
     }
 
+    // Bounded transliteration of isname_c_string: name_index is the single cursor the legacy
+    // walk advances through the namelist, including during comparison, so candidate word starts
+    // (byte 0 verbatim, then alpha-run/separator skips from the mismatch point) stay identical
+    // to the retained C-string matcher even for keywords beginning with digits or punctuation.
     std::size_t name_index = 0;
-    while (name_index < name_list.size()) {
-        while (name_index < name_list.size()
-            && (!std::isalpha(static_cast<unsigned char>(name_list[name_index])) || name_list[name_index] == ' ')) {
-            ++name_index;
-        }
-        if (name_index == name_list.size()) {
-            return 0;
-        }
-
+    for (;;) {
         std::size_t query_index = 0;
-        std::size_t candidate_index = name_index;
-        while (true) {
-            if (query_index == query.size()) {
-                const bool candidate_continues = candidate_index < name_list.size()
-                    && std::isalpha(static_cast<unsigned char>(name_list[candidate_index]));
-                if (!full || !candidate_continues) {
-                    return 1;
-                }
+        for (;;) {
+            const bool name_exhausted = (name_index == name_list.size());
+            if (query_index == query.size()
+                && (!full || name_exhausted
+                    || !std::isalpha(static_cast<unsigned char>(name_list[name_index])))) {
+                return 1;
+            }
+            if (name_exhausted) {
+                return 0;
+            }
+            if (query_index == query.size() || name_list[name_index] == ' '
+                || LOWER(query[query_index]) != LOWER(name_list[name_index])) {
                 break;
             }
-
-            if (candidate_index == name_list.size() || name_list[candidate_index] == ' '
-                || LOWER(query[query_index]) != LOWER(name_list[candidate_index])) {
-                break;
-            }
-
             ++query_index;
-            ++candidate_index;
+            ++name_index;
         }
 
         while (name_index < name_list.size()
             && std::isalpha(static_cast<unsigned char>(name_list[name_index]))) {
             ++name_index;
         }
+        if (name_index == name_list.size()) {
+            return 0;
+        }
+        while (name_index < name_list.size()
+            && (!std::isalpha(static_cast<unsigned char>(name_list[name_index]))
+                || name_list[name_index] == ' ')) {
+            ++name_index;
+        }
     }
-
-    return 0;
 }
 
 int isname_nullable(const char* query, const char* name_list, char full)

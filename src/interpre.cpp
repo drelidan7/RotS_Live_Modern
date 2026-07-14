@@ -626,7 +626,9 @@ int old_search_block(char* argument, int begin, unsigned int length,
         }
     else {
         while (!found && list[guess] != "\n") {
-            found = 1;
+            // A word longer than the entry can never match: the legacy char* walk hit the
+            // entry's terminator here, and a bounded view has no byte at list[guess][size()].
+            found = (length <= list[guess].size());
             for (search = 0; (search < length) && found; search++)
                 found = (*(argument + begin + search) == list[guess][search]);
             guess++;

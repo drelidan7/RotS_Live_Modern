@@ -58,8 +58,10 @@ namespace {
 
 } // namespace
 
+// Embedded NULs are escaped as \u0000 (the pre-migration behavior) so string values
+// round-trip through parse_string instead of losing everything after the first NUL on
+// the next save. These escapers are explicit-length byte contracts, not text boundaries.
 std::string escape_json_string(std::string_view value) {
-    value = rots::text::truncate_at_null(value);
     std::string escaped;
     escaped.reserve(value.size() + 8);
 
@@ -102,7 +104,6 @@ std::string escape_json_string(std::string_view value) {
 }
 
 void append_escaped_json_string(std::string &out, std::string_view value) {
-    value = rots::text::truncate_at_null(value);
     bool needs_escape = false;
     for (char character : value) {
         if (character == '"' || character == '\\' || static_cast<unsigned char>(character) < 0x20) {

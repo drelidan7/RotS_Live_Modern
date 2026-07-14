@@ -62,18 +62,43 @@ TEST(JsonUtils, EscapesOtherControlCharactersAsUnicodeEscapes)
     EXPECT_EQ(json_utils::escape_json_string(raw), "\\u000b");
 }
 
-TEST(JsonUtils, EscapesBoundedTextAndStopsAtEmbeddedNull) {
+TEST(JsonUtils, EscapesBoundedTextWithoutRequiringNullTermination) {
     const char bounded_storage[] = {'a', '"', 'b', 'x'};
     const std::string_view bounded_value(bounded_storage, 3);
-    constexpr std::string_view embedded_null_value("alpha\0ignored", 13);
 
     EXPECT_EQ(json_utils::escape_json_string(bounded_value), "a\\\"b");
-    EXPECT_EQ(json_utils::escape_json_string(embedded_null_value), "alpha");
 
     std::string output = "prefix:";
     json_utils::append_escaped_json_string(output, bounded_value);
+    EXPECT_EQ(output, "prefix:a\\\"b");
+}
+
+TEST(JsonUtils, EscapesEmbeddedNullsAsUnicodeEscapes) {
+    constexpr std::string_view embedded_null_value("alpha\0beta", 10);
+
+    EXPECT_EQ(json_utils::escape_json_string(embedded_null_value), "alpha\\u0000beta");
+
+    std::string output;
     json_utils::append_escaped_json_string(output, embedded_null_value);
-    EXPECT_EQ(output, "prefix:a\\\"balpha");
+    EXPECT_EQ(output, "alpha\\u0000beta");
+}
+
+template <typename Reader>
+void expect_embedded_null_string_round_trip()
+{
+    const std::string original("alpha\0beta", 10);
+    const std::string document = "\"" + json_utils::escape_json_string(original) + "\"";
+
+    Reader reader(document);
+    std::string decoded;
+    std::string error_message;
+    ASSERT_TRUE(reader.parse_string(&decoded, &error_message)) << error_message;
+    EXPECT_EQ(decoded, original);
+}
+
+TEST(JsonUtils, EmbeddedNullStringValuesRoundTripThroughSerializeAndParse) {
+    expect_embedded_null_string_round_trip<json_utils::JsonReader>();
+    expect_embedded_null_string_round_trip<json_utils::JsonReaderV2>();
 }
 
 TEST(JsonUtils, ReaderAcceptsBoundedTextAndStopsAtEmbeddedNull) {

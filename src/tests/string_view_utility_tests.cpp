@@ -56,6 +56,32 @@ TEST(StringViewUtility, IsNameAcceptsBoundedAndEmbeddedNullViews)
     EXPECT_EQ(isname({}, "sword shield"), 0);
 }
 
+TEST(StringViewUtility, OldSearchBlockRejectsWordsLongerThanBoundedEntries)
+{
+    // The entry view is carved from a longer backing buffer whose next characters continue the
+    // query word, so any read past the entry's end sees matching text instead of a null
+    // terminator. A searched word longer than the entry must itself mean "no match".
+    static constexpr std::string_view backing_word("northward");
+    const std::array<std::string_view, 2> table { backing_word.substr(0, 5), std::string_view("\n") };
+
+    char argument[] = "northward";
+    EXPECT_EQ(old_search_block(argument, 0, 9, table.data(), 0), -1);
+}
+
+TEST(StringViewUtility, OldSearchBlockMatchesPrefixesWithinEntryBounds)
+{
+    static constexpr std::array<std::string_view, 3> table { "north", "nor", "\n" };
+
+    char prefix_argument[] = "nor";
+    char exact_argument[] = "north";
+    char longer_argument[] = "northward";
+
+    EXPECT_EQ(old_search_block(prefix_argument, 0, 3, table.data(), 0), 1);
+    EXPECT_EQ(old_search_block(exact_argument, 0, 5, table.data(), 1), 1);
+    EXPECT_EQ(old_search_block(longer_argument, 0, 9, table.data(), 1), -1);
+    EXPECT_EQ(old_search_block(longer_argument, 0, 9, table.data(), 0), -1);
+}
+
 TEST(StringViewUtility, RetainsLegacySentinelTables)
 {
     EXPECT_EQ(dirs[6], "\n");
@@ -85,6 +111,14 @@ TEST(StringViewUtility, NullableNameMatchingMatchesBoundedLegacyRules)
         std::tuple { std::string_view("SWORD"), std::string_view("blade,sword"), char(1) },
         std::tuple { std::string_view(""), std::string_view("sword shield"), char(1) },
         std::tuple { std::string_view("mace"), std::string_view("sword shield"), char(1) },
+        std::tuple { std::string_view("2handed"), std::string_view("2handed sword"), char(1) },
+        std::tuple { std::string_view("2han"), std::string_view("2handed sword"), char(0) },
+        std::tuple { std::string_view("42"), std::string_view("42"), char(1) },
+        std::tuple { std::string_view("sword"), std::string_view("2handed sword"), char(1) },
+        std::tuple { std::string_view("handed"), std::string_view("2handed sword"), char(1) },
+        std::tuple { std::string_view("b"), std::string_view("a2b c"), char(1) },
+        std::tuple { std::string_view("a2x"), std::string_view("a2b c"), char(1) },
+        std::tuple { std::string_view("c"), std::string_view("a2b c"), char(1) },
     };
 
     for (const auto& [query, name_list, full] : matching_cases) {
@@ -94,6 +128,15 @@ TEST(StringViewUtility, NullableNameMatchingMatchesBoundedLegacyRules)
 
     constexpr char embedded_name_list[] = "blade\0sword";
     EXPECT_EQ(isname_nullable("sword", embedded_name_list), 0);
+}
+
+TEST(StringViewUtility, NameMatchingHonorsNonAlphabeticLeadingKeywords)
+{
+    // The legacy matcher attempts its first candidate at byte 0 verbatim, so namelists whose
+    // first keyword starts with a digit or punctuation are matchable by that keyword.
+    EXPECT_EQ(isname("2handed", "2handed sword"), 1);
+    EXPECT_EQ(isname("42", "42"), 1);
+    EXPECT_EQ(isname("sword", "2handed sword"), 1);
 }
 
 TEST(StringViewUtility, NullableComparisonsPreserveDeterministicNullOrdering)

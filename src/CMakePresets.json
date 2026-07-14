@@ -32,10 +32,10 @@
     },
     {
       "name": "linux-x64-sanitize",
-      "displayName": "Linux x86-64 with ASan+UBSan (required in CI)",
+      "displayName": "Linux x86-64 with ASan+UBSan+libstdc++ assertions (required in CI)",
       "inherits": "linux-x64",
       "cacheVariables": {
-        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-sanitize-recover=all -g",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-sanitize-recover=all -g -D_GLIBCXX_ASSERTIONS",
         "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
       },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
@@ -50,10 +50,10 @@
     },
     {
       "name": "macos-arm64-asan",
-      "displayName": "macOS arm64 with ASan+UBSan (required in CI)",
+      "displayName": "macOS arm64 with ASan+UBSan+libc++ hardening (required in CI)",
       "inherits": "macos-arm64",
       "cacheVariables": {
-        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-sanitize-recover=all -g",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-sanitize-recover=all -g -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE",
         "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined",
         "ROTS_FETCH_GTEST": "ON"
       },

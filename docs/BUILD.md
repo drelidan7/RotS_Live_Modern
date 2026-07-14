@@ -195,8 +195,8 @@ the toolchain version changed, the ABI did not.
 | `linux-x64` (native or `rots64` container) | Linux x86-64 | `debian:trixie`, g++ 14.2, C++20 | **green — boots, passes tests, matches the Phase 0 goldens; CI-required** |
 | `macos-arm64` (native) | macOS arm64 | AppleClang 21, C++20 | **green — boots, passes tests, matches the Phase 0 goldens; CI-required** |
 | `windows-msvc` | Windows x64 MSVC | MSVC (windows-2022 runner), `/std:c++20` | **green — configure/build/full ctest (goldens included); CI-required as of Phase 3 Task 7** |
-| `linux-x64-sanitize` | Linux x86-64 | `debian:trixie`/ubuntu-24.04, g++ 14, C++20, ASan+UBSan | **green — full ctest under `-fsanitize=address,undefined`, leak detection on; CI-required as of Phase 5 Task 6** |
-| `macos-arm64-asan` | macOS arm64 | AppleClang 21, C++20, ASan+UBSan | **green — full ctest under `-fsanitize=address,undefined`, leak detection off (AppleClang LeakSanitizer is unreliable on macOS); CI-required as of Phase 5 Task 6** |
+| `linux-x64-sanitize` | Linux x86-64 | `debian:trixie`/ubuntu-24.04, g++ 14, C++20, ASan+UBSan, `_GLIBCXX_ASSERTIONS` | **green — full ctest under `-fsanitize=address,undefined`, leak detection on; CI-required as of Phase 5 Task 6** |
+| `macos-arm64-asan` | macOS arm64 | AppleClang 21, C++20, ASan+UBSan, libc++ extensive hardening | **green — full ctest under `-fsanitize=address,undefined`, leak detection off (AppleClang LeakSanitizer is unreliable on macOS); CI-required as of Phase 5 Task 6** |
 
 Per-platform (from `src/`): `cmake --preset <name>`, `cmake --build --preset <name>`,
 `ctest --preset <name>`. `cmake --list-presets` shows what runs on this host.
@@ -207,6 +207,18 @@ is allowed to fail. A seventh job, `clang-tidy-advisory` (Phase 5 Task 7), runs 
 checked-in root `.clang-tidy` config over just the `.cpp` files changed vs.
 `origin/master` and is deliberately advisory (`continue-on-error: true`) — a finding
 there never blocks a merge.
+
+Both sanitizer presets additionally arm standard-library precondition checks:
+`linux-x64-sanitize` defines `_GLIBCXX_ASSERTIONS` (libstdc++) and `macos-arm64-asan`
+defines `_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE` (libc++). These catch
+library-contract violations ASan/UBSan cannot see — e.g. `string_view::operator[]` at
+`size()` on a literal-backed view reads inside the literal's allocation, so ASan stays
+silent, but the assertion aborts with an exact location. Both macros are ABI-compatible
+(no container-layout change, unlike `_GLIBCXX_DEBUG`, which must not be used here), so
+mixing with the system-package GoogleTest on Linux is safe. They stay off in shipping
+and non-sanitizer presets: the checks cost cycles on hot paths, and their abort-on-
+violation failure mode would turn a latent out-of-contract read on a live server into a
+player-triggerable crash.
 
 ## Warnings policy (Phase 5 Task 8)
 

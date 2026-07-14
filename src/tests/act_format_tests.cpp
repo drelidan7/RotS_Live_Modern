@@ -127,6 +127,11 @@ struct RoomPairContext {
     char_data victim {};
     descriptor_data actor_descriptor {};
     descriptor_data victim_descriptor {};
+    // Returns each descriptor's large_outbuf to bufpool at scope exit -- the
+    // oversized-fragment cases overflow small_outbuf and promote it to a
+    // heap-allocated large_outbuf block (Phase 5 T6 leak sweep).
+    ScopedDescriptorLargeOutbufReturn actor_large_outbuf_cleanup { actor_descriptor };
+    ScopedDescriptorLargeOutbufReturn victim_large_outbuf_cleanup { victim_descriptor };
     char_data* original_people = nullptr;
 
     RoomPairContext()

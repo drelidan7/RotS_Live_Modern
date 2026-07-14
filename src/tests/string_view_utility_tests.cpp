@@ -9,6 +9,7 @@
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 static_assert(std::same_as<std::remove_cvref_t<decltype(weekdays[0])>, std::string_view>);
 static_assert(std::same_as<std::remove_cvref_t<decltype(month_name[0])>, std::string_view>);
@@ -145,4 +146,31 @@ TEST(StringViewUtility, NullableComparisonsPreserveDeterministicNullOrdering)
     EXPECT_LT(str_cmp_nullable(nullptr, "value"), 0);
     EXPECT_GT(str_cmp_nullable("value", nullptr), 0);
     EXPECT_EQ(strn_cmp_nullable(nullptr, nullptr, 5), 0);
+}
+
+TEST(StringViewUtility, NullableComparisonsMatchViewComparisons)
+{
+    constexpr std::array<std::pair<const char*, const char*>, 12> comparison_cases { {
+        { "alpha", "alpha" },
+        { "alpha", "ALPHA" },
+        { "alpha", "alphabet" },
+        { "alphabet", "alpha" },
+        { "", "" },
+        { "", "x" },
+        { "x", "" },
+        { "abc", "abd" },
+        { "abd", "abc" },
+        { "Zeta", "alpha" },
+        { "alpha", "Zeta" },
+        { "same", "sameness" },
+    } };
+
+    for (const auto& [first, second] : comparison_cases) {
+        EXPECT_EQ(str_cmp_nullable(first, second), str_cmp(first, second))
+            << first << " vs " << second;
+        for (const int count : { 0, 1, 3, 100 }) {
+            EXPECT_EQ(strn_cmp_nullable(first, second, count), strn_cmp(first, second, count))
+                << first << " vs " << second << " n=" << count;
+        }
+    }
 }

@@ -1175,12 +1175,19 @@ int rots_remove(std::string_view path)
 /* scan 'till found different or end of both                 */
 int str_cmp(std::string_view first, std::string_view second)
 {
-    first = rots::text::truncate_at_null(first);
-    second = rots::text::truncate_at_null(second);
-
-    const std::size_t shared_length = std::min(first.size(), second.size());
-    for (std::size_t index = 0; index < shared_length; ++index) {
-        const int difference = LOWER(first[index]) - LOWER(second[index]);
+    // First-null semantics are folded into the loop: past-the-end or an
+    // embedded null both read as '\0', exactly where truncate_at_null would
+    // have cut -- without pre-scanning either argument.
+    for (std::size_t index = 0;; ++index) {
+        const char first_char = (index < first.size()) ? first[index] : '\0';
+        const char second_char = (index < second.size()) ? second[index] : '\0';
+        if (first_char == '\0' || second_char == '\0') {
+            if (first_char == second_char) {
+                return 0;
+            }
+            return (first_char == '\0') ? -1 : 1;
+        }
+        const int difference = LOWER(first_char) - LOWER(second_char);
         if (difference < 0) {
             return -1;
         }
@@ -1188,14 +1195,6 @@ int str_cmp(std::string_view first, std::string_view second)
             return 1;
         }
     }
-
-    if (first.size() < second.size()) {
-        return -1;
-    }
-    if (first.size() > second.size()) {
-        return 1;
-    }
-    return 0;
 }
 
 int str_cmp_nullable(const char* first, const char* second)
@@ -1206,7 +1205,18 @@ int str_cmp_nullable(const char* first, const char* second)
         }
         return first == nullptr ? -1 : 1;
     }
-    return str_cmp(first, second);
+    // Nullable legacy callers provide null-terminated strings (see the
+    // isname_c_string precedent): a raw sentinel walk avoids constructing and
+    // scanning two views on the player-table lookup paths.
+    for (;; ++first, ++second) {
+        const int difference = LOWER(*first) - LOWER(*second);
+        if (difference != 0) {
+            return (difference < 0) ? -1 : 1;
+        }
+        if (*first == '\0') {
+            return 0;
+        }
+    }
 }
 
 /* returns: 0 if equal, 1 if arg1 > arg2, -1 if arg1 < arg2  */
@@ -1216,14 +1226,17 @@ int strn_cmp(std::string_view first, std::string_view second, int count)
     if (count <= 0) {
         return 0;
     }
-
-    first = rots::text::truncate_at_null(first);
-    second = rots::text::truncate_at_null(second);
-
     const std::size_t comparison_limit = static_cast<std::size_t>(count);
-    const std::size_t shared_length = std::min({ first.size(), second.size(), comparison_limit });
-    for (std::size_t index = 0; index < shared_length; ++index) {
-        const int difference = LOWER(first[index]) - LOWER(second[index]);
+    for (std::size_t index = 0; index < comparison_limit; ++index) {
+        const char first_char = (index < first.size()) ? first[index] : '\0';
+        const char second_char = (index < second.size()) ? second[index] : '\0';
+        if (first_char == '\0' || second_char == '\0') {
+            if (first_char == second_char) {
+                return 0;
+            }
+            return (first_char == '\0') ? -1 : 1;
+        }
+        const int difference = LOWER(first_char) - LOWER(second_char);
         if (difference < 0) {
             return -1;
         }
@@ -1231,11 +1244,7 @@ int strn_cmp(std::string_view first, std::string_view second, int count)
             return 1;
         }
     }
-
-    if (shared_length == comparison_limit || first.size() == second.size()) {
-        return 0;
-    }
-    return first.size() < second.size() ? -1 : 1;
+    return 0;
 }
 
 int strn_cmp_nullable(const char* first, const char* second, int count)
@@ -1246,7 +1255,19 @@ int strn_cmp_nullable(const char* first, const char* second, int count)
         }
         return first == nullptr ? -1 : 1;
     }
-    return strn_cmp(first, second, count);
+    if (count <= 0) {
+        return 0;
+    }
+    for (int index = 0; index < count; ++first, ++second, ++index) {
+        const int difference = LOWER(*first) - LOWER(*second);
+        if (difference != 0) {
+            return (difference < 0) ? -1 : 1;
+        }
+        if (*first == '\0') {
+            return 0;
+        }
+    }
+    return 0;
 }
 
 /* log a death trap hit */

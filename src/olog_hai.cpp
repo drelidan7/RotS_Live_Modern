@@ -230,11 +230,11 @@ int calculate_smash_damage(char_data& attacker, int prob)
 
 void generate_smash_dismount_messages(char_data* attacker, char_data* victim)
 {
-    strcpy(buf, std::format("You smash into $N so hard, it knocks $M to the ground!").c_str());
+    strcpy(buf, "You smash into $N so hard, it knocks $M to the ground!");
     act(buf, FALSE, attacker, NULL, victim, TO_CHAR);
-    strcpy(buf, std::format("$n smashes into you so hard, it knocks prone to the ground!").c_str());
+    strcpy(buf, "$n smashes into you so hard, it knocks prone to the ground!");
     act(buf, FALSE, attacker, NULL, victim, TO_VICT);
-    strcpy(buf, std::format("$n smashes into $N so hard, it knocks $M to the ground!").c_str());
+    strcpy(buf, "$n smashes into $N so hard, it knocks $M to the ground!");
     act(buf, TRUE, attacker, 0, victim, TO_NOTVICT);
 }
 
@@ -340,7 +340,7 @@ void generate_frenzy_message(char_data* character)
                              "overwhelming power!\r\n")
                     .c_str());
     act(buf, FALSE, character, NULL, NULL, TO_CHAR);
-    strcpy(buf, std::format("$n enters a frenzied state, making $s strikes grow with fervor!\r\n").c_str());
+    strcpy(buf, "$n enters a frenzied state, making $s strikes grow with fervor!\r\n");
     act(buf, TRUE, character, 0, NULL, TO_ROOM);
 }
 

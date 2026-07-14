@@ -32,8 +32,8 @@ extern descriptor_data* descriptor_list;
 extern int top_of_world;
 extern room_data world;
 extern weather_data weather_info;
-extern const char* const pc_races[];
-extern const char* const pc_star_types[];
+extern const std::string_view pc_races[];
+extern const std::string_view pc_star_types[];
 
 void clear_char(struct char_data* ch, int mode);
 void msdp_update();
@@ -381,7 +381,7 @@ std::string msdp_packet(const std::string& payload)
     return packet;
 }
 
-std::string msdp_pair_payload(const std::string& variable, const std::string& value)
+std::string msdp_pair_payload(std::string_view variable, std::string_view value)
 {
     std::string payload;
     payload.push_back(static_cast<char>(MSDP_VAR));
@@ -412,7 +412,7 @@ std::string ttype_send_sequence()
     return packet;
 }
 
-std::string expected_msdp_pair(const std::string& variable, const std::string& value)
+std::string expected_msdp_pair(std::string_view variable, std::string_view value)
 {
     return msdp_packet(msdp_pair_payload(variable, value));
 }
@@ -1415,7 +1415,7 @@ TEST(MSDPProtocol, MsdpUpdateEmitsMinimalPlayerState)
     EXPECT_EQ(protocol->pVariables[eMSDP_HEALTH_MAX]->ValueInt, 150);
     EXPECT_STREQ(protocol->pVariables[eMSDP_ROOM_NAME]->pValueString, "MSDP Test Room");
     EXPECT_EQ(protocol->pVariables[eMSDP_ROOM_VNUM]->ValueInt, 3001);
-    EXPECT_STREQ(protocol->pVariables[eMSDP_RACE]->pValueString, pc_races[RACE_HUMAN]);
+    EXPECT_EQ(protocol->pVariables[eMSDP_RACE]->pValueString, pc_races[RACE_HUMAN]);
     EXPECT_STREQ(protocol->pVariables[eMDSP_TACTIC]->pValueString, "normal");
     EXPECT_EQ(protocol->pVariables[eMSDP_SPIRIT]->ValueInt, 7);
     EXPECT_EQ(context.read_output(),
@@ -1701,7 +1701,7 @@ TEST(MSDPProtocol, MsdpUpdateMasksPlayerOpponentDetails)
 
     protocol_t* protocol = context.descriptor.pProtocol;
     EXPECT_EQ(protocol->pVariables[eMSDP_OPPONENT_HEALTH]->ValueInt, 25);
-    EXPECT_STREQ(protocol->pVariables[eMSDP_OPPONENT_NAME]->pValueString,
+    EXPECT_EQ(protocol->pVariables[eMSDP_OPPONENT_NAME]->pValueString,
         pc_star_types[RACE_HUMAN]);
     EXPECT_STREQ(protocol->pVariables[eMSDP_OPPONENT_LEVEL]->pValueString, "???");
     EXPECT_EQ(context.read_output(),

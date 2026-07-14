@@ -45,13 +45,13 @@ extern struct room_data world;
 extern struct skill_data skills[];
 extern int find_door(struct char_data* ch, char* type, char* dir);
 extern int get_followers_level(struct char_data*);
-extern int old_search_block(char*, int, unsigned int, const char**, int);
+extern int old_search_block(char*, int, unsigned int, const std::string_view*, int);
 extern int get_number(char** name);
 extern int get_real_stealth(struct char_data*);
 extern int rev_dir[];
 extern int show_tracks(struct char_data* ch, char* name, int mode);
 extern int top_of_world;
-extern const char* const dirs[];
+extern const std::string_view dirs[];
 extern void appear(struct char_data* ch);
 extern void check_break_prep(struct char_data*);
 extern void stop_hiding(struct char_data* ch, char);
@@ -204,7 +204,7 @@ ACMD(do_ride)
 ACMD(do_dismount)
 {
     if (ch == NULL) {
-        strcpy(buf, std::format("Dismount called without a character.  Exiting.").c_str());
+        strcpy(buf, "Dismount called without a character.  Exiting.");
         mudlog(buf, NRM, LEVEL_IMMORT, TRUE);
         return;
     }
@@ -374,7 +374,7 @@ ACMD(do_gather_food)
      * a neat little array, and used search_block to get the desired
      * values.
      */
-    static const char* const gather_type[] = { "", "food", "light", "healing", "energy", "bow",
+    static const std::string_view gather_type[] = { "", "food", "light", "healing", "energy", "bow",
         "arrows", "dust", "poison", "antidote", "\n" };
 
     if (IS_SHADOW(ch)) {
@@ -2844,7 +2844,7 @@ void do_scan(char_data* character, char*, waiting_type*, int, int)
     struct char_data* i;
     int is_in, dir, dis, maxdis, found = 0;
 
-    const char* distance[] = {
+    const std::string_view distance[] = {
         "right here",
         "immediately ",
         "nearby ",
@@ -3652,7 +3652,7 @@ void on_windblast_hit(char_data* ch)
                 // to satisfy the parameter type).
                 {
                     char flee_dir[16];
-                    strncpy(flee_dir, dirs[attempt], sizeof(flee_dir) - 1);
+                    strncpy(flee_dir, dirs[attempt].data(), sizeof(flee_dir) - 1);
                     flee_dir[sizeof(flee_dir) - 1] = '\0';
                     do_move(ch, flee_dir, 0, attempt + 1, SCMD_FLEE);
                 }

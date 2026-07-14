@@ -60,6 +60,27 @@ scripts/rots-docker.sh boot       # compile then start the server on port 1024 (
 scripts/rots-docker.sh shell      # interactive shell inside the container
 ```
 
+### Read-only text API census
+
+Production C++ read-only text inputs and literal lookup storage use `std::string_view` unless a
+contract requires owning, binary, nullable, C/ABI, printf-varargs, or sentinel-table behavior.
+Every text-taking public or helper boundary truncates its view with
+`rots::text::truncate_at_null`; callers must not assume that constructing a bounded view alone
+removes bytes after an embedded null. A view borrows storage and must never be retained beyond the
+owner's lifetime. When a downstream C API needs a null-terminated pointer, first truncate the view
+and create an owning `std::string`; explicit-length and binary inputs instead preserve their full
+byte range.
+
+Run the authoritative repository census from the root:
+
+```bash
+python3 -m unittest tools/string_view_census_tests.py
+python3 tools/string_view_census.py --check
+```
+
+Check mode fails if a candidate is missing a file-specific declaration, permitted reason, or
+nonempty contract in `docs/superpowers/string-view-exceptions.md`.
+
 Or directly with compose:
 
 ```bash

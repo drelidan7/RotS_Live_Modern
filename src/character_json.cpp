@@ -123,7 +123,7 @@ namespace {
         { "snuck_in", HIDING_SNUCK_IN },
     };
 
-    constexpr const char* kColorFieldNames[MAX_COLOR_FIELDS] = {
+    constexpr const std::string_view kColorFieldNames[MAX_COLOR_FIELDS] = {
         "narrate",
         "chat",
         "yell",
@@ -301,14 +301,15 @@ namespace {
         points->spell_power = static_cast<sh_int>(point_data.spell_power);
     }
 
-    void set_error(std::string* error_message, const std::string& message)
+    void set_error(std::string* error_message, std::string_view message)
     {
         if (error_message)
-            *error_message = message;
+            error_message->assign(rots::text::truncate_at_null(message));
     }
 
-    bool require_string_length(const std::string &value, size_t max_length,
+    bool require_string_length(std::string_view value, size_t max_length,
                                std::string_view field_name, std::string *error_message) {
+        value = rots::text::truncate_at_null(value);
         field_name = rots::text::truncate_at_null(field_name);
         if (value.size() > max_length) {
             set_error(error_message, std::string(field_name) + " exceeds the maximum supported length.");
@@ -317,10 +318,10 @@ namespace {
         return true;
     }
 
-    bool require_no_embedded_nul(const std::string &value, std::string_view field_name,
+    bool require_no_embedded_nul(std::string_view value, std::string_view field_name,
                                  std::string *error_message) {
         field_name = rots::text::truncate_at_null(field_name);
-        if (value.find('\0') != std::string::npos) {
+        if (value.find('\0') != std::string_view::npos) {
             set_error(error_message, std::string(field_name) + " must not contain embedded NUL bytes.");
             return false;
         }
@@ -630,17 +631,17 @@ namespace {
         output << "]";
     }
 
-    std::string slugify_key(const char* raw_name, const char* fallback_prefix, int index)
+    std::string slugify_key(std::string_view raw_name, std::string_view fallback_prefix, int index)
     {
+        raw_name = rots::text::truncate_at_null(raw_name);
+        fallback_prefix = rots::text::truncate_at_null(fallback_prefix);
         std::string slug;
-        if (raw_name != nullptr) {
-            for (const char* current = raw_name; *current != '\0'; ++current) {
-                const unsigned char ch = static_cast<unsigned char>(*current);
+        for (const char raw_character : raw_name) {
+                const unsigned char ch = static_cast<unsigned char>(raw_character);
                 if (std::isalnum(ch))
                     slug.push_back(static_cast<char>(std::tolower(ch)));
                 else if (!slug.empty() && slug.back() != '_')
                     slug.push_back('_');
-            }
         }
 
         while (!slug.empty() && slug.back() == '_')
@@ -667,7 +668,7 @@ namespace {
     std::string color_key_for_index(int index)
     {
         if (index >= 0 && index < MAX_COLOR_FIELDS)
-            return kColorFieldNames[index];
+            return std::string(kColorFieldNames[index]);
         return "color_" + std::to_string(index);
     }
 

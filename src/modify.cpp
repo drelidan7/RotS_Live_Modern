@@ -32,7 +32,7 @@
 
 void show_string(struct descriptor_data* d, char* input);
 
-const char* string_fields[] = {
+const std::string_view string_fields[] = {
     "name",
     "short",
     "long",

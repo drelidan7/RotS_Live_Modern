@@ -46,8 +46,10 @@ namespace {
         return account_character_exploits_path(root_directory, account.account_name, character_name);
     }
 
-    std::string safe_relative_object_path_or_empty(const std::string& object_path, const std::string& expected_basename)
+    std::string safe_relative_object_path_or_empty(std::string_view object_path, std::string_view expected_basename)
     {
+        object_path = rots::text::truncate_at_null(object_path);
+        expected_basename = rots::text::truncate_at_null(expected_basename);
         if (object_path.empty())
             return "";
         if (object_path[0] == '/' || object_path.find('\\') != std::string::npos)
@@ -57,7 +59,7 @@ namespace {
         while (segment_start <= object_path.size()) {
             const size_t slash = object_path.find('/', segment_start);
             const size_t segment_end = (slash == std::string::npos) ? object_path.size() : slash;
-            const std::string segment = object_path.substr(segment_start, segment_end - segment_start);
+            const std::string_view segment = object_path.substr(segment_start, segment_end - segment_start);
             if (segment.empty() || segment == "." || segment == "..")
                 return "";
             if (slash == std::string::npos)
@@ -66,11 +68,11 @@ namespace {
         }
 
         const size_t last_slash = object_path.find_last_of('/');
-        const std::string basename = (last_slash == std::string::npos) ? object_path : object_path.substr(last_slash + 1);
+        const std::string_view basename = (last_slash == std::string::npos) ? object_path : object_path.substr(last_slash + 1);
         if (basename != expected_basename)
             return "";
 
-        return object_path;
+        return std::string(object_path);
     }
 
     bool validate_account_owned_object_path(const AccountData& account, std::string_view character_name, std::string* error_message)
@@ -225,7 +227,7 @@ namespace {
         return true;
     }
 
-    bool retire_previous_account_object_path(std::string_view root_directory, std::string_view account_name, std::string_view character_name, const std::string& previous_object_path, std::string* error_message)
+    bool retire_previous_account_object_path(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string_view previous_object_path, std::string* error_message)
     {
         const std::string expected_object_path = objects_json_file_name(character_name);
         if (previous_object_path.empty() || previous_object_path == expected_object_path) {
@@ -288,7 +290,7 @@ namespace {
         return true;
     }
 
-    bool normalize_account_object_path_after_successful_write(std::string_view root_directory, std::string_view account_name, std::string_view character_name, const std::string& previous_object_path, std::string* error_message)
+    bool normalize_account_object_path_after_successful_write(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string_view previous_object_path, std::string* error_message)
     {
         const std::string expected_object_path = objects_json_file_name(character_name);
         if (previous_object_path.empty() || previous_object_path == expected_object_path) {
@@ -425,8 +427,9 @@ namespace {
         return write_account_exploits_json_file(root_directory, account_name, character_name, exploit_history, error_message);
     }
 
-    void append_restore_failure(std::string* error_message, const std::string& restore_error)
+    void append_restore_failure(std::string* error_message, std::string_view restore_error)
     {
+        restore_error = rots::text::truncate_at_null(restore_error);
         if (restore_error.empty())
             return;
 
@@ -434,12 +437,12 @@ namespace {
             return;
 
         if (error_message->empty())
-            *error_message = restore_error;
+            error_message->assign(restore_error);
         else
-            *error_message += " Restore also failed: " + restore_error;
+            error_message->append(" Restore also failed: ").append(restore_error);
     }
 
-    void restore_retired_legacy_files(const std::string& player_file_path, const std::string& object_file_path, const std::string& exploits_file_path, const CharacterMigrationData& snapshot_data, bool restore_player, bool restore_object, bool restore_exploits, std::string* error_message)
+    void restore_retired_legacy_files(std::string_view player_file_path, std::string_view object_file_path, std::string_view exploits_file_path, const CharacterMigrationData& snapshot_data, bool restore_player, bool restore_object, bool restore_exploits, std::string* error_message)
     {
         if (restore_player) {
             std::string restore_error;
@@ -460,34 +463,38 @@ namespace {
         }
     }
 
-    bool retire_legacy_character_files_after_migration(const std::string& player_file_path, const std::string& stale_flat_player_file_path, const std::string& object_file_path, const std::string& exploits_file_path, const CharacterMigrationData& snapshot_data, std::string* error_message)
+    bool retire_legacy_character_files_after_migration(std::string_view player_file_path, std::string_view stale_flat_player_file_path, std::string_view object_file_path, std::string_view exploits_file_path, const CharacterMigrationData& snapshot_data, std::string* error_message)
     {
+        const std::string player_file_path_owner = owned_text(player_file_path);
+        const std::string stale_flat_player_file_path_owner = owned_text(stale_flat_player_file_path);
+        const std::string object_file_path_owner = owned_text(object_file_path);
+        const std::string exploits_file_path_owner = owned_text(exploits_file_path);
         const bool had_player_file = path_exists(player_file_path);
         const bool had_object_file = path_exists(object_file_path);
         bool retired_player = false;
         bool retired_object = false;
 
-        if (std::remove(player_file_path.c_str()) != 0 && errno != ENOENT) {
-            set_error(error_message, "Failed to retire legacy player file '" + player_file_path + "': " + std::strerror(errno));
+        if (std::remove(player_file_path_owner.c_str()) != 0 && errno != ENOENT) {
+            set_error(error_message, "Failed to retire legacy player file '" + player_file_path_owner + "': " + std::strerror(errno));
             return false;
         }
         retired_player = had_player_file;
 
-        if (std::remove(object_file_path.c_str()) != 0 && errno != ENOENT) {
-            set_error(error_message, "Failed to retire legacy object file '" + object_file_path + "': " + std::strerror(errno));
+        if (std::remove(object_file_path_owner.c_str()) != 0 && errno != ENOENT) {
+            set_error(error_message, "Failed to retire legacy object file '" + object_file_path_owner + "': " + std::strerror(errno));
             restore_retired_legacy_files(player_file_path, object_file_path, exploits_file_path, snapshot_data, retired_player, false, false, error_message);
             return false;
         }
         retired_object = had_object_file;
 
-        if (std::remove(exploits_file_path.c_str()) != 0 && errno != ENOENT) {
-            set_error(error_message, "Failed to retire legacy exploit file '" + exploits_file_path + "': " + std::strerror(errno));
+        if (std::remove(exploits_file_path_owner.c_str()) != 0 && errno != ENOENT) {
+            set_error(error_message, "Failed to retire legacy exploit file '" + exploits_file_path_owner + "': " + std::strerror(errno));
             restore_retired_legacy_files(player_file_path, object_file_path, exploits_file_path, snapshot_data, retired_player, retired_object, false, error_message);
             return false;
         }
 
-        if (!stale_flat_player_file_path.empty() && std::remove(stale_flat_player_file_path.c_str()) != 0 && errno != ENOENT) {
-            set_error(error_message, "Failed to retire stale legacy player file '" + stale_flat_player_file_path + "': " + std::strerror(errno));
+        if (!stale_flat_player_file_path_owner.empty() && std::remove(stale_flat_player_file_path_owner.c_str()) != 0 && errno != ENOENT) {
+            set_error(error_message, "Failed to retire stale legacy player file '" + stale_flat_player_file_path_owner + "': " + std::strerror(errno));
             restore_retired_legacy_files(player_file_path, object_file_path, exploits_file_path, snapshot_data, retired_player, retired_object, true, error_message);
             return false;
         }
@@ -504,7 +511,7 @@ namespace {
         std::remove(account_character_snapshot_path(root_directory, account_name, character_name).c_str());
     }
 
-    bool migrate_legacy_character_files_internal(std::string_view root_directory, std::string_view account_name, std::string_view character_name, const std::string& player_file_path, const std::string& stale_flat_player_file_path, const std::string& object_file_path, const std::string& exploits_file_path, long migrated_at, CharacterMigrationData* migration, std::string* error_message)
+    bool migrate_legacy_character_files_internal(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string_view player_file_path, std::string_view stale_flat_player_file_path, std::string_view object_file_path, std::string_view exploits_file_path, long migrated_at, CharacterMigrationData* migration, std::string* error_message)
     {
         CharacterMigrationData snapshot_data;
         snapshot_data.account_name = normalize_account_name(account_name);

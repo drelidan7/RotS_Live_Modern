@@ -32,7 +32,7 @@
 extern struct room_data world;
 extern struct descriptor_data* descriptor_list;
 extern struct char_data* waiting_list;
-extern const char* const dirs[];
+extern const std::string_view dirs[];
 extern int rev_dir[];
 extern struct skill_data skills[MAX_SKILLS];
 
@@ -310,7 +310,7 @@ ACMD(do_order)
                 command_interpreter(victim, message);
             }
         } else { /* This is order "followers" */
-            strcpy(buf, std::format("$n issues an order.").c_str());
+            strcpy(buf, "$n issues an order.");
             act(buf, FALSE, ch, 0, victim, TO_ROOM);
 
             org_room = ch->in_room;
@@ -409,7 +409,7 @@ ACMD(do_flee)
                 // to satisfy the parameter type).
                 {
                     char flee_dir[16];
-                    strncpy(flee_dir, dirs[attempt], sizeof(flee_dir) - 1);
+                    strncpy(flee_dir, dirs[attempt].data(), sizeof(flee_dir) - 1);
                     flee_dir[sizeof(flee_dir) - 1] = '\0';
                     do_move(ch, flee_dir, 0, attempt + 1, SCMD_FLEE);
                 }
@@ -690,7 +690,7 @@ ACMD(do_bash)
     }
 }
 
-const char* const rescue_message[MAX_RACES][2] = {
+const std::string_view rescue_message[MAX_RACES][2] = {
     { "Fearless, you leap into harms way!\r\n", "$n rescues $N.\r\n" },
     { "Shouting 'Elendil!', you leap to the rescue!\r\n",
         "Shouting 'Elendil', $n fearlessly rescues $N.\r\n" },

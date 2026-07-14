@@ -47,11 +47,11 @@ extern struct obj_data* obj_proto;
 extern struct char_data* character_list;
 extern int top_of_world;
 extern int rev_dir[];
-extern const char* const dirs[];
-extern const char* const room_bits[];
-extern const char* const sector_types[];
+extern const std::string_view dirs[];
+extern const std::string_view room_bits[];
+extern const std::string_view sector_types[];
 extern int guardian_mob[][3];
-extern const char* const race_abbrevs[];
+extern const std::string_view race_abbrevs[];
 /*
  *External functions
  */
@@ -612,7 +612,7 @@ ASPELL(spell_divination)
 
     const room_data& cur_room = world[caster->in_room];
 
-    strcpy(buff, std::format("You feel confident about your location.\n\r").c_str());
+    strcpy(buff, "You feel confident about your location.\n\r");
     sprintbit(cur_room.room_flags, room_bits, buf, 0);
     strcpy(buff, std::format("{} (#{}) [ {}, {}], Exits are:\n\r", static_cast<const char*>(buff), cur_room.number, sector_types[cur_room.sector_type], static_cast<const char*>(buf)).c_str());
     send_to_char(buff, caster);
@@ -651,7 +651,7 @@ ASPELL(spell_divination)
         send_to_char("None.\n\r", caster);
     }
 
-    strcpy(buff, std::format("Living beings in the room:\n\r").c_str());
+    strcpy(buff, "Living beings in the room:\n\r");
     if (cur_room.people) {
         for (char_data* character = cur_room.people; character; character = character->next_in_room) {
             if (caster->player.level >= GET_INVIS_LEV(character)) {
@@ -669,7 +669,7 @@ ASPELL(spell_divination)
     }
 
     if (cur_room.contents) {
-        strcpy(buff, std::format("Objects in the room:\n\r").c_str());
+        strcpy(buff, "Objects in the room:\n\r");
         for (obj_data* item = cur_room.contents; item; item = item->next_content) {
             if (CAN_SEE_OBJ(caster, item)) {
                 strcat(buff, item->short_description);
@@ -1613,7 +1613,7 @@ ASPELL(spell_guardian)
      * Guardian mob cast by the user
      */
 
-    static const char* const guardian_type[] = {
+    static const std::string_view guardian_type[] = {
         "aggressive",
         "defensive",
         "mystic",
@@ -1717,7 +1717,7 @@ ASPELL(spell_shift)
 
 ASPELL(spell_protection)
 {
-    static const char* const protection_sphere[] = {
+    static const std::string_view protection_sphere[] = {
         "fire",
         "cold",
         "lightning",

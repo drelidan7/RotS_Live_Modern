@@ -466,7 +466,7 @@ int channels[] = {
     PRF_SING
 };
 
-const char* const com_msgs[][3] = {
+const std::string_view com_msgs[][3] = {
     { "You tried to narrate but could not make a sound\n\r",
         "narrate",
         "You aren't even on the channel!\n\r" },
@@ -481,7 +481,7 @@ const char* const com_msgs[][3] = {
         "You aren't even on the channel!\n\r" }
 };
 
-const char* const com_msgs_col[] = {
+const std::string_view com_msgs_col[] = {
     "$CN",
     "$CC",
     "$CY",
@@ -491,7 +491,7 @@ const char* const com_msgs_col[] = {
 ACMD(do_gen_com)
 {
     struct descriptor_data* i;
-    const char* color;
+    std::string_view color;
     // = 0: deterministic defaults (imm_side 0 -> imm_side_message[0], the empty
     // suffix) for the paths where the assignment chains below don't cover the
     // speaker's race -- previously an indeterminate read (MSVC C4701/UB).
@@ -501,7 +501,7 @@ ACMD(do_gen_com)
 
     void stop_hiding(struct char_data*, char);
 
-    static const char* const imm_side_message[] = {
+    static const std::string_view imm_side_message[] = {
         "",
         " to the Light.",
         " to the Dark.",

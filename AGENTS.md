@@ -55,6 +55,18 @@
 
 - All supported game and test builds use C++20. `std::format` is the sanctioned
   formatting/output-composition target; do not add a production `{fmt}` dependency.
+- New read-only textual parameters, scalar constants, and lookup-table entries use
+  `std::string_view` by default. Normalize every externally callable or helper text input with
+  `rots::text::truncate_at_null` at its boundary; a bounded view does not by itself preserve the
+  repository's historical first-null text semantics.
+- A view never owns or extends storage. Keep an owning `std::string` when data is retained, and
+  stage a first-null-normalized owner before calling an API that requires a null-terminated
+  pointer. Preserve full bytes for binary or explicit-length contracts, nullable pointers when
+  null is distinct from empty, C/ABI callbacks and printf-varargs formats, and legacy sentinel
+  tables only as documented exceptions.
+- After changing textual interfaces, run `python3 tools/string_view_census.py --check`. Every
+  remaining candidate must have a file-specific, normalized declaration and precise contract in
+  `docs/superpowers/string-view-exceptions.md`; do not add generic convenience exceptions.
 - Both Linux container images use `debian:trixie` with g++ 14.2. The i386 image still compiles with
   `-m32`; the newer compiler does not change its ABI.
 - GNU-family targets compile with `-Wall -Wextra -Werror`; MSVC compiles with `/W4 /WX`. A warning

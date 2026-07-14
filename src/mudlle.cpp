@@ -31,7 +31,7 @@ extern int top_of_world;
 
 char mudlle_dummy[] = "Overflowed  buffer overflow.";
 
-extern const char* const dirs[];
+extern const std::string_view dirs[];
 
 char* mudalloc(char* str);
 void muddealloc(char* str);

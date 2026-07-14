@@ -20,7 +20,7 @@
 extern struct index_data* obj_index;
 extern struct obj_data* obj_proto;
 extern int top_of_objt;
-extern const char* const object_materials[];
+extern const std::string_view object_materials[];
 extern int num_of_object_materials;
 
 int tables; /* The number of tables written so far */
@@ -61,9 +61,13 @@ int dump_all; /* If asserted, then we dump /all objects/ */
  */
 struct obj2html_type {
     const char* title; /* Title for a table of this type */
-    const char* const* keywords;
+    // Points to the empty-view-terminated keywords used to select this object category.
+    const std::string_view* keywords;
+    // Identifies the object traits included in this category.
     unsigned long typemask;
+    // Computes the comparable trait mask for a candidate object.
     unsigned long (*get_typemask)(struct obj_data*);
+    // Points to nested categories when this category is subdivided.
     struct obj2html_type* subtypes;
     struct obj_data** to_output; /* For runtime use */
     int num_to_output; /* For runtime use */
@@ -78,9 +82,9 @@ struct obj2html_type {
  * greater than 4.  In order to allow our user to specify multiple
  * bulks, we have to shift this into a bitvector.
  */
-const char* const handed_keywords[][3] = {
-    { "2h", "two-handed", NULL },
-    { "1h", "one-handed", NULL }
+const std::string_view handed_keywords[][3] = {
+    { "2h", "two-handed", "" },
+    { "1h", "one-handed", "" }
 };
 
 /* Two handed weapons have bulk of 5-10, one handed have 0-4 */
@@ -166,13 +170,13 @@ struct obj2html_type spear_subtypes[] = {
  * each type value before shifting; that way we end up with a range
  * of values between 0-31, enough to fit in a 32 bit vector.
  */
-const char* const weapon_keywords[][4] = {
-    { "whip", "flail", NULL },
-    { "slash", NULL },
-    { "pierce", NULL },
-    { "crush", "pound", "smite", NULL },
-    { "cleave", NULL },
-    { "stab", NULL }
+const std::string_view weapon_keywords[][4] = {
+    { "whip", "flail", "" },
+    { "slash", "" },
+    { "pierce", "" },
+    { "crush", "pound", "smite", "" },
+    { "cleave", "" },
+    { "stab", "" }
 };
 
 unsigned long
@@ -216,18 +220,18 @@ struct obj2html_type weapon_subtypes[] = {
  * so there's no need to shift it into a bitvector.  The bitvector
  * in question is stored in (object)->obj_flags.wear_flags.
  */
-const char* const armor_keywords[][2] = {
-    { "head", NULL },
-    { "neck", NULL },
-    { "about", NULL },
-    { "body", NULL },
-    { "waist", NULL },
-    { "arms", NULL },
-    { "wrist", NULL },
-    { "hands", NULL },
-    { "finger", NULL },
-    { "legs", NULL },
-    { "feet", NULL }
+const std::string_view armor_keywords[][2] = {
+    { "head", "" },
+    { "neck", "" },
+    { "about", "" },
+    { "body", "" },
+    { "waist", "" },
+    { "arms", "" },
+    { "wrist", "" },
+    { "hands", "" },
+    { "finger", "" },
+    { "legs", "" },
+    { "feet", "" }
 };
 
 unsigned long
@@ -282,33 +286,33 @@ struct obj2html_type armor_subtypes[] = {
  * user to specify multiple items, we shift the GET_ITEM_TYPE values
  * into a bit vector.  Note that there is no item of type 0.
  */
-const char* const type_keywords[][2] = {
-    { NULL },
-    { "light", NULL },
-    { "scroll", NULL },
-    { "wand", NULL },
-    { "staff", NULL },
-    { "weapon", NULL },
-    { "fireweapon", NULL },
-    { "missile", NULL },
-    { "treasure", NULL },
-    { "armor", NULL },
-    { "potion", NULL },
-    { "worn", NULL },
-    { "other", NULL },
-    { "trash", NULL },
-    { "trap", NULL },
-    { "container", NULL },
-    { "note", NULL },
-    { "drinkcon", NULL },
-    { "key", NULL },
-    { "food", NULL },
-    { "money", NULL },
-    { "pen", NULL },
-    { "boat", NULL },
-    { "fountain", NULL },
-    { "shield", NULL },
-    { "lever", NULL }
+const std::string_view type_keywords[][2] = {
+    { "" },
+    { "light", "" },
+    { "scroll", "" },
+    { "wand", "" },
+    { "staff", "" },
+    { "weapon", "" },
+    { "fireweapon", "" },
+    { "missile", "" },
+    { "treasure", "" },
+    { "armor", "" },
+    { "potion", "" },
+    { "worn", "" },
+    { "other", "" },
+    { "trash", "" },
+    { "trap", "" },
+    { "container", "" },
+    { "note", "" },
+    { "drinkcon", "" },
+    { "key", "" },
+    { "food", "" },
+    { "money", "" },
+    { "pen", "" },
+    { "boat", "" },
+    { "fountain", "" },
+    { "shield", "" },
+    { "lever", "" }
 };
 
 unsigned long
@@ -511,7 +515,7 @@ void obj2html_endtable(struct char_data* ch, FILE* f,
 int obj2html(FILE* f, struct obj_data* o)
 {
     int i, found;
-    extern const char* const apply_types[];
+    extern const std::string_view apply_types[];
 
     /* Header */
     /* We highlight it purple if it's magical already */
@@ -582,9 +586,9 @@ int obj2html(FILE* f, struct obj_data* o)
         fprintf(f, "         <TD> %d </TD>\n", o->obj_flags.value[3]);
         break;
     case ITEM_LEVER:
-        extern const char* const dirs[];
+        extern const std::string_view dirs[];
         fprintf(f, "         <TD> %d </TD>\n", o->obj_flags.value[0]);
-        fprintf(f, "         <TD> %s </TD>\n", dirs[o->obj_flags.value[1]]);
+        fprintf(f, "         <TD> %s </TD>\n", dirs[o->obj_flags.value[1]].data());
         break;
     }
 
@@ -594,17 +598,17 @@ int obj2html(FILE* f, struct obj_data* o)
     fprintf(f, "         <TD> %d </TD>\n", o->obj_flags.level);
     if (o->obj_flags.material >= 0 && o->obj_flags.material < num_of_object_materials)
         fprintf(f, "         <TD> %s </TD>\n",
-            object_materials[o->obj_flags.material]);
+            object_materials[o->obj_flags.material].data());
 
     /* Affection list */
     fprintf(f, "          <TD ALIGN=LEFT>");
     for (found = 0, i = 0; i < MAX_OBJ_AFFECT; i++) {
         if (o->affected[i].modifier) {
-            if (strcmp(apply_types[o->affected[i].location], "\n")) {
+            if (apply_types[o->affected[i].location] != "\n") {
                 fprintf(f, "%s %+d %s",
                     found ? "," : "",
                     o->affected[i].modifier,
-                    apply_types[o->affected[i].location]);
+                    apply_types[o->affected[i].location].data());
                 ++found;
             }
         }
@@ -635,8 +639,8 @@ int check_keywords(struct obj2html_type* list, char* arg)
     /* Make sure to check all types in this list */
     for (i = 0; list[i].title != NULL; ++i) {
         /* Now check all keywords for this type */
-        for (j = 0; list[i].keywords[j] != NULL; ++j)
-            if (!strcmp(arg, list[i].keywords[j])) {
+        for (j = 0; !list[i].keywords[j].empty(); ++j)
+            if (arg == list[i].keywords[j]) {
                 ++types_selected;
                 SET_BIT(list[i].valid_types, list[i].typemask);
 

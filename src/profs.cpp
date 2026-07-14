@@ -190,19 +190,19 @@ void draw_coofs(char* buf, struct char_data* ch)
                              "    |         |         |         |         |         |\n\r")
                     .c_str());
 
-    strcpy(buf2, std::format("Mag: ").c_str());
+    strcpy(buf2, "Mag: ");
     draw_line(buf2, GET_PROF_COOF(1, ch) / 20);
     strcat(buf, buf2);
 
-    strcpy(buf2, std::format("\n\rMys: ").c_str());
+    strcpy(buf2, "\n\rMys: ");
     draw_line(buf2, GET_PROF_COOF(2, ch) / 20);
     strcat(buf, buf2);
 
-    strcpy(buf2, std::format("\n\rRan: ").c_str());
+    strcpy(buf2, "\n\rRan: ");
     draw_line(buf2, GET_PROF_COOF(3, ch) / 20);
     strcat(buf, buf2);
 
-    strcpy(buf2, std::format("\n\rWar: ").c_str());
+    strcpy(buf2, "\n\rWar: ");
     draw_line(buf2, GET_PROF_COOF(4, ch) / 20);
     strcat(buf, buf2);
     strcat(buf, "\n\r\0");
@@ -784,7 +784,7 @@ void recalc_abilities(char_data* character)
             if (GET_OBJ_WEIGHT(weapon) == 0) {
                 /*UPDATE*, temporary check for 0 weight weapons*/
                 GET_OBJ_WEIGHT(weapon) = 1;
-                strcpy(buf, std::format("SYSERR: 0 weight weapon").c_str());
+                strcpy(buf, "SYSERR: 0 weight weapon");
                 mudlog(buf, NRM, LEVEL_GOD, TRUE);
             }
 

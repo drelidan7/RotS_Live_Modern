@@ -70,7 +70,7 @@ extern struct index_data* obj_index;
 extern struct room_data world;
 
 extern int social_command_number;
-extern const char* const wizlock_default;
+extern const std::string_view wizlock_default;
 extern std::string wizlock_msg;
 extern int top_of_p_table;
 extern const char* START_MESSG;
@@ -78,7 +78,7 @@ extern const char* WELC_MESSG;
 extern char* background;
 extern int no_specials;
 extern int restrict;
-extern const char* const dirs[];
+extern const std::string_view dirs[];
 extern char* imotd;
 extern char* motd;
 extern const char* MENU;
@@ -314,7 +314,7 @@ void do_details(char_data* character, char* argument, waiting_type* wait_list, i
 
 void do_renounce(char_data* character, char* argument, waiting_type* wait_list, int command, int sub_command);
 
-const char* command[] = {
+extern const std::string_view command[] = {
     "north", /* 1 */
     "east",
     "south",
@@ -572,7 +572,7 @@ const char* command[] = {
 /* CEND: search for me when you're looking for the end of the cmd list! :) */
 
 /* these words are effectively ignored */
-extern const char* const fill[] = {
+extern const std::string_view fill[] = {
     "in",
     "from",
     "with",
@@ -583,7 +583,7 @@ extern const char* const fill[] = {
     "\n"
 };
 
-int search_block(char* arg, const char* const* list, char exact)
+int search_block(char* arg, const std::string_view* list, char exact)
 {
     int i, l;
 
@@ -592,21 +592,22 @@ int search_block(char* arg, const char* const* list, char exact)
         *(arg + l) = LOWER(*(arg + l));
 
     if (exact) {
-        for (i = 0; **(list + i) != '\n'; i++)
-            if (!strcmp(arg, *(list + i)))
+        for (i = 0; list[i] != "\n"; i++)
+            if (arg == list[i])
                 return i;
     } else {
         if (!l)
             l = 1; /* Avoid "" to match the first available string */
-        for (i = 0; **(list + i) != '\n'; i++)
-            if (!strncmp(arg, *(list + i), l))
+        for (i = 0; list[i] != "\n"; i++)
+            if (list[i].substr(0, static_cast<size_t>(l)) == arg)
                 return i;
     }
 
     return -1;
 }
 
-int old_search_block(char* argument, int begin, unsigned int length, const char** list, int mode)
+int old_search_block(char* argument, int begin, unsigned int length,
+    const std::string_view* list, int mode)
 {
     unsigned int guess, found, search;
 
@@ -617,17 +618,17 @@ int old_search_block(char* argument, int begin, unsigned int length, const char*
 
     /* Search for a match */
     if (mode)
-        while (!found && *(list[guess]) != '\n') {
-            found = (length == strlen(list[guess]));
+        while (!found && list[guess] != "\n") {
+            found = (length == list[guess].size());
             for (search = 0; (search < length) && found; search++)
-                found = (*(argument + begin + search) == *(list[guess] + search));
+                found = (*(argument + begin + search) == list[guess][search]);
             guess++;
         }
     else {
-        while (!found && *(list[guess]) != '\n') {
+        while (!found && list[guess] != "\n") {
             found = 1;
             for (search = 0; (search < length) && found; search++)
-                found = (*(argument + begin + search) == *(list[guess] + search));
+                found = (*(argument + begin + search) == list[guess][search]);
             guess++;
         }
     }
@@ -1107,7 +1108,7 @@ char* target_from_word(struct char_data* ch, char* argument, int mask, struct ta
     }
     if (IS_SET(mask, TAR_DIR_WAY)) {
         for (tmp = 0; tmp < NUM_OF_DIRS; tmp++)
-            if (!strncmp(dirs[tmp], word, strlen(word))) {
+            if (!strncmp(dirs[tmp].data(), word, strlen(word))) {
                 t1->ch_num = tmp;
                 t1->type = TARGET_DIR;
                 t1->choice = TAR_DIR_WAY;

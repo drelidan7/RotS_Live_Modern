@@ -8,12 +8,13 @@
 #include <fstream>
 #include <limits.h>
 #include <string>
+#include <string_view>
 
 // Declared in objsave.cpp (new in this task): the single JSON serialization
 // point (temp-file + rename atomicity) and the shared bucket-path helper it
 // uses to locate <name>.objs.json.
-bool write_player_objects_json(const char* player_name, const objects_json::ObjectSaveData& data, std::string* error);
-std::string player_objects_json_path(const char* player_name);
+bool write_player_objects_json(std::string_view player_name, const objects_json::ObjectSaveData& data, std::string* error);
+std::string player_objects_json_path(std::string_view player_name);
 
 namespace {
 

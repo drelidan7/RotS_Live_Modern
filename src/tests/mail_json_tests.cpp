@@ -13,6 +13,10 @@
 #include <string>
 #include <string_view>
 
+namespace mail_json {
+bool write_json_text_for_testing(std::string_view path, std::string_view contents, std::string* error_message);
+}
+
 // TDD coverage for Phase 2a Task 5: mail persistence as JSON, plus the
 // one-time legacy-block-file boot converter.
 //
@@ -188,6 +192,21 @@ const char* const kGoldenPath = "goldens/legacy_mail_fixture.bin";
 #endif
 
 } // namespace
+
+TEST(MailJson, AtomicTextWriterAcceptsBoundedInputAndStopsAtEmbeddedNull)
+{
+    TemporaryDirectory temporary_directory;
+    const std::string output_path = temporary_directory.path() + "/mail.json";
+    std::string storage = "{\"mail\":1}";
+    storage.push_back('\0');
+    storage += "ignored";
+    const std::string_view bounded_text(storage.data(), storage.size());
+    std::string error_message;
+
+    ASSERT_TRUE(mail_json::write_json_text_for_testing(output_path, bounded_text, &error_message))
+        << error_message;
+    EXPECT_EQ(read_file(output_path), "{\"mail\":1}");
+}
 
 TEST(MailJson, DecodesLegacyRecordsSingleAndChainedMessages)
 {

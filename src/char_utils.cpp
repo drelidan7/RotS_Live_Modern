@@ -1169,12 +1169,12 @@ const char* get_prof_abbrev(const char_data& character)
     if (is_npc(character))
         return "--";
 
-    static const char* prof_abbrevs[] = {
+    static const std::string_view prof_abbrevs[] = {
         "--", "Mu", "Cl", "Ra", "Wa"
     };
 
     int prof = character.player.prof;
-    return prof_abbrevs[prof];
+    return prof_abbrevs[prof].data();
 }
 
 //============================================================================
@@ -1185,7 +1185,7 @@ const char* get_race_abbrev(const char_data& character)
 
     // dgurley:  Unsure the extra padding is necessary.
     // Just copying the table from consts.
-    const char* race_abbrevs[] = {
+    const std::string_view race_abbrevs[] = {
         "Imm",
         "Hum",
         "Dwf",
@@ -1211,7 +1211,7 @@ const char* get_race_abbrev(const char_data& character)
     };
 
     int race = character.player.race;
-    return race_abbrevs[race];
+    return race_abbrevs[race].data();
 }
 
 int get_race(const char_data& character)

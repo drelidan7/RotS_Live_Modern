@@ -104,9 +104,10 @@ const char* result()
                     )
                     exception_path = repository_root / "exceptions.md"
                     exception_path.write_text(
-                        "| Normalized declaration | Reason |\n"
-                        "| --- | --- |\n"
-                        f"| `void eligible(const char* text);` | `{allowed_reason}` |\n",
+                        "| Owner file | Normalized declaration | Reason | Contract |\n"
+                        "| --- | --- | --- | --- |\n"
+                        "| `src/sample.h` | `void eligible(const char* text);` | "
+                        f"`{allowed_reason}` | The fixture deliberately exercises this reason. |\n",
                         encoding="utf-8",
                     )
 
@@ -118,6 +119,115 @@ const char* result()
                     )
 
                     self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_check_rejects_exception_for_a_different_owner_file(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository_root = pathlib.Path(temporary_directory)
+            source_directory = repository_root / "src"
+            source_directory.mkdir()
+            (source_directory / "sample.h").write_text(
+                "void eligible(const char* text);\n",
+                encoding="utf-8",
+            )
+            exception_path = repository_root / "exceptions.md"
+            exception_path.write_text(
+                "| Owner file | Normalized declaration | Reason | Contract |\n"
+                "| --- | --- | --- | --- |\n"
+                "| `src/other.h` | `void eligible(const char* text);` | `c-boundary` | "
+                "The other declaration feeds a C API. |\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_census(
+                repository_root,
+                "--check",
+                "--exceptions",
+                str(exception_path),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unclassified", result.stderr)
+
+    def test_check_rejects_exception_without_a_contract(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository_root = pathlib.Path(temporary_directory)
+            source_directory = repository_root / "src"
+            source_directory.mkdir()
+            (source_directory / "sample.h").write_text(
+                "void eligible(const char* text);\n",
+                encoding="utf-8",
+            )
+            exception_path = repository_root / "exceptions.md"
+            exception_path.write_text(
+                "| Owner file | Normalized declaration | Reason | Contract |\n"
+                "| --- | --- | --- | --- |\n"
+                "| `src/sample.h` | `void eligible(const char* text);` | `c-boundary` | |\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_census(
+                repository_root,
+                "--check",
+                "--exceptions",
+                str(exception_path),
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unclassified", result.stderr)
+
+    def test_check_matches_declarations_across_pointer_and_reference_spacing(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository_root = pathlib.Path(temporary_directory)
+            source_directory = repository_root / "src"
+            source_directory.mkdir()
+            (source_directory / "sample.h").write_text(
+                "bool decode(const std::string &bytes, const char *label);\n",
+                encoding="utf-8",
+            )
+            exception_path = repository_root / "exceptions.md"
+            exception_path.write_text(
+                "| Owner file | Normalized declaration | Reason | Contract |\n"
+                "| --- | --- | --- | --- |\n"
+                "| `src/sample.h` | `bool decode(const std::string& bytes, const char* label);` | "
+                "`binary-data` | The decoder consumes the complete explicit byte range. |\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_census(
+                repository_root,
+                "--check",
+                "--exceptions",
+                str(exception_path),
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_check_matches_html_escaped_pipe_in_table_declaration(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            repository_root = pathlib.Path(temporary_directory)
+            source_directory = repository_root / "src"
+            source_directory.mkdir()
+            (source_directory / "sample.h").write_text(
+                'constexpr const char* spinner[] = { "|" };\n',
+                encoding="utf-8",
+            )
+            exception_path = repository_root / "exceptions.md"
+            exception_path.write_text(
+                "| Owner file | Normalized declaration | Reason | Contract |\n"
+                "| --- | --- | --- | --- |\n"
+                "| `src/sample.h` | `constexpr const char* spinner[] = { \"&#124;\" };` | "
+                "`c-boundary` | The spinner retains null-terminated literal storage. |\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_census(
+                repository_root,
+                "--check",
+                "--exceptions",
+                str(exception_path),
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_report_ignores_literal_delimiters_when_finding_declaration_bounds(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

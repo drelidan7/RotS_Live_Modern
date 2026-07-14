@@ -112,14 +112,14 @@ bool mail_store_data_equal(const MailStoreData& a, const MailStoreData& b);
 
 // Path convention: "<path>.json" for the JSON file, "<path>.migrated" for
 // the legacy file once safely converted.
-std::string mail_json_path(const std::string& legacy_path);
+std::string mail_json_path(std::string_view legacy_path);
 
 // Converts one legacy mail file at `legacy_path`: decode -> serialize ->
 // re-decode -> field-equality verify -> write JSON (atomic temp+rename) ->
 // rename legacy to `<legacy_path>.migrated`. Never destroys the legacy
 // file: any failure at any step returns false (with `*error_message` set)
 // and leaves the legacy file exactly as found.
-bool convert_legacy_mail_file(const char* legacy_path, std::string* error_message = nullptr);
+bool convert_legacy_mail_file(std::string_view legacy_path, std::string* error_message = nullptr);
 
 } // namespace mail_json
 

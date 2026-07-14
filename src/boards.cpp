@@ -756,10 +756,10 @@ void board_info_type::flush_board()
 namespace boards_json {
 namespace {
 
-    void set_error(std::string* error_message, const std::string& message)
+    void set_error(std::string* error_message, std::string_view message)
     {
         if (error_message)
-            *error_message = message;
+            error_message->assign(rots::text::truncate_at_null(message));
     }
 
     // Little-endian 4-byte int read at an explicit offset -- portable
@@ -865,9 +865,10 @@ namespace {
         return true;
     }
 
-    bool read_binary_file_contents(const char* path, std::string* bytes)
+    bool read_binary_file_contents(std::string_view path, std::string* bytes)
     {
-        FILE* file = std::fopen(path, "rb");
+        const std::string path_owner(rots::text::truncate_at_null(path));
+        FILE* file = std::fopen(path_owner.c_str(), "rb");
         if (file == nullptr)
             return false;
 
@@ -895,9 +896,11 @@ namespace {
 
     // Temp-file + rename atomic write, matching write_player_objects_json's
     // pattern in objsave.cpp.
-    bool write_file_contents_atomically(const std::string& path, const std::string& contents, std::string* error_message)
+    bool write_file_contents_atomically(std::string_view path, std::string_view contents, std::string* error_message)
     {
-        const std::string temp_path = path + ".tmp";
+        const std::string path_owner(rots::text::truncate_at_null(path));
+        contents = rots::text::truncate_at_null(contents);
+        const std::string temp_path = path_owner + ".tmp";
 
         FILE* temp_file = std::fopen(temp_path.c_str(), "wb");
         if (temp_file == nullptr) {
@@ -915,7 +918,7 @@ namespace {
             return false;
         }
 
-        if (rots_rename_replace(temp_path, path) != 0) {
+        if (rots_rename_replace(temp_path, path_owner) != 0) {
             const std::string rename_error = std::strerror(errno);
             std::remove(temp_path.c_str());
             set_error(error_message, "Failed to move temporary board file into place: " + rename_error);
@@ -941,6 +944,11 @@ namespace {
 } // namespace
 
 #ifdef TESTING
+bool write_json_text_for_testing(std::string_view path, std::string_view contents, std::string* error_message)
+{
+    return write_file_contents_atomically(path, contents, error_message);
+}
+
 std::string binary_label_error_for_testing(std::string_view label)
 {
     const std::string bytes;
@@ -1105,21 +1113,22 @@ bool board_save_data_equal(const BoardSaveData& a, const BoardSaveData& b)
     return true;
 }
 
-std::string board_json_path(const std::string& legacy_path)
+std::string board_json_path(std::string_view legacy_path)
 {
-    return legacy_path + ".json";
+    return std::string(rots::text::truncate_at_null(legacy_path)) + ".json";
 }
 
-bool convert_legacy_board_file(const char* legacy_path, std::string* error_message)
+bool convert_legacy_board_file(std::string_view legacy_path, std::string* error_message)
 {
-    if (legacy_path == nullptr || !*legacy_path) {
+    legacy_path = rots::text::truncate_at_null(legacy_path);
+    if (legacy_path.empty()) {
         set_error(error_message, "Legacy board path must not be empty.");
         return false;
     }
 
     std::string legacy_bytes;
     if (!read_binary_file_contents(legacy_path, &legacy_bytes)) {
-        set_error(error_message, std::string("Failed to read legacy board file '") + legacy_path + "': " + std::strerror(errno));
+        set_error(error_message, std::string("Failed to read legacy board file '") + std::string(legacy_path) + "': " + std::strerror(errno));
         return false;
     }
 
@@ -1288,9 +1297,10 @@ void board_info_type::save_board()
 
 namespace {
 
-    bool read_whole_file(const char* path, std::string* out)
+    bool read_whole_file(std::string_view path, std::string* out)
     {
-        FILE* file = fopen(path, "rb");
+        const std::string path_owner(rots::text::truncate_at_null(path));
+        FILE* file = fopen(path_owner.c_str(), "rb");
         if (!file)
             return false;
 
@@ -1388,7 +1398,7 @@ void board_info_type::load_board()
         fclose(legacy_probe);
 
         std::string convert_error;
-        if (!boards_json::convert_legacy_board_file(legacy_path.c_str(), &convert_error)) {
+        if (!boards_json::convert_legacy_board_file(legacy_path, &convert_error)) {
             char errbuf[512];
             snprintf(errbuf, sizeof(errbuf), "SYSERR: Failed converting legacy board file '%s' to JSON: %s", legacy_path.c_str(), convert_error.c_str());
             log(errbuf);
@@ -1448,7 +1458,7 @@ void board_info_type::reset_board()
     unlink(boards_json::board_json_path(FILENAME).c_str());
 }
 board_info_type::board_info_type(int objnum, int l_read, int l_write, int l_rem,
-    int max_msg, const char* file, const char* titlename)
+    int max_msg, std::string_view file, std::string_view titlename)
 {
     /** This stuff is copied lower to the mail_info_type constructor -
         be careful and considerate. **/
@@ -1474,9 +1484,11 @@ board_info_type::board_info_type(int objnum, int l_read, int l_write, int l_rem,
     //  msg_index = (struct board_msginfo *)
     //    calloc(max_msg,sizeof(struct board_msginfo));
     CREATE(msg_index, board_msginfo, max_msg);
-    strcpy(short_name, file);
+    const std::string file_owner(rots::text::truncate_at_null(file));
+    const std::string title_owner(rots::text::truncate_at_null(titlename));
+    strcpy(short_name, file_owner.c_str());
     strcpy(filename, std::format("{}/{}.boa", BOARD_DIR, file).c_str());
-    strcpy(title, titlename);
+    strcpy(title, title_owner.c_str());
     load_board();
 }
 board_info_type::board_info_type()
@@ -1493,7 +1505,7 @@ board_info_type::board_info_type()
     filename[0] = 0;
 }
 mail_info_type::mail_info_type(int objnum, int l_read, int l_write, int l_rem,
-    int max_msg, const char* file, const char* titlename) /*:
+    int max_msg, std::string_view file, std::string_view titlename) /*:
   /  board_info_type::board_info_type/(objnum, l_read, l_write, l_rem, max_msg, file)*/
 {
     vnum = objnum;
@@ -1518,9 +1530,11 @@ mail_info_type::mail_info_type(int objnum, int l_read, int l_write, int l_rem,
     //    calloc(max_msg,sizeof(struct board_msginfo));
     CREATE(msg_index, board_msginfo, max_msg);
 
-    strcpy(short_name, file);
+    const std::string file_owner(rots::text::truncate_at_null(file));
+    const std::string title_owner(rots::text::truncate_at_null(titlename));
+    strcpy(short_name, file_owner.c_str());
     strcpy(filename, std::format("{}/{}.boa", BOARD_DIR, file).c_str());
-    strcpy(title, titlename);
+    strcpy(title, title_owner.c_str());
 
     load_board();
     //  printf("mail_info_type created\n");

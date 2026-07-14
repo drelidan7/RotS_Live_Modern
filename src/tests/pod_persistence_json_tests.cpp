@@ -16,6 +16,14 @@
 #include <string_view>
 #include <vector>
 
+namespace pkill_json {
+bool write_json_text_for_testing(std::string_view path, std::string_view contents, std::string* error_message);
+}
+
+namespace crime_json {
+bool write_json_text_for_testing(std::string_view path, std::string_view contents, std::string* error_message);
+}
+
 // Phase 2a Task 6: the "low-risk POD trio" -- pkill records, crime records,
 // and non-account exploit files -- move from raw struct-layout file I/O to
 // JSON, following the mail_json/boards_json (Tasks 4/5) precedent. All
@@ -110,6 +118,36 @@ std::string read_file_contents(const std::string& path)
 bool path_exists(const std::string& path)
 {
     return std::filesystem::exists(path);
+}
+
+TEST(PkillJson, AtomicTextWriterAcceptsBoundedInputAndStopsAtEmbeddedNull)
+{
+    TemporaryDirectory temporary_directory;
+    const std::string output_path = temporary_directory.path() + "/pkill.json";
+    std::string storage = "{\"pkill\":1}";
+    storage.push_back('\0');
+    storage += "ignored";
+    const std::string_view bounded_text(storage.data(), storage.size());
+    std::string error_message;
+
+    ASSERT_TRUE(pkill_json::write_json_text_for_testing(output_path, bounded_text, &error_message))
+        << error_message;
+    EXPECT_EQ(read_file_contents(output_path), "{\"pkill\":1}");
+}
+
+TEST(CrimeJson, AtomicTextWriterAcceptsBoundedInputAndStopsAtEmbeddedNull)
+{
+    TemporaryDirectory temporary_directory;
+    const std::string output_path = temporary_directory.path() + "/crime.json";
+    std::string storage = "{\"crime\":1}";
+    storage.push_back('\0');
+    storage += "ignored";
+    const std::string_view bounded_text(storage.data(), storage.size());
+    std::string error_message;
+
+    ASSERT_TRUE(crime_json::write_json_text_for_testing(output_path, bounded_text, &error_message))
+        << error_message;
+    EXPECT_EQ(read_file_contents(output_path), "{\"crime\":1}");
 }
 
 // ROTS_GOLDEN_DIR (set by src/CMakeLists.txt on the ageland_tests target)

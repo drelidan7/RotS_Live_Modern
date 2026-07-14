@@ -73,8 +73,8 @@ void finalize_shares(PipelineReport *r) {
 
 } // namespace
 
-bool profile_save(const char_file_u &chd, const std::string &root, const std::string &account_name,
-                  const std::string &character_name, const std::string &scratch_path,
+bool profile_save(const char_file_u &chd, std::string_view root, std::string_view account_name,
+                  std::string_view character_name, std::string_view scratch_path,
                   int iterations, PipelineReport *out, std::string *error,
                   PipelineReport *compare) {
     if (iterations < 1)
@@ -109,7 +109,8 @@ bool profile_save(const char_file_u &chd, const std::string &root, const std::st
         const std::string j = character_json::serialize_character_to_json(c);
         account::write_text_file_atomically(scratch_path, j, &err);
     });
-    std::remove(scratch_path.c_str()); // clean up the throwaway
+    const std::string scratch_path_owner(rots::text::truncate_at_null(scratch_path));
+    std::remove(scratch_path_owner.c_str()); // clean up the throwaway
     // COMPARE (opt-in): A/B the parallel cache + serialize variants against v1 in a SEPARATE report
     // so finalize_shares/format_report stay valid on the canonical breakdown above. Pure in-memory:
     // the resolvers read read-only; serialize is a string transform -- no live write.
@@ -154,8 +155,8 @@ bool profile_save(const char_file_u &chd, const std::string &root, const std::st
     return true;
 }
 
-bool profile_load(const std::string &root, const std::string &account_name,
-                  const std::string &character_name, int iterations, bool include_store_to_char,
+bool profile_load(std::string_view root, std::string_view account_name,
+                  std::string_view character_name, int iterations, bool include_store_to_char,
                   PipelineReport *out, std::string *error, PipelineReport *compare) {
     if (iterations < 1)
         iterations = 1;

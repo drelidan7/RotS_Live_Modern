@@ -274,7 +274,7 @@ void assign_rooms(void)
     ASSIGNROOM(1122, pet_shops);
 }
 
-extern const char* const spec_pro_message[] = {
+extern const std::string_view spec_pro_message[] = {
     "", /* 0 */
     "",
     "",

@@ -1371,7 +1371,7 @@ void vmudlog(char type, const char* format, ...)
  * Sprintbit now contains an extra variable (int var) so it can
  * discern when identify is using it.
  */
-void sprintbit(long vektor, const char* const names[], char* result, int var)
+void sprintbit(long vektor, const std::string_view names[], char* result, int var)
 {
     long nr;
     int count;
@@ -1397,7 +1397,7 @@ void sprintbit(long vektor, const char* const names[], char* result, int var)
     std::string composed;
     for (nr = 0; vektor; vektor >>= 1) {
         if (IS_SET(1, vektor) && (vektor != BFS_MARK)) {
-            if (*names[nr] != '\n') {
+            if (names[nr] != "\n") {
                 /*
                  * Where the variable passed in is not 0
                  * then identify is using sprintbit
@@ -1418,7 +1418,7 @@ void sprintbit(long vektor, const char* const names[], char* result, int var)
                 composed += "UNDEFINE ";
             }
         }
-        if (*names[nr] != '\n')
+        if (names[nr] != "\n")
             nr++;
     }
 
@@ -1429,15 +1429,15 @@ void sprintbit(long vektor, const char* const names[], char* result, int var)
     strcpy(result, composed.c_str());
 }
 
-void sprinttype(int type, const char* const names[], char* result)
+void sprinttype(int type, const std::string_view names[], char* result)
 {
     int nr;
 
-    for (nr = 0; (*names[nr] != '\n'); nr++)
+    for (nr = 0; names[nr] != "\n"; nr++)
         ;
 
-    const std::string value = (type < nr) ? names[type] : "UNDEFINED";
-    strcpy(result, value.c_str());
+    const std::string_view value = (type < nr) ? names[type] : "UNDEFINED";
+    strcpy(result, value.data());
 }
 
 /* Calculate the REAL time passed over the last t2-t1 centuries (secs) */
@@ -1926,12 +1926,12 @@ void day_to_str(struct time_info_data* loc_time_info, char* str)
     free(s);
 }
 
-int find_player_in_table(const char* name, int idnum)
+int find_player_in_table(std::string_view name, int idnum)
 {
     int i;
 
     for (i = 0; i <= top_of_p_table; i++)
-        if (((idnum < 0) && (!str_cmp_nullable((player_table + i)->name, name))) || ((player_table + i)->idnum == idnum))
+        if (((idnum < 0) && (!str_cmp((player_table + i)->name, name))) || ((player_table + i)->idnum == idnum))
             break;
 
     if ((i > top_of_p_table) || (IS_SET((player_table + i)->flags, PLR_DELETED)))
@@ -2534,13 +2534,13 @@ char* PERS(struct char_data* target, struct char_data* observer,
         if (other_side(observer, target)) {
             snprintf(name, 127, "%s%s%s",
                 CC_USE(observer, COLOR_ENMY),
-                pc_star_types[GET_RACE(target)],
-                CC_NORM(observer));
+                pc_star_types[GET_RACE(target)].data(),
+                CC_NORM(observer).data());
         } else if (IS_NPC(target) && MOB_FLAGGED(target, MOB_ORC_FRIEND) && MOB_FLAGGED(target, MOB_PET) && other_side(target, observer)) {
             snprintf(name, 127, "%s%s%s",
                 CC_USE(observer, COLOR_ENMY),
-                pc_star_types[GET_RACE(target)],
-                CC_NORM(observer));
+                pc_star_types[GET_RACE(target)].data(),
+                CC_NORM(observer).data());
         } else
             snprintf(name, 127, "%s", GET_NAME(target));
 

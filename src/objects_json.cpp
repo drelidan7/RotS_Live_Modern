@@ -12,10 +12,10 @@
 namespace objects_json {
 namespace {
 
-    void set_error(std::string* error_message, const std::string& message)
+    void set_error(std::string* error_message, std::string_view message)
     {
         if (error_message)
-            *error_message = message;
+            error_message->assign(rots::text::truncate_at_null(message));
     }
 
     // read_pod remains valid for single scalars (sh_int board points, the alias

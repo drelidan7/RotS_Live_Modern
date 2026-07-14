@@ -130,10 +130,10 @@ int _parse_name(char* arg, char* name);
 namespace mail_json {
 namespace {
 
-    void set_error(std::string* error_message, const std::string& message)
+    void set_error(std::string* error_message, std::string_view message)
     {
         if (error_message)
-            *error_message = message;
+            error_message->assign(rots::text::truncate_at_null(message));
     }
 
     // --- Legacy on-disk block-chain format -----------------------------
@@ -267,9 +267,10 @@ namespace {
         return true;
     }
 
-    bool read_whole_file_contents(const char* path, std::string* bytes)
+    bool read_whole_file_contents(std::string_view path, std::string* bytes)
     {
-        FILE* file = std::fopen(path, "rb");
+        const std::string path_owner(rots::text::truncate_at_null(path));
+        FILE* file = std::fopen(path_owner.c_str(), "rb");
         if (file == nullptr)
             return false;
 
@@ -297,9 +298,11 @@ namespace {
 
     // Temp-file + rename atomic write, matching write_player_objects_json's
     // pattern in objsave.cpp.
-    bool write_file_contents_atomically(const std::string& path, const std::string& contents, std::string* error_message)
+    bool write_file_contents_atomically(std::string_view path, std::string_view contents, std::string* error_message)
     {
-        const std::string temp_path = path + ".tmp";
+        const std::string path_owner(rots::text::truncate_at_null(path));
+        contents = rots::text::truncate_at_null(contents);
+        const std::string temp_path = path_owner + ".tmp";
 
         FILE* temp_file = std::fopen(temp_path.c_str(), "wb");
         if (temp_file == nullptr) {
@@ -317,7 +320,7 @@ namespace {
             return false;
         }
 
-        if (rots_rename_replace(temp_path, path) != 0) {
+        if (rots_rename_replace(temp_path, path_owner) != 0) {
             const std::string rename_error = std::strerror(errno);
             std::remove(temp_path.c_str());
             set_error(error_message, "Failed to move temporary mail file into place: " + rename_error);
@@ -328,6 +331,13 @@ namespace {
     }
 
 } // namespace
+
+#ifdef TESTING
+bool write_json_text_for_testing(std::string_view path, std::string_view contents, std::string* error_message)
+{
+    return write_file_contents_atomically(path, contents, error_message);
+}
+#endif
 
 bool legacy_mail_file_from_binary(const std::string& bytes, MailStoreData* data, std::string* error_message)
 {
@@ -451,21 +461,22 @@ bool mail_store_data_equal(const MailStoreData& a, const MailStoreData& b)
     return true;
 }
 
-std::string mail_json_path(const std::string& legacy_path)
+std::string mail_json_path(std::string_view legacy_path)
 {
-    return legacy_path + ".json";
+    return std::string(rots::text::truncate_at_null(legacy_path)) + ".json";
 }
 
-bool convert_legacy_mail_file(const char* legacy_path, std::string* error_message)
+bool convert_legacy_mail_file(std::string_view legacy_path, std::string* error_message)
 {
-    if (legacy_path == nullptr || !*legacy_path) {
+    legacy_path = rots::text::truncate_at_null(legacy_path);
+    if (legacy_path.empty()) {
         set_error(error_message, "Legacy mail path must not be empty.");
         return false;
     }
 
     std::string legacy_bytes;
     if (!read_whole_file_contents(legacy_path, &legacy_bytes)) {
-        set_error(error_message, std::string("Failed to read legacy mail file '") + legacy_path + "': " + std::strerror(errno));
+        set_error(error_message, std::string("Failed to read legacy mail file '") + std::string(legacy_path) + "': " + std::strerror(errno));
         return false;
     }
 

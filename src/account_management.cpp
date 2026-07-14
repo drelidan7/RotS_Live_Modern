@@ -46,7 +46,7 @@
 #include <system_error>
 #include <utility>
 
-extern const char* const race_abbrevs[];
+extern const std::string_view race_abbrevs[];
 
 namespace account {
 namespace {
@@ -81,15 +81,15 @@ namespace {
         return std::string(rots::text::truncate_at_null(value));
     }
 
-    void set_error(std::string* error_message, const std::string& message)
+    void set_error(std::string* error_message, std::string_view message)
     {
         if (error_message)
-            *error_message = message;
+            error_message->assign(rots::text::truncate_at_null(message));
     }
 
-    std::string json_path_or_empty(const std::string& path)
+    std::string json_path_or_empty(std::string_view path)
     {
-        return path.empty() ? "" : path;
+        return std::string(rots::text::truncate_at_null(path));
     }
 
     std::string character_asset_slug(std::string_view character_name)
@@ -114,9 +114,9 @@ namespace {
 
     const char* safe_race_abbrev(int race)
     {
-        if (race < 0 || race >= MAX_RACES + 40 || ::race_abbrevs[race] == nullptr)
+        if (race < 0 || race >= MAX_RACES + 40)
             return "??";
-        return ::race_abbrevs[race];
+        return ::race_abbrevs[race].data();
     }
 
     std::string format_account_character_short_entry(std::string_view root_directory, const AccountData& account, size_t index, std::string_view character_name)
@@ -261,8 +261,9 @@ namespace {
         return trimmed_command;
     }
 
-    bool split_command_arguments(const std::string& command, std::vector<std::string>* arguments, std::string* error_message)
+    bool split_command_arguments(std::string_view command, std::vector<std::string>* arguments, std::string* error_message)
     {
+        command = rots::text::truncate_at_null(command);
         if (arguments == nullptr) {
             set_error(error_message, "Sendmail command arguments output must not be null.");
             return false;
@@ -340,7 +341,7 @@ namespace {
         return true;
     }
 
-    bool send_email_message(const std::string& recipient, const std::string& subject, const std::string& body, std::string* error_message)
+    bool send_email_message(std::string_view recipient, std::string_view subject, std::string_view body, std::string* error_message)
     {
 #if defined PREDEF_PLATFORM_WINDOWS
         // Documented Windows operational gap (Phase 3 Task 6): email delivery
@@ -510,7 +511,7 @@ namespace {
         return false;
     }
 
-    bool hex_decode(const std::string& encoded, std::string* bytes, std::string* error_message)
+    bool hex_decode(std::string_view encoded, std::string* bytes, std::string* error_message)
     {
         if ((encoded.size() % 2) != 0) {
             set_error(error_message, "Hex-encoded content must contain an even number of characters.");
@@ -535,26 +536,28 @@ namespace {
         return true;
     }
 
-    bool create_directory_if_missing(const std::string& path, std::string* error_message)
+    bool create_directory_if_missing(std::string_view path, std::string* error_message)
     {
+        const std::string path_owner = owned_text(path);
         // _mkdir is the CRT's mkdir; it takes no mode argument (Windows has no
         // owner/group/other permission bits -- the directory inherits its
         // parent's ACL instead of the POSIX branch's explicit 0700). errno
         // (EEXIST on an already-present directory) matches POSIX.
 #if defined PREDEF_PLATFORM_WINDOWS
-        if (_mkdir(path.c_str()) == 0 || errno == EEXIST)
+        if (_mkdir(path_owner.c_str()) == 0 || errno == EEXIST)
             return true;
 #else
-        if (mkdir(path.c_str(), 0700) == 0 || errno == EEXIST)
+        if (mkdir(path_owner.c_str(), 0700) == 0 || errno == EEXIST)
             return true;
 #endif
 
-        set_error(error_message, "Failed to create directory '" + path + "': " + std::strerror(errno));
+        set_error(error_message, "Failed to create directory '" + path_owner + "': " + std::strerror(errno));
         return false;
     }
 
-    FILE* open_secure_output_file(const std::string& path, std::string* error_message)
+    FILE* open_secure_output_file(std::string_view path, std::string* error_message)
     {
+        const std::string path_owner = owned_text(path);
         // _sopen_s with the same create/truncate flags; _S_IREAD|_S_IWRITE is
         // the closest pmode to 0600 (no group/other bits on Windows). Same
         // mapping db.cpp's open_secure_temp_output_file uses (Phase 3 Task 6).
@@ -565,31 +568,31 @@ namespace {
         // account JSON) -- CRT text mode would expand every '\n' to "\r\n",
         // corrupting restored legacy files into "\r\r\n" line endings
         // (Phase 3 Task 6). Same mapping as db.cpp's open_secure_temp_output_file.
-        const errno_t open_error = _sopen_s(&fd, path.c_str(), _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY, _SH_DENYNO, _S_IREAD | _S_IWRITE);
+        const errno_t open_error = _sopen_s(&fd, path_owner.c_str(), _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY, _SH_DENYNO, _S_IREAD | _S_IWRITE);
         if (open_error != 0) {
-            set_error(error_message, "Failed to open output file '" + path + "': " + std::strerror(open_error));
+            set_error(error_message, "Failed to open output file '" + path_owner + "': " + std::strerror(open_error));
             return nullptr;
         }
 
         FILE* file = _fdopen(fd, "wb");
         if (file == nullptr) {
             _close(fd);
-            set_error(error_message, "Failed to create stream for output file '" + path + "': " + std::strerror(errno));
+            set_error(error_message, "Failed to create stream for output file '" + path_owner + "': " + std::strerror(errno));
             return nullptr;
         }
 
         return file;
 #else
-        const int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        const int fd = open(path_owner.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
         if (fd < 0) {
-            set_error(error_message, "Failed to open output file '" + path + "': " + std::strerror(errno));
+            set_error(error_message, "Failed to open output file '" + path_owner + "': " + std::strerror(errno));
             return nullptr;
         }
 
         FILE* file = fdopen(fd, "w");
         if (file == nullptr) {
             close(fd);
-            set_error(error_message, "Failed to create stream for output file '" + path + "': " + std::strerror(errno));
+            set_error(error_message, "Failed to create stream for output file '" + path_owner + "': " + std::strerror(errno));
             return nullptr;
         }
 
@@ -597,21 +600,24 @@ namespace {
 #endif
     }
 
-    bool path_exists(const std::string& path)
+    bool path_exists(std::string_view path)
     {
+        const std::string path_owner = owned_text(path);
         struct stat file_info { };
-        return stat(path.c_str(), &file_info) == 0;
+        return stat(path_owner.c_str(), &file_info) == 0;
     }
 
-    bool inspect_path_existence(const std::string& path, const char* description, bool* exists, std::string* error_message)
+    bool inspect_path_existence(std::string_view path, std::string_view description, bool* exists, std::string* error_message)
     {
+        const std::string path_owner = owned_text(path);
+        description = rots::text::truncate_at_null(description);
         if (exists == nullptr) {
             set_error(error_message, std::string(description) + " existence output parameter must not be null.");
             return false;
         }
 
         struct stat file_info { };
-        if (stat(path.c_str(), &file_info) == 0) {
+        if (stat(path_owner.c_str(), &file_info) == 0) {
             *exists = true;
             set_error(error_message, "");
             return true;
@@ -623,11 +629,11 @@ namespace {
             return true;
         }
 
-        set_error(error_message, "Failed to inspect " + std::string(description) + " '" + path + "': " + std::strerror(errno));
+        set_error(error_message, "Failed to inspect " + std::string(description) + " '" + path_owner + "': " + std::strerror(errno));
         return false;
     }
 
-    bool validate_identifier_for_path(std::string_view value, const char* identifier_label, std::string* error_message)
+    bool validate_identifier_for_path(std::string_view value, std::string_view identifier_label, std::string* error_message)
     {
         value = rots::text::truncate_at_null(value);
         if (!is_valid_account_name(value, error_message)) {
@@ -639,11 +645,12 @@ namespace {
         return true;
     }
 
-    bool read_account_file_from_path(const std::string& path, AccountData* account, std::string* error_message)
+    bool read_account_file_from_path(std::string_view path, AccountData* account, std::string* error_message)
     {
-        FILE* file = std::fopen(path.c_str(), "r");
+        const std::string path_owner = owned_text(path);
+        FILE* file = std::fopen(path_owner.c_str(), "r");
         if (file == nullptr) {
-            set_error(error_message, "Failed to open account file '" + path + "': " + std::strerror(errno));
+            set_error(error_message, "Failed to open account file '" + path_owner + "': " + std::strerror(errno));
             return false;
         }
 
@@ -657,7 +664,7 @@ namespace {
             if (bytes_read < sizeof(buffer)) {
                 if (std::ferror(file)) {
                     std::fclose(file);
-                    set_error(error_message, "Failed to read account file '" + path + "'.");
+                    set_error(error_message, "Failed to read account file '" + path_owner + "'.");
                     return false;
                 }
                 break;
@@ -709,9 +716,9 @@ namespace {
     // std::filesystem::directory_iterator entry -- everything below still resolves it
     // via its own stat() call exactly as before, so this signature change alone doesn't
     // affect behavior).
-    bool read_account_file_from_bucket_entry(const std::string& bucket_path, const std::string& entry_name, AccountData* account, std::string* error_message)
+    bool read_account_file_from_bucket_entry(std::string_view bucket_path, std::string_view entry_name, AccountData* account, std::string* error_message)
     {
-        const std::string entry_path = bucket_path + "/" + entry_name;
+        const std::string entry_path = owned_text(bucket_path) + "/" + owned_text(entry_name);
         struct stat entry_info { };
         if (stat(entry_path.c_str(), &entry_info) != 0)
             return false;
@@ -739,9 +746,9 @@ namespace {
         return false;
     }
 
-    bool is_directory_bucket_entry(const std::string& bucket_path, const std::string& entry_name)
+    bool is_directory_bucket_entry(std::string_view bucket_path, std::string_view entry_name)
     {
-        const std::string entry_path = bucket_path + "/" + entry_name;
+        const std::string entry_path = owned_text(bucket_path) + "/" + owned_text(entry_name);
         struct stat entry_info { };
         return stat(entry_path.c_str(), &entry_info) == 0 && S_ISDIR(entry_info.st_mode);
     }
@@ -1036,9 +1043,10 @@ namespace {
         return false;
     }
 
-    std::string make_account_name_candidate_from_email(const std::string& normalized_email, int sequence_number)
+    std::string make_account_name_candidate_from_email(std::string_view normalized_email, int sequence_number)
     {
-        std::string local_part = normalized_email;
+        normalized_email = rots::text::truncate_at_null(normalized_email);
+        std::string local_part(normalized_email);
         const size_t at_position = normalized_email.find('@');
         if (at_position != std::string::npos)
             local_part = normalized_email.substr(0, at_position);
@@ -1064,17 +1072,18 @@ namespace {
         return sanitized_name.substr(0, prefix_length) + suffix;
     }
 
-    bool read_file_bytes(const std::string& path, bool required, LegacyAssetSnapshot* snapshot, std::string* error_message)
+    bool read_file_bytes(std::string_view path, bool required, LegacyAssetSnapshot* snapshot, std::string* error_message)
     {
+        const std::string path_owner = owned_text(path);
         if (snapshot == nullptr) {
             set_error(error_message, "Snapshot output parameter must not be null.");
             return false;
         }
 
-        FILE* file = std::fopen(path.c_str(), "rb");
+        FILE* file = std::fopen(path_owner.c_str(), "rb");
         if (file == nullptr) {
             if (!required && errno == ENOENT) {
-                snapshot->source_path = path;
+                snapshot->source_path = path_owner;
                 snapshot->encoding = "hex";
                 snapshot->content.clear();
                 snapshot->present = false;
@@ -1082,7 +1091,7 @@ namespace {
                 return true;
             }
 
-            set_error(error_message, "Failed to open legacy file '" + path + "': " + std::strerror(errno));
+            set_error(error_message, "Failed to open legacy file '" + path_owner + "': " + std::strerror(errno));
             return false;
         }
 
@@ -1096,7 +1105,7 @@ namespace {
             if (bytes_read < sizeof(buffer)) {
                 if (std::ferror(file)) {
                     std::fclose(file);
-                    set_error(error_message, "Failed to read legacy file '" + path + "'.");
+                    set_error(error_message, "Failed to read legacy file '" + path_owner + "'.");
                     return false;
                 }
                 break;
@@ -1104,7 +1113,7 @@ namespace {
         }
 
         std::fclose(file);
-        snapshot->source_path = path;
+        snapshot->source_path = path_owner;
         snapshot->encoding = "hex";
         snapshot->content = hex_encode(bytes);
         snapshot->present = true;
@@ -1112,10 +1121,11 @@ namespace {
         return true;
     }
 
-    bool file_exists(const std::string& path)
+    bool file_exists(std::string_view path)
     {
+        const std::string path_owner = owned_text(path);
         struct stat file_info { };
-        return stat(path.c_str(), &file_info) == 0;
+        return stat(path_owner.c_str(), &file_info) == 0;
     }
 
     bool find_versioned_legacy_player_file_path(std::string_view root_directory, std::string_view character_name, std::string* resolved_path, bool* found, std::string* error_message)
@@ -1239,16 +1249,16 @@ namespace {
         return false;
     }
 
-    std::string parent_directory_for_path(const std::string& path)
+    std::string parent_directory_for_path(std::string_view path)
     {
         const size_t separator_position = path.find_last_of('/');
         if (separator_position == std::string::npos)
             return "";
 
-        return path.substr(0, separator_position);
+        return std::string(path.substr(0, separator_position));
     }
 
-    bool ensure_directory_path_exists(const std::string& path, std::string* error_message)
+    bool ensure_directory_path_exists(std::string_view path, std::string* error_message)
     {
         if (path.empty()) {
             set_error(error_message, "");
@@ -1261,9 +1271,9 @@ namespace {
 
         while (segment_start <= path.length()) {
             const size_t separator_position = path.find('/', segment_start);
-            const std::string partial_path = separator_position == std::string::npos
-                ? path
-                : path.substr(0, separator_position);
+            const std::string partial_path(separator_position == std::string::npos
+                    ? path
+                    : path.substr(0, separator_position));
 
             if (!partial_path.empty() && !create_directory_if_missing(partial_path, error_message))
                 return false;
@@ -1278,16 +1288,17 @@ namespace {
         return true;
     }
 
-    bool write_snapshot_bytes(const std::string& path, const LegacyAssetSnapshot& snapshot, bool required, std::string* error_message)
+    bool write_snapshot_bytes(std::string_view path, const LegacyAssetSnapshot& snapshot, bool required, std::string* error_message)
     {
+        const std::string path_owner = owned_text(path);
         if (!snapshot.present) {
             if (required) {
-                set_error(error_message, "Required migration snapshot is missing for '" + path + "'.");
+                set_error(error_message, "Required migration snapshot is missing for '" + path_owner + "'.");
                 return false;
             }
 
-            if (std::remove(path.c_str()) != 0 && errno != ENOENT) {
-                set_error(error_message, "Failed to remove stale legacy file '" + path + "': " + std::strerror(errno));
+            if (std::remove(path_owner.c_str()) != 0 && errno != ENOENT) {
+                set_error(error_message, "Failed to remove stale legacy file '" + path_owner + "': " + std::strerror(errno));
                 return false;
             }
 
@@ -1304,11 +1315,11 @@ namespace {
             return false;
         }
 
-        const std::string directory_path = parent_directory_for_path(path);
+        const std::string directory_path = parent_directory_for_path(path_owner);
         if (!ensure_directory_path_exists(directory_path, error_message))
             return false;
 
-        const std::string temp_path = path + ".tmp";
+        const std::string temp_path = path_owner + ".tmp";
         FILE* file = open_secure_output_file(temp_path, error_message);
         if (file == nullptr)
             return false;
@@ -1317,13 +1328,13 @@ namespace {
         const int close_result = std::fclose(file);
         if (written_length != decoded_bytes.size() || close_result != 0) {
             std::remove(temp_path.c_str());
-            set_error(error_message, "Failed to write legacy file '" + path + "'.");
+            set_error(error_message, "Failed to write legacy file '" + path_owner + "'.");
             return false;
         }
 
-        if (rots_rename_replace(temp_path, path) != 0) {
+        if (rots_rename_replace(temp_path, path_owner) != 0) {
             std::remove(temp_path.c_str());
-            set_error(error_message, "Failed to move restored legacy file into place '" + path + "': " + std::strerror(errno));
+            set_error(error_message, "Failed to move restored legacy file into place '" + path_owner + "': " + std::strerror(errno));
             return false;
         }
 
@@ -1391,7 +1402,7 @@ namespace {
             error_message);
     }
 
-    bool parse_account_property(const std::string& key, json_utils::JsonReader* reader, AccountData* account, std::string* error_message)
+    bool parse_account_property(std::string_view key, json_utils::JsonReader* reader, AccountData* account, std::string* error_message)
     {
         if (key == "version")
             return reader->parse_integer(&account->version, error_message);
@@ -1443,7 +1454,7 @@ namespace {
         return reader->skip_value(error_message);
     }
 
-    bool parse_migration_property(const std::string& key, json_utils::JsonReader* reader, CharacterMigrationData* migration, std::string* error_message)
+    bool parse_migration_property(std::string_view key, json_utils::JsonReader* reader, CharacterMigrationData* migration, std::string* error_message)
     {
         if (key == "version")
             return reader->parse_integer(&migration->version, error_message);
@@ -1475,16 +1486,17 @@ std::string format_verification_email_body_for_testing(
 
 // Read an entire text file into *contents (POSIX-backed). Exposed for stage-timing the
 // LOAD pipeline's file-read step.
-bool read_text_file(const std::string& path, std::string* contents, std::string* error_message)
+bool read_text_file(std::string_view path, std::string* contents, std::string* error_message)
 {
+    const std::string path_owner = owned_text(path);
     if (contents == nullptr) {
         set_error(error_message, "Text-file output parameter must not be null.");
         return false;
     }
 
-    FILE* file = std::fopen(path.c_str(), "r");
+    FILE* file = std::fopen(path_owner.c_str(), "r");
     if (file == nullptr) {
-        set_error(error_message, "Failed to open file '" + path + "': " + std::strerror(errno));
+        set_error(error_message, "Failed to open file '" + path_owner + "': " + std::strerror(errno));
         return false;
     }
 
@@ -1498,7 +1510,7 @@ bool read_text_file(const std::string& path, std::string* contents, std::string*
         if (bytes_read < sizeof(buffer)) {
             if (std::ferror(file)) {
                 std::fclose(file);
-                set_error(error_message, "Failed to read file '" + path + "'.");
+                set_error(error_message, "Failed to read file '" + path_owner + "'.");
                 return false;
             }
             break;
@@ -1513,9 +1525,11 @@ bool read_text_file(const std::string& path, std::string* contents, std::string*
 
 // Atomic write: temp(path+".tmp") -> fwrite -> rename. Exposed for stage-timing the SAVE
 // pipeline's disk-write step against a throwaway path.
-bool write_text_file_atomically(const std::string& path, const std::string& text, std::string* error_message)
+bool write_text_file_atomically(std::string_view path, std::string_view text, std::string* error_message)
 {
-    const std::string temp_path = path + ".tmp";
+    const std::string path_owner = owned_text(path);
+    text = rots::text::truncate_at_null(text);
+    const std::string temp_path = path_owner + ".tmp";
     FILE* file = open_secure_output_file(temp_path, error_message);
     if (file == nullptr)
         return false;
@@ -1528,7 +1542,7 @@ bool write_text_file_atomically(const std::string& path, const std::string& text
         return false;
     }
 
-    if (rots_rename_replace(temp_path, path) != 0) {
+    if (rots_rename_replace(temp_path, path_owner) != 0) {
         std::remove(temp_path.c_str());
         set_error(error_message, "Failed to move temporary file into place: " + std::string(std::strerror(errno)));
         return false;

@@ -11,6 +11,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <algorithm>
 #include <cstring>
 #include <string_view>
 
@@ -27,14 +28,19 @@
 // C++ guarantee), which covers the entire call it is passed into.
 class mutable_arg {
 public:
-    explicit mutable_arg(const char* text)
+    explicit mutable_arg(std::string_view text)
     {
-        std::strncpy(buf_, text, sizeof(buf_) - 1);
-        buf_[sizeof(buf_) - 1] = '\0';
+        const size_t null_position = text.find('\0');
+        if (null_position != std::string_view::npos)
+            text = text.substr(0, null_position);
+        const size_t copied_length = std::min(text.size(), sizeof(buf_) - 1);
+        text.copy(buf_, copied_length);
+        buf_[copied_length] = '\0';
     }
     operator char*() { return buf_; }
 
 private:
+    // Owns the short-lived mutable copy passed to the audited legacy callee.
     char buf_[MAX_INPUT_LENGTH];
 };
 
@@ -99,8 +105,8 @@ void vmudlog(char type, const char* format, ...);
 void log_death_trap(struct char_data* ch);
 int number(int from, int to);
 int dice(int number, int size);
-void sprintbit(long vektor, const char* const names[], char* result, int var);
-void sprinttype(int type, const char* const names[], char* result);
+void sprintbit(long vektor, const std::string_view names[], char* result, int var);
+void sprinttype(int type, const std::string_view names[], char* result);
 int get_real_OB(struct char_data* ch);
 int get_real_dodge(struct char_data* ch);
 int get_real_parry(struct char_data* ch);
@@ -114,7 +120,7 @@ void string_add(struct descriptor_data*, char*);
 int string_to_new_value(char* arg, int* value);
 char* nth(int);
 void day_to_str(time_info_data* loc_time_info, char* str);
-int find_player_in_table(const char* name, int idnum);
+int find_player_in_table(std::string_view name, int idnum);
 
 char* strcpy_lang(char* targ, char* src, byte freq, int maxlen);
 void reshuffle(int* arr, int len);

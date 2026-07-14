@@ -95,7 +95,7 @@ struct message_list fight_messages[MAX_MESSAGES]; /* fighting messages	*/
 struct script_head* script_table = 0;
 int top_of_script_table = 0;
 
-extern const char* const mobile_program_base[];
+extern const std::string_view mobile_program_base[];
 char** mobile_program;
 int* mobile_program_zone;
 int num_of_programs;
@@ -180,8 +180,8 @@ void assign_the_shopkeepers(void);
 void build_player_index(void);
 void boot_mudlle();
 void boot_crimes();
-int file_to_string(const char* name, char* buf);
-int file_to_string_alloc(const char* name, char** buf);
+int file_to_string(std::string_view name, char* buf);
+int file_to_string_alloc(std::string_view name, char** buf);
 void check_start_rooms(void);
 void renum_world(void);
 void reset_time(void);
@@ -554,35 +554,40 @@ void inc_p_table(void)
 
 namespace {
 
-int find_player_table_index_by_name(const char* name)
+int find_player_table_index_by_name(std::string_view name)
 {
-    if (name == nullptr || *name == '\0')
+    name = rots::text::truncate_at_null(name);
+    if (name.empty())
         return -1;
 
     for (int index = 0; index <= top_of_p_table; ++index) {
-        if (player_table[index].name && str_cmp_nullable(player_table[index].name, name) == 0)
+        if (player_table[index].name && str_cmp(player_table[index].name, name) == 0)
             return index;
     }
 
     return -1;
 }
 
-[[noreturn]] void fail_duplicate_player_index_entry(const char* name, const char* source_a,
-    const char* source_b)
+[[noreturn]] void fail_duplicate_player_index_entry(std::string_view name, std::string_view source_a,
+    std::string_view source_b)
 {
+    name = rots::text::truncate_at_null(name);
+    source_a = rots::text::truncate_at_null(source_a);
+    source_b = rots::text::truncate_at_null(source_b);
     log(std::format("Duplicate character '{}' found in both {} and {} while building player_table.",
-        name ? name : "(null)", source_a ? source_a : "unknown source",
-        source_b ? source_b : "unknown source")
+        name.empty() ? "(null)" : name, source_a.empty() ? "unknown source" : source_a,
+        source_b.empty() ? "unknown source" : source_b)
             );
     exit(1);
 }
 
-bool read_text_file_contents(const std::string& path, std::string* contents)
+bool read_text_file_contents(std::string_view path, std::string* contents)
 {
     if (contents == nullptr)
         return false;
 
-    FILE* file = std::fopen(path.c_str(), "rb");
+    const std::string path_owner(rots::text::truncate_at_null(path));
+    FILE* file = std::fopen(path_owner.c_str(), "rb");
     if (file == nullptr)
         return false;
 
@@ -607,54 +612,57 @@ bool read_text_file_contents(const std::string& path, std::string* contents)
     return true;
 }
 
-bool has_suffix(const std::string& value, const std::string& suffix)
+bool has_suffix(std::string_view value, std::string_view suffix)
 {
+    value = rots::text::truncate_at_null(value);
+    suffix = rots::text::truncate_at_null(suffix);
     return value.size() >= suffix.size() && value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
-bool is_versioned_legacy_player_entry_name(const char* entry_name, const char* normalized_name)
+bool is_versioned_legacy_player_entry_name(std::string_view entry_name, std::string_view normalized_name)
 {
-    if (entry_name == nullptr || normalized_name == nullptr)
+    entry_name = rots::text::truncate_at_null(entry_name);
+    normalized_name = rots::text::truncate_at_null(normalized_name);
+
+    const size_t normalized_length = normalized_name.size();
+    if (!entry_name.starts_with(normalized_name) || entry_name.size() <= normalized_length || entry_name[normalized_length] != '.')
         return false;
 
-    const size_t normalized_length = strlen(normalized_name);
-    if (strncmp(entry_name, normalized_name, normalized_length) != 0 || entry_name[normalized_length] != '.')
-        return false;
-
-    const char* suffix = entry_name + normalized_length + 1;
+    std::string_view suffix = entry_name.substr(normalized_length + 1);
     for (int field_index = 0; field_index < 5; ++field_index) {
-        if (*suffix == '\0')
+        if (suffix.empty())
             return false;
 
-        while (*suffix != '\0' && *suffix != '.') {
-            if (!std::isdigit(static_cast<unsigned char>(*suffix)))
+        while (!suffix.empty() && suffix.front() != '.') {
+            if (!std::isdigit(static_cast<unsigned char>(suffix.front())))
                 return false;
-            ++suffix;
+            suffix.remove_prefix(1);
         }
 
         if (field_index < 4) {
-            if (*suffix != '.')
+            if (suffix.empty() || suffix.front() != '.')
                 return false;
-            ++suffix;
+            suffix.remove_prefix(1);
         }
     }
 
-    return *suffix == '\0';
+    return suffix.empty();
 }
 
-bool directory_has_versioned_legacy_player_entry(const char* directory_path,
-    const char* normalized_name)
+bool directory_has_versioned_legacy_player_entry(std::string_view directory_path,
+    std::string_view normalized_name)
 {
+    const std::string directory_path_owner(rots::text::truncate_at_null(directory_path));
     namespace fs = std::filesystem;
     std::error_code ec;
-    fs::directory_iterator it(directory_path, ec);
+    fs::directory_iterator it(directory_path_owner, ec);
     if (ec)
         return false;
 
     const fs::directory_iterator end;
     for (; it != end; it.increment(ec)) {
         const std::string entry_name = it->path().filename().string();
-        if (!entry_name.empty() && entry_name[0] != '.' && is_versioned_legacy_player_entry_name(entry_name.c_str(), normalized_name))
+        if (!entry_name.empty() && entry_name[0] != '.' && is_versioned_legacy_player_entry_name(entry_name, normalized_name))
             return true;
     }
 
@@ -662,15 +670,15 @@ bool directory_has_versioned_legacy_player_entry(const char* directory_path,
 }
 
 void populate_player_index_entry_from_store(const char_file_u& stored_character,
-    const std::string& character_path)
+    std::string_view character_path)
 {
     if (find_player_table_index_by_name(stored_character.name) >= 0)
         fail_duplicate_player_index_entry(stored_character.name, "legacy player index",
-            character_path.c_str());
+            character_path);
 
     char_file_u indexed_character = stored_character;
     std::string error_message;
-    if (!update_player_index_entry_from_store(&indexed_character, character_path.c_str(),
+    if (!update_player_index_entry_from_store(&indexed_character, character_path,
             &error_message)) {
         log(std::format("Failed to add account-native character {} to the player index: {}",
             static_cast<const char*>(stored_character.name), error_message)
@@ -768,10 +776,11 @@ void build_account_native_player_index(void)
     }
 }
 
-int load_player_from_account_json_path(char* name, const char* player_path,
+int load_player_from_account_json_path(char* name, std::string_view player_path,
     struct char_file_u* char_element)
 {
-    if (player_path == nullptr || *player_path == '\0') {
+    player_path = rots::text::truncate_at_null(player_path);
+    if (player_path.empty()) {
         log(std::format("Couldn't find account-native character file path for {}\n", name));
         return -1;
     }
@@ -826,8 +835,9 @@ int read_filename_field(int pos, char* field, char* fname)
 }
 
 /* New index build for the new player files */
-void build_directory(const char* TheDir)
+void build_directory(std::string_view directory_path)
 {
+    const std::string directory_path_owner(rots::text::truncate_at_null(directory_path));
     namespace fs = std::filesystem;
     char* tmpch;
     int i;
@@ -842,7 +852,7 @@ void build_directory(const char* TheDir)
     CREATE(tmpch, char, 100);
 
     std::error_code ec;
-    fs::directory_iterator it(TheDir, ec);
+    fs::directory_iterator it(directory_path_owner, ec);
     const fs::directory_iterator end;
 
     for (; it != end; it.increment(ec)) {
@@ -856,7 +866,7 @@ void build_directory(const char* TheDir)
 
         i = read_filename_field(0, tmpch, entry_name_buf);
         tmpch[i] = 0;
-        if (!is_versioned_legacy_player_entry_name(entry_name_buf, tmpch) && directory_has_versioned_legacy_player_entry(TheDir, tmpch)) {
+        if (!is_versioned_legacy_player_entry_name(entry_name_buf, tmpch) && directory_has_versioned_legacy_player_entry(directory_path, tmpch)) {
             continue;
         }
         if (find_player_table_index_by_name(tmpch) >= 0)
@@ -879,7 +889,7 @@ void build_directory(const char* TheDir)
         player_table[top_of_p_table].flags = atoi(tmpch);
 
         strcpy(player_table[top_of_p_table].ch_file,
-            std::format("{}{}", TheDir, static_cast<const char*>(entry_name_buf)).c_str());
+            std::format("{}{}", directory_path, static_cast<const char*>(entry_name_buf)).c_str());
 
         top_idnum = MAX(top_idnum, player_table[top_of_p_table].idnum);
     } // for (; it != end; it.increment(ec))
@@ -2139,8 +2149,9 @@ void sanitize_persisted_combat_state(struct char_special2_data* specials2)
 
 } // namespace
 
-int load_player_from_text(char* name, const char* player_text, struct char_file_u* char_element)
+int load_player_from_text(char* name, std::string_view player_text, struct char_file_u* char_element)
 {
+    std::string player_text_owner(rots::text::truncate_at_null(player_text));
     int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, end;
     char line[100];
     char *tmpchar, *value, *ctmp, *position;
@@ -2161,11 +2172,11 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
     }
 
     char_element->player_index = tmp;
-    if (player_text == nullptr) {
+    if (player_text_owner.empty()) {
         log(std::format("Couldn't parse character file text for {}\n", name));
         return -1;
     }
-    input_end = player_text + strlen(player_text);
+    input_end = player_text_owner.data() + player_text_owner.size();
 
     for (tmp1 = 0; tmp1 < MAX_AFFECT; tmp1++) {
         char_element->affected[tmp1].type = 0;
@@ -2179,7 +2190,7 @@ int load_player_from_text(char* name, const char* player_text, struct char_file_
         char_element->skills[tmp1] = 0;
 
     end = FALSE;
-    position = const_cast<char*>(player_text);
+    position = player_text_owner.data();
     memset(char_element->description, 0, 512);
     while (end == FALSE) {
         if (position >= input_end) {
@@ -2485,7 +2496,7 @@ int load_char(char* name, struct char_file_u* char_element)
     return ret;
 }
 
-int load_char_from_text(char* name, const char* player_text, struct char_file_u* char_element)
+int load_char_from_text(char* name, std::string_view player_text, struct char_file_u* char_element)
 {
     int ret;
     extern void convert_old_colormask(struct char_file_u*);
@@ -2745,18 +2756,20 @@ int create_entry(char* name)
     return (top_of_p_table);
 }
 
-int ensure_player_index_entry(const char* name)
+int ensure_player_index_entry(std::string_view name)
 {
-    if (name == nullptr || *name == '\0')
+    name = rots::text::truncate_at_null(name);
+    if (name.empty())
         return -1;
 
     for (int index = 0; index <= top_of_p_table; ++index) {
-        if (str_cmp_nullable((player_table + index)->name, name) == 0)
+        if (str_cmp((player_table + index)->name, name) == 0)
             return index;
     }
 
     char normalized_name[MAX_NAME_LENGTH + 1];
-    std::snprintf(normalized_name, sizeof(normalized_name), "%s", name);
+    std::snprintf(normalized_name, sizeof(normalized_name), "%.*s",
+        static_cast<int>(name.size()), name.data());
     return create_entry(normalized_name);
 }
 
@@ -2766,7 +2779,7 @@ void update_player_index_entry_from_store(struct char_file_u* stored_character)
 }
 
 bool update_player_index_entry_from_store(struct char_file_u* stored_character,
-    const char* character_path, std::string* error_message)
+    std::string_view character_path, std::string* error_message)
 {
     if (stored_character == nullptr || stored_character->name[0] == '\0') {
         if (error_message != nullptr)
@@ -2774,8 +2787,9 @@ bool update_player_index_entry_from_store(struct char_file_u* stored_character,
         return false;
     }
 
-    if (character_path != nullptr && *character_path != '\0') {
-        const size_t path_length = strlen(character_path);
+    character_path = rots::text::truncate_at_null(character_path);
+    if (!character_path.empty()) {
+        const size_t path_length = character_path.size();
         const size_t path_capacity = sizeof(player_table[0].ch_file);
         if (path_length >= path_capacity) {
             if (error_message != nullptr)
@@ -2802,9 +2816,10 @@ bool update_player_index_entry_from_store(struct char_file_u* stored_character,
     player_table[player_index].idnum = stored_character->specials2.idnum;
     player_table[player_index].log_time = stored_character->last_logon;
     player_table[player_index].flags = stored_character->specials2.act;
-    if (character_path != nullptr && *character_path != '\0')
+    if (!character_path.empty())
         std::snprintf(player_table[player_index].ch_file,
-            sizeof(player_table[player_index].ch_file), "%s", character_path);
+            sizeof(player_table[player_index].ch_file), "%.*s",
+            static_cast<int>(character_path.size()), character_path.data());
     if (error_message != nullptr)
         error_message->clear();
     return true;
@@ -2913,8 +2928,9 @@ void encrypt_line(unsigned char* line, int len);
 // removes the partial scratch on any write/close error, so the caller skips finalize and
 // never destroys the live file. Body is the former save_player serialization, unchanged,
 // so its bytes stay identical to the legacy path (pinned by the A/B oracle + round-trip test).
-bool write_player_text(struct char_data* ch, int load_room, const char* scratch_path)
+bool write_player_text(struct char_data* ch, int load_room, std::string_view scratch_path)
 {
+    const std::string scratch_path_owner(rots::text::truncate_at_null(scratch_path));
     // {}: char_to_store() below populates every char_file_u field except pwd/host
     // (set explicitly right after it returns); leaving chd uninitialized meant
     // chd.pwd's bytes past the password's null terminator (up to MAX_PWD_LENGTH) were
@@ -2933,7 +2949,7 @@ bool write_player_text(struct char_data* ch, int load_room, const char* scratch_
     // "wb": this serialization is pinned byte-for-byte (A/B oracle + round-trip
     // test); CRT text mode on Windows would expand every '\n' to "\r\n" and
     // silently fork the on-disk format from the POSIX builds (Phase 3 Task 6).
-    FILE* pf = fopen(scratch_path, "wb");
+    FILE* pf = fopen(scratch_path_owner.c_str(), "wb");
     if (!pf) {
         return false;
     }
@@ -3058,11 +3074,11 @@ bool write_player_text(struct char_data* ch, int load_room, const char* scratch_
 
     if (ferror(pf)) {
         fclose(pf);
-        std::remove(scratch_path);
+        std::remove(scratch_path_owner.c_str());
         return false;
     }
     if (fclose(pf) != 0) {
-        std::remove(scratch_path);
+        std::remove(scratch_path_owner.c_str());
         return false;
     }
     return true;
@@ -3231,7 +3247,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
         if (wrote_account_character_file) {
             const std::string account_character_path = account::account_character_player_path(".", owner_account_name, GET_NAME(ch));
             std::string player_index_error;
-            if (!update_player_index_entry_from_store(&chd, account_character_path.c_str(),
+            if (!update_player_index_entry_from_store(&chd, account_character_path,
                     &player_index_error)) {
                 log(std::format(
                     "save_char: failed to refresh account-native player index for {}: {}",
@@ -3262,7 +3278,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
  ********************************************************************** */
 
 /* read and allocate space for a '~'-terminated string from a given file */
-char* fread_string(FILE* fl, const char* error)
+char* fread_string(FILE* fl, std::string_view error)
 {
     char buf[MAX_STRING_LENGTH], tmp[MAX_STRING_LENGTH];
     char* rslt;
@@ -3274,7 +3290,8 @@ char* fread_string(FILE* fl, const char* error)
     do {
         *tmp = 0;
         if (!fgets(tmp, MAX_STRING_LENGTH, fl)) {
-            fprintf(stderr, "fread_string: format error at or near %s\n", error);
+            const std::string error_owner(rots::text::truncate_at_null(error));
+            fprintf(stderr, "fread_string: format error at or near %s\n", error_owner.c_str());
             exit(0);
         }
 
@@ -3591,7 +3608,7 @@ void free_obj(struct obj_data* obj)
 }
 
 /* read contets of a text file, alloc space, point buf to it */
-int file_to_string_alloc(const char* name, char** buf)
+int file_to_string_alloc(std::string_view name, char** buf)
 {
     char temp[MAX_STRING_LENGTH];
 
@@ -3605,14 +3622,15 @@ int file_to_string_alloc(const char* name, char** buf)
 }
 
 /* read contents of a text file, and place in buf */
-int file_to_string(const char* name, char* buf)
+int file_to_string(std::string_view name, char* buf)
 {
+    const std::string name_owner(rots::text::truncate_at_null(name));
     FILE* fl;
     char tmp[100];
 
     *buf = '\0';
 
-    if (!(fl = fopen(name, "r"))) {
+    if (!(fl = fopen(name_owner.c_str(), "r"))) {
         perror(std::format("Error reading {}", name).c_str());
         *buf = '\0';
         return (-1);
@@ -4008,10 +4026,10 @@ void boot_crimes() { read_crime_file(); }
 namespace crime_json {
 namespace {
 
-    void set_error(std::string* error_message, const std::string& message)
+    void set_error(std::string* error_message, std::string_view message)
     {
         if (error_message)
-            *error_message = message;
+            error_message->assign(rots::text::truncate_at_null(message));
     }
 
     // Legacy on-disk format: CRIME_FILE (misc/crimelist) is a raw
@@ -4060,9 +4078,10 @@ namespace {
         return true;
     }
 
-    bool read_whole_file_contents(const char* path, std::string* bytes)
+    bool read_whole_file_contents(std::string_view path, std::string* bytes)
     {
-        FILE* file = std::fopen(path, "rb");
+        const std::string path_owner(rots::text::truncate_at_null(path));
+        FILE* file = std::fopen(path_owner.c_str(), "rb");
         if (file == nullptr)
             return false;
 
@@ -4089,10 +4108,12 @@ namespace {
     }
 
     // Temp-file + rename atomic write, matching mail.cpp/boards.cpp/pkill.cpp's pattern.
-    bool write_file_contents_atomically(const std::string& path, const std::string& contents,
+    bool write_file_contents_atomically(std::string_view path, std::string_view contents,
         std::string* error_message)
     {
-        const std::string temp_path = path + ".tmp";
+        const std::string path_owner(rots::text::truncate_at_null(path));
+        contents = rots::text::truncate_at_null(contents);
+        const std::string temp_path = path_owner + ".tmp";
 
         FILE* temp_file = std::fopen(temp_path.c_str(), "wb");
         if (temp_file == nullptr) {
@@ -4112,7 +4133,7 @@ namespace {
             return false;
         }
 
-        if (rots_rename_replace(temp_path, path) != 0) {
+        if (rots_rename_replace(temp_path, path_owner) != 0) {
             const std::string rename_error = strerror(errno);
             std::remove(temp_path.c_str());
             set_error(error_message, "Failed to move temporary crime file into place: " + rename_error);
@@ -4123,6 +4144,13 @@ namespace {
     }
 
 } // namespace
+
+#ifdef TESTING
+bool write_json_text_for_testing(std::string_view path, std::string_view contents, std::string* error_message)
+{
+    return write_file_contents_atomically(path, contents, error_message);
+}
+#endif
 
 bool legacy_crime_file_from_binary(const std::string& bytes,
     std::vector<crime_record_type>* records,
@@ -4294,13 +4322,13 @@ bool crime_records_equal(const std::vector<crime_record_type>& a,
     return true;
 }
 
-std::string crime_json_path(const std::string& legacy_path) { return legacy_path + ".json"; }
+std::string crime_json_path(std::string_view legacy_path) { return std::string(rots::text::truncate_at_null(legacy_path)) + ".json"; }
 
-bool load_crime_json_store(const std::string& json_path, std::vector<crime_record_type>* records,
+bool load_crime_json_store(std::string_view json_path, std::vector<crime_record_type>* records,
     std::string* error_message)
 {
     std::string json_text;
-    if (!read_whole_file_contents(json_path.c_str(), &json_text))
+    if (!read_whole_file_contents(json_path, &json_text))
         return false;
 
     CrimeStoreData data;
@@ -4311,7 +4339,7 @@ bool load_crime_json_store(const std::string& json_path, std::vector<crime_recor
     return true;
 }
 
-bool write_crime_json_store(const std::string& json_path,
+bool write_crime_json_store(std::string_view json_path,
     const std::vector<crime_record_type>& records,
     std::string* error_message)
 {
@@ -4320,9 +4348,10 @@ bool write_crime_json_store(const std::string& json_path,
     return write_file_contents_atomically(json_path, serialize_crime_to_json(data), error_message);
 }
 
-bool crime_store_safe_to_overwrite(const std::string& json_path, std::string* error_message)
+bool crime_store_safe_to_overwrite(std::string_view json_path, std::string* error_message)
 {
-    FILE* probe = std::fopen(json_path.c_str(), "rb");
+    const std::string json_path_owner(rots::text::truncate_at_null(json_path));
+    FILE* probe = std::fopen(json_path_owner.c_str(), "rb");
     if (probe == nullptr) {
         set_error(error_message, "");
         return true;
@@ -4333,16 +4362,17 @@ bool crime_store_safe_to_overwrite(const std::string& json_path, std::string* er
     return load_crime_json_store(json_path, &existing_records, error_message);
 }
 
-bool convert_legacy_crime_file(const char* legacy_path, std::string* error_message)
+bool convert_legacy_crime_file(std::string_view legacy_path, std::string* error_message)
 {
-    if (legacy_path == nullptr || !*legacy_path) {
+    legacy_path = rots::text::truncate_at_null(legacy_path);
+    if (legacy_path.empty()) {
         set_error(error_message, "Legacy crime path must not be empty.");
         return false;
     }
 
     std::string legacy_bytes;
     if (!read_whole_file_contents(legacy_path, &legacy_bytes)) {
-        set_error(error_message, std::string("Failed to read legacy crime file '") + legacy_path + "': " + strerror(errno));
+        set_error(error_message, std::string("Failed to read legacy crime file '") + std::string(legacy_path) + "': " + strerror(errno));
         return false;
     }
 
@@ -4870,10 +4900,10 @@ void write_exploits(char_data* ch, exploit_record* record)
 
 namespace {
 
-void set_db_error(std::string* error_message, const std::string& message)
+void set_db_error(std::string* error_message, std::string_view message)
 {
     if (error_message)
-        *error_message = message;
+        error_message->assign(rots::text::truncate_at_null(message));
 }
 
 // Outcome of a one-time legacy '<name>.exploits' -> '<name>.exploits.json'
@@ -4896,13 +4926,13 @@ enum class LegacyExploitConversionOutcome {
 // defined below (near open_secure_temp_output_file, which they build on),
 // but load_exploit_history_bytes (defined above that point) needs to call
 // them.
-std::string exploits_json_path_for_legacy(const std::string& legacy_path);
+std::string exploits_json_path_for_legacy(std::string_view legacy_path);
 LegacyExploitConversionOutcome
-convert_legacy_runtime_exploit_file(const std::string& legacy_path,
+convert_legacy_runtime_exploit_file(std::string_view legacy_path,
     std::vector<exploit_record>* decoded_records,
     std::string* error_message);
 
-bool read_binary_file_contents(const std::string& path, std::string* contents,
+bool read_binary_file_contents(std::string_view path, std::string* contents,
     std::string* error_message)
 {
     if (contents == nullptr) {
@@ -4910,10 +4940,11 @@ bool read_binary_file_contents(const std::string& path, std::string* contents,
         return false;
     }
 
-    FILE* file = std::fopen(path.c_str(), "rb");
+    const std::string path_owner(rots::text::truncate_at_null(path));
+    FILE* file = std::fopen(path_owner.c_str(), "rb");
     if (file == nullptr) {
         set_db_error(error_message,
-            "Failed to open file '" + path + "': " + std::string(strerror(errno)));
+            "Failed to open file '" + path_owner + "': " + std::string(strerror(errno)));
         return false;
     }
 
@@ -4927,7 +4958,7 @@ bool read_binary_file_contents(const std::string& path, std::string* contents,
         if (bytes_read < sizeof(buffer)) {
             if (std::ferror(file)) {
                 std::fclose(file);
-                set_db_error(error_message, "Failed to read file '" + path + "'.");
+                set_db_error(error_message, "Failed to read file '" + path_owner + "'.");
                 return false;
             }
             break;
@@ -4939,8 +4970,8 @@ bool read_binary_file_contents(const std::string& path, std::string* contents,
     return true;
 }
 
-bool load_exploit_history_bytes(const std::string& root_directory,
-    const std::string& character_name, std::string* bytes,
+bool load_exploit_history_bytes(std::string_view root_directory,
+    std::string_view character_name, std::string* bytes,
     std::string* error_message)
 {
     if (bytes == nullptr) {
@@ -5068,21 +5099,22 @@ bool load_exploit_history_bytes(const std::string& root_directory,
     return true;
 }
 
-FILE* open_secure_temp_output_file(const std::string& path, std::string* error_message)
+FILE* open_secure_temp_output_file(std::string_view path, std::string* error_message)
 {
+    const std::string path_owner(rots::text::truncate_at_null(path));
 #if defined PREDEF_PLATFORM_LINUX
-    const int file_descriptor = open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
+    const int file_descriptor = open(path_owner.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
     if (file_descriptor < 0) {
-        set_db_error(error_message, "Failed to open temporary exploit file '" + path + "': " + std::string(strerror(errno)));
+        set_db_error(error_message, "Failed to open temporary exploit file '" + path_owner + "': " + std::string(strerror(errno)));
         return nullptr;
     }
 
     FILE* file = fdopen(file_descriptor, "wb");
     if (file == nullptr) {
         close(file_descriptor);
-        std::remove(path.c_str());
+        std::remove(path_owner.c_str());
         set_db_error(error_message,
-            "Failed to create stream for temporary exploit file '" + path + "'.");
+            "Failed to create stream for temporary exploit file '" + path_owner + "'.");
         return nullptr;
     }
 
@@ -5103,19 +5135,19 @@ FILE* open_secure_temp_output_file(const std::string& path, std::string* error_m
     // actually needs (never silently overwrite something already at `path`)
     // holds without a separate check.
     int file_descriptor = -1;
-    const errno_t open_error = _sopen_s(&file_descriptor, path.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY,
+    const errno_t open_error = _sopen_s(&file_descriptor, path_owner.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY,
         _SH_DENYNO, _S_IREAD | _S_IWRITE);
     if (open_error != 0) {
-        set_db_error(error_message, "Failed to open temporary exploit file '" + path + "': " + std::string(strerror(open_error)));
+        set_db_error(error_message, "Failed to open temporary exploit file '" + path_owner + "': " + std::string(strerror(open_error)));
         return nullptr;
     }
 
     FILE* file = _fdopen(file_descriptor, "wb");
     if (file == nullptr) {
         _close(file_descriptor);
-        std::remove(path.c_str());
+        std::remove(path_owner.c_str());
         set_db_error(error_message,
-            "Failed to create stream for temporary exploit file '" + path + "'.");
+            "Failed to create stream for temporary exploit file '" + path_owner + "'.");
         return nullptr;
     }
 
@@ -5133,17 +5165,19 @@ FILE* open_secure_temp_output_file(const std::string& path, std::string* error_m
 // -> rename legacy to '.migrated'), mirroring the mail_json/boards_json/
 // pkill_json/crime_json converters. Account-linked behavior (the
 // `!owner_account_name.empty()` branches above/below) is unchanged.
-std::string exploits_json_path_for_legacy(const std::string& legacy_path)
+std::string exploits_json_path_for_legacy(std::string_view legacy_path)
 {
-    return legacy_path + ".json";
+    return std::string(rots::text::truncate_at_null(legacy_path)) + ".json";
 }
 
 // Generalizes open_secure_temp_output_file's temp+rename write for text
 // (JSON) content, rather than exploit_record binary bytes.
-bool write_text_file_atomically(const std::string& path, const std::string& contents,
+bool write_text_file_atomically(std::string_view path, std::string_view contents,
     std::string* error_message)
 {
-    const std::string temp_path = path + ".tmp";
+    const std::string path_owner(rots::text::truncate_at_null(path));
+    contents = rots::text::truncate_at_null(contents);
+    const std::string temp_path = path_owner + ".tmp";
 
     FILE* file = open_secure_temp_output_file(temp_path, error_message);
     if (file == nullptr)
@@ -5158,7 +5192,7 @@ bool write_text_file_atomically(const std::string& path, const std::string& cont
         return false;
     }
 
-    if (rots_rename_replace(temp_path, path) != 0) {
+    if (rots_rename_replace(temp_path, path_owner) != 0) {
         std::remove(temp_path.c_str());
         set_db_error(error_message, "Failed to move temporary exploit file into place: " + std::string(strerror(errno)));
         return false;
@@ -5178,14 +5212,14 @@ bool write_text_file_atomically(const std::string& path, const std::string& cont
 // playing right now) must keep failing closed on a pre-existing tmp instead
 // (see DbLoader.FailsClosedWhenTemporaryExploitPathAlreadyExists), so it
 // calls write_text_file_atomically directly rather than through this helper.
-bool write_text_file_atomically_clearing_stale_tmp(const std::string& path,
-    const std::string& contents,
+bool write_text_file_atomically_clearing_stale_tmp(std::string_view path,
+    std::string_view contents,
     std::string* error_message)
 {
     if (write_text_file_atomically(path, contents, error_message))
         return true;
 
-    const std::string temp_path = path + ".tmp";
+    const std::string temp_path = std::string(rots::text::truncate_at_null(path)) + ".tmp";
 #if defined PREDEF_PLATFORM_LINUX
     struct stat temp_stat { };
     // lstat (not stat): only clear a stale plain file, never follow/remove a
@@ -5221,7 +5255,7 @@ bool write_text_file_atomically_clearing_stale_tmp(const std::string& path,
 // and why they must be handled differently -- in short: kContentCorrupt is
 // the only outcome where it is safe to discard the legacy file.
 LegacyExploitConversionOutcome
-convert_legacy_runtime_exploit_file(const std::string& legacy_path,
+convert_legacy_runtime_exploit_file(std::string_view legacy_path,
     std::vector<exploit_record>* decoded_records,
     std::string* error_message)
 {
@@ -5275,8 +5309,9 @@ convert_legacy_runtime_exploit_file(const std::string& legacy_path,
         return LegacyExploitConversionOutcome::kInfraFailure;
     }
 
-    const std::string migrated_path = legacy_path + ".migrated";
-    if (rots_rename_replace(legacy_path, migrated_path) != 0) {
+    const std::string legacy_path_owner(rots::text::truncate_at_null(legacy_path));
+    const std::string migrated_path = legacy_path_owner + ".migrated";
+    if (rots_rename_replace(legacy_path_owner, migrated_path) != 0) {
         // JSON is written and verified; the legacy file simply couldn't be
         // retired (matches the other Task 6 converters' "partial success"
         // contract -- report but don't fail, nothing is at risk).
@@ -5290,8 +5325,8 @@ convert_legacy_runtime_exploit_file(const std::string& legacy_path,
 
 } // namespace
 
-bool load_exploit_records_for_character(const std::string& root_directory,
-    const std::string& character_name,
+bool load_exploit_records_for_character(std::string_view root_directory,
+    std::string_view character_name,
     std::vector<exploit_record>* records,
     std::string* error_message)
 {
@@ -5305,15 +5340,15 @@ bool load_exploit_records_for_character(const std::string& root_directory,
         return false;
 
     if (!exploits_json::exploit_records_from_binary(bytes, records, error_message)) {
-        set_db_error(error_message, "Exploit history for '" + character_name + "' is malformed.");
+        set_db_error(error_message, "Exploit history for '" + std::string(character_name) + "' is malformed.");
         return false;
     }
 
     return true;
 }
 
-bool write_exploit_record_for_character(const std::string& root_directory,
-    const std::string& character_name,
+bool write_exploit_record_for_character(std::string_view root_directory,
+    std::string_view character_name,
     const exploit_record& record, std::string* error_message)
 {
     std::vector<exploit_record> records;
@@ -5368,8 +5403,8 @@ bool write_exploit_record_for_character(const std::string& root_directory,
     return true;
 }
 
-bool load_object_save_data_for_character(const std::string& root_directory,
-    const std::string& character_name,
+bool load_object_save_data_for_character(std::string_view root_directory,
+    std::string_view character_name,
     objects_json::ObjectSaveData* data,
     std::string* error_message)
 {

@@ -238,16 +238,11 @@ TEST(UtilityFormat, LogDeathTrapReportsCharacterNameRoomNumberAndName)
 
 namespace {
 
-char* flag_name(const char* text)
-{
-    return const_cast<char*>(text);
-}
-
 } // namespace
 
 TEST(UtilityFormat, SprintbitReportsErrorForNegativeVector)
 {
-    char* names[] = { flag_name("alpha"), flag_name("\n") };
+    const std::string_view names[] = { "alpha", "\n" };
     char result[64];
 
     sprintbit(-1, names, result, 0);
@@ -257,7 +252,7 @@ TEST(UtilityFormat, SprintbitReportsErrorForNegativeVector)
 
 TEST(UtilityFormat, SprintbitReportsNoneOrNoAdditionalAttributesForZeroVector)
 {
-    char* names[] = { flag_name("alpha"), flag_name("\n") };
+    const std::string_view names[] = { "alpha", "\n" };
     char result[64];
 
     sprintbit(0, names, result, 0);
@@ -269,7 +264,7 @@ TEST(UtilityFormat, SprintbitReportsNoneOrNoAdditionalAttributesForZeroVector)
 
 TEST(UtilityFormat, SprintbitNormalModeJoinsSetFlagsWithLeadingSpaces)
 {
-    char* names[] = { flag_name("alpha"), flag_name("beta"), flag_name("\n") };
+    const std::string_view names[] = { "alpha", "beta", "\n" };
     char result[64];
 
     sprintbit(0x3 /* alpha | beta */, names, result, 0);
@@ -279,7 +274,7 @@ TEST(UtilityFormat, SprintbitNormalModeJoinsSetFlagsWithLeadingSpaces)
 
 TEST(UtilityFormat, SprintbitIdentifyModeTwoJoinsSetFlagsWithAnd)
 {
-    char* names[] = { flag_name("alpha"), flag_name("beta"), flag_name("\n") };
+    const std::string_view names[] = { "alpha", "beta", "\n" };
     char result[64];
 
     sprintbit(0x3 /* alpha | beta */, names, result, 2);
@@ -289,7 +284,7 @@ TEST(UtilityFormat, SprintbitIdentifyModeTwoJoinsSetFlagsWithAnd)
 
 TEST(UtilityFormat, SprintbitIdentifyModeOneListsAttributesOnePerLine)
 {
-    char* names[] = { flag_name("alpha"), flag_name("beta"), flag_name("\n") };
+    const std::string_view names[] = { "alpha", "beta", "\n" };
     char result[64];
 
     sprintbit(0x3 /* alpha | beta */, names, result, 1);
@@ -304,7 +299,7 @@ TEST(UtilityFormat, SprintbitEmitsUndefineForReservedBitsWithoutALeadingSpace)
     // branch) appends no separating space of its own. Pinning this exact,
     // slightly-inconsistent spacing is the point: the conversion must not
     // "fix" it.
-    char* names[] = { flag_name("alpha"), flag_name("beta"), flag_name("\n") };
+    const std::string_view names[] = { "alpha", "beta", "\n" };
     char result[64];
 
     sprintbit(0x5 /* alpha | (undefined bit 2) */, names, result, 0);
@@ -314,7 +309,7 @@ TEST(UtilityFormat, SprintbitEmitsUndefineForReservedBitsWithoutALeadingSpace)
 
 TEST(UtilityFormat, SprinttypeReturnsUndefinedForOutOfRangeType)
 {
-    char* names[] = { flag_name("first"), flag_name("second"), flag_name("\n") };
+    const std::string_view names[] = { "first", "second", "\n" };
     char result[64];
 
     sprinttype(0, names, result);

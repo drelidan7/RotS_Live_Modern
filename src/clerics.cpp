@@ -41,7 +41,7 @@ void group_gain(struct char_data*, struct char_data*);
 char saves_power(const char_data*, sh_int power, sh_int bonus);
 int check_hallucinate(struct char_data*, struct char_data*);
 
-const char* const stat_word[] = {
+const std::string_view stat_word[] = {
     "strength",
     "intelligence",
     "will",

@@ -15,6 +15,7 @@
 
 namespace boards_json {
 std::string binary_label_error_for_testing(std::string_view label);
+bool write_json_text_for_testing(std::string_view path, std::string_view contents, std::string* error_message);
 }
 
 TEST(BoardsJson, BinaryDiagnosticLabelsStopAtEmbeddedNull)
@@ -181,6 +182,21 @@ const char* const kGoldenPath = "goldens/legacy_board_fixture.bin";
 #endif
 
 } // namespace
+
+TEST(BoardsJson, AtomicTextWriterAcceptsBoundedInputAndStopsAtEmbeddedNull)
+{
+    TemporaryDirectory temporary_directory;
+    const std::string output_path = temporary_directory.path() + "/board.json";
+    std::string storage = "{\"board\":1}";
+    storage.push_back('\0');
+    storage += "ignored";
+    const std::string_view bounded_text(storage.data(), storage.size());
+    std::string error_message;
+
+    ASSERT_TRUE(boards_json::write_json_text_for_testing(output_path, bounded_text, &error_message))
+        << error_message;
+    EXPECT_EQ(read_file(output_path), "{\"board\":1}");
+}
 
 TEST(BoardsJson, NativeRecordStructIs28BytesOn32Bit)
 {

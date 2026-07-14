@@ -452,7 +452,7 @@ int perform_drop(struct char_data* ch, struct obj_data* obj, sh_int)
     }
 
     send_to_char(std::format("You drop {}.\n\r", OBJS(obj, ch)), ch);
-    strcpy(buf, std::format("$n drops $p.").c_str());
+    strcpy(buf, "$n drops $p.");
     act(buf, TRUE, ch, obj, 0, TO_ROOM);
 
     obj_from_char(obj);
@@ -481,7 +481,7 @@ ACMD(do_drop)
     while (*argument && *argument <= ' ')
         argument++;
     if (!*arg) {
-        send_to_char(std::format("What do you want to drop?\n\r"), ch);
+        send_to_char("What do you want to drop?\n\r", ch);
         return;
     } else if (is_number(arg)) {
         amount = atoi(arg);
@@ -509,7 +509,7 @@ ACMD(do_drop)
                 }
         } else if (dotmode == FIND_ALLDOT) {
             if (!*arg) {
-                send_to_char(std::format("What do you want to drop all of?\n\r"), ch);
+                send_to_char("What do you want to drop all of?\n\r", ch);
                 return;
             }
             if (!(obj = get_obj_in_list(arg, ch->carrying))) {

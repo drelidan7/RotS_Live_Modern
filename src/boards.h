@@ -75,7 +75,7 @@ struct board_info_type {
     // see mail_info_type for explanation
 
     board_info_type(int objnum, int l_read, int l_write, int l_rem,
-        int max_msg, const char* file, const char* titlename);
+        int max_msg, std::string_view file, std::string_view titlename);
     board_info_type();
 };
 
@@ -87,7 +87,7 @@ struct mail_info_type : board_info_type {
     // num is taken as the shown number of the previous message,
     // returned as the number to show with msg.
     mail_info_type(int objnum, int l_read, int l_write, int l_rem,
-        int max_msg, const char* file, const char* titlename);
+        int max_msg, std::string_view file, std::string_view titlename);
 };
 #define VNUM (vnum)
 #define READ_LVL (read_lvl)
@@ -165,14 +165,14 @@ bool board_save_data_equal(const BoardSaveData& a, const BoardSaveData& b);
 
 // Path convention: "<path>.json" for the JSON file, "<path>.migrated" for
 // the legacy file once safely converted.
-std::string board_json_path(const std::string& legacy_path);
+std::string board_json_path(std::string_view legacy_path);
 
 // Converts one legacy `<boardfile>.boa` file at `legacy_path`: decode ->
 // serialize -> re-decode -> field-equality verify -> write JSON (atomic
 // temp+rename) -> rename legacy to `<legacy_path>.migrated`. Never destroys
 // the legacy file: any failure at any step returns false (with
 // `*error_message` set) and leaves the legacy file exactly as found.
-bool convert_legacy_board_file(const char* legacy_path, std::string* error_message = nullptr);
+bool convert_legacy_board_file(std::string_view legacy_path, std::string* error_message = nullptr);
 
 } // namespace boards_json
 

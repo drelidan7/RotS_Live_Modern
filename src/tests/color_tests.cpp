@@ -26,13 +26,14 @@ TEST(Color, FindsFieldsAndAnsiColorsFromBoundedViews)
     EXPECT_EQ(find_color_field({}), -1);
     EXPECT_EQ(find_ansi_color("unknown"), -1);
 }
-// const char*, matching interpre.cpp's definition exactly (MSVC's decorated
+// std::string_view, matching interpre.cpp's definition exactly (MSVC's decorated
 // names encode the element type, so a mismatched extern is a hard LNK2001
 // there; GCC/Clang linked it silently -- Phase 3 Task 6).
-extern const char* command[];
+extern const std::string_view command[];
 extern command_info cmd_info[];
 void assign_command_pointers(void);
-int old_search_block(char* argument, int begin, unsigned int length, const char** list, int mode);
+int old_search_block(
+    char* argument, int begin, unsigned int length, const std::string_view* list, int mode);
 
 namespace {
 
@@ -373,8 +374,10 @@ TEST(Color, InterpreterAcceptsColorAsAliasForColour)
 
     char american_spelling[] = "color";
     char british_spelling[] = "colour";
-    const int color_command = old_search_block(american_spelling, 0, std::strlen(american_spelling), const_cast<const char**>(command), 0);
-    const int colour_command = old_search_block(british_spelling, 0, std::strlen(british_spelling), const_cast<const char**>(command), 0);
+    const int color_command = old_search_block(american_spelling, 0,
+        std::strlen(american_spelling), command, 0);
+    const int colour_command = old_search_block(british_spelling, 0,
+        std::strlen(british_spelling), command, 0);
 
     ASSERT_GE(color_command, 0);
     ASSERT_GE(colour_command, 0);

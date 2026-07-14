@@ -18,7 +18,7 @@
 extern struct obj_data* obj_proto;
 extern int object_master_idnum;
 extern int object_master2_idnum;
-extern const char* const object_materials[];
+extern const std::string_view object_materials[];
 extern int num_of_object_materials;
 
 int obj_chain[50] = {

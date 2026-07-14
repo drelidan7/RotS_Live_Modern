@@ -44,7 +44,7 @@ extern struct time_info_data time_info;
 // Weather messages should be moved to a special file like spell messages
 // once this code is settled.
 
-const char* weather_messages[8][13] = {
+extern const std::string_view weather_messages[8][13] = {
     { "", // Indoors - no message
         "The sun rises behind the buildings.\n\r",
         "The sun rises across the fields.\n\r",
@@ -558,7 +558,7 @@ void weather_change(void)
         auto weather_type = weather_info.sky[sector_type];
         if (OUTSIDE(desc->character)) {
             MSDPSetString(desc, eMDSP_WEATHER,
-                strip_trailing_line_break(weather_messages[weather_type + 2][sector_type]).c_str());
+                strip_trailing_line_break(weather_messages[weather_type + 2][sector_type]));
         } else {
             MSDPSetString(desc, eMDSP_WEATHER, "You can have no feeling about the weather here.");
         }

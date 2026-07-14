@@ -426,7 +426,7 @@ const char* CopyoverGet(descriptor_t* apDescriptor);
  * Client name and version are not saved.  It is recommended you save these in
  * the player file, as then you can grep to collect client usage stats.
  */
-void CopyoverSet(descriptor_t* apDescriptor, const char* apData);
+void CopyoverSet(descriptor_t* apDescriptor, std::string_view data);
 
 /******************************************************************************
  MSDP functions.
@@ -522,7 +522,7 @@ std::string MSDPSanitizeValue(std::string_view apValue);
  * sprintf( Buffer, "%c%s%c%s", (char)MSDP_VAR, Name, (char)MSDP_VAL, Value );
  * MSDPSetTable( d, eMSDP_TEST, Buffer );
  */
-void MSDPSetTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue);
+void MSDPSetTable(descriptor_t* apDescriptor, variable_t aMSDP, std::string_view value);
 
 /* Function: MSDPSendTable
  *
@@ -530,7 +530,7 @@ void MSDPSetTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apVa
  * automappers, comm channels, etc.
  */
 
-void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue);
+void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, std::string_view value);
 
 /* Function: MSDPSetArray
  *
@@ -541,7 +541,7 @@ void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apV
  * sprintf( Buffer, "%c%s%c%s", (char)MSDP_VAL, Val1, (char)MSDP_VAL, Val2 );
  * MSDPSetArray( d, eMSDP_TEST, Buffer );
  */
-void MSDPSetArray(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue);
+void MSDPSetArray(descriptor_t* apDescriptor, variable_t aMSDP, std::string_view value);
 
 bool MSDPIsValidVariable(variable_t aMSDP);
 
@@ -588,7 +588,7 @@ void MXPSendTag(descriptor_t* apDescriptor, std::string_view apTag);
  * supported, MSP if not.  The trigger string itself is a relative path and
  * filename, eg: SoundSend( pDesc, "monster/growl.wav" );
  */
-void SoundSend(descriptor_t* apDescriptor, const char* apTrigger);
+void SoundSend(descriptor_t* apDescriptor, std::string_view trigger);
 
 /******************************************************************************
  Colour functions.
@@ -609,7 +609,7 @@ void SoundSend(descriptor_t* apDescriptor, const char* apTrigger);
  *
  * If you wish to embed colours in strings, use ProtocolOutput().
  */
-const char* ColourRGB(descriptor_t* apDescriptor, const char* apRGB);
+const char* ColourRGB(descriptor_t* apDescriptor, std::string_view rgb);
 
 /******************************************************************************
  Unicode (UTF-8 conversion) functions.

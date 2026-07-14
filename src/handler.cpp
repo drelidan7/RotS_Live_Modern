@@ -785,9 +785,9 @@ void affect_remove(struct char_data* ch, struct affected_type* af)
 
 void affect_remove_notify(struct char_data* ch, struct affected_type* af)
 {
-    extern const char* const spell_wear_off_msg[];
+    extern const std::string_view spell_wear_off_msg[];
 
-    if (*spell_wear_off_msg[af->type] && !PLR_FLAGGED(ch, PLR_WRITING))
+    if (!spell_wear_off_msg[af->type].empty() && !PLR_FLAGGED(ch, PLR_WRITING))
         vsend_to_char(ch, "%s\n", spell_wear_off_msg[af->type]);
 
     affect_remove(ch, af);
@@ -865,9 +865,9 @@ int in_affected_list(struct char_data* ch)
  */
 void affect_from_char_notify(struct char_data* ch, byte skill)
 {
-    extern const char* const spell_wear_off_msg[];
+    extern const std::string_view spell_wear_off_msg[];
 
-    if (*spell_wear_off_msg[skill] && !PLR_FLAGGED(ch, PLR_WRITING))
+    if (!spell_wear_off_msg[skill].empty() && !PLR_FLAGGED(ch, PLR_WRITING))
         vsend_to_char(ch, "%s\n", spell_wear_off_msg[skill]);
 
     affect_from_char(ch, skill);
@@ -2103,7 +2103,7 @@ int keyword_matches_char(struct char_data* ch, struct char_data* vict, char* key
     int check;
 
     if (other_side(ch, vict)) {
-        check = isname_nullable(keyword, pc_race_keywords[GET_RACE(vict)]);
+        check = isname_nullable(keyword, pc_race_keywords[GET_RACE(vict)].data());
     } else
         check = isname_nullable(keyword, vict->player.name);
 
@@ -2165,7 +2165,7 @@ struct char_data* get_char_vis(struct char_data* ch, char* name, int dark_ok)
 
     for (i = character_list, j = 1; i && (j <= number); i = i->next) {
         if (other_side(ch, i))
-            check = isname_nullable(tmp, pc_race_keywords[i->player.race]);
+            check = isname_nullable(tmp, pc_race_keywords[i->player.race].data());
         else
             check = isname_nullable(tmp, i->player.name);
 
@@ -2347,7 +2347,7 @@ struct obj_data* create_money(int amount)
 int generic_find(char* arg, int bitvector, struct char_data* ch,
     struct char_data** tar_ch, struct obj_data** tar_obj)
 {
-    static const char* const ignore[] = {
+    static const std::string_view ignore[] = {
         "the",
         "in",
         "on",

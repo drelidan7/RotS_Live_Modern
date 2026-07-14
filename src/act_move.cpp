@@ -33,8 +33,8 @@ extern struct char_data* character_list;
 extern struct descriptor_data* descriptor_list;
 extern struct index_data* obj_index;
 extern int rev_dir[];
-extern const char* const dirs[];
-extern const char* const refer_dirs[];
+extern const std::string_view dirs[];
+extern const std::string_view refer_dirs[];
 extern int movement_loss[];
 extern struct time_info_data time_info;
 extern struct skill_data skills[];
@@ -466,7 +466,7 @@ void parse_container_for_stay_zone(char_data* ch, obj_data* container, const int
 
         if (IS_OBJ_STAT(item, ITEM_STAY_ZONE)) {
             send_to_char(std::format("You drop {}.\n\r", OBJS(item, ch)), ch);
-            strcpy(buf, std::format("$n drops $p.").c_str());
+            strcpy(buf, "$n drops $p.");
             act(buf, TRUE, ch, item, 0, TO_ROOM);
             obj_from_obj(item);
             obj_to_room(item, room);
@@ -499,7 +499,7 @@ void prohibit_item_stay_zone_move(char_data* ch, int room)
 
         if (IS_OBJ_STAT(item, ITEM_STAY_ZONE)) {
             send_to_char(std::format("You drop {}.\n\r", OBJS(item, ch)), ch);
-            strcpy(buf, std::format("$n drops $p.").c_str());
+            strcpy(buf, "$n drops $p.");
             act(buf, TRUE, ch, item, 0, TO_ROOM);
             obj_from_char(item);
             obj_to_room(item, room);
@@ -629,7 +629,7 @@ void msdp_room_update(char_data* ch)
     msdp_room += "TERRAIN";
     msdp_room += (char)MSDP_VAL;
 
-    extern const char* const sector_types[];
+    extern const std::string_view sector_types[];
     msdp_room += sector_types[world[ch->in_room].sector_type];
 
     // Room exits need to be sent first before anything else
@@ -986,7 +986,7 @@ ACMD(do_move)
 int find_door(struct char_data* ch, char* type, char* dir)
 {
     int door;
-    const char* const dirs[] = { "north", "east", "south", "west", "up", "down", "\n" };
+    const std::string_view dirs[] = { "north", "east", "south", "west", "up", "down", "\n" };
 
     if (*dir) /* a direction was specified */ {
         if ((door = search_block(dir, dirs, FALSE)) == -1) /* Partial Match */ {
@@ -1709,7 +1709,7 @@ ACMD(do_follow)
     }
 
     if (other_side(ch, leader) || (IS_NPC(leader) && MOB_FLAGGED(leader, MOB_MOUNT) && IS_AGGR_TO(leader, ch))) {
-        send_to_char(std::format("It doesn't want you to follow it.\n\r"), ch);
+        send_to_char("It doesn't want you to follow it.\n\r", ch);
         return;
     }
 

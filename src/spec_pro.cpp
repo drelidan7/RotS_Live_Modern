@@ -39,7 +39,7 @@ extern int get_number(char** name);
 extern int num_of_ferries;
 extern int num_of_captains;
 extern char guildmaster_number;
-extern const char* const dirs[];
+extern const std::string_view dirs[];
 extern void raw_kill(char_data* ch, char_data* killer, int attacktype);
 extern int mark_calculate_wait(const char_data* ch);
 extern int shoot_calculate_wait(const char_data* archer);
@@ -1648,7 +1648,7 @@ const int lhuth_mage = 4;
 const int default_mage = 5;
 
 const int mage_types = 6;
-const char* mage_aliases[] = { "fmage", "lmage", "cmage", "dmage", "lumage", "defaultm" };
+const std::string_view mage_aliases[] = { "fmage", "lmage", "cmage", "dmage", "lumage", "defaultm" };
 
 const double full_pct = 0.76;
 const double three_quarter_pct = 0.51;
@@ -1697,7 +1697,7 @@ int pick_a_spell(int* spell_list, char_data* host)
 {
     if (spell_list[0] > 0) {
         if (has_alias(host, "spells")) {
-            strcpy(buf, std::format("----------").c_str());
+            strcpy(buf, "----------");
             mudlog_aliased_mob(buf, host, "spells");
             for (int i = 1; i <= spell_list[0]; i++) {
                 strcpy(buf, std::format("Spell: {}", spell_list[i]).c_str());
@@ -1707,7 +1707,7 @@ int pick_a_spell(int* spell_list, char_data* host)
         int chance = number(1, spell_list[0]);
         return spell_list[chance];
     } else {
-        strcpy(buf, std::format("--- NO MAGE KEYWORDS FOUND ---").c_str());
+        strcpy(buf, "--- NO MAGE KEYWORDS FOUND ---");
         mudlog_aliased_mob(buf, host, "spells");
         return 0;
     }
@@ -1745,7 +1745,7 @@ void get_spells(int* spell_list, int mage_type, int health, char_data* host)
 
 // check if correct level and add spell
 void add_leveled_spell_to_list(int* spell_list, int spell, int mage_type, int cur_mage_type,
-    char* keyword, char_data* host, int min_level)
+    std::string_view keyword, char_data* host, int min_level)
 {
     if (GET_LEVEL(host) >= min_level && mage_type == cur_mage_type && has_alias(host, keyword)) {
         strcpy(buf, std::format("MType: {}    (HL_SPELL)", mage_type).c_str());
@@ -1759,7 +1759,7 @@ void get_combat_spells(char_data* host, int* spell_list, double current_health_p
     double)
 {
     for (int mage_type = 0; mage_type < mage_types; mage_type++) {
-        char* keyword = (char*)mage_aliases[mage_type];
+        const std::string_view keyword = mage_aliases[mage_type];
         if (has_alias(host, keyword)) {
             int current_tier = hp_brackets;
             for (int i = 0; i < hp_brackets; i++) {
@@ -2327,7 +2327,7 @@ SPECIAL(mob_ranger_new)
  * and to the room.
  */
 
-const char* const dance_description[][2] = {
+const std::string_view dance_description[][2] = {
     { "jumps merrily up and down, dancing happily.", "You happily jump up and down" },
     { "steps in a little circle, clapping $s hands together",
         "You step in a little circle, clapping your hands together" },

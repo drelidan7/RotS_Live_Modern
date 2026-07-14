@@ -68,10 +68,10 @@ extern int max_race_str[];
 extern bool weapon_willpower_damage(char_data* ch, char_data* victim);
 extern void check_break_prep(struct char_data*);
 extern int max_npc_corpse_time, max_pc_corpse_time;
-extern const char* const pc_star_types[];
+extern const std::string_view pc_star_types[];
 
 /* External procedures */
-char* fread_string(FILE* fl, const char* error);
+char* fread_string(FILE* fl, std::string_view error);
 int check_resistances(char_data* ch, int attacktype);
 void stop_hiding(struct char_data*, char);
 void break_meditation(char_data* ch);
@@ -1501,7 +1501,7 @@ void generate_damage_message(char_data* attacker, char_data* victim, int damage,
     struct message_type* messages;
 
     const race_bodypart_data& part = bodyparts[GET_BODYTYPE(victim)];
-    const char* body_part = part.parts[hit_location];
+    const std::string_view body_part = part.parts[hit_location];
     if (IS_PHYSICAL(attacktype)) {
         if (!attacker->equipment[WIELD]) {
             if (GET_RACE(attacker) == RACE_BEORNING) {

@@ -40,10 +40,10 @@ namespace {
         return false;
     }
 
-    void set_error(std::string* error_message, const std::string& message)
+    void set_error(std::string* error_message, std::string_view message)
     {
         if (error_message)
-            *error_message = message;
+            error_message->assign(rots::text::truncate_at_null(message));
     }
 
     inline bool is_json_space(char character)
@@ -764,11 +764,12 @@ bool JsonReaderV2::parse_long(long* value, std::string* error_message)
         return false;
     }
 
-    while (m_position < m_input.size() && is_json_digit(m_input[m_position]))
+    while (m_position < m_input.size() && is_json_digit(m_input[m_position])) {
         ++m_position;
+    }
 
-    const char* const first = m_input.data() + start;
-    const char* const last = m_input.data() + m_position;
+    const auto first = m_input.data() + start;
+    const auto last = m_input.data() + m_position;
     long parsed = 0;
     const std::from_chars_result result = std::from_chars(first, last, parsed, 10);
     if (result.ec != std::errc() || result.ptr != last) {

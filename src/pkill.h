@@ -45,8 +45,8 @@ std::string serialize_pkill_to_json(const PkillStoreData& data);
 /// Deserializes bounded player-kill JSON, stopping at its first embedded null byte.
 bool deserialize_pkill_from_json(std::string_view json, PkillStoreData *data, std::string *error_message = nullptr);
 bool pkill_records_equal(const std::vector<PKILL>& a, const std::vector<PKILL>& b);
-std::string pkill_json_path(const std::string& legacy_path);
-bool convert_legacy_pkill_file(const char* legacy_path, std::string* error_message = nullptr);
+std::string pkill_json_path(std::string_view legacy_path);
+bool convert_legacy_pkill_file(std::string_view legacy_path, std::string* error_message = nullptr);
 
 } // namespace pkill_json
 

@@ -13,8 +13,8 @@ static_assert(std::same_as<std::remove_cvref_t<decltype(weekdays[0])>, std::stri
 static_assert(std::same_as<std::remove_cvref_t<decltype(month_name[0])>, std::string_view>);
 static_assert(std::same_as<std::remove_cvref_t<decltype(moon_phase[0])>, std::string_view>);
 
-extern const char* const dirs[];
-extern const char* const refer_dirs[];
+extern const std::string_view dirs[];
+extern const std::string_view refer_dirs[];
 
 TEST(StringViewUtility, ComparesBoundedTextWithoutNullTermination)
 {
@@ -57,15 +57,15 @@ TEST(StringViewUtility, IsNameAcceptsBoundedAndEmbeddedNullViews)
 
 TEST(StringViewUtility, RetainsLegacySentinelTables)
 {
-    EXPECT_STREQ(dirs[6], "\n");
-    EXPECT_STREQ(refer_dirs[6], "\n");
-    EXPECT_STREQ(pc_races[21], "\n");
-    EXPECT_STREQ(pc_race_types[21], "\n");
-    EXPECT_STREQ(pc_race_keywords[21], "\n");
-    EXPECT_STREQ(pc_star_types[21], "\n");
-    EXPECT_STREQ(pc_named_star_types[21], "\n");
-    EXPECT_STREQ(color_color[15], "\n");
-    EXPECT_STREQ(fill[7], "\n");
+    EXPECT_EQ(dirs[6], "\n");
+    EXPECT_EQ(refer_dirs[6], "\n");
+    EXPECT_EQ(pc_races[21], "\n");
+    EXPECT_EQ(pc_race_types[21], "\n");
+    EXPECT_EQ(pc_race_keywords[21], "\n");
+    EXPECT_EQ(pc_star_types[21], "\n");
+    EXPECT_EQ(pc_named_star_types[21], "\n");
+    EXPECT_EQ(color_color[15], "\n");
+    EXPECT_EQ(fill[7], "\n");
 }
 
 TEST(StringViewUtility, NullableNameMatchingRejectsNullTextWithoutConstructingAView)

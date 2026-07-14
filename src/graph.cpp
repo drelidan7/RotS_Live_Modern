@@ -34,7 +34,7 @@
 
 /* Externals */
 extern int top_of_world;
-extern const char* const dirs[];
+extern const std::string_view dirs[];
 extern struct room_data world;
 extern struct time_info_data time_info;
 extern struct char_data* mob_proto; /* prototypes for mobs*/
@@ -334,7 +334,7 @@ int show_tracks(char_data* ch, char* name, int mode)
             if (ch_num > 0)
                 shall_show = isname_nullable(name, mob_proto[ch_num].player.name, 1);
             else
-                shall_show = !str_cmp_nullable(name, pc_race_keywords[-ch_num]);
+                shall_show = !str_cmp_nullable(name, pc_race_keywords[-ch_num].data());
         }
         if (shall_show) {
             count++;
@@ -388,7 +388,7 @@ int show_blood_trail(struct char_data* ch, char* name, int mode)
             if (ch_num > 0) {
                 shall_show = isname_nullable(name, mob_proto[ch_num].player.name, 1);
             } else {
-                shall_show = !str_cmp_nullable(name, pc_race_keywords[-ch_num]);
+                shall_show = !str_cmp_nullable(name, pc_race_keywords[-ch_num].data());
             }
         }
 

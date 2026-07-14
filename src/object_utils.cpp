@@ -54,7 +54,7 @@ int get_item_bulk(const obj_data& object)
 namespace game_types {
 const char* get_weapon_name(weapon_type type)
 {
-    static const char* weapon_types[WT_COUNT] = {
+    static const std::string_view weapon_types[WT_COUNT] = {
         "Error, Unused weapon type, contact Imms",
         "Error, Unused weapon type, contact Imms",
         "whipping",
@@ -72,7 +72,7 @@ const char* get_weapon_name(weapon_type type)
         "crossbow",
     };
 
-    return weapon_types[type];
+    return weapon_types[type].data();
 }
 }
 

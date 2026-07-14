@@ -29,7 +29,8 @@ std::string account_character_object_path(std::string_view root_directory, std::
 std::string account_character_exploits_path(std::string_view root_directory, std::string_view account_name, std::string_view character_name);
 
 std::string serialize_account_to_json(const AccountData& account);
-bool deserialize_account_from_json(const std::string& json, AccountData* account, std::string* error_message = nullptr);
+/// Parses an account from bounded JSON text through its first null character.
+bool deserialize_account_from_json(std::string_view json, AccountData* account, std::string* error_message = nullptr);
 
 /// Persists an account beneath a first-null-normalized bounded storage root.
 bool write_account_file(std::string_view root_directory, const AccountData& account, std::string* error_message = nullptr);
@@ -45,15 +46,16 @@ bool read_account_file_by_email(std::string_view root_directory, std::string_vie
 bool read_account_file_by_identifier(std::string_view root_directory, std::string_view identifier, AccountData* account, std::string* error_message = nullptr);
 
 std::string serialize_character_migration_to_json(const CharacterMigrationData& migration);
-bool deserialize_character_migration_from_json(const std::string& json, CharacterMigrationData* migration, std::string* error_message = nullptr);
+/// Parses character-migration state from bounded JSON text through its first null character.
+bool deserialize_character_migration_from_json(std::string_view json, CharacterMigrationData* migration, std::string* error_message = nullptr);
 
 // Read an entire text file into *contents (POSIX-backed). Exposed for stage-timing the
 // LOAD pipeline's file-read step.
-bool read_text_file(const std::string& path, std::string* contents, std::string* error_message);
+bool read_text_file(std::string_view path, std::string* contents, std::string* error_message);
 
 // Atomic write: temp(path+".tmp") -> fwrite -> rename. Exposed for stage-timing the SAVE
 // pipeline's disk-write step against a throwaway path.
-bool write_text_file_atomically(const std::string& path, const std::string& text,
+bool write_text_file_atomically(std::string_view path, std::string_view text,
                                 std::string* error_message);
 
 } // namespace account

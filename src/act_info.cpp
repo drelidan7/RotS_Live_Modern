@@ -52,8 +52,8 @@ extern struct descriptor_data* descriptor_list;
 extern struct char_data* character_list;
 extern struct obj_data* object_list;
 extern struct command_info cmd_info[];
-extern const char* const room_spell_message[];
-extern const char* const room_bits_message[];
+extern const std::string_view room_spell_message[];
+extern const std::string_view room_bits_message[];
 extern struct player_index_element* player_table;
 extern struct skill_data skills[];
 extern char world_map[];
@@ -73,33 +73,33 @@ extern char* wizlist;
 extern char* immlist;
 extern char* policies;
 extern char* handbook;
-extern const char* const dirs[];
-extern const char* const refer_dirs[];
-extern const char* const where[];
-extern const char* const color_liquid[];
-extern const char* const fullness[];
-extern const char* const connected_types[];
-// const char*, matching interpre.cpp's definition exactly. The old
+extern const std::string_view dirs[];
+extern const std::string_view refer_dirs[];
+extern const std::string_view where[];
+extern const std::string_view color_liquid[];
+extern const std::string_view fullness[];
+extern const std::string_view connected_types[];
+// const std::string_view , matching interpre.cpp's definition exactly. The old
 // `extern char* command[]` mismatch linked anyway on GCC/Clang (Itanium ABI
 // variable mangling carries no type), but MSVC encodes the element type in
 // the decorated name, so the mismatched declaration is a hard LNK2001 there
 // (Phase 3 Task 6).
-extern const char* command[];
-extern const char* const prof_abbrevs[];
-extern const char* const race_abbrevs[];
-extern const char* const room_bits[];
+extern const std::string_view command[];
+extern const std::string_view prof_abbrevs[];
+extern const std::string_view race_abbrevs[];
+extern const std::string_view room_bits[];
 extern int top_of_p_table;
-extern const char* const sector_types[];
+extern const std::string_view sector_types[];
 extern long judppwd;
 extern int judpavailable;
-extern const char* const beornwhere[];
+extern const std::string_view beornwhere[];
 
-extern const char* const extra_bits[];
+extern const std::string_view extra_bits[];
 extern int num_of_object_materials;
-extern const char* const apply_types[];
-extern const char* const drinks[];
-extern const char* const pc_arda_fame_identifier[];
-extern const char* const pc_evil_fame_identifier[];
+extern const std::string_view apply_types[];
+extern const std::string_view drinks[];
+extern const std::string_view pc_arda_fame_identifier[];
+extern const std::string_view pc_evil_fame_identifier[];
 
 void symbol_to_map(int, int, int);
 void reset_small_map();
@@ -655,9 +655,9 @@ void get_char_flag_line(char_data* viewer, char_data* viewed, char* character_me
 
     if (other_side(viewer, viewed) && (viewed->player.ranking > 0 && viewed->player.ranking <= 3)) {
         if (utils::is_race_evil(*viewed))
-            strcat(character_message, pc_evil_fame_identifier[viewed->player.ranking]);
+            strcat(character_message, pc_evil_fame_identifier[viewed->player.ranking].data());
         else
-            strcat(character_message, pc_arda_fame_identifier[viewed->player.ranking]);
+            strcat(character_message, pc_arda_fame_identifier[viewed->player.ranking].data());
     }
 
     if (IS_AFFECTED(viewed, AFF_HIDE)) {
@@ -905,13 +905,13 @@ void show_mount_to_char(struct char_data* mount, struct char_data* viewer,
         strcat(buf, PERS(mount, viewer, FALSE, FALSE));
         get_char_flag_line(viewer, mount, buf + strlen(buf));
         strcat(buf, ".\n\r");
-        strcat(buf, CC_NORM(viewer));
+        strcat(buf, CC_NORM(viewer).data());
         CAP(buf);
         send_to_char(buf, viewer);
     }
 }
 
-extern const char* const spec_pro_message[];
+extern const std::string_view spec_pro_message[];
 
 /*
  * `i' is the character being shown; `ch' is the character who is
@@ -978,12 +978,12 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
 
         CAP(buf);
         strcat(buf, "\n\r");
-        strcat(buf, CC_NORM(ch));
+        strcat(buf, CC_NORM(ch).data());
         send_to_char(buf, ch);
 
         /* Show spec_prog related messages: i.e., block exit, plant fragrance */
         if (i->specials.store_prog_number && (!IS_NPC(i) || (!mob_index[i->nr].func && MOB_FLAGGED(i, MOB_SPEC)))) {
-            if (*spec_pro_message[i->specials.store_prog_number])
+            if (!spec_pro_message[i->specials.store_prog_number].empty())
                 act(spec_pro_message[i->specials.store_prog_number], FALSE, i, 0, ch, TO_VICT);
         }
     } else if (mode == 1) { /* `ch' performed `look at `i'' */
@@ -1063,15 +1063,15 @@ void show_room_affection(char* str, struct affected_type* aff, int mode)
     if (mode == 0) {
         switch (aff->type) {
         case ROOMAFF_SPELL:
-            if ((aff->location >= 0) && (aff->location < MAX_SKILLS) && *room_spell_message[aff->location] && !(aff->bitvector & PERMAFFECT)) {
-                strcat(str, room_spell_message[aff->location]);
+            if ((aff->location >= 0) && (aff->location < MAX_SKILLS) && !room_spell_message[aff->location].empty() && !(aff->bitvector & PERMAFFECT)) {
+                strcat(str, room_spell_message[aff->location].data());
                 strcat(str, "\n\r");
             }
 
             if (!(aff->bitvector & PERMAFFECT)) {
                 for (tmp = 0; tmp < 32; tmp++) {
-                    if ((aff->bitvector & (1 << tmp)) && *room_bits_message[tmp]) {
-                        strcat(str, room_bits_message[tmp]);
+                    if ((aff->bitvector & (1 << tmp)) && !room_bits_message[tmp].empty()) {
+                        strcat(str, room_bits_message[tmp].data());
                         strcat(str, "\n\r");
                     }
                 }
@@ -1141,7 +1141,7 @@ void show_room_weather(char* str, struct char_data* ch)
  * A list of valid arguments to look; i.e.: look north,
  * look at <thing>, look (no argument), etc.
  */
-const char* const keywords[] = { "north", "east", "south", "west", "up",
+const std::string_view keywords[] = { "north", "east", "south", "west", "up",
     "down", "in", "at", "", /* Look at '' case */
     "\n" };
 
@@ -1485,7 +1485,7 @@ ACMD(do_look)
             }
         }
 
-        strcat(buf2, CC_NORM(ch));
+        strcat(buf2, CC_NORM(ch).data());
         /* Send them the exits */
         int i;
         strcat(buf2, "    Exits are:");
@@ -1592,7 +1592,7 @@ ACMD(do_look)
                 strcat(buf2, world[ch->in_room].description);
             }
         }
-        strcat(buf2, CC_NORM(ch));
+        strcat(buf2, CC_NORM(ch).data());
 
         /* Any affections in the room */
         for (tmpaf = world[ch->in_room].affected; tmpaf; tmpaf = tmpaf->next)
@@ -1688,8 +1688,8 @@ ACMD(do_examine)
 ACMD(do_exits)
 {
     int door, tmp;
-    const char* const exits[] = { "North", "East ", "South", "West ", "Up   ", "Down " };
-    const char* const sun_exits[]
+    const std::string_view exits[] = { "North", "East ", "South", "West ", "Up   ", "Down " };
+    const std::string_view sun_exits[]
         = { "#North#", "#East# ", "#South#", "#West# ", "#Up#   ", "#Down# " };
 
     // Accumulates the exit lines; replaces the old `buf + strlen(buf)`
@@ -1803,7 +1803,7 @@ ACMD(do_info)
     struct time_info_data playing_time;
     int room_move_cost(struct char_data*, struct room_data*);
     struct time_info_data real_time_passed(time_t, time_t);
-    extern const char* const specialize_name[];
+    extern const std::string_view specialize_name[];
 
     std::string out;
 
@@ -2353,7 +2353,7 @@ ACMD(do_who)
     // here rather than switching to the smaller global and risking a
     // truncation/overflow regression.
     char buf2[16384];
-    extern const char* const imm_abbrevs[];
+    extern const std::string_view imm_abbrevs[];
 
     *name_search = '\0';
     std::string out;
@@ -2550,7 +2550,7 @@ ACMD(do_users)
     int showprof = 0, num_can_see = 0, playing = 0, deadweight = 0;
     struct char_data* tch;
     struct descriptor_data* d;
-    extern const char* const connected_types[];
+    extern const std::string_view connected_types[];
 
     name_search[0] = '\0';
     host_search[0] = '\0';
@@ -3010,9 +3010,9 @@ ACMD(do_consider)
 
 ACMD(do_toggle)
 {
-    extern const char* const tactics[];
-    extern const char* const shooting[];
-    extern const char* const casting[];
+    extern const std::string_view tactics[];
+    extern const std::string_view shooting[];
+    extern const std::string_view casting[];
 
     if (IS_NPC(ch))
         return;
@@ -3150,7 +3150,7 @@ void sort_commands(void)
 
     for (a = 1; a <= num_of_cmds - 1; a++)
         for (b = a + 1; b <= num_of_cmds; b++)
-            if (strcmp(command[cmd_info[a].sort_pos], command[cmd_info[b].sort_pos]) > 0) {
+            if (command[cmd_info[a].sort_pos] > command[cmd_info[b].sort_pos]) {
                 tmp = cmd_info[a].sort_pos;
                 cmd_info[a].sort_pos = cmd_info[b].sort_pos;
                 cmd_info[b].sort_pos = tmp;
@@ -3238,7 +3238,7 @@ ACMD(do_diagnose)
     }
 }
 
-extern const char* const prompt_text[];
+extern const std::string_view prompt_text[];
 extern struct prompt_type prompt_hit[];
 extern struct prompt_type prompt_mana[];
 extern struct prompt_type prompt_move[];
@@ -3267,9 +3267,9 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
         if (ch->specials.prompt_value >= 0)
-            sprintf(str, prompt_text[ch->specials.prompt_number], ch->specials.prompt_value);
+            sprintf(str, prompt_text[ch->specials.prompt_number].data(), ch->specials.prompt_value);
         else
-            sprintf(str, prompt_text[ch->specials.prompt_number], -1);
+            sprintf(str, prompt_text[ch->specials.prompt_number].data(), -1);
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #elif defined(__GNUC__)
@@ -3601,7 +3601,7 @@ ACMD(do_search)
         len = strlen(argument);
 
         for (tmp = 0; tmp < NUM_OF_DIRS; tmp++)
-            if (!strn_cmp_nullable(dirs[tmp], argument, len))
+            if (!strn_cmp(dirs[tmp], argument, len))
                 break;
 
         if (tmp >= NUM_OF_DIRS) {
@@ -3724,7 +3724,7 @@ void report_perception(char_data* ch, char* str)
 
 void report_affection(affected_type* aff, char* str)
 {
-    static const char* durations[] = { "permanent", "short", "medium", "long", "fast-acting" };
+    static const std::string_view durations[] = { "permanent", "short", "medium", "long", "fast-acting" };
 
     int dur_index = 0;
 
@@ -3739,7 +3739,7 @@ void report_affection(affected_type* aff, char* str)
 
     const skill_data& skill = skills[aff->type];
     const char* skill_name = skill.name;
-    const char* duration = durations[dur_index];
+    const std::string_view duration = durations[dur_index];
 
     // duration_text was a local char[32] staging buffer fed straight into
     // str's final sprintf; a std::string serves the same role without the
@@ -3857,7 +3857,8 @@ void do_fame_leader_string(LEADER* ldr, char* buffer)
      * than "fixed" -- this is a characterization conversion, not a
      * behavior change, and this expression's implementation-defined
      * overflow behavior for an over-long name/race is unchanged. */
-    n = 27 - strlen(ldr->name) - strlen(pc_races[ldr->race]) - 5;
+    n = 27 - static_cast<int>(strlen(ldr->name))
+        - static_cast<int>(pc_races[ldr->race].size()) - 5;
     for (i = 0; i < n; ++i)
         out += " ";
 
@@ -4145,7 +4146,7 @@ ACMD(do_compare)
     return;
 }
 
-static const char* const stat_defects[] = {
+static const std::string_view stat_defects[] = {
     "weakened",
     "duped",
     "dispirited",
@@ -4155,7 +4156,7 @@ static const char* const stat_defects[] = {
     "\n",
 };
 
-static const char* const stat_attrs[] = { "horribly", "strongly", "strongly", "seriously", "seriously", "quite",
+static const std::string_view stat_attrs[] = { "horribly", "strongly", "strongly", "seriously", "seriously", "quite",
     "somewhat", "somewhat", "slightly", "barely", "not at all" };
 
 void report_char_mentals(char_data* ch, char* str, int brief_mode)
@@ -4485,7 +4486,7 @@ ACMD(do_exploits)
  * Arrarys used for identify, this is just a temporary
  * place of residence.
  */
-const char* const light_messages[] = {
+const std::string_view light_messages[] = {
 
     "extremely weak, and will not last very long",
     "weak, and will not last very long",
@@ -4498,7 +4499,7 @@ const char* const light_messages[] = {
 
 };
 
-const char* const food_messages[] = {
+const std::string_view food_messages[] = {
 
     "is barely a morsel of food, and will\r\ndo little to aid against the pangs of hunger",
     "is not very filling, and will do little\r\nto keep hunger at bay",
@@ -4510,7 +4511,7 @@ const char* const food_messages[] = {
     "is extremely filling, and will keep you \r\nfull all day and night",
 
 };
-const char* const wear_messages[] = {
+const std::string_view wear_messages[] = {
 
     "taken",
     "worn on your finger",
@@ -4532,7 +4533,7 @@ const char* const wear_messages[] = {
     "worn on a belt",
 };
 
-const char* const material_messages[] = {
+const std::string_view material_messages[] = {
 
     "of the usual stuff",
     "of cloth",
@@ -4552,7 +4553,7 @@ const char* const material_messages[] = {
     "Blurp3",
 };
 
-const char* const item_messages[] = {
+const std::string_view item_messages[] = {
     "Unidentified",
     "light source",
     "scroll",
@@ -4581,7 +4582,7 @@ const char* const item_messages[] = {
     "lever",
 };
 
-const char* const extra_messages[] = {
+const std::string_view extra_messages[] = {
 
     "It glows brigtly",
     "It hums softly",
@@ -4606,7 +4607,7 @@ const char* const extra_messages[] = {
  * This array is used as a generic value_flag display
  * for all items, with the exception of food/light.
  */
-const char* const value_array[][5] = {
+const std::string_view value_array[][5] = {
 
     {
         "",
@@ -4792,7 +4793,7 @@ const char* const value_array[][5] = {
     }, /* Lever */
 };
 
-const char* const weapon_types[] = {
+const std::string_view weapon_types[] = {
 
     "Error, Unsed weapon type, contact Imms",
     "Error, Unsed weapon type, contact Imms",
@@ -4906,8 +4907,8 @@ void do_flag_values_display(struct char_data* ch, struct obj_data* j)
         // CI failure). Check the label's CONTENT instead: byte-identical
         // output on all pooling platforms, and the empty-label skip finally
         // holds on MSVC too.
-        const char* label = value_array[GET_ITEM_TYPE(j)][i];
-        if (label[0] != '\0') {
+        const std::string_view label = value_array[GET_ITEM_TYPE(j)][i];
+        if (!label.empty()) {
             send_to_char(label, ch);
 
             if (j->obj_flags.value[i] < 0) /* Checks for negative for display purposes */

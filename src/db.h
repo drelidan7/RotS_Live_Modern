@@ -103,14 +103,14 @@ static const int mortal_maze_room[MAX_MAZE_RENT_MAPPINGS][2] = {
 void boot_db(void);
 void char_to_store(struct char_data *, struct char_file_u *);
 void store_to_char(struct char_file_u *, struct char_data *);
-bool write_player_text(struct char_data *ch, int load_room, const char *scratch_path);
+bool write_player_text(struct char_data *ch, int load_room, std::string_view scratch_path);
 int load_char(char *, struct char_file_u *);
-int load_char_from_text(char *, const char *, struct char_file_u *);
+int load_char_from_text(char *, std::string_view, struct char_file_u *);
 void save_char(struct char_data *, int, int);
 int create_entry(char *);
-int ensure_player_index_entry(const char *);
+int ensure_player_index_entry(std::string_view);
 void update_player_index_entry_from_store(struct char_file_u *);
-bool update_player_index_entry_from_store(struct char_file_u *, const char *,
+bool update_player_index_entry_from_store(struct char_file_u *, std::string_view,
                                           std::string *error_message = nullptr);
 void init_char(struct char_data *);
 void clear_char(struct char_data *, int);
@@ -144,7 +144,7 @@ void free_alias_list(struct alias_list *);
 void free_obj(struct obj_data *);
 int real_room(int);
 int real_program(int);
-char *fread_string(FILE *, const char *);
+char *fread_string(FILE *, std::string_view);
 int real_object(int);
 int real_mobile(int);
 int vnum_mobile(char *, struct char_data *);
@@ -158,7 +158,7 @@ void delete_character_file(struct char_data *);
 void move_char_deleted(int);
 int get_char_directory(char *, char *);
 int load_player(char *, struct char_file_u *);
-int load_player_from_text(char *, const char *, struct char_file_u *);
+int load_player_from_text(char *, std::string_view, struct char_file_u *);
 
 // Implemented in consts.cc
 
@@ -209,8 +209,8 @@ bool deserialize_crime_from_json(
     std::string_view json, CrimeStoreData *data, std::string *error_message = nullptr);
 bool crime_records_equal(const std::vector<crime_record_type> &a,
                          const std::vector<crime_record_type> &b);
-std::string crime_json_path(const std::string &legacy_path);
-bool convert_legacy_crime_file(const char *legacy_path, std::string *error_message = nullptr);
+std::string crime_json_path(std::string_view legacy_path);
+bool convert_legacy_crime_file(std::string_view legacy_path, std::string *error_message = nullptr);
 
 // Phase 2a final-review Important 2: mirrors pkill_update_file's
 // (pkill.cpp) fail-closed overwrite guard. A present-but-unparseable
@@ -221,7 +221,7 @@ bool convert_legacy_crime_file(const char *legacy_path, std::string *error_messa
 // with whatever the (possibly incomplete) in-memory record set happens to
 // be. Returns true -- safe to overwrite -- when the store is absent or
 // loads successfully.
-bool crime_store_safe_to_overwrite(const std::string &json_path,
+bool crime_store_safe_to_overwrite(std::string_view json_path,
                                    std::string *error_message = nullptr);
 
 } // namespace crime_json
@@ -295,12 +295,12 @@ struct exploit_record {
     int iKillerLevel;      /* at time of kill */
     int iIntParam;         /* reserved */
 };
-bool load_exploit_records_for_character(const std::string &root_directory,
-                                        const std::string &character_name,
+bool load_exploit_records_for_character(std::string_view root_directory,
+                                        std::string_view character_name,
                                         std::vector<exploit_record> *records,
                                         std::string *error_message = nullptr);
-bool write_exploit_record_for_character(const std::string &root_directory,
-                                        const std::string &character_name,
+bool write_exploit_record_for_character(std::string_view root_directory,
+                                        std::string_view character_name,
                                         const exploit_record &record,
                                         std::string *error_message = nullptr);
 // Resolves object-save data for a character: account-native JSON first (via
@@ -309,8 +309,8 @@ bool write_exploit_record_for_character(const std::string &root_directory,
 // decoder, else a fresh default (RENT_CRASH, nothing staged). The returned
 // ObjectSaveData is always usable directly -- callers never see raw bytes or
 // perform their own decode.
-bool load_object_save_data_for_character(const std::string &root_directory,
-                                         const std::string &character_name,
+bool load_object_save_data_for_character(std::string_view root_directory,
+                                         std::string_view character_name,
                                          objects_json::ObjectSaveData *data,
                                          std::string *error_message = nullptr);
 

@@ -47,10 +47,10 @@
 namespace pkill_json {
 namespace {
 
-    void set_error(std::string* error_message, const std::string& message)
+    void set_error(std::string* error_message, std::string_view message)
     {
         if (error_message)
-            *error_message = message;
+            error_message->assign(rots::text::truncate_at_null(message));
     }
 
     // Legacy on-disk format: PKILL_FILE (misc/pklist) is a raw concatenation
@@ -101,9 +101,10 @@ namespace {
         return true;
     }
 
-    bool read_whole_file_contents(const char* path, std::string* bytes)
+    bool read_whole_file_contents(std::string_view path, std::string* bytes)
     {
-        FILE* file = std::fopen(path, "rb");
+        const std::string path_owner(rots::text::truncate_at_null(path));
+        FILE* file = std::fopen(path_owner.c_str(), "rb");
         if (file == nullptr)
             return false;
 
@@ -130,9 +131,11 @@ namespace {
     }
 
     // Temp-file + rename atomic write, matching mail.cpp/boards.cpp's pattern.
-    bool write_file_contents_atomically(const std::string& path, const std::string& contents, std::string* error_message)
+    bool write_file_contents_atomically(std::string_view path, std::string_view contents, std::string* error_message)
     {
-        const std::string temp_path = path + ".tmp";
+        const std::string path_owner(rots::text::truncate_at_null(path));
+        contents = rots::text::truncate_at_null(contents);
+        const std::string temp_path = path_owner + ".tmp";
 
         FILE* temp_file = std::fopen(temp_path.c_str(), "wb");
         if (temp_file == nullptr) {
@@ -150,7 +153,7 @@ namespace {
             return false;
         }
 
-        if (rots_rename_replace(temp_path, path) != 0) {
+        if (rots_rename_replace(temp_path, path_owner) != 0) {
             const std::string rename_error = std::strerror(errno);
             std::remove(temp_path.c_str());
             set_error(error_message, "Failed to move temporary pkill file into place: " + rename_error);
@@ -161,6 +164,13 @@ namespace {
     }
 
 } // namespace
+
+#ifdef TESTING
+bool write_json_text_for_testing(std::string_view path, std::string_view contents, std::string* error_message)
+{
+    return write_file_contents_atomically(path, contents, error_message);
+}
+#endif
 
 bool legacy_pkill_file_from_binary(const std::string& bytes, std::vector<PKILL>* records, std::string* error_message)
 {
@@ -325,15 +335,15 @@ bool pkill_records_equal(const std::vector<PKILL>& a, const std::vector<PKILL>& 
     return true;
 }
 
-std::string pkill_json_path(const std::string& legacy_path)
+std::string pkill_json_path(std::string_view legacy_path)
 {
-    return legacy_path + ".json";
+    return std::string(rots::text::truncate_at_null(legacy_path)) + ".json";
 }
 
-bool load_pkill_json_store(const std::string& json_path, std::vector<PKILL>* records, std::string* error_message)
+bool load_pkill_json_store(std::string_view json_path, std::vector<PKILL>* records, std::string* error_message)
 {
     std::string json_text;
-    if (!read_whole_file_contents(json_path.c_str(), &json_text))
+    if (!read_whole_file_contents(json_path, &json_text))
         return false;
 
     PkillStoreData data;
@@ -344,23 +354,24 @@ bool load_pkill_json_store(const std::string& json_path, std::vector<PKILL>* rec
     return true;
 }
 
-bool write_pkill_json_store(const std::string& json_path, const std::vector<PKILL>& records, std::string* error_message)
+bool write_pkill_json_store(std::string_view json_path, const std::vector<PKILL>& records, std::string* error_message)
 {
     PkillStoreData data;
     data.records = records;
     return write_file_contents_atomically(json_path, serialize_pkill_to_json(data), error_message);
 }
 
-bool convert_legacy_pkill_file(const char* legacy_path, std::string* error_message)
+bool convert_legacy_pkill_file(std::string_view legacy_path, std::string* error_message)
 {
-    if (legacy_path == nullptr || !*legacy_path) {
+    legacy_path = rots::text::truncate_at_null(legacy_path);
+    if (legacy_path.empty()) {
         set_error(error_message, "Legacy pkill path must not be empty.");
         return false;
     }
 
     std::string legacy_bytes;
     if (!read_whole_file_contents(legacy_path, &legacy_bytes)) {
-        set_error(error_message, std::string("Failed to read legacy pkill file '") + legacy_path + "': " + std::strerror(errno));
+        set_error(error_message, std::string("Failed to read legacy pkill file '") + std::string(legacy_path) + "': " + std::strerror(errno));
         return false;
     }
 
@@ -773,8 +784,9 @@ void __pkill_extend_tab(int n)
  * file.  Store them in the global variable pkill_tab and
  * return the number of pkills read from the file.
  */
-int pkill_read_file(const char* file)
+int pkill_read_file(std::string_view file)
 {
+    const std::string file_owner(rots::text::truncate_at_null(file));
     const std::string json_path = pkill_json::pkill_json_path(file);
     std::vector<PKILL> loaded_records;
 
@@ -790,23 +802,23 @@ int pkill_read_file(const char* file)
         /* No JSON store yet -- either a fresh install (no legacy file
          * either) or a legacy binary file waiting for its one-time
          * conversion. */
-        FILE* legacy_probe = fopen(file, "rb");
+        FILE* legacy_probe = fopen(file_owner.c_str(), "rb");
         if (legacy_probe == NULL) {
             vmudlog(BRF, "read_pkill_file: pkill file '%s' does not exist.",
-                file);
+                file_owner.c_str());
             return 0;
         }
         fclose(legacy_probe);
 
         std::string convert_error;
         if (!pkill_json::convert_legacy_pkill_file(file, &convert_error)) {
-            vmudlog(BRF, "SYSERR: Failed converting legacy pkill file '%s' to JSON: %s", file, convert_error.c_str());
+            vmudlog(BRF, "SYSERR: Failed converting legacy pkill file '%s' to JSON: %s", file_owner.c_str(), convert_error.c_str());
             return 0;
         }
         if (!convert_error.empty())
-            vmudlog(BRF, "Converted legacy pkill file '%s' to JSON (warning: %s).", file, convert_error.c_str());
+            vmudlog(BRF, "Converted legacy pkill file '%s' to JSON (warning: %s).", file_owner.c_str(), convert_error.c_str());
         else
-            vmudlog(BRF, "Converted legacy pkill file '%s' to JSON.", file);
+            vmudlog(BRF, "Converted legacy pkill file '%s' to JSON.", file_owner.c_str());
 
         std::string load_error;
         if (!pkill_json::load_pkill_json_store(json_path, &loaded_records, &load_error)) {
@@ -824,20 +836,22 @@ int pkill_read_file(const char* file)
     return static_cast<int>(loaded_records.size());
 }
 
-void pkill_delete_file(const char* file)
+void pkill_delete_file(std::string_view file)
 {
+    const std::string file_owner(rots::text::truncate_at_null(file));
     const std::string json_path = pkill_json::pkill_json_path(file);
     std::string error_message;
     if (!pkill_json::write_pkill_json_store(json_path, std::vector<PKILL>(), &error_message))
-        vmudlog(BRF, "Could not delete pkill file '%s': %s", file, error_message.c_str());
+        vmudlog(BRF, "Could not delete pkill file '%s': %s", file_owner.c_str(), error_message.c_str());
 }
 
 /*
  * Write out all pkills which haven't expired to the given
  * pkill file.
  */
-int pkill_update_file(const char* file, PKILL pkills[], int n)
+int pkill_update_file(std::string_view file, PKILL pkills[], int n)
 {
+    const std::string file_owner(rots::text::truncate_at_null(file));
     int i, nwritten;
     PKILL p;
     extern struct player_index_element* player_table;
@@ -879,7 +893,7 @@ int pkill_update_file(const char* file, PKILL pkills[], int n)
 
     std::string write_error;
     if (!pkill_json::write_pkill_json_store(json_path, existing_records, &write_error)) {
-        vmudlog(BRF, "Failed to write pkill file %s: %s", file, write_error.c_str());
+        vmudlog(BRF, "Failed to write pkill file %s: %s", file_owner.c_str(), write_error.c_str());
         return 0;
     }
 
@@ -1152,12 +1166,13 @@ int pkill_get_evil_fame()
 }
 
 LEADER*
-__new_leader(const char* name, int idx, int rank, int fame, int race, int side, int invalid)
+__new_leader(std::string_view name, int idx, int rank, int fame, int race, int side, int invalid)
 {
     LEADER* ldr;
 
     CREATE(ldr, LEADER, 1);
-    ldr->name = strdup(name);
+    const std::string name_owner(rots::text::truncate_at_null(name));
+    ldr->name = strdup(name_owner.c_str());
     CAP(ldr->name);
     ldr->player_idx = idx;
     ldr->rank = rank;

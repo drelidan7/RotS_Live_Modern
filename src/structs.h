@@ -917,11 +917,11 @@ extern const std::array<std::string_view, 7> weekdays;
 extern const std::array<std::string_view, 17> month_name;
 /// Names the eight moon phases in progression order.
 extern const std::array<std::string_view, 8> moon_phase;
-extern const char* const pc_races[];
-extern const char* const pc_race_types[];
-extern const char* const pc_race_keywords[];
-extern const char* const pc_star_types[];
-extern const char* const pc_named_star_types[];
+extern const std::string_view pc_races[];
+extern const std::string_view pc_race_types[];
+extern const std::string_view pc_race_keywords[];
+extern const std::string_view pc_star_types[];
+extern const std::string_view pc_named_star_types[];
 #endif
 
 /* sex */
@@ -1983,7 +1983,7 @@ public:
 };
 
 struct race_bodypart_data {
-    const char* parts[MAX_BODYPARTS];
+    const std::string_view parts[MAX_BODYPARTS];
     sh_int percent[MAX_BODYPARTS];
     sh_int bodyparts;
     ubyte armor_location[MAX_BODYPARTS];

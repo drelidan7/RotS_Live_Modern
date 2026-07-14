@@ -3,6 +3,7 @@
 
 import argparse
 import bisect
+import html
 import pathlib
 import re
 import sys
@@ -131,8 +132,14 @@ def mask_comments_and_directives(source_text):
 
 
 def normalize_declaration(declaration):
-    """Collapse declaration whitespace into its stable comparison form."""
-    return " ".join(declaration.split())
+    """Canonicalize declaration whitespace into its stable comparison form."""
+    normalized_declaration = " ".join(declaration.split())
+    normalized_declaration = re.sub(r"\s*([*&]+)\s*", r"\1 ", normalized_declaration)
+    normalized_declaration = re.sub(r"\(\*\s+", "(*", normalized_declaration)
+    normalized_declaration = re.sub(r"\s+([,);\]])", r"\1", normalized_declaration)
+    normalized_declaration = re.sub(r"\s*,\s*", ", ", normalized_declaration)
+    normalized_declaration = re.sub(r"\[\s*([^]]*?)\s*\]", r"[\1]", normalized_declaration)
+    return normalized_declaration
 
 
 def lexical_delimiters(source_text):
@@ -428,16 +435,21 @@ def findings_for_file(source_path, repository_root):
 
 
 def load_exceptions(exception_path):
-    """Load permitted reasons keyed by normalized markdown-table declarations."""
+    """Load contracted exceptions keyed by owner path and normalized declaration."""
     if not exception_path.exists():
         return {}
 
     exceptions = {}
     for line in exception_path.read_text(encoding="utf-8").splitlines():
-        columns = [column.strip().strip("`") for column in line.strip().strip("|").split("|")]
-        if len(columns) < 2 or columns[1] not in ALLOWED_REASONS:
+        columns = [
+            html.unescape(column.strip().strip("`"))
+            for column in line.strip().strip("|").split("|")
+        ]
+        if len(columns) < 4 or columns[2] not in ALLOWED_REASONS or not columns[3]:
             continue
-        exceptions[normalize_declaration(columns[0])] = columns[1]
+        owner_path = pathlib.PurePosixPath(columns[0]).as_posix()
+        declaration = normalize_declaration(columns[1])
+        exceptions[(owner_path, declaration)] = columns[2]
     return exceptions
 
 
@@ -456,7 +468,8 @@ def main():
     unclassified_findings = []
     for display_path, source_line, declaration in findings:
         print(f"{display_path}:{source_line}: {declaration}")
-        if declaration not in exceptions:
+        exception_key = (display_path.as_posix(), declaration)
+        if exception_key not in exceptions:
             unclassified_findings.append((display_path, source_line, declaration))
 
     if arguments.check and unclassified_findings:

@@ -27,7 +27,7 @@
 
 /* extern variables */
 extern struct room_data world;
-extern const char* const drinks[];
+extern const std::string_view drinks[];
 extern int drink_aff[][3];
 ACMD(do_twohand);
 
@@ -72,9 +72,9 @@ void name_to_drinkcon(struct obj_data* obj, int type)
 {
     char* new_name;
     extern struct obj_data* obj_proto;
-    extern const char* const drinknames[];
+    extern const std::string_view drinknames[];
 
-    CREATE(new_name, char, strlen(obj->name) + strlen(drinknames[type]) + 2);
+    CREATE(new_name, char, strlen(obj->name) + drinknames[type].size() + 2);
     strcpy(new_name, std::format("{} {}", drinknames[type], obj->name).c_str());
     if (obj->item_number < 0 || obj->name != obj_proto[obj->item_number].name)
         RELEASE(obj->name);
@@ -473,7 +473,7 @@ ACMD(do_pour)
 
 void wear_message(struct char_data* ch, struct obj_data* obj, int where)
 {
-    const char* const wear_messages[][2] = {
+    const std::string_view wear_messages[][2] = {
         { "$n lights $p and holds it.",
             "You light $p and hold it." },
 
@@ -543,7 +543,7 @@ void wear_message(struct char_data* ch, struct obj_data* obj, int where)
             "You fasten $p on your belt." }
     };
 
-    const char* const beorn_wear_messages[][2] = {
+    const std::string_view beorn_wear_messages[][2] = {
         { "$n lights $p and holds it.",
             "You light $p and hold it." },
 
@@ -701,7 +701,7 @@ void perform_wear(char_data* character, obj_data* item, int item_slot, bool wear
         ITEM_WEAR_BELT
     };
 
-    static const char* already_wearing_messages[] = {
+    static const std::string_view already_wearing_messages[] = {
         "You're already using a light.\n\r",
         "YOU SHOULD NEVER SEE THIS MESSAGE.  PLEASE REPORT.\n\r",
         "You're already wearing something on both of your ring fingers.\n\r",
@@ -726,7 +726,7 @@ void perform_wear(char_data* character, obj_data* item, int item_slot, bool wear
         "There is no more room on your belt.\n\r"
     };
 
-    static const char* beorn_already_wearing_message[] = {
+    static const std::string_view beorn_already_wearing_message[] = {
         "You're already using a light.\n\r",
         "YOU SHOULD NEVER SEE THIS MESSAGE.  PLEASE REPORT.\n\r",
         "You're already wearing something on both of your paws.\n\r",
@@ -822,7 +822,7 @@ int find_eq_pos(struct char_data* ch, struct obj_data* obj, char* arg)
 {
     int where = -1;
 
-    static const char* const keywords[] = {
+    static const std::string_view keywords[] = {
         "!RESERVED!",
         "finger",
         "!RESERVED!",

@@ -468,7 +468,7 @@ void shopping_list(char* arg, struct char_data* ch,
 {
     char buf[MAX_STRING_LENGTH], buf2[100], buf3[100];
     struct obj_data* temp1;
-    extern const char* const drinks[];
+    extern const std::string_view drinks[];
     int found_obj;
     int count;
 

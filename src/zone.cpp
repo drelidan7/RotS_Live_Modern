@@ -67,7 +67,7 @@ void load_zones(FILE* fl)
     int cmd_no;
     char buf[81], command;
     struct owner_list* owner;
-    extern char* fread_string(FILE*, const char*);
+    extern char* fread_string(FILE*, std::string_view);
 
     memset(&zone_table[zone_load_cursor], 0, sizeof(struct zone_data));
     fscanf(fl, " #%d\n", &zone_table[zone_load_cursor].number);

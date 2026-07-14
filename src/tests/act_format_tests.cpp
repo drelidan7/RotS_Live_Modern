@@ -57,11 +57,11 @@ void give_share(char_data* sender, char_data* receiver, int share_amount);
 extern struct prompt_type prompt_hit[];
 extern struct prompt_type prompt_mana[];
 extern struct prompt_type prompt_move[];
-extern const char* const casting[];
-// Must match the consts.cpp definition's type exactly (const char* const):
+extern const std::string_view casting[];
+// Must match the consts.cpp definition's type exactly (std::string_view):
 // MSVC mangles a variable's type into its decorated name, so a missing
 // top-level const links fine on GNU/Itanium but is LNK2001 on Windows.
-extern const char* const specialize_name[];
+extern const std::string_view specialize_name[];
 
 void clear_char(struct char_data* ch, int mode);
 

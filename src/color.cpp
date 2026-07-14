@@ -1,6 +1,9 @@
 /* color.cc */
 
 #include <ctype.h>
+#include <algorithm>
+#include <charconv>
+#include <cstring>
 #include <cstdio>
 #include <format>
 #include <limits>
@@ -22,7 +25,7 @@ namespace {
 
     const char* ansi_background_sequence(int color_index)
     {
-        static const char* background_sequences[] = {
+        static const std::string_view background_sequences[] = {
             "\x1B[49m",
             "\x1B[41m",
             "\x1B[42m",
@@ -42,7 +45,7 @@ namespace {
 
         if (color_index < 0 || color_index >= 15)
             return "\x1B[49m";
-        return background_sequences[color_index];
+        return background_sequences[color_index].data();
     }
 
     void sync_color_slot_foreground_from_ansi(struct char_prof_data* profs, int col)
@@ -54,22 +57,20 @@ namespace {
         profs->color_settings[col].foreground.ansi = static_cast<unsigned char>(profs->colors[col]);
     }
 
-    void append_escape(char* buffer, size_t buffer_size, size_t* length, const char* escape_sequence)
+    void append_escape(char* buffer, size_t buffer_size, size_t* length,
+        std::string_view escape_sequence)
     {
-        if (buffer == nullptr || buffer_size == 0 || length == nullptr || escape_sequence == nullptr)
+        if (buffer == nullptr || buffer_size == 0 || length == nullptr)
             return;
 
         const size_t remaining = (*length < buffer_size) ? (buffer_size - *length) : 0;
         if (remaining == 0)
             return;
 
-        const int written = snprintf(buffer + *length, remaining, "%s", escape_sequence);
-        if (written <= 0)
-            return;
-
-        *length += static_cast<size_t>(written);
-        if (*length >= buffer_size)
-            *length = buffer_size - 1;
+        const size_t copied_length = std::min(escape_sequence.size(), remaining - 1);
+        std::memcpy(buffer + *length, escape_sequence.data(), copied_length);
+        *length += copied_length;
+        buffer[*length] = '\0';
     }
 
     void append_truecolor_escape(char* buffer, size_t buffer_size, size_t* length, bool foreground, const color_value_data& value)
@@ -99,16 +100,17 @@ namespace {
         return slot.background.mode != COLOR_VALUE_DEFAULT;
     }
 
-    bool parse_integer_token(const char* token, int* value)
+    bool parse_integer_token(std::string_view token, int* value)
     {
-        if (token == nullptr || value == nullptr || *token == '\0')
+        token = rots::text::truncate_at_null(token);
+        if (value == nullptr || token.empty())
             return false;
 
-        char* end = nullptr;
-        const long parsed = strtol(token, &end, 10);
-        if (end == token || *end != '\0')
+        int parsed = 0;
+        const auto parse_result = std::from_chars(token.data(), token.data() + token.size(), parsed);
+        if (parse_result.ec != std::errc() || parse_result.ptr != token.data() + token.size())
             return false;
-        *value = static_cast<int>(parsed);
+        *value = parsed;
         return true;
     }
 
@@ -151,20 +153,20 @@ namespace {
         return (high_value << 4) | low_value;
     }
 
-    bool parse_hex_triplet(const char* token, int* red, int* green, int* blue)
+    bool parse_hex_triplet(std::string_view token, int* red, int* green, int* blue)
     {
-        if (token == nullptr || red == nullptr || green == nullptr || blue == nullptr)
+        token = rots::text::truncate_at_null(token);
+        if (red == nullptr || green == nullptr || blue == nullptr)
             return false;
 
-        const char* value = token;
-        if (*value == '#')
-            ++value;
-        if (strlen(value) != 6)
+        if (token.starts_with('#'))
+            token.remove_prefix(1);
+        if (token.size() != 6)
             return false;
 
-        const int parsed_red = parse_hex_channel(value[0], value[1]);
-        const int parsed_green = parse_hex_channel(value[2], value[3]);
-        const int parsed_blue = parse_hex_channel(value[4], value[5]);
+        const int parsed_red = parse_hex_channel(token[0], token[1]);
+        const int parsed_green = parse_hex_channel(token[2], token[3]);
+        const int parsed_blue = parse_hex_channel(token[4], token[5]);
         if (parsed_red < 0 || parsed_green < 0 || parsed_blue < 0)
             return false;
 
@@ -188,12 +190,12 @@ namespace {
         }
 
         if (value.mode == COLOR_VALUE_ANSI16) {
-            snprintf(buffer, buffer_size, "ansi %s", color_color[value.ansi]);
+            snprintf(buffer, buffer_size, "ansi %s", color_color[value.ansi].data());
             return;
         }
 
         if (fallback_ansi != CNRM)
-            snprintf(buffer, buffer_size, "ansi %s", color_color[fallback_ansi]);
+            snprintf(buffer, buffer_size, "ansi %s", color_color[fallback_ansi].data());
         else
             snprintf(buffer, buffer_size, "default");
     }
@@ -234,7 +236,7 @@ namespace {
     // accumulation under glibc, but is undefined behavior in the general
     // case (see upstream/sprintf-replacement's incremental-snprintf fix for
     // the same pattern in an earlier version of this file).
-    std::string join_with_leading_spaces(const char* const* names, int count)
+    std::string join_with_leading_spaces(const std::string_view* names, int count)
     {
         std::string joined;
         for (int index = 0; index < count; ++index)
@@ -244,7 +246,7 @@ namespace {
 
 } // namespace
 
-const char* color_fields[] = {
+const std::string_view color_fields[] = {
     "narrate",
     "chat",
     "yell",
@@ -281,11 +283,11 @@ static void show_color_slot_summary(struct char_data* ch, int slot)
     char background[64];
     describe_color_value(ch->profs->color_settings[slot].foreground, ch->profs->colors[slot], foreground, sizeof(foreground));
     describe_color_value(ch->profs->color_settings[slot].background, CNRM, background, sizeof(background));
-    snprintf(buf, sizeof(buf), "%11s: fg %s bg %s\n\r", color_fields[slot], foreground, background);
+    snprintf(buf, sizeof(buf), "%11s: fg %s bg %s\n\r", color_fields[slot].data(), foreground, background);
     send_to_char(buf, ch);
 }
 
-const char* color_color[] = {
+const std::string_view color_color[] = {
     "normal",
     "red",
     "green",
@@ -306,7 +308,7 @@ const char* color_color[] = {
 
 int num_of_colors = sizeof(color_color) / sizeof(color_color[0]);
 
-const char* const color_sequence[] = {
+const std::string_view color_sequence[] = {
     "\x1B[0m",
     "\x1B[31m",
     "\x1B[32m",
@@ -600,10 +602,12 @@ ACMD(do_color)
             if (foreground) {
                 ch->profs->color_settings[num].foreground = color_value_data {};
                 ch->profs->colors[num] = CNRM;
-                vsend_to_char(ch, "You set %s foreground to default.\n\r", color_fields[num]);
+                vsend_to_char(
+                    ch, "You set %s foreground to default.\n\r", color_fields[num].data());
             } else {
                 clear_color_background(ch, num);
-                vsend_to_char(ch, "You set %s background to default.\n\r", color_fields[num]);
+                vsend_to_char(
+                    ch, "You set %s background to default.\n\r", color_fields[num].data());
             }
             return;
         }
@@ -622,10 +626,12 @@ ACMD(do_color)
             if (foreground) {
                 set_colornum(ch, num, col);
                 vsend_to_char(ch, "You set %s foreground to %s%s%s.\n\r",
-                    color_fields[num], CC_USE(ch, num), color_color[col], CC_NORM(ch));
+                    color_fields[num].data(), CC_USE(ch, num), color_color[col].data(),
+                    CC_NORM(ch));
             } else {
                 set_ansi_background(ch, num, col);
-                vsend_to_char(ch, "You set %s background to %s.\n\r", color_fields[num], color_color[col]);
+                vsend_to_char(ch, "You set %s background to %s.\n\r", color_fields[num].data(),
+                    color_color[col].data());
             }
             return;
         }
@@ -643,10 +649,12 @@ ACMD(do_color)
 
             if (foreground) {
                 set_truecolor_foreground(ch, num, red, green, blue);
-                vsend_to_char(ch, "You set %s foreground to #%02X%02X%02X.\n\r", color_fields[num], red, green, blue);
+                vsend_to_char(ch, "You set %s foreground to #%02X%02X%02X.\n\r",
+                    color_fields[num].data(), red, green, blue);
             } else {
                 set_truecolor_background(ch, num, red, green, blue);
-                vsend_to_char(ch, "You set %s background to #%02X%02X%02X.\n\r", color_fields[num], red, green, blue);
+                vsend_to_char(ch, "You set %s background to #%02X%02X%02X.\n\r",
+                    color_fields[num].data(), red, green, blue);
             }
             return;
         }
@@ -660,10 +668,12 @@ ACMD(do_color)
 
             if (foreground) {
                 set_truecolor_foreground(ch, num, red, green, blue);
-                vsend_to_char(ch, "You set %s foreground to #%02X%02X%02X.\n\r", color_fields[num], red, green, blue);
+                vsend_to_char(ch, "You set %s foreground to #%02X%02X%02X.\n\r",
+                    color_fields[num].data(), red, green, blue);
             } else {
                 set_truecolor_background(ch, num, red, green, blue);
-                vsend_to_char(ch, "You set %s background to #%02X%02X%02X.\n\r", color_fields[num], red, green, blue);
+                vsend_to_char(ch, "You set %s background to #%02X%02X%02X.\n\r",
+                    color_fields[num].data(), red, green, blue);
             }
             return;
         }
@@ -687,8 +697,8 @@ ACMD(do_color)
     set_colornum(ch, num, col);
 
     vsend_to_char(ch, "You colour %s %s%s%s.\n\r",
-        color_fields[num],
+        color_fields[num].data(),
         CC_USE(ch, num),
-        color_color[col],
+        color_color[col].data(),
         CC_NORM(ch));
 }

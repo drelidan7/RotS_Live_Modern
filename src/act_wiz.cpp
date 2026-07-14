@@ -33,6 +33,7 @@
 #include "profs.h"
 #include "protos.h"
 #include "spells.h"
+#include "text_view.h"
 #include "structs.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
@@ -75,38 +76,38 @@ extern unsigned long stat_whitie_legend_counter;
 extern unsigned long stat_darkie_legend_counter;
 
 /* for objects */
-extern const char* const item_types[];
-extern const char* const wear_bits[];
-extern const char* const extra_bits[];
-extern const char* const drinks[];
+extern const std::string_view item_types[];
+extern const std::string_view wear_bits[];
+extern const std::string_view extra_bits[];
+extern const std::string_view drinks[];
 
 /* for rooms */
-extern const char* const dirs[];
-extern const char* const room_bits[];
-extern const char* const exit_bits[];
-extern const char* const sector_types[];
+extern const std::string_view dirs[];
+extern const std::string_view room_bits[];
+extern const std::string_view exit_bits[];
+extern const std::string_view sector_types[];
 
 /* for chars */
 extern struct skill_data skills[];
-extern const char* const equipment_types[];
-extern const char* const affected_bits[];
-extern const char* const apply_types[];
-extern const char* const pc_prof_types[];
-extern const char* const npc_prof_types[];
-extern const char* const action_bits[];
-extern const char* const player_bits[];
-extern const char* const preference_bits[];
-extern const char* const position_types[];
-extern const char* const connected_types[];
+extern const std::string_view equipment_types[];
+extern const std::string_view affected_bits[];
+extern const std::string_view apply_types[];
+extern const std::string_view pc_prof_types[];
+extern const std::string_view npc_prof_types[];
+extern const std::string_view action_bits[];
+extern const std::string_view player_bits[];
+extern const std::string_view preference_bits[];
+extern const std::string_view position_types[];
+extern const std::string_view connected_types[];
 extern byte language_skills[];
 extern int num_of_object_materials;
-extern const char* const object_materials[];
-extern const char* const mobile_program_base[];
+extern const std::string_view object_materials[];
+extern const std::string_view mobile_program_base[];
 extern char** mobile_program;
 extern int* mobile_program_zone;
 extern int num_of_programs;
-extern const char* const resistance_name[];
-extern const char* const vulnerability_name[];
+extern const std::string_view resistance_name[];
+extern const std::string_view vulnerability_name[];
 /* external functs */
 
 // char *crypt(const char *key, const char *salt);
@@ -746,7 +747,7 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
     struct affected_type* aff;
     struct memory_rec* tmprec;
 
-    extern const char* const specialize_name[];
+    extern const std::string_view specialize_name[];
 
     if ((GET_LEVEL(ch) < LEVEL_AREAGOD) && (!IS_NPC(k))) {
         send_to_char("You can't do this.\n\r", ch);
@@ -1208,14 +1209,15 @@ namespace {
 // its modification time if it does, without disturbing existing content.
 // Replaces system("touch <path>") sites below; that call's return value was
 // never checked, so failures here are equally silent (errors discarded).
-void touch_file(const char* path)
+void touch_file(std::string_view path)
 {
+    const std::string path_owner(rots::text::truncate_at_null(path));
     namespace fs = std::filesystem;
     std::error_code ec;
-    if (!fs::exists(path, ec))
-        std::ofstream(path, std::ios::out).close();
+    if (!fs::exists(path_owner, ec))
+        std::ofstream(path_owner, std::ios::out).close();
 
-    fs::last_write_time(path, fs::file_time_type::clock::now(), ec);
+    fs::last_write_time(path_owner, fs::file_time_type::clock::now(), ec);
 }
 
 } // namespace
@@ -1846,7 +1848,7 @@ ACMD(do_wizlock)
 {
     int value;
     const char* when;
-    extern const char* const wizlock_default;
+    extern const std::string_view wizlock_default;
 
     half_chop(argument, buf, buf2);
     if (*buf) {
@@ -1863,7 +1865,7 @@ ACMD(do_wizlock)
     if (*buf2) {
         wizlock_msg = std::format("{}\n\r", static_cast<const char*>(buf2));
     } else {
-        wizlock_msg = wizlock_default;
+            wizlock_msg.assign(wizlock_default);
     }
 
     switch (restrict) {
@@ -1934,7 +1936,7 @@ ACMD(do_uptime)
 ACMD(do_last)
 {
     struct char_file_u chdata;
-    extern const char* const race_abbrevs[];
+    extern const std::string_view race_abbrevs[];
 
     if (IS_NPC(ch))
         return;
@@ -2442,8 +2444,8 @@ ACMD(do_show)
     char field[40], value[40], birth[80];
     universal_list* tmplist;
 
-    extern const char* const prof_abbrevs[];
-    extern const char* const genders[];
+    extern const std::string_view prof_abbrevs[];
+    extern const std::string_view genders[];
     extern int buf_switches, buf_largecount, buf_overflows;
     extern int memory_rec_counter;
     extern universal_list* affected_list;
@@ -3470,23 +3472,22 @@ ACMD(do_account)
 
 namespace {
 
-std::string sanitize_whoacct_field(const char* value)
+std::string sanitize_whoacct_field(std::string_view value)
 {
-    if (value == nullptr)
-        return "";
+    value = rots::text::truncate_at_null(value);
 
     std::string sanitized;
-    sanitized.reserve(strlen(value));
+    sanitized.reserve(value.size());
 
-    for (const unsigned char* cursor = reinterpret_cast<const unsigned char*>(value);
-        *cursor != '\0'; ++cursor) {
-        if (*cursor == '\r' || *cursor == '\n' || *cursor == '\t') {
+    for (const char raw_character : value) {
+        const unsigned char character = static_cast<unsigned char>(raw_character);
+        if (character == '\r' || character == '\n' || character == '\t') {
             sanitized += ' ';
             continue;
         }
 
-        if (isprint(*cursor))
-            sanitized += static_cast<char>(*cursor);
+        if (isprint(character))
+            sanitized += static_cast<char>(character);
         else
             sanitized += '?';
     }

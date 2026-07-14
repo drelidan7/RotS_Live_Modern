@@ -26,6 +26,7 @@
 #include "pkill.h"
 #include "spells.h"
 #include "structs.h"
+#include "text_view.h"
 #include "utils.h"
 #include "account_management.h"
 #include "objects_json.h"
@@ -37,6 +38,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -76,7 +78,7 @@ SPECIAL(cryogenicist);
 void Crash_alias_load(struct char_data* ch, const objects_json::ObjectSaveData& data);
 void Crash_follower_load(struct char_data* ch, const objects_json::ObjectSaveData& data);
 int calc_load_room(struct char_data* ch, int load_result);
-int Crash_get_filename(const char* orig_name, char* filename);
+int Crash_get_filename(std::string_view original_name, char* filename);
 
 FILE* fd;
 int Crash_is_unrentable(struct obj_data* obj);
@@ -142,12 +144,13 @@ bool read_open_file_contents(FILE* file, std::string* bytes)
     return true;
 }
 
-bool read_binary_file_contents(const char* path, std::string* bytes)
+bool read_binary_file_contents(std::string_view path, std::string* bytes)
 {
-    if (path == nullptr || bytes == nullptr)
+    if (bytes == nullptr)
         return false;
 
-    FILE* file = std::fopen(path, "rb");
+    const std::string path_owner(rots::text::truncate_at_null(path));
+    FILE* file = std::fopen(path_owner.c_str(), "rb");
     if (file == nullptr)
         return false;
 
@@ -194,16 +197,15 @@ namespace {
 // path helper, added in this task) doesn't duplicate the bucket switch.
 // Returns "" for an empty name; otherwise "plrobjs/<BUCKET>/<lowercased-name>"
 // with no extension.
-std::string player_object_bucket_path(const char* orig_name)
+std::string player_object_bucket_path(std::string_view original_name)
 {
-    if (orig_name == nullptr || !*orig_name)
+    original_name = rots::text::truncate_at_null(original_name);
+    if (original_name.empty())
         return std::string();
 
-    char name[30];
-    strncpy(name, orig_name, sizeof(name) - 1);
-    name[sizeof(name) - 1] = '\0';
-    for (char* ptr = name; *ptr; ptr++)
-        *ptr = static_cast<char>(tolower(static_cast<unsigned char>(*ptr)));
+    std::string name(original_name.substr(0, 29));
+    for (char& character : name)
+        character = static_cast<char>(tolower(static_cast<unsigned char>(character)));
 
     const char* bucket;
     switch (name[0]) {
@@ -253,9 +255,9 @@ std::string player_object_bucket_path(const char* orig_name)
 
 } // namespace
 
-int Crash_get_filename(const char* orig_name, char* filename)
+int Crash_get_filename(std::string_view original_name, char* filename)
 {
-    const std::string base = player_object_bucket_path(orig_name);
+    const std::string base = player_object_bucket_path(original_name);
     if (base.empty())
         return 0;
 
@@ -267,7 +269,7 @@ int Crash_get_filename(const char* orig_name, char* filename)
 // same bucket directory as the legacy .obj file, ".objs.json" extension.
 // Shared by write_player_objects_json (the sole writer) and Crash_load's
 // reader-order-first check.
-std::string player_objects_json_path(const char* player_name)
+std::string player_objects_json_path(std::string_view player_name)
 {
     const std::string base = player_object_bucket_path(player_name);
     if (base.empty())
@@ -283,9 +285,10 @@ std::string player_objects_json_path(const char* player_name)
 // characters (best-effort -- a mirror failure is logged but does not fail
 // the primary save, matching the old refresh_account_backed_object_file's
 // best-effort semantics).
-bool write_player_objects_json(const char* player_name, const objects_json::ObjectSaveData& data, std::string* error)
+bool write_player_objects_json(std::string_view player_name, const objects_json::ObjectSaveData& data, std::string* error)
 {
-    if (player_name == nullptr || !*player_name) {
+    player_name = rots::text::truncate_at_null(player_name);
+    if (player_name.empty()) {
         if (error)
             *error = "Player name must not be empty.";
         return false;
@@ -337,14 +340,15 @@ bool write_player_objects_json(const char* player_name, const objects_json::Obje
     return true;
 }
 
-FILE* Crash_get_file_by_name(const char* name, const char* mode)
+FILE* Crash_get_file_by_name(std::string_view name, std::string_view mode)
 {
     FILE* fp;
 
     if (!Crash_get_filename(name, buf))
         return 0;
-    if (!(fp = fopen(buf, mode))) {
-        const bool suppress_missing_read_side_file = (errno == ENOENT) && (mode != nullptr) && (mode[0] == 'r');
+    const std::string mode_owner(rots::text::truncate_at_null(mode));
+    if (!(fp = fopen(buf, mode_owner.c_str()))) {
+        const bool suppress_missing_read_side_file = (errno == ENOENT) && !mode_owner.empty() && (mode_owner[0] == 'r');
         if (!suppress_missing_read_side_file) {
             log(std::format("SYSERR: unable to open crashsave file '{}' for {}: {}", buf, name,
                 strerror(errno))
@@ -355,7 +359,7 @@ FILE* Crash_get_file_by_name(const char* name, const char* mode)
     return fp;
 }
 
-int Crash_delete_file(const char* name)
+int Crash_delete_file(std::string_view name)
 {
 
     char filename[50];
@@ -1561,7 +1565,7 @@ int gen_receptionist(struct char_data* ch, int cmd, char* arg, int mode)
     struct char_data* recep = 0;
     struct char_data* tch;
     int save_room;
-    const char* const action_tabel[9] = { "smile ", "twiddle ", "think ", "frown ", "glare ", "pout ", "sneeze ", "stare ", "yawn " };
+    const std::string_view action_tabel[9] = { "smile ", "twiddle ", "think ", "frown ", "glare ", "pout ", "sneeze ", "stare ", "yawn " };
     long rent_deadline;
 
     extern int valid_name(char*);

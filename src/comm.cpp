@@ -9,6 +9,7 @@
  ************************************************************************ */
 
 #include <ctype.h>
+#include <charconv>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -125,21 +126,22 @@ int isbanned(char* hostname);
 
 namespace {
 
-bool parse_port_value(const char* text, sh_int* port, std::string* error_message)
+bool parse_port_value(std::string_view text, sh_int* port, std::string* error_message)
 {
-    if (text == nullptr || *text == '\0') {
+    text = rots::text::truncate_at_null(text);
+    if (text.empty()) {
         if (error_message)
             *error_message = "Port argument expected after option -p.";
         return false;
     }
 
-    if (!isdigit(*text)) {
+    int parsed_port = 0;
+    const auto parse_result = std::from_chars(text.data(), text.data() + text.size(), parsed_port);
+    if (parse_result.ec != std::errc() || parse_result.ptr != text.data() + text.size()) {
         if (error_message)
             *error_message = "Illegal port #";
         return false;
     }
-
-    const int parsed_port = atoi(text);
     if (parsed_port <= 1024) {
         if (error_message)
             *error_message = "Illegal port #";
@@ -398,21 +400,22 @@ bool is_secret_input_state(int connection_state)
 // A duplicate of act_wiz.cpp's helper of the same name -- this codebase's
 // established convention is a private per-TU copy of small file-op helpers
 // rather than new cross-TU coupling (see convert_plrobjs.cpp/convert_exploits.cpp).
-void touch_file(const char* path)
+void touch_file(std::string_view path)
 {
+    const std::string path_owner(rots::text::truncate_at_null(path));
     namespace fs = std::filesystem;
     std::error_code ec;
-    if (!fs::exists(path, ec))
-        std::ofstream(path, std::ios::out).close();
+    if (!fs::exists(path_owner, ec))
+        std::ofstream(path_owner, std::ios::out).close();
 
-    fs::last_write_time(path, fs::file_time_type::clock::now(), ec);
+    fs::last_write_time(path_owner, fs::file_time_type::clock::now(), ec);
 }
 
 } // namespace
 
 ACMD(do_cast);
 SPECIAL(intelligent);
-const char* const wait_wheel[8] = { "\r|\r", "\r\\\r", "\r-\r", "\r/\r", "\r|\r", "\r\\\r", "\r-\r", "\r/\r" };
+const std::string_view wait_wheel[8] = { "\r|\r", "\r\\\r", "\r-\r", "\r/\r", "\r|\r", "\r\\\r", "\r-\r", "\r/\r" };
 
 void sigsegv_handler(int sig)
 {
@@ -713,7 +716,7 @@ void msdp_update()
         MSDPSetNumber(desc, eMDSP_DODGE, get_real_dodge(desc->character));
         MSDPSetNumber(desc, eMDSP_ATTACK_SPEED, utils::get_energy_regen(*desc->character) / 5);
 
-        extern const char* const tactics[];
+        extern const std::string_view tactics[];
         MSDPSetString(desc, eMDSP_TACTIC, tactics[GET_TACTICS(desc->character) - 1]);
 
         MSDPSetNumber(desc, eMDSP_PERCEPTION, GET_PERCEPTION(desc->character));
@@ -727,16 +730,16 @@ void msdp_update()
 
         auto sector_type = world[desc->character->in_room].sector_type;
         auto weather_type = weather_info.sky[sector_type];
-        // const char*, matching weather.cpp's definition exactly (MSVC's
+        // const std::string_view , matching weather.cpp's definition exactly (MSVC's
         // decorated names encode the element type, so the old non-const
         // declaration was a hard LNK2001 there; GCC/Clang linked it silently
         // -- Phase 3 Task 6).
-        extern const char* weather_messages[8][13];
+        extern const std::string_view weather_messages[8][13];
         extern std::string strip_trailing_line_break(std::string_view text);
 
         if (OUTSIDE(desc->character)) {
             MSDPSetString(desc, eMDSP_WEATHER,
-                strip_trailing_line_break(weather_messages[weather_type + 2][sector_type]).c_str());
+                strip_trailing_line_break(weather_messages[weather_type + 2][sector_type]));
         } else {
             MSDPSetString(desc, eMDSP_WEATHER, "You can have no feeling about the weather here.");
         }
@@ -2292,10 +2295,10 @@ void convert_string(std::string_view format_text, int, struct char_data* ch,
                 replacement = fname((char*)vict_obj);
                 break;
             case 'b':
-                replacement = GET_CURRPART(ch);
+                replacement = GET_CURRPART(ch).data();
                 break;
             case 'B':
-                replacement = GET_CURRPART((struct char_data*)vict_obj);
+                replacement = GET_CURRPART((struct char_data*)vict_obj).data();
                 break;
             case '$':
                 replacement = "$";

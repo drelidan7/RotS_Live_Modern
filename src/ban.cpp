@@ -25,7 +25,7 @@
 #include "utils.h"
 
 struct ban_list_element* ban_list = 0;
-extern const char* const ban_types[];
+extern const std::string_view ban_types[];
 
 void load_banned(void)
 {
@@ -51,7 +51,7 @@ void load_banned(void)
         next_node->date = date;
 
         for (i = BAN_NOT; i <= BAN_ALL; i++)
-            if (!strcmp(ban_type, ban_types[i]))
+            if (!str_cmp(ban_type, ban_types[i]))
                 next_node->type = i;
 
         next_node->next = ban_list;
@@ -85,7 +85,7 @@ void _write_one_node(FILE* fp, struct ban_list_element* node)
 {
     if (node) {
         _write_one_node(fp, node->next);
-        fprintf(fp, "%s %s %ld %s\n", ban_types[node->type],
+        fprintf(fp, "%s %s %ld %s\n", ban_types[node->type].data(),
             node->site, node->date, node->name);
     }
 }
@@ -183,7 +183,7 @@ ACMD(do_ban)
     ban_node->date = time(0);
 
     for (i = BAN_NEW; i <= BAN_ALL; i++)
-        if (!str_cmp_nullable(flag, ban_types[i]))
+        if (!str_cmp(flag, ban_types[i]))
             ban_node->type = i;
 
     ban_node->next = ban_list;

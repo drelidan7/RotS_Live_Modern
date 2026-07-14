@@ -44,14 +44,14 @@ extern struct skill_data skills[];
 extern struct room_data world;
 extern byte language_skills[];
 extern byte language_number;
-extern const char* const prof_abbrevs[];
-extern const char* const race_abbrevs[];
+extern const std::string_view prof_abbrevs[];
+extern const std::string_view race_abbrevs[];
 extern int top_of_world;
 extern int rev_dir[];
-extern const char* const dirs[];
+extern const std::string_view dirs[];
 
 /* extern procedures */
-extern int old_search_block(char*, int, unsigned int, const char**, int);
+extern int old_search_block(char*, int, unsigned int, const std::string_view*, int);
 extern void echo_off(SocketType);
 extern int get_followers_level(struct char_data*);
 extern int get_real_stealth(struct char_data*);
@@ -874,7 +874,7 @@ ACMD(do_wimpy)
         send_to_char("At how many hit points do you wish to flee?\n\r", ch);
 }
 
-const char* const logtypes[] = { "off", "brief", "normal", "spell", "complete", "\n" };
+const std::string_view logtypes[] = { "off", "brief", "normal", "spell", "complete", "\n" };
 
 ACMD(do_syslog)
 {
@@ -910,7 +910,7 @@ ACMD(do_syslog)
 
 #define PRF_TOG_CHK(ch, flag) ((TOGGLE_BIT(PRF_FLAGS(ch), (flag))) & (flag))
 
-int flag_on(struct char_data* ch, int flag, const char* const* message, int which)
+int flag_on(struct char_data* ch, int flag, const std::string_view* message, int which)
 {
     if (!which)
         SET_BIT(PRF_FLAGS(ch), (flag));
@@ -921,7 +921,7 @@ int flag_on(struct char_data* ch, int flag, const char* const* message, int whic
     return 1;
 }
 
-int flag_off(struct char_data* ch, int flag, const char* const* message, int which)
+int flag_off(struct char_data* ch, int flag, const std::string_view* message, int which)
 {
     if (!which)
         REMOVE_BIT(PRF_FLAGS(ch), (flag));
@@ -931,7 +931,7 @@ int flag_off(struct char_data* ch, int flag, const char* const* message, int whi
     return 0;
 }
 
-int flag_toggle(struct char_data* ch, int flag, const char* const* message, int which)
+int flag_toggle(struct char_data* ch, int flag, const std::string_view* message, int which)
 {
     int i;
     if (!which) {
@@ -948,7 +948,7 @@ int flag_toggle(struct char_data* ch, int flag, const char* const* message, int 
     return i;
 }
 
-int flag_void(struct char_data* ch, int flag, const char* const* message, int which)
+int flag_void(struct char_data* ch, int flag, const std::string_view* message, int which)
 {
     int i;
     if (!which)
@@ -964,8 +964,8 @@ int flag_void(struct char_data* ch, int flag, const char* const* message, int wh
     return i;
 }
 
-int (*flag_modify)(struct char_data*, int, const char* const*, int);
-const char* const tog_messages[][4] = {
+int (*flag_modify)(struct char_data*, int, const std::string_view*, int);
+const std::string_view tog_messages[][4] = {
     { "You are now safe from summoning by other players.\n\r",
         "You may now be summoned by other players.\n\r",
         "You are safe from summoning by other players.\n\r",
@@ -1174,7 +1174,7 @@ ACMD(do_gen_tog)
     }
 }
 
-extern const char* const casting[];
+extern const std::string_view casting[];
 ACMD(do_casting)
 {
     if (GET_SPEC(ch) != PLRSPEC_ARCANE) {
@@ -1192,7 +1192,7 @@ ACMD(do_casting)
         len = strlen(argument);
 
         for (tmp = 0; casting[tmp][0] != '\n'; tmp++) {
-            if (!strncmp(casting[tmp], argument, len)) {
+            if (!strncmp(casting[tmp].data(), argument, len)) {
                 break;
             }
         }
@@ -1241,7 +1241,7 @@ ACMD(do_casting)
     send_to_char(buf, ch);
 }
 
-extern const char* const shooting[];
+extern const std::string_view shooting[];
 ACMD(do_shooting)
 {
     if (GET_SPEC(ch) != PLRSPEC_ARCH) {
@@ -1260,7 +1260,7 @@ ACMD(do_shooting)
         len = strlen(argument);
 
         for (tmp = 0; shooting[tmp][0] != '\n'; tmp++) {
-            if (!strncmp(shooting[tmp], argument, len)) {
+            if (!strncmp(shooting[tmp].data(), argument, len)) {
                 break;
             }
         }
@@ -1417,7 +1417,7 @@ ACMD(do_inventory_sort)
     }
 }
 
-extern const char* const tactics[];
+extern const std::string_view tactics[];
 ACMD(do_tactics)
 {
     const char* s1 = "You are presently employing";
@@ -1437,7 +1437,7 @@ ACMD(do_tactics)
         len = strlen(argument);
 
         for (tmp = 0; tactics[tmp][0] != '\n'; tmp++)
-            if (!strncmp(tactics[tmp], argument, len))
+            if (!strncmp(tactics[tmp].data(), argument, len))
                 break;
 
         if (tactics[tmp][0] == '\n') {
@@ -1569,7 +1569,7 @@ ACMD(do_language)
 
 #define SORTING_COMMAND_INDEX 30
 
-const char* const change_comm[] = {
+const std::string_view change_comm[] = {
     "prompt", /* 0 */
     "tactics", "nosummon", "echo", "brief", "spam", /* 5 */
     "compact", "notell", "narrate", "chat", "title", /* 10 */
@@ -1607,7 +1607,7 @@ ACMD(do_set)
     }
 
     for (change_index = 0; change_comm[change_index][0] != '\n'; change_index++)
-        if (!strncmp(change_comm[change_index], command, len))
+        if (!strncmp(change_comm[change_index].data(), command, len))
             break;
 
     if (change_comm[change_index][0] == '\n') {
@@ -1920,7 +1920,7 @@ ACMD(do_block)
     len = strlen(str);
 
     for (tmp = 0; tmp < NUM_OF_DIRS; tmp++)
-        if (!strncmp(dirs[tmp], str, len))
+        if (!strncmp(dirs[tmp].data(), str, len))
             break;
 
     if (tmp < NUM_OF_DIRS) {
@@ -1951,7 +1951,7 @@ ACMD(do_block)
 
 ACMD(do_specialize)
 {
-    extern const char* const specialize_name[];
+    extern const std::string_view specialize_name[];
 
     if (GET_LEVEL(ch) < 12) {
         send_to_char("You are too young to specialize.\n\r", ch);
@@ -1975,7 +1975,7 @@ ACMD(do_specialize)
 
         for (int index = 1; index < num_of_specializations; index++) {
             // If the strings are equal.
-            if (strncmp(specialize_name[index], spec_argument, len) == 0) {
+            if (strncmp(specialize_name[index].data(), spec_argument, len) == 0) {
                 game_types::player_specs spec = game_types::player_specs(index);
                 if (spec == game_types::PS_Count)
                     return;

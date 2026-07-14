@@ -44,6 +44,8 @@
 #include <string.h>
 #include <time.h>
 
+#include <algorithm>
+#include <cstring>
 #include <format>
 #include <string>
 
@@ -98,7 +100,11 @@ void write_packet(descriptor_t* descriptor, std::string_view packet)
 }
 #endif
 
-static void ReportBug(const char* apText) { vmudlog(NRM, apText); }
+static void ReportBug(std::string_view text)
+{
+    const std::string format_owner(rots::text::truncate_at_null(text));
+    vmudlog(NRM, format_owner.c_str());
+}
 
 static void InfoMessage(descriptor_t* apDescriptor, char* apData)
 {
@@ -259,27 +265,27 @@ static void SendNegotiationSequence(descriptor_t* apDescriptor, char aCmd, char 
 static bool ConfirmNegotiation(descriptor_t* apDescriptor, negotiated_t aProtocol, bool abWillDo,
     bool abSendReply);
 
-static void ParseMSDP(descriptor_t* apDescriptor, const char* apData);
-static void ExecuteMSDPPair(descriptor_t* apDescriptor, const char* apVariable,
-    const char* apValue);
+static void ParseMSDP(descriptor_t* apDescriptor, std::string_view data);
+static void ExecuteMSDPPair(descriptor_t* apDescriptor, std::string_view variable,
+    std::string_view value);
 
-static void ParseATCP(descriptor_t* apDescriptor, const char* apData);
+static void ParseATCP(descriptor_t* apDescriptor, std::string_view data);
 #ifdef MUDLET_PACKAGE
-static void SendATCP(descriptor_t* apDescriptor, const char* apVariable, const char* apValue);
+static void SendATCP(descriptor_t* apDescriptor, std::string_view variable, std::string_view value);
 #endif /* MUDLET_PACKAGE */
 
 static void SendMSSP(descriptor_t* apDescriptor);
 
-static char* GetMxpTag(const char* apTag, const char* apText);
+static char* GetMxpTag(std::string_view tag, std::string_view text);
 
 static const char* GetAnsiColour(bool abBackground, int aRed, int aGreen, int aBlue);
 static const char* GetRGBColour(bool abBackground, int aRed, int aGreen, int aBlue);
-static bool IsValidColour(const char* apArgument);
+static bool IsValidColour(std::string_view argument);
 
-static bool MatchString(const char* apFirst, const char* apSecond);
-static bool PrefixString(const char* apPart, const char* apWhole);
-static bool IsNumber(const char* apString);
-static char* AllocString(const char* apString);
+static bool MatchString(std::string_view first, std::string_view second);
+static bool PrefixString(std::string_view part, std::string_view whole);
+static bool IsNumber(std::string_view value);
+static char* AllocString(std::string_view value);
 
 /******************************************************************************
  ANSI colour codes.
@@ -1118,17 +1124,18 @@ const char* CopyoverGet(descriptor_t* apDescriptor)
     return Buffer;
 }
 
-void CopyoverSet(descriptor_t* apDescriptor, const char* apData)
+void CopyoverSet(descriptor_t* apDescriptor, std::string_view data)
 {
+    data = rots::text::truncate_at_null(data);
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
-    if (pProtocol != NULL && apData != NULL) {
+    if (pProtocol != NULL) {
         int Width = 0, Height = 0;
         bool bDoneWidth = false;
         int i; /* Loop counter */
 
-        for (i = 0; apData[i] != '\0'; ++i) {
-            switch (apData[i]) {
+        for (i = 0; static_cast<std::size_t>(i) < data.size(); ++i) {
+            switch (data[static_cast<std::size_t>(i)]) {
             case 'T':
                 pProtocol->bTTYPE = true;
                 break;
@@ -1161,16 +1168,16 @@ void CopyoverSet(descriptor_t* apDescriptor, const char* apData)
                 pProtocol->pVariables[eMSDP_UTF_8]->ValueInt = 1;
                 break;
             default:
-                if (apData[i] == '/')
+                if (data[static_cast<std::size_t>(i)] == '/')
                     bDoneWidth = true;
-                else if (isdigit(apData[i])) {
+                else if (isdigit(static_cast<unsigned char>(data[static_cast<std::size_t>(i)]))) {
                     if (bDoneWidth) {
                         Height *= 10;
-                        Height += (apData[i] - '0');
+                        Height += (data[static_cast<std::size_t>(i)] - '0');
                     } else /* We're still calculating height */
                     {
                         Width *= 10;
-                        Width += (apData[i] - '0');
+                        Width += (data[static_cast<std::size_t>(i)] - '0');
                     }
                 }
                 break;
@@ -1469,22 +1476,24 @@ void MSDPSetString(descriptor_t* apDescriptor, variable_t aMSDP, std::string_vie
     }
 }
 
-void MSDPSetTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue)
+void MSDPSetTable(descriptor_t* apDescriptor, variable_t aMSDP, std::string_view value)
 {
+    value = rots::text::truncate_at_null(value);
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
-    if (pProtocol != NULL && apValue != NULL && MSDPIsValidVariable(aMSDP)) {
-        if (*apValue == '\0') {
+    if (pProtocol != NULL && MSDPIsValidVariable(aMSDP)) {
+        if (value.empty()) {
             /* It's easier to call MSDPSetString if the value is empty */
-            MSDPSetString(apDescriptor, aMSDP, apValue);
+            MSDPSetString(apDescriptor, aMSDP, value);
         } else if (VariableNameTable[aMSDP].bString) {
             const char MsdpTableStart[] = { (char)MSDP_TABLE_OPEN, '\0' };
             const char MsdpTableStop[] = { (char)MSDP_TABLE_CLOSE, '\0' };
 
-            char* pTable = (char*)malloc(strlen(apValue) + 3); /* 3: START, STOP, NUL */
+            char* pTable = (char*)malloc(value.size() + 3); /* 3: START, STOP, NUL */
 
             strcpy(pTable, MsdpTableStart);
-            strcat(pTable, apValue);
+            std::memcpy(pTable + 1, value.data(), value.size());
+            pTable[value.size() + 1] = '\0';
             strcat(pTable, MsdpTableStop);
 
             if (strcmp(pProtocol->pVariables[aMSDP]->pValueString, pTable)) {
@@ -1499,22 +1508,24 @@ void MSDPSetTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apVa
     }
 }
 
-void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue)
+void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, std::string_view value)
 {
+    value = rots::text::truncate_at_null(value);
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
-    if (pProtocol != NULL && apValue != NULL && MSDPIsValidVariable(aMSDP)) {
-        if (*apValue == '\0') {
+    if (pProtocol != NULL && MSDPIsValidVariable(aMSDP)) {
+        if (value.empty()) {
             /* It's easier to call MSDPSetString if the value is empty */
-            MSDPSetString(apDescriptor, aMSDP, apValue);
+            MSDPSetString(apDescriptor, aMSDP, value);
         } else if (VariableNameTable[aMSDP].bString) {
             const char MsdpTableStart[] = { (char)MSDP_TABLE_OPEN, '\0' };
             const char MsdpTableStop[] = { (char)MSDP_TABLE_CLOSE, '\0' };
 
-            char* pTable = (char*)malloc(strlen(apValue) + 3); /* 3: START, STOP, NUL */
+            char* pTable = (char*)malloc(value.size() + 3); /* 3: START, STOP, NUL */
 
             strcpy(pTable, MsdpTableStart);
-            strcat(pTable, apValue);
+            std::memcpy(pTable + 1, value.data(), value.size());
+            pTable[value.size() + 1] = '\0';
             strcat(pTable, MsdpTableStop);
 
             if (strcmp(pProtocol->pVariables[aMSDP]->pValueString, pTable)) {
@@ -1533,22 +1544,24 @@ void MSDPSendTable(descriptor_t* apDescriptor, variable_t aMSDP, const char* apV
     }
 }
 
-void MSDPSetArray(descriptor_t* apDescriptor, variable_t aMSDP, const char* apValue)
+void MSDPSetArray(descriptor_t* apDescriptor, variable_t aMSDP, std::string_view value)
 {
+    value = rots::text::truncate_at_null(value);
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
-    if (pProtocol != NULL && apValue != NULL && MSDPIsValidVariable(aMSDP)) {
-        if (*apValue == '\0') {
+    if (pProtocol != NULL && MSDPIsValidVariable(aMSDP)) {
+        if (value.empty()) {
             /* It's easier to call MSDPSetString if the value is empty */
-            MSDPSetString(apDescriptor, aMSDP, apValue);
+            MSDPSetString(apDescriptor, aMSDP, value);
         } else if (VariableNameTable[aMSDP].bString) {
             const char MsdpArrayStart[] = { (char)MSDP_ARRAY_OPEN, '\0' };
             const char MsdpArrayStop[] = { (char)MSDP_ARRAY_CLOSE, '\0' };
 
-            char* pArray = (char*)malloc(strlen(apValue) + 3); /* 3: START, STOP, NUL */
+            char* pArray = (char*)malloc(value.size() + 3); /* 3: START, STOP, NUL */
 
             strcpy(pArray, MsdpArrayStart);
-            strcat(pArray, apValue);
+            std::memcpy(pArray + 1, value.data(), value.size());
+            pArray[value.size() + 1] = '\0';
             strcat(pArray, MsdpArrayStop);
 
             if (strcmp(pProtocol->pVariables[aMSDP]->pValueString, pArray)) {
@@ -1629,21 +1642,22 @@ void MXPSendTag(descriptor_t* apDescriptor, std::string_view apTag)
  Sound global functions.
  ******************************************************************************/
 
-void SoundSend(descriptor_t* apDescriptor, const char* apTrigger)
+void SoundSend(descriptor_t* apDescriptor, std::string_view trigger)
 {
+    trigger = rots::text::truncate_at_null(trigger);
     const int MaxTriggerLength = 128; /* Used for the buffer size */
 
-    if (apDescriptor != NULL && apTrigger != NULL) {
+    if (apDescriptor != NULL) {
         protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
         if (pProtocol != NULL && pProtocol->pVariables[eMSDP_SOUND]->ValueInt) {
             if (pProtocol->bMSDP || pProtocol->bATCP) {
                 /* Send the sound trigger through MSDP or ATCP */
-                MSDPSendPair(apDescriptor, "PLAY_SOUND", apTrigger);
-            } else if (strlen(apTrigger) <= MaxTriggerLength) {
+                MSDPSendPair(apDescriptor, "PLAY_SOUND", trigger);
+            } else if (trigger.size() <= MaxTriggerLength) {
                 /* Use an old MSP-style trigger */
                 char* pBuffer = (char*)alloca(MaxTriggerLength + 10);
-                strcpy(pBuffer, std::format("\t!SOUND({})", apTrigger).c_str());
+                strcpy(pBuffer, std::format("\t!SOUND({})", trigger).c_str());
                 Write(apDescriptor, pBuffer);
             }
         }
@@ -1654,16 +1668,17 @@ void SoundSend(descriptor_t* apDescriptor, const char* apTrigger)
  Colour global functions.
  ******************************************************************************/
 
-const char* ColourRGB(descriptor_t* apDescriptor, const char* apRGB)
+const char* ColourRGB(descriptor_t* apDescriptor, std::string_view rgb)
 {
+    rgb = rots::text::truncate_at_null(rgb);
     protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
     if (pProtocol && pProtocol->pVariables[eMSDP_ANSI_COLORS]->ValueInt) {
-        if (IsValidColour(apRGB)) {
-            bool bBackground = (tolower(apRGB[0]) == 'b');
-            int Red = apRGB[1] - '0';
-            int Green = apRGB[2] - '0';
-            int Blue = apRGB[3] - '0';
+        if (IsValidColour(rgb)) {
+            bool bBackground = (tolower(rgb[0]) == 'b');
+            int Red = rgb[1] - '0';
+            int Green = rgb[2] - '0';
+            int Blue = rgb[3] - '0';
 
             if (pProtocol->pVariables[eMSDP_XTERM_256_COLORS]->ValueInt)
                 return GetRGBColour(bBackground, Red, Green, Blue);
@@ -2235,8 +2250,10 @@ static bool ConfirmNegotiation(descriptor_t* apDescriptor, negotiated_t aProtoco
  Local MSDP functions.
  ******************************************************************************/
 
-static void ParseMSDP(descriptor_t* apDescriptor, const char* apData)
+static void ParseMSDP(descriptor_t* apDescriptor, std::string_view data)
 {
+    const std::string data_owner(rots::text::truncate_at_null(data));
+    const char* apData = data_owner.c_str();
     char Variable[MSDP_VAL][MAX_MSDP_SIZE + 1] = { { '\0' }, { '\0' } };
     char *pPos = NULL, *pStart = NULL;
 
@@ -2261,31 +2278,33 @@ static void ParseMSDP(descriptor_t* apDescriptor, const char* apData)
     }
 }
 
-static void ExecuteMSDPPair(descriptor_t* apDescriptor, const char* apVariable,
-    const char* apValue)
+static void ExecuteMSDPPair(descriptor_t* apDescriptor, std::string_view variable,
+    std::string_view value)
 {
-    if (apVariable[0] != '\0' && apValue[0] != '\0') {
-        if (MatchString(apVariable, "SEND")) {
+    variable = rots::text::truncate_at_null(variable);
+    value = rots::text::truncate_at_null(value);
+    if (!variable.empty() && !value.empty()) {
+        if (MatchString(variable, "SEND")) {
             bool bDone = false;
             int i; /* Loop counter */
             for (i = eMSDP_NONE + 1; i < eMSDP_MAX && !bDone; ++i) {
-                if (MatchString(apValue, VariableNameTable[i].pName)) {
+                if (MatchString(value, VariableNameTable[i].pName)) {
                     MSDPSend(apDescriptor, (variable_t)i);
                     bDone = true;
                 }
             }
-        } else if (MatchString(apVariable, "REPORT")) {
+        } else if (MatchString(variable, "REPORT")) {
             bool bDone = false;
             int i; /* Loop counter */
             for (i = eMSDP_NONE + 1; i < eMSDP_MAX && !bDone; ++i) {
-                if (MatchString(apValue, VariableNameTable[i].pName)) {
+                if (MatchString(value, VariableNameTable[i].pName)) {
                     apDescriptor->pProtocol->pVariables[i]->bReport = true;
                     apDescriptor->pProtocol->pVariables[i]->bDirty = true;
                     bDone = true;
                 }
             }
-        } else if (MatchString(apVariable, "RESET")) {
-            if (MatchString(apValue, "REPORTABLE_VARIABLES") || MatchString(apValue, "REPORTED_VARIABLES") || MatchString(apValue, "VARIABLES")) {
+        } else if (MatchString(variable, "RESET")) {
+            if (MatchString(value, "REPORTABLE_VARIABLES") || MatchString(value, "REPORTED_VARIABLES") || MatchString(value, "VARIABLES")) {
                 int i; /* Loop counter */
                 for (i = eMSDP_NONE + 1; i < eMSDP_MAX; ++i) {
                     if (apDescriptor->pProtocol->pVariables[i]->bReport) {
@@ -2294,27 +2313,27 @@ static void ExecuteMSDPPair(descriptor_t* apDescriptor, const char* apVariable,
                     }
                 }
             }
-        } else if (MatchString(apVariable, "UNREPORT")) {
+        } else if (MatchString(variable, "UNREPORT")) {
             bool bDone = false;
             int i; /* Loop counter */
             for (i = eMSDP_NONE + 1; i < eMSDP_MAX && !bDone; ++i) {
-                if (MatchString(apValue, VariableNameTable[i].pName)) {
+                if (MatchString(value, VariableNameTable[i].pName)) {
                     apDescriptor->pProtocol->pVariables[i]->bReport = false;
                     apDescriptor->pProtocol->pVariables[i]->bDirty = false;
                     bDone = true;
                 }
             }
-        } else if (MatchString(apVariable, "LIST")) {
-            if (MatchString(apValue, "COMMANDS")) {
+        } else if (MatchString(variable, "LIST")) {
+            if (MatchString(value, "COMMANDS")) {
                 const char MSDPCommands[] = "LIST REPORT RESET SEND UNREPORT";
                 MSDPSendList(apDescriptor, "COMMANDS", MSDPCommands);
-            } else if (MatchString(apValue, "LISTS")) {
+            } else if (MatchString(value, "LISTS")) {
                 const char MSDPCommands[] = "COMMANDS LISTS CONFIGURABLE_VARIABLES REPORTABLE_VARIABLES "
                                             "REPORTED_VARIABLES SENDABLE_VARIABLES GUI_VARIABLES";
                 MSDPSendList(apDescriptor, "LISTS", MSDPCommands);
             }
             /* Split this into two if some variables aren't REPORTABLE */
-            else if (MatchString(apValue, "SENDABLE_VARIABLES") || MatchString(apValue, "REPORTABLE_VARIABLES")) {
+            else if (MatchString(value, "SENDABLE_VARIABLES") || MatchString(value, "REPORTABLE_VARIABLES")) {
                 char MSDPCommands[MAX_OUTPUT_BUFFER] = { '\0' };
                 int i; /* Loop counter */
 
@@ -2328,8 +2347,8 @@ static void ExecuteMSDPPair(descriptor_t* apDescriptor, const char* apVariable,
                     }
                 }
 
-                MSDPSendList(apDescriptor, apValue, MSDPCommands);
-            } else if (MatchString(apValue, "REPORTED_VARIABLES")) {
+                MSDPSendList(apDescriptor, value, MSDPCommands);
+            } else if (MatchString(value, "REPORTED_VARIABLES")) {
                 char MSDPCommands[MAX_OUTPUT_BUFFER] = { '\0' };
                 int i; /* Loop counter */
 
@@ -2344,8 +2363,8 @@ static void ExecuteMSDPPair(descriptor_t* apDescriptor, const char* apVariable,
                     }
                 }
 
-                MSDPSendList(apDescriptor, apValue, MSDPCommands);
-            } else if (MatchString(apValue, "CONFIGURABLE_VARIABLES")) {
+                MSDPSendList(apDescriptor, value, MSDPCommands);
+            } else if (MatchString(value, "CONFIGURABLE_VARIABLES")) {
                 char MSDPCommands[MAX_OUTPUT_BUFFER] = { '\0' };
                 int i; /* Loop counter */
 
@@ -2361,7 +2380,7 @@ static void ExecuteMSDPPair(descriptor_t* apDescriptor, const char* apVariable,
                 }
 
                 MSDPSendList(apDescriptor, "CONFIGURABLE_VARIABLES", MSDPCommands);
-            } else if (MatchString(apValue, "GUI_VARIABLES")) {
+            } else if (MatchString(value, "GUI_VARIABLES")) {
                 char MSDPCommands[MAX_OUTPUT_BUFFER] = { '\0' };
                 int i; /* Loop counter */
 
@@ -2376,7 +2395,7 @@ static void ExecuteMSDPPair(descriptor_t* apDescriptor, const char* apVariable,
                     }
                 }
 
-                MSDPSendList(apDescriptor, apValue, MSDPCommands);
+                MSDPSendList(apDescriptor, value, MSDPCommands);
             }
         } else /* Set any configurable variables */
         {
@@ -2384,7 +2403,7 @@ static void ExecuteMSDPPair(descriptor_t* apDescriptor, const char* apVariable,
 
             for (i = eMSDP_NONE + 1; i < eMSDP_MAX; ++i) {
                 if (VariableNameTable[i].bConfigurable) {
-                    if (MatchString(apVariable, VariableNameTable[i].pName)) {
+                    if (MatchString(variable, VariableNameTable[i].pName)) {
                         if (VariableNameTable[i].bString) {
                             /* A write-once variable can only be set if the value
                              * is "Unknown".  This is for things like client name,
@@ -2398,11 +2417,11 @@ static void ExecuteMSDPPair(descriptor_t* apDescriptor, const char* apVariable,
                                 char* pBuffer = (char*)alloca(VariableNameTable[i].Max + 1);
                                 int j; /* Loop counter */
 
-                                for (j = 0; j < VariableNameTable[i].Max && *apValue != '\0';
-                                    ++apValue) {
-                                    const unsigned char value_byte = static_cast<unsigned char>(*apValue);
+                                for (j = 0; j < VariableNameTable[i].Max && !value.empty();
+                                    value.remove_prefix(1)) {
+                                    const unsigned char value_byte = static_cast<unsigned char>(value.front());
                                     if (value_byte >= 0x20 && value_byte <= 0x7e)
-                                        pBuffer[j++] = *apValue;
+                                        pBuffer[j++] = value.front();
                                 }
                                 pBuffer[j++] = '\0';
 
@@ -2414,11 +2433,12 @@ static void ExecuteMSDPPair(descriptor_t* apDescriptor, const char* apVariable,
                         } else /* This variable only accepts numeric values */
                         {
                             /* Strip any leading spaces */
-                            while (*apValue == ' ')
-                                ++apValue;
+                            while (!value.empty() && value.front() == ' ')
+                                value.remove_prefix(1);
 
-                            if (*apValue != '\0' && IsNumber(apValue)) {
-                                int Value = atoi(apValue);
+                            if (!value.empty() && IsNumber(value)) {
+                                const std::string value_owner(value);
+                                int Value = atoi(value_owner.c_str());
                                 if (Value >= VariableNameTable[i].Min && Value <= VariableNameTable[i].Max) {
                                     apDescriptor->pProtocol->pVariables[i]->ValueInt = Value;
                                 }
@@ -2435,8 +2455,10 @@ static void ExecuteMSDPPair(descriptor_t* apDescriptor, const char* apVariable,
  Local ATCP functions.
  ******************************************************************************/
 
-static void ParseATCP(descriptor_t* apDescriptor, const char* apData)
+static void ParseATCP(descriptor_t* apDescriptor, std::string_view data)
 {
+    const std::string data_owner(rots::text::truncate_at_null(data));
+    const char* apData = data_owner.c_str();
     char Variable[MSDP_VAL][MAX_MSDP_SIZE + 1] = { { '\0' }, { '\0' } };
     char *pPos = NULL, *pStart = NULL;
 
@@ -2466,11 +2488,17 @@ static void ParseATCP(descriptor_t* apDescriptor, const char* apData)
 }
 
 #ifdef MUDLET_PACKAGE
-static void SendATCP(descriptor_t* apDescriptor, const char* apVariable, const char* apValue)
+static void SendATCP(descriptor_t* apDescriptor, std::string_view variable, std::string_view value)
 {
+    variable = rots::text::truncate_at_null(variable);
+    value = rots::text::truncate_at_null(value);
+    const std::string variable_owner(variable);
+    const std::string value_owner(value);
+    const char* apVariable = variable_owner.c_str();
+    const char* apValue = value_owner.c_str();
     char ATCPBuffer[MAX_VARIABLE_LENGTH + 1] = { '\0' };
 
-    if (apVariable != NULL && apValue != NULL) {
+    {
         protocol_t* pProtocol = apDescriptor ? apDescriptor->pProtocol : NULL;
 
         /* Should really be replaced with a dynamic buffer */
@@ -2687,30 +2715,29 @@ static void SendMSSP(descriptor_t* apDescriptor)
  Local MXP functions.
  ******************************************************************************/
 
-static char* GetMxpTag(const char* apTag, const char* apText)
+static char* GetMxpTag(std::string_view tag, std::string_view text)
 {
     static char MXPBuffer[64];
-    const char* pStartPos = strstr(apText, apTag);
+    tag = rots::text::truncate_at_null(tag);
+    text = rots::text::truncate_at_null(text);
+    const std::size_t tag_position = text.find(tag);
 
-    if (pStartPos != NULL) {
-        const char* pEndPos = apText + strlen(apText);
-
-        pStartPos += strlen(apTag); /* Add length of the tag */
-
-        if (pStartPos < pEndPos) {
-            int Index = 0;
+    if (tag_position != std::string_view::npos) {
+        std::size_t text_position = tag_position + tag.size();
+        if (text_position < text.size()) {
+            std::size_t output_index = 0;
 
             /* Some clients use quotes...and some don't. */
-            if (*pStartPos == '\"')
-                pStartPos++;
+            if (text[text_position] == '\"')
+                ++text_position;
 
-            for (; pStartPos < pEndPos && Index < 60; ++pStartPos) {
-                char Letter = *pStartPos;
-                if (Letter == '.' || isdigit(Letter) || isalpha(Letter)) {
-                    MXPBuffer[Index++] = Letter;
+            for (; text_position < text.size() && output_index < 60; ++text_position) {
+                const unsigned char letter = static_cast<unsigned char>(text[text_position]);
+                if (letter == '.' || isdigit(letter) || isalpha(letter)) {
+                    MXPBuffer[output_index++] = static_cast<char>(letter);
                 } else /* Return the result */
                 {
-                    MXPBuffer[Index] = '\0';
+                    MXPBuffer[output_index] = '\0';
                     return MXPBuffer;
                 }
             }
@@ -2766,21 +2793,22 @@ static const char* GetRGBColour(bool abBackground, int aRed, int aGreen, int aBl
     return Result;
 }
 
-static bool IsValidColour(const char* apArgument)
+static bool IsValidColour(std::string_view argument)
 {
-    int i; /* Loop counter */
+    argument = rots::text::truncate_at_null(argument);
 
     /* The sequence is 4 bytes, but we can ignore anything after it. */
-    if (apArgument == NULL || strlen(apArgument) < 4)
+    if (argument.size() < 4)
         return false;
 
     /* The first byte indicates foreground/background. */
-    if (tolower(apArgument[0]) != 'f' && tolower(apArgument[0]) != 'b')
+    if (tolower(static_cast<unsigned char>(argument[0])) != 'f'
+        && tolower(static_cast<unsigned char>(argument[0])) != 'b')
         return false;
 
     /* The remaining three bytes must each be in the range '0' to '5'. */
-    for (i = 1; i <= 3; ++i) {
-        if (apArgument[i] < '0' || apArgument[i] > '5')
+    for (std::size_t index = 1; index <= 3; ++index) {
+        if (argument[index] < '0' || argument[index] > '5')
             return false;
     }
 
@@ -2792,36 +2820,51 @@ static bool IsValidColour(const char* apArgument)
  Other local functions.
  ******************************************************************************/
 
-static bool MatchString(const char* apFirst, const char* apSecond)
+static bool MatchString(std::string_view first, std::string_view second)
 {
-    while (*apFirst && tolower(*apFirst) == tolower(*apSecond))
-        ++apFirst, ++apSecond;
-    return (!*apFirst && !*apSecond);
+    first = rots::text::truncate_at_null(first);
+    second = rots::text::truncate_at_null(second);
+    if (first.size() != second.size())
+        return false;
+
+    for (std::size_t index = 0; index < first.size(); ++index) {
+        if (tolower(static_cast<unsigned char>(first[index]))
+            != tolower(static_cast<unsigned char>(second[index])))
+            return false;
+    }
+    return true;
 }
 
-static bool PrefixString(const char* apPart, const char* apWhole)
+static bool PrefixString(std::string_view part, std::string_view whole)
 {
-    while (*apPart && tolower(*apPart) == tolower(*apWhole))
-        ++apPart, ++apWhole;
-    return (!*apPart);
+    part = rots::text::truncate_at_null(part);
+    whole = rots::text::truncate_at_null(whole);
+    if (part.size() > whole.size())
+        return false;
+
+    for (std::size_t index = 0; index < part.size(); ++index) {
+        if (tolower(static_cast<unsigned char>(part[index]))
+            != tolower(static_cast<unsigned char>(whole[index])))
+            return false;
+    }
+    return true;
 }
 
-static bool IsNumber(const char* apString)
+static bool IsNumber(std::string_view value)
 {
-    while (*apString && isdigit(*apString))
-        ++apString;
-    return (!*apString);
+    value = rots::text::truncate_at_null(value);
+    return std::all_of(value.begin(), value.end(), [](char character) {
+        return isdigit(static_cast<unsigned char>(character)) != 0;
+    });
 }
 
-static char* AllocString(const char* apString)
+static char* AllocString(std::string_view value)
 {
-    char* pResult = NULL;
-
-    if (apString != NULL) {
-        int Size = strlen(apString);
-        pResult = (char*)malloc(Size + 1);
-        if (pResult != NULL)
-            strcpy(pResult, apString);
+    value = rots::text::truncate_at_null(value);
+    char* pResult = (char*)malloc(value.size() + 1);
+    if (pResult != NULL) {
+        std::memcpy(pResult, value.data(), value.size());
+        pResult[value.size()] = '\0';
     }
 
     return pResult;

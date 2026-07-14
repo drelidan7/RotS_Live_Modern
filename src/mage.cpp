@@ -130,10 +130,10 @@ extern struct char_data* character_list;
 extern void prohibit_item_stay_zone_move(char_data* ch, int was_in);
 extern int rev_dir[];
 extern int top_of_world;
-extern const char* const dirs[];
-extern const char* const refer_dirs[];
-extern const char* const room_bits[];
-extern const char* const sector_types[];
+extern const std::string_view dirs[];
+extern const std::string_view refer_dirs[];
+extern const std::string_view room_bits[];
+extern const std::string_view sector_types[];
 
 /*
  * external functions
@@ -273,7 +273,7 @@ int loclife_add_rooms(loclife_coord room, loclife_coord* roomlist,
     }
     return count;
 }
-const char* loclife_dirnames[216] = {
+const std::string_view loclife_dirnames[216] = {
     /*
      *Lines - up/down here - farthest down - farthest up
      *columns - east/west
@@ -411,7 +411,7 @@ const char* loclife_dirnames[216] = {
     "up and northeast",
 
 };
-char* loclife_dir_convert(loclife_coord rm)
+std::string_view loclife_dir_convert(loclife_coord rm)
 {
     signed char nr, er, ur;
 
@@ -433,7 +433,7 @@ char* loclife_dir_convert(loclife_coord rm)
     if (rm.u > 0)
         ur += 2;
 
-    return (char*)loclife_dirnames[(nr * 5 + er) * 5 + ur];
+    return loclife_dirnames[(nr * 5 + er) * 5 + ur];
 }
 
 /*--------------------------------------------------------------------------------------------------------*/

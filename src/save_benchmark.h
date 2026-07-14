@@ -40,17 +40,17 @@ struct PipelineReport {
 // account-read miss is non-fatal (still timed) and does NOT cause a false return.
 // When `compare` is non-null, a SEPARATE A/B report is also populated (cache + serialize v1-vs-v2
 // variants), leaving the canonical `out` breakdown untouched; default nullptr skips it.
-bool profile_save(const char_file_u& chd, const std::string& root,
-                  const std::string& account_name, const std::string& character_name,
-                  const std::string& scratch_path, int iterations,
+bool profile_save(const char_file_u& chd, std::string_view root,
+                  std::string_view account_name, std::string_view character_name,
+                  std::string_view scratch_path, int iterations,
                   PipelineReport* out, std::string* error, PipelineReport* compare = nullptr);
 
 // Profile the LOAD pipeline for an account-owned character. Times L1-L4 (+ L5 store_to_char
 // when include_store_to_char is true; offline-only, since it allocates into a scratch char).
 // Returns false (and sets *error) if a data-transform/IO stage (L2, L3, or L4) fails; an
 // L1 account-read miss is non-fatal (still timed) and does NOT cause a false return.
-bool profile_load(const std::string& root, const std::string& account_name,
-                  const std::string& character_name, int iterations,
+bool profile_load(std::string_view root, std::string_view account_name,
+                  std::string_view character_name, int iterations,
                   bool include_store_to_char, PipelineReport* out, std::string* error,
                   PipelineReport* compare = nullptr);
 

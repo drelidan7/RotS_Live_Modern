@@ -31,7 +31,7 @@
 #include <algorithm>
 #include <cmath>
 
-extern const char* const pc_race_types[];
+extern const std::string_view pc_race_types[];
 
 #define READ_TITLE(ch) pc_race_types[GET_RACE(ch)]
 
@@ -41,7 +41,7 @@ extern struct room_data world;
 extern int top_of_world;
 extern struct time_info_data time_info;
 extern struct skill_data skills[];
-extern const char* const spell_wear_off_msg[];
+extern const std::string_view spell_wear_off_msg[];
 extern struct char_data* fast_update_list;
 extern int circle_shutdown;
 extern struct char_data* death_waiting_list;
@@ -369,7 +369,7 @@ void set_title(char_data* character)
 {
     if (GET_TITLE(character))
         RELEASE(GET_TITLE(character));
-    CREATE(GET_TITLE(character), char, strlen(READ_TITLE(character)) + 5);
+    CREATE(GET_TITLE(character), char, READ_TITLE(character).size() + 5);
 
     strcpy(GET_TITLE(character), std::format("the {}", READ_TITLE(character)).c_str());
     *(GET_TITLE(character) + 4) = toupper(*(GET_TITLE(character) + 4));
@@ -1445,7 +1445,7 @@ void affect_update_room(struct room_data* room)
     struct affected_type newaf;
     struct char_data *tmpch, *next_tmpch;
     int time_phase, tmp, direction, mod, roomnum, movechance;
-    extern const char* const dirs[];
+    extern const std::string_view dirs[];
 
     time_phase = get_current_time_phase();
 
@@ -1483,13 +1483,13 @@ void affect_update_room(struct room_data* room)
             tmpaf->duration--;
         if (tmpaf->location == SPELL_MIST_OF_BAAZUNGA && tmpaf->duration > 0 && time_phase == tmpaf->time_phase) {
             /* 70% chance of mist thinking about moving */
-            strcpy(buf, std::format("check mist movement").c_str());
+            strcpy(buf, "check mist movement");
             mudlog(buf, NRM, LEVEL_GOD, FALSE);
             if (movechance < 75) {
                 direction = number(0, NUM_OF_DIRS - 1);
                 /* Decide if the random direction is legal, if so, move the mist */
                 if (!(room->dir_option[direction])) {
-                    strcpy(buf, std::format("no option for movement").c_str());
+                    strcpy(buf, "no option for movement");
                     mudlog(buf, NRM, LEVEL_GOD, FALSE);
                 } else if (room->dir_option[direction]->to_room != NOWHERE) {
                     roomnum = room->dir_option[direction]->to_room;
@@ -1498,7 +1498,7 @@ void affect_update_room(struct room_data* room)
                             REMOVE_BIT(room->room_flags, SHADOWY);
                         if ((checkaf = room_affected_by_spell(&world[roomnum], SPELL_MIST_OF_BAAZUNGA))) {
                             mod = checkaf->modifier;
-                            strcpy(buf, std::format("WARNING LOMAN: Mist already in move to room").c_str());
+                            strcpy(buf, "WARNING LOMAN: Mist already in move to room");
                             mudlog(buf, NRM, LEVEL_GOD, FALSE);
                         } else if (IS_SET(world[roomnum].room_flags, SHADOWY))
                             mod = 1;

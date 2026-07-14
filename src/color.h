@@ -69,8 +69,8 @@ struct color_slot_data {
 #define CC_FIX(ch, col) \
     (clr((ch)) ? color_sequence[col] : "")
 
-extern const char* color_color[];
-extern const char* const color_sequence[];
+extern const std::string_view color_color[];
+extern const std::string_view color_sequence[];
 
 /// Returns the rendered escape sequence for a character color slot.
 const char* get_color_sequence(struct char_data*, int);

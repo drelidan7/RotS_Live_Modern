@@ -741,15 +741,15 @@ git commit -m "refactor: enforce repository string-view boundaries"
 - Consumes: all migrated layers and the zero-unclassified census gate.
 - Produces: verified performance and portability evidence for completion.
 
-- [ ] **Step 1: Measure representative paths**
+- [x] **Step 1: Measure representative paths**
 
 Measure at least prompt composition, a room/all broadcast to multiple descriptors, name/keyword lookup, and JSON parsing. Use the same optimized compiler, fixtures, iteration counts, and quiet host for baseline and migrated commits. Record median nanoseconds per operation and allocation counts when available. Reject a statistically repeatable regression greater than 10% in an obviously hot path unless the user explicitly accepts it.
 
-- [ ] **Step 2: Correct measured regressions test-first**
+- [x] **Step 2: Correct measured regressions test-first**
 
 If a hot path regresses, add or extend a focused characterization test, then use a reserved owner, `std::format_to`, `std::to_chars`, or a single boundary materialization as appropriate. Document the allocation/readability trade-off at the decision point and repeat the identical measurement.
 
-- [ ] **Step 3: Run native build and full tests**
+- [x] **Step 3: Run native build and full tests**
 
 Run:
 
@@ -760,7 +760,7 @@ ctest --preset macos-arm64 --output-on-failure
 
 Expected: build succeeds and every discovered test passes, with platform-gated skips only.
 
-- [ ] **Step 4: Run local boot golden outside socket-restricted sandboxing**
+- [x] **Step 4: Run local boot golden outside socket-restricted sandboxing**
 
 Run:
 
@@ -770,7 +770,7 @@ scripts/boot-golden.sh --native build/macos-arm64/ageland verify
 
 Expected: `boot log matches golden`. If sandboxed bind returns `Operation not permitted`, rerun the same local command with sandbox restriction lifted; do not connect to production.
 
-- [ ] **Step 5: Run Linux x64 and i386 gates**
+- [x] **Step 5: Run Linux x64 and i386 gates**
 
 Run:
 
@@ -781,7 +781,7 @@ docker compose run --rm rots bash -lc 'cd /rots && make configure && make build 
 
 Expected: both builds and test suites pass. Do not set `UPDATE_GOLDENS=1`.
 
-- [ ] **Step 6: Run final static and repository checks**
+- [x] **Step 6: Run final static and repository checks**
 
 Run:
 
@@ -795,7 +795,7 @@ git diff --name-only origin/master..HEAD -- 'src/tests/goldens/legacy_*_fixture.
 
 Expected: census and Python tests pass; diff check is silent; working tree is clean; legacy fixture command prints nothing.
 
-- [ ] **Step 7: Append evidence and commit the results**
+- [x] **Step 7: Append evidence and commit the results**
 
 Append exact before/after census counts, benchmark results, test totals/skips, container results, boot result, formatter disposition, and fixture confirmation to this plan. Then run:
 
@@ -808,3 +808,37 @@ git commit -m "docs: record string-view migration verification"
 - [ ] **Step 8: Request final code review**
 
 Use `superpowers:requesting-code-review` against the complete commit range. Resolve correctness, lifetime, embedded-null, binary-data, and C-boundary findings before offering integration options through `superpowers:finishing-a-development-branch`.
+
+#### Task 10 verification evidence (2026-07-13)
+
+- Census: the initial raw pointer/reference search recorded 1,359 lines. The enforced census had
+  506 candidates after Task 8, 83 classified exceptions after Task 9, and finishes with 84
+  classified exceptions and zero unclassified candidates. The additional final exception is the
+  measured `isname_nullable` terminated-pointer hot path. All 14 census-tool tests pass.
+- Representative performance: an identical AppleClang Release `-O2` harness compared baseline
+  `c808cb1` with migrated `8fbff01`, using observable checksums, two warmups, and 11 samples per
+  path. Median prompt composition was 146.958 to 149.506 ns/op (+1.73%); a six-recipient room
+  broadcast was 56.121 to 35.675 ns/op (-36.43%); name lookup was 18.811 to 25.525 ns/op
+  (+35.69%); and JSON parsing was 238.221 to 225.354 ns/op (-5.40%). Allocation counts were not
+  instrumented in this harness.
+- Name-lookup correction: a focused harness with ten warmups, 11 samples, and 1,000,000 operations
+  per sample confirmed that the nullable wrapper's four redundant scans produced a 33.715 to
+  51.827 ns/op regression (+53.7%). The final direct-sentinel wrapper retained the bounded
+  `std::string_view` overload and measured 36.028 to 34.913 ns/op (-3.1%) and 37.618 to 36.859
+  ns/op (-2.0%) in simultaneous paired runs. Normal and macOS ASan `StringViewUtility.*` tests pass
+  8/8.
+- Portability and full suites: macOS arm64 passed all 1,207 discovered tests (1,132 executed passes,
+  75 platform skips); Linux x64 passed all 1,207 (1,130 executed passes, 77 platform skips); the
+  i386 CMake suite passed all 1,207 (1,201 executed passes, 6 platform skips); and the independent
+  i386 legacy Makefile suite passed 1,171 tests with 6 skips. A Linux ASan/UBSan reproduction suite
+  covering the three migration-boundary crashes passes 3/3, and a custom printf-format compile
+  audit found and corrected every `std::string_view` object passed through the audited `%s`
+  varargs boundaries.
+- Runtime characterization: native macOS arm64, `rots64`, and shipping-ABI i386 boot checks each
+  reported `boot log matches golden`. The Docker checks used the same local world data through an
+  untracked Docker-visible copy; no live server was contacted.
+- Repository integrity: no legacy binary fixture or other characterization golden changed. The
+  repository formatter was not run as a final bulk rewrite because several legacy files retain
+  intentional mixed line endings; changes stayed localized and the CRLF-aware whitespace check is
+  clean. Generated root-build state was restored after i386 verification, and temporary runtime
+  data and binaries were removed from the worktree.

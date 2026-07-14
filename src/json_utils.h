@@ -25,8 +25,11 @@ public:
     using ObjectPropertyParser = std::function<bool(std::string_view, JsonReader*, std::string*)>;
     using ArrayValueParser = std::function<bool(JsonReader*, std::string*)>;
 
-    /// Copies a bounded JSON document and parses only its prefix before the first null byte.
+    /// Borrows a bounded JSON document and parses only its prefix before the first
+    /// null byte. The viewed buffer must outlive the reader.
     explicit JsonReader(std::string_view input);
+    /// Binding a reader to a std::string temporary would dangle immediately.
+    explicit JsonReader(std::string&&) = delete;
 
     bool parse_root_object(const ObjectPropertyParser& property_parser, std::string* error_message);
     bool parse_object(const ObjectPropertyParser& property_parser, std::string* error_message);
@@ -77,8 +80,9 @@ private:
     void skip_whitespace();
     bool is_at_end() const;
 
-    // Owns the bounded JSON prefix being parsed; never includes bytes after the first null.
-    std::string m_input;
+    // Borrows the caller's bounded JSON prefix (never past the first null); the input buffer
+    // must outlive the reader.
+    std::string_view m_input;
     // Identifies the next unconsumed byte in m_input and advances as parsing consumes text.
     size_t m_position = 0;
 };
@@ -87,13 +91,17 @@ private:
 // public surface and observable behavior, but lower-allocation internals (from_chars integer parse,
 // move-out / no-escape-fast-path strings, branchless whitespace/digit tests, strlen-free literal
 // match). Kept as a separate non-virtual class so JsonReader stays an untouched measurement baseline.
+// Both readers now borrow their input (std::string_view) instead of copying it.
 class JsonReaderV2 {
 public:
     using ObjectPropertyParser = std::function<bool(std::string_view, JsonReaderV2*, std::string*)>;
     using ArrayValueParser = std::function<bool(JsonReaderV2*, std::string*)>;
 
-    /// Copies a bounded JSON document and parses only its prefix before the first null byte.
+    /// Borrows a bounded JSON document and parses only its prefix before the first
+    /// null byte. The viewed buffer must outlive the reader.
     explicit JsonReaderV2(std::string_view input);
+    /// Binding a reader to a std::string temporary would dangle immediately.
+    explicit JsonReaderV2(std::string&&) = delete;
 
     bool parse_root_object(const ObjectPropertyParser& property_parser, std::string* error_message);
     bool parse_object(const ObjectPropertyParser& property_parser, std::string* error_message);
@@ -116,8 +124,9 @@ private:
     void skip_whitespace();
     bool is_at_end() const;
 
-    // Owns the bounded JSON prefix being parsed; never includes bytes after the first null.
-    std::string m_input;
+    // Borrows the caller's bounded JSON prefix (never past the first null); the input buffer
+    // must outlive the reader.
+    std::string_view m_input;
     // Cursor into m_input of the next unconsumed character; advanced by every consume/parse step.
     size_t m_position = 0;
 };

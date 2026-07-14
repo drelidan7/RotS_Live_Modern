@@ -1,9 +1,12 @@
 #include "../json_utils.h"
 
+#include "scoped_allocation_counter.h"
+
 #include <gtest/gtest.h>
 
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace {
@@ -34,7 +37,11 @@ TEST(JsonUtils, PropertyCallbacksBorrowFirstNullTerminatedKeys)
 template <typename Reader>
 void expect_literal_matcher_stops_at_embedded_null()
 {
-    Reader reader("true42");
+    // Named lvalue (not a temporary) so it binds to the string_view constructor unambiguously;
+    // a string-literal argument is otherwise equally convertible to string_view and to the
+    // deleted std::string&& overload.
+    const std::string literal_document = "true42";
+    Reader reader(literal_document);
     constexpr std::string_view embedded_null_literal("true\0ignored", 12);
     ASSERT_TRUE(reader.match_literal_for_testing(embedded_null_literal));
 
@@ -128,37 +135,11 @@ TEST(JsonUtils, ReaderAcceptsBoundedTextAndStopsAtEmbeddedNull) {
     EXPECT_EQ(parse_value(embedded_null_json), 42);
 }
 
-template <typename Reader>
-void expect_reader_owns_short_lived_input()
-{
-    const auto create_reader = []() {
-        std::string short_lived_json(256, ' ');
-        short_lived_json += "{\"value\":42}";
-        short_lived_json.push_back('\0');
-        short_lived_json += "ignored";
-        return Reader(short_lived_json);
-    };
-
-    Reader reader = create_reader();
-    int value = 0;
-    std::string error_message;
-    ASSERT_TRUE(reader.parse_root_object(
-        [&](std::string_view key, Reader* nested_reader, std::string* nested_error_message) {
-            if (key == "value") {
-                return nested_reader->parse_integer(&value, nested_error_message);
-            }
-            return nested_reader->skip_value(nested_error_message);
-        },
-        &error_message))
-        << error_message;
-    EXPECT_EQ(value, 42);
-}
-
-TEST(JsonUtils, ReadersOwnShortLivedFirstNullTerminatedInput)
-{
-    expect_reader_owns_short_lived_input<json_utils::JsonReader>();
-    expect_reader_owns_short_lived_input<json_utils::JsonReaderV2>();
-}
+// The readers borrow; constructing one from a std::string temporary must not compile.
+static_assert(!std::is_constructible_v<json_utils::JsonReader, std::string&&>);
+static_assert(!std::is_constructible_v<json_utils::JsonReaderV2, std::string&&>);
+static_assert(std::is_constructible_v<json_utils::JsonReader, const std::string&>);
+static_assert(std::is_constructible_v<json_utils::JsonReaderV2, const std::string&>);
 
 TEST(JsonUtils, ParsesTypedObjectProperties)
 {
@@ -303,6 +284,17 @@ TEST(JsonUtils, RejectsIntegersOutsideIntRange)
         },
         &error_message));
     EXPECT_NE(error_message.find("out of range"), std::string::npos);
+}
+
+TEST(JsonUtils, ReadersBorrowInputWithoutAllocating)
+{
+    std::string document = "{\"value\":42}";
+    document.append(4096, ' ');
+
+    rots_test::ScopedAllocationCounter counter;
+    json_utils::JsonReader reader(document);
+    json_utils::JsonReaderV2 reader_v2(document);
+    EXPECT_EQ(counter.allocations(), 0u);
 }
 
 } // namespace

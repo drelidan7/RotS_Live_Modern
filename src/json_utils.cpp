@@ -156,8 +156,8 @@ void append_escaped_json_string(std::string &out, std::string_view value) {
 }
 
 JsonReader::JsonReader(std::string_view input)
-    // Readers retain their input throughout incremental parsing, so one construction-time copy is
-    // preferable to imposing a fragile caller-lifetime contract despite its allocation cost.
+    // Borrows the caller's buffer (truncate_at_null on a view is a substr): the lifetime contract
+    // is enforced socially by the deleted std::string&& overload and this comment.
     : m_input(rots::text::truncate_at_null(input))
 {
 }
@@ -543,8 +543,8 @@ bool JsonReader::is_at_end() const
 }
 
 JsonReaderV2::JsonReaderV2(std::string_view input)
-    // Readers retain their input throughout incremental parsing, so one construction-time copy is
-    // preferable to imposing a fragile caller-lifetime contract despite its allocation cost.
+    // Borrows the caller's buffer (truncate_at_null on a view is a substr): the lifetime contract
+    // is enforced socially by the deleted std::string&& overload and this comment.
     : m_input(rots::text::truncate_at_null(input))
 {
 }

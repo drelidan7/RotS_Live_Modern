@@ -1,9 +1,11 @@
+#include "../comm.h"
 #include "../db.h"
 #include "../handler.h"
 #include "../interpre.h"
 #include "../rots_rng.h"
 #include "../structs.h"
 #include "../utils.h"
+#include "scoped_allocation_counter.h"
 #include "test_char_cleanup.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
@@ -743,6 +745,19 @@ TEST(GameplaySpeechText, SayToCharBoundsAnOversizedEndingFragment)
 
     // act() expands the two-byte "$N" token to "Speaker" after say_to_char's 599-byte cap.
     EXPECT_LE(std::string(context.victim_descriptor.output).size(), 610u);
+}
+
+TEST(GameplaySpeechText, ActExpansionPerformsNoHeapAllocations)
+{
+    RoomPairContext context;
+    context.actor.player.name = const_cast<char*>("speaker");
+    context.victim.player.name = const_cast<char*>("listener");
+
+    rots_test::ScopedAllocationCounter counter;
+    act("$n nods at $N.", FALSE, &context.actor, nullptr, &context.victim, TO_VICT, FALSE);
+    EXPECT_EQ(counter.allocations(), 0u);
+
+    EXPECT_EQ(std::string(context.victim_descriptor.output), "Speaker nods at listener.\n\r");
 }
 
 #ifdef TESTING

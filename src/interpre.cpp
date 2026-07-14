@@ -3283,7 +3283,7 @@ void nanny(struct descriptor_data* d, char* arg)
                     return;
                 }
                 const std::string character_path = account::account_character_player_path(kAccountStorageRoot, d->account_name, selected_character_name);
-                if (!update_player_index_entry_from_store(&tmp_store, character_path.c_str(), &error_message)) {
+                if (!update_player_index_entry_from_store(&tmp_store, character_path, &error_message)) {
                     SEND_TO_Q("That linked character cannot be loaded from account storage.\n\r", d);
                     SEND_TO_Q((error_message + "\n\r").c_str(), d);
                     show_account_character_prompt(d, account_data);
@@ -3322,7 +3322,7 @@ void nanny(struct descriptor_data* d, char* arg)
                     return;
                 }
                 const std::string character_path = account::account_character_player_path(kAccountStorageRoot, d->account_name, selected_character_name);
-                if (!update_player_index_entry_from_store(&tmp_store, character_path.c_str(), &error_message)) {
+                if (!update_player_index_entry_from_store(&tmp_store, character_path, &error_message)) {
                     SEND_TO_Q("That linked character cannot be loaded from account storage.\n\r", d);
                     SEND_TO_Q((error_message + "\n\r").c_str(), d);
                     show_account_character_prompt(d, account_data);
@@ -3464,7 +3464,7 @@ void nanny(struct descriptor_data* d, char* arg)
             const std::string account_password = d->account_password;
             *d->account_password = '\0';
             if (!account::create_account_for_email(kAccountStorageRoot, d->account_email,
-                    account_password.c_str(), time(0), &account_data, &error_message)) {
+                    account_password, time(0), &account_data, &error_message)) {
                 SEND_TO_Q((error_message + "\n\rAccount email: ").c_str(), d);
                 clear_account_login_state(d);
                 STATE(d) = CON_NME;
@@ -3713,7 +3713,7 @@ void nanny(struct descriptor_data* d, char* arg)
             const std::string account_password = d->account_password;
             *d->account_password = '\0';
             if (!account::admin_reset_password(kAccountStorageRoot, d->account_name,
-                    account_password.c_str(), d->account_name, time(0), &account_data,
+                    account_password, d->account_name, time(0), &account_data,
                     &error_message)) {
                 SEND_TO_Q((error_message + "\n\r").c_str(), d);
                 if (account::read_account_file(kAccountStorageRoot, d->account_name, &account_data, nullptr)) {
@@ -4592,7 +4592,7 @@ void introduce_char(struct descriptor_data* d)
         stored_character.specials2.load_room = initial_load_room;
         const std::string account_character_path = account::account_character_player_path(kAccountStorageRoot, d->account_name, GET_NAME(d->character));
 
-        if (!update_player_index_entry_from_store(&stored_character, account_character_path.c_str(), &error_message)) {
+        if (!update_player_index_entry_from_store(&stored_character, account_character_path, &error_message)) {
             SET_BIT(PLR_FLAGS(d->character), PLR_DELETED);
             if (d->pos >= 0 && d->pos <= top_of_p_table) {
                 player_table[d->pos].flags |= PLR_DELETED;

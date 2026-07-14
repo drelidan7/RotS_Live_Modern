@@ -1209,6 +1209,34 @@ TEST(AccountManagement, FormatsCharacterPromptWithLinkedCharacterList)
         "\n\rCharacter number: ");
 }
 
+TEST(AccountManagement, FormatsDefaultInitializedRaceAbbreviationAsUnknown)
+{
+    TemporaryDirectory temp_directory;
+    ScopedWorkingDirectory working_directory(temp_directory.path());
+    ASSERT_TRUE(std::filesystem::create_directory("accounts"));
+    ASSERT_TRUE(std::filesystem::create_directory("accounts/A-E"));
+
+    account::AccountData account_data = make_account();
+    account_data.characters = { "blankrace" };
+    std::string error_message;
+    ASSERT_TRUE(account::create_account(".", account_data.account_name,
+        account_data.normalized_email, "ValidPass1", 1700010200, nullptr,
+        &error_message))
+        << error_message;
+
+    char_file_u blank_race = make_stored_character("blankrace");
+    blank_race.level = 40;
+    blank_race.race = MAX_RACES;
+    ASSERT_TRUE(account::write_account_character_file(
+        ".", account_data.account_name, blank_race, &error_message))
+        << error_message;
+
+    const std::string prompt =
+        account::format_account_character_prompt(".", account_data);
+
+    EXPECT_NE(prompt.find("1) [ 40 ??] Blankrace"), std::string::npos);
+}
+
 TEST(AccountManagement, CharacterPromptAndListMatchForBoundedAndEmbeddedNullRoots)
 {
     TemporaryDirectory temp_directory;

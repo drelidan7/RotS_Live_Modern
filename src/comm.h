@@ -86,6 +86,11 @@ void page_string(struct descriptor_data* descriptor, std::string_view text);
 /// Pages mutable storage whose lifetime the caller guarantees until paging completes.
 void page_string_borrowed(struct descriptor_data* descriptor, char* text);
 bool parse_startup_options(int argc, char** argv, StartupOptions* options, std::string* error_message);
+#ifdef TESTING
+/// Parses a bounded port value through the production startup-option parser for focused tests.
+bool parse_port_value_for_testing(
+    std::string_view text, sh_int* port, std::string* error_message);
+#endif
 
 /* #define SEND_TO_Q(messg, desc)  write_to_q((messg), &(desc)->output) */
 #define SEND_TO_Q(messg, desc) write_to_output((messg), desc)

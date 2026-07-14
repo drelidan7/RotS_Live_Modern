@@ -921,7 +921,7 @@ TEST(MSDPProtocol, SendsListsTablesAndArraysWithMSDPMarkers)
     table_payload += "VNUM";
     table_payload.push_back(static_cast<char>(MSDP_VAL));
     table_payload += "3001";
-    MSDPSetTable(&context.descriptor, eMSDP_ROOM, table_payload.c_str());
+    MSDPSetTable(&context.descriptor, eMSDP_ROOM, table_payload);
     MSDPSend(&context.descriptor, eMSDP_ROOM);
 
     std::string expected_table;
@@ -935,7 +935,7 @@ TEST(MSDPProtocol, SendsListsTablesAndArraysWithMSDPMarkers)
     array_payload += "n";
     array_payload.push_back(static_cast<char>(MSDP_VAL));
     array_payload += "e";
-    MSDPSetArray(&context.descriptor, eMSDP_ROOM_EXITS, array_payload.c_str());
+    MSDPSetArray(&context.descriptor, eMSDP_ROOM_EXITS, array_payload);
     MSDPSend(&context.descriptor, eMSDP_ROOM_EXITS);
 
     std::string expected_array;
@@ -950,8 +950,8 @@ TEST(MSDPProtocol, SendPairAndListRejectOversizedPayloads)
     ProtocolDescriptor context;
     std::string huge_value(MAX_VARIABLE_LENGTH, 'X');
 
-    MSDPSendPair(&context.descriptor, "HEALTH", huge_value.c_str());
-    MSDPSendList(&context.descriptor, "COMMANDS", huge_value.c_str());
+    MSDPSendPair(&context.descriptor, "HEALTH", huge_value);
+    MSDPSendList(&context.descriptor, "COMMANDS", huge_value);
 
     EXPECT_EQ(context.read_output(), "");
 }

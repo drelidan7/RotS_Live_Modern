@@ -787,7 +787,7 @@ void __pkill_extend_tab(int n)
 int pkill_read_file(std::string_view file)
 {
     const std::string file_owner(rots::text::truncate_at_null(file));
-    const std::string json_path = pkill_json::pkill_json_path(file);
+    const std::string json_path = pkill_json::pkill_json_path(file_owner);
     std::vector<PKILL> loaded_records;
 
     FILE* json_probe = fopen(json_path.c_str(), "rb");
@@ -839,7 +839,7 @@ int pkill_read_file(std::string_view file)
 void pkill_delete_file(std::string_view file)
 {
     const std::string file_owner(rots::text::truncate_at_null(file));
-    const std::string json_path = pkill_json::pkill_json_path(file);
+    const std::string json_path = pkill_json::pkill_json_path(file_owner);
     std::string error_message;
     if (!pkill_json::write_pkill_json_store(json_path, std::vector<PKILL>(), &error_message))
         vmudlog(BRF, "Could not delete pkill file '%s': %s", file_owner.c_str(), error_message.c_str());
@@ -856,7 +856,7 @@ int pkill_update_file(std::string_view file, PKILL pkills[], int n)
     PKILL p;
     extern struct player_index_element* player_table;
 
-    const std::string json_path = pkill_json::pkill_json_path(file);
+    const std::string json_path = pkill_json::pkill_json_path(file_owner);
     std::vector<PKILL> existing_records;
 
     /* An absent JSON store is tolerated as empty (matches the legacy

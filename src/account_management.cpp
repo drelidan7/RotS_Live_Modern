@@ -116,6 +116,8 @@ namespace {
     {
         if (race < 0 || race >= MAX_RACES + 40)
             return "??";
+        if (::race_abbrevs[race].data() == nullptr)
+            return "??";
         return ::race_abbrevs[race].data();
     }
 
@@ -343,6 +345,9 @@ namespace {
 
     bool send_email_message(std::string_view recipient, std::string_view subject, std::string_view body, std::string* error_message)
     {
+        recipient = rots::text::truncate_at_null(recipient);
+        subject = rots::text::truncate_at_null(subject);
+        body = rots::text::truncate_at_null(body);
 #if defined PREDEF_PLATFORM_WINDOWS
         // Documented Windows operational gap (Phase 3 Task 6): email delivery
         // here shells out to `sendmail` via fork()/pipe()/waitpid()/execvp(),
@@ -513,6 +518,7 @@ namespace {
 
     bool hex_decode(std::string_view encoded, std::string* bytes, std::string* error_message)
     {
+        encoded = rots::text::truncate_at_null(encoded);
         if ((encoded.size() % 2) != 0) {
             set_error(error_message, "Hex-encoded content must contain an even number of characters.");
             return false;
@@ -636,6 +642,7 @@ namespace {
     bool validate_identifier_for_path(std::string_view value, std::string_view identifier_label, std::string* error_message)
     {
         value = rots::text::truncate_at_null(value);
+        identifier_label = rots::text::truncate_at_null(identifier_label);
         if (!is_valid_account_name(value, error_message)) {
             if (error_message && !error_message->empty())
                 *error_message = std::string(identifier_label) + " " + *error_message;
@@ -718,6 +725,7 @@ namespace {
     // affect behavior).
     bool read_account_file_from_bucket_entry(std::string_view bucket_path, std::string_view entry_name, AccountData* account, std::string* error_message)
     {
+        entry_name = rots::text::truncate_at_null(entry_name);
         const std::string entry_path = owned_text(bucket_path) + "/" + owned_text(entry_name);
         struct stat entry_info { };
         if (stat(entry_path.c_str(), &entry_info) != 0)
@@ -1251,6 +1259,7 @@ namespace {
 
     std::string parent_directory_for_path(std::string_view path)
     {
+        path = rots::text::truncate_at_null(path);
         const size_t separator_position = path.find_last_of('/');
         if (separator_position == std::string::npos)
             return "";
@@ -1260,6 +1269,7 @@ namespace {
 
     bool ensure_directory_path_exists(std::string_view path, std::string* error_message)
     {
+        path = rots::text::truncate_at_null(path);
         if (path.empty()) {
             set_error(error_message, "");
             return true;
@@ -1404,6 +1414,7 @@ namespace {
 
     bool parse_account_property(std::string_view key, json_utils::JsonReader* reader, AccountData* account, std::string* error_message)
     {
+        key = rots::text::truncate_at_null(key);
         if (key == "version")
             return reader->parse_integer(&account->version, error_message);
         if (key == "account_name")
@@ -1456,6 +1467,7 @@ namespace {
 
     bool parse_migration_property(std::string_view key, json_utils::JsonReader* reader, CharacterMigrationData* migration, std::string* error_message)
     {
+        key = rots::text::truncate_at_null(key);
         if (key == "version")
             return reader->parse_integer(&migration->version, error_message);
         if (key == "account_name")

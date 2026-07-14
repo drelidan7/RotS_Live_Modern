@@ -229,6 +229,7 @@ namespace {
 
     bool retire_previous_account_object_path(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string_view previous_object_path, std::string* error_message)
     {
+        previous_object_path = rots::text::truncate_at_null(previous_object_path);
         const std::string expected_object_path = objects_json_file_name(character_name);
         if (previous_object_path.empty() || previous_object_path == expected_object_path) {
             set_error(error_message, "");
@@ -292,6 +293,7 @@ namespace {
 
     bool normalize_account_object_path_after_successful_write(std::string_view root_directory, std::string_view account_name, std::string_view character_name, std::string_view previous_object_path, std::string* error_message)
     {
+        previous_object_path = rots::text::truncate_at_null(previous_object_path);
         const std::string expected_object_path = objects_json_file_name(character_name);
         if (previous_object_path.empty() || previous_object_path == expected_object_path) {
             set_error(error_message, "");
@@ -371,13 +373,13 @@ namespace {
         if (!decode_snapshot_content(snapshot_data.player_file, &player_text, error_message))
             return false;
 
-        ensure_player_index_entry(character_name_owner.c_str());
+        ensure_player_index_entry(character_name_owner);
 
         char normalized_name[MAX_INPUT_LENGTH];
         std::snprintf(normalized_name, sizeof(normalized_name), "%s", character_name_owner.c_str());
 
         char_file_u stored_character {};
-        if (load_char_from_text(normalized_name, player_text.c_str(), &stored_character) < 0) {
+        if (load_char_from_text(normalized_name, player_text, &stored_character) < 0) {
             set_error(error_message, "Legacy player data for '" + owned_text(character_name) + "' could not be converted into account-native character storage.");
             return false;
         }
@@ -469,8 +471,8 @@ namespace {
         const std::string stale_flat_player_file_path_owner = owned_text(stale_flat_player_file_path);
         const std::string object_file_path_owner = owned_text(object_file_path);
         const std::string exploits_file_path_owner = owned_text(exploits_file_path);
-        const bool had_player_file = path_exists(player_file_path);
-        const bool had_object_file = path_exists(object_file_path);
+        const bool had_player_file = path_exists(player_file_path_owner);
+        const bool had_object_file = path_exists(object_file_path_owner);
         bool retired_player = false;
         bool retired_object = false;
 

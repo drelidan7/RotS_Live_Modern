@@ -18,11 +18,19 @@ std::string binary_label_error_for_testing(std::string_view label);
 bool write_json_text_for_testing(std::string_view path, std::string_view contents, std::string* error_message);
 }
 
+std::string board_filename_for_testing(std::string_view file);
+
 TEST(BoardsJson, BinaryDiagnosticLabelsStopAtEmbeddedNull)
 {
     constexpr std::string_view embedded_label("header\0ignored", 14);
     EXPECT_EQ(boards_json::binary_label_error_for_testing(embedded_label),
         "Truncated board file while reading header.");
+}
+
+TEST(BoardsJson, DerivedBoardFilenameStopsAtEmbeddedNull)
+{
+    constexpr std::string_view file("boa15\0ignored", 13);
+    EXPECT_EQ(board_filename_for_testing(file), "boards/boa15.boa");
 }
 
 // TDD coverage for Phase 2a Task 4: board persistence as JSON, plus the
@@ -376,7 +384,7 @@ TEST(BoardsJson, ConvertLegacyBoardFileWritesJsonVerifiesAndRenamesLegacyToMigra
     write_file(legacy_path, build_two_message_board_bytes());
 
     std::string error;
-    ASSERT_TRUE(boards_json::convert_legacy_board_file(legacy_path.c_str(), &error)) << error;
+    ASSERT_TRUE(boards_json::convert_legacy_board_file(legacy_path, &error)) << error;
 
     EXPECT_FALSE(file_exists(legacy_path)) << "legacy file should have been renamed away";
     EXPECT_TRUE(file_exists(legacy_path + ".migrated"));
@@ -406,7 +414,7 @@ TEST(BoardsJson, ConvertLegacyBoardFileSkipsCorruptFileLeavingItUntouched)
     write_file(legacy_path, corrupt_bytes);
 
     std::string error;
-    EXPECT_FALSE(boards_json::convert_legacy_board_file(legacy_path.c_str(), &error));
+    EXPECT_FALSE(boards_json::convert_legacy_board_file(legacy_path, &error));
     EXPECT_FALSE(error.empty());
 
     ASSERT_TRUE(file_exists(legacy_path));

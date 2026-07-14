@@ -367,7 +367,7 @@ TEST(MailJson, ConvertLegacyMailFileWritesJsonVerifiesAndRenamesLegacyToMigrated
     write_file(legacy_path, build_two_message_mail_bytes());
 
     std::string error;
-    ASSERT_TRUE(mail_json::convert_legacy_mail_file(legacy_path.c_str(), &error)) << error;
+    ASSERT_TRUE(mail_json::convert_legacy_mail_file(legacy_path, &error)) << error;
 
     EXPECT_FALSE(file_exists(legacy_path)) << "legacy file should have been renamed away";
     EXPECT_TRUE(file_exists(legacy_path + ".migrated"));
@@ -397,7 +397,7 @@ TEST(MailJson, ConvertLegacyMailFileSkipsCorruptFileLeavingItUntouched)
     write_file(legacy_path, corrupt_bytes);
 
     std::string error;
-    EXPECT_FALSE(mail_json::convert_legacy_mail_file(legacy_path.c_str(), &error));
+    EXPECT_FALSE(mail_json::convert_legacy_mail_file(legacy_path, &error));
     EXPECT_FALSE(error.empty());
 
     ASSERT_TRUE(file_exists(legacy_path));

@@ -1321,7 +1321,7 @@ void MSDPSendPair(
             : std::format("MSDPSendPair: Variable name has a length of {} bytes (exceeds "
                           "MAX_VARIABLE_LENGTH of {}).\n",
                 apVariable.size(), MAX_VARIABLE_LENGTH);
-        ReportBug(report.c_str());
+        ReportBug(report);
         return;
     }
 
@@ -1368,7 +1368,7 @@ void MSDPSendList(
             : std::format("MSDPSendList: Variable name has a length of {} bytes (exceeds "
                           "MAX_VARIABLE_LENGTH of {}).\n",
                 apVariable.size(), MAX_VARIABLE_LENGTH);
-        ReportBug(report.c_str());
+        ReportBug(report);
         return;
     }
 
@@ -1469,7 +1469,7 @@ void MSDPSetString(descriptor_t* apDescriptor, variable_t aMSDP, std::string_vie
 
             if (strcmp(pProtocol->pVariables[aMSDP]->pValueString, SanitizedValue.c_str())) {
                 free(pProtocol->pVariables[aMSDP]->pValueString);
-                pProtocol->pVariables[aMSDP]->pValueString = AllocString(SanitizedValue.c_str());
+                pProtocol->pVariables[aMSDP]->pValueString = AllocString(SanitizedValue);
                 pProtocol->pVariables[aMSDP]->bDirty = true;
             }
         }

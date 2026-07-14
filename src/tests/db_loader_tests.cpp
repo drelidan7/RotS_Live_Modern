@@ -42,6 +42,15 @@ void build_player_index(void);
 void clear_char(struct char_data *ch, int mode);
 void save_player(struct char_data *ch, int load_room, int index_pos);
 void store_to_char(struct char_file_u *st, struct char_data *ch);
+std::string legacy_player_path_for_testing(
+    std::string_view directory_path, std::string_view entry_name);
+
+TEST(DbLoader, DerivedLegacyPlayerPathStopsAtEmbeddedNull)
+{
+    constexpr std::string_view directory_path("players/A-E/\0ignored/", 21);
+    EXPECT_EQ(legacy_player_path_for_testing(directory_path, "aragorn.1.2"),
+        "players/A-E/aragorn.1.2");
+}
 
 namespace {
 
@@ -654,7 +663,7 @@ TEST(DbLoader, LegacyPlayerTextRoundTripPreservesCombatState) {
     char player_name[] = "aragorn";
     char_file_u loaded{};
     ScopedPlayerTableEntry player_table_entry("aragorn");
-    ASSERT_EQ(load_player_from_text(player_name, player_text.c_str(), &loaded), 1);
+    ASSERT_EQ(load_player_from_text(player_name, player_text, &loaded), 1);
 
     EXPECT_EQ(loaded.specials2.tactics, original.specials2.tactics);
     EXPECT_EQ(loaded.specials2.shooting, original.specials2.shooting);
@@ -689,7 +698,7 @@ TEST(DbLoader, LegacyPlayerTextRoundTripPreservesStructuredColorSettings) {
     char player_name[] = "aragorn";
     char_file_u loaded{};
     ScopedPlayerTableEntry player_table_entry("aragorn");
-    ASSERT_EQ(load_player_from_text(player_name, player_text.c_str(), &loaded), 1);
+    ASSERT_EQ(load_player_from_text(player_name, player_text, &loaded), 1);
 
     EXPECT_EQ(loaded.profs.colors[COLOR_MAGIC], original.profs.colors[COLOR_MAGIC]);
     EXPECT_EQ(loaded.profs.color_settings[COLOR_MAGIC].foreground.mode, COLOR_VALUE_TRUECOLOR);
@@ -743,7 +752,7 @@ TEST(DbLoader, LegacyPlayerTextNormalizesOutOfRangeCombatStateValues) {
     char player_name[] = "aragorn";
     char_file_u loaded{};
     ScopedPlayerTableEntry player_table_entry("aragorn");
-    ASSERT_EQ(load_player_from_text(player_name, player_text.c_str(), &loaded), 1);
+    ASSERT_EQ(load_player_from_text(player_name, player_text, &loaded), 1);
 
     EXPECT_EQ(loaded.specials2.tactics, TACTICS_NORMAL);
     EXPECT_EQ(loaded.specials2.shooting, SHOOTING_NORMAL);

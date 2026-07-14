@@ -349,6 +349,27 @@ TEST(StartupOptions, AcceptsCompactDashPPortForm)
     EXPECT_FALSE(options.has_proxy);
 }
 
+TEST(StartupOptions, AcceptsAValidPortPrefixBeforeTrailingText)
+{
+    sh_int port = 0;
+    std::string error_message;
+
+    ASSERT_TRUE(parse_port_value_for_testing("4000junk", &port, &error_message))
+        << error_message;
+    EXPECT_EQ(port, 4000);
+}
+
+TEST(StartupOptions, PortParsingStopsAtTheFirstEmbeddedNull)
+{
+    constexpr std::string_view port_text("4000\0junk", 9);
+    sh_int port = 0;
+    std::string error_message;
+
+    ASSERT_TRUE(parse_port_value_for_testing(port_text, &port, &error_message))
+        << error_message;
+    EXPECT_EQ(port, 4000);
+}
+
 TEST_F(AcceptPathTest, DirectConnectionsReceiveGreetingWithoutWaitingForInput)
 {
     in_port_t port = 0;

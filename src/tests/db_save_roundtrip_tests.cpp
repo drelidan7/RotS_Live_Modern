@@ -194,9 +194,9 @@ TEST(SavePlayerRoundTrip, FixtureCharacterSerializesToStableBytes)
     // store_to_char() call) at scope exit (Phase 5 T6 leak sweep).
     ScopedStoreToCharFields character_store_cleanup { character };
 
-    ASSERT_TRUE(write_player_text(&character, /*load_room=*/9001, scratch.c_str()));
+    ASSERT_TRUE(write_player_text(&character, /*load_room=*/9001, scratch));
     const std::string first = read_entire_file(scratch);
-    ASSERT_TRUE(write_player_text(&character, /*load_room=*/9001, scratch.c_str()));
+    ASSERT_TRUE(write_player_text(&character, /*load_room=*/9001, scratch));
     const std::string second = read_entire_file(scratch);
 
     EXPECT_EQ(normalize_time_variant_fields(first), normalize_time_variant_fields(second));
@@ -251,7 +251,7 @@ TEST(SavePlayerRoundTrip, PrintsStableFormatHash)
     // store_to_char() call) at scope exit (Phase 5 T6 leak sweep).
     ScopedStoreToCharFields character_store_cleanup { character };
 
-    ASSERT_TRUE(write_player_text(&character, /*load_room=*/9001, scratch.c_str()));
+    ASSERT_TRUE(write_player_text(&character, /*load_room=*/9001, scratch));
     static std::string pre_transform_bytes = normalize_time_variant_fields(read_entire_file(scratch));
     const std::uint64_t hash = fnv1a64(pre_transform_bytes);
 

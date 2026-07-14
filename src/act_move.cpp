@@ -633,9 +633,9 @@ void msdp_room_update(char_data* ch)
     msdp_room += sector_types[world[ch->in_room].sector_type];
 
     // Room exits need to be sent first before anything else
-    MSDPSetArray(ch->desc, eMSDP_ROOM_EXITS, exits_names.c_str());
+    MSDPSetArray(ch->desc, eMSDP_ROOM_EXITS, exits_names);
     MSDPSend(ch->desc, eMSDP_ROOM_EXITS);
-    MSDPSetTable(ch->desc, eMSDP_ROOM, msdp_room.c_str());
+    MSDPSetTable(ch->desc, eMSDP_ROOM, msdp_room);
 
     MSDPUpdate(ch->desc);
 }

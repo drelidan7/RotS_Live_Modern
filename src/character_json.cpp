@@ -422,7 +422,7 @@ namespace {
             return false;
 
         for (size_t index = 0; index < point_data.bodypart_hit.size(); ++index) {
-            if (!require_ubyte_range(point_data.bodypart_hit[index], ("points.bodypart_hit[" + std::to_string(index) + "]").c_str(), error_message))
+            if (!require_ubyte_range(point_data.bodypart_hit[index], "points.bodypart_hit[" + std::to_string(index) + "]", error_message))
                 return false;
         }
 
@@ -447,10 +447,10 @@ namespace {
         for (size_t index = 0; index < values.size(); ++index) {
             const std::string indexed_field = std::string(field_name) + "[" + std::to_string(index) + "]";
             if (is_byte) {
-                if (!require_byte_range(values[index], indexed_field.c_str(), error_message))
+                if (!require_byte_range(values[index], indexed_field, error_message))
                     return false;
             } else {
-                if (!require_ubyte_range(values[index], indexed_field.c_str(), error_message))
+                if (!require_ubyte_range(values[index], indexed_field, error_message))
                     return false;
             }
         }
@@ -465,7 +465,7 @@ namespace {
 
         for (size_t index = 0; index < values.size(); ++index) {
             const std::string indexed_field = "colors[" + std::to_string(index) + "]";
-            if (!require_color_value_range(values[index], indexed_field.c_str(), error_message))
+            if (!require_color_value_range(values[index], indexed_field, error_message))
                 return false;
         }
 
@@ -499,9 +499,9 @@ namespace {
 
         for (size_t index = 0; index < settings.size(); ++index) {
             const std::string prefix = "colors[" + std::to_string(index) + "]";
-            if (!validate_color_value_data(settings[index].foreground, (prefix + ".foreground").c_str(), error_message))
+            if (!validate_color_value_data(settings[index].foreground, prefix + ".foreground", error_message))
                 return false;
-            if (!validate_color_value_data(settings[index].background, (prefix + ".background").c_str(), error_message))
+            if (!validate_color_value_data(settings[index].background, prefix + ".background", error_message))
                 return false;
         }
 
@@ -522,11 +522,11 @@ namespace {
     bool validate_affect_data(const AffectData& affect, size_t index, std::string* error_message)
     {
         const std::string prefix = "affects[" + std::to_string(index) + "]";
-        return require_short_range(affect.type, (prefix + ".type").c_str(), error_message)
-            && require_byte_range(affect.time_phase, (prefix + ".time_phase").c_str(), error_message)
-            && require_short_range(affect.modifier, (prefix + ".modifier").c_str(), error_message)
-            && require_short_range(affect.location, (prefix + ".location").c_str(), error_message)
-            && require_short_range(affect.counter, (prefix + ".counter").c_str(), error_message);
+        return require_short_range(affect.type, prefix + ".type", error_message)
+            && require_byte_range(affect.time_phase, prefix + ".time_phase", error_message)
+            && require_short_range(affect.modifier, prefix + ".modifier", error_message)
+            && require_short_range(affect.location, prefix + ".location", error_message)
+            && require_short_range(affect.counter, prefix + ".counter", error_message);
     }
 
     std::vector<std::string> encode_flags(long flags, const FlagDefinition* definitions, size_t definition_count)

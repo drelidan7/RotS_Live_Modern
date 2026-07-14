@@ -682,7 +682,7 @@ int scan_file(void)
     };
 
     std::string json_bytes;
-    if (mail_json::read_whole_file_contents(json_path.c_str(), &json_bytes))
+    if (mail_json::read_whole_file_contents(json_path, &json_bytes))
         return load_json_bytes_into_index(json_bytes) ? 1 : 0;
 
     /* No JSON store yet -- either a fresh install (no legacy file either) or
@@ -717,7 +717,7 @@ int scan_file(void)
         snprintf(logbuf, sizeof(logbuf), "Converted legacy mail file '%s' to JSON.", MAIL_FILE);
     log(logbuf);
 
-    if (!mail_json::read_whole_file_contents(json_path.c_str(), &json_bytes)) {
+    if (!mail_json::read_whole_file_contents(json_path, &json_bytes)) {
         log("SYSERR: Mail JSON file missing immediately after conversion.");
         return 0;
     }

@@ -550,7 +550,7 @@ void Crash_listrent(struct char_data* ch, char* name)
 
     const std::string json_path = player_objects_json_path(name);
     std::string json_contents;
-    if (!json_path.empty() && read_binary_file_contents(json_path.c_str(), &json_contents)) {
+    if (!json_path.empty() && read_binary_file_contents(json_path, &json_contents)) {
         std::string error_message;
         if (objects_json::deserialize_objects_from_json(json_contents, &data, &error_message)) {
             have_data = true;
@@ -681,7 +681,7 @@ FILE* Crash_load(char_data* character)
 
     const std::string json_path = player_objects_json_path(GET_NAME(character));
     std::string json_contents;
-    if (!json_path.empty() && read_binary_file_contents(json_path.c_str(), &json_contents)) {
+    if (!json_path.empty() && read_binary_file_contents(json_path, &json_contents)) {
         std::string error_message;
         if (!objects_json::deserialize_objects_from_json(json_contents, &data, &error_message)) {
             log(std::format("SYSERR: corrupt objects JSON '{}' for {}: {}", json_path, GET_NAME(character), error_message));

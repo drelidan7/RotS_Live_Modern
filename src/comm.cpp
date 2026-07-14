@@ -135,9 +135,20 @@ bool parse_port_value(std::string_view text, sh_int* port, std::string* error_me
         return false;
     }
 
+    size_t digit_count = 0;
+    while (digit_count < text.size() && text[digit_count] >= '0' && text[digit_count] <= '9')
+        ++digit_count;
+
+    if (digit_count == 0) {
+        if (error_message)
+            *error_message = "Illegal port #";
+        return false;
+    }
+
     int parsed_port = 0;
-    const auto parse_result = std::from_chars(text.data(), text.data() + text.size(), parsed_port);
-    if (parse_result.ec != std::errc() || parse_result.ptr != text.data() + text.size()) {
+    const auto parse_result =
+        std::from_chars(text.data(), text.data() + digit_count, parsed_port);
+    if (parse_result.ec != std::errc()) {
         if (error_message)
             *error_message = "Illegal port #";
         return false;
@@ -233,6 +244,14 @@ int finish_proxy_header_if_ready(descriptor_data* descriptor)
 }
 
 } // namespace
+
+#ifdef TESTING
+bool parse_port_value_for_testing(
+    std::string_view text, sh_int* port, std::string* error_message)
+{
+    return parse_port_value(text, port, error_message);
+}
+#endif
 
 /* functions in this file */
 int get_from_q(struct txt_q* queue, char* dest);
@@ -517,7 +536,7 @@ int main(int argc, char** argv)
         }
     }
 
-    log(std::format("Using {} as data directory.", startup_options.dir.c_str()));
+    log(std::format("Using {} as data directory.", startup_options.dir));
 
     // Open command log
     // Was system("mv -f last_cmds crash_cmds"); the return value was never
@@ -748,7 +767,7 @@ void msdp_update()
         if (opponent && utils::is_npc(*opponent)) {
             MSDPSetNumber(desc, eMSDP_OPPONENT_HEALTH, get_health_percent(opponent));
             MSDPSetString(desc, eMSDP_OPPONENT_NAME, GET_NAME(opponent));
-            MSDPSetString(desc, eMSDP_OPPONENT_LEVEL, std::to_string(GET_LEVEL(opponent)).c_str());
+            MSDPSetString(desc, eMSDP_OPPONENT_LEVEL, std::to_string(GET_LEVEL(opponent)));
         } else if (opponent && utils::is_pc(*opponent)) {
             MSDPSetNumber(desc, eMSDP_OPPONENT_HEALTH, get_health_percent(opponent));
             MSDPSetString(desc, eMSDP_OPPONENT_NAME, pc_star_types[utils::get_race(*opponent)]);

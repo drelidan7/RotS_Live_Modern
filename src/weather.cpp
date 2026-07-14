@@ -410,14 +410,14 @@ void another_hour(int mode)
         if (weather_info.moonphase != MOON_NEW) {
             weather_info.moonlight = 1;
             send_to_outdoor(std::format("The {} moon shows in the sky.\n\r",
-                moon_phase[new_moon_phase]).c_str(), OUTDOORS_LIGHT);
+                moon_phase[new_moon_phase]), OUTDOORS_LIGHT);
         }
     }
     if (time_info.hours == (moon_rise + 12) % 24) {
         if (weather_info.moonphase != MOON_NEW) {
             weather_info.moonlight = 0;
             send_to_outdoor(std::format("The {} moon goes off the sky.\n\r",
-                moon_phase[new_moon_phase]).c_str(), OUTDOORS_LIGHT);
+                moon_phase[new_moon_phase]), OUTDOORS_LIGHT);
         }
     }
     age_room_tracks();
@@ -427,8 +427,7 @@ void another_hour(int mode)
         MSDPSetString(desc, eMSDP_WORLD_TIME,
             std::format("It is about {}:00 {} on ",
                 time_info.hours % 12 == 0 ? 12 : time_info.hours % 12,
-                time_info.hours >= 12 ? "PM" : "AM")
-                .c_str());
+                time_info.hours >= 12 ? "PM" : "AM"));
         MSDPSend(desc, eMSDP_WORLD_TIME);
     });
 }

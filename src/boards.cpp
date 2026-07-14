@@ -1297,6 +1297,12 @@ void board_info_type::save_board()
 
 namespace {
 
+    std::string make_board_filename(std::string_view file)
+    {
+        const std::string file_owner(rots::text::truncate_at_null(file));
+        return std::format("{}/{}.boa", BOARD_DIR, file_owner);
+    }
+
     bool read_whole_file(std::string_view path, std::string* out)
     {
         const std::string path_owner(rots::text::truncate_at_null(path));
@@ -1372,13 +1378,20 @@ namespace {
 
 } // namespace
 
+#ifdef TESTING
+std::string board_filename_for_testing(std::string_view file)
+{
+    return make_board_filename(file);
+}
+#endif
+
 void board_info_type::load_board()
 {
     const std::string legacy_path = FILENAME;
     const std::string json_path = boards_json::board_json_path(legacy_path);
 
     std::string json_bytes;
-    if (read_whole_file(json_path.c_str(), &json_bytes)) {
+    if (read_whole_file(json_path, &json_bytes)) {
         boards_json::BoardSaveData data;
         std::string error;
         if (!boards_json::deserialize_board_from_json(json_bytes, &data, &error)) {
@@ -1413,7 +1426,7 @@ void board_info_type::load_board()
             snprintf(logbuf, sizeof(logbuf), "Converted legacy board file '%s' to JSON.", legacy_path.c_str());
         log(logbuf);
 
-        if (!read_whole_file(json_path.c_str(), &json_bytes)) {
+        if (!read_whole_file(json_path, &json_bytes)) {
             log("SYSERR: Board JSON file missing immediately after conversion.  Resetting.");
             reset_board();
             return;
@@ -1487,7 +1500,7 @@ board_info_type::board_info_type(int objnum, int l_read, int l_write, int l_rem,
     const std::string file_owner(rots::text::truncate_at_null(file));
     const std::string title_owner(rots::text::truncate_at_null(titlename));
     strcpy(short_name, file_owner.c_str());
-    strcpy(filename, std::format("{}/{}.boa", BOARD_DIR, file).c_str());
+    strcpy(filename, make_board_filename(file_owner).c_str());
     strcpy(title, title_owner.c_str());
     load_board();
 }
@@ -1533,7 +1546,7 @@ mail_info_type::mail_info_type(int objnum, int l_read, int l_write, int l_rem,
     const std::string file_owner(rots::text::truncate_at_null(file));
     const std::string title_owner(rots::text::truncate_at_null(titlename));
     strcpy(short_name, file_owner.c_str());
-    strcpy(filename, std::format("{}/{}.boa", BOARD_DIR, file).c_str());
+    strcpy(filename, make_board_filename(file_owner).c_str());
     strcpy(title, title_owner.c_str());
 
     load_board();

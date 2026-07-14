@@ -115,6 +115,7 @@ std::string serialize_account_to_json(const AccountData& account)
 
 bool deserialize_account_from_json(std::string_view json, AccountData* account, std::string* error_message)
 {
+    json = rots::text::truncate_at_null(json);
     if (account == nullptr) {
         set_error(error_message, "Account output parameter must not be null.");
         return false;
@@ -345,6 +346,7 @@ std::string serialize_character_migration_to_json(const CharacterMigrationData& 
 
 bool deserialize_character_migration_from_json(std::string_view json, CharacterMigrationData* migration, std::string* error_message)
 {
+    json = rots::text::truncate_at_null(json);
     if (migration == nullptr) {
         set_error(error_message, "Migration output parameter must not be null.");
         return false;

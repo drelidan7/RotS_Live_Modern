@@ -815,7 +815,24 @@ int load_player_from_account_json_path(char* name, std::string_view player_path,
     return 1;
 }
 
+std::string legacy_player_path(
+    std::string_view directory_path, std::string_view entry_name)
+{
+    const std::string directory_path_owner(
+        rots::text::truncate_at_null(directory_path));
+    entry_name = rots::text::truncate_at_null(entry_name);
+    return std::format("{}{}", directory_path_owner, entry_name);
+}
+
 } // namespace
+
+#ifdef TESTING
+std::string legacy_player_path_for_testing(
+    std::string_view directory_path, std::string_view entry_name)
+{
+    return legacy_player_path(directory_path, entry_name);
+}
+#endif
 
 //  Reads a field from the player filename format (using FAT as index)
 
@@ -866,7 +883,7 @@ void build_directory(std::string_view directory_path)
 
         i = read_filename_field(0, tmpch, entry_name_buf);
         tmpch[i] = 0;
-        if (!is_versioned_legacy_player_entry_name(entry_name_buf, tmpch) && directory_has_versioned_legacy_player_entry(directory_path, tmpch)) {
+        if (!is_versioned_legacy_player_entry_name(entry_name_buf, tmpch) && directory_has_versioned_legacy_player_entry(directory_path_owner, tmpch)) {
             continue;
         }
         if (find_player_table_index_by_name(tmpch) >= 0)
@@ -889,7 +906,7 @@ void build_directory(std::string_view directory_path)
         player_table[top_of_p_table].flags = atoi(tmpch);
 
         strcpy(player_table[top_of_p_table].ch_file,
-            std::format("{}{}", directory_path, static_cast<const char*>(entry_name_buf)).c_str());
+            legacy_player_path(directory_path_owner, entry_name_buf).c_str());
 
         top_idnum = MAX(top_idnum, player_table[top_of_p_table].idnum);
     } // for (; it != end; it.increment(ec))
@@ -3159,7 +3176,7 @@ void save_player(struct char_data* ch, int load_room, int index_pos)
     if (dirslash) {
         *dirslash = '\0';
     }
-    if (finalize_player_file_rename("players/temp", dirpath, name, versioned.c_str())) {
+    if (finalize_player_file_rename("players/temp", dirpath, name, versioned)) {
         strcpy((player_table + index_pos)->ch_file, versioned.c_str());
     } else {
         log("save_player: could not finalize player file.");
@@ -3631,7 +3648,7 @@ int file_to_string(std::string_view name, char* buf)
     *buf = '\0';
 
     if (!(fl = fopen(name_owner.c_str(), "r"))) {
-        perror(std::format("Error reading {}", name).c_str());
+        perror(std::format("Error reading {}", name_owner).c_str());
         *buf = '\0';
         return (-1);
     }

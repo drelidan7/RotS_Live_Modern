@@ -311,7 +311,7 @@ TEST(PkillJson, ConvertLegacyFileWritesJsonVerifiesAndRenamesLegacyToMigrated)
     write_file(legacy_path, build_pkill_fixture_bytes());
 
     std::string error;
-    ASSERT_TRUE(pkill_json::convert_legacy_pkill_file(legacy_path.c_str(), &error)) << error;
+    ASSERT_TRUE(pkill_json::convert_legacy_pkill_file(legacy_path, &error)) << error;
     EXPECT_TRUE(error.empty());
 
     EXPECT_FALSE(path_exists(legacy_path));
@@ -335,7 +335,7 @@ TEST(PkillJson, ConvertLegacyFileFailsCleanlyWhenFileMissing)
     const std::string legacy_path = temp_directory.path() + "/pklist";
 
     std::string error;
-    EXPECT_FALSE(pkill_json::convert_legacy_pkill_file(legacy_path.c_str(), &error));
+    EXPECT_FALSE(pkill_json::convert_legacy_pkill_file(legacy_path, &error));
     EXPECT_FALSE(error.empty());
 }
 
@@ -517,7 +517,7 @@ TEST(CrimeJson, ConvertLegacyFileWritesJsonVerifiesAndRenamesLegacyToMigrated)
     write_file(legacy_path, build_crime_fixture_bytes());
 
     std::string error;
-    ASSERT_TRUE(crime_json::convert_legacy_crime_file(legacy_path.c_str(), &error)) << error;
+    ASSERT_TRUE(crime_json::convert_legacy_crime_file(legacy_path, &error)) << error;
     EXPECT_TRUE(error.empty());
 
     EXPECT_FALSE(path_exists(legacy_path));
@@ -541,7 +541,7 @@ TEST(CrimeJson, ConvertLegacyFileFailsCleanlyWhenFileMissing)
     const std::string legacy_path = temp_directory.path() + "/crimelist";
 
     std::string error;
-    EXPECT_FALSE(crime_json::convert_legacy_crime_file(legacy_path.c_str(), &error));
+    EXPECT_FALSE(crime_json::convert_legacy_crime_file(legacy_path, &error));
     EXPECT_FALSE(error.empty());
 }
 

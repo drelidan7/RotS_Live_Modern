@@ -6,7 +6,9 @@ owner file plus the census tool's normalized declaration; check mode also requir
 reason and a nonempty, declaration-specific contract.
 
 Permitted reasons are `nullable-state`, `retains-storage`, `binary-data`, `printf-varargs`,
-`c-boundary`, `abi-layout`, and `sentinel-table`. Inconvenience alone is not an exception.
+`c-boundary`, `hot-path`, `abi-layout`, and `sentinel-table`. Inconvenience alone is not an
+exception; a `hot-path` entry requires measured evidence that the view boundary causes a material
+regression and a contract that preserves the equivalent bounded API.
 
 | Owner file | Normalized declaration | Reason | Contract |
 | --- | --- | --- | --- |
@@ -36,6 +38,7 @@ Permitted reasons are `nullable-state`, `retains-storage`, `binary-data`, `print
 | `src/exploits_json.cpp` | `size_t bounded_field_length(const char* field, size_t field_size) {` | `binary-data` | Known corrupt legacy exploit fields can lack a terminator; field_size is the hard scan bound that prevents reading into the next struct field. |
 | `src/exploits_json.cpp` | `bool fixed_string_fields_equal(const char* a, const char* b, size_t field_size) {` | `binary-data` | Both historical fixed-width fields are compared only within field_size so unterminated corrupt data is unequal without an out-of-bounds strcmp. |
 | `src/exploits_json.h` | `bool exploit_records_from_binary(const std::string&#38; bytes, std::vector<exploit_record>* records, std::string* error_message = nullptr);` | `binary-data` | The public exploit decoder accepts the complete historical .exploits byte image, including null-containing fixed-width fields and ABI padding. |
+| `src/handler.cpp` | `int isname_c_string(const char* query, const char* name_list, char full) {` | `hot-path` | The private helper receives already-validated terminated pointers from isname_nullable and walks their sentinels directly, avoiding four redundant length/first-null scans on the dominant lookup path while the public string_view overload retains bounded-input safety. |
 | `src/handler.cpp` | `int isname_nullable(const char* query, const char* name_list, char full) {` | `nullable-state` | Returns no match when either query or name_list is null; otherwise delegates to the bounded legacy keyword matcher. |
 | `src/handler.h` | `int isname_nullable(const char* query, const char* name_list, char full = 1);` | `nullable-state` | This compatibility entry point explicitly permits a missing query or name list and defines either missing pointer as a failed match. |
 | `src/interpre.cpp` | `std::string format_account_character_name_for_display(const char* character_name) {` | `nullable-state` | A null character name formats as an empty display string; non-null names use the account display-capitalization path. |

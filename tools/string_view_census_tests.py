@@ -12,6 +12,7 @@ ALLOWED_REASONS = (
     "binary-data",
     "printf-varargs",
     "c-boundary",
+    "hot-path",
     "abi-layout",
     "sentinel-table",
 )

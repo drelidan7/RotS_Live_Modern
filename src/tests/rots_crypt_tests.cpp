@@ -110,6 +110,18 @@ TEST(RotsCrypt, NullArgumentsReturnNull)
     EXPECT_EQ(rots_crypt("key", nullptr), nullptr);
 }
 
+TEST(RotsCrypt, EmptyBoundedKeyMatchesEmptyTerminatedKey)
+{
+    constexpr std::string_view setting = "$6$emptysalt$";
+    const char* terminated_result = rots_crypt("", setting);
+    ASSERT_NE(terminated_result, nullptr);
+    const std::string terminated_hash = terminated_result;
+
+    const char* bounded_result = rots_crypt(std::string_view {}, setting);
+    ASSERT_NE(bounded_result, nullptr);
+    EXPECT_EQ(bounded_result, terminated_hash);
+}
+
 TEST(RotsCrypt, BoundedPasswordAndSettingSlicesMatchTerminatedInputs)
 {
     const std::string password_storage = "password123ignored";

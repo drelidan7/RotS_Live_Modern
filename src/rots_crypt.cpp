@@ -168,6 +168,10 @@ private:
     // which must never count toward the encoded message length.
     void append_bytes(const unsigned char* bytes, size_t length)
     {
+        if (length == 0) {
+            return;
+        }
+
         if (buffer_len_ > 0) {
             size_t fill = kShaBlockBytes - buffer_len_;
             if (fill > length)

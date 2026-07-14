@@ -177,7 +177,7 @@ TEST(UtilityFormat, HasAliasAcceptsBoundedAndEmbeddedNullKeywords)
     EXPECT_EQ(has_alias(&mobile, std::string_view(embedded_keyword, sizeof(embedded_keyword))), 1);
 }
 
-TEST(UtilityFormat, CreateFunctionAcceptsBoundedAndEmbeddedNullFileText)
+TEST(UtilityFormat, CreateFunctionAcceptsBoundedFileViewsOnSuccessfulAllocation)
 {
     const std::string file_storage = "bounded.cpp-ignored";
     void* bounded_allocation = create_function(1, 1, 42,

@@ -1807,6 +1807,7 @@ ACMD(do_info)
     extern const std::string_view specialize_name[];
 
     std::string out;
+    out.reserve(2048);
 
     /* `ch's name, title, alignment, sex and race */
     std::format_to(std::back_inserter(out), "You are {} {}, {} ({}) {} {}.\n\r", nz(GET_NAME(ch)),
@@ -2362,6 +2363,7 @@ ACMD(do_who)
 
     *name_search = '\0';
     std::string out;
+    out.reserve(2048);
 
     for (i = 0; *(argument + i) == ' '; i++)
         ;
@@ -3210,6 +3212,7 @@ ACMD(do_commands)
     std::string out = std::format("The following {}{} are available to {}:\n\r",
         wizhelp ? "privileged " : "", socials ? "socials" : "commands",
         vict == ch ? "you" : GET_NAME(vict));
+    out.reserve(2048);
 
     for (no = 1, cmd_num = 1; cmd_num <= num_of_cmds; cmd_num++) {
         i = cmd_info[cmd_num].sort_pos;
@@ -3903,6 +3906,7 @@ ACMD(do_fame)
 
     if (!strcmp(name, "war")) {
         std::string out = std::format("{:>22}{}\r\n\r\n", " ", warheader);
+        out.reserve(2048);
 
         /* Report the top 10 fame leaders */
         out += "    The Free Peoples of Middle-earth     "
@@ -4327,6 +4331,7 @@ void print_exploits(struct char_data* sendto, char* name)
         "Numbers in brackets indicate (your,their) level at time of a "
         "kill\n\r\n\r",
         name);
+    out.reserve(2048);
 
     // they have entries
     i = 0;

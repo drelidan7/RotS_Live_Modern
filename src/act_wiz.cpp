@@ -2604,6 +2604,7 @@ ACMD(do_show)
         break;
     case 6: {
         std::string death_traps = "Death Traps\n\r-----------\n\r";
+        death_traps.reserve(2048);
         for (i = 0, j = 0; i < top_of_world; i++)
             if (IS_SET(world[i].room_flags, DEATH))
                 std::format_to(std::back_inserter(death_traps), "{:2}: [{:5}] {}\n\r",
@@ -2614,6 +2615,7 @@ ACMD(do_show)
     case 7: {
 #define GOD_ROOMS_ZONE 0
         std::string godrooms = "Godrooms\n\r--------------------------\n\r";
+        godrooms.reserve(2048);
         for (i = 0, j = 0; i < top_of_world; i++)
             if (world[i].zone == GOD_ROOMS_ZONE)
                 std::format_to(std::back_inserter(godrooms), "{:2}: [{:5}] {}\n\r",

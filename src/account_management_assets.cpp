@@ -25,7 +25,7 @@ bool write_account_character_file(std::string_view root_directory, std::string_v
         return false;
 
     const std::string final_path = resolved_character_path(account, root_directory, stored_character.name);
-    const std::string json = character_json::serialize_character_to_json(character_data);
+    const std::string json = character_json::serialize_character_to_json_v2b(character_data);
     return write_text_file_atomically(final_path, json, error_message);
 }
 
@@ -61,7 +61,7 @@ bool read_account_character_file(std::string_view root_directory, std::string_vi
         return false;
 
     character_json::CharacterData character;
-    if (!character_json::deserialize_character_from_json(json, &character, error_message))
+    if (!character_json::deserialize_character_from_json_v2b(json, &character, error_message))
         return false;
     if (!character_json::apply_character_data_to_store(character, stored_character, error_message))
         return false;

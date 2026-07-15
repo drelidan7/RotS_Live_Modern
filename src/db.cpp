@@ -795,7 +795,7 @@ int load_player_from_account_json_path(char* name, std::string_view player_path,
 
     character_json::CharacterData character_data;
     std::string error_message;
-    if (!character_json::deserialize_character_from_json(json_text, &character_data,
+    if (!character_json::deserialize_character_from_json_v2b(json_text, &character_data,
             &error_message)
         || !character_json::apply_character_data_to_store(character_data, char_element,
             &error_message)) {

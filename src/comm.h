@@ -85,6 +85,8 @@ void write_to_output(std::string_view text, struct descriptor_data* descriptor);
 void page_string(struct descriptor_data* descriptor, std::string_view text);
 /// Pages mutable storage whose lifetime the caller guarantees until paging completes.
 void page_string_borrowed(struct descriptor_data* descriptor, char* text);
+/// Builds the in-round status prompt text for a descriptor into the supplied buffer.
+void build_prompt(struct descriptor_data* point, std::string& out);
 bool parse_startup_options(int argc, char** argv, StartupOptions* options, std::string* error_message);
 #ifdef TESTING
 /// Parses a bounded port value through the production startup-option parser for focused tests.

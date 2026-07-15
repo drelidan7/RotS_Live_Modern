@@ -14,14 +14,14 @@
 #include <string>
 #include <string_view>
 
-// Note on floating point: this test binary is built with -msse2 -mfpmath=sse
-// (see src/tests/Makefile), so number()'s double arithmetic runs SSE, while
-// the 32-bit game binary (src/Makefile) runs x87 (80-bit extended). rots_rng
-// itself is an integer-valued std::mt19937, so the draws feeding dam/location
-// below are identical either way; only number()'s float-to-range scaling
-// differs, and that scaling is deterministic and platform-stable under SSE.
-// Every future build of this repo (and any 64-bit successor) is SSE, so this
-// golden is the correct long-term characterization basis, not a compromise.
+// Note on floating point: as of Phase 1 FP unification, both this test binary
+// and the shipping game binary are built with -msse2 -mfpmath=sse (see
+// ROTS_FP_OPTIONS in src/CMakeLists.txt and REQ_CXXFLAGS in src/Makefile), so
+// number()'s double arithmetic runs SSE in both. rots_rng itself is an
+// integer-valued std::mt19937, so the draws feeding dam/location below are
+// identical either way; number()'s float-to-range scaling is deterministic and
+// platform-stable under SSE. Every build of this repo is SSE, so this golden is
+// the correct long-term characterization basis. See docs/BUILD.md "FP determinism".
 
 int damage(char_data *attacker, char_data *victim, int dam, int attacktype, int hit_location);
 char* replace_string(std::string_view format, std::string_view weapon_singular,

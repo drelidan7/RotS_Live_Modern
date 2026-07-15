@@ -263,6 +263,7 @@ if(ROTS_BUILD_TESTS)
         tests/olog_hai_tests.cpp
         tests/player_finalize_tests.cpp
         tests/pod_persistence_json_tests.cpp
+        tests/prompt_format_tests.cpp
         tests/protocol_tests.cpp
         tests/rots_asprintf_tests.cpp
         tests/rots_crypt_tests.cpp

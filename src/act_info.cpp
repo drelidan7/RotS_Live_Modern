@@ -39,6 +39,7 @@
 #include <algorithm>
 #include <cmath>
 #include <format>
+#include <iterator>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -1704,19 +1705,19 @@ ACMD(do_exits)
 
                 if (!tmp && (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED) || IS_SET(EXIT(ch, door)->exit_info, EX_ISBROKEN))) {
                     if (GET_LEVEL(ch) >= LEVEL_IMMORT) {
-                        out += std::format("{:<7} - [{:>7}][w:{:>2}] {}\n\r", exits[door],
-                            world[EXIT(ch, door)->to_room].number, EXIT(ch, door)->exit_width,
-                            nz(world[EXIT(ch, door)->to_room].name));
+                        std::format_to(std::back_inserter(out), "{:<7} - [{:>7}][w:{:>2}] {}\n\r",
+                            exits[door], world[EXIT(ch, door)->to_room].number,
+                            EXIT(ch, door)->exit_width, nz(world[EXIT(ch, door)->to_room].name));
                     } else {
                         tmp = ch->in_room;
                         ch->in_room = EXIT(ch, door)->to_room;
                         if (!CAN_SEE(ch) && !PRF_FLAGGED(ch, PRF_HOLYLIGHT)) {
-                            out += std::format("{:<7} - Too dark to tell\n\r",
+                            std::format_to(std::back_inserter(out), "{:<7} - Too dark to tell\n\r",
                                 (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(tmp, ch->in_room, door))
                                     ? sun_exits[door]
                                     : exits[door]);
                         } else {
-                            out += std::format("{:<7} - {}\n\r",
+                            std::format_to(std::back_inserter(out), "{:<7} - {}\n\r",
                                 (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(tmp, ch->in_room, door))
                                     ? sun_exits[door]
                                     : exits[door],
@@ -1726,13 +1727,13 @@ ACMD(do_exits)
                     }
                 } else {
                     if (!IS_SET(EXIT(ch, door)->exit_info, EX_ISHIDDEN)) {
-                        out += std::format("{:<7} - Closed {}\n\r",
+                        std::format_to(std::back_inserter(out), "{:<7} - Closed {}\n\r",
                             (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(ch->in_room, ch->in_room, door))
                                 ? sun_exits[door]
                                 : exits[door],
                             nz(EXIT(ch, door)->keyword));
                     } else if (ch->player.level >= LEVEL_GOD)
-                        out += std::format("{:<7} - *Hidden* {}\n\r",
+                        std::format_to(std::back_inserter(out), "{:<7} - *Hidden* {}\n\r",
                             (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(ch->in_room, ch->in_room, door))
                                 ? sun_exits[door]
                                 : exits[door],
@@ -1808,7 +1809,8 @@ ACMD(do_info)
     std::string out;
 
     /* `ch's name, title, alignment, sex and race */
-    out += std::format("You are {} {}, {} ({}) {} {}.\n\r", nz(GET_NAME(ch)), nz(GET_TITLE(ch)),
+    std::format_to(std::back_inserter(out), "You are {} {}, {} ({}) {} {}.\n\r", nz(GET_NAME(ch)),
+        nz(GET_TITLE(ch)),
         IS_GOOD(ch)       ? "a good"
             : IS_EVIL(ch) ? "an evil"
                           : "a neutral",
@@ -1816,10 +1818,10 @@ ACMD(do_info)
         pc_races[GET_RACE(ch)]);
 
     /* `ch's level */
-    out += std::format("You have reached level {}.\n\r", GET_LEVEL(ch));
+    std::format_to(std::back_inserter(out), "You have reached level {}.\n\r", GET_LEVEL(ch));
 
     /* `ch's class proficiencies */
-    out += std::format(
+    std::format_to(std::back_inserter(out),
         "You are level {} Warrior, {} Ranger, "
         "{} Mystic, and {} Mage.\n\r",
         GET_PROF_LEVEL(PROF_WARRIOR, ch), GET_PROF_LEVEL(PROF_RANGER, ch),
@@ -1830,12 +1832,13 @@ ACMD(do_info)
     if (spec == game_types::PS_None || spec == game_types::PS_Count) {
         out += "You are not specialized in anything.\n\r";
     } else {
-        out += std::format("You are specialized in {}.\n\r", specialize_name[spec]);
+        std::format_to(std::back_inserter(out), "You are specialized in {}.\n\r",
+            specialize_name[spec]);
     }
 
     /* `ch's age */
     playing_time = real_time_passed((time(0) - ch->player.time.logon) + ch->player.time.played, 0);
-    out += std::format(
+    std::format_to(std::back_inserter(out),
         "You are {} years old, and have played "
         "{} days and {} hours.\n\r",
         GET_AGE(ch), playing_time.day, playing_time.hours);
@@ -1845,14 +1848,14 @@ ACMD(do_info)
         out += "It's your birthday today!\r\n";
 
     /* `ch's weight and height */
-    out += std::format(
+    std::format_to(std::back_inserter(out),
         "You are {}'{}\" high, weight {:.1f}lb and "
         "carrying {:.1f}lb.\r\n",
         GET_HEIGHT(ch) / 30, (GET_HEIGHT(ch) % 30) * 10 / 25, GET_WEIGHT(ch) / 100.,
         IS_CARRYING_W(ch) / 100.);
 
     /* `ch's hitpoints, stamina, moves and spirit */
-    out += std::format(
+    std::format_to(std::back_inserter(out),
         "You have {}/{} hit points, {}/{} stamina, "
         "{}/{} moves and {} spirit.\n\r",
         GET_HIT(ch), GET_MAX_HIT(ch), GET_MANA(ch), GET_MAX_MANA(ch), GET_MOVE(ch),
@@ -1872,7 +1875,7 @@ ACMD(do_info)
         float bonus_move_regen = get_bonus_move_gain(ch);
         const char* move_symbol = bonus_move_regen > 0.0f ? "+" : "";
 
-        out += std::format(
+        std::format_to(std::back_inserter(out),
             "You regain {:.0f} ({}{:.0f}) health, {:.0f} ({}{:.0f}) stamina, and {:.0f} "
             "({}{:.0f}) moves per hour.\n\r",
             health_regen, health_symbol, bonus_health_regen, mana_regen, mana_symbol,
@@ -1880,10 +1883,10 @@ ACMD(do_info)
     }
 
     /* `ch's wealth */
-    out += std::format("You have {}.\n\r", money_message(GET_GOLD(ch), 1));
+    std::format_to(std::back_inserter(out), "You have {}.\n\r", money_message(GET_GOLD(ch), 1));
 
     /* `ch's OB, DB, PB, and attack speed */
-    out += std::format(
+    std::format_to(std::back_inserter(out),
         "Your OB is {}, dodge is {}, parry {}, "
         "and your attack speed is {}.\r\n"
         "Your armour absorbs about {}% damage, and ",
@@ -1903,20 +1906,20 @@ ACMD(do_info)
         out += "renders you numb to magical onslaught.\r\n";
 
     /* `ch's mystic abilities (perception and willpower) */
-    out += std::format(
+    std::format_to(std::back_inserter(out),
         "Your spiritual perception is {}%, "
         "willpower: {},\r\n",
         GET_PERCEPTION(ch), GET_WILLPOWER(ch));
 
     player_spec::battle_mage_handler battle_mage_handler(ch);
-    out += std::format(
+    std::format_to(std::back_inserter(out),
         "Your spell penetration is {}, "
         "and your spell power is {},\n\r",
         battle_mage_handler.get_bonus_spell_pen(ch->points.get_spell_pen()),
         battle_mage_handler.get_bonus_spell_power(ch->points.get_spell_power()));
 
     /* `ch's skill encumbrance and leg encumbrance */
-    out += std::format(
+    std::format_to(std::back_inserter(out),
         "Your skill encumbrance is {}, and your "
         "movement is encumbered by {}.\n\r",
         utils::get_encumbrance(*ch), utils::get_leg_encumbrance(*ch));
@@ -1933,16 +1936,17 @@ ACMD(do_info)
 
     /* `ch's total experience and TNL */
     if (GET_LEVEL(ch) < LEVEL_IMMORT - 1)
-        out += std::format(
+        std::format_to(std::back_inserter(out),
             "You have scored {} experience points, and "
             "need {} more to advance.\n\r",
             GET_EXP(ch), xp_to_level(GET_LEVEL(ch) + 1) - GET_EXP(ch));
     else
-        out += std::format("You have scored {} experience points.\r\n", GET_EXP(ch));
+        std::format_to(std::back_inserter(out), "You have scored {} experience points.\r\n",
+            GET_EXP(ch));
 
     /* `ch's stats */
     if (GET_LEVEL(ch) > 5)
-        out += std::format(
+        std::format_to(std::back_inserter(out),
             "Strength: {}/{}, Intelligence: {}/{}, "
             "Will: {}/{}, Dexterity: {}/{}\r\n             "
             "Constitution: {}/{}, Learning Ability: {}/{}.\r\n",
@@ -1978,7 +1982,7 @@ ACMD(do_info)
 
     case POSITION_FIGHTING:
         if (ch->specials.fighting)
-            out += std::format("You are fighting {}.\r\n",
+            std::format_to(std::back_inserter(out), "You are fighting {}.\r\n",
                 PERS(ch->specials.fighting, ch, FALSE, FALSE));
         else
             out += "You are fighting thin air.\r\n";
@@ -2035,23 +2039,23 @@ ACMD(do_score)
     int tmp;
 
     std::string out;
-    out += std::format(
+    std::format_to(std::back_inserter(out),
         "You have {}/{} hit, {}/{} stamina, {}/{} moves, "
         "{} spirit.\r\n",
         GET_HIT(ch), GET_MAX_HIT(ch), GET_MANA(ch), GET_MAX_MANA(ch), GET_MOVE(ch),
         GET_MAX_MOVE(ch), utils::get_spirits(ch));
 
-    out += std::format("OB: {}, DB: {}, PB: {}, Speed: {}, Gold: {}", get_real_OB(ch),
-        get_real_dodge(ch), get_real_parry(ch), utils::get_energy_regen(*ch) / 5,
+    std::format_to(std::back_inserter(out), "OB: {}, DB: {}, PB: {}, Speed: {}, Gold: {}",
+        get_real_OB(ch), get_real_dodge(ch), get_real_parry(ch), utils::get_energy_regen(*ch) / 5,
         GET_GOLD(ch) / COPP_IN_GOLD);
 
     /* No XP blurb for immortals */
     if (GET_LEVEL(ch) < LEVEL_IMMORT - 1) {
         tmp = xp_to_level(GET_LEVEL(ch) + 1) - GET_EXP(ch);
         if (tmp < 1000 && tmp > -1000) {
-            out += std::format(", XP Needed: {}.\n\r", tmp);
+            std::format_to(std::back_inserter(out), ", XP Needed: {}.\n\r", tmp);
         } else {
-            out += std::format(", XP Needed: {}K.\n\r", tmp / 1000);
+            std::format_to(std::back_inserter(out), ", XP Needed: {}K.\n\r", tmp / 1000);
         }
     } else {
         out += ".\r\n";
@@ -2135,13 +2139,13 @@ ACMD(do_time)
     extern struct time_info_data time_info;
 
     std::string out;
-    out += std::format("It is about {}:00 {} on ",
+    std::format_to(std::back_inserter(out), "It is about {}:00 {} on ",
         time_info.hours % 12 == 0 ? 12 : time_info.hours % 12,
         time_info.hours >= 12 ? "PM" : "AM");
 
     /* 35 days in a month */
     weekday = ((30 * time_info.month) + time_info.day + 1) % 7;
-    out += std::format("{}, ", weekdays[weekday]);
+    std::format_to(std::back_inserter(out), "{}, ", weekdays[weekday]);
 
     /* Get the daytime -- day_to_str() is a legacy helper that writes into a
      * caller-owned char* (transform idiom catalog item 3's named exception);
@@ -2154,25 +2158,25 @@ ACMD(do_time)
     out += ".\r\n";
 
     std::string year = take_cstring(nth(time_info.year));
-    out += std::format(
+    std::format_to(std::back_inserter(out),
         "By the Steward's Reckoning, it is "
         "the {} year of the fourth age of Arda.\r\n",
         year);
 
     /* A blurb on the phase of the moon */
-    out += std::format("The moon is {} and {}.\n\r", moon_phase[weather_info.moonphase],
-        weather_info.moonlight ? "shining" : "not shining");
+    std::format_to(std::back_inserter(out), "The moon is {} and {}.\n\r",
+        moon_phase[weather_info.moonphase], weather_info.moonlight ? "shining" : "not shining");
 
     /* When the sun will rise and set */
     sunrise = sun_events[time_info.month][0];
     sunset = sun_events[time_info.month][1];
     if (time_info.hours >= sunrise && time_info.hours < sunset) {
         hours = sunset - time_info.hours;
-        out += std::format("The sun will set in about {} hour{}.\r\n", hours,
+        std::format_to(std::back_inserter(out), "The sun will set in about {} hour{}.\r\n", hours,
             hours == 1 ? "" : "s");
     } else {
         hours = sunrise + (time_info.hours < 12 ? -time_info.hours : 24 - time_info.hours);
-        out += std::format("The sun will rise in about {} hour{}.\n\r", hours,
+        std::format_to(std::back_inserter(out), "The sun will rise in about {} hour{}.\n\r", hours,
             hours == 1 ? "" : "s");
     }
     send_to_char(out, ch);
@@ -2321,7 +2325,8 @@ ACMD(do_help)
         std::string out
             = std::format("Topics in the '{}' chapter are:\r\n", help_content[num].keyword);
         for (tmp = 0; tmp < help_content[num].top_of_helpt; tmp++) {
-            out += std::format("{:<17}| ", help_content[num].index[tmp].keyword);
+            std::format_to(std::back_inserter(out), "{:<17}| ",
+                help_content[num].index[tmp].keyword);
             if (!((tmp + 1) % 4))
                 out += "\r\n";
         }
@@ -2368,7 +2373,8 @@ ACMD(do_who)
         if (isdigit(*arg)) {
             sscanf(arg, "%d-%d", &low, &high);
             level_limit = 1;
-            out += std::format("Players between level {} and {}\r\n", low, high);
+            std::format_to(std::back_inserter(out), "Players between level {} and {}\r\n", low,
+                high);
             strcpy(buf, buf1);
         } else if (*arg == '-') {
             mode = *(arg + 1); /* just in case; we destroy arg in the switch */
@@ -2388,14 +2394,15 @@ ACMD(do_who)
                 half_chop(buf1, arg, buf);
                 sscanf(arg, "%d-%d", &low, &high);
                 level_limit = 1;
-                out += std::format("Players between level {} and {}\r\n", low, high);
+                std::format_to(std::back_inserter(out), "Players between level {} and {}\r\n",
+                    low, high);
                 break;
 
             case 'n':
                 half_chop(buf1, name_search, buf);
                 // char[N] decay: cast before std::format (BUILD.md "Formatting") --
                 // same class as the leaderstr sites in do_fame/do_rank below.
-                out += std::format(
+                std::format_to(std::back_inserter(out),
                     "Players with '{}' in their names or titles"
                     "\r\n",
                     static_cast<const char*>(name_search));
@@ -2484,25 +2491,27 @@ ACMD(do_who)
         /* The short list doesn't show a title, and attempts 4 players per row */
         if (short_list) {
             if (PLR_FLAGGED(tch, PLR_INCOGNITO) && (GET_LEVEL(ch) < LEVEL_IMMORT))
-                out += std::format("[--- {}] {:<12.12}{}", RACE_ABBR(tch), GET_NAME(tch),
-                    !(++num_can_see % 4) ? "\r\n" : "");
-            else
-                out += std::format("[{:3} {}] {:<12.12}{}", GET_LEVEL(tch), RACE_ABBR(tch),
+                std::format_to(std::back_inserter(out), "[--- {}] {:<12.12}{}", RACE_ABBR(tch),
                     GET_NAME(tch), !(++num_can_see % 4) ? "\r\n" : "");
+            else
+                std::format_to(std::back_inserter(out), "[{:3} {}] {:<12.12}{}", GET_LEVEL(tch),
+                    RACE_ABBR(tch), GET_NAME(tch), !(++num_can_see % 4) ? "\r\n" : "");
         } else { /* A normal list */
             num_can_see++;
             if (PLR_FLAGGED(tch, PLR_INCOGNITO) && (GET_LEVEL(ch) < LEVEL_IMMORT))
-                out += std::format("[--- {}] ", RACE_ABBR(tch));
+                std::format_to(std::back_inserter(out), "[--- {}] ", RACE_ABBR(tch));
             else {
                 if (GET_LEVEL(tch) < LEVEL_IMMORT)
-                    out += std::format("[{:3} {}] ", GET_LEVEL(tch), RACE_ABBR(tch));
+                    std::format_to(std::back_inserter(out), "[{:3} {}] ", GET_LEVEL(tch),
+                        RACE_ABBR(tch));
                 else
-                    out += std::format("[{}] ", imm_abbrevs[GET_LEVEL(tch) - LEVEL_MINIMM]);
+                    std::format_to(std::back_inserter(out), "[{}] ",
+                        imm_abbrevs[GET_LEVEL(tch) - LEVEL_MINIMM]);
             }
-            out += std::format("{} {}", GET_NAME(tch), nz(GET_TITLE(tch)));
+            std::format_to(std::back_inserter(out), "{} {}", GET_NAME(tch), nz(GET_TITLE(tch)));
 
             if (GET_INVIS_LEV(tch))
-                out += std::format(" (i{})", GET_INVIS_LEV(tch));
+                std::format_to(std::back_inserter(out), " (i{})", GET_INVIS_LEV(tch));
             else if (IS_AFFECTED(tch, AFF_INVISIBLE))
                 out += " (invis)";
             if (PLR_FLAGGED(tch, PLR_MAILING))
@@ -2529,7 +2538,7 @@ ACMD(do_who)
 
     if (short_list && (num_can_see % 4))
         out += "\n\r";
-    out += std::format("\n\r{} character{} displayed.\n\r", num_can_see,
+    std::format_to(std::back_inserter(out), "\n\r{} character{} displayed.\n\r", num_can_see,
         num_can_see == 1 ? "" : "s");
 
     // Preserve the pre-existing 16384-byte staging capacity for this listing.
@@ -2689,7 +2698,7 @@ ACMD(do_users)
         if (*d->host)
             // char[N] member decay: descriptor_data::host is char[50]
             // (structs.h) -- cast before std::format (BUILD.md "Formatting").
-            line += std::format("[{}]\n\r", static_cast<const char*>(d->host));
+            std::format_to(std::back_inserter(line), "[{}]\n\r", static_cast<const char*>(d->host));
         else
             line += "[Hostname unknown]\n\r";
 
@@ -2904,8 +2913,8 @@ ACMD(do_levels)
         GET_PROF_COOF(PROF_CLERIC, ch) / 10, GET_PROF_COOF(PROF_MAGIC_USER, ch) / 10);
 
     for (i = 1; i < LEVEL_IMMORT && i < 31; i++) {
-        out += std::format("[{:2}] {:8}-{:<8} : {:9} {:9} {:9} {:9}\n\r", i, xp_to_level(i),
-            xp_to_level(i + 1), i * GET_PROF_COOF(PROF_WARRIOR, ch) / 1000,
+        std::format_to(std::back_inserter(out), "[{:2}] {:8}-{:<8} : {:9} {:9} {:9} {:9}\n\r", i,
+            xp_to_level(i), xp_to_level(i + 1), i * GET_PROF_COOF(PROF_WARRIOR, ch) / 1000,
             i * GET_PROF_COOF(PROF_RANGER, ch) / 1000,
             i * GET_PROF_COOF(PROF_CLERIC, ch) / 1000,
             i * GET_PROF_COOF(PROF_MAGIC_USER, ch) / 1000);
@@ -3183,9 +3192,10 @@ ACMD(do_commands)
 
         for (no = 1; no < social_list_top; no++) {
             if ((GET_LEVEL(ch) >= LEVEL_GOD) && PRF_FLAGGED(ch, PRF_ROOMFLAGS))
-                out += std::format("({:3}){:<11}", no, soc_mess_list[no].command);
+                std::format_to(std::back_inserter(out), "({:3}){:<11}", no,
+                    soc_mess_list[no].command);
             else
-                out += std::format("{:<16}", soc_mess_list[no].command);
+                std::format_to(std::back_inserter(out), "{:<16}", soc_mess_list[no].command);
             if (!(no % 5))
                 out += "\n\r";
         }
@@ -3205,9 +3215,9 @@ ACMD(do_commands)
         i = cmd_info[cmd_num].sort_pos;
         if (cmd_info[i + 1].minimum_level >= 0 && (cmd_info[i + 1].minimum_level >= LEVEL_IMMORT) == wizhelp && GET_LEVEL(vict) >= cmd_info[i + 1].minimum_level && (wizhelp || socials == cmd_info[i + 1].is_social)) {
             if ((GET_LEVEL(ch) >= LEVEL_GOD) && PRF_FLAGGED(ch, PRF_ROOMFLAGS))
-                out += std::format("({:3}){:<11}", i + 1, command[i]);
+                std::format_to(std::back_inserter(out), "({:3}){:<11}", i + 1, command[i]);
             else
-                out += std::format("{:<16}", command[i]);
+                std::format_to(std::back_inserter(out), "{:<16}", command[i]);
             if (!(no % 5))
                 out += "\n\r";
             no++;
@@ -3807,7 +3817,7 @@ ACMD(do_affections)
 
     /* checking for a prepared spell */
     if ((ch->delay.cmd == CMD_PREPARE) && (ch->delay.targ1.type == TARGET_IGNORE)) {
-        out += std::format("You have prepared the '{}' spell.\n\r",
+        std::format_to(std::back_inserter(out), "You have prepared the '{}' spell.\n\r",
             static_cast<const char*>(skills[ch->delay.targ1.ch_num].name));
     } else if (ch->delay.cmd == CMD_TRAP)
         out += "You lay in wait to trap an unsuspecting victim.\r\n";
@@ -3850,7 +3860,7 @@ void do_fame_leader_string(LEADER* ldr, char* buffer)
     }
 
     std::string out = std::format("{:2}. {}", ldr->rank + 1, ldr->name);
-    out += std::format(" the {}", pc_races[ldr->race]);
+    std::format_to(std::back_inserter(out), " the {}", pc_races[ldr->race]);
 
     /* Pad with spaces til the end of name/title section. Deliberately kept
      * as the original's exact (signed-int-minus-size_t) arithmetic rather
@@ -3862,7 +3872,7 @@ void do_fame_leader_string(LEADER* ldr, char* buffer)
     for (i = 0; i < n; ++i)
         out += " ";
 
-    out += std::format(" {:4}", ldr->fame);
+    std::format_to(std::back_inserter(out), " {:4}", ldr->fame);
     strcpy(buffer, out.c_str());
 }
 
@@ -3903,7 +3913,8 @@ ACMD(do_fame)
             ldr1valid = !ldr1->invalid;
             do_fame_leader_string(ldr1, leaderstr);
             // char[N] decay: cast before std::format (BUILD.md "Formatting").
-            out += std::format("{}{:>5}", static_cast<const char*>(leaderstr), " ");
+            std::format_to(std::back_inserter(out), "{}{:>5}",
+                static_cast<const char*>(leaderstr), " ");
             pkill_free_leader(ldr1);
 
             /* Evil rank i leader */
@@ -3911,7 +3922,7 @@ ACMD(do_fame)
             ldr2valid = !ldr2->invalid;
             do_fame_leader_string(ldr2, leaderstr);
             // Same char[N] decay cast as the good-leader line above.
-            out += std::format("{}\r\n", static_cast<const char*>(leaderstr));
+            std::format_to(std::back_inserter(out), "{}\r\n", static_cast<const char*>(leaderstr));
             pkill_free_leader(ldr2);
 
             /* If both ranks were invalid, stop looping */
@@ -3922,18 +3933,19 @@ ACMD(do_fame)
             out += "\r\n";
 
         /* Report the exact states of the war */
-        out += std::format(
+        std::format_to(std::back_inserter(out),
             "Total fame for the free peoples of Middle-earth: {}\r\n", pkill_get_good_fame());
-        out += std::format("Total fame for the forces of the Shadow: {}\r\n", pkill_get_evil_fame());
+        std::format_to(std::back_inserter(out), "Total fame for the forces of the Shadow: {}\r\n",
+            pkill_get_evil_fame());
         out += "\r\n";
 
         /* Report the general state of the war */
         if (pkill_get_good_fame() > pkill_get_evil_fame())
-            out += std::format("{}\r\n", good_victory);
+            std::format_to(std::back_inserter(out), "{}\r\n", good_victory);
         else if (pkill_get_good_fame() < pkill_get_evil_fame())
-            out += std::format("{}\r\n", evil_victory);
+            std::format_to(std::back_inserter(out), "{}\r\n", evil_victory);
         else
-            out += std::format("{}\r\n", no_victory);
+            std::format_to(std::back_inserter(out), "{}\r\n", no_victory);
 
         send_to_char(out, ch);
         return;
@@ -4022,7 +4034,7 @@ ACMD(do_fame)
     if (!display_name.empty())
         display_name[0] = UPPER(display_name[0]);
 
-    out += std::format(
+    std::format_to(std::back_inserter(out),
         "There {} {} record{} found about {}, "
         "total fame {}.\r\n",
         records == 1 ? "was" : "were", records, records == 1 ? "" : "s", display_name,
@@ -4064,7 +4076,8 @@ ACMD(do_rank)
         ldrvalid = !ldr->invalid;
         do_fame_leader_string(ldr, leaderstr);
         // Same char[N] decay cast as do_fame's leader lines.
-        out += std::format(" {} {}\r\n", i == r ? "*" : " ", static_cast<const char*>(leaderstr));
+        std::format_to(std::back_inserter(out), " {} {}\r\n", i == r ? "*" : " ",
+            static_cast<const char*>(leaderstr));
         pkill_free_leader(ldr);
 
         if (!ldrvalid)
@@ -4443,34 +4456,34 @@ void print_exploits(struct char_data* sendto, char* name)
         if (i == 1)
             column = std::format("{:<39}", row);
         else {
-            out += std::format("{}{:<39}\n\r", column, row);
+            std::format_to(std::back_inserter(out), "{}{:<39}\n\r", column, row);
             i = 0;
         }
     }
     if (i == 1) {
         // add to output buffer
-        out += std::format("{}\n\r", column);
+        std::format_to(std::back_inserter(out), "{}\n\r", column);
     }
 
     if (iTotalPk == 1)
         out += "\n\rTotal: 1 pkill, ";
     else
-        out += std::format("\n\rTotal: {} pkills, ", iTotalPk);
+        std::format_to(std::back_inserter(out), "\n\rTotal: {} pkills, ", iTotalPk);
 
     if (iDeaths == 1)
         out += "1 pdeath, ";
     else
-        out += std::format("{} pdeaths, ", iDeaths);
+        std::format_to(std::back_inserter(out), "{} pdeaths, ", iDeaths);
 
     if (iMobDeaths == 1)
         out += "1 mobdeath, ";
     else
-        out += std::format("{} mobdeaths, ", iMobDeaths);
+        std::format_to(std::back_inserter(out), "{} mobdeaths, ", iMobDeaths);
 
     if (iNotes == 1)
         out += "1 note.\n\r\n\r";
     else
-        out += std::format("{} notes.\n\r\n\r", iNotes);
+        std::format_to(std::back_inserter(out), "{} notes.\n\r\n\r", iNotes);
 
     page_string(sendto->desc, out);
     return;

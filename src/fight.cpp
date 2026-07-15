@@ -9,6 +9,7 @@
  ************************************************************************ */
 
 #include "platdef.h"
+#include "fp_policy.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

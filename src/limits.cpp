@@ -9,6 +9,7 @@
  ************************************************************************ */
 
 #include "limits.h"
+#include "fp_policy.h"
 #include "comm.h"
 #include "db.h"
 #include "handler.h"

@@ -21,6 +21,7 @@
  **************************************************************************/
 
 #include "platdef.h"
+#include "fp_policy.h"
 
 #if defined PREDEF_PLATFORM_LINUX
 #include <arpa/telnet.h>

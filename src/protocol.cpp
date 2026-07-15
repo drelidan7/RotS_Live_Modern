@@ -47,6 +47,7 @@
 #include <algorithm>
 #include <cstring>
 #include <format>
+#include <iterator>
 #include <string>
 
 #include "protocol.h"
@@ -1449,7 +1450,7 @@ std::string MSDPSanitizeValue(std::string_view apValue)
             break;
         default:
             if (value_byte < 0x20) {
-                Result += std::format("\\u{:04x}", value_byte);
+                std::format_to(std::back_inserter(Result), "\\u{:04x}", value_byte);
             } else {
                 Result += static_cast<char>(value_byte);
             }

@@ -13,6 +13,7 @@
 #include "structs.h"
 #include "utils.h"
 #include <format>
+#include <iterator>
 #include <string>
 
 extern struct obj_data* obj_proto;
@@ -975,7 +976,7 @@ void list_object(struct char_data* ch, struct obj_data* obj)
 
     for (i = 0; i < MAX_OBJ_AFFECT; i++) {
 
-        affections += std::format(" ({} {})", obj->affected[i].location,
+        std::format_to(std::back_inserter(affections), " ({} {})", obj->affected[i].location,
 
             obj->affected[i].modifier);
     }

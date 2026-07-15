@@ -15,6 +15,7 @@
 #include "structs.h"
 #include "utils.h"
 #include <format>
+#include <iterator>
 #include <string>
 
 extern struct room_data world;
@@ -1032,7 +1033,7 @@ void list_room(struct char_data* ch, struct room_data* mob)
     std::string exits = "Existing exits:";
     for (i = 0, i2 = 0; i < NUM_OF_DIRS; i++)
         if (mob->dir_option[i]) {
-            exits += std::format(" {}", exit_convert(i));
+            std::format_to(std::back_inserter(exits), " {}", exit_convert(i));
             i2++;
         }
     if (i2 == 0)

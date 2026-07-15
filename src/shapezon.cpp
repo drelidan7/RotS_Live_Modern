@@ -15,6 +15,7 @@
 #include "utils.h"
 #include "zone.h"
 #include <format>
+#include <iterator>
 #include <string>
 
 extern struct obj_data* obj_proto;
@@ -1463,7 +1464,7 @@ void shape_center_zone(struct char_data* ch, char* arg)
                     owners += "All";
                 else
                     while (tmpowner->owner != 0) {
-                        owners += std::format(" {}", tmpowner->owner);
+                        std::format_to(std::back_inserter(owners), " {}", tmpowner->owner);
                         tmpowner = tmpowner->next;
                     }
                 owners += "\n\r\n\r";

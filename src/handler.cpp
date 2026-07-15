@@ -36,6 +36,7 @@
 #include <charconv>
 #include <ctype.h>
 #include <format>
+#include <iterator>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2541,20 +2542,20 @@ char* money_message(int sum, int mode)
 
     std::string out;
     if (g)
-        out += std::format("{} gold", g);
+        std::format_to(std::back_inserter(out), "{} gold", g);
     if (g && c && s)
         out += ", ";
     if (!c && s && g)
         out += " and ";
     if (s)
-        out += std::format("{} silver", s);
+        std::format_to(std::back_inserter(out), "{} silver", s);
     if ((g || s) && c)
         out += " and ";
     if (c || (!sum))
-        out += std::format("{} copper", c);
+        std::format_to(std::back_inserter(out), "{} copper", c);
 
     if (mode)
-        out += std::format(" coin{}",
+        std::format_to(std::back_inserter(out), " coin{}",
             ((g == 1) && (s == 1)) || c == 1 ? "" : "s");
 
     strcpy(moneystr, out.c_str());

@@ -1,6 +1,7 @@
 #include "platdef.h"
 #include <algorithm>
 #include <format>
+#include <iterator>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -556,7 +557,7 @@ void question_proc(struct char_data* host)
     {
         std::string stack_str = "My stack is:[";
         for (tmp = SPECIAL_STACKPOINT(host) - 1; tmp >= 0; tmp--)
-            stack_str += std::format(" {}", SPECIAL_STACK(host)[tmp]);
+            std::format_to(std::back_inserter(stack_str), " {}", SPECIAL_STACK(host)[tmp]);
         stack_str += "]";
         strcpy(tmpstr, stack_str.c_str());
     }

@@ -6,6 +6,7 @@
 #include <cstring>
 #include <cstdio>
 #include <format>
+#include <iterator>
 #include <limits>
 #include <stdlib.h>
 #include <string>
@@ -240,7 +241,7 @@ namespace {
     {
         std::string joined;
         for (int index = 0; index < count; ++index)
-            joined += std::format(" {}", names[index]);
+            std::format_to(std::back_inserter(joined), " {}", names[index]);
         return joined;
     }
 

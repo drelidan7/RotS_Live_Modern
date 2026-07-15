@@ -22,6 +22,7 @@
 
 #include <cstring>
 #include <format>
+#include <iterator>
 #include <string>
 
 #include "comm.h"
@@ -342,8 +343,10 @@ int show_tracks(char_data* ch, char* name, int mode)
                 track_out = std::format("The water looks {} disturbed to the {}.\n\r",
                     water_track_desc(tr_time), dirs[ch_room->room_track[tmp].data & 7]);
             else
-                track_out += std::format("The tracks of {} lead {}.  Their condition is {}\n\r",
-                    (ch_num >= 0) ? mob_proto[ch_num].player.short_descr : pc_star_types[-ch_num], dirs[ch_room->room_track[tmp].data & 7], track_desc(tr_time));
+                std::format_to(std::back_inserter(track_out),
+                    "The tracks of {} lead {}.  Their condition is {}\n\r",
+                    (ch_num >= 0) ? mob_proto[ch_num].player.short_descr : pc_star_types[-ch_num],
+                    dirs[ch_room->room_track[tmp].data & 7], track_desc(tr_time));
         }
     }
     if (count != 0) {
@@ -398,7 +401,9 @@ int show_blood_trail(struct char_data* ch, char* name, int mode)
                 blood_out = std::format("The water looks {} disturbed to the {}.\n\r",
                     water_track_desc(tr_time), dirs[ch_room->bleed_track[tmp].data & 7]);
             } else {
-                blood_out += std::format("A blood trail leading {} is {}.\n\r", dirs[ch_room->bleed_track[tmp].data & 7], track_desc(tr_time));
+                std::format_to(std::back_inserter(blood_out),
+                    "A blood trail leading {} is {}.\n\r",
+                    dirs[ch_room->bleed_track[tmp].data & 7], track_desc(tr_time));
             }
         }
     }

@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <ctype.h>
 #include <format>
+#include <iterator>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -4147,16 +4148,16 @@ void nanny(struct descriptor_data* d, char* arg)
                 if ((s = secs_to_unretire(d->character)) > 0) {
                     out = "You may unretire in ";
                     if ((tmp = (int)(s / 86400)))
-                        out += std::format("{} day{}.\r\n", tmp,
+                        std::format_to(std::back_inserter(out), "{} day{}.\r\n", tmp,
                             tmp == 1 ? "" : "s");
                     else if ((tmp = (int)(s / 3600)))
-                        out += std::format("{} hour{}.\r\n", tmp,
+                        std::format_to(std::back_inserter(out), "{} hour{}.\r\n", tmp,
                             tmp == 1 ? "" : "s");
                     else if ((tmp = (int)(s / 60)))
-                        out += std::format("{} minute{}.\r\n", tmp,
+                        std::format_to(std::back_inserter(out), "{} minute{}.\r\n", tmp,
                             tmp == 1 ? "" : "s");
                     else
-                        out += std::format("{} second{}.\r\n", s,
+                        std::format_to(std::back_inserter(out), "{} second{}.\r\n", s,
                             s == 1 ? "" : "s");
                 } else {
                     out = "You may unretire now.\r\nType leave to leave the retirement home.\r\n";

@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <format>
+#include <iterator>
 #include <limits>
 #include <sstream>
 
@@ -503,34 +505,49 @@ namespace {
         return true;
     }
 
-    void write_object_record(std::ostringstream &output, const ObjectRecord &record,
+    void write_object_record(std::string &output, const ObjectRecord &record,
                              std::string_view indent) {
         indent = rots::text::truncate_at_null(indent);
-        output << indent << "{\n";
-        output << indent << "  \"item_number\": " << record.item_number << ",\n";
-        output << indent << "  \"values\": [";
+        output.append(indent);
+        output.append("{\n");
+        output.append(indent);
+        std::format_to(std::back_inserter(output), "  \"item_number\": {},\n", record.item_number);
+        output.append(indent);
+        output.append("  \"values\": [");
         for (size_t index = 0; index < record.values.size(); ++index) {
             if (index > 0)
-                output << ", ";
-            output << record.values[index];
+                output.append(", ");
+            std::format_to(std::back_inserter(output), "{}", record.values[index]);
         }
-        output << "],\n";
-        output << indent << "  \"extra_flags\": " << record.extra_flags << ",\n";
-        output << indent << "  \"weight\": " << record.weight << ",\n";
-        output << indent << "  \"timer\": " << record.timer << ",\n";
-        output << indent << "  \"bitvector\": " << record.bitvector << ",\n";
-        output << indent << "  \"wear_pos\": " << record.wear_pos << ",\n";
-        output << indent << "  \"loaded_by\": " << record.loaded_by << ",\n";
-        output << indent << "  \"affects\": [\n";
+        output.append("],\n");
+        output.append(indent);
+        std::format_to(std::back_inserter(output), "  \"extra_flags\": {},\n", record.extra_flags);
+        output.append(indent);
+        std::format_to(std::back_inserter(output), "  \"weight\": {},\n", record.weight);
+        output.append(indent);
+        std::format_to(std::back_inserter(output), "  \"timer\": {},\n", record.timer);
+        output.append(indent);
+        std::format_to(std::back_inserter(output), "  \"bitvector\": {},\n", record.bitvector);
+        output.append(indent);
+        std::format_to(std::back_inserter(output), "  \"wear_pos\": {},\n", record.wear_pos);
+        output.append(indent);
+        std::format_to(std::back_inserter(output), "  \"loaded_by\": {},\n", record.loaded_by);
+        output.append(indent);
+        output.append("  \"affects\": [\n");
         for (size_t index = 0; index < record.affects.size(); ++index) {
             const ObjectAffectData& affect = record.affects[index];
-            output << indent << "    {\"location\": " << affect.location << ", \"modifier\": " << affect.modifier << "}";
+            output.append(indent);
+            output.append("    {\"location\": ");
+            std::format_to(std::back_inserter(output), "{}, \"modifier\": {}", affect.location, affect.modifier);
+            output.append("}");
             if (index + 1 < record.affects.size())
-                output << ",";
-            output << "\n";
+                output.append(",");
+            output.append("\n");
         }
-        output << indent << "  ]\n";
-        output << indent << "}";
+        output.append(indent);
+        output.append("  ]\n");
+        output.append(indent);
+        output.append("}");
     }
 
 bool object_save_data_from_binary_impl(
@@ -871,9 +888,9 @@ bool recover_object_save_data_from_binary_impl(
 #ifdef TESTING
 std::string format_object_record_for_testing(std::string_view indent)
 {
-    std::ostringstream output;
+    std::string output;
     write_object_record(output, ObjectRecord {}, indent);
-    return output.str();
+    return output;
 }
 #endif
 
@@ -1022,76 +1039,79 @@ bool object_save_data_to_binary(const ObjectSaveData& data, std::string* bytes, 
 
 std::string serialize_objects_to_json(const ObjectSaveData& data)
 {
-    std::ostringstream output;
-    output << "{\n";
-    output << "  \"version\": " << data.version << ",\n";
-    output << "  \"rent\": {\n";
-    output << "    \"time\": " << data.rent.time << ",\n";
-    output << "    \"rentcode\": " << data.rent.rentcode << ",\n";
-    output << "    \"net_cost_per_hour\": " << data.rent.net_cost_per_hour << ",\n";
-    output << "    \"gold\": " << data.rent.gold << ",\n";
-    output << "    \"nitems\": " << data.rent.nitems << ",\n";
-    output << "    \"spare0\": " << data.rent.spare0 << ",\n";
-    output << "    \"spare1\": " << data.rent.spare1 << ",\n";
-    output << "    \"spare2\": " << data.rent.spare2 << ",\n";
-    output << "    \"spare3\": " << data.rent.spare3 << ",\n";
-    output << "    \"spare4\": " << data.rent.spare4 << ",\n";
-    output << "    \"spare5\": " << data.rent.spare5 << ",\n";
-    output << "    \"spare6\": " << data.rent.spare6 << ",\n";
-    output << "    \"spare7\": " << data.rent.spare7 << "\n";
-    output << "  },\n";
-    output << "  \"objects\": [\n";
+    std::string output;
+    output.append("{\n");
+    std::format_to(std::back_inserter(output), "  \"version\": {},\n", data.version);
+    output.append("  \"rent\": {\n");
+    std::format_to(std::back_inserter(output), "    \"time\": {},\n", data.rent.time);
+    std::format_to(std::back_inserter(output), "    \"rentcode\": {},\n", data.rent.rentcode);
+    std::format_to(std::back_inserter(output), "    \"net_cost_per_hour\": {},\n", data.rent.net_cost_per_hour);
+    std::format_to(std::back_inserter(output), "    \"gold\": {},\n", data.rent.gold);
+    std::format_to(std::back_inserter(output), "    \"nitems\": {},\n", data.rent.nitems);
+    std::format_to(std::back_inserter(output), "    \"spare0\": {},\n", data.rent.spare0);
+    std::format_to(std::back_inserter(output), "    \"spare1\": {},\n", data.rent.spare1);
+    std::format_to(std::back_inserter(output), "    \"spare2\": {},\n", data.rent.spare2);
+    std::format_to(std::back_inserter(output), "    \"spare3\": {},\n", data.rent.spare3);
+    std::format_to(std::back_inserter(output), "    \"spare4\": {},\n", data.rent.spare4);
+    std::format_to(std::back_inserter(output), "    \"spare5\": {},\n", data.rent.spare5);
+    std::format_to(std::back_inserter(output), "    \"spare6\": {},\n", data.rent.spare6);
+    std::format_to(std::back_inserter(output), "    \"spare7\": {}\n", data.rent.spare7);
+    output.append("  },\n");
+    output.append("  \"objects\": [\n");
     for (size_t index = 0; index < data.objects.size(); ++index) {
         write_object_record(output, data.objects[index], "    ");
         if (index + 1 < data.objects.size())
-            output << ",";
-        output << "\n";
+            output.append(",");
+        output.append("\n");
     }
-    output << "  ],\n";
-    output << "  \"board_points\": [";
+    output.append("  ],\n");
+    output.append("  \"board_points\": [");
     for (size_t index = 0; index < data.board_points.size(); ++index) {
         if (index > 0)
-            output << ", ";
-        output << data.board_points[index];
+            output.append(", ");
+        std::format_to(std::back_inserter(output), "{}", data.board_points[index]);
     }
-    output << "],\n";
-    output << "  \"aliases\": [\n";
+    output.append("],\n");
+    output.append("  \"aliases\": [\n");
     for (size_t index = 0; index < data.aliases.size(); ++index) {
         const AliasData& alias = data.aliases[index];
-        output << "    {\"keyword\": \"" << json_utils::escape_json_string(alias.keyword)
-               << "\", \"command\": \"" << json_utils::escape_json_string(alias.command) << "\"}";
+        output.append("    {\"keyword\": \"");
+        output.append(json_utils::escape_json_string(alias.keyword));
+        output.append("\", \"command\": \"");
+        output.append(json_utils::escape_json_string(alias.command));
+        output.append("\"}");
         if (index + 1 < data.aliases.size())
-            output << ",";
-        output << "\n";
+            output.append(",");
+        output.append("\n");
     }
-    output << "  ],\n";
-    output << "  \"followers\": [\n";
+    output.append("  ],\n");
+    output.append("  \"followers\": [\n");
     for (size_t index = 0; index < data.followers.size(); ++index) {
         const FollowerData& follower = data.followers[index];
-        output << "    {\n";
-        output << "      \"fol_vnum\": " << follower.fol_vnum << ",\n";
-        output << "      \"mount_vnum\": " << follower.mount_vnum << ",\n";
-        output << "      \"wimpy\": " << follower.wimpy << ",\n";
-        output << "      \"exp\": " << follower.exp << ",\n";
-        output << "      \"flag_config\": " << follower.flag_config << ",\n";
-        output << "      \"spare1\": " << follower.spare1 << ",\n";
-        output << "      \"spare2\": " << follower.spare2 << ",\n";
-        output << "      \"objects\": [\n";
+        output.append("    {\n");
+        std::format_to(std::back_inserter(output), "      \"fol_vnum\": {},\n", follower.fol_vnum);
+        std::format_to(std::back_inserter(output), "      \"mount_vnum\": {},\n", follower.mount_vnum);
+        std::format_to(std::back_inserter(output), "      \"wimpy\": {},\n", follower.wimpy);
+        std::format_to(std::back_inserter(output), "      \"exp\": {},\n", follower.exp);
+        std::format_to(std::back_inserter(output), "      \"flag_config\": {},\n", follower.flag_config);
+        std::format_to(std::back_inserter(output), "      \"spare1\": {},\n", follower.spare1);
+        std::format_to(std::back_inserter(output), "      \"spare2\": {},\n", follower.spare2);
+        output.append("      \"objects\": [\n");
         for (size_t object_index = 0; object_index < follower.objects.size(); ++object_index) {
             write_object_record(output, follower.objects[object_index], "        ");
             if (object_index + 1 < follower.objects.size())
-                output << ",";
-            output << "\n";
+                output.append(",");
+            output.append("\n");
         }
-        output << "      ]\n";
-        output << "    }";
+        output.append("      ]\n");
+        output.append("    }");
         if (index + 1 < data.followers.size())
-            output << ",";
-        output << "\n";
+            output.append(",");
+        output.append("\n");
     }
-    output << "  ]\n";
-    output << "}\n";
-    return output.str();
+    output.append("  ]\n");
+    output.append("}\n");
+    return output;
 }
 
 bool deserialize_objects_from_json(std::string_view json, ObjectSaveData *data,

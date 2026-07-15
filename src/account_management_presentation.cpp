@@ -37,12 +37,12 @@ std::string format_account_timestamp(long timestamp)
 
 std::string format_account_character_prompt(std::string_view root_directory, const AccountData& account)
 {
-    std::ostringstream output;
-    output << "\n\rLinked characters for your account:\n\r";
-    output << format_account_character_short_roster(root_directory, account);
-    output << "\n\r0) Back to Account Menu.\n\r";
-    output << "\n\rCharacter number: ";
-    return output.str();
+    std::string output;
+    output.append("\n\rLinked characters for your account:\n\r");
+    output.append(format_account_character_short_roster(root_directory, account));
+    output.append("\n\r0) Back to Account Menu.\n\r");
+    output.append("\n\rCharacter number: ");
+    return output;
 }
 
 std::string format_account_character_list(std::string_view root_directory, const AccountData& account)
@@ -50,48 +50,48 @@ std::string format_account_character_list(std::string_view root_directory, const
     if (account.characters.empty())
         return "\n\rNo linked characters yet.\n\r";
 
-    std::ostringstream output;
-    output << "\n\rLinked characters:\n\r";
-    output << format_account_character_short_roster(root_directory, account);
-    return output.str();
+    std::string output;
+    output.append("\n\rLinked characters:\n\r");
+    output.append(format_account_character_short_roster(root_directory, account));
+    return output;
 }
 
 std::string format_account_summary(const AccountData& account)
 {
-    std::ostringstream output;
-    output << "Account email: " << account.normalized_email << "\n\r";
-    output << "Internal name: " << account.account_name << "\n\r";
-    output << "Email verified: " << (account.email_verified ? "yes" : "no") << "\n\r";
+    std::string output;
+    std::format_to(std::back_inserter(output), "Account email: {}\n\r", account.normalized_email);
+    std::format_to(std::back_inserter(output), "Internal name: {}\n\r", account.account_name);
+    std::format_to(std::back_inserter(output), "Email verified: {}\n\r", (account.email_verified ? "yes" : "no"));
     if (account.email_verified) {
-        output << "Verified by: " << account.email_verified_by << "\n\r";
-        output << "Verified at: " << format_account_timestamp(account.email_verified_at) << "\n\r";
+        std::format_to(std::back_inserter(output), "Verified by: {}\n\r", account.email_verified_by);
+        std::format_to(std::back_inserter(output), "Verified at: {}\n\r", format_account_timestamp(account.email_verified_at));
     } else if (!account.verification_code_hash.empty()) {
-        output << "Verification code sent at: " << format_account_timestamp(account.verification_code_sent_at) << "\n\r";
-        output << "Verification code expires at: " << format_account_timestamp(account.verification_code_expires_at) << "\n\r";
-        output << "Verification attempts: " << account.verification_attempt_count << "\n\r";
+        std::format_to(std::back_inserter(output), "Verification code sent at: {}\n\r", format_account_timestamp(account.verification_code_sent_at));
+        std::format_to(std::back_inserter(output), "Verification code expires at: {}\n\r", format_account_timestamp(account.verification_code_expires_at));
+        std::format_to(std::back_inserter(output), "Verification attempts: {}\n\r", account.verification_attempt_count);
     }
-    output << "Blocked: " << (account.blocked ? "yes" : "no") << "\n\r";
+    std::format_to(std::back_inserter(output), "Blocked: {}\n\r", (account.blocked ? "yes" : "no"));
     if (account.blocked) {
-        output << "Blocked by: " << account.blocked_by << "\n\r";
-        output << "Block reason: " << account.block_reason << "\n\r";
-        output << "Blocked at: " << format_account_timestamp(account.blocked_at) << "\n\r";
+        std::format_to(std::back_inserter(output), "Blocked by: {}\n\r", account.blocked_by);
+        std::format_to(std::back_inserter(output), "Block reason: {}\n\r", account.block_reason);
+        std::format_to(std::back_inserter(output), "Blocked at: {}\n\r", format_account_timestamp(account.blocked_at));
     }
-    output << "Created: " << format_account_timestamp(account.created_at) << "\n\r";
-    output << "Updated: " << format_account_timestamp(account.updated_at) << "\n\r";
+    std::format_to(std::back_inserter(output), "Created: {}\n\r", format_account_timestamp(account.created_at));
+    std::format_to(std::back_inserter(output), "Updated: {}\n\r", format_account_timestamp(account.updated_at));
     if (!account.password_reset_by.empty()) {
-        output << "Password reset by: " << account.password_reset_by << "\n\r";
-        output << "Password reset at: " << format_account_timestamp(account.password_reset_at) << "\n\r";
+        std::format_to(std::back_inserter(output), "Password reset by: {}\n\r", account.password_reset_by);
+        std::format_to(std::back_inserter(output), "Password reset at: {}\n\r", format_account_timestamp(account.password_reset_at));
     }
-    output << "Characters (" << account.characters.size() << "): ";
+    std::format_to(std::back_inserter(output), "Characters ({}): ", account.characters.size());
     if (account.characters.empty()) {
-        output << "(none)";
+        output.append("(none)");
     } else {
         for (size_t index = 0; index < account.characters.size(); ++index) {
             if (index > 0)
-                output << ", ";
-            output << account.characters[index];
+                output.append(", ");
+            output.append(account.characters[index]);
         }
     }
-    output << "\n\r";
-    return output.str();
+    output.append("\n\r");
+    return output;
 }

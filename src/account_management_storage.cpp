@@ -66,51 +66,51 @@ std::string legacy_exploits_file_path(std::string_view root_directory, std::stri
 
 std::string serialize_account_to_json(const AccountData& account)
 {
-    std::ostringstream output;
-    output << "{\n";
-    output << "  \"version\": " << account.version << ",\n";
-    output << "  \"account_name\": \"" << json_utils::escape_json_string(account.account_name) << "\",\n";
-    output << "  \"normalized_email\": \"" << json_utils::escape_json_string(account.normalized_email) << "\",\n";
-    output << "  \"password_hash\": \"" << json_utils::escape_json_string(account.password_hash) << "\",\n";
-    output << "  \"password_salt\": \"" << json_utils::escape_json_string(account.password_salt) << "\",\n";
-    output << "  \"characters\": [";
+    std::string output;
+    output.append("{\n");
+    std::format_to(std::back_inserter(output), "  \"version\": {},\n", account.version);
+    std::format_to(std::back_inserter(output), "  \"account_name\": \"{}\",\n", json_utils::escape_json_string(account.account_name));
+    std::format_to(std::back_inserter(output), "  \"normalized_email\": \"{}\",\n", json_utils::escape_json_string(account.normalized_email));
+    std::format_to(std::back_inserter(output), "  \"password_hash\": \"{}\",\n", json_utils::escape_json_string(account.password_hash));
+    std::format_to(std::back_inserter(output), "  \"password_salt\": \"{}\",\n", json_utils::escape_json_string(account.password_salt));
+    output.append("  \"characters\": [");
     for (size_t index = 0; index < account.characters.size(); ++index) {
         if (index > 0)
-            output << ", ";
-        output << "\"" << json_utils::escape_json_string(account.characters[index]) << "\"";
+            output.append(", ");
+        std::format_to(std::back_inserter(output), "\"{}\"", json_utils::escape_json_string(account.characters[index]));
     }
-    output << "],\n";
-    output << "  \"character_links\": [";
+    output.append("],\n");
+    output.append("  \"character_links\": [");
     for (size_t index = 0; index < account.character_links.size(); ++index) {
         const AccountData::CharacterLinkReference& link = account.character_links[index];
         if (index > 0)
-            output << ", ";
-        output << "{";
-        output << "\"character_name\": \"" << json_utils::escape_json_string(link.character_name) << "\", ";
-        output << "\"character_path\": \"" << json_utils::escape_json_string(json_path_or_empty(link.character_path)) << "\", ";
-        output << "\"object_path\": \"" << json_utils::escape_json_string(json_path_or_empty(link.object_path)) << "\", ";
-        output << "\"exploits_path\": \"" << json_utils::escape_json_string(json_path_or_empty(link.exploits_path)) << "\"";
-        output << "}";
+            output.append(", ");
+        output.append("{");
+        std::format_to(std::back_inserter(output), "\"character_name\": \"{}\", ", json_utils::escape_json_string(link.character_name));
+        std::format_to(std::back_inserter(output), "\"character_path\": \"{}\", ", json_utils::escape_json_string(json_path_or_empty(link.character_path)));
+        std::format_to(std::back_inserter(output), "\"object_path\": \"{}\", ", json_utils::escape_json_string(json_path_or_empty(link.object_path)));
+        std::format_to(std::back_inserter(output), "\"exploits_path\": \"{}\"", json_utils::escape_json_string(json_path_or_empty(link.exploits_path)));
+        output.append("}");
     }
-    output << "],\n";
-    output << "  \"email_verified\": " << (account.email_verified ? "true" : "false") << ",\n";
-    output << "  \"email_verified_by\": \"" << json_utils::escape_json_string(account.email_verified_by) << "\",\n";
-    output << "  \"email_verified_at\": " << account.email_verified_at << ",\n";
-    output << "  \"verification_code_hash\": \"" << json_utils::escape_json_string(account.verification_code_hash) << "\",\n";
-    output << "  \"verification_code_sent_at\": " << account.verification_code_sent_at << ",\n";
-    output << "  \"verification_code_expires_at\": " << account.verification_code_expires_at << ",\n";
-    output << "  \"verification_attempt_count\": " << account.verification_attempt_count << ",\n";
-    output << "  \"verification_last_attempt_at\": " << account.verification_last_attempt_at << ",\n";
-    output << "  \"blocked\": " << (account.blocked ? "true" : "false") << ",\n";
-    output << "  \"block_reason\": \"" << json_utils::escape_json_string(account.block_reason) << "\",\n";
-    output << "  \"blocked_by\": \"" << json_utils::escape_json_string(account.blocked_by) << "\",\n";
-    output << "  \"blocked_at\": " << account.blocked_at << ",\n";
-    output << "  \"created_at\": " << account.created_at << ",\n";
-    output << "  \"updated_at\": " << account.updated_at << ",\n";
-    output << "  \"password_reset_at\": " << account.password_reset_at << ",\n";
-    output << "  \"password_reset_by\": \"" << json_utils::escape_json_string(account.password_reset_by) << "\"\n";
-    output << "}\n";
-    return output.str();
+    output.append("],\n");
+    std::format_to(std::back_inserter(output), "  \"email_verified\": {},\n", (account.email_verified ? "true" : "false"));
+    std::format_to(std::back_inserter(output), "  \"email_verified_by\": \"{}\",\n", json_utils::escape_json_string(account.email_verified_by));
+    std::format_to(std::back_inserter(output), "  \"email_verified_at\": {},\n", account.email_verified_at);
+    std::format_to(std::back_inserter(output), "  \"verification_code_hash\": \"{}\",\n", json_utils::escape_json_string(account.verification_code_hash));
+    std::format_to(std::back_inserter(output), "  \"verification_code_sent_at\": {},\n", account.verification_code_sent_at);
+    std::format_to(std::back_inserter(output), "  \"verification_code_expires_at\": {},\n", account.verification_code_expires_at);
+    std::format_to(std::back_inserter(output), "  \"verification_attempt_count\": {},\n", account.verification_attempt_count);
+    std::format_to(std::back_inserter(output), "  \"verification_last_attempt_at\": {},\n", account.verification_last_attempt_at);
+    std::format_to(std::back_inserter(output), "  \"blocked\": {},\n", (account.blocked ? "true" : "false"));
+    std::format_to(std::back_inserter(output), "  \"block_reason\": \"{}\",\n", json_utils::escape_json_string(account.block_reason));
+    std::format_to(std::back_inserter(output), "  \"blocked_by\": \"{}\",\n", json_utils::escape_json_string(account.blocked_by));
+    std::format_to(std::back_inserter(output), "  \"blocked_at\": {},\n", account.blocked_at);
+    std::format_to(std::back_inserter(output), "  \"created_at\": {},\n", account.created_at);
+    std::format_to(std::back_inserter(output), "  \"updated_at\": {},\n", account.updated_at);
+    std::format_to(std::back_inserter(output), "  \"password_reset_at\": {},\n", account.password_reset_at);
+    std::format_to(std::back_inserter(output), "  \"password_reset_by\": \"{}\"\n", json_utils::escape_json_string(account.password_reset_by));
+    output.append("}\n");
+    return output;
 }
 
 bool deserialize_account_from_json(std::string_view json, AccountData* account, std::string* error_message)
@@ -320,28 +320,30 @@ std::string account_character_exploits_path(std::string_view root_directory, std
 
 std::string serialize_character_migration_to_json(const CharacterMigrationData& migration)
 {
-    auto write_snapshot = [](std::ostringstream& output, const char* name, const LegacyAssetSnapshot& snapshot) {
-        output << "  \"" << name << "\": {\n";
-        output << "    \"source_path\": \"" << json_utils::escape_json_string(snapshot.source_path) << "\",\n";
-        output << "    \"encoding\": \"" << json_utils::escape_json_string(snapshot.encoding) << "\",\n";
-        output << "    \"content\": \"" << json_utils::escape_json_string(snapshot.content) << "\",\n";
-        output << "    \"present\": " << (snapshot.present ? "true" : "false") << "\n";
-        output << "  }";
+    auto write_snapshot = [](std::string& output, const char* name, const LegacyAssetSnapshot& snapshot) {
+        output.append("  \"");
+        std::format_to(std::back_inserter(output), "{}", name);
+        output.append("\": {\n");
+        std::format_to(std::back_inserter(output), "    \"source_path\": \"{}\",\n", json_utils::escape_json_string(snapshot.source_path));
+        std::format_to(std::back_inserter(output), "    \"encoding\": \"{}\",\n", json_utils::escape_json_string(snapshot.encoding));
+        std::format_to(std::back_inserter(output), "    \"content\": \"{}\",\n", json_utils::escape_json_string(snapshot.content));
+        std::format_to(std::back_inserter(output), "    \"present\": {}\n", (snapshot.present ? "true" : "false"));
+        output.append("  }");
     };
 
-    std::ostringstream output;
-    output << "{\n";
-    output << "  \"version\": " << migration.version << ",\n";
-    output << "  \"account_name\": \"" << json_utils::escape_json_string(migration.account_name) << "\",\n";
-    output << "  \"character_name\": \"" << json_utils::escape_json_string(migration.character_name) << "\",\n";
-    output << "  \"migrated_at\": " << migration.migrated_at << ",\n";
+    std::string output;
+    output.append("{\n");
+    std::format_to(std::back_inserter(output), "  \"version\": {},\n", migration.version);
+    std::format_to(std::back_inserter(output), "  \"account_name\": \"{}\",\n", json_utils::escape_json_string(migration.account_name));
+    std::format_to(std::back_inserter(output), "  \"character_name\": \"{}\",\n", json_utils::escape_json_string(migration.character_name));
+    std::format_to(std::back_inserter(output), "  \"migrated_at\": {},\n", migration.migrated_at);
     // The on-disk migration artifact is transitional only. Do not persist raw
     // legacy player bytes that still carry legacy password/host state.
     write_snapshot(output, "object_file", migration.object_file);
-    output << ",\n";
+    output.append(",\n");
     write_snapshot(output, "exploits_file", migration.exploits_file);
-    output << "\n}\n";
-    return output.str();
+    output.append("\n}\n");
+    return output;
 }
 
 bool deserialize_character_migration_from_json(std::string_view json, CharacterMigrationData* migration, std::string* error_message)

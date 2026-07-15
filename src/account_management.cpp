@@ -40,6 +40,8 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <format>
+#include <iterator>
 #include <limits>
 #include <sstream>
 #include <string_view>
@@ -144,22 +146,22 @@ namespace {
         if (account.characters.empty())
             return "\n\rNo linked characters yet.\n\r";
 
-        std::ostringstream output;
+        std::string output;
         const size_t displayed_count = std::min(account.characters.size(), kMaxDisplayedAccountCharacters);
         for (size_t index = 0; index < displayed_count; ++index) {
-            output << format_account_character_short_entry(root_directory, account, index, account.characters[index]);
+            output.append(format_account_character_short_entry(root_directory, account, index, account.characters[index]));
             if ((index + 1) % 2 == 0)
-                output << "\n\r";
+                output.append("\n\r");
         }
 
         if (displayed_count % 2 != 0)
-            output << "\n\r";
+            output.append("\n\r");
 
         if (account.characters.size() > displayed_count)
-            output << "\n\r... and " << (account.characters.size() - displayed_count) << " more\n\r";
+            std::format_to(std::back_inserter(output), "\n\r... and {} more\n\r", account.characters.size() - displayed_count);
 
-        output << "\n\r" << displayed_count << " character" << (displayed_count == 1 ? "" : "s") << " displayed.\n\r";
-        return output.str();
+        std::format_to(std::back_inserter(output), "\n\r{} character{} displayed.\n\r", displayed_count, (displayed_count == 1 ? "" : "s"));
+        return output;
     }
 
     // Credential salts and email-verification codes both flow through this --
@@ -404,13 +406,12 @@ namespace {
         }
 
         close(pipe_fds[0]);
-        std::ostringstream message;
-        message << "To: " << recipient << "\n";
-        message << "From: RotS Account Verification <noreply@rotsmud.org>\n";
-        message << "Subject: " << subject << "\n\n";
-        message << body << "\n";
+        std::string message_text;
+        std::format_to(std::back_inserter(message_text), "To: {}\n", recipient);
+        message_text.append("From: RotS Account Verification <noreply@rotsmud.org>\n");
+        std::format_to(std::back_inserter(message_text), "Subject: {}\n\n", subject);
+        std::format_to(std::back_inserter(message_text), "{}\n", body);
 
-        const std::string message_text = message.str();
         size_t write_offset = 0;
         while (write_offset < message_text.size()) {
             const ssize_t bytes_written = write(pipe_fds[1], message_text.data() + write_offset, message_text.size() - write_offset);
@@ -464,14 +465,14 @@ namespace {
         const AccountData& account, std::string_view verification_code)
     {
         verification_code = rots::text::truncate_at_null(verification_code);
-        std::ostringstream body;
-        body << "A verification code was requested for your RotS account.\n\n";
-        body << "Email: " << account.normalized_email << "\n";
-        body << "Verification code: " << verification_code << "\n";
-        body << "This code is valid for 15 minutes.\n\n";
-        body << "If you did not request this code, you can ignore this email.";
+        std::string body;
+        body.append("A verification code was requested for your RotS account.\n\n");
+        std::format_to(std::back_inserter(body), "Email: {}\n", account.normalized_email);
+        std::format_to(std::back_inserter(body), "Verification code: {}\n", verification_code);
+        body.append("This code is valid for 15 minutes.\n\n");
+        body.append("If you did not request this code, you can ignore this email.");
 
-        return body.str();
+        return body;
     }
 
     bool send_verification_email(const AccountData& account, std::string_view verification_code, std::string* error_message)

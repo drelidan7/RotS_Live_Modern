@@ -33,7 +33,11 @@ OBJDIR    = ../intermediate
 # --- Flags -------------------------------------------------------------------
 # REQ_* hold the mandatory flags so an environment override of CXXFLAGS/LDFLAGS
 # can add to, but cannot strip, them (e.g. -m32 is always present).
-REQ_CXXFLAGS = -m32 -std=c++20 -Wall -Wextra -Werror -fstrict-aliasing -funsigned-char -g -D_FILE_OFFSET_BITS=64
+# -msse2 -mfpmath=sse -ffp-contract=off: shared deterministic-FP policy (Phase 1
+# FP unification; see docs/BUILD.md "FP determinism" and src/tests/Makefile /
+# src/CMakeLists.txt's ROTS_FP_OPTIONS) -- flips this i386 shipping build from
+# x87 to the same SSE math ageland_tests has always used, and bans FMA fusion.
+REQ_CXXFLAGS = -m32 -std=c++20 -Wall -Wextra -Werror -fstrict-aliasing -funsigned-char -g -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -ffp-contract=off
 REQ_LDFLAGS  = -m32 -rdynamic
 
 # -MMD -MP: emit a per-object header-dependency file (.d) plus phony targets for

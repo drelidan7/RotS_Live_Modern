@@ -8,8 +8,9 @@ CXX = g++
 # which rounds float/double expressions differently from the SSE math every
 # x86-64 build uses. Several tests pin exact FP thresholds (RNG-seam scaling in
 # test_random_utils.cpp, battle-mage interrupt chances) that were authored under
-# SSE semantics, so the test build must use SSE too. Tests-only: the game binary
-# (src/Makefile) intentionally keeps the historical x87 behavior.
+# SSE semantics, so the test build must use SSE too. As of Phase 1 FP
+# unification, src/Makefile's shipping game binary uses the same flag (see
+# its REQ_CXXFLAGS), so this is no longer test-only.
 # -funsigned-char: parity with src/Makefile's GAMEC flags (the live game pins
 # char as unsigned on every build); without it, product .cpp files compiled
 # into this test binary get the platform-default (signed) char instead.
@@ -23,7 +24,11 @@ CXX = g++
 # code and crashed the monolithic runner with a wild free() — see the wave 4
 # plan's exit section. The hand-written prerequisites below are retained but
 # are now redundant (auto-deps supersede them); new TUs do NOT need one.
-CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -funsigned-char -MMD -MP
+# -ffp-contract=off: shared deterministic-FP policy (Phase 1 FP unification;
+# see docs/BUILD.md "FP determinism" and src/Makefile / src/CMakeLists.txt's
+# ROTS_FP_OPTIONS) -- bans FMA fusion so -O2+ can't silently round differently
+# from -O0 or other platforms.
+CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -ffp-contract=off -funsigned-char -MMD -MP
 # -idirafter .. lets the account_management_*_header_compile.cpp probes (and
 # every other tests/*.cpp) use bare #include "account_management_assets.h" /
 # "structs.h" (etc.) to reach the product headers one directory up; mirrors

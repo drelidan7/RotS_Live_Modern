@@ -159,10 +159,32 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86|x86)$")
 else()
     set(ROTS_X86 0)
 endif()
+# Single source of truth for the deterministic-FP flag set (Phase 1 FP
+# unification; see docs/BUILD.md "FP determinism"), shared by BOTH the
+# ageland and ageland_tests targets so shipping and test binaries compute
+# floating point identically:
+#   -msse2 -mfpmath=sse  GNU-family x86 only (incl. i386): x87 80-bit extended
+#     precision rounds intermediates differently from SSE's IEEE double path;
+#     several tests pin exact FP thresholds authored under SSE semantics, and
+#     the shipping i386 build historically used x87 -- this flips it to SSE.
+#     Gated on ROTS_X86 too: gcc/clang reject these outright on arm64
+#     ("unknown FP unit 'sse'").
+#   -ffp-contract=off  ALL GNU-family targets (x86 AND arm64): without it,
+#     -O2+ may fuse a*b+c into a single FMA instruction, which rounds once
+#     instead of twice and diverges from -O0/other platforms that don't fuse.
+#     Valid and needed on arm64 too (NOT x86-gated), where FMA is common.
+#   /fp:precise  MSVC: disables the compiler's own contraction/reassociation
+#     optimizations, the MSVC analogue of the two GNU flags above.
+set(ROTS_FP_OPTIONS
+    $<$<AND:${ROTS_GNULIKE},${ROTS_X86}>:-msse2 -mfpmath=sse>
+    $<${ROTS_GNULIKE}:-ffp-contract=off>
+    $<$<CXX_COMPILER_ID:MSVC>:/fp:precise>
+)
 target_compile_options(ageland PRIVATE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
     $<${ROTS_GNULIKE}:-funsigned-char -fstrict-aliasing -Wall -Wextra -Werror -g>
     $<$<CXX_COMPILER_ID:MSVC>:/J /W4 /WX /wd4244 /wd4267 /wd4456 /wd4458 /wd4459 /wd4702 /wd4127 /wd4310 /Zc:strictStrings->
+    ${ROTS_FP_OPTIONS}
 )
 target_link_options(ageland PRIVATE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
@@ -392,6 +414,7 @@ if(ROTS_BUILD_TESTS)
     )
     target_compile_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
+        ${ROTS_FP_OPTIONS}
     )
     # -funsigned-char: same parity rationale as the ageland target above (char
     # signedness is a load-bearing behavior assumption the live game pins on every
@@ -431,17 +454,12 @@ if(ROTS_BUILD_TESTS)
     else()
         target_compile_options(ageland_tests PRIVATE $<${ROTS_GNULIKE}:-Wall -Wextra -Werror>)
     endif()
-    # SSE float math for the tests (mirrors src/tests/Makefile): i386 g++ defaults to
-    # x87 extended-precision FP, which rounds differently from the SSE math of every
-    # x86-64 build; several tests pin exact FP thresholds authored under SSE semantics.
-    # No-op on x86-64 hosts (SSE is already the default there).
-    # -msse2/-mfpmath=sse are x86-only spellings — gcc/clang reject them outright on
-    # arm64 ("unknown FP unit 'sse'"), so gate on the target processor too. The
-    # Linux-container src/tests/Makefile path stays x86-only already (it's the -m32
-    # legacy ABI), so it doesn't need — and doesn't get — this guard.
-    target_compile_options(ageland_tests PRIVATE
-        $<$<AND:${ROTS_GNULIKE},${ROTS_X86}>:-msse2 -mfpmath=sse>
-    )
+    # SSE float math and FP contraction for the tests now come from the shared
+    # ROTS_FP_OPTIONS applied above (mirrors src/tests/Makefile) -- see the
+    # comment at ROTS_FP_OPTIONS's definition near ROTS_GNULIKE/ROTS_X86 for
+    # the full per-flag rationale. No-op on x86-64 hosts for -msse2/-mfpmath=sse
+    # (SSE is already the default there); -ffp-contract=off applies everywhere,
+    # including arm64.
     # ws2_32: same Winsock2 import library rationale as the ageland target
     # above (the tests link the full server sources, plus
     # startup_options_tests.cpp's own loopback socket fixtures).

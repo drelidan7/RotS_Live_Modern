@@ -15,6 +15,7 @@
 #include <assert.h>
 #include <cmath>
 #include <format>
+#include <iterator>
 
 #include "comm.h" // for send_to_char
 #include <cstring>
@@ -1525,42 +1526,42 @@ std::string specialization_data::to_string(char_data& character) const
 //============================================================================
 std::string elemental_spec_data::to_string(char_data&) const
 {
-    std::ostringstream message_writer;
-    message_writer << "You are specialized in a mage specialization." << std::endl;
-    message_writer << "------------------------------------------------------------" << std::endl;
-    message_writer << "You have access to the 'expose elements' spell, which makes a particular" << std::endl;
-    message_writer << "elemental spell cost much less mana on the target.  cast 'expose elements'." << std::endl;
-    message_writer << "------------------------------------------------------------" << std::endl;
+    std::string message_writer;
+    message_writer.append("You are specialized in a mage specialization.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
+    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
+    message_writer.append("------------------------------------------------------------\n");
     report_exposed_data(message_writer);
-    return message_writer.str();
+    return message_writer;
 }
 
 //============================================================================
-void elemental_spec_data::report_exposed_data(std::ostringstream& message_writer) const
+void elemental_spec_data::report_exposed_data(std::string& message_writer) const
 {
     if (exposed_target) {
         const skill_data* skills = get_skill_array();
         const char* skill_name = skills[spell_id].name;
 
-        message_writer << utils::get_name(*exposed_target) << " is exposed to the spell ";
-        message_writer << "[" << skill_name << "]." << std::endl;
-        message_writer << "------------------------------------------------------------" << std::endl;
+        std::format_to(std::back_inserter(message_writer), "{} is exposed to the spell [{}].\n",
+            utils::get_name(*exposed_target), skill_name);
+        message_writer.append("------------------------------------------------------------\n");
     }
 }
 
 //============================================================================
 std::string cold_spec_data::to_string(char_data&) const
 {
-    std::ostringstream message_writer;
-    message_writer << "You are specialized in cold." << std::endl;
-    message_writer << "------------------------------------------------------------" << std::endl;
-    message_writer << "Your cold spells are more difficult to resist." << std::endl;
-    message_writer << "Your fire spells are easier to resist." << std::endl;
-    message_writer << "You have access to the 'expose elements' spell, which makes a particular" << std::endl;
-    message_writer << "elemental spell cost much less mana on the target.  cast 'expose elements'." << std::endl;
-    message_writer << "Your cone of cold spell can now chill targets." << std::endl;
-    message_writer << "Your chill ray spell is much harder to resist." << std::endl;
-    message_writer << "------------------------------------------------------------" << std::endl;
+    std::string message_writer;
+    message_writer.append("You are specialized in cold.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    message_writer.append("Your cold spells are more difficult to resist.\n");
+    message_writer.append("Your fire spells are easier to resist.\n");
+    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
+    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
+    message_writer.append("Your cone of cold spell can now chill targets.\n");
+    message_writer.append("Your chill ray spell is much harder to resist.\n");
+    message_writer.append("------------------------------------------------------------\n");
     /*
         message_writer << "Chill Ray:" << std::endl;
         message_writer << "\tTotal Casts: " << get_chill_ray_count() << std::endl;
@@ -1575,81 +1576,81 @@ std::string cold_spec_data::to_string(char_data&) const
         message_writer << "\tTotal Attacks Stopped: " << get_total_energy_sapped() / ENE_TO_HIT << std::endl;
         */
     report_exposed_data(message_writer);
-    return message_writer.str();
+    return message_writer;
 }
 
 //============================================================================
 std::string fire_spec_data::to_string(char_data& character) const
 {
-    std::ostringstream message_writer;
-    message_writer << "You are specialized in fire." << std::endl;
-    message_writer << "------------------------------------------------------------" << std::endl;
-    message_writer << "Your fire spells are more difficult to resist." << std::endl;
-    message_writer << "Your cold spells are easier to resist." << std::endl;
-    message_writer << "You have access to the 'expose elements' spell, which makes a particular" << std::endl;
-    message_writer << "elemental spell cost much less mana on the target.  cast 'expose elements'." << std::endl;
+    std::string message_writer;
+    message_writer.append("You are specialized in fire.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    message_writer.append("Your fire spells are more difficult to resist.\n");
+    message_writer.append("Your cold spells are easier to resist.\n");
+    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
+    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
     if (utils::is_race_good(character)) {
-        message_writer << "The minimum damage of firebolt is increased significantly." << std::endl;
-        message_writer << "Your fireballs will no longer spread to friendly targets." << std::endl;
+        message_writer.append("The minimum damage of firebolt is increased significantly.\n");
+        message_writer.append("Your fireballs will no longer spread to friendly targets.\n");
     } else {
-        message_writer << "Your searing darkness spell deals significantly more fire damage." << std::endl;
+        message_writer.append("Your searing darkness spell deals significantly more fire damage.\n");
     }
-    message_writer << "------------------------------------------------------------" << std::endl;
+    message_writer.append("------------------------------------------------------------\n");
     report_exposed_data(message_writer);
-    return message_writer.str();
+    return message_writer;
 }
 
 //============================================================================
 std::string lightning_spec_data::to_string(char_data&) const
 {
-    std::ostringstream message_writer;
-    message_writer << "You are specialized in lightning." << std::endl;
-    message_writer << "------------------------------------------------------------" << std::endl;
-    message_writer << "Your lightning spells are more difficult to resist." << std::endl;
-    message_writer << "You have access to the 'expose elements' spell, which makes a particular" << std::endl;
-    message_writer << "elemental spell cost much less mana on the target.  cast 'expose elements'." << std::endl;
-    message_writer << "Lightning bolt does not lose effectiveness indoors, and deals increased damage." << std::endl;
-    message_writer << "You can cast lightning strike without a storm at slightly reduced effectiveness." << std::endl;
-    message_writer << "------------------------------------------------------------" << std::endl;
+    std::string message_writer;
+    message_writer.append("You are specialized in lightning.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    message_writer.append("Your lightning spells are more difficult to resist.\n");
+    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
+    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
+    message_writer.append("Lightning bolt does not lose effectiveness indoors, and deals increased damage.\n");
+    message_writer.append("You can cast lightning strike without a storm at slightly reduced effectiveness.\n");
+    message_writer.append("------------------------------------------------------------\n");
     report_exposed_data(message_writer);
-    return message_writer.str();
+    return message_writer;
 }
 
 //============================================================================
 std::string darkness_spec_data::to_string(char_data& character) const
 {
-    std::ostringstream message_writer;
-    message_writer << "You are specialized in darkness." << std::endl;
-    message_writer << "------------------------------------------------------------" << std::endl;
-    message_writer << "Your dark spells are more difficult to resist." << std::endl;
-    message_writer << "You have access to the 'expose elements' spell, which makes a particular" << std::endl;
-    message_writer << "elemental spell cost much less mana on the target.  cast 'expose elements'." << std::endl;
-    message_writer << "Your dark bolt spell deals increased damage." << std::endl;
+    std::string message_writer;
+    message_writer.append("You are specialized in darkness.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    message_writer.append("Your dark spells are more difficult to resist.\n");
+    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
+    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
+    message_writer.append("Your dark bolt spell deals increased damage.\n");
     if (utils::is_race_magi(character)) {
-        message_writer << "Your black arrow is harder to resist." << std::endl;
-        message_writer << "Your spear of darkness spell deals additional damage." << std::endl;
+        message_writer.append("Your black arrow is harder to resist.\n");
+        message_writer.append("Your spear of darkness spell deals additional damage.\n");
     } else {
-        message_writer << "Your searing darkness spell deals additional dark damage." << std::endl;
+        message_writer.append("Your searing darkness spell deals additional dark damage.\n");
     }
-    message_writer << "------------------------------------------------------------" << std::endl;
+    message_writer.append("------------------------------------------------------------\n");
     report_exposed_data(message_writer);
-    return message_writer.str();
+    return message_writer;
 }
 
 //============================================================================
 std::string arcane_spec_data::to_string(char_data&) const
 {
-    std::ostringstream message_writer;
-    message_writer << "You are specialized in the arcane." << std::endl;
-    message_writer << "------------------------------------------------------------" << std::endl;
-    message_writer << "You have access to the 'expose elements' spell, which makes a particular" << std::endl;
-    message_writer << "elemental spell cost much less mana on the target.  cast 'expose elements'." << std::endl;
-    message_writer << "You can cast spells at a normal, fast, or slow pace." << std::endl;
-    message_writer << "Slow cast spells against exposed targets will restore mana." << std::endl;
-    message_writer << "------------------------------------------------------------" << std::endl;
+    std::string message_writer;
+    message_writer.append("You are specialized in the arcane.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
+    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
+    message_writer.append("You can cast spells at a normal, fast, or slow pace.\n");
+    message_writer.append("Slow cast spells against exposed targets will restore mana.\n");
+    message_writer.append("------------------------------------------------------------\n");
     report_exposed_data(message_writer);
 
-    return message_writer.str();
+    return message_writer;
 }
 
 //============================================================================
@@ -1692,9 +1693,7 @@ std::string player_damage_details::get_damage_report(const char_data* character)
 
     const char* character_name = utils::get_name(*character);
     if (damage_map.empty()) {
-        std::ostringstream message_writer;
-        message_writer << character_name << " has not recorded any damage dealt." << std::endl;
-        return message_writer.str();
+        return std::format("{} has not recorded any damage dealt.\n", character_name);
     }
 
     /* First pass: Calculate total damage dealt.*/
@@ -1703,9 +1702,9 @@ std::string player_damage_details::get_damage_report(const char_data* character)
         total_damage_dealt += iter->second.get_total_damage();
     }
 
-    std::ostringstream message_writer;
-    message_writer << "Damage report details for " << character_name << ":" << std::endl;
-    message_writer << "-------------------------------------------------------------------------------" << std::endl;
+    std::string message_writer;
+    std::format_to(std::back_inserter(message_writer), "Damage report details for {}:\n", character_name);
+    message_writer.append("-------------------------------------------------------------------------------\n");
 
     for (map_iter iter = damage_map.begin(); iter != damage_map.end(); ++iter) {
         // Longest real name in either source table (hit_text.singular from
@@ -1738,26 +1737,25 @@ std::string player_damage_details::get_damage_report(const char_data* character)
 
         const damage_details& details = iter->second;
 
-        message_writer << ability_name;
-        message_writer << "<Count: " << details.get_instance_count();
-        message_writer << ", Total: " << details.get_total_damage();
-        message_writer << ", Max: " << details.get_largest_damage();
-        message_writer << std::fixed;
-        message_writer.precision(2);
-        message_writer << ", Average: " << details.get_average_damage() << "> ";
-        message_writer << (details.get_total_damage() / double(total_damage_dealt)) * 100;
-        message_writer << "% of damage";
-        message_writer << std::endl;
+        // Average/percentage both render with 2 fixed decimals, matching the
+        // std::fixed + precision(2) stream state the prior stream-based
+        // version applied for the remainder of the report (see the
+        // Combat Time/DPS line below, which relies on the same rule).
+        std::format_to(std::back_inserter(message_writer),
+            "{}<Count: {}, Total: {}, Max: {}, Average: {:.2f}> {:.2f}% of damage\n", ability_name,
+            details.get_instance_count(), details.get_total_damage(), details.get_largest_damage(),
+            details.get_average_damage(),
+            (details.get_total_damage() / double(total_damage_dealt)) * 100);
     }
 
     float combat_seconds = std::max(elapsed_combat_seconds, 0.5f);
     float dps = static_cast<float>(total_damage_dealt) / combat_seconds;
-    message_writer << "-------------------------------------------------------------------------------" << std::endl;
-    message_writer << "Total Damage: " << total_damage_dealt;
-    message_writer << "; Combat Time: " << combat_seconds;
-    message_writer << "s; Damage per Second: " << dps << std::endl;
-    message_writer << "-------------------------------------------------------------------------------" << std::endl;
-    return message_writer.str();
+    message_writer.append("-------------------------------------------------------------------------------\n");
+    std::format_to(std::back_inserter(message_writer),
+        "Total Damage: {}; Combat Time: {:.2f}s; Damage per Second: {:.2f}\n", total_damage_dealt,
+        combat_seconds, dps);
+    message_writer.append("-------------------------------------------------------------------------------\n");
+    return message_writer;
 }
 
 //============================================================================
@@ -1775,9 +1773,9 @@ std::string group_damaga_data::get_damage_report() const
         total_damage_dealt += iter->second.get_total_damage();
     }
 
-    std::ostringstream message_writer;
-    message_writer << "Group damage report details:" << std::endl;
-    message_writer << "-------------------------------------------------------------------------------" << std::endl;
+    std::string message_writer;
+    message_writer.append("Group damage report details:\n");
+    message_writer.append("-------------------------------------------------------------------------------\n");
 
     for (map_iter iter = damage_map.begin(); iter != damage_map.end(); ++iter) {
         char_data* character = iter->first;
@@ -1785,23 +1783,20 @@ std::string group_damaga_data::get_damage_report() const
 
         const timed_damage_details& details = iter->second;
 
-        message_writer << character_name;
-        message_writer << "<Count: " << details.get_instance_count();
-        message_writer << ", Total: " << details.get_total_damage();
-        message_writer << ", Max: " << details.get_largest_damage();
-        message_writer << std::fixed;
-        message_writer.precision(2);
-        message_writer << ", Average: " << details.get_average_damage();
-        message_writer << ", DPS: " << details.get_dps() << "> ";
-        message_writer << (details.get_total_damage() / double(total_damage_dealt)) * 100;
-        message_writer << "% of group damage";
-        message_writer << std::endl;
+        // Average/DPS/percentage all render with 2 fixed decimals, matching
+        // the std::fixed + precision(2) stream state the prior stream-based
+        // version applied here.
+        std::format_to(std::back_inserter(message_writer),
+            "{}<Count: {}, Total: {}, Max: {}, Average: {:.2f}, DPS: {:.2f}> {:.2f}% of group damage\n",
+            character_name, details.get_instance_count(), details.get_total_damage(),
+            details.get_largest_damage(), details.get_average_damage(), details.get_dps(),
+            (details.get_total_damage() / double(total_damage_dealt)) * 100);
     }
 
-    message_writer << "-------------------------------------------------------------------------------" << std::endl;
-    message_writer << "Total Damage: " << total_damage_dealt << std::endl;
-    message_writer << "-------------------------------------------------------------------------------" << std::endl;
-    return message_writer.str();
+    message_writer.append("-------------------------------------------------------------------------------\n");
+    std::format_to(std::back_inserter(message_writer), "Total Damage: {}\n", total_damage_dealt);
+    message_writer.append("-------------------------------------------------------------------------------\n");
+    return message_writer;
 }
 
 //============================================================================

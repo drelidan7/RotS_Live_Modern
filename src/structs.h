@@ -1500,7 +1500,7 @@ struct elemental_spec_data : public specialization_info {
     virtual std::string to_string(char_data& character) const;
 
 protected:
-    void report_exposed_data(std::ostringstream& message_writer) const;
+    void report_exposed_data(std::string& message_writer) const;
 };
 
 struct cold_spec_data : public elemental_spec_data {

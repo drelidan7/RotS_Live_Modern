@@ -59,6 +59,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <iterator>
 #include <string_view>
 #include <system_error>
 #include <thread>
@@ -655,59 +656,57 @@ void untrack_specialized_mage(char_data* mage)
     }
 }
 
-void add_prompt(char* prompt, struct char_data* ch, long flag);
+void add_prompt(std::string& prompt, struct char_data* ch, long flag);
 
 void build_prompt(struct descriptor_data* point, std::string& out)
 {
-    char prompt[MAX_INPUT_LENGTH];
-    char* pptr = prompt;
+    std::string core;
     struct char_data* opponent;
     struct char_data* tank;
 
     if (GET_INVIS_LEV(point->character)) {
-        strcpy(prompt, std::format("i{}", GET_INVIS_LEV(point->character)).c_str());
-    } else
-        prompt[0] = 0;
+        std::format_to(std::back_inserter(core), "i{}", GET_INVIS_LEV(point->character));
+    }
 
     if (IS_RIDING(point->character))
-        strcpy(prompt, std::format("{} R", static_cast<const char*>(prompt)).c_str());
+        core.append(" R");
 
     if (PRF_FLAGGED(point->character, PRF_ADVANCED_PROMPT)) {
-        strcpy(prompt, std::format("{} [", static_cast<const char*>(prompt)).c_str());
-        add_prompt(prompt, point->character, PROMPT_ADVANCED);
+        core.append(" [");
+        add_prompt(core, point->character, PROMPT_ADVANCED);
     } else if (((GET_HIT(point->character) < GET_MAX_HIT(point->character)) || point->character->specials.fighting) && PRF_FLAGGED(point->character, PRF_PROMPT)) {
-        strcpy(prompt, std::format("{} HP:", static_cast<const char*>(prompt)).c_str());
+        core.append(" HP:");
     }
 
     opponent = point->character->specials.fighting;
 
     if (!PRF_FLAGGED(point->character, PRF_ADVANCED_PROMPT)) {
-        add_prompt(prompt, point->character,
+        add_prompt(core, point->character,
             PRF_FLAGGED(point->character, PRF_DISPTEXT)      ? PRF_DISPTEXT
                 : !PRF_FLAGGED(point->character, PRF_PROMPT) ? 0
                                                              : PROMPT_ALL);
     }
 
     if (opponent && IS_MENTAL(opponent)) {
-        strcpy(prompt, std::format("{} Mind:", static_cast<const char*>(prompt)).c_str());
-        add_prompt(prompt, point->character, PROMPT_STAT);
+        core.append(" Mind:");
+        add_prompt(core, point->character, PROMPT_STAT);
     }
 
     if (IS_RIDING(point->character))
-        add_prompt(prompt, point->character->mount_data.mount, PROMPT_MOVE);
+        add_prompt(core, point->character->mount_data.mount, PROMPT_MOVE);
 
     if (GET_RACE(point->character) == RACE_BEORNING) {
         affected_type* maul_buff = affected_by_spell(point->character, SKILL_MAUL);
         if (maul_buff && maul_buff->location == APPLY_MAUL) {
-            strcpy(prompt, std::format("{} Maul:", static_cast<const char*>(prompt)).c_str());
-            add_prompt(prompt, point->character, PROMPT_MAUL);
+            core.append(" Maul:");
+            add_prompt(core, point->character, PROMPT_MAUL);
         }
     }
 
     const obj_data* quiver = point->character->equipment[WEAR_BACK];
     if (quiver && quiver->is_quiver()) {
-        strcpy(prompt, std::format("{} A:(", static_cast<const char*>(prompt)).c_str());
-        add_prompt(prompt, point->character, PROMPT_ARROWS);
+        core.append(" A:(");
+        add_prompt(core, point->character, PROMPT_ARROWS);
     }
 
     if (point->character->specials.position == POSITION_FIGHTING) {
@@ -715,15 +714,15 @@ void build_prompt(struct descriptor_data* point, std::string& out)
             if (opponent->specials.fighting != point->character) {
                 tank = opponent->specials.fighting;
                 if (tank) {
-                    strcpy(prompt, std::format("{}, {}:", static_cast<const char*>(prompt), PERS(tank, point->character, FALSE, FALSE)).c_str());
-                    add_prompt(prompt, tank,
+                    std::format_to(std::back_inserter(core), ", {}:", PERS(tank, point->character, FALSE, FALSE));
+                    add_prompt(core, tank,
                         (IS_MENTAL(opponent)) ? PROMPT_STAT
                                               : PROMPT_HIT);
                 }
             }
-            strcpy(prompt, std::format("{}, {}:", static_cast<const char*>(prompt), PERS(opponent, point->character, FALSE, FALSE)).c_str());
+            std::format_to(std::back_inserter(core), ", {}:", PERS(opponent, point->character, FALSE, FALSE));
 
-            add_prompt(prompt, opponent,
+            add_prompt(core, opponent,
                 (IS_MENTAL(point->character))
                     ? PROMPT_STAT
                     : (IS_SHADOW(opponent) ? PROMPT_STAT : PROMPT_HIT));
@@ -731,17 +730,11 @@ void build_prompt(struct descriptor_data* point, std::string& out)
     }
 
     // Check for a blank space in the first position or the last
-    if (prompt[0] == ' ')
-        pptr++;
-    if (prompt[strlen(prompt) - 1] == ' ')
-        prompt[strlen(prompt) - 1] = '\0';
-
-    if (point->character->specials.position == POSITION_SHAPING)
-        strcpy(prompt, std::format("{}]", static_cast<const char*>(prompt)).c_str());
-    else
-        strcpy(prompt, std::format("{}>", static_cast<const char*>(prompt)).c_str());
-
-    out.assign(pptr);
+    size_t start = (!core.empty() && core.front() == ' ') ? 1 : 0;
+    if (!core.empty() && core.back() == ' ')
+        core.pop_back();
+    core.push_back(point->character->specials.position == POSITION_SHAPING ? ']' : '>');
+    out.assign(core, start, std::string::npos);
 }
 
 /* Accept pnew connects, relay commands, and call 'heartbeat-functs' */

@@ -372,3 +372,37 @@ TEST(PromptFormat, DispTextBranchRendersSelectedPromptText)
     // Signature: the prompt_text[]-formatted disptext string.
     EXPECT_NE(out.find("Shaping: 7"), std::string::npos);
 }
+
+// build_prompt case: the fully-default prompt -- pref == 0, every pool full,
+// standing and not fighting -- leaves the composed core empty. Task 9 guarded
+// the terminator against the old prompt[strlen(prompt) - 1] == prompt[-1]
+// stack-underflow read, so an empty core now yields exactly ">" (defined
+// behavior, ASan-clean) rather than reading one byte before the buffer.
+TEST(PromptFormat, EmptyCorePromptTerminatesWithGreaterThan)
+{
+    PromptContext context;
+
+    std::string out;
+    build_prompt(&context.descriptor, out);
+
+    // Empty core -> just the ">" terminator, no underflow.
+    EXPECT_EQ(out, ">");
+}
+
+// add_prompt case: PRF_PROMPT with a PARTIAL mana pool pins a non-empty
+// prompt_mana[] word. 45/100 -> 450/1000, which selects prompt_mana[3]
+// " S:Charged"; the leading space is trimmed by build_prompt. Full hit/move
+// contribute nothing, isolating the mana word.
+TEST(PromptFormat, PartialManaRendersManaWord)
+{
+    PromptContext context;
+    SET_BIT(context.character.specials2.pref, PRF_PROMPT);
+    context.character.tmpabilities.mana = 45;
+
+    std::string out;
+    build_prompt(&context.descriptor, out);
+
+    EXPECT_EQ(out, "S:Charged>");
+    // Signature: the prompt_mana[]-selected spell-point word.
+    EXPECT_NE(out.find("S:Charged"), std::string::npos);
+}

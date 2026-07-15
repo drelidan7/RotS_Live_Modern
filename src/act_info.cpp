@@ -3257,7 +3257,7 @@ extern struct prompt_type prompt_mana[];
 extern struct prompt_type prompt_move[];
 extern struct prompt_type prompt_mount[];
 
-void add_prompt(char* prompt, struct char_data* ch, long flag)
+void add_prompt(std::string& prompt, struct char_data* ch, long flag)
 {
     int tmp;
     char str[250];
@@ -3292,19 +3292,17 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
         // str, 0) embedded a redundant explicit NUL byte right where
         // sprintf's own terminating NUL already goes -- invisible to any
         // strlen()/send_to_char() reader, so it is dropped here rather than
-        // reproduced. `str` is a local char[250] array used as a
-        // std::format argument -- static_cast<const char*> per the
-        // char[N]-decay rule (catalog item 5); `prompt` is already `char*`.
-        strcpy(prompt,
-            std::format("{}{}", prompt, static_cast<const char*>(str)).c_str());
+        // reproduced. `str` is a null-terminated local char[250]; it is
+        // appended directly onto the std::string `prompt` (append reads up to
+        // the terminating NUL), replacing the old re-format-the-whole-buffer
+        // self-copy with a single-pass append.
+        prompt.append(str);
         return;
     }
 
     if (flag & PROMPT_ADVANCED) {
-        strcpy(prompt,
-            std::format("{}HP: {}/{} S: {}/{} MV: {}/{}]", prompt, GET_HIT(ch), GET_MAX_HIT(ch),
-                GET_MANA(ch), GET_MAX_MANA(ch), GET_MOVE(ch), GET_MAX_MOVE(ch))
-                .c_str());
+        std::format_to(std::back_inserter(prompt), "HP: {}/{} S: {}/{} MV: {}/{}]", GET_HIT(ch),
+            GET_MAX_HIT(ch), GET_MANA(ch), GET_MAX_MANA(ch), GET_MOVE(ch), GET_MAX_MOVE(ch));
         return;
     }
     if (GET_MAX_HIT(ch))
@@ -3312,17 +3310,17 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
             for (tmp = 0; tmp < 7 && (1000LL * GET_HIT(ch)) / GET_MAX_HIT(ch) > prompt_hit[tmp].value; tmp++)
                 ;
             if ((GET_HIT(ch) != GET_MAX_HIT(ch)) || (ch->specials.position == POSITION_FIGHTING))
-                strcpy(prompt, std::format("{}{}", prompt, prompt_hit[tmp].message).c_str());
+                std::format_to(std::back_inserter(prompt), "{}", prompt_hit[tmp].message);
         }
     if (flag & PROMPT_STAT) {
         report_char_mentals(ch, str, 1);
-        strcpy(prompt, std::format("{}{}", prompt, static_cast<const char*>(str)).c_str());
+        prompt.append(str);
         return;
     }
     if (flag & PROMPT_MAUL) {
         affected_type* maul_aff = affected_by_spell(ch, SKILL_MAUL);
         int mod = maul_aff->duration * 10 / 2;
-        strcpy(prompt, std::format("{}{}/1000", prompt, mod).c_str());
+        std::format_to(std::back_inserter(prompt), "{}/1000", mod);
     }
 
     if (flag & PROMPT_ARROWS) {
@@ -3332,14 +3330,14 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
         for (arrow = quiver->contains; arrow; arrow = arrow->next_content) {
             arrows++;
         }
-        strcpy(prompt, std::format("{}{})", prompt, arrows).c_str());
+        std::format_to(std::back_inserter(prompt), "{})", arrows);
     }
 
     if (GET_MAX_MANA(ch))
         if (flag & PROMPT_MANA) {
             for (tmp = 0; (1000 * GET_MANA(ch)) / GET_MAX_MANA(ch) > prompt_mana[tmp].value; tmp++)
                 ;
-            strcpy(prompt, std::format("{}{}", prompt, prompt_mana[tmp].message).c_str());
+            std::format_to(std::back_inserter(prompt), "{}", prompt_mana[tmp].message);
         }
     if (GET_MAX_MOVE(ch))
         if (flag & PROMPT_MOVE) {
@@ -3347,9 +3345,9 @@ void add_prompt(char* prompt, struct char_data* ch, long flag)
                 ;
 
             if (IS_NPC(ch) && MOB_FLAGGED(ch, MOB_MOUNT))
-                strcpy(prompt, std::format("{}{}", prompt, prompt_mount[tmp].message).c_str());
+                std::format_to(std::back_inserter(prompt), "{}", prompt_mount[tmp].message);
             else
-                strcpy(prompt, std::format("{}{}", prompt, prompt_move[tmp].message).c_str());
+                std::format_to(std::back_inserter(prompt), "{}", prompt_move[tmp].message);
         }
 }
 

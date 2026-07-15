@@ -56,6 +56,7 @@
 #include <filesystem>
 #include <format>
 #include <iostream>
+#include <iterator>
 #include <new>
 #include <sstream>
 #include <string>
@@ -4223,27 +4224,27 @@ bool legacy_crime_file_from_binary(const std::string& bytes,
 
 std::string serialize_crime_to_json(const CrimeStoreData& data)
 {
-    std::ostringstream output;
-    output << "{\n";
-    output << "  \"version\": " << data.version << ",\n";
-    output << "  \"records\": [\n";
+    std::string output;
+    output.append("{\n");
+    std::format_to(std::back_inserter(output), "  \"version\": {},\n", data.version);
+    output.append("  \"records\": [\n");
     for (size_t index = 0; index < data.records.size(); ++index) {
         const crime_record_type& record = data.records[index];
-        output << "    {\n";
-        output << "      \"crime_time\": " << record.crime_time << ",\n";
-        output << "      \"criminal\": " << record.criminal << ",\n";
-        output << "      \"victim\": " << record.victim << ",\n";
-        output << "      \"crime\": " << record.crime << ",\n";
-        output << "      \"witness\": " << record.witness << ",\n";
-        output << "      \"witness_type\": " << record.witness_type << "\n";
-        output << "    }";
+        output.append("    {\n");
+        std::format_to(std::back_inserter(output), "      \"crime_time\": {},\n", record.crime_time);
+        std::format_to(std::back_inserter(output), "      \"criminal\": {},\n", record.criminal);
+        std::format_to(std::back_inserter(output), "      \"victim\": {},\n", record.victim);
+        std::format_to(std::back_inserter(output), "      \"crime\": {},\n", record.crime);
+        std::format_to(std::back_inserter(output), "      \"witness\": {},\n", record.witness);
+        std::format_to(std::back_inserter(output), "      \"witness_type\": {}\n", record.witness_type);
+        output.append("    }");
         if (index + 1 < data.records.size())
-            output << ",";
-        output << "\n";
+            output.append(",");
+        output.append("\n");
     }
-    output << "  ]\n";
-    output << "}\n";
-    return output.str();
+    output.append("  ]\n");
+    output.append("}\n");
+    return output;
 }
 
 bool deserialize_crime_from_json(std::string_view json, CrimeStoreData *data,

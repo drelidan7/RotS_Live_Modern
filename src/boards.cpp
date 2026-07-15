@@ -86,6 +86,7 @@ Send comments, bug reports, help requests, etc. to Jeremy Elson
 #include <cstdio>
 #include <cstring>
 #include <format>
+#include <iterator>
 #include <sstream>
 #include <utility>
 
@@ -1009,29 +1010,29 @@ bool legacy_board_file_from_binary(const std::string& bytes, BoardSaveData* data
 
 std::string serialize_board_to_json(const BoardSaveData& data)
 {
-    std::ostringstream output;
-    output << "{\n";
-    output << "  \"version\": " << data.version << ",\n";
-    output << "  \"last_message\": " << data.last_message << ",\n";
-    output << "  \"messages\": [\n";
+    std::string output;
+    output.append("{\n");
+    std::format_to(std::back_inserter(output), "  \"version\": {},\n", data.version);
+    std::format_to(std::back_inserter(output), "  \"last_message\": {},\n", data.last_message);
+    output.append("  \"messages\": [\n");
     for (size_t index = 0; index < data.messages.size(); ++index) {
         const BoardMessageData& message = data.messages[index];
-        output << "    {\n";
-        output << "      \"slot_num\": " << message.slot_num << ",\n";
-        output << "      \"msg_num\": " << message.msg_num << ",\n";
-        output << "      \"heading\": \"" << json_utils::escape_json_string(message.heading) << "\",\n";
-        output << "      \"level\": " << message.level << ",\n";
-        output << "      \"post_time\": " << message.post_time << ",\n";
-        output << "      \"has_message\": " << (message.has_message ? "true" : "false") << ",\n";
-        output << "      \"message\": \"" << json_utils::escape_json_string(message.message) << "\"\n";
-        output << "    }";
+        output.append("    {\n");
+        std::format_to(std::back_inserter(output), "      \"slot_num\": {},\n", message.slot_num);
+        std::format_to(std::back_inserter(output), "      \"msg_num\": {},\n", message.msg_num);
+        std::format_to(std::back_inserter(output), "      \"heading\": \"{}\",\n", json_utils::escape_json_string(message.heading));
+        std::format_to(std::back_inserter(output), "      \"level\": {},\n", message.level);
+        std::format_to(std::back_inserter(output), "      \"post_time\": {},\n", message.post_time);
+        std::format_to(std::back_inserter(output), "      \"has_message\": {},\n", (message.has_message ? "true" : "false"));
+        std::format_to(std::back_inserter(output), "      \"message\": \"{}\"\n", json_utils::escape_json_string(message.message));
+        output.append("    }");
         if (index + 1 < data.messages.size())
-            output << ",";
-        output << "\n";
+            output.append(",");
+        output.append("\n");
     }
-    output << "  ]\n";
-    output << "}\n";
-    return output.str();
+    output.append("  ]\n");
+    output.append("}\n");
+    return output;
 }
 
 bool deserialize_board_from_json(std::string_view json, BoardSaveData *data, std::string *error_message) {

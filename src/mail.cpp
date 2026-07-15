@@ -97,6 +97,7 @@ Send comments, bug reports, etc. to jelson@server.cs.jhu.edu
 #include <cstdio>
 #include <cstring>
 #include <format>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -381,24 +382,24 @@ bool legacy_mail_file_from_binary(const std::string& bytes, MailStoreData* data,
 
 std::string serialize_mail_to_json(const MailStoreData& data)
 {
-    std::ostringstream output;
-    output << "{\n";
-    output << "  \"messages\": [\n";
+    std::string output;
+    output.append("{\n");
+    output.append("  \"messages\": [\n");
     for (size_t index = 0; index < data.messages.size(); ++index) {
         const MailMessageData& message = data.messages[index];
-        output << "    {\n";
-        output << "      \"to\": \"" << json_utils::escape_json_string(message.to) << "\",\n";
-        output << "      \"from\": \"" << json_utils::escape_json_string(message.from) << "\",\n";
-        output << "      \"mail_time\": " << message.mail_time << ",\n";
-        output << "      \"body\": \"" << json_utils::escape_json_string(message.body) << "\"\n";
-        output << "    }";
+        output.append("    {\n");
+        std::format_to(std::back_inserter(output), "      \"to\": \"{}\",\n", json_utils::escape_json_string(message.to));
+        std::format_to(std::back_inserter(output), "      \"from\": \"{}\",\n", json_utils::escape_json_string(message.from));
+        std::format_to(std::back_inserter(output), "      \"mail_time\": {},\n", message.mail_time);
+        std::format_to(std::back_inserter(output), "      \"body\": \"{}\"\n", json_utils::escape_json_string(message.body));
+        output.append("    }");
         if (index + 1 < data.messages.size())
-            output << ",";
-        output << "\n";
+            output.append(",");
+        output.append("\n");
     }
-    output << "  ]\n";
-    output << "}\n";
-    return output.str();
+    output.append("  ]\n");
+    output.append("}\n");
+    return output;
 }
 
 bool deserialize_mail_from_json(std::string_view json, MailStoreData *data, std::string *error_message) {

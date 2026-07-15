@@ -24,6 +24,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <format>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -224,28 +226,28 @@ bool legacy_pkill_file_from_binary(const std::string& bytes, std::vector<PKILL>*
 
 std::string serialize_pkill_to_json(const PkillStoreData& data)
 {
-    std::ostringstream output;
-    output << "{\n";
-    output << "  \"version\": " << data.version << ",\n";
-    output << "  \"records\": [\n";
+    std::string output;
+    output.append("{\n");
+    std::format_to(std::back_inserter(output), "  \"version\": {},\n", data.version);
+    output.append("  \"records\": [\n");
     for (size_t index = 0; index < data.records.size(); ++index) {
         const PKILL& record = data.records[index];
-        output << "    {\n";
-        output << "      \"kill_time\": " << record.kill_time << ",\n";
-        output << "      \"killer\": " << record.killer << ",\n";
-        output << "      \"victim\": " << record.victim << ",\n";
-        output << "      \"killer_level\": " << static_cast<int>(record.killer_level) << ",\n";
-        output << "      \"victim_level\": " << static_cast<int>(record.victim_level) << ",\n";
-        output << "      \"killer_points\": " << record.killer_points << ",\n";
-        output << "      \"victim_points\": " << record.victim_points << "\n";
-        output << "    }";
+        output.append("    {\n");
+        std::format_to(std::back_inserter(output), "      \"kill_time\": {},\n", record.kill_time);
+        std::format_to(std::back_inserter(output), "      \"killer\": {},\n", record.killer);
+        std::format_to(std::back_inserter(output), "      \"victim\": {},\n", record.victim);
+        std::format_to(std::back_inserter(output), "      \"killer_level\": {},\n", static_cast<int>(record.killer_level));
+        std::format_to(std::back_inserter(output), "      \"victim_level\": {},\n", static_cast<int>(record.victim_level));
+        std::format_to(std::back_inserter(output), "      \"killer_points\": {},\n", record.killer_points);
+        std::format_to(std::back_inserter(output), "      \"victim_points\": {}\n", record.victim_points);
+        output.append("    }");
         if (index + 1 < data.records.size())
-            output << ",";
-        output << "\n";
+            output.append(",");
+        output.append("\n");
     }
-    output << "  ]\n";
-    output << "}\n";
-    return output.str();
+    output.append("  ]\n");
+    output.append("}\n");
+    return output;
 }
 
 bool deserialize_pkill_from_json(std::string_view json, PkillStoreData *data, std::string *error_message) {

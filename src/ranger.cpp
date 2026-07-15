@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 #include <vector>
 
@@ -2821,11 +2822,10 @@ void do_recover(char_data* character, char*, waiting_type*, int, int)
         }
     }
 
-    std::ostringstream message_writer;
-    message_writer << "You recover " << num_recovered
-                   << (num_recovered > 1 ? " arrows." : " arrow.") << std::endl;
-    std::string message = message_writer.str();
-    send_to_char(message, character);
+    std::string message_writer;
+    std::format_to(std::back_inserter(message_writer), "You recover {}{}\n", num_recovered,
+                   num_recovered > 1 ? " arrows." : " arrow.");
+    send_to_char(message_writer, character);
 
     act("$n recovers some arrows.\n\r", FALSE, character, NULL, NULL, TO_ROOM);
 }

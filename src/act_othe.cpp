@@ -14,6 +14,7 @@
 #include <ctype.h>
 #include <format>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1350,14 +1351,14 @@ void set_sort_value(int sort_index, char_data* character)
 
 void report_sort_choices_to(char_data* character)
 {
-    std::ostringstream message_writer;
-    message_writer << "Possible sort choices are:" << std::endl;
+    std::string message_writer;
+    message_writer.append("Possible sort choices are:\n");
     for (const auto& sort_name : inv_sorting) {
-        message_writer << "\t" << sort_name << std::endl;
+        std::format_to(std::back_inserter(message_writer), "\t{}\n", sort_name);
     }
-    message_writer << std::endl;
+    message_writer.append("\n");
 
-    send_to_char(message_writer.str(), character);
+    send_to_char(message_writer, character);
 }
 
 void report_inventory_sorting_to(char_data* character, std::string_view intro_string)

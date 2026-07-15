@@ -208,18 +208,18 @@ public:
             std::stable_sort(m_seen_items.begin(), m_seen_items.end(), sorter);
         }
 
-        std::ostringstream inventory_writer;
+        std::string inventory_writer;
         for (size_t index = 0; index < m_seen_items.size(); ++index) {
             const inventory_data& item_data = m_seen_items[index];
-            inventory_writer << item_data.description;
+            inventory_writer.append(item_data.description);
             if (item_data.count > 1) {
-                inventory_writer << " (" << item_data.count << ')';
+                std::format_to(std::back_inserter(inventory_writer), " ({})", item_data.count);
             }
-            inventory_writer << std::endl;
+            inventory_writer.append("\n");
         }
 
-        inventory_writer << std::endl;
-        return inventory_writer.str();
+        inventory_writer.append("\n");
+        return inventory_writer;
     }
 
 private:

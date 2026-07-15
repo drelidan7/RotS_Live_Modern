@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <format>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 
 /*---------------------------------------------------------------------------------------------*/
@@ -634,10 +635,11 @@ ASPELL(spell_divination)
                         const obj_data& key = obj_proto[obj_index];
                         key_name = key.short_description;
                     } else {
-                        std::ostringstream error_log;
-                        error_log << "Found a room with an invalid key.  Room Number: " << exit_room.number << " and Room Name: " << exit_room.name << std::endl;
-                        std::string msg = error_log.str();
-                        log(msg);
+                        std::string error_log;
+                        std::format_to(std::back_inserter(error_log),
+                            "Found a room with an invalid key.  Room Number: {} and Room Name: {}\n",
+                            exit_room.number, exit_room.name);
+                        log(error_log);
                         send_to_char("You found a key that shouldn't exist!  Please notify the imm group immediately at rots.management3791@gmail.com with your room name.", caster);
                     }
                 }

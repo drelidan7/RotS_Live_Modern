@@ -16,6 +16,7 @@
 
 #include <filesystem>
 #include <format>
+#include <iterator>
 #include <fstream>
 #include <string>
 #include <system_error>
@@ -474,10 +475,10 @@ void do_stat_room(struct char_data* ch)
         for (found = 0, k = rm->people; k; k = k->next_in_room) {
             if (!CAN_SEE(ch, k))
                 continue;
-            line += std::format("{} {}({})", found++ ? "," : "", GET_NAME(k),
+            std::format_to(std::back_inserter(line), "{} {}({})", found++ ? "," : "", GET_NAME(k),
                 (!IS_NPC(k) ? "PC" : (!IS_MOB(k) ? "NPC" : "MOB")));
             if (IS_NPC(k)) {
-                line += std::format(" [{}]", mob_index[k->nr].virt);
+                std::format_to(std::back_inserter(line), " [{}]", mob_index[k->nr].virt);
             }
             if (line.size() >= 62) {
                 line += k->next_in_room ? ",\n\r" : "\n\r";
@@ -509,7 +510,7 @@ void do_stat_room(struct char_data* ch)
             // exercises it and this task pins existing behavior.
             if (ch->player.level > 91)
                 strcpy(buf1, std::format(" [{}]", obj_index[j->item_number].virt).c_str());
-            line += std::format("{} {}{}", separator, j->short_description,
+            std::format_to(std::back_inserter(line), "{} {}{}", separator, j->short_description,
                 static_cast<const char*>(buf1));
             if (line.size() >= 62) {
                 line += j->next_content ? ",\n\r" : "\n\r";
@@ -617,7 +618,7 @@ void do_stat_object(struct char_data* ch, struct obj_data* j)
     if (j->in_room == NOWHERE)
         location_line += "Nowhere";
     else
-        location_line += std::format("{}", world[j->in_room].number);
+        std::format_to(std::back_inserter(location_line), "{}", world[j->in_room].number);
     location_line += ", In object: ";
     location_line += j->in_obj ? j->in_obj->short_description : "None";
     location_line += ", Carried by: ";
@@ -709,7 +710,8 @@ void do_stat_object(struct char_data* ch, struct obj_data* j)
     if (j->contains) {
         std::string line = std::format("Contents:{}", CC_USE(ch, COLOR_OBJ));
         for (found = 0, j2 = j->contains; j2; j2 = j2->next_content) {
-            line += std::format("{} {}", found++ ? "," : "", j2->short_description);
+            std::format_to(std::back_inserter(line), "{} {}",
+                found++ ? "," : "", j2->short_description);
             if (line.size() >= 62) {
                 line += j2->next_content ? ",\n\r" : "\n\r";
                 send_to_char(line, ch);
@@ -926,7 +928,7 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
         pos_line += ", Connected: ";
         pos_line += static_cast<const char*>(buf2);
     }
-    pos_line += std::format("  Hide_value:{}.\n\r", k->specials.hide_value);
+    std::format_to(std::back_inserter(pos_line), "  Hide_value:{}.\n\r", k->specials.hide_value);
     send_to_char(pos_line, ch);
 
     sprinttype((k->specials.default_pos), position_types, buf2);
@@ -967,12 +969,12 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
 
     for (i = 0, j = k->carrying; j; j = j->next_content, i++)
         ;
-    carried_line += std::format("Items in: inventory: {}, ", i);
+    std::format_to(std::back_inserter(carried_line), "Items in: inventory: {}, ", i);
 
     for (i = 0, i2 = 0; i < MAX_WEAR; i++)
         if (k->equipment[i])
             i2++;
-    carried_line += std::format("eq: {}\n\r", i2);
+    std::format_to(std::back_inserter(carried_line), "eq: {}\n\r", i2);
     send_to_char(carried_line, ch);
 
     send_to_char(std::format("Hunger: {}, Thirst: {}, Drunk: {}, Att.Level: {}\n\r",
@@ -986,7 +988,8 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
             ((k->master) ? GET_NAME(k->master) : "<none>"));
 
         for (fol = k->followers; fol; fol = fol->next) {
-            line += std::format("{} {}", found++ ? "," : "", GET_NAME(fol->follower));
+            std::format_to(std::back_inserter(line), "{} {}",
+                found++ ? "," : "", GET_NAME(fol->follower));
             if (line.size() >= 62) {
                 line += fol->next ? ",\n\r" : "\n\r";
                 send_to_char(line, ch);
@@ -1009,7 +1012,7 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
     } else {
         std::string memories = "Memories: ";
         for (tmprec = k->specials.memory; tmprec; tmprec = tmprec->next_on_mob)
-            memories += std::format(" {}", tmprec->id);
+            std::format_to(std::back_inserter(memories), " {}", tmprec->id);
         memories += "\n\r";
         send_to_char(memories, ch);
     }
@@ -1038,7 +1041,8 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
         for (aff = k->affected; aff; aff = aff->next) {
             std::string modifier_and_bits;
             if (aff->modifier) {
-                modifier_and_bits += std::format("{:+d} to {}", aff->modifier, apply_types[(int)aff->location]);
+                std::format_to(std::back_inserter(modifier_and_bits), "{:+d} to {}",
+                    aff->modifier, apply_types[(int)aff->location]);
             }
             if (aff->bitvector) {
                 modifier_and_bits += modifier_and_bits.empty() ? "sets " : ", sets ";
@@ -2474,7 +2478,8 @@ ACMD(do_show)
         std::string options_line = "Show options:\n\r";
         for (j = 0, i = 1; fields[i].level; i++)
             if (fields[i].level <= GET_LEVEL(ch))
-                options_line += std::format("{:<15}{}", fields[i].cmd, (!(++j % 5) ? "\n\r" : ""));
+                std::format_to(std::back_inserter(options_line), "{:<15}{}",
+                    fields[i].cmd, (!(++j % 5) ? "\n\r" : ""));
         options_line += "\n\r";
         send_to_char(options_line, ch);
         return;
@@ -2555,31 +2560,39 @@ ACMD(do_show)
         for (obj = object_list; obj; obj = obj->next)
             k++;
         std::string stats_line = "Current stats:\n\r";
-        stats_line += std::format("  {:5} players in game  {:5} connected\n\r", i, con);
-        stats_line += std::format("  {:5} registered\n\r", top_of_p_table + 1);
-        stats_line += std::format("  {:5} mobiles          {:5} prototypes\n\r", j, top_of_mobt + 1);
-        stats_line += std::format("  {:5} objects          {:5} prototypes\n\r", k, top_of_objt + 1);
-        stats_line += std::format("  {:5} rooms            {:5} zones\n\r", top_of_world + 1,
-            top_of_zone_table + 1);
-        stats_line += std::format("  {:5} large bufs\n\r", buf_largecount);
-        stats_line += std::format("  {:5} buf switches     {:5} overflows\n\r", buf_switches, buf_overflows);
-        stats_line += std::format("  {:5} txt_blocks       {:5} affect_blocks\n\r",
+        std::format_to(std::back_inserter(stats_line), "  {:5} players in game  {:5} connected\n\r",
+            i, con);
+        std::format_to(std::back_inserter(stats_line), "  {:5} registered\n\r", top_of_p_table + 1);
+        std::format_to(std::back_inserter(stats_line),
+            "  {:5} mobiles          {:5} prototypes\n\r", j, top_of_mobt + 1);
+        std::format_to(std::back_inserter(stats_line),
+            "  {:5} objects          {:5} prototypes\n\r", k, top_of_objt + 1);
+        std::format_to(std::back_inserter(stats_line), "  {:5} rooms            {:5} zones\n\r",
+            top_of_world + 1, top_of_zone_table + 1);
+        std::format_to(std::back_inserter(stats_line), "  {:5} large bufs\n\r", buf_largecount);
+        std::format_to(std::back_inserter(stats_line), "  {:5} buf switches     {:5} overflows\n\r",
+            buf_switches, buf_overflows);
+        std::format_to(std::back_inserter(stats_line),
+            "  {:5} txt_blocks       {:5} affect_blocks\n\r",
             txt_block_counter, affected_type_counter);
-        stats_line += std::format("  {:5} pkill records    {:5} mobile memories \n\r",
+        std::format_to(std::back_inserter(stats_line),
+            "  {:5} pkill records    {:5} mobile memories \n\r",
             pkill_get_total(), memory_rec_counter);
 
         if (!stat_ticks_passed)
             stats_line += "  No player statistics yet\n\r";
         else {
-            stats_line += std::format(
+            std::format_to(std::back_inserter(stats_line),
                 "  {:5.2f} average players present\n\r  {:5.2f} mortals, {:5.2f} immortals\n\r",
                 float(stat_mortals_counter + stat_immortals_counter) / stat_ticks_passed,
                 float(stat_mortals_counter) / stat_ticks_passed,
                 float(stat_immortals_counter) / stat_ticks_passed);
-            stats_line += std::format("  {:5.2f} good races,{:5.2f} legends \n\r",
+            std::format_to(std::back_inserter(stats_line),
+                "  {:5.2f} good races,{:5.2f} legends \n\r",
                 float(stat_whitie_counter) / stat_ticks_passed,
                 float(stat_whitie_legend_counter) / stat_ticks_passed);
-            stats_line += std::format("  {:5.2f} evil races,{:5.2f} legends \n\r",
+            std::format_to(std::back_inserter(stats_line),
+                "  {:5.2f} evil races,{:5.2f} legends \n\r",
                 float(stat_darkie_counter) / stat_ticks_passed,
                 float(stat_darkie_legend_counter) / stat_ticks_passed);
         }
@@ -2593,7 +2606,8 @@ ACMD(do_show)
         std::string death_traps = "Death Traps\n\r-----------\n\r";
         for (i = 0, j = 0; i < top_of_world; i++)
             if (IS_SET(world[i].room_flags, DEATH))
-                death_traps += std::format("{:2}: [{:5}] {}\n\r", ++j, world[i].number, world[i].name);
+                std::format_to(std::back_inserter(death_traps), "{:2}: [{:5}] {}\n\r",
+                    ++j, world[i].number, world[i].name);
         send_to_char(death_traps, ch);
         break;
     }
@@ -2602,7 +2616,8 @@ ACMD(do_show)
         std::string godrooms = "Godrooms\n\r--------------------------\n\r";
         for (i = 0, j = 0; i < top_of_world; i++)
             if (world[i].zone == GOD_ROOMS_ZONE)
-                godrooms += std::format("{:2}: [{:5}] {}\n\r", j++, world[i].number, world[i].name);
+                std::format_to(std::back_inserter(godrooms), "{:2}: [{:5}] {}\n\r",
+                    j++, world[i].number, world[i].name);
         send_to_char(godrooms, ch);
         break;
     }
@@ -2617,12 +2632,14 @@ ACMD(do_show)
             }
             if (tmplist->type == TARGET_CHAR) {
                 if (char_exists(tmplist->number))
-                    affected_line += std::format("{:<38}| ", GET_NAME(tmplist->ptr.ch));
+                    std::format_to(std::back_inserter(affected_line), "{:<38}| ",
+                        GET_NAME(tmplist->ptr.ch));
                 else
-                    affected_line += std::format("{:<38}| ", "*Unknown char*");
+                    std::format_to(std::back_inserter(affected_line), "{:<38}| ", "*Unknown char*");
             }
             if (tmplist->type == TARGET_ROOM) {
-                affected_line += std::format("Room affect({})                     | ",
+                std::format_to(std::back_inserter(affected_line),
+                    "Room affect({})                     | ",
                     tmplist->ptr.room->number);
             }
             count++;

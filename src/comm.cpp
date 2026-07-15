@@ -661,6 +661,7 @@ void add_prompt(std::string& prompt, struct char_data* ch, long flag);
 void build_prompt(struct descriptor_data* point, std::string& out)
 {
     std::string core;
+    core.reserve(128);
     struct char_data* opponent;
     struct char_data* tank;
 

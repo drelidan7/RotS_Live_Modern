@@ -77,6 +77,8 @@
 - Fixed-size `char[N]` struct members must be explicitly decayed with
   `static_cast<const char*>` before passing them to `std::format`; libc++ and libstdc++ otherwise
   differ in their formatting behavior.
+- Deterministic FP is enforced (SSE, no x87/fast-math/`long double`/transcendentals in the
+  combat path); see `docs/BUILD.md` "FP determinism".
 - GoogleTest is test-only tooling and is never linked into the game binary. The Windows MSVC and
   macOS sanitizer presets provision it with CMake `FetchContent`; other presets use installed
   packages.

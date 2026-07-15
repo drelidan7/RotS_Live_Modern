@@ -140,6 +140,39 @@ proxy in front of the game.
   runner must be invoked `cd src/tests && make tests && ../../bin/tests` (run from
   `src/tests`, not the repo root) — golden paths resolve relative to that cwd too.
 
+## FP determinism
+
+RotS ships across a build matrix (i386/x64/arm64 GNU-family plus MSVC), and the
+characterization goldens (`src/tests/goldens/combat_transcript_seed42.txt` and friends) are only
+meaningful if every platform in that matrix runs the *same* floating-point arithmetic and
+produces the *same* rounding — otherwise a golden pins one platform's quirks rather than the
+actual shipping binary's behavior. Phase 1 (FP-unification) made that true by policy, not by
+accident:
+
+- **The deterministic FP subset is `+ − × ÷` and `sqrt`, `double`-only.** Combat, stat, and HP
+  math must stay inside this subset.
+- **Banned in that deterministic path:** `long double`, `-ffast-math`/`-Ofast`/`/fp:fast`, and
+  libm transcendentals (`pow`/`exp`/`log`/trig). If a future formula genuinely needs a
+  transcendental, vendor a fixed portable implementation so every platform runs the same code,
+  rather than calling platform libm — glibc, Apple's libm, and MSVC's ucrt aren't required to
+  agree in the last bit.
+- **Shipping and test builds share one FP flag set:** `-msse2 -mfpmath=sse` (GNU-family x86,
+  including i386 — eliminates x87 80-bit extended-precision evaluation), `-ffp-contract=off`
+  (all GNU-family targets, including arm64 — prevents the compiler from silently fusing
+  `a*b+c` into a single FMA that rounds once instead of twice), and `/fp:precise` (MSVC — the
+  MSVC analogue of both). These are defined once as `ROTS_FP_OPTIONS` in `src/CMakeLists.txt`
+  and mirrored in `src/Makefile`/`src/tests/Makefile`; the three must stay in sync — a shipping
+  build and a test build computing combat math under different FP semantics defeats the whole
+  point of the goldens.
+- **`src/fp_policy.h`** fails the build (via `static_assert`/`#error`) if x87 evaluation or
+  fast-math regress. It's included by the combat translation units, so it guards the shipping
+  binary itself, not just the test tree. **`src/tests/fp_determinism_smoke_tests.cpp`**
+  (`FpDeterminismSmoke.*`) is the runtime tripwire for cases the compile-time guard can't catch
+  (e.g. indeterminate `FLT_EVAL_METHOD`).
+- **Regenerating the combat golden is a deliberate, reviewed act.** If a change intentionally
+  alters combat math, regenerate `combat_transcript_seed42.txt` with `UPDATE_GOLDENS=1` and say
+  so in the commit message; unintentional drift is a bug in the change, not a golden to update.
+
 ## Native macOS arm64 build (Phase 2b, primary Mac dev flow)
 
 No Docker needed. Requires CMake ≥ 3.23 and GoogleTest (`brew install googletest`).

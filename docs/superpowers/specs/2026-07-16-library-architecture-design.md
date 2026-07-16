@@ -72,7 +72,7 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
 
 | Lib | Layer | TUs | Contents |
 |---|---|---|---|
-| `rots_platform` | L0 | 8 | `rots_net, rots_crypt, rots_rng, clock, crashsave_schedule, json_utils, safe_template, player_file_finalize` (clean leaves — no upward symbol references) |
+| `rots_platform` | L0 | 7 | `rots_net, rots_crypt, rots_rng, clock, crashsave_schedule, json_utils, player_file_finalize` (verified clean leaves — the archive imports only libc/libstdc++/compiler symbols) |
 | `rots_core` | L1 | 2 + split headers | `consts, config` + the carved-up data model (Section 5) |
 | `rots_entity` | L2 | 6 | `char_utils, object_utils, environment_utils, handler, utility, char_utils_combat` |
 | `rots_persist` | L3 | ~14 | `db_players` (from `db.cpp`), `objsave, boards, mail, pkill, character_json, objects_json, exploits_json, account_management (+6 #included fragments), account_cache, convert_exploits, convert_plrobjs, save_benchmark, savebench` |
@@ -90,6 +90,12 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
   their current dependencies point and are candidates to move once boundaries settle.
 - The 6 `account_management_*.cpp` files are `#include`d into `account_management.cpp` (they are
   fragments, not separately compiled TUs) and stay together in `rots_persist`.
+- `safe_template.cpp` is **not** a clean L0 leaf and is deliberately **excluded** from
+  `rots_platform`: it calls `vmudlog` (defined in `utility.cpp`, an L2 `rots_entity` unit), a
+  genuine upward edge confirmed by `nm` on the built archive. It remains an app-compiled TU
+  (`ROTS_SERVER_SOURCES`) until its logging dependency is cut via a platform-level logging seam, at
+  which point it can join `rots_platform` (or land in `rots_entity`). This is exactly the kind of
+  weld the acyclicity check exists to surface.
 
 ---
 
@@ -272,6 +278,36 @@ the link graph — an upward edge is a link error.
 
 Each library uses target-scoped includes (`target_include_directories(... PUBLIC ...)`) so a
 consumer sees only the headers of libraries it links, reinforcing the boundaries at compile time.
+
+### 9a. Target physical layout — subfolder per library
+
+Each library is its own subdirectory under `src/`, added with `add_subdirectory()` and owning its
+**own `CMakeLists.txt`** (a directory scope that defines the target and its usage requirements) —
+*not* an `include()`d `.cmake` fragment (which runs in the parent scope and is reserved for shared
+build snippets such as the `rots_build_flags` definition).
+
+```
+src/
+  CMakeLists.txt          # add_subdirectory(platform); add_subdirectory(core); ...
+  cmake/flags.cmake       # shared .cmake snippet: rots_build_flags
+  platform/
+    CMakeLists.txt        # add_library(rots_platform STATIC ...) + PUBLIC include dir
+    rots_net.cpp  rots_rng.cpp  ...
+    include/rots/platform/*.h
+  core/  entity/  persist/  world/  combat/  commands/  app/   # same shape
+```
+
+- Each library exposes headers via `target_include_directories(rots_x PUBLIC include)`, so a
+  consumer sees a library's headers only if it links it — this is what enforces the boundary and
+  cleanly resolves the historical `src/limits.h`-shadows-`<limits.h>` hazard.
+- **Includes become pathed** (`#include "rots/core/character.h"`), adopted *during the header split*
+  (§5): that sweep already touches every consumer of `structs.h`, so relocating files into `core/`
+  and pathing their includes in the same pass avoids editing the same includes twice. Doing the
+  subfolder move before the header split would double the include churn.
+- This is a **later step, not the first slice.** The initial plan deliberately moves no files
+  (stand up the target graph first); physical relocation into subfolders happens per layer, starting
+  with the header split. It composes cleanly with CMake-as-single-source-of-truth (no flat
+  `Makefile` `OBJFILES` list to keep in sync with a nested tree).
 
 ---
 

@@ -1,7 +1,7 @@
 #ifndef OBJFLAGDATABUILDER_H_
 #define OBJFLAGDATABUILDER_H_
 
-#include "../structs.h"
+#include "rots/core/types.h"
 
 
 namespace builders {

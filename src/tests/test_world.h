@@ -52,7 +52,7 @@
 // top_of_world reset to 0) so the four Wave-1 single-room migrations are
 // unaffected.
 
-#include "../structs.h"
+#include "rots/core/room.h"
 #include "../utils.h"
 
 #include <cassert>

@@ -28,7 +28,15 @@ CXX = g++
 # see docs/BUILD.md "FP determinism" and src/Makefile / src/CMakeLists.txt's
 # ROTS_FP_OPTIONS) -- bans FMA fusion so -O2+ can't silently round differently
 # from -O0 or other platforms.
-CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -ffp-contract=off -funsigned-char -MMD -MP
+# -I../core/include -I../persist/include: the header-split wave's product .cpp files
+# (OBJFILES below, e.g. act_comm.cpp/act_wiz.cpp) now bare-quote-include "rots/core/*.h"/
+# "rots/persist/*.h" directly (Tasks 6-10), and structs.h itself does too -- both need
+# this on the plain CXXFLAGS used by OBJFILES' explicit per-file rules, not just on
+# TEST_CXXFLAGS below (which already had it for the test TUs). Mirrors src/Makefile's
+# ALL_CPPFLAGS (`-Icore/include -Ipersist/include`, applied to every compile there). A
+# build-flag-only fix -- no file's resolved header set changes -- so it cannot affect
+# runtime behavior or goldens (same reasoning as this file's existing -idirafter note).
+CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -ffp-contract=off -funsigned-char -MMD -MP -I../core/include -I../persist/include
 # -idirafter .. lets the account_management_*_header_compile.cpp probes (and
 # every other tests/*.cpp) use bare #include "account_management_assets.h" /
 # "structs.h" (etc.) to reach the product headers one directory up; mirrors

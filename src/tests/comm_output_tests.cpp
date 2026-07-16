@@ -1,6 +1,9 @@
 #include "../comm.h"
 #include "../rots_net.h"
-#include "../structs.h"
+#include "rots/core/character.h"
+#include "rots/core/room.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/types.h"
 #include "test_char_cleanup.h"
 #include "test_world.h"
 

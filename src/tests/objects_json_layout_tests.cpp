@@ -1,5 +1,8 @@
 #include "../objects_json.h"
 #include "legacy_rent_fixture.h"
+#include "rots/persist/file_formats.h"
+#include "rots/core/character.h"
+#include "rots/core/types.h"
 
 #include <gtest/gtest.h>
 

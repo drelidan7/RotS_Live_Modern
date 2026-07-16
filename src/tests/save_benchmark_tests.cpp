@@ -5,7 +5,8 @@
 #include "../character_json.h"
 #include "../color.h"
 #include "../db.h"
-#include "../structs.h"
+#include "rots/persist/file_formats.h"
+#include "rots/core/character.h"
 #include "../utils.h"
 #include "test_platform_compat.h"
 

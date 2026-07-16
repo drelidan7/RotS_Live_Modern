@@ -1,4 +1,5 @@
-#include "../structs.h"
+#include "rots/core/object.h"
+#include "rots/core/types.h"
 #include "ObjFlagDataBuilder.h"
 #include <gtest/gtest.h>
 

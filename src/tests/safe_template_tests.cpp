@@ -8,7 +8,6 @@
 // pass through as a plain '%' and not count as a conversion.
 
 #include "../safe_template.h"
-#include "../structs.h"
 #include "../utils.h"
 
 #include <gtest/gtest.h>

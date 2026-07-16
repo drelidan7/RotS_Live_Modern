@@ -1,5 +1,5 @@
 #include "../protos.h"
-#include "../structs.h"
+#include "rots/core/character.h"
 #include "../utils.h"
 #include "test_char_cleanup.h"
 #include <gtest/gtest.h>

@@ -1,7 +1,9 @@
 #pragma once
 
 #include "../db.h"
-#include "../structs.h"
+#include "rots/core/character.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/types.h"
 #include "../utils.h"
 
 // clear_char() (db.cpp) heap-allocates ch->profs (always, via CREATE1) and,

@@ -1,5 +1,6 @@
 #include "../spells.h"
-#include "../structs.h"
+#include "rots/core/character.h"
+#include "rots/core/types.h"
 #include "../utils.h"
 #include <gtest/gtest.h>
 

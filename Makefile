@@ -28,8 +28,11 @@ setup: $(CMAKE_CACHE)
 build: $(CMAKE_CACHE)
 	+$(CMAKE) --build $(BUILD_DIR) --target ageland -j16
 
+# rots_platform_linkcheck must be built explicitly: the PlatformLayerAcyclicity
+# CTest executes its binary, and this recipe builds named targets (not `all`),
+# so omitting it leaves the test "Not Run" (as the i386 battery caught).
 test: $(CMAKE_CACHE)
-	+$(CMAKE) --build $(BUILD_DIR) --target ageland ageland_tests -j16
+	+$(CMAKE) --build $(BUILD_DIR) --target ageland ageland_tests rots_platform_linkcheck -j16
 	# cd + bare ctest, NOT `ctest --test-dir`: --test-dir needs CMake >= 3.20, and the
 	# i386 container ships ctest 3.18, which silently ignores the flag, looks for tests
 	# in the repo root, and reports "No tests were found!!!" with exit code 0.

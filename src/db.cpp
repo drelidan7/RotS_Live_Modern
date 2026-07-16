@@ -36,7 +36,12 @@
 #include "platform_compat.h"
 #include "protos.h"
 #include "spells.h"
-#include "structs.h"
+#include "rots/persist/file_formats.h"
+#include "rots/core/character.h"
+#include "rots/core/object.h"
+#include "rots/core/room.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/types.h"
 #include "utils.h"
 #include "zone.h"
 

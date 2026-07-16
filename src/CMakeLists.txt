@@ -543,7 +543,13 @@ if(ROTS_BUILD_TESTS)
         # itself a link prerequisite, so any change to it forces a relink.
         set_target_properties(rots_platform_linkcheck PROPERTIES
             LINK_DEPENDS "$<TARGET_FILE:rots_platform>")
-        add_test(NAME PlatformLayerAcyclicity COMMAND rots_platform_linkcheck)
+        # The target above always builds under ROTS_BUILD_TESTS, so the
+        # build-time link enforcement fires regardless. Gate only the CTest
+        # REGISTRATION on BUILD_TESTING, mirroring gtest_discover_tests above, so
+        # a `-DBUILD_TESTING=OFF` configure behaves consistently across all tests.
+        if(BUILD_TESTING)
+            add_test(NAME PlatformLayerAcyclicity COMMAND rots_platform_linkcheck)
+        endif()
     endif()
 endif()
 

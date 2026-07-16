@@ -269,6 +269,14 @@ git commit -m "build: extract rots_platform STATIC library (foundation layer, 8 
 
 ## Task 3: Add the foundation-layer acyclicity tripwire
 
+> **Superseded during the whole-branch review (see `.superpowers/sdd/progress.md`).** This task's
+> `nm`-denylist shell script (`src/tests/platform_layer_acyclicity_test.sh`) was found to give false
+> assurance (it passed green on a real `safe_template.cpp → vmudlog` upward edge). It was replaced
+> with a load-bearing whole-archive **link** check (`rots_platform_linkcheck` / CTest
+> `PlatformLayerAcyclicity`) and the shell script was deleted. The steps below are the historical
+> record of the original approach; see `docs/BUILD.md` "Library layering & the foundation acyclicity
+> check" for what actually ships.
+
 Guard the "no upward edges" property so a future change that makes a platform TU call up into the game fails a fast, dedicated check instead of silently re-welding the layer.
 
 **Files:**

@@ -59,14 +59,21 @@ endif()
 # rots_crypt.cpp is a vendored, portable SHA-512-crypt ($6$) — account_management*.cpp
 # call rots_crypt() instead of libc crypt() so credential hashes are byte-identical
 # on every platform, not just glibc.
-# Foundation layer (spec §3, library architecture): clean-leaf TUs with zero
-# upward symbol references. Extracted into the rots_platform STATIC library.
+# Foundation layer (spec §3, library architecture): 7 verified-clean-leaf TUs
+# with zero upward symbol references (confirmed via `nm -u` on the built
+# archive — see the rots_platform_linkcheck load-bearing test below).
+# Extracted into the rots_platform STATIC library.
 # NOTE: signals.cpp is deliberately NOT here — it references descriptor_list /
 # calls hupsig()/unrestrict_game(), i.e. it depends UP on the game, so it stays
 # in ROTS_SERVER_SOURCES (app layer).
+# NOTE: safe_template.cpp is deliberately EXCLUDED (a code-review finding,
+# confirmed via `nm -uC` on the built archive): it calls vmudlog(), defined in
+# utility.cpp (an L2/app-layer unit) — a real upward edge, not a clean leaf.
+# It stays in ROTS_SERVER_SOURCES below until a platform-level logging seam
+# lets it log without depending up on the game.
 set(ROTS_PLATFORM_SOURCES
     rots_net.cpp rots_crypt.cpp rots_rng.cpp clock.cpp
-    crashsave_schedule.cpp json_utils.cpp safe_template.cpp player_file_finalize.cpp
+    crashsave_schedule.cpp json_utils.cpp player_file_finalize.cpp
 )
 
 set(ROTS_SERVER_SOURCES
@@ -81,7 +88,7 @@ set(ROTS_SERVER_SOURCES
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     mystic.cpp obj2html.cpp object_utils.cpp objects_json.cpp objsave.cpp
     olog_hai.cpp pkill.cpp profs.cpp protocol.cpp
-    ranger.cpp save_benchmark.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
+    ranger.cpp safe_template.cpp save_benchmark.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
@@ -502,17 +509,41 @@ if(ROTS_BUILD_TESTS)
             DISCOVERY_MODE PRE_TEST
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
         )
+    endif()
 
-        # Foundation-layer acyclicity tripwire (spec §11). GNU-family only: relies on
-        # nm/c++filt and a .a archive layout. MSVC's guarantee is structural instead
-        # — rots_platform links only rots_build_flags, no game library.
-        if(NOT MSVC)
-            add_test(
-                NAME PlatformLayerAcyclicity
-                COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/platform_layer_acyclicity_test.sh"
-                        "$<TARGET_FILE:rots_platform>"
-            )
+    # Load-bearing foundation-layer acyclicity check (spec §11). Force-load the
+    # entire rots_platform archive into a tiny exe linked against ONLY
+    # libc/libstdc++ (rots_build_flags carries the -m32/FP/etc. ABI flags) and NO
+    # game libraries: any upward edge from L0 becomes an unresolved-symbol LINK
+    # ERROR, failing the build. Supersedes the old nm-denylist (which could only
+    # catch hand-listed hubs and gave false assurance). GNU ld and macOS ld64 use
+    # different force-load spellings; both are non-MSVC. MSVC's guarantee stays
+    # structural (rots_platform links only rots_build_flags), so this is skipped
+    # there.
+    if(NOT MSVC)
+        add_executable(rots_platform_linkcheck tests/platform_linkcheck_main.cpp)
+        target_link_libraries(rots_platform_linkcheck PRIVATE rots_build_flags)
+        add_dependencies(rots_platform_linkcheck rots_platform)
+        if(APPLE)
+            target_link_options(rots_platform_linkcheck PRIVATE
+                -Wl,-force_load,$<TARGET_FILE:rots_platform>)
+        else()
+            target_link_options(rots_platform_linkcheck PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:rots_platform> -Wl,--no-whole-archive)
         endif()
+        # add_dependencies (above) only orders the build; it does not tell the
+        # generated Make/Ninja rules that this executable's LINK step consumes
+        # librots_platform.a's contents (the archive path only appears inside a
+        # raw linker flag string, invisible to CMake's normal
+        # target_link_libraries dependency tracking). Without LINK_DEPENDS, an
+        # incremental rebuild that changes only a rots_platform source (e.g. a
+        # platform TU gains an upward edge) recompiles the archive but leaves
+        # this executable's last-linked binary untouched, silently defeating
+        # the whole point of this check. LINK_DEPENDS makes the archive file
+        # itself a link prerequisite, so any change to it forces a relink.
+        set_target_properties(rots_platform_linkcheck PROPERTIES
+            LINK_DEPENDS "$<TARGET_FILE:rots_platform>")
+        add_test(NAME PlatformLayerAcyclicity COMMAND rots_platform_linkcheck)
     endif()
 endif()
 

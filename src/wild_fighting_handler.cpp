@@ -3,6 +3,7 @@
 #include "spells.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
+#include "rots/core/character.h"
 
 namespace player_spec {
 //============================================================================

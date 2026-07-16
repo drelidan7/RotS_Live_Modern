@@ -1,6 +1,6 @@
 #include "skill_timer.h"
 #include "char_utils.h"
-#include "structs.h"
+#include "rots/core/character.h"
 
 #include <cstring>
 #include <format>

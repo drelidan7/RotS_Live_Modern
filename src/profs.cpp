@@ -13,7 +13,10 @@
 #include "limits.h"
 #include "profs.h"
 #include "spells.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/object.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/types.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 

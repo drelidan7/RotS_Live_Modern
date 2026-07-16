@@ -59,19 +59,36 @@ endif()
 # rots_crypt.cpp is a vendored, portable SHA-512-crypt ($6$) — account_management*.cpp
 # call rots_crypt() instead of libc crypt() so credential hashes are byte-identical
 # on every platform, not just glibc.
+# Foundation layer (spec §3, library architecture): 7 verified-clean-leaf TUs
+# with zero upward symbol references (confirmed via `nm -u` on the built
+# archive — see the rots_platform_linkcheck load-bearing test below).
+# Extracted into the rots_platform STATIC library.
+# NOTE: signals.cpp is deliberately NOT here — it references descriptor_list /
+# calls hupsig()/unrestrict_game(), i.e. it depends UP on the game, so it stays
+# in ROTS_SERVER_SOURCES (app layer).
+# NOTE: safe_template.cpp is deliberately EXCLUDED (a code-review finding,
+# confirmed via `nm -uC` on the built archive): it calls vmudlog(), defined in
+# utility.cpp (an L2/app-layer unit) — a real upward edge, not a clean leaf.
+# It stays in ROTS_SERVER_SOURCES below until a platform-level logging seam
+# lets it log without depending up on the game.
+set(ROTS_PLATFORM_SOURCES
+    rots_net.cpp rots_crypt.cpp rots_rng.cpp clock.cpp
+    crashsave_schedule.cpp json_utils.cpp player_file_finalize.cpp
+)
+
 set(ROTS_SERVER_SOURCES
     account_cache.cpp account_management.cpp act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
     boards.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
-    clock.cpp color.cpp comm.cpp config.cpp convert_exploits.cpp convert_plrobjs.cpp
-    consts.cpp crashsave_schedule.cpp db.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
+    color.cpp comm.cpp config.cpp convert_exploits.cpp convert_plrobjs.cpp
+    consts.cpp db.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
-    json_utils.cpp limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
+    limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     mystic.cpp obj2html.cpp object_utils.cpp objects_json.cpp objsave.cpp
-    olog_hai.cpp pkill.cpp player_file_finalize.cpp profs.cpp protocol.cpp
-    ranger.cpp rots_crypt.cpp rots_net.cpp rots_rng.cpp safe_template.cpp save_benchmark.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
+    olog_hai.cpp pkill.cpp profs.cpp protocol.cpp
+    ranger.cpp safe_template.cpp save_benchmark.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
@@ -80,8 +97,6 @@ set(ROTS_SERVER_SOURCES
 
 add_executable(ageland ${ROTS_SERVER_SOURCES})
 
-# C++20, ISO dialect (-std=c++20, not gnu++20) to match the Makefile's -std=c++20.
-target_compile_features(ageland PRIVATE cxx_std_20)
 set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 
 # --- Flag parity with src/Makefile (behavior-affecting — keep in sync) --------
@@ -180,44 +195,58 @@ set(ROTS_FP_OPTIONS
     $<${ROTS_GNULIKE}:-ffp-contract=off>
     $<$<CXX_COMPILER_ID:MSVC>:/fp:precise>
 )
-target_compile_options(ageland PRIVATE
+# --- Shared build-flags interface --------------------------------------------
+# The shipping/game flag set (ageland's exact flags), in one place. ageland and
+# every rots_* library (from Task 2 on) inherit it via
+#   target_link_libraries(<target> PRIVATE rots_build_flags)   # PUBLIC for libs
+# so the -m32 ABI / FP-determinism / unsigned-char behavior contracts hold
+# identically across the whole shipping link. INTERFACE (not PUBLIC/PRIVATE)
+# because the library has no sources of its own — it only imposes requirements.
+# NOTE: ageland_tests deliberately does NOT consume this — its flag set differs
+# (TESTING, -idirafter include handling, no -g/-fstrict-aliasing/per-config-opt)
+# and is left exactly as-is. This block must be a verbatim copy of ageland's
+# current options/definitions/link-options so ageland is provably unchanged.
+add_library(rots_build_flags INTERFACE)
+target_compile_features(rots_build_flags INTERFACE cxx_std_20)
+# ISO dialect, not GNU (matches the Makefile's -std=c++20). Applied to every
+# consumer because CXX_EXTENSIONS is a target property, not an INTERFACE one; a
+# consuming target must also set it (see the ageland/ageland_tests setters,
+# left in place below).
+target_compile_options(rots_build_flags INTERFACE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
     $<${ROTS_GNULIKE}:-funsigned-char -fstrict-aliasing -Wall -Wextra -Werror -g>
     $<$<CXX_COMPILER_ID:MSVC>:/J /W4 /WX /wd4244 /wd4267 /wd4456 /wd4458 /wd4459 /wd4702 /wd4127 /wd4310 /Zc:strictStrings->
     ${ROTS_FP_OPTIONS}
+    $<${ROTS_GNULIKE}:$<$<CONFIG:Debug>:-O0 -DDEBUG>>
+    $<${ROTS_GNULIKE}:$<$<CONFIG:Release>:-O2 -DNDEBUG>>
 )
-target_link_options(ageland PRIVATE
-    $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
-    # -rdynamic: GNU spelling; the clang driver translates it on macOS. MSVC: none.
-    $<${ROTS_GNULIKE}:-rdynamic>
-)
-# ws2_32: the Winsock2 import library backing every socket call rots_net.cpp /
-# comm.cpp make on Windows (WSAStartup, socket/bind/listen/accept, send/recv,
-# select, ...). POSIX needs no equivalent (BSD sockets live in libc). Not a
-# third-party library -- it is the OS's own socket API, same standing as libc.
-target_link_libraries(ageland PRIVATE $<$<PLATFORM_ID:Windows>:ws2_32>)
-# _FILE_OFFSET_BITS is a glibc knob; harmless but meaningless off Linux/MSVC.
-# _CRT_SECURE_NO_WARNINGS (Phase 3 Task 5, MSVC bring-up): the game calls plain
-# localtime()/asctime()/strcpy()-family CRT functions all over (db.cpp, utility.cpp,
-# etc.); MSVC's CRT deprecates those in favor of the *_s() bounds-checked variants
-# and turns the deprecation into a hard warning (effectively an error under /W-heavy
-# configs) without this. A real localtime_s()/strcpy_s() conversion is out of scope
-# for this phase (Phase 5 owns warning hygiene per the plan) -- this only silences
-# the deprecation so the existing, behaviorally-unchanged calls compile.
-# _CRT_NONSTDC_NO_WARNINGS (Phase 5 Task 9, /W4 campaign): companion knob for
-# the POSIX-name deprecations (C4996 on strdup/unlink/getpid/...); MSVC wants
-# the underscore-prefixed ISO names, but the plain POSIX spellings are the
-# portable ones every other platform uses. Same silence-not-rewrite rationale
-# as _CRT_SECURE_NO_WARNINGS above.
-target_compile_definitions(ageland PRIVATE
+target_compile_definitions(rots_build_flags INTERFACE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:_FILE_OFFSET_BITS=64>
     $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS>
 )
+target_link_options(rots_build_flags INTERFACE
+    $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
+)
+# --- L0: foundation library --------------------------------------------------
+add_library(rots_platform STATIC ${ROTS_PLATFORM_SOURCES})
+add_library(RotS::platform ALIAS rots_platform)
+set_target_properties(rots_platform PROPERTIES CXX_EXTENSIONS OFF)
+# PUBLIC: rots_platform needs the parity flags to BUILD, and every consumer must
+# link with the same -m32/FP set — so the requirement propagates.
+target_link_libraries(rots_platform PUBLIC rots_build_flags $<$<PLATFORM_ID:Windows>:ws2_32>)
+# tests/product .cpp reach these headers via bare quoted includes ("rots_net.h");
+# the sources live in src/, so the compiler's own "directory of the including
+# file" entry already resolves them for TUs in src/. No extra include dir needed
+# while the headers stay in src/ (they relocate in a later plan).
 
-# Per-configuration optimization (the common flags above apply to every config).
-target_compile_options(ageland PRIVATE
-    $<${ROTS_GNULIKE}:$<$<CONFIG:Debug>:-O0 -DDEBUG>>
-    $<${ROTS_GNULIKE}:$<$<CONFIG:Release>:-O2 -DNDEBUG>>
+target_link_libraries(ageland PRIVATE
+    RotS::platform
+    rots_build_flags
+    $<$<PLATFORM_ID:Windows>:ws2_32>
+)
+target_link_options(ageland PRIVATE
+    # -rdynamic: GNU spelling; the clang driver translates it on macOS. MSVC: none.
+    $<${ROTS_GNULIKE}:-rdynamic>
 )
 
 # --- Tests (ported from upstream/account-management) --------------------------
@@ -349,7 +378,7 @@ if(ROTS_BUILD_TESTS)
     endif()
     include(GoogleTest)
 
-    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_TEST_SOURCES})
+    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_TEST_SOURCES})
 
     # Same C++ standard as ageland (see above) — required because these targets are
     # defined per-target here rather than via a project-wide CMAKE_CXX_STANDARD.
@@ -480,6 +509,47 @@ if(ROTS_BUILD_TESTS)
             DISCOVERY_MODE PRE_TEST
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
         )
+    endif()
+
+    # Load-bearing foundation-layer acyclicity check (spec §11). Force-load the
+    # entire rots_platform archive into a tiny exe linked against ONLY
+    # libc/libstdc++ (rots_build_flags carries the -m32/FP/etc. ABI flags) and NO
+    # game libraries: any upward edge from L0 becomes an unresolved-symbol LINK
+    # ERROR, failing the build. Supersedes the old nm-denylist (which could only
+    # catch hand-listed hubs and gave false assurance). GNU ld and macOS ld64 use
+    # different force-load spellings; both are non-MSVC. MSVC's guarantee stays
+    # structural (rots_platform links only rots_build_flags), so this is skipped
+    # there.
+    if(NOT MSVC)
+        add_executable(rots_platform_linkcheck tests/platform_linkcheck_main.cpp)
+        target_link_libraries(rots_platform_linkcheck PRIVATE rots_build_flags)
+        add_dependencies(rots_platform_linkcheck rots_platform)
+        if(APPLE)
+            target_link_options(rots_platform_linkcheck PRIVATE
+                -Wl,-force_load,$<TARGET_FILE:rots_platform>)
+        else()
+            target_link_options(rots_platform_linkcheck PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:rots_platform> -Wl,--no-whole-archive)
+        endif()
+        # add_dependencies (above) only orders the build; it does not tell the
+        # generated Make/Ninja rules that this executable's LINK step consumes
+        # librots_platform.a's contents (the archive path only appears inside a
+        # raw linker flag string, invisible to CMake's normal
+        # target_link_libraries dependency tracking). Without LINK_DEPENDS, an
+        # incremental rebuild that changes only a rots_platform source (e.g. a
+        # platform TU gains an upward edge) recompiles the archive but leaves
+        # this executable's last-linked binary untouched, silently defeating
+        # the whole point of this check. LINK_DEPENDS makes the archive file
+        # itself a link prerequisite, so any change to it forces a relink.
+        set_target_properties(rots_platform_linkcheck PROPERTIES
+            LINK_DEPENDS "$<TARGET_FILE:rots_platform>")
+        # The target above always builds under ROTS_BUILD_TESTS, so the
+        # build-time link enforcement fires regardless. Gate only the CTest
+        # REGISTRATION on BUILD_TESTING, mirroring gtest_discover_tests above, so
+        # a `-DBUILD_TESTING=OFF` configure behaves consistently across all tests.
+        if(BUILD_TESTING)
+            add_test(NAME PlatformLayerAcyclicity COMMAND rots_platform_linkcheck)
+        endif()
     endif()
 endif()
 

@@ -173,6 +173,27 @@ accident:
   alters combat math, regenerate `combat_transcript_seed42.txt` with `UPDATE_GOLDENS=1` and say
   so in the commit message; unintentional drift is a bug in the change, not a golden to update.
 
+## Library layering & the foundation acyclicity check
+
+The source tree is being carved into layered static libraries (see
+`docs/superpowers/specs/2026-07-16-library-architecture-design.md`). The first extracted layer is
+`rots_platform` (L0) — foundation TUs with **no upward dependency** on game code — built as
+`librots_platform.a` and linked into `ageland`. All first-party targets share their ABI/behavior
+flags through the `rots_build_flags` INTERFACE library.
+
+- **`rots_platform_linkcheck` / CTest `PlatformLayerAcyclicity`** enforce the "no upward edge"
+  property in a load-bearing way: a tiny executable force-loads the entire `librots_platform.a`
+  (`-Wl,--whole-archive` on GNU ld, `-Wl,-force_load` on macOS ld64) and links it against **only**
+  libc/libstdc++ — no game libraries. If any platform TU references a game symbol, it becomes an
+  unresolved-symbol **link error that fails the build**. `LINK_DEPENDS` on the archive forces a
+  relink whenever the archive content changes, so an upward edge introduced on an incremental build
+  is caught, not silently skipped. GNU-family only (`if(NOT MSVC)`); MSVC's guarantee is structural
+  (the target links only `rots_build_flags`). This superseded an earlier `nm`-denylist shell check,
+  which could only catch hand-listed symbols and gave false assurance.
+- **`safe_template.cpp` is intentionally *not* in `rots_platform`** — it calls `vmudlog` (an L2
+  symbol), a real upward edge. It stays an `ageland`-compiled TU until a platform logging seam cuts
+  that dependency (see the spec's follow-ons).
+
 ## Native macOS arm64 build (Phase 2b, primary Mac dev flow)
 
 No Docker needed. Requires CMake ≥ 3.23 and GoogleTest (`brew install googletest`).

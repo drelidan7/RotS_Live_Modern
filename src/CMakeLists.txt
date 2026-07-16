@@ -80,8 +80,6 @@ set(ROTS_SERVER_SOURCES
 
 add_executable(ageland ${ROTS_SERVER_SOURCES})
 
-# C++20, ISO dialect (-std=c++20, not gnu++20) to match the Makefile's -std=c++20.
-target_compile_features(ageland PRIVATE cxx_std_20)
 set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 
 # --- Flag parity with src/Makefile (behavior-affecting — keep in sync) --------
@@ -180,44 +178,45 @@ set(ROTS_FP_OPTIONS
     $<${ROTS_GNULIKE}:-ffp-contract=off>
     $<$<CXX_COMPILER_ID:MSVC>:/fp:precise>
 )
-target_compile_options(ageland PRIVATE
+# --- Shared build-flags interface --------------------------------------------
+# The shipping/game flag set (ageland's exact flags), in one place. ageland and
+# every rots_* library (from Task 2 on) inherit it via
+#   target_link_libraries(<target> PRIVATE rots_build_flags)   # PUBLIC for libs
+# so the -m32 ABI / FP-determinism / unsigned-char behavior contracts hold
+# identically across the whole shipping link. INTERFACE (not PUBLIC/PRIVATE)
+# because the library has no sources of its own — it only imposes requirements.
+# NOTE: ageland_tests deliberately does NOT consume this — its flag set differs
+# (TESTING, -idirafter include handling, no -g/-fstrict-aliasing/per-config-opt)
+# and is left exactly as-is. This block must be a verbatim copy of ageland's
+# current options/definitions/link-options so ageland is provably unchanged.
+add_library(rots_build_flags INTERFACE)
+target_compile_features(rots_build_flags INTERFACE cxx_std_20)
+# ISO dialect, not GNU (matches the Makefile's -std=c++20). Applied to every
+# consumer because CXX_EXTENSIONS is a target property, not an INTERFACE one; a
+# consuming target must also set it (see the ageland/ageland_tests setters,
+# left in place below).
+target_compile_options(rots_build_flags INTERFACE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
     $<${ROTS_GNULIKE}:-funsigned-char -fstrict-aliasing -Wall -Wextra -Werror -g>
     $<$<CXX_COMPILER_ID:MSVC>:/J /W4 /WX /wd4244 /wd4267 /wd4456 /wd4458 /wd4459 /wd4702 /wd4127 /wd4310 /Zc:strictStrings->
     ${ROTS_FP_OPTIONS}
+    $<${ROTS_GNULIKE}:$<$<CONFIG:Debug>:-O0 -DDEBUG>>
+    $<${ROTS_GNULIKE}:$<$<CONFIG:Release>:-O2 -DNDEBUG>>
 )
-target_link_options(ageland PRIVATE
-    $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
-    # -rdynamic: GNU spelling; the clang driver translates it on macOS. MSVC: none.
-    $<${ROTS_GNULIKE}:-rdynamic>
-)
-# ws2_32: the Winsock2 import library backing every socket call rots_net.cpp /
-# comm.cpp make on Windows (WSAStartup, socket/bind/listen/accept, send/recv,
-# select, ...). POSIX needs no equivalent (BSD sockets live in libc). Not a
-# third-party library -- it is the OS's own socket API, same standing as libc.
-target_link_libraries(ageland PRIVATE $<$<PLATFORM_ID:Windows>:ws2_32>)
-# _FILE_OFFSET_BITS is a glibc knob; harmless but meaningless off Linux/MSVC.
-# _CRT_SECURE_NO_WARNINGS (Phase 3 Task 5, MSVC bring-up): the game calls plain
-# localtime()/asctime()/strcpy()-family CRT functions all over (db.cpp, utility.cpp,
-# etc.); MSVC's CRT deprecates those in favor of the *_s() bounds-checked variants
-# and turns the deprecation into a hard warning (effectively an error under /W-heavy
-# configs) without this. A real localtime_s()/strcpy_s() conversion is out of scope
-# for this phase (Phase 5 owns warning hygiene per the plan) -- this only silences
-# the deprecation so the existing, behaviorally-unchanged calls compile.
-# _CRT_NONSTDC_NO_WARNINGS (Phase 5 Task 9, /W4 campaign): companion knob for
-# the POSIX-name deprecations (C4996 on strdup/unlink/getpid/...); MSVC wants
-# the underscore-prefixed ISO names, but the plain POSIX spellings are the
-# portable ones every other platform uses. Same silence-not-rewrite rationale
-# as _CRT_SECURE_NO_WARNINGS above.
-target_compile_definitions(ageland PRIVATE
+target_compile_definitions(rots_build_flags INTERFACE
     $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:_FILE_OFFSET_BITS=64>
     $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS>
 )
-
-# Per-configuration optimization (the common flags above apply to every config).
-target_compile_options(ageland PRIVATE
-    $<${ROTS_GNULIKE}:$<$<CONFIG:Debug>:-O0 -DDEBUG>>
-    $<${ROTS_GNULIKE}:$<$<CONFIG:Release>:-O2 -DNDEBUG>>
+target_link_options(rots_build_flags INTERFACE
+    $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
+)
+target_link_libraries(ageland PRIVATE
+    rots_build_flags
+    $<$<PLATFORM_ID:Windows>:ws2_32>
+)
+target_link_options(ageland PRIVATE
+    # -rdynamic: GNU spelling; the clang driver translates it on macOS. MSVC: none.
+    $<${ROTS_GNULIKE}:-rdynamic>
 )
 
 # --- Tests (ported from upstream/account-management) --------------------------

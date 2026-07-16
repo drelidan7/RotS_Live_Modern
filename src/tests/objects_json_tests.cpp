@@ -1,4 +1,6 @@
 #include "../objects_json.h"
+#include "rots/core/character.h"
+#include "rots/persist/file_formats.h"
 
 #include <gtest/gtest.h>
 

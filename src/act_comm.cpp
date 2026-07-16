@@ -28,6 +28,7 @@
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/descriptor.h"
+#include "rots/core/tables.h" /* For global_release_flag (RELEASE macro) */
 #include "rots/core/types.h"
 #include "text_view.h"
 #include "utils.h"

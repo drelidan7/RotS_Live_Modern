@@ -1,7 +1,7 @@
 #ifndef OBJECTS_JSON_H
 #define OBJECTS_JSON_H
 
-#include "structs.h"
+#include "rots/core/types.h" /* For MAX_OBJ_AFFECT, MAX_MAXBOARD */
 
 #include <array>
 #include <string>

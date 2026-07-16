@@ -2,6 +2,7 @@
 #include "base_utils.h"
 #include "char_utils.h"
 #include "rots/core/character.h"
+#include "rots/core/descriptor.h"
 #include "rots/core/types.h"
 
 #include "comm.h" // for send-to-char

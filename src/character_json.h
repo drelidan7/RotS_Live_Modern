@@ -1,7 +1,8 @@
 #ifndef CHARACTER_JSON_H
 #define CHARACTER_JSON_H
 
-#include "structs.h"
+#include "rots/persist/file_formats.h"
+#include "rots/core/character.h" /* For PLRSPEC_NONE */
 
 #include <array>
 #include <string>

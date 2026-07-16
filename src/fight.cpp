@@ -27,6 +27,7 @@
 #include "spells.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
+#include "rots/core/descriptor.h"
 #include "rots/core/room.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"

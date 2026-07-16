@@ -16,6 +16,7 @@
 #include "spells.h" /* For TYPE_xxx */
 #include "rots/core/character.h"
 #include "rots/core/object.h"
+#include "rots/core/tables.h"
 #include "rots/core/types.h"
 #include "utils.h" /* For vmudlog() */
 

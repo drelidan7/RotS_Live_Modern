@@ -16,6 +16,8 @@
 // helper. `inline` gives one true definition across TUs instead.
 
 #include "../objects_json.h"
+#include "rots/core/character.h"
+#include "rots/persist/file_formats.h"
 
 #include <gtest/gtest.h>
 

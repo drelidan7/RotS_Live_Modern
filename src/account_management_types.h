@@ -2,7 +2,6 @@
 #define ACCOUNT_MANAGEMENT_TYPES_H
 
 #include "db.h"
-#include "structs.h"
 
 #include <string>
 #include <vector>

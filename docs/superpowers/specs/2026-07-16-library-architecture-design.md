@@ -171,6 +171,33 @@ Consequences:
 `char_file_u`, `obj_file_elem`, `rent_info` and the other file-format structs are **persistence**
 types, not core entity types — they move to a `rots_persist` header, not `rots_core`.
 
+**As built (header-split wave, Task 12 exit):** the carve landed with five deviations from the
+prose above, none of them changing the DAG shape or the layout-probe-verified ABI:
+
+(a) `types.h` includes `fwd.h`, not the reverse — `target_data`/`waiting_type` (both value structs
+    that live in `types.h`) hold entity pointers (`char_data*`/`obj_data*`/`room_data*`), so they
+    need the forward declarations. §5's "NO entity pointers" line above is amended in spirit to "no
+    entity *definitions*" — `types.h` still never pulls in a full `char_data`/`obj_data`/`room_data`/
+    `descriptor_data` body, only their forward-declared pointer types.
+
+(b) A `tables.h` leaf exists alongside `types.h`, holding the `CONSTANTSMARK`-guarded
+    `global_release_flag` extern/definition trick and the extern calendar/race table declarations
+    (`weekdays`, `month_name`, `moon_phase`, `pc_races`, …) that `consts.cpp` defines. It was not
+    called out in the original four-file `rots/core/` sketch above; it is a fifth leaf with the same
+    "no entity pointers" shape as `types.h`.
+
+(c) Persistence formats (`char_file_u`, `follower_file_elem`, `obj_file_elem`, `rent_info`,
+    `RENT_*`) landed in `rots/persist/file_formats.h`, matching the "not `rots_core`" call above.
+
+(d) Core headers reach `platdef.h`/`color.h`/`protocol.h` by explicit relative include
+    (`"../../../../platdef.h"`), not a `-I`/`-idirafter` path entry, per the Global Constraints
+    `src/` shadowing rule — this holds until those legacy headers themselves relocate.
+
+(e) `.cpp` physical relocation into the `core/`/`persist/` subfolder tree (§9a's eventual layout) is
+    deferred: the flat `src/Makefile` (and `src/tests/Makefile`) still list every `.cpp` by its
+    current flat path, and moving them is deferred until that Makefile is retired in favor of
+    CMake-only builds. Only the new header files live in the subfolder layout today.
+
 ---
 
 ## 6. Character / Session / Account / Location decoupling

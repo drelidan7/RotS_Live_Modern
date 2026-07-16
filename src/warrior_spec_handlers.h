@@ -1,6 +1,7 @@
 #pragma once
 
-#include "structs.h"
+#include "rots/core/fwd.h"
+#include "rots/core/types.h" /* For game_types::player_specs, game_types::weapon_type */
 
 namespace player_spec {
 class wild_fighting_handler {

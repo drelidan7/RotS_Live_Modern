@@ -20,7 +20,8 @@
 #include "interpre.h"     /* For the SPECIAL macro */
 #include "objects_json.h" /* For objects_json::ObjectSaveData */
 #include "platdef.h"      /* For sh_int, ush_int, byte, etc. */
-#include "structs.h"      /* For MAX_NAME_LENGTH and MAX_STRING_LENGTH */
+#include "rots/core/types.h" /* For MAX_NAME_LENGTH and MAX_STRING_LENGTH */
+#include "rots/core/fwd.h"
 
 /* arbitrary constants used by index_boot() (must be unique) */
 #define DB_BOOT_WLD 0

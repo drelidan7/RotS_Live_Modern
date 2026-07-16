@@ -6,6 +6,7 @@
 #include "rots/core/character.h"
 #include "rots/core/room.h"
 #include "rots/core/descriptor.h"
+#include "rots/core/tables.h"
 #include "rots/core/types.h"
 #include "../utils.h"
 #include "scoped_allocation_counter.h"

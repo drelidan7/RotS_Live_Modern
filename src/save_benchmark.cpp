@@ -7,6 +7,7 @@
 #include "stopwatch.h"
 #include "rots/persist/file_formats.h"
 #include "rots/core/character.h"
+#include "rots/core/tables.h"
 #include "text_view.h"
 #include "utils.h"
 

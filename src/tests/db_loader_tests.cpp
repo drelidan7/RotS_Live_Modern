@@ -6,6 +6,8 @@
 #include "../handler.h"
 #include "../objects_json.h"
 #include "../utils.h"
+#include "rots/core/object.h"
+#include "rots/core/tables.h"
 #include "scoped_allocation_counter.h"
 #include "test_char_cleanup.h"
 #include "test_platform_compat.h"

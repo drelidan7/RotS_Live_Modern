@@ -1,7 +1,7 @@
 #pragma once
 
 #include "interpre.h"
-#include "structs.h"
+#include "rots/core/fwd.h"
 
 #include <string_view>
 

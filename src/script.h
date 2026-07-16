@@ -12,7 +12,7 @@
 #ifndef SCRIPT_H
 #define SCRIPT_H
 
-#include "structs.h" /* For the char_data structure */
+#include "rots/core/fwd.h" /* For the char_data structure */
 
 // defines: 1-9: flow control, 10-29: triggers, 29- script commands
 

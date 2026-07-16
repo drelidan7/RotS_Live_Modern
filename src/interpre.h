@@ -12,7 +12,8 @@
 #define INTERPRE_H
 
 #include "platdef.h" /* For sh_int, ush_int, byte, etc. */
-#include "structs.h" /* For the NOWHERE macro */
+#include "rots/core/types.h" /* For the NOWHERE macro and waiting_type used in ACMD macros */
+#include "rots/core/fwd.h"
 
 #include <string>
 #include <string_view>

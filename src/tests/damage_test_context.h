@@ -6,6 +6,7 @@
 
 #include "../spells.h"
 #include "../utils.h"
+#include "rots/core/character.h"
 #include "test_world.h"
 
 extern room_data world;

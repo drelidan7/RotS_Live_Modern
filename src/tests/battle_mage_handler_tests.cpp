@@ -1,5 +1,6 @@
 #include "../warrior_spec_handlers.h"
 #include "../utils.h"
+#include "rots/core/character.h"
 #include "test_random_utils.h"
 #include <gtest/gtest.h>
 

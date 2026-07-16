@@ -2,6 +2,9 @@
 #include "../exploits_json.h"
 #include "../objects_json.h"
 #include "../utils.h"
+#include "rots/core/character.h"
+#include "rots/core/descriptor.h"
+#include "rots/persist/file_formats.h"
 #include "test_platform_compat.h"
 
 #include <gtest/gtest.h>

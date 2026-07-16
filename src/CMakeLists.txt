@@ -427,7 +427,7 @@ if(ROTS_BUILD_TESTS)
     # falls through to src/limits.h for a bare quoted include that nothing
     # else on the list satisfies (i.e. still works as a same-priority-as-
     # before fallback for genuine project headers: no other directory on the
-    # list has an "act_info.h", "structs.h", etc., so ordering never mattered
+    # list has an "act_info.h", "utils.h", etc., so ordering never mattered
     # for those). No test source bare-quote-includes "limits.h" relying on
     # this path specifically (the one test file that reaches the project's
     # own limits.h -- interpre_account_menu_tests.cpp -- uses the explicit

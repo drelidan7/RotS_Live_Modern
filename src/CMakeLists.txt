@@ -502,6 +502,17 @@ if(ROTS_BUILD_TESTS)
             DISCOVERY_MODE PRE_TEST
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
         )
+
+        # Foundation-layer acyclicity tripwire (spec §11). GNU-family only: relies on
+        # nm/c++filt and a .a archive layout. MSVC's guarantee is structural instead
+        # — rots_platform links only rots_build_flags, no game library.
+        if(NOT MSVC)
+            add_test(
+                NAME PlatformLayerAcyclicity
+                COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/platform_layer_acyclicity_test.sh"
+                        "$<TARGET_FILE:rots_platform>"
+            )
+        endif()
     endif()
 endif()
 

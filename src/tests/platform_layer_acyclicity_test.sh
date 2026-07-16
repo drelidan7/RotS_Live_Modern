@@ -7,7 +7,9 @@ set -euo pipefail
 archive="${1:?usage: platform_layer_acyclicity_test.sh <path/to/librots_platform.a>}"
 
 # nm -u lists undefined symbols; -C demangles C++ names so the denylist can be
-# plain source identifiers. macOS nm lacks -C, so fall back to c++filt.
+# plain source identifiers. Fall back to piping through c++filt on toolchains
+# whose nm lacks -C (some older/BSD nm); the branch is chosen by probing the
+# capability at runtime, not by inspecting the OS.
 if nm -uC "$archive" >/dev/null 2>&1; then
     undefined="$(nm -uC "$archive")"
 else
@@ -16,7 +18,7 @@ fi
 
 # Game-layer symbols the foundation must NEVER reference. Representative, not
 # exhaustive: any real upward edge pulls in at least one of these hubs.
-denylist='char_to_room|obj_to_char|char_from_room|descriptor_list|interpret_command|world\[|boot_db|game_loop'
+denylist='char_to_room|obj_to_char|char_from_room|descriptor_list|interpret_command|(^|[[:space:]])_*world([[:space:]]|$)|boot_db|game_loop'
 
 if echo "$undefined" | grep -Eq "$denylist"; then
     echo "FAIL: rots_platform imports a game-layer symbol (upward edge):" >&2

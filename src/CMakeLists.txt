@@ -59,19 +59,29 @@ endif()
 # rots_crypt.cpp is a vendored, portable SHA-512-crypt ($6$) — account_management*.cpp
 # call rots_crypt() instead of libc crypt() so credential hashes are byte-identical
 # on every platform, not just glibc.
+# Foundation layer (spec §3, library architecture): clean-leaf TUs with zero
+# upward symbol references. Extracted into the rots_platform STATIC library.
+# NOTE: signals.cpp is deliberately NOT here — it references descriptor_list /
+# calls hupsig()/unrestrict_game(), i.e. it depends UP on the game, so it stays
+# in ROTS_SERVER_SOURCES (app layer).
+set(ROTS_PLATFORM_SOURCES
+    rots_net.cpp rots_crypt.cpp rots_rng.cpp clock.cpp
+    crashsave_schedule.cpp json_utils.cpp safe_template.cpp player_file_finalize.cpp
+)
+
 set(ROTS_SERVER_SOURCES
     account_cache.cpp account_management.cpp act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
     boards.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
-    clock.cpp color.cpp comm.cpp config.cpp convert_exploits.cpp convert_plrobjs.cpp
-    consts.cpp crashsave_schedule.cpp db.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
+    color.cpp comm.cpp config.cpp convert_exploits.cpp convert_plrobjs.cpp
+    consts.cpp db.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
-    json_utils.cpp limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
+    limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     mystic.cpp obj2html.cpp object_utils.cpp objects_json.cpp objsave.cpp
-    olog_hai.cpp pkill.cpp player_file_finalize.cpp profs.cpp protocol.cpp
-    ranger.cpp rots_crypt.cpp rots_net.cpp rots_rng.cpp safe_template.cpp save_benchmark.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
+    olog_hai.cpp pkill.cpp profs.cpp protocol.cpp
+    ranger.cpp save_benchmark.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
@@ -210,7 +220,20 @@ target_compile_definitions(rots_build_flags INTERFACE
 target_link_options(rots_build_flags INTERFACE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
 )
+# --- L0: foundation library --------------------------------------------------
+add_library(rots_platform STATIC ${ROTS_PLATFORM_SOURCES})
+add_library(RotS::platform ALIAS rots_platform)
+set_target_properties(rots_platform PROPERTIES CXX_EXTENSIONS OFF)
+# PUBLIC: rots_platform needs the parity flags to BUILD, and every consumer must
+# link with the same -m32/FP set — so the requirement propagates.
+target_link_libraries(rots_platform PUBLIC rots_build_flags $<$<PLATFORM_ID:Windows>:ws2_32>)
+# tests/product .cpp reach these headers via bare quoted includes ("rots_net.h");
+# the sources live in src/, so the compiler's own "directory of the including
+# file" entry already resolves them for TUs in src/. No extra include dir needed
+# while the headers stay in src/ (they relocate in a later plan).
+
 target_link_libraries(ageland PRIVATE
+    RotS::platform
     rots_build_flags
     $<$<PLATFORM_ID:Windows>:ws2_32>
 )
@@ -348,7 +371,7 @@ if(ROTS_BUILD_TESTS)
     endif()
     include(GoogleTest)
 
-    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_TEST_SOURCES})
+    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_TEST_SOURCES})
 
     # Same C++ standard as ageland (see above) — required because these targets are
     # defined per-target here rather than via a project-wide CMAKE_CXX_STANDARD.

@@ -374,12 +374,26 @@ layer's code genuinely has no upward edges.
   Placement pattern).
 - Complete the macro→function migration family by family.
 - Complete location Stage 2 (external `LocationSystem`) and the full account/session separation.
-- **Platform logging seam.** Extract `log(std::string_view)` (`utility.cpp:1285` — a timestamped
-  stderr writer with no game-state dependency) into a `rots_platform` logging TU. `vmudlog`/`mudlog`
-  stay in `rots_entity` (they layer the online-immortal staff echo — `descriptor_list` +
-  `send_to_char` — on top of the raw write, and should call the platform primitive for their
-  file-write half so there is one writer). This lets `safe_template.cpp` rejoin `rots_platform` as a
-  clean leaf — but note it requires a deliberate decision: `safe_template`'s malformed-template
-  diagnostic currently goes through `vmudlog(BRF, …)` (broadcast to online gods at `LEVEL_GOD`);
-  moving it to `log()` makes it stderr-only. That destination change is a behavior change, so it is
-  sequenced here, not in the zero-behavior-change skeleton.
+- **Platform logging seam via dependency inversion (a registered log sink).** Give `rots_platform`
+  a logging facility that owns the raw timestamped stderr/file write (today's `log()` body,
+  `utility.cpp:1285`) *and* defines a sink interface that higher layers register at boot:
+  ```
+  // rots/platform/log.h (L0 — no game types)
+  using Sink = std::function<void(std::string_view msg, char type, int level)>;
+  void set_sink(Sink);                                  // registered once at boot
+  void write(char type, int level, std::string_view);   // raw write, then notify sink if level>=0
+  void writef(char type, int level, const char* fmt, ...);
+  ```
+  The **app layer** registers a sink holding today's `mudlog` broadcast loop verbatim (iterate
+  `descriptor_list`, gate on `PRF_LOG` prefs + `GET_LEVEL >= level`, `send_to_char` with color) — so
+  the game-coupled half stays where `char_data`/`descriptor_data` live. The static dependency points
+  down (app → platform's `Sink` type); control flows up at runtime through the callback, so
+  `rots_platform` references no game symbol. `vmudlog`/`mudlog` become thin wrappers over
+  `rots::log::write*` and can then live in `rots_platform` themselves, letting `safe_template.cpp`
+  rejoin L0 as a clean leaf.
+  - **Behavior-sensitive:** `mudlog` is on nearly every logging path; the sink must reproduce its
+    exact gating (`level < 0` → file-only return; `level < LEVEL_AREAGOD` clamp; the `type`/pref
+    comparison and color framing). Validate against goldens. This is why it is sequenced here, not in
+    the zero-behavior-change skeleton branch (where `safe_template` is simply excluded from L0).
+  - Bonus: one raw-write implementation, and tests can register a capturing sink to assert log
+    output.

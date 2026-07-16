@@ -374,3 +374,12 @@ layer's code genuinely has no upward edges.
   Placement pattern).
 - Complete the macro→function migration family by family.
 - Complete location Stage 2 (external `LocationSystem`) and the full account/session separation.
+- **Platform logging seam.** Extract `log(std::string_view)` (`utility.cpp:1285` — a timestamped
+  stderr writer with no game-state dependency) into a `rots_platform` logging TU. `vmudlog`/`mudlog`
+  stay in `rots_entity` (they layer the online-immortal staff echo — `descriptor_list` +
+  `send_to_char` — on top of the raw write, and should call the platform primitive for their
+  file-write half so there is one writer). This lets `safe_template.cpp` rejoin `rots_platform` as a
+  clean leaf — but note it requires a deliberate decision: `safe_template`'s malformed-template
+  diagnostic currently goes through `vmudlog(BRF, …)` (broadcast to online gods at `LEVEL_GOD`);
+  moving it to `log()` makes it stderr-only. That destination change is a behavior change, so it is
+  sequenced here, not in the zero-behavior-change skeleton.

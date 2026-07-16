@@ -1,6 +1,7 @@
 #include "delayed_command_interpreter.h"
 #include "char_utils.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/types.h"
 
 #include "comm.h" // for send-to-char
 #include "db.h" // for complete-delay functionality

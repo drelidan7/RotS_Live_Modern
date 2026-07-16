@@ -21,7 +21,9 @@
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/object.h"
+#include "rots/core/types.h"
 #include "utils.h"
 
 struct ban_list_element* ban_list = 0;

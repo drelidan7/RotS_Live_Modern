@@ -8,7 +8,9 @@
 #include "spells.h"
 
 #include "big_brother.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/room.h"
+#include "rots/core/types.h"
 #include <algorithm>
 #include <assert.h>
 #include <set>

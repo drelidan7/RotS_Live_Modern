@@ -13,7 +13,9 @@
 #include "db.h"
 #include "interpre.h"
 #include "spells.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/tables.h"
+#include "rots/core/types.h"
 
 char circlemud_version[] = { "Arda: The Fourth Age, version 1.5.7\n\r" };
 

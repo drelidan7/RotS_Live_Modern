@@ -14,7 +14,8 @@
 #include <stdlib.h>
 
 #include "rots_net.h"
-#include "structs.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/types.h"
 #include "utils.h"
 
 extern struct descriptor_data* descriptor_list;

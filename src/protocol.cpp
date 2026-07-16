@@ -59,6 +59,8 @@
 #include "comm.h"
 #include "rots_net.h"
 #include "text_view.h"
+#include "rots/core/character.h"
+#include "rots/core/descriptor.h"
 
 static void Write(descriptor_t* apDescriptor, std::string_view data)
 {

@@ -72,14 +72,14 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
 
 | Lib | Layer | TUs | Contents |
 |---|---|---|---|
-| `rots_platform` | L0 | 9 | `rots_net, signals, rots_crypt, rots_rng, clock, crashsave_schedule, json_utils, safe_template, player_file_finalize` |
+| `rots_platform` | L0 | 8 | `rots_net, rots_crypt, rots_rng, clock, crashsave_schedule, json_utils, safe_template, player_file_finalize` (clean leaves — no upward symbol references) |
 | `rots_core` | L1 | 2 + split headers | `consts, config` + the carved-up data model (Section 5) |
 | `rots_entity` | L2 | 6 | `char_utils, object_utils, environment_utils, handler, utility, char_utils_combat` |
 | `rots_persist` | L3 | ~14 | `db_players` (from `db.cpp`), `objsave, boards, mail, pkill, character_json, objects_json, exploits_json, account_management (+6 #included fragments), account_cache, convert_exploits, convert_plrobjs, save_benchmark, savebench` |
 | `rots_world` | L3 | ~15 | `db_world` (from `db.cpp`), `shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle, mudlle2, graph, weather, mob_csv_extract, obj2html` |
 | `rots_combat` | L3 | 16 | `fight, limits, skill_timer, mobact, ranger, clerics, mage, mystic, profs, spell_pa, spec_pro, spec_ass, battle_mage_handler, weapon_master_handler, wild_fighting_handler, olog_hai` |
 | `rots_commands` | L4 | 15 | `interpre, act_comm, act_info, act_move, act_obj1, act_obj2, act_offe, act_othe, act_soci, act_wiz, modify, delayed_command_interpreter, wait_functions, shop, ban` |
-| `rots_app` | L5 | 5 | `comm, protocol, color, big_brother, db_boot` (from `db.cpp`) |
+| `rots_app` | L5 | 6 | `comm, protocol, color, big_brother, signals, db_boot` (from `db.cpp`); `signals.cpp` calls up into game/session state (`descriptor_list`, `hupsig`, `unrestrict_game`) so it is app-layer, not foundation |
 
 **Notes and honest caveats:**
 
@@ -279,19 +279,28 @@ consumer sees only the headers of libraries it links, reinforcing the boundaries
 
 Each step keeps `ageland` building and all goldens green; no big-bang cutover.
 
-1. **CMake targets, no code moves.** Introduce the 8 library targets and the `rots_convert` target
-   in CMake against the *existing* flat files (via source lists), establishing the link graph and
-   retiring the Makefile. Nothing moves yet; the graph is declared and enforced.
-2. **Foundation first.** Physically relocate `rots_platform` (zero data-model coupling — lowest
-   risk) and verify the layer builds standalone.
-3. **Split the god-header.** Carve `structs.h` into the `rots/core/` DAG (Section 5). This is the
-   highest-leverage step for recompile time and unblocks the decoupling.
-4. **Split `db.cpp`** into `db_world` / `db_players` / `db_boot`; stand up `rots_convert` and make
+**The acyclic layer graph is a goal state reached incrementally, not declared up front.** The flat
+code is still cyclic across the eventual boundaries (`entity`↔domains, `persist`↔`world`↔`combat`),
+so the libraries are stood up one decoupled layer at a time — each extraction only happens once that
+layer's code genuinely has no upward edges.
+
+1. **Shared build-flags interface + foundation library.** Factor the common compile
+   options/definitions/features into a `rots_build_flags` INTERFACE library (today they are
+   duplicated inline on `ageland` and `ageland_tests`), then extract `rots_platform` — the one layer
+   that is *already* acyclic (8 clean-leaf TUs, zero upward symbol references) — into a `STATIC`
+   library consuming that interface. `ageland` links it; the Makefile is untouched (no files move);
+   `ageland_tests` keeps compiling those sources directly so test behavior is byte-identical. This
+   establishes the extraction pattern every later layer reuses.
+2. **Split the god-header.** Carve `structs.h` into the `rots/core/` DAG (Section 5). This is the
+   highest-leverage step for recompile time, and it is the prerequisite for the acyclic middle: the
+   `entity`/`persist`/`world`/`combat` libraries cannot be cleanly extracted while `structs.h`
+   forces every TU to depend on the whole data model.
+3. **Split `db.cpp`** into `db_world` / `db_players` / `db_boot`; stand up `rots_convert` and make
    it link + pass the fixture goldens. This proves the persistence boundary.
-5. **Peel the domain libs** (`rots_entity`, then `rots_persist`/`rots_world`/`rots_combat`, then
+4. **Peel the domain libs** (`rots_entity`, then `rots_persist`/`rots_world`/`rots_combat`, then
    `rots_commands`, then `rots_app`), one at a time, cutting welds as `rots_convert` and the link
    graph surface them.
-6. **Staged decouplings** (location Stage 1→2, account/session separation, macro→function) run as
+5. **Staged decouplings** (location Stage 1→2, account/session separation, macro→function) run as
    long-tail work *within* the now-stable library boundaries.
 
 ---

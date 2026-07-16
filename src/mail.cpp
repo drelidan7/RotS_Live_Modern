@@ -109,7 +109,9 @@ Send comments, bug reports, etc. to jelson@server.cs.jhu.edu
 #include "json_utils.h"
 #include "text_view.h"
 #include "mail.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/object.h"
+#include "rots/core/types.h"
 #include "utils.h"
 
 void postmaster_send_mail(struct char_data* ch, int cmd, char* arg, char_data* host);

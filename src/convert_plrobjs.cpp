@@ -6,7 +6,8 @@
 #include "handler.h"
 #include "objects_json.h"
 #include "platform_compat.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/types.h"
 #include "text_view.h"
 #include "utils.h"
 

@@ -78,7 +78,11 @@ Send comments, bug reports, help requests, etc. to Jeremy Elson
 #include "interpre.h"
 #include "json_utils.h"
 #include "text_view.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/object.h"
+#include "rots/core/room.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/types.h"
 #include "utils.h"
 
 #include <cerrno>

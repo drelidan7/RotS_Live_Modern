@@ -297,8 +297,10 @@ Expected: clean build, 1247/1247 (normal platform skips).
 - [ ] **Step 5: Layout probe diff (macOS)**
 
 ```bash
-../.superpowers/sdd/scratch-header-split/probe-macos >/dev/null 2>&1 || true  # stale binary — rebuild:
-c++ -std=c++20 -funsigned-char ../.superpowers/sdd/scratch-header-split/layout_probe.cpp -o ../.superpowers/sdd/scratch-header-split/probe-macos
+# -idirafter .: the probe includes "structs.h" from outside src/; -idirafter
+# (NOT -I/-iquote) is the src/limits.h-shadow-safe spelling, per the
+# ageland_tests precedent. (As-built correction from Task 1.)
+c++ -std=c++20 -funsigned-char -idirafter . ../.superpowers/sdd/scratch-header-split/layout_probe.cpp -o ../.superpowers/sdd/scratch-header-split/probe-macos
 ../.superpowers/sdd/scratch-header-split/probe-macos | diff - ../.superpowers/sdd/scratch-header-split/layout-baseline-macos.txt
 ```
 Expected: **empty diff.** Any difference = a move changed layout; stop and fix before proceeding.
@@ -475,8 +477,8 @@ The whole file becomes:
 
 macOS + rots64: same as Task 2 Steps 4-6. Additionally re-run the probe on rots64 and i386 and diff against their baselines:
 ```bash
-docker compose run --rm --pull never rots64 bash -lc 'cd /rots/src && g++ -std=c++20 -funsigned-char /rots/.superpowers/sdd/scratch-header-split/layout_probe.cpp -o /tmp/probe && /tmp/probe' | diff - .superpowers/sdd/scratch-header-split/layout-baseline-rots64.txt
-docker compose run --rm --pull never rots bash -lc 'cd /rots/src && g++ -m32 -std=c++20 -funsigned-char /rots/.superpowers/sdd/scratch-header-split/layout_probe.cpp -o /tmp/probe && /tmp/probe' | diff - .superpowers/sdd/scratch-header-split/layout-baseline-i386.txt
+docker compose run --rm --pull never rots64 bash -lc 'cd /rots/src && g++ -std=c++20 -funsigned-char -idirafter . /rots/.superpowers/sdd/scratch-header-split/layout_probe.cpp -o /tmp/probe && /tmp/probe' | diff - .superpowers/sdd/scratch-header-split/layout-baseline-rots64.txt
+docker compose run --rm --pull never rots bash -lc 'cd /rots/src && g++ -m32 -std=c++20 -funsigned-char -idirafter . /rots/.superpowers/sdd/scratch-header-split/layout_probe.cpp -o /tmp/probe && /tmp/probe' | diff - .superpowers/sdd/scratch-header-split/layout-baseline-i386.txt
 ```
 Expected: **both diffs empty** — the full carve is layout-neutral on all three ABIs.
 
@@ -596,7 +598,7 @@ Expected: `clean`. Any straggler gets precise includes (it slipped through a bat
 ```
 Rebuild it and diff against all three baselines (macOS locally; rots64 + i386 via the Task 5 Step 3 commands, adding `-Icore/include -Ipersist/include` to the probe compile line now that the umbrella is gone):
 ```bash
-c++ -std=c++20 -funsigned-char -Icore/include -Ipersist/include ../.superpowers/sdd/scratch-header-split/layout_probe.cpp -o ../.superpowers/sdd/scratch-header-split/probe-macos
+c++ -std=c++20 -funsigned-char -Icore/include -Ipersist/include -idirafter . ../.superpowers/sdd/scratch-header-split/layout_probe.cpp -o ../.superpowers/sdd/scratch-header-split/probe-macos
 ../.superpowers/sdd/scratch-header-split/probe-macos | diff - ../.superpowers/sdd/scratch-header-split/layout-baseline-macos.txt
 ```
 Expected: empty diffs on all three.

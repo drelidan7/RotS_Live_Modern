@@ -97,6 +97,11 @@ set(ROTS_SERVER_SOURCES
 
 add_executable(ageland ${ROTS_SERVER_SOURCES})
 
+# Pathed data-model headers (spec §9a). ONLY these two leaf dirs go on the
+# include path — never src/ itself (src/limits.h would shadow <limits.h>).
+# They contain nothing but rots/, so they cannot shadow any system header.
+target_include_directories(ageland PRIVATE core/include persist/include)
+
 set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 
 # --- Flag parity with src/Makefile (behavior-affecting — keep in sync) --------
@@ -442,6 +447,9 @@ if(ROTS_BUILD_TESTS)
     set_source_files_properties(${ROTS_TEST_SOURCES} PROPERTIES
         COMPILE_OPTIONS "$<${ROTS_GNULIKE}:-idirafter;${CMAKE_CURRENT_SOURCE_DIR};-iquote;${CMAKE_CURRENT_SOURCE_DIR}/tests>"
     )
+    # Pathed data-model headers (spec §9a), same two leaf dirs as ageland above.
+    # Additive to (not a replacement for) the -idirafter/-iquote handling above.
+    target_include_directories(ageland_tests PRIVATE core/include persist/include)
     target_compile_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
         ${ROTS_FP_OPTIONS}

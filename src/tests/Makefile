@@ -77,7 +77,7 @@ CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -m
 # entry, always first on every compiler, already finds ../limits.h). This
 # is a build-flag fix only -- no file's resolved header set changes -- so it
 # cannot affect runtime behavior or goldens.
-TEST_CXXFLAGS = $(CXXFLAGS) -idirafter ..
+TEST_CXXFLAGS = $(CXXFLAGS) -I../core/include -I../persist/include -idirafter ..
 # -lpthread: libgtest.a's ThreadLocal support needs pthread_{get,set}specific/key_*;
 # the static lib doesn't pull it in transitively on this toolchain, so link it explicitly.
 LDFLAGS = -lgtest -lpthread

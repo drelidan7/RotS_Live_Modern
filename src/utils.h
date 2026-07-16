@@ -375,6 +375,7 @@ int has_program(char_data* host, int num);
 
 #define GET_TITLE(ch) ((ch)->player.title)
 
+#define MAX_ALIAS (30 + GET_LEVEL(ch) * 2)
 #define GET_LEVEL(ch) ((ch)->player.level)
 
 #define GET_LEVELA(ch) (IS_NPC(ch) ? GET_LEVEL(ch) : std::min(GET_LEVEL(ch), LEVEL_MAX))

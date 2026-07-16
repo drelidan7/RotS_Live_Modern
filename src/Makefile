@@ -45,7 +45,7 @@ REQ_LDFLAGS  = -m32 -rdynamic
 # deleting/renaming one never breaks the build.
 DEPFLAGS = -MMD -MP
 
-ALL_CPPFLAGS = $(DEPFLAGS) $(CPPFLAGS)
+ALL_CPPFLAGS = $(DEPFLAGS) -Icore/include -Ipersist/include $(CPPFLAGS)
 ALL_CXXFLAGS = $(REQ_CXXFLAGS) $(CXXFLAGS)
 ALL_LDFLAGS  = $(REQ_LDFLAGS) $(LDFLAGS)
 

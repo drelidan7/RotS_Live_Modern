@@ -79,7 +79,10 @@ lib/misc/pk*
 lib/misc/repair*
 lib/misc/xnames*
 tools/__pycache__/
-core/
+# Anchored to the repo root: an unqualified `core/` would also match the
+# tracked src/core/ header tree (rots/core headers, Task 2 of the
+# structs.h header split) and silently hide it from git.
+/core/
 *~
 autorun4000
 switchserver.sh

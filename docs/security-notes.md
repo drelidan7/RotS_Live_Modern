@@ -6,7 +6,7 @@ current disposition, and why it was deferred rather than silently left undocumen
 
 ## Legacy (non-account-native) character passwords are stored and compared in plaintext
 
-**Source files:** `src/interpre.h`, `src/interpre.cpp`, `src/db.cpp`
+**Source files:** `src/interpre.h`, `src/interpre.cpp`, `src/db_players.cpp`
 
 **Status:** parked finding, disposition recorded here (Phase 3 Task 5) — not a regression from
 any modernization task, and not fixed by this entry.
@@ -67,7 +67,7 @@ are where the plaintext first enters the field that later gets persisted:
 The sixth grep hit, `interpre.cpp:2948` (`CON_PWDNRM`), is dead code — nothing in the current
 state machine ever transitions a descriptor into `CON_PWDNRM`.
 
-The still-active **text** player-save format (`db.cpp`, see `docs/data-formats/player-save.md`)
+The still-active **text** player-save format (`db_players.cpp`, see `docs/data-formats/player-save.md`)
 reads/writes this same plaintext `pwd` field for every character that saves through it; this is
 expected given the finding above, not an additional bug.
 

@@ -56,6 +56,7 @@
 #include "rots/core/descriptor.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
+#include "rots/platform/log.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 
@@ -77,6 +78,14 @@ extern struct char_data* waiting_list;
 int get_power_of_arda(char_data* ch);
 
 static void check_container_proto(struct obj_data* obj, struct char_data* ch);
+
+// vmudlog() always broadcasts at rots::log::kVmudlogBroadcastLevel (moved to
+// rots_log.cpp, Task 2 of the logging-seam rewire); this keeps that
+// platform-layer literal pinned to LEVEL_GOD without the platform header
+// including rots/core/types.h just for one constant (see log.h's comment on
+// the declaration).
+static_assert(rots::log::kVmudlogBroadcastLevel == LEVEL_GOD,
+    "platform vmudlog level diverged from LEVEL_GOD");
 
 /*
  * Adds data to the char_data structure specifying that
@@ -1289,80 +1298,12 @@ void log_death_trap(struct char_data* ch)
 /* writes a string to the log */
 void log(std::string_view message)
 {
-    // time_t ct(0);
-    // char* time_string = asctime(localtime(&ct));
-
-    //*(time_string + std::strlen(time_string) - 1) = '\0';
-    // fprintf(stderr, "%-19.19s :: %s\n", time_string, str);
-
-    // time_t (not long): localtime()/time() take a time_t*, which is 8 bytes on
-    // Windows LLP64 while `long` is only 4 -- passing a `long*` made localtime()
-    // read 4 bytes of adjacent stack as the high word, yielding an out-of-range
-    // time, a null return, and an asctime(nullptr) abort (Phase 3 Task 6 crash,
-    // STATUS_STACK_BUFFER_OVERRUN). Identical width to the old `long` on both the
-    // 32-bit legacy build and 64-bit POSIX, so this only changes Windows behavior.
-    message = rots::text::truncate_at_null(message);
-    time_t current_time;
-    current_time = time(0);
-    char* timestamp = asctime(localtime(&current_time));
-    *(timestamp + strlen(timestamp) - 1) = '\0';
-    std::fprintf(stderr, "%-19.19s :: ", timestamp);
-    if (!message.empty()) {
-        // The view may not have a terminator, so write its known length instead
-        // of rescanning it or allocating a temporary C string.
-        std::fwrite(message.data(), sizeof(char), message.size(), stderr);
-    }
-    std::fputc('\n', stderr);
+    rots::log::write_stderr(message);
 }
 
 void mudlog(std::string_view message_body, char type, sh_int level, byte file)
 {
-    extern struct descriptor_data* descriptor_list;
-    struct descriptor_data* connection;
-    char* timestamp;
-    // time_t (not long): see log() above -- a `long*` passed to localtime() is
-    // only 4 of the 8 bytes it reads on Windows LLP64, aborting in asctime().
-    // This is the mudlog on nearly every logging path, so the bug crashed ~60
-    // tests (Phase 3 Task 6).
-    time_t current_time;
-    char log_preference;
-
-    message_body = rots::text::truncate_at_null(message_body);
-    current_time = time(0);
-    timestamp = asctime(localtime(&current_time));
-    // time_t ct(0);
-    // char* tmp = asctime(localtime(&ct));
-
-    if (file) {
-        std::fprintf(stderr, "%d, %-19.19s :: ", type, timestamp);
-        if (!message_body.empty()) {
-            // Keep stderr output bounded by the view rather than assuming its
-            // data pointer reaches a null terminator.
-            std::fwrite(message_body.data(), sizeof(char), message_body.size(), stderr);
-        }
-        std::fputc('\n', stderr);
-    }
-    if (level < 0) {
-        return;
-    }
-
-    if (level < LEVEL_AREAGOD) {
-        level = LEVEL_AREAGOD;
-    }
-
-    const std::string message = std::format("[ {} ]\n\r", message_body);
-
-    for (connection = descriptor_list; connection; connection = connection->next) {
-        if (!connection->connected && !PLR_FLAGGED(connection->character, PLR_WRITING)) {
-            log_preference = ((PRF_FLAGGED(connection->character, PRF_LOG1) ? 1 : 0) + (PRF_FLAGGED(connection->character, PRF_LOG2) ? 2 : 0) + (PRF_FLAGGED(connection->character, PRF_LOG3) ? 4 : 0));
-
-            if ((GET_LEVEL(connection->character) >= level) && (log_preference >= type)) {
-                send_to_char(CC_FIX(connection->character, CGRN), connection->character);
-                send_to_char(message, connection->character);
-                send_to_char(CC_NORM(connection->character), connection->character);
-            }
-        }
-    }
+    rots::log::write(message_body, type, level, file != 0);
 }
 
 void mudlog_debug_mob(std::string_view message, char_data* ch)
@@ -1378,20 +1319,6 @@ void mudlog_aliased_mob(std::string_view message, char_data* ch, std::string_vie
     if (aliases.find(mob_alias) != std::string_view::npos) {
         mudlog(message, SPL, LEVEL_GOD, FALSE);
     }
-}
-
-void vmudlog(char type, const char* format, ...)
-{
-#define BUFSIZE 2048
-    char buf[BUFSIZE];
-    va_list ap;
-
-    va_start(ap, format);
-    vsnprintf(buf, BUFSIZE - 1, format, ap);
-    buf[BUFSIZE - 1] = '\0';
-    va_end(ap);
-
-    mudlog(buf, type, LEVEL_GOD, TRUE);
 }
 
 /*

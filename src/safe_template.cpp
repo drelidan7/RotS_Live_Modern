@@ -1,7 +1,7 @@
 #include "safe_template.h"
 
+#include "rots/platform/log.h" // vmudlog, BRF
 #include "text_view.h"
-#include "utils.h" // vmudlog, BRF, nz
 
 #include <algorithm>
 #include <vector>
@@ -135,14 +135,14 @@ std::string expand_checked(const char *tmpl, std::initializer_list<Conv> expecte
 
 std::string expand_checked_one(const char *tmpl, const char *arg, std::string_view fallback,
                                std::string_view context) {
-    // Guard a null arg with nz() (utils.h) here -- std::string_view(nullptr)
-    // is undefined behavior, and script.cpp's txt1 (unlike death_cry2/
-    // shop.cpp's always-non-null args) can legitimately be null. nz()
-    // substitutes the literal "(null)", byte-identical to what glibc's
-    // sprintf("%s", NULL) printed on the old path -- the depot-wide
-    // convention for nullable char* feeding a %s conversion. Once guarded,
-    // delegate to expand_checked() for the real scan/validate/substitute
-    // work.
-    return expand_checked(tmpl, {Conv::String}, {std::string_view(nz(arg))}, fallback, context);
+    // Guard a null arg inline here -- std::string_view(nullptr) is undefined
+    // behavior, and script.cpp's txt1 (unlike death_cry2/shop.cpp's
+    // always-non-null args) can legitimately be null. The guard substitutes
+    // the literal "(null)", byte-identical to what glibc's sprintf("%s",
+    // NULL) printed on the old path -- the depot-wide convention for
+    // nullable char* feeding a %s conversion. Once guarded, delegate to
+    // expand_checked() for the real scan/validate/substitute work.
+    return expand_checked(tmpl, {Conv::String}, {std::string_view(arg ? arg : "(null)")}, fallback,
+                           context);
 }
 } // namespace safe_template

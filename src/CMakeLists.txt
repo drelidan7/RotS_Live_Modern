@@ -66,14 +66,21 @@ endif()
 # NOTE: signals.cpp is deliberately NOT here — it references descriptor_list /
 # calls hupsig()/unrestrict_game(), i.e. it depends UP on the game, so it stays
 # in ROTS_SERVER_SOURCES (app layer).
-# NOTE: safe_template.cpp is deliberately EXCLUDED (a code-review finding,
-# confirmed via `nm -uC` on the built archive): it calls vmudlog(), defined in
-# utility.cpp (an L2/app-layer unit) — a real upward edge, not a clean leaf.
-# It stays in ROTS_SERVER_SOURCES below until a platform-level logging seam
-# lets it log without depending up on the game.
+# NOTE: safe_template.cpp REJOINED here via the logging seam (spec §13
+# payoff): it was excluded pending a platform-level logging seam (see prior
+# history in git blame) because it called vmudlog(), and vmudlog() used to be
+# defined in utility.cpp (an L2/app-layer unit) — a real upward edge, not a
+# clean leaf. vmudlog() now resolves inside rots_platform itself
+# (rots_log.cpp), so that edge is gone and the archive is self-contained
+# again — confirmed via `nm -uC` on the built archive, see the
+# rots_platform_linkcheck load-bearing test below. safe_template.cpp now
+# reaches "rots/platform/log.h" as its only pathed rots/ header (its null-arg
+# guard is inlined), so it
+# is a genuinely clean leaf — no core/include reach, no qualifier needed.
 set(ROTS_PLATFORM_SOURCES
     rots_net.cpp rots_crypt.cpp rots_rng.cpp clock.cpp
     crashsave_schedule.cpp json_utils.cpp player_file_finalize.cpp
+    rots_log.cpp safe_template.cpp
 )
 
 # L1: core data-model library (spec §3). config.cpp is pure data (config
@@ -108,7 +115,7 @@ set(ROTS_SERVER_SOURCES
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     mystic.cpp obj2html.cpp object_utils.cpp objects_json.cpp objsave.cpp
     olog_hai.cpp pkill.cpp profs.cpp protocol.cpp
-    ranger.cpp safe_template.cpp save_benchmark.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
+    ranger.cpp save_benchmark.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
@@ -262,10 +269,16 @@ set_target_properties(rots_platform PROPERTIES CXX_EXTENSIONS OFF)
 # PUBLIC: rots_platform needs the parity flags to BUILD, and every consumer must
 # link with the same -m32/FP set — so the requirement propagates.
 target_link_libraries(rots_platform PUBLIC rots_build_flags $<$<PLATFORM_ID:Windows>:ws2_32>)
-# tests/product .cpp reach these headers via bare quoted includes ("rots_net.h");
-# the sources live in src/, so the compiler's own "directory of the including
-# file" entry already resolves them for TUs in src/. No extra include dir needed
-# while the headers stay in src/ (they relocate in a later plan).
+# tests/product .cpp reach most of these headers via bare quoted includes
+# ("rots_net.h"); the sources live in src/, so the compiler's own "directory
+# of the including file" entry already resolves them for TUs in src/. No
+# extra include dir needed for those while the headers stay in src/ (they
+# relocate in a later plan).
+# platform/include is the first pathed header root for this layer (spec §13,
+# rots/platform/log.h): wired exactly like rots_core's core/include below.
+# PUBLIC: every consumer of rots_platform (ageland via RotS::platform) needs
+# this on its include path to reach "rots/platform/log.h".
+target_include_directories(rots_platform PUBLIC platform/include)
 
 # --- L1: core data-model library ----------------------------------------------
 add_library(rots_core STATIC ${ROTS_CORE_SOURCES})
@@ -351,6 +364,7 @@ if(ROTS_BUILD_TESTS)
         tests/objects_json_tests.cpp
         tests/objsave_json_tests.cpp
         tests/olog_hai_tests.cpp
+        tests/platform_log_tests.cpp
         tests/player_finalize_tests.cpp
         tests/pod_persistence_json_tests.cpp
         tests/prompt_format_tests.cpp
@@ -486,7 +500,12 @@ if(ROTS_BUILD_TESTS)
     )
     # Pathed data-model headers (spec §9a), same two leaf dirs as ageland above.
     # Additive to (not a replacement for) the -idirafter/-iquote handling above.
-    target_include_directories(ageland_tests PRIVATE core/include persist/include)
+    # platform/include: ageland_tests compiles ROTS_PLATFORM_SOURCES directly
+    # (it does not link the rots_platform library, see the TESTING-parity note
+    # above ROTS_PLATFORM_SOURCES' add_executable line), so it needs this on
+    # its own include path too, rather than inheriting it transitively via
+    # target_link_libraries the way ageland does through RotS::platform.
+    target_include_directories(ageland_tests PRIVATE core/include persist/include platform/include)
     target_compile_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
         ${ROTS_FP_OPTIONS}

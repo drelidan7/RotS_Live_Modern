@@ -90,12 +90,11 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
   their current dependencies point and are candidates to move once boundaries settle.
 - The 6 `account_management_*.cpp` files are `#include`d into `account_management.cpp` (they are
   fragments, not separately compiled TUs) and stay together in `rots_persist`.
-- `safe_template.cpp` is **not** a clean L0 leaf and is deliberately **excluded** from
-  `rots_platform`: it calls `vmudlog` (defined in `utility.cpp`, an L2 `rots_entity` unit), a
-  genuine upward edge confirmed by `nm` on the built archive. It remains an app-compiled TU
-  (`ROTS_SERVER_SOURCES`) until its logging dependency is cut via a platform-level logging seam, at
-  which point it can join `rots_platform` (or land in `rots_entity`). This is exactly the kind of
-  weld the acyclicity check exists to surface.
+- `safe_template.cpp` **rejoined `rots_platform` as a clean L0 leaf** once the platform-level
+  logging seam (Section 13) landed: `vmudlog`/`BRF` now resolve inside `rots_platform` itself
+  (`rots_log.cpp`), and its one null-arg guard (formerly `utils.h`'s `nz`) is inlined at the call
+  site, so the TU's only pathed `rots/` include is `rots/platform/log.h` — no `core/include` reach, no qualifier
+  needed. Confirmed by `nm` on the built archive (`rots_platform_linkcheck` / `PlatformLayerAcyclicity`).
 - `consts.cpp` is **not** in `rots_core` as built — the table row above is the intended target, not
   current fact. Its `skills[MAX_SKILLS]` table (`consts.cpp:382`) structurally embeds ~69 `spell_*`
   function pointers, an `nm`-verified upward edge into `rots_combat`-tier code (a genuine L1→L3
@@ -433,3 +432,24 @@ layer's code genuinely has no upward edges.
     the zero-behavior-change skeleton branch (where `safe_template` is simply excluded from L0).
   - Bonus: one raw-write implementation, and tests can register a capturing sink to assert log
     output.
+
+  **As-built (logging-seam wave):** implemented as designed above, with the following details fixed
+  by the real code rather than left to the sketch:
+  - There is only one stderr target — no separate log file existed to split, so `write_stderr`/
+    `write` (`rots/platform/log.h` + `rots_log.cpp`) cover the whole raw-write half; there was no
+    second sink to wire up.
+  - The `LEVEL_AREAGOD` clamp and the `PRF_LOG*` preference gating stay app-side, inside the
+    registered sink — they are game constants/macros (`char_data`/preference flags), not platform
+    types, so `rots_platform` never sees them. The sink itself is `comm.cpp`'s
+    `register_mudlog_broadcast_sink()`, holding the `descriptor_list` walk / color framing verbatim,
+    registered in `run_the_game()` before the first `log()` call.
+  - `vmudlog`'s broadcast level is `rots::log::kVmudlogBroadcastLevel` (`= 93`), hard-coded in the L0
+    header rather than including the game's `LEVEL_GOD` constant — `utility.cpp` pins the two
+    together with `static_assert(rots::log::kVmudlogBroadcastLevel == LEVEL_GOD, ...)` so they can
+    never silently diverge.
+  - `vmudlog` itself now lives in `rots_log.cpp` (moved out of `utility.cpp`), and `log()`/`mudlog()`
+    are thin wrappers over `rots::log::write_stderr`/`write`.
+  - The capturing-sink tests (`PlatformLog.*`, `src/tests/platform_log_tests.cpp`) replaced the
+    `descriptor_list`-nulling test pattern for logging assertions, as this section's "bonus"
+    anticipated — the older `ScopedDescriptorListReset`-based fixtures that predate the seam still
+    exist elsewhere in the suite and continue to work unchanged.

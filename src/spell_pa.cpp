@@ -1151,3 +1151,85 @@ ACMD(do_prepare)
     if (subcmd == 2)
         send_to_char("You release your prepared spell.\n\r", ch);
 }
+
+// Populates the skills[] spell_pointer cells that consts.cpp's initializer
+// used to set directly (Task 1, entity-seed plan). consts.cpp's skills[]
+// table can now be pure data -- no upward reference into mystic.cpp/
+// mage.cpp -- because these 69 assignments do that wiring here instead, at
+// boot, from db_boot.cpp (called directly before assign_command_pointers()).
+// Every .spell_pointer reader is already null-guarded, so the window
+// between static-init and this call being made is behavior-identical to the
+// table's old inline initializer. Table order/grouping mirrors the original
+// consts.cpp rows for easy comparison against that file's history.
+void assign_spell_pointers()
+{
+    skills[41].spell_pointer = spell_detect_hidden; // detect hidden
+    skills[42].spell_pointer = spell_evasion; // evasion
+    skills[43].spell_pointer = spell_poison; // poison
+    skills[44].spell_pointer = spell_resist_poison; // resist poison
+    skills[45].spell_pointer = spell_curing; // curing saturation
+    skills[46].spell_pointer = spell_restlessness; // restlessness
+    skills[47].spell_pointer = spell_resist_magic; // resist magic
+    skills[48].spell_pointer = spell_slow_digestion; // slow digestion
+    skills[49].spell_pointer = spell_dispel_regeneration; // dispel regeneration
+    skills[50].spell_pointer = spell_insight; // insight
+    skills[51].spell_pointer = spell_pragmatism; // pragmatism
+    skills[52].spell_pointer = spell_haze; // haze
+    skills[53].spell_pointer = spell_fear; // fear
+    skills[54].spell_pointer = spell_divination; // divination
+    skills[56].spell_pointer = spell_sanctuary; // sanctuary
+    skills[57].spell_pointer = spell_vitality; // vitality
+    skills[58].spell_pointer = spell_terror; // terror
+    skills[60].spell_pointer = spell_enchant_weapon; // enchant weapon
+    skills[62].spell_pointer = spell_summon; // summon
+    skills[63].spell_pointer = spell_hallucinate; // hallucinate
+    skills[64].spell_pointer = spell_regeneration; // regeneration
+    skills[65].spell_pointer = spell_guardian; // guardian
+    skills[66].spell_pointer = spell_infravision; // infravision
+    skills[67].spell_pointer = spell_curse; // curse
+    skills[68].spell_pointer = spell_revive; // revive
+    skills[69].spell_pointer = spell_detect_magic; // detect magic
+    skills[70].spell_pointer = spell_shift; // shift
+    skills[71].spell_pointer = spell_magic_missile; // magic missile
+    skills[72].spell_pointer = spell_reveal_life; // reveal life
+    skills[73].spell_pointer = spell_locate_living; // locate living
+    skills[74].spell_pointer = spell_cure_self; // cure self
+    skills[75].spell_pointer = spell_chill_ray; // chill ray
+    skills[76].spell_pointer = spell_blink; // blink
+    skills[77].spell_pointer = spell_freeze; // freeze
+    skills[78].spell_pointer = spell_lightning_bolt; // lightning bolt
+    skills[79].spell_pointer = spell_vitalize_self; // vitalize self
+    skills[80].spell_pointer = spell_flash; // flash
+    skills[81].spell_pointer = spell_earthquake; // earthquake
+    skills[82].spell_pointer = spell_create_light; // create light
+    skills[83].spell_pointer = spell_death_ward; // death ward
+    skills[84].spell_pointer = spell_dark_bolt; // dark bolt
+    skills[85].spell_pointer = spell_mist_of_baazunga; // mist of baazunga
+    skills[86].spell_pointer = spell_mind_block; // mind block
+    skills[87].spell_pointer = spell_remove_poison; // remove poison
+    skills[88].spell_pointer = spell_beacon; // beacon
+    skills[89].spell_pointer = spell_protection; // protection
+    skills[90].spell_pointer = spell_blaze; // blaze
+    skills[91].spell_pointer = spell_firebolt; // firebolt
+    skills[92].spell_pointer = spell_relocate; // relocate
+    skills[93].spell_pointer = spell_cone_of_cold; // cone of cold
+    skills[94].spell_pointer = spell_identify; // identify
+    skills[96].spell_pointer = spell_fireball; // fireball
+    skills[98].spell_pointer = spell_searing_darkness; // searing darkness
+    skills[99].spell_pointer = spell_lightning_strike; // lightning strike
+    skills[100].spell_pointer = spell_word_of_pain; // word of pain
+    skills[101].spell_pointer = spell_word_of_sight; // word of sight
+    skills[102].spell_pointer = spell_word_of_agony; // word of agony
+    skills[103].spell_pointer = spell_shout_of_pain; // shout of pain
+    skills[104].spell_pointer = spell_word_of_shock; // word of shock
+    skills[105].spell_pointer = spell_spear_of_darkness; // spear of darkness
+    skills[106].spell_pointer = spell_leach; // leach
+    skills[107].spell_pointer = spell_black_arrow; // black arrow
+    skills[108].spell_pointer = spell_shield; // shield
+    skills[109].spell_pointer = spell_detect_evil; // detect evil
+    skills[111].spell_pointer = spell_confuse; // confuse
+    skills[112].spell_pointer = spell_expose_elements; // expose elements
+    skills[158].spell_pointer = spell_mass_regeneration; // mass regeneration
+    skills[159].spell_pointer = spell_mass_vitality; // mass vitality
+    skills[160].spell_pointer = spell_mass_insight; // mass insight
+}

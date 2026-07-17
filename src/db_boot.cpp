@@ -173,7 +173,6 @@ extern struct descriptor_data* descriptor_list;
 void load_messages(void);
 void weather_and_time(int mode);
 void assign_command_pointers(void);
-// void	assign_spell_pointers(void);
 void boot_social_messages(void);
 void update_obj_file(void); /* In objsave.c */
 void sort_commands(void);
@@ -393,6 +392,7 @@ void boot_db(void)
     }
 
     log("   Commands.");
+    assign_spell_pointers();
     assign_command_pointers();
 
     log("Sorting command list.");

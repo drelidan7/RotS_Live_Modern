@@ -424,6 +424,7 @@ if(ROTS_BUILD_TESTS)
         tests/shapemob_tests.cpp
         tests/spec_pro_tests.cpp
         tests/spell_pa_tests.cpp
+        tests/spell_registry_tests.cpp
         tests/startup_options_tests.cpp
         tests/test_random_utils.cpp
         tests/test_random_utils_tests.cpp

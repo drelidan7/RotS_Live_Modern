@@ -87,20 +87,24 @@ set(ROTS_PLATFORM_SOURCES
 # defaults) with no upward symbol references — verified via `nm -uC` on the
 # built archive, see the rots_core_linkcheck load-bearing test below.
 #
-# consts.cpp is DELIBERATELY NOT here (contingency fired, brief §Step 2/3):
-# get_guardian_type was consts.cpp's one traceable upward edge and was
-# relocated to utility.cpp (an L2/app-layer unit) ahead of this extraction,
-# but the rots_core_linkcheck build then surfaced a second, structural one —
-# the `skills[MAX_SKILLS]` table (consts.cpp:382) embeds ~69 function
-# pointers directly to spell_*() implementations defined in mystic.cpp /
-# spell_pa.cpp (both L2/app-layer). That is not a stray call site to cut;
-# it is consts.cpp's core data shape, and de-coupling it (e.g. an indirection
-# table populated at startup) is real follow-on work, not something to chase
-# inside this task. consts.cpp therefore stays in ROTS_SERVER_SOURCES; see
-# docs/BUILD.md's "Library layering" section and the spec's §3 caveats for
-# the recorded evidence.
+# consts.cpp JOINS HERE (entity-seed Task 2; the contingency noted in prior
+# history below is now resolved). get_guardian_type was consts.cpp's one
+# traceable upward edge and was relocated to utility.cpp (an L2/app-layer
+# unit) ahead of the original extraction attempt, but that rots_core_linkcheck
+# build then surfaced a second, structural one — the `skills[MAX_SKILLS]`
+# table (consts.cpp:382) used to embed ~69 function pointers directly to
+# spell_*() implementations defined in mystic.cpp/spell_pa.cpp (both
+# L2/app-layer). Entity-seed Task 1 cut that edge at the root: skills[]'s
+# function-pointer column is now populated at boot by
+# assign_spell_pointers() (spell_pa.cpp), not embedded in consts.cpp's static
+# initializer, so consts.cpp itself compiles down to pure data (all-null
+# pointers as far as this archive is concerned — assign_spell_pointers()
+# never runs inside rots_core_linkcheck or rots_convert, both of which never
+# call it). rots_core_linkcheck (below) is the acceptance proof: the built
+# archive resolves only libc/libstdc++ symbols. See docs/BUILD.md's "Library
+# layering" section and the spec's §3 caveats for the recorded evidence.
 set(ROTS_CORE_SOURCES
-    config.cpp
+    config.cpp consts.cpp
 )
 
 set(ROTS_SERVER_SOURCES
@@ -108,7 +112,7 @@ set(ROTS_SERVER_SOURCES
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
     boards.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
-    color.cpp comm.cpp consts.cpp convert_exploits.cpp convert_plrobjs.cpp
+    color.cpp comm.cpp convert_exploits.cpp convert_plrobjs.cpp
     db_boot.cpp db_players.cpp db_world.cpp delayed_command_interpreter.cpp entity_lifecycle.cpp
     exploits_json.cpp environment_utils.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
@@ -474,9 +478,9 @@ if(ROTS_BUILD_TESTS)
     include(GoogleTest)
 
     # ageland_tests deliberately does NOT link rots_core (TESTING parity, same
-    # as the rots_platform pattern above): it keeps compiling config.cpp
-    # directly via ROTS_CORE_SOURCES (consts.cpp is already part of
-    # ROTS_SERVER_SOURCES — see the contingency note above ROTS_CORE_SOURCES).
+    # as the rots_platform pattern above): it keeps compiling config.cpp and
+    # consts.cpp directly via ROTS_CORE_SOURCES instead (both now live only
+    # in that list — see the ROTS_CORE_SOURCES comment above).
     add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_TEST_SOURCES})
 
     # Same C++ standard as ageland (see above) — required because these targets are
@@ -672,14 +676,15 @@ if(ROTS_BUILD_TESTS)
         endif()
 
         # Load-bearing core-layer acyclicity check (spec §11), mirroring the
-        # rots_platform_linkcheck block above exactly. rots_core (config.cpp
-        # only — see the contingency note above ROTS_CORE_SOURCES for why
-        # consts.cpp is NOT a member) is verified pure data with no upward
-        # symbol references (nm -uC on the built archive resolves only
-        # libc/libstdc++ symbols). Allowed lower layers would be rots_platform
-        # + libc/libstdc++, but config.cpp references no rots_platform symbol,
-        # so the checker force-loads only rots_core itself — a strictly
-        # tighter guarantee than "rots_platform is allowed".
+        # rots_platform_linkcheck block above exactly. rots_core (config.cpp +
+        # consts.cpp, entity-seed Task 2 — see the ROTS_CORE_SOURCES comment
+        # above for why consts.cpp's former upward edge is gone) is verified
+        # pure data with no upward symbol references (nm -uC on the built
+        # archive resolves only libc/libstdc++ symbols). Allowed lower layers
+        # would be rots_platform + libc/libstdc++, but neither config.cpp nor
+        # consts.cpp references a rots_platform symbol, so the checker
+        # force-loads only rots_core itself — a strictly tighter guarantee
+        # than "rots_platform is allowed".
         add_executable(rots_core_linkcheck tests/core_linkcheck_main.cpp)
         target_link_libraries(rots_core_linkcheck PRIVATE rots_build_flags)
         add_dependencies(rots_core_linkcheck rots_core)

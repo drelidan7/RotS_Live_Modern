@@ -205,44 +205,47 @@ flags through the `rots_build_flags` INTERFACE library.
   is the property `rots_convert` will rely on to link `rots_platform` without pulling in any game
   code.
 
-The second extracted layer is `rots_core` (L1) — currently just `config.cpp` (configuration
-defaults) — built as `librots_core.a` and linked into `ageland` as `RotS::core`. It links
-`rots_build_flags` PUBLIC (same ABI-parity requirement as `rots_platform`) but does **not** link
-`RotS::platform` — `config.cpp` references no platform-layer symbol, so the layering guarantee is
-the tighter "no dependency on anything but libc/libstdc++" rather than merely "no dependency above
-L1".
+The second extracted layer is `rots_core` (L1) — `config.cpp` (configuration defaults) plus
+`consts.cpp` (data tables, entity-seed Task 2) — built as `librots_core.a` and linked into
+`ageland` as `RotS::core`. It links `rots_build_flags` PUBLIC (same ABI-parity requirement as
+`rots_platform`) but does **not** link `RotS::platform` — neither `config.cpp` nor `consts.cpp`
+references a platform-layer symbol, so the layering guarantee is the tighter "no dependency on
+anything but libc/libstdc++" rather than merely "no dependency above L1".
 
-`consts.cpp` was the other planned member and is **deliberately not** in `rots_core`. Its one
-traceable upward edge, `get_guardian_type` (it read `db.cpp`'s `mob_index` table), was relocated to
-`utility.cpp` (an L2/app-layer unit, unchanged signature/declaration) ahead of the extraction —
-`consts.cpp` still defines the `guardian_mob` data table itself, referenced by `utility.cpp` via a
-local `extern` declaration, matching the function's pre-existing local-extern idiom. But building
-`rots_core` with `consts.cpp` included then surfaced a second, structural upward edge the relocation
-didn't touch: the `skills[MAX_SKILLS]` table (`consts.cpp:382`) embeds ~69 function pointers
-directly to `spell_*()` implementations defined in `mystic.cpp`/`spell_pa.cpp` (both L2/app-layer) —
-confirmed by `nm -uC` on the built `consts.cpp.o`, which resolved every one of those symbols as
-undefined. That is not a stray call site to weld-cut; it is the table's core data shape, so
-de-coupling it (e.g. an indirection populated at startup) is real follow-on work, not something to
-chase inside this extraction. `consts.cpp` therefore stays in `ROTS_SERVER_SOURCES`, compiled
-directly into `ageland`/`ageland_tests` as before.
+`consts.cpp` was originally held back from `rots_core` (db-split-era history, preserved below for
+context) and has since joined it. Its first traceable upward edge, `get_guardian_type` (it read
+`db.cpp`'s `mob_index` table), was relocated to `utility.cpp` (an L2/app-layer unit,
+unchanged signature/declaration) ahead of the original extraction attempt — `consts.cpp` still
+defines the `guardian_mob` data table itself, referenced by `utility.cpp` via a local `extern`
+declaration, matching the function's pre-existing local-extern idiom. Building `rots_core` with
+`consts.cpp` included then surfaced a second, structural upward edge the relocation didn't touch:
+the `skills[MAX_SKILLS]` table (`consts.cpp:382`) used to embed ~69 function pointers directly to
+`spell_*()` implementations defined in `mystic.cpp`/`spell_pa.cpp` (both L2/app-layer) — confirmed
+by `nm -uC` on the built `consts.cpp.o`, which resolved every one of those symbols as undefined.
+Entity-seed Task 1 cut that edge at the root: `skills[]`'s function-pointer column is now populated
+at boot by `assign_spell_pointers()` (`spell_pa.cpp`), not embedded in `consts.cpp`'s static
+initializer, so `consts.cpp` compiles down to pure data. Entity-seed Task 2 then moved `consts.cpp`
+into `ROTS_CORE_SOURCES`; `rots_core_linkcheck`/`CoreLayerAcyclicity` (below) is the acceptance
+proof that the built archive resolves only libc/libstdc++ symbols. One consequence: `rots_convert`
+(links only `RotS::platform` + `RotS::core` + a persist-codec subset, see "`rots_convert`" below)
+now links `consts.cpp`'s REAL data tables (`race_affect[]`/`max_race_str[]`/`skills[]`/
+`get_skill_array()`/`language_number`/`language_skills`/`race_abbrevs[]`/`square_root[]`/
+`global_release_flag`/`get_encumb_table()`/`get_leg_encumb_table()`) instead of the verbatim data
+duplicates `convert_stubs.cpp` used to carry for them — with all-null `skills[].spell_pointer`
+entries, since `rots_convert` never calls `assign_spell_pointers()` either, exactly matching the
+historical stub contract.
 
 - **`rots_core_linkcheck` / CTest `CoreLayerAcyclicity`** mirror the `rots_platform_linkcheck`
   pattern exactly (whole-archive force-load of `librots_core.a` against libc/libstdc++ only,
   `LINK_DEPENDS` on the archive, `if(NOT MSVC)` gating, CTest registration gated on
   `BUILD_TESTING`). `ageland_tests` deliberately does **not** link `rots_core` — like
-  `rots_platform`, it keeps compiling `config.cpp` directly (TESTING parity: the test binary's flag
-  set differs from the shipping build's, so it recompiles every layer's sources itself rather than
-  linking the shipping libraries).
+  `rots_platform`, it keeps compiling `config.cpp` and `consts.cpp` directly (TESTING parity: the
+  test binary's flag set differs from the shipping build's, so it recompiles every layer's sources
+  itself rather than linking the shipping libraries).
 - The root `Makefile`'s `test` recipe builds `rots_platform_linkcheck` and `rots_core_linkcheck`
   by name (it builds named targets, not `all`) — omitting either leaves its CTest "Not Run"
   instead of actually exercising the check, exactly the i386-battery failure mode the first
   linkcheck target already fixed once.
-- **Follow-on (spec §3 caveat):** cutting the `skills[]` table's direct `spell_*` function-pointer
-  references is the next weld-cutting step toward moving `consts.cpp` into `rots_core`. Candidate
-  approaches include a name/id-keyed indirection resolved at startup, or relocating the pointer
-  table itself to an L2 registration unit while `consts.cpp` keeps only the non-pointer columns.
-  Not attempted here per the task's contingency rule (surfaced-edge discovery stops extraction, it
-  does not trigger in-task remediation).
 
 ### Pathed data-model includes
 

@@ -28,12 +28,22 @@
 // relocated verbatim into entity_lifecycle.cpp instead, so ageland and
 // rots_convert now link the one real definition of each. What remains here
 // for that engine is a handful of small, still-genuinely-necessary
-// stand-ins for symbols whose origin TU (handler.cpp/profs.cpp/consts.cpp/
+// stand-ins for symbols whose origin TU (handler.cpp/profs.cpp/
 // wild_fighting_handler.cpp) still is not linked into this executable --
 // see the sections below (get_from_affected_type_pool/
 // put_to_affected_type_pool/class_HP/pool_to_list/from_list_to_pool/
-// affected_list/max_race_str/skills[]/player_spec::weapon_master_handler/
-// get_current_time_phase).
+// affected_list/player_spec::weapon_master_handler/get_current_time_phase).
+//
+// entity-seed Task 2 (skills[] weld cut, spec Sec3/Sec10 step 4) joined
+// consts.cpp itself into rots_core, so rots_convert now links the REAL
+// race_affect[]/max_race_str[]/skills[]/get_skill_array()/language_number/
+// language_skills/race_abbrevs[]/square_root[]/global_release_flag/
+// get_encumb_table()/get_leg_encumb_table() straight from consts.cpp -- the
+// verbatim data duplicates this file used to carry for those symbols are
+// gone (see this file's git history, pre-entity-seed-Task-2, for their
+// prior stub text). create_function()/free_function() remain duplicated
+// below; their real home is utility.cpp, not consts.cpp, and that weld is
+// unrelated follow-on work.
 
 #include "base_utils.h"
 #include "char_utils.h"
@@ -219,50 +229,6 @@ void convert_old_colormask(struct char_file_u* ch)
 }
 
 // ===========================================================================
-// race_affect[] -- consts.cpp (app layer; consts.cpp as a whole stays out of
-// rots_core -- see CMakeLists.txt's ROTS_CORE_SOURCES comment -- because its
-// skills[] table embeds function pointers straight into mystic.cpp/
-// spell_pa.cpp). entity_lifecycle.cpp's init_char() reads
-// `race_affect[GET_RACE(ch)]` when initializing a BRAND NEW character.
-// rots_convert's own call graph never calls init_char() (it only loads
-// EXISTING characters via load_char()/store_to_char()/save_char() -- see
-// convert_main.cpp), but init_char() is still DEFINED in the linked
-// entity_lifecycle.cpp TU, so its reference to race_affect[] is a real link
-// demand regardless of whether this executable ever calls it. Verbatim data
-// copy of consts.cpp:2432-2454 (not reimplemented -- an exact table, so
-// init_char() would behave identically if it were ever reached).
-// Follow-on: same as get_guardian_type's prior relocation (see
-// ROTS_CORE_SOURCES' consts.cpp comment) -- once the skills[] function-
-// pointer coupling is cut, small pure data tables like this one can move
-// into rots_core proper and every consumer (ageland and rots_convert alike)
-// links the one real definition.
-// ===========================================================================
-long race_affect[] = {
-    0, // God
-    0, // Human
-    0, // Dwarf
-    1024, // Wood Elf
-    0, // Hobbit
-    1024, // High Elf
-    2, // Beorning
-    0, // !UNUSED!
-    0, // !UNUSED!
-    0, // !UNUSED!
-    0, // !UNUSED!
-    2, // Uruk-Hai
-    0, // !NPC - Harad!
-    2, // Common Orc
-    0, // !NPC - Easterling!
-    2, // Uruk-Lhuth
-    0, // !NPC - Undead!
-    2, // Olog-Hai
-    1024, // Haradrim
-    0, // !UNUSED!
-    0, // !NPC - Troll!
-    0 // !UNUSED!
-};
-
-// ===========================================================================
 // The persisted-stat affect/derived-ability engine -- affect_total()/
 // affect_modify()/affect_to_char()/affect_remove()/apply_gear_affects()/
 // modify_affects()/affect_naked()/affected_by_spell() (formerly handler.cpp)
@@ -321,25 +287,17 @@ long race_affect[] = {
 //     stat-ordering helper, which this executable never reaches but which
 //     keeps class_HP() defined there per the same shared-helper rule).
 //     Byte-verbatim copy of profs.cpp's current body.
-//   - max_race_str[] (real name, consts.cpp) -- recalc_abilities()'s
-//     GET_BAL_STR() macro (utils.h) reads it. consts.cpp as a whole TU is
-//     not linked here (see this file's header comment and the
-//     race_affect[]/get_skill_array() entries below for why); this
-//     executable's own equipment-always-null invariant (see
-//     convert_main.cpp) means recalc_abilities()'s weapon branch --
-//     the only code that reads max_race_str[] -- never actually executes
-//     here, but the reference must still resolve at link time (the flat
-//     build links whole .cpp files; see this file's header comment).
-//     Verbatim data copy of consts.cpp's current values.
 //   - player_spec::weapon_master_handler (ctor + get_attack_speed_multiplier(),
 //     wild_fighting_handler.cpp/warrior_spec_handlers.h) -- recalc_abilities()'s
-//     weapon branch constructs one. Same unreachable-by-invariant status as
-//     max_race_str[] immediately above (equipment is always null, so the
-//     `if (weapon)` branch this class lives in never runs here) and the
-//     same "must still resolve at link time" requirement; stubbed following
-//     this file's existing player_spec::wild_fighting_handler entry (further
-//     below) rather than duplicated, since neither method's real body has
-//     any bearing on persisted output from an unreachable call site.
+//     weapon branch constructs one. Unreachable by invariant: this
+//     executable's own equipment-always-null invariant (see
+//     convert_main.cpp) means the `if (weapon)` branch this class lives in
+//     never runs here, but the reference must still resolve at link time
+//     (the flat build links whole .cpp files; see this file's header
+//     comment); stubbed following this file's existing
+//     player_spec::wild_fighting_handler entry (further below) rather than
+//     duplicated, since neither method's real body has any bearing on
+//     persisted output from an unreachable call site.
 // ===========================================================================
 // ===========================================================================
 // get_current_time_phase() -- utility.cpp. Reads the game's live heartbeat
@@ -439,32 +397,6 @@ int class_HP(const char_data* character)
     return int(std::sqrt(hp_coofs) * 200.0);
 }
 
-// Verbatim data copy of consts.cpp's max_race_str[MAX_RACES] table.
-int max_race_str[MAX_RACES] = {
-    22, // God
-    22, // Human
-    22, // Dwarf
-    22, // Wood Elf
-    22, // Hobbit
-    22, // High Elf
-    22, // Beorning
-    22, // !UNUSED!
-    22, // !UNUSED!
-    22, // !UNUSED!
-    22, // !UNUSED!
-    22, // Uruk-Hai
-    22, // !NPC - Harad!
-    22, // Common Orc
-    22, // !NPC - Easterling!
-    22, // Uruk-Lhuth
-    22, // !NPC - Undead!
-    22, // Olog-Hai
-    22, // Haradrim
-    22, // !UNUSED!
-    22, // !NPC - Troll!
-    22 // !UNUSED!
-};
-
 // ===========================================================================
 // recalc_skills() -- spec_pro.cpp. store_to_char() calls it unconditionally
 // after copying st->skills[] into ch->skills[]. Its real body recomputes
@@ -473,18 +405,24 @@ int max_race_str[MAX_RACES] = {
 // knowledge per skill (derived from `skills` at logon..."; char_file_u/
 // char_to_store have no knowledge field at all, so NOTHING about that
 // computation is ever persisted) using consts.cpp's real skills[] table
-// data (learn_diff/level/type per skill) -- not available here (see this
-// section's header comment on consts.cpp). The ONE persisted side effect --
+// data (learn_diff/level/type per skill) -- entity-seed Task 2 links that
+// real table data now (consts.cpp joined rots_core), but recalc_skills()
+// itself is still spec_pro.cpp's function, and spec_pro.cpp is not linked
+// into this executable; assign_spell_pointers() (spell_pa.cpp's boot-time
+// skills[].spell_pointer populator) never runs here either, for the same
+// "spec_pro.cpp/spell_pa.cpp are app-layer, not linked" reason -- so
+// recalc_skills()'s real body still is not available here, even though the
+// data it would read now is real. The ONE persisted side effect --
 // `ch->player.language = <race-derived language>` (char_to_store: `st
 // ->language = ch->player.language`) -- is a pure function of GET_RACE(ch)
 // alone, so THAT part is duplicated verbatim; the knowledge-table
 // recomputation (and the RACE_MAGUS/RACE_BEORNING/RACE_GOD bonus-knowledge
 // grants, which only ever touch ch->knowledge[]) is omitted because it is
 // provably invisible to char_to_store()'s output.
-// Follow-on: link real skills[] table data (once the consts.cpp
-// function-pointer coupling above is cut) to reproduce ch->knowledge[]
-// faithfully too, for parity with a live server's in-memory state even
-// though it is never observed on disk.
+// Follow-on: once spec_pro.cpp's recalc_skills() itself (not just the
+// skills[] data it reads) is linked into this executable, reproduce
+// ch->knowledge[] faithfully too, for parity with a live server's in-memory
+// state even though it is never observed on disk.
 // ===========================================================================
 void recalc_skills(struct char_data* ch)
 {
@@ -526,18 +464,18 @@ void recalc_skills(struct char_data* ch)
 }
 
 // ===========================================================================
-// create_function()/free_function()/global_release_flag -- utility.cpp
-// (functions) + consts.cpp (global_release_flag, via the CONSTANTSMARK
-// trick in rots/core/tables.h -- extern everywhere except consts.cpp
-// itself). These back the CREATE()/CREATE1()/RELEASE()/RECREATE() macros
-// (utils.h) used PERVASIVELY throughout db_players.cpp/entity_lifecycle.cpp
-// -- every allocation and every character/object teardown goes through
-// them. Verbatim copy of utility.cpp's bodies (pure calloc/free wrappers
-// with an allocation-failure abort, no comm/game dependency whatsoever) --
-// not a substitute, the real thing.
+// create_function()/free_function() -- utility.cpp. These back the
+// CREATE()/CREATE1()/RELEASE()/RECREATE() macros (utils.h) used PERVASIVELY
+// throughout db_players.cpp/entity_lifecycle.cpp -- every allocation and
+// every character/object teardown goes through them. Verbatim copy of
+// utility.cpp's bodies (pure calloc/free wrappers with an
+// allocation-failure abort, no comm/game dependency whatsoever) -- not a
+// substitute, the real thing.
+// (global_release_flag -- formerly stubbed here too, via the CONSTANTSMARK
+// trick in rots/core/tables.h that makes consts.cpp its one real
+// definition -- is now the REAL symbol, linked from consts.cpp now that it
+// lives in rots_core; entity-seed Task 2.)
 // ===========================================================================
-int global_release_flag = 1;
-
 void* create_function(int elem_size, int elem_num, int line, std::string_view file)
 {
     void* create_pointer;
@@ -1056,25 +994,6 @@ objects_json::ObjectSaveData build_default_account_backed_object_data()
     return objects_json::ObjectSaveData { };
 }
 
-sh_int* get_encumb_table()
-{
-    rots::log::write_stderr(
-        "rots_convert: STUB get_encumb_table() called -- unreachable (only "
-        "utils::get_encumbrance_weight()/get_encumbrance(), never called by this executable's "
-        "load/store/save flow).");
-    static sh_int placeholder[MAX_WEAR] = { };
-    return placeholder;
-}
-
-sh_int* get_leg_encumb_table()
-{
-    rots::log::write_stderr(
-        "rots_convert: STUB get_leg_encumb_table() called -- unreachable (only "
-        "utils::get_leg_encumbrance(), never called by this executable's load/store/save flow).");
-    static sh_int placeholder[MAX_WEAR] = { };
-    return placeholder;
-}
-
 namespace utils {
 bool is_room_outside(const room_data& room)
 {
@@ -1095,283 +1014,6 @@ bool is_light(const room_data& room, const weather_data& weather)
     return true;
 }
 } // namespace utils
-
-// ===========================================================================
-// get_skill_array() -- consts.cpp. NOT a safe no-op: character_json.cpp's
-// talk_key_for_index()/skill_key_for_index() call it to compose the
-// human-readable JSON keys ("skill_fencing" style) the account-native
-// character codec uses for BOTH writing (save_char()'s account-linked
-// branch) and READING (load_player() -> load_player_from_account_json_path()
-// for every ".character.json" player_table entry) -- so an empty/wrong
-// .name here does not just produce cosmetically different keys, it makes
-// load_player_from_account_json_path() FAIL to parse any skill/talk key it
-// cannot map back to an index (skill_index_for_key() returns -1), which
-// build_player_index()'s account-native index scan (db_players.cpp) treats
-// as a FATAL error (exit(1)) -- confirmed empirically: an early placeholder
-// version of this stub with empty .name fields crashed a functional smoke
-// test against this repo's own lib/ data on the very first
-// account-native character (deserialize_account_character_from_json:
-// "Unknown skill key 'slashing'"). So this is a VERBATIM DATA duplicate of
-// consts.cpp's skills[MAX_SKILLS] table's `.name` field only (positionally
-// extracted from consts.cpp:382-634 at this writing -- every other field
-// (type/level/spell_pointer/beats/targets/learn_diff/learn_type/is_fast/
-// skill_spec) defaults to zero/null, which is safe because nothing this
-// executable calls reads them: this file's simplified recalc_skills()
-// above deliberately skips the only in-tree caller that would). The
-// .spell_pointer entries themselves (consts.cpp's actual reason it can't be
-// linked wholesale -- see this file's header comment) are NOT reproduced;
-// only the name strings, which are pure data with zero mystic.cpp/
-// spell_pa.cpp coupling -- so every entry's .spell_pointer is null, which
-// is exactly the value entity_lifecycle.cpp's relocated affect_modify()
-// (db-split Task 4b) needs: its `case APPLY_SPELL:` guards on `if
-// (!skills[tmp].spell_pointer) break;` before dispatching through the
-// pointer, so a null-pointer table makes that case a clean, self-documented
-// no-op here instead of a dangling-pointer call.
-//
-// Task 4b also exposed the backing table as the real global `skills[]`
-// (not just reachable through get_skill_array()'s return value), because
-// affect_modify() reads `skills[tmp]` directly (matching handler.cpp's own
-// `extern struct skill_data skills[];` reference) rather than going through
-// the accessor function.
-// Follow-on: once consts.cpp's function-pointer coupling is cut (see
-// CMakeLists.txt's ROTS_CORE_SOURCES comment), the real skills[] table can
-// be shared directly instead of this name-only duplicate, which will then
-// need to be kept in sync by hand until that lands.
-// ===========================================================================
-
-// Verbatim (name-only) data copy of consts.cpp:382-634's skills[] table,
-// positional (no [N] designators are used in the real table either, so
-// index N here means the same skill as index N there); every other field
-// (type/level/spell_pointer/beats/targets/learn_diff/learn_type/is_fast/
-// skill_spec) defaults to zero/null via value-initialization. Populated
-// lazily (see get_skill_array() below) so the .name copy loop runs once;
-// affect_modify()'s direct `skills[tmp].spell_pointer` reads never need
-// .name populated (that field is untouched by the null-pointer guard), so
-// this array is safe to read before get_skill_array() is ever called too.
-struct skill_data skills[MAX_SKILLS] = { };
-
-const skill_data* get_skill_array()
-{
-    // A plain string-literal array (not a skill_data aggregate initializer)
-    // so this stays -Wmissing-field-initializers-clean without spelling out
-    // all 11 remaining zero/null fields per entry; kSkillNames[i] is copied
-    // into skills[i].name below, once, on first call.
-    static const char* const kSkillNames[] = {
-        "barehanded",
-        "slashing",
-        "concussion",
-        "whips/flails",
-        "piercing",
-        "spears",
-        "axes",
-        "natural attacks",
-        "swimming",
-        "two-handed",
-        "weapon mastery",
-        "parry",
-        "kick",
-        "bash",
-        "rescue",
-        "berserk",
-        "find weakness",
-        "block exit",
-        "wild swing",
-        "leadership",
-        "riposte",
-        "dodge",
-        "fast attack",
-        "sneak",
-        "hide",
-        "ambush",
-        "track",
-        "pick lock",
-        "search",
-        "animals",
-        "gather herbs",
-        "stealth",
-        "awareness",
-        "ride",
-        "accuracy",
-        "tame",
-        "calm",
-        "whistle",
-        "stalking",
-        "travelling",
-        "recruit",
-        "detect hidden",
-        "evasion",
-        "poison",
-        "resist poison",
-        "curing saturation",
-        "restlessness",
-        "resist magic",
-        "slow digestion",
-        "dispel regeneration",
-        "insight",
-        "pragmatism",
-        "haze",
-        "fear",
-        "divination",
-        "rend",
-        "sanctuary",
-        "vitality",
-        "terror",
-        "refresh all",
-        "enchant weapon",
-        "archery",
-        "summon",
-        "hallucinate",
-        "regeneration",
-        "guardian",
-        "infravision",
-        "curse",
-        "revive",
-        "detect magic",
-        "shift",
-        "magic missile",
-        "reveal life",
-        "locate living",
-        "cure self",
-        "chill ray",
-        "blink",
-        "freeze",
-        "lightning bolt",
-        "vitalize self",
-        "flash",
-        "earthquake",
-        "create light",
-        "death ward",
-        "dark bolt",
-        "mist of baazunga",
-        "mind block",
-        "remove poison",
-        "beacon",
-        "protection",
-        "blaze",
-        "firebolt",
-        "relocate",
-        "cone of cold",
-        "identify",
-        "bend time",
-        "fireball",
-        "locate life",
-        "searing darkness",
-        "lightning strike",
-        "word of pain",
-        "word of sight",
-        "word of agony",
-        "shout of pain",
-        "word of shock",
-        "spear of darkness",
-        "leach",
-        "black arrow",
-        "shield",
-        "detect evil",
-        "blind",
-        "confuse",
-        "expose elements",
-        "bite",
-        "swipe",
-        "maul",
-        "asphyxiation",
-        "Power of Arda",
-        "activity",
-        "rage",
-        "anger",
-        "animal language",
-        "human language",
-        "orcish language",
-        "mark",
-        "trash",
-        "trash",
-        "nothing",
-        "wind blast",
-        "Fame War",
-        "",
-        "defend",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "smash",
-        "frenzy",
-        "stomp",
-        "",
-        "cleave",
-        "overrun",
-        "mass regeneration",
-        "mass vitality",
-        "mass insight",
-        "",
-        // Remaining MAX_SKILLS - 162 entries deliberately absent from this
-        // literal -- the copy loop below leaves table[162..MAX_SKILLS) at
-        // its static value-initialized (empty name) default, matching
-        // consts.cpp's own array (declared MAX_SKILLS=256, only the first
-        // 162 populated -- the rest default to a zero skill_data too).
-    };
-    constexpr int kNumSkillNames = sizeof(kSkillNames) / sizeof(kSkillNames[0]);
-    static_assert(kNumSkillNames <= MAX_SKILLS, "kSkillNames must fit within MAX_SKILLS");
-
-    static bool initialized = false;
-    if (!initialized) {
-        for (int i = 0; i < kNumSkillNames; ++i) {
-            std::snprintf(skills[i].name, sizeof(skills[i].name), "%s", kSkillNames[i]);
-        }
-        initialized = true;
-    }
-    return skills;
-}
-
-// ===========================================================================
-// language_number / language_skills[] -- consts.cpp. Same reachability class
-// as get_skill_array() immediately above (talk_key_for_index(),
-// character_json.cpp) and the same "not a safe placeholder" lesson learned
-// from it (see that entry's account-native-index exit(1) crash report) --
-// verbatim data copy of consts.cpp:636-638's current values rather than an
-// empty/zero placeholder.
-// ===========================================================================
-byte language_number = 3;
-byte language_skills[] = { LANG_ANIMAL, LANG_HUMAN, LANG_ORC };
-
-// ===========================================================================
-// race_abbrevs[] -- consts.cpp. Referenced only by account_management.cpp's
-// safe_race_abbrev(), which is called only by format_account_character_short_entry()/
-// format_account_character_short_roster() -- login-menu character-roster
-// display formatting, never called by this executable's load/store/save
-// flow (see convert_main.cpp). A default-constructed std::string_view has
-// `.data() == nullptr`, which safe_race_abbrev() ALREADY guards
-// (`if (::race_abbrevs[race].data() == nullptr) return "??";`) -- so a
-// zero-initialized (all-empty) array is not an approximation, it exercises
-// safe_race_abbrev()'s own existing fallback path exactly as the real table
-// would for any race index it didn't recognize.
-// ===========================================================================
-extern const std::string_view race_abbrevs[MAX_RACES + 40] = { };
-
-// ===========================================================================
-// square_root[] -- consts.cpp. Referenced by char_utils.cpp's
-// utils::get_prof_coof() (via the GET_PROF_COOF macro, utils.h), which
-// nothing in this executable's load/store/save call graph invokes (this
-// file's simplified recalc_skills() above deliberately does not call it --
-// see that entry). Zero-filled placeholder, matching consts.cpp's real
-// declared size (consts.cpp:2138, `sh_int square_root[171]`).
-// ===========================================================================
-sh_int square_root[171] = { };
 
 // ===========================================================================
 // Crash_delete_file() -- objsave.cpp (deliberately OUT this wave -- see the
@@ -1541,10 +1183,10 @@ float player_spec::wild_fighting_handler::get_attack_speed_multiplier() const
 // name and the same real-implementation TU). The only caller inside this
 // executable's linked TUs is entity_lifecycle.cpp's relocated
 // recalc_abilities() (db-split Task 4b), inside its `if (weapon)` branch --
-// unreachable-by-invariant here, same as max_race_str[] above (this
-// executable's own ch->equipment[] is always null; see convert_main.cpp),
-// but the reference must still resolve at link time (the flat build links
-// whole .cpp files; see this file's header comment). Stubbed following this
+// unreachable by invariant: this executable's own ch->equipment[] is always
+// null (see convert_main.cpp), so that branch never runs here, but the
+// reference must still resolve at link time (the flat build links whole
+// .cpp files; see this file's header comment). Stubbed following this
 // file's existing player_spec::wild_fighting_handler entry immediately
 // above rather than duplicating wild_fighting_handler.cpp's real (and,
 // unlike the class above, weapon-and-spec-dependent) logic.

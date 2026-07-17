@@ -151,10 +151,10 @@ by the real code rather than left to the sketch:
   called from *both* halves (`db_world.cpp`'s `read_mobile` and `db_players.cpp`'s store paths),
   so they belong to neither. They landed in a new `entity_lifecycle.cpp`, which also absorbed the
   affect/derived-ability engine (`affect_modify`/`affect_total`/`affect_naked`/`affect_to_char`/
-  `affect_remove`/`recalc_abilities`/`class_HP`/the naked-perception/willpower and
+  `affect_remove`/`recalc_abilities`/the naked-perception/willpower and
   confuse-modifier helpers) and the save-file cipher (`encrypt_line`/`decrypt_line`), relocated
   verbatim from `handler.cpp`/`profs.cpp`/`utility.cpp` once `rots_convert` (below) proved it
-  needed them and would otherwise carry duplicate copies in the stub ledger. This seeds
+  needed them and would otherwise carry duplicate copies in the stub ledger. (`class_HP` and the affected-type pool helpers stayed in their origin TUs per the shared-helper rule — still used by non-relocated siblings; the converter carries documented stand-ins.) This seeds
   `rots_entity` earlier than planned — `entity_lifecycle.cpp` is that library's future contents,
   just not yet extracted into its own archive/target.
 - **The `world_room_vnum` seam shipped exactly as designed**: declared in `db.h` next to
@@ -174,7 +174,7 @@ by the real code rather than left to the sketch:
   `objsave.cpp`/`boards.cpp`/`mail.cpp`/`pkill.cpp`. Those welds are deferred follow-on work,
   catalogued (symbol, real home, why the converter's call graph never reaches it, and the
   follow-on that removes it) in `convert_stubs.cpp`'s weld ledger rather than pulled in
-  speculatively. Remaining ledger entries as of this wave: the `send_to_char` output seam, an
+  speculatively. Known follow-ons are cataloged in the ledger itself; the headline ones: the `send_to_char` output seam, an
   `APPLY_SPELL` null-skip, and the objsave/boards/mail membership itself.
 - **The CI-linked boundary check works as designed**: `rots_convert` is in CMake's default `all`
   target (no `EXCLUDE_FROM_ALL`) so every CI job builds it, but it is deliberately **not** wired

@@ -10,7 +10,7 @@
 // which only convert_main.cpp's own CMake target compiles (see
 // CMakeLists.txt's rots_convert comment). So a load->store->save round trip
 // run IN THIS PROCESS exercises the exact in-MUD implementations of the ~14
-// functions convert_stubs.cpp otherwise substitutes (affect_modify,
+// functions that, before the Task 4b relocation, convert_stubs.cpp substituted (affect_modify,
 // recalc_abilities, get_race_perception, class_HP, and kin -- see
 // convert_stubs.cpp's own section comments for the full list and each
 // substitution's justification). This test then ALSO shells out to the real,
@@ -346,9 +346,11 @@ char_file_u make_stored_character_for_race(int race, const char *name, bool with
         // signature: `affect_modify(char_data*, byte loc, int mod, long
         // bitv, char add, sh_int counter)`). APPLY_STR is deliberately NOT
         // APPLY_SPELL -- the one documented, disclosed gap in
-        // convert_stubs.cpp's affect_modify() copy (its APPLY_SPELL case
-        // logs and no-ops rather than dispatching through consts.cpp's
-        // skills[] function-pointer table) -- so this exercises a location
+        // the real affect_modify() (single definition in entity_lifecycle.cpp; under
+        // rots_convert its APPLY_SPELL case silently self-skips via the
+        // null-spell_pointer guard against the names-only skills[] stub table,
+        // where a live server would dispatch the spell function) -- so this
+        // exercises a location
         // both sides implement identically.
         stored_character.affected[0].type = 1;
         stored_character.affected[0].duration = 10;

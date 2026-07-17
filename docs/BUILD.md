@@ -289,7 +289,7 @@ spec §4a (`docs/superpowers/specs/2026-07-16-library-architecture-design.md`) i
   (`read_mobile` calls `clear_char`) and the persist half (store paths call `clear_char`/
   `init_char`), so it belongs to neither `db_world.cpp` nor `db_players.cpp`. It also absorbed
   the affect/derived-ability engine (`affect_modify`/`affect_total`/`affect_naked`/
-  `affect_to_char`/`affect_remove`/`recalc_abilities`/`class_HP`/the naked-stat and
+  `affect_to_char`/`affect_remove`/`recalc_abilities`/the naked-stat and
   confuse-modifier helpers) and the save-file cipher (`encrypt_line`/`decrypt_line`), relocated
   verbatim from `handler.cpp`/`profs.cpp`/`utility.cpp` so `rots_convert` links one definition
   instead of a duplicate copy in `convert_stubs.cpp`. It wasn't in the original three-TU split

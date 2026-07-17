@@ -32,7 +32,14 @@ build: $(CMAKE_CACHE)
 # PlatformLayerAcyclicity / CoreLayerAcyclicity CTests execute their binaries,
 # and this recipe builds named targets (not `all`), so omitting either leaves
 # its test "Not Run" (as the i386 battery caught for the platform check).
+# The explicit reconfigure matters when a NEW top-level target was added since
+# the tree was generated: `cmake --build` regenerates the build system mid-run,
+# but GNU make has already loaded the stale top-level Makefile and fails with
+# "No rule to make target" for the new goal (one-time, but it breaks CI/battery
+# runs on pre-existing trees — as the header-split finalization battery caught
+# for rots_core_linkcheck).
 test: $(CMAKE_CACHE)
+	+$(CMAKE) -S $(SRC_DIR) -B $(BUILD_DIR)
 	+$(CMAKE) --build $(BUILD_DIR) --target ageland ageland_tests rots_platform_linkcheck rots_core_linkcheck -j16
 	# cd + bare ctest, NOT `ctest --test-dir`: --test-dir needs CMake >= 3.20, and the
 	# i386 container ships ctest 3.18, which silently ignores the flag, looks for tests

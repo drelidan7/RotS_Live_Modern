@@ -158,9 +158,10 @@ void dispatch_char_teardown(const char_data* character)
         g_char_teardown_hook(character);
         return;
     }
-    rots::log::write_stderr(
-        "rots::entity: STUB char-teardown hook called with no sink registered -- this should be "
-        "unreachable once register_char_teardown_hook() has run.");
+    // Null default is a silent no-op: the staged-object map cleared by the old stub
+    // (in the deleted convert_stubs.cpp) can only gain entries via interpre.cpp's login flow,
+    // which never runs in rots_convert (pre-registration) or ageland (post-registration).
+    // Erasing a never-inserted key is equivalent to no-op.
 }
 
 float dispatch_attack_speed_multiplier(char_data* character)

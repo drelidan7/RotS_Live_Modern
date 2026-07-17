@@ -144,6 +144,11 @@ char_data_ptr make_char_data(int mode);
 void free_alias_list(struct alias_list *);
 void free_obj(struct obj_data *);
 int real_room(int);
+
+// Returns world[room_index].number -- the room vnum for a live room index.
+// Seam (db.cpp-split Task 1, spec Sec4): keeps the persist path free of
+// direct world[] access; defined in db_world.cpp.
+int world_room_vnum(int room_index);
 int real_program(int);
 char *fread_string(FILE *, std::string_view);
 int real_object(int);

@@ -109,7 +109,7 @@ set(ROTS_SERVER_SOURCES
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
     boards.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
     color.cpp comm.cpp consts.cpp convert_exploits.cpp convert_plrobjs.cpp
-    db.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
+    db.cpp db_world.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
     limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp

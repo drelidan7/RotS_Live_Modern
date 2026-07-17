@@ -15,8 +15,7 @@
 #include <ctime>
 #include <utility>
 
-namespace
-{
+namespace {
 
 // Backing storage for the currently registered sink. A function-local static
 // (rather than a namespace-scope global) constructs on first use -- guaranteed

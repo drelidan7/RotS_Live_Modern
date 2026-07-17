@@ -73,7 +73,7 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
 | Lib | Layer | TUs | Contents |
 |---|---|---|---|
 | `rots_platform` | L0 | 7 | `rots_net, rots_crypt, rots_rng, clock, crashsave_schedule, json_utils, player_file_finalize` (verified clean leaves — the archive imports only libc/libstdc++/compiler symbols) |
-| `rots_core` | L1 | 2 + split headers | `consts, config` + the carved-up data model (Section 5) |
+| `rots_core` | L1 | 2 + split headers | `consts, config` + the carved-up data model (Section 5) (as-built: `consts` stays app-compiled, not archived into `rots_core` — see caveat below) |
 | `rots_entity` | L2 | 6 | `char_utils, object_utils, environment_utils, handler, utility, char_utils_combat` |
 | `rots_persist` | L3 | ~14 | `db_players` (from `db.cpp`), `objsave, boards, mail, pkill, character_json, objects_json, exploits_json, account_management (+6 #included fragments), account_cache, convert_exploits, convert_plrobjs, save_benchmark, savebench` |
 | `rots_world` | L3 | ~15 | `db_world` (from `db.cpp`), `shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle, mudlle2, graph, weather, mob_csv_extract, obj2html` |
@@ -96,6 +96,15 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
   (`ROTS_SERVER_SOURCES`) until its logging dependency is cut via a platform-level logging seam, at
   which point it can join `rots_platform` (or land in `rots_entity`). This is exactly the kind of
   weld the acyclicity check exists to surface.
+- `consts.cpp` is **not** in `rots_core` as built — the table row above is the intended target, not
+  current fact. Its `skills[MAX_SKILLS]` table (`consts.cpp:382`) structurally embeds ~69 `spell_*`
+  function pointers, an `nm`-verified upward edge into `rots_combat`-tier code (a genuine L1→L3
+  reference, not just a link-time weld). It stays an app-compiled TU; `rots_core` shipped as
+  `{config.cpp}` + the carved headers for this wave. Cutting the weld (a registration scheme or
+  per-skill dispatch indirection so `skills[]` no longer embeds function pointers directly) is
+  recorded follow-on work, after which `consts.cpp` can join `rots_core`. `get_guardian_type`'s
+  separate `mob_index` edge was already cut in this wave (relocated to `utility.cpp`). See
+  `docs/BUILD.md` "Library layering" for the full `nm` evidence (Task 13).
 
 ---
 

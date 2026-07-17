@@ -363,6 +363,7 @@ if(ROTS_BUILD_TESTS)
         tests/objects_json_tests.cpp
         tests/objsave_json_tests.cpp
         tests/olog_hai_tests.cpp
+        tests/platform_log_tests.cpp
         tests/player_finalize_tests.cpp
         tests/pod_persistence_json_tests.cpp
         tests/prompt_format_tests.cpp

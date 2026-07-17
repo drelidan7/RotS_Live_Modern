@@ -194,6 +194,62 @@ flags through the `rots_build_flags` INTERFACE library.
   symbol), a real upward edge. It stays an `ageland`-compiled TU until a platform logging seam cuts
   that dependency (see the spec's follow-ons).
 
+The second extracted layer is `rots_core` (L1) — currently just `config.cpp` (configuration
+defaults) — built as `librots_core.a` and linked into `ageland` as `RotS::core`. It links
+`rots_build_flags` PUBLIC (same ABI-parity requirement as `rots_platform`) but does **not** link
+`RotS::platform` — `config.cpp` references no platform-layer symbol, so the layering guarantee is
+the tighter "no dependency on anything but libc/libstdc++" rather than merely "no dependency above
+L1".
+
+`consts.cpp` was the other planned member and is **deliberately not** in `rots_core`. Its one
+traceable upward edge, `get_guardian_type` (it read `db.cpp`'s `mob_index` table), was relocated to
+`utility.cpp` (an L2/app-layer unit, unchanged signature/declaration) ahead of the extraction —
+`consts.cpp` still defines the `guardian_mob` data table itself, referenced by `utility.cpp` via a
+local `extern` declaration, matching the function's pre-existing local-extern idiom. But building
+`rots_core` with `consts.cpp` included then surfaced a second, structural upward edge the relocation
+didn't touch: the `skills[MAX_SKILLS]` table (`consts.cpp:382`) embeds ~69 function pointers
+directly to `spell_*()` implementations defined in `mystic.cpp`/`spell_pa.cpp` (both L2/app-layer) —
+confirmed by `nm -uC` on the built `consts.cpp.o`, which resolved every one of those symbols as
+undefined. That is not a stray call site to weld-cut; it is the table's core data shape, so
+de-coupling it (e.g. an indirection populated at startup) is real follow-on work, not something to
+chase inside this extraction. `consts.cpp` therefore stays in `ROTS_SERVER_SOURCES`, compiled
+directly into `ageland`/`ageland_tests` as before.
+
+- **`rots_core_linkcheck` / CTest `CoreLayerAcyclicity`** mirror the `rots_platform_linkcheck`
+  pattern exactly (whole-archive force-load of `librots_core.a` against libc/libstdc++ only,
+  `LINK_DEPENDS` on the archive, `if(NOT MSVC)` gating, CTest registration gated on
+  `BUILD_TESTING`). `ageland_tests` deliberately does **not** link `rots_core` — like
+  `rots_platform`, it keeps compiling `config.cpp` directly (TESTING parity: the test binary's flag
+  set differs from the shipping build's, so it recompiles every layer's sources itself rather than
+  linking the shipping libraries).
+- The root `Makefile`'s `test` recipe builds `rots_platform_linkcheck` and `rots_core_linkcheck`
+  by name (it builds named targets, not `all`) — omitting either leaves its CTest "Not Run"
+  instead of actually exercising the check, exactly the i386-battery failure mode the first
+  linkcheck target already fixed once.
+- **Follow-on (spec §3 caveat):** cutting the `skills[]` table's direct `spell_*` function-pointer
+  references is the next weld-cutting step toward moving `consts.cpp` into `rots_core`. Candidate
+  approaches include a name/id-keyed indirection resolved at startup, or relocating the pointer
+  table itself to an L2 registration unit while `consts.cpp` keeps only the non-pointer columns.
+  Not attempted here per the task's contingency rule (surfaced-edge discovery stops extraction, it
+  does not trigger in-task remediation).
+
+### Pathed data-model includes
+
+`rots_core` owns `target_include_directories(rots_core PUBLIC core/include)`: every consumer that
+links `RotS::core` (currently just `ageland`) gets the `core/include` root transitively, so
+`ageland`'s own `target_include_directories` no longer lists it directly. `ageland_tests` does not
+link `RotS::core` (see above), so it keeps `core/include` as its own direct include dir alongside
+`persist/include` (which stays direct on both targets until a future `rots_persist` library exists
+to own it). Both `core/include` and `persist/include` contain nothing but a `rots/` subtree and are
+the **only** two directories ever added to an include path for the new header layout — `src/`
+itself must never be added to `-I`/`-iquote`/`/I`: `src/limits.h` (project-specific player-rank
+constants) would shadow the standard `<limits.h>`, breaking any standard header that
+`#include_next`s its way through the system one (see the long comment at
+`src/CMakeLists.txt` around the `ageland_tests` include setup). Headers inside the new tree
+reference each other with pathed includes (`#include "rots/core/tables.h"`), and reference the
+still-flat legacy headers by relative path (`"../../../../platdef.h"`) rather than adding `src/`
+to a search path.
+
 ## Native macOS arm64 build (Phase 2b, primary Mac dev flow)
 
 No Docker needed. Requires CMake ≥ 3.23 and GoogleTest (`brew install googletest`).

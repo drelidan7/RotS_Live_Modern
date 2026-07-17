@@ -76,13 +76,33 @@ set(ROTS_PLATFORM_SOURCES
     crashsave_schedule.cpp json_utils.cpp player_file_finalize.cpp
 )
 
+# L1: core data-model library (spec §3). config.cpp is pure data (config
+# defaults) with no upward symbol references — verified via `nm -uC` on the
+# built archive, see the rots_core_linkcheck load-bearing test below.
+#
+# consts.cpp is DELIBERATELY NOT here (contingency fired, brief §Step 2/3):
+# get_guardian_type was consts.cpp's one traceable upward edge and was
+# relocated to utility.cpp (an L2/app-layer unit) ahead of this extraction,
+# but the rots_core_linkcheck build then surfaced a second, structural one —
+# the `skills[MAX_SKILLS]` table (consts.cpp:382) embeds ~69 function
+# pointers directly to spell_*() implementations defined in mystic.cpp /
+# spell_pa.cpp (both L2/app-layer). That is not a stray call site to cut;
+# it is consts.cpp's core data shape, and de-coupling it (e.g. an indirection
+# table populated at startup) is real follow-on work, not something to chase
+# inside this task. consts.cpp therefore stays in ROTS_SERVER_SOURCES; see
+# docs/BUILD.md's "Library layering" section and the spec's §3 caveats for
+# the recorded evidence.
+set(ROTS_CORE_SOURCES
+    config.cpp
+)
+
 set(ROTS_SERVER_SOURCES
     account_cache.cpp account_management.cpp act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
     boards.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
-    color.cpp comm.cpp config.cpp convert_exploits.cpp convert_plrobjs.cpp
-    consts.cpp db.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
+    color.cpp comm.cpp consts.cpp convert_exploits.cpp convert_plrobjs.cpp
+    db.cpp delayed_command_interpreter.cpp exploits_json.cpp environment_utils.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
     limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
@@ -100,7 +120,10 @@ add_executable(ageland ${ROTS_SERVER_SOURCES})
 # Pathed data-model headers (spec §9a). ONLY these two leaf dirs go on the
 # include path — never src/ itself (src/limits.h would shadow <limits.h>).
 # They contain nothing but rots/, so they cannot shadow any system header.
-target_include_directories(ageland PRIVATE core/include persist/include)
+# core/include now flows to ageland transitively via RotS::core's PUBLIC
+# target_include_directories (see the rots_core definition below); only
+# persist/include stays direct here until rots_persist exists.
+target_include_directories(ageland PRIVATE persist/include)
 
 set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 
@@ -244,8 +267,18 @@ target_link_libraries(rots_platform PUBLIC rots_build_flags $<$<PLATFORM_ID:Wind
 # file" entry already resolves them for TUs in src/. No extra include dir needed
 # while the headers stay in src/ (they relocate in a later plan).
 
+# --- L1: core data-model library ----------------------------------------------
+add_library(rots_core STATIC ${ROTS_CORE_SOURCES})
+add_library(RotS::core ALIAS rots_core)
+set_target_properties(rots_core PROPERTIES CXX_EXTENSIONS OFF)
+target_link_libraries(rots_core PUBLIC rots_build_flags)
+# The carved data-model headers (spec §5/§9a). PUBLIC: every consumer of the
+# core data model gets the pathed include root by linking RotS::core.
+target_include_directories(rots_core PUBLIC core/include)
+
 target_link_libraries(ageland PRIVATE
     RotS::platform
+    RotS::core
     rots_build_flags
     $<$<PLATFORM_ID:Windows>:ws2_32>
 )
@@ -383,7 +416,11 @@ if(ROTS_BUILD_TESTS)
     endif()
     include(GoogleTest)
 
-    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_TEST_SOURCES})
+    # ageland_tests deliberately does NOT link rots_core (TESTING parity, same
+    # as the rots_platform pattern above): it keeps compiling config.cpp
+    # directly via ROTS_CORE_SOURCES (consts.cpp is already part of
+    # ROTS_SERVER_SOURCES — see the contingency note above ROTS_CORE_SOURCES).
+    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_TEST_SOURCES})
 
     # Same C++ standard as ageland (see above) — required because these targets are
     # defined per-target here rather than via a project-wide CMAKE_CXX_STANDARD.
@@ -557,6 +594,36 @@ if(ROTS_BUILD_TESTS)
         # a `-DBUILD_TESTING=OFF` configure behaves consistently across all tests.
         if(BUILD_TESTING)
             add_test(NAME PlatformLayerAcyclicity COMMAND rots_platform_linkcheck)
+        endif()
+
+        # Load-bearing core-layer acyclicity check (spec §11), mirroring the
+        # rots_platform_linkcheck block above exactly. rots_core (config.cpp
+        # only — see the contingency note above ROTS_CORE_SOURCES for why
+        # consts.cpp is NOT a member) is verified pure data with no upward
+        # symbol references (nm -uC on the built archive resolves only
+        # libc/libstdc++ symbols). Allowed lower layers would be rots_platform
+        # + libc/libstdc++, but config.cpp references no rots_platform symbol,
+        # so the checker force-loads only rots_core itself — a strictly
+        # tighter guarantee than "rots_platform is allowed".
+        add_executable(rots_core_linkcheck tests/core_linkcheck_main.cpp)
+        target_link_libraries(rots_core_linkcheck PRIVATE rots_build_flags)
+        add_dependencies(rots_core_linkcheck rots_core)
+        if(APPLE)
+            target_link_options(rots_core_linkcheck PRIVATE
+                -Wl,-force_load,$<TARGET_FILE:rots_core>)
+        else()
+            target_link_options(rots_core_linkcheck PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:rots_core> -Wl,--no-whole-archive)
+        endif()
+        # LINK_DEPENDS: same rationale as rots_platform_linkcheck above — the
+        # archive path only appears inside a raw linker flag string, invisible
+        # to CMake's normal target_link_libraries dependency tracking, so an
+        # incremental rebuild that changes only a rots_core source needs this
+        # to force a relink instead of silently reusing a stale binary.
+        set_target_properties(rots_core_linkcheck PROPERTIES
+            LINK_DEPENDS "$<TARGET_FILE:rots_core>")
+        if(BUILD_TESTING)
+            add_test(NAME CoreLayerAcyclicity COMMAND rots_core_linkcheck)
         endif()
     endif()
 endif()

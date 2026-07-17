@@ -36,7 +36,9 @@
 #include "warrior_spec_handlers.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <format>
 
@@ -332,32 +334,37 @@ sh_int convert_stub_get_race_perception(struct char_data* ch)
     case RACE_HUMAN:
         return 30;
     case RACE_DWARF:
-        return 40;
+        return 0;
     case RACE_WOOD:
-        return 60;
-    case RACE_HOBBIT:
         return 50;
-    case RACE_HIGH:
-        return 70;
-    case RACE_BEORNING:
+    case RACE_HOBBIT:
         return 30;
+    case RACE_HIGH:
+        return 100;
     case RACE_URUK:
         return 30;
     case RACE_HARAD:
         return 30;
     case RACE_ORC:
-        return 30;
+        return 10;
     case RACE_EASTERLING:
-        return 30;
-    case RACE_HARADRIM:
-        return 30;
-    case RACE_OLOGHAI:
         return 30;
     case RACE_MAGUS:
         return 30;
-    default:
+    case RACE_UNDEAD:
+        return 60;
+    case RACE_TROLL:
         return 30;
+    case RACE_HARADRIM:
+        return 30;
+    case RACE_BEORNING:
+        return 30;
+    case RACE_OLOGHAI:
+        return 30;
+    default:
+        return 0;
     }
+    return 0;
 }
 
 // Verbatim copy of utility.cpp:1777's get_confuse_modifier(char_data*) --
@@ -1101,7 +1108,9 @@ int file_to_string(std::string_view name, char* buf_out)
                 rots::log::write_stderr(
                     "SYSERR: fl->strng: string too big (convert_stubs.cc, file_to_string)");
                 *buf_out = '\0';
-                fclose(fl);
+                // No fclose(fl) here -- matching db_boot.cpp's file_to_string()
+                // exactly (this error path does not close fl there either);
+                // see this section's header comment.
                 return (-1);
             }
 
@@ -1184,12 +1193,12 @@ int str_cmp_nullable(const char* first, const char* second)
 // The account-native codec (account_management.cpp) and the crime/exploit
 // JSON codecs' atomic-write helpers (db_players.cpp) call these on every
 // write/delete -- genuinely reachable for account-linked characters and
-// every atomic-write path. Verbatim copies of utility.cpp's current
-// POSIX-branch bodies (the #if defined PREDEF_PLATFORM_WINDOWS branches are
-// omitted -- rots_convert is not yet built for Windows by any CI job this
-// wave; see the report's gates section -- and would need the same
-// MoveFileExA/RemoveDirectoryA Win32 calls utility.cpp's real body already
-// makes, not a behavioral divergence, just an unexercised platform branch).
+// every atomic-write path. Verbatim copies of utility.cpp's current bodies,
+// INCLUDING the #if defined PREDEF_PLATFORM_WINDOWS branches -- rots_convert
+// IS built by every CI job (see CMakeLists.txt's rots_convert comment: "added
+// to `all` ... so every CI job builds it"), windows-msvc among them, so the
+// Win32 MoveFileExA/RemoveDirectoryA branches are load-bearing here too, not
+// an unexercised platform.
 // Follow-on: relocate both into rots_platform properly (they have zero game
 // dependency), at which point every consumer -- ageland and rots_convert
 // alike -- links the one real, both-platform-complete definition.
@@ -1197,14 +1206,77 @@ int str_cmp_nullable(const char* first, const char* second)
 int rots_remove(std::string_view path)
 {
     const std::string path_owner(rots::text::truncate_at_null(path));
+#if defined PREDEF_PLATFORM_WINDOWS
+    if (std::remove(path_owner.c_str()) == 0) {
+        return 0;
+    }
+
+    // CRT remove() rejects a directory with EACCES; retry as a directory the
+    // way POSIX remove() falls back to rmdir(). RemoveDirectoryA is the Win32
+    // primitive (same header set MoveFileExA above comes from); map its common
+    // failures onto errno so callers' strerror(errno) messages stay meaningful.
+    const DWORD attributes = GetFileAttributesA(path_owner.c_str());
+    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+        if (RemoveDirectoryA(path_owner.c_str())) {
+            return 0;
+        }
+        switch (GetLastError()) {
+        case ERROR_FILE_NOT_FOUND:
+        case ERROR_PATH_NOT_FOUND:
+            errno = ENOENT;
+            break;
+        case ERROR_DIR_NOT_EMPTY:
+            errno = ENOTEMPTY;
+            break;
+        case ERROR_ACCESS_DENIED:
+        case ERROR_SHARING_VIOLATION:
+            errno = EACCES;
+            break;
+        default:
+            errno = EIO;
+            break;
+        }
+    }
+    return -1;
+#else
     return std::remove(path_owner.c_str());
+#endif
 }
 
 int rots_rename_replace(std::string_view source_path, std::string_view destination_path)
 {
     const std::string source_path_owner(rots::text::truncate_at_null(source_path));
     const std::string destination_path_owner(rots::text::truncate_at_null(destination_path));
+#if defined PREDEF_PLATFORM_WINDOWS
+    // MoveFileExA + MOVEFILE_REPLACE_EXISTING is the Win32 primitive with
+    // exactly POSIX rename()'s replace behavior (atomic on NTFS same-volume
+    // moves, which every persistence-layer temp file is -- the temp lives
+    // next to its final path by construction).
+    if (MoveFileExA(source_path_owner.c_str(), destination_path_owner.c_str(),
+            MOVEFILE_REPLACE_EXISTING)) {
+        return 0;
+    }
+
+    // Map the common failure causes onto errno so the call sites' existing
+    // strerror(errno)-based error messages describe the real problem instead
+    // of whatever stale errno was lying around.
+    switch (GetLastError()) {
+    case ERROR_FILE_NOT_FOUND:
+    case ERROR_PATH_NOT_FOUND:
+        errno = ENOENT;
+        break;
+    case ERROR_ACCESS_DENIED:
+    case ERROR_SHARING_VIOLATION:
+        errno = EACCES;
+        break;
+    default:
+        errno = EIO;
+        break;
+    }
+    return -1;
+#else
     return std::rename(source_path_owner.c_str(), destination_path_owner.c_str());
+#endif
 }
 
 // ===========================================================================

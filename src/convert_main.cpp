@@ -136,7 +136,7 @@ struct ConvertOptions {
     std::string only_character;
 };
 
-void print_usage(const char* argv0)
+void print_usage(std::string_view argv0)
 {
     std::cerr << "Usage: " << argv0 << " --lib <libdir> [--dry-run] [--character <name>]\n"
               << "\n"

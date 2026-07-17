@@ -411,6 +411,7 @@ if(ROTS_BUILD_TESTS)
         tests/prompt_format_tests.cpp
         tests/protocol_tests.cpp
         tests/rots_asprintf_tests.cpp
+        tests/rots_convert_equivalence_tests.cpp
         tests/rots_crypt_tests.cpp
         tests/rots_net_tests.cpp
         tests/rots_rng_tests.cpp
@@ -584,6 +585,19 @@ if(ROTS_BUILD_TESTS)
     # characterization_json_tests.cpp fall back to the relative path when this is
     # undefined (the Makefile build, which runs with cwd already at src/tests/).
     target_compile_definitions(ageland_tests PRIVATE ROTS_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/goldens")
+    # ROTS_CONVERT_EXECUTABLE: absolute path to the rots_convert binary (db.cpp-split
+    # Task 4), consumed by tests/rots_convert_equivalence_tests.cpp's ConvertEquivalence/
+    # PerRace.* suite to shell out to the real, separately-built executable and compare
+    # its output against this same binary's own in-process (real, non-stubbed) conversion
+    # path. add_dependencies ensures `rots_convert` is actually built before ageland_tests
+    # runs, since this compile definition only carries a path string -- it creates no
+    # build-graph edge on its own. That test suite falls back to a ROTS_CONVERT_EXECUTABLE
+    # environment variable (and skips cleanly if neither resolves to a file that exists)
+    # for the flat src/tests/Makefile build, which does not build rots_convert at all (see
+    # the rots_convert target's own comment above).
+    add_dependencies(ageland_tests rots_convert)
+    target_compile_definitions(ageland_tests PRIVATE
+        ROTS_CONVERT_EXECUTABLE="$<TARGET_FILE:rots_convert>")
     if(ROTS_SUPPRESS_TEST_WARNINGS)
         target_compile_options(ageland_tests PRIVATE $<${ROTS_GNULIKE}:-w>)
     else()

@@ -18,6 +18,22 @@
 // anything whose reachability you can't argue -- that is a real design
 // problem (an actual persist->game weld), not a stub candidate; see the
 // task brief for the STOP condition.
+//
+// db-split Task 4b is a worked example of that intended shrinkage: the
+// ~14-function affect/derived-ability engine (affect_modify/affect_total/
+// affect_to_char/affect_remove/affect_naked/apply_gear_affects/
+// modify_affects/affected_by_spell/recalc_abilities/get_race_perception/
+// get_naked_perception/get_naked_willpower/get_confuse_modifier/
+// encrypt_line/decrypt_line) that used to be hand-duplicated here was
+// relocated verbatim into entity_lifecycle.cpp instead, so ageland and
+// rots_convert now link the one real definition of each. What remains here
+// for that engine is a handful of small, still-genuinely-necessary
+// stand-ins for symbols whose origin TU (handler.cpp/profs.cpp/consts.cpp/
+// wild_fighting_handler.cpp) still is not linked into this executable --
+// see the sections below (get_from_affected_type_pool/
+// put_to_affected_type_pool/class_HP/pool_to_list/from_list_to_pool/
+// affected_list/max_race_str/skills[]/player_spec::weapon_master_handler/
+// get_current_time_phase).
 
 #include "base_utils.h"
 #include "char_utils.h"
@@ -249,154 +265,79 @@ long race_affect[] = {
 // ===========================================================================
 // The persisted-stat affect/derived-ability engine -- affect_total()/
 // affect_modify()/affect_to_char()/affect_remove()/apply_gear_affects()/
-// modify_affects()/affect_naked() (handler.cpp) and recalc_abilities()
-// (profs.cpp). UNLIKE every stub above, this section is NOT optional or
-// safely inert: store_to_char() calls affect_to_char() (which calls
-// affect_modify()) for every persisted spell-affect entry, and BOTH
-// store_to_char() and char_to_store() call affect_total() unconditionally
-// (char_to_store(): `affect_total(ch, AFFECT_TOTAL_REMOVE)` then, after
-// copying ch->affected into st->affected[], `affect_total(ch,
-// AFFECT_TOTAL_SET)`) -- for EVERY character, not just ones with active
-// affects. affect_total()'s AFFECT_TOTAL_REMOVE branch calls
-// recalc_abilities(), which writes character->tmpabilities.{hit,mana,move}
-// and (in the no-weapon branch -- see below) character->points.ENE_regen,
-// ALL of which char_to_store() persists verbatim
-// (`st->tmpabilities = ch->tmpabilities`, `st->points.ENE_regen =
-// GET_ENE_REGEN(ch)`). A no-op/inert stub here would silently produce
-// WRONG persisted stat fields for every single converted character, not
-// just an edge case -- defeating this executable's "byte-identical by
-// construction" purpose (spec Sec4b) far more than any other symbol in
-// this file. So, like the color.cpp section above, this is a VERBATIM
-// duplicate of the real implementation (handler.cpp/profs.cpp at this
-// writing), not a behavioral substitute -- with three narrow, explicitly
-// justified simplifications documented at each site below:
+// modify_affects()/affect_naked()/affected_by_spell() (formerly handler.cpp)
+// and recalc_abilities()/get_race_perception()/get_naked_perception()/
+// get_naked_willpower()/get_confuse_modifier() (formerly profs.cpp/
+// utility.cpp) USED TO be duplicated in this file (see this file's git
+// history before db-split Task 4b). store_to_char()/char_to_store() call
+// into this engine unconditionally for every character, so a hand-written
+// duplicate here was never optional -- and any accidental divergence from
+// the real bodies would silently corrupt persisted derived-stat fields for
+// every converted character. Task 4b resolved that risk at the root: the
+// real bodies now live in entity_lifecycle.cpp (relocated verbatim from
+// their origin TUs), which this executable already links directly, so
+// rots_convert and ageland now execute the exact SAME single definition of
+// each of those symbols. This section is gone; see entity_lifecycle.cpp's
+// "Affect / derived-ability engine" section instead.
 //
-//   (1) Every character this executable loads has an all-null
-//       ch->equipment[] (store_to_char() never populates it -- that only
-//       happens via objsave.cpp's Crash_load()/load_character(), which is
-//       NOT on this executable's call path; see convert_main.cpp).
-//       apply_gear_affects() therefore always no-ops (its loop immediately
-//       `continue`s on every slot) and recalc_abilities()'s `if (weapon)`
-//       branch is UNREACHABLE here by the same invariant -- so that branch
-//       (weapon speed/bulk/attack-speed-multiplier maths, which would also
-//       need weapon_master_handler and an ambiguous do_squareroot() overload
-//       resolution) is omitted rather than duplicated; only the `else`
-//       branch (GET_ENE_REGEN = 60 + 5*GET_DEX, unconditional and
-//       weapon-independent) is kept, verbatim.
-//   (2) affect_to_char()'s real body also registers the character on a
-//       live-tick bookkeeping list (`pool_to_list(&affected_list, ...)`)
-//       used only by the game's periodic affect-duration-countdown pass.
-//       rots_convert never runs that pass (no game loop), and this
-//       bookkeeping has no effect on anything char_to_store() persists --
-//       so it is omitted (documented, not silently dropped).
-//   (3) affect_remove() is reachable ONLY via entity_lifecycle.cpp's
-//       free_char() teardown loop (`while (ch->affected)
-//       affect_remove(ch, ch->affected);`), which always runs AFTER
-//       save_char() has already written the character to disk (see
-//       convert_main.cpp's convert_one_character(): the char_data_ptr's
-//       destructor fires at function-scope exit, once nothing further reads
-//       the character). Its real body's affect_modify()/affect_total()
-//       recompute calls therefore have NO observable effect for this
-//       executable -- the character is being destroyed, not re-inspected or
-//       re-saved -- so this duplicate keeps ONLY the structural work
-//       (linked-list unlink + pool release) a correct teardown needs to
-//       avoid a leak or a dangling ch->affected, and skips the numeric
-//       recompute.
+// Two small pieces of that engine's SUPPORT machinery remain here, because
+// each is a real (not simplified) stand-in for a symbol whose origin TU
+// still is not linked into this executable:
 //
-// One genuine, disclosed gap remains: affect_modify()'s `case APPLY_SPELL:`
-// dispatches through consts.cpp's skills[] function-pointer table straight
-// into a mystic.cpp/spell_pa.cpp spell handler -- the exact
-// "consts.cpp... is not a stray call site to cut; it is consts.cpp's core
-// data shape" structural coupling CMakeLists.txt's ROTS_CORE_SOURCES
-// comment already documents as unresolved follow-on work, not something
-// this task can cut. It is therefore stubbed (loud log, no numeric effect)
-// rather than duplicated -- see that case below for the full rationale and
-// why it does not corrupt the PRIMARY persisted affect record (st->affected[]
-// is a raw copy of the affected_type struct BEFORE affect_modify's
-// side effects run, so this gap only affects a character whose persisted
-// affect list contains an APPLY_SPELL-location entry, and only the
-// DERIVED stat fields, never the affect list itself).
-// Follow-on: dissolves once rots_entity carries this whole subsystem as a
-// real, clean-leaf library member both ageland and rots_convert link.
+//   - get_from_affected_type_pool()/put_to_affected_type_pool() -- real
+//     name, handler.cpp's affected_type allocator. handler.cpp itself is
+//     NOT relocated (affect_to_room()/affect_remove_room(), the room-affect
+//     analogues of the now-relocated affect_to_char()/affect_remove(), also
+//     call these two helpers and stay in handler.cpp -- see the db-split
+//     Task 4b plan section's shared-helper rule), so entity_lifecycle.cpp's
+//     relocated affect_to_char()/affect_remove() still need an external
+//     definition when handler.cpp isn't linked. Simplified relative to
+//     handler.cpp's real allocator (CREATE+free, no free-list reuse -- a
+//     converter processes one character at a time and has no long server
+//     lifetime to amortize the pool optimization over); produces
+//     byte-identical affected_type field CONTENTS either way, only the
+//     allocation strategy differs.
+//   - pool_to_list()/from_list_to_pool() (real names, utility.cpp) plus the
+//     affected_list/affected_list_pool globals (real names, handler.cpp) --
+//     affect_to_char()'s live-tick bookkeeping registration (`if
+//     (!ch->affected) { tmplist = pool_to_list(&affected_list,
+//     &affected_list_pool); ... }`) is part of its now-relocated, verbatim
+//     body, so it genuinely executes on this executable's call path (the
+//     first affect applied to any character with no prior affects). Unlike
+//     the allocator above, these ARE byte-verbatim copies of utility.cpp's
+//     current bodies (pure linked-list bookkeeping, zero comm/game
+//     dependency) -- not simplified, because they are cheap to copy exactly
+//     and this bookkeeping list, once written, is read back by nothing this
+//     executable's output depends on (it is drained by free_char()'s
+//     affect_remove() loop before the char_data_ptr goes out of scope, same
+//     as a live server's logout path).
+//   - class_HP() (real name, profs.cpp, inline) -- recalc_abilities()'s HP
+//     formula calls it. profs.cpp is NOT relocated (class_HP() is also used
+//     by _INTERNAL::stat_assigner::organize(), profs.cpp's
+//     character-creation stat-ordering helper, which this executable never
+//     reaches but which keeps class_HP() defined there per the same
+//     shared-helper rule). Byte-verbatim copy of profs.cpp's current body.
+//   - max_race_str[] (real name, consts.cpp) -- recalc_abilities()'s
+//     GET_BAL_STR() macro (utils.h) reads it. consts.cpp as a whole TU is
+//     not linked here (see this file's header comment and the
+//     race_affect[]/get_skill_array() entries below for why); this
+//     executable's own equipment-always-null invariant (see
+//     convert_main.cpp) means recalc_abilities()'s weapon branch --
+//     the only code that reads max_race_str[] -- never actually executes
+//     here, but the reference must still resolve at link time (the flat
+//     build links whole .cpp files; see this file's header comment).
+//     Verbatim data copy of consts.cpp's current values.
+//   - player_spec::weapon_master_handler (ctor + get_attack_speed_multiplier(),
+//     wild_fighting_handler.cpp/warrior_spec_handlers.h) -- recalc_abilities()'s
+//     weapon branch constructs one. Same unreachable-by-invariant status as
+//     max_race_str[] immediately above (equipment is always null, so the
+//     `if (weapon)` branch this class lives in never runs here) and the
+//     same "must still resolve at link time" requirement; stubbed following
+//     this file's existing player_spec::wild_fighting_handler entry (further
+//     below) rather than duplicated, since neither method's real body has
+//     any bearing on persisted output from an unreachable call site.
 // ===========================================================================
-namespace {
-
-// Verbatim copy of utility.cpp's get_race_perception(char_data*) (global
-// overload, distinct from utils::get_race_perception(const char_data&) in
-// char_utils.cpp, which this executable already links but which is NOT
-// what handler.cpp's affect_naked()/get_naked_perception() call). Pure
-// switch-on-race, no further dependency.
-sh_int convert_stub_get_race_perception(struct char_data* ch)
-{
-    switch (GET_RACE(ch)) {
-    case RACE_GOD:
-        return 0;
-    case RACE_HUMAN:
-        return 30;
-    case RACE_DWARF:
-        return 0;
-    case RACE_WOOD:
-        return 50;
-    case RACE_HOBBIT:
-        return 30;
-    case RACE_HIGH:
-        return 100;
-    case RACE_URUK:
-        return 30;
-    case RACE_HARAD:
-        return 30;
-    case RACE_ORC:
-        return 10;
-    case RACE_EASTERLING:
-        return 30;
-    case RACE_MAGUS:
-        return 30;
-    case RACE_UNDEAD:
-        return 60;
-    case RACE_TROLL:
-        return 30;
-    case RACE_HARADRIM:
-        return 30;
-    case RACE_BEORNING:
-        return 30;
-    case RACE_OLOGHAI:
-        return 30;
-    default:
-        return 0;
-    }
-    return 0;
-}
-
-// Verbatim copy of utility.cpp:1777's get_confuse_modifier(char_data*) --
-// pure ch->affected walk, no further dependency.
-int convert_stub_get_confuse_modifier(struct char_data* ch)
-{
-    struct affected_type* aff;
-    int modifier = 0;
-
-    if (IS_AFFECTED(ch, AFF_CONFUSE))
-        for (aff = ch->affected; aff; aff = aff->next)
-            if (aff->type == SPELL_CONFUSE)
-                modifier = aff->duration * 2 - 10;
-
-    return modifier;
-}
-
-// Verbatim copy of profs.cpp:165's inline class_HP() -- uses
-// utils::get_prof_points (char_utils.cpp, already linked) and GET_RACE.
-int convert_stub_class_HP(const char_data* character)
-{
-    double hp_coofs = 3 * utils::get_prof_points(PROF_WARRIOR, *character) + 2 * utils::get_prof_points(PROF_RANGER, *character) + utils::get_prof_points(PROF_CLERIC, *character);
-
-    if (GET_RACE(character) == RACE_ORC) {
-        hp_coofs = hp_coofs * 4.0 / 7.0;
-    }
-
-    return int(std::sqrt(hp_coofs) * 200.0);
-}
-
-} // namespace
-
+// ===========================================================================
 // get_current_time_phase() -- utility.cpp. Reads the game's live heartbeat
 // counter (`extern int pulse`, incremented every server tick), which never
 // advances in a batch tool with no run_the_game() loop. Unlike every other
@@ -407,443 +348,12 @@ int convert_stub_class_HP(const char_data* character)
 // affected_type field. Returning a fixed 0 is deterministic and
 // reproducible across repeated rots_convert runs, which is arguably a
 // BETTER property for a batch converter than reproducing an arbitrary live
-// snapshot would be.
+// snapshot would be. Genuinely reachable: entity_lifecycle.cpp's relocated
+// affect_to_char() (db-split Task 4b) calls it for every affect applied.
+// ===========================================================================
 char get_current_time_phase() { return 0; }
 
-// Verbatim copy of handler.cpp:955's affected_by_spell() -- pure
-// ch->affected walk, no further dependency. Needed by affect_modify()'s
-// APPLY_PERCEPTION case below.
-affected_type* affected_by_spell(const char_data* ch, byte skill, affected_type* start_affect)
-{
-    if (!start_affect)
-        start_affect = ch->affected;
-
-    int count = 0;
-    for (affected_type* status_affect = start_affect; status_affect && (count < MAX_AFFECT);
-        status_affect = status_affect->next, count++) {
-        if (status_affect->type == skill) {
-            return status_affect;
-        }
-    }
-
-    return NULL;
-}
-
-// Verbatim copy of profs.cpp:745's recalc_abilities(), MINUS the `if
-// (weapon)` branch -- see this section's simplification (1) above for why
-// that branch is unreachable-by-invariant here rather than duplicated.
-void recalc_abilities(char_data* character)
-{
-    if (!IS_NPC(character)) {
-        character->abilities.str = character->constabilities.str;
-        character->abilities.lea = character->constabilities.lea;
-        character->abilities.intel = character->constabilities.intel;
-        character->abilities.wil = character->constabilities.wil;
-        character->abilities.dex = character->constabilities.dex;
-        character->abilities.con = character->constabilities.con;
-
-        character->abilities.hit = 10 + std::min(LEVEL_MAX, GET_LEVEL(character)) + character->constabilities.hit * GET_CON(character) / 20 + (convert_stub_class_HP(character) * (GET_CON(character) + 20) / 14) * std::min(LEVEL_MAX * 100, (int)GET_MINI_LEVEL(character)) / 100000;
-
-        if (utils::get_specialization(*character) == game_types::PS_Defender) {
-            character->abilities.hit += character->abilities.hit / 10;
-        }
-
-        character->abilities.hit = std::max(character->abilities.hit - (GET_RAW_SKILL(character, SKILL_STEALTH) * GET_LEVELA(character) + GET_RAW_SKILL(character, SKILL_STEALTH) * 3) / 33,
-            10);
-
-        character->tmpabilities.hit = std::min(character->tmpabilities.hit, character->abilities.hit);
-
-        character->abilities.mana = character->constabilities.mana + GET_INT(character) + GET_WILL(character) / 2 + GET_PROF_LEVEL(PROF_MAGE, character) * 2;
-
-        character->tmpabilities.mana = std::min(character->tmpabilities.mana, character->abilities.mana);
-
-        character->abilities.move = character->constabilities.move + GET_CON(character) + 20 + GET_PROF_LEVEL(PROF_RANGER, character) + GET_RAW_KNOWLEDGE(character, SKILL_TRAVELLING) / 4;
-
-        if ((GET_RACE(character) == RACE_WOOD) || GET_RACE(character) == RACE_HIGH)
-            character->abilities.move += 15;
-
-        if (GET_RACE(character) == RACE_BEORNING) {
-            character->abilities.move += 50;
-        }
-
-        character->tmpabilities.move = std::min(character->tmpabilities.move, character->abilities.move);
-
-        // `if (weapon)` branch omitted -- see simplification (1) above.
-        // character->equipment[WIELD] is always null in this executable.
-        GET_ENE_REGEN(character) = 60 + 5 * GET_DEX(character);
-    }
-}
-
-// Verbatim copy of handler.cpp:337's affect_modify(), EXCEPT `case
-// APPLY_SPELL:` -- see this section's header comment for why that one case
-// is stubbed (consts.cpp's skills[] function-pointer table reaches into
-// mystic.cpp/spell_pa.cpp, a genuine, already-documented structural weld
-// this task cannot cut) rather than duplicated.
-void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add, sh_int counter)
-{
-    int tmp, tmp2;
-
-    if (add == AFFECT_MODIFY_SET) {
-        SET_BIT(ch->specials.affected_by, bitv);
-        if (utils::is_set(bitv, long(AFF_CHARM))) {
-            ch->damage_details.reset();
-        }
-    } else if (add == AFFECT_MODIFY_REMOVE) {
-        REMOVE_BIT(ch->specials.affected_by, bitv);
-        if (utils::is_set(bitv, long(AFF_CHARM))) {
-            ch->damage_details.reset();
-        }
-
-        mod = -mod;
-    }
-    ch->specials.affected_by |= race_affect[GET_RACE(ch)];
-
-    if (add == AFFECT_MODIFY_TIME) {
-        return; /* so, usual affects are not modified in this call */
-    }
-
-    switch (loc) {
-    case APPLY_NONE:
-        break;
-
-    case APPLY_STR:
-        SET_STR_BASE(ch, GET_STR_BASE(ch) + mod);
-        SET_STR(ch, GET_STR(ch) + mod);
-        break;
-
-    case APPLY_LEA:
-        GET_LEA_BASE(ch) += mod;
-        GET_LEA(ch) += mod;
-        break;
-
-    case APPLY_DEX:
-        GET_DEX_BASE(ch) += mod;
-        GET_DEX(ch) += mod;
-        break;
-
-    case APPLY_INT:
-        GET_INT_BASE(ch) += mod;
-        GET_INT(ch) += mod;
-        break;
-
-    case APPLY_WILL:
-        GET_WILL_BASE(ch) += mod;
-        GET_WILL(ch) += mod;
-        break;
-
-    case APPLY_CON:
-        GET_CON_BASE(ch) += mod;
-        GET_CON(ch) += mod;
-        break;
-
-    case APPLY_PROF:
-        break;
-
-    case APPLY_LEVEL:
-        break;
-
-    case APPLY_AGE:
-        ch->player.time.birth -= (mod * SECS_PER_MUD_YEAR);
-        break;
-
-    case APPLY_CHAR_WEIGHT:
-        GET_WEIGHT(ch) += mod;
-        break;
-
-    case APPLY_CHAR_HEIGHT:
-        GET_HEIGHT(ch) += mod;
-        break;
-
-    case APPLY_MANA:
-        GET_MAX_MANA(ch) += mod;
-        if (GET_MANA(ch) >= GET_MAX_MANA(ch) - mod)
-            GET_MANA(ch) += mod;
-
-        break;
-
-    case APPLY_WILLPOWER:
-        GET_WILLPOWER(ch) += mod;
-        break;
-
-    case APPLY_HIT:
-        GET_MAX_HIT(ch) += mod;
-        if (GET_HIT(ch) >= GET_MAX_HIT(ch) - mod)
-            GET_HIT(ch) += mod;
-
-        break;
-
-    case APPLY_MOVE:
-        GET_MAX_MOVE(ch) += mod;
-        if (GET_MOVE(ch) >= GET_MAX_MOVE(ch) - mod)
-            GET_MOVE(ch) += mod;
-        break;
-
-    case APPLY_GOLD:
-        break;
-
-    case APPLY_EXP:
-        break;
-
-    case APPLY_DODGE:
-        SET_DODGE(ch) += mod;
-        break;
-
-    case APPLY_OB:
-        SET_OB(ch) += mod;
-        break;
-
-    case APPLY_SPELL_PEN:
-        ch->points.spell_pen += mod;
-        break;
-
-    case APPLY_SPELL_POW:
-        ch->points.spell_power += mod;
-        break;
-
-    case APPLY_DAMROLL:
-        GET_DAMAGE(ch) += mod;
-        break;
-
-    case APPLY_SAVING_SPELL:
-        GET_SAVE(ch) += mod;
-        break;
-
-    case APPLY_VISION:
-        if (add) {
-            if (mod > 0)
-                SET_BIT(ch->specials.affected_by, AFF_INFRARED);
-            if (mod < 0)
-                SET_BIT(ch->specials.affected_by, AFF_BLIND);
-        } else {
-            if (mod > 0)
-                REMOVE_BIT(ch->specials.affected_by, AFF_BLIND);
-            if (mod < 0)
-                REMOVE_BIT(ch->specials.affected_by, AFF_INFRARED);
-        }
-
-    case APPLY_REGEN:
-        break;
-
-    case APPLY_SPEED:
-        GET_ENE_REGEN(ch) += mod;
-        break;
-
-    case APPLY_BEND: {
-        GET_ENE_REGEN(ch) += (GET_ENE_REGEN(ch) / 2);
-        SET_OB(ch) += mod;
-    } break;
-
-    case APPLY_ARMOR:
-        break;
-    case APPLY_MAUL: {
-        // MAX_MAUL_DODGE: verbatim copy of handler.cpp:92's file-local define.
-        constexpr int kMaxMaulDodge = 50;
-        if (!add) {
-            SET_DODGE(ch) += std::min((counter * 5), kMaxMaulDodge);
-        }
-
-        if (add) {
-            SET_DODGE(ch) += -(std::min((counter * 5), kMaxMaulDodge));
-        }
-    } break;
-
-    case APPLY_PERCEPTION:
-        ch->specials2.rawPerception += mod;
-
-        if (affected_by_spell(ch, SPELL_INSIGHT)) {
-            int minimumRacePerception = utils::get_minimum_insight_perception(*ch);
-
-            ch->specials2.perception = std::max(ch->specials2.rawPerception, minimumRacePerception);
-        } else {
-            ch->specials2.perception = ch->specials2.rawPerception;
-        }
-        break;
-
-    case APPLY_SPELL:
-        // STUB: real handler.cpp body dispatches through consts.cpp's
-        // skills[] function-pointer table into a mystic.cpp/spell_pa.cpp
-        // spell handler -- see this section's header comment. Not
-        // reproduced; logged so a converted character that actually hits
-        // this is visible rather than silently short-changed.
-        rots::log::write_stderr(
-            std::format("rots_convert: STUB affect_modify() APPLY_SPELL case for '{}' -- the "
-                        "underlying spell handler (consts.cpp skills[] function pointer, "
-                        "mystic.cpp/spell_pa.cpp) is not linked into rots_convert; this "
-                        "character's derived stats may not exactly match a live login. The "
-                        "persisted affected_type record itself is unaffected (see this "
-                        "section's header comment).",
-                GET_NAME(ch)));
-        break;
-
-    case APPLY_BITVECTOR:
-        if (add) {
-            if ((mod < 0) || (mod > 31))
-                mod = 0;
-            SET_BIT(ch->specials.affected_by, 1 << mod);
-        } else {
-            mod = -mod;
-            if ((mod < 0) || (mod > 31))
-                mod = 0;
-            REMOVE_BIT(ch->specials.affected_by, 1 << mod);
-        }
-        break;
-
-    case APPLY_MANA_REGEN:
-        ch->points.mana_regen += mod;
-        break;
-
-    case APPLY_RESIST:
-        if (mod >= 0)
-            GET_RESISTANCES(ch) |= (1 << mod);
-        else
-            GET_RESISTANCES(ch) &= ~(1 << (-mod));
-        break;
-
-    case APPLY_VULN:
-        if (mod >= 0)
-            GET_VULNERABILITIES(ch) |= (1 << mod);
-        else
-            GET_VULNERABILITIES(ch) &= ~(1 << (-mod));
-        break;
-
-    default:
-        rots::log::write_stderr(
-            "SYSERR: Unknown apply adjust attempt (convert_stubs.cc, affect_modify).");
-        break;
-    } /* switch */
-
-    (void)tmp;
-    (void)tmp2;
-}
-
-// Verbatim copy of handler.cpp:610/622's apply_gear_affects() overloads --
-// see simplification (1) above: always a no-op here (ch->equipment[] is
-// always null), kept verbatim rather than special-cased for fidelity.
-void apply_gear_affects(char_data* character, const obj_data* item, int modify_flag)
-{
-    for (int count = 0; count < MAX_OBJ_AFFECT; ++count) {
-        const obj_affected_type& obj_affect = item->affected[count];
-        if (obj_affect.location == APPLY_SPELL)
-            continue;
-
-        affect_modify(character, obj_affect.location, obj_affect.modifier,
-            item->obj_flags.bitvector, modify_flag, 0);
-    }
-}
-
-void apply_gear_affects(char_data* character, int modify_flag)
-{
-    for (int item_index = 0; item_index < MAX_WEAR; ++item_index) {
-        const obj_data* item = character->equipment[item_index];
-        if (item == nullptr)
-            continue;
-
-        if (item_index == HOLD && !CAN_WEAR(item, ITEM_HOLD))
-            continue;
-
-        apply_gear_affects(character, item, modify_flag);
-    }
-}
-
-// Verbatim copy of handler.cpp:636's modify_affects().
-void modify_affects(char_data* character, int modify_flag)
-{
-    int count = 0;
-    affected_type* af = character->affected;
-    while (count < MAX_AFFECT && af != nullptr) {
-        affect_modify(character, af->location, af->modifier, af->bitvector, modify_flag,
-            af->counter);
-        ++count;
-        af = af->next;
-    }
-}
-
-// Verbatim copy of handler.cpp:593's affect_naked() -- uses this section's
-// convert_stub_get_race_perception()-derived get_naked_perception()/
-// get_naked_willpower() below.
-sh_int get_naked_perception(struct char_data* ch)
-{
-    if (IS_NPC(ch)) {
-        if (MOB_FLAGGED(ch, MOB_SHADOW))
-            return 100;
-        else if (IS_SHADOW(ch))
-            // Manual expansion of the GET_PERCEPTION(ch) macro (utils.h),
-            // substituting convert_stub_get_race_perception() for its
-            // get_race_perception() call -- this IS_NPC branch is
-            // unreachable for this executable (it only ever loads player
-            // characters, never NPCs -- see convert_main.cpp), so exact
-            // fidelity here is moot, but the macro's own logic is trivial
-            // enough to keep verbatim rather than approximate.
-            return 100;
-        else if (ch->specials2.perception == -1)
-            return convert_stub_get_race_perception(ch);
-        else
-            return std::min(100, std::max(0, static_cast<int>(ch->specials2.perception)));
-    }
-
-    int tmp = convert_stub_get_race_perception(ch);
-    tmp += GET_PROF_LEVEL(PROF_CLERIC, ch) * 2;
-
-    return tmp;
-}
-
-sh_int get_naked_willpower(struct char_data* ch)
-{
-    return GET_PROF_LEVEL(PROF_CLERIC, ch) + GET_WILL(ch) - (convert_stub_get_confuse_modifier(ch) / 10);
-}
-
-void affect_naked(char_data* ch)
-{
-    int nakedPerception = get_naked_perception(ch);
-    ch->specials2.rawPerception = ch->specials2.perception = nakedPerception;
-    GET_WILLPOWER(ch) = get_naked_willpower(ch);
-    ch->specials.affected_by |= race_affect[GET_RACE(ch)];
-
-    if (!IS_NPC(ch)) {
-        GET_RESISTANCES(ch) = 0;
-        GET_VULNERABILITIES(ch) = 0;
-    }
-}
-
-// Verbatim copy of handler.cpp:647's affect_total().
-void affect_total(struct char_data* ch, int mode)
-{
-    if (mode & AFFECT_TOTAL_REMOVE) {
-        apply_gear_affects(ch, AFFECT_MODIFY_REMOVE);
-        modify_affects(ch, AFFECT_MODIFY_REMOVE);
-
-        recalc_abilities(ch);
-        affect_naked(ch);
-    }
-
-    if (mode & AFFECT_TOTAL_SET) {
-        apply_gear_affects(ch, AFFECT_MODIFY_SET);
-        modify_affects(ch, AFFECT_MODIFY_SET);
-    }
-
-    if (mode & AFFECT_TOTAL_TIME) {
-        apply_gear_affects(ch, AFFECT_MODIFY_TIME);
-        modify_affects(ch, AFFECT_MODIFY_TIME);
-    }
-
-    signed char max_value = 100;
-    signed char min_dex_str = 1;
-    signed char min_others = 0;
-
-    ch->abilities.dex = std::max(min_dex_str, std::min(ch->abilities.dex, max_value));
-    ch->abilities.intel = std::max(min_others, std::min(ch->abilities.intel, max_value));
-    ch->abilities.wil = std::max(min_others, std::min(ch->abilities.wil, max_value));
-    ch->abilities.con = std::max(min_others, std::min(ch->abilities.con, max_value));
-    ch->abilities.str = std::max(min_dex_str, std::min(ch->abilities.str, max_value));
-    ch->abilities.lea = std::max(min_others, std::min(ch->abilities.lea, max_value));
-}
-
-// Verbatim copy of handler.cpp:684/701's affected_type pool -- simplified
-// per this section's header (no free-list reuse; a converter processes one
-// character at a time and has no long server lifetime to amortize the
-// allocator optimization over). Produces byte-identical affected_type field
-// CONTENTS either way -- only the allocation strategy differs.
-affected_type* get_from_affected_type_pool()
+struct affected_type* get_from_affected_type_pool()
 {
     struct affected_type* afnew;
     CREATE(afnew, struct affected_type, 1);
@@ -852,59 +362,89 @@ affected_type* get_from_affected_type_pool()
 
 void put_to_affected_type_pool(struct affected_type* oldaf) { free(oldaf); }
 
-// Verbatim copy of handler.cpp:720's affect_to_char() MINUS the
-// affected_list live-tick bookkeeping registration -- see simplification
-// (2) above.
-void affect_to_char(struct char_data* ch, struct affected_type* af)
+// Verbatim copy of utility.cpp's pool_to_list()/from_list_to_pool() (pure
+// universal_list bookkeeping) plus the affected_list/affected_list_pool
+// globals they and entity_lifecycle.cpp's relocated affect_to_char()/
+// affect_remove() operate on (real names, normally defined in handler.cpp,
+// which this executable does not link).
+universal_list* affected_list = 0;
+universal_list* affected_list_pool = 0;
+
+universal_list* pool_to_list(universal_list** list, universal_list** head)
 {
-    struct affected_type* affected_alloc;
+    universal_list* tmplist;
 
-    if (!ch)
-        return;
-
-    affected_alloc = get_from_affected_type_pool();
-
-    *affected_alloc = *af;
-
-    affected_alloc->next = ch->affected;
-    ch->affected = affected_alloc;
-
-    affected_alloc->time_phase = get_current_time_phase();
-
-    affect_modify(ch, af->location, af->modifier, af->bitvector, AFFECT_MODIFY_SET, af->counter);
-    affect_total(ch);
-}
-
-// Verbatim copy of handler.cpp:802's affect_remove() MINUS the
-// affect_modify()/affect_total() recompute and the affected_list
-// bookkeeping -- see simplification (3) above (this executable only
-// reaches affect_remove() via free_char()'s post-save teardown, where the
-// recompute has no observable effect).
-void affect_remove(struct char_data* ch, struct affected_type* af)
-{
-    struct affected_type* hjp;
-    int tmp;
-
-    if (!ch->affected)
-        return;
-
-    if (ch->affected == af) {
-        ch->affected = af->next;
+    if (*head) {
+        tmplist = *head;
+        *head = tmplist->next;
     } else {
-        for (hjp = ch->affected, tmp = 0; (hjp->next) && (hjp->next != af) && (tmp < MAX_AFFECT);
-            hjp = hjp->next, tmp++) {
-        }
-        if (hjp->next != af) {
-            rots::log::write_stderr(
-                "rots_convert: STUB affect_remove() could not locate affected_type "
-                "in ch->affected (teardown-only path; not a persisted-output bug).");
-            return;
-        }
-        hjp->next = af->next;
+        CREATE1(tmplist, universal_list);
     }
 
-    put_to_affected_type_pool(af);
+    tmplist->next = *list;
+    *list = tmplist;
+
+    return tmplist;
 }
+
+void from_list_to_pool(universal_list** list, universal_list**, universal_list* body)
+{
+    if (*list == body) {
+        *list = body->next;
+    } else {
+        universal_list* tmplist = NULL;
+        for (tmplist = *list; tmplist->next; tmplist = tmplist->next) {
+            if (tmplist->next == body) {
+                break;
+            }
+        }
+
+        if (tmplist->next == body) {
+            tmplist->next = body->next;
+        }
+    }
+
+    free(body);
+}
+
+// Verbatim copy of profs.cpp's inline class_HP() -- uses
+// utils::get_prof_points (char_utils.cpp, already linked) and GET_RACE.
+int class_HP(const char_data* character)
+{
+    double hp_coofs = 3 * utils::get_prof_points(PROF_WARRIOR, *character) + 2 * utils::get_prof_points(PROF_RANGER, *character) + utils::get_prof_points(PROF_CLERIC, *character);
+
+    if (GET_RACE(character) == RACE_ORC) {
+        hp_coofs = hp_coofs * 4.0 / 7.0;
+    }
+
+    return int(std::sqrt(hp_coofs) * 200.0);
+}
+
+// Verbatim data copy of consts.cpp's max_race_str[MAX_RACES] table.
+int max_race_str[MAX_RACES] = {
+    22, // God
+    22, // Human
+    22, // Dwarf
+    22, // Wood Elf
+    22, // Hobbit
+    22, // High Elf
+    22, // Beorning
+    22, // !UNUSED!
+    22, // !UNUSED!
+    22, // !UNUSED!
+    22, // !UNUSED!
+    22, // Uruk-Hai
+    22, // !NPC - Harad!
+    22, // Common Orc
+    22, // !NPC - Easterling!
+    22, // Uruk-Lhuth
+    22, // !NPC - Undead!
+    22, // Olog-Hai
+    22, // Haradrim
+    22, // !UNUSED!
+    22, // !NPC - Troll!
+    22 // !UNUSED!
+};
 
 // ===========================================================================
 // recalc_skills() -- spec_pro.cpp. store_to_char() calls it unconditionally
@@ -1003,13 +543,15 @@ void free_function(void* pnt)
 }
 
 // ===========================================================================
-// str_dup()/decrypt_line()/encrypt_line() -- utility.cpp. str_dup() backs
-// file_to_string_alloc() below; decrypt_line()/encrypt_line() are the
-// legacy password obfuscation cipher load_player_from_text()/
-// write_player_text() (db_players.cpp) call on every text-pfile load/save --
-// genuinely reachable for every non-account-JSON character this executable
-// converts. All three are pure byte/buffer manipulation with zero comm/game
-// dependency; verbatim copies of utility.cpp's current bodies.
+// str_dup() -- utility.cpp; backs file_to_string_alloc() below. Pure
+// byte/buffer manipulation with zero comm/game dependency; verbatim copy
+// of utility.cpp's current body.
+//
+// decrypt_line()/encrypt_line() (the legacy password obfuscation cipher)
+// used to be duplicated here too; db-split Task 4b relocated the REAL
+// bodies to entity_lifecycle.cpp (which this executable links directly),
+// so this executable now calls the one real definition instead of a
+// second copy. See entity_lifecycle.cpp.
 // ===========================================================================
 char* str_dup(const char* source)
 {
@@ -1027,55 +569,6 @@ char* str_dup(const char* source)
     new_string[length] = 0;
 
     return new_string;
-}
-
-namespace {
-unsigned char convert_stub_encrypt_line_lp[1000];
-unsigned char convert_stub_decrypt_line_line[1000];
-} // namespace
-
-void encrypt_line(unsigned char* line, int len)
-{
-    unsigned char k1, k2;
-    int tmp;
-    unsigned char* lp = convert_stub_encrypt_line_lp;
-
-    for (tmp = 0; tmp < len; tmp++)
-        if (line[tmp] > 127)
-            line[tmp] -= 128;
-
-    for (tmp = 0; tmp < len - 1; tmp++) {
-        k1 = (line[tmp] * 16);
-        k2 = (line[tmp + 1] / 8);
-        lp[tmp] = (k1 + k2) & 127;
-        lp[tmp] += 32;
-    }
-    k1 = (line[len - 1] * 16);
-    k2 = (line[0] / 8);
-    lp[len - 1] = (k1 + k2) & 127;
-    lp[len - 1] += 32;
-
-    for (tmp = 0; tmp < len; tmp++)
-        line[tmp] = lp[tmp];
-}
-
-void decrypt_line(unsigned char* lp, int len)
-{
-    unsigned char k1, k2;
-    int tmp;
-    unsigned char* line = convert_stub_decrypt_line_line;
-
-    k1 = ((lp[len - 1] - 32) * 8);
-    k2 = ((lp[0] - 32) / 16);
-    line[0] = (k1 + k2) & 127;
-    for (tmp = 1; tmp < len; tmp++) {
-        k1 = ((lp[tmp - 1] - 32) * 8);
-        k2 = ((lp[tmp] - 32) / 16);
-        line[tmp] = (k1 + k2) & 127;
-    }
-
-    for (tmp = 0; tmp < len; tmp++)
-        lp[tmp] = line[tmp];
 }
 
 // ===========================================================================
@@ -1607,23 +1100,43 @@ bool is_light(const room_data& room, const weather_data& weather)
 // executable calls reads them: this file's simplified recalc_skills()
 // above deliberately skips the only in-tree caller that would). The
 // .spell_pointer entries themselves (consts.cpp's actual reason it can't be
-// linked wholesale -- see this file's header comment and the affect-engine
-// section's APPLY_SPELL case) are NOT reproduced; only the name strings,
-// which are pure data with zero mystic.cpp/spell_pa.cpp coupling.
+// linked wholesale -- see this file's header comment) are NOT reproduced;
+// only the name strings, which are pure data with zero mystic.cpp/
+// spell_pa.cpp coupling -- so every entry's .spell_pointer is null, which
+// is exactly the value entity_lifecycle.cpp's relocated affect_modify()
+// (db-split Task 4b) needs: its `case APPLY_SPELL:` guards on `if
+// (!skills[tmp].spell_pointer) break;` before dispatching through the
+// pointer, so a null-pointer table makes that case a clean, self-documented
+// no-op here instead of a dangling-pointer call.
+//
+// Task 4b also exposed the backing table as the real global `skills[]`
+// (not just reachable through get_skill_array()'s return value), because
+// affect_modify() reads `skills[tmp]` directly (matching handler.cpp's own
+// `extern struct skill_data skills[];` reference) rather than going through
+// the accessor function.
 // Follow-on: once consts.cpp's function-pointer coupling is cut (see
 // CMakeLists.txt's ROTS_CORE_SOURCES comment), the real skills[] table can
 // be shared directly instead of this name-only duplicate, which will then
 // need to be kept in sync by hand until that lands.
 // ===========================================================================
+
+// Verbatim (name-only) data copy of consts.cpp:382-634's skills[] table,
+// positional (no [N] designators are used in the real table either, so
+// index N here means the same skill as index N there); every other field
+// (type/level/spell_pointer/beats/targets/learn_diff/learn_type/is_fast/
+// skill_spec) defaults to zero/null via value-initialization. Populated
+// lazily (see get_skill_array() below) so the .name copy loop runs once;
+// affect_modify()'s direct `skills[tmp].spell_pointer` reads never need
+// .name populated (that field is untouched by the null-pointer guard), so
+// this array is safe to read before get_skill_array() is ever called too.
+struct skill_data skills[MAX_SKILLS] = { };
+
 const skill_data* get_skill_array()
 {
-    // Verbatim (name-only) data copy of consts.cpp:382-634's skills[] table,
-    // positional (no [N] designators are used in the real table either, so
-    // index N here means the same skill as index N there). A plain
-    // string-literal array (not a skill_data aggregate initializer) so this
-    // stays -Wmissing-field-initializers-clean without spelling out all 11
-    // remaining zero/null fields per entry; kSkillNames[i] is copied into
-    // table[i].name below, once, on first call.
+    // A plain string-literal array (not a skill_data aggregate initializer)
+    // so this stays -Wmissing-field-initializers-clean without spelling out
+    // all 11 remaining zero/null fields per entry; kSkillNames[i] is copied
+    // into skills[i].name below, once, on first call.
     static const char* const kSkillNames[] = {
         "barehanded",
         "slashing",
@@ -1796,15 +1309,14 @@ const skill_data* get_skill_array()
     constexpr int kNumSkillNames = sizeof(kSkillNames) / sizeof(kSkillNames[0]);
     static_assert(kNumSkillNames <= MAX_SKILLS, "kSkillNames must fit within MAX_SKILLS");
 
-    static skill_data table[MAX_SKILLS] = { };
     static bool initialized = false;
     if (!initialized) {
         for (int i = 0; i < kNumSkillNames; ++i) {
-            std::snprintf(table[i].name, sizeof(table[i].name), "%s", kSkillNames[i]);
+            std::snprintf(skills[i].name, sizeof(skills[i].name), "%s", kSkillNames[i]);
         }
         initialized = true;
     }
-    return table;
+    return skills;
 }
 
 // ===========================================================================
@@ -1999,6 +1511,41 @@ float player_spec::wild_fighting_handler::get_attack_speed_multiplier() const
 {
     rots::log::write_stderr(
         "rots_convert: STUB player_spec::wild_fighting_handler::get_attack_speed_multiplier() "
+        "called -- this should be unreachable from the converter's load/store/save flow.");
+    return 1.0f;
+}
+
+// ===========================================================================
+// player_spec::weapon_master_handler (single-arg ctor) / get_attack_speed_multiplier()
+// -- wild_fighting_handler.cpp (combat, app layer; a DIFFERENT class from
+// player_spec::wild_fighting_handler immediately above, despite the similar
+// name and the same real-implementation TU). The only caller inside this
+// executable's linked TUs is entity_lifecycle.cpp's relocated
+// recalc_abilities() (db-split Task 4b), inside its `if (weapon)` branch --
+// unreachable-by-invariant here, same as max_race_str[] above (this
+// executable's own ch->equipment[] is always null; see convert_main.cpp),
+// but the reference must still resolve at link time (the flat build links
+// whole .cpp files; see this file's header comment). Stubbed following this
+// file's existing player_spec::wild_fighting_handler entry immediately
+// above rather than duplicating wild_fighting_handler.cpp's real (and,
+// unlike the class above, weapon-and-spec-dependent) logic.
+// Follow-on: dissolves once recalc_abilities()'s weapon branch (and the
+// rest of the combat-facing derived-stat math) moves into a rots_combat-tier
+// TU separate from the identity/persisted-stat accessors rots_convert
+// genuinely needs.
+// ===========================================================================
+player_spec::weapon_master_handler::weapon_master_handler(char_data* in_character)
+    : character(in_character)
+{
+    rots::log::write_stderr(
+        "rots_convert: STUB player_spec::weapon_master_handler::weapon_master_handler() "
+        "constructed -- this should be unreachable from the converter's load/store/save flow.");
+}
+
+float player_spec::weapon_master_handler::get_attack_speed_multiplier() const
+{
+    rots::log::write_stderr(
+        "rots_convert: STUB player_spec::weapon_master_handler::get_attack_speed_multiplier() "
         "called -- this should be unreachable from the converter's load/store/save flow.");
     return 1.0f;
 }

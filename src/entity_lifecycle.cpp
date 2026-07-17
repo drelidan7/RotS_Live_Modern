@@ -11,6 +11,26 @@
 // docs/superpowers/specs/2026-07-16-library-architecture-design.md Sec4a).
 // db.h still declares every symbol here, so callers outside this file are
 // unaffected.
+//
+// db-split Task 4b added a second tenant: the affect / derived-ability
+// engine (affect_modify/affect_naked/apply_gear_affects/modify_affects/
+// affect_total/affect_to_char/affect_remove/affected_by_spell, relocated
+// from handler.cpp; recalc_abilities/do_squareroot, from profs.cpp;
+// get_race_perception/get_naked_perception/get_naked_willpower/
+// get_confuse_modifier/encrypt_line/decrypt_line, from utility.cpp). Like
+// the lifecycle helpers above, both store_to_char() (via affect_to_char())
+// and char_to_store() (via affect_total()) call into this engine for every
+// character, so it belongs to neither the world nor the persist half
+// either -- and, same as the lifecycle helpers, it was previously
+// hand-duplicated in convert_stubs.cpp so rots_convert could link without
+// pulling in the whole handler.cpp/profs.cpp/utility.cpp TUs. Moving the
+// real bodies here restores a single definition per symbol that both
+// ageland and rots_convert link, per the review adjudication recorded in
+// docs/superpowers/plans/2026-07-17-db-split-and-rots-convert.md's "Task
+// 4b" section. See that section for the two helpers that stay in their
+// origin TUs instead (shared with a sibling function outside this
+// relocation) and this file's own affect-engine section comment below for
+// the full rationale.
 
 #include "platdef.h"
 #include <ctype.h>
@@ -48,6 +68,7 @@
 #include "platform_compat.h"
 #include "protos.h"
 #include "spells.h"
+#include "warrior_spec_handlers.h"
 #include "rots/persist/file_formats.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
@@ -67,6 +88,7 @@
 #include "text_view.h"
 #include "player_file_finalize.h"
 #include "skill_timer.h"
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -446,4 +468,745 @@ void init_char(struct char_data* ch)
 
     /* The default preference flags */
     PRF_FLAGS(ch) |= PRF_SPAM | PRF_NARRATE | PRF_CHAT | PRF_WIZ | PRF_SING | PRF_PROMPT | PRF_ECHO | PRF_SPINNER;
+}
+
+/************************************************************************
+ *  Affect / derived-ability engine (db-split Task 4b)                *
+ ************************************************************************
+ *  Relocated verbatim from handler.cpp (affect_modify/affect_naked/
+ *  apply_gear_affects/modify_affects/affect_total/affect_to_char/
+ *  affect_remove/affected_by_spell), profs.cpp (do_squareroot/
+ *  recalc_abilities), and utility.cpp (get_race_perception/
+ *  get_naked_perception/get_naked_willpower/get_confuse_modifier/
+ *  encrypt_line/decrypt_line). These were previously hand-duplicated in
+ *  convert_stubs.cpp so rots_convert could link without the whole
+ *  handler.cpp/profs.cpp/utility.cpp TUs; Task 4b restores a single real
+ *  definition per symbol (this TU is linked by BOTH ageland and
+ *  rots_convert) and deletes the convert_stubs.cpp duplicates. Bodies,
+ *  comments, and local quirks are unchanged from their origin files;
+ *  only the enclosing TU differs. Declarations are unchanged in
+ *  handler.h/utils.h.
+ *
+ *  Two small helpers stay in their ORIGINAL TUs rather than moving here,
+ *  because each is shared with a sibling function that is NOT part of
+ *  this relocation and has no header declaration of its own:
+ *    - get_from_affected_type_pool()/put_to_affected_type_pool()
+ *      (handler.cpp) -- also used by affect_to_room()/affect_remove_room(),
+ *      the room-affect analogues of affect_to_char()/affect_remove(), which
+ *      stay in handler.cpp.
+ *    - class_HP() (profs.cpp, inline) -- also used by
+ *      _INTERNAL::stat_assigner::organize() (character-creation stat
+ *      ordering), which stays in profs.cpp.
+ *  Both are forward-declared just below so the moved bodies can call them;
+ *  rots_convert (which does not link handler.cpp/profs.cpp) keeps small
+ *  ledger-documented stand-ins for both in convert_stubs.cpp.
+ ************************************************************************/
+
+// Shared-helper forward declarations for symbols this section's moved
+// bodies call but do NOT define here (see the header comment above and
+// each entry for why):
+extern struct affected_type* get_from_affected_type_pool(); // handler.cpp
+extern void put_to_affected_type_pool(struct affected_type*); // handler.cpp
+extern int class_HP(const char_data* character); // profs.cpp (inline)
+extern universal_list* affected_list; // handler.cpp -- live-tick affect-duration bookkeeping list
+extern universal_list* affected_list_pool; // handler.cpp -- pool backing affected_list
+extern int max_race_str[]; // consts.cpp -- recalc_abilities()'s GET_BAL_STR() macro
+extern struct skill_data skills[]; // consts.cpp -- affect_modify()'s APPLY_SPELL case
+
+// handler.cpp's file-local macro (APPLY_MAUL case, affect_modify() below).
+// Macros do not cross translation units, so this must be redefined here.
+#define MAX_MAUL_DODGE 50
+
+namespace {
+// Verbatim copy of profs.cpp's do_squareroot(int, char_data*) overload --
+// moved alongside recalc_abilities() (its only caller). Kept file-local
+// (anonymous namespace) so it does not collide at link time with
+// utility.cpp's separate, differently-implemented do_squareroot(int,
+// char_data*) overload (a pre-existing, unrelated same-signature function
+// used by a different call site in that TU).
+/*
+ * This function returns 200 * sqrt(i).
+ */
+inline int do_squareroot(int i, char_data*)
+{
+    return int(std::sqrt(i) * 200.0);
+}
+} // namespace
+
+/* This is called whenever some of person's stats/level change */
+void recalc_abilities(char_data* character)
+{
+    int tmp, tmp2, dex_speed;
+    struct obj_data* weapon;
+
+    if (!IS_NPC(character)) {
+        character->abilities.str = character->constabilities.str;
+        character->abilities.lea = character->constabilities.lea;
+        character->abilities.intel = character->constabilities.intel;
+        character->abilities.wil = character->constabilities.wil;
+        character->abilities.dex = character->constabilities.dex;
+        character->abilities.con = character->constabilities.con;
+
+        character->abilities.hit = 10 + std::min(LEVEL_MAX, GET_LEVEL(character)) + character->constabilities.hit * GET_CON(character) / 20 + (class_HP(character) * (GET_CON(character) + 20) / 14) * std::min(LEVEL_MAX * 100, (int)GET_MINI_LEVEL(character)) / 100000;
+
+        // Characters specialized in defender get 10% bonus HP.
+        if (utils::get_specialization(*character) == game_types::PS_Defender) {
+            character->abilities.hit += character->abilities.hit / 10;
+        }
+
+        // dirty test to see if this ranger change can work
+        character->abilities.hit = std::max(character->abilities.hit - (GET_RAW_SKILL(character, SKILL_STEALTH) * GET_LEVELA(character) + GET_RAW_SKILL(character, SKILL_STEALTH) * 3) / 33, 10);
+
+        character->tmpabilities.hit = std::min(character->tmpabilities.hit, character->abilities.hit);
+
+        character->abilities.mana = character->constabilities.mana + GET_INT(character) + GET_WILL(character) / 2 + GET_PROF_LEVEL(PROF_MAGE, character) * 2;
+
+        character->tmpabilities.mana = std::min(character->tmpabilities.mana, character->abilities.mana);
+
+        character->abilities.move = character->constabilities.move + GET_CON(character) + 20 + GET_PROF_LEVEL(PROF_RANGER, character) + GET_RAW_KNOWLEDGE(character, SKILL_TRAVELLING) / 4;
+
+        if ((GET_RACE(character) == RACE_WOOD) || GET_RACE(character) == RACE_HIGH)
+            character->abilities.move += 15;
+
+        // Giving the beorning race 50+ moves
+        if (GET_RACE(character) == RACE_BEORNING) {
+            character->abilities.move += 50;
+        }
+
+        character->tmpabilities.move = std::min(character->tmpabilities.move, character->abilities.move);
+
+        weapon = character->equipment[WIELD];
+        if (weapon) {
+            if (GET_OBJ_WEIGHT(weapon) == 0) {
+                /*UPDATE*, temporary check for 0 weight weapons*/
+                GET_OBJ_WEIGHT(weapon) = 1;
+                strcpy(buf, "SYSERR: 0 weight weapon");
+                mudlog(buf, NRM, LEVEL_GOD, TRUE);
+            }
+
+            int bulk = weapon->get_bulk();
+            character->specials.null_speed = 3 * GET_DEX(character) + 2 * (GET_RAW_SKILL(character, SKILL_ATTACK) + GET_RAW_SKILL(character, SKILL_STEALTH) / 2) / 3 + 100;
+
+            character->specials.str_speed = GET_BAL_STR(character) * 2500000 / (GET_OBJ_WEIGHT(weapon) * (bulk + 3));
+
+            if (IS_TWOHANDED(character)) {
+                character->specials.str_speed *= 2;
+            }
+
+            /* Dex adjustment by Fingol */
+            if (bulk < 4) {
+                dex_speed = GET_DEX(character) * 2500000 / (GET_OBJ_WEIGHT(weapon) * (bulk + 3));
+
+                tmp2 = (character->specials.str_speed * bulk / 5) + (dex_speed * (5 - bulk) / 5);
+
+                character->specials.str_speed = std::max(character->specials.str_speed, tmp2);
+            }
+
+            tmp = 1000000;
+            tmp /= 1000000 / character->specials.str_speed + 1000000 / (character->specials.null_speed * character->specials.null_speed);
+
+            game_types::weapon_type w_type = weapon->get_weapon_type();
+            GET_ENE_REGEN(character) = do_squareroot(tmp / 100, character) / 20;
+
+            // Custom energy regen based on race, etc.
+            if (GET_RACE(character) == RACE_DWARF && weapon_skill_num(w_type) == SKILL_AXE) {
+                GET_ENE_REGEN(character) += std::min(GET_ENE_REGEN(character) / 10, 10);
+            } else if (GET_RACE(character) == RACE_HARADRIM && weapon_skill_num(w_type) == SKILL_SPEARS) {
+                GET_ENE_REGEN(character) += std::min(GET_ENE_REGEN(character) / 20, 20);
+            }
+
+            // weapon masters get bonus attack speed with some weapons.
+            player_spec::weapon_master_handler weapon_master(character);
+            character->points.ENE_regen *= weapon_master.get_attack_speed_multiplier();
+
+        } else {
+            GET_ENE_REGEN(character) = 60 + 5 * GET_DEX(character);
+
+            /*---------------- Beornings get a different speed calc here -----------------*/
+        }
+    }
+}
+
+void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add, sh_int counter)
+{
+    int tmp, tmp2;
+
+    if (add == AFFECT_MODIFY_SET) {
+        SET_BIT(ch->specials.affected_by, bitv);
+        if (utils::is_set(bitv, long(AFF_CHARM))) {
+            ch->damage_details.reset();
+        }
+    } else if (add == AFFECT_MODIFY_REMOVE) {
+        REMOVE_BIT(ch->specials.affected_by, bitv);
+        if (utils::is_set(bitv, long(AFF_CHARM))) {
+            ch->damage_details.reset();
+        }
+
+        mod = -mod;
+    }
+    ch->specials.affected_by |= race_affect[GET_RACE(ch)];
+
+    if (add == AFFECT_MODIFY_TIME) {
+        return; /* so, usual affects are not modified in this call */
+    }
+
+    switch (loc) {
+    case APPLY_NONE:
+        break;
+
+    case APPLY_STR:
+        SET_STR_BASE(ch, GET_STR_BASE(ch) + mod);
+        SET_STR(ch, GET_STR(ch) + mod);
+        break;
+
+    case APPLY_LEA:
+        GET_LEA_BASE(ch) += mod;
+        GET_LEA(ch) += mod;
+        break;
+
+    case APPLY_DEX:
+        GET_DEX_BASE(ch) += mod;
+        GET_DEX(ch) += mod;
+        break;
+
+    case APPLY_INT:
+        GET_INT_BASE(ch) += mod;
+        GET_INT(ch) += mod;
+        break;
+
+    case APPLY_WILL:
+        GET_WILL_BASE(ch) += mod;
+        GET_WILL(ch) += mod;
+        break;
+
+    case APPLY_CON:
+        GET_CON_BASE(ch) += mod;
+        GET_CON(ch) += mod;
+        break;
+
+    case APPLY_PROF:
+        /* ??? GET_PROF(ch) += mod; */
+        break;
+
+    case APPLY_LEVEL:
+        /* ??? GET_LEVEL(ch) += mod; */
+        break;
+
+    case APPLY_AGE:
+        ch->player.time.birth -= (mod * SECS_PER_MUD_YEAR);
+        break;
+
+    case APPLY_CHAR_WEIGHT:
+        GET_WEIGHT(ch) += mod;
+        break;
+
+    case APPLY_CHAR_HEIGHT:
+        GET_HEIGHT(ch) += mod;
+        break;
+
+    case APPLY_MANA:
+        GET_MAX_MANA(ch) += mod;
+        if (GET_MANA(ch) >= GET_MAX_MANA(ch) - mod)
+            GET_MANA(ch) += mod;
+
+        break;
+
+    case APPLY_WILLPOWER:
+        GET_WILLPOWER(ch) += mod;
+        break;
+
+    case APPLY_HIT:
+        GET_MAX_HIT(ch) += mod;
+        if (GET_HIT(ch) >= GET_MAX_HIT(ch) - mod)
+            GET_HIT(ch) += mod;
+
+        break;
+
+    case APPLY_MOVE:
+        GET_MAX_MOVE(ch) += mod;
+        if (GET_MOVE(ch) >= GET_MAX_MOVE(ch) - mod)
+            GET_MOVE(ch) += mod;
+        break;
+
+    case APPLY_GOLD:
+        break;
+
+    case APPLY_EXP:
+        break;
+
+    case APPLY_DODGE:
+        SET_DODGE(ch) += mod;
+        break;
+
+    case APPLY_OB:
+        SET_OB(ch) += mod;
+        break;
+
+    case APPLY_SPELL_PEN:
+        ch->points.spell_pen += mod;
+        break;
+
+    case APPLY_SPELL_POW:
+        ch->points.spell_power += mod;
+        break;
+
+    case APPLY_DAMROLL:
+        GET_DAMAGE(ch) += mod;
+        break;
+
+    case APPLY_SAVING_SPELL:
+        GET_SAVE(ch) += mod;
+        break;
+
+    case APPLY_VISION:
+        if (add) {
+            if (mod > 0)
+                SET_BIT(ch->specials.affected_by, AFF_INFRARED);
+            if (mod < 0)
+                SET_BIT(ch->specials.affected_by, AFF_BLIND);
+        } else {
+            if (mod > 0)
+                REMOVE_BIT(ch->specials.affected_by, AFF_BLIND);
+            if (mod < 0)
+                REMOVE_BIT(ch->specials.affected_by, AFF_INFRARED);
+        }
+
+    case APPLY_REGEN:
+        break;
+
+    case APPLY_SPEED:
+        GET_ENE_REGEN(ch) += mod;
+        break;
+
+    case APPLY_BEND: {
+        GET_ENE_REGEN(ch) += (GET_ENE_REGEN(ch) / 2);
+        SET_OB(ch) += mod;
+    } break;
+
+    case APPLY_ARMOR:
+        //     mod = (2*mod*GET_PERCEPTION(ch))/100;
+        //     SET_DODGE(ch) += mod;
+        break;
+    case APPLY_MAUL:
+        if (!add) {
+            SET_DODGE(ch) += std::min((counter * 5), MAX_MAUL_DODGE);
+        }
+
+        if (add) {
+            SET_DODGE(ch) += -(std::min((counter * 5), MAX_MAUL_DODGE));
+        }
+        break;
+
+    case APPLY_PERCEPTION:
+        // Lego: Since we loop through every gear slot, we need to track the underlying perception value rather than update the final perception value
+        //       because each subsequent iteration would add/subtract the overridden minimum percep.
+        //       Then we override the underlying value with our minimum perception logic and expose that to the rest of the game.
+        ch->specials2.rawPerception += mod;
+
+        if (affected_by_spell(ch, SPELL_INSIGHT)) {
+            int minimumRacePerception = utils::get_minimum_insight_perception(*ch);
+
+            ch->specials2.perception = std::max(ch->specials2.rawPerception, minimumRacePerception);
+        } else {
+            ch->specials2.perception = ch->specials2.rawPerception;
+        }
+        break;
+
+    case APPLY_SPELL:
+        if (!add)
+            mod = -mod;
+        tmp = mod & 255; // spell number, in skills[] table
+        tmp2 = mod / 256; // spell level
+        if (!tmp2)
+            tmp2 = GET_LEVEL(ch);
+        if (tmp >= 128)
+            break;
+
+        if (!skills[tmp].spell_pointer)
+            break;
+
+        if (add)
+            skills[tmp].spell_pointer(ch, mutable_arg(""), SPELL_TYPE_SPELL, ch, 0, 0, 1);
+        else
+            skills[tmp].spell_pointer(ch, mutable_arg(""), SPELL_TYPE_ANTI, ch, 0, 0, 1);
+        break;
+
+    case APPLY_BITVECTOR:
+        if (add) {
+            if ((mod < 0) || (mod > 31))
+                mod = 0;
+            SET_BIT(ch->specials.affected_by, 1 << mod);
+        } else {
+            mod = -mod;
+            if ((mod < 0) || (mod > 31))
+                mod = 0;
+            REMOVE_BIT(ch->specials.affected_by, 1 << mod);
+        }
+        break;
+
+    case APPLY_MANA_REGEN:
+        ch->points.mana_regen += mod;
+        break;
+
+    case APPLY_RESIST:
+        // Fixed-bug (Phase 5 T6, UBSan negative-shift-exponent): AFFECT_MODIFY_REMOVE
+        // above negates `mod` (it's a bit position here, e.g. PLRSPEC_FIRE,
+        // not a numeric stat delta -- the negation is this function's generic
+        // "undo an add" convention for every APPLY_* case, not specific to
+        // this one). `1 << mod` with mod now negative is UB (confirmed live:
+        // an APPLY_VULN affect wearing off during a real world-data boot hit
+        // this under UBSan); negate back to recover the original bit
+        // position before shifting.
+        if (mod >= 0)
+            GET_RESISTANCES(ch) |= (1 << mod);
+        else
+            GET_RESISTANCES(ch) &= ~(1 << (-mod));
+        break;
+
+    case APPLY_VULN:
+        if (mod >= 0)
+            GET_VULNERABILITIES(ch) |= (1 << mod);
+        else
+            GET_VULNERABILITIES(ch) &= ~(1 << (-mod));
+        break;
+
+    default:
+        log("SYSERR: Unknown apply adjust attempt (handler.c, affect_modify).");
+        break;
+    } /* switch */
+}
+
+void affect_naked(char_data* ch)
+{
+    // sets some intrinsic parameters
+    // assumes that the char is naked and has no affections.
+
+    // SET_PERCEPTION(ch, get_naked_perception(ch));
+    int nakedPerception = get_naked_perception(ch);
+    ch->specials2.rawPerception = ch->specials2.perception = nakedPerception;
+    GET_WILLPOWER(ch) = get_naked_willpower(ch);
+    ch->specials.affected_by |= race_affect[GET_RACE(ch)];
+
+    if (!IS_NPC(ch)) {
+        GET_RESISTANCES(ch) = 0;
+        GET_VULNERABILITIES(ch) = 0;
+    }
+}
+
+void apply_gear_affects(char_data* character, const obj_data* item, int modify_flag)
+{
+    for (int count = 0; count < MAX_OBJ_AFFECT; ++count) {
+
+        const obj_affected_type& obj_affect = item->affected[count];
+        if (obj_affect.location == APPLY_SPELL)
+            continue;
+
+        affect_modify(character, obj_affect.location, obj_affect.modifier, item->obj_flags.bitvector, modify_flag, 0);
+    }
+}
+
+void apply_gear_affects(char_data* character, int modify_flag)
+{
+    for (int item_index = 0; item_index < MAX_WEAR; ++item_index) {
+        const obj_data* item = character->equipment[item_index];
+        if (item == nullptr)
+            continue;
+
+        if (item_index == HOLD && !CAN_WEAR(item, ITEM_HOLD))
+            continue;
+
+        apply_gear_affects(character, item, modify_flag);
+    }
+}
+
+void modify_affects(char_data* character, int modify_flag)
+{
+    int count = 0;
+    affected_type* af = character->affected;
+    while (count < MAX_AFFECT && af != nullptr) {
+        affect_modify(character, af->location, af->modifier, af->bitvector, modify_flag, af->counter);
+        ++count;
+        af = af->next;
+    }
+}
+
+void affect_total(struct char_data* ch, int mode)
+{
+    if (mode & AFFECT_TOTAL_REMOVE) {
+        apply_gear_affects(ch, AFFECT_MODIFY_REMOVE);
+        modify_affects(ch, AFFECT_MODIFY_REMOVE);
+
+        recalc_abilities(ch);
+        affect_naked(ch);
+    }
+
+    if (mode & AFFECT_TOTAL_SET) {
+        apply_gear_affects(ch, AFFECT_MODIFY_SET);
+        modify_affects(ch, AFFECT_MODIFY_SET);
+    }
+
+    if (mode & AFFECT_TOTAL_TIME) {
+        apply_gear_affects(ch, AFFECT_MODIFY_TIME);
+        modify_affects(ch, AFFECT_MODIFY_TIME);
+    }
+    /* Make certain values are between 0..100, not < 0 and not > 100! */
+
+    signed char max_value = 100;
+    signed char min_dex_str = 1;
+    signed char min_others = 0;
+
+    ch->abilities.dex = std::max(min_dex_str, std::min(ch->abilities.dex, max_value));
+    ch->abilities.intel = std::max(min_others, std::min(ch->abilities.intel, max_value));
+    ch->abilities.wil = std::max(min_others, std::min(ch->abilities.wil, max_value));
+    ch->abilities.con = std::max(min_others, std::min(ch->abilities.con, max_value));
+    ch->abilities.str = std::max(min_dex_str, std::min(ch->abilities.str, max_value));
+    ch->abilities.lea = std::max(min_others, std::min(ch->abilities.lea, max_value));
+}
+
+/* Insert an affect_type in a char_data structure
+   Automatically sets apropriate bits and applys
+
+   1.  Checks to see if the character is on the affected list.  If not they are added
+   2.  Allocates memory for the new affection (also inserting it into affected_list)
+   3.  Copies the parameters of the affection to the structure in the affected_list
+   4.  Adds it to the ch->affected list
+   5.  Calls affect_modify and affect_total to update the characters stats/abilities  */
+
+void affect_to_char(struct char_data* ch, struct affected_type* af)
+{
+    struct affected_type* affected_alloc;
+    universal_list* tmplist;
+    char mybuf[255];
+
+    if (!ch)
+        return;
+
+    // 1
+    if (!ch->affected) {
+        tmplist = pool_to_list(&affected_list, &affected_list_pool);
+        tmplist->ptr.ch = ch;
+        tmplist->number = ch->abs_number;
+        tmplist->type = TARGET_CHAR;
+
+        // nz(): GET_NAME(ch) can be null for a bare/uninitialized char_data
+        // (e.g. a test fixture) -- glibc's old sprintf("%s", NULL) printed
+        // "(null)" here without crashing; std::format calls strlen()
+        // unconditionally and crashes on a null char*, so nz() preserves
+        // the old byte-identical output instead (utils.h).
+        strcpy(mybuf, std::format("Char to aff_list: {}\n\r", nz(GET_NAME(ch))).c_str());
+    }
+
+    // 2
+    affected_alloc = get_from_affected_type_pool();
+
+    // 3
+    *affected_alloc = *af;
+
+    // 4
+    affected_alloc->next = ch->affected;
+    ch->affected = affected_alloc;
+
+    affected_alloc->time_phase = get_current_time_phase();
+
+    // 5
+    affect_modify(ch, af->location, af->modifier, af->bitvector,
+        AFFECT_MODIFY_SET, af->counter);
+    affect_total(ch);
+}
+
+/* Remove an affected_type structure from a char (called when duration
+   reaches zero). Pointer *af must never be NIL! Frees mem and calls
+   affect_location_apply
+                                               */
+void affect_remove(struct char_data* ch, struct affected_type* af)
+{
+    struct affected_type* hjp;
+    universal_list *tmplist, *tmplist2;
+    int tmp;
+
+    //   assert(ch->affected);
+    // Looks as though the following line is "just in case", but where did af come from in this case?
+    if (!ch->affected)
+        return;
+
+    affect_modify(ch, af->location, af->modifier, af->bitvector,
+        AFFECT_MODIFY_REMOVE, af->counter);
+
+    /* remove structure *af from linked list */
+    if (ch->affected == af) {
+        /* remove head of list */
+        ch->affected = af->next;
+    } else {
+        for (hjp = ch->affected, tmp = 0;
+             (hjp->next) && (hjp->next != af) && (tmp < MAX_AFFECT);
+             hjp = hjp->next, tmp++) {
+        }
+        if (hjp->next != af) {
+            log("SYSERR: FATAL : Could not locate affected_type in ch->affected. (handler.c, affect_remove)");
+            //	 exit(1);
+            return;
+        }
+        hjp->next = af->next; /* skip the af element */
+    }
+
+    //   RELEASE(af);
+    put_to_affected_type_pool(af);
+
+    if (!ch->affected && affected_list) {
+        for (tmplist = affected_list; tmplist; tmplist = tmplist2) {
+            tmplist2 = tmplist->next;
+            if ((tmplist->type == TARGET_CHAR) && (tmplist->ptr.ch == ch))
+                from_list_to_pool(&affected_list, &affected_list_pool, tmplist);
+        }
+    }
+
+    affect_total(ch);
+}
+
+/* Return if a char is affected by a spell (SPELL_XXX), NULL indicates not affected.
+   start_affect is not used anywhere in the mud...*/
+affected_type* affected_by_spell(const char_data* ch, byte skill, affected_type* start_affect)
+{
+    if (!start_affect)
+        start_affect = ch->affected;
+
+    int count = 0;
+    for (affected_type* status_affect = start_affect; status_affect && (count < MAX_AFFECT); status_affect = status_affect->next, count++) {
+        if (status_affect->type == skill) {
+            return status_affect;
+        }
+    }
+
+    return NULL;
+}
+
+sh_int
+get_race_perception(struct char_data* ch)
+{
+    switch (GET_RACE(ch)) {
+    case RACE_GOD:
+        return 0;
+    case RACE_HUMAN:
+        return 30;
+    case RACE_DWARF:
+        return 0;
+    case RACE_WOOD:
+        return 50;
+    case RACE_HOBBIT:
+        return 30;
+    case RACE_HIGH:
+        return 100;
+    case RACE_URUK:
+        return 30;
+    case RACE_HARAD:
+        return 30;
+    case RACE_ORC:
+        return 10;
+    case RACE_EASTERLING:
+        return 30;
+    case RACE_MAGUS:
+        return 30;
+    case RACE_UNDEAD:
+        return 60;
+    case RACE_TROLL:
+        return 30;
+    case RACE_HARADRIM:
+        return 30;
+    case RACE_BEORNING:
+        return 30;
+    case RACE_OLOGHAI:
+        return 30;
+    default:
+        return 0;
+    }
+    return 0;
+}
+
+sh_int
+get_naked_perception(struct char_data* ch)
+{
+    int tmp;
+
+    if (IS_NPC(ch)) {
+        if (MOB_FLAGGED(ch, MOB_SHADOW))
+            return 100;
+        else
+            return GET_PERCEPTION(ch);
+    }
+
+    tmp = get_race_perception(ch);
+    tmp += GET_PROF_LEVEL(PROF_CLERIC, ch) * 2;
+
+    return tmp;
+}
+
+sh_int
+get_naked_willpower(struct char_data* ch)
+{
+    return GET_PROF_LEVEL(PROF_CLERIC, ch) + GET_WILL(ch) - (get_confuse_modifier(ch) / 10);
+}
+
+int get_confuse_modifier(struct char_data* ch)
+{
+    struct affected_type* aff;
+    int modifier = 0;
+
+    if (IS_AFFECTED(ch, AFF_CONFUSE))
+        for (aff = ch->affected; aff; aff = aff->next)
+            if (aff->type == SPELL_CONFUSE)
+                modifier = aff->duration * 2 - 10;
+
+    return modifier;
+}
+
+unsigned char encrypt_line_lp[1000];
+void encrypt_line(unsigned char* line, int len)
+{
+    unsigned char k1, k2;
+    int tmp;
+    /*static*/ unsigned char* lp = encrypt_line_lp;
+
+    for (tmp = 0; tmp < len; tmp++)
+        if (line[tmp] > 127)
+            line[tmp] -= 128;
+
+    for (tmp = 0; tmp < len - 1; tmp++) {
+        k1 = (line[tmp] * 16); // here was *32...
+        k2 = (line[tmp + 1] / 8);
+        lp[tmp] = (k1 + k2) & 127;
+        lp[tmp] += 32;
+        //    printf("encoding: '%c' %d %d '%c'%d\n",line[tmp],k1,k2 ,lp[tmp],lp[tmp]);
+    }
+    k1 = (line[len - 1] * 16);
+    k2 = (line[0] / 8);
+    // k2 = 0;
+    lp[len - 1] = (k1 + k2) & 127;
+    lp[len - 1] += 32;
+    //  printf("e-encoding: '%c' %d %d '%c'%d\n",line[len-1],k1,k2 ,lp[len-1],lp[len-1]);
+
+    for (tmp = 0; tmp < len; tmp++)
+        line[tmp] = lp[tmp];
+}
+
+unsigned char decrypt_line_line[1000];
+void decrypt_line(unsigned char* lp, int len)
+{
+    unsigned char k1, k2;
+    int tmp;
+    /*static*/ unsigned char* line = decrypt_line_line;
+
+    k1 = ((lp[len - 1] - 32) * 8);
+    // k1 = 0;
+    k2 = ((lp[0] - 32) / 16);
+    line[0] = (k1 + k2) & 127;
+    //  printf("d-decoding: '%c'%d %d %d '%c'%d\n",lp[0],lp[0],k1,k2 ,line[0],line[0]);
+    for (tmp = 1; tmp < len; tmp++) {
+        k1 = ((lp[tmp - 1] - 32) * 8);
+        k2 = ((lp[tmp] - 32) / 16); // here was /32
+        line[tmp] = (k1 + k2) & 127;
+        //    printf("decoding: '%c'%d %d %d '%c'%d\n",lp[tmp],lp[tmp],k1,k2 ,line[tmp],line[tmp]);
+    }
+
+    for (tmp = 0; tmp < len; tmp++)
+        lp[tmp] = line[tmp];
 }

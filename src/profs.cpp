@@ -154,13 +154,8 @@ sh_int get_lea_mod(int race)
     return race_modifiers[race][mod_index];
 }
 
-/*
- * This function returns 200 * sqrt(i).
- */
-inline int do_squareroot(int i, char_data*)
-{
-    return int(std::sqrt(i) * 200.0);
-}
+// do_squareroot() (the recalc_abilities()-only overload) relocated to
+// entity_lifecycle.cpp alongside recalc_abilities() (db-split Task 4b).
 
 inline int class_HP(const char_data* character)
 {
@@ -741,99 +736,8 @@ void roll_abilities(char_data* character, int min_sum, int max_sum)
     character->tmpabilities = character->abilities;
 }
 
-/* This is called whenever some of person's stats/level change */
-void recalc_abilities(char_data* character)
-{
-    int tmp, tmp2, dex_speed;
-    struct obj_data* weapon;
-
-    if (!IS_NPC(character)) {
-        character->abilities.str = character->constabilities.str;
-        character->abilities.lea = character->constabilities.lea;
-        character->abilities.intel = character->constabilities.intel;
-        character->abilities.wil = character->constabilities.wil;
-        character->abilities.dex = character->constabilities.dex;
-        character->abilities.con = character->constabilities.con;
-
-        character->abilities.hit = 10 + std::min(LEVEL_MAX, GET_LEVEL(character)) + character->constabilities.hit * GET_CON(character) / 20 + (class_HP(character) * (GET_CON(character) + 20) / 14) * std::min(LEVEL_MAX * 100, (int)GET_MINI_LEVEL(character)) / 100000;
-
-        // Characters specialized in defender get 10% bonus HP.
-        if (utils::get_specialization(*character) == game_types::PS_Defender) {
-            character->abilities.hit += character->abilities.hit / 10;
-        }
-
-        // dirty test to see if this ranger change can work
-        character->abilities.hit = std::max(character->abilities.hit - (GET_RAW_SKILL(character, SKILL_STEALTH) * GET_LEVELA(character) + GET_RAW_SKILL(character, SKILL_STEALTH) * 3) / 33, 10);
-
-        character->tmpabilities.hit = std::min(character->tmpabilities.hit, character->abilities.hit);
-
-        character->abilities.mana = character->constabilities.mana + GET_INT(character) + GET_WILL(character) / 2 + GET_PROF_LEVEL(PROF_MAGE, character) * 2;
-
-        character->tmpabilities.mana = std::min(character->tmpabilities.mana, character->abilities.mana);
-
-        character->abilities.move = character->constabilities.move + GET_CON(character) + 20 + GET_PROF_LEVEL(PROF_RANGER, character) + GET_RAW_KNOWLEDGE(character, SKILL_TRAVELLING) / 4;
-
-        if ((GET_RACE(character) == RACE_WOOD) || GET_RACE(character) == RACE_HIGH)
-            character->abilities.move += 15;
-
-        // Giving the beorning race 50+ moves
-        if (GET_RACE(character) == RACE_BEORNING) {
-            character->abilities.move += 50;
-        }
-
-        character->tmpabilities.move = std::min(character->tmpabilities.move, character->abilities.move);
-
-        weapon = character->equipment[WIELD];
-        if (weapon) {
-            if (GET_OBJ_WEIGHT(weapon) == 0) {
-                /*UPDATE*, temporary check for 0 weight weapons*/
-                GET_OBJ_WEIGHT(weapon) = 1;
-                strcpy(buf, "SYSERR: 0 weight weapon");
-                mudlog(buf, NRM, LEVEL_GOD, TRUE);
-            }
-
-            int bulk = weapon->get_bulk();
-            character->specials.null_speed = 3 * GET_DEX(character) + 2 * (GET_RAW_SKILL(character, SKILL_ATTACK) + GET_RAW_SKILL(character, SKILL_STEALTH) / 2) / 3 + 100;
-
-            character->specials.str_speed = GET_BAL_STR(character) * 2500000 / (GET_OBJ_WEIGHT(weapon) * (bulk + 3));
-
-            if (IS_TWOHANDED(character)) {
-                character->specials.str_speed *= 2;
-            }
-
-            /* Dex adjustment by Fingol */
-            if (bulk < 4) {
-                dex_speed = GET_DEX(character) * 2500000 / (GET_OBJ_WEIGHT(weapon) * (bulk + 3));
-
-                tmp2 = (character->specials.str_speed * bulk / 5) + (dex_speed * (5 - bulk) / 5);
-
-                character->specials.str_speed = std::max(character->specials.str_speed, tmp2);
-            }
-
-            tmp = 1000000;
-            tmp /= 1000000 / character->specials.str_speed + 1000000 / (character->specials.null_speed * character->specials.null_speed);
-
-            game_types::weapon_type w_type = weapon->get_weapon_type();
-            GET_ENE_REGEN(character) = do_squareroot(tmp / 100, character) / 20;
-
-            // Custom energy regen based on race, etc.
-            if (GET_RACE(character) == RACE_DWARF && weapon_skill_num(w_type) == SKILL_AXE) {
-                GET_ENE_REGEN(character) += std::min(GET_ENE_REGEN(character) / 10, 10);
-            } else if (GET_RACE(character) == RACE_HARADRIM && weapon_skill_num(w_type) == SKILL_SPEARS) {
-                GET_ENE_REGEN(character) += std::min(GET_ENE_REGEN(character) / 20, 20);
-            }
-
-            // weapon masters get bonus attack speed with some weapons.
-            player_spec::weapon_master_handler weapon_master(character);
-            character->points.ENE_regen *= weapon_master.get_attack_speed_multiplier();
-
-        } else {
-            GET_ENE_REGEN(character) = 60 + 5 * GET_DEX(character);
-
-            /*---------------- Beornings get a different speed calc here -----------------*/
-        }
-    }
-}
+// recalc_abilities() relocated to entity_lifecycle.cpp (db-split Task 4b);
+// declaration unchanged in utils.h.
 
 /* Hp per level:  con/6 for pure mage, con/3 for normal warrior. plus*/
 /* 10 hits for pure warrior */

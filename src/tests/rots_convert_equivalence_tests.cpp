@@ -589,11 +589,66 @@ TEST_P(ConvertEquivalence, PerRaceLegacyPfileMatchesInMudConversion) {
     // both return absolute paths), so this command is independent of this
     // process's current directory.
     const std::string log_path = convert_root.path() + "/rots_convert.log";
-    const std::string command = "\"" + rots_convert_path_ + "\" --lib \"" + convert_root.path() +
-                                "\" > \"" + log_path + "\" 2>&1";
+    const std::string inner_command = "\"" + rots_convert_path_ + "\" --lib \"" +
+                                      convert_root.path() + "\" > \"" + log_path + "\" 2>&1";
+#ifdef _WIN32
+    // std::system() on Windows runs the command via `cmd.exe /C <command>`.
+    // cmd's own quote-stripping rule (see `cmd /?`'s "old behavior" clause)
+    // only preserves quote characters verbatim when the command line
+    // contains EXACTLY TWO of them; otherwise -- if the first character is
+    // a quote -- cmd strips that leading quote AND the LAST quote character
+    // ANYWHERE on the command line, not its matching partner. inner_command
+    // above has six quotes (one pair per quoted path/argument: the
+    // executable, the --lib value, the redirected log path), so that
+    // "old behavior" fires: cmd strips the leading quote of the executable
+    // path and the closing quote of the redirected log path, leaving the
+    // executable path's OWN closing quote stranded mid-string (i.e. cmd
+    // tries to resolve an executable literally named `...rots_convert.exe"`
+    // -- a nonexistent file with an embedded trailing quote). The whole
+    // invocation then fails before rots_convert -- or even the `>`
+    // redirection that would create log_path -- ever runs. That silent
+    // no-op is exactly what showed up in CI as a "file != nullptr" failure
+    // when this test tried to read log_path: there was no log file, because
+    // nothing ran.
+    //
+    // The documented workaround is to wrap the WHOLE command line in one
+    // more pair of quotes (the well-known `cmd /c ""..." "..."` doubling).
+    // That brings the total to eight quotes -- still not "exactly two" -- so
+    // the same old-behavior rule fires again, but this time it strips only
+    // the two quotes this wrapping just added: the new leading quote, and
+    // the new trailing quote, which is unambiguously the LAST quote
+    // character in the whole line since nothing follows it. What remains is
+    // inner_command exactly as constructed above, with its six original
+    // quotes intact and still correctly paired for the child process's own
+    // command-line-to-argv parsing.
+    const std::string command = "\"" + inner_command + "\"";
+#else
+    // POSIX std::system() runs the command via `/bin/sh -c <command>`, whose
+    // quoting rules simply concatenate adjacent quoted/unquoted segments --
+    // no outer-wrapping workaround is needed (or wanted: it would just be a
+    // no-op here, but there is no reason to depend on that).
+    const std::string command = inner_command;
+#endif
     const int exit_code = std::system(command.c_str());
-    EXPECT_EQ(exit_code, 0) << "rots_convert exited non-zero for " << test_case.label << "; log:\n"
-                            << read_file_contents(log_path);
+
+    // Diagnose a nonzero exit code -- including an outright failed launch,
+    // per the Windows quoting note above -- BEFORE trying to read anything
+    // the child process was supposed to produce. read_file_contents() below
+    // asserts the file it opens exists; calling it on a log file the child
+    // never created would turn one clear "the converter failed, exit status
+    // N" failure into a confusing secondary "could not open <path>" one.
+    // Report the exit status directly, and only attempt to read the log if
+    // it actually exists. ASSERT (not EXPECT): a failed conversion run makes
+    // every downstream check in this test case (output-file existence, line
+    // counts, line-by-line comparison) meaningless noise on top of this one
+    // root cause.
+    std::string log_contents = "(rots_convert produced no log file at " + log_path + ")";
+    std::error_code log_exists_error;
+    if (std::filesystem::exists(log_path, log_exists_error) && !log_exists_error)
+        log_contents = read_file_contents(log_path);
+    ASSERT_EQ(exit_code, 0) << "rots_convert exited with status " << exit_code << " for "
+                            << test_case.label << "; log:\n"
+                            << log_contents;
 
     const BucketFile actual_output =
         read_single_bucket_file_for(convert_root.path() + "/players/A-E", test_case.name);

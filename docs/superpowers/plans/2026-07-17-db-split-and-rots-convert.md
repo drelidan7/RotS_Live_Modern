@@ -76,6 +76,19 @@
 - [ ] Step 3: Full both-host gates; note the new ctest total.
 - [ ] Step 4: Commit `test: rots_convert output byte-equivalent to in-MUD conversion`.
 
+## Task 4 addendum (from Task 3's review adjudication — binding)
+
+The equivalence test MUST cover every playable race (Task 3's Critical was a wrong race table invisible to a raceless smoke) and must control for the deliberately non-reproducible `get_current_time_phase()` stub (exclude/normalize `affect.time_phase` in comparisons, or use affect-free fixtures plus one documented affect-bearing case).
+
+## Task 4b: Relocate the affect/derived-ability engine into `entity_lifecycle.cpp` (mandatory pre-merge)
+
+Adjudicated by Task 3's review: the ~14 affect/derived-ability functions duplicated into `convert_stubs.cpp` (from `handler.cpp`, `profs.cpp`, `utility.cpp` — `affect_modify`, `affect_total`, `affect_naked`, `affect_to_char`, `affect_remove`, `recalc_abilities`, `class_HP`, `get_naked_perception`, `get_naked_willpower`, `get_race_perception`, `get_confuse_modifier`, the cipher `encrypt_line`/`decrypt_line`, and kin — final list per the stub ledger) are RELOCATED verbatim into `entity_lifecycle.cpp`, restoring single-definition, and their duplicates deleted from `convert_stubs.cpp`. The reviewer verified no blocking obstacle: `skills[].spell_pointer` stays a converter-side data stub (null pointers self-skip via the body's own guard); the weapon-branch/`buf`/`pulse`/list-bookkeeping externs get small ledger stubs, all smaller than today's copies.
+
+- [ ] Step 1: Move each function verbatim from its defining TU into `entity_lifecycle.cpp` (byte-identity script per the wave's established method); the source TUs lose the bodies; declarations stay where they are (handler.h/utils.h — unchanged surface). `nm` single-definition check across all objects.
+- [ ] Step 2: Delete the now-redundant duplicates from `convert_stubs.cpp`; keep/adjust the small data/extern stubs the relocated bodies need (documented in the ledger as before).
+- [ ] Step 3: Full gates both hosts (1253/1253 + boot goldens — ageland behavior identical: same code, different TU) + functional re-smoke with identical conversion counts + re-run the Task 4 equivalence test (it verifies the move).
+- [ ] Step 4: Commit `refactor: relocate affect/derived-ability engine to entity_lifecycle (kills stub duplicates)`.
+
 ## Task 5: Docs + finalization
 
 - [ ] Step 1: `docs/BUILD.md`: db split (three TUs + entity_lifecycle), `rots_convert` (what it links, what the stub ledger means, CMake-only), updated library-layering text. Spec §4: as-built note (converter membership subset — objsave/boards/mail deferred with their welds catalogued; capture/codec split for crime+exploits; the `world_room_vnum` seam). AGENTS.md: add `rots_convert` one-liner to the build section if warranted.

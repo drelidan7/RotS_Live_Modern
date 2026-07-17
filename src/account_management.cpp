@@ -9,6 +9,8 @@
 #include "rots_crypt.h"
 #include "text_view.h"
 #include "utils.h"
+#include "rots/persist/file_formats.h"
+#include "rots/core/types.h"
 
 #include <cerrno>
 #include <cstdio>

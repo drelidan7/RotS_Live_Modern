@@ -1,7 +1,7 @@
 #ifndef CHARPLAYERDATABUILDER_H_
 #define CHARPLAYERDATABUILDER_H_
 
-#include "../structs.h"
+#include "rots/core/types.h"
 
 namespace builders {
 

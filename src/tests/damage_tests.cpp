@@ -1,5 +1,6 @@
 #include "../spells.h"
 #include "../utils.h"
+#include "rots/core/character.h"
 #include "damage_test_context.h"
 #include "test_random_utils.h"
 #include <gtest/gtest.h>

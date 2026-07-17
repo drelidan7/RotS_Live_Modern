@@ -1,7 +1,7 @@
 #include "../boards.h"
 #include "../db.h"
 #include "../pkill.h"
-#include "../structs.h"
+#include "rots/persist/file_formats.h"
 
 #include <gtest/gtest.h>
 

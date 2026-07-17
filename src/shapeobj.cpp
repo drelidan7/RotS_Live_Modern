@@ -10,7 +10,10 @@
 #include "db.h"
 #include "interpre.h"
 #include "protos.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/object.h"
+#include "rots/core/room.h"
+#include "rots/core/types.h"
 #include "utils.h"
 #include <format>
 #include <iterator>

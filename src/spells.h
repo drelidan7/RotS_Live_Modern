@@ -12,7 +12,8 @@
 #define SPELLS_H
 
 #include "platdef.h" /* For sh_int, ush_int, byte, etc. */
-#include "structs.h" /* For the MAX_SKILLS macro */
+#include "rots/core/types.h" /* For the MAX_SKILLS macro */
+#include "rots/core/fwd.h"
 #include <algorithm>
 
 /*

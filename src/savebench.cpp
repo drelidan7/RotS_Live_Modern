@@ -4,7 +4,9 @@
 #include "comm.h"
 #include "db.h"
 #include "save_benchmark.h"
-#include "structs.h"
+#include "rots/persist/file_formats.h"
+#include "rots/core/character.h"
+#include "rots/core/types.h"
 #include "utils.h"
 
 #include <cstdlib>

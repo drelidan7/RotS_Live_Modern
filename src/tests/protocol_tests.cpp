@@ -2,14 +2,18 @@
 #include "../limits.h"
 #include "../protocol.h"
 #include "../rots_net.h"
-#include "../structs.h"
+#include "rots/core/character.h"
+#include "rots/core/room.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/tables.h"
+#include "rots/core/types.h"
 #include "../utils.h"
 #include "test_char_cleanup.h"
 
 // IAC/DO/WILL/TELOPT_TTYPE: from <arpa/telnet.h> on POSIX; that header does
 // not exist on Windows, where platdef.h hand-declares the same fixed RFC
 // 854/1091 byte values instead (Phase 3 Task 5's stand-in, used here in
-// Task 6). structs.h above already pulls in platdef.h, which on Windows
+// Task 6). rots/core/types.h above already pulls in platdef.h, which on Windows
 // brings in winsock2.h/ws2tcpip.h (socket()/bind()/listen()/connect()/
 // accept()/getsockname()/htonl()) -- ProtocolDescriptor below needs those
 // too, for its portable loopback pair.

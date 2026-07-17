@@ -1,7 +1,9 @@
 #include "wait_functions.h"
 #include "base_utils.h"
 #include "char_utils.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/types.h"
 
 #include "comm.h" // for send-to-char
 #include "delayed_command_interpreter.h"

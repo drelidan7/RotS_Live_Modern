@@ -28,10 +28,19 @@ CXX = g++
 # see docs/BUILD.md "FP determinism" and src/Makefile / src/CMakeLists.txt's
 # ROTS_FP_OPTIONS) -- bans FMA fusion so -O2+ can't silently round differently
 # from -O0 or other platforms.
-CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -ffp-contract=off -funsigned-char -MMD -MP
+# -I../core/include -I../persist/include: the header-split wave's product .cpp files
+# (OBJFILES below, e.g. act_comm.cpp/act_wiz.cpp) now bare-quote-include "rots/core/*.h"/
+# "rots/persist/*.h" directly (Tasks 6-10), and many of src/'s own headers (utils.h,
+# db.h, handler.h, etc., since Task 12 deleted the structs.h umbrella) do too -- both
+# need this on the plain CXXFLAGS used by OBJFILES' explicit per-file rules, not just on
+# TEST_CXXFLAGS below (which already had it for the test TUs). Mirrors src/Makefile's
+# ALL_CPPFLAGS (`-Icore/include -Ipersist/include`, applied to every compile there). A
+# build-flag-only fix -- no file's resolved header set changes -- so it cannot affect
+# runtime behavior or goldens (same reasoning as this file's existing -idirafter note).
+CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -ffp-contract=off -funsigned-char -MMD -MP -I../core/include -I../persist/include
 # -idirafter .. lets the account_management_*_header_compile.cpp probes (and
 # every other tests/*.cpp) use bare #include "account_management_assets.h" /
-# "structs.h" (etc.) to reach the product headers one directory up; mirrors
+# "utils.h" (etc.) to reach the product headers one directory up; mirrors
 # the -idirafter (NOT -iquote, NOT -I) that src/CMakeLists.txt uses for its
 # ROTS_TEST_SOURCES list. Never a bare -I..: that would ALSO add it to the
 # angle-bracket (<...>) search path, and src/limits.h (the game's player-
@@ -66,7 +75,7 @@ CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -m
 # and only falls through to ../limits.h for a bare quoted include that
 # nothing else on the list satisfies (i.e. still works as a same-priority-
 # as-before fallback for genuine product headers: no other directory on the
-# list has an "account_management_assets.h", "structs.h", etc., so ordering
+# list has an "account_management_assets.h", "utils.h", etc., so ordering
 # never mattered for those). No test source bare-quote-includes "limits.h"
 # relying on this path (interpre_account_menu_tests.cpp, the one test that
 # needs the project's own limits.h, uses the explicit "../limits.h" relative
@@ -105,13 +114,13 @@ crashsave_schedule.o : ../crashsave_schedule.cpp ../crashsave_schedule.h
 player_file_finalize.o : ../player_file_finalize.cpp ../player_file_finalize.h
 	$(CXX) -c $(CXXFLAGS) ../player_file_finalize.cpp
 
-save_benchmark.o : ../save_benchmark.cpp ../save_benchmark.h ../account_cache.h ../account_management.h ../character_json.h ../db.h ../stopwatch.h ../structs.h
+save_benchmark.o : ../save_benchmark.cpp ../save_benchmark.h ../account_cache.h ../account_management.h ../character_json.h ../db.h ../stopwatch.h
 	$(CXX) -c $(CXXFLAGS) ../save_benchmark.cpp
 
-savebench.o : ../savebench.cpp ../savebench.h ../save_benchmark.h ../account_management.h ../comm.h ../db.h ../structs.h ../utils.h
+savebench.o : ../savebench.cpp ../savebench.h ../save_benchmark.h ../account_management.h ../comm.h ../db.h ../utils.h
 	$(CXX) -c $(CXXFLAGS) ../savebench.cpp
 
-character_json.o : ../character_json.cpp ../character_json.h ../json_utils.h ../structs.h
+character_json.o : ../character_json.cpp ../character_json.h ../json_utils.h
 	$(CXX) -c $(CXXFLAGS) ../character_json.cpp
 
 exploits_json.o : ../exploits_json.cpp ../exploits_json.h ../json_utils.h ../db.h
@@ -120,149 +129,149 @@ exploits_json.o : ../exploits_json.cpp ../exploits_json.h ../json_utils.h ../db.
 json_utils.o : ../json_utils.cpp ../json_utils.h
 	$(CXX) -c $(CXXFLAGS) ../json_utils.cpp
 
-objects_json.o : ../objects_json.cpp ../objects_json.h ../json_utils.h ../structs.h
+objects_json.o : ../objects_json.cpp ../objects_json.h ../json_utils.h
 	$(CXX) -c $(CXXFLAGS) ../objects_json.cpp
 
 clock.o : ../clock.cpp ../clock.h
 	$(CXX) -c $(CXXFLAGS) ../clock.cpp
 
-comm.o : ../comm.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h \
+comm.o : ../comm.cpp ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h \
 	../limits.h ../clock.h
 	$(CXX) -c $(CXXFLAGS) $(COMMFLAGS) ../comm.cpp
 char_utils.o : ../char_utils.cpp ../base_utils.h ../char_utils.h ../object_utils.h \
-	../environment_utils.h ../structs.h ../handler.h
+	../environment_utils.h ../handler.h
 	$(CXX) -c $(CXXFLAGS) ../char_utils.cpp
-environment_utils.o : ../environment_utils.cpp ../structs.h ../environment_utils.h
+environment_utils.o : ../environment_utils.cpp ../environment_utils.h
 	$(CXX) -c $(CXXFLAGS) ../environment_utils.cpp
-object_utils.o : ../object_utils.cpp ../structs.h ../object_utils.h
+object_utils.o : ../object_utils.cpp ../object_utils.h
 	$(CXX) -c $(CXXFLAGS) ../object_utils.cpp
-char_utils_combat.o : ../char_utils_combat.cpp ../structs.h ../base_utils.h ../char_utils.h ../object_utils.h  ../comm.h ../char_utils_combat.h
+char_utils_combat.o : ../char_utils_combat.cpp ../base_utils.h ../char_utils.h ../object_utils.h  ../comm.h ../char_utils_combat.h
 	$(CXX) -c $(CXXFLAGS) ../char_utils_combat.cpp
 big_brother.o : ../big_brother.cpp ../big_brother.h ../base_utils.h ../singleton.h
 	$(CXX) -c $(CXXFLAGS) ../big_brother.cpp
-battle_mage_handler.o : ../battle_mage_handler.cpp ../warrior_spec_handlers.h ../structs.h
+battle_mage_handler.o : ../battle_mage_handler.cpp ../warrior_spec_handlers.h
 	$(CXX) -c $(CXXFLAGS) ../battle_mage_handler.cpp
-wild_fighting_handler.o : ../wild_fighting_handler.cpp ../warrior_spec_handlers.h ../structs.h
+wild_fighting_handler.o : ../wild_fighting_handler.cpp ../warrior_spec_handlers.h
 	$(CXX) -c $(CXXFLAGS) ../wild_fighting_handler.cpp
-weapon_master_handler.o : ../weapon_master_handler.cpp ../warrior_spec_handlers.h ../structs.h
+weapon_master_handler.o : ../weapon_master_handler.cpp ../warrior_spec_handlers.h
 	$(CXX) -c $(CXXFLAGS) ../weapon_master_handler.cpp
 skill_timer.o : ../skill_timer.cpp ../skill_timer.h ../singleton.h
 	$(CXX) -c $(CXXFLAGS) ../skill_timer.cpp
-olog_hai.o : ../olog_hai.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../handler.h \
+olog_hai.o : ../olog_hai.cpp ../utils.h ../comm.h ../interpre.h ../handler.h \
 	../db.h ../spells.h ../limits.h
 	$(CXX) -c $(CXXFLAGS) ../olog_hai.cpp
 delayed_command_interpreter.o : ../delayed_command_interpreter.cpp ../delayed_command_interpreter.h
 	$(CXX) -c $(CXXFLAGS) ../delayed_command_interpreter.cpp
-wait_functions.o : ../wait_functions.cpp ../structs.h ../base_utils.h ../char_utils.h ../object_utils.h  ../comm.h
+wait_functions.o : ../wait_functions.cpp ../base_utils.h ../char_utils.h ../object_utils.h  ../comm.h
 	$(CXX) -c $(CXXFLAGS) ../wait_functions.cpp
-act_comm.o : ../act_comm.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../handler.h \
+act_comm.o : ../act_comm.cpp ../utils.h ../comm.h ../interpre.h ../handler.h \
 	../db.h
 	$(CXX) -c $(CXXFLAGS) ../act_comm.cpp
-act_info.o : ../act_info.cpp ../structs.h ../utils.h ../comm.h ../interpre.h \
+act_info.o : ../act_info.cpp ../utils.h ../comm.h ../interpre.h \
 	../handler.h ../db.h ../spells.h ../limits.h
 	$(CXX) -c $(CXXFLAGS) ../act_info.cpp
-act_move.o : ../act_move.cpp ../structs.h ../utils.h ../comm.h ../interpre.h \
+act_move.o : ../act_move.cpp ../utils.h ../comm.h ../interpre.h \
 	../handler.h ../db.h ../spells.h
 	$(CXX) -c $(CXXFLAGS) ../act_move.cpp
-act_obj1.o : ../act_obj1.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../handler.h \
+act_obj1.o : ../act_obj1.cpp ../utils.h ../comm.h ../interpre.h ../handler.h \
 	../db.h ../spells.h
 	$(CXX) -c $(CXXFLAGS) ../act_obj1.cpp
-act_obj2.o : ../act_obj2.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../handler.h \
+act_obj2.o : ../act_obj2.cpp ../utils.h ../comm.h ../interpre.h ../handler.h \
 	../db.h ../spells.h ../limits.h
 	$(CXX) -c $(CXXFLAGS) ../act_obj2.cpp
-act_offe.o : ../act_offe.cpp ../structs.h ../utils.h ../comm.h ../interpre.h \
+act_offe.o : ../act_offe.cpp ../utils.h ../comm.h ../interpre.h \
 	../handler.h ../db.h ../spells.h ../limits.h
 	$(CXX) -c $(CXXFLAGS) ../act_offe.cpp
-act_othe.o : ../act_othe.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../handler.h \
+act_othe.o : ../act_othe.cpp ../utils.h ../comm.h ../interpre.h ../handler.h \
 	../db.h ../spells.h ../limits.h
 	$(CXX) -c $(CXXFLAGS) ../act_othe.cpp
-act_soci.o : ../act_soci.cpp ../structs.h ../utils.h ../comm.h ../interpre.h \
+act_soci.o : ../act_soci.cpp ../utils.h ../comm.h ../interpre.h \
 	../handler.h ../db.h ../spells.h
 	$(CXX) -c $(CXXFLAGS) ../act_soci.cpp
-act_wiz.o : ../act_wiz.cpp ../structs.h ../utils.h ../comm.h ../interpre.h \
+act_wiz.o : ../act_wiz.cpp ../utils.h ../comm.h ../interpre.h \
 	../handler.h ../db.h ../spells.h ../limits.h ../profs.h
 	$(CXX) -c $(CXXFLAGS) ../act_wiz.cpp
-handler.o : ../handler.cpp ../structs.h ../utils.h ../comm.h ../db.h ../handler.h ../interpre.h
+handler.o : ../handler.cpp ../utils.h ../comm.h ../db.h ../handler.h ../interpre.h
 	$(CXX) -c $(CXXFLAGS) ../handler.cpp
-db.o : ../db.cpp ../structs.h ../utils.h ../db.h ../comm.h ../handler.h ../limits.h ../spells.h \
+db.o : ../db.cpp ../utils.h ../db.h ../comm.h ../handler.h ../limits.h ../spells.h \
         ../interpre.h ../big_brother.h ../skill_timer.h
 	$(CXX) -c $(CXXFLAGS) ../db.cpp
-ban.o : ../ban.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h
+ban.o : ../ban.cpp ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h
 	$(CXX) -c $(CXXFLAGS) ../ban.cpp
-interpre.o : ../interpre.cpp ../structs.h ../comm.h ../interpre.h ../db.h ../utils.h \
+interpre.o : ../interpre.cpp ../comm.h ../interpre.h ../db.h ../utils.h \
 	../limits.h ../spells.h ../handler.h ../profs.h
 	$(CXX) -c $(CXXFLAGS) ../interpre.cpp
-utility.o : ../utility.cpp ../structs.h ../utils.h ../comm.h
+utility.o : ../utility.cpp ../utils.h ../comm.h
 	$(CXX) -c $(CXXFLAGS) ../utility.cpp
-spec_ass.o : ../spec_ass.cpp ../structs.h ../db.h ../interpre.h ../utils.h
+spec_ass.o : ../spec_ass.cpp ../db.h ../interpre.h ../utils.h
 	$(CXX) -c $(CXXFLAGS) ../spec_ass.cpp
-spec_pro.o : ../spec_pro.cpp ../structs.h ../utils.h ../comm.h ../interpre.h \
+spec_pro.o : ../spec_pro.cpp ../utils.h ../comm.h ../interpre.h \
 	../handler.h ../db.h ../spells.h ../limits.h
 	$(CXX) -c $(CXXFLAGS) ../spec_pro.cpp
-limits.o : ../limits.cpp ../structs.h ../limits.h ../utils.h ../spells.h ../comm.h ../db.h ../handler.h          ../profs.h
+limits.o : ../limits.cpp ../limits.h ../utils.h ../spells.h ../comm.h ../db.h ../handler.h          ../profs.h
 	$(CXX) -c $(CXXFLAGS) ../limits.cpp
-fight.o	: ../fight.cpp ../structs.h ../utils.h ../comm.h ../handler.h ../interpre.h ../db.h ../spells.h ../limits.h
+fight.o	: ../fight.cpp ../utils.h ../comm.h ../handler.h ../interpre.h ../db.h ../spells.h ../limits.h
 	$(CXX) -c $(CXXFLAGS) ../fight.cpp
-weather.o : ../weather.cpp ../structs.h ../utils.h ../comm.h ../handler.h ../interpre.h ../db.h
+weather.o : ../weather.cpp ../utils.h ../comm.h ../handler.h ../interpre.h ../db.h
 	$(CXX) -c $(CXXFLAGS) ../weather.cpp
-shop.o : ../shop.cpp ../structs.h ../comm.h ../handler.h ../db.h ../interpre.h ../utils.h
+shop.o : ../shop.cpp ../comm.h ../handler.h ../db.h ../interpre.h ../utils.h
 	$(CXX) -c $(CXXFLAGS) ../shop.cpp
-mystic.o : ../mystic.cpp ../structs.h ../utils.h ../comm.h ../spells.h ../handler.h ../limits.h \
+mystic.o : ../mystic.cpp ../utils.h ../comm.h ../spells.h ../handler.h ../limits.h \
 	../interpre.h ../db.h
 	$(CXX) -c $(CXXFLAGS) ../mystic.cpp
-mage.o  : ../mage.cpp ../structs.h ../utils.h ../comm.h ../spells.h ../handler.h ../limits.h \
+mage.o  : ../mage.cpp ../utils.h ../comm.h ../spells.h ../handler.h ../limits.h \
         ../interpre.h ../db.h
 	${CXX} -c ${CXXFLAGS} ../mage.cpp
-spell_pa.o : ../spell_pa.cpp ../structs.h ../utils.h ../comm.h ../db.h ../interpre.h \
+spell_pa.o : ../spell_pa.cpp ../utils.h ../comm.h ../db.h ../interpre.h \
 	../spells.h ../handler.h
 	$(CXX) -c $(CXXFLAGS) ../spell_pa.cpp
-mobact.o : ../mobact.cpp ../utils.h ../structs.h ../db.h ../comm.h ../interpre.h ../handler.h
+mobact.o : ../mobact.cpp ../utils.h ../db.h ../comm.h ../interpre.h ../handler.h
 	$(CXX) -c $(CXXFLAGS) ../mobact.cpp
-modify.o : ../modify.cpp ../structs.h ../utils.h ../interpre.h ../handler.h ../db.h ../comm.h
+modify.o : ../modify.cpp ../utils.h ../interpre.h ../handler.h ../db.h ../comm.h
 	$(CXX) -c $(CXXFLAGS) ../modify.cpp
-consts.o : ../consts.cpp ../structs.h ../limits.h
+consts.o : ../consts.cpp ../limits.h
 	$(CXX) -c $(CXXFLAGS) ../consts.cpp
-objsave.o : ../objsave.cpp ../structs.h ../comm.h ../handler.h ../db.h ../interpre.h \
+objsave.o : ../objsave.cpp ../comm.h ../handler.h ../db.h ../interpre.h \
 	../utils.h ../spells.h
 	$(CXX) -c $(CXXFLAGS) ../objsave.cpp
-boards.o : ../boards.cpp ../structs.h ../utils.h ../comm.h ../db.h ../boards.h ../interpre.h \
+boards.o : ../boards.cpp ../utils.h ../comm.h ../db.h ../boards.h ../interpre.h \
 	../handler.h ../json_utils.h
 	$(CXX) -c $(CXXFLAGS) ../boards.cpp
-signals.o : ../signals.cpp ../utils.h ../structs.h
+signals.o : ../signals.cpp ../utils.h
 	$(CXX) -c $(CXXFLAGS) ../signals.cpp
-graph.o : ../graph.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h \
+graph.o : ../graph.cpp ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h \
 	../spells.h
 	$(CXX) -c $(CXXFLAGS) ../graph.cpp
-config.o : ../config.cpp ../structs.h
+config.o : ../config.cpp
 	$(CXX) -c $(CXXFLAGS) ../config.cpp
-ranger.o : ../ranger.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h\
+ranger.o : ../ranger.cpp ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h\
 	 ../spells.h ../script.h
 	 $(CXX) -c $(CXXFLAGS) ../ranger.cpp
-script.o : ../script.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../protos.h ../script.h
+script.o : ../script.cpp ../utils.h ../comm.h ../interpre.h ../protos.h ../script.h
 	$(CXX) -c $(CXXFLAGS) ../script.cpp
-shapemob.o : ../shapemob.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../protos.h
+shapemob.o : ../shapemob.cpp ../utils.h ../comm.h ../interpre.h ../protos.h
 	$(CXX) -c $(CXXFLAGS) ../shapemob.cpp
-shapeobj.o : ../shapeobj.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../protos.h
+shapeobj.o : ../shapeobj.cpp ../utils.h ../comm.h ../interpre.h ../protos.h
 	$(CXX) -c $(CXXFLAGS) ../shapeobj.cpp
-shaperom.o : ../shaperom.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../protos.h
+shaperom.o : ../shaperom.cpp ../utils.h ../comm.h ../interpre.h ../protos.h
 	$(CXX) -c $(CXXFLAGS) ../shaperom.cpp
-shapezon.o : ../shapezon.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../protos.h
+shapezon.o : ../shapezon.cpp ../utils.h ../comm.h ../interpre.h ../protos.h
 	$(CXX) -c $(CXXFLAGS) ../shapezon.cpp
-shapemdl.o : ../shapemdl.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../protos.h
+shapemdl.o : ../shapemdl.cpp ../utils.h ../comm.h ../interpre.h ../protos.h
 	$(CXX) -c $(CXXFLAGS) ../shapemdl.cpp
-shapescript.o : ../shapescript.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../protos.h
+shapescript.o : ../shapescript.cpp ../utils.h ../comm.h ../interpre.h ../protos.h
 	$(CXX) -c $(CXXFLAGS) ../shapescript.cpp
-mudlle.o   : ../mudlle.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../protos.h ../mudlle.h
+mudlle.o   : ../mudlle.cpp ../utils.h ../comm.h ../interpre.h ../protos.h ../mudlle.h
 	$(CXX) -c $(CXXFLAGS) ../mudlle.cpp
-mudlle2.o   : ../mudlle2.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../protos.h ../mudlle.h
+mudlle2.o   : ../mudlle2.cpp ../utils.h ../comm.h ../interpre.h ../protos.h ../mudlle.h
 	$(CXX) -c $(CXXFLAGS) ../mudlle2.cpp
-profs.o   : ../profs.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../limits.h ../profs.h ../comm.h
+profs.o   : ../profs.cpp ../utils.h ../comm.h ../interpre.h ../limits.h ../profs.h ../comm.h
 	$(CXX) -c $(CXXFLAGS) ../profs.cpp
-clerics.o : ../clerics.cpp ../structs.h ../utils.h ../comm.h ../handler.h ../interpre.h ../db.h ../spells.h ../limits.h
+clerics.o : ../clerics.cpp ../utils.h ../comm.h ../handler.h ../interpre.h ../db.h ../spells.h ../limits.h
 	$(CXX) -c $(CXXFLAGS) ../clerics.cpp
-mail.o    : ../mail.cpp ../structs.h ../utils.h ../comm.h ../interpre.h ../db.h ../handler.h ../mail.h ../json_utils.h
+mail.o    : ../mail.cpp ../utils.h ../comm.h ../interpre.h ../db.h ../handler.h ../mail.h ../json_utils.h
 	$(CXX) -c $(CXXFLAGS) ../mail.cpp
-zone.o: ../zone.cpp ../zone.h ../structs.h ../utils.h
+zone.o: ../zone.cpp ../zone.h ../utils.h
 	$(CXX) -c $(CXXFLAGS) ../zone.cpp
 color.o: ../color.cpp ../color.h
 	$(CXX) -c $(CXXFLAGS) ../color.cpp
@@ -320,7 +329,7 @@ crashsave_schedule_tests.o : ../crashsave_schedule.h
 clock_tests.o : ../clock.h
 json_perf_tests.o : ../json_utils.h ../character_json.h
 player_finalize_tests.o : ../player_file_finalize.h
-db_save_roundtrip_tests.o : test_world.h test_platform_compat.h ../db.h ../structs.h ../utils.h
+db_save_roundtrip_tests.o : test_world.h test_platform_compat.h ../db.h ../utils.h
 save_benchmark_tests.o : ../save_benchmark.h ../account_cache.h ../account_management.h ../character_json.h
 zone_tests.o : ../zone.h ../db.h
 

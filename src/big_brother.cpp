@@ -5,7 +5,9 @@
 #include "handler.h"
 #include "object_utils.h"
 #include "spells.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/object.h"
+#include "rots/core/types.h"
 
 #include <assert.h>
 #include <cstring>

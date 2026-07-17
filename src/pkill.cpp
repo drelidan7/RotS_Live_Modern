@@ -36,7 +36,8 @@
 #include "text_view.h"
 #include "pkill.h"
 #include "platform_compat.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/types.h"
 #include "utils.h"
 
 // ---------------------------------------------------------------------------

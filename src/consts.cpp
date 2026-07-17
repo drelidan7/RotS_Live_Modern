@@ -13,7 +13,9 @@
 #include "db.h"
 #include "interpre.h"
 #include "spells.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/tables.h"
+#include "rots/core/types.h"
 
 char circlemud_version[] = { "Arda: The Fourth Age, version 1.5.7\n\r" };
 
@@ -2605,23 +2607,6 @@ int guardian_mob[MAX_RACES][3] = {
     { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 },
     { 0, 0, 0 }, { 0, 0, 0 }
 };
-
-int get_guardian_type(int race_number, const char_data* in_guardian_mob)
-{
-    extern struct index_data* mob_index;
-    if (race_number >= MAX_RACES)
-        return INVALID_GUARDIAN;
-
-    int virtual_number = mob_index[in_guardian_mob->nr].virt;
-    for (int guardian_type = AGGRESSIVE_GUARDIAN; guardian_type <= MYSTIC_GUARDIAN;
-         ++guardian_type) {
-        if (guardian_mob[race_number][guardian_type] == virtual_number) {
-            return guardian_type;
-        }
-    }
-
-    return INVALID_GUARDIAN;
-}
 
 const skill_data* get_skill_array() { return skills; }
 

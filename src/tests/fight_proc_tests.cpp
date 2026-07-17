@@ -1,5 +1,7 @@
 #include "../spells.h"
 #include "../utils.h"
+#include "rots/core/character.h"
+#include "rots/core/object.h"
 #include "test_random_utils.h"
 #include <gtest/gtest.h>
 

@@ -4,7 +4,10 @@
 #include "../handler.h"
 #include "../interpre.h"
 #include "../objects_json.h"
-#include "../structs.h"
+#include "rots/persist/file_formats.h"
+#include "rots/core/character.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/types.h"
 #include "test_char_cleanup.h"
 #include "test_platform_compat.h"
 

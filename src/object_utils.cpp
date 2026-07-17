@@ -1,6 +1,7 @@
 #include "object_utils.h"
 #include "char_utils.h"
-#include "structs.h"
+#include "rots/core/object.h"
+#include "rots/core/types.h"
 
 #include "handler.h"
 #include "utils.h"

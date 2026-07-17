@@ -3,6 +3,7 @@
 #include "../rots_rng.h"
 #include "../spells.h"
 #include "../utils.h"
+#include "rots/core/object.h"
 #include "damage_test_context.h"
 #include <gtest/gtest.h>
 

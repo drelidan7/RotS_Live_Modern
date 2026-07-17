@@ -26,7 +26,9 @@
 // even though nothing in write_player_text's own composition changed.
 
 #include "../db.h"
-#include "../structs.h"
+#include "rots/persist/file_formats.h"
+#include "rots/core/character.h"
+#include "rots/core/descriptor.h"
 #include "../utils.h"
 #include "test_char_cleanup.h"
 #include "test_platform_compat.h"

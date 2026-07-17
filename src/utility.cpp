@@ -50,7 +50,12 @@
 #include "interpre.h"
 #include "rots_rng.h"
 #include "spells.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/object.h"
+#include "rots/core/room.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/tables.h"
+#include "rots/core/types.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 
@@ -2615,4 +2620,27 @@ int has_program(char_data* host, int num)
     } else {
         return 0;
     }
+}
+
+/* Returns the guardian type.  Returns INVALID_GUARDIAN if the mob is not a guardian.
+ * guardian_mob is a data table defined in consts.cpp (rots_core); mob_index is the
+ * mobile index table defined in db.cpp. Both are declared extern here rather than
+ * pulled in via a shared header, matching the historical local-extern idiom this
+ * function used before its relocation out of consts.cpp. */
+int get_guardian_type(int race_number, const char_data* in_guardian_mob)
+{
+    extern struct index_data* mob_index;
+    extern int guardian_mob[MAX_RACES][3];
+    if (race_number >= MAX_RACES)
+        return INVALID_GUARDIAN;
+
+    int virtual_number = mob_index[in_guardian_mob->nr].virt;
+    for (int guardian_type = AGGRESSIVE_GUARDIAN; guardian_type <= MYSTIC_GUARDIAN;
+         ++guardian_type) {
+        if (guardian_mob[race_number][guardian_type] == virtual_number) {
+            return guardian_type;
+        }
+    }
+
+    return INVALID_GUARDIAN;
 }

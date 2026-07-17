@@ -1,6 +1,8 @@
 #include "../handler.h"
 #include "../interpre.h"
 #include "../utils.h"
+#include "rots/core/character.h"
+#include "rots/core/tables.h"
 
 #include "scoped_allocation_counter.h"
 

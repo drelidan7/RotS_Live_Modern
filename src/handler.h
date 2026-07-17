@@ -12,7 +12,8 @@
 #define HANDLER_H
 
 #include "platdef.h" /* For sh_int, ush_int, byte, etc. */
-#include "structs.h" /* For the RENT_CRASH macro */
+#include "rots/core/fwd.h"
+#include "rots/persist/file_formats.h" /* For the RENT_CRASH macro */
 #include "objects_json.h" /* For ObjectSaveData (account-backed object staging) */
 
 #include <string_view>

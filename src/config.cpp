@@ -19,7 +19,7 @@
 #include <string_view>
 
 #include "platdef.h"
-#include "structs.h"
+#include "rots/core/types.h"
 
 #define TRUE 1
 #define YES 1

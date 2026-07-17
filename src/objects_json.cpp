@@ -2,6 +2,8 @@
 #include "json_utils.h"
 #include "legacy_salvage.h"
 #include "text_view.h"
+#include "rots/persist/file_formats.h"
+#include "rots/core/types.h"
 
 #include <algorithm>
 #include <cstdint>

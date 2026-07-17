@@ -1,5 +1,6 @@
 #include "../spells.h"
 #include "../utils.h"
+#include "rots/core/character.h"
 #include "test_random_utils.h"
 #include "test_world.h"
 #include <algorithm>

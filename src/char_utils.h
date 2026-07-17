@@ -1,13 +1,12 @@
 #pragma once
 
 #include "base_utils.h"
-#include "structs.h"
+#include "rots/core/fwd.h"
+#include "rots/core/types.h" /* For game_types::player_specs */
 
-struct char_data;
-struct obj_data;
 struct weather_data;
-struct room_data;
 struct affected_type;
+class group_data;
 
 namespace utils {
 typedef signed short sh_int;

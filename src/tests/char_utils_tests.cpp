@@ -3,6 +3,8 @@
 #include "../object_utils.h"
 #include "../spells.h"
 #include "../utils.h"
+#include "rots/core/character.h"
+#include "rots/core/object.h"
 #include "test_world.h"
 #include <gtest/gtest.h>
 

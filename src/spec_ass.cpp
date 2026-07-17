@@ -14,7 +14,9 @@
 #include "db.h"
 #include "interpre.h"
 #include "platdef.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/object.h"
+#include "rots/core/room.h"
 #include "utils.h"
 
 extern struct room_data world;

@@ -4,7 +4,8 @@
 #define MUDLLE_H
 
 #include "interpre.h"
-#include "structs.h" /* For the txt_block structure */
+#include "rots/core/types.h" /* For the txt_block structure and TARGET_* consts */
+#include "rots/core/fwd.h"
 
 /* the following are the types of special_list entries */
 #define SPECIAL_MARK -2

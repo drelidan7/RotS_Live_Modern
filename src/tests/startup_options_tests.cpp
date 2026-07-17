@@ -1,7 +1,8 @@
 #include "../comm.h"
 #include "../db.h"
 #include "../rots_net.h"
-#include "../structs.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/types.h"
 
 #include <gtest/gtest.h>
 

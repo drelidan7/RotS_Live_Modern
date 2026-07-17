@@ -73,7 +73,7 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
 | Lib | Layer | TUs | Contents |
 |---|---|---|---|
 | `rots_platform` | L0 | 7 | `rots_net, rots_crypt, rots_rng, clock, crashsave_schedule, json_utils, player_file_finalize` (verified clean leaves — the archive imports only libc/libstdc++/compiler symbols) |
-| `rots_core` | L1 | 2 + split headers | `consts, config` + the carved-up data model (Section 5) |
+| `rots_core` | L1 | 2 + split headers | `consts, config` + the carved-up data model (Section 5) (as-built: `consts` stays app-compiled, not archived into `rots_core` — see caveat below) |
 | `rots_entity` | L2 | 6 | `char_utils, object_utils, environment_utils, handler, utility, char_utils_combat` |
 | `rots_persist` | L3 | ~14 | `db_players` (from `db.cpp`), `objsave, boards, mail, pkill, character_json, objects_json, exploits_json, account_management (+6 #included fragments), account_cache, convert_exploits, convert_plrobjs, save_benchmark, savebench` |
 | `rots_world` | L3 | ~15 | `db_world` (from `db.cpp`), `shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle, mudlle2, graph, weather, mob_csv_extract, obj2html` |
@@ -96,6 +96,15 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
   (`ROTS_SERVER_SOURCES`) until its logging dependency is cut via a platform-level logging seam, at
   which point it can join `rots_platform` (or land in `rots_entity`). This is exactly the kind of
   weld the acyclicity check exists to surface.
+- `consts.cpp` is **not** in `rots_core` as built — the table row above is the intended target, not
+  current fact. Its `skills[MAX_SKILLS]` table (`consts.cpp:382`) structurally embeds ~69 `spell_*`
+  function pointers, an `nm`-verified upward edge into `rots_combat`-tier code (a genuine L1→L3
+  reference, not just a link-time weld). It stays an app-compiled TU; `rots_core` shipped as
+  `{config.cpp}` + the carved headers for this wave. Cutting the weld (a registration scheme or
+  per-skill dispatch indirection so `skills[]` no longer embeds function pointers directly) is
+  recorded follow-on work, after which `consts.cpp` can join `rots_core`. `get_guardian_type`'s
+  separate `mob_index` edge was already cut in this wave (relocated to `utility.cpp`). See
+  `docs/BUILD.md` "Library layering" for the full `nm` evidence (Task 13).
 
 ---
 
@@ -170,6 +179,33 @@ Consequences:
 
 `char_file_u`, `obj_file_elem`, `rent_info` and the other file-format structs are **persistence**
 types, not core entity types — they move to a `rots_persist` header, not `rots_core`.
+
+**As built (header-split wave, Task 12 exit):** the carve landed with five deviations from the
+prose above, none of them changing the DAG shape or the layout-probe-verified ABI:
+
+(a) `types.h` includes `fwd.h`, not the reverse — `target_data`/`waiting_type` (both value structs
+    that live in `types.h`) hold entity pointers (`char_data*`/`obj_data*`/`room_data*`), so they
+    need the forward declarations. §5's "NO entity pointers" line above is amended in spirit to "no
+    entity *definitions*" — `types.h` still never pulls in a full `char_data`/`obj_data`/`room_data`/
+    `descriptor_data` body, only their forward-declared pointer types.
+
+(b) A `tables.h` leaf exists alongside `types.h`, holding the `CONSTANTSMARK`-guarded
+    `global_release_flag` extern/definition trick and the extern calendar/race table declarations
+    (`weekdays`, `month_name`, `moon_phase`, `pc_races`, …) that `consts.cpp` defines. It was not
+    called out in the original four-file `rots/core/` sketch above; it is a fifth leaf with the same
+    "no entity pointers" shape as `types.h`.
+
+(c) Persistence formats (`char_file_u`, `follower_file_elem`, `obj_file_elem`, `rent_info`,
+    `RENT_*`) landed in `rots/persist/file_formats.h`, matching the "not `rots_core`" call above.
+
+(d) Core headers reach `platdef.h`/`color.h`/`protocol.h` by explicit relative include
+    (`"../../../../platdef.h"`), not a `-I`/`-idirafter` path entry, per the Global Constraints
+    `src/` shadowing rule — this holds until those legacy headers themselves relocate.
+
+(e) `.cpp` physical relocation into the `core/`/`persist/` subfolder tree (§9a's eventual layout) is
+    deferred: the flat `src/Makefile` (and `src/tests/Makefile`) still list every `.cpp` by its
+    current flat path, and moving them is deferred until that Makefile is retired in favor of
+    CMake-only builds. Only the new header files live in the subfolder layout today.
 
 ---
 

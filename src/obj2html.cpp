@@ -14,7 +14,9 @@
 #include "handler.h" /* For extract_obj() */
 #include "interpre.h" /* For ACMD() */
 #include "spells.h" /* For TYPE_xxx */
-#include "structs.h" /* For ITEM_xxx */
+#include "rots/core/character.h"
+#include "rots/core/object.h"
+#include "rots/core/types.h"
 #include "utils.h" /* For vmudlog() */
 
 extern struct index_data* obj_index;

@@ -1,5 +1,6 @@
 #include "environment_utils.h"
-#include "structs.h"
+#include "rots/core/room.h"
+#include "rots/core/types.h"
 
 namespace utils {
 //============================================================================

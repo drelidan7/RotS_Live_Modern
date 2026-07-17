@@ -7,6 +7,9 @@
 #include "spells.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
+#include "rots/core/character.h"
+#include "rots/core/object.h"
+#include "rots/core/types.h"
 
 namespace player_spec {
 //============================================================================

@@ -9,7 +9,11 @@
 #include "db.h" /* For buf2 and struct reset_com */
 #include "handler.h" /* For FOLLOW_MOVE */
 #include "pkill.h" /* For pkill_get_XXX_fame() */
-#include "structs.h" /* For struct owner_list */
+#include "rots/core/character.h"
+#include "rots/core/object.h"
+#include "rots/core/room.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/types.h"
 #include "utils.h" /* For CREATE */
 #include "zone.h"
 

@@ -1,6 +1,8 @@
 #include "../db.h"
 #include "../interpre.h"
-#include "../structs.h"
+#include "rots/core/character.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/types.h"
 #include "../utils.h"
 #include "test_char_cleanup.h"
 

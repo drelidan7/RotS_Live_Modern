@@ -3,7 +3,8 @@
 #include "comm.h"
 #include "db.h"
 #include "handler.h"
-#include "structs.h"
+#include "rots/core/character.h"
+#include "rots/core/types.h"
 #include "text_view.h"
 #include "utils.h"
 #include <filesystem>

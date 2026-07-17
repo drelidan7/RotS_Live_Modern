@@ -3,7 +3,9 @@
 #include "../character_json.h"
 #include "../color.h"
 #include "../db.h"
-#include "../structs.h"
+#include "rots/persist/file_formats.h"
+#include "rots/core/character.h"
+#include "rots/core/types.h"
 #include "../utils.h"
 
 #include <gtest/gtest.h>

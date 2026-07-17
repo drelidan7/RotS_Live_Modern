@@ -26,13 +26,16 @@
 // get_naked_perception/get_naked_willpower/get_confuse_modifier/
 // encrypt_line/decrypt_line) that used to be hand-duplicated here was
 // relocated verbatim into entity_lifecycle.cpp instead, so ageland and
-// rots_convert now link the one real definition of each. What remains here
-// for that engine is a handful of small, still-genuinely-necessary
-// stand-ins for symbols whose origin TU (handler.cpp/profs.cpp/
-// wild_fighting_handler.cpp) still is not linked into this executable --
-// see the sections below (get_from_affected_type_pool/
-// put_to_affected_type_pool/class_HP/pool_to_list/from_list_to_pool/
-// affected_list/player_spec::weapon_master_handler/get_current_time_phase).
+// rots_convert now link the one real definition of each. entity-seed Task 5
+// (below) finished that engine's remaining small stand-ins the same way:
+// get_from_affected_type_pool/put_to_affected_type_pool/class_HP/
+// pool_to_list/from_list_to_pool/affected_list/affected_list_pool/
+// get_current_time_phase (+ int pulse's definition) are now real
+// entity_lifecycle.cpp definitions too, so those stub sections are gone;
+// player_spec::weapon_master_handler's ctor/get_attack_speed_multiplier()
+// stub is gone the same way, superseded by entity_hooks.h's
+// attack-speed-multiplier hook (recalc_abilities() dispatches through it
+// instead of constructing the handler directly).
 //
 // entity-seed Task 2 (skills[] weld cut, spec Sec3/Sec10 step 4) joined
 // consts.cpp itself into rots_core, so rots_convert now links the REAL
@@ -97,26 +100,12 @@
 #include <cstring>
 #include <format>
 
-// ===========================================================================
-// buf / buf1 -- db_boot.cpp globals (db.h declares all four of buf/buf1/
-// buf2/arg; db_boot.cpp defines them). rots_convert does not link
-// db_boot.cpp (it is boot-orchestration + the two live-game capture
-// functions, entirely app-layer), but two P-half functions still reference
-// two of the four scratch buffers by their extern declaration:
-//   - save_char() (db_players.cpp) writes an account-native-fallback log
-//     line through `buf` (genuinely reachable: any account-linked character
-//     whose account-native file write fails hits this).
-//   - rename_char() (db_players.cpp) composes old/new paths through `buf1`.
-// buf2/arg are declared in db.h but never referenced by anything this
-// executable links, so they are deliberately NOT defined here -- adding them
-// would be dead weight, not a real weld.
-// Follow-on: once db_boot.cpp's four scratch buffers are replaced by local
-// std::string/std::format composition at each of these two call sites (both
-// already use std::format elsewhere in the same functions), this whole
-// section disappears.
-// ===========================================================================
-char buf[MAX_STRING_LENGTH];
-char buf1[MAX_STRING_LENGTH];
+// buf/buf1 (db_boot.cpp globals) -- DELETED (entity-seed Task 5). save_char()
+// and rename_char() (db_players.cpp) composed through `buf`, and
+// write_exploits() (db_players.cpp) also used `buf` -- all three now compose
+// locally via std::string/std::format (mirroring the std::format style each
+// function already used elsewhere), so this executable no longer references
+// either scratch buffer at all.
 
 // ===========================================================================
 // nearest_ansi_color() / convert_old_colormask() -- color.cpp. The brief's
@@ -230,174 +219,15 @@ void convert_old_colormask(struct char_file_u* ch)
     }
 }
 
-// ===========================================================================
-// The persisted-stat affect/derived-ability engine -- affect_total()/
-// affect_modify()/affect_to_char()/affect_remove()/apply_gear_affects()/
-// modify_affects()/affect_naked()/affected_by_spell() (formerly handler.cpp)
-// and recalc_abilities()/get_race_perception()/get_naked_perception()/
-// get_naked_willpower()/get_confuse_modifier() (formerly profs.cpp/
-// utility.cpp) USED TO be duplicated in this file (see this file's git
-// history before db-split Task 4b). store_to_char()/char_to_store() call
-// into this engine unconditionally for every character, so a hand-written
-// duplicate here was never optional -- and any accidental divergence from
-// the real bodies would silently corrupt persisted derived-stat fields for
-// every converted character. Task 4b resolved that risk at the root: the
-// real bodies now live in entity_lifecycle.cpp (relocated verbatim from
-// their origin TUs), which this executable already links directly, so
-// rots_convert and ageland now execute the exact SAME single definition of
-// each of those symbols. This section is gone; see entity_lifecycle.cpp's
-// "Affect / derived-ability engine" section instead.
-//
-// Two small pieces of that engine's SUPPORT machinery remain here, because
-// each is a real (not simplified) stand-in for a symbol whose origin TU
-// still is not linked into this executable:
-//
-//   - get_from_affected_type_pool()/put_to_affected_type_pool() -- real
-//     name, handler.cpp's affected_type allocator. handler.cpp itself is
-//     NOT relocated (affect_to_room()/affect_remove_room(), the room-affect
-//     analogues of the now-relocated affect_to_char()/affect_remove(), also
-//     call these two helpers and stay in handler.cpp -- see the db-split
-//     Task 4b plan section's shared-helper rule), so entity_lifecycle.cpp's
-//     relocated affect_to_char()/affect_remove() still need an external
-//     definition when handler.cpp isn't linked. Simplified relative to
-//     handler.cpp's real allocator (CREATE+free, no free-list reuse -- a
-//     converter processes one character at a time and has no long server
-//     lifetime to amortize the pool optimization over); produces
-//     byte-identical affected_type field CONTENTS either way, only the
-//     allocation strategy differs.
-//   - pool_to_list()/from_list_to_pool() (real names, utility.cpp) plus the
-//     affected_list/affected_list_pool globals (real names, handler.cpp) and
-//     the universal_list_counter/used_in_universal_list diagnostic counter
-//     globals the two functions' bodies increment/decrement (real names,
-//     utility.cpp) -- affect_to_char()'s live-tick bookkeeping registration
-//     (`if (!ch->affected) { tmplist = pool_to_list(&affected_list,
-//     &affected_list_pool); ... }`) is part of its now-relocated, verbatim
-//     body, so it genuinely executes on this executable's call path (the
-//     first affect applied to any character with no prior affects). Unlike
-//     the allocator above, these ARE byte-verbatim copies of utility.cpp's
-//     current bodies (pure linked-list bookkeeping, zero comm/game
-//     dependency, including the counter increments/decrements) -- not
-//     simplified, because they are cheap to copy exactly and this
-//     bookkeeping (list and counters alike), once written, is read back by
-//     nothing this executable's output depends on (the list is drained by
-//     free_char()'s affect_remove() loop before the char_data_ptr goes out
-//     of scope, same as a live server's logout path; the counters are pure
-//     diagnostics with no reader on this executable's call path at all).
-//   - class_HP() (real name, profs.cpp) -- recalc_abilities()'s HP formula
-//     calls it. profs.cpp is NOT relocated (class_HP() is also used by
-//     _INTERNAL::stat_assigner::organize(), profs.cpp's character-creation
-//     stat-ordering helper, which this executable never reaches but which
-//     keeps class_HP() defined there per the same shared-helper rule).
-//     Byte-verbatim copy of profs.cpp's current body.
-//   - player_spec::weapon_master_handler (ctor + get_attack_speed_multiplier(),
-//     wild_fighting_handler.cpp/warrior_spec_handlers.h) -- recalc_abilities()'s
-//     weapon branch constructs one. Unreachable by invariant: this
-//     executable's own equipment-always-null invariant (see
-//     convert_main.cpp) means the `if (weapon)` branch this class lives in
-//     never runs here, but the reference must still resolve at link time
-//     (the flat build links whole .cpp files; see this file's header
-//     comment); stubbed following this file's existing
-//     player_spec::wild_fighting_handler entry (further below) rather than
-//     duplicated, since neither method's real body has any bearing on
-//     persisted output from an unreachable call site.
-// ===========================================================================
-// ===========================================================================
-// get_current_time_phase() -- utility.cpp. Reads the game's live heartbeat
-// counter (`extern int pulse`, incremented every server tick), which never
-// advances in a batch tool with no run_the_game() loop. Unlike every other
-// symbol in this file, there is no "correct" value to reproduce here even
-// in principle: two live logins of the SAME character at two different
-// server uptimes would themselves get two different time_phase values, so
-// "byte-identical to a live login" is inherently ambiguous for this one
-// affected_type field. Returning a fixed 0 is deterministic and
-// reproducible across repeated rots_convert runs, which is arguably a
-// BETTER property for a batch converter than reproducing an arbitrary live
-// snapshot would be. Genuinely reachable: entity_lifecycle.cpp's relocated
-// affect_to_char() (db-split Task 4b) calls it for every affect applied.
-// ===========================================================================
-char get_current_time_phase() { return 0; }
-
-struct affected_type* get_from_affected_type_pool()
-{
-    struct affected_type* afnew;
-    CREATE(afnew, struct affected_type, 1);
-    return afnew;
-}
-
-void put_to_affected_type_pool(struct affected_type* oldaf) { free(oldaf); }
-
-// Verbatim copy of utility.cpp's pool_to_list()/from_list_to_pool() (pure
-// universal_list bookkeeping) plus the affected_list/affected_list_pool
-// globals they and entity_lifecycle.cpp's relocated affect_to_char()/
-// affect_remove() operate on (real names, normally defined in handler.cpp,
-// which this executable does not link). universal_list_counter/
-// used_in_universal_list are utility.cpp's real diagnostic counter globals
-// that the verbatim bodies below increment/decrement as a side effect;
-// they are inert here (read by nothing this executable's output depends
-// on) but are declared, with utility.cpp's exact names and types, so the
-// copied bodies are byte-verbatim rather than eliding that bookkeeping.
-universal_list* affected_list = 0;
-universal_list* affected_list_pool = 0;
-int universal_list_counter = 0;
-int used_in_universal_list = 0;
-
-struct universal_list*
-pool_to_list(struct universal_list** list, struct universal_list** head)
-{
-    struct universal_list* tmplist;
-
-    if (*head) {
-        tmplist = *head;
-        *head = tmplist->next;
-        used_in_universal_list++;
-    } else {
-        CREATE1(tmplist, universal_list);
-        universal_list_counter++;
-        used_in_universal_list++;
-    }
-
-    tmplist->next = *list;
-    *list = tmplist;
-
-    return tmplist;
-}
-
-void from_list_to_pool(universal_list** list, universal_list**, universal_list* body)
-{
-    if (*list == body) {
-        *list = body->next;
-    } else {
-        universal_list* tmplist = NULL;
-        for (tmplist = *list; tmplist->next; tmplist = tmplist->next) {
-            if (tmplist->next == body) {
-                break;
-            }
-        }
-
-        if (tmplist->next == body) {
-            tmplist->next = body->next;
-        }
-    }
-
-    /* Thus not putting universal lists into a pool, but freeing the memory */
-    used_in_universal_list--;
-    universal_list_counter++; /* added because we are freeing body */
-
-    free(body);
-}
-
-// Verbatim copy of profs.cpp's inline class_HP() -- uses
-// utils::get_prof_points (char_utils.cpp, already linked) and GET_RACE.
-int class_HP(const char_data* character)
-{
-    double hp_coofs = 3 * utils::get_prof_points(PROF_WARRIOR, *character) + 2 * utils::get_prof_points(PROF_RANGER, *character) + utils::get_prof_points(PROF_CLERIC, *character);
-
-    if (GET_RACE(character) == RACE_ORC) {
-        hp_coofs = hp_coofs * 4.0 / 7.0;
-    }
-
-    return int(std::sqrt(hp_coofs) * 200.0);
-}
+// The persisted-stat affect/derived-ability engine's remaining support
+// stubs -- get_from_affected_type_pool()/put_to_affected_type_pool(),
+// pool_to_list()/from_list_to_pool() + affected_list/affected_list_pool/
+// universal_list_counter/used_in_universal_list, class_HP(), and
+// get_current_time_phase() -- are DELETED (entity-seed Task 5): all five
+// symbols (plus int pulse's definition) are now real entity_lifecycle.cpp
+// definitions, so rots_convert and ageland link the one real definition of
+// each instead of a second hand-duplicated copy. See entity_lifecycle.cpp's
+// "Entity-tier leaf helpers" section instead.
 
 // ===========================================================================
 // recalc_skills() -- spec_pro.cpp. store_to_char() calls it unconditionally
@@ -525,141 +355,23 @@ int file_to_string_alloc(std::string_view name, char** buf_ptr)
     return 0;
 }
 
-// ===========================================================================
-// get_race_weight()/get_race_height() -- utility.cpp. get_race_weight() is
-// genuinely reachable: store_to_char() (db_players.cpp) calls it whenever a
-// loaded character's weight is <= 200 ("weight fix!! should be removed some
-// time"). get_race_height() is only reachable via init_char() (never called
-// by this executable -- see convert_main.cpp), but is duplicated alongside
-// its sibling for the same cost as a stub. Both pure switch-on-race; no
-// further dependency. Verbatim copies of utility.cpp's current bodies.
-// ===========================================================================
-int get_race_weight(struct char_data* ch)
-{
-    int gender_mod = (GET_SEX(ch) == SEX_FEMALE) ? 8 : 10;
+// get_race_weight()/get_race_height() are DELETED (entity-seed Task 5):
+// both are now real entity_lifecycle.cpp definitions (see that file's
+// "Entity-tier leaf helpers" section) instead of hand-duplicated copies.
 
-    switch (GET_RACE(ch)) {
-    case RACE_GOD:
-        return 100000 * gender_mod / 10;
-    case RACE_HUMAN:
-        return 17000 * gender_mod / 10;
-    case RACE_DWARF:
-        return 20000 * gender_mod / 10;
-    case RACE_WOOD:
-        return 12000 * gender_mod / 10;
-    case RACE_HOBBIT:
-        return 7000 * gender_mod / 10;
-    case RACE_HIGH:
-        return 13000 * gender_mod / 10;
-    case RACE_URUK:
-        return 16000 * gender_mod / 10;
-    case RACE_HARAD:
-        return 17000 * gender_mod / 10;
-    case RACE_ORC:
-        return 9000 * gender_mod / 10;
-    case RACE_EASTERLING:
-        return 17000 * gender_mod / 10;
-    case RACE_MAGUS:
-        return 16000 * gender_mod / 10;
-    case RACE_TROLL:
-        return 80000 * gender_mod / 10;
-    case RACE_BEORNING:
-        return 80000 * gender_mod / 10;
-    case RACE_OLOGHAI:
-        return 40000 * gender_mod / 10;
-    case RACE_HARADRIM:
-        return 17000 * gender_mod / 10;
-    case RACE_UNDEAD:
-        return 5000 * gender_mod / 10;
-    default:
-        return 15000;
-    }
-}
+// char_control_array/char_exists()/set_char_exists()/remove_char_exists()
+// are DELETED (entity-seed Task 5): all four are now real
+// entity_lifecycle.cpp definitions (see that file's "Entity-tier leaf
+// helpers" section) instead of a duplicated bit array.
 
-int get_race_height(struct char_data* ch)
-{
-    int gender_mod = (GET_SEX(ch) == SEX_FEMALE) ? 9 : 10;
-
-    switch (GET_RACE(ch)) {
-    case RACE_GOD:
-        return 200 * gender_mod / 10;
-    case RACE_HUMAN:
-        return 180 * gender_mod / 10;
-    case RACE_DWARF:
-        return 130 * gender_mod / 10;
-    case RACE_WOOD:
-        return 200 * gender_mod / 10;
-    case RACE_HOBBIT:
-        return 110 * gender_mod / 10;
-    case RACE_HIGH:
-        return 210 * gender_mod / 10;
-    case RACE_URUK:
-        return 170 * gender_mod / 10;
-    case RACE_HARAD:
-        return 180 * gender_mod / 10;
-    case RACE_ORC:
-        return 120 * gender_mod / 10;
-    case RACE_EASTERLING:
-        return 180 * gender_mod / 10;
-    case RACE_MAGUS:
-        return 170 * gender_mod / 10;
-    case RACE_TROLL:
-        return 225 * gender_mod / 10;
-    case RACE_UNDEAD:
-        return 180 * gender_mod / 10;
-    case RACE_HARADRIM:
-        return 180 * gender_mod / 10;
-    case RACE_BEORNING:
-        return 225 * gender_mod / 10;
-    case RACE_OLOGHAI:
-        return 200 * gender_mod / 10;
-    default:
-        return 200;
-    }
-}
-
-// ===========================================================================
-// char_control_array / char_exists() / set_char_exists() /
-// remove_char_exists() -- handler.cpp. remove_char_exists() is genuinely
-// reachable: free_char() (entity_lifecycle.cpp) calls it on every character
-// teardown (i.e. every convert_one_character() call, when the char_data_ptr
-// goes out of scope). char_exists()/set_char_exists() are unreachable from
-// this executable's call graph (only utils::is_riding()/is_ridden(),
-// char_utils.cpp, call char_exists(); register_npc_char(), never linked
-// here, calls set_char_exists()) but share the same trivial global bit
-// array, so all three are duplicated together. This executable never calls
-// register_npc_char() or any other world-registration function, so every
-// character's ch->abs_number stays at clear_char()'s zero-initialized
-// default -- remove_char_exists(0) on free_char() is therefore always an
-// in-bounds, harmless bit-clear. Verbatim copy of handler.cpp's current
-// bodies.
-// ===========================================================================
-namespace {
-char convert_stub_char_control_array[MAX_CHARACTERS / 8 + 1];
-} // namespace
-
-int char_exists(int num) { return (convert_stub_char_control_array[num / 8] & (1 << (num % 8))); }
-
-void set_char_exists(int num) { convert_stub_char_control_array[num / 8] |= (1 << (num % 8)); }
-
-void remove_char_exists(int num) { convert_stub_char_control_array[num / 8] &= ~(1 << (num % 8)); }
-
-// ===========================================================================
-// clear_account_backed_object_bytes_for_character() -- objsave.cpp.
-// Genuinely reachable: free_char() (entity_lifecycle.cpp) calls it on every
-// character teardown. Its real body erases an entry from an in-memory-only
-// staging map (g_staged_account_backed_object_data) keyed by the character,
-// populated ONLY by stage_account_backed_object_data_for_character()
-// (objsave.cpp), which is called ONLY from interpre.cpp's login flow --
-// never on this executable's call graph (see convert_main.cpp). So for
-// every character this executable ever constructs, that map entry was never
-// populated in the first place: this is not an approximation of the real
-// behavior, it is PROVABLY the same outcome (erasing a key that was never
-// inserted is a no-op either way) -- true unlike this file's other
-// "unreachable" stubs, which merely never fire rather than being proven
-// equivalent when they would.
-// ===========================================================================
-void clear_account_backed_object_bytes_for_character(const struct char_data* ch) { (void)ch; }
+// clear_account_backed_object_bytes_for_character() is DELETED (entity-seed
+// Task 5): free_char() (entity_lifecycle.cpp) no longer calls it directly --
+// it dispatches through entity_hooks.h's char-teardown hook instead, and
+// this executable never calls register_char_teardown_hook() (an
+// app-layer/comm.cpp-only boot step), so the hook's null default fires. That
+// default is a provable no-op for the same reason this stub was: the
+// staged-object map it would erase from can only gain entries via
+// interpre.cpp's login flow, never on this executable's call graph.
 
 // ===========================================================================
 // Unreachable stubs -- each of these is DEFINED in a linked TU
@@ -691,16 +403,9 @@ int other_side(const char_data* character, const char_data* other)
     return 0;
 }
 
-int isname_nullable(const char* query, const char* name_list, char full)
-{
-    (void)query;
-    (void)name_list;
-    (void)full;
-    rots::log::write_stderr(
-        "rots_convert: STUB isname_nullable() called -- unreachable (only "
-        "obj_data::is_quiver(), never called by this executable's load/store/save flow).");
-    return 0;
-}
+// isname_nullable() is DELETED (entity-seed Task 5): it is now a real
+// entity_lifecycle.cpp definition (see that file's "Entity-tier leaf
+// helpers" section) instead of a stub.
 
 char unaccent(char c)
 {
@@ -719,13 +424,9 @@ int find_name(char* name)
     return -1;
 }
 
-void set_title(struct char_data* ch)
-{
-    (void)ch;
-    rots::log::write_stderr(
-        "rots_convert: STUB set_title() called -- unreachable (only init_char(), never "
-        "called by this executable's load/store/save flow).");
-}
+// set_title() is DELETED (entity-seed Task 5): it is now a real
+// entity_lifecycle.cpp definition (see that file's "Entity-tier leaf
+// helpers" section) instead of a stub.
 
 int Crash_get_filename(std::string_view original_name, char* filename)
 {
@@ -873,40 +574,16 @@ float player_spec::wild_fighting_handler::get_attack_speed_multiplier() const
     return 1.0f;
 }
 
-// ===========================================================================
-// player_spec::weapon_master_handler (single-arg ctor) / get_attack_speed_multiplier()
-// -- wild_fighting_handler.cpp (combat, app layer; a DIFFERENT class from
-// player_spec::wild_fighting_handler immediately above, despite the similar
-// name and the same real-implementation TU). The only caller inside this
-// executable's linked TUs is entity_lifecycle.cpp's relocated
-// recalc_abilities() (db-split Task 4b), inside its `if (weapon)` branch --
-// unreachable by invariant: this executable's own ch->equipment[] is always
-// null (see convert_main.cpp), so that branch never runs here, but the
-// reference must still resolve at link time (the flat build links whole
-// .cpp files; see this file's header comment). Stubbed following this
-// file's existing player_spec::wild_fighting_handler entry immediately
-// above rather than duplicating wild_fighting_handler.cpp's real (and,
-// unlike the class above, weapon-and-spec-dependent) logic.
-// Follow-on: dissolves once recalc_abilities()'s weapon branch (and the
-// rest of the combat-facing derived-stat math) moves into a rots_combat-tier
-// TU separate from the identity/persisted-stat accessors rots_convert
-// genuinely needs.
-// ===========================================================================
-player_spec::weapon_master_handler::weapon_master_handler(char_data* in_character)
-    : character(in_character)
-{
-    rots::log::write_stderr(
-        "rots_convert: STUB player_spec::weapon_master_handler::weapon_master_handler() "
-        "constructed -- this should be unreachable from the converter's load/store/save flow.");
-}
-
-float player_spec::weapon_master_handler::get_attack_speed_multiplier() const
-{
-    rots::log::write_stderr(
-        "rots_convert: STUB player_spec::weapon_master_handler::get_attack_speed_multiplier() "
-        "called -- this should be unreachable from the converter's load/store/save flow.");
-    return 1.0f;
-}
+// player_spec::weapon_master_handler's ctor/get_attack_speed_multiplier()
+// stub is DELETED (entity-seed Task 5): entity_lifecycle.cpp's
+// recalc_abilities() no longer constructs this class directly -- it
+// dispatches through entity_hooks.h's attack-speed-multiplier hook instead,
+// and this executable never calls register_attack_speed_multiplier_hook()
+// (an app-layer/comm.cpp-only boot step), so the hook's null default (1.0f)
+// fires. Byte-identical to this stub's old return value, for the same
+// reason this stub was safe: this executable's ch->equipment[] is always
+// null (see convert_main.cpp), so recalc_abilities()'s weapon branch never
+// runs here either way.
 
 // ===========================================================================
 // get_hit_text() -- fight.cpp (combat, app layer). The only caller inside

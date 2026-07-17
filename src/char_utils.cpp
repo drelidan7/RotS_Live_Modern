@@ -1224,38 +1224,8 @@ int get_race(const char_data& character)
 }
 
 //============================================================================
-int get_minimum_insight_perception(const char_data& character)
-{
-    int race = character.player.race;
-    switch (race) {
-    case RACE_GOD:
-        return 0;
-    case RACE_HUMAN:
-        return 20;
-    case RACE_DWARF:
-        return 15;
-    case RACE_WOOD:
-        return 30;
-    case RACE_HOBBIT:
-        return 20;
-    case RACE_BEORNING:
-        return 15;
-    case RACE_URUK:
-        return 20;
-    case RACE_ORC:
-        return 15;
-    case RACE_MAGUS:
-        return 20;
-    case RACE_HARADRIM:
-        return 20;
-    case RACE_OLOGHAI:
-        return 15;
-    default:
-        return 0;
-    }
-
-    return 0;
-}
+// get_minimum_insight_perception() relocated to entity_lifecycle.cpp
+// (entity-seed Task 5); declaration unchanged in char_utils.h.
 
 //============================================================================
 int get_race_perception(const char_data& character)
@@ -1319,31 +1289,14 @@ bool is_mental(const char_data& character)
 }
 
 //============================================================================
-game_types::player_specs get_specialization(const char_data& character)
-{
-    if (is_npc(character) || character.profs == NULL)
-        return game_types::PS_None;
-
-    return game_types::player_specs(character.profs->specialization);
-}
+// get_specialization() relocated to entity_lifecycle.cpp (entity-seed Task 5);
+// declaration unchanged in char_utils.h.
 
 //============================================================================
-void set_specialization(char_data& character, game_types::player_specs value)
-{
-    if (is_npc(character) || character.profs == NULL)
-        return;
-
-    if (character.extra_specialization_data.is_mage_spec()) {
-        untrack_specialized_mage(&character);
-    }
-
-    character.profs->specialization = (int)value;
-    character.extra_specialization_data.set(character);
-
-    if (character.extra_specialization_data.is_mage_spec()) {
-        track_specialized_mage(&character);
-    }
-}
+// set_specialization() relocated to entity_lifecycle.cpp (entity-seed Task 5);
+// declaration unchanged in char_utils.h. Its track_specialized_mage()/
+// untrack_specialized_mage() calls now resolve downward into output_seam.cpp
+// (entity-seed Task 3).
 
 //============================================================================
 bool is_resistant(const char_data& character, int attack_group)
@@ -1475,15 +1428,8 @@ void cold_spec_data::on_cone_of_cold_failed(int damage)
 }
 
 //============================================================================
-void specialization_data::reset()
-{
-    if (current_spec_info) {
-        delete current_spec_info;
-        current_spec_info = NULL;
-    }
-
-    current_spec = game_types::PS_None;
-}
+// specialization_data::reset() relocated to entity_lifecycle.cpp (entity-seed
+// Task 5); declaration unchanged (rots/core/character.h).
 
 //============================================================================
 void specialization_data::set(char_data& character)

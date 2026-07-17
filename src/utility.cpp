@@ -180,12 +180,9 @@ do_squareroot(int i, struct char_data*)
     return ((4 - i % 4) * square_root[i / 4] + (i % 4) * square_root[i / 4 + 1]);
 }
 
-char get_current_time_phase()
-{
-    extern int pulse;
-
-    return (pulse % (SECS_PER_MUD_HOUR * 4)) / PULSE_FAST_UPDATE;
-}
+// get_current_time_phase() relocated to entity_lifecycle.cpp (entity-seed
+// Task 5), alongside int pulse's definition (formerly comm.cpp); declaration
+// unchanged in utils.h.
 
 int default_exit_width[] = {
     2, /* #define SECT_INSIDE          0 */
@@ -204,135 +201,11 @@ int default_exit_width[] = {
     0
 };
 
-int get_race_weight(struct char_data* ch)
-{
-    int gender_mod;
+// get_race_weight() relocated to entity_lifecycle.cpp (entity-seed Task 5);
+// declaration unchanged in utils.h.
 
-    if (GET_SEX(ch) == SEX_FEMALE)
-        gender_mod = 8;
-    else
-        gender_mod = 10;
-
-    switch (GET_RACE(ch)) {
-    case RACE_GOD:
-        return 100000 * gender_mod / 10;
-
-    case RACE_HUMAN:
-        return 17000 * gender_mod / 10;
-
-    case RACE_DWARF:
-        return 20000 * gender_mod / 10;
-
-    case RACE_WOOD:
-        return 12000 * gender_mod / 10;
-
-    case RACE_HOBBIT:
-        return 7000 * gender_mod / 10;
-
-    case RACE_HIGH:
-        return 13000 * gender_mod / 10;
-
-    case RACE_URUK:
-        return 16000 * gender_mod / 10;
-
-    case RACE_HARAD:
-        return 17000 * gender_mod / 10;
-
-    case RACE_ORC:
-        return 9000 * gender_mod / 10;
-
-    case RACE_EASTERLING:
-        return 17000 * gender_mod / 10;
-
-    case RACE_MAGUS:
-        return 16000 * gender_mod / 10;
-
-    case RACE_TROLL:
-        return 80000 * gender_mod / 10;
-
-    case RACE_BEORNING:
-        return 80000 * gender_mod / 10;
-
-    case RACE_OLOGHAI:
-        return 40000 * gender_mod / 10;
-
-    case RACE_HARADRIM:
-        return 17000 * gender_mod / 10;
-
-    case RACE_UNDEAD:
-        return 5000 * gender_mod / 10;
-
-    default:
-        return 15000;
-    }
-
-    return 0;
-}
-
-int get_race_height(struct char_data* ch)
-{
-    int gender_mod;
-
-    if (GET_SEX(ch) == SEX_FEMALE)
-        gender_mod = 9;
-    else
-        gender_mod = 10;
-
-    switch (GET_RACE(ch)) {
-    case RACE_GOD:
-        return 200 * gender_mod / 10;
-
-    case RACE_HUMAN:
-        return 180 * gender_mod / 10;
-
-    case RACE_DWARF:
-        return 130 * gender_mod / 10;
-
-    case RACE_WOOD:
-        return 200 * gender_mod / 10;
-
-    case RACE_HOBBIT:
-        return 110 * gender_mod / 10;
-
-    case RACE_HIGH:
-        return 210 * gender_mod / 10;
-
-    case RACE_URUK:
-        return 170 * gender_mod / 10;
-
-    case RACE_HARAD:
-        return 180 * gender_mod / 10;
-
-    case RACE_ORC:
-        return 120 * gender_mod / 10;
-
-    case RACE_EASTERLING:
-        return 180 * gender_mod / 10;
-
-    case RACE_MAGUS:
-        return 170 * gender_mod / 10;
-
-    case RACE_TROLL:
-        return 225 * gender_mod / 10;
-
-    case RACE_UNDEAD:
-        return 180 * gender_mod / 10;
-
-    case RACE_HARADRIM:
-        return 180 * gender_mod / 10;
-
-    case RACE_BEORNING:
-        return 225 * gender_mod / 10;
-
-    case RACE_OLOGHAI:
-        return 200 * gender_mod / 10;
-
-    default:
-        return 200;
-    }
-
-    return 0;
-}
+// get_race_height() relocated to entity_lifecycle.cpp (entity-seed Task 5);
+// declaration unchanged in utils.h.
 
 // get_race_perception() relocated to entity_lifecycle.cpp (db-split Task 4b);
 // declaration unchanged in utils.h.
@@ -1549,67 +1422,9 @@ void set_mental_delay(struct char_data* ch, int value)
     GET_MENTAL_DELAY(ch) += value;
 }
 
-int universal_list_counter = 0;
-int used_in_universal_list = 0;
-
-/*
- * Takes the address of a linked list of universal_list structures
- * and its associated pool list and adds a new item at the beginning.
- * If a free universal_list structure is available in the pool it is
- * removed and returned.  If not, a new structure is created and
- * returned. Counts are kept of the number of universal list
- * structures created and the number in current use.
- */
-
-struct universal_list*
-pool_to_list(struct universal_list** list, struct universal_list** head)
-{
-    struct universal_list* tmplist;
-
-    if (*head) {
-        tmplist = *head;
-        *head = tmplist->next;
-        used_in_universal_list++;
-    } else {
-        CREATE1(tmplist, universal_list);
-        universal_list_counter++;
-        used_in_universal_list++;
-    }
-
-    tmplist->next = *list;
-    *list = tmplist;
-
-    return tmplist;
-}
-
-/*
- * Takes a list, its associated pool and a member of the list
- * and removes it from the list and adds it to the head of the
- * pool
- */
-void from_list_to_pool(universal_list** list, universal_list**, universal_list* body)
-{
-    if (*list == body) {
-        *list = body->next;
-    } else {
-        universal_list* tmplist = NULL;
-        for (tmplist = *list; tmplist->next; tmplist = tmplist->next) {
-            if (tmplist->next == body) {
-                break;
-            }
-        }
-
-        if (tmplist->next == body) {
-            tmplist->next = body->next;
-        }
-    }
-
-    /* Thus not putting universal lists into a pool, but freeing the memory */
-    used_in_universal_list--;
-    universal_list_counter++; /* added because we are freeing body */
-
-    free(body);
-}
+// universal_list_counter/used_in_universal_list + pool_to_list()/
+// from_list_to_pool() relocated to entity_lifecycle.cpp (entity-seed Task 5);
+// declarations unchanged in utils.h.
 
 int check_resistances(char_data* victim, int attack_type)
 {

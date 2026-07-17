@@ -615,6 +615,12 @@ void run_the_game(sh_int port)
     // needs that declaration -- see register_game_output_sinks() itself for
     // why it must run before boot_db().
     register_game_output_sinks();
+    // entity_hooks.h's two inversion hooks (entity-seed Task 5), registered
+    // the same way and for the same reason: before boot_db(), so ageland
+    // never runs entity_lifecycle.cpp's free_char()/recalc_abilities() with
+    // an unregistered hook.
+    register_char_teardown_hook();
+    register_attack_speed_multiplier_hook();
 
     log("Signal trapping.");
     signal_setup();
@@ -787,7 +793,9 @@ void build_prompt(struct descriptor_data* point, std::string& out)
 }
 
 /* Accept pnew connects, relay commands, and call 'heartbeat-functs' */
-int pulse = 0; // moved here from being a local variable
+extern int pulse; // definition moved to entity_lifecycle.cpp (entity-seed Task 5,
+                  // storage-placement only); game_loop() below still increments/
+                  // resets it via this extern.
 
 int get_health_percent(char_data* character)
 {

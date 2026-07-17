@@ -1,5 +1,6 @@
 #include "char_utils.h"
 #include "comm.h"
+#include "entity_hooks.h"
 #include "spells.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
@@ -144,3 +145,23 @@ void wild_fighting_handler::on_enter_rage()
     act("You feel your pulse quicken as you enter a battle frenzy!", FALSE, character, nullptr, 0, TO_CHAR);
 }
 } // namespace player_spec
+
+namespace {
+// entity_hooks.h's attack-speed-multiplier hook implementation (entity-seed
+// Task 5): entity_lifecycle.cpp's recalc_abilities() used to construct a
+// player_spec::weapon_master_handler directly and call
+// get_attack_speed_multiplier() on it (an upward edge into this app/combat-
+// tier TU); this reproduces those same two lines, now behind the hook.
+float attack_speed_multiplier_hook_impl(char_data* character)
+{
+    player_spec::weapon_master_handler weapon_master(character);
+    return weapon_master.get_attack_speed_multiplier();
+}
+} // namespace
+
+// Registers the hook above as entity_hooks.h's attack-speed-multiplier hook.
+// Called once from run_the_game(), before boot_db().
+void register_attack_speed_multiplier_hook()
+{
+    rots::entity::set_attack_speed_multiplier_hook(attack_speed_multiplier_hook_impl);
+}

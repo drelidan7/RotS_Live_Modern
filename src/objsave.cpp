@@ -20,6 +20,7 @@
 #include "char_utils.h"
 #include "comm.h"
 #include "db.h"
+#include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
@@ -193,6 +194,13 @@ void clear_account_backed_object_bytes_for_character(const struct char_data* ch)
         return;
 
     g_staged_account_backed_object_data.erase(stage_key);
+}
+
+// Registers the hook above as entity_hooks.h's char-teardown notification
+// (entity-seed Task 5). Called once from run_the_game(), before boot_db().
+void register_char_teardown_hook()
+{
+    rots::entity::set_char_teardown_hook(clear_account_backed_object_bytes_for_character);
 }
 
 namespace {

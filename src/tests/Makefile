@@ -37,7 +37,7 @@ CXX = g++
 # ALL_CPPFLAGS (`-Icore/include -Ipersist/include`, applied to every compile there). A
 # build-flag-only fix -- no file's resolved header set changes -- so it cannot affect
 # runtime behavior or goldens (same reasoning as this file's existing -idirafter note).
-CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -ffp-contract=off -funsigned-char -MMD -MP -I../core/include -I../persist/include
+CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -msse2 -mfpmath=sse -ffp-contract=off -funsigned-char -MMD -MP -I../core/include -I../persist/include -I../platform/include
 # -idirafter .. lets the account_management_*_header_compile.cpp probes (and
 # every other tests/*.cpp) use bare #include "account_management_assets.h" /
 # "utils.h" (etc.) to reach the product headers one directory up; mirrors
@@ -97,7 +97,7 @@ OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objsave.o olog_hai.o\
 	pkill.o player_file_finalize.o profs.o protocol.o ranger.o safe_template.o save_benchmark.o savebench.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o  \
-	wild_fighting_handler.o weather.o zone.o rots_rng.o rots_crypt.o rots_net.o
+	wild_fighting_handler.o weather.o zone.o rots_rng.o rots_crypt.o rots_net.o rots_log.o
 
 
 # Dependencies for the main mud
@@ -134,6 +134,9 @@ objects_json.o : ../objects_json.cpp ../objects_json.h ../json_utils.h
 
 clock.o : ../clock.cpp ../clock.h
 	$(CXX) -c $(CXXFLAGS) ../clock.cpp
+
+rots_log.o : ../rots_log.cpp ../platform/include/rots/platform/log.h ../text_view.h
+	$(CXX) -c $(CXXFLAGS) ../rots_log.cpp
 
 comm.o : ../comm.cpp ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h \
 	../limits.h ../clock.h

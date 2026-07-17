@@ -74,6 +74,7 @@ endif()
 set(ROTS_PLATFORM_SOURCES
     rots_net.cpp rots_crypt.cpp rots_rng.cpp clock.cpp
     crashsave_schedule.cpp json_utils.cpp player_file_finalize.cpp
+    rots_log.cpp
 )
 
 # L1: core data-model library (spec §3). config.cpp is pure data (config
@@ -262,10 +263,16 @@ set_target_properties(rots_platform PROPERTIES CXX_EXTENSIONS OFF)
 # PUBLIC: rots_platform needs the parity flags to BUILD, and every consumer must
 # link with the same -m32/FP set — so the requirement propagates.
 target_link_libraries(rots_platform PUBLIC rots_build_flags $<$<PLATFORM_ID:Windows>:ws2_32>)
-# tests/product .cpp reach these headers via bare quoted includes ("rots_net.h");
-# the sources live in src/, so the compiler's own "directory of the including
-# file" entry already resolves them for TUs in src/. No extra include dir needed
-# while the headers stay in src/ (they relocate in a later plan).
+# tests/product .cpp reach most of these headers via bare quoted includes
+# ("rots_net.h"); the sources live in src/, so the compiler's own "directory
+# of the including file" entry already resolves them for TUs in src/. No
+# extra include dir needed for those while the headers stay in src/ (they
+# relocate in a later plan).
+# platform/include is the first pathed header root for this layer (spec §13,
+# rots/platform/log.h): wired exactly like rots_core's core/include below.
+# PUBLIC: every consumer of rots_platform (ageland via RotS::platform) needs
+# this on its include path to reach "rots/platform/log.h".
+target_include_directories(rots_platform PUBLIC platform/include)
 
 # --- L1: core data-model library ----------------------------------------------
 add_library(rots_core STATIC ${ROTS_CORE_SOURCES})
@@ -486,7 +493,12 @@ if(ROTS_BUILD_TESTS)
     )
     # Pathed data-model headers (spec §9a), same two leaf dirs as ageland above.
     # Additive to (not a replacement for) the -idirafter/-iquote handling above.
-    target_include_directories(ageland_tests PRIVATE core/include persist/include)
+    # platform/include: ageland_tests compiles ROTS_PLATFORM_SOURCES directly
+    # (it does not link the rots_platform library, see the TESTING-parity note
+    # above ROTS_PLATFORM_SOURCES' add_executable line), so it needs this on
+    # its own include path too, rather than inheriting it transitively via
+    # target_link_libraries the way ageland does through RotS::platform.
+    target_include_directories(ageland_tests PRIVATE core/include persist/include platform/include)
     target_compile_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
         ${ROTS_FP_OPTIONS}

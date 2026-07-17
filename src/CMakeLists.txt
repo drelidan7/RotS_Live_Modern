@@ -301,6 +301,46 @@ target_link_options(ageland PRIVATE
     $<${ROTS_GNULIKE}:-rdynamic>
 )
 
+# --- rots_convert: the standalone character converter -------------------------
+# (db.cpp-split Task 3, spec Sec4b) -- a SECOND executable, its own main(),
+# that links only RotS::platform + RotS::core + a hand-picked persist-codec
+# subset (the character-conversion slice of db_players.cpp/
+# entity_lifecycle.cpp: player-index/load/store/save, the JSON codecs, the
+# account system, and the legacy exploit/plrobj binary-to-JSON one-time
+# converters) -- deliberately NO db_world.cpp/db_boot.cpp and NO
+# combat/commands/app translation unit. This is the executable acid-test
+# that the persistence boundary holds: if a future change re-welds
+# db_players.cpp/entity_lifecycle.cpp to the game (combat/world/commands/
+# session), this target fails to link and the build breaks. It is therefore
+# added to `all` (no EXCLUDE_FROM_ALL) so every CI job builds it -- see
+# docs/superpowers/specs/2026-07-16-library-architecture-design.md Sec4b/
+# Sec11 and docs/superpowers/plans/2026-07-17-db-split-and-rots-convert.md
+# Task 3. objsave.cpp/boards.cpp/mail.cpp/pkill.cpp are deliberately OUT this
+# wave (their welds are catalogued follow-on work in convert_stubs.cpp,
+# the file-scoped "weld ledger" documenting every symbol substituted for an
+# excluded app/combat home and why the converter's own call graph never
+# reaches it).
+#
+# This target is CMake-only this wave (not added to the flat src/Makefile /
+# src/tests/Makefile, which compile same-directory only against a single
+# hand-maintained OBJFILES list per binary) -- see docs/BUILD.md.
+add_executable(rots_convert
+    convert_main.cpp convert_stubs.cpp
+    db_players.cpp entity_lifecycle.cpp
+    character_json.cpp objects_json.cpp exploits_json.cpp
+    account_management.cpp account_cache.cpp
+    convert_exploits.cpp convert_plrobjs.cpp
+    object_utils.cpp char_utils.cpp
+)
+target_include_directories(rots_convert PRIVATE persist/include)
+set_target_properties(rots_convert PROPERTIES CXX_EXTENSIONS OFF)
+target_link_libraries(rots_convert PRIVATE
+    RotS::platform
+    RotS::core
+    rots_build_flags
+    $<$<PLATFORM_ID:Windows>:ws2_32>
+)
+
 # --- Tests (ported from upstream/account-management) --------------------------
 # GoogleTest suite, discovered via CTest so `ctest --test-dir build` (or the root
 # `make test`) runs it. This is IN ADDITION to the older src/tests/Makefile entry

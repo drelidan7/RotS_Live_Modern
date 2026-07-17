@@ -89,8 +89,6 @@ void show_character_menu(struct descriptor_data* d);
 ACMD(do_save);
 ACMD(do_return);
 
-#define MAX_MAUL_DODGE 50
-
 char char_control_array[MAX_CHARACTERS / 8 + 1];
 long last_control_set = -1;
 

@@ -157,7 +157,7 @@ sh_int get_lea_mod(int race)
 // do_squareroot() (the recalc_abilities()-only overload) relocated to
 // entity_lifecycle.cpp alongside recalc_abilities() (db-split Task 4b).
 
-inline int class_HP(const char_data* character)
+int class_HP(const char_data* character)
 {
     double hp_coofs = 3 * utils::get_prof_points(PROF_WARRIOR, *character) + 2 * utils::get_prof_points(PROF_RANGER, *character) + utils::get_prof_points(PROF_CLERIC, *character);
 

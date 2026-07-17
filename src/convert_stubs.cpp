@@ -298,25 +298,29 @@ long race_affect[] = {
 //     byte-identical affected_type field CONTENTS either way, only the
 //     allocation strategy differs.
 //   - pool_to_list()/from_list_to_pool() (real names, utility.cpp) plus the
-//     affected_list/affected_list_pool globals (real names, handler.cpp) --
-//     affect_to_char()'s live-tick bookkeeping registration (`if
-//     (!ch->affected) { tmplist = pool_to_list(&affected_list,
+//     affected_list/affected_list_pool globals (real names, handler.cpp) and
+//     the universal_list_counter/used_in_universal_list diagnostic counter
+//     globals the two functions' bodies increment/decrement (real names,
+//     utility.cpp) -- affect_to_char()'s live-tick bookkeeping registration
+//     (`if (!ch->affected) { tmplist = pool_to_list(&affected_list,
 //     &affected_list_pool); ... }`) is part of its now-relocated, verbatim
 //     body, so it genuinely executes on this executable's call path (the
 //     first affect applied to any character with no prior affects). Unlike
 //     the allocator above, these ARE byte-verbatim copies of utility.cpp's
 //     current bodies (pure linked-list bookkeeping, zero comm/game
-//     dependency) -- not simplified, because they are cheap to copy exactly
-//     and this bookkeeping list, once written, is read back by nothing this
-//     executable's output depends on (it is drained by free_char()'s
-//     affect_remove() loop before the char_data_ptr goes out of scope, same
-//     as a live server's logout path).
-//   - class_HP() (real name, profs.cpp, inline) -- recalc_abilities()'s HP
-//     formula calls it. profs.cpp is NOT relocated (class_HP() is also used
-//     by _INTERNAL::stat_assigner::organize(), profs.cpp's
-//     character-creation stat-ordering helper, which this executable never
-//     reaches but which keeps class_HP() defined there per the same
-//     shared-helper rule). Byte-verbatim copy of profs.cpp's current body.
+//     dependency, including the counter increments/decrements) -- not
+//     simplified, because they are cheap to copy exactly and this
+//     bookkeeping (list and counters alike), once written, is read back by
+//     nothing this executable's output depends on (the list is drained by
+//     free_char()'s affect_remove() loop before the char_data_ptr goes out
+//     of scope, same as a live server's logout path; the counters are pure
+//     diagnostics with no reader on this executable's call path at all).
+//   - class_HP() (real name, profs.cpp) -- recalc_abilities()'s HP formula
+//     calls it. profs.cpp is NOT relocated (class_HP() is also used by
+//     _INTERNAL::stat_assigner::organize(), profs.cpp's character-creation
+//     stat-ordering helper, which this executable never reaches but which
+//     keeps class_HP() defined there per the same shared-helper rule).
+//     Byte-verbatim copy of profs.cpp's current body.
 //   - max_race_str[] (real name, consts.cpp) -- recalc_abilities()'s
 //     GET_BAL_STR() macro (utils.h) reads it. consts.cpp as a whole TU is
 //     not linked here (see this file's header comment and the
@@ -366,19 +370,30 @@ void put_to_affected_type_pool(struct affected_type* oldaf) { free(oldaf); }
 // universal_list bookkeeping) plus the affected_list/affected_list_pool
 // globals they and entity_lifecycle.cpp's relocated affect_to_char()/
 // affect_remove() operate on (real names, normally defined in handler.cpp,
-// which this executable does not link).
+// which this executable does not link). universal_list_counter/
+// used_in_universal_list are utility.cpp's real diagnostic counter globals
+// that the verbatim bodies below increment/decrement as a side effect;
+// they are inert here (read by nothing this executable's output depends
+// on) but are declared, with utility.cpp's exact names and types, so the
+// copied bodies are byte-verbatim rather than eliding that bookkeeping.
 universal_list* affected_list = 0;
 universal_list* affected_list_pool = 0;
+int universal_list_counter = 0;
+int used_in_universal_list = 0;
 
-universal_list* pool_to_list(universal_list** list, universal_list** head)
+struct universal_list*
+pool_to_list(struct universal_list** list, struct universal_list** head)
 {
-    universal_list* tmplist;
+    struct universal_list* tmplist;
 
     if (*head) {
         tmplist = *head;
         *head = tmplist->next;
+        used_in_universal_list++;
     } else {
         CREATE1(tmplist, universal_list);
+        universal_list_counter++;
+        used_in_universal_list++;
     }
 
     tmplist->next = *list;
@@ -403,6 +418,10 @@ void from_list_to_pool(universal_list** list, universal_list**, universal_list* 
             tmplist->next = body->next;
         }
     }
+
+    /* Thus not putting universal lists into a pool, but freeing the memory */
+    used_in_universal_list--;
+    universal_list_counter++; /* added because we are freeing body */
 
     free(body);
 }

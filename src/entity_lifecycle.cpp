@@ -494,7 +494,7 @@ void init_char(struct char_data* ch)
  *      (handler.cpp) -- also used by affect_to_room()/affect_remove_room(),
  *      the room-affect analogues of affect_to_char()/affect_remove(), which
  *      stay in handler.cpp.
- *    - class_HP() (profs.cpp, inline) -- also used by
+ *    - class_HP() (profs.cpp) -- also used by
  *      _INTERNAL::stat_assigner::organize() (character-creation stat
  *      ordering), which stays in profs.cpp.
  *  Both are forward-declared just below so the moved bodies can call them;
@@ -507,7 +507,7 @@ void init_char(struct char_data* ch)
 // each entry for why):
 extern struct affected_type* get_from_affected_type_pool(); // handler.cpp
 extern void put_to_affected_type_pool(struct affected_type*); // handler.cpp
-extern int class_HP(const char_data* character); // profs.cpp (inline)
+extern int class_HP(const char_data* character); // profs.cpp
 extern universal_list* affected_list; // handler.cpp -- live-tick affect-duration bookkeeping list
 extern universal_list* affected_list_pool; // handler.cpp -- pool backing affected_list
 extern int max_race_str[]; // consts.cpp -- recalc_abilities()'s GET_BAL_STR() macro

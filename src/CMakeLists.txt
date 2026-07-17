@@ -77,10 +77,21 @@ endif()
 # reaches "rots/platform/log.h" as its only pathed rots/ header (its null-arg
 # guard is inlined), so it
 # is a genuinely clean leaf — no core/include reach, no qualifier needed.
+# rots_util.cpp JOINS HERE (entity-seed Task 4, platform-helper relocations):
+# create_function()/free_function() (the CREATE/RELEASE macro backers),
+# str_dup()/str_cmp()/str_cmp_nullable(), rots_remove()/rots_rename_replace(),
+# and the number()/number(int,int) RNG wrapper family (plus its TESTING-only
+# rots_test_random_hook seam) all relocated verbatim from utility.cpp — each
+# was already platform-pure (no comm/db/handler header, no game type) and
+# only needed two trivial utils.h macro expansions inlined (LOWER, the CREATE
+# expansion inside str_dup) to drop the utils.h include, the same "L0 must not
+# include utils.h" deviation rots_log.cpp already uses for nz(). log()/
+# mudlog() moved the same wave, but into the existing rots_log.cpp (see that
+# file) since they're pure forwarders onto its write_stderr()/write().
 set(ROTS_PLATFORM_SOURCES
     rots_net.cpp rots_crypt.cpp rots_rng.cpp clock.cpp
     crashsave_schedule.cpp json_utils.cpp player_file_finalize.cpp
-    rots_log.cpp safe_template.cpp
+    rots_log.cpp safe_template.cpp rots_util.cpp
 )
 
 # L1: core data-model library (spec §3). config.cpp is pure data (config

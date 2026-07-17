@@ -97,7 +97,7 @@ OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objsave.o olog_hai.o\
 	pkill.o player_file_finalize.o profs.o protocol.o ranger.o safe_template.o save_benchmark.o savebench.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o  \
-	wild_fighting_handler.o weather.o zone.o rots_rng.o rots_crypt.o rots_net.o rots_log.o
+	wild_fighting_handler.o weather.o zone.o rots_rng.o rots_crypt.o rots_net.o rots_log.o rots_util.o
 
 
 # Dependencies for the main mud
@@ -137,6 +137,9 @@ clock.o : ../clock.cpp ../clock.h
 
 rots_log.o : ../rots_log.cpp ../platform/include/rots/platform/log.h ../text_view.h
 	$(CXX) -c $(CXXFLAGS) ../rots_log.cpp
+
+rots_util.o : ../rots_util.cpp ../platdef.h ../platform_compat.h ../rots_rng.h ../text_view.h
+	$(CXX) -c $(CXXFLAGS) ../rots_util.cpp
 
 comm.o : ../comm.cpp ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h \
 	../limits.h ../clock.h

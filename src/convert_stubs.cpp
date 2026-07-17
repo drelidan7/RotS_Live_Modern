@@ -41,9 +41,10 @@
 // get_encumb_table()/get_leg_encumb_table() straight from consts.cpp -- the
 // verbatim data duplicates this file used to carry for those symbols are
 // gone (see this file's git history, pre-entity-seed-Task-2, for their
-// prior stub text). create_function()/free_function() remain duplicated
-// below; their real home is utility.cpp, not consts.cpp, and that weld is
-// unrelated follow-on work.
+// prior stub text). create_function()/free_function() were still
+// duplicated below at that point; their real home was utility.cpp, not
+// consts.cpp, and that weld was unrelated follow-on work -- entity-seed
+// Task 4 (below) resolved it.
 //
 // entity-seed Task 3 (send_to_char/act output seam, spec Sec13) deletes the
 // six send_to_char()/vsend_to_char()/act()/track_specialized_mage()/
@@ -54,6 +55,24 @@
 // the same tripwire-logged no-op behavior these stubs used to hand-carry
 // (see this file's git history, pre-entity-seed-Task-3, for the prior stub
 // text and per-symbol reachability analysis).
+//
+// entity-seed Task 4 (platform-helper relocations) deletes ten more stubs
+// the same way: log()/mudlog() (formerly utility.cpp, already pure
+// rots::log::write*() forwarders) now join rots_log.cpp, and
+// create_function()/free_function()/str_dup()/str_cmp()/str_cmp_nullable()/
+// rots_remove()/rots_rename_replace()/number(int,int) (formerly utility.cpp,
+// all platform-pure -- no comm/game dependency) now live in the new
+// rots_util.cpp -- both TUs join rots_platform (spec Sec13's L0 layer), so
+// rots_convert links the one real definition of each of these ten symbols
+// through RotS::platform instead of a second hand-duplicated copy. The
+// number(int,int) real definition (rots_util.cpp) restores the TESTING
+// hook-consulting behavior this file's own simplified stand-in explicitly
+// omitted (see that stub's prior comment, this file's git history
+// pre-entity-seed-Task-4) -- a strict improvement, not a behavior change
+// this executable's own call graph can observe (init_char(), the only
+// caller, is never reached here either way; see convert_main.cpp).
+// (see this file's git history, pre-entity-seed-Task-4, for the ten stubs'
+// prior text and per-symbol reachability analysis.)
 
 #include "base_utils.h"
 #include "char_utils.h"
@@ -98,33 +117,6 @@
 // ===========================================================================
 char buf[MAX_STRING_LENGTH];
 char buf1[MAX_STRING_LENGTH];
-
-// ===========================================================================
-// log() / mudlog() -- utility.cpp (app layer). Both are already thin,
-// behavior-preserving forwarders onto the platform logging seam (spec Sec13,
-// docs/superpowers/plans/2026-07-16-logging-seam.md's recorded follow-on
-// explicitly calls out extracting these two into the platform layer):
-//   void log(std::string_view message) { rots::log::write_stderr(message); }
-//   void mudlog(std::string_view b, char t, sh_int l, byte f) {
-//       rots::log::write(b, t, l, f != 0); }
-// These are copied verbatim from utility.cpp (not reimagined/faked) because
-// db_players.cpp/entity_lifecycle.cpp call log()/mudlog() throughout their
-// error paths (e.g. save_char's player-table-lookup failure, add_crime's
-// file-open failure) -- genuinely reachable, not dead code -- and the real
-// bodies are already just platform-seam forwarders with no comm/game
-// dependency, so duplicating them here is behavior-identical, not a
-// substitute.
-// Follow-on: relocate log()/mudlog() themselves into rots_platform (they
-// have zero remaining game dependency post logging-seam); once that lands,
-// db_players.cpp/entity_lifecycle.cpp link the real definitions and this
-// section is deleted outright.
-// ===========================================================================
-void log(std::string_view message) { rots::log::write_stderr(message); }
-
-void mudlog(std::string_view message_body, char type, sh_int level, byte file)
-{
-    rots::log::write(message_body, type, level, file != 0);
-}
 
 // ===========================================================================
 // nearest_ansi_color() / convert_old_colormask() -- color.cpp. The brief's
@@ -474,71 +466,6 @@ void recalc_skills(struct char_data* ch)
 }
 
 // ===========================================================================
-// create_function()/free_function() -- utility.cpp. These back the
-// CREATE()/CREATE1()/RELEASE()/RECREATE() macros (utils.h) used PERVASIVELY
-// throughout db_players.cpp/entity_lifecycle.cpp -- every allocation and
-// every character/object teardown goes through them. Verbatim copy of
-// utility.cpp's bodies (pure calloc/free wrappers with an
-// allocation-failure abort, no comm/game dependency whatsoever) -- not a
-// substitute, the real thing.
-// (global_release_flag -- formerly stubbed here too, via the CONSTANTSMARK
-// trick in rots/core/tables.h that makes consts.cpp its one real
-// definition -- is now the REAL symbol, linked from consts.cpp now that it
-// lives in rots_core; entity-seed Task 2.)
-// ===========================================================================
-void* create_function(int elem_size, int elem_num, int line, std::string_view file)
-{
-    void* create_pointer;
-    if (elem_size * elem_num == 0)
-        create_pointer = calloc(1, 1);
-    else
-        create_pointer = calloc(elem_size, elem_num);
-
-    if (!create_pointer) {
-        const std::string file_owner(rots::text::truncate_at_null(file));
-        printf("CREATE: could not allocate memory %d size %d elements at line %d, file %s.\n",
-            elem_size, elem_num, line, file_owner.c_str());
-        exit(0);
-    }
-    return create_pointer;
-}
-
-void free_function(void* pnt)
-{
-    if (pnt)
-        free(pnt);
-}
-
-// ===========================================================================
-// str_dup() -- utility.cpp; backs file_to_string_alloc() below. Pure
-// byte/buffer manipulation with zero comm/game dependency; verbatim copy
-// of utility.cpp's current body.
-//
-// decrypt_line()/encrypt_line() (the legacy password obfuscation cipher)
-// used to be duplicated here too; db-split Task 4b relocated the REAL
-// bodies to entity_lifecycle.cpp (which this executable links directly),
-// so this executable now calls the one real definition instead of a
-// second copy. See entity_lifecycle.cpp.
-// ===========================================================================
-char* str_dup(const char* source)
-{
-    if (!source)
-        return NULL;
-
-    char* new_string;
-    int length = std::strlen(source);
-
-    CREATE(new_string, char, ((int)(length / 0x100) + 1) * 0x100);
-
-    for (int i = 0; i < length; i++) {
-        new_string[i] = source[i];
-    }
-    new_string[length] = 0;
-
-    return new_string;
-}
-
-// ===========================================================================
 // file_to_string_alloc()/file_to_string() -- db_boot.cpp. load_player()
 // (db_players.cpp) calls file_to_string_alloc() for every character whose
 // player_table entry is NOT a ".character.json" (account-native) path --
@@ -596,147 +523,6 @@ int file_to_string_alloc(std::string_view name, char** buf_ptr)
 
     *buf_ptr = str_dup(temp);
     return 0;
-}
-
-// ===========================================================================
-// str_cmp()/str_cmp_nullable() -- utility.cpp. save_char()/load_player()/
-// load_player_from_text()/delete_character_file() (db_players.cpp) call
-// these directly on every character processed -- genuinely reachable. Pure
-// string comparison (case-insensitive via the LOWER macro, utils.h);
-// verbatim copies of utility.cpp's current bodies.
-// ===========================================================================
-int str_cmp(std::string_view first, std::string_view second)
-{
-    for (std::size_t index = 0;; ++index) {
-        const char first_char = (index < first.size()) ? first[index] : '\0';
-        const char second_char = (index < second.size()) ? second[index] : '\0';
-        if (first_char == '\0' || second_char == '\0') {
-            if (first_char == second_char) {
-                return 0;
-            }
-            return (first_char == '\0') ? -1 : 1;
-        }
-        const int difference = LOWER(first_char) - LOWER(second_char);
-        if (difference < 0) {
-            return -1;
-        }
-        if (difference > 0) {
-            return 1;
-        }
-    }
-}
-
-int str_cmp_nullable(const char* first, const char* second)
-{
-    if (first == nullptr || second == nullptr) {
-        if (first == second) {
-            return 0;
-        }
-        return first == nullptr ? -1 : 1;
-    }
-    for (;; ++first, ++second) {
-        const int difference = LOWER(*first) - LOWER(*second);
-        if (difference != 0) {
-            return (difference < 0) ? -1 : 1;
-        }
-        if (*first == '\0') {
-            return 0;
-        }
-    }
-}
-
-// ===========================================================================
-// rots_remove()/rots_rename_replace() -- utility.cpp. Genuinely
-// platform-shaped (their own doc comments say "POSIX-*-semantics ... on
-// every platform", the same job as the rest of rots_platform's
-// rots_net.cpp/rots_crypt.cpp), but physically homed in utility.cpp today.
-// The account-native codec (account_management.cpp) and the crime/exploit
-// JSON codecs' atomic-write helpers (db_players.cpp) call these on every
-// write/delete -- genuinely reachable for account-linked characters and
-// every atomic-write path. Verbatim copies of utility.cpp's current bodies,
-// INCLUDING the #if defined PREDEF_PLATFORM_WINDOWS branches -- rots_convert
-// IS built by every CI job (see CMakeLists.txt's rots_convert comment: "added
-// to `all` ... so every CI job builds it"), windows-msvc among them, so the
-// Win32 MoveFileExA/RemoveDirectoryA branches are load-bearing here too, not
-// an unexercised platform.
-// Follow-on: relocate both into rots_platform properly (they have zero game
-// dependency), at which point every consumer -- ageland and rots_convert
-// alike -- links the one real, both-platform-complete definition.
-// ===========================================================================
-int rots_remove(std::string_view path)
-{
-    const std::string path_owner(rots::text::truncate_at_null(path));
-#if defined PREDEF_PLATFORM_WINDOWS
-    if (std::remove(path_owner.c_str()) == 0) {
-        return 0;
-    }
-
-    // CRT remove() rejects a directory with EACCES; retry as a directory the
-    // way POSIX remove() falls back to rmdir(). RemoveDirectoryA is the Win32
-    // primitive (same header set MoveFileExA above comes from); map its common
-    // failures onto errno so callers' strerror(errno) messages stay meaningful.
-    const DWORD attributes = GetFileAttributesA(path_owner.c_str());
-    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
-        if (RemoveDirectoryA(path_owner.c_str())) {
-            return 0;
-        }
-        switch (GetLastError()) {
-        case ERROR_FILE_NOT_FOUND:
-        case ERROR_PATH_NOT_FOUND:
-            errno = ENOENT;
-            break;
-        case ERROR_DIR_NOT_EMPTY:
-            errno = ENOTEMPTY;
-            break;
-        case ERROR_ACCESS_DENIED:
-        case ERROR_SHARING_VIOLATION:
-            errno = EACCES;
-            break;
-        default:
-            errno = EIO;
-            break;
-        }
-    }
-    return -1;
-#else
-    return std::remove(path_owner.c_str());
-#endif
-}
-
-int rots_rename_replace(std::string_view source_path, std::string_view destination_path)
-{
-    const std::string source_path_owner(rots::text::truncate_at_null(source_path));
-    const std::string destination_path_owner(rots::text::truncate_at_null(destination_path));
-#if defined PREDEF_PLATFORM_WINDOWS
-    // MoveFileExA + MOVEFILE_REPLACE_EXISTING is the Win32 primitive with
-    // exactly POSIX rename()'s replace behavior (atomic on NTFS same-volume
-    // moves, which every persistence-layer temp file is -- the temp lives
-    // next to its final path by construction).
-    if (MoveFileExA(source_path_owner.c_str(), destination_path_owner.c_str(),
-            MOVEFILE_REPLACE_EXISTING)) {
-        return 0;
-    }
-
-    // Map the common failure causes onto errno so the call sites' existing
-    // strerror(errno)-based error messages describe the real problem instead
-    // of whatever stale errno was lying around.
-    switch (GetLastError()) {
-    case ERROR_FILE_NOT_FOUND:
-    case ERROR_PATH_NOT_FOUND:
-        errno = ENOENT;
-        break;
-    case ERROR_ACCESS_DENIED:
-    case ERROR_SHARING_VIOLATION:
-        errno = EACCES;
-        break;
-    default:
-        errno = EIO;
-        break;
-    }
-    return -1;
-#else
-    return std::rename(source_path_owner.c_str(), destination_path_owner.c_str());
-#endif
 }
 
 // ===========================================================================
@@ -857,26 +643,6 @@ int char_exists(int num) { return (convert_stub_char_control_array[num / 8] & (1
 void set_char_exists(int num) { convert_stub_char_control_array[num / 8] |= (1 << (num % 8)); }
 
 void remove_char_exists(int num) { convert_stub_char_control_array[num / 8] &= ~(1 << (num % 8)); }
-
-// ===========================================================================
-// number() -- utility.cpp. Only reachable via init_char() (never called by
-// this executable -- see convert_main.cpp), so an exact copy (which also
-// carries a TESTING-only rots_test_random_hook() indirection meaningless
-// here) is not warranted. This is a simplified, but still REAL (not faked),
-// implementation using rots_rng (rots_platform, already linked; per
-// AGENTS.md "All game randomness flows through rots_rng" -- this executable
-// follows the same rule rather than reintroducing rand()/random()).
-// ===========================================================================
-int number(int from, int to)
-{
-    if (from == to)
-        return from;
-    if (from > to)
-        std::swap(to, from);
-
-    const unsigned int span = static_cast<unsigned int>(to - from + 1);
-    return from + static_cast<int>(rots_rng::next() % span);
-}
 
 // ===========================================================================
 // clear_account_backed_object_bytes_for_character() -- objsave.cpp.

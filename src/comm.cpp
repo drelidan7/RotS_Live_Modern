@@ -52,6 +52,7 @@
 #include "rots/core/descriptor.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
+#include "rots/platform/log.h"
 #include "text_view.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
@@ -564,6 +565,40 @@ int main(int argc, char** argv)
 // TODO(drelidan):  Move this into a place that makes sense.  We're cooking pasta!
 std::vector<char_data*> specialized_mages;
 
+// Installs the mudlog broadcast sink: the LEVEL_AREAGOD clamp, PRF_LOG*
+// preference gating, descriptor_list walk, and CGRN color framing that used
+// to be the second half of mudlog()'s body (utility.cpp, pre logging-seam).
+// rots::log::write() (rots_log.cpp) already handles the file-write branch and
+// the level < 0 early return, so this sink only ever sees a message that
+// should broadcast -- level arrives UNclamped, exactly as mudlog received it;
+// the clamp below is what mudlog used to apply before walking
+// descriptor_list.
+void register_mudlog_broadcast_sink()
+{
+    rots::log::set_sink([](std::string_view message_body, char type, int level) {
+        struct descriptor_data* connection;
+        char log_preference;
+
+        if (level < LEVEL_AREAGOD) {
+            level = LEVEL_AREAGOD;
+        }
+
+        const std::string message = std::format("[ {} ]\n\r", message_body);
+
+        for (connection = descriptor_list; connection; connection = connection->next) {
+            if (!connection->connected && !PLR_FLAGGED(connection->character, PLR_WRITING)) {
+                log_preference = ((PRF_FLAGGED(connection->character, PRF_LOG1) ? 1 : 0) + (PRF_FLAGGED(connection->character, PRF_LOG2) ? 2 : 0) + (PRF_FLAGGED(connection->character, PRF_LOG3) ? 4 : 0));
+
+                if ((GET_LEVEL(connection->character) >= level) && (log_preference >= type)) {
+                    send_to_char(CC_FIX(connection->character, CGRN), connection->character);
+                    send_to_char(message, connection->character);
+                    send_to_char(CC_NORM(connection->character), connection->character);
+                }
+            }
+        }
+    });
+}
+
 /* Init sockets, run game, and cleanup sockets */
 void run_the_game(sh_int port)
 {
@@ -572,6 +607,7 @@ void run_the_game(sh_int port)
     void signal_setup(void);
 
     descriptor_list = NULL;
+    register_mudlog_broadcast_sink();
 
     log("Signal trapping.");
     signal_setup();

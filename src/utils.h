@@ -20,6 +20,7 @@
 // tables.h: RELEASE/RECREATE (below) expand global_release_flag
 #include "rots/core/tables.h"
 #include "rots/core/fwd.h" /* For weather_data extern + macros that expand at call sites */
+#include "rots/platform/log.h" /* For OFF/BRF/NRM/SPL/CMP + vmudlog() (spec §13 sink seam) */
 
 // Short-lived mutable copy of a string literal, for legacy char*-typed APIs
 // (most commonly ACMD's `argument` parameter) that a per-callsite audit has
@@ -104,7 +105,6 @@ void mudlog(std::string_view message, char type, sh_int level, byte file);
 void mudlog_debug_mob(std::string_view message, char_data* ch);
 /// Writes bounded log text when the mobile's alias list contains the bounded alias.
 void mudlog_aliased_mob(std::string_view message, char_data* ch, std::string_view mob_alias);
-void vmudlog(char type, const char* format, ...);
 void log_death_trap(struct char_data* ch);
 int number(int from, int to);
 int dice(int number, int size);
@@ -177,14 +177,6 @@ int has_program(char_data* host, int num);
 #define CASTING_SLOW 1
 #define CASTING_NORMAL 2
 #define CASTING_FAST 3
-
-/* defines for mudlog() */
-
-#define OFF 0
-#define BRF 1
-#define NRM 2
-#define SPL 3
-#define CMP 4
 
 #define TRUE 1
 

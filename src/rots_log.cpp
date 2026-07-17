@@ -1,15 +1,17 @@
 /* rots_log.cpp */
 // Implements the dependency-inverted logging sink declared in
 // rots/platform/log.h (spec §13). write_stderr()/write() are copied
-// verbatim from the current log()/mudlog() bodies (utility.cpp); see that
-// header's file comment for why the sink exists and what moves where in
-// Task 2. vmudlog() is NOT defined here yet -- utility.cpp still owns its
-// one definition this task (see log.h's comment on the declaration).
+// verbatim from the former log()/mudlog() bodies (utility.cpp); see that
+// header's file comment for why the sink exists and what moved where in
+// Task 2. vmudlog() (below, global namespace) is the Task 2 move of
+// utility.cpp's one-time definition -- utility.cpp's copy is deleted in the
+// same commit that adds this one, so the symbol is defined exactly once.
 
 #include "rots/platform/log.h"
 
 #include "text_view.h"
 
+#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -109,3 +111,22 @@ void write(std::string_view message, char type, int level, bool to_file)
 }
 
 } // namespace rots::log
+
+// Printf-style mudlog entry point (global namespace) -- verbatim body moved
+// from utility.cpp's definition (Task 2 rewire). Formats into a fixed
+// BUFSIZE-2048 buffer, then reaches the sink through write() at
+// kVmudlogBroadcastLevel (LEVEL_GOD), preserving mudlog(buf, type, LEVEL_GOD,
+// TRUE)'s old call site.
+void vmudlog(char type, const char* format, ...)
+{
+#define BUFSIZE 2048
+    char buf[BUFSIZE];
+    va_list ap;
+
+    va_start(ap, format);
+    vsnprintf(buf, BUFSIZE - 1, format, ap);
+    buf[BUFSIZE - 1] = '\0';
+    va_end(ap);
+
+    rots::log::write(buf, type, rots::log::kVmudlogBroadcastLevel, true);
+}

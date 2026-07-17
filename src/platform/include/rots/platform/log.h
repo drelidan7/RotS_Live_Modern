@@ -10,11 +10,11 @@
 // flows back up through a callback at runtime while static dependencies stay
 // pointing down.
 //
-// As of this task the facility is built but unused: utility.cpp/utils.h are
-// untouched and still own log()/mudlog()/vmudlog(). The Task 2 rewire turns
-// log()/mudlog() into thin wrappers over write_stderr()/write(), moves
-// vmudlog()'s definition here, and registers the broadcast sink from
-// comm.cpp's run_the_game().
+// As of the Task 2 rewire, log()/mudlog() (utility.cpp) are thin wrappers
+// over write_stderr()/write() below, vmudlog()'s one definition lives in
+// rots_log.cpp, and comm.cpp's run_the_game() registers the broadcast sink
+// (register_mudlog_broadcast_sink()) immediately after resetting
+// descriptor_list, before the first log() call.
 
 #include <functional>
 #include <string_view>
@@ -66,10 +66,8 @@ inline constexpr int kVmudlogBroadcastLevel = 93;
 #define CMP 4
 
 // Printf-style mudlog entry point (global namespace, matching its existing
-// call sites across the tree). Declared here so callers can reach it via this
-// header, but NOT YET DEFINED in rots_log.cpp this task -- utility.cpp still
-// owns the one definition of vmudlog(), and defining it here too would be a
-// duplicate symbol. Task 2 deletes utility.cpp's copy and moves the
-// definition into rots_log.cpp, where it will call
+// call sites across the tree). Defined in rots_log.cpp (Task 2 rewire moved
+// the one definition there from utility.cpp), formatting into a fixed
+// BUFSIZE-2048 buffer and calling
 // rots::log::write(buf, type, rots::log::kVmudlogBroadcastLevel, true).
 void vmudlog(char type, const char* format, ...);

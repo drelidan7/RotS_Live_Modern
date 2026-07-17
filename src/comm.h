@@ -66,6 +66,13 @@ void put_to_txt_block_pool(struct txt_block*);
 
 void vsend_to_char(struct char_data* ch, const char* format, ...);
 
+/// Installs the game's mudlog broadcast sink (rots::log::set_sink) -- the
+/// LEVEL_AREAGOD clamp, PRF_LOG* preference gating, descriptor_list walk, and
+/// CGRN color framing that used to be mudlog()'s second half (utility.cpp,
+/// pre logging-seam). Called once from run_the_game(), immediately after
+/// descriptor_list is reset and before the first log() call.
+void register_mudlog_broadcast_sink();
+
 /// Expands a bounded action format and delivers it to the selected recipients.
 void act(std::string_view str, int hide_invisible, struct char_data* ch,
     struct obj_data* obj, void* vict_obj, int type, char spam_only = FALSE);

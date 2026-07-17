@@ -13,6 +13,7 @@
 #include "rots/core/descriptor.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
+#include "../comm.h"
 #include "../utils.h"
 #include "test_world.h"
 
@@ -27,8 +28,9 @@ namespace {
 
 // Mirrors ScopedDescriptorListReset (interpre_account_menu_tests.cpp) --
 // swaps the process-global descriptor_list for the duration of a test and
-// restores it on scope exit, so mudlog()'s broadcast loop has exactly the
-// listeners a test wants and nothing left over for the next test.
+// restores it on scope exit, so the mudlog broadcast sink's descriptor_list
+// walk has exactly the listeners a test wants and nothing left over for the
+// next test.
 class ScopedDescriptorListReset {
 public:
     ScopedDescriptorListReset()
@@ -62,12 +64,13 @@ descriptor_data make_listening_descriptor(char_data* character)
 }
 
 // A level-100, log-flagged, colour-off player character wired up as the
-// sole descriptor_list listener: satisfies mudlog()'s
-// `!i->connected && !PLR_FLAGGED(..., PLR_WRITING)` gate and its
-// `GET_LEVEL(i->character) >= level` / `tp >= type` thresholds (level gets
-// floored to LEVEL_AREAGOD == 95 inside mudlog itself) for every type/level
-// this test file passes. Colour stays off (PRF_COLOR unset) so CC_FIX/
-// CC_NORM contribute no escape bytes, keeping the pinned strings plain text.
+// sole descriptor_list listener: satisfies the registered mudlog broadcast
+// sink's (comm.cpp) `!i->connected && !PLR_FLAGGED(..., PLR_WRITING)` gate
+// and its `GET_LEVEL(i->character) >= level` / `tp >= type` thresholds
+// (level gets floored to LEVEL_AREAGOD == 95 inside that sink) for every
+// type/level this test file passes. Colour stays off (PRF_COLOR unset) so
+// CC_FIX/CC_NORM contribute no escape bytes, keeping the pinned strings
+// plain text.
 struct MudlogListenerContext {
     char_data character {};
     descriptor_data descriptor;
@@ -86,6 +89,7 @@ struct MudlogListenerContext {
 TEST(UtilityFormat, MudlogWrapsMessageInBracketsForQualifyingListeners)
 {
     ScopedDescriptorListReset descriptor_list_reset;
+    register_mudlog_broadcast_sink();
     MudlogListenerContext listener;
     descriptor_list = &listener.descriptor;
 
@@ -98,6 +102,7 @@ TEST(UtilityFormat, MudlogWrapsMessageInBracketsForQualifyingListeners)
 TEST(UtilityFormat, MudlogPreservesEmptyMessageBody)
 {
     ScopedDescriptorListReset descriptor_list_reset;
+    register_mudlog_broadcast_sink();
     MudlogListenerContext listener;
     descriptor_list = &listener.descriptor;
 
@@ -115,6 +120,7 @@ TEST(UtilityFormat, MudlogTreatsBracesInsideMessageAsLiteralText)
     // replacement-field syntax if misused as the format string) must pass
     // through unchanged.
     ScopedDescriptorListReset descriptor_list_reset;
+    register_mudlog_broadcast_sink();
     MudlogListenerContext listener;
     descriptor_list = &listener.descriptor;
 
@@ -127,6 +133,7 @@ TEST(UtilityFormat, MudlogTreatsBracesInsideMessageAsLiteralText)
 TEST(UtilityFormat, MudlogAcceptsANonNullTerminatedSlice)
 {
     ScopedDescriptorListReset descriptor_list_reset;
+    register_mudlog_broadcast_sink();
     MudlogListenerContext listener;
     descriptor_list = &listener.descriptor;
     const std::string storage = "prefix-message-suffix";
@@ -139,6 +146,7 @@ TEST(UtilityFormat, MudlogAcceptsANonNullTerminatedSlice)
 TEST(UtilityFormat, MudlogTruncatesAViewAtAnEmbeddedNull)
 {
     ScopedDescriptorListReset descriptor_list_reset;
+    register_mudlog_broadcast_sink();
     MudlogListenerContext listener;
     descriptor_list = &listener.descriptor;
     const char storage[] = { 'o', 'k', '\0', 'n', 'o' };
@@ -151,6 +159,7 @@ TEST(UtilityFormat, MudlogTruncatesAViewAtAnEmbeddedNull)
 TEST(UtilityFormat, MobLogHelpersAcceptBoundedAndEmbeddedNullText)
 {
     ScopedDescriptorListReset descriptor_list_reset;
+    register_mudlog_broadcast_sink();
     MudlogListenerContext listener;
     descriptor_list = &listener.descriptor;
 
@@ -223,6 +232,7 @@ TEST(UtilityFormat, LogTruncatesAViewAtAnEmbeddedNull)
 TEST(UtilityFormat, LogDeathTrapReportsCharacterNameRoomNumberAndName)
 {
     ScopedDescriptorListReset descriptor_list_reset;
+    register_mudlog_broadcast_sink();
     ScopedTestWorld test_world;
     test_world.room().number = 4207;
 

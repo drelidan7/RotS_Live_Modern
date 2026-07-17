@@ -73,9 +73,9 @@ endif()
 # clean leaf. vmudlog() now resolves inside rots_platform itself
 # (rots_log.cpp), so that edge is gone and the archive is self-contained
 # again — confirmed via `nm -uC` on the built archive, see the
-# rots_platform_linkcheck load-bearing test below. Known include-purity debt:
-# safe_template.cpp still textually includes utils.h (for `nz`), but the LINK
-# graph — the enforced invariant — is clean.
+# rots_platform_linkcheck load-bearing test below. safe_template.cpp now
+# includes only "rots/platform/log.h" (its null-arg guard is inlined), so it
+# is a genuinely clean leaf — no core/include reach, no qualifier needed.
 set(ROTS_PLATFORM_SOURCES
     rots_net.cpp rots_crypt.cpp rots_rng.cpp clock.cpp
     crashsave_schedule.cpp json_utils.cpp player_file_finalize.cpp
@@ -278,16 +278,6 @@ target_link_libraries(rots_platform PUBLIC rots_build_flags $<$<PLATFORM_ID:Wind
 # PUBLIC: every consumer of rots_platform (ageland via RotS::platform) needs
 # this on its include path to reach "rots/platform/log.h".
 target_include_directories(rots_platform PUBLIC platform/include)
-# PRIVATE: safe_template.cpp's compile-time-only need for core/include (its
-# textual utils.h include drags in "rots/core/types.h"/"rots/core/tables.h";
-# see the include-purity debt note above ROTS_PLATFORM_SOURCES). PRIVATE, not
-# PUBLIC: this is a header path for compiling rots_platform's own TUs, not a
-# dependency any consumer needs — and it must NOT propagate a link
-# dependency, or it would reintroduce the upward edge the logging seam just
-# cut. The rots_platform_linkcheck test below is what actually enforces that
-# invariant (it whole-archive-links rots_platform alone and requires every
-# symbol to resolve).
-target_include_directories(rots_platform PRIVATE core/include)
 
 # --- L1: core data-model library ----------------------------------------------
 add_library(rots_core STATIC ${ROTS_CORE_SOURCES})

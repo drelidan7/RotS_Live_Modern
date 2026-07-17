@@ -90,12 +90,11 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
   their current dependencies point and are candidates to move once boundaries settle.
 - The 6 `account_management_*.cpp` files are `#include`d into `account_management.cpp` (they are
   fragments, not separately compiled TUs) and stay together in `rots_persist`.
-- `safe_template.cpp` is **not** a clean L0 leaf and is deliberately **excluded** from
-  `rots_platform`: it calls `vmudlog` (defined in `utility.cpp`, an L2 `rots_entity` unit), a
-  genuine upward edge confirmed by `nm` on the built archive. It remains an app-compiled TU
-  (`ROTS_SERVER_SOURCES`) until its logging dependency is cut via a platform-level logging seam, at
-  which point it can join `rots_platform` (or land in `rots_entity`). This is exactly the kind of
-  weld the acyclicity check exists to surface.
+- `safe_template.cpp` **rejoined `rots_platform` as a clean L0 leaf** once the platform-level
+  logging seam (Section 13) landed: `vmudlog`/`BRF` now resolve inside `rots_platform` itself
+  (`rots_log.cpp`), and its one null-arg guard (formerly `utils.h`'s `nz`) is inlined at the call
+  site, so the TU includes only `rots/platform/log.h` — no `core/include` reach, no qualifier
+  needed. Confirmed by `nm` on the built archive (`rots_platform_linkcheck` / `PlatformLayerAcyclicity`).
 - `consts.cpp` is **not** in `rots_core` as built — the table row above is the intended target, not
   current fact. Its `skills[MAX_SKILLS]` table (`consts.cpp:382`) structurally embeds ~69 `spell_*`
   function pointers, an `nm`-verified upward edge into `rots_combat`-tier code (a genuine L1→L3

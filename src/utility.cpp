@@ -334,71 +334,14 @@ int get_race_height(struct char_data* ch)
     return 0;
 }
 
-sh_int
-get_race_perception(struct char_data* ch)
-{
-    switch (GET_RACE(ch)) {
-    case RACE_GOD:
-        return 0;
-    case RACE_HUMAN:
-        return 30;
-    case RACE_DWARF:
-        return 0;
-    case RACE_WOOD:
-        return 50;
-    case RACE_HOBBIT:
-        return 30;
-    case RACE_HIGH:
-        return 100;
-    case RACE_URUK:
-        return 30;
-    case RACE_HARAD:
-        return 30;
-    case RACE_ORC:
-        return 10;
-    case RACE_EASTERLING:
-        return 30;
-    case RACE_MAGUS:
-        return 30;
-    case RACE_UNDEAD:
-        return 60;
-    case RACE_TROLL:
-        return 30;
-    case RACE_HARADRIM:
-        return 30;
-    case RACE_BEORNING:
-        return 30;
-    case RACE_OLOGHAI:
-        return 30;
-    default:
-        return 0;
-    }
-    return 0;
-}
+// get_race_perception() relocated to entity_lifecycle.cpp (db-split Task 4b);
+// declaration unchanged in utils.h.
 
-sh_int
-get_naked_perception(struct char_data* ch)
-{
-    int tmp;
+// get_naked_perception() relocated to entity_lifecycle.cpp (db-split Task 4b);
+// declaration unchanged in utils.h.
 
-    if (IS_NPC(ch)) {
-        if (MOB_FLAGGED(ch, MOB_SHADOW))
-            return 100;
-        else
-            return GET_PERCEPTION(ch);
-    }
-
-    tmp = get_race_perception(ch);
-    tmp += GET_PROF_LEVEL(PROF_CLERIC, ch) * 2;
-
-    return tmp;
-}
-
-sh_int
-get_naked_willpower(struct char_data* ch)
-{
-    return GET_PROF_LEVEL(PROF_CLERIC, ch) + GET_WILL(ch) - (get_confuse_modifier(ch) / 10);
-}
+// get_naked_willpower() relocated to entity_lifecycle.cpp (db-split Task 4b);
+// declaration unchanged in utils.h.
 
 int get_exit_width(struct room_data* room, int dir)
 {
@@ -1530,57 +1473,9 @@ void initialize_buffers()
     return;
 }
 
-unsigned char encrypt_line_lp[1000];
-void encrypt_line(unsigned char* line, int len)
-{
-    unsigned char k1, k2;
-    int tmp;
-    /*static*/ unsigned char* lp = encrypt_line_lp;
+// encrypt_line_lp / encrypt_line() relocated to entity_lifecycle.cpp (db-split Task 4b).
 
-    for (tmp = 0; tmp < len; tmp++)
-        if (line[tmp] > 127)
-            line[tmp] -= 128;
-
-    for (tmp = 0; tmp < len - 1; tmp++) {
-        k1 = (line[tmp] * 16); // here was *32...
-        k2 = (line[tmp + 1] / 8);
-        lp[tmp] = (k1 + k2) & 127;
-        lp[tmp] += 32;
-        //    printf("encoding: '%c' %d %d '%c'%d\n",line[tmp],k1,k2 ,lp[tmp],lp[tmp]);
-    }
-    k1 = (line[len - 1] * 16);
-    k2 = (line[0] / 8);
-    // k2 = 0;
-    lp[len - 1] = (k1 + k2) & 127;
-    lp[len - 1] += 32;
-    //  printf("e-encoding: '%c' %d %d '%c'%d\n",line[len-1],k1,k2 ,lp[len-1],lp[len-1]);
-
-    for (tmp = 0; tmp < len; tmp++)
-        line[tmp] = lp[tmp];
-}
-
-unsigned char decrypt_line_line[1000];
-void decrypt_line(unsigned char* lp, int len)
-{
-    unsigned char k1, k2;
-    int tmp;
-    /*static*/ unsigned char* line = decrypt_line_line;
-
-    k1 = ((lp[len - 1] - 32) * 8);
-    // k1 = 0;
-    k2 = ((lp[0] - 32) / 16);
-    line[0] = (k1 + k2) & 127;
-    //  printf("d-decoding: '%c'%d %d %d '%c'%d\n",lp[0],lp[0],k1,k2 ,line[0],line[0]);
-    for (tmp = 1; tmp < len; tmp++) {
-        k1 = ((lp[tmp - 1] - 32) * 8);
-        k2 = ((lp[tmp] - 32) / 16); // here was /32
-        line[tmp] = (k1 + k2) & 127;
-        //    printf("decoding: '%c'%d %d %d '%c'%d\n",lp[tmp],lp[tmp],k1,k2 ,line[tmp],line[tmp]);
-    }
-
-    for (tmp = 0; tmp < len; tmp++)
-        lp[tmp] = line[tmp];
-}
+// decrypt_line_line / decrypt_line() relocated to entity_lifecycle.cpp (db-split Task 4b).
 
 char* strcpy_lang(char* str1, char* str2, byte freq, int maxlen)
 {
@@ -1774,18 +1669,8 @@ int CAN_GO(struct char_data* ch, int door)
     return 0;
 }
 
-int get_confuse_modifier(struct char_data* ch)
-{
-    struct affected_type* aff;
-    int modifier = 0;
-
-    if (IS_AFFECTED(ch, AFF_CONFUSE))
-        for (aff = ch->affected; aff; aff = aff->next)
-            if (aff->type == SPELL_CONFUSE)
-                modifier = aff->duration * 2 - 10;
-
-    return modifier;
-}
+// get_confuse_modifier() relocated to entity_lifecycle.cpp (db-split Task 4b);
+// declaration unchanged in utils.h.
 
 int get_power_of_arda(struct char_data* ch)
 {

@@ -1,0 +1,1212 @@
+/* entity_lifecycle.cc */
+
+// Carved out of db.cpp (Phase: db-split Task 2, spec Sec4a). Interim home for
+// the shared char/obj lifecycle helpers used by BOTH world instantiation
+// (db_world.cpp's read_mobile() -> clear_char()) and the persist store paths
+// (db_players.cpp's store_to_char()/save_char() family -> make_char_data()/
+// clear_char()/init_char()/free_char()). Neither the world (W) nor the
+// persist (P) half owns this code, so the classification inventory gave it
+// its own TU rather than forcing an arbitrary choice; a future rots_entity
+// library member is the intended permanent home (see spec
+// docs/superpowers/specs/2026-07-16-library-architecture-design.md Sec4a).
+// db.h still declares every symbol here, so callers outside this file are
+// unaffected.
+//
+// db-split Task 4b added a second tenant: the affect / derived-ability
+// engine (affect_modify/affect_naked/apply_gear_affects/modify_affects/
+// affect_total/affect_to_char/affect_remove/affected_by_spell, relocated
+// from handler.cpp; recalc_abilities/do_squareroot, from profs.cpp;
+// get_race_perception/get_naked_perception/get_naked_willpower/
+// get_confuse_modifier/encrypt_line/decrypt_line, from utility.cpp). Like
+// the lifecycle helpers above, both store_to_char() (via affect_to_char())
+// and char_to_store() (via affect_total()) call into this engine for every
+// character, so it belongs to neither the world nor the persist half
+// either -- and, same as the lifecycle helpers, it was previously
+// hand-duplicated in convert_stubs.cpp so rots_convert could link without
+// pulling in the whole handler.cpp/profs.cpp/utility.cpp TUs. Moving the
+// real bodies here restores a single definition per symbol that both
+// ageland and rots_convert link, per the review adjudication recorded in
+// docs/superpowers/plans/2026-07-17-db-split-and-rots-convert.md's "Task
+// 4b" section. See that section for the two helpers that stay in their
+// origin TUs instead (shared with a sibling function outside this
+// relocation) and this file's own affect-engine section comment below for
+// the full rationale.
+
+#include "platdef.h"
+#include <ctype.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <time.h>
+
+// unistd.h doesn't exist on Windows (Phase 3 Task 5); everything this file uses
+// from it (open()/close()/lstat()'s POSIX fd plumbing) lives inside the
+// open_secure_temp_output_file()/write_text_file_atomically_clearing_stale_tmp()
+// PREDEF_PLATFORM_LINUX branches below, which is why this include alone can be
+// platform-gated without also needing to touch fcntl.h/sys/stat.h (both exist,
+// in a reduced form, on the Windows CRT too, so they stay unconditional).
+#if defined PREDEF_PLATFORM_LINUX
+#include <unistd.h>
+#elif defined PREDEF_PLATFORM_WINDOWS
+// _sopen_s/_close (open_secure_temp_output_file) and GetFileAttributesA
+// (write_text_file_atomically_clearing_stale_tmp) below -- Windows'
+// equivalents of the <unistd.h> POSIX fd plumbing this file needs.
+#include <io.h>
+#endif
+
+#include "color.h"
+#include "comm.h"
+#include "db.h"
+#include "handler.h"
+#include "interpre.h"
+#include "limits.h"
+#include "mail.h"
+#include "mudlle.h"
+#include "pkill.h"
+#include "platform_compat.h"
+#include "protos.h"
+#include "spells.h"
+#include "warrior_spec_handlers.h"
+#include "rots/persist/file_formats.h"
+#include "rots/core/character.h"
+#include "rots/core/object.h"
+#include "rots/core/room.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/types.h"
+#include "utils.h"
+#include "zone.h"
+
+#include "account_cache.h"
+#include "account_management.h"
+#include "big_brother.h"
+#include "char_utils.h"
+#include "character_json.h"
+#include "exploits_json.h"
+#include "json_utils.h"
+#include "text_view.h"
+#include "player_file_finalize.h"
+#include "skill_timer.h"
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <filesystem>
+#include <format>
+#include <iostream>
+#include <iterator>
+#include <new>
+#include <sstream>
+#include <string>
+#include <system_error>
+#include <vector>
+
+// Cross-TU forward declarations for symbols init_char() below calls
+// that are neither defined in this TU nor declared in db.h (db-split
+// Task 2 fix-ups):
+extern long top_idnum; // db_players.cpp -- init_char() assigns ch->specials2.idnum from ++top_idnum.
+extern long race_affect[]; // consts.cpp -- init_char() reads race_affect[GET_RACE(ch)].
+
+
+/************************************************************************
+ *  procs of a (more or less) general utility nature			*
+ ********************************************************************** */
+
+
+// Releases the alias_list chain objsave.cpp's Crash_alias_load() builds
+// (each node CREATE1()'d, each with a CREATE()'d .command string) and
+// attaches to ch->specials.alias. Nothing else in the tree ever released
+// this list -- every character with saved aliases leaked it on every
+// free_char() (e.g. logout), a confirmed production leak (backlog T2,
+// disclosed at Phase 5 T6 via sanitize.supp). NULL-safe: `list` is 0 for a
+// freshly-cleared character and always 0 for mobs (structs.h: "aliases, 0
+// for mobs"), so this is a no-op for both.
+void free_alias_list(struct alias_list* list)
+{
+    while (list) {
+        struct alias_list* next = list->next;
+        RELEASE(list->command);
+        RELEASE(list);
+        list = next;
+    }
+}
+
+// Deep-clones an alias_list chain (owned_alias_list's copy ctor/assignment,
+// structs.h -- RAII T4). Mirrors do_alias()'s/Crash_alias_load()'s own node
+// construction: each node CREATE1()'d, each .command CREATE()'d and NUL-
+// terminated. In practice this only ever clones an empty (null) chain --
+// NPCs never carry a real one (mob_proto's alias is always null; see
+// structs.h's alias field comment) and no live PC char_data is ever
+// whole-struct-copied -- but it is implemented as a real clone (not a
+// shallow pointer copy) so char_special_data's copy assignment -- which
+// `*mob = mob_proto[i]` (db.cpp's read_mobile(), the char_data whole-struct
+// copy) relies on -- stays well-defined.
+struct alias_list* owned_alias_list::clone(struct alias_list* src)
+{
+    struct alias_list* head = nullptr;
+    struct alias_list* tail = nullptr;
+
+    for (struct alias_list* node = src; node; node = node->next) {
+        struct alias_list* copy;
+        CREATE1(copy, alias_list);
+        std::memcpy(copy->keyword, node->keyword, sizeof(copy->keyword));
+
+        const size_t command_length = node->command ? strlen(node->command) : 0;
+        CREATE(copy->command, char, command_length + 1);
+        if (node->command)
+            strcpy(copy->command, node->command);
+        else
+            copy->command[0] = '\0';
+
+        copy->next = nullptr;
+        if (!head)
+            head = tail = copy;
+        else {
+            tail->next = copy;
+            tail = copy;
+        }
+    }
+
+    return head;
+}
+
+/* release memory allocated for a char struct */
+void free_char(struct char_data* ch)
+{
+    clear_account_backed_object_bytes_for_character(ch);
+
+    // RAII T6a: this function frees the char_data storage with a raw free()
+    // (RELEASE(ch), below). Historically it ALSO ran ~char_data()'s work by
+    // hand -- per-member reset()/move-assign-empty of every heap-owning member
+    // (T3 skills/knowledge vectors, T4 alias, T5b poofIn/poofOut strings,
+    // extra_specialization_data, damage_details). That hand teardown is now
+    // subsumed by an explicit `ch->~char_data();` immediately before the free
+    // (bottom of this function), giving the calloc/placement-new (clear_char,
+    // read_mobile) a symmetric explicit-dtor/free teardown. See ownership-map.md
+    // section 6.
+    //
+    // What must STILL be done by hand here, BEFORE ~char_data() runs, is
+    // everything the implicit destructor does NOT (and must not) do:
+    //   * the CONDITIONAL prototype-shared char* strings (name/title/descr/
+    //     profs) -- freed only under the IS_NPC guard below, because for a
+    //     normal NPC they alias mob_proto[nr] and the destructor leaving raw
+    //     char* members untouched is exactly what prevents a double-free of the
+    //     prototype;
+    //   * the raw special-mob script pointers (special_stack/special_list_area/
+    //     special_prog_number/special_prog_point) -- POD int*/long* with no
+    //     destructor;
+    //   * draining the `affected` spell-affect chain (pool-mediated, not an
+    //     owned member the destructor knows about).
+    // These read ch's members, so they run while the object is still alive.
+
+    // RAII T5a: free the special-mob script buffers, now in their own typed
+    // fields (were reinterpret_cast'd through poofIn/poofOut/union1/union2).
+    // All null for PCs and ordinary mobs, so RELEASE (null-safe) is
+    // unconditional. Releasing special_prog_number/special_prog_point here
+    // fixes the ownership-map section 2c leak: pre-T5a these aliased
+    // union1.prog_number / union2.prog_point, which free_char could not free
+    // without risking a PC's reply_ptr/reply_number in the same union storage.
+    RELEASE(ch->specials.special_stack);
+    RELEASE(ch->specials.special_list_area);
+    RELEASE(ch->specials.special_prog_number);
+    RELEASE(ch->specials.special_prog_point);
+
+    while (ch->affected)
+        affect_remove(ch, ch->affected);
+
+    if (!IS_NPC(ch) || (IS_NPC(ch) && ch->nr == -1)) {
+
+        RELEASE(GET_NAME(ch));
+        RELEASE(ch->player.title);
+        RELEASE(ch->player.short_descr);
+        RELEASE(ch->player.long_descr);
+        RELEASE(ch->player.description);
+        RELEASE(ch->profs);
+    } /*  else if ((i = ch->nr) > -1) {
+     if (ch->player.name && ch->player.name != mob_proto[i].player.name)
+       RELEASE(ch->player.name);
+     if (ch->player.title && ch->player.title != mob_proto[i].player.title)
+       RELEASE(ch->player.title);
+     if (ch->player.short_descr && ch->player.short_descr !=
+   mob_proto[i].player.short_descr) RELEASE(ch->player.short_descr); if
+   (ch->player.long_descr && ch->player.long_descr !=
+   mob_proto[i].player.long_descr) RELEASE(ch->player.long_descr); if
+   (ch->player.description && ch->player.description !=
+   mob_proto[i].player.description) RELEASE(ch->player.description);
+   } */
+
+    // Diagnostic only (not teardown): a mob should never have carried a skills
+    // array (clear_char only sizes skills/knowledge for mode != MOB_ISNPC). Log
+    // the invariant violation while ch is still alive; the vector's heap buffer
+    // is released by ~char_data() below like every other owning member.
+    if (!ch->skills.empty() && IS_NPC(ch))
+        log("SYSERR: Mob had skills array allocated!");
+
+    remove_char_exists(ch->abs_number);
+
+    // RAII T6a: symmetric teardown. clear_char()/read_mobile() construct this
+    // object with a placement-new over calloc storage (new (ch) char_data());
+    // the mirror image is an explicit destructor call followed by the raw
+    // free. Running ~char_data() here destroys EVERY owning member --
+    // skills/knowledge (std::vector, T3), specials.alias (owned_alias_list, T4),
+    // specials.poofIn/poofOut (std::string, T5b), extra_specialization_data
+    // (deletes current_spec_info) and damage_details (clears its std::map) --
+    // which is exactly (and only) what the per-member reset()/move-assign-empty
+    // lines removed above used to do by hand. Crucially it does NOT touch the
+    // raw char* members (name/title/descr/profs, freed conditionally above; the
+    // special-mob pointers, freed above), because those are POD pointers with
+    // no destructor -- so a normal NPC whose strings alias the prototype is not
+    // double-freed. RELEASE(ch) then frees the raw storage (gated by
+    // global_release_flag exactly as before). Do NOT read *ch after this line.
+    ch->~char_data();
+    RELEASE(ch);
+}
+
+// RAII T6b: owning factory for a clean-scope char_data instance. Mirrors the
+// canonical hand-written `CREATE(x, char_data, 1); clear_char(x, mode);`
+// allocation (calloc storage + placement-new construction) and wraps the result
+// in a char_data_ptr whose deleter is free_char -- so the whole
+// allocate/construct/use/free lifecycle is single-owner and exception-safe.
+// `mode` is passed straight to clear_char (MOB_VOID for a PC-shaped scratch
+// char, MOB_ISNPC for a mob). See db.h for the world-graph caveat.
+char_data_ptr make_char_data(int mode)
+{
+    struct char_data* ch;
+    CREATE(ch, struct char_data, 1);
+    clear_char(ch, mode);
+    return char_data_ptr(ch);
+}
+
+/* release memory allocated for an obj struct */
+void free_obj(struct obj_data* obj)
+{
+    int nr;
+    struct extra_descr_data *thith, *next_one;
+
+    if ((nr = obj->item_number) == -1) {
+        RELEASE(obj->name);
+        RELEASE(obj->description);
+        RELEASE(obj->short_description);
+        RELEASE(obj->action_description);
+        if (obj->ex_description)
+            for (thith = obj->ex_description; thith; thith = next_one) {
+                next_one = thith->next;
+                RELEASE(thith->keyword);
+                RELEASE(thith->description);
+                RELEASE(thith);
+            }
+    } /* else {
+     if (obj->name && obj->name != obj_proto[nr].name)
+       RELEASE(obj->name);
+     if (obj->description && obj->description != obj_proto[nr].description)
+       RELEASE(obj->description);
+     if (obj->short_description && obj->short_description !=
+   obj_proto[nr].short_description) RELEASE(obj->short_description); if
+   (obj->action_description && obj->action_description !=
+   obj_proto[nr].action_description) RELEASE(obj->action_description); if
+   (obj->ex_description && obj->ex_description != obj_proto[nr].ex_description)
+       for (thith = obj->ex_description; thith; thith = next_one) {
+         next_one = thith->next;
+         RELEASE(thith->keyword);
+         RELEASE(thith->description);
+         RELEASE(thith);
+       }
+   } */
+
+    RELEASE(obj);
+}
+
+/* clear some of the the working variables of a char */
+void reset_char(struct char_data* ch)
+{
+    int i;
+
+    for (i = 0; i < MAX_WEAR; i++) /* Initialisering */
+        ch->equipment[i] = 0;
+
+    ch->followers = 0;
+    ch->master = 0;
+    ch->next_die = 0;
+    ch->carrying = 0;
+    ch->next = 0;
+    ch->next_fighting = 0;
+    ch->next_in_room = 0;
+    ch->specials.fighting = 0;
+    ch->specials.position = POSITION_STANDING;
+    ch->specials.default_pos = POSITION_STANDING;
+    ch->specials.carry_weight = 0;
+    ch->specials.carry_items = 0;
+    ch->specials.was_in_room = -1;
+
+    if (GET_HIT(ch) <= 0)
+        GET_HIT(ch) = 1;
+    if (GET_MOVE(ch) <= 0)
+        GET_MOVE(ch) = 1;
+    if (GET_MANA(ch) <= 0)
+        GET_MANA(ch) = 1;
+}
+
+/* clear ALL the working variables of a char and do NOT free any space
+ * alloc'ed*/
+void clear_char(struct char_data* ch, int mode)
+{
+    /* At every production call site, ch points to memory obtained via
+     * CREATE()/calloc (raw, unconstructed storage), never to a char_data that has
+     * already run its constructor. Placement-new value-initializes it in place:
+     * this zeroes every POD member exactly like the old memset did, but also
+     * properly constructs the non-trivial members (player_damage_details::damage_map
+     * is a std::map; specialization_data has a user destructor) instead of leaving
+     * them as zeroed-but-never-constructed memory, which is undefined behavior the
+     * moment those members are used (deterministic SIGSEGV under libc++/macOS;
+     * silently tolerated by libstdc++/Linux). See db.cpp read_mobile() for the
+     * other call path that needs the same treatment.
+     * (Test code also calls clear_char() directly on already-constructed stack
+     * `char_data` objects to reset them between cases; that's safe in practice here
+     * because the non-trivial members are always empty at that point, so
+     * re-running their default constructors via this placement-new has nothing to
+     * leak — but it's not the shape this function's placement-new was written for,
+     * and isn't a pattern to extend to types where re-construction over a live
+     * object could leak or double-free.) */
+    new (ch) char_data();
+    CREATE1(ch->profs, char_prof_data);
+    memset(ch->profs->colors, CNRM, sizeof(ch->profs->colors[0]) * MAX_COLOR_FIELDS);
+
+    ch->specials.alias = 0;
+    ch->in_room = NOWHERE;
+    ch->specials.was_in_room = NOWHERE;
+    ch->specials.position = POSITION_STANDING;
+    ch->specials.default_pos = POSITION_STANDING;
+    SET_TACTICS(ch, TACTICS_NORMAL);
+    SET_SHOOTING(ch, SHOOTING_NORMAL);
+    SET_CASTING(ch, CASTING_NORMAL);
+    ch->specials.script_info = 0;
+    ch->specials.script_number = 0;
+    ch->specials2.rp_flag = 0;
+    ch->specials2.retiredon = 0;
+    ch->specials2.hide_flags = 0;
+    utils::set_specialization(*ch, game_types::PS_None);
+
+    SET_DODGE(ch) = 0; /* Basic Armor */
+    if (ch->abilities.mana < 100)
+        ch->abilities.mana = 100;
+
+    if (mode != MOB_ISNPC) {
+        ch->skills.assign(MAX_SKILLS, 0);
+        ch->knowledge.assign(MAX_SKILLS, 0);
+        if (ch->desc)
+            memset(ch->desc->pwd, 0, MAX_PWD_LENGTH);
+    }
+}
+
+void clear_object(struct obj_data* obj)
+{
+    memset((char*)obj, 0, (size_t)sizeof(struct obj_data));
+
+    obj->item_number = -1;
+    obj->in_room = NOWHERE;
+    obj->obj_flags.timer = -1;
+    obj->obj_flags.script_info = 0;
+}
+
+/* initialize a new character only if prof is set */
+void init_char(struct char_data* ch)
+{
+    int i;
+
+    set_title(ch);
+
+    ch->player.short_descr = 0;
+    ch->player.long_descr = 0;
+    ch->player.description = 0;
+
+    ch->player.hometown = number(1, 4);
+
+    ch->player.time.birth = time(0);
+    ch->player.time.played = 0;
+    ch->player.time.logon = time(0);
+
+    for (i = 0; i < MAX_TOUNGE; i++)
+        ch->player.talks[i] = 0;
+
+    SET_STR(ch, 9);
+    GET_INT(ch) = 9;
+    GET_WILL(ch) = 9;
+    GET_DEX(ch) = 9;
+    GET_CON(ch) = 9;
+
+    /* make favors for sex */
+    ch->player.weight = get_race_weight(ch) * (85 + number(0, 30)) / 100;
+    ch->player.height = get_race_height(ch) * (85 + number(0, 30)) / 100;
+
+    ch->abilities.mana = 100;
+    ch->tmpabilities.mana = GET_MAX_MANA(ch);
+    ch->tmpabilities.hit = GET_MAX_HIT(ch);
+    ch->abilities.move = 82;
+    ch->tmpabilities.move = GET_MAX_MOVE(ch);
+    GET_DODGE(ch) = 0;
+
+    ch->specials2.idnum = ++top_idnum;
+
+    if (ch->skills.empty())
+        ch->skills.assign(MAX_SKILLS, 0);
+
+    for (i = 0; i < MAX_SKILLS; i++) {
+        SET_SKILL(ch, i, 0);
+        SET_KNOWLEDGE(ch, i, 0);
+    }
+
+    ch->specials.affected_by = race_affect[GET_RACE(ch)];
+
+    ch->specials2.saving_throw = 0;
+    ch->specials2.rp_flag = 0;
+
+    for (i = 0; i < 3; i++)
+        GET_COND(ch, i) = (GET_LEVEL(ch) == LEVEL_IMPL ? -1 : 24);
+
+    ch->damage_details.reset();
+
+    /* The default preference flags */
+    PRF_FLAGS(ch) |= PRF_SPAM | PRF_NARRATE | PRF_CHAT | PRF_WIZ | PRF_SING | PRF_PROMPT | PRF_ECHO | PRF_SPINNER;
+}
+
+/************************************************************************
+ *  Affect / derived-ability engine (db-split Task 4b)                *
+ ************************************************************************
+ *  Relocated verbatim from handler.cpp (affect_modify/affect_naked/
+ *  apply_gear_affects/modify_affects/affect_total/affect_to_char/
+ *  affect_remove/affected_by_spell), profs.cpp (do_squareroot/
+ *  recalc_abilities), and utility.cpp (get_race_perception/
+ *  get_naked_perception/get_naked_willpower/get_confuse_modifier/
+ *  encrypt_line/decrypt_line). These were previously hand-duplicated in
+ *  convert_stubs.cpp so rots_convert could link without the whole
+ *  handler.cpp/profs.cpp/utility.cpp TUs; Task 4b restores a single real
+ *  definition per symbol (this TU is linked by BOTH ageland and
+ *  rots_convert) and deletes the convert_stubs.cpp duplicates. Bodies,
+ *  comments, and local quirks are unchanged from their origin files;
+ *  only the enclosing TU differs. Declarations are unchanged in
+ *  handler.h/utils.h.
+ *
+ *  Two small helpers stay in their ORIGINAL TUs rather than moving here,
+ *  because each is shared with a sibling function that is NOT part of
+ *  this relocation and has no header declaration of its own:
+ *    - get_from_affected_type_pool()/put_to_affected_type_pool()
+ *      (handler.cpp) -- also used by affect_to_room()/affect_remove_room(),
+ *      the room-affect analogues of affect_to_char()/affect_remove(), which
+ *      stay in handler.cpp.
+ *    - class_HP() (profs.cpp) -- also used by
+ *      _INTERNAL::stat_assigner::organize() (character-creation stat
+ *      ordering), which stays in profs.cpp.
+ *  Both are forward-declared just below so the moved bodies can call them;
+ *  rots_convert (which does not link handler.cpp/profs.cpp) keeps small
+ *  ledger-documented stand-ins for both in convert_stubs.cpp.
+ ************************************************************************/
+
+// Shared-helper forward declarations for symbols this section's moved
+// bodies call but do NOT define here (see the header comment above and
+// each entry for why):
+extern struct affected_type* get_from_affected_type_pool(); // handler.cpp
+extern void put_to_affected_type_pool(struct affected_type*); // handler.cpp
+extern int class_HP(const char_data* character); // profs.cpp
+extern universal_list* affected_list; // handler.cpp -- live-tick affect-duration bookkeeping list
+extern universal_list* affected_list_pool; // handler.cpp -- pool backing affected_list
+extern int max_race_str[]; // consts.cpp -- recalc_abilities()'s GET_BAL_STR() macro
+extern struct skill_data skills[]; // consts.cpp -- affect_modify()'s APPLY_SPELL case
+
+// handler.cpp's file-local macro (APPLY_MAUL case, affect_modify() below).
+// Macros do not cross translation units, so this must be redefined here.
+#define MAX_MAUL_DODGE 50
+
+namespace {
+// Verbatim copy of profs.cpp's do_squareroot(int, char_data*) overload --
+// moved alongside recalc_abilities() (its only caller). Kept file-local
+// (anonymous namespace) so it does not collide at link time with
+// utility.cpp's separate, differently-implemented do_squareroot(int,
+// char_data*) overload (a pre-existing, unrelated same-signature function
+// used by a different call site in that TU).
+/*
+ * This function returns 200 * sqrt(i).
+ */
+inline int do_squareroot(int i, char_data*)
+{
+    return int(std::sqrt(i) * 200.0);
+}
+} // namespace
+
+/* This is called whenever some of person's stats/level change */
+void recalc_abilities(char_data* character)
+{
+    int tmp, tmp2, dex_speed;
+    struct obj_data* weapon;
+
+    if (!IS_NPC(character)) {
+        character->abilities.str = character->constabilities.str;
+        character->abilities.lea = character->constabilities.lea;
+        character->abilities.intel = character->constabilities.intel;
+        character->abilities.wil = character->constabilities.wil;
+        character->abilities.dex = character->constabilities.dex;
+        character->abilities.con = character->constabilities.con;
+
+        character->abilities.hit = 10 + std::min(LEVEL_MAX, GET_LEVEL(character)) + character->constabilities.hit * GET_CON(character) / 20 + (class_HP(character) * (GET_CON(character) + 20) / 14) * std::min(LEVEL_MAX * 100, (int)GET_MINI_LEVEL(character)) / 100000;
+
+        // Characters specialized in defender get 10% bonus HP.
+        if (utils::get_specialization(*character) == game_types::PS_Defender) {
+            character->abilities.hit += character->abilities.hit / 10;
+        }
+
+        // dirty test to see if this ranger change can work
+        character->abilities.hit = std::max(character->abilities.hit - (GET_RAW_SKILL(character, SKILL_STEALTH) * GET_LEVELA(character) + GET_RAW_SKILL(character, SKILL_STEALTH) * 3) / 33, 10);
+
+        character->tmpabilities.hit = std::min(character->tmpabilities.hit, character->abilities.hit);
+
+        character->abilities.mana = character->constabilities.mana + GET_INT(character) + GET_WILL(character) / 2 + GET_PROF_LEVEL(PROF_MAGE, character) * 2;
+
+        character->tmpabilities.mana = std::min(character->tmpabilities.mana, character->abilities.mana);
+
+        character->abilities.move = character->constabilities.move + GET_CON(character) + 20 + GET_PROF_LEVEL(PROF_RANGER, character) + GET_RAW_KNOWLEDGE(character, SKILL_TRAVELLING) / 4;
+
+        if ((GET_RACE(character) == RACE_WOOD) || GET_RACE(character) == RACE_HIGH)
+            character->abilities.move += 15;
+
+        // Giving the beorning race 50+ moves
+        if (GET_RACE(character) == RACE_BEORNING) {
+            character->abilities.move += 50;
+        }
+
+        character->tmpabilities.move = std::min(character->tmpabilities.move, character->abilities.move);
+
+        weapon = character->equipment[WIELD];
+        if (weapon) {
+            if (GET_OBJ_WEIGHT(weapon) == 0) {
+                /*UPDATE*, temporary check for 0 weight weapons*/
+                GET_OBJ_WEIGHT(weapon) = 1;
+                strcpy(buf, "SYSERR: 0 weight weapon");
+                mudlog(buf, NRM, LEVEL_GOD, TRUE);
+            }
+
+            int bulk = weapon->get_bulk();
+            character->specials.null_speed = 3 * GET_DEX(character) + 2 * (GET_RAW_SKILL(character, SKILL_ATTACK) + GET_RAW_SKILL(character, SKILL_STEALTH) / 2) / 3 + 100;
+
+            character->specials.str_speed = GET_BAL_STR(character) * 2500000 / (GET_OBJ_WEIGHT(weapon) * (bulk + 3));
+
+            if (IS_TWOHANDED(character)) {
+                character->specials.str_speed *= 2;
+            }
+
+            /* Dex adjustment by Fingol */
+            if (bulk < 4) {
+                dex_speed = GET_DEX(character) * 2500000 / (GET_OBJ_WEIGHT(weapon) * (bulk + 3));
+
+                tmp2 = (character->specials.str_speed * bulk / 5) + (dex_speed * (5 - bulk) / 5);
+
+                character->specials.str_speed = std::max(character->specials.str_speed, tmp2);
+            }
+
+            tmp = 1000000;
+            tmp /= 1000000 / character->specials.str_speed + 1000000 / (character->specials.null_speed * character->specials.null_speed);
+
+            game_types::weapon_type w_type = weapon->get_weapon_type();
+            GET_ENE_REGEN(character) = do_squareroot(tmp / 100, character) / 20;
+
+            // Custom energy regen based on race, etc.
+            if (GET_RACE(character) == RACE_DWARF && weapon_skill_num(w_type) == SKILL_AXE) {
+                GET_ENE_REGEN(character) += std::min(GET_ENE_REGEN(character) / 10, 10);
+            } else if (GET_RACE(character) == RACE_HARADRIM && weapon_skill_num(w_type) == SKILL_SPEARS) {
+                GET_ENE_REGEN(character) += std::min(GET_ENE_REGEN(character) / 20, 20);
+            }
+
+            // weapon masters get bonus attack speed with some weapons.
+            player_spec::weapon_master_handler weapon_master(character);
+            character->points.ENE_regen *= weapon_master.get_attack_speed_multiplier();
+
+        } else {
+            GET_ENE_REGEN(character) = 60 + 5 * GET_DEX(character);
+
+            /*---------------- Beornings get a different speed calc here -----------------*/
+        }
+    }
+}
+
+void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add, sh_int counter)
+{
+    int tmp, tmp2;
+
+    if (add == AFFECT_MODIFY_SET) {
+        SET_BIT(ch->specials.affected_by, bitv);
+        if (utils::is_set(bitv, long(AFF_CHARM))) {
+            ch->damage_details.reset();
+        }
+    } else if (add == AFFECT_MODIFY_REMOVE) {
+        REMOVE_BIT(ch->specials.affected_by, bitv);
+        if (utils::is_set(bitv, long(AFF_CHARM))) {
+            ch->damage_details.reset();
+        }
+
+        mod = -mod;
+    }
+    ch->specials.affected_by |= race_affect[GET_RACE(ch)];
+
+    if (add == AFFECT_MODIFY_TIME) {
+        return; /* so, usual affects are not modified in this call */
+    }
+
+    switch (loc) {
+    case APPLY_NONE:
+        break;
+
+    case APPLY_STR:
+        SET_STR_BASE(ch, GET_STR_BASE(ch) + mod);
+        SET_STR(ch, GET_STR(ch) + mod);
+        break;
+
+    case APPLY_LEA:
+        GET_LEA_BASE(ch) += mod;
+        GET_LEA(ch) += mod;
+        break;
+
+    case APPLY_DEX:
+        GET_DEX_BASE(ch) += mod;
+        GET_DEX(ch) += mod;
+        break;
+
+    case APPLY_INT:
+        GET_INT_BASE(ch) += mod;
+        GET_INT(ch) += mod;
+        break;
+
+    case APPLY_WILL:
+        GET_WILL_BASE(ch) += mod;
+        GET_WILL(ch) += mod;
+        break;
+
+    case APPLY_CON:
+        GET_CON_BASE(ch) += mod;
+        GET_CON(ch) += mod;
+        break;
+
+    case APPLY_PROF:
+        /* ??? GET_PROF(ch) += mod; */
+        break;
+
+    case APPLY_LEVEL:
+        /* ??? GET_LEVEL(ch) += mod; */
+        break;
+
+    case APPLY_AGE:
+        ch->player.time.birth -= (mod * SECS_PER_MUD_YEAR);
+        break;
+
+    case APPLY_CHAR_WEIGHT:
+        GET_WEIGHT(ch) += mod;
+        break;
+
+    case APPLY_CHAR_HEIGHT:
+        GET_HEIGHT(ch) += mod;
+        break;
+
+    case APPLY_MANA:
+        GET_MAX_MANA(ch) += mod;
+        if (GET_MANA(ch) >= GET_MAX_MANA(ch) - mod)
+            GET_MANA(ch) += mod;
+
+        break;
+
+    case APPLY_WILLPOWER:
+        GET_WILLPOWER(ch) += mod;
+        break;
+
+    case APPLY_HIT:
+        GET_MAX_HIT(ch) += mod;
+        if (GET_HIT(ch) >= GET_MAX_HIT(ch) - mod)
+            GET_HIT(ch) += mod;
+
+        break;
+
+    case APPLY_MOVE:
+        GET_MAX_MOVE(ch) += mod;
+        if (GET_MOVE(ch) >= GET_MAX_MOVE(ch) - mod)
+            GET_MOVE(ch) += mod;
+        break;
+
+    case APPLY_GOLD:
+        break;
+
+    case APPLY_EXP:
+        break;
+
+    case APPLY_DODGE:
+        SET_DODGE(ch) += mod;
+        break;
+
+    case APPLY_OB:
+        SET_OB(ch) += mod;
+        break;
+
+    case APPLY_SPELL_PEN:
+        ch->points.spell_pen += mod;
+        break;
+
+    case APPLY_SPELL_POW:
+        ch->points.spell_power += mod;
+        break;
+
+    case APPLY_DAMROLL:
+        GET_DAMAGE(ch) += mod;
+        break;
+
+    case APPLY_SAVING_SPELL:
+        GET_SAVE(ch) += mod;
+        break;
+
+    case APPLY_VISION:
+        if (add) {
+            if (mod > 0)
+                SET_BIT(ch->specials.affected_by, AFF_INFRARED);
+            if (mod < 0)
+                SET_BIT(ch->specials.affected_by, AFF_BLIND);
+        } else {
+            if (mod > 0)
+                REMOVE_BIT(ch->specials.affected_by, AFF_BLIND);
+            if (mod < 0)
+                REMOVE_BIT(ch->specials.affected_by, AFF_INFRARED);
+        }
+
+    case APPLY_REGEN:
+        break;
+
+    case APPLY_SPEED:
+        GET_ENE_REGEN(ch) += mod;
+        break;
+
+    case APPLY_BEND: {
+        GET_ENE_REGEN(ch) += (GET_ENE_REGEN(ch) / 2);
+        SET_OB(ch) += mod;
+    } break;
+
+    case APPLY_ARMOR:
+        //     mod = (2*mod*GET_PERCEPTION(ch))/100;
+        //     SET_DODGE(ch) += mod;
+        break;
+    case APPLY_MAUL:
+        if (!add) {
+            SET_DODGE(ch) += std::min((counter * 5), MAX_MAUL_DODGE);
+        }
+
+        if (add) {
+            SET_DODGE(ch) += -(std::min((counter * 5), MAX_MAUL_DODGE));
+        }
+        break;
+
+    case APPLY_PERCEPTION:
+        // Lego: Since we loop through every gear slot, we need to track the underlying perception value rather than update the final perception value
+        //       because each subsequent iteration would add/subtract the overridden minimum percep.
+        //       Then we override the underlying value with our minimum perception logic and expose that to the rest of the game.
+        ch->specials2.rawPerception += mod;
+
+        if (affected_by_spell(ch, SPELL_INSIGHT)) {
+            int minimumRacePerception = utils::get_minimum_insight_perception(*ch);
+
+            ch->specials2.perception = std::max(ch->specials2.rawPerception, minimumRacePerception);
+        } else {
+            ch->specials2.perception = ch->specials2.rawPerception;
+        }
+        break;
+
+    case APPLY_SPELL:
+        if (!add)
+            mod = -mod;
+        tmp = mod & 255; // spell number, in skills[] table
+        tmp2 = mod / 256; // spell level
+        if (!tmp2)
+            tmp2 = GET_LEVEL(ch);
+        if (tmp >= 128)
+            break;
+
+        if (!skills[tmp].spell_pointer)
+            break;
+
+        if (add)
+            skills[tmp].spell_pointer(ch, mutable_arg(""), SPELL_TYPE_SPELL, ch, 0, 0, 1);
+        else
+            skills[tmp].spell_pointer(ch, mutable_arg(""), SPELL_TYPE_ANTI, ch, 0, 0, 1);
+        break;
+
+    case APPLY_BITVECTOR:
+        if (add) {
+            if ((mod < 0) || (mod > 31))
+                mod = 0;
+            SET_BIT(ch->specials.affected_by, 1 << mod);
+        } else {
+            mod = -mod;
+            if ((mod < 0) || (mod > 31))
+                mod = 0;
+            REMOVE_BIT(ch->specials.affected_by, 1 << mod);
+        }
+        break;
+
+    case APPLY_MANA_REGEN:
+        ch->points.mana_regen += mod;
+        break;
+
+    case APPLY_RESIST:
+        // Fixed-bug (Phase 5 T6, UBSan negative-shift-exponent): AFFECT_MODIFY_REMOVE
+        // above negates `mod` (it's a bit position here, e.g. PLRSPEC_FIRE,
+        // not a numeric stat delta -- the negation is this function's generic
+        // "undo an add" convention for every APPLY_* case, not specific to
+        // this one). `1 << mod` with mod now negative is UB (confirmed live:
+        // an APPLY_VULN affect wearing off during a real world-data boot hit
+        // this under UBSan); negate back to recover the original bit
+        // position before shifting.
+        if (mod >= 0)
+            GET_RESISTANCES(ch) |= (1 << mod);
+        else
+            GET_RESISTANCES(ch) &= ~(1 << (-mod));
+        break;
+
+    case APPLY_VULN:
+        if (mod >= 0)
+            GET_VULNERABILITIES(ch) |= (1 << mod);
+        else
+            GET_VULNERABILITIES(ch) &= ~(1 << (-mod));
+        break;
+
+    default:
+        log("SYSERR: Unknown apply adjust attempt (handler.c, affect_modify).");
+        break;
+    } /* switch */
+}
+
+void affect_naked(char_data* ch)
+{
+    // sets some intrinsic parameters
+    // assumes that the char is naked and has no affections.
+
+    // SET_PERCEPTION(ch, get_naked_perception(ch));
+    int nakedPerception = get_naked_perception(ch);
+    ch->specials2.rawPerception = ch->specials2.perception = nakedPerception;
+    GET_WILLPOWER(ch) = get_naked_willpower(ch);
+    ch->specials.affected_by |= race_affect[GET_RACE(ch)];
+
+    if (!IS_NPC(ch)) {
+        GET_RESISTANCES(ch) = 0;
+        GET_VULNERABILITIES(ch) = 0;
+    }
+}
+
+void apply_gear_affects(char_data* character, const obj_data* item, int modify_flag)
+{
+    for (int count = 0; count < MAX_OBJ_AFFECT; ++count) {
+
+        const obj_affected_type& obj_affect = item->affected[count];
+        if (obj_affect.location == APPLY_SPELL)
+            continue;
+
+        affect_modify(character, obj_affect.location, obj_affect.modifier, item->obj_flags.bitvector, modify_flag, 0);
+    }
+}
+
+void apply_gear_affects(char_data* character, int modify_flag)
+{
+    for (int item_index = 0; item_index < MAX_WEAR; ++item_index) {
+        const obj_data* item = character->equipment[item_index];
+        if (item == nullptr)
+            continue;
+
+        if (item_index == HOLD && !CAN_WEAR(item, ITEM_HOLD))
+            continue;
+
+        apply_gear_affects(character, item, modify_flag);
+    }
+}
+
+void modify_affects(char_data* character, int modify_flag)
+{
+    int count = 0;
+    affected_type* af = character->affected;
+    while (count < MAX_AFFECT && af != nullptr) {
+        affect_modify(character, af->location, af->modifier, af->bitvector, modify_flag, af->counter);
+        ++count;
+        af = af->next;
+    }
+}
+
+void affect_total(struct char_data* ch, int mode)
+{
+    if (mode & AFFECT_TOTAL_REMOVE) {
+        apply_gear_affects(ch, AFFECT_MODIFY_REMOVE);
+        modify_affects(ch, AFFECT_MODIFY_REMOVE);
+
+        recalc_abilities(ch);
+        affect_naked(ch);
+    }
+
+    if (mode & AFFECT_TOTAL_SET) {
+        apply_gear_affects(ch, AFFECT_MODIFY_SET);
+        modify_affects(ch, AFFECT_MODIFY_SET);
+    }
+
+    if (mode & AFFECT_TOTAL_TIME) {
+        apply_gear_affects(ch, AFFECT_MODIFY_TIME);
+        modify_affects(ch, AFFECT_MODIFY_TIME);
+    }
+    /* Make certain values are between 0..100, not < 0 and not > 100! */
+
+    signed char max_value = 100;
+    signed char min_dex_str = 1;
+    signed char min_others = 0;
+
+    ch->abilities.dex = std::max(min_dex_str, std::min(ch->abilities.dex, max_value));
+    ch->abilities.intel = std::max(min_others, std::min(ch->abilities.intel, max_value));
+    ch->abilities.wil = std::max(min_others, std::min(ch->abilities.wil, max_value));
+    ch->abilities.con = std::max(min_others, std::min(ch->abilities.con, max_value));
+    ch->abilities.str = std::max(min_dex_str, std::min(ch->abilities.str, max_value));
+    ch->abilities.lea = std::max(min_others, std::min(ch->abilities.lea, max_value));
+}
+
+/* Insert an affect_type in a char_data structure
+   Automatically sets apropriate bits and applys
+
+   1.  Checks to see if the character is on the affected list.  If not they are added
+   2.  Allocates memory for the new affection (also inserting it into affected_list)
+   3.  Copies the parameters of the affection to the structure in the affected_list
+   4.  Adds it to the ch->affected list
+   5.  Calls affect_modify and affect_total to update the characters stats/abilities  */
+
+void affect_to_char(struct char_data* ch, struct affected_type* af)
+{
+    struct affected_type* affected_alloc;
+    universal_list* tmplist;
+    char mybuf[255];
+
+    if (!ch)
+        return;
+
+    // 1
+    if (!ch->affected) {
+        tmplist = pool_to_list(&affected_list, &affected_list_pool);
+        tmplist->ptr.ch = ch;
+        tmplist->number = ch->abs_number;
+        tmplist->type = TARGET_CHAR;
+
+        // nz(): GET_NAME(ch) can be null for a bare/uninitialized char_data
+        // (e.g. a test fixture) -- glibc's old sprintf("%s", NULL) printed
+        // "(null)" here without crashing; std::format calls strlen()
+        // unconditionally and crashes on a null char*, so nz() preserves
+        // the old byte-identical output instead (utils.h).
+        strcpy(mybuf, std::format("Char to aff_list: {}\n\r", nz(GET_NAME(ch))).c_str());
+    }
+
+    // 2
+    affected_alloc = get_from_affected_type_pool();
+
+    // 3
+    *affected_alloc = *af;
+
+    // 4
+    affected_alloc->next = ch->affected;
+    ch->affected = affected_alloc;
+
+    affected_alloc->time_phase = get_current_time_phase();
+
+    // 5
+    affect_modify(ch, af->location, af->modifier, af->bitvector,
+        AFFECT_MODIFY_SET, af->counter);
+    affect_total(ch);
+}
+
+/* Remove an affected_type structure from a char (called when duration
+   reaches zero). Pointer *af must never be NIL! Frees mem and calls
+   affect_location_apply
+                                               */
+void affect_remove(struct char_data* ch, struct affected_type* af)
+{
+    struct affected_type* hjp;
+    universal_list *tmplist, *tmplist2;
+    int tmp;
+
+    //   assert(ch->affected);
+    // Looks as though the following line is "just in case", but where did af come from in this case?
+    if (!ch->affected)
+        return;
+
+    affect_modify(ch, af->location, af->modifier, af->bitvector,
+        AFFECT_MODIFY_REMOVE, af->counter);
+
+    /* remove structure *af from linked list */
+    if (ch->affected == af) {
+        /* remove head of list */
+        ch->affected = af->next;
+    } else {
+        for (hjp = ch->affected, tmp = 0;
+             (hjp->next) && (hjp->next != af) && (tmp < MAX_AFFECT);
+             hjp = hjp->next, tmp++) {
+        }
+        if (hjp->next != af) {
+            log("SYSERR: FATAL : Could not locate affected_type in ch->affected. (handler.c, affect_remove)");
+            //	 exit(1);
+            return;
+        }
+        hjp->next = af->next; /* skip the af element */
+    }
+
+    //   RELEASE(af);
+    put_to_affected_type_pool(af);
+
+    if (!ch->affected && affected_list) {
+        for (tmplist = affected_list; tmplist; tmplist = tmplist2) {
+            tmplist2 = tmplist->next;
+            if ((tmplist->type == TARGET_CHAR) && (tmplist->ptr.ch == ch))
+                from_list_to_pool(&affected_list, &affected_list_pool, tmplist);
+        }
+    }
+
+    affect_total(ch);
+}
+
+/* Return if a char is affected by a spell (SPELL_XXX), NULL indicates not affected.
+   start_affect is not used anywhere in the mud...*/
+affected_type* affected_by_spell(const char_data* ch, byte skill, affected_type* start_affect)
+{
+    if (!start_affect)
+        start_affect = ch->affected;
+
+    int count = 0;
+    for (affected_type* status_affect = start_affect; status_affect && (count < MAX_AFFECT); status_affect = status_affect->next, count++) {
+        if (status_affect->type == skill) {
+            return status_affect;
+        }
+    }
+
+    return NULL;
+}
+
+sh_int
+get_race_perception(struct char_data* ch)
+{
+    switch (GET_RACE(ch)) {
+    case RACE_GOD:
+        return 0;
+    case RACE_HUMAN:
+        return 30;
+    case RACE_DWARF:
+        return 0;
+    case RACE_WOOD:
+        return 50;
+    case RACE_HOBBIT:
+        return 30;
+    case RACE_HIGH:
+        return 100;
+    case RACE_URUK:
+        return 30;
+    case RACE_HARAD:
+        return 30;
+    case RACE_ORC:
+        return 10;
+    case RACE_EASTERLING:
+        return 30;
+    case RACE_MAGUS:
+        return 30;
+    case RACE_UNDEAD:
+        return 60;
+    case RACE_TROLL:
+        return 30;
+    case RACE_HARADRIM:
+        return 30;
+    case RACE_BEORNING:
+        return 30;
+    case RACE_OLOGHAI:
+        return 30;
+    default:
+        return 0;
+    }
+    return 0;
+}
+
+sh_int
+get_naked_perception(struct char_data* ch)
+{
+    int tmp;
+
+    if (IS_NPC(ch)) {
+        if (MOB_FLAGGED(ch, MOB_SHADOW))
+            return 100;
+        else
+            return GET_PERCEPTION(ch);
+    }
+
+    tmp = get_race_perception(ch);
+    tmp += GET_PROF_LEVEL(PROF_CLERIC, ch) * 2;
+
+    return tmp;
+}
+
+sh_int
+get_naked_willpower(struct char_data* ch)
+{
+    return GET_PROF_LEVEL(PROF_CLERIC, ch) + GET_WILL(ch) - (get_confuse_modifier(ch) / 10);
+}
+
+int get_confuse_modifier(struct char_data* ch)
+{
+    struct affected_type* aff;
+    int modifier = 0;
+
+    if (IS_AFFECTED(ch, AFF_CONFUSE))
+        for (aff = ch->affected; aff; aff = aff->next)
+            if (aff->type == SPELL_CONFUSE)
+                modifier = aff->duration * 2 - 10;
+
+    return modifier;
+}
+
+unsigned char encrypt_line_lp[1000];
+void encrypt_line(unsigned char* line, int len)
+{
+    unsigned char k1, k2;
+    int tmp;
+    /*static*/ unsigned char* lp = encrypt_line_lp;
+
+    for (tmp = 0; tmp < len; tmp++)
+        if (line[tmp] > 127)
+            line[tmp] -= 128;
+
+    for (tmp = 0; tmp < len - 1; tmp++) {
+        k1 = (line[tmp] * 16); // here was *32...
+        k2 = (line[tmp + 1] / 8);
+        lp[tmp] = (k1 + k2) & 127;
+        lp[tmp] += 32;
+        //    printf("encoding: '%c' %d %d '%c'%d\n",line[tmp],k1,k2 ,lp[tmp],lp[tmp]);
+    }
+    k1 = (line[len - 1] * 16);
+    k2 = (line[0] / 8);
+    // k2 = 0;
+    lp[len - 1] = (k1 + k2) & 127;
+    lp[len - 1] += 32;
+    //  printf("e-encoding: '%c' %d %d '%c'%d\n",line[len-1],k1,k2 ,lp[len-1],lp[len-1]);
+
+    for (tmp = 0; tmp < len; tmp++)
+        line[tmp] = lp[tmp];
+}
+
+unsigned char decrypt_line_line[1000];
+void decrypt_line(unsigned char* lp, int len)
+{
+    unsigned char k1, k2;
+    int tmp;
+    /*static*/ unsigned char* line = decrypt_line_line;
+
+    k1 = ((lp[len - 1] - 32) * 8);
+    // k1 = 0;
+    k2 = ((lp[0] - 32) / 16);
+    line[0] = (k1 + k2) & 127;
+    //  printf("d-decoding: '%c'%d %d %d '%c'%d\n",lp[0],lp[0],k1,k2 ,line[0],line[0]);
+    for (tmp = 1; tmp < len; tmp++) {
+        k1 = ((lp[tmp - 1] - 32) * 8);
+        k2 = ((lp[tmp] - 32) / 16); // here was /32
+        line[tmp] = (k1 + k2) & 127;
+        //    printf("decoding: '%c'%d %d %d '%c'%d\n",lp[tmp],lp[tmp],k1,k2 ,line[tmp],line[tmp]);
+    }
+
+    for (tmp = 0; tmp < len; tmp++)
+        lp[tmp] = line[tmp];
+}

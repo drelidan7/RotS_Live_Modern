@@ -264,6 +264,104 @@ reference each other with pathed includes (`#include "rots/core/tables.h"`), and
 still-flat legacy headers by relative path (`"../../../../platdef.h"`) rather than adding `src/`
 to a search path.
 
+## `db.cpp` split into four translation units
+
+`src/db.cpp` (5,803 lines) no longer exists — it was split along the persist/world seam from
+spec §4a (`docs/superpowers/specs/2026-07-16-library-architecture-design.md`) into four flat
+`src/` sources, all still compiled directly into `ageland`/`ageland_tests` via
+`ROTS_SERVER_SOURCES` (no new library target this wave):
+
+- **`db_world.cpp`** — room/mob/obj/zone/shop index, parse, and reset (`boot_db`'s world-loading
+  half): `index_boot`, `load_rooms`/`load_mobiles`/`load_objects`, `real_room`/`real_mobile`/
+  `real_object`, mudlle script loading, and the `room_data`/`room_data_extension` methods.
+- **`db_players.cpp`** — pfile index, character load/store, and the crime + exploit JSON codecs:
+  `build_player_index`, `load_char`/`save_char`, `store_to_char`/`char_to_store`, the
+  `crime_json` namespace, and the exploit-record read/write codec. This is the persistence
+  subset `rots_convert` (below) links.
+- **`db_boot.cpp`** — the renamed remainder: boot orchestration (`boot_db`, invoking the world
+  and player halves in order), `reset_time`, and the two **capture-side** live-game functions
+  `record_crime` (walks `world[]`) and `add_exploit_record` (walks `combat_list`) — these stayed
+  out of `db_players.cpp` on purpose: they *call into* the running game to observe state, whereas
+  the codecs only serialize/deserialize records already captured. That capture/codec split is
+  what makes `db_players.cpp` linkable into `rots_convert` at all.
+- **`entity_lifecycle.cpp`** — shared char/object lifecycle (`free_char`, `make_char_data`,
+  `clear_char`, `init_char`, `reset_char`, `free_obj`, …) used by both the world-loading half
+  (`read_mobile` calls `clear_char`) and the persist half (store paths call `clear_char`/
+  `init_char`), so it belongs to neither `db_world.cpp` nor `db_players.cpp`. It also absorbed
+  the affect/derived-ability engine (`affect_modify`/`affect_total`/`affect_naked`/
+  `affect_to_char`/`affect_remove`/`recalc_abilities`/the naked-stat and
+  confuse-modifier helpers) and the save-file cipher (`encrypt_line`/`decrypt_line`), relocated
+  verbatim from `handler.cpp`/`profs.cpp`/`utility.cpp` so `rots_convert` links one definition
+  instead of a duplicate copy in `convert_stubs.cpp`. It wasn't in the original three-TU split
+  plan — it's the unforeseen fourth TU, and the natural seed for a future `rots_entity` library.
+
+`db.h` is unchanged as the stable public surface: every function it declares kept its linkage, so
+no caller outside these four files needed to change. The one hard persist→world data edge
+(`save_char` reading `world[ch->in_room].number`) became a seam function, `int
+world_room_vnum(int room_index)`, declared in `db.h` next to `real_room` and defined in
+`db_world.cpp`; `rots_convert` supplies its own definition (see the weld ledger below) since it
+never links `db_world.cpp`.
+
+## `rots_convert`: the persistence-boundary acid test
+
+`rots_convert` is a second executable (its own small `main()`, `src/convert_main.cpp`) that
+performs legacy → modern character conversion **en masse, outside MUD execution** — spec §4b.
+It links:
+
+```
+rots_convert = RotS::platform + RotS::core + rots_build_flags
+             + db_players.cpp + entity_lifecycle.cpp
+             + character_json.cpp + objects_json.cpp + exploits_json.cpp
+             + account_management.cpp + account_cache.cpp
+             + convert_exploits.cpp + convert_plrobjs.cpp
+             + object_utils.cpp + char_utils.cpp
+             + convert_main.cpp + convert_stubs.cpp
+```
+
+deliberately **NO** `db_world.cpp`/`db_boot.cpp` and **NO** combat/commands/app translation unit.
+`objsave.cpp`/`boards.cpp`/`mail.cpp`/`pkill.cpp` membership is also deliberately deferred this
+wave — their welds are catalogued as follow-on work rather than pulled in speculatively.
+
+- **It calls the same code the MUD uses** (`character_json`/`objects_json`/`exploits_json`, the
+  `convert_*` binary-to-JSON one-time migration converters) so mass-conversion output is
+  byte-identical to in-MUD lazy conversion by construction — proven by the `ConvertEquivalence`
+  suite (see "Testing" below).
+- **It is CI-linked, not merely CI-tested.** `rots_convert` is added to CMake's default `all`
+  target (no `EXCLUDE_FROM_ALL`), so every CI job builds it. If a future change re-welds
+  `db_players.cpp`/`entity_lifecycle.cpp` to the game (combat/world/commands/session), this
+  target **fails to link** and the build breaks — the converter is the executable acid-test that
+  the persistence boundary holds, not a check anyone has to remember to run.
+- **`src/convert_stubs.cpp` is the weld ledger** — one loud, documented stub per app/combat
+  symbol the linked persist/entity code still references but the converter's own call graph
+  never exercises (e.g. `send_to_char`/`act`/`descriptor_list` from `comm.cpp`,
+  `get_hit_text` from `fight.cpp`). Each stub records the symbol, its real home, why the
+  converter never reaches it, and the follow-on that would remove it. It's large (~1.6K lines)
+  by design: it makes the remaining persistence/game coupling enumerable and its shrinkage
+  measurable, rather than hiding the coupling behind an unexplained empty function. Known
+  follow-ons cataloged there: the `send_to_char` output seam, an `APPLY_SPELL` null-skip, and
+  the deferred objsave/boards/mail membership above.
+- **This target is CMake-only.** It is not added to the flat `src/Makefile` / `src/tests/Makefile`,
+  which compile same-directory only against a single hand-maintained `OBJFILES` list per binary —
+  wiring a second multi-file executable into that pattern isn't worth it for a CI-only
+  boundary check. Use a CMake preset (or the root `Makefile`'s `configure`/`build` wrappers) to
+  build it.
+
+### Testing: `ConvertEquivalence` proves the persistence boundary is behavior-preserving
+
+`src/tests/rots_convert_equivalence_tests.cpp` is a value-parameterized GoogleTest suite
+(`ConvertEquivalence.PerRaceLegacyPfileMatchesInMudConversion`) registered in CTest alongside the
+rest of the unit suite. For every playable `RACE_*` constant `character.h` declares (all sixteen,
+not just the chargen-selectable subset — the coverage comment in that file explains why the NPC
+races `RACE_EASTERLING`/`RACE_HARAD`/`RACE_UNDEAD`/`RACE_TROLL` are included too) plus one
+affect-bearing `RACE_HUMAN` variant, it builds a fixture legacy pfile, runs it through
+`rots_convert` out-of-process, and asserts the result is byte-identical to running the same
+character through the in-MUD conversion path — 17 cases total. `ageland_tests` depends on the
+`rots_convert` target (`add_dependencies`) and receives its build path through the
+`ROTS_CONVERT_EXECUTABLE` compile definition, so the test always exercises the freshly built
+binary, not a stale one; if `rots_convert` isn't available in a given build configuration the test
+`GTEST_SKIP()`s rather than failing. This is the suite that makes spec §4b's "byte-identical by
+construction" claim load-bearing rather than aspirational.
+
 ## Native macOS arm64 build (Phase 2b, primary Mac dev flow)
 
 No Docker needed. Requires CMake ≥ 3.23 and GoogleTest (`brew install googletest`).
@@ -461,8 +559,10 @@ Real-truncation findings, three classes:
    bits 1/7/14 are tested) but the local now matches the field it snapshots.
 3. **Not fixed, escalated as format-frozen:** player idnums stored into `sh_int`
    fields of two *persisted* record layouts — `exploit_record.shintVictimID`
-   (db.cpp, 2 sites) and `crime_record_type.criminal/victim/witness` (db.cpp,
-   9 sites). Real truncation once a server's idnum counter passes 32767 — but
+   (`db_boot.cpp`, 2 sites, the capture-side `add_exploit_record`) and
+   `crime_record_type.criminal/victim/witness` (`db_players.cpp`, 9 sites, the crime codec —
+   both were `db.cpp` at the time of this finding; see "`db.cpp` split into four translation
+   units" above). Real truncation once a server's idnum counter passes 32767 — but
    both layouts are frozen on-disk legacy formats (`static_assert
    sizeof(exploit_record) == 80`; `legacy_crime_file_from_binary`), and the JSON
    codecs intentionally preserve the `sh_int` width for migration compatibility.
@@ -604,7 +704,9 @@ cross-platform rewrite of that script, since it currently shells out to POSIX to
 
 `char_data`/`obj_data` are `calloc`'d raw storage (`CREATE`/`CREATE1`, `utils.h`) that
 `clear_char`/`read_mobile` construct in place with `new (ch) char_data();`
-(`db.cpp`) — this is required because those types carry non-trivial members
+(`db.cpp` at the time of this wave; `clear_char` now lives in `entity_lifecycle.cpp` and
+`read_mobile` in `db_world.cpp` — see "`db.cpp` split into four translation units" above) — this
+is required because those types carry non-trivial members
 (`specialization_data`, `player_damage_details::damage_map`, and, after the RAII
 Lifecycle-Audit wave, `owned_alias_list`/`std::string`/`std::vector<byte>` fields
 too). Before that wave, teardown (`free_char`) never called `~char_data()` — it

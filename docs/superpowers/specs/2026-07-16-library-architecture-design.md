@@ -143,6 +143,51 @@ rots_convert = rots_platform + rots_core + rots_entity(minimal) + rots_persist
   link time. The `rots_convert` link surfaces each weld precisely; cutting it (interface seam or
   relocating a misplaced function) is the intended "refactor one library at a time" work.
 
+**As-built (db.cpp-split wave):** implemented per this section, with the following details fixed
+by the real code rather than left to the sketch:
+
+- **§4a shipped with an unforeseen fourth TU.** The split wasn't a clean three-way partition —
+  `free_char`/`make_char_data`/`clear_char`/`init_char`/`reset_char`/`free_obj` and friends are
+  called from *both* halves (`db_world.cpp`'s `read_mobile` and `db_players.cpp`'s store paths),
+  so they belong to neither. They landed in a new `entity_lifecycle.cpp`, which also absorbed the
+  affect/derived-ability engine (`affect_modify`/`affect_total`/`affect_naked`/`affect_to_char`/
+  `affect_remove`/`recalc_abilities`/the naked-perception/willpower and
+  confuse-modifier helpers) and the save-file cipher (`encrypt_line`/`decrypt_line`), relocated
+  verbatim from `handler.cpp`/`profs.cpp`/`utility.cpp` once `rots_convert` (below) proved it
+  needed them and would otherwise carry duplicate copies in the stub ledger. (`class_HP` and the affected-type pool helpers stayed in their origin TUs per the shared-helper rule — still used by non-relocated siblings; the converter carries documented stand-ins.) This seeds
+  `rots_entity` earlier than planned — `entity_lifecycle.cpp` is that library's future contents,
+  just not yet extracted into its own archive/target.
+- **The `world_room_vnum` seam shipped exactly as designed**: declared in `db.h` next to
+  `real_room`, defined in `db_world.cpp` as `return world[room_index].number;`, called by
+  `save_char` (`db_players.cpp`) instead of touching `world[]` directly. `rots_convert` supplies
+  its own definition in `convert_stubs.cpp`.
+- **A capture/codec split fell out of the persist/world seam that the original two-table sketch
+  didn't call out**: `record_crime` and `add_exploit_record` *observe* live game state
+  (`world[]`/`combat_list` walks) rather than serialize an already-captured record, so they stayed
+  in `db_boot.cpp` (the app-layer remainder) while the crime and exploit JSON codecs proper
+  (encode/decode a record already in hand) went to `db_players.cpp`. This split is what makes
+  `db_players.cpp` linkable into `rots_convert` at all — a capture function pulled in would have
+  dragged combat/world state with it.
+- **§4b shipped with membership deliberately narrower than the sketch's `rots_persist`-equals-all-
+  persistence framing**: `rots_convert` links `db_players.cpp` + `entity_lifecycle.cpp` plus the
+  JSON codecs, account system, and the legacy exploit/plrobj converters — but **not**
+  `objsave.cpp`/`boards.cpp`/`mail.cpp`/`pkill.cpp`. Those welds are deferred follow-on work,
+  catalogued (symbol, real home, why the converter's call graph never reaches it, and the
+  follow-on that removes it) in `convert_stubs.cpp`'s weld ledger rather than pulled in
+  speculatively. Known follow-ons are cataloged in the ledger itself; the headline ones: the `send_to_char` output seam, an
+  `APPLY_SPELL` null-skip, and the objsave/boards/mail membership itself.
+- **The CI-linked boundary check works as designed**: `rots_convert` is in CMake's default `all`
+  target (no `EXCLUDE_FROM_ALL`) so every CI job builds it, but it is deliberately **not** wired
+  into the flat `src/Makefile`/`src/tests/Makefile` — those compile same-directory only against a
+  hand-maintained `OBJFILES` list per binary, and a second multi-file executable isn't worth
+  fighting that pattern for a CMake-native CI check.
+- **Equivalence proven, not asserted**: the `ConvertEquivalence` GoogleTest suite
+  (`src/tests/rots_convert_equivalence_tests.cpp`) parameterizes over every playable `RACE_*`
+  constant (all sixteen, including the four NPC-only races) plus one affect-bearing case — 17
+  cases — building a fixture legacy pfile, running it through `rots_convert` out-of-process, and
+  asserting byte-identical output against the in-MUD conversion path. This is what makes "byte-
+  identical by construction" (this section's claim) a tested property rather than an assumption.
+
 ---
 
 ## 5. `rots_core`: splitting the data-model god-header

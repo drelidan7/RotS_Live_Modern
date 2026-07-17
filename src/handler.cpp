@@ -89,8 +89,6 @@ void show_character_menu(struct descriptor_data* d);
 ACMD(do_save);
 ACMD(do_return);
 
-#define MAX_MAUL_DODGE 50
-
 char char_control_array[MAX_CHARACTERS / 8 + 1];
 long last_control_set = -1;
 
@@ -334,254 +332,8 @@ void affect_modify_room(struct room_data* room, byte, int mod,
     }
 }
 
-void affect_modify(struct char_data* ch, byte loc, int mod, long bitv, char add, sh_int counter)
-{
-    int tmp, tmp2;
-
-    if (add == AFFECT_MODIFY_SET) {
-        SET_BIT(ch->specials.affected_by, bitv);
-        if (utils::is_set(bitv, long(AFF_CHARM))) {
-            ch->damage_details.reset();
-        }
-    } else if (add == AFFECT_MODIFY_REMOVE) {
-        REMOVE_BIT(ch->specials.affected_by, bitv);
-        if (utils::is_set(bitv, long(AFF_CHARM))) {
-            ch->damage_details.reset();
-        }
-
-        mod = -mod;
-    }
-    ch->specials.affected_by |= race_affect[GET_RACE(ch)];
-
-    if (add == AFFECT_MODIFY_TIME) {
-        return; /* so, usual affects are not modified in this call */
-    }
-
-    switch (loc) {
-    case APPLY_NONE:
-        break;
-
-    case APPLY_STR:
-        SET_STR_BASE(ch, GET_STR_BASE(ch) + mod);
-        SET_STR(ch, GET_STR(ch) + mod);
-        break;
-
-    case APPLY_LEA:
-        GET_LEA_BASE(ch) += mod;
-        GET_LEA(ch) += mod;
-        break;
-
-    case APPLY_DEX:
-        GET_DEX_BASE(ch) += mod;
-        GET_DEX(ch) += mod;
-        break;
-
-    case APPLY_INT:
-        GET_INT_BASE(ch) += mod;
-        GET_INT(ch) += mod;
-        break;
-
-    case APPLY_WILL:
-        GET_WILL_BASE(ch) += mod;
-        GET_WILL(ch) += mod;
-        break;
-
-    case APPLY_CON:
-        GET_CON_BASE(ch) += mod;
-        GET_CON(ch) += mod;
-        break;
-
-    case APPLY_PROF:
-        /* ??? GET_PROF(ch) += mod; */
-        break;
-
-    case APPLY_LEVEL:
-        /* ??? GET_LEVEL(ch) += mod; */
-        break;
-
-    case APPLY_AGE:
-        ch->player.time.birth -= (mod * SECS_PER_MUD_YEAR);
-        break;
-
-    case APPLY_CHAR_WEIGHT:
-        GET_WEIGHT(ch) += mod;
-        break;
-
-    case APPLY_CHAR_HEIGHT:
-        GET_HEIGHT(ch) += mod;
-        break;
-
-    case APPLY_MANA:
-        GET_MAX_MANA(ch) += mod;
-        if (GET_MANA(ch) >= GET_MAX_MANA(ch) - mod)
-            GET_MANA(ch) += mod;
-
-        break;
-
-    case APPLY_WILLPOWER:
-        GET_WILLPOWER(ch) += mod;
-        break;
-
-    case APPLY_HIT:
-        GET_MAX_HIT(ch) += mod;
-        if (GET_HIT(ch) >= GET_MAX_HIT(ch) - mod)
-            GET_HIT(ch) += mod;
-
-        break;
-
-    case APPLY_MOVE:
-        GET_MAX_MOVE(ch) += mod;
-        if (GET_MOVE(ch) >= GET_MAX_MOVE(ch) - mod)
-            GET_MOVE(ch) += mod;
-        break;
-
-    case APPLY_GOLD:
-        break;
-
-    case APPLY_EXP:
-        break;
-
-    case APPLY_DODGE:
-        SET_DODGE(ch) += mod;
-        break;
-
-    case APPLY_OB:
-        SET_OB(ch) += mod;
-        break;
-
-    case APPLY_SPELL_PEN:
-        ch->points.spell_pen += mod;
-        break;
-
-    case APPLY_SPELL_POW:
-        ch->points.spell_power += mod;
-        break;
-
-    case APPLY_DAMROLL:
-        GET_DAMAGE(ch) += mod;
-        break;
-
-    case APPLY_SAVING_SPELL:
-        GET_SAVE(ch) += mod;
-        break;
-
-    case APPLY_VISION:
-        if (add) {
-            if (mod > 0)
-                SET_BIT(ch->specials.affected_by, AFF_INFRARED);
-            if (mod < 0)
-                SET_BIT(ch->specials.affected_by, AFF_BLIND);
-        } else {
-            if (mod > 0)
-                REMOVE_BIT(ch->specials.affected_by, AFF_BLIND);
-            if (mod < 0)
-                REMOVE_BIT(ch->specials.affected_by, AFF_INFRARED);
-        }
-
-    case APPLY_REGEN:
-        break;
-
-    case APPLY_SPEED:
-        GET_ENE_REGEN(ch) += mod;
-        break;
-
-    case APPLY_BEND: {
-        GET_ENE_REGEN(ch) += (GET_ENE_REGEN(ch) / 2);
-        SET_OB(ch) += mod;
-    } break;
-
-    case APPLY_ARMOR:
-        //     mod = (2*mod*GET_PERCEPTION(ch))/100;
-        //     SET_DODGE(ch) += mod;
-        break;
-    case APPLY_MAUL:
-        if (!add) {
-            SET_DODGE(ch) += std::min((counter * 5), MAX_MAUL_DODGE);
-        }
-
-        if (add) {
-            SET_DODGE(ch) += -(std::min((counter * 5), MAX_MAUL_DODGE));
-        }
-        break;
-
-    case APPLY_PERCEPTION:
-        // Lego: Since we loop through every gear slot, we need to track the underlying perception value rather than update the final perception value
-        //       because each subsequent iteration would add/subtract the overridden minimum percep.
-        //       Then we override the underlying value with our minimum perception logic and expose that to the rest of the game.
-        ch->specials2.rawPerception += mod;
-
-        if (affected_by_spell(ch, SPELL_INSIGHT)) {
-            int minimumRacePerception = utils::get_minimum_insight_perception(*ch);
-
-            ch->specials2.perception = std::max(ch->specials2.rawPerception, minimumRacePerception);
-        } else {
-            ch->specials2.perception = ch->specials2.rawPerception;
-        }
-        break;
-
-    case APPLY_SPELL:
-        if (!add)
-            mod = -mod;
-        tmp = mod & 255; // spell number, in skills[] table
-        tmp2 = mod / 256; // spell level
-        if (!tmp2)
-            tmp2 = GET_LEVEL(ch);
-        if (tmp >= 128)
-            break;
-
-        if (!skills[tmp].spell_pointer)
-            break;
-
-        if (add)
-            skills[tmp].spell_pointer(ch, mutable_arg(""), SPELL_TYPE_SPELL, ch, 0, 0, 1);
-        else
-            skills[tmp].spell_pointer(ch, mutable_arg(""), SPELL_TYPE_ANTI, ch, 0, 0, 1);
-        break;
-
-    case APPLY_BITVECTOR:
-        if (add) {
-            if ((mod < 0) || (mod > 31))
-                mod = 0;
-            SET_BIT(ch->specials.affected_by, 1 << mod);
-        } else {
-            mod = -mod;
-            if ((mod < 0) || (mod > 31))
-                mod = 0;
-            REMOVE_BIT(ch->specials.affected_by, 1 << mod);
-        }
-        break;
-
-    case APPLY_MANA_REGEN:
-        ch->points.mana_regen += mod;
-        break;
-
-    case APPLY_RESIST:
-        // Fixed-bug (Phase 5 T6, UBSan negative-shift-exponent): AFFECT_MODIFY_REMOVE
-        // above negates `mod` (it's a bit position here, e.g. PLRSPEC_FIRE,
-        // not a numeric stat delta -- the negation is this function's generic
-        // "undo an add" convention for every APPLY_* case, not specific to
-        // this one). `1 << mod` with mod now negative is UB (confirmed live:
-        // an APPLY_VULN affect wearing off during a real world-data boot hit
-        // this under UBSan); negate back to recover the original bit
-        // position before shifting.
-        if (mod >= 0)
-            GET_RESISTANCES(ch) |= (1 << mod);
-        else
-            GET_RESISTANCES(ch) &= ~(1 << (-mod));
-        break;
-
-    case APPLY_VULN:
-        if (mod >= 0)
-            GET_VULNERABILITIES(ch) |= (1 << mod);
-        else
-            GET_VULNERABILITIES(ch) &= ~(1 << (-mod));
-        break;
-
-    default:
-        log("SYSERR: Unknown apply adjust attempt (handler.c, affect_modify).");
-        break;
-    } /* switch */
-}
+// affect_modify() relocated to entity_lifecycle.cpp (db-split Task 4b);
+// declaration unchanged in handler.h.
 
 /* This updates a character by subtracting everything he is affected by */
 /* restoring original abilities, and then affecting all again     ?????      */
@@ -590,92 +342,14 @@ void affect_total_room(struct room_data*, int)
 {
 }
 
-void affect_naked(char_data* ch)
-{
-    // sets some intrinsic parameters
-    // assumes that the char is naked and has no affections.
+// affect_naked() relocated to entity_lifecycle.cpp (db-split Task 4b).
 
-    // SET_PERCEPTION(ch, get_naked_perception(ch));
-    int nakedPerception = get_naked_perception(ch);
-    ch->specials2.rawPerception = ch->specials2.perception = nakedPerception;
-    GET_WILLPOWER(ch) = get_naked_willpower(ch);
-    ch->specials.affected_by |= race_affect[GET_RACE(ch)];
+// apply_gear_affects() (both overloads) relocated to entity_lifecycle.cpp (db-split Task 4b).
 
-    if (!IS_NPC(ch)) {
-        GET_RESISTANCES(ch) = 0;
-        GET_VULNERABILITIES(ch) = 0;
-    }
-}
+// modify_affects() relocated to entity_lifecycle.cpp (db-split Task 4b).
 
-void apply_gear_affects(char_data* character, const obj_data* item, int modify_flag)
-{
-    for (int count = 0; count < MAX_OBJ_AFFECT; ++count) {
-
-        const obj_affected_type& obj_affect = item->affected[count];
-        if (obj_affect.location == APPLY_SPELL)
-            continue;
-
-        affect_modify(character, obj_affect.location, obj_affect.modifier, item->obj_flags.bitvector, modify_flag, 0);
-    }
-}
-
-void apply_gear_affects(char_data* character, int modify_flag)
-{
-    for (int item_index = 0; item_index < MAX_WEAR; ++item_index) {
-        const obj_data* item = character->equipment[item_index];
-        if (item == nullptr)
-            continue;
-
-        if (item_index == HOLD && !CAN_WEAR(item, ITEM_HOLD))
-            continue;
-
-        apply_gear_affects(character, item, modify_flag);
-    }
-}
-
-void modify_affects(char_data* character, int modify_flag)
-{
-    int count = 0;
-    affected_type* af = character->affected;
-    while (count < MAX_AFFECT && af != nullptr) {
-        affect_modify(character, af->location, af->modifier, af->bitvector, modify_flag, af->counter);
-        ++count;
-        af = af->next;
-    }
-}
-
-void affect_total(struct char_data* ch, int mode)
-{
-    if (mode & AFFECT_TOTAL_REMOVE) {
-        apply_gear_affects(ch, AFFECT_MODIFY_REMOVE);
-        modify_affects(ch, AFFECT_MODIFY_REMOVE);
-
-        recalc_abilities(ch);
-        affect_naked(ch);
-    }
-
-    if (mode & AFFECT_TOTAL_SET) {
-        apply_gear_affects(ch, AFFECT_MODIFY_SET);
-        modify_affects(ch, AFFECT_MODIFY_SET);
-    }
-
-    if (mode & AFFECT_TOTAL_TIME) {
-        apply_gear_affects(ch, AFFECT_MODIFY_TIME);
-        modify_affects(ch, AFFECT_MODIFY_TIME);
-    }
-    /* Make certain values are between 0..100, not < 0 and not > 100! */
-
-    signed char max_value = 100;
-    signed char min_dex_str = 1;
-    signed char min_others = 0;
-
-    ch->abilities.dex = std::max(min_dex_str, std::min(ch->abilities.dex, max_value));
-    ch->abilities.intel = std::max(min_others, std::min(ch->abilities.intel, max_value));
-    ch->abilities.wil = std::max(min_others, std::min(ch->abilities.wil, max_value));
-    ch->abilities.con = std::max(min_others, std::min(ch->abilities.con, max_value));
-    ch->abilities.str = std::max(min_dex_str, std::min(ch->abilities.str, max_value));
-    ch->abilities.lea = std::max(min_others, std::min(ch->abilities.lea, max_value));
-}
+// affect_total() relocated to entity_lifecycle.cpp (db-split Task 4b);
+// declaration unchanged in handler.h.
 
 /*  If there is a structure of affected_type in the affected_type_pool list then
         it is removed, if not then one is CREATEd.  A pointer to an available affected_type
@@ -708,56 +382,8 @@ void put_to_affected_type_pool(struct affected_type* oldaf)
     //  affected_type_pool = oldaf;
 }
 
-/* Insert an affect_type in a char_data structure
-   Automatically sets apropriate bits and applys
-
-   1.  Checks to see if the character is on the affected list.  If not they are added
-   2.  Allocates memory for the new affection (also inserting it into affected_list)
-   3.  Copies the parameters of the affection to the structure in the affected_list
-   4.  Adds it to the ch->affected list
-   5.  Calls affect_modify and affect_total to update the characters stats/abilities  */
-
-void affect_to_char(struct char_data* ch, struct affected_type* af)
-{
-    struct affected_type* affected_alloc;
-    universal_list* tmplist;
-    char mybuf[255];
-
-    if (!ch)
-        return;
-
-    // 1
-    if (!ch->affected) {
-        tmplist = pool_to_list(&affected_list, &affected_list_pool);
-        tmplist->ptr.ch = ch;
-        tmplist->number = ch->abs_number;
-        tmplist->type = TARGET_CHAR;
-
-        // nz(): GET_NAME(ch) can be null for a bare/uninitialized char_data
-        // (e.g. a test fixture) -- glibc's old sprintf("%s", NULL) printed
-        // "(null)" here without crashing; std::format calls strlen()
-        // unconditionally and crashes on a null char*, so nz() preserves
-        // the old byte-identical output instead (utils.h).
-        strcpy(mybuf, std::format("Char to aff_list: {}\n\r", nz(GET_NAME(ch))).c_str());
-    }
-
-    // 2
-    affected_alloc = get_from_affected_type_pool();
-
-    // 3
-    *affected_alloc = *af;
-
-    // 4
-    affected_alloc->next = ch->affected;
-    ch->affected = affected_alloc;
-
-    affected_alloc->time_phase = get_current_time_phase();
-
-    // 5
-    affect_modify(ch, af->location, af->modifier, af->bitvector,
-        AFFECT_MODIFY_SET, af->counter);
-    affect_total(ch);
-}
+// affect_to_char() relocated to entity_lifecycle.cpp (db-split Task 4b);
+// declaration unchanged in handler.h.
 
 /* Standard mud call to put an affected structure to a room.  The room is added to
    the list of affected rooms if necessary, and its values are updated.  Similar to
@@ -795,54 +421,8 @@ void affect_to_room(struct room_data* room, struct affected_type* af)
     affect_total_room(room);
 }
 
-/* Remove an affected_type structure from a char (called when duration
-   reaches zero). Pointer *af must never be NIL! Frees mem and calls
-   affect_location_apply
-                                               */
-void affect_remove(struct char_data* ch, struct affected_type* af)
-{
-    struct affected_type* hjp;
-    universal_list *tmplist, *tmplist2;
-    int tmp;
-
-    //   assert(ch->affected);
-    // Looks as though the following line is "just in case", but where did af come from in this case?
-    if (!ch->affected)
-        return;
-
-    affect_modify(ch, af->location, af->modifier, af->bitvector,
-        AFFECT_MODIFY_REMOVE, af->counter);
-
-    /* remove structure *af from linked list */
-    if (ch->affected == af) {
-        /* remove head of list */
-        ch->affected = af->next;
-    } else {
-        for (hjp = ch->affected, tmp = 0;
-             (hjp->next) && (hjp->next != af) && (tmp < MAX_AFFECT);
-             hjp = hjp->next, tmp++) {
-        }
-        if (hjp->next != af) {
-            log("SYSERR: FATAL : Could not locate affected_type in ch->affected. (handler.c, affect_remove)");
-            //	 exit(1);
-            return;
-        }
-        hjp->next = af->next; /* skip the af element */
-    }
-
-    //   RELEASE(af);
-    put_to_affected_type_pool(af);
-
-    if (!ch->affected && affected_list) {
-        for (tmplist = affected_list; tmplist; tmplist = tmplist2) {
-            tmplist2 = tmplist->next;
-            if ((tmplist->type == TARGET_CHAR) && (tmplist->ptr.ch == ch))
-                from_list_to_pool(&affected_list, &affected_list_pool, tmplist);
-        }
-    }
-
-    affect_total(ch);
-}
+// affect_remove() relocated to entity_lifecycle.cpp (db-split Task 4b);
+// declaration unchanged in handler.h.
 
 void affect_remove_notify(struct char_data* ch, struct affected_type* af)
 {
@@ -950,22 +530,8 @@ void affect_from_char(struct char_data* ch, byte skill)
     }
 }
 
-/* Return if a char is affected by a spell (SPELL_XXX), NULL indicates not affected.
-   start_affect is not used anywhere in the mud...*/
-affected_type* affected_by_spell(const char_data* ch, byte skill, affected_type* start_affect)
-{
-    if (!start_affect)
-        start_affect = ch->affected;
-
-    int count = 0;
-    for (affected_type* status_affect = start_affect; status_affect && (count < MAX_AFFECT); status_affect = status_affect->next, count++) {
-        if (status_affect->type == skill) {
-            return status_affect;
-        }
-    }
-
-    return NULL;
-}
+// affected_by_spell() relocated to entity_lifecycle.cpp (db-split Task 4b);
+// declaration unchanged in handler.h.
 
 /* Return a pointer to an affection if the room is affected by the spell.
    Otherwise return null. */

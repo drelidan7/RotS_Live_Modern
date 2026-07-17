@@ -19,13 +19,13 @@ Legend: ✅ done · 🟡 partial · ⬜ not started
 ### Data formats (`data-formats/`) — the rewrite contract
 | Doc | Status | Source of truth |
 |-----|--------|-----------------|
-| [World text files](data-formats/world-files.md) — rooms/mobs/objs/zones | ✅ verified vs live `lib/world/`; zone-command semantics + `reset_mode` documented | `db.cpp`, `zone.cpp` |
+| [World text files](data-formats/world-files.md) — rooms/mobs/objs/zones | ✅ verified vs live `lib/world/`; zone-command semantics + `reset_mode` documented | `db_world.cpp`, `zone.cpp` |
 | [Shop files (`.shp`)](data-formats/shop-files.md) | ✅ verified vs live `lib/world/shp/` | `shop.cpp:586 boot_the_shops` |
-| [Player save (text)](data-formats/player-save.md) | ✅ verified vs live `lib/players/`; filename encoding + SAVE_VERSION/migration resolved | `db.cpp save_player:2302` |
+| [Player save (text)](data-formats/player-save.md) | ✅ verified vs live `lib/players/`; filename encoding + SAVE_VERSION/migration resolved | `db_players.cpp save_player:1556` |
 | [Object/rent binary](data-formats/object-rent-files.md) | ✅ verified vs live `lib/plrobjs/`; 32-bit padding/offsets corrected (record = 56 B); alias + delimiting resolved | `objsave.cpp`, `structs.h:1842/1866` |
 | [Socials & combat messages](data-formats/socials-and-messages.md) | ✅ verified vs `lib/misc/{socials,messages}` | `act_soci.cpp`, `fight.cpp:115` |
-| [Text tables & help](data-formats/text-tables.md) | ✅ verified vs `lib/text/`; dual-use `*_tbl` indexing corrected | `lib/text/`, `db.cpp`, `modify.cpp:723` |
-| [Mudlle (`.mdl`) & scripts (`.scr`)](data-formats/mudlle-and-scripts.md) | ✅ on-disk format verified; opcodes pinned to `script.h` + `lib/text/mudlle.keys` | `db.cpp`, `mudlle*.cpp` |
+| [Text tables & help](data-formats/text-tables.md) | ✅ verified vs `lib/text/`; dual-use `*_tbl` indexing corrected | `lib/text/`, `db_boot.cpp`, `modify.cpp:723` |
+| [Mudlle (`.mdl`) & scripts (`.scr`)](data-formats/mudlle-and-scripts.md) | ✅ on-disk format verified; opcodes pinned to `script.h` + `lib/text/mudlle.keys` | `db_world.cpp`, `mudlle*.cpp` |
 | [Maze/level files (`.lev` + `.maz`)](data-formats/maze-files.md) | ✅ `.lev`; live `lib/world/maz/*.maz` hall-library format documented | `levgen/maz.c` |
 
 ### Gameplay systems (`systems/`) — behavior & formulas

@@ -101,10 +101,23 @@ set(ROTS_PLATFORM_SOURCES
 # pointers as far as this archive is concerned — assign_spell_pointers()
 # never runs inside rots_core_linkcheck or rots_convert, both of which never
 # call it). rots_core_linkcheck (below) is the acceptance proof: the built
-# archive resolves only libc/libstdc++ symbols. See docs/BUILD.md's "Library
-# layering" section and the spec's §3 caveats for the recorded evidence.
+# archive resolves only libc/libstdc++ symbols (plus rots_platform, see
+# output_seam.cpp below). See docs/BUILD.md's "Library layering" section and
+# the spec's §3 caveats for the recorded evidence.
+#
+# output_seam.cpp JOINS HERE (entity-seed Task 3, spec §13 pattern): it
+# defines the five global send_to_char/act/track_specialized_mage output-path
+# symbols as forwarders through a null-defaulted rots::output::Sinks
+# aggregate that comm.cpp registers at boot (register_game_output_sinks()).
+# Unlike config.cpp/consts.cpp, it has one legitimate downward edge — it logs
+# a tripwire through rots::log::write_stderr (rots_platform) when no sink is
+# registered yet, matching rots_convert's deleted convert_stubs.cpp stub
+# semantics for these five symbols — so rots_core now PUBLIC-links
+# RotS::platform (a legal L1→L0 edge; see the target_link_libraries call
+# below and rots_core_linkcheck's matching update). It never dereferences a
+# game type: char_data*/obj_data* pass through opaquely.
 set(ROTS_CORE_SOURCES
-    config.cpp consts.cpp
+    config.cpp consts.cpp output_seam.cpp
 )
 
 set(ROTS_SERVER_SOURCES
@@ -289,7 +302,11 @@ target_include_directories(rots_platform PUBLIC platform/include)
 add_library(rots_core STATIC ${ROTS_CORE_SOURCES})
 add_library(RotS::core ALIAS rots_core)
 set_target_properties(rots_core PROPERTIES CXX_EXTENSIONS OFF)
-target_link_libraries(rots_core PUBLIC rots_build_flags)
+# PUBLIC RotS::platform: output_seam.cpp's tripwire default reaches
+# rots::log::write_stderr (rots/platform/log.h) -- a legal L1->L0 edge (see
+# the ROTS_CORE_SOURCES comment above). PUBLIC so it also carries
+# platform/include to any consumer that links only RotS::core.
+target_link_libraries(rots_core PUBLIC rots_build_flags RotS::platform)
 # The carved data-model headers (spec §5/§9a). PUBLIC: every consumer of the
 # core data model gets the pathed include root by linking RotS::core.
 target_include_directories(rots_core PUBLIC core/include)
@@ -676,17 +693,18 @@ if(ROTS_BUILD_TESTS)
         endif()
 
         # Load-bearing core-layer acyclicity check (spec §11), mirroring the
-        # rots_platform_linkcheck block above exactly. rots_core (config.cpp +
-        # consts.cpp, entity-seed Task 2 — see the ROTS_CORE_SOURCES comment
-        # above for why consts.cpp's former upward edge is gone) is verified
-        # pure data with no upward symbol references (nm -uC on the built
-        # archive resolves only libc/libstdc++ symbols). Allowed lower layers
-        # would be rots_platform + libc/libstdc++, but neither config.cpp nor
-        # consts.cpp references a rots_platform symbol, so the checker
-        # force-loads only rots_core itself — a strictly tighter guarantee
-        # than "rots_platform is allowed".
+        # rots_platform_linkcheck block above. rots_core (config.cpp +
+        # consts.cpp + output_seam.cpp, entity-seed Tasks 2-3 — see the
+        # ROTS_CORE_SOURCES comment above) is verified to have no upward
+        # symbol references beyond the one legal downward edge into
+        # rots_platform (output_seam.cpp's rots::log::write_stderr tripwire).
+        # Allowed lower layers are rots_platform + libc/libstdc++; the checker
+        # force-loads rots_core itself (so every rots_core symbol is pulled
+        # in and any OTHER unresolved reference fails the link) and normal-
+        # links RotS::platform to resolve that one legitimate edge — a
+        # strictly tighter guarantee than "any lower layer is allowed".
         add_executable(rots_core_linkcheck tests/core_linkcheck_main.cpp)
-        target_link_libraries(rots_core_linkcheck PRIVATE rots_build_flags)
+        target_link_libraries(rots_core_linkcheck PRIVATE rots_build_flags RotS::platform)
         add_dependencies(rots_core_linkcheck rots_core)
         if(APPLE)
             target_link_options(rots_core_linkcheck PRIVATE

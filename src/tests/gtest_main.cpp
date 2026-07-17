@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "../big_brother.h"
+#include "../comm.h"
 #include "../rots_net.h"
 #include "../skill_timer.h"
 #include "../utils.h"
@@ -74,6 +75,18 @@ int main(int argc, char* argv[]) {
     // first-ever args instead, with no error or warning.
     game_timer::skill_timer::create(weather_info, nullptr);
     game_rules::big_brother::create(weather_info, nullptr);
+    // Installs comm.cpp's real send_to_char/act/track_specialized_mage/
+    // untrack_specialized_mage bodies as the entity-seed Task 3 output seam's
+    // sinks (rots::output::set_sinks), once for the whole test process. The
+    // game reaches this via run_the_game() (immediately after
+    // register_mudlog_broadcast_sink(), before boot_db()), which this test
+    // harness's main() never runs; without it, every test that calls
+    // send_to_char()/act() -- directly, or transitively through
+    // register_mudlog_broadcast_sink()'s own send_to_char() calls -- would
+    // silently no-op against output_seam.cpp's tripwire-logged default
+    // instead of delivering to a descriptor, exactly the same gap this
+    // function already closes for skill_timer/big_brother above.
+    register_game_output_sinks();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

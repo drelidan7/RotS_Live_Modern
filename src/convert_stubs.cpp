@@ -44,6 +44,16 @@
 // prior stub text). create_function()/free_function() remain duplicated
 // below; their real home is utility.cpp, not consts.cpp, and that weld is
 // unrelated follow-on work.
+//
+// entity-seed Task 3 (send_to_char/act output seam, spec Sec13) deletes the
+// six send_to_char()/vsend_to_char()/act()/track_specialized_mage()/
+// untrack_specialized_mage() stubs the same way: output_seam.cpp now joins
+// rots_core and defines all five global symbols as forwarders through a
+// null-defaulted Sinks aggregate, so rots_convert (never calling
+// register_game_output_sinks(), an app-layer/comm.cpp-only boot step) gets
+// the same tripwire-logged no-op behavior these stubs used to hand-carry
+// (see this file's git history, pre-entity-seed-Task-3, for the prior stub
+// text and per-symbol reachability analysis).
 
 #include "base_utils.h"
 #include "char_utils.h"
@@ -1047,107 +1057,28 @@ int Crash_delete_file(std::string_view name)
 }
 
 // ===========================================================================
-// send_to_char() (both overloads) / vsend_to_char() / act() -- comm.cpp.
-// Every call site reachable from db_players.cpp/entity_lifecycle.cpp/
-// char_utils.cpp/convert_exploits.cpp/convert_plrobjs.cpp is either:
-//   - save_char()'s notify_char-gated "Saving X." message -- convert_main.cpp
-//     always passes notify_char=0, so this branch is never taken;
-//   - a "you are not in the character list" / "you are not being saved"
-//     defensive branch that only fires when a JUST-LOOKED-UP player_table
-//     name search fails to re-find the very name it was given -- can't
-//     happen for a character this executable is iterating straight out of
-//     player_table itself;
-//   - inside an ACMD(do_...) command handler (act_othe.cpp-style callers,
-//     or convert_exploits.cpp's/convert_plrobjs.cpp's own
-//     do_convert_exploits/do_convert_plrobjs ACMDs) that only a live player
-//     typing a command reaches -- convert_main.cpp never calls an ACMD.
-// So every one of these is DEFINED (whole-TU linking) but never CALLED by
-// this executable. Logged if ever hit, since "never called" is exactly the
-// kind of claim that is worth a loud tripwire instead of silent success.
-// Follow-on: none needed for correctness (already unreachable); shrinks
-// automatically once the app-layer TUs that only exist as command-handler
-// wrappers around persist codecs (convert_exploits.cpp/convert_plrobjs.cpp's
-// ACMDs) are split out of the persist-codec halves those files also carry.
+// send_to_char() (both overloads) / vsend_to_char() / act() /
+// track_specialized_mage() / untrack_specialized_mage() -- comm.cpp.
+// DELETED (entity-seed Task 3, spec Sec13 pattern): these six stubs are
+// superseded by output_seam.cpp, which now lives in rots_core (linked here
+// via RotS::core) and defines all five global symbols (vsend_to_char calls
+// through send_to_char, so it needs no sink of its own) as forwarders
+// through a null-defaulted rots::output::Sinks aggregate. rots_convert never
+// calls register_game_output_sinks() (that registration is comm.cpp/
+// run_the_game()-only, an app-layer boot step this executable does not
+// run), so every one of these symbols falls back to output_seam.cpp's
+// tripwire-logged no-op default here -- byte-for-byte the same semantics
+// this file's hand-duplicated stubs used to provide (log via
+// rots::log::write_stderr, then return without touching any state), just
+// with one real definition instead of two. See git history (pre-Task-3) for
+// the prior stub text and the per-symbol reachability analysis (why each
+// was safe to stub: send_to_char/vsend_to_char/act are unreachable from the
+// converter's load/store/save flow; track_specialized_mage/
+// untrack_specialized_mage ARE genuinely reachable via
+// utils::set_specialization(), but are a safe no-op because
+// specialized_mages is in-memory-only live-broadcast bookkeeping, never
+// persisted).
 // ===========================================================================
-void send_to_char(std::string_view message, struct char_data* character)
-{
-    (void)character;
-    rots::log::write_stderr(std::format(
-        "rots_convert: STUB send_to_char(message, char_data*) called (message: '{}') -- "
-        "this should be unreachable from the converter's load/store/save flow.",
-        message));
-}
-
-void send_to_char(std::string_view message, int character_id)
-{
-    rots::log::write_stderr(
-        std::format("rots_convert: STUB send_to_char(message, id={}) called (message: '{}') -- "
-                    "this should be unreachable from the converter's load/store/save flow.",
-            character_id, message));
-}
-
-void vsend_to_char(struct char_data* ch, const char* format, ...)
-{
-    (void)ch;
-    rots::log::write_stderr(
-        std::format("rots_convert: STUB vsend_to_char() called (format: '{}') -- this should be "
-                    "unreachable from the converter's load/store/save flow.",
-            format ? format : "(null)"));
-}
-
-void act(std::string_view str, int hide_invisible, struct char_data* ch, struct obj_data* obj,
-    void* vict_obj, int type, char spam_only)
-{
-    (void)hide_invisible;
-    (void)ch;
-    (void)obj;
-    (void)vict_obj;
-    (void)type;
-    (void)spam_only;
-    rots::log::write_stderr(
-        std::format("rots_convert: STUB act('{}') called -- this should be unreachable from the "
-                    "converter's load/store/save flow.",
-            str));
-}
-
-// ===========================================================================
-// track_specialized_mage() / untrack_specialized_mage() -- comm.cpp. UNLIKE
-// this file's other unreachable stubs, these ARE genuinely on the
-// converter's call graph: store_to_char() (db_players.cpp) calls
-// utils::set_specialization() (char_utils.cpp) twice per character loaded,
-// and set_specialization() calls untrack_specialized_mage()/
-// track_specialized_mage() whenever the OLD/NEW specialization is a mage
-// spec (extra_specialization_data.is_mage_spec()). The real implementations
-// maintain comm.cpp's file-local `specialized_mages` vector, an
-// in-memory-only live-broadcast bookkeeping list (used to target
-// mage-specialization-wide messages at connected players) -- it holds no
-// persisted state and is never read back by anything save_char()/
-// char_to_store() write to disk, so a safe no-op here cannot diverge
-// rots_convert's on-disk output from a live login's. Logged (not silent)
-// because "genuinely reachable, safe no-op" is exactly the class of stub
-// most likely to bite if that invariant ever changes.
-// Follow-on: same as the comm.cpp weld class generally -- once
-// specialized_mages tracking moves behind a real interface (e.g. a
-// mage-roster system rots_combat/rots_app registers with rots_entity,
-// mirroring the logging seam's Sink registration pattern), this executable
-// can link the real, empty-registry-by-default implementation instead of a
-// duplicate no-op.
-// ===========================================================================
-void track_specialized_mage(char_data* mage)
-{
-    rots::log::write_stderr(
-        std::format("rots_convert: STUB track_specialized_mage({}) -- no-op (converter has no live "
-                    "specialized-mage broadcast roster to maintain).",
-            static_cast<const void*>(mage)));
-}
-
-void untrack_specialized_mage(char_data* mage)
-{
-    rots::log::write_stderr(std::format(
-        "rots_convert: STUB untrack_specialized_mage({}) -- no-op (converter has no live "
-        "specialized-mage broadcast roster to maintain).",
-        static_cast<const void*>(mage)));
-}
 
 // ===========================================================================
 // player_spec::wild_fighting_handler (ctor) / get_attack_speed_multiplier()

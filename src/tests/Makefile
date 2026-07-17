@@ -93,7 +93,7 @@ LDFLAGS = -lgtest -lpthread
 
 OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o char_utils.o char_utils_combat.o clerics.o clock.o color.o \
-	comm.o config.o consts.o convert_exploits.o convert_plrobjs.o crashsave_schedule.o db_boot.o db_players.o db_world.o delayed_command_interpreter.o entity_lifecycle.o fight.o graph.o handler.o interpre.o environment_utils.o account_cache.o account_management.o character_json.o exploits_json.o json_utils.o objects_json.o \
+	comm.o config.o consts.o output_seam.o convert_exploits.o convert_plrobjs.o crashsave_schedule.o db_boot.o db_players.o db_world.o delayed_command_interpreter.o entity_lifecycle.o fight.o graph.o handler.o interpre.o environment_utils.o account_cache.o account_management.o character_json.o exploits_json.o json_utils.o objects_json.o \
 	limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objsave.o olog_hai.o\
 	pkill.o player_file_finalize.o profs.o protocol.o ranger.o safe_template.o save_benchmark.o savebench.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o  \
@@ -243,6 +243,8 @@ modify.o : ../modify.cpp ../utils.h ../interpre.h ../handler.h ../db.h ../comm.h
 	$(CXX) -c $(CXXFLAGS) ../modify.cpp
 consts.o : ../consts.cpp ../limits.h
 	$(CXX) -c $(CXXFLAGS) ../consts.cpp
+output_seam.o : ../output_seam.cpp ../output_seam.h ../comm.h
+	$(CXX) -c $(CXXFLAGS) ../output_seam.cpp
 objsave.o : ../objsave.cpp ../comm.h ../handler.h ../db.h ../interpre.h \
 	../utils.h ../spells.h
 	$(CXX) -c $(CXXFLAGS) ../objsave.cpp

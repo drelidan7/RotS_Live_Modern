@@ -40,6 +40,7 @@
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
+#include "output_seam.h"
 #include "protocol.h"
 #include "rots_net.h"
 #include "rots_rng.h"
@@ -608,6 +609,12 @@ void run_the_game(sh_int port)
 
     descriptor_list = NULL;
     register_mudlog_broadcast_sink();
+    // register_game_output_sinks() is defined further down in this file
+    // (after the send_to_char_impl/act_impl/track_specialized_mage_impl
+    // bodies it references), but comm.h declares it, so the call here only
+    // needs that declaration -- see register_game_output_sinks() itself for
+    // why it must run before boot_db().
+    register_game_output_sinks();
 
     log("Signal trapping.");
     signal_setup();
@@ -674,7 +681,7 @@ void clean_expose_elements()
 /* MORE SPAGHETTI!!! */
 
 /* Implementation from for function defined in utils.h */
-void track_specialized_mage(char_data* mage)
+static void track_specialized_mage_impl(char_data* mage)
 {
     if (!mage)
         return;
@@ -686,7 +693,7 @@ void track_specialized_mage(char_data* mage)
 }
 
 /* Implementation from for function defined in utils.h */
-void untrack_specialized_mage(char_data* mage)
+static void untrack_specialized_mage_impl(char_data* mage)
 {
     if (!mage)
         return;
@@ -2076,7 +2083,7 @@ void close_socket(descriptor_data* conn_descriptor, int drop_all)
 /* ****************************************************************
  *	Public routines for system-to-player-communication	  *
  *******************************************************************/
-void send_to_char(std::string_view message, char_data* character)
+static void send_to_char_impl(std::string_view message, char_data* character)
 {
     // Early out if we have no message or character.
     if (message.empty() || character == nullptr) {
@@ -2091,7 +2098,7 @@ void send_to_char(std::string_view message, char_data* character)
     write_to_output(message, character->desc);
 }
 
-void send_to_char(std::string_view message, int character_id)
+static void send_to_char_id_impl(std::string_view message, int character_id)
 {
     if (message.empty()) {
         return;
@@ -2126,20 +2133,6 @@ char_data* get_character(int character_id)
     }
 
     return NULL;
-}
-
-void vsend_to_char(char_data* character, const char* format, ...)
-{
-#define BUFSIZE 2048
-    char buf[BUFSIZE];
-    va_list ap;
-
-    va_start(ap, format);
-    vsnprintf(buf, BUFSIZE - 1, format, ap);
-    buf[BUFSIZE - 1] = '\0';
-    va_end(ap);
-
-    send_to_char(buf, character);
 }
 
 void send_to_all(std::string_view message)
@@ -2424,8 +2417,8 @@ void convert_string(std::string_view format_text, int, struct char_data* ch,
 }
 
 char act_buffer[MAX_STRING_LENGTH];
-void act(std::string_view str, int hide_invisible, struct char_data* ch, struct obj_data* obj,
-    void* vict_obj, int type, char spam_only)
+static void act_impl(std::string_view str, int hide_invisible, struct char_data* ch,
+    struct obj_data* obj, void* vict_obj, int type, char spam_only)
 {
     struct char_data* to;
     char* buf = act_buffer;
@@ -2459,6 +2452,24 @@ void act(std::string_view str, int hide_invisible, struct char_data* ch, struct 
         if ((type == TO_VICT) || (type == TO_CHAR))
             return;
     }
+}
+
+// Installs the game's output sinks (rots::output::set_sinks): the real
+// send_to_char/act/track_specialized_mage/untrack_specialized_mage bodies
+// above (renamed to *_impl, file-scope statics) replace the null-defaulted,
+// tripwire-logging defaults that output_seam.cpp's forwarders otherwise fall
+// back to. Called once from run_the_game(), immediately after
+// register_mudlog_broadcast_sink() and before boot_db(), so ageland never
+// runs any output-path call with an unregistered sink.
+void register_game_output_sinks()
+{
+    rots::output::Sinks sinks {};
+    sinks.send_to_char = send_to_char_impl;
+    sinks.send_to_char_id = send_to_char_id_impl;
+    sinks.act = act_impl;
+    sinks.track_mage = track_specialized_mage_impl;
+    sinks.untrack_mage = untrack_specialized_mage_impl;
+    rots::output::set_sinks(sinks);
 }
 
 void complete_delay(struct char_data* ch)

@@ -296,7 +296,7 @@ rots_crypt.o : ../rots_crypt.cpp ../rots_crypt.h
 	$(CXX) -c $(CXXFLAGS) ../rots_crypt.cpp
 rots_net.o : ../rots_net.cpp ../rots_net.h ../platdef.h
 	$(CXX) -c $(CXXFLAGS) ../rots_net.cpp
-safe_template.o : ../safe_template.cpp ../safe_template.h ../utils.h
+safe_template.o : ../safe_template.cpp ../safe_template.h
 	$(CXX) -c $(CXXFLAGS) ../safe_template.cpp
 
 

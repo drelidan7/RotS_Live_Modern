@@ -74,7 +74,8 @@ endif()
 # (rots_log.cpp), so that edge is gone and the archive is self-contained
 # again — confirmed via `nm -uC` on the built archive, see the
 # rots_platform_linkcheck load-bearing test below. safe_template.cpp now
-# includes only "rots/platform/log.h" (its null-arg guard is inlined), so it
+# reaches "rots/platform/log.h" as its only pathed rots/ header (its null-arg
+# guard is inlined), so it
 # is a genuinely clean leaf — no core/include reach, no qualifier needed.
 set(ROTS_PLATFORM_SOURCES
     rots_net.cpp rots_crypt.cpp rots_rng.cpp clock.cpp

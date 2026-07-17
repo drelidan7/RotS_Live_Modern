@@ -93,7 +93,7 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
 - `safe_template.cpp` **rejoined `rots_platform` as a clean L0 leaf** once the platform-level
   logging seam (Section 13) landed: `vmudlog`/`BRF` now resolve inside `rots_platform` itself
   (`rots_log.cpp`), and its one null-arg guard (formerly `utils.h`'s `nz`) is inlined at the call
-  site, so the TU includes only `rots/platform/log.h` — no `core/include` reach, no qualifier
+  site, so the TU's only pathed `rots/` include is `rots/platform/log.h` — no `core/include` reach, no qualifier
   needed. Confirmed by `nm` on the built archive (`rots_platform_linkcheck` / `PlatformLayerAcyclicity`).
 - `consts.cpp` is **not** in `rots_core` as built — the table row above is the intended target, not
   current fact. Its `skills[MAX_SKILLS]` table (`consts.cpp:382`) structurally embeds ~69 `spell_*`

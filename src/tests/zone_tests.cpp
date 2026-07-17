@@ -1,7 +1,6 @@
 #include "../db.h"
 #include "../utils.h"
 #include "../zone.h"
-#include "rots/core/tables.h"
 #include "test_platform_compat.h"
 
 #include <gtest/gtest.h>

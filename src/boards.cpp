@@ -82,7 +82,6 @@ Send comments, bug reports, help requests, etc. to Jeremy Elson
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/descriptor.h"
-#include "rots/core/tables.h"
 #include "rots/core/types.h"
 #include "utils.h"
 

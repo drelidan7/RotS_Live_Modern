@@ -112,7 +112,6 @@ Send comments, bug reports, etc. to jelson@server.cs.jhu.edu
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
 #include "rots/core/object.h"
-#include "rots/core/tables.h"
 #include "rots/core/types.h"
 #include "utils.h"
 

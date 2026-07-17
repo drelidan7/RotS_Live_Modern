@@ -17,6 +17,8 @@
 
 #include "platdef.h" /* For byte, sh_int, ush_int, etc. */
 #include "rots/core/types.h" /* For time_info_data */
+// tables.h: RELEASE/RECREATE (below) expand global_release_flag
+#include "rots/core/tables.h"
 #include "rots/core/fwd.h" /* For weather_data extern + macros that expand at call sites */
 
 // Short-lived mutable copy of a string literal, for legacy char*-typed APIs

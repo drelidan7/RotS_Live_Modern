@@ -190,9 +190,20 @@ flags through the `rots_build_flags` INTERFACE library.
   is caught, not silently skipped. GNU-family only (`if(NOT MSVC)`); MSVC's guarantee is structural
   (the target links only `rots_build_flags`). This superseded an earlier `nm`-denylist shell check,
   which could only catch hand-listed symbols and gave false assurance.
-- **`safe_template.cpp` is intentionally *not* in `rots_platform`** — it calls `vmudlog` (an L2
-  symbol), a real upward edge. It stays an `ageland`-compiled TU until a platform logging seam cuts
-  that dependency (see the spec's follow-ons).
+- `rots_platform` now has 9 member TUs: the original 7 verified-clean leaves (`rots_net.cpp`,
+  `rots_crypt.cpp`, `rots_rng.cpp`, `clock.cpp`, `crashsave_schedule.cpp`, `json_utils.cpp`,
+  `player_file_finalize.cpp`) plus `rots_log.cpp` and `safe_template.cpp`, added by the logging-seam
+  follow-on (spec §13). `safe_template.cpp` rejoins as a genuinely clean leaf: it called `vmudlog`
+  (an L2 symbol) and now that call resolves inside `rots_platform` itself.
+- **The logging seam (`rots/platform/log.h` + `rots_log.cpp`)** gives `rots_platform` a sink-based
+  logging facility instead of a direct call up into the game. The platform layer owns the raw
+  timestamped stderr write and the notification path (`rots::log::write_stderr`/`write`, plus
+  `vmudlog`, all self-contained in L0); the app layer registers the game-coupled broadcast sink
+  (`comm.cpp`'s `register_mudlog_broadcast_sink()`, holding the `descriptor_list` walk / `PRF_LOG`
+  gating / color framing verbatim) at boot, in `run_the_game()`, before the first `log()` call. With
+  no sink registered, notification is a no-op — byte-identical to today's pre-boot behavior — which
+  is the property `rots_convert` will rely on to link `rots_platform` without pulling in any game
+  code.
 
 The second extracted layer is `rots_core` (L1) — currently just `config.cpp` (configuration
 defaults) — built as `librots_core.a` and linked into `ageland` as `RotS::core`. It links
@@ -240,8 +251,11 @@ links `RotS::core` (currently just `ageland`) gets the `core/include` root trans
 `ageland`'s own `target_include_directories` no longer lists it directly. `ageland_tests` does not
 link `RotS::core` (see above), so it keeps `core/include` as its own direct include dir alongside
 `persist/include` (which stays direct on both targets until a future `rots_persist` library exists
-to own it). Both `core/include` and `persist/include` contain nothing but a `rots/` subtree and are
-the **only** two directories ever added to an include path for the new header layout — `src/`
+to own it). `rots_platform` similarly owns `target_include_directories(rots_platform PUBLIC
+platform/include)`, so every consumer that links `RotS::platform` gets the `platform/include` root
+transitively — the same pattern as `core/include`, one layer down. `core/include`, `persist/include`,
+and `platform/include` contain nothing but a `rots/` subtree and are
+the **only** directories ever added to an include path for the new header layout — `src/`
 itself must never be added to `-I`/`-iquote`/`/I`: `src/limits.h` (project-specific player-rank
 constants) would shadow the standard `<limits.h>`, breaking any standard header that
 `#include_next`s its way through the system one (see the long comment at

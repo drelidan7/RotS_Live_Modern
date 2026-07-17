@@ -432,3 +432,24 @@ layer's code genuinely has no upward edges.
     the zero-behavior-change skeleton branch (where `safe_template` is simply excluded from L0).
   - Bonus: one raw-write implementation, and tests can register a capturing sink to assert log
     output.
+
+  **As-built (logging-seam wave):** implemented as designed above, with the following details fixed
+  by the real code rather than left to the sketch:
+  - There is only one stderr target — no separate log file existed to split, so `write_stderr`/
+    `write` (`rots/platform/log.h` + `rots_log.cpp`) cover the whole raw-write half; there was no
+    second sink to wire up.
+  - The `LEVEL_AREAGOD` clamp and the `PRF_LOG*` preference gating stay app-side, inside the
+    registered sink — they are game constants/macros (`char_data`/preference flags), not platform
+    types, so `rots_platform` never sees them. The sink itself is `comm.cpp`'s
+    `register_mudlog_broadcast_sink()`, holding the `descriptor_list` walk / color framing verbatim,
+    registered in `run_the_game()` before the first `log()` call.
+  - `vmudlog`'s broadcast level is `rots::log::kVmudlogBroadcastLevel` (`= 93`), hard-coded in the L0
+    header rather than including the game's `LEVEL_GOD` constant — `utility.cpp` pins the two
+    together with `static_assert(rots::log::kVmudlogBroadcastLevel == LEVEL_GOD, ...)` so they can
+    never silently diverge.
+  - `vmudlog` itself now lives in `rots_log.cpp` (moved out of `utility.cpp`), and `log()`/`mudlog()`
+    are thin wrappers over `rots::log::write_stderr`/`write`.
+  - The capturing-sink tests (`PlatformLog.*`, `src/tests/platform_log_tests.cpp`) replaced the
+    `descriptor_list`-nulling test pattern for logging assertions, as this section's "bonus"
+    anticipated — the older `ScopedDescriptorListReset`-based fixtures that predate the seam still
+    exist elsewhere in the suite and continue to work unchanged.

@@ -126,93 +126,14 @@ char* how_good(int percent)
  * pracs_used: pracs used * 100000 with adjustments
  */
 
-void recalc_skills(struct char_data* ch)
-{
-
-    int skill_no, pracs_used, tmps, tmp, difficulty, skill_level;
-    if (ch->knowledge.empty() || ch->skills.empty())
-        return;
-
-    for (skill_no = 1; skill_no < MAX_SKILLS; skill_no++) {
-        pracs_used = ch->skills[skill_no] * 20;
-
-        if (!skills[skill_no].learn_diff)
-            skills[skill_no].learn_diff = 10;
-        skill_level = skills[skill_no].level;
-
-        /* 3 pracs in weapon mastery is same as 1 prac in all weapons */
-        if ((skill_no >= 0) && (skill_no < 10) && (skill_no != 8) && (skill_no != 7))
-            pracs_used += ch->skills[10] * 20 * 3 / 8;
-
-        difficulty = skills[skill_no].learn_diff;
-
-        /* pracs /= coof. - (lvl/30)*(1-coof) (where coof 0 to 1) */
-        if (skills[skill_no].type != PROF_WARRIOR) {
-            tmps = GET_PROF_COOF((int)skills[skill_no].type, ch) - skill_level * (1000 - GET_PROF_COOF((int)skills[skill_no].type, ch)) / 30;
-
-            if (skill_level < 20)
-                tmps = tmps * (80 + skill_level) / 100 + 200 - skills[(int)skill_no].level * 10;
-
-            tmps = MIN(1000, tmps);
-
-            pracs_used = pracs_used * tmps * 10;
-        } else
-            pracs_used = pracs_used * 10000;
-
-        // pracs used * 100000 with adjustment
-        tmps = 1000 - pracs_used / (difficulty * 100);
-        ch->knowledge[skill_no] = (10000 - tmps * tmps / 100) / 99;
-        if (tmps < 0)
-            ch->knowledge[skill_no] = 100;
-    }
-
-    switch (GET_RACE(ch)) {
-    case RACE_GOD:
-        tmp = LANG_BASIC;
-        break;
-    case RACE_HUMAN:
-    case RACE_DWARF:
-    case RACE_WOOD:
-    case RACE_HOBBIT:
-    case RACE_HIGH:
-        tmp = LANG_HUMAN;
-        break;
-    case RACE_BEORNING:
-        tmp = LANG_ANIMAL;
-        break;
-    case RACE_URUK:
-    case RACE_HARAD:
-    case RACE_ORC:
-    case RACE_HARADRIM:
-    case RACE_OLOGHAI:
-    case RACE_MAGUS:
-        tmp = LANG_ORC;
-        break;
-    case RACE_EASTERLING:
-        tmp = LANG_BASIC;
-        break;
-    default:
-        tmp = LANG_BASIC;
-        break;
-    }
-
-    // Set the spoken language.
-    ch->player.language = tmp;
-
-    if (tmp != LANG_BASIC)
-        SET_KNOWLEDGE(ch, tmp, 100);
-
-    if (GET_RACE(ch) == RACE_GOD)
-        for (tmp = 0; tmp < language_number; tmp++)
-            SET_KNOWLEDGE(ch, language_skills[tmp], 100);
-
-    if (!IS_NPC(ch) && (GET_RACE(ch) == RACE_MAGUS) && (GET_RAW_KNOWLEDGE(ch, SPELL_BLINK) == 0))
-        SET_KNOWLEDGE(ch, SPELL_BLINK, 10);
-
-    if (!IS_NPC(ch) && (GET_RACE(ch) == RACE_BEORNING) && (GET_RAW_KNOWLEDGE(ch, SKILL_NATURAL_ATTACK) == 0)) {
-        SET_KNOWLEDGE(ch, SKILL_NATURAL_ATTACK, 10);
-    }
-}
+// recalc_skills() relocated to entity_lifecycle.cpp (persist-split PS Task 4,
+// controller-adjudicated relocation, same pattern as entity-seed Task 5's
+// affect/derived-ability engine move): it is a sibling of recalc_abilities()
+// (already there), reads only skills[]/square_root[]/language_number/
+// language_skills (consts.cpp, rots_core) plus char_data fields -- no
+// comm/world/combat_list access. Declaration unchanged (spells.h). This
+// file's other two call sites (below) still call it through that
+// declaration, now resolving down into rots_entity.
 
 // split string on SEPERATOR_CHAR
 std::vector<std::string> split(const std::string str, const std::string regex_str) {

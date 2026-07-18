@@ -108,11 +108,11 @@
 // link. Fixed at the source (obj_files.cpp), not stubbed here -- see that
 // file's own PS-Task-3 comment.
 //
-// persist-split PS Task 4 (world_room_vnum/add_exploit_record inversion)
-// deletes two more stubs, but by inversion rather than by relocation-into-a-
-// library like the entries above: db_players.cpp's save_char()/rename_char()
-// no longer call world_room_vnum()/add_exploit_record() directly at all --
-// both call sites now go through persist_hooks.h's pre-boot-registered hooks
+// persist-split PS Task 4 (world_room_vnum/add_exploit_record inversion +
+// rots_persist stand-up) deletes eleven more stubs across two mechanisms.
+// Inversion (two symbols): db_players.cpp's save_char()/rename_char() no
+// longer call world_room_vnum()/add_exploit_record() directly at all -- both
+// call sites now go through persist_hooks.h's pre-boot-registered hooks
 // (rots::persist::dispatch_room_vnum/dispatch_exploit_capture, defined in
 // db_players.cpp itself). rots_convert never calls
 // register_room_vnum_hook()/register_exploit_capture_hook() (both
@@ -122,11 +122,23 @@
 // two deleted stand-ins, for the exact same reachability reasons those
 // stand-ins' own comments already argued (save_char()'s branch is provably
 // unreachable here per convert_main.cpp's load-room checkpoint; rename_char()
-// is never called by this executable's load/store/save flow at all). See
-// this file's git history, pre-PS-Task-4, for the two stubs' prior text.
-// find_player_in_table() stays a stub this task (rename_char()'s other
-// unreached callee) -- it relocates into db_players.cpp in a following step
-// of this same task, at which point this entry is superseded too.
+// is never called by this executable's load/store/save flow at all).
+// Controller-adjudicated relocation (nine symbols, verbatim, each argued
+// leaf-clean at its new home -- see that file's own per-symbol comment):
+// find_player_in_table()/find_name()/unaccent() move into db_players.cpp;
+// recalc_skills() and utils::set_tactics()/set_shooting()/set_casting()
+// move into entity_lifecycle.cpp; file_to_string()/file_to_string_alloc()
+// move into db_players.cpp from db_boot.cpp. recalc_skills() in particular
+// used to carry a SIMPLIFIED hand-duplicated stand-in here (language-only,
+// omitting the ch->knowledge[] recomputation) rather than a tripwire -- this
+// executable now runs the real body; ConvertEquivalence 17/17 after this
+// change is the proof that ch->knowledge[] (a runtime-only derived field,
+// never in char_file_u/char_to_store's output) stays output-invisible.
+// This task also adds one library MEMBERSHIP (not a stub deletion, since
+// color_convert.cpp never had a stub here): color_convert.cpp -- see the
+// "nearest_ansi_color()/convert_old_colormask()" comment below, now updated
+// for its new home. See this file's git history, pre-PS-Task-4, for the
+// full prior stub text.
 
 #include "base_utils.h"
 #include "char_utils.h"
@@ -161,14 +173,18 @@
 // sync_color_slot_foreground_from_ansi() + the color_color[]/num_of_colors
 // table pair are DELETED (persist-split PS Task 1): color.cpp's pure
 // conversion helpers (no comm/game dependency) now live in the new
-// color_convert.cpp leaf TU, joining ROTS_SERVER_SOURCES AND rots_convert's
-// own direct source list, so ageland and rots_convert link the one real
-// definition of each instead of this file's synchronized verbatim copy (see
-// this file's git history, pre-PS-Task-1, for the deleted stand-ins' prior
-// text). character_json.cpp's truecolor-setting codec and
-// db_players.cpp's load_char()/load_char_from_text() still call the real
-// nearest_ansi_color()/convert_old_colormask() exactly as before -- only
-// their home TU changed.
+// color_convert.cpp leaf TU (see this file's git history, pre-PS-Task-1,
+// for the deleted stand-ins' prior text). color_convert.cpp itself
+// originally joined ROTS_SERVER_SOURCES and rots_convert's own direct
+// source list; persist-split PS Task 4 moved it again, into
+// ROTS_PERSIST_SOURCES (rots_persist, membership not relocation -- it was
+// already leaf-clean), since it exists to serve persistence conversion.
+// ageland and rots_convert both now link the one real definition of each
+// symbol through RotS::persist instead. character_json.cpp's
+// truecolor-setting codec and db_players.cpp's load_char()/
+// load_char_from_text() still call the real nearest_ansi_color()/
+// convert_old_colormask() exactly as before -- only their home TU changed,
+// twice.
 
 // The persisted-stat affect/derived-ability engine's remaining support
 // stubs -- get_from_affected_type_pool()/put_to_affected_type_pool(),
@@ -179,132 +195,6 @@
 // definitions, so rots_convert and ageland link the one real definition of
 // each instead of a second hand-duplicated copy. See entity_lifecycle.cpp's
 // "Entity-tier leaf helpers" section instead.
-
-// ===========================================================================
-// recalc_skills() -- spec_pro.cpp. store_to_char() calls it unconditionally
-// after copying st->skills[] into ch->skills[]. Its real body recomputes
-// ch->knowledge[] (a RUNTIME-ONLY derived field -- see
-// core/include/rots/core/character.h's `knowledge` field comment: "Computed
-// knowledge per skill (derived from `skills` at logon..."; char_file_u/
-// char_to_store have no knowledge field at all, so NOTHING about that
-// computation is ever persisted) using consts.cpp's real skills[] table
-// data (learn_diff/level/type per skill) -- entity-seed Task 2 links that
-// real table data now (consts.cpp joined rots_core), but recalc_skills()
-// itself is still spec_pro.cpp's function, and spec_pro.cpp is not linked
-// into this executable; assign_spell_pointers() (spell_pa.cpp's boot-time
-// skills[].spell_pointer populator) never runs here either, for the same
-// "spec_pro.cpp/spell_pa.cpp are app-layer, not linked" reason -- so
-// recalc_skills()'s real body still is not available here, even though the
-// data it would read now is real. The ONE persisted side effect --
-// `ch->player.language = <race-derived language>` (char_to_store: `st
-// ->language = ch->player.language`) -- is a pure function of GET_RACE(ch)
-// alone, so THAT part is duplicated verbatim; the knowledge-table
-// recomputation (and the RACE_MAGUS/RACE_BEORNING/RACE_GOD bonus-knowledge
-// grants, which only ever touch ch->knowledge[]) is omitted because it is
-// provably invisible to char_to_store()'s output.
-// Follow-on: once spec_pro.cpp's recalc_skills() itself (not just the
-// skills[] data it reads) is linked into this executable, reproduce
-// ch->knowledge[] faithfully too, for parity with a live server's in-memory
-// state even though it is never observed on disk.
-// ===========================================================================
-void recalc_skills(struct char_data* ch)
-{
-    if (ch->knowledge.empty() || ch->skills.empty())
-        return;
-
-    int language;
-    switch (GET_RACE(ch)) {
-    case RACE_GOD:
-        language = LANG_BASIC;
-        break;
-    case RACE_HUMAN:
-    case RACE_DWARF:
-    case RACE_WOOD:
-    case RACE_HOBBIT:
-    case RACE_HIGH:
-        language = LANG_HUMAN;
-        break;
-    case RACE_BEORNING:
-        language = LANG_ANIMAL;
-        break;
-    case RACE_URUK:
-    case RACE_HARAD:
-    case RACE_ORC:
-    case RACE_HARADRIM:
-    case RACE_OLOGHAI:
-    case RACE_MAGUS:
-        language = LANG_ORC;
-        break;
-    case RACE_EASTERLING:
-        language = LANG_BASIC;
-        break;
-    default:
-        language = LANG_BASIC;
-        break;
-    }
-
-    ch->player.language = language;
-}
-
-// ===========================================================================
-// file_to_string_alloc()/file_to_string() -- db_boot.cpp. load_player()
-// (db_players.cpp) calls file_to_string_alloc() for every character whose
-// player_table entry is NOT a ".character.json" (account-native) path --
-// i.e. every legacy text-format pfile, genuinely reachable. Verbatim copy
-// of db_boot.cpp's current bodies (plain fopen/fgets/fclose, no comm/game
-// dependency).
-// ===========================================================================
-int file_to_string(std::string_view name, char* buf_out)
-{
-    const std::string name_owner(rots::text::truncate_at_null(name));
-    FILE* fl;
-    char tmp[100];
-
-    *buf_out = '\0';
-
-    if (!(fl = fopen(name_owner.c_str(), "r"))) {
-        perror(std::format("Error reading {}", name_owner).c_str());
-        *buf_out = '\0';
-        return (-1);
-    }
-
-    do {
-        fgets(tmp, 99, fl);
-
-        if (!feof(fl)) {
-            if (strlen(buf_out) + strlen(tmp) + 2 > MAX_STRING_LENGTH) {
-                rots::log::write_stderr(
-                    "SYSERR: fl->strng: string too big (convert_stubs.cc, file_to_string)");
-                *buf_out = '\0';
-                // No fclose(fl) here -- matching db_boot.cpp's file_to_string()
-                // exactly (this error path does not close fl there either);
-                // see this section's header comment.
-                return (-1);
-            }
-
-            strcat(buf_out, tmp);
-            *(buf_out + strlen(buf_out) + 1) = '\0';
-            *(buf_out + strlen(buf_out)) = '\r';
-        }
-    } while (!feof(fl));
-
-    fclose(fl);
-
-    return (0);
-}
-
-int file_to_string_alloc(std::string_view name, char** buf_ptr)
-{
-    char temp[MAX_STRING_LENGTH];
-
-    if (file_to_string(name, temp) < 0)
-        return -1;
-
-    RELEASE(*buf_ptr);
-
-    *buf_ptr = str_dup(temp);
-    return 0;
-}
 
 // get_race_weight()/get_race_height() are DELETED (entity-seed Task 5):
 // both are now real entity_lifecycle.cpp definitions (see that file's
@@ -325,15 +215,18 @@ int file_to_string_alloc(std::string_view name, char** buf_ptr)
 // interpre.cpp's login flow, never on this executable's call graph.
 
 // ===========================================================================
-// Unreachable stubs -- each of these is DEFINED in a linked TU
-// (db_players.cpp: rename_char()/read_crime_file()/add_crime()/
-// know_of_crime()/forget_crimes(); entity_lifecycle.cpp: init_char()) that
-// this executable's own call graph never invokes (convert_main.cpp calls
-// only build_player_index()/load_char()/store_to_char()/save_char() -- see
-// that file), but whose references still need to resolve for the whole TU
-// to link. Each logs loudly if ever actually reached, since "never called"
-// is exactly the kind of claim worth a tripwire rather than silent
-// (potentially wrong) success.
+// Unreachable stubs -- each of these is DEFINED in a linked TU (handler.cpp:
+// fname()/other_side(), app layer, not linked here) that this executable's
+// own call graph never invokes (convert_main.cpp calls only
+// build_player_index()/load_char()/store_to_char()/save_char() -- see that
+// file; fname()'s only reachable-in-principle caller is
+// utils::get_object_name(), other_side()'s is utils::is_hostile_to(),
+// neither on that call graph), but whose references still need to resolve
+// for the whole TU to link. Each logs loudly if ever actually reached, since
+// "never called" is exactly the kind of claim worth a tripwire rather than
+// silent (potentially wrong) success. (Persist-split PS Task 4: this
+// section used to also cover unaccent()/find_name()/find_player_in_table()
+// -- all three deleted below, now real db_players.cpp definitions.)
 // ===========================================================================
 char* fname(char* namelist)
 {
@@ -358,37 +251,17 @@ int other_side(const char_data* character, const char_data* other)
 // entity_lifecycle.cpp definition (see that file's "Entity-tier leaf
 // helpers" section) instead of a stub.
 
-char unaccent(char c)
-{
-    rots::log::write_stderr(
-        "rots_convert: STUB unaccent() called -- unreachable (only rename_char(), never "
-        "called by this executable's load/store/save flow).");
-    return c;
-}
-
-int find_name(char* name)
-{
-    rots::log::write_stderr(
-        std::format("rots_convert: STUB find_name('{}') called -- unreachable (only rename_char(), "
-                    "never called by this executable's load/store/save flow).",
-            name ? name : "(null)"));
-    return -1;
-}
+// unaccent()/find_name()/find_player_in_table() are DELETED (persist-split
+// PS Task 4, controller-adjudicated relocation): all three are now real
+// db_players.cpp definitions (relocated verbatim from utility.cpp/
+// interpre.cpp -- see db_players.cpp's own comments at each), so this
+// executable links the one real definition of each through
+// db_players.cpp -- already directly compiled here -- instead of a
+// tripwire-logged stand-in.
 
 // set_title() is DELETED (entity-seed Task 5): it is now a real
 // entity_lifecycle.cpp definition (see that file's "Entity-tier leaf
 // helpers" section) instead of a stub.
-
-int find_player_in_table(std::string_view name, int idnum)
-{
-    (void)name;
-    (void)idnum;
-    rots::log::write_stderr(
-        "rots_convert: STUB find_player_in_table() called -- unreachable (only "
-        "read_crime_file()/add_crime()/know_of_crime()/forget_crimes()/rename_char(), never "
-        "called by this executable's load/store/save flow).");
-    return -1;
-}
 
 // ===========================================================================
 // send_to_char() (both overloads) / vsend_to_char() / act() /

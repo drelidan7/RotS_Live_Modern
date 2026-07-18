@@ -83,7 +83,11 @@
 // call that are neither defined in this TU nor declared in db.h
 // (db-split Task 2 fix-ups):
 void decrypt_line(unsigned char* line, int len); // utility.cpp -- load_player_from_text() below.
-int file_to_string_alloc(std::string_view name, char** buf); // db_boot.cpp -- load_player() below.
+// file_to_string()/file_to_string_alloc() relocated here from db_boot.cpp
+// (persist-split PS Task 4, controller-adjudicated relocation) -- see their
+// definitions below, right before load_player() (their only caller in this
+// file). No forward declaration needed now that they're defined in this TU
+// ahead of that use.
 
 struct player_index_element* player_table = 0; /* index to player file	*/
 FILE* player_fl = 0; /* file desc of player file	*/
@@ -187,6 +191,27 @@ void inc_p_table(void)
     RELEASE(player_table);
     player_table = tmpel;
     top_of_p_table++;
+}
+
+// utility.cpp -- relocated verbatim (persist-split PS Task 4,
+// controller-adjudicated relocation, same test already applied to
+// world_room_vnum()/add_exploit_record()'s callees this task): a pure
+// player_table/top_of_p_table index lookup, both already this file's own
+// globals (see above); no comm/world dependency. Declaration unchanged
+// (utils.h). find_player_table_index_by_name() below is a similar-purpose
+// private helper for build_player_index(), unrelated to this public API.
+int find_player_in_table(std::string_view name, int idnum)
+{
+    int i;
+
+    for (i = 0; i <= top_of_p_table; i++)
+        if (((idnum < 0) && (!str_cmp((player_table + i)->name, name))) || ((player_table + i)->idnum == idnum))
+            break;
+
+    if ((i > top_of_p_table) || (IS_SET((player_table + i)->flags, PLR_DELETED)))
+        return -1;
+
+    return i;
 }
 
 namespace {
@@ -991,6 +1016,66 @@ int load_player_from_text(char* name, std::string_view player_text, struct char_
     return 1;
 }
 
+// db_boot.cpp:514 -- relocated verbatim (persist-split PS Task 4,
+// controller-adjudicated relocation): load_player() below is this
+// function's primary consumer; db_boot.cpp's many boot-time text-file loads
+// (wizlist/motd/help/etc.) keep calling file_to_string_alloc() through its
+// unchanged local forward declaration, now resolving down into
+// rots_persist. Pure filesystem I/O (fopen/fgets/fclose/perror) plus
+// str_dup()/RELEASE()/log() (already rots_platform) -- no comm/world/combat
+// access.
+int file_to_string(std::string_view name, char* buf)
+{
+    const std::string name_owner(rots::text::truncate_at_null(name));
+    FILE* fl;
+    char tmp[100];
+
+    *buf = '\0';
+
+    if (!(fl = fopen(name_owner.c_str(), "r"))) {
+        perror(std::format("Error reading {}", name_owner).c_str());
+        *buf = '\0';
+        return (-1);
+    }
+
+    do {
+        fgets(tmp, 99, fl);
+
+        if (!feof(fl)) {
+            if (strlen(buf) + strlen(tmp) + 2 > MAX_STRING_LENGTH) {
+                log("SYSERR: fl->strng: string too big (db.c, file_to_string)");
+                *buf = '\0';
+                return (-1);
+            }
+
+            strcat(buf, tmp);
+            *(buf + strlen(buf) + 1) = '\0';
+            *(buf + strlen(buf)) = '\r';
+        }
+    } while (!feof(fl));
+
+    fclose(fl);
+
+    return (0);
+}
+
+// db_boot.cpp:500 -- relocated verbatim (persist-split PS Task 4,
+// controller-adjudicated relocation); declaration unchanged (db_boot.cpp's
+// own local forward declaration, and this file's load_player() below,
+// which needs no forward declaration since the definition now precedes it).
+int file_to_string_alloc(std::string_view name, char** buf)
+{
+    char temp[MAX_STRING_LENGTH];
+
+    if (file_to_string(name, temp) < 0)
+        return -1;
+
+    RELEASE(*buf);
+
+    *buf = str_dup(temp);
+    return 0;
+}
+
 int load_player(char* name, struct char_file_u* char_element)
 {
     int tmp;
@@ -1024,7 +1109,83 @@ int load_player(char* name, struct char_file_u* char_element)
     return result;
 }
 
-int find_name(char* name);
+// interpre.cpp:2276 -- relocated verbatim (persist-split PS Task 4,
+// controller-adjudicated relocation), sibling of find_player_in_table()
+// above: a pure player_table/top_of_p_table index lookup by exact name, no
+// comm/world dependency. rename_char() below is this file's only caller;
+// declaration stays local/unheadered (matching act_wiz.cpp/boards.cpp/
+// mail.cpp's own unaffected local forward declarations for their own calls).
+int find_name(char* name)
+/* locate entry in p_table with entry->name == name. -1 mrks failed search */
+{
+    int i;
+
+    for (i = 0; i <= top_of_p_table; i++)
+        if (!str_cmp_nullable((player_table + i)->name, name))
+            return i;
+
+    return -1;
+}
+
+// utility.cpp:117 -- relocated verbatim (persist-split PS Task 4,
+// controller-adjudicated relocation): a pure char-range table lookup, no
+// comm/world/char_data dependency at all. Declaration unchanged (utils.h);
+// rename_char() below is this file's only caller; comm.cpp's two call sites
+// are unaffected, now resolving down into rots_persist.
+char unaccent(char c)
+{
+#define B(bottom, c, top) ((c) >= (bottom) && (c) <= (top))
+    if (c < 128)
+        return c;
+
+    if (B(192, c, 198))
+        return 'A';
+    if (c == 199)
+        return 'C';
+    if (B(200, c, 203))
+        return 'E';
+    if (B(204, c, 207))
+        return 'I';
+    if (c == 208)
+        return 'D';
+    if (c == 209)
+        return 'N';
+    if (B(210, c, 214) || c == 216)
+        return 'O';
+    if (c == 215)
+        return '*';
+    if (B(217, c, 220))
+        return 'U';
+    if (c == 221)
+        return 'Y';
+    if (c == 222)
+        return 'P';
+    if (c == 223)
+        return 's';
+    if (B(224, c, 230))
+        return 'a';
+    if (c == 231)
+        return 'c';
+    if (B(232, c, 235))
+        return 'e';
+    if (B(236, c, 239))
+        return 'i';
+    if (c == 240)
+        return 'd';
+    if (c == 241)
+        return 'n';
+    if (B(242, c, 246) || c == 248)
+        return 'o';
+    if (c == 247)
+        return '/';
+    if (B(249, c, 252))
+        return 'u';
+
+#undef B
+    // '\xff' == 255: char is pinned unsigned everywhere (-funsigned-char, /J);
+    // spelled as a char literal because MSVC's C4309 check ignores /J.
+    return '\xff';
+}
 
 /* Load a char, TRUE if loaded, FALSE if not */
 int load_char(char* name, struct char_file_u* char_element)

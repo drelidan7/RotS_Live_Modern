@@ -2273,17 +2273,12 @@ void assign_command_pointers(void)
  *  Stuff for controlling the non-playing sockets (get name, pwd etc)       *
  ************************************************************************* */
 
-int find_name(char* name)
-/* locate entry in p_table with entry->name == name. -1 mrks failed search */
-{
-    int i;
-
-    for (i = 0; i <= top_of_p_table; i++)
-        if (!str_cmp_nullable((player_table + i)->name, name))
-            return i;
-
-    return -1;
-}
+// find_name() relocated to db_players.cpp (persist-split PS Task 4,
+// controller-adjudicated relocation): a pure player_table/top_of_p_table
+// index lookup by exact name, same shape as find_player_in_table() (also
+// relocated there this task) -- no comm/world dependency. This file never
+// called it itself (only act_wiz.cpp/boards.cpp/mail.cpp/db_players.cpp did,
+// each via their own local forward declaration -- unaffected).
 
 int _parse_name(char* arg, char* name)
 {

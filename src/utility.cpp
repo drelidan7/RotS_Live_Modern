@@ -69,8 +69,6 @@
 
 extern struct time_data time_info;
 extern struct room_data world;
-extern int top_of_p_table;
-extern struct player_index_element* player_table;
 extern struct char_data* character_list;
 extern struct char_data* mob_proto;
 extern int max_race_str[];
@@ -116,60 +114,11 @@ void unretire(struct char_data* ch)
  * Return the 7bit ascii value of an 8bit accented character
  * if we do not support the character, return 0
  */
-char unaccent(char c)
-{
-#define B(bottom, c, top) ((c) >= (bottom) && (c) <= (top))
-    if (c < 128)
-        return c;
-
-    if (B(192, c, 198))
-        return 'A';
-    if (c == 199)
-        return 'C';
-    if (B(200, c, 203))
-        return 'E';
-    if (B(204, c, 207))
-        return 'I';
-    if (c == 208)
-        return 'D';
-    if (c == 209)
-        return 'N';
-    if (B(210, c, 214) || c == 216)
-        return 'O';
-    if (c == 215)
-        return '*';
-    if (B(217, c, 220))
-        return 'U';
-    if (c == 221)
-        return 'Y';
-    if (c == 222)
-        return 'P';
-    if (c == 223)
-        return 's';
-    if (B(224, c, 230))
-        return 'a';
-    if (c == 231)
-        return 'c';
-    if (B(232, c, 235))
-        return 'e';
-    if (B(236, c, 239))
-        return 'i';
-    if (c == 240)
-        return 'd';
-    if (c == 241)
-        return 'n';
-    if (B(242, c, 246) || c == 248)
-        return 'o';
-    if (c == 247)
-        return '/';
-    if (B(249, c, 252))
-        return 'u';
-
-#undef B
-    // '\xff' == 255: char is pinned unsigned everywhere (-funsigned-char, /J);
-    // spelled as a char literal because MSVC's C4309 check ignores /J.
-    return '\xff';
-}
+// unaccent() relocated to db_players.cpp (persist-split PS Task 4,
+// controller-adjudicated relocation): a pure char-range table lookup, no
+// comm/world/char_data dependency at all. Declaration unchanged (utils.h);
+// comm.cpp's two call sites are unaffected, now resolving down into
+// rots_persist.
 
 inline int
 do_squareroot(int i, struct char_data*)
@@ -1381,19 +1330,10 @@ void day_to_str(struct time_info_data* loc_time_info, char* str)
     free(s);
 }
 
-int find_player_in_table(std::string_view name, int idnum)
-{
-    int i;
-
-    for (i = 0; i <= top_of_p_table; i++)
-        if (((idnum < 0) && (!str_cmp((player_table + i)->name, name))) || ((player_table + i)->idnum == idnum))
-            break;
-
-    if ((i > top_of_p_table) || (IS_SET((player_table + i)->flags, PLR_DELETED)))
-        return -1;
-
-    return i;
-}
+// find_player_in_table() relocated to db_players.cpp (persist-split PS
+// Task 4, controller-adjudicated relocation): a pure player_table/
+// top_of_p_table index lookup (both already db_players.cpp globals), no
+// comm/world dependency. Declaration unchanged (utils.h).
 
 /*
  * Return a pointer to the character structure associated with

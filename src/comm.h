@@ -73,6 +73,15 @@ void vsend_to_char(struct char_data* ch, const char* format, ...);
 /// descriptor_list is reset and before the first log() call.
 void register_mudlog_broadcast_sink();
 
+/// Installs the game's output sinks (rots::output::set_sinks, output_seam.h)
+/// -- the real send_to_char/act/track_specialized_mage/
+/// untrack_specialized_mage bodies that output_seam.cpp's forwarders
+/// otherwise fall back to a tripwire-logged no-op for. Called once from
+/// run_the_game(), immediately after register_mudlog_broadcast_sink() and
+/// before boot_db(), so ageland never runs an output-path call with an
+/// unregistered sink.
+void register_game_output_sinks();
+
 /// Expands a bounded action format and delivers it to the selected recipients.
 void act(std::string_view str, int hide_invisible, struct char_data* ch,
     struct obj_data* obj, void* vict_obj, int type, char spam_only = FALSE);

@@ -405,6 +405,13 @@ void recalc_skills(struct char_data*);
         [[maybe_unused]] obj_data* obj, [[maybe_unused]] int digit,                              \
         [[maybe_unused]] int is_object)
 
+// Populates skills[]'s spell_pointer cells (spell_pa.cpp) -- consts.cpp's
+// initializer sets them to nullptr instead of embedding these ASPELL
+// function pointers directly, so this must run once at boot, before
+// anything dispatches through skills[i].spell_pointer. Called from
+// db_boot.cpp, directly before assign_command_pointers().
+void assign_spell_pointers();
+
 /* Mage spell prototypes */
 ASPELL(spell_blink);
 ASPELL(spell_magic_missile);

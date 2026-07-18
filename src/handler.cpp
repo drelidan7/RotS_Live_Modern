@@ -89,15 +89,22 @@ void show_character_menu(struct descriptor_data* d);
 ACMD(do_save);
 ACMD(do_return);
 
-char char_control_array[MAX_CHARACTERS / 8 + 1];
+// char_control_array relocated to entity_lifecycle.cpp alongside
+// char_exists()/set_char_exists()/remove_char_exists() (entity-seed Task 5);
+// declarations unchanged in handler.h.
 long last_control_set = -1;
 
 int dummy_affected_var = 17;
-universal_list* affected_list = 0;
-universal_list* affected_list_pool = 0;
+// affected_list/affected_list_pool relocated to entity_lifecycle.cpp
+// (entity-seed Task 5); affect_to_room()/affect_remove_room() below still
+// read/write these, so they stay declared here via extern.
+extern universal_list* affected_list;
+extern universal_list* affected_list_pool;
 
-affected_type* affected_type_pool = 0;
-int affected_type_counter = 0;
+// affected_type_pool/affected_type_counter (private backing state for
+// get_from_affected_type_pool()/put_to_affected_type_pool() below) relocated
+// to entity_lifecycle.cpp alongside those two functions (entity-seed Task 5)
+// -- no other handler.cpp function reads them.
 
 struct affected_type* get_from_affected_type_pool();
 void put_to_affected_type_pool(struct affected_type*);
@@ -201,57 +208,9 @@ void recount_light_room(int room)
     world[room].light = count;
 }
 
-namespace {
-
-// Nullable legacy callers already provide null-terminated strings. Keeping their sentinel walk
-// here avoids constructing two views (and then scanning both again for first-null normalization)
-// on this hot lookup path, while the public view overload retains bounded-input safety.
-int isname_c_string(const char* query, const char* name_list, char full)
-{
-    while (*query && *query <= ' ') {
-        ++query;
-    }
-    const std::size_t query_length = std::strlen(query);
-    if (query_length == 0) {
-        return 0;
-    }
-    if ((query_length < 3) || (query_length > 4)) {
-        full = 1;
-    }
-
-    const char* current_name = name_list;
-    for (;;) {
-        const char* current_query = query;
-        for (;;) {
-            if (!*current_query
-                && (!full || !std::isalpha(static_cast<unsigned char>(*current_name)))) {
-                return 1;
-            }
-            if (!*current_name) {
-                return 0;
-            }
-            if (!*current_query || *current_name == ' '
-                || LOWER(*current_query) != LOWER(*current_name)) {
-                break;
-            }
-            ++current_query;
-            ++current_name;
-        }
-
-        while (std::isalpha(static_cast<unsigned char>(*current_name))) {
-            ++current_name;
-        }
-        if (!*current_name) {
-            return 0;
-        }
-        while (*current_name
-            && (!std::isalpha(static_cast<unsigned char>(*current_name)) || *current_name == ' ')) {
-            ++current_name;
-        }
-    }
-}
-
-} // namespace
+// isname_c_string() (this anonymous-namespace helper, isname_nullable()'s
+// sole caller) relocated to entity_lifecycle.cpp alongside isname_nullable()
+// (entity-seed Task 5).
 
 int isname(std::string_view query, std::string_view name_list, char full)
 {
@@ -311,13 +270,8 @@ int isname(std::string_view query, std::string_view name_list, char full)
     }
 }
 
-int isname_nullable(const char* query, const char* name_list, char full)
-{
-    if (query == nullptr || name_list == nullptr) {
-        return 0;
-    }
-    return isname_c_string(query, name_list, full);
-}
+// isname_nullable() relocated to entity_lifecycle.cpp (entity-seed Task 5);
+// declaration unchanged in handler.h.
 
 void affect_modify_room(struct room_data* room, byte, int mod,
     long bitv, char add)
@@ -351,36 +305,10 @@ void affect_total_room(struct room_data*, int)
 // affect_total() relocated to entity_lifecycle.cpp (db-split Task 4b);
 // declaration unchanged in handler.h.
 
-/*  If there is a structure of affected_type in the affected_type_pool list then
-        it is removed, if not then one is CREATEd.  A pointer to an available affected_type
-        structure is returned to be applied to a character or room. */
-
-struct affected_type* get_from_affected_type_pool()
-{
-    struct affected_type* afnew;
-
-    if (affected_type_pool) {
-        afnew = affected_type_pool;
-        affected_type_pool = afnew->next;
-
-        memset(afnew, 0, sizeof(affected_type));
-    } else {
-        CREATE(afnew, struct affected_type, 1);
-        affected_type_counter++;
-    }
-    return afnew;
-}
-
-/* Puts a struct affected_type into the head of the pool.
- ** Replaced with free at the moment to aid bughunting. */
-
-void put_to_affected_type_pool(struct affected_type* oldaf)
-{
-
-    free(oldaf);
-    //  oldaf->next = affected_type_pool;
-    //  affected_type_pool = oldaf;
-}
+// get_from_affected_type_pool()/put_to_affected_type_pool() relocated to
+// entity_lifecycle.cpp, along with their affected_type_pool/
+// affected_type_counter backing state (entity-seed Task 5); declarations
+// (the forward-declared prototypes above) unchanged.
 
 // affect_to_char() relocated to entity_lifecycle.cpp (db-split Task 4b);
 // declaration unchanged in handler.h.
@@ -2133,18 +2061,9 @@ char* money_message(int sum, int mode)
     return moneystr;
 }
 
-int char_exists(int num)
-{
-    return (char_control_array[num / 8] & (1 << (num % 8)));
-}
-void set_char_exists(int num)
-{
-    char_control_array[num / 8] |= (1 << (num % 8));
-}
-void remove_char_exists(int num)
-{
-    char_control_array[num / 8] &= ~(1 << (num % 8));
-}
+// char_exists()/set_char_exists()/remove_char_exists() (+ char_control_array,
+// removed above) relocated to entity_lifecycle.cpp (entity-seed Task 5);
+// declarations unchanged in handler.h.
 int register_npc_char(struct char_data* mob)
 {
     int i, flag;

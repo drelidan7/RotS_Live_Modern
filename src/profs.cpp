@@ -39,6 +39,7 @@
 extern struct char_data* character_list;
 extern int max_race_str[];
 extern struct obj_data* object_list;
+extern int class_HP(const char_data* character); // entity_lifecycle.cpp -- _INTERNAL::stat_assigner::organize()'s HP-based stat-order tiebreak below.
 
 namespace {
 
@@ -157,16 +158,10 @@ sh_int get_lea_mod(int race)
 // do_squareroot() (the recalc_abilities()-only overload) relocated to
 // entity_lifecycle.cpp alongside recalc_abilities() (db-split Task 4b).
 
-int class_HP(const char_data* character)
-{
-    double hp_coofs = 3 * utils::get_prof_points(PROF_WARRIOR, *character) + 2 * utils::get_prof_points(PROF_RANGER, *character) + utils::get_prof_points(PROF_CLERIC, *character);
-
-    if (GET_RACE(character) == RACE_ORC) {
-        hp_coofs = hp_coofs * 4.0 / 7.0;
-    }
-
-    return int(std::sqrt(hp_coofs) * 200.0);
-}
+// class_HP() relocated to entity_lifecycle.cpp (entity-seed Task 5),
+// preserving its strong (non-inline) definition linkage from db-split
+// Task 4b's IFNDR fix; _INTERNAL::stat_assigner::organize() below still
+// calls it, now via the extern declaration above.
 
 void draw_line(char* buf, int length)
 {

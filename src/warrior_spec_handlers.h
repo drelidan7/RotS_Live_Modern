@@ -77,3 +77,9 @@ private:
 };
 
 } // namespace player_spec
+
+// Registers wild_fighting_handler.cpp's real weapon-master attack-speed
+// implementation (player_spec::weapon_master_handler-backed) as
+// entity_hooks.h's attack-speed-multiplier hook. Called once from
+// run_the_game(), before boot_db() (entity-seed Task 5).
+void register_attack_speed_multiplier_hook();

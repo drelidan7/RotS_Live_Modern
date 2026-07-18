@@ -190,11 +190,19 @@ flags through the `rots_build_flags` INTERFACE library.
   is caught, not silently skipped. GNU-family only (`if(NOT MSVC)`); MSVC's guarantee is structural
   (the target links only `rots_build_flags`). This superseded an earlier `nm`-denylist shell check,
   which could only catch hand-listed symbols and gave false assurance.
-- `rots_platform` now has 9 member TUs: the original 7 verified-clean leaves (`rots_net.cpp`,
+- `rots_platform` now has 10 member TUs: the original 7 verified-clean leaves (`rots_net.cpp`,
   `rots_crypt.cpp`, `rots_rng.cpp`, `clock.cpp`, `crashsave_schedule.cpp`, `json_utils.cpp`,
   `player_file_finalize.cpp`) plus `rots_log.cpp` and `safe_template.cpp`, added by the logging-seam
-  follow-on (spec §13). `safe_template.cpp` rejoins as a genuinely clean leaf: it called `vmudlog`
+  follow-on (spec §13), plus `rots_util.cpp`, added by entity-seed Task 4's platform-helper
+  relocations. `safe_template.cpp` rejoins as a genuinely clean leaf: it called `vmudlog`
   (an L2 symbol) and now that call resolves inside `rots_platform` itself.
+- **`rots_util.cpp`** (entity-seed Task 4) holds `create_function`/`free_function` (the
+  `CREATE`/`RELEASE` macro backers), `str_dup`/`str_cmp`/`str_cmp_nullable`,
+  `rots_remove`/`rots_rename_replace`, and the `number()`/`number(int,int)` RNG wrapper family
+  (plus its TESTING-only `rots_test_random_hook` seam) — all relocated verbatim from
+  `utility.cpp`, each already platform-pure (no comm/db/handler header, no game type).
+  `log()`/`mudlog()` moved the same wave into the existing `rots_log.cpp`, as thin forwarders
+  onto `rots::log::write_stderr`/`write`.
 - **The logging seam (`rots/platform/log.h` + `rots_log.cpp`)** gives `rots_platform` a sink-based
   logging facility instead of a direct call up into the game. The platform layer owns the raw
   timestamped stderr write and the notification path (`rots::log::write_stderr`/`write`, plus
@@ -205,49 +213,117 @@ flags through the `rots_build_flags` INTERFACE library.
   is the property `rots_convert` will rely on to link `rots_platform` without pulling in any game
   code.
 
-The second extracted layer is `rots_core` (L1) — currently just `config.cpp` (configuration
-defaults) — built as `librots_core.a` and linked into `ageland` as `RotS::core`. It links
-`rots_build_flags` PUBLIC (same ABI-parity requirement as `rots_platform`) but does **not** link
-`RotS::platform` — `config.cpp` references no platform-layer symbol, so the layering guarantee is
-the tighter "no dependency on anything but libc/libstdc++" rather than merely "no dependency above
-L1".
+The second extracted layer is `rots_core` (L1) — `config.cpp` (configuration defaults),
+`consts.cpp` (data tables, entity-seed Task 2), and `output_seam.cpp` (the game-output seam,
+entity-seed Task 3 — see "Output seam" below) — built as `librots_core.a` and linked into
+`ageland` as `RotS::core`. It links `rots_build_flags` PUBLIC (same ABI-parity requirement as
+`rots_platform`) and, as of Task 3, also **PUBLIC-links `RotS::platform`**: `output_seam.cpp`'s
+null-sink default logs a tripwire through `rots::log::write_stderr` when nothing has registered
+yet — a legal L1→L0 edge, and the *only* one in the archive (neither `config.cpp` nor `consts.cpp`
+references a platform-layer symbol). `rots_core_linkcheck`/`CoreLayerAcyclicity` (below) enforces
+exactly this: it force-loads `rots_core` and normal-links `RotS::platform` to resolve that one
+legitimate edge, so anything else left unresolved is a real, unintended upward reference.
 
-`consts.cpp` was the other planned member and is **deliberately not** in `rots_core`. Its one
-traceable upward edge, `get_guardian_type` (it read `db.cpp`'s `mob_index` table), was relocated to
-`utility.cpp` (an L2/app-layer unit, unchanged signature/declaration) ahead of the extraction —
-`consts.cpp` still defines the `guardian_mob` data table itself, referenced by `utility.cpp` via a
-local `extern` declaration, matching the function's pre-existing local-extern idiom. But building
-`rots_core` with `consts.cpp` included then surfaced a second, structural upward edge the relocation
-didn't touch: the `skills[MAX_SKILLS]` table (`consts.cpp:382`) embeds ~69 function pointers
-directly to `spell_*()` implementations defined in `mystic.cpp`/`spell_pa.cpp` (both L2/app-layer) —
+`consts.cpp` was originally held back from `rots_core` (db-split-era history, preserved below for
+context) and has since joined it. Its first traceable upward edge, `get_guardian_type` (it read
+`db.cpp`'s `mob_index` table), was relocated to `utility.cpp` (an L2/app-layer unit,
+unchanged signature/declaration) ahead of the original extraction attempt — `consts.cpp` still
+defines the `guardian_mob` data table itself, referenced by `utility.cpp` via a local `extern`
+declaration, matching the function's pre-existing local-extern idiom. Building `rots_core` with
+`consts.cpp` included then surfaced a second, structural upward edge the relocation didn't touch:
+`consts.cpp`'s `skills[MAX_SKILLS]` table initializer used to embed ~69 function pointers directly
+to `spell_*()` implementations defined in `mystic.cpp`/`spell_pa.cpp` (both L2/app-layer) —
 confirmed by `nm -uC` on the built `consts.cpp.o`, which resolved every one of those symbols as
-undefined. That is not a stray call site to weld-cut; it is the table's core data shape, so
-de-coupling it (e.g. an indirection populated at startup) is real follow-on work, not something to
-chase inside this extraction. `consts.cpp` therefore stays in `ROTS_SERVER_SOURCES`, compiled
-directly into `ageland`/`ageland_tests` as before.
+undefined.
+Entity-seed Task 1 cut that edge at the root: `skills[]`'s function-pointer column is now populated
+at boot by `assign_spell_pointers()` (`spell_pa.cpp`), not embedded in `consts.cpp`'s static
+initializer, so `consts.cpp` compiles down to pure data. Entity-seed Task 2 then moved `consts.cpp`
+into `ROTS_CORE_SOURCES`; `rots_core_linkcheck`/`CoreLayerAcyclicity` (below) is the acceptance
+proof that the built archive resolves only libc/libstdc++ symbols (plus the one sanctioned
+`RotS::platform` edge above). One consequence: `rots_convert` (full link line under
+"`rots_convert`" below) now links `consts.cpp`'s REAL data tables (`race_affect[]`/`max_race_str[]`/`skills[]`/
+`get_skill_array()`/`language_number`/`language_skills`/`race_abbrevs[]`/`square_root[]`/
+`global_release_flag`/`get_encumb_table()`/`get_leg_encumb_table()`) instead of the verbatim data
+duplicates `convert_stubs.cpp` used to carry for them — with all-null `skills[].spell_pointer`
+entries, since `rots_convert` never calls `assign_spell_pointers()` either, exactly matching the
+historical stub contract.
 
 - **`rots_core_linkcheck` / CTest `CoreLayerAcyclicity`** mirror the `rots_platform_linkcheck`
-  pattern exactly (whole-archive force-load of `librots_core.a` against libc/libstdc++ only,
-  `LINK_DEPENDS` on the archive, `if(NOT MSVC)` gating, CTest registration gated on
-  `BUILD_TESTING`). `ageland_tests` deliberately does **not** link `rots_core` — like
-  `rots_platform`, it keeps compiling `config.cpp` directly (TESTING parity: the test binary's flag
-  set differs from the shipping build's, so it recompiles every layer's sources itself rather than
-  linking the shipping libraries).
+  pattern (whole-archive force-load of `librots_core.a`, `LINK_DEPENDS` on the archive,
+  `if(NOT MSVC)` gating, CTest registration gated on `BUILD_TESTING`) — with one deliberate
+  difference: it normal-links `RotS::platform` alongside libc/libstdc++, to resolve
+  `output_seam.cpp`'s one sanctioned L1→L0 edge (above); anything else left unresolved is a real
+  upward reference. `ageland_tests` deliberately does **not** link `rots_core` — like
+  `rots_platform`, it keeps compiling `config.cpp`, `consts.cpp`, and `output_seam.cpp` directly
+  (TESTING parity: the test binary's flag set differs from the shipping build's, so it recompiles
+  every layer's sources itself rather than linking the shipping libraries).
 - The root `Makefile`'s `test` recipe builds `rots_platform_linkcheck` and `rots_core_linkcheck`
   by name (it builds named targets, not `all`) — omitting either leaves its CTest "Not Run"
   instead of actually exercising the check, exactly the i386-battery failure mode the first
-  linkcheck target already fixed once.
-- **Follow-on (spec §3 caveat):** cutting the `skills[]` table's direct `spell_*` function-pointer
-  references is the next weld-cutting step toward moving `consts.cpp` into `rots_core`. Candidate
-  approaches include a name/id-keyed indirection resolved at startup, or relocating the pointer
-  table itself to an L2 registration unit while `consts.cpp` keeps only the non-pointer columns.
-  Not attempted here per the task's contingency rule (surfaced-edge discovery stops extraction, it
-  does not trigger in-task remediation).
+  linkcheck target already fixed once. As of entity-seed Task 6, it also builds
+  `rots_entity_linkcheck` by name for the same reason (see below).
+
+### `rots_entity` (L2): the entity-lifecycle library
+
+The third extracted layer is `rots_entity` (L2) — `entity_lifecycle.cpp`, `object_utils.cpp`, and
+`environment_utils.cpp` — built as `librots_entity.a` and linked into `ageland` (and, as of Task 6,
+`rots_convert`, see below) as `RotS::entity`. These three TUs are the `db.cpp`-split's "unforeseen
+fourth TU" and its siblings (spec §4a), scrubbed by entity-seed Tasks 1-5 of every upward edge:
+consts data relocated to `rots_core`, platform helpers relocated to `rots_platform`, and the three
+remaining game-coupled edges (game output, char teardown, attack-speed) inverted through
+null-defaulted seams instead of direct calls (see "Output seam" and "Entity hooks" below).
+`rots_entity` links `RotS::core` + `RotS::platform` PUBLIC (its two legal downward edges) plus
+`rots_build_flags`; it has no `include/` directory of its own yet — its headers stay flat in
+`src/`, the same way the platform/core headers did before those layers' own header carve-outs.
+
+- **`rots_entity_linkcheck` / CTest `EntityLayerAcyclicity`** mirrors the `rots_core_linkcheck`
+  pattern: force-load `librots_entity.a` and normal-link only `RotS::core` + `RotS::platform` to
+  resolve its legitimate downward edges — anything else unresolved fails the build.
+- **The two-STOP story:** standing up the linkcheck surfaced two rounds of residual
+  `char_utils.cpp` welds carried in by Task 5's relocated bodies — first `utils::is_npc`/
+  `utils::get_prof_points`/`specialization_data::set` (which pulled in the entire leaf-clean
+  `specialization_info` method family, since vtables are emitted at the key function), then that
+  family's own two remaining calls into `utils::get_name`/`utils::is_race_good`/
+  `utils::is_race_magi` — each round adjudicated, verified leaf-clean by `nm`, and relocated into
+  `entity_lifecycle.cpp` rather than stubbed, so `rots_entity`'s final membership is still just
+  the three TUs above, with a larger interior than the original seed.
+
+### Output seam and entity hooks: the last three app-layer edges into `rots_entity`
+
+Two dependency-inversion seams (spec §13 pattern) let `entity_lifecycle.cpp` keep calling
+game-output and app-registered behavior without `rots_entity` linking upward into `comm.cpp`,
+`objsave.cpp`, or `wild_fighting_handler.cpp`:
+
+- **Output seam (`output_seam.h`/`output_seam.cpp`, entity-seed Task 3).** Five global symbols —
+  `send_to_char` (both overloads), `vsend_to_char`, `act`, `track_specialized_mage`,
+  `untrack_specialized_mage` — are defined in `output_seam.cpp` (joins `rots_core`, see above) as
+  forwarders through a null-defaulted `rots::output::Sinks` aggregate of plain function pointers.
+  `comm.cpp`'s `register_game_output_sinks()` installs the real bodies (`act_impl`,
+  `track_specialized_mage_impl`, `untrack_specialized_mage_impl`, and the desc-delivery/
+  descriptor-list-walk `send_to_char` bodies). A null sink logs one tripwire line and returns —
+  exactly `rots_convert`'s historical `convert_stubs.cpp` stub semantics for these five symbols.
+- **Entity hooks (`entity_hooks.h`, entity-seed Task 5).** Two hooks let `entity_lifecycle.cpp`
+  invert its remaining app-layer edges: `char_teardown_fn` (fired by `free_char()` for every
+  destroyed character; `objsave.cpp`'s `register_char_teardown_hook()` installs
+  `clear_account_backed_object_bytes_for_character`) and `attack_speed_fn` (queried by
+  `recalc_abilities()`'s weapon branch; `wild_fighting_handler.cpp`'s
+  `register_attack_speed_multiplier_hook()` installs the real
+  `player_spec::weapon_master_handler`-backed implementation). Backing storage and dispatch live
+  in `entity_lifecycle.cpp` itself (unlike the output seam, there is no separate `.cpp`). Each
+  null default is a provable no-op/neutral value, not just "unreachable in practice" — see the
+  hook comments in `entity_lifecycle.cpp` for why.
+- **Registration order.** All four registrations — `register_mudlog_broadcast_sink()`,
+  `register_game_output_sinks()`, `register_char_teardown_hook()`,
+  `register_attack_speed_multiplier_hook()` — happen in `run_the_game()`, in that order, before
+  `boot_db()` runs. `rots_convert` never calls any of them, so it always observes the null-default
+  (logged no-op) behavior — the same contract the deleted `convert_stubs.cpp` stubs used to
+  hand-carry for these symbols.
 
 ### Pathed data-model includes
 
 `rots_core` owns `target_include_directories(rots_core PUBLIC core/include)`: every consumer that
-links `RotS::core` (currently just `ageland`) gets the `core/include` root transitively, so
+links `RotS::core` (`ageland`, and transitively `rots_entity`/`rots_convert` via `RotS::entity`,
+see "`rots_entity`" above) gets the `core/include` root transitively, so
 `ageland`'s own `target_include_directories` no longer lists it directly. `ageland_tests` does not
 link `RotS::core` (see above), so it keeps `core/include` as its own direct include dir alongside
 `persist/include` (which stays direct on both targets until a future `rots_persist` library exists
@@ -309,18 +385,24 @@ performs legacy → modern character conversion **en masse, outside MUD executio
 It links:
 
 ```
-rots_convert = RotS::platform + RotS::core + rots_build_flags
-             + db_players.cpp + entity_lifecycle.cpp
+rots_convert = RotS::platform + RotS::core + RotS::entity + rots_build_flags
+             + db_players.cpp
              + character_json.cpp + objects_json.cpp + exploits_json.cpp
              + account_management.cpp + account_cache.cpp
              + convert_exploits.cpp + convert_plrobjs.cpp
-             + object_utils.cpp + char_utils.cpp
+             + char_utils.cpp
              + convert_main.cpp + convert_stubs.cpp
 ```
 
 deliberately **NO** `db_world.cpp`/`db_boot.cpp` and **NO** combat/commands/app translation unit.
 `objsave.cpp`/`boards.cpp`/`mail.cpp`/`pkill.cpp` membership is also deliberately deferred this
-wave — their welds are catalogued as follow-on work rather than pulled in speculatively.
+wave — their welds are catalogued as follow-on work rather than pulled in speculatively. As of
+entity-seed Task 6, `entity_lifecycle.cpp`/`object_utils.cpp`/`environment_utils.cpp` arrive via
+`RotS::entity` (see "`rots_entity`" above) rather than as direct sources; `char_utils.cpp` stays a
+direct source because it still carries real combat/big_brother welds
+(`get_hit_text`→`fight.cpp`, the `wild_fighting_handler` ctor/method, `other_side`→`handler.cpp`,
+plus `big_brother::on_character_attacked_player`) that a future wave will need to cut before it
+too can join a library.
 
 - **It calls the same code the MUD uses** (`character_json`/`objects_json`/`exploits_json`, the
   `convert_*` binary-to-JSON one-time migration converters) so mass-conversion output is
@@ -333,13 +415,40 @@ wave — their welds are catalogued as follow-on work rather than pulled in spec
   the persistence boundary holds, not a check anyone has to remember to run.
 - **`src/convert_stubs.cpp` is the weld ledger** — one loud, documented stub per app/combat
   symbol the linked persist/entity code still references but the converter's own call graph
-  never exercises (e.g. `send_to_char`/`act`/`descriptor_list` from `comm.cpp`,
-  `get_hit_text` from `fight.cpp`). Each stub records the symbol, its real home, why the
-  converter never reaches it, and the follow-on that would remove it. It's large (~1.6K lines)
-  by design: it makes the remaining persistence/game coupling enumerable and its shrinkage
-  measurable, rather than hiding the coupling behind an unexplained empty function. Known
-  follow-ons cataloged there: the `send_to_char` output seam, an `APPLY_SPELL` null-skip, and
-  the deferred objsave/boards/mail membership above.
+  never exercises (e.g. `get_hit_text` from `fight.cpp`, the `wild_fighting_handler` pair).
+  Each stub records the symbol, its real home, why the converter never reaches it, and the
+  follow-on that would remove it. Its whole point is to make the remaining persistence/game
+  coupling enumerable and its shrinkage measurable, rather than hiding the coupling behind an
+  unexplained empty function — and entity-seed Tasks 1-6 are the measured proof: the ledger
+  shrank from ~40 documented stubs/~1.6K lines (db.cpp-split baseline) to ~15 stubs as each
+  task's relocation or seam removed the real edge a stub used to stand in for (`send_to_char`/
+  `act`/`vsend_to_char`/`track_specialized_mage`/`untrack_specialized_mage` via the output seam,
+  `log`/`mudlog`/`create_function`/`free_function`/`str_dup`-family/`number()` via the platform
+  relocations, `is_room_outside`/`is_light` via `rots_entity`, and more — see the file's own
+  header comment for the task-by-task account). The stubs still remaining split into two
+  groups. Most are genuinely **unreachable from the converter's own call graph**
+  (`build_player_index`/`load_char`/`store_to_char`/`save_char`) — `fname`, `other_side`,
+  `unaccent`, `find_name`, `Crash_get_filename`, `add_exploit_record`, `find_player_in_table`,
+  `build_default_account_backed_object_data`, `get_hit_text`, the `wild_fighting_handler`
+  ctor/method pair, `Crash_delete_file`, and `world_room_vnum` — each named with its real home
+  TU and reachability argument in the ledger itself; the deferred objsave/boards/mail/pkill
+  membership above is what would let most of them be deleted. A smaller group is instead
+  **reachable and a faithfully-duplicated stand-in**, where staying in sync with its origin is
+  an ongoing maintenance contract rather than an inert placeholder: `recalc_skills` (called
+  unconditionally by `store_to_char()`, so it genuinely executes on every conversion; it
+  reproduces the one persisted side effect — `ch->player.language` — that its real
+  `spec_pro.cpp` body computes from `GET_RACE(ch)` alone, and documents why the
+  `ch->knowledge[]` recomputation is safely omitted as provably unobserved on disk),
+  `file_to_string`/`file_to_string_alloc` (verbatim copies of `db_boot.cpp`'s bodies, exercised
+  for every legacy text-format pfile `load_player()` loads), and the color trio
+  `nearest_ansi_color`/`convert_old_colormask`/`sync_color_slot_foreground_from_ansi`
+  (verbatim copies of `color.cpp`'s current implementation, exercised by every truecolor
+  setting and every legacy `color_mask`-only character the converter loads — the
+  `ConvertEquivalence` suite, see "Testing" below, is the drift guard that keeps the copies
+  byte-for-byte in sync with their origin). The ledger already records this group's follow-on:
+  splitting `color.cpp`'s pure conversion helpers into their own leaf TU (e.g.
+  `color_convert.cpp`) so both `ageland` and `rots_convert` link one real definition instead of
+  synchronized copies.
 - **This target is CMake-only.** It is not added to the flat `src/Makefile` / `src/tests/Makefile`,
   which compile same-directory only against a single hand-maintained `OBJFILES` list per binary —
   wiring a second multi-file executable into that pattern isn't worth it for a CI-only

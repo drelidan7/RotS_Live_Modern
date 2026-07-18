@@ -36,6 +36,7 @@
 - Native macOS arm64 (no Docker needed, Phase 2b primary Mac dev flow): `cd src && cmake --preset macos-arm64 && cmake --build --preset macos-arm64 -j4 && ctest --preset macos-arm64`; binary at `build/macos-arm64/ageland`; boot-check with `scripts/boot-golden.sh --native build/macos-arm64/ageland verify`.
 - `rots64` container (64-bit Linux sibling of the i386 `rots` container, same bind-mounted `lib/`, host port 1064): `docker compose run --rm rots64 bash -lc 'cd /rots/src && cmake --preset linux-x64 && cmake --build --preset linux-x64 -j"$(nproc)" && ctest --preset linux-x64'`; boot-check with `scripts/boot-golden.sh --service rots64 verify`.
 - `rots_convert` (standalone character-conversion executable, CMake-only — not in the flat Makefiles) builds as part of `all`/every CMake preset; it is the CI-linked check that persistence stays de-welded from combat/world/commands — see docs/BUILD.md.
+- `rots_entity` (L2 static library seeded by the entity-seed wave: `entity_lifecycle.cpp`/`object_utils.cpp`/`environment_utils.cpp`, linked as `RotS::entity`) and its `EntityLayerAcyclicity` linkcheck are CI-linked the same way as `rots_platform`/`rots_core` — see docs/BUILD.md "Library layering".
 
 ## Verification Cadence
 

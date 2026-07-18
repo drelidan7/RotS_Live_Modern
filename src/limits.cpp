@@ -39,8 +39,6 @@
 
 extern const std::string_view pc_race_types[];
 
-#define READ_TITLE(ch) pc_race_types[GET_RACE(ch)]
-
 extern struct char_data* character_list;
 extern struct obj_data* object_list;
 extern struct room_data world;
@@ -371,15 +369,8 @@ float move_gain(const char_data* character)
     }
 }
 
-void set_title(char_data* character)
-{
-    if (GET_TITLE(character))
-        RELEASE(GET_TITLE(character));
-    CREATE(GET_TITLE(character), char, READ_TITLE(character).size() + 5);
-
-    strcpy(GET_TITLE(character), std::format("the {}", READ_TITLE(character)).c_str());
-    *(GET_TITLE(character) + 4) = toupper(*(GET_TITLE(character) + 4));
-}
+// set_title() relocated to entity_lifecycle.cpp (entity-seed Task 5);
+// declaration unchanged in limits.h.
 
 // Confirmed dead (Phase 3 Task 5, MSVC bring-up round 2): zero callers anywhere in
 // this codebase. Its getpid()/`nice ... &` background-job spawn is inherently

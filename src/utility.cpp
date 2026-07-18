@@ -180,12 +180,9 @@ do_squareroot(int i, struct char_data*)
     return ((4 - i % 4) * square_root[i / 4] + (i % 4) * square_root[i / 4 + 1]);
 }
 
-char get_current_time_phase()
-{
-    extern int pulse;
-
-    return (pulse % (SECS_PER_MUD_HOUR * 4)) / PULSE_FAST_UPDATE;
-}
+// get_current_time_phase() relocated to entity_lifecycle.cpp (entity-seed
+// Task 5), alongside int pulse's definition (formerly comm.cpp); declaration
+// unchanged in utils.h.
 
 int default_exit_width[] = {
     2, /* #define SECT_INSIDE          0 */
@@ -204,135 +201,11 @@ int default_exit_width[] = {
     0
 };
 
-int get_race_weight(struct char_data* ch)
-{
-    int gender_mod;
+// get_race_weight() relocated to entity_lifecycle.cpp (entity-seed Task 5);
+// declaration unchanged in utils.h.
 
-    if (GET_SEX(ch) == SEX_FEMALE)
-        gender_mod = 8;
-    else
-        gender_mod = 10;
-
-    switch (GET_RACE(ch)) {
-    case RACE_GOD:
-        return 100000 * gender_mod / 10;
-
-    case RACE_HUMAN:
-        return 17000 * gender_mod / 10;
-
-    case RACE_DWARF:
-        return 20000 * gender_mod / 10;
-
-    case RACE_WOOD:
-        return 12000 * gender_mod / 10;
-
-    case RACE_HOBBIT:
-        return 7000 * gender_mod / 10;
-
-    case RACE_HIGH:
-        return 13000 * gender_mod / 10;
-
-    case RACE_URUK:
-        return 16000 * gender_mod / 10;
-
-    case RACE_HARAD:
-        return 17000 * gender_mod / 10;
-
-    case RACE_ORC:
-        return 9000 * gender_mod / 10;
-
-    case RACE_EASTERLING:
-        return 17000 * gender_mod / 10;
-
-    case RACE_MAGUS:
-        return 16000 * gender_mod / 10;
-
-    case RACE_TROLL:
-        return 80000 * gender_mod / 10;
-
-    case RACE_BEORNING:
-        return 80000 * gender_mod / 10;
-
-    case RACE_OLOGHAI:
-        return 40000 * gender_mod / 10;
-
-    case RACE_HARADRIM:
-        return 17000 * gender_mod / 10;
-
-    case RACE_UNDEAD:
-        return 5000 * gender_mod / 10;
-
-    default:
-        return 15000;
-    }
-
-    return 0;
-}
-
-int get_race_height(struct char_data* ch)
-{
-    int gender_mod;
-
-    if (GET_SEX(ch) == SEX_FEMALE)
-        gender_mod = 9;
-    else
-        gender_mod = 10;
-
-    switch (GET_RACE(ch)) {
-    case RACE_GOD:
-        return 200 * gender_mod / 10;
-
-    case RACE_HUMAN:
-        return 180 * gender_mod / 10;
-
-    case RACE_DWARF:
-        return 130 * gender_mod / 10;
-
-    case RACE_WOOD:
-        return 200 * gender_mod / 10;
-
-    case RACE_HOBBIT:
-        return 110 * gender_mod / 10;
-
-    case RACE_HIGH:
-        return 210 * gender_mod / 10;
-
-    case RACE_URUK:
-        return 170 * gender_mod / 10;
-
-    case RACE_HARAD:
-        return 180 * gender_mod / 10;
-
-    case RACE_ORC:
-        return 120 * gender_mod / 10;
-
-    case RACE_EASTERLING:
-        return 180 * gender_mod / 10;
-
-    case RACE_MAGUS:
-        return 170 * gender_mod / 10;
-
-    case RACE_TROLL:
-        return 225 * gender_mod / 10;
-
-    case RACE_UNDEAD:
-        return 180 * gender_mod / 10;
-
-    case RACE_HARADRIM:
-        return 180 * gender_mod / 10;
-
-    case RACE_BEORNING:
-        return 225 * gender_mod / 10;
-
-    case RACE_OLOGHAI:
-        return 200 * gender_mod / 10;
-
-    default:
-        return 200;
-    }
-
-    return 0;
-}
+// get_race_height() relocated to entity_lifecycle.cpp (entity-seed Task 5);
+// declaration unchanged in utils.h.
 
 // get_race_perception() relocated to entity_lifecycle.cpp (db-split Task 4b);
 // declaration unchanged in utils.h.
@@ -895,32 +768,6 @@ int get_followers_level(char_data* ch) /* summ of levels of mobs/players charmed
     return levels;
 }
 
-#ifdef TESTING
-// Test seam: when non-null, number()/number(int,int) consult this hook
-// before drawing from the PRNG. Installed only by test_random_utils.cpp,
-// which pops a queued value (clamped to [0.0, 1.0)) per call and returns a
-// negative sentinel when the queue is empty, telling the caller to fall
-// through to the real PRNG below — the same fallthrough the old
-// __wrap__Z6numberv/__wrap__Z6numberii linker-wrap seam provided. The symbol
-// does not exist in production builds (no -DTESTING there).
-double (*rots_test_random_hook)() = nullptr;
-#endif
-
-// returns a random number from 0.0 to 1.0
-double number()
-{
-#ifdef TESTING
-    if (rots_test_random_hook) {
-        double hooked_value = rots_test_random_hook();
-        if (hooked_value >= 0.0) {
-            return hooked_value;
-        }
-    }
-#endif
-    // 2^32 as double; next() is a full 32-bit draw, so this is uniform [0,1).
-    return rots_rng::next() / 4294967296.0;
-}
-
 // returns a random number from 0.0 to max
 double number(double max)
 {
@@ -935,35 +782,6 @@ double number_d(double from, double to)
     }
 
     return number(to) + from;
-}
-
-/* creates a random number in interval [from;to] */
-int number(int from, int to)
-{
-    if (from == to) {
-        return from;
-    }
-    // Ensure that our to/from is in the proper order.
-    if (from > to) {
-        std::swap(to, from);
-    }
-
-    int upper_end = to - from + 1;
-    if (upper_end == 0) {
-        //       fprintf(stderr, "SYSERR: number(%d, %d)\n",from,to);
-        to = from;
-    }
-
-#ifdef TESTING
-    if (rots_test_random_hook) {
-        double hooked_value = rots_test_random_hook();
-        if (hooked_value >= 0.0) {
-            return from + static_cast<int>(hooked_value * upper_end);
-        }
-    }
-#endif
-
-    return (rots_rng::next() % upper_end) + from;
 }
 
 /* simulates dice roll */
@@ -983,25 +801,6 @@ int dice(int number, int size)
     }
 
     return (sum);
-}
-
-/* Create a duplicate of a string */
-char* str_dup(const char* source)
-{
-    if (!source)
-        return NULL;
-
-    char* new_string;
-    int length = std::strlen(source);
-
-    CREATE(new_string, char, ((int)(length / 0x100) + 1) * 0x100);
-
-    for (int i = 0; i < length; i++) {
-        new_string[i] = source[i];
-    }
-    new_string[length] = 0;
-
-    return new_string;
 }
 
 // rots_asprintf: portable stand-in for the asprintf() extension (see platform_compat.h
@@ -1045,136 +844,6 @@ int rots_asprintf(char** out, const char* fmt, ...)
 
     *out = buffer;
     return written;
-}
-
-// rots_rename_replace: POSIX-replace-semantics rename on every platform (see
-// platform_compat.h for the full rationale -- std::rename() refuses to
-// overwrite an existing destination on Windows, breaking every temp+rename
-// atomic write on the second save of any file).
-int rots_rename_replace(std::string_view source_path, std::string_view destination_path)
-{
-    const std::string source_path_owner(rots::text::truncate_at_null(source_path));
-    const std::string destination_path_owner(rots::text::truncate_at_null(destination_path));
-#if defined PREDEF_PLATFORM_WINDOWS
-    // MoveFileExA + MOVEFILE_REPLACE_EXISTING is the Win32 primitive with
-    // exactly POSIX rename()'s replace behavior (atomic on NTFS same-volume
-    // moves, which every persistence-layer temp file is -- the temp lives
-    // next to its final path by construction).
-    if (MoveFileExA(source_path_owner.c_str(), destination_path_owner.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-        return 0;
-    }
-
-    // Map the common failure causes onto errno so the call sites' existing
-    // strerror(errno)-based error messages describe the real problem instead
-    // of whatever stale errno was lying around.
-    switch (GetLastError()) {
-    case ERROR_FILE_NOT_FOUND:
-    case ERROR_PATH_NOT_FOUND:
-        errno = ENOENT;
-        break;
-    case ERROR_ACCESS_DENIED:
-    case ERROR_SHARING_VIOLATION:
-        errno = EACCES;
-        break;
-    default:
-        errno = EIO;
-        break;
-    }
-    return -1;
-#else
-    return std::rename(source_path_owner.c_str(), destination_path_owner.c_str());
-#endif
-}
-
-// rots_remove: POSIX-remove-semantics deletion on every platform (see
-// platform_compat.h -- POSIX remove(3) also deletes empty directories, MSVC's
-// CRT remove() refuses them, leaking directories from rollback paths).
-int rots_remove(std::string_view path)
-{
-    const std::string path_owner(rots::text::truncate_at_null(path));
-#if defined PREDEF_PLATFORM_WINDOWS
-    if (std::remove(path_owner.c_str()) == 0) {
-        return 0;
-    }
-
-    // CRT remove() rejects a directory with EACCES; retry as a directory the
-    // way POSIX remove() falls back to rmdir(). RemoveDirectoryA is the Win32
-    // primitive (same header set MoveFileExA above comes from); map its common
-    // failures onto errno so callers' strerror(errno) messages stay meaningful.
-    const DWORD attributes = GetFileAttributesA(path_owner.c_str());
-    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
-        if (RemoveDirectoryA(path_owner.c_str())) {
-            return 0;
-        }
-        switch (GetLastError()) {
-        case ERROR_FILE_NOT_FOUND:
-        case ERROR_PATH_NOT_FOUND:
-            errno = ENOENT;
-            break;
-        case ERROR_DIR_NOT_EMPTY:
-            errno = ENOTEMPTY;
-            break;
-        case ERROR_ACCESS_DENIED:
-        case ERROR_SHARING_VIOLATION:
-            errno = EACCES;
-            break;
-        default:
-            errno = EIO;
-            break;
-        }
-    }
-    return -1;
-#else
-    return std::remove(path_owner.c_str());
-#endif
-}
-
-/* returns: 0 if equal, 1 if arg1 > arg2, -1 if arg1 < arg2  */
-/* scan 'till found different or end of both                 */
-int str_cmp(std::string_view first, std::string_view second)
-{
-    // First-null semantics are folded into the loop: past-the-end or an
-    // embedded null both read as '\0', exactly where truncate_at_null would
-    // have cut -- without pre-scanning either argument.
-    for (std::size_t index = 0;; ++index) {
-        const char first_char = (index < first.size()) ? first[index] : '\0';
-        const char second_char = (index < second.size()) ? second[index] : '\0';
-        if (first_char == '\0' || second_char == '\0') {
-            if (first_char == second_char) {
-                return 0;
-            }
-            return (first_char == '\0') ? -1 : 1;
-        }
-        const int difference = LOWER(first_char) - LOWER(second_char);
-        if (difference < 0) {
-            return -1;
-        }
-        if (difference > 0) {
-            return 1;
-        }
-    }
-}
-
-int str_cmp_nullable(const char* first, const char* second)
-{
-    if (first == nullptr || second == nullptr) {
-        if (first == second) {
-            return 0;
-        }
-        return first == nullptr ? -1 : 1;
-    }
-    // Nullable legacy callers provide null-terminated strings (see the
-    // isname_c_string precedent): a raw sentinel walk avoids constructing and
-    // scanning two views on the player-table lookup paths.
-    for (;; ++first, ++second) {
-        const int difference = LOWER(*first) - LOWER(*second);
-        if (difference != 0) {
-            return (difference < 0) ? -1 : 1;
-        }
-        if (*first == '\0') {
-            return 0;
-        }
-    }
 }
 
 /* returns: 0 if equal, 1 if arg1 > arg2, -1 if arg1 < arg2  */
@@ -1236,17 +905,6 @@ void log_death_trap(struct char_data* ch)
     std::string message = std::format("{} hit death trap #{} ({})", GET_NAME(ch),
         world[ch->in_room].number, world[ch->in_room].name);
     mudlog(message, BRF, LEVEL_IMMORT, TRUE);
-}
-
-/* writes a string to the log */
-void log(std::string_view message)
-{
-    rots::log::write_stderr(message);
-}
-
-void mudlog(std::string_view message_body, char type, sh_int level, byte file)
-{
-    rots::log::write(message_body, type, level, file != 0);
 }
 
 void mudlog_debug_mob(std::string_view message, char_data* ch)
@@ -1426,48 +1084,6 @@ void echo_on(SocketType sock)
     (void)rots_net::write_socket(sock, off_string, sizeof(off_string));
 }
 
-/* This is to work together with CREATE macro, to try fighting
-   memory fault crashes.
-   */
-
-void* create_pointer = 0;
-
-void* create_function(int elem_size, int elem_num, int line, std::string_view file)
-{
-
-    //  printf("want to allocate size=%d, num=%d\n",elem_size,elem_num);
-
-    if (elem_size * elem_num == 0)
-        create_pointer = calloc(1, 1);
-    else
-        create_pointer = calloc(elem_size, elem_num);
-
-    // if (elem_size * elem_num == 0)
-    //   create_pointer = malloc(1);
-    // else
-    //   create_pointer = malloc(elem_size * elem_num);
-
-    if (!create_pointer) {
-        const std::string file_owner(rots::text::truncate_at_null(file));
-        printf("CREATE: could not allocate memory %d size %d elements at line %d, file %s.\n",
-            elem_size, elem_num, line, file_owner.c_str());
-        exit(0);
-    }
-    //   for(i = 0; i<10; i++) j = random();
-    //  printf("create_function, return%p\n",create_pointer);
-    return create_pointer;
-}
-
-void free_function(void* pnt)
-{
-    create_pointer = pnt;
-    //  printf("free_function, pnt=%p",create_pointer);
-    if (create_pointer)
-        free(create_pointer);
-    //   for(i = 0; i<100; i++) j = random();
-    //  printf("  free\n");
-    create_pointer = 0;
-}
 void initialize_buffers()
 {
     return;
@@ -1806,67 +1422,9 @@ void set_mental_delay(struct char_data* ch, int value)
     GET_MENTAL_DELAY(ch) += value;
 }
 
-int universal_list_counter = 0;
-int used_in_universal_list = 0;
-
-/*
- * Takes the address of a linked list of universal_list structures
- * and its associated pool list and adds a new item at the beginning.
- * If a free universal_list structure is available in the pool it is
- * removed and returned.  If not, a new structure is created and
- * returned. Counts are kept of the number of universal list
- * structures created and the number in current use.
- */
-
-struct universal_list*
-pool_to_list(struct universal_list** list, struct universal_list** head)
-{
-    struct universal_list* tmplist;
-
-    if (*head) {
-        tmplist = *head;
-        *head = tmplist->next;
-        used_in_universal_list++;
-    } else {
-        CREATE1(tmplist, universal_list);
-        universal_list_counter++;
-        used_in_universal_list++;
-    }
-
-    tmplist->next = *list;
-    *list = tmplist;
-
-    return tmplist;
-}
-
-/*
- * Takes a list, its associated pool and a member of the list
- * and removes it from the list and adds it to the head of the
- * pool
- */
-void from_list_to_pool(universal_list** list, universal_list**, universal_list* body)
-{
-    if (*list == body) {
-        *list = body->next;
-    } else {
-        universal_list* tmplist = NULL;
-        for (tmplist = *list; tmplist->next; tmplist = tmplist->next) {
-            if (tmplist->next == body) {
-                break;
-            }
-        }
-
-        if (tmplist->next == body) {
-            tmplist->next = body->next;
-        }
-    }
-
-    /* Thus not putting universal lists into a pool, but freeing the memory */
-    used_in_universal_list--;
-    universal_list_counter++; /* added because we are freeing body */
-
-    free(body);
-}
+// universal_list_counter/used_in_universal_list + pool_to_list()/
+// from_list_to_pool() relocated to entity_lifecycle.cpp (entity-seed Task 5);
+// declarations unchanged in utils.h.
 
 int check_resistances(char_data* victim, int attack_type)
 {

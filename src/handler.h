@@ -170,6 +170,10 @@ FILE* Crash_get_file_by_name(std::string_view name, std::string_view mode);
 FILE* Crash_load(struct char_data* ch);
 void stage_account_backed_object_data_for_character(const struct char_data* ch, const objects_json::ObjectSaveData& data);
 void clear_account_backed_object_bytes_for_character(const struct char_data* ch);
+// Registers clear_account_backed_object_bytes_for_character() (above) as
+// entity_hooks.h's char-teardown hook. Called once from run_the_game(),
+// before boot_db() (entity-seed Task 5).
+void register_char_teardown_hook();
 objects_json::ObjectSaveData build_default_account_backed_object_data();
 
 /* prototypes from fight.c */

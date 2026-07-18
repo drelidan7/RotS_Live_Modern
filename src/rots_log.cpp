@@ -6,9 +6,16 @@
 // Task 2. vmudlog() (below, global namespace) is the Task 2 move of
 // utility.cpp's one-time definition -- utility.cpp's copy is deleted in the
 // same commit that adds this one, so the symbol is defined exactly once.
+// entity-seed Task 4: log()/mudlog() themselves (global namespace, declared
+// in utils.h -- same declared-elsewhere precedent as vmudlog()) join this
+// TU too, verbatim from utility.cpp's now-deleted copies -- they were
+// already pure forwarders onto write_stderr()/write() below with zero game
+// dependency, so relocating the bodies (not just the platform half) removes
+// the last app-tier home for these two symbols.
 
 #include "rots/platform/log.h"
 
+#include "platdef.h" /* For sh_int/byte -- mudlog()'s parameter types */
 #include "text_view.h"
 
 #include <cstdarg>
@@ -111,6 +118,18 @@ void write(std::string_view message, char type, int level, bool to_file)
 }
 
 } // namespace rots::log
+
+/* writes a string to the log -- verbatim copy of utility.cpp's now-deleted body */
+void log(std::string_view message)
+{
+    rots::log::write_stderr(message);
+}
+
+// verbatim copy of utility.cpp's now-deleted mudlog() body
+void mudlog(std::string_view message_body, char type, sh_int level, byte file)
+{
+    rots::log::write(message_body, type, level, file != 0);
+}
 
 // Printf-style mudlog entry point (global namespace) -- verbatim body moved
 // from utility.cpp's definition (Task 2 rewire). Formats into a fixed

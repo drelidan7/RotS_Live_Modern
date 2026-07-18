@@ -68,7 +68,6 @@
 // Cross-TU forward declarations for symbols this file's P functions
 // call that are neither defined in this TU nor declared in db.h
 // (db-split Task 2 fix-ups):
-extern char buf[MAX_STRING_LENGTH]; // db_boot.cpp -- save_char()/write_exploits()/rename_char() below.
 void decrypt_line(unsigned char* line, int len); // utility.cpp -- load_player_from_text() below.
 int file_to_string_alloc(std::string_view name, char** buf); // db_boot.cpp -- load_player() below.
 
@@ -76,7 +75,9 @@ struct player_index_element* player_table = 0; /* index to player file	*/
 FILE* player_fl = 0; /* file desc of player file	*/
 int top_of_p_table = 0; /* ref to top of table		*/
 int top_of_p_file = 0; /* ref of size of p file	*/
-long top_idnum = 0; /* highest idnum in use		*/
+extern long top_idnum; /* highest idnum in use -- definition moved to entity_lifecycle.cpp
+                          (entity-seed Task 5, storage-placement only); build_player_index()
+                          below still reads/writes it via this extern. */
 
 struct crime_record_type* crime_record = 0;
 FILE* crime_file = 0;
@@ -1723,18 +1724,17 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
             }
         }
     } else if (account_native_player_entry) {
+        std::string fallback_error_message;
         if (account_error.empty())
-            strcpy(buf, std::format("save_char: refusing legacy fallback for account-native "
-                                    "character {} because linked ownership could not be resolved",
-                            GET_NAME(ch))
-                            .c_str());
+            fallback_error_message = std::format(
+                "save_char: refusing legacy fallback for account-native "
+                "character {} because linked ownership could not be resolved",
+                GET_NAME(ch));
         else
-            strcpy(buf,
-                std::format(
-                    "save_char: refusing legacy fallback for account-native character {}: {}",
-                    GET_NAME(ch), account_error)
-                    .c_str());
-        log(buf);
+            fallback_error_message = std::format(
+                "save_char: refusing legacy fallback for account-native character {}: {}",
+                GET_NAME(ch), account_error);
+        log(fallback_error_message);
     } else {
         save_player(ch, load_room, tmp); // New save into individual files
     }
@@ -2435,8 +2435,7 @@ void write_exploits(char_data* ch, exploit_record* record)
 
     std::string error_message;
     if (!write_exploit_record_for_character(".", GET_NAME(ch), *record, &error_message)) {
-        strcpy(buf, std::format("**ERROR: Could not persist exploit file for character: {}", error_message).c_str());
-        mudlog(buf, NRM, LEVEL_IMMORT, TRUE);
+        mudlog(std::format("**ERROR: Could not persist exploit file for character: {}", error_message), NRM, LEVEL_IMMORT, TRUE);
     } else {
         // Anti-rollback: an exploit record (PK -> killer; death/level/stat/birth/... -> victim)
         // marks a state-changing event. Persist the character immediately after the CONFIRMED write
@@ -3109,9 +3108,10 @@ int delete_exploits_file(char* name)
 int rename_char(struct char_data* ch, char* newname)
 {
     char namebuf[64], *c, new_exploit_file[64], old_exploit_file[64];
+    char old_char_file[MAX_STRING_LENGTH];
     int player_i, i;
 
-    if ((!*newname || !ch) || (find_player_in_table(newname, -1) != -1) || (!Crash_get_filename(GET_NAME(ch), buf)) || ((player_i = find_name(GET_NAME(ch))) < 0))
+    if ((!*newname || !ch) || (find_player_in_table(newname, -1) != -1) || (!Crash_get_filename(GET_NAME(ch), old_char_file)) || ((player_i = find_name(GET_NAME(ch))) < 0))
         return -1;
 
     /* note this in exploits, i hate the ! on NOTE, so we use ACHIEVEMENT */
@@ -3120,11 +3120,11 @@ int rename_char(struct char_data* ch, char* newname)
     add_exploit_record(EXPLOIT_ACHIEVEMENT, ch, 0, namebuf);
 
     /* remove their char file */
-    // Was system("rm <buf>"); the return value was never checked, so a
+    // Was system("rm <old_char_file>"); the return value was never checked, so a
     // failed remove was already silent -- ec is discarded here to match.
     {
         std::error_code remove_ec;
-        std::filesystem::remove(buf, remove_ec);
+        std::filesystem::remove(old_char_file, remove_ec);
     }
 
     /* make the name file-ready */
@@ -3139,13 +3139,13 @@ int rename_char(struct char_data* ch, char* newname)
 
     /* get the name of the old exploit file */
     get_char_directory(GET_NAME(ch), namebuf);
-    strcpy(buf, GET_NAME(ch));
-    for (c = buf; *c; ++c)
-        *c = tolower(unaccent(*c));
+    std::string lowered_old_name = GET_NAME(ch);
+    for (char& name_char : lowered_old_name)
+        name_char = tolower(unaccent(name_char));
 
     strcpy(old_exploit_file,
         std::format("exploits{}{}.exploits", static_cast<const char*>(namebuf),
-            static_cast<const char*>(buf))
+            lowered_old_name)
             .c_str());
 
     /* now move the exploits */

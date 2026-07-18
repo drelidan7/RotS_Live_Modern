@@ -86,7 +86,9 @@
 #include "exploits_json.h"
 #include "json_utils.h"
 #include "text_view.h"
+#include "entity_hooks.h"
 #include "player_file_finalize.h"
+#include "rots/platform/log.h"
 #include "skill_timer.h"
 #include <cmath>
 #include <cstddef>
@@ -105,9 +107,78 @@
 // Cross-TU forward declarations for symbols init_char() below calls
 // that are neither defined in this TU nor declared in db.h (db-split
 // Task 2 fix-ups):
-extern long top_idnum; // db_players.cpp -- init_char() assigns ch->specials2.idnum from ++top_idnum.
+long top_idnum = 0; // moved here from db_players.cpp (entity-seed Task 5,
+                    // storage-placement only); init_char() assigns
+                    // ch->specials2.idnum from ++top_idnum below.
+                    // db_players.cpp keeps reading/writing it via extern.
 extern long race_affect[]; // consts.cpp -- init_char() reads race_affect[GET_RACE(ch)].
 
+/************************************************************************
+ *  entity_hooks.h dispatch (entity-seed Task 5)                       *
+ ************************************************************************
+ *  Backing storage + null-defaulted dispatch helpers for the two upward
+ *  edges entity_hooks.h inverts (spec Sec13 pattern, mirroring
+ *  output_seam.cpp): free_char()'s teardown notification (objsave.cpp
+ *  registers the real clear_account_backed_object_bytes_for_character()),
+ *  and recalc_abilities()'s weapon-master attack-speed query
+ *  (wild_fighting_handler.cpp registers the real
+ *  player_spec::weapon_master_handler-backed implementation). Both
+ *  registered by run_the_game(), before boot_db() -- see entity_hooks.h.
+ ************************************************************************/
+namespace rots::entity {
+
+namespace {
+// Backing storage for the registered char-teardown hook
+// (register_char_teardown_hook(), objsave.cpp). Null until that
+// registration runs; a null hook is a silent, provable no-op -- see
+// dispatch_char_teardown() below, which does not log.
+char_teardown_fn g_char_teardown_hook = nullptr;
+
+// Backing storage for the registered attack-speed-multiplier hook
+// (register_attack_speed_multiplier_hook(), wild_fighting_handler.cpp).
+// Null until that registration runs; the null default reproduces
+// rots_convert's historical player_spec::weapon_master_handler stub
+// (tripwire log + a neutral 1.0f multiplier).
+attack_speed_fn g_attack_speed_multiplier_hook = nullptr;
+} // namespace
+
+void set_char_teardown_hook(char_teardown_fn hook)
+{
+    g_char_teardown_hook = hook;
+}
+
+void set_attack_speed_multiplier_hook(attack_speed_fn hook)
+{
+    g_attack_speed_multiplier_hook = hook;
+}
+
+namespace {
+void dispatch_char_teardown(const char_data* character)
+{
+    if (g_char_teardown_hook) {
+        g_char_teardown_hook(character);
+        return;
+    }
+    // Null default is a silent no-op: the staged-object map cleared by the old stub
+    // (in the deleted convert_stubs.cpp) can only gain entries via interpre.cpp's login flow.
+    // That flow never runs at all in rots_convert; in ageland it only runs after
+    // register_char_teardown_hook() has registered the real hook. Erasing a never-inserted
+    // key is equivalent to no-op.
+}
+
+float dispatch_attack_speed_multiplier(char_data* character)
+{
+    if (g_attack_speed_multiplier_hook) {
+        return g_attack_speed_multiplier_hook(character);
+    }
+    rots::log::write_stderr(
+        "rots::entity: STUB attack-speed-multiplier hook called with no sink registered -- this "
+        "should be unreachable once register_attack_speed_multiplier_hook() has run.");
+    return 1.0f;
+}
+} // namespace
+
+} // namespace rots::entity
 
 /************************************************************************
  *  procs of a (more or less) general utility nature			*
@@ -174,7 +245,7 @@ struct alias_list* owned_alias_list::clone(struct alias_list* src)
 /* release memory allocated for a char struct */
 void free_char(struct char_data* ch)
 {
-    clear_account_backed_object_bytes_for_character(ch);
+    rots::entity::dispatch_char_teardown(ch);
 
     // RAII T6a: this function frees the char_data storage with a raw free()
     // (RELEASE(ch), below). Historically it ALSO ran ~char_data()'s work by
@@ -471,6 +542,778 @@ void init_char(struct char_data* ch)
 }
 
 /************************************************************************
+ *  Entity-tier leaf helpers (entity-seed Task 5)                      *
+ ************************************************************************
+ *  Relocated verbatim from handler.cpp (get_from_affected_type_pool()/
+ *  put_to_affected_type_pool() + their affected_type_pool/
+ *  affected_type_counter backing state; the affected_list/
+ *  affected_list_pool globals, shared with affect_to_room()/
+ *  affect_remove_room(), which stay in handler.cpp and now reach these by
+ *  extern; char_exists()/set_char_exists()/remove_char_exists() +
+ *  char_control_array; isname_nullable() + its sole file-local helper
+ *  isname_c_string()), utility.cpp (pool_to_list()/from_list_to_pool() +
+ *  universal_list_counter/used_in_universal_list; get_race_weight()/
+ *  get_race_height(); get_current_time_phase()), profs.cpp (class_HP() --
+ *  kept as a strong, non-inline definition, matching its post-db-split-
+ *  Task-4b linkage; see that task's IFNDR history), limits.cpp
+ *  (set_title()), and char_utils.cpp (utils::get_specialization()/
+ *  utils::set_specialization()/utils::get_minimum_insight_perception(),
+ *  specialization_data::reset()). int pulse's DEFINITION (formerly
+ *  comm.cpp) and long top_idnum's DEFINITION (formerly db_players.cpp,
+ *  see this file's top) also move here -- storage-placement only, both
+ *  origin TUs keep mutating the value via extern. Bodies, comments, and
+ *  local quirks are unchanged from their origin files; only the enclosing
+ *  TU differs. Declarations are unchanged in their origin headers (see
+ *  each origin file's own relocation-marker comment).
+ ************************************************************************/
+
+// handler.cpp -- live-tick affect-duration bookkeeping list + its pool,
+// shared with affect_to_room()/affect_remove_room() (handler.cpp, which now
+// reach these two globals by extern).
+universal_list* affected_list = 0;
+universal_list* affected_list_pool = 0;
+
+// handler.cpp -- private backing state for get_from_affected_type_pool()/
+// put_to_affected_type_pool() immediately below; no other handler.cpp
+// function reads these two, so they move with the pool functions rather
+// than staying behind as an extern.
+affected_type* affected_type_pool = 0;
+int affected_type_counter = 0;
+
+/*  If there is a structure of affected_type in the affected_type_pool list then
+        it is removed, if not then one is CREATEd.  A pointer to an available affected_type
+        structure is returned to be applied to a character or room. */
+
+struct affected_type* get_from_affected_type_pool()
+{
+    struct affected_type* afnew;
+
+    if (affected_type_pool) {
+        afnew = affected_type_pool;
+        affected_type_pool = afnew->next;
+
+        memset(afnew, 0, sizeof(affected_type));
+    } else {
+        CREATE(afnew, struct affected_type, 1);
+        affected_type_counter++;
+    }
+    return afnew;
+}
+
+/* Puts a struct affected_type into the head of the pool.
+ ** Replaced with free at the moment to aid bughunting. */
+
+void put_to_affected_type_pool(struct affected_type* oldaf)
+{
+
+    free(oldaf);
+    //  oldaf->next = affected_type_pool;
+    //  affected_type_pool = oldaf;
+}
+
+// handler.cpp -- char_exists()/set_char_exists()/remove_char_exists() bit-
+// array bookkeeping. register_npc_char()/register_pc_char() (handler.cpp)
+// and utils::is_riding()/is_ridden() (utils.h macros) still reach these by
+// extern/declaration.
+char char_control_array[MAX_CHARACTERS / 8 + 1];
+
+int char_exists(int num)
+{
+    return (char_control_array[num / 8] & (1 << (num % 8)));
+}
+void set_char_exists(int num)
+{
+    char_control_array[num / 8] |= (1 << (num % 8));
+}
+void remove_char_exists(int num)
+{
+    char_control_array[num / 8] &= ~(1 << (num % 8));
+}
+
+namespace {
+// handler.cpp -- isname_nullable()'s sole helper (originally file-local to
+// handler.cpp's own anonymous namespace); moved alongside it (its only
+// caller), kept file-local here too -- same precedent as this file's
+// do_squareroot() (db-split Task 4b), a small helper with exactly one
+// caller.
+
+// Nullable legacy callers already provide null-terminated strings. Keeping their sentinel walk
+// here avoids constructing two views (and then scanning both again for first-null normalization)
+// on this hot lookup path, while the public view overload retains bounded-input safety.
+int isname_c_string(const char* query, const char* name_list, char full)
+{
+    while (*query && *query <= ' ') {
+        ++query;
+    }
+    const std::size_t query_length = std::strlen(query);
+    if (query_length == 0) {
+        return 0;
+    }
+    if ((query_length < 3) || (query_length > 4)) {
+        full = 1;
+    }
+
+    const char* current_name = name_list;
+    for (;;) {
+        const char* current_query = query;
+        for (;;) {
+            if (!*current_query
+                && (!full || !std::isalpha(static_cast<unsigned char>(*current_name)))) {
+                return 1;
+            }
+            if (!*current_name) {
+                return 0;
+            }
+            if (!*current_query || *current_name == ' '
+                || LOWER(*current_query) != LOWER(*current_name)) {
+                break;
+            }
+            ++current_query;
+            ++current_name;
+        }
+
+        while (std::isalpha(static_cast<unsigned char>(*current_name))) {
+            ++current_name;
+        }
+        if (!*current_name) {
+            return 0;
+        }
+        while (*current_name
+            && (!std::isalpha(static_cast<unsigned char>(*current_name)) || *current_name == ' ')) {
+            ++current_name;
+        }
+    }
+}
+} // namespace
+
+int isname_nullable(const char* query, const char* name_list, char full)
+{
+    if (query == nullptr || name_list == nullptr) {
+        return 0;
+    }
+    return isname_c_string(query, name_list, full);
+}
+
+// utility.cpp -- universal_list bookkeeping counters + pool_to_list()/
+// from_list_to_pool(). handler.cpp's affect_to_room()/affect_remove_room(),
+// db_world.cpp, limits.cpp, and act_wiz.cpp still reach these two functions
+// (and affected_list/affected_list_pool above) via utils.h's declarations /
+// their own local externs.
+int universal_list_counter = 0;
+int used_in_universal_list = 0;
+
+/*
+ * Takes the address of a linked list of universal_list structures
+ * and its associated pool list and adds a new item at the beginning.
+ * If a free universal_list structure is available in the pool it is
+ * removed and returned.  If not, a new structure is created and
+ * returned. Counts are kept of the number of universal list
+ * structures created and the number in current use.
+ */
+
+struct universal_list*
+pool_to_list(struct universal_list** list, struct universal_list** head)
+{
+    struct universal_list* tmplist;
+
+    if (*head) {
+        tmplist = *head;
+        *head = tmplist->next;
+        used_in_universal_list++;
+    } else {
+        CREATE1(tmplist, universal_list);
+        universal_list_counter++;
+        used_in_universal_list++;
+    }
+
+    tmplist->next = *list;
+    *list = tmplist;
+
+    return tmplist;
+}
+
+/*
+ * Takes a list, its associated pool and a member of the list
+ * and removes it from the list and adds it to the head of the
+ * pool
+ */
+void from_list_to_pool(universal_list** list, universal_list**, universal_list* body)
+{
+    if (*list == body) {
+        *list = body->next;
+    } else {
+        universal_list* tmplist = NULL;
+        for (tmplist = *list; tmplist->next; tmplist = tmplist->next) {
+            if (tmplist->next == body) {
+                break;
+            }
+        }
+
+        if (tmplist->next == body) {
+            tmplist->next = body->next;
+        }
+    }
+
+    /* Thus not putting universal lists into a pool, but freeing the memory */
+    used_in_universal_list--;
+    universal_list_counter++; /* added because we are freeing body */
+
+    free(body);
+}
+
+// comm.cpp -- int pulse's DEFINITION moves here (storage-placement only);
+// comm.cpp keeps mutating it via extern (game_loop()'s per-tick
+// increment/reset).
+int pulse = 0; // moved here from being a local variable
+
+// utility.cpp
+char get_current_time_phase()
+{
+    extern int pulse;
+
+    return (pulse % (SECS_PER_MUD_HOUR * 4)) / PULSE_FAST_UPDATE;
+}
+
+// utility.cpp
+int get_race_weight(struct char_data* ch)
+{
+    int gender_mod;
+
+    if (GET_SEX(ch) == SEX_FEMALE)
+        gender_mod = 8;
+    else
+        gender_mod = 10;
+
+    switch (GET_RACE(ch)) {
+    case RACE_GOD:
+        return 100000 * gender_mod / 10;
+
+    case RACE_HUMAN:
+        return 17000 * gender_mod / 10;
+
+    case RACE_DWARF:
+        return 20000 * gender_mod / 10;
+
+    case RACE_WOOD:
+        return 12000 * gender_mod / 10;
+
+    case RACE_HOBBIT:
+        return 7000 * gender_mod / 10;
+
+    case RACE_HIGH:
+        return 13000 * gender_mod / 10;
+
+    case RACE_URUK:
+        return 16000 * gender_mod / 10;
+
+    case RACE_HARAD:
+        return 17000 * gender_mod / 10;
+
+    case RACE_ORC:
+        return 9000 * gender_mod / 10;
+
+    case RACE_EASTERLING:
+        return 17000 * gender_mod / 10;
+
+    case RACE_MAGUS:
+        return 16000 * gender_mod / 10;
+
+    case RACE_TROLL:
+        return 80000 * gender_mod / 10;
+
+    case RACE_BEORNING:
+        return 80000 * gender_mod / 10;
+
+    case RACE_OLOGHAI:
+        return 40000 * gender_mod / 10;
+
+    case RACE_HARADRIM:
+        return 17000 * gender_mod / 10;
+
+    case RACE_UNDEAD:
+        return 5000 * gender_mod / 10;
+
+    default:
+        return 15000;
+    }
+
+    return 0;
+}
+
+int get_race_height(struct char_data* ch)
+{
+    int gender_mod;
+
+    if (GET_SEX(ch) == SEX_FEMALE)
+        gender_mod = 9;
+    else
+        gender_mod = 10;
+
+    switch (GET_RACE(ch)) {
+    case RACE_GOD:
+        return 200 * gender_mod / 10;
+
+    case RACE_HUMAN:
+        return 180 * gender_mod / 10;
+
+    case RACE_DWARF:
+        return 130 * gender_mod / 10;
+
+    case RACE_WOOD:
+        return 200 * gender_mod / 10;
+
+    case RACE_HOBBIT:
+        return 110 * gender_mod / 10;
+
+    case RACE_HIGH:
+        return 210 * gender_mod / 10;
+
+    case RACE_URUK:
+        return 170 * gender_mod / 10;
+
+    case RACE_HARAD:
+        return 180 * gender_mod / 10;
+
+    case RACE_ORC:
+        return 120 * gender_mod / 10;
+
+    case RACE_EASTERLING:
+        return 180 * gender_mod / 10;
+
+    case RACE_MAGUS:
+        return 170 * gender_mod / 10;
+
+    case RACE_TROLL:
+        return 225 * gender_mod / 10;
+
+    case RACE_UNDEAD:
+        return 180 * gender_mod / 10;
+
+    case RACE_HARADRIM:
+        return 180 * gender_mod / 10;
+
+    case RACE_BEORNING:
+        return 225 * gender_mod / 10;
+
+    case RACE_OLOGHAI:
+        return 200 * gender_mod / 10;
+
+    default:
+        return 200;
+    }
+
+    return 0;
+}
+
+// profs.cpp -- class_HP(); strong (non-inline) definition preserved (see
+// db-split Task 4b's IFNDR history). profs.cpp's
+// _INTERNAL::stat_assigner::organize() still calls this by extern.
+int class_HP(const char_data* character)
+{
+    double hp_coofs = 3 * utils::get_prof_points(PROF_WARRIOR, *character) + 2 * utils::get_prof_points(PROF_RANGER, *character) + utils::get_prof_points(PROF_CLERIC, *character);
+
+    if (GET_RACE(character) == RACE_ORC) {
+        hp_coofs = hp_coofs * 4.0 / 7.0;
+    }
+
+    return int(std::sqrt(hp_coofs) * 200.0);
+}
+
+// limits.cpp -- set_title(). READ_TITLE()'s expansion only touches
+// char_data fields (GET_RACE/GET_TITLE macros) and consts data
+// (pc_race_types[], below) -- verified dependency-free of combat/world
+// state before this relocation.
+extern const std::string_view pc_race_types[]; // consts.cpp -- READ_TITLE() macro below.
+
+#define READ_TITLE(ch) pc_race_types[GET_RACE(ch)]
+
+void set_title(char_data* character)
+{
+    if (GET_TITLE(character))
+        RELEASE(GET_TITLE(character));
+    CREATE(GET_TITLE(character), char, READ_TITLE(character).size() + 5);
+
+    strcpy(GET_TITLE(character), std::format("the {}", READ_TITLE(character)).c_str());
+    *(GET_TITLE(character) + 4) = toupper(*(GET_TITLE(character) + 4));
+}
+
+// char_utils.cpp -- utils:: specialization/perception accessors.
+namespace utils {
+
+// char_utils.cpp:44 -- relocated verbatim (entity-seed Task 6,
+// controller-adjudicated relocation); declaration unchanged (char_utils.h).
+bool is_npc(const char_data& character)
+{
+    return utils::is_set(character.specials2.act, (long)MOB_ISNPC);
+}
+
+// char_utils.cpp:391 -- relocated verbatim (entity-seed Task 6,
+// controller-adjudicated relocation); declaration unchanged (char_utils.h).
+int get_prof_points(int prof, const char_data& character)
+{
+    // Added a safety check.
+    if (prof > MAX_PROFS)
+        return 0;
+
+    // Add is_npc check like above?  Not in the current macro, so I won't be adding new functionality.
+    return character.profs->prof_coof[prof];
+}
+
+// char_utils.cpp -- relocated verbatim (entity-seed Task 6,
+// controller-adjudicated relocation, third pass): get_name()'s only calls
+// are is_npc() (already in this archive, above) and player.name/
+// short_descr field reads. Declaration unchanged (char_utils.h).
+const char* get_name(const char_data& character)
+{
+    if (is_npc(character))
+        return character.player.short_descr;
+
+    return character.player.name;
+}
+
+// char_utils.cpp -- relocated verbatim (entity-seed Task 6,
+// controller-adjudicated relocation, third pass): each char_data& overload
+// forwards to its pure-int sibling, so both move together. Declarations
+// unchanged (char_utils.h).
+bool is_race_good(int race)
+{
+    return race > 0 && race < 10;
+}
+
+bool is_race_good(const char_data& character)
+{
+    return is_race_good(character.player.race);
+}
+
+bool is_race_magi(int race)
+{
+    return race == 15;
+}
+
+bool is_race_magi(const char_data& character)
+{
+    return is_race_magi(character.player.race);
+}
+
+int get_minimum_insight_perception(const char_data& character)
+{
+    int race = character.player.race;
+    switch (race) {
+    case RACE_GOD:
+        return 0;
+    case RACE_HUMAN:
+        return 20;
+    case RACE_DWARF:
+        return 15;
+    case RACE_WOOD:
+        return 30;
+    case RACE_HOBBIT:
+        return 20;
+    case RACE_BEORNING:
+        return 15;
+    case RACE_URUK:
+        return 20;
+    case RACE_ORC:
+        return 15;
+    case RACE_MAGUS:
+        return 20;
+    case RACE_HARADRIM:
+        return 20;
+    case RACE_OLOGHAI:
+        return 15;
+    default:
+        return 0;
+    }
+
+    return 0;
+}
+
+game_types::player_specs get_specialization(const char_data& character)
+{
+    if (is_npc(character) || character.profs == NULL)
+        return game_types::PS_None;
+
+    return game_types::player_specs(character.profs->specialization);
+}
+
+void set_specialization(char_data& character, game_types::player_specs value)
+{
+    if (is_npc(character) || character.profs == NULL)
+        return;
+
+    if (character.extra_specialization_data.is_mage_spec()) {
+        untrack_specialized_mage(&character);
+    }
+
+    character.profs->specialization = (int)value;
+    character.extra_specialization_data.set(character);
+
+    if (character.extra_specialization_data.is_mage_spec()) {
+        track_specialized_mage(&character);
+    }
+}
+
+} // namespace utils
+
+// char_utils.cpp -- specialization_data::reset() (global scope, not inside
+// namespace utils).
+void specialization_data::reset()
+{
+    if (current_spec_info) {
+        delete current_spec_info;
+        current_spec_info = NULL;
+    }
+
+    current_spec = game_types::PS_None;
+}
+
+// char_utils.cpp:1391-1633 -- relocated verbatim (entity-seed Task 6,
+// controller-adjudicated relocation): specialization_data::set() constructs
+// each *_spec_data subclass below, so each subclass's vtable -- emitted
+// where its key function (to_string(), the first non-inline virtual) is
+// defined -- must live in the same archive that constructs the objects.
+// Declarations unchanged (rots/core/character.h).
+//============================================================================
+// Specialization stuff!
+//============================================================================
+void cold_spec_data::on_chill_applied(int chill_amount)
+{
+    total_energy_sapped += chill_amount;
+}
+
+//============================================================================
+void cold_spec_data::on_chill_ray_success(int damage)
+{
+    ++total_chill_ray_count;
+    ++successful_chill_ray_count;
+    total_chill_ray_damage += damage;
+}
+
+//============================================================================
+void cold_spec_data::on_chill_ray_fail(int damage)
+{
+    ++total_chill_ray_count;
+    ++failed_chill_ray_count;
+    total_chill_ray_damage += damage;
+}
+
+//============================================================================
+void cold_spec_data::on_cone_of_cold_success(int damage)
+{
+    ++total_cone_of_cold_count;
+    ++successful_cone_of_cold_count;
+    total_cone_of_cold_damage += damage;
+}
+
+//============================================================================
+void cold_spec_data::on_cone_of_cold_failed(int damage)
+{
+    ++total_cone_of_cold_count;
+    ++failed_cone_of_cold_count;
+    total_cone_of_cold_damage += damage;
+}
+
+//============================================================================
+void specialization_data::set(char_data& character)
+{
+    reset();
+
+    game_types::player_specs spec = utils::get_specialization(character);
+    if (spec == game_types::PS_Darkness) {
+        current_spec_info = new darkness_spec_data();
+    } else if (spec == game_types::PS_Fire) {
+        current_spec_info = new fire_spec_data();
+    } else if (spec == game_types::PS_Lightning) {
+        current_spec_info = new lightning_spec_data();
+    } else if (spec == game_types::PS_Arcane) {
+        current_spec_info = new arcane_spec_data();
+    } else if (spec == game_types::PS_Cold) {
+        current_spec_info = new cold_spec_data();
+    } else if (spec == game_types::PS_Defender) {
+        current_spec_info = new defender_data();
+    } else if (spec == game_types::PS_LightFighting) {
+        current_spec_info = new light_fighting_data();
+    } else if (spec == game_types::PS_HeavyFighting) {
+        current_spec_info = new heavy_fighting_data();
+    } else if (spec == game_types::PS_WildFighting) {
+        current_spec_info = new wild_fighting_data();
+    } else if (spec == game_types::PS_BattleMage) {
+        current_spec_info = new battle_mage_spec_data();
+    }
+
+    current_spec = spec;
+}
+
+//============================================================================
+std::string specialization_data::to_string(char_data& character) const
+{
+    if (current_spec_info) {
+        return current_spec_info->to_string(character);
+    }
+
+    return std::string("You are not specialized in anything.\r\n");
+}
+
+//============================================================================
+std::string elemental_spec_data::to_string(char_data&) const
+{
+    std::string message_writer;
+    message_writer.append("You are specialized in a mage specialization.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
+    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    report_exposed_data(message_writer);
+    return message_writer;
+}
+
+//============================================================================
+void elemental_spec_data::report_exposed_data(std::string& message_writer) const
+{
+    if (exposed_target) {
+        const skill_data* skills = get_skill_array();
+        const char* skill_name = skills[spell_id].name;
+
+        std::format_to(std::back_inserter(message_writer), "{} is exposed to the spell [{}].\n",
+            utils::get_name(*exposed_target), skill_name);
+        message_writer.append("------------------------------------------------------------\n");
+    }
+}
+
+//============================================================================
+std::string cold_spec_data::to_string(char_data&) const
+{
+    std::string message_writer;
+    message_writer.append("You are specialized in cold.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    message_writer.append("Your cold spells are more difficult to resist.\n");
+    message_writer.append("Your fire spells are easier to resist.\n");
+    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
+    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
+    message_writer.append("Your cone of cold spell can now chill targets.\n");
+    message_writer.append("Your chill ray spell is much harder to resist.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    /*
+        message_writer << "Chill Ray:" << std::endl;
+        message_writer << "\tTotal Casts: " << get_chill_ray_count() << std::endl;
+        message_writer << "\tSuccessful Casts: " << get_successful_chills() << std::endl;
+        message_writer << "\tFailed Casts: " << get_saved_chills() << std::endl;
+        message_writer << "\tTotal Damage: " << total_chill_ray_damage << std::endl << std::endl;
+        message_writer << "Cone of Cold:" << std::endl;
+        message_writer << "\tTotal Casts: " << get_cone_count() << std::endl;
+        message_writer << "\tSuccessful Casts: " << get_successful_cones() << std::endl;
+        message_writer << "\tFailed Casts: " << get_saved_cones() << std::endl;
+        message_writer << "\tTotal Damage: " << total_cone_of_cold_damage << std::endl << std::endl;
+        message_writer << "\tTotal Attacks Stopped: " << get_total_energy_sapped() / ENE_TO_HIT << std::endl;
+        */
+    report_exposed_data(message_writer);
+    return message_writer;
+}
+
+//============================================================================
+std::string fire_spec_data::to_string(char_data& character) const
+{
+    std::string message_writer;
+    message_writer.append("You are specialized in fire.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    message_writer.append("Your fire spells are more difficult to resist.\n");
+    message_writer.append("Your cold spells are easier to resist.\n");
+    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
+    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
+    if (utils::is_race_good(character)) {
+        message_writer.append("The minimum damage of firebolt is increased significantly.\n");
+        message_writer.append("Your fireballs will no longer spread to friendly targets.\n");
+    } else {
+        message_writer.append("Your searing darkness spell deals significantly more fire damage.\n");
+    }
+    message_writer.append("------------------------------------------------------------\n");
+    report_exposed_data(message_writer);
+    return message_writer;
+}
+
+//============================================================================
+std::string lightning_spec_data::to_string(char_data&) const
+{
+    std::string message_writer;
+    message_writer.append("You are specialized in lightning.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    message_writer.append("Your lightning spells are more difficult to resist.\n");
+    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
+    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
+    message_writer.append("Lightning bolt does not lose effectiveness indoors, and deals increased damage.\n");
+    message_writer.append("You can cast lightning strike without a storm at slightly reduced effectiveness.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    report_exposed_data(message_writer);
+    return message_writer;
+}
+
+//============================================================================
+std::string darkness_spec_data::to_string(char_data& character) const
+{
+    std::string message_writer;
+    message_writer.append("You are specialized in darkness.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    message_writer.append("Your dark spells are more difficult to resist.\n");
+    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
+    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
+    message_writer.append("Your dark bolt spell deals increased damage.\n");
+    if (utils::is_race_magi(character)) {
+        message_writer.append("Your black arrow is harder to resist.\n");
+        message_writer.append("Your spear of darkness spell deals additional damage.\n");
+    } else {
+        message_writer.append("Your searing darkness spell deals additional dark damage.\n");
+    }
+    message_writer.append("------------------------------------------------------------\n");
+    report_exposed_data(message_writer);
+    return message_writer;
+}
+
+//============================================================================
+std::string arcane_spec_data::to_string(char_data&) const
+{
+    std::string message_writer;
+    message_writer.append("You are specialized in the arcane.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
+    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
+    message_writer.append("You can cast spells at a normal, fast, or slow pace.\n");
+    message_writer.append("Slow cast spells against exposed targets will restore mana.\n");
+    message_writer.append("------------------------------------------------------------\n");
+    report_exposed_data(message_writer);
+
+    return message_writer;
+}
+
+//============================================================================
+std::string heavy_fighting_data::to_string(char_data&) const
+{
+    return std::string("You are specialized in heavy fighting.");
+}
+
+//============================================================================
+std::string light_fighting_data::to_string(char_data&) const
+{
+    return std::string("You are specialized in light fighting.\n\r");
+}
+
+//============================================================================
+std::string defender_data::to_string(char_data&) const
+{
+    return std::string("You are specialized in defending.\n\r");
+}
+
+std::string battle_mage_spec_data::to_string(char_data&) const
+{
+    return std::string("You are specialized in battle mage.\n\r");
+}
+
+//============================================================================
+std::string wild_fighting_data::to_string(char_data&) const
+{
+    return std::string("You are specialized in wild fighting.\n\r");
+}
+
+/************************************************************************
  *  Affect / derived-ability engine (db-split Task 4b)                *
  ************************************************************************
  *  Relocated verbatim from handler.cpp (affect_modify/affect_naked/
@@ -487,29 +1330,16 @@ void init_char(struct char_data* ch)
  *  only the enclosing TU differs. Declarations are unchanged in
  *  handler.h/utils.h.
  *
- *  Two small helpers stay in their ORIGINAL TUs rather than moving here,
- *  because each is shared with a sibling function that is NOT part of
- *  this relocation and has no header declaration of its own:
- *    - get_from_affected_type_pool()/put_to_affected_type_pool()
- *      (handler.cpp) -- also used by affect_to_room()/affect_remove_room(),
- *      the room-affect analogues of affect_to_char()/affect_remove(), which
- *      stay in handler.cpp.
- *    - class_HP() (profs.cpp) -- also used by
- *      _INTERNAL::stat_assigner::organize() (character-creation stat
- *      ordering), which stays in profs.cpp.
- *  Both are forward-declared just below so the moved bodies can call them;
- *  rots_convert (which does not link handler.cpp/profs.cpp) keeps small
- *  ledger-documented stand-ins for both in convert_stubs.cpp.
+ *  get_from_affected_type_pool()/put_to_affected_type_pool(),
+ *  affected_list/affected_list_pool, and class_HP() -- the three shared
+ *  helpers this section's moved bodies call -- were themselves relocated
+ *  into this same TU by entity-seed Task 5 (see the "Entity-tier leaf
+ *  helpers" section above), so they are now real in-TU definitions rather
+ *  than the forward-declared externs this comment used to describe.
  ************************************************************************/
 
 // Shared-helper forward declarations for symbols this section's moved
-// bodies call but do NOT define here (see the header comment above and
-// each entry for why):
-extern struct affected_type* get_from_affected_type_pool(); // handler.cpp
-extern void put_to_affected_type_pool(struct affected_type*); // handler.cpp
-extern int class_HP(const char_data* character); // profs.cpp
-extern universal_list* affected_list; // handler.cpp -- live-tick affect-duration bookkeeping list
-extern universal_list* affected_list_pool; // handler.cpp -- pool backing affected_list
+// bodies call but do NOT define here:
 extern int max_race_str[]; // consts.cpp -- recalc_abilities()'s GET_BAL_STR() macro
 extern struct skill_data skills[]; // consts.cpp -- affect_modify()'s APPLY_SPELL case
 
@@ -580,8 +1410,7 @@ void recalc_abilities(char_data* character)
             if (GET_OBJ_WEIGHT(weapon) == 0) {
                 /*UPDATE*, temporary check for 0 weight weapons*/
                 GET_OBJ_WEIGHT(weapon) = 1;
-                strcpy(buf, "SYSERR: 0 weight weapon");
-                mudlog(buf, NRM, LEVEL_GOD, TRUE);
+                mudlog("SYSERR: 0 weight weapon", NRM, LEVEL_GOD, TRUE);
             }
 
             int bulk = weapon->get_bulk();
@@ -616,8 +1445,7 @@ void recalc_abilities(char_data* character)
             }
 
             // weapon masters get bonus attack speed with some weapons.
-            player_spec::weapon_master_handler weapon_master(character);
-            character->points.ENE_regen *= weapon_master.get_attack_speed_multiplier();
+            character->points.ENE_regen *= rots::entity::dispatch_attack_speed_multiplier(character);
 
         } else {
             GET_ENE_REGEN(character) = 60 + 5 * GET_DEX(character);

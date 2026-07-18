@@ -63,12 +63,12 @@ char* read_delete(char* recipient, char* recipient_formatted, int is_good);
 // every live message flat: `{"messages": [{"to","from","mail_time","body"}]}`.
 // The legacy block structs/constants (BLOCK_SIZE, HEADER_BLOCK_DATASIZE,
 // DATA_BLOCK_DATASIZE, HEADER_BLOCK/LAST_BLOCK/DELETED_BLOCK, and the two
-// on-disk structs) are now converter-local (mail.cpp, mail_json namespace)
+// on-disk structs) are now converter-local (mail_json.cpp)
 // since nothing outside mail.cpp ever referenced them.
 //
 // Public mail API (scan_file/has_mail/store_mail/read_delete) keeps its
 // exact signatures and game-visible behavior. Written atomically (temp file
-// + rename, the write_player_objects_json pattern in objsave.cpp).
+// + rename, the write_player_objects_json pattern in obj_files.cpp).
 namespace mail_json {
 
 // One live message. mail_time is the historical `time(0)` value (seconds

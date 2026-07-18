@@ -436,11 +436,15 @@ target_link_options(ageland PRIVATE
 # docs/superpowers/specs/2026-07-16-library-architecture-design.md Sec4b/
 # Sec11 and docs/superpowers/plans/2026-07-17-db-split-and-rots-convert.md
 # Task 3. objsave.cpp's G half (Crash_load/Crash_listrent and the rent/
-# receptionist flow) plus boards.cpp/mail.cpp/pkill.cpp are still
-# deliberately OUT this wave (their welds are catalogued follow-on work in
-# convert_stubs.cpp, the file-scoped "weld ledger" documenting every symbol
-# substituted for an excluded app/combat home and why the converter's own
-# call graph never reaches it).
+# receptionist flow) plus boards.cpp/mail.cpp/pkill.cpp's runtime/bridge/
+# gameplay halves are still deliberately OUT this wave -- their P (codec)
+# halves already arrive via RotS::persist (obj_files.cpp/pkill_json.cpp/
+# mail_json.cpp/boards_json.cpp), so those welds are resolved, not
+# follow-on; the G halves stay app-side by design. convert_stubs.cpp, the
+# file-scoped "weld ledger" documenting every symbol substituted for an
+# excluded app/combat home and why the converter's own call graph never
+# reaches it, now carries only the ledger's 5 surviving stub bodies, all
+# fight/handler/wild_fighting (char_utils.cpp) symbols.
 #
 # This target is CMake-only this wave (not added to the flat src/Makefile /
 # src/tests/Makefile, which compile same-directory only against a single

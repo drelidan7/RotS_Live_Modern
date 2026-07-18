@@ -178,7 +178,7 @@ void load_messages(void);
 void weather_and_time(int mode);
 void assign_command_pointers(void);
 void boot_social_messages(void);
-void update_obj_file(void); /* In objsave.c */
+void update_obj_file(void); /* In obj_files.cpp */
 void sort_commands(void);
 void load_banned(void);
 // void	Read_Invalid_List(void);

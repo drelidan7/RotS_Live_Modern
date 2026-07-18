@@ -142,11 +142,11 @@
 // rots_convert source before and after the move, so relocating them within
 // already-linked TUs closed no converter-side weld.
 // This task also adds one library MEMBERSHIP (not a stub deletion, since
-// color_convert.cpp never had a stub here -- entity-seed had already deleted
-// its stand-in when the leaf TU was carved): color_convert.cpp -- see the
-// "nearest_ansi_color()/convert_old_colormask()" comment below, now updated
-// for its new home. See this file's git history, pre-PS-Task-4, for the
-// full prior stub text.
+// color_convert.cpp never had a stub here -- persist-split PS Task 1 had
+// already deleted its stand-in when the leaf TU was carved): color_convert.cpp
+// -- see the "nearest_ansi_color()/convert_old_colormask()" comment below,
+// now updated for its new home. See this file's git history, pre-PS-Task-4,
+// for the full prior stub text.
 
 #include "base_utils.h"
 #include "char_utils.h"

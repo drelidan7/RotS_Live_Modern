@@ -348,7 +348,8 @@ in every one of the four, the codec half turned out to already be a single conti
 block (only callees: file I/O helpers, `json_utils`, `rots::text`, `std::strerror` — zero live-game
 globals, zero messaging), so each carve was a verbatim single-cut block move into a new TU, not a
 function-by-function extraction:
-- `pkill_json.cpp` ← `pkill.cpp:50-427` (11 functions, incl. `convert_legacy_pkill_file`'s
+- `pkill_json.cpp` ← `pkill.cpp:50-427` (15 definitions — 10 namespace-scope + 5 file-local,
+  incl. `convert_legacy_pkill_file`'s
   verify-reparse + `.migrated` rename). `pkill.cpp` keeps the runtime/capture half (`pkill_tab`/
   rankings/`combat_list` walkers, the `pkill_read_file`/`pkill_delete_file`/`pkill_update_file`
   bridge).
@@ -365,7 +366,8 @@ function-by-function extraction:
   `Crash_delete_crashfile`/`Crash_clean_file`/`update_obj_file`, `register_char_teardown_hook`)
   plus the scattered pure tail helpers `Crash_is_unrentable`/`cost_per_day`/`secs_to_unretire`.
   `objsave.cpp` keeps `Crash_obj2record`/`Crash_collect_objects` (they read `obj_index[]`, called
-  only by the G-orchestrators `Crash_crashsave`/`idlesave`/`rentsave`, which stay app-side) and
+  only by the G-orchestrators `Crash_crashsave`/`idlesave`/`rentsave`/`Crash_collect_followers`,
+  which stay app-side) and
   the alias/rent-report helpers. The dead file-scope `FILE* fd;` (zero references) was dropped —
   the carve's one deliberate deletion, not a relocation.
 
@@ -537,22 +539,27 @@ too can join a library.
   persistence/game coupling enumerable and its shrinkage measurable, rather than hiding the
   coupling behind an unexplained empty function — and entity-seed Tasks 1-6 plus persist-split
   PS Tasks 1-4 are the measured proof: the ledger shrank from ~40 documented stubs/~1.6K lines
-  (db.cpp-split baseline) through ~15 (entity-seed exit — `send_to_char`/`act`/`vsend_to_char`/
+  (db.cpp-split baseline) through ~19 (entity-seed exit — `send_to_char`/`act`/`vsend_to_char`/
   `track_specialized_mage`/`untrack_specialized_mage` via the output seam, `log`/`mudlog`/
   `create_function`/`free_function`/`str_dup`-family/`number()` via the platform relocations,
   `is_room_outside`/`is_light` via `rots_entity`, and more — see the file's own header comment
   for the task-by-task account) to **5 stub function bodies across 4 named groups** today.
-  Persist-split alone deleted 8 stubs across two mechanisms: the `world_room_vnum`/
-  `add_exploit_record` inversions (see "`rots_persist`" above) and six of the nine
-  controller-adjudicated relocations that had carried a stub or hand-duplicated stand-in here
-  (`find_player_in_table`/`find_name`/`unaccent`/`recalc_skills`/`file_to_string`/
-  `file_to_string_alloc`) — plus `color_convert.cpp`'s library-membership move, which was
-  already stub-free by this point (entity-seed had already deleted its stand-in when the leaf
-  TU was carved). The other three relocated symbols, `utils::set_tactics`/`set_shooting`/
-  `set_casting`, never carried a `convert_stubs.cpp` stub at all: `char_utils.cpp` was already a
-  direct `rots_convert` source before and after the move, so relocating them within
-  already-linked TUs closed no converter-side weld — see the file's own header comment for the
-  full accounting.
+  Persist-split deleted 14 stub bodies total across three tasks. PS Task 1 deleted the color
+  trio's stand-ins (`nearest_ansi_color()`+`ansi_palette`, `convert_old_colormask()`,
+  `sync_color_slot_foreground_from_ansi()`) when `color_convert.cpp` was carved out of
+  `color.cpp` as a leaf TU (see "`color_convert.cpp` membership" above). PS Task 3 deleted
+  `Crash_get_filename()`/`Crash_delete_file()`/`build_default_account_backed_object_data()`
+  when `obj_files.cpp` first joined `rots_convert`. PS Task 4 deleted the remaining 8 across two
+  mechanisms: the `world_room_vnum`/`add_exploit_record` inversions (see "`rots_persist`" above)
+  and six of the nine controller-adjudicated relocations that had carried a stub or
+  hand-duplicated stand-in here (`find_player_in_table`/`find_name`/`unaccent`/`recalc_skills`/
+  `file_to_string`/`file_to_string_alloc`). `color_convert.cpp`'s PS Task 4 library-membership
+  move (into `ROTS_PERSIST_SOURCES`) was already stub-free by that point — its stand-ins were PS
+  Task 1's deletion, not PS Task 4's. The other three relocated symbols,
+  `utils::set_tactics`/`set_shooting`/`set_casting`, never carried a `convert_stubs.cpp` stub at
+  all: `char_utils.cpp` was already a direct `rots_convert` source before and after the move, so
+  relocating them within already-linked TUs closed no converter-side weld — see the file's own
+  header comment for the full accounting.
 
   What remains is genuinely **unreachable from the converter's own call graph**
   (`build_player_index`/`load_char`/`store_to_char`/`save_char`), each named with its real home

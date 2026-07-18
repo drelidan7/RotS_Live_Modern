@@ -26,7 +26,7 @@ typedef struct {
 void boot_pkills();
 void pkill_create(struct char_data*);
 
-// Phase 2a Task 6: pkill persistence as JSON (see pkill.cpp for the
+// Phase 2a Task 6: pkill persistence as JSON (see pkill_json.cpp for the
 // implementation). Declared here (rather than kept file-local) so the
 // pod_persistence_json_tests.cpp TU can exercise the codec + converter
 // directly against synthesized legacy fixtures, matching the

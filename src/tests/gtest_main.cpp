@@ -94,7 +94,7 @@ int main(int argc, char* argv[]) {
     // for the same real-body-fidelity reason as the output sinks above: without
     // them this test process would silently exercise the null-hook defaults
     // (dispatch_char_teardown()'s silent no-op; dispatch_attack_speed_multiplier()'s
-    // tripwire-logged 1.0f) instead of objsave.cpp's/wild_fighting_handler.cpp's real
+    // tripwire-logged 1.0f) instead of obj_files.cpp's/wild_fighting_handler.cpp's real
     // implementations that ageland registers at boot -- both TUs are already linked
     // into both test binaries, so this only needs the registration calls.
     register_char_teardown_hook();

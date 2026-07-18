@@ -110,10 +110,6 @@ void unretire(struct char_data* ch)
     ch->specials2.retiredon = 0;
 }
 
-/*
- * Return the 7bit ascii value of an 8bit accented character
- * if we do not support the character, return 0
- */
 // unaccent() relocated to db_players.cpp (persist-split PS Task 4,
 // controller-adjudicated relocation): a pure char-range table lookup, no
 // comm/world/char_data dependency at all. Declaration unchanged (utils.h);

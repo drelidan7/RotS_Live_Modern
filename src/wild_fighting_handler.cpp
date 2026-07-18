@@ -165,3 +165,25 @@ void register_attack_speed_multiplier_hook()
 {
     rots::entity::set_attack_speed_multiplier_hook(attack_speed_multiplier_hook_impl);
 }
+
+namespace {
+// entity_hooks.h's wild-attack-speed-multiplier hook implementation (EC
+// Task 2): char_utils.cpp's get_energy_regen() used to construct a
+// player_spec::wild_fighting_handler directly and call
+// get_attack_speed_multiplier() on it (an upward edge into this app/combat-
+// tier TU); this reproduces those same two lines, now behind the hook. The
+// const_cast reproduces the original call site's const_cast exactly (this
+// function owns it now, not the caller).
+float wild_attack_speed_multiplier_hook_impl(const char_data* character)
+{
+    player_spec::wild_fighting_handler handler(const_cast<char_data*>(character));
+    return handler.get_attack_speed_multiplier();
+}
+} // namespace
+
+// Registers the hook above as entity_hooks.h's wild-attack-speed-multiplier
+// hook. Called once from run_the_game(), before boot_db().
+void register_wild_attack_speed_multiplier_hook()
+{
+    rots::entity::set_wild_attack_speed_multiplier_hook(wild_attack_speed_multiplier_hook_impl);
+}

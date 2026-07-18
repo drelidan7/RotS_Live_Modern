@@ -83,3 +83,9 @@ private:
 // entity_hooks.h's attack-speed-multiplier hook. Called once from
 // run_the_game(), before boot_db() (entity-seed Task 5).
 void register_attack_speed_multiplier_hook();
+
+// Registers wild_fighting_handler.cpp's real wild-fighting attack-speed
+// implementation (player_spec::wild_fighting_handler-backed) as
+// entity_hooks.h's wild-attack-speed-multiplier hook. Called once from
+// run_the_game(), before boot_db() (EC Task 2).
+void register_wild_attack_speed_multiplier_hook();

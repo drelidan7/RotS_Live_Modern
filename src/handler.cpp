@@ -115,19 +115,10 @@ int follow_type_counter = 0;
 struct follow_type* get_from_follow_type_pool();
 void put_to_follow_type_pool(struct follow_type*);
 
-char fname_nameholder[100];
-char* fname(char* namelist)
-{
-    //   char	holder[30];
-    char* point;
-
-    for (point = fname_nameholder; isalpha(*namelist); namelist++, point++)
-        *point = *namelist;
-
-    *point = '\0';
-
-    return (fname_nameholder);
-}
+// fname() (+ its private fname_nameholder scratch buffer) relocated
+// verbatim to char_utils.cpp (entity-completion Task 1): pure text
+// manipulation, fname_nameholder is fname()'s only reader. Declaration
+// stays in handler.h.
 
 int char_power(int lev)
 {
@@ -137,52 +128,11 @@ int char_power(int lev)
     return MIN((lev + 2), 16 + lev / 2) * MIN(lev + 2, 32);
 }
 
-/*
- * Decide if `character' and `other' are on the same side of the race
- * war.  Return 0 if they are, return 1 if they aren't.
- */
-int other_side(const char_data* character, const char_data* other)
-{
-    if (IS_NPC(other) && !IS_AFFECTED(other, AFF_CHARM))
-        return 0;
-    if (IS_NPC(character) && !IS_AFFECTED(character, AFF_CHARM))
-        return 0;
-    if ((GET_RACE(character) == RACE_GOD) || (GET_RACE(other) == RACE_GOD))
-        return 0;
-    if (RACE_EAST(other) && !(RACE_EAST(character)))
-        return 1;
-    if (!(RACE_EAST(other)) && RACE_EAST(character))
-        return 1;
-    if (RACE_MAGI(other) && !(RACE_MAGI(character)))
-        return 1;
-    if (!(RACE_MAGI(other)) && RACE_MAGI(character))
-        return 1;
-    if (RACE_EVIL(other) && RACE_GOOD(character))
-        return 1;
-    if (RACE_GOOD(other) && RACE_EVIL(character))
-        return 1;
-
-    return 0;
-}
-
-int other_side_num(int ch_race, int i_race)
-{
-    if ((ch_race == RACE_GOD) || (i_race == RACE_GOD))
-        return 0;
-    if ((ch_race <= RACE_BEORNING) && (i_race <= RACE_BEORNING))
-        return 0;
-
-    if ((ch_race >= RACE_URUK) && (ch_race != RACE_MAGUS) && (ch_race != RACE_EASTERLING) && (ch_race != RACE_HARADRIM) && (i_race >= RACE_URUK) && (i_race != RACE_MAGUS) && (i_race != RACE_EASTERLING) && (i_race != RACE_HARADRIM))
-        return 0;
-
-    if (((ch_race == RACE_MAGUS) || (ch_race == RACE_HARADRIM)) && ((i_race == RACE_MAGUS) || (i_race == RACE_HARADRIM)))
-        return 0;
-
-    if (ch_race == i_race)
-        return 0;
-
-    return 1;
-}
+// other_side()/other_side_num() relocated verbatim to char_utils.cpp
+// (entity-completion Task 1): pure IS_NPC/AFF_CHARM/GET_RACE/RACE_* macro
+// logic -- no handler.cpp world/live-state dependency. Declarations stay
+// in handler.h; the other_side() calls below still resolve through that
+// declaration, now to the char_utils.cpp definition.
 
 void recount_light_room(int room)
 {

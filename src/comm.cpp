@@ -615,12 +615,15 @@ void run_the_game(sh_int port)
     // needs that declaration -- see register_game_output_sinks() itself for
     // why it must run before boot_db().
     register_game_output_sinks();
-    // entity_hooks.h's two inversion hooks (entity-seed Task 5), registered
-    // the same way and for the same reason: before boot_db(), so ageland
-    // never runs entity_lifecycle.cpp's free_char()/recalc_abilities() with
-    // an unregistered hook.
+    // entity_hooks.h's four inversion hooks (entity-seed Task 5 + EC Task 2),
+    // registered the same way and for the same reason: before boot_db(), so
+    // ageland never runs entity_lifecycle.cpp's free_char()/recalc_abilities(),
+    // char_utils.cpp's get_energy_regen(), or char_utils_combat.cpp's
+    // on_attacked_character() with an unregistered hook.
     register_char_teardown_hook();
     register_attack_speed_multiplier_hook();
+    register_wild_attack_speed_multiplier_hook();
+    register_attacked_player_hook();
     // persist_hooks.h's two inversion hooks (persist-split PS Task 4),
     // registered the same way and for the same reason: before boot_db(), so
     // ageland never runs db_players.cpp's save_char()/rename_char() with an

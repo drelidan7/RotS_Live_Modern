@@ -90,15 +90,20 @@ int main(int argc, char* argv[]) {
     // instead of delivering to a descriptor, exactly the same gap this
     // function already closes for skill_timer/big_brother above.
     register_game_output_sinks();
-    // entity_hooks.h's two inversion hooks (entity-seed Task 5), registered
-    // for the same real-body-fidelity reason as the output sinks above: without
-    // them this test process would silently exercise the null-hook defaults
-    // (dispatch_char_teardown()'s silent no-op; dispatch_attack_speed_multiplier()'s
-    // tripwire-logged 1.0f) instead of obj_files.cpp's/wild_fighting_handler.cpp's real
-    // implementations that ageland registers at boot -- both TUs are already linked
-    // into both test binaries, so this only needs the registration calls.
+    // entity_hooks.h's four inversion hooks (entity-seed Task 5 + EC Task 2),
+    // registered for the same real-body-fidelity reason as the output sinks
+    // above: without them this test process would silently exercise the
+    // null-hook defaults (dispatch_char_teardown()'s silent no-op;
+    // dispatch_attack_speed_multiplier()'s/dispatch_wild_attack_speed_multiplier()'s
+    // tripwire-logged 1.0f; dispatch_attacked_player()'s tripwire-logged no-op)
+    // instead of obj_files.cpp's/wild_fighting_handler.cpp's/big_brother.cpp's
+    // real implementations that ageland registers at boot -- all TUs are
+    // already linked into both test binaries, so this only needs the
+    // registration calls.
     register_char_teardown_hook();
     register_attack_speed_multiplier_hook();
+    register_wild_attack_speed_multiplier_hook();
+    register_attacked_player_hook();
     // persist_hooks.h's two inversion hooks (persist-split PS Task 4), registered
     // for the same real-body-fidelity reason as the two calls above: without them
     // this test process would silently exercise the null-hook defaults

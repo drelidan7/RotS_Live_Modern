@@ -2,6 +2,7 @@
 
 #include "char_utils.h"
 #include "comm.h"
+#include "entity_hooks.h"
 #include "handler.h"
 #include "object_utils.h"
 #include "spells.h"
@@ -660,4 +661,24 @@ big_brother::player_corpse_data::player_corpse_data(char_data* dead_man, char_da
     // Moved here so that we can change it to grant different corpses different protection if we so choose.
     max_num_items_looted = 2;
 }
+}
+
+namespace {
+// entity_hooks.h's attacked-player hook implementation (EC Task 2):
+// char_utils_combat.cpp's on_attacked_character() used to reach
+// game_rules::big_brother::instance() and call
+// on_character_attacked_player() on it directly (an upward edge into this
+// game-rules TU); this reproduces those same two lines, now behind the hook.
+void attacked_player_hook_impl(const char_data* attacker, const char_data* attacked)
+{
+    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
+    bb_instance.on_character_attacked_player(attacker, attacked);
+}
+} // namespace
+
+// Registers the hook above as entity_hooks.h's attacked-player hook. Called
+// once from run_the_game(), before boot_db().
+void register_attacked_player_hook()
+{
+    rots::entity::set_attacked_player_hook(attacked_player_hook_impl);
 }

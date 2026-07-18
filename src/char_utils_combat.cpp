@@ -4,10 +4,10 @@
 #include "object_utils.h"
 #include "utils.h"
 
-#include "handler.h" // for fname and other_side
+#include "handler.h" // for affect_to_char and affected_by_spell
 #include "spells.h"
 
-#include "big_brother.h"
+#include "entity_hooks.h"
 #include "rots/core/character.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
@@ -101,8 +101,9 @@ void on_attacked_character(char_data* attacker, char_data* victim)
         if (is_long_anger) {
             char_data* attacked_player = get_controlling_player(victim);
 
-            game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-            bb_instance.on_character_attacked_player(attacker, attacked_player);
+            // Dispatches to entity_hooks.h's attacked-player hook (big_brother.cpp
+            // registers a forwarder to game_rules::big_brother::instance()'s real body).
+            rots::entity::dispatch_attacked_player(attacker, attacked_player);
         }
     }
 }

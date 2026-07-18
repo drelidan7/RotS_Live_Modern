@@ -6,17 +6,18 @@
 #include "text_view.h"
 
 #include "db.h" // for get_encumb_table
-#include "handler.h" // for fname and other_side
+#include "handler.h" // fname/other_side/other_side_num declared here, defined below
 
 #include "rots/core/character.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
+#include "entity_hooks.h"
 #include "utils.h"
-#include "warrior_spec_handlers.h"
 #include <algorithm>
 #include <assert.h>
 #include <cmath>
+#include <ctype.h> // for isalpha, used by the relocated fname()
 #include <format>
 #include <iterator>
 
@@ -32,6 +33,74 @@ struct race_bodypart_data;
 // TODO(dgurley):  Move these tables elsewhere or provide accessors or something.
 extern sh_int square_root[];
 // extern race_bodypart_data bodyparts[MAX_BODYTYPES]; // Due to where this is located, this currently isn't possible to support here.
+
+//============================================================================
+// fname()/other_side()/other_side_num() relocated verbatim from handler.cpp
+// (entity-completion Task 1): fname() is pure text manipulation over its own
+// private scratch buffer; other_side()/other_side_num() are pure
+// IS_NPC/AFF_CHARM/GET_RACE/RACE_* macro logic -- neither touches
+// world/live-state. Declarations stay in handler.h.
+char fname_nameholder[100];
+char* fname(char* namelist)
+{
+    //   char	holder[30];
+    char* point;
+
+    for (point = fname_nameholder; isalpha(*namelist); namelist++, point++)
+        *point = *namelist;
+
+    *point = '\0';
+
+    return (fname_nameholder);
+}
+
+/*
+ * Decide if `character' and `other' are on the same side of the race
+ * war.  Return 0 if they are, return 1 if they aren't.
+ */
+int other_side(const char_data* character, const char_data* other)
+{
+    if (IS_NPC(other) && !IS_AFFECTED(other, AFF_CHARM))
+        return 0;
+    if (IS_NPC(character) && !IS_AFFECTED(character, AFF_CHARM))
+        return 0;
+    if ((GET_RACE(character) == RACE_GOD) || (GET_RACE(other) == RACE_GOD))
+        return 0;
+    if (RACE_EAST(other) && !(RACE_EAST(character)))
+        return 1;
+    if (!(RACE_EAST(other)) && RACE_EAST(character))
+        return 1;
+    if (RACE_MAGI(other) && !(RACE_MAGI(character)))
+        return 1;
+    if (!(RACE_MAGI(other)) && RACE_MAGI(character))
+        return 1;
+    if (RACE_EVIL(other) && RACE_GOOD(character))
+        return 1;
+    if (RACE_GOOD(other) && RACE_EVIL(character))
+        return 1;
+
+    return 0;
+}
+
+int other_side_num(int ch_race, int i_race)
+{
+    if ((ch_race == RACE_GOD) || (i_race == RACE_GOD))
+        return 0;
+    if ((ch_race <= RACE_BEORNING) && (i_race <= RACE_BEORNING))
+        return 0;
+
+    if ((ch_race >= RACE_URUK) && (ch_race != RACE_MAGUS) && (ch_race != RACE_EASTERLING) && (ch_race != RACE_HARADRIM) && (i_race >= RACE_URUK) && (i_race != RACE_MAGUS) && (i_race != RACE_EASTERLING) && (i_race != RACE_HARADRIM))
+        return 0;
+
+    if (((ch_race == RACE_MAGUS) || (ch_race == RACE_HARADRIM)) && ((i_race == RACE_MAGUS) || (i_race == RACE_HARADRIM)))
+        return 0;
+
+    if (ch_race == i_race)
+        return 0;
+
+    return 1;
+}
+//============================================================================
 
 namespace utils {
 //============================================================================
@@ -1275,9 +1344,10 @@ int get_energy_regen(const char_data& character)
 {
     int regen = character.points.ENE_regen;
 
-    // woah now dre, const_casts are not legit.  leaky abstraction for sure
-    player_spec::wild_fighting_handler handler(const_cast<char_data*>(&character));
-    regen *= handler.get_attack_speed_multiplier();
+    // Dispatches to entity_hooks.h's wild-attack-speed-multiplier hook
+    // (wild_fighting_handler.cpp registers the real construct-and-query,
+    // const_cast included -- see that file's registered hook body).
+    regen *= rots::entity::dispatch_wild_attack_speed_multiplier(&character);
 
     return regen;
 }
@@ -1377,8 +1447,8 @@ std::string player_damage_details::get_damage_report(const char_data* character)
     for (map_iter iter = damage_map.begin(); iter != damage_map.end(); ++iter) {
         // Longest real name in either source table (hit_text.singular from
         // attack_hit_text[], or skill.name from the skills[] table) is well
-        // under the 24-char field width -- see attack_hit_text[]/skills[] in
-        // fight.cpp/consts.cpp -- so std::format's min-width padding never
+        // under the 24-char field width -- both tables live in consts.cpp
+        // now -- so std::format's min-width padding never
         // truncates real data the way the old fixed char[25]+sprintf could
         // silently overflow on a hypothetical longer name.
         std::string ability_name;

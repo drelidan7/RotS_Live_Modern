@@ -4,26 +4,39 @@
 // split Task 4; docs/superpowers/plans/2026-07-17-db-split-and-rots-convert.md
 // Task 4 + its binding addendum from Task 3's review adjudication).
 //
-// DESIGN (the plan's "strongest portable design" option): this is a gtest TU
-// compiled into ageland_tests, which links the REAL handler.cpp/profs.cpp/
-// utility.cpp/consts.cpp (ROTS_SERVER_SOURCES) -- never convert_stubs.cpp,
-// which only convert_main.cpp's own CMake target compiles (see
-// CMakeLists.txt's rots_convert comment). So a load->store->save round trip
-// run IN THIS PROCESS exercises the exact in-MUD implementations of the ~14
-// functions that, before the Task 4b relocation, convert_stubs.cpp substituted (affect_modify,
-// recalc_abilities, get_race_perception, class_HP, and kin -- see
-// convert_stubs.cpp's own section comments for the full list and each
-// substitution's justification). This test then ALSO shells out to the real,
+// DESIGN (the plan's "strongest portable design" option, updated for the
+// entity-completion wave's as-built library split): this is a gtest TU
+// compiled into ageland_tests, which directly compiles the REAL handler.cpp/
+// profs.cpp/utility.cpp (ROTS_SERVER_SOURCES) alongside ROTS_CORE_SOURCES
+// (config.cpp/consts.cpp/output_seam.cpp -- consts.cpp joined rots_core in
+// the entity-seed wave, it is NOT in ROTS_SERVER_SOURCES),
+// ROTS_ENTITY_SOURCES, and ROTS_PERSIST_SOURCES -- TESTING parity, see
+// CMakeLists.txt's ageland_tests comment; not linked as libraries. So a
+// load->store->save round trip run IN THIS PROCESS exercises the exact
+// in-MUD implementations of load_char()/store_to_char()/save_char() and
+// everything they call. This test then ALSO shells out to the real,
 // separately-built `rots_convert` BINARY (a second executable, its own
-// main(), linking convert_stubs.cpp instead) against a byte-identical copy of
-// the same input fixture, and compares the two resulting on-disk pfiles.
-// Nothing here re-implements or approximates either conversion path; both
-// sides call the production load_char()/store_to_char()/save_char() trio
-// (mirroring convert_main.cpp's convert_one_character() exactly -- see
-// run_reference_conversion() below), so a divergence here can only come from
-// convert_stubs.cpp's substitutes genuinely disagreeing with their real
-// counterparts (exactly the class of bug Task 3's review found and fixed --
-// see db-task-3-report.md's C1).
+// main(), compiling only convert_main.cpp and linking RotS::persist/
+// RotS::entity/RotS::core/RotS::platform -- ZERO stubs; convert_stubs.cpp
+// reached zero surviving stub bodies and was deleted outright in
+// entity-completion Task 3, see CMakeLists.txt's rots_convert target
+// comment) against a byte-identical copy of the same input fixture, and
+// compares the two resulting on-disk pfiles. Nothing here re-implements or
+// approximates either conversion path; both sides call the production
+// load_char()/store_to_char()/save_char() trio (mirroring convert_main.cpp's
+// convert_one_character() exactly -- see run_reference_conversion() below)
+// against the SAME production library code, so a divergence here can only
+// come from a hook null-default disagreeing with its registered body:
+// neither this in-process test path nor rots_convert's convert_main.cpp
+// registers any of the six dependency-inversion hooks (entity_hooks.h's
+// char_teardown/attack_speed_multiplier/wild_attack_speed_multiplier/
+// attacked_player hooks; persist_hooks.h's room_vnum/exploit_capture hooks),
+// so both sides run every hooked call site through its null default -- a bug
+// would only surface here if a null default's behavior actually disagreed
+// with what the app-registered body (comm.cpp/entity_lifecycle.cpp/
+// db_world.cpp/db_boot.cpp's registrations in run_the_game()) would have
+// produced, along the load->store->save path each hook's own header comment
+// already documents as unreachable/inert there.
 //
 // RACE COVERAGE (binding addendum): Task 3's C1 finding was
 // convert_stub_get_race_perception() silently diverging from the real

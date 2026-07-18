@@ -9,8 +9,15 @@
 // combat/world/commands, this executable fails to link and the build
 // breaks. See docs/superpowers/specs/2026-07-16-library-architecture-design.md
 // Sec4b and docs/superpowers/plans/2026-07-17-db-split-and-rots-convert.md
-// Task 3 for the full rationale; convert_stubs.cpp documents every symbol
-// this executable substitutes for its excluded app/combat home.
+// Task 3 for the full rationale. As of entity-completion Task 3, this
+// executable compiles exactly ONE translation unit (this file) and links
+// four static libraries -- RotS::platform/core/entity/persist -- with zero
+// stub bodies of its own. The boundary is enforced structurally: each
+// library's own linkcheck (PlatformLayerAcyclicity/CoreLayerAcyclicity/
+// EntityLayerAcyclicity/PersistLayerAcyclicity) plus this executable's own
+// link succeeding are the proof. The deleted src/convert_stubs.cpp weld
+// ledger's history (~40 documented stubs down to zero, across three waves)
+// lives in git, not in a stand-in source file.
 //
 // Usage: rots_convert --lib <libdir> [--dry-run] [--character <name>]
 //   --lib <libdir>      Required. Root directory containing players/, exactly

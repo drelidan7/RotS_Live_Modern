@@ -95,7 +95,7 @@ OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o char_utils.o char_utils_combat.o clerics.o clock.o color.o color_convert.o \
 	comm.o config.o consts.o output_seam.o convert_exploits.o convert_plrobjs.o crashsave_schedule.o db_boot.o db_players.o db_world.o delayed_command_interpreter.o entity_lifecycle.o fight.o graph.o handler.o interpre.o environment_utils.o account_cache.o account_management.o character_json.o exploits_json.o json_utils.o objects_json.o \
 	limits.o mail.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objsave.o olog_hai.o\
-	pkill.o player_file_finalize.o profs.o protocol.o ranger.o safe_template.o save_benchmark.o savebench.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
+	pkill.o pkill_json.o player_file_finalize.o profs.o protocol.o ranger.o safe_template.o save_benchmark.o savebench.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o  \
 	wild_fighting_handler.o weather.o zone.o rots_rng.o rots_crypt.o rots_net.o rots_log.o rots_util.o
 
@@ -304,6 +304,8 @@ convert_exploits.o: ../convert_exploits.cpp ../convert_exploits.h ../exploits_js
 	$(CXX) -c $(CXXFLAGS) ../convert_exploits.cpp
 pkill.o: ../pkill.cpp ../pkill.h ../json_utils.h
 	$(CXX) -c $(CXXFLAGS) ../pkill.cpp
+pkill_json.o: ../pkill_json.cpp ../pkill.h ../json_utils.h ../platform_compat.h ../text_view.h
+	$(CXX) -c $(CXXFLAGS) ../pkill_json.cpp
 protocol.o: ../protocol.cpp ../protocol.h
 	$(CXX) -c $(CXXFLAGS) ../protocol.cpp
 rots_rng.o : ../rots_rng.cpp ../rots_rng.h

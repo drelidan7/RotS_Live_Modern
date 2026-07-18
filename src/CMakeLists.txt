@@ -157,7 +157,7 @@ set(ROTS_SERVER_SOURCES
     limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     mystic.cpp obj2html.cpp objects_json.cpp objsave.cpp
-    olog_hai.cpp pkill.cpp profs.cpp protocol.cpp
+    olog_hai.cpp pkill.cpp pkill_json.cpp profs.cpp protocol.cpp
     ranger.cpp save_benchmark.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp

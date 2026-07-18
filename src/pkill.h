@@ -46,6 +46,8 @@ std::string serialize_pkill_to_json(const PkillStoreData& data);
 bool deserialize_pkill_from_json(std::string_view json, PkillStoreData *data, std::string *error_message = nullptr);
 bool pkill_records_equal(const std::vector<PKILL>& a, const std::vector<PKILL>& b);
 std::string pkill_json_path(std::string_view legacy_path);
+bool load_pkill_json_store(std::string_view json_path, std::vector<PKILL>* records, std::string* error_message = nullptr);
+bool write_pkill_json_store(std::string_view json_path, const std::vector<PKILL>& records, std::string* error_message = nullptr);
 bool convert_legacy_pkill_file(std::string_view legacy_path, std::string* error_message = nullptr);
 
 } // namespace pkill_json

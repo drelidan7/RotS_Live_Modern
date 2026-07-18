@@ -149,7 +149,7 @@ set(ROTS_SERVER_SOURCES
     account_cache.cpp account_management.cpp act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
-    boards.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
+    boards.cpp boards_json.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
     color.cpp color_convert.cpp comm.cpp convert_exploits.cpp convert_plrobjs.cpp
     db_boot.cpp db_players.cpp db_world.cpp delayed_command_interpreter.cpp
     exploits_json.cpp

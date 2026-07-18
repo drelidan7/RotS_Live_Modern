@@ -92,7 +92,7 @@ TEST_CXXFLAGS = $(CXXFLAGS) -idirafter ..
 LDFLAGS = -lgtest -lpthread
 
 OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
-	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o char_utils.o char_utils_combat.o clerics.o clock.o color.o color_convert.o \
+	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o boards_json.o char_utils.o char_utils_combat.o clerics.o clock.o color.o color_convert.o \
 	comm.o config.o consts.o output_seam.o convert_exploits.o convert_plrobjs.o crashsave_schedule.o db_boot.o db_players.o db_world.o delayed_command_interpreter.o entity_lifecycle.o fight.o graph.o handler.o interpre.o environment_utils.o account_cache.o account_management.o character_json.o exploits_json.o json_utils.o objects_json.o \
 	limits.o mail.o mail_json.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o objsave.o olog_hai.o\
 	pkill.o pkill_json.o player_file_finalize.o profs.o protocol.o ranger.o safe_template.o save_benchmark.o savebench.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
@@ -254,6 +254,8 @@ objsave.o : ../objsave.cpp ../comm.h ../handler.h ../db.h ../interpre.h \
 boards.o : ../boards.cpp ../utils.h ../comm.h ../db.h ../boards.h ../interpre.h \
 	../handler.h ../json_utils.h
 	$(CXX) -c $(CXXFLAGS) ../boards.cpp
+boards_json.o: ../boards_json.cpp ../boards.h ../json_utils.h ../platform_compat.h ../text_view.h
+	$(CXX) -c $(CXXFLAGS) ../boards_json.cpp
 signals.o : ../signals.cpp ../utils.h
 	$(CXX) -c $(CXXFLAGS) ../signals.cpp
 graph.o : ../graph.cpp ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h \

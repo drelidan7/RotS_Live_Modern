@@ -48,8 +48,12 @@ endif()
 #
 # combat_manager.cpp was proven-dead code and was DELETED in Phase 4 Wave 1 (the
 # live melee path is fight.cpp::hit(), see AGENTS.md's dead-code section).
-# char_utils_combat.cpp IS listed: it defines live functions used by
-# fight.cpp / clerics.cpp / ranger.cpp (its dead OB/PB/DB helpers were deleted in the same wave).
+# char_utils.cpp / char_utils_combat.cpp are NOT listed here (entity-completion
+# Task 3): both moved into ROTS_ENTITY_SOURCES below -- see that set's comment
+# for the membership rationale. char_utils_combat.cpp still defines live
+# functions used by fight.cpp / clerics.cpp / ranger.cpp (its dead OB/PB/DB
+# helpers were deleted in Phase 4 Wave 1); those callers reach it through
+# RotS::entity now instead of a same-target same-executable compile.
 #
 # account_management.cpp / character_json.cpp / exploits_json.cpp / json_utils.cpp /
 # objects_json.cpp arrive with the account-management merge (JSON persistence +
@@ -141,8 +145,24 @@ set(ROTS_CORE_SOURCES
 # under an include/ dir yet -- they stay flat in src/ (the same way the
 # platform/core headers did before those layers' own carve-outs); a later
 # wave can relocate them if/when rots_entity grows a real public surface.
+#
+# char_utils.cpp / char_utils_combat.cpp JOIN HERE (entity-completion Task 3,
+# spec §10 step 4, membership not relocation): entity-completion Tasks 1-2
+# already cut both TUs' last upward edges (fname()/other_side()/
+# get_hit_text() relocated to char_utils.cpp/consts.cpp respectively;
+# player_spec::wild_fighting_handler's ctor/get_attack_speed_multiplier()
+# inverted through entity_hooks.h's wild-attack-speed-multiplier hook), so
+# both are now nm-clean leaves the same way entity_lifecycle.cpp/
+# object_utils.cpp/environment_utils.cpp are -- verified via `nm -uC` on the
+# built archive, see the rots_entity_linkcheck load-bearing test below.
+# char_utils.cpp was already a direct rots_convert source (it wasn't nm-clean
+# for the library until now); it stays a rots_convert dependency, but arrives
+# transitively through RotS::entity instead of a second same-executable
+# compile -- see the rots_convert target's own comment below for why that
+# executable's source list shrinks to convert_main.cpp alone this task.
 set(ROTS_ENTITY_SOURCES
     entity_lifecycle.cpp object_utils.cpp environment_utils.cpp
+    char_utils.cpp char_utils_combat.cpp
 )
 
 # L3: persist layer (spec §3/§10 step 4; persist-split PS Task 4 payoff).
@@ -176,7 +196,7 @@ set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
-    boards.cpp char_utils.cpp char_utils_combat.cpp clerics.cpp
+    boards.cpp clerics.cpp
     color.cpp comm.cpp
     db_boot.cpp db_world.cpp delayed_command_interpreter.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
@@ -417,22 +437,23 @@ target_link_options(ageland PRIVATE
 
 # --- rots_convert: the standalone character converter -------------------------
 # (db.cpp-split Task 3, spec Sec4b; re-plumbed onto RotS::entity in
-# entity-seed Task 6, then onto RotS::persist in persist-split PS Task 4) --
-# a SECOND executable, its own main(), that links RotS::platform +
-# RotS::core + RotS::entity + RotS::persist (db_players.cpp: player-index/
-# load/store/save, the JSON codecs, the account system, the legacy
-# exploit/plrobj binary-to-JSON one-time converters, color_convert.cpp,
-# obj_files.cpp -- see the ROTS_PERSIST_SOURCES comment above) plus exactly
-# three TUs it still direct-compiles: convert_main.cpp (its own main()),
-# convert_stubs.cpp (the weld ledger for whatever this executable still
-# doesn't link), and char_utils.cpp (not nm-clean for the library -- stays
-# direct, per that file's own callers still needing app-layer symbols this
-# executable never links) -- deliberately NO db_world.cpp/db_boot.cpp and NO
-# combat/commands/app translation unit. This is the executable acid-test
-# that the persistence boundary holds: if a future change re-welds
-# db_players.cpp/entity_lifecycle.cpp to the game (combat/world/commands/
-# session), this target fails to link and the build breaks. It is therefore
-# added to `all` (no EXCLUDE_FROM_ALL) so every CI job builds it -- see
+# entity-seed Task 6, then onto RotS::persist in persist-split PS Task 4;
+# convert_stubs.cpp deleted outright in entity-completion Task 3) -- a SECOND
+# executable, its own main(), that links RotS::platform + RotS::core +
+# RotS::entity + RotS::persist (db_players.cpp: player-index/load/store/
+# save, the JSON codecs, the account system, the legacy exploit/plrobj
+# binary-to-JSON one-time converters, color_convert.cpp, obj_files.cpp,
+# char_utils.cpp/char_utils_combat.cpp -- see the ROTS_PERSIST_SOURCES/
+# ROTS_ENTITY_SOURCES comments above) plus exactly ONE TU it still
+# direct-compiles: convert_main.cpp (its own main()) -- deliberately NO
+# db_world.cpp/db_boot.cpp and NO combat/commands/app translation unit. This
+# is the executable acid-test that the persistence boundary holds: if a
+# future change re-welds db_players.cpp/entity_lifecycle.cpp/char_utils.cpp
+# to the game (combat/world/commands/session), either the growing library's
+# own linkcheck (rots_entity_linkcheck/rots_persist_linkcheck) fails first,
+# or -- for an edge those linkchecks don't cover -- this target itself fails
+# to link. It is therefore added to `all` (no EXCLUDE_FROM_ALL) so every CI
+# job builds it -- see
 # docs/superpowers/specs/2026-07-16-library-architecture-design.md Sec4b/
 # Sec11 and docs/superpowers/plans/2026-07-17-db-split-and-rots-convert.md
 # Task 3. objsave.cpp's G half (Crash_load/Crash_listrent and the rent/
@@ -440,23 +461,28 @@ target_link_options(ageland PRIVATE
 # gameplay halves are still deliberately OUT this wave -- their P (codec)
 # halves already arrive via RotS::persist (obj_files.cpp/pkill_json.cpp/
 # mail_json.cpp/boards_json.cpp), so those welds are resolved, not
-# follow-on; the G halves stay app-side by design. convert_stubs.cpp, the
-# file-scoped "weld ledger" documenting every symbol substituted for an
-# excluded app/combat home and why the converter's own call graph never
-# reaches it, now carries ZERO surviving stub bodies (entity-completion
-# Task 1 relocated fname/other_side to char_utils.cpp and get_hit_text to
-# consts.cpp, both real definitions now, closing three of the prior 5; EC
-# Task 2 closed the last one -- player_spec::wild_fighting_handler's ctor +
-# get_attack_speed_multiplier() -- by inverting char_utils.cpp's
-# get_energy_regen() call through entity_hooks.h's wild-attack-speed-
-# multiplier hook instead of stubbing it here). EC Task 3 deletes this
-# now-empty ledger file outright.
+# follow-on; the G halves stay app-side by design.
+#
+# The weld-ledger era is over. convert_stubs.cpp -- the file-scoped record of
+# every symbol substituted for an excluded app/combat home, and why the
+# converter's own call graph never reached it -- reached ZERO surviving stub
+# bodies at the end of entity-completion Task 2 (every remaining section was
+# already a DELETED-stub marker comment, not a live stand-in) and is deleted
+# outright this task (git history preserves its full per-symbol reachability
+# analysis for anyone tracing why a given inversion/relocation was safe). The
+# persistence/combat boundary is no longer enforced by a hand-maintained
+# ledger file at all -- it is enforced purely by the four libraries' own
+# linkchecks (rots_platform_linkcheck / rots_core_linkcheck /
+# rots_entity_linkcheck / rots_persist_linkcheck, each verifying its layer
+# has no upward symbol reference beyond its declared lower layers) plus this
+# executable's own link succeeding against exactly those four libraries and
+# convert_main.cpp -- see each linkcheck's own comment further below.
 #
 # This target is CMake-only this wave (not added to the flat src/Makefile /
 # src/tests/Makefile, which compile same-directory only against a single
 # hand-maintained OBJFILES list per binary) -- see docs/BUILD.md.
 add_executable(rots_convert
-    convert_main.cpp convert_stubs.cpp char_utils.cpp
+    convert_main.cpp
 )
 set_target_properties(rots_convert PROPERTIES CXX_EXTENSIONS OFF)
 target_link_libraries(rots_convert PRIVATE

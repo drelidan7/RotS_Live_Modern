@@ -265,10 +265,12 @@ historical stub contract.
 
 ### `rots_entity` (L2): the entity-lifecycle library
 
-The third extracted layer is `rots_entity` (L2) — `entity_lifecycle.cpp`, `object_utils.cpp`, and
-`environment_utils.cpp` — built as `librots_entity.a` and linked into `ageland` (and, as of Task 6,
-`rots_convert`, see below) as `RotS::entity`. These three TUs are the `db.cpp`-split's "unforeseen
-fourth TU" and its siblings (spec §4a), scrubbed by entity-seed Tasks 1-5 of every upward edge:
+The third extracted layer is `rots_entity` (L2) — as of entity-completion Task 3, **5 TUs**:
+`entity_lifecycle.cpp`, `object_utils.cpp`, `environment_utils.cpp`, `char_utils.cpp`, and
+`char_utils_combat.cpp` — built as `librots_entity.a` and linked into `ageland` (and, as of Task 6,
+`rots_convert`, see below) as `RotS::entity`. The first three TUs are the `db.cpp`-split's
+"unforeseen fourth TU" and its siblings (spec §4a), scrubbed by entity-seed Tasks 1-5 of every
+upward edge:
 consts data relocated to `rots_core`, platform helpers relocated to `rots_platform`, and the three
 remaining game-coupled edges (game output, char teardown, attack-speed) inverted through
 null-defaulted seams instead of direct calls (see "Output seam" and "Entity hooks" below).
@@ -285,8 +287,39 @@ null-defaulted seams instead of direct calls (see "Output seam" and "Entity hook
   `specialization_info` method family, since vtables are emitted at the key function), then that
   family's own two remaining calls into `utils::get_name`/`utils::is_race_good`/
   `utils::is_race_magi` — each round adjudicated, verified leaf-clean by `nm`, and relocated into
-  `entity_lifecycle.cpp` rather than stubbed, so `rots_entity`'s final membership is still just
-  the three TUs above, with a larger interior than the original seed.
+  `entity_lifecycle.cpp` rather than stubbed, so `rots_entity`'s membership at entity-seed exit was
+  still just the three TUs above, with a larger interior than the original seed.
+- **`char_utils.cpp` + `char_utils_combat.cpp` joined (entity-completion Task 3).** `rots_entity`
+  is now **5 TUs**: `entity_lifecycle.cpp`, `object_utils.cpp`, `environment_utils.cpp`,
+  `char_utils.cpp`, `char_utils_combat.cpp`. Getting there was membership, not relocation — EC
+  Tasks 1-2 had already cut both TUs' last real upward edges (`fname`/`fname_nameholder`/
+  `other_side`/`other_side_num` relocated to `char_utils.cpp` itself; `attack_hit_text[]`/
+  `get_hit_text` relocated to `consts.cpp`; the `wild_fighting_handler`
+  construct-and-query and `big_brother::on_character_attacked_player()` calls inverted through
+  two new `entity_hooks.h` hooks, wild-attack-speed-multiplier and attacked-player) — so both
+  files were already `nm`-clean leaves by the time Task 3 moved them into `ROTS_ENTITY_SOURCES`.
+  `EntityLayerAcyclicity` went green first attempt, no cascade. **This is the milestone that
+  emptied `src/convert_stubs.cpp`:** the weld ledger the db-split wave introduced with ~40
+  documented stub bodies (~1.6K lines) shrank to ~19 at entity-seed exit, to 5 (four named
+  groups) at persist-split exit, to 2 bodies (the `wild_fighting_handler` pair) after EC Task 1,
+  to zero stub bodies after EC Task 2's hook inversion — and EC Task 3 deleted the now-empty file
+  outright (`git rm src/convert_stubs.cpp`). `rots_convert` (below) compiles down to
+  `convert_main.cpp` alone, linking `RotS::platform` + `RotS::core` + `RotS::entity` +
+  `RotS::persist`; the persistence boundary this whole ledger existed to document is now enforced
+  structurally by those four libraries' linkchecks plus this executable's own link, not by a
+  hand-maintained stand-in file. The pattern held for three full waves (entity-seed,
+  persist-split, entity-completion) before running its course — see "`rots_convert`" below for
+  the per-task stub-count account and git history (culminating in commit 24fd4f7) for the ledger's
+  own before/after.
+- **Remaining spec §3 gap, stated honestly:** `rots_entity` is 5 of the 6 TUs spec §3's original
+  target-architecture table sketched for it (`char_utils, object_utils, environment_utils,
+  handler, utility, char_utils_combat`) — `handler.cpp` and `utility.cpp` are still entirely
+  `ROTS_SERVER_SOURCES`/app-compiled, not archived. `handler.cpp` carries roughly 30 named,
+  not-yet-enumerated welds into combat/world/commands-tier code (recorded but unresolved as of
+  entity-completion Task 3). `utility.cpp` was never `nm`-profiled TU-wide the way `char_utils.cpp`
+  was — its `nm` reach is app-wide, not a short named list — so its gap is a genuinely open
+  question, not a known-and-counted one. Neither is this wave's or the next task's scope; they are
+  recorded follow-on for whichever future wave next touches the entity/app boundary.
 
 ### Output seam and entity hooks: the last three app-layer edges into `rots_entity`
 
@@ -495,14 +528,17 @@ the registration functions and gets each hook's null default instead.
 
 `rots_convert` is a second executable (its own small `main()`, `src/convert_main.cpp`) that
 performs legacy → modern character conversion **en masse, outside MUD execution** — spec §4b.
-It links:
+As of entity-completion Task 3, it links:
 
 ```
 rots_convert = RotS::platform + RotS::core + RotS::entity + RotS::persist + rots_build_flags
-             + convert_main.cpp + convert_stubs.cpp + char_utils.cpp
+             + convert_main.cpp
 ```
 
 deliberately **NO** `db_world.cpp`/`db_boot.cpp` and **NO** combat/commands/app translation unit.
+**`convert_main.cpp` is now the executable's only direct source** — every other TU it needs
+(down to `char_utils.cpp`/`char_utils_combat.cpp`, the last two holdouts, see below) arrives
+transitively through the four static libraries, with zero stub bodies standing in for anything.
 As of persist-split PS Task 4, `db_players.cpp`/`character_json.cpp`/`objects_json.cpp`/
 `exploits_json.cpp`/`account_management.cpp`/`account_cache.cpp`/`obj_files.cpp`/
 `pkill_json.cpp`/`mail_json.cpp`/`boards_json.cpp`/`convert_exploits.cpp`/`convert_plrobjs.cpp`/
@@ -517,16 +553,18 @@ gameplay, and boards' display half plus its `save_board`/`apply_board_save_data`
 bridge — none are `nm`-clean against the converter's link surface, and chasing them is recorded
 follow-on (see "`rots_persist`" above for the boards-bridge deferral in particular). As of
 entity-seed Task 6, `entity_lifecycle.cpp`/`object_utils.cpp`/`environment_utils.cpp` arrive via
-`RotS::entity` (see "`rots_entity`" above) rather than as direct sources; `char_utils.cpp` stays a
-direct source (not `nm`-clean for a library, per its own callers still needing app-layer symbols
-this executable never links) even though EC Task 2 inverted its last two real combat/big_brother
-welds (`get_energy_regen()`'s `wild_fighting_handler` construct-and-query, and
-`char_utils_combat.cpp`'s `big_brother::on_character_attacked_player()` call) through
-`entity_hooks.h`'s wild-attack-speed-multiplier/attacked-player hooks — a future wave can revisit
-whether it can now join a library. `fname`/`other_side`/`other_side_num` (formerly `handler.cpp`)
-and `get_hit_text` (formerly `fight.cpp`, with its `attack_hit_text[]` table, now `consts.cpp`)
-relocated verbatim into `char_utils.cpp`/`consts.cpp` respectively in entity-completion Task 1 —
-real definitions, not welds, from here on.
+`RotS::entity` (see "`rots_entity`" above) rather than as direct sources; as of
+entity-completion Task 3, `char_utils.cpp` and `char_utils_combat.cpp` join them there too — EC
+Tasks 1-2 had already cut both TUs' last real combat/handler/big_brother welds (`fname`/
+`fname_nameholder`/`other_side`/`other_side_num` relocated verbatim from `handler.cpp` into
+`char_utils.cpp` itself; `attack_hit_text[]`/`get_hit_text` relocated verbatim from `fight.cpp`
+into `consts.cpp`; `get_energy_regen()`'s `wild_fighting_handler` construct-and-query and
+`char_utils_combat.cpp`'s `big_brother::on_character_attacked_player()` call inverted through
+`entity_hooks.h`'s wild-attack-speed-multiplier/attacked-player hooks), so both TUs were already
+`nm`-clean leaves by the time Task 3 moved their library membership — see "`rots_entity`" above
+for the full account. `char_utils.cpp`/`char_utils_combat.cpp` no longer appear on this
+executable's direct source list at all; they, like `entity_lifecycle.cpp`'s siblings, now arrive
+purely through `RotS::entity`.
 
 - **It calls the same code the MUD uses** (`character_json`/`objects_json`/`exploits_json`, the
   `convert_*` binary-to-JSON one-time migration converters) so mass-conversion output is
@@ -537,26 +575,38 @@ real definitions, not welds, from here on.
   `db_players.cpp`/`entity_lifecycle.cpp` to the game (combat/world/commands/session), this
   target **fails to link** and the build breaks — the converter is the executable acid-test that
   the persistence boundary holds, not a check anyone has to remember to run.
-- **`src/convert_stubs.cpp` is the weld ledger** — one loud, documented stub per app/combat
-  symbol the linked persist/entity code still references but the converter's own call graph
-  never exercises. Each stub records the symbol, its real home, why the converter never reaches
-  it, and the follow-on that would remove it. Its whole point is to make the remaining
-  persistence/game coupling enumerable and its shrinkage measurable, rather than hiding the
-  coupling behind an unexplained empty function — and entity-seed Tasks 1-6 plus persist-split
-  PS Tasks 1-4 are the measured proof: the ledger shrank from ~40 documented stubs/~1.6K lines
-  (db.cpp-split baseline) through ~19 (entity-seed exit — `send_to_char`/`act`/`vsend_to_char`/
+- **`src/convert_stubs.cpp` WAS the weld ledger — deleted, entity-completion Task 3.** For three
+  waves it held one loud, documented stub per app/combat symbol the linked persist/entity code
+  still referenced but the converter's own call graph never exercised. Each stub recorded the
+  symbol, its real home, why the converter never reached it, and the follow-on that would remove
+  it. Its whole point was to make the remaining persistence/game coupling enumerable and its
+  shrinkage measurable, rather than hiding the coupling behind an unexplained empty function —
+  and entity-seed Tasks 1-6, persist-split PS Tasks 1-4, and entity-completion Tasks 1-3 are the
+  measured proof: the ledger shrank from ~40 documented stubs/~1.6K lines (db.cpp-split baseline)
+  through ~19 (entity-seed exit — `send_to_char`/`act`/`vsend_to_char`/
   `track_specialized_mage`/`untrack_specialized_mage` via the output seam, `log`/`mudlog`/
   `create_function`/`free_function`/`str_dup`-family/`number()` via the platform relocations,
-  `is_room_outside`/`is_light` via `rots_entity`, and more — see the file's own header comment
-  for the task-by-task account) to **ZERO stub function bodies** today.
+  `is_room_outside`/`is_light` via `rots_entity`, and more — see the file's own former header
+  comment, preserved in git history, for the task-by-task account), through 5 (persist-split
+  exit — four named groups: `fname`, `other_side`, `get_hit_text`, the `wild_fighting_handler`
+  ctor/method pair), to **ZERO stub function bodies**.
   Entity-completion Task 1 deleted three more (`fname`/`other_side`, `get_hit_text`) the same
   way: relocating them verbatim into `char_utils.cpp`/`consts.cpp` (already-linked TUs) closed
   those welds outright. EC Task 2 deleted the last stub body —
   `player_spec::wild_fighting_handler`'s ctor + `get_attack_speed_multiplier()` — by inverting
   `char_utils.cpp`'s `get_energy_regen()` call through `entity_hooks.h`'s new
   wild-attack-speed-multiplier hook instead; `rots_convert` never registers it, so the hook's
-  null default (1.0f) fires, byte-identical to the deleted stub's return value. EC Task 3 deletes
-  this now-empty ledger file outright. Persist-split deleted 14 stub bodies total across three tasks. PS Task 1 deleted the color
+  null default (1.0f) fires, byte-identical to the deleted stub's return value. **EC Task 3 then
+  deleted the now-empty ledger file outright** (`git rm src/convert_stubs.cpp`, commit 24fd4f7):
+  with zero stub bodies remaining there was no ledger left to maintain, and the file's sole
+  remaining purpose — being `rots_convert`'s third direct source alongside `convert_main.cpp` and
+  `char_utils.cpp` — evaporated the same task `char_utils.cpp`/`char_utils_combat.cpp` moved to
+  library membership (see "`rots_entity`" above and this section's link line, updated). The
+  ledger's history is not lost — it lives in git (`git log -- src/convert_stubs.cpp`,
+  `git show <commit>:src/convert_stubs.cpp` for any prior state) — it simply no longer needs a
+  standing file to hold it, because there is nothing left to enumerate: every symbol
+  `rots_convert` needs is now either a real cross-linked library definition or a null-defaulted
+  hook default (see below). Persist-split deleted 14 stub bodies total across three tasks. PS Task 1 deleted the color
   trio's stand-ins (`nearest_ansi_color()`+`ansi_palette`, `convert_old_colormask()`,
   `sync_color_slot_foreground_from_ansi()`) when `color_convert.cpp` was carved out of
   `color.cpp` as a leaf TU (see "`color_convert.cpp` membership" above). PS Task 3 deleted
@@ -575,8 +625,10 @@ real definitions, not welds, from here on.
 
   Nothing remains unreachable-but-stubbed: every symbol `rots_convert` needs is now either a
   real cross-linked definition or a null-defaulted `entity_hooks.h`/`persist_hooks.h`/
-  `output_seam.h` hook default (see "`rots_entity`"/"`rots_persist`" above). `char_utils.cpp`
-  itself still can't join a library yet, for the unrelated `nm`-cleanliness reason noted above.
+  `output_seam.h` hook default (see "`rots_entity`"/"`rots_persist`" above). `char_utils.cpp` and
+  `char_utils_combat.cpp` — the last two TUs still holding out for the `nm`-cleanliness reason
+  noted above — joined `RotS::entity` as of entity-completion Task 3 (see "`rots_entity`" above);
+  `rots_convert`'s only remaining direct source is `convert_main.cpp` itself.
 - **This target is CMake-only.** It is not added to the flat `src/Makefile` / `src/tests/Makefile`,
   which compile same-directory only against a single hand-maintained `OBJFILES` list per binary —
   wiring a second multi-file executable into that pattern isn't worth it for a CI-only

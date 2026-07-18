@@ -621,6 +621,12 @@ void run_the_game(sh_int port)
     // an unregistered hook.
     register_char_teardown_hook();
     register_attack_speed_multiplier_hook();
+    // persist_hooks.h's two inversion hooks (persist-split PS Task 4),
+    // registered the same way and for the same reason: before boot_db(), so
+    // ageland never runs db_players.cpp's save_char()/rename_char() with an
+    // unregistered hook.
+    register_room_vnum_hook();
+    register_exploit_capture_hook();
 
     log("Signal trapping.");
     signal_setup();

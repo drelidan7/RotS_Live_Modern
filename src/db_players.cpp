@@ -12,6 +12,18 @@
 // split, so callers outside these files are unaffected. The one hard P->W
 // data edge (save_char() reading world[ch->in_room].number) goes through the
 // world_room_vnum() seam (db.h decl, db_world.cpp def) added in Task 1.
+//
+// persist-split PS Task 4: save_char()'s call into that seam, and
+// rename_char()'s call into db_boot.cpp's add_exploit_record() capture
+// function, are now BOTH indirected through persist_hooks.h's pre-boot-
+// registered hooks (rots::persist::dispatch_room_vnum/
+// dispatch_exploit_capture, defined below) instead of calling world_room_vnum()/
+// add_exploit_record() directly -- the last two upward edges from this file
+// onto db_world.cpp/db_boot.cpp, cut so db_players.cpp can join the
+// rots_persist library without pulling either app-layer TU in with it. Both
+// symbols keep their real definitions in db_world.cpp/db_boot.cpp
+// (unaffected for callers outside this file); run_the_game() registers both
+// hooks pre-boot_db(), beside entity_hooks.h's registrations.
 
 #include "platdef.h"
 #include <ctype.h>
@@ -53,7 +65,9 @@
 #include "character_json.h"
 #include "exploits_json.h"
 #include "json_utils.h"
+#include "persist_hooks.h"
 #include "player_file_finalize.h"
+#include "rots/platform/log.h"
 #include "text_view.h"
 #include <cstddef>
 #include <cstdint>
@@ -93,6 +107,71 @@ int num_of_crimes = 0;
 // Pre-existing bug, unrelated to and untouched by the sprintf/strcpy->std::format
 // conversion in the surrounding functions.
 unsigned char pwdcrypt[MAX_PWD_LENGTH + 1];
+
+/************************************************************************
+ *  persist_hooks.h dispatch (persist-split PS Task 4)                 *
+ ************************************************************************
+ *  Backing storage + null-defaulted dispatch helpers for the two upward
+ *  edges persist_hooks.h inverts (spec Sec13 pattern, mirroring
+ *  entity_lifecycle.cpp's entity_hooks.h dispatch section): save_char()'s
+ *  load-room fallback (db_world.cpp registers the real world_room_vnum()),
+ *  and rename_char()'s exploit-trail note (db_boot.cpp registers the real
+ *  add_exploit_record()). Both registered by run_the_game(), before
+ *  boot_db() -- see persist_hooks.h.
+ ************************************************************************/
+namespace rots::persist {
+
+namespace {
+// Backing storage for the registered room-vnum hook (register_room_vnum_hook(),
+// db_world.cpp). Null until that registration runs; the null default reproduces
+// rots_convert's now-deleted convert_stubs.cpp world_room_vnum() stub (tripwire
+// log + NOWHERE -- that stub was already proven unreachable there).
+room_vnum_fn g_room_vnum_hook = nullptr;
+
+// Backing storage for the registered exploit-capture hook
+// (register_exploit_capture_hook(), db_boot.cpp). Null until that
+// registration runs; the null default reproduces rots_convert's now-deleted
+// convert_stubs.cpp add_exploit_record() stub (tripwire no-op -- rename_char()
+// is unreachable in that executable's load/store/save flow).
+exploit_capture_fn g_exploit_capture_hook = nullptr;
+} // namespace
+
+void set_room_vnum_hook(room_vnum_fn hook)
+{
+    g_room_vnum_hook = hook;
+}
+
+void set_exploit_capture_hook(exploit_capture_fn hook)
+{
+    g_exploit_capture_hook = hook;
+}
+
+namespace {
+int dispatch_room_vnum(int room_index)
+{
+    if (g_room_vnum_hook) {
+        return g_room_vnum_hook(room_index);
+    }
+    rots::log::write_stderr(std::format(
+        "rots::persist: STUB room-vnum hook called with no sink registered ({}) -- this should "
+        "be unreachable once register_room_vnum_hook() has run.",
+        room_index));
+    return NOWHERE;
+}
+
+void dispatch_exploit_capture(int record_type, char_data* victim, int int_param, const char* extra)
+{
+    if (g_exploit_capture_hook) {
+        g_exploit_capture_hook(record_type, victim, int_param, extra);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::persist: STUB exploit-capture hook called with no sink registered -- this should "
+        "be unreachable once register_exploit_capture_hook() has run.");
+}
+} // namespace
+
+} // namespace rots::persist
 
 void inc_p_table(void)
 {
@@ -1647,7 +1726,7 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
     /* if load_room isn't anywhere, but they are somewhere, we'll set
      * load_room to that somewhere */
     if ((load_room == NOWHERE) && (ch->in_room != NOWHERE))
-        load_room = world_room_vnum(ch->in_room);
+        load_room = rots::persist::dispatch_room_vnum(ch->in_room);
 
     ch->specials2.load_room = load_room;
 
@@ -3117,7 +3196,7 @@ int rename_char(struct char_data* ch, char* newname)
     /* note this in exploits, i hate the ! on NOTE, so we use ACHIEVEMENT */
     strcpy(namebuf, std::format("Name: {}->{}", GET_NAME(ch), newname).c_str());
     vmudlog(BRF, "%s namechanged: now known as %s.", GET_NAME(ch), newname);
-    add_exploit_record(EXPLOIT_ACHIEVEMENT, ch, 0, namebuf);
+    rots::persist::dispatch_exploit_capture(EXPLOIT_ACHIEVEMENT, ch, 0, namebuf);
 
     /* remove their char file */
     // Was system("rm <old_char_file>"); the return value was never checked, so a

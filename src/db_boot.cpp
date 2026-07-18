@@ -41,6 +41,7 @@
 #include "color.h"
 #include "comm.h"
 #include "db.h"
+#include "persist_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
@@ -716,4 +717,12 @@ void add_exploit_record(int recordtype, char_data* victim, int iIntParam, const 
         break;
     }
     return;
+}
+
+// Registers add_exploit_record() (above) as persist_hooks.h's
+// exploit-capture hook (persist-split PS Task 4). Called once from
+// run_the_game(), before boot_db() -- see persist_hooks.h.
+void register_exploit_capture_hook()
+{
+    rots::persist::set_exploit_capture_hook(add_exploit_record);
 }

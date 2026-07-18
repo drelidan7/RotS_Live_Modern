@@ -34,6 +34,7 @@
 #include "color.h"
 #include "comm.h"
 #include "db.h"
+#include "persist_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
@@ -1760,4 +1761,12 @@ room_data& room_data::operator[](int i)
 int world_room_vnum(int room_index)
 {
     return world[room_index].number;
+}
+
+// Registers world_room_vnum() (above) as persist_hooks.h's room-vnum hook
+// (persist-split PS Task 4). Called once from run_the_game(), before
+// boot_db() -- see persist_hooks.h.
+void register_room_vnum_hook()
+{
+    rots::persist::set_room_vnum_hook(world_room_vnum);
 }

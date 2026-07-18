@@ -107,6 +107,26 @@
 // global `buf` scratch array, which this executable deliberately does not
 // link. Fixed at the source (obj_files.cpp), not stubbed here -- see that
 // file's own PS-Task-3 comment.
+//
+// persist-split PS Task 4 (world_room_vnum/add_exploit_record inversion)
+// deletes two more stubs, but by inversion rather than by relocation-into-a-
+// library like the entries above: db_players.cpp's save_char()/rename_char()
+// no longer call world_room_vnum()/add_exploit_record() directly at all --
+// both call sites now go through persist_hooks.h's pre-boot-registered hooks
+// (rots::persist::dispatch_room_vnum/dispatch_exploit_capture, defined in
+// db_players.cpp itself). rots_convert never calls
+// register_room_vnum_hook()/register_exploit_capture_hook() (both
+// app-layer/comm.cpp-only boot steps, mirroring entity_hooks.h's pattern),
+// so the hooks' null defaults fire instead -- and those null defaults
+// (tripwire log + NOWHERE; tripwire no-op) are byte-identical to this file's
+// two deleted stand-ins, for the exact same reachability reasons those
+// stand-ins' own comments already argued (save_char()'s branch is provably
+// unreachable here per convert_main.cpp's load-room checkpoint; rename_char()
+// is never called by this executable's load/store/save flow at all). See
+// this file's git history, pre-PS-Task-4, for the two stubs' prior text.
+// find_player_in_table() stays a stub this task (rename_char()'s other
+// unreached callee) -- it relocates into db_players.cpp in a following step
+// of this same task, at which point this entry is superseded too.
 
 #include "base_utils.h"
 #include "char_utils.h"
@@ -359,18 +379,6 @@ int find_name(char* name)
 // entity_lifecycle.cpp definition (see that file's "Entity-tier leaf
 // helpers" section) instead of a stub.
 
-void add_exploit_record(int type, struct char_data* victim, int int_param, const char* extra)
-{
-    (void)type;
-    (void)victim;
-    (void)int_param;
-    (void)extra;
-    rots::log::write_stderr(
-        "rots_convert: STUB add_exploit_record() called -- unreachable (only rename_char(), "
-        "never called by this executable's load/store/save flow; the real home is db_boot.cpp's "
-        "capture-not-codec add_exploit_record(), per the db-split plan's P/B classification).");
-}
-
 int find_player_in_table(std::string_view name, int idnum)
 {
     (void)name;
@@ -465,45 +473,3 @@ const attack_hit_type& get_hit_text(int w_type)
     return unreachable_placeholder;
 }
 
-// ===========================================================================
-// world_room_vnum() -- db_world.cpp (the Task 1 persist/world seam; declared
-// db.h, defined db_world.cpp -- NOT linked here, since rots_convert excludes
-// every W-classified TU by design). save_char()'s ONLY call site
-// (db_players.cpp) is `if ((load_room == NOWHERE) && (ch->in_room !=
-// NOWHERE)) load_room = world_room_vnum(ch->in_room);`.
-//
-// convert_main.cpp's load-room checkpoint analysis (see that file's top
-// comment) proves this branch is UNREACHABLE for every character this
-// executable converts: it always calls
-// `save_char(character.get(), character->specials2.load_room, 0)`, mirroring
-// interpre.cpp's own just-loaded/not-yet-in-world call sites, and
-// store_to_char() already set character->in_room to that exact same
-// character->specials2.load_room value -- so `load_room == ch->in_room`
-// always holds at this guard, and `load_room == NOWHERE` /
-// `ch->in_room != NOWHERE` can never both be true simultaneously.
-//
-// This stub therefore does NOT need to reproduce world_room_vnum()'s real
-// "return world[room_index].number" behavior (rots_convert links no world[]
-// data to compute that from) -- it returns NOWHERE and logs loudly, so that
-// IF this proof is ever invalidated by a future change to convert_main.cpp's
-// call convention, the resulting bogus load_room is impossible to miss
-// (both the stderr line and the on-disk load_room going visibly wrong,
-// rather than a quiet corrupted-but-plausible room vnum).
-// Follow-on: none needed for correctness (already unreachable by proof, not
-// by omission) -- this entry stays until rots_convert either grows a real
-// need for room data (it shouldn't -- that would reintroduce the exact
-// persist->world coupling Task 1's seam was cut to remove) or db_players.cpp
-// is refactored to make the always-non-NOWHERE call convention structurally
-// guaranteed (e.g. a save_char() overload that doesn't take a load_room at
-// all for the "just loaded, not in world" case).
-// ===========================================================================
-int world_room_vnum(int room_index)
-{
-    rots::log::write_stderr(std::format(
-        "rots_convert: STUB world_room_vnum({}) called -- this should be PROVABLY "
-        "UNREACHABLE (see convert_main.cpp's load-room checkpoint comment). Returning "
-        "NOWHERE; if you are seeing this, convert_main.cpp's save_char() call convention "
-        "changed and the load-room proof needs re-checking.",
-        room_index));
-    return NOWHERE;
-}

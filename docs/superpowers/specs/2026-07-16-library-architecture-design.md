@@ -111,6 +111,28 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
   off-by-one in either extraction is caught. Task 2 then moved `consts.cpp` itself into
   `ROTS_CORE_SOURCES`. See `docs/BUILD.md` "Library layering" for the full `nm` evidence and the
   registration call site.
+- **Resolved (persist-split wave).** `rots_persist` is stood up: 14 TUs (`db_players.cpp`,
+  `character_json.cpp`, `objects_json.cpp`, `exploits_json.cpp`, `account_management.cpp` + its
+  six `#include`d fragments, `account_cache.cpp`, `obj_files.cpp`, `pkill_json.cpp`,
+  `mail_json.cpp`, `boards_json.cpp`, `convert_exploits.cpp`, `convert_plrobjs.cpp`,
+  `color_convert.cpp`, `save_benchmark.cpp`) built as `librots_persist.a`/`RotS::persist`, with
+  the `PersistLayerAcyclicity` linkcheck (§11) proving no upward edge beyond `rots_entity`/
+  `rots_core`/`rots_platform` (ctest 1273→1274). It is narrower than the row above in two ways
+  the row's aspirational framing didn't distinguish: (1) `objsave.cpp`/`boards.cpp`/`mail.cpp`/
+  `pkill.cpp` contributed only their pure-codec halves (new TUs `obj_files.cpp`/`boards_json.cpp`/
+  `mail_json.cpp`/`pkill_json.cpp`) — their runtime/bridge/gameplay halves stay app-compiled in
+  `ROTS_SERVER_SOURCES`, unmoved; (2) `savebench.cpp` deferred entirely (`page_string()`,
+  `modify.cpp`/app layer — not `nm`-clean), while its sibling `save_benchmark.cpp` did join. See
+  `docs/BUILD.md`'s "`rots_persist`" section for the full carve/relocation/hook inventory. The
+  **L3 peer-tier caveat above still holds**: `rots_world`/`rots_combat` remain entirely
+  app-compiled (`db_world.cpp`, `fight.cpp`, and the rest of the L3 table's other two rows are
+  still `ROTS_SERVER_SOURCES` members, not archived) — `rots_persist` is the first of the three
+  peer libraries to actually exist as a build target, not proof the peer tier itself is done. The
+  only two L3(persist)→app edges this wave found (`db_players.cpp`'s calls into `db_world.cpp`/
+  `db_boot.cpp`) were cut via `persist_hooks.h`'s pre-boot-registered hook pair
+  (`world_room_vnum`/`add_exploit_record`), the same dependency-inversion pattern §13 already used
+  for `rots_entity`'s remaining edges — no L3→app edge was hidden or left unenforced, just
+  inverted.
 
 ---
 
@@ -178,11 +200,24 @@ by the real code rather than left to the sketch:
 - **§4b shipped with membership deliberately narrower than the sketch's `rots_persist`-equals-all-
   persistence framing**: `rots_convert` links `db_players.cpp` + `entity_lifecycle.cpp` plus the
   JSON codecs, account system, and the legacy exploit/plrobj converters — but **not**
-  `objsave.cpp`/`boards.cpp`/`mail.cpp`/`pkill.cpp`. Those welds are deferred follow-on work,
-  catalogued (symbol, real home, why the converter's call graph never reaches it, and the
-  follow-on that removes it) in `convert_stubs.cpp`'s weld ledger rather than pulled in
-  speculatively. Known follow-ons are cataloged in the ledger itself; the headline ones: the `send_to_char` output seam, an
-  `APPLY_SPELL` null-skip, and the objsave/boards/mail membership itself.
+  `objsave.cpp`/`boards.cpp`/`mail.cpp`/`pkill.cpp` (as-built at this section's original writing).
+  Those welds were deferred follow-on work, catalogued (symbol, real home, why the converter's call
+  graph never reaches it, and the follow-on that removes it) in `convert_stubs.cpp`'s weld ledger
+  rather than pulled in speculatively. Known follow-ons were cataloged in the ledger itself; the
+  headline ones at the time: the `send_to_char` output seam, an `APPLY_SPELL` null-skip, and the
+  objsave/boards/mail membership itself.
+  **As-built update (persist-split PS Tasks 2-4):** the four files' pure-codec halves are now IN —
+  `obj_files.cpp` (from `objsave.cpp`'s P block), `pkill_json.cpp`, `mail_json.cpp`, and
+  `boards_json.cpp` all joined `rots_persist`, and `rots_convert` links their real definitions
+  through `RotS::persist`. Their runtime/bridge/gameplay halves stay deliberately OUT — G-side
+  orchestrators (`Crash_crashsave`/`idlesave`/`rentsave`, `Crash_load`/`Crash_listrent` and the
+  rent/receptionist flow), `pkill_tab`/rankings/`combat_list` walkers, the mail store
+  (`find_char_in_index`/`persist_mail_or_log`/`index_mail`/`scan_file`/`has_mail`) and postmaster
+  gameplay, and boards' display half plus its `save_board`/`apply_board_save_data`/`load_board`
+  bridge — none of these are `nm`-clean against the converter's link surface, and chasing them is
+  recorded follow-on (boards' bridge in particular moves only once boards' runtime half gets its
+  own split). See `docs/BUILD.md`'s "`rots_persist`" and "`rots_convert`" sections for the full
+  carve inventory and the current weld-ledger count.
 - **The CI-linked boundary check works as designed**: `rots_convert` is in CMake's default `all`
   target (no `EXCLUDE_FROM_ALL`) so every CI job builds it, but it is deliberately **not** wired
   into the flat `src/Makefile`/`src/tests/Makefile` — those compile same-directory only against a
@@ -451,6 +486,26 @@ than being cut speculatively this wave. `convert_stubs.cpp`'s weld ledger shrank
 documented stubs (~1.6K lines) to ~15 as each task's relocation or seam removed the real edge a
 stub stood in for — see `docs/BUILD.md`'s "`rots_convert`" section for the full task-by-task
 account and the remaining stub inventory.
+
+**As-built (persist-split wave, step 4 second slice):** `rots_persist` stands up as the second of
+the three L3 peer libraries — 14 TUs, `PersistLayerAcyclicity` linkcheck, ctest 1273→1274 (see
+`docs/BUILD.md`'s "`rots_persist`" section for the full membership/carve/relocation/hook account).
+Getting there required the same three instruments as `rots_entity`'s slice, one layer up: verbatim
+single-cut carves for the four codec TUs (`pkill_json.cpp`/`mail_json.cpp`/`boards_json.cpp`/
+`obj_files.cpp` — each origin file's codec namespace was already contiguous and leaf-clean, so no
+function-by-function extraction was needed, unlike `rots_entity`'s Task 5 relocations); pre-boot
+registration inversion (`persist_hooks.h`) for `db_players.cpp`'s last two upward edges
+(`world_room_vnum` → `db_world.cpp`, `add_exploit_record` → `db_boot.cpp`); and `nm`-gated library
+membership with the same STOP-condition adjudication contract, which resolved nine relocations
+(`find_player_in_table`/`find_name`/`unaccent`/`recalc_skills`/`utils::set_tactics`/
+`set_shooting`/`set_casting`/`file_to_string`/`file_to_string_alloc`) and two membership-only moves
+(`color_convert.cpp`, `save_benchmark.cpp`) without a single STOP round — the `nm` census surfaced
+all nine relocations up front, unlike `rots_entity`'s two-round cascade. `rots_convert`'s weld
+ledger shrank the rest of the way this mechanism can take it, from ~15 entries (entity-seed exit)
+to 5 stub function bodies across 4 named groups (`fname`, `other_side`, `get_hit_text`, the
+`wild_fighting_handler` ctor/method pair) — see `docs/BUILD.md`'s "`rots_convert`" section for the
+per-symbol account. `rots_world`/`rots_combat`, the other two L3 peers, remain entirely
+app-compiled; this slice does not touch them.
 
 ---
 

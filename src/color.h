@@ -71,6 +71,11 @@ struct color_slot_data {
 
 extern const std::string_view color_color[];
 extern const std::string_view color_sequence[];
+// color_color[]'s entry count (incl. the "\n" sentinel), defined in
+// color_convert.cpp alongside color_color[] itself; color.cpp's
+// find_ansi_color() and color_convert.cpp's nearest_ansi_color() both read
+// it directly rather than resizing color_color[] at a call site.
+extern int num_of_colors;
 
 /// Returns the rendered escape sequence for a character color slot.
 const char* get_color_sequence(struct char_data*, int);
@@ -82,6 +87,11 @@ void set_truecolor_foreground(struct char_data*, int, int, int, int);
 void set_truecolor_background(struct char_data*, int, int, int, int);
 void clear_color_background(struct char_data*, int);
 int nearest_ansi_color(int red, int green, int blue);
+// Defined in color_convert.cpp (moved there from convert_old_colormask's own
+// color.cpp TU). Promoted from color.cpp's anonymous namespace to external
+// linkage: color.cpp's set_colornum() still calls it cross-TU, and
+// color_convert.cpp's convert_old_colormask() calls it too.
+void sync_color_slot_foreground_from_ansi(struct char_prof_data* profs, int col);
 void set_colors_default(struct char_data*);
 
 #endif /* COLOR_H */

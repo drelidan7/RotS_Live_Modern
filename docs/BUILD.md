@@ -319,15 +319,125 @@ game-output and app-registered behavior without `rots_entity` linking upward int
   (logged no-op) behavior — the same contract the deleted `convert_stubs.cpp` stubs used to
   hand-carry for these symbols.
 
+### `rots_persist` (L3): the persistence library
+
+The fourth extracted layer is `rots_persist` (L3) — 14 TUs: `db_players.cpp`, `character_json.cpp`,
+`objects_json.cpp`, `exploits_json.cpp`, `account_management.cpp` (+ its six `#include`d
+fragments), `account_cache.cpp`, `obj_files.cpp`, `pkill_json.cpp`, `mail_json.cpp`,
+`boards_json.cpp`, `convert_exploits.cpp`, `convert_plrobjs.cpp`, `color_convert.cpp`, and
+`save_benchmark.cpp` — built as `librots_persist.a` and linked into both `ageland` and
+`rots_convert` (see below) as `RotS::persist`. It PUBLIC-links `RotS::entity` + `RotS::core` +
+`RotS::platform` (its three legal downward edges) plus `rots_build_flags`, and PUBLIC-owns
+`persist/include` (`target_include_directories(rots_persist PUBLIC persist/include)`) — unlike
+`rots_entity`'s PRIVATE include (no external consumer needs `rots_entity`'s own headers), several
+`ROTS_SERVER_SOURCES` files that stay app-side (`db_boot.cpp`, `db_world.cpp`, `act_info.cpp`,
+`act_wiz.cpp`, `interpre.cpp`, `objsave.cpp`, `savebench.cpp`, `color.cpp`) also reach
+`persist/include` headers directly and now compile alongside `RotS::persist` inside the `ageland`
+target, so the include root has to flow transitively.
+
+- **`rots_persist_linkcheck` / CTest `PersistLayerAcyclicity`** mirrors the `rots_entity_linkcheck`
+  pattern: force-load `librots_persist.a` and normal-link only `RotS::entity` + `RotS::core` +
+  `RotS::platform` to resolve its legitimate downward edges — anything else unresolved fails the
+  build. It is the acceptance proof that persist-split PS Task 4's two inversions and nine
+  relocations (below) actually closed every upward edge `nm -uC` surfaced. Both hosts' ctest
+  baseline moved from 1273 to **1274** the task this check was added.
+
+**The four-carve story (PS Task 2).** `pkill.cpp`, `mail.cpp`, `boards.cpp`, and `objsave.cpp` each
+mix a pure JSON codec namespace with runtime/bridge/gameplay code that walks live game state — but
+in every one of the four, the codec half turned out to already be a single contiguous, leaf-clean
+block (only callees: file I/O helpers, `json_utils`, `rots::text`, `std::strerror` — zero live-game
+globals, zero messaging), so each carve was a verbatim single-cut block move into a new TU, not a
+function-by-function extraction:
+- `pkill_json.cpp` ← `pkill.cpp:50-427` (15 definitions — 10 namespace-scope + 5 file-local,
+  incl. `convert_legacy_pkill_file`'s
+  verify-reparse + `.migrated` rename). `pkill.cpp` keeps the runtime/capture half (`pkill_tab`/
+  rankings/`combat_list` walkers, the `pkill_read_file`/`pkill_delete_file`/`pkill_update_file`
+  bridge).
+- `mail_json.cpp` ← `mail.cpp:134-536`. `mail.cpp` keeps the runtime store
+  (`find_char_in_index`/`persist_mail_or_log`/`index_mail`/`scan_file`/`has_mail`) and postmaster
+  gameplay.
+- `boards_json.cpp` ← `boards.cpp:761-1189`. `boards.cpp` keeps the display half
+  (`descriptor_list` walks, `page_string`), and the persist bridge `save_board`/
+  `apply_board_save_data`/`load_board` (they read `msg_storage[]`/write HTML) — the library carve
+  deliberately does NOT chase these; they move only when boards' runtime half gets its own split
+  (recorded follow-on).
+- `obj_files.cpp` ← `objsave.cpp:92-477` (the account-backed object staging map, key/take
+  helpers, path/JSON-write helpers, `Crash_get_filename`/`Crash_delete_file`/
+  `Crash_delete_crashfile`/`Crash_clean_file`/`update_obj_file`, `register_char_teardown_hook`)
+  plus the scattered pure tail helpers `Crash_is_unrentable`/`cost_per_day`/`secs_to_unretire`.
+  `objsave.cpp` keeps `Crash_obj2record`/`Crash_collect_objects` (they read `obj_index[]`, called
+  only by the G-orchestrators `Crash_crashsave`/`idlesave`/`rentsave`/`Crash_collect_followers`,
+  which stay app-side) and
+  the alias/rent-report helpers. The dead file-scope `FILE* fd;` (zero references) was dropped —
+  the carve's one deliberate deletion, not a relocation.
+
+Six shared anonymous-namespace helpers needed promoting out of anonymous namespace during these
+carves (mail ×2, boards ×1, obj_files ×3) — each verified either needed cross-TU or safely
+file-local-prototyped, never silently duplicated. Four header decl-only additions
+(`pkill.h`/`mail.h`/`boards.h`/`handler.h` already declared everything else).
+
+**`color_convert.cpp` membership (PS Task 4, not a relocation).** It already had zero comm/game
+dependency — PS Task 1 carved it out of `color.cpp` as a leaf TU for exactly this purpose (see
+"Testing" below) — so this task just moved its *library membership* from `ROTS_SERVER_SOURCES`/
+`rots_convert`'s direct source list into `ROTS_PERSIST_SOURCES`, since its callers
+(`db_players.cpp`'s `load_char`/`load_char_from_text`, `character_json.cpp`'s truecolor codec) are
+now both persist-tier.
+
+**`save_benchmark.cpp` joins; `savebench.cpp` defers.** `save_benchmark.cpp` is `nm`-clean (every
+undefined symbol resolves inside the candidate set or in `RotS::entity`) and joined
+`ROTS_PERSIST_SOURCES`. `savebench.cpp` does not — it calls `page_string()` (`modify.cpp`, app
+layer) — and stays in `ROTS_SERVER_SOURCES`, direct-compiled into `ageland` only. This is a
+recorded deferral, not an oversight: cutting `savebench.cpp`'s `page_string()` edge is follow-on
+work for whichever wave next touches the app/persist boundary.
+
+**Two persist hooks (`persist_hooks.h`, mirroring `entity_hooks.h`'s spec §13 pattern).**
+`db_players.cpp`'s last two upward edges — onto `db_world.cpp` and `db_boot.cpp` — inverted via
+pre-boot registration instead of relocation, since the real bodies genuinely belong on the app
+side (one reads `world[]`, the other walks `combat_list`):
+- **`world_room_vnum` inversion.** `save_char`'s load-room fallback now calls
+  `rots::persist::dispatch_room_vnum` through a hook slot; `db_world.cpp` registers the real
+  `world_room_vnum` (`return world[room_index].number;`) in `run_the_game()`, pre-boot. The null
+  default is a tripwire log + `NOWHERE` — byte-identical to the converter's now-deleted
+  `convert_stubs.cpp` stand-in, for the same proven-unreachable reason (see `convert_main.cpp`'s
+  load-room checkpoint comment).
+- **`add_exploit_record` inversion.** `rename_char`'s exploit-trail note now calls
+  `rots::persist::dispatch_exploit_capture`; `db_boot.cpp` registers the real capture-not-codec
+  `add_exploit_record` the same way. Null default is a loud tripwire no-op, matching the deleted
+  stub's semantics (`rename_char` is unreachable on the converter's load/store/save call graph).
+
+**Nine controller-adjudicated relocations (PS Task 4 Step 2 `nm` census)**, verbatim moves each
+argued leaf-clean at its new home:
+- `find_player_in_table`/`find_name`/`unaccent` — `interpre.cpp`/`utility.cpp` → `db_players.cpp`.
+- `recalc_skills` — `spec_pro.cpp` → `entity_lifecycle.cpp`. This one changes what
+  `rots_convert` executes, not just where: `convert_stubs.cpp` used to carry a *simplified
+  hand-duplicated stand-in* (language-only, omitting the `ch->knowledge[]` recomputation) rather
+  than a tripwire, because `store_to_char()` calls `recalc_skills` unconditionally. It now runs
+  the real body; `ConvertEquivalence` 17/17 is the proof that `ch->knowledge[]` (a runtime-only
+  derived field, never present in `char_file_u`/`char_to_store`'s output) stays output-invisible
+  either way.
+- `utils::set_tactics`/`utils::set_shooting`/`utils::set_casting` — `char_utils.cpp` →
+  `entity_lifecycle.cpp`. `set_casting`'s body substitutes `!is_npc(ch)` for the original
+  `is_pc(ch)` check (proven equivalent over `char_data`'s NPC/PC partition before the move).
+- `file_to_string`/`file_to_string_alloc` — `db_boot.cpp` → `db_players.cpp`. Verbatim; these were
+  the second reachable-and-duplicated stand-in pair in the old ledger (`load_player()` calls
+  `file_to_string_alloc()` for every legacy text-format pfile), so this relocation is also a
+  stand-in-to-real-definition swap, not just a membership change.
+
+**Result:** the weld ledger (`convert_stubs.cpp`) shrank from ~15 entries to the 5 stub function
+bodies documented in "`rots_convert`" below.
+
 ### Pathed data-model includes
 
 `rots_core` owns `target_include_directories(rots_core PUBLIC core/include)`: every consumer that
 links `RotS::core` (`ageland`, and transitively `rots_entity`/`rots_convert` via `RotS::entity`,
 see "`rots_entity`" above) gets the `core/include` root transitively, so
-`ageland`'s own `target_include_directories` no longer lists it directly. `ageland_tests` does not
-link `RotS::core` (see above), so it keeps `core/include` as its own direct include dir alongside
-`persist/include` (which stays direct on both targets until a future `rots_persist` library exists
-to own it). `rots_platform` similarly owns `target_include_directories(rots_platform PUBLIC
+`ageland`'s own `target_include_directories` no longer lists it directly. `rots_persist` (below)
+now owns `persist/include` the same way, PUBLIC, so `ageland` and `rots_convert` also stopped
+listing it directly once they linked `RotS::persist` (persist-split PS Task 4). `ageland_tests`
+does not link `RotS::core`/`RotS::persist` (see above and "`rots_persist`" below — TESTING parity:
+it compiles `ROTS_CORE_SOURCES`/`ROTS_PERSIST_SOURCES` directly rather than linking the shipping
+archives), so it keeps `core/include` and `persist/include` as its own direct include dirs.
+`rots_platform` similarly owns `target_include_directories(rots_platform PUBLIC
 platform/include)`, so every consumer that links `RotS::platform` gets the `platform/include` root
 transitively — the same pattern as `core/include`, one layer down. `core/include`, `persist/include`,
 and `platform/include` contain nothing but a `rots/` subtree and are
@@ -375,8 +485,11 @@ spec §4a (`docs/superpowers/specs/2026-07-16-library-architecture-design.md`) i
 no caller outside these four files needed to change. The one hard persist→world data edge
 (`save_char` reading `world[ch->in_room].number`) became a seam function, `int
 world_room_vnum(int room_index)`, declared in `db.h` next to `real_room` and defined in
-`db_world.cpp`; `rots_convert` supplies its own definition (see the weld ledger below) since it
-never links `db_world.cpp`.
+`db_world.cpp`. Persist-split PS Task 4 later cut `db_players.cpp`'s direct call to it (and the
+sibling `add_exploit_record` edge into `db_boot.cpp`, `rename_char`'s exploit-trail note) via
+`persist_hooks.h`'s pre-boot-registered hook pair — see "`rots_persist`" below; `rots_convert`'s
+`convert_stubs.cpp` no longer needs a stand-in definition for either symbol, since it never calls
+the registration functions and gets each hook's null default instead.
 
 ## `rots_convert`: the persistence-boundary acid test
 
@@ -385,18 +498,24 @@ performs legacy → modern character conversion **en masse, outside MUD executio
 It links:
 
 ```
-rots_convert = RotS::platform + RotS::core + RotS::entity + rots_build_flags
-             + db_players.cpp
-             + character_json.cpp + objects_json.cpp + exploits_json.cpp
-             + account_management.cpp + account_cache.cpp
-             + convert_exploits.cpp + convert_plrobjs.cpp
-             + char_utils.cpp
-             + convert_main.cpp + convert_stubs.cpp
+rots_convert = RotS::platform + RotS::core + RotS::entity + RotS::persist + rots_build_flags
+             + convert_main.cpp + convert_stubs.cpp + char_utils.cpp
 ```
 
 deliberately **NO** `db_world.cpp`/`db_boot.cpp` and **NO** combat/commands/app translation unit.
-`objsave.cpp`/`boards.cpp`/`mail.cpp`/`pkill.cpp` membership is also deliberately deferred this
-wave — their welds are catalogued as follow-on work rather than pulled in speculatively. As of
+As of persist-split PS Task 4, `db_players.cpp`/`character_json.cpp`/`objects_json.cpp`/
+`exploits_json.cpp`/`account_management.cpp`/`account_cache.cpp`/`obj_files.cpp`/
+`pkill_json.cpp`/`mail_json.cpp`/`boards_json.cpp`/`convert_exploits.cpp`/`convert_plrobjs.cpp`/
+`color_convert.cpp`/`save_benchmark.cpp` all arrive via `RotS::persist` (see "`rots_persist`"
+above) instead of as direct sources — the four codec carves (`obj_files.cpp`/`pkill_json.cpp`/
+`mail_json.cpp`/`boards_json.cpp`) are what let `objsave.cpp`/`pkill.cpp`/`mail.cpp`/`boards.cpp`'s
+**persistence** halves join at all. Their runtime/bridge/gameplay halves stay OUT, deliberately —
+G-side orchestrators (`Crash_crashsave`/`idlesave`/`rentsave`, `Crash_load`/`Crash_listrent` and
+the rent/receptionist flow), `pkill_tab`/rankings/`combat_list` walkers, the mail store
+(`find_char_in_index`/`persist_mail_or_log`/`index_mail`/`scan_file`/`has_mail`) and postmaster
+gameplay, and boards' display half plus its `save_board`/`apply_board_save_data`/`load_board`
+bridge — none are `nm`-clean against the converter's link surface, and chasing them is recorded
+follow-on (see "`rots_persist`" above for the boards-bridge deferral in particular). As of
 entity-seed Task 6, `entity_lifecycle.cpp`/`object_utils.cpp`/`environment_utils.cpp` arrive via
 `RotS::entity` (see "`rots_entity`" above) rather than as direct sources; `char_utils.cpp` stays a
 direct source because it still carries real combat/big_brother welds
@@ -415,40 +534,51 @@ too can join a library.
   the persistence boundary holds, not a check anyone has to remember to run.
 - **`src/convert_stubs.cpp` is the weld ledger** — one loud, documented stub per app/combat
   symbol the linked persist/entity code still references but the converter's own call graph
-  never exercises (e.g. `get_hit_text` from `fight.cpp`, the `wild_fighting_handler` pair).
-  Each stub records the symbol, its real home, why the converter never reaches it, and the
-  follow-on that would remove it. Its whole point is to make the remaining persistence/game
-  coupling enumerable and its shrinkage measurable, rather than hiding the coupling behind an
-  unexplained empty function — and entity-seed Tasks 1-6 are the measured proof: the ledger
-  shrank from ~40 documented stubs/~1.6K lines (db.cpp-split baseline) to ~15 stubs as each
-  task's relocation or seam removed the real edge a stub used to stand in for (`send_to_char`/
-  `act`/`vsend_to_char`/`track_specialized_mage`/`untrack_specialized_mage` via the output seam,
-  `log`/`mudlog`/`create_function`/`free_function`/`str_dup`-family/`number()` via the platform
-  relocations, `is_room_outside`/`is_light` via `rots_entity`, and more — see the file's own
-  header comment for the task-by-task account). The stubs still remaining split into two
-  groups. Most are genuinely **unreachable from the converter's own call graph**
-  (`build_player_index`/`load_char`/`store_to_char`/`save_char`) — `fname`, `other_side`,
-  `unaccent`, `find_name`, `Crash_get_filename`, `add_exploit_record`, `find_player_in_table`,
-  `build_default_account_backed_object_data`, `get_hit_text`, the `wild_fighting_handler`
-  ctor/method pair, `Crash_delete_file`, and `world_room_vnum` — each named with its real home
-  TU and reachability argument in the ledger itself; the deferred objsave/boards/mail/pkill
-  membership above is what would let most of them be deleted. A smaller group is instead
-  **reachable and a faithfully-duplicated stand-in**, where staying in sync with its origin is
-  an ongoing maintenance contract rather than an inert placeholder: `recalc_skills` (called
-  unconditionally by `store_to_char()`, so it genuinely executes on every conversion; it
-  reproduces the one persisted side effect — `ch->player.language` — that its real
-  `spec_pro.cpp` body computes from `GET_RACE(ch)` alone, and documents why the
-  `ch->knowledge[]` recomputation is safely omitted as provably unobserved on disk),
-  `file_to_string`/`file_to_string_alloc` (verbatim copies of `db_boot.cpp`'s bodies, exercised
-  for every legacy text-format pfile `load_player()` loads), and the color trio
-  `nearest_ansi_color`/`convert_old_colormask`/`sync_color_slot_foreground_from_ansi`
-  (verbatim copies of `color.cpp`'s current implementation, exercised by every truecolor
-  setting and every legacy `color_mask`-only character the converter loads — the
-  `ConvertEquivalence` suite, see "Testing" below, is the drift guard that keeps the copies
-  byte-for-byte in sync with their origin). The ledger already records this group's follow-on:
-  splitting `color.cpp`'s pure conversion helpers into their own leaf TU (e.g.
-  `color_convert.cpp`) so both `ageland` and `rots_convert` link one real definition instead of
-  synchronized copies.
+  never exercises. Each stub records the symbol, its real home, why the converter never reaches
+  it, and the follow-on that would remove it. Its whole point is to make the remaining
+  persistence/game coupling enumerable and its shrinkage measurable, rather than hiding the
+  coupling behind an unexplained empty function — and entity-seed Tasks 1-6 plus persist-split
+  PS Tasks 1-4 are the measured proof: the ledger shrank from ~40 documented stubs/~1.6K lines
+  (db.cpp-split baseline) through ~19 (entity-seed exit — `send_to_char`/`act`/`vsend_to_char`/
+  `track_specialized_mage`/`untrack_specialized_mage` via the output seam, `log`/`mudlog`/
+  `create_function`/`free_function`/`str_dup`-family/`number()` via the platform relocations,
+  `is_room_outside`/`is_light` via `rots_entity`, and more — see the file's own header comment
+  for the task-by-task account) to **5 stub function bodies across 4 named groups** today.
+  Persist-split deleted 14 stub bodies total across three tasks. PS Task 1 deleted the color
+  trio's stand-ins (`nearest_ansi_color()`+`ansi_palette`, `convert_old_colormask()`,
+  `sync_color_slot_foreground_from_ansi()`) when `color_convert.cpp` was carved out of
+  `color.cpp` as a leaf TU (see "`color_convert.cpp` membership" above). PS Task 3 deleted
+  `Crash_get_filename()`/`Crash_delete_file()`/`build_default_account_backed_object_data()`
+  when `obj_files.cpp` first joined `rots_convert`. PS Task 4 deleted the remaining 8 across two
+  mechanisms: the `world_room_vnum`/`add_exploit_record` inversions (see "`rots_persist`" above)
+  and six of the nine controller-adjudicated relocations that had carried a stub or
+  hand-duplicated stand-in here (`find_player_in_table`/`find_name`/`unaccent`/`recalc_skills`/
+  `file_to_string`/`file_to_string_alloc`). `color_convert.cpp`'s PS Task 4 library-membership
+  move (into `ROTS_PERSIST_SOURCES`) was already stub-free by that point — its stand-ins were PS
+  Task 1's deletion, not PS Task 4's. The other three relocated symbols,
+  `utils::set_tactics`/`set_shooting`/`set_casting`, never carried a `convert_stubs.cpp` stub at
+  all: `char_utils.cpp` was already a direct `rots_convert` source before and after the move, so
+  relocating them within already-linked TUs closed no converter-side weld — see the file's own
+  header comment for the full accounting.
+
+  What remains is genuinely **unreachable from the converter's own call graph**
+  (`build_player_index`/`load_char`/`store_to_char`/`save_char`), each named with its real home
+  TU and reachability argument in the ledger itself:
+  - `fname` (`handler.cpp`) — only reachable-in-principle caller is `utils::get_object_name()`.
+  - `other_side` (`handler.cpp`) — only reachable-in-principle caller is
+    `utils::is_hostile_to()`.
+  - `get_hit_text` (`fight.cpp`) — only caller is `char_utils.cpp`'s
+    `player_damage_details::get_damage_report()`, a `score`-style report formatter not on the
+    load/store/save path.
+  - `player_spec::wild_fighting_handler`'s ctor + `get_attack_speed_multiplier()`
+    (`wild_fighting_handler.cpp`) — only caller is `char_utils.cpp`'s `get_energy_regen()`, a
+    live-combat energy-regen-rate query, also off that path.
+
+  All four groups share the same follow-on shape: they dissolve once `char_utils.cpp`'s
+  remaining combat/presentation-facing helpers (`get_energy_regen`, `get_damage_report`, and
+  friends) move into a future `rots_combat`-tier TU separate from the identity/spec accessors
+  `rots_convert` genuinely needs — the same reason `char_utils.cpp` itself still can't join a
+  library (see above).
 - **This target is CMake-only.** It is not added to the flat `src/Makefile` / `src/tests/Makefile`,
   which compile same-directory only against a single hand-maintained `OBJFILES` list per binary —
   wiring a second multi-file executable into that pattern isn't worth it for a CI-only

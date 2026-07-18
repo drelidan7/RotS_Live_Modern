@@ -2,6 +2,7 @@
 
 #include "../big_brother.h"
 #include "../comm.h"
+#include "../db.h"
 #include "../handler.h"
 #include "../rots_net.h"
 #include "../skill_timer.h"
@@ -93,11 +94,20 @@ int main(int argc, char* argv[]) {
     // for the same real-body-fidelity reason as the output sinks above: without
     // them this test process would silently exercise the null-hook defaults
     // (dispatch_char_teardown()'s silent no-op; dispatch_attack_speed_multiplier()'s
-    // tripwire-logged 1.0f) instead of objsave.cpp's/wild_fighting_handler.cpp's real
+    // tripwire-logged 1.0f) instead of obj_files.cpp's/wild_fighting_handler.cpp's real
     // implementations that ageland registers at boot -- both TUs are already linked
     // into both test binaries, so this only needs the registration calls.
     register_char_teardown_hook();
     register_attack_speed_multiplier_hook();
+    // persist_hooks.h's two inversion hooks (persist-split PS Task 4), registered
+    // for the same real-body-fidelity reason as the two calls above: without them
+    // this test process would silently exercise the null-hook defaults
+    // (dispatch_room_vnum()'s tripwire-logged NOWHERE; dispatch_exploit_capture()'s
+    // tripwire-logged no-op) instead of db_world.cpp's/db_boot.cpp's real
+    // implementations that ageland registers at boot -- both TUs are already linked
+    // into both test binaries, so this only needs the registration calls.
+    register_room_vnum_hook();
+    register_exploit_capture_hook();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

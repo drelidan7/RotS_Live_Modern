@@ -145,20 +145,46 @@ set(ROTS_ENTITY_SOURCES
     entity_lifecycle.cpp object_utils.cpp environment_utils.cpp
 )
 
+# L3: persist layer (spec §3/§10 step 4; persist-split PS Task 4 payoff).
+# db_players.cpp's last two upward edges (world_room_vnum()/
+# add_exploit_record(), both defined in db_world.cpp/db_boot.cpp -- app
+# layer) were cut this task via persist_hooks.h's pre-boot-registered hooks
+# (mirroring entity_hooks.h's spec Sec13 pattern); its remaining nm-surfaced
+# upward edges (recalc_skills(); utils::set_tactics()/set_shooting()/
+# set_casting(); file_to_string()/file_to_string_alloc();
+# find_player_in_table()/find_name()/unaccent()) were relocated verbatim
+# into entity_lifecycle.cpp/db_players.cpp itself -- see each function's own
+# "relocated" comment at its new home for the leaf-cleanliness argument.
+# color_convert.cpp JOINS here (membership, not relocation): it already has
+# zero comm/game dependency (carved for exactly this purpose by PS Task 1)
+# and exists to serve persistence conversion (db_players.cpp's
+# load_char()/load_char_from_text(), character_json.cpp's truecolor codec);
+# color.cpp's remaining app-side callers (do_color et al.) call down into it
+# through the unchanged color.h declarations. save_benchmark.cpp joins too
+# (nm-clean: every undefined symbol resolves in-set or in rots_entity);
+# savebench.cpp does NOT (page_string(), modify.cpp/app layer) and stays in
+# ROTS_SERVER_SOURCES below -- verified via `nm -uC` on the built archive,
+# see the rots_persist_linkcheck load-bearing test below.
+set(ROTS_PERSIST_SOURCES
+    account_cache.cpp account_management.cpp boards_json.cpp character_json.cpp
+    color_convert.cpp convert_exploits.cpp convert_plrobjs.cpp db_players.cpp
+    exploits_json.cpp mail_json.cpp objects_json.cpp obj_files.cpp
+    pkill_json.cpp save_benchmark.cpp
+)
+
 set(ROTS_SERVER_SOURCES
-    account_cache.cpp account_management.cpp act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
+    act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
-    boards.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
-    color.cpp comm.cpp convert_exploits.cpp convert_plrobjs.cpp
-    db_boot.cpp db_players.cpp db_world.cpp delayed_command_interpreter.cpp
-    exploits_json.cpp
+    boards.cpp char_utils.cpp char_utils_combat.cpp clerics.cpp
+    color.cpp comm.cpp
+    db_boot.cpp db_world.cpp delayed_command_interpreter.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
     limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
-    mystic.cpp obj2html.cpp objects_json.cpp objsave.cpp
+    mystic.cpp obj2html.cpp objsave.cpp
     olog_hai.cpp pkill.cpp profs.cpp protocol.cpp
-    ranger.cpp save_benchmark.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
+    ranger.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
@@ -170,10 +196,12 @@ add_executable(ageland ${ROTS_SERVER_SOURCES})
 # Pathed data-model headers (spec §9a). ONLY these two leaf dirs go on the
 # include path — never src/ itself (src/limits.h would shadow <limits.h>).
 # They contain nothing but rots/, so they cannot shadow any system header.
-# core/include now flows to ageland transitively via RotS::core's PUBLIC
-# target_include_directories (see the rots_core definition below); only
-# persist/include stays direct here until rots_persist exists.
-target_include_directories(ageland PRIVATE persist/include)
+# core/include flows to ageland transitively via RotS::core's PUBLIC
+# target_include_directories (see the rots_core definition below);
+# persist/include now flows the same way via RotS::persist's PUBLIC
+# target_include_directories (see the rots_persist definition below,
+# persist-split PS Task 4) -- this target no longer needs a direct entry of
+# its own for either.
 
 set_target_properties(ageland PROPERTIES CXX_EXTENSIONS OFF)
 
@@ -353,10 +381,32 @@ target_link_libraries(rots_entity PUBLIC rots_build_flags RotS::core RotS::platf
 # their own target_include_directories below.
 target_include_directories(rots_entity PRIVATE persist/include)
 
+# --- L3: persist layer ---------------------------------------------------------
+add_library(rots_persist STATIC ${ROTS_PERSIST_SOURCES})
+add_library(RotS::persist ALIAS rots_persist)
+set_target_properties(rots_persist PROPERTIES CXX_EXTENSIONS OFF)
+# PUBLIC RotS::entity + RotS::core + RotS::platform: db_players.cpp/
+# character_json.cpp/etc.'s legitimate downward edges land in all three
+# layers (entity helpers, data model, platform helpers/logging) -- see the
+# ROTS_PERSIST_SOURCES comment above. PUBLIC so all three layers' include
+# roots flow transitively to any consumer that links only RotS::persist.
+target_link_libraries(rots_persist PUBLIC rots_build_flags RotS::entity RotS::core RotS::platform)
+# db_players.cpp/character_json.cpp/objects_json.cpp/color_convert.cpp/etc.
+# reach "rots/persist/file_formats.h". PUBLIC (unlike rots_entity's PRIVATE
+# above): several ROTS_SERVER_SOURCES files that stay app-side (db_boot.cpp,
+# db_world.cpp, act_info.cpp, act_wiz.cpp, interpre.cpp, objsave.cpp,
+# savebench.cpp, color.cpp) also reach persist/include headers directly and
+# now compile as part of the `ageland` target alongside RotS::persist, so
+# this needs to flow transitively to any consumer that links RotS::persist
+# -- see the ageland target_include_directories comment below for how this
+# retires that target's own former direct persist/include entry.
+target_include_directories(rots_persist PUBLIC persist/include)
+
 target_link_libraries(ageland PRIVATE
     RotS::platform
     RotS::core
     RotS::entity
+    RotS::persist
     rots_build_flags
     $<$<PLATFORM_ID:Windows>:ws2_32>
 )
@@ -366,15 +416,18 @@ target_link_options(ageland PRIVATE
 )
 
 # --- rots_convert: the standalone character converter -------------------------
-# (db.cpp-split Task 3, spec Sec4b; re-plumbed onto RotS::entity in entity-seed
-# Task 6) -- a SECOND executable, its own main(), that links RotS::platform +
-# RotS::core + RotS::entity (entity_lifecycle.cpp/object_utils.cpp/
-# environment_utils.cpp, see the ROTS_ENTITY_SOURCES comment above) plus a
-# hand-picked persist-codec subset it still direct-compiles (db_players.cpp:
-# player-index/load/store/save, the JSON codecs, the account system, the
-# legacy exploit/plrobj binary-to-JSON one-time converters, and char_utils.cpp
-# -- its combat welds are next wave's work, so it stays direct rather than
-# joining a library yet) -- deliberately NO db_world.cpp/db_boot.cpp and NO
+# (db.cpp-split Task 3, spec Sec4b; re-plumbed onto RotS::entity in
+# entity-seed Task 6, then onto RotS::persist in persist-split PS Task 4) --
+# a SECOND executable, its own main(), that links RotS::platform +
+# RotS::core + RotS::entity + RotS::persist (db_players.cpp: player-index/
+# load/store/save, the JSON codecs, the account system, the legacy
+# exploit/plrobj binary-to-JSON one-time converters, color_convert.cpp,
+# obj_files.cpp -- see the ROTS_PERSIST_SOURCES comment above) plus exactly
+# three TUs it still direct-compiles: convert_main.cpp (its own main()),
+# convert_stubs.cpp (the weld ledger for whatever this executable still
+# doesn't link), and char_utils.cpp (not nm-clean for the library -- stays
+# direct, per that file's own callers still needing app-layer symbols this
+# executable never links) -- deliberately NO db_world.cpp/db_boot.cpp and NO
 # combat/commands/app translation unit. This is the executable acid-test
 # that the persistence boundary holds: if a future change re-welds
 # db_players.cpp/entity_lifecycle.cpp to the game (combat/world/commands/
@@ -382,29 +435,29 @@ target_link_options(ageland PRIVATE
 # added to `all` (no EXCLUDE_FROM_ALL) so every CI job builds it -- see
 # docs/superpowers/specs/2026-07-16-library-architecture-design.md Sec4b/
 # Sec11 and docs/superpowers/plans/2026-07-17-db-split-and-rots-convert.md
-# Task 3. objsave.cpp/boards.cpp/mail.cpp/pkill.cpp are deliberately OUT this
-# wave (their welds are catalogued follow-on work in convert_stubs.cpp,
-# the file-scoped "weld ledger" documenting every symbol substituted for an
+# Task 3. objsave.cpp's G half (Crash_load/Crash_listrent and the rent/
+# receptionist flow) plus boards.cpp/mail.cpp/pkill.cpp's runtime/bridge/
+# gameplay halves are still deliberately OUT this wave -- their P (codec)
+# halves already arrive via RotS::persist (obj_files.cpp/pkill_json.cpp/
+# mail_json.cpp/boards_json.cpp), so those welds are resolved, not
+# follow-on; the G halves stay app-side by design. convert_stubs.cpp, the
+# file-scoped "weld ledger" documenting every symbol substituted for an
 # excluded app/combat home and why the converter's own call graph never
-# reaches it).
+# reaches it, now carries only the ledger's 5 surviving stub bodies, all
+# fight/handler/wild_fighting (char_utils.cpp) symbols.
 #
 # This target is CMake-only this wave (not added to the flat src/Makefile /
 # src/tests/Makefile, which compile same-directory only against a single
 # hand-maintained OBJFILES list per binary) -- see docs/BUILD.md.
 add_executable(rots_convert
-    convert_main.cpp convert_stubs.cpp
-    db_players.cpp
-    character_json.cpp objects_json.cpp exploits_json.cpp
-    account_management.cpp account_cache.cpp
-    convert_exploits.cpp convert_plrobjs.cpp
-    char_utils.cpp
+    convert_main.cpp convert_stubs.cpp char_utils.cpp
 )
-target_include_directories(rots_convert PRIVATE persist/include)
 set_target_properties(rots_convert PROPERTIES CXX_EXTENSIONS OFF)
 target_link_libraries(rots_convert PRIVATE
     RotS::platform
     RotS::core
     RotS::entity
+    RotS::persist
     rots_build_flags
     $<$<PLATFORM_ID:Windows>:ws2_32>
 )
@@ -541,13 +594,15 @@ if(ROTS_BUILD_TESTS)
     endif()
     include(GoogleTest)
 
-    # ageland_tests deliberately does NOT link rots_core/rots_entity (TESTING
-    # parity, same as the rots_platform pattern above): it keeps compiling
-    # config.cpp/consts.cpp/output_seam.cpp and entity_lifecycle.cpp/
-    # object_utils.cpp/environment_utils.cpp directly via ROTS_CORE_SOURCES/
-    # ROTS_ENTITY_SOURCES instead (all now live only in those lists — see the
-    # ROTS_CORE_SOURCES / ROTS_ENTITY_SOURCES comments above).
-    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_ENTITY_SOURCES} ${ROTS_TEST_SOURCES})
+    # ageland_tests deliberately does NOT link rots_core/rots_entity/
+    # rots_persist (TESTING parity, same as the rots_platform pattern
+    # above): it keeps compiling config.cpp/consts.cpp/output_seam.cpp,
+    # entity_lifecycle.cpp/object_utils.cpp/environment_utils.cpp, and (as of
+    # persist-split PS Task 4) db_players.cpp/character_json.cpp/etc.
+    # directly via ROTS_CORE_SOURCES/ROTS_ENTITY_SOURCES/ROTS_PERSIST_SOURCES
+    # instead (all now live only in those lists — see the ROTS_CORE_SOURCES /
+    # ROTS_ENTITY_SOURCES / ROTS_PERSIST_SOURCES comments above).
+    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_ENTITY_SOURCES} ${ROTS_PERSIST_SOURCES} ${ROTS_TEST_SOURCES})
 
     # Same C++ standard as ageland (see above) — required because these targets are
     # defined per-target here rather than via a project-wide CMAKE_CXX_STANDARD.
@@ -803,6 +858,41 @@ if(ROTS_BUILD_TESTS)
             LINK_DEPENDS "$<TARGET_FILE:rots_entity>")
         if(BUILD_TESTING)
             add_test(NAME EntityLayerAcyclicity COMMAND rots_entity_linkcheck)
+        endif()
+
+        # Load-bearing persist-layer acyclicity check (spec §11), mirroring the
+        # rots_entity_linkcheck block above (persist-split PS Task 4).
+        # rots_persist (db_players.cpp + character_json.cpp + objects_json.cpp +
+        # exploits_json.cpp + account_management.cpp + account_cache.cpp +
+        # obj_files.cpp + pkill_json.cpp + mail_json.cpp + boards_json.cpp +
+        # convert_exploits.cpp + convert_plrobjs.cpp + save_benchmark.cpp +
+        # color_convert.cpp — see the ROTS_PERSIST_SOURCES comment above) is
+        # verified to have no upward symbol references beyond its legal
+        # downward edges into rots_entity, rots_core, and rots_platform. The
+        # checker force-loads rots_persist itself (so every rots_persist
+        # symbol is pulled in and any OTHER unresolved reference fails the
+        # link) and normal-links RotS::entity + RotS::core + RotS::platform
+        # to resolve those legitimate lower-layer edges — a strictly tighter
+        # guarantee than "any lower layer is allowed".
+        add_executable(rots_persist_linkcheck tests/persist_linkcheck_main.cpp)
+        target_link_libraries(rots_persist_linkcheck PRIVATE rots_build_flags RotS::entity RotS::core RotS::platform)
+        add_dependencies(rots_persist_linkcheck rots_persist)
+        if(APPLE)
+            target_link_options(rots_persist_linkcheck PRIVATE
+                -Wl,-force_load,$<TARGET_FILE:rots_persist>)
+        else()
+            target_link_options(rots_persist_linkcheck PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:rots_persist> -Wl,--no-whole-archive)
+        endif()
+        # LINK_DEPENDS: same rationale as rots_entity_linkcheck above — the
+        # archive path only appears inside a raw linker flag string, invisible
+        # to CMake's normal target_link_libraries dependency tracking, so an
+        # incremental rebuild that changes only a rots_persist source needs
+        # this to force a relink instead of silently reusing a stale binary.
+        set_target_properties(rots_persist_linkcheck PROPERTIES
+            LINK_DEPENDS "$<TARGET_FILE:rots_persist>")
+        if(BUILD_TESTING)
+            add_test(NAME PersistLayerAcyclicity COMMAND rots_persist_linkcheck)
         endif()
     endif()
 endif()

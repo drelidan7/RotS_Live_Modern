@@ -41,6 +41,7 @@
 #include "color.h"
 #include "comm.h"
 #include "db.h"
+#include "persist_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
@@ -157,7 +158,10 @@ void assign_the_shopkeepers(void);
 void build_player_index(void);
 void boot_mudlle();
 void boot_crimes();
-int file_to_string(std::string_view name, char* buf);
+// file_to_string() itself has no callers left in this file (only
+// file_to_string_alloc() called it, and both relocated together to
+// db_players.cpp -- persist-split PS Task 4); file_to_string_alloc()'s
+// declaration stays -- this file's boot-time text-file loads still call it.
 int file_to_string_alloc(std::string_view name, char** buf);
 void check_start_rooms(void);
 void renum_world(void);
@@ -174,7 +178,7 @@ void load_messages(void);
 void weather_and_time(int mode);
 void assign_command_pointers(void);
 void boot_social_messages(void);
-void update_obj_file(void); /* In objsave.c */
+void update_obj_file(void); /* In obj_files.cpp */
 void sort_commands(void);
 void load_banned(void);
 // void	Read_Invalid_List(void);
@@ -495,55 +499,13 @@ void reset_time(void)
     initialize_weather();
 }
 
-/* read contets of a text file, alloc space, point buf to it */
-int file_to_string_alloc(std::string_view name, char** buf)
-{
-    char temp[MAX_STRING_LENGTH];
-
-    if (file_to_string(name, temp) < 0)
-        return -1;
-
-    RELEASE(*buf);
-
-    *buf = str_dup(temp);
-    return 0;
-}
-
-/* read contents of a text file, and place in buf */
-int file_to_string(std::string_view name, char* buf)
-{
-    const std::string name_owner(rots::text::truncate_at_null(name));
-    FILE* fl;
-    char tmp[100];
-
-    *buf = '\0';
-
-    if (!(fl = fopen(name_owner.c_str(), "r"))) {
-        perror(std::format("Error reading {}", name_owner).c_str());
-        *buf = '\0';
-        return (-1);
-    }
-
-    do {
-        fgets(tmp, 99, fl);
-
-        if (!feof(fl)) {
-            if (strlen(buf) + strlen(tmp) + 2 > MAX_STRING_LENGTH) {
-                log("SYSERR: fl->strng: string too big (db.c, file_to_string)");
-                *buf = '\0';
-                return (-1);
-            }
-
-            strcat(buf, tmp);
-            *(buf + strlen(buf) + 1) = '\0';
-            *(buf + strlen(buf)) = '\r';
-        }
-    } while (!feof(fl));
-
-    fclose(fl);
-
-    return (0);
-}
+// file_to_string()/file_to_string_alloc() relocated to db_players.cpp
+// (persist-split PS Task 4, controller-adjudicated relocation): pure
+// filesystem I/O, no comm/world/combat access, and load_player()
+// (db_players.cpp) is their primary consumer. This file's many boot-time
+// text-file loads (wizlist/motd/help/etc., below and above) keep calling
+// file_to_string_alloc() through the local forward declaration a few lines
+// up, now resolving down into rots_persist.
 
 
 //*************************************************************************
@@ -716,4 +678,12 @@ void add_exploit_record(int recordtype, char_data* victim, int iIntParam, const 
         break;
     }
     return;
+}
+
+// Registers add_exploit_record() (above) as persist_hooks.h's
+// exploit-capture hook (persist-split PS Task 4). Called once from
+// run_the_game(), before boot_db() -- see persist_hooks.h.
+void register_exploit_capture_hook()
+{
+    rots::persist::set_exploit_capture_hook(add_exploit_record);
 }

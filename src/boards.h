@@ -154,6 +154,11 @@ struct BoardSaveData {
 // bytes of message text -- both including their own trailing NUL byte.
 bool legacy_board_file_from_binary(const std::string& bytes, BoardSaveData* data, std::string* error_message = nullptr);
 
+// Promoted to external linkage (persist-split PS Task 2): boards.cpp's
+// persist bridge (save_board()) calls this cross-TU after the boards_json
+// codec moved to boards_json.cpp.
+bool write_file_contents_atomically(std::string_view path, std::string_view contents, std::string* error_message);
+
 std::string serialize_board_to_json(const BoardSaveData& data);
 /// Deserializes bounded board JSON, stopping at its first embedded null byte.
 bool deserialize_board_from_json(std::string_view json, BoardSaveData *data, std::string *error_message = nullptr);

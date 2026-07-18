@@ -63,9 +63,11 @@
 // branches can never BOTH be true (they would require the same value to be
 // simultaneously NOWHERE and not-NOWHERE). world_room_vnum() is therefore
 // PROVABLY UNREACHABLE from this call site, for every character, not just
-// well-formed ones -- see convert_stubs.cpp's world_room_vnum() entry for
-// the stub this leaves in place (a loud, never-supposed-to-fire guard, not
-// a silent behavioral substitute).
+// well-formed ones -- see persist_hooks.h's dispatch_room_vnum() and its
+// null default (a loud, never-supposed-to-fire tripwire log + NOWHERE, not
+// a silent behavioral substitute); the world_room_vnum() stub that used to
+// live in convert_stubs.cpp was deleted in persist-split PS Task 4 when the
+// direct call was inverted into that hook.
 //
 // save_char() also refuses to save entirely when `IS_NPC(ch) ||
 // !ch->desc` (both true for a converter-loaded PC with no live session).

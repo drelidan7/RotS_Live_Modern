@@ -213,16 +213,8 @@ int get_tactics(const char_data& character)
     return character.specials.tactics;
 }
 
-//============================================================================
-void set_tactics(char_data& character, int value)
-{
-    if (value <= 0)
-        value = TACTICS_NORMAL;
-
-    if (!is_npc(character)) {
-        character.specials.tactics = static_cast<ubyte>(value);
-    }
-}
+// set_tactics() relocated to entity_lifecycle.cpp (persist-split PS Task 4,
+// controller-adjudicated relocation); declaration unchanged (char_utils.h).
 
 //============================================================================
 int get_shooting(const char_data& character)
@@ -233,15 +225,8 @@ int get_shooting(const char_data& character)
     return character.specials.shooting;
 }
 
-//============================================================================
-void set_shooting(char_data& character, int value)
-{
-    if (value <= 0)
-        value = SHOOTING_NORMAL;
-
-    if (!is_npc(character))
-        character.specials.shooting = static_cast<ubyte>(value);
-}
+// set_shooting() relocated to entity_lifecycle.cpp (persist-split PS Task 4,
+// controller-adjudicated relocation); declaration unchanged (char_utils.h).
 
 //============================================================================
 int get_casting(const char_data& character)
@@ -252,16 +237,13 @@ int get_casting(const char_data& character)
     return character.specials.casting;
 }
 
-//============================================================================
-void set_casting(char_data& character, int value)
-{
-    if (value <= 0)
-        value = CASTING_NORMAL;
-
-    if (is_pc(character)) {
-        character.specials.casting = static_cast<ubyte>(value);
-    }
-}
+// set_casting() relocated to entity_lifecycle.cpp (persist-split PS Task 4,
+// controller-adjudicated relocation) with one mechanical substitution --
+// the relocated body uses !is_npc(character) instead of is_pc(character),
+// since is_pc() itself stays here (app layer) and calling it from
+// rots_entity would be an upward edge; see entity_lifecycle.cpp's copy for
+// why that substitution is provably identical. Declaration unchanged
+// (char_utils.h).
 
 //============================================================================
 int get_condition(const char_data& character, int index)

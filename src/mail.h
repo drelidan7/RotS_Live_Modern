@@ -63,12 +63,12 @@ char* read_delete(char* recipient, char* recipient_formatted, int is_good);
 // every live message flat: `{"messages": [{"to","from","mail_time","body"}]}`.
 // The legacy block structs/constants (BLOCK_SIZE, HEADER_BLOCK_DATASIZE,
 // DATA_BLOCK_DATASIZE, HEADER_BLOCK/LAST_BLOCK/DELETED_BLOCK, and the two
-// on-disk structs) are now converter-local (mail.cpp, mail_json namespace)
+// on-disk structs) are now converter-local (mail_json.cpp)
 // since nothing outside mail.cpp ever referenced them.
 //
 // Public mail API (scan_file/has_mail/store_mail/read_delete) keeps its
 // exact signatures and game-visible behavior. Written atomically (temp file
-// + rename, the write_player_objects_json pattern in objsave.cpp).
+// + rename, the write_player_objects_json pattern in obj_files.cpp).
 namespace mail_json {
 
 // One live message. mail_time is the historical `time(0)` value (seconds
@@ -99,6 +99,12 @@ struct MailStoreData {
 // scan_file, and remains so here) -- see
 // docs/superpowers/sdd/p2a-task-5-report.md.
 bool legacy_mail_file_from_binary(const std::string& bytes, MailStoreData* data, std::string* error_message = nullptr);
+
+// Promoted to external linkage (persist-split PS Task 2): mail.cpp's
+// runtime store (scan_file/persist_mail_or_log) calls these two cross-TU
+// after the mail_json codec moved to mail_json.cpp.
+bool read_whole_file_contents(std::string_view path, std::string* bytes);
+bool write_file_contents_atomically(std::string_view path, std::string_view contents, std::string* error_message);
 
 std::string serialize_mail_to_json(const MailStoreData& data);
 /// Deserializes a bounded mail JSON document, stopping at its first embedded null byte.

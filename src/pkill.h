@@ -26,7 +26,7 @@ typedef struct {
 void boot_pkills();
 void pkill_create(struct char_data*);
 
-// Phase 2a Task 6: pkill persistence as JSON (see pkill.cpp for the
+// Phase 2a Task 6: pkill persistence as JSON (see pkill_json.cpp for the
 // implementation). Declared here (rather than kept file-local) so the
 // pod_persistence_json_tests.cpp TU can exercise the codec + converter
 // directly against synthesized legacy fixtures, matching the
@@ -46,6 +46,8 @@ std::string serialize_pkill_to_json(const PkillStoreData& data);
 bool deserialize_pkill_from_json(std::string_view json, PkillStoreData *data, std::string *error_message = nullptr);
 bool pkill_records_equal(const std::vector<PKILL>& a, const std::vector<PKILL>& b);
 std::string pkill_json_path(std::string_view legacy_path);
+bool load_pkill_json_store(std::string_view json_path, std::vector<PKILL>* records, std::string* error_message = nullptr);
+bool write_pkill_json_store(std::string_view json_path, const std::vector<PKILL>& records, std::string* error_message = nullptr);
 bool convert_legacy_pkill_file(std::string_view legacy_path, std::string* error_message = nullptr);
 
 } // namespace pkill_json

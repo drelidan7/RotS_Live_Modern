@@ -112,6 +112,8 @@ long top_idnum = 0; // moved here from db_players.cpp (entity-seed Task 5,
                     // ch->specials2.idnum from ++top_idnum below.
                     // db_players.cpp keeps reading/writing it via extern.
 extern long race_affect[]; // consts.cpp -- init_char() reads race_affect[GET_RACE(ch)].
+extern byte language_number; // consts.cpp -- recalc_skills() below (relocated PS Task 4).
+extern byte language_skills[]; // consts.cpp -- recalc_skills() below (relocated PS Task 4).
 
 /************************************************************************
  *  entity_hooks.h dispatch (entity-seed Task 5)                       *
@@ -1053,6 +1055,53 @@ void set_specialization(char_data& character, game_types::player_specs value)
     }
 }
 
+// char_utils.cpp:217 -- relocated verbatim (persist-split PS Task 4,
+// controller-adjudicated relocation, same pattern as set_specialization()
+// above): db_players.cpp's store_to_char() calls these three setters
+// unconditionally, so they needed to resolve inside rots_entity for
+// rots_persist's linkcheck. Each is a plain char_data& field mutator gated
+// on is_npc() (already in this archive, above); the getters
+// (get_tactics()/get_shooting()/get_casting()) are not referenced from the
+// persist tier and stay in char_utils.cpp. Declarations unchanged
+// (char_utils.h).
+void set_tactics(char_data& character, int value)
+{
+    if (value <= 0)
+        value = TACTICS_NORMAL;
+
+    if (!is_npc(character)) {
+        character.specials.tactics = static_cast<ubyte>(value);
+    }
+}
+
+// char_utils.cpp:237 -- relocated verbatim (persist-split PS Task 4,
+// controller-adjudicated relocation); declaration unchanged (char_utils.h).
+void set_shooting(char_data& character, int value)
+{
+    if (value <= 0)
+        value = SHOOTING_NORMAL;
+
+    if (!is_npc(character))
+        character.specials.shooting = static_cast<ubyte>(value);
+}
+
+// char_utils.cpp:256 -- relocated verbatim (persist-split PS Task 4,
+// controller-adjudicated relocation) with ONE mechanical substitution:
+// char_utils.cpp's original body gated on `is_pc(character)`; is_pc()
+// itself stays in char_utils.cpp (app layer) and calling it from here would
+// be an upward edge, so this uses `!is_npc(character)` instead -- provably
+// identical, since char_utils.cpp's is_pc() is defined as exactly
+// `return !is_npc(character);` (see that file, next to get_casting()).
+void set_casting(char_data& character, int value)
+{
+    if (value <= 0)
+        value = CASTING_NORMAL;
+
+    if (!is_npc(character)) {
+        character.specials.casting = static_cast<ubyte>(value);
+    }
+}
+
 } // namespace utils
 
 // char_utils.cpp -- specialization_data::reset() (global scope, not inside
@@ -1452,6 +1501,105 @@ void recalc_abilities(char_data* character)
 
             /*---------------- Beornings get a different speed calc here -----------------*/
         }
+    }
+}
+
+// spec_pro.cpp:129 -- relocated verbatim (persist-split PS Task 4,
+// controller-adjudicated relocation, mirroring entity-seed Task 5's
+// affect/derived-ability engine move): db_players.cpp's store_to_char()
+// calls this unconditionally, so it needed to resolve inside rots_entity for
+// rots_persist's linkcheck. Reads only skills[]/square_root[]/
+// language_number/language_skills (consts.cpp, already rots_core) plus
+// char_data fields -- no comm/world/combat_list access, so it is the
+// sibling of recalc_abilities() above. Declaration unchanged (spells.h);
+// spec_pro.cpp's own two other call sites (handle_pracs() and a wiz
+// learning-reset command) now call down into this TU through that
+// declaration.
+void recalc_skills(struct char_data* ch)
+{
+
+    int skill_no, pracs_used, tmps, tmp, difficulty, skill_level;
+    if (ch->knowledge.empty() || ch->skills.empty())
+        return;
+
+    for (skill_no = 1; skill_no < MAX_SKILLS; skill_no++) {
+        pracs_used = ch->skills[skill_no] * 20;
+
+        if (!skills[skill_no].learn_diff)
+            skills[skill_no].learn_diff = 10;
+        skill_level = skills[skill_no].level;
+
+        /* 3 pracs in weapon mastery is same as 1 prac in all weapons */
+        if ((skill_no >= 0) && (skill_no < 10) && (skill_no != 8) && (skill_no != 7))
+            pracs_used += ch->skills[10] * 20 * 3 / 8;
+
+        difficulty = skills[skill_no].learn_diff;
+
+        /* pracs /= coof. - (lvl/30)*(1-coof) (where coof 0 to 1) */
+        if (skills[skill_no].type != PROF_WARRIOR) {
+            tmps = GET_PROF_COOF((int)skills[skill_no].type, ch) - skill_level * (1000 - GET_PROF_COOF((int)skills[skill_no].type, ch)) / 30;
+
+            if (skill_level < 20)
+                tmps = tmps * (80 + skill_level) / 100 + 200 - skills[(int)skill_no].level * 10;
+
+            tmps = MIN(1000, tmps);
+
+            pracs_used = pracs_used * tmps * 10;
+        } else
+            pracs_used = pracs_used * 10000;
+
+        // pracs used * 100000 with adjustment
+        tmps = 1000 - pracs_used / (difficulty * 100);
+        ch->knowledge[skill_no] = (10000 - tmps * tmps / 100) / 99;
+        if (tmps < 0)
+            ch->knowledge[skill_no] = 100;
+    }
+
+    switch (GET_RACE(ch)) {
+    case RACE_GOD:
+        tmp = LANG_BASIC;
+        break;
+    case RACE_HUMAN:
+    case RACE_DWARF:
+    case RACE_WOOD:
+    case RACE_HOBBIT:
+    case RACE_HIGH:
+        tmp = LANG_HUMAN;
+        break;
+    case RACE_BEORNING:
+        tmp = LANG_ANIMAL;
+        break;
+    case RACE_URUK:
+    case RACE_HARAD:
+    case RACE_ORC:
+    case RACE_HARADRIM:
+    case RACE_OLOGHAI:
+    case RACE_MAGUS:
+        tmp = LANG_ORC;
+        break;
+    case RACE_EASTERLING:
+        tmp = LANG_BASIC;
+        break;
+    default:
+        tmp = LANG_BASIC;
+        break;
+    }
+
+    // Set the spoken language.
+    ch->player.language = tmp;
+
+    if (tmp != LANG_BASIC)
+        SET_KNOWLEDGE(ch, tmp, 100);
+
+    if (GET_RACE(ch) == RACE_GOD)
+        for (tmp = 0; tmp < language_number; tmp++)
+            SET_KNOWLEDGE(ch, language_skills[tmp], 100);
+
+    if (!IS_NPC(ch) && (GET_RACE(ch) == RACE_MAGUS) && (GET_RAW_KNOWLEDGE(ch, SPELL_BLINK) == 0))
+        SET_KNOWLEDGE(ch, SPELL_BLINK, 10);
+
+    if (!IS_NPC(ch) && (GET_RACE(ch) == RACE_BEORNING) && (GET_RAW_KNOWLEDGE(ch, SKILL_NATURAL_ATTACK) == 0)) {
+        SET_KNOWLEDGE(ch, SKILL_NATURAL_ATTACK, 10);
     }
 }
 

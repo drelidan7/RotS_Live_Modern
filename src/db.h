@@ -149,6 +149,10 @@ int real_room(int);
 // Seam (db.cpp-split Task 1, spec Sec4): keeps the persist path free of
 // direct world[] access; defined in db_world.cpp.
 int world_room_vnum(int room_index);
+// Registers world_room_vnum() (above) as persist_hooks.h's room-vnum hook.
+// Called once from run_the_game(), before boot_db() (persist-split PS
+// Task 4). Defined in db_world.cpp.
+void register_room_vnum_hook();
 int real_program(int);
 char *fread_string(FILE *, std::string_view);
 int real_object(int);
@@ -159,6 +163,10 @@ void record_crime(struct char_data *, struct char_data *, int, int);
 void add_crime(int, int, int, int, int);
 void forget_crimes(struct char_data *, int);
 void add_exploit_record(int, struct char_data *, int, const char *);
+// Registers add_exploit_record() (above) as persist_hooks.h's exploit-capture
+// hook. Called once from run_the_game(), before boot_db() (persist-split PS
+// Task 4). Defined in db_boot.cpp.
+void register_exploit_capture_hook();
 int delete_exploits_file(char *);
 void delete_character_file(struct char_data *);
 void move_char_deleted(int);

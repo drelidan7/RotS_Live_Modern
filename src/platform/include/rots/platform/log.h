@@ -55,6 +55,14 @@ void write(std::string_view message, char type, int level, bool to_file);
 // two values can never silently diverge.
 inline constexpr int kVmudlogBroadcastLevel = 93;
 
+// dice()'s (rots_util.cpp, world-seed Task 1) diagnostic-log level when
+// size < 1 -- LEVEL_IMMORT's current value (rots/core/types.h). Hard-coded
+// here for the same reason as kVmudlogBroadcastLevel above (this header must
+// not include rots/core/types.h just for one constant). utility.cpp
+// static_asserts this literal against LEVEL_IMMORT directly, so the two
+// values can never silently diverge.
+inline constexpr int kDiceUnderflowLogLevel = 91;
+
 } // namespace rots::log
 
 /* defines for mudlog() */
@@ -71,3 +79,15 @@ inline constexpr int kVmudlogBroadcastLevel = 93;
 // BUFSIZE-2048 buffer and calling
 // rots::log::write(buf, type, rots::log::kVmudlogBroadcastLevel, true).
 void vmudlog(char type, const char* format, ...);
+
+// mudlog() itself (global namespace): canonical declaration is utils.h
+// (game layer), duplicated here -- same declared-elsewhere precedent as
+// vmudlog() above -- so dice() (rots_util.cpp, an L0/rots_platform TU that
+// must not include utils.h, world-seed Task 1) can call it directly. Defined
+// in rots_log.cpp (Task 2 rewire); see that file's banner. Parameters spelled
+// with their underlying primitive types (short/unsigned char) rather than
+// platdef.h's sh_int/byte aliases -- identical types, identical mangled
+// signature -- so this header does not need to include platdef.h (which
+// platform/include's own search path cannot reach; see src/platdef.h) just
+// for two typedefs.
+void mudlog(std::string_view message, char type, short level, unsigned char file);

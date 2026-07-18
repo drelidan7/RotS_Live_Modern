@@ -28,6 +28,13 @@
 
 extern struct room_data world;
 
+// db_boot.cpp -- weather_info's DEFINITION moves here (storage-
+// placement only; world-seed Task 1): this file is its single writer
+// (the weather/sunlight update loop below). utils.h already declares
+// `extern struct weather_data weather_info;` globally, so every other
+// reader keeps reaching it exactly as before.
+struct weather_data weather_info; /* the infomation about the weather */
+
 int sun_events[12][2] = { // Each month has two variables - sunrise and sunset
     { 9, 17 }, // The default value for any month is set here.
     { 8, 18 },

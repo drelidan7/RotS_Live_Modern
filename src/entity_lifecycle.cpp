@@ -307,6 +307,16 @@ struct alias_list* owned_alias_list::clone(struct alias_list* src)
     return head;
 }
 
+// db_boot.cpp -- character_list/object_list's DEFINITIONS move here
+// (storage-placement only; world-seed Task 1): they are lists OF
+// entities, and this file already owns free_char()/free_obj() (below),
+// the functions that unlink nodes from them. No shared header declares
+// either one (verified across the tree) -- every consuming TU keeps its
+// own local `extern` re-declaration, unaffected by this move.
+struct char_data* character_list = 0; /* global linked list of chars	*/
+
+struct obj_data* object_list = 0; /* the global linked list of objs	*/
+
 /* release memory allocated for a char struct */
 void free_char(struct char_data* ch)
 {
@@ -677,9 +687,10 @@ void put_to_affected_type_pool(struct affected_type* oldaf)
 }
 
 // handler.cpp -- char_exists()/set_char_exists()/remove_char_exists() bit-
-// array bookkeeping. register_npc_char()/register_pc_char() (handler.cpp)
-// and utils::is_riding()/is_ridden() (utils.h macros) still reach these by
-// extern/declaration.
+// array bookkeeping. register_npc_char() (below, world-seed Task 1) now
+// calls these directly (same TU); register_pc_char() (handler.cpp, a one-
+// line forwarder onto register_npc_char()) and utils::is_riding()/
+// is_ridden() (utils.h macros) still reach these by extern/declaration.
 char char_control_array[MAX_CHARACTERS / 8 + 1];
 
 int char_exists(int num)
@@ -693,6 +704,44 @@ void set_char_exists(int num)
 void remove_char_exists(int num)
 {
     char_control_array[num / 8] &= ~(1 << (num % 8));
+}
+
+// handler.cpp -- register_npc_char() (+ its only global, last_control_set)
+// relocated here (world-seed Task 1): pure abs_number allocation over the
+// char_exists() bit-array above, which already lives in this file (entity-
+// seed Task 5) -- register_npc_char() no longer needs to reach it by
+// extern. register_pc_char() (handler.cpp), a one-line forwarder onto
+// register_npc_char(), stays in handler.cpp and calls down; declarations
+// for both remain unchanged in handler.h.
+long last_control_set = -1;
+
+int register_npc_char(struct char_data* mob)
+{
+    int i, flag;
+
+    if (!mob) {
+        log("register_char: zero char passed.");
+        return -1;
+    }
+    flag = 0;
+    for (i = last_control_set + 1; i < MAX_CHARACTERS; i++)
+        if (!char_exists(i))
+            break;
+    if (i == MAX_CHARACTERS) {
+        flag = 1;
+        for (i = 0; i <= last_control_set; i++)
+            if (!char_exists(i))
+                break;
+    }
+    if (flag && (i > last_control_set)) {
+        log("register_char: MUD IS OVERFLOWED.");
+        exit(0);
+    }
+    set_char_exists(i);
+    mob->abs_number = i;
+    last_control_set = i;
+
+    return i;
 }
 
 namespace {

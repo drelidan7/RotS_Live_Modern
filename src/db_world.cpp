@@ -106,6 +106,15 @@ int* mobile_program_zone;
 int num_of_programs;
 
 int new_mud = 0;
+
+// db_boot.cpp -- mini_mud/boot_mode's DEFINITIONS move here (storage-
+// placement only; world-seed Task 1): both are boot-mode flags read
+// throughout the world loaders below (mini_mud) and by the reboot-
+// detection check further down (boot_mode). db_boot.cpp/comm.cpp keep
+// reading/writing them via extern.
+int mini_mud = 0; /* mini-mud mode?		*/
+int boot_mode = 0; /* local var, to let know that reboot goes on */
+
 extern int r_mortal_start_room[]; /* rnum of mortal start room	*/
 extern int r_mortal_idle_room[]; /* rnum of mortal idle room	*/
 int r_immort_start_room; /* rnum of immort start room	*/
@@ -116,17 +125,20 @@ char world_map[WORLD_AREA + 1];
 char small_map[2 * SMALL_WORLD_RADIUS + 3]
               [4 * SMALL_WORLD_RADIUS + 7]; // Ingolemo small_map addition
 
-// The following remain DEFINED in db.cpp (B: boot-orchestration globals) but
-// are read by the world loaders below; re-declared locally per this
-// codebase's existing convention for cross-TU globals (see e.g. db.cpp's own
-// callers act_comm.cpp/fight.cpp re-declaring `extern struct room_data world;`).
+// The following remain DEFINED in db_boot.cpp (B: boot-orchestration
+// globals) but are read by the world loaders below; re-declared locally
+// per this codebase's existing convention for cross-TU globals (see e.g.
+// db.cpp's own callers act_comm.cpp/fight.cpp re-declaring `extern struct
+// room_data world;`). character_list/object_list moved to
+// entity_lifecycle.cpp (world-seed Task 1, storage-placement only --
+// still definition-only, still read here by extern; see that file's own
+// ownership comment). mini_mud/boot_mode moved into THIS file (above,
+// next to new_mud) the same wave.
 extern char buf[MAX_STRING_LENGTH];
 extern char buf1[MAX_STRING_LENGTH];
 extern char buf2[MAX_STRING_LENGTH];
 extern struct char_data* character_list;
 extern struct obj_data* object_list;
-extern int mini_mud;
-extern int boot_mode;
 
 // Also cross-TU externs db.cpp's original "external functions" prototype
 // block declared (not W-classified globals themselves, just needed by the

@@ -99,20 +99,27 @@ char arg[MAX_STRING_LENGTH];
 // `world` directly (see AGENTS.md's persist/world seam note).
 extern struct room_data world;
 
-struct char_data* character_list = 0; /* global linked list of chars	*/
-
-struct obj_data* object_list = 0; /* the global linked list of objs	*/
+// character_list/object_list now DEFINED in entity_lifecycle.cpp
+// (world-seed Task 1, storage-placement only) -- they are lists OF
+// entities, and that file already owns free_char()/free_obj(), the
+// functions that unlink nodes from them. Neither is referenced
+// elsewhere in this file, so no extern re-declaration is needed here.
 
 struct message_list fight_messages[MAX_MESSAGES]; /* fighting messages	*/
 
 
 int no_mail = 0; /* mail disabled?		*/
-int mini_mud = 0; /* mini-mud mode?		*/
+// mini_mud now DEFINED in db_world.cpp (world-seed Task 1,
+// storage-placement only). Not referenced elsewhere in this file, so
+// no extern re-declaration is needed here.
 int no_rent_check = 0; /* skip rent check on boot?	*/
 time_t boot_time = 0; /* time of mud boot; time_t (not long) so &boot_time is a valid time_t* for
                          localtime() on Windows LLP64 -- Phase 3 Task 6 */
 int restrict = 0; /* level of game restriction	*/
-int boot_mode = 0; /* local var, to let know that reboot goes on */
+// boot_mode now DEFINED in db_world.cpp (world-seed Task 1,
+// storage-placement only); boot_db() below still reads/writes it, so
+// it keeps this extern.
+extern int boot_mode; /* local var, to let know that reboot goes on */
 char* credits = 0; /* game credits			*/
 char* news = 0; /* mud news			*/
 char* motd = 0; /* message of the day - mortals */
@@ -138,7 +145,10 @@ int top_of_helpt; /* top of help index table	*/
 
 long beginning_of_time = 650336715;
 struct time_info_data time_info; /* the infomation about the time   */
-struct weather_data weather_info; /* the infomation about the weather */
+// weather_info now DEFINED in weather.cpp (its single writer;
+// world-seed Task 1, storage-placement only). utils.h already
+// declares `extern struct weather_data weather_info;` globally, so no
+// new extern is needed here.
 
 struct char_data* waiting_list = 0; /*list of those with delayed commands*/
 struct char_data* fast_update_list = 0; /* list for fast updating */

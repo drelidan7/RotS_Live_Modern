@@ -92,7 +92,10 @@ ACMD(do_return);
 // char_control_array relocated to entity_lifecycle.cpp alongside
 // char_exists()/set_char_exists()/remove_char_exists() (entity-seed Task 5);
 // declarations unchanged in handler.h.
-long last_control_set = -1;
+//
+// last_control_set (formerly declared here) relocated to entity_lifecycle.cpp
+// too (world-seed Task 1), alongside register_npc_char() (below,
+// formerly here), its only nontrivial user.
 
 int dummy_affected_var = 17;
 // affected_list/affected_list_pool relocated to entity_lifecycle.cpp
@@ -2012,37 +2015,11 @@ char* money_message(int sum, int mode)
 }
 
 // char_exists()/set_char_exists()/remove_char_exists() (+ char_control_array,
-// removed above) relocated to entity_lifecycle.cpp (entity-seed Task 5);
-// declarations unchanged in handler.h.
-int register_npc_char(struct char_data* mob)
-{
-    int i, flag;
-
-    if (!mob) {
-        log("register_char: zero char passed.");
-        return -1;
-    }
-    flag = 0;
-    for (i = last_control_set + 1; i < MAX_CHARACTERS; i++)
-        if (!char_exists(i))
-            break;
-    if (i == MAX_CHARACTERS) {
-        flag = 1;
-        for (i = 0; i <= last_control_set; i++)
-            if (!char_exists(i))
-                break;
-    }
-    if (flag && (i > last_control_set)) {
-        log("register_char: MUD IS OVERFLOWED.");
-        exit(0);
-    }
-    set_char_exists(i);
-    mob->abs_number = i;
-    last_control_set = i;
-
-    return i;
-}
-
+// removed above) relocated to entity_lifecycle.cpp (entity-seed Task 5).
+// register_npc_char() (+ its only global, last_control_set, formerly
+// declared above) relocated there too (world-seed Task 1) -- pure
+// abs_number allocation over that same bit-array, so it no longer needs to
+// reach it by extern; declarations unchanged in handler.h.
 int register_pc_char(struct char_data* ch)
 {
 

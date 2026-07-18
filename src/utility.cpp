@@ -85,6 +85,14 @@ static void check_container_proto(struct obj_data* obj, struct char_data* ch);
 static_assert(rots::log::kVmudlogBroadcastLevel == LEVEL_GOD,
     "platform vmudlog level diverged from LEVEL_GOD");
 
+// dice() (relocated to rots_util.cpp, world-seed Task 1) logs at
+// rots::log::kDiceUnderflowLogLevel when size < 1; keep that platform-layer
+// literal pinned to LEVEL_IMMORT without rots/platform/log.h including
+// rots/core/types.h just for one constant (see log.h's comment on the
+// declaration).
+static_assert(rots::log::kDiceUnderflowLogLevel == LEVEL_IMMORT,
+    "platform dice() underflow log level diverged from LEVEL_IMMORT");
+
 /*
  * Adds data to the char_data structure specifying that
  * `ch' has been retired (the PLR_RETIRED bit), sets the
@@ -727,25 +735,6 @@ double number_d(double from, double to)
     }
 
     return number(to) + from;
-}
-
-/* simulates dice roll */
-int dice(int number, int size)
-{
-    int r;
-    int sum = 0;
-
-    //   assert(size >= 1);
-    if (size < 1) {
-        mudlog("Dice rolled with size < 1!", BRF, LEVEL_IMMORT, TRUE);
-        return 0;
-    }
-
-    for (r = 1; r <= number; r++) {
-        sum += (rots_rng::next() % size) + 1;
-    }
-
-    return (sum);
 }
 
 // rots_asprintf: portable stand-in for the asprintf() extension (see platform_compat.h

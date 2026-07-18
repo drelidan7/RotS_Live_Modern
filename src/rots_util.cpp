@@ -17,6 +17,7 @@
 
 #include "platdef.h" /* PREDEF_PLATFORM_WINDOWS + (on Windows) the Win32 API declarations rots_remove()/rots_rename_replace() need */
 #include "platform_compat.h" /* declares rots_remove()/rots_rename_replace() */
+#include "rots/platform/log.h" /* declares mudlog()/BRF + kDiceUnderflowLogLevel -- dice() below */
 #include "rots_rng.h"
 #include "text_view.h"
 
@@ -292,4 +293,30 @@ int number(int from, int to)
 #endif
 
     return (rots_rng::next() % upper_end) + from;
+}
+
+/* simulates dice roll */
+// Relocated verbatim from utility.cpp (world-seed Task 1), except two
+// deviations forced by rots_util.cpp being an L0/rots_platform TU: TRUE
+// (utils.h macro) inlined as 1, and LEVEL_IMMORT (rots/core/types.h, an L1
+// constant) replaced with rots::log::kDiceUnderflowLogLevel -- the same
+// hard-coded-plus-static_assert technique rots::log::kVmudlogBroadcastLevel
+// already uses (see rots/platform/log.h; utility.cpp carries the
+// static_assert pinning both constants to their real values).
+int dice(int number, int size)
+{
+    int r;
+    int sum = 0;
+
+    //   assert(size >= 1);
+    if (size < 1) {
+        mudlog("Dice rolled with size < 1!", BRF, rots::log::kDiceUnderflowLogLevel, 1);
+        return 0;
+    }
+
+    for (r = 1; r <= number; r++) {
+        sum += (rots_rng::next() % size) + 1;
+    }
+
+    return (sum);
 }

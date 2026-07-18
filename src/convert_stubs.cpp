@@ -148,6 +148,20 @@
 // now updated for its new home. See this file's git history, pre-PS-Task-4,
 // for the full prior stub text.
 
+// entity-completion Task 1 (spec Sec10 step 4, relocation instrument)
+// deletes three more stubs the same way: fname()/other_side()
+// (formerly handler.cpp) and get_hit_text() (formerly fight.cpp, with its
+// attack_hit_text[] table) are now real char_utils.cpp/consts.cpp
+// definitions respectively -- char_utils.cpp is already a direct
+// rots_convert source, and consts.cpp joined rots_core in entity-seed
+// Task 2, so this executable links the one real definition of each
+// instead of a tripwire-logged stand-in. other_side_num() (handler.cpp,
+// relocated alongside other_side() -- same macro-logic family) never had
+// a stub here: no rots_convert-linked TU calls it. Only
+// player_spec::wild_fighting_handler's ctor/get_attack_speed_multiplier()
+// stub remains below -- see this file's git history, pre-entity-completion-
+// Task-1, for the three deleted stubs' prior text.
+
 #include "base_utils.h"
 #include "char_utils.h"
 #include "comm.h"
@@ -222,38 +236,15 @@
 // staged-object map it would erase from can only gain entries via
 // interpre.cpp's login flow, never on this executable's call graph.
 
-// ===========================================================================
-// Unreachable stubs -- each of these is DEFINED in a linked TU (handler.cpp:
-// fname()/other_side(), app layer, not linked here) that this executable's
-// own call graph never invokes (convert_main.cpp calls only
-// build_player_index()/load_char()/store_to_char()/save_char() -- see that
-// file; fname()'s only reachable-in-principle caller is
-// utils::get_object_name(), other_side()'s is utils::is_hostile_to(),
-// neither on that call graph), but whose references still need to resolve
-// for the whole TU to link. Each logs loudly if ever actually reached, since
-// "never called" is exactly the kind of claim worth a tripwire rather than
-// silent (potentially wrong) success. (Persist-split PS Task 4: this
-// section used to also cover unaccent()/find_name()/find_player_in_table()
-// -- all three deleted below, now real db_players.cpp definitions.)
-// ===========================================================================
-char* fname(char* namelist)
-{
-    rots::log::write_stderr(std::format(
-        "rots_convert: STUB fname('{}') called -- unreachable (only "
-        "utils::get_object_name(), never called by this executable's load/store/save flow).",
-        namelist ? namelist : "(null)"));
-    return namelist;
-}
-
-int other_side(const char_data* character, const char_data* other)
-{
-    (void)character;
-    (void)other;
-    rots::log::write_stderr(
-        "rots_convert: STUB other_side() called -- unreachable (only "
-        "utils::is_hostile_to(), never called by this executable's load/store/save flow).");
-    return 0;
-}
+// fname()/other_side() stubs are DELETED (entity-completion Task 1):
+// both are now real char_utils.cpp definitions (relocated verbatim from
+// handler.cpp -- see that file's "fname()/other_side()/other_side_num()
+// relocated verbatim" comments), and char_utils.cpp is already a direct
+// rots_convert source, so this executable links the one real definition
+// of each instead of a tripwire-logged stand-in. (Persist-split PS
+// Task 4: this section used to also cover unaccent()/find_name()/
+// find_player_in_table() -- all three deleted earlier, now real
+// db_players.cpp definitions.)
 
 // isname_nullable() is DELETED (entity-seed Task 5): it is now a real
 // entity_lifecycle.cpp definition (see that file's "Entity-tier leaf
@@ -333,24 +324,11 @@ float player_spec::wild_fighting_handler::get_attack_speed_multiplier() const
 // null (see convert_main.cpp), so recalc_abilities()'s weapon branch never
 // runs here either way.
 
-// ===========================================================================
-// get_hit_text() -- fight.cpp (combat, app layer). The only caller inside
-// this executable's linked TUs is char_utils.cpp's
-// player_damage_details::get_damage_report(), a `score`-style report
-// formatter not on the load_char()/store_to_char()/save_char() call graph.
-// Returns a reference to a static empty-string pair rather than indexing
-// fight.cpp's real attack_hit_text[] table (not linked here).
-// Follow-on: dissolves once get_damage_report() (and the rest of
-// char_utils.cpp's presentation-facing helpers) move out of the TU
-// rots_convert links, alongside get_energy_regen() above.
-// ===========================================================================
-const attack_hit_type& get_hit_text(int w_type)
-{
-    rots::log::write_stderr(std::format(
-        "rots_convert: STUB get_hit_text({}) called -- this should be unreachable from the "
-        "converter's load/store/save flow.",
-        w_type));
-    static const attack_hit_type unreachable_placeholder { "", "" };
-    return unreachable_placeholder;
-}
+// get_hit_text() stub is DELETED (entity-completion Task 1): the real
+// definition (relocated verbatim from fight.cpp, alongside its
+// attack_hit_text[] table) now lives in consts.cpp, joined into
+// rots_core, so this executable links the one real definition through
+// RotS::core instead of a tripwire-logged placeholder. Follow-on note
+// (get_damage_report() itself still living in char_utils.cpp, a direct
+// rots_convert source) carries forward unchanged.
 

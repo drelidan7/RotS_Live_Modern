@@ -2623,6 +2623,43 @@ int guardian_mob[MAX_RACES][3] = {
 
 const skill_data* get_skill_array() { return skills; }
 
+// attack_hit_text[]/get_hit_text() relocated verbatim from fight.cpp
+// (entity-completion Task 1): pure string-pair data table + pure
+// arithmetic accessor, message DATA of the same class as the skills[]
+// name column above -- rots_core is its owning layer. Declarations stay
+// in utils.h (get_hit_text) and spells.h (struct attack_hit_type,
+// TYPE_HIT); fight.cpp/obj2html.cpp keep resolving through those
+// declarations (obj2html.cpp already carries its own local extern for
+// the table).
+/* Weapon attack texts */
+struct attack_hit_type attack_hit_text[] = {
+    { "hit", "hits" },
+    { "pound", "pounds" },
+    { "pierce", "pierces" },
+    { "slash", "slashes" },
+    { "stab", "stabs" },
+    { "whip", "whips" },
+    { "stab", "stabs" },
+    { "claw", "claws" },
+    { "bite", "bites" },
+    { "sting", "stings" },
+    { "cleave", "cleaves" },
+    { "flail", "flails" },
+    { "smite", "smites" },
+    { "crush", "crushes" }, /* TYPE_CRUSH    */
+    { "crush3", "crushes3" } /* TYPE_CRUSH    */
+};
+
+const attack_hit_type& get_hit_text(int w_type)
+{
+    // That is, instead of using the TYPE_ which starts at 140+,
+    // see spells.h for details, we use w_type range from 0 to 13 or so,
+    // whatever number of different weapon types we have.
+    w_type -= TYPE_HIT; /* Change to base of table with text */
+
+    return attack_hit_text[w_type];
+}
+
 unsigned long stat_ticks_passed = 0;
 unsigned long stat_mortals_counter = 0;
 unsigned long stat_immortals_counter = 0;

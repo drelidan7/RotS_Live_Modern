@@ -518,10 +518,12 @@ bridge — none are `nm`-clean against the converter's link surface, and chasing
 follow-on (see "`rots_persist`" above for the boards-bridge deferral in particular). As of
 entity-seed Task 6, `entity_lifecycle.cpp`/`object_utils.cpp`/`environment_utils.cpp` arrive via
 `RotS::entity` (see "`rots_entity`" above) rather than as direct sources; `char_utils.cpp` stays a
-direct source because it still carries real combat/big_brother welds
-(`get_hit_text`→`fight.cpp`, the `wild_fighting_handler` ctor/method, `other_side`→`handler.cpp`,
-plus `big_brother::on_character_attacked_player`) that a future wave will need to cut before it
-too can join a library.
+direct source because it still carries real combat/big_brother welds (the `wild_fighting_handler`
+ctor/method, plus `big_brother::on_character_attacked_player`) that a future wave will need to cut
+before it too can join a library. `fname`/`other_side`/`other_side_num` (formerly `handler.cpp`)
+and `get_hit_text` (formerly `fight.cpp`, with its `attack_hit_text[]` table, now `consts.cpp`)
+relocated verbatim into `char_utils.cpp`/`consts.cpp` respectively in entity-completion Task 1 —
+real definitions, not welds, from here on.
 
 - **It calls the same code the MUD uses** (`character_json`/`objects_json`/`exploits_json`, the
   `convert_*` binary-to-JSON one-time migration converters) so mass-conversion output is
@@ -543,8 +545,10 @@ too can join a library.
   `track_specialized_mage`/`untrack_specialized_mage` via the output seam, `log`/`mudlog`/
   `create_function`/`free_function`/`str_dup`-family/`number()` via the platform relocations,
   `is_room_outside`/`is_light` via `rots_entity`, and more — see the file's own header comment
-  for the task-by-task account) to **5 stub function bodies across 4 named groups** today.
-  Persist-split deleted 14 stub bodies total across three tasks. PS Task 1 deleted the color
+  for the task-by-task account) to **2 stub function bodies in 1 named group** today.
+  Entity-completion Task 1 deleted three more (`fname`/`other_side`, `get_hit_text`) the same
+  way: relocating them verbatim into `char_utils.cpp`/`consts.cpp` (already-linked TUs) closed
+  those welds outright. Persist-split deleted 14 stub bodies total across three tasks. PS Task 1 deleted the color
   trio's stand-ins (`nearest_ansi_color()`+`ansi_palette`, `convert_old_colormask()`,
   `sync_color_slot_foreground_from_ansi()`) when `color_convert.cpp` was carved out of
   `color.cpp` as a leaf TU (see "`color_convert.cpp` membership" above). PS Task 3 deleted
@@ -562,23 +566,16 @@ too can join a library.
   header comment for the full accounting.
 
   What remains is genuinely **unreachable from the converter's own call graph**
-  (`build_player_index`/`load_char`/`store_to_char`/`save_char`), each named with its real home
-  TU and reachability argument in the ledger itself:
-  - `fname` (`handler.cpp`) — only reachable-in-principle caller is `utils::get_object_name()`.
-  - `other_side` (`handler.cpp`) — only reachable-in-principle caller is
-    `utils::is_hostile_to()`.
-  - `get_hit_text` (`fight.cpp`) — only caller is `char_utils.cpp`'s
-    `player_damage_details::get_damage_report()`, a `score`-style report formatter not on the
-    load/store/save path.
+  (`build_player_index`/`load_char`/`store_to_char`/`save_char`), named with its real home TU
+  and reachability argument in the ledger itself:
   - `player_spec::wild_fighting_handler`'s ctor + `get_attack_speed_multiplier()`
     (`wild_fighting_handler.cpp`) — only caller is `char_utils.cpp`'s `get_energy_regen()`, a
-    live-combat energy-regen-rate query, also off that path.
+    live-combat energy-regen-rate query, off the converter's load/store/save path.
 
-  All four groups share the same follow-on shape: they dissolve once `char_utils.cpp`'s
-  remaining combat/presentation-facing helpers (`get_energy_regen`, `get_damage_report`, and
-  friends) move into a future `rots_combat`-tier TU separate from the identity/spec accessors
-  `rots_convert` genuinely needs — the same reason `char_utils.cpp` itself still can't join a
-  library (see above).
+  This group dissolves once `char_utils.cpp`'s remaining combat/presentation-facing helpers
+  (`get_energy_regen`, `get_damage_report`, and friends) move into a future `rots_combat`-tier TU
+  separate from the identity/spec accessors `rots_convert` genuinely needs — the same reason
+  `char_utils.cpp` itself still can't join a library (see above).
 - **This target is CMake-only.** It is not added to the flat `src/Makefile` / `src/tests/Makefile`,
   which compile same-directory only against a single hand-maintained `OBJFILES` list per binary —
   wiring a second multi-file executable into that pattern isn't worth it for a CI-only

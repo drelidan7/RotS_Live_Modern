@@ -97,24 +97,12 @@ void do_pass_through(struct char_data* ch, struct char_data* victim, int type);
 void do_riposte(struct char_data* ch, struct char_data* victim);
 int check_hallucinate(struct char_data* ch, struct char_data* victim);
 
-/* Weapon attack texts */
-struct attack_hit_type attack_hit_text[] = {
-    { "hit", "hits" },
-    { "pound", "pounds" },
-    { "pierce", "pierces" },
-    { "slash", "slashes" },
-    { "stab", "stabs" },
-    { "whip", "whips" },
-    { "stab", "stabs" },
-    { "claw", "claws" },
-    { "bite", "bites" },
-    { "sting", "stings" },
-    { "cleave", "cleaves" },
-    { "flail", "flails" },
-    { "smite", "smites" },
-    { "crush", "crushes" }, /* TYPE_CRUSH    */
-    { "crush3", "crushes3" } /* TYPE_CRUSH    */
-};
+// attack_hit_text[] relocated verbatim to consts.cpp (entity-completion
+// Task 1): pure string-pair data table, message DATA of the same class as
+// the skills[] name column -- rots_core is its owning layer. No in-file
+// reader of the array itself remains (its only reader was get_hit_text(),
+// relocated with it below); this file's get_hit_text() call sites resolve
+// through the existing utils.h declaration.
 
 /*
  * Used to remove invisibility; now it removes sanctuary
@@ -1468,15 +1456,9 @@ int get_damage_message_number(int damage)
     return message_number;
 }
 
-const attack_hit_type& get_hit_text(int w_type)
-{
-    // That is, instead of using the TYPE_ which starts at 140+,
-    // see spells.h for details, we use w_type range from 0 to 13 or so,
-    // whatever number of different weapon types we have.
-    w_type -= TYPE_HIT; /* Change to base of table with text */
-
-    return attack_hit_text[w_type];
-}
+// get_hit_text() relocated verbatim to consts.cpp (entity-completion
+// Task 1): pure arithmetic over attack_hit_text[] (TYPE_HIT is a spells.h
+// constant, core-reachable). Declaration stays in utils.h.
 
 void dam_message(int damage, char_data* attacker, char_data* victim, int w_type,
     std::string_view bodypart)

@@ -309,8 +309,10 @@ null-defaulted seams instead of direct calls (see "Output seam" and "Entity hook
   structurally by those four libraries' linkchecks plus this executable's own link, not by a
   hand-maintained stand-in file. The pattern held for three full waves (entity-seed,
   persist-split, entity-completion) before running its course — see "`rots_convert`" below for
-  the per-task stub-count account and git history (culminating in commit 24fd4f7) for the ledger's
-  own before/after.
+  the per-task stub-count account and git history (culminating in the "feat: char_utils +
+  char_utils_combat join rots_entity; convert_stubs.cpp deleted — weld ledger ZERO" commit,
+  entity-completion wave; see `git log -- src/convert_stubs.cpp`) for the ledger's own
+  before/after.
 - **Remaining spec §3 gap, stated honestly:** `rots_entity` is 5 of the 6 TUs spec §3's original
   target-architecture table sketched for it (`char_utils, object_utils, environment_utils,
   handler, utility, char_utils_combat`) — `handler.cpp` and `utility.cpp` are still entirely
@@ -597,8 +599,10 @@ purely through `RotS::entity`.
   `char_utils.cpp`'s `get_energy_regen()` call through `entity_hooks.h`'s new
   wild-attack-speed-multiplier hook instead; `rots_convert` never registers it, so the hook's
   null default (1.0f) fires, byte-identical to the deleted stub's return value. **EC Task 3 then
-  deleted the now-empty ledger file outright** (`git rm src/convert_stubs.cpp`, commit 24fd4f7):
-  with zero stub bodies remaining there was no ledger left to maintain, and the file's sole
+  deleted the now-empty ledger file outright** (`git rm src/convert_stubs.cpp`, the "feat:
+  char_utils + char_utils_combat join rots_entity; convert_stubs.cpp deleted — weld ledger ZERO"
+  commit, entity-completion wave — see `git log -- src/convert_stubs.cpp`): with zero stub bodies
+  remaining there was no ledger left to maintain, and the file's sole
   remaining purpose — being `rots_convert`'s third direct source alongside `convert_main.cpp` and
   `char_utils.cpp` — evaporated the same task `char_utils.cpp`/`char_utils_combat.cpp` moved to
   library membership (see "`rots_entity`" above and this section's link line, updated). The

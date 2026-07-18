@@ -862,8 +862,9 @@ if(ROTS_BUILD_TESTS)
 
         # Load-bearing entity-layer acyclicity check (spec §11), mirroring the
         # rots_core_linkcheck block above. rots_entity (entity_lifecycle.cpp +
-        # object_utils.cpp + environment_utils.cpp, entity-seed Task 6 — see
-        # the ROTS_ENTITY_SOURCES comment above) is verified to have no
+        # object_utils.cpp + environment_utils.cpp, entity-seed Task 6, plus
+        # char_utils.cpp + char_utils_combat.cpp, entity-completion Task 3 —
+        # see the ROTS_ENTITY_SOURCES comment above) is verified to have no
         # upward symbol references beyond its legal downward edges into
         # rots_core and rots_platform. The checker force-loads rots_entity
         # itself (so every rots_entity symbol is pulled in and any OTHER

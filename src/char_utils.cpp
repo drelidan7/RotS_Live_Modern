@@ -1447,8 +1447,8 @@ std::string player_damage_details::get_damage_report(const char_data* character)
     for (map_iter iter = damage_map.begin(); iter != damage_map.end(); ++iter) {
         // Longest real name in either source table (hit_text.singular from
         // attack_hit_text[], or skill.name from the skills[] table) is well
-        // under the 24-char field width -- see attack_hit_text[]/skills[] in
-        // fight.cpp/consts.cpp -- so std::format's min-width padding never
+        // under the 24-char field width -- both tables live in consts.cpp
+        // now -- so std::format's min-width padding never
         // truncates real data the way the old fixed char[25]+sprintf could
         // silently overflow on a hypothetical longer name.
         std::string ability_name;

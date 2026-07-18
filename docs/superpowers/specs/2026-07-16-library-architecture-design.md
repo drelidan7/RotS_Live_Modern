@@ -73,7 +73,7 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
 | Lib | Layer | TUs | Contents |
 |---|---|---|---|
 | `rots_platform` | L0 | 7 | `rots_net, rots_crypt, rots_rng, clock, crashsave_schedule, json_utils, player_file_finalize` (verified clean leaves — the archive imports only libc/libstdc++/compiler symbols) |
-| `rots_core` | L1 | 2 + split headers | `consts, config` + the carved-up data model (Section 5) (as-built: `consts` stays app-compiled, not archived into `rots_core` — see caveat below) |
+| `rots_core` | L1 | 2 + split headers | `consts, config` + the carved-up data model (Section 5) (as-built: `consts.cpp` and `output_seam.cpp` joined `rots_core` in the entity-seed wave — see the resolved caveat below) |
 | `rots_entity` | L2 | 6 | `char_utils, object_utils, environment_utils, handler, utility, char_utils_combat` (as-built: 5 of 6 have joined `rots_entity` — `handler`/`utility` remain app-compiled, deferred with named/uncounted welds respectively — see caveat below) |
 | `rots_persist` | L3 | ~14 | `db_players` (from `db.cpp`), `objsave, boards, mail, pkill, character_json, objects_json, exploits_json, account_management (+6 #included fragments), account_cache, convert_exploits, convert_plrobjs, save_benchmark, savebench` |
 | `rots_world` | L3 | ~15 | `db_world` (from `db.cpp`), `shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle, mudlle2, graph, weather, mob_csv_extract, obj2html` |
@@ -238,7 +238,9 @@ by the real code rather than left to the sketch:
   `char_utils.cpp`) and `attack_hit_text[]`/`get_hit_text` (`fight.cpp` → `consts.cpp`); EC Task 2
   inverted the last stub body, `player_spec::wild_fighting_handler`'s ctor + attack-speed query,
   through a new `entity_hooks.h` hook — **the ledger reached zero stub function bodies**. EC
-  Task 3 then deleted `src/convert_stubs.cpp` outright (`git rm`, commit 24fd4f7) and moved
+  Task 3 then deleted `src/convert_stubs.cpp` outright (`git rm`, the "feat: char_utils +
+  char_utils_combat join rots_entity; convert_stubs.cpp deleted — weld ledger ZERO" commit,
+  entity-completion wave — see `git log -- src/convert_stubs.cpp`) and moved
   `char_utils.cpp`/`char_utils_combat.cpp` into `ROTS_ENTITY_SOURCES`, so `rots_convert`'s only
   direct source is `convert_main.cpp` — the persistence boundary this ledger existed to document
   is now enforced structurally by four libraries' linkchecks plus this executable's own link, with
@@ -547,7 +549,9 @@ both TUs' last real welds — `fname`/`fname_nameholder`/`other_side`/`other_sid
 hooks — so Task 3 itself only moved library membership and deleted the now-empty
 `src/convert_stubs.cpp`. This is also the slice that **finishes the weld ledger's arc started at
 the db.cpp-split baseline**: ~40 stub bodies → ~19 (entity-seed exit) → 5 (persist-split exit) →
-0 (EC Task 2) → file deleted (EC Task 3, commit 24fd4f7) — see `docs/BUILD.md`'s "`rots_entity`"
+0 (EC Task 2) → file deleted (EC Task 3, the "feat: char_utils + char_utils_combat join
+rots_entity; convert_stubs.cpp deleted — weld ledger ZERO" commit, entity-completion wave — see
+`git log -- src/convert_stubs.cpp`) — see `docs/BUILD.md`'s "`rots_entity`"
 section for the full account. `handler.cpp` (~30 named-but-unenumerated welds) and `utility.cpp`
 (an app-wide `nm` profile, never TU-wide-censused) are the row's remaining two TUs — deliberately
 deferred, recorded follow-on for whichever wave next touches the entity/app boundary, not this

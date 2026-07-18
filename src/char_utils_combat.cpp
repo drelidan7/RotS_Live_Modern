@@ -4,7 +4,7 @@
 #include "object_utils.h"
 #include "utils.h"
 
-#include "handler.h" // for fname and other_side
+#include "handler.h" // for affect_to_char and affected_by_spell
 #include "spells.h"
 
 #include "entity_hooks.h"

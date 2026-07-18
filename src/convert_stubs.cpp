@@ -89,7 +89,6 @@
 
 #include "base_utils.h"
 #include "char_utils.h"
-#include "color.h"
 #include "comm.h"
 #include "db.h"
 #include "handler.h"
@@ -117,117 +116,18 @@
 // function already used elsewhere), so this executable no longer references
 // either scratch buffer at all.
 
-// ===========================================================================
-// nearest_ansi_color() / convert_old_colormask() -- color.cpp. The brief's
-// nm closure check applies here: `nm -uC color.cpp.o` shows color.cpp as a
-// WHOLE TU is not link-clean for this executable (do_color()/
-// show_color_slot_summary() in the same TU pull in send_to_char()/
-// vsend_to_char()/half_chop()/str_cmp_nullable() -- comm/utility, app
-// layer) -- so color.cpp cannot be linked wholesale (the brief's "prefer
-// linking color.cpp if it's clean" branch does not apply here).
-//
-// Unlike this file's other stubs, these two are NOT inert placeholders:
-// character_json.cpp's truecolor-setting codec calls nearest_ansi_color()
-// on every setting whose foreground/background isn't already a valid
-// ANSI16 index, and db_players.cpp's load_char()/load_char_from_text() call
-// convert_old_colormask() on every legacy character loaded with a
-// color_mask-only (pre-per-slot) color record -- both genuinely execute
-// during ordinary conversion. Faking their output would silently diverge
-// converted characters' color settings from what a live login produces,
-// defeating this executable's entire "byte-identical by construction"
-// purpose (spec Sec4b). So the three bodies below (plus the
-// sync_color_slot_foreground_from_ansi() helper and the ansi_palette/
-// kNumColors table convert_old_colormask()/nearest_ansi_color() need) are
-// VERBATIM copies of color.cpp's current implementation (color.cpp:55-62,
-// 366-380, 402-442 at this writing), not reinterpretations -- kept
-// byte-for-byte in sync is the correctness contract, checked by Task 4's
-// conversion-equivalence test.
-// Follow-on: split color.cpp's pure conversion helpers (no comm/game
-// dependency: nearest_ansi_color, convert_old_colormask,
-// sync_color_slot_foreground_from_ansi, the color name/sequence tables) into
-// their own clean leaf TU (e.g. color_convert.cpp) so both ageland and
-// rots_convert link ONE real definition instead of two synchronized copies.
-// ===========================================================================
-namespace {
-
-// Verbatim copy of color.cpp:55's file-local helper (anonymous namespace
-// there too) -- pure struct-field writes, no comm/game dependency.
-void sync_color_slot_foreground_from_ansi(struct char_prof_data* profs, int col)
-{
-    if (profs == nullptr || col < 0 || col >= MAX_COLOR_FIELDS)
-        return;
-
-    profs->color_settings[col].foreground.mode = COLOR_VALUE_ANSI16;
-    profs->color_settings[col].foreground.ansi = static_cast<unsigned char>(profs->colors[col]);
-}
-
-// Verbatim copy of color.cpp:294-312's color_color[] length (16 entries:
-// 15 real colors + the "\n" sentinel) -- nearest_ansi_color()'s loop
-// bound below is `kNumColors - 1`, matching color.cpp's own
-// `num_of_colors - 1` exactly.
-constexpr int kNumColors = 16;
-
-} // namespace
-
-int nearest_ansi_color(int red, int green, int blue)
-{
-    // Verbatim copy of color.cpp:402-442.
-    struct AnsiColor {
-        int red;
-        int green;
-        int blue;
-    };
-
-    static const AnsiColor ansi_palette[] = {
-        { 0, 0, 0 },
-        { 170, 0, 0 },
-        { 0, 170, 0 },
-        { 170, 85, 0 },
-        { 0, 0, 170 },
-        { 170, 0, 170 },
-        { 0, 170, 170 },
-        { 170, 170, 170 },
-        { 255, 85, 85 },
-        { 85, 255, 85 },
-        { 255, 255, 85 },
-        { 85, 85, 255 },
-        { 255, 85, 255 },
-        { 85, 255, 255 },
-        { 255, 255, 255 },
-    };
-
-    int best_index = CNRM;
-    long best_distance = std::numeric_limits<long>::max();
-    for (int index = 0; index < kNumColors - 1; ++index) {
-        const long red_distance = red - ansi_palette[index].red;
-        const long green_distance = green - ansi_palette[index].green;
-        const long blue_distance = blue - ansi_palette[index].blue;
-        const long distance = red_distance * red_distance + green_distance * green_distance + blue_distance * blue_distance;
-        if (distance < best_distance) {
-            best_distance = distance;
-            best_index = index;
-        }
-    }
-
-    return best_index;
-}
-
-void convert_old_colormask(struct char_file_u* ch)
-{
-    // Verbatim copy of color.cpp:366-380.
-    int i;
-
-    if (!ch->profs.color_mask)
-        i = 0;
-    else
-        for (i = 0; i < 10; ++i)
-            ch->profs.colors[i] = ch->profs.color_mask >> (i * 3) & 7;
-
-    for (i = 0; i < MAX_COLOR_FIELDS; ++i) {
-        if (ch->profs.color_settings[i].foreground.mode == COLOR_VALUE_DEFAULT)
-            sync_color_slot_foreground_from_ansi(&ch->profs, i);
-    }
-}
+// nearest_ansi_color()/convert_old_colormask()/
+// sync_color_slot_foreground_from_ansi() + the color_color[]/num_of_colors
+// table pair are DELETED (persist-split PS Task 1): color.cpp's pure
+// conversion helpers (no comm/game dependency) now live in the new
+// color_convert.cpp leaf TU, joining ROTS_SERVER_SOURCES AND rots_convert's
+// own direct source list, so ageland and rots_convert link the one real
+// definition of each instead of this file's synchronized verbatim copy (see
+// this file's git history, pre-PS-Task-1, for the deleted stand-ins' prior
+// text). character_json.cpp's truecolor-setting codec and
+// db_players.cpp's load_char()/load_char_from_text() still call the real
+// nearest_ansi_color()/convert_old_colormask() exactly as before -- only
+// their home TU changed.
 
 // The persisted-stat affect/derived-ability engine's remaining support
 // stubs -- get_from_affected_type_pool()/put_to_affected_type_pool(),

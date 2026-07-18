@@ -7,7 +7,6 @@
 #include <cstdio>
 #include <format>
 #include <iterator>
-#include <limits>
 #include <stdlib.h>
 #include <string>
 #include <string.h>
@@ -50,15 +49,6 @@ namespace {
         if (color_index < 0 || color_index >= 15)
             return "\x1B[49m";
         return background_sequences[color_index].data();
-    }
-
-    void sync_color_slot_foreground_from_ansi(struct char_prof_data* profs, int col)
-    {
-        if (profs == nullptr || col < 0 || col >= MAX_COLOR_FIELDS)
-            return;
-
-        profs->color_settings[col].foreground.mode = COLOR_VALUE_ANSI16;
-        profs->color_settings[col].foreground.ansi = static_cast<unsigned char>(profs->colors[col]);
     }
 
     void append_escape(char* buffer, size_t buffer_size, size_t* length,
@@ -291,27 +281,6 @@ static void show_color_slot_summary(struct char_data* ch, int slot)
     send_to_char(buf, ch);
 }
 
-const std::string_view color_color[] = {
-    "normal",
-    "red",
-    "green",
-    "yellow",
-    "blue",
-    "magenta",
-    "cyan",
-    "white",
-    "bright red",
-    "bright green",
-    "bright yellow",
-    "bright blue",
-    "bright magenta",
-    "bright cyan",
-    "bright white",
-    "\n"
-};
-
-int num_of_colors = sizeof(color_color) / sizeof(color_color[0]);
-
 const std::string_view color_sequence[] = {
     "\x1B[0m",
     "\x1B[31m",
@@ -363,22 +332,6 @@ int find_ansi_color(std::string_view color_name)
     return -1;
 }
 
-void convert_old_colormask(struct char_file_u* ch)
-{
-    int i;
-
-    if (!ch->profs.color_mask)
-        i = 0;
-    else
-        for (i = 0; i < 10; ++i)
-            ch->profs.colors[i] = ch->profs.color_mask >> (i * 3) & 7;
-
-    for (i = 0; i < MAX_COLOR_FIELDS; ++i) {
-        if (ch->profs.color_settings[i].foreground.mode == COLOR_VALUE_DEFAULT)
-            sync_color_slot_foreground_from_ansi(&ch->profs, i);
-    }
-}
-
 char get_colornum(struct char_data* ch, int col)
 {
     if (!ch)
@@ -397,48 +350,6 @@ void set_colornum(struct char_data* ch, int col, int value)
 
     ch->profs->colors[col] = value;
     sync_color_slot_foreground_from_ansi(ch->profs, col);
-}
-
-int nearest_ansi_color(int red, int green, int blue)
-{
-    struct AnsiColor {
-        int red;
-        int green;
-        int blue;
-    };
-
-    static const AnsiColor ansi_palette[] = {
-        { 0, 0, 0 },
-        { 170, 0, 0 },
-        { 0, 170, 0 },
-        { 170, 85, 0 },
-        { 0, 0, 170 },
-        { 170, 0, 170 },
-        { 0, 170, 170 },
-        { 170, 170, 170 },
-        { 255, 85, 85 },
-        { 85, 255, 85 },
-        { 255, 255, 85 },
-        { 85, 85, 255 },
-        { 255, 85, 255 },
-        { 85, 255, 255 },
-        { 255, 255, 255 },
-    };
-
-    int best_index = CNRM;
-    long best_distance = std::numeric_limits<long>::max();
-    for (int index = 0; index < num_of_colors - 1; ++index) {
-        const long red_distance = red - ansi_palette[index].red;
-        const long green_distance = green - ansi_palette[index].green;
-        const long blue_distance = blue - ansi_palette[index].blue;
-        const long distance = red_distance * red_distance + green_distance * green_distance + blue_distance * blue_distance;
-        if (distance < best_distance) {
-            best_distance = distance;
-            best_index = index;
-        }
-    }
-
-    return best_index;
 }
 
 void set_truecolor_foreground(struct char_data* ch, int col, int red, int green, int blue)

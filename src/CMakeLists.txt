@@ -150,7 +150,7 @@ set(ROTS_SERVER_SOURCES
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
     boards.cpp char_utils.cpp char_utils_combat.cpp character_json.cpp clerics.cpp
-    color.cpp comm.cpp convert_exploits.cpp convert_plrobjs.cpp
+    color.cpp color_convert.cpp comm.cpp convert_exploits.cpp convert_plrobjs.cpp
     db_boot.cpp db_players.cpp db_world.cpp delayed_command_interpreter.cpp
     exploits_json.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
@@ -372,10 +372,14 @@ target_link_options(ageland PRIVATE
 # environment_utils.cpp, see the ROTS_ENTITY_SOURCES comment above) plus a
 # hand-picked persist-codec subset it still direct-compiles (db_players.cpp:
 # player-index/load/store/save, the JSON codecs, the account system, the
-# legacy exploit/plrobj binary-to-JSON one-time converters, and char_utils.cpp
-# -- its combat welds are next wave's work, so it stays direct rather than
-# joining a library yet) -- deliberately NO db_world.cpp/db_boot.cpp and NO
-# combat/commands/app translation unit. This is the executable acid-test
+# legacy exploit/plrobj binary-to-JSON one-time converters, char_utils.cpp,
+# and (persist-split PS Task 1) color_convert.cpp -- the leaf TU carrying
+# nearest_ansi_color()/convert_old_colormask()/
+# sync_color_slot_foreground_from_ansi(), which convert_stubs.cpp used to
+# hand-duplicate because color.cpp itself is not link-clean for this
+# executable -- its combat welds are next wave's work, so it stays direct
+# rather than joining a library yet) -- deliberately NO db_world.cpp/
+# db_boot.cpp and NO combat/commands/app translation unit. This is the executable acid-test
 # that the persistence boundary holds: if a future change re-welds
 # db_players.cpp/entity_lifecycle.cpp to the game (combat/world/commands/
 # session), this target fails to link and the build breaks. It is therefore
@@ -393,6 +397,7 @@ target_link_options(ageland PRIVATE
 # hand-maintained OBJFILES list per binary) -- see docs/BUILD.md.
 add_executable(rots_convert
     convert_main.cpp convert_stubs.cpp
+    color_convert.cpp
     db_players.cpp
     character_json.cpp objects_json.cpp exploits_json.cpp
     account_management.cpp account_cache.cpp

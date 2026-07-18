@@ -109,7 +109,7 @@
 // file's own PS-Task-3 comment.
 //
 // persist-split PS Task 4 (world_room_vnum/add_exploit_record inversion +
-// rots_persist stand-up) deletes eleven more stubs across two mechanisms.
+// rots_persist stand-up) deletes eight stubs across two mechanisms.
 // Inversion (two symbols): db_players.cpp's save_char()/rename_char() no
 // longer call world_room_vnum()/add_exploit_record() directly at all -- both
 // call sites now go through persist_hooks.h's pre-boot-registered hooks
@@ -133,9 +133,17 @@
 // omitting the ch->knowledge[] recomputation) rather than a tripwire -- this
 // executable now runs the real body; ConvertEquivalence 17/17 after this
 // change is the proof that ch->knowledge[] (a runtime-only derived field,
-// never in char_file_u/char_to_store's output) stays output-invisible.
+// never in char_file_u/char_to_store's output) stays output-invisible. Of
+// these nine relocated symbols, only six actually deleted a stub/stand-in
+// here (find_player_in_table/find_name/unaccent/recalc_skills/
+// file_to_string/file_to_string_alloc, folded into the eight-stub count
+// above with the two inversions); utils::set_tactics()/set_shooting()/
+// set_casting() never had one -- char_utils.cpp was already a direct
+// rots_convert source before and after the move, so relocating them within
+// already-linked TUs closed no converter-side weld.
 // This task also adds one library MEMBERSHIP (not a stub deletion, since
-// color_convert.cpp never had a stub here): color_convert.cpp -- see the
+// color_convert.cpp never had a stub here -- entity-seed had already deleted
+// its stand-in when the leaf TU was carved): color_convert.cpp -- see the
 // "nearest_ansi_color()/convert_old_colormask()" comment below, now updated
 // for its new home. See this file's git history, pre-PS-Task-4, for the
 // full prior stub text.

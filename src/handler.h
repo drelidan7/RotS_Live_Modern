@@ -176,6 +176,12 @@ void clear_account_backed_object_bytes_for_character(const struct char_data* ch)
 void register_char_teardown_hook();
 objects_json::ObjectSaveData build_default_account_backed_object_data();
 
+// Promoted to handler.h (persist-split PS Task 2, obj_files.cpp carve):
+// objsave.cpp's Crash_listrent()/Crash_load()/Crash_crashsave()-family (stay
+// behind) call these two cross-TU now that the P inventory moved.
+std::string player_objects_json_path(std::string_view player_name);
+bool write_player_objects_json(std::string_view player_name, const objects_json::ObjectSaveData& data, std::string* error);
+
 /* prototypes from fight.c */
 void set_fighting(struct char_data* ch, struct char_data* victim);
 void stop_fighting(struct char_data* ch);

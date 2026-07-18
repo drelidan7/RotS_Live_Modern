@@ -40,11 +40,8 @@ bool is_pc(const char_data& character)
     return !is_npc(character);
 }
 
-//============================================================================
-bool is_npc(const char_data& character)
-{
-    return utils::is_set(character.specials2.act, (long)MOB_ISNPC);
-}
+// utils::is_npc() relocated to entity_lifecycle.cpp (entity-seed Task 6,
+// controller-adjudicated relocation); declaration unchanged (char_utils.h).
 
 //============================================================================
 bool is_mob(const char_data& character)
@@ -292,14 +289,9 @@ int get_index(const char_data& character)
     return character.player_index;
 }
 
-//============================================================================
-const char* get_name(const char_data& character)
-{
-    if (is_npc(character))
-        return character.player.short_descr;
-
-    return character.player.name;
-}
+// utils::get_name() relocated to entity_lifecycle.cpp (entity-seed Task 6,
+// controller-adjudicated relocation, third pass); declaration unchanged
+// (char_utils.h).
 
 //============================================================================
 const char* get_skill_name(const int skill_id)
@@ -387,16 +379,9 @@ int get_prof_coof(int prof, const char_data& character)
     return return_prof_coof;
 }
 
-//============================================================================
-int get_prof_points(int prof, const char_data& character)
-{
-    // Added a safety check.
-    if (prof > MAX_PROFS)
-        return 0;
-
-    // Add is_npc check like above?  Not in the current macro, so I won't be adding new functionality.
-    return character.profs->prof_coof[prof];
-}
+// utils::get_prof_points() relocated to entity_lifecycle.cpp (entity-seed
+// Task 6, controller-adjudicated relocation); declaration unchanged
+// (char_utils.h).
 
 //============================================================================
 int get_highest_coeffs(const char_data& character)
@@ -1031,11 +1016,10 @@ bool is_shadow(const char_data& character)
     }
 }
 
-//============================================================================
-bool is_race_good(const char_data& character)
-{
-    return is_race_good(character.player.race);
-}
+// utils::is_race_good(const char_data&) + its utils::is_race_good(int)
+// sibling relocated to entity_lifecycle.cpp (entity-seed Task 6,
+// controller-adjudicated relocation, third pass); declarations unchanged
+// (char_utils.h).
 
 //============================================================================
 bool is_race_evil(const char_data& character)
@@ -1049,22 +1033,15 @@ bool is_race_easterling(const char_data& character)
     return is_race_easterling(character.player.race);
 }
 
-//============================================================================
-bool is_race_magi(const char_data& character)
-{
-    return is_race_magi(character.player.race);
-}
+// utils::is_race_magi(const char_data&) + its utils::is_race_magi(int)
+// sibling relocated to entity_lifecycle.cpp (entity-seed Task 6,
+// controller-adjudicated relocation, third pass); declarations unchanged
+// (char_utils.h).
 
 //============================================================================
 bool is_race_haradrim(const char_data& character)
 {
     return is_race_haradrim(character.player.race);
-}
-
-//============================================================================
-bool is_race_good(int race)
-{
-    return race > 0 && race < 10;
 }
 
 //============================================================================
@@ -1077,12 +1054,6 @@ bool is_race_evil(int race)
 bool is_race_easterling(int race)
 {
     return race == 14;
-}
-
-//============================================================================
-bool is_race_magi(int race)
-{
-    return race == 15;
 }
 
 //============================================================================
@@ -1388,249 +1359,15 @@ bool char_data::is_affected() const
 }
 
 //============================================================================
-// Specialization stuff!
-//============================================================================
-void cold_spec_data::on_chill_applied(int chill_amount)
-{
-    total_energy_sapped += chill_amount;
-}
-
-//============================================================================
-void cold_spec_data::on_chill_ray_success(int damage)
-{
-    ++total_chill_ray_count;
-    ++successful_chill_ray_count;
-    total_chill_ray_damage += damage;
-}
-
-//============================================================================
-void cold_spec_data::on_chill_ray_fail(int damage)
-{
-    ++total_chill_ray_count;
-    ++failed_chill_ray_count;
-    total_chill_ray_damage += damage;
-}
-
-//============================================================================
-void cold_spec_data::on_cone_of_cold_success(int damage)
-{
-    ++total_cone_of_cold_count;
-    ++successful_cone_of_cold_count;
-    total_cone_of_cold_damage += damage;
-}
-
-//============================================================================
-void cold_spec_data::on_cone_of_cold_failed(int damage)
-{
-    ++total_cone_of_cold_count;
-    ++failed_cone_of_cold_count;
-    total_cone_of_cold_damage += damage;
-}
-
-//============================================================================
-// specialization_data::reset() relocated to entity_lifecycle.cpp (entity-seed
-// Task 5); declaration unchanged (rots/core/character.h).
-
-//============================================================================
-void specialization_data::set(char_data& character)
-{
-    reset();
-
-    game_types::player_specs spec = utils::get_specialization(character);
-    if (spec == game_types::PS_Darkness) {
-        current_spec_info = new darkness_spec_data();
-    } else if (spec == game_types::PS_Fire) {
-        current_spec_info = new fire_spec_data();
-    } else if (spec == game_types::PS_Lightning) {
-        current_spec_info = new lightning_spec_data();
-    } else if (spec == game_types::PS_Arcane) {
-        current_spec_info = new arcane_spec_data();
-    } else if (spec == game_types::PS_Cold) {
-        current_spec_info = new cold_spec_data();
-    } else if (spec == game_types::PS_Defender) {
-        current_spec_info = new defender_data();
-    } else if (spec == game_types::PS_LightFighting) {
-        current_spec_info = new light_fighting_data();
-    } else if (spec == game_types::PS_HeavyFighting) {
-        current_spec_info = new heavy_fighting_data();
-    } else if (spec == game_types::PS_WildFighting) {
-        current_spec_info = new wild_fighting_data();
-    } else if (spec == game_types::PS_BattleMage) {
-        current_spec_info = new battle_mage_spec_data();
-    }
-
-    current_spec = spec;
-}
-
-//============================================================================
-std::string specialization_data::to_string(char_data& character) const
-{
-    if (current_spec_info) {
-        return current_spec_info->to_string(character);
-    }
-
-    return std::string("You are not specialized in anything.\r\n");
-}
-
-//============================================================================
-std::string elemental_spec_data::to_string(char_data&) const
-{
-    std::string message_writer;
-    message_writer.append("You are specialized in a mage specialization.\n");
-    message_writer.append("------------------------------------------------------------\n");
-    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
-    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
-    message_writer.append("------------------------------------------------------------\n");
-    report_exposed_data(message_writer);
-    return message_writer;
-}
-
-//============================================================================
-void elemental_spec_data::report_exposed_data(std::string& message_writer) const
-{
-    if (exposed_target) {
-        const skill_data* skills = get_skill_array();
-        const char* skill_name = skills[spell_id].name;
-
-        std::format_to(std::back_inserter(message_writer), "{} is exposed to the spell [{}].\n",
-            utils::get_name(*exposed_target), skill_name);
-        message_writer.append("------------------------------------------------------------\n");
-    }
-}
-
-//============================================================================
-std::string cold_spec_data::to_string(char_data&) const
-{
-    std::string message_writer;
-    message_writer.append("You are specialized in cold.\n");
-    message_writer.append("------------------------------------------------------------\n");
-    message_writer.append("Your cold spells are more difficult to resist.\n");
-    message_writer.append("Your fire spells are easier to resist.\n");
-    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
-    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
-    message_writer.append("Your cone of cold spell can now chill targets.\n");
-    message_writer.append("Your chill ray spell is much harder to resist.\n");
-    message_writer.append("------------------------------------------------------------\n");
-    /*
-        message_writer << "Chill Ray:" << std::endl;
-        message_writer << "\tTotal Casts: " << get_chill_ray_count() << std::endl;
-        message_writer << "\tSuccessful Casts: " << get_successful_chills() << std::endl;
-        message_writer << "\tFailed Casts: " << get_saved_chills() << std::endl;
-        message_writer << "\tTotal Damage: " << total_chill_ray_damage << std::endl << std::endl;
-        message_writer << "Cone of Cold:" << std::endl;
-        message_writer << "\tTotal Casts: " << get_cone_count() << std::endl;
-        message_writer << "\tSuccessful Casts: " << get_successful_cones() << std::endl;
-        message_writer << "\tFailed Casts: " << get_saved_cones() << std::endl;
-        message_writer << "\tTotal Damage: " << total_cone_of_cold_damage << std::endl << std::endl;
-        message_writer << "\tTotal Attacks Stopped: " << get_total_energy_sapped() / ENE_TO_HIT << std::endl;
-        */
-    report_exposed_data(message_writer);
-    return message_writer;
-}
-
-//============================================================================
-std::string fire_spec_data::to_string(char_data& character) const
-{
-    std::string message_writer;
-    message_writer.append("You are specialized in fire.\n");
-    message_writer.append("------------------------------------------------------------\n");
-    message_writer.append("Your fire spells are more difficult to resist.\n");
-    message_writer.append("Your cold spells are easier to resist.\n");
-    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
-    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
-    if (utils::is_race_good(character)) {
-        message_writer.append("The minimum damage of firebolt is increased significantly.\n");
-        message_writer.append("Your fireballs will no longer spread to friendly targets.\n");
-    } else {
-        message_writer.append("Your searing darkness spell deals significantly more fire damage.\n");
-    }
-    message_writer.append("------------------------------------------------------------\n");
-    report_exposed_data(message_writer);
-    return message_writer;
-}
-
-//============================================================================
-std::string lightning_spec_data::to_string(char_data&) const
-{
-    std::string message_writer;
-    message_writer.append("You are specialized in lightning.\n");
-    message_writer.append("------------------------------------------------------------\n");
-    message_writer.append("Your lightning spells are more difficult to resist.\n");
-    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
-    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
-    message_writer.append("Lightning bolt does not lose effectiveness indoors, and deals increased damage.\n");
-    message_writer.append("You can cast lightning strike without a storm at slightly reduced effectiveness.\n");
-    message_writer.append("------------------------------------------------------------\n");
-    report_exposed_data(message_writer);
-    return message_writer;
-}
-
-//============================================================================
-std::string darkness_spec_data::to_string(char_data& character) const
-{
-    std::string message_writer;
-    message_writer.append("You are specialized in darkness.\n");
-    message_writer.append("------------------------------------------------------------\n");
-    message_writer.append("Your dark spells are more difficult to resist.\n");
-    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
-    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
-    message_writer.append("Your dark bolt spell deals increased damage.\n");
-    if (utils::is_race_magi(character)) {
-        message_writer.append("Your black arrow is harder to resist.\n");
-        message_writer.append("Your spear of darkness spell deals additional damage.\n");
-    } else {
-        message_writer.append("Your searing darkness spell deals additional dark damage.\n");
-    }
-    message_writer.append("------------------------------------------------------------\n");
-    report_exposed_data(message_writer);
-    return message_writer;
-}
-
-//============================================================================
-std::string arcane_spec_data::to_string(char_data&) const
-{
-    std::string message_writer;
-    message_writer.append("You are specialized in the arcane.\n");
-    message_writer.append("------------------------------------------------------------\n");
-    message_writer.append("You have access to the 'expose elements' spell, which makes a particular\n");
-    message_writer.append("elemental spell cost much less mana on the target.  cast 'expose elements'.\n");
-    message_writer.append("You can cast spells at a normal, fast, or slow pace.\n");
-    message_writer.append("Slow cast spells against exposed targets will restore mana.\n");
-    message_writer.append("------------------------------------------------------------\n");
-    report_exposed_data(message_writer);
-
-    return message_writer;
-}
-
-//============================================================================
-std::string heavy_fighting_data::to_string(char_data&) const
-{
-    return std::string("You are specialized in heavy fighting.");
-}
-
-//============================================================================
-std::string light_fighting_data::to_string(char_data&) const
-{
-    return std::string("You are specialized in light fighting.\n\r");
-}
-
-//============================================================================
-std::string defender_data::to_string(char_data&) const
-{
-    return std::string("You are specialized in defending.\n\r");
-}
-
-std::string battle_mage_spec_data::to_string(char_data&) const
-{
-    return std::string("You are specialized in battle mage.\n\r");
-}
-
-//============================================================================
-std::string wild_fighting_data::to_string(char_data&) const
-{
-    return std::string("You are specialized in wild fighting.\n\r");
-}
-
+// Specialization stuff! -- the entire cold_spec_data::on_*/specialization_data::
+// set/specialization_data::to_string/elemental_spec_data::to_string+
+// report_exposed_data/*_spec_data::to_string family relocated verbatim to
+// entity_lifecycle.cpp (entity-seed Task 6, controller-adjudicated
+// relocation): specialization_data::set() constructs each *_spec_data
+// subclass, so each subclass's vtable -- emitted where its key function
+// (to_string(), the first non-inline virtual) is defined -- must live in
+// the same archive that constructs the objects. Declarations unchanged
+// (rots/core/character.h).
 //============================================================================
 // Damage reporting stuff!
 //============================================================================

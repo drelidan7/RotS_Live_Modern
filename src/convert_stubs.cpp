@@ -76,6 +76,16 @@
 // caller, is never reached here either way; see convert_main.cpp).
 // (see this file's git history, pre-entity-seed-Task-4, for the ten stubs'
 // prior text and per-symbol reachability analysis.)
+//
+// entity-seed Task 6 (rots_entity static library stand-up) deletes the
+// utils::is_room_outside()/utils::is_light() stubs the same way:
+// environment_utils.cpp now joins entity_lifecycle.cpp/object_utils.cpp in
+// the new RotS::entity library (linked below rots_convert), so those two
+// real definitions arrive from the archive instead of a hand-duplicated
+// stand-in. Neither was ever reached by this executable's own call graph
+// (only utils::can_see() called them, which rots_convert never calls) --
+// see this file's git history, pre-entity-seed-Task-6, for the two stubs'
+// prior text.
 
 #include "base_utils.h"
 #include "char_utils.h"
@@ -470,27 +480,6 @@ objects_json::ObjectSaveData build_default_account_backed_object_data()
         "convert_main.cpp).");
     return objects_json::ObjectSaveData { };
 }
-
-namespace utils {
-bool is_room_outside(const room_data& room)
-{
-    (void)room;
-    rots::log::write_stderr(
-        "rots_convert: STUB utils::is_room_outside() called -- unreachable (only "
-        "utils::can_see(), never called by this executable's load/store/save flow).");
-    return false;
-}
-
-bool is_light(const room_data& room, const weather_data& weather)
-{
-    (void)room;
-    (void)weather;
-    rots::log::write_stderr(
-        "rots_convert: STUB utils::is_light() called -- unreachable (only utils::can_see(), "
-        "never called by this executable's load/store/save flow).");
-    return true;
-}
-} // namespace utils
 
 // ===========================================================================
 // Crash_delete_file() -- objsave.cpp (deliberately OUT this wave -- see the

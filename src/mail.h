@@ -100,6 +100,12 @@ struct MailStoreData {
 // docs/superpowers/sdd/p2a-task-5-report.md.
 bool legacy_mail_file_from_binary(const std::string& bytes, MailStoreData* data, std::string* error_message = nullptr);
 
+// Promoted to external linkage (persist-split PS Task 2): mail.cpp's
+// runtime store (scan_file/persist_mail_or_log) calls these two cross-TU
+// after the mail_json codec moved to mail_json.cpp.
+bool read_whole_file_contents(std::string_view path, std::string* bytes);
+bool write_file_contents_atomically(std::string_view path, std::string_view contents, std::string* error_message);
+
 std::string serialize_mail_to_json(const MailStoreData& data);
 /// Deserializes a bounded mail JSON document, stopping at its first embedded null byte.
 bool deserialize_mail_from_json(std::string_view json, MailStoreData *data,

@@ -154,7 +154,7 @@ set(ROTS_SERVER_SOURCES
     db_boot.cpp db_players.cpp db_world.cpp delayed_command_interpreter.cpp
     exploits_json.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
-    limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
+    limits.cpp mage.cpp mail.cpp mail_json.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     mystic.cpp obj2html.cpp objects_json.cpp objsave.cpp
     olog_hai.cpp pkill.cpp pkill_json.cpp profs.cpp protocol.cpp

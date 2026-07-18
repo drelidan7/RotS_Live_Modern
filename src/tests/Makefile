@@ -135,7 +135,7 @@ objects_json.o : ../objects_json.cpp ../objects_json.h ../json_utils.h
 clock.o : ../clock.cpp ../clock.h
 	$(CXX) -c $(CXXFLAGS) ../clock.cpp
 
-rots_log.o : ../rots_log.cpp ../platform/include/rots/platform/log.h ../text_view.h
+rots_log.o : ../rots_log.cpp ../platform/include/rots/platform/log.h ../text_view.h ../platdef.h
 	$(CXX) -c $(CXXFLAGS) ../rots_log.cpp
 
 rots_util.o : ../rots_util.cpp ../platdef.h ../platform_compat.h ../rots_rng.h ../text_view.h

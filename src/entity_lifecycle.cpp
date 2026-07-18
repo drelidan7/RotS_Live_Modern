@@ -159,9 +159,10 @@ void dispatch_char_teardown(const char_data* character)
         return;
     }
     // Null default is a silent no-op: the staged-object map cleared by the old stub
-    // (in the deleted convert_stubs.cpp) can only gain entries via interpre.cpp's login flow,
-    // which never runs in rots_convert (pre-registration) or ageland (post-registration).
-    // Erasing a never-inserted key is equivalent to no-op.
+    // (in the deleted convert_stubs.cpp) can only gain entries via interpre.cpp's login flow.
+    // That flow never runs at all in rots_convert; in ageland it only runs after
+    // register_char_teardown_hook() has registered the real hook. Erasing a never-inserted
+    // key is equivalent to no-op.
 }
 
 float dispatch_attack_speed_multiplier(char_data* character)
@@ -1112,10 +1113,6 @@ void cold_spec_data::on_cone_of_cold_failed(int damage)
 }
 
 //============================================================================
-// specialization_data::reset() relocated to entity_lifecycle.cpp (entity-seed
-// Task 5); declaration unchanged (rots/core/character.h).
-
-//============================================================================
 void specialization_data::set(char_data& character)
 {
     reset();
@@ -1314,7 +1311,6 @@ std::string wild_fighting_data::to_string(char_data&) const
 {
     return std::string("You are specialized in wild fighting.\n\r");
 }
-
 
 /************************************************************************
  *  Affect / derived-ability engine (db-split Task 4b)                *

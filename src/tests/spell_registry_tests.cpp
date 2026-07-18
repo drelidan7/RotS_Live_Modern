@@ -18,10 +18,6 @@
 #include <algorithm>
 #include <cstring>
 
-// Declared in spells.h; forward-declared here too only to make this test's
-// dependency on it explicit at the point of use.
-void assign_spell_pointers();
-
 // consts.cpp's global skill table -- not declared in any header (matching
 // every other .cpp that references it, e.g. spell_pa.cpp:38); this is the
 // array assign_spell_pointers() populates and this suite asserts against.

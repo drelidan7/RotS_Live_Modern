@@ -42,9 +42,9 @@ using mage_roster_fn = void (*)(char_data* mage);
 struct Sinks {
     send_to_char_fn send_to_char; // comm.cpp's desc-delivery body
     send_to_char_id_fn send_to_char_id; // comm.cpp's descriptor_list-walk body
-    act_fn act; // comm.cpp:2427's body
-    mage_roster_fn track_mage; // comm.cpp:677's body
-    mage_roster_fn untrack_mage; // comm.cpp's untrack body
+    act_fn act; // comm.cpp's act_impl body
+    mage_roster_fn track_mage; // comm.cpp's track_specialized_mage_impl body
+    mage_roster_fn untrack_mage; // comm.cpp's untrack_specialized_mage_impl body
 };
 
 // Installs the sinks the game-output forwarders (output_seam.cpp) call

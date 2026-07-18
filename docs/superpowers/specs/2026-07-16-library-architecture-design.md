@@ -95,15 +95,22 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
   (`rots_log.cpp`), and its one null-arg guard (formerly `utils.h`'s `nz`) is inlined at the call
   site, so the TU's only pathed `rots/` include is `rots/platform/log.h` — no `core/include` reach, no qualifier
   needed. Confirmed by `nm` on the built archive (`rots_platform_linkcheck` / `PlatformLayerAcyclicity`).
-- `consts.cpp` is **not** in `rots_core` as built — the table row above is the intended target, not
-  current fact. Its `skills[MAX_SKILLS]` table (`consts.cpp:382`) structurally embeds ~69 `spell_*`
-  function pointers, an `nm`-verified upward edge into `rots_combat`-tier code (a genuine L1→L3
-  reference, not just a link-time weld). It stays an app-compiled TU; `rots_core` shipped as
-  `{config.cpp}` + the carved headers for this wave. Cutting the weld (a registration scheme or
-  per-skill dispatch indirection so `skills[]` no longer embeds function pointers directly) is
-  recorded follow-on work, after which `consts.cpp` can join `rots_core`. `get_guardian_type`'s
-  separate `mob_index` edge was already cut in this wave (relocated to `utility.cpp`). See
-  `docs/BUILD.md` "Library layering" for the full `nm` evidence (Task 13).
+- **Resolved (entity-seed Tasks 1-2).** `consts.cpp` has joined `rots_core`. Its `skills[MAX_SKILLS]`
+  table used to structurally embed ~69 `spell_*` function pointers, an `nm`-verified upward edge
+  into `rots_combat`-tier code (a genuine L1→L3 reference, not just a link-time weld) — confirmed
+  by `nm -uC` on the built `consts.cpp.o`, which resolved every one of those symbols as undefined.
+  `get_guardian_type`'s separate `mob_index` edge had already been cut ahead of this wave
+  (relocated to `utility.cpp`). Task 1 cut the `skills[]` weld at the root with a **registration
+  scheme**: `consts.cpp`'s static initializer now leaves the function-pointer column null, and
+  `assign_spell_pointers()` (`spell_pa.cpp`) populates all 69 cells at boot — called from
+  `db_boot.cpp` immediately before `assign_command_pointers()`, the same boot-time-registration
+  precedent that function already established. `SpellRegistry.*`
+  (`src/tests/spell_registry_tests.cpp`) pins all 69 `{index, name, function}` triples against a
+  positional transcription of the pre-change table (independently cross-checked against
+  `spells.h`'s `SPELL_*` constants), asserting both the pointer AND the name column so an
+  off-by-one in either extraction is caught. Task 2 then moved `consts.cpp` itself into
+  `ROTS_CORE_SOURCES`. See `docs/BUILD.md` "Library layering" for the full `nm` evidence and the
+  registration call site.
 
 ---
 
@@ -418,6 +425,32 @@ layer's code genuinely has no upward edges.
    graph surface them.
 5. **Staged decouplings** (location Stage 1→2, account/session separation, macro→function) run as
    long-tail work *within* the now-stable library boundaries.
+
+**As-built (entity-seed wave, step 4 first slice):** `rots_entity` is seeded, not yet complete —
+Tasks 1-6 stood up the library with its first three members (`entity_lifecycle.cpp`,
+`object_utils.cpp`, `environment_utils.cpp`, all descended from the `db.cpp`-split's "unforeseen
+fourth TU", §4a) and the `EntityLayerAcyclicity` linkcheck (§11) proving they carry no upward edge
+beyond `rots_core`/`rots_platform`. Getting there required, in dependency order: the `skills[]`
+registration scheme (§3, above) so `rots_core` could absorb `consts.cpp` first; the output seam
+(§13's pattern, `output_seam.h`/`.cpp`) so the entity layer's `send_to_char`/`act`/mage-roster
+calls invert instead of linking up into `comm.cpp`; the platform-helper relocations (new
+`rots_util.cpp`) so entity code's `number()`/`str_dup`-family calls resolve in L0; and two
+`entity_hooks.h` inversion hooks (char-teardown → `objsave.cpp` registers, attack-speed →
+`wild_fighting_handler.cpp` registers) for the two remaining edges relocation alone couldn't cut.
+Two rounds of link-time STOP conditions during Task 6 pulled a further ~23 leaf-clean symbols out
+of `char_utils.cpp` and into `entity_lifecycle.cpp` (the `specialization_info` method family plus
+`get_name`/`is_race_good`/`is_race_magi`) rather than stubbing them, since each was verified to
+have no further upward reach.
+
+`char_utils.cpp`, `char_utils_combat.cpp`, and `handler.cpp` — the other three TUs §3's original
+table assigned to `rots_entity` — are **deliberately deferred**: the `rots_convert` link surfaced
+real, named welds in each (`char_utils.cpp`: `get_hit_text`→`fight.cpp`, the
+`wild_fighting_handler` ctor/method, `other_side`→`handler.cpp`; `char_utils_combat.cpp`:
+`big_brother::on_character_attacked_player`; `handler.cpp`: ~30 welds, not yet enumerated) rather
+than being cut speculatively this wave. `convert_stubs.cpp`'s weld ledger shrank from ~40
+documented stubs (~1.6K lines) to ~15 as each task's relocation or seam removed the real edge a
+stub stood in for — see `docs/BUILD.md`'s "`rots_convert`" section for the full task-by-task
+account and the remaining stub inventory.
 
 ---
 

@@ -130,7 +130,8 @@ namespace rots::entity {
 namespace {
 // Backing storage for the registered char-teardown hook
 // (register_char_teardown_hook(), objsave.cpp). Null until that
-// registration runs; a null hook is a logged no-op tripwire.
+// registration runs; a null hook is a silent, provable no-op -- see
+// dispatch_char_teardown() below, which does not log.
 char_teardown_fn g_char_teardown_hook = nullptr;
 
 // Backing storage for the registered attack-speed-multiplier hook

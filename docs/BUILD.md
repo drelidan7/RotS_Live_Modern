@@ -425,15 +425,30 @@ too can join a library.
   `act`/`vsend_to_char`/`track_specialized_mage`/`untrack_specialized_mage` via the output seam,
   `log`/`mudlog`/`create_function`/`free_function`/`str_dup`-family/`number()` via the platform
   relocations, `is_room_outside`/`is_light` via `rots_entity`, and more — see the file's own
-  header comment for the task-by-task account). The stubs still remaining — `fname`,
-  `other_side`, `unaccent`, `find_name`, `Crash_get_filename`, `add_exploit_record`,
-  `find_player_in_table`, `build_default_account_backed_object_data`, `get_hit_text`, the
-  `wild_fighting_handler` ctor/method pair, `recalc_skills`, `Crash_delete_file`,
-  `world_room_vnum`, and `file_to_string`/`file_to_string_alloc` — are each still genuinely
-  unreachable from the converter's own call graph (`build_player_index`/`load_char`/
-  `store_to_char`/`save_char`) and named with their real home TU and reachability argument
-  in the ledger itself; the deferred objsave/boards/mail/pkill membership above is what would
-  let most of them be deleted.
+  header comment for the task-by-task account). The stubs still remaining split into two
+  groups. Most are genuinely **unreachable from the converter's own call graph**
+  (`build_player_index`/`load_char`/`store_to_char`/`save_char`) — `fname`, `other_side`,
+  `unaccent`, `find_name`, `Crash_get_filename`, `add_exploit_record`, `find_player_in_table`,
+  `build_default_account_backed_object_data`, `get_hit_text`, the `wild_fighting_handler`
+  ctor/method pair, `Crash_delete_file`, and `world_room_vnum` — each named with its real home
+  TU and reachability argument in the ledger itself; the deferred objsave/boards/mail/pkill
+  membership above is what would let most of them be deleted. A smaller group is instead
+  **reachable and a faithfully-duplicated stand-in**, where staying in sync with its origin is
+  an ongoing maintenance contract rather than an inert placeholder: `recalc_skills` (called
+  unconditionally by `store_to_char()`, so it genuinely executes on every conversion; it
+  reproduces the one persisted side effect — `ch->player.language` — that its real
+  `spec_pro.cpp` body computes from `GET_RACE(ch)` alone, and documents why the
+  `ch->knowledge[]` recomputation is safely omitted as provably unobserved on disk),
+  `file_to_string`/`file_to_string_alloc` (verbatim copies of `db_boot.cpp`'s bodies, exercised
+  for every legacy text-format pfile `load_player()` loads), and the color trio
+  `nearest_ansi_color`/`convert_old_colormask`/`sync_color_slot_foreground_from_ansi`
+  (verbatim copies of `color.cpp`'s current implementation, exercised by every truecolor
+  setting and every legacy `color_mask`-only character the converter loads — the
+  `ConvertEquivalence` suite, see "Testing" below, is the drift guard that keeps the copies
+  byte-for-byte in sync with their origin). The ledger already records this group's follow-on:
+  splitting `color.cpp`'s pure conversion helpers into their own leaf TU (e.g.
+  `color_convert.cpp`) so both `ageland` and `rots_convert` link one real definition instead of
+  synchronized copies.
 - **This target is CMake-only.** It is not added to the flat `src/Makefile` / `src/tests/Makefile`,
   which compile same-directory only against a single hand-maintained `OBJFILES` list per binary —
   wiring a second multi-file executable into that pattern isn't worth it for a CI-only

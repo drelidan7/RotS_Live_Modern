@@ -39,8 +39,6 @@
 
 extern const std::string_view pc_race_types[];
 
-#define READ_TITLE(ch) pc_race_types[GET_RACE(ch)]
-
 extern struct char_data* character_list;
 extern struct obj_data* object_list;
 extern struct room_data world;

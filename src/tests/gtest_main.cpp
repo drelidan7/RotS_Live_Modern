@@ -2,9 +2,11 @@
 
 #include "../big_brother.h"
 #include "../comm.h"
+#include "../handler.h"
 #include "../rots_net.h"
 #include "../skill_timer.h"
 #include "../utils.h"
+#include "../warrior_spec_handlers.h"
 
 #if defined(_WIN32)
 #include <crtdbg.h>
@@ -87,6 +89,15 @@ int main(int argc, char* argv[]) {
     // instead of delivering to a descriptor, exactly the same gap this
     // function already closes for skill_timer/big_brother above.
     register_game_output_sinks();
+    // entity_hooks.h's two inversion hooks (entity-seed Task 5), registered
+    // for the same real-body-fidelity reason as the output sinks above: without
+    // them this test process would silently exercise the null-hook defaults
+    // (dispatch_char_teardown()'s silent no-op; dispatch_attack_speed_multiplier()'s
+    // tripwire-logged 1.0f) instead of objsave.cpp's/wild_fighting_handler.cpp's real
+    // implementations that ageland registers at boot -- both TUs are already linked
+    // into both test binaries, so this only needs the registration calls.
+    register_char_teardown_hook();
+    register_attack_speed_multiplier_hook();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

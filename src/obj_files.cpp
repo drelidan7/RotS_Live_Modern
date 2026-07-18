@@ -20,6 +20,23 @@
 // for the handful of helpers handler.h never declared. The dead file-scope
 // `FILE* fd;` (objsave.cpp's prior line 89, zero references) was deleted,
 // not moved -- the one deliberate deletion in this carve.
+//
+// persist-split PS Task 3 (converter re-plumb): Crash_get_file_by_name's
+// last global-buf composer was fixed here -- it read/wrote db_boot.cpp's
+// extern char buf[MAX_STRING_LENGTH] (pure intra-call scratch: written by
+// Crash_get_filename, read by fopen and the SYSERR log line, never live
+// past the call), swapped for a local char filename[50], exactly like the
+// very next function (Crash_delete_file) already does. Behavior is
+// byte-identical -- same buffer size, same fopen/log content -- but this
+// TU now has zero references to the global scratch buffer. This is the
+// same move entity-seed Task 5 made for db_players.cpp's last three `buf`
+// composers (save_char()/rename_char()/write_exploits()); it simply hadn't
+// reached this block yet, since PS Task 2 carved it out of objsave.cpp
+// (which entity-seed Task 5 never touched) after the fact. The fix was
+// forced by rots_convert actually linking this TU for the first time (PS
+// Task 3): db_boot.cpp -- buf's only definition -- is deliberately not
+// part of that link, so the global reference was a genuine undefined
+// symbol at link time, not just an unreachable-at-runtime one.
 
 #include <cctype>
 #include <cerrno>
@@ -321,14 +338,15 @@ bool write_player_objects_json(std::string_view player_name, const objects_json:
 FILE* Crash_get_file_by_name(std::string_view name, std::string_view mode)
 {
     FILE* fp;
+    char filename[50];
 
-    if (!Crash_get_filename(name, buf))
+    if (!Crash_get_filename(name, filename))
         return 0;
     const std::string mode_owner(rots::text::truncate_at_null(mode));
-    if (!(fp = fopen(buf, mode_owner.c_str()))) {
+    if (!(fp = fopen(filename, mode_owner.c_str()))) {
         const bool suppress_missing_read_side_file = (errno == ENOENT) && !mode_owner.empty() && (mode_owner[0] == 'r');
         if (!suppress_missing_read_side_file) {
-            log(std::format("SYSERR: unable to open crashsave file '{}' for {}: {}", buf, name,
+            log(std::format("SYSERR: unable to open crashsave file '{}' for {}: {}", filename, name,
                 strerror(errno))
                     );
         }

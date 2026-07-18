@@ -86,6 +86,27 @@
 // (only utils::can_see() called them, which rots_convert never calls) --
 // see this file's git history, pre-entity-seed-Task-6, for the two stubs'
 // prior text.
+//
+// persist-split PS Task 3 (converter re-plumb onto obj_files.cpp) deletes
+// three more stubs the same way: Crash_get_filename()/Crash_delete_file()/
+// build_default_account_backed_object_data() are now real obj_files.cpp
+// definitions (PS Task 2 carved that TU's P-half out of objsave.cpp; this
+// task is what first links it into rots_convert), so rots_convert links
+// the one real definition of each instead of a hand-duplicated stand-in.
+// db_players.cpp -- the only caller of Crash_get_filename/Crash_delete_file
+// this executable links -- reaches them from rename_char() and
+// build_player_index()'s permanently-disabled auto-delete branch
+// respectively, neither on the converter's own build_player_index ->
+// load_char/store_to_char/save_char call graph; the same held already for
+// build_default_account_backed_object_data (only
+// load_object_save_data_for_character() calls it, never called here). See
+// this file's git history, pre-PS-Task-3, for the three stubs' prior text.
+// Linking obj_files.cpp for the first time also surfaced one real gap:
+// Crash_get_file_by_name() (unreachable here the same way, but a genuinely
+// new undefined symbol, not a stub-shaped one) referenced db_boot.cpp's
+// global `buf` scratch array, which this executable deliberately does not
+// link. Fixed at the source (obj_files.cpp), not stubbed here -- see that
+// file's own PS-Task-3 comment.
 
 #include "base_utils.h"
 #include "char_utils.h"
@@ -338,17 +359,6 @@ int find_name(char* name)
 // entity_lifecycle.cpp definition (see that file's "Entity-tier leaf
 // helpers" section) instead of a stub.
 
-int Crash_get_filename(std::string_view original_name, char* filename)
-{
-    (void)original_name;
-    if (filename)
-        *filename = '\0';
-    rots::log::write_stderr(
-        "rots_convert: STUB Crash_get_filename() called -- unreachable (only rename_char(), "
-        "never called by this executable's load/store/save flow).");
-    return 0;
-}
-
 void add_exploit_record(int type, struct char_data* victim, int int_param, const char* extra)
 {
     (void)type;
@@ -370,46 +380,6 @@ int find_player_in_table(std::string_view name, int idnum)
         "read_crime_file()/add_crime()/know_of_crime()/forget_crimes()/rename_char(), never "
         "called by this executable's load/store/save flow).");
     return -1;
-}
-
-objects_json::ObjectSaveData build_default_account_backed_object_data()
-{
-    rots::log::write_stderr(
-        "rots_convert: STUB build_default_account_backed_object_data() called -- unreachable "
-        "(only load_object_save_data_for_character(), which this executable never calls -- see "
-        "convert_main.cpp).");
-    return objects_json::ObjectSaveData { };
-}
-
-// ===========================================================================
-// Crash_delete_file() -- objsave.cpp (deliberately OUT this wave -- see the
-// task brief: "objsave/boards/mail/pkill are deliberately OUT this wave;
-// their welds are catalogued follow-on work"). build_player_index()
-// (db_players.cpp) calls it from an auto-delete-inactive-low-level-
-// characters branch that is gated behind a LOCAL `const bool
-// enable_auto_delete = false;` -- permanently disabled at boot, by design
-// (see db_players.cpp's comment on that flag: imported/legacy characters
-// must never be silently auto-removed). Every preset here configures
-// CMAKE_BUILD_TYPE=Debug (-O0, see CMakePresets.json's `base` preset), so
-// the compiler does not fold `enable_auto_delete && ...` down to a
-// constant-false branch and eliminate this call -- the reference survives
-// to link time even though it is UNREACHABLE at runtime for every build this
-// repo produces. This stub is therefore never called; it exists purely to
-// satisfy the linker; the loud log line is a tripwire in case that analysis
-// is ever wrong (a future edit flips enable_auto_delete to true).
-// Follow-on: hoist the disabled branch behind a real seam (a
-// std::function callback db_boot.cpp/comm.cpp registers, mirroring the
-// logging-seam pattern) so persist code never names objsave.cpp's
-// Crash_delete_file at all, clean or dead.
-// ===========================================================================
-int Crash_delete_file(std::string_view name)
-{
-    rots::log::write_stderr(
-        std::format("rots_convert: STUB Crash_delete_file('{}') called -- this should be "
-                    "unreachable (build_player_index()'s auto-delete branch is permanently "
-                    "disabled). Returning 0 without touching any file.",
-            name));
-    return 0;
 }
 
 // ===========================================================================

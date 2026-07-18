@@ -373,12 +373,18 @@ target_link_options(ageland PRIVATE
 # hand-picked persist-codec subset it still direct-compiles (db_players.cpp:
 # player-index/load/store/save, the JSON codecs, the account system, the
 # legacy exploit/plrobj binary-to-JSON one-time converters, char_utils.cpp,
-# and (persist-split PS Task 1) color_convert.cpp -- the leaf TU carrying
+# (persist-split PS Task 1) color_convert.cpp -- the leaf TU carrying
 # nearest_ansi_color()/convert_old_colormask()/
 # sync_color_slot_foreground_from_ansi(), which convert_stubs.cpp used to
 # hand-duplicate because color.cpp itself is not link-clean for this
 # executable -- its combat welds are next wave's work, so it stays direct
-# rather than joining a library yet) -- deliberately NO db_world.cpp/
+# rather than joining a library yet -- and (persist-split PS Task 3)
+# obj_files.cpp, the P-half of objsave.cpp carved out in PS Task 2: the
+# account-backed object staging map, path/bucket helpers,
+# write_player_objects_json, Crash_get_filename/Crash_delete_file/
+# Crash_delete_crashfile/Crash_clean_file/update_obj_file, and
+# register_char_teardown_hook, compiled directly here until a future task
+# folds it into a library) -- deliberately NO db_world.cpp/
 # db_boot.cpp and NO combat/commands/app translation unit. This is the executable acid-test
 # that the persistence boundary holds: if a future change re-welds
 # db_players.cpp/entity_lifecycle.cpp to the game (combat/world/commands/
@@ -386,11 +392,12 @@ target_link_options(ageland PRIVATE
 # added to `all` (no EXCLUDE_FROM_ALL) so every CI job builds it -- see
 # docs/superpowers/specs/2026-07-16-library-architecture-design.md Sec4b/
 # Sec11 and docs/superpowers/plans/2026-07-17-db-split-and-rots-convert.md
-# Task 3. objsave.cpp/boards.cpp/mail.cpp/pkill.cpp are deliberately OUT this
-# wave (their welds are catalogued follow-on work in convert_stubs.cpp,
-# the file-scoped "weld ledger" documenting every symbol substituted for an
-# excluded app/combat home and why the converter's own call graph never
-# reaches it).
+# Task 3. objsave.cpp's G half (Crash_load/Crash_listrent and the rent/
+# receptionist flow) plus boards.cpp/mail.cpp/pkill.cpp are still
+# deliberately OUT this wave (their welds are catalogued follow-on work in
+# convert_stubs.cpp, the file-scoped "weld ledger" documenting every symbol
+# substituted for an excluded app/combat home and why the converter's own
+# call graph never reaches it).
 #
 # This target is CMake-only this wave (not added to the flat src/Makefile /
 # src/tests/Makefile, which compile same-directory only against a single
@@ -402,7 +409,7 @@ add_executable(rots_convert
     character_json.cpp objects_json.cpp exploits_json.cpp
     account_management.cpp account_cache.cpp
     convert_exploits.cpp convert_plrobjs.cpp
-    char_utils.cpp
+    char_utils.cpp obj_files.cpp
 )
 target_include_directories(rots_convert PRIVATE persist/include)
 set_target_properties(rots_convert PROPERTIES CXX_EXTENSIONS OFF)

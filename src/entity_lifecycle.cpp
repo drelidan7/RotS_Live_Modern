@@ -116,16 +116,26 @@ extern byte language_number; // consts.cpp -- recalc_skills() below (relocated P
 extern byte language_skills[]; // consts.cpp -- recalc_skills() below (relocated PS Task 4).
 
 /************************************************************************
- *  entity_hooks.h dispatch (entity-seed Task 5)                       *
+ *  entity_hooks.h dispatch (entity-seed Task 5, +EC Task 2)            *
  ************************************************************************
- *  Backing storage + null-defaulted dispatch helpers for the two upward
+ *  Backing storage + null-defaulted dispatch helpers for the four upward
  *  edges entity_hooks.h inverts (spec Sec13 pattern, mirroring
  *  output_seam.cpp): free_char()'s teardown notification (objsave.cpp
  *  registers the real clear_account_backed_object_bytes_for_character()),
- *  and recalc_abilities()'s weapon-master attack-speed query
+ *  recalc_abilities()'s weapon-master attack-speed query
  *  (wild_fighting_handler.cpp registers the real
- *  player_spec::weapon_master_handler-backed implementation). Both
- *  registered by run_the_game(), before boot_db() -- see entity_hooks.h.
+ *  player_spec::weapon_master_handler-backed implementation),
+ *  get_energy_regen()'s wild-fighting attack-speed query (char_utils.cpp;
+ *  wild_fighting_handler.cpp registers the real
+ *  player_spec::wild_fighting_handler-backed implementation), and
+ *  on_attacked_character()'s big-brother PK notification
+ *  (char_utils_combat.cpp; big_brother.cpp registers a forwarder to
+ *  game_rules::big_brother::instance().on_character_attacked_player()). All
+ *  four registered by run_the_game(), before boot_db() -- see
+ *  entity_hooks.h. The last two are dispatched cross-TU (char_utils.cpp /
+ *  char_utils_combat.cpp), so their dispatch helpers below are NOT in the
+ *  anonymous namespace the first two use -- see entity_hooks.h's
+ *  declarations for why.
  ************************************************************************/
 namespace rots::entity {
 
@@ -142,6 +152,19 @@ char_teardown_fn g_char_teardown_hook = nullptr;
 // rots_convert's historical player_spec::weapon_master_handler stub
 // (tripwire log + a neutral 1.0f multiplier).
 attack_speed_fn g_attack_speed_multiplier_hook = nullptr;
+
+// Backing storage for the registered wild-fighting attack-speed hook
+// (register_wild_attack_speed_multiplier_hook(), wild_fighting_handler.cpp).
+// Null until that registration runs; the null default reproduces
+// convert_stubs.cpp's now-deleted player_spec::wild_fighting_handler stub
+// (tripwire log + a neutral 1.0f multiplier).
+wild_attack_speed_fn g_wild_attack_speed_multiplier_hook = nullptr;
+
+// Backing storage for the registered attacked-player (big-brother PK
+// notification) hook (register_attacked_player_hook(), big_brother.cpp).
+// Null until that registration runs; the null default is a tripwire no-op
+// (combat never runs before run_the_game's registrations in ageland).
+attacked_player_fn g_attacked_player_hook = nullptr;
 } // namespace
 
 void set_char_teardown_hook(char_teardown_fn hook)
@@ -152,6 +175,16 @@ void set_char_teardown_hook(char_teardown_fn hook)
 void set_attack_speed_multiplier_hook(attack_speed_fn hook)
 {
     g_attack_speed_multiplier_hook = hook;
+}
+
+void set_wild_attack_speed_multiplier_hook(wild_attack_speed_fn hook)
+{
+    g_wild_attack_speed_multiplier_hook = hook;
+}
+
+void set_attacked_player_hook(attacked_player_fn hook)
+{
+    g_attacked_player_hook = hook;
 }
 
 namespace {
@@ -179,6 +212,36 @@ float dispatch_attack_speed_multiplier(char_data* character)
     return 1.0f;
 }
 } // namespace
+
+// Cross-TU dispatch for the wild-fighting attack-speed hook (called from
+// char_utils.cpp's get_energy_regen(); see entity_hooks.h). External linkage
+// -- unlike dispatch_attack_speed_multiplier() above, this cannot live in the
+// anonymous namespace.
+float dispatch_wild_attack_speed_multiplier(const char_data* character)
+{
+    if (g_wild_attack_speed_multiplier_hook) {
+        return g_wild_attack_speed_multiplier_hook(character);
+    }
+    rots::log::write_stderr(
+        "rots::entity: STUB wild-attack-speed-multiplier hook called with no sink registered -- this "
+        "should be unreachable once register_wild_attack_speed_multiplier_hook() has run.");
+    return 1.0f;
+}
+
+// Cross-TU dispatch for the attacked-player (big-brother PK notification)
+// hook (called from char_utils_combat.cpp's on_attacked_character(); see
+// entity_hooks.h). External linkage, same reason as
+// dispatch_wild_attack_speed_multiplier() above.
+void dispatch_attacked_player(const char_data* attacker, const char_data* attacked)
+{
+    if (g_attacked_player_hook) {
+        g_attacked_player_hook(attacker, attacked);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::entity: STUB attacked-player hook called with no sink registered -- this should be "
+        "unreachable once register_attacked_player_hook() has run.");
+}
 
 } // namespace rots::entity
 

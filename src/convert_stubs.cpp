@@ -157,10 +157,19 @@
 // Task 2, so this executable links the one real definition of each
 // instead of a tripwire-logged stand-in. other_side_num() (handler.cpp,
 // relocated alongside other_side() -- same macro-logic family) never had
-// a stub here: no rots_convert-linked TU calls it. Only
+// a stub here: no rots_convert-linked TU calls it. See this file's git
+// history, pre-entity-completion-Task-1, for the three deleted stubs' prior
+// text.
+
+// EC Task 2 (wild-fighting attack-speed / big-brother PK-notification hook
+// inversion) deletes the last remaining stub body in this file:
 // player_spec::wild_fighting_handler's ctor/get_attack_speed_multiplier()
-// stub remains below -- see this file's git history, pre-entity-completion-
-// Task-1, for the three deleted stubs' prior text.
+// (see this file's "player_spec::wild_fighting_handler" section, below,
+// for the full reachability argument). This file now has ZERO stub bodies
+// left -- every symbol rots_convert needs is either a real cross-linked
+// definition or a null-defaulted entity_hooks.h/persist_hooks.h/
+// output_seam.h hook default. Task 3 deletes this now-empty ledger file
+// outright.
 
 #include "base_utils.h"
 #include "char_utils.h"
@@ -286,32 +295,21 @@
 // persisted).
 // ===========================================================================
 
-// ===========================================================================
-// player_spec::wild_fighting_handler (ctor) / get_attack_speed_multiplier()
-// -- wild_fighting_handler.cpp (combat, app layer). The only caller inside
-// this executable's linked TUs is char_utils.cpp's get_energy_regen(),
-// which is not on the load_char()/store_to_char()/save_char() call graph
-// (nothing in db_players.cpp/entity_lifecycle.cpp/char_utils.cpp itself
-// calls get_energy_regen() -- it is a live-combat energy-regen-rate query).
-// Follow-on: dissolves once get_energy_regen() (and the rest of
-// char_utils.cpp's combat-facing helpers) move into a rots_combat-tier TU
-// separate from the identity/spec accessors rots_convert genuinely needs.
-// ===========================================================================
-player_spec::wild_fighting_handler::wild_fighting_handler(char_data* in_character)
-    : character(in_character)
-{
-    rots::log::write_stderr(
-        "rots_convert: STUB player_spec::wild_fighting_handler::wild_fighting_handler() "
-        "constructed -- this should be unreachable from the converter's load/store/save flow.");
-}
-
-float player_spec::wild_fighting_handler::get_attack_speed_multiplier() const
-{
-    rots::log::write_stderr(
-        "rots_convert: STUB player_spec::wild_fighting_handler::get_attack_speed_multiplier() "
-        "called -- this should be unreachable from the converter's load/store/save flow.");
-    return 1.0f;
-}
+// player_spec::wild_fighting_handler's ctor/get_attack_speed_multiplier()
+// stub is DELETED (EC Task 2): char_utils.cpp's get_energy_regen() no longer
+// constructs this class directly -- it dispatches through entity_hooks.h's
+// wild-attack-speed-multiplier hook instead, and this executable never calls
+// register_wild_attack_speed_multiplier_hook() (an app-layer/comm.cpp-only
+// boot step), so the hook's null default (1.0f) fires. Byte-identical to
+// this stub's old return value, for the same reachability reason this stub
+// was safe: get_energy_regen() is not on the load_char()/store_to_char()/
+// save_char() call graph (nothing in db_players.cpp/entity_lifecycle.cpp/
+// char_utils.cpp itself calls it -- it is a live-combat energy-regen-rate
+// query). This was the last stub body in this file: every remaining section
+// below is a DELETED-stub marker comment (or, further up, still-live
+// per-symbol reachability history) -- rots_convert now links a real
+// definition, or a null-defaulted hook default, for every symbol it needs.
+// Task 3 deletes this now-empty ledger file outright.
 
 // player_spec::weapon_master_handler's ctor/get_attack_speed_multiplier()
 // stub is DELETED (entity-seed Task 5): entity_lifecycle.cpp's

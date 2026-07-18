@@ -443,11 +443,14 @@ target_link_options(ageland PRIVATE
 # follow-on; the G halves stay app-side by design. convert_stubs.cpp, the
 # file-scoped "weld ledger" documenting every symbol substituted for an
 # excluded app/combat home and why the converter's own call graph never
-# reaches it, now carries only the ledger's 2 surviving stub bodies
-# (entity-completion Task 1 relocated fname/other_side to char_utils.cpp
-# and get_hit_text to consts.cpp, both real definitions now, closing three
-# of the prior 5): player_spec::wild_fighting_handler's ctor +
-# get_attack_speed_multiplier() (char_utils.cpp symbols).
+# reaches it, now carries ZERO surviving stub bodies (entity-completion
+# Task 1 relocated fname/other_side to char_utils.cpp and get_hit_text to
+# consts.cpp, both real definitions now, closing three of the prior 5; EC
+# Task 2 closed the last one -- player_spec::wild_fighting_handler's ctor +
+# get_attack_speed_multiplier() -- by inverting char_utils.cpp's
+# get_energy_regen() call through entity_hooks.h's wild-attack-speed-
+# multiplier hook instead of stubbing it here). EC Task 3 deletes this
+# now-empty ledger file outright.
 #
 # This target is CMake-only this wave (not added to the flat src/Makefile /
 # src/tests/Makefile, which compile same-directory only against a single

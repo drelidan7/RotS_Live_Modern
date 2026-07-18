@@ -518,9 +518,12 @@ bridge — none are `nm`-clean against the converter's link surface, and chasing
 follow-on (see "`rots_persist`" above for the boards-bridge deferral in particular). As of
 entity-seed Task 6, `entity_lifecycle.cpp`/`object_utils.cpp`/`environment_utils.cpp` arrive via
 `RotS::entity` (see "`rots_entity`" above) rather than as direct sources; `char_utils.cpp` stays a
-direct source because it still carries real combat/big_brother welds (the `wild_fighting_handler`
-ctor/method, plus `big_brother::on_character_attacked_player`) that a future wave will need to cut
-before it too can join a library. `fname`/`other_side`/`other_side_num` (formerly `handler.cpp`)
+direct source (not `nm`-clean for a library, per its own callers still needing app-layer symbols
+this executable never links) even though EC Task 2 inverted its last two real combat/big_brother
+welds (`get_energy_regen()`'s `wild_fighting_handler` construct-and-query, and
+`char_utils_combat.cpp`'s `big_brother::on_character_attacked_player()` call) through
+`entity_hooks.h`'s wild-attack-speed-multiplier/attacked-player hooks — a future wave can revisit
+whether it can now join a library. `fname`/`other_side`/`other_side_num` (formerly `handler.cpp`)
 and `get_hit_text` (formerly `fight.cpp`, with its `attack_hit_text[]` table, now `consts.cpp`)
 relocated verbatim into `char_utils.cpp`/`consts.cpp` respectively in entity-completion Task 1 —
 real definitions, not welds, from here on.
@@ -545,10 +548,15 @@ real definitions, not welds, from here on.
   `track_specialized_mage`/`untrack_specialized_mage` via the output seam, `log`/`mudlog`/
   `create_function`/`free_function`/`str_dup`-family/`number()` via the platform relocations,
   `is_room_outside`/`is_light` via `rots_entity`, and more — see the file's own header comment
-  for the task-by-task account) to **2 stub function bodies in 1 named group** today.
+  for the task-by-task account) to **ZERO stub function bodies** today.
   Entity-completion Task 1 deleted three more (`fname`/`other_side`, `get_hit_text`) the same
   way: relocating them verbatim into `char_utils.cpp`/`consts.cpp` (already-linked TUs) closed
-  those welds outright. Persist-split deleted 14 stub bodies total across three tasks. PS Task 1 deleted the color
+  those welds outright. EC Task 2 deleted the last stub body —
+  `player_spec::wild_fighting_handler`'s ctor + `get_attack_speed_multiplier()` — by inverting
+  `char_utils.cpp`'s `get_energy_regen()` call through `entity_hooks.h`'s new
+  wild-attack-speed-multiplier hook instead; `rots_convert` never registers it, so the hook's
+  null default (1.0f) fires, byte-identical to the deleted stub's return value. EC Task 3 deletes
+  this now-empty ledger file outright. Persist-split deleted 14 stub bodies total across three tasks. PS Task 1 deleted the color
   trio's stand-ins (`nearest_ansi_color()`+`ansi_palette`, `convert_old_colormask()`,
   `sync_color_slot_foreground_from_ansi()`) when `color_convert.cpp` was carved out of
   `color.cpp` as a leaf TU (see "`color_convert.cpp` membership" above). PS Task 3 deleted
@@ -565,17 +573,10 @@ real definitions, not welds, from here on.
   relocating them within already-linked TUs closed no converter-side weld — see the file's own
   header comment for the full accounting.
 
-  What remains is genuinely **unreachable from the converter's own call graph**
-  (`build_player_index`/`load_char`/`store_to_char`/`save_char`), named with its real home TU
-  and reachability argument in the ledger itself:
-  - `player_spec::wild_fighting_handler`'s ctor + `get_attack_speed_multiplier()`
-    (`wild_fighting_handler.cpp`) — only caller is `char_utils.cpp`'s `get_energy_regen()`, a
-    live-combat energy-regen-rate query, off the converter's load/store/save path.
-
-  This group dissolves once `char_utils.cpp`'s remaining combat/presentation-facing helpers
-  (`get_energy_regen`, `get_damage_report`, and friends) move into a future `rots_combat`-tier TU
-  separate from the identity/spec accessors `rots_convert` genuinely needs — the same reason
-  `char_utils.cpp` itself still can't join a library (see above).
+  Nothing remains unreachable-but-stubbed: every symbol `rots_convert` needs is now either a
+  real cross-linked definition or a null-defaulted `entity_hooks.h`/`persist_hooks.h`/
+  `output_seam.h` hook default (see "`rots_entity`"/"`rots_persist`" above). `char_utils.cpp`
+  itself still can't join a library yet, for the unrelated `nm`-cleanliness reason noted above.
 - **This target is CMake-only.** It is not added to the flat `src/Makefile` / `src/tests/Makefile`,
   which compile same-directory only against a single hand-maintained `OBJFILES` list per binary —
   wiring a second multi-file executable into that pattern isn't worth it for a CI-only

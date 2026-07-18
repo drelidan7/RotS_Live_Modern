@@ -12,8 +12,8 @@
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
+#include "entity_hooks.h"
 #include "utils.h"
-#include "warrior_spec_handlers.h"
 #include <algorithm>
 #include <assert.h>
 #include <cmath>
@@ -1344,9 +1344,10 @@ int get_energy_regen(const char_data& character)
 {
     int regen = character.points.ENE_regen;
 
-    // woah now dre, const_casts are not legit.  leaky abstraction for sure
-    player_spec::wild_fighting_handler handler(const_cast<char_data*>(&character));
-    regen *= handler.get_attack_speed_multiplier();
+    // Dispatches to entity_hooks.h's wild-attack-speed-multiplier hook
+    // (wild_fighting_handler.cpp registers the real construct-and-query,
+    // const_cast included -- see that file's registered hook body).
+    regen *= rots::entity::dispatch_wild_attack_speed_multiplier(&character);
 
     return regen;
 }

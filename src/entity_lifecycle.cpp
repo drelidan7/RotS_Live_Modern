@@ -2420,9 +2420,9 @@ void decrypt_line(unsigned char* lp, int len)
  *  to their handler.cpp originals -- none of this batch touches         *
  *  world[]/zone_table[]/obj_index[] (census-verified: no SEAM            *
  *  substitution needed). Declarations are unchanged in handler.h.        *
- *  get_char() is DEFERRED, not moved -- see its own comment below for    *
- *  why (a cascading dependency on parse_numbered_name(), itself deferred *
- *  in handler.cpp this task).                                            *
+ *  get_char() was deferred here by the placement-seam wave (Task 4) and  *
+ *  completed by the combat-seed wave's NumberedName rider -- see its     *
+ *  own comment below for the as-built landing.                          *
  ************************************************************************/
 
 int isname(std::string_view query, std::string_view name_list, char full)

@@ -526,8 +526,8 @@ combat-seed wave's riders (Tasks 2-3); the poison cluster REMAINS backlog:**
    `rots_combat` while `handler` is still below it. Future: a poison-notification hook
    (`entity_hooks.h`-pattern registered callback), or restructuring around post-combat extraction.
 2. **`parse_numbered_name`/`get_char` — RETIRED (combat-seed Task 3).** `NumberedName` moved to
-   `rots/platform/numbered_name.h` (see "Pathed data-model includes" and the `rots_combat` section
-   below for the L0-visibility tier decision); `parse_numbered_name` → `rots_util.cpp` (L0),
+   `rots/platform/numbered_name.h` (see the `rots_combat` section's "NumberedName's L0-visibility
+   tier decision" note below); `parse_numbered_name` → `rots_util.cpp` (L0),
    `get_char` → `entity_lifecycle.cpp` (L2), both verbatim. `handler.h` now compatibility-includes
    the new header so no caller changed.
 3. **`real_time_passed`/`mud_time_passed`/`day_to_str`/`age` — RETIRED (combat-seed Task 2).** All
@@ -823,6 +823,13 @@ persistence boundary.
   `register_wild_attack_speed_multiplier_hook()` (the `entity_hooks.h` pattern) are still called
   app-side (`comm.cpp`'s `run_the_game()`, `tests/gtest_main.cpp`'s fixture setup) — a legal
   app→lib downward call, not an upward edge.
+- **NumberedName's L0-visibility tier decision (combat-seed Task 3).** `NumberedName` lives in
+  `rots/platform/numbered_name.h` (`rots_platform`, L0), not `rots_core` (L1): `rots_util.cpp`'s
+  `parse_numbered_name` is itself an L0 TU, and `rots_core` is invisible from L0
+  (`rots_platform` links only `rots_build_flags`, not `RotS::core`), so a type an L0 TU must see
+  has to live in the platform tree — the same L0-visibility precedent `rots/platform/log.h`
+  already established (see "The logging seam" above). `get_char` → `entity_lifecycle.cpp` (L2)
+  sees the same header via `handler.h`'s compatibility include.
 
 **The DEFER-11 growth inventory (census's blocker analysis, recorded for the next combat wave).**
 The parent spec's `rots_combat` row sketches 16 TUs; this wave seeded the 4 SEED-CLEAN TUs above,

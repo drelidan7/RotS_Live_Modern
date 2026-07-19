@@ -50,7 +50,7 @@ code inverts entity→combat edges, i.e. the ambitious wave. Stays on the backlo
    RotS::platform rots_build_flags — plus RotS::persist/RotS::world ONLY if the linkcheck proves a
    sanctioned L3-peer edge exists; census expects none). TUs leave `ROTS_SERVER_SOURCES`; ageland
    links `RotS::combat`; ageland_tests compiles the sources per the established mechanism.
-2. **`rots_combat_linkcheck`** mirroring the four existing linkchecks (both force-load spellings,
+2. **`rots_combat_linkcheck`** mirroring the five existing linkchecks (both force-load spellings,
    LINK_DEPENDS, minimal main, `CombatLayerAcyclicity` ctest, root-Makefile hand-list entry).
    STOP contract on any undefined symbol (cascades expected-possible; controller adjudicates).
    Note: the spec-handler TUs register themselves into entity hooks pre-boot (existing

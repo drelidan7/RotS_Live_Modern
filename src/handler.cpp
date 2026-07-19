@@ -73,8 +73,11 @@ extern struct descriptor_data* descriptor_list;
 extern struct char_data* fast_update_list;
 extern const std::string_view MENU;
 extern struct skill_data skills[];
-extern sh_int encumb_table[MAX_WEAR];
-extern sh_int leg_encumb_table[MAX_WEAR];
+// encumb_table[]/leg_encumb_table[] externs REMOVED (task-3 review
+// Minor, placement-seam wave): both arrays' only uses in this file
+// moved into equipment.cpp's attach_equipment()/detach_equipment()
+// (placement-seam Task 3); this file has had no remaining reference
+// to either since. See equipment.cpp's own extern declarations.
 extern long race_affect[];
 extern int max_race_str[];
 
@@ -786,15 +789,26 @@ void obj_from_char(struct obj_data* object)
 // return;` guard (between the weight math and the ARMOR/WEAPON/SHIELD/
 // LIGHT dispatch) caused the ORIGINAL to skip the too-heavy messages,
 // affect_modify()/affect_total(), AND the poison block together whenever
-// it fired; the too-heavy messages only applied inside the WEAPON arm of
-// that same dispatch. attach_equipment() now reports which of those two
-// ORIGINAL conditions applied (mapping below) instead of the wrapper
-// re-deriving either one -- both are evaluated exactly once, inside
-// attach_equipment().
-//   ORIGINAL condition                              -> primitive result
-//   (item_slot == HOLD) && !CAN_WEAR(item, ITEM_HOLD) fired -> HOLD_EARLY_RETURN (run nothing further)
-//   ran to completion, GET_ITEM_TYPE(item) == ITEM_WEAPON   -> WEAPON (run too-heavy check + poison block)
-//   ran to completion, item is not a weapon                 -> OTHER (skip too-heavy check; run poison block)
+// it fired; the too-heavy CHECK (not just its message) only applied
+// inside the WEAPON arm of that same dispatch, BEFORE the affect loop.
+// attach_equipment() now reports which of those ORIGINAL conditions
+// applied (mapping below) instead of the wrapper re-deriving any of them
+// -- all are evaluated exactly once, inside attach_equipment().
+//
+// CRITICAL FIX (task-3 re-review): an earlier version of this wrapper
+// ran the too-heavy weight/twohanded CHECK itself, here, AFTER
+// attach_equipment() had already run affect_modify()/affect_total() --
+// wrong relative to the ORIGINAL's position (inside the primitive,
+// before the affect loop) and observably wrong whenever the item's own
+// affects change GET_BAL_STR/IS_TWOHANDED. This wrapper now performs NO
+// stat comparison at all -- it only selects which send_to_char() text
+// (or none) the primitive's already-computed outcome calls for.
+//   ORIGINAL condition                                              -> primitive result           -> wrapper message
+//   (item_slot == HOLD) && !CAN_WEAR(item, ITEM_HOLD) fired          -> HOLD_EARLY_RETURN            -> none (wrapper returns)
+//   weapon; weight > str*50 && !twohanded (checked pre-affect)       -> WEAPON_TOO_HEAVY_ONE_HAND     -> "too heavy for one hand"
+//   weapon; not the above, but weight > str*100 (checked pre-affect) -> WEAPON_TOO_HEAVY_FOR_YOU      -> "too heavy for you"
+//   weapon; neither condition held                                  -> WEAPON                        -> none
+//   not a weapon, ran to completion                                 -> OTHER                         -> none
 void equip_char(char_data* character, obj_data* item, int item_slot)
 {
     int was_poisoned = IS_AFFECTED(character, AFF_POISON);
@@ -840,12 +854,10 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
     if (outcome == EquipAttachOutcome::HOLD_EARLY_RETURN)
         return;
 
-    if (outcome == EquipAttachOutcome::WEAPON) {
-        if (GET_OBJ_WEIGHT(item) > (GET_BAL_STR(character) * 50) && !IS_TWOHANDED(character))
-            send_to_char("This weapon seems too heavy for one hand.\n\r", character);
-        else if (GET_OBJ_WEIGHT(item) > (GET_BAL_STR(character) * 100))
-            send_to_char("This weapon seems too heavy for you!\n\r", character);
-    }
+    if (outcome == EquipAttachOutcome::WEAPON_TOO_HEAVY_ONE_HAND)
+        send_to_char("This weapon seems too heavy for one hand.\n\r", character);
+    else if (outcome == EquipAttachOutcome::WEAPON_TOO_HEAVY_FOR_YOU)
+        send_to_char("This weapon seems too heavy for you!\n\r", character);
 
     // Special case for poisoned objects.  The wearer should get poison damage
     // when wearing/removing something poisoned.

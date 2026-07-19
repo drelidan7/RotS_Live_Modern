@@ -35,6 +35,17 @@
 // attach_equipment()/detach_equipment()'s signatures -- binding, from the
 // task brief -- carry no explicit "did the primitive early-return" signal);
 // task-3-report.md has the full byte-fidelity reassembly audit.
+//
+// CRITICAL FIX (task-3 re-review, post-controller-adjudication): an earlier
+// version of this split left the too-heavy weapon CHECK (not just its
+// message) in the wrapper, evaluated AFTER attach_equipment() had already
+// run affect_modify()/affect_total() -- a real behavior change, since those
+// calls can mutate exactly what the check reads (GET_BAL_STR/IS_TWOHANDED).
+// The check now lives here, at attach_equipment()'s ORIGINAL position, and
+// reports its result via EquipAttachOutcome (handler.h) instead of a raw
+// bool -- see that enum's comment and handler.cpp's equip_char() wrapper
+// for the exact mapping, and task-3-report.md for the order-aware
+// reassembly audit this fix required.
 
 #include "platdef.h"
 #include <cassert>
@@ -55,6 +66,14 @@
 // get_encumb_table()/get_leg_encumb_table() accessors, unused by this file).
 extern sh_int encumb_table[MAX_WEAR];
 extern sh_int leg_encumb_table[MAX_WEAR];
+
+// max_race_str[] (consts.cpp, L1 core data table): GET_BAL_STR (utils.h)
+// expands to a direct max_race_str[GET_RACE(ch)] read -- needed here now
+// that attach_equipment()'s too-heavy check (task-3 review CRITICAL fix,
+// above) evaluates GET_BAL_STR(ch) itself, at the check's ORIGINAL
+// position. Same local extern-declaration pattern handler.cpp uses for
+// its own max_race_str reference.
+extern int max_race_str[];
 
 // attach_equipment() SPLIT primitive (census row equip_char:815; see this
 // file's top-of-file comment and handler.cpp's equip_char() wrapper comment
@@ -102,12 +121,33 @@ EquipAttachOutcome attach_equipment(char_data* ch, obj_data* obj, int pos)
     if ((pos == HOLD) && !CAN_WEAR(obj, ITEM_HOLD))
         return EquipAttachOutcome::HOLD_EARLY_RETURN;
 
+    // outcome default covers ARMOR/SHIELD/LIGHT/no-dispatch-match -- all
+    // originally fell through to affect_modify()/affect_total() with no
+    // message decision of any kind, matching EquipAttachOutcome::OTHER.
+    EquipAttachOutcome outcome = EquipAttachOutcome::OTHER;
+
     if (GET_ITEM_TYPE(obj) == ITEM_ARMOR)
         SET_DODGE(ch) += obj->obj_flags.value[3];
 
     else if (GET_ITEM_TYPE(obj) == ITEM_WEAPON) {
         SET_OB(ch) += obj->obj_flags.value[0];
         SET_PARRY(ch) += obj->obj_flags.value[1];
+
+        // CRITICAL FIX (task-3 re-review; see handler.h's EquipAttachOutcome
+        // comment): this check moved here, to its EXACT original position
+        // (inside the WEAPON dispatch arm, before affect_modify() below), so
+        // GET_BAL_STR(ch)/IS_TWOHANDED(ch) are read BEFORE affect_modify()
+        // can mutate the inputs they read (an APPLY_STR affect changes
+        // GET_BAL_STR; a bitvector affect can set AFF_TWOHANDED). Only the
+        // OUTCOME crosses the call boundary now -- the wrapper emits no
+        // message text decision of its own, only the send_to_char() call
+        // the chosen outcome selects.
+        if (GET_OBJ_WEIGHT(obj) > (GET_BAL_STR(ch) * 50) && !IS_TWOHANDED(ch))
+            outcome = EquipAttachOutcome::WEAPON_TOO_HEAVY_ONE_HAND;
+        else if (GET_OBJ_WEIGHT(obj) > (GET_BAL_STR(ch) * 100))
+            outcome = EquipAttachOutcome::WEAPON_TOO_HEAVY_FOR_YOU;
+        else
+            outcome = EquipAttachOutcome::WEAPON;
 
     } else if (GET_ITEM_TYPE(obj) == ITEM_SHIELD) {
         SET_DODGE(ch) += obj->obj_flags.value[0];
@@ -127,7 +167,7 @@ EquipAttachOutcome attach_equipment(char_data* ch, obj_data* obj, int pos)
 
     affect_total(ch);
 
-    return (GET_ITEM_TYPE(obj) == ITEM_WEAPON) ? EquipAttachOutcome::WEAPON : EquipAttachOutcome::OTHER;
+    return outcome;
 }
 
 // detach_equipment() SPLIT primitive (census row unequip_char:919; see this

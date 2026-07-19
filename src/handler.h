@@ -115,15 +115,41 @@ struct obj_data* unequip_char(struct char_data* ch, int pos);
 // ORIGINAL conditions now evaluates exactly once, inside
 // attach_equipment(); see equipment.cpp's and handler.cpp's equip_char()
 // comments for the exact mapping.
+//
+// CRITICAL FIX (task-3 re-review): the too-heavy CHECK
+// (`GET_OBJ_WEIGHT(obj) > GET_BAL_STR(ch)*50 && !IS_TWOHANDED(ch)` /
+// `> GET_BAL_STR(ch)*100`) reads character stats affect_modify() below
+// can mutate (an APPLY_STR affect changes GET_BAL_STR; a bitvector affect
+// can set AFF_TWOHANDED) -- the ORIGINAL evaluated it BEFORE the affect
+// loop, inside the WEAPON dispatch arm. An earlier version of this split
+// evaluated it in the wrapper, AFTER attach_equipment() had already run
+// affect_modify()/affect_total() -- an observable behavior change goldens
+// cannot see (whether the warning fires depends on the item's own
+// affects). The check itself now lives in attach_equipment(), at the
+// ORIGINAL's exact position, and its OUTCOME (not a raw bool) is what
+// crosses the call boundary -- WEAPON/WEAPON_TOO_HEAVY_ONE_HAND/
+// WEAPON_TOO_HEAVY_FOR_YOU below. The wrapper only chooses which
+// send_to_char() text to emit (or none); it performs no stat comparison
+// of its own.
 enum class EquipAttachOutcome {
     HOLD_EARLY_RETURN, // the (pos == HOLD) && !CAN_WEAR(obj, ITEM_HOLD) guard
                        // fired; matches the ORIGINAL's own bare `return;` at that
                        // point -- the wrapper must run nothing further.
-    WEAPON, // ran to completion; GET_ITEM_TYPE(obj) == ITEM_WEAPON, so the
-            // wrapper's too-heavy check applies.
-    OTHER, // ran to completion; not a weapon, so the too-heavy check does not
-           // apply (matches the ORIGINAL structure, where that check lived
-           // only inside the WEAPON else-if arm).
+    WEAPON, // ran to completion; GET_ITEM_TYPE(obj) == ITEM_WEAPON, neither
+            // too-heavy condition held -- the wrapper emits no message.
+    WEAPON_TOO_HEAVY_ONE_HAND, // ran to completion; a weapon, and
+                               // GET_OBJ_WEIGHT(obj) > GET_BAL_STR(ch)*50 &&
+                               // !IS_TWOHANDED(ch) held (evaluated pre-affect,
+                               // inside the primitive) -- the wrapper emits
+                               // "This weapon seems too heavy for one hand.".
+    WEAPON_TOO_HEAVY_FOR_YOU, // ran to completion; a weapon, the one-hand
+                              // condition above did not hold but
+                              // GET_OBJ_WEIGHT(obj) > GET_BAL_STR(ch)*100 did
+                              // (same pre-affect evaluation) -- the wrapper
+                              // emits "This weapon seems too heavy for you!".
+    OTHER, // ran to completion; not a weapon -- no too-heavy check applies
+           // (matches the ORIGINAL structure, where that check lived only
+           // inside the WEAPON else-if arm).
 };
 EquipAttachOutcome attach_equipment(struct char_data* ch, struct obj_data* obj, int pos);
 struct obj_data* detach_equipment(struct char_data* ch, int pos);

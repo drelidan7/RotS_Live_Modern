@@ -647,23 +647,34 @@ void die_follower(char_data* character)
 // zone_table[] substituted for room_by_id_total()/zone_by_id() per the
 // BINDING addendum's unchecked-access rule (this function's world[ch->in_room]
 // reads carry no bounds test of their own). This app-side wrapper keeps the
-// public name/declaration (handler.h, unchanged); it now calls the primitive
-// then runs the original trailing stop_fighting teardown loop (combat/app),
-// byte-preserved below. See task-3-report.md for the reassembly audit.
+// public name/declaration (handler.h, unchanged).
+//
+// bool status branch (controller adjudication, supersedes this task's own
+// original unconditional-call version -- see task-3-report.md): the
+// ORIGINAL char_from_room had two early-return paths that both skipped
+// this trailing stop_fighting loop entirely; detach_char_from_room() now
+// reports false on exactly those two paths (mapping below), so the loop
+// only runs when it reports true (the full detach ran) -- reproducing the
+// original's control flow exactly, with neither early-return condition
+// re-evaluated here.
+//   ORIGINAL early-return path                 -> primitive result
+//   ch->in_room == NOWHERE (already nowhere)    -> false (skip)
+//   `if (!i) return;` (room-list corruption)     -> false (skip)
+//   (fell through to the end -- full detach ran) -> true (run loop)
 void char_from_room(struct char_data* ch)
 {
-    detach_char_from_room(ch);
-
-    int tmp;
-    for (tmp = 0; ch->specials.fighting && (tmp < 100); tmp++) {
-        if (ch->specials.fighting->specials.fighting == ch)
-            stop_fighting(ch->specials.fighting);
-        stop_fighting(ch);
-    }
-    if (tmp == 100) {
-        strcpy(buf, std::format("Char_from_room: could not stop fighting for {}.\n",
-            GET_NAME(ch)).c_str());
-        mudlog(buf, NRM, LEVEL_GOD, TRUE);
+    if (detach_char_from_room(ch)) {
+        int tmp;
+        for (tmp = 0; ch->specials.fighting && (tmp < 100); tmp++) {
+            if (ch->specials.fighting->specials.fighting == ch)
+                stop_fighting(ch->specials.fighting);
+            stop_fighting(ch);
+        }
+        if (tmp == 100) {
+            strcpy(buf, std::format("Char_from_room: could not stop fighting for {}.\n",
+                GET_NAME(ch)).c_str());
+            mudlog(buf, NRM, LEVEL_GOD, TRUE);
+        }
     }
 }
 
@@ -769,21 +780,21 @@ void obj_from_char(struct obj_data* object)
 // the "too heavy" `send_to_char` messages (census 880-883), and the poison
 // `damage`/`raw_kill` block (census 905-916) -- all byte-preserved below.
 //
-// DEVIATION (discovered implementing this split; documented per this
-// wave's self-adjudication precedent -- see task-3-report.md): the
-// original's `if ((item_slot == HOLD) && !CAN_WEAR(item, ITEM_HOLD))
+// EquipAttachOutcome status branch (controller adjudication, supersedes
+// this task's own original re-check version -- see task-3-report.md): the
+// ORIGINAL's `if ((item_slot == HOLD) && !CAN_WEAR(item, ITEM_HOLD))
 // return;` guard (between the weight math and the ARMOR/WEAPON/SHIELD/
-// LIGHT dispatch) causes the ORIGINAL to skip the too-heavy messages,
+// LIGHT dispatch) caused the ORIGINAL to skip the too-heavy messages,
 // affect_modify()/affect_total(), AND the poison block together whenever
-// it fires. attach_equipment() is void (no signal channel across the call
-// boundary, per this task's binding primitive signature), so this wrapper
-// re-checks the SAME stateless condition (item_slot/item are unchanged by
-// the primitive call) after calling attach_equipment(), before running its
-// own too-heavy-check and poison block -- reproducing the original's
-// early-return-skips-the-tail control flow exactly, without requiring the
-// primitive to report status back. Not a reordering: the condition is
-// re-evaluated (byte-identical to the primitive's own copy of the same
-// guard), not moved relative to any other original line.
+// it fired; the too-heavy messages only applied inside the WEAPON arm of
+// that same dispatch. attach_equipment() now reports which of those two
+// ORIGINAL conditions applied (mapping below) instead of the wrapper
+// re-deriving either one -- both are evaluated exactly once, inside
+// attach_equipment().
+//   ORIGINAL condition                              -> primitive result
+//   (item_slot == HOLD) && !CAN_WEAR(item, ITEM_HOLD) fired -> HOLD_EARLY_RETURN (run nothing further)
+//   ran to completion, GET_ITEM_TYPE(item) == ITEM_WEAPON   -> WEAPON (run too-heavy check + poison block)
+//   ran to completion, item is not a weapon                 -> OTHER (skip too-heavy check; run poison block)
 void equip_char(char_data* character, obj_data* item, int item_slot)
 {
     int was_poisoned = IS_AFFECTED(character, AFF_POISON);
@@ -824,12 +835,12 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
             log("SYSERR: ch->in_room = NOWHERE when equipping char.");
     }
 
-    attach_equipment(character, item, item_slot);
+    EquipAttachOutcome outcome = attach_equipment(character, item, item_slot);
 
-    if ((item_slot == HOLD) && !CAN_WEAR(item, ITEM_HOLD))
+    if (outcome == EquipAttachOutcome::HOLD_EARLY_RETURN)
         return;
 
-    if (GET_ITEM_TYPE(item) == ITEM_WEAPON) {
+    if (outcome == EquipAttachOutcome::WEAPON) {
         if (GET_OBJ_WEIGHT(item) > (GET_BAL_STR(character) * 50) && !IS_TWOHANDED(character))
             send_to_char("This weapon seems too heavy for one hand.\n\r", character);
         else if (GET_OBJ_WEIGHT(item) > (GET_BAL_STR(character) * 100))
@@ -862,19 +873,22 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
 // remainder": the poison `damage`/`raw_kill` block (census 980-991),
 // byte-preserved below.
 //
-// DEVIATION (same class as equip_char's own, above -- see
-// task-3-report.md): detach_equipment() is declared obj_data* (not void),
-// but its return alone cannot distinguish "returned early at the HOLD
-// guard" (a valid, non-null obj) from "ran to completion" (also a valid,
-// non-null obj) -- both must skip vs. run this wrapper's poison block
-// respectively, exactly as the ORIGINAL's single early-return did. This
-// wrapper re-checks the same stateless HOLD/CAN_WEAR condition against the
-// returned obj (pos is unchanged by the primitive call) before running the
-// poison block, and separately guards on a null return (the zero-object
-// case, which the original also returned out of before ever reaching this
-// point) to avoid a new null-dereference the split call boundary would
-// otherwise introduce. Neither check reorders any original logic; both
-// reproduce the original's own early-return reach exactly.
+// Controller adjudication (task-3-report.md) considered giving
+// detach_equipment() a status return too (mirroring attach_equipment()
+// above), then confirmed it unnecessary: this primitive's own `(pos ==
+// HOLD) && !CAN_WEAR(obj, ITEM_HOLD)) return obj;` early return happens
+// strictly BEFORE affect_modify()/affect_total(), so ch's affected-list
+// (and therefore IS_AFFECTED(ch, AFF_POISON)) is PROVABLY unchanged
+// whenever that guard fires -- nothing between capturing `was_poisoned`
+// below and the poison check touches ch->specials.affected_by in that
+// path. That makes the poison block's own condition (`was_poisoned != 0
+// && !IS_AFFECTED(ch, AFF_POISON)`) false by construction whenever the
+// primitive early-returned (one operand and its exact negation can never
+// both hold), so this wrapper needs no re-derivation of the HOLD guard at
+// all -- only the `if (!obj) return obj;` null check below remains,
+// branching on the return value (not re-deriving `!ch->equipment[pos]`)
+// for the zero-object case, exactly as the ORIGINAL returned out of this
+// point too.
 struct obj_data* unequip_char(struct char_data* ch, int pos)
 {
     int was_poisoned = 0;
@@ -884,9 +898,6 @@ struct obj_data* unequip_char(struct char_data* ch, int pos)
     struct obj_data* obj = detach_equipment(ch, pos);
 
     if (!obj)
-        return obj;
-
-    if ((pos == HOLD) && !CAN_WEAR(obj, ITEM_HOLD))
         return obj;
 
     // Special case for poisoned objects.  The wearer should get poison damage

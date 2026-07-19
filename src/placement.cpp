@@ -408,14 +408,26 @@ void char_to_room(struct char_data* ch, int room)
 // `room_data* r`, same precedent as char_to_room() above.
 // zone_table[world[ch->in_room].zone] becomes zone_by_id(r->zone),
 // dereferenced directly (same rationale as char_to_room() above).
-void detach_char_from_room(char_data* ch)
+//
+// bool return (task-3-report.md controller adjudication, supersedes this
+// task's own original void signature -- a controller-authorized named
+// deviation from the plan): the ORIGINAL char_from_room had two
+// early-return paths that both skipped its trailing stop_fighting loop
+// entirely -- (1) `ch->in_room == NOWHERE` and (2) the defensive `if (!i)
+// return;` below. A void primitive gave the wrapper no way to tell these
+// apart from "ran to completion" without re-deriving them itself, so this
+// primitive now returns false on exactly those two original early-return
+// paths and true after the (unchanged) full detach; the wrapper branches
+// on that value instead of re-evaluating either condition -- see
+// handler.cpp's char_from_room() wrapper for the exact mapping table.
+bool detach_char_from_room(char_data* ch)
 {
     struct char_data* i;
     int tmp;
     if (ch->in_room == NOWHERE) {
         //      log("SYSERR: NOWHERE extracting char from room (handler.c, char_from_room)");
         //      exit(1);
-        return; // he's already nowehre
+        return false; // he's already nowehre
     }
 
     room_data* r = room_by_id_total(ch->in_room);
@@ -435,7 +447,7 @@ void detach_char_from_room(char_data* ch)
             ;
 
         if (!i)
-            return;
+            return false;
 
         i->next_in_room = ch->next_in_room;
     }
@@ -452,4 +464,5 @@ void detach_char_from_room(char_data* ch)
 
     ch->in_room = NOWHERE;
     ch->next_in_room = 0;
+    return true;
 }

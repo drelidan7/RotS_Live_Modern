@@ -66,9 +66,23 @@ extern sh_int leg_encumb_table[MAX_WEAR];
 // specified parameter names rather than the original's); (b)
 // world[character->in_room] -> room_by_id_total(ch->in_room) (BINDING
 // addendum, unchecked historical access); (c) the too-heavy send_to_char
-// messages (app-tier output) are NOT here -- they moved to the wrapper,
-// which re-checks GET_ITEM_TYPE(item) == ITEM_WEAPON itself.
-void attach_equipment(char_data* ch, obj_data* obj, int pos)
+// messages (app-tier output) are NOT here -- they moved to the wrapper.
+//
+// EquipAttachOutcome return (controller adjudication, supersedes this
+// task's original void signature -- see task-3-report.md): the ORIGINAL
+// equip_char had a single early `return;` (the HOLD/CAN_WEAR guard, still
+// below) that skipped the too-heavy messages, affect_modify()/
+// affect_total(), AND the poison block together. A void primitive gave the
+// wrapper no way to detect that without re-evaluating the guard itself, so
+// this primitive now reports its outcome explicitly: HOLD_EARLY_RETURN on
+// that guard (mirroring the ORIGINAL's own `return;` there -- wrapper runs
+// nothing further), or WEAPON/OTHER after a full run, decided by the SAME
+// GET_ITEM_TYPE(obj) == ITEM_WEAPON test the dispatch below already made
+// (evaluated once more, at the return statement, purely to report it --
+// not a second evaluation reachable from two different places the way the
+// wrapper's old re-check was). The wrapper branches on this value instead
+// of re-deriving either the HOLD guard or the WEAPON-type test.
+EquipAttachOutcome attach_equipment(char_data* ch, obj_data* obj, int pos)
 {
     ch->equipment[pos] = obj;
     obj->carried_by = ch;
@@ -86,7 +100,7 @@ void attach_equipment(char_data* ch, obj_data* obj, int pos)
     IS_CARRYING_W(ch) += GET_OBJ_WEIGHT(obj);
 
     if ((pos == HOLD) && !CAN_WEAR(obj, ITEM_HOLD))
-        return;
+        return EquipAttachOutcome::HOLD_EARLY_RETURN;
 
     if (GET_ITEM_TYPE(obj) == ITEM_ARMOR)
         SET_DODGE(ch) += obj->obj_flags.value[3];
@@ -112,6 +126,8 @@ void attach_equipment(char_data* ch, obj_data* obj, int pos)
             obj->obj_flags.bitvector, AFFECT_MODIFY_SET, 0);
 
     affect_total(ch);
+
+    return (GET_ITEM_TYPE(obj) == ITEM_WEAPON) ? EquipAttachOutcome::WEAPON : EquipAttachOutcome::OTHER;
 }
 
 // detach_equipment() SPLIT primitive (census row unequip_char:919; see this
@@ -126,6 +142,27 @@ void attach_equipment(char_data* ch, obj_data* obj, int pos)
 // send_to_char/act/damage/raw_kill) is NOT here -- it moved to the wrapper.
 // The `mudlog`/`log` "zero object" guard stays here -- L0-legal, and the
 // task brief's explicit disposition for it.
+//
+// Return type left as obj_data* (controller adjudication considered, then
+// confirmed unnecessary to change -- see task-3-report.md): unlike
+// attach_equipment() above, this primitive's own `(pos == HOLD) &&
+// !CAN_WEAR(obj, ITEM_HOLD)) return obj;` early return does NOT need an
+// explicit status signal for its wrapper to reproduce the ORIGINAL's
+// control flow, because that early return happens strictly BEFORE the only
+// remaining app-tier tail (the wrapper's poison damage/raw_kill block) and
+// BEFORE affect_modify()/affect_total() -- so ch's affected-list, and
+// therefore IS_AFFECTED(ch, AFF_POISON), is PROVABLY unchanged by this call
+// whenever that guard fires. The wrapper captures `was_poisoned =
+// IS_AFFECTED(ch, AFF_POISON)` before calling this primitive; if this
+// primitive early-returns at the HOLD guard, IS_AFFECTED(ch, AFF_POISON)
+// at the wrapper's later check is IDENTICAL to `was_poisoned` (nothing
+// touched ch->specials.affected_by in between), which makes the poison
+// block's own condition (`was_poisoned != 0 && !IS_AFFECTED(ch,
+// AFF_POISON)`) false by construction -- one operand or its exact negation
+// can never both hold. The wrapper therefore needs no re-derivation of the
+// HOLD guard at all; only the pre-existing `if (!obj) return obj;` null
+// check (branching on the return value, not re-deriving
+// `!ch->equipment[pos]`) remains, for the zero-object case.
 struct obj_data* detach_equipment(char_data* ch, int pos)
 {
     int j;

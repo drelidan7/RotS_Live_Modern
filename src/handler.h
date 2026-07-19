@@ -105,7 +105,27 @@ struct obj_data* unequip_char(struct char_data* ch, int pos);
 // constraint. See equipment.cpp's top-of-file comment and handler.cpp's
 // equip_char()/unequip_char() wrapper comments for the split-line
 // accounting and task-3-report.md for the reassembly audit.
-void attach_equipment(struct char_data* ch, struct obj_data* obj, int pos);
+//
+// EquipAttachOutcome (controller adjudication, task-3-report.md): the
+// status attach_equipment() returns so its wrapper equip_char() can
+// select which "app remainder" tail to run WITHOUT re-evaluating either
+// of attach_equipment()'s own guard conditions a second time -- the
+// `(pos == HOLD) && !CAN_WEAR(obj, ITEM_HOLD)` early-return test, and the
+// `GET_ITEM_TYPE(obj) == ITEM_WEAPON` dispatch test. Each of those two
+// ORIGINAL conditions now evaluates exactly once, inside
+// attach_equipment(); see equipment.cpp's and handler.cpp's equip_char()
+// comments for the exact mapping.
+enum class EquipAttachOutcome {
+    HOLD_EARLY_RETURN, // the (pos == HOLD) && !CAN_WEAR(obj, ITEM_HOLD) guard
+                       // fired; matches the ORIGINAL's own bare `return;` at that
+                       // point -- the wrapper must run nothing further.
+    WEAPON, // ran to completion; GET_ITEM_TYPE(obj) == ITEM_WEAPON, so the
+            // wrapper's too-heavy check applies.
+    OTHER, // ran to completion; not a weapon, so the too-heavy check does not
+           // apply (matches the ORIGINAL structure, where that check lived
+           // only inside the WEAPON else-if arm).
+};
+EquipAttachOutcome attach_equipment(struct char_data* ch, struct obj_data* obj, int pos);
 struct obj_data* detach_equipment(struct char_data* ch, int pos);
 
 struct obj_data* get_obj_in_list(char* name, struct obj_data* list);
@@ -141,8 +161,13 @@ struct char_data* get_char(std::string_view name);
 // SPLIT primitive (placement.cpp, L2) -- public API, per this wave's
 // "declarations stay in current headers" constraint. See
 // placement.cpp's and handler.cpp's char_from_room() comments for the
-// split-line accounting.
-void detach_char_from_room(struct char_data* ch);
+// split-line accounting. bool return (controller adjudication,
+// supersedes this task's original void signature -- see
+// task-3-report.md): false on either of the ORIGINAL char_from_room's
+// two early-return paths (both of which skipped its trailing
+// stop_fighting loop), true after the full detach; the wrapper
+// branches on this instead of re-deriving either condition.
+bool detach_char_from_room(struct char_data* ch);
 void char_from_room(struct char_data* ch);
 void char_to_room(struct char_data* ch, int room);
 void extract_char(struct char_data* ch, int new_room = -1);

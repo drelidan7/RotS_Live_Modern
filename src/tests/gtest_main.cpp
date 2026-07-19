@@ -104,6 +104,14 @@ int main(int argc, char* argv[]) {
     register_attack_speed_multiplier_hook();
     register_wild_attack_speed_multiplier_hook();
     register_attacked_player_hook();
+    // entity_hooks.h's txt-block-pool hook pair (world-seed Task 2
+    // adjudication), registered for the same real-body-fidelity reason as the
+    // four calls above: without it this test process would silently exercise
+    // dispatch_get_txt_block_from_pool()'s/dispatch_put_txt_block_to_pool()'s
+    // abort()-on-unregistered null default instead of comm.cpp's real pool
+    // that ageland registers at boot -- comm.cpp is already linked into both
+    // test binaries, so this only needs the registration call.
+    register_txt_block_pool_hooks();
     // persist_hooks.h's two inversion hooks (persist-split PS Task 4), registered
     // for the same real-body-fidelity reason as the two calls above: without them
     // this test process would silently exercise the null-hook defaults

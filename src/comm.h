@@ -82,6 +82,15 @@ void register_mudlog_broadcast_sink();
 /// unregistered sink.
 void register_game_output_sinks();
 
+/// Installs get_from_txt_block_pool()/put_to_txt_block_pool() (above) as
+/// entity_hooks.h's txt-block-pool hook pair (world-seed Task 2
+/// adjudication) -- target_data::cleanup()/operator=() (relocated to
+/// entity_lifecycle.cpp) dispatch through it instead of calling this TU's
+/// pool directly, since comm.cpp is not a leaf module. Called once from
+/// run_the_game(), before boot_db(), so ageland never runs a TARGET_TEXT
+/// copy with an unregistered hook.
+void register_txt_block_pool_hooks();
+
 /// Expands a bounded action format and delivers it to the selected recipients.
 void act(std::string_view str, int hide_invisible, struct char_data* ch,
     struct obj_data* obj, void* vict_obj, int type, char spam_only = FALSE);

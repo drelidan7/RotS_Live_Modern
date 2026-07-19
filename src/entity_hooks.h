@@ -8,6 +8,7 @@
 // section.
 
 struct char_data;
+struct txt_block;
 
 namespace rots::entity {
 
@@ -41,6 +42,25 @@ void set_wild_attack_speed_multiplier_hook(wild_attack_speed_fn hook);
 // (combat never runs before run_the_game's registrations in ageland).
 using attacked_player_fn = void (*)(const char_data* attacker, const char_data* attacked);
 void set_attacked_player_hook(attacked_player_fn hook);
+
+// target_data::cleanup()/operator=()'s txt-block pool traffic
+// (entity_lifecycle.cpp, relocated verbatim from interpre.cpp -- world-seed
+// Task 2). comm.cpp owns the actual pool (get_from_txt_block_pool/
+// put_to_txt_block_pool) because it is entangled with comm.cpp's
+// descriptor/output-buffer machinery (large_outbuf/bufpool), not a leaf
+// module -- so this hook pair inverts entity_lifecycle.cpp's edge onto it
+// instead of relocating the pool itself. comm.cpp registers the real pool
+// functions in run_the_game() before boot_db(); the null default is a loud
+// tripwire log FOLLOWED BY ABORT, not a safe fallback value -- unlike this
+// header's float-returning hooks above, there is no placeholder txt_block*
+// that would be safe to return: a TARGET_TEXT copy immediately dereferences
+// the pointer (ptr.text->text), so a silently-returned null would surface as
+// a confusing null-deref far from the real cause instead of failing loudly
+// at the hook boundary.
+using get_txt_block_fn = struct txt_block* (*)();
+using put_txt_block_fn = void (*)(struct txt_block*);
+void set_get_txt_block_pool_hook(get_txt_block_fn hook);
+void set_put_txt_block_pool_hook(put_txt_block_fn hook);
 
 // Dispatch entry points for the two hooks above. Unlike this header's
 // existing two hooks -- each dispatched only from entity_lifecycle.cpp, the

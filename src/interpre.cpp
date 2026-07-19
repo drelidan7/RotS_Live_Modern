@@ -680,36 +680,16 @@ void report_wrong_position(struct char_data* ch)
     }
 }
 
-void target_data::cleanup()
-{
-    if (type == TARGET_TEXT)
-        put_to_txt_block_pool(ptr.text);
-    ptr.other = 0;
-    type = TARGET_NONE;
-    ch_num = 0;
-}
-
-void target_data::operator=(const target_data& t2)
-{
-    cleanup();
-    if (t2.type == TARGET_TEXT) {
-        ptr.text = get_from_txt_block_pool();
-        strcpy(ptr.text->text, t2.ptr.text->text);
-    } else
-        ptr.other = t2.ptr.other;
-
-    type = t2.type;
-    ch_num = t2.ch_num;
-    choice = t2.choice;
-}
-
-int target_data::operator==(const target_data& t2) const
-{
-    if ((type == t2.type) && (ptr.other == t2.ptr.other) && (ch_num == t2.ch_num))
-        return 1;
-
-    return 0;
-}
+// target_data::cleanup()/operator=()/operator==() relocated to
+// entity_lifecycle.cpp (world-seed Task 2 adjudication): char_data's
+// implicitly-generated copy-assignment ODR-uses operator=() through the
+// special_list::field[SPECIAL_STACKLEN] array (mudlle.h), reached from
+// db_world.cpp's read_mobile() -- confirmed via `nm -u` on db_world.cpp.o.
+// The declarations stay in rots/core/types.h (core/L1); only the three
+// out-of-line bodies moved -- see entity_lifecycle.cpp's own
+// "target_data member functions" section for the definitions and the
+// txt-block-pool hook indirection (comm.cpp is not a leaf module, so the
+// pool itself was not relocated).
 
 /*
  * The procedure takes the mask of ==possible== arguments,

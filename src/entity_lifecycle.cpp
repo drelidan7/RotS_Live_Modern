@@ -165,6 +165,14 @@ wild_attack_speed_fn g_wild_attack_speed_multiplier_hook = nullptr;
 // Null until that registration runs; the null default is a tripwire no-op
 // (combat never runs before run_the_game's registrations in ageland).
 attacked_player_fn g_attacked_player_hook = nullptr;
+
+// Backing storage for the registered txt-block-pool hook pair
+// (register_txt_block_pool_hooks(), comm.cpp; world-seed Task 2). Null
+// until that registration runs; unlike the hooks above, the null default
+// is a hard failure (see dispatch_get_txt_block_from_pool() below) rather
+// than a safe placeholder value.
+get_txt_block_fn g_get_txt_block_pool_hook = nullptr;
+put_txt_block_fn g_put_txt_block_pool_hook = nullptr;
 } // namespace
 
 void set_char_teardown_hook(char_teardown_fn hook)
@@ -185,6 +193,16 @@ void set_wild_attack_speed_multiplier_hook(wild_attack_speed_fn hook)
 void set_attacked_player_hook(attacked_player_fn hook)
 {
     g_attacked_player_hook = hook;
+}
+
+void set_get_txt_block_pool_hook(get_txt_block_fn hook)
+{
+    g_get_txt_block_pool_hook = hook;
+}
+
+void set_put_txt_block_pool_hook(put_txt_block_fn hook)
+{
+    g_put_txt_block_pool_hook = hook;
 }
 
 namespace {
@@ -210,6 +228,43 @@ float dispatch_attack_speed_multiplier(char_data* character)
         "rots::entity: STUB attack-speed-multiplier hook called with no sink registered -- this "
         "should be unreachable once register_attack_speed_multiplier_hook() has run.");
     return 1.0f;
+}
+
+// target_data::cleanup()/operator=()'s txt-block-pool GET, dispatched
+// through the hook registered by register_txt_block_pool_hooks()
+// (comm.cpp). Unlike the float-returning hooks above, an unregistered hit
+// here is a hard failure (loud log + abort) rather than a safe fallback:
+// the caller immediately dereferences the returned pointer
+// (ptr.text->text), so a silently-returned null would surface as a
+// confusing null-deref far from the real cause. comm.cpp registers the
+// real pool function in run_the_game() before boot_db(), so ageland never
+// reaches this path; rots_convert links rots_entity but never copies a
+// TARGET_TEXT target (same class of "unreachable there too" as this
+// header's other tripwire hooks).
+struct txt_block* dispatch_get_txt_block_from_pool()
+{
+    if (g_get_txt_block_pool_hook) {
+        return g_get_txt_block_pool_hook();
+    }
+    rots::log::write_stderr(
+        "rots::entity: FATAL txt-block-pool GET hook called with no sink registered -- this "
+        "should be unreachable once register_txt_block_pool_hooks() has run.");
+    abort();
+}
+
+// target_data::cleanup()'s txt-block-pool PUT, dispatched through the same
+// hook pair for the same reason (a discarded-without-registration txt_block
+// would otherwise leak forever, silently, rather than fail loudly).
+void dispatch_put_txt_block_to_pool(struct txt_block* block)
+{
+    if (g_put_txt_block_pool_hook) {
+        g_put_txt_block_pool_hook(block);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::entity: FATAL txt-block-pool PUT hook called with no sink registered -- this "
+        "should be unreachable once register_txt_block_pool_hooks() has run.");
+    abort();
 }
 } // namespace
 
@@ -244,6 +299,54 @@ void dispatch_attacked_player(const char_data* attacker, const char_data* attack
 }
 
 } // namespace rots::entity
+
+/************************************************************************
+ *  target_data member functions (relocated verbatim from interpre.cpp,   *
+ *  world-seed Task 2 adjudication) -- char_data's implicitly-generated   *
+ *  copy-assignment (db_world.cpp's read_mobile(): `*mob = mob_proto[i];`)*
+ *  does a member-wise copy that ODR-uses target_data::operator=() through*
+ *  the special_list::field[SPECIAL_STACKLEN] array embedded in           *
+ *  char_special_data, even though db_world.cpp never spells the type     *
+ *  name "target_data" -- confirmed via `nm -u` on db_world.cpp.o, which  *
+ *  showed operator=() as an undefined symbol. Declarations stay in       *
+ *  rots/core/types.h (core/L1, already included by this TU); only the    *
+ *  three out-of-line bodies move here. cleanup()/operator=()'s two pool  *
+ *  calls (previously direct calls to comm.cpp's get_from_txt_block_pool/ *
+ *  put_to_txt_block_pool) now go through this TU's own dispatch helpers  *
+ *  above -- comm.cpp is not a leaf module (its pool storage is entangled *
+ *  with descriptor/output-buffer machinery), so the edge is inverted via *
+ *  entity_hooks.h instead of relocating the pool itself.                 *
+ ************************************************************************/
+void target_data::cleanup()
+{
+    if (type == TARGET_TEXT)
+        rots::entity::dispatch_put_txt_block_to_pool(ptr.text);
+    ptr.other = 0;
+    type = TARGET_NONE;
+    ch_num = 0;
+}
+
+void target_data::operator=(const target_data& t2)
+{
+    cleanup();
+    if (t2.type == TARGET_TEXT) {
+        ptr.text = rots::entity::dispatch_get_txt_block_from_pool();
+        strcpy(ptr.text->text, t2.ptr.text->text);
+    } else
+        ptr.other = t2.ptr.other;
+
+    type = t2.type;
+    ch_num = t2.ch_num;
+    choice = t2.choice;
+}
+
+int target_data::operator==(const target_data& t2) const
+{
+    if ((type == t2.type) && (ptr.other == t2.ptr.other) && (ch_num == t2.ch_num))
+        return 1;
+
+    return 0;
+}
 
 /************************************************************************
  *  procs of a (more or less) general utility nature			*

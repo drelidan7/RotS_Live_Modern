@@ -37,6 +37,7 @@
 #include "comm.h"
 #include "crashsave_schedule.h"
 #include "db.h"
+#include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
@@ -624,6 +625,12 @@ void run_the_game(sh_int port)
     register_attack_speed_multiplier_hook();
     register_wild_attack_speed_multiplier_hook();
     register_attacked_player_hook();
+    // entity_hooks.h's txt-block-pool hook pair (world-seed Task 2
+    // adjudication), registered the same way and for the same reason:
+    // before boot_db(), so ageland never runs target_data::operator=()'s
+    // TARGET_TEXT copy path (entity_lifecycle.cpp) with an unregistered
+    // hook.
+    register_txt_block_pool_hooks();
     // persist_hooks.h's two inversion hooks (persist-split PS Task 4),
     // registered the same way and for the same reason: before boot_db(), so
     // ageland never runs db_players.cpp's save_char()/rename_char() with an
@@ -1390,6 +1397,20 @@ void put_to_txt_block_pool(struct txt_block* pold)
 
     pold->next = txt_block_pool;
     txt_block_pool = pold;
+}
+
+// Registers get_from_txt_block_pool()/put_to_txt_block_pool() (above) as
+// entity_hooks.h's txt-block-pool hook pair -- world-seed Task 2's
+// disposition for target_data::cleanup()/operator=() (relocated to
+// entity_lifecycle.cpp; see that file's own "target_data member functions"
+// section). comm.cpp is not a leaf module (this pool is entangled with the
+// large_outbuf/bufpool descriptor-output machinery above), so the pool
+// itself stays here and the edge is inverted instead. Called once from
+// run_the_game(), before boot_db() -- see entity_hooks.h.
+void register_txt_block_pool_hooks()
+{
+    rots::entity::set_get_txt_block_pool_hook(get_from_txt_block_pool);
+    rots::entity::set_put_txt_block_pool_hook(put_to_txt_block_pool);
 }
 
 void write_to_q(std::string_view text, struct txt_q* queue)

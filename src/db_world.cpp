@@ -134,9 +134,13 @@ char small_map[2 * SMALL_WORLD_RADIUS + 3]
 // still definition-only, still read here by extern; see that file's own
 // ownership comment). mini_mud/boot_mode moved into THIS file (above,
 // next to new_mud) the same wave.
-extern char buf[MAX_STRING_LENGTH];
-extern char buf1[MAX_STRING_LENGTH];
-extern char buf2[MAX_STRING_LENGTH];
+// world-seed Task 2: db.h/db_boot.cpp still declare/define the three
+// shared scratch-text globals (db_boot.cpp:92-94) for other TUs, but this
+// TU no longer references them -- every former use of them below now
+// composes into a local std::string (std::format) or a local fixed-size
+// char array (for callees that write into the buffer, e.g. fgets/fscanf
+// "%s" scratch), sized to match the historical MAX_STRING_LENGTH scratch
+// globals.
 extern struct char_data* character_list;
 extern struct obj_data* object_list;
 
@@ -157,7 +161,7 @@ void load_rooms(FILE* fl);
 void load_mobiles(FILE* mob_f);
 void load_objects(FILE* obj_f);
 void load_mudlle(FILE* fp);
-void load_scripts(FILE* fl);
+void load_scripts(FILE* fl, std::string_view file_label);
 void draw_map();
 void initialiaze_small_map();
 void reset_small_map();
@@ -191,6 +195,15 @@ void index_boot(int mode)
     const char *index_filename, *prefix = NULL;
     FILE *index, *db_file;
     int rec_count = 0;
+    // world-seed Task 2: local replacements for the two former shared
+    // scratch-text globals used here. idx_entry is fscanf("%s")'d into
+    // directly (the callee writes the buffer, so it stays a fixed-size
+    // char array sized like the old MAX_STRING_LENGTH global); file_path
+    // is composed via std::format and reused for fopen/perror/log, and
+    // (for DB_BOOT_SHP) handed to boot_the_shops() as its mutable filename
+    // argument.
+    char idx_entry[MAX_STRING_LENGTH];
+    std::string file_path;
 
     switch (mode) {
     case DB_BOOT_WLD:
@@ -229,20 +242,19 @@ void index_boot(int mode)
             index_filename = INDEX_FILE;
     }
 
-    strcpy(buf2, std::format("{}/{}", prefix, index_filename).c_str());
+    file_path = std::format("{}/{}", prefix, index_filename);
 
-    if (!(index = fopen(buf2, "r"))) {
-        perror(
-            std::format("Error opening index file '{}'", static_cast<const char*>(buf2)).c_str());
+    if (!(index = fopen(file_path.c_str(), "r"))) {
+        perror(std::format("Error opening index file '{}'", file_path).c_str());
         exit(1);
     }
     /* first, count the number of records in the file so we can malloc */
     if (mode != DB_BOOT_SHP) {
-        fscanf(index, "%s\n", buf1);
-        while (*buf1 != '$') {
-            strcpy(buf2, std::format("{}/{}", prefix, static_cast<const char*>(buf1)).c_str());
-            if (!(db_file = fopen(buf2, "r"))) {
-                perror(buf2);
+        fscanf(index, "%s\n", idx_entry);
+        while (*idx_entry != '$') {
+            file_path = std::format("{}/{}", prefix, static_cast<const char*>(idx_entry));
+            if (!(db_file = fopen(file_path.c_str(), "r"))) {
+                perror(file_path.c_str());
                 exit(1);
             } else {
                 if (mode == DB_BOOT_ZON)
@@ -251,7 +263,7 @@ void index_boot(int mode)
                     rec_count += count_hash_records(db_file);
             }
             fclose(db_file);
-            fscanf(index, "%s\n", buf1);
+            fscanf(index, "%s\n", idx_entry);
         }
         if (!rec_count) {
             log("SYSERR: boot error - 0 records counted");
@@ -287,14 +299,14 @@ void index_boot(int mode)
         }
     }
     rewind(index);
-    fscanf(index, "%s\n", buf1);
-    while (*buf1 != '$') {
-        strcpy(buf2, std::format("{}/{}", prefix, static_cast<const char*>(buf1)).c_str());
-        if (!(db_file = fopen(buf2, "r"))) {
-            perror(buf2);
+    fscanf(index, "%s\n", idx_entry);
+    while (*idx_entry != '$') {
+        file_path = std::format("{}/{}", prefix, static_cast<const char*>(idx_entry));
+        if (!(db_file = fopen(file_path.c_str(), "r"))) {
+            perror(file_path.c_str());
             exit(1);
         }
-        log(std::format("opened file {}.", static_cast<const char*>(buf2)));
+        log(std::format("opened file {}.", file_path));
         switch (mode) {
         case DB_BOOT_WLD:
             load_rooms(db_file);
@@ -309,19 +321,19 @@ void index_boot(int mode)
             load_zones(db_file);
             break;
         case DB_BOOT_SHP:
-            boot_the_shops(db_file, buf2);
+            boot_the_shops(db_file, file_path.data());
             break;
         case DB_BOOT_MDL:
             load_mudlle(db_file);
             break;
         case DB_BOOT_SCR:
-            load_scripts(db_file);
+            load_scripts(db_file, file_path);
             break;
         }
 
         fclose(db_file);
         log("closed it.");
-        fscanf(index, "%s", buf1);
+        fscanf(index, "%s", idx_entry);
     }
 }
 
@@ -335,12 +347,20 @@ void load_rooms(FILE* fl)
     struct extra_descr_data* new_descr;
     struct affected_type* base_af;
     universal_list* tmplist;
+    // world-seed Task 2: local replacements for the two former shared
+    // scratch-text globals used here. line_buf receives the raw
+    // fgets/sscanf room-flags line (255 byte reads into a
+    // MAX_STRING_LENGTH buffer, matching the historical scratch-global
+    // size); error_label is the fread_string() error label, reused for
+    // every string field belonging to the current room.
+    char line_buf[MAX_STRING_LENGTH];
+    std::string error_label;
 
     do {
         fscanf(fl, "#%d", &virt_nr);
         //      printf("reading room %d: %d\n",room_nr,virt_nr);
-        strcpy(buf2, std::format("room #{}", virt_nr).c_str());
-        temp = fread_string(fl, buf2);
+        error_label = std::format("room #{}", virt_nr);
+        temp = fread_string(fl, error_label);
         for (temp2 = temp; *temp2 && *temp2 < ' '; temp2++)
             ;
         //	printf("room %d:%s.flag=%d.\n",virt_nr, temp,(*temp2 != '$'));
@@ -348,12 +368,12 @@ void load_rooms(FILE* fl)
         if ((flag = (*temp2 != '$'))) { /* a new record to be read */
             world[room_nr].number = virt_nr;
             world[room_nr].name = temp2;
-            world[room_nr].description = fread_string(fl, buf2);
-            fgets(buf, 255, fl);
+            world[room_nr].description = fread_string(fl, error_label);
+            fgets(line_buf, 255, fl);
             tmp = tmp2 = tmp3 = tmp4 = 0;
             if (top_of_zone_table >= 0) {
                 //	    fscanf(fl, " %*d ");
-                sscanf(buf, "%d %d %d %d", &tmp, &tmp2, &tmp3, &tmp4);
+                sscanf(line_buf, "%d %d %d %d", &tmp, &tmp2, &tmp3, &tmp4);
 
                 /* OBS: Assumes ordering of input rooms */
 
@@ -369,7 +389,7 @@ void load_rooms(FILE* fl)
                     }
                 world[room_nr].zone = zone;
             } else
-                sscanf(buf, "%d %d %d", &tmp2, &tmp3, &tmp4);
+                sscanf(line_buf, "%d %d %d", &tmp2, &tmp3, &tmp4);
 
             //	 fscanf(fl, " %d ", &tmp);
             world[room_nr].room_flags = tmp2;
@@ -408,15 +428,15 @@ void load_rooms(FILE* fl)
                     setup_dir(fl, room_nr, atoi(chk + 1));
                 else if (*chk == 'E') /* extra description field */ {
                     CREATE(new_descr, struct extra_descr_data, 1);
-                    new_descr->keyword = fread_string(fl, buf2);
-                    new_descr->description = fread_string(fl, buf2);
+                    new_descr->keyword = fread_string(fl, error_label);
+                    new_descr->description = fread_string(fl, error_label);
                     new_descr->next = world[room_nr].ex_description;
                     world[room_nr].ex_description = new_descr;
 
                 } else if (*chk == 'F') /* extra description field */ {
 
-                    fgets(buf, 255, fl);
-                    sscanf(buf, "%d %d %d %d", &tmp, &tmp2, &tmp3, &tmp4);
+                    fgets(line_buf, 255, fl);
+                    sscanf(line_buf, "%d %d %d %d", &tmp, &tmp2, &tmp3, &tmp4);
 
                     CREATE1(base_af, affected_type);
 
@@ -457,13 +477,17 @@ void load_rooms(FILE* fl)
 void setup_dir(FILE* fl, int room, int dir)
 {
     int tmp;
+    // world-seed Task 2: local replacement for the former shared
+    // scratch-text global -- the fread_string() error label for this
+    // door's two string fields.
+    std::string error_label;
 
-    strcpy(buf2, std::format("Room #{}, direction D{}", world[room].number, dir).c_str());
+    error_label = std::format("Room #{}, direction D{}", world[room].number, dir);
 
     CREATE(world[room].dir_option[dir], struct room_direction_data, 1);
 
-    world[room].dir_option[dir]->general_description = fread_string(fl, buf2);
-    world[room].dir_option[dir]->keyword = fread_string(fl, buf2);
+    world[room].dir_option[dir]->general_description = fread_string(fl, error_label);
+    world[room].dir_option[dir]->keyword = fread_string(fl, error_label);
 
     fscanf(fl, " %d ", &tmp);
     world[room].dir_option[dir]->exit_info = tmp;
@@ -615,7 +639,7 @@ void initialiaze_small_map()
 }
 //************end Ingolemo small map addition************
 
-void load_scripts(FILE* fl)
+void load_scripts(FILE* fl, std::string_view file_label)
 {
     static int script_no = 0;
     int tmp, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7, tmp8;
@@ -625,12 +649,11 @@ void load_scripts(FILE* fl)
 
     for (;;) {
         fscanf(fl, "#%d\n", &tmp);
-        //	sprintf(buf2, "beginning of script #%d", tmp);
         if (tmp == 99999)
             break;
 
         script_table[script_no].number = tmp;
-        check = fread_string(fl, buf2);
+        check = fread_string(fl, file_label);
 
         if (*check == '$')
             break; // end of file
@@ -638,7 +661,7 @@ void load_scripts(FILE* fl)
         newscript = 0;
         lastcmd = 0;
         script_table[script_no].name = check;
-        script_table[script_no].description = fread_string(fl, buf2);
+        script_table[script_no].description = fread_string(fl, file_label);
         script_table[script_no].script = 0;
 
         for (;;) {
@@ -670,7 +693,7 @@ void load_scripts(FILE* fl)
             newscript->param[3] = tmp6;
             newscript->param[4] = tmp7;
             newscript->param[5] = tmp8;
-            newscript->text = fread_string(fl, buf2);
+            newscript->text = fread_string(fl, file_label);
         }
 
         script_no++;
@@ -724,7 +747,6 @@ struct char_data* read_mobile(int nr, int type)
 
     if (type == VIRT) {
         if ((i = real_mobile(nr)) < 0) {
-            strcpy(buf, std::format("Mobile (V) {} does not exist in database.", nr).c_str());
             return (0);
         }
     } else
@@ -781,10 +803,9 @@ struct char_data* read_mobile(int nr, int type)
         was_fixed = 1;
     }
     if (was_fixed) {
-        strcpy(buf,
-            std::format("Mobile {} had its stats fixed.", (nr >= 0) ? mob_index[nr].virt : -1)
-                .c_str());
-        mudlog(buf, CMP, LEVEL_GRGOD, TRUE);
+        const std::string msg
+            = std::format("Mobile {} had its stats fixed.", (nr >= 0) ? mob_index[nr].virt : -1);
+        mudlog(msg, CMP, LEVEL_GRGOD, TRUE);
     }
 
     mob->specials2.rawPerception = mob->specials2.perception = get_naked_perception(mob);
@@ -869,6 +890,10 @@ void load_mobiles(FILE* mob_f)
     int tmp, tmp2, tmp3, tmp4, tmp5, tmp6;
     char chk[10], *tmpptr;
     char letter;
+    // world-seed Task 2: local replacement for the former shared
+    // scratch-text global -- the fread_string() error label for the
+    // current mob's string fields, reassigned once per mob record.
+    std::string error_label;
 
     if (!fscanf(mob_f, "%s\n", chk)) {
         perror("load_mobiles");
@@ -887,18 +912,18 @@ void load_mobiles(FILE* mob_f)
 
             clear_char(mob_proto + i, MOB_ISNPC);
 
-            strcpy(buf2, std::format("mob vnum {}", nr).c_str());
+            error_label = std::format("mob vnum {}", nr);
 
             /***** String data *** */
-            mob_proto[i].player.name = fread_string(mob_f, buf2);
-            tmpptr = mob_proto[i].player.short_descr = fread_string(mob_f, buf2);
+            mob_proto[i].player.name = fread_string(mob_f, error_label);
+            tmpptr = mob_proto[i].player.short_descr = fread_string(mob_f, error_label);
 
             if (tmpptr && *tmpptr)
                 if (!str_cmp_nullable(fname(tmpptr), "a") || !str_cmp_nullable(fname(tmpptr), "an") || !str_cmp_nullable(fname(tmpptr), "the"))
                     *tmpptr = tolower(*tmpptr);
 
-            mob_proto[i].player.long_descr = fread_string(mob_f, buf2);
-            mob_proto[i].player.description = fread_string(mob_f, buf2);
+            mob_proto[i].player.long_descr = fread_string(mob_f, error_label);
+            mob_proto[i].player.description = fread_string(mob_f, error_label);
 
             CREATE(mob_proto[i].player.title, char, 1);
 
@@ -913,8 +938,8 @@ void load_mobiles(FILE* mob_f)
 
             /* New monsters */
             if (letter == 'N') {
-                mob_proto[i].player.death_cry = fread_string(mob_f, buf2);
-                mob_proto[i].player.death_cry2 = fread_string(mob_f, buf2);
+                mob_proto[i].player.death_cry = fread_string(mob_f, error_label);
+                mob_proto[i].player.death_cry2 = fread_string(mob_f, error_label);
             } else {
                 mob_proto[i].player.death_cry = 0;
                 mob_proto[i].player.death_cry2 = 0;
@@ -1043,7 +1068,6 @@ struct obj_data* read_object(int nr, int type)
 
     if (type == VIRT) {
         if ((i = real_object(nr)) < 0) {
-            strcpy(buf, std::format("Object (V) {} does not exist in database.", nr).c_str());
             return 0;
         }
     } else
@@ -1081,6 +1105,12 @@ void load_objects(FILE* obj_f)
     int tmp, tmp2, tmp3, tmp4, tmp5, j, nr;
     char chk[50], *tmpptr;
     struct extra_descr_data* new_descr;
+    // world-seed Task 2: local replacement for the former shared
+    // scratch-text global -- the fread_string() error label for the
+    // current object's string fields, reassigned once per object record
+    // (and extended with " - extra desc. section" for the
+    // extra-description sub-block below).
+    std::string error_label;
 
     if (!fscanf(obj_f, "%s\n", chk)) {
         perror("load_objects");
@@ -1099,24 +1129,24 @@ void load_objects(FILE* obj_f)
 
             clear_object(obj_proto + i);
 
-            strcpy(buf2, std::format("object #{}", nr).c_str());
+            error_label = std::format("object #{}", nr);
 
             /* *** string data *** */
 
-            tmpptr = obj_proto[i].name = fread_string(obj_f, buf2);
+            tmpptr = obj_proto[i].name = fread_string(obj_f, error_label);
             if (!tmpptr) {
-                fprintf(stderr, "format error at or near %s\n", buf2);
+                fprintf(stderr, "format error at or near %s\n", error_label.c_str());
                 exit(1);
             }
 
-            tmpptr = obj_proto[i].short_description = fread_string(obj_f, buf2);
+            tmpptr = obj_proto[i].short_description = fread_string(obj_f, error_label);
             if (*tmpptr)
                 if (!str_cmp_nullable(fname(tmpptr), "a") || !str_cmp_nullable(fname(tmpptr), "an") || !str_cmp_nullable(fname(tmpptr), "the"))
                     *tmpptr = tolower(*tmpptr);
-            tmpptr = obj_proto[i].description = fread_string(obj_f, buf2);
+            tmpptr = obj_proto[i].description = fread_string(obj_f, error_label);
             if (tmpptr && *tmpptr)
                 *tmpptr = toupper(*tmpptr);
-            obj_proto[i].action_description = fread_string(obj_f, buf2);
+            obj_proto[i].action_description = fread_string(obj_f, error_label);
 
             /* *** numeric data *** */
 
@@ -1152,14 +1182,12 @@ void load_objects(FILE* obj_f)
 
             obj_proto[i].ex_description = 0;
 
-            strcpy(
-                buf2,
-                std::format("{} - extra desc. section", static_cast<const char*>(buf2)).c_str());
+            error_label = std::format("{} - extra desc. section", error_label);
 
             while (fscanf(obj_f, " %s \n", chk), *chk == 'E') {
                 CREATE(new_descr, struct extra_descr_data, 1);
-                new_descr->keyword = fread_string(obj_f, buf2);
-                new_descr->description = fread_string(obj_f, buf2);
+                new_descr->keyword = fread_string(obj_f, error_label);
+                new_descr->description = fread_string(obj_f, error_label);
                 new_descr->next = obj_proto[i].ex_description;
                 obj_proto[i].ex_description = new_descr;
             }
@@ -1202,6 +1230,10 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
     const int door_mask = (EX_CLOSED | EX_LOCKED);
     int tmp, tmp2;
     struct char_data* tmpmob;
+    // world-seed Task 2: local replacement for the former shared
+    // scratch-text global -- the act() door-message text, reassigned per
+    // branch below.
+    std::string msg;
 
     if (!room)
         return 0;
@@ -1229,46 +1261,42 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
     //	tmp2 = newstate;
     tmp2 = (tmp & ~door_mask) | (tmp2 & door_mask);
     if (IS_SET(tmp, EX_ISBROKEN)) {
-        strcpy(buf,
-            std::format("The {} blurs briefly.", nz(room->dir_option[dir]->keyword)).c_str());
+        msg = std::format("The {} blurs briefly.", nz(room->dir_option[dir]->keyword));
         tmpmob = room->people;
         if (tmpmob) {
-            act(buf, FALSE, tmpmob, 0, 0, TO_ROOM);
-            act(buf, FALSE, tmpmob, 0, 0, TO_CHAR);
+            act(msg, FALSE, tmpmob, 0, 0, TO_ROOM);
+            act(msg, FALSE, tmpmob, 0, 0, TO_CHAR);
         }
         REMOVE_BIT(tmp2, EX_ISBROKEN);
     }
     if (IS_SET(tmp2, EX_CLOSED) && !IS_SET(tmp, EX_CLOSED)) {
-        strcpy(buf,
-            std::format("The {} closes quietly.", nz(room->dir_option[dir]->keyword)).c_str());
+        msg = std::format("The {} closes quietly.", nz(room->dir_option[dir]->keyword));
         tmpmob = room->people;
         if (tmpmob) {
-            act(buf, FALSE, tmpmob, 0, 0, TO_ROOM);
-            act(buf, FALSE, tmpmob, 0, 0, TO_CHAR);
+            act(msg, FALSE, tmpmob, 0, 0, TO_ROOM);
+            act(msg, FALSE, tmpmob, 0, 0, TO_CHAR);
         }
     }
     if (IS_SET(tmp2, EX_LOCKED) && !IS_SET(tmp, EX_LOCKED)) {
-        strcpy(buf, "You hear a sound of a lock snapping shut.");
         tmpmob = room->people;
         if (tmpmob) {
-            act(buf, FALSE, tmpmob, 0, 0, TO_ROOM);
-            act(buf, FALSE, tmpmob, 0, 0, TO_CHAR);
+            act("You hear a sound of a lock snapping shut.", FALSE, tmpmob, 0, 0, TO_ROOM);
+            act("You hear a sound of a lock snapping shut.", FALSE, tmpmob, 0, 0, TO_CHAR);
         }
     }
     if (!IS_SET(tmp2, EX_LOCKED) && IS_SET(tmp, EX_LOCKED)) {
-        strcpy(buf, "You hear a sound of a key turning..");
         tmpmob = room->people;
         if (tmpmob) {
-            act(buf, FALSE, tmpmob, 0, 0, TO_ROOM);
-            act(buf, FALSE, tmpmob, 0, 0, TO_CHAR);
+            act("You hear a sound of a key turning..", FALSE, tmpmob, 0, 0, TO_ROOM);
+            act("You hear a sound of a key turning..", FALSE, tmpmob, 0, 0, TO_CHAR);
         }
     }
     if (!IS_SET(tmp2, EX_CLOSED) && IS_SET(tmp, EX_CLOSED)) {
-        strcpy(buf, std::format("{} opens quietly.", nz(room->dir_option[dir]->keyword)).c_str());
+        msg = std::format("{} opens quietly.", nz(room->dir_option[dir]->keyword));
         tmpmob = room->people;
         if (tmpmob) {
-            act(buf, FALSE, tmpmob, 0, 0, TO_ROOM);
-            act(buf, FALSE, tmpmob, 0, 0, TO_CHAR);
+            act(msg, FALSE, tmpmob, 0, 0, TO_ROOM);
+            act(msg, FALSE, tmpmob, 0, 0, TO_CHAR);
         }
     }
     room->dir_option[dir]->exit_info = tmp2;
@@ -1751,9 +1779,9 @@ room_data& room_data::operator[](int i)
             offset -= EXTENSION_SIZE;
         }
         if (!ext) {
-            strcpy(buf,
-                std::format("room_data called for a room outside the world, {}\n", i).c_str());
-            mudlog(buf, NRM, LEVEL_GRGOD, TRUE);
+            const std::string msg
+                = std::format("room_data called for a room outside the world, {}\n", i);
+            mudlog(msg, NRM, LEVEL_GRGOD, TRUE);
             if (i == r_immort_start_room)
                 exit(0);
             else

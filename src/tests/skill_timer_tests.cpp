@@ -72,7 +72,14 @@ struct SkillTimerCharacter {
 };
 
 // Hands out a fresh idnum per call so each test's timer entries are
-// unambiguously its own, independent of the drain bound above.
+// unambiguously its own, independent of the drain bound above. Low
+// sequential ids are safe within this file (the SetUp() drain plus this
+// generator make every entry unambiguous), but a FUTURE test file that also
+// touches the process-wide game_timer::skill_timer singleton should prefer
+// a high sentinel id (>=90210001) instead, per act_info_format_tests.cpp's
+// DoAffectionsFormatsNotAffectedLineWhenNoActiveEffects precedent -- that
+// keeps a report_skill_timer()/report_skill_status() lookup from ever
+// colliding with another suite's entries.
 long next_player_id() {
     static long id = 1;
     return id++;

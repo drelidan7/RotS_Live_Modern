@@ -90,3 +90,34 @@ code inverts entity→combat edges, i.e. the ambitious wave. Stays on the backlo
 - `profs`, the output-seam extension, the command-dispatch seam, `fight.cpp`+the DEFER-11, the
   poison-notification hook, `fight_messages` storage move — all future combat-growth waves.
 - The §7 call-site campaign and Stage 2 (unchanged backlog).
+
+## As-built
+
+Implemented as designed: the minimal 4-TU seed (`skill_timer.cpp`, `battle_mage_handler.cpp`,
+`weapon_master_handler.cpp`, `wild_fighting_handler.cpp`) + `CombatLayerAcyclicity` landed in Task
+1 with no linkcheck cascade (first-attempt green, unlike `rots_entity`'s two rounds and
+`rots_world`'s four-edge cascade) and the PUBLIC dep set exactly as sketched
+(`RotS::entity`/`RotS::core`/`RotS::platform`/`rots_build_flags`, no `RotS::persist`/`RotS::world`
+— the census's "expects none" call was correct). One header-only deviation, not a STOP: `rots_combat`
+also takes a PRIVATE `persist/include` (for `weapon_master_handler.cpp`'s `handler.h`→`RENT_CRASH`
+macro reach), mirroring `rots_entity`'s identical line — no link-time dependency on `rots_persist`.
+
+Both riders completed: the time quartet moved into `consts.cpp` (Task 2) exactly as this spec
+sketched. **Rider 2 deviated from the sketch's tier**: this spec's "Changes" §4 sketched
+`NumberedName` landing "under core's include tree"; Task 3's Step 1 design-sensitive check (per
+the plan) found `rots_platform` has no include path into `rots/core/*` — `parse_numbered_name`
+moves to `rots_util.cpp` (L0), which needs `NumberedName` visible from L0, so the type could not
+live in `rots_core`'s (L1) include tree without breaking `PlatformLayerAcyclicity`. It landed at
+`rots/platform/numbered_name.h` instead (PLATFORM tier), evidenced by a compile-path check (not
+guesswork) and precedented by `rots/platform/log.h`'s identical L0-visibility shape. `handler.h`
+compatibility-includes the new header, so no caller changed.
+
+The standing coverage-gap rule (not sketched in this spec — it is a cross-wave rule triggered by
+Task 1's citation step finding `skill_timer.cpp`/`wild_fighting_handler.cpp` had zero dedicated
+tests) added a Task 3b coverage rider between the riders and docs: +27 tests (8 `SkillTimerTest.*`,
+19 `WildFightingHandler.*`), ctest 1316 → **1343** both hosts + ASan.
+
+The poison-notification hook (`obj_from_char`/`extract_obj`) stayed rejected, as designed — the
+combat-seed census re-confirmed it is only an ambitious-wave concern (see `docs/BUILD.md`'s
+`rots_combat` section). No STOP conditions fired; no risk from the "Risks" section above
+materialized beyond the documented, non-blocking NumberedName tier deviation.

@@ -269,12 +269,12 @@ accident:
 ## Library layering & the foundation acyclicity check
 
 The source tree is being carved into layered static libraries (see
-`docs/superpowers/specs/2026-07-16-library-architecture-design.md`). As of the world-seed wave,
-five of the spec's eight target libraries exist and are linked into `ageland`:
+`docs/superpowers/specs/2026-07-16-library-architecture-design.md`). As of the combat-seed wave,
+six of the spec's eight target libraries exist and are linked into `ageland`:
 
 ```
-┌─ L3  rots_persist   rots_world   (two of the three peer L3 domain libs; rots_combat not yet
-│                                   extracted)
+┌─ L3  rots_persist   rots_world   rots_combat   (all three L3 peer domain libs now exist; each
+│                                                  seeded, none complete — see their sections below)
 ├─ L2  rots_entity    → entity/relationship operations over the data model
 ├─ L1  rots_core      → the (split-up) data model + const tables
 └─ L0  rots_platform  → OS/infra, zero game coupling
@@ -511,23 +511,30 @@ splitting rather than verbatim relocation — the public name and declaration st
   returned `obj_data*` already reproduces the ORIGINAL's control flow. The `mudlog` zero-object
   guard is L0-legal and stays in the primitive.
 
-**Three honest deferral clusters (Stage 1 scope, not oversights):**
+**Three honest deferral clusters (Stage 1 scope, not oversights). Two of the three RETIRED by the
+combat-seed wave's riders (Tasks 2-3); the poison cluster REMAINS backlog:**
 
-1. **`obj_from_char`/`extract_obj` — STAY-APP, poison-path counter-example.** A Task 3 STOP-check
-   found a real counter-example, not a hypothetical one: `script.cpp`'s `SCRIPT_OBJ_FROM_CHAR` can
-   hand `obj_from_char` an *equipped* item, which routes through `unequip_char`'s poison-damage
-   block — still app-tier this wave — so moving `obj_from_char`/`extract_obj` down would leave lib
-   code calling up into app. Confirmed via `script.cpp:817`/`:1461`. Future: a poison-notification
-   hook, or restructuring around post-combat extraction.
-2. **`parse_numbered_name`/`get_char` — STAY-APP, header-locality blocker.** `NumberedName` is
-   declared only in `handler.h`, unreachable from the platform/lib include path (compile-probe
-   evidence, not guesswork) — moving `get_char` reproduces the same edge one hop later (a real
-   linkcheck failure, not speculation). Future: extract `NumberedName` to a shared header.
-3. **`real_time_passed`/`mud_time_passed`/`day_to_str`/`age` — STAY-APP, L1-return-type blocker.**
-   `mud_time_passed()` returns `rots/core/types.h`'s `time_info_data` **by value** — an L1 type
-   that L0 `rots_platform`/`rots_util.cpp` must not depend on. `day_to_str` (plus `month_name`) and
-   `age` cascade off the same edge. Census had misclassified this quartet as "pure time math."
-   Future: re-home the quartet to `rots_core`.
+1. **`obj_from_char`/`extract_obj` — STAY-APP, poison-path counter-example. REMAINS backlog.** A
+   Task 3 STOP-check found a real counter-example, not a hypothetical one: `script.cpp`'s
+   `SCRIPT_OBJ_FROM_CHAR` can hand `obj_from_char` an *equipped* item, which routes through
+   `unequip_char`'s poison-damage block — still app-tier — so moving `obj_from_char`/`extract_obj`
+   down would leave lib code calling up into app. Confirmed via `script.cpp:817`/`:1461`. The
+   combat-seed wave's census re-examined this cluster (`.superpowers/sdd/combat-census.md`,
+   "Deferral riders — feasibility" #3) and confirmed it is still only an *ambitious-wave* concern:
+   the direction is fine today (combat calling down into deferred `handler` is legal), and only
+   flips into a real entity(L2)→combat(L3) upward edge once `fight.cpp`+damage eventually join
+   `rots_combat` while `handler` is still below it. Future: a poison-notification hook
+   (`entity_hooks.h`-pattern registered callback), or restructuring around post-combat extraction.
+2. **`parse_numbered_name`/`get_char` — RETIRED (combat-seed Task 3).** `NumberedName` moved to
+   `rots/platform/numbered_name.h` (see "Pathed data-model includes" and the `rots_combat` section
+   below for the L0-visibility tier decision); `parse_numbered_name` → `rots_util.cpp` (L0),
+   `get_char` → `entity_lifecycle.cpp` (L2), both verbatim. `handler.h` now compatibility-includes
+   the new header so no caller changed.
+3. **`real_time_passed`/`mud_time_passed`/`day_to_str`/`age` — RETIRED (combat-seed Task 2).** All
+   four moved verbatim from `utility.cpp`/`act_info.cpp` into `consts.cpp` (L1 `rots_core`,
+   co-located with `month_name[]`), the natural fit their `time_info_data`-by-value /
+   `month_name[]` dependency (both L1) already pointed at. Declarations stayed in `utils.h`
+   unchanged.
 
 Beyond those three clusters, a broader **STAY-APP inventory** stays app-compiled by design this
 wave (per-function detail: `.superpowers/sdd/placement-census.md`): the **visibility family**
@@ -690,8 +697,9 @@ bodies documented in "`rots_convert`" below.
 The fifth extracted layer is `rots_world` (L3) — **3 TUs**: `db_world.cpp`, `zone_load.cpp`, and
 `weather.cpp` — built as `librots_world.a` and linked into `ageland` as `RotS::world`. It is the
 second of the spec's three L3 peer libraries to actually exist as a build target (`rots_persist`
-was the first; `rots_combat` is not yet extracted — see the L3 peer-tier caveat in the spec's
-§3). `rots_world` PUBLIC-links `RotS::persist` + `RotS::entity` + `RotS::core` + `RotS::platform`
+was the first; `rots_combat` — the third — is now also extracted, see "`rots_combat`" below, so
+all three rows of the spec's §3 L3 peer tier are seeded). `rots_world` PUBLIC-links
+`RotS::persist` + `RotS::entity` + `RotS::core` + `RotS::platform`
 (all four legal downward edges its three TUs' undefined symbols resolve into) plus
 `rots_build_flags`; like `rots_entity`, it owns no `include/` directory of its own — `persist/
 include`/`core/include`/`platform/include` all flow to it transitively through `RotS::persist`'s
@@ -767,6 +775,94 @@ own PUBLIC include directories.
   fix — pruning `ageland`'s own explicit lower-layer entries now that each higher archive's PUBLIC
   links already carry them transitively — is **not done this wave**; it is a recorded optional
   follow-on, not a regression to chase down now.
+
+### `rots_combat` (L3): the combat-handler library
+
+The sixth extracted layer is `rots_combat` (L3) — **4 TUs**: `skill_timer.cpp`,
+`battle_mage_handler.cpp`, `weapon_master_handler.cpp`, and `wild_fighting_handler.cpp` — built as
+`librots_combat.a` and linked into `ageland` as `RotS::combat`. It is the third and final of the
+spec's three L3 peer libraries to exist as a build target (`rots_persist` was the first,
+`rots_world` the second). Unlike `rots_world`, `rots_combat` links **no** L3-peer library PUBLIC:
+`target_link_libraries(rots_combat PUBLIC rots_build_flags RotS::entity RotS::core RotS::platform)`
+— the combat-census (`.superpowers/sdd/combat-census.md`) found zero L3-peer edges out of this
+4-TU subset (the one intra-subset peer edge, `wild_fighting_handler.cpp` →
+`weapon_master_handler.cpp`, resolves inside `rots_combat` itself, not against another L3 lib).
+`rots_convert`'s link line is unchanged (`RotS::platform`+`RotS::core`+`RotS::entity`+
+`RotS::persist`) — it does **not** link `RotS::combat`; none of the four combat TUs sit on the
+persistence boundary.
+
+- **`target_include_directories(rots_combat PRIVATE persist/include)`.**
+  `weapon_master_handler.cpp` reaches `rots/persist/file_formats.h` transitively through
+  `handler.h`'s `RENT_CRASH` macro include — a header-only reach, **not** a link-time dependency
+  on `rots_persist` (no `rots_combat` symbol resolves into `rots_persist`, confirmed by the
+  linkcheck below). PRIVATE, mirroring `rots_entity`'s identical PRIVATE `persist/include` line
+  (see "`rots_entity`" above): no consumer of `RotS::combat` needs this path transitively —
+  `ageland`/`rots_convert` already carry `persist/include` on their own
+  `target_include_directories`.
+- **`rots_combat_linkcheck` / CTest `CombatLayerAcyclicity`** mirrors the `rots_world_linkcheck`
+  pattern: force-load `librots_combat.a` and normal-link only `RotS::entity` + `RotS::core` +
+  `RotS::platform` to resolve its legitimate downward edges — anything else unresolved fails the
+  build. It went green on the first attempt — no STOP cascade, unlike `rots_entity`'s two rounds
+  or `rots_world`'s four-edge cascade — and a positive-PASS/negative-FAIL probe (a transient
+  upward call added in a scratch build, then reverted traceless) confirmed the check actually
+  catches an upward edge rather than passing vacuously. Both hosts' ctest baseline moved from 1315
+  to **1316** the task this check was added (combat-seed Task 1); Task 3b then added 27 targeted
+  coverage tests (8 `SkillTimerTest.*`, 19 `WildFightingHandler.*`) for **1343** (75 skips macOS /
+  77 rots64, freshly measured at Task 3b's gates — see `AGENTS.md`'s "Testing Guidelines").
+- **Coverage.** `battle_mage_handler.cpp`/`weapon_master_handler.cpp` already had dedicated suites
+  before this wave (`BattleMageHandler.*` — 12 direct cases, `WeaponMasterHandler.*` — 25 direct
+  cases). `skill_timer.cpp` and `wild_fighting_handler.cpp` had none — flagged by Task 1 under the
+  standing coverage-gap rule and closed by the Task 3b coverage rider
+  (`src/tests/skill_timer_tests.cpp`, `src/tests/wild_fighting_handler_tests.cpp` additions).
+- **Membership story.** All four TUs were already `ROTS_SERVER_SOURCES` members; the combat-census
+  (16-TU per-TU verdict table: `skill_timer`/`battle_mage_handler`/`weapon_master_handler`/
+  `wild_fighting_handler` SEED-CLEAN, `profs` caveated SEED-WITH-SEAM, the other 11 DEFER) verified
+  them SEED-CLEAN with **no** relocation, storage move, or hook inversion needed — a pure
+  membership move, the same shape as entity-completion Task 3's `char_utils`/`char_utils_combat`
+  join. `wild_fighting_handler.cpp`'s `register_attack_speed_multiplier_hook()`/
+  `register_wild_attack_speed_multiplier_hook()` (the `entity_hooks.h` pattern) are still called
+  app-side (`comm.cpp`'s `run_the_game()`, `tests/gtest_main.cpp`'s fixture setup) — a legal
+  app→lib downward call, not an upward edge.
+
+**The DEFER-11 growth inventory (census's blocker analysis, recorded for the next combat wave).**
+The parent spec's `rots_combat` row sketches 16 TUs; this wave seeded the 4 SEED-CLEAN TUs above,
+left `profs` caveated, and left **11 DEFER** entirely alone (`spec_ass`, `olog_hai`, `clerics`,
+`mage`, `mystic`, `mobact`, `spell_pa`, `limits`, `ranger`, `spec_pro`, `fight` — still
+`ROTS_SERVER_SOURCES` members). Two findings the census made explicit so the next wave starts
+informed instead of re-deriving them:
+  - **Output is already unblocked.** `output_seam` (L1 `rots_core`) already forwards
+    `send_to_char`×2/`vsend_to_char`/`act`/track+untrack_mage downward — every `act`/`send_to_char`
+    call-site in all 16 combat-row TUs (e.g. `fight` act=71/stc=26, `spec_pro` act=114, `ranger`
+    stc=234) resolves into L1, not up into `comm.cpp`. Heavy output volume alone does not block a
+    TU. What the seam does **not** yet cover — `send_to_room*`, `send_to_all`, `break_spell`,
+    `abort_delay`, `complete_delay`, `close_socket`, `get_from_txt_block_pool` (the `comm.cpp`
+    overload, distinct from the `entity_hooks.h` txt-pool pair), plus `descriptor_list`/
+    `_circle_shutdown`/`_no_specials`/`_fight_messages`/color globals — only appears on DEFER-tier
+    TUs; extending `output_seam` with ~8 more forwarders is a prerequisite for the *ambitious*
+    subset, not this seed.
+  - **The dominant blocker is the app-side `handler.cpp`/`utility.cpp` remainder, plus a
+    command-dispatch seam for the mob-AI/spec-proc TUs.** Every DEFER-tier TU's blocking edges
+    trace back to the still-app `handler.cpp`/`utility.cpp` visibility/equip-wrapper family
+    (`get_char_room_vis`/`CAN_SEE`/`get_real_OB`/`get_real_parry`/`extract_char`/`extract_obj`/
+    `stop_riding`/…, the same remainder the "`rots_entity`" section above describes), and — for
+    `mobact` (12 `do_*` calls) and `spec_pro` (~a dozen `do_*` + `command_interpreter`/
+    `_cmd_info`) specifically — an upward call into L4 command entry points (`do_hit`/`do_move`/
+    `do_flee`/…), the reverse of the already-clean command→combat direction `do_cast`
+    (`spell_pa.cpp`, an in-row `ACMD`) proves. Closing either lever (further `handler`/`utility`
+    extraction, or a `combat_hooks.h`-style command-dispatch seam) is a prerequisite for the next
+    tranche, not this wave's scope. Full per-TU evidence: `.superpowers/sdd/combat-census.md`.
+
+Backlog (recorded follow-on, not this wave's scope):
+- **`consts.cpp`'s `utils.h` include**, added by Task 2's time-quartet move (for `day_to_str()`'s
+  `nth()` call — see "Pathed data-model includes" below / the `rots_core` section above), is
+  TIER-CLEAN (`utils.h` has full L0/L1 closure) but idiom-deviant — no other `rots_core` TU
+  includes the whole app-wide `utils.h`. Prefer a targeted `char* nth(int);` forward declaration
+  instead, per the `get_hit_text`/`rots/platform/log.h` precedent of narrow declarations over a
+  blanket header include. Reviewer-recommended future touch-up, not urgent.
+- **The poison-notification hook** (`obj_from_char`/`extract_obj` — see the placement-seam
+  deferral cluster note above) stays backlog: it only becomes a real entity(L2)→combat(L3) upward
+  edge once `fight.cpp`+damage eventually join `rots_combat` while `handler` is still below it.
+  Not needed by any TU this wave seeded.
 
 ### Pathed data-model includes
 

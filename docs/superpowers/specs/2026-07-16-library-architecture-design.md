@@ -77,7 +77,7 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
 | `rots_entity` | L2 | 6 | `char_utils, object_utils, environment_utils, handler, utility, char_utils_combat` (as-built: 5 of 6 have joined `rots_entity` — `handler`/`utility` remain app-compiled, deferred with named/uncounted welds respectively — see caveat below) |
 | `rots_persist` | L3 | ~14 | `db_players` (from `db.cpp`), `objsave, boards, mail, pkill, character_json, objects_json, exploits_json, account_management (+6 #included fragments), account_cache, convert_exploits, convert_plrobjs, save_benchmark, savebench` |
 | `rots_world` | L3 | ~15 | `db_world` (from `db.cpp`), `shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle, mudlle2, graph, weather, mob_csv_extract, obj2html` (as-built: 3 of ~15 have joined `rots_world` — `db_world`/`weather`/the new `zone_load` (carved out of `zone`) — `shape*`/`script`/`mudlle`/`mudlle2`/`graph`/`mob_csv_extract`/`obj2html`/`zone`'s reset half remain app-compiled, deferred — see caveat below) |
-| `rots_combat` | L3 | 16 | `fight, limits, skill_timer, mobact, ranger, clerics, mage, mystic, profs, spell_pa, spec_pro, spec_ass, battle_mage_handler, weapon_master_handler, wild_fighting_handler, olog_hai` |
+| `rots_combat` | L3 | 16 | `fight, limits, skill_timer, mobact, ranger, clerics, mage, mystic, profs, spell_pa, spec_pro, spec_ass, battle_mage_handler, weapon_master_handler, wild_fighting_handler, olog_hai` (as-built: 4 of 16 have joined `rots_combat` — `skill_timer`/`battle_mage_handler`/`weapon_master_handler`/`wild_fighting_handler` — `profs` is caveated SEED-WITH-SEAM and the remaining 11 (`fight, limits, mobact, ranger, clerics, mage, mystic, spell_pa, spec_pro, spec_ass, olog_hai`) DEFER, all still app-compiled — see caveat below) |
 | `rots_commands` | L4 | 15 | `interpre, act_comm, act_info, act_move, act_obj1, act_obj2, act_offe, act_othe, act_soci, act_wiz, modify, delayed_command_interpreter, wait_functions, shop, ban` |
 | `rots_app` | L5 | 6 | `comm, protocol, color, big_brother, signals, db_boot` (from `db.cpp`); `signals.cpp` calls up into game/session state (`descriptor_list`, `hupsig`, `unrestrict_game`) so it is app-layer, not foundation |
 
@@ -177,6 +177,32 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
   recorded follow-on for whichever future wave next touches the world/app boundary, not this
   wave's scope. See `docs/BUILD.md`'s "`rots_world`" section for the full membership/cascade/
   deferral account.
+- **Resolved, partially (combat-seed wave).** `rots_combat` stands up as the third and last of the
+  three L3 peer libraries — **4 of the row's original 16 TUs**: `skill_timer.cpp`,
+  `battle_mage_handler.cpp`, `weapon_master_handler.cpp`, `wild_fighting_handler.cpp`.
+  `CombatLayerAcyclicity` (§11) proves no upward edge beyond `rots_entity`/`rots_core`/
+  `rots_platform` — ctest 1315→1316 the task it was added, then 1316→1343 after a standing
+  coverage-gap rider added 27 targeted tests. Unlike the two prior L3 slices, this one needed
+  **no** relocation, storage move, or hook inversion at all: the combat-census
+  (`.superpowers/sdd/combat-census.md`, a 16-TU per-TU `nm`-evidence verdict table) found these
+  four TUs already fully closed over L0/L1/L2 plus the existing `output_seam` — a pure membership
+  move, and the linkcheck went green on the first attempt (no cascade, unlike `rots_entity`'s two
+  rounds or `rots_world`'s four-edge cascade). The wave also completed two placement-seam
+  deferral riders left over from that wave's step 4 third slice: the time quartet
+  (`real_time_passed`/`mud_time_passed`/`day_to_str`/`age`) moved into `consts.cpp` (`rots_core`,
+  L1), and `NumberedName` extracted out of `handler.h` into `rots/platform/numbered_name.h` — a
+  tier deviation from this section's original core-tree sketch, forced by an L0-visibility
+  constraint (`parse_numbered_name`, moving to L0 `rots_util.cpp`, needs the type visible from L0;
+  `rots_platform` has no include path into `rots_core`) and precedented by `rots/platform/log.h`'s
+  identical shape — after which `parse_numbered_name` (→ `rots_util.cpp`) and `get_char` (→
+  `entity_lifecycle.cpp`) completed. `profs` (caveated SEED-WITH-SEAM) and the row's other 11 TUs
+  (`fight, limits, mobact, ranger, clerics, mage, mystic, spell_pa, spec_pro, spec_ass, olog_hai`)
+  remain entirely app-compiled — the census's blocker analysis (dominant blocker: the app-side
+  `handler.cpp`/`utility.cpp` remainder, plus a command-dispatch seam for the mob-AI/spec-proc
+  TUs) is recorded follow-on for whichever future wave next grows the row, not this wave's scope.
+  The poison-notification hook (`obj_from_char`/`extract_obj`) stays rejected, unchanged from the
+  entity-completion/world-seed waves' account. See `docs/BUILD.md`'s "`rots_combat`" section for
+  the full membership/growth-inventory/backlog account.
 
 ---
 
@@ -616,6 +642,39 @@ OLC-tool family, and `handler.cpp`/`utility.cpp` (still pending the §7 Placemen
 row's remaining TUs — deliberately deferred, recorded follow-on for whichever wave next touches
 the world/app boundary, not this slice's scope. `rots_combat`, the last L3 peer, remains untouched
 by this wave.
+
+**As-built (combat-seed wave, step 4 fifth slice):** `rots_combat` stands up as the third and last
+of the three L3 peer libraries — 4 TUs (`skill_timer.cpp`, `battle_mage_handler.cpp`,
+`weapon_master_handler.cpp`, `wild_fighting_handler.cpp`), `CombatLayerAcyclicity` linkcheck, ctest
+1315→1316→1343 (Task 1 adds the linkcheck, Task 3b adds 27 targeted coverage tests closing the
+`skill_timer.cpp`/`wild_fighting_handler.cpp` coverage-gap flags Task 1's citation step raised) —
+see `docs/BUILD.md`'s "`rots_combat`" section for the full membership/growth-inventory/backlog
+account. Unlike all four prior L2/L3 slices, this one needed none of their instruments —
+no relocation, no storage move, no hook inversion, no linkcheck cascade: the combat-census
+(planning-stage `nm`-evidence survey, `.superpowers/sdd/combat-census.md`) verified the 4 TUs
+already fully closed over L0/L1/L2 plus the existing `output_seam`, so Task 1 was a pure
+membership move and `CombatLayerAcyclicity` went green first attempt, confirmed non-vacuous by a
+positive-PASS/negative-FAIL probe. Two riders left over from the placement-seam wave's third
+slice (§3, above) completed alongside the seed: **Task 2** moved the time quartet
+(`real_time_passed`/`mud_time_passed`/`day_to_str`/`age`) from `utility.cpp`/`act_info.cpp` into
+`consts.cpp` (`rots_core`, L1) verbatim, exactly as this section's own step-4 sequencing sketched.
+**Task 3** extracted `NumberedName` out of `handler.h` — but into `rots/platform/numbered_name.h`
+(L0 `rots_platform`'s include tree), not the `rots_core` (L1) location this document's earlier
+sketch implied: `parse_numbered_name`, the deferred function moving to L0 `rots_util.cpp`, needs
+`NumberedName` visible from L0, and `rots_platform` has no include path into `rots_core` (a
+compile-path check, not guesswork), so the type had to live at or below L0. `rots/platform/log.h`
+(§13) is the standing precedent for an L0-visible shared type; `handler.h` now
+compatibility-includes the new header, so no caller changed. `parse_numbered_name` then moved to
+`rots_util.cpp` and `get_char` to `entity_lifecycle.cpp`, both verbatim. `profs` (caveated
+SEED-WITH-SEAM: 3 small edges, but pulls in the deeply-blocked `mystic.cpp`) and the row's other
+11 TUs (`fight, limits, mobact, ranger, clerics, mage, mystic, spell_pa, spec_pro, spec_ass,
+olog_hai`) remain entirely app-compiled — the census's blocker analysis found their dominant
+blocker is the app-side `handler.cpp`/`utility.cpp` remainder (unchanged from the entity-completion/
+world-seed waves' accounts above), plus, for the mob-AI/spec-proc TUs specifically
+(`mobact`/`spec_pro`), an upward call into L4 command entry points that a command-dispatch seam
+would need to invert — recorded follow-on for whichever wave next grows the row, not this slice's
+scope. The poison-notification hook (`obj_from_char`/`extract_obj`) stays rejected, re-confirmed
+by this wave's census as only an ambitious-wave concern.
 
 ---
 

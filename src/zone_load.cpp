@@ -9,10 +9,11 @@
 // zone_update() (comm heartbeat), check_if_flag(), reset_zone(), the
 // reset_q pool, and is_empty() -- they keep reading zone_table/
 // top_of_zone_table via zone.h's existing extern declarations, unchanged.
-// Declarations for everything below stay in zone.h. The carved body is
-// byte-identical to zone.cpp's prior lines 42-302 (comment+cursor+seam+
-// load_zones+renum pair) and 20-21 (the two storage definitions) -- see
-// zone.cpp's git history for the removed original. (Note: the brief's
+// Declarations for everything below stay in zone.h.
+// The carved body was byte-identical to zone.cpp's prior lines 42-302 as
+// carved (world-seed Task 4); Task 5's linkcheck cascade then converted the
+// buf2 error labels in load_zones() to a local composer -- see the comment
+// at that site for the disposition. (Note: the brief's
 // evidence base cites the split boundary as "lines 48-302", i.e. the
 // zone_load_cursor static itself; this carve also brings its immediately
 // preceding six-line explanatory comment (source lines 42-47) along, since

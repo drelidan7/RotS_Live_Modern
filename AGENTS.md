@@ -58,7 +58,8 @@
 - `scripts/i386-battery.sh`'s completed-step markers are stamped per commit
   (`git rev-parse HEAD`); a marker left over from a prior wave's HEAD never
   green-lights a skip once HEAD has moved, so a fresh branch always re-runs the full
-  battery at least once.
+  battery at least once (see `scripts/i386-battery.sh` and docs/BUILD.md "Container
+  build isolation").
 - A new or substantially rewritten test file requires a sanitizer run in addition to its normal
   test run. Use an available sanitizer preset; machine-specific invocation belongs in
   `AGENTS.local.md`.

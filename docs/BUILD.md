@@ -171,7 +171,9 @@ bogus `CMAKE_HOME_DIRECTORY` in the host's `build/CMakeCache.txt`, then ran a co
 `/rots/src`, its real `-S`/`-B` source dir) while the poisoned host file sat untouched
 throughout. `scripts/i386-battery.sh` step 0 keeps pre-cleaning the in-volume tree as
 belt-and-braces for the remaining same-environment staleness class (incidents 1 and 3),
-which the volume alone doesn't fix.
+which the volume alone doesn't fix. `scripts/i386-battery.sh`'s completed-step markers
+are stamped per commit, so a marker from a prior HEAD never green-lights a skip once
+HEAD has moved.
 
 **Volumes:**
 

@@ -192,17 +192,41 @@ set(ROTS_PERSIST_SOURCES
     pkill_json.cpp save_benchmark.cpp
 )
 
-# zone_load.cpp (world-seed wave, Task 4: carved out of zone.cpp -- the
-# zone-file parse/load half, incl. the zone_table/top_of_zone_table storage
-# definitions) joins here FOR NOW; it moves into ROTS_WORLD_SOURCES once
-# that L3 library exists (Task 5), joining db_world.cpp/weather.cpp there.
+# L3 peer: world layer (spec §3/§10 step 4; world-seed wave Task 5 payoff).
+# db_world.cpp/zone_load.cpp/weather.cpp are the three TUs Tasks 1-4 scrubbed
+# of every upward edge: relocations, storage moves (register_npc_char, dice,
+# entity lists, weather_info, boot flags -- Task 1), scratch-global
+# retirement (db_world composes locally -- Task 2), three hook inversions
+# (shop-boot/mudlle-convert/weather-MSDP, Task 3), and the zone-file
+# parse/load carve out of zone.cpp into zone_load.cpp (Task 4, which also
+# defines the zone_table/top_of_zone_table storage) -- verified via `nm -uC`
+# on the built archive, see the rots_world_linkcheck load-bearing test below.
+#
+# db_world.cpp's one legitimate remaining downward edge lands OUTSIDE the
+# entity/core/platform stack: register_room_vnum_hook() (db_world.cpp,
+# called from run_the_game() before boot_db()) registers world_room_vnum()
+# as persist_hooks.h's pre-boot room-vnum hook via
+# rots::persist::set_room_vnum_hook() -- a sanctioned L3-peer edge (world ->
+# persist, both L3), NOT a layering violation, mirroring the
+# entity_hooks.h/persist_hooks.h pattern the persist-split wave already
+# established (db_players.cpp's own upward edges into world/boot). This is
+# why rots_world PUBLIC-links RotS::persist below, in addition to
+# RotS::entity/RotS::core/RotS::platform.
+set(ROTS_WORLD_SOURCES
+    db_world.cpp zone_load.cpp weather.cpp
+)
+
+# ageland's remaining app-layer sources (spec §3): combat, commands,
+# comm/session handling, and every TU not yet carved into a rots_* library.
+# db_world.cpp/zone_load.cpp/weather.cpp LEFT this list for
+# ROTS_WORLD_SOURCES above (world-seed wave Task 5).
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
     boards.cpp clerics.cpp
     color.cpp comm.cpp
-    db_boot.cpp db_world.cpp delayed_command_interpreter.cpp
+    db_boot.cpp delayed_command_interpreter.cpp
     fight.cpp graph.cpp handler.cpp interpre.cpp
     limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
@@ -212,8 +236,7 @@ set(ROTS_SERVER_SOURCES
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
-    weapon_master_handler.cpp weather.cpp wild_fighting_handler.cpp zone.cpp
-    zone_load.cpp
+    weapon_master_handler.cpp wild_fighting_handler.cpp zone.cpp
 )
 
 add_executable(ageland ${ROTS_SERVER_SOURCES})
@@ -427,11 +450,31 @@ target_link_libraries(rots_persist PUBLIC rots_build_flags RotS::entity RotS::co
 # retires that target's own former direct persist/include entry.
 target_include_directories(rots_persist PUBLIC persist/include)
 
+# --- L3 peer: world layer -------------------------------------------------------
+add_library(rots_world STATIC ${ROTS_WORLD_SOURCES})
+add_library(RotS::world ALIAS rots_world)
+set_target_properties(rots_world PROPERTIES CXX_EXTENSIONS OFF)
+# PUBLIC RotS::persist + RotS::entity + RotS::core + RotS::platform:
+# db_world.cpp/zone_load.cpp/weather.cpp's legitimate downward edges land in
+# all four layers -- see the ROTS_WORLD_SOURCES comment above. RotS::persist
+# specifically carries the one sanctioned L3-peer edge (db_world.cpp calls
+# rots::persist::set_room_vnum_hook, an L3 world -> L3 persist edge, not a
+# layering violation -- see that comment for the full rationale). PUBLIC so
+# all four layers' include roots flow transitively to any consumer that
+# links only RotS::world.
+target_link_libraries(rots_world PUBLIC rots_build_flags RotS::persist RotS::entity RotS::core RotS::platform)
+# No target_include_directories() of its own needed: persist/include,
+# core/include, and platform/include all already flow transitively via
+# RotS::persist's own PUBLIC target_include_directories (see that target
+# above), which db_world.cpp's "rots/persist/file_formats.h" and every TU's
+# "rots/core/*.h" reach the same way ageland already did before this task.
+
 target_link_libraries(ageland PRIVATE
     RotS::platform
     RotS::core
     RotS::entity
     RotS::persist
+    RotS::world
     rots_build_flags
     $<$<PLATFORM_ID:Windows>:ws2_32>
 )
@@ -632,14 +675,15 @@ if(ROTS_BUILD_TESTS)
     include(GoogleTest)
 
     # ageland_tests deliberately does NOT link rots_core/rots_entity/
-    # rots_persist (TESTING parity, same as the rots_platform pattern
-    # above): it keeps compiling config.cpp/consts.cpp/output_seam.cpp,
-    # entity_lifecycle.cpp/object_utils.cpp/environment_utils.cpp, and (as of
-    # persist-split PS Task 4) db_players.cpp/character_json.cpp/etc.
-    # directly via ROTS_CORE_SOURCES/ROTS_ENTITY_SOURCES/ROTS_PERSIST_SOURCES
-    # instead (all now live only in those lists — see the ROTS_CORE_SOURCES /
-    # ROTS_ENTITY_SOURCES / ROTS_PERSIST_SOURCES comments above).
-    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_ENTITY_SOURCES} ${ROTS_PERSIST_SOURCES} ${ROTS_TEST_SOURCES})
+    # rots_persist/rots_world (TESTING parity, same as the rots_platform
+    # pattern above): it keeps compiling config.cpp/consts.cpp/
+    # output_seam.cpp, entity_lifecycle.cpp/object_utils.cpp/
+    # environment_utils.cpp, db_players.cpp/character_json.cpp/etc., and (as
+    # of world-seed Task 5) db_world.cpp/zone_load.cpp/weather.cpp directly
+    # via ROTS_CORE_SOURCES/ROTS_ENTITY_SOURCES/ROTS_PERSIST_SOURCES/
+    # ROTS_WORLD_SOURCES instead (all now live only in those lists — see each
+    # set's own comment above).
+    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_ENTITY_SOURCES} ${ROTS_PERSIST_SOURCES} ${ROTS_WORLD_SOURCES} ${ROTS_TEST_SOURCES})
 
     # Same C++ standard as ageland (see above) — required because these targets are
     # defined per-target here rather than via a project-wide CMAKE_CXX_STANDARD.
@@ -931,6 +975,40 @@ if(ROTS_BUILD_TESTS)
             LINK_DEPENDS "$<TARGET_FILE:rots_persist>")
         if(BUILD_TESTING)
             add_test(NAME PersistLayerAcyclicity COMMAND rots_persist_linkcheck)
+        endif()
+
+        # Load-bearing world-layer acyclicity check (spec §11), mirroring the
+        # rots_persist_linkcheck block above (world-seed wave Task 5).
+        # rots_world (db_world.cpp + zone_load.cpp + weather.cpp — see the
+        # ROTS_WORLD_SOURCES comment above) is verified to have no upward
+        # symbol references beyond its legal downward edges into rots_persist
+        # (the one sanctioned L3-peer edge — db_world.cpp calls
+        # rots::persist::set_room_vnum_hook), rots_entity, rots_core, and
+        # rots_platform. The checker force-loads rots_world itself (so every
+        # rots_world symbol is pulled in and any OTHER unresolved reference
+        # fails the link) and normal-links RotS::persist + RotS::entity +
+        # RotS::core + RotS::platform to resolve those legitimate
+        # lower-layer/peer edges — a strictly tighter guarantee than "any
+        # lower layer is allowed".
+        add_executable(rots_world_linkcheck tests/world_linkcheck_main.cpp)
+        target_link_libraries(rots_world_linkcheck PRIVATE rots_build_flags RotS::persist RotS::entity RotS::core RotS::platform)
+        add_dependencies(rots_world_linkcheck rots_world)
+        if(APPLE)
+            target_link_options(rots_world_linkcheck PRIVATE
+                -Wl,-force_load,$<TARGET_FILE:rots_world>)
+        else()
+            target_link_options(rots_world_linkcheck PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:rots_world> -Wl,--no-whole-archive)
+        endif()
+        # LINK_DEPENDS: same rationale as rots_persist_linkcheck above — the
+        # archive path only appears inside a raw linker flag string, invisible
+        # to CMake's normal target_link_libraries dependency tracking, so an
+        # incremental rebuild that changes only a rots_world source needs
+        # this to force a relink instead of silently reusing a stale binary.
+        set_target_properties(rots_world_linkcheck PROPERTIES
+            LINK_DEPENDS "$<TARGET_FILE:rots_world>")
+        if(BUILD_TESTING)
+            add_test(NAME WorldLayerAcyclicity COMMAND rots_world_linkcheck)
         endif()
     endif()
 endif()

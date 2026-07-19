@@ -12,6 +12,7 @@
 // pair, which needed a shared header declaration for that reason).
 
 #include <cstdio>
+#include <string_view>
 
 namespace rots::world {
 
@@ -52,5 +53,28 @@ enum class weather_msdp_kind { world_time,
     weather };
 using weather_msdp_update_fn = void (*)(weather_msdp_kind kind);
 void set_weather_msdp_update_hook(weather_msdp_update_fn hook);
+
+// weather.cpp's broadcast sites (weather_message()'s/weather_change()'s
+// per-sector weather text; check_sun_change()'s day/night announcements;
+// another_hour()'s moon-rise/moon-set announcements) used to call
+// comm.cpp's send_to_sector()/send_to_outdoor() directly -- an upward
+// edge into descriptor_list (app-owned session data), surfaced by
+// rots_world_linkcheck (world-seed Task 5, STOP-adjudicated cascade).
+// comm.cpp registers both real functions (register_world_broadcast_hooks())
+// at boot, before boot_db(), alongside this header's other three
+// registrations; see comm.h/comm.cpp. Unlike the boot-shops/mudlle-converter
+// hooks above, the real send_to_sector()/send_to_outdoor() bodies are NOT
+// relocated -- both walk descriptor_list, upper-tier session data this
+// library must not reach -- only the call from weather.cpp is inverted.
+// Null default is a SILENT no-op, the same class as this header's
+// weather-MSDP hook above (not the boot-shops/mudlle-converter tripwires):
+// both are pure best-effort player-notification pushes (not state), and a
+// test process that never registers comm.cpp's sinks must not spam stderr
+// on every weather/time tick.
+using send_to_sector_fn = void (*)(std::string_view message, int sector_type);
+void set_send_to_sector_hook(send_to_sector_fn hook);
+
+using send_to_outdoor_fn = void (*)(std::string_view message, int mode);
+void set_send_to_outdoor_hook(send_to_outdoor_fn hook);
 
 }

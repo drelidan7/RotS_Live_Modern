@@ -51,7 +51,17 @@ int sun_events[12][2] = { // Each month has two variables - sunrise and sunset
     { 9, 16 }
 };
 
-extern struct time_info_data time_info;
+// db_boot.cpp -- time_info's DEFINITION moves here (storage-placement
+// only; world-seed Task 5, mirroring the weather_info/pulse/top_idnum
+// precedent above): another_hour() below is time_info's sole
+// steady-state mutator (advances hours/day/month/year/moon each game
+// hour). db_boot.cpp's reset_time() still writes the boot-time initial
+// value (mud_time_passed()'s result) via its own extern -- see that
+// file's comment at the old definition site -- and every other reader
+// (act_move.cpp, act_info.cpp, comm.cpp, graph.cpp, limits.cpp,
+// protocol.cpp, shop.cpp, spec_pro.cpp, utility.cpp) keeps reaching it
+// via its own existing extern declaration, unchanged.
+struct time_info_data time_info; /* the infomation about the time   */
 
 // Weather messages should be moved to a special file like spell messages
 // once this code is settled.
@@ -181,35 +191,53 @@ std::string strip_trailing_line_break(std::string_view text)
 }
 
 /*************************************************************************
- *  world_hooks.h dispatch (world-seed Task 3)                           *
+ *  world_hooks.h dispatch (world-seed Tasks 3 and 5)                    *
  *************************************************************************
- *  Backing storage + null-defaulted dispatch helper for the weather-MSDP
- *  push world_hooks.h inverts out of this file (spec Sec13 pattern,
- *  mirroring entity_lifecycle.cpp's entity_hooks.h dispatch section):
- *  another_hour()'s eMSDP_WORLD_TIME push and weather_change()'s
- *  eMDSP_WEATHER push both used to call this file's own
- *  send_msdp_function() dispatcher directly with a lambda; both now call
- *  dispatch_weather_msdp_update(kind) below instead. protocol.cpp
- *  registers the real broadcast_weather_msdp_update() -- the former
- *  send_msdp_function() body merged with both removed lambda bodies,
- *  relocated verbatim -- at boot, before boot_db(); see world_hooks.h.
- *  Dispatched only from this file (both call sites below), so (unlike
- *  world_hooks.h's boot-shops/mudlle-converter hooks, whose storage
- *  lives in db_world.cpp for the same single-TU-dispatch reason) this
- *  hook's storage lives here instead of a shared world_hooks TU.
+ *  Backing storage + null-defaulted dispatch helpers for the world_hooks.h
+ *  seams this file dispatches through (spec Sec13 pattern, mirroring
+ *  entity_lifecycle.cpp's entity_hooks.h dispatch section):
+ *
+ *  - weather-MSDP push (Task 3): another_hour()'s eMSDP_WORLD_TIME push
+ *    and weather_change()'s eMDSP_WEATHER push both used to call this
+ *    file's own send_msdp_function() dispatcher directly with a lambda;
+ *    both now call dispatch_weather_msdp_update(kind) below instead.
+ *    protocol.cpp registers the real broadcast_weather_msdp_update() --
+ *    the former send_msdp_function() body merged with both removed
+ *    lambda bodies, relocated verbatim -- at boot, before boot_db(); see
+ *    world_hooks.h.
+ *
+ *  - send_to_sector()/send_to_outdoor() broadcast (Task 5,
+ *    STOP-adjudicated cascade): weather_message()'s/weather_change()'s
+ *    per-sector weather text and check_sun_change()'s/another_hour()'s
+ *    day-night/moon-rise announcements used to call comm.cpp's
+ *    send_to_sector()/send_to_outdoor() directly -- an upward edge into
+ *    descriptor_list (app-owned session data), surfaced by
+ *    rots_world_linkcheck. comm.cpp registers both real functions
+ *    (register_world_broadcast_hooks()) at boot, before boot_db(),
+ *    alongside the registrations below; see world_hooks.h. Unlike
+ *    world_hooks.h's boot-shops/mudlle-converter hooks, the real
+ *    send_to_sector()/send_to_outdoor() bodies are NOT relocated -- both
+ *    walk descriptor_list, upper-tier session data this library must not
+ *    reach -- only the call from this file is inverted.
+ *
+ *  All three hooks are dispatched only from this file (every call site is
+ *  below), so (unlike world_hooks.h's boot-shops/mudlle-converter hooks,
+ *  whose storage lives in db_world.cpp for the same single-TU-dispatch
+ *  reason) their storage lives here instead of a shared world_hooks TU.
  ************************************************************************/
 namespace rots::world {
 
 namespace {
 // Backing storage for the registered weather-MSDP hook
 // (register_weather_msdp_hook(), protocol.cpp). Null until that
-// registration runs; unlike world_hooks.h's other two hooks, the null
-// default is a SILENT no-op, not a tripwire: this is a pure
-// best-effort notification push (not state), and a test process that
-// never registers protocol.cpp's sink must not spam stderr on every
+// registration runs; the null default is a SILENT no-op, not a tripwire
+// -- see the send_to_sector/send_to_outdoor hooks below for why this
+// file's hooks all share that class: this is a pure best-effort
+// notification push (not state), and a test process that never
+// registers protocol.cpp's sink must not spam stderr on every
 // weather/time tick -- mirroring entity_hooks.h's char-teardown hook
-// precedent (a provable silent no-op) rather than this header's other
-// two tripwire defaults.
+// precedent (a provable silent no-op) rather than world_hooks.h's
+// other, tripwire-defaulted hooks (boot-shops/mudlle-converter).
 weather_msdp_update_fn g_weather_msdp_update_hook = nullptr;
 } // namespace
 
@@ -225,6 +253,48 @@ void dispatch_weather_msdp_update(weather_msdp_kind kind)
         g_weather_msdp_update_hook(kind);
     }
     // Null default is a silent no-op -- see g_weather_msdp_update_hook's
+    // comment above.
+}
+} // namespace
+
+namespace {
+// Backing storage for the registered send_to_sector()/send_to_outdoor()
+// hooks (register_world_broadcast_hooks(), comm.cpp). Null until that
+// registration runs; SILENT no-op default, the same class as
+// g_weather_msdp_update_hook above (not a tripwire): both are
+// best-effort player-notification pushes (not state), so a test process
+// that never registers comm.cpp's sinks must not spam stderr on every
+// weather/time tick.
+send_to_sector_fn g_send_to_sector_hook = nullptr;
+send_to_outdoor_fn g_send_to_outdoor_hook = nullptr;
+} // namespace
+
+void set_send_to_sector_hook(send_to_sector_fn hook)
+{
+    g_send_to_sector_hook = hook;
+}
+
+void set_send_to_outdoor_hook(send_to_outdoor_fn hook)
+{
+    g_send_to_outdoor_hook = hook;
+}
+
+namespace {
+void dispatch_send_to_sector(std::string_view message, int sector_type)
+{
+    if (g_send_to_sector_hook) {
+        g_send_to_sector_hook(message, sector_type);
+    }
+    // Null default is a silent no-op -- see g_send_to_sector_hook's
+    // comment above.
+}
+
+void dispatch_send_to_outdoor(std::string_view message, int mode)
+{
+    if (g_send_to_outdoor_hook) {
+        g_send_to_outdoor_hook(message, mode);
+    }
+    // Null default is a silent no-op -- see g_send_to_outdoor_hook's
     // comment above.
 }
 } // namespace
@@ -284,19 +354,19 @@ void weather_message(int message_type)
 
     for (count = 1; count < 13; count++) // Sector_types start at 0 for Inside
         if (count != 8) // Sector Underwater
-            send_to_sector(weather_messages[message_type][count], count);
+            rots::world::dispatch_send_to_sector(weather_messages[message_type][count], count);
 }
 
 int check_sun_change()
 {
     if (weather_info.sunlight == SUN_RISE) {
         weather_info.sunlight = SUN_LIGHT;
-        send_to_outdoor("The day has now begun.\n\r", OUTDOORS_LIGHT);
+        rots::world::dispatch_send_to_outdoor("The day has now begun.\n\r", OUTDOORS_LIGHT);
         return 1;
     }
     if (weather_info.sunlight == SUN_SET) {
         weather_info.sunlight = SUN_DARK;
-        send_to_outdoor("Night falls over the land.\n\r", OUTDOORS_LIGHT);
+        rots::world::dispatch_send_to_outdoor("Night falls over the land.\n\r", OUTDOORS_LIGHT);
         return 1;
     }
     return 0;
@@ -455,14 +525,14 @@ void another_hour(int mode)
         weather_info.moonphase = new_moon_phase;
         if (weather_info.moonphase != MOON_NEW) {
             weather_info.moonlight = 1;
-            send_to_outdoor(std::format("The {} moon shows in the sky.\n\r",
+            rots::world::dispatch_send_to_outdoor(std::format("The {} moon shows in the sky.\n\r",
                 moon_phase[new_moon_phase]), OUTDOORS_LIGHT);
         }
     }
     if (time_info.hours == (moon_rise + 12) % 24) {
         if (weather_info.moonphase != MOON_NEW) {
             weather_info.moonlight = 0;
-            send_to_outdoor(std::format("The {} moon goes off the sky.\n\r",
+            rots::world::dispatch_send_to_outdoor(std::format("The {} moon goes off the sky.\n\r",
                 moon_phase[new_moon_phase]), OUTDOORS_LIGHT);
         }
     }
@@ -590,7 +660,7 @@ void weather_change(void)
             weather_info.snow[SectorType] -= 1;
     }
     for (SectorType = 1; SectorType < 13; SectorType++)
-        send_to_sector(weather_messages[weather_info.sky[SectorType] + 2][SectorType], SectorType);
+        rots::world::dispatch_send_to_sector(weather_messages[weather_info.sky[SectorType] + 2][SectorType], SectorType);
 
     rots::world::dispatch_weather_msdp_update(rots::world::weather_msdp_kind::weather);
 }

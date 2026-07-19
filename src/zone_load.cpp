@@ -25,7 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "db.h" /* For buf2, struct reset_com, real_mobile/real_room/real_object */
+#include "db.h" /* For struct reset_com, real_mobile/real_room/real_object */
 #include "utils.h" /* For CREATE/CREATE1/RECREATE + vmudlog */
 #include "zone.h"
 
@@ -75,11 +75,17 @@ void load_zones(FILE* fl)
 
     memset(&zone_table[zone_load_cursor], 0, sizeof(struct zone_data));
     fscanf(fl, " #%d\n", &zone_table[zone_load_cursor].number);
-    strcpy(buf2, std::format("beginning of zone #{}", zone_table[zone_load_cursor].number).c_str());
+    // world-seed Task 5: local error_label replaces the former shared buf2
+    // scratch-text global (mirrors db_world.cpp's load_rooms() error_label
+    // precedent, world-seed Task 2) -- fread_string() takes a
+    // std::string_view, so a local std::string composed once and reused for
+    // each field below is a byte-identical drop-in; db_boot.cpp's buf2
+    // storage is untouched.
+    std::string error_label = std::format("beginning of zone #{}", zone_table[zone_load_cursor].number);
 
-    zone_table[zone_load_cursor].name = fread_string(fl, buf2);
-    zone_table[zone_load_cursor].description = fread_string(fl, buf2);
-    zone_table[zone_load_cursor].map = fread_string(fl, buf2);
+    zone_table[zone_load_cursor].name = fread_string(fl, error_label);
+    zone_table[zone_load_cursor].description = fread_string(fl, error_label);
+    zone_table[zone_load_cursor].map = fread_string(fl, error_label);
 
     /* Read in the owner list.  An owner of '0' ends the list. */
     CREATE1(zone_table[zone_load_cursor].owners, owner_list);

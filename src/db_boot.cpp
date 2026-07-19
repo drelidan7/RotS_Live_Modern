@@ -144,7 +144,11 @@ struct help_index_element* help_index = 0; /* the help table		*/
 int top_of_helpt; /* top of help index table	*/
 
 long beginning_of_time = 650336715;
-struct time_info_data time_info; /* the infomation about the time   */
+// time_info now DEFINED in weather.cpp (world-seed Task 5,
+// storage-placement only, mirroring the weather_info/pulse/top_idnum
+// precedent); reset_time() below still writes the boot-time initial
+// value, so it keeps this extern.
+extern struct time_info_data time_info; /* the infomation about the time   */
 // weather_info now DEFINED in weather.cpp (its single writer;
 // world-seed Task 1, storage-placement only). utils.h already
 // declares `extern struct weather_data weather_info;` globally, so no

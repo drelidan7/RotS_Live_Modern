@@ -135,6 +135,15 @@ int main(int argc, char* argv[]) {
     register_boot_shops_hook();
     register_mudlle_converter_hook();
     register_weather_msdp_hook();
+    // world_hooks.h's send-to-sector/send-to-outdoor hook pair (world-seed
+    // Task 5, STOP-adjudicated cascade), registered for the same
+    // real-body-fidelity reason as the three calls above: without it this
+    // test process would silently exercise
+    // dispatch_send_to_sector()'s/dispatch_send_to_outdoor()'s silent
+    // no-op defaults instead of comm.cpp's real implementations that
+    // ageland registers at boot -- comm.cpp is already linked into both
+    // test binaries, so this only needs the registration call.
+    register_world_broadcast_hooks();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

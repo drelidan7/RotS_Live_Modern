@@ -91,6 +91,16 @@ void register_game_output_sinks();
 /// copy with an unregistered hook.
 void register_txt_block_pool_hooks();
 
+/// Installs send_to_sector()/send_to_outdoor() (above) as world_hooks.h's
+/// send-to-sector/send-to-outdoor hook pair (world-seed Task 5,
+/// STOP-adjudicated cascade) -- weather.cpp's weather_message()/
+/// weather_change()/check_sun_change()/another_hour() dispatch through it
+/// instead of calling this TU's functions directly, since rots_world must
+/// not reach descriptor_list (app-owned session data). Called once from
+/// run_the_game(), before boot_db(), so ageland never runs a weather/time
+/// tick with an unregistered hook.
+void register_world_broadcast_hooks();
+
 /// Expands a bounded action format and delivers it to the selected recipients.
 void act(std::string_view str, int hide_invisible, struct char_data* ch,
     struct obj_data* obj, void* vict_obj, int type, char spam_only = FALSE);

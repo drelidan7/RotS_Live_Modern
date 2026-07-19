@@ -59,6 +59,7 @@
 #include "text_view.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
+#include "world_hooks.h"
 #include "zone.h"
 
 #include <algorithm>
@@ -646,6 +647,7 @@ void run_the_game(sh_int port)
     register_boot_shops_hook();
     register_mudlle_converter_hook();
     register_weather_msdp_hook();
+    register_world_broadcast_hooks();
 
     log("Signal trapping.");
     signal_setup();
@@ -1420,6 +1422,20 @@ void register_txt_block_pool_hooks()
 {
     rots::entity::set_get_txt_block_pool_hook(get_from_txt_block_pool);
     rots::entity::set_put_txt_block_pool_hook(put_to_txt_block_pool);
+}
+
+// Installs send_to_sector()/send_to_outdoor() as world_hooks.h's
+// send-to-sector/send-to-outdoor hook pair (world-seed Task 5,
+// STOP-adjudicated cascade). weather.cpp's weather_message()/
+// weather_change()/check_sun_change()/another_hour() used to call these
+// two functions directly; comm.cpp is not a leaf module (both walk
+// descriptor_list, this file's own session-management data), so the
+// functions themselves stay here and the edge is inverted instead.
+// Called once from run_the_game(), before boot_db() -- see world_hooks.h.
+void register_world_broadcast_hooks()
+{
+    rots::world::set_send_to_sector_hook(send_to_sector);
+    rots::world::set_send_to_outdoor_hook(send_to_outdoor);
 }
 
 void write_to_q(std::string_view text, struct txt_q* queue)

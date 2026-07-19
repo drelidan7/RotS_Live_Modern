@@ -3,13 +3,15 @@
 // weather.cpp's last upward edges into command-tier/app-tier TUs
 // (spec Sec13 pattern, mirroring entity_hooks.h/persist_hooks.h). See each
 // hook's comment below for the call site it replaces and why its null
-// default is safe (or deliberately loud) until registration runs. Backing
-// storage + dispatch helpers are defined in the dispatching TU itself
-// (db_world.cpp for the first two hooks, weather.cpp for the third) --
-// mirroring entity_hooks.h's precedent of keeping them beside the sole
-// caller, not a separate world_hooks.cpp -- since none of the three hooks
-// below are dispatched cross-TU (unlike entity_hooks.h's txt-block-pool
-// pair, which needed a shared header declaration for that reason).
+// default is safe, deliberately loud, or (mudlle-converter, below) a
+// documented tripwire whose return value must not be used, until
+// registration runs. Backing storage + dispatch helpers are defined in the
+// dispatching TU itself (db_world.cpp for the first two hooks, weather.cpp
+// for the third) -- mirroring entity_hooks.h's precedent of keeping them
+// beside the sole caller, not a separate world_hooks.cpp -- since none of
+// the three hooks below are dispatched cross-TU (unlike entity_hooks.h's
+// txt-block-pool pair, which needed a shared header declaration for that
+// reason).
 
 #include <cstdio>
 #include <string_view>
@@ -35,11 +37,13 @@ void set_boot_shops_hook(boot_shops_fn hook);
 // RELEASE(tmpstr);` -- if the hook is unregistered, dispatch returns the
 // same pointer tmpstr already holds, so RELEASE(tmpstr) frees the buffer
 // mobile_program[i] now (again) points at, leaving it dangling. The null
-// default is not a safe placeholder; it is a deterministic tripwire (log
-// + identity return) whose only job is to keep the unregistered path from
-// doing something worse than dangling -- and it is unreachable in every
-// shipped binary, since run_the_game() always registers the real
-// converter before boot_db() runs.
+// default exists for deterministic, LOUD unregistered behavior (log +
+// identity return), NOT safety: RELEASE(tmpstr) runs unconditionally
+// either way, so no return value here could avoid the dangle -- this
+// default's only job is to make an unregistered call path unmissable
+// (log) rather than silent, not to protect mobile_program[i]. It is
+// unreachable in every shipped binary: run_the_game() always registers
+// the real converter before boot_db() runs.
 using mudlle_converter_fn = char* (*)(char* source);
 void set_mudlle_converter_hook(mudlle_converter_fn hook);
 

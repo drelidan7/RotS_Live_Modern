@@ -199,8 +199,13 @@ boot_shops_fn g_boot_shops_hook = nullptr;
 // Backing storage for the registered mudlle-converter hook
 // (register_mudlle_converter_hook(), mudlle.cpp). Null until that
 // registration runs; the null default is a tripwire log + returning the
-// input pointer unchanged, so an unregistered hit fails loudly instead of
-// silently corrupting mobile_program[] with a null or empty buffer.
+// input pointer unchanged -- a deterministic, LOUD unregistered path, not
+// a safe one: boot_mudlle() unconditionally RELEASE()s its original
+// mobile_program[i] pointer right after this call, so the identity return
+// leaves mobile_program[i] dangling either way. Loudness (an unmissable
+// log line) is the point of this default, not protecting the buffer --
+// see world_hooks.h's fuller account. Unreachable in every shipped
+// binary: run_the_game() always registers the real converter first.
 mudlle_converter_fn g_mudlle_converter_hook = nullptr;
 } // namespace
 

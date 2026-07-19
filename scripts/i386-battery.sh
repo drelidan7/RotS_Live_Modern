@@ -37,17 +37,24 @@
 #   container-shared build/ tree's CMake metadata going stale relative to
 #   CMakeLists.txt/ROTS_*_SOURCES changes because of container/host
 #   bind-mount mtime skew, not because CMake's own dependency tracking is
-#   wrong -- has bitten this repo's finalization batteries multiple times on
-#   record (see .superpowers/sdd/progress.md): the header-split wave's
+#   wrong -- has bitten this repo's finalization batteries three times on
+#   record (see .superpowers/sdd/progress.md): (1) the header-split wave's
 #   finalization battery (CoreLayerAcyclicity target missing from a stale
-#   tree, fixed by a root-Makefile reconfigure at commit 3280c73) and the
-#   entity-complete wave's i386 battery round 2 (ageland_tests failed to
-#   link interpre-tier symbols in the container ONLY -- both hosts were
-#   otherwise green off the same CMakeLists.txt -- explicitly logged there
-#   as the "3rd occurrence" of this class, fixed the same way: wipe
+#   tree, fixed by a root-Makefile reconfigure at commit 3280c73); (2) the
+#   entity-seed wave's i386 battery round 2 (container /rots/build's cache
+#   got poisoned with HOST paths -- a root-Makefile fixer's `make -n test`
+#   verification still executed the `+`-prefixed `cmake --build` line on
+#   the host, since GNU make runs `+`-prefixed recipe lines even under -n,
+#   regenerating build/'s cache host-side), fixed by cleaning the top-level
+#   cache and keeping the preset subdirs; and (3) the entity-complete
+#   wave's i386 battery round 2 (ageland_tests failed to link interpre-tier
+#   symbols in the container ONLY -- both hosts were otherwise green off
+#   the same CMakeLists.txt), explicitly logged there as the "3rd
+#   occurrence" of this class, fixed the same way: wipe
 #   CMakeCache.txt/CMakeFiles/Testing, keep the preset subdirs and
-#   archives). Step 0 makes that fix the default first move of every
-#   battery run instead of a diagnosis someone has to rediscover.
+#   archives. Step 0 makes that fix the default first move of every
+#   battery run instead of a diagnosis someone has to rediscover a third
+#   time.
 #
 # Step 1 -- `docker compose run --rm --pull never rots bash -lc 'cd /rots &&
 #   make test'`: the root Makefile's ageland + ageland_tests + all five

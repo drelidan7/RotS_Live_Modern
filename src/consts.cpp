@@ -9,6 +9,10 @@
  ************************************************************************ */
 #define CONSTANTSMARK
 #include <stdio.h>
+#include <cstdlib> // free() -- day_to_str() below (combat-seed Task 2)
+#include <cstring> // strcpy() -- day_to_str() below
+#include <ctime> // time_t/time() -- real_time_passed()/mud_time_passed()/age() below
+#include <format> // day_to_str() below
 
 #include "db.h"
 #include "interpre.h"
@@ -16,6 +20,7 @@
 #include "rots/core/character.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
+#include "utils.h" // nth() declaration -- day_to_str() below (combat-seed Task 2)
 
 char circlemud_version[] = { "Arda: The Fourth Age, version 1.5.7\n\r" };
 
@@ -2669,5 +2674,88 @@ unsigned long stat_whitie_legend_counter = 0;
 unsigned long stat_darkie_legend_counter = 0;
 
 extern const std::string_view wizlock_default = "The game is closed.  Please try again later.\n\r";
+
+// real_time_passed()/mud_time_passed()/age()/day_to_str() relocated
+// verbatim from utility.cpp (combat-seed Task 2; placement-seam deferral
+// rider -- see task-5-report.md's BLOCKING FINDING entries, now resolved):
+// all four were deferred out of the placement-seam wave's platform batch
+// because real_time_passed()/mud_time_passed() return struct
+// time_info_data (rots/core/types.h, L1) BY VALUE, day_to_str()
+// additionally reads month_name[] (this file, L1) and takes struct
+// time_info_data* by pointer, and age() cascades via mud_time_passed().
+// rots_core is their correct L1 home, the same class of move as the
+// attack_hit_text[]/get_hit_text() precedent above. day_to_str() still
+// calls nth() (rots_util.cpp, L0) -- L1 calling L0 is downward and fine.
+// Declarations unchanged in utils.h (mud_time_passed(), age(),
+// day_to_str()); real_time_passed() has no header declaration --
+// act_info.cpp keeps its own pre-existing local extern forward
+// declaration, unchanged.
+/* Calculate the REAL time passed over the last t2-t1 centuries (secs) */
+struct time_info_data real_time_passed(time_t t2, time_t t1)
+{
+    long secs;
+    struct time_info_data now;
+
+    secs = (long)(t2 - t1);
+
+    now.hours = (secs / SECS_PER_REAL_HOUR) % 24; /* 0..23 hours */
+    secs -= SECS_PER_REAL_HOUR * now.hours;
+
+    now.day = (secs / SECS_PER_REAL_DAY); /* 0..34 days  */
+    secs -= SECS_PER_REAL_DAY * now.day;
+
+    now.month = 0;
+    now.year = 0;
+
+    return now;
+}
+
+/* Calculate the MUD time passed over the last t2-t1 centuries (secs) */
+struct time_info_data mud_time_passed(time_t t2, time_t t1)
+{
+    long secs;
+    struct time_info_data now;
+
+    secs = (long)(t2 - t1);
+
+    now.hours = (secs / SECS_PER_MUD_HOUR) % 24; /* 0..23 hours */
+    secs -= SECS_PER_MUD_HOUR * now.hours;
+
+    now.day = (secs / SECS_PER_MUD_DAY) % 30; /* 0..34 days  */
+    now.moon = (secs / SECS_PER_MUD_DAY) % 28; /* 0..34 days  */
+    secs -= SECS_PER_MUD_DAY * now.day;
+
+    now.month = (secs / SECS_PER_MUD_MONTH) % 12; /* 0..16 months */
+    secs -= SECS_PER_MUD_MONTH * now.month;
+
+    now.year = (secs / SECS_PER_MUD_YEAR); /* 0..XX? years */
+
+    return now;
+}
+
+struct time_info_data age(struct char_data* ch)
+{
+    struct time_info_data player_age;
+
+    player_age = mud_time_passed(time(0), ch->player.time.birth);
+
+    player_age.year += 17; /* All players start at 17 */
+
+    return player_age;
+}
+
+void day_to_str(struct time_info_data* loc_time_info, char* str)
+{
+    char* s;
+    int day;
+    day = loc_time_info->day + 1; /* day in [1..35] */
+
+    s = nth(day);
+
+    const std::string message = std::format("the {} day of {}", s, month_name[(int)loc_time_info->month]);
+    strcpy(str, message.c_str());
+
+    free(s);
+}
 
 #undef CONSTANTSMARK

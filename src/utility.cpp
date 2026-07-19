@@ -476,82 +476,15 @@ void log_death_trap(struct char_data* ch)
 // verdict MOVE-OTHER(platform)): pure text formatting. Declaration
 // unchanged in utils.h.
 
-// BLOCKING FINDING (placement-seam Task 5; see task-5-report.md): census
-// verdict was MOVE-OTHER(platform) with "upward refs: none", but this function
-// returns struct time_info_data BY VALUE -- that type is defined in
-// rots/core/types.h (L1/rots_core), and every rots_util.cpp precedent already
-// in that file (MAX_INPUT_LENGTH, FIND_ALL/FIND_ALLDOT/FIND_INDIV,
-// COPP_IN_GOLD/COPP_IN_SILV, LEVEL_IMMORT) explicitly declines to include that
-// header even for a single scalar constant. DEFERRED, not moved: stays here
-// verbatim, app tier, pending a follow-up wave (see mud_time_passed()'s
-// comment below and task-5-report.md's recommendation).
-/* Calculate the REAL time passed over the last t2-t1 centuries (secs) */
-struct time_info_data real_time_passed(time_t t2, time_t t1)
-{
-    long secs;
-    struct time_info_data now;
-
-    secs = (long)(t2 - t1);
-
-    now.hours = (secs / SECS_PER_REAL_HOUR) % 24; /* 0..23 hours */
-    secs -= SECS_PER_REAL_HOUR * now.hours;
-
-    now.day = (secs / SECS_PER_REAL_DAY); /* 0..34 days  */
-    secs -= SECS_PER_REAL_DAY * now.day;
-
-    now.month = 0;
-    now.year = 0;
-
-    return now;
-}
-
-// BLOCKING FINDING (placement-seam Task 5; see task-5-report.md): same
-// struct time_info_data-by-value / L1-type dependency as real_time_passed()
-// above. DEFERRED, not moved: stays here verbatim, app tier. age() below
-// (census verdict MOVE-OTHER-L2/char_utils.cpp) calls this function and is
-// deferred alongside it for the same reason -- see age()'s own comment.
-/* Calculate the MUD time passed over the last t2-t1 centuries (secs) */
-struct time_info_data mud_time_passed(time_t t2, time_t t1)
-{
-    long secs;
-    struct time_info_data now;
-
-    secs = (long)(t2 - t1);
-
-    now.hours = (secs / SECS_PER_MUD_HOUR) % 24; /* 0..23 hours */
-    secs -= SECS_PER_MUD_HOUR * now.hours;
-
-    now.day = (secs / SECS_PER_MUD_DAY) % 30; /* 0..34 days  */
-    now.moon = (secs / SECS_PER_MUD_DAY) % 28; /* 0..34 days  */
-    secs -= SECS_PER_MUD_DAY * now.day;
-
-    now.month = (secs / SECS_PER_MUD_MONTH) % 12; /* 0..16 months */
-    secs -= SECS_PER_MUD_MONTH * now.month;
-
-    now.year = (secs / SECS_PER_MUD_YEAR); /* 0..XX? years */
-
-    return now;
-}
-
-// DEFERRED alongside mud_time_passed() above (placement-seam Task 5; see
-// task-5-report.md): age()'s own census verdict is MOVE-OTHER-L2/
-// char_utils.cpp and its own body is entity-pure, but it calls
-// mud_time_passed(), which cannot move to rots_util.cpp/L0 this task
-// (blocking finding above) -- moving age() alone would leave an
-// EntityLayerAcyclicity-breaking call from rots_entity into still-app-tier
-// utility.cpp, the same class of problem Task 4 hit with
-// parse_numbered_name()/get_char(). Stays here verbatim, app tier, until
-// mud_time_passed()'s L1 dependency is resolved.
-struct time_info_data age(struct char_data* ch)
-{
-    struct time_info_data player_age;
-
-    player_age = mud_time_passed(time(0), ch->player.time.birth);
-
-    player_age.year += 17; /* All players start at 17 */
-
-    return player_age;
-}
+// real_time_passed()/mud_time_passed()/age() relocated to consts.cpp
+// (combat-seed Task 2; placement-seam deferral rider -- see
+// task-5-report.md's BLOCKING FINDING entries, now resolved): the
+// first two return struct time_info_data (rots/core/types.h, L1) BY
+// VALUE, which rots_core may do directly; age() cascades via
+// mud_time_passed() and moves alongside it. Declarations unchanged in
+// utils.h (mud_time_passed(), age()); real_time_passed() has no header
+// declaration -- act_info.cpp keeps its own pre-existing local extern
+// forward declaration, unchanged.
 
 /*
 ** Turn off echoing (specific to telnet client)
@@ -756,28 +689,13 @@ int CAN_SEE_OBJ(char_data* sub, obj_data* obj)
 // MOVE-OTHER(platform)): pure text over the already-platform-tier
 // rots_asprintf(). Declaration unchanged in utils.h.
 
-// BLOCKING FINDING (placement-seam Task 5; see task-5-report.md): census
-// verdict was MOVE-OTHER(platform) with "upward refs: none", but the body
-// reads month_name[...] -- an external symbol defined in consts.cpp
-// (rots_core, L1) and declared in rots/core/tables.h -- and takes
-// struct time_info_data* (rots/core/types.h, L1) by pointer, dereferencing
-// its fields. This is a genuine, hard PlatformLayerAcyclicity-breaking
-// upward edge (not merely a header-inclusion style choice) -- the census's
-// "none" was incomplete for this function. DEFERRED, not moved: stays here
-// verbatim, app tier.
-void day_to_str(struct time_info_data* loc_time_info, char* str)
-{
-    char* s;
-    int day;
-    day = loc_time_info->day + 1; /* day in [1..35] */
-
-    s = nth(day);
-
-    const std::string message = std::format("the {} day of {}", s, month_name[(int)loc_time_info->month]);
-    strcpy(str, message.c_str());
-
-    free(s);
-}
+// day_to_str() relocated to consts.cpp (combat-seed Task 2;
+// placement-seam deferral rider -- see task-5-report.md's BLOCKING
+// FINDING, now resolved): reads month_name[] (consts.cpp, rots_core/L1)
+// and takes struct time_info_data* (rots/core/types.h, L1) by pointer,
+// both directly referenceable from rots_core. Still calls nth()
+// (rots_util.cpp, L0) -- L1 calling L0 is downward and fine.
+// Declaration unchanged in utils.h.
 
 // find_player_in_table() relocated to db_players.cpp (persist-split PS
 // Task 4, controller-adjudicated relocation): a pure player_table/

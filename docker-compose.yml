@@ -24,6 +24,12 @@ services:
     working_dir: /rots
     volumes:
       - .:/rots
+      # Container-private CMake tree (see docs/BUILD.md "Container build
+      # isolation"): masks the bind-mounted build/ so host and container
+      # generated state can never interact. Clean rebuild: docker volume rm
+      # rots-build-i386 (or `docker compose down -v` to clear both).
+      # Inspect: docker compose run --rm rots ls /rots/build
+      - rots-build-i386:/rots/build
     ports:
       - "1024:1024"
     stdin_open: true
@@ -40,8 +46,17 @@ services:
     working_dir: /rots
     volumes:
       - .:/rots
+      # Same isolation for the 64-bit sibling; volume rots-build-x64.
+      - rots-build-x64:/rots/build
     ports:
       - "1064:1024"
     stdin_open: true
     tty: true
     command: bash
+
+volumes:
+  # Named build volumes. Motivated by three stale-generated-tree incidents
+  # (see scripts/i386-battery.sh step 0's citations): host<->container CMake
+  # state can no longer cross. CI runners create these empty per run.
+  rots-build-i386:
+  rots-build-x64:

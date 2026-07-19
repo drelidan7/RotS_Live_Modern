@@ -78,12 +78,13 @@ mode="${args[0]:-verify}"
 if [ -n "$NATIVE_BINARY" ]; then
   BINARY_PATH="$NATIVE_BINARY"
 else
-  # Each service builds its binary at a different path relative to the /rots bind
-  # mount: the 32-bit Makefile build produces ./bin/ageland; the 64-bit CMake
-  # linux-x64 preset (binaryDir "${sourceDir}/../build/${presetName}" in
-  # CMakePresets.json) puts it at ./build/linux-x64/ageland. Both paths are bind-
-  # mounted, so they're visible identically from the host and from inside either
-  # container.
+  # Each service builds its binary at a different path: the 32-bit Makefile
+  # build produces ./bin/ageland (bind-mounted, host-visible); the 64-bit
+  # CMake linux-x64 preset puts it at ./build/linux-x64/ageland, which since
+  # the build-isolation wave lives in the rots-build-x64 NAMED VOLUME and is
+  # visible only inside the container -- so service mode defers the
+  # existence check to the container (below) instead of stat-ing the host
+  # path.
   case "$SERVICE" in
     rots) BINARY_PATH=bin/ageland ;;
     rots64) BINARY_PATH=build/linux-x64/ageland ;;
@@ -95,7 +96,8 @@ fi
 if [ -n "$NATIVE_BINARY" ]; then
   [ -x "$BINARY_PATH" ] || { echo "ERROR: $BINARY_PATH is not executable — build it first (see script header)." >&2; exit 2; }
 else
-  [ -f "$BINARY_PATH" ] || { echo "ERROR: $BINARY_PATH missing — build it first (see script header)." >&2; exit 2; }
+  docker compose run --rm --pull never "$SERVICE" bash -lc "[ -f /rots/$BINARY_PATH ]" \
+    || { echo "ERROR: $BINARY_PATH missing inside the $SERVICE container's build volume — build it first (see script header)." >&2; exit 2; }
 fi
 
 # Boot exactly as `scripts/rots-docker.sh boot` launches the binary (cd /rots,

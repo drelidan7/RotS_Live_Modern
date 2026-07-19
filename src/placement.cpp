@@ -69,6 +69,11 @@
 #include "rots/core/types.h"
 #include "rots/platform/log.h"
 #include "utils.h"
+#include "zone.h" /* For zone_data's full definition -- zone_by_id() (entity_hooks.h)
+                  * returns zone_data*, and char_to_room()/detach_char_from_room()
+                  * (Task 3, below) dereference its ->zone/->white_power/->dark_power
+                  * fields; zone_table[]/top_of_zone_table themselves stay untouched
+                  * (rots_world, L3 -- only the resolver dispatch reaches them). */
 
 namespace rots::entity {
 
@@ -325,4 +330,126 @@ struct char_data* get_char_room(char* name, int room)
         }
 
     return (0);
+}
+
+/************************************************************************
+ *  Functions relocated/split from handler.cpp (placement-seam Task 3;   *
+ *  see census rows char_to_room:716 (ADJUDICATE-1) and char_from_room:  *
+ *  661 (ADJUDICATE-2), and task-3-report.md for the full evidence       *
+ *  trail). char_to_room() is a clean MOVE (no output/combat weld);      *
+ *  detach_char_from_room() is the SPLIT primitive half of               *
+ *  char_from_room() -- handler.cpp's app-side char_from_room() wrapper  *
+ *  (public name/declaration unchanged) calls this then runs the         *
+ *  original's trailing stop_fighting teardown loop (combat/app).        *
+ ************************************************************************/
+
+/* place a character in a room */
+//
+// world[room] substitution (census row char_to_room:716; ADJUDICATE-1
+// Disposition A -- binding): the ORIGINAL body indexed world[room]
+// unchecked at every site below (no bounds test anywhere in the function)
+// -- per the BINDING addendum's per-site selection rule, this resolves via
+// room_by_id_total(room) into a single local `room_data* r`, mirroring
+// recount_light_room's/get_char_room's own precedent for hoisting the
+// resolved pointer once at entry. `world[room].people`/`.light` below
+// become `r->people`/`.light`. zone_table[world[room].zone] becomes
+// zone_by_id(r->zone) -- the new zone resolver ADJUDICATE-1 introduced;
+// zone_by_id() is a raw-array nullptr-on-invalid resolver (no TOTAL
+// counterpart needed) and r->zone is always an in-range zone index set at
+// world-load time, so it is dereferenced directly, per the BINDING
+// addendum's "no NEW null checks" rule for zone_by_id/obj_index_by_id.
+void char_to_room(struct char_data* ch, int room)
+{
+    struct char_data* tmpch;
+    int tmp;
+
+    room_data* r = room_by_id_total(room);
+
+    /* append ch to the room's list */
+    if (!r->people)
+        r->people = ch;
+    else {
+        for (tmpch = r->people; tmpch->next_in_room; tmpch = tmpch->next_in_room)
+            ;
+        tmpch->next_in_room = ch;
+    }
+    ch->next_in_room = 0;
+    ch->in_room = room;
+
+    /* do they have a light? */
+    for (tmp = 0; tmp < MAX_WEAR; tmp++)
+        if (ch->equipment[tmp])
+            if (ch->equipment[tmp]->obj_flags.type_flag == ITEM_LIGHT)
+                if (ch->equipment[tmp]->obj_flags.value[2] && (ch->equipment[tmp]->obj_flags.value[3])) /* Light is ON */
+                    r->light++;
+
+    tmp = char_power(GET_LEVEL(ch));
+
+    /* increase the goodness/evilness of this room's zone */
+    if (!IS_NPC(ch)) {
+        if (RACE_GOOD(ch))
+            zone_by_id(r->zone)->white_power += tmp;
+        else if (RACE_EVIL(ch))
+            zone_by_id(r->zone)->dark_power += tmp;
+    }
+}
+
+/* move a player out of a room */
+//
+// detach_char_from_room() SPLIT primitive (census row char_from_room:661;
+// ADJUDICATE-2 Disposition A -- binding): everything through clearing
+// in_room/next_in_room (list-unlink + light-dec + zone-power-dec) moved
+// here; handler.cpp's char_from_room() app wrapper keeps the public
+// name/declaration and runs the original's trailing stop_fighting loop
+// (combat/app) after calling this. world[ch->in_room] substitution: the
+// ORIGINAL body indexed world[ch->in_room] unchecked (no bounds test,
+// distinct from the `ch->in_room == NOWHERE` sentinel check) -- per the
+// BINDING addendum, room_by_id_total(ch->in_room) into a local
+// `room_data* r`, same precedent as char_to_room() above.
+// zone_table[world[ch->in_room].zone] becomes zone_by_id(r->zone),
+// dereferenced directly (same rationale as char_to_room() above).
+void detach_char_from_room(char_data* ch)
+{
+    struct char_data* i;
+    int tmp;
+    if (ch->in_room == NOWHERE) {
+        //      log("SYSERR: NOWHERE extracting char from room (handler.c, char_from_room)");
+        //      exit(1);
+        return; // he's already nowehre
+    }
+
+    room_data* r = room_by_id_total(ch->in_room);
+
+    for (tmp = 0; tmp < MAX_WEAR; tmp++)
+        if (ch->equipment[tmp])
+            if (ch->equipment[tmp]->obj_flags.type_flag == ITEM_LIGHT)
+                if (ch->equipment[tmp]->obj_flags.value[2] && (ch->equipment[tmp]->obj_flags.value[3])) /* Light is ON */
+                    r->light--;
+
+    if (ch == r->people) /* head of list */
+        r->people = ch->next_in_room;
+
+    else /* locate the previous element */ {
+        for (i = r->people;
+             i && (i->next_in_room != ch); i = i->next_in_room)
+            ;
+
+        if (!i)
+            return;
+
+        i->next_in_room = ch->next_in_room;
+    }
+
+    tmp = char_power(GET_LEVEL(ch));
+
+    if (!IS_NPC(ch)) {
+        //     zone_table[world[ch->in_room].zone].nature_power -= tmp;
+        if (RACE_GOOD(ch))
+            zone_by_id(r->zone)->white_power -= tmp;
+        else if (RACE_EVIL(ch))
+            zone_by_id(r->zone)->dark_power -= tmp;
+    }
+
+    ch->in_room = NOWHERE;
+    ch->next_in_room = 0;
 }

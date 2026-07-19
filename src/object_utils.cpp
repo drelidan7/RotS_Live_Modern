@@ -8,7 +8,13 @@
 #include <cstring>
 #include <format>
 
-#include "db.h" // free_obj/clear_object declarations (both defined in entity_lifecycle.cpp, L2)
+#include "db.h" // clear_object() declaration (entity_lifecycle.cpp, L2), used by
+                 // create_money() below. free_obj() is NOT called by anything in this
+                 // file today (placement-seam Task 2 review Minor, fixed Task 3): it was
+                 // anticipated for extract_obj(), which stayed app-side (see extract_obj's
+                 // own STOP-CHECK-adjudicated deferral note, handler.cpp, and
+                 // task-3-report.md) -- re-add free_obj to this comment when extract_obj
+                 // finally moves here.
 #include "entity_hooks.h"
 #include "handler.h"
 #include "utils.h"
@@ -40,15 +46,24 @@
 // Global Constraints (dead functions with 0 callers are deleted, not
 // relocated).
 //
-// extract_obj (census row 1367, ADJUDICATE-3) is NOT here -- discovered
-// during this task, not moved. See handler.cpp's own relocation comment at
-// extract_obj's still-resident definition (and containment.cpp's
-// obj_from_char comment) for the full EntityLayerAcyclicity evidence:
-// extract_obj calls obj_from_char(), which stays app-side this task because
-// ITS OWN unequip_char() dependency isn't L2-resolvable until Task 3's
-// equipment SPLIT. get_obj_in_list_vnum has no such dependency, so it moves
-// on schedule below -- ADJUDICATE-3's obj_index_by_id resolver is delivered
-// either way.
+// extract_obj (census row 1367, ADJUDICATE-3) is STILL NOT here as of
+// Task 3 either (STOP-CHECK-adjudicated deferral, Disposition B -- see
+// task-3-report.md, supersedes this note's original Task-2-only
+// rationale below). See handler.cpp's own relocation comment at
+// extract_obj's still-resident definition (and containment.cpp's/
+// handler.cpp's obj_from_char comments) for the full evidence: extract_obj
+// calls obj_from_char(), which stays app-side because a live mudscript
+// path (script.cpp SCRIPT_ASSIGN_EQ + SCRIPT_OBJ_FROM_CHAR) can reach
+// obj_from_char's equipment-fallback branch with a genuinely equipped
+// object, where only the app-tier unequip_char() wrapper (not
+// equipment.cpp's detach_equipment() primitive) preserves the poison
+// damage/raw_kill side effect -- a real behavior-preservation blocker,
+// not merely the Task-2-era link-ordering one this note originally
+// described ("ITS OWN unequip_char() dependency isn't L2-resolvable
+// until Task 3's equipment SPLIT" -- that SPLIT landed this task, and
+// resolved nothing here). get_obj_in_list_vnum has no such dependency,
+// so it moved on schedule (Task 2) -- ADJUDICATE-3's obj_index_by_id
+// resolver is delivered either way.
 extern struct obj_data* object_list;
 
 //============================================================================

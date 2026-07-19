@@ -99,6 +99,14 @@ void obj_from_char(struct obj_data* object);
 
 void equip_char(struct char_data* ch, struct obj_data* obj, int pos);
 struct obj_data* unequip_char(struct char_data* ch, int pos);
+// attach_equipment()/detach_equipment() (placement-seam Task 3): the
+// equip_char()/unequip_char() SPLIT primitives (equipment.cpp, L2) --
+// public API, per this wave's "declarations stay in current headers"
+// constraint. See equipment.cpp's top-of-file comment and handler.cpp's
+// equip_char()/unequip_char() wrapper comments for the split-line
+// accounting and task-3-report.md for the reassembly audit.
+void attach_equipment(struct char_data* ch, struct obj_data* obj, int pos);
+struct obj_data* detach_equipment(struct char_data* ch, int pos);
 
 struct obj_data* get_obj_in_list(char* name, struct obj_data* list);
 struct obj_data* get_obj_in_list_num(int num, struct obj_data* list);
@@ -129,6 +137,12 @@ struct char_data* get_char_num(int nr);
 /// Finds a world character whose name matches the bounded lookup text.
 struct char_data* get_char(std::string_view name);
 
+// detach_char_from_room() (placement-seam Task 3): the char_from_room()
+// SPLIT primitive (placement.cpp, L2) -- public API, per this wave's
+// "declarations stay in current headers" constraint. See
+// placement.cpp's and handler.cpp's char_from_room() comments for the
+// split-line accounting.
+void detach_char_from_room(struct char_data* ch);
 void char_from_room(struct char_data* ch);
 void char_to_room(struct char_data* ch, int room);
 void extract_char(struct char_data* ch, int new_room = -1);

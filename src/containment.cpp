@@ -46,6 +46,18 @@
 // moves alongside unequip_char's SPLIT in Task 3, where the primitive it
 // calls will itself be an L2 citizen. See task-2-report.md for the full
 // evidence trail.
+//
+// Task 3 update: unequip_char's SPLIT landed (attach_equipment()/
+// detach_equipment(), equipment.cpp) and made the primitive an L2
+// citizen as anticipated above -- but Task 3's own mandatory STOP-CHECK
+// on obj_from_char's unequip_char() call target found a live mudscript
+// path (script.cpp SCRIPT_ASSIGN_EQ + SCRIPT_OBJ_FROM_CHAR) that reaches
+// this branch with a genuinely EQUIPPED object, where only the app-tier
+// unequip_char() wrapper (not detach_equipment()) preserves the poison
+// damage/raw_kill side effect. obj_from_char therefore stays in
+// handler.cpp -- deferred again, now for a behavior-preservation reason
+// rather than a link-order one. See handler.cpp's own updated
+// obj_from_char comment and task-3-report.md for the full evidence.
 
 #include "platdef.h"
 #include <cstdlib>

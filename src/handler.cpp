@@ -640,48 +640,21 @@ void die_follower(char_data* character)
 //**************************************************************************
 
 /* move a player out of a room */
+// char_from_room() SPLIT (placement-seam Task 3, census row char_from_room:661
+// / ADJUDICATE-2 Disposition A, binding): the room-list unlink + light-dec +
+// zone-power-dec + in_room/next_in_room clear moved verbatim into
+// placement.cpp's new detach_char_from_room(ch) primitive (L2) -- world[]/
+// zone_table[] substituted for room_by_id_total()/zone_by_id() per the
+// BINDING addendum's unchecked-access rule (this function's world[ch->in_room]
+// reads carry no bounds test of their own). This app-side wrapper keeps the
+// public name/declaration (handler.h, unchanged); it now calls the primitive
+// then runs the original trailing stop_fighting teardown loop (combat/app),
+// byte-preserved below. See task-3-report.md for the reassembly audit.
 void char_from_room(struct char_data* ch)
 {
-    struct char_data* i;
+    detach_char_from_room(ch);
+
     int tmp;
-    if (ch->in_room == NOWHERE) {
-        //      log("SYSERR: NOWHERE extracting char from room (handler.c, char_from_room)");
-        //      exit(1);
-        return; // he's already nowehre
-    }
-
-    for (tmp = 0; tmp < MAX_WEAR; tmp++)
-        if (ch->equipment[tmp])
-            if (ch->equipment[tmp]->obj_flags.type_flag == ITEM_LIGHT)
-                if (ch->equipment[tmp]->obj_flags.value[2] && (ch->equipment[tmp]->obj_flags.value[3])) /* Light is ON */
-                    world[ch->in_room].light--;
-
-    if (ch == world[ch->in_room].people) /* head of list */
-        world[ch->in_room].people = ch->next_in_room;
-
-    else /* locate the previous element */ {
-        for (i = world[ch->in_room].people;
-             i && (i->next_in_room != ch); i = i->next_in_room)
-            ;
-
-        if (!i)
-            return;
-
-        i->next_in_room = ch->next_in_room;
-    }
-
-    tmp = char_power(GET_LEVEL(ch));
-
-    if (!IS_NPC(ch)) {
-        //     zone_table[world[ch->in_room].zone].nature_power -= tmp;
-        if (RACE_GOOD(ch))
-            zone_table[world[ch->in_room].zone].white_power -= tmp;
-        else if (RACE_EVIL(ch))
-            zone_table[world[ch->in_room].zone].dark_power -= tmp;
-    }
-
-    ch->in_room = NOWHERE;
-    ch->next_in_room = 0;
     for (tmp = 0; ch->specials.fighting && (tmp < 100); tmp++) {
         if (ch->specials.fighting->specials.fighting == ch)
             stop_fighting(ch->specials.fighting);
@@ -694,54 +667,48 @@ void char_from_room(struct char_data* ch)
     }
 }
 
-/* place a character in a room */
-void char_to_room(struct char_data* ch, int room)
-{
-    struct char_data* tmpch;
-    int tmp;
-
-    /* append ch to the room's list */
-    if (!world[room].people)
-        world[room].people = ch;
-    else {
-        for (tmpch = world[room].people; tmpch->next_in_room; tmpch = tmpch->next_in_room)
-            ;
-        tmpch->next_in_room = ch;
-    }
-    ch->next_in_room = 0;
-    ch->in_room = room;
-
-    /* do they have a light? */
-    for (tmp = 0; tmp < MAX_WEAR; tmp++)
-        if (ch->equipment[tmp])
-            if (ch->equipment[tmp]->obj_flags.type_flag == ITEM_LIGHT)
-                if (ch->equipment[tmp]->obj_flags.value[2] && (ch->equipment[tmp]->obj_flags.value[3])) /* Light is ON */
-                    world[room].light++;
-
-    tmp = char_power(GET_LEVEL(ch));
-
-    /* increase the goodness/evilness of this room's zone */
-    if (!IS_NPC(ch)) {
-        if (RACE_GOOD(ch))
-            zone_table[world[room].zone].white_power += tmp;
-        else if (RACE_EVIL(ch))
-            zone_table[world[room].zone].dark_power += tmp;
-    }
-}
+// char_to_room() relocated verbatim to placement.cpp (placement-seam Task 3,
+// census row char_to_room:716 / ADJUDICATE-1 Disposition A, binding): every
+// world[room] access below was originally unchecked (no bounds test in this
+// function) -- per the BINDING addendum's per-site rule, all become
+// room_by_id_total(room); zone_table[world[room].zone] becomes
+// zone_by_id(r->zone) (the new zone resolver, ADJUDICATE-1). Declaration
+// stays in handler.h.
 
 // obj_to_char() relocated to containment.cpp (placement-seam Task 2):
 // entity-pure obj->char containment mutator, no world[] access. See that
 // file for the moved body and task-2-report.md for the evidence trail.
 // Declaration stays in handler.h.
 //
-// obj_from_char() stays here (placement-seam Task 2 DEVIATION -- see
-// containment.cpp's own top-of-file comment for the discovered
-// EntityLayerAcyclicity evidence and task-2-report.md for the full
-// trail): its equipment-fallback branch calls unequip_char(), still
-// defined in this file until Task 3's equipment SPLIT moves it to
-// equipment.cpp (L2) -- moving obj_from_char before that primitive is
-// itself an L2 citizen would leave rots_entity with an unresolved
-// upward symbol. Byte-identical to its pre-Task-2 body.
+// obj_from_char() stays here (placement-seam Task 3 STOP-CHECK,
+// controller-adjudicated deferral -- Disposition B; see task-3-report.md
+// for the full evidence trail; supersedes Task 2's own deferral note,
+// which cited a now-resolved blocker): Task 2 deferred this function
+// because unequip_char() wasn't yet an L2 citizen; Task 3's equipment
+// SPLIT resolved THAT blocker (attach_equipment()/detach_equipment() now
+// live in equipment.cpp, L2). But the task brief's mandatory STOP-CHECK
+// on this function's unequip_char() call target (line ~708 below)
+// surfaced a genuine reachable counter-example, not just a link-order
+// problem: script.cpp's SCRIPT_ASSIGN_EQ command reads an EQUIPPED item
+// (tmpch->equipment[pos]) into a script object-param slot, and a
+// subsequent SCRIPT_OBJ_FROM_CHAR on that same slot reaches THIS
+// function with an object whose carried_by is set but which is not in
+// the ->carrying list -- i.e. the equipment-fallback branch below,
+// calling unequip_char() (not the primitive), IS reachable in live
+// mudscript-driven play, not just defensively. unequip_char() (the app
+// wrapper) runs the poison damage/raw_kill block on that path;
+// detach_equipment() (the L2 primitive) does not. Moving this function
+// to containment.cpp would force its call at line ~708 to target
+// detach_equipment() instead (calling the app-tier unequip_char()
+// wrapper from L2 recreates exactly the upward edge Task 2's own
+// EntityLayerAcyclicity check already rejected once), silently dropping
+// that poison side effect for the scripted path -- a real behavior
+// change, which this wave's Global Constraint ("Zero behavior change for
+// ageland") does not permit without explicit owner sign-off. Deferred
+// pending either a poison-notification hook (so the L2 primitive could
+// signal the app tier without calling it) or an explicit accepted-risk
+// decision on this narrow scripted edge case. Byte-identical to its
+// pre-Task-2 body (unchanged since).
 
 /* take an object from a char */
 void obj_from_char(struct obj_data* object)
@@ -789,7 +756,34 @@ void obj_from_char(struct obj_data* object)
         object->obj_flags.prog_number = 0;
 }
 
-
+// equip_char() SPLIT (placement-seam Task 3, census row equip_char:815):
+// primitive attach_equipment(ch, obj, pos) (L2, equipment.cpp) keeps the
+// slot assignment, encumb/leg-encumb/weight math, OB/PB/dodge mutation,
+// affect_modify()+affect_total(), and the light-inc (world[]->
+// room_by_id_total(), unchecked historical access per the BINDING addendum).
+// This app-side wrapper keeps the public name/declaration (handler.h,
+// unchanged) and the census's named "app remainder": the initial guards
+// (byte-preserved -- they gate whether the primitive is even called, so
+// they must run first, exactly as in the original), the anti-align/
+// anti-race zap `act` messages + `obj_to_char` re-drop (census 833-853),
+// the "too heavy" `send_to_char` messages (census 880-883), and the poison
+// `damage`/`raw_kill` block (census 905-916) -- all byte-preserved below.
+//
+// DEVIATION (discovered implementing this split; documented per this
+// wave's self-adjudication precedent -- see task-3-report.md): the
+// original's `if ((item_slot == HOLD) && !CAN_WEAR(item, ITEM_HOLD))
+// return;` guard (between the weight math and the ARMOR/WEAPON/SHIELD/
+// LIGHT dispatch) causes the ORIGINAL to skip the too-heavy messages,
+// affect_modify()/affect_total(), AND the poison block together whenever
+// it fires. attach_equipment() is void (no signal channel across the call
+// boundary, per this task's binding primitive signature), so this wrapper
+// re-checks the SAME stateless condition (item_slot/item are unchanged by
+// the primitive call) after calling attach_equipment(), before running its
+// own too-heavy-check and poison block -- reproducing the original's
+// early-return-skips-the-tail control flow exactly, without requiring the
+// primitive to report status back. Not a reordering: the condition is
+// re-evaluated (byte-identical to the primitive's own copy of the same
+// guard), not moved relative to any other original line.
 void equip_char(char_data* character, obj_data* item, int item_slot)
 {
     int was_poisoned = IS_AFFECTED(character, AFF_POISON);
@@ -830,53 +824,17 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
             log("SYSERR: ch->in_room = NOWHERE when equipping char.");
     }
 
-    character->equipment[item_slot] = item;
-    item->carried_by = character;
-    item->obj_flags.timer = -1;
-
-    // Encumb and weight update:
-    character->points.encumb += item->obj_flags.value[2] * encumb_table[item_slot];
-    character->specials2.leg_encumb += item->obj_flags.value[2] * leg_encumb_table[item_slot];
-    if (encumb_table[item_slot])
-        GET_ENCUMB_WEIGHT(character) += GET_OBJ_WEIGHT(item) * encumb_table[item_slot];
-    else
-        GET_ENCUMB_WEIGHT(character) += GET_OBJ_WEIGHT(item) / 2;
-    GET_WORN_WEIGHT(character) += GET_OBJ_WEIGHT(item);
-
-    IS_CARRYING_W(character) += GET_OBJ_WEIGHT(item);
+    attach_equipment(character, item, item_slot);
 
     if ((item_slot == HOLD) && !CAN_WEAR(item, ITEM_HOLD))
         return;
 
-    if (GET_ITEM_TYPE(item) == ITEM_ARMOR)
-        SET_DODGE(character) += item->obj_flags.value[3];
-
-    else if (GET_ITEM_TYPE(item) == ITEM_WEAPON) {
-        SET_OB(character) += item->obj_flags.value[0];
-        SET_PARRY(character) += item->obj_flags.value[1];
-
+    if (GET_ITEM_TYPE(item) == ITEM_WEAPON) {
         if (GET_OBJ_WEIGHT(item) > (GET_BAL_STR(character) * 50) && !IS_TWOHANDED(character))
             send_to_char("This weapon seems too heavy for one hand.\n\r", character);
         else if (GET_OBJ_WEIGHT(item) > (GET_BAL_STR(character) * 100))
             send_to_char("This weapon seems too heavy for you!\n\r", character);
-
-    } else if (GET_ITEM_TYPE(item) == ITEM_SHIELD) {
-        SET_DODGE(character) += item->obj_flags.value[0];
-        SET_PARRY(character) += item->obj_flags.value[1];
-    } else if (GET_ITEM_TYPE(item) == ITEM_LIGHT) {
-        if ((character->in_room != NOWHERE) && (item->obj_flags.value[2] != 0)) {
-            if (item->obj_flags.value[3] == 0)
-                item->obj_flags.value[3] = 1;
-            world[character->in_room].light++;
-        }
     }
-
-    for (int j = 0; j < MAX_OBJ_AFFECT; j++)
-        affect_modify(character, item->affected[j].location,
-            item->affected[j].modifier,
-            item->obj_flags.bitvector, AFFECT_MODIFY_SET, 0);
-
-    affect_total(character);
 
     // Special case for poisoned objects.  The wearer should get poison damage
     // when wearing/removing something poisoned.
@@ -894,64 +852,42 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
     }
 }
 
+// unequip_char() SPLIT (placement-seam Task 3, census row unequip_char:919):
+// primitive detach_equipment(ch, pos) (L2, equipment.cpp) keeps the mudlog
+// zero-object guard (L0-legal, per this task's binding brief), slot clear,
+// encumb/weight math, OB/PB/dodge mutation, affect_modify()+affect_total(),
+// and the light-dec (world[]->room_by_id_total(), unchecked historical
+// access per the BINDING addendum). This app-side wrapper keeps the public
+// name/declaration (handler.h, unchanged) and the census's named "app
+// remainder": the poison `damage`/`raw_kill` block (census 980-991),
+// byte-preserved below.
+//
+// DEVIATION (same class as equip_char's own, above -- see
+// task-3-report.md): detach_equipment() is declared obj_data* (not void),
+// but its return alone cannot distinguish "returned early at the HOLD
+// guard" (a valid, non-null obj) from "ran to completion" (also a valid,
+// non-null obj) -- both must skip vs. run this wrapper's poison block
+// respectively, exactly as the ORIGINAL's single early-return did. This
+// wrapper re-checks the same stateless HOLD/CAN_WEAR condition against the
+// returned obj (pos is unchanged by the primitive call) before running the
+// poison block, and separately guards on a null return (the zero-object
+// case, which the original also returned out of before ever reaching this
+// point) to avoid a new null-dereference the split call boundary would
+// otherwise introduce. Neither check reorders any original logic; both
+// reproduce the original's own early-return reach exactly.
 struct obj_data* unequip_char(struct char_data* ch, int pos)
 {
-    int j;
     int was_poisoned = 0;
-    struct obj_data* obj;
 
     was_poisoned = IS_AFFECTED(ch, AFF_POISON);
 
-    assert(pos >= 0 && pos < MAX_WEAR);
+    struct obj_data* obj = detach_equipment(ch, pos);
 
-    if (!ch->equipment[pos]) {
-        mudlog("unequip_char called for zero object.", NRM, 0, 0);
-        log("unequip_char called for zero object.");
-        return 0;
-    }
-
-    obj = ch->equipment[pos];
-
-    ch->equipment[pos] = 0;
-
-    ch->points.encumb -= obj->obj_flags.value[2] * encumb_table[pos];
-    ch->specials2.leg_encumb -= obj->obj_flags.value[2] * leg_encumb_table[pos];
-    if (encumb_table[pos])
-        GET_ENCUMB_WEIGHT(ch) -= GET_OBJ_WEIGHT(obj) * encumb_table[pos];
-    else
-        GET_ENCUMB_WEIGHT(ch) -= GET_OBJ_WEIGHT(obj) / 2;
-    GET_WORN_WEIGHT(ch) -= GET_OBJ_WEIGHT(obj);
-
-    IS_CARRYING_W(ch) -= GET_OBJ_WEIGHT(obj);
+    if (!obj)
+        return obj;
 
     if ((pos == HOLD) && !CAN_WEAR(obj, ITEM_HOLD))
         return obj;
-
-    if (GET_ITEM_TYPE(obj) == ITEM_ARMOR) {
-        SET_DODGE(ch) -= obj->obj_flags.value[3];
-
-    } else if (GET_ITEM_TYPE(obj) == ITEM_WEAPON) {
-        SET_OB(ch) -= obj->obj_flags.value[0];
-        SET_PARRY(ch) -= obj->obj_flags.value[1];
-
-    } else if (GET_ITEM_TYPE(obj) == ITEM_SHIELD) {
-        SET_DODGE(ch) -= obj->obj_flags.value[0];
-        SET_PARRY(ch) -= obj->obj_flags.value[1];
-
-    } else if (GET_ITEM_TYPE(obj) == ITEM_LIGHT) {
-        if ((ch->in_room != NOWHERE) && (obj->obj_flags.value[2] != 0) && (obj->obj_flags.value[3] != 0)) {
-            if (obj->obj_flags.value[3] > 0)
-                obj->obj_flags.value[3] = 0;
-            world[ch->in_room].light--;
-        }
-    }
-
-    for (j = 0; j < MAX_OBJ_AFFECT; j++)
-        affect_modify(ch, obj->affected[j].location,
-            obj->affected[j].modifier,
-            obj->obj_flags.bitvector, AFFECT_MODIFY_REMOVE, 0);
-
-    affect_total(ch);
 
     // Special case for poisoned objects.  The wearer should get poison damage
     // when wearing/removing something poisoned.
@@ -1112,20 +1048,20 @@ void extract_obj(struct obj_data* obj)
     free_obj(obj);
 }
 
-// extract_obj() DEVIATION (placement-seam Task 2, discovered during this
-// task -- see containment.cpp's obj_from_char note and task-2-report.md
-// for the full evidence trail): NOT moved this task. ADJUDICATE-3 (Global
-// Constraints) binds extract_obj to move via obj_index_by_id, and that
-// substitution alone compiles and links clean in isolation -- but
-// extract_obj also calls obj_from_char(), which itself stays in this file
-// this task (its own unequip_char() dependency isn't L2-resolvable until
-// Task 3's equipment SPLIT -- see obj_from_char's own comment above).
-// Moving extract_obj alone would leave rots_entity with an unresolved
-// obj_from_char symbol; moving both would reintroduce the unequip_char
-// symbol EntityLayerAcyclicity already rejected once this task. Deferred
-// to Task 3 alongside obj_from_char, where unequip_char's primitive
-// becomes an L2 citizen and the whole chain resolves together.
-// Byte-identical to its pre-Task-2 body.
+// extract_obj() DEVIATION (placement-seam Task 3 STOP-CHECK,
+// controller-adjudicated deferral -- Disposition B; see task-3-report.md;
+// supersedes Task 2's own deferral note): NOT moved this task either.
+// ADJUDICATE-3's obj_index_by_id() substitution alone still compiles and
+// links clean in isolation, but extract_obj calls obj_from_char(), which
+// itself stays app-side this task -- see obj_from_char's own comment
+// above for the STOP-CHECK evidence (a live mudscript path,
+// SCRIPT_ASSIGN_EQ + SCRIPT_OBJ_FROM_CHAR, reaches obj_from_char's
+// equipment-fallback branch with a genuinely equipped item, so
+// obj_from_char must keep calling the app-tier unequip_char() wrapper
+// -- with its poison damage/raw_kill block -- to stay behavior-
+// identical; that upward edge is illegal from L2, so obj_from_char
+// cannot move, and neither can extract_obj, which depends on it).
+// Byte-identical to its pre-Task-2 body (unchanged since).
 
 // update_object()/update_char_objects() relocated to object_utils.cpp
 // (placement-seam Task 2): entity-pure recursive object-timer helpers, no

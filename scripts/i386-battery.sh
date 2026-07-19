@@ -92,6 +92,13 @@ marker_path() {
 }
 
 step_done() {
+  # Markers key on HEAD only, not working-tree cleanliness: a dirty tree at
+  # an unchanged HEAD (e.g. docs-only edits) still counts as done and will
+  # be skipped. This is intentional, not an oversight — finalization
+  # batteries run on committed trees by convention, and adding a git-status
+  # check here would force a full rerun on docs-dirty trees, which was
+  # explicitly rejected. Commit (or stash) real code changes before relying
+  # on markers.
   [ -f "$(marker_path "$1")" ] || return 1
   [ "$(cat "$(marker_path "$1")")" = "$(git rev-parse HEAD)" ]
 }

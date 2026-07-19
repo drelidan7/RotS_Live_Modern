@@ -167,11 +167,11 @@ container's `build/` and the host's `build/` are no longer the same filesystem
 location, so a poisoned or stale host cache can never reach a container configure, and
 vice versa. This was verified by test, not just by design — a poison run planted a
 bogus `CMAKE_HOME_DIRECTORY` in the host's `build/CMakeCache.txt`, then ran a container
-`make configure`: the container configured fresh in its empty volume (rooted at
-`/rots/src`, its real `-S`/`-B` source dir) while the poisoned host file sat untouched
-throughout. `scripts/i386-battery.sh` step 0 keeps pre-cleaning the in-volume tree as
-belt-and-braces for the remaining same-environment staleness class (incidents 1 and 3),
-which the volume alone doesn't fix. `scripts/i386-battery.sh`'s completed-step markers
+`make configure`: the container configured fresh, with `/rots/src` as its real `-S`
+source dir and the empty named volume backing its `-B` build tree, while the poisoned
+host file sat untouched throughout. `scripts/i386-battery.sh` step 0 keeps pre-cleaning
+the in-volume tree as belt-and-braces for the remaining same-environment staleness class
+(incidents 1 and 3), which the volume alone doesn't fix. `scripts/i386-battery.sh`'s completed-step markers
 are stamped per commit, so a marker from a prior HEAD never green-lights a skip once
 HEAD has moved.
 
@@ -192,10 +192,26 @@ were never container-shared and are unaffected.
 **Clean rebuild:**
 
 ```bash
-docker volume rm rots-build-i386      # wipe just the rots (i386) container's tree
-docker volume rm rots-build-x64       # wipe just the rots64 container's tree
-docker compose down -v                # wipe both (and any other compose-managed volumes)
+docker compose down -v                                       # primary: wipe both (and any
+                                                               # other compose-managed volumes);
+                                                               # resolves the project-name
+                                                               # prefix itself
+docker volume rm rots_live_modern_rots-build-i386             # targeted: wipe just the rots
+                                                               # (i386) container's tree
+docker volume rm rots_live_modern_rots-build-x64              # targeted: wipe just the rots64
+                                                               # container's tree
 ```
+
+Compose prefixes every declared volume name with the **project name**, which it derives from
+the checkout's directory name by default (here, `rots_live_modern`) — so the volumes' real
+names on disk are `rots_live_modern_rots-build-i386` / `rots_live_modern_rots-build-x64`, not
+the bare `rots-build-i386` / `rots-build-x64` declared under `volumes:` in
+`docker-compose.yml`. A different checkout directory name (or an explicit `-p`/
+`COMPOSE_PROJECT_NAME`) yields a different prefix; `docker compose down -v` resolves this
+automatically for whichever checkout it's run in, which is why it's the primary form above.
+We deliberately do **not** pin a literal `name:` on these volumes in `docker-compose.yml`:
+the project-derived prefix is a feature, not an accident — it keeps multiple checkouts of
+this repo (e.g. separate worktrees) from sharing build volumes with each other.
 
 **Inspect a container's build tree without configuring anything:**
 

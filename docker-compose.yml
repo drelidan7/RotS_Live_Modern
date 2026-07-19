@@ -26,8 +26,10 @@ services:
       - .:/rots
       # Container-private CMake tree (see docs/BUILD.md "Container build
       # isolation"): masks the bind-mounted build/ so host and container
-      # generated state can never interact. Clean rebuild: docker volume rm
-      # rots-build-i386 (or `docker compose down -v` to clear both).
+      # generated state can never interact. Clean rebuild: `docker compose
+      # down -v` (resolves the project-name prefix itself and clears both
+      # volumes), or `docker volume rm <project>_rots-build-i386` to target
+      # just this one — compose derives <project> from the directory name.
       # Inspect: docker compose run --rm rots ls /rots/build
       - rots-build-i386:/rots/build
     ports:
@@ -46,7 +48,7 @@ services:
     working_dir: /rots
     volumes:
       - .:/rots
-      # Same isolation for the 64-bit sibling; volume rots-build-x64.
+      # Same isolation for the 64-bit sibling; volume <project>_rots-build-x64.
       - rots-build-x64:/rots/build
     ports:
       - "1064:1024"

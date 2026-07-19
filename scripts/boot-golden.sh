@@ -97,7 +97,7 @@ if [ -n "$NATIVE_BINARY" ]; then
   [ -x "$BINARY_PATH" ] || { echo "ERROR: $BINARY_PATH is not executable — build it first (see script header)." >&2; exit 2; }
 else
   docker compose run --rm --pull never "$SERVICE" bash -lc "[ -f /rots/$BINARY_PATH ]" \
-    || { echo "ERROR: $BINARY_PATH missing inside the $SERVICE container's build volume — build it first (see script header)." >&2; exit 2; }
+    || { echo "ERROR: $BINARY_PATH missing at /rots/$BINARY_PATH inside the $SERVICE container (or the container failed to start) — build it first (see script header)." >&2; exit 2; }
 fi
 
 # Boot exactly as `scripts/rots-docker.sh boot` launches the binary (cd /rots,
@@ -107,7 +107,7 @@ fi
 # non-zero (without emitting a partial log) if boot doesn't reach that line
 # within 60s, so callers can distinguish boot failure from log drift.
 capture_log() {
-  docker compose run --rm "$SERVICE" bash -lc "
+  docker compose run --rm --pull never "$SERVICE" bash -lc "
     cd /rots
     ./$BINARY_PATH > /tmp/boot-golden.raw 2>&1 &
     pid=\$!

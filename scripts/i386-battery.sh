@@ -120,6 +120,7 @@ run_step0() {
     # cross-environment poisoning (incident 2) is now structurally
     # impossible.
     docker compose run --rm --pull never rots bash -lc '
+      set -e
       cd /rots
       if [ -f build/CMakeCache.txt ] || [ -d build/CMakeFiles ] || [ -d build/Testing ]; then
         rm -f build/CMakeCache.txt
@@ -129,7 +130,7 @@ run_step0() {
         echo "nothing to remove (in-volume CMake metadata already absent)"
       fi
     '
-    echo "kept: any build/*/ preset subdirectory, any build/librots_*.a top-level archive"
+    echo "kept (host build/, untouched by this in-volume step): any build/*/ preset subdirectory, any build/librots_*.a top-level archive"
   } | tee "$log"
   mark_done 0
 }

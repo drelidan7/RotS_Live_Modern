@@ -27,13 +27,16 @@
 # backgrounds or parallelizes its own steps; if you want parallelism, run
 # separate steps from separate shells yourself and accept the risk.
 #
-# Step 0 -- pre-clean the shared build/ tree.
-#   Deletes build/CMakeCache.txt, build/CMakeFiles/, and build/Testing/ --
-#   the generated CMake metadata for the top-level, non-preset build/ tree
-#   that the i386 `rots` container reaches via bind mount -- WITHOUT
-#   touching the preset subdirectories (build/macos-arm64/, build/linux-x64/,
-#   build/linux-x86-legacy/, build/macos-arm64-asan/) or any already-built
-#   top-level archive (build/librots_*.a). This class of failure -- the
+# Step 0 -- pre-clean the in-volume build/ tree.
+#   Runs INSIDE the `rots` container (docker compose run) and deletes
+#   build/CMakeCache.txt, build/CMakeFiles/, and build/Testing/ -- the
+#   generated CMake metadata for the top-level, non-preset build/ tree,
+#   which now lives in the container-private rots-build-i386 named volume
+#   (build-isolation wave, commit bdfacb2) rather than the host bind mount
+#   -- WITHOUT touching the host's preset subdirectories
+#   (build/macos-arm64/, build/linux-x64/, build/linux-x86-legacy/,
+#   build/macos-arm64-asan/) or any already-built host-side top-level
+#   archive (build/librots_*.a). This class of failure -- the
 #   container-shared build/ tree's CMake metadata going stale relative to
 #   CMakeLists.txt/ROTS_*_SOURCES changes because of container/host
 #   bind-mount mtime skew, not because CMake's own dependency tracking is
@@ -68,12 +71,15 @@
 #   characterization check.
 #
 # Each step writes its own timestamped log under log/i386-battery/ and, on
-# success, drops a completed-step marker beside it -- so a rerun after a
+# success, drops a completed-step marker beside it, stamped with the
+# `git rev-parse HEAD` the step ran against -- so a rerun after a
 # mid-battery failure (or an externally-killed background run, both of
 # which have happened to prior batteries per the ledger above) skips every
 # already-green step instead of repeating a 60-90 minute run from scratch.
-# Every step is also runnable individually (pass its number) for a targeted
-# retry.
+# Markers are per-commit: a marker left over from a prior wave's HEAD does
+# NOT green-light a skip once HEAD has moved (--reset still clears them
+# outright, unchanged). Every step is also runnable individually (pass its
+# number) for a targeted retry.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -86,11 +92,14 @@ marker_path() {
 }
 
 step_done() {
-  [ -f "$(marker_path "$1")" ]
+  [ -f "$(marker_path "$1")" ] || return 1
+  [ "$(cat "$(marker_path "$1")")" = "$(git rev-parse HEAD)" ]
 }
 
 mark_done() {
-  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$(marker_path "$1")"
+  # Stamp the marker with the commit the step ran against: a marker from a
+  # previous wave (different HEAD) must not green-light a skip on this one.
+  git rev-parse HEAD > "$(marker_path "$1")"
 }
 
 log_path() {
@@ -99,18 +108,27 @@ log_path() {
 
 # --- step 0: pre-clean ------------------------------------------------------
 run_step0() {
-  echo "== step 0: pre-clean build/ CMake metadata (keep preset subdirs + archives) =="
+  echo "== step 0: pre-clean in-volume build/ CMake metadata (keep preset subdirs + archives) =="
   local log
   log="$(log_path 0)"
   {
-    if [ -f build/CMakeCache.txt ] || [ -d build/CMakeFiles ] || [ -d build/Testing ]; then
-      rm -f build/CMakeCache.txt
-      rm -rf build/CMakeFiles
-      rm -rf build/Testing
-      echo "removed build/CMakeCache.txt, build/CMakeFiles/, build/Testing/"
-    else
-      echo "nothing to remove (build/CMakeCache.txt, build/CMakeFiles/, build/Testing/ already absent)"
-    fi
+    # The named volume (rots-build-i386, build-isolation wave) masks the
+    # bind-mounted build/, so the pre-clean must run INSIDE the container --
+    # a host-side rm would target the (host-preset-only) host build/ tree.
+    # Step 0 remains belt-and-braces for SAME-environment staleness after
+    # source-list changes (incidents 1 and 3 of the three cited above);
+    # cross-environment poisoning (incident 2) is now structurally
+    # impossible.
+    docker compose run --rm --pull never rots bash -lc '
+      cd /rots
+      if [ -f build/CMakeCache.txt ] || [ -d build/CMakeFiles ] || [ -d build/Testing ]; then
+        rm -f build/CMakeCache.txt
+        rm -rf build/CMakeFiles build/Testing
+        echo "removed in-volume build/CMakeCache.txt, CMakeFiles/, Testing/"
+      else
+        echo "nothing to remove (in-volume CMake metadata already absent)"
+      fi
+    '
     echo "kept: any build/*/ preset subdirectory, any build/librots_*.a top-level archive"
   } | tee "$log"
   mark_done 0

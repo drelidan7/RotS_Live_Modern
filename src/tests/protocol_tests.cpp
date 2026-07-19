@@ -1924,7 +1924,15 @@ TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSkipsInvalidDescriptorsAndSendsWorl
     descriptor_data no_character {};
     ProtocolDescriptor npc_context;
     ProtocolDescriptor valid_context;
-    descriptor_data missing_protocol {}; // pProtocol left null: the "without MSDP" fixture
+    // pProtocol left null. NOTE (post-review correction): this does NOT exercise a
+    // load-bearing branch of broadcast_weather_msdp_update() itself. Its
+    // `if (!desc->pProtocol) continue;` guard (protocol.cpp:2911-2913) is defense-in-depth
+    // only -- deleting it would be unobservable here, because both MSDPSetString()
+    // (protocol.cpp:1469) and MSDPSend() (protocol.cpp:1250-1254) independently re-check
+    // `apDescriptor->pProtocol` for null and silently no-op when it is. This fixture exists
+    // solely to prove the descriptor_list walk does not crash on a null pProtocol -- a
+    // no-crash/robustness fixture, not an assertion-backed coverage claim.
+    descriptor_data missing_protocol {};
     char_data missing_protocol_character {};
 
     clear_char(&missing_protocol_character, MOB_VOID);
@@ -1941,6 +1949,9 @@ TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSkipsInvalidDescriptorsAndSendsWorl
     npc_context.character.player.short_descr = strdup("ignored npc");
 
     initialize_msdp_player(&valid_context.character, "Updated");
+    // enable_msdp_reports() here mirrors the sibling msdp_update() tests' setup pattern for
+    // consistency -- it is NOT required by broadcast_weather_msdp_update() itself, which
+    // (unlike update()'s call sites) never consults bReport/subscription state at all.
     enable_msdp_reports(valid_context.descriptor.pProtocol, { eMSDP_WORLD_TIME });
 
     no_character.next = &npc_context.descriptor;
@@ -1974,6 +1985,9 @@ TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSendsIndoorAndOutdoorWeather)
     ProtocolDescriptor outdoor_context;
 
     initialize_msdp_player(&indoor_context.character, "Indoor");
+    // enable_msdp_reports() calls in this test mirror the sibling msdp_update() tests'
+    // setup pattern -- NOT required by broadcast_weather_msdp_update(), which does not gate
+    // on subscription state (see the world_time test above for the full rationale).
     enable_msdp_reports(indoor_context.descriptor.pProtocol, { eMDSP_WEATHER });
     descriptor_list = &indoor_context.descriptor;
 
@@ -1988,7 +2002,7 @@ TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSendsIndoorAndOutdoorWeather)
     world[0].sector_type = SECT_FIELD;
     ScopedSectorWeather field_weather(SECT_FIELD, SKY_CLOUDLESS);
     initialize_msdp_player(&outdoor_context.character, "Outdoor");
-    enable_msdp_reports(outdoor_context.descriptor.pProtocol, { eMDSP_WEATHER });
+    enable_msdp_reports(outdoor_context.descriptor.pProtocol, { eMDSP_WEATHER }); // pattern parity only, see above
     descriptor_list = &outdoor_context.descriptor;
 
     broadcast_weather_msdp_update(rots::world::weather_msdp_kind::weather);

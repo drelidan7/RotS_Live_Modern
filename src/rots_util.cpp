@@ -26,6 +26,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <format> // money_message() below (placement-seam Task 4)
+#include <iterator> // std::back_inserter -- money_message() below
 #include <string>
 #include <string_view>
 #include <utility>
@@ -367,4 +369,73 @@ int dice(int number, int size)
     }
 
     return (sum);
+}
+
+/* a function to scan for "all" or "all.x" */
+// Relocated verbatim from handler.cpp (placement-seam Task 4; census
+// verdict MOVE-OTHER(platform)). FIND_ALL/FIND_ALLDOT/FIND_INDIV
+// (handler.h -- an L2 header rots_util.cpp must not include, same
+// constraint as get_number()'s MAX_INPUT_LENGTH above) inlined as local
+// constexpr ints -- their values (1/2/0) are long-stable CircleMUD
+// find-mode constants, not expected to change.
+int find_all_dots(char* arg)
+{
+    constexpr int kFindIndiv = 0;
+    constexpr int kFindAll = 1;
+    constexpr int kFindAllDot = 2;
+
+    if (!strcmp(arg, "all"))
+        return kFindAll;
+    else if (!strncmp(arg, "all.", 4)) {
+        strcpy(arg, arg + 4);
+        return kFindAllDot;
+    } else
+        return kFindIndiv;
+}
+
+// Relocated verbatim from handler.cpp (placement-seam Task 4; census
+// verdict MOVE-OTHER(platform)). COPP_IN_GOLD/COPP_IN_SILV
+// (rots/core/types.h -- an L1 header rots_util.cpp must not include, same
+// constraint as get_number()'s MAX_INPUT_LENGTH above) inlined as local
+// constexpr ints, matching their #define values (1000/100).
+char* money_message(int sum, int mode)
+{
+    constexpr int kCoppInGold = 1000;
+    constexpr int kCoppInSilv = 100;
+
+    static char moneystr[100];
+    int g, s, c;
+
+    *moneystr = 0;
+
+    if (sum < 0) {
+        strcpy(moneystr, std::format("{} copper coins", sum).c_str());
+        return moneystr;
+    }
+
+    g = sum / kCoppInGold;
+    c = sum % kCoppInGold;
+    s = c / kCoppInSilv;
+    c = c % kCoppInSilv;
+
+    std::string out;
+    if (g)
+        std::format_to(std::back_inserter(out), "{} gold", g);
+    if (g && c && s)
+        out += ", ";
+    if (!c && s && g)
+        out += " and ";
+    if (s)
+        std::format_to(std::back_inserter(out), "{} silver", s);
+    if ((g || s) && c)
+        out += " and ";
+    if (c || (!sum))
+        std::format_to(std::back_inserter(out), "{} copper", c);
+
+    if (mode)
+        std::format_to(std::back_inserter(out), " coin{}",
+            ((g == 1) && (s == 1)) || c == 1 ? "" : "s");
+
+    strcpy(moneystr, out.c_str());
+    return moneystr;
 }

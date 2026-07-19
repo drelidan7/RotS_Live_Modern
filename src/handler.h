@@ -179,7 +179,8 @@ int other_side(const char_data* character, const char_data* other);
 int other_side_num(int ch_race, int i_race);
 
 struct char_data* get_char_room(char* name, int room);
-struct char_data* get_char_num(int nr);
+// get_char_num() DELETED (placement-seam Task 4): census-flagged DEAD, 0
+// callers repo-wide -- see entity_lifecycle.cpp's relocation comment.
 /// Finds a world character whose name matches the bounded lookup text.
 struct char_data* get_char(std::string_view name);
 
@@ -198,7 +199,8 @@ void char_from_room(struct char_data* ch);
 void char_to_room(struct char_data* ch, int room);
 void extract_char(struct char_data* ch, int new_room = -1);
 
-int in_affected_list(struct char_data* ch);
+// in_affected_list() DELETED (placement-seam Task 4): census-flagged DEAD, 0
+// callers repo-wide -- see entity_lifecycle.cpp's relocation comment.
 
 /* find if character can see */
 int keyword_matches_char(struct char_data*, struct char_data*, char*);

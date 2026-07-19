@@ -11,6 +11,7 @@
 #include "rots/core/character.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
+#include "rots/core/tables.h" // for pc_race_keywords -- keyword_matches_char() (placement-seam Task 4)
 #include "rots/core/types.h"
 #include "entity_hooks.h"
 #include "utils.h"
@@ -1622,4 +1623,70 @@ bool contains(std::string_view text, std::string_view search_text)
     search_text = rots::text::truncate_at_null(search_text);
     return text.find(search_text) != std::string_view::npos;
 }
+}
+
+//============================================================================
+// circle_follow()/keyword_matches_char()/can_swim() relocated verbatim from
+// handler.cpp (placement-seam Task 4; census verdict MOVE-OTHER-L2 -- see
+// placement-census.md's handler.cpp table and task-4-report.md). All three
+// are entity-pure (char_data field/macro logic only, no world[]/output/
+// combat calls). Declarations stay in handler.h.
+
+/* Check if making CH follow VICTIM will create an illegal */
+/* Follow "Loop/circle"                                    */
+char circle_follow(struct char_data* ch, struct char_data* victim, int)
+{
+    for (char_data* character = victim; character; character = character->master) {
+        if (character == ch) {
+            return (TRUE);
+        }
+    }
+
+    return (FALSE);
+}
+
+int keyword_matches_char(struct char_data* ch, struct char_data* vict, char* keyword)
+{
+    int check;
+
+    if (other_side(ch, vict)) {
+        check = isname_nullable(keyword, pc_race_keywords[GET_RACE(vict)].data());
+    } else
+        check = isname_nullable(keyword, vict->player.name);
+
+    return check;
+}
+
+int can_swim(struct char_data* ch)
+{
+
+    struct obj_data* tmpobj;
+    int tmp;
+
+    if (IS_SHADOW(ch))
+        return TRUE;
+
+    if (!IS_NPC(ch) && !PRF_FLAGGED(ch, PRF_SWIM))
+        return FALSE;
+
+    if (IS_NPC(ch))
+        if (IS_SET(ch->specials2.act, MOB_CAN_SWIM) || IS_AFFECTED(ch, AFF_FLYING) || IS_SHADOW(ch))
+            return TRUE;
+
+    if (IS_AFFECTED(ch, AFF_SWIM))
+        return TRUE;
+
+    if (!IS_NPC(ch) && GET_SKILL(ch, SKILL_SWIM) > 0)
+        return TRUE;
+
+    for (tmpobj = ch->carrying; tmpobj; tmpobj = tmpobj->next_content)
+        if (tmpobj->obj_flags.type_flag == ITEM_BOAT)
+            return TRUE;
+
+    for (tmp = 0; tmp < MAX_WEAR; tmp++)
+        if (ch->equipment[tmp])
+            if ((ch->equipment[tmp])->obj_flags.type_flag == ITEM_BOAT)
+                return TRUE;
+
+    return FALSE;
 }

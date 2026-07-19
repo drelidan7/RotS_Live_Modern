@@ -791,9 +791,10 @@ void put_to_affected_type_pool(struct affected_type* oldaf)
 
 // handler.cpp -- char_exists()/set_char_exists()/remove_char_exists() bit-
 // array bookkeeping. register_npc_char() (below, world-seed Task 1) now
-// calls these directly (same TU); register_pc_char() (handler.cpp, a one-
-// line forwarder onto register_npc_char()) and utils::is_riding()/
-// is_ridden() (utils.h macros) still reach these by extern/declaration.
+// calls these directly (same TU); register_pc_char() (this file too, below
+// -- placement-seam Task 4, a one-line forwarder onto register_npc_char())
+// and utils::is_riding()/is_ridden() (utils.h macros) still reach these by
+// extern/declaration.
 char char_control_array[MAX_CHARACTERS / 8 + 1];
 
 int char_exists(int num)
@@ -2400,4 +2401,313 @@ void decrypt_line(unsigned char* lp, int len)
 
     for (tmp = 0; tmp < len; tmp++)
         lp[tmp] = line[tmp];
+}
+
+/************************************************************************
+ *  Functions relocated verbatim from handler.cpp (placement-seam Task 4; *
+ *  census verdict MOVE-OTHER-L2 -- see placement-census.md's handler.cpp *
+ *  table and task-4-report.md for the full evidence trail). isname()     *
+ *  joins isname_nullable() (above); the affect_*_room()/affect_from_char()/
+ *  room_affected_by_spell()/affect_join() family joins affect_modify()/  *
+ *  affect_total()/affect_to_char()/affect_remove()/affected_by_spell()   *
+ *  (already relocated here in db-split Task 4b -- the census's "affect-  *
+ *  machinery note"); the follow_type pool joins the affected_type pool   *
+ *  above (same ownership pattern: private backing state moves with its   *
+ *  two accessors, handler.cpp's add_follower()/stop_follower() keep      *
+ *  reaching them via the pre-existing local forward declarations near    *
+ *  this file's original top); register_pc_char() (a trivial one-line      *
+ *  forwarder) joins register_npc_char() above. Bodies are byte-identical *
+ *  to their handler.cpp originals -- none of this batch touches         *
+ *  world[]/zone_table[]/obj_index[] (census-verified: no SEAM            *
+ *  substitution needed). Declarations are unchanged in handler.h.        *
+ *  get_char() is DEFERRED, not moved -- see its own comment below for    *
+ *  why (a cascading dependency on parse_numbered_name(), itself deferred *
+ *  in handler.cpp this task).                                            *
+ ************************************************************************/
+
+int isname(std::string_view query, std::string_view name_list, char full)
+{
+    query = rots::text::truncate_at_null(query);
+    name_list = rots::text::truncate_at_null(name_list);
+
+    std::size_t first_query_character = 0;
+    while (first_query_character < query.size() && query[first_query_character] <= ' ') {
+        ++first_query_character;
+    }
+    if (first_query_character == query.size()) {
+        return 0;
+    }
+    query.remove_prefix(first_query_character);
+
+    if ((query.size() < 3) || (query.size() > 4)) {
+        full = 1;
+    }
+
+    // Bounded transliteration of isname_c_string: name_index is the single cursor the legacy
+    // walk advances through the namelist, including during comparison, so candidate word starts
+    // (byte 0 verbatim, then alpha-run/separator skips from the mismatch point) stay identical
+    // to the retained C-string matcher even for keywords beginning with digits or punctuation.
+    std::size_t name_index = 0;
+    for (;;) {
+        std::size_t query_index = 0;
+        for (;;) {
+            const bool name_exhausted = (name_index == name_list.size());
+            if (query_index == query.size()
+                && (!full || name_exhausted
+                    || !std::isalpha(static_cast<unsigned char>(name_list[name_index])))) {
+                return 1;
+            }
+            if (name_exhausted) {
+                return 0;
+            }
+            if (query_index == query.size() || name_list[name_index] == ' '
+                || LOWER(query[query_index]) != LOWER(name_list[name_index])) {
+                break;
+            }
+            ++query_index;
+            ++name_index;
+        }
+
+        while (name_index < name_list.size()
+            && std::isalpha(static_cast<unsigned char>(name_list[name_index]))) {
+            ++name_index;
+        }
+        if (name_index == name_list.size()) {
+            return 0;
+        }
+        while (name_index < name_list.size()
+            && (!std::isalpha(static_cast<unsigned char>(name_list[name_index]))
+                || name_list[name_index] == ' ')) {
+            ++name_index;
+        }
+    }
+}
+
+void affect_modify_room(struct room_data* room, byte, int mod,
+    long bitv, char add)
+{
+    bitv = bitv & (~PERMAFFECT);
+
+    if (add == AFFECT_MODIFY_SET)
+        SET_BIT(room->room_flags, bitv);
+    else if (add == AFFECT_MODIFY_REMOVE) {
+        REMOVE_BIT(room->room_flags, bitv);
+        mod = -mod;
+    }
+}
+
+// affect_total_room()'s original preceding doc comment ("This updates a
+// character by subtracting everything he is affected by...") was already
+// orphaned from affect_total() (moved to this file in db-split Task 4b)
+// before this task moved affect_total_room() too -- it stays behind in
+// handler.cpp rather than being duplicated or rewritten here, per this
+// task's verbatim-move mandate.
+void affect_total_room(struct room_data*, int)
+{
+}
+
+/* Standard mud call to put an affected structure to a room.  The room is added to
+   the list of affected rooms if necessary, and its values are updated.  Similar to
+   affect_to_char */
+
+void affect_to_room(struct room_data* room, struct affected_type* af)
+{
+    struct affected_type* affected_alloc;
+    struct affected_type* tmpaf;
+    universal_list* tmplist;
+    char perms_only;
+
+    perms_only = 1;
+    for (tmpaf = room->affected; tmpaf; tmpaf = tmpaf->next)
+        if (!IS_SET(tmpaf->bitvector, PERMAFFECT))
+            perms_only = 0;
+
+    if (perms_only) {
+        tmplist = pool_to_list(&affected_list, &affected_list_pool);
+        tmplist->ptr.room = room;
+        tmplist->number = room->number;
+        tmplist->type = TARGET_ROOM;
+    }
+
+    affected_alloc = get_from_affected_type_pool();
+
+    *affected_alloc = *af;
+    affected_alloc->time_phase = get_current_time_phase();
+
+    affected_alloc->next = room->affected;
+    room->affected = affected_alloc;
+
+    affect_modify_room(room, af->location, af->modifier, af->bitvector,
+        AFFECT_MODIFY_SET);
+    affect_total_room(room);
+}
+
+/* Removes an affection from a room */
+
+void affect_remove_room(struct room_data* room, struct affected_type* af)
+{
+    struct affected_type *hjp, *tmpaf;
+    universal_list *tmplist, *tmplist2;
+    int tmp, perms_only;
+
+    //   assert(ch->affected);
+    if (!room->affected)
+        return;
+
+    affect_modify_room(room, af->location, af->modifier, af->bitvector,
+        AFFECT_MODIFY_REMOVE);
+
+    /* remove structure *af from linked list */
+    if (room->affected == af) {
+        /* remove head of list */
+        room->affected = af->next;
+    } else {
+        for (hjp = room->affected, tmp = 0;
+             (hjp->next) && (hjp->next != af) && (tmp < MAX_AFFECT);
+             hjp = hjp->next, tmp++) {
+        }
+        if (hjp->next != af) {
+            log("SYSERR: FATAL : Could not locate affected_type in room->affected. (handler.c, affect_remove_room)");
+            //	 exit(1);
+            return;
+        }
+        hjp->next = af->next; /* skip the af element */
+    }
+
+    //   RELEASE(af);
+    put_to_affected_type_pool(af);
+
+    perms_only = 1;
+    for (tmpaf = room->affected; tmpaf; tmpaf = tmpaf->next)
+        if (!IS_SET(tmpaf->bitvector, PERMAFFECT))
+            perms_only = 0;
+
+    if (perms_only && affected_list) {
+        for (tmplist = affected_list; tmplist; tmplist = tmplist2) {
+            tmplist2 = tmplist->next;
+            if ((tmplist->type == TARGET_ROOM) && (tmplist->ptr.room == room))
+                from_list_to_pool(&affected_list, &affected_list_pool, tmplist);
+        }
+    }
+
+    affect_total_room(room);
+}
+
+/* Call affect_remove with every spell of spelltype "skill"
+   Standard mud call to remove an affection of known type from a character.  */
+
+void affect_from_char(struct char_data* ch, byte skill)
+{
+    struct affected_type *hjp, *t;
+    int tmp;
+
+    for (hjp = ch->affected, tmp = 0; hjp && (tmp < MAX_AFFECT);
+         hjp = t, tmp++) {
+        t = hjp->next;
+        if (hjp->type == skill)
+            affect_remove(ch, hjp);
+    }
+}
+
+/* Return a pointer to an affection if the room is affected by the spell.
+   Otherwise return null. */
+affected_type* room_affected_by_spell(const room_data* room, int spell)
+{
+    for (affected_type* status_effect = room->affected; status_effect; status_effect = status_effect->next) {
+        if (status_effect->type == ROOMAFF_SPELL && status_effect->location == spell) {
+            return status_effect;
+        }
+    }
+
+    return NULL;
+}
+
+/* Similar to affect_to_char, affect_join is a general mud function to add an
+   affection to a character.  If the character already has an affection of that
+   type the values of the new affection are added.  Used for poison.  Average
+   duration and average modifier are not implemented for some reason.*/
+
+void affect_join(struct char_data* ch, struct affected_type* af,
+    char, char)
+{
+    struct affected_type* hjp;
+    char found = FALSE;
+
+    for (hjp = ch->affected; !found && hjp; hjp = hjp->next) {
+        if (hjp->type == af->type) {
+
+            if (af->duration < hjp->duration)
+                af->duration += hjp->duration;
+
+            //	 if (avg_dur)
+            //	    af->duration /= 2;
+
+            if (((af->modifier >= 0) && (af->modifier < hjp->modifier)) || ((af->modifier >= 0) && (af->modifier < hjp->modifier)))
+                af->modifier += hjp->modifier;
+
+            //	 if (avg_mod)
+            //	    af->modifier /= 2;
+
+            affect_remove(ch, hjp);
+            affect_to_char(ch, af);
+            found = TRUE;
+        }
+    }
+    if (!found)
+        affect_to_char(ch, af);
+}
+
+// handler.cpp -- private backing state for get_from_follow_type_pool()/
+// put_to_follow_type_pool() immediately below; add_follower()/
+// stop_follower() (handler.cpp) are the pool functions' only other callers
+// and reach them via the pre-existing local forward declarations near this
+// file's original top (same pattern as the affected_type_pool functions
+// above) -- no other handler.cpp function reads follow_type_pool/
+// follow_type_counter directly, so the globals move with the pool
+// functions rather than staying behind as an extern.
+follow_type* follow_type_pool = 0;
+int follow_type_counter = 0;
+
+struct follow_type* get_from_follow_type_pool()
+{
+    struct follow_type* folnew;
+
+    if (follow_type_pool) {
+        folnew = follow_type_pool;
+        follow_type_pool = folnew->next;
+    } else {
+        CREATE(folnew, struct follow_type, 1);
+        follow_type_counter++;
+    }
+    return folnew;
+}
+
+void put_to_follow_type_pool(struct follow_type* oldfol)
+{
+    oldfol->next = follow_type_pool;
+    follow_type_pool = oldfol;
+}
+
+// get_char() DEFERRED (placement-seam Task 4 finding, NOT an
+// improvisation): census verdict MOVE-OTHER-L2, but its only non-L2
+// dependency is parse_numbered_name(), which itself could not move this
+// task (see handler.cpp's parse_numbered_name() site for the full
+// evidence -- its NumberedName return type is defined only in handler.h,
+// unreachable from rots_platform without a header change outside this
+// task's authorized scope). Moving get_char() alone reproduces the same
+// upward edge one hop later: an EntityLayerAcyclicity link failure was
+// observed with get_char() here calling handler.cpp's still-app-tier
+// parse_numbered_name() ("Undefined symbols ... parse_numbered_name(...),
+// referenced from get_char(...) in librots_entity.a"). Deferred alongside
+// parse_numbered_name(), same precedent as Task 2's obj_from_char/
+// extract_obj deferral to Task 3 for an analogous live-dependency
+// cascade. Flagged for controller adjudication in task-4-report.md;
+// get_char() stays verbatim in handler.cpp this task.
+
+// handler.cpp -- register_npc_char() (above) is register_pc_char()'s only
+// callee; declaration unchanged in handler.h.
+int register_pc_char(struct char_data* ch)
+{
+
+    return register_npc_char(ch);
 }

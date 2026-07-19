@@ -119,8 +119,13 @@ extern universal_list* affected_list_pool;
 struct affected_type* get_from_affected_type_pool();
 void put_to_affected_type_pool(struct affected_type*);
 
-follow_type* follow_type_pool = 0;
-int follow_type_counter = 0;
+// follow_type_pool/follow_type_counter (private backing state for
+// get_from_follow_type_pool()/put_to_follow_type_pool() below) relocated
+// to entity_lifecycle.cpp alongside those two functions (placement-seam
+// Task 4) -- no other handler.cpp function reads them directly; the
+// forward declarations immediately below are unchanged and now resolve
+// to the entity_lifecycle.cpp definitions (same pattern as the
+// affected_type_pool functions above).
 
 struct follow_type* get_from_follow_type_pool();
 void put_to_follow_type_pool(struct follow_type*);
@@ -150,79 +155,15 @@ void put_to_follow_type_pool(struct follow_type*);
 // sole caller) relocated to entity_lifecycle.cpp alongside isname_nullable()
 // (entity-seed Task 5).
 
-int isname(std::string_view query, std::string_view name_list, char full)
-{
-    query = rots::text::truncate_at_null(query);
-    name_list = rots::text::truncate_at_null(name_list);
-
-    std::size_t first_query_character = 0;
-    while (first_query_character < query.size() && query[first_query_character] <= ' ') {
-        ++first_query_character;
-    }
-    if (first_query_character == query.size()) {
-        return 0;
-    }
-    query.remove_prefix(first_query_character);
-
-    if ((query.size() < 3) || (query.size() > 4)) {
-        full = 1;
-    }
-
-    // Bounded transliteration of isname_c_string: name_index is the single cursor the legacy
-    // walk advances through the namelist, including during comparison, so candidate word starts
-    // (byte 0 verbatim, then alpha-run/separator skips from the mismatch point) stay identical
-    // to the retained C-string matcher even for keywords beginning with digits or punctuation.
-    std::size_t name_index = 0;
-    for (;;) {
-        std::size_t query_index = 0;
-        for (;;) {
-            const bool name_exhausted = (name_index == name_list.size());
-            if (query_index == query.size()
-                && (!full || name_exhausted
-                    || !std::isalpha(static_cast<unsigned char>(name_list[name_index])))) {
-                return 1;
-            }
-            if (name_exhausted) {
-                return 0;
-            }
-            if (query_index == query.size() || name_list[name_index] == ' '
-                || LOWER(query[query_index]) != LOWER(name_list[name_index])) {
-                break;
-            }
-            ++query_index;
-            ++name_index;
-        }
-
-        while (name_index < name_list.size()
-            && std::isalpha(static_cast<unsigned char>(name_list[name_index]))) {
-            ++name_index;
-        }
-        if (name_index == name_list.size()) {
-            return 0;
-        }
-        while (name_index < name_list.size()
-            && (!std::isalpha(static_cast<unsigned char>(name_list[name_index]))
-                || name_list[name_index] == ' ')) {
-            ++name_index;
-        }
-    }
-}
+// isname() relocated to entity_lifecycle.cpp (placement-seam Task 4),
+// alongside isname_nullable() (entity-seed Task 5). Declaration unchanged
+// in handler.h.
 
 // isname_nullable() relocated to entity_lifecycle.cpp (entity-seed Task 5);
 // declaration unchanged in handler.h.
 
-void affect_modify_room(struct room_data* room, byte, int mod,
-    long bitv, char add)
-{
-    bitv = bitv & (~PERMAFFECT);
-
-    if (add == AFFECT_MODIFY_SET)
-        SET_BIT(room->room_flags, bitv);
-    else if (add == AFFECT_MODIFY_REMOVE) {
-        REMOVE_BIT(room->room_flags, bitv);
-        mod = -mod;
-    }
-}
+// affect_modify_room() relocated to entity_lifecycle.cpp (placement-seam
+// Task 4). Declaration unchanged in handler.h.
 
 // affect_modify() relocated to entity_lifecycle.cpp (db-split Task 4b);
 // declaration unchanged in handler.h.
@@ -230,9 +171,9 @@ void affect_modify_room(struct room_data* room, byte, int mod,
 /* This updates a character by subtracting everything he is affected by */
 /* restoring original abilities, and then affecting all again     ?????      */
 
-void affect_total_room(struct room_data*, int)
-{
-}
+// affect_total_room() relocated to entity_lifecycle.cpp (placement-seam
+// Task 4) -- empty no-op body (census-flagged). Declaration unchanged in
+// handler.h.
 
 // affect_naked() relocated to entity_lifecycle.cpp (db-split Task 4b).
 
@@ -255,37 +196,8 @@ void affect_total_room(struct room_data*, int)
    the list of affected rooms if necessary, and its values are updated.  Similar to
    affect_to_char */
 
-void affect_to_room(struct room_data* room, struct affected_type* af)
-{
-    struct affected_type* affected_alloc;
-    struct affected_type* tmpaf;
-    universal_list* tmplist;
-    char perms_only;
-
-    perms_only = 1;
-    for (tmpaf = room->affected; tmpaf; tmpaf = tmpaf->next)
-        if (!IS_SET(tmpaf->bitvector, PERMAFFECT))
-            perms_only = 0;
-
-    if (perms_only) {
-        tmplist = pool_to_list(&affected_list, &affected_list_pool);
-        tmplist->ptr.room = room;
-        tmplist->number = room->number;
-        tmplist->type = TARGET_ROOM;
-    }
-
-    affected_alloc = get_from_affected_type_pool();
-
-    *affected_alloc = *af;
-    affected_alloc->time_phase = get_current_time_phase();
-
-    affected_alloc->next = room->affected;
-    room->affected = affected_alloc;
-
-    affect_modify_room(room, af->location, af->modifier, af->bitvector,
-        AFFECT_MODIFY_SET);
-    affect_total_room(room);
-}
+// affect_to_room() relocated to entity_lifecycle.cpp (placement-seam
+// Task 4). Declaration unchanged in handler.h.
 
 // affect_remove() relocated to entity_lifecycle.cpp (db-split Task 4b);
 // declaration unchanged in handler.h.
@@ -302,69 +214,13 @@ void affect_remove_notify(struct char_data* ch, struct affected_type* af)
 
 /* Removes an affection from a room */
 
-void affect_remove_room(struct room_data* room, struct affected_type* af)
-{
-    struct affected_type *hjp, *tmpaf;
-    universal_list *tmplist, *tmplist2;
-    int tmp, perms_only;
+// affect_remove_room() relocated to entity_lifecycle.cpp (placement-seam
+// Task 4). Declaration unchanged in handler.h.
 
-    //   assert(ch->affected);
-    if (!room->affected)
-        return;
-
-    affect_modify_room(room, af->location, af->modifier, af->bitvector,
-        AFFECT_MODIFY_REMOVE);
-
-    /* remove structure *af from linked list */
-    if (room->affected == af) {
-        /* remove head of list */
-        room->affected = af->next;
-    } else {
-        for (hjp = room->affected, tmp = 0;
-             (hjp->next) && (hjp->next != af) && (tmp < MAX_AFFECT);
-             hjp = hjp->next, tmp++) {
-        }
-        if (hjp->next != af) {
-            log("SYSERR: FATAL : Could not locate affected_type in room->affected. (handler.c, affect_remove_room)");
-            //	 exit(1);
-            return;
-        }
-        hjp->next = af->next; /* skip the af element */
-    }
-
-    //   RELEASE(af);
-    put_to_affected_type_pool(af);
-
-    perms_only = 1;
-    for (tmpaf = room->affected; tmpaf; tmpaf = tmpaf->next)
-        if (!IS_SET(tmpaf->bitvector, PERMAFFECT))
-            perms_only = 0;
-
-    if (perms_only && affected_list) {
-        for (tmplist = affected_list; tmplist; tmplist = tmplist2) {
-            tmplist2 = tmplist->next;
-            if ((tmplist->type == TARGET_ROOM) && (tmplist->ptr.room == room))
-                from_list_to_pool(&affected_list, &affected_list_pool, tmplist);
-        }
-    }
-
-    affect_total_room(room);
-}
-
-/* Returns 1 if a character is found in the affected_list.  0 if not */
-
-int in_affected_list(struct char_data* ch)
-{
-    universal_list* tmplist;
-    int found;
-
-    found = 0;
-    for (tmplist = affected_list; tmplist; tmplist = tmplist->next) {
-        if (tmplist->ptr.ch == ch)
-            found = 1;
-    }
-    return found;
-}
+// in_affected_list() DELETED (placement-seam Task 4): census-flagged
+// DEAD, 0 callers repo-wide, re-verified via a fresh grep immediately
+// before this deletion; its handler.h declaration is removed in the same
+// commit.
 
 /*
  * Same as affect_from_char below, except also sends a notification
@@ -383,91 +239,24 @@ void affect_from_char_notify(struct char_data* ch, byte skill)
 /* Call affect_remove with every spell of spelltype "skill"
    Standard mud call to remove an affection of known type from a character.  */
 
-void affect_from_char(struct char_data* ch, byte skill)
-{
-    struct affected_type *hjp, *t;
-    int tmp;
-
-    for (hjp = ch->affected, tmp = 0; hjp && (tmp < MAX_AFFECT);
-         hjp = t, tmp++) {
-        t = hjp->next;
-        if (hjp->type == skill)
-            affect_remove(ch, hjp);
-    }
-}
+// affect_from_char() relocated to entity_lifecycle.cpp (placement-seam
+// Task 4). Declaration unchanged in handler.h.
 
 // affected_by_spell() relocated to entity_lifecycle.cpp (db-split Task 4b);
 // declaration unchanged in handler.h.
 
-/* Return a pointer to an affection if the room is affected by the spell.
-   Otherwise return null. */
-affected_type* room_affected_by_spell(const room_data* room, int spell)
-{
-    for (affected_type* status_effect = room->affected; status_effect; status_effect = status_effect->next) {
-        if (status_effect->type == ROOMAFF_SPELL && status_effect->location == spell) {
-            return status_effect;
-        }
-    }
+// room_affected_by_spell() relocated to entity_lifecycle.cpp
+// (placement-seam Task 4). Declaration unchanged in handler.h.
 
-    return NULL;
-}
-
-/* Similar to affect_to_char, affect_join is a general mud function to add an
-   affection to a character.  If the character already has an affection of that
-   type the values of the new affection are added.  Used for poison.  Average
-   duration and average modifier are not implemented for some reason.*/
-
-void affect_join(struct char_data* ch, struct affected_type* af,
-    char, char)
-{
-    struct affected_type* hjp;
-    char found = FALSE;
-
-    for (hjp = ch->affected; !found && hjp; hjp = hjp->next) {
-        if (hjp->type == af->type) {
-
-            if (af->duration < hjp->duration)
-                af->duration += hjp->duration;
-
-            //	 if (avg_dur)
-            //	    af->duration /= 2;
-
-            if (((af->modifier >= 0) && (af->modifier < hjp->modifier)) || ((af->modifier >= 0) && (af->modifier < hjp->modifier)))
-                af->modifier += hjp->modifier;
-
-            //	 if (avg_mod)
-            //	    af->modifier /= 2;
-
-            affect_remove(ch, hjp);
-            affect_to_char(ch, af);
-            found = TRUE;
-        }
-    }
-    if (!found)
-        affect_to_char(ch, af);
-}
+// affect_join() relocated to entity_lifecycle.cpp (placement-seam
+// Task 4). Declaration unchanged in handler.h.
 
 //***************** follow_type procedures ********************************
 
-struct follow_type* get_from_follow_type_pool()
-{
-    struct follow_type* folnew;
-
-    if (follow_type_pool) {
-        folnew = follow_type_pool;
-        follow_type_pool = folnew->next;
-    } else {
-        CREATE(folnew, struct follow_type, 1);
-        follow_type_counter++;
-    }
-    return folnew;
-}
-
-void put_to_follow_type_pool(struct follow_type* oldfol)
-{
-    oldfol->next = follow_type_pool;
-    follow_type_pool = oldfol;
-}
+// get_from_follow_type_pool()/put_to_follow_type_pool() relocated to
+// entity_lifecycle.cpp, along with their follow_type_pool/
+// follow_type_counter backing state (placement-seam Task 4); declarations
+// (the forward-declared prototypes above) unchanged.
 
 /* Do NOT call this before having checked if a circle of followers */
 /* will arise. CH will follow leader                               */
@@ -597,18 +386,9 @@ void stop_follower(struct char_data* ch, int mode)
     }
 }
 
-/* Check if making CH follow VICTIM will create an illegal */
-/* Follow "Loop/circle"                                    */
-char circle_follow(struct char_data* ch, struct char_data* victim, int)
-{
-    for (char_data* character = victim; character; character = character->master) {
-        if (character == ch) {
-            return (TRUE);
-        }
-    }
-
-    return (FALSE);
-}
+// circle_follow() relocated to char_utils.cpp (placement-seam Task 4):
+// pure master-chain walk, no world/live-state dependency. Declaration
+// unchanged in handler.h.
 
 /* Called when a character that follows/is followed dies */
 void die_follower(char_data* character)
@@ -938,6 +718,19 @@ struct obj_data* unequip_char(struct char_data* ch, int pos)
 // declared it locally; those local externs are untouched and still resolve
 // to the same definition).
 
+// parse_numbered_name() STAYS in handler.cpp (placement-seam Task 4
+// finding, NOT an improvisation): census classifies it MOVE-OTHER
+// (platform), but its return type NumberedName is defined only in
+// handler.h, whose transitive includes (rots/core/fwd.h via
+// rots/persist/file_formats.h/objects_json.h) are unreachable from
+// rots_util.cpp/rots_platform (L0) without widening rots_platform's
+// include surface into rots_core/beyond -- an uncensused upward edge
+// (verified via a standalone -fsyntax-only compile probe: fails on
+// 'rots/core/fwd.h' file not found with rots_platform's actual include
+// dirs). Flagged for controller adjudication in task-4-report.md;
+// left verbatim in place this task. get_char() (below), the only other
+// batch function that calls this one, is deferred alongside it -- see
+// its own comment for the cascading-edge evidence.
 NumberedName parse_numbered_name(std::string_view input)
 {
     input = rots::text::truncate_at_null(input);
@@ -981,6 +774,17 @@ NumberedName parse_numbered_name(std::string_view input)
 // see that file for the moved body and task-1-report.md for the exact
 // substitution. Declaration stays in handler.h.
 
+// get_char() DEFERRED (placement-seam Task 4 finding, NOT an
+// improvisation): census verdict MOVE-OTHER-L2, but its only non-L2
+// dependency is parse_numbered_name() immediately above, which itself
+// could not move this task -- see that function's comment for the full
+// evidence. Moving get_char() alone reproduces the same upward edge one
+// hop later (an EntityLayerAcyclicity link failure was observed with
+// get_char() in librots_entity.a calling handler.cpp's still-app-tier
+// parse_numbered_name()). Deferred alongside it, same precedent as Task
+// 2's obj_from_char/extract_obj deferral to Task 3 for an analogous live-
+// dependency cascade. Flagged for controller adjudication in
+// task-4-report.md; stays verbatim in place this task.
 /* search all over the world for a char, and return a pointer if found */
 struct char_data* get_char(std::string_view name)
 {
@@ -1004,17 +808,10 @@ struct char_data* get_char(std::string_view name)
     return (0);
 }
 
-/* search all over the world for a char num, and return a pointer if found */
-struct char_data* get_char_num(int nr)
-{
-    struct char_data* i;
-
-    for (i = character_list; i; i = i->next)
-        if (i->nr == nr)
-            return (i);
-
-    return (0);
-}
+// get_char_num() DELETED (placement-seam Task 4): census-flagged DEAD,
+// 0 callers repo-wide, re-verified via a fresh grep immediately before
+// this deletion; its handler.h declaration is removed in the same
+// commit.
 
 // obj_to_room()/obj_from_room()/obj_to_obj()/obj_from_obj()/
 // object_list_new_owner() relocated to containment.cpp (placement-seam
@@ -1276,17 +1073,8 @@ void extract_char(struct char_data* ch, int new_room)
    which incorporate the actual player-data.
    *********************************************************************** */
 
-int keyword_matches_char(struct char_data* ch, struct char_data* vict, char* keyword)
-{
-    int check;
-
-    if (other_side(ch, vict)) {
-        check = isname_nullable(keyword, pc_race_keywords[GET_RACE(vict)].data());
-    } else
-        check = isname_nullable(keyword, vict->player.name);
-
-    return check;
-}
+// keyword_matches_char() relocated to char_utils.cpp (placement-seam
+// Task 4). Declaration unchanged in handler.h.
 
 struct char_data* get_char_room_vis(struct char_data* ch, char* name, int dark_ok)
 {
@@ -1541,56 +1329,11 @@ int generic_find(char* arg, int bitvector, struct char_data* ch,
     return (0);
 }
 
-/* a function to scan for "all" or "all.x" */
-int find_all_dots(char* arg)
-{
-    if (!strcmp(arg, "all"))
-        return FIND_ALL;
-    else if (!strncmp(arg, "all.", 4)) {
-        strcpy(arg, arg + 4);
-        return FIND_ALLDOT;
-    } else
-        return FIND_INDIV;
-}
+// find_all_dots() relocated to rots_util.cpp (rots_platform,
+// placement-seam Task 4). Declaration unchanged in handler.h.
 
-char* money_message(int sum, int mode)
-{
-    static char moneystr[100];
-    int g, s, c;
-
-    *moneystr = 0;
-
-    if (sum < 0) {
-        strcpy(moneystr, std::format("{} copper coins", sum).c_str());
-        return moneystr;
-    }
-
-    g = sum / COPP_IN_GOLD;
-    c = sum % COPP_IN_GOLD;
-    s = c / COPP_IN_SILV;
-    c = c % COPP_IN_SILV;
-
-    std::string out;
-    if (g)
-        std::format_to(std::back_inserter(out), "{} gold", g);
-    if (g && c && s)
-        out += ", ";
-    if (!c && s && g)
-        out += " and ";
-    if (s)
-        std::format_to(std::back_inserter(out), "{} silver", s);
-    if ((g || s) && c)
-        out += " and ";
-    if (c || (!sum))
-        std::format_to(std::back_inserter(out), "{} copper", c);
-
-    if (mode)
-        std::format_to(std::back_inserter(out), " coin{}",
-            ((g == 1) && (s == 1)) || c == 1 ? "" : "s");
-
-    strcpy(moneystr, out.c_str());
-    return moneystr;
-}
+// money_message() relocated to rots_util.cpp (rots_platform,
+// placement-seam Task 4). Declaration unchanged in handler.h.
 
 // char_exists()/set_char_exists()/remove_char_exists() (+ char_control_array,
 // removed above) relocated to entity_lifecycle.cpp (entity-seed Task 5).
@@ -1598,45 +1341,12 @@ char* money_message(int sum, int mode)
 // declared above) relocated there too (world-seed Task 1) -- pure
 // abs_number allocation over that same bit-array, so it no longer needs to
 // reach it by extern; declarations unchanged in handler.h.
-int register_pc_char(struct char_data* ch)
-{
+// register_pc_char() relocated to entity_lifecycle.cpp (placement-seam
+// Task 4), alongside register_npc_char() (its only callee, already
+// there). Declaration unchanged in handler.h.
 
-    return register_npc_char(ch);
-}
-
-int can_swim(struct char_data* ch)
-{
-
-    struct obj_data* tmpobj;
-    int tmp;
-
-    if (IS_SHADOW(ch))
-        return TRUE;
-
-    if (!IS_NPC(ch) && !PRF_FLAGGED(ch, PRF_SWIM))
-        return FALSE;
-
-    if (IS_NPC(ch))
-        if (IS_SET(ch->specials2.act, MOB_CAN_SWIM) || IS_AFFECTED(ch, AFF_FLYING) || IS_SHADOW(ch))
-            return TRUE;
-
-    if (IS_AFFECTED(ch, AFF_SWIM))
-        return TRUE;
-
-    if (!IS_NPC(ch) && GET_SKILL(ch, SKILL_SWIM) > 0)
-        return TRUE;
-
-    for (tmpobj = ch->carrying; tmpobj; tmpobj = tmpobj->next_content)
-        if (tmpobj->obj_flags.type_flag == ITEM_BOAT)
-            return TRUE;
-
-    for (tmp = 0; tmp < MAX_WEAR; tmp++)
-        if (ch->equipment[tmp])
-            if ((ch->equipment[tmp])->obj_flags.type_flag == ITEM_BOAT)
-                return TRUE;
-
-    return FALSE;
-}
+// can_swim() relocated to char_utils.cpp (placement-seam Task 4).
+// Declaration unchanged in handler.h.
 
 void stop_riding(struct char_data* ch)
 {

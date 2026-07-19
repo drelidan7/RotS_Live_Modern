@@ -2895,6 +2895,12 @@ static char* AllocString(std::string_view value)
 // (db_boot's, in time_info's case); reading them here is fine -- this is
 // the app tier, which may read wherever it likes; only the world lib's own
 // references matter (see world_hooks.h).
+// External linkage is required here, not incidental: src/tests/protocol_
+// tests.cpp forward-declares this function directly (no protocol.h
+// prototype needed) to drive it against fixture descriptors and assert on
+// its MSDP output, so it must stay callable from outside this TU. This
+// resolves world-seed Task 3's tidiness Minor (could this be an anonymous-
+// namespace function?) in favor of keeping it external.
 void broadcast_weather_msdp_update(rots::world::weather_msdp_kind kind)
 {
     extern struct descriptor_data* descriptor_list;

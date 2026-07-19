@@ -176,10 +176,20 @@ accident:
 ## Library layering & the foundation acyclicity check
 
 The source tree is being carved into layered static libraries (see
-`docs/superpowers/specs/2026-07-16-library-architecture-design.md`). The first extracted layer is
-`rots_platform` (L0) — foundation TUs with **no upward dependency** on game code — built as
-`librots_platform.a` and linked into `ageland`. All first-party targets share their ABI/behavior
-flags through the `rots_build_flags` INTERFACE library.
+`docs/superpowers/specs/2026-07-16-library-architecture-design.md`). As of the world-seed wave,
+five of the spec's eight target libraries exist and are linked into `ageland`:
+
+```
+┌─ L3  rots_persist   rots_world   (two of the three peer L3 domain libs; rots_combat not yet
+│                                   extracted)
+├─ L2  rots_entity    → entity/relationship operations over the data model
+├─ L1  rots_core      → the (split-up) data model + const tables
+└─ L0  rots_platform  → OS/infra, zero game coupling
+```
+
+The first extracted layer is `rots_platform` (L0) — foundation TUs with **no upward dependency**
+on game code — built as `librots_platform.a` and linked into `ageland`. All first-party targets
+share their ABI/behavior flags through the `rots_build_flags` INTERFACE library.
 
 - **`rots_platform_linkcheck` / CTest `PlatformLayerAcyclicity`** enforce the "no upward edge"
   property in a load-bearing way: a tiny executable force-loads the entire `librots_platform.a`
@@ -460,6 +470,89 @@ argued leaf-clean at its new home:
 
 **Result:** the weld ledger (`convert_stubs.cpp`) shrank from ~15 entries to the 5 stub function
 bodies documented in "`rots_convert`" below.
+
+### `rots_world` (L3): the world-data library
+
+The fifth extracted layer is `rots_world` (L3) — **3 TUs**: `db_world.cpp`, `zone_load.cpp`, and
+`weather.cpp` — built as `librots_world.a` and linked into `ageland` as `RotS::world`. It is the
+second of the spec's three L3 peer libraries to actually exist as a build target (`rots_persist`
+was the first; `rots_combat` is not yet extracted — see the L3 peer-tier caveat in the spec's
+§3). `rots_world` PUBLIC-links `RotS::persist` + `RotS::entity` + `RotS::core` + `RotS::platform`
+(all four legal downward edges its three TUs' undefined symbols resolve into) plus
+`rots_build_flags`; like `rots_entity`, it owns no `include/` directory of its own — `persist/
+include`/`core/include`/`platform/include` all flow to it transitively through `RotS::persist`'s
+own PUBLIC include directories.
+
+- **`rots_world_linkcheck` / CTest `WorldLayerAcyclicity`** mirrors the `rots_persist_linkcheck`
+  pattern: force-load `librots_world.a` and normal-link only `RotS::persist` + `RotS::entity` +
+  `RotS::core` + `RotS::platform` to resolve its legitimate downward edges — anything else
+  unresolved fails the build. It is the acceptance proof that world-seed Tasks 1-4's relocations,
+  storage moves, and hook inversions actually closed every upward edge the wave's `nm` census (and
+  the linkcheck's own cascade, below) surfaced. Both hosts' ctest baseline moved from 1274 to
+  **1275** the task this check was added (world-seed Task 5); Task 5b then added 6 targeted
+  coverage tests, for **1281** (see `AGENTS.md`'s "Testing Guidelines" for the current total and
+  per-platform skip counts).
+- **Membership story.** `db_world.cpp` and `weather.cpp` were already `ROTS_SERVER_SOURCES`
+  members scrubbed of their upward edges by world-seed Tasks 1-3: relocations and storage moves
+  (`register_npc_char`/`last_control_set` → `rots_entity`, `dice` → `rots_platform`,
+  `time_info`/`weather_info`/`character_list`/`object_list`/`boot_mode`/`mini_mud` storage moved to
+  their steady-state owning TU), `db_world.cpp`'s scratch-buffer (`buf`/`buf1`/`buf2`) retirement in
+  favor of local composition, and three `world_hooks.h` hook inversions (boot-the-shops,
+  mudlle-converter, weather-MSDP) for the app-tier calls relocation alone couldn't cut.
+  `zone_load.cpp` is new: Task 4 carved zone-file **parsing/loading** out of `zone.cpp` byte-
+  identically (264 moved lines, reviewer-diffed zero-difference against the pre-carve blob) —
+  `zone_table`/`top_of_zone_table` storage moved with it. `zone.cpp` itself (the **zone-reset**
+  half — `reset_zone()`/the runtime reset-command interpreter) was deliberately left behind,
+  untouched, still `ROTS_SERVER_SOURCES`; see "Honest deferrals" below.
+- **The sanctioned L3-peer edge.** `db_world.cpp` registers `world_room_vnum()` (`return
+  world[room_index].number;`) as `rots_persist`'s pre-boot room-vnum hook via
+  `rots::persist::set_room_vnum_hook()` (`register_room_vnum_hook()`, called from
+  `run_the_game()` before `boot_db()`). This is an L3(world) → L3(persist) edge, not a layering
+  violation — the spec's L3 tier is a peer tier, not a strict sub-stack, and this is the mirror
+  image of `rots_persist`'s own pre-existing edge into world/boot-tier hooks
+  (`world_room_vnum`/`add_exploit_record`, via `persist_hooks.h`, persist-split wave). It is the
+  reason `rots_world` links `RotS::persist` PUBLIC in addition to `RotS::entity`/`RotS::core`/
+  `RotS::platform`, and `rots_world_linkcheck` deliberately normal-links `RotS::persist` (like
+  `rots_core_linkcheck` does for its one sanctioned L1→L0 edge) to resolve it rather than treat it
+  as an unresolved failure.
+- **Task 5's linkcheck cascade.** Standing up `rots_world_linkcheck` surfaced four upward edges the
+  wave's earlier `nm` census had missed, each adjudicated by the controller before the implementer
+  resumed: `buf2` (`zone_load.cpp`'s malformed-zone-file error labels — converted to a local buffer,
+  Task-2-style); `time_info` (read by `db_boot()` at line 147 for the boot-time report — storage
+  moved to `weather.cpp`, its steady-state writer `another_hour()`'s home, mirroring the
+  `weather_info` storage-move precedent); and `send_to_sector()`/`send_to_outdoor()`
+  (`weather.cpp`'s per-sector weather/day-night/moon broadcast calls into `comm.cpp`'s
+  `descriptor_list` walkers — inverted through a new `world_hooks.h` hook pair,
+  `set_send_to_sector_hook()`/`set_send_to_outdoor_hook()`, silent-no-op default, `comm.cpp`'s
+  `register_world_broadcast_hooks()` installing the real bodies pre-boot). All three adjudicated
+  fixes are byte-preserving relocations/inversions, not behavior changes.
+- **Honest deferrals.** `rots_world` is 3 of the spec §3 row's original ~15-TU sketch
+  (`db_world, shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle,
+  mudlle2, graph, weather, mob_csv_extract, obj2html`) — deliberately, not by oversight:
+  - **`zone.cpp`'s reset half** (`reset_zone()` and the runtime zone-reset-command interpreter) was
+    never touched this wave. Only zone-file *parsing/loading* (`zone_load.cpp`) was carved; the
+    reset half stays app-compiled in `ROTS_SERVER_SOURCES`, unexamined for upward edges.
+  - **`graph.cpp`/`script.cpp`/`mudlle.cpp`/`mudlle2.cpp`/the `shape*.cpp` family**
+    (`shapemdl`/`shapemob`/`shapeobj`/`shaperom`/`shapescript`/`shapezon`) are command/editor-
+    coupled (OLC-style world-building tools) — this wave's census found them out of scope for a
+    world-*data* seed and left them entirely alone, still `ROTS_SERVER_SOURCES`.
+  - **`handler.cpp`/`utility.cpp`** remain app-compiled, same as reported in the `rots_entity`
+    section above — closing their gap needs the spec §7 Placement/Containment seam, not a world-tier
+    change; this wave did not touch either file.
+
+  All of the above are recorded follow-on for whichever future wave next touches the world/app
+  boundary, not this wave's scope.
+- **Known-cosmetic `ld` warning.** Since world-seed Task 5, linking `ageland` on macOS emits `ld:
+  warning: ignoring duplicate libraries: 'librots_core.a', 'librots_entity.a', 'librots_persist.a',
+  'librots_platform.a'` — `RotS::world`'s own PUBLIC downward links (above) pull each lower-layer
+  archive in a second time alongside `ageland`'s pre-existing explicit link list, and `ld64`
+  de-duplicates rather than erroring. It is cosmetic (link succeeds, output is correct — the
+  archive is simply offered twice) and pre-dates this wave in kind (`rots_persist`'s own PUBLIC
+  downward links already put `librots_core.a`/`librots_entity.a`/`librots_platform.a` in this same
+  warning set at the persist-split wave; Task 5 just added `librots_persist.a` to it). The eventual
+  fix — pruning `ageland`'s own explicit lower-layer entries now that each higher archive's PUBLIC
+  links already carry them transitively — is **not done this wave**; it is a recorded optional
+  follow-on, not a regression to chase down now.
 
 ### Pathed data-model includes
 

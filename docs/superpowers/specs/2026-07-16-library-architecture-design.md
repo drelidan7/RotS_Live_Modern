@@ -76,7 +76,7 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
 | `rots_core` | L1 | 2 + split headers | `consts, config` + the carved-up data model (Section 5) (as-built: `consts.cpp` and `output_seam.cpp` joined `rots_core` in the entity-seed wave — see the resolved caveat below) |
 | `rots_entity` | L2 | 6 | `char_utils, object_utils, environment_utils, handler, utility, char_utils_combat` (as-built: 5 of 6 have joined `rots_entity` — `handler`/`utility` remain app-compiled, deferred with named/uncounted welds respectively — see caveat below) |
 | `rots_persist` | L3 | ~14 | `db_players` (from `db.cpp`), `objsave, boards, mail, pkill, character_json, objects_json, exploits_json, account_management (+6 #included fragments), account_cache, convert_exploits, convert_plrobjs, save_benchmark, savebench` |
-| `rots_world` | L3 | ~15 | `db_world` (from `db.cpp`), `shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle, mudlle2, graph, weather, mob_csv_extract, obj2html` |
+| `rots_world` | L3 | ~15 | `db_world` (from `db.cpp`), `shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle, mudlle2, graph, weather, mob_csv_extract, obj2html` (as-built: 3 of ~15 have joined `rots_world` — `db_world`/`weather`/the new `zone_load` (carved out of `zone`) — `shape*`/`script`/`mudlle`/`mudlle2`/`graph`/`mob_csv_extract`/`obj2html`/`zone`'s reset half remain app-compiled, deferred — see caveat below) |
 | `rots_combat` | L3 | 16 | `fight, limits, skill_timer, mobact, ranger, clerics, mage, mystic, profs, spell_pa, spec_pro, spec_ass, battle_mage_handler, weapon_master_handler, wild_fighting_handler, olog_hai` |
 | `rots_commands` | L4 | 15 | `interpre, act_comm, act_info, act_move, act_obj1, act_obj2, act_offe, act_othe, act_soci, act_wiz, modify, delayed_command_interpreter, wait_functions, shop, ban` |
 | `rots_app` | L5 | 6 | `comm, protocol, color, big_brother, signals, db_boot` (from `db.cpp`); `signals.cpp` calls up into game/session state (`descriptor_list`, `hupsig`, `unrestrict_game`) so it is app-layer, not foundation |
@@ -147,6 +147,36 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
   TU-wide `nm` census the way `char_utils.cpp` was, so its gap is app-wide rather than a short
   counted list. Both are recorded follow-on for a future wave, not this one's scope. See
   `docs/BUILD.md`'s "`rots_entity`" section for the full membership/STOP/gap account.
+- **Resolved, partially (world-seed wave).** `rots_world` stands up as the second of the three L3
+  peer libraries to actually exist as a build target (`rots_persist` was the first) — **3 of the
+  row's original ~15 TUs**: `db_world.cpp` (from `db.cpp`), `zone_load.cpp` (a NEW TU, not in the
+  row's original list — Task 4 carved zone-file parsing/loading out of `zone.cpp` byte-identically,
+  264 moved lines, reviewer-diffed zero-difference), and `weather.cpp`. `WorldLayerAcyclicity`
+  (§11) proves no upward edge beyond `rots_persist`/`rots_entity`/`rots_core`/`rots_platform` —
+  ctest 1274→1275 the task it was added, then 1275→1281 after Task 5b's 6 targeted coverage tests.
+  Getting there required the same instruments as the two prior L3/L2 slices: relocations and
+  storage moves (Task 1: `register_npc_char`/`last_control_set` → `rots_entity`, `dice` →
+  `rots_platform`, `time_info`/`weather_info`/`character_list`/`object_list`/`boot_mode`/
+  `mini_mud` storage moved to their steady-state owning TU); scratch-buffer retirement (Task 2:
+  `db_world.cpp`'s `buf`/`buf1`/`buf2` globals replaced with local composition, mirroring
+  `db_players.cpp`'s prior conversion); three `world_hooks.h` hook inversions (Task 3: boot-the-
+  shops, mudlle-converter, weather-MSDP) for app-tier calls relocation alone couldn't cut; and an
+  `nm`-gated linkcheck cascade (Task 5) that surfaced four further upward edges the census had
+  missed (`buf2` in the new `zone_load.cpp`, `time_info` read by `db_boot()`, and
+  `send_to_sector()`/`send_to_outdoor()` calling into `comm.cpp`'s `descriptor_list` walkers),
+  each controller-adjudicated and fixed byte-preservingly (a local-buffer conversion, a storage
+  move, and a fourth `world_hooks.h` hook pair, respectively) before the linkcheck went green.
+  One L3-peer edge is sanctioned, not cut: `db_world.cpp` registers `world_room_vnum()` as
+  `rots_persist`'s pre-boot room-vnum hook (`rots::persist::set_room_vnum_hook`) — an
+  L3(world)→L3(persist) edge, the mirror image of `rots_persist`'s own pre-existing edge into
+  world/boot-tier hooks, and the reason `rots_world` links `RotS::persist` PUBLIC alongside its
+  three other downward edges. `zone.cpp`'s **reset half** (`reset_zone()`/the runtime zone-reset-
+  command interpreter), the `shape*`/`script`/`mudlle`/`mudlle2`/`graph` OLC-tool family, and
+  `handler.cpp`/`utility.cpp` (still pending the §7 Placement seam, unchanged from the
+  entity-completion wave's account above) are the row's remaining, **deliberately deferred** TUs —
+  recorded follow-on for whichever future wave next touches the world/app boundary, not this
+  wave's scope. See `docs/BUILD.md`'s "`rots_world`" section for the full membership/cascade/
+  deferral account.
 
 ---
 
@@ -556,6 +586,36 @@ section for the full account. `handler.cpp` (~30 named-but-unenumerated welds) a
 (an app-wide `nm` profile, never TU-wide-censused) are the row's remaining two TUs — deliberately
 deferred, recorded follow-on for whichever wave next touches the entity/app boundary, not this
 slice's scope. `rots_world`/`rots_combat`, the L3 peers, remain untouched by this wave too.
+
+**As-built (world-seed wave, step 4 fourth slice):** `rots_world` stands up as the second of the
+three L3 peer libraries — 3 TUs (`db_world.cpp`, the new `zone_load.cpp`, `weather.cpp`),
+`WorldLayerAcyclicity` linkcheck, ctest 1274→1275→1281 (Task 5 adds the linkcheck, Task 5b adds 6
+targeted coverage tests) — see `docs/BUILD.md`'s "`rots_world`" section for the full membership/
+carve/relocation/hook/cascade account. Getting there needed the same three instruments as the two
+prior L3/L2 slices, applied to `db_world.cpp`/`weather.cpp`/the new `zone_load.cpp`: relocations
+and storage moves (Task 1); a scratch-buffer-to-local-composition conversion for `db_world.cpp`'s
+`buf`/`buf1`/`buf2` globals (Task 2, the same pattern `db_players.cpp` proved first); three
+`world_hooks.h` hook inversions for app-tier calls relocation alone couldn't cut (Task 3:
+boot-the-shops, mudlle-converter, weather-MSDP); and a byte-identical carve of zone-file parsing/
+loading out of `zone.cpp` into the new `zone_load.cpp` (Task 4, 264 lines, reviewer-diffed
+zero-difference against the pre-carve blob), which also brought `zone_table`/`top_of_zone_table`
+storage with it. Unlike the two prior slices, this one's `nm`-gated library membership step (Task
+5) surfaced a **cascade**, not a clean pass: standing up `rots_world_linkcheck` found four upward
+edges the wave's earlier census had missed (`buf2` in the new `zone_load.cpp`'s error labels,
+`time_info` read by `db_boot()`, and `send_to_sector()`/`send_to_outdoor()` calling into
+`comm.cpp`'s `descriptor_list` walkers from `weather.cpp`) — each controller-adjudicated per the
+wave plan's STOP contract and fixed byte-preservingly (a local-buffer conversion, a storage move to
+`weather.cpp`, and a fourth `world_hooks.h` hook pair) before the linkcheck went green, mirroring
+`rots_entity` Task 6's two-round STOP precedent one layer up. One edge is sanctioned rather than
+cut: `db_world.cpp` registers `world_room_vnum()` as `rots_persist`'s pre-boot room-vnum hook
+(`rots::persist::set_room_vnum_hook`) — an L3(world)→L3(persist) edge, the mirror image of
+`rots_persist`'s own pre-existing edge into world/boot-tier hooks (persist-split wave), and the
+reason `rots_world` links `RotS::persist` PUBLIC alongside `RotS::entity`/`RotS::core`/
+`RotS::platform`. `zone.cpp`'s reset half, the `shape*`/`script`/`mudlle`/`mudlle2`/`graph`
+OLC-tool family, and `handler.cpp`/`utility.cpp` (still pending the §7 Placement seam) are the
+row's remaining TUs — deliberately deferred, recorded follow-on for whichever wave next touches
+the world/app boundary, not this slice's scope. `rots_combat`, the last L3 peer, remains untouched
+by this wave.
 
 ---
 

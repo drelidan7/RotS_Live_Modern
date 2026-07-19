@@ -28,11 +28,18 @@ void set_boot_shops_hook(boot_shops_fn hook);
 // boot_mudlle()'s per-program conversion (db_world.cpp): `mobile_program[i]
 // = mudlle_converter(mobile_program[i])`. mudlle.cpp registers the real
 // mudlle_converter() at boot, before boot_db() runs; null default is a
-// tripwire log + returning the input pointer unchanged -- the only safe
-// placeholder for a function whose whole contract is "return a new
-// converted buffer": returning the untouched input at least avoids
-// corrupting or leaking mobile_program[i] the way a null or a freshly
-// allocated empty buffer would.
+// tripwire log + returning the input pointer unchanged. That return value
+// is NOT safe to use afterward (a prior wording claimed it was): the
+// actual caller, boot_mudlle(), does `tmpstr = mobile_program[i];
+// mobile_program[i] = dispatch_mudlle_converter(mobile_program[i]);
+// RELEASE(tmpstr);` -- if the hook is unregistered, dispatch returns the
+// same pointer tmpstr already holds, so RELEASE(tmpstr) frees the buffer
+// mobile_program[i] now (again) points at, leaving it dangling. The null
+// default is not a safe placeholder; it is a deterministic tripwire (log
+// + identity return) whose only job is to keep the unregistered path from
+// doing something worse than dangling -- and it is unreachable in every
+// shipped binary, since run_the_game() always registers the real
+// converter before boot_db() runs.
 using mudlle_converter_fn = char* (*)(char* source);
 void set_mudlle_converter_hook(mudlle_converter_fn hook);
 

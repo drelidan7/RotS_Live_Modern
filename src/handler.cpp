@@ -729,24 +729,19 @@ void char_to_room(struct char_data* ch, int room)
     }
 }
 
-/* give an object to a char   */
-void obj_to_char(struct obj_data* object, struct char_data* ch)
-{
-    object->next_content = ch->carrying;
-    ch->carrying = object;
-    object->carried_by = ch;
-    object->in_room = NOWHERE;
-    object->obj_flags.timer = -1;
-    IS_CARRYING_W(ch) += GET_OBJ_WEIGHT(object);
-    if (IS_RIDING(object->carried_by))
-        IS_CARRYING_W(object->carried_by->mount_data.mount) += GET_OBJ_WEIGHT(object);
-    IS_CARRYING_N(ch)
-    ++;
-
-    /* set flag for crash-save system */
-    if (!IS_NPC(ch))
-        SET_BIT(PLR_FLAGS(ch), PLR_CRASH);
-}
+// obj_to_char() relocated to containment.cpp (placement-seam Task 2):
+// entity-pure obj->char containment mutator, no world[] access. See that
+// file for the moved body and task-2-report.md for the evidence trail.
+// Declaration stays in handler.h.
+//
+// obj_from_char() stays here (placement-seam Task 2 DEVIATION -- see
+// containment.cpp's own top-of-file comment for the discovered
+// EntityLayerAcyclicity evidence and task-2-report.md for the full
+// trail): its equipment-fallback branch calls unequip_char(), still
+// defined in this file until Task 3's equipment SPLIT moves it to
+// equipment.cpp (L2) -- moving obj_from_char before that primitive is
+// itself an L2 citizen would leave rots_entity with an unresolved
+// upward symbol. Byte-identical to its pre-Task-2 body.
 
 /* take an object from a char */
 void obj_from_char(struct obj_data* object)
@@ -793,6 +788,7 @@ void obj_from_char(struct obj_data* object)
     if (object->obj_flags.prog_number == 1)
         object->obj_flags.prog_number = 0;
 }
+
 
 void equip_char(char_data* character, obj_data* item, int item_slot)
 {
@@ -1010,119 +1006,16 @@ NumberedName parse_numbered_name(std::string_view input)
     return { parsed_number, remainder };
 }
 
-/* Search a given list for an object, and return a pointer to that object */
-struct obj_data* get_obj_in_list(char* name, struct obj_data* list)
-{
-    struct obj_data* i;
-    int j, number;
-    char tmpname[MAX_INPUT_LENGTH];
-    char* tmp;
-
-    strcpy(tmpname, name);
-    tmp = tmpname;
-    if (!(number = get_number(&tmp)))
-        return (0);
-
-    for (i = list, j = 1; i && (j <= number); i = i->next_content)
-        if (isname_nullable(tmp, i->name, 0)) {
-            if (j == number)
-                return (i);
-            j++;
-        }
-
-    return (0);
-}
-
-/* Search a given list for an object number, and return a ptr to that obj */
-struct obj_data* get_obj_in_list_num(int num, struct obj_data* list)
-{
-    struct obj_data* i;
-
-    for (i = list; i; i = i->next_content)
-        if (i->item_number == num)
-            return (i);
-
-    return (0);
-}
-
-/* Search a given list for a specified vnum, and return a ptr to that obj */
-struct obj_data* get_obj_in_list_vnum(int vnum, struct obj_data* list)
-{
-    struct obj_data* i;
-
-    if (vnum == 0)
-        return 0;
-
-    for (i = list; i; i = i->next_content)
-        if (((i->item_number >= 0) ? obj_index[i->item_number].virt : 0) == vnum)
-            return (i);
-
-    return (0);
-}
-
-/* Search a given list for an object number - including containers */
-struct obj_data* get_obj_in_list_num_containers(int num, struct obj_data* list)
-{
-
-    struct obj_data* i = 0;
-
-    if (!list)
-        return 0;
-
-    if (list->contains)
-        i = get_obj_in_list_num_containers(num, list->contains);
-    if (!i)
-        return get_obj_in_list_num(num, list);
-    else
-        return i;
-}
-
-int count_obj_in_list(int num, struct obj_data* list)
-{
-    struct obj_data* i;
-    int n;
-
-    for (n = 0, i = list; i; i = i->next_content)
-        if (!num || (i->item_number == num))
-            n++;
-
-    return n;
-}
-
-/*search the entire world for an object, and return a pointer  */
-struct obj_data* get_obj(char* name)
-{
-    struct obj_data* i;
-    int j, number;
-    char tmpname[MAX_INPUT_LENGTH];
-    char* tmp;
-
-    strcpy(tmpname, name);
-    tmp = tmpname;
-    if (!(number = get_number(&tmp)))
-        return (0);
-
-    for (i = object_list, j = 1; i && (j <= number); i = i->next)
-        if (isname_nullable(tmp, i->name)) {
-            if (j == number)
-                return (i);
-            j++;
-        }
-
-    return (0);
-}
-
-/*search the entire world for an object number, and return a pointer  */
-struct obj_data* get_obj_num(int nr)
-{
-    struct obj_data* i;
-
-    for (i = object_list; i; i = i->next)
-        if (i->item_number == nr)
-            return (i);
-
-    return (0);
-}
+// get_obj_in_list()/get_obj_in_list_num()/get_obj_in_list_vnum()/
+// get_obj_in_list_num_containers()/count_obj_in_list()/get_obj() relocated
+// to object_utils.cpp (placement-seam Task 2): get_obj_in_list_vnum()'s
+// obj_index[item].virt read becomes obj_index_by_id(item)->virt (rots_world
+// resolver seam, ADJUDICATE-3). See that file for the moved bodies and
+// task-2-report.md for the evidence trail. Declarations stay in handler.h.
+//
+// get_obj_num() DELETED (placement-seam Task 2): census-flagged DEAD, 0
+// callers repo-wide, re-verified via a fresh grep immediately before this
+// deletion; its handler.h declaration is removed in the same commit.
 
 // get_char_room() relocated to placement.cpp (placement-seam Task 1): its
 // world[room] access becomes room_by_id(room) (rots_world resolver seam);
@@ -1164,150 +1057,13 @@ struct char_data* get_char_num(int nr)
     return (0);
 }
 
-/* put an object in a room */
-void obj_to_room(struct obj_data* object, int room)
-{
-    int tmp;
-    obj_data* tmpobj;
-
-    if (!object)
-        return;
-
-    for (tmpobj = world[room].contents; tmpobj; tmpobj = tmpobj->next_content)
-        if (tmpobj == object) {
-            strcpy(buf, std::format("obj_to_room: double call for room {}, object {}\n", world[room].number, object->short_description).c_str());
-            mudlog(buf, NRM, LEVEL_IMPL, TRUE);
-            return;
-        }
-    object->next_content = world[room].contents;
-    world[room].contents = object;
-
-    if (GET_ITEM_TYPE(object) == ITEM_LIGHT) {
-        if (object->obj_flags.value[2] && object->obj_flags.value[3]) {
-            world[room].light++;
-        }
-    }
-    for (tmp = 0, tmpobj = world[room].contents; tmpobj && (tmp < 1000);
-         tmpobj = tmpobj->next_content, tmp++)
-        ;
-    if (tmp >= 1000) {
-        mudlog("obj_to_room: infinite loop in room contents.",
-            NRM, LEVEL_GOD, TRUE);
-        world[room].contents = object;
-        object->next_content = 0;
-    }
-    object->in_room = room;
-    object->carried_by = 0;
-    //   printf("obj_to_room %d, %p, descr:%s\n",world[room].number,object,object->description);
-}
-
-/* Take an object from a room */
-void obj_from_room(struct obj_data* object)
-{
-    struct obj_data* i;
-
-    /* remove object from room */
-
-    if (!object)
-        return;
-
-    if (object == world[object->in_room].contents) /* head of list */
-        world[object->in_room].contents = object->next_content;
-
-    else /* locate previous element in list */ {
-        for (i = world[object->in_room].contents; i && (i->next_content != object); i = i->next_content)
-            ;
-
-        i->next_content = object->next_content;
-    }
-
-    if (GET_ITEM_TYPE(object) == ITEM_LIGHT) {
-        if (object->obj_flags.value[2] && object->obj_flags.value[3]) {
-            world[object->in_room].light--;
-            if (object->obj_flags.value[3] > 0)
-                object->obj_flags.value[3] = 0;
-        }
-    }
-    object->in_room = NOWHERE;
-    object->next_content = 0;
-}
-
-/* put an object in an object (quaint)  */
-void obj_to_obj(obj_data* item, obj_data* container, char change_weight)
-{
-    if (!item || !container)
-        return;
-
-    item->next_content = container->contains;
-    container->contains = item;
-    item->in_obj = container;
-
-    if (change_weight) {
-        obj_data* tmp_obj = NULL;
-        for (tmp_obj = item->in_obj; tmp_obj->in_obj; tmp_obj = tmp_obj->in_obj) {
-            GET_OBJ_WEIGHT(tmp_obj) += GET_OBJ_WEIGHT(item);
-        }
-
-        /* top level object.  Subtract weight from inventory if necessary. */
-        GET_OBJ_WEIGHT(tmp_obj) += GET_OBJ_WEIGHT(item);
-        if (tmp_obj->carried_by) {
-            IS_CARRYING_W(tmp_obj->carried_by) += GET_OBJ_WEIGHT(item);
-        }
-    }
-}
-
-/* remove an object from an object */
-void obj_from_obj(obj_data* item)
-{
-    if (!item)
-        return;
-
-    if (item->in_obj) {
-        obj_data* tmp;
-        obj_data* obj_from = item->in_obj;
-        if (item == obj_from->contains) /* head of list */
-        {
-            obj_from->contains = item->next_content;
-        } else {
-            for (tmp = obj_from->contains; tmp && (tmp->next_content != item); tmp = tmp->next_content)
-                ; /* locate previous */
-
-            if (!tmp) {
-                perror("SYSERR: Fatal error in object structures.");
-                abort();
-            }
-
-            tmp->next_content = item->next_content;
-        }
-
-        /* Subtract weight from containers container */
-        for (tmp = item->in_obj; tmp->in_obj; tmp = tmp->in_obj) {
-            GET_OBJ_WEIGHT(tmp) -= GET_OBJ_WEIGHT(item);
-        }
-
-        /* Subtract weight from char that carries the object */
-        GET_OBJ_WEIGHT(tmp) -= GET_OBJ_WEIGHT(item);
-        if (tmp->carried_by) {
-            IS_CARRYING_W(tmp->carried_by) -= GET_OBJ_WEIGHT(item);
-        }
-
-        item->in_obj = 0;
-        item->next_content = 0;
-    } else {
-        perror("SYSERR: Trying to object from object when in no object.");
-        abort();
-    }
-}
-
-/* Set all carried_by to point to new owner */
-void object_list_new_owner(struct obj_data* list, struct char_data* ch)
-{
-    if (list) {
-        object_list_new_owner(list->contains, ch);
-        object_list_new_owner(list->next_content, ch);
-        list->carried_by = ch;
-    }
-}
+// obj_to_room()/obj_from_room()/obj_to_obj()/obj_from_obj()/
+// object_list_new_owner() relocated to containment.cpp (placement-seam
+// Task 2): obj_to_room()/obj_from_room()'s world[room] accesses become
+// room_by_id_total(room) (rots_world resolver seam, TOTAL variant -- both
+// original bodies indexed world[] unchecked). See that file for the moved
+// bodies and task-2-report.md for the evidence trail. Declarations stay in
+// handler.h.
 
 /* Extract an object from the world */
 void extract_obj(struct obj_data* obj)
@@ -1356,43 +1112,25 @@ void extract_obj(struct obj_data* obj)
     free_obj(obj);
 }
 
-void update_object(struct obj_data* obj, int use)
-{
+// extract_obj() DEVIATION (placement-seam Task 2, discovered during this
+// task -- see containment.cpp's obj_from_char note and task-2-report.md
+// for the full evidence trail): NOT moved this task. ADJUDICATE-3 (Global
+// Constraints) binds extract_obj to move via obj_index_by_id, and that
+// substitution alone compiles and links clean in isolation -- but
+// extract_obj also calls obj_from_char(), which itself stays in this file
+// this task (its own unequip_char() dependency isn't L2-resolvable until
+// Task 3's equipment SPLIT -- see obj_from_char's own comment above).
+// Moving extract_obj alone would leave rots_entity with an unresolved
+// obj_from_char symbol; moving both would reintroduce the unequip_char
+// symbol EntityLayerAcyclicity already rejected once this task. Deferred
+// to Task 3 alongside obj_from_char, where unequip_char's primitive
+// becomes an L2 citizen and the whole chain resolves together.
+// Byte-identical to its pre-Task-2 body.
 
-    if (obj->obj_flags.timer > 0)
-        obj->obj_flags.timer -= use;
-    if (obj->contains)
-        update_object(obj->contains, use);
-    if (obj->next_content)
-        update_object(obj->next_content, use);
-}
-
-void update_char_objects(struct char_data* ch)
-{
-
-    int i;
-
-    //    for (tmp = 0; tmp < MAX_WEAR; tmp++)
-    //    if (ch->equipment[tmp])
-    //      if (ch->equipment[tmp]->obj_flags.type_flag == ITEM_LIGHT){
-    //        if (ch->equipment[tmp]->obj_flags.value[2] > 0){
-    // 	    (ch->equipment[tmp]->obj_flags.value[2])--;
-    // 	 if(ch->equipment[tmp]->obj_flags.value[2] == 0){
-    // 	   send_to_char("Your light went out.\n\r",ch);
-    // 	   recount_light_room(ch->in_room);
-    // 	 }
-    // 	 else if((ch->equipment[tmp]->obj_flags.value[2] < 3) &&
-    // 		 (ch->equipment[tmp]->obj_flags.value[2] > 0))
-    // 	   send_to_char("Your light is fading.\n\r",ch);
-    //        }
-    //      }
-    for (i = 0; i < MAX_WEAR; i++)
-        if (ch->equipment[i])
-            update_object(ch->equipment[i], 2);
-
-    if (ch->carrying)
-        update_object(ch->carrying, 1);
-}
+// update_object()/update_char_objects() relocated to object_utils.cpp
+// (placement-seam Task 2): entity-pure recursive object-timer helpers, no
+// world[]/obj_index[] access. See that file for the moved bodies and
+// task-2-report.md for the evidence trail. Declarations stay in handler.h.
 
 /* Extract a ch completely from the world, and leave his stuff behind */
 
@@ -1737,75 +1475,10 @@ struct obj_data* get_object_in_equip_vis(struct char_data* ch,
     return (0);
 }
 
-struct obj_data* create_money(int amount)
-{
-    struct obj_data* obj;
-    struct extra_descr_data* new_descr;
-
-    if (amount <= 0) {
-        log("SYSERR: Try to create negative or 0 money.");
-        exit(1);
-    }
-
-    CREATE(obj, struct obj_data, 1);
-    CREATE(new_descr, struct extra_descr_data, 1);
-    clear_object(obj);
-    if (amount == 1) {
-        obj->name = str_dup("coin money copper");
-        obj->short_description = str_dup("a coin");
-        obj->description = str_dup("One miserable copper coin is lying here.");
-        new_descr->keyword = str_dup("coin gold");
-        new_descr->description = str_dup("It's just one miserable little copper coin.");
-    } else {
-        obj->name = str_dup("coins money gold");
-        if (amount <= 100) {
-            obj->short_description = str_dup("a small pile of coins");
-            obj->description = str_dup("A small pile of coins is lying here.");
-        } else if (amount <= 1000) {
-            obj->short_description = str_dup("a pile of coins");
-            obj->description = str_dup("A pile of coins is lying here.");
-        } else if (amount <= 25000) {
-            obj->short_description = str_dup("a large heap of coins");
-            obj->description = str_dup("A large heap of coins is lying here.");
-        } else if (amount <= 500000) {
-            obj->short_description = str_dup("a huge mound of coins");
-            obj->description = str_dup("A huge mound of coins is lying here.");
-        } else {
-            obj->short_description = str_dup("an enormous mountain of coins");
-            obj->description = str_dup("An enormous mountain of money is lying here.");
-        }
-
-        new_descr->keyword = str_dup("coins money gold");
-        if (amount < COPP_IN_SILV) {
-            new_descr->description = str_dup(std::format("There are {} copper coins.", amount).c_str());
-        } else if (amount < COPP_IN_GOLD) {
-            new_descr->description = str_dup(
-                std::format("There are about {} silver coins.", (amount / COPP_IN_SILV)).c_str());
-        } else if (amount < 10 * COPP_IN_GOLD) {
-            new_descr->description = str_dup(
-                std::format("It looks to be about {} gold coins.", (amount / COPP_IN_GOLD)).c_str());
-        } else if (amount < 100 * COPP_IN_GOLD) {
-            new_descr->description = str_dup(std::format("You guess there are, maybe, {} gold coins.",
-                10 * ((amount / 10 / COPP_IN_GOLD)))
-                                                  .c_str());
-        } else
-            new_descr->description = str_dup("There is a lot of gold.");
-    }
-
-    new_descr->next = 0;
-    obj->ex_description = new_descr;
-
-    obj->obj_flags.type_flag = ITEM_MONEY;
-    obj->obj_flags.wear_flags = ITEM_TAKE;
-    obj->obj_flags.value[0] = amount;
-    obj->obj_flags.cost = amount;
-    obj->item_number = -1;
-
-    obj->next = object_list;
-    object_list = obj;
-
-    return (obj);
-}
+// create_money() relocated to object_utils.cpp (placement-seam Task 2):
+// entity-pure object constructor, no world[] access. See that file for the
+// moved body and task-2-report.md for the evidence trail. Declaration
+// stays in handler.h.
 
 /* Generic Find, designed to find any object/character                    */
 /* Calling :                                                              */

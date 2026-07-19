@@ -109,7 +109,8 @@ int count_obj_in_list(int num, struct obj_data* list);
     if num == 0, returns the total number of objects */
 
 struct obj_data* get_obj(char* name);
-struct obj_data* get_obj_num(int nr);
+// get_obj_num() DELETED (placement-seam Task 2): census-flagged DEAD, 0
+// callers repo-wide -- see object_utils.cpp's relocation comment.
 
 void obj_to_room(struct obj_data* object, int room);
 void obj_from_room(struct obj_data* object);

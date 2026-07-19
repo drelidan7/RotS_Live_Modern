@@ -163,7 +163,7 @@ set(ROTS_CORE_SOURCES
 set(ROTS_ENTITY_SOURCES
     entity_lifecycle.cpp object_utils.cpp environment_utils.cpp
     char_utils.cpp char_utils_combat.cpp
-    placement.cpp
+    placement.cpp containment.cpp
 )
 
 # L3: persist layer (spec §3/§10 step 4; persist-split PS Task 4 payoff).

@@ -248,25 +248,29 @@ char* dispatch_mudlle_converter(char* source)
 
 namespace rots::world {
 
-// Resolver implementations for entity_hooks.h's three id->pointer hooks
-// (placement-seam Task 1). Unlike the boot-shops/mudlle-converter hooks
-// above (which invert an upward edge OUT of this file), these three are
+// Resolver implementations for entity_hooks.h's world-id->pointer hooks
+// (placement-seam Task 1, room resolver split into two variants at this
+// task's post-review follow-up). Unlike the boot-shops/mudlle-converter
+// hooks above (which invert an upward edge OUT of this file), these are
 // registered INTO rots_entity: db_world.cpp calling
 // rots::entity::set_room_resolver_hook() etc. below is a legal downward
 // L3->L2 registration call, the mirror image of the pattern above.
-// placement.cpp's room_by_id()/obj_index_by_id() (rots_entity) dispatch
-// straight into these bodies through the registered function pointer.
+// placement.cpp's room_by_id()/room_by_id_total()/obj_index_by_id()
+// (rots_entity) dispatch straight into these bodies through the
+// registered function pointer.
 //
-// CONTRACT (controller-adjudicated, placement-seam Task 1; see
-// entity_hooks.h's matching comment and task-1-report.md): bounds-checked,
-// nullptr for an out-of-range id. This reproduces recount_light_room's
-// original `if (room < 0 || room >= top_of_world) return;` guard exactly --
-// that was the only pre-existing call site with its own bounds check, so
-// the boundary here (top_of_world EXCLUSIVE) matches it precisely.
-// obj_index_by_id_impl below uses the same exclusive convention against
-// top_of_objt for symmetry, though no Task 1 call site exercises its
-// boundary yet -- see this function's own note and zone_by_id_impl's
-// (zone_load.cpp) for the same caveat.
+// CONTRACT (controller-adjudicated, placement-seam Task 1, corrected at
+// this task's post-review follow-up; see entity_hooks.h's matching
+// comment and task-1-report.md for the full rationale, including why the
+// room resolver alone needed a second TOTAL variant while
+// zone_by_id/obj_index_by_id did not): room_by_id_impl is bounds-checked,
+// nullptr for an out-of-range id -- reproduces recount_light_room's
+// original `if (room < 0 || room >= top_of_world) return;` guard exactly
+// (the only pre-existing call site with its own bounds check, so the
+// top_of_world-EXCLUSIVE boundary matches it precisely -- this also means
+// it excludes the one valid "dummy" room actually allocated at index
+// top_of_world, faithful to that caller's own historical exclusion, but a
+// caveat for any future caller meaning to reach it deliberately).
 room_data* room_by_id_impl(int rnum)
 {
     if (rnum < 0 || rnum >= top_of_world)
@@ -277,13 +281,34 @@ room_data* room_by_id_impl(int rnum)
     return &::world[rnum];
 }
 
-// See room_by_id_impl's contract comment above; top_of_objt is this file's
-// own object-index-table counter. No Task 1 caller exercises this resolver
-// yet (extract_obj/get_obj_in_list_vnum, Task 2, are its first callers per
-// the census) -- the exclusive boundary is chosen for symmetry with
-// room_by_id_impl, not verified against a pre-existing obj_index[]-indexing
-// call site; a future task moving a function with its own top_of_objt check
-// must re-verify this boundary matches that call site's historical operator.
+// room_by_id_impl's TOTAL counterpart: delegates straight to
+// room_data::operator[] (this file, above), which is itself a graceful
+// total function -- negative/too-large input logs and returns a fallback
+// room (world[0] / world[r_immort_start_room], or exit(0) in the one case
+// where even that fallback is out of range) rather than invoking
+// undefined behavior. For a caller whose ORIGINAL code indexed `world[x]`
+// unchecked, this restores that exact historical fallback + mudlog
+// side-effect behavior -- room_by_id_impl's nullptr contract above would
+// silently narrow it into a crash for such a caller instead.
+room_data* room_by_id_total_impl(int rnum)
+{
+    return &::world[rnum];
+}
+
+// obj_index_by_id_impl: bounds-checked, nullptr for an out-of-range id, the
+// same shape as room_by_id_impl above -- but with no TOTAL counterpart,
+// deliberately: obj_index (like zone_table, zone_load.cpp) is a raw C
+// array with no operator[]-style fallback wrapper, so a historical
+// unchecked `obj_index[x]` for an out-of-range x was genuinely undefined
+// behavior, not a graceful degrade -- a nullptr contract is a strict
+// improvement there, not a narrowing that needs a total variant to avoid.
+// top_of_objt is this file's own object-index-table counter. No Task 1
+// caller exercises this resolver yet (extract_obj/get_obj_in_list_vnum,
+// Task 2, are its first callers per the census) -- the exclusive boundary
+// is chosen for symmetry with room_by_id_impl, not verified against a
+// pre-existing obj_index[]-indexing call site; a future task moving a
+// function with its own top_of_objt check must re-verify this boundary
+// matches that call site's historical operator.
 index_data* obj_index_by_id_impl(int item_number)
 {
     if (item_number < 0 || item_number >= top_of_objt)
@@ -293,13 +318,15 @@ index_data* obj_index_by_id_impl(int item_number)
 
 } // namespace rots::world
 
-// Registers this file's room_by_id_impl()/obj_index_by_id_impl() (above)
-// and zone_load.cpp's zone_by_id_impl() as entity_hooks.h's room/zone/
-// obj-index resolver hooks. Called once from run_the_game(), before
-// boot_db() (placement-seam Task 1) -- see entity_hooks.h.
+// Registers this file's room_by_id_impl()/room_by_id_total_impl()/
+// obj_index_by_id_impl() (above) and zone_load.cpp's zone_by_id_impl() as
+// entity_hooks.h's room/room-total/zone/obj-index resolver hooks. Called
+// once from run_the_game(), before boot_db() (placement-seam Task 1) --
+// see entity_hooks.h.
 void register_world_resolver_hooks()
 {
     rots::entity::set_room_resolver_hook(rots::world::room_by_id_impl);
+    rots::entity::set_room_total_resolver_hook(rots::world::room_by_id_total_impl);
     rots::entity::set_zone_resolver_hook(rots::world::zone_by_id_impl);
     rots::entity::set_obj_index_resolver_hook(rots::world::obj_index_by_id_impl);
 }

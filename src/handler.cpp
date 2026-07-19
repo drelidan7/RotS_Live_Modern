@@ -72,7 +72,6 @@ extern struct index_data* obj_index;
 extern struct descriptor_data* descriptor_list;
 extern struct char_data* fast_update_list;
 extern const std::string_view MENU;
-extern int top_of_world;
 extern struct skill_data skills[];
 extern sh_int encumb_table[MAX_WEAR];
 extern sh_int leg_encumb_table[MAX_WEAR];

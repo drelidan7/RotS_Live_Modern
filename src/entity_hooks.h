@@ -79,38 +79,69 @@ void set_put_txt_block_pool_hook(put_txt_block_fn hook);
 float dispatch_wild_attack_speed_multiplier(const char_data* character);
 void dispatch_attacked_player(const char_data* attacker, const char_data* attacked);
 
-// Resolver seam for placement.cpp's three id->pointer lookups (placement-seam
-// Task 1, spec "location representation" section). world[]/zone_table/
-// obj_index (their storage AND their top_of_world/top_of_zone_table/
-// top_of_objt bounds counters) live in rots_world (L3): db_world.cpp/
-// zone_load.cpp register the real implementations via
+// Resolver seam for placement.cpp's world-id->pointer lookups (placement-seam
+// Task 1, spec "location representation" section; room resolver split into
+// two variants at Task 1's post-review follow-up -- see below). world[]/
+// zone_table/obj_index (their storage AND their top_of_world/
+// top_of_zone_table/top_of_objt bounds counters) live in rots_world (L3):
+// db_world.cpp/zone_load.cpp register the real implementations via
 // register_world_resolver_hooks() (db.h; defined in db_world.cpp) in
 // run_the_game(), before boot_db() -- same convention as this header's
 // hooks above.
 //
-// CONTRACT (controller-adjudicated, placement-seam Task 1 -- see
-// task-1-report.md): each REGISTERED resolver is bounds-checked by its own
-// implementation and returns nullptr for an out-of-range id (rnum >=
-// top_of_world / znum >= top_of_zone_table / item_number >= top_of_objt),
-// a resolved pointer otherwise. A null return from a registered hook is a
-// normal "absent" result (Stage-2-aligned: "no location = absent"), NOT a
-// failure -- callers that historically bounds-checked before indexing
-// (e.g. recount_light_room's original `if (room < 0 || room >=
-// top_of_world) return;`) now test the returned pointer instead, with
-// byte-identical in-range behavior and a deterministic (rather than
-// undefined) result out of range; callers that historically indexed
-// unchecked (e.g. get_char_room's `world[room].people`) now dereference
-// the resolved pointer unchecked too -- their in-range behavior is
-// identical, and out-of-range goes from UB to a deterministic null-deref.
-// This is DISTINCT from the tripwire-abort default dispatched in
-// placement.cpp, which only fires when NO hook has been registered at all
-// (a real, unreachable-in-ageland failure) -- there is no safe placeholder
-// pointer for "resolver never registered," the same rationale as this
-// header's txt-block-pool pair above.
+// TWO ROOM-RESOLVER VARIANTS (reviewer-corrected, placement-seam Task 1
+// follow-up -- see task-1-report.md): room_data::operator[] (db_world.cpp,
+// world[]'s actual indexing operator) is a graceful TOTAL function, not
+// partial -- out-of-range input logs and returns a fallback room
+// (world[0] for negative, world[r_immort_start_room] for too-large, or
+// exit(0) in the one case where even that fallback is itself
+// out-of-range) rather than invoking undefined behavior. So a caller that
+// historically indexed `world[x]` unchecked was never in UB territory --
+// it got a defined (if degraded) room back. That history means ONE
+// nullptr-on-invalid resolver would silently narrow behavior for such
+// callers, so there are two:
+//
+//   - room_by_id(rnum): nullptr for an out-of-range id (rnum < 0 or rnum
+//     >= top_of_world), a resolved pointer otherwise. For callers whose
+//     ORIGINAL code bounds-checked BEFORE indexing (they need the
+//     validity signal to reproduce their own early-return/no-op, not
+//     operator[]'s fallback, which they never reached). Note the
+//     top_of_world-EXCLUSIVE bound also excludes the one valid "dummy"
+//     room actually allocated at index top_of_world itself (see
+//     db_world.cpp's load_rooms()/create_room() comments) -- faithful to
+//     those bounds-checking callers, which historically excluded that
+//     index too, but a caveat for any FUTURE caller that means to reach
+//     it deliberately (none does, this task).
+//   - room_by_id_total(rnum): TOTAL -- delegates straight to
+//     room_data::operator[], preserving its exact fallback room AND
+//     mudlog side effects for every input, in range or not. For callers
+//     whose original code indexed `world[x]` UNCHECKED -- restores their
+//     historical graceful-degradation behavior exactly, rather than
+//     replacing it with a new (and narrower) null-then-crash contract.
+//
+// zone_by_id/obj_index_by_id have only ONE (nullptr-on-invalid) variant
+// each, deliberately asymmetric with the room resolver: zone_table/
+// obj_index are raw C arrays with no operator[]-style fallback wrapper,
+// so their historical unchecked-index behavior for an out-of-range id was
+// genuinely undefined (real UB, not a graceful degrade) -- a nullptr
+// contract is a strict improvement there, not a behavior change requiring
+// a total counterpart. (No Task 1 caller exercises either boundary yet;
+// see each impl's own comment for the re-verification caveat left for
+// the tasks that first call them.)
+//
+// Both room-resolver variants, like zone_by_id/obj_index_by_id, still
+// share the tripwire-abort-on-UNREGISTERED-hook default dispatched in
+// placement.cpp -- a hook returning nullptr (room_by_id) or a fallback
+// room (room_by_id_total) is a normal REGISTERED result, distinct from no
+// hook being registered at all (a real, unreachable-in-ageland failure);
+// there is no safe placeholder pointer for that case, the same rationale
+// as this header's txt-block-pool pair above.
 using room_resolver_fn = room_data* (*)(int rnum);
+using room_total_resolver_fn = room_data* (*)(int rnum);
 using zone_resolver_fn = zone_data* (*)(int znum);
 using obj_index_resolver_fn = index_data* (*)(int item_number);
 void set_room_resolver_hook(room_resolver_fn hook);
+void set_room_total_resolver_hook(room_total_resolver_fn hook);
 void set_zone_resolver_hook(zone_resolver_fn hook);
 void set_obj_index_resolver_hook(obj_index_resolver_fn hook);
 

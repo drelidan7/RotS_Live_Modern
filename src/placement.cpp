@@ -41,6 +41,21 @@
 //    instead (a sequencing fix, not a scope change -- see rots_util.cpp's
 //    own relocation comment); Task 4's platform batch shrinks by this one
 //    function accordingly.
+//
+// Post-review follow-up (same task, reviewer-corrected): room_data::
+// operator[] (world[]'s actual indexing operator, db_world.cpp) is a
+// graceful TOTAL function -- out-of-range input logs and returns a
+// fallback room, not undefined behavior -- so a single nullptr-on-invalid
+// room_by_id() would have silently narrowed behavior for callers that
+// historically indexed world[] unchecked. room_by_id_total() (below)
+// restores that exact historical fallback for get_char_room, which is
+// one such caller; room_by_id() keeps its nullptr contract for callers
+// (recount_light_room) that historically bounds-checked instead. See
+// entity_hooks.h's contract comment and task-1-report.md for the full
+// two-variant rationale, including why zone_by_id/obj_index_by_id did
+// NOT need a total counterpart (raw arrays, no fallback wrapper -- their
+// unchecked historical behavior was genuine UB, so nullptr is a strict
+// improvement there rather than a narrowing).
 
 #include "platdef.h"
 #include <cstdlib>
@@ -58,15 +73,17 @@
 namespace rots::entity {
 
 namespace {
-// Backing storage for the three registered world-id resolver hooks
+// Backing storage for the registered world-id resolver hooks
 // (register_world_resolver_hooks(), db_world.cpp/zone_load.cpp -- see
 // entity_hooks.h). Null until that registration runs; an UNREGISTERED hook
 // is a hard failure (loud log + abort, dispatched below) distinct from a
-// REGISTERED hook returning nullptr for an out-of-range id, which is a
-// normal result -- see entity_hooks.h's contract comment for the full
-// rationale (mirrors this header's existing txt-block-pool pair's "no safe
-// placeholder pointer" reasoning).
+// REGISTERED hook returning nullptr (room_by_id/zone_by_id/
+// obj_index_by_id) or a fallback room (room_by_id_total) for an
+// out-of-range id, which is a normal result -- see entity_hooks.h's
+// contract comment for the full rationale (mirrors this header's existing
+// txt-block-pool pair's "no safe placeholder pointer" reasoning).
 room_resolver_fn g_room_resolver_hook = nullptr;
+room_total_resolver_fn g_room_total_resolver_hook = nullptr;
 zone_resolver_fn g_zone_resolver_hook = nullptr;
 obj_index_resolver_fn g_obj_index_resolver_hook = nullptr;
 } // namespace
@@ -74,6 +91,11 @@ obj_index_resolver_fn g_obj_index_resolver_hook = nullptr;
 void set_room_resolver_hook(room_resolver_fn hook)
 {
     g_room_resolver_hook = hook;
+}
+
+void set_room_total_resolver_hook(room_total_resolver_fn hook)
+{
+    g_room_total_resolver_hook = hook;
 }
 
 void set_zone_resolver_hook(zone_resolver_fn hook)
@@ -104,6 +126,23 @@ room_data* room_by_id(int rnum)
     rots::log::write_stderr(
         "rots::entity: FATAL room resolver hook called with no sink registered -- this should be "
         "unreachable once register_world_resolver_hooks() has run.");
+    abort();
+}
+
+// TOTAL counterpart to room_by_id() above -- see entity_hooks.h's
+// two-variant contract comment. For callers whose ORIGINAL code indexed
+// world[x] unchecked (no bounds test of their own): preserves
+// room_data::operator[]'s exact historical fallback-room + mudlog
+// behavior for every input, in range or not, rather than room_by_id()'s
+// narrower nullptr-on-invalid contract.
+room_data* room_by_id_total(int rnum)
+{
+    if (rots::entity::g_room_total_resolver_hook) {
+        return rots::entity::g_room_total_resolver_hook(rnum);
+    }
+    rots::log::write_stderr(
+        "rots::entity: FATAL room-total resolver hook called with no sink registered -- this "
+        "should be unreachable once register_world_resolver_hooks() has run.");
     abort();
 }
 
@@ -278,7 +317,7 @@ struct char_data* get_char_room(char* name, int room)
     if (!(number = get_number(&tmp)))
         return (0);
 
-    for (i = room_by_id(room)->people, j = 1; i && (j <= number); i = i->next_in_room)
+    for (i = room_by_id_total(room)->people, j = 1; i && (j <= number); i = i->next_in_room)
         if (isname_nullable(tmp, i->player.name)) {
             if (j == number)
                 return (i);

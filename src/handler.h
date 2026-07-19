@@ -52,14 +52,21 @@ void affect_join(struct char_data* ch, struct affected_type* af,
 
 /* placement.cpp -- Stage-1 API (placement-seam Task 1; spec's location-
  * representation section). Room ids are the public currency; room_by_id()/
- * zone_by_id()/obj_index_by_id() are the explicit escalation to a resolved
- * pointer -- each dispatches through entity_hooks.h into rots_world's
- * registered implementation and returns nullptr for an out-of-range id (see
- * entity_hooks.h's contract comment); an unregistered hook is a distinct,
- * louder failure (tripwire abort). location_of()/set_location()/
- * is_in_room() are thin wrappers over char_data::in_room -- no hook needed,
- * char_data is an L1 core struct. Defined in placement.cpp. */
+ * room_by_id_total()/zone_by_id()/obj_index_by_id() are the explicit
+ * escalation to a resolved pointer -- each dispatches through
+ * entity_hooks.h into rots_world's registered implementation; an
+ * unregistered hook is a distinct, louder failure (tripwire abort) for all
+ * four. room_by_id()/zone_by_id()/obj_index_by_id() return nullptr for an
+ * out-of-range id (a normal "absent" result); room_by_id_total() instead
+ * preserves room_data::operator[]'s historical graceful fallback (a
+ * resolved room even out of range) for callers whose original code
+ * indexed world[] unchecked -- see entity_hooks.h's fuller two-variant
+ * contract comment for why the room resolver alone needed both.
+ * location_of()/set_location()/is_in_room() are thin wrappers over
+ * char_data::in_room -- no hook needed, char_data is an L1 core struct.
+ * Defined in placement.cpp. */
 struct room_data* room_by_id(int rnum);
+struct room_data* room_by_id_total(int rnum);
 struct zone_data* zone_by_id(int znum);
 struct index_data* obj_index_by_id(int item_number);
 int location_of(const struct char_data* ch);

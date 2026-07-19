@@ -144,6 +144,14 @@ int main(int argc, char* argv[]) {
     // ageland registers at boot -- comm.cpp is already linked into both
     // test binaries, so this only needs the registration call.
     register_world_broadcast_hooks();
+    // entity_hooks.h's three world-resolver hooks (placement-seam Task 1),
+    // registered for the same real-body-fidelity reason as the calls above:
+    // without it this test process would silently exercise
+    // room_by_id()'s/zone_by_id()'s/obj_index_by_id()'s tripwire-abort
+    // default instead of db_world.cpp's/zone_load.cpp's real resolvers that
+    // ageland registers at boot -- both TUs are already linked into both
+    // test binaries, so this only needs the registration call.
+    register_world_resolver_hooks();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

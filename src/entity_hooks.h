@@ -1,13 +1,19 @@
 #pragma once
-// entity_hooks.h -- dependency-inversion seam for entity_lifecycle.cpp's two
-// remaining upward edges (spec Sec13 pattern, mirroring output_seam.h). See
+// entity_hooks.h -- dependency-inversion seam for entity_lifecycle.cpp's
+// upward edges (spec Sec13 pattern, mirroring output_seam.h), plus (as of
+// placement-seam Task 1) placement.cpp's three world-resolver hooks. See
 // each hook's comment below for the call site it replaces and why a null
 // default is safe until registration runs. Backing storage + dispatch
-// helpers are defined in entity_lifecycle.cpp itself (not a separate .cpp,
-// unlike output_seam.cpp) -- see that file's "entity_hooks.h dispatch"
-// section.
+// helpers for entity_lifecycle.cpp's own hooks are defined in
+// entity_lifecycle.cpp itself (not a separate .cpp, unlike output_seam.cpp)
+// -- see that file's "entity_hooks.h dispatch" section; the three resolver
+// hooks' backing storage + dispatch live in placement.cpp instead, next to
+// their sole caller-file's Stage-1 API functions.
 
 struct char_data;
+struct room_data;
+struct zone_data;
+struct index_data;
 struct txt_block;
 
 namespace rots::entity {
@@ -72,5 +78,40 @@ void set_put_txt_block_pool_hook(put_txt_block_fn hook);
 // entity_lifecycle.cpp, next to their backing storage.
 float dispatch_wild_attack_speed_multiplier(const char_data* character);
 void dispatch_attacked_player(const char_data* attacker, const char_data* attacked);
+
+// Resolver seam for placement.cpp's three id->pointer lookups (placement-seam
+// Task 1, spec "location representation" section). world[]/zone_table/
+// obj_index (their storage AND their top_of_world/top_of_zone_table/
+// top_of_objt bounds counters) live in rots_world (L3): db_world.cpp/
+// zone_load.cpp register the real implementations via
+// register_world_resolver_hooks() (db.h; defined in db_world.cpp) in
+// run_the_game(), before boot_db() -- same convention as this header's
+// hooks above.
+//
+// CONTRACT (controller-adjudicated, placement-seam Task 1 -- see
+// task-1-report.md): each REGISTERED resolver is bounds-checked by its own
+// implementation and returns nullptr for an out-of-range id (rnum >=
+// top_of_world / znum >= top_of_zone_table / item_number >= top_of_objt),
+// a resolved pointer otherwise. A null return from a registered hook is a
+// normal "absent" result (Stage-2-aligned: "no location = absent"), NOT a
+// failure -- callers that historically bounds-checked before indexing
+// (e.g. recount_light_room's original `if (room < 0 || room >=
+// top_of_world) return;`) now test the returned pointer instead, with
+// byte-identical in-range behavior and a deterministic (rather than
+// undefined) result out of range; callers that historically indexed
+// unchecked (e.g. get_char_room's `world[room].people`) now dereference
+// the resolved pointer unchecked too -- their in-range behavior is
+// identical, and out-of-range goes from UB to a deterministic null-deref.
+// This is DISTINCT from the tripwire-abort default dispatched in
+// placement.cpp, which only fires when NO hook has been registered at all
+// (a real, unreachable-in-ageland failure) -- there is no safe placeholder
+// pointer for "resolver never registered," the same rationale as this
+// header's txt-block-pool pair above.
+using room_resolver_fn = room_data* (*)(int rnum);
+using zone_resolver_fn = zone_data* (*)(int znum);
+using obj_index_resolver_fn = index_data* (*)(int item_number);
+void set_room_resolver_hook(room_resolver_fn hook);
+void set_zone_resolver_hook(zone_resolver_fn hook);
+void set_obj_index_resolver_hook(obj_index_resolver_fn hook);
 
 }

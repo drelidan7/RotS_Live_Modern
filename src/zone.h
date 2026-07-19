@@ -50,4 +50,22 @@ void reset_zone(int);
 extern struct zone_data* zone_table;
 extern int top_of_zone_table;
 
+namespace rots::world {
+// Zone-id -> pointer resolver (placement-seam Task 1's second world
+// resolver hook; census ADJUDICATE-1, Disposition A). Registered as
+// entity_hooks.h's zone resolver hook by db_world.cpp's
+// register_world_resolver_hooks() (run_the_game(), before boot_db()).
+// Bounds-checked: nullptr for znum outside [0, top_of_zone_table) -- see
+// entity_hooks.h's resolver-contract comment (controller-adjudicated,
+// placement-seam Task 1). Defined in zone_load.cpp, next to the
+// zone_table/top_of_zone_table storage it reads. No Task 1 caller
+// exercises this resolver yet (char_to_room/char_from_room's primitive,
+// Task 3, are its first callers per the census) -- the exclusive boundary
+// convention here is chosen for symmetry with room_by_id_impl, not
+// verified against any pre-existing zone_table[]-indexing call site; a
+// future task moving a function with its own top_of_zone_table check must
+// re-verify this boundary matches that call site's historical operator.
+zone_data* zone_by_id_impl(int znum);
+}
+
 #endif /* ZONE_H */

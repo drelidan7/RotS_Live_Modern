@@ -50,6 +50,22 @@ affected_type* room_affected_by_spell(const room_data* room, int spell);
 void affect_join(struct char_data* ch, struct affected_type* af,
     char avg_dur, char avg_mod);
 
+/* placement.cpp -- Stage-1 API (placement-seam Task 1; spec's location-
+ * representation section). Room ids are the public currency; room_by_id()/
+ * zone_by_id()/obj_index_by_id() are the explicit escalation to a resolved
+ * pointer -- each dispatches through entity_hooks.h into rots_world's
+ * registered implementation and returns nullptr for an out-of-range id (see
+ * entity_hooks.h's contract comment); an unregistered hook is a distinct,
+ * louder failure (tripwire abort). location_of()/set_location()/
+ * is_in_room() are thin wrappers over char_data::in_room -- no hook needed,
+ * char_data is an L1 core struct. Defined in placement.cpp. */
+struct room_data* room_by_id(int rnum);
+struct zone_data* zone_by_id(int znum);
+struct index_data* obj_index_by_id(int item_number);
+int location_of(const struct char_data* ch);
+void set_location(struct char_data* ch, int rnum);
+bool is_in_room(const struct char_data* ch, int rnum);
+
 /* utility */
 struct obj_data* create_money(int amount);
 /// Returns whether bounded `query` matches a word in `name_list` using legacy prefix rules.

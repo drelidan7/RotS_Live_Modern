@@ -40,6 +40,28 @@
 struct zone_data* zone_table;
 int top_of_zone_table;
 
+namespace rots::world {
+// Resolver implementation for entity_hooks.h's zone resolver hook
+// (placement-seam Task 1; declared in zone.h, registered by
+// db_world.cpp's register_world_resolver_hooks()). placement.cpp's
+// zone_by_id() (rots_entity) dispatches straight into this body through
+// the registered function pointer -- db_world.cpp calling
+// rots::entity::set_zone_resolver_hook(zone_by_id_impl) is a legal
+// downward L3->L2 registration call.
+//
+// CONTRACT (controller-adjudicated, placement-seam Task 1; see
+// entity_hooks.h's matching comment and task-1-report.md): bounds-
+// checked, nullptr for znum outside [0, top_of_zone_table) -- see this
+// function's own zone.h declaration comment for the boundary-symmetry
+// caveat (no Task 1 caller exercises this resolver yet).
+zone_data* zone_by_id_impl(int znum)
+{
+    if (znum < 0 || znum >= top_of_zone_table)
+        return nullptr;
+    return &zone_table[znum];
+}
+}
+
 // Index of the next zone_table slot load_zones() will fill; incremented once
 // per call. Historically a function-local `static int zone;` inside
 // load_zones() — hoisted (same zero initialization, same lifetime, no other

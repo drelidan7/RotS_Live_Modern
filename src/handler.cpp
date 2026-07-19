@@ -81,6 +81,11 @@ extern int max_race_str[];
 
 /* external functions */
 void free_char(struct char_data*);
+// recount_light_room() relocated to placement.cpp (placement-seam Task 1);
+// this file's own remaining caller (below) needs its own local forward
+// declaration now that the definition is no longer earlier in this file --
+// same convention as limits.cpp's existing local declaration.
+void recount_light_room(int room);
 void stop_fighting(struct char_data*);
 void remove_follower(struct char_data*);
 void clear_memory(struct char_data*);
@@ -123,13 +128,9 @@ void put_to_follow_type_pool(struct follow_type*);
 // manipulation, fname_nameholder is fname()'s only reader. Declaration
 // stays in handler.h.
 
-int char_power(int lev)
-{
-    if (lev >= LEVEL_IMMORT)
-        return 0;
-
-    return MIN((lev + 2), 16 + lev / 2) * MIN(lev + 2, 32);
-}
+// char_power() relocated verbatim to placement.cpp (placement-seam Task 1):
+// pure int math (MIN macro, LEVEL_IMMORT), no world/live-state dependency.
+// Declaration stays in handler.h.
 
 // other_side()/other_side_num() relocated verbatim to char_utils.cpp
 // (entity-completion Task 1): pure IS_NPC/AFF_CHARM/GET_RACE/RACE_* macro
@@ -137,29 +138,11 @@ int char_power(int lev)
 // in handler.h; the other_side() calls below still resolve through that
 // declaration, now to the char_utils.cpp definition.
 
-void recount_light_room(int room)
-{
-    struct char_data* tmpch;
-    struct obj_data* tmpobj;
-    int count, tmp;
-
-    if ((room < 0) || (room >= top_of_world))
-        return;
-
-    count = 0;
-    for (tmpch = world[room].people; tmpch; tmpch = tmpch->next_in_room)
-        for (tmp = 0; tmp < MAX_WEAR; tmp++)
-            if (tmpch->equipment[tmp])
-                if (tmpch->equipment[tmp]->obj_flags.type_flag == ITEM_LIGHT)
-                    if ((tmpch->equipment[tmp]->obj_flags.value[2] != 0) && (tmpch->equipment[tmp]->obj_flags.value[3] != 0))
-                        count++;
-
-    for (tmpobj = world[room].contents; tmpobj; tmpobj = tmpobj->next_content)
-        if ((tmpobj->obj_flags.value[2] != 0) && (tmpobj->obj_flags.value[3] != 0))
-            count++;
-
-    world[room].light = count;
-}
+// recount_light_room() relocated to placement.cpp (placement-seam Task 1):
+// its world[room] accesses become room_by_id(room) (rots_world resolver
+// seam) -- see that file for the moved body and task-1-report.md for the
+// exact substitution. No handler.h declaration to update (every caller,
+// e.g. limits.cpp, already forward-declares this function locally).
 
 // isname_c_string() (this anonymous-namespace helper, isname_nullable()'s
 // sole caller) relocated to entity_lifecycle.cpp alongside isname_nullable()
@@ -993,31 +976,13 @@ struct obj_data* unequip_char(struct char_data* ch, int pos)
     return (obj);
 }
 
-int get_number(char** name)
-{
-
-    int i;
-    char* ppos;
-    char number[MAX_INPUT_LENGTH] = "";
-
-    if ((ppos = strchr(*name, '.'))) {
-        *ppos++ = '\0';
-        strcpy(number, *name);
-        // *name and ppos alias the same caller buffer (ppos = *name + prefix length),
-        // so this in-place left-shift needs an overlap-safe copy; strcpy's parameters
-        // may not overlap per the C standard, and ASan's strcpy-param-overlap check
-        // catches it even though a naive forward byte copy happens to be correct here.
-        memmove(*name, ppos, strlen(ppos) + 1);
-
-        for (i = 0; *(number + i); i++)
-            if (!isdigit(*(number + i)))
-                return (0);
-
-        return (atoi(number));
-    }
-
-    return (1);
-}
+// get_number() relocated to rots_util.cpp (rots_platform, placement-seam
+// Task 1's sequencing fix -- the census classifies it MOVE-OTHER(platform),
+// originally scheduled for Task 4, but get_char_room's Task 1 move needed
+// it moved first; see task-1-report.md). Declaration moved to utils.h (this
+// file had none of its own -- every prior caller outside this file forward-
+// declared it locally; those local externs are untouched and still resolve
+// to the same definition).
 
 NumberedName parse_numbered_name(std::string_view input)
 {
@@ -1160,28 +1125,10 @@ struct obj_data* get_obj_num(int nr)
     return (0);
 }
 
-/* search a room for a char, and return a pointer if found..  */
-struct char_data* get_char_room(char* name, int room)
-{
-    struct char_data* i;
-    int j, number;
-    char tmpname[MAX_INPUT_LENGTH];
-    char* tmp;
-
-    strcpy(tmpname, name);
-    tmp = tmpname;
-    if (!(number = get_number(&tmp)))
-        return (0);
-
-    for (i = world[room].people, j = 1; i && (j <= number); i = i->next_in_room)
-        if (isname_nullable(tmp, i->player.name)) {
-            if (j == number)
-                return (i);
-            j++;
-        }
-
-    return (0);
-}
+// get_char_room() relocated to placement.cpp (placement-seam Task 1): its
+// world[room] access becomes room_by_id(room) (rots_world resolver seam);
+// see that file for the moved body and task-1-report.md for the exact
+// substitution. Declaration stays in handler.h.
 
 /* search all over the world for a char, and return a pointer if found */
 struct char_data* get_char(std::string_view name)

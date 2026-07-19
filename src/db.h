@@ -171,6 +171,12 @@ void register_exploit_capture_hook();
 // boot-shops hook (world-seed Task 3). Called once from run_the_game(),
 // before boot_db(). Defined in shop.cpp.
 void register_boot_shops_hook();
+// Registers db_world.cpp's/zone_load.cpp's three world-resolver
+// implementations (room_by_id_impl/obj_index_by_id_impl/zone_by_id_impl) as
+// entity_hooks.h's room/zone/obj-index resolver hooks (placement-seam
+// Task 1). Called once from run_the_game(), before boot_db() -- see
+// entity_hooks.h. Defined in db_world.cpp.
+void register_world_resolver_hooks();
 int delete_exploits_file(char *);
 void delete_character_file(struct char_data *);
 void move_char_deleted(int);

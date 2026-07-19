@@ -21,6 +21,7 @@
 #include "rots_rng.h"
 #include "text_view.h"
 
+#include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -156,6 +157,53 @@ int str_cmp_nullable(const char* first, const char* second)
             return 0;
         }
     }
+}
+
+// Parses (and destructively strips) a legacy "N.keyword" match-ordinal
+// prefix from *name in place: on success returns N (>=1) and advances
+// *name past the removed prefix (via an overlap-safe memmove -- see the
+// inline comment below); returns 0 for a malformed numeric prefix;
+// returns 1 (no mutation) when no "." prefix is present at all. Relocated
+// verbatim from handler.cpp (placement-seam Task 1's sequencing fix --
+// get_char_room, moving to placement.cpp/rots_entity the same task, is
+// get_number's only caller inside rots_entity; ranger.cpp's/spec_pro.cpp's/
+// act_offe.cpp's pre-existing local `extern` forward declarations are
+// untouched and still resolve to this same definition). Declaration:
+// utils.h.
+int get_number(char** name)
+{
+    // MAX_INPUT_LENGTH's value (rots/core/types.h, an L1 constant) inlined
+    // as a local literal -- rots_util.cpp is an L0/rots_platform TU and
+    // must not include rots/core/types.h just for one constant (mirrors
+    // this file's lower_ascii()/dice() precedent for the same L0
+    // constraint, applied there to a utils.h macro / LEVEL_IMMORT
+    // respectively). Unlike dice()'s kDiceUnderflowLogLevel, `number`
+    // below is pure internal scratch space (never returned or compared
+    // against another layer's copy of the constant), so no static_assert
+    // pinning is needed.
+    constexpr int kMaxInputLength = 255;
+
+    int i;
+    char* ppos;
+    char number[kMaxInputLength] = "";
+
+    if ((ppos = strchr(*name, '.'))) {
+        *ppos++ = '\0';
+        strcpy(number, *name);
+        // *name and ppos alias the same caller buffer (ppos = *name + prefix length),
+        // so this in-place left-shift needs an overlap-safe copy; strcpy's parameters
+        // may not overlap per the C standard, and ASan's strcpy-param-overlap check
+        // catches it even though a naive forward byte copy happens to be correct here.
+        memmove(*name, ppos, strlen(ppos) + 1);
+
+        for (i = 0; *(number + i); i++)
+            if (!isdigit(*(number + i)))
+                return (0);
+
+        return (atoi(number));
+    }
+
+    return (1);
 }
 
 // rots_remove: POSIX-remove-semantics deletion on every platform (see

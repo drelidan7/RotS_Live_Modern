@@ -108,6 +108,12 @@ void mudlog_aliased_mob(std::string_view message, char_data* ch, std::string_vie
 void log_death_trap(struct char_data* ch);
 int number(int from, int to);
 int dice(int number, int size);
+// Relocated to rots_util.cpp (placement-seam Task 1's get_number
+// sequencing fix -- see that file's own relocation comment). Parses/
+// strips a legacy "N.keyword" match-ordinal prefix from *name in place;
+// see parse_numbered_name() (handler.h) for the non-mutating replacement
+// most new callers should prefer.
+int get_number(char** name);
 void sprintbit(long vektor, const std::string_view names[], char* result, int var);
 void sprinttype(int type, const std::string_view names[], char* result);
 int get_real_OB(struct char_data* ch);

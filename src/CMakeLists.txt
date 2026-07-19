@@ -681,6 +681,7 @@ if(ROTS_BUILD_TESTS)
         tests/scoped_allocation_counter_tests.cpp
         tests/shape_format_tests.cpp
         tests/shapemob_tests.cpp
+        tests/skill_timer_tests.cpp
         tests/spec_pro_tests.cpp
         tests/spell_pa_tests.cpp
         tests/spell_registry_tests.cpp
@@ -690,6 +691,7 @@ if(ROTS_BUILD_TESTS)
         tests/text_view_tests.cpp
         tests/utility_format_tests.cpp
         tests/weapon_master_handler_tests.cpp
+        tests/wild_fighting_handler_tests.cpp
         tests/zone_tests.cpp
     )
 

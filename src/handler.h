@@ -80,15 +80,12 @@ int isname(std::string_view query, std::string_view name_list, char full = 1);
 /// Matches nullable legacy text pointers without constructing a view from a null value.
 int isname_nullable(const char* query, const char* name_list, char full = 1);
 
-// Non-mutating replacement for get_number's "N.keyword" prefix parse.
-struct NumberedName {
-    // Requested match ordinal from the "N." prefix: 0 = malformed prefix
-    // (legacy no-match), 1 = no prefix present.
-    int match_number;
-    // Keyword after the prefix (whole input when no prefix); borrows the
-    // caller's storage, bounded and first-null-normalized.
-    std::string_view name;
-};
+// NumberedName moved to rots/platform/numbered_name.h (combat-seed Task 3):
+// parse_numbered_name() below now lives in rots_util.cpp (rots_platform,
+// L0), which cannot include this app-tier header; the type moved with it.
+// Compatibility include below keeps every existing handler.h-including
+// caller seeing the identical spelling/layout.
+#include "rots/platform/numbered_name.h"
 NumberedName parse_numbered_name(std::string_view input);
 char* fname(char* namelist);
 

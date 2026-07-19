@@ -18,11 +18,13 @@
 #include "platdef.h" /* PREDEF_PLATFORM_WINDOWS + (on Windows) the Win32 API declarations rots_remove()/rots_rename_replace() need */
 #include "platform_compat.h" /* declares rots_remove()/rots_rename_replace() */
 #include "rots/platform/log.h" /* declares mudlog()/BRF + kDiceUnderflowLogLevel -- dice() below */
+#include "rots/platform/numbered_name.h" /* NumberedName -- parse_numbered_name() below (combat-seed Task 3) */
 #include "rots_rng.h"
 #include "text_view.h"
 
 #include <cctype>
 #include <cerrno>
+#include <charconv> // std::from_chars -- parse_numbered_name() below (combat-seed Task 3)
 #include <cstdarg> // va_list/va_start/va_copy/va_end -- rots_asprintf() (placement-seam Task 5)
 #include <cstdio>
 #include <cstdlib>
@@ -215,6 +217,43 @@ int get_number(char** name)
     }
 
     return (1);
+}
+
+// Parses a legacy "N.keyword" match-ordinal prefix from input without
+// mutating it (get_number()'s non-mutating replacement). Relocated
+// verbatim from handler.cpp (combat-seed Task 3, completing the
+// placement-seam Task 4 deferral): NumberedName, this function's return
+// type, is now declared in rots/platform/numbered_name.h (included
+// above), an L0-visible header, so this L0/rots_platform TU no longer
+// needs handler.h's transitive rots_core includes to define it.
+// Declaration stays in handler.h (unchanged callers). get_char()
+// (entity_lifecycle.cpp, rots_entity) completes its own deferred move
+// alongside this one, in the same commit.
+NumberedName parse_numbered_name(std::string_view input)
+{
+    input = rots::text::truncate_at_null(input);
+    const std::size_t dot_position = input.find('.');
+    if (dot_position == std::string_view::npos) {
+        return { 1, input };
+    }
+
+    const std::string_view digits = input.substr(0, dot_position);
+    const std::string_view remainder = input.substr(dot_position + 1);
+    if (digits.empty() || !std::isdigit(static_cast<unsigned char>(digits.front()))) {
+        // Empty (".") or non-digit-led prefix (including a '-' sign, which
+        // std::from_chars would otherwise accept for int): legacy get_number's
+        // isdigit loop produced 0 (no match) for every such input.
+        return { 0, remainder };
+    }
+    int parsed_number = 0;
+    const auto [parse_end, parse_error]
+        = std::from_chars(digits.data(), digits.data() + digits.size(), parsed_number);
+    if (parse_error != std::errc() || parse_end != digits.data() + digits.size()) {
+        // Interior non-digit or overflowing prefix: legacy atoi produced 0 (no
+        // match) for the former; overflow is tightened to the same result.
+        return { 0, remainder };
+    }
+    return { parsed_number, remainder };
 }
 
 // rots_remove: POSIX-remove-semantics deletion on every platform (see

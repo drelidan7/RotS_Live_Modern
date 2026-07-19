@@ -33,7 +33,6 @@
 #include "platdef.h"
 #include <assert.h>
 #include <cctype>
-#include <charconv>
 #include <ctype.h>
 #include <format>
 #include <iterator>
@@ -723,45 +722,13 @@ struct obj_data* unequip_char(struct char_data* ch, int pos)
 // declared it locally; those local externs are untouched and still resolve
 // to the same definition).
 
-// parse_numbered_name() STAYS in handler.cpp (placement-seam Task 4
-// finding, NOT an improvisation): census classifies it MOVE-OTHER
-// (platform), but its return type NumberedName is defined only in
-// handler.h, whose transitive includes (rots/core/fwd.h via
-// rots/persist/file_formats.h/objects_json.h) are unreachable from
-// rots_util.cpp/rots_platform (L0) without widening rots_platform's
-// include surface into rots_core/beyond -- an uncensused upward edge
-// (verified via a standalone -fsyntax-only compile probe: fails on
-// 'rots/core/fwd.h' file not found with rots_platform's actual include
-// dirs). Flagged for controller adjudication in task-4-report.md;
-// left verbatim in place this task. get_char() (below), the only other
-// batch function that calls this one, is deferred alongside it -- see
-// its own comment for the cascading-edge evidence.
-NumberedName parse_numbered_name(std::string_view input)
-{
-    input = rots::text::truncate_at_null(input);
-    const std::size_t dot_position = input.find('.');
-    if (dot_position == std::string_view::npos) {
-        return { 1, input };
-    }
-
-    const std::string_view digits = input.substr(0, dot_position);
-    const std::string_view remainder = input.substr(dot_position + 1);
-    if (digits.empty() || !std::isdigit(static_cast<unsigned char>(digits.front()))) {
-        // Empty (".") or non-digit-led prefix (including a '-' sign, which
-        // std::from_chars would otherwise accept for int): legacy get_number's
-        // isdigit loop produced 0 (no match) for every such input.
-        return { 0, remainder };
-    }
-    int parsed_number = 0;
-    const auto [parse_end, parse_error]
-        = std::from_chars(digits.data(), digits.data() + digits.size(), parsed_number);
-    if (parse_error != std::errc() || parse_end != digits.data() + digits.size()) {
-        // Interior non-digit or overflowing prefix: legacy atoi produced 0 (no
-        // match) for the former; overflow is tightened to the same result.
-        return { 0, remainder };
-    }
-    return { parsed_number, remainder };
-}
+// parse_numbered_name() relocated to rots_util.cpp (rots_platform,
+// combat-seed Task 3): the placement-seam Task 4 deferral above is now
+// resolved -- NumberedName moved to rots/platform/numbered_name.h, an
+// L0-visible header, so this function no longer needs handler.h's
+// transitive rots_core includes to be defined at L0. Declaration stays
+// in handler.h (unchanged callers). get_char() below completes its own
+// deferred move in this same commit; see its site.
 
 // get_obj_in_list()/get_obj_in_list_num()/get_obj_in_list_vnum()/
 // get_obj_in_list_num_containers()/count_obj_in_list()/get_obj() relocated
@@ -779,39 +746,13 @@ NumberedName parse_numbered_name(std::string_view input)
 // see that file for the moved body and task-1-report.md for the exact
 // substitution. Declaration stays in handler.h.
 
-// get_char() DEFERRED (placement-seam Task 4 finding, NOT an
-// improvisation): census verdict MOVE-OTHER-L2, but its only non-L2
-// dependency is parse_numbered_name() immediately above, which itself
-// could not move this task -- see that function's comment for the full
-// evidence. Moving get_char() alone reproduces the same upward edge one
-// hop later (an EntityLayerAcyclicity link failure was observed with
-// get_char() in librots_entity.a calling handler.cpp's still-app-tier
-// parse_numbered_name()). Deferred alongside it, same precedent as Task
-// 2's obj_from_char/extract_obj deferral to Task 3 for an analogous live-
-// dependency cascade. Flagged for controller adjudication in
-// task-4-report.md; stays verbatim in place this task.
-/* search all over the world for a char, and return a pointer if found */
-struct char_data* get_char(std::string_view name)
-{
-    const auto [requested_match_number, query] = parse_numbered_name(name);
-    if (requested_match_number == 0) {
-        return (0);
-    }
-
-    int match_index = 1;
-    for (char_data* candidate = character_list;
-         candidate != nullptr && match_index <= requested_match_number;
-         candidate = candidate->next) {
-        if (candidate->player.name != nullptr && isname(query, candidate->player.name)) {
-            if (match_index == requested_match_number) {
-                return candidate;
-            }
-            ++match_index;
-        }
-    }
-
-    return (0);
-}
+// get_char() relocated to entity_lifecycle.cpp (rots_entity,
+// combat-seed Task 3): the placement-seam Task 4 deferral above is now
+// resolved -- parse_numbered_name() (immediately above) moved to
+// rots_util.cpp (rots_platform, L0) in this same commit, so this is a
+// legal downward edge (rots_entity links RotS::platform) instead of the
+// upward edge that blocked the move before. Declaration stays in
+// handler.h (unchanged callers).
 
 // get_char_num() DELETED (placement-seam Task 4): census-flagged DEAD,
 // 0 callers repo-wide, re-verified via a fresh grep immediately before

@@ -2688,21 +2688,35 @@ void put_to_follow_type_pool(struct follow_type* oldfol)
     follow_type_pool = oldfol;
 }
 
-// get_char() DEFERRED (placement-seam Task 4 finding, NOT an
-// improvisation): census verdict MOVE-OTHER-L2, but its only non-L2
-// dependency is parse_numbered_name(), which itself could not move this
-// task (see handler.cpp's parse_numbered_name() site for the full
-// evidence -- its NumberedName return type is defined only in handler.h,
-// unreachable from rots_platform without a header change outside this
-// task's authorized scope). Moving get_char() alone reproduces the same
-// upward edge one hop later: an EntityLayerAcyclicity link failure was
-// observed with get_char() here calling handler.cpp's still-app-tier
-// parse_numbered_name() ("Undefined symbols ... parse_numbered_name(...),
-// referenced from get_char(...) in librots_entity.a"). Deferred alongside
-// parse_numbered_name(), same precedent as Task 2's obj_from_char/
-// extract_obj deferral to Task 3 for an analogous live-dependency
-// cascade. Flagged for controller adjudication in task-4-report.md;
-// get_char() stays verbatim in handler.cpp this task.
+// get_char() relocated here from handler.cpp (combat-seed Task 3,
+// completing the placement-seam Task 4 deferral): its only non-L2
+// dependency, parse_numbered_name(), moved to rots_util.cpp
+// (rots_platform, L0) in this same commit, so this is now a legal
+// downward edge (rots_entity links RotS::platform) instead of the
+// upward edge that blocked the move before. Declaration stays in
+// handler.h (unchanged callers).
+/* search all over the world for a char, and return a pointer if found */
+struct char_data* get_char(std::string_view name)
+{
+    const auto [requested_match_number, query] = parse_numbered_name(name);
+    if (requested_match_number == 0) {
+        return (0);
+    }
+
+    int match_index = 1;
+    for (char_data* candidate = character_list;
+         candidate != nullptr && match_index <= requested_match_number;
+         candidate = candidate->next) {
+        if (candidate->player.name != nullptr && isname(query, candidate->player.name)) {
+            if (match_index == requested_match_number) {
+                return candidate;
+            }
+            ++match_index;
+        }
+    }
+
+    return (0);
+}
 
 // handler.cpp -- register_npc_char() (above) is register_pc_char()'s only
 // callee; declaration unchanged in handler.h.

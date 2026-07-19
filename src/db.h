@@ -167,6 +167,10 @@ void add_exploit_record(int, struct char_data *, int, const char *);
 // hook. Called once from run_the_game(), before boot_db() (persist-split PS
 // Task 4). Defined in db_boot.cpp.
 void register_exploit_capture_hook();
+// Registers shop.cpp's real boot_the_shops() as world_hooks.h's
+// boot-shops hook (world-seed Task 3). Called once from run_the_game(),
+// before boot_db(). Defined in shop.cpp.
+void register_boot_shops_hook();
 int delete_exploits_file(char *);
 void delete_character_file(struct char_data *);
 void move_char_deleted(int);

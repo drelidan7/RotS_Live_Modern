@@ -61,6 +61,8 @@
 #include "text_view.h"
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
+#include "rots/core/room.h"
+#include "world_hooks.h"
 
 static void Write(descriptor_t* apDescriptor, std::string_view data)
 {
@@ -2871,4 +2873,73 @@ static char* AllocString(std::string_view value)
     }
 
     return pResult;
+}
+
+/******************************************************************************
+ world_hooks.h dispatch (world-seed Task 3).
+ ******************************************************************************/
+
+// Registered as world_hooks.h's weather-MSDP hook. Relocated verbatim from
+// weather.cpp: this is send_msdp_function()'s descriptor_list walk
+// (weather.cpp, formerly lines 182-197) merged with both of its call
+// sites' lambda bodies (another_hour()'s eMSDP_WORLD_TIME push, formerly
+// weather.cpp:437-443; weather_change()'s eMDSP_WEATHER push, formerly
+// weather.cpp:566-576), selected below by `kind` in place of the two
+// removed call sites each passing a different lambda. Every statement in
+// each branch is byte-identical to its original lambda body; the only
+// change is the invocation shape (function-pointer dispatch over a lambda
+// -> a hook call with a kind switch), and the weather branch's local
+// sector_type/weather_type declarations need a braced switch-case scope
+// that the lambda body did not (a lambda body is already its own scope).
+// time_info/weather_messages/strip_trailing_line_break are weather.cpp's
+// (db_boot's, in time_info's case); reading them here is fine -- this is
+// the app tier, which may read wherever it likes; only the world lib's own
+// references matter (see world_hooks.h).
+void broadcast_weather_msdp_update(rots::world::weather_msdp_kind kind)
+{
+    extern struct descriptor_data* descriptor_list;
+    extern struct time_info_data time_info;
+    extern struct room_data world;
+    extern const std::string_view weather_messages[8][13];
+    extern std::string strip_trailing_line_break(std::string_view text);
+
+    for (auto desc = descriptor_list; desc; desc = desc->next) {
+        if (!desc->character || IS_NPC(desc->character)) {
+            continue;
+        }
+
+        if (!desc->pProtocol) {
+            continue;
+        }
+
+        switch (kind) {
+        case rots::world::weather_msdp_kind::world_time:
+            MSDPSetString(desc, eMSDP_WORLD_TIME,
+                std::format("It is about {}:00 {} on ",
+                    time_info.hours % 12 == 0 ? 12 : time_info.hours % 12,
+                    time_info.hours >= 12 ? "PM" : "AM"));
+            MSDPSend(desc, eMSDP_WORLD_TIME);
+            break;
+        case rots::world::weather_msdp_kind::weather: {
+            auto sector_type = world[desc->character->in_room].sector_type;
+            auto weather_type = weather_info.sky[sector_type];
+            if (OUTSIDE(desc->character)) {
+                MSDPSetString(desc, eMDSP_WEATHER,
+                    strip_trailing_line_break(weather_messages[weather_type + 2][sector_type]));
+            } else {
+                MSDPSetString(desc, eMDSP_WEATHER, "You can have no feeling about the weather here.");
+            }
+            MSDPSend(desc, eMDSP_WEATHER);
+            break;
+        }
+        }
+    }
+}
+
+// Registers broadcast_weather_msdp_update() (above) as world_hooks.h's
+// weather-MSDP hook (world-seed Task 3). Called once from run_the_game(),
+// before boot_db() -- see world_hooks.h.
+void register_weather_msdp_hook()
+{
+    rots::world::set_weather_msdp_update_hook(broadcast_weather_msdp_update);
 }

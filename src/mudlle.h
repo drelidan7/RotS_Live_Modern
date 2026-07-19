@@ -66,4 +66,9 @@ struct special_list {
 
 SPECIAL(intelligent);
 
+// Registers mudlle.cpp's real mudlle_converter() as world_hooks.h's
+// mudlle-converter hook (world-seed Task 3). Called once from
+// run_the_game(), before boot_db(). Defined in mudlle.cpp.
+void register_mudlle_converter_hook();
+
 #endif /* MUDLLE_H */

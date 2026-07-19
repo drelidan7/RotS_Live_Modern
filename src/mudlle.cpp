@@ -18,6 +18,7 @@
 #include "rots/core/room.h"
 #include "rots/core/types.h"
 #include "utils.h"
+#include "world_hooks.h"
 
 ACMD(do_move);
 ACMD(do_say);
@@ -1373,4 +1374,12 @@ char* mudlle_converter(char* source)
                 break;
             }
     return newl;
+}
+
+// Registers mudlle_converter() (above) as world_hooks.h's
+// mudlle-converter hook (world-seed Task 3). Called once from
+// run_the_game(), before boot_db() -- see world_hooks.h.
+void register_mudlle_converter_hook()
+{
+    rots::world::set_mudlle_converter_hook(mudlle_converter);
 }

@@ -24,6 +24,7 @@
 #include "rots/core/room.h"
 #include "rots/core/types.h"
 #include "utils.h"
+#include "world_hooks.h"
 
 #define MAX_TRADE 5
 #define MAX_PROD 5
@@ -691,6 +692,14 @@ void boot_the_shops(FILE* shop_f, char* filename)
         } else if (*tmpbuf == '$') /* EOF */
             break;
     }
+}
+
+// Registers boot_the_shops() (above) as world_hooks.h's boot-shops hook
+// (world-seed Task 3). Called once from run_the_game(), before boot_db()
+// -- see world_hooks.h.
+void register_boot_shops_hook()
+{
+    rots::world::set_boot_shops_hook(boot_the_shops);
 }
 
 void assign_the_shopkeepers(void)

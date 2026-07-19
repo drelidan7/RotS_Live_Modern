@@ -4,6 +4,8 @@
 #include "../comm.h"
 #include "../db.h"
 #include "../handler.h"
+#include "../mudlle.h"
+#include "../protocol.h"
 #include "../rots_net.h"
 #include "../skill_timer.h"
 #include "../utils.h"
@@ -121,6 +123,18 @@ int main(int argc, char* argv[]) {
     // into both test binaries, so this only needs the registration calls.
     register_room_vnum_hook();
     register_exploit_capture_hook();
+    // world_hooks.h's three inversion hooks (world-seed Task 3),
+    // registered for the same real-body-fidelity reason as the two calls
+    // above: without them this test process would silently exercise
+    // dispatch_boot_the_shops()'s/dispatch_mudlle_converter()'s
+    // tripwire-logged null defaults, and dispatch_weather_msdp_update()'s
+    // silent no-op default, instead of shop.cpp's/mudlle.cpp's/
+    // protocol.cpp's real implementations that ageland registers at boot
+    // -- all three TUs are already linked into both test binaries, so
+    // this only needs the registration calls.
+    register_boot_shops_hook();
+    register_mudlle_converter_hook();
+    register_weather_msdp_hook();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

@@ -35,6 +35,7 @@
 #include "comm.h"
 #include "db.h"
 #include "persist_hooks.h"
+#include "world_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
@@ -50,6 +51,7 @@
 #include "rots/core/room.h"
 #include "rots/core/descriptor.h"
 #include "rots/core/types.h"
+#include "rots/platform/log.h"
 #include "utils.h"
 #include "zone.h"
 
@@ -152,7 +154,6 @@ extern byte language_number;
 extern byte language_skills[];
 extern universal_list* affected_list;
 extern universal_list* affected_list_pool;
-char* mudlle_converter(char*);
 
 /* local functions */
 void setup_dir(FILE* fl, int room, int dir);
@@ -165,11 +166,79 @@ void load_scripts(FILE* fl, std::string_view file_label);
 void draw_map();
 void initialiaze_small_map();
 void reset_small_map();
-void boot_the_shops(FILE* shop_f, char* filename);
 void boot_mudlle();
 void check_start_rooms(void);
 void renum_world(void);
 char* fread_line(FILE* fp);
+
+/*************************************************************************
+ *  world_hooks.h dispatch (world-seed Task 3)                           *
+ *************************************************************************
+ *  Backing storage + null-defaulted dispatch helpers for the two upward
+ *  edges world_hooks.h inverts out of this file (spec Sec13 pattern,
+ *  mirroring entity_lifecycle.cpp's entity_hooks.h dispatch section):
+ *  index_boot()'s DB_BOOT_SHP case (shop.cpp registers the real
+ *  boot_the_shops()) and boot_mudlle() (mudlle.cpp registers the real
+ *  mudlle_converter()). Both registered by run_the_game(), before
+ *  boot_db() -- see world_hooks.h. Dispatched only from this file, so
+ *  (unlike world_hooks.h's weather-MSDP hook -- dispatched only from
+ *  weather.cpp, whose storage lives there instead for the same reason)
+ *  both dispatch helpers below stay in this file's own anonymous
+ *  namespace, with no cross-TU declaration needed.
+ ************************************************************************/
+namespace rots::world {
+
+namespace {
+// Backing storage for the registered boot-the-shops hook
+// (register_boot_shops_hook(), shop.cpp). Null until that registration
+// runs; the null default is a loud tripwire log + no-op -- ageland always
+// registers pre-boot, so a missing registration would silently boot
+// without shops, and the tripwire makes that unmissable instead.
+boot_shops_fn g_boot_shops_hook = nullptr;
+
+// Backing storage for the registered mudlle-converter hook
+// (register_mudlle_converter_hook(), mudlle.cpp). Null until that
+// registration runs; the null default is a tripwire log + returning the
+// input pointer unchanged, so an unregistered hit fails loudly instead of
+// silently corrupting mobile_program[] with a null or empty buffer.
+mudlle_converter_fn g_mudlle_converter_hook = nullptr;
+} // namespace
+
+void set_boot_shops_hook(boot_shops_fn hook)
+{
+    g_boot_shops_hook = hook;
+}
+
+void set_mudlle_converter_hook(mudlle_converter_fn hook)
+{
+    g_mudlle_converter_hook = hook;
+}
+
+namespace {
+void dispatch_boot_the_shops(FILE* shop_f, char* filename)
+{
+    if (g_boot_shops_hook) {
+        g_boot_shops_hook(shop_f, filename);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::world: STUB boot-the-shops hook called with no sink registered -- this should be "
+        "unreachable once register_boot_shops_hook() has run.");
+}
+
+char* dispatch_mudlle_converter(char* source)
+{
+    if (g_mudlle_converter_hook) {
+        return g_mudlle_converter_hook(source);
+    }
+    rots::log::write_stderr(
+        "rots::world: STUB mudlle-converter hook called with no sink registered -- this should be "
+        "unreachable once register_mudlle_converter_hook() has run.");
+    return source;
+}
+} // namespace
+
+} // namespace rots::world
 
 /* function to count how many hash-mark delimited records exist in a file */
 int count_hash_records(FILE* fl)
@@ -321,7 +390,7 @@ void index_boot(int mode)
             load_zones(db_file);
             break;
         case DB_BOOT_SHP:
-            boot_the_shops(db_file, file_path.data());
+            rots::world::dispatch_boot_the_shops(db_file, file_path.data());
             break;
         case DB_BOOT_MDL:
             load_mudlle(db_file);
@@ -1561,7 +1630,7 @@ void boot_mudlle()
 
     for (i = 1; i <= num_of_programs; i++) {
         tmpstr = mobile_program[i];
-        mobile_program[i] = mudlle_converter(mobile_program[i]);
+        mobile_program[i] = rots::world::dispatch_mudlle_converter(mobile_program[i]);
         //    printf("mobile_program[%d]=%s.\n",i,mobile_program[i]);
         RELEASE(tmpstr);
     }

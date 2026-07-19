@@ -515,6 +515,13 @@ void MSDPFlush(descriptor_t* apDescriptor, variable_t aMSDP);
  */
 void MSDPSend(descriptor_t* apDescriptor, variable_t aMSDP);
 
+// Registers protocol.cpp's real broadcast_weather_msdp_update() as
+// world_hooks.h's weather-MSDP hook (world-seed Task 3): the former
+// weather.cpp send_msdp_function() dispatcher merged with both of its
+// call sites' lambda bodies, relocated verbatim. Called once from
+// run_the_game(), before boot_db(). Defined in protocol.cpp.
+void register_weather_msdp_hook();
+
 /* Function: MSDPSendPair
  *
  * Send the specified strings to the user as an MSDP variable/value pair.  This

@@ -41,6 +41,7 @@
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
+#include "mudlle.h"
 #include "output_seam.h"
 #include "protocol.h"
 #include "rots_net.h"
@@ -637,6 +638,14 @@ void run_the_game(sh_int port)
     // unregistered hook.
     register_room_vnum_hook();
     register_exploit_capture_hook();
+    // world_hooks.h's three inversion hooks (world-seed Task 3),
+    // registered the same way and for the same reason: before boot_db(),
+    // so ageland never runs db_world.cpp's index_boot()/boot_mudlle() or
+    // weather.cpp's another_hour()/weather_change() with an unregistered
+    // hook.
+    register_boot_shops_hook();
+    register_mudlle_converter_hook();
+    register_weather_msdp_hook();
 
     log("Signal trapping.");
     signal_setup();

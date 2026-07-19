@@ -22,6 +22,7 @@
 #include "rots/core/types.h"
 #include "text_view.h"
 #include "utils.h"
+#include "world_hooks.h"
 
 #define WEATHER_MESSAGE_RISE 0
 #define WEATHER_MESSAGE_SET 1
@@ -179,22 +180,56 @@ std::string strip_trailing_line_break(std::string_view text)
     return result;
 }
 
-void send_msdp_function(void (*func)(descriptor_data* desc))
+/*************************************************************************
+ *  world_hooks.h dispatch (world-seed Task 3)                           *
+ *************************************************************************
+ *  Backing storage + null-defaulted dispatch helper for the weather-MSDP
+ *  push world_hooks.h inverts out of this file (spec Sec13 pattern,
+ *  mirroring entity_lifecycle.cpp's entity_hooks.h dispatch section):
+ *  another_hour()'s eMSDP_WORLD_TIME push and weather_change()'s
+ *  eMDSP_WEATHER push both used to call this file's own
+ *  send_msdp_function() dispatcher directly with a lambda; both now call
+ *  dispatch_weather_msdp_update(kind) below instead. protocol.cpp
+ *  registers the real broadcast_weather_msdp_update() -- the former
+ *  send_msdp_function() body merged with both removed lambda bodies,
+ *  relocated verbatim -- at boot, before boot_db(); see world_hooks.h.
+ *  Dispatched only from this file (both call sites below), so (unlike
+ *  world_hooks.h's boot-shops/mudlle-converter hooks, whose storage
+ *  lives in db_world.cpp for the same single-TU-dispatch reason) this
+ *  hook's storage lives here instead of a shared world_hooks TU.
+ ************************************************************************/
+namespace rots::world {
+
+namespace {
+// Backing storage for the registered weather-MSDP hook
+// (register_weather_msdp_hook(), protocol.cpp). Null until that
+// registration runs; unlike world_hooks.h's other two hooks, the null
+// default is a SILENT no-op, not a tripwire: this is a pure
+// best-effort notification push (not state), and a test process that
+// never registers protocol.cpp's sink must not spam stderr on every
+// weather/time tick -- mirroring entity_hooks.h's char-teardown hook
+// precedent (a provable silent no-op) rather than this header's other
+// two tripwire defaults.
+weather_msdp_update_fn g_weather_msdp_update_hook = nullptr;
+} // namespace
+
+void set_weather_msdp_update_hook(weather_msdp_update_fn hook)
 {
-    extern struct descriptor_data* descriptor_list;
-
-    for (auto desc = descriptor_list; desc; desc = desc->next) {
-        if (!desc->character || IS_NPC(desc->character)) {
-            continue;
-        }
-
-        if (!desc->pProtocol) {
-            continue;
-        }
-
-        func(desc);
-    }
+    g_weather_msdp_update_hook = hook;
 }
+
+namespace {
+void dispatch_weather_msdp_update(weather_msdp_kind kind)
+{
+    if (g_weather_msdp_update_hook) {
+        g_weather_msdp_update_hook(kind);
+    }
+    // Null default is a silent no-op -- see g_weather_msdp_update_hook's
+    // comment above.
+}
+} // namespace
+
+} // namespace rots::world
 
 int get_sun_level(int room)
 {
@@ -434,13 +469,7 @@ void another_hour(int mode)
     age_room_tracks();
     age_bleed_tracks();
 
-    send_msdp_function([](descriptor_data* desc) {
-        MSDPSetString(desc, eMSDP_WORLD_TIME,
-            std::format("It is about {}:00 {} on ",
-                time_info.hours % 12 == 0 ? 12 : time_info.hours % 12,
-                time_info.hours >= 12 ? "PM" : "AM"));
-        MSDPSend(desc, eMSDP_WORLD_TIME);
-    });
+    rots::world::dispatch_weather_msdp_update(rots::world::weather_msdp_kind::world_time);
 }
 
 void weather_change(void)
@@ -563,17 +592,7 @@ void weather_change(void)
     for (SectorType = 1; SectorType < 13; SectorType++)
         send_to_sector(weather_messages[weather_info.sky[SectorType] + 2][SectorType], SectorType);
 
-    send_msdp_function([](descriptor_data* desc) {
-        auto sector_type = world[desc->character->in_room].sector_type;
-        auto weather_type = weather_info.sky[sector_type];
-        if (OUTSIDE(desc->character)) {
-            MSDPSetString(desc, eMDSP_WEATHER,
-                strip_trailing_line_break(weather_messages[weather_type + 2][sector_type]));
-        } else {
-            MSDPSetString(desc, eMDSP_WEATHER, "You can have no feeling about the weather here.");
-        }
-        MSDPSend(desc, eMDSP_WEATHER);
-    });
+    rots::world::dispatch_weather_msdp_update(rots::world::weather_msdp_kind::weather);
 }
 
 //=============================================================================

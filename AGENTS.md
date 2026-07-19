@@ -15,7 +15,11 @@
 - src/: C/C++ game server sources, headers, and build scripts (`Makefile`, `CMakeLists.txt`).
 - bin/: Built server binary (`ageland`) and backup (`ageland~`).
 - lib/: Runtime data (players, world, text, etc.); many subpaths are git-ignored.
-- build/: CMake build artifacts and test scaffolding; not checked in.
+- build/: CMake build artifacts and test scaffolding; not checked in. Host `build/`
+  holds only host CMake preset subdirectories (`macos-arm64/`, `linux-x86-legacy/`,
+  …) — the `rots`/`rots64` containers keep their own CMake trees in private named
+  volumes (`rots-build-i386`/`rots-build-x64`) that a host command can never reach or
+  poison, and vice versa; see `docs/BUILD.md` "Container build isolation".
 - proxy/: Rust workspace member (`cargo` crate) for proxy/CLI utilities.
 - release-notes/, game design docs/, code documentation/: Docs and release history.
 
@@ -51,6 +55,10 @@
   `sanitize-macos`, and `windows-msvc`. `clang-tidy-advisory` is non-blocking.
 - Any i386-only or MSVC-only regression found at finalization must be fixed before merge. Never
   tolerate a monolithic-runner SIGSEGV; clean stale objects and investigate it as a real failure.
+- `scripts/i386-battery.sh`'s completed-step markers are stamped per commit
+  (`git rev-parse HEAD`); a marker left over from a prior wave's HEAD never
+  green-lights a skip once HEAD has moved, so a fresh branch always re-runs the full
+  battery at least once.
 - A new or substantially rewritten test file requires a sanitizer run in addition to its normal
   test run. Use an available sanitizer preset; machine-specific invocation belongs in
   `AGENTS.local.md`.

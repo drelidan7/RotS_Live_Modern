@@ -140,6 +140,81 @@ proxy in front of the game.
   runner must be invoked `cd src/tests && make tests && ../../bin/tests` (run from
   `src/tests`, not the repo root) — golden paths resolve relative to that cwd too.
 
+## Container build isolation
+
+The `rots` and `rots64` services mount `/rots/build` from a **container-private named
+Docker volume**, not from the repo bind mount. This closes a class of failure that hit
+finalization batteries three times on record (see `scripts/i386-battery.sh` step 0 for
+the full citations): stale or cross-contaminated CMake state in the shared, non-preset
+top-level `build/` tree. In order:
+
+1. The header-split wave's finalization battery hit a `CoreLayerAcyclicity` target
+   missing from a stale tree (fixed by a root-Makefile reconfigure, commit `3280c73`).
+2. The entity-seed wave's i386 battery round 2 found the container's `build/` CMake
+   cache poisoned with **host** paths: a root-Makefile fixer's `make -n test`
+   verification still executed the `+`-prefixed `cmake --build` recipe line on the
+   host (GNU make runs `+`-prefixed lines even under `-n`), regenerating `build/`'s
+   cache host-side.
+3. The entity-complete wave's i386 battery round 2 hit `ageland_tests` failing to link
+   interpreter-tier symbols **in the container only**, with both native hosts green
+   off the identical `CMakeLists.txt` — logged as the third occurrence of the same
+   class.
+
+All three trace back to host↔container bind-mount mtime skew and cache poisoning on a
+`build/` tree the host and both containers used to share. Named volumes make the
+cross-environment half of that (incident 2) **structurally impossible**: the
+container's `build/` and the host's `build/` are no longer the same filesystem
+location, so a poisoned or stale host cache can never reach a container configure, and
+vice versa. This was verified by test, not just by design — a poison run planted a
+bogus `CMAKE_HOME_DIRECTORY` in the host's `build/CMakeCache.txt`, then ran a container
+`make configure`: the container configured fresh in its empty volume (rooted at
+`/rots/src`, its real `-S`/`-B` source dir) while the poisoned host file sat untouched
+throughout. `scripts/i386-battery.sh` step 0 keeps pre-cleaning the in-volume tree as
+belt-and-braces for the remaining same-environment staleness class (incidents 1 and 3),
+which the volume alone doesn't fix.
+
+**Volumes:**
+
+| Volume | Owning service | Backs |
+|---|---|---|
+| `rots-build-i386` | `rots` (32-bit i386) | `/rots/build` inside the `rots` container |
+| `rots-build-x64` | `rots64` (64-bit x86-64) | `/rots/build` inside the `rots64` container |
+
+Everything else under the repo bind mount (`.:/rots`) stays shared exactly as before:
+`bin/`, `src/`, `lib/`, and the flat-make trees, including `src/tests` (the i386
+monolithic test runner's `make tests && ../../bin/tests` flow). Only the top-level,
+non-preset CMake tree at `/rots/build` moved into a container-private volume; host
+CMake preset subdirectories (`build/macos-arm64/`, `build/linux-x86-legacy/`, etc.)
+were never container-shared and are unaffected.
+
+**Clean rebuild:**
+
+```bash
+docker volume rm rots-build-i386      # wipe just the rots (i386) container's tree
+docker volume rm rots-build-x64       # wipe just the rots64 container's tree
+docker compose down -v                # wipe both (and any other compose-managed volumes)
+```
+
+**Inspect a container's build tree without configuring anything:**
+
+```bash
+docker compose run --rm rots   ls /rots/build
+docker compose run --rm rots64 ls /rots/build
+```
+
+**One-time migration:** checkouts predating this change had a shared, bind-mounted
+`build/`. The first container run after pulling this change reconfigures each
+container's tree from scratch in its (empty) named volume — a one-time configure+build
+cost, not a recurring one, and independent of whatever was in the host's `build/`
+before. The host's `build/` was cleaned up as part of landing this change and now holds
+**only** host CMake preset subdirectories plus whatever the host's own preset builds
+regenerate — no container-generated files remain there.
+
+**CI:** no workflow change was needed. CI runners already build fresh containers per
+run (`docker compose build` + `docker compose run --rm rots ...`), so
+`rots-build-i386`/`rots-build-x64` are simply created empty on every run, the same as
+any other named volume on a fresh host.
+
 ## FP determinism
 
 RotS ships across a build matrix (i386/x64/arm64 GNU-family plus MSVC), and the

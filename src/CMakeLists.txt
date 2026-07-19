@@ -217,14 +217,45 @@ set(ROTS_WORLD_SOURCES
     db_world.cpp zone_load.cpp weather.cpp
 )
 
+# L3 peer: combat layer (spec §3/§10 step 4; combat-seed wave Task 1 payoff).
+# skill_timer.cpp/battle_mage_handler.cpp/weapon_master_handler.cpp/
+# wild_fighting_handler.cpp are the 4-of-16 combat-row TUs the combat-census
+# (.superpowers/sdd/combat-census.md) verified SEED-CLEAN: every undefined
+# symbol resolves downward into L0 rots_platform, L1 rots_core (incl. the
+# existing output_seam), L2 rots_entity, or within the subset itself
+# (wild_fighting_handler.cpp -> weapon_master_handler.cpp is the one
+# intra-subset peer edge, and both TUs are included) -- verified via `nm -uC`
+# on the built archive, see the rots_combat_linkcheck load-bearing test below.
+# No handler.cpp/utility.cpp (still app-compiled), no command/session/
+# app-output-beyond-seam, and no world/persist edges -- unlike rots_world,
+# this layer does NOT need a peer-library PUBLIC link. The remaining 11
+# combat-row TUs (profs.cpp, spec_ass.cpp, olog_hai.cpp, clerics.cpp,
+# mage.cpp, mystic.cpp, mobact.cpp, spell_pa.cpp, limits.cpp, ranger.cpp,
+# spec_pro.cpp, fight.cpp) are DEFERRED per the census's per-TU blocker
+# analysis and stay in ROTS_SERVER_SOURCES below.
+#
+# wild_fighting_handler.cpp's register_attack_speed_multiplier_hook()/
+# register_wild_attack_speed_multiplier_hook() (entity_hooks.h pattern) are
+# still called app-side -- comm.cpp's run_the_game() and
+# tests/gtest_main.cpp's test-fixture setup both call them before boot -- a
+# legal app(ROTS_SERVER_SOURCES)->lib(RotS::combat) downward call, not an
+# upward edge; the declarations remain visible via warrior_spec_handlers.h.
+set(ROTS_COMBAT_SOURCES
+    battle_mage_handler.cpp skill_timer.cpp weapon_master_handler.cpp
+    wild_fighting_handler.cpp
+)
+
 # ageland's remaining app-layer sources (spec §3): combat, commands,
 # comm/session handling, and every TU not yet carved into a rots_* library.
 # db_world.cpp/zone_load.cpp/weather.cpp LEFT this list for
 # ROTS_WORLD_SOURCES above (world-seed wave Task 5).
+# battle_mage_handler.cpp/skill_timer.cpp/weapon_master_handler.cpp/
+# wild_fighting_handler.cpp LEFT this list for ROTS_COMBAT_SOURCES above
+# (combat-seed wave Task 1).
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
-    act_wiz.cpp ban.cpp battle_mage_handler.cpp big_brother.cpp
+    act_wiz.cpp ban.cpp big_brother.cpp
     boards.cpp clerics.cpp
     color.cpp comm.cpp
     db_boot.cpp delayed_command_interpreter.cpp
@@ -235,9 +266,9 @@ set(ROTS_SERVER_SOURCES
     olog_hai.cpp pkill.cpp profs.cpp protocol.cpp
     ranger.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
-    shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
+    shop.cpp signals.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
-    weapon_master_handler.cpp wild_fighting_handler.cpp zone.cpp
+    zone.cpp
 )
 
 add_executable(ageland ${ROTS_SERVER_SOURCES})
@@ -470,12 +501,36 @@ target_link_libraries(rots_world PUBLIC rots_build_flags RotS::persist RotS::ent
 # above), which db_world.cpp's "rots/persist/file_formats.h" and every TU's
 # "rots/core/*.h" reach the same way ageland already did before this task.
 
+# --- L3 peer: combat layer -------------------------------------------------------
+add_library(rots_combat STATIC ${ROTS_COMBAT_SOURCES})
+add_library(RotS::combat ALIAS rots_combat)
+set_target_properties(rots_combat PROPERTIES CXX_EXTENSIONS OFF)
+# PUBLIC RotS::entity + RotS::core + RotS::platform: battle_mage_handler.cpp/
+# skill_timer.cpp/weapon_master_handler.cpp/wild_fighting_handler.cpp's
+# legitimate downward edges land in all three layers -- see the
+# ROTS_COMBAT_SOURCES comment above. Unlike rots_world, no RotS::persist (or
+# RotS::world) PUBLIC link: the census found zero L3-peer edges out of this
+# 4-TU subset (the one intra-subset peer edge, wild_fighting_handler.cpp ->
+# weapon_master_handler.cpp, resolves within rots_combat itself). PUBLIC so
+# all three layers' include roots flow transitively to any consumer that
+# links only RotS::combat.
+target_link_libraries(rots_combat PUBLIC rots_build_flags RotS::entity RotS::core RotS::platform)
+# weapon_master_handler.cpp reaches "rots/persist/file_formats.h" transitively
+# through handler.h's RENT_CRASH macro include (a header-only reach, NOT a
+# link-time dependency on rots_persist -- no rots_combat symbol resolves into
+# rots_persist, per the census). PRIVATE, mirroring rots_entity's identical
+# PRIVATE persist/include above: no consumer of RotS::combat needs this path
+# transitively; ageland/rots_convert already carry persist/include on their
+# own target_include_directories.
+target_include_directories(rots_combat PRIVATE persist/include)
+
 target_link_libraries(ageland PRIVATE
     RotS::platform
     RotS::core
     RotS::entity
     RotS::persist
     RotS::world
+    RotS::combat
     rots_build_flags
     $<$<PLATFORM_ID:Windows>:ws2_32>
 )
@@ -678,15 +733,17 @@ if(ROTS_BUILD_TESTS)
     include(GoogleTest)
 
     # ageland_tests deliberately does NOT link rots_core/rots_entity/
-    # rots_persist/rots_world (TESTING parity, same as the rots_platform
-    # pattern above): it keeps compiling config.cpp/consts.cpp/
+    # rots_persist/rots_world/rots_combat (TESTING parity, same as the
+    # rots_platform pattern above): it keeps compiling config.cpp/consts.cpp/
     # output_seam.cpp, entity_lifecycle.cpp/object_utils.cpp/
-    # environment_utils.cpp, db_players.cpp/character_json.cpp/etc., and (as
-    # of world-seed Task 5) db_world.cpp/zone_load.cpp/weather.cpp directly
-    # via ROTS_CORE_SOURCES/ROTS_ENTITY_SOURCES/ROTS_PERSIST_SOURCES/
-    # ROTS_WORLD_SOURCES instead (all now live only in those lists — see each
-    # set's own comment above).
-    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_ENTITY_SOURCES} ${ROTS_PERSIST_SOURCES} ${ROTS_WORLD_SOURCES} ${ROTS_TEST_SOURCES})
+    # environment_utils.cpp, db_players.cpp/character_json.cpp/etc., (as of
+    # world-seed Task 5) db_world.cpp/zone_load.cpp/weather.cpp, and (as of
+    # combat-seed Task 1) battle_mage_handler.cpp/skill_timer.cpp/
+    # weapon_master_handler.cpp/wild_fighting_handler.cpp directly via
+    # ROTS_CORE_SOURCES/ROTS_ENTITY_SOURCES/ROTS_PERSIST_SOURCES/
+    # ROTS_WORLD_SOURCES/ROTS_COMBAT_SOURCES instead (all now live only in
+    # those lists — see each set's own comment above).
+    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_ENTITY_SOURCES} ${ROTS_PERSIST_SOURCES} ${ROTS_WORLD_SOURCES} ${ROTS_COMBAT_SOURCES} ${ROTS_TEST_SOURCES})
 
     # Same C++ standard as ageland (see above) — required because these targets are
     # defined per-target here rather than via a project-wide CMAKE_CXX_STANDARD.
@@ -1012,6 +1069,41 @@ if(ROTS_BUILD_TESTS)
             LINK_DEPENDS "$<TARGET_FILE:rots_world>")
         if(BUILD_TESTING)
             add_test(NAME WorldLayerAcyclicity COMMAND rots_world_linkcheck)
+        endif()
+
+        # Load-bearing combat-layer acyclicity check (spec §11), mirroring the
+        # rots_world_linkcheck block above (combat-seed wave Task 1).
+        # rots_combat (battle_mage_handler.cpp + skill_timer.cpp +
+        # weapon_master_handler.cpp + wild_fighting_handler.cpp — see the
+        # ROTS_COMBAT_SOURCES comment above) is verified to have no upward
+        # symbol references beyond its legal downward edges into rots_entity,
+        # rots_core, and rots_platform. Unlike rots_world_linkcheck, no
+        # RotS::persist/RotS::world normal-link: the census found zero
+        # L3-peer edges out of this 4-TU subset. The checker force-loads
+        # rots_combat itself (so every rots_combat symbol is pulled in and
+        # any OTHER unresolved reference fails the link) and normal-links
+        # RotS::entity + RotS::core + RotS::platform to resolve those
+        # legitimate lower-layer edges — a strictly tighter guarantee than
+        # "any lower layer is allowed".
+        add_executable(rots_combat_linkcheck tests/combat_linkcheck_main.cpp)
+        target_link_libraries(rots_combat_linkcheck PRIVATE rots_build_flags RotS::entity RotS::core RotS::platform)
+        add_dependencies(rots_combat_linkcheck rots_combat)
+        if(APPLE)
+            target_link_options(rots_combat_linkcheck PRIVATE
+                -Wl,-force_load,$<TARGET_FILE:rots_combat>)
+        else()
+            target_link_options(rots_combat_linkcheck PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:rots_combat> -Wl,--no-whole-archive)
+        endif()
+        # LINK_DEPENDS: same rationale as rots_world_linkcheck above — the
+        # archive path only appears inside a raw linker flag string, invisible
+        # to CMake's normal target_link_libraries dependency tracking, so an
+        # incremental rebuild that changes only a rots_combat source needs
+        # this to force a relink instead of silently reusing a stale binary.
+        set_target_properties(rots_combat_linkcheck PROPERTIES
+            LINK_DEPENDS "$<TARGET_FILE:rots_combat>")
+        if(BUILD_TESTING)
+            add_test(NAME CombatLayerAcyclicity COMMAND rots_combat_linkcheck)
         endif()
     endif()
 endif()

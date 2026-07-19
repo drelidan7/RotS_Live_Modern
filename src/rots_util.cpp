@@ -23,6 +23,7 @@
 
 #include <cctype>
 #include <cerrno>
+#include <cstdarg> // va_list/va_start/va_copy/va_end -- rots_asprintf() (placement-seam Task 5)
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -44,6 +45,14 @@ char lower_ascii(char c)
 }
 
 } // namespace
+
+// log() (global-namespace text logger) is declared in utils.h, an L2 header
+// rots_util.cpp must not include (same L0 constraint as this file's other
+// relocations). Forward-declared locally instead of pulling that header --
+// reshuffle() (placement-seam Task 5) calls it. Defined in rots_log.cpp
+// (rots_platform, this same library): a same-tier L0->L0 call, unlike the
+// mudlog()/BRF declaration rots/platform/log.h already provides above.
+void log(std::string_view message);
 
 /* This is to work together with CREATE macro, to try fighting
    memory fault crashes.
@@ -438,4 +447,339 @@ char* money_message(int sum, int mode)
 
     strcpy(moneystr, out.c_str());
     return moneystr;
+}
+
+//============================================================================
+// string_to_new_value()/number(double)/number_d()/rots_asprintf()/
+// strn_cmp()/strn_cmp_nullable()/sprintbit()/sprinttype()/nth()/
+// strcpy_lang()/reshuffle() relocated verbatim from utility.cpp
+// (placement-seam Task 5; census verdict MOVE-OTHER(platform) for all --
+// see placement-census.md's utility.cpp table). All are pure text/RNG/
+// formatting helpers with no game-type dependency. rots_asprintf() is
+// declared in platform_compat.h and now defined here, matching that header's
+// existing rots_remove()/rots_rename_replace() precedent (declared in
+// platform_compat.h, defined in this same TU) -- the census's tentative
+// "platform_compat" target-TU note is resolved in rots_util.cpp's favor by
+// that precedent (see task-5-report.md). strn_cmp()/strn_cmp_nullable()
+// reuse this file's existing lower_ascii() helper for utils.h's LOWER macro
+// (same precedent str_cmp()/str_cmp_nullable() above already established).
+// sprintbit() inlines utils.h's IS_SET macro and rots/core/room.h's
+// BFS_MARK constant, the same "L0 must not include L1/L2 headers" precedent
+// as get_number()'s MAX_INPUT_LENGTH/find_all_dots()'s FIND_ALL family
+// above. real_time_passed()/mud_time_passed()/day_to_str() are NOT in this
+// batch -- see utility.cpp's own comments at their original locations for
+// the blocking finding (time_info_data is an L1 rots/core/types.h type;
+// day_to_str() additionally reads month_name[], an external rots_core
+// symbol -- a genuine PlatformLayerAcyclicity-breaking upward edge the
+// census's "upward refs: none" missed). Declarations unchanged (utils.h /
+// platform_compat.h, except do_squareroot()-adjacent file-local functions
+// n/a here).
+//============================================================================
+
+int string_to_new_value(char* arg, int* value)
+{
+    while (*arg && (*arg <= ' '))
+        arg++;
+
+    if (!*arg)
+        return *value;
+
+    if (isdigit(*arg))
+        *value = atoi(arg);
+    if (*arg == '+')
+        *value += atoi(arg + 1);
+    if (*arg == '-')
+        *value -= atoi(arg + 1);
+    if ((*arg == 'p') || (*arg == 'P'))
+        *value |= 1 << atoi(arg + 1);
+    if ((*arg == 'm') || (*arg == 'M'))
+        *value &= ~(1 << atoi(arg + 1));
+
+    return *value;
+}
+
+// returns a random number from 0.0 to max
+double number(double max)
+{
+    return number() * max;
+}
+
+// returns a random number in interval [from;to] */
+double number_d(double from, double to)
+{
+    if (from > to) {
+        std::swap(from, to);
+    }
+
+    return number(to) + from;
+}
+
+// rots_asprintf: portable stand-in for the asprintf() extension (see platform_compat.h
+// for the full ownership-contract writeup). Sizes the formatted output with a
+// zero-length vsnprintf pass (which returns the would-be length, excluding the NUL,
+// per the C99/POSIX contract), allocates exactly that many bytes plus one for the NUL,
+// then formats into it for real. A va_list is invalidated after any va_arg use
+// including the "measure" pass, so it must be va_copy'd before that pass and the
+// original consumed only once, by the final vsnprintf.
+int rots_asprintf(char** out, const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+
+    va_list size_args;
+    va_copy(size_args, args);
+    const int needed = vsnprintf(nullptr, 0, fmt, size_args);
+    va_end(size_args);
+
+    if (needed < 0) {
+        va_end(args);
+        *out = nullptr;
+        return -1;
+    }
+
+    char* buffer = (char*)malloc((size_t)needed + 1);
+    if (buffer == nullptr) {
+        va_end(args);
+        *out = nullptr;
+        return -1;
+    }
+
+    const int written = vsnprintf(buffer, (size_t)needed + 1, fmt, args);
+    va_end(args);
+
+    if (written < 0) {
+        free(buffer);
+        *out = nullptr;
+        return -1;
+    }
+
+    *out = buffer;
+    return written;
+}
+
+/* returns: 0 if equal, 1 if arg1 > arg2, -1 if arg1 < arg2  */
+/* scan 'till found different, end of both, or n reached     */
+int strn_cmp(std::string_view first, std::string_view second, int count)
+{
+    if (count <= 0) {
+        return 0;
+    }
+    const std::size_t comparison_limit = static_cast<std::size_t>(count);
+    for (std::size_t index = 0; index < comparison_limit; ++index) {
+        const char first_char = (index < first.size()) ? first[index] : '\0';
+        const char second_char = (index < second.size()) ? second[index] : '\0';
+        if (first_char == '\0' || second_char == '\0') {
+            if (first_char == second_char) {
+                return 0;
+            }
+            return (first_char == '\0') ? -1 : 1;
+        }
+        // LOWER macro inlined as lower_ascii() -- see the anonymous namespace above.
+        const int difference = lower_ascii(first_char) - lower_ascii(second_char);
+        if (difference < 0) {
+            return -1;
+        }
+        if (difference > 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int strn_cmp_nullable(const char* first, const char* second, int count)
+{
+    if (first == nullptr || second == nullptr) {
+        if (first == second) {
+            return 0;
+        }
+        return first == nullptr ? -1 : 1;
+    }
+    if (count <= 0) {
+        return 0;
+    }
+    for (int index = 0; index < count; ++first, ++second, ++index) {
+        // LOWER macro inlined as lower_ascii() -- see the anonymous namespace above.
+        const int difference = lower_ascii(*first) - lower_ascii(*second);
+        if (difference != 0) {
+            return (difference < 0) ? -1 : 1;
+        }
+        if (*first == '\0') {
+            return 0;
+        }
+    }
+    return 0;
+}
+
+/*
+ * Sprintbit now contains an extra variable (int var) so it can
+ * discern when identify is using it.
+ */
+void sprintbit(long vektor, const std::string_view names[], char* result, int var)
+{
+    // BFS_MARK (rots/core/room.h -- an L1 header rots_util.cpp must not
+    // include, same constraint as get_number()'s MAX_INPUT_LENGTH above)
+    // inlined as a local constexpr, matching its #define value (1 << 11).
+    constexpr long kBfsMark = 1 << 11;
+
+    long nr;
+    int count;
+
+    count = 0;
+
+    if (vektor < 0) {
+        strcpy(result, "SPRINTBIT ERROR!");
+        return;
+    }
+
+    if (vektor == 0) {
+        strcpy(result, var != 0 ? "has no additional attributes. " : "<NONE>");
+        return;
+    }
+
+    // Composed here (rather than strcat-chained straight into `result`) so
+    // the "did the loop append anything" check below (the NOFLAGS fallback)
+    // is a plain std::string::empty() instead of testing *result -- result
+    // itself is only written once, at the very end, via the same unbounded
+    // strcpy the original code used (callers still supply their own
+    // sufficiently-sized buffer; no size is available here to bound against).
+    std::string composed;
+    for (nr = 0; vektor; vektor >>= 1) {
+        // IS_SET macro (utils.h) inlined as its own (flag)&(bit) definition --
+        // rots_util.cpp must not include utils.h (this file's lower_ascii()/
+        // str_cmp() precedent, same L0 constraint).
+        if ((1 & vektor) && (vektor != kBfsMark)) {
+            if (names[nr] != "\n") {
+                /*
+                 * Where the variable passed in is not 0
+                 * then identify is using sprintbit
+                 * The block of code contained here is used only
+                 * for identify.
+                 */
+                if (var != 0) {
+                    if (var == 2) {
+                        composed += (count == 0) ? " " : " and ";
+                    } else {
+                        composed += (count == 0) ? "has the following attributes.\r\n" : ".\r\n";
+                    }
+                } else /* normal sprintbit resumes here */
+                    composed += " ";
+                composed += names[nr];
+                count++;
+            } else {
+                composed += "UNDEFINE ";
+            }
+        }
+        if (names[nr] != "\n")
+            nr++;
+    }
+
+    if (composed.empty())
+        composed += "NOFLAGS";
+
+    composed += ".";
+    strcpy(result, composed.c_str());
+}
+
+void sprinttype(int type, const std::string_view names[], char* result)
+{
+    int nr;
+
+    for (nr = 0; names[nr] != "\n"; nr++)
+        ;
+
+    const std::string_view value = (type < nr) ? names[type] : "UNDEFINED";
+    strcpy(result, value.data());
+}
+
+/*
+ * Return the string corresponding to the "nth" number.
+ * I.e., if n is 1, then the string is "1st", if n is 2
+ * the string is "2nd", and so on.
+ *
+ * This string is dynamically allocated and must be freed
+ * by the caller.
+ */
+char* nth(int n)
+{
+    const char *s;
+    char* r;
+    const char* first = "st";
+    const char* second = "nd";
+    const char* third = "rd";
+    const char* other = "th";
+
+    /* 11, 12 and 13 don't follow the general rule */
+    if (n == 11 || n == 12 || n == 13)
+        s = other;
+    else {
+        switch (n % 10) {
+        case 1:
+            s = first;
+            break;
+        case 2:
+            s = second;
+            break;
+        case 3:
+            s = third;
+            break;
+        default:
+            s = other;
+        }
+    }
+
+    rots_asprintf(&r, "%d%s", n, s);
+
+    return r;
+}
+
+char* strcpy_lang(char* str1, char* str2, byte freq, int maxlen)
+{
+    int i, len;
+
+    len = strlen(str2);
+    if (len > maxlen)
+        len = maxlen;
+
+    for (i = 0; i < len; i++) {
+        if ((number(1, 100) > freq) && isalpha(str2[i])) {
+            if (isupper(str2[i]))
+                str1[i] = number(65, 90);
+            else
+                str1[i] = number(97, 122);
+        } else
+            str1[i] = str2[i];
+    }
+    str1[i] = 0;
+
+    return str1;
+}
+
+void reshuffle(int* arr, int len)
+{
+    int tmp, tmp2, num;
+    int newarr[255];
+    char flags[255];
+
+    if (len >= 255) {
+        len = 254;
+        log("Reshuffle called for more than 255 elements.");
+    }
+
+    for (tmp = 0; tmp < len; tmp++)
+        flags[tmp] = 1;
+
+    for (tmp = 0; tmp < len; tmp++) {
+        num = 1 + number(0, len - tmp - 1);
+        for (tmp2 = 0; (tmp2 < len) && num; tmp2++)
+            num -= flags[tmp2];
+        if (tmp2 >= len + 1) {
+            tmp2 = len - 1;
+            log("trouble in reshuffle.");
+        }
+        flags[tmp2 - 1] = 0;
+        newarr[tmp] = arr[tmp2 - 1];
+    }
+    for (tmp = 0; tmp < len; tmp++)
+        arr[tmp] = newarr[tmp];
+    return;
 }

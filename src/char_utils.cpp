@@ -33,6 +33,12 @@ struct race_bodypart_data;
 
 // TODO(dgurley):  Move these tables elsewhere or provide accessors or something.
 extern sh_int square_root[];
+// character_list's DEFINITION lives in entity_lifecycle.cpp (db_boot.cpp
+// precedent); forward-declared here for get_followers_level() (placement-seam
+// Task 5), matching the pervasive local-extern idiom this symbol already uses
+// throughout the tree (act_info.cpp, ranger.cpp, etc.) rather than a shared
+// header.
+extern struct char_data* character_list;
 // extern race_bodypart_data bodyparts[MAX_BODYTYPES]; // Due to where this is located, this currently isn't possible to support here.
 
 //============================================================================
@@ -1689,4 +1695,78 @@ int can_swim(struct char_data* ch)
                 return TRUE;
 
     return FALSE;
+}
+
+//============================================================================
+// get_followers_level()/mudlog_debug_mob()/mudlog_aliased_mob()/
+// has_critical_stat_damage()/has_alias()/has_program() relocated verbatim
+// from utility.cpp (placement-seam Task 5; census verdict MOVE-OTHER-L2 for
+// all six -- see placement-census.md's utility.cpp table). All are
+// entity-pure (char_data field/macro logic or a thin mudlog()/
+// mudlog_aliased_mob() forwarder); none touch world[]. age() and its callee
+// mud_time_passed() are NOT in this batch -- see utility.cpp's own comment
+// at age()'s original location for the blocking finding (mud_time_passed()
+// returns rots/core/types.h's time_info_data by value, an L1 type
+// rots_util.cpp/rots_platform must not depend on; moving age() alone would
+// leave rots_entity calling into still-app-tier utility.cpp). Declarations
+// unchanged (utils.h, except get_followers_level(), which has no declaring
+// header anywhere in the tree -- file-local by precedent).
+//============================================================================
+
+int get_followers_level(char_data* ch) /* summ of levels of mobs/players charmed by ch */
+{
+    int levels = 0;
+
+    for (char_data* tmpch = character_list; tmpch; tmpch = tmpch->next) {
+        if ((tmpch->master == ch) && IS_AFFECTED(tmpch, AFF_CHARM)) {
+            if (!utils::is_guardian(*tmpch)) {
+                levels += std::max(2, tmpch->get_level());
+            }
+        }
+    }
+
+    return levels;
+}
+
+void mudlog_debug_mob(std::string_view message, char_data* ch)
+{
+    mudlog_aliased_mob(message, ch, "debug");
+}
+
+void mudlog_aliased_mob(std::string_view message, char_data* ch, std::string_view mob_alias)
+{
+    message = rots::text::truncate_at_null(message);
+    mob_alias = rots::text::truncate_at_null(mob_alias);
+    const std::string_view aliases = rots::text::truncate_at_null(ch->player.name);
+    if (aliases.find(mob_alias) != std::string_view::npos) {
+        mudlog(message, SPL, LEVEL_GOD, FALSE);
+    }
+}
+
+int has_critical_stat_damage(struct char_data* ch)
+{
+    if (((GET_STR(ch) * 100) / GET_STR_BASE(ch) < 30) || ((GET_DEX(ch) * 100) / GET_DEX_BASE(ch) < 30) || ((GET_CON(ch) * 100) / GET_CON_BASE(ch) < 30))
+        return 1;
+    else
+        return 0;
+}
+
+int has_alias(char_data* host, std::string_view keyword)
+{
+    keyword = rots::text::truncate_at_null(keyword);
+    const std::string_view aliases = rots::text::truncate_at_null(host->player.name);
+    if (aliases.find(keyword) != std::string_view::npos) {
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+int has_program(char_data* host, int num)
+{
+    if ((int)host->specials.store_prog_number == num) {
+        return 1;
+    } else {
+        return 0;
+    }
 }

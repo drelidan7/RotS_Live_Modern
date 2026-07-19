@@ -124,35 +124,19 @@ void unretire(struct char_data* ch)
 // comm.cpp's two call sites are unaffected, now resolving down into
 // rots_persist.
 
-inline int
-do_squareroot(int i, struct char_data*)
-{
-    if (i / 4 > 170)
-        i = 170 * 4;
-
-    return ((4 - i % 4) * square_root[i / 4] + (i % 4) * square_root[i / 4 + 1]);
-}
+// do_squareroot() relocated to char_utils_combat.cpp (placement-seam Task 5;
+// census verdict MOVE-OTHER-L2, moving together with its sole caller
+// get_weapon_damage()): pure square_root[] table lookup, no world/output
+// dependency. No declaring header (file-local, as it was here).
 
 // get_current_time_phase() relocated to entity_lifecycle.cpp (entity-seed
 // Task 5), alongside int pulse's definition (formerly comm.cpp); declaration
 // unchanged in utils.h.
 
-int default_exit_width[] = {
-    2, /* #define SECT_INSIDE          0 */
-    4, /* #define SECT_CITY            1 */
-    6, /* #define SECT_FIELD           2 */
-    5, /* #define SECT_FOREST          3 */
-    5, /* #define SECT_HILLS           4 */
-    5, /* #define SECT_MOUNTAIN        5 */
-    5, /* #define SECT_WATER_SWIM      6 */
-    5, /* #define SECT_WATER_NOSWIM    7 */
-    5, /* #define SECT_UNDERWATER      8 */
-    4, /* #define SECT_ROAD            9 */
-    3, /* #define SECT_CRACK          10 */
-    3, /* #define SECT_DENSE_FOREST   11 */
-    5, /* #define SECT_SWAMP          12 */
-    0
-};
+// default_exit_width[] table relocated to environment_utils.cpp
+// (placement-seam Task 5), alongside its sole reader get_exit_width() (see
+// that function's own relocation comment below): pure per-sector-type
+// default-width data, no declaring header (file-local, as it was here).
 
 // get_race_weight() relocated to entity_lifecycle.cpp (entity-seed Task 5);
 // declaration unchanged in utils.h.
@@ -169,276 +153,46 @@ int default_exit_width[] = {
 // get_naked_willpower() relocated to entity_lifecycle.cpp (db-split Task 4b);
 // declaration unchanged in utils.h.
 
-int get_exit_width(struct room_data* room, int dir)
-{
-    if (!room || (dir < 0) || (dir >= NUM_OF_DIRS))
-        return -1;
-    if (!room->dir_option[dir])
-        return -1;
+// get_exit_width() relocated to environment_utils.cpp (placement-seam
+// Task 5; census verdict MOVE-OTHER-L2), taking its default_exit_width[]
+// table with it (see above): entity-pure room_data*-field lookup, no
+// world[] access. No declaring header (file-local, as it was here).
 
-    if (room->dir_option[dir]->exit_width != 0)
-        return room->dir_option[dir]->exit_width;
+// string_to_new_value() relocated to rots_util.cpp (placement-seam
+// Task 5; census verdict MOVE-OTHER(platform)): pure text/int parsing, no
+// game-type dependency. Declaration unchanged in utils.h.
 
-    return default_exit_width[room->sector_type];
-}
+// get_bow_weapon_damage() relocated to char_utils_combat.cpp
+// (placement-seam Task 5; census verdict MOVE-OTHER-L2): entity-pure
+// obj_data-method arithmetic. No declaring header (file-local, as it was
+// here).
 
-int string_to_new_value(char* arg, int* value)
-{
-    while (*arg && (*arg <= ' '))
-        arg++;
+// get_weapon_damage() relocated to char_utils_combat.cpp (placement-seam
+// Task 5; census verdict MOVE-OTHER-L2), taking do_squareroot()/
+// get_bow_weapon_damage() with it: entity-pure combat-stat calculation, no
+// world[]/output/combat-call dependency. Declaration unchanged in utils.h.
 
-    if (!*arg)
-        return *value;
+// weight_coof() relocated to char_utils_combat.cpp (placement-seam Task 5;
+// census verdict MOVE-OTHER-L2): entity-pure CAN_WEAR lookup. No declaring
+// header (file-local, as it was here).
 
-    if (isdigit(*arg))
-        *value = atoi(arg);
-    if (*arg == '+')
-        *value += atoi(arg + 1);
-    if (*arg == '-')
-        *value -= atoi(arg + 1);
-    if ((*arg == 'p') || (*arg == 'P'))
-        *value |= 1 << atoi(arg + 1);
-    if ((*arg == 'm') || (*arg == 'M'))
-        *value &= ~(1 << atoi(arg + 1));
+// armor_absorb() relocated to char_utils_combat.cpp (placement-seam Task 5;
+// census verdict MOVE-OTHER-L2), alongside its weight_coof() dependency:
+// entity-pure. Declaration unchanged in utils.h.
 
-    return *value;
-}
+// get_real_stealth() relocated to char_utils_combat.cpp (placement-seam
+// Task 5; census verdict MOVE-OTHER-L2, resolver dep): its single unchecked
+// world[ch->in_room].sector_type read (no bounds test in the original)
+// becomes room_by_id_total(ch->in_room)->sector_type per the BINDING
+// addendum's resolver-variant rule -- see task-5-report.md for the exact
+// before/after quote. No declaring header (file-local, as it was here).
 
-//============================================================================
-int get_bow_weapon_damage(const obj_data& weapon)
-{
-    const char_data* owner = weapon.get_owner();
-    int level_factor = 0;
-    if (owner) {
-        level_factor = std::min(weapon.get_level(), owner->get_level()) / 3;
-    } else {
-        level_factor = weapon.get_level() / 3;
-    }
-    return level_factor + weapon.get_ob_coef() + weapon.get_bulk();
-}
-
-//============================================================================
-int get_weapon_damage(struct obj_data* obj)
-{
-    int parry_coef, OB_coef, dam_coef;
-    int tmp, bulk, str_speed, null_speed, ene_regen;
-    int obj_level, skill_type;
-    struct char_data* owner;
-
-    if (GET_ITEM_TYPE(obj) != ITEM_WEAPON) {
-        mudlog("Calculating damage for non-weapon!", NRM, LEVEL_IMMORT, TRUE);
-        return 1;
-    }
-
-    game_types::weapon_type w_type = obj->get_weapon_type();
-    if (w_type == game_types::WT_BOW || w_type == game_types::WT_CROSSBOW) {
-        return get_bow_weapon_damage(*obj);
-    }
-
-    parry_coef = obj->obj_flags.value[1];
-    OB_coef = obj->obj_flags.value[0];
-    bulk = obj->obj_flags.value[2];
-    skill_type = weapon_skill_num(obj->obj_flags.value[3]);
-    obj_level = obj->obj_flags.level;
-    owner = obj->carried_by;
-
-    /*
-     * If the weapon is owned by someone (i.e., we aren't just statting
-     * an object), then that person will affect how well the weapon
-     * works.  Currently, there are two maluses:
-     *   (1) If the wielder's level is a good deal lower than the
-     *       object's level, then the level of the object is lowered
-     *       to be closer to the wielder's; thus reducing damage.
-     *   (2) If the wielder has low weapon skill for the object, then
-     *       we reduce the damage.
-     */
-    if (owner != NULL) {
-        /* Case (1) */
-        if (obj_level > (GET_LEVEL(owner) * 4 / 3 + 7))
-            obj_level -= (obj_level - GET_LEVEL(owner) * 4 / 3 - 7) * 2 / 3;
-
-        /* Case (2): for skill=100, use full obj_level; skill=0, use obj_level/2 */
-        obj_level = obj_level * GET_SKILL(owner, skill_type) / 100;
-    }
-
-    switch (obj->obj_flags.value[3]) {
-    case 2: /* whip */
-        parry_coef += 8;
-        OB_coef -= 5;
-        break;
-
-    case 3:
-    case 4:
-        parry_coef -= 2;
-        break;
-
-    case 6:
-    case 7:
-        parry_coef += 3;
-        break;
-    }
-
-    if (parry_coef < -7)
-        parry_coef = parry_coef / 3 - 1; /* i.e. parry < -7 */
-    else if (parry_coef < 0)
-        parry_coef = parry_coef / 2;
-
-    if (parry_coef > 5)
-        parry_coef = parry_coef * 2 - 5;
-
-    if (OB_coef < -7)
-        OB_coef = OB_coef / 2 - 1;
-    else if (OB_coef < 0)
-        OB_coef = OB_coef * 2 / 3;
-
-    if (OB_coef > 40)
-        OB_coef = 40; /* just against crashes */
-
-    /* dam_coef is about 3000 on avg. low weapon */
-    dam_coef = (40 + obj_level - parry_coef) * (50 - OB_coef) * 4 / 3;
-    dam_coef = dam_coef * (20 - abs(bulk - 3)) / 20;
-
-    null_speed = 225;
-    if (GET_OBJ_WEIGHT(obj) == 0)
-        GET_OBJ_WEIGHT(obj) = 1;
-
-    /* all equal damage in 2-hands, with 20 str 20 dex. 100% attack */
-    str_speed = 2 * 20 * 2500000 / (GET_OBJ_WEIGHT(obj) * (bulk + 3));
-
-    tmp = (1000000 / (1000000 / str_speed + 1000000 / (null_speed * null_speed)));
-
-    /* ene_regen is about 100 on average */
-    ene_regen = do_squareroot(tmp / 100, NULL) / 20;
-    dam_coef = dam_coef / ene_regen * 3;
-
-    if (dam_coef > 70)
-        dam_coef = 70 + (dam_coef - 70) * 3 / 4;
-
-    if (dam_coef > 90)
-        dam_coef = 90 + (dam_coef - 90) * 3 / 4;
-
-    return dam_coef; /* returning damage * 10 */
-}
-
-int weight_coof(struct obj_data* obj)
-{
-    if (CAN_WEAR(obj, ITEM_WEAR_BODY))
-        return 3;
-    if (CAN_WEAR(obj, ITEM_WEAR_ARMS))
-        return 2;
-    if (CAN_WEAR(obj, ITEM_WEAR_LEGS))
-        return 2;
-
-    return 1;
-}
-
-int armor_absorb(struct obj_data* obj)
-{
-    int absorb, points, encumb_points;
-
-    if (obj->obj_flags.value[0] == -1)
-        return 0;
-
-    encumb_points = obj->obj_flags.value[2] * 6 + GET_OBJ_WEIGHT(obj) / weight_coof(obj) / 20;
-
-    points = obj->obj_flags.level + encumb_points;
-
-    /* bonus of 15 abs. at 30 abs., double at 0 */
-    if (encumb_points < 30)
-        points += encumb_points * (60 - encumb_points) / 90;
-
-    if (obj->obj_flags.value[2]) /* encumb for low encumb */
-        points += 3;
-
-    absorb = points - obj->obj_flags.value[1] * 9;
-    if (absorb < 0)
-        absorb = 0;
-
-    if (absorb > 50)
-        absorb = 100 - 2500 / absorb;
-
-    return (absorb);
-}
-
-/*
- * get_real_stealth has sort of turned into the default
- * "how stealthy is this person?" function.  It now takes
- * into account specialization and sneak in addition to
- * stealth skill, race, sector type and encumbrance.
- */
-int get_real_stealth(struct char_data* ch)
-{
-    int percent;
-
-    /* This is the only bonus we give for the stealth skill */
-    percent = GET_RAW_SKILL(ch, SKILL_STEALTH) / 4;
-
-    /* This is the only place where stealth spec helps hiders */
-    if (GET_SPEC(ch) == PLRSPEC_STLH)
-        percent += 5;
-
-    /* Now, sneaking helps stealth */
-    if (IS_AFFECTED(ch, AFF_SNEAK) && IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) {
-        if (IS_NPC(ch))
-            percent += std::max(100, 10 * GET_LEVEL(ch) / 30);
-        else
-            percent += GET_SKILL(ch, SKILL_SNEAK) / 20;
-    }
-
-    switch (world[ch->in_room].sector_type) {
-    case SECT_INSIDE:
-        percent -= 20;
-        break;
-    case SECT_CITY:
-        percent -= 10;
-        break;
-    case SECT_FIELD:
-        percent += 0;
-        break;
-    case SECT_FOREST:
-        percent += 15;
-        break;
-    case SECT_HILLS:
-        percent += 5;
-        break;
-    case SECT_MOUNTAIN:
-        percent += 0;
-        break;
-    case SECT_WATER_SWIM:
-        percent -= 20;
-        break;
-    case SECT_WATER_NOSWIM:
-        percent -= 20;
-        break;
-    case SECT_UNDERWATER:
-        percent -= 20;
-        break;
-    case SECT_ROAD:
-        percent -= 5;
-        break;
-    case SECT_CRACK:
-        percent -= 10;
-        break;
-    case SECT_DENSE_FOREST:
-        percent += 20;
-        break;
-    case SECT_SWAMP:
-        percent += 5;
-        break;
-    }
-
-    if (GET_RACE(ch) == RACE_DWARF)
-        percent -= 10;
-
-    if (GET_RACE(ch) == RACE_HOBBIT || GET_RACE(ch) == RACE_BEORNING || GET_RACE(ch) == RACE_HARADRIM)
-        percent += 5;
-
-    percent -= utils::get_leg_encumbrance(*ch);
-    percent -= utils::get_encumbrance(*ch) / 4;
-
-    return (percent);
-}
-
+// STAY-APP (placement-seam Task 5 census): the player_spec::
+// weapon_master_handler spec-handler this function calls is app-tier, so it
+// stays here even though its trio-mate get_real_dodge() below moved to
+// char_utils_combat.cpp/rots_entity this task -- the OB/parry/dodge trio now
+// splits across tiers. Task 7 must update AGENTS.md's Dead/Unused-Code trio
+// paragraph to reflect this split.
 int get_real_OB(char_data* ch)
 {
     if (IS_NPC(ch)) {
@@ -553,6 +307,10 @@ int get_real_OB(char_data* ch)
     return tmpob;
 }
 
+// STAY-APP (placement-seam Task 5 census): same weapon_master
+// spec-handler app edge as get_real_OB() above; get_real_dodge() (the trio's
+// third member) moved to char_utils_combat.cpp/rots_entity this task. See
+// get_real_OB()'s comment above and Task 7's AGENTS.md follow-up.
 int get_real_parry(struct char_data* ch)
 {
     int sun_mod = 0;
@@ -653,183 +411,38 @@ int get_real_parry(struct char_data* ch)
     return tmpparry;
 }
 
-int get_real_dodge(struct char_data* ch)
-{
-    int sun_mod = 0;
+// get_real_dodge() relocated to char_utils_combat.cpp (placement-seam
+// Task 5; census verdict MOVE-OTHER-L2): entity-pure, the cleanest of the
+// OB/parry/dodge trio (no weapon_master, no world[]) -- see get_real_OB()/
+// get_real_parry() above for the trio's STAY-APP half. Declaration
+// unchanged in utils.h.
 
-    if (IS_NPC(ch)) {
-        if (IS_AFFECTED(ch, AFF_CONFUSE))
-            return (GET_DODGE(ch) + GET_DEX(ch) - 5 + GET_LEVEL(ch) / 2) - (get_confuse_modifier(ch) * 2 / 3);
-        else
-            return (GET_DODGE(ch) + GET_DEX(ch) - 5 + GET_LEVEL(ch) / 2);
-    }
+// get_followers_level() relocated to char_utils.cpp (placement-seam
+// Task 5; census verdict MOVE-OTHER-L2): entity-pure character_list walk.
+// No declaring header (file-local, as it was here).
 
-    int dodge = ((GET_SKILL(ch, SKILL_DODGE) + GET_SKILL(ch, SKILL_STEALTH) / 2 + 60) * GET_PROF_LEVEL(PROF_RANGER, ch) / 200 + (GET_SKILL(ch, SKILL_DODGE) + GET_SKILL(ch, SKILL_STEALTH) / 4) / 20);
-    dodge -= utils::get_dodge_penalty(*ch);
-    dodge += 3;
+// number(double) relocated to rots_util.cpp (placement-seam Task 5;
+// census verdict MOVE-OTHER(platform)): thin wrapper over the
+// already-platform-tier number(). Declaration unchanged in utils.h.
 
-    if (GET_RACE(ch) == RACE_BEORNING) {
-        dodge += 20;
-    }
+// number_d() relocated to rots_util.cpp (placement-seam Task 5; census
+// verdict MOVE-OTHER(platform)): thin wrapper over number(double)/
+// number(). Declaration unchanged in utils.h.
 
-    if (GET_TACTICS(ch) == TACTICS_BERSERK)
-        dodge /= 2;
+// rots_asprintf() relocated to rots_util.cpp (placement-seam Task 5;
+// census verdict MOVE-OTHER(platform), matching the rots_remove()/
+// rots_rename_replace() precedent -- declared in platform_compat.h,
+// defined in rots_util.cpp): pure libc varargs, no game-type dependency.
 
-    if (IS_AFFECTED(ch, AFF_CONFUSE))
-        dodge -= (get_confuse_modifier(ch) * 2 / 3);
+// strn_cmp() relocated to rots_util.cpp (placement-seam Task 5; census
+// verdict MOVE-OTHER(platform)): the utils.h LOWER macro is inlined as
+// the file's existing lower_ascii() helper (same precedent as
+// str_cmp()/str_cmp_nullable() there). Declaration unchanged in utils.h.
 
-    sun_mod = get_power_of_arda(ch);
-    if (sun_mod) {
-        if (GET_RACE(ch) == RACE_URUK)
-            dodge = dodge * 9 / 10 - sun_mod;
-        if (GET_RACE(ch) == RACE_ORC)
-            dodge = dodge * 8 / 9 - sun_mod;
-        if (GET_RACE(ch) == RACE_MAGUS)
-            dodge = dodge * 9 / 10 - sun_mod;
-        if (GET_RACE(ch) == RACE_OLOGHAI)
-            dodge = dodge * 9 / 10 - sun_mod;
-    }
-
-    switch (GET_TACTICS(ch)) {
-    case TACTICS_DEFENSIVE:
-        return (dodge + GET_DODGE(ch) + 6) + GET_DEX(ch);
-    case TACTICS_CAREFUL:
-        return (dodge + GET_DODGE(ch) + 4) + GET_DEX(ch);
-    case TACTICS_NORMAL:
-        return (dodge + GET_DODGE(ch)) + GET_DEX(ch);
-    case TACTICS_AGGRESSIVE:
-        return (dodge + GET_DODGE(ch) - 4) + GET_DEX(ch);
-    case TACTICS_BERSERK:
-        return (dodge + GET_DODGE(ch) - 4) + GET_DEX(ch) / 2;
-    default:
-        return (dodge + GET_DODGE(ch) + GET_DEX(ch));
-    };
-}
-
-int get_followers_level(char_data* ch) /* summ of levels of mobs/players charmed by ch */
-{
-    int levels = 0;
-
-    for (char_data* tmpch = character_list; tmpch; tmpch = tmpch->next) {
-        if ((tmpch->master == ch) && IS_AFFECTED(tmpch, AFF_CHARM)) {
-            if (!utils::is_guardian(*tmpch)) {
-                levels += std::max(2, tmpch->get_level());
-            }
-        }
-    }
-
-    return levels;
-}
-
-// returns a random number from 0.0 to max
-double number(double max)
-{
-    return number() * max;
-}
-
-// returns a random number in interval [from;to] */
-double number_d(double from, double to)
-{
-    if (from > to) {
-        std::swap(from, to);
-    }
-
-    return number(to) + from;
-}
-
-// rots_asprintf: portable stand-in for the asprintf() extension (see platform_compat.h
-// for the full ownership-contract writeup). Sizes the formatted output with a
-// zero-length vsnprintf pass (which returns the would-be length, excluding the NUL,
-// per the C99/POSIX contract), allocates exactly that many bytes plus one for the NUL,
-// then formats into it for real. A va_list is invalidated after any va_arg use
-// including the "measure" pass, so it must be va_copy'd before that pass and the
-// original consumed only once, by the final vsnprintf.
-int rots_asprintf(char** out, const char* fmt, ...)
-{
-    va_list args;
-    va_start(args, fmt);
-
-    va_list size_args;
-    va_copy(size_args, args);
-    const int needed = vsnprintf(nullptr, 0, fmt, size_args);
-    va_end(size_args);
-
-    if (needed < 0) {
-        va_end(args);
-        *out = nullptr;
-        return -1;
-    }
-
-    char* buffer = (char*)malloc((size_t)needed + 1);
-    if (buffer == nullptr) {
-        va_end(args);
-        *out = nullptr;
-        return -1;
-    }
-
-    const int written = vsnprintf(buffer, (size_t)needed + 1, fmt, args);
-    va_end(args);
-
-    if (written < 0) {
-        free(buffer);
-        *out = nullptr;
-        return -1;
-    }
-
-    *out = buffer;
-    return written;
-}
-
-/* returns: 0 if equal, 1 if arg1 > arg2, -1 if arg1 < arg2  */
-/* scan 'till found different, end of both, or n reached     */
-int strn_cmp(std::string_view first, std::string_view second, int count)
-{
-    if (count <= 0) {
-        return 0;
-    }
-    const std::size_t comparison_limit = static_cast<std::size_t>(count);
-    for (std::size_t index = 0; index < comparison_limit; ++index) {
-        const char first_char = (index < first.size()) ? first[index] : '\0';
-        const char second_char = (index < second.size()) ? second[index] : '\0';
-        if (first_char == '\0' || second_char == '\0') {
-            if (first_char == second_char) {
-                return 0;
-            }
-            return (first_char == '\0') ? -1 : 1;
-        }
-        const int difference = LOWER(first_char) - LOWER(second_char);
-        if (difference < 0) {
-            return -1;
-        }
-        if (difference > 0) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-int strn_cmp_nullable(const char* first, const char* second, int count)
-{
-    if (first == nullptr || second == nullptr) {
-        if (first == second) {
-            return 0;
-        }
-        return first == nullptr ? -1 : 1;
-    }
-    if (count <= 0) {
-        return 0;
-    }
-    for (int index = 0; index < count; ++first, ++second, ++index) {
-        const int difference = LOWER(*first) - LOWER(*second);
-        if (difference != 0) {
-            return (difference < 0) ? -1 : 1;
-        }
-        if (*first == '\0') {
-            return 0;
-        }
-    }
-    return 0;
-}
+// strn_cmp_nullable() relocated to rots_util.cpp (placement-seam
+// Task 5; census verdict MOVE-OTHER(platform)): same LOWER-macro ->
+// lower_ascii() substitution as strn_cmp() above. Declaration unchanged
+// in utils.h.
 
 /* log a death trap hit */
 void log_death_trap(struct char_data* ch)
@@ -841,94 +454,34 @@ void log_death_trap(struct char_data* ch)
     mudlog(message, BRF, LEVEL_IMMORT, TRUE);
 }
 
-void mudlog_debug_mob(std::string_view message, char_data* ch)
-{
-    mudlog_aliased_mob(message, ch, "debug");
-}
+// mudlog_debug_mob() relocated to char_utils.cpp (placement-seam
+// Task 5; census verdict MOVE-OTHER-L2): thin mudlog_aliased_mob()
+// forwarder. Declaration unchanged in utils.h.
 
-void mudlog_aliased_mob(std::string_view message, char_data* ch, std::string_view mob_alias)
-{
-    message = rots::text::truncate_at_null(message);
-    mob_alias = rots::text::truncate_at_null(mob_alias);
-    const std::string_view aliases = rots::text::truncate_at_null(ch->player.name);
-    if (aliases.find(mob_alias) != std::string_view::npos) {
-        mudlog(message, SPL, LEVEL_GOD, FALSE);
-    }
-}
+// mudlog_aliased_mob() relocated to char_utils.cpp (placement-seam
+// Task 5; census verdict MOVE-OTHER-L2), alongside mudlog_debug_mob()
+// above: entity-pure. Declaration unchanged in utils.h.
 
-/*
- * Sprintbit now contains an extra variable (int var) so it can
- * discern when identify is using it.
- */
-void sprintbit(long vektor, const std::string_view names[], char* result, int var)
-{
-    long nr;
-    int count;
+// sprintbit() relocated to rots_util.cpp (placement-seam Task 5; census
+// verdict MOVE-OTHER(platform)): the utils.h IS_SET macro is inlined as
+// its own (flag)&(bit) definition and rots/core/room.h's BFS_MARK
+// constant is inlined as a local constexpr, the same L0-must-not-include
+// precedent as this file's other relocations. Declaration unchanged in
+// utils.h.
 
-    count = 0;
+// sprinttype() relocated to rots_util.cpp (placement-seam Task 5; census
+// verdict MOVE-OTHER(platform)): pure text formatting. Declaration
+// unchanged in utils.h.
 
-    if (vektor < 0) {
-        strcpy(result, "SPRINTBIT ERROR!");
-        return;
-    }
-
-    if (vektor == 0) {
-        strcpy(result, var != 0 ? "has no additional attributes. " : "<NONE>");
-        return;
-    }
-
-    // Composed here (rather than strcat-chained straight into `result`) so
-    // the "did the loop append anything" check below (the NOFLAGS fallback)
-    // is a plain std::string::empty() instead of testing *result -- result
-    // itself is only written once, at the very end, via the same unbounded
-    // strcpy the original code used (callers still supply their own
-    // sufficiently-sized buffer; no size is available here to bound against).
-    std::string composed;
-    for (nr = 0; vektor; vektor >>= 1) {
-        if (IS_SET(1, vektor) && (vektor != BFS_MARK)) {
-            if (names[nr] != "\n") {
-                /*
-                 * Where the variable passed in is not 0
-                 * then identify is using sprintbit
-                 * The block of code contained here is used only
-                 * for identify.
-                 */
-                if (var != 0) {
-                    if (var == 2) {
-                        composed += (count == 0) ? " " : " and ";
-                    } else {
-                        composed += (count == 0) ? "has the following attributes.\r\n" : ".\r\n";
-                    }
-                } else /* normal sprintbit resumes here */
-                    composed += " ";
-                composed += names[nr];
-                count++;
-            } else {
-                composed += "UNDEFINE ";
-            }
-        }
-        if (names[nr] != "\n")
-            nr++;
-    }
-
-    if (composed.empty())
-        composed += "NOFLAGS";
-
-    composed += ".";
-    strcpy(result, composed.c_str());
-}
-
-void sprinttype(int type, const std::string_view names[], char* result)
-{
-    int nr;
-
-    for (nr = 0; names[nr] != "\n"; nr++)
-        ;
-
-    const std::string_view value = (type < nr) ? names[type] : "UNDEFINED";
-    strcpy(result, value.data());
-}
-
+// BLOCKING FINDING (placement-seam Task 5; see task-5-report.md): census
+// verdict was MOVE-OTHER(platform) with "upward refs: none", but this function
+// returns struct time_info_data BY VALUE -- that type is defined in
+// rots/core/types.h (L1/rots_core), and every rots_util.cpp precedent already
+// in that file (MAX_INPUT_LENGTH, FIND_ALL/FIND_ALLDOT/FIND_INDIV,
+// COPP_IN_GOLD/COPP_IN_SILV, LEVEL_IMMORT) explicitly declines to include that
+// header even for a single scalar constant. DEFERRED, not moved: stays here
+// verbatim, app tier, pending a follow-up wave (see mud_time_passed()'s
+// comment below and task-5-report.md's recommendation).
 /* Calculate the REAL time passed over the last t2-t1 centuries (secs) */
 struct time_info_data real_time_passed(time_t t2, time_t t1)
 {
@@ -949,6 +502,11 @@ struct time_info_data real_time_passed(time_t t2, time_t t1)
     return now;
 }
 
+// BLOCKING FINDING (placement-seam Task 5; see task-5-report.md): same
+// struct time_info_data-by-value / L1-type dependency as real_time_passed()
+// above. DEFERRED, not moved: stays here verbatim, app tier. age() below
+// (census verdict MOVE-OTHER-L2/char_utils.cpp) calls this function and is
+// deferred alongside it for the same reason -- see age()'s own comment.
 /* Calculate the MUD time passed over the last t2-t1 centuries (secs) */
 struct time_info_data mud_time_passed(time_t t2, time_t t1)
 {
@@ -972,6 +530,15 @@ struct time_info_data mud_time_passed(time_t t2, time_t t1)
     return now;
 }
 
+// DEFERRED alongside mud_time_passed() above (placement-seam Task 5; see
+// task-5-report.md): age()'s own census verdict is MOVE-OTHER-L2/
+// char_utils.cpp and its own body is entity-pure, but it calls
+// mud_time_passed(), which cannot move to rots_util.cpp/L0 this task
+// (blocking finding above) -- moving age() alone would leave an
+// EntityLayerAcyclicity-breaking call from rots_entity into still-app-tier
+// utility.cpp, the same class of problem Task 4 hit with
+// parse_numbered_name()/get_char(). Stays here verbatim, app tier, until
+// mud_time_passed()'s L1 dependency is resolved.
 struct time_info_data age(struct char_data* ch)
 {
     struct time_info_data player_age;
@@ -1027,57 +594,14 @@ void initialize_buffers()
 
 // decrypt_line_line / decrypt_line() relocated to entity_lifecycle.cpp (db-split Task 4b).
 
-char* strcpy_lang(char* str1, char* str2, byte freq, int maxlen)
-{
-    int i, len;
+// strcpy_lang() relocated to rots_util.cpp (placement-seam Task 5;
+// census verdict MOVE-OTHER(platform)): pure text plus the
+// already-platform-tier number(int,int). Declaration unchanged in
+// utils.h.
 
-    len = strlen(str2);
-    if (len > maxlen)
-        len = maxlen;
-
-    for (i = 0; i < len; i++) {
-        if ((number(1, 100) > freq) && isalpha(str2[i])) {
-            if (isupper(str2[i]))
-                str1[i] = number(65, 90);
-            else
-                str1[i] = number(97, 122);
-        } else
-            str1[i] = str2[i];
-    }
-    str1[i] = 0;
-
-    return str1;
-}
-
-void reshuffle(int* arr, int len)
-{
-    int tmp, tmp2, num;
-    int newarr[255];
-    char flags[255];
-
-    if (len >= 255) {
-        len = 254;
-        log("Reshuffle called for more than 255 elements.");
-    }
-
-    for (tmp = 0; tmp < len; tmp++)
-        flags[tmp] = 1;
-
-    for (tmp = 0; tmp < len; tmp++) {
-        num = 1 + number(0, len - tmp - 1);
-        for (tmp2 = 0; (tmp2 < len) && num; tmp2++)
-            num -= flags[tmp2];
-        if (tmp2 >= len + 1) {
-            tmp2 = len - 1;
-            log("trouble in reshuffle.");
-        }
-        flags[tmp2 - 1] = 0;
-        newarr[tmp] = arr[tmp2 - 1];
-    }
-    for (tmp = 0; tmp < len; tmp++)
-        arr[tmp] = newarr[tmp];
-    return;
-}
+// reshuffle() relocated to rots_util.cpp (placement-seam Task 5; census
+// verdict MOVE-OTHER(platform)): pure array shuffle over the
+// already-platform-tier number()/log(). Declaration unchanged in utils.h.
 
 /*
  * Can character see at all?
@@ -1176,21 +700,9 @@ int CAN_SEE(struct char_data* sub, struct char_data* obj, int light_mode)
     return 1;
 }
 
-/*
- * If a character is affected by the detect hidden spell,
- * can they sense a hidden character?  Returns 1 if sub
- * can see obj, returns 0 otherwise.
- */
-int can_sense(char_data* sub, char_data* obj)
-{
-    if (!IS_AFFECTED((sub), AFF_DETECT_HIDDEN) || GET_PERCEPTION(obj) <= 0)
-        return 0;
-
-    if (30 + (GET_PROF_LEVEL(PROF_CLERIC, sub) * 3) > (100 - GET_PERCEPTION(obj) * GET_PERCEPTION(sub) / 100 + GET_HIDING(obj) / 4))
-        return 1;
-    else
-        return 0;
-}
+// can_sense() relocated to char_utils_combat.cpp (placement-seam Task 5;
+// census verdict MOVE-OTHER-L2): entity-pure GET_* macro logic.
+// Declaration unchanged in utils.h.
 
 int CAN_SEE_OBJ(char_data* sub, obj_data* obj)
 {
@@ -1210,97 +722,46 @@ int CAN_SEE_OBJ(char_data* sub, obj_data* obj)
     return 0;
 }
 
-/* moved from utils.h */
-int CAN_GO(struct char_data* ch, int door)
-{
-    if ((EXIT(ch, door) && (EXIT(ch, door)->to_room != NOWHERE)) && (!(IS_SHADOW(ch) ? (IS_SET(EXIT(ch, door)->exit_info, EX_DOORISHEAVY) && IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED)) : IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED)) || IS_SET(EXIT(ch, door)->exit_info, EX_ISBROKEN)))
-        return 1;
-
-    return 0;
-}
+// CAN_GO() relocated to environment_utils.cpp (placement-seam Task 5; census
+// verdict MOVE-OTHER-L2, resolver dep): the EXIT(ch,door) macro (utils.h:
+// `#define EXIT(ch, door) (world[(ch)->in_room].dir_option[door])`)
+// expands to an unchecked world[] index (no bounds test anywhere in the
+// original body) -- per the BINDING addendum's resolver-variant rule,
+// hoisted once into room_by_id_total(ch->in_room) with every EXIT(ch,door)
+// site replaced by r->dir_option[door] -- see task-5-report.md for the
+// full expansion evidence. Declaration unchanged in utils.h.
 
 // get_confuse_modifier() relocated to entity_lifecycle.cpp (db-split Task 4b);
 // declaration unchanged in utils.h.
 
-int get_power_of_arda(struct char_data* ch)
-{
-    struct affected_type* aff;
-    int sun_mod;
+// get_power_of_arda() relocated to char_utils_combat.cpp
+// (placement-seam Task 5; census verdict MOVE-OTHER-L2): entity-pure
+// affected_by_spell() lookup, needed by the OB/parry/dodge trio.
+// Declaration unchanged in utils.h.
 
-    aff = affected_by_spell(ch, SPELL_ARDA);
-    if (aff)
-        sun_mod = aff->modifier / 25;
-    else
-        sun_mod = 0;
+// has_critical_stat_damage() relocated to char_utils.cpp
+// (placement-seam Task 5; census verdict MOVE-OTHER-L2): entity-pure
+// GET_* macro logic. Declaration unchanged in utils.h.
 
-    return sun_mod;
-}
+// can_breathe() relocated to environment_utils.cpp (placement-seam Task 5;
+// census verdict MOVE-OTHER-L2, resolver dep): its two unchecked
+// world[ch->in_room].sector_type reads (no bounds test in the original)
+// become a single hoisted room_by_id_total(ch->in_room) per the BINDING
+// addendum's resolver-variant rule. Declaration unchanged in utils.h.
 
-int has_critical_stat_damage(struct char_data* ch)
-{
-    if (((GET_STR(ch) * 100) / GET_STR_BASE(ch) < 30) || ((GET_DEX(ch) * 100) / GET_DEX_BASE(ch) < 30) || ((GET_CON(ch) * 100) / GET_CON_BASE(ch) < 30))
-        return 1;
-    else
-        return 0;
-}
+// nth() relocated to rots_util.cpp (placement-seam Task 5; census verdict
+// MOVE-OTHER(platform)): pure text over the already-platform-tier
+// rots_asprintf(). Declaration unchanged in utils.h.
 
-int can_breathe(struct char_data* ch)
-{
-    int result;
-
-    result = 1;
-    if (world[ch->in_room].sector_type == SECT_UNDERWATER) {
-        result = 0;
-        if (IS_AFFECTED(ch, AFF_BREATHE) || IS_SHADOW(ch) || (GET_RACE(ch) == RACE_UNDEAD))
-            result = 1;
-    }
-    if (world[ch->in_room].sector_type == SECT_WATER_NOSWIM && !(can_swim(ch)))
-        result = 0;
-
-    return result;
-}
-
-/*
- * Return the string corresponding to the "nth" number.
- * I.e., if n is 1, then the string is "1st", if n is 2
- * the string is "2nd", and so on.
- *
- * This string is dynamically allocated and must be freed
- * by the caller.
- */
-char* nth(int n)
-{
-    const char *s;
-    char* r;
-    const char* first = "st";
-    const char* second = "nd";
-    const char* third = "rd";
-    const char* other = "th";
-
-    /* 11, 12 and 13 don't follow the general rule */
-    if (n == 11 || n == 12 || n == 13)
-        s = other;
-    else {
-        switch (n % 10) {
-        case 1:
-            s = first;
-            break;
-        case 2:
-            s = second;
-            break;
-        case 3:
-            s = third;
-            break;
-        default:
-            s = other;
-        }
-    }
-
-    rots_asprintf(&r, "%d%s", n, s);
-
-    return r;
-}
-
+// BLOCKING FINDING (placement-seam Task 5; see task-5-report.md): census
+// verdict was MOVE-OTHER(platform) with "upward refs: none", but the body
+// reads month_name[...] -- an external symbol defined in consts.cpp
+// (rots_core, L1) and declared in rots/core/tables.h -- and takes
+// struct time_info_data* (rots/core/types.h, L1) by pointer, dereferencing
+// its fields. This is a genuine, hard PlatformLayerAcyclicity-breaking
+// upward edge (not merely a header-inclusion style choice) -- the census's
+// "none" was incomplete for this function. DEFERRED, not moved: stays here
+// verbatim, app tier.
 void day_to_str(struct time_info_data* loc_time_info, char* str)
 {
     char* s;
@@ -1351,26 +812,9 @@ void set_mental_delay(struct char_data* ch, int value)
 // from_list_to_pool() relocated to entity_lifecycle.cpp (entity-seed Task 5);
 // declarations unchanged in utils.h.
 
-int check_resistances(char_data* victim, int attack_type)
-{
-    extern skill_data skills[];
-
-    if ((attack_type < MAX_SKILLS) && IS_RESISTANT(victim, skills[attack_type].skill_spec))
-        return 1;
-
-    if ((attack_type < MAX_SKILLS) && IS_VULNERABLE(victim, skills[attack_type].skill_spec))
-        return -1;
-
-    if (((attack_type >= TYPE_HIT) && (attack_type <= TYPE_CRUSH)) || attack_type == SKILL_ARCHERY) {
-        if (IS_RESISTANT(victim, PLRSPEC_WILD))
-            return 1;
-
-        if (IS_VULNERABLE(victim, PLRSPEC_WILD))
-            return -1;
-    }
-
-    return 0;
-}
+// check_resistances() relocated to char_utils_combat.cpp
+// (placement-seam Task 5; census verdict MOVE-OTHER-L2): entity-pure
+// skills[] (rots_core, L1) table lookup. Declaration unchanged in utils.h.
 
 /*
  * Compare `obj' to its prototype; return 0 if the object
@@ -1897,25 +1341,13 @@ char* PERS(struct char_data* target, struct char_data* observer,
     return name;
 }
 
-int has_alias(char_data* host, std::string_view keyword)
-{
-    keyword = rots::text::truncate_at_null(keyword);
-    const std::string_view aliases = rots::text::truncate_at_null(host->player.name);
-    if (aliases.find(keyword) != std::string_view::npos) {
-        return 1;
-    } else {
-        return 0;
-    }
-}
+// has_alias() relocated to char_utils.cpp (placement-seam Task 5; census
+// verdict MOVE-OTHER-L2): entity-pure player.name text match.
+// Declaration unchanged in utils.h.
 
-int has_program(char_data* host, int num)
-{
-    if ((int)host->specials.store_prog_number == num) {
-        return 1;
-    } else {
-        return 0;
-    }
-}
+// has_program() relocated to char_utils.cpp (placement-seam Task 5;
+// census verdict MOVE-OTHER-L2): entity-pure. Declaration unchanged in
+// utils.h.
 
 /* Returns the guardian type.  Returns INVALID_GUARDIAN if the mob is not a guardian.
  * guardian_mob is a data table defined in consts.cpp (rots_core); mob_index is the

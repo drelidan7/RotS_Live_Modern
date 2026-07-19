@@ -11,7 +11,7 @@
 #include <string>
 #include <string_view>
 
-// TESTING seam in zone.cpp (same convention as fight.cpp's
+// TESTING seam in zone_load.cpp (same convention as fight.cpp's
 // reset_perform_violence_timing_for_testing): resets the static cursor
 // load_zones() advances on every call, so each test starts filling
 // zone_table at slot 0 instead of wherever a previous load_zones() call

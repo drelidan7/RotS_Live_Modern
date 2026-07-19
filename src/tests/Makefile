@@ -97,7 +97,7 @@ OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	limits.o mail.o mail_json.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o obj_files.o objsave.o olog_hai.o\
 	pkill.o pkill_json.o player_file_finalize.o profs.o protocol.o ranger.o safe_template.o save_benchmark.o savebench.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o  \
-	wild_fighting_handler.o weather.o zone.o rots_rng.o rots_crypt.o rots_net.o rots_log.o rots_util.o
+	wild_fighting_handler.o weather.o zone.o zone_load.o rots_rng.o rots_crypt.o rots_net.o rots_log.o rots_util.o
 
 
 # Dependencies for the main mud
@@ -296,6 +296,8 @@ mail_json.o: ../mail_json.cpp ../mail.h ../json_utils.h ../platform_compat.h ../
 	$(CXX) -c $(CXXFLAGS) ../mail_json.cpp
 zone.o: ../zone.cpp ../zone.h ../utils.h
 	$(CXX) -c $(CXXFLAGS) ../zone.cpp
+zone_load.o: ../zone_load.cpp ../zone.h ../db.h ../utils.h
+	$(CXX) -c $(CXXFLAGS) ../zone_load.cpp
 color.o: ../color.cpp ../color.h
 	$(CXX) -c $(CXXFLAGS) ../color.cpp
 color_convert.o: ../color_convert.cpp ../color.h

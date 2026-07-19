@@ -192,6 +192,10 @@ set(ROTS_PERSIST_SOURCES
     pkill_json.cpp save_benchmark.cpp
 )
 
+# zone_load.cpp (world-seed wave, Task 4: carved out of zone.cpp -- the
+# zone-file parse/load half, incl. the zone_table/top_of_zone_table storage
+# definitions) joins here FOR NOW; it moves into ROTS_WORLD_SOURCES once
+# that L3 library exists (Task 5), joining db_world.cpp/weather.cpp there.
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -209,6 +213,7 @@ set(ROTS_SERVER_SOURCES
     shop.cpp signals.cpp skill_timer.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
     weapon_master_handler.cpp weather.cpp wild_fighting_handler.cpp zone.cpp
+    zone_load.cpp
 )
 
 add_executable(ageland ${ROTS_SERVER_SOURCES})

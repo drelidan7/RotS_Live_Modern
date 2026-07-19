@@ -589,6 +589,7 @@ if(ROTS_BUILD_TESTS)
         tests/damage_tests.cpp
         tests/db_loader_tests.cpp
         tests/db_save_roundtrip_tests.cpp
+        tests/entity_lifecycle_tests.cpp
         tests/exploits_json_tests.cpp
         tests/fight_proc_tests.cpp
         tests/fp_determinism_smoke_tests.cpp

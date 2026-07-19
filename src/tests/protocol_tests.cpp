@@ -2,6 +2,7 @@
 #include "../limits.h"
 #include "../protocol.h"
 #include "../rots_net.h"
+#include "../world_hooks.h"
 #include "rots/core/character.h"
 #include "rots/core/room.h"
 #include "rots/core/descriptor.h"
@@ -38,8 +39,13 @@ extern room_data world;
 extern weather_data weather_info;
 extern const std::string_view pc_races[];
 extern const std::string_view pc_star_types[];
+extern struct time_info_data time_info;
 
 void clear_char(struct char_data* ch, int mode);
+// protocol.cpp's relocated weather-MSDP broadcast (world-seed Task 3). External
+// linkage, no header declaration -- forward-declared here so this TU can call it
+// directly (world-seed Task 5b, Candidate 1).
+void broadcast_weather_msdp_update(rots::world::weather_msdp_kind kind);
 void msdp_update();
 int get_percent_absorb(char_data* character);
 
@@ -1871,6 +1877,126 @@ TEST(MSDPProtocol, MsdpUpdateMasksPlayerOpponentDetails)
             + expected_msdp_pair("OPPONENT_NAME", pc_star_types[RACE_HUMAN]));
 
     RELEASE(opponent.player.name);
+}
+
+
+// ---------------------------------------------------------------------------
+// broadcast_weather_msdp_update() (protocol.cpp, world-seed Task 3 relocation
+// of weather.cpp's send_msdp_function() dispatcher -- world-seed Task 5b,
+// Candidate 1). Zero prior coverage: msdp_update() (comm.cpp, tested above)
+// duplicates the same eMDSP_WEATHER string logic at its own call site, but
+// broadcast_weather_msdp_update() is a distinct function, reached only
+// through world_hooks.h's weather-MSDP hook from another_hour()/
+// weather_change() in production. Called directly here (external linkage,
+// forward-declared above) rather than through the hook: the hook's dispatch
+// helper lives in weather.cpp, not this file, and firing it indirectly would
+// only add an unnecessary layer -- the fixtures below exercise the exact
+// same descriptor_list walk/branch logic either way.
+// ---------------------------------------------------------------------------
+
+class ScopedTimeInfoHours {
+public:
+    explicit ScopedTimeInfoHours(byte hours)
+        // Saves time_info.hours (a process-wide global -- weather.cpp's
+        // definition) so the destructor can restore whatever value another
+        // test left behind, mirroring ScopedSectorWeather's save/restore
+        // pattern above.
+        : m_previous_hours(time_info.hours)
+    {
+        time_info.hours = hours;
+    }
+
+    ~ScopedTimeInfoHours() { time_info.hours = m_previous_hours; }
+
+private:
+    // The value time_info.hours held before this fixture ran; written back
+    // on destruction so later tests see the same global state they would
+    // have without this fixture.
+    byte m_previous_hours;
+};
+
+TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSkipsInvalidDescriptorsAndSendsWorldTime)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ScopedMSDPTestRoom room_scope;
+    ScopedTimeInfoHours time_scope(13); // "1:00 PM"
+
+    descriptor_data no_character {};
+    ProtocolDescriptor npc_context;
+    ProtocolDescriptor valid_context;
+    descriptor_data missing_protocol {}; // pProtocol left null: the "without MSDP" fixture
+    char_data missing_protocol_character {};
+
+    clear_char(&missing_protocol_character, MOB_VOID);
+    // Releases missing_protocol_character.profs/skills/knowledge (clear_char()
+    // heap allocations) at scope exit (mirrors this file's other ad hoc
+    // char_data fixtures).
+    ScopedClearCharFields missing_protocol_character_cleanup { missing_protocol_character };
+    missing_protocol_character.player.name = strdup("NoProtocol");
+    missing_protocol_character.in_room = 0;
+    missing_protocol.character = &missing_protocol_character;
+
+    initialize_msdp_player(&npc_context.character, "IgnoredNpc");
+    SET_BIT(npc_context.character.specials2.act, MOB_ISNPC);
+    npc_context.character.player.short_descr = strdup("ignored npc");
+
+    initialize_msdp_player(&valid_context.character, "Updated");
+    enable_msdp_reports(valid_context.descriptor.pProtocol, { eMSDP_WORLD_TIME });
+
+    no_character.next = &npc_context.descriptor;
+    npc_context.descriptor.next = &missing_protocol;
+    missing_protocol.next = &valid_context.descriptor;
+    descriptor_list = &no_character;
+
+    broadcast_weather_msdp_update(rots::world::weather_msdp_kind::world_time);
+
+    EXPECT_STREQ(valid_context.descriptor.pProtocol->pVariables[eMSDP_WORLD_TIME]->pValueString,
+        "It is about 1:00 PM on ");
+    EXPECT_EQ(valid_context.read_output(),
+        expected_msdp_pair("WORLD_TIME", "It is about 1:00 PM on "));
+    // broadcast_weather_msdp_update() calls MSDPSend() directly (unlike
+    // msdp_update()'s call site, which routes through update() and clears
+    // bDirty afterward) -- so the variable is still marked dirty even though
+    // the fresh value already went out over the wire. Pinning this asymmetry
+    // against msdp_update()'s equivalent assertions (bDirty == false) above
+    // in this file.
+    EXPECT_TRUE(valid_context.descriptor.pProtocol->pVariables[eMSDP_WORLD_TIME]->bDirty);
+    EXPECT_EQ(npc_context.read_output(), "");
+
+    RELEASE(missing_protocol_character.player.name);
+}
+
+TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSendsIndoorAndOutdoorWeather)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ScopedMSDPTestRoom room_scope;
+    ProtocolDescriptor indoor_context;
+    ProtocolDescriptor outdoor_context;
+
+    initialize_msdp_player(&indoor_context.character, "Indoor");
+    enable_msdp_reports(indoor_context.descriptor.pProtocol, { eMDSP_WEATHER });
+    descriptor_list = &indoor_context.descriptor;
+
+    broadcast_weather_msdp_update(rots::world::weather_msdp_kind::weather);
+
+    EXPECT_STREQ(indoor_context.descriptor.pProtocol->pVariables[eMDSP_WEATHER]->pValueString,
+        "You can have no feeling about the weather here.");
+    EXPECT_EQ(indoor_context.read_output(),
+        expected_msdp_pair("WEATHER", "You can have no feeling about the weather here."));
+
+    world[0].room_flags = 0;
+    world[0].sector_type = SECT_FIELD;
+    ScopedSectorWeather field_weather(SECT_FIELD, SKY_CLOUDLESS);
+    initialize_msdp_player(&outdoor_context.character, "Outdoor");
+    enable_msdp_reports(outdoor_context.descriptor.pProtocol, { eMDSP_WEATHER });
+    descriptor_list = &outdoor_context.descriptor;
+
+    broadcast_weather_msdp_update(rots::world::weather_msdp_kind::weather);
+
+    EXPECT_STREQ(outdoor_context.descriptor.pProtocol->pVariables[eMDSP_WEATHER]->pValueString,
+        "Above the fields, not a cloud can be seen in the sky.");
+    EXPECT_EQ(outdoor_context.read_output(),
+        expected_msdp_pair("WEATHER", "Above the fields, not a cloud can be seen in the sky."));
 }
 
 } // namespace

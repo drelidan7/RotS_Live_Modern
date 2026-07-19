@@ -665,8 +665,9 @@ TEST(AttachEquipmentTest, TooHeavyVerdictUsesPreAffectStrengthNotPostAffectRegre
     // carrying an APPLY_STR affect must NOT have that affect change its OWN
     // too-heavy verdict. bal_str starts at 10 (threshold 500); this weapon
     // weighs 600 (too heavy at bal_str 10) but carries APPLY_STR +50, which
-    // -- if wrongly applied BEFORE the check -- would raise bal_str to 60
-    // (threshold 3000) and make 600 NOT too heavy. A regressed
+    // -- if wrongly applied BEFORE the check -- would raise the character's
+    // raw str to 60 (GET_BAL_STR caps this at 41 via max_race_str[RACE_HUMAN]'s
+    // unbalancing formula; threshold 2050) and make 600 NOT too heavy. A regressed
     // attach_equipment() that evaluates the check after affect_modify()
     // would report WEAPON here instead of WEAPON_TOO_HEAVY_ONE_HAND.
     char_data character = make_equipment_test_npc();

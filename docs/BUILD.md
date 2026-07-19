@@ -368,9 +368,10 @@ historical stub contract.
 
 ### `rots_entity` (L2): the entity-lifecycle library
 
-The third extracted layer is `rots_entity` (L2) — as of entity-completion Task 3, **5 TUs**:
-`entity_lifecycle.cpp`, `object_utils.cpp`, `environment_utils.cpp`, `char_utils.cpp`, and
-`char_utils_combat.cpp` — built as `librots_entity.a` and linked into `ageland` (and, as of Task 6,
+The third extracted layer is `rots_entity` (L2) — as of the placement-seam wave, **8 TUs**:
+`entity_lifecycle.cpp`, `object_utils.cpp`, `environment_utils.cpp`, `char_utils.cpp`,
+`char_utils_combat.cpp`, `placement.cpp`, `containment.cpp`, and `equipment.cpp` — built as
+`librots_entity.a` and linked into `ageland` (and, as of entity-completion Task 6,
 `rots_convert`, see below) as `RotS::entity`. The first three TUs are the `db.cpp`-split's
 "unforeseen fourth TU" and its siblings (spec §4a), scrubbed by entity-seed Tasks 1-5 of every
 upward edge:
@@ -416,15 +417,135 @@ null-defaulted seams instead of direct calls (see "Output seam" and "Entity hook
   char_utils_combat join rots_entity; convert_stubs.cpp deleted — weld ledger ZERO" commit,
   entity-completion wave; see `git log -- src/convert_stubs.cpp`) for the ledger's own
   before/after.
-- **Remaining spec §3 gap, stated honestly:** `rots_entity` is 5 of the 6 TUs spec §3's original
-  target-architecture table sketched for it (`char_utils, object_utils, environment_utils,
-  handler, utility, char_utils_combat`) — `handler.cpp` and `utility.cpp` are still entirely
-  `ROTS_SERVER_SOURCES`/app-compiled, not archived. `handler.cpp` carries roughly 30 named,
-  not-yet-enumerated welds into combat/world/commands-tier code (recorded but unresolved as of
-  entity-completion Task 3). `utility.cpp` was never `nm`-profiled TU-wide the way `char_utils.cpp`
-  was — its `nm` reach is app-wide, not a short named list — so its gap is a genuinely open
-  question, not a known-and-counted one. Neither is this wave's or the next task's scope; they are
-  recorded follow-on for whichever future wave next touches the entity/app boundary.
+- **Remaining spec §3 gap, as of entity-completion Task 3 (superseded below):** `rots_entity` was
+  5 of the 6 TUs spec §3's original target-architecture table sketched for it (`char_utils,
+  object_utils, environment_utils, handler, utility, char_utils_combat`) — `handler.cpp` and
+  `utility.cpp` were still entirely `ROTS_SERVER_SOURCES`/app-compiled, not archived.
+  `handler.cpp` carried roughly 30 named, not-yet-enumerated welds into combat/world/commands-tier
+  code (recorded but unresolved as of entity-completion Task 3). `utility.cpp` had never been
+  `nm`-profiled TU-wide the way `char_utils.cpp` was — its `nm` reach was app-wide, not a short
+  named list — so its gap was a genuinely open question, not a known-and-counted one. Neither was
+  entity-completion's scope; both were recorded follow-on for whichever future wave next touched
+  the entity/app boundary. That wave was the placement-seam wave — see below.
+
+### The placement-seam wave: a tier-line split of `handler.cpp`/`utility.cpp` (Stage 1, scoped)
+
+Design: `docs/superpowers/specs/2026-07-19-placement-seam-design.md` (spec §7 Stage 1). Instead of
+carving `handler.cpp`/`utility.cpp` whole (which would need ~10-15 new hooks serving functions
+that are arguably app-tier anyway), the owner-approved decision was a **tier-line split**: pull the
+entity-pure relationship core — placement, containment, equipment mutation, and assorted pure
+helpers — into three new `rots_entity` TUs, and leave the session/command/combat-coupled remainder
+app-compiled, calling down into the moved primitives. This carved ~60 functions across five
+implementation tasks (Task 1 seam foundation, Task 2 containment/object_utils, Task 3 placement/
+equipment SPLITs, Task 4 handler.cpp remainder, Task 5 utility.cpp carve), landing 34 new targeted
+tests in Task 6 (ctest 1281 → 1315, both hosts; see AGENTS.md). The game-wide call-site conversion
+campaign (~754 `->in_room`, ~576 `world[...]`, ~104 `next_in_room` sites) and Stage 2
+(`LocationSystem`, the representation swap itself) are explicitly out of scope for this wave.
+
+**The four-resolver world seam.** The spec anticipated one resolver; the census (and a Task 1
+implementation-time STOP) surfaced the need for four, all registered by one function:
+
+- `room_data* room_by_id(int rnum)` — **nullptr-on-invalid.** For callers that historically had
+  their own explicit bounds check before indexing `world[]`; the moved bounds check becomes a
+  nullptr check. Its exclusive upper bound is `top_of_world`, which excludes the live dummy room
+  *at* that index — a documented caveat, not a bug: callers needing the dummy room use the TOTAL
+  variant below.
+- `room_data* room_by_id_total(int rnum)` — **operator[] fallback semantics.** `room_data`'s own
+  `operator[]` is a graceful *total* function (log-and-return-a-fallback-room), not partial —
+  Task 1's reviewer caught this and overturned the controller's initial "nullptr is a faithful UB
+  substitute" framing: a plain nullptr contract would have silently *narrowed* previously-defined
+  behavior for the (unchecked, in original code) callers that relied on that fallback, e.g.
+  `get_char_room`. **Why two variants exist, not one:** the two resolvers preserve two genuinely
+  different pre-existing contracts along the same call boundary — bounds-checked movers keep their
+  checked (now nullptr-on-out-of-range) semantics via `room_by_id`; historically-unchecked movers
+  keep their total, always-returns-something semantics via `room_by_id_total`. The binding
+  per-site rule carried into every later task's brief: unchecked `world[...]` reads →
+  `room_by_id_total`; bounds-checked reads → `room_by_id`.
+- `zone_data* zone_by_id(int znum)` and `index_data* obj_index_by_id(int item_number)` —
+  **nullptr-on-invalid only** (no TOTAL variant). `zone_table`/`obj_index` are raw C arrays with no
+  `operator[]` fallback to preserve — genuine UB before this wave, so the nullptr contract is a
+  strict improvement, not a narrowing. This asymmetry with the room resolvers is intentional and
+  documented at each call site.
+
+All four dispatch through hook storage in `placement.cpp`, with a tripwire-abort default (no safe
+placeholder pointer) if queried before registration. `entity_hooks.h` declares the hook types and
+setters; `db_world.cpp` implements `room_by_id_impl`/`room_by_id_total_impl`/`obj_index_by_id_impl`
+and `register_world_resolver_hooks()` (declared in `db.h`); `zone_load.cpp` implements
+`zone_by_id_impl` (declared in `zone.h`). `register_world_resolver_hooks()` is called once from
+`run_the_game()` (alongside the other pre-`boot_db()` registrations) and once from
+`gtest_main.cpp` — parity, so the test binary observes the same seam.
+
+**SPLIT wrappers: lib primitives behind app-facing public names.** Three functions moved by
+splitting rather than verbatim relocation — the public name and declaration stayed in
+`handler.h`/`handler.cpp`, backed by a new status-returning primitive in the lib:
+
+- `char_from_room(ch)` (app, `handler.cpp`) now calls `bool detach_char_from_room(ch)` (lib,
+  `placement.cpp`; unlink from the occupant chain, light-count decrement, zone white/dark-power
+  decrement via `zone_by_id`, clear `in_room`/`next_in_room`) and, only when it returns `true`
+  (mapping the ORIGINAL's two early-return paths to `false`), runs the trailing `stop_fighting`
+  loop that stayed app-side because it reaches into combat. 37 call sites unchanged.
+- `equip_char(ch, obj, pos)` (app) now calls `EquipAttachOutcome attach_equipment(ch, obj, pos)`
+  (lib, `equipment.cpp`) — a 5-arm enum (`HOLD_EARLY_RETURN`, `WEAPON`,
+  `WEAPON_TOO_HEAVY_ONE_HAND`, `WEAPON_TOO_HEAVY_FOR_YOU`, `OTHER`) rather than a bare bool. **The
+  arm design exists because of a round-2 review-caught Critical:** an earlier version of this split
+  evaluated the too-heavy check (`GET_OBJ_WEIGHT(obj) > GET_BAL_STR(ch)*50 && !IS_TWOHANDED(ch)` /
+  `*100`) in the app wrapper, *after* `attach_equipment()` had already run `affect_modify()`/
+  `affect_total()` — but those calls can mutate the very stats the check reads (an `APPLY_STR`
+  affect changes `GET_BAL_STR`; a bitvector affect can set `AFF_TWOHANDED`), an observable
+  message-behavior change invisible to goldens and missed by a line-presence-only reassembly
+  audit. The fix moved the check back into the primitive at the ORIGINAL's exact pre-affect
+  position, and made its *outcome* (not a raw bool) the thing that crosses the call boundary, so
+  the wrapper can select the right `send_to_char()` text without re-evaluating any stat comparison
+  itself. `src/tests/placement_tests.cpp`'s `TooHeavyVerdictUsesPreAffectStrengthNotPostAffectRegression`
+  test pins this bug class (a weapon carrying an `APPLY_STR` affect must not have that affect
+  change its own too-heavy verdict).
+- `unequip_char(ch, pos)` (app) now calls `obj_data* detach_equipment(ch, pos)` (lib,
+  `equipment.cpp`), which — unlike the other two SPLITs — needed no new status enum: its trailing
+  poison-damage/`raw_kill` block (app-tier `send_to_char`/`act`/`damage`/`raw_kill`) stayed in the
+  wrapper, gated on `was_poisoned = IS_AFFECTED(ch, AFF_POISON)` captured before the call vs.
+  `IS_AFFECTED(ch, AFF_POISON)` read after it returns. The primitive's own `(pos == HOLD) &&
+  !CAN_WEAR(obj, ITEM_HOLD)` early return happens strictly before any state that check reads could
+  change, so it VERIFIABLY self-gates: whenever that guard fires, the poison block's own condition
+  (`was_poisoned != 0 && !IS_AFFECTED(ch, AFF_POISON)`) is false by construction, and no explicit
+  signal needs to cross the call boundary for it — the wrapper's existing null-check on the
+  returned `obj_data*` already reproduces the ORIGINAL's control flow. The `mudlog` zero-object
+  guard is L0-legal and stays in the primitive.
+
+**Three honest deferral clusters (Stage 1 scope, not oversights):**
+
+1. **`obj_from_char`/`extract_obj` — STAY-APP, poison-path counter-example.** A Task 3 STOP-check
+   found a real counter-example, not a hypothetical one: `script.cpp`'s `SCRIPT_OBJ_FROM_CHAR` can
+   hand `obj_from_char` an *equipped* item, which routes through `unequip_char`'s poison-damage
+   block — still app-tier this wave — so moving `obj_from_char`/`extract_obj` down would leave lib
+   code calling up into app. Confirmed via `script.cpp:817`/`:1461`. Future: a poison-notification
+   hook, or restructuring around post-combat extraction.
+2. **`parse_numbered_name`/`get_char` — STAY-APP, header-locality blocker.** `NumberedName` is
+   declared only in `handler.h`, unreachable from the platform/lib include path (compile-probe
+   evidence, not guesswork) — moving `get_char` reproduces the same edge one hop later (a real
+   linkcheck failure, not speculation). Future: extract `NumberedName` to a shared header.
+3. **`real_time_passed`/`mud_time_passed`/`day_to_str`/`age` — STAY-APP, L1-return-type blocker.**
+   `mud_time_passed()` returns `rots/core/types.h`'s `time_info_data` **by value** — an L1 type
+   that L0 `rots_platform`/`rots_util.cpp` must not depend on. `day_to_str` (plus `month_name`) and
+   `age` cascade off the same edge. Census had misclassified this quartet as "pure time math."
+   Future: re-home the quartet to `rots_core`.
+
+Beyond those three clusters, a broader **STAY-APP inventory** stays app-compiled by design this
+wave (per-function detail: `.superpowers/sdd/placement-census.md`): the **visibility family**
+(`CAN_SEE`/`CAN_SEE_OBJ`, `get_char_room_vis`/`get_player_vis`/`get_char_vis`/`get_obj_vis`/
+`get_obj_in_list_vis`/`get_object_in_equip_vis`, `generic_find`, `PERS`); the **proto family**
+(`compare_obj_to_proto`, `obj_to_proto`, `check_inventory_proto`/`check_equipment_proto`/
+`check_container_proto`); **session helpers** (`find_playing_char`, `echo_off`/`echo_on`); the
+**zone-power pair** (`recalc_zone_power`, `report_zone_power` — world-side bookkeeping, arguably
+`rots_world`'s if anything); and `get_real_OB`/`get_real_parry` (see the OB/PB/DB trio note below).
+Each is app-coupled for a stated reason (output, combat, session, world-index, or spec-handler
+dependency) — none is an unexamined gap.
+
+**The OB/PB/DB trio splits across tiers.** `get_real_dodge` moved to `char_utils_combat.cpp` (lib,
+`rots_entity`) in Task 5; `get_real_OB`/`get_real_parry` stay in `utility.cpp` (app), each behind a
+one-line comment explaining why: both call into `player_spec::weapon_master_handler`, an app-tier
+spec-handler edge `get_real_dodge` doesn't share. AGENTS.md's Dead/Unused-Code trio paragraph
+records this split (see below) — do not confuse it with the *deleted* `utils::`-namespaced
+weather/room-arg trio from the `combat_manager` deletion, which is unrelated history.
 
 ### Output seam and entity hooks: the last three app-layer edges into `rots_entity`
 

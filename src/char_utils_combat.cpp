@@ -128,8 +128,11 @@ void on_attacked_character(char_data* attacker, char_data* victim)
 // get_real_dodge() (this batch) and get_real_OB()/get_real_parry() (STAY-APP,
 // utility.cpp -- see those functions' own comments there). Declarations
 // unchanged (utils.h, except do_squareroot()/get_bow_weapon_damage()/
-// weight_coof()/get_real_stealth()/get_followers_level(), which have no
-// declaring header anywhere in the tree -- file-local by precedent).
+// weight_coof()/get_real_stealth(), which have no declaring header
+// anywhere in the tree -- file-local by precedent). get_followers_level()
+// is NOT in this file -- it's defined in char_utils.cpp (placement-seam
+// Task 5 review Minor: this banner previously mis-attributed it here via a
+// comment copy-paste slip).
 //============================================================================
 
 inline int

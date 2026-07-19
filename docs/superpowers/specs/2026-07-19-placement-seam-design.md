@@ -103,3 +103,38 @@ hybrid (handler whole / utility split) — the split discipline is cleaner appli
 - Game-wide Stage-1 call-site conversion (~1,400 sites) — follow-on waves, library by library.
 - Stage 2 `LocationSystem` / `NOWHERE` retirement.
 - `rots_combat`; the other three intrusive threads (`next_fighting`, `next_fast_update`, `next`).
+
+## As-built (Stage 1 scoped delivery — wave complete at 45327a4)
+
+The wave landed substantially as designed, with two adjudicated deviations from this design's
+sketch, both discovered mid-implementation and controller-adjudicated rather than improvised:
+
+- **Four resolvers, not one "`resolve_room`" (§Changes item 2).** The design anticipated a single
+  room-resolver hook plus an optional occupant-iteration shim. Task 1 (implementation-time STOP)
+  found the census had under-specified the seam: `zone_by_id`/`obj_index_by_id` were needed
+  alongside the room resolver (per the plan's own ADJ-1/ADJ-3 census adjudications), and a Task 1
+  review round then split the room resolver itself into two variants —
+  `room_by_id` (nullptr-on-invalid) and `room_by_id_total` (preserves `room_data::operator[]`'s
+  pre-existing graceful-fallback semantics for historically-unchecked callers). The seam that
+  shipped is **four** resolvers (`room_by_id`, `room_by_id_total`, `zone_by_id`,
+  `obj_index_by_id`), all tripwire-abort on unregistered access, registered together by one
+  `register_world_resolver_hooks()` call from both `run_the_game()` and `gtest_main.cpp`. See
+  `docs/BUILD.md`'s "The placement-seam wave" section for the full two-variant rationale.
+- **Status-returning primitives, not the void/bool sketch this design implied.** The design didn't
+  commit to a signature for the SPLIT primitives; Task 3's round-2 review found a real Critical
+  (the too-heavy weapon check reading stats an intervening `affect_modify()`/`affect_total()` call
+  could mutate) whose fix required the primitive to hand its *outcome* back to the wrapper, not
+  just a bool. `attach_equipment()` returns a 5-arm `EquipAttachOutcome` enum; `detach_char_from_room()`
+  returns `bool` (mapping the original's two early-return paths); `detach_equipment()` returns the
+  detached `obj_data*`. See `docs/BUILD.md`'s SPLIT-wrapper subsection for the full Critical
+  writeup and `src/handler.h`'s `EquipAttachOutcome` comment for the arm-by-arm mapping.
+
+Everything else landed as designed: three new `rots_entity` TUs (`placement.cpp`/`containment.cpp`/
+`equipment.cpp`, ~60 functions carved across Tasks 1-5), `EntityLayerAcyclicity` green throughout,
+zero behavior change (goldens byte-for-byte, ctest 1281 → 1315 both hosts with Task 6's 34 new
+tests, ASan clean), and the three Stage-1 deferral clusters this design's "Out of scope" section
+anticipated in spirit (obj_from_char/extract_obj's poison-path counter-example, parse_numbered_name/
+get_char's header-locality blocker, and the real_time_passed/mud_time_passed/day_to_str/age
+L1-return-type blocker) — see `docs/BUILD.md` for the per-cluster detail and `AGENTS.md` for the
+current TU/test-total accounting. Full history: `.superpowers/sdd/progress.md`'s PS-prefixed
+ledger entries.

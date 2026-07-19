@@ -5,7 +5,7 @@
 // .superpowers/sdd/task-6-brief.md). Standing coverage-gap rule: Task 3
 // carved detach_char_from_room()/char_to_room() (placement.cpp) and
 // attach_equipment()/detach_equipment() (equipment.cpp) as new lib-resident
-// primitives behind the three-resolver world seam (entity_hooks.h) -- boot
+// primitives behind the four-resolver world seam (entity_hooks.h) -- boot
 // path code with zero direct prior coverage. This file is a new TU rather
 // than growing entity_lifecycle_tests.cpp: that file's existing suite is
 // scoped to the txt-block-pool hook pair (a single, unrelated hook family);
@@ -108,7 +108,7 @@ zone_data* test_zone_by_id(int /*znum*/) { return g_active_resolvers->zone; }
 // and unwinds early -- so no later test in the binary ever observes a stub
 // still installed. The obj-index resolver is untouched (no candidate in this
 // file calls obj_index_by_id()), but register_world_resolver_hooks()
-// re-registers all three together, matching its own all-or-nothing
+// re-registers all four together, matching its own all-or-nothing
 // registration contract.
 class ScopedWorldResolverHooks {
 public:

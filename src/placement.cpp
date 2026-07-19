@@ -120,7 +120,7 @@ void set_obj_index_resolver_hook(obj_index_resolver_fn hook)
  *  section -- "room ids are the public currency; room_by_id(id) is the  *
  *  explicit escalation to a room_data*"). Global functions, declared in *
  *  handler.h; every moved function below reaches world[]/zone_table/    *
- *  obj_index only through these three.                                  *
+ *  obj_index only through these four.                                   *
  ************************************************************************/
 
 room_data* room_by_id(int rnum)
@@ -201,12 +201,15 @@ namespace rots::entity {
 
 // Range-for-capable wrapper over a room's intrusive occupant chain
 // (room_data::people / char_data::next_in_room walk) -- the spec's
-// occupants(room) Stage-1 API entry. Not yet consumed by any function this
-// task moves (char_power's/recount_light_room's/get_char_room's own
-// occupant walks stay verbatim inline loops below, per the brief's "MOVE
-// verbatim" -- only their world[] accesses become room_by_id() calls);
-// later tasks (char_to_room/char_from_room's primitive, per the census) are
-// its first callers.
+// occupants(room) Stage-1 API entry. Unused as landed: char_power's/
+// recount_light_room's/get_char_room's own occupant walks stayed verbatim
+// inline loops (per the brief's "MOVE verbatim" -- only their world[]
+// accesses became room_by_id() calls), and Task 3's
+// detach_char_from_room()/char_to_room() primitives (placement.cpp) also
+// landed with their own verbatim inline next_in_room loops rather than
+// this range (see those functions below). Kept as an unused Stage-1 API
+// surface -- not deleted -- pending the game-wide call-site-conversion /
+// Stage-2 wave that would migrate existing next_in_room walks onto it.
 class occupant_range {
 public:
     // Minimal forward iterator over the next_in_room chain -- only the

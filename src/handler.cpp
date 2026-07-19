@@ -79,7 +79,11 @@ extern struct skill_data skills[];
 // (placement-seam Task 3); this file has had no remaining reference
 // to either since. See equipment.cpp's own extern declarations.
 extern long race_affect[];
-extern int max_race_str[];
+// max_race_str[] extern REMOVED (whole-branch review sweep, placement-seam
+// wave): this file's only use (the weapon too-heavy check) moved to
+// equipment.cpp's attach_equipment() (task-3 CRITICAL FIX; see that file's
+// own max_race_str extern) -- this file has had no remaining reference
+// since.
 
 /* external functions */
 void free_char(struct char_data*);
@@ -481,7 +485,8 @@ void char_from_room(struct char_data* ch)
 // because unequip_char() wasn't yet an L2 citizen; Task 3's equipment
 // SPLIT resolved THAT blocker (attach_equipment()/detach_equipment() now
 // live in equipment.cpp, L2). But the task brief's mandatory STOP-CHECK
-// on this function's unequip_char() call target (line ~708 below)
+// on this function's unequip_char() call target (the equipment-fallback
+// branch's call below)
 // surfaced a genuine reachable counter-example, not just a link-order
 // problem: script.cpp's SCRIPT_ASSIGN_EQ command reads an EQUIPPED item
 // (tmpch->equipment[pos]) into a script object-param slot, and a
@@ -492,7 +497,7 @@ void char_from_room(struct char_data* ch)
 // mudscript-driven play, not just defensively. unequip_char() (the app
 // wrapper) runs the poison damage/raw_kill block on that path;
 // detach_equipment() (the L2 primitive) does not. Moving this function
-// to containment.cpp would force its call at line ~708 to target
+// to containment.cpp would force the unequip_char() call below to target
 // detach_equipment() instead (calling the app-tier unequip_char()
 // wrapper from L2 recreates exactly the upward edge Task 2's own
 // EntityLayerAcyclicity check already rejected once), silently dropping

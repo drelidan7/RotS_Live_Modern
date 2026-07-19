@@ -28,12 +28,19 @@
 // names/declarations (handler.h, unchanged) and the census's named "app
 // remainder" -- the anti-align/anti-race zap messages + obj_to_char re-drop,
 // the "too heavy" send_to_char messages, and the poison damage/raw_kill
-// blocks -- calling these primitives in between. See handler.cpp's own
-// per-function relocation comments (at equip_char/unequip_char) for the
-// exact split-line accounting and the two DEVIATION notes (both wrappers
-// re-check a stateless guard condition after the primitive call, since
-// attach_equipment()/detach_equipment()'s signatures -- binding, from the
-// task brief -- carry no explicit "did the primitive early-return" signal);
+// blocks -- calling these primitives in between. As landed (controller
+// adjudication), neither wrapper re-derives a stateless guard condition
+// after the primitive call: attach_equipment() reports its outcome through
+// the 5-arm EquipAttachOutcome enum below, with the too-heavy CHECK
+// evaluated pre-affect, at its ORIGINAL position (see the CRITICAL FIX
+// paragraph below); detach_equipment() keeps its ORIGINAL obj_data* return,
+// proof-justified as sufficient without an added status signal -- see this
+// file's detach_equipment() comment for why its HOLD guard's early return
+// can never reach the wrapper's poison-check condition. The same
+// status-returning shape recurs elsewhere in this wave, e.g. placement.cpp's
+// `bool detach_char_from_room(char_data*)`, the char_from_room() SPLIT
+// primitive. See handler.cpp's own per-function relocation comments (at
+// equip_char/unequip_char) for the exact split-line accounting;
 // task-3-report.md has the full byte-fidelity reassembly audit.
 //
 // CRITICAL FIX (task-3 re-review, post-controller-adjudication): an earlier

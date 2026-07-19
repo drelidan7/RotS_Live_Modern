@@ -1,12 +1,13 @@
 #pragma once
 // entity_hooks.h -- dependency-inversion seam for entity_lifecycle.cpp's
 // upward edges (spec Sec13 pattern, mirroring output_seam.h), plus (as of
-// placement-seam Task 1) placement.cpp's three world-resolver hooks. See
+// placement-seam Task 1) placement.cpp's four world-resolver hooks (room,
+// its room_by_id/room_by_id_total variant pair, zone, and obj-index). See
 // each hook's comment below for the call site it replaces and why a null
 // default is safe until registration runs. Backing storage + dispatch
 // helpers for entity_lifecycle.cpp's own hooks are defined in
 // entity_lifecycle.cpp itself (not a separate .cpp, unlike output_seam.cpp)
-// -- see that file's "entity_hooks.h dispatch" section; the three resolver
+// -- see that file's "entity_hooks.h dispatch" section; the four resolver
 // hooks' backing storage + dispatch live in placement.cpp instead, next to
 // their sole caller-file's Stage-1 API functions.
 

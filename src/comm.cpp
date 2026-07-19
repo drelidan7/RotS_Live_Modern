@@ -648,10 +648,10 @@ void run_the_game(sh_int port)
     register_mudlle_converter_hook();
     register_weather_msdp_hook();
     register_world_broadcast_hooks();
-    // entity_hooks.h's three world-resolver hooks (placement-seam Task 1),
+    // entity_hooks.h's four world-resolver hooks (placement-seam Task 1),
     // registered the same way and for the same reason: before boot_db(), so
-    // ageland never runs placement.cpp's room_by_id()/zone_by_id()/
-    // obj_index_by_id() with an unregistered hook.
+    // ageland never runs placement.cpp's room_by_id()/room_by_id_total()/
+    // zone_by_id()/obj_index_by_id() with an unregistered hook.
     register_world_resolver_hooks();
 
     log("Signal trapping.");

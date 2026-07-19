@@ -69,7 +69,10 @@
 
 extern struct time_data time_info;
 extern struct room_data world;
-extern struct char_data* character_list;
+// character_list extern REMOVED (whole-branch review sweep,
+// placement-seam wave): this file's only user, get_followers_level(),
+// relocated to char_utils.cpp (placement-seam Task 5) -- this file has
+// had no remaining reference since.
 extern struct char_data* mob_proto;
 extern int max_race_str[];
 extern struct char_data* waiting_list;

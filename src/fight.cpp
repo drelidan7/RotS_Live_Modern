@@ -2989,3 +2989,171 @@ int check_hallucinate(struct char_data* ch, struct char_data* victim)
     /* No affection, so return 1 (indicating that ch is not affected) */
     return 1;
 }
+
+// equip_char()/unequip_char() relocated verbatim from handler.cpp:496-654
+// (combat-pilot wave Task 4a; pilot-census.md section 3.8 -- census's
+// original brief Step 4). Byte-verbatim move: both wrappers' bodies and
+// their preceding SPLIT-history comments carried over unchanged (only
+// the source file's CRLF line endings were converted to fight.cpp's LF
+// convention). Declarations unchanged (handler.h:97-98); no app caller
+// resolution changes -- damage()/raw_kill() calls below are now
+// same-TU, previously cross-TU.
+// equip_char() SPLIT (placement-seam Task 3, census row equip_char:815):
+// primitive attach_equipment(ch, obj, pos) (L2, equipment.cpp) keeps the
+// slot assignment, encumb/leg-encumb/weight math, OB/PB/dodge mutation,
+// affect_modify()+affect_total(), and the light-inc (world[]->
+// room_by_id_total(), unchecked historical access per the BINDING addendum).
+// This app-side wrapper keeps the public name/declaration (handler.h,
+// unchanged) and the census's named "app remainder": the initial guards
+// (byte-preserved -- they gate whether the primitive is even called, so
+// they must run first, exactly as in the original), the anti-align/
+// anti-race zap `act` messages + `obj_to_char` re-drop (census 833-853),
+// the "too heavy" `send_to_char` messages (census 880-883), and the poison
+// `damage`/`raw_kill` block (census 905-916) -- all byte-preserved below.
+//
+// EquipAttachOutcome status branch (controller adjudication, supersedes
+// this task's own original re-check version -- see task-3-report.md): the
+// ORIGINAL's `if ((item_slot == HOLD) && !CAN_WEAR(item, ITEM_HOLD))
+// return;` guard (between the weight math and the ARMOR/WEAPON/SHIELD/
+// LIGHT dispatch) caused the ORIGINAL to skip the too-heavy messages,
+// affect_modify()/affect_total(), AND the poison block together whenever
+// it fired; the too-heavy CHECK (not just its message) only applied
+// inside the WEAPON arm of that same dispatch, BEFORE the affect loop.
+// attach_equipment() now reports which of those ORIGINAL conditions
+// applied (mapping below) instead of the wrapper re-deriving any of them
+// -- all are evaluated exactly once, inside attach_equipment().
+//
+// CRITICAL FIX (task-3 re-review): an earlier version of this wrapper
+// ran the too-heavy weight/twohanded CHECK itself, here, AFTER
+// attach_equipment() had already run affect_modify()/affect_total() --
+// wrong relative to the ORIGINAL's position (inside the primitive,
+// before the affect loop) and observably wrong whenever the item's own
+// affects change GET_BAL_STR/IS_TWOHANDED. This wrapper now performs NO
+// stat comparison at all -- it only selects which send_to_char() text
+// (or none) the primitive's already-computed outcome calls for.
+//   ORIGINAL condition                                              -> primitive result           -> wrapper message
+//   (item_slot == HOLD) && !CAN_WEAR(item, ITEM_HOLD) fired          -> HOLD_EARLY_RETURN            -> none (wrapper returns)
+//   weapon; weight > str*50 && !twohanded (checked pre-affect)       -> WEAPON_TOO_HEAVY_ONE_HAND     -> "too heavy for one hand"
+//   weapon; not the above, but weight > str*100 (checked pre-affect) -> WEAPON_TOO_HEAVY_FOR_YOU      -> "too heavy for you"
+//   weapon; neither condition held                                  -> WEAPON                        -> none
+//   not a weapon, ran to completion                                 -> OTHER                         -> none
+void equip_char(char_data* character, obj_data* item, int item_slot)
+{
+    int was_poisoned = IS_AFFECTED(character, AFF_POISON);
+
+    assert(item_slot >= 0 && item_slot < MAX_WEAR);
+
+    if (character->equipment[item_slot]) {
+        log(std::format("SYSERR: Char is already equipped: {}, {}", GET_NAME(character),
+            item->short_description)
+                );
+        return;
+    }
+
+    if (item->in_room != NOWHERE) {
+        log("SYSERR: EQUIP: Obj is in_room when equip.");
+        return;
+    }
+
+    if ((IS_OBJ_STAT(item, ITEM_ANTI_EVIL) && IS_EVIL(character)) || (IS_OBJ_STAT(item, ITEM_ANTI_GOOD) && IS_GOOD(character)) || (IS_OBJ_STAT(item, ITEM_ANTI_NEUTRAL) && IS_NEUTRAL(character))) {
+        if (character->in_room != NOWHERE) {
+
+            act("You are zapped by $p and instantly drop it.", FALSE, character, item, 0, TO_CHAR);
+            act("$n is zapped by $p and instantly drops it.", FALSE, character, item, 0, TO_ROOM);
+            obj_to_char(item, character); /* changed to drop in inventory instead of ground */
+            return;
+        } else
+            log("SYSERR: ch->in_room = NOWHERE when equipping char.");
+    }
+
+    if ((IS_OBJ_STAT(item, ITEM_HARADRIM) && GET_RACE(character) != RACE_HARADRIM) || (IS_OBJ_STAT(item, ITEM_HUMAN) && GET_RACE(character) != RACE_HUMAN) || (IS_OBJ_STAT(item, ITEM_DWARF) && GET_RACE(character) != RACE_DWARF) || (IS_OBJ_STAT(item, ITEM_WOODELF) && GET_RACE(character) != RACE_WOOD) || (IS_OBJ_STAT(item, ITEM_HOBBIT) && GET_RACE(character) != RACE_HOBBIT) || (IS_OBJ_STAT(item, ITEM_BEORNING) && GET_RACE(character) != RACE_BEORNING) || (IS_OBJ_STAT(item, ITEM_URUK) && GET_RACE(character) != RACE_URUK) || (IS_OBJ_STAT(item, ITEM_ORC) && GET_RACE(character) != RACE_ORC) || (IS_OBJ_STAT(item, ITEM_MAGUS) && GET_RACE(character) != RACE_MAGUS) || (IS_OBJ_STAT(item, ITEM_OLOGHAI) && GET_RACE(character) != RACE_OLOGHAI)) {
+        if (character->in_room != NOWHERE) {
+
+            act("You are zapped by $p and instantly drop it.", FALSE, character, item, 0, TO_CHAR);
+            act("$n is zapped by $p and instantly drops it.", FALSE, character, item, 0, TO_ROOM);
+            obj_to_char(item, character); /* changed to drop in inventory instead of ground */
+            return;
+        } else
+            log("SYSERR: ch->in_room = NOWHERE when equipping char.");
+    }
+
+    EquipAttachOutcome outcome = attach_equipment(character, item, item_slot);
+
+    if (outcome == EquipAttachOutcome::HOLD_EARLY_RETURN)
+        return;
+
+    if (outcome == EquipAttachOutcome::WEAPON_TOO_HEAVY_ONE_HAND)
+        send_to_char("This weapon seems too heavy for one hand.\n\r", character);
+    else if (outcome == EquipAttachOutcome::WEAPON_TOO_HEAVY_FOR_YOU)
+        send_to_char("This weapon seems too heavy for you!\n\r", character);
+
+    // Special case for poisoned objects.  The wearer should get poison damage
+    // when wearing/removing something poisoned.
+    if (was_poisoned == 0 && IS_AFFECTED(character, AFF_POISON)) {
+        extern void raw_kill(struct char_data * character, char_data * killer, int attacktype);
+
+        damage(character, character, 5, SPELL_POISON, 0);
+
+        if (GET_HIT(character) <= 0) {
+            act("$n suddenly collapses on the ground.",
+                TRUE, character, 0, 0, TO_ROOM);
+            send_to_char("Your body failed to the magic.\n\r", character);
+            raw_kill(character, NULL, 0);
+        }
+    }
+}
+
+// unequip_char() SPLIT (placement-seam Task 3, census row unequip_char:919):
+// primitive detach_equipment(ch, pos) (L2, equipment.cpp) keeps the mudlog
+// zero-object guard (L0-legal, per this task's binding brief), slot clear,
+// encumb/weight math, OB/PB/dodge mutation, affect_modify()+affect_total(),
+// and the light-dec (world[]->room_by_id_total(), unchecked historical
+// access per the BINDING addendum). This app-side wrapper keeps the public
+// name/declaration (handler.h, unchanged) and the census's named "app
+// remainder": the poison `damage`/`raw_kill` block (census 980-991),
+// byte-preserved below.
+//
+// Controller adjudication (task-3-report.md) considered giving
+// detach_equipment() a status return too (mirroring attach_equipment()
+// above), then confirmed it unnecessary: this primitive's own `(pos ==
+// HOLD) && !CAN_WEAR(obj, ITEM_HOLD)) return obj;` early return happens
+// strictly BEFORE affect_modify()/affect_total(), so ch's affected-list
+// (and therefore IS_AFFECTED(ch, AFF_POISON)) is PROVABLY unchanged
+// whenever that guard fires -- nothing between capturing `was_poisoned`
+// below and the poison check touches ch->specials.affected_by in that
+// path. That makes the poison block's own condition (`was_poisoned != 0
+// && !IS_AFFECTED(ch, AFF_POISON)`) false by construction whenever the
+// primitive early-returned (one operand and its exact negation can never
+// both hold), so this wrapper needs no re-derivation of the HOLD guard at
+// all -- only the `if (!obj) return obj;` null check below remains,
+// branching on the return value (not re-deriving `!ch->equipment[pos]`)
+// for the zero-object case, exactly as the ORIGINAL returned out of this
+// point too.
+struct obj_data* unequip_char(struct char_data* ch, int pos)
+{
+    int was_poisoned = 0;
+
+    was_poisoned = IS_AFFECTED(ch, AFF_POISON);
+
+    struct obj_data* obj = detach_equipment(ch, pos);
+
+    if (!obj)
+        return obj;
+
+    // Special case for poisoned objects.  The wearer should get poison damage
+    // when wearing/removing something poisoned.
+    if (was_poisoned != 0 && !IS_AFFECTED(ch, AFF_POISON)) {
+        extern void raw_kill(struct char_data * ch, char_data * killer, int attacktype);
+
+        damage(ch, ch, 5, SPELL_POISON, 0);
+
+        if (GET_HIT(ch) <= 0) {
+            act("$n suddenly collapses on the ground.",
+                TRUE, ch, 0, 0, TO_ROOM);
+            send_to_char("Your body failed to the magic.\n\r", ch);
+            raw_kill(ch, NULL, 0);
+        }
+    }
+
+    return (obj);
+}

@@ -2240,7 +2240,7 @@ void assign_command_pointers(void)
 }
 
 // Populates combat_hooks.h's boot-registered command-dispatch table with
-// the real ACMD pointer for each of its 25 cells (see that header's file
+// the real ACMD pointer for each of its 26 cells (see that header's file
 // comment for the full census-C target-list reconciliation). Defined
 // here, not in combat_hooks.cpp, because this file already forward-
 // declares every target below for its own _cmd_info table -- the same
@@ -2257,6 +2257,12 @@ void assign_command_pointers(void)
 // wave): clerics.cpp and fight.cpp have since joined rots_combat (Task 5),
 // so `mental`'s registered pointer is now a real intra-lib call; see
 // combat_hooks.h's own status-update comments for the per-cell detail.
+// STATUS UPDATE (combat-trio wave, Task 1): a 26th cell, `dismount`, joined
+// the table -- olog_hai.cpp's one genuine combat-peer edge (its direct call
+// to ranger.cpp's do_dismount, combat-trio-census.md section 5.1) breaks
+// through this registration exactly like `flee`'s/`hide`'s cells already
+// break their own still-app-compiled owners' direct calls. Consumer-free at
+// landing time -- olog_hai.cpp's own call site converts in a later task.
 void register_combat_command_dispatch()
 {
     using rots::combat::combat_command;
@@ -2266,6 +2272,7 @@ void register_combat_command_dispatch()
     set_combat_command(combat_command::assist, do_assist);
     set_combat_command(combat_command::cast, do_cast); // spell_pa.cpp
     set_combat_command(combat_command::close, do_close);
+    set_combat_command(combat_command::dismount, do_dismount); // ranger.cpp
     set_combat_command(combat_command::flee, do_flee);
     set_combat_command(combat_command::gen_com, do_gen_com);
     set_combat_command(combat_command::hide, do_hide); // ranger.cpp

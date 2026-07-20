@@ -108,6 +108,14 @@ enum class combat_command {
     assist,
     cast,
     close,
+    // 26th cell (combat-trio wave Task 1; trio-task-1-brief.md CONTROLLER
+    // ADDENDUM item 3; combat-trio-census.md section 5.1) -- real body is
+    // ranger.cpp's ACMD(do_dismount), a still-app-compiled combat-row TU
+    // (ranger.cpp itself never needs to promote for this cell to work, the
+    // same "real body stays in its still-app owner" shape as `flee`'s own
+    // do_flee/act_offe.cpp). Breaks olog_hai.cpp's one direct up-call to
+    // do_dismount, its only genuine combat-peer edge (census section 1).
+    dismount,
     flee,
     gen_com,
     hide,
@@ -140,7 +148,7 @@ void set_combat_command(combat_command command, acmd_fn handler);
 // Dispatch entry point: forwards to the registered handler for `command`.
 // Unlike assign_spell_pointers()'s skills[] (where most cells are
 // PERMANENTLY null by design -- physical skills have no spell function, so
-// every reader null-guards before calling), every one of this table's 25
+// every reader null-guards before calling), every one of this table's 26
 // cells is meant to be registered at boot; a null cell here means
 // register_combat_command_dispatch() has not run yet, not "no handler was
 // ever intended." Tripwire default: a LOGGED NO-OP, not abort -- this

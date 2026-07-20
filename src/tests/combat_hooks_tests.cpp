@@ -204,6 +204,48 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenFleeIsUnregistered)
            "do_flee body never ran.";
 }
 
+// do_dismount (ranger.cpp) -- DISCRIMINATOR: the IS_RIDING(ch)==false branch's
+// unconditional send_to_char("You are not riding anything.\n\r", ch) -- the
+// cheapest deterministic path through do_dismount's real body. IS_RIDING(ch)
+// expands to (ch->mount_data.mount && char_exists(ch->mount_data.mount_number))
+// (utils.h), so a default-initialized char_data{} (mount_data.mount == nullptr)
+// short-circuits false without needing ScopedTestWorld/char_exists -- message-
+// only, no state mutation, the same "cheapest branch" shape as do_flee's
+// TACTICS_BERSERK guard above. do_dismount is this task's new 26th cell
+// (combat_hooks.h/trio-task-1-brief.md Step 1): its real body still lives in
+// ranger.cpp, a still-app-compiled combat-row TU (combat-trio-census.md
+// section 5.1), so this pair proves the seam reaches across that boundary
+// exactly like do_flee's/do_stand's existing pairs already do for their own
+// still-app owners.
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoDismountWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.mount_data.mount = nullptr;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::dismount, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "You are not riding anything.\n\r")
+        << "Expected the real do_dismount body's not-riding branch to send its literal message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenDismountIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::dismount);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.mount_data.mount = nullptr;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::dismount, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered dismount cell to leave send_to_char uncalled -- the real "
+           "do_dismount body never ran.";
+}
+
 // do_stand (act_move.cpp) -- DISCRIMINATOR: the POSITION_SITTING branch's
 // unconditional `GET_POS(ch) = POSITION_STANDING` (character.specials.fighting
 // is null, so the non-fighting arm of that branch's inner if/else runs) -- a

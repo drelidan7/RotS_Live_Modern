@@ -425,8 +425,13 @@ void advance_level(char_data* character)
         GET_RACE(character) = RACE_GOD;
     }
 
-    strcpy(buf, std::format("{} advanced to level {}", GET_NAME(character), GET_LEVEL(character)).c_str());
-    mudlog(buf, BRF, std::max(LEVEL_IMMORT, GET_INVIS_LEV(character)), TRUE);
+    // LOCAL-COMPOSITION (combat-trio wave Task 3, profs buf retirement):
+    // the shared global buf (db_boot.cpp) is retired for this one
+    // write-then-read idiom in favor of a local string; mudlog() already
+    // takes std::string_view, so the strcpy/.c_str() round-trip through
+    // the global is dropped entirely. Byte-identical log output.
+    const std::string level_advance_message = std::format("{} advanced to level {}", GET_NAME(character), GET_LEVEL(character));
+    mudlog(level_advance_message, BRF, std::max(LEVEL_IMMORT, GET_INVIS_LEV(character)), TRUE);
 
     /* log following levels in exploits */
     if (!defer_account_birth_persistence && ((GET_LEVEL(character) == 6) || ((GET_LEVEL(character) > 6) && !(GET_LEVEL(character) % 5))))

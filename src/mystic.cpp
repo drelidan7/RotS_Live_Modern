@@ -17,8 +17,10 @@
  */
 
 #include "char_utils.h"
+#include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
+#include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
@@ -118,7 +120,6 @@ int get_mystic_caster_level(const char_data* caster)
  * - Pragmatism
  */
 
-ACMD(do_flee);
 combat_result_struct damage_stat(char_data* killer, char_data* caster, int stat_num, int amount);
 
 ASPELL(spell_curse)
@@ -199,7 +200,7 @@ ASPELL(spell_curse)
 
     // Only flee after the curse has completed attacking all of its stats.
     if (!victim_died && victim_flees) {
-        do_flee(victim, mutable_arg(""), NULL, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::flee, victim, mutable_arg(""), NULL, 0, 0);
     }
 
     set_mental_delay(caster, actual_count * PULSE_MENTAL_FIGHT);

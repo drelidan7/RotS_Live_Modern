@@ -28,11 +28,17 @@
 // the five above -- every one of them is, like send_to_char/act, a
 // comm.cpp-owned symbol taking only opaque char_data*/std::string_view
 // arguments, so the census verdict was to EXTEND this seam rather than open
-// a new hook header (see the census's section D verdict). These seven have
-// no consumer yet (this wave is consumer-free); they exist so a future
-// wave's combat-tier TU (mobact/ranger/spec_pro/fight, per census section C)
-// can call them exactly like send_to_char today, resolving downward instead
-// of welding back up into comm.cpp. Same null-safe "logged no-op" default as
+// a new hook header (see the census's section D verdict). These seven had
+// no consumer when built (this wave was consumer-free); they existed so a
+// future combat-tier TU (mobact/ranger/spec_pro/fight, per census section C)
+// could call them exactly like send_to_char, resolving downward instead of
+// welding back up into comm.cpp. STATUS UPDATE (combat-pilot wave):
+// fight.cpp's own break_spell/abort_delay/complete_delay/
+// send_to_room_except_two calls are real consumers now that fight.cpp has
+// joined rots_combat -- no call-site edit was needed for them, since they
+// resolve to this same symbol name by dependency inversion; mobact/ranger/
+// spec_pro remain the still-app future consumers. Same null-safe "logged
+// no-op" default as
 // the five above for the six void forwarders; the pointer-returning
 // txt-block forwarder is the one deliberate taxonomy call documented at its
 // own definition in output_seam.cpp.

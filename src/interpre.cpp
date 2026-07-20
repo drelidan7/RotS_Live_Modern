@@ -2247,14 +2247,16 @@ void assign_command_pointers(void)
 // "already visits every symbol it wires" reason assign_spell_pointers()
 // lives in spell_pa.cpp rather than consts.cpp. Called once from
 // db_boot.cpp, alongside assign_spell_pointers()/assign_command_pointers()
-// above -- see combat_hooks.h for why no call site converts to this table
-// yet this wave (five cells -- ambush/cast/hide/mental/trap -- resolve to
-// other not-yet-promoted combat-row TUs today; the rest resolve to
-// act_*.cpp). do_mental joined this registrar post-landing (review
-// critical): fight.cpp's per-tick mental-combat auto-attack in the round
-// loop calls it, a genuine 25th up-call target the first pass's
-// enumeration missed -- see combat_hooks.h's TARGET LIST comment and
-// task-2-report.md.
+// above. At Task 2 landing time no call site converted to this table yet
+// (five cells -- ambush/cast/hide/mental/trap -- resolved to other
+// not-yet-promoted combat-row TUs; the rest resolved to act_*.cpp). do_mental
+// joined this registrar post-landing (review critical): fight.cpp's per-tick
+// mental-combat auto-attack in the round loop calls it, a genuine 25th
+// up-call target the first pass's enumeration missed -- see combat_hooks.h's
+// TARGET LIST comment and task-2-report.md. STATUS UPDATE (combat-pilot
+// wave): clerics.cpp and fight.cpp have since joined rots_combat (Task 5),
+// so `mental`'s registered pointer is now a real intra-lib call; see
+// combat_hooks.h's own status-update comments for the per-cell detail.
 void register_combat_command_dispatch()
 {
     using rots::combat::combat_command;

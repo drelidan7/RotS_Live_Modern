@@ -202,9 +202,10 @@ void set_poison_removal_hook(poison_removal_fn hook);
 // branches on to call the EXACT right real overload, not a lossy
 // approximation of the 2-arg one. dispatch_target_valid()'s `skill_id`
 // parameter defaults to kNoSkillId, so a clerics.cpp-shaped 2-arg call site
-// reads as dispatch_target_valid(attacker, victim) once converted, and
-// fight.cpp's 3-arg call site as dispatch_target_valid(attacker, victim,
-// skill_id) -- consumer-free this wave, no call site converts yet.
+// reads as dispatch_target_valid(attacker, victim), and fight.cpp's 3-arg
+// call site as dispatch_target_valid(attacker, victim, skill_id) -- both
+// consumer-free when this hook pair was built (Task 2), converted for real
+// in the combat-pilot wave's Task 3 (clerics.cpp) and Task 5 (fight.cpp).
 // Unregistered default: LOGGED + return true (permissive legacy semantics --
 // big_brother VETOES by returning false, so "no big brother installed" must
 // default to "allow", the same neutral-default class as this header's

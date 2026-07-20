@@ -1,10 +1,10 @@
 #pragma once
-// combat_hooks.h -- boot-registered command-dispatch seam for the four
-// DEFER-11 combat-row TUs (mobact.cpp/spec_pro.cpp/ranger.cpp/fight.cpp)
-// that issue player/mob commands upward into the app-command tier
+// combat_hooks.h -- boot-registered command-dispatch seam, originally built
 // (blocker-buster wave Task 2; plan
 // docs/superpowers/plans/2026-07-19-blocker-buster.md; census
-// .superpowers/sdd/blocker-census.md section C). Modeled on
+// .superpowers/sdd/blocker-census.md section C) for the four combat-row TUs
+// that issue player/mob commands upward into the app-command tier:
+// mobact.cpp/spec_pro.cpp/ranger.cpp/fight.cpp. Modeled on
 // assign_spell_pointers() (spell_pa.cpp/spells.h, entity-seed Task 1): an
 // enum-indexed array of ACMD function pointers, null-initialized at static
 // init and populated once at boot by register_combat_command_dispatch()
@@ -14,13 +14,18 @@
 // spell_pa.cpp -- already visiting every spell_*() body it wires -- was
 // assign_spell_pointers()'s home).
 //
-// NO CALL-SITE CONVERSION THIS WAVE: mobact/spec_pro/ranger/fight keep
-// calling do_hit()/do_flee()/etc. directly (they are still app-compiled --
-// ROTS_SERVER_SOURCES -- so that is a legal same-tier call today). This seam
-// exists so that when one of those four TUs joins rots_combat in a future
-// wave, EACH of its up-calls converts to rots::combat::issue_command(...)
-// instead, resolving downward through this table rather than welding back
-// up into an app-tier symbol the library cannot see.
+// STATUS UPDATE (combat-pilot wave, Task 5): fight.cpp -- and clerics.cpp,
+// which defines/consumes several of the same cells (do_mental/do_flee) --
+// have JOINED rots_combat and their up-calls now go through
+// rots::combat::issue_command()/call_special() for real, resolving as
+// genuine intra-lib dispatch rather than an unexercised default. mobact.cpp/
+// spec_pro.cpp/ranger.cpp remain app-compiled and still call do_hit()/
+// do_flee()/etc. directly (ROTS_SERVER_SOURCES, a legal same-tier call
+// today); this seam exists so that when one of those three TUs joins
+// rots_combat in a future wave, EACH of its up-calls converts the same way
+// fight.cpp's/clerics.cpp's already did, resolving downward through this
+// table rather than welding back up into an app-tier symbol the library
+// cannot see.
 //
 // TARGET LIST (25 cells -- census-C's own per-TU counts carried off-by-one
 // labels, e.g. "13 distinct" over a 12-name list; reconciled here against
@@ -42,8 +47,11 @@
 // do_mental -- fight.cpp's per-tick mental-combat auto-attack in the round
 // loop (`do_mental(fighter, mutable_arg(""), 0, 0, 0)`) calls it every
 // combat pulse for a fighting mental/shadow combatant, and it is
-// ACMD in clerics.cpp (a DEFER-11 TU), the same cross-row class as
-// ambush/cast/hide/trap below. It passed both exclusion tests above (a real
+// ACMD in clerics.cpp (a DEFER-11 TU at the time this correction was
+// written -- clerics.cpp itself joined rots_combat in the later
+// combat-pilot wave's Task 5, so this specific call is now intra-lib), the
+// same cross-row class as ambush/cast/hide/trap below. It passed both
+// exclusion tests above (a real
 // call site, not a same-TU self-call), so the miss was a pure enumeration
 // gap in the first pass, not a signature or classification error. A
 // follow-up sweep (grep for every `#define` in the four TUs, `&do_*`
@@ -62,14 +70,20 @@
 // hidden/indirect do_* calls" for the full per-name classification.
 //
 // Five cells (ambush/cast/hide/mental/trap) are DEFINED in
-// ranger.cpp/spell_pa.cpp/clerics.cpp -- other DEFER-11 combat-row TUs, not
-// app-command tier -- rather than an act_*.cpp file. They are included
-// anyway: DEFER-11 promotion order is not fixed, so a cross-TU call between
-// two not-yet-promoted combat-row TUs must route through this seam exactly
-// like a genuine app-command call until (and unless) both sides of the call
-// promote together, at which point the registered pointer simply becomes an
-// intra-lib address instead -- see task-2-report.md for the per-cell
-// breakdown.
+// ranger.cpp/spell_pa.cpp/clerics.cpp -- other combat-row TUs, not
+// app-command tier -- rather than an act_*.cpp file. They were included
+// anyway at Task 2 landing time: DEFER-11 promotion order was not fixed, so
+// a cross-TU call between two not-yet-promoted combat-row TUs had to route
+// through this seam exactly like a genuine app-command call until (and
+// unless) both sides of the call promoted together, at which point the
+// registered pointer would simply become an intra-lib address instead --
+// see task-2-report.md for the per-cell breakdown. STATUS UPDATE
+// (combat-pilot wave, Task 5): clerics.cpp itself joined rots_combat, so
+// `mental`'s registered pointer is now exactly that intra-lib address, the
+// first cell in this five-name group to actually reach that state.
+// ranger.cpp/spell_pa.cpp (ambush/cast/hide/trap) remain app-compiled, so
+// those four cells still dispatch through this seam like a genuine
+// app-command call, as originally described.
 
 #include "rots/core/types.h" // for the NOWHERE macro (call_special()'s in_room default)
 #include "rots/persist/file_formats.h" // for the RENT_CRASH macro (crash_crashsave()'s rent_code default)
@@ -137,11 +151,13 @@ void set_combat_command(combat_command command, acmd_fn handler);
 // txt_block* exists to return). Every ACMD here is void, so a no-op IS a
 // safe placeholder: skipping a mob's command this tick is a degraded-but-
 // defined outcome (the same class as entity_hooks.h's float hooks'
-// 1.0f-multiplier default), never a dereference of anything. This wave
-// never exercises the default in ageland (nothing calls issue_command() yet
-// -- no call-site conversion), so the choice is precautionary, not load-
-// bearing this wave -- documented for whichever future wave's first real
-// caller relies on it.
+// 1.0f-multiplier default), never a dereference of anything.
+// register_combat_command_dispatch() runs pre-boot_db(), before
+// clerics.cpp's/fight.cpp's real callers (combat-pilot wave, Task 5) ever
+// reach issue_command(), so in normal operation the default does not fire
+// -- it remains a real safety net for an out-of-order boot sequence or a
+// not-yet-registered future caller, not a purely theoretical placeholder
+// anymore.
 void issue_command(
     combat_command command, char_data* ch, char* argument, waiting_type* wtl, int cmd, int subcmd);
 
@@ -149,9 +165,9 @@ void issue_command(
 // pilot-census.md section 3.1 -- NOT a 26th combat_command cell above:
 // special()'s int-returning, 6-parameter shape is categorically different
 // from this header's ACMD-only enum-indexed table). clerics.cpp's/
-// fight.cpp's upward special(...) calls (interpre.cpp-owned, still
-// app-command this wave) route through this pair once converted -- NOT
-// this wave (consumer-free; no call site changes yet).
+// fight.cpp's upward special(...) calls (interpre.cpp-owned) route through
+// this pair -- consumer-free when built at Task 2, converted for real in
+// Task 3 (clerics.cpp) and Task 5 (fight.cpp).
 //
 // A function-pointer TYPE cannot itself carry a default argument (defaults
 // are a declaration/call-site feature in C++, not part of the type), so
@@ -175,10 +191,11 @@ void set_special_handler(special_fn handler);
 // interpre.h:99. Tripwire default: a LOGGED return of 0 ("no spec-proc
 // consumed the event") -- the same 0-default class pilot-census.md section
 // 3.1 confirms special()'s own real callers already treat a non-1 return
-// as. This wave never exercises the default in ageland (no call-site
-// conversion yet), so the choice is precautionary, not load-bearing this
-// wave -- documented for whichever future wave's first real caller relies
-// on it, the same posture as issue_command()'s own tripwire comment above.
+// as. clerics.cpp's/fight.cpp's real special() up-calls (combat-pilot wave,
+// Task 5) now route through call_special() for real, registered via
+// register_combat_command_dispatch() pre-boot_db() -- the same "real safety
+// net, not a theoretical placeholder" posture issue_command()'s own
+// tripwire comment above now documents.
 int call_special(
     char_data* ch, int cmd, char* arg, int callflag, waiting_type* wtl, int in_room = NOWHERE);
 
@@ -190,11 +207,17 @@ int call_special(
 // app-other trio). Each hook below is a single registered fn-ptr, backed in
 // combat_hooks.cpp exactly like g_special_handler above -- NOT a
 // combat_command enum cell, since none of these seven share the fixed ACMD
-// signature the 25-cell table dispatches. CONSUMER-FREE this wave:
-// fight.cpp/clerics.cpp keep calling the real global functions directly
-// (still app-compiled -- ROTS_SERVER_SOURCES -- so that is a legal
-// same-tier call today); a future task converts each call site to its
-// rots::combat:: dispatch entry point below.
+// signature the 25-cell table dispatches. CONSUMER-FREE at Task 4b landing
+// time: fight.cpp/clerics.cpp still called the real global functions
+// directly then (still app-compiled -- ROTS_SERVER_SOURCES -- a legal
+// same-tier call at that point). STATUS UPDATE (combat-pilot wave):
+// fight.cpp's/clerics.cpp's real call sites now route through these
+// rots::combat:: dispatch entry points for real -- clerics.cpp's own
+// conversions landed in Task 3 (while still app-compiled), fight.cpp's in
+// Task 5(a) (also while still app-compiled); both files then joined
+// rots_combat together in Task 5(b)'s joint membership move (a mutual
+// intra-subset dependency made a standalone promotion of either
+// impossible -- see the migration playbook's "intra-subset rule").
 // -----------------------------------------------------------------------
 
 // extract_char() (handler.h:197, handler.cpp:498/503; pilot-census.md

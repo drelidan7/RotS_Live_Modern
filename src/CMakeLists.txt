@@ -227,11 +227,13 @@ set(ROTS_WORLD_SOURCES
 # intra-subset peer edge, and both TUs are included) -- verified via `nm -uC`
 # on the built archive, see the rots_combat_linkcheck load-bearing test below.
 # No handler.cpp/utility.cpp (still app-compiled), no command/session/
-# app-output-beyond-seam edges. The remaining 11 combat-row TUs
+# app-output-beyond-seam edges. Of the original 11 DEFERRED combat-row TUs
 # (profs.cpp, spec_ass.cpp, olog_hai.cpp, clerics.cpp, mage.cpp,
 # mystic.cpp, mobact.cpp, spell_pa.cpp, limits.cpp, ranger.cpp,
-# spec_pro.cpp, fight.cpp) are DEFERRED per the census's per-TU blocker
-# analysis and stay in ROTS_SERVER_SOURCES below.
+# spec_pro.cpp, fight.cpp), clerics.cpp and fight.cpp JOINED this library in
+# the combat-pilot wave (Task 5, joint membership -- see the
+# ROTS_COMBAT_SOURCES comment below); the remaining 9 stay DEFERRED per the
+# census's per-TU blocker analysis and stay in ROTS_SERVER_SOURCES below.
 #
 # wild_fighting_handler.cpp's register_attack_speed_multiplier_hook()/
 # register_wild_attack_speed_multiplier_hook() (entity_hooks.h pattern) are
@@ -243,11 +245,14 @@ set(ROTS_WORLD_SOURCES
 # combat_hooks.cpp JOINS HERE (blocker-buster wave Task 2, census section C):
 # backing storage + dispatch for combat_hooks.h's boot-registered command-
 # dispatch table (an enum-indexed array of ACMD pointers, modeled on
-# assign_spell_pointers()/skills[]) -- the seam the 11 still-DEFERRED
-# combat-row TUs (mobact.cpp/spec_pro.cpp/ranger.cpp/fight.cpp, first) will
-# route their do_hit()/do_flee()/etc. up-calls through once each joins this
-# library. Like output_seam.cpp, it has no single owning caller yet (this
-# wave ships the seam only, no call-site conversion), so it gets its own
+# assign_spell_pointers()/skills[]) -- the seam the still-DEFERRED
+# combat-row TUs (mobact.cpp/spec_pro.cpp/ranger.cpp among them) route their
+# do_hit()/do_flee()/etc. up-calls through once each joins this library.
+# fight.cpp was the first consumer (combat-pilot wave Task 5): its do_flee/
+# do_stand/special() up-calls now route through issue_command()/
+# call_special() below. Like output_seam.cpp, combat_hooks.cpp itself has no
+# single owning caller (this wave shipped the seam only, no call-site
+# conversion), so it gets its own
 # dedicated TU rather than folding into a future caller's file the way
 # entity_hooks.h's per-hook pairs do. Its only downward edge is
 # rots::log::write_stderr (RotS::platform) for the tripwire log; every
@@ -278,9 +283,25 @@ set(ROTS_WORLD_SOURCES
 # (weather.cpp/rots_world) remains the ONE genuine L3-peer edge the census
 # found for this family -- hence the RotS::world PUBLIC link below,
 # mirroring rots_world's own peer link to RotS::persist.
+#
+# clerics.cpp / fight.cpp JOIN here (combat-pilot wave Task 5, joint
+# membership -- pilot-census.md/pilot-task-5-brief.md's binding controller
+# addendum): the wave's two pilot TUs land together in one commit because
+# every clerics.cpp<->fight.cpp edge (set_fighting/stop_fighting/
+# check_sanctuary/check_hallucinate/die/appear/weapon_willpower_damage/
+# do_mental) is intra-subset and only resolves once both join the same
+# library simultaneously -- a standalone single-TU membership move is
+# impossible for this pair. Every other upward edge was cleared by Tasks
+# 2/4a/4b's seams (issue_command/call_special/entity_hooks.h's big_brother
+# pair/the app-other trio/persist_hooks.h's exploit-capture dispatch) or by
+# Task 4a's relocations (set_mental_delay/record_spell_damage/
+# check_break_prep/saves_power/the forget+remember memory-pool package/
+# stop_hiding/stop_riding/remove_character_from_group/unequip_char). See
+# fight.cpp's Task 5 call-site-conversion commit for the up-call side.
 set(ROTS_COMBAT_SOURCES
-    battle_mage_handler.cpp combat_hooks.cpp skill_timer.cpp
-    visibility.cpp weapon_master_handler.cpp wild_fighting_handler.cpp
+    battle_mage_handler.cpp clerics.cpp combat_hooks.cpp fight.cpp
+    skill_timer.cpp visibility.cpp weapon_master_handler.cpp
+    wild_fighting_handler.cpp
 )
 
 # ageland's remaining app-layer sources (spec §3): combat, commands,
@@ -289,15 +310,16 @@ set(ROTS_COMBAT_SOURCES
 # ROTS_WORLD_SOURCES above (world-seed wave Task 5).
 # battle_mage_handler.cpp/skill_timer.cpp/weapon_master_handler.cpp/
 # wild_fighting_handler.cpp LEFT this list for ROTS_COMBAT_SOURCES above
-# (combat-seed wave Task 1).
+# (combat-seed wave Task 1). clerics.cpp/fight.cpp LEFT this list for
+# ROTS_COMBAT_SOURCES above (combat-pilot wave Task 5, joint membership).
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
     act_wiz.cpp ban.cpp big_brother.cpp
-    boards.cpp clerics.cpp
+    boards.cpp
     color.cpp comm.cpp
     db_boot.cpp delayed_command_interpreter.cpp
-    fight.cpp graph.cpp handler.cpp interpre.cpp
+    graph.cpp handler.cpp interpre.cpp
     limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     mystic.cpp obj2html.cpp objsave.cpp
@@ -546,26 +568,30 @@ set_target_properties(rots_combat PROPERTIES CXX_EXTENSIONS OFF)
 # PUBLIC RotS::entity + RotS::core + RotS::platform: battle_mage_handler.cpp/
 # skill_timer.cpp/visibility.cpp/weapon_master_handler.cpp/
 # wild_fighting_handler.cpp's legitimate downward edges land in all three
-# layers -- see the ROTS_COMBAT_SOURCES comment above. No RotS::persist
-# PUBLIC link: still
-# zero L3-persist-peer edges, unlike rots_world's own RotS::persist link
-# above. RotS::world IS now PUBLIC-linked (new this task, unlike the
-# combat-seed wave's original 4-TU subset, which had none): visibility.cpp
-# (blocker-buster Task 4) references `weather_info` (weather.cpp,
-# rots_world) as a legal L3-peer global -- the one genuine cross-L3 edge the
-# census found for this subset (the one intra-subset peer edge,
-# wild_fighting_handler.cpp -> weapon_master_handler.cpp, still resolves
-# within rots_combat itself). PUBLIC so all four layers' include roots flow
+# layers -- see the ROTS_COMBAT_SOURCES comment above. RotS::world IS
+# PUBLIC-linked (blocker-buster Task 4, unlike the combat-seed wave's
+# original 4-TU subset, which had none): visibility.cpp references
+# `weather_info` (weather.cpp, rots_world) as a legal L3-peer global (the
+# one intra-subset peer edge, wild_fighting_handler.cpp ->
+# weapon_master_handler.cpp, still resolves within rots_combat itself).
+# RotS::persist IS ALSO now PUBLIC-linked (combat-pilot wave Task 5, joint
+# membership): fight.cpp is a genuine L3-persist-peer caller, not merely a
+# header-only reach like weapon_master_handler.cpp's RENT_CRASH macro below
+# -- save_char() (already counted non-blocking by pilot-census.md section 2)
+# and the new rots::persist::dispatch_exploit_capture() hook (Task 5's
+# add_exploit_record() conversion) both resolve into db_players.cpp
+# (rots_persist), mirroring rots_world's own RotS::persist PUBLIC link for
+# the identical class of edge (db_world.cpp -> rots::persist::
+# set_room_vnum_hook). PUBLIC so all four layers' include roots flow
 # transitively to any consumer that links only RotS::combat.
-target_link_libraries(rots_combat PUBLIC rots_build_flags RotS::world RotS::entity RotS::core RotS::platform)
-# weapon_master_handler.cpp reaches "rots/persist/file_formats.h" transitively
-# through handler.h's RENT_CRASH macro include (a header-only reach, NOT a
-# link-time dependency on rots_persist -- no rots_combat symbol resolves into
-# rots_persist, per the census). PRIVATE, mirroring rots_entity's identical
-# PRIVATE persist/include above: no consumer of RotS::combat needs this path
-# transitively; ageland/rots_convert already carry persist/include on their
-# own target_include_directories.
-target_include_directories(rots_combat PRIVATE persist/include)
+target_link_libraries(rots_combat PUBLIC rots_build_flags RotS::world RotS::persist RotS::entity RotS::core RotS::platform)
+# No target_include_directories(rots_combat PRIVATE persist/include) needed
+# any longer (weapon_master_handler.cpp's header-only "rots/persist/
+# file_formats.h" reach via handler.h's RENT_CRASH macro used to justify a
+# PRIVATE-only path): persist/include now flows transitively via the
+# PUBLIC RotS::persist link just added above, the same "no target_include_
+# directories of its own needed" shape rots_world's own PUBLIC RotS::persist
+# link already established.
 
 target_link_libraries(ageland PRIVATE
     RotS::platform

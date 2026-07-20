@@ -156,7 +156,10 @@ extern struct time_info_data time_info; /* the infomation about the time   */
 // declares `extern struct weather_data weather_info;` globally, so no
 // new extern is needed here.
 
-struct char_data* waiting_list = 0; /*list of those with delayed commands*/
+// waiting_list storage-moved to clerics.cpp (combat-pilot wave Task 5,
+// membership-move linkcheck fix -- see clerics.cpp's definition-site comment
+// for the full rationale); db_boot.cpp never read or wrote it, only defined
+// it, so this file needs no extern in its place.
 struct char_data* fast_update_list = 0; /* list for fast updating */
 struct char_data* death_waiting_list = 0; /* list of those flagged to die... */
 

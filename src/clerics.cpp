@@ -33,7 +33,21 @@ extern void check_break_prep(struct char_data*);
 extern struct room_data world;
 extern struct message_list fight_messages[MAX_MESSAGES];
 extern struct obj_data* object_list;
-extern struct char_data* waiting_list; /* in db.cpp */
+// waiting_list storage-moved here from db_boot.cpp (combat-pilot wave Task 5
+// membership-move linkcheck fix -- pilot-census.md section 3.9 flagged this
+// extern as LIVE for clerics.cpp, via WAIT_STATE/WAIT_STATE_BRIEF macro
+// expansion, but no earlier task built a seam for it; the CombatLayerAcyclicity
+// linkcheck caught the still-unresolved db_boot.cpp-owned global at membership
+// time). Same storage-move class as fight_messages/spllog_* in fight.cpp:
+// db_boot.cpp never read/wrote this global itself (only defined it), so every
+// other file's own `extern struct char_data* waiting_list;` declaration
+// (act_info.cpp, act_offe.cpp, act_move.cpp, act_othe.cpp, comm.cpp,
+// handler.cpp, graph.cpp, mudlle.cpp, mudlle2.cpp, olog_hai.cpp, ranger.cpp,
+// script.cpp, utility.cpp, spec_pro.cpp, spell_pa.cpp) keeps linking
+// unchanged -- a C++ extern does not care which TU defines the symbol it
+// reads, only that exactly one definition exists (pilot-census.md section
+// 7.10).
+struct char_data* waiting_list = 0;
 extern int immort_start_room;
 extern int mortal_start_room[];
 extern int r_mortal_start_room[];
@@ -231,7 +245,7 @@ ACMD(do_mental)
         act(will_msg_notvict, TRUE, ch, 0, victim, TO_NOTVICT);
 
         damage_result = damage_stat(ch, victim, tmp, damg);
-        gain_exp(ch, (1 + GET_LEVEL(victim)) * std::min(20 + GET_LEVEL(ch) * 2, damg * 5) / (1 + GET_LEVEL(ch)));
+        rots::combat::gain_exp(ch, (1 + GET_LEVEL(victim)) * std::min(20 + GET_LEVEL(ch) * 2, damg * 5) / (1 + GET_LEVEL(ch)));
         if (!damage_result.will_die) {
             if (IS_AFFECTED(victim, AFF_WAITWHEEL) && victim->delay.priority <= 40) {
                 if (battle_mage_handler.does_mental_attack_interrupt_spell()) {

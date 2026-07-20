@@ -71,6 +71,8 @@
 // intra-lib address instead -- see task-2-report.md for the per-cell
 // breakdown.
 
+#include "rots/core/types.h" // for the NOWHERE macro (call_special()'s in_room default)
+
 struct char_data;
 struct waiting_type;
 
@@ -140,5 +142,42 @@ void set_combat_command(combat_command command, acmd_fn handler);
 // caller relies on it.
 void issue_command(
     combat_command command, char_data* ch, char* argument, waiting_type* wtl, int cmd, int subcmd);
+
+// special()'s registered-hook seam (interpre.h:99; combat-pilot wave Task 2;
+// pilot-census.md section 3.1 -- NOT a 26th combat_command cell above:
+// special()'s int-returning, 6-parameter shape is categorically different
+// from this header's ACMD-only enum-indexed table). clerics.cpp's/
+// fight.cpp's upward special(...) calls (interpre.cpp-owned, still
+// app-command this wave) route through this pair once converted -- NOT
+// this wave (consumer-free; no call site changes yet).
+//
+// A function-pointer TYPE cannot itself carry a default argument (defaults
+// are a declaration/call-site feature in C++, not part of the type), so
+// special_fn spells out interpre.h:99's full SIX parameters explicitly.
+// call_special()'s own declaration below carries the `int in_room =
+// NOWHERE` default instead, so a converted call site that previously wrote
+// plain `special(ch, cmd, arg, callflag, wtl)` (5 args, relying on
+// interpre.h:99's own default) reads identically after conversion:
+// `rots::combat::call_special(ch, cmd, arg, callflag, wtl)`.
+using special_fn = int (*)(
+    char_data* ch, int cmd, char* arg, int callflag, waiting_type* wtl, int in_room);
+
+// Registers the real special() pointer. Called once by
+// register_combat_command_dispatch() (interpre.cpp), which already DEFINES
+// special() itself -- no forward declaration needed there, unlike this
+// header's ACMD table above, whose 25 cells interpre.cpp only
+// forward-declares.
+void set_special_handler(special_fn handler);
+
+// Dispatch entry point, in_room defaulting to NOWHERE exactly like
+// interpre.h:99. Tripwire default: a LOGGED return of 0 ("no spec-proc
+// consumed the event") -- the same 0-default class pilot-census.md section
+// 3.1 confirms special()'s own real callers already treat a non-1 return
+// as. This wave never exercises the default in ageland (no call-site
+// conversion yet), so the choice is precautionary, not load-bearing this
+// wave -- documented for whichever future wave's first real caller relies
+// on it, the same posture as issue_command()'s own tripwire comment above.
+int call_special(
+    char_data* ch, int cmd, char* arg, int callflag, waiting_type* wtl, int in_room = NOWHERE);
 
 } // namespace rots::combat

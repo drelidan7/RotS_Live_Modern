@@ -316,3 +316,106 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenMentalIsUnregistered)
         << "Expected an unregistered mental cell to leave send_to_char uncalled -- the real "
            "do_mental body never ran.";
 }
+
+// special() (interpre.h:99; combat-pilot wave Task 2, brief
+// .superpowers/sdd/pilot-task-2-brief.md, Step 3) -- a registered-hook seam,
+// NOT a 26th combat_command cell (see combat_hooks.h's special_fn comment
+// for why: special()'s int-returning, 6-parameter shape is categorically
+// different from the ACMD table above -- pilot-census.md section 3.1).
+// DISCRIMINATOR: a recording stub captures every argument call_special()
+// forwards, proving the dispatch wrapper's parameter list matches
+// interpre.h:99's real signature exactly (including the in_room default).
+// This seam's own registrar (register_combat_command_dispatch(),
+// interpre.cpp) registers the REAL special() function -- ScopedSpecialHandler
+// below swaps in a recording stub (or nullptr) for one test and restores the
+// real registration afterward via that same registrar, mirroring
+// ScopedUnregisteredCombatCommand's restore-via-real-registrar shape above.
+namespace {
+
+struct RecordedSpecialCall {
+    char_data* ch = nullptr;
+    int cmd = 0;
+    char* arg = nullptr;
+    int callflag = 0;
+    waiting_type* wtl = nullptr;
+    int in_room = 0;
+    bool called = false;
+};
+
+RecordedSpecialCall g_recorded_special_call;
+
+int recording_special_stub(
+    char_data* ch, int cmd, char* arg, int callflag, waiting_type* wtl, int in_room)
+{
+    g_recorded_special_call = RecordedSpecialCall { ch, cmd, arg, callflag, wtl, in_room, true };
+    return 42;
+}
+
+// Swaps combat_hooks.h's single special-handler cell (distinct from the
+// combat_command enum-indexed table above), then restores the REAL
+// special() registration via register_combat_command_dispatch() on
+// destruction -- there is no per-hook "restore just this one" entry point
+// for this seam either, same rationale as ScopedUnregisteredCombatCommand.
+class ScopedSpecialHandler {
+public:
+    explicit ScopedSpecialHandler(rots::combat::special_fn handler)
+    {
+        rots::combat::set_special_handler(handler);
+    }
+
+    ~ScopedSpecialHandler() { register_combat_command_dispatch(); }
+
+    ScopedSpecialHandler(const ScopedSpecialHandler&) = delete;
+    ScopedSpecialHandler& operator=(const ScopedSpecialHandler&) = delete;
+};
+
+} // namespace
+
+TEST(CombatHooksSpecial, CallSpecialReachesARegisteredStubWithAllArgsIntact)
+{
+    g_recorded_special_call = RecordedSpecialCall {};
+    ScopedSpecialHandler scoped(recording_special_stub);
+    char_data character {};
+    char argument_text[] = "test-arg";
+    waiting_type wtl {};
+
+    const int result = rots::combat::call_special(&character, 7, argument_text, SPECIAL_TARGET, &wtl, 42);
+
+    EXPECT_TRUE(g_recorded_special_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_special_call.ch, &character);
+    EXPECT_EQ(g_recorded_special_call.cmd, 7);
+    EXPECT_EQ(g_recorded_special_call.arg, argument_text);
+    EXPECT_EQ(g_recorded_special_call.callflag, SPECIAL_TARGET);
+    EXPECT_EQ(g_recorded_special_call.wtl, &wtl);
+    EXPECT_EQ(g_recorded_special_call.in_room, 42)
+        << "Expected the explicit in_room argument to reach the stub unchanged.";
+    EXPECT_EQ(result, 42) << "Expected call_special() to forward the stub's return value.";
+}
+
+TEST(CombatHooksSpecial, CallSpecialOmittedInRoomArgumentDefaultsToNowhereLikeInterpreH99)
+{
+    g_recorded_special_call = RecordedSpecialCall {};
+    ScopedSpecialHandler scoped(recording_special_stub);
+    char_data character {};
+    waiting_type wtl {};
+
+    rots::combat::call_special(&character, 0, mutable_arg(""), 0, &wtl);
+
+    EXPECT_EQ(g_recorded_special_call.in_room, NOWHERE)
+        << "Expected call_special()'s own in_room default to mirror interpre.h:99's "
+           "`int in_room = NOWHERE` default exactly.";
+}
+
+TEST(CombatHooksSpecial, CallSpecialDefaultsToLoggedZeroWhenUnregistered)
+{
+    ScopedSpecialHandler unregistered(nullptr);
+    char_data character {};
+    waiting_type wtl {};
+
+    const int result = rots::combat::call_special(&character, 0, mutable_arg(""), 0, &wtl);
+
+    EXPECT_EQ(result, 0)
+        << "Expected an unregistered special handler to return the tripwire default 0 -- "
+           "\"no spec-proc consumed the event\".";
+}

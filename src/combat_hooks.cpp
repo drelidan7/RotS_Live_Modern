@@ -27,6 +27,13 @@ namespace {
 std::array<rots::combat::acmd_fn, static_cast<std::size_t>(rots::combat::combat_command::count)>
     g_command_table {};
 
+// Backing storage for special()'s registered-hook seam (combat-pilot wave
+// Task 2) -- a single fn-ptr, not an enum-indexed cell of the table above,
+// since special() is its own dispatch target (see combat_hooks.h's
+// special_fn comment). Null until register_combat_command_dispatch()
+// (interpre.cpp) runs, same convention as g_command_table above.
+rots::combat::special_fn g_special_handler = nullptr;
+
 } // namespace
 
 namespace rots::combat {
@@ -48,6 +55,23 @@ void issue_command(
         "rots::combat: STUB issue_command(cell={}) called with no handler registered -- this "
         "should be unreachable once register_combat_command_dispatch() has run.",
         index));
+}
+
+void set_special_handler(special_fn handler)
+{
+    g_special_handler = handler;
+}
+
+int call_special(
+    char_data* ch, int cmd, char* arg, int callflag, waiting_type* wtl, int in_room)
+{
+    if (g_special_handler) {
+        return g_special_handler(ch, cmd, arg, callflag, wtl, in_room);
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB call_special() called with no handler registered -- this should "
+        "be unreachable once register_combat_command_dispatch() has run.");
+    return 0;
 }
 
 } // namespace rots::combat

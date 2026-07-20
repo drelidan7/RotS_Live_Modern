@@ -2286,6 +2286,13 @@ void register_combat_command_dispatch()
     set_combat_command(combat_command::unlock, do_unlock);
     set_combat_command(combat_command::wake, do_wake);
     set_combat_command(combat_command::wear, do_wear);
+
+    // special()'s registered-hook seam (combat-pilot wave Task 2, brief
+    // .superpowers/sdd/pilot-task-2-brief.md Step 3) -- NOT a combat_command
+    // cell (see combat_hooks.h's special_fn comment): special() is DEFINED in
+    // this file, so registering it here needs no forward declaration, the same
+    // reason this whole registrar lives here rather than in combat_hooks.cpp.
+    rots::combat::set_special_handler(special);
 }
 
 /* *************************************************************************

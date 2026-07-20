@@ -77,7 +77,7 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
 | `rots_entity` | L2 | 6 | `char_utils, object_utils, environment_utils, handler, utility, char_utils_combat` (as-built: 5 of 6 have joined `rots_entity` — `handler`/`utility` remain app-compiled, deferred with named/uncounted welds respectively — see caveat below) |
 | `rots_persist` | L3 | ~14 | `db_players` (from `db.cpp`), `objsave, boards, mail, pkill, character_json, objects_json, exploits_json, account_management (+6 #included fragments), account_cache, convert_exploits, convert_plrobjs, save_benchmark, savebench` |
 | `rots_world` | L3 | ~15 | `db_world` (from `db.cpp`), `shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle, mudlle2, graph, weather, mob_csv_extract, obj2html` (as-built: 3 of ~15 have joined `rots_world` — `db_world`/`weather`/the new `zone_load` (carved out of `zone`) — `shape*`/`script`/`mudlle`/`mudlle2`/`graph`/`mob_csv_extract`/`obj2html`/`zone`'s reset half remain app-compiled, deferred — see caveat below) |
-| `rots_combat` | L3 | 16 | `fight, limits, skill_timer, mobact, ranger, clerics, mage, mystic, profs, spell_pa, spec_pro, spec_ass, battle_mage_handler, weapon_master_handler, wild_fighting_handler, olog_hai` (as-built: 4 of 16 have joined `rots_combat` — `skill_timer`/`battle_mage_handler`/`weapon_master_handler`/`wild_fighting_handler` — `profs` is caveated SEED-WITH-SEAM and the remaining 11 (`fight, limits, mobact, ranger, clerics, mage, mystic, spell_pa, spec_pro, spec_ass, olog_hai`) DEFER, all still app-compiled — see caveat below) |
+| `rots_combat` | L3 | 16 | `fight, limits, skill_timer, mobact, ranger, clerics, mage, mystic, profs, spell_pa, spec_pro, spec_ass, battle_mage_handler, weapon_master_handler, wild_fighting_handler, olog_hai` (as-built: 4 of 16 have joined `rots_combat` — `skill_timer`/`battle_mage_handler`/`weapon_master_handler`/`wild_fighting_handler` — `profs` is caveated SEED-WITH-SEAM and the remaining 11 (`fight, limits, mobact, ranger, clerics, mage, mystic, spell_pa, spec_pro, spec_ass, olog_hai`) DEFER, all still app-compiled; the blocker-buster wave added two further TUs NOT in this row's original 16-TU sketch — `combat_hooks.cpp`/`visibility.cpp`, enabler infrastructure rather than DEFER-11 migrations, bringing `rots_combat` to 6 TUs total — see caveat below) |
 | `rots_commands` | L4 | 15 | `interpre, act_comm, act_info, act_move, act_obj1, act_obj2, act_offe, act_othe, act_soci, act_wiz, modify, delayed_command_interpreter, wait_functions, shop, ban` |
 | `rots_app` | L5 | 6 | `comm, protocol, color, big_brother, signals, db_boot` (from `db.cpp`); `signals.cpp` calls up into game/session state (`descriptor_list`, `hupsig`, `unrestrict_game`) so it is app-layer, not foundation |
 
@@ -203,6 +203,35 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
   The poison-notification hook (`obj_from_char`/`extract_obj`) stays rejected, unchanged from the
   entity-completion/world-seed waves' account. See `docs/BUILD.md`'s "`rots_combat`" section for
   the full membership/growth-inventory/backlog account.
+- **Resolved, enablers only (blocker-buster wave) — the row's TU count is unchanged at 4 of 16, but
+  both blockers the combat-seed wave's census left open are now CLEARED.** `rots_combat` gains two
+  new TUs not in the row's original 16-TU sketch — `combat_hooks.cpp` (Task 2) and `visibility.cpp`
+  (Tasks 4/4b) — bringing the library to **6 TUs total**, though neither is a DEFER-11 migration:
+  this wave was explicitly **enabler-only, consumer-free** (no DEFER-11 TU moved). The four
+  enablers: (1) `output_seam` extended by 7 forwarders (`send_to_all`/`send_to_room`/
+  `send_to_room_except_two`/`break_spell`/`abort_delay`/`complete_delay`/the txt-pool content
+  overload); (2) `combat_hooks.h`'s 25-cell boot-registered ACMD dispatch table (the
+  `assign_spell_pointers()` precedent, registered from `interpre.cpp`/`db_boot.cpp`'s existing
+  sequence — no call-site conversion this wave); (3) `entity_hooks.h`'s poison-notification hook,
+  which **retires the poison-notification hook cluster this section's prior bullet called
+  "rejected"** — `obj_from_char`/`extract_obj` completed their placement-seam-era deferred moves to
+  `rots_entity` (L2) this wave, characterization-tested before and after the inversion; (4) the
+  full visibility family (12 functions: `CAN_SEE`×2/`CAN_SEE_OBJ`/`get_char_room_vis`/
+  `get_player_vis`/`get_char_vis`/`get_obj_in_list_vis`/`get_obj_vis`/`get_object_in_equip_vis`/
+  `generic_find`/`get_real_OB`/`get_real_parry`, plus the carved-out `see_hiding`) moved out of
+  `handler.cpp`/`utility.cpp` into the new `visibility.cpp` — the OB/parry/dodge trio this
+  section's `rots_entity` bullet left split now reunites entirely in library code (L2
+  `get_real_dodge` + L3 `get_real_OB`/`get_real_parry`), and `rots_combat` gains its first genuine
+  L3-peer link (`RotS::world` PUBLIC, for `visibility.cpp`'s `weather_info` reference). Two census
+  errata surfaced and were corrected in the process, not just noted: the planning census's ACMD
+  target count (~19) was wrong in both directions (reconciled to 25, including a review-caught
+  `do_mental` miss), and its visibility-family verdict conflated "thematically a combat-row TU"
+  with "actually in `ROTS_COMBAT_SOURCES` today" (`ranger.cpp`'s `see_hiding`, `interpre.cpp`'s
+  `search_block`) — both re-verified against current build wiring, not just the census's row
+  assignment. `profs` and the row's other 11 DEFER TUs remain entirely app-compiled; the remaining
+  blocker for each is now pure per-TU migration (body move + up-call conversion + fresh census
+  re-verification), not enabler design. See `docs/BUILD.md`'s "`rots_combat`" section (the
+  blocker-buster subsection) for the full seam/errata/growth-inventory account.
 
 ---
 

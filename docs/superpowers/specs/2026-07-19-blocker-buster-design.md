@@ -98,3 +98,49 @@ explicitly the NEXT wave, on these seams once proven. Deliverables:
 
 - Migrating any DEFER-11 TU (clerics/fight pilot = next wave); `fight_messages` storage move;
   `profs`; the §7 call-site campaign; Stage 2.
+
+## As-built
+
+All four enablers landed, consumer-free, exactly as scoped — no DEFER-11 TU migrated. ctest:
+1343 (wave baseline) → **1365** both hosts, ASan clean at every task's gate (reconciled per-task
+chain: `AGENTS.md`'s "Testing Guidelines", full citations in `.superpowers/sdd/task-5-report.md`).
+
+1. **Output-seam extension (Task 1)** landed as designed: `output_seam.{h,cpp}` gained the seven
+   forwarders, `comm.cpp` registers the real sinks alongside the existing five. One post-review
+   fix, not a STOP: the brief's own "match the five" steer for the txt-block-pool forwarder's
+   default was wrong — a null-default would have returned a null `txt_block*` straight into
+   `comm.cpp`'s `write_to_q()`, which immediately dereferences it. Fixed to a tripwire
+   log-then-abort (the `entity_hooks.h` txt-pool pair's own precedent), the one exception to the
+   six void forwarders' logged-no-op default. A second, unrelated fix rode along: a pre-existing
+   flat-Makefile `SRCS` gap (three test files never in the i386 monolithic runner) was restored.
+2. **Command-dispatch seam (Task 2)** landed as designed on the `assign_spell_pointers()`
+   precedent, registered from `interpre.cpp`/`db_boot.cpp`'s existing sequence, logged-no-op
+   default. **Deviation from the design's own estimate, not the architecture**: the design's "~19"
+   target count was wrong in both directions — three census-listed names had no real call site
+   (phantoms), and the reconciled union was actually 24, then 25 once a coordinator review caught
+   a missing `do_mental` cell (`fight.cpp`'s per-tick mental-combat up-call). No call-site
+   conversion happened this wave, exactly as scoped.
+3. **Poison-notification hook (Task 3)** landed as designed: characterization-first (the wave's one
+   behavior-sensitive item), red-proofed against the pre-inversion wrapper, then proven
+   byte-identical through the inverted path — the design's own required proof shape, delivered
+   exactly. `obj_from_char`/`extract_obj` completed their placement-seam-era deferred moves to
+   `rots_entity` (L2), retiring deferral cluster 3. Zero fix findings at review.
+4. **Visibility family → `rots_combat` (Task 4, completed by Task 4b)** landed with one **STOP,
+   not a deviation**: the design's census-A input claimed the whole family belonged in
+   `rots_combat`, but Task 4's build-wiring verification found `see_hiding` (the 3-arg `CAN_SEE`
+   overload's dependency) still lived in `ranger.cpp`, a DEFER-11 `ROTS_SERVER_SOURCES` TU — "in
+   the combat row thematically" is not "in `ROTS_COMBAT_SOURCES` today." Task 4 correctly STOPped
+   and documented rather than forcing the move (7 of 12 landed; 5 stayed, with `generic_find`'s
+   `search_block()` uncensused edge found the same way). Task 4b (a controller-dispatched
+   follow-on, not sketched as a separate task in this design) closed both gaps: `see_hiding`
+   carved out of `ranger.cpp` into `visibility.cpp`, `search_block()` relocated to
+   `rots_util.cpp`/`rots_platform`, completing all 12/12. `get_real_OB`/`get_real_parry` landed in
+   `visibility.cpp` alongside the family, reuniting the OB/parry/dodge trio entirely in library
+   code (L2 `get_real_dodge` + L3 `get_real_OB`/`get_real_parry`) — the design's own framing ("the
+   live trio reunites in combat tier"). `rots_combat` picked up its first genuine L3-peer link
+   (`RotS::world` PUBLIC, for `weather_info`) as a consequence, not a separate design decision.
+
+No STOP blocked delivery; the two census corrections (command-dispatch count, visibility-family
+build-wiring) were absorbed as documented deviations per Auto Mode discipline, not treated as
+scope failures. See `docs/BUILD.md`'s "`rots_combat`" section (the blocker-buster subsection) for
+the full seam-by-seam account and the census-errata record.

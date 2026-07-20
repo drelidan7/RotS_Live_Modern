@@ -511,20 +511,30 @@ splitting rather than verbatim relocation — the public name and declaration st
   returned `obj_data*` already reproduces the ORIGINAL's control flow. The `mudlog` zero-object
   guard is L0-legal and stays in the primitive.
 
-**Three honest deferral clusters (Stage 1 scope, not oversights). Two of the three RETIRED by the
-combat-seed wave's riders (Tasks 2-3); the poison cluster REMAINS backlog:**
+**Three honest deferral clusters (Stage 1 scope, not oversights). ALL THREE now RETIRED — the
+first two by the combat-seed wave's riders (Tasks 2-3), the poison cluster by the blocker-buster
+wave's Task 3:**
 
-1. **`obj_from_char`/`extract_obj` — STAY-APP, poison-path counter-example. REMAINS backlog.** A
-   Task 3 STOP-check found a real counter-example, not a hypothetical one: `script.cpp`'s
-   `SCRIPT_OBJ_FROM_CHAR` can hand `obj_from_char` an *equipped* item, which routes through
-   `unequip_char`'s poison-damage block — still app-tier — so moving `obj_from_char`/`extract_obj`
-   down would leave lib code calling up into app. Confirmed via `script.cpp:817`/`:1461`. The
-   combat-seed wave's census re-examined this cluster (`.superpowers/sdd/combat-census.md`,
-   "Deferral riders — feasibility" #3) and confirmed it is still only an *ambitious-wave* concern:
-   the direction is fine today (combat calling down into deferred `handler` is legal), and only
-   flips into a real entity(L2)→combat(L3) upward edge once `fight.cpp`+damage eventually join
-   `rots_combat` while `handler` is still below it. Future: a poison-notification hook
-   (`entity_hooks.h`-pattern registered callback), or restructuring around post-combat extraction.
+1. **`obj_from_char`/`extract_obj` — RETIRED (blocker-buster Task 3).** The original STOP-check
+   found a real counter-example, not a hypothetical one: `script.cpp`'s `SCRIPT_OBJ_FROM_CHAR` can
+   hand `obj_from_char` an *equipped* item, which routed through `unequip_char`'s poison-damage
+   block — app-tier — so moving `obj_from_char`/`extract_obj` down would have left lib code calling
+   up into app. Confirmed via `script.cpp:817`/`:1461`. Blocker-buster Task 3 closed the gap with a
+   **poison-notification hook** (`entity_hooks.h`'s `set_poison_removal_hook`/`poison_removal_fn`,
+   the `entity_hooks.h`-pattern registered callback this section's older text anticipated):
+   `containment.cpp`'s `obj_from_char()` captures `was_poisoned` before calling `detach_equipment()`
+   and fires the hook — instead of calling the app-tier `unequip_char()` wrapper directly — only when
+   that detach just cured the wearer's poison affect. `fight.cpp` registers the real implementation
+   (a byte-for-byte replay of the wrapper's `damage()`/`raw_kill()` block) in `run_the_game()` before
+   `boot_db()`, with `gtest_main.cpp` parity. A characterization test
+   (`src/tests/poison_notification_tests.cpp`, commit `ddf8164`) was written and red-proofed
+   **against the pre-inversion code first** — driving the real `script.cpp` `run_script()` path
+   (not the documented fallback) — then re-run byte-identical (`git diff --stat` shows no changes)
+   after the inversion as the identity proof. `obj_from_char()` moved to `containment.cpp` and
+   `extract_obj()` to `object_utils.cpp` (both `rots_entity`, L2), verbatim; `EntityLayerAcyclicity`
+   confirms the upward edge is gone. Unregistered-fire is a tripwire log with no abort (a void hook
+   has nothing to dereference; see the hook's own comment for the reachability analysis — it never
+   fires unregistered in `ageland` or `rots_convert`).
 2. **`parse_numbered_name`/`get_char` — RETIRED (combat-seed Task 3).** `NumberedName` moved to
    `rots/platform/numbered_name.h` (see the `rots_combat` section's "NumberedName's L0-visibility
    tier decision" note below); `parse_numbered_name` → `rots_util.cpp` (L0),
@@ -536,23 +546,31 @@ combat-seed wave's riders (Tasks 2-3); the poison cluster REMAINS backlog:**
    `month_name[]` dependency (both L1) already pointed at. Declarations stayed in `utils.h`
    unchanged.
 
-Beyond those three clusters, a broader **STAY-APP inventory** stays app-compiled by design this
-wave (per-function detail: `.superpowers/sdd/placement-census.md`): the **visibility family**
-(`CAN_SEE`/`CAN_SEE_OBJ`, `get_char_room_vis`/`get_player_vis`/`get_char_vis`/`get_obj_vis`/
+Beyond those three clusters, a broader **STAY-APP inventory** stayed app-compiled by design in the
+placement-seam wave (per-function detail: `.superpowers/sdd/placement-census.md`): the **visibility
+family** (`CAN_SEE`/`CAN_SEE_OBJ`, `get_char_room_vis`/`get_player_vis`/`get_char_vis`/`get_obj_vis`/
 `get_obj_in_list_vis`/`get_object_in_equip_vis`, `generic_find`, `PERS`); the **proto family**
 (`compare_obj_to_proto`, `obj_to_proto`, `check_inventory_proto`/`check_equipment_proto`/
 `check_container_proto`); **session helpers** (`find_playing_char`, `echo_off`/`echo_on`); the
 **zone-power pair** (`recalc_zone_power`, `report_zone_power` — world-side bookkeeping, arguably
 `rots_world`'s if anything); and `get_real_OB`/`get_real_parry` (see the OB/PB/DB trio note below).
-Each is app-coupled for a stated reason (output, combat, session, world-index, or spec-handler
-dependency) — none is an unexamined gap.
+**As of the blocker-buster wave (Tasks 4/4b), the visibility family (all eleven functions except
+`PERS`) and `get_real_OB`/`get_real_parry` have LEFT this inventory** — see "`rots_combat`" below
+for their new `visibility.cpp` home. What remains app-compiled by design: the **proto family**,
+**session helpers**, the **zone-power pair**, and `PERS` (census-confirmed unchanged — `CC_USE`/
+`CC_NORM` color-global deps, `color.cpp` is app-tier). Each is app-coupled for a stated reason
+(output, combat, session, world-index, or spec-handler dependency) — none is an unexamined gap.
 
-**The OB/PB/DB trio splits across tiers.** `get_real_dodge` moved to `char_utils_combat.cpp` (lib,
-`rots_entity`) in Task 5; `get_real_OB`/`get_real_parry` stay in `utility.cpp` (app), each behind a
-one-line comment explaining why: both call into `player_spec::weapon_master_handler`, an app-tier
-spec-handler edge `get_real_dodge` doesn't share. AGENTS.md's Dead/Unused-Code trio paragraph
-records this split (see below) — do not confuse it with the *deleted* `utils::`-namespaced
-weather/room-arg trio from the `combat_manager` deletion, which is unrelated history.
+**The OB/PB/DB trio reunites across library tiers (final state, blocker-buster Task 4).**
+`get_real_dodge` moved to `char_utils_combat.cpp` (lib, `rots_entity`, L2) in placement-seam Task 5;
+`get_real_OB`/`get_real_parry` — held back at that time by their `player_spec::
+weapon_master_handler` dependency, then still app-tier — moved to `visibility.cpp` (lib,
+`rots_combat`, L3) in blocker-buster Task 4, once `weapon_master_handler.cpp` (combat-seed Task 1)
+made that dependency an intra-lib peer reference instead of an app edge. All three trio members are
+now library code, split across the L2/L3 tier line rather than STAY-APP; AGENTS.md's Dead/Unused-Code
+trio paragraph records this final split (see below) — do not confuse it with the *deleted*
+`utils::`-namespaced weather/room-arg trio from the `combat_manager` deletion, which is unrelated
+history.
 
 ### Output seam and entity hooks: the last three app-layer edges into `rots_entity`
 
@@ -778,18 +796,26 @@ own PUBLIC include directories.
 
 ### `rots_combat` (L3): the combat-handler library
 
-The sixth extracted layer is `rots_combat` (L3) — **4 TUs**: `skill_timer.cpp`,
-`battle_mage_handler.cpp`, `weapon_master_handler.cpp`, and `wild_fighting_handler.cpp` — built as
-`librots_combat.a` and linked into `ageland` as `RotS::combat`. It is the third and final of the
-spec's three L3 peer libraries to exist as a build target (`rots_persist` was the first,
-`rots_world` the second). Unlike `rots_world`, `rots_combat` links **no** L3-peer library PUBLIC:
-`target_link_libraries(rots_combat PUBLIC rots_build_flags RotS::entity RotS::core RotS::platform)`
-— the combat-census (`.superpowers/sdd/combat-census.md`) found zero L3-peer edges out of this
-4-TU subset (the one intra-subset peer edge, `wild_fighting_handler.cpp` →
-`weapon_master_handler.cpp`, resolves inside `rots_combat` itself, not against another L3 lib).
-`rots_convert`'s link line is unchanged (`RotS::platform`+`RotS::core`+`RotS::entity`+
-`RotS::persist`) — it does **not** link `RotS::combat`; none of the four combat TUs sit on the
-persistence boundary.
+The sixth extracted layer is `rots_combat` (L3) — seeded with **4 TUs** (`skill_timer.cpp`,
+`battle_mage_handler.cpp`, `weapon_master_handler.cpp`, `wild_fighting_handler.cpp`, combat-seed
+Task 1) and grown to **6 TUs** by the blocker-buster wave (`combat_hooks.cpp` Task 2,
+`visibility.cpp` Task 4 — `ROTS_COMBAT_SOURCES` in `src/CMakeLists.txt` is the single source of
+truth for the current membership) — built as `librots_combat.a` and linked into `ageland` as
+`RotS::combat`. It is the third and final of the spec's three L3 peer libraries to exist as a build
+target (`rots_persist` was the first, `rots_world` the second). At the 4-TU seed, `rots_combat`
+linked **no** L3-peer library PUBLIC: `target_link_libraries(rots_combat PUBLIC rots_build_flags
+RotS::entity RotS::core RotS::platform)` — the combat-census (`.superpowers/sdd/combat-census.md`)
+found zero L3-peer edges out of that 4-TU subset (the one intra-subset peer edge,
+`wild_fighting_handler.cpp` → `weapon_master_handler.cpp`, resolves inside `rots_combat` itself,
+not against another L3 lib). **As of blocker-buster Task 4, `rots_combat` gains a PUBLIC
+`RotS::world` link** — `visibility.cpp`'s moved `CAN_SEE(sub)` references `weather_info`
+(`weather.cpp`, `rots_world`) as a legal L3-peer global (plain `extern`, no seam; the parent spec's
+L3-peer rule, the same precedent `rots_world`'s own `RotS::persist` link established), the first
+genuine L3-peer edge this library's subset has needed. Current link line:
+`target_link_libraries(rots_combat PUBLIC rots_build_flags RotS::world RotS::entity RotS::core
+RotS::platform)`. `rots_convert`'s link line is unchanged (`RotS::platform`+`RotS::core`+
+`RotS::entity`+`RotS::persist`) — it does **not** link `RotS::combat`; none of the six combat TUs
+sit on the persistence boundary.
 
 - **`target_include_directories(rots_combat PRIVATE persist/include)`.**
   `weapon_master_handler.cpp` reaches `rots/persist/file_formats.h` transitively through
@@ -800,15 +826,21 @@ persistence boundary.
   `ageland`/`rots_convert` already carry `persist/include` on their own
   `target_include_directories`.
 - **`rots_combat_linkcheck` / CTest `CombatLayerAcyclicity`** mirrors the `rots_world_linkcheck`
-  pattern: force-load `librots_combat.a` and normal-link only `RotS::entity` + `RotS::core` +
-  `RotS::platform` to resolve its legitimate downward edges — anything else unresolved fails the
-  build. It went green on the first attempt — no STOP cascade, unlike `rots_entity`'s two rounds
-  or `rots_world`'s four-edge cascade — and a positive-PASS/negative-FAIL probe (a transient
-  upward call added in a scratch build, then reverted traceless) confirmed the check actually
-  catches an upward edge rather than passing vacuously. Both hosts' ctest baseline moved from 1315
-  to **1316** the task this check was added (combat-seed Task 1); Task 3b then added 27 targeted
-  coverage tests (8 `SkillTimerTest.*`, 19 `WildFightingHandler.*`) for **1343** (75 skips macOS /
-  77 rots64, freshly measured at Task 3b's gates — see `AGENTS.md`'s "Testing Guidelines").
+  pattern: force-load `librots_combat.a` and normal-link only `RotS::world` + `RotS::entity` +
+  `RotS::core` + `RotS::platform` (the `RotS::world` peer link added by blocker-buster Task 4, above)
+  to resolve its legitimate downward/peer edges — anything else unresolved fails the build. It went
+  green on the first attempt at the 4-TU seed — no STOP cascade, unlike `rots_entity`'s two rounds
+  or `rots_world`'s four-edge cascade — and a positive-PASS/negative-FAIL probe (a transient upward
+  call added in a scratch build, then reverted traceless) confirmed the check actually catches an
+  upward edge rather than passing vacuously; it stayed green through blocker-buster's two new TUs
+  (`combat_hooks.cpp`, `visibility.cpp`) with no further cascade. Both hosts' ctest baseline moved
+  from 1315 to **1316** the task this check was added (combat-seed Task 1); Task 3b then added 27
+  targeted coverage tests (8 `SkillTimerTest.*`, 19 `WildFightingHandler.*`) for **1343** (75 skips
+  macOS / 77 rots64, freshly measured at Task 3b's gates). The blocker-buster wave then carried the
+  total to **1365** both hosts (output_seam +7 tests net, the 25-cell command-dispatch table's
+  discriminator tests, and the poison-notification characterization pair — see `AGENTS.md`'s
+  "Testing Guidelines" for the full reconciled per-task chain and `.superpowers/sdd/task-5-report.md`
+  for the citation table).
 - **Coverage.** `battle_mage_handler.cpp`/`weapon_master_handler.cpp` already had dedicated suites
   before this wave (`BattleMageHandler.*` — 12 direct cases, `WeaponMasterHandler.*` — 25 direct
   cases). `skill_timer.cpp` and `wild_fighting_handler.cpp` had none — flagged by Task 1 under the
@@ -831,33 +863,116 @@ persistence boundary.
   already established (see "The logging seam" above). `get_char` → `entity_lifecycle.cpp` (L2)
   sees the same header via `handler.h`'s compatibility include.
 
-**The DEFER-11 growth inventory (census's blocker analysis, recorded for the next combat wave).**
-The parent spec's `rots_combat` row sketches 16 TUs; this wave seeded the 4 SEED-CLEAN TUs above,
-left `profs` caveated, and left **11 DEFER** entirely alone (`spec_ass`, `olog_hai`, `clerics`,
-`mage`, `mystic`, `mobact`, `spell_pa`, `limits`, `ranger`, `spec_pro`, `fight` — still
-`ROTS_SERVER_SOURCES` members). Two findings the census made explicit so the next wave starts
-informed instead of re-deriving them:
-  - **Output is already unblocked.** `output_seam` (L1 `rots_core`) already forwards
-    `send_to_char`×2/`vsend_to_char`/`act`/track+untrack_mage downward — every `act`/`send_to_char`
-    call-site in all 16 combat-row TUs (e.g. `fight` act=71/stc=26, `spec_pro` act=114, `ranger`
-    stc=234) resolves into L1, not up into `comm.cpp`. Heavy output volume alone does not block a
-    TU. What the seam does **not** yet cover — `send_to_room*`, `send_to_all`, `break_spell`,
-    `abort_delay`, `complete_delay`, `close_socket`, `get_from_txt_block_pool` (the `comm.cpp`
-    overload, distinct from the `entity_hooks.h` txt-pool pair), plus `descriptor_list`/
-    `_circle_shutdown`/`_no_specials`/`_fight_messages`/color globals — only appears on DEFER-tier
-    TUs; extending `output_seam` with ~8 more forwarders is a prerequisite for the *ambitious*
-    subset, not this seed.
-  - **The dominant blocker is the app-side `handler.cpp`/`utility.cpp` remainder, plus a
-    command-dispatch seam for the mob-AI/spec-proc TUs.** Every DEFER-tier TU's blocking edges
-    trace back to the still-app `handler.cpp`/`utility.cpp` visibility/equip-wrapper family
-    (`get_char_room_vis`/`CAN_SEE`/`get_real_OB`/`get_real_parry`/`extract_char`/`extract_obj`/
-    `stop_riding`/…, the same remainder the "`rots_entity`" section above describes), and — for
-    `mobact` (12 `do_*` calls) and `spec_pro` (~a dozen `do_*` + `command_interpreter`/
-    `_cmd_info`) specifically — an upward call into L4 command entry points (`do_hit`/`do_move`/
-    `do_flee`/…), the reverse of the already-clean command→combat direction `do_cast`
-    (`spell_pa.cpp`, an in-row `ACMD`) proves. Closing either lever (further `handler`/`utility`
-    extraction, or a `combat_hooks.h`-style command-dispatch seam) is a prerequisite for the next
-    tranche, not this wave's scope. Full per-TU evidence: `.superpowers/sdd/combat-census.md`.
+### The blocker-buster wave: four combat-growth enabler seams (consumer-free)
+
+Design: `docs/superpowers/specs/2026-07-19-blocker-buster-design.md`. Plan:
+`docs/superpowers/plans/2026-07-19-blocker-buster.md`. Where the combat-seed wave above seeded four
+already-clean TUs, this wave built the four *enablers* the census identified as blocking every
+remaining DEFER-11 TU — **enabler-only, consumer-free**: no DEFER-11 TU migrates this wave; the four
+seams exist so the *next* combat wave's TU migrations have somewhere to resolve downward into
+instead of welding back up into `comm.cpp`/app-command entry points.
+
+1. **Output-seam extension (Task 1, `output_seam.h`/`output_seam.cpp`, +7 forwarders).**
+   `send_to_all`/`send_to_room`/`send_to_room_except_two`, `break_spell`/`abort_delay`/
+   `complete_delay`, and the content-carrying `get_from_txt_block_pool(std::string_view)` overload
+   join the original five (`send_to_char`×2, `act`, track/untrack_mage). Same null-defaulted
+   `rots::output::Sinks` pattern, registered by `comm.cpp`'s `register_game_output_sinks()`. Six of
+   the seven are void and default to a **logged no-op** (the dominant taxonomy); the txt-block-pool
+   forwarder is the one pointer-returning exception and defaults to a **tripwire log-then-abort** —
+   a post-review fix: the brief's original "match the five" steer would have returned a null
+   `txt_block*` into `comm.cpp`'s own `write_to_q()`, which immediately dereferences it
+   (`pnew->next = ...`), so a silent null-return would have surfaced as a confusing null-deref far
+   from the real cause. `output_seam.cpp` documents the 3-site contrast between the two defaults.
+   Also restored a pre-existing flat-Makefile `SRCS` gap (`comm_output`/`text_view`/
+   `string_view_utility` test files had never been in the i386 monolithic runner's source list).
+   These seven have **no consumer this wave**; a future combat-tier TU calls them exactly like
+   `send_to_char` today.
+2. **Command-dispatch seam (Task 2, `src/combat_hooks.h`/`combat_hooks.cpp`, 25-cell table).** An
+   enum-indexed `rots::combat::combat_command` table of ACMD function pointers, modeled on
+   `assign_spell_pointers()` (spell_pa.cpp, entity-seed Task 1): null-initialized at static init,
+   populated once at boot by `register_combat_command_dispatch()` (`interpre.cpp` — chosen because
+   that TU already forward-declares every target for its own command-interpreter table, the same
+   reason `spell_pa.cpp` was `assign_spell_pointers()`'s home), called from `db_boot.cpp`'s existing
+   `assign_*` registration sequence (precedent-verified: `assign_spell_pointers()` itself already
+   runs inside `boot_db()`). Every cell defaults to a **logged no-op** — every ACMD is void, so a
+   skipped command is a safe degraded-but-defined outcome, unlike the txt-block-pool exception
+   above. **No call-site conversion this wave**: `mobact`/`spec_pro`/`ranger`/`fight` keep calling
+   `do_hit()`/`do_flee()`/etc. directly (a legal same-tier `ROTS_SERVER_SOURCES` call today); the
+   seam exists for when one of those four TUs itself joins `rots_combat` and its up-calls convert to
+   `rots::combat::issue_command(...)`.
+3. **Poison-notification hook (Task 3, `entity_hooks.h`'s `set_poison_removal_hook`).** Retires
+   placement-seam deferral cluster 3 — see the "Three honest deferral clusters" note above for the
+   full mechanism and the characterization-first proof.
+4. **Visibility family → `rots_combat` (Tasks 4/4b, new TU `src/visibility.cpp`).** All twelve
+   functions (`CAN_SEE`×2 overloads, `CAN_SEE_OBJ`, `get_char_room_vis`/`get_player_vis`/
+   `get_char_vis`/`get_obj_in_list_vis`/`get_obj_vis`/`get_object_in_equip_vis`/`generic_find`,
+   `get_real_OB`/`get_real_parry`) moved verbatim out of `handler.cpp`/`utility.cpp`; `PERS` stays
+   app-tier (unchanged, census-confirmed correct: `color.cpp` color-global deps). `see_hiding`
+   (Task 4b) was carved out of `ranger.cpp` into `visibility.cpp` (entity-pure, zero other
+   `ranger.cpp` dependency) so the 3-arg `CAN_SEE(sub, obj, light_mode)` overload could finally move
+   too; `generic_find`'s `search_block()` dependency relocated to `rots_util.cpp`/`rots_platform`
+   (the `get_number()`/`LOWER`→`lower_ascii` precedent). `weather_info` (`weather.cpp`, `rots_world`)
+   is a legal L3-peer `extern` reference (see the `RotS::world` PUBLIC link note above). The
+   `world[]` resolver-variant rule applies per site (e.g. `CAN_SEE(sub)`'s unchecked
+   `IS_LIGHT`/`OUTSIDE` macro expansions resolve via `room_by_id_total`, matching
+   `CAN_GO()`/`can_breathe()`'s precedent in `environment_utils.cpp`).
+
+**Census errata (record honestly for the next combat wave — re-verify census claims against
+current build wiring, not just thematic/row placement, before trusting them):**
+
+- **Census-C's target count was wrong in both directions**, not just under. Its "~19 distinct ACMD
+  targets" framing conflated per-TU counts with the cross-TU union, and three of its listed names
+  (`do_recover`/`do_scan`/`do_pracreset`) turned out to have no direct call site to convert (reached
+  only through the general `command_interpreter`, or self-calling within their own defining TU) —
+  phantoms dropped from the union. The reconciled union landed at 24 cells; a coordinator review
+  then caught a genuinely missing 25th (`do_mental`, `fight.cpp`'s per-tick mental-combat up-call
+  into `clerics.cpp`) that a follow-up sweep confirmed was the *only* remaining gap. True count: 25.
+- **Census-A conflated "thematically a combat-row TU" with "actually in `ROTS_COMBAT_SOURCES`
+  today."** It recommended moving the 3-arg `CAN_SEE(sub, obj, light_mode)` overload to
+  `rots_combat` on the strength of `weather_info`/`world[]`/`act()` all being legal peer/seam
+  references — true — but missed that its `see_hiding(sub)` call resolves to `ranger.cpp`, which is
+  *still* a DEFER-11 `ROTS_SERVER_SOURCES` member despite being "in-row" thematically. Task 4
+  STOPped and documented rather than moving it; Task 4b closed the gap by carving `see_hiding` out
+  of `ranger.cpp` first.
+- **`generic_find`'s `search_block()` dependency was an uncensused edge** — not in census-A's table
+  at all. `search_block()` is defined in `interpre.cpp` (app-tier command interpreter), found only
+  by verification (grep + `CombatLayerAcyclicity`'s deterministic link failure), not by re-reading
+  the census.
+- **The lesson for the next combat wave:** a census's per-function or per-TU verdict is a strong
+  prior, not a build-wiring guarantee. Before moving anything on a census's say-so, re-verify the
+  specific dependency's *current* `CMakeLists.txt` source-list membership (`grep` the exact
+  filename against `ROTS_COMBAT_SOURCES`/`ROTS_SERVER_SOURCES`, don't trust the census's thematic
+  row assignment) — this wave's two errata (census-A, `generic_find`) were both caught this way, and
+  both would have failed `CombatLayerAcyclicity` at build time if landed anyway.
+
+**The DEFER-11 growth inventory — blockers now CLEARED (per-TU remaining work for the next combat
+wave).** The parent spec's `rots_combat` row still sketches 16 TUs; this wave's two prior findings
+(below) are no longer live blockers — both enablers now ship:
+  - **Output is fully unblocked.** `output_seam` now forwards all 12 symbols (`send_to_char`×2,
+    `vsend_to_char`, `act`, track/untrack_mage, plus this wave's seven) downward into L1. Every
+    `act`/`send_to_char`/`send_to_room*`/`send_to_all`/`break_spell`/`abort_delay`/`complete_delay`
+    call-site in all 16 combat-row TUs now resolves into L1, not up into `comm.cpp`. The remaining
+    non-output app-side surface (`close_socket`, `descriptor_list`, `_circle_shutdown`,
+    `_no_specials`, `_fight_messages`, color globals) is unchanged and stays a per-TU concern, not a
+    seam gap.
+  - **Command up-calls are unblocked in principle.** The 25-cell `combat_hooks.h` table covers every
+    real `do_*` call site the four DEFER-tier command-issuing TUs (`mobact`/`spec_pro`/`ranger`/
+    `fight`) use today. Converting a TU still means literally rewriting each of its up-calls from
+    `do_hit(...)` to `rots::combat::issue_command(combat_command::hit, ...)` — that per-call-site
+    edit is unstarted work, not a blocker.
+  - **The dominant remaining blocker is now pure migration, not enabler design.** Every DEFER-11
+    TU's edges trace back to the still-app `handler.cpp`/`utility.cpp` remainder minus what this
+    wave moved out (`extract_char`/`stop_riding`/the proto family/session helpers/zone-power
+    pair/…, the same remainder the "`rots_entity`" section above describes) — none of that remainder
+    was in scope for this wave's four enablers. **Per-TU next steps:** (1) migrate a TU's body
+    verbatim into `ROTS_COMBAT_SOURCES`; (2) convert its `do_*` up-calls (if any) to
+    `issue_command()`; (3) convert any remaining unseamed app-tier reference it makes (per-TU
+    census re-verification required — see the errata above, do not trust the old combat-census's
+    per-TU tables without re-checking current `CMakeLists.txt` membership); (4) run
+    `CombatLayerAcyclicity` + the other five linkchecks to confirm no new upward edge. `profs`
+    remains caveated SEED-WITH-SEAM (3 small edges, but pulls in the deeply-blocked `mystic.cpp`).
+    Full per-TU evidence: `.superpowers/sdd/combat-census.md` (planning-stage) plus this wave's
+    census-A/census-C corrections above.
 
 Backlog (recorded follow-on, not this wave's scope):
 - **`consts.cpp`'s `utils.h` include**, added by Task 2's time-quartet move (for `day_to_str()`'s
@@ -866,10 +981,6 @@ Backlog (recorded follow-on, not this wave's scope):
   includes the whole app-wide `utils.h`. Prefer a targeted `char* nth(int);` forward declaration
   instead, per the `get_hit_text`/`rots/platform/log.h` precedent of narrow declarations over a
   blanket header include. Reviewer-recommended future touch-up, not urgent.
-- **The poison-notification hook** (`obj_from_char`/`extract_obj` — see the placement-seam
-  deferral cluster note above) stays backlog: it only becomes a real entity(L2)→combat(L3) upward
-  edge once `fight.cpp`+damage eventually join `rots_combat` while `handler` is still below it.
-  Not needed by any TU this wave seeded.
 
 ### Pathed data-model includes
 

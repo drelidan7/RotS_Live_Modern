@@ -671,6 +671,7 @@ if(ROTS_BUILD_TESTS)
         tests/act_wiz_format_tests.cpp
         tests/act_wiz_tests.cpp
         tests/battle_mage_handler_tests.cpp
+        tests/big_brother_hooks_tests.cpp
         tests/boards_json_tests.cpp
         tests/char_utils_tests.cpp
         tests/character_json_tests.cpp

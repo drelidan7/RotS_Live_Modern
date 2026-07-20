@@ -682,3 +682,45 @@ void register_attacked_player_hook()
 {
     rots::entity::set_attacked_player_hook(attacked_player_hook_impl);
 }
+
+namespace {
+// entity_hooks.h's target-valid hook implementation (combat-pilot wave Task
+// 2): forwards to the real big_brother::instance().is_target_valid(),
+// branching on entity_hooks.h's kNoSkillId sentinel to call the EXACT right
+// real overload -- NOT the 3-arg overload with a placeholder skill_id,
+// which would silently change the 2-arg overload's own false-path
+// semantics (AFK/looting/writing/level-range checks the 3-arg overload's
+// fallback logic does not reproduce). See entity_hooks.h's target_valid_fn
+// comment for the full rationale.
+bool target_valid_hook_impl(char_data* attacker, const char_data* victim, int skill_id)
+{
+    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
+    if (skill_id == rots::entity::kNoSkillId) {
+        return bb_instance.is_target_valid(attacker, victim);
+    }
+    return bb_instance.is_target_valid(attacker, victim, skill_id);
+}
+
+// entity_hooks.h's character-died hook implementation: reproduces
+// fight.cpp's upward game_rules::big_brother::instance().on_character_died()
+// call, now behind the hook.
+void character_died_hook_impl(char_data* dead_man, char_data* killer, obj_data* corpse)
+{
+    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
+    bb_instance.on_character_died(dead_man, killer, corpse);
+}
+} // namespace
+
+// Registers the hook above as entity_hooks.h's target-valid hook. Called
+// once from run_the_game(), before boot_db().
+void register_target_valid_hook()
+{
+    rots::entity::set_target_valid_hook(target_valid_hook_impl);
+}
+
+// Registers the hook above as entity_hooks.h's character-died hook. Called
+// once from run_the_game(), before boot_db().
+void register_character_died_hook()
+{
+    rots::entity::set_character_died_hook(character_died_hook_impl);
+}

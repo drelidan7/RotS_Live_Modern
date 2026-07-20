@@ -627,6 +627,13 @@ void run_the_game(sh_int port)
     register_attack_speed_multiplier_hook();
     register_wild_attack_speed_multiplier_hook();
     register_attacked_player_hook();
+    // entity_hooks.h's target-valid/character-died big_brother hook pair
+    // (combat-pilot wave Task 2), registered the same way and for the same
+    // reason: before boot_db(), so ageland never runs clerics.cpp's/
+    // fight.cpp's is_target_valid()/on_character_died() call sites (once
+    // converted, a future task) with an unregistered hook.
+    register_target_valid_hook();
+    register_character_died_hook();
     // entity_hooks.h's txt-block-pool hook pair (world-seed Task 2
     // adjudication), registered the same way and for the same reason:
     // before boot_db(), so ageland never runs target_data::operator=()'s

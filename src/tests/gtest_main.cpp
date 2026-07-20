@@ -111,6 +111,20 @@ int main(int argc, char* argv[]) {
     register_attack_speed_multiplier_hook();
     register_wild_attack_speed_multiplier_hook();
     register_attacked_player_hook();
+    // entity_hooks.h's target-valid/character-died big_brother hook pair
+    // (combat-pilot wave Task 2), registered for the same real-body-fidelity
+    // reason as the call above: without them this test process would
+    // silently exercise dispatch_target_valid()'s/dispatch_character_died()'s
+    // tripwire-logged defaults instead of big_brother.cpp's real
+    // is_target_valid()/on_character_died() forwarders that ageland registers
+    // at boot -- big_brother.cpp is already linked into both test binaries,
+    // so this only needs the registration calls. No production call site
+    // dispatches through this pair yet (see entity_hooks.h), so these calls
+    // exist for this wave's own seam tests (big_brother_hooks_tests.cpp), the
+    // same bridge-before-traffic posture as combat_hooks.h's
+    // register_combat_command_dispatch() below.
+    register_target_valid_hook();
+    register_character_died_hook();
     // entity_hooks.h's txt-block-pool hook pair (world-seed Task 2
     // adjudication), registered for the same real-body-fidelity reason as the
     // four calls above: without it this test process would silently exercise

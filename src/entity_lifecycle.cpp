@@ -166,6 +166,19 @@ wild_attack_speed_fn g_wild_attack_speed_multiplier_hook = nullptr;
 // (combat never runs before run_the_game's registrations in ageland).
 attacked_player_fn g_attacked_player_hook = nullptr;
 
+// Backing storage for the registered target-valid hook
+// (register_target_valid_hook(), big_brother.cpp; combat-pilot wave Task 2).
+// Null until that registration runs; the null default is a tripwire log +
+// true (permissive legacy semantics -- see entity_hooks.h's target_valid_fn
+// comment for why "no big brother installed" defaults to "allow").
+target_valid_fn g_target_valid_hook = nullptr;
+
+// Backing storage for the registered character-died hook
+// (register_character_died_hook(), big_brother.cpp; combat-pilot wave Task
+// 2). Null until that registration runs; the null default is a tripwire
+// no-op (void return, same class as g_attacked_player_hook above).
+character_died_fn g_character_died_hook = nullptr;
+
 // Backing storage for the registered txt-block-pool hook pair
 // (register_txt_block_pool_hooks(), comm.cpp; world-seed Task 2). Null
 // until that registration runs; unlike the hooks above, the null default
@@ -193,6 +206,16 @@ void set_wild_attack_speed_multiplier_hook(wild_attack_speed_fn hook)
 void set_attacked_player_hook(attacked_player_fn hook)
 {
     g_attacked_player_hook = hook;
+}
+
+void set_target_valid_hook(target_valid_fn hook)
+{
+    g_target_valid_hook = hook;
+}
+
+void set_character_died_hook(character_died_fn hook)
+{
+    g_character_died_hook = hook;
 }
 
 void set_get_txt_block_pool_hook(get_txt_block_fn hook)
@@ -296,6 +319,34 @@ void dispatch_attacked_player(const char_data* attacker, const char_data* attack
     rots::log::write_stderr(
         "rots::entity: STUB attacked-player hook called with no sink registered -- this should be "
         "unreachable once register_attacked_player_hook() has run.");
+}
+
+// Cross-TU dispatch for the target-valid (big-brother PK engagement gate)
+// hook (called from clerics.cpp/fight.cpp; see entity_hooks.h). External
+// linkage, same reason as dispatch_attacked_player() above.
+bool dispatch_target_valid(char_data* attacker, const char_data* victim, int skill_id)
+{
+    if (g_target_valid_hook) {
+        return g_target_valid_hook(attacker, victim, skill_id);
+    }
+    rots::log::write_stderr(
+        "rots::entity: STUB target-valid hook called with no sink registered -- this should be "
+        "unreachable once register_target_valid_hook() has run.");
+    return true;
+}
+
+// Cross-TU dispatch for the character-died (big-brother loot-protection
+// notification) hook (called from fight.cpp; see entity_hooks.h). External
+// linkage, same reason as dispatch_attacked_player() above.
+void dispatch_character_died(char_data* dead_man, char_data* killer, obj_data* corpse)
+{
+    if (g_character_died_hook) {
+        g_character_died_hook(dead_man, killer, corpse);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::entity: STUB character-died hook called with no sink registered -- this should "
+        "be unreachable once register_character_died_hook() has run.");
 }
 
 } // namespace rots::entity

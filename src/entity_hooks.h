@@ -12,6 +12,7 @@
 // their sole caller-file's Stage-1 API functions.
 
 struct char_data;
+struct obj_data;
 struct room_data;
 struct zone_data;
 struct index_data;
@@ -183,5 +184,53 @@ void set_obj_index_resolver_hook(obj_index_resolver_fn hook);
 // obj_from_char() at all.
 using poison_removal_fn = void (*)(char_data* character);
 void set_poison_removal_hook(poison_removal_fn hook);
+
+// big_brother's PK-target-validity gate (combat-pilot wave Task 2, brief
+// .superpowers/sdd/pilot-task-2-brief.md; census
+// .superpowers/sdd/pilot-census.md section 3.13): clerics.cpp's/fight.cpp's
+// upward game_rules::big_brother::instance().is_target_valid() calls.
+// big_brother.h declares TWO overloads with genuinely different bodies, not
+// one function with a default argument -- clerics.cpp calls the 2-arg form,
+// fight.cpp the 3-arg (skill_id) form, and the 3-arg body's own false-path
+// logic (is_skill_offensive()/m_can_be_helpful_skills) does NOT reduce to
+// the 2-arg body's false-path logic (AFK/looting/writing/level-range checks)
+// for any substitute skill_id -- so a single hook fn-ptr cannot just forward
+// a placeholder skill_id into the 3-arg real method. Instead: the fn-ptr
+// mirrors the WIDER (3-arg) signature explicitly, and kNoSkillId is a
+// sentinel (-1; every real skill id is >= 0 -- see spells.h's
+// SKILL_BAREHANDED) that big_brother.cpp's registered implementation
+// branches on to call the EXACT right real overload, not a lossy
+// approximation of the 2-arg one. dispatch_target_valid()'s `skill_id`
+// parameter defaults to kNoSkillId, so a clerics.cpp-shaped 2-arg call site
+// reads as dispatch_target_valid(attacker, victim) once converted, and
+// fight.cpp's 3-arg call site as dispatch_target_valid(attacker, victim,
+// skill_id) -- consumer-free this wave, no call site converts yet.
+// Unregistered default: LOGGED + return true (permissive legacy semantics --
+// big_brother VETOES by returning false, so "no big brother installed" must
+// default to "allow", the same neutral-default class as this header's
+// float-returning hooks above, not the abort-on-unregistered class the
+// txt-block-pool pair uses).
+using target_valid_fn = bool (*)(char_data* attacker, const char_data* victim, int skill_id);
+inline constexpr int kNoSkillId = -1;
+void set_target_valid_hook(target_valid_fn hook);
+
+// big_brother's death-notification edge: fight.cpp's upward
+// game_rules::big_brother::instance().on_character_died() call. Mirrors
+// big_brother.h's exact (dead_man, killer, corpse) signature -- no default
+// parameter exists on the real method, unlike is_target_valid() above.
+// Unregistered default: LOGGED no-op (void return, same class as
+// set_attacked_player_hook() above).
+using character_died_fn = void (*)(char_data* dead_man, char_data* killer, obj_data* corpse);
+void set_character_died_hook(character_died_fn hook);
+
+// Dispatch entry points for the two big_brother hooks above. Like
+// dispatch_wild_attack_speed_multiplier()/dispatch_attacked_player() above,
+// these are called from clerics.cpp/fight.cpp -- not entity_lifecycle.cpp,
+// the TU that owns their backing storage -- so they need external-linkage
+// declarations here. Defined in entity_lifecycle.cpp, next to their backing
+// storage (this header's established convention regardless of which TU
+// actually calls dispatch -- see dispatch_attacked_player()'s own comment).
+bool dispatch_target_valid(char_data* attacker, const char_data* victim, int skill_id = kNoSkillId);
+void dispatch_character_died(char_data* dead_man, char_data* killer, obj_data* corpse);
 
 }

@@ -262,37 +262,16 @@ void affect_from_char_notify(struct char_data* ch, byte skill)
 // follow_type_counter backing state (placement-seam Task 4); declarations
 // (the forward-declared prototypes above) unchanged.
 
-/* Do NOT call this before having checked if a circle of followers */
-/* will arise. CH will follow leader                               */
-void add_follower(char_data* follower, char_data* leader, int mode)
-{
-    if (!leader) {
-        printf("add_follower called without leader for %s\n", GET_NAME(follower));
-        return;
-    }
-
-    if (mode == FOLLOW_MOVE) {
-        if (follower->master) {
-            stop_follower(follower, FOLLOW_MOVE);
-        }
-        follower->master = leader;
-    }
-
-    follow_type* k = get_from_follow_type_pool();
-
-    k->follower = follower;
-    k->fol_number = follower->abs_number;
-    if (mode == FOLLOW_MOVE) {
-        k->next = leader->followers;
-    }
-
-    if (mode == FOLLOW_MOVE) {
-        leader->followers = k;
-        act("You now follow $N.", FALSE, follower, 0, leader, TO_CHAR);
-        act("$n starts following you.", TRUE, follower, 0, leader, TO_VICT);
-        act("$n now follows $N.", TRUE, follower, 0, leader, TO_NOTVICT);
-    }
-}
+// add_follower() relocated verbatim to entity_lifecycle.cpp (L2;
+// combat-trio wave, Task 1; trio-task-1-brief.md Step 3 / CONTROLLER
+// ADDENDUM item 5; combat-trio-census.md section 5.4 -- census-clean,
+// unrelated to stop_follower()'s own prior non-clean history despite the
+// name-family similarity: stop_follower()/get_from_follow_type_pool()/
+// put_to_follow_type_pool() were already L2 (combat-pilot wave Task 4a),
+// and add_follower()'s only other calls are act() x3 (L1 output_seam) and
+// printf (libc, a pre-existing error-path debug print, not routed through
+// the log seam -- untouched by this move). Declaration unchanged
+// (handler.h:223).
 
 // stop_follower() relocated verbatim to entity_lifecycle.cpp (L2;
 // combat-pilot wave Task 4a CONTROLLER ADDENDUM item 4, conditional

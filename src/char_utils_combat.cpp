@@ -504,3 +504,97 @@ char saves_power(const char_data* victim, sh_int casting_power, sh_int save_bonu
         return 0;
     }
 }
+
+// saves_mystic()/saves_poison()/saves_confuse()/saves_insight()/
+// saves_leadership() relocated verbatim from spell_pa.cpp (combat-trio
+// wave, Task 1; trio-task-1-brief.md CONTROLLER ADDENDUM item 1;
+// combat-trio-census.md section 5.2/section 2 -- L2-lateral leaves,
+// alongside this file's saves_power() precedent immediately above
+// (combat-pilot wave Task 4a). saves_leadership()'s own internal call to
+// saves_mystic() travels with the package (same-file, intra-cluster
+// self-call). No shared header ever declared these symbols; mystic.cpp
+// (this wave's own candidate) keeps its own local declarations unchanged.
+/*
+ * A pretty general save function that takes into consideration
+ * perception.  Higher percep makes better save.
+ */
+char saves_mystic(struct char_data* ch)
+{
+    int offense, defense;
+
+    offense = number(0, 100);
+    defense = GET_PERCEPTION(ch) * 9 / 10;
+
+    return offense <= defense;
+}
+
+/*
+ * Saving poison depends on the caster's willpower and perception
+ * and the victim's constitution, willpower and race.  As far as
+ * race goes, wood elves simply get a bonus (a rather large one),
+ * since they were very resilient to disease, but are represented
+ * in rots by such low constitution.
+ */
+char saves_poison(struct char_data* victim, struct char_data* caster)
+{
+    int offence, defense;
+    int perception = GET_PERCEPTION(caster);
+    offence = ((GET_WILLPOWER(caster) * 8) * perception) / 100;
+    /* wood elves get a bonus against poison */
+    defense = (GET_CON(victim) * 5) + (GET_WILLPOWER(victim) * 3) + (GET_RACE(victim) == RACE_WOOD ? 30 : 0);
+
+    return (number(offence / 3, offence) < number(defense / 2, defense));
+}
+
+/*
+ * Saving confuse depends only on the willpowers of the caster
+ * and the victim.  This should probably depend on some other
+ * thing as well..
+ */
+char saves_confuse(struct char_data* victim, struct char_data* caster)
+{
+    int offence, defense;
+
+    offence = GET_WILLPOWER(caster);
+    defense = GET_WILLPOWER(victim) - (IS_NPC(victim) ? 5 : 0);
+
+    return (number(0, offence) < number(0, defense));
+}
+
+/*
+ * Saving insight is just about as awful as saving confuse; it
+ * has pretty much nothing to do with anything other than the
+ * victim and caster's willpower and perception.  Low perception
+ * victims have terrible chances to save, as well.  This should
+ * (like saves_confuse) one day take more things into account.
+ */
+char saves_insight(struct char_data* victim, struct char_data* caster)
+{
+    int offense, defense;
+
+    offense = GET_PERCEPTION(caster) * GET_WILLPOWER(caster) / 100;
+    defense = GET_PERCEPTION(victim) * GET_WILLPOWER(victim) / 100 + number(0, 10);
+
+    return offense < defense;
+}
+
+/*
+ * saves_leadership is used when checking to see if a victim
+ * saves against a fear or terror spell.  Currently, saving
+ * depends on the leadership skill (a skill only available to
+ * common orcs) for following characters and players, and
+ * ride skill for mounts.
+ */
+char saves_leadership(struct char_data* victim)
+{
+    int save;
+
+    if (!(save = saves_mystic(victim))) {
+        if (victim->master)
+            save = (number(1, 115) <= GET_SKILL(victim->master, SKILL_LEADERSHIP));
+        else if (IS_RIDDEN(victim))
+            save = (number(1, 100) <= GET_SKILL(victim->mount_data.rider, SKILL_RIDE));
+    }
+
+    return save;
+}

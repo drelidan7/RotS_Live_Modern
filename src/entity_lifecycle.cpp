@@ -2843,15 +2843,15 @@ void affect_join(struct char_data* ch, struct affected_type* af,
 }
 
 // handler.cpp -- private backing state for get_from_follow_type_pool()/
-// put_to_follow_type_pool() immediately below; add_follower() (handler.cpp)
-// is the pool functions' other caller and reaches them via the
-// pre-existing local forward declarations near that file's original top
-// (same pattern as the affected_type_pool functions above) -- no other
-// handler.cpp function reads follow_type_pool/follow_type_counter
-// directly, so the globals move with the pool functions rather than
-// staying behind as an extern. stop_follower() (handler.cpp's other
-// caller) relocated here too, alongside the pool -- see below
-// (combat-pilot wave Task 4a).
+// put_to_follow_type_pool() immediately below; add_follower() (originally
+// handler.cpp's other caller, relocated here too -- combat-trio wave, Task
+// 1, see below) reaches them via the pre-existing local forward
+// declarations near that file's original top (same pattern as the
+// affected_type_pool functions above) -- no other handler.cpp function
+// reads follow_type_pool/follow_type_counter directly, so the globals move
+// with the pool functions rather than staying behind as an extern.
+// stop_follower() (handler.cpp's other caller) relocated here too,
+// alongside the pool -- see below (combat-pilot wave Task 4a).
 follow_type* follow_type_pool = 0;
 int follow_type_counter = 0;
 
@@ -2873,6 +2873,49 @@ void put_to_follow_type_pool(struct follow_type* oldfol)
 {
     oldfol->next = follow_type_pool;
     follow_type_pool = oldfol;
+}
+
+// add_follower() relocated verbatim from handler.cpp:267-296 (combat-trio
+// wave, Task 1; trio-task-1-brief.md Step 3 / CONTROLLER ADDENDUM item 5;
+// combat-trio-census.md section 5.4). Census-clean: calls stop_follower()
+// (below, already L2 per combat-pilot wave Task 4a) and
+// get_from_follow_type_pool() (immediately above, already L2), plus act()
+// x3 (L1 output_seam) and printf (libc, pre-existing error-path debug
+// print, untouched by this move). Zero handler.cpp-internal statics/
+// anonymous-namespace state referenced. Unrelated to stop_follower()'s own
+// prior non-clean relocation history despite the name-family similarity --
+// do not conflate the two functions' histories. Declaration unchanged
+// (handler.h:223).
+/* Do NOT call this before having checked if a circle of followers */
+/* will arise. CH will follow leader                               */
+void add_follower(char_data* follower, char_data* leader, int mode)
+{
+    if (!leader) {
+        printf("add_follower called without leader for %s\n", GET_NAME(follower));
+        return;
+    }
+
+    if (mode == FOLLOW_MOVE) {
+        if (follower->master) {
+            stop_follower(follower, FOLLOW_MOVE);
+        }
+        follower->master = leader;
+    }
+
+    follow_type* k = get_from_follow_type_pool();
+
+    k->follower = follower;
+    k->fol_number = follower->abs_number;
+    if (mode == FOLLOW_MOVE) {
+        k->next = leader->followers;
+    }
+
+    if (mode == FOLLOW_MOVE) {
+        leader->followers = k;
+        act("You now follow $N.", FALSE, follower, 0, leader, TO_CHAR);
+        act("$n starts following you.", TRUE, follower, 0, leader, TO_VICT);
+        act("$n now follows $N.", TRUE, follower, 0, leader, TO_NOTVICT);
+    }
 }
 
 // stop_follower() relocated verbatim from handler.cpp:296-390 (combat-

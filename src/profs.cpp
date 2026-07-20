@@ -11,6 +11,7 @@
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
+#include "persist_hooks.h"
 #include "profs.h"
 #include "spells.h"
 #include "rots/core/character.h"
@@ -336,7 +337,7 @@ void check_stat_increase(char_data* character)
     roll -= get_hike_bonus(*character, PROF_WARRIOR);
     if (roll < 0) {
         send_to_char("Great strength flows through you!\n", character);
-        add_exploit_record(EXPLOIT_STAT, character, GET_LEVEL(character), "+1 str");
+        rots::persist::dispatch_exploit_capture(EXPLOIT_STAT, character, GET_LEVEL(character), "+1 str");
         character->constabilities.str++;
         character->tmpabilities.str++;
         return;
@@ -346,7 +347,7 @@ void check_stat_increase(char_data* character)
     roll -= get_hike_bonus(*character, PROF_RANGER);
     if (roll < 0) {
         send_to_char("Your hands feel quicker!\n", character);
-        add_exploit_record(EXPLOIT_STAT, character, GET_LEVEL(character), "+1 dex");
+        rots::persist::dispatch_exploit_capture(EXPLOIT_STAT, character, GET_LEVEL(character), "+1 dex");
         character->constabilities.dex++;
         character->tmpabilities.dex++;
         return;
@@ -356,7 +357,7 @@ void check_stat_increase(char_data* character)
     roll -= get_hike_bonus(*character, PROF_CLERIC);
     if (roll < 0) {
         send_to_char("You feel your mental resolve harden!\n", character);
-        add_exploit_record(EXPLOIT_STAT, character, GET_LEVEL(character), "+1 will");
+        rots::persist::dispatch_exploit_capture(EXPLOIT_STAT, character, GET_LEVEL(character), "+1 will");
         character->constabilities.wil++;
         character->tmpabilities.wil++;
         return;
@@ -366,7 +367,7 @@ void check_stat_increase(char_data* character)
     roll -= get_hike_bonus(*character, PROF_MAGE);
     if (roll < 0) {
         send_to_char("Your intelligence has improved!\n", character);
-        add_exploit_record(EXPLOIT_STAT, character, GET_LEVEL(character), "+1 int");
+        rots::persist::dispatch_exploit_capture(EXPLOIT_STAT, character, GET_LEVEL(character), "+1 int");
         character->constabilities.intel++;
         character->tmpabilities.intel++;
         return;
@@ -375,7 +376,7 @@ void check_stat_increase(char_data* character)
     roll -= STAT_CHANCE;
     if (roll < 0) {
         send_to_char("You feel much more health!\n", character);
-        add_exploit_record(EXPLOIT_STAT, character, GET_LEVEL(character), "+1 con");
+        rots::persist::dispatch_exploit_capture(EXPLOIT_STAT, character, GET_LEVEL(character), "+1 con");
         character->constabilities.con++;
         character->tmpabilities.con++;
         return;
@@ -384,7 +385,7 @@ void check_stat_increase(char_data* character)
     roll -= STAT_CHANCE;
     if (roll < 0) {
         send_to_char("You seem more learned!\n", character);
-        add_exploit_record(EXPLOIT_STAT, character, GET_LEVEL(character), "+1 learn");
+        rots::persist::dispatch_exploit_capture(EXPLOIT_STAT, character, GET_LEVEL(character), "+1 learn");
         character->constabilities.lea++;
         character->tmpabilities.lea++;
         return;
@@ -435,11 +436,11 @@ void advance_level(char_data* character)
 
     /* log following levels in exploits */
     if (!defer_account_birth_persistence && ((GET_LEVEL(character) == 6) || ((GET_LEVEL(character) > 6) && !(GET_LEVEL(character) % 5))))
-        add_exploit_record(EXPLOIT_LEVEL, character, GET_LEVEL(character), NULL);
+        rots::persist::dispatch_exploit_capture(EXPLOIT_LEVEL, character, GET_LEVEL(character), NULL);
 
     /* add birth exploit */
     if (!defer_account_birth_persistence && GET_LEVEL(character) == 1) {
-        add_exploit_record(EXPLOIT_BIRTH, character, 0, NULL);
+        rots::persist::dispatch_exploit_capture(EXPLOIT_BIRTH, character, 0, NULL);
     }
 
     if (GET_LEVEL(character) > 5 && GET_MAX_MINI_LEVEL(character) < 600) {

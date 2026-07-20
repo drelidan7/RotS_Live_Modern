@@ -105,7 +105,9 @@ extern struct room_data world;
 // functions that unlink nodes from them. Neither is referenced
 // elsewhere in this file, so no extern re-declaration is needed here.
 
-struct message_list fight_messages[MAX_MESSAGES]; /* fighting messages	*/
+// fight_messages[MAX_MESSAGES] storage-moved to fight.cpp (combat-pilot
+// wave Task 4a), beside its loader load_messages(). See fight.cpp for
+// the definition + ownership comment.
 
 
 int no_mail = 0; /* mail disabled?		*/

@@ -55,7 +55,13 @@ struct char_data* combat_next_dude = 0; /* Next dude global trick */
 
 /* External structures */
 extern struct room_data world;
-extern struct message_list fight_messages[MAX_MESSAGES];
+// fight_messages[MAX_MESSAGES] storage-moved here from db_boot.cpp:108
+// (combat-pilot wave Task 4a; pilot-census.md section 3.10 confirmed the
+// storage-move needs no clerics.cpp compensating change -- its one other
+// textual extern, clerics.cpp:34, is dead by nm's undefined-symbol test).
+// Owned by fight.cpp: populated once at boot by load_messages() below,
+// read by hit()'s message-selection code later in this file.
+struct message_list fight_messages[MAX_MESSAGES];
 extern struct obj_data* object_list;
 extern int immort_start_room;
 extern int mortal_start_room[];
@@ -123,6 +129,14 @@ void load_messages(void)
     struct message_type* messages;
     int i, type;
     char chk[100];
+    // Local replacements for the retired global `buf`/`buf2` scratch
+    // buffers (buf/buf2 retirement, combat-pilot wave Task 4a): error_label
+    // is the fread_string() error label, reused for every string field
+    // belonging to the current combat-message record (db_world.cpp
+    // load_rooms()'s error_label precedent); colored is the scratch used to
+    // build the $CH/$CD-prefixed colored copy of a message before strdup().
+    std::string error_label;
+    std::string colored;
 
     if (!(f1 = fopen(MESS_FILE, "r"))) {
         perror(std::format("Error reading combat message file {}", MESS_FILE).c_str());
@@ -152,53 +166,53 @@ void load_messages(void)
         messages->next = fight_messages[i].msg;
         fight_messages[i].msg = messages;
 
-        strcpy(buf2, std::format("combat message #{} in file '{}'", i, MESS_FILE).c_str());
+        error_label = std::format("combat message #{} in file '{}'", i, MESS_FILE);
 
         /* Messages on kill */
         /* Read and color as hit */
-        messages->die_msg.attacker_msg = fread_string(f1, buf2);
-        strcpy(buf, std::format("$CH{}", nz(messages->die_msg.attacker_msg)).c_str());
+        messages->die_msg.attacker_msg = fread_string(f1, error_label);
+        colored = std::format("$CH{}", nz(messages->die_msg.attacker_msg));
         free(messages->die_msg.attacker_msg);
-        messages->die_msg.attacker_msg = strdup(buf);
+        messages->die_msg.attacker_msg = strdup(colored.c_str());
 
         /* Read and color as damage */
-        messages->die_msg.victim_msg = fread_string(f1, buf2);
-        strcpy(buf, std::format("$CD{}", nz(messages->die_msg.victim_msg)).c_str());
+        messages->die_msg.victim_msg = fread_string(f1, error_label);
+        colored = std::format("$CD{}", nz(messages->die_msg.victim_msg));
         free(messages->die_msg.victim_msg);
-        messages->die_msg.victim_msg = strdup(buf);
+        messages->die_msg.victim_msg = strdup(colored.c_str());
 
-        messages->die_msg.room_msg = fread_string(f1, buf2);
+        messages->die_msg.room_msg = fread_string(f1, error_label);
 
         /* Messages on miss--none have color */
-        messages->miss_msg.attacker_msg = fread_string(f1, buf2);
-        messages->miss_msg.victim_msg = fread_string(f1, buf2);
-        messages->miss_msg.room_msg = fread_string(f1, buf2);
+        messages->miss_msg.attacker_msg = fread_string(f1, error_label);
+        messages->miss_msg.victim_msg = fread_string(f1, error_label);
+        messages->miss_msg.room_msg = fread_string(f1, error_label);
 
         /* Messages on hit */
         /* Attacker gets hit color */
-        messages->hit_msg.attacker_msg = fread_string(f1, buf2);
-        strcpy(buf, std::format("$CH{}", nz(messages->hit_msg.attacker_msg)).c_str());
+        messages->hit_msg.attacker_msg = fread_string(f1, error_label);
+        colored = std::format("$CH{}", nz(messages->hit_msg.attacker_msg));
         free(messages->hit_msg.attacker_msg);
-        messages->hit_msg.attacker_msg = strdup(buf);
+        messages->hit_msg.attacker_msg = strdup(colored.c_str());
 
         /* Victim gets damage color */
-        messages->hit_msg.victim_msg = fread_string(f1, buf2);
-        strcpy(buf, std::format("$CD{}", nz(messages->hit_msg.victim_msg)).c_str());
+        messages->hit_msg.victim_msg = fread_string(f1, error_label);
+        colored = std::format("$CD{}", nz(messages->hit_msg.victim_msg));
         free(messages->hit_msg.victim_msg);
-        messages->hit_msg.victim_msg = strdup(buf);
+        messages->hit_msg.victim_msg = strdup(colored.c_str());
 
-        messages->hit_msg.room_msg = fread_string(f1, buf2);
+        messages->hit_msg.room_msg = fread_string(f1, error_label);
 
         /* Messages when one hits oneself */
-        messages->self_msg.attacker_msg = fread_string(f1, buf2);
+        messages->self_msg.attacker_msg = fread_string(f1, error_label);
 
         /* Victim (which is attacker) gets damage message */
-        messages->self_msg.victim_msg = fread_string(f1, buf2);
-        strcpy(buf, std::format("$CD{}", nz(messages->self_msg.victim_msg)).c_str());
+        messages->self_msg.victim_msg = fread_string(f1, error_label);
+        colored = std::format("$CD{}", nz(messages->self_msg.victim_msg));
         free(messages->self_msg.victim_msg);
-        messages->self_msg.victim_msg = strdup(buf);
+        messages->self_msg.victim_msg = strdup(colored.c_str());
 
-        messages->self_msg.room_msg = fread_string(f1, buf2);
+        messages->self_msg.room_msg = fread_string(f1, error_label);
         fscanf(f1, " %s \n", chk);
     }
     fclose(f1);
@@ -851,26 +865,31 @@ void change_alignment(struct char_data* ch, struct char_data* victim)
 void death_cry(struct char_data* ch)
 {
     int door, was_in;
+    // Local scratch replacing the retired global `buf` (buf/buf2
+    // retirement, combat-pilot wave Task 4a): built once per broadcast
+    // line, read immediately by act()'s std::string_view parameter -- no
+    // strcpy/global scratch needed.
+    std::string cry_msg;
 
     /* Check to see if death cry is NULL. */
     if (ch->player.death_cry && strcmp(ch->player.death_cry, "(null)")) {
-        strcpy(buf, ch->player.death_cry);
+        cry_msg = ch->player.death_cry;
     } else {
-        strcpy(buf, std::format("Your blood freezes as you hear {}'s death cry.", (IS_NPC(ch)) ? "$n" : GET_NAME(ch)).c_str());
+        cry_msg = std::format("Your blood freezes as you hear {}'s death cry.", (IS_NPC(ch)) ? "$n" : GET_NAME(ch));
     }
 
-    act(buf, FALSE, ch, 0, 0, TO_ROOM);
+    act(cry_msg, FALSE, ch, 0, 0, TO_ROOM);
     was_in = ch->in_room;
 
     if (ch->player.death_cry2 && strcmp(ch->player.death_cry2, "(null)")) {
-        strcpy(buf, ch->player.death_cry2);
+        cry_msg = ch->player.death_cry2;
     } else {
-        strcpy(buf, std::format("Your blood freezes as you hear {}'s death cry.", (IS_NPC(ch)) ? "someone" : GET_NAME(ch)).c_str());
+        cry_msg = std::format("Your blood freezes as you hear {}'s death cry.", (IS_NPC(ch)) ? "someone" : GET_NAME(ch));
     }
     for (door = 0; door < NUM_OF_DIRS; door++) {
         if (CAN_GO(ch, door)) {
             ch->in_room = world[was_in].dir_option[door]->to_room;
-            act(buf, FALSE, ch, 0, 0, TO_ROOM);
+            act(cry_msg, FALSE, ch, 0, 0, TO_ROOM);
             ch->in_room = was_in;
         }
     }

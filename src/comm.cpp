@@ -665,6 +665,11 @@ void run_the_game(sh_int port)
     // boot_db(), so ageland never runs containment.cpp's obj_from_char()
     // with an unregistered hook.
     register_poison_removal_hook();
+    // combat_hooks.h's extract_char hook (combat-pilot wave Task 4b),
+    // registered the same way and for the same reason: before boot_db(), so
+    // ageland never runs a future rots::combat::extract_char() call site with
+    // an unregistered hook (no call site converts yet -- see combat_hooks.h).
+    register_extract_char_hook();
 
     log("Signal trapping.");
     signal_setup();

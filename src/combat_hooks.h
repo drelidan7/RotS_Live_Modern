@@ -180,4 +180,35 @@ void set_special_handler(special_fn handler);
 int call_special(
     char_data* ch, int cmd, char* arg, int callflag, waiting_type* wtl, int in_room = NOWHERE);
 
+
+// -----------------------------------------------------------------------
+// Task 4b hooks (combat-pilot wave): four remaining fight.cpp/clerics.cpp
+// seams (pilot-census.md section 3.6 for extract_char; section 7's "9
+// distinct symbols" table for the limits.cpp trio; section 3.7 for the
+// app-other trio). Each hook below is a single registered fn-ptr, backed in
+// combat_hooks.cpp exactly like g_special_handler above -- NOT a
+// combat_command enum cell, since none of these seven share the fixed ACMD
+// signature the 25-cell table dispatches. CONSUMER-FREE this wave:
+// fight.cpp/clerics.cpp keep calling the real global functions directly
+// (still app-compiled -- ROTS_SERVER_SOURCES -- so that is a legal
+// same-tier call today); a future task converts each call site to its
+// rots::combat:: dispatch entry point below.
+// -----------------------------------------------------------------------
+
+// extract_char() (handler.h:197, handler.cpp:498/503; pilot-census.md
+// section 3.6) -- handler.cpp defines two overloads that are really one
+// body: the 1-arg form forwards unconditionally to the 2-arg form with
+// `new_room = -1` as a sentinel (matching handler.h:197's own `int
+// new_room = -1` default), so a SINGLE registered fn-ptr carrying the
+// 2-arg shape covers both call arities -- the dispatch overloads below
+// reproduce that same forward exactly. handler.cpp registers the real
+// 2-arg body via register_extract_char_hook() (handler.h/handler.cpp), an
+// app-side registrar (handler.cpp stays app-compiled after this wave).
+// Tripwire default: a LOGGED no-op (void class, same taxonomy as
+// entity_hooks.h's set_attacked_player_hook()/set_poison_removal_hook()).
+using extract_char_fn = void (*)(char_data* ch, int new_room);
+void set_extract_char_hook(extract_char_fn hook);
+void extract_char(char_data* ch, int new_room);
+void extract_char(char_data* ch);
+
 } // namespace rots::combat

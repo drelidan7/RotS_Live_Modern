@@ -34,6 +34,14 @@ std::array<rots::combat::acmd_fn, static_cast<std::size_t>(rots::combat::combat_
 // (interpre.cpp) runs, same convention as g_command_table above.
 rots::combat::special_fn g_special_handler = nullptr;
 
+// Backing storage for Task 4b's hooks (combat-pilot wave): each is an
+// independent fn-ptr, following g_special_handler's own "single global,
+// not an enum-indexed cell" shape, since none of these share
+// combat_command's fixed ACMD signature. Null until each hook's own
+// per-owner registrar (handler.cpp/limits.cpp/objsave.cpp/script.cpp/
+// pkill.cpp) runs.
+rots::combat::extract_char_fn g_extract_char_hook = nullptr;
+
 } // namespace
 
 namespace rots::combat {
@@ -72,6 +80,30 @@ int call_special(
         "rots::combat: STUB call_special() called with no handler registered -- this should "
         "be unreachable once register_combat_command_dispatch() has run.");
     return 0;
+}
+
+
+// extract_char() dispatch (Task 4b) -- see combat_hooks.h's extract_char_fn
+// comment for the sentinel-forward rationale.
+void set_extract_char_hook(extract_char_fn hook)
+{
+    g_extract_char_hook = hook;
+}
+
+void extract_char(char_data* ch, int new_room)
+{
+    if (g_extract_char_hook) {
+        g_extract_char_hook(ch, new_room);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB extract_char() called with no handler registered -- this should "
+        "be unreachable once register_extract_char_hook() has run.");
+}
+
+void extract_char(char_data* ch)
+{
+    extract_char(ch, -1);
 }
 
 } // namespace rots::combat

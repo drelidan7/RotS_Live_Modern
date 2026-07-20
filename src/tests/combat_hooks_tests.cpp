@@ -46,6 +46,7 @@
 //     needs ScopedTestWorld.
 #include "../combat_hooks.h"
 #include "../comm.h"
+#include "../handler.h"
 #include "../interpre.h"
 #include "../output_seam.h"
 #include "../utils.h"
@@ -418,4 +419,98 @@ TEST(CombatHooksSpecial, CallSpecialDefaultsToLoggedZeroWhenUnregistered)
     EXPECT_EQ(result, 0)
         << "Expected an unregistered special handler to return the tripwire default 0 -- "
            "\"no spec-proc consumed the event\".";
+}
+
+// -----------------------------------------------------------------------
+// Task 4b hooks (combat-pilot wave): extract_char (see combat_hooks.h's
+// Task 4b section for the full seam design). CONSUMER-FREE this wave --
+// no fight.cpp/clerics.cpp call site converts yet -- so, like
+// CombatHooksSpecial above and big_brother_hooks_tests.cpp's suites, both
+// hooks are exercised directly against a recording stub rather than the
+// real (session-coupled, expensive-to-fixture) body: "registered stub
+// receives args intact; unregistered default semantics asserted" is the
+// brief's own discriminator shape for this task.
+// -----------------------------------------------------------------------
+
+namespace {
+
+struct RecordedExtractCharCall {
+    char_data* ch = nullptr;
+    int new_room = 0;
+    bool called = false;
+};
+
+RecordedExtractCharCall g_recorded_extract_char_call;
+
+void recording_extract_char_stub(char_data* ch, int new_room)
+{
+    g_recorded_extract_char_call = RecordedExtractCharCall { ch, new_room, true };
+}
+
+// Swaps combat_hooks.h's extract_char hook, then restores the REAL
+// handler.cpp forwarder via register_extract_char_hook() on destruction --
+// same restore-via-real-registrar shape as ScopedSpecialHandler above.
+class ScopedExtractCharHook {
+public:
+    explicit ScopedExtractCharHook(rots::combat::extract_char_fn hook)
+    {
+        rots::combat::set_extract_char_hook(hook);
+    }
+
+    ~ScopedExtractCharHook() { register_extract_char_hook(); }
+
+    ScopedExtractCharHook(const ScopedExtractCharHook&) = delete;
+    ScopedExtractCharHook& operator=(const ScopedExtractCharHook&) = delete;
+};
+
+} // namespace
+
+// rots::combat::extract_char(ch, new_room) -- DISCRIMINATOR: a recording
+// stub proves the 2-arg dispatch overload forwards both arguments intact.
+
+TEST(CombatHooksExtractChar, TwoArgDispatchReachesARegisteredStubWithArgsIntact)
+{
+    g_recorded_extract_char_call = RecordedExtractCharCall {};
+    ScopedExtractCharHook scoped(recording_extract_char_stub);
+    char_data character {};
+
+    rots::combat::extract_char(&character, 7);
+
+    EXPECT_TRUE(g_recorded_extract_char_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_extract_char_call.ch, &character);
+    EXPECT_EQ(g_recorded_extract_char_call.new_room, 7);
+}
+
+// DISCRIMINATOR: the 1-arg overload forwards to the 2-arg overload with the
+// -1 sentinel, mirroring handler.cpp's own extract_char(ch) ->
+// extract_char(ch, -1) forward exactly (pilot-census.md section 3.6).
+
+TEST(CombatHooksExtractChar, OneArgDispatchForwardsWithNegativeOneSentinel)
+{
+    g_recorded_extract_char_call = RecordedExtractCharCall {};
+    ScopedExtractCharHook scoped(recording_extract_char_stub);
+    char_data character {};
+
+    rots::combat::extract_char(&character);
+
+    EXPECT_TRUE(g_recorded_extract_char_call.called);
+    EXPECT_EQ(g_recorded_extract_char_call.ch, &character);
+    EXPECT_EQ(g_recorded_extract_char_call.new_room, -1)
+        << "Expected the 1-arg overload to reach the stub with handler.h:197's own sentinel "
+           "default (-1), matching the real extract_char(ch) -> extract_char(ch, -1) forward.";
+}
+
+TEST(CombatHooksExtractChar, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_extract_char_call = RecordedExtractCharCall {};
+    ScopedExtractCharHook unregistered(nullptr);
+    char_data character {};
+
+    rots::combat::extract_char(&character, 7);
+
+    EXPECT_FALSE(g_recorded_extract_char_call.called)
+        << "Expected an unregistered extract_char hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default "
+           "is a logged no-op, not a call to any stub.";
 }

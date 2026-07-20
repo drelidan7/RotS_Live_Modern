@@ -193,6 +193,17 @@ int main(int argc, char* argv[]) {
     // (combat_hooks_tests.cpp), the same bridge-before-traffic posture as
     // every other hook this file registers.
     register_combat_command_dispatch();
+    // combat_hooks.h's extract_char hook (combat-pilot wave Task 4b),
+    // registered for the same real-body-fidelity reason as the calls above:
+    // without it this test process would silently exercise
+    // rots::combat::extract_char()'s tripwire-logged no-op default instead of
+    // handler.cpp's real extract_char(ch, new_room) body that ageland
+    // registers at boot -- handler.cpp is already linked into both test
+    // binaries, so this only needs the registration call. No production call
+    // site dispatches through this hook yet (see combat_hooks.h), so this call
+    // exists for this wave's own seam tests (combat_hooks_tests.cpp), the same
+    // bridge-before-traffic posture as every other hook this file registers.
+    register_extract_char_hook();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

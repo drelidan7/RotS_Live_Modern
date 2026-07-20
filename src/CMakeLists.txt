@@ -716,6 +716,7 @@ if(ROTS_BUILD_TESTS)
         tests/poison_notification_tests.cpp
         tests/prompt_format_tests.cpp
         tests/protocol_tests.cpp
+        tests/rng_seed_tests.cpp
         tests/rots_asprintf_tests.cpp
         tests/rots_convert_equivalence_tests.cpp
         tests/rots_crypt_tests.cpp

@@ -484,7 +484,7 @@ int main(int argc, char** argv)
     rots_net::startup();
 
     // initialize the random number generator
-    rots_rng::seed(static_cast<unsigned int>(std::time(0)));
+    rots_rng::seed_from_environment_or_time();
 
     StartupOptions startup_options {};
     std::string parse_error;
@@ -560,7 +560,7 @@ int main(int argc, char** argv)
         std::filesystem::rename("last_cmds", "crash_cmds", rename_ec);
     }
     fpCommand = fopen("last_cmds", "w");
-    rots_rng::seed(static_cast<unsigned int>(time(0)));
+    rots_rng::seed_from_environment_or_time();
     run_the_game(startup_options.port);
     return (0);
 }

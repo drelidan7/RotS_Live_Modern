@@ -158,6 +158,14 @@ int main(int argc, char* argv[]) {
     // linked into both test binaries, so this only needs the registration
     // call.
     register_world_resolver_hooks();
+    // entity_hooks.h's poison-removal notification hook (blocker-buster
+    // wave Task 3), registered for the same real-body-fidelity reason as
+    // the calls above: without it this test process would silently
+    // exercise the tripwire-logged no-op default instead of fight.cpp's
+    // real damage()/raw_kill()-backed implementation that ageland registers
+    // at boot -- fight.cpp is already linked into both test binaries, so
+    // this only needs the registration call.
+    register_poison_removal_hook();
     // combat_hooks.h's boot-registered command-dispatch table (blocker-
     // buster wave Task 2), registered for the same real-body-fidelity reason
     // as the calls above: without it, a test that calls

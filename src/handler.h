@@ -279,6 +279,10 @@ void forget(struct char_data* ch, struct char_data* victim);
 void remember(struct char_data* ch, struct char_data* victim);
 int damage(struct char_data* ch, struct char_data* victim, int dam, int attacktype, int hit_location);
 int check_sanctuary(char_data* ch, char_data* victim);
+// Registers fight.cpp's poison_removal_hook_impl() as entity_hooks.h's
+// poison-removal notification. Called once from run_the_game(), before
+// boot_db() (blocker-buster wave Task 3).
+void register_poison_removal_hook();
 
 char* money_message(int sum, int mode = 0);
 

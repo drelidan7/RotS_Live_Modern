@@ -18,6 +18,7 @@
 #include "color.h"
 #include "comm.h"
 #include "db.h"
+#include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
@@ -1951,6 +1952,39 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
     } else {
         return 0;
     }
+}
+
+namespace {
+// Reproduces handler.cpp's app-tier equip_char()/unequip_char() wrapper
+// poison block EXACTLY -- registered below as entity_hooks.h's
+// poison-removal notification (blocker-buster wave Task 3, census section
+// E). containment.cpp's obj_from_char() fires this from its
+// equipment-fallback branch immediately after detach_equipment()
+// (equipment.cpp, L2 primitive) has cleared an AFF_POISON affect the
+// wearer had before the call -- the same guard the app-tier wrapper still
+// evaluates for its own direct callers. See entity_hooks.h's
+// poison_removal_fn doc comment for the full rationale, including why an
+// unregistered fire is a tripwire log rather than a hard failure.
+void poison_removal_hook_impl(char_data* character)
+{
+    damage(character, character, 5, SPELL_POISON, 0);
+
+    if (GET_HIT(character) <= 0) {
+        act("$n suddenly collapses on the ground.",
+            TRUE, character, 0, 0, TO_ROOM);
+        send_to_char("Your body failed to the magic.\n\r", character);
+        raw_kill(character, NULL, 0);
+    }
+}
+} // namespace
+
+// Registers the hook above as entity_hooks.h's poison-removal notification.
+// Called once from run_the_game(), before boot_db() (blocker-buster wave
+// Task 3) -- same convention as this header's other registrars (e.g.
+// big_brother.cpp's register_attacked_player_hook()).
+void register_poison_removal_hook()
+{
+    rots::entity::set_poison_removal_hook(poison_removal_hook_impl);
 }
 
 bool does_victim_save_on_weapon_poison(struct char_data* victim, struct obj_data* weapon)

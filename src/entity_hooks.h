@@ -146,4 +146,42 @@ void set_room_total_resolver_hook(room_total_resolver_fn hook);
 void set_zone_resolver_hook(zone_resolver_fn hook);
 void set_obj_index_resolver_hook(obj_index_resolver_fn hook);
 
+// Poison-removal notification (blocker-buster wave Task 3, census section E):
+// containment.cpp's obj_from_char() fires this from its equipment-fallback
+// branch, immediately after calling detach_equipment() (equipment.cpp, L2
+// primitive) to strip a genuinely EQUIPPED item, whenever doing so has just
+// cured the wearer's poison affect -- obj_from_char() captures `was_poisoned
+// = IS_AFFECTED(character, AFF_POISON)` before the detach_equipment() call
+// and fires this hook only if that was true and IS_AFFECTED(character,
+// AFF_POISON) is false afterward, the exact guard handler.cpp's app-tier
+// unequip_char() wrapper still evaluates for its own direct (non-scripted)
+// callers. The registered implementation reproduces that wrapper's poison
+// damage()/raw_kill() block EXACTLY: the block's `dam`/`attacktype`/
+// `hit_location` arguments are fixed literals, not per-call state, so a bare
+// char_data* is enough to replay it verbatim. Firing a notification instead
+// of calling unequip_char() directly is what lets obj_from_char() move to
+// containment.cpp (L2) at all -- calling the app-tier wrapper from L2 would
+// recreate the exact EntityLayerAcyclicity edge placement-seam Task 2's own
+// linkcheck already rejected once. See containment.cpp's obj_from_char()
+// relocation comment and .superpowers/sdd/task-3-report.md for the live
+// mudscript counter-example (script.cpp's SCRIPT_ASSIGN_EQ +
+// SCRIPT_OBJ_FROM_CHAR) this hook exists to preserve.
+//
+// fight.cpp registers the real damage()/raw_kill() implementation in
+// run_the_game() before boot_db() -- damage() is declared in handler.h;
+// raw_kill() has no header declaration anywhere in the tree (every existing
+// caller, including the registered implementation itself, forward-declares
+// it locally). Unregistered-fire is a tripwire log with NO abort -- unlike
+// this header's txt-block-pool pair above, there is nothing to dereference
+// on a void-returning hook, so a silent skip cannot surface as a confusing
+// null-deref; this joins set_attacked_player_hook()'s class instead
+// (tripwire log, safe no-op) because registration in run_the_game()'s /
+// gtest_main.cpp's main() always precedes any path that could reach it:
+// obj_from_char()'s equipment-fallback branch never runs before boot in
+// ageland, and rots_convert links containment.cpp into rots_entity but its
+// own call graph (convert_main.cpp's player-file conversion) never calls
+// obj_from_char() at all.
+using poison_removal_fn = void (*)(char_data* character);
+void set_poison_removal_hook(poison_removal_fn hook);
+
 }

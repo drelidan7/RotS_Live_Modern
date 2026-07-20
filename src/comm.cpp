@@ -653,6 +653,11 @@ void run_the_game(sh_int port)
     // ageland never runs placement.cpp's room_by_id()/room_by_id_total()/
     // zone_by_id()/obj_index_by_id() with an unregistered hook.
     register_world_resolver_hooks();
+    // entity_hooks.h's poison-removal notification hook (blocker-buster
+    // wave Task 3), registered the same way and for the same reason: before
+    // boot_db(), so ageland never runs containment.cpp's obj_from_char()
+    // with an unregistered hook.
+    register_poison_removal_hook();
 
     log("Signal trapping.");
     signal_setup();

@@ -23,41 +23,31 @@
 // bounds-checked access would use room_by_id() + a null check instead (no
 // site in this file needed that variant -- see below).
 //
-// DEVIATION from the brief's Step 1 list (discovered during this task, not
-// pre-existing in the census's disposition table): `obj_from_char` (census
-// row 770) is NOT moved here. Its equipment-fallback branch calls
-// `unequip_char(...)`, still defined in handler.cpp (app tier) until Task 3
-// SPLITs it into equipment.cpp -- the census's own "Upward refs" column
-// flagged this ("unequip_char->L2 (equipment sibling)"), but building this
-// task's EntityLayerAcyclicity check (rots_entity_linkcheck, which
-// force-loads rots_entity against ONLY RotS::core+RotS::platform, no app
-// TUs) proved it a hard unresolved-symbol link failure today, not a future
-// concern:
+// DEVIATION history (obj_from_char, census row 770) -- RESOLVED (blocker-
+// buster wave Task 3): Task 2 originally deferred this function because its
+// equipment-fallback branch called `unequip_char(...)`, then still app-tier
+// (a hard EntityLayerAcyclicity link failure, not just a future concern --
+// see the historical evidence this comment used to carry, preserved in git
+// history/task-2-report.md). Placement-seam Task 3's SPLIT made
+// detach_equipment() (equipment.cpp) an L2 citizen, but that same task's
+// mandatory STOP-CHECK found a live mudscript path (script.cpp's
+// SCRIPT_ASSIGN_EQ + SCRIPT_OBJ_FROM_CHAR) that reaches this branch with a
+// genuinely EQUIPPED object, where only the app-tier unequip_char()
+// wrapper -- not detach_equipment() alone -- preserved the poison
+// damage()/raw_kill() side effect; obj_from_char stayed deferred rather
+// than silently drop that side effect (see task-3-report.md from that
+// wave for the full evidence trail).
 //
-//   Undefined symbols for architecture arm64:
-//     "unequip_char(char_data*, int)", referenced from:
-//         obj_from_char(obj_data*) in librots_entity.a[8](containment.cpp.o)
-//
-// Resolving this the way Task 1 resolved its own undiscovered edges (a
-// documented, self-adjudicated deviation rather than inventing new
-// production hook machinery the brief's "produces nothing new" scoped out,
-// or hand-splitting unequip_char early and duplicating Task 3's own
-// planned work): obj_from_char stays in handler.cpp for this task and
-// moves alongside unequip_char's SPLIT in Task 3, where the primitive it
-// calls will itself be an L2 citizen. See task-2-report.md for the full
-// evidence trail.
-//
-// Task 3 update: unequip_char's SPLIT landed (attach_equipment()/
-// detach_equipment(), equipment.cpp) and made the primitive an L2
-// citizen as anticipated above -- but Task 3's own mandatory STOP-CHECK
-// on obj_from_char's unequip_char() call target found a live mudscript
-// path (script.cpp SCRIPT_ASSIGN_EQ + SCRIPT_OBJ_FROM_CHAR) that reaches
-// this branch with a genuinely EQUIPPED object, where only the app-tier
-// unequip_char() wrapper (not detach_equipment()) preserves the poison
-// damage/raw_kill side effect. obj_from_char therefore stays in
-// handler.cpp -- deferred again, now for a behavior-preservation reason
-// rather than a link-order one. See handler.cpp's own updated
-// obj_from_char comment and task-3-report.md for the full evidence.
+// blocker-buster wave Task 3 (.superpowers/sdd/blocker-census.md section
+// E; docs/superpowers/plans/2026-07-19-blocker-buster.md) completes the
+// move: obj_from_char()'s equipment-fallback branch below now calls
+// detach_equipment() (the L2 primitive) directly and fires
+// entity_hooks.h's poison-removal notification hook in the exact place
+// unequip_char()'s own poison block used to run -- fight.cpp's registered
+// implementation reproduces that block EXACTLY (see entity_hooks.h's
+// poison_removal_fn doc comment and this wave's task-3-report.md for the
+// identity proof against the pre-inversion characterization test,
+// src/tests/poison_notification_tests.cpp).
 
 #include "platdef.h"
 #include <cstdlib>
@@ -70,6 +60,7 @@
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
+#include "rots/platform/log.h"
 #include "utils.h"
 
 /* give an object to a char   */
@@ -268,4 +259,111 @@ void object_list_new_owner(struct obj_data* list, struct char_data* ch)
         object_list_new_owner(list->next_content, ch);
         list->carried_by = ch;
     }
+}
+
+// Backing storage + dispatch for entity_hooks.h's poison-removal
+// notification (blocker-buster wave Task 3). Dispatched only from
+// obj_from_char() below -- the same TU that owns this storage -- so
+// (mirroring entity_lifecycle.cpp's dispatch_char_teardown()/
+// dispatch_attack_speed_multiplier() precedent) this stays file-local
+// rather than needing an externally-declared dispatch function.
+namespace rots::entity {
+
+namespace {
+// Null until register_poison_removal_hook() (fight.cpp) runs in
+// run_the_game()/gtest_main.cpp's main(), before boot_db()/any test body.
+// See entity_hooks.h's poison_removal_fn doc comment for why an
+// unregistered fire is a tripwire log rather than a hard failure.
+poison_removal_fn g_poison_removal_hook = nullptr;
+} // namespace
+
+void set_poison_removal_hook(poison_removal_fn hook)
+{
+    g_poison_removal_hook = hook;
+}
+
+namespace {
+void dispatch_poison_removal(char_data* character)
+{
+    if (g_poison_removal_hook) {
+        g_poison_removal_hook(character);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::entity: STUB poison-removal hook called with no sink registered -- this should be "
+        "unreachable once register_poison_removal_hook() has run.");
+}
+} // namespace
+
+} // namespace rots::entity
+
+// obj_from_char() relocated to containment.cpp (blocker-buster wave Task 3;
+// census row 770; see this file's top-of-file DEVIATION-history comment for
+// the full deferral-then-resolution trail). Byte-identical to its
+// handler.cpp original except the equipment-fallback branch's call target:
+// the ORIGINAL called unequip_char() (the app-tier wrapper, which ran the
+// poison damage()/raw_kill() block inline); this L2 body instead captures
+// `was_poisoned` before calling detach_equipment() (equipment.cpp's L2
+// primitive -- the slot-clear/encumbrance/OB-PB-dodge/affect math
+// unequip_char() itself delegates to) and fires
+// rots::entity::dispatch_poison_removal() in the exact spot unequip_char()'s
+// own poison block used to run, under the exact same guard condition
+// (`was_poisoned != 0 && !IS_AFFECTED(...)`) that block evaluated. See
+// entity_hooks.h's poison_removal_fn doc comment for why this is behavior-
+// identical rather than merely equivalent, and
+// src/tests/poison_notification_tests.cpp for the pre-inversion
+// characterization test that proves it (unchanged pass, before and after
+// this move).
+/* take an object from a char */
+void obj_from_char(struct obj_data* object)
+{
+    struct obj_data* tmp;
+    int i;
+
+    if (object->carried_by->carrying == object) { /* head of list */
+        object->carried_by->carrying = object->next_content;
+        IS_CARRYING_N(object->carried_by)
+        --;
+    } else {
+        for (tmp = object->carried_by->carrying;
+             tmp && (tmp->next_content != object);
+             tmp = tmp->next_content)
+            ; /* locate previous */
+        if (tmp) {
+            tmp->next_content = object->next_content;
+            IS_CARRYING_N(object->carried_by)
+            --;
+        } else {
+            for (i = 0; i < MAX_WEAR; i++)
+                if (object->carried_by->equipment[i] == object)
+                    break;
+            if (i < MAX_WEAR) {
+                struct char_data* wearer = object->carried_by;
+                int was_poisoned = IS_AFFECTED(wearer, AFF_POISON);
+
+                detach_equipment(wearer, i);
+
+                if (was_poisoned != 0 && !IS_AFFECTED(wearer, AFF_POISON)) {
+                    rots::entity::dispatch_poison_removal(wearer);
+                }
+            }
+        }
+    }
+
+    /* set flag for crash-save system */
+    if (!IS_NPC(object->carried_by))
+        SET_BIT(PLR_FLAGS(object->carried_by), PLR_CRASH);
+
+    if (IS_RIDING(object->carried_by))
+        IS_CARRYING_W(object->carried_by->mount_data.mount) -= GET_OBJ_WEIGHT(object);
+
+    IS_CARRYING_W(object->carried_by) -= GET_OBJ_WEIGHT(object);
+    object->carried_by = 0;
+    object->next_content = 0;
+    object->in_room = NOWHERE;
+
+    if (IS_OBJ_STAT(object, ITEM_WILLPOWER))
+        REMOVE_BIT(object->obj_flags.extra_flags, ITEM_WILLPOWER);
+    if (object->obj_flags.prog_number == 1)
+        object->obj_flags.prog_number = 0;
 }

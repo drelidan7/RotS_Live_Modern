@@ -9,12 +9,9 @@
 #include <format>
 
 #include "db.h" // clear_object() declaration (entity_lifecycle.cpp, L2), used by
-                 // create_money() below. free_obj() is NOT called by anything in this
-                 // file today (placement-seam Task 2 review Minor, fixed Task 3): it was
-                 // anticipated for extract_obj(), which stayed app-side (see extract_obj's
-                 // own STOP-CHECK-adjudicated deferral note, handler.cpp, and
-                 // task-3-report.md) -- re-add free_obj to this comment when extract_obj
-                 // finally moves here.
+                 // create_money() below; free_obj() declaration, used by extract_obj()
+                 // below (blocker-buster wave Task 3 -- see that function's own
+                 // relocation comment).
 #include "entity_hooks.h"
 #include "handler.h"
 #include "utils.h"
@@ -46,24 +43,24 @@
 // Global Constraints (dead functions with 0 callers are deleted, not
 // relocated).
 //
-// extract_obj (census row 1367, ADJUDICATE-3) is STILL NOT here as of
-// Task 3 either (STOP-CHECK-adjudicated deferral, Disposition B -- see
-// task-3-report.md, supersedes this note's original Task-2-only
-// rationale below). See handler.cpp's own relocation comment at
-// extract_obj's still-resident definition (and containment.cpp's/
-// handler.cpp's obj_from_char comments) for the full evidence: extract_obj
-// calls obj_from_char(), which stays app-side because a live mudscript
-// path (script.cpp SCRIPT_ASSIGN_EQ + SCRIPT_OBJ_FROM_CHAR) can reach
-// obj_from_char's equipment-fallback branch with a genuinely equipped
-// object, where only the app-tier unequip_char() wrapper (not
-// equipment.cpp's detach_equipment() primitive) preserves the poison
-// damage/raw_kill side effect -- a real behavior-preservation blocker,
-// not merely the Task-2-era link-ordering one this note originally
-// described ("ITS OWN unequip_char() dependency isn't L2-resolvable
-// until Task 3's equipment SPLIT" -- that SPLIT landed this task, and
-// resolved nothing here). get_obj_in_list_vnum has no such dependency,
-// so it moved on schedule (Task 2) -- ADJUDICATE-3's obj_index_by_id
-// resolver is delivered either way.
+// extract_obj (census row 1367, ADJUDICATE-3) deferral history -- RESOLVED
+// (blocker-buster wave Task 3): placement-seam Task 2/3 deferred this
+// function because it calls obj_from_char(), which itself stayed app-side
+// through a live mudscript path (script.cpp's SCRIPT_ASSIGN_EQ +
+// SCRIPT_OBJ_FROM_CHAR) that could reach obj_from_char's equipment-fallback
+// branch with a genuinely equipped object, where only the app-tier
+// unequip_char() wrapper (not equipment.cpp's detach_equipment() primitive)
+// preserved the poison damage()/raw_kill() side effect -- see git history/
+// that wave's task-3-report.md for the full evidence trail.
+// get_obj_in_list_vnum had no such dependency, so it moved on schedule
+// (Task 2) -- ADJUDICATE-3's obj_index_by_id resolver substitution below is
+// the same one that function already uses.
+//
+// blocker-buster wave Task 3 (.superpowers/sdd/blocker-census.md section E)
+// resolves obj_from_char's own blocker via entity_hooks.h's poison-removal
+// notification hook (containment.cpp), which makes obj_from_char() an L2
+// citizen -- extract_obj() moves here in the same task, now that its own
+// dependency is L2-resolvable.
 extern struct obj_data* object_list;
 
 //============================================================================
@@ -391,4 +388,64 @@ struct obj_data* create_money(int amount)
     object_list = obj;
 
     return (obj);
+}
+
+// extract_obj() relocated to object_utils.cpp (blocker-buster wave Task 3;
+// census row 1367, ADJUDICATE-3; see this file's top-of-file deferral-
+// history comment for the full trail). Byte-identical to its handler.cpp
+// original with the one ADJUDICATE-3 substitution: `obj_index[obj->
+// item_number].number--` becomes `obj_index_by_id(obj->item_number)->
+// number--` -- the same resolver, same unchecked-dereference contract (no
+// new null check added), that get_obj_in_list_vnum() above already uses for
+// its own obj_index[] read (the addendum's raw-array convention: obj_index
+// is a plain C array with no operator[]-style fallback wrapper, and the
+// original site already read it unchecked, guarded only by the
+// `item_number >= 0` ternary already in the source). obj_from_room()/
+// obj_from_char() (containment.cpp) and free_obj() (entity_lifecycle.cpp)
+// are all L2 citizens as of this task, so this function's own body needed
+// no other change to become one too.
+void extract_obj(struct obj_data* obj)
+{
+    struct obj_data *temp1, *temp2;
+
+    if (obj->in_room != NOWHERE)
+        obj_from_room(obj);
+    else if (obj->carried_by)
+        obj_from_char(obj);
+    else if (obj->in_obj) {
+        temp1 = obj->in_obj;
+        if (temp1->contains == obj) /* head of list */
+            temp1->contains = obj->next_content;
+        else {
+            for (temp2 = temp1->contains;
+                 temp2 && (temp2->next_content != obj);
+                 temp2 = temp2->next_content)
+                ;
+
+            if (temp2) {
+                temp2->next_content = obj->next_content;
+            }
+        }
+    }
+
+    for (; obj->contains; extract_obj(obj->contains))
+        ;
+    /* leaves nothing ! */
+
+    if (object_list == obj) /* head of list */
+        object_list = obj->next;
+    else {
+        for (temp1 = object_list;
+             temp1 && (temp1->next != obj);
+             temp1 = temp1->next)
+            ;
+
+        if (temp1)
+            temp1->next = obj->next;
+    }
+
+    if (obj->item_number >= 0)
+        (obj_index_by_id(obj->item_number)->number)--;
+    // printf("extracting object %s in room %d\n",obj->name, obj->in_room);
+    free_obj(obj);
 }

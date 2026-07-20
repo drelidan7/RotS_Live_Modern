@@ -477,82 +477,21 @@ void char_from_room(struct char_data* ch)
 // file for the moved body and task-2-report.md for the evidence trail.
 // Declaration stays in handler.h.
 //
-// obj_from_char() stays here (placement-seam Task 3 STOP-CHECK,
-// controller-adjudicated deferral -- Disposition B; see task-3-report.md
-// for the full evidence trail; supersedes Task 2's own deferral note,
-// which cited a now-resolved blocker): Task 2 deferred this function
-// because unequip_char() wasn't yet an L2 citizen; Task 3's equipment
-// SPLIT resolved THAT blocker (attach_equipment()/detach_equipment() now
-// live in equipment.cpp, L2). But the task brief's mandatory STOP-CHECK
-// on this function's unequip_char() call target (the equipment-fallback
-// branch's call below)
-// surfaced a genuine reachable counter-example, not just a link-order
-// problem: script.cpp's SCRIPT_ASSIGN_EQ command reads an EQUIPPED item
-// (tmpch->equipment[pos]) into a script object-param slot, and a
-// subsequent SCRIPT_OBJ_FROM_CHAR on that same slot reaches THIS
-// function with an object whose carried_by is set but which is not in
-// the ->carrying list -- i.e. the equipment-fallback branch below,
-// calling unequip_char() (not the primitive), IS reachable in live
-// mudscript-driven play, not just defensively. unequip_char() (the app
-// wrapper) runs the poison damage/raw_kill block on that path;
-// detach_equipment() (the L2 primitive) does not. Moving this function
-// to containment.cpp would force the unequip_char() call below to target
-// detach_equipment() instead (calling the app-tier unequip_char()
-// wrapper from L2 recreates exactly the upward edge Task 2's own
-// EntityLayerAcyclicity check already rejected once), silently dropping
-// that poison side effect for the scripted path -- a real behavior
-// change, which this wave's Global Constraint ("Zero behavior change for
-// ageland") does not permit without explicit owner sign-off. Deferred
-// pending either a poison-notification hook (so the L2 primitive could
-// signal the app tier without calling it) or an explicit accepted-risk
-// decision on this narrow scripted edge case. Byte-identical to its
-// pre-Task-2 body (unchanged since).
-
-/* take an object from a char */
-void obj_from_char(struct obj_data* object)
-{
-    struct obj_data* tmp;
-    int i;
-
-    if (object->carried_by->carrying == object) { /* head of list */
-        object->carried_by->carrying = object->next_content;
-        IS_CARRYING_N(object->carried_by)
-        --;
-    } else {
-        for (tmp = object->carried_by->carrying;
-             tmp && (tmp->next_content != object);
-             tmp = tmp->next_content)
-            ; /* locate previous */
-        if (tmp) {
-            tmp->next_content = object->next_content;
-            IS_CARRYING_N(object->carried_by)
-            --;
-        } else {
-            for (i = 0; i < MAX_WEAR; i++)
-                if (object->carried_by->equipment[i] == object)
-                    break;
-            if (i < MAX_WEAR)
-                unequip_char(object->carried_by, i);
-        }
-    }
-
-    /* set flag for crash-save system */
-    if (!IS_NPC(object->carried_by))
-        SET_BIT(PLR_FLAGS(object->carried_by), PLR_CRASH);
-
-    if (IS_RIDING(object->carried_by))
-        IS_CARRYING_W(object->carried_by->mount_data.mount) -= GET_OBJ_WEIGHT(object);
-
-    IS_CARRYING_W(object->carried_by) -= GET_OBJ_WEIGHT(object);
-    object->carried_by = 0;
-    object->next_content = 0;
-    object->in_room = NOWHERE;
-
-    if (IS_OBJ_STAT(object, ITEM_WILLPOWER))
-        REMOVE_BIT(object->obj_flags.extra_flags, ITEM_WILLPOWER);
-    if (object->obj_flags.prog_number == 1)
-        object->obj_flags.prog_number = 0;
-}
+// obj_from_char() relocated to containment.cpp (blocker-buster wave
+// Task 3, census section E; supersedes the placement-seam-wave deferral
+// this comment used to carry -- see git history for that trail).
+// entity_hooks.h's poison-removal notification hook is what finally
+// unblocked the move: the equipment-fallback branch's call target that
+// used to force this function to stay app-side (this file's unequip_char()
+// wrapper below, for its poison damage/raw_kill side effect) is now
+// detach_equipment() (equipment.cpp, L2 primitive) plus a fired
+// notification, reproducing that side effect without an upward L2->app
+// call. See containment.cpp's obj_from_char() relocation comment,
+// entity_hooks.h's poison_removal_fn doc comment, and
+// .superpowers/sdd/task-3-report.md (blocker-buster wave) for the full
+// evidence trail, including the pre-inversion characterization test
+// (src/tests/poison_notification_tests.cpp) that pins this move as
+// behavior-identical. Declaration stays in handler.h.
 
 // equip_char() SPLIT (placement-seam Task 3, census row equip_char:815):
 // primitive attach_equipment(ch, obj, pos) (L2, equipment.cpp) keeps the
@@ -767,67 +706,18 @@ struct obj_data* unequip_char(struct char_data* ch, int pos)
 // bodies and task-2-report.md for the evidence trail. Declarations stay in
 // handler.h.
 
-/* Extract an object from the world */
-void extract_obj(struct obj_data* obj)
-{
-    struct obj_data *temp1, *temp2;
-
-    if (obj->in_room != NOWHERE)
-        obj_from_room(obj);
-    else if (obj->carried_by)
-        obj_from_char(obj);
-    else if (obj->in_obj) {
-        temp1 = obj->in_obj;
-        if (temp1->contains == obj) /* head of list */
-            temp1->contains = obj->next_content;
-        else {
-            for (temp2 = temp1->contains;
-                 temp2 && (temp2->next_content != obj);
-                 temp2 = temp2->next_content)
-                ;
-
-            if (temp2) {
-                temp2->next_content = obj->next_content;
-            }
-        }
-    }
-
-    for (; obj->contains; extract_obj(obj->contains))
-        ;
-    /* leaves nothing ! */
-
-    if (object_list == obj) /* head of list */
-        object_list = obj->next;
-    else {
-        for (temp1 = object_list;
-             temp1 && (temp1->next != obj);
-             temp1 = temp1->next)
-            ;
-
-        if (temp1)
-            temp1->next = obj->next;
-    }
-
-    if (obj->item_number >= 0)
-        (obj_index[obj->item_number].number)--;
-    // printf("extracting object %s in room %d\n",obj->name, obj->in_room);
-    free_obj(obj);
-}
-
-// extract_obj() DEVIATION (placement-seam Task 3 STOP-CHECK,
-// controller-adjudicated deferral -- Disposition B; see task-3-report.md;
-// supersedes Task 2's own deferral note): NOT moved this task either.
-// ADJUDICATE-3's obj_index_by_id() substitution alone still compiles and
-// links clean in isolation, but extract_obj calls obj_from_char(), which
-// itself stays app-side this task -- see obj_from_char's own comment
-// above for the STOP-CHECK evidence (a live mudscript path,
-// SCRIPT_ASSIGN_EQ + SCRIPT_OBJ_FROM_CHAR, reaches obj_from_char's
-// equipment-fallback branch with a genuinely equipped item, so
-// obj_from_char must keep calling the app-tier unequip_char() wrapper
-// -- with its poison damage/raw_kill block -- to stay behavior-
-// identical; that upward edge is illegal from L2, so obj_from_char
-// cannot move, and neither can extract_obj, which depends on it).
-// Byte-identical to its pre-Task-2 body (unchanged since).
+// extract_obj() relocated to object_utils.cpp (blocker-buster wave
+// Task 3, census section E, ADJUDICATE-3; supersedes the placement-seam-
+// wave deferral this comment used to carry -- see git history for that
+// trail). extract_obj() depended on obj_from_char(), which itself stayed
+// app-side until this task's poison-removal notification hook resolved
+// its own blocker (see obj_from_char's relocation comment above); with
+// obj_from_char() an L2 citizen, extract_obj() moves in the same task,
+// substituting obj_index_by_id() for its direct obj_index[] read (the
+// same resolver get_obj_in_list_vnum() already uses, object_utils.cpp).
+// See object_utils.cpp's extract_obj() relocation comment and
+// .superpowers/sdd/task-3-report.md (blocker-buster wave) for the full
+// evidence trail. Declaration stays in handler.h.
 
 // update_object()/update_char_objects() relocated to object_utils.cpp
 // (placement-seam Task 2): entity-pure recursive object-timer helpers, no

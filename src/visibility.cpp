@@ -48,6 +48,7 @@
 
 #include "char_utils.h"
 #include "comm.h"
+#include "db.h" /* For struct index_data (mob_index[]), get_guardian_type()'s move-in dependency */
 #include "handler.h"
 #include "interpre.h"
 #include "spells.h"
@@ -761,4 +762,41 @@ int generic_find(char* arg, int bitvector, struct char_data* ch,
     }
 
     return (0);
+}
+
+// get_guardian_type() -- relocated here from utility.cpp (combat-trio wave
+// Task 3; combat-trio-census.md sec.3/sec.5.5). Zero function-call edges of
+// its own; reads mob_index[] (extern struct index_data* mob_index,
+// db_world.cpp, L3-world) and guardian_mob[] (consts.cpp, L1-core)
+// directly. The mob_index reference is what forces this function's
+// destination to be L3 (rots_combat) rather than L2 (rots_entity) --
+// mob_index has no L2-visible resolver seam the way world[]/room_data
+// does (the four-resolver world seam covers room_by_id/room_by_id_total/
+// zone_by_id/obj_index_by_id only). clerics.cpp -- already a rots_combat
+// member since the combat-pilot wave -- already references mob_index via
+// the identical plain-extern idiom (clerics.cpp:55), confirming this is a
+// legal in-lib peer reference, not a new seam. Callers: objsave.cpp:774,
+// profs.cpp:226 (both app/lib downward calls, unchanged by this move).
+// Declaration unchanged: utils.h:781.
+/* Returns the guardian type.  Returns INVALID_GUARDIAN if the mob is not a guardian.
+ * guardian_mob is a data table defined in consts.cpp (rots_core); mob_index is the
+ * mobile index table defined in db.cpp. Both are declared extern here rather than
+ * pulled in via a shared header, matching the historical local-extern idiom this
+ * function used before its relocation out of consts.cpp. */
+int get_guardian_type(int race_number, const char_data* in_guardian_mob)
+{
+    extern struct index_data* mob_index;
+    extern int guardian_mob[MAX_RACES][3];
+    if (race_number >= MAX_RACES)
+        return INVALID_GUARDIAN;
+
+    int virtual_number = mob_index[in_guardian_mob->nr].virt;
+    for (int guardian_type = AGGRESSIVE_GUARDIAN; guardian_type <= MYSTIC_GUARDIAN;
+         ++guardian_type) {
+        if (guardian_mob[race_number][guardian_type] == virtual_number) {
+            return guardian_type;
+        }
+    }
+
+    return INVALID_GUARDIAN;
 }

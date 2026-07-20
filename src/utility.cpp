@@ -970,25 +970,10 @@ char* PERS(struct char_data* target, struct char_data* observer,
 // census verdict MOVE-OTHER-L2): entity-pure. Declaration unchanged in
 // utils.h.
 
-/* Returns the guardian type.  Returns INVALID_GUARDIAN if the mob is not a guardian.
- * guardian_mob is a data table defined in consts.cpp (rots_core); mob_index is the
- * mobile index table defined in db.cpp. Both are declared extern here rather than
- * pulled in via a shared header, matching the historical local-extern idiom this
- * function used before its relocation out of consts.cpp. */
-int get_guardian_type(int race_number, const char_data* in_guardian_mob)
-{
-    extern struct index_data* mob_index;
-    extern int guardian_mob[MAX_RACES][3];
-    if (race_number >= MAX_RACES)
-        return INVALID_GUARDIAN;
-
-    int virtual_number = mob_index[in_guardian_mob->nr].virt;
-    for (int guardian_type = AGGRESSIVE_GUARDIAN; guardian_type <= MYSTIC_GUARDIAN;
-         ++guardian_type) {
-        if (guardian_mob[race_number][guardian_type] == virtual_number) {
-            return guardian_type;
-        }
-    }
-
-    return INVALID_GUARDIAN;
-}
+// get_guardian_type() relocated to visibility.cpp (rots_combat, L3;
+// combat-trio wave Task 3): reads mob_index[] (db_world.cpp, L3-world)
+// and guardian_mob[] (consts.cpp, L1-core) -- both legal downward/peer
+// references once inside rots_combat, which PUBLIC-links RotS::world
+// and RotS::core (the same L3-peer-reference precedent visibility.cpp's
+// own weather_info comment already establishes). Declaration unchanged
+// in utils.h.

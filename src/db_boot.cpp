@@ -418,11 +418,18 @@ void boot_db(void)
     assign_spell_pointers();
     // combat_hooks.h's boot-registered command-dispatch table (blocker-
     // buster wave Task 2) -- same "assign_*, before assign_command_pointers()"
-    // slot as assign_spell_pointers() above; no ageland call site dispatches
-    // through it yet (see combat_hooks.h), so ordering relative to
-    // assign_command_pointers() below is not behavior-load-bearing this
-    // wave -- placed here purely to keep every boot-time table populated in
-    // one place.
+    // slot as assign_spell_pointers() above. Post-combat-pilot-wave Task 5,
+    // this placement IS behavior-load-bearing: fight.cpp's/clerics.cpp's real
+    // do_flee/do_stand/special() up-calls now route through this table's
+    // issue_command()/call_special() entry points (see combat_hooks.h), and
+    // the reset_zone() loop below (~:469-472) can reach them during boot --
+    // a poisoned-equip path there (equip_char -> damage() ->
+    // call_special()/flee dispatch) would otherwise consult an unregistered
+    // table and silently fall back to the tripwire defaults. This call must
+    // stay ahead of that loop; it stays in the assign_*() slot above
+    // assign_command_pointers() purely because that is where every other
+    // boot-time table gets populated, not because that particular ordering
+    // matters.
     register_combat_command_dispatch();
     assign_command_pointers();
 

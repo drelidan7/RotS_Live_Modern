@@ -251,8 +251,9 @@ set(ROTS_WORLD_SOURCES
 # fight.cpp was the first consumer (combat-pilot wave Task 5): its do_flee/
 # do_stand/special() up-calls now route through issue_command()/
 # call_special() below. Like output_seam.cpp, combat_hooks.cpp itself has no
-# single owning caller (this wave shipped the seam only, no call-site
-# conversion), so it gets its own
+# single owning caller -- the blocker-buster wave that added this TU shipped
+# only the seam, with call-site conversion landing two waves later in
+# combat-pilot -- so it gets its own
 # dedicated TU rather than folding into a future caller's file the way
 # entity_hooks.h's per-hook pairs do. Its only downward edge is
 # rots::log::write_stderr (RotS::platform) for the tripwire log; every

@@ -87,7 +87,7 @@ this section is the distilled sequence a future implementer should follow direct
 membership must be closed over every combat-peer edge it has, not merely "sanctioned"
 by the census's peer-reference legend.**
 
-Concretely: `clerics.cpp` calls seven `fight.cpp` functions directly
+Concretely: `clerics.cpp` calls six `fight.cpp` functions directly
 (`set_fighting`/`stop_fighting`/`check_sanctuary`/`check_hallucinate`/`die`/`appear`)
 and `fight.cpp` calls back into `clerics.cpp` (`weapon_willpower_damage`, the
 `do_mental` ACMD). Neither of those edges needed a seam, a hook, or a call-site
@@ -259,7 +259,7 @@ task's originally-planned Step 3 (moving `clerics.cpp` from `ROTS_SERVER_SOURCES
 dependency between `clerics.cpp` and `fight.cpp`, confirmed by reading both files
 directly (not just the census's one-directional symbol table):
 
-- `clerics.cpp` calls seven `fight.cpp`-defined functions directly:
+- `clerics.cpp` calls six `fight.cpp`-defined functions directly:
   `set_fighting`, `stop_fighting`, `check_sanctuary`, `check_hallucinate`, `die`,
   `appear` (all listed as `combat-peer (**intra-subset**)` in
   `.superpowers/sdd/pilot-census.md` §1, rows 7/8/10/15/19/21).
@@ -299,8 +299,8 @@ this wave's Task 5 does jointly per the addendum.
 
 ## Task 5 (fight.cpp conversions + joint membership) — confirms most of the above, corrects one thing
 
-Ran as two commits per the brief: (a) fight.cpp's up-call conversions (17 sites
-across 8 symbol families), gated green while fight.cpp was still `ROTS_SERVER_SOURCES`;
+Ran as two commits per the brief: (a) fight.cpp's up-call conversions (30 edits
+across 13 symbol families), gated green while fight.cpp was still `ROTS_SERVER_SOURCES`;
 (b) the joint `clerics.cpp`+`fight.cpp` membership move, gated green again including
 `CombatLayerAcyclicity`. Both hosts, both commits: 1394/1394 ctest, both boot goldens
 byte-identical, `CharacterizationCombatTest.*`/`PoisonRemovalScriptTest.*` unchanged,
@@ -439,7 +439,7 @@ Task 3) rides along into the same commit.
 
 ## Cost markers (Task 5, factual)
 
-- **Up-call sites converted (fight.cpp, Step 1):** 17 across 8 symbol families —
+- **Up-call sites converted (fight.cpp, Step 1):** 30 edits across 13 symbol families —
   `do_flee` ×6 + `do_stand` ×1 → `issue_command`; `special` ×3 → `call_special`;
   `is_target_valid` ×2 + `on_character_died` ×1 → `entity_hooks.h`'s big_brother
   pair; `Crash_crashsave` ×1, `call_trigger` ×2, `pkill_create` ×1, `extract_char`

@@ -631,8 +631,9 @@ void run_the_game(sh_int port)
     // entity_hooks.h's target-valid/character-died big_brother hook pair
     // (combat-pilot wave Task 2), registered the same way and for the same
     // reason: before boot_db(), so ageland never runs clerics.cpp's/
-    // fight.cpp's is_target_valid()/on_character_died() call sites (once
-    // converted, a future task) with an unregistered hook.
+    // fight.cpp's is_target_valid()/on_character_died() call sites with an
+    // unregistered hook -- both call sites converted for real in T3
+    // (clerics.cpp) and T5 (fight.cpp).
     register_target_valid_hook();
     register_character_died_hook();
     // entity_hooks.h's txt-block-pool hook pair (world-seed Task 2
@@ -668,24 +669,25 @@ void run_the_game(sh_int port)
     register_poison_removal_hook();
     // combat_hooks.h's extract_char hook (combat-pilot wave Task 4b),
     // registered the same way and for the same reason: before boot_db(), so
-    // ageland never runs a future rots::combat::extract_char() call site with
-    // an unregistered hook (no call site converts yet -- see combat_hooks.h).
+    // ageland never runs fight.cpp's rots::combat::extract_char() call sites
+    // (converted for real in T5 -- see combat_hooks.h) with an unregistered
+    // hook.
     register_extract_char_hook();
     // combat_hooks.h's gain_exp/gain_exp_regardless/remove_fame_war_bonuses
     // hooks (combat-pilot wave Task 4b), registered the same way and for the
-    // same reason: before boot_db(), so ageland never runs a future
-    // rots::combat::gain_exp()/gain_exp_regardless()/remove_fame_war_bonuses()
-    // call site with an unregistered hook (no call site converts yet -- see
-    // combat_hooks.h).
+    // same reason: before boot_db(), so ageland never runs fight.cpp's/
+    // clerics.cpp's rots::combat::gain_exp()/gain_exp_regardless()/
+    // remove_fame_war_bonuses() call sites (converted for real in T5 -- see
+    // combat_hooks.h) with an unregistered hook.
     register_gain_exp_hook();
     register_gain_exp_regardless_hook();
     register_remove_fame_war_bonuses_hook();
     // combat_hooks.h's app-other trio hooks (combat-pilot wave Task 4b):
     // crash_crashsave/call_trigger/pkill_create, registered the same way and
-    // for the same reason: before boot_db(), so ageland never runs a future
-    // rots::combat::crash_crashsave()/call_trigger()/pkill_create() call site
-    // with an unregistered hook (no call site converts yet -- see
-    // combat_hooks.h).
+    // for the same reason: before boot_db(), so ageland never runs fight.cpp's
+    // rots::combat::crash_crashsave()/call_trigger()/pkill_create() call
+    // sites (converted for real in T5 -- see combat_hooks.h) with an
+    // unregistered hook.
     register_crash_crashsave_hook();
     register_call_trigger_hook();
     register_pkill_create_hook();

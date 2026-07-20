@@ -121,11 +121,11 @@ int main(int argc, char* argv[]) {
     // tripwire-logged defaults instead of big_brother.cpp's real
     // is_target_valid()/on_character_died() forwarders that ageland registers
     // at boot -- big_brother.cpp is already linked into both test binaries,
-    // so this only needs the registration calls. No production call site
-    // dispatches through this pair yet (see entity_hooks.h), so these calls
-    // exist for this wave's own seam tests (big_brother_hooks_tests.cpp), the
-    // same bridge-before-traffic posture as combat_hooks.h's
-    // register_combat_command_dispatch() below.
+    // so this only needs the registration calls. clerics.cpp's/fight.cpp's
+    // real call sites dispatch through this pair for real since T3/T5 (see
+    // entity_hooks.h); this call also still covers this wave's own seam
+    // tests (big_brother_hooks_tests.cpp), the same bridge-before-traffic
+    // posture as combat_hooks.h's register_combat_command_dispatch() below.
     register_target_valid_hook();
     register_character_died_hook();
     // entity_hooks.h's txt-block-pool hook pair (world-seed Task 2
@@ -190,11 +190,12 @@ int main(int argc, char* argv[]) {
     // logged no-op default instead of the real do_hit()/do_flee()/etc.
     // ACMD bodies ageland registers at boot -- interpre.cpp (which defines
     // register_combat_command_dispatch()) is already linked into both test
-    // binaries, so this only needs the registration call. No production
-    // call site dispatches through this table yet (see combat_hooks.h), so
-    // this call exists for this wave's own seam tests
-    // (combat_hooks_tests.cpp), the same bridge-before-traffic posture as
-    // every other hook this file registers.
+    // binaries, so this only needs the registration call. fight.cpp's/
+    // clerics.cpp's real do_flee/do_stand/special() call sites dispatch
+    // through this table for real since combat-pilot T5 (see
+    // combat_hooks.h); this call also still covers this wave's own seam
+    // tests (combat_hooks_tests.cpp), the same bridge-before-traffic
+    // posture as every other hook this file registers.
     register_combat_command_dispatch();
     // combat_hooks.h's extract_char hook (combat-pilot wave Task 4b),
     // registered for the same real-body-fidelity reason as the calls above:
@@ -202,10 +203,11 @@ int main(int argc, char* argv[]) {
     // rots::combat::extract_char()'s tripwire-logged no-op default instead of
     // handler.cpp's real extract_char(ch, new_room) body that ageland
     // registers at boot -- handler.cpp is already linked into both test
-    // binaries, so this only needs the registration call. No production call
-    // site dispatches through this hook yet (see combat_hooks.h), so this call
-    // exists for this wave's own seam tests (combat_hooks_tests.cpp), the same
-    // bridge-before-traffic posture as every other hook this file registers.
+    // binaries, so this only needs the registration call. fight.cpp's real
+    // call sites dispatch through this hook for real since combat-pilot T5
+    // (see combat_hooks.h); this call also still covers this wave's own
+    // seam tests (combat_hooks_tests.cpp), the same bridge-before-traffic
+    // posture as every other hook this file registers.
     register_extract_char_hook();
     // combat_hooks.h's gain_exp/gain_exp_regardless/remove_fame_war_bonuses
     // hooks (combat-pilot wave Task 4b), registered for the same
@@ -213,10 +215,11 @@ int main(int argc, char* argv[]) {
     // process would silently exercise their tripwire-logged no-op defaults
     // instead of limits.cpp's real bodies that ageland registers at boot --
     // limits.cpp is already linked into both test binaries, so this only
-    // needs the registration calls. No production call site dispatches
-    // through these hooks yet (see combat_hooks.h), so these calls exist for
-    // this wave's own seam tests (combat_hooks_tests.cpp), the same
-    // bridge-before-traffic posture as every other hook this file registers.
+    // needs the registration calls. fight.cpp's/clerics.cpp's real call
+    // sites dispatch through these hooks for real since combat-pilot T5
+    // (see combat_hooks.h); these calls also still cover this wave's own
+    // seam tests (combat_hooks_tests.cpp), the same bridge-before-traffic
+    // posture as every other hook this file registers.
     register_gain_exp_hook();
     register_gain_exp_regardless_hook();
     register_remove_fame_war_bonuses_hook();
@@ -228,10 +231,11 @@ int main(int argc, char* argv[]) {
     // combat_hooks.h's call_trigger_fn comment -- instead of objsave.cpp's/
     // script.cpp's/pkill.cpp's real bodies that ageland registers at boot --
     // all three TUs are already linked into both test binaries, so this only
-    // needs the registration calls. No production call site dispatches
-    // through these hooks yet (see combat_hooks.h), so these calls exist for
-    // this wave's own seam tests (combat_hooks_tests.cpp), the same
-    // bridge-before-traffic posture as every other hook this file registers.
+    // needs the registration calls. fight.cpp's real call sites dispatch
+    // through these hooks for real since combat-pilot T5 (see
+    // combat_hooks.h); these calls also still cover this wave's own seam
+    // tests (combat_hooks_tests.cpp), the same bridge-before-traffic
+    // posture as every other hook this file registers.
     register_crash_crashsave_hook();
     register_call_trigger_hook();
     register_pkill_create_hook();

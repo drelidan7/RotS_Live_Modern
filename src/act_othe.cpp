@@ -516,25 +516,11 @@ void add_character_to_group(char_data* character, char_data* group_leader)
     act("$n joins the group of $N.", TRUE, character, 0, group_leader, TO_NOTVICT);
 }
 
-void remove_character_from_group(char_data* character, char_data* group_leader)
-{
-    if (group_leader->group == NULL)
-        return;
-
-    group_data* group = group_leader->group;
-    group->remove_member(character);
-
-    act("You leave the group of $N.", FALSE, character, 0, group_leader, TO_CHAR);
-    act("$n leaves the group of $N.", FALSE, character, 0, group_leader, TO_NOTVICT);
-    act("$n leaves your group.", FALSE, character, 0, group_leader, TO_VICT);
-
-    // We removed the last member from the group, destroy the group.
-    if (group->size() == 1) {
-        send_to_char("You have disbanded the group.\n\r", group_leader);
-        group_leader->group = NULL;
-        delete group;
-    }
-}
+// remove_character_from_group() relocated to char_utils.cpp (combat-pilot
+// wave Task 2; census-confirmed L2-clean -- act()/send_to_char() -> L1,
+// group_data::remove_member()/size() -> L2, no other upward refs; see
+// .superpowers/sdd/pilot-census.md section 3.3). Declaration unchanged in
+// utils.h.
 
 ACMD(do_group)
 {

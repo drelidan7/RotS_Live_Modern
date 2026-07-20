@@ -985,46 +985,13 @@ void extract_char(struct char_data* ch, int new_room)
 // can_swim() relocated to char_utils.cpp (placement-seam Task 4).
 // Declaration unchanged in handler.h.
 
-void stop_riding(struct char_data* ch)
-{
-    struct char_data *tmpch, *mount;
-
-    while (IS_RIDDEN(ch))
-        stop_riding(ch->mount_data.rider);
-
-    tmpch = 0;
-
-    if (!IS_RIDING(ch))
-        return;
-
-    if (char_exists(ch->mount_data.mount_number)) {
-        mount = ch->mount_data.mount;
-        act("You stop riding $N.", FALSE, ch, 0, mount, TO_CHAR);
-        act("$n stops riding $N.", FALSE, ch, 0, mount, TO_NOTVICT);
-        act("$n stops riding you.", FALSE, ch, 0, mount, TO_VICT);
-
-        if ((mount)->mount_data.rider == ch) {
-            tmpch = ch;
-            (mount)->mount_data.rider = ch->mount_data.next_rider;
-            (mount)->mount_data.rider_number = ch->mount_data.next_rider_number;
-        } else {
-            for (tmpch = (mount)->mount_data.rider;
-                 tmpch->mount_data.next_rider;
-                 tmpch = tmpch->mount_data.next_rider) {
-                if (tmpch->mount_data.next_rider == ch) {
-                    tmpch->mount_data.next_rider = ch->mount_data.next_rider;
-                    tmpch->mount_data.next_rider_number = ch->mount_data.next_rider_number;
-                    break;
-                }
-            }
-        }
-        if (tmpch)
-            IS_CARRYING_W(mount) -= GET_WEIGHT(ch) + IS_CARRYING_W(ch);
-    }
-    ch->mount_data.mount = 0;
-    ch->mount_data.next_rider = 0;
-    return;
-}
+// stop_riding() relocated to char_utils.cpp (combat-pilot wave Task 2;
+// census-confirmed L2-clean -- char_exists()/act() only, no upward refs;
+// see .superpowers/sdd/pilot-census.md section 3.4). stop_riding_all()
+// below stays here: it CALLS stop_riding() (not the other way around), so
+// it is not a required same-move companion -- it keeps working via the
+// unchanged handler.h declaration, now resolving to a legal app->L2
+// downward call. Declaration unchanged in handler.h.
 
 void stop_riding_all(char_data* mount)
 {

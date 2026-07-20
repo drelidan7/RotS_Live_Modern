@@ -577,17 +577,14 @@ extern const std::string_view command[] = {
 
 /* CEND: search for me when you're looking for the end of the cmd list! :) */
 
-/* these words are effectively ignored */
-extern const std::string_view fill[] = {
-    "in",
-    "from",
-    "with",
-    "the",
-    "on",
-    "at",
-    "to",
-    "\n"
-};
+// fill[]/one_argument()/fill_word() relocated to rots_util.cpp (combat-trio
+// wave, Task 1; trio-task-1-brief.md Step 2; combat-trio-census.md section
+// 5.3 -- platform-clean, the search_block() precedent immediately below:
+// one_argument()'s only cross-function call is fill_word(argument), and
+// fill_word() calls search_block(argument, fill, TRUE), already L0. Its one
+// utils.h dependency, the LOWER(c) macro, is inlined via rots_util.cpp's
+// existing lower_ascii() helper, same as search_block()'s own precedent.
+// Declarations unchanged in interpre.h (fill[]/one_argument()/fill_word()).
 
 // search_block() relocated to rots_util.cpp (blocker-buster Task 4b; census
 // section A / task-4b-brief.md Step 1(b) mini-census verdict: platform-clean
@@ -1473,46 +1470,6 @@ int is_number(char* str)
     return 1;
 }
 
-char* one_argument(char* argument, char* first_arg)
-/*
- * find the first sub-argument of a string, return pointer to first char
- * in primary argument, following the sub-arg
- */
-{
-    int begin, look_at;
-
-    begin = 0;
-
-    do {
-        /* Find first non blank */
-        for (; isspace(*(argument + begin)); begin++)
-            ;
-
-        /* Find length of first word */
-        /* Make all letters lower case, AND copy them to first_arg */
-        if (*(argument + begin) == '\'') {
-            for (look_at = 0; *(argument + begin + look_at) && (*(argument + begin + look_at) != '\''); look_at++)
-                *(first_arg + look_at) = LOWER(*(argument + begin + look_at));
-
-            if (*(argument + begin + look_at) == '\'')
-                look_at++;
-        } else {
-            for (look_at = 0; *(argument + begin + look_at) > ' '; look_at++)
-                *(first_arg + look_at) = LOWER(*(argument + begin + look_at));
-        }
-
-        *(first_arg + look_at) = '\0';
-        begin += look_at;
-    } while (fill_word(first_arg));
-
-    return (argument + begin);
-}
-
-int fill_word(char* argument)
-{
-    return (search_block(argument, fill, TRUE) >= 0);
-}
-
 int is_abbrev(std::string_view abbreviation, std::string_view word)
 /* determine if a given string is an abbreviation of another string */
 {
@@ -1531,30 +1488,12 @@ int is_abbrev(std::string_view abbreviation, std::string_view word)
     return (1);
 }
 
-/* return first 'word' plus trailing substring of input string */
-void half_chop(char* string, char* arg1, char* arg2)
-{
-    for (; isspace(*string); string++)
-        ;
-
-    if (*string == '\'') {
-        for (string++; (*string != '\'') && *string; string++, arg1++)
-            *arg1 = *string;
-
-        if (*string == '\'')
-            string++;
-    } else
-        for (; !isspace(*string) && *string; string++, arg1++)
-            *arg1 = *string;
-
-    *arg1 = '\0';
-
-    for (; isspace(*string); string++)
-        ;
-
-    for (; (*arg2 = *string); string++, arg2++)
-        ;
-}
+// half_chop() relocated to rots_util.cpp (combat-trio wave, Task 1;
+// trio-task-1-brief.md Step 2 / CONTROLLER ADDENDUM item 2;
+// combat-trio-census.md section 5.3 -- censused independently, zero
+// function-call edges of its own, does NOT share fill_word()/fill[]'s
+// dependency; relocated standalone, not bundled with the one_argument()
+// package above). Declaration unchanged in interpre.h.
 
 void* virt_program_number(int);
 

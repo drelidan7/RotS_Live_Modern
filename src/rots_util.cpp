@@ -858,3 +858,106 @@ int search_block(char* arg, const std::string_view* list, char exact)
 
     return -1;
 }
+
+// fill[]/fill_word()/one_argument() relocated from interpre.cpp (combat-trio
+// wave, Task 1; trio-task-1-brief.md Step 2; combat-trio-census.md section
+// 5.3 mini-census verdict: platform-clean, the search_block() precedent
+// immediately above -- one_argument()'s only cross-function call is
+// fill_word(argument), and fill_word() itself only calls search_block(),
+// already L0 in this file. Its one utils.h dependency, the LOWER(c) macro
+// (two call sites inside one_argument()'s body), is inlined via this file's
+// existing lower_ascii() helper (anonymous namespace above) -- the same
+// precedent search_block() already established. Declarations unchanged in
+// interpre.h. fill[] is defined here (not merely declared) ahead of
+// fill_word() since fill_word() reads it directly, mirroring interpre.cpp's
+// own prior ordering (the array preceded both functions there too).
+extern const std::string_view fill[] = {
+    "in",
+    "from",
+    "with",
+    "the",
+    "on",
+    "at",
+    "to",
+    "\n"
+};
+
+int fill_word(char* argument)
+{
+    // TRUE (utils.h) inlined as its literal value 1 -- rots_util.cpp must
+    // not include utils.h; same "L0 must not pull in an app-tier macro just
+    // for a literal" precedent as combat_hooks.cpp's call_trigger() default
+    // (combat_hooks.cpp:201's own "kept as a literal" comment) and this
+    // file's own LOWER->lower_ascii precedent immediately above.
+    return (search_block(argument, fill, 1) >= 0);
+}
+
+char* one_argument(char* argument, char* first_arg)
+/*
+ * find the first sub-argument of a string, return pointer to first char
+ * in primary argument, following the sub-arg
+ */
+{
+    int begin, look_at;
+
+    begin = 0;
+
+    do {
+        /* Find first non blank */
+        for (; isspace(*(argument + begin)); begin++)
+            ;
+
+        /* Find length of first word */
+        /* Make all letters lower case, AND copy them to first_arg */
+        if (*(argument + begin) == '\'') {
+            for (look_at = 0; *(argument + begin + look_at) && (*(argument + begin + look_at) != '\''); look_at++)
+                // LOWER macro inlined as lower_ascii() -- see the anonymous
+                // namespace above.
+                *(first_arg + look_at) = lower_ascii(*(argument + begin + look_at));
+
+            if (*(argument + begin + look_at) == '\'')
+                look_at++;
+        } else {
+            for (look_at = 0; *(argument + begin + look_at) > ' '; look_at++)
+                // LOWER macro inlined as lower_ascii() -- see the anonymous
+                // namespace above.
+                *(first_arg + look_at) = lower_ascii(*(argument + begin + look_at));
+        }
+
+        *(first_arg + look_at) = '\0';
+        begin += look_at;
+    } while (fill_word(first_arg));
+
+    return (argument + begin);
+}
+
+// half_chop() relocated from interpre.cpp (combat-trio wave, Task 1;
+// trio-task-1-brief.md Step 2 / CONTROLLER ADDENDUM item 2;
+// combat-trio-census.md section 5.3 -- censused independently, zero
+// function-call edges of its own (not even to fill_word()/search_block()),
+// so it travels standalone rather than bundled with the fill[]/fill_word()/
+// one_argument() package above). Declaration unchanged in interpre.h.
+/* return first 'word' plus trailing substring of input string */
+void half_chop(char* string, char* arg1, char* arg2)
+{
+    for (; isspace(*string); string++)
+        ;
+
+    if (*string == '\'') {
+        for (string++; (*string != '\'') && *string; string++, arg1++)
+            *arg1 = *string;
+
+        if (*string == '\'')
+            string++;
+    } else
+        for (; !isspace(*string) && *string; string++, arg1++)
+            *arg1 = *string;
+
+    *arg1 = '\0';
+
+    for (; isspace(*string); string++)
+        ;
+
+    for (; (*arg2 = *string); string++, arg2++)
+        ;
+}

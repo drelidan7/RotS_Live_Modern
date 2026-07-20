@@ -144,7 +144,6 @@ extern const std::string_view sector_types[];
  */
 void list_char_to_char(struct char_data* list, struct char_data* caster, int mode);
 // void do_stat_object(struct char_data *caster, struct obj_data *j);
-void stop_hiding(struct char_data* caster, char);
 ACMD(do_look);
 void do_identify_object(struct char_data*, struct obj_data*);
 

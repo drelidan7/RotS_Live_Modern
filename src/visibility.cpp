@@ -455,6 +455,24 @@ int see_hiding(struct char_data* seeker)
     return can_see;
 }
 
+// stop_hiding() relocated verbatim from ranger.cpp:638-649
+// (combat-pilot wave Task 4a; pilot-census.md section 7.9) -- same home
+// as see_hiding() above (blocker-buster wave Task 4b): zero upward
+// refs, zero same-file entanglement. Declaration consolidated into
+// utils.h (was 7 scattered per-file local externs).
+void stop_hiding(struct char_data* ch, char mode)
+{
+    /*
+     *if mode is FALSE, then we don't send the "step" message
+     */
+    if (IS_SET(ch->specials.affected_by, AFF_HIDE) && mode)
+        send_to_char("You step out of your cover.\r\n", ch);
+
+    REMOVE_BIT(ch->specials.affected_by, AFF_HIDE);
+    REMOVE_BIT(ch->specials2.hide_flags, HIDING_SNUCK_IN);
+    GET_HIDING(ch) = 0;
+}
+
 // CAN_SEE(sub, obj, light_mode) (the 3-arg light/hiding overload) relocated
 // from utility.cpp (blocker-buster Task 4b, completing Task 4's split):
 // its see_hiding(sub) call now resolves in-lib (above). Its one unchecked

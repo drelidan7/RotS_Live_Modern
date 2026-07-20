@@ -75,6 +75,11 @@ void snuck_out(struct char_data*);
 void snuck_in(struct char_data*);
 int hide_prof(struct char_data*);
 int see_hiding(struct char_data*);
+// stop_hiding() declaration consolidated here from 7 scattered
+// per-file local externs (combat-pilot wave Task 4a; pilot-census.md
+// section 7.9), following see_hiding()'s own declaration home. Defined
+// in visibility.cpp (L3-combat), alongside see_hiding().
+void stop_hiding(struct char_data* ch, char mode);
 char unaccent(char);
 char* str_dup(const char* source);
 

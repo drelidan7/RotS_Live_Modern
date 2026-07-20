@@ -484,3 +484,23 @@ int check_resistances(char_data* victim, int attack_type)
 
     return 0;
 }
+
+// saves_power() relocated verbatim from spell_pa.cpp:137-149
+// (combat-pilot wave Task 4a; pilot-census.md section 7.1) -- entity-pure
+// willpower-vs-casting-power roll, alongside this file's other combat-stat
+// family (get_real_dodge/check_resistances/armor_absorb/get_weapon_damage).
+// Declaration: no shared header ever declared this symbol -- its sole
+// caller, clerics.cpp, keeps its own local declaration unchanged.
+char saves_power(const char_data* victim, sh_int casting_power, sh_int save_bonus)
+{
+    sh_int victim_save_bonus = victim->points.willpower + save_bonus;
+
+    int saving_throw_roll = number(0, victim_save_bonus * victim_save_bonus);
+    int saving_throw_dc = number(0, casting_power * casting_power);
+
+    if (saving_throw_roll > saving_throw_dc) {
+        return 1;
+    } else {
+        return 0;
+    }
+}

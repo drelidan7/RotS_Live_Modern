@@ -86,7 +86,6 @@ extern const std::string_view pc_star_types[];
 /* External procedures */
 char* fread_string(FILE* fl, std::string_view error);
 int check_resistances(char_data* ch, int attacktype);
-void stop_hiding(struct char_data*, char);
 void break_meditation(char_data* ch);
 ACMD(do_flee);
 ACMD(do_stand);

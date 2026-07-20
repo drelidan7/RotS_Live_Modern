@@ -59,7 +59,6 @@ extern int top_of_world;
 extern const std::string_view dirs[];
 extern void appear(struct char_data* ch);
 extern void check_break_prep(struct char_data*);
-extern void stop_hiding(struct char_data* ch, char);
 extern void update_pos(struct char_data* victim);
 int check_simple_move(struct char_data* ch, int cmd, int* move_cost, int mode);
 int check_hallucinate(struct char_data* ch, struct char_data* victim);
@@ -635,18 +634,10 @@ ACMD(do_pick)
     }
 }
 
-void stop_hiding(struct char_data* ch, char mode)
-{
-    /*
-     *if mode is FALSE, then we don't send the "step" message
-     */
-    if (IS_SET(ch->specials.affected_by, AFF_HIDE) && mode)
-        send_to_char("You step out of your cover.\r\n", ch);
-
-    REMOVE_BIT(ch->specials.affected_by, AFF_HIDE);
-    REMOVE_BIT(ch->specials2.hide_flags, HIDING_SNUCK_IN);
-    GET_HIDING(ch) = 0;
-}
+// stop_hiding() relocated verbatim to visibility.cpp (L3-combat;
+// combat-pilot wave Task 4a; pilot-census.md section 7.9) -- same home
+// as see_hiding() (blocker-buster wave Task 4b). Declaration
+// consolidated into utils.h (was 7 scattered per-file local externs).
 
 ACMD(do_hide)
 {

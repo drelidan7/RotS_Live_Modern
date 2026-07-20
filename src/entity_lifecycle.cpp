@@ -1030,6 +1030,140 @@ void from_list_to_pool(universal_list** list, universal_list**, universal_list* 
     free(body);
 }
 
+// Mob-memory pool cluster relocated verbatim from mobact.cpp:428-550
+// (combat-pilot wave Task 4a; pilot-census.md section 7.7/7.8), as a
+// package with forget()/remember() -- a self-contained free-list-pool
+// pattern identical in shape to universal_list_counter/pool_to_list()/
+// from_list_to_pool() immediately above. forget()/remember()
+// declarations stay in handler.h; clear_memory()/update_memory_list()/
+// memory_rec_counter's other callers (handler.cpp, interpre.cpp,
+// act_wiz.cpp) keep their own local extern declarations, resolving
+// unchanged regardless of which TU now defines the symbol.
+/* Mob Memory Routines */
+int memory_rec_counter = 0;
+struct memory_rec* memory_rec_pool = 0;
+struct memory_rec* memory_rec_active = 0;
+
+struct memory_rec*
+get_from_memory_rec_pool()
+{
+    struct memory_rec* afnew;
+
+    if (memory_rec_pool) {
+        afnew = memory_rec_pool;
+        memory_rec_pool = afnew->next;
+    } else {
+        CREATE(afnew, memory_rec, 1);
+        memory_rec_counter++;
+    }
+    afnew->next = memory_rec_active;
+    memory_rec_active = afnew;
+
+    return afnew;
+}
+
+void put_to_memory_rec_pool(struct memory_rec* oldaf)
+{
+    struct memory_rec* tmpaf;
+
+    if (oldaf == memory_rec_active)
+        memory_rec_active = oldaf->next;
+    else {
+        for (tmpaf = memory_rec_active; tmpaf->next; tmpaf = tmpaf->next) {
+            if (tmpaf->next == oldaf) {
+                tmpaf->next = oldaf->next;
+                break;
+            }
+        }
+    }
+    oldaf->next = memory_rec_pool;
+    oldaf->next_on_mob = 0;
+    memory_rec_pool = oldaf;
+}
+
+/* make ch remember victim */
+void remember(struct char_data* ch, struct char_data* victim)
+{
+    struct memory_rec* tmp;
+    unsigned char present = FALSE;
+
+    if (!IS_NPC(ch) || IS_NPC(victim))
+        return;
+
+    for (tmp = ch->specials.memory; tmp && !present; tmp = tmp->next_on_mob)
+        if (tmp->id == GET_IDNUM(victim)) {
+            present = TRUE;
+            tmp->enemy = victim;
+            tmp->enemy_number = victim->abs_number;
+        }
+
+    if (!present) {
+        tmp = get_from_memory_rec_pool();
+        tmp->next_on_mob = ch->specials.memory;
+        tmp->id = GET_IDNUM(victim);
+        tmp->enemy = victim;
+        tmp->enemy_number = victim->abs_number;
+        ch->specials.memory = tmp;
+    }
+}
+
+/* make ch forget victim */
+void forget(struct char_data* ch, struct char_data* victim)
+{
+    struct memory_rec *curr, *prev = NULL;
+
+    if (!(curr = ch->specials.memory))
+        return;
+
+    while (curr && curr->id != GET_IDNUM(victim)) {
+        prev = curr;
+        curr = curr->next_on_mob;
+    }
+
+    if (!curr)
+        return; /* person wasn't there at all. */
+
+    if (curr == ch->specials.memory)
+        ch->specials.memory = curr->next_on_mob;
+    else
+        prev->next_on_mob = curr->next_on_mob;
+
+    put_to_memory_rec_pool(curr);
+}
+
+/* erase ch's memory */
+void clear_memory(struct char_data* ch)
+{
+    struct memory_rec *curr, *next;
+
+    curr = ch->specials.memory;
+
+    while (curr) {
+        next = curr->next_on_mob;
+        put_to_memory_rec_pool(curr);
+        curr = next;
+    }
+
+    ch->specials.memory = NULL;
+}
+
+int update_memory_list(struct char_data* victim)
+{
+    struct memory_rec* tmprec;
+    int count;
+
+    count = 0;
+    for (tmprec = memory_rec_active; tmprec; tmprec = tmprec->next) {
+        if (tmprec->id == GET_IDNUM(victim)) {
+            tmprec->enemy = victim;
+            tmprec->enemy_number = victim->abs_number;
+            count++;
+        }
+    }
+    return count;
+}
+
+
 // comm.cpp -- int pulse's DEFINITION moves here (storage-placement only);
 // comm.cpp keeps mutating it via extern (game_loop()'s per-tick
 // increment/reset).
@@ -2709,13 +2843,15 @@ void affect_join(struct char_data* ch, struct affected_type* af,
 }
 
 // handler.cpp -- private backing state for get_from_follow_type_pool()/
-// put_to_follow_type_pool() immediately below; add_follower()/
-// stop_follower() (handler.cpp) are the pool functions' only other callers
-// and reach them via the pre-existing local forward declarations near this
-// file's original top (same pattern as the affected_type_pool functions
-// above) -- no other handler.cpp function reads follow_type_pool/
-// follow_type_counter directly, so the globals move with the pool
-// functions rather than staying behind as an extern.
+// put_to_follow_type_pool() immediately below; add_follower() (handler.cpp)
+// is the pool functions' other caller and reaches them via the
+// pre-existing local forward declarations near that file's original top
+// (same pattern as the affected_type_pool functions above) -- no other
+// handler.cpp function reads follow_type_pool/follow_type_counter
+// directly, so the globals move with the pool functions rather than
+// staying behind as an extern. stop_follower() (handler.cpp's other
+// caller) relocated here too, alongside the pool -- see below
+// (combat-pilot wave Task 4a).
 follow_type* follow_type_pool = 0;
 int follow_type_counter = 0;
 
@@ -2738,6 +2874,112 @@ void put_to_follow_type_pool(struct follow_type* oldfol)
     oldfol->next = follow_type_pool;
     follow_type_pool = oldfol;
 }
+
+// stop_follower() relocated verbatim from handler.cpp:296-390 (combat-
+// pilot wave Task 4a CONTROLLER ADDENDUM item 4, conditional re-check):
+// pilot-census.md section 3.5 originally found this NOT census-clean
+// (its forget(ch, ch->master) call was a genuine upward edge into
+// still-app mobact.cpp). Once forget()/remember()'s own package move
+// (mobact.cpp -> this file, above) landed, re-deriving stop_follower's
+// upward refs found forget() was its ONLY blocker --
+// put_to_follow_type_pool()/get_from_follow_type_pool() (immediately
+// above) were already L2. RELOCATED per the addendum's conditional;
+// forget() and the follow_type pool are now same-file, intra-lib
+// calls. Declaration unchanged (handler.h:217).
+/* Called when stop following persons, or stopping charm */
+/* This will NOT do if a character quits/dies!!          */
+
+void stop_follower(struct char_data* ch, int mode)
+{
+    struct follow_type *j, *k;
+
+    if (mode == FOLLOW_MOVE) {
+        if (!ch->master)
+            return;
+
+        if ((GET_SPEC(ch->master) == PLRSPEC_PETS) && (IS_AFFECTED(ch, AFF_CHARM))) {
+            ch->constabilities.str -= 2;
+            ch->tmpabilities.str -= 2;
+            ch->abilities.str -= 2;
+            ch->points.ENE_regen -= 40;
+            ch->points.damage -= 2;
+        }
+
+        forget(ch, ch->master); // in case we were "hunting" him
+
+        if (IS_AFFECTED(ch, AFF_CHARM)) {
+            act("You realize that $N is a jerk!", FALSE, ch, 0, ch->master, TO_CHAR);
+            act("$n realizes that $N is a jerk!", FALSE, ch, 0, ch->master, TO_NOTVICT);
+            act("$n hates your guts!", FALSE, ch, 0, ch->master, TO_VICT);
+            if (affected_by_spell(ch, SKILL_TAME)) {
+                affect_from_char(ch, SKILL_TAME);
+                GET_MAX_MOVE(ch) -= 50; // move bonus for being tamed
+            }
+            if (affected_by_spell(ch, SKILL_RECRUIT)) {
+                affect_from_char(ch, SKILL_RECRUIT);
+            }
+            REMOVE_BIT(ch->specials.affected_by, AFF_CHARM);
+            ch->damage_details.reset();
+        } else {
+            act("You stop following $N.", FALSE, ch, 0, ch->master, TO_CHAR);
+            if (ch->in_room == ch->master->in_room) {
+                act("$n stops following $N.", FALSE, ch, 0, ch->master, TO_NOTVICT);
+            }
+            act("$n stops following you.", FALSE, ch, 0, ch->master, TO_VICT);
+        }
+
+        if (ch->master->followers->follower == ch) { /* Head of follower-list? */
+            k = ch->master->followers;
+            ch->master->followers = k->next;
+            put_to_follow_type_pool(k);
+        } else { /* locate follower who is not head of list */
+            for (k = ch->master->followers; k->next->follower != ch; k = k->next)
+                ;
+
+            j = k->next;
+            k->next = j->next;
+            put_to_follow_type_pool(j);
+        }
+
+        ch->master = 0;
+        if (affected_by_spell(ch, SKILL_TAME))
+            affect_from_char(ch, SKILL_TAME);
+
+        REMOVE_BIT(ch->specials.affected_by, AFF_CHARM);
+
+        // Recursive call to rid ourselves of our group if we were a pet.
+        if (IS_NPC(ch) && MOB_FLAGGED(ch, MOB_PET)) {
+            REMOVE_BIT(MOB_FLAGS(ch), MOB_PET);
+            stop_follower(ch, FOLLOW_GROUP);
+        }
+    }
+
+    else if (mode == FOLLOW_REFOL) {
+        if (!ch->master)
+            return;
+
+        act("You stop following $N.", FALSE, ch, 0, ch->master, TO_CHAR);
+        if (ch->in_room == ch->master->in_room)
+            act("$n stops following $N.", FALSE, ch, 0, ch->master, TO_NOTVICT);
+        act("$n stops following you.", FALSE, ch, 0, ch->master, TO_VICT);
+
+        if (ch->master->followers->follower == ch) { /* Head of follower-list? */
+            k = ch->master->followers;
+            ch->master->followers = k->next;
+            put_to_follow_type_pool(k);
+        } else { /* locate follower who is not head of list */
+            for (k = ch->master->followers; k->next->follower != ch; k = k->next)
+                ;
+
+            j = k->next;
+            k->next = j->next;
+            put_to_follow_type_pool(j);
+        }
+
+        ch->master = 0;
+    }
+}
+
 
 // get_char() relocated here from handler.cpp (combat-seed Task 3,
 // completing the placement-seam Task 4 deferral): its only non-L2

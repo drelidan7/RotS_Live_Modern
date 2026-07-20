@@ -53,7 +53,6 @@ ACMD(do_dismount);
 /* external functs */
 void death_cry(struct char_data* ch);
 extern struct char_data* waiting_list;
-void stop_hiding(struct char_data* ch, char);
 void do_power_of_arda(char_data* ch);
 
 ACMD(do_look);

@@ -503,8 +503,6 @@ ACMD(do_gen_com)
     struct room_data* tmproom;
     int myzone, tmp;
 
-    void stop_hiding(struct char_data*, char);
-
     static const std::string_view imm_side_message[] = {
         "",
         " to the Light.",

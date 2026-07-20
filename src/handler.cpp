@@ -293,101 +293,20 @@ void add_follower(char_data* follower, char_data* leader, int mode)
     }
 }
 
-/* Called when stop following persons, or stopping charm */
-/* This will NOT do if a character quits/dies!!          */
-
-void put_to_memory_rec_pool(struct memory_rec* oldaf);
-
-void stop_follower(struct char_data* ch, int mode)
-{
-    struct follow_type *j, *k;
-
-    if (mode == FOLLOW_MOVE) {
-        if (!ch->master)
-            return;
-
-        if ((GET_SPEC(ch->master) == PLRSPEC_PETS) && (IS_AFFECTED(ch, AFF_CHARM))) {
-            ch->constabilities.str -= 2;
-            ch->tmpabilities.str -= 2;
-            ch->abilities.str -= 2;
-            ch->points.ENE_regen -= 40;
-            ch->points.damage -= 2;
-        }
-
-        forget(ch, ch->master); // in case we were "hunting" him
-
-        if (IS_AFFECTED(ch, AFF_CHARM)) {
-            act("You realize that $N is a jerk!", FALSE, ch, 0, ch->master, TO_CHAR);
-            act("$n realizes that $N is a jerk!", FALSE, ch, 0, ch->master, TO_NOTVICT);
-            act("$n hates your guts!", FALSE, ch, 0, ch->master, TO_VICT);
-            if (affected_by_spell(ch, SKILL_TAME)) {
-                affect_from_char(ch, SKILL_TAME);
-                GET_MAX_MOVE(ch) -= 50; // move bonus for being tamed
-            }
-            if (affected_by_spell(ch, SKILL_RECRUIT)) {
-                affect_from_char(ch, SKILL_RECRUIT);
-            }
-            REMOVE_BIT(ch->specials.affected_by, AFF_CHARM);
-            ch->damage_details.reset();
-        } else {
-            act("You stop following $N.", FALSE, ch, 0, ch->master, TO_CHAR);
-            if (ch->in_room == ch->master->in_room) {
-                act("$n stops following $N.", FALSE, ch, 0, ch->master, TO_NOTVICT);
-            }
-            act("$n stops following you.", FALSE, ch, 0, ch->master, TO_VICT);
-        }
-
-        if (ch->master->followers->follower == ch) { /* Head of follower-list? */
-            k = ch->master->followers;
-            ch->master->followers = k->next;
-            put_to_follow_type_pool(k);
-        } else { /* locate follower who is not head of list */
-            for (k = ch->master->followers; k->next->follower != ch; k = k->next)
-                ;
-
-            j = k->next;
-            k->next = j->next;
-            put_to_follow_type_pool(j);
-        }
-
-        ch->master = 0;
-        if (affected_by_spell(ch, SKILL_TAME))
-            affect_from_char(ch, SKILL_TAME);
-
-        REMOVE_BIT(ch->specials.affected_by, AFF_CHARM);
-
-        // Recursive call to rid ourselves of our group if we were a pet.
-        if (IS_NPC(ch) && MOB_FLAGGED(ch, MOB_PET)) {
-            REMOVE_BIT(MOB_FLAGS(ch), MOB_PET);
-            stop_follower(ch, FOLLOW_GROUP);
-        }
-    }
-
-    else if (mode == FOLLOW_REFOL) {
-        if (!ch->master)
-            return;
-
-        act("You stop following $N.", FALSE, ch, 0, ch->master, TO_CHAR);
-        if (ch->in_room == ch->master->in_room)
-            act("$n stops following $N.", FALSE, ch, 0, ch->master, TO_NOTVICT);
-        act("$n stops following you.", FALSE, ch, 0, ch->master, TO_VICT);
-
-        if (ch->master->followers->follower == ch) { /* Head of follower-list? */
-            k = ch->master->followers;
-            ch->master->followers = k->next;
-            put_to_follow_type_pool(k);
-        } else { /* locate follower who is not head of list */
-            for (k = ch->master->followers; k->next->follower != ch; k = k->next)
-                ;
-
-            j = k->next;
-            k->next = j->next;
-            put_to_follow_type_pool(j);
-        }
-
-        ch->master = 0;
-    }
-}
+// stop_follower() relocated verbatim to entity_lifecycle.cpp (L2;
+// combat-pilot wave Task 4a CONTROLLER ADDENDUM item 4, conditional
+// re-check): pilot-census.md section 3.5 originally found this NOT
+// census-clean (its forget(ch, ch->master) call was a genuine upward
+// edge into still-app mobact.cpp). Once this task's own forget()/
+// remember() package move (mobact.cpp -> entity_lifecycle.cpp) landed,
+// re-deriving stop_follower's upward refs found forget() was its ONLY
+// blocker -- put_to_follow_type_pool()/get_from_follow_type_pool()
+// were already L2 (entity_lifecycle.cpp, world-seed-era). RELOCATED
+// per the addendum's conditional. The stray, already-dead
+// `void put_to_memory_rec_pool(struct memory_rec* oldaf);` forward
+// declaration that used to sit here (zero call sites in this file) is
+// dropped as part of this move's stranded-extern sweep. Declaration
+// unchanged (handler.h:217).
 
 // circle_follow() relocated to char_utils.cpp (placement-seam Task 4):
 // pure master-chain walk, no world/live-state dependency. Declaration

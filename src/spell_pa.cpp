@@ -134,19 +134,10 @@ void do_sense_magic(char_data* caster, int spell_number)
     }
 }
 
-char saves_power(const char_data* victim, sh_int casting_power, sh_int save_bonus)
-{
-    sh_int victim_save_bonus = victim->points.willpower + save_bonus;
-
-    int saving_throw_roll = number(0, victim_save_bonus * victim_save_bonus);
-    int saving_throw_dc = number(0, casting_power * casting_power);
-
-    if (saving_throw_roll > saving_throw_dc) {
-        return 1;
-    } else {
-        return 0;
-    }
-}
+// saves_power() relocated verbatim to char_utils_combat.cpp (L2;
+// combat-pilot wave Task 4a; pilot-census.md section 7.1) -- zero
+// upward refs (number() only, rots_util.cpp L0). Its only caller is
+// clerics.cpp, which keeps its own local declaration unchanged.
 
 /*
  * Saving a mage spell depends on many things (and mystic spells

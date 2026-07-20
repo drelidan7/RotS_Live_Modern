@@ -425,129 +425,17 @@ void one_mobile_activity(char_data* ch)
     } /* If IS_MOB(ch)  */
 }
 
-/* Mob Memory Routines */
-int memory_rec_counter = 0;
-struct memory_rec* memory_rec_pool = 0;
-struct memory_rec* memory_rec_active = 0;
-
-struct memory_rec*
-get_from_memory_rec_pool()
-{
-    struct memory_rec* afnew;
-
-    if (memory_rec_pool) {
-        afnew = memory_rec_pool;
-        memory_rec_pool = afnew->next;
-    } else {
-        CREATE(afnew, memory_rec, 1);
-        memory_rec_counter++;
-    }
-    afnew->next = memory_rec_active;
-    memory_rec_active = afnew;
-
-    return afnew;
-}
-
-void put_to_memory_rec_pool(struct memory_rec* oldaf)
-{
-    struct memory_rec* tmpaf;
-
-    if (oldaf == memory_rec_active)
-        memory_rec_active = oldaf->next;
-    else {
-        for (tmpaf = memory_rec_active; tmpaf->next; tmpaf = tmpaf->next) {
-            if (tmpaf->next == oldaf) {
-                tmpaf->next = oldaf->next;
-                break;
-            }
-        }
-    }
-    oldaf->next = memory_rec_pool;
-    oldaf->next_on_mob = 0;
-    memory_rec_pool = oldaf;
-}
-
-/* make ch remember victim */
-void remember(struct char_data* ch, struct char_data* victim)
-{
-    struct memory_rec* tmp;
-    unsigned char present = FALSE;
-
-    if (!IS_NPC(ch) || IS_NPC(victim))
-        return;
-
-    for (tmp = ch->specials.memory; tmp && !present; tmp = tmp->next_on_mob)
-        if (tmp->id == GET_IDNUM(victim)) {
-            present = TRUE;
-            tmp->enemy = victim;
-            tmp->enemy_number = victim->abs_number;
-        }
-
-    if (!present) {
-        tmp = get_from_memory_rec_pool();
-        tmp->next_on_mob = ch->specials.memory;
-        tmp->id = GET_IDNUM(victim);
-        tmp->enemy = victim;
-        tmp->enemy_number = victim->abs_number;
-        ch->specials.memory = tmp;
-    }
-}
-
-/* make ch forget victim */
-void forget(struct char_data* ch, struct char_data* victim)
-{
-    struct memory_rec *curr, *prev = NULL;
-
-    if (!(curr = ch->specials.memory))
-        return;
-
-    while (curr && curr->id != GET_IDNUM(victim)) {
-        prev = curr;
-        curr = curr->next_on_mob;
-    }
-
-    if (!curr)
-        return; /* person wasn't there at all. */
-
-    if (curr == ch->specials.memory)
-        ch->specials.memory = curr->next_on_mob;
-    else
-        prev->next_on_mob = curr->next_on_mob;
-
-    put_to_memory_rec_pool(curr);
-}
-
-/* erase ch's memory */
-void clear_memory(struct char_data* ch)
-{
-    struct memory_rec *curr, *next;
-
-    curr = ch->specials.memory;
-
-    while (curr) {
-        next = curr->next_on_mob;
-        put_to_memory_rec_pool(curr);
-        curr = next;
-    }
-
-    ch->specials.memory = NULL;
-}
-
-int update_memory_list(struct char_data* victim)
-{
-    struct memory_rec* tmprec;
-    int count;
-
-    count = 0;
-    for (tmprec = memory_rec_active; tmprec; tmprec = tmprec->next) {
-        if (tmprec->id == GET_IDNUM(victim)) {
-            tmprec->enemy = victim;
-            tmprec->enemy_number = victim->abs_number;
-            count++;
-        }
-    }
-    return count;
-}
+// Mob-memory pool cluster (memory_rec_counter/memory_rec_pool/
+// memory_rec_active globals + get_from_memory_rec_pool()/
+// put_to_memory_rec_pool()/remember()/forget()/clear_memory()/
+// update_memory_list()) relocated verbatim as a package to
+// entity_lifecycle.cpp (combat-pilot wave Task 4a; pilot-census.md
+// section 7.7/7.8 -- same self-contained free-list-pool shape as the
+// universal_list_counter/pool_to_list() precedent already there).
+// Declarations unchanged: forget()/remember() stay in handler.h;
+// clear_memory()/update_memory_list()/memory_rec_counter's other
+// callers keep their own local externs (handler.cpp, interpre.cpp,
+// act_wiz.cpp) -- linkage doesn't care which TU defines the symbol.
 
 ACMD(do_sleep);
 ACMD(do_rest);

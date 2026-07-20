@@ -116,7 +116,6 @@ ACMD(do_affections);
 ACMD(do_wizstat);
 ACMD(do_trap);
 
-void stop_hiding(struct char_data* ch, char);
 
 /* intern functions & vars*/
 int num_of_cmds;

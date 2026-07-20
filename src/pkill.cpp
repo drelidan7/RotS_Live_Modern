@@ -30,6 +30,7 @@
 #include <string>
 #include <vector>
 
+#include "combat_hooks.h"
 #include "db.h"
 #include "handler.h"
 #include "json_utils.h"
@@ -612,6 +613,15 @@ void pkill_create(struct char_data* victim)
     start = pkill_update_pkill_tab(victim, weight, opponents);
     pkill_update_player_tab(&pkill_tab[start], opponents);
     pkill_update_file(PKILL_FILE, &pkill_tab[start], opponents);
+}
+
+// Registers the real pkill_create() body above as combat_hooks.h's
+// pkill_create hook (combat-pilot wave Task 4b; pilot-census.md section
+// 3.7). Called once from run_the_game(), before boot_db() -- same
+// convention as handler.cpp's register_extract_char_hook().
+void register_pkill_create_hook()
+{
+    rots::combat::set_pkill_create_hook(pkill_create);
 }
 
 /*

@@ -163,6 +163,12 @@
 
 int find_script_by_number(int number);
 int call_trigger(int trigger_type, void* subject, void* subject2, void* subject3);
+
+// Registers the real call_trigger() body above as combat_hooks.h's
+// call_trigger hook (combat-pilot wave Task 4b; pilot-census.md section
+// 3.7). Called once from run_the_game(), before boot_db() -- same
+// convention as handler.h's register_extract_char_hook().
+void register_call_trigger_hook();
 void continue_char_script(char_data* ch);
 
 #endif /* SCRIPT_H */

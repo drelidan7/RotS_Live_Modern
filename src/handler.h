@@ -259,6 +259,12 @@ int Crash_clean_file(char* name);
 void Crash_listrent(struct char_data* ch, char* name);
 // int	Crash_load(struct char_data *ch);
 void Crash_crashsave(struct char_data* ch, int rent_code = RENT_CRASH);
+
+// Registers objsave.cpp's real Crash_crashsave(ch, rent_code) body above as
+// combat_hooks.h's crash_crashsave hook (combat-pilot wave Task 4b;
+// pilot-census.md section 3.7). Called once from run_the_game(), before
+// boot_db() -- same convention as register_extract_char_hook() above.
+void register_crash_crashsave_hook();
 void Crash_idlesave(struct char_data* ch);
 void Crash_save_all(void);
 FILE* Crash_get_file_by_name(std::string_view name, std::string_view mode);
@@ -280,7 +286,6 @@ bool write_player_objects_json(std::string_view player_name, const objects_json:
 /* prototypes from fight.c */
 void set_fighting(struct char_data* ch, struct char_data* victim);
 void stop_fighting(struct char_data* ch);
-void stop_follower(struct char_data* ch);
 void hit(struct char_data* ch, struct char_data* victim, int type);
 void forget(struct char_data* ch, struct char_data* victim);
 void remember(struct char_data* ch, struct char_data* victim);

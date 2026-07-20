@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
 #include "handler.h"
@@ -726,6 +727,15 @@ int call_trigger(int trigger_type, void* subject, void* subject2, void* subject3
         return 1;
     } // switch (trigger_type)
     return return_value;
+}
+
+// Registers the real call_trigger() body above as combat_hooks.h's
+// call_trigger hook (combat-pilot wave Task 4b; pilot-census.md section
+// 3.7). Called once from run_the_game(), before boot_db() -- same
+// convention as handler.cpp's register_extract_char_hook().
+void register_call_trigger_hook()
+{
+    rots::combat::set_call_trigger_hook(call_trigger);
 }
 
 int trigger_room_event(int trigger_type, room_data* room, char_data* ch)

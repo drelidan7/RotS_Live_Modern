@@ -26,6 +26,12 @@ typedef struct {
 void boot_pkills();
 void pkill_create(struct char_data*);
 
+// Registers the real pkill_create() body above as combat_hooks.h's
+// pkill_create hook (combat-pilot wave Task 4b; pilot-census.md section
+// 3.7). Called once from run_the_game(), before boot_db() -- same
+// convention as handler.h's register_extract_char_hook().
+void register_pkill_create_hook();
+
 // Phase 2a Task 6: pkill persistence as JSON (see pkill_json.cpp for the
 // implementation). Declared here (rather than kept file-local) so the
 // pod_persistence_json_tests.cpp TU can exercise the codec + converter

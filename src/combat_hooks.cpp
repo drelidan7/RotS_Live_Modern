@@ -44,6 +44,9 @@ rots::combat::extract_char_fn g_extract_char_hook = nullptr;
 rots::combat::gain_exp_fn g_gain_exp_hook = nullptr;
 rots::combat::gain_exp_regardless_fn g_gain_exp_regardless_hook = nullptr;
 rots::combat::remove_fame_war_bonuses_fn g_remove_fame_war_bonuses_hook = nullptr;
+rots::combat::crash_crashsave_fn g_crash_crashsave_hook = nullptr;
+rots::combat::call_trigger_fn g_call_trigger_hook = nullptr;
+rots::combat::pkill_create_fn g_pkill_create_hook = nullptr;
 
 } // namespace
 
@@ -159,6 +162,60 @@ void remove_fame_war_bonuses(char_data* ch, affected_type* pkaff)
     rots::log::write_stderr(
         "rots::combat: STUB remove_fame_war_bonuses() called with no handler registered -- "
         "this should be unreachable once register_remove_fame_war_bonuses_hook() has run.");
+}
+
+
+// App-other trio dispatch (Task 4b) -- Crash_crashsave()/call_trigger()/
+// pkill_create(); see combat_hooks.h's comments above for each hook's own
+// tripwire-default rationale.
+void set_crash_crashsave_hook(crash_crashsave_fn hook)
+{
+    g_crash_crashsave_hook = hook;
+}
+
+void crash_crashsave(char_data* ch, int rent_code)
+{
+    if (g_crash_crashsave_hook) {
+        g_crash_crashsave_hook(ch, rent_code);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB crash_crashsave() called with no handler registered -- this "
+        "should be unreachable once register_crash_crashsave_hook() has run.");
+}
+
+void set_call_trigger_hook(call_trigger_fn hook)
+{
+    g_call_trigger_hook = hook;
+}
+
+int call_trigger(int trigger_type, void* subject, void* subject2, void* subject3)
+{
+    if (g_call_trigger_hook) {
+        return g_call_trigger_hook(trigger_type, subject, subject2, subject3);
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB call_trigger() called with no handler registered -- defaulting to "
+        "TRUE (\"no script attached\") to avoid silently vetoing/immortalizing the caller's "
+        "event; this should be unreachable once register_call_trigger_hook() has run.");
+    return 1; // TRUE (utils.h) -- kept as a literal so this opaque-pointer TU need not include
+              // utils.h just for the macro; see combat_hooks.cpp's file comment.
+}
+
+void set_pkill_create_hook(pkill_create_fn hook)
+{
+    g_pkill_create_hook = hook;
+}
+
+void pkill_create(char_data* victim)
+{
+    if (g_pkill_create_hook) {
+        g_pkill_create_hook(victim);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB pkill_create() called with no handler registered -- this should "
+        "be unreachable once register_pkill_create_hook() has run.");
 }
 
 } // namespace rots::combat

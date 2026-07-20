@@ -6,7 +6,9 @@
 #include "../handler.h"
 #include "../limits.h"
 #include "../mudlle.h"
+#include "../pkill.h"
 #include "../protocol.h"
+#include "../script.h"
 #include "../rots_net.h"
 #include "../skill_timer.h"
 #include "../utils.h"
@@ -218,6 +220,21 @@ int main(int argc, char* argv[]) {
     register_gain_exp_hook();
     register_gain_exp_regardless_hook();
     register_remove_fame_war_bonuses_hook();
+    // combat_hooks.h's app-other trio hooks (combat-pilot wave Task 4b):
+    // crash_crashsave/call_trigger/pkill_create, registered for the same
+    // real-body-fidelity reason as the calls above: without them this test
+    // process would silently exercise their tripwire-logged defaults --
+    // including call_trigger()'s MANDATORY TRUE default, see
+    // combat_hooks.h's call_trigger_fn comment -- instead of objsave.cpp's/
+    // script.cpp's/pkill.cpp's real bodies that ageland registers at boot --
+    // all three TUs are already linked into both test binaries, so this only
+    // needs the registration calls. No production call site dispatches
+    // through these hooks yet (see combat_hooks.h), so these calls exist for
+    // this wave's own seam tests (combat_hooks_tests.cpp), the same
+    // bridge-before-traffic posture as every other hook this file registers.
+    register_crash_crashsave_hook();
+    register_call_trigger_hook();
+    register_pkill_create_hook();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

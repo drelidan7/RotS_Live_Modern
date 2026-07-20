@@ -72,6 +72,7 @@
 // breakdown.
 
 #include "rots/core/types.h" // for the NOWHERE macro (call_special()'s in_room default)
+#include "rots/persist/file_formats.h" // for the RENT_CRASH macro (crash_crashsave()'s rent_code default)
 
 struct char_data;
 struct waiting_type;
@@ -243,5 +244,44 @@ void gain_exp_regardless(char_data* ch, int gain);
 using remove_fame_war_bonuses_fn = void (*)(char_data* ch, affected_type* pkaff);
 void set_remove_fame_war_bonuses_hook(remove_fame_war_bonuses_fn hook);
 void remove_fame_war_bonuses(char_data* ch, affected_type* pkaff);
+
+
+// App-other trio (pilot-census.md section 3.7) -- Crash_crashsave
+// (objsave.cpp), call_trigger (script.cpp), pkill_create (pkill.cpp). Each
+// owning TU stays app-compiled after this wave and registers its own real
+// body via its own per-owner registrar (Crash_crashsave:
+// register_crash_crashsave_hook(), handler.h/objsave.cpp; call_trigger:
+// register_call_trigger_hook(), script.h/script.cpp; pkill_create:
+// register_pkill_create_hook(), pkill.h/pkill.cpp).
+
+// Crash_crashsave() (handler.h:254, objsave.cpp:938) -- void return, no
+// tripwire-semantics concern (pilot-census.md section 3.7). Tripwire
+// default: LOGGED no-op (void class).
+using crash_crashsave_fn = void (*)(char_data* ch, int rent_code);
+void set_crash_crashsave_hook(crash_crashsave_fn hook);
+void crash_crashsave(char_data* ch, int rent_code = RENT_CRASH);
+
+// call_trigger() (script.h:165, script.cpp:666) -- int return. fight.cpp:1003
+// (`if (call_trigger(ON_DIE, dead_man, killer, 0) == FALSE) { ... return
+// without dying ... }`) and fight.cpp:1843
+// (`if (!call_trigger(ON_DAMAGE, victim, attacker, 0))`) both treat FALSE as
+// "a script vetoed this event" -- an unregistered hook must NOT silently
+// immortalize/veto-by-default, so the tripwire default is a LOGGED return of
+// TRUE ("no script attached / proceed normally"), the one VALUE-returning
+// hook in this task whose safe default is a documented non-zero constant
+// rather than the void class's plain no-op. This taxonomy choice is
+// load-bearing correctness, not mere convention -- see this symbol's
+// dedicated discriminator test (combat_hooks_tests.cpp,
+// CombatHooksCallTrigger.DispatchDefaultsToLoggedTrueWhenUnregistered) for
+// the MANDATORY default-path proof pilot-task-4b-brief.md requires.
+using call_trigger_fn = int (*)(int trigger_type, void* subject, void* subject2, void* subject3);
+void set_call_trigger_hook(call_trigger_fn hook);
+int call_trigger(int trigger_type, void* subject, void* subject2, void* subject3);
+
+// pkill_create() (pkill.h:27, pkill.cpp:598) -- void return, no
+// tripwire-semantics concern. Tripwire default: LOGGED no-op (void class).
+using pkill_create_fn = void (*)(char_data* victim);
+void set_pkill_create_hook(pkill_create_fn hook);
+void pkill_create(char_data* victim);
 
 } // namespace rots::combat

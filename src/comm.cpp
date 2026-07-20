@@ -43,6 +43,7 @@
 #include "limits.h"
 #include "mudlle.h"
 #include "output_seam.h"
+#include "pkill.h"
 #include "protocol.h"
 #include "rots_net.h"
 #include "rots_rng.h"
@@ -679,6 +680,15 @@ void run_the_game(sh_int port)
     register_gain_exp_hook();
     register_gain_exp_regardless_hook();
     register_remove_fame_war_bonuses_hook();
+    // combat_hooks.h's app-other trio hooks (combat-pilot wave Task 4b):
+    // crash_crashsave/call_trigger/pkill_create, registered the same way and
+    // for the same reason: before boot_db(), so ageland never runs a future
+    // rots::combat::crash_crashsave()/call_trigger()/pkill_create() call site
+    // with an unregistered hook (no call site converts yet -- see
+    // combat_hooks.h).
+    register_crash_crashsave_hook();
+    register_call_trigger_hook();
+    register_pkill_create_hook();
 
     log("Signal trapping.");
     signal_setup();

@@ -50,8 +50,11 @@
 #include "../interpre.h"
 #include "../limits.h"
 #include "../output_seam.h"
+#include "../pkill.h"
+#include "../script.h"
 #include "../utils.h"
 #include "rots/core/character.h"
+#include "rots/core/object.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
@@ -682,4 +685,212 @@ TEST(CombatHooksRemoveFameWarBonuses, DispatchDefaultsToANoOpWhenUnregistered)
         << "Expected an unregistered remove_fame_war_bonuses hook to leave the (unrelated) "
            "stub's own recording flag untouched -- the real forwarder never ran, and the "
            "tripwire default is a logged no-op, not a call to any stub.";
+}
+
+// -----------------------------------------------------------------------
+// Task 4b hooks (combat-pilot wave): app-other trio -- crash_crashsave
+// (objsave.cpp), call_trigger (script.cpp), pkill_create (pkill.cpp);
+// pilot-census.md section 3.7. Same recording-stub discriminator shape as
+// the suites above, EXCEPT call_trigger's unregistered-default test, which
+// is the brief's MANDATORY proof that an unregistered hook returns TRUE
+// (not FALSE) -- a FALSE default would silently veto/immortalize the
+// caller's event (fight.cpp:1003/1843's ON_DIE/ON_DAMAGE call sites both
+// treat a FALSE return as "a script vetoed this event").
+// -----------------------------------------------------------------------
+
+namespace {
+
+struct RecordedCrashCrashsaveCall {
+    char_data* ch = nullptr;
+    int rent_code = 0;
+    bool called = false;
+};
+
+RecordedCrashCrashsaveCall g_recorded_crash_crashsave_call;
+
+void recording_crash_crashsave_stub(char_data* ch, int rent_code)
+{
+    g_recorded_crash_crashsave_call = RecordedCrashCrashsaveCall { ch, rent_code, true };
+}
+
+class ScopedCrashCrashsaveHook {
+public:
+    explicit ScopedCrashCrashsaveHook(rots::combat::crash_crashsave_fn hook)
+    {
+        rots::combat::set_crash_crashsave_hook(hook);
+    }
+
+    ~ScopedCrashCrashsaveHook() { register_crash_crashsave_hook(); }
+
+    ScopedCrashCrashsaveHook(const ScopedCrashCrashsaveHook&) = delete;
+    ScopedCrashCrashsaveHook& operator=(const ScopedCrashCrashsaveHook&) = delete;
+};
+
+struct RecordedCallTriggerCall {
+    int trigger_type = 0;
+    void* subject = nullptr;
+    void* subject2 = nullptr;
+    void* subject3 = nullptr;
+    bool called = false;
+};
+
+RecordedCallTriggerCall g_recorded_call_trigger_call;
+
+int recording_call_trigger_stub(int trigger_type, void* subject, void* subject2, void* subject3)
+{
+    g_recorded_call_trigger_call
+        = RecordedCallTriggerCall { trigger_type, subject, subject2, subject3, true };
+    return 0; // FALSE -- distinguishable from the tripwire's own TRUE default.
+}
+
+class ScopedCallTriggerHook {
+public:
+    explicit ScopedCallTriggerHook(rots::combat::call_trigger_fn hook)
+    {
+        rots::combat::set_call_trigger_hook(hook);
+    }
+
+    ~ScopedCallTriggerHook() { register_call_trigger_hook(); }
+
+    ScopedCallTriggerHook(const ScopedCallTriggerHook&) = delete;
+    ScopedCallTriggerHook& operator=(const ScopedCallTriggerHook&) = delete;
+};
+
+struct RecordedPkillCreateCall {
+    char_data* victim = nullptr;
+    bool called = false;
+};
+
+RecordedPkillCreateCall g_recorded_pkill_create_call;
+
+void recording_pkill_create_stub(char_data* victim)
+{
+    g_recorded_pkill_create_call = RecordedPkillCreateCall { victim, true };
+}
+
+class ScopedPkillCreateHook {
+public:
+    explicit ScopedPkillCreateHook(rots::combat::pkill_create_fn hook)
+    {
+        rots::combat::set_pkill_create_hook(hook);
+    }
+
+    ~ScopedPkillCreateHook() { register_pkill_create_hook(); }
+
+    ScopedPkillCreateHook(const ScopedPkillCreateHook&) = delete;
+    ScopedPkillCreateHook& operator=(const ScopedPkillCreateHook&) = delete;
+};
+
+} // namespace
+
+TEST(CombatHooksCrashCrashsave, DispatchReachesARegisteredStubWithArgsIntact)
+{
+    g_recorded_crash_crashsave_call = RecordedCrashCrashsaveCall {};
+    ScopedCrashCrashsaveHook scoped(recording_crash_crashsave_stub);
+    char_data character {};
+
+    rots::combat::crash_crashsave(&character, 99);
+
+    EXPECT_TRUE(g_recorded_crash_crashsave_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_crash_crashsave_call.ch, &character);
+    EXPECT_EQ(g_recorded_crash_crashsave_call.rent_code, 99);
+}
+
+// DISCRIMINATOR: an omitted rent_code argument reaches the stub as
+// handler.h:254's own RENT_CRASH default, mirroring
+// CallSpecialOmittedInRoomArgumentDefaultsToNowhereLikeInterpreH99's
+// omitted-argument proof above.
+
+TEST(CombatHooksCrashCrashsave, OmittedRentCodeDefaultsToRentCrashLikeHandlerH254)
+{
+    g_recorded_crash_crashsave_call = RecordedCrashCrashsaveCall {};
+    ScopedCrashCrashsaveHook scoped(recording_crash_crashsave_stub);
+    char_data character {};
+
+    rots::combat::crash_crashsave(&character);
+
+    EXPECT_TRUE(g_recorded_crash_crashsave_call.called);
+    EXPECT_EQ(g_recorded_crash_crashsave_call.rent_code, RENT_CRASH);
+}
+
+TEST(CombatHooksCrashCrashsave, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_crash_crashsave_call = RecordedCrashCrashsaveCall {};
+    ScopedCrashCrashsaveHook unregistered(nullptr);
+    char_data character {};
+
+    rots::combat::crash_crashsave(&character, 99);
+
+    EXPECT_FALSE(g_recorded_crash_crashsave_call.called)
+        << "Expected an unregistered crash_crashsave hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default "
+           "is a logged no-op, not a call to any stub.";
+}
+
+TEST(CombatHooksCallTrigger, DispatchReachesARegisteredStubWithArgsIntact)
+{
+    g_recorded_call_trigger_call = RecordedCallTriggerCall {};
+    ScopedCallTriggerHook scoped(recording_call_trigger_stub);
+    char_data subject {};
+    char_data subject2 {};
+    obj_data subject3 {};
+
+    const int result = rots::combat::call_trigger(ON_DIE, &subject, &subject2, &subject3);
+
+    EXPECT_TRUE(g_recorded_call_trigger_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_call_trigger_call.trigger_type, ON_DIE);
+    EXPECT_EQ(g_recorded_call_trigger_call.subject, &subject);
+    EXPECT_EQ(g_recorded_call_trigger_call.subject2, &subject2);
+    EXPECT_EQ(g_recorded_call_trigger_call.subject3, &subject3);
+    EXPECT_EQ(result, 0) << "Expected call_trigger() to forward the stub's own return value.";
+}
+
+// MANDATORY (pilot-task-4b-brief.md): an unregistered call_trigger hook MUST
+// return TRUE, not FALSE -- fight.cpp:1003's `if (call_trigger(ON_DIE, ...)
+// == FALSE)` and fight.cpp:1843's `if (!call_trigger(ON_DAMAGE, ...))` both
+// treat FALSE as "a script vetoed this event"; a FALSE default here would
+// silently immortalize/veto every future caller once Task 5 converts those
+// call sites, instead of the documented "no script attached, proceed
+// normally" semantics.
+
+TEST(CombatHooksCallTrigger, DispatchDefaultsToLoggedTrueWhenUnregistered)
+{
+    ScopedCallTriggerHook unregistered(nullptr);
+    char_data subject {};
+
+    const int result = rots::combat::call_trigger(ON_DIE, &subject, nullptr, nullptr);
+
+    EXPECT_EQ(result, 1)
+        << "Expected an unregistered call_trigger hook to default to TRUE (1) -- \"no script "
+           "attached / proceed normally\" -- NOT FALSE, which fight.cpp's real ON_DIE/ON_DAMAGE "
+           "call sites treat as a script veto that would silently immortalize the caller.";
+}
+
+TEST(CombatHooksPkillCreate, DispatchReachesARegisteredStubWithArgsIntact)
+{
+    g_recorded_pkill_create_call = RecordedPkillCreateCall {};
+    ScopedPkillCreateHook scoped(recording_pkill_create_stub);
+    char_data victim {};
+
+    rots::combat::pkill_create(&victim);
+
+    EXPECT_TRUE(g_recorded_pkill_create_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_pkill_create_call.victim, &victim);
+}
+
+TEST(CombatHooksPkillCreate, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_pkill_create_call = RecordedPkillCreateCall {};
+    ScopedPkillCreateHook unregistered(nullptr);
+    char_data victim {};
+
+    rots::combat::pkill_create(&victim);
+
+    EXPECT_FALSE(g_recorded_pkill_create_call.called)
+        << "Expected an unregistered pkill_create hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default "
+           "is a logged no-op, not a call to any stub.";
 }

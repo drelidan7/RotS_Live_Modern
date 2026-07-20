@@ -18,6 +18,7 @@
 
 #include "platform_compat.h"
 #include "char_utils.h"
+#include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
 #include "entity_hooks.h"
@@ -965,6 +966,15 @@ void Crash_crashsave(struct char_data* ch, int rent_code)
     }
 
     REMOVE_BIT(PLR_FLAGS(ch), PLR_CRASH);
+}
+
+// Registers the real Crash_crashsave() body above as combat_hooks.h's
+// crash_crashsave hook (combat-pilot wave Task 4b; pilot-census.md section
+// 3.7). Called once from run_the_game(), before boot_db() -- same
+// convention as handler.cpp's register_extract_char_hook().
+void register_crash_crashsave_hook()
+{
+    rots::combat::set_crash_crashsave_hook(Crash_crashsave);
 }
 
 void Crash_idlesave(struct char_data* ch)

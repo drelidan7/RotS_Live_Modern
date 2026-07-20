@@ -617,8 +617,17 @@ ASPELL(spell_divination)
     const room_data& cur_room = world[caster->in_room];
 
     strcpy(buff, "You feel confident about your location.\n\r");
-    sprintbit(cur_room.room_flags, room_bits, buf, 0);
-    strcpy(buff, std::format("{} (#{}) [ {}, {}], Exits are:\n\r", static_cast<const char*>(buff), cur_room.number, sector_types[cur_room.sector_type], static_cast<const char*>(buf)).c_str());
+    // buf retirement (combat-trio wave, Task 1; trio-task-1-brief.md Step
+    // 4 / CONTROLLER ADDENDUM item 4; combat-trio-census.md section 5.8 --
+    // the file's one genuine `buf` site). LOCAL-COMPOSITION only: a local
+    // char array replaces the shared global `buf` scratch buffer that
+    // sprintbit()'s output param wrote into, same size as the retired
+    // global (db.h:372's char buf[MAX_STRING_LENGTH]) to preserve behavior
+    // exactly. `buff` (the local declared above, a different variable that
+    // merely shares a similar name) is untouched.
+    char room_flags_buf[MAX_STRING_LENGTH];
+    sprintbit(cur_room.room_flags, room_bits, room_flags_buf, 0);
+    strcpy(buff, std::format("{} (#{}) [ {}, {}], Exits are:\n\r", static_cast<const char*>(buff), cur_room.number, sector_types[cur_room.sector_type], static_cast<const char*>(room_flags_buf)).c_str());
     send_to_char(buff, caster);
 
     bool found = false;

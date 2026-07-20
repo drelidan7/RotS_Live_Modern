@@ -231,14 +231,21 @@ int calculate_smash_damage(char_data& attacker, int prob)
     return damage;
 }
 
+// buf retirement (combat-trio wave, Task 1; trio-task-1-brief.md Step 4 /
+// CONTROLLER ADDENDUM item 4; combat-trio-census.md section 5.8 -- 3 of the
+// file's 10 genuine `buf` sites). LOCAL-COMPOSITION only: a local
+// std::string replaces the shared global `buf` scratch buffer, read
+// directly by act()'s std::string_view parameter (fight.cpp death_cry()
+// precedent, combat-pilot wave Task 4a) -- no strcpy/global scratch needed.
+// Output strings byte-identical.
 void generate_smash_dismount_messages(char_data* attacker, char_data* victim)
 {
-    strcpy(buf, "You smash into $N so hard, it knocks $M to the ground!");
-    act(buf, FALSE, attacker, NULL, victim, TO_CHAR);
-    strcpy(buf, "$n smashes into you so hard, it knocks prone to the ground!");
-    act(buf, FALSE, attacker, NULL, victim, TO_VICT);
-    strcpy(buf, "$n smashes into $N so hard, it knocks $M to the ground!");
-    act(buf, TRUE, attacker, 0, victim, TO_NOTVICT);
+    std::string message = "You smash into $N so hard, it knocks $M to the ground!";
+    act(message, FALSE, attacker, NULL, victim, TO_CHAR);
+    message = "$n smashes into you so hard, it knocks prone to the ground!";
+    act(message, FALSE, attacker, NULL, victim, TO_VICT);
+    message = "$n smashes into $N so hard, it knocks $M to the ground!";
+    act(message, TRUE, attacker, 0, victim, TO_NOTVICT);
 }
 
 void apply_smash_damage(char_data* attacker, char_data* victim, int prob)
@@ -337,14 +344,19 @@ void apply_cleave_damage(char_data* attacker, char_data* victim)
     damage(attacker, victim, calculate_cleave_damage(*attacker, prob), SKILL_CLEAVE, 0);
 }
 
+// buf retirement (combat-trio wave, Task 1; combat-trio-census.md section
+// 5.8 -- 4 of the file's 10 genuine `buf` sites). LOCAL-COMPOSITION only,
+// same precedent as generate_smash_dismount_messages() above; std::format
+// already returns a std::string, so the strcpy/.c_str() round-trip through
+// the global scratch buffer is no longer needed. Output strings
+// byte-identical.
 void generate_frenzy_message(char_data* character)
 {
-    strcpy(buf, std::format("You enter a frenzied state, filling your body with "
-                             "overwhelming power!\r\n")
-                    .c_str());
-    act(buf, FALSE, character, NULL, NULL, TO_CHAR);
-    strcpy(buf, "$n enters a frenzied state, making $s strikes grow with fervor!\r\n");
-    act(buf, TRUE, character, 0, NULL, TO_ROOM);
+    std::string message = std::format("You enter a frenzied state, filling your body with "
+                                       "overwhelming power!\r\n");
+    act(message, FALSE, character, NULL, NULL, TO_CHAR);
+    message = "$n enters a frenzied state, making $s strikes grow with fervor!\r\n";
+    act(message, TRUE, character, 0, NULL, TO_ROOM);
 }
 
 void apply_frenzy_affect(char_data* character)
@@ -379,7 +391,15 @@ void room_target(char_data* ch, void (*skill_damage)(char_data* character, char_
 
 ACMD(do_cleave)
 {
-    one_argument(argument, arg);
+    // arg retirement (combat-trio wave, Task 1; combat-trio-census.md
+    // section 5.8 -- 1 of the file's 5 genuine `arg` sites). LOCAL-
+    // COMPOSITION only: a local char array replaces the shared global
+    // `arg` scratch buffer that one_argument()'s output param wrote into
+    // and this function otherwise discarded -- same size as the retired
+    // global (db.h:375's char arg[MAX_STRING_LENGTH]) to preserve
+    // behavior exactly.
+    char first_arg[MAX_STRING_LENGTH];
+    one_argument(argument, first_arg);
 
     if (!olog_hai::is_skill_valid(ch, SKILL_CLEAVE)) {
         return;
@@ -403,7 +423,9 @@ ACMD(do_cleave)
 
 ACMD(do_smash)
 {
-    one_argument(argument, arg);
+    // arg retirement -- see do_cleave() above for the full rationale.
+    char first_arg[MAX_STRING_LENGTH];
+    one_argument(argument, first_arg);
 
     if (!olog_hai::is_skill_valid(ch, SKILL_SMASH)) {
         return;
@@ -458,11 +480,18 @@ bool is_direction_valid(char_data* ch, int cmd)
             send_to_char("You cannot go that way.\n\r", ch);
             return false;
         } else if (EXIT(ch, cmd)->keyword) {
+            // buf2 retirement (combat-trio wave, Task 1; combat-trio-census.md
+            // section 5.8 -- all 3 of the file's genuine `buf2` sites).
+            // LOCAL-COMPOSITION only: a local std::string replaces the shared
+            // global `buf2` scratch buffer, read directly by send_to_char()'s
+            // std::string_view parameter -- same precedent as this file's
+            // `buf` retirements above. Output strings byte-identical.
+            std::string door_message;
             if (IS_SHADOW(ch))
-                strcpy(buf2, std::format("You cannot pass through the {}.\n\r", fname(EXIT(ch, cmd)->keyword)).c_str());
+                door_message = std::format("You cannot pass through the {}.\n\r", fname(EXIT(ch, cmd)->keyword));
             else
-                strcpy(buf2, std::format("The {} seems to be closed.\n\r", fname(EXIT(ch, cmd)->keyword)).c_str());
-            send_to_char(buf2, ch);
+                door_message = std::format("The {} seems to be closed.\n\r", fname(EXIT(ch, cmd)->keyword));
+            send_to_char(door_message, ch);
             return false;
         } else {
             send_to_char("It seems to be closed.\n\r", ch);
@@ -499,8 +528,13 @@ int get_direction(std::string direction)
 
 ACMD(do_overrun)
 {
-    one_argument(argument, arg);
-    cmd = get_direction(arg);
+    // arg retirement -- see do_cleave() above for the full rationale.
+    // get_direction() takes its argument by value (std::string), so
+    // first_arg's implicit char*->std::string conversion here is the
+    // same read the retired global `arg` provided.
+    char first_arg[MAX_STRING_LENGTH];
+    one_argument(argument, first_arg);
+    cmd = get_direction(first_arg);
     int olog_delay = PULSE_VIOLENCE;
 
     if (cmd == -1) {
@@ -556,7 +590,9 @@ ACMD(do_overrun)
 
 ACMD(do_frenzy)
 {
-    one_argument(argument, arg);
+    // arg retirement -- see do_cleave() above for the full rationale.
+    char first_arg[MAX_STRING_LENGTH];
+    one_argument(argument, first_arg);
 
     if (!olog_hai::is_skill_valid(ch, SKILL_FRENZY)) {
         return;
@@ -580,7 +616,9 @@ ACMD(do_frenzy)
 
 ACMD(do_stomp)
 {
-    one_argument(argument, arg);
+    // arg retirement -- see do_cleave() above for the full rationale.
+    char first_arg[MAX_STRING_LENGTH];
+    one_argument(argument, first_arg);
     if (!olog_hai::is_skill_valid(ch, SKILL_STOMP)) {
         return;
     }

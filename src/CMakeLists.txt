@@ -230,10 +230,13 @@ set(ROTS_WORLD_SOURCES
 # app-output-beyond-seam edges. Of the original 11 DEFERRED combat-row TUs
 # (profs.cpp, spec_ass.cpp, olog_hai.cpp, clerics.cpp, mage.cpp,
 # mystic.cpp, mobact.cpp, spell_pa.cpp, limits.cpp, ranger.cpp,
-# spec_pro.cpp, fight.cpp), clerics.cpp and fight.cpp JOINED this library in
-# the combat-pilot wave (Task 5, joint membership -- see the
-# ROTS_COMBAT_SOURCES comment below); the remaining 9 stay DEFERRED per the
-# census's per-TU blocker analysis and stay in ROTS_SERVER_SOURCES below.
+# spec_pro.cpp, fight.cpp), clerics.cpp and fight.cpp JOINED in the
+# combat-pilot wave (Task 5, joint membership), and olog_hai.cpp,
+# mystic.cpp, and profs.cpp JOINED in the combat-trio wave (Task 4 -- see
+# the ROTS_COMBAT_SOURCES comment below); the remaining 7 (spec_ass.cpp,
+# mage.cpp, mobact.cpp, spell_pa.cpp, limits.cpp, ranger.cpp, spec_pro.cpp)
+# stay DEFERRED per the census's per-TU blocker analysis and stay in
+# ROTS_SERVER_SOURCES below.
 #
 # wild_fighting_handler.cpp's register_attack_speed_multiplier_hook()/
 # register_wild_attack_speed_multiplier_hook() (entity_hooks.h pattern) are
@@ -299,10 +302,38 @@ set(ROTS_WORLD_SOURCES
 # check_break_prep/saves_power/the forget+remember memory-pool package/
 # stop_hiding/stop_riding/remove_character_from_group/unequip_char). See
 # fight.cpp's Task 5 call-site-conversion commit for the up-call side.
+#
+# olog_hai.cpp / mystic.cpp / profs.cpp JOIN here (combat-trio wave Task 4,
+# combat-trio-census.md + trio-task-4-brief.md's binding controller
+# addendum): unlike the clerics/fight pair above, none of these three edges
+# is a genuine cycle -- olog_hai.cpp is independent (zero intra-trio edges:
+# its own combat-peer edge, do_dismount -> ranger.cpp, resolved via Task 1's
+# new 26th `dismount` combat_command cell, not via any olog/mystic/profs
+# cross-reference); mystic.cpp is independent (no reverse dependency on
+# either sibling -- its combat-peer edges were all to spell_pa.cpp's
+# saves_* family, relocated to rots_entity in Task 2); profs.cpp is
+# one-directionally GATED on mystic.cpp (scale_guardian(), profs.cpp:232's
+# local extern -- profs calls into mystic, mystic never calls back into
+# profs). All three land in ONE commit for simplicity -- profs riding
+# alongside its one gating dependency rather than a separate follow-up
+# commit -- NOT because a cycle forced joint membership the way it did for
+# clerics.cpp<->fight.cpp above (contrast that paragraph: this trio has no
+# such mutual edge). Every other upward edge these three TUs carried was
+# already cleared before this commit: do_move (Task 1's `move` cell reuse),
+# is_target_valid (Task 1's existing dispatch_target_valid hook), do_flee
+# (existing `flee` cell), one_argument/fill_word/fill[]/half_chop (Task 1's
+# relocation to rots_util.cpp/rots_platform), add_follower (Task 1's
+# relocation to entity_lifecycle.cpp/rots_entity), the saves_* family
+# (Task 2's relocation to char_utils_combat.cpp/rots_entity),
+# get_guardian_type (Task 3's relocation into this file, visibility.cpp),
+# and add_exploit_record (Task 3's conversion to
+# rots::persist::dispatch_exploit_capture, already covered by this
+# library's existing RotS::persist PUBLIC link below -- no new link needed
+# for this trio).
 set(ROTS_COMBAT_SOURCES
     battle_mage_handler.cpp clerics.cpp combat_hooks.cpp fight.cpp
-    skill_timer.cpp visibility.cpp weapon_master_handler.cpp
-    wild_fighting_handler.cpp
+    mystic.cpp olog_hai.cpp profs.cpp skill_timer.cpp visibility.cpp
+    weapon_master_handler.cpp wild_fighting_handler.cpp
 )
 
 # ageland's remaining app-layer sources (spec §3): combat, commands,
@@ -313,6 +344,8 @@ set(ROTS_COMBAT_SOURCES
 # wild_fighting_handler.cpp LEFT this list for ROTS_COMBAT_SOURCES above
 # (combat-seed wave Task 1). clerics.cpp/fight.cpp LEFT this list for
 # ROTS_COMBAT_SOURCES above (combat-pilot wave Task 5, joint membership).
+# olog_hai.cpp/mystic.cpp/profs.cpp LEFT this list for ROTS_COMBAT_SOURCES
+# above (combat-trio wave Task 4).
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -323,8 +356,8 @@ set(ROTS_SERVER_SOURCES
     graph.cpp handler.cpp interpre.cpp
     limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
-    mystic.cpp obj2html.cpp objsave.cpp
-    olog_hai.cpp pkill.cpp profs.cpp protocol.cpp
+    obj2html.cpp objsave.cpp
+    pkill.cpp protocol.cpp
     ranger.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp spec_ass.cpp
@@ -584,7 +617,12 @@ set_target_properties(rots_combat PROPERTIES CXX_EXTENSIONS OFF)
 # (rots_persist), mirroring rots_world's own RotS::persist PUBLIC link for
 # the identical class of edge (db_world.cpp -> rots::persist::
 # set_room_vnum_hook). PUBLIC so all four layers' include roots flow
-# transitively to any consumer that links only RotS::combat.
+# transitively to any consumer that links only RotS::combat. No link change
+# for combat-trio wave Task 4 (olog_hai.cpp/mystic.cpp/profs.cpp): every
+# edge these three TUs carry resolves into layers already linked here --
+# profs.cpp's own dispatch_exploit_capture() call sites (Task 3) use this
+# same existing RotS::persist link, and profs.cpp's scale_guardian() call
+# resolves in-lib now that mystic.cpp joins in this same commit.
 target_link_libraries(rots_combat PUBLIC rots_build_flags RotS::world RotS::persist RotS::entity RotS::core RotS::platform)
 # No target_include_directories(rots_combat PRIVATE persist/include) needed
 # any longer (weapon_master_handler.cpp's header-only "rots/persist/
@@ -1153,17 +1191,22 @@ if(ROTS_BUILD_TESTS)
         # Load-bearing combat-layer acyclicity check (spec §11), mirroring the
         # rots_world_linkcheck block above (combat-seed wave Task 1;
         # combat_hooks.cpp joined the checked archive in blocker-buster wave
-        # Task 2, visibility.cpp in blocker-buster wave Task 4 — see the
-        # ROTS_COMBAT_SOURCES comment above).
-        # rots_combat (battle_mage_handler.cpp + combat_hooks.cpp +
-        # skill_timer.cpp + visibility.cpp + weapon_master_handler.cpp +
-        # wild_fighting_handler.cpp — see the ROTS_COMBAT_SOURCES comment
-        # above) is verified to have no upward symbol references beyond its
-        # legal downward edges into rots_entity, rots_core, and
-        # rots_platform, plus its one legal L3-peer edge into rots_world
-        # (visibility.cpp's `weather_info` reference — see the rots_combat
-        # target_link_libraries comment above; mirrors rots_world_linkcheck's
-        # own RotS::persist normal-link for its one sanctioned peer edge).
+        # Task 2, visibility.cpp in blocker-buster wave Task 4, clerics.cpp +
+        # fight.cpp in combat-pilot wave Task 5, and olog_hai.cpp +
+        # mystic.cpp + profs.cpp in combat-trio wave Task 4 — see the
+        # ROTS_COMBAT_SOURCES comment above for the current 11-TU roster).
+        # rots_combat is verified to have no upward symbol references beyond
+        # its legal downward edges into rots_entity, rots_core, and
+        # rots_platform, plus its legal L3-peer edges into rots_world
+        # (visibility.cpp's `weather_info` reference) and rots_persist
+        # (fight.cpp's save_char()/dispatch_exploit_capture(), now also
+        # exercised by profs.cpp's own dispatch_exploit_capture() call
+        # sites — see the rots_combat target_link_libraries comment above).
+        # RotS::persist is not re-listed on this checker's own
+        # target_link_libraries below because RotS::world already carries it
+        # transitively (RotS::world's own PUBLIC RotS::persist link, per the
+        # world-seed wave) — the same transitive path that already resolved
+        # clerics.cpp/fight.cpp's persist-layer symbols before this task.
         # The checker force-loads
         # rots_combat itself (so every rots_combat symbol is pulled in and
         # any OTHER unresolved reference fails the link) and normal-links

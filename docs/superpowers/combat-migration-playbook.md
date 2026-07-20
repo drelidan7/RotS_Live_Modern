@@ -1,17 +1,149 @@
-# Combat-row migration playbook (draft)
+# Combat-row migration playbook
 
-**Status:** Confirmed by Task 5 (fight.cpp call-site conversions + joint
-clerics.cpp+fight.cpp membership move), the combat-pilot wave's final task. Written
-after Task 3 (clerics.cpp call-site conversions) and revised with real Task 5 data
-below rather than left as a Task-3-only guess. Recorded factually from the ACTUAL
-recipe each task followed — not a prescriptive design written in advance — so a
-later wave repeating this pattern for another `rots_combat` DEFER-11 row
-(`spec_ass`/`olog_hai`/`mage`/`mystic`/`mobact`/`spell_pa`/`limits`/`ranger`/
-`spec_pro`, per `AGENTS.md`'s DEFER TU list — `fight` is no longer on this list,
-having landed as of this task) can compare its own experience against two real data
-points instead of one.
+**Status: FINALIZED** (Task 6/7 of the combat-pilot wave — the docs-finalization
+task following Task 5, which landed the wave's central deliverable: `clerics.cpp` +
+`fight.cpp` joint membership, `rots_combat` 6 → 8 TUs). Recorded factually from the
+ACTUAL recipe each task followed — not a prescriptive design written in advance — so
+a later wave repeating this pattern for one of the 9 remaining `rots_combat` DEFER
+TUs (`mobact`/`spec_pro`/`ranger`/`olog_hai`/`mystic`/`mage`/`limits`/`spell_pa`/
+`spec_ass`, plus the caveated `profs`) can compare its own experience against two
+real data points (clerics + fight) instead of zero, and can start from the per-TU
+cost table at the end of this document instead of re-deriving each row's blockers
+from scratch.
 
-## The recipe, as it actually happened
+## The finalized recipe (census → closure check → seams → moves → conversions → joint membership → verification)
+
+This is the corrected high-level shape of the process, reordered from how the wave's
+tasks were originally planned to how they actually had to run once the CONTROLLER
+STOP (below) forced a restructure. The granular, task-by-task evidence for each phase
+is in "The recipe, as it actually happened" and the Task 5 section further down;
+this section is the distilled sequence a future implementer should follow directly.
+
+1. **Census.** `nm -u` every candidate TU's `.o`, demangle, resolve each undefined
+   symbol to its home TU and library tier against a symbol→object map built across
+   every library object dir plus `ageland.dir`. Produces a per-symbol disposition
+   table (blocking vs. non-blocking, by tier) — see `.superpowers/sdd/pilot-census.md`
+   §1/§2 for the worked example (clerics: 42 symbols/6 blocking; fight: 121/17).
+2. **Closure check — do this BEFORE committing to a membership plan, not after.**
+   For every symbol the census classifies `combat-peer (still-app)`, ask: is the
+   peer's owner TU part of THIS promotion's candidate set? If yes, the edge is
+   **intra-subset** and dissolves for free once both sides land in the same commit —
+   but that also means the candidate set cannot split across separate membership
+   commits (see "The intra-subset rule" below). If no — the peer stays app-compiled
+   after this promotion — the edge remains genuinely blocking regardless of the
+   census's "combat-peer = sanctioned, non-blocking" legend, UNTIL that peer gets its
+   own seam or relocation (§7 of `pilot-census.md` is the worked example: 9 symbols
+   owned by `spell_pa`/`limits`/`mobact`/`ranger`, each individually dispositioned
+   RELOCATE or HOOK). **This step is the wave's central correction to the census
+   methodology already in use since the seed wave — see "Census-methodology
+   correction" below.** Skipping it is exactly what produced this wave's
+   CONTROLLER STOP.
+3. **Seams before conversions, landed consumer-free.** Every registered hook
+   (`combat_hooks.h`/`entity_hooks.h`/`persist_hooks.h` extensions) and every
+   destination TU a relocation will land in must exist and be gated green BEFORE any
+   call site converts to it — never build the seam and the conversion in the same
+   commit for a symbol with more than one caller, so a broken seam's build failure
+   isolates cleanly from a broken conversion's.
+4. **Byte-verbatim moves** for every census-clean symbol (zero upward refs of its
+   own, or upward refs that are themselves already in-lib/L2): relocate the whole
+   body (plus any same-file storage/sibling functions it cannot be separated from,
+   per "bundled storage-move" cases like `fight_messages`/`spllog_*`/the
+   `forget`/`remember` memory-pool package) to its L2 or in-lib destination, verified
+   with `nm` single-definition + `nm -u` caller-still-resolves checks before and
+   after.
+5. **Call-site conversions**, each a minimal, positionally-exact substitution of the
+   real call for its registered-hook dispatch equivalent — but budget for coupled
+   dead-code cleanup riding the same diff (unused locals/forward-decls/includes
+   whose only reader was the converted call; see "point 4" in the granular lessons
+   below, confirmed at three-times scale in Task 5). A TU's own conversions can land
+   and gate green WHILE the TU is still app-compiled (this is what Task 3 did for
+   `clerics.cpp` a full two tasks before its membership move) — conversions and
+   membership are separable in time as long as the TU doesn't need its own
+   membership move to build.
+6. **Joint membership move — all TUs in a closed subset promote in ONE commit.**
+   If the closure check (step 2) found intra-subset edges among two or more
+   candidate TUs, they cannot be split across separate membership commits; the
+   `*LayerAcyclicity` linkcheck has nothing sound to verify for a partial promotion
+   of a mutually-dependent set (see "Why joint {clerics, fight} membership" below for
+   the full mechanical explanation of why a lone promotion fails). A single TU with
+   no intra-subset partners promotes alone, exactly like every SEED-CLEAN TU in the
+   original combat-seed wave.
+7. **Verification is not just "does it build."** Run the actual `*LayerAcyclicity`
+   linkcheck (not the census's blocking/non-blocking label) as the final gate for
+   the membership move specifically — a census's "non-blocking" classification for a
+   same-wave sibling's symbol is *provisional*, not proof, until that sibling has
+   also actually promoted (Task 5's two census-miss fixes, `gain_exp`/
+   `waiting_list`, are the concrete evidence this step exists for real, not
+   theoretically). Also run: discriminator audit (every hook the conversions
+   exercise has a registered/unregistered test pair — Task 5 found exactly one real
+   gap, `dispatch_exploit_capture`, and closed it), full gates both hosts, both boot
+   goldens, characterization goldens byte-unchanged, ASan if any test file changed,
+   and the informational combat-smoke verify (non-gating per Task 1's rung-(b)
+   landing — read the diff, don't treat drift alone as a regression).
+
+## The intra-subset rule (this wave's central lesson)
+
+**Co-migrating TUs keep direct calls to each other; a TU seeking STANDALONE
+membership must be closed over every combat-peer edge it has, not merely "sanctioned"
+by the census's peer-reference legend.**
+
+Concretely: `clerics.cpp` calls seven `fight.cpp` functions directly
+(`set_fighting`/`stop_fighting`/`check_sanctuary`/`check_hallucinate`/`die`/`appear`)
+and `fight.cpp` calls back into `clerics.cpp` (`weapon_willpower_damage`, the
+`do_mental` ACMD). Neither of those edges needed a seam, a hook, or a call-site
+conversion — they simply became legal intra-lib calls the moment both TUs joined
+`rots_combat` in the same commit. Converting them to `issue_command()`/a registered
+hook first (the way `clerics.cpp`'s OWN up-calls into `interpre`/`big_brother` were
+converted in Task 3) would have been wasted work: a seam exists to route an edge
+*downward* past a tier boundary that doesn't move, not to paper over two files that
+are about to become the same library.
+
+The corollary is what actually blocked Task 3's original plan (promote `clerics.cpp`
+alone): a lone promotion asks `CombatLayerAcyclicity` to verify an edge
+(`clerics.cpp` → `set_fighting`) whose only real implementation still lives in the
+app tier, because `fight.cpp` hadn't promoted yet. **A candidate TU's membership move
+is standalone-safe only if closure over its own combat-peer edges holds — i.e.,
+every combat-peer symbol it references is either (a) a symbol owned by a TU that is
+ALSO promoting in the same commit, or (b) already resolved by a seam/relocation, or
+(c) already in-lib.** Any combat-peer reference that fails all three is a genuine
+blocker no census legend can wave away — see the correction below.
+
+## Census-methodology correction
+
+The combat-census/blocker-census/pilot-census family of documents used a shared
+legend: **"combat-peer = another DEFER-11 TU, sanctioned per spec §3 regardless of
+app/lib status, hence non-blocking."** That legend is only true in the specific sense
+that a cross-reference between two still-app TUs is not an *architectural* violation
+(unlike a genuine upward L2→L3 edge) — it says nothing about whether the reference
+will actually **link** once one side promotes and the other doesn't.
+
+This wave's CONTROLLER STOP (post-Task-1, on a re-read of the census) is the
+concrete correction: `pilot-census.md`'s original table correctly classified
+`clerics.cpp`'s references to `set_fighting`/`stop_fighting`/etc. as `combat-peer
+(still-app)` = non-blocking, under the inherited legend — but a standalone
+`clerics.cpp` promotion would still fail to link, because `fight.cpp` (the peer)
+hadn't promoted either. **The fix was not to change the census's classification
+rule in general — cross-referencing a still-app peer genuinely is architecturally
+sanctioned — but to add the closure check (recipe step 2 above) as a mandatory
+gate BEFORE trusting "non-blocking" to mean "this TU can promote alone."**
+
+Task 5 reconfirmed the same lesson at the linkcheck level, not just the planning
+level: the `CombatLayerAcyclicity` build itself caught two symbols
+(`gain_exp`/`waiting_list`, referenced from `clerics.cpp`, outside that task's own
+`fight.cpp`-scoped conversion work) that the census had correctly traced but
+provisionally classified — `gain_exp`'s owner (`limits.cpp`) never promoted this
+wave, so the "combat-peer, non-blocking" label held only until the linkcheck was
+actually run against the real joint-membership commit. **Lesson for later rows: run
+the real linkcheck before declaring a membership move done, even for a TU a prior
+task already fully converted — a census's non-blocking label for a same-wave
+sibling's symbol is a strong prior, not a build-wiring guarantee, and only the
+linkcheck is ground truth.** (This generalizes the same lesson `docs/BUILD.md`'s
+blocker-buster "Census errata" section already recorded for census-A/census-C's
+own build-membership mistakes — the pattern recurs across waves because a census is
+inherently a snapshot, and every subsequent task's edits can invalidate a snapshot's
+classification without anyone re-running it.)
+
+## The recipe, as it actually happened (Task 3, granular evidence)
 
 1. **Census first, from a file the previous wave already produced.**
    `.superpowers/sdd/pilot-census.md` (Task 0 of this wave) had already run `nm -u` /
@@ -345,15 +477,84 @@ Task 3) rides along into the same commit.
   `pilot-census.md` rows, picking the already-precedented fix for each) was fast
   once the failure's exact symbol names were in hand.
 
-## Status for the 9 remaining DEFER-11 rows
+## Per-TU cost table for the remaining DEFER TUs
 
-`spec_ass`/`olog_hai`/`mage`/`mystic`/`mobact`/`spell_pa`/`limits`/`ranger`/
-`spec_pro` remain app-compiled. Each promotion should: (1) read that row's
-`combat-census.md`/`pilot-census.md`-equivalent per-symbol table, not re-derive it;
-(2) build any missing seam BEFORE the conversion commit, not during; (3) budget for
-coupled dead-code cleanup riding the same diff as each converted call site; (4)
-byte-edit via Python for any CRLF file (verify first, don't assume LF); (5) run the
-actual `*LayerAcyclicity` linkcheck before declaring a membership move done, even
-for files a PRIOR task already fully converted — a census's non-blocking
-classification for a same-wave sibling TU's symbol is not proof until that sibling
-has actually promoted too.
+**Method and caveat.** This table cross-references `.superpowers/sdd/combat-census.md`
+(the 2026-07-19 seed-wave census, the last full `nm`-based per-TU survey covering
+these 9 rows + `profs`) against every seam/relocation this wave (combat-pilot) and
+the prior blocker-buster wave actually landed, to estimate what each row's blocking
+edge count looks like **today**. It is **not** a fresh Task-0-style `nm` re-run —
+per the census-methodology correction above, that re-run is mandatory before any
+future task trusts these numbers for a real promotion; treat every "RESOLVED" mark
+below as a strong prior, not ground truth, and re-verify against
+`ROTS_COMBAT_SOURCES`/the current header contents before relying on it.
+
+Global seams now available to ANY of these 9 rows (landed since the original
+combat-census, cutting across every row's edge count below):
+- **`output_seam`**: 12 forwarders total — the original 5
+  (`send_to_char`×2/`vsend_to_char`/`act`/track+untrack_mage) plus blocker-buster's 7
+  (`send_to_all`/`send_to_room`/`send_to_room_except_two`/`break_spell`/
+  `abort_delay`/`complete_delay`/the content-carrying `get_from_txt_block_pool`
+  overload). **Not** covered: `close_socket`, `descriptor_list`, `_circle_shutdown`,
+  `_no_specials`, the color-sequence globals.
+- **`combat_hooks.h`'s 25-cell ACMD dispatch** (`issue_command`): covers a real
+  `do_*` up-call IF its target is one of the 25 registered cells (`ambush`/`assist`/
+  `cast`/`close`/`flee`/`gen_com`/`hide`/`hit`/`lock`/`look`/`mental`/`move`/`open`/
+  `rescue`/`rest`/`say`/`sit`/`sleep`/`stand`/`stat`/`tell`/`trap`/`unlock`/`wake`/
+  `wear`). **Not** covered: `command_interpreter()`/`_cmd_info` (the general
+  dispatcher itself, not a `do_*` cell), `do_recover`/`do_scan`/`do_pracreset`
+  (excluded — no direct call site existed when the table was built; re-check if a
+  DEFER TU's own promotion creates one), any `do_*` target not on this list.
+- **`special()`/`call_special`**, **big_brother's `is_target_valid`
+  (both arities)/`on_character_died`** hooks — landed, consumer-tested.
+  **Not** built: `on_corpse_decayed`/`on_character_afked` (both declared in
+  `big_brother.h`, neither has a hook — only relevant if a DEFER TU calls them).
+- **`persist_hooks.h`'s `dispatch_exploit_capture`** (`add_exploit_record`) — landed,
+  externally linked as of Task 5.
+- **`combat_hooks.h`'s Task 4b quartet**: `extract_char`, `gain_exp`/
+  `gain_exp_regardless`/`remove_fame_war_bonuses`, `crash_crashsave`/`call_trigger`/
+  `pkill_create` — all landed, consumer-tested.
+- **L2/in-lib relocations now legal as plain downward or intra-lib calls from ANY
+  TU**: `stop_riding`, `remove_character_from_group`, `stop_follower` (bundled with
+  the `forget`/`remember` memory-pool package), `saves_power`, the full visibility
+  family (`CAN_SEE`×2/`CAN_SEE_OBJ`/`get_char_room_vis`/`get_player_vis`/
+  `get_char_vis`/`get_obj_in_list_vis`/`get_obj_vis`/`get_object_in_equip_vis`/
+  `generic_find`/`get_real_OB`/`get_real_parry`/`get_real_dodge`/`stop_hiding`),
+  `set_mental_delay`, `equip_char`/`unequip_char`, `record_spell_damage` (+
+  `spllog_*` storage), `check_break_prep` (its own internal `do_trap` up-call already
+  converts through the existing `trap` cell), `extract_obj`/`obj_from_char` (from the
+  earlier placement-seam wave).
+
+**Still open for every row below, no seam exists yet**: `close_socket`,
+`descriptor_list`, `_circle_shutdown`, `command_interpreter()`/`_cmd_info`, the
+`graph.cpp` pathfinding family (`find_first_step`/`show_tracks`), the `mudlle`
+scripting-engine family (`intelligent`), the `boards`/`mail`/`objsave` spec-proc
+registrar family (`gen_board`/`postmaster`/`receptionist`), `one_argument`/other
+`interpre.cpp` parse helpers, and any `handler.cpp`/`utility.cpp` function not
+listed as relocated above (`char_from_room`, `add_follower`, `get_guardian_type`,
+`recalc_zone_power`, `report_zone_power`, `affect_remove_notify`, and others — all
+confirmed still resident in `handler.cpp`/`utility.cpp` by direct grep as of this
+task).
+
+| TU | Original blocking edges (combat-census) | RESOLVED by this wave + blocker-buster | Remains open | Closure-partner constraint |
+|---|---|---|---|---|
+| **olog_hai** | L2-app=4 (`get_char_room_vis`/`CAN_SEE`/`get_real_OB`/`get_real_parry`); app-output=2 (`abort_delay`/`complete_delay`); app-command=2 (`do_move`/act_move, `one_argument`/interpre); app-session=5 (`_arg`/`_buf`/`_buf2`/`_waiting_list`/db_boot, `is_target_valid`) | **All 4 L2-app edges** (visibility family, in-lib); **both app-output edges**; `is_target_valid` (1 of 5 app-session); `do_move` IF its target is the 25-cell `move` cell (re-verify the real call shape) | `one_argument` (no seam); `_arg`/`_buf`/`_buf2`/`_waiting_list` retirement (per-TU work, precedent exists — same technique as fight.cpp's 29-use retirement) | combat-peer=6 (unspecified partners in the original census row — re-derive via fresh `nm`); **the closest row to SEED-CLEAN of the 9** — only a buf-family retirement and one unseamed parse helper stand between it and a Task-3-style conversion-only pass |
+| **mobact** | L2-app=2 (`CAN_SEE`/`CAN_SEE_OBJ`); app-output=1 (`_no_specials`/comm); app-command=12 (mob-AI `do_*` issuance); app-session=1 (`_buf`); app-other=2 (`find_first_step`/graph, `intelligent`/mudlle) | Both L2-app edges (visibility family); command-issuance up-calls have somewhere to convert to for any of the 12 that land on the 25-cell table (conversion itself still unstarted — mobact defines neither `forget` nor `remember` anymore, both already relocated out to `entity_lifecycle.cpp`, so mobact's own remaining `forget()` self-call at mobact.cpp:392 already resolves as a legal downward L2 call) | `_no_specials` (no seam); `_buf` retirement (per-TU); `find_first_step`/`intelligent` (no seam — pathfinding + mudlle script-engine families, neither touched by any wave to date); re-verify which of the 12 `do_*` targets actually land on the 25-cell table vs. need a new cell | combat-peer=1 (minor, re-derive) |
+| **mystic** | L2-app=6 (`add_follower`/`get_char_room_vis`/`stop_follower`/`stop_riding`/`CAN_SEE_OBJ`/`set_mental_delay`); app-output=1 (`send_to_room`); app-command=5 (interpre text-parse + `do_flee`+`remove_character_from_group`); app-session=1 (`_buf`) | 5 of 6 L2-app edges (`get_char_room_vis`/`CAN_SEE_OBJ`/`stop_riding`/`stop_follower`/`set_mental_delay` — all in-lib or L2 now); `send_to_room`; `do_flee` (issue_command exists) + `remove_character_from_group` (relocated to L2 in Task 2 — genuinely surprising overlap: this wave's clerics-adjacent seam work incidentally unblocked a mystic edge too) | `add_follower` (no seam, still handler.cpp); the specific interpre text-parse helper names (not yet identified — re-derive); `_buf` retirement | combat-peer=8 — mystic is the **owner** of `scale_guardian`, which `profs.cpp` calls; mystic itself has no reverse dependency on `profs`, but `profs`'s own promotion is gated on mystic (see profs row) |
+| **mage** | L2-app=3 (`char_from_room`/`report_zone_power`/`stop_riding`); app-output=2 (`break_spell`/`send_to_room`); app-command=5 (`do_look`/`do_identify_object`/`list_char_to_char`/act_info, `msdp_room_update`/`prohibit_item_stay_zone_move`/act_move — none are `do_*` ACMD cells, ordinary helper functions); app-session=1 (`_buf`) | `stop_riding`; both app-output edges | `char_from_room`/`report_zone_power` (no seam, still handler.cpp); all 5 app-command helpers (no seam — these are not ACMD dispatch targets, a different class of edge than `do_flee`/`do_stand`); `_buf` retirement | combat-peer=7 — part of the spell-casting family `spell_pa.cpp` binds together (see spell_pa row); mage cannot be assumed closeable independent of that hub without a fresh check |
+| **limits** | L2-app=7 (`char_from_room`/`extract_char`/`extract_obj`/`recalc_zone_power`/`report_zone_power`/`affect_remove_notify`/`stop_riding`); app-output=4 (`send_to_all`/`send_to_room`/`close_socket`/`_circle_shutdown`); app-command=1 (`do_flee`); app-session=4 (`_buf`/`add_exploit_record`/big_brother×2); app-other=4 (objsave `Crash_*`×3/pkill) | `extract_char` (hook), `extract_obj` (L2), `stop_riding` (L2); `send_to_all`/`send_to_room`; `do_flee` (issue_command); `add_exploit_record` (persist_hooks), `is_target_valid`+`on_character_died` (2 of the big_brother×2); `pkill_create` and ONE of the 3 `Crash_*` calls (`Crash_crashsave` specifically — re-verify the other two `Crash_*` names are genuinely distinct functions, not the same one counted twice) | `char_from_room`/`recalc_zone_power`/`report_zone_power`/`affect_remove_notify` (no seam); `close_socket`/`_circle_shutdown` (no seam); `_buf` retirement; any non-`Crash_crashsave` `Crash_*` calls | combat-peer=10 (re-derive) — **limits.cpp is already the REGISTRAR for its own `gain_exp`/`gain_exp_regardless`/`remove_fame_war_bonuses` hooks** (Task 4b: `register_gain_exp_hook()`/`register_gain_exp_regardless_hook()`/`register_remove_fame_war_bonuses_hook()`, all defined in `limits.cpp` itself). **ALREADY BUILT** — a future `limits.cpp` promotion needs zero new seam design for those three symbols; the registrar calls simply become dead self-registration once `limits.cpp` is in-lib (fight.cpp/clerics.cpp's existing `rots::combat::gain_exp()`-style calls keep working unchanged, same "no-conversion, intra-lib" rule Task 5 established for `do_mental`) and can be deleted as a cheap follow-on cleanup, not a blocker |
+| **ranger** | L2-app=11 (`generic_find`/`get_char_room_vis`/`add_follower`/`obj_from_char`/`stop_*`/`CAN_SEE`/`get_real_OB`/`get_real_parry`); app-output=3 (`abort_delay`/`complete_delay`/`get_from_txt_block_pool`); app-command=9 (interpre parse + act_move door/move helpers); app-session=6 (db_boot globals + big_brother×2); app-other=1 (`show_tracks`/graph) | 10 of 11 L2-app edges (visibility family incl. `generic_find`; `stop_riding`/`stop_follower`; `obj_from_char`) — note `stop_hiding` itself, ranger's OWN symbol, already relocated OUT to `visibility.cpp` this wave, so ranger no longer defines it at all; all 3 app-output edges; `is_target_valid`+`on_character_died` (2 of the big_brother×2) | `add_follower` (no seam); the 9 app-command parse/door/move helpers (no seam — not ACMD cells); remaining db_boot globals (4 of the 6 app-session edges); `show_tracks` (no seam) | combat-peer=9 — ranger owns `do_trap` (the ACMD `check_break_prep`'s HOOK conversion already targets, resolved this wave) and is one of `spell_pa`'s 76-peer closure partners (see spell_pa row); do not assume ranger closes independent of that hub |
+| **spec_pro** | L2-app=11 (handler/utility find/extract/stop/CAN_SEE family); app-output=4 (`send_to_room`/`abort_delay`/`complete_delay`/`get_from_txt_block_pool`); app-command=19 (`command_interpreter`/`_cmd_info` + ~a dozen `do_*`); app-session=3 (`_buf`/`_waiting_list`/`add_exploit_record`); app-other=1 (`find_first_step`/graph) | Most of the L2-app=11 (extract_char hook, stop_family L2, visibility family in-lib — exact count needs re-derivation); all 4 app-output edges; `add_exploit_record` (persist_hooks) | `command_interpreter()`/`_cmd_info` (no seam — the general dispatcher, not a `do_*` cell); the ~dozen `do_*` calls need re-verification against the 25-cell list (some of spec_pro's commands may not be among the 25, per combat_hooks.h's own file comment excluding names with "no direct call site... reachable only through the general command_interpreter" at table-build time — spec_pro is exactly the kind of TU that could create a new such call site); `_buf`/`_waiting_list` retirement; `find_first_step` (no seam) | combat-peer=17 — **the closure anchor for `spec_ass`** (spec_ass's row shows combat-peer=39, nearly all pointed at spec_pro); spec_pro is a command-driver TU in its own right (19 app-command edges, the largest of any row after mobact/ranger) and is unlikely to close without a dedicated command-dispatch investigation beyond the existing 25-cell table |
+| **spell_pa** | combat-peer=76 (ALL spell TUs + fight + ranger + battle_mage — the whole-row registrar/`do_cast` hub); app-output=3 (`descriptor_list`/`abort_delay`/`complete_delay`); app-command=2 (`report_wrong_target`/`target_from_word`/interpre); app-session=5 (`_buf`/`_waiting_list`/`_color_sequence`+`get_color_sequence`/color/`is_target_valid`) | 3 symbols moved out entirely this wave: `saves_power` (→ `char_utils_combat.cpp`, L2), `record_spell_damage` + its `spllog_*` storage (→ `fight.cpp`, in-lib), `check_break_prep` (→ `fight.cpp`, in-lib, its internal `do_trap` up-call already converts through the existing `trap` cell — no new hook needed); both `abort_delay`/`complete_delay`; `is_target_valid` | **The 76-peer count is this wave's untouched core** — spell_pa is the spell-casting registrar; nearly every remaining peer edge is a same-family cross-reference (mage/mystic/ranger/battle_mage's own spell-adjacent functions) that only dissolves once ALL of them are in the SAME promotion commit, per the intra-subset rule above; `descriptor_list`/`report_wrong_target`/`target_from_word`/`_buf`/`_waiting_list`/color-sequence globals all still open | **The single largest closure-partner constraint in the whole DEFER list.** Per the intra-subset rule, spell_pa cannot promote standalone or even paired with one partner — it needs the full spell-casting family (mage, mystic, ranger's casting-adjacent surface, battle_mage — already in-lib) closed simultaneously. This is architecturally the "Ambitious" tier the original combat-census flagged, not a single-wave pilot-style promotion; treat spell_pa as a multi-TU wave of its own, not a row in a per-TU table, when it is actually scheduled |
+| **spec_ass** | combat-peer=39 (→ spec_pro); app-other=3 (`gen_board`/boards, `postmaster`/mail, `receptionist`/objsave — spec-proc fn-ptrs) | **Nothing** — this wave built no seam touching boards/mail/objsave spec-proc registration, and did not touch spec_pro | Everything: the 3 app-other spec-proc registrar edges need their own hook family (none built to date, a different taxonomy than any of this wave's seams — these are fn-ptr registrations INTO other subsystems, not up-calls out of spec_ass); the 39 combat-peer edges (dominated by spec_pro) | **Fully gated on spec_pro's own promotion** (see spec_pro row) — spec_ass is not independently schedulable; do not attempt it before spec_pro closes |
+| **profs** *(caveated SEED-WITH-SEAM in the original census, not a DEFER-11 row)* | L2-app=1 (`get_guardian_type`/utility); app-session=2 (`_buf`/`add_exploit_record`/db_boot); combat-peer=1 (`scale_guardian`/mystic → drags mystic) | `add_exploit_record` (persist_hooks) | `get_guardian_type` (no seam, still utility.cpp); `_buf` retirement | `scale_guardian` (mystic.cpp) still drags in all of mystic's own remaining blockers (see mystic row) — UNLESS `scale_guardian` itself turns out to be a small, census-clean, standalone-relocatable function the way `saves_power` was (not checked this wave — worth a fresh look before assuming profs needs mystic's full promotion) |
+
+**General next-row guidance** (unchanged principles, now backed by the table above):
+(1) read this table + a fresh `nm` re-run for the target row, don't trust either
+alone; (2) build any missing seam BEFORE the conversion commit, not during; (3)
+budget for coupled dead-code cleanup riding the same diff as each converted call
+site; (4) byte-edit via Python for any CRLF file (verify first, don't assume LF);
+(5) run the actual `*LayerAcyclicity` linkcheck before declaring a membership move
+done, even for files a PRIOR task already fully converted — apply the closure check
+(recipe step 2) explicitly before picking a candidate subset, not after a build
+failure forces it.

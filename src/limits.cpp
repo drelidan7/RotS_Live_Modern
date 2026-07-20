@@ -10,6 +10,7 @@
 
 #include "limits.h"
 #include "fp_policy.h"
+#include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
 #include "handler.h"
@@ -480,6 +481,21 @@ void gain_exp_regardless(char_data* character, int gain)
         affect_total(character);
         GET_HIT(character) = std::max(GET_HIT(character), GET_MAX_HIT(character) - hp_lack);
     }
+}
+
+// Registers the real gain_exp()/gain_exp_regardless() bodies above as
+// combat_hooks.h's matching hooks (combat-pilot wave Task 4b;
+// pilot-census.md section 7.4/7.5). Called once from run_the_game(),
+// before boot_db() -- same convention as handler.cpp's
+// register_extract_char_hook().
+void register_gain_exp_hook()
+{
+    rots::combat::set_gain_exp_hook(gain_exp);
+}
+
+void register_gain_exp_regardless_hook()
+{
+    rots::combat::set_gain_exp_regardless_hook(gain_exp_regardless);
 }
 
 void gain_condition(struct char_data* ch, int condition, int value)
@@ -1217,6 +1233,15 @@ void remove_fame_war_bonuses(struct char_data* ch, struct affected_type*)
     affected_type* aff = affected_by_spell(ch, SPELL_FAME_WAR);
     assign_pk_bonuses(ch, coeff, aff->modifier, false);
     recalc_abilities(ch);
+}
+
+// Registers the real remove_fame_war_bonuses() body above as
+// combat_hooks.h's matching hook (combat-pilot wave Task 4b;
+// pilot-census.md section 7.6). Called once from run_the_game(), before
+// boot_db() -- same registrar file as register_gain_exp_hook() above.
+void register_remove_fame_war_bonuses_hook()
+{
+    rots::combat::set_remove_fame_war_bonuses_hook(remove_fame_war_bonuses);
 }
 
 void do_fame_war_bonuses(struct char_data* ch)

@@ -48,6 +48,7 @@
 #include "../comm.h"
 #include "../handler.h"
 #include "../interpre.h"
+#include "../limits.h"
 #include "../output_seam.h"
 #include "../utils.h"
 #include "rots/core/character.h"
@@ -513,4 +514,172 @@ TEST(CombatHooksExtractChar, DispatchDefaultsToANoOpWhenUnregistered)
         << "Expected an unregistered extract_char hook to leave the (unrelated) stub's own "
            "recording flag untouched -- the real forwarder never ran, and the tripwire default "
            "is a logged no-op, not a call to any stub.";
+}
+
+// -----------------------------------------------------------------------
+// Task 4b hooks (combat-pilot wave): gain_exp/gain_exp_regardless/
+// remove_fame_war_bonuses (limits.cpp; pilot-census.md section 7.4/7.5/7.6).
+// Same recording-stub discriminator shape as CombatHooksExtractChar above.
+// -----------------------------------------------------------------------
+
+namespace {
+
+struct RecordedGainExpCall {
+    char_data* ch = nullptr;
+    int gain = 0;
+    bool called = false;
+};
+
+RecordedGainExpCall g_recorded_gain_exp_call;
+
+void recording_gain_exp_stub(char_data* ch, int gain)
+{
+    g_recorded_gain_exp_call = RecordedGainExpCall { ch, gain, true };
+}
+
+class ScopedGainExpHook {
+public:
+    explicit ScopedGainExpHook(rots::combat::gain_exp_fn hook)
+    {
+        rots::combat::set_gain_exp_hook(hook);
+    }
+
+    ~ScopedGainExpHook() { register_gain_exp_hook(); }
+
+    ScopedGainExpHook(const ScopedGainExpHook&) = delete;
+    ScopedGainExpHook& operator=(const ScopedGainExpHook&) = delete;
+};
+
+RecordedGainExpCall g_recorded_gain_exp_regardless_call;
+
+void recording_gain_exp_regardless_stub(char_data* ch, int gain)
+{
+    g_recorded_gain_exp_regardless_call = RecordedGainExpCall { ch, gain, true };
+}
+
+class ScopedGainExpRegardlessHook {
+public:
+    explicit ScopedGainExpRegardlessHook(rots::combat::gain_exp_regardless_fn hook)
+    {
+        rots::combat::set_gain_exp_regardless_hook(hook);
+    }
+
+    ~ScopedGainExpRegardlessHook() { register_gain_exp_regardless_hook(); }
+
+    ScopedGainExpRegardlessHook(const ScopedGainExpRegardlessHook&) = delete;
+    ScopedGainExpRegardlessHook& operator=(const ScopedGainExpRegardlessHook&) = delete;
+};
+
+struct RecordedRemoveFameWarBonusesCall {
+    char_data* ch = nullptr;
+    affected_type* pkaff = nullptr;
+    bool called = false;
+};
+
+RecordedRemoveFameWarBonusesCall g_recorded_remove_fame_war_bonuses_call;
+
+void recording_remove_fame_war_bonuses_stub(char_data* ch, affected_type* pkaff)
+{
+    g_recorded_remove_fame_war_bonuses_call = RecordedRemoveFameWarBonusesCall { ch, pkaff, true };
+}
+
+class ScopedRemoveFameWarBonusesHook {
+public:
+    explicit ScopedRemoveFameWarBonusesHook(rots::combat::remove_fame_war_bonuses_fn hook)
+    {
+        rots::combat::set_remove_fame_war_bonuses_hook(hook);
+    }
+
+    ~ScopedRemoveFameWarBonusesHook() { register_remove_fame_war_bonuses_hook(); }
+
+    ScopedRemoveFameWarBonusesHook(const ScopedRemoveFameWarBonusesHook&) = delete;
+    ScopedRemoveFameWarBonusesHook& operator=(const ScopedRemoveFameWarBonusesHook&) = delete;
+};
+
+} // namespace
+
+TEST(CombatHooksGainExp, DispatchReachesARegisteredStubWithArgsIntact)
+{
+    g_recorded_gain_exp_call = RecordedGainExpCall {};
+    ScopedGainExpHook scoped(recording_gain_exp_stub);
+    char_data character {};
+
+    rots::combat::gain_exp(&character, 500);
+
+    EXPECT_TRUE(g_recorded_gain_exp_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_gain_exp_call.ch, &character);
+    EXPECT_EQ(g_recorded_gain_exp_call.gain, 500);
+}
+
+TEST(CombatHooksGainExp, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_gain_exp_call = RecordedGainExpCall {};
+    ScopedGainExpHook unregistered(nullptr);
+    char_data character {};
+
+    rots::combat::gain_exp(&character, 500);
+
+    EXPECT_FALSE(g_recorded_gain_exp_call.called)
+        << "Expected an unregistered gain_exp hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default "
+           "is a logged no-op, not a call to any stub.";
+}
+
+TEST(CombatHooksGainExpRegardless, DispatchReachesARegisteredStubWithArgsIntact)
+{
+    g_recorded_gain_exp_regardless_call = RecordedGainExpCall {};
+    ScopedGainExpRegardlessHook scoped(recording_gain_exp_regardless_stub);
+    char_data character {};
+
+    rots::combat::gain_exp_regardless(&character, -750);
+
+    EXPECT_TRUE(g_recorded_gain_exp_regardless_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_gain_exp_regardless_call.ch, &character);
+    EXPECT_EQ(g_recorded_gain_exp_regardless_call.gain, -750);
+}
+
+TEST(CombatHooksGainExpRegardless, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_gain_exp_regardless_call = RecordedGainExpCall {};
+    ScopedGainExpRegardlessHook unregistered(nullptr);
+    char_data character {};
+
+    rots::combat::gain_exp_regardless(&character, -750);
+
+    EXPECT_FALSE(g_recorded_gain_exp_regardless_call.called)
+        << "Expected an unregistered gain_exp_regardless hook to leave the (unrelated) stub's "
+           "own recording flag untouched -- the real forwarder never ran, and the tripwire "
+           "default is a logged no-op, not a call to any stub.";
+}
+
+TEST(CombatHooksRemoveFameWarBonuses, DispatchReachesARegisteredStubWithArgsIntact)
+{
+    g_recorded_remove_fame_war_bonuses_call = RecordedRemoveFameWarBonusesCall {};
+    ScopedRemoveFameWarBonusesHook scoped(recording_remove_fame_war_bonuses_stub);
+    char_data character {};
+    affected_type pkaff {};
+
+    rots::combat::remove_fame_war_bonuses(&character, &pkaff);
+
+    EXPECT_TRUE(g_recorded_remove_fame_war_bonuses_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_remove_fame_war_bonuses_call.ch, &character);
+    EXPECT_EQ(g_recorded_remove_fame_war_bonuses_call.pkaff, &pkaff);
+}
+
+TEST(CombatHooksRemoveFameWarBonuses, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_remove_fame_war_bonuses_call = RecordedRemoveFameWarBonusesCall {};
+    ScopedRemoveFameWarBonusesHook unregistered(nullptr);
+    char_data character {};
+    affected_type pkaff {};
+
+    rots::combat::remove_fame_war_bonuses(&character, &pkaff);
+
+    EXPECT_FALSE(g_recorded_remove_fame_war_bonuses_call.called)
+        << "Expected an unregistered remove_fame_war_bonuses hook to leave the (unrelated) "
+           "stub's own recording flag untouched -- the real forwarder never ran, and the "
+           "tripwire default is a logged no-op, not a call to any stub.";
 }

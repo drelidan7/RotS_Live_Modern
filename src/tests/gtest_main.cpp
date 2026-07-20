@@ -4,6 +4,7 @@
 #include "../comm.h"
 #include "../db.h"
 #include "../handler.h"
+#include "../limits.h"
 #include "../mudlle.h"
 #include "../protocol.h"
 #include "../rots_net.h"
@@ -204,6 +205,19 @@ int main(int argc, char* argv[]) {
     // exists for this wave's own seam tests (combat_hooks_tests.cpp), the same
     // bridge-before-traffic posture as every other hook this file registers.
     register_extract_char_hook();
+    // combat_hooks.h's gain_exp/gain_exp_regardless/remove_fame_war_bonuses
+    // hooks (combat-pilot wave Task 4b), registered for the same
+    // real-body-fidelity reason as the calls above: without them this test
+    // process would silently exercise their tripwire-logged no-op defaults
+    // instead of limits.cpp's real bodies that ageland registers at boot --
+    // limits.cpp is already linked into both test binaries, so this only
+    // needs the registration calls. No production call site dispatches
+    // through these hooks yet (see combat_hooks.h), so these calls exist for
+    // this wave's own seam tests (combat_hooks_tests.cpp), the same
+    // bridge-before-traffic posture as every other hook this file registers.
+    register_gain_exp_hook();
+    register_gain_exp_regardless_hook();
+    register_remove_fame_war_bonuses_hook();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

@@ -75,6 +75,7 @@
 
 struct char_data;
 struct waiting_type;
+struct affected_type;
 
 namespace rots::combat {
 
@@ -210,5 +211,37 @@ using extract_char_fn = void (*)(char_data* ch, int new_room);
 void set_extract_char_hook(extract_char_fn hook);
 void extract_char(char_data* ch, int new_room);
 void extract_char(char_data* ch);
+
+
+// gain_exp()/gain_exp_regardless() (limits.h:33-34, limits.cpp:413/437;
+// pilot-census.md section 7.4/7.5) -- gain_exp()'s own body only calls
+// gain_exp_regardless() (same file), and gain_exp_regardless() calls
+// advance_mini_level() -> advance_level()/advance_level_prof(), limits.cpp's
+// own multi-function leveling subsystem -- not a single-symbol relocation
+// candidate, hence HOOK rather than MOVE for both. Two separate fn-ptrs
+// (not one struct), matching this header's existing one-fn-ptr-per-symbol
+// convention (e.g. set_special_handler above). limits.cpp registers both
+// real bodies via register_gain_exp_hook()/register_gain_exp_regardless_hook()
+// (limits.h/limits.cpp), an app-side registrar pair (limits.cpp stays
+// app-compiled after this wave). Tripwire default: a LOGGED no-op (void
+// class, same taxonomy as extract_char above).
+using gain_exp_fn = void (*)(char_data* ch, int gain);
+void set_gain_exp_hook(gain_exp_fn hook);
+void gain_exp(char_data* ch, int gain);
+
+using gain_exp_regardless_fn = void (*)(char_data* ch, int gain);
+void set_gain_exp_regardless_hook(gain_exp_regardless_fn hook);
+void gain_exp_regardless(char_data* ch, int gain);
+
+// remove_fame_war_bonuses() (limits.h:40, limits.cpp:1214; pilot-census.md
+// section 7.6) -- pulls an 8-function/~190-line same-file
+// assign_pk_bonuses()/set_player_*() cluster, out of this task's
+// single-symbol relocation scope, hence HOOK. limits.cpp registers the real
+// body via register_remove_fame_war_bonuses_hook() (limits.h/limits.cpp),
+// riding the same registrar file as the gain_exp pair above. Tripwire
+// default: LOGGED no-op (void class).
+using remove_fame_war_bonuses_fn = void (*)(char_data* ch, affected_type* pkaff);
+void set_remove_fame_war_bonuses_hook(remove_fame_war_bonuses_fn hook);
+void remove_fame_war_bonuses(char_data* ch, affected_type* pkaff);
 
 } // namespace rots::combat

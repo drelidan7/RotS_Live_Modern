@@ -670,6 +670,15 @@ void run_the_game(sh_int port)
     // ageland never runs a future rots::combat::extract_char() call site with
     // an unregistered hook (no call site converts yet -- see combat_hooks.h).
     register_extract_char_hook();
+    // combat_hooks.h's gain_exp/gain_exp_regardless/remove_fame_war_bonuses
+    // hooks (combat-pilot wave Task 4b), registered the same way and for the
+    // same reason: before boot_db(), so ageland never runs a future
+    // rots::combat::gain_exp()/gain_exp_regardless()/remove_fame_war_bonuses()
+    // call site with an unregistered hook (no call site converts yet -- see
+    // combat_hooks.h).
+    register_gain_exp_hook();
+    register_gain_exp_regardless_hook();
+    register_remove_fame_war_bonuses_hook();
 
     log("Signal trapping.");
     signal_setup();

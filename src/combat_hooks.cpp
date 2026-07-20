@@ -41,6 +41,9 @@ rots::combat::special_fn g_special_handler = nullptr;
 // per-owner registrar (handler.cpp/limits.cpp/objsave.cpp/script.cpp/
 // pkill.cpp) runs.
 rots::combat::extract_char_fn g_extract_char_hook = nullptr;
+rots::combat::gain_exp_fn g_gain_exp_hook = nullptr;
+rots::combat::gain_exp_regardless_fn g_gain_exp_regardless_hook = nullptr;
+rots::combat::remove_fame_war_bonuses_fn g_remove_fame_war_bonuses_hook = nullptr;
 
 } // namespace
 
@@ -104,6 +107,58 @@ void extract_char(char_data* ch, int new_room)
 void extract_char(char_data* ch)
 {
     extract_char(ch, -1);
+}
+
+
+// gain_exp()/gain_exp_regardless()/remove_fame_war_bonuses() dispatch
+// (Task 4b) -- see combat_hooks.h's comments above for the HOOK-not-MOVE
+// rationale for each.
+void set_gain_exp_hook(gain_exp_fn hook)
+{
+    g_gain_exp_hook = hook;
+}
+
+void gain_exp(char_data* ch, int gain)
+{
+    if (g_gain_exp_hook) {
+        g_gain_exp_hook(ch, gain);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB gain_exp() called with no handler registered -- this should be "
+        "unreachable once register_gain_exp_hook() has run.");
+}
+
+void set_gain_exp_regardless_hook(gain_exp_regardless_fn hook)
+{
+    g_gain_exp_regardless_hook = hook;
+}
+
+void gain_exp_regardless(char_data* ch, int gain)
+{
+    if (g_gain_exp_regardless_hook) {
+        g_gain_exp_regardless_hook(ch, gain);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB gain_exp_regardless() called with no handler registered -- this "
+        "should be unreachable once register_gain_exp_regardless_hook() has run.");
+}
+
+void set_remove_fame_war_bonuses_hook(remove_fame_war_bonuses_fn hook)
+{
+    g_remove_fame_war_bonuses_hook = hook;
+}
+
+void remove_fame_war_bonuses(char_data* ch, affected_type* pkaff)
+{
+    if (g_remove_fame_war_bonuses_hook) {
+        g_remove_fame_war_bonuses_hook(ch, pkaff);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB remove_fame_war_bonuses() called with no handler registered -- "
+        "this should be unreachable once register_remove_fame_war_bonuses_hook() has run.");
 }
 
 } // namespace rots::combat

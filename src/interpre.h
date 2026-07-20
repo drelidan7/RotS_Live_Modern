@@ -388,4 +388,13 @@ struct ferry_captain_type {
     char move_in_inside[255];
 };
 
+// Populates combat_hooks.h's boot-registered command-dispatch table
+// (rots::combat::combat_command -> ACMD pointer). Defined in interpre.cpp,
+// which already forward-declares every ACMD target this wires (blocker-
+// buster wave Task 2, assign_spell_pointers()/spells.h precedent). Called
+// from db_boot.cpp, immediately alongside assign_spell_pointers()/
+// assign_command_pointers() in boot_db()'s "Commands." phase -- see
+// combat_hooks.h for why no call site converts to it yet this wave.
+void register_combat_command_dispatch();
+
 #endif /* INTERPRE_H */

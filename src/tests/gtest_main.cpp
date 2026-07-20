@@ -158,6 +158,19 @@ int main(int argc, char* argv[]) {
     // linked into both test binaries, so this only needs the registration
     // call.
     register_world_resolver_hooks();
+    // combat_hooks.h's boot-registered command-dispatch table (blocker-
+    // buster wave Task 2), registered for the same real-body-fidelity reason
+    // as the calls above: without it, a test that calls
+    // rots::combat::issue_command() would silently exercise the tripwire-
+    // logged no-op default instead of the real do_hit()/do_flee()/etc.
+    // ACMD bodies ageland registers at boot -- interpre.cpp (which defines
+    // register_combat_command_dispatch()) is already linked into both test
+    // binaries, so this only needs the registration call. No production
+    // call site dispatches through this table yet (see combat_hooks.h), so
+    // this call exists for this wave's own seam tests
+    // (combat_hooks_tests.cpp), the same bridge-before-traffic posture as
+    // every other hook this file registers.
+    register_combat_command_dispatch();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

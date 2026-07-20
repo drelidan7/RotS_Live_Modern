@@ -1,0 +1,53 @@
+// combat_hooks.cpp -- backing storage + dispatch for combat_hooks.h's
+// boot-registered command-dispatch table (blocker-buster wave Task 2; see
+// combat_hooks.h's file comment for the full design). Joins
+// ROTS_COMBAT_SOURCES: like output_seam.cpp (its closest precedent -- a
+// seam header with several FUTURE callers rather than one owning TU, hence
+// its own dedicated .cpp instead of folding storage into a caller file the
+// way entity_hooks.h's per-hook pairs do), it only reaches down into
+// rots::log (RotS::platform) for its tripwire message and passes
+// char_data*/waiting_type* straight through opaquely -- never dereferenced,
+// never allocated -- so no game-type header is needed here.
+
+#include "combat_hooks.h"
+
+#include "rots/platform/log.h"
+
+#include <array>
+#include <cstddef>
+#include <format>
+
+namespace {
+
+// Backing storage: a plain array of function pointers, zero-initialized
+// (all nullptr) at compile time -- same "POD aggregate, no dynamic
+// initializer, no static-init-order risk" reasoning as output_seam.cpp's
+// g_sinks. Null until register_combat_command_dispatch() (interpre.cpp)
+// runs, mirroring assign_spell_pointers()'s skills[] population.
+std::array<rots::combat::acmd_fn, static_cast<std::size_t>(rots::combat::combat_command::count)>
+    g_command_table {};
+
+} // namespace
+
+namespace rots::combat {
+
+void set_combat_command(combat_command command, acmd_fn handler)
+{
+    g_command_table[static_cast<std::size_t>(command)] = handler;
+}
+
+void issue_command(
+    combat_command command, char_data* ch, char* argument, waiting_type* wtl, int cmd, int subcmd)
+{
+    const std::size_t index = static_cast<std::size_t>(command);
+    if (g_command_table[index]) {
+        g_command_table[index](ch, argument, wtl, cmd, subcmd);
+        return;
+    }
+    rots::log::write_stderr(std::format(
+        "rots::combat: STUB issue_command(cell={}) called with no handler registered -- this "
+        "should be unreachable once register_combat_command_dispatch() has run.",
+        index));
+}
+
+} // namespace rots::combat

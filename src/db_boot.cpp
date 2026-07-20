@@ -411,6 +411,14 @@ void boot_db(void)
 
     log("   Commands.");
     assign_spell_pointers();
+    // combat_hooks.h's boot-registered command-dispatch table (blocker-
+    // buster wave Task 2) -- same "assign_*, before assign_command_pointers()"
+    // slot as assign_spell_pointers() above; no ageland call site dispatches
+    // through it yet (see combat_hooks.h), so ordering relative to
+    // assign_command_pointers() below is not behavior-load-bearing this
+    // wave -- placed here purely to keep every boot-time table populated in
+    // one place.
+    register_combat_command_dispatch();
     assign_command_pointers();
 
     log("Sorting command list.");

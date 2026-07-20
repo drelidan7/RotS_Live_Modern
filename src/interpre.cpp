@@ -23,6 +23,7 @@
 
 #include "account_management.h"
 #include "color.h"
+#include "combat_hooks.h"
 #include "comm.h"
 #include "convert_exploits.h"
 #include "convert_plrobjs.h"
@@ -2247,6 +2248,48 @@ void assign_command_pointers(void)
         FULL_TARGET, FULL_TARGET, 0);
     COMMANDO(251, POSITION_DEAD, do_savebench, LEVEL_IMPL, FALSE, 0,
         TAR_IGNORE, TAR_IGNORE, 0);
+}
+
+// Populates combat_hooks.h's boot-registered command-dispatch table with
+// the real ACMD pointer for each of its 24 cells (see that header's file
+// comment for the full census-C target-list reconciliation). Defined
+// here, not in combat_hooks.cpp, because this file already forward-
+// declares every target below for its own _cmd_info table -- the same
+// "already visits every symbol it wires" reason assign_spell_pointers()
+// lives in spell_pa.cpp rather than consts.cpp. Called once from
+// db_boot.cpp, alongside assign_spell_pointers()/assign_command_pointers()
+// above -- see combat_hooks.h for why no call site converts to this table
+// yet this wave (four cells -- ambush/cast/hide/trap -- resolve to other
+// not-yet-promoted combat-row TUs today; the rest resolve to act_*.cpp).
+void register_combat_command_dispatch()
+{
+    using rots::combat::combat_command;
+    using rots::combat::set_combat_command;
+
+    set_combat_command(combat_command::ambush, do_ambush); // ranger.cpp
+    set_combat_command(combat_command::assist, do_assist);
+    set_combat_command(combat_command::cast, do_cast); // spell_pa.cpp
+    set_combat_command(combat_command::close, do_close);
+    set_combat_command(combat_command::flee, do_flee);
+    set_combat_command(combat_command::gen_com, do_gen_com);
+    set_combat_command(combat_command::hide, do_hide); // ranger.cpp
+    set_combat_command(combat_command::hit, do_hit);
+    set_combat_command(combat_command::lock, do_lock);
+    set_combat_command(combat_command::look, do_look);
+    set_combat_command(combat_command::move, do_move);
+    set_combat_command(combat_command::open, do_open);
+    set_combat_command(combat_command::rescue, do_rescue);
+    set_combat_command(combat_command::rest, do_rest);
+    set_combat_command(combat_command::say, do_say);
+    set_combat_command(combat_command::sit, do_sit);
+    set_combat_command(combat_command::sleep, do_sleep);
+    set_combat_command(combat_command::stand, do_stand);
+    set_combat_command(combat_command::stat, do_stat);
+    set_combat_command(combat_command::tell, do_tell);
+    set_combat_command(combat_command::trap, do_trap); // ranger.cpp
+    set_combat_command(combat_command::unlock, do_unlock);
+    set_combat_command(combat_command::wake, do_wake);
+    set_combat_command(combat_command::wear, do_wear);
 }
 
 /* *************************************************************************

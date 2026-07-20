@@ -240,9 +240,24 @@ set(ROTS_WORLD_SOURCES
 # tests/gtest_main.cpp's test-fixture setup both call them before boot -- a
 # legal app(ROTS_SERVER_SOURCES)->lib(RotS::combat) downward call, not an
 # upward edge; the declarations remain visible via warrior_spec_handlers.h.
+#
+# combat_hooks.cpp JOINS HERE (blocker-buster wave Task 2, census section C):
+# backing storage + dispatch for combat_hooks.h's boot-registered command-
+# dispatch table (an enum-indexed array of ACMD pointers, modeled on
+# assign_spell_pointers()/skills[]) -- the seam the 11 still-DEFERRED
+# combat-row TUs (mobact.cpp/spec_pro.cpp/ranger.cpp/fight.cpp, first) will
+# route their do_hit()/do_flee()/etc. up-calls through once each joins this
+# library. Like output_seam.cpp, it has no single owning caller yet (this
+# wave ships the seam only, no call-site conversion), so it gets its own
+# dedicated TU rather than folding into a future caller's file the way
+# entity_hooks.h's per-hook pairs do. Its only downward edge is
+# rots::log::write_stderr (RotS::platform) for the tripwire log; every
+# char_data*/waiting_type* argument passes through opaquely, never
+# dereferenced -- same "opaque pointer, no game-type header needed" shape as
+# output_seam.cpp, so it does not change this library's link-graph story.
 set(ROTS_COMBAT_SOURCES
-    battle_mage_handler.cpp skill_timer.cpp weapon_master_handler.cpp
-    wild_fighting_handler.cpp
+    battle_mage_handler.cpp combat_hooks.cpp skill_timer.cpp
+    weapon_master_handler.cpp wild_fighting_handler.cpp
 )
 
 # ageland's remaining app-layer sources (spec §3): combat, commands,
@@ -636,6 +651,7 @@ if(ROTS_BUILD_TESTS)
         tests/CharPlayerDataBuilder.cpp
         tests/clock_tests.cpp
         tests/color_tests.cpp
+        tests/combat_hooks_tests.cpp
         tests/comm_act_tests.cpp
         tests/comm_delay_tests.cpp
         tests/comm_output_tests.cpp
@@ -1076,14 +1092,17 @@ if(ROTS_BUILD_TESTS)
         endif()
 
         # Load-bearing combat-layer acyclicity check (spec §11), mirroring the
-        # rots_world_linkcheck block above (combat-seed wave Task 1).
-        # rots_combat (battle_mage_handler.cpp + skill_timer.cpp +
-        # weapon_master_handler.cpp + wild_fighting_handler.cpp — see the
-        # ROTS_COMBAT_SOURCES comment above) is verified to have no upward
-        # symbol references beyond its legal downward edges into rots_entity,
-        # rots_core, and rots_platform. Unlike rots_world_linkcheck, no
-        # RotS::persist/RotS::world normal-link: the census found zero
-        # L3-peer edges out of this 4-TU subset. The checker force-loads
+        # rots_world_linkcheck block above (combat-seed wave Task 1;
+        # combat_hooks.cpp joined the checked archive in blocker-buster wave
+        # Task 2 — see the ROTS_COMBAT_SOURCES comment above).
+        # rots_combat (battle_mage_handler.cpp + combat_hooks.cpp +
+        # skill_timer.cpp + weapon_master_handler.cpp +
+        # wild_fighting_handler.cpp — see the ROTS_COMBAT_SOURCES comment
+        # above) is verified to have no upward symbol references beyond its
+        # legal downward edges into rots_entity, rots_core, and
+        # rots_platform. Unlike rots_world_linkcheck, no RotS::persist/
+        # RotS::world normal-link: the census found zero L3-peer edges out of
+        # this subset. The checker force-loads
         # rots_combat itself (so every rots_combat symbol is pulled in and
         # any OTHER unresolved reference fails the link) and normal-links
         # RotS::entity + RotS::core + RotS::platform to resolve those

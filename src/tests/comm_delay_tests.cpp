@@ -9,22 +9,28 @@
 // txt-block-pool getter overload) -- unlike send_to_all/send_to_room/
 // send_to_room_except_two (covered by output_seam_forwarders_tests.cpp's
 // negative half plus comm_output_tests.cpp's pre-existing positive half),
-// none of these four were ever called by an existing test, so both halves
-// of their coverage (reaches the real comm.cpp sink when registered; defaults
-// safely when unregistered) live here together. Separate file from
-// comm_output_tests.cpp/output_seam_forwarders_tests.cpp: this fixture
-// domain is char_data delay/waiting_list state and the txt-block pool, not
-// descriptor/world output -- no reset_capturing_descriptor/ConnectedCharacter
-// Context/ScopedTestWorld machinery applies to any test below.
+// none of these four were ever called by an existing test. break_spell/
+// abort_delay/complete_delay get BOTH halves of coverage here (reaches the
+// real comm.cpp sink when registered; defaults safely when unregistered);
+// get_from_txt_block_pool gets only the positive half (post-review
+// correction, task-1): its unregistered default is std::abort(), not a
+// no-op (see output_seam.cpp's forwarder comment), and this suite has no
+// death-test idiom for tripwire aborts -- see that test's own comment.
+// Separate file from comm_output_tests.cpp/output_seam_forwarders_tests.cpp:
+// this fixture domain is char_data delay/waiting_list state and the
+// txt-block pool, not descriptor/world output -- no
+// reset_capturing_descriptor/ConnectedCharacterContext/ScopedTestWorld
+// machinery applies to any test below.
 //
 // DISCRIMINATOR SHAPE: each REACHES-THE-REAL-SINK test sets a sentinel value
 // on the state the real comm.cpp body is known (by reading its source) to
 // mutate, calls the plain forwarder with the REGISTERED sinks gtest_main.cpp
 // installs process-wide, and asserts the mutation happened. Each DEFAULTS-
-// TO-A-NO-OP test swaps every sink to null via ScopedOutputSinks (same
-// fixture as output_seam_forwarders_tests.cpp, duplicated here for the same
-// reason noted there: the two files' surrounding fixtures diverge enough
-// that sharing one header for a 6-line class would buy little), sets the
+// TO-A-NO-OP test (break_spell/abort_delay/complete_delay only -- see above)
+// swaps every sink to null via ScopedOutputSinks (same fixture as
+// output_seam_forwarders_tests.cpp, duplicated here for the same reason
+// noted there: the two files' surrounding fixtures diverge enough that
+// sharing one header for a 6-line class would buy little), sets the
 // identical sentinel, calls the same forwarder, and asserts NOTHING moved --
 // proving the tripwire-logged default is a true no-op, not a partial or
 // silently-wrong mutation.
@@ -216,6 +222,15 @@ TEST(CommDelay, CompleteDelayDefaultsToANoOpWhenUnregistered)
 // txt_block. Released back to the pool with put_to_txt_block_pool() after
 // the assertion (mirrors comm_output_tests.cpp's QueueCopiesABoundedMessage
 // BeforeCallerStorageChanges cleanup) so this test does not leak.
+//
+// NO DefaultsToANoOpWhenUnregistered COUNTERPART HERE (post-review
+// correction, task-1): unlike the six void forwarders, this one's
+// unregistered default is std::abort() (see output_seam.cpp's forwarder
+// comment -- no safe placeholder txt_block* exists, and comm.cpp's own
+// write_to_q() dereferences the result unconditionally). Untested by
+// design, matching every other abort tripwire in the tree: this suite has
+// no death-test idiom for tripwire aborts, and adding one here would be the
+// first. The positive-path test below is this forwarder's coverage.
 
 TEST(CommDelay, GetFromTxtBlockPoolReachesTheRealSinkWhenRegistered)
 {
@@ -226,15 +241,4 @@ TEST(CommDelay, GetFromTxtBlockPoolReachesTheRealSinkWhenRegistered)
     EXPECT_STREQ(block->text, "hello");
 
     put_to_txt_block_pool(block);
-}
-
-TEST(CommDelay, GetFromTxtBlockPoolDefaultsToNullWhenUnregistered)
-{
-    ScopedOutputSinks unregistered_sinks;
-
-    EXPECT_EQ(get_from_txt_block_pool(std::string_view("hello")), nullptr)
-        << "Expected an unregistered get_from_txt_block_pool sink to return null rather than "
-           "abort -- this seam's own 'logged no-op' taxonomy, deliberately not the abort() "
-           "entity_hooks.h's twin no-arg-overload hook uses (see output_seam.cpp's forwarder "
-           "comment for the reasoning).";
 }

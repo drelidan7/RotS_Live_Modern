@@ -84,12 +84,17 @@ using complete_delay_fn = void (*)(char_data* ch);
 // one is for a future combat-tier caller (ranger.cpp/spec_pro.cpp/
 // shop.cpp/mudlle.cpp already call this exact overload today, all still
 // app-compiled) that wants a block pre-populated with a bounded copy of its
-// own text. Returns a pointer, unlike the six void forwarders above --
-// output_seam.cpp's forwarder still returns null with a log on an
-// unregistered sink (this header's own "logged no-op" taxonomy), NOT the
-// abort() entity_hooks.h's twin hook uses for the no-arg overload: that
-// choice is deliberate here (see output_seam.cpp's forwarder comment), not
-// an oversight.
+// own text. Returns a pointer, unlike the six void forwarders above, whose
+// unregistered default is a safe null-op (this header's own "logged no-op"
+// taxonomy): this one instead matches entity_hooks.h's get_txt_block_fn
+// twin hook and tripwire-logs THEN ABORTS on an unregistered sink, because
+// -- exactly as entity_hooks.h documents for its own pair -- there is no
+// safe placeholder txt_block* to return; comm.cpp's own write_to_q() calls
+// this overload internally and immediately dereferences the result
+// (pnew->next = ...), so a silently-returned null would surface as a
+// confusing null-deref far from the real cause instead of failing loudly at
+// the hook boundary. See output_seam.cpp's forwarder for the full contrast
+// with the six void forwarders above.
 using get_txt_block_from_pool_fn = txt_block* (*)(std::string_view line);
 
 struct Sinks {

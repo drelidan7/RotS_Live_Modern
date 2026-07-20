@@ -16,8 +16,9 @@
 // get_from_txt_block_pool(std::string_view) join the five above (see
 // output_seam.h's own extension comment). Same shape, same tier membership,
 // same null-safe "logged no-op" default for every VOID forwarder; the one
-// pointer-returning forwarder (get_from_txt_block_pool) documents its own
-// default choice at its definition below.
+// pointer-returning forwarder (get_from_txt_block_pool) instead
+// tripwire-logs THEN ABORTS on an unregistered sink -- see its own
+// definition below for the contrast with the six void forwarders.
 
 #include "output_seam.h"
 
@@ -26,6 +27,7 @@
 
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <format>
 
 namespace {
@@ -199,22 +201,31 @@ void complete_delay(char_data* ch)
         static_cast<const void*>(ch)));
 }
 
-// Unlike the six void forwarders above -- and unlike entity_hooks.h's
-// abort()-on-unregistered get_txt_block_fn pair (the no-arg overload's
-// hook) -- this deliberately stays in THIS header's own "logged no-op"
-// taxonomy: a null txt_block* is a safe return value here (the caller gets
-// nothing, same observable shape as every other unregistered-sink default
-// above), and this wave is consumer-free, so no caller dereferences the
-// result yet. Matching the five's own idiom (not the tripwire/abort family)
-// is also what output_seam.h's extension comment calls for.
+// Unlike the six void forwarders above, an unregistered hit here is a hard
+// failure (loud log + abort), matching entity_hooks.h's get_txt_block_fn
+// twin hook (the no-arg overload's pair) and its documented rationale: there
+// is no safe placeholder txt_block* to return. comm.cpp's own write_to_q()
+// calls this overload internally and immediately dereferences the result
+// (pnew->next = ...) -- a silently-returned null would surface as a
+// confusing null-deref far from the real cause instead of failing loudly at
+// the hook boundary (exactly the failure mode this wave's red-proofing hit
+// when the earlier revision of this forwarder returned null: it produced a
+// SEGFAULT in write_to_q(), not a clean, attributable failure). comm.cpp
+// registers the real pool function in run_the_game() before boot_db(), so
+// ageland never reaches this path; rots_convert links rots_core but never
+// calls this overload either (same "unreachable there too" class as
+// entity_hooks.h's other tripwire hooks). Untested by design, same as every
+// other abort tripwire in the tree -- no death test (not an established
+// suite idiom here); the positive path (GetFromTxtBlockPoolReachesTheReal
+// SinkWhenRegistered, comm_delay_tests.cpp) is this forwarder's coverage.
 txt_block* get_from_txt_block_pool(std::string_view line)
 {
     if (g_sinks.get_txt_block_from_pool) {
         return g_sinks.get_txt_block_from_pool(line);
     }
     rots::log::write_stderr(std::format(
-        "rots::output: STUB get_from_txt_block_pool(line='{}') called with no sink registered -- "
+        "rots::output: FATAL get_from_txt_block_pool(line='{}') called with no sink registered -- "
         "this should be unreachable once register_game_output_sinks() has run.",
         line));
-    return nullptr;
+    std::abort();
 }

@@ -1120,6 +1120,122 @@ big_brother hook tests, Task 4b +16 hook-family tests, Task 5 +2 `ExploitCapture
 added zero new tests — pure conversions/moves). See `AGENTS.md`'s "Testing Guidelines" for the full
 reconciled per-task chain.
 
+### The combat-trio wave: `olog_hai.cpp` + `mystic.cpp` + `profs.cpp` join `rots_combat` (11 TUs)
+
+Design: `docs/superpowers/specs/2026-07-20-combat-trio-design.md`. Plan:
+`docs/superpowers/plans/2026-07-20-combat-trio.md`. Census: `.superpowers/sdd/combat-trio-census.md`
+(gitignored scratch). The playbook's **second** application (`docs/superpowers/
+combat-migration-playbook.md`), and the first to promote TUs **standalone** rather than as a
+mutually-dependent pair — `olog_hai.cpp` and `mystic.cpp` each closed over their own combat-peer
+edges independently (zero edges to each other, zero edges to `mobact`/`spec_pro`/`mage`/`limits`),
+unlike the combat-pilot wave's `clerics`↔`fight` cycle that forced a joint move. `rots_combat` grows
+from 8 to **11 TUs** (`battle_mage_handler.cpp`, `clerics.cpp`, `combat_hooks.cpp`, `fight.cpp`,
+`mystic.cpp`, `olog_hai.cpp`, `profs.cpp`, `skill_timer.cpp`, `visibility.cpp`,
+`weapon_master_handler.cpp`, `wild_fighting_handler.cpp`). The membership commit (Task 4, `019b4c8`)
+landed `CombatLayerAcyclicity` green **first try, both hosts** — no census miss, no stub, no
+controller ruling needed, the corrected closure methodology (Task 0's full `nm` re-census +
+closure check, run BEFORE any code moved) validated against real build wiring for the first time
+since it was written.
+
+**The profs rider — a one-directional gate, not a cycle.** The design spec's rider condition (`profs`
+rides only if `scale_guardian` is standalone-relocatable OR mystic's own membership dissolves the
+edge) resolved via the second path: `scale_guardian` (mystic.cpp:1584) is **not** standalone-
+relocatable — Task 0's body read found a same-file helper cluster of **6** functions
+(`set_guardian_stats`, `calc_guardian_hp`, `set_guardian_health`,
+`tweak_aggressive_guardian_stats`/`tweak_defensive_guardian_stats`/`tweak_mystic_guardian_stats`),
+one more than the design spec's stated "four" (`calc_guardian_hp`/`set_guardian_health` were omitted
+from the spec's enumeration) — but once `mystic.cpp` itself joins `rots_combat`, `profs.cpp`'s call
+resolves as a legal intra-lib reference, dissolving the edge without needing `scale_guardian` to move
+at all. Task 0 also found a **second external caller** the design spec's source-level pass missed
+entirely: `objsave.cpp:775` carries its own local `extern` declaration mirroring its existing
+`get_guardian_type` call — both become ordinary downward app→lib calls once mystic promotes, no
+change needed at either call site. Profs's other two blockers (`get_guardian_type`,
+`add_exploit_record` ×8) were both cheap exact-signature-match relocations/conversions against
+existing seams, so the rider FIRED and all three TUs land in one membership commit — chosen for
+simplicity, not because the linkcheck forced it: olog_hai is independent, mystic is independent,
+profs is one-directionally gated on mystic alone.
+
+**New `combat_command` cell (Task 1) — `dismount`, the 26th.** `olog_hai.cpp`'s one direct up-call to
+`do_dismount` (`ranger.cpp:208`, still-app-compiled) is the only genuine combat-peer edge either of
+the two lead TUs carries outside this wave's own candidate set (re-derived from the playbook cost
+table's stale "olog combat-peer=6" — see below). Registered exactly like `flee`'s real body staying
+in `act_offe.cpp`: the cell's real body never has to move, only the fn-ptr registration
+(`interpre.cpp`'s `register_combat_command_dispatch()`) and the discriminator pair. `combat_hooks.h`'s
+enum-indexed backing array auto-scaled from 25 to 26 cells with zero other code change (the
+`std::array<acmd_fn, static_cast<std::size_t>(combat_command::count)>` declaration sizes off the
+sentinel). `combat_hooks.h`'s own file comment (lines 196/221) previously mis-stated "25 cells" after
+this cell landed — a comment-only drift fixed in this wave's Task 5 docs sweep; line 30's "25 cells"
+citation is untouched, since it correctly describes census-C's original blocker-buster-wave count
+before this wave's cell existed.
+
+**Relocations (Task 1, consumer-free before any call site converted):**
+- **`one_argument`/`fill_word`/`fill[]` + `half_chop` → L0 `rots_util.cpp`.** The census confirmed
+  `half_chop` (interpre.cpp:1535) has **zero function-call edges of its own** — cleaner than
+  `one_argument`, and the two travel to the same destination but are not a package: `half_chop`
+  relocates standalone (its own commit-worthy unit), while `one_argument`/`fill_word`/`fill[]` move
+  as the census's original 3-item bundle (`fill_word` reads the `fill[]` table as its own global,
+  the one piece that cannot separate). Two precedented L0-macro-inlining substitutions were required
+  (L0 must not include `utils.h`): `LOWER(c)` → `lower_ascii(c)` (the `search_block()` precedent) and
+  `TRUE` → `1` (a second instance of the same class, matching `combat_hooks.cpp`'s own `call_special()`
+  tripwire default's literal-inlining comment) — both disclosed deviations from strict byte-for-byte
+  text, not silent substitutions.
+- **`saves_confuse`/`saves_insight`/`saves_leadership`/`saves_mystic`/`saves_poison` →
+  `char_utils_combat.cpp` (L2).** `mystic.cpp`'s five `spell_pa.cpp`-owned combat-peer edges — the
+  wave's named primary STOP-risk, entirely unenumerated by name in the design spec's own source-level
+  residual list — turned out to be exactly this five-symbol family, all RELOCATE-CLEAN via the
+  `saves_power` precedent (combat-pilot wave). **The L2-lateral floor**: these five are
+  macro-expanded L2 calls (they read `char_data` fields the same way `saves_power` does), so their
+  destination must be L2 **or above**, never below — a constraint Task 0's census called out
+  explicitly so a later relocation choice doesn't accidentally place them somewhere lower-tier that
+  would reintroduce an upward edge.
+- **`add_follower` → `entity_lifecycle.cpp` (L2).** `handler.cpp:267`'s body was confirmed L2-clean
+  by direct read (its pool helper and `stop_follower` sibling are already L2; its `act()` calls are
+  already `output_seam` L1 forwarders) — zero handler-internal statics, matching the design spec's
+  default exactly.
+- **`get_guardian_type` → `visibility.cpp` (`rots_combat`, L3 — not L2, Task 3).** `utility.cpp:978`'s
+  body reads only `mob_index` (`db_world.cpp:95`, **L3-world**) and `guardian_mob`
+  (`consts.cpp:2620`, L1-core) — an L3-forcing edge, not an L2 one: `mob_index` has no L2-visible
+  resolver seam (unlike `world[]`/`room_data`'s four-resolver placement-seam family), but it's already
+  referenced the same way by `clerics.cpp:55`, an existing `rots_combat` member, confirming the plain
+  `extern` idiom is a legal in-lib peer reference here. Landed in `visibility.cpp` (not a fresh TU) —
+  that file already carries the `weather_info` L3-peer-reference precedent and the `db.h`-class
+  includes the relocation needs. Its two callers (`objsave.cpp:774`, `profs.cpp:226`) both resolve as
+  legal downward/intra-lib calls, unchanged.
+
+**First-standalone-promotion data point.** Every prior `rots_combat` growth was either SEED-CLEAN (the
+combat-seed wave's four TUs, zero relocation needed) or a mutually-dependent pair forced into one
+commit (`clerics`+`fight`, six-symbols-one-way/two-the-other). This wave is the playbook's first
+evidence that the corrected closure-check recipe (census → closure check → seams → conversions →
+membership → verification, in that order, closure check run BEFORE any membership commitment) works
+for TUs that are architecturally independent of each other: `olog_hai.cpp` and `mystic.cpp` share no
+symbols in either direction, and each was closed over its own combat-peer edges individually before
+either promoted. `profs.cpp`'s one-directional gate on `mystic.cpp` (`scale_guardian`) is a third,
+intermediate case the playbook also lacked a data point for — a real coupling, but one that dissolves
+the moment its one partner promotes, categorically unlike a cycle that forces joint membership by the
+`CombatLayerAcyclicity` mechanism itself.
+
+**Census overturns (Task 0, `nm`-confirmed against the playbook's own cost-table estimates — see
+`docs/superpowers/combat-migration-playbook.md`'s "Per-TU cost table" and its per-row RESOLVED
+updates):** olog_hai's stated "combat-peer=6" re-derived to **1** genuine edge (`do_dismount`); the
+`scale_guardian` helper cluster is **6** functions, not the design spec's stated "four"; `scale_guardian`
+has a **second** external caller (`objsave.cpp:775`) the design spec missed; olog_hai's `_waiting_list`
+reference (4 `WAIT_STATE_FULL` sites) was never named in the design spec's residual list at all, but
+resolves for free — the combat-pilot wave's Task 5 already storage-moved `waiting_list` into
+`clerics.cpp`, already in-lib. None of these overturns changed either verdict (mystic promotes; the
+rider fires); they correct counts the design spec's source-level pass got wrong or left unenumerated.
+
+Test-count delta for this wave: **1394 → 1398** (Task 1 +2 `dismount` discriminator tests
+(`38dca86`), Task 2 +2 `move` discriminator tests (`8338ebd`) — the `move` cell became a real
+`issue_command()` consumer for the first time via `olog_hai.cpp`'s `do_overrun` conversion, a genuine
+discriminator-audit gap; Task 3/Task 4 added zero new tests — pure relocations/conversions/membership
+move). All three gate hosts (`macos-arm64`, `rots64`, `macos-arm64-asan`) confirmed 1398/1398 at
+Task 4's final gate; ASan ran at every task boundary that touched a test file, including Task 2 —
+independently re-run by the reviewer after the task's own report incorrectly claimed the
+additive-only-test-change class had no ASan precedent in this wave (`trio-task-1-report.md:241`
+already required ASan for the identical class of change, two new dismount tests appended to the same
+pre-existing `combat_hooks_tests.cpp`; the review closed the finding by running the gate itself, zero
+diagnostics). See `AGENTS.md`'s "Testing Guidelines" for the full reconciled per-task chain.
+
 ### Pathed data-model includes
 
 `rots_core` owns `target_include_directories(rots_core PUBLIC core/include)`: every consumer that

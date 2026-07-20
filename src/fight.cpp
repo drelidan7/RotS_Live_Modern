@@ -23,6 +23,7 @@
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
+#include "persist_hooks.h"
 #include "pkill.h"
 #include "platform_compat.h"
 #include "script.h"
@@ -38,7 +39,6 @@
 #include "warrior_spec_handlers.h"
 #include "zone.h" /* For zone_table */
 
-#include "big_brother.h"
 #include "char_utils.h"
 #include "char_utils_combat.h"
 
@@ -87,8 +87,6 @@ extern const std::string_view pc_star_types[];
 char* fread_string(FILE* fl, std::string_view error);
 int check_resistances(char_data* ch, int attacktype);
 void break_meditation(char_data* ch);
-ACMD(do_flee);
-ACMD(do_stand);
 ACMD(do_mental);
 
 /* local procedures */
@@ -923,7 +921,7 @@ void raw_kill(char_data* dead_man, char_data* killer, int attack_type)
         stop_fighting(dead_man);
     }
 
-    if (special(dead_man, 0, mutable_arg(""), SPECIAL_DEATH, &tmpwtl))
+    if (rots::combat::call_special(dead_man, 0, mutable_arg(""), SPECIAL_DEATH, &tmpwtl))
         return;
 
     if (IS_RIDING(dead_man))
@@ -934,7 +932,7 @@ void raw_kill(char_data* dead_man, char_data* killer, int attack_type)
 
     while (dead_man->affected) {
         if (dead_man->affected->type == SPELL_FAME_WAR)
-            remove_fame_war_bonuses(dead_man, dead_man->affected);
+            rots::combat::remove_fame_war_bonuses(dead_man, dead_man->affected);
 
         affect_remove(dead_man, dead_man->affected);
     }
@@ -942,13 +940,12 @@ void raw_kill(char_data* dead_man, char_data* killer, int attack_type)
     obj_data* corpse = make_corpse(dead_man, killer, attack_type);
 
     // Let big brother know that the player died.
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-    bb_instance.on_character_died(dead_man, killer, corpse);
+    rots::entity::dispatch_character_died(dead_man, killer, corpse);
 
     if (!IS_NPC(dead_man)) {
         int race = GET_RACE(dead_man);
         save_char(dead_man, r_mortal_start_room[race], 0);
-        Crash_crashsave(dead_man);
+        rots::combat::crash_crashsave(dead_man);
 
         // The player was killed by another player (probably).
         // Restore them.
@@ -980,15 +977,15 @@ void raw_kill(char_data* dead_man, char_data* killer, int attack_type)
         if (GET_LEVEL(dead_man) < LEVEL_IMMORT) {
             // Note, these are two different int arrays.
             dead_man->specials2.load_room = mortal_start_room[race];
-            extract_char(dead_man, r_mortal_start_room[race]);
+            rots::combat::extract_char(dead_man, r_mortal_start_room[race]);
         } else {
             dead_man->specials2.load_room = immort_start_room;
-            extract_char(dead_man, r_immort_start_room);
+            rots::combat::extract_char(dead_man, r_immort_start_room);
         }
 
         REMOVE_BIT(PLR_FLAGS(dead_man), PLR_WAS_KITTED);
     } else {
-        extract_char(dead_man);
+        rots::combat::extract_char(dead_man);
     }
 }
 
@@ -1032,7 +1029,7 @@ int check_death_ward(struct char_data* ch)
 void die(char_data* dead_man, char_data* killer, int attack_type)
 {
     /* Character doesn't die if call_trigger returns FALSE */
-    if (call_trigger(ON_DIE, dead_man, killer, 0) == FALSE) {
+    if (rots::combat::call_trigger(ON_DIE, dead_man, killer, 0) == FALSE) {
         stop_fighting_him(dead_man);
         stop_fighting(dead_man);
         update_pos(dead_man);
@@ -1076,21 +1073,21 @@ void die(char_data* dead_man, char_data* killer, int attack_type)
 
     /* log mobdeaths */
     if (IS_NPC(killer) && !(MOB_FLAGGED(killer, MOB_ORC_FRIEND) || MOB_FLAGGED(killer, MOB_PET))) {
-        add_exploit_record(EXPLOIT_MOBDEATH, dead_man, GET_IDNUM(killer), GET_NAME(killer));
+        rots::persist::dispatch_exploit_capture(EXPLOIT_MOBDEATH, dead_man, GET_IDNUM(killer), GET_NAME(killer));
     }
 
     int base_xp_gain = -(dead_man->points.exp - 3000) / (dead_man->player.level + 2);
 
     /* A player died: DT/poison/incap/etc. death. */
     if (!killer) {
-        gain_exp_regardless(dead_man, std::min(0, base_xp_gain / 10));
+        rots::combat::gain_exp_regardless(dead_man, std::min(0, base_xp_gain / 10));
     } else {
-        gain_exp_regardless(dead_man, std::min(0, base_xp_gain / 10));
+        rots::combat::gain_exp_regardless(dead_man, std::min(0, base_xp_gain / 10));
 
         // TODO(drelidan):  I am unsure why this early out is here, but figure it out and potentially
         // fix it... 'cause this could have all sorts of problems.
         if (attack_type == SPELL_POISON) {
-            add_exploit_record(EXPLOIT_POISON, dead_man, 0, NULL);
+            rots::persist::dispatch_exploit_capture(EXPLOIT_POISON, dead_man, 0, NULL);
 
             // TODO(drelidan):  Only early-out if the dead man isn't in combat.  Otherwise continue
             // so that proper exploits are given out.
@@ -1102,20 +1099,20 @@ void die(char_data* dead_man, char_data* killer, int attack_type)
 
         // PK records are created regardless of death cause, but then early out if it's
         // all NPCs killing the character.  Heh...
-        pkill_create(dead_man);
-        add_exploit_record(EXPLOIT_PK, dead_man, 0, NULL); /* pk records to killers */
+        rots::combat::pkill_create(dead_man);
+        rots::persist::dispatch_exploit_capture(EXPLOIT_PK, dead_man, 0, NULL); /* pk records to killers */
 
         /* add death records to dead player */
         /* Fingolfin: Jul 19: since we record mobdeaths earlier */
         if (killer && !IS_NPC(killer)) {
-            add_exploit_record(EXPLOIT_DEATH, dead_man, 0, NULL);
+            rots::persist::dispatch_exploit_capture(EXPLOIT_DEATH, dead_man, 0, NULL);
         }
 
         if (IS_NPC(killer)) {
             // Only grant mob_death XP if the player died to a mob that is not controlled
             // by a player.
             if (!MOB_FLAGGED(killer, MOB_ORC_FRIEND) && !MOB_FLAGGED(killer, MOB_PET)) {
-                gain_exp_regardless(dead_man, std::min(0, base_xp_gain));
+                rots::combat::gain_exp_regardless(dead_man, std::min(0, base_xp_gain));
             }
         }
     }
@@ -1329,7 +1326,7 @@ void group_gain(char_data* killer, char_data* dead_man)
         int tmp = exp_with_modifiers(character, dead_man, share * capped_level + group_bonus);
 
         vsend_to_char(character, "You receive your share of experience -- %d points.\r\n", tmp);
-        gain_exp(character, tmp);
+        rots::combat::gain_exp(character, tmp);
         change_alignment(character, dead_man);
 
         // Allow wild fighting to handle this kill.
@@ -1689,10 +1686,8 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
     extern void record_spell_damage(struct char_data*, struct char_data*,
         int, int);
 
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-
     // Don't allow damage to affect invalid targets.
-    if (!bb_instance.is_target_valid(attacker, victim, attacktype)) {
+    if (!rots::entity::dispatch_target_valid(attacker, victim, attacktype)) {
         send_to_char("You feel the Gods looking down upon you, and protecting your target.  Your hand is stayed.\r\n", attacker);
         return 0;
     }
@@ -1741,7 +1736,7 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
         tmpwtl.targ1.type = TARGET_CHAR;
         tmpwtl.targ2.ptr.other = 0;
         tmpwtl.targ2.type = TARGET_NONE;
-        i = special(attacker, 0, mutable_arg(""), SPECIAL_DAMAGE, &tmpwtl);
+        i = rots::combat::call_special(attacker, 0, mutable_arg(""), SPECIAL_DAMAGE, &tmpwtl);
         if (i) {
             if (attacker->specials.fighting == victim)
                 stop_fighting(attacker);
@@ -1917,7 +1912,7 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
         }
     }
 
-    if (!call_trigger(ON_DAMAGE, victim, attacker, 0)) {
+    if (!rots::combat::call_trigger(ON_DAMAGE, victim, attacker, 0)) {
         update_pos(victim);
         update_pos(attacker);
         return 0;
@@ -1943,7 +1938,7 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
     }
 
     if (attacker != victim) {
-        gain_exp(attacker, (1 + GET_LEVEL(victim)) * std::min(20 + GET_LEVEL(attacker) * 2, dam) / (1 + GET_LEVEL(attacker)));
+        rots::combat::gain_exp(attacker, (1 + GET_LEVEL(victim)) * std::min(20 + GET_LEVEL(attacker) * 2, dam) / (1 + GET_LEVEL(attacker)));
     }
 
     /* hack for PC vs. PC fights to skip the incap step */
@@ -1995,7 +1990,7 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
             if (IS_NPC(victim)) {
                 if (IS_SET(victim->specials2.act, MOB_WIMPY))
                     if (GET_POSITION(victim) > POSITION_SLEEPING)
-                        do_flee(victim, mutable_arg(""), 0, 0, 0);
+                        rots::combat::issue_command(rots::combat::combat_command::flee, victim, mutable_arg(""), 0, 0, 0);
             }
         }
 
@@ -2003,12 +1998,12 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
             if (GET_POSITION(victim) > POSITION_SLEEPING && GET_TACTICS(victim) != TACTICS_BERSERK) {
                 send_to_char("You wimp out, and attempt to flee!\n\r",
                     victim);
-                do_flee(victim, mutable_arg(""), 0, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::flee, victim, mutable_arg(""), 0, 0, 0);
             }
     }
 
     if (!IS_NPC(victim) && !(victim->desc && victim->desc->descriptor) && (victim->specials.fighting) && GET_POS(victim) > POSITION_INCAP) {
-        do_flee(victim, mutable_arg(""), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::flee, victim, mutable_arg(""), 0, 0, 0);
         victim->specials.was_in_room = victim->in_room;
     }
 
@@ -2544,8 +2539,7 @@ void hit(char_data* ch, char_data* victim, int)
     }
 
     // Don't allow damage to affect invalid targets.
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-    if (!bb_instance.is_target_valid(ch, victim, w_type)) {
+    if (!rots::entity::dispatch_target_valid(ch, victim, w_type)) {
         send_to_char("You feel the Gods looking down upon you, and protecting your target.  Your hand is stayed.\r\n", ch);
         return;
     }
@@ -2723,7 +2717,7 @@ void hit(char_data* ch, char_data* victim, int)
         tmpwtl.targ1.type = TARGET_CHAR;
         tmpwtl.targ2.ptr.other = 0;
         tmpwtl.targ2.type = TARGET_NONE;
-        tmp = special(ch, 0, mutable_arg(""), SPECIAL_DAMAGE, &tmpwtl);
+        tmp = rots::combat::call_special(ch, 0, mutable_arg(""), SPECIAL_DAMAGE, &tmpwtl);
         if (tmp) {
             if (ch->specials.fighting == victim)
                 stop_fighting(ch);
@@ -2751,18 +2745,18 @@ void hit(char_data* ch, char_data* victim, int)
         if (IS_NPC(victim))
             if (IS_SET(victim->specials2.act, MOB_WIMPY))
                 if (GET_POSITION(victim) > POSITION_SLEEPING)
-                    do_flee(victim, mutable_arg(""), 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::flee, victim, mutable_arg(""), 0, 0, 0);
     }
 
     if (!IS_NPC(victim) && WIMP_LEVEL(victim) && victim != ch && GET_HIT(victim) < WIMP_LEVEL(victim)) {
         if (GET_POSITION(victim) > POSITION_SLEEPING) {
             send_to_char("You wimp out, and attempt to flee!\n\r", victim);
-            do_flee(victim, mutable_arg(""), 0, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::flee, victim, mutable_arg(""), 0, 0, 0);
         }
     }
 
     if (!IS_NPC(victim) && !(victim->desc && victim->desc->descriptor) && victim->specials.fighting && GET_POS(victim) > POSITION_INCAP) {
-        do_flee(victim, mutable_arg(""), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::flee, victim, mutable_arg(""), 0, 0, 0);
         victim->specials.was_in_room = victim->in_room;
     }
 }
@@ -2908,7 +2902,7 @@ void perform_violence(int)
             if ((GET_POS(fighter) >= POSITION_FIGHTING) && (fighter->specials.ENERGY <= ENE_TO_HIT)) {
                 fighter->specials.ENERGY += utils::get_energy_regen(*fighter);
             } else if (IS_NPC(fighter) && !fighter->delay.wait_value) {
-                do_stand(fighter, mutable_arg(""), 0, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::stand, fighter, mutable_arg(""), 0, 0, 0);
             }
 
             if (fighter->specials.ENERGY > ENE_TO_HIT) {

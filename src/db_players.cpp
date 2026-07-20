@@ -162,7 +162,15 @@ int dispatch_room_vnum(int room_index)
         room_index));
     return NOWHERE;
 }
+} // namespace
 
+// External linkage (unlike dispatch_room_vnum() above, which only
+// db_players.cpp's own save_char() calls): fight.cpp's add_exploit_record()
+// call sites dispatch through this once fight.cpp joins rots_combat
+// (combat-pilot wave Task 5) -- declared in persist_hooks.h, the same
+// external-dispatch convention entity_hooks.h already established for
+// dispatch_target_valid()/dispatch_character_died() (called from
+// clerics.cpp/fight.cpp, not entity_lifecycle.cpp itself).
 void dispatch_exploit_capture(int record_type, char_data* victim, int int_param, const char* extra)
 {
     if (g_exploit_capture_hook) {
@@ -173,7 +181,6 @@ void dispatch_exploit_capture(int record_type, char_data* victim, int int_param,
         "rots::persist: STUB exploit-capture hook called with no sink registered -- this should "
         "be unreachable once register_exploit_capture_hook() has run.");
 }
-} // namespace
 
 } // namespace rots::persist
 

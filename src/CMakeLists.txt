@@ -710,6 +710,7 @@ if(ROTS_BUILD_TESTS)
         tests/objsave_json_tests.cpp
         tests/olog_hai_tests.cpp
         tests/output_seam_forwarders_tests.cpp
+        tests/persist_hooks_tests.cpp
         tests/placement_tests.cpp
         tests/platform_log_tests.cpp
         tests/player_finalize_tests.cpp

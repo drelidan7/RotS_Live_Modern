@@ -34,4 +34,14 @@ void set_room_vnum_hook(room_vnum_fn hook);
 using exploit_capture_fn = void (*)(int record_type, char_data* victim, int int_param, const char* extra);
 void set_exploit_capture_hook(exploit_capture_fn hook);
 
+// Dispatch entry point for the exploit-capture hook above. Defined in
+// db_players.cpp, given external linkage there (unlike its file-local
+// dispatch_room_vnum() sibling) specifically so fight.cpp's
+// add_exploit_record() call sites can route through it once fight.cpp joins
+// rots_combat (combat-pilot wave Task 5, pilot-census.md section 3.11) --
+// the same "dispatch declared here, called from a DIFFERENT TU than the one
+// owning the backing storage" convention entity_hooks.h already established
+// for dispatch_target_valid()/dispatch_character_died().
+void dispatch_exploit_capture(int record_type, char_data* victim, int int_param, const char* extra);
+
 }

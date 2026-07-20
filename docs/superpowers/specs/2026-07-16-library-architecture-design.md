@@ -705,6 +705,44 @@ would need to invert — recorded follow-on for whichever wave next grows the ro
 scope. The poison-notification hook (`obj_from_char`/`extract_obj`) stays rejected, re-confirmed
 by this wave's census as only an ambitious-wave concern.
 
+**As-built (combat-pilot wave, step 4 sixth slice):** `rots_combat` grows from 4 to **6 of the
+row's original 16 TUs** — `clerics.cpp` and `fight.cpp` join as a **joint membership move**, both
+in one commit. `CombatLayerAcyclicity` green both hosts; ctest 1365→1394 across the wave's six
+tasks (see `AGENTS.md`'s Testing Guidelines for the full per-task chain). This is the row's first
+DEFER-11 migration since the combat-seed wave's SEED-CLEAN 4-TU seed and the blocker-buster wave's
+two enabler-only additions (`combat_hooks.cpp`/`visibility.cpp`, already counted in the "4" above)
+— the four blocker-buster enablers (`output_seam` extension, the 25-cell command-dispatch table,
+the poison-notification hook, the visibility family) proved themselves under real conversions for
+the first time this wave, not merely built consumer-free. **The wave's central architectural
+finding, superseding this document's own step-4 sequencing assumption that a census's per-TU
+"non-blocking" verdict is sufficient to schedule a standalone promotion:** `clerics.cpp` and
+`fight.cpp` call each other directly (six symbols one way, two the other), so neither could
+promote alone — the census's `combat-peer (still-app)` legend correctly says such a cross-reference
+is architecturally sanctioned, but says nothing about whether it will actually **link** once one
+side promotes and the other doesn't. A post-Task-1 STOP restructured the task sequence so
+conversions (Task 3, clerics.cpp's own up-call rewrites) and membership (Task 5, both files in one
+commit) could land at different times even though membership itself could not split across files —
+see `docs/superpowers/combat-migration-playbook.md`'s "The intra-subset rule" and
+"Census-methodology correction" sections for the full mechanism, including the `nm` proof and the
+two genuine census misses (`gain_exp`, `waiting_list`) the `CombatLayerAcyclicity` linkcheck itself
+caught at the membership gate. New hooks this wave (`special()`, a big_brother `is_target_valid`/
+`on_character_died` pair, `extract_char`, the `gain_exp` family, and an app-other trio —
+`Crash_crashsave`/`call_trigger`/`pkill_create`) all follow the established registered-fn-ptr/
+tripwire-default taxonomy; `rots_combat` gains its second genuine L3-peer link
+(`RotS::persist` PUBLIC, for `fight.cpp`'s `save_char()` plus the new `dispatch_exploit_capture()`
+hook). A combat smoke-test harness (`ROTS_RNG_SEED` + `tools/combat_smoke.py` + `scripts/
+combat-golden.sh`) shipped as characterization-first infrastructure but landed on the fallback
+ladder's capture-only rung: the shared global `rots_rng` engine's draw sequence proved unstable
+under real-time pulse-loop interleaving even across same-seed re-runs, so the harness is
+informational, not a merge gate — the wave's actual regression-catching burden stays on the
+existing gtest-level characterization goldens. `profs` and the row's remaining 9 DEFER TUs
+(`spec_ass, olog_hai, mage, mystic, mobact, spell_pa, limits, ranger, spec_pro`) remain entirely
+app-compiled; the migration playbook this wave finalized
+(`docs/superpowers/combat-migration-playbook.md`) carries a per-TU cost table for each, marking
+`limits.cpp`'s own `gain_exp`-family hook registrars as already built. See `docs/BUILD.md`'s
+"`rots_combat`" section (the combat-pilot subsection) for the full hooks/link/harness/storage-move
+account.
+
 ---
 
 ## 11. Enforcement & verification

@@ -161,3 +161,146 @@ the up-call conversions (the wave's only semantic edits — body moves stay byte
 - No wholesale handler.cpp/utility.cpp extraction (§7 Stage 2 territory).
 - No `spell_pa`/`spec_ass` (registrar-hub TUs land last, after the row fills in).
 - No int→double math changes — this wave only builds the smoke baseline that future work needs.
+
+## As-built (T6/T7 docs-finalization pass)
+
+The wave landed as designed in outline (both TUs, one wave, both verification layers built) but
+diverged from the task skeleton above in every place real evidence disagreed with the spec's
+hypotheses. Recorded per deviation, evidence-first, per the "STOP-and-adjudicate, don't paper
+over" contract this spec itself set.
+
+### T0: five adjudication defaults OVERTURNED by evidence
+
+T0's own brief carried default hypotheses (this document's "Adjudication defaults" section plus
+the plan's per-item defaults); an independent reviewer rebuilt the full 81.8k-symbol→object map
+and re-resolved both TUs' complete undefined-symbol lists (not a sample) and overturned five of
+them, all reviewer-confirmed against `nm` evidence:
+
+1. **`stop_follower` is NOT L2-clean** (its `FOLLOW_MOVE` branch calls `forget(ch, ch->master)`,
+   defined only in the still-app `mobact.cpp`) — needed the "else hooks" branch, not the plain L2
+   move this spec's sibling `stop_riding` got. The pair diverges: `stop_riding` IS census-clean
+   and relocated to L2 directly.
+2. **`_waiting_list` is LIVE in `clerics.cpp`**, not textually dead as the plan's Task 2 Step 1
+   hypothesized — `WAIT_STATE`/`WAIT_STATE_BRIEF` macro expansion reads/writes it invisibly to a
+   plain-text grep. Confirmed genuinely dead in `fight.cpp` only.
+3. **`set_mental_delay` relocates to `rots_combat` (fight.cpp), not `char_utils.cpp`** — its
+   `set_fighting()` call is a `fight.cpp` symbol; landing at L2 would have created an
+   `EntityLayerAcyclicity` violation the moment `fight.cpp` itself promoted.
+4. **`special()`'s real signature has a named 6th parameter** `int in_room = NOWHERE` — not the
+   variadic tail this spec's own prose shorthand implied. The `special_fn` type spells out all
+   six parameters explicitly (a function-pointer type cannot itself carry a default); the dispatch
+   wrapper (`call_special`) carries the default instead.
+5. **`fight.cpp`'s `buf`/`buf2` scratch inventory was 29 genuine globals + 12 local shadows**, not
+   41 uses needing retirement as the plan's Task 4 (later 4a) Step 2 estimated — 12 of the 41 are
+   unrelated local `char* buf` declarations that merely shadow the global name.
+
+Confirmed without change: `special()`→hook, `remove_character_from_group`→L2,
+`extract_char`→hook (sentinel-mapped), the app-other trio→hooks (plus a second `call_trigger`
+call site the brief had missed), the handler-wrapper verbatim-move hypothesis, `add_exploit_record`
+→`persist_hooks.h` (4 sites, exact signature match), `fight_messages` (zero non-fight readers).
+
+### CONTROLLER STOP: closure, not the task skeleton's T3/T5 split, governs membership timing
+
+This is the wave's most consequential deviation from the task skeleton above. T3 ("Clerics
+migration," including a membership move) was **planned** to promote `clerics.cpp` alone, write the
+playbook, and let T5 repeat the pattern for `fight.cpp`. A post-T1 re-read of the census surfaced
+that `clerics.cpp` and `fight.cpp` call each other directly
+(`set_fighting`/`stop_fighting`/`check_sanctuary`/`check_hallucinate`/`die`/`appear` one way,
+`weapon_willpower_damage`/`do_mental` the other) — edges the census's own legend correctly
+classified `combat-peer (still-app)` = architecturally sanctioned, but which a **standalone**
+`clerics.cpp` promotion cannot actually link, since `fight.cpp` would still be
+`ROTS_SERVER_SOURCES` at that point. **Ruling:** T3 becomes conversions-only (clerics.cpp's own
+up-call conversions land and gate green while the file stays app-compiled — a legal downward
+app→app call at that point); the membership move itself moves to T5, where both TUs promote in
+one joint commit. This restructure — and the general rule it establishes (co-migrating TUs keep
+direct calls; standalone membership requires closure over every combat-peer edge, not merely a
+census's "sanctioned" label) — is documented in full in
+`docs/superpowers/combat-migration-playbook.md`'s "The intra-subset rule" and
+"Census-methodology correction" sections; this spec's own T3/T5 task-skeleton split above should
+be read as superseded by that restructure, not as what actually happened.
+
+The same STOP also surfaced ~9 out-of-wave peer symbols the pilots reference in TUs that stay
+app-compiled after this wave (`spell_pa`/`limits`/`mobact`/`ranger`). A census follow-up
+(`.superpowers/sdd/pilot-census.md` §7) dispositioned all nine: RELOCATE (`saves_power`,
+`record_spell_damage`+storage, the `forget`/`remember`+memory-pool package, `stop_hiding`) or HOOK
+(`check_break_prep` via the existing `trap` cell, `gain_exp`+`gain_exp_regardless`,
+`remove_fame_war_bonuses`) — all folded into Task 4's scope (see the 4a/4b split below).
+
+### T4 → 4a/4b split (BB-wave precedent repeated)
+
+The task skeleton's single "T4 — Fight riders" step grew too large for one gated unit once the
+census follow-up's nine extra symbols joined its scope. The controller split it, mirroring the
+blocker-buster wave's own Task 4/4b precedent: **4a** (byte-verbatim moves/storage-moves only —
+`fight_messages`, the 29-use `buf`/`buf2` retirement, `equip_char`/`unequip_char`,
+`set_mental_delay`, `record_spell_damage`+`spllog_*`, `check_break_prep`, `saves_power`, the
+`forget`/`remember` package, `stop_hiding`, plus a **conditional**: re-check `stop_follower` once
+`forget` lands at L2) and **4b** (hooks: `gain_exp`/`gain_exp_regardless`/
+`remove_fame_war_bonuses`, `extract_char`, the app-other trio, plus a `stop_follower` hook —
+**conditional on 4a's re-check firing HOOK, not RELOCATE**).
+
+**The conditional fired RELOCATE, not HOOK — 4b's planned `stop_follower` hook became MOOT.** 4a's
+own `nm` proof (`entity_lifecycle.cpp.o` carries zero undefined references to `forget`/anything
+mobact-shaped after the memory-pool package landed there) showed `stop_follower`'s one blocker had
+resolved to an intra-file call, not merely an intra-library one — a plain L2 relocation, dropped
+cleanly from 4b's scope before that task started rather than built and then discovered unused.
+
+### T5: the two census misses caught only at the linkcheck gate
+
+The joint membership move's first build attempt failed `CombatLayerAcyclicity` with two undefined
+symbols inside `clerics.cpp.o` — outside T5(a)'s own `fight.cpp`-scoped conversion work, surfaced
+only because the joint commit pulled `clerics.cpp` along:
+
+1. **`gain_exp`** (`clerics.cpp:234`, inside `do_mental`'s Will-contest damage path) — the census
+   had correctly traced this to `limits.cpp` but classified it `combat-peer (still-app)` =
+   non-blocking, under the inherited legend. `limits.cpp` never promoted this wave, so the label
+   held only provisionally. **Fix:** converted this one site to `rots::combat::gain_exp()` — the
+   identical 4b hook `fight.cpp` already used. Zero new infrastructure.
+2. **`_waiting_list`** — flagged LIVE for clerics back at T0 (see overturn #2 above), but no task
+   between T0 and T5 had actually built a seam for it, since a raw lvalue-mutated global (read AND
+   written by the `WAIT_STATE`/`WAIT_STATE_BRIEF` macros) doesn't fit a registered-fn-ptr hook.
+   **Fix:** a storage-move (the same technique `fight_messages`/`spllog_*` already used twice) —
+   relocated the definition from `db_boot.cpp` (which never read or wrote it, only defined it)
+   into `clerics.cpp`, the promoted pair's one actual user. All 16 other files' own `extern`
+   declarations needed zero changes.
+
+Neither was stubbed or reverted; both were resolved with existing techniques/seams per the STOP
+contract. This is the concrete evidence behind the playbook's "a census's non-blocking
+classification is a strong prior, not a build-wiring guarantee" lesson.
+
+### T3's discriminator-audit outcome: zero new tests, a real "zero," not a skipped step
+
+T3's brief called for a discriminator audit (does a registered/unregistered test pair already
+prove each converted call-site class reaches the real body with args intact?). The audit found
+Task 2 had already landed coverage for all three shapes clerics.cpp's conversions exercised
+(`flee`, `special`, the 2-arg `is_target_valid`) — **no new test was added**, and this was recorded
+as a verified "zero," not an assumed one (the file was read in full, not merely grepped for test
+names). Task 5's own later audit found the identical pattern at larger scale: 9 of 10 hooks
+`fight.cpp`'s conversions exercised already had coverage from Tasks 2/4a/4b; the one real gap
+(`dispatch_exploit_capture`, consumer-free until T5 gave it external linkage) was closed with 2
+new tests (`persist_hooks_tests.cpp`).
+
+### Determinism: landed on the fallback ladder's rung (b), capture-only — named, not hidden
+
+T1's own feasibility gate anticipated this outcome as a documented possibility; it is what
+actually happened, not a worst-case avoided. Repeated same-seed trials (including a same-host,
+immediate re-run with zero code changes between captures) showed the shared global `rots_rng`
+engine's draw sequence shifts under real-time pulse-loop interleaving from other periodic RNG
+consumers (door auto-close mechanics confirmed as one source; weather/regen-tick consumption not
+ruled in or out). Neither a raw transcript compare nor the normalized (combat-lines-only) fallback
+proved reliable — even the normalized comparison drifted on a same-seed immediate re-run. Rung (b)
+landed: `scripts/combat-golden.sh verify` is **informational only**, never a merge gate; every
+later migration task (T3, T5) ran it and recorded drift consistent with RNG-consumption-order
+shifts from the new hook indirection, confirmed non-regression each time by the unchanged
+gtest-level characterization goldens (`CharacterizationCombatTest.*`, `PoisonRemovalScriptTest.*`),
+which run outside real time and don't share this problem. This spec's own "Verification" section
+above should be read with that caveat: layer 2 (the smoke harness) shipped, but as a
+gross-shape/informational check, not the byte-comparison gate its original framing implied.
+
+### T6/T7: merged into one docs dispatch
+
+The task skeleton above lists T6 (playbook) and T7 (docs as-built) as separate tasks. The
+controller merged them into a single combined docs-finalization pass after T5 landed the wave's
+central deliverable — no code changes remained that would make splitting the two documentation
+tasks across separate gated commits worthwhile; both are covered by this as-built section plus
+`docs/superpowers/combat-migration-playbook.md`'s finalized recipe/cost-table sections and the
+`docs/BUILD.md`/`AGENTS.md` updates cited throughout.

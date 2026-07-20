@@ -22,7 +22,7 @@
 // instead, resolving downward through this table rather than welding back
 // up into an app-tier symbol the library cannot see.
 //
-// TARGET LIST (24 cells -- census-C's own per-TU counts carried off-by-one
+// TARGET LIST (25 cells -- census-C's own per-TU counts carried off-by-one
 // labels, e.g. "13 distinct" over a 12-name list; reconciled here against
 // grep-verified real call sites, not mere mentions -- see
 // task-2-report.md's "Census-C reconciliation" for the full diff): the
@@ -38,14 +38,38 @@
 //     never an upward edge under any future promotion order, since the
 //     target moves atomically with its only caller.
 //
-// Four cells (ambush/cast/hide/trap) are DEFINED in ranger.cpp/spell_pa.cpp
-// -- other DEFER-11 combat-row TUs, not app-command tier -- rather than an
-// act_*.cpp file. They are included anyway: DEFER-11 promotion order is not
-// fixed, so a cross-TU call between two not-yet-promoted combat-row TUs must
-// route through this seam exactly like a genuine app-command call until (and
-// unless) both sides of the call promote together, at which point the
-// registered pointer simply becomes an intra-lib address instead -- see
-// task-2-report.md for the per-cell breakdown.
+// CORRECTION (review, post-landing): the initial 24-cell table MISSED
+// do_mental -- fight.cpp's per-tick mental-combat auto-attack
+// (fight.cpp:2791, `do_mental(fighter, mutable_arg(""), 0, 0, 0)`) calls it
+// every combat pulse for a fighting mental/shadow combatant, and it is
+// ACMD in clerics.cpp (a DEFER-11 TU), the same cross-row class as
+// ambush/cast/hide/trap below. It passed both exclusion tests above (a real
+// call site, not a same-TU self-call), so the miss was a pure enumeration
+// gap in the first pass, not a signature or classification error. A
+// follow-up sweep (grep for every `#define` in the four TUs, `&do_*`
+// address-of/function-pointer indirection, and COMMANDO-style macro usage;
+// then a full `do_*`-identifier inventory across all four files,
+// classifying every name not already in this table) found ZERO further
+// misses: the ~23 extra names it turned up are each one of (a) a function
+// DEFINED in ranger.cpp/spec_pro.cpp/fight.cpp itself with no call site
+// anywhere in the four TUs (reachable only via the general command
+// interpreter when a player types the command, e.g. do_calm/do_shoot/
+// do_track/do_twohand/etc.), (b) a bare `ACMD(name);` forward declaration
+// with no call site at all (do_drop/do_get/do_kick/do_pull), (c) a
+// same-named goto label inside its own function's body coincidentally
+// matching `do_x:` (do_bendtime/do_blinding/do_mark/do_windblast), or (d) a
+// plain comment mention (do_title). See task-2-report.md's "Sweep for
+// hidden/indirect do_* calls" for the full per-name classification.
+//
+// Five cells (ambush/cast/hide/mental/trap) are DEFINED in
+// ranger.cpp/spell_pa.cpp/clerics.cpp -- other DEFER-11 combat-row TUs, not
+// app-command tier -- rather than an act_*.cpp file. They are included
+// anyway: DEFER-11 promotion order is not fixed, so a cross-TU call between
+// two not-yet-promoted combat-row TUs must route through this seam exactly
+// like a genuine app-command call until (and unless) both sides of the call
+// promote together, at which point the registered pointer simply becomes an
+// intra-lib address instead -- see task-2-report.md for the per-cell
+// breakdown.
 
 struct char_data;
 struct waiting_type;
@@ -72,6 +96,7 @@ enum class combat_command {
     hit,
     lock,
     look,
+    mental,
     move,
     open,
     rescue,
@@ -97,7 +122,7 @@ void set_combat_command(combat_command command, acmd_fn handler);
 // Dispatch entry point: forwards to the registered handler for `command`.
 // Unlike assign_spell_pointers()'s skills[] (where most cells are
 // PERMANENTLY null by design -- physical skills have no spell function, so
-// every reader null-guards before calling), every one of this table's 24
+// every reader null-guards before calling), every one of this table's 25
 // cells is meant to be registered at boot; a null cell here means
 // register_combat_command_dispatch() has not run yet, not "no handler was
 // ever intended." Tripwire default: a LOGGED NO-OP, not abort -- this

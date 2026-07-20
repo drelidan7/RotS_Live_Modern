@@ -3,34 +3,38 @@
 // New test TU (blocker-buster wave, Task 2; plan
 // docs/superpowers/plans/2026-07-19-blocker-buster.md; brief
 // .superpowers/sdd/task-2-brief.md). Covers combat_hooks.h's boot-registered
-// command-dispatch table (rots::combat::issue_command()): four
-// representative cells (do_hit/do_flee, required by the brief, plus
-// do_stand/do_wake as the "+2 more representative cells") each get BOTH
-// halves of coverage -- issue_command() reaches the real ACMD body when the
-// table is registered (gtest_main.cpp calls register_combat_command_
-// dispatch() process-wide, mirroring every other *_hooks.h suite's
-// registration parity), and defaults to a no-op when a cell is
-// unregistered.
+// command-dispatch table (rots::combat::issue_command()): five
+// representative cells (do_hit/do_flee, required by the brief; do_stand/
+// do_wake as the brief's "+2 more representative cells"; do_mental added
+// post-landing per review -- fight.cpp's per-tick mental-combat auto-attack
+// calls it every combat pulse for a fighting mental/shadow combatant, the
+// highest-value cell in the table) each get BOTH halves of coverage --
+// issue_command() reaches the real ACMD body when the table is registered
+// (gtest_main.cpp calls register_combat_command_dispatch() process-wide,
+// mirroring every other *_hooks.h suite's registration parity), and
+// defaults to a no-op when a cell is unregistered.
 //
 // DISCRIMINATOR SHAPE (mirrors comm_delay_tests.cpp's convention, adapted
 // for ACMD's void/side-effecting shape): each REACHES-THE-REAL-BODY test
 // drives ch/argument/wtl into the cheapest, most deterministic branch of the
-// real do_x() body (verified by reading act_offe.cpp/act_move.cpp -- see
-// each TEST's own comment for the exact branch and why it needs no heavier
-// fixture) and asserts the branch's specific, otherwise-impossible side
-// effect happened. Each DEFAULTS-TO-A-NO-OP test clears that ONE cell via
-// ScopedUnregisteredCombatCommand (below), drives the identical fixture, and
-// asserts NOTHING moved -- proving the tripwire-logged default is a true
-// no-op, not a partial or silently-wrong mutation, the same proof
-// obligation comm_delay_tests.cpp's suite documents for output_seam.h.
+// real do_x() body (verified by reading act_offe.cpp/act_move.cpp/
+// clerics.cpp -- see each TEST's own comment for the exact branch and why it
+// needs no heavier fixture) and asserts the branch's specific,
+// otherwise-impossible side effect happened. Each DEFAULTS-TO-A-NO-OP test
+// clears that ONE cell via ScopedUnregisteredCombatCommand (below), drives
+// the identical fixture, and asserts NOTHING moved -- proving the
+// tripwire-logged default is a true no-op, not a partial or silently-wrong
+// mutation, the same proof obligation comm_delay_tests.cpp's suite
+// documents for output_seam.h.
 //
 // Two discriminator styles, chosen per cell by which is cheaper to set up:
-//   - do_hit/do_flee: their cheapest branches are message-only (no state
-//     mutation), so ScopedCapturingOutputSink (below) captures the
+//   - do_hit/do_flee/do_mental: their cheapest branches are message-only (no
+//     state mutation), so ScopedCapturingOutputSink (below) captures the
 //     send_to_char() text instead -- do_flee's TACTICS_BERSERK guard needs
-//     no world[] at all; do_hit's no-victim branch needs a one-room
-//     ScopedTestWorld (test_world.h) because its very first guard reads
-//     world[ch->in_room].room_flags before anything else.
+//     no world[] at all; do_hit's/do_mental's own first guards each need a
+//     one-room ScopedTestWorld (test_world.h) because both read
+//     world[ch->in_room].room_flags (the same PEACEROOM check, verified
+//     identical in act_offe.cpp and clerics.cpp) before anything else.
 //   - do_stand/do_wake: their cheapest branches ARE a state mutation
 //     (GET_POS(ch) flips), so these assert on that field directly, no
 //     output capture needed. Both call act(..., TO_ROOM, ...) on the chosen
@@ -261,4 +265,53 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenWakeIsUnregistered)
 
     EXPECT_EQ(GET_POS(&character), POSITION_SLEEPING)
         << "Expected an unregistered wake cell to leave the character's position untouched.";
+}
+
+// do_mental (clerics.cpp) -- DISCRIMINATOR: the PEACEROOM guard is the very
+// first statement in do_mental's body (byte-for-byte the same shape as
+// do_hit's own first guard above -- IS_SET(world[ch->in_room].room_flags,
+// PEACEROOM) -- verified by reading clerics.cpp), so it needs the same
+// one-room ScopedTestWorld and captured send_to_char() for the same reason.
+// Chosen over do_mental's other early guards (no-victim, self-target, etc.)
+// because it is reached with the least fixture: setting room_flags =
+// PEACEROOM is the only state needed (unlike the no-victim branch, which
+// would additionally require room_flags to NOT have PEACEROOM set, per
+// do_hit's own test above) -- do_mental never gets far enough to touch
+// ch->specials.fighting/big_brother/etc. This is the highest-value
+// cell in the table: it is fight.cpp's ONLY combat_hooks.h target invoked
+// unconditionally every combat pulse once fight.cpp's per-tick loop reaches
+// a fighting mental/shadow combatant (fight.cpp:2791), so this seam being
+// correct for it matters more than for any of the other 24 cells.
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoMentalWhenRegistered)
+{
+    ScopedTestWorld test_world(1);
+    test_world.room().room_flags = PEACEROOM;
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.in_room = 0;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::mental, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message,
+        "A peaceful feeling overwhelms you, and you cannot bring yourself to attack.\n\r")
+        << "Expected the real do_mental body's PEACEROOM guard to send its literal message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenMentalIsUnregistered)
+{
+    ScopedTestWorld test_world(1);
+    test_world.room().room_flags = PEACEROOM;
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::mental);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.in_room = 0;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::mental, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered mental cell to leave send_to_char uncalled -- the real "
+           "do_mental body never ran.";
 }

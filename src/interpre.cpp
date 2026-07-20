@@ -2251,7 +2251,7 @@ void assign_command_pointers(void)
 }
 
 // Populates combat_hooks.h's boot-registered command-dispatch table with
-// the real ACMD pointer for each of its 24 cells (see that header's file
+// the real ACMD pointer for each of its 25 cells (see that header's file
 // comment for the full census-C target-list reconciliation). Defined
 // here, not in combat_hooks.cpp, because this file already forward-
 // declares every target below for its own _cmd_info table -- the same
@@ -2259,8 +2259,12 @@ void assign_command_pointers(void)
 // lives in spell_pa.cpp rather than consts.cpp. Called once from
 // db_boot.cpp, alongside assign_spell_pointers()/assign_command_pointers()
 // above -- see combat_hooks.h for why no call site converts to this table
-// yet this wave (four cells -- ambush/cast/hide/trap -- resolve to other
-// not-yet-promoted combat-row TUs today; the rest resolve to act_*.cpp).
+// yet this wave (five cells -- ambush/cast/hide/mental/trap -- resolve to
+// other not-yet-promoted combat-row TUs today; the rest resolve to
+// act_*.cpp). do_mental joined this registrar post-landing (review
+// critical): fight.cpp's per-tick mental-combat auto-attack calls it, a
+// genuine 25th up-call target the first pass's enumeration missed -- see
+// combat_hooks.h's TARGET LIST comment and task-2-report.md.
 void register_combat_command_dispatch()
 {
     using rots::combat::combat_command;
@@ -2276,6 +2280,7 @@ void register_combat_command_dispatch()
     set_combat_command(combat_command::hit, do_hit);
     set_combat_command(combat_command::lock, do_lock);
     set_combat_command(combat_command::look, do_look);
+    set_combat_command(combat_command::mental, do_mental); // clerics.cpp
     set_combat_command(combat_command::move, do_move);
     set_combat_command(combat_command::open, do_open);
     set_combat_command(combat_command::rescue, do_rescue);

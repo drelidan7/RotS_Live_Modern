@@ -17,9 +17,10 @@
 #include "rots/core/types.h"
 #include "utils.h"
 
-#include "big_brother.h"
 #include "char_utils.h"
 #include "char_utils_combat.h"
+#include "combat_hooks.h"
+#include "entity_hooks.h"
 #include "object_utils.h"
 #include "warrior_spec_handlers.h"
 #include <algorithm>
@@ -85,7 +86,6 @@ bool check_mind_block(char_data* character, char_data* attacker, int amount, int
     return true;
 }
 
-ACMD(do_flee);
 void report_char_mentals(struct char_data*, char*, int);
 void appear(struct char_data*);
 combat_result_struct damage_stat(struct char_data*, struct char_data*, int, int);
@@ -152,8 +152,7 @@ ACMD(do_mental)
         return;
     }
 
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-    if (!bb_instance.is_target_valid(ch, victim)) {
+    if (!rots::entity::dispatch_target_valid(ch, victim)) {
         send_to_char("You feel the Gods looking down upon you, and protecting your target.  Your mind falters.\r\n", ch);
         return;
     }
@@ -241,7 +240,7 @@ ACMD(do_mental)
             }
 
             if (damage_result.wants_to_flee) {
-                do_flee(victim, mutable_arg(""), NULL, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::flee, victim, mutable_arg(""), NULL, 0, 0);
             }
 
             if (victim->delay.cmd == CMD_PREPARE && (victim->delay.targ1.type == TARGET_IGNORE)) {
@@ -266,7 +265,7 @@ ACMD(do_mental)
             if (!damage_result.will_die) {
                 check_break_prep(ch);
                 if (damage_result.wants_to_flee) {
-                    do_flee(ch, mutable_arg(""), NULL, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::flee, ch, mutable_arg(""), NULL, 0, 0);
                 }
             }
 
@@ -310,7 +309,7 @@ combat_result_struct damage_stat(struct char_data* killer, struct char_data* vic
         wait_data.targ1.type = TARGET_CHAR;
         wait_data.targ2.ptr.other = NULL;
         wait_data.targ2.type = TARGET_NONE;
-        int special_index = special(killer, 0, mutable_arg(""), SPECIAL_DAMAGE, &wait_data);
+        int special_index = rots::combat::call_special(killer, 0, mutable_arg(""), SPECIAL_DAMAGE, &wait_data);
         if (special_index) {
             if (killer->specials.fighting == victim) {
                 stop_fighting(killer);
@@ -320,8 +319,7 @@ combat_result_struct damage_stat(struct char_data* killer, struct char_data* vic
     }
 
     // This isn't technically a curse, but it's close enough.
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-    if (!bb_instance.is_target_valid(killer, victim)) {
+    if (!rots::entity::dispatch_target_valid(killer, victim)) {
         send_to_char("You feel the Gods looking down upon you, and protecting your target.  Your mind falters.\r\n", victim);
         return combat_results;
     }
@@ -514,7 +512,7 @@ ACMD(do_concentrate)
             }
 
             if (victim_flees) {
-                do_flee(victim, mutable_arg(""), NULL, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::flee, victim, mutable_arg(""), NULL, 0, 0);
             }
         } else {
             send_to_char("You release your concentration.\n\r", ch);
@@ -577,7 +575,7 @@ bool weapon_willpower_damage(char_data* attacker, char_data* victim)
 
         combat_result_struct combat_result = damage_stat(attacker, victim, stat_targeted, stat_damage);
         if (combat_result.wants_to_flee && !combat_result.will_die) {
-            do_flee(victim, mutable_arg(""), NULL, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::flee, victim, mutable_arg(""), NULL, 0, 0);
         }
 
         return true;

@@ -590,28 +590,18 @@ extern const std::string_view fill[] = {
     "\n"
 };
 
-int search_block(char* arg, const std::string_view* list, char exact)
-{
-    int i, l;
-
-    /* Make into lower case, and get length of string */
-    for (l = 0; *(arg + l); l++)
-        *(arg + l) = LOWER(*(arg + l));
-
-    if (exact) {
-        for (i = 0; list[i] != "\n"; i++)
-            if (arg == list[i])
-                return i;
-    } else {
-        if (!l)
-            l = 1; /* Avoid "" to match the first available string */
-        for (i = 0; list[i] != "\n"; i++)
-            if (list[i].substr(0, static_cast<size_t>(l)) == arg)
-                return i;
-    }
-
-    return -1;
-}
+// search_block() relocated to rots_util.cpp (blocker-buster Task 4b; census
+// section A / task-4b-brief.md Step 1(b) mini-census verdict: platform-clean
+// (get_number precedent) -- operates only on its char*/std::string_view*
+// parameters, no interpre.cpp table/state read (the fill[]/pc_race_keywords
+// etc. lists it's called with are always passed in as the `list' param), so
+// generic_find() (visibility.cpp, joining rots_combat this task) can call
+// it without an app-tier upward edge. Its one utils.h dependency (the
+// LOWER(c) macro) is inlined the same way str_cmp()/str_cmp_nullable()
+// already do in that file (lower_ascii() in its anonymous namespace) --
+// rots_util.cpp/rots_platform must not include utils.h. Declaration
+// unchanged in interpre.h. See task-4b-report.md for the full mini-census
+// evidence.
 
 int old_search_block(char* argument, int begin, unsigned int length,
     const std::string_view* list, int mode)

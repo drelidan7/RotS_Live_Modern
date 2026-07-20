@@ -24,13 +24,19 @@
 // across rots_entity + rots_combat -- see AGENTS.md's Task 5 follow-up
 // (blocker-buster Task 5 updates the Dead/Unused-Code trio paragraph).
 //
-// CAN_SEE(sub, obj, light_mode) -- the 3-arg light/hiding overload -- does
-// NOT move here: see the STAY-APP comment above its definition in
-// utility.cpp for the verified reason (its see_hiding() call does not
-// resolve in-lib). get_char_room_vis/get_player_vis/get_char_vis/
-// generic_find (handler.cpp) likewise stay app for the same cascading
-// reason plus (generic_find only) an independent search_block() app edge
-// -- see their own STAY comments in handler.cpp and task-4-report.md.
+// blocker-buster Task 4b completes the family: CAN_SEE(sub, obj, light_mode)
+// (the 3-arg light/hiding overload) and its four riders
+// (get_char_room_vis/get_player_vis/get_char_vis/generic_find, all
+// handler.cpp) join here too. Task 4 kept them app-tier because the 3-arg
+// overload's see_hiding(sub) call did not resolve in-lib (see_hiding was
+// defined in ranger.cpp, a still-DEFERRED ROTS_SERVER_SOURCES TU) and
+// generic_find's search_block() call was an uncensused app-tier edge
+// (interpre.cpp). Task 4b's Step 1 mini-census (task-4b-report.md)
+// verified both clean and cleared them: see_hiding() is carved out of
+// ranger.cpp into this file (entity-pure, zero other ranger.cpp
+// dependency); search_block() relocates to rots_util.cpp/rots_platform
+// (platform-clean, get_number()'s precedent) -- both now resolve as
+// in-lib/downward references, not upward edges.
 //
 // world[] access: CAN_SEE(sub)'s IS_LIGHT/OUTSIDE macro expansions
 // (utils.h) index world[room] with NO bounds check anywhere in the
@@ -43,6 +49,7 @@
 #include "char_utils.h"
 #include "comm.h"
 #include "handler.h"
+#include "interpre.h"
 #include "spells.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
@@ -64,6 +71,13 @@ extern struct obj_data* object_list;
 // equipment.cpp/handler.cpp use for their own max_race_str reference (no
 // shared header declares it).
 extern int max_race_str[];
+
+// character_list: the global linked list of all player characters
+// (entity_lifecycle.cpp, rots_entity). get_player_vis()/get_char_vis()
+// below walk it, exactly as they did in handler.cpp -- same local extern
+// convention that file used (handler.cpp:68) and this file already uses
+// for object_list above (no shared header declares it either).
+extern struct char_data* character_list;
 
 /*
  * Can character see at all?
@@ -401,6 +415,332 @@ struct obj_data* get_object_in_equip_vis(struct char_data* ch,
             if (CAN_SEE_OBJ(ch, equipment[(*j)]))
                 if (isname_nullable(arg, equipment[(*j)]->name))
                     return (equipment[(*j)]);
+
+    return (0);
+}
+
+// see_hiding() relocated from ranger.cpp (blocker-buster Task 4b; census
+// section A / task-4b-brief.md Step 1(a) mini-census verdict: entity-pure --
+// only GET_SKILL/GET_INT/GET_LEVEL/GET_PROF_LEVEL/GET_SPEC/GET_RACE/IS_NPC
+// macros, zero other ranger.cpp dependency, no ranger-internal statics.
+// Carved out of that still-DEFERRED ROTS_SERVER_SOURCES TU so the 3-arg
+// CAN_SEE() overload below can call it in-lib. Declaration unchanged in
+// utils.h.
+/*
+ * see_hiding calculates the level of GET_HIDING that
+ * `seeker' should be able to see, taking into account:
+ *  - the ranger level of `seeker'
+ *  - the amount of awareness `seeker' has practiced
+ *  - the intelligence of `seeker'
+ *  - the specialization of `seeker' (stealth spec gets a bonus)
+ *  - the race of `seeker' (elves get a bonus)
+ */
+int see_hiding(struct char_data* seeker)
+{
+    int can_see, awareness;
+
+    if (IS_NPC(seeker))
+        awareness = std::min(100, 40 + GET_INT(seeker) + GET_LEVEL(seeker));
+    else
+        awareness = GET_SKILL(seeker, SKILL_AWARENESS) + GET_INT(seeker);
+
+    can_see = awareness * GET_PROF_LEVEL(PROF_RANGER, seeker) / 30;
+
+    if (GET_SPEC(seeker) == PLRSPEC_STLH)
+        can_see += 5;
+
+    if (GET_RACE(seeker) == RACE_WOOD)
+        can_see += 5;
+
+    return can_see;
+}
+
+// CAN_SEE(sub, obj, light_mode) (the 3-arg light/hiding overload) relocated
+// from utility.cpp (blocker-buster Task 4b, completing Task 4's split):
+// its see_hiding(sub) call now resolves in-lib (above). Its one unchecked
+// world[] site -- the IS_LIGHT((obj)->in_room)/OUTSIDE(sub) macro
+// expansions -- resolves via two hoisted room_by_id_total() pointers (one
+// for obj's room, one for sub's room, since the two can differ for
+// non-NPC targets) per the BINDING addendum's resolver-variant rule,
+// mirroring CAN_SEE(sub)'s 1-arg precedent above. weather_info/act()/
+// number() are the same legal peer/seam/L0 refs Task 4 already established.
+/*
+ * Can subject see character "obj"?  Returns 0 if sub
+ * cannot see obj, and 1 if sub can see obj.  CAN_SEE
+ * is called way too many times.  From testing, it's
+ * called three times for a kill command.
+ */
+int CAN_SEE(struct char_data* sub, struct char_data* obj, int light_mode)
+{
+    int tmp;
+
+    if (!obj)
+        return CAN_SEE(sub);
+    if ((sub) == (obj))
+        return 1;
+    if (PLR_FLAGGED(sub, PLR_WRITING))
+        return 0;
+
+    /*
+     * If you aren't in the same room as it, and it's an NPC,
+     * you can't see it, unless it's the guardian angel.
+     */
+    if (GET_LEVEL(sub) < LEVEL_IMMORT && sub->in_room != obj->in_room && IS_NPC(obj) && strcmp(GET_NAME(obj), "Guardian angel"))
+        return 0;
+
+    if (IS_SHADOW(obj) || IS_SHADOW(sub)) {
+        if ((sub->specials.fighting == obj) || (obj->specials.fighting == sub))
+            return 1;
+        if (!(!IS_NPC(sub) && PRF_FLAGGED((sub), PRF_HOLYLIGHT)) && (GET_PERCEPTION(sub) * GET_PERCEPTION(obj) < number(1, 10000)))
+            return 0;
+    }
+
+    /*
+     * Light/physical dependent stuff in here: shadows can
+     * see though physical objects (hence see hidden players)
+     * and don't worry about light sources.
+     */
+    if (!(IS_SHADOW(sub))) {
+        if (GET_HIDING(obj)) {
+            /* mobs have a 10% chance to simply not see people that sneak in */
+            if (IS_NPC(sub) && IS_SET(obj->specials2.hide_flags, HIDING_SNUCK_IN) && !number(0, 9) && !IS_NPC(obj)) {
+                act("$n glances directly at you, but doesn't seem to notice "
+                    "your presence.",
+                    FALSE, sub, 0, obj, TO_VICT);
+                return 0;
+            } else
+                tmp = see_hiding(sub);
+            if ((tmp < GET_HIDING(obj)) && !(!IS_NPC(sub) && PRF_FLAGGED((sub), PRF_HOLYLIGHT))) {
+                return 0;
+            }
+        }
+
+        if (!light_mode) {
+            // IS_LIGHT((obj)->in_room)/OUTSIDE(sub) (utils.h) inlined against
+            // resolved room pointers -- see this function's banner comment.
+            // obj_room_is_dark mirrors IS_DARK(room) verbatim (on obj's
+            // room); sub_room_is_outside mirrors OUTSIDE(ch) verbatim (on
+            // sub's room, which can differ from obj's for non-NPC targets).
+            room_data* obj_room = room_by_id_total((obj)->in_room);
+            bool obj_room_is_dark = !obj_room->light && (IS_SET(obj_room->room_flags, DARK) || ((obj_room->sector_type != SECT_INSIDE && obj_room->sector_type != SECT_CITY) && (weather_info.sunlight == SUN_DARK)));
+            room_data* sub_room = room_by_id_total((sub)->in_room);
+            bool sub_room_is_outside = !IS_SET(sub_room->room_flags, INDOORS);
+
+            if (obj_room_is_dark && !IS_AFFECTED((sub), AFF_INFRARED) && !(!IS_NPC(sub) && PRF_FLAGGED((sub), PRF_HOLYLIGHT)) && !(sub_room_is_outside && IS_AFFECTED((sub), AFF_MOONVISION) && weather_info.moonlight))
+                return 0;
+        }
+    }
+    /* End light/physical dependent stuff */
+
+    /* If obj has an invis level, you can't see it unless you're >= that level */
+    if ((GET_LEVEL(sub) < GET_INVIS_LEV(obj)) && !IS_NPC(obj))
+        return 0;
+
+    /* Blinded players don't see anything */
+    if (IS_AFFECTED((sub), AFF_BLIND))
+        return 0;
+
+    /* You can't see invisible objects; unless you're an imm with HOLYLIGHT */
+    if (IS_AFFECTED((obj), AFF_INVISIBLE))
+        if (!(!IS_NPC(sub) && PRF_FLAGGED((sub), PRF_HOLYLIGHT)))
+            return 0;
+
+    /* Ok, noone can see if they are sleeping :) */
+    if (GET_POS((sub)) <= POSITION_SLEEPING)
+        return 0;
+
+    return 1;
+}
+
+// get_char_room_vis()/get_player_vis()/get_char_vis() relocated from
+// handler.cpp (blocker-buster Task 4b, completing Task 4's split): all
+// three ride the 3-arg CAN_SEE() overload above, which now resolves
+// in-lib. get_char_room_vis's one unchecked world[ch->in_room].people site
+// resolves via room_by_id_total(ch->in_room)->people per the BINDING
+// addendum's resolver-variant rule -- precedented by get_char_room()
+// (placement.cpp) hoisting the same field the same way. get_player_vis/
+// get_char_vis have no world[] touch of their own.
+struct char_data* get_char_room_vis(struct char_data* ch, char* name, int dark_ok)
+{
+    struct char_data* i;
+    int j, number, check;
+    char tmpname[MAX_INPUT_LENGTH];
+    char* tmp;
+
+    strcpy(tmpname, name);
+    tmp = tmpname;
+    if (!(number = get_number(&tmp)))
+        return (0);
+
+    j = 1;
+    // world[ch->in_room].people (original, unchecked) -> room_by_id_total
+    // per the BINDING addendum's resolver-variant rule (see banner above).
+    for (i = room_by_id_total(ch->in_room)->people; i && (j <= number); i = i->next_in_room) {
+
+        check = keyword_matches_char(ch, i, tmp);
+        if (check)
+            if (CAN_SEE(ch, i, dark_ok)) {
+                if (j == number)
+                    return (i);
+                j++;
+            }
+    }
+    return (0);
+}
+
+struct char_data* get_player_vis(struct char_data* ch, char* name)
+{
+    struct char_data* i;
+
+    for (i = character_list; i; i = i->next)
+        if (!IS_NPC(i) && !str_cmp_nullable(i->player.name, name) && CAN_SEE(ch, i))
+            return i;
+
+    return 0;
+}
+
+struct char_data* get_char_vis(struct char_data* ch, char* name, int dark_ok)
+{
+    struct char_data* i;
+    int j, number, check;
+    char tmpname[MAX_INPUT_LENGTH];
+    char* tmp;
+
+    /* check location */
+    if ((i = get_char_room_vis(ch, name)))
+        return (i);
+
+    strcpy(tmpname, name);
+    tmp = tmpname;
+    if (!(number = get_number(&tmp)))
+        return (0);
+
+    for (i = character_list, j = 1; i && (j <= number); i = i->next) {
+        if (other_side(ch, i))
+            check = isname_nullable(tmp, pc_race_keywords[i->player.race].data());
+        else
+            check = isname_nullable(tmp, i->player.name);
+
+        if (check)
+            if (CAN_SEE(ch, i, dark_ok)) {
+                if (j == number)
+                    return (i);
+                j++;
+            }
+    }
+
+    return (0);
+}
+
+/* Generic Find, designed to find any object/character                    */
+/* Calling :                                                              */
+/*  *arg     is the sting containing the string to be searched for.       */
+/*           This string doesn't have to be a single word, the routine    */
+/*           extracts the next word itself.                               */
+/*  bitv..   All those bits that you want to "search through".            */
+/*           Bit found will be result of the function                     */
+/*  *ch      This is the person that is trying to "find"                  */
+/*  **tar_ch Will be NULL if no character was found, otherwise points     */
+/* **tar_obj Will be NULL if no object was found, otherwise points        */
+/*                                                                        */
+/* The routine returns a pointer to the next word in *arg (just like the  */
+/* one_argument routine).                                                 */
+
+// generic_find() relocated from handler.cpp (blocker-buster Task 4b,
+// completing Task 4's split): its search_block() call (interpre.h decl)
+// now resolves in-lib via rots_util.cpp/rots_platform (Task 4b Step 1(b)
+// mini-census verdict), and it rides get_char_room_vis()/get_char_vis()
+// above, both now in-lib too. Its one unchecked world[ch->in_room].contents
+// site resolves via room_by_id_total(ch->in_room)->contents per the BINDING
+// addendum's resolver-variant rule, the same substitution get_obj_vis()
+// above already uses for the identical original expression.
+int generic_find(char* arg, int bitvector, struct char_data* ch,
+    struct char_data** tar_ch, struct obj_data** tar_obj)
+{
+    static const std::string_view ignore[] = {
+        "the",
+        "in",
+        "on",
+        "at",
+        "\n"
+    };
+
+    int i, namelen = 0;
+    char name[256];
+    char found, tmpfound;
+
+    found = FALSE;
+
+    /* Eliminate spaces and "ignore" words */
+    while (*arg && !found) {
+
+        for (; *arg == ' '; arg++)
+            ;
+
+        for (i = 0; (name[i] = *(arg + i)) && (name[i] != ' '); i++)
+            ;
+        name[i] = 0;
+        namelen = i;
+        arg += i;
+        if (search_block(name, ignore, TRUE) > -1)
+            found = TRUE;
+    }
+
+    if (!name[0])
+        return (0);
+
+    *tar_ch = 0;
+    *tar_obj = 0;
+
+    if (IS_SET(bitvector, FIND_CHAR_ROOM)) { /* Find person in room */
+        if ((*tar_ch = get_char_room_vis(ch, name))) {
+            return (FIND_CHAR_ROOM);
+        }
+    }
+
+    if (IS_SET(bitvector, FIND_CHAR_WORLD)) {
+        if ((*tar_ch = get_char_vis(ch, name))) {
+            return (FIND_CHAR_WORLD);
+        }
+    }
+
+    if (IS_SET(bitvector, FIND_OBJ_EQUIP)) {
+        for (found = FALSE, i = 0; i < MAX_WEAR && !found; i++) {
+            if (namelen > 2)
+                tmpfound = (ch->equipment[i] && strn_cmp_nullable(name, ch->equipment[i]->name, namelen) == 0);
+            else
+                tmpfound = (ch->equipment[i] && str_cmp_nullable(name, ch->equipment[i]->name) == 0);
+            if (tmpfound) {
+                *tar_obj = ch->equipment[i];
+                found = TRUE;
+            }
+        }
+        if (found) {
+            return (FIND_OBJ_EQUIP);
+        }
+    }
+
+    if (IS_SET(bitvector, FIND_OBJ_INV)) {
+        //   if ((*tar_obj = get_obj_in_list_vis(ch, name, ch->carrying,9999))) {
+        if ((*tar_obj = get_obj_in_list(name, ch->carrying))) {
+            return (FIND_OBJ_INV);
+        }
+    }
+
+    if (IS_SET(bitvector, FIND_OBJ_ROOM)) {
+        // world[ch->in_room].contents (original, unchecked) -> room_by_id_total
+        // per the BINDING addendum's resolver-variant rule (get_obj_vis()
+        // above already establishes this exact substitution).
+        if ((*tar_obj = get_obj_in_list_vis(ch, name, room_by_id_total(ch->in_room)->contents, 9999))) {
+            return (FIND_OBJ_ROOM);
+        }
+    }
+
+    if (IS_SET(bitvector, FIND_OBJ_WORLD)) {
+        if ((*tar_obj = get_obj_vis(ch, name))) {
+            return (FIND_OBJ_WORLD);
+        }
+    }
 
     return (0);
 }

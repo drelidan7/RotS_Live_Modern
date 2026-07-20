@@ -337,106 +337,18 @@ void initialize_buffers()
 // see task-4-report.md for the exact before/after quote. Declaration
 // unchanged in utils.h.
 
-/*
- * Can subject see character "obj"?  Returns 0 if sub
- * cannot see obj, and 1 if sub can see obj.  CAN_SEE
- * is called way too many times.  From testing, it's
- * called three times for a kill command.
- */
-// STAY-APP (blocker-buster Task 4, census section A verification):
-// census-A recommended this 3-arg overload for rots_combat (weather_info/
-// world[]/act() are all legal peer/seam refs -- act() already resolves via
-// output_seam, an L1/rots_core forwarder), but its see_hiding(sub) call
-// below does NOT resolve in-lib: see_hiding is defined in ranger.cpp
-// (ranger.cpp:1986), which remains a ROTS_SERVER_SOURCES (app) TU, not
-// part of rots_combat or any peer library it links (verified: `grep
-// ranger.cpp src/CMakeLists.txt` only matches the ROTS_SERVER_SOURCES
-// list; rots_combat_linkcheck force-loads rots_combat against ONLY
-// RotS::entity/RotS::core/RotS::platform + the new RotS::world peer
-// link -- ranger.cpp is in none of those). Moving this overload would
-// break CombatLayerAcyclicity with an undefined `see_hiding` symbol, and
-// the BINDING addendum's hot-path rule forbids introducing a new
-// dispatch/seam instrument to bridge it. Census-A's classification of
-// ranger.cpp as "a combat-row TU, not an app file" is a verification
-// failure against the CURRENT build wiring (ranger.cpp is one of the
-// still-DEFERRED 11 combat-row TUs, ROTS_COMBAT_SOURCES comment above
-// rots_combat's target_link_libraries in CMakeLists.txt), not the
-// already-extracted state the census's framing assumed. Stays here,
-// unchanged, until a future task extracts see_hiding (entity-pure, zero
-// other ranger.cpp dependency) to entity tier or moves ranger.cpp itself
-// -- see task-4-report.md's Concerns section.
-int CAN_SEE(struct char_data* sub, struct char_data* obj, int light_mode)
-{
-    int tmp;
-
-    if (!obj)
-        return CAN_SEE(sub);
-    if ((sub) == (obj))
-        return 1;
-    if (PLR_FLAGGED(sub, PLR_WRITING))
-        return 0;
-
-    /*
-     * If you aren't in the same room as it, and it's an NPC,
-     * you can't see it, unless it's the guardian angel.
-     */
-    if (GET_LEVEL(sub) < LEVEL_IMMORT && sub->in_room != obj->in_room && IS_NPC(obj) && strcmp(GET_NAME(obj), "Guardian angel"))
-        return 0;
-
-    if (IS_SHADOW(obj) || IS_SHADOW(sub)) {
-        if ((sub->specials.fighting == obj) || (obj->specials.fighting == sub))
-            return 1;
-        if (!(!IS_NPC(sub) && PRF_FLAGGED((sub), PRF_HOLYLIGHT)) && (GET_PERCEPTION(sub) * GET_PERCEPTION(obj) < number(1, 10000)))
-            return 0;
-    }
-
-    /*
-     * Light/physical dependent stuff in here: shadows can
-     * see though physical objects (hence see hidden players)
-     * and don't worry about light sources.
-     */
-    if (!(IS_SHADOW(sub))) {
-        if (GET_HIDING(obj)) {
-            /* mobs have a 10% chance to simply not see people that sneak in */
-            if (IS_NPC(sub) && IS_SET(obj->specials2.hide_flags, HIDING_SNUCK_IN) && !number(0, 9) && !IS_NPC(obj)) {
-                act("$n glances directly at you, but doesn't seem to notice "
-                    "your presence.",
-                    FALSE, sub, 0, obj, TO_VICT);
-                return 0;
-            } else
-                tmp = see_hiding(sub);
-            if ((tmp < GET_HIDING(obj)) && !(!IS_NPC(sub) && PRF_FLAGGED((sub), PRF_HOLYLIGHT))) {
-                return 0;
-            }
-        }
-
-        if (!light_mode) {
-            if (!IS_LIGHT((obj)->in_room) && !IS_AFFECTED((sub), AFF_INFRARED) && !(!IS_NPC(sub) && PRF_FLAGGED((sub), PRF_HOLYLIGHT)) && !(OUTSIDE(sub) && IS_AFFECTED((sub), AFF_MOONVISION) && weather_info.moonlight))
-                return 0;
-        }
-    }
-    /* End light/physical dependent stuff */
-
-    /* If obj has an invis level, you can't see it unless you're >= that level */
-    if ((GET_LEVEL(sub) < GET_INVIS_LEV(obj)) && !IS_NPC(obj))
-        return 0;
-
-    /* Blinded players don't see anything */
-    if (IS_AFFECTED((sub), AFF_BLIND))
-        return 0;
-
-    /* You can't see invisible objects; unless you're an imm with HOLYLIGHT */
-    if (IS_AFFECTED((obj), AFF_INVISIBLE))
-        if (!(!IS_NPC(sub) && PRF_FLAGGED((sub), PRF_HOLYLIGHT)))
-            return 0;
-
-    /* Ok, noone can see if they are sleeping :) */
-    if (GET_POS((sub)) <= POSITION_SLEEPING)
-        return 0;
-
-    return 1;
-}
-
+// CAN_SEE(sub, obj, light_mode) (the 3-arg light/hiding overload) relocated
+// to visibility.cpp (blocker-buster Task 4b; census section A, completing
+// Task 4's split): its see_hiding(sub) call now resolves in-lib -- Task 4b
+// Step 1(a)'s mini-census carved see_hiding() out of ranger.cpp into
+// visibility.cpp (entity-pure, zero other ranger.cpp dependency). Its one
+// unchecked world[] site (the IS_LIGHT((obj)->in_room)/OUTSIDE(sub) macro
+// expansions) resolves via two hoisted room_by_id_total() pointers (obj's
+// room for IS_LIGHT, sub's room for OUTSIDE) per the BINDING addendum's
+// resolver-variant rule; weather_info/act()/number() are the same legal
+// peer/seam/L0 refs Task 4 already established for the 1-arg overload.
+// Declaration unchanged in utils.h. See task-4b-report.md for the full
+// evidence.
 // can_sense() relocated to char_utils_combat.cpp (placement-seam Task 5;
 // census verdict MOVE-OTHER-L2): entity-pure GET_* macro logic.
 // Declaration unchanged in utils.h.

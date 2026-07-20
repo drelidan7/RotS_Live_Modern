@@ -912,88 +912,14 @@ void extract_char(struct char_data* ch, int new_room)
 // keyword_matches_char() relocated to char_utils.cpp (placement-seam
 // Task 4). Declaration unchanged in handler.h.
 
-// STAY-APP (blocker-buster Task 4): get_char_room_vis()/get_player_vis()/
-// get_char_vis() below all ride the 3-arg CAN_SEE(sub,obj,light_mode)
-// overload (get_char_room_vis/get_char_vis directly; get_player_vis via
-// its 2-arg call, defaulted light_mode=0), which itself stays app-tier in
-// utility.cpp -- see that function's own STAY-APP comment for the
-// verified reason (its see_hiding() call does not resolve in-lib). Moving
-// these three while CAN_SEE(3-arg) stays app would create an
-// EntityLayerAcyclicity-class upward edge (rots_combat calling an
-// app-tier symbol), so all three stay here, unchanged. See
-// task-4-report.md's Concerns section.
-struct char_data* get_char_room_vis(struct char_data* ch, char* name, int dark_ok)
-{
-    struct char_data* i;
-    int j, number, check;
-    char tmpname[MAX_INPUT_LENGTH];
-    char* tmp;
-
-    strcpy(tmpname, name);
-    tmp = tmpname;
-    if (!(number = get_number(&tmp)))
-        return (0);
-
-    j = 1;
-    for (i = world[ch->in_room].people; i && (j <= number); i = i->next_in_room) {
-
-        check = keyword_matches_char(ch, i, tmp);
-        if (check)
-            if (CAN_SEE(ch, i, dark_ok)) {
-                if (j == number)
-                    return (i);
-                j++;
-            }
-    }
-    return (0);
-}
-
-// STAY-APP: see get_char_room_vis()'s comment above.
-struct char_data* get_player_vis(struct char_data* ch, char* name)
-{
-    struct char_data* i;
-
-    for (i = character_list; i; i = i->next)
-        if (!IS_NPC(i) && !str_cmp_nullable(i->player.name, name) && CAN_SEE(ch, i))
-            return i;
-
-    return 0;
-}
-
-// STAY-APP: see get_char_room_vis()'s comment above.
-struct char_data* get_char_vis(struct char_data* ch, char* name, int dark_ok)
-{
-    struct char_data* i;
-    int j, number, check;
-    char tmpname[MAX_INPUT_LENGTH];
-    char* tmp;
-
-    /* check location */
-    if ((i = get_char_room_vis(ch, name)))
-        return (i);
-
-    strcpy(tmpname, name);
-    tmp = tmpname;
-    if (!(number = get_number(&tmp)))
-        return (0);
-
-    for (i = character_list, j = 1; i && (j <= number); i = i->next) {
-        if (other_side(ch, i))
-            check = isname_nullable(tmp, pc_race_keywords[i->player.race].data());
-        else
-            check = isname_nullable(tmp, i->player.name);
-
-        if (check)
-            if (CAN_SEE(ch, i, dark_ok)) {
-                if (j == number)
-                    return (i);
-                j++;
-            }
-    }
-
-    return (0);
-}
-
+// get_char_room_vis()/get_player_vis()/get_char_vis() relocated to
+// visibility.cpp (blocker-buster Task 4b, completing Task 4's split):
+// the 3-arg CAN_SEE(sub,obj,light_mode) overload they ride now resolves
+// in-lib too (Task 4b Step 1(a) carved see_hiding() out of ranger.cpp).
+// get_char_room_vis's one unchecked world[ch->in_room].people site
+// resolves via room_by_id_total(ch->in_room)->people per the BINDING
+// addendum's resolver-variant rule. Declarations unchanged in handler.h.
+// See task-4b-report.md for the full evidence.
 // get_obj_in_list_vis() relocated to visibility.cpp (blocker-buster
 // Task 4; census section A verdict MOVE-L3-COMBAT): entity-pure list
 // walk riding the moved CAN_SEE_OBJ(), no world[] touch of its own.
@@ -1030,104 +956,16 @@ struct char_data* get_char_vis(struct char_data* ch, char* name, int dark_ok)
 /* The routine returns a pointer to the next word in *arg (just like the  */
 /* one_argument routine).                                                 */
 
-// STAY-APP (blocker-buster Task 4, census section A correction):
-// generic_find() calls search_block() (interpre.cpp:593, declared
-// interpre.h) -- a ROTS_SERVER_SOURCES (app) symbol not covered by
-// census-A's "entity-pure" verdict for this function (an uncensused
-// upward edge, verified by grep). It also rides get_char_room_vis()/
-// get_char_vis() above, both staying app for their own reason. Its two
-// object-vis calls (get_obj_in_list_vis()/get_obj_vis()) now resolve
-// downward into rots_combat, a legal app-calls-library edge -- no change
-// needed at those call sites. Stays here, unchanged. See
-// task-4-report.md's Concerns section.
-int generic_find(char* arg, int bitvector, struct char_data* ch,
-    struct char_data** tar_ch, struct obj_data** tar_obj)
-{
-    static const std::string_view ignore[] = {
-        "the",
-        "in",
-        "on",
-        "at",
-        "\n"
-    };
-
-    int i, namelen = 0;
-    char name[256];
-    char found, tmpfound;
-
-    found = FALSE;
-
-    /* Eliminate spaces and "ignore" words */
-    while (*arg && !found) {
-
-        for (; *arg == ' '; arg++)
-            ;
-
-        for (i = 0; (name[i] = *(arg + i)) && (name[i] != ' '); i++)
-            ;
-        name[i] = 0;
-        namelen = i;
-        arg += i;
-        if (search_block(name, ignore, TRUE) > -1)
-            found = TRUE;
-    }
-
-    if (!name[0])
-        return (0);
-
-    *tar_ch = 0;
-    *tar_obj = 0;
-
-    if (IS_SET(bitvector, FIND_CHAR_ROOM)) { /* Find person in room */
-        if ((*tar_ch = get_char_room_vis(ch, name))) {
-            return (FIND_CHAR_ROOM);
-        }
-    }
-
-    if (IS_SET(bitvector, FIND_CHAR_WORLD)) {
-        if ((*tar_ch = get_char_vis(ch, name))) {
-            return (FIND_CHAR_WORLD);
-        }
-    }
-
-    if (IS_SET(bitvector, FIND_OBJ_EQUIP)) {
-        for (found = FALSE, i = 0; i < MAX_WEAR && !found; i++) {
-            if (namelen > 2)
-                tmpfound = (ch->equipment[i] && strn_cmp_nullable(name, ch->equipment[i]->name, namelen) == 0);
-            else
-                tmpfound = (ch->equipment[i] && str_cmp_nullable(name, ch->equipment[i]->name) == 0);
-            if (tmpfound) {
-                *tar_obj = ch->equipment[i];
-                found = TRUE;
-            }
-        }
-        if (found) {
-            return (FIND_OBJ_EQUIP);
-        }
-    }
-
-    if (IS_SET(bitvector, FIND_OBJ_INV)) {
-        //   if ((*tar_obj = get_obj_in_list_vis(ch, name, ch->carrying,9999))) {
-        if ((*tar_obj = get_obj_in_list(name, ch->carrying))) {
-            return (FIND_OBJ_INV);
-        }
-    }
-
-    if (IS_SET(bitvector, FIND_OBJ_ROOM)) {
-        if ((*tar_obj = get_obj_in_list_vis(ch, name, world[ch->in_room].contents, 9999))) {
-            return (FIND_OBJ_ROOM);
-        }
-    }
-
-    if (IS_SET(bitvector, FIND_OBJ_WORLD)) {
-        if ((*tar_obj = get_obj_vis(ch, name))) {
-            return (FIND_OBJ_WORLD);
-        }
-    }
-
-    return (0);
-}
-
+// generic_find() relocated to visibility.cpp (blocker-buster Task 4b,
+// completing Task 4's split): its search_block() call now resolves
+// in-lib via rots_util.cpp/rots_platform (Task 4b Step 1(b) mini-census
+// verdict: platform-clean, get_number() precedent), and it rides
+// get_char_room_vis()/get_char_vis() above, both now in-lib too. Its one
+// unchecked world[ch->in_room].contents site resolves via
+// room_by_id_total(ch->in_room)->contents per the BINDING addendum's
+// resolver-variant rule (the same substitution get_obj_vis() already
+// uses for the identical original expression). Declaration unchanged in
+// handler.h. See task-4b-report.md for the full evidence.
 // find_all_dots() relocated to rots_util.cpp (rots_platform,
 // placement-seam Task 4). Declaration unchanged in handler.h.
 

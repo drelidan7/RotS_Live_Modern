@@ -822,3 +822,39 @@ void reshuffle(int* arr, int len)
         arr[tmp] = newarr[tmp];
     return;
 }
+
+// search_block() relocated from interpre.cpp (blocker-buster Task 4b;
+// census section A / task-4b-brief.md Step 1(b) mini-census verdict:
+// platform-clean, get_number()'s precedent -- operates only on its
+// char*/std::string_view* parameters (the fill[]/pc_race_keywords/etc.
+// tables its callers pass are never read here directly, only through the
+// `list' parameter), no interpre.cpp table/state dependency. Its one
+// utils.h dependency, the LOWER(c) macro, is inlined via this file's
+// existing lower_ascii() helper (anonymous namespace above) -- the same
+// precedent str_cmp()/str_cmp_nullable() already established for the
+// identical "L0 must not include utils.h" constraint. Declaration
+// unchanged in interpre.h.
+int search_block(char* arg, const std::string_view* list, char exact)
+{
+    int i, l;
+
+    /* Make into lower case, and get length of string */
+    for (l = 0; *(arg + l); l++)
+        // LOWER macro inlined as lower_ascii() -- see the anonymous
+        // namespace above.
+        *(arg + l) = lower_ascii(*(arg + l));
+
+    if (exact) {
+        for (i = 0; list[i] != "\n"; i++)
+            if (arg == list[i])
+                return i;
+    } else {
+        if (!l)
+            l = 1; /* Avoid "" to match the first available string */
+        for (i = 0; list[i] != "\n"; i++)
+            if (list[i].substr(0, static_cast<size_t>(l)) == arg)
+                return i;
+    }
+
+    return -1;
+}

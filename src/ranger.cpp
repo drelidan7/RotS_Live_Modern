@@ -1974,34 +1974,14 @@ int hide_prof(struct char_data* hider)
     return hide_value;
 }
 
-/*
- * see_hiding calculates the level of GET_HIDING that
- * `seeker' should be able to see, taking into account:
- *  - the ranger level of `seeker'
- *  - the amount of awareness `seeker' has practiced
- *  - the intelligence of `seeker'
- *  - the specialization of `seeker' (stealth spec gets a bonus)
- *  - the race of `seeker' (elves get a bonus)
- */
-int see_hiding(struct char_data* seeker)
-{
-    int can_see, awareness;
-
-    if (IS_NPC(seeker))
-        awareness = std::min(100, 40 + GET_INT(seeker) + GET_LEVEL(seeker));
-    else
-        awareness = GET_SKILL(seeker, SKILL_AWARENESS) + GET_INT(seeker);
-
-    can_see = awareness * GET_PROF_LEVEL(PROF_RANGER, seeker) / 30;
-
-    if (GET_SPEC(seeker) == PLRSPEC_STLH)
-        can_see += 5;
-
-    if (GET_RACE(seeker) == RACE_WOOD)
-        can_see += 5;
-
-    return can_see;
-}
+// see_hiding() relocated to visibility.cpp (blocker-buster Task 4b; census
+// section A / task-4b-brief.md Step 1(a) mini-census verdict: entity-pure --
+// only GET_SKILL/GET_INT/GET_LEVEL/GET_PROF_LEVEL/GET_SPEC/GET_RACE/IS_NPC
+// macros, zero other ranger.cpp dependency, no ranger-internal statics --
+// carved out of this still-DEFERRED ROTS_SERVER_SOURCES TU into rots_combat
+// so the 3-arg CAN_SEE() overload's see_hiding(sub) call resolves in-lib.
+// Declaration unchanged in utils.h. See task-4b-report.md for the full
+// mini-census evidence.
 
 bool check_archery_accuracy(const char_data& archer, const char_data&)
 {

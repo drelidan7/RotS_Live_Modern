@@ -685,6 +685,7 @@ if(ROTS_BUILD_TESTS)
         tests/platform_log_tests.cpp
         tests/player_finalize_tests.cpp
         tests/pod_persistence_json_tests.cpp
+        tests/poison_notification_tests.cpp
         tests/prompt_format_tests.cpp
         tests/protocol_tests.cpp
         tests/rots_asprintf_tests.cpp

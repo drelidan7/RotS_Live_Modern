@@ -1396,7 +1396,7 @@ struct txt_block* get_from_txt_block_pool()
     return pnew;
 }
 
-struct txt_block* get_from_txt_block_pool(std::string_view line)
+static struct txt_block* get_from_txt_block_pool_impl(std::string_view line)
 {
     txt_block* text_block = get_from_txt_block_pool();
     const std::string_view normalized_line = rots::text::truncate_at_null(line);
@@ -1826,7 +1826,7 @@ int write_to_descriptor(SocketType descriptor, std::string_view text)
     return (0);
 }
 
-void break_spell(struct char_data* ch)
+static void break_spell_impl(struct char_data* ch)
 {
     //  if(IS_AFFECTED(ch, AFF_WAITWHEEL)){
     //        printf("breaking spell for %s\n", ch->player.name);
@@ -2203,7 +2203,7 @@ char_data* get_character(int character_id)
     return NULL;
 }
 
-void send_to_all(std::string_view message)
+static void send_to_all_impl(std::string_view message)
 {
     for (descriptor_data* connection = descriptor_list; connection;
         connection = connection->next) {
@@ -2258,7 +2258,7 @@ void send_to_except(std::string_view message, char_data* excluded_character)
     }
 }
 
-void send_to_room(std::string_view message, int room)
+static void send_to_room_impl(std::string_view message, int room)
 {
     for (char_data* occupant = world[room].people; occupant;
         occupant = occupant->next_in_room) {
@@ -2278,7 +2278,7 @@ void send_to_room_except(std::string_view message, int room, char_data* excluded
     }
 }
 
-void send_to_room_except_two(std::string_view message, int room,
+static void send_to_room_except_two_impl(std::string_view message, int room,
     char_data* excluded_first, char_data* excluded_second)
 {
     for (char_data* occupant = world[room].people; occupant;
@@ -2522,13 +2522,26 @@ static void act_impl(std::string_view str, int hide_invisible, struct char_data*
     }
 }
 
+// Forward declarations: complete_delay_impl()/abort_delay_impl() are defined
+// further down this file (same reason the pre-existing complete_delay()
+// prototype above -- now this TU's only remaining forward declaration of the
+// plain output_seam-forwarded symbol -- was already needed: process_commands()
+// calls the plain complete_delay()/abort_delay() before their real bodies'
+// textual position), but register_game_output_sinks() below needs their
+// _impl names in scope one call earlier than that.
+static void complete_delay_impl(struct char_data* ch);
+static void abort_delay_impl(char_data* wait_ch);
+
 // Installs the game's output sinks (rots::output::set_sinks): the real
 // send_to_char/act/track_specialized_mage/untrack_specialized_mage bodies
-// above (renamed to *_impl, file-scope statics) replace the null-defaulted,
-// tripwire-logging defaults that output_seam.cpp's forwarders otherwise fall
-// back to. Called once from run_the_game(), immediately after
-// register_mudlog_broadcast_sink() and before boot_db(), so ageland never
-// runs any output-path call with an unregistered sink.
+// above, PLUS (blocker-buster wave, census section D) send_to_all/
+// send_to_room/send_to_room_except_two/break_spell/abort_delay/
+// complete_delay/get_from_txt_block_pool(std::string_view) below (renamed to
+// *_impl, file-scope statics) replace the null-defaulted, tripwire-logging
+// defaults that output_seam.cpp's forwarders otherwise fall back to. Called
+// once from run_the_game(), immediately after register_mudlog_broadcast_sink()
+// and before boot_db(), so ageland never runs any output-path call with an
+// unregistered sink.
 void register_game_output_sinks()
 {
     rots::output::Sinks sinks {};
@@ -2537,10 +2550,17 @@ void register_game_output_sinks()
     sinks.act = act_impl;
     sinks.track_mage = track_specialized_mage_impl;
     sinks.untrack_mage = untrack_specialized_mage_impl;
+    sinks.send_to_all = send_to_all_impl;
+    sinks.send_to_room = send_to_room_impl;
+    sinks.send_to_room_except_two = send_to_room_except_two_impl;
+    sinks.break_spell = break_spell_impl;
+    sinks.abort_delay = abort_delay_impl;
+    sinks.complete_delay = complete_delay_impl;
+    sinks.get_txt_block_from_pool = get_from_txt_block_pool_impl;
     rots::output::set_sinks(sinks);
 }
 
-void complete_delay(struct char_data* ch)
+static void complete_delay_impl(struct char_data* ch)
 {
     SPECIAL(*tmpfunc);
 
@@ -2578,7 +2598,7 @@ int in_waiting_list(char_data* ch)
     return 0;
 }
 
-void abort_delay(char_data* wait_ch)
+static void abort_delay_impl(char_data* wait_ch)
 {
     char_data* wait_tmp2;
     REMOVE_BIT(wait_ch->specials.affected_by, AFF_WAITWHEEL);

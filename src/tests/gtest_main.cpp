@@ -81,7 +81,10 @@ int main(int argc, char* argv[]) {
     game_timer::skill_timer::create(weather_info, nullptr);
     game_rules::big_brother::create(weather_info, nullptr);
     // Installs comm.cpp's real send_to_char/act/track_specialized_mage/
-    // untrack_specialized_mage bodies as the entity-seed Task 3 output seam's
+    // untrack_specialized_mage bodies -- plus (blocker-buster wave, census
+    // section D) send_to_all/send_to_room/send_to_room_except_two/
+    // break_spell/abort_delay/complete_delay/
+    // get_from_txt_block_pool(std::string_view) -- as the output seam's
     // sinks (rots::output::set_sinks), once for the whole test process. The
     // game reaches this via run_the_game() (immediately after
     // register_mudlog_broadcast_sink(), before boot_db()), which this test
@@ -90,7 +93,9 @@ int main(int argc, char* argv[]) {
     // register_mudlog_broadcast_sink()'s own send_to_char() calls -- would
     // silently no-op against output_seam.cpp's tripwire-logged default
     // instead of delivering to a descriptor, exactly the same gap this
-    // function already closes for skill_timer/big_brother above.
+    // function already closes for skill_timer/big_brother above; the seven
+    // blocker-buster additions ride the same single registration call, so
+    // this is a doc-only update, not a new call.
     register_game_output_sinks();
     // entity_hooks.h's four inversion hooks (entity-seed Task 5 + EC Task 2),
     // registered for the same real-body-fidelity reason as the output sinks

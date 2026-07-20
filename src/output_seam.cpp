@@ -10,6 +10,14 @@
 // vsend_to_char is hosted here too (moved verbatim from comm.cpp): it needs
 // no sink of its own, since it only ever calls the send_to_char forwarder
 // below.
+//
+// BLOCKER-BUSTER EXTENSION (+7): send_to_all/send_to_room/
+// send_to_room_except_two/break_spell/abort_delay/complete_delay/
+// get_from_txt_block_pool(std::string_view) join the five above (see
+// output_seam.h's own extension comment). Same shape, same tier membership,
+// same null-safe "logged no-op" default for every VOID forwarder; the one
+// pointer-returning forwarder (get_from_txt_block_pool) documents its own
+// default choice at its definition below.
 
 #include "output_seam.h"
 
@@ -115,4 +123,98 @@ void untrack_specialized_mage(char_data* mage)
         "rots::output: STUB untrack_specialized_mage({}) called with no sink registered -- this "
         "should be unreachable once register_game_output_sinks() has run.",
         static_cast<const void*>(mage)));
+}
+
+void send_to_all(std::string_view message)
+{
+    if (g_sinks.send_to_all) {
+        g_sinks.send_to_all(message);
+        return;
+    }
+    rots::log::write_stderr(std::format(
+        "rots::output: STUB send_to_all(message) called with no sink registered "
+        "(message: '{}') -- this should be unreachable once register_game_output_sinks() has run.",
+        message));
+}
+
+void send_to_room(std::string_view message, int room)
+{
+    if (g_sinks.send_to_room) {
+        g_sinks.send_to_room(message, room);
+        return;
+    }
+    rots::log::write_stderr(std::format(
+        "rots::output: STUB send_to_room(message, room={}) called with no sink registered "
+        "(message: '{}') -- this should be unreachable once register_game_output_sinks() has run.",
+        room, message));
+}
+
+void send_to_room_except_two(
+    std::string_view message, int room, char_data* excluded_first, char_data* excluded_second)
+{
+    if (g_sinks.send_to_room_except_two) {
+        g_sinks.send_to_room_except_two(message, room, excluded_first, excluded_second);
+        return;
+    }
+    rots::log::write_stderr(std::format(
+        "rots::output: STUB send_to_room_except_two(message, room={}) called with no sink "
+        "registered (message: '{}') -- this should be unreachable once "
+        "register_game_output_sinks() has run.",
+        room, message));
+}
+
+void break_spell(char_data* ch)
+{
+    if (g_sinks.break_spell) {
+        g_sinks.break_spell(ch);
+        return;
+    }
+    rots::log::write_stderr(std::format(
+        "rots::output: STUB break_spell({}) called with no sink registered -- this should be "
+        "unreachable once register_game_output_sinks() has run.",
+        static_cast<const void*>(ch)));
+}
+
+void abort_delay(char_data* wait_ch)
+{
+    if (g_sinks.abort_delay) {
+        g_sinks.abort_delay(wait_ch);
+        return;
+    }
+    rots::log::write_stderr(std::format(
+        "rots::output: STUB abort_delay({}) called with no sink registered -- this should be "
+        "unreachable once register_game_output_sinks() has run.",
+        static_cast<const void*>(wait_ch)));
+}
+
+void complete_delay(char_data* ch)
+{
+    if (g_sinks.complete_delay) {
+        g_sinks.complete_delay(ch);
+        return;
+    }
+    rots::log::write_stderr(std::format(
+        "rots::output: STUB complete_delay({}) called with no sink registered -- this should be "
+        "unreachable once register_game_output_sinks() has run.",
+        static_cast<const void*>(ch)));
+}
+
+// Unlike the six void forwarders above -- and unlike entity_hooks.h's
+// abort()-on-unregistered get_txt_block_fn pair (the no-arg overload's
+// hook) -- this deliberately stays in THIS header's own "logged no-op"
+// taxonomy: a null txt_block* is a safe return value here (the caller gets
+// nothing, same observable shape as every other unregistered-sink default
+// above), and this wave is consumer-free, so no caller dereferences the
+// result yet. Matching the five's own idiom (not the tripwire/abort family)
+// is also what output_seam.h's extension comment calls for.
+txt_block* get_from_txt_block_pool(std::string_view line)
+{
+    if (g_sinks.get_txt_block_from_pool) {
+        return g_sinks.get_txt_block_from_pool(line);
+    }
+    rots::log::write_stderr(std::format(
+        "rots::output: STUB get_from_txt_block_pool(line='{}') called with no sink registered -- "
+        "this should be unreachable once register_game_output_sinks() has run.",
+        line));
+    return nullptr;
 }

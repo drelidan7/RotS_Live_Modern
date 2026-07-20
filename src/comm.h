@@ -75,11 +75,13 @@ void register_mudlog_broadcast_sink();
 
 /// Installs the game's output sinks (rots::output::set_sinks, output_seam.h)
 /// -- the real send_to_char/act/track_specialized_mage/
-/// untrack_specialized_mage bodies that output_seam.cpp's forwarders
-/// otherwise fall back to a tripwire-logged no-op for. Called once from
-/// run_the_game(), immediately after register_mudlog_broadcast_sink() and
-/// before boot_db(), so ageland never runs an output-path call with an
-/// unregistered sink.
+/// untrack_specialized_mage bodies, PLUS (blocker-buster wave, census section
+/// D) send_to_all/send_to_room/send_to_room_except_two/break_spell/
+/// abort_delay/complete_delay/get_from_txt_block_pool(std::string_view) --
+/// that output_seam.cpp's forwarders otherwise fall back to a
+/// tripwire-logged no-op for. Called once from run_the_game(), immediately
+/// after register_mudlog_broadcast_sink() and before boot_db(), so ageland
+/// never runs an output-path call with an unregistered sink.
 void register_game_output_sinks();
 
 /// Installs get_from_txt_block_pool()/put_to_txt_block_pool() (above) as

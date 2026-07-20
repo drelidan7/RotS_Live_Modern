@@ -986,6 +986,140 @@ Backlog (recorded follow-on, not this wave's scope):
   instead, per the `get_hit_text`/`rots/platform/log.h` precedent of narrow declarations over a
   blanket header include. Reviewer-recommended future touch-up, not urgent.
 
+### The combat-pilot wave: `clerics.cpp` + `fight.cpp` join `rots_combat` (8 TUs)
+
+Design: `docs/superpowers/specs/2026-07-20-combat-pilot-design.md`. Plan:
+`docs/superpowers/plans/2026-07-20-combat-pilot.md`. Where the blocker-buster wave above built four
+consumer-free enablers, this wave proved them under real traffic: `clerics.cpp` and `fight.cpp` —
+two of the original 16-TU sketch's DEFER-11 rows — landed in `ROTS_COMBAT_SOURCES`, growing
+`rots_combat` from 6 to **8 TUs** (`battle_mage_handler.cpp`, `clerics.cpp`, `combat_hooks.cpp`,
+`fight.cpp`, `skill_timer.cpp`, `visibility.cpp`, `weapon_master_handler.cpp`,
+`wild_fighting_handler.cpp`). Both files' up-calls into the app-command/app-session/app-other
+tiers now resolve through registered-hook dispatch rather than direct calls; the wave also
+delivered a combat smoke-test harness and the migration playbook (`docs/superpowers/
+combat-migration-playbook.md`) the remaining 9 DEFER TUs + `profs` will reuse.
+
+**The central architectural finding: closure, not per-symbol non-blocking status, governs whether
+a TU can promote standalone.** `clerics.cpp` and `fight.cpp` call each other directly
+(`set_fighting`/`stop_fighting`/`check_sanctuary`/`check_hallucinate`/`die`/`appear` one way,
+`weapon_willpower_damage`/`do_mental` the other) — the combat-census family's "combat-peer,
+sanctioned, non-blocking" legend correctly says neither edge is an architecture violation, but it
+does not mean either file can promote *alone*: a standalone `clerics.cpp` move would ask
+`CombatLayerAcyclicity` to resolve `set_fighting` against a `fight.cpp` still sitting in
+`ROTS_SERVER_SOURCES`, an unresolved link. The two TUs promoted together in one commit (Task 5);
+Task 3 (clerics.cpp's own up-call conversions) landed two tasks earlier while clerics.cpp was
+*still app-compiled*, proving conversions and membership are separable in time even when membership
+itself is not separable across files. See the playbook's "The intra-subset rule" and
+"Census-methodology correction" sections for the full writeup, including the two genuine census
+misses (`gain_exp`, `waiting_list`) the `CombatLayerAcyclicity` linkcheck itself caught at the
+membership-move gate — both traced to symbols the census had classified correctly but
+provisionally, resolved with existing seams rather than new stubs.
+
+**New hooks (all `combat_hooks.{h,cpp}` unless noted, each a registered fn-ptr with a documented
+tripwire default, TDD'd with a registered-stub/unregistered-default test pair):**
+- **`special()`** (Task 2) — `rots::combat::set_special_handler`/`call_special`, mirroring
+  `interpre.h:99`'s real 6-parameter signature (`int in_room = NOWHERE` as the dispatch wrapper's
+  own default; a function-pointer type cannot itself carry a default). NOT a 26th `combat_command`
+  enum cell — `special()`'s int-returning, 6-parameter shape is categorically different from the
+  25-cell ACMD table above. Tripwire default: logged, returns 0 ("no spec-proc consumed the
+  event").
+- **The big_brother pair** (Task 2, `entity_hooks.h`, storage in `entity_lifecycle.cpp` per that
+  header's established convention) — `target_valid_fn`/`dispatch_target_valid` and
+  `character_died_fn`/`dispatch_character_died`. `is_target_valid` has two genuinely different-
+  bodied overloads (2-arg, 3-arg with `skill_id`); a single fn-ptr mirrors the wider 3-arg shape,
+  with `inline constexpr int kNoSkillId = -1` as the sentinel a 2-arg-shaped call site (clerics.cpp)
+  passes implicitly, and the registered implementation branches on the sentinel to call the exact
+  right real overload rather than approximating one via the other. Tripwire default:
+  `is_target_valid` logged-permissive-`true` (big_brother VETOES by returning false, so "no big
+  brother installed" must default to "allow"); `on_character_died` logged no-op.
+- **`extract_char`** (Task 4b) — `set_extract_char_hook`/two-overload dispatch, reproducing
+  `handler.cpp`'s own 1-arg-forwards-to-2-arg-with-`-1`-sentinel shape exactly. Tripwire default:
+  logged no-op.
+- **The `gain_exp` family** (Task 4b, `limits.cpp`-owned) — `gain_exp`, `gain_exp_regardless`
+  (wrapper pair sharing one HOOK verdict: `gain_exp`'s body only calls `gain_exp_regardless`, which
+  itself calls `advance_mini_level()`'s own multi-function leveling subsystem — not a
+  single-symbol relocation candidate) and `remove_fame_war_bonuses` (pulls an
+  8-function/~190-line `assign_pk_bonuses`/`set_player_*` same-file cluster, flagged as a future L2
+  relocation candidate as a *package*, not resolved this wave). Tripwire default: logged no-op for
+  all three. **`limits.cpp` itself is the registrar** for all three
+  (`register_gain_exp_hook()`/`register_gain_exp_regardless_hook()`/
+  `register_remove_fame_war_bonuses_hook()`, defined in `limits.cpp`) — this infrastructure is
+  ALREADY BUILT for whenever `limits.cpp` itself promotes; see the playbook's per-TU cost table.
+- **The app-other trio** (Task 4b) — `Crash_crashsave` (objsave.cpp, tripwire logged no-op),
+  `call_trigger` (script.cpp, tripwire logged **TRUE** — the one value-returning hook whose safe
+  default is a documented non-zero constant, not a plain no-op: both fight.cpp call sites treat
+  `FALSE` as "a script vetoed this event," so an unregistered hook must default to "proceed," the
+  same taxonomy class as `entity_hooks.h`'s permissive-true `is_target_valid` default), `pkill_create`
+  (pkill.cpp, tripwire logged no-op). Each owning TU (objsave/script/pkill, none of them combat-row
+  TUs) registers its own real body via its own per-owner registrar, called from both `comm.cpp`'s
+  `run_the_game()` (pre-`boot_db()`) and `tests/gtest_main.cpp` for parity.
+
+**`RotS::persist` PUBLIC link — two real edges, not a header-only reach.** `rots_combat`'s
+`target_link_libraries()` gained `RotS::persist` PUBLIC at the Task 5 membership move (dropping the
+now-redundant `target_include_directories(rots_combat PRIVATE persist/include)`, since
+`persist/include` now flows transitively through the PUBLIC link instead), mirroring `rots_world`'s
+identical-class link for the identical edge shape (`db_world.cpp` → `rots::persist::
+set_room_vnum_hook`). Two `nm`-real edges make the link load-bearing, not optional: `fight.cpp`'s
+pre-existing `save_char()` call (already counted non-blocking by the census, since `rots_persist`
+already existed as a peer library before this wave) and the new
+`rots::persist::dispatch_exploit_capture()` call this wave's `add_exploit_record` conversion added.
+The second edge required a linkage fix of its own: `dispatch_exploit_capture()` had been wrapped in
+an anonymous namespace inside `db_players.cpp` (TU-local, since only that file's own `rename_char()`
+had ever called it before this wave) — given external linkage and declared in `persist_hooks.h`,
+the same "dispatch declared in the header, defined in the owning TU, called from a different TU"
+shape `entity_hooks.h`'s dispatch functions already established.
+
+**Combat smoke harness (Task 1, characterization-first, built BEFORE any migration).**
+`rots_rng::seed_from_environment_or_time()` (`ROTS_RNG_SEED`, decimal, pins the `mt19937` stream;
+unset/malformed falls back to the historical `time(0)` seeding, byte-identical default behavior) —
+both `comm.cpp` seed call sites route through it. `tools/combat_smoke.py` + `scripts/
+combat-golden.sh` (`capture`/`verify`, mirroring `boot-golden.sh`'s UX) script a deterministic fight
+against a fixed mob (vnum 11915) in a non-`PEACEROOM` room, capturing the transcript between
+explicit markers. **Determinism landed on the fallback ladder's rung (b), capture-only, named
+loudly rather than silently accepted:** repeated same-seed trials showed the shared global
+`rots_rng` engine's draw sequence shifts under real-time pulse-loop interleaving from other
+periodic RNG consumers (door auto-close mechanics confirmed; weather/regen not ruled out), so
+neither a raw transcript compare nor a normalized (combat-lines-only) compare is reliable — even a
+same-host, same-seed, immediate re-run can drift. `scripts/combat-golden.sh verify` therefore
+**never gates** (exits 0 regardless of transcript drift, per Task 1's finding); it is
+**informational only**, read for gross-shape regressions (wrong mob, missing death, boot failure)
+and not treated as a merge blocker on drift alone. Every migration task since (Task 3/Task 5) ran
+`verify` and recorded informational drift consistent with RNG-consumption-order shifts from the new
+hook indirection — never a logic regression, confirmed by the unchanged characterization goldens
+each time. The wave's actual regression-catching burden rests on
+`CharacterizationCombatTest.*`/`PoisonRemovalScriptTest.*` (gtest-level, outside real time) and the
+discriminator test suites, not on this harness's transcript diff.
+
+**Storage moves (the same technique `fight_messages` pioneered in the combat-census's own
+recommendation, applied four more times this wave):**
+- **`fight_messages[MAX_MESSAGES]`** — `db_boot.cpp:108` → `fight.cpp` (beside its loader
+  `load_messages()`), Task 4a. `clerics.cpp`'s identical-looking extern was confirmed genuinely dead
+  (zero undefined-symbol references) — no compensating edit needed there.
+- **`spllog_saves`/`spllog_mage_level`/`spllog_save`** — `spell_pa.cpp` → `fight.cpp`, bundled with
+  the `record_spell_damage()` relocation (Task 4a): the function alone would have left it reading
+  spell_pa.cpp-owned storage, an upward read once spell_pa.cpp stays app-tier; `spell_pa.cpp`'s
+  `saves_spell()`/`new_saves_spell()` (which stay in spell_pa.cpp) now `extern` the relocated
+  globals and keep writing them, a legal downward write.
+- **`memory_rec_pool`/`memory_rec_active`/`memory_rec_counter`** — `mobact.cpp` → `entity_lifecycle.cpp`
+  (L2), bundled with the `forget()`/`remember()` package (Task 4a), the same free-list-pool shape
+  the `universal_list_counter` precedent already established in that file.
+- **`waiting_list`** — `db_boot.cpp` → `clerics.cpp` (Task 5, a **link-forced** fix discovered only
+  at the `CombatLayerAcyclicity` gate, not planned in advance: `clerics.cpp`'s `WAIT_STATE`/
+  `WAIT_STATE_BRIEF` macro expansions read/write the raw global directly, a shape no fn-ptr hook
+  fits). Constant-initialized (`= 0`), no init-order break; all 16 other files' own local `extern`
+  declarations were re-verified to keep linking unchanged. **Thematic-ownership caveat, recorded
+  honestly rather than smoothed over:** `db_boot.cpp` never read or wrote this global, only defined
+  it, and `clerics.cpp` is its definition site purely because it was the one user swept into the
+  promoted pair — the name and the game concept ("who's waiting for the pulse loop") don't
+  obviously belong to a cleric-spell file. Flagged as a Low-severity finding at final review and a
+  candidate for a future re-home to whichever TU eventually owns the comm/delay-loop machinery,
+  not a defect blocking this wave.
+
+Test-count delta for this wave: **1365 → 1394** (Task 1 +3 `RngSeed.*`, Task 2 +8 `special`/
+big_brother hook tests, Task 4b +16 hook-family tests, Task 5 +2 `ExploitCaptureHook.*`; Task 3/4a
+added zero new tests — pure conversions/moves). See `AGENTS.md`'s "Testing Guidelines" for the full
+reconciled per-task chain.
+
 ### Pathed data-model includes
 
 `rots_core` owns `target_include_directories(rots_core PUBLIC core/include)`: every consumer that

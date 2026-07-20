@@ -57,7 +57,6 @@ struct char_data* combat_next_dude = 0; /* Next dude global trick */
 extern struct room_data world;
 extern struct message_list fight_messages[MAX_MESSAGES];
 extern struct obj_data* object_list;
-extern struct char_data* waiting_list; /* in db.cpp */
 extern int immort_start_room;
 extern int mortal_start_room[];
 extern int r_mortal_start_room[];

@@ -217,14 +217,19 @@ ACMD(do_mental)
         if (!(check_mind_block(victim, ch, damg, tmp)))
             return;
 
-        strcpy(buf, std::format("$CHYou force your Will against $N's {}!", stat_word[tmp]).c_str());
-        act(buf, FALSE, ch, NULL, victim, TO_CHAR);
+        // strcpy(buf, ...)/act(buf, ...) retired (combat-pilot wave Task 2, buf
+        // retirement per world-seed precedent): a std::string local per act()
+        // call replaces the shared global scratch buffer -- act() already takes
+        // std::string_view, so no other change is needed. Byte-identical format
+        // strings.
+        const std::string will_msg_char = std::format("$CHYou force your Will against $N's {}!", stat_word[tmp]);
+        act(will_msg_char, FALSE, ch, NULL, victim, TO_CHAR);
 
-        strcpy(buf, std::format("$CD$n forces $s Will against your {}!", stat_word[tmp]).c_str());
-        act(buf, FALSE, ch, NULL, victim, TO_VICT);
+        const std::string will_msg_vict = std::format("$CD$n forces $s Will against your {}!", stat_word[tmp]);
+        act(will_msg_vict, FALSE, ch, NULL, victim, TO_VICT);
 
-        strcpy(buf, std::format("$n forces $s Will against $N's {}!", stat_word[tmp]).c_str());
-        act(buf, TRUE, ch, 0, victim, TO_NOTVICT);
+        const std::string will_msg_notvict = std::format("$n forces $s Will against $N's {}!", stat_word[tmp]);
+        act(will_msg_notvict, TRUE, ch, 0, victim, TO_NOTVICT);
 
         damage_result = damage_stat(ch, victim, tmp, damg);
         gain_exp(ch, (1 + GET_LEVEL(victim)) * std::min(20 + GET_LEVEL(ch) * 2, damg * 5) / (1 + GET_LEVEL(ch)));

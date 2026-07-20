@@ -42,7 +42,13 @@ public:
     }
 
 private:
+    // ROTS_RNG_SEED's value at construction time, when it was set; restored
+    // verbatim by the destructor so this guard can't leak its override into
+    // a later test in the same process.
     std::string m_original_value;
+    // Whether ROTS_RNG_SEED was set at construction time -- distinguishes
+    // "restore m_original_value" from "the variable must be unset again" in
+    // the destructor (an empty string is a valid original value).
     bool m_had_original_value = false;
 };
 

@@ -101,6 +101,20 @@ DEATH_MARKER_TEXT = "is dead!  R.I.P."
 TRANSCRIPT_BEGIN_MARKER = "===COMBAT_SMOKE_BEGIN==="
 TRANSCRIPT_END_MARKER = "===COMBAT_SMOKE_END==="
 
+# A prompt ("S:Powered>", "HP:Healthy S:Powered, a sickly rat:Bruised>", ...)
+# is sometimes flushed on the SAME line as the very next message with no
+# intervening newline -- observed for the fight-opening "You attack a sickly
+# rat!" line specifically (its message arrives in the same TCP read/game-loop
+# tick as the freshly-recomputed prompt, before the usual blank-line-then-
+# prompt-then-message pattern the rest of the fight settles into). A bare
+# `^You ...` anchor silently drops such a line instead of matching it -- this
+# is exactly the bug the Step 1 review caught (transcript.normalized.golden
+# was missing the attack-initiation line entirely). Every prompt observed
+# ends in a literal '>' with no '>' earlier in the line, so stripping an
+# optional ".*>" prefix before the anchor handles this for any "You .../A
+# sickly rat ..." pattern below, not just the one line where it was caught.
+PROMPT_PREFIX = r"(?:.*>)?"
+
 # Lines worth keeping under the Step 7 fallback ladder's rung (a) --
 # "normalized comparison (combat message sequence -- hit/miss/damage/death
 # lines only)". Matched against each already-sanitized line of the raw
@@ -109,10 +123,10 @@ TRANSCRIPT_END_MARKER = "===COMBAT_SMOKE_END==="
 # matching matters (an earlier boot-golden draft leaked thousands of
 # unrelated debug lines via a bare substring match).
 NORMALIZED_LINE_PATTERNS = [
-    re.compile(pattern)
+    re.compile(PROMPT_PREFIX + pattern)
     for pattern in (
-        r"^You create a sickly rat\.$",
-        r"^You attack a sickly rat!$",
+        r"You create a sickly rat\.$",
+        r"You attack a sickly rat!$",
         # dam_weapons[]'s message tiers (fight.cpp) -- miss/scratch/barely/
         # lightly/plain/hard/very hard/extremely hard/deeply wound/severely
         # wound/MUTILATE -- combined with whichever verb pair
@@ -127,14 +141,14 @@ NORMALIZED_LINE_PATTERNS = [
         # earlier hardcoded-verb draft did here (caught during the Step 7
         # determinism probe: it missed every "You slash a sickly rat."
         # line).
-        r"^You \S.* a sickly rat[.!]$",
-        r"^A sickly rat \S.* you[.!]$",
-        r"^You (deflect|dodge) a sickly rat's attack\.$",
-        r"^A sickly rat (deflects|dodges) your attack\.$",
-        r"^That really did HURT!$",
-        r"^A sickly rat is (stunned|incapacitated).*$",
-        r"^A sickly rat is dead!  R\.I\.P\.$",
-        r"^You receive \d+ experience points?\.$",
+        r"You \S.* a sickly rat[.!]$",
+        r"A sickly rat \S.* you[.!]$",
+        r"You (deflect|dodge) a sickly rat's attack\.$",
+        r"A sickly rat (deflects|dodges) your attack\.$",
+        r"That really did HURT!$",
+        r"A sickly rat is (stunned|incapacitated).*$",
+        r"A sickly rat is dead!  R\.I\.P\.$",
+        r"You receive \d+ experience points?\.$",
     )
 ]
 

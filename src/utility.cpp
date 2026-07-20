@@ -190,229 +190,19 @@ void unretire(struct char_data* ch)
 // addendum's resolver-variant rule -- see task-5-report.md for the exact
 // before/after quote. No declaring header (file-local, as it was here).
 
-// STAY-APP (placement-seam Task 5 census): the player_spec::
-// weapon_master_handler spec-handler this function calls is app-tier, so it
-// stays here even though its trio-mate get_real_dodge() below moved to
-// char_utils_combat.cpp/rots_entity this task -- the OB/parry/dodge trio now
-// splits across tiers. Task 7 must update AGENTS.md's Dead/Unused-Code trio
-// paragraph to reflect this split.
-int get_real_OB(char_data* ch)
-{
-    if (IS_NPC(ch)) {
-        int base_npc_ob = (GET_OB(ch) + GET_BAL_STR(ch) + 15 - utils::get_skill_penalty(*ch) + GET_LEVEL(ch) / 2);
-        if (IS_AFFECTED(ch, AFF_CONFUSE)) {
-            base_npc_ob -= (get_confuse_modifier(ch) * 2 / 3);
-        }
-        return base_npc_ob;
-    }
-
-    int sun_mod = 0;
-    int tmpob, tactics = 0, weapon_skill = 0;
-
-    obj_data* weapon = ch->equipment[WIELD];
-
-    int warrior_level = GET_PROF_LEVEL(PROF_WARRIOR, ch);
-    int max_warrior_level = GET_MAX_RACE_PROF_LEVEL(PROF_WARRIOR, ch);
-    int offense_stat = GET_BAL_STR(ch);
-
-    // Light fighters can use dex and some of their ranger level with light weapons.
-    if (utils::get_specialization(*ch) == game_types::PS_LightFighting) {
-        if (weapon) {
-            int bulk = weapon->get_bulk();
-            if (bulk <= 2 || (bulk == 3 && weapon->get_weight() <= LIGHT_WEAPON_WEIGHT_CUTOFF)) {
-                offense_stat = std::max(offense_stat, int(ch->tmpabilities.dex));
-
-                int ranger_bonus = GET_PROF_LEVEL(PROF_RANGER, ch) / 3;
-                warrior_level += ranger_bonus;
-            }
-        }
-    }
-
-    int ob_bonus = (warrior_level * 3 + 3 * max_warrior_level * GET_LEVELA(ch) / 30) / 2 + offense_stat;
-
-    tmpob = GET_OB(ch);
-    tmpob -= utils::get_skill_penalty(*ch);
-
-    player_spec::weapon_master_handler weapon_master(ch);
-    tmpob += weapon_master.get_bonus_OB();
-
-    if (!weapon && utils::get_raw_knowledge(*ch, SKILL_NATURAL_ATTACK) == 0) {
-        return tmpob + ob_bonus;
-    } else if (!weapon && utils::get_raw_knowledge(*ch, SKILL_NATURAL_ATTACK) > 0) {
-        weapon_skill = utils::get_raw_knowledge(*ch, SKILL_NATURAL_ATTACK);
-        tmpob -= (GET_STR(ch) / 2 - 6);
-    } else {
-        weapon_skill = utils::get_raw_knowledge(*ch, weapon_skill_num(weapon->get_weapon_type()));
-
-        if (IS_TWOHANDED(ch)) {
-            if (weapon->is_ranged_weapon()) {
-                tmpob += weapon->obj_flags.value[2] * (200 + GET_RAW_SKILL(ch, SKILL_ARCHERY)) / 100 - 15;
-                weapon_skill = (weapon_skill + GET_RAW_SKILL(ch, SKILL_ARCHERY)) / 2;
-            } else {
-                tmpob += weapon->obj_flags.value[2] * (200 + GET_RAW_KNOWLEDGE(ch, SKILL_TWOHANDED)) / 100 - 15;
-                weapon_skill = (weapon_skill + GET_RAW_KNOWLEDGE(ch, SKILL_TWOHANDED)) / 2;
-            }
-        } else {
-            tmpob -= (weapon->obj_flags.value[2] * 2 - 6);
-        }
-    }
-
-    switch (GET_TACTICS(ch)) {
-    case TACTICS_DEFENSIVE:
-        tmpob += ob_bonus - ob_bonus / 4 - 8;
-        tactics = 4;
-        break;
-    case TACTICS_CAREFUL:
-        tmpob += ob_bonus - ob_bonus / 8 - 4;
-        tactics = 6;
-        break;
-    case TACTICS_NORMAL:
-        tmpob += ob_bonus;
-        tactics = 8;
-        break;
-    case TACTICS_AGGRESSIVE:
-        tmpob += ob_bonus + ob_bonus / 16 + 2;
-        tactics = 10;
-        break;
-    case TACTICS_BERSERK:
-        tmpob += ob_bonus + ob_bonus / 16 + 5 + GET_RAW_SKILL(ch, SKILL_BERSERK) / 8;
-        tactics = 10;
-        break;
-    default:
-        tmpob += ob_bonus + GET_BAL_STR(ch);
-        break;
-    };
-
-    if (IS_AFFECTED(ch, AFF_CONFUSE))
-        tmpob -= (get_confuse_modifier(ch) * 2 / 3);
-
-    /* to get the pre-power of arda malus, substitute 10 for sun_mod */
-    sun_mod = get_power_of_arda(ch);
-    if (sun_mod) {
-        if (GET_RACE(ch) == RACE_URUK)
-            tmpob = tmpob * 4 / 5 - sun_mod;
-        if (GET_RACE(ch) == RACE_ORC)
-            tmpob = tmpob * 3 / 4 - sun_mod;
-        if (GET_RACE(ch) == RACE_MAGUS)
-            tmpob = tmpob * 4 / 5 - sun_mod;
-        if (GET_RACE(ch) == RACE_OLOGHAI)
-            tmpob = tmpob * 4 / 5 - sun_mod;
-    }
-
-    if (!CAN_SEE(ch))
-        tmpob -= 10;
-
-    if (!weapon)
-        tmpob += weapon_skill * (GET_STR(ch) + 20) * tactics / 1000;
-    else
-        tmpob += weapon_skill * (weapon->obj_flags.value[2] + 20) * tactics / 1000;
-
-    return tmpob;
-}
-
-// STAY-APP (placement-seam Task 5 census): same weapon_master
-// spec-handler app edge as get_real_OB() above; get_real_dodge() (the trio's
-// third member) moved to char_utils_combat.cpp/rots_entity this task. See
-// get_real_OB()'s comment above and Task 7's AGENTS.md follow-up.
-int get_real_parry(struct char_data* ch)
-{
-    int sun_mod = 0;
-
-    if (IS_NPC(ch)) {
-        if (IS_AFFECTED(ch, AFF_CONFUSE))
-            return (GET_PARRY(ch) + GET_LEVEL(ch) / 2 + 15) - (get_confuse_modifier(ch) * 2 / 3);
-        else
-            return (GET_PARRY(ch) + GET_LEVEL(ch) / 2 + 15);
-    }
-
-    int tmpparry, tmpskill, tactics, bonus, weapon_bonus = 0;
-    struct obj_data* weapon;
-
-    tmpparry = GET_PARRY(ch);
-    bonus = GET_PROF_LEVEL(PROF_WARRIOR, ch) * 2 + std::min(30, GET_LEVEL(ch)) + GET_BAL_STR(ch);
-
-    player_spec::weapon_master_handler weapon_master(ch);
-    tmpparry += weapon_master.get_bonus_PB();
-
-    weapon = ch->equipment[WIELD];
-    if (!weapon && utils::get_raw_knowledge(*ch, SKILL_NATURAL_ATTACK) == 0) {
-        return tmpparry + bonus / 2;
-    } else if (!weapon && utils::get_raw_knowledge(*ch, SKILL_NATURAL_ATTACK) > 0) {
-        tmpskill = GET_RAW_SKILL(ch, SKILL_NATURAL_ATTACK);
-    } else {
-        weapon_bonus = weapon->obj_flags.value[1];
-
-        tmpskill = GET_RAW_KNOWLEDGE(ch, weapon_skill_num(weapon->obj_flags.value[3]));
-        if (isname_nullable("bow", weapon->name)) {
-            tmpskill = GET_RAW_SKILL(ch, SKILL_ARCHERY);
-        }
-
-        if (IS_TWOHANDED(ch)) {
-            tmpskill = (tmpskill + GET_RAW_KNOWLEDGE(ch, SKILL_TWOHANDED)) / 2;
-            if (isname_nullable("bow", weapon->name)) {
-                tmpskill = (tmpskill + GET_RAW_SKILL(ch, SKILL_ARCHERY)) / 2;
-            }
-        }
-    }
-
-    tmpskill = (tmpskill + 3 * GET_RAW_KNOWLEDGE(ch, SKILL_PARRY)) / 4;
-    if (GET_TACTICS(ch) == TACTICS_BERSERK) {
-        tmpskill /= 2;
-    }
-
-    switch (GET_TACTICS(ch)) {
-    case TACTICS_DEFENSIVE:
-        tmpparry += bonus / 2 + 3 * bonus / 16;
-        tactics = 4;
-        break;
-    case TACTICS_CAREFUL:
-        tmpparry += bonus / 2 + bonus / 8;
-        tactics = 6;
-        break;
-    case TACTICS_NORMAL:
-        tmpparry += bonus / 2;
-        tactics = 8;
-        break;
-    case TACTICS_AGGRESSIVE:
-        tmpparry += bonus / 2 - bonus / 8;
-        tactics = 10;
-        break;
-    case TACTICS_BERSERK:
-        tmpparry += bonus / 2 - bonus / 8;
-        tactics = 12;
-        break;
-    default:
-        tmpparry += bonus / 2;
-        tactics = 10;
-        break;
-    };
-
-    tmpparry += tmpskill * (weapon_bonus + 20) * (14 - tactics) / 1000;
-    // Parry should now have bigger effect on two-handers:
-    if (IS_AFFECTED(ch, AFF_TWOHANDED))
-        tmpparry += weapon_bonus / 2;
-
-    if (IS_AFFECTED(ch, AFF_CONFUSE))
-        tmpparry -= (get_confuse_modifier(ch) * 2 / 3);
-
-    sun_mod = get_power_of_arda(ch);
-    if (sun_mod) {
-        if (GET_RACE(ch) == RACE_URUK)
-            tmpparry = tmpparry * 9 / 10 - sun_mod;
-        if (GET_RACE(ch) == RACE_ORC)
-            tmpparry = tmpparry * 8 / 9 - sun_mod;
-        if (GET_RACE(ch) == RACE_MAGUS)
-            tmpparry = tmpparry * 9 / 10 - sun_mod;
-        if (GET_RACE(ch) == RACE_OLOGHAI)
-            tmpparry = tmpparry * 9 / 10 - sun_mod;
-    }
-
-    if (!CAN_SEE(ch)) {
-        tmpparry -= 10;
-    }
-
-    return tmpparry;
-}
+// get_real_OB()/get_real_parry() relocated to visibility.cpp
+// (blocker-buster Task 4; census section A verdict MOVE-L3-COMBAT,
+// retiring their placement-seam Task 5 STAY-APP comments): the
+// player_spec::weapon_master_handler dependency that kept them app-tier
+// now resolves in-lib -- weapon_master_handler.cpp has been a
+// rots_combat seed TU since combat-seed Task 1 (ROTS_COMBAT_SOURCES,
+// src/CMakeLists.txt), so the reference is an intra-lib peer call, not
+// an app edge. The OB/parry/dodge trio now reunites across rots_entity
+// (get_real_dodge(), char_utils_combat.cpp, placement-seam Task 5) and
+// rots_combat (get_real_OB()/get_real_parry(), here) -- blocker-buster
+// Task 5 updates AGENTS.md's Dead/Unused-Code trio paragraph. Both
+// bodies moved verbatim (no world[] touch in either). Declarations
+// unchanged in utils.h.
 
 // get_real_dodge() relocated to char_utils_combat.cpp (placement-seam
 // Task 5; census verdict MOVE-OTHER-L2): entity-pure, the cleanest of the
@@ -539,24 +329,13 @@ void initialize_buffers()
 // verdict MOVE-OTHER(platform)): pure array shuffle over the
 // already-platform-tier number()/log(). Declaration unchanged in utils.h.
 
-/*
- * Can character see at all?
- */
-int CAN_SEE(struct char_data* sub)
-{
-    if ((sub)->in_room == NOWHERE)
-        return 0;
-    if (IS_AFFECTED((sub), AFF_BLIND) || PLR_FLAGGED(sub, PLR_WRITING))
-        return 0;
-
-    if (IS_SHADOW(sub))
-        return 1;
-
-    if (!IS_LIGHT((sub)->in_room) && (!IS_AFFECTED((sub), AFF_INFRARED) && !PRF_FLAGGED((sub), PRF_HOLYLIGHT) && !(OUTSIDE(sub) && IS_AFFECTED((sub), AFF_MOONVISION) && weather_info.moonlight)))
-        return 0;
-
-    return 1;
-}
+// CAN_SEE(char_data*) (the 1-arg light-only overload) relocated to
+// visibility.cpp (blocker-buster Task 4; census section A verdict
+// MOVE-L3-COMBAT): weather_info is a legal L3-world peer reference; its
+// unchecked IS_LIGHT/OUTSIDE world[] reads (utils.h) resolve via
+// room_by_id_total() per the BINDING addendum's resolver-variant rule --
+// see task-4-report.md for the exact before/after quote. Declaration
+// unchanged in utils.h.
 
 /*
  * Can subject see character "obj"?  Returns 0 if sub
@@ -564,6 +343,28 @@ int CAN_SEE(struct char_data* sub)
  * is called way too many times.  From testing, it's
  * called three times for a kill command.
  */
+// STAY-APP (blocker-buster Task 4, census section A verification):
+// census-A recommended this 3-arg overload for rots_combat (weather_info/
+// world[]/act() are all legal peer/seam refs -- act() already resolves via
+// output_seam, an L1/rots_core forwarder), but its see_hiding(sub) call
+// below does NOT resolve in-lib: see_hiding is defined in ranger.cpp
+// (ranger.cpp:1986), which remains a ROTS_SERVER_SOURCES (app) TU, not
+// part of rots_combat or any peer library it links (verified: `grep
+// ranger.cpp src/CMakeLists.txt` only matches the ROTS_SERVER_SOURCES
+// list; rots_combat_linkcheck force-loads rots_combat against ONLY
+// RotS::entity/RotS::core/RotS::platform + the new RotS::world peer
+// link -- ranger.cpp is in none of those). Moving this overload would
+// break CombatLayerAcyclicity with an undefined `see_hiding` symbol, and
+// the BINDING addendum's hot-path rule forbids introducing a new
+// dispatch/seam instrument to bridge it. Census-A's classification of
+// ranger.cpp as "a combat-row TU, not an app file" is a verification
+// failure against the CURRENT build wiring (ranger.cpp is one of the
+// still-DEFERRED 11 combat-row TUs, ROTS_COMBAT_SOURCES comment above
+// rots_combat's target_link_libraries in CMakeLists.txt), not the
+// already-extracted state the census's framing assumed. Stays here,
+// unchanged, until a future task extracts see_hiding (entity-pure, zero
+// other ranger.cpp dependency) to entity tier or moves ranger.cpp itself
+// -- see task-4-report.md's Concerns section.
 int CAN_SEE(struct char_data* sub, struct char_data* obj, int light_mode)
 {
     int tmp;
@@ -640,23 +441,10 @@ int CAN_SEE(struct char_data* sub, struct char_data* obj, int light_mode)
 // census verdict MOVE-OTHER-L2): entity-pure GET_* macro logic.
 // Declaration unchanged in utils.h.
 
-int CAN_SEE_OBJ(char_data* sub, obj_data* obj)
-{
-    if (!sub || !obj)
-        return 0;
-
-    if (IS_SHADOW(sub)) {
-        if (IS_SET((obj)->obj_flags.extra_flags, ITEM_MAGIC) || IS_SET((obj)->obj_flags.extra_flags, ITEM_WILLPOWER))
-            return 1;
-        else
-            return 0;
-    }
-
-    if ((!IS_SET((obj)->obj_flags.extra_flags, ITEM_INVISIBLE) || IS_AFFECTED((sub), AFF_DETECT_INVISIBLE)) && CAN_SEE(sub))
-        return 1;
-
-    return 0;
-}
+// CAN_SEE_OBJ() relocated to visibility.cpp (blocker-buster Task 4;
+// census section A verdict MOVE-L3-COMBAT): rides the moved CAN_SEE(sub)
+// 1-arg overload, no direct world[]/weather_info touch of its own.
+// Declaration unchanged in utils.h.
 
 // CAN_GO() relocated to environment_utils.cpp (placement-seam Task 5; census
 // verdict MOVE-OTHER-L2, resolver dep): the EXIT(ch,door) macro (utils.h:

@@ -227,10 +227,9 @@ set(ROTS_WORLD_SOURCES
 # intra-subset peer edge, and both TUs are included) -- verified via `nm -uC`
 # on the built archive, see the rots_combat_linkcheck load-bearing test below.
 # No handler.cpp/utility.cpp (still app-compiled), no command/session/
-# app-output-beyond-seam, and no world/persist edges -- unlike rots_world,
-# this layer does NOT need a peer-library PUBLIC link. The remaining 11
-# combat-row TUs (profs.cpp, spec_ass.cpp, olog_hai.cpp, clerics.cpp,
-# mage.cpp, mystic.cpp, mobact.cpp, spell_pa.cpp, limits.cpp, ranger.cpp,
+# app-output-beyond-seam edges. The remaining 11 combat-row TUs
+# (profs.cpp, spec_ass.cpp, olog_hai.cpp, clerics.cpp, mage.cpp,
+# mystic.cpp, mobact.cpp, spell_pa.cpp, limits.cpp, ranger.cpp,
 # spec_pro.cpp, fight.cpp) are DEFERRED per the census's per-TU blocker
 # analysis and stay in ROTS_SERVER_SOURCES below.
 #
@@ -255,9 +254,23 @@ set(ROTS_WORLD_SOURCES
 # char_data*/waiting_type* argument passes through opaquely, never
 # dereferenced -- same "opaque pointer, no game-type header needed" shape as
 # output_seam.cpp, so it does not change this library's link-graph story.
+#
+# visibility.cpp JOINS HERE (blocker-buster wave Task 4, census section A):
+# CAN_SEE(char_data*)/CAN_SEE_OBJ/get_real_OB/get_real_parry/
+# get_obj_in_list_vis/get_obj_vis/get_object_in_equip_vis, relocated
+# verbatim from utility.cpp/handler.cpp (resolver-variant substitutions for
+# their two unchecked world[] sites; see the file's own banner comment and
+# task-4-report.md). This is the ONE genuine L3-peer edge the census found
+# for this subset (weather_info, weather.cpp/rots_world) -- hence the new
+# RotS::world PUBLIC link below, mirroring rots_world's own peer link to
+# RotS::persist. The 3-arg CAN_SEE(sub,obj,light_mode) overload and its
+# riders (get_char_room_vis/get_player_vis/get_char_vis/generic_find,
+# handler.cpp) do NOT join: verified (not merely censused) to depend on
+# see_hiding() (ranger.cpp), a still-DEFERRED ROTS_SERVER_SOURCES symbol --
+# see their STAY-APP comments in utility.cpp/handler.cpp.
 set(ROTS_COMBAT_SOURCES
     battle_mage_handler.cpp combat_hooks.cpp skill_timer.cpp
-    weapon_master_handler.cpp wild_fighting_handler.cpp
+    visibility.cpp weapon_master_handler.cpp wild_fighting_handler.cpp
 )
 
 # ageland's remaining app-layer sources (spec §3): combat, commands,
@@ -521,15 +534,20 @@ add_library(rots_combat STATIC ${ROTS_COMBAT_SOURCES})
 add_library(RotS::combat ALIAS rots_combat)
 set_target_properties(rots_combat PROPERTIES CXX_EXTENSIONS OFF)
 # PUBLIC RotS::entity + RotS::core + RotS::platform: battle_mage_handler.cpp/
-# skill_timer.cpp/weapon_master_handler.cpp/wild_fighting_handler.cpp's
-# legitimate downward edges land in all three layers -- see the
-# ROTS_COMBAT_SOURCES comment above. Unlike rots_world, no RotS::persist (or
-# RotS::world) PUBLIC link: the census found zero L3-peer edges out of this
-# 4-TU subset (the one intra-subset peer edge, wild_fighting_handler.cpp ->
-# weapon_master_handler.cpp, resolves within rots_combat itself). PUBLIC so
-# all three layers' include roots flow transitively to any consumer that
-# links only RotS::combat.
-target_link_libraries(rots_combat PUBLIC rots_build_flags RotS::entity RotS::core RotS::platform)
+# skill_timer.cpp/visibility.cpp/weapon_master_handler.cpp/
+# wild_fighting_handler.cpp's legitimate downward edges land in all three
+# layers -- see the ROTS_COMBAT_SOURCES comment above. No RotS::persist
+# PUBLIC link: still
+# zero L3-persist-peer edges, unlike rots_world's own RotS::persist link
+# above. RotS::world IS now PUBLIC-linked (new this task, unlike the
+# combat-seed wave's original 4-TU subset, which had none): visibility.cpp
+# (blocker-buster Task 4) references `weather_info` (weather.cpp,
+# rots_world) as a legal L3-peer global -- the one genuine cross-L3 edge the
+# census found for this subset (the one intra-subset peer edge,
+# wild_fighting_handler.cpp -> weapon_master_handler.cpp, still resolves
+# within rots_combat itself). PUBLIC so all four layers' include roots flow
+# transitively to any consumer that links only RotS::combat.
+target_link_libraries(rots_combat PUBLIC rots_build_flags RotS::world RotS::entity RotS::core RotS::platform)
 # weapon_master_handler.cpp reaches "rots/persist/file_formats.h" transitively
 # through handler.h's RENT_CRASH macro include (a header-only reach, NOT a
 # link-time dependency on rots_persist -- no rots_combat symbol resolves into
@@ -1095,22 +1113,25 @@ if(ROTS_BUILD_TESTS)
         # Load-bearing combat-layer acyclicity check (spec §11), mirroring the
         # rots_world_linkcheck block above (combat-seed wave Task 1;
         # combat_hooks.cpp joined the checked archive in blocker-buster wave
-        # Task 2 — see the ROTS_COMBAT_SOURCES comment above).
+        # Task 2, visibility.cpp in blocker-buster wave Task 4 — see the
+        # ROTS_COMBAT_SOURCES comment above).
         # rots_combat (battle_mage_handler.cpp + combat_hooks.cpp +
-        # skill_timer.cpp + weapon_master_handler.cpp +
+        # skill_timer.cpp + visibility.cpp + weapon_master_handler.cpp +
         # wild_fighting_handler.cpp — see the ROTS_COMBAT_SOURCES comment
         # above) is verified to have no upward symbol references beyond its
         # legal downward edges into rots_entity, rots_core, and
-        # rots_platform. Unlike rots_world_linkcheck, no RotS::persist/
-        # RotS::world normal-link: the census found zero L3-peer edges out of
-        # this subset. The checker force-loads
+        # rots_platform, plus its one legal L3-peer edge into rots_world
+        # (visibility.cpp's `weather_info` reference — see the rots_combat
+        # target_link_libraries comment above; mirrors rots_world_linkcheck's
+        # own RotS::persist normal-link for its one sanctioned peer edge).
+        # The checker force-loads
         # rots_combat itself (so every rots_combat symbol is pulled in and
         # any OTHER unresolved reference fails the link) and normal-links
-        # RotS::entity + RotS::core + RotS::platform to resolve those
-        # legitimate lower-layer edges — a strictly tighter guarantee than
-        # "any lower layer is allowed".
+        # RotS::world + RotS::entity + RotS::core + RotS::platform to resolve
+        # those legitimate lower-layer/peer edges — a strictly tighter
+        # guarantee than "any lower layer is allowed".
         add_executable(rots_combat_linkcheck tests/combat_linkcheck_main.cpp)
-        target_link_libraries(rots_combat_linkcheck PRIVATE rots_build_flags RotS::entity RotS::core RotS::platform)
+        target_link_libraries(rots_combat_linkcheck PRIVATE rots_build_flags RotS::world RotS::entity RotS::core RotS::platform)
         add_dependencies(rots_combat_linkcheck rots_combat)
         if(APPLE)
             target_link_options(rots_combat_linkcheck PRIVATE

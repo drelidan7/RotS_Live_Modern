@@ -96,7 +96,7 @@ OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	combat_hooks.o comm.o config.o consts.o output_seam.o containment.o convert_exploits.o convert_plrobjs.o crashsave_schedule.o db_boot.o db_players.o db_world.o delayed_command_interpreter.o entity_lifecycle.o equipment.o fight.o graph.o handler.o interpre.o environment_utils.o account_cache.o account_management.o character_json.o exploits_json.o json_utils.o objects_json.o \
 	limits.o mail.o mail_json.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o obj_files.o objsave.o olog_hai.o\
 	pkill.o pkill_json.o placement.o player_file_finalize.o profs.o protocol.o ranger.o safe_template.o save_benchmark.o savebench.o script.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
-	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o wait_functions.o weapon_master_handler.o  \
+	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o visibility.o wait_functions.o weapon_master_handler.o  \
 	wild_fighting_handler.o weather.o zone.o zone_load.o rots_rng.o rots_crypt.o rots_net.o rots_log.o rots_util.o
 
 
@@ -163,6 +163,8 @@ weapon_master_handler.o : ../weapon_master_handler.cpp ../warrior_spec_handlers.
 	$(CXX) -c $(CXXFLAGS) ../weapon_master_handler.cpp
 skill_timer.o : ../skill_timer.cpp ../skill_timer.h ../singleton.h
 	$(CXX) -c $(CXXFLAGS) ../skill_timer.cpp
+visibility.o : ../visibility.cpp ../comm.h ../handler.h ../spells.h ../utils.h ../warrior_spec_handlers.h
+	$(CXX) -c $(CXXFLAGS) ../visibility.cpp
 olog_hai.o : ../olog_hai.cpp ../utils.h ../comm.h ../interpre.h ../handler.h \
 	../db.h ../spells.h ../limits.h
 	$(CXX) -c $(CXXFLAGS) ../olog_hai.cpp

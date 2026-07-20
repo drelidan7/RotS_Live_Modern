@@ -246,6 +246,58 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenDismountIsUnregistered)
            "do_dismount body never ran.";
 }
 
+// do_move (act_move.cpp) -- DISCRIMINATOR: the no-exit branch's unconditional
+// send_to_char("You cannot go that way.\n\r", ch) -- the cheapest
+// deterministic path through do_move's real body. Unlike do_flee's/
+// do_dismount's guards above, do_move's first two checks (AFF_HAZE,
+// delay.wait_value) both short-circuit false on a default-initialized
+// char_data{} (specials.affected_by == 0, delay.wait_value == 0) without
+// touching world[], but its THIRD statement -- `!world[ch->in_room].
+// dir_option[cmd]` -- reads world[] unconditionally, so this pair needs
+// ScopedTestWorld exactly like do_hit's own PEACEROOM guard above (verified
+// by reading act_move.cpp:646-706). do_move decrements its own `cmd`
+// parameter before that read (`--cmd;`, line 661), so passing cmd=1 lines up
+// with dir_option[0], zeroed by ScopedTestWorld's dummy_room_data() init --
+// explicitly re-nulled here too, defensively, against a reused world from an
+// earlier suite in the monolithic runner (same defensive stance as do_hit's
+// own room_flags reset). do_move is this task's other genuine consumer
+// (combat-trio wave Task 2; olog_hai.cpp's do_overrun body converted its
+// direct do_move() call to issue_command()), so this pair proves the seam
+// reaches this cell for real, mirroring do_flee's/do_dismount's existing
+// pairs for their own still-app-owned bodies.
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoMoveWhenRegistered)
+{
+    ScopedTestWorld test_world(1);
+    test_world.room().dir_option[0] = nullptr;
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.in_room = 0;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::move, &character, mutable_arg(""), nullptr, 1, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "You cannot go that way.\n\r")
+        << "Expected the real do_move body's no-exit branch to send its literal message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenMoveIsUnregistered)
+{
+    ScopedTestWorld test_world(1);
+    test_world.room().dir_option[0] = nullptr;
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::move);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.in_room = 0;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::move, &character, mutable_arg(""), nullptr, 1, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered move cell to leave send_to_char uncalled -- the real "
+           "do_move body never ran.";
+}
+
 // do_stand (act_move.cpp) -- DISCRIMINATOR: the POSITION_SITTING branch's
 // unconditional `GET_POS(ch) = POSITION_STANDING` (character.specials.fighting
 // is null, so the non-fighting arm of that branch's inner if/else runs) -- a

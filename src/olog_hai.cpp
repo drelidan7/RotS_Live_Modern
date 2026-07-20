@@ -4,10 +4,11 @@
 #include <string.h>
 
 #include "base_utils.h"
-#include "big_brother.h"
 #include "char_utils.h"
+#include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
+#include "entity_hooks.h"
 #include "handler.h"
 #include "skill_timer.h"
 #include "spells.h"
@@ -27,8 +28,6 @@ const int constexpr SMASH_TIMER = 120;
 const int constexpr STOMP_TIMER = 120;
 const int constexpr CLEAVE_TIMER = 60;
 const int constexpr OVERRUN_TIMER = 120;
-ACMD(do_dismount);
-ACMD(do_move);
 
 namespace olog_hai {
 int get_prob_skill(char_data* attacker, char_data* victim, int skill)
@@ -256,7 +255,7 @@ void apply_smash_damage(char_data* attacker, char_data* victim, int prob)
         char_data* mount = victim->mount_data.mount;
         damage(attacker, victim, dam, SKILL_SMASH, 0);
         generate_smash_dismount_messages(attacker, victim);
-        do_dismount(victim, mutable_arg(""), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::dismount, victim, mutable_arg(""), 0, 0, 0);
         if (number() >= 0.50) {
             damage(attacker, mount, dam / 2, SKILL_SMASH, 0);
         }
@@ -283,8 +282,7 @@ int calculate_stomp_damage(char_data& attacker, int prob)
 
 void apply_stomp_affect(char_data* attacker, char_data* victim)
 {
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-    if (!bb_instance.is_target_valid(attacker, victim)) {
+    if (!rots::entity::dispatch_target_valid(attacker, victim)) {
         send_to_char("You feel the Gods looking down upon you, and protecting your "
                      "target.\r\n",
             attacker);
@@ -304,8 +302,7 @@ void apply_stomp_affect(char_data* attacker, char_data* victim)
 
 void apply_overrun_damage(char_data* attacker, char_data* victim)
 {
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-    if (!bb_instance.is_target_valid(attacker, victim)) {
+    if (!rots::entity::dispatch_target_valid(attacker, victim)) {
         send_to_char("You feel the Gods looking down upon you, and protecting your "
                      "target.\r\n",
             attacker);
@@ -325,9 +322,7 @@ void apply_overrun_damage(char_data* attacker, char_data* victim)
 
 void apply_cleave_damage(char_data* attacker, char_data* victim)
 {
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-
-    if (!bb_instance.is_target_valid(attacker, victim)) {
+    if (!rots::entity::dispatch_target_valid(attacker, victim)) {
         send_to_char("You feel the Gods looking down upon you, and protecting your "
                      "target.\r\n",
             attacker);
@@ -444,8 +439,7 @@ ACMD(do_smash)
         return;
     }
 
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-    if (!bb_instance.is_target_valid(ch, victim)) {
+    if (!rots::entity::dispatch_target_valid(ch, victim)) {
         send_to_char("You feel the Gods looking down upon you, and protecting your "
                      "target.\r\n",
             ch);
@@ -575,7 +569,7 @@ ACMD(do_overrun)
         }
 
         stop_fighting(ch);
-        do_move(ch, mutable_arg(""), 0, cmd + 1, 0);
+        rots::combat::issue_command(rots::combat::combat_command::move, ch, mutable_arg(""), 0, cmd + 1, 0);
     }
 
     if (dis < total_moves) {

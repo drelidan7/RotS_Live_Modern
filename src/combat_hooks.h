@@ -193,7 +193,7 @@ using special_fn = int (*)(
 // Registers the real special() pointer. Called once by
 // register_combat_command_dispatch() (interpre.cpp), which already DEFINES
 // special() itself -- no forward declaration needed there, unlike this
-// header's ACMD table above, whose 25 cells interpre.cpp only
+// header's ACMD table above, whose 26 cells interpre.cpp only
 // forward-declares.
 void set_special_handler(special_fn handler);
 
@@ -218,7 +218,7 @@ int call_special(
 // app-other trio). Each hook below is a single registered fn-ptr, backed in
 // combat_hooks.cpp exactly like g_special_handler above -- NOT a
 // combat_command enum cell, since none of these seven share the fixed ACMD
-// signature the 25-cell table dispatches. CONSUMER-FREE at Task 4b landing
+// signature the 26-cell table dispatches. CONSUMER-FREE at Task 4b landing
 // time: fight.cpp/clerics.cpp still called the real global functions
 // directly then (still app-compiled -- ROTS_SERVER_SOURCES -- a legal
 // same-tier call at that point). STATUS UPDATE (combat-pilot wave):

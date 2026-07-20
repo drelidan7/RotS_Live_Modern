@@ -152,12 +152,14 @@ void set_combat_command(combat_command command, acmd_fn handler);
 // safe placeholder: skipping a mob's command this tick is a degraded-but-
 // defined outcome (the same class as entity_hooks.h's float hooks'
 // 1.0f-multiplier default), never a dereference of anything.
-// register_combat_command_dispatch() runs pre-boot_db(), before
-// clerics.cpp's/fight.cpp's real callers (combat-pilot wave, Task 5) ever
-// reach issue_command(), so in normal operation the default does not fire
-// -- it remains a real safety net for an out-of-order boot sequence or a
-// not-yet-registered future caller, not a purely theoretical placeholder
-// anymore.
+// register_combat_command_dispatch() runs from INSIDE boot_db()
+// (db_boot.cpp), in the same assign_*() sequence as assign_spell_pointers()
+// -- not a run_the_game()-level pre-boot_db() registrar like the
+// output_seam/entity_hooks sinks -- before clerics.cpp's/fight.cpp's real
+// callers (combat-pilot wave, Task 5) ever reach issue_command(), so in
+// normal operation the default does not fire -- it remains a real safety
+// net for an out-of-order boot sequence or a not-yet-registered future
+// caller, not a purely theoretical placeholder anymore.
 void issue_command(
     combat_command command, char_data* ch, char* argument, waiting_type* wtl, int cmd, int subcmd);
 
@@ -193,9 +195,10 @@ void set_special_handler(special_fn handler);
 // 3.1 confirms special()'s own real callers already treat a non-1 return
 // as. clerics.cpp's/fight.cpp's real special() up-calls (combat-pilot wave,
 // Task 5) now route through call_special() for real, registered via
-// register_combat_command_dispatch() pre-boot_db() -- the same "real safety
-// net, not a theoretical placeholder" posture issue_command()'s own
-// tripwire comment above now documents.
+// register_combat_command_dispatch() from inside boot_db()'s assign_*()
+// sequence (see issue_command()'s own tripwire comment above for the exact
+// ordering) -- the same "real safety net, not a theoretical placeholder"
+// posture that comment now documents.
 int call_special(
     char_data* ch, int cmd, char* arg, int callflag, waiting_type* wtl, int in_room = NOWHERE);
 

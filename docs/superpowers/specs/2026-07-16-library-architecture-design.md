@@ -77,7 +77,7 @@ Eight static libraries in strict acyclic layers (each depends only downward), pl
 | `rots_entity` | L2 | 6 | `char_utils, object_utils, environment_utils, handler, utility, char_utils_combat` (as-built: 5 of 6 have joined `rots_entity` — `handler`/`utility` remain app-compiled, deferred with named/uncounted welds respectively — see caveat below) |
 | `rots_persist` | L3 | ~14 | `db_players` (from `db.cpp`), `objsave, boards, mail, pkill, character_json, objects_json, exploits_json, account_management (+6 #included fragments), account_cache, convert_exploits, convert_plrobjs, save_benchmark, savebench` |
 | `rots_world` | L3 | ~15 | `db_world` (from `db.cpp`), `shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle, mudlle2, graph, weather, mob_csv_extract, obj2html` (as-built: 3 of ~15 have joined `rots_world` — `db_world`/`weather`/the new `zone_load` (carved out of `zone`) — `shape*`/`script`/`mudlle`/`mudlle2`/`graph`/`mob_csv_extract`/`obj2html`/`zone`'s reset half remain app-compiled, deferred — see caveat below) |
-| `rots_combat` | L3 | 16 | `fight, limits, skill_timer, mobact, ranger, clerics, mage, mystic, profs, spell_pa, spec_pro, spec_ass, battle_mage_handler, weapon_master_handler, wild_fighting_handler, olog_hai` (as-built: 6 of 16 have joined `rots_combat` — `skill_timer`/`battle_mage_handler`/`weapon_master_handler`/`wild_fighting_handler` (combat-seed wave) plus `clerics`/`fight` (combat-pilot wave, joint membership) — `profs` is caveated SEED-WITH-SEAM and the remaining 9 (`limits, mobact, ranger, mage, mystic, spell_pa, spec_pro, spec_ass, olog_hai`) DEFER, all still app-compiled; the blocker-buster wave also added two further TUs NOT in this row's original 16-TU sketch — `combat_hooks.cpp`/`visibility.cpp`, enabler infrastructure rather than DEFER-TU migrations — bringing `rots_combat` to 8 TUs total — see caveat below and §10's "combat-pilot wave, step 4 sixth slice" as-built note) |
+| `rots_combat` | L3 | 16 | `fight, limits, skill_timer, mobact, ranger, clerics, mage, mystic, profs, spell_pa, spec_pro, spec_ass, battle_mage_handler, weapon_master_handler, wild_fighting_handler, olog_hai` (as-built: 9 of 16 original-sketch TUs have joined `rots_combat` — `skill_timer`/`battle_mage_handler`/`weapon_master_handler`/`wild_fighting_handler` (combat-seed wave), `clerics`/`fight` (combat-pilot wave, joint membership), and `olog_hai`/`mystic`/`profs` (combat-trio wave, one membership commit — olog_hai and mystic each promoted **standalone**, closed over their own edges independently; `profs` rode as a census-gated rider whose one real coupling, `scale_guardian`/mystic.cpp, is a one-directional gate, not a cycle) — `profs`'s SEED-WITH-SEAM caveat is now RESOLVED and the remaining **7** (`limits, mobact, ranger, mage, spell_pa, spec_pro, spec_ass`) DEFER, all still app-compiled; the blocker-buster wave also added two further TUs NOT in this row's original 16-TU sketch — `combat_hooks.cpp`/`visibility.cpp`, enabler infrastructure rather than DEFER-TU migrations — bringing `rots_combat` to 11 TUs total — see caveat below and §10's "combat-pilot wave, step 4 sixth slice" / "combat-trio wave, step 4 seventh slice" as-built notes) |
 | `rots_commands` | L4 | 15 | `interpre, act_comm, act_info, act_move, act_obj1, act_obj2, act_offe, act_othe, act_soci, act_wiz, modify, delayed_command_interpreter, wait_functions, shop, ban` |
 | `rots_app` | L5 | 6 | `comm, protocol, color, big_brother, signals, db_boot` (from `db.cpp`); `signals.cpp` calls up into game/session state (`descriptor_list`, `hupsig`, `unrestrict_game`) so it is app-layer, not foundation |
 
@@ -742,6 +742,33 @@ app-compiled; the migration playbook this wave finalized
 `limits.cpp`'s own `gain_exp`-family hook registrars as already built. See `docs/BUILD.md`'s
 "`rots_combat`" section (the combat-pilot subsection) for the full hooks/link/harness/storage-move
 account.
+
+**As-built (combat-trio wave, step 4 seventh slice):** `rots_combat` grows from 8 to **11 of the
+row's original 16 TUs** — `olog_hai.cpp`, `mystic.cpp`, and `profs.cpp` join in one membership
+commit (`019b4c8`); `CombatLayerAcyclicity` green **both hosts, first attempt** — zero census misses
+at the linkcheck gate, the first time this playbook's recipe has achieved that (the combat-pilot
+wave's own membership move needed two in-flight fixes, `gain_exp`/`waiting_list`). **This wave
+supplies the recipe's missing complementary data point to the combat-pilot wave's cycle-forced joint
+move:** `olog_hai.cpp` and `mystic.cpp` share zero symbols in either direction and each closed over
+its own combat-peer edges independently — the first true **standalone** promotions since the
+combat-seed wave's SEED-CLEAN 4-TU seed. `profs.cpp`'s one real coupling (`scale_guardian`, owned by
+`mystic.cpp`) runs strictly one-directionally (mystic never calls back into profs), which the
+combat-migration-playbook's "intra-subset rule" had only previously modeled as a mutual cycle; a
+one-directional gate dissolves the moment its sole partner promotes and does not by itself force
+joint membership the way `clerics.cpp`↔`fight.cpp`'s mutual cycle did — all three TUs landed in one
+commit here by choice (documented in the commit body), not because the linkcheck required it. New
+seam: a 26th `combat_command` cell (`dismount`, olog_hai's one genuine still-app combat-peer edge).
+Relocations: the `one_argument`/`fill_word`/`fill[]` package plus the independently-census'd
+`half_chop` to L0 `rots_util.cpp`; the `saves_confuse`/`saves_insight`/`saves_leadership`/
+`saves_mystic`/`saves_poison` five-pack (mystic's own named primary STOP-risk, fully enumerated for
+the first time by this wave's census — previously an un-named "combat-peer=8" estimate) and
+`add_follower` to L2 (`char_utils_combat.cpp`/`entity_lifecycle.cpp`); `get_guardian_type` into
+`rots_combat` itself (`visibility.cpp`, L3 not L2 — its body reads `mob_index`, an L3-world global
+with no L2-visible resolver seam). ctest 1394→1398 across the wave's five tasks (Task 1 +2 `dismount`
+discriminator tests, Task 2 +2 `move` discriminator tests — a genuine, audit-found gap; Tasks 3-4
+added zero new tests). See `docs/BUILD.md`'s "`rots_combat`" section (the combat-trio subsection)
+and `docs/superpowers/combat-migration-playbook.md`'s "The combat-trio wave" section for the full
+census-overturn/cost-marker account.
 
 ---
 

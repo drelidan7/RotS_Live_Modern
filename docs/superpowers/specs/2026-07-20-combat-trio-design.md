@@ -175,3 +175,73 @@ olog+mystic (8 → 10) — or, if Task 0 finds mystic itself blocked, olog alone
 - No `spell_pa`/`spec_ass` registrar-hub promotion (they land last, per the playbook).
 - No wholesale handler.cpp/utility.cpp extraction beyond the four named leaf relocations.
 - No int→double combat-math changes.
+
+## As-built (Tasks 0-4 complete)
+
+**Status: LANDED.** `rots_combat` grew 8 → 11 TUs (`019b4c8`): `olog_hai.cpp` + `mystic.cpp` +
+`profs.cpp`, one membership commit, `CombatLayerAcyclicity` green **first try**, both hosts — zero
+census misses at the linkcheck gate, the first time this recipe has achieved that (contrast the
+combat-pilot wave's two, `gain_exp`/`waiting_list`). Test count: 1394 → 1398 (Task 1 +2 `dismount`
+discriminator tests, Task 2 +2 `move` discriminator tests, Tasks 3-4 +0). Full evidence:
+`.superpowers/sdd/combat-trio-census.md` (Task 0), `.superpowers/sdd/trio-task-{0,1,2,3,4}-report.md`.
+
+**The rider FIRED, via the predicted Path B, exactly as this document's source-level prediction
+called it.** Task 0's `nm`-confirmed body read (census §5.6) verified Path A (standalone-relocating
+`scale_guardian`) genuinely fails — the helper cluster is 6 functions
+(`set_guardian_stats`/`calc_guardian_hp`/`set_guardian_health`/`tweak_aggressive_guardian_stats`/
+`tweak_defensive_guardian_stats`/`tweak_mystic_guardian_stats`), one more than this document's stated
+"four" (`calc_guardian_hp`/`set_guardian_health` were omitted from the original enumeration — doesn't
+change the verdict, corrects the count). Path B held as predicted: mystic's own closure check fully
+resolved (its named primary STOP-risk — 5 unenumerated `spell_pa.cpp` combat-peer edges,
+`saves_confuse`/`saves_insight`/`saves_leadership`/`saves_mystic`/`saves_poison` — turned out
+RELOCATE-CLEAN via the `saves_power` precedent), so mystic's promotion dissolves `scale_guardian` for
+any caller. Task 0 found a caller this document's prediction missed: `objsave.cpp:775`, a second
+external `scale_guardian` caller alongside the documented `profs.cpp:233` — doesn't change the
+verdict, Path B covers any caller, but the design's own claim that "profs.cpp:233 is the only
+external caller" was wrong.
+
+**Census overturns (Task 0, `.superpowers/sdd/combat-trio-census.md` §7 has the full list):**
+1. olog_hai's "combat-peer=6" (this document's own §"Problem/evidence" estimate, inherited from the
+   playbook's cost table) re-derives to **1** genuine still-app-DEFER edge (`do_dismount`).
+2. `scale_guardian`'s helper cluster is **6**, not the 4 this document states.
+3. `scale_guardian` has a **second** external caller (`objsave.cpp:775`) this document's source-level
+   pass missed.
+4. olog_hai's `_waiting_list` reference (4 `WAIT_STATE_FULL` sites) is absent from this document's
+   residual list entirely — a positive finding, not a blocker: the combat-pilot wave's storage-move
+   already resolved it for free.
+5. mystic's 5 `spell_pa.cpp` combat-peer edges — this document's own text (the "Risks" section)
+   flagged them as unenumerated and the wave's primary STOP-risk; Task 0 supplies the missing names
+   and confirms all 5 RELOCATE-CLEAN.
+
+None of these overturns changed a Task-skeleton decision — every adjudication default in this
+document's own "Adjudication defaults" section was otherwise confirmed exactly as written (`do_move`,
+`add_follower`, `get_guardian_type`'s L3 destination) by direct `nm`/body-read evidence, not merely
+re-asserted.
+
+**T2's ASan lesson (a reviewer catch, not a self-caught finding).** `trio-task-2-report.md` skipped
+the `macos-arm64-asan` gate for its two new `move`-discriminator tests, justifying the skip by
+claiming "this class of change — additive tests in an already-covered file, no new test *file* — has
+not historically triggered a standalone ASan gate in this wave's own prior tasks' reports." This was
+factually false: `trio-task-1-report.md` line 241 ran ASan for the **identical** class of change (two
+new `dismount` tests appended to the same pre-existing `combat_hooks_tests.cpp`, also no new file) —
+T1 is literally "this wave's prior task's report," and it did the opposite of what T2's report
+claimed. The Task 2 reviewer caught the contradiction, independently ran `macos-arm64-asan` (clean
+build, 1398/1398, zero ASan diagnostics — no actual defect existed), and closed the finding in-review
+rather than accepting the report's stated rationale at face value. **Lesson: "additive tests, no new
+file" is not itself a valid ASan-skip justification** — this wave's own Task 1 precedent already
+required the gate for that exact shape of change; a report's stated rationale for skipping a
+required-by-precedent gate needs checking against the actual prior-task reports, not just cited from
+memory.
+
+**First-standalone-promotion data point, and the one-directional-vs-cycle distinction.** Every prior
+`rots_combat` growth was either SEED-CLEAN (combat-seed wave, zero relocation) or a mutually-dependent
+pair forced into one commit (`clerics`+`fight`, a true cycle). olog_hai and mystic share zero symbols
+in either direction — the playbook's first true standalone promotions. `profs`'s dependency on mystic
+(`scale_guardian`) is real but one-directional (mystic never calls back into profs) — a category the
+"intra-subset rule" hadn't previously had a data point for: a one-directional gate only forces the
+callee (mystic) to promote no later than the caller (profs), never the reverse, and does not by itself
+force joint membership the way a true cycle does. This wave chose one commit for all three TUs for
+simplicity (documented explicitly in the Task 4 commit body, per this plan's own instruction), not
+because `CombatLayerAcyclicity` required it. Full writeup, including the `half_chop` unbundling
+finding and the `saves_*` five-pack's "L2-lateral floor" constraint:
+`docs/superpowers/combat-migration-playbook.md`'s "The combat-trio wave" section.

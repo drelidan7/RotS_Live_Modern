@@ -423,13 +423,11 @@ find_playing_char(int idnum)
     return NULL;
 }
 
-void set_mental_delay(struct char_data* ch, int value)
-{
-    if (!GET_MENTAL_DELAY(ch))
-        set_fighting(ch, 0);
-
-    GET_MENTAL_DELAY(ch) += value;
-}
+// set_mental_delay() relocated verbatim to fight.cpp (combat-pilot
+// wave Task 4a; pilot-census.md section 3.2): it calls set_fighting(),
+// defined in fight.cpp -- staying here would create an L2->L3-combat
+// upward edge once fight.cpp joins rots_combat. Declaration unchanged
+// (utils.h:739).
 
 // universal_list_counter/used_in_universal_list + pool_to_list()/
 // from_list_to_pool() relocated to entity_lifecycle.cpp (entity-seed Task 5);

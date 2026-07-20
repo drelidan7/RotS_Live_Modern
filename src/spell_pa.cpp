@@ -52,7 +52,6 @@ char saves_mystic(struct char_data*);
 void appear(struct char_data*);
 void affect_update();
 void fast_update();
-void check_break_prep(struct char_data* ch);
 
 ACMD(do_flee);
 
@@ -178,10 +177,15 @@ char saves_power(const char_data* victim, sh_int casting_power, sh_int save_bonu
  *   that wishes to bypass saving a spell.
  */
 
-/* These variables are used in fight.cc's damage() to aid in logging */
-unsigned char spllog_saves; /* 1: character saved, 0: character failed */
-short spllog_mage_level; /* the effective level of the caster */
-short spllog_save; /* the effective save computed in saves_spell */
+// spllog_saves/spllog_mage_level/spllog_save storage-moved to fight.cpp
+// (combat-pilot wave Task 4a; pilot-census.md section 7.3), alongside
+// record_spell_damage(), their sole reader. saves_spell()/
+// new_saves_spell() below keep WRITING to them (a legal downward write
+// into rots_combat storage once this file joins a future wave) via the
+// externs immediately below.
+extern unsigned char spllog_saves; /* 1: character saved, 0: character failed */
+extern short spllog_mage_level; /* the effective level of the caster */
+extern short spllog_save; /* the effective save computed in saves_spell */
 
 char saves_spell(struct char_data* ch, sh_int level, int bonus)
 {
@@ -268,15 +272,10 @@ bool new_saves_spell(const char_data* caster, const char_data* victim, int save_
     return saved;
 }
 
-void record_spell_damage(struct char_data* caster, struct char_data* victim, int at, int dam)
-{
-    if (at == SPELL_CHILL_RAY || at == SPELL_LIGHTNING_BOLT || at == SPELL_DARK_BOLT || at == SPELL_CONE_OF_COLD || at == SPELL_FIREBOLT || at == SPELL_LIGHTNING_STRIKE || at == SPELL_FIREBALL || at == SPELL_WORD_OF_PAIN || at == SPELL_WORD_OF_AGONY || at == SPELL_SHOUT_OF_PAIN || at == SPELL_SPEAR_OF_DARKNESS || at == SPELL_LEACH || at == SPELL_BLACK_ARROW || at == SPELL_MAGIC_MISSILE || at == SPELL_EARTHQUAKE || at == SPELL_BLAZE || at == SPELL_SEARING_DARKNESS) {
-        vmudlog(SPL, "spell=%s, damage=%d, from %s(%d) to %s(%d) %s", skills[at].name, dam,
-            GET_NAME(caster), spllog_mage_level, GET_NAME(victim), spllog_save,
-            spllog_saves ? "(saved)" : "");
-        spllog_saves = 0;
-    }
-}
+// record_spell_damage() relocated verbatim to fight.cpp (combat-pilot
+// wave Task 4a; pilot-census.md section 7.3), bundled with the
+// spllog_saves/spllog_mage_level/spllog_save storage-move above -- its
+// sole caller, damage(), is also in fight.cpp.
 
 char char_perception_check(struct char_data* ch)
 {
@@ -288,20 +287,10 @@ char char_perception_check(struct char_data* ch)
     return offense <= defense;
 }
 
-void check_break_prep(struct char_data* ch)
-{
-    ACMD(do_trap);
-
-    if (ch->delay.cmd == CMD_PREPARE && (ch->delay.targ1.type == TARGET_IGNORE)) {
-        send_to_char("Your preperations were ruined.\n\r", ch);
-        ch->delay.targ1.cleanup();
-        abort_delay(ch);
-    } else if (ch->delay.cmd == CMD_TRAP) {
-        act("Your carefully planned trap has been ruined.", FALSE, ch, 0, 0, TO_CHAR);
-        act("$n's carefully constructed trap is ruined!", FALSE, ch, 0, ch, TO_NOTVICT);
-        do_trap(ch, mutable_arg(""), NULL, CMD_TRAP, -1);
-    }
-}
+// check_break_prep() relocated verbatim to fight.cpp (combat-pilot
+// wave Task 4a; pilot-census.md section 7.2). Its internal do_trap()
+// up-call converted to rots::combat::issue_command(combat_command::trap,
+// ...) as part of the move -- see fight.cpp for the converted body.
 
 /*
  * A pretty general save function that takes into consideration

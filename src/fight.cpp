@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "color.h"
+#include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
 #include "entity_hooks.h"
@@ -268,6 +269,20 @@ void set_fighting(struct char_data* ch, struct char_data* vict)
     if (vict)
         stop_hiding(vict, FALSE);
 }
+
+// set_mental_delay() relocated verbatim from utility.cpp:426-432
+// (combat-pilot wave Task 4a; pilot-census.md section 3.2 -- staying in
+// char_utils.cpp would create an L2->L3-combat upward edge via
+// set_fighting(), defined immediately above). Declaration unchanged
+// (utils.h:739).
+void set_mental_delay(struct char_data* ch, int value)
+{
+    if (!GET_MENTAL_DELAY(ch))
+        set_fighting(ch, 0);
+
+    GET_MENTAL_DELAY(ch) += value;
+}
+
 
 /*
  * Remove a char from the list of fighting chars
@@ -1616,6 +1631,51 @@ int maul_damage_reduction(char_data* ch, int damage)
         }
     }
     return damage = std::max(damage, 1);
+}
+
+// spllog_saves/spllog_mage_level/spllog_save storage-moved here from
+// spell_pa.cpp:182-184 (combat-pilot wave Task 4a; pilot-census.md
+// section 7.3), alongside record_spell_damage() below, their sole
+// reader. Owned by fight.cpp: WRITTEN by spell_pa.cpp's saves_spell()/
+// new_saves_spell() via the extern declarations left there, READ here
+// by record_spell_damage() (called from damage() below).
+unsigned char spllog_saves; /* 1: character saved, 0: character failed */
+short spllog_mage_level; /* the effective level of the caster */
+short spllog_save; /* the effective save computed in saves_spell */
+
+// record_spell_damage() relocated verbatim from spell_pa.cpp:271-279
+// (combat-pilot wave Task 4a; pilot-census.md section 7.3), bundled
+// with the storage-move above -- its sole caller, damage(), is
+// immediately below.
+void record_spell_damage(struct char_data* caster, struct char_data* victim, int at, int dam)
+{
+    if (at == SPELL_CHILL_RAY || at == SPELL_LIGHTNING_BOLT || at == SPELL_DARK_BOLT || at == SPELL_CONE_OF_COLD || at == SPELL_FIREBOLT || at == SPELL_LIGHTNING_STRIKE || at == SPELL_FIREBALL || at == SPELL_WORD_OF_PAIN || at == SPELL_WORD_OF_AGONY || at == SPELL_SHOUT_OF_PAIN || at == SPELL_SPEAR_OF_DARKNESS || at == SPELL_LEACH || at == SPELL_BLACK_ARROW || at == SPELL_MAGIC_MISSILE || at == SPELL_EARTHQUAKE || at == SPELL_BLAZE || at == SPELL_SEARING_DARKNESS) {
+        vmudlog(SPL, "spell=%s, damage=%d, from %s(%d) to %s(%d) %s", skills[at].name, dam,
+            GET_NAME(caster), spllog_mage_level, GET_NAME(victim), spllog_save,
+            spllog_saves ? "(saved)" : "");
+        spllog_saves = 0;
+    }
+}
+
+// check_break_prep() relocated verbatim from spell_pa.cpp:291-304
+// (combat-pilot wave Task 4a; pilot-census.md section 7.2). Its
+// internal do_trap() up-call is converted to
+// rots::combat::issue_command(combat_command::trap, ...) as part of
+// this move -- the existing combat_hooks.h trap cell, not a new hook
+// (the ACMD(do_trap); forward decl the original body carried is no
+// longer needed, since the call now resolves through the dispatch
+// table rather than a direct symbol reference).
+void check_break_prep(struct char_data* ch)
+{
+    if (ch->delay.cmd == CMD_PREPARE && (ch->delay.targ1.type == TARGET_IGNORE)) {
+        send_to_char("Your preperations were ruined.\n\r", ch);
+        ch->delay.targ1.cleanup();
+        abort_delay(ch);
+    } else if (ch->delay.cmd == CMD_TRAP) {
+        act("Your carefully planned trap has been ruined.", FALSE, ch, 0, 0, TO_CHAR);
+        act("$n's carefully constructed trap is ruined!", FALSE, ch, 0, ch, TO_NOTVICT);
+        rots::combat::issue_command(rots::combat::combat_command::trap, ch, mutable_arg(""), NULL, CMD_TRAP, -1);
+    }
 }
 
 /*

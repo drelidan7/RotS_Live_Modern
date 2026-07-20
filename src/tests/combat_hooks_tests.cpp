@@ -279,9 +279,10 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenWakeIsUnregistered)
 // do_hit's own test above) -- do_mental never gets far enough to touch
 // ch->specials.fighting/big_brother/etc. This is the highest-value
 // cell in the table: it is fight.cpp's ONLY combat_hooks.h target invoked
-// unconditionally every combat pulse once fight.cpp's per-tick loop reaches
-// a fighting mental/shadow combatant (fight.cpp:2791), so this seam being
-// correct for it matters more than for any of the other 24 cells.
+// unconditionally every combat pulse once fight.cpp's per-tick
+// mental-combat auto-attack in the round loop reaches a fighting
+// mental/shadow combatant, so this seam being correct for it matters more
+// than for any of the other 24 cells.
 
 TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoMentalWhenRegistered)
 {

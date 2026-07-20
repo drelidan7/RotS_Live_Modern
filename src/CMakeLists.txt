@@ -255,19 +255,29 @@ set(ROTS_WORLD_SOURCES
 # dereferenced -- same "opaque pointer, no game-type header needed" shape as
 # output_seam.cpp, so it does not change this library's link-graph story.
 #
-# visibility.cpp JOINS HERE (blocker-buster wave Task 4, census section A):
-# CAN_SEE(char_data*)/CAN_SEE_OBJ/get_real_OB/get_real_parry/
-# get_obj_in_list_vis/get_obj_vis/get_object_in_equip_vis, relocated
-# verbatim from utility.cpp/handler.cpp (resolver-variant substitutions for
-# their two unchecked world[] sites; see the file's own banner comment and
-# task-4-report.md). This is the ONE genuine L3-peer edge the census found
-# for this subset (weather_info, weather.cpp/rots_world) -- hence the new
-# RotS::world PUBLIC link below, mirroring rots_world's own peer link to
-# RotS::persist. The 3-arg CAN_SEE(sub,obj,light_mode) overload and its
-# riders (get_char_room_vis/get_player_vis/get_char_vis/generic_find,
-# handler.cpp) do NOT join: verified (not merely censused) to depend on
-# see_hiding() (ranger.cpp), a still-DEFERRED ROTS_SERVER_SOURCES symbol --
-# see their STAY-APP comments in utility.cpp/handler.cpp.
+# visibility.cpp JOINS HERE (blocker-buster wave Task 4, completed by Task
+# 4b; census section A): the full visibility family, 12/12 --
+# CAN_SEE(char_data*)/CAN_SEE(char_data*,char_data*,light_mode)/CAN_SEE_OBJ/
+# get_char_room_vis/get_player_vis/get_char_vis/get_obj_in_list_vis/
+# get_obj_vis/get_object_in_equip_vis/generic_find/get_real_OB/
+# get_real_parry -- relocated verbatim from utility.cpp/handler.cpp
+# (resolver-variant substitutions for their two unchecked world[] sites; see
+# the file's own banner comment and task-4-report.md). Task 4 landed 7/12
+# and correctly STOPped on the remaining 5 (the 3-arg CAN_SEE overload and
+# its get_char_room_vis/get_player_vis/get_char_vis/generic_find riders):
+# build-wiring verification found the 3-arg overload's see_hiding() call
+# still lived in ranger.cpp (a still-DEFERRED ROTS_SERVER_SOURCES TU) and
+# generic_find's search_block() call was an uncensused app-tier edge
+# (interpre.cpp) -- both genuine upward edges at the time, not merely
+# thematic ones. Task 4b's mini-census (task-4b-report.md) cleared both:
+# see_hiding() is carved out of ranger.cpp into this file (entity-pure, zero
+# other ranger.cpp dependency -- see its own banner comment in
+# visibility.cpp), and search_block() relocates to rots_util.cpp/
+# rots_platform (platform-clean, get_number()'s precedent), so both riders
+# now resolve in-lib/downward rather than upward. weather_info
+# (weather.cpp/rots_world) remains the ONE genuine L3-peer edge the census
+# found for this family -- hence the RotS::world PUBLIC link below,
+# mirroring rots_world's own peer link to RotS::persist.
 set(ROTS_COMBAT_SOURCES
     battle_mage_handler.cpp combat_hooks.cpp skill_timer.cpp
     visibility.cpp weapon_master_handler.cpp wild_fighting_handler.cpp

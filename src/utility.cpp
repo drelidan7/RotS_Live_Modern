@@ -207,7 +207,9 @@ void unretire(struct char_data* ch)
 // get_real_dodge() relocated to char_utils_combat.cpp (placement-seam
 // Task 5; census verdict MOVE-OTHER-L2): entity-pure, the cleanest of the
 // OB/parry/dodge trio (no weapon_master, no world[]) -- see get_real_OB()/
-// get_real_parry() above for the trio's STAY-APP half. Declaration
+// get_real_parry() above; the trio now reunites entirely in library code,
+// split across the L2 (here)/L3 (visibility.cpp, rots_combat) tier line,
+// not STAY-APP. Declaration
 // unchanged in utils.h.
 
 // get_followers_level() relocated to char_utils.cpp (placement-seam

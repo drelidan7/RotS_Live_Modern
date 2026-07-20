@@ -125,8 +125,9 @@ void on_attacked_character(char_data* attacker, char_data* victim)
 // addendum's resolver-variant rule (see task-5-report.md for the exact
 // before/after quote). do_squareroot() moves together with its sole caller
 // get_weapon_damage(); get_power_of_arda() moves alongside its callers
-// get_real_dodge() (this batch) and get_real_OB()/get_real_parry() (STAY-APP,
-// utility.cpp -- see those functions' own comments there). Declarations
+// get_real_dodge() (this batch) and get_real_OB()/get_real_parry() (now in
+// visibility.cpp/rots_combat, blocker-buster Task 4 -- a legal L3->L2
+// downward edge; see those functions' own comments there). Declarations
 // unchanged (utils.h, except do_squareroot()/get_bow_weapon_damage()/
 // weight_coof()/get_real_stealth(), which have no declaring header
 // anywhere in the tree -- file-local by precedent). get_followers_level()

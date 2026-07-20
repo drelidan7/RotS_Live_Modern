@@ -886,7 +886,11 @@ instead of welding back up into `comm.cpp`/app-command entry points.
    Also restored a pre-existing flat-Makefile `SRCS` gap (`comm_output`/`text_view`/
    `string_view_utility` test files had never been in the i386 monolithic runner's source list).
    These seven have **no consumer this wave**; a future combat-tier TU calls them exactly like
-   `send_to_char` today.
+   `send_to_char` today. `put_to_txt_block_pool` (the pool-return counterpart of
+   `get_from_txt_block_pool`) deliberately needed no seam of its own: reviewer-verified to have no
+   combat-row (`mobact`/`spec_pro`/`ranger`/`fight`) caller anywhere in the tree — its only callers
+   are `comm.cpp` itself, `mudlle.cpp`, and `mudlle2.cpp` — so there is no upward edge to invert; the
+   next implementer doesn't need to re-derive this.
 2. **Command-dispatch seam (Task 2, `src/combat_hooks.h`/`combat_hooks.cpp`, 25-cell table).** An
    enum-indexed `rots::combat::combat_command` table of ACMD function pointers, modeled on
    `assign_spell_pointers()` (spell_pa.cpp, entity-seed Task 1): null-initialized at static init,

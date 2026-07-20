@@ -2252,9 +2252,10 @@ void assign_command_pointers(void)
 // yet this wave (five cells -- ambush/cast/hide/mental/trap -- resolve to
 // other not-yet-promoted combat-row TUs today; the rest resolve to
 // act_*.cpp). do_mental joined this registrar post-landing (review
-// critical): fight.cpp's per-tick mental-combat auto-attack calls it, a
-// genuine 25th up-call target the first pass's enumeration missed -- see
-// combat_hooks.h's TARGET LIST comment and task-2-report.md.
+// critical): fight.cpp's per-tick mental-combat auto-attack in the round
+// loop calls it, a genuine 25th up-call target the first pass's
+// enumeration missed -- see combat_hooks.h's TARGET LIST comment and
+// task-2-report.md.
 void register_combat_command_dispatch()
 {
     using rots::combat::combat_command;

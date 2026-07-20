@@ -39,9 +39,9 @@
 //     target moves atomically with its only caller.
 //
 // CORRECTION (review, post-landing): the initial 24-cell table MISSED
-// do_mental -- fight.cpp's per-tick mental-combat auto-attack
-// (fight.cpp:2791, `do_mental(fighter, mutable_arg(""), 0, 0, 0)`) calls it
-// every combat pulse for a fighting mental/shadow combatant, and it is
+// do_mental -- fight.cpp's per-tick mental-combat auto-attack in the round
+// loop (`do_mental(fighter, mutable_arg(""), 0, 0, 0)`) calls it every
+// combat pulse for a fighting mental/shadow combatant, and it is
 // ACMD in clerics.cpp (a DEFER-11 TU), the same cross-row class as
 // ambush/cast/hide/trap below. It passed both exclusion tests above (a real
 // call site, not a same-TU self-call), so the miss was a pure enumeration

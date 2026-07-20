@@ -14,10 +14,12 @@
 // by comm.cpp's register_game_output_sinks() -- called from run_the_game(),
 // immediately after register_mudlog_broadcast_sink() and before boot_db(),
 // so ageland never runs with an unregistered sink. A null sink is a logged
-// no-op: exactly rots_convert's historical stub semantics for these five
-// symbols (see convert_stubs.cpp's now-deleted "send_to_char() (both
-// overloads) / vsend_to_char() / act()" and "track_specialized_mage() /
-// untrack_specialized_mage()" sections).
+// no-op -- except the txt-pool getter (get_from_txt_block_pool(std::
+// string_view)), which aborts instead of returning a null placeholder; see
+// its own comment below -- matching rots_convert's historical stub
+// semantics for these five symbols (see convert_stubs.cpp's now-deleted
+// "send_to_char() (both overloads) / vsend_to_char() / act()" and
+// "track_specialized_mage() / untrack_specialized_mage()" sections).
 //
 // BLOCKER-BUSTER EXTENSION (+7, census section D
 // .superpowers/sdd/blocker-census.md): send_to_all/send_to_room/

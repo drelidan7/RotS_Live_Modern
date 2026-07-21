@@ -21,10 +21,12 @@
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
+#include "output_seam.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
+#include "script_hooks.h"
 #include "utils.h"
 
 /* external structs */
@@ -33,19 +35,21 @@ extern struct index_data* mob_index;
 extern struct room_data world;
 extern int top_of_world;
 
-ACMD(do_move);
-ACMD(do_rescue);
-ACMD(do_assist);
-ACMD(do_stand);
-ACMD(do_hit);
-ACMD(do_say);
-ACMD(do_flee);
-ACMD(do_wear);
+// The twelve do_* forward decls formerly here (do_move/do_rescue/
+// do_assist/do_stand/do_hit/do_say/do_flee/do_wear, plus do_sleep/
+// do_rest/do_sit/do_wake declared near enforce_position() below) are
+// RETIRED (behavior wave Task 2, bw-task-2-brief.md Step 1): every
+// call site in this file now dispatches through the existing 26-cell
+// rots::combat::issue_command() table instead of calling the ACMD
+// symbol directly, so none of the twelve is referenced by name here
+// any more.
 
 SPECIAL(intelligent);
 
 void one_mobile_activity(struct char_data*);
-void* virt_program_number(int number);
+// void* virt_program_number(int number); forward decl RETIRED
+// (behavior wave Task 2): both call sites below now dispatch
+// through rots::script::dispatch_virt_program_number() instead.
 int find_first_step(int, int);
 
 void enforce_position(struct char_data*, int);
@@ -61,7 +65,7 @@ void mobile_activity(void)
                 one_mobile_activity(ch);
             else {
                 tmpfunc = (SPECIAL(*))
-                    virt_program_number(ch->specials.store_prog_number);
+                    rots::script::dispatch_virt_program_number(ch->specials.store_prog_number);
                 if (tmpfunc)
                     tmpfunc(ch, ch, 0, mutable_arg(""), SPECIAL_SELF, 0);
             }
@@ -78,8 +82,6 @@ void one_mobile_activity(char_data* ch)
     struct follow_type* tmpfol;
     SPECIAL(*tmpfunc);
 
-    extern int no_specials;
-
     wtl.cmd = wtl.subcmd = wtl.priority = 0;
 
     if (!ch)
@@ -88,9 +90,9 @@ void one_mobile_activity(char_data* ch)
         return;
 
     if ((ch->in_room < 0) || (ch->in_room > top_of_world)) {
-        strcpy(buf, std::format("mobile_act called for {} in {}.",
-            GET_NAME(ch), ch->in_room).c_str());
-        mudlog(buf, NRM, LEVEL_IMPL, FALSE);
+        const std::string out_of_range_message = std::format("mobile_act called for {} in {}.",
+            GET_NAME(ch), ch->in_room);
+        mudlog(out_of_range_message, NRM, LEVEL_IMPL, FALSE);
         return;
     }
 
@@ -119,11 +121,11 @@ void one_mobile_activity(char_data* ch)
         }
 
         /* Examine call for special procedure */
-        if (IS_SET(ch->specials2.act, MOB_SPEC) && !no_specials) {
-            strcpy(buf, std::format("{} - find prog: {}, func:{}", GET_NAME(ch), ch->specials2.act, reinterpret_cast<std::intptr_t>(mob_index[ch->nr].func)).c_str());
-            mudlog_aliased_mob(buf, ch, "progdebug");
+        if (IS_SET(ch->specials2.act, MOB_SPEC) && !no_specials_active()) {
+            const std::string prog_debug_message = std::format("{} - find prog: {}, func:{}", GET_NAME(ch), ch->specials2.act, reinterpret_cast<std::intptr_t>(mob_index[ch->nr].func));
+            mudlog_aliased_mob(prog_debug_message, ch, "progdebug");
             if (!mob_index[ch->nr].func && ch->specials.store_prog_number) {
-                tmpfunc = (SPECIAL(*))virt_program_number(ch->specials.store_prog_number);
+                tmpfunc = (SPECIAL(*))rots::script::dispatch_virt_program_number(ch->specials.store_prog_number);
                 if (tmpfunc) {
                     if (tmpfunc(ch, ch, 0, mutable_arg(""), SPECIAL_SELF, 0)) {
                         return;
@@ -184,13 +186,13 @@ void one_mobile_activity(char_data* ch)
 
                     if (assist) {
                         if (GET_INT_BASE(ch) >= 7) {
-                            do_say(ch, mutable_arg("I must protect my friend!"), 0, 0, 0);
+                            rots::combat::issue_command(rots::combat::combat_command::say, ch, mutable_arg("I must protect my friend!"), 0, 0, 0);
                         }
                         wtl.targ1.type = TARGET_CHAR;
                         wtl.targ1.ptr.ch = ally;
                         wtl.targ1.ch_num = ally->abs_number;
                         wtl.cmd = CMD_ASSIST;
-                        do_assist(ch, mutable_arg(""), &wtl, 0, 0);
+                        rots::combat::issue_command(rots::combat::combat_command::assist, ch, mutable_arg(""), &wtl, 0, 0);
                         break;
                     }
                 }
@@ -201,43 +203,46 @@ void one_mobile_activity(char_data* ch)
         if (AWAKE(ch) && IS_SET(ch->specials2.act, MOB_BODYGUARD) && ch->master && (ch->master->in_room == ch->in_room)) {
 
             if (GET_POS(ch) < POSITION_FIGHTING)
-                do_stand(ch, mutable_arg(""), 0, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::stand, ch, mutable_arg(""), 0, 0, 0);
 
             tmp_ch = (ch->master)->specials.fighting;
 
             if (tmp_ch && (tmp_ch->specials.fighting == ch->master)) {
-                sscanf(ch->master->player.name, "%s", buf);
-                //	     printf("trying to rescue %s.\n",buf);
+                char rescue_target_name[MAX_STRING_LENGTH];
+                sscanf(ch->master->player.name, "%s", rescue_target_name);
+                //	     printf("trying to rescue %s.\n",rescue_target_name);
                 wtl.targ1.type = TARGET_CHAR;
                 wtl.targ1.ptr.ch = ch->master;
                 wtl.targ1.ch_num = ch->master->abs_number;
                 wtl.cmd = CMD_RESCUE;
-                do_rescue(ch, buf, &wtl, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::rescue, ch, rescue_target_name, &wtl, 0, 0);
             }
             if (tmp_ch && !(ch->specials.fighting)) {
-                sscanf(tmp_ch->player.name, "%s", buf);
+                char hit_target_name[MAX_STRING_LENGTH];
+                sscanf(tmp_ch->player.name, "%s", hit_target_name);
                 wtl.targ1.type = TARGET_CHAR;
                 wtl.targ1.ptr.ch = tmp_ch;
                 wtl.targ1.ch_num = tmp_ch->abs_number;
                 wtl.cmd = CMD_HIT;
-                do_hit(ch, buf, &wtl, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::hit, ch, hit_target_name, &wtl, 0, 0);
             }
         }
 
         /* bodyguard - master */
         if (AWAKE(ch) && IS_SET(ch->specials2.act, MOB_BODYGUARD) && ch->followers) {
             if (GET_POS(ch) < POSITION_FIGHTING)
-                do_stand(ch, mutable_arg(""), 0, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::stand, ch, mutable_arg(""), 0, 0, 0);
 
             for (tmpfol = ch->followers; tmpfol; tmpfol = tmpfol->next) {
                 tmp_ch = (tmpfol->follower)->specials.fighting;
                 if (tmp_ch && (tmp_ch->specials.fighting == tmpfol->follower)) {
-                    sscanf(tmpfol->follower->player.name, "%s", buf);
+                    char rescue_target_name[MAX_STRING_LENGTH];
+                    sscanf(tmpfol->follower->player.name, "%s", rescue_target_name);
                     wtl.targ1.type = TARGET_CHAR;
                     wtl.targ1.ptr.ch = tmpfol->follower;
                     wtl.targ1.ch_num = tmpfol->follower->abs_number;
                     wtl.cmd = CMD_RESCUE;
-                    do_rescue(ch, buf, &wtl, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::rescue, ch, rescue_target_name, &wtl, 0, 0);
                 }
             }
         }
@@ -248,14 +253,14 @@ void one_mobile_activity(char_data* ch)
             if (ch->master->in_room == ch->in_room && ch->master->specials.fighting && ch->specials.fighting == NULL) {
                 if (CAN_SEE(ch, ch->master)) {
                     if (GET_POS(ch) < POSITION_FIGHTING) {
-                        do_stand(ch, mutable_arg(""), NULL, 0, 0);
+                        rots::combat::issue_command(rots::combat::combat_command::stand, ch, mutable_arg(""), NULL, 0, 0);
                     }
 
                     wtl.targ1.type = TARGET_CHAR;
                     wtl.targ1.ptr.ch = ch->master;
                     wtl.targ1.ch_num = ch->master->abs_number;
                     wtl.cmd = CMD_ASSIST;
-                    do_assist(ch, mutable_arg(""), &wtl, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::assist, ch, mutable_arg(""), &wtl, 0, 0);
                 }
             }
         }
@@ -263,7 +268,7 @@ void one_mobile_activity(char_data* ch)
         /* Guardians, special case */
         if (utils::is_guardian(*ch) && ch->master && ch->specials.fighting) {
             if (ch->master->in_room != ch->in_room) {
-                do_flee(ch, mutable_arg(""), NULL, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::flee, ch, mutable_arg(""), NULL, 0, 0);
             }
         }
 
@@ -295,7 +300,7 @@ void one_mobile_activity(char_data* ch)
                                             obj_to_char(inside, ch);
                                             act("$n gets $p from $P.",
                                                 TRUE, ch, inside, obj, TO_ROOM);
-                                            do_wear(ch, mutable_arg("all"), 0, 0, 0);
+                                            rots::combat::issue_command(rots::combat::combat_command::wear, ch, mutable_arg("all"), 0, 0, 0);
                                         }
                                 }
                         }
@@ -316,7 +321,7 @@ void one_mobile_activity(char_data* ch)
                     /* checking for STAY flags */
                     if ((!IS_SET(ch->specials2.act, MOB_STAY_ZONE) || (world[EXIT(ch, door)->to_room].zone == world[ch->in_room].zone)) && (!IS_SET(ch->specials2.act, MOB_STAY_TYPE) || (world[EXIT(ch, door)->to_room].sector_type == world[ch->in_room].sector_type))) {
                         ch->specials.last_direction = door;
-                        do_move(ch, mutable_arg(""), 0, ++door, 0);
+                        rots::combat::issue_command(rots::combat::combat_command::move, ch, mutable_arg(""), 0, ++door, 0);
                     }
                 }
             } /* if can go */
@@ -326,12 +331,13 @@ void one_mobile_activity(char_data* ch)
                 for (tmp_ch = world[ch->in_room].people; tmp_ch;
                      tmp_ch = tmp_ch->next_in_room)
                     if ((ch != tmp_ch) && (!IS_SET(ch->specials2.act, MOB_MOUNT)) && IS_AGGR_TO(ch, tmp_ch) && CAN_SEE(ch, tmp_ch)) {
-                        sscanf(tmp_ch->player.name, "%s", buf);
+                        char hit_target_name[MAX_STRING_LENGTH];
+                        sscanf(tmp_ch->player.name, "%s", hit_target_name);
                         wtl.targ1.type = TARGET_CHAR;
                         wtl.targ1.ptr.ch = tmp_ch;
                         wtl.targ1.ch_num = tmp_ch->abs_number;
                         wtl.cmd = CMD_HIT;
-                        do_hit(ch, buf, &wtl, 0, 0);
+                        rots::combat::issue_command(rots::combat::combat_command::hit, ch, hit_target_name, &wtl, 0, 0);
                         break;
                     }
                 if (tmp_ch)
@@ -365,7 +371,10 @@ void one_mobile_activity(char_data* ch)
                     wtl.targ1.ptr.ch = vict;
                     wtl.targ1.ch_num = vict->abs_number;
                     wtl.cmd = CMD_HIT;
-                    do_hit(ch, buf, &wtl, 0, 0);
+                    // argument is unused here: wtl already carries the resolved
+                    // target (act_offe.cpp's do_hit only parses argument when wtl
+                    // has none), matching this file's mutable_arg("") idiom above.
+                    rots::combat::issue_command(rots::combat::combat_command::hit, ch, mutable_arg(""), &wtl, 0, 0);
                     vict = 0;
                 }
             } /* if aggressive */
@@ -373,7 +382,7 @@ void one_mobile_activity(char_data* ch)
             if ((IS_SET(ch->specials2.act, MOB_MEMORY) || IS_SET(ch->specials2.act, MOB_HUNTER) || (IS_AFFECTED(ch, AFF_HUNT))) && ch->specials.memory) {
                 /* we assume pets do not hunt by themselves */
                 if (MOB_FLAGGED(ch, MOB_PET) && (GET_POS(ch) == POSITION_FIGHTING))
-                    do_flee(ch, mutable_arg(""), 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::flee, ch, mutable_arg(""), 0, 0, 0);
 
                 /* checking memory */
                 if (!IS_SET(ch->specials2.act, MOB_SENTINEL) && (GET_POS(ch) == POSITION_STANDING)) {
@@ -395,12 +404,13 @@ void one_mobile_activity(char_data* ch)
                             act("$n snarls and lunges at $N!", FALSE, ch, 0, vict, TO_ROOM);
                         else
                             act("$n grins evilly and attacks $N!", FALSE, ch, 0, vict, TO_ROOM);
-                        sscanf(vict->player.name, "%s", buf);
+                        char hit_target_name[MAX_STRING_LENGTH];
+                        sscanf(vict->player.name, "%s", hit_target_name);
                         wtl.targ1.type = TARGET_CHAR;
                         wtl.targ1.ptr.ch = vict;
                         wtl.targ1.ch_num = vict->abs_number;
                         wtl.cmd = CMD_HIT;
-                        do_hit(ch, buf, &wtl, 0, 0);
+                        rots::combat::issue_command(rots::combat::combat_command::hit, ch, hit_target_name, &wtl, 0, 0);
                     }
                 } else if (IS_SET(ch->specials2.act, MOB_HUNTER) || IS_AFFECTED(ch, AFF_HUNT)) {
                     int modifier = 0;
@@ -415,7 +425,7 @@ void one_mobile_activity(char_data* ch)
                         else
                             tmp = BFS_NO_PATH;
                         if (tmp >= 0) { // found the way, moving there
-                            do_move(ch, mutable_arg(""), 0, tmp + 1, 0);
+                            rots::combat::issue_command(rots::combat::combat_command::move, ch, mutable_arg(""), 0, tmp + 1, 0);
                             break;
                         }
                     }
@@ -451,13 +461,11 @@ void register_one_mobile_activity_hook()
 // ACMD(do_stand); duplicate forward decl RETIRED (behavior wave Task 1,
 // census section 5): identical to the declaration already at this
 // file's own top (:39, still used by call sites earlier in this file,
-// e.g. :204/:230/:251). do_sleep/do_rest/do_sit/do_wake below remain --
-// each is genuinely first-declared here and required by
-// enforce_position()'s switch immediately below.
-ACMD(do_sleep);
-ACMD(do_rest);
-ACMD(do_sit);
-ACMD(do_wake);
+// e.g. :204/:230/:251). do_sleep/do_rest/do_sit/do_wake ALSO RETIRED
+// (behavior wave Task 2): enforce_position()'s own do_wake/do_sleep/
+// do_rest/do_sit/do_stand calls below now dispatch through
+// rots::combat::issue_command() like every other do_* call in this
+// file, so none of the four is referenced by name here any more.
 
 void enforce_position(struct char_data* ch, int new_pos)
 {
@@ -473,23 +481,23 @@ void enforce_position(struct char_data* ch, int new_pos)
         return;
 
     if ((GET_POS(ch) <= POSITION_SLEEPING) && (new_pos > POSITION_SLEEPING))
-        do_wake(ch, mutable_arg(""), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::wake, ch, mutable_arg(""), 0, 0, 0);
 
     switch (new_pos) {
     case POSITION_SLEEPING:
-        do_sleep(ch, mutable_arg(""), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::sleep, ch, mutable_arg(""), 0, 0, 0);
         break;
 
     case POSITION_RESTING:
-        do_rest(ch, mutable_arg(""), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::rest, ch, mutable_arg(""), 0, 0, 0);
         break;
 
     case POSITION_SITTING:
-        do_sit(ch, mutable_arg(""), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::sit, ch, mutable_arg(""), 0, 0, 0);
         break;
 
     case POSITION_STANDING:
-        do_stand(ch, mutable_arg(""), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::stand, ch, mutable_arg(""), 0, 0, 0);
         break;
     }
 }

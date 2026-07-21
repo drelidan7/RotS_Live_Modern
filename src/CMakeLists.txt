@@ -1345,7 +1345,8 @@ if(ROTS_BUILD_TESTS)
 
         # Load-bearing world-layer acyclicity check (spec §11), mirroring the
         # rots_persist_linkcheck block above (world-seed wave Task 5).
-        # rots_world (db_world.cpp + zone_load.cpp + weather.cpp — see the
+        # rots_world (db_world.cpp + zone.cpp + zone_load.cpp + weather.cpp —
+        # zone.cpp joined in the l4-seed wave, Task 3 Step 1 -- see the
         # ROTS_WORLD_SOURCES comment above) is verified to have no upward
         # symbol references beyond its legal downward edges into rots_persist
         # (the one sanctioned L3-peer edge — db_world.cpp calls

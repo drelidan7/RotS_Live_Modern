@@ -667,11 +667,13 @@ void run_the_game(sh_int port)
     // boot_db(), so ageland never runs containment.cpp's obj_from_char()
     // with an unregistered hook.
     register_poison_removal_hook();
-    // combat_hooks.h's extract_char hook (combat-pilot wave Task 4b),
+    // entity_hooks.h's extract_char hook (originally combat_hooks.h,
+    // combat-pilot wave Task 4b; RE-HOMED to L2 entity_hooks.h by the
+    // l4-seed wave Task 1, shared by both rots_world and rots_combat),
     // registered the same way and for the same reason: before boot_db(), so
-    // ageland never runs fight.cpp's rots::combat::extract_char() call sites
-    // (converted for real in T5 -- see combat_hooks.h) with an unregistered
-    // hook.
+    // ageland never runs fight.cpp's/zone.cpp's rots::entity::extract_char()
+    // call sites (converted for real in combat-pilot Task 5 / l4-seed Task 2
+    // -- see entity_hooks.h) with an unregistered hook.
     register_extract_char_hook();
     // combat_hooks.h's gain_exp/gain_exp_regardless/remove_fame_war_bonuses
     // hooks (combat-pilot wave Task 4b), registered the same way and for the

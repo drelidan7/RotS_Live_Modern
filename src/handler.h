@@ -197,9 +197,12 @@ void char_to_room(struct char_data* ch, int room);
 void extract_char(struct char_data* ch, int new_room = -1);
 
 // Registers handler.cpp's real extract_char(ch, new_room) body as
-// combat_hooks.h's extract_char hook (combat-pilot wave Task 4b;
-// pilot-census.md section 3.6). Called once from run_the_game(), before
-// boot_db() -- same convention as this file's other registrars (e.g.
+// entity_hooks.h's extract_char hook (originally combat_hooks.h,
+// combat-pilot wave Task 4b, pilot-census.md section 3.6; RE-HOMED to L2
+// entity_hooks.h by the l4-seed wave Task 1 so both rots_world and
+// rots_combat can dispatch through the same shared inversion -- see
+// l4-task-1-report.md). Called once from run_the_game(), before boot_db()
+// -- same convention as this file's other registrars (e.g.
 // register_poison_removal_hook() below).
 void register_extract_char_hook();
 

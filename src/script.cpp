@@ -81,6 +81,120 @@ int trigger_char_hear(char_data* ch, char_data* speaking, char* text);
 int trigger_char_damage(char_data* vict, char_data* ch);
 int trigger_object_damage(obj_data* obj, char_data* vict, char_data* ch);
 
+// get_param_text() RELOCATED verbatim from shapescript.cpp:2613-2713
+// (Cluster B wave Task 1; cb-task-1-brief.md Step 5; cb-census.md
+// section 3): a pure `switch(param)` over SCRIPT_PARAM_* constants
+// (script.h, already included above) with zero reference to any editor
+// state -- this breaks the one script.cpp<->shapescript.cpp mutual edge
+// one-directionally (script.cpp no longer calls up into shapescript.cpp;
+// shapescript.cpp's own ~25 internal calls become downward olc->script
+// once the shape family joins rots_olc in a later task). LF-VERBATIM:
+// the moved span below keeps shapescript.cpp's original bare-LF line
+// endings byte-for-byte (script.cpp is otherwise CRLF) so a re-diff
+// tool can confirm a pure move rather than a content change -- see
+// cb-census.md section 3's CRLF gotcha note.
+const char* get_param_text(int param)
+{
+    switch (param) {
+    case SCRIPT_PARAM_STR1:
+        return "str1";
+    case SCRIPT_PARAM_STR2:
+        return "str2";
+    case SCRIPT_PARAM_STR3:
+        return "str3";
+    case SCRIPT_PARAM_INT1:
+        return "int1";
+    case SCRIPT_PARAM_INT2:
+        return "int2";
+    case SCRIPT_PARAM_INT3:
+        return "int3";
+    case SCRIPT_PARAM_CH1:
+        return "ch1";
+    case SCRIPT_PARAM_CH2:
+        return "ch2";
+    case SCRIPT_PARAM_CH3:
+        return "ch3";
+    case SCRIPT_PARAM_OB1:
+        return "ob1";
+    case SCRIPT_PARAM_OB2:
+        return "ob2";
+    case SCRIPT_PARAM_OB3:
+        return "ob3";
+    case SCRIPT_PARAM_RM1:
+        return "rm1";
+    case SCRIPT_PARAM_RM2:
+        return "rm2";
+    case SCRIPT_PARAM_RM3:
+        return "rm3";
+
+    case SCRIPT_PARAM_OB1_NAME:
+        return "ob1.name";
+    case SCRIPT_PARAM_OB2_NAME:
+        return "ob2.name";
+    case SCRIPT_PARAM_OB3_NAME:
+        return "ob3.name";
+
+    case SCRIPT_PARAM_OB1_VNUM:
+        return "ob1.vnum";
+    case SCRIPT_PARAM_OB2_VNUM:
+        return "ob2.vnum";
+    case SCRIPT_PARAM_OB3_VNUM:
+        return "ob3.vnum";
+
+    case SCRIPT_PARAM_CH1_NAME:
+        return "ch1.name";
+    case SCRIPT_PARAM_CH2_NAME:
+        return "ch2.name";
+    case SCRIPT_PARAM_CH3_NAME:
+        return "ch3.name";
+    case SCRIPT_PARAM_CH1_LEVEL:
+        return "ch1.level";
+    case SCRIPT_PARAM_CH2_LEVEL:
+        return "ch2.level";
+    case SCRIPT_PARAM_CH3_LEVEL:
+        return "ch3.level";
+    case SCRIPT_PARAM_CH1_HIT:
+        return "ch1.hit";
+    case SCRIPT_PARAM_CH2_HIT:
+        return "ch2.hit";
+    case SCRIPT_PARAM_CH3_HIT:
+        return "ch3.hit";
+    case SCRIPT_PARAM_CH1_RACE:
+        return "ch1.race";
+    case SCRIPT_PARAM_CH2_RACE:
+        return "ch2.race";
+    case SCRIPT_PARAM_CH3_RACE:
+        return "ch3.race";
+    case SCRIPT_PARAM_CH1_RANK:
+        return "ch1.rank";
+    case SCRIPT_PARAM_CH2_RANK:
+        return "ch2.rank";
+    case SCRIPT_PARAM_CH3_RANK:
+        return "ch3.rank";
+    case SCRIPT_PARAM_CH1_ROOM:
+        return "ch1.room";
+    case SCRIPT_PARAM_CH2_ROOM:
+        return "ch2.room";
+    case SCRIPT_PARAM_CH3_ROOM:
+        return "ch3.room";
+    case SCRIPT_PARAM_CH1_EXP:
+        return "ch1.exp";
+    case SCRIPT_PARAM_CH2_EXP:
+        return "ch2.exp";
+    case SCRIPT_PARAM_CH3_EXP:
+        return "ch3.exp";
+
+    case SCRIPT_PARAM_RM1_NAME:
+        return "rm1.name";
+    case SCRIPT_PARAM_RM2_NAME:
+        return "rm2.name";
+    case SCRIPT_PARAM_RM3_NAME:
+        return "rm3.name";
+    default:
+        return 0;
+    }
+}
+
 // Returns the index position of a script in the script_table when supplied with a vnum
 // -1 == script not found (0 is a valid position in the script_table)
 
@@ -285,7 +399,6 @@ static const int MAX_SCRIPT_HIT_VALUE = 1000000;
 void set_int_value(struct info_script* info, int param, int val)
 {
     int* x;
-    extern const char* get_param_text(int); /* shapescript.cc */
     int* get_int_param(int, struct info_script*);
 
     x = get_int_param(param, info);

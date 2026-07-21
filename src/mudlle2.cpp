@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
 #include "handler.h"
@@ -13,10 +14,10 @@
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
+#include "script_hooks.h"
 #include "utils.h"
 
 ACMD(do_move);
-ACMD(do_say);
 ACMD(do_act);
 ACMD(do_cast);
 extern struct room_data world;
@@ -195,8 +196,8 @@ void UP_LIST(struct char_data* host)
     char tmp, tmp2;
 
     if (SPECIAL_LIST_NEXT(host) < 0) {
-        do_say(host, mutable_arg("My list is less than two elements, I can't move in it."),
-            0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, host,
+            mutable_arg("My list is less than two elements, I can't move in it."), 0, 0, 0);
         return;
     }
 
@@ -224,8 +225,8 @@ void DOWN_LIST(struct char_data* host)
     char tmp, tmp2, tmp3;
 
     if (SPECIAL_LIST_NEXT(host) < 0) {
-        do_say(host, mutable_arg("My list is less than two elements, I can't move in it."),
-            0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, host,
+            mutable_arg("My list is less than two elements, I can't move in it."), 0, 0, 0);
         return;
     }
 
@@ -283,7 +284,7 @@ void TEXT_LIST(struct char_data* host, char* targ)
             strcpy(targ, void_line);
             targ[strlen(void_line)] = 0;
         } else
-            strcpy(targ, PERS(SPECIAL_LIST(host).ptr.ch, host, FALSE, FALSE));
+            strcpy(targ, rots::script::dispatch_pers(SPECIAL_LIST(host).ptr.ch, host, FALSE, FALSE));
         break;
 
     case TARGET_OBJ:

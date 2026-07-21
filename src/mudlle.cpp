@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
 #include "handler.h"
@@ -17,11 +18,11 @@
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
+#include "script_hooks.h"
 #include "utils.h"
 #include "world_hooks.h"
 
 ACMD(do_move);
-ACMD(do_say);
 ACMD(do_act);
 ACMD(do_cast);
 int find_first_step(int src, int target);
@@ -128,7 +129,7 @@ void service_commands(struct char_data* host, char* arg, int,
     case 'X':
         if (SPECIAL_LIST_NEXT(host) < 0) {
             PRE_COMMAND;
-            do_say(host, mutable_arg("Not enough elements in the list to switch. :("), 0, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Not enough elements in the list to switch. :("), 0, 0, 0);
             POST_COMMAND;
             break;
         }
@@ -502,7 +503,7 @@ void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
         // only: mutable_arg() (utils.h) replaces the shared global `buf`
         // scratch buffer -- no strcpy/global scratch round-trip needed.
         // Output string byte-identical.
-        do_say(host,
+        rots::combat::issue_command(rots::combat::combat_command::say, host,
             mutable_arg(std::format("Wrong to-list command '{}', sorry.\n\r", *arg)), 0, 0, 0);
         break;
     }
@@ -571,10 +572,10 @@ void question_proc(struct char_data* host)
         strcpy(tmpstr, stack_str.c_str());
     }
     PRE_COMMAND;
-    do_say(host, tmpstr, 0, 0, 0);
+    rots::combat::issue_command(rots::combat::combat_command::say, host, tmpstr, 0, 0, 0);
 
     tmp = SPECIAL_LIST_HEAD(host);
-    do_say(host, mutable_arg("My list is:"), 0, 0, 0);
+    rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("My list is:"), 0, 0, 0);
     while (tmp >= 0) {
         tmpstr[0] = 0;
         tmplist = SPECIAL_LIST_AREA(host)->field + tmp;
@@ -605,11 +606,11 @@ void question_proc(struct char_data* host)
             break;
         }
         //	  printf("'?': tmpstr=%s, next=%ld\n",tmpstr,tmplist->next);
-        do_say(host, tmpstr, 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, host, tmpstr, 0, 0, 0);
         tmp = SPECIAL_LIST_AREA(host)->next[tmp];
         //	  printf("new tmplist=%ld\n",tmplist);
     }
-    do_say(host, mutable_arg("End of list"), 0, 0, 0);
+    rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("End of list"), 0, 0, 0);
     POST_COMMAND;
     //	printf("'?' passed\n");
 }
@@ -789,7 +790,7 @@ SPECIAL(intelligent)
 
             default:
                 PRE_COMMAND;
-                do_say(host, mutable_arg("My string is too long."), 0, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("My string is too long."), 0, 0, 0);
                 POST_COMMAND;
                 PROG_POINT(host) = 0;
                 return FALSE;
@@ -864,7 +865,7 @@ SPECIAL(intelligent)
             }
             PRE_COMMAND;
             //      do_move(host,dirs[tmpvar], 0, tmpvar+1, 0);
-            command_interpreter(host, mutable_arg(""), &tmpwtl);
+            rots::script::dispatch_command_interpreter(host, mutable_arg(""), &tmpwtl);
             POST_COMMAND;
             tmpwtl.targ1.cleanup();
             tmpwtl.targ2.cleanup();
@@ -981,11 +982,11 @@ SPECIAL(intelligent)
         case 's': /* say the string from the list */
             if (SPECIAL_LIST_TYPE(host) == TARGET_TEXT) {
                 PRE_COMMAND;
-                do_say(host, SPECIAL_LIST(host).ptr.text->text, 0, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::say, host, SPECIAL_LIST(host).ptr.text->text, 0, 0, 0);
                 POST_COMMAND;
             } else {
                 PRE_COMMAND;
-                do_say(host, mutable_arg("What can I say if there is nothing to say?.."), 0, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("What can I say if there is nothing to say?.."), 0, 0, 0);
                 POST_COMMAND;
             }
             REMOVE_LIST(host);
@@ -1077,8 +1078,8 @@ SPECIAL(intelligent)
                 tmpvar2 = FROM_STACK(host);
                 if (tmpvar == 0) {
                     PRE_COMMAND;
-                    do_say(host, mutable_arg("I tried to divide by zero. Zero put in stack."),
-                        0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::say, host,
+                        mutable_arg("I tried to divide by zero. Zero put in stack."), 0, 0, 0);
                     POST_COMMAND;
                     TO_STACK(host, 0);
                 } else
@@ -1230,9 +1231,8 @@ SPECIAL(intelligent)
             // LOCAL-COMPOSITION only: mutable_arg() (utils.h) replaces the
             // shared global `buf2` scratch buffer -- no strcpy/global
             // scratch round-trip needed. Output string byte-identical.
-            do_say(host,
-                mutable_arg(std::format("I can't understand my command ({}), alas :(", key)), 0,
-                0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::say, host,
+                mutable_arg(std::format("I can't understand my command ({}), alas :(", key)), 0, 0, 0);
             POST_COMMAND;
             break;
         } /* End of the main switch */

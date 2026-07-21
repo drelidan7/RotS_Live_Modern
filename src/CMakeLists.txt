@@ -271,12 +271,12 @@ set(ROTS_WORLD_SOURCES
 # mystic.cpp, and profs.cpp JOINED in the combat-trio wave (Task 4 -- see
 # the ROTS_COMBAT_SOURCES comment below); limits.cpp JOINED in the
 # behavior wave (Task 3, Step 1 -- .superpowers/sdd/bw-task-3-brief.md;
-# see the ROTS_COMBAT_SOURCES comment below); the remaining 6 (spec_ass.cpp,
-# mage.cpp, mobact.cpp, spell_pa.cpp, ranger.cpp, spec_pro.cpp) stay
-# DEFERRED per the census's per-TU blocker analysis and stay in
-# ROTS_SERVER_SOURCES below (mobact.cpp leaves that deferred set too, but
-# for ROTS_SCRIPT_SOURCES rather than here, in a later task -- see that
-# comment).
+# see the ROTS_COMBAT_SOURCES comment below); mobact.cpp also LEFT this
+# deferred set in the same task (Step 2), but for ROTS_SCRIPT_SOURCES
+# rather than here -- it is a script-engine driver, not combat-tier (see
+# the ROTS_SCRIPT_SOURCES comment); the remaining 5 (spec_ass.cpp, mage.cpp,
+# spell_pa.cpp, ranger.cpp, spec_pro.cpp) stay DEFERRED per the census's
+# per-TU blocker analysis and stay in ROTS_SERVER_SOURCES below.
 #
 # wild_fighting_handler.cpp's register_attack_speed_multiplier_hook()/
 # register_wild_attack_speed_multiplier_hook() (entity_hooks.h pattern) are
@@ -510,8 +510,41 @@ set(ROTS_PATHFIND_SOURCES
 # char_data*/waiting_type* pointers never dereferenced -- not an L2
 # entity-tier TU despite superficially resembling one) that joins this
 # library alongside its two callers.
+#
+# mobact.cpp JOINS HERE (behavior wave Task 3, Step 2 --
+# .superpowers/sdd/bw-task-3-brief.md; bw-census.md sections 1-15): the
+# mob-AI driver joins its engine (this comment's opening paragraph already
+# named mudlle.cpp/mudlle2.cpp "the mob-program/script engine" -- mobact.cpp
+# is the periodic per-tick driver that walks the mobile list and fires
+# SPECIAL_LIST/intelligent()/scripted behavior each pulse, the natural
+# engine/driver pairing). All 12 `do_*` up-calls (Task 2) land on the
+# existing 26-cell `combat_command` table with zero new cells; `virt_program_
+# number()`'s 2 call sites dispatch through the script_hooks.h cell
+# spec_ass.cpp registers (Task 1's rider-gate finding, count 1 of the
+# pre-authorized <=3 -- see census section 4); `no_specials`'s sole read
+# goes through output_seam's accessor; `_buf` retired to local composition.
+# `intelligent()` (mudlle.cpp:702, `SPECIAL(intelligent)`, mobact.cpp:144's
+# sole call) resolves INTRA-LIB now that both TUs share rots_script -- no
+# seam needed, a genuinely thematic edge as the census predicted (section
+# 2's "app-other=2" reconciliation). `find_first_step()` (graph.cpp,
+# rots_pathfind) resolves L4->L3-peer downward the same way mudlle.cpp's own
+# call already does, via this library's existing PUBLIC RotS::pathfind link
+# below -- no link-list change needed for mobact.cpp's join either.
+# `one_mobile_activity()` is the one cross-edge worth restating here: it is
+# a PERMANENT upward inversion (hook), never an intra-lib dissolve, even
+# though mobact.cpp is now a rots_script (L4) member and limits.cpp is a
+# rots_combat (L3) member (this same task's Step 1, already landed) -- a
+# direct L3->L4 call would be illegal regardless of both TUs' membership,
+# since dispatch flows the OPPOSITE direction from the normal L4->L3
+# downward link (limits.cpp, lower in the stack, is the caller; mobact.cpp,
+# higher in the stack, holds the real body). mobact.cpp's own registrar
+# (register_one_mobile_activity_hook(), called from run_the_game()/
+# gtest_main.cpp's main() before boot_db()) becomes a legal L4->L3 downward
+# registration call into combat_hooks.h's setter once this join lands --
+# see combat_hooks.h's updated banner comment for the full post-membership
+# picture (Task 3 Step 5's cleanup/verification pass).
 set(ROTS_SCRIPT_SOURCES
-    mudlle.cpp mudlle2.cpp script_hooks.cpp
+    mobact.cpp mudlle.cpp mudlle2.cpp script_hooks.cpp
 )
 
 # ageland's remaining app-layer sources (spec §3): combat, commands,
@@ -532,6 +565,8 @@ set(ROTS_SCRIPT_SOURCES
 # ordinary link, see that set's own comment). limits.cpp LEFT this list for
 # ROTS_COMBAT_SOURCES above (behavior wave Task 3, Step 1 --
 # .superpowers/sdd/bw-task-3-brief.md; see that set's own comment).
+# mobact.cpp LEFT this list for ROTS_SCRIPT_SOURCES above (behavior wave
+# Task 3, Step 2; see that set's own comment).
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -541,7 +576,7 @@ set(ROTS_SERVER_SOURCES
     db_boot.cpp delayed_command_interpreter.cpp
     handler.cpp interpre.cpp
     mage.cpp mail.cpp mob_csv_extract.cpp
-    mobact.cpp modify.cpp
+    modify.cpp
     obj2html.cpp objsave.cpp
     pkill.cpp protocol.cpp
     ranger.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp

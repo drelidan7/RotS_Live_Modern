@@ -1,11 +1,22 @@
+#include "../comm.h"
+#include "../handler.h"
 #include "../spells.h"
 #include "../utils.h"
 #include "rots/core/character.h"
+#include "rots/core/descriptor.h"
 #include "rots/core/object.h"
 #include "test_random_utils.h"
+#include "test_world.h"
 #include <gtest/gtest.h>
 
+#include <string>
+
 bool is_victim_around(const char_data* character);
+// perform_drop()/perform_give() (Cluster B wave Task 1; cb-task-1-brief.md
+// Step 6; cb-census.md section 5.4 -- relocated here from act_obj1.cpp,
+// coverage-gap rule).
+int perform_drop(struct char_data* ch, struct obj_data* obj, sh_int RDR);
+void perform_give(struct char_data* ch, struct char_data* vict, struct obj_data* obj);
 bool can_double_hit(const char_data* character);
 bool does_double_hit_proc(const char_data* character);
 bool can_beorning_swipe(char_data* character);
@@ -202,4 +213,139 @@ TEST_F(PerformViolenceTest, FirstCallAfterResetTicksZeroDeltaInsteadOfEpochGarba
     EXPECT_FLOAT_EQ(context.attacker.damage_details.get_elapsed_combat_seconds(), 0.0f)
         << "Expected perform_violence's first call after a timing reset to tick a zero "
            "delta instead of computing it against the default-constructed steady_clock epoch.";
+}
+
+// ---------------------------------------------------------------------------
+// perform_drop()/perform_give() coverage riders (Cluster B wave Task 1;
+// cb-task-1-brief.md Step 6; cb-census.md section 5.4). Both functions were
+// untested live code before this relocation (grep across src/tests/ found
+// zero prior coverage) -- the standing wave coverage-gap rule. Uses a real
+// connected descriptor (gtest_main.cpp registers the REAL send_to_char/act
+// sinks process-wide) so these tests observe the genuine queued output,
+// the same "no capturing-sink fixture needed" shape as act_format_tests.cpp's
+// RoomPairContext-based ActSoci suite.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct ItemTransferTestContext {
+    char_data ch {};
+    descriptor_data ch_descriptor {};
+    char_data vict {};
+    descriptor_data vict_descriptor {};
+    obj_data obj {};
+
+    ItemTransferTestContext()
+    {
+        ch_descriptor.output = ch_descriptor.small_outbuf;
+        ch_descriptor.small_outbuf[0] = '\0';
+        ch_descriptor.bufptr = 0;
+        ch_descriptor.bufspace = SMALL_BUFSIZE - 1;
+        ch_descriptor.connected = CON_PLYNG;
+        ch_descriptor.character = &ch;
+        ch.desc = &ch_descriptor;
+        ch.in_room = 0;
+        // GET_NAME(ch) (utils.h) reads player.name directly for a non-NPC
+        // char_data -- a null name would feed std::format() (perform_drop's/
+        // perform_give's OBJ-log line) a null const char*, undefined
+        // behavior. A real player character always has one.
+        ch.player.name = const_cast<char*>("Frodo");
+        // act()'s AWAKE(to) guard (comm.cpp's act_impl) requires
+        // GET_POS(to) > POSITION_SLEEPING for a TO_CHAR/TO_VICT/TO_NOTVICT
+        // message to actually queue -- a zero-initialized char_data defaults
+        // to POSITION_DEAD (0).
+        ch.specials.position = POSITION_STANDING;
+
+        vict_descriptor.output = vict_descriptor.small_outbuf;
+        vict_descriptor.small_outbuf[0] = '\0';
+        vict_descriptor.bufptr = 0;
+        vict_descriptor.bufspace = SMALL_BUFSIZE - 1;
+        vict_descriptor.connected = CON_PLYNG;
+        vict_descriptor.character = &vict;
+        vict.desc = &vict_descriptor;
+        vict.in_room = 0;
+        vict.player.name = const_cast<char*>("Samwise");
+        vict.specials.position = POSITION_STANDING;
+
+        // -1 keeps perform_drop's/perform_give's own OBJ-log line's
+        // `(obj->item_number >= 0) ? obj_index[...] : -1` ternary off the
+        // (unpopulated in this fixture) obj_index[] array.
+        obj.item_number = -1;
+        // OBJS(obj, ch) (utils.h) reads obj->short_description directly when
+        // CAN_SEE_OBJ() is true (the default here: no darkness/shadow/
+        // invisibility set) -- a null short_description would feed
+        // std::format() a null const char*, undefined behavior. A real
+        // object always has one; this fixture supplies a plain literal.
+        obj.short_description = const_cast<char*>("a plain dagger");
+    }
+};
+
+} // namespace
+
+TEST(PerformDropGive, PerformDropRefusesAndKeepsObjectWhenItemIsNodrop)
+{
+    ScopedTestWorld test_world(1);
+    ItemTransferTestContext context;
+    context.obj.obj_flags.extra_flags = ITEM_NODROP;
+    obj_to_char(&context.obj, &context.ch);
+
+    const int result = perform_drop(&context.ch, &context.obj, 0);
+
+    EXPECT_EQ(result, 0);
+    EXPECT_NE(std::string(context.ch_descriptor.output).find("You can't drop"), std::string::npos)
+        << "Expected the ITEM_NODROP guard's message.";
+    EXPECT_EQ(context.ch.carrying, &context.obj)
+        << "Expected the NODROP object to remain in the character's inventory.";
+}
+
+TEST(PerformDropGive, PerformDropMovesObjectToRoomAndSendsMessages)
+{
+    ScopedTestWorld test_world(1);
+    ItemTransferTestContext context;
+    obj_to_char(&context.obj, &context.ch);
+
+    const int result = perform_drop(&context.ch, &context.obj, 0);
+
+    EXPECT_EQ(result, 0);
+    EXPECT_EQ(context.ch.carrying, nullptr)
+        << "Expected the object to leave the character's inventory.";
+    EXPECT_EQ(test_world.room().contents, &context.obj)
+        << "Expected the object to land in the room's contents list.";
+    EXPECT_NE(std::string(context.ch_descriptor.output).find("You drop"), std::string::npos)
+        << "Expected the successful-drop message.";
+}
+
+TEST(PerformDropGive, PerformGiveRefusesAndKeepsObjectWhenItemIsNodrop)
+{
+    ScopedTestWorld test_world(1);
+    ItemTransferTestContext context;
+    context.obj.obj_flags.extra_flags = ITEM_NODROP;
+    obj_to_char(&context.obj, &context.ch);
+
+    perform_give(&context.ch, &context.vict, &context.obj);
+
+    EXPECT_NE(std::string(context.ch_descriptor.output).find("Yeech"), std::string::npos)
+        << "Expected the ITEM_NODROP guard's message.";
+    EXPECT_EQ(context.ch.carrying, &context.obj)
+        << "Expected the NODROP object to remain with the giver.";
+    EXPECT_EQ(context.vict.carrying, nullptr)
+        << "Expected the recipient to receive nothing.";
+}
+
+TEST(PerformDropGive, PerformGiveTransfersObjectAndSendsMessages)
+{
+    ScopedTestWorld test_world(1);
+    ItemTransferTestContext context;
+    obj_to_char(&context.obj, &context.ch);
+
+    perform_give(&context.ch, &context.vict, &context.obj);
+
+    EXPECT_EQ(context.ch.carrying, nullptr)
+        << "Expected the object to leave the giver's inventory.";
+    EXPECT_EQ(context.vict.carrying, &context.obj)
+        << "Expected the object to land in the recipient's inventory.";
+    EXPECT_NE(std::string(context.ch_descriptor.output).find("You give"), std::string::npos)
+        << "Expected the giver's confirmation message.";
+    EXPECT_NE(std::string(context.vict_descriptor.output).find("gives you"), std::string::npos)
+        << "Expected the recipient's delivery message.";
 }

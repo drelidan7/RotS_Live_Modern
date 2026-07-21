@@ -427,6 +427,13 @@ ACMD(do_get)
     }
 }
 
+// perform_drop() RELOCATED to fight.cpp (rots_combat, L3; Cluster B
+// wave Task 1; cb-task-1-brief.md Step 6; cb-census.md section 5.4) --
+// its body reads world[]/obj_index, a rots_world-tier dependency.
+// Forward-declared here (this file's own local-extern convention) so
+// do_drop() below still resolves the downward call.
+int perform_drop(struct char_data* ch, struct obj_data* obj, sh_int RDR);
+
 void perform_drop_gold(struct char_data* ch, int amount, sh_int)
 {
     struct obj_data* obj;
@@ -445,33 +452,6 @@ void perform_drop_gold(struct char_data* ch, int amount, sh_int)
             amount);
         log(buf);
     }
-}
-
-int perform_drop(struct char_data* ch, struct obj_data* obj, sh_int)
-{
-    if (IS_SET(obj->obj_flags.extra_flags, ITEM_NODROP)) {
-        send_to_char(std::format("You can't drop {}, it must be cursed!\n\r", OBJS(obj, ch)), ch);
-        return 0;
-    }
-
-    send_to_char(std::format("You drop {}.\n\r", OBJS(obj, ch)), ch);
-    strcpy(buf, "$n drops $p.");
-    act(buf, TRUE, ch, obj, 0, TO_ROOM);
-
-    obj_from_char(obj);
-
-    if ((GET_ITEM_TYPE(obj) != ITEM_FOOD) && (GET_ITEM_TYPE(obj) != ITEM_DRINKCON)) {
-        snprintf(buf, MAX_STRING_LENGTH, "OBJ: %s drops %s (%d) at %s (%d)", GET_NAME(ch),
-            obj->short_description,
-            (obj->item_number >= 0) ? obj_index[obj->item_number].virt : -1,
-            world[ch->in_room].name, world[ch->in_room].number);
-        log(buf);
-    }
-
-    obj_to_room(obj, ch->in_room);
-    obj->obj_flags.timer = 60;
-
-    return 0;
 }
 
 ACMD(do_drop)
@@ -532,41 +512,6 @@ ACMD(do_drop)
     }
 }
 
-void perform_give(struct char_data* ch, struct char_data* vict,
-    struct obj_data* obj)
-{
-    if (IS_SET(obj->obj_flags.extra_flags, ITEM_NODROP)) {
-        act("You can't let go of $p!!  Yeech!", FALSE, ch, obj, 0, TO_CHAR);
-        return;
-    }
-
-    if (IS_CARRYING_N(vict) >= CAN_CARRY_N(vict)) {
-        act("$N seems to have $S hands full.", FALSE, ch, 0, vict, TO_CHAR);
-        return;
-    }
-
-    if (GET_OBJ_WEIGHT(obj) + IS_CARRYING_W(vict) > CAN_CARRY_W(vict)) {
-        act("$E can't carry that much weight.", FALSE, ch, 0, vict, TO_CHAR);
-        return;
-    }
-
-    obj_from_char(obj);
-    obj_to_char(obj, vict);
-    act("You give $p to $N.", FALSE, ch, obj, vict, TO_CHAR);
-    act("$n gives you $p.", FALSE, ch, obj, vict, TO_VICT);
-    act("$n gives $p to $N.", TRUE, ch, obj, vict, TO_NOTVICT);
-
-    if ((GET_ITEM_TYPE(obj) != ITEM_FOOD) && (GET_ITEM_TYPE(obj) != ITEM_DRINKCON)) {
-        snprintf(buf, MAX_STRING_LENGTH, "OBJ: %s gives %s (%d) to %s", GET_NAME(ch),
-            obj->short_description,
-            (obj->item_number >= 0) ? obj_index[obj->item_number].virt : -1,
-            GET_NAME(vict));
-        log(buf);
-    }
-
-    call_trigger(ON_RECEIVE, vict, ch, obj);
-}
-
 /* utility function for give */
 struct char_data* give_find_vict(struct char_data* ch, char* arg1)
 {
@@ -590,6 +535,16 @@ struct char_data* give_find_vict(struct char_data* ch, char* arg1)
     } else
         return vict;
 }
+
+// perform_give() RELOCATED to fight.cpp (rots_combat, L3; Cluster B
+// wave Task 1; cb-task-1-brief.md Step 6; cb-census.md section 5.4) --
+// promoted uniformly with the rest of the perform_* quartet; its
+// call_trigger(ON_RECEIVE, ...) call converts to
+// rots::combat::call_trigger() at its new home (combat_hooks.h's
+// existing app-other-trio hook). Forward-declared here (this file's
+// own local-extern convention) so do_give() below still resolves the
+// downward call.
+void perform_give(struct char_data* ch, struct char_data* vict, struct obj_data* obj);
 
 void perform_give_gold(struct char_data* ch, struct char_data* vict,
     int amount)

@@ -3256,3 +3256,86 @@ struct obj_data* unequip_char(struct char_data* ch, int pos)
 
     return (obj);
 }
+
+extern struct index_data* obj_index;
+
+// perform_drop()/perform_give() RELOCATED to fight.cpp (rots_combat,
+// L3; Cluster B wave Task 1; cb-task-1-brief.md Step 6; cb-census.md
+// section 5.4) from act_obj1.cpp: both read world[]/obj_index
+// (rots_world tier), so rots_combat -- which PUBLIC-links RotS::world
+// -- is the uniform home for the whole perform_* quartet. `buf`
+// (db_boot.cpp global) retired to local std::format composition
+// (standard `_buf` precedent, e.g. olog_hai.cpp's
+// generate_smash_dismount_messages()); perform_give()'s
+// call_trigger(ON_RECEIVE, ...) converts to the existing
+// combat_hooks.h app-other-trio hook (rots::combat::call_trigger()),
+// since call_trigger's real body (script.cpp) stays app-tier
+// permanently. LF-NORMALIZED: fight.cpp is 100% pure LF (unlike
+// script.cpp's mixed-CRLF case), so the moved spans below are
+// converted from act_obj1.cpp's CRLF to match this file's own
+// exclusive convention rather than introducing mixed endings.
+// act_obj1.cpp's do_drop()/do_give() callers are unaffected (local
+// forward declarations added at the old definition sites); the
+// existing FightHelpers/PerformDropGive coverage-rider tests below
+// (fight_proc_tests.cpp) exercise both bodies for the first time --
+// wave coverage-gap rule.
+
+int perform_drop(struct char_data* ch, struct obj_data* obj, sh_int)
+{
+    if (IS_SET(obj->obj_flags.extra_flags, ITEM_NODROP)) {
+        send_to_char(std::format("You can't drop {}, it must be cursed!\n\r", OBJS(obj, ch)), ch);
+        return 0;
+    }
+
+    send_to_char(std::format("You drop {}.\n\r", OBJS(obj, ch)), ch);
+    act("$n drops $p.", TRUE, ch, obj, 0, TO_ROOM);
+
+    obj_from_char(obj);
+
+    if ((GET_ITEM_TYPE(obj) != ITEM_FOOD) && (GET_ITEM_TYPE(obj) != ITEM_DRINKCON)) {
+        log(std::format("OBJ: {} drops {} ({}) at {} ({})", GET_NAME(ch),
+            obj->short_description,
+            (obj->item_number >= 0) ? obj_index[obj->item_number].virt : -1,
+            world[ch->in_room].name, world[ch->in_room].number));
+    }
+
+    obj_to_room(obj, ch->in_room);
+    obj->obj_flags.timer = 60;
+
+    return 0;
+}
+
+void perform_give(struct char_data* ch, struct char_data* vict,
+    struct obj_data* obj)
+{
+    if (IS_SET(obj->obj_flags.extra_flags, ITEM_NODROP)) {
+        act("You can't let go of $p!!  Yeech!", FALSE, ch, obj, 0, TO_CHAR);
+        return;
+    }
+
+    if (IS_CARRYING_N(vict) >= CAN_CARRY_N(vict)) {
+        act("$N seems to have $S hands full.", FALSE, ch, 0, vict, TO_CHAR);
+        return;
+    }
+
+    if (GET_OBJ_WEIGHT(obj) + IS_CARRYING_W(vict) > CAN_CARRY_W(vict)) {
+        act("$E can't carry that much weight.", FALSE, ch, 0, vict, TO_CHAR);
+        return;
+    }
+
+    obj_from_char(obj);
+    obj_to_char(obj, vict);
+    act("You give $p to $N.", FALSE, ch, obj, vict, TO_CHAR);
+    act("$n gives you $p.", FALSE, ch, obj, vict, TO_VICT);
+    act("$n gives $p to $N.", TRUE, ch, obj, vict, TO_NOTVICT);
+
+    if ((GET_ITEM_TYPE(obj) != ITEM_FOOD) && (GET_ITEM_TYPE(obj) != ITEM_DRINKCON)) {
+        log(std::format("OBJ: {} gives {} ({}) to {}", GET_NAME(ch),
+            obj->short_description,
+            (obj->item_number >= 0) ? obj_index[obj->item_number].virt : -1,
+            GET_NAME(vict)));
+    }
+
+    rots::combat::call_trigger(ON_RECEIVE, vict, ch, obj);
+}
+

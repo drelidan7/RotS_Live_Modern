@@ -165,14 +165,21 @@ ACMD(do_wiztrack)
 
     struct char_data* vict;
     int dir;
+    // arg retirement (l4-seed wave, Task 1; l4-census.md section 3.7 /
+    // l4-task-1-brief.md CONTROLLER ADDENDUM item 4). LOCAL-COMPOSITION
+    // only: a local char array replaces the shared global `arg` scratch
+    // buffer that one_argument()'s output param wrote into -- same size as
+    // the retired global (db_boot.cpp's char arg[MAX_STRING_LENGTH]) to
+    // preserve behavior exactly.
+    char local_arg[MAX_STRING_LENGTH];
 
-    one_argument(argument, arg);
-    if (!*arg) {
+    one_argument(argument, local_arg);
+    if (!*local_arg) {
         send_to_char("Whom are you trying to track?\r\n", ch);
         return;
     }
 
-    if (!(vict = get_char_vis(ch, arg))) {
+    if (!(vict = get_char_vis(ch, local_arg))) {
         send_to_char("No-one around by that name.\r\n", ch);
         return;
     }
@@ -236,8 +243,15 @@ void hunt_victim(struct char_data* ch)
 
     dir = find_first_step(ch->in_room, ch->specials.hunting->in_room);
     if (dir < 0) {
-        strcpy(buf, std::format("Damn!  Lost {}!", HMHR(ch->specials.hunting)).c_str());
-        do_say(ch, buf, 0, 0, 0);
+        // buf retirement (l4-seed wave, Task 1; l4-census.md section 3.7 /
+        // l4-task-1-brief.md CONTROLLER ADDENDUM item 4). LOCAL-COMPOSITION
+        // only: mutable_arg() (utils.h) replaces the shared global `buf`
+        // scratch buffer -- the same short-lived-mutable-copy helper this
+        // function already uses two lines above (the "gone!!" branch), so
+        // no strcpy/global scratch round-trip is needed. Output string
+        // byte-identical.
+        do_say(ch, mutable_arg(std::format("Damn!  Lost {}!", HMHR(ch->specials.hunting))), 0, 0,
+            0);
         ch->specials.hunting = 0;
         return;
     } else {

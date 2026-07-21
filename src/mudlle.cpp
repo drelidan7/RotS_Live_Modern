@@ -497,8 +497,13 @@ void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
         break;
 
     default:
-        strcpy(buf, std::format("Wrong to-list command '{}', sorry.\n\r", *arg).c_str());
-        do_say(host, buf, 0, 0, 0);
+        // buf retirement (l4-seed wave, Task 1; l4-census.md section 3.7 /
+        // l4-task-1-brief.md CONTROLLER ADDENDUM item 4). LOCAL-COMPOSITION
+        // only: mutable_arg() (utils.h) replaces the shared global `buf`
+        // scratch buffer -- no strcpy/global scratch round-trip needed.
+        // Output string byte-identical.
+        do_say(host,
+            mutable_arg(std::format("Wrong to-list command '{}', sorry.\n\r", *arg)), 0, 0, 0);
         break;
     }
     //      printf("going to-stack it :)\n");
@@ -985,20 +990,28 @@ SPECIAL(intelligent)
             }
             REMOVE_LIST(host);
             break;
-        case 'E': /* echo to char/room */
+        case 'E': /* echo to char/room */ {
+            // buf retirement (l4-seed wave, Task 1; l4-census.md section
+            // 3.7 / l4-task-1-brief.md CONTROLLER ADDENDUM item 4).
+            // LOCAL-COMPOSITION only: a local std::string replaces the
+            // shared global `buf` scratch buffer, read directly by
+            // send_to_char()'s/send_to_room()'s std::string_view
+            // parameters -- no strcpy/strcat/global scratch round-trip
+            // needed. Output strings byte-identical.
+            std::string message;
             if (SPECIAL_LIST_TYPE(host) == TARGET_TEXT) {
-                strcpy(buf, SPECIAL_LIST(host).ptr.text->text);
-                strcat(buf, "\n\r");
+                message = std::string(SPECIAL_LIST(host).ptr.text->text) + "\n\r";
                 REMOVE_LIST(host);
             } else
-                strcpy(buf, "You feel something is afoot here.\n\r");
+                message = "You feel something is afoot here.\n\r";
 
             if (SPECIAL_LIST_TYPE(host) == TARGET_CHAR)
-                send_to_char(buf, SPECIAL_LIST(host).ptr.ch);
+                send_to_char(message, SPECIAL_LIST(host).ptr.ch);
             else if (SPECIAL_LIST_TYPE(host) == TARGET_ROOM)
-                send_to_room(buf, real_room(SPECIAL_LIST(host).ptr.room->number));
+                send_to_room(message, real_room(SPECIAL_LIST(host).ptr.room->number));
             REMOVE_LIST(host);
             break;
+        }
 
         case 'f': /* get item to list */
             (PROG_POINT(host))++;
@@ -1212,8 +1225,14 @@ SPECIAL(intelligent)
 
         default:
             PRE_COMMAND;
-            strcpy(buf2, std::format("I can't understand my command ({}), alas :(", key).c_str());
-            do_say(host, buf2, 0, 0, 0);
+            // buf2 retirement (l4-seed wave, Task 1; l4-census.md section
+            // 3.7 / l4-task-1-brief.md CONTROLLER ADDENDUM item 4).
+            // LOCAL-COMPOSITION only: mutable_arg() (utils.h) replaces the
+            // shared global `buf2` scratch buffer -- no strcpy/global
+            // scratch round-trip needed. Output string byte-identical.
+            do_say(host,
+                mutable_arg(std::format("I can't understand my command ({}), alas :(", key)), 0,
+                0, 0);
             POST_COMMAND;
             break;
         } /* End of the main switch */
@@ -1341,9 +1360,19 @@ char* mudlle_converter(char* source)
 
             case '$':
                 if (!intext) {
-                    strncpy(buf, source + i + 1, 5);
-                    buf[5] = 0;
-                    tmp2 = atoi(buf);
+                    // buf retirement (l4-seed wave, Task 1; l4-census.md
+                    // section 3.7 / l4-task-1-brief.md CONTROLLER ADDENDUM
+                    // item 4). LOCAL-COMPOSITION only: a local char array
+                    // replaces the shared global `buf` scratch buffer --
+                    // sized to exactly the 5 chars + NUL this site ever
+                    // writes (strncpy(..., 5) below), narrower than the
+                    // retired global's full MAX_STRING_LENGTH but
+                    // behaviorally identical since no more than 5 bytes
+                    // were ever read from it here either way.
+                    char local_id_buf[6];
+                    strncpy(local_id_buf, source + i + 1, 5);
+                    local_id_buf[5] = 0;
+                    tmp2 = atoi(local_id_buf);
                     for (tmp = 0; tmp < num_of_programs; tmp++)
                         if (mobile_program_zone[tmp] == tmp2)
                             break;

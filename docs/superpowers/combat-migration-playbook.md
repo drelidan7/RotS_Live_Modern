@@ -492,7 +492,7 @@ future task trusts these numbers for a real promotion; treat every "RESOLVED" ma
 below as a strong prior, not ground truth, and re-verify against
 `ROTS_COMBAT_SOURCES`/the current header contents before relying on it.
 
-Global seams now available to ANY of these 9 rows (landed since the original
+Global seams now available to ANY of these 7 remaining rows (landed since the original
 combat-census, cutting across every row's edge count below):
 - **`output_seam`**: 12 forwarders total — the original 5
   (`send_to_char`×2/`vsend_to_char`/`act`/track+untrack_mage) plus blocker-buster's 7

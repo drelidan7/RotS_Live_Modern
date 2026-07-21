@@ -743,8 +743,8 @@ app-compiled; the migration playbook this wave finalized
 "`rots_combat`" section (the combat-pilot subsection) for the full hooks/link/harness/storage-move
 account.
 
-**As-built (combat-trio wave, step 4 seventh slice):** `rots_combat` grows from 8 to **11 of the
-row's original 16 TUs** — `olog_hai.cpp`, `mystic.cpp`, and `profs.cpp` join in one membership
+**As-built (combat-trio wave, step 4 seventh slice):** `rots_combat` grows from 8 to **11 TUs — 9 of the
+row's original 16, plus the 2 blocker-buster enabler TUs** — `olog_hai.cpp`, `mystic.cpp`, and `profs.cpp` join in one membership
 commit (`019b4c8`); `CombatLayerAcyclicity` green **both hosts, first attempt** — zero census misses
 at the linkcheck gate, the first time this playbook's recipe has achieved that (the combat-pilot
 wave's own membership move needed two in-flight fixes, `gain_exp`/`waiting_list`). **This wave

@@ -372,6 +372,41 @@ set(ROTS_COMBAT_SOURCES
     weapon_master_handler.cpp wild_fighting_handler.cpp
 )
 
+# L4 band, lower tier: pathfind layer (spec §3/§10 step 4; the l4-seed
+# wave's central deliverable -- the first library ABOVE the L3 peer tier,
+# and the first new library target since rots_combat). graph.cpp
+# (l4-census.md §2: 21 resolved, 4 blocking edges at @b6f6b76) sits above
+# combat because its hunt_victim() driver calls hit() (fight.cpp,
+# rots_combat) and get_char_vis() (visibility.cpp, rots_combat) --
+# downward L4->L3 edges once graph.cpp lives here, not upward -- and this
+# is exactly why the design spec (2026-07-21-l4-seed-design.md §7) put
+# pathfind above combat instead of folding it into rots_world (which would
+# have forced rots_world to PUBLIC-link RotS::combat, the codebase's first
+# bidirectional L3-peer edge, since rots_combat already PUBLIC-links
+# RotS::world). graph.cpp's other three blocking edges were cleared by
+# Task 2's conversions ahead of this membership move: do_say (x2) and
+# do_move became rots::combat::issue_command() calls onto the existing
+# combat_hooks.h `say`/`move` cells (reached downward through RotS::combat
+# below, the same combat_command dispatch table the combat-trio wave's
+# do_move conversion already used); the _arg/_buf db_boot scratch globals
+# retired to locals in Task 1. graph.cpp's entire membership cost was
+# therefore three existing-cell conversions plus two bounded retirements
+# -- zero new seam infrastructure -- all enabled purely by the L4 tier
+# placement (design spec, "Problem/evidence" section).
+#
+# A ONE-TU library is deliberate tier honesty, not under-scoping: graph.cpp
+# is the sole file the census identified as pathfinding-specific, and
+# rots_world itself shipped with 3 TUs / rots_combat's seed was 4 -- a
+# single well-isolated TU earns its own layer exactly like those did,
+# rather than being folded into a neighbor it doesn't share ownership
+# with. FUTURE NOTE (design spec, deferred, not this wave): graph.cpp's
+# pure BFS pathfinding core could later sink down to rots_world if its
+# hunt_victim()/hit() driver is ever separated from the BFS proper --
+# recorded as a follow-on option, not scoped here.
+set(ROTS_PATHFIND_SOURCES
+    graph.cpp
+)
+
 # ageland's remaining app-layer sources (spec §3): combat, commands,
 # comm/session handling, and every TU not yet carved into a rots_* library.
 # db_world.cpp/zone_load.cpp/weather.cpp LEFT this list for
@@ -382,7 +417,8 @@ set(ROTS_COMBAT_SOURCES
 # ROTS_COMBAT_SOURCES above (combat-pilot wave Task 5, joint membership).
 # olog_hai.cpp/mystic.cpp/profs.cpp LEFT this list for ROTS_COMBAT_SOURCES
 # above (combat-trio wave Task 4). zone.cpp LEFT this list for
-# ROTS_WORLD_SOURCES above (l4-seed wave Task 3, Step 1).
+# ROTS_WORLD_SOURCES above (l4-seed wave Task 3, Step 1). graph.cpp LEFT
+# this list for ROTS_PATHFIND_SOURCES above (l4-seed wave Task 3, Step 2).
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -390,7 +426,7 @@ set(ROTS_SERVER_SOURCES
     boards.cpp
     color.cpp comm.cpp
     db_boot.cpp delayed_command_interpreter.cpp
-    graph.cpp handler.cpp interpre.cpp
+    handler.cpp interpre.cpp
     limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     obj2html.cpp objsave.cpp
@@ -668,6 +704,27 @@ target_link_libraries(rots_combat PUBLIC rots_build_flags RotS::world RotS::pers
 # directories of its own needed" shape rots_world's own PUBLIC RotS::persist
 # link already established.
 
+# --- L4 band, lower tier: pathfind layer ---------------------------------------
+# (l4-seed wave Task 3, Step 2 -- the codebase's first library ABOVE the L3
+# peer tier. See the ROTS_PATHFIND_SOURCES comment above for the full
+# membership rationale.)
+add_library(rots_pathfind STATIC ${ROTS_PATHFIND_SOURCES})
+add_library(RotS::pathfind ALIAS rots_pathfind)
+set_target_properties(rots_pathfind PROPERTIES CXX_EXTENSIONS OFF)
+# PUBLIC RotS::combat + RotS::world + RotS::persist + RotS::entity +
+# RotS::core + RotS::platform: graph.cpp's legitimate downward edges land
+# in all six layers (hit()/get_char_vis() into rots_combat specifically --
+# see the ROTS_PATHFIND_SOURCES comment above) -- mirroring rots_combat's
+# own explicit downward link list one tier up. PUBLIC so all six layers'
+# include roots flow transitively to any consumer that links only
+# RotS::pathfind (in particular RotS::script, a future commit, whose one
+# sanctioned intra-band edge is into this library).
+target_link_libraries(rots_pathfind PUBLIC rots_build_flags RotS::combat RotS::world RotS::persist RotS::entity RotS::core RotS::platform)
+# No target_include_directories() of its own needed: every lower layer's
+# include root already flows transitively via RotS::combat's own PUBLIC
+# target_include_directories chain (same "no target_include_directories of
+# its own needed" shape rots_world/rots_combat both established).
+
 target_link_libraries(ageland PRIVATE
     RotS::platform
     RotS::core
@@ -675,6 +732,7 @@ target_link_libraries(ageland PRIVATE
     RotS::persist
     RotS::world
     RotS::combat
+    RotS::pathfind
     rots_build_flags
     $<$<PLATFORM_ID:Windows>:ws2_32>
 )
@@ -888,17 +946,18 @@ if(ROTS_BUILD_TESTS)
     include(GoogleTest)
 
     # ageland_tests deliberately does NOT link rots_core/rots_entity/
-    # rots_persist/rots_world/rots_combat (TESTING parity, same as the
-    # rots_platform pattern above): it keeps compiling config.cpp/consts.cpp/
-    # output_seam.cpp, entity_lifecycle.cpp/object_utils.cpp/
+    # rots_persist/rots_world/rots_combat/rots_pathfind (TESTING parity, same
+    # as the rots_platform pattern above): it keeps compiling config.cpp/
+    # consts.cpp/output_seam.cpp, entity_lifecycle.cpp/object_utils.cpp/
     # environment_utils.cpp, db_players.cpp/character_json.cpp/etc., (as of
-    # world-seed Task 5) db_world.cpp/zone_load.cpp/weather.cpp, and (as of
+    # world-seed Task 5) db_world.cpp/zone_load.cpp/weather.cpp, (as of
     # combat-seed Task 1) battle_mage_handler.cpp/skill_timer.cpp/
-    # weapon_master_handler.cpp/wild_fighting_handler.cpp directly via
-    # ROTS_CORE_SOURCES/ROTS_ENTITY_SOURCES/ROTS_PERSIST_SOURCES/
-    # ROTS_WORLD_SOURCES/ROTS_COMBAT_SOURCES instead (all now live only in
+    # weapon_master_handler.cpp/wild_fighting_handler.cpp, and (as of
+    # l4-seed Task 3) graph.cpp directly via ROTS_CORE_SOURCES/
+    # ROTS_ENTITY_SOURCES/ROTS_PERSIST_SOURCES/ROTS_WORLD_SOURCES/
+    # ROTS_COMBAT_SOURCES/ROTS_PATHFIND_SOURCES instead (all now live only in
     # those lists — see each set's own comment above).
-    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_ENTITY_SOURCES} ${ROTS_PERSIST_SOURCES} ${ROTS_WORLD_SOURCES} ${ROTS_COMBAT_SOURCES} ${ROTS_TEST_SOURCES})
+    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_ENTITY_SOURCES} ${ROTS_PERSIST_SOURCES} ${ROTS_WORLD_SOURCES} ${ROTS_COMBAT_SOURCES} ${ROTS_PATHFIND_SOURCES} ${ROTS_TEST_SOURCES})
 
     # Same C++ standard as ageland (see above) — required because these targets are
     # defined per-target here rather than via a project-wide CMAKE_CXX_STANDARD.
@@ -1270,6 +1329,45 @@ if(ROTS_BUILD_TESTS)
             LINK_DEPENDS "$<TARGET_FILE:rots_combat>")
         if(BUILD_TESTING)
             add_test(NAME CombatLayerAcyclicity COMMAND rots_combat_linkcheck)
+        endif()
+
+        # Load-bearing pathfind-layer acyclicity check (spec §11), mirroring
+        # the rots_combat_linkcheck block above (l4-seed wave Task 3, Step 2
+        # -- the first L4-band linkcheck). rots_pathfind (graph.cpp -- see
+        # the ROTS_PATHFIND_SOURCES comment above) is verified to have no
+        # upward symbol references beyond its legal downward edges into
+        # rots_combat, rots_world, rots_persist, rots_entity, rots_core, and
+        # rots_platform. RotS::world/RotS::persist/RotS::entity/RotS::core/
+        # RotS::platform are not re-listed on this checker's own
+        # target_link_libraries below because RotS::combat already carries
+        # all five transitively (RotS::combat's own PUBLIC RotS::world link,
+        # which itself carries RotS::persist, per the world-seed/combat-seed
+        # waves) -- the same transitive-chain shape rots_combat_linkcheck's
+        # own RotS::world-only link list already established one tier down.
+        # The checker force-loads rots_pathfind itself (so every
+        # rots_pathfind symbol is pulled in and any OTHER unresolved
+        # reference fails the link) and normal-links RotS::combat to resolve
+        # those legitimate lower-layer edges -- a strictly tighter guarantee
+        # than "any lower layer is allowed".
+        add_executable(rots_pathfind_linkcheck tests/pathfind_linkcheck_main.cpp)
+        target_link_libraries(rots_pathfind_linkcheck PRIVATE rots_build_flags RotS::combat)
+        add_dependencies(rots_pathfind_linkcheck rots_pathfind)
+        if(APPLE)
+            target_link_options(rots_pathfind_linkcheck PRIVATE
+                -Wl,-force_load,$<TARGET_FILE:rots_pathfind>)
+        else()
+            target_link_options(rots_pathfind_linkcheck PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:rots_pathfind> -Wl,--no-whole-archive)
+        endif()
+        # LINK_DEPENDS: same rationale as rots_combat_linkcheck above — the
+        # archive path only appears inside a raw linker flag string, invisible
+        # to CMake's normal target_link_libraries dependency tracking, so an
+        # incremental rebuild that changes only a rots_pathfind source needs
+        # this to force a relink instead of silently reusing a stale binary.
+        set_target_properties(rots_pathfind_linkcheck PROPERTIES
+            LINK_DEPENDS "$<TARGET_FILE:rots_pathfind>")
+        if(BUILD_TESTING)
+            add_test(NAME PathfindLayerAcyclicity COMMAND rots_pathfind_linkcheck)
         endif()
     endif()
 endif()

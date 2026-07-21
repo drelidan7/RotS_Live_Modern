@@ -160,4 +160,13 @@ void register_target_valid_hook();
 // before boot_db() (combat-pilot wave Task 2).
 void register_character_died_hook();
 
+// Registers big_brother.cpp's real forwarders to
+// game_rules::big_brother::instance().on_character_afked()/
+// on_corpse_decayed() as entity_hooks.h's matching hook pair (behavior
+// wave Task 1; CONTROLLER ADDENDUM item 2(a); census section 6.1). Called
+// once from run_the_game(), before boot_db() (same convention as
+// register_target_valid_hook()/register_character_died_hook() above).
+void register_character_afked_hook();
+void register_corpse_decayed_hook();
+
 #endif // Header Protection

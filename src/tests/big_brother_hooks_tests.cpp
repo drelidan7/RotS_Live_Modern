@@ -182,3 +182,120 @@ TEST(CharacterDiedHook, DispatchCharacterDiedDefaultsToANoOpWhenUnregistered)
            "recording flag untouched -- the real forwarder never ran, and the tripwire default is "
            "a logged no-op, not a call to any stub.";
 }
+
+// ---------------------------------------------------------------------------
+// big_brother AFK/corpse-decayed hook pair (behavior wave Task 1;
+// CONTROLLER ADDENDUM item 2(a); census section 6.1). CONSUMER-FREE this
+// task -- no limits.cpp call site converts yet -- same "recording stub
+// proves forward-then-tripwire" discriminator shape as the target-valid/
+// character-died pair above.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+class ScopedCharacterAfkedHook {
+public:
+    explicit ScopedCharacterAfkedHook(rots::entity::character_afked_fn hook)
+    {
+        rots::entity::set_character_afked_hook(hook);
+    }
+
+    ~ScopedCharacterAfkedHook() { register_character_afked_hook(); }
+
+    ScopedCharacterAfkedHook(const ScopedCharacterAfkedHook&) = delete;
+    ScopedCharacterAfkedHook& operator=(const ScopedCharacterAfkedHook&) = delete;
+};
+
+class ScopedCorpseDecayedHook {
+public:
+    explicit ScopedCorpseDecayedHook(rots::entity::corpse_decayed_fn hook)
+    {
+        rots::entity::set_corpse_decayed_hook(hook);
+    }
+
+    ~ScopedCorpseDecayedHook() { register_corpse_decayed_hook(); }
+
+    ScopedCorpseDecayedHook(const ScopedCorpseDecayedHook&) = delete;
+    ScopedCorpseDecayedHook& operator=(const ScopedCorpseDecayedHook&) = delete;
+};
+
+struct RecordedCharacterAfkedCall {
+    const char_data* character = nullptr;
+    bool called = false;
+};
+
+RecordedCharacterAfkedCall g_recorded_character_afked_call;
+
+void recording_character_afked_stub(const char_data* character)
+{
+    g_recorded_character_afked_call = RecordedCharacterAfkedCall { character, true };
+}
+
+struct RecordedCorpseDecayedCall {
+    obj_data* corpse = nullptr;
+    bool called = false;
+};
+
+RecordedCorpseDecayedCall g_recorded_corpse_decayed_call;
+
+void recording_corpse_decayed_stub(obj_data* corpse)
+{
+    g_recorded_corpse_decayed_call = RecordedCorpseDecayedCall { corpse, true };
+}
+
+} // namespace
+
+TEST(CharacterAfkedHook, DispatchReachesARegisteredStubWithArgIntact)
+{
+    g_recorded_character_afked_call = RecordedCharacterAfkedCall {};
+    ScopedCharacterAfkedHook scoped(recording_character_afked_stub);
+    char_data character {};
+
+    rots::entity::dispatch_character_afked(&character);
+
+    EXPECT_TRUE(g_recorded_character_afked_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_character_afked_call.character, &character);
+}
+
+TEST(CharacterAfkedHook, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_character_afked_call = RecordedCharacterAfkedCall {};
+    ScopedCharacterAfkedHook unregistered(nullptr);
+    char_data character {};
+
+    rots::entity::dispatch_character_afked(&character);
+
+    EXPECT_FALSE(g_recorded_character_afked_call.called)
+        << "Expected an unregistered character-afked hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default is "
+           "a logged no-op, not a call to any stub.";
+}
+
+TEST(CorpseDecayedHook, DispatchReachesARegisteredStubWithArgIntact)
+{
+    g_recorded_corpse_decayed_call = RecordedCorpseDecayedCall {};
+    ScopedCorpseDecayedHook scoped(recording_corpse_decayed_stub);
+    obj_data corpse {};
+
+    rots::entity::dispatch_corpse_decayed(&corpse);
+
+    EXPECT_TRUE(g_recorded_corpse_decayed_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_corpse_decayed_call.corpse, &corpse);
+}
+
+TEST(CorpseDecayedHook, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_corpse_decayed_call = RecordedCorpseDecayedCall {};
+    ScopedCorpseDecayedHook unregistered(nullptr);
+    obj_data corpse {};
+
+    rots::entity::dispatch_corpse_decayed(&corpse);
+
+    EXPECT_FALSE(g_recorded_corpse_decayed_call.called)
+        << "Expected an unregistered corpse-decayed hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default is "
+           "a logged no-op, not a call to any stub.";
+}
+

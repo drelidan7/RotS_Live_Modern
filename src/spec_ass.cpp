@@ -14,6 +14,7 @@
 #include "db.h"
 #include "interpre.h"
 #include "platdef.h"
+#include "script_hooks.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
@@ -386,6 +387,16 @@ void* virt_program_number(int number)
         return 0;
         break;
     }
+}
+
+// Registers the real virt_program_number(number) body above as
+// script_hooks.h's matching cell (behavior wave Task 1; CONTROLLER
+// ADDENDUM item 3; census section 4). Called once from run_the_game()/
+// gtest_main.cpp's main(), before boot_db() -- same convention as this
+// file's sibling registrars elsewhere in the tree.
+void register_virt_program_number_hook()
+{
+    rots::script::set_virt_program_number_hook(virt_program_number);
 }
 
 special_func_ptr get_special_function(int number)

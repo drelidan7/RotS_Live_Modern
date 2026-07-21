@@ -143,6 +143,13 @@ bool parse_port_value_for_testing(
 typedef int (*special_func_ptr)(char_data* host, char_data* character, int cmd, char* argument, int call_flag, waiting_type* wait_list);
 void* virt_program_number(int number);
 
+// Registers spec_ass.cpp's real virt_program_number(number) body above as
+// script_hooks.h's matching cell (behavior wave Task 1; CONTROLLER
+// ADDENDUM item 3; census section 4). Called once from run_the_game()/
+// gtest_main.cpp's main(), before boot_db() -- same convention as this
+// header's other registrars.
+void register_virt_program_number_hook();
+
 special_func_ptr get_special_function(int number);
 
 #endif /* COMM_H */

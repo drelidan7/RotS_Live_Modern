@@ -70,4 +70,22 @@ using pers_fn = char* (*)(char_data * target, char_data* observer, int capitaliz
 void set_pers_hook(pers_fn hook);
 char* dispatch_pers(char_data* target, char_data* observer, int capitalize, int force_visible);
 
+// virt_program_number() (comm.h:144, spec_ass.cpp:315; behavior wave Task 1;
+// CONTROLLER ADDENDUM item 3; census section 4 -- rider-gate count 1 of the
+// pre-authorized <=3, no auto-STOP). mobact.cpp's two call sites
+// (mobact.cpp:64/:126, consumer-free this task) are the sole edge this cell
+// exists for: a full mobact.cpp call-shape sweep against spec_ass.cpp/
+// spec_pro.cpp found zero further same-shape (void*-returning
+// spec-proc-dispatcher) or different-shape edge. spec_ass.cpp registers the
+// real body via register_virt_program_number_hook() (comm.h/spec_ass.cpp --
+// comm.h already declares virt_program_number() itself, so it also hosts
+// this registrar's declaration), called once from run_the_game()/
+// gtest_main.cpp's main(), before boot_db(). Abort-tripwire default
+// (pointer return): there is no safe placeholder SPECIAL(*) to return --
+// mirrors this header's own pers_fn taxonomy above, not
+// command_interpreter_fn's loud-logged-no-op class.
+using virt_program_fn = void* (*)(int number);
+void set_virt_program_number_hook(virt_program_fn hook);
+void* dispatch_virt_program_number(int number);
+
 } // namespace rots::script

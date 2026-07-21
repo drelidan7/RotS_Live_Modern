@@ -199,6 +199,14 @@ put_txt_block_fn g_put_txt_block_pool_hook = nullptr;
 // Null until that registration runs; the null default is a LOGGED no-op
 // (see dispatch_char_from_room() below).
 char_from_room_fn g_char_from_room_hook = nullptr;
+
+// Backing storage for the registered big_brother AFK/corpse-decayed hook
+// pair (register_character_afked_hook()/register_corpse_decayed_hook(),
+// big_brother.cpp; behavior wave Task 1). Null until that registration
+// runs; the null default is a LOGGED no-op (void return, same class as
+// g_character_died_hook above).
+character_afked_fn g_character_afked_hook = nullptr;
+corpse_decayed_fn g_corpse_decayed_hook = nullptr;
 } // namespace
 
 void set_char_teardown_hook(char_teardown_fn hook)
@@ -249,6 +257,16 @@ void set_put_txt_block_pool_hook(put_txt_block_fn hook)
 void set_char_from_room_hook(char_from_room_fn hook)
 {
     g_char_from_room_hook = hook;
+}
+
+void set_character_afked_hook(character_afked_fn hook)
+{
+    g_character_afked_hook = hook;
+}
+
+void set_corpse_decayed_hook(corpse_decayed_fn hook)
+{
+    g_corpse_decayed_hook = hook;
 }
 
 namespace {
@@ -414,6 +432,31 @@ void dispatch_char_from_room(char_data* ch)
     rots::log::write_stderr(
         "rots::entity: STUB char-from-room hook called with no sink registered -- this should "
         "be unreachable once register_char_from_room_hook() has run.");
+}
+
+// Cross-TU dispatch for the big_brother AFK/corpse-decayed hook pair
+// (called from limits.cpp once promoted; behavior wave Task 1). External
+// linkage, same reason as dispatch_attacked_player() above.
+void dispatch_character_afked(const char_data* character)
+{
+    if (g_character_afked_hook) {
+        g_character_afked_hook(character);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::entity: STUB character-afked hook called with no sink registered -- this should "
+        "be unreachable once register_character_afked_hook() has run.");
+}
+
+void dispatch_corpse_decayed(obj_data* corpse)
+{
+    if (g_corpse_decayed_hook) {
+        g_corpse_decayed_hook(corpse);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::entity: STUB corpse-decayed hook called with no sink registered -- this should "
+        "be unreachable once register_corpse_decayed_hook() has run.");
 }
 
 } // namespace rots::entity

@@ -275,4 +275,34 @@ using char_from_room_fn = void (*)(char_data* ch);
 void set_char_from_room_hook(char_from_room_fn hook);
 void dispatch_char_from_room(char_data* ch);
 
+// big_brother's AFK/corpse-decay notification pair (behavior wave Task 1;
+// CONTROLLER ADDENDUM item 2(a); census section 6.1 -- a genuine
+// spec-adjudication gap: itemized in combat-census.md's original row but
+// dropped from this wave's spec prose). limits.cpp's upward
+// game_rules::big_brother::instance().on_character_afked()/
+// on_corpse_decayed() calls (limits.cpp:561/:815-ish, consumer-free this
+// task) mirror the existing target_valid_fn/character_died_fn pair exactly.
+// Both real bodies (big_brother.cpp:496/:609) are self-contained (internal
+// map bookkeeping only, no external app-tier coupling beyond their own
+// class state), so a bare pointer argument is enough to replay each call.
+// big_brother.cpp registers both real forwarders via
+// register_character_afked_hook()/register_corpse_decayed_hook()
+// (big_brother.h/big_brother.cpp), riding the same registrar file as
+// register_target_valid_hook()/register_character_died_hook() above.
+// Tripwire default: LOGGED no-op (void class, same taxonomy as
+// set_character_died_hook() above).
+using character_afked_fn = void (*)(const char_data* character);
+void set_character_afked_hook(character_afked_fn hook);
+using corpse_decayed_fn = void (*)(obj_data* corpse);
+void set_corpse_decayed_hook(corpse_decayed_fn hook);
+
+// Dispatch entry points for the char_from_room/big_brother-AFK/
+// corpse-decayed hooks above. Like dispatch_target_valid()/
+// dispatch_character_died() above, these are called from handler.cpp/
+// limits.cpp -- not entity_lifecycle.cpp, the TU that owns their backing
+// storage -- so they need external-linkage declarations here. Defined in
+// entity_lifecycle.cpp, next to their backing storage.
+void dispatch_character_afked(const char_data* character);
+void dispatch_corpse_decayed(obj_data* corpse);
+
 }

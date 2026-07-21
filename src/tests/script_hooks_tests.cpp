@@ -25,6 +25,7 @@
 // design" posture for its own abort tripwire; the registered path below is
 // this hook's discriminator coverage.
 
+#include "../comm.h"
 #include "../interpre.h"
 #include "../script_hooks.h"
 #include "../utils.h"
@@ -63,6 +64,22 @@ public:
     ScopedPersHook& operator=(const ScopedPersHook&) = delete;
 };
 
+// Same shape as ScopedCommandInterpreterHook above, for script_hooks.h's
+// virt_program_number cell (behavior wave Task 1; CONTROLLER ADDENDUM
+// item 3).
+class ScopedVirtProgramNumberHook {
+public:
+    explicit ScopedVirtProgramNumberHook(rots::script::virt_program_fn hook)
+    {
+        rots::script::set_virt_program_number_hook(hook);
+    }
+
+    ~ScopedVirtProgramNumberHook() { register_virt_program_number_hook(); }
+
+    ScopedVirtProgramNumberHook(const ScopedVirtProgramNumberHook&) = delete;
+    ScopedVirtProgramNumberHook& operator=(const ScopedVirtProgramNumberHook&) = delete;
+};
+
 struct RecordedCommandInterpreterCall {
     char_data* ch = nullptr;
     char* argument_chr = nullptr;
@@ -94,6 +111,20 @@ char* recording_pers_stub(char_data* target, char_data* observer, int capitalize
 {
     g_recorded_pers_call = RecordedPersCall { target, observer, capitalize, force_visible, true };
     return g_pers_stub_name;
+}
+
+struct RecordedVirtProgramNumberCall {
+    int number = 0;
+    bool called = false;
+};
+
+RecordedVirtProgramNumberCall g_recorded_virt_program_number_call;
+int g_virt_program_number_stub_marker = 0;
+
+void* recording_virt_program_number_stub(int number)
+{
+    g_recorded_virt_program_number_call = RecordedVirtProgramNumberCall { number, true };
+    return &g_virt_program_number_stub_marker;
 }
 
 } // namespace
@@ -155,4 +186,23 @@ TEST(PersHook, DispatchReachesARegisteredStubWithAllArgsIntactAndForwardsReturnV
     EXPECT_EQ(g_recorded_pers_call.force_visible, 0);
     EXPECT_EQ(result, g_pers_stub_name)
         << "Expected dispatch_pers() to forward the stub's own return value.";
+}
+
+// dispatch_virt_program_number() -- DISCRIMINATOR: a recording stub proves
+// the dispatch wrapper forwards `number` intact and returns the stub's own
+// pointer. No death test for the unregistered (abort-tripwire) default,
+// same no-death-test convention as dispatch_pers() above.
+
+TEST(VirtProgramNumberHook, DispatchReachesARegisteredStubWithArgIntactAndForwardsReturnValue)
+{
+    g_recorded_virt_program_number_call = RecordedVirtProgramNumberCall { };
+    ScopedVirtProgramNumberHook scoped(recording_virt_program_number_stub);
+
+    void* result = rots::script::dispatch_virt_program_number(7);
+
+    EXPECT_TRUE(g_recorded_virt_program_number_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_virt_program_number_call.number, 7);
+    EXPECT_EQ(result, &g_virt_program_number_stub_marker)
+        << "Expected dispatch_virt_program_number() to forward the stub's own return value.";
 }

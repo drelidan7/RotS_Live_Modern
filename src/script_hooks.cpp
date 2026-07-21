@@ -85,3 +85,32 @@ void dispatch_command_interpreter(char_data* ch, char* argument_chr, waiting_typ
 }
 
 } // namespace rots::script
+
+namespace {
+// Backing storage for the registered virt_program_number hook
+// (register_virt_program_number_hook(), spec_ass.cpp; behavior wave Task 1).
+// Null until that registration runs; the null default is an abort tripwire
+// (see dispatch_virt_program_number() below) -- see script_hooks.h's
+// virt_program_fn comment for why this class, not a logged no-op.
+rots::script::virt_program_fn g_virt_program_number_hook = nullptr;
+} // namespace
+
+namespace rots::script {
+
+void set_virt_program_number_hook(virt_program_fn hook)
+{
+    g_virt_program_number_hook = hook;
+}
+
+void* dispatch_virt_program_number(int number)
+{
+    if (g_virt_program_number_hook) {
+        return g_virt_program_number_hook(number);
+    }
+    rots::log::write_stderr(
+        "rots::script: FATAL dispatch_virt_program_number() called with no handler registered -- "
+        "this should be unreachable once register_virt_program_number_hook() has run.");
+    std::abort();
+}
+
+} // namespace rots::script

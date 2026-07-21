@@ -724,3 +724,40 @@ void register_character_died_hook()
 {
     rots::entity::set_character_died_hook(character_died_hook_impl);
 }
+
+namespace {
+// entity_hooks.h's char-afked-notification hook implementation (behavior
+// wave Task 1): limits.cpp's check_idling() used to reach
+// game_rules::big_brother::instance() and call on_character_afked() on it
+// directly (an upward edge into this game-rules TU); this reproduces that
+// same line, now behind the hook.
+void character_afked_hook_impl(const char_data* character)
+{
+    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
+    bb_instance.on_character_afked(character);
+}
+
+// entity_hooks.h's corpse-decayed-notification hook implementation
+// (behavior wave Task 1): reproduces limits.cpp's upward
+// game_rules::big_brother::instance().on_corpse_decayed() call, now behind
+// the hook.
+void corpse_decayed_hook_impl(obj_data* corpse)
+{
+    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
+    bb_instance.on_corpse_decayed(corpse);
+}
+} // namespace
+
+// Registers the hook above as entity_hooks.h's character-afked hook. Called
+// once from run_the_game(), before boot_db().
+void register_character_afked_hook()
+{
+    rots::entity::set_character_afked_hook(character_afked_hook_impl);
+}
+
+// Registers the hook above as entity_hooks.h's corpse-decayed hook. Called
+// once from run_the_game(), before boot_db().
+void register_corpse_decayed_hook()
+{
+    rots::entity::set_corpse_decayed_hook(corpse_decayed_hook_impl);
+}

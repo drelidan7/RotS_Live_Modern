@@ -713,13 +713,16 @@ void run_the_game(sh_int port)
     register_is_zone_populated_hook();
     register_equip_char_hook();
     register_pkill_fame_hooks();
-    // entity_hooks.h's char-from-room hook (behavior wave Task 1),
-    // registered the same way and for the same reason: before boot_db(),
-    // so ageland never runs limits.cpp's future rots::entity::
-    // dispatch_char_from_room() call site (consumer-free this task --
-    // converted for real in a later behavior wave task) with an
-    // unregistered hook.
+    // entity_hooks.h's char-from-room hook + big_brother's AFK/
+    // corpse-decayed pair (behavior wave Task 1), registered the same way
+    // and for the same reason: before boot_db(), so ageland never runs
+    // limits.cpp's future rots::entity::dispatch_char_from_room()/
+    // dispatch_character_afked()/dispatch_corpse_decayed() call sites
+    // (consumer-free this task -- converted for real in a later behavior
+    // wave task) with an unregistered hook.
     register_char_from_room_hook();
+    register_character_afked_hook();
+    register_corpse_decayed_hook();
     // combat_hooks.h's one_mobile_activity hook + Crash_idlesave/
     // Crash_extract_objs sibling pair (behavior wave Task 1), registered
     // the same way and for the same reason: before boot_db(), so ageland
@@ -732,6 +735,12 @@ void run_the_game(sh_int port)
     register_one_mobile_activity_hook();
     register_crash_idlesave_hook();
     register_crash_extract_objs_hook();
+    // script_hooks.h's virt_program_number cell (behavior wave Task 1;
+    // CONTROLLER ADDENDUM item 3), registered the same way and for the
+    // same reason: before boot_db(), so ageland never runs mobact.cpp's
+    // rots::script::dispatch_virt_program_number() call sites
+    // (consumer-free this task) with an unregistered hook.
+    register_virt_program_number_hook();
 
     log("Signal trapping.");
     signal_setup();

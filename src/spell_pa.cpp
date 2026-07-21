@@ -48,7 +48,6 @@ void affect_update_person(struct char_data*, int);
 // (see this file's own relocation comment near its old body); this TU
 // never called it locally.
 bool new_saves_spell(const char_data* caster, const char_data* victim, int save_bonus);
-void one_mobile_activity(struct char_data*);
 void do_sense_magic(struct char_data*, int);
 void appear(struct char_data*);
 void affect_update();

@@ -1727,11 +1727,10 @@ if(ROTS_BUILD_TESTS)
         # strictly tighter guarantee than "any lower layer is allowed".
         #
         # NON-VACUITY: verified locally (not committed) by temporarily adding
-        # a call from shapemob.cpp into an app-tier-only symbol (do_shutdown's
-        # real body, act_wiz.cpp) bypassing the combat_command cell -- the
-        # checker's link FAILED with the expected undefined-symbol error,
-        # then passed again once reverted. See cb-task-4-report.md for the
-        # exact commands/output.
+        # a call from shapemob.cpp into an app-tier-only symbol (boot_db(),
+        # db_boot.cpp) -- the checker's link FAILED with the expected
+        # undefined-symbol error, then passed again once reverted. See
+        # cb-task-4-report.md for the exact commands/output.
         add_executable(rots_olc_linkcheck tests/olc_linkcheck_main.cpp)
         target_link_libraries(rots_olc_linkcheck PRIVATE rots_build_flags RotS::script)
         add_dependencies(rots_olc_linkcheck rots_olc)

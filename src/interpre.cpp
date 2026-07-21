@@ -96,7 +96,6 @@ struct command_info cmd_info[MAX_CMD_LIST];
 
 int new_player_select(struct descriptor_data*, char*);
 void introduce_char(struct descriptor_data*);
-void one_mobile_activity(struct char_data*);
 int update_memory_list(struct char_data*);
 int load_char(char*, struct char_file_u*);
 void load_character(struct char_data* ch);

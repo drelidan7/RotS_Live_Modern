@@ -1633,9 +1633,11 @@ int maul_damage_reduction(char_data* ch, int damage)
 // spllog_saves/spllog_mage_level/spllog_save storage-moved here from
 // spell_pa.cpp:182-184 (combat-pilot wave Task 4a; pilot-census.md
 // section 7.3), alongside record_spell_damage() below, their sole
-// reader. Owned by fight.cpp: WRITTEN by spell_pa.cpp's saves_spell()/
-// new_saves_spell() via the extern declarations left there, READ here
-// by record_spell_damage() (called from damage() below).
+// reader. Owned by fight.cpp: WRITTEN by this file's own saves_spell()
+// (relocated here verbatim in the behavior wave, see its own comment
+// below) and by spell_pa.cpp's new_saves_spell() via the extern
+// declaration left there; READ here by record_spell_damage() (called
+// from damage() below).
 unsigned char spllog_saves; /* 1: character saved, 0: character failed */
 short spllog_mage_level; /* the effective level of the caster */
 short spllog_save; /* the effective save computed in saves_spell */

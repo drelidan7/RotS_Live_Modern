@@ -16,7 +16,6 @@
 #include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
-#include "output_seam.h"
 #include "persist_hooks.h"
 #include "pkill.h"
 #include "platdef.h"
@@ -51,7 +50,6 @@ extern struct time_info_data time_info;
 extern struct skill_data skills[];
 extern const std::string_view spell_wear_off_msg[];
 extern struct char_data* fast_update_list;
-extern int circle_shutdown;
 extern struct char_data* death_waiting_list;
 extern int r_mortal_start_room[];
 

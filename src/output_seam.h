@@ -98,10 +98,12 @@ using complete_delay_fn = void (*)(char_data* ch);
 // overload already inverted through entity_hooks.h's get_txt_block_fn pair
 // (target_data's pool traffic, world-seed Task 2): that hook exists because
 // entity_lifecycle.cpp sits BELOW comm.cpp and needs an empty block; this
-// one is for a future combat-tier caller (ranger.cpp/spec_pro.cpp/
-// shop.cpp/mudlle.cpp already call this exact overload today, all still
-// app-compiled) that wants a block pre-populated with a bounded copy of its
-// own text. Returns a pointer, unlike the six void forwarders above, whose
+// one is for callers above comm.cpp: ranger.cpp/spec_pro.cpp/shop.cpp
+// (still app-compiled) call this exact overload today, and so do
+// mudlle.cpp/mudlle2.cpp -- promoted to rots_script in the l4-seed wave, so
+// their calls now resolve as a legal downward edge, not an app-tier weld --
+// each wanting a block pre-populated with a bounded copy of its own text.
+// Returns a pointer, unlike the six void forwarders above, whose
 // unregistered default is a safe null-op (this header's own "logged no-op"
 // taxonomy): this one instead matches entity_hooks.h's get_txt_block_fn
 // twin hook and tripwire-logs THEN ABORTS on an unregistered sink, because
@@ -116,16 +118,16 @@ using get_txt_block_from_pool_fn = txt_block* (*)(std::string_view line);
 
 // put_to_txt_block_pool(struct txt_block*) (comm.cpp) -- the PUT-side
 // counterpart of the txt-block-pool getter above (l4-seed wave, Task 1;
-// l4-census.md section "put_to_txt_block_pool forwarder"). A future
-// combat/script-tier caller (mudlle.cpp/mudlle2.cpp, still app-compiled
-// today) calls this exact global symbol to return a txt_block to the pool
-// once it promotes above comm.cpp. Void, unlike the pointer-returning GET
-// forwarder above: PUT never dereferences its argument, so the null-sink
-// default is a SAFE logged no-op (this header's dominant "logged no-op"
-// taxonomy, not the GET forwarder's abort-tripwire exception) -- a
-// discarded-without-registration txt_block* would leak (never returned to
-// the pool), but that is a leak, not a crash, and this file's own
-// mudlle.cpp/mudlle2.cpp call sites are consumer-free this task anyway.
+// l4-census.md section "put_to_txt_block_pool forwarder"). mudlle.cpp/
+// mudlle2.cpp call this exact global symbol to return a txt_block to the
+// pool; both files promoted to rots_script in this same wave, so the call
+// resolves as a legal downward L4->L1 edge, not an app-tier weld. Void,
+// unlike the pointer-returning GET forwarder above: PUT never dereferences
+// its argument, so the null-sink default is a SAFE logged no-op (this
+// header's dominant "logged no-op" taxonomy, not the GET forwarder's
+// abort-tripwire exception) -- a discarded-without-registration txt_block*
+// would leak (never returned to the pool), but that is a leak, not a
+// crash.
 using put_txt_block_to_pool_fn = void (*)(struct txt_block*);
 
 // close_socket(descriptor_data*, int) (comm.cpp; behavior wave Task 1;

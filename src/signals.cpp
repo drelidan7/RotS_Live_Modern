@@ -173,7 +173,6 @@ void hupsig(int)
 
 void badcrash(int)
 {
-    void close_socket(struct descriptor_data * d);
     struct descriptor_data* desc;
 
     log("SIGSEGV or SIGBUS received.  Trying to shut down gracefully.");

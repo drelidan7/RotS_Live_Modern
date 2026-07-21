@@ -1290,18 +1290,23 @@ four implementation tasks.
   intra-band edge, `find_first_step`) plus the full L3 downward set.
 - **`PathfindLayerAcyclicity` / `ScriptLayerAcyclicity`** mirror the six pre-existing
   `*LayerAcyclicity` checks exactly — force-load the archive, normal-link only the declared downward
-  set, fail on any unresolved symbol — with one deliberate difference from `rots_combat`'s pattern:
-  both **lean on PUBLIC transitivity** rather than listing every layer explicitly.
-  `rots_pathfind_linkcheck` normal-links only `RotS::combat` (which transitively PUBLIC-carries
-  `world`/`persist`/`entity`/`core`/`platform`); `rots_script_linkcheck` normal-links only
-  `RotS::pathfind` (which transitively carries `combat` and everything below it) — but
-  `RotS::pathfind` is listed **explicitly** on `rots_script_linkcheck`'s own link line, not merely
-  inherited, specifically to keep the `find_first_step()` intra-band edge exercised at the
-  narrowest possible tier (the `WorldLayerAcyclicity`/`RotS::persist` precedent, one step tighter
-  than `CombatLayerAcyclicity`'s fully-explicit six-library list). Both non-vacuous by
-  positive-PASS/negative-FAIL probe (a temporary `boot_db()`-calling probe function appended to
-  `graph.cpp`/`mudlle.cpp` respectively reproducibly failed the link, then was reverted with zero
-  residue) — the combat-seed precedent, independently re-run by the reviewer on both checkers.
+  set, fail on any unresolved symbol — but their own link lists are genuinely new design, not a
+  repeat of an existing pattern. `rots_pathfind_linkcheck` normal-links only `RotS::combat` (which
+  transitively PUBLIC-carries `world`/`persist`/`entity`/`core`/`platform`); `rots_script_linkcheck`
+  normal-links only `RotS::pathfind` (which transitively carries `combat` and everything below it)
+  — but `RotS::pathfind` is listed **explicitly** on `rots_script_linkcheck`'s own link line, not
+  merely inherited, specifically to keep the `find_first_step()` intra-band edge exercised. **This
+  is tighter than either pre-existing L3 linkcheck, not a continuation of a precedent either already
+  set**: `WorldLayerAcyclicity` normal-links four libraries explicitly (`RotS::persist RotS::entity
+  RotS::core RotS::platform` — nothing to omit via transitivity, since `persist` is the deepest peer
+  directly below `world`) and `CombatLayerAcyclicity` normal-links four as well (`RotS::world
+  RotS::entity RotS::core RotS::platform`, omitting only the single furthest peer `RotS::persist`,
+  transitively carried via `RotS::world`) — neither existing checker lists just one library, so the
+  L4 pair's "list exactly one library, let transitivity carry the rest" design is this wave's own
+  innovation. Both non-vacuous by positive-PASS/negative-FAIL probe (a temporary `boot_db()`-calling
+  probe function appended to `graph.cpp`/`mudlle.cpp` respectively reproducibly failed the link,
+  then was reverted with zero residue) — the combat-seed precedent, independently re-run by the
+  reviewer on both checkers.
 - **`script_hooks.h`'s storage relocation (Task 3 mid-task adjudication).** T1 placed
   `dispatch_command_interpreter()`'s backing storage inside `interpre.cpp` itself — permanently
   app-tier, since that file defines the real `command_interpreter()` body and can never promote —

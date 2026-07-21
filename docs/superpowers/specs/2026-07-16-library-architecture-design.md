@@ -180,6 +180,14 @@ storage-relocation account, and the table above for the row-level changes this r
 - The three L3 libraries are a **peer tier**, not a sub-stack: `rots_persist`/`rots_world`/
   `rots_combat` may cross-reference within L3 (e.g. `db_players` needs world helpers). Treat L3 as
   one layer until `db.cpp` is fully split; do not pretend one L3 lib sits strictly below another.
+  **SUPERSEDED 2026-07-21 (l4-seed wave) — see the §3 REVISION above.** Kept verbatim per this
+  document's additive-history convention, not deleted, but this bullet's "do not pretend one L3 lib
+  sits strictly below another" is now factually wrong: the §3 REVISION certifies the opposite —
+  `persist < world < combat` is a real, stratified, one-directional order, evidenced by the two
+  actual L3 cross-tier edges in the built archive. This bullet's own illustrative example is also
+  stale on inspection: `db_players.cpp` does not call into world directly — it exposes
+  `world_room_vnum_hook`, a hook `db_world.cpp` (world) registers into, so the edge runs
+  world→persist, consistent with the certified order rather than evidence against one existing.
 - `olog_hai` (logging) and `big_brother` (anti-cheat) are cross-cutting; they are parked where
   their current dependencies point and are candidates to move once boundaries settle.
 - The 6 `account_management_*.cpp` files are `#include`d into `account_management.cpp` (they are

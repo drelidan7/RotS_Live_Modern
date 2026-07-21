@@ -515,9 +515,11 @@ combat-census, cutting across every row's edge count below):
   `big_brother.h`, neither has a hook — only relevant if a DEFER TU calls them).
 - **`persist_hooks.h`'s `dispatch_exploit_capture`** (`add_exploit_record`) — landed,
   externally linked as of Task 5.
-- **`combat_hooks.h`'s Task 4b quartet**: `extract_char`, `gain_exp`/
+- **`combat_hooks.h`'s Task 4b quartet**: `extract_char` (originally landed here;
+  **RE-HOMED to L2 `entity_hooks.h` by the l4-seed wave**, shared by both `rots_world`
+  and `rots_combat` — see "The l4-seed wave" section below), `gain_exp`/
   `gain_exp_regardless`/`remove_fame_war_bonuses`, `crash_crashsave`/`call_trigger`/
-  `pkill_create` — all landed, consumer-tested.
+  `pkill_create` (still `combat_hooks.h`-owned) — all landed, consumer-tested.
 - **L2/in-lib relocations now legal as plain downward or intra-lib calls from ANY
   TU**: `stop_riding`, `remove_character_from_group`, `stop_follower` (bundled with
   the `forget`/`remember` memory-pool package), `saves_power`, the full visibility

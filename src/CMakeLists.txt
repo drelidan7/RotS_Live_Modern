@@ -1435,8 +1435,12 @@ if(ROTS_BUILD_TESTS)
         # target_link_libraries below because RotS::combat already carries
         # all five transitively (RotS::combat's own PUBLIC RotS::world link,
         # which itself carries RotS::persist, per the world-seed/combat-seed
-        # waves) -- the same transitive-chain shape rots_combat_linkcheck's
-        # own RotS::world-only link list already established one tier down.
+        # waves) -- a tighter design than rots_combat_linkcheck's own link
+        # list, which still lists FOUR libraries explicitly (RotS::world
+        # RotS::entity RotS::core RotS::platform, below), omitting only the
+        # single furthest peer (RotS::persist) via transitivity -- this
+        # checker is the first *LayerAcyclicity check to list just one
+        # library, not a repeat of an existing pattern.
         # The checker force-loads rots_pathfind itself (so every
         # rots_pathfind symbol is pulled in and any OTHER unresolved
         # reference fails the link) and normal-links RotS::combat to resolve

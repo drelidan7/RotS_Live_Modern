@@ -13,8 +13,11 @@
 #include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
+#include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
+#include "output_seam.h"
+#include "persist_hooks.h"
 #include "pkill.h"
 #include "platdef.h"
 #include "profs.h"
@@ -56,12 +59,17 @@ void recalc_skills(struct char_data* ch);
 
 extern void raw_kill(char_data *ch, char_data *killer, int attacktype);
 extern void die(char_data *dead_man, char_data *killer, int attack_type);
-void one_mobile_activity(char_data *ch);
+// void one_mobile_activity(char_data *ch); forward decl RETIRED
+// (behavior wave Task 2): the sole external call site below now
+// dispatches through rots::combat::dispatch_one_mobile_activity()
+// instead.
 
 #define MIN_RANK 1
 #define MAX_RANK 10
 
-ACMD(do_flee);
+// ACMD(do_flee); forward decl RETIRED (behavior wave Task 2): the
+// sole call site below now dispatches through
+// rots::combat::issue_command(combat_command::flee, ...) instead.
 char saves_spell(struct char_data* ch, sh_int level, int bonus);
 void stop_riding(struct char_data* ch);
 char char_perception_check(struct char_data* ch);
@@ -532,7 +540,9 @@ void gain_condition(struct char_data* ch, int condition, int value)
     }
 }
 
-void Crash_extract_objs(obj_data*);
+// void Crash_extract_objs(obj_data*); forward decl RETIRED (behavior
+// wave Task 2): both call sites below now dispatch through
+// rots::combat::crash_extract_objs() instead.
 
 //============================================================================
 // Returns 1 if the char was extracted, 0 otherwise
@@ -557,8 +567,7 @@ int check_idling(char_data* character)
             // Mark the character as AFK and give them AFK protection after 3 minute.
             SET_BIT(PLR_FLAGS(character), PLR_ISAFK);
 
-            game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-            bb_instance.on_character_afked(character);
+            rots::entity::dispatch_character_afked(character);
             if (!was_afk) {
                 send_to_char("You have been idle, and are now flagged as AFK.\r\n", character);
             }
@@ -578,8 +587,8 @@ int check_idling(char_data* character)
             act("$n disappears into the void.", TRUE, character, 0, 0, TO_ROOM);
             send_to_char("You have been idle, and are pulled into a void.\r\n", character);
             save_char(character, NOWHERE, 0);
-            Crash_crashsave(character);
-            char_from_room(character);
+            rots::combat::crash_crashsave(character);
+            rots::entity::dispatch_char_from_room(character);
             char_to_room(character, r_mortal_idle_room[GET_RACE(character)]);
         }
     }
@@ -587,30 +596,30 @@ int check_idling(char_data* character)
     if (character->specials.timer > 28) {
         if (character && !IS_NPC(character) && (character->specials.was_in_room != NOWHERE)) {
             if (character->in_room != NOWHERE) {
-                char_from_room(character);
+                rots::entity::dispatch_char_from_room(character);
             }
             char_to_room(character, character->specials.was_in_room);
             save_char(character, world[character->specials.was_in_room].number, 0);
             character->specials.was_in_room = NOWHERE;
         }
-        Crash_idlesave(character);
-        strcpy(buf, std::format("{} force-rented and extracted (idle).", GET_NAME(character)).c_str());
-        mudlog(buf, NRM, LEVEL_GOD, TRUE);
+        rots::combat::crash_idlesave(character);
+        const std::string idle_rent_message = std::format("{} force-rented and extracted (idle).", GET_NAME(character));
+        mudlog(idle_rent_message, NRM, LEVEL_GOD, TRUE);
 
         for (int j = 0; j < MAX_WEAR; j++) {
             if (character->equipment[j]) {
-                Crash_extract_objs(character->equipment[j]);
+                rots::combat::crash_extract_objs(character->equipment[j]);
                 character->equipment[j] = NULL;
             }
         }
-        Crash_extract_objs(character->carrying);
+        rots::combat::crash_extract_objs(character->carrying);
 
         if (character->desc && character->desc->descriptor) {
             close_socket(character->desc);
             character->desc = NULL; // was commented out, now put back in by Fingolfin Jan 9
         }
 
-        extract_char(character);
+        rots::entity::extract_char(character);
         return 1;
     }
 
@@ -653,7 +662,7 @@ void point_update(void)
     }
     if (((mytime / 3600) % 24 == 10) && (((mytime / 60) % 60 == 0) || ((mytime / 60) % 60 == 1))) {
         send_to_all("ROUTINE REBOOT NOW.\n\r");
-        circle_shutdown = 1;
+        request_circle_shutdown();
     }
 
     for (i = character_list; i; i = next_dude) {
@@ -811,8 +820,7 @@ void point_update(void)
                 if (GET_ITEM_TYPE(j) == ITEM_CONTAINER) {
                     // If this is a corpse, let big brother know that it is decaying.
                     if (j->obj_flags.value[3] == 1) {
-                        game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-                        bb_instance.on_corpse_decayed(j);
+                        rots::entity::dispatch_corpse_decayed(j);
                     }
 
                     for (jj = j->contains; jj; jj = next_thing2) {
@@ -1383,7 +1391,7 @@ void affect_update_person(struct char_data* i, int mode)
                     // handled by hit_gain and move_gain now.
                     break;
                 case SPELL_FEAR:
-                    do_flee(i, mutable_arg(""), 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::flee, i, mutable_arg(""), 0, 0, 0);
                     if (saves_spell(i, af->modifier -= 2, 0))
                         af->duration = 0;
                     break;
@@ -1395,7 +1403,7 @@ void affect_update_person(struct char_data* i, int mode)
                     break;
                 case SPELL_ACTIVITY:
                     if (IS_NPC(i))
-                        one_mobile_activity(i);
+                        rots::combat::dispatch_one_mobile_activity(i);
                     [[fallthrough]]; // intentional: SPELL_ACTIVITY also gets SPELL_CONFUSE's
                                       // concentration-duration handling below.
                 case SPELL_CONFUSE:
@@ -1505,14 +1513,12 @@ void affect_update_room(struct room_data* room)
             tmpaf->duration--;
         if (tmpaf->location == SPELL_MIST_OF_BAAZUNGA && tmpaf->duration > 0 && time_phase == tmpaf->time_phase) {
             /* 70% chance of mist thinking about moving */
-            strcpy(buf, "check mist movement");
-            mudlog(buf, NRM, LEVEL_GOD, FALSE);
+            mudlog("check mist movement", NRM, LEVEL_GOD, FALSE);
             if (movechance < 75) {
                 direction = number(0, NUM_OF_DIRS - 1);
                 /* Decide if the random direction is legal, if so, move the mist */
                 if (!(room->dir_option[direction])) {
-                    strcpy(buf, "no option for movement");
-                    mudlog(buf, NRM, LEVEL_GOD, FALSE);
+                    mudlog("no option for movement", NRM, LEVEL_GOD, FALSE);
                 } else if (room->dir_option[direction]->to_room != NOWHERE) {
                     roomnum = room->dir_option[direction]->to_room;
                     if (!(room_affected_by_spell(&world[roomnum], SPELL_MIST_OF_BAAZUNGA))) {
@@ -1520,8 +1526,7 @@ void affect_update_room(struct room_data* room)
                             REMOVE_BIT(room->room_flags, SHADOWY);
                         if ((checkaf = room_affected_by_spell(&world[roomnum], SPELL_MIST_OF_BAAZUNGA))) {
                             mod = checkaf->modifier;
-                            strcpy(buf, "WARNING LOMAN: Mist already in move to room");
-                            mudlog(buf, NRM, LEVEL_GOD, FALSE);
+                            mudlog("WARNING LOMAN: Mist already in move to room", NRM, LEVEL_GOD, FALSE);
                         } else if (IS_SET(world[roomnum].room_flags, SHADOWY))
                             mod = 1;
                         else
@@ -1613,7 +1618,7 @@ void fast_update()
             act("$n suddenly collapses on the ground.", TRUE, character, 0, 0, TO_ROOM);
             send_to_char("Your body failed to the magic.\n\r", character);
             raw_kill(character, NULL, TYPE_UNDEFINED);
-            add_exploit_record(EXPLOIT_REGEN_DEATH, character, 0, NULL);
+            rots::persist::dispatch_exploit_capture(EXPLOIT_REGEN_DEATH, character, 0, NULL);
             return;
         }
 

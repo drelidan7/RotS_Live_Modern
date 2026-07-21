@@ -18,14 +18,22 @@
 // which defines/consumes several of the same cells (do_mental/do_flee) --
 // have JOINED rots_combat and their up-calls now go through
 // rots::combat::issue_command()/call_special() for real, resolving as
-// genuine intra-lib dispatch rather than an unexercised default. mobact.cpp/
+// genuine intra-lib dispatch rather than an unexercised default.
 // spec_pro.cpp/ranger.cpp remain app-compiled and still call do_hit()/
 // do_flee()/etc. directly (ROTS_SERVER_SOURCES, a legal same-tier call
-// today); this seam exists so that when one of those three TUs joins
+// today); this seam exists so that when either of those two TUs joins
 // rots_combat in a future wave, EACH of its up-calls converts the same way
 // fight.cpp's/clerics.cpp's already did, resolving downward through this
 // table rather than welding back up into an app-tier symbol the library
-// cannot see.
+// cannot see. STATUS UPDATE (behavior wave, Task 2/Task 3): mobact.cpp's
+// twelve do_* up-calls converted onto this table in Task 2 (still
+// app-compiled at the time -- a legal app->lib downward call, the same
+// shape fight.cpp's pre-Task-5 calls had); Task 3 then moved mobact.cpp
+// into ROTS_SCRIPT_SOURCES (L4), one tier ABOVE this library, so those
+// twelve calls now resolve L4->L3 downward through this table -- a
+// different shape from fight.cpp's/clerics.cpp's genuine INTRA-lib
+// dispatch (mobact.cpp never joins rots_combat itself, so its calls stay
+// cross-library rather than becoming same-archive address resolution).
 //
 // TARGET LIST (25 cells -- census-C's own per-TU counts carried off-by-one
 // labels, e.g. "13 distinct" over a 12-name list; reconciled here against
@@ -249,9 +257,11 @@ int call_special(
 // (not one struct), matching this header's existing one-fn-ptr-per-symbol
 // convention (e.g. set_special_handler above). limits.cpp registers both
 // real bodies via register_gain_exp_hook()/register_gain_exp_regardless_hook()
-// (limits.h/limits.cpp), an app-side registrar pair (limits.cpp stays
-// app-compiled after this wave). Tripwire default: a LOGGED no-op (void
-// class, same taxonomy as extract_char above).
+// (limits.h/limits.cpp) -- an app-side registrar pair when this hook was
+// built (limits.cpp was still app-compiled at the time); see the
+// POST-MEMBERSHIP STATUS UPDATE paragraph below the declarations for
+// where limits.cpp actually landed. Tripwire default: a LOGGED no-op
+// (void class, same taxonomy as extract_char above).
 using gain_exp_fn = void (*)(char_data* ch, int gain);
 void set_gain_exp_hook(gain_exp_fn hook);
 void gain_exp(char_data* ch, int gain);
@@ -271,6 +281,24 @@ using remove_fame_war_bonuses_fn = void (*)(char_data* ch, affected_type* pkaff)
 void set_remove_fame_war_bonuses_hook(remove_fame_war_bonuses_fn hook);
 void remove_fame_war_bonuses(char_data* ch, affected_type* pkaff);
 
+// POST-MEMBERSHIP STATUS UPDATE (behavior wave Task 3, Step 5's
+// cleanup/verification pass; .superpowers/sdd/bw-task-3-brief.md;
+// bw-task-3-report.md): limits.cpp joined ROTS_COMBAT_SOURCES in this
+// task's Step 1, so the register_gain_exp_hook()/
+// register_gain_exp_regardless_hook()/register_remove_fame_war_bonuses_
+// hook() registrar calls above and the real bodies they point at now
+// resolve INTRA-LIB (both live in rots_combat). This is NOT mere
+// self-registration eligible for removal, though: fight.cpp (five call
+// sites) and clerics.cpp (one call site) -- both already RotS::combat
+// members since the combat-pilot wave -- still dispatch through
+// rots::combat::gain_exp()/gain_exp_regardless()/remove_fame_war_bonuses()
+// rather than calling limits.cpp's globals directly (verified by grep,
+// not assumed -- see bw-task-3-report.md for the exact call sites). All
+// three hooks and their registrars therefore STAY: deleting them would
+// break real, currently-live dispatch. Converting fight.cpp's/
+// clerics.cpp's call sites back to direct limits.cpp calls (now legal,
+// since both sides are intra-lib) remains a deferred follow-on call-site
+// simplification, out of this cleanup task's scope.
 
 // App-other trio (pilot-census.md section 3.7) -- Crash_crashsave
 // (objsave.cpp), call_trigger (script.cpp), pkill_create (pkill.cpp). Each
@@ -314,12 +342,21 @@ void pkill_create(char_data* victim);
 // -----------------------------------------------------------------------
 // Behavior-wave Task 1 hooks (mobact.cpp -> rots_script / limits.cpp ->
 // rots_combat, .superpowers/sdd/bw-task-1-brief.md; census
-// .superpowers/sdd/bw-census.md). CONSUMER-FREE at landing time: neither
-// mobact.cpp nor limits.cpp joins a library this task, and no existing call
-// site converts -- both TUs stay app-compiled (ROTS_SERVER_SOURCES). Each
-// hook below only exists so a LATER task's call-site conversion has
-// somewhere legal to resolve downward into, the same posture Task 2's
-// combat_command table/special() pair had at their own landing time.
+// .superpowers/sdd/bw-census.md). CONSUMER-FREE at landing time (Task 1):
+// neither mobact.cpp nor limits.cpp had joined a library yet, and no
+// existing call site had converted -- both TUs stayed app-compiled
+// (ROTS_SERVER_SOURCES). Task 2 converted the call site
+// (limits.cpp:1406 -> dispatch_one_mobile_activity()) and Task 3 landed
+// both memberships (bw-task-3-brief.md): mobact.cpp -> ROTS_SCRIPT_SOURCES
+// (Step 2, L4), limits.cpp -> ROTS_COMBAT_SOURCES (Step 1, L3). This hook
+// is now a LIVE, PERMANENT cross-tier inversion, not a placeholder: it
+// stays exactly as-is regardless of both TUs being lib members, because
+// dispatch flows L3 (limits.cpp, the caller) -> L4 (mobact.cpp, the real
+// body) -- the opposite of the normal L4->L3 downward link direction, so a
+// direct call would be just as illegal as before. mobact.cpp's registrar
+// call is now a legal L4->L3 downward registration into this library's
+// setter (see the ROTS_SCRIPT_SOURCES comment in CMakeLists.txt for the
+// full post-membership picture).
 // -----------------------------------------------------------------------
 
 // one_mobile_activity() (mobact.cpp:71; census section 3) -- limits.cpp's

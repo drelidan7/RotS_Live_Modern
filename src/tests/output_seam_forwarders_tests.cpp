@@ -41,6 +41,7 @@
 #include "../output_seam.h"
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
+#include "rots/core/types.h"
 
 #include <gtest/gtest.h>
 
@@ -120,7 +121,78 @@ struct ConnectedCharacterContext {
     }
 };
 
+// Records a put_to_txt_block_pool() forwarder call -- DISCRIMINATOR fixture
+// for this file's PutToTxtBlockPool tests below (l4-seed wave, Task 1;
+// l4-task-1-brief.md Step 4). Unlike ScopedOutputSinks above (an all-null
+// swap for the six unregistered-default tests), this scopes a Sinks with
+// ONLY put_txt_block_to_pool populated -- sufficient since these two tests
+// never call any other forwarder -- and restores the real sinks via
+// register_game_output_sinks() on destruction, the same restore-via-real-
+// registrar shape as this tree's *_hooks_tests.cpp Scoped* fixtures.
+class ScopedPutTxtBlockToPoolSink {
+public:
+    explicit ScopedPutTxtBlockToPoolSink(rots::output::put_txt_block_to_pool_fn hook)
+    {
+        rots::output::Sinks sinks {};
+        sinks.put_txt_block_to_pool = hook;
+        rots::output::set_sinks(sinks);
+    }
+
+    ~ScopedPutTxtBlockToPoolSink()
+    {
+        register_game_output_sinks();
+    }
+
+    ScopedPutTxtBlockToPoolSink(const ScopedPutTxtBlockToPoolSink&) = delete;
+    ScopedPutTxtBlockToPoolSink& operator=(const ScopedPutTxtBlockToPoolSink&) = delete;
+};
+
+struct RecordedPutTxtBlockToPoolCall {
+    txt_block* block = nullptr;
+    bool called = false;
+};
+
+RecordedPutTxtBlockToPoolCall g_recorded_put_txt_block_to_pool_call;
+
+void recording_put_txt_block_to_pool_stub(txt_block* block)
+{
+    g_recorded_put_txt_block_to_pool_call = RecordedPutTxtBlockToPoolCall { block, true };
+}
+
 } // namespace
+
+// put_to_txt_block_pool() -- DISCRIMINATOR: a recording stub proves the
+// forwarder reaches a registered sink with its argument intact; the
+// unregistered path is a SAFE logged no-op (unlike get_from_txt_block_pool's
+// abort tripwire -- PUT never dereferences its argument), so this pair
+// exercises both halves directly rather than needing a descriptor fixture.
+
+TEST(OutputSeamForwarders, PutToTxtBlockPoolReachesARegisteredStubWithArgIntact)
+{
+    g_recorded_put_txt_block_to_pool_call = RecordedPutTxtBlockToPoolCall {};
+    ScopedPutTxtBlockToPoolSink scoped(recording_put_txt_block_to_pool_stub);
+    txt_block block {};
+
+    put_to_txt_block_pool(&block);
+
+    EXPECT_TRUE(g_recorded_put_txt_block_to_pool_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_put_txt_block_to_pool_call.block, &block);
+}
+
+TEST(OutputSeamForwarders, PutToTxtBlockPoolDefaultsToASafeNoOpWhenUnregistered)
+{
+    g_recorded_put_txt_block_to_pool_call = RecordedPutTxtBlockToPoolCall {};
+    ScopedPutTxtBlockToPoolSink unregistered(nullptr);
+    txt_block block {};
+
+    put_to_txt_block_pool(&block);
+
+    EXPECT_FALSE(g_recorded_put_txt_block_to_pool_call.called)
+        << "Expected an unregistered put-to-txt-block-pool sink to leave the (unrelated) stub's "
+           "own recording flag untouched -- the real forwarder never ran, and the tripwire "
+           "default is a SAFE logged no-op (a leaked block, not a crash), not a call to any stub.";
+}
 
 TEST(OutputSeamForwarders, SendToAllDefaultsToANoOpWhenUnregistered)
 {

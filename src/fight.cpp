@@ -37,6 +37,7 @@
 #include "text_view.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
+#include "world_hooks.h"
 #include "zone.h" /* For zone_table */
 
 #include "char_utils.h"
@@ -3154,6 +3155,19 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
             raw_kill(character, NULL, 0);
         }
     }
+}
+
+// Registers the real equip_char() body above as world_hooks.h's equip-char
+// hook (l4-seed wave, Task 1 CONTROLLER ADDENDUM item 1; l4-census.md
+// section 3.3): equip_char()'s own poison-coupling block above (calls
+// damage()/raw_kill(), both rots_combat) means it cannot relocate to
+// rots_entity -- only zone.cpp's call site inverts through this hook,
+// equip_char() itself stays here unmoved. A legal combat->world DOWNWARD
+// registration (mirroring world_hooks.h's mudlle_converter_fn registrar
+// shape). Called once from run_the_game(), before boot_db().
+void register_equip_char_hook()
+{
+    rots::world::set_equip_char_hook(equip_char);
 }
 
 // unequip_char() SPLIT (placement-seam Task 3, census row unequip_char:919):

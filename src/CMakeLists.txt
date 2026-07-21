@@ -808,6 +808,7 @@ if(ROTS_BUILD_TESTS)
         tests/utility_format_tests.cpp
         tests/weapon_master_handler_tests.cpp
         tests/wild_fighting_handler_tests.cpp
+        tests/world_hooks_tests.cpp
         tests/zone_tests.cpp
     )
 

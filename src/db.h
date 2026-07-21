@@ -178,6 +178,23 @@ void register_boot_shops_hook();
 // once from run_the_game(), before boot_db() -- see entity_hooks.h.
 // Defined in db_world.cpp.
 void register_world_resolver_hooks();
+// Registers db_world.cpp's real dispatch bodies below as world_hooks.h's
+// do-wear/is-zone-populated/equip-char/pkill-fame hooks (l4-seed wave, Task
+// 1; l4-task-1-brief.md CONTROLLER ADDENDUM items 1/2). Backing storage +
+// dispatch for all four live in db_world.cpp for now -- zone.cpp (the
+// eventual dispatch call site) is not yet a rots_world member -- matching
+// the world-seed pattern's "backing storage in the dispatching TU"
+// precedent. Each REGISTRAR below, however, is defined in its own real
+// body's owning TU -- register_do_wear_hook() in act_obj2.cpp,
+// register_is_zone_populated_hook() in comm.cpp, register_equip_char_hook()
+// in fight.cpp, register_pkill_fame_hooks() in pkill.cpp -- matching
+// register_boot_shops_hook()'s own "declared centrally, defined by the
+// real-body owner" shape above. Called once from run_the_game(), before
+// boot_db() -- see world_hooks.h.
+void register_do_wear_hook();
+void register_is_zone_populated_hook();
+void register_equip_char_hook();
+void register_pkill_fame_hooks();
 int delete_exploits_file(char *);
 void delete_character_file(struct char_data *);
 void move_char_deleted(int);

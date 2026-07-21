@@ -105,6 +105,20 @@ using complete_delay_fn = void (*)(char_data* ch);
 // with the six void forwarders above.
 using get_txt_block_from_pool_fn = txt_block* (*)(std::string_view line);
 
+// put_to_txt_block_pool(struct txt_block*) (comm.cpp) -- the PUT-side
+// counterpart of the txt-block-pool getter above (l4-seed wave, Task 1;
+// l4-census.md section "put_to_txt_block_pool forwarder"). A future
+// combat/script-tier caller (mudlle.cpp/mudlle2.cpp, still app-compiled
+// today) calls this exact global symbol to return a txt_block to the pool
+// once it promotes above comm.cpp. Void, unlike the pointer-returning GET
+// forwarder above: PUT never dereferences its argument, so the null-sink
+// default is a SAFE logged no-op (this header's dominant "logged no-op"
+// taxonomy, not the GET forwarder's abort-tripwire exception) -- a
+// discarded-without-registration txt_block* would leak (never returned to
+// the pool), but that is a leak, not a crash, and this file's own
+// mudlle.cpp/mudlle2.cpp call sites are consumer-free this task anyway.
+using put_txt_block_to_pool_fn = void (*)(struct txt_block*);
+
 struct Sinks {
     send_to_char_fn send_to_char; // comm.cpp's desc-delivery body
     send_to_char_id_fn send_to_char_id; // comm.cpp's descriptor_list-walk body
@@ -118,6 +132,7 @@ struct Sinks {
     abort_delay_fn abort_delay; // comm.cpp's abort_delay_impl body
     complete_delay_fn complete_delay; // comm.cpp's complete_delay_impl body
     get_txt_block_from_pool_fn get_txt_block_from_pool; // comm.cpp's get_from_txt_block_pool_impl(string_view) body
+    put_txt_block_to_pool_fn put_txt_block_to_pool; // comm.cpp's put_to_txt_block_pool_impl body
 };
 
 // Installs the sinks the game-output forwarders (output_seam.cpp) call

@@ -27,6 +27,7 @@
 #include "rots/core/room.h"
 #include "rots/core/types.h"
 #include "utils.h"
+#include "world_hooks.h"
 
 /* extern variables */
 extern struct room_data world;
@@ -957,6 +958,24 @@ ACMD(do_wear)
                 act("You can't wear $p.", FALSE, ch, obj, 0, TO_CHAR);
         }
     }
+}
+
+// world_hooks.h's do-wear hook (l4-seed wave, Task 1; l4-census.md
+// section 3.5): bakes zone.cpp:598's fixed call shape
+// (`do_wear(mob, mutable_arg("all"), 0, 0, 0);`) into a single opaque
+// char_data* wrapper -- see world_hooks.h's do_wear_fn comment.
+void wear_all_carried_items(char_data* mob)
+{
+    do_wear(mob, mutable_arg("all"), 0, 0, 0);
+}
+
+// Registers the real wear_all_carried_items() wrapper above as
+// world_hooks.h's do-wear hook (l4-seed wave, Task 1). Called once from
+// run_the_game(), before boot_db() -- same convention as
+// register_boot_shops_hook() (shop.cpp).
+void register_do_wear_hook()
+{
+    rots::world::set_do_wear_hook(wear_all_carried_items);
 }
 
 ACMD(do_wield)

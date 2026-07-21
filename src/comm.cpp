@@ -699,6 +699,18 @@ void run_the_game(sh_int port)
     // unregistered hook.
     register_command_interpreter_hook();
     register_pers_hook();
+    // world_hooks.h's do-wear/is-zone-populated/equip-char/pkill-fame hooks
+    // (l4-seed wave, Task 1), registered the same way and for the same
+    // reason: before boot_db(), so ageland never runs zone.cpp's future
+    // rots::world::dispatch_do_wear()/dispatch_is_zone_populated()/
+    // dispatch_equip_char()/dispatch_pkill_get_good_fame()/
+    // dispatch_pkill_get_evil_fame() call sites (consumer-free this task --
+    // zone.cpp itself is not yet a rots_world member, converted in a later
+    // l4-seed task) with an unregistered hook.
+    register_do_wear_hook();
+    register_is_zone_populated_hook();
+    register_equip_char_hook();
+    register_pkill_fame_hooks();
 
     log("Signal trapping.");
     signal_setup();
@@ -1454,15 +1466,23 @@ static struct txt_block* get_from_txt_block_pool_impl(std::string_view line)
     text_block->text[copied_size] = '\0';
     return text_block;
 }
-void put_to_txt_block_pool(struct txt_block* pold)
+// Renamed from put_to_txt_block_pool() (l4-seed wave, Task 1, mirroring
+// get_from_txt_block_pool_impl()'s own rename above): output_seam.cpp now
+// owns the GLOBAL put_to_txt_block_pool(struct txt_block*) symbol name (a
+// forwarder through rots::output's registered sinks, for a future
+// combat/script-tier caller -- see output_seam.h's put_txt_block_to_pool_fn
+// comment), so this file's real body moves to a file-scope static _impl
+// name and gets registered into BOTH hook mechanisms below: entity_hooks.h's
+// pair (target_data's pool traffic) and output_seam.h's new sink.
+static void put_to_txt_block_pool_impl(struct txt_block* pold)
 {
 
     pold->next = txt_block_pool;
     txt_block_pool = pold;
 }
 
-// Registers get_from_txt_block_pool()/put_to_txt_block_pool() (above) as
-// entity_hooks.h's txt-block-pool hook pair -- world-seed Task 2's
+// Registers get_from_txt_block_pool()/put_to_txt_block_pool_impl() (above)
+// as entity_hooks.h's txt-block-pool hook pair -- world-seed Task 2's
 // disposition for target_data::cleanup()/operator=() (relocated to
 // entity_lifecycle.cpp; see that file's own "target_data member functions"
 // section). comm.cpp is not a leaf module (this pool is entangled with the
@@ -1472,7 +1492,7 @@ void put_to_txt_block_pool(struct txt_block* pold)
 void register_txt_block_pool_hooks()
 {
     rots::entity::set_get_txt_block_pool_hook(get_from_txt_block_pool);
-    rots::entity::set_put_txt_block_pool_hook(put_to_txt_block_pool);
+    rots::entity::set_put_txt_block_pool_hook(put_to_txt_block_pool_impl);
 }
 
 // Installs send_to_sector()/send_to_outdoor() as world_hooks.h's
@@ -1487,6 +1507,27 @@ void register_world_broadcast_hooks()
 {
     rots::world::set_send_to_sector_hook(send_to_sector);
     rots::world::set_send_to_outdoor_hook(send_to_outdoor);
+}
+
+// Installs zone_is_populated() as world_hooks.h's is-zone-populated hook
+// (l4-seed wave, Task 1; l4-census.md section 3.5). zone.cpp's is_empty()
+// walks descriptor_list, app-owned session data this file owns -- see
+// world_hooks.h's is_zone_populated_fn comment for the semantic-inverse
+// naming rationale. Called once from run_the_game(), before boot_db() --
+// same convention as register_world_broadcast_hooks() above.
+bool zone_is_populated(int zone_nr)
+{
+    for (descriptor_data* connection = descriptor_list; connection; connection = connection->next)
+        if (!connection->connected)
+            if (world[connection->character->in_room].zone == zone_nr)
+                return true;
+
+    return false;
+}
+
+void register_is_zone_populated_hook()
+{
+    rots::world::set_is_zone_populated_hook(zone_is_populated);
 }
 
 void write_to_q(std::string_view text, struct txt_q* queue)
@@ -2603,6 +2644,7 @@ void register_game_output_sinks()
     sinks.abort_delay = abort_delay_impl;
     sinks.complete_delay = complete_delay_impl;
     sinks.get_txt_block_from_pool = get_from_txt_block_pool_impl;
+    sinks.put_txt_block_to_pool = put_to_txt_block_pool_impl;
     rots::output::set_sinks(sinks);
 }
 

@@ -36,6 +36,7 @@
 #include "json_utils.h"
 #include "text_view.h"
 #include "pkill.h"
+#include "world_hooks.h"
 #include "platform_compat.h"
 #include "rots/core/character.h"
 #include "rots/core/types.h"
@@ -799,6 +800,19 @@ int pkill_get_good_fame()
 int pkill_get_evil_fame()
 {
     return evil_ranking.side_fame / 100;
+}
+
+// Registers the real pkill_get_good_fame()/pkill_get_evil_fame() bodies
+// above as world_hooks.h's pkill-fame hook pair (l4-seed wave, Task 1
+// CONTROLLER ADDENDUM item 2; l4-census.md section 3.6): good_ranking/
+// evil_ranking are plain app-tier globals defined in this file, so the two
+// accessors cannot relocate to rots_persist without leaving that library
+// depending on unresolved app-tier storage. Called once from
+// run_the_game(), before boot_db().
+void register_pkill_fame_hooks()
+{
+    rots::world::set_pkill_get_good_fame_hook(pkill_get_good_fame);
+    rots::world::set_pkill_get_evil_fame_hook(pkill_get_evil_fame);
 }
 
 LEADER*

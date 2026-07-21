@@ -318,6 +318,136 @@ index_data* obj_index_by_id_impl(int item_number)
 
 } // namespace rots::world
 
+/*************************************************************************
+ *  world_hooks.h dispatch, part 2 (l4-seed wave, Task 1)                *
+ *************************************************************************
+ *  Backing storage + dispatch for zone.cpp's four remaining upward edges
+ *  (do_wear/is_zone_populated/equip_char/pkill fame pair; l4-task-1-brief.md
+ *  CONTROLLER ADDENDUM items 1/2; l4-census.md sections 3.3/3.5/3.6).
+ *  zone.cpp is NOT yet a rots_world member at this task -- it keeps calling
+ *  the real do_wear()/is_empty()/equip_char()/pkill_get_good_fame()/
+ *  pkill_get_evil_fame() bodies directly, unconverted -- so this block is
+ *  consumer-free, matching the world-seed pattern of hosting backing
+ *  storage in db_world.cpp ahead of the eventual dispatching TU's promotion
+ *  (see e.g. this file's boot-shops/mudlle-converter hooks above, both
+ *  written before their own callers converted). Each dispatch function
+ *  below needs EXTERNAL linkage (unlike this file's boot-shops/mudlle-
+ *  converter dispatch helpers, kept in an anonymous namespace since only
+ *  this file calls them): the eventual caller is zone.cpp, a different TU,
+ *  the same "cross-TU dispatch" shape as entity_hooks.h's four resolver
+ *  hooks above.
+ ************************************************************************/
+namespace rots::world {
+
+namespace {
+// Backing storage for the registered do-wear hook (register_do_wear_hook(),
+// act_obj2.cpp). Null until that registration runs; the null default is a
+// loud tripwire log + no-op -- see world_hooks.h's do_wear_fn comment.
+do_wear_fn g_do_wear_hook = nullptr;
+
+// Backing storage for the registered is-zone-populated hook
+// (register_is_zone_populated_hook(), comm.cpp). Null until that
+// registration runs; the null default is TRUE ("assume populated") -- see
+// world_hooks.h's is_zone_populated_fn comment.
+is_zone_populated_fn g_is_zone_populated_hook = nullptr;
+
+// Backing storage for the registered equip-char hook
+// (register_equip_char_hook(), fight.cpp). Null until that registration
+// runs; the null default is a loud tripwire log + no-op -- see
+// world_hooks.h's equip_char_fn comment.
+equip_char_fn g_equip_char_hook = nullptr;
+
+// Backing storage for the registered pkill-fame hook pair
+// (register_pkill_fame_hooks(), pkill.cpp). Null until that registration
+// runs; the null default is 0 for both -- see world_hooks.h's
+// pkill_fame_query_fn comment.
+pkill_fame_query_fn g_pkill_get_good_fame_hook = nullptr;
+pkill_fame_query_fn g_pkill_get_evil_fame_hook = nullptr;
+} // namespace
+
+void set_do_wear_hook(do_wear_fn hook)
+{
+    g_do_wear_hook = hook;
+}
+
+void set_is_zone_populated_hook(is_zone_populated_fn hook)
+{
+    g_is_zone_populated_hook = hook;
+}
+
+void set_equip_char_hook(equip_char_fn hook)
+{
+    g_equip_char_hook = hook;
+}
+
+void set_pkill_get_good_fame_hook(pkill_fame_query_fn hook)
+{
+    g_pkill_get_good_fame_hook = hook;
+}
+
+void set_pkill_get_evil_fame_hook(pkill_fame_query_fn hook)
+{
+    g_pkill_get_evil_fame_hook = hook;
+}
+
+void dispatch_do_wear(char_data* mob)
+{
+    if (g_do_wear_hook) {
+        g_do_wear_hook(mob);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::world: STUB dispatch_do_wear() called with no handler registered -- this should "
+        "be unreachable once register_do_wear_hook() has run.");
+}
+
+bool dispatch_is_zone_populated(int zone_nr)
+{
+    if (g_is_zone_populated_hook) {
+        return g_is_zone_populated_hook(zone_nr);
+    }
+    rots::log::write_stderr(
+        "rots::world: STUB dispatch_is_zone_populated() called with no handler registered -- "
+        "defaulting to TRUE (\"assume populated\") to avoid a spurious reset while unregistered; "
+        "this should be unreachable once register_is_zone_populated_hook() has run.");
+    return true;
+}
+
+void dispatch_equip_char(char_data* character, obj_data* item, int item_slot)
+{
+    if (g_equip_char_hook) {
+        g_equip_char_hook(character, item, item_slot);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::world: STUB dispatch_equip_char() called with no handler registered -- this "
+        "should be unreachable once register_equip_char_hook() has run.");
+}
+
+int dispatch_pkill_get_good_fame()
+{
+    if (g_pkill_get_good_fame_hook) {
+        return g_pkill_get_good_fame_hook();
+    }
+    rots::log::write_stderr(
+        "rots::world: STUB dispatch_pkill_get_good_fame() called with no handler registered -- "
+        "defaulting to 0; this should be unreachable once register_pkill_fame_hooks() has run.");
+    return 0;
+}
+
+int dispatch_pkill_get_evil_fame()
+{
+    if (g_pkill_get_evil_fame_hook) {
+        return g_pkill_get_evil_fame_hook();
+    }
+    rots::log::write_stderr(
+        "rots::world: STUB dispatch_pkill_get_evil_fame() called with no handler registered -- "
+        "defaulting to 0; this should be unreachable once register_pkill_fame_hooks() has run.");
+    return 0;
+}
+
+} // namespace rots::world
+
 // Registers this file's room_by_id_impl()/room_by_id_total_impl()/
 // obj_index_by_id_impl() (above) and zone_load.cpp's zone_by_id_impl() as
 // entity_hooks.h's room/room-total/zone/obj-index resolver hooks. Called

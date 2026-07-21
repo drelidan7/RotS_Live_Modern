@@ -229,3 +229,20 @@ txt_block* get_from_txt_block_pool(std::string_view line)
         line));
     std::abort();
 }
+
+// Unlike get_from_txt_block_pool() above, an unregistered hit here is a
+// SAFE logged no-op, not abort: PUT never dereferences its argument (see
+// output_seam.h's put_txt_block_to_pool_fn comment) -- a discarded block
+// would leak, not crash. comm.cpp registers the real
+// put_to_txt_block_pool_impl() body in run_the_game() before boot_db(), so
+// ageland never reaches this path in practice.
+void put_to_txt_block_pool(struct txt_block* pold)
+{
+    if (g_sinks.put_txt_block_to_pool) {
+        g_sinks.put_txt_block_to_pool(pold);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::output: STUB put_to_txt_block_pool() called with no sink registered -- this "
+        "should be unreachable once register_game_output_sinks() has run.");
+}

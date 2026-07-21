@@ -16,6 +16,9 @@
 #include <cstdio>
 #include <string_view>
 
+struct char_data;
+struct obj_data;
+
 namespace rots::world {
 
 // index_boot()'s DB_BOOT_SHP case (db_world.cpp): `boot_the_shops(db_file,
@@ -87,5 +90,76 @@ void set_send_to_sector_hook(send_to_sector_fn hook);
 
 using send_to_outdoor_fn = void (*)(std::string_view message, int mode);
 void set_send_to_outdoor_hook(send_to_outdoor_fn hook);
+
+// zone.cpp:598's do_wear() call (`do_wear(mob, mutable_arg("all"), 0, 0, 0);`,
+// zone reset's ZONE_MOB_UNWEAR-adjacent case; l4-seed wave Task 1;
+// l4-census.md section 3.5). Takes only the opaque char_data* -- the "all"
+// argument and zero cmd/subcmd are fixed literals at the one call site, so
+// the real body (act_obj2.cpp's do_wear_all_items() wrapper) bakes them in
+// rather than widening this hook to the full 5-arg ACMD shape.
+// act_obj2.cpp registers the real wrapper at boot, before boot_db() runs;
+// null default is a loud tripwire log + no-op (a state-change command a
+// missed hook would silently skip, matching this header's boot-shops/
+// mudlle-converter tripwire class, not the weather hooks' silent one).
+using do_wear_fn = void (*)(char_data* mob);
+void set_do_wear_hook(do_wear_fn hook);
+void dispatch_do_wear(char_data* mob);
+
+// zone.cpp's is_empty(int zone_nr) (reset-gating query, `is_empty(i) &&
+// zone_table[i].age >= ...`; l4-census.md section 3.5) walks
+// descriptor_list -- app-owned session state this library must not reach.
+// This hook is the semantic INVERSE (returns true when the zone HAS a
+// player, matching a more legible name than "is_empty"), so a future
+// zone.cpp call site reads `!dispatch_is_zone_populated(i)` where it used
+// to read `is_empty(i)`. comm.cpp registers the real body (which owns
+// descriptor_list) at boot, before boot_db() runs. Null default is TRUE
+// ("assume populated") -- the SAFE-SENTINEL class (like persist_hooks.h's
+// room_vnum_fn returning NOWHERE), not a tripwire: zone.cpp's only use of
+// this query gates a destructive zone reset, and defaulting to "populated"
+// means an unregistered hook degrades to "never reset" rather than
+// risking a reset while players are actually present.
+using is_zone_populated_fn = bool (*)(int zone_nr);
+void set_is_zone_populated_hook(is_zone_populated_fn hook);
+bool dispatch_is_zone_populated(int zone_nr);
+
+// zone.cpp:612's equip_char() call (`equip_char(mob, obj, ZCMD.arg2);`;
+// l4-seed wave Task 1 CONTROLLER ADDENDUM item 1; l4-census.md section
+// 3.3). OVERTURNED from the spec's original "relocate to rots_entity"
+// default: equip_char()'s own body (fight.cpp) has a poison-coupling block
+// that calls damage()/raw_kill() (both rots_combat, L3), so it cannot move
+// to rots_entity (L2) without creating an illegal upward L2->L3 edge --
+// see fight.cpp's own equip_char() comment. equip_char() stays defined in
+// fight.cpp; only zone.cpp's call site inverts through this hook.
+// fight.cpp registers the real body at boot, before boot_db() runs (a
+// legal combat->world DOWNWARD registration, mirroring mudlle_converter_fn's
+// registrar shape above). Null default is a loud tripwire log + no-op
+// (void-returning state-change command, same class as do_wear_fn above).
+using equip_char_fn = void (*)(char_data* character, obj_data* item, int item_slot);
+void set_equip_char_hook(equip_char_fn hook);
+void dispatch_equip_char(char_data* character, obj_data* item, int item_slot);
+
+// zone.cpp's pkill_get_good_fame()/pkill_get_evil_fame() query pair
+// (`pkill_get_good_fame() > pkill_get_evil_fame()`, the DOOR_UNBLOCK-family
+// fame-lead gates; l4-seed wave Task 1 CONTROLLER ADDENDUM item 2;
+// l4-census.md section 3.6). OVERTURNED from the spec's original
+// "relocate to rots_persist" default: pkill.cpp's good_ranking/
+// evil_ranking backing globals live in app-tier pkill.cpp itself, not
+// pkill_json.cpp (rots_persist) -- relocating just the two accessor
+// functions would leave rots_persist depending on unresolved app-tier
+// storage, failing PersistLayerAcyclicity. Home is world_hooks.h (not
+// persist_hooks.h): the sole consumer is zone.cpp/rots_world, mirroring
+// the boot_shops_fn pattern (an app-tier file registering into the
+// consumer's own upward seam) rather than routing through rots_persist's
+// seam for a TU that isn't itself a rots_persist member. pkill.cpp
+// registers both real bodies at boot, before boot_db() runs. Null default
+// is 0 for both -- the SAFE-SENTINEL class (no natural NOWHERE-equivalent
+// exists for a fame count, so 0 is chosen as the neutral value: with both
+// sides defaulting to 0, neither of zone.cpp's `> `/`<=` fame-lead
+// comparisons can spuriously favor either side).
+using pkill_fame_query_fn = int (*)();
+void set_pkill_get_good_fame_hook(pkill_fame_query_fn hook);
+void set_pkill_get_evil_fame_hook(pkill_fame_query_fn hook);
+int dispatch_pkill_get_good_fame();
+int dispatch_pkill_get_evil_fame();
 
 }

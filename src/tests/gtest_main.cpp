@@ -252,6 +252,21 @@ int main(int argc, char* argv[]) {
     // as every other hook this file registers.
     register_command_interpreter_hook();
     register_pers_hook();
+    // world_hooks.h's do-wear/is-zone-populated/equip-char/pkill-fame hooks
+    // (l4-seed wave, Task 1), registered for the same real-body-fidelity
+    // reason as the calls above: without them this test process would
+    // silently exercise their tripwire-logged/safe-sentinel defaults
+    // instead of act_obj2.cpp's/comm.cpp's/fight.cpp's/pkill.cpp's real
+    // bodies that ageland registers at boot -- all four TUs are already
+    // linked into both test binaries, so this only needs the registration
+    // calls. Consumer-free this task (zone.cpp's own call sites don't
+    // convert yet); these calls also cover this wave's own seam tests
+    // (world_hooks_tests.cpp), the same bridge-before-traffic posture as
+    // every other hook this file registers.
+    register_do_wear_hook();
+    register_is_zone_populated_hook();
+    register_equip_char_hook();
+    register_pkill_fame_hooks();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

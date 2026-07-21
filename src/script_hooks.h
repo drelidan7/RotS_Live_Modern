@@ -15,8 +15,11 @@
 // permanently, so once mudlle.cpp's call site converted to
 // rots::script::dispatch_command_interpreter() in Task 2, the T1 placement
 // became a genuine rots_script -> app upward edge the moment mudlle.cpp
-// joined rots_script; caught by ScriptLayerAcyclicity's negative-probe
-// verification, not silently missed. PERS's backing storage has lived in
+// joined rots_script; caught by rots_script_linkcheck's first ordinary
+// link (two undefined symbols: dispatch_pers/dispatch_command_interpreter),
+// not silently missed -- a separate negative-probe exercise (CMakeLists.txt)
+// only confirmed the checker is non-vacuous. PERS's backing storage has
+// lived in
 // script_hooks.cpp since T1 (PERS's real body and registrar are
 // utility.cpp, a different owner, so it never had a single natural owning
 // TU -- the same "seam header, no single owning caller" shape as

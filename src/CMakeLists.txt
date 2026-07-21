@@ -447,10 +447,11 @@ set(ROTS_PATHFIND_SOURCES
 # (db_world.cpp:218, rots_world/L3) is unaffected -- neither direction
 # changes tier legality, confirmed at Task 0 (l4-task-0-report.md).
 #
-# script_hooks.cpp JOINS HERE TOO (Task 3's own Step 4 negative-probe
-# finding, adjudicated on the spot -- a genuine census miss, not scoped in
-# the brief's literal Step 3 text, resolved by relocation rather than a
-# stub). T1 placed dispatch_command_interpreter()'s backing storage inside
+# script_hooks.cpp JOINS HERE TOO (Task 3's own Step 3 census miss, caught
+# by rots_script_linkcheck's first ordinary link -- not scoped in the
+# brief's literal Step 3 text, adjudicated on the spot and resolved by
+# relocation rather than a stub). T1 placed dispatch_command_interpreter()'s
+# backing storage inside
 # interpre.cpp itself (reasoning it was "the TU that already visits the
 # target"), but interpre.cpp stays app-tier permanently -- so the moment
 # mudlle.cpp's call site converted to
@@ -465,8 +466,9 @@ set(ROTS_PATHFIND_SOURCES
 # byte-verbatim body move, only interpre.cpp's register_command_interpreter_
 # hook() registrar stays behind (a legal app -> lib downward call). Now
 # BOTH script_hooks.h hooks' backing storage lives in one small,
-# entity-pure TU (reaches only rots::log/RotS::platform, opaque
-# char_data*/waiting_type* pointers never dereferenced) that joins this
+# platform-only TU (reaches only rots::log/RotS::platform, opaque
+# char_data*/waiting_type* pointers never dereferenced -- not an L2
+# entity-tier TU despite superficially resembling one) that joins this
 # library alongside its two callers.
 set(ROTS_SCRIPT_SOURCES
     mudlle.cpp mudlle2.cpp script_hooks.cpp
@@ -486,7 +488,8 @@ set(ROTS_SCRIPT_SOURCES
 # this list for ROTS_PATHFIND_SOURCES above (l4-seed wave Task 3, Step 2).
 # mudlle.cpp/mudlle2.cpp/script_hooks.cpp LEFT this list for
 # ROTS_SCRIPT_SOURCES above (l4-seed wave Task 3, Step 3 -- script_hooks.cpp
-# is a Step-4 negative-probe finding, see that set's own comment).
+# is Task 3's own census miss, caught by rots_script_linkcheck's first
+# ordinary link, see that set's own comment).
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -1471,7 +1474,8 @@ if(ROTS_BUILD_TESTS)
         # the rots_pathfind_linkcheck block above (l4-seed wave Task 3, Step
         # 3 -- the second L4-band linkcheck, landing after rots_pathfind's
         # because rots_script links it). rots_script (mudlle.cpp +
-        # mudlle2.cpp -- see the ROTS_SCRIPT_SOURCES comment above) is
+        # mudlle2.cpp + script_hooks.cpp -- see the ROTS_SCRIPT_SOURCES
+        # comment above) is
         # verified to have no upward symbol references beyond its legal
         # downward edges into rots_pathfind, rots_combat, rots_world,
         # rots_persist, rots_entity, rots_core, and rots_platform.

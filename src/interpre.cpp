@@ -1434,8 +1434,10 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
 // registrar" precedent) turned out to be a genuine rots_script -> app
 // upward edge once mudlle.cpp's call site converted to
 // rots::script::dispatch_command_interpreter() in Task 2 -- caught by
-// ScriptLayerAcyclicity's own negative-probe verification at this task's
-// Step 4, not silently missed. Only the REGISTRAR (a legal app -> lib
+// rots_script_linkcheck's first ordinary link (two undefined symbols:
+// dispatch_pers/dispatch_command_interpreter) at this task's Step 3, not
+// silently missed (a separate negative-probe exercise only confirmed the
+// checker is non-vacuous). Only the REGISTRAR (a legal app -> lib
 // downward call into script_hooks.h's public set_command_interpreter_hook()
 // API) stays here, mirroring register_extract_char_hook() (handler.cpp)
 // and register_combat_command_dispatch() (this file, below) -- called from

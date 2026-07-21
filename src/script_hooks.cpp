@@ -19,8 +19,10 @@
 // cannot promote) -- so once mudlle.cpp's call site converted to
 // rots::script::dispatch_command_interpreter() in Task 2, that placement
 // became a genuine rots_script -> app upward edge the moment mudlle.cpp
-// joined this library. Caught by ScriptLayerAcyclicity's own negative-probe
-// verification at this task's Step 4, not silently missed; the fix is this
+// joined this library. Caught by rots_script_linkcheck's first ordinary
+// link (two undefined symbols: dispatch_pers/dispatch_command_interpreter)
+// at this task's Step 3, not silently missed -- the separate negative-probe
+// exercise only confirmed the checker is non-vacuous; the fix is this
 // relocation, byte-verbatim except for its own banner comment and the
 // dropped "namespace rots::script { ... }" wrapper interpre.cpp no longer
 // needs (this file already opens rots::script once, below, for both hooks).

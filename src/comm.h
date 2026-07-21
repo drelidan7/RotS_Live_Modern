@@ -159,6 +159,7 @@ void* virt_program_number(int number);
 // gtest_main.cpp's main(), before boot_db() -- same convention as this
 // header's other registrars.
 void register_virt_program_number_hook();
+void register_virt_assignmob_hook();
 
 special_func_ptr get_special_function(int number);
 

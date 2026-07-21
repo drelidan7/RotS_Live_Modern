@@ -114,3 +114,33 @@ void* dispatch_virt_program_number(int number)
 }
 
 } // namespace rots::script
+
+namespace {
+// Backing storage for the registered virt_assignmob hook
+// (register_virt_assignmob_hook(), spec_ass.cpp; Cluster B wave Task 1).
+// Null until that registration runs; the null default is an abort tripwire
+// (see dispatch_virt_assignmob() below) -- see script_hooks.h's
+// virt_assignmob_fn comment for why this class, not a logged no-op.
+rots::script::virt_assignmob_fn g_virt_assignmob_hook = nullptr;
+} // namespace
+
+namespace rots::script {
+
+void set_virt_assignmob_hook(virt_assignmob_fn hook)
+{
+    g_virt_assignmob_hook = hook;
+}
+
+void dispatch_virt_assignmob(char_data* mob)
+{
+    if (g_virt_assignmob_hook) {
+        g_virt_assignmob_hook(mob);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::script: FATAL dispatch_virt_assignmob() called with no handler registered -- this "
+        "should be unreachable once register_virt_assignmob_hook() has run.");
+    std::abort();
+}
+
+} // namespace rots::script

@@ -748,6 +748,13 @@ void run_the_game(sh_int port)
     // rots::script::dispatch_virt_program_number() call sites
     // (consumer-free this task) with an unregistered hook.
     register_virt_program_number_hook();
+    // script_hooks.h's virt_assignmob cell (Cluster B wave Task 1;
+    // cb-task-1-brief.md Step 2), registered the same way and for the same
+    // reason: before boot_db(), so ageland never runs shapemob.cpp's future
+    // rots::script::dispatch_virt_assignmob() call site (consumer-free this
+    // task -- converted for real in a later Cluster B task) with an
+    // unregistered hook.
+    register_virt_assignmob_hook();
 
     log("Signal trapping.");
     signal_setup();

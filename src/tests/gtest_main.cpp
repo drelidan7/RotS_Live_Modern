@@ -302,6 +302,12 @@ int main(int argc, char* argv[]) {
     // registration call. Consumer-free this task; this call also covers
     // this wave's own seam test (script_hooks_tests.cpp).
     register_virt_program_number_hook();
+    // script_hooks.h's virt_assignmob cell (Cluster B wave Task 1), registered
+    // for the same real-body-fidelity reason as the calls above:
+    // spec_ass.cpp is already linked into both test binaries, so this only
+    // needs the registration call. Consumer-free this task; this call also
+    // covers this wave's own seam test (script_hooks_tests.cpp).
+    register_virt_assignmob_hook();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

@@ -80,6 +80,23 @@ public:
     ScopedVirtProgramNumberHook& operator=(const ScopedVirtProgramNumberHook&) = delete;
 };
 
+// Same shape as ScopedVirtProgramNumberHook above, for script_hooks.h's
+// virt_assignmob cell (Cluster B wave Task 1; cb-task-1-brief.md Step 2;
+// cb-census.md section 5.2 -- rider gate edge 2 of the pre-authorized <=3,
+// no auto-STOP).
+class ScopedVirtAssignmobHook {
+public:
+    explicit ScopedVirtAssignmobHook(rots::script::virt_assignmob_fn hook)
+    {
+        rots::script::set_virt_assignmob_hook(hook);
+    }
+
+    ~ScopedVirtAssignmobHook() { register_virt_assignmob_hook(); }
+
+    ScopedVirtAssignmobHook(const ScopedVirtAssignmobHook&) = delete;
+    ScopedVirtAssignmobHook& operator=(const ScopedVirtAssignmobHook&) = delete;
+};
+
 struct RecordedCommandInterpreterCall {
     char_data* ch = nullptr;
     char* argument_chr = nullptr;
@@ -125,6 +142,18 @@ void* recording_virt_program_number_stub(int number)
 {
     g_recorded_virt_program_number_call = RecordedVirtProgramNumberCall { number, true };
     return &g_virt_program_number_stub_marker;
+}
+
+struct RecordedVirtAssignmobCall {
+    char_data* mob = nullptr;
+    bool called = false;
+};
+
+RecordedVirtAssignmobCall g_recorded_virt_assignmob_call;
+
+void recording_virt_assignmob_stub(char_data* mob)
+{
+    g_recorded_virt_assignmob_call = RecordedVirtAssignmobCall { mob, true };
 }
 
 } // namespace
@@ -205,4 +234,23 @@ TEST(VirtProgramNumberHook, DispatchReachesARegisteredStubWithArgIntactAndForwar
     EXPECT_EQ(g_recorded_virt_program_number_call.number, 7);
     EXPECT_EQ(result, &g_virt_program_number_stub_marker)
         << "Expected dispatch_virt_program_number() to forward the stub's own return value.";
+}
+
+// dispatch_virt_assignmob() (Cluster B wave Task 1; cb-task-1-brief.md
+// Step 2; cb-census.md section 5.2) -- DISCRIMINATOR: a recording stub
+// proves the dispatch wrapper forwards `mob` intact. No death test for the
+// unregistered (abort-tripwire) default, same no-death-test convention as
+// dispatch_pers()/dispatch_virt_program_number() above.
+
+TEST(VirtAssignmobHook, DispatchReachesARegisteredStubWithArgIntact)
+{
+    g_recorded_virt_assignmob_call = RecordedVirtAssignmobCall {};
+    ScopedVirtAssignmobHook scoped(recording_virt_assignmob_stub);
+    char_data mob {};
+
+    rots::script::dispatch_virt_assignmob(&mob);
+
+    EXPECT_TRUE(g_recorded_virt_assignmob_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_virt_assignmob_call.mob, &mob);
 }

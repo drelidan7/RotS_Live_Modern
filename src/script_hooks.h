@@ -88,4 +88,24 @@ using virt_program_fn = void* (*)(int number);
 void set_virt_program_number_hook(virt_program_fn hook);
 void* dispatch_virt_program_number(int number);
 
+// virt_assignmob() (interpre.h:119, spec_ass.cpp:491; Cluster B wave Task 1;
+// cb-task-1-brief.md Step 2; cb-census.md section 5.2 -- rider gate edge 2
+// of the pre-authorized <=3, no auto-STOP). shapemob.cpp:1838's one call
+// site (`virt_assignmob(mob_proto + number);`) is the sole edge this cell
+// exists for: a full sweep of all 7 Cluster B TUs (script.cpp +
+// shape{mdl,mob,obj,rom,script,zon}.cpp) for `virt_*`/`assign_*`/`special(`
+// found zero further same-shape (void-returning, single char_data*
+// spec-proc-assignment) or different-shape edge. spec_ass.cpp registers the
+// real body via register_virt_assignmob_hook() (spec_ass.cpp -- the
+// virt_program_number_hook precedent above), called once from
+// run_the_game()/gtest_main.cpp's main(), before boot_db(). Abort-tripwire
+// default (this cell has no return value to safely omit, but its real body
+// mutates mob_index[mob->nr].func -- a caller relying on that mutation
+// having happened must not silently proceed as if it had): mirrors this
+// header's pers_fn/virt_program_fn taxonomy above, not
+// command_interpreter_fn's loud-logged-no-op class.
+using virt_assignmob_fn = void (*)(char_data* mob);
+void set_virt_assignmob_hook(virt_assignmob_fn hook);
+void dispatch_virt_assignmob(char_data* mob);
+
 } // namespace rots::script

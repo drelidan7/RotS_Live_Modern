@@ -399,6 +399,16 @@ void register_virt_program_number_hook()
     rots::script::set_virt_program_number_hook(virt_program_number);
 }
 
+// Registers the real virt_assignmob(mob) body below as script_hooks.h's
+// matching cell (Cluster B wave Task 1; cb-task-1-brief.md Step 2;
+// cb-census.md section 5.2 -- rider gate edge 2 of the pre-authorized <=3).
+// Called once from run_the_game()/gtest_main.cpp's main(), before boot_db()
+// -- same convention as register_virt_program_number_hook() above.
+void register_virt_assignmob_hook()
+{
+    rots::script::set_virt_assignmob_hook(virt_assignmob);
+}
+
 special_func_ptr get_special_function(int number)
 {
     switch (number) {

@@ -9,6 +9,7 @@
 
 #include "comm.h"
 #include "db.h"
+#include "editor_hooks.h"
 #include "interpre.h"
 #include "protos.h"
 #include "rots/core/character.h"
@@ -393,7 +394,7 @@ void write_proto(FILE* f, struct char_data* m, int num)
             SHAPE_PROTO(ch)                                           \
                 ->tmpstr                                              \
                 = str_dup(addr);                                      \
-            string_add_init(ch->desc, &(SHAPE_PROTO(ch)->tmpstr));    \
+            rots::editor::dispatch_string_editor_init(ch->desc, &(SHAPE_PROTO(ch)->tmpstr)); \
             return;                                                   \
         } else {                                                      \
             if (SHAPE_PROTO(ch)->tmpstr) {                            \

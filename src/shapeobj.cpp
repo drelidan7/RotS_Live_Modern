@@ -8,6 +8,7 @@
 
 #include "comm.h"
 #include "db.h"
+#include "editor_hooks.h"
 #include "interpre.h"
 #include "protos.h"
 #include "rots/core/character.h"
@@ -274,7 +275,7 @@ void implement_object(struct char_data* ch)
             SHAPE_OBJECT(ch)                                          \
                 ->tmpstr                                              \
                 = str_dup(addr);                                      \
-            string_add_init(ch->desc, &(SHAPE_OBJECT(ch)->tmpstr));   \
+            rots::editor::dispatch_string_editor_init(ch->desc, &(SHAPE_OBJECT(ch)->tmpstr)); \
             return;                                                   \
         } else {                                                      \
             if (SHAPE_OBJECT(ch)->tmpstr) {                           \

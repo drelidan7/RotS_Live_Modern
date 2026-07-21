@@ -11,6 +11,7 @@
 
 #include "comm.h"
 #include "db.h"
+#include "editor_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "protos.h"
@@ -261,7 +262,7 @@ void edit_mudlle(struct char_data* ch)
 {
     if (!ch->desc)
         return;
-    string_add_init(ch->desc, &(SHAPE_MUDLLE(ch)->txt));
+    rots::editor::dispatch_string_editor_init(ch->desc, &(SHAPE_MUDLLE(ch)->txt));
     return;
 }
 

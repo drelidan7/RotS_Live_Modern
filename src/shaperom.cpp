@@ -8,6 +8,7 @@
 
 #include "comm.h"
 #include "db.h"
+#include "editor_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "protos.h"
@@ -335,7 +336,7 @@ void implement_room(struct char_data* ch)
             SHAPE_ROOM(ch)                                            \
                 ->tmpstr                                              \
                 = str_dup(addr);                                      \
-            string_add_init(ch->desc, &(SHAPE_ROOM(ch)->tmpstr));     \
+            rots::editor::dispatch_string_editor_init(ch->desc, &(SHAPE_ROOM(ch)->tmpstr)); \
             return;                                                   \
         } else {                                                      \
             if (SHAPE_ROOM(ch)->tmpstr) {                             \

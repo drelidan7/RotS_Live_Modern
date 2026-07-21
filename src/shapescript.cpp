@@ -46,6 +46,7 @@
 
 #include "comm.h"
 #include "db.h"
+#include "editor_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "protos.h"
@@ -1194,7 +1195,7 @@ void extra_coms_script(struct char_data* ch, char* argument)
             SHAPE_SCRIPT(ch)                                          \
                 ->tmpstr                                              \
                 = str_dup(addr);                                      \
-            string_add_init(ch->desc, &(SHAPE_SCRIPT(ch)->tmpstr));   \
+            rots::editor::dispatch_string_editor_init(ch->desc, &(SHAPE_SCRIPT(ch)->tmpstr)); \
             return;                                                   \
         } else {                                                      \
             if (SHAPE_SCRIPT(ch)->tmpstr) {                           \

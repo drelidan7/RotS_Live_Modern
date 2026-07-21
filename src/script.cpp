@@ -28,6 +28,7 @@
 #include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
+#include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
@@ -35,21 +36,16 @@
 #include "protos.h"
 #include "safe_template.h"
 #include "script.h"
+#include "script_hooks.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
 #include "utils.h"
+#include "world_hooks.h"
 #include "zone.h"
 
 // External declarations
-ACMD(do_say);
-ACMD(do_hit);
-ACMD(do_flee);
-ACMD(do_emote);
-ACMD(do_gen_com);
-ACMD(do_wear);
-ACMD(do_action);
 extern struct script_head* script_table;
 extern struct room_data world;
 extern int top_of_script_table;
@@ -62,7 +58,6 @@ int perform_drop(struct char_data* ch, struct obj_data* obj, sh_int RDR);
 void perform_remove(struct char_data* ch, int pos);
 int find_eq_pos(struct char_data* ch, struct obj_data* obj, char* arg);
 void perform_wear(struct char_data* ch, struct obj_data* obj, int where, bool wearall = false);
-int find_action(char* arg);
 extern struct index_data* obj_index;
 
 // Internal declarations
@@ -514,9 +509,9 @@ int int_0ary_op(struct info_script* info, int command)
 {
     switch (command) {
     case SCRIPT_SET_INT_WAR_STATUS:
-        if (pkill_get_good_fame() > pkill_get_evil_fame())
+        if (rots::world::dispatch_pkill_get_good_fame() > rots::world::dispatch_pkill_get_evil_fame())
             return 1;
-        else if (pkill_get_evil_fame() > pkill_get_good_fame())
+        else if (rots::world::dispatch_pkill_get_evil_fame() > rots::world::dispatch_pkill_get_good_fame())
             return -1;
         else
             return 0;
@@ -1074,7 +1069,7 @@ int run_script(struct info_script* info, struct script_data* position)
             if (curr->param[0] && curr->text) {
                 tmpch = get_char_param(curr->param[0], info);
                 if (tmpch)
-                    do_emote(tmpch, curr->text, 0, 36, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::emote, tmpch, curr->text, 0, 36, 0);
             }
             curr = curr->next;
             break;
@@ -1083,7 +1078,7 @@ int run_script(struct info_script* info, struct script_data* position)
             if (curr->param[0]) {
                 tmpch = get_char_param(curr->param[0], info);
                 if (tmpch)
-                    do_flee(tmpch, mutable_arg(""), 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::flee, tmpch, mutable_arg(""), 0, 0, 0);
             }
             curr = curr->next;
             break;
@@ -1127,7 +1122,7 @@ int run_script(struct info_script* info, struct script_data* position)
                     tmpwtl.targ1.ch_num = tmpch2->abs_number;
                     tmpwtl.cmd = CMD_HIT;
                     tmpwtl.subcmd = 0;
-                    do_hit(tmpch, 0, &tmpwtl, CMD_HIT, SCMD_MURDER);
+                    rots::combat::issue_command(rots::combat::combat_command::hit, tmpch, 0, &tmpwtl, CMD_HIT, SCMD_MURDER);
                 }
             }
             curr = curr->next;
@@ -1197,14 +1192,14 @@ int run_script(struct info_script* info, struct script_data* position)
                                    .c_str());
                 tmpch = get_char_param(curr->param[0], info);
                 if (tmpch)
-                    do_say(tmpch, output, 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::say, tmpch, output, 0, 0, 0);
             }
             curr = curr->next;
             break;
 
         case SCRIPT_DO_SOCIAL:
             if (curr->text && curr->param[0])
-                if ((tmpint = find_action(curr->text)) != -1) {
+                if ((tmpint = rots::script::dispatch_find_action(curr->text)) != -1) {
                     tmpch = get_char_param(curr->param[0], info);
                     tmpch2 = get_char_param(curr->param[1], info);
                     if ((tmpch2) && (tmpch2->in_room == tmpch->in_room)) {
@@ -1217,7 +1212,7 @@ int run_script(struct info_script* info, struct script_data* position)
                     }
                     tmpwtl.cmd = CMD_SOCIAL;
                     tmpwtl.subcmd = tmpint;
-                    do_action(tmpch, curr->text, &tmpwtl, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::action, tmpch, curr->text, &tmpwtl, 0, 0);
                 }
             curr = curr->next;
             break;
@@ -1255,7 +1250,7 @@ int run_script(struct info_script* info, struct script_data* position)
                                    .c_str());
                 tmpch = get_char_param(curr->param[0], info);
                 if (tmpch)
-                    do_gen_com(tmpch, output, 0, 0, SCMD_YELL);
+                    rots::combat::issue_command(rots::combat::combat_command::gen_com, tmpch, output, 0, 0, SCMD_YELL);
             }
             curr = curr->next;
             break;
@@ -1278,7 +1273,7 @@ int run_script(struct info_script* info, struct script_data* position)
                             obj_to_char(tmpobj, tmpch);
                         }
                     }
-                    do_wear(tmpch, mutable_arg("all"), 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::wear, tmpch, mutable_arg("all"), 0, 0, 0);
                 }
             }
             curr = curr->next;
@@ -1289,7 +1284,7 @@ int run_script(struct info_script* info, struct script_data* position)
                 tmpch = get_char_param(curr->param[0], info);
                 if (tmpch) {
                     if (IS_NPC(tmpch))
-                        extract_char(tmpch);
+                        rots::entity::extract_char(tmpch);
                     tmpch = 0;
                     assign_char_param(curr->param[0], info, tmpch);
                 }
@@ -1778,10 +1773,10 @@ int run_script(struct info_script* info, struct script_data* position)
                             continue;
                         if (k->follower->in_room != tmpch->in_room)
                             continue;
-                        char_from_room(k->follower);
+                        rots::entity::dispatch_char_from_room(k->follower);
                         char_to_room(k->follower, tmpint);
                     }
-                    char_from_room(tmpch);
+                    rots::entity::dispatch_char_from_room(tmpch);
                     char_to_room(tmpch, tmpint);
                 }
             }
@@ -1795,7 +1790,7 @@ int run_script(struct info_script* info, struct script_data* position)
                 if ((tmpch) && (tmpint > -1)) {
                     if (IS_RIDING(tmpch))
                         stop_riding(tmpch);
-                    char_from_room(tmpch);
+                    rots::entity::dispatch_char_from_room(tmpch);
                     char_to_room(tmpch, tmpint);
                 }
             }
@@ -1810,7 +1805,7 @@ int run_script(struct info_script* info, struct script_data* position)
                     if (IS_RIDING(tmpch)) {
                         stop_riding(tmpch);
                     }
-                    char_from_room(tmpch);
+                    rots::entity::dispatch_char_from_room(tmpch);
                     char_to_room(tmpch, real_room(tmprm->number));
                 }
             }

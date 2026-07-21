@@ -344,6 +344,51 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenSayIsUnregistered)
            "body never ran.";
 }
 
+// do_gen_com (act_comm.cpp) -- DISCRIMINATOR: same IS_NPC(ch) && GET_INT(ch) <
+// 6 guard as do_say's above (do_gen_com's third early-return, act_comm.cpp),
+// reached with the identical fixture -- PLR_FLAGGED(ch, PLR_NOSHOUT) is false
+// for an NPC (PLR_FLAGGED short-circuits on !IS_NPC(ch)) and
+// MOB_FLAGGED(ch, MOB_PET) is false because specials2.act only carries the
+// MOB_ISNPC bit, so control falls through both earlier guards into this one
+// without touching com_msgs[]/world[]/wtl. This cell's real body
+// (interpre.cpp:2252, `set_combat_command(combat_command::gen_com,
+// do_gen_com);`) had zero issue_command() callers anywhere in the tree before
+// Cluster B wave Task 2 (cb-task-2-brief.md Step 1; cb-census.md section 5.3)
+// converted script.cpp's one do_gen_com() call site (SCRIPT_DO_YELL) onto
+// this cell -- this pair is that task's Step 3 discriminator-audit gap-fill,
+// mirroring do_say's/do_move's own pairs (added when their first real
+// consumer landed) for the same "newly exercised, previously
+// registered-but-uncalled" reason.
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoGenComWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::gen_com, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "You are too stupid to talk.\n\r")
+        << "Expected the real do_gen_com body's low-intelligence-NPC guard to send its literal "
+           "message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenGenComIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::gen_com);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::gen_com, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered gen_com cell to leave send_to_char uncalled -- the real "
+           "do_gen_com body never ran.";
+}
+
 // do_stand (act_move.cpp) -- DISCRIMINATOR: the POSITION_SITTING branch's
 // unconditional `GET_POS(ch) = POSITION_STANDING` (character.specials.fighting
 // is null, so the non-fighting arm of that branch's inner if/else runs) -- a

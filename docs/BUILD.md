@@ -269,12 +269,19 @@ accident:
 ## Library layering & the foundation acyclicity check
 
 The source tree is being carved into layered static libraries (see
-`docs/superpowers/specs/2026-07-16-library-architecture-design.md`). As of the combat-seed wave,
-six of the spec's eight target libraries exist and are linked into `ageland`:
+`docs/superpowers/specs/2026-07-16-library-architecture-design.md`). As of the l4-seed wave,
+**eight** libraries exist and are linked into `ageland` — the original eight-library sketch's six
+lower layers, plus a new L4 orchestration/authoring band (`rots_pathfind`/`rots_script`) the sketch
+did not anticipate (see the spec's §3 REVISION and this doc's "L4 band" subsection below).
+`rots_commands`/`rots_app`, the sketch's own original L4/L5 rows, remain entirely app-compiled —
+not yet extracted, and not to be confused with the new, now-real L4 band below:
 
 ```
-┌─ L3  rots_persist   rots_world   rots_combat   (all three L3 peer domain libs now exist; each
-│                                                  seeded, none complete — see their sections below)
+┌─ L4  rots_pathfind   rots_script    (new orchestration/authoring band; pathfind < script,
+│                                       one sanctioned intra-band edge — see "L4 band" below)
+├─ L3  rots_persist   rots_world   rots_combat   (all three L3 peer domain libs now exist; each
+│                                                  seeded, none complete — certified stratified
+│                                                  persist < world < combat — see their sections below)
 ├─ L2  rots_entity    → entity/relationship operations over the data model
 ├─ L1  rots_core      → the (split-up) data model + const tables
 └─ L0  rots_platform  → OS/infra, zero game coupling
@@ -712,16 +719,15 @@ bodies documented in "`rots_convert`" below.
 
 ### `rots_world` (L3): the world-data library
 
-The fifth extracted layer is `rots_world` (L3) — **3 TUs**: `db_world.cpp`, `zone_load.cpp`, and
-`weather.cpp` — built as `librots_world.a` and linked into `ageland` as `RotS::world`. It is the
-second of the spec's three L3 peer libraries to actually exist as a build target (`rots_persist`
-was the first; `rots_combat` — the third — is now also extracted, see "`rots_combat`" below, so
-all three rows of the spec's §3 L3 peer tier are seeded). `rots_world` PUBLIC-links
-`RotS::persist` + `RotS::entity` + `RotS::core` + `RotS::platform`
-(all four legal downward edges its three TUs' undefined symbols resolve into) plus
-`rots_build_flags`; like `rots_entity`, it owns no `include/` directory of its own — `persist/
-include`/`core/include`/`platform/include` all flow to it transitively through `RotS::persist`'s
-own PUBLIC include directories.
+The fifth extracted layer is `rots_world` (L3) — **4 TUs**: `db_world.cpp`, `zone_load.cpp`,
+`weather.cpp`, and (l4-seed wave) `zone.cpp` itself — built as `librots_world.a` and linked into
+`ageland` as `RotS::world`. It is the second of the spec's three L3 peer libraries to actually exist
+as a build target (`rots_persist` was the first; `rots_combat` — the third — is now also extracted,
+see "`rots_combat`" below, so all three rows of the spec's §3 L3 peer tier are seeded). `rots_world`
+PUBLIC-links `RotS::persist` + `RotS::entity` + `RotS::core` + `RotS::platform` (all four legal
+downward edges its TUs' undefined symbols resolve into) plus `rots_build_flags`; like `rots_entity`,
+it owns no `include/` directory of its own — `persist/include`/`core/include`/`platform/include` all
+flow to it transitively through `RotS::persist`'s own PUBLIC include directories.
 
 - **`rots_world_linkcheck` / CTest `WorldLayerAcyclicity`** mirrors the `rots_persist_linkcheck`
   pattern: force-load `librots_world.a` and normal-link only `RotS::persist` + `RotS::entity` +
@@ -730,8 +736,11 @@ own PUBLIC include directories.
   storage moves, and hook inversions actually closed every upward edge the wave's `nm` census (and
   the linkcheck's own cascade, below) surfaced. Both hosts' ctest baseline moved from 1274 to
   **1275** the task this check was added (world-seed Task 5); Task 5b then added 6 targeted
-  coverage tests, for **1281** (see `AGENTS.md`'s "Testing Guidelines" for the current total and
-  per-platform skip counts).
+  coverage tests, for **1281**; the l4-seed wave's Step 1 (`zone.cpp` → `ROTS_WORLD_SOURCES`) needed
+  **zero** new PUBLIC link — every edge `zone.cpp` carries resolves through the `world_hooks.h`/
+  `entity_hooks.h` seams that wave's own Tasks 1-2 built, or into the four layers `rots_world`
+  already linked (see `AGENTS.md`'s "Testing Guidelines" for the current total and per-platform skip
+  counts).
 - **Membership story.** `db_world.cpp` and `weather.cpp` were already `ROTS_SERVER_SOURCES`
   members scrubbed of their upward edges by world-seed Tasks 1-3: relocations and storage moves
   (`register_npc_char`/`last_control_set` → `rots_entity`, `dice` → `rots_platform`,
@@ -739,22 +748,27 @@ own PUBLIC include directories.
   their steady-state owning TU), `db_world.cpp`'s scratch-buffer (`buf`/`buf1`/`buf2`) retirement in
   favor of local composition, and three `world_hooks.h` hook inversions (boot-the-shops,
   mudlle-converter, weather-MSDP) for the app-tier calls relocation alone couldn't cut.
-  `zone_load.cpp` is new: Task 4 carved zone-file **parsing/loading** out of `zone.cpp` byte-
-  identically (264 moved lines, reviewer-diffed zero-difference against the pre-carve blob) —
-  `zone_table`/`top_of_zone_table` storage moved with it. `zone.cpp` itself (the **zone-reset**
-  half — `reset_zone()`/the runtime reset-command interpreter) was deliberately left behind,
-  untouched, still `ROTS_SERVER_SOURCES`; see "Honest deferrals" below.
+  `zone_load.cpp` is new (world-seed wave): Task 4 carved zone-file **parsing/loading** out of
+  `zone.cpp` byte-identically (264 moved lines, reviewer-diffed zero-difference against the
+  pre-carve blob) — `zone_table`/`top_of_zone_table` storage moved with it. `zone.cpp` itself (the
+  **zone-reset** half — `reset_zone()`/the runtime reset-command interpreter) was deliberately left
+  behind at that wave, still `ROTS_SERVER_SOURCES` — and then joined `ROTS_WORLD_SOURCES` in the
+  l4-seed wave (Task 3, Step 1), completing both halves of the original `zone.cpp` split. See "L4
+  band" below for the four `world_hooks.h`/`entity_hooks.h` seams (`extract_char` re-home,
+  `do_wear`, `is_zone_populated`, `equip_char`, pkill fame) that inversion needed under the
+  no-bidirectional rule.
 - **The sanctioned L3-peer edge.** `db_world.cpp` registers `world_room_vnum()` (`return
   world[room_index].number;`) as `rots_persist`'s pre-boot room-vnum hook via
   `rots::persist::set_room_vnum_hook()` (`register_room_vnum_hook()`, called from
   `run_the_game()` before `boot_db()`). This is an L3(world) → L3(persist) edge, not a layering
-  violation — the spec's L3 tier is a peer tier, not a strict sub-stack, and this is the mirror
-  image of `rots_persist`'s own pre-existing edge into world/boot-tier hooks
-  (`world_room_vnum`/`add_exploit_record`, via `persist_hooks.h`, persist-split wave). It is the
-  reason `rots_world` links `RotS::persist` PUBLIC in addition to `RotS::entity`/`RotS::core`/
-  `RotS::platform`, and `rots_world_linkcheck` deliberately normal-links `RotS::persist` (like
-  `rots_core_linkcheck` does for its one sanctioned L1→L0 edge) to resolve it rather than treat it
-  as an unresolved failure.
+  violation — the l4-seed wave's spec revision certifies the L3 tier as a stratified partial order
+  (`persist < world < combat`, this being the world→persist half of it, `visibility.cpp`'s
+  `weather_info` reference the combat→world half — see `docs/superpowers/specs/
+  2026-07-16-library-architecture-design.md`'s §3 REVISION), superseding the earlier "peer tier, not
+  a strict sub-stack" framing with a certified direction. It is the reason `rots_world` links
+  `RotS::persist` PUBLIC in addition to `RotS::entity`/`RotS::core`/`RotS::platform`, and
+  `rots_world_linkcheck` deliberately normal-links `RotS::persist` (like `rots_core_linkcheck` does
+  for its one sanctioned L1→L0 edge) to resolve it rather than treat it as an unresolved failure.
 - **Task 5's linkcheck cascade.** Standing up `rots_world_linkcheck` surfaced four upward edges the
   wave's earlier `nm` census had missed, each adjudicated by the controller before the implementer
   resumed: `buf2` (`zone_load.cpp`'s malformed-zone-file error labels — converted to a local buffer,
@@ -766,22 +780,29 @@ own PUBLIC include directories.
   `set_send_to_sector_hook()`/`set_send_to_outdoor_hook()`, silent-no-op default, `comm.cpp`'s
   `register_world_broadcast_hooks()` installing the real bodies pre-boot). All three adjudicated
   fixes are byte-preserving relocations/inversions, not behavior changes.
-- **Honest deferrals.** `rots_world` is 3 of the spec §3 row's original ~15-TU sketch
+- **Honest deferrals.** `rots_world` is 4 of the spec §3 row's original ~15-TU sketch
   (`db_world, shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle,
   mudlle2, graph, weather, mob_csv_extract, obj2html`) — deliberately, not by oversight:
-  - **`zone.cpp`'s reset half** (`reset_zone()` and the runtime zone-reset-command interpreter) was
-    never touched this wave. Only zone-file *parsing/loading* (`zone_load.cpp`) was carved; the
-    reset half stays app-compiled in `ROTS_SERVER_SOURCES`, unexamined for upward edges.
-  - **`graph.cpp`/`script.cpp`/`mudlle.cpp`/`mudlle2.cpp`/the `shape*.cpp` family**
-    (`shapemdl`/`shapemob`/`shapeobj`/`shaperom`/`shapescript`/`shapezon`) are command/editor-
-    coupled (OLC-style world-building tools) — this wave's census found them out of scope for a
-    world-*data* seed and left them entirely alone, still `ROTS_SERVER_SOURCES`.
+  - **`zone.cpp`** (both the parsing/loading half carved into `zone_load.cpp`, world-seed wave, and
+    the reset half that stayed in `zone.cpp` itself) is now **fully resolved** — the l4-seed wave
+    closed the second half; `zone` is no longer a deferral entry at all.
+  - **`graph.cpp`/`mudlle.cpp`/`mudlle2.cpp`** were assumed by this row's original sketch to be
+    `rots_world` members but **did not join it**: the l4-seed wave found doing so would force
+    `rots_world` to PUBLIC-link `RotS::combat`, colliding with `rots_combat`'s own pre-existing
+    `RotS::world` link (the first bidirectional L3-peer edge) — so they became the new
+    `rots_pathfind`/`rots_script` libraries instead, one band above L3. See "L4 band" below and the
+    spec's §3 REVISION; not a `rots_world` deferral any longer, but a different library entirely.
+  - **`script.cpp`/the `shape*.cpp` family** (`shapemdl`/`shapemob`/`shapeobj`/`shaperom`/
+    `shapescript`/`shapezon`) remain command/editor-coupled (OLC-style world-building tools,
+    "Cluster B" in the world-growth census) — out of scope for both the world-seed and l4-seed
+    waves, still `ROTS_SERVER_SOURCES`. A future wave's open question is whether Cluster B joins
+    `rots_script` or a new sibling `rots_olc` library.
   - **`handler.cpp`/`utility.cpp`** remain app-compiled, same as reported in the `rots_entity`
     section above — closing their gap needs the spec §7 Placement/Containment seam, not a world-tier
-    change; this wave did not touch either file.
+    change; neither wave touched either file.
 
   All of the above are recorded follow-on for whichever future wave next touches the world/app
-  boundary, not this wave's scope.
+  boundary, not either wave's scope.
 - **Known-cosmetic `ld` warning.** Since world-seed Task 5, linking `ageland` on macOS emits `ld:
   warning: ignoring duplicate libraries: 'librots_core.a', 'librots_entity.a', 'librots_persist.a',
   'librots_platform.a'` — `RotS::world`'s own PUBLIC downward links (above) pull each lower-layer
@@ -1235,6 +1256,158 @@ additive-only-test-change class had no ASan precedent in this wave (`trio-task-1
 already required ASan for the identical class of change, two new dismount tests appended to the same
 pre-existing `combat_hooks_tests.cpp`; the review closed the finding by running the gate itself, zero
 diagnostics). See `AGENTS.md`'s "Testing Guidelines" for the full reconciled per-task chain.
+
+### L4 band: `rots_pathfind` + `rots_script` — the first orchestration/authoring tier
+
+Design: `docs/superpowers/specs/2026-07-21-l4-seed-design.md`. Plan:
+`docs/superpowers/plans/2026-07-21-l4-seed.md`. Census: `.superpowers/sdd/l4-census.md` (gitignored
+scratch). Task reports: `.superpowers/sdd/l4-task-{0,1,2,3}-report.md`. This wave stands up the
+**first library band above the L3 peer tier** — see the parent spec's §3 REVISION
+(`docs/superpowers/specs/2026-07-16-library-architecture-design.md`) for the full architectural
+rationale, including the certified `persist < world < combat < pathfind < script < app` order and
+the no-bidirectional-links invariant this wave's `zone.cpp` adjudication turned into a named rule.
+Eight libraries now exist, eight `*LayerAcyclicity` linkchecks. ctest 1398→1415 across the wave's
+four implementation tasks.
+
+- **`rots_pathfind` (L4-lower, 1 TU): `graph.cpp`.** Pathfinding/hunting — `hunt_victim()`'s driver
+  calls `hit()` (fight.cpp) and `get_char_vis()` (visibility.cpp), both `rots_combat` members,
+  which become legal **downward L4→L3** calls once `graph.cpp` promotes above combat — needing
+  **zero edit** to either call. The only conversions: `do_say`×2/`do_move`×1 → the existing
+  `combat_command::say`/`move` cells (`combat_hooks.h`, already registered since the combat-seed/
+  combat-trio waves, reached downward), plus retiring two `_arg`/`_buf` global-scratch sites
+  (`do_wiztrack`, `hunt_victim`) to locals. Links (mirroring `rots_combat`'s own explicit downward
+  list): `RotS::combat RotS::world RotS::persist RotS::entity RotS::core RotS::platform`.
+- **`rots_script` (L4-upper, 3 TUs): `mudlle.cpp`, `mudlle2.cpp`, `script_hooks.cpp`.** The
+  mob-program/script engine — named for the mechanism (designers author behaviors), deliberately
+  not `rots_ai`, since the quest layer is slated for its own future redesign. `mudlle.cpp` →
+  `mudlle2.cpp` (14 helper symbols: `CHECK_LIST`/`compare_list`/`DOWN_LIST`/`DOWN_STACK`/
+  `FROM_STACK`/`int_itemtostring`/`REMOVE_LIST`/`STACK_VALUE`/`TEXT_LIST`/`TO_LIST`×2/`TO_STACK`/
+  `UP_LIST`/`UP_STACK`) is a genuine intra-band edge, one-directional — the two TUs land together
+  by choice (simplicity), not because the linkcheck forces it (mirroring the combat-trio wave's
+  "one-directional gate" precedent one tier up). `update_pos()`/`CAN_SEE()` (both `rots_combat`)
+  and `find_first_step()` (`graph.cpp`/`rots_pathfind`) resolve without edit, the same downward-tier
+  pattern as `rots_pathfind`'s own `hit()`/`get_char_vis()`. Links: `RotS::pathfind` (the sanctioned
+  intra-band edge, `find_first_step`) plus the full L3 downward set.
+- **`PathfindLayerAcyclicity` / `ScriptLayerAcyclicity`** mirror the six pre-existing
+  `*LayerAcyclicity` checks exactly — force-load the archive, normal-link only the declared downward
+  set, fail on any unresolved symbol — with one deliberate difference from `rots_combat`'s pattern:
+  both **lean on PUBLIC transitivity** rather than listing every layer explicitly.
+  `rots_pathfind_linkcheck` normal-links only `RotS::combat` (which transitively PUBLIC-carries
+  `world`/`persist`/`entity`/`core`/`platform`); `rots_script_linkcheck` normal-links only
+  `RotS::pathfind` (which transitively carries `combat` and everything below it) — but
+  `RotS::pathfind` is listed **explicitly** on `rots_script_linkcheck`'s own link line, not merely
+  inherited, specifically to keep the `find_first_step()` intra-band edge exercised at the
+  narrowest possible tier (the `WorldLayerAcyclicity`/`RotS::persist` precedent, one step tighter
+  than `CombatLayerAcyclicity`'s fully-explicit six-library list). Both non-vacuous by
+  positive-PASS/negative-FAIL probe (a temporary `boot_db()`-calling probe function appended to
+  `graph.cpp`/`mudlle.cpp` respectively reproducibly failed the link, then was reverted with zero
+  residue) — the combat-seed precedent, independently re-run by the reviewer on both checkers.
+- **`script_hooks.h`'s storage relocation (Task 3 mid-task adjudication).** T1 placed
+  `dispatch_command_interpreter()`'s backing storage inside `interpre.cpp` itself — permanently
+  app-tier, since that file defines the real `command_interpreter()` body and can never promote —
+  unlike `world_hooks.h`'s own hooks, whose backing storage lives in the *promoting* library
+  (`db_world.cpp`) per that header's established precedent. Once Task 2 converted `mudlle.cpp`'s
+  call site to `rots::script::dispatch_command_interpreter()`, that T1 placement became a live
+  `rots_script → app` upward edge, invisible until `rots_script_linkcheck` first ran against it (two
+  undefined symbols: `dispatch_pers`/`dispatch_command_interpreter`). **Disposition:** relocated both
+  hooks' backing storage (`set_command_interpreter_hook()`/`dispatch_command_interpreter()`,
+  byte-verbatim except dropping a now-redundant namespace wrapper) from `interpre.cpp` into
+  `script_hooks.cpp` — which already held `dispatch_pers()`'s backing storage since T1 for the
+  identical "seam header, no single owning caller" reason `combat_hooks.cpp` joined `rots_combat` —
+  and added `script_hooks.cpp` to `ROTS_SCRIPT_SOURCES` alongside its two callers, making it the
+  library's third member. `interpre.cpp` keeps only the registrar (`register_command_interpreter_
+  hook()`, a legal `app → lib` downward call into `script_hooks.h`'s public API). This was a
+  relocation with no behavior change, adjudicated in-flight per the wave's STOP contract rather than
+  stubbed — the same class of linkcheck-surfaced census miss `WorldLayerAcyclicity` caught at
+  `rots_world`'s own membership gate (world-seed Task 5's four-edge cascade), one tier up.
+- **`extract_char`'s re-home (`combat_hooks.{h,cpp}` → L2 `entity_hooks.h`).** `zone.cpp`'s
+  `extract_char(mob)` call (reset_zone case 10) needs the same inversion `fight.cpp` already used
+  via `combat_hooks.h` (combat-pilot wave) — but that hook lives in `rots_combat`, unreachable from
+  `rots_world`, and duplicating a second `world_hooks.h` copy would mean two independent inversions
+  for one real body. Instead the existing hook re-homed **down** to L2 `entity_hooks.h`/
+  `entity_lifecycle.cpp` (both `rots_world` and `rots_combat` already PUBLIC-link `RotS::entity`, so
+  both L3 bands share it): the typedef/setter/dispatch moved verbatim; `handler.cpp`'s registrar
+  keeps registering the real body app-side with a one-line namespace edit
+  (`rots::combat::` → `rots::entity::`); `fight.cpp`'s three pre-existing call sites and the
+  discriminator test suite (`CombatHooksExtractChar` → `ExtractCharHook`, re-homed into
+  `entity_lifecycle_tests.cpp`, not duplicated) get the same namespace edit; `zone.cpp` dispatches
+  through the same L2 entry point (`rots::entity::extract_char(mob)`, the 1-arg `-1`-sentinel
+  overload — the brief's own literal `dispatch_extract_char` naming was a documentation error caught
+  by a build error, not the real re-homed API's overloaded-name shape). One real gotcha found in
+  transit: `entity_lifecycle.cpp`'s own internal `extract_char(ch) → extract_char(ch, -1)` forward
+  needed explicit `rots::entity::` qualification, since `handler.h`'s global `::extract_char`
+  overload is ADL-visible there (via `char_data`'s associated namespace) in a way it never was
+  inside `combat_hooks.cpp`, which didn't transitively include `handler.h`.
+- **The `zone.cpp` combat/app-edge adjudications (T0 OVERTURNED two of the design spec's own
+  defaults with body-read/nm evidence, both later reviewer-confirmed).** (1) `equip_char` was
+  expected entity-pure (wrapping the L2 `attach_equipment` primitive) but its own body carries a
+  `damage()`/`raw_kill()` poison-coupling block identical in shape to `unequip_char`'s — the design
+  spec's cited source was a caller-side observation ("`fight.cpp` calls `unequip_char` only"), not a
+  body-content claim; falls to `world_hooks.h::dispatch_equip_char` (void, logged-no-op tripwire),
+  registered by `fight.cpp` **unmoved** — neither half of the `equip_char`/`unequip_char` pair
+  relocates, only `zone.cpp`'s call site inverts. (2) `pkill_get_good_fame`/`pkill_get_evil_fame`
+  have trivial bodies but read `good_ranking`/`evil_ranking`, app-tier globals living in `pkill.cpp`
+  itself (not `pkill_json.cpp`/`rots_persist`) — relocating just the accessors would compile in the
+  final `ageland` link but fail `PersistLayerAcyclicity` by design; falls to a
+  `world_hooks.h::dispatch_pkill_get_good_fame`/`dispatch_pkill_get_evil_fame` pair (int,
+  safe-sentinel **0** default), registered together by `pkill.cpp` unmoved. Two further hooks land
+  cheaply as specced: `dispatch_do_wear` (void, loud tripwire; `act_obj2.cpp` registers a new
+  `wear_all_carried_items()` wrapper baking in the fixed call shape) and `dispatch_is_zone_populated`
+  (bool, safe-sentinel **TRUE** default — "assume populated," degrades to "never reset" rather than
+  risking a reset mid-session; `comm.cpp` registers `zone_is_populated()`, the semantic inverse of
+  the retired `is_empty()`). All backing storage/dispatch for these four zone hooks lives in
+  `db_world.cpp` (the "storage ahead of promotion" precedent `db_world.cpp`'s own boot-shops/
+  mudlle-converter hooks already established), registrar declarations centralized in `db.h`.
+- **`zone.cpp`'s `is_empty(int)` retired outright**, not just its call sites — once `comm.cpp`'s
+  registered `zone_is_populated()` body proved to be the function's only remaining reason to exist
+  (zero other callers tree-wide, re-verified immediately before deletion), the local
+  `int is_empty(int);` forward decls and the function body itself were both deleted.
+- **The `command_interpreter` hook (`script_hooks.h`, new header).** `mudlle.cpp:862`'s one live
+  call (`intelligent()`'s `'C'` special-list case; the block at ~894-940 is commented-out dead text)
+  invokes the **entire player-command dispatcher**, not one ACMD — what mob-programs fundamentally
+  *are* — so it is neither a `combat_command` cell (that table dispatches individual `do_*`
+  functions) nor an `output_seam` forwarder (no output composition). `void (*)(char_data*, char*,
+  waiting_type*)`, loud-tripwire default (an unregistered mob-program command is a real error, not a
+  silent best-effort push), registered by `interpre.cpp` (which already forward-declares
+  `command_interpreter`) before `boot_db()`.
+- **The `PERS` forwarder — the wave's named collapse condition, confirmed it does NOT fire.**
+  `mudlle2.cpp:286`'s one call to `PERS()` (utility.cpp) is pointer-returning (`char*` into a
+  function-local `static char name[128]`) — abort-tripwire class, the `mudlle_converter`/
+  `get_from_txt_block_pool` precedent — registered in `script_hooks.h`, real body stays
+  `utility.cpp`. Since `mudlle.cpp` needs `mudlle2.cpp` (the 14-helper intra-band edge above), a
+  `PERS` forwarder that failed to resolve would have collapsed the wave's script side to
+  `rots_pathfind` + `zone` only; it resolved cleanly (PERS's own body genuinely cannot relocate —
+  its `CC_USE`/`CC_NORM` macros expand to `color.cpp` state, consistent with, not contradicting, the
+  blocker-buster wave's prior "PERS body stays app-tier" finding — but the *forwarder* is a
+  separate, precedented question from the *relocate* question), so Cluster A's full 3-TU scope
+  survived intact.
+- **`put_to_txt_block_pool`** — one new `output_seam.h` forwarder (the 8th blocker-buster-style
+  addition), shared by `mudlle.cpp:808`/`mudlle2.cpp:182`; void, **safe logged no-op** default
+  (distinct from `get_from_txt_block_pool`'s abort-tripwire class, since PUT never dereferences its
+  argument). `comm.cpp`'s real body renamed to a file-static `put_to_txt_block_pool_impl()`,
+  registered into both this new `output_seam` sink and `entity_hooks.h`'s existing PUT hook.
+- **CRLF correction.** The design spec claimed all four target files (`graph.cpp`/`mudlle.cpp`/
+  `mudlle2.cpp`/`zone.cpp`) were plain LF at @b6f6b76 — Task 0 measured otherwise: `zone.cpp` pure
+  CRLF (703/703 lines), `graph.cpp`/`mudlle.cpp`/`mudlle2.cpp` mixed CRLF+LF. Every T1/T2 edit to
+  all four used the Python binary-mode byte-edit method (never the text-mode `Edit` tool), the
+  established `handler.cpp`-precedent workaround for the environment's LLVM-style formatter hook,
+  which does not round-trip losslessly against this repo's WebKit `make format` style. `utility.cpp`/
+  `utils.h`/`db.h`/`pkill.cpp`/`act_obj2.cpp`/`handler.h`/`handler.cpp` were also confirmed
+  mixed-CRLF in transit (outside the census's original four-file scope) and handled the same way.
+- **Discriminator audit found one genuine, standing gap.** `combat_command::say` had been
+  registered since the combat-seed wave but had **zero** `issue_command()` callers anywhere in the
+  tree until this wave's 15 new call sites (graph ×2, mudlle ×11, mudlle2 ×2) — added
+  `IssueCommandReachesTheRealDoSayWhenRegistered`/`IssueCommandDefaultsToANoOpWhenSayIsUnregistered`,
+  mirroring the combat-trio wave's identically-shaped `move`-cell gap.
+- **Root-Makefile hand-list** updated for both new library names (the entity-seed lesson: the root
+  Makefile builds named targets, not `all`, so an un-listed linkcheck target reports CTest "Not Run"
+  in the i386 container rather than actually exercising the check).
+- **Test-count delta for this wave: 1398 → 1415** — Task 1 +13 (script_hooks/world_hooks/output_seam
+  seam tests, incl. the re-homed `extract_char` trio moved not duplicated), Task 2 +2 (the
+  `combat_command::say` discriminator gap above), Task 3 +2 (`PathfindLayerAcyclicity` +
+  `ScriptLayerAcyclicity` themselves). All three gate hosts (`macos-arm64`, `rots64`,
+  `macos-arm64-asan`) confirmed 1415/1415 at Task 3's final gate; `ConvertEquivalence` 17/17 both
+  hosts throughout. See `AGENTS.md`'s "Testing Guidelines" for the full reconciled per-task chain.
 
 ### Pathed data-model includes
 

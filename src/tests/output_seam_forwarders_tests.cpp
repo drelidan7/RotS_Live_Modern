@@ -241,6 +241,34 @@ TEST(OutputSeamForwarders, SendToRoomExceptTwoDefaultsToANoOpWhenUnregistered)
            "leaving every descriptor's output buffer untouched.";
 }
 
+// send_to_room_except() (Cluster B wave Task 1; cb-task-1-brief.md Step 4;
+// cb-census.md section 5.5) -- comm.cpp's own real body backs this
+// forwarder unchanged (script.cpp:1595-1596's two call sites already call
+// the plain `send_to_room_except` symbol, so no consumer edit is needed for
+// this seam to take effect). The POSITIVE half ("reaches the real comm.cpp
+// sink when registered") is already covered without any new test:
+// comm_output_tests.cpp's pre-existing
+// SendToRoomExceptForwardsBoundedViewsAndEmbeddedNullSemantics test calls
+// the plain send_to_room_except() symbol and asserts on delivered content --
+// as of this task that plain symbol IS this forwarder, dispatched to
+// comm.cpp's real send_to_room_except_impl() via gtest_main.cpp's
+// process-wide register_game_output_sinks() call, so that test newly
+// doubles as this seam's positive-path proof without modification (the same
+// "no new positive test needed" shape as SendToAll/SendToRoom above).
+
+TEST(OutputSeamForwarders, SendToRoomExceptDefaultsToANoOpWhenUnregistered)
+{
+    ScopedOutputSinks unregistered_sinks;
+    ConnectedCharacterContext recipient;
+    ConnectedCharacterContext excluded;
+
+    send_to_room_except("hello", 0, &excluded.character);
+
+    EXPECT_STREQ(recipient.descriptor.output, "")
+        << "Expected an unregistered send_to_room_except sink to never reach world[], leaving "
+           "every descriptor's output buffer untouched.";
+}
+
 // ---------------------------------------------------------------------------
 // Behavior-wave Task 1 accessors: close_socket()/no_specials_active()/
 // request_circle_shutdown() (census sections 9/10). CONSUMER-FREE this

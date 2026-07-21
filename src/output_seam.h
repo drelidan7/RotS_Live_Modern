@@ -73,6 +73,14 @@ using mage_roster_fn = void (*)(char_data* mage);
 // call site).
 using send_to_all_fn = void (*)(std::string_view message);
 using send_to_room_fn = void (*)(std::string_view message, int room);
+// send_to_room_except() (comm.cpp; Cluster B wave Task 1; cb-task-1-brief.md
+// Step 4; cb-census.md section 5.5) -- script.cpp:1595-1596's two call
+// sites are the up-call this forwarder inverts; comm.cpp itself has no
+// internal caller of the plain symbol (same "no comm.cpp-internal caller"
+// shape as send_to_all/send_to_room above), so no call-site edit is needed
+// anywhere for this seam to take effect once comm.cpp backs it.
+using send_to_room_except_fn = void (*)(std::string_view message, int room,
+    char_data* excluded_character);
 using send_to_room_except_two_fn = void (*)(std::string_view message, int room,
     char_data* excluded_first, char_data* excluded_second);
 
@@ -158,6 +166,7 @@ struct Sinks {
     mage_roster_fn untrack_mage; // comm.cpp's untrack_specialized_mage_impl body
     send_to_all_fn send_to_all; // comm.cpp's send_to_all_impl body
     send_to_room_fn send_to_room; // comm.cpp's send_to_room_impl body
+    send_to_room_except_fn send_to_room_except; // comm.cpp's send_to_room_except_impl body
     send_to_room_except_two_fn send_to_room_except_two; // comm.cpp's send_to_room_except_two_impl body
     break_spell_fn break_spell; // comm.cpp's break_spell_impl body
     abort_delay_fn abort_delay; // comm.cpp's abort_delay_impl body

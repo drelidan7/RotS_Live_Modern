@@ -2410,7 +2410,13 @@ static void send_to_room_impl(std::string_view message, int room)
     }
 }
 
-void send_to_room_except(std::string_view message, int room, char_data* excluded_character)
+// send_to_room_except() (Cluster B wave Task 1; cb-task-1-brief.md Step 4;
+// cb-census.md section 5.5) -- renamed to _impl and registered as
+// output_seam.h's send_to_room_except forwarder's sink, the same
+// "takes over the plain symbol" shape as close_socket_impl (behavior wave
+// Task 1); output_seam.cpp now defines the plain `send_to_room_except`
+// symbol script.cpp's two call sites already call unchanged.
+static void send_to_room_except_impl(std::string_view message, int room, char_data* excluded_character)
 {
     for (char_data* occupant = world[room].people; occupant;
         occupant = occupant->next_in_room) {
@@ -2708,6 +2714,7 @@ void register_game_output_sinks()
     sinks.untrack_mage = untrack_specialized_mage_impl;
     sinks.send_to_all = send_to_all_impl;
     sinks.send_to_room = send_to_room_impl;
+    sinks.send_to_room_except = send_to_room_except_impl;
     sinks.send_to_room_except_two = send_to_room_except_two_impl;
     sinks.break_spell = break_spell_impl;
     sinks.abort_delay = abort_delay_impl;

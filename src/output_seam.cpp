@@ -151,6 +151,18 @@ void send_to_room(std::string_view message, int room)
         room, message));
 }
 
+void send_to_room_except(std::string_view message, int room, char_data* excluded_character)
+{
+    if (g_sinks.send_to_room_except) {
+        g_sinks.send_to_room_except(message, room, excluded_character);
+        return;
+    }
+    rots::log::write_stderr(std::format(
+        "rots::output: STUB send_to_room_except(message, room={}) called with no sink registered "
+        "(message: '{}') -- this should be unreachable once register_game_output_sinks() has run.",
+        room, message));
+}
+
 void send_to_room_except_two(
     std::string_view message, int room, char_data* excluded_first, char_data* excluded_second)
 {

@@ -269,10 +269,14 @@ set(ROTS_WORLD_SOURCES
 # spec_pro.cpp, fight.cpp), clerics.cpp and fight.cpp JOINED in the
 # combat-pilot wave (Task 5, joint membership), and olog_hai.cpp,
 # mystic.cpp, and profs.cpp JOINED in the combat-trio wave (Task 4 -- see
-# the ROTS_COMBAT_SOURCES comment below); the remaining 7 (spec_ass.cpp,
-# mage.cpp, mobact.cpp, spell_pa.cpp, limits.cpp, ranger.cpp, spec_pro.cpp)
-# stay DEFERRED per the census's per-TU blocker analysis and stay in
-# ROTS_SERVER_SOURCES below.
+# the ROTS_COMBAT_SOURCES comment below); limits.cpp JOINED in the
+# behavior wave (Task 3, Step 1 -- .superpowers/sdd/bw-task-3-brief.md;
+# see the ROTS_COMBAT_SOURCES comment below); the remaining 6 (spec_ass.cpp,
+# mage.cpp, mobact.cpp, spell_pa.cpp, ranger.cpp, spec_pro.cpp) stay
+# DEFERRED per the census's per-TU blocker analysis and stay in
+# ROTS_SERVER_SOURCES below (mobact.cpp leaves that deferred set too, but
+# for ROTS_SCRIPT_SOURCES rather than here, in a later task -- see that
+# comment).
 #
 # wild_fighting_handler.cpp's register_attack_speed_multiplier_hook()/
 # register_wild_attack_speed_multiplier_hook() (entity_hooks.h pattern) are
@@ -366,10 +370,46 @@ set(ROTS_WORLD_SOURCES
 # rots::persist::dispatch_exploit_capture, already covered by this
 # library's existing RotS::persist PUBLIC link below -- no new link needed
 # for this trio).
+#
+# limits.cpp JOINS HERE (behavior wave Task 3, Step 1 --
+# .superpowers/sdd/bw-task-3-brief.md; bw-census.md sections 1-15): Task 2
+# had already converted every one of its up-calls onto this wave's own
+# hooks/seams or a prior wave's (one_mobile_activity/Crash_idlesave/
+# Crash_extract_objs/char_from_room/the big_brother AFK+corpse-decay
+# pair/circle_shutdown, plus the prior-wave Crash_crashsave/extract_char/
+# `flee`-cell/add_exploit_record conversions -- see bw-task-2-report.md),
+# so this membership move is a pure list edit: zero call-site changes.
+# `close_socket` needed none either (already a plain output_seam.cpp
+# forwarder). `recalc_zone_power`/`report_zone_power`/
+# `affect_remove_notify`/`saves_spell`/`pkill_get_rank_by_character` were
+# already RELOCATED to their final homes (rots_world/rots_entity/
+# rots_combat/rots_persist respectively) by an earlier commit this wave --
+# same symbol names, so those call sites needed no edit either.
+# `one_mobile_activity` (limits.cpp:1406's sole external call site) is the
+# one cross-edge worth calling out explicitly: it dispatches through
+# combat_hooks.h's `dispatch_one_mobile_activity()` to reach the real body
+# in mobact.cpp -- a PERMANENT upward inversion (hook), never an intra-lib
+# dissolve, because mobact.cpp is slated to join ROTS_SCRIPT_SOURCES (L4)
+# in this same task's Step 2, one tier ABOVE rots_combat (L3); a direct
+# L3->L4 call would be illegal even after both TUs are lib members, so the
+# hook stays exactly as-is regardless of Step 2's outcome.
+# `gain_exp`/`gain_exp_regardless`/`remove_fame_war_bonuses` similarly keep
+# their combat_hooks.h indirection post-membership: fight.cpp/clerics.cpp
+# (already RotS::combat members) still dispatch through
+# `rots::combat::gain_exp()` et al. rather than calling limits.cpp's
+# globals directly, so those hooks are genuine dispatch machinery, not
+# mere self-registration, even though the registrar and the real body now
+# resolve intra-lib -- verified by this task's own cleanup pass (Step 5;
+# see combat_hooks.h's updated banner and bw-task-3-report.md) rather than
+# assumed. All of limits.cpp's downward edges land in RotS::world/
+# RotS::persist/RotS::entity/RotS::core/RotS::platform, already
+# PUBLIC-linked below -- no link-list change for this join, confirmed via
+# `nm -uC` on the built archive (rots_combat_linkcheck load-bearing test,
+# below).
 set(ROTS_COMBAT_SOURCES
     battle_mage_handler.cpp clerics.cpp combat_hooks.cpp fight.cpp
-    mystic.cpp olog_hai.cpp profs.cpp skill_timer.cpp visibility.cpp
-    weapon_master_handler.cpp wild_fighting_handler.cpp
+    limits.cpp mystic.cpp olog_hai.cpp profs.cpp skill_timer.cpp
+    visibility.cpp weapon_master_handler.cpp wild_fighting_handler.cpp
 )
 
 # L4 band, lower tier: pathfind layer (spec §3/§10 step 4; the l4-seed
@@ -489,7 +529,9 @@ set(ROTS_SCRIPT_SOURCES
 # mudlle.cpp/mudlle2.cpp/script_hooks.cpp LEFT this list for
 # ROTS_SCRIPT_SOURCES above (l4-seed wave Task 3, Step 3 -- script_hooks.cpp
 # is Task 3's own census miss, caught by rots_script_linkcheck's first
-# ordinary link, see that set's own comment).
+# ordinary link, see that set's own comment). limits.cpp LEFT this list for
+# ROTS_COMBAT_SOURCES above (behavior wave Task 3, Step 1 --
+# .superpowers/sdd/bw-task-3-brief.md; see that set's own comment).
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -498,7 +540,7 @@ set(ROTS_SERVER_SOURCES
     color.cpp comm.cpp
     db_boot.cpp delayed_command_interpreter.cpp
     handler.cpp interpre.cpp
-    limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
+    mage.cpp mail.cpp mob_csv_extract.cpp
     mobact.cpp modify.cpp
     obj2html.cpp objsave.cpp
     pkill.cpp protocol.cpp

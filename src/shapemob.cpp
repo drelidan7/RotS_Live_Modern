@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
 #include "editor_hooks.h"
@@ -15,6 +16,7 @@
 #include "rots/core/character.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
+#include "script_hooks.h"
 #include "utils.h"
 #include "zone.h"
 #include <format>
@@ -31,9 +33,6 @@ extern int mobile_master_idnum;
 extern int object_master_idnum;
 
 void free_proto(struct char_data* ch);
-ACMD(do_shutdown);
-
-void virt_assignmob(struct char_data* mob);
 
 int proto_chain[51] = {
     0, 2, 3, 4, 8, 0, 0, 0, 50, 10,
@@ -1836,7 +1835,7 @@ void implement_proto(struct char_data* ch)
     if (!IS_SET(proto->specials2.act, MOB_SPEC))
         proto->specials.store_prog_number = real_program(proto->specials.store_prog_number);
     else
-        virt_assignmob(mob_proto + number);
+        rots::script::dispatch_virt_assignmob(mob_proto + number);
 }
 ACMD(do_shape)
 {
@@ -2103,7 +2102,7 @@ ACMD(do_shape)
                 free_proto(ch);
                 send_to_char(str, ch);
             }
-            do_shutdown(ch, mutable_arg(""), 0, 0, SCMD_SHUTDOWN);
+            rots::combat::issue_command(rots::combat::combat_command::shutdown, ch, mutable_arg(""), 0, 0, SCMD_SHUTDOWN);
             break;
 
         case SHAPE_MASTER_MOBILE:

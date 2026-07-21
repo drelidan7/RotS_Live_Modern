@@ -573,376 +573,381 @@ void implement_script(struct char_data* ch)
 
 void show_command(char_data* ch, script_data* script)
 {
+    // Local composition buffer for the trigger-listing text below,
+    // retired off the app-tier `buf` global (db_boot.cpp) ahead of
+    // this file joining rots_olc (Cluster B wave Task 3;
+    // cb-census.md section 5.6).
+    std::string message;
 
     switch (script->command_type) {
 
     case ON_BEFORE_ENTER:
-        strcpy(buf, std::format( "[{}] TRIG ON_BEFORE_ENTER ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] TRIG ON_BEFORE_ENTER ({})\n\r", script->number, script->text);
         break;
 
     case ON_DAMAGE:
-        strcpy(buf, std::format( "[{}] TRIG ON_DAMAGE       ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] TRIG ON_DAMAGE       ({})\n\r", script->number, script->text);
         break;
 
     case ON_DIE:
-        strcpy(buf, std::format( "[{}] TRIG ON_DIE          ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] TRIG ON_DIE          ({})\n\r", script->number, script->text);
         break;
 
     case ON_EAT:
-        strcpy(buf, std::format( "[{}] TRIG ON_EAT          ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] TRIG ON_EAT          ({})\n\r", script->number, script->text);
         break;
 
     case ON_ENTER:
-        strcpy(buf, std::format( "[{}] TRIG ON_ENTER        ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] TRIG ON_ENTER        ({})\n\r", script->number, script->text);
         break;
 
     case ON_EXAMINE_OBJECT:
-        strcpy(buf, std::format( "[{}] TRIG ON_EXAMINE_OBJECT ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] TRIG ON_EXAMINE_OBJECT ({})\n\r", script->number, script->text);
         break;
 
     case ON_DRINK:
-        strcpy(buf, std::format( "[{}] TRIG ON_DRINK        ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] TRIG ON_DRINK        ({})\n\r", script->number, script->text);
         break;
 
     case ON_HEAR_SAY:
-        strcpy(buf, std::format( "[{}] TRIG ON_HEAR_SAY     ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] TRIG ON_HEAR_SAY     ({})\n\r", script->number, script->text);
         break;
 
     case ON_HEAR_YELL:
-        strcpy(buf, std::format( "[{}] TRIG ON_HEAR_YELL    ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] TRIG ON_HEAR_YELL    ({})\n\r", script->number, script->text);
         break;
 
     case ON_PULL:
-        strcpy(buf, std::format( "[{}] TRIG ON_PULL         ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] TRIG ON_PULL         ({})\n\r", script->number, script->text);
         break;
 
     case ON_RECEIVE:
-        strcpy(buf, std::format( "[{}] TRIG ON_RECEIVE      ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] TRIG ON_RECEIVE      ({})\n\r", script->number, script->text);
         break;
 
     case ON_WEAR:
-        strcpy(buf, std::format( "[{}] TRIG ON_WEAR         ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] TRIG ON_WEAR         ({})\n\r", script->number, script->text);
         break;
 
     case SCRIPT_ABORT:
-        strcpy(buf, std::format( "[{}] ABORT EXECUTION      ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] ABORT EXECUTION      ({})\n\r", script->number, script->text);
         break;
 
     case SCRIPT_ASSIGN_EQ:
-        strcpy(buf, std::format( "[{}] SYS ASSIGN_EQ        character: {}, object: {}, position: {}, int true/false: {}\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->param[2], get_param_text(script->param[3])).c_str());
+        message = std::format( "[{}] SYS ASSIGN_EQ        character: {}, object: {}, position: {}, int true/false: {}\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->param[2], get_param_text(script->param[3]));
         break;
 
     case SCRIPT_ASSIGN_INV:
-        strcpy(buf, std::format( "[{}] SYS ASSIGN_INV       vnum: {} assign to: {}, inv of: {}, int result: {}\n\r",
-            script->number, script->param[0], get_param_text(script->param[1]), get_param_text(script->param[2]), get_param_text(script->param[3])).c_str());
+        message = std::format( "[{}] SYS ASSIGN_INV       vnum: {} assign to: {}, inv of: {}, int result: {}\n\r",
+            script->number, script->param[0], get_param_text(script->param[1]), get_param_text(script->param[2]), get_param_text(script->param[3]));
         break;
 
     case SCRIPT_ASSIGN_ROOM:
-        strcpy(buf, std::format( "[{}] SYS ASSIGN_ROOM      vnum: {} assign to: {}, room: {}, int result: {}\n\r",
-            script->number, script->param[0], get_param_text(script->param[1]), get_param_text(script->param[2]), get_param_text(script->param[3])).c_str());
+        message = std::format( "[{}] SYS ASSIGN_ROOM      vnum: {} assign to: {}, room: {}, int result: {}\n\r",
+            script->number, script->param[0], get_param_text(script->param[1]), get_param_text(script->param[2]), get_param_text(script->param[3]));
         break;
 
     case SCRIPT_ASSIGN_STR:
-        strcpy(buf, std::format( "[{}] SYS ASSIGN_STR:      {}  to: {}\n\r",
-            script->number, script->text, get_param_text(script->param[0])).c_str());
+        message = std::format( "[{}] SYS ASSIGN_STR:      {}  to: {}\n\r",
+            script->number, script->text, get_param_text(script->param[0]));
         break;
 
     case SCRIPT_BEGIN:
-        strcpy(buf, std::format( "[{}] BEGIN                ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] BEGIN                ({})\n\r", script->number, script->text);
         break;
 
     case SCRIPT_CHANGE_EXIT_TO:
-        strcpy(buf, std::format( "[{}] SYS CHANGE_EXIT_TO   room: {}, direction: {}, room to: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), script->param[1], script->param[2], script->text).c_str());
+        message = std::format( "[{}] SYS CHANGE_EXIT_TO   room: {}, direction: {}, room to: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->param[1], script->param[2], script->text);
         break;
 
     case SCRIPT_COMMAND_NONE:
-        strcpy(buf, std::format( "[{}] *** No command: script will terminate here ***\n\r", script->number).c_str());
+        message = std::format( "[{}] *** No command: script will terminate here ***\n\r", script->number);
         break;
 
     case SCRIPT_DO_DROP:
-        strcpy(buf, std::format( "[{}] ACT DO_DROP          character: {}, object: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] ACT DO_DROP          character: {}, object: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_DO_EMOTE:
-        strcpy(buf, std::format( "[{}] ACT DO_EMOTE         {} {}\n\r", script->number,
-            get_param_text(script->param[0]), script->text).c_str());
+        message = std::format( "[{}] ACT DO_EMOTE         {} {}\n\r", script->number,
+            get_param_text(script->param[0]), script->text);
         break;
 
     case SCRIPT_DO_FLEE:
-        strcpy(buf, std::format( "[{}] ACT DO_FLEE          character: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), script->text).c_str());
+        message = std::format( "[{}] ACT DO_FLEE          character: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text);
         break;
 
     case SCRIPT_DO_FOLLOW:
-        strcpy(buf, std::format( "[{}] ACT DO_FOLLOW        character: {} to follow: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] ACT DO_FOLLOW        character: {} to follow: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_DO_GIVE:
-        strcpy(buf, std::format( "[{}] ACT  DO_GIVE         from: {}, to: {}, object: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), get_param_text(script->param[2]), script->text).c_str());
+        message = std::format( "[{}] ACT  DO_GIVE         from: {}, to: {}, object: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), get_param_text(script->param[2]), script->text);
         break;
 
     case SCRIPT_DO_HIT:
-        strcpy(buf, std::format( "[{}] ACT  DO_HIT          ({}, {})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
+        message = std::format( "[{}] ACT  DO_HIT          ({}, {})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]));
         break;
 
     case SCRIPT_DO_REMOVE:
-        strcpy(buf, std::format( "[{}] ACT DO_REMOVE        character: {}, position: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), script->param[1], script->text).c_str());
+        message = std::format( "[{}] ACT DO_REMOVE        character: {}, position: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->param[1], script->text);
         break;
 
     case SCRIPT_DO_SAY:
-        strcpy(buf, std::format( "[{}] ACT DO_SAY           "
+        message = std::format( "[{}] ACT DO_SAY           "
                      "{}"
                      " ({})({})\n\r",
             script->number, script->text,
-            get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
+            get_param_text(script->param[0]), get_param_text(script->param[1]));
         break;
 
     case SCRIPT_DO_SOCIAL:
-        strcpy(buf, std::format( "[{}] ACT DO_SOCIAL        social: {}, character: {}, to char (optional): {}.\n\r",
-            script->number, script->text, get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
+        message = std::format( "[{}] ACT DO_SOCIAL        social: {}, character: {}, to char (optional): {}.\n\r",
+            script->number, script->text, get_param_text(script->param[0]), get_param_text(script->param[1]));
         break;
 
     case SCRIPT_DO_WAIT:
-        strcpy(buf, std::format( "[{}] SYS DO_WAIT          wait for:{} ({})\n\r", script->number,
-            script->param[0], script->text).c_str());
+        message = std::format( "[{}] SYS DO_WAIT          wait for:{} ({})\n\r", script->number,
+            script->param[0], script->text);
         break;
 
     case SCRIPT_DO_WEAR:
-        strcpy(buf, std::format( "[{}] ACT DO_WEAR          character: {}, object: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] ACT DO_WEAR          character: {}, object: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_DO_YELL:
-        strcpy(buf, std::format( "[{}] ACT DO_YELL          "
+        message = std::format( "[{}] ACT DO_YELL          "
                      "{}"
                      " {} ({})\n\r",
             script->number, script->text,
-            get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
+            get_param_text(script->param[0]), get_param_text(script->param[1]));
         break;
 
     case SCRIPT_END:
-        strcpy(buf, std::format( "[{}] END                  ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] END                  ({})\n\r", script->number, script->text);
         break;
 
     case SCRIPT_END_ELSE_BEGIN:
-        strcpy(buf, std::format( "[{}] END_ELSE_BEGIN       ({})\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] END_ELSE_BEGIN       ({})\n\r", script->number, script->text);
         break;
 
     case SCRIPT_EQUIP_CHAR:
-        strcpy(buf, std::format( "[{}] SYS EQUIP_CHAR       Equip: {} with: {} {} {} {} {}\n\r", script->number,
+        message = std::format( "[{}] SYS EQUIP_CHAR       Equip: {} with: {} {} {} {} {}\n\r", script->number,
             get_param_text(script->param[0]), script->param[1], script->param[2], script->param[3],
-            script->param[4], script->param[5]).c_str());
+            script->param[4], script->param[5]);
         break;
 
     case SCRIPT_EXTRACT_CHAR:
-        strcpy(buf, std::format( "[{}] SYS EXTRACT_CHAR     Extract: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), script->text).c_str());
+        message = std::format( "[{}] SYS EXTRACT_CHAR     Extract: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text);
         break;
 
     case SCRIPT_EXTRACT_OBJ:
-        strcpy(buf, std::format( "[{}] SYS EXTRACT_OBJ      Extract: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), script->text).c_str());
+        message = std::format( "[{}] SYS EXTRACT_OBJ      Extract: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text);
         break;
 
     case SCRIPT_GAIN_EXP:
-        strcpy(buf, std::format( "[{}] SYS GAIN_EXP         Give {}, {} experience ({})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] SYS GAIN_EXP         Give {}, {} experience ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_IF_INT_EQUAL:
-        strcpy(buf, std::format( "[{}] IF_INT_EQUAL:        compare: {} with {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] IF_INT_EQUAL:        compare: {} with {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_IF_INT_LESS:
-        strcpy(buf, std::format( "[{}] IF_INT_LESS:         is {} less than {}? ({})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] IF_INT_LESS:         is {} less than {}? ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_IF_INT_GREATER:
-        strcpy(buf, std::format( "[{}] IF_INT_GREATER:      is {} greater than {}? ({})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] IF_INT_GREATER:      is {} greater than {}? ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_IF_INT_TRUE:
-        strcpy(buf, std::format( "[{}] IF_INT_TRUE:         is {} true? ({})\n\r", script->number,
-            get_param_text(script->param[0]), script->text).c_str());
+        message = std::format( "[{}] IF_INT_TRUE:         is {} true? ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text);
         break;
 
     case SCRIPT_IF_INT_FALSE:
-        strcpy(buf, std::format( "[{}] IF_INT_FALSE:        is {} false? ({})\n\r", script->number,
-            get_param_text(script->param[0]), script->text).c_str());
+        message = std::format( "[{}] IF_INT_FALSE:        is {} false? ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text);
         break;
 
     case SCRIPT_IF_IS_NPC:
-        strcpy(buf, std::format( "[{}] IF_IS_NPC:           is {} a mobile? ({})\n\r", script->number,
-            get_param_text(script->param[0]), script->text).c_str());
+        message = std::format( "[{}] IF_IS_NPC:           is {} a mobile? ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text);
         break;
 
     case SCRIPT_IF_ROOM_SUNLIT:
-        strcpy(buf, std::format( "[{}] IF_ROOM_SUNLIT:      does {} have sun? ({})\n\r", script->number,
-            get_param_text(script->param[0]), script->text).c_str());
+        message = std::format( "[{}] IF_ROOM_SUNLIT:      does {} have sun? ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text);
         break;
 
     case SCRIPT_IF_STR_CONTAINS:
-        strcpy(buf, std::format( "[{}] IF_STR_CONTAINS:     does {} contain "
+        message = std::format( "[{}] IF_STR_CONTAINS:     does {} contain "
                      "{}"
                      "?\n\r",
             script->number,
-            get_param_text(script->param[0]), script->text).c_str());
+            get_param_text(script->param[0]), script->text);
         break;
 
     case SCRIPT_IF_STR_EQUAL:
-        strcpy(buf, std::format( "[{}] IF_STR_EQUAL:        is {} the same as "
+        message = std::format( "[{}] IF_STR_EQUAL:        is {} the same as "
                      "{}"
                      "?\n\r",
             script->number,
-            get_param_text(script->param[0]), script->text).c_str());
+            get_param_text(script->param[0]), script->text);
         break;
 
     case SCRIPT_LOAD_MOB:
-        strcpy(buf, std::format( "[{}] SYS LOAD_MOB         vnum: {}, char variable: {} ({})\n\r", script->number,
-            script->param[0], get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] SYS LOAD_MOB         vnum: {}, char variable: {} ({})\n\r", script->number,
+            script->param[0], get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_LOAD_OBJ:
-        strcpy(buf, std::format( "[{}] SYS LOAD_OBJ         vnum: {}, obj variable: {} ({})\n\r", script->number,
-            script->param[0], get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] SYS LOAD_OBJ         vnum: {}, obj variable: {} ({})\n\r", script->number,
+            script->param[0], get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_LOAD_OBJ_X:
-        strcpy(buf, std::format( "[{}] SYS LOAD_OBJ_X       object: {}, obj variable: {} ({})\n\r", script->number,
-            get_param_text(script->param[1]), get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] SYS LOAD_OBJ_X       object: {}, obj variable: {} ({})\n\r", script->number,
+            get_param_text(script->param[1]), get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_OBJ_FROM_CHAR:
-        strcpy(buf, std::format( "[{}] SYS OBJ_FROM_CHAR    object: {}, character: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] SYS OBJ_FROM_CHAR    object: {}, character: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_OBJ_FROM_ROOM:
-        strcpy(buf, std::format( "[{}] SYS OBJ_FROM_ROOM    object: {}, room: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] SYS OBJ_FROM_ROOM    object: {}, room: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_OBJ_TO_CHAR:
-        strcpy(buf, std::format( "[{}] SYS OBJ_TO_CHAR      object: {}, character: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] SYS OBJ_TO_CHAR      object: {}, character: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_OBJ_TO_ROOM:
-        strcpy(buf, std::format( "[{}] SYS OBJ_TO_ROOM      object: {}, room: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] SYS OBJ_TO_ROOM      object: {}, room: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_PAGE_ZONE_MAP:
-        strcpy(buf, std::format( "[{}] MSG PAGE_ZONE_MAP    zone: {}, player: {} ({})\n\r", script->number,
-            script->param[1], get_param_text(script->param[0]), script->text).c_str());
+        message = std::format( "[{}] MSG PAGE_ZONE_MAP    zone: {}, player: {} ({})\n\r", script->number,
+            script->param[1], get_param_text(script->param[0]), script->text);
         break;
 
     case SCRIPT_RAW_KILL:
-        strcpy(buf, std::format( "[{}] SYS RAW_KILL         character/player: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), script->text).c_str());
+        message = std::format( "[{}] SYS RAW_KILL         character/player: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), script->text);
         break;
 
     case SCRIPT_RETURN_FALSE:
-        strcpy(buf, std::format( "[{}] SYS RETURN_FALSE     {}\n\r", script->number, script->text).c_str());
+        message = std::format( "[{}] SYS RETURN_FALSE     {}\n\r", script->number, script->text);
         break;
 
     case SCRIPT_SEND_TO_CHAR:
-        strcpy(buf, std::format( "[{}] MSG SEND_TO_CHAR     "
+        message = std::format( "[{}] MSG SEND_TO_CHAR     "
                      "{}"
                      " to: {} ({})\n\r",
             script->number, script->text,
-            get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
+            get_param_text(script->param[0]), get_param_text(script->param[1]));
         break;
 
     case SCRIPT_SEND_TO_ROOM:
-        strcpy(buf, std::format( "[{}] MSG SEND_TO_ROOM     "
+        message = std::format( "[{}] MSG SEND_TO_ROOM     "
                      "{}"
                      " ({})({})\n\r",
             script->number, script->text,
-            get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
+            get_param_text(script->param[0]), get_param_text(script->param[1]));
         break;
 
     case SCRIPT_SEND_TO_ROOM_X:
-        strcpy(buf, std::format( "[{}] MSG SEND_TO_ROOM_X   "
+        message = std::format( "[{}] MSG SEND_TO_ROOM_X   "
                      "{}"
                      " ({}, {})\n\r",
             script->number, script->text,
-            get_param_text(script->param[0]), get_param_text(script->param[1])).c_str());
+            get_param_text(script->param[0]), get_param_text(script->param[1]));
         break;
 
     case SCRIPT_SET_EXIT_STATE:
-        strcpy(buf, std::format( "[{}] SYS SET_EXIT_STATE   room: {}, direction: {}, state: {}\n\r", script->number,
-            get_param_text(script->param[2]), script->param[0], script->param[1]).c_str());
+        message = std::format( "[{}] SYS SET_EXIT_STATE   room: {}, direction: {}, state: {}\n\r", script->number,
+            get_param_text(script->param[2]), script->param[0], script->param[1]);
         break;
 
     case SCRIPT_SET_INT_DIV:
-        strcpy(buf, std::format( "[{}] SYS SET_INT_DIV      {} = {} divided by {} ({})\n\r", script->number,
+        message = std::format( "[{}] SYS SET_INT_DIV      {} = {} divided by {} ({})\n\r", script->number,
             get_param_text(script->param[0]), get_param_text(script->param[1]),
-            get_param_text(script->param[2]), script->text).c_str());
+            get_param_text(script->param[2]), script->text);
         break;
 
     case SCRIPT_SET_INT_MULT:
-        strcpy(buf, std::format( "[{}] SYS SET_INT_MULT     {} = {} multiplied by {} ({})\n\r", script->number,
+        message = std::format( "[{}] SYS SET_INT_MULT     {} = {} multiplied by {} ({})\n\r", script->number,
             get_param_text(script->param[0]), get_param_text(script->param[1]),
-            get_param_text(script->param[2]), script->text).c_str());
+            get_param_text(script->param[2]), script->text);
         break;
 
     case SCRIPT_SET_INT_RANDOM:
-        strcpy(buf, std::format( "[{}] SYS SET_INT_RANDOM   {} = random number between {} and {} ({})\n\r", script->number,
+        message = std::format( "[{}] SYS SET_INT_RANDOM   {} = random number between {} and {} ({})\n\r", script->number,
             get_param_text(script->param[0]), get_param_text(script->param[1]),
-            get_param_text(script->param[2]), script->text).c_str());
+            get_param_text(script->param[2]), script->text);
         break;
 
     case SCRIPT_SET_INT_SUB:
-        strcpy(buf, std::format( "[{}] SYS SET_INT_SUB      {} = {} minus {} ({})\n\r", script->number,
+        message = std::format( "[{}] SYS SET_INT_SUB      {} = {} minus {} ({})\n\r", script->number,
             get_param_text(script->param[0]), get_param_text(script->param[1]),
-            get_param_text(script->param[2]), script->text).c_str());
+            get_param_text(script->param[2]), script->text);
         break;
 
     case SCRIPT_SET_INT_SUM:
-        strcpy(buf, std::format( "[{}] SYS SET_INT_SUM      {} = {} plus {} ({})\n\r", script->number,
+        message = std::format( "[{}] SYS SET_INT_SUM      {} = {} plus {} ({})\n\r", script->number,
             get_param_text(script->param[0]), get_param_text(script->param[1]),
-            get_param_text(script->param[2]), script->text).c_str());
+            get_param_text(script->param[2]), script->text);
         break;
 
     case SCRIPT_SET_INT_WAR_STATUS:
-        strcpy(buf, std::format( "[{}] SYS SET_INT_WAR_STATUS integer: {} ({})\r\n",
-            script->number, get_param_text(script->param[0]), script->text).c_str());
+        message = std::format( "[{}] SYS SET_INT_WAR_STATUS integer: {} ({})\r\n",
+            script->number, get_param_text(script->param[0]), script->text);
         break;
     case SCRIPT_SET_INT_VALUE:
-        strcpy(buf, std::format( "[{}] SYS SET_INT_VALUE    integer: {}, value: {} ({})\n\r", script->number,
-            get_param_text(script->param[1]), script->param[0], script->text).c_str());
+        message = std::format( "[{}] SYS SET_INT_VALUE    integer: {}, value: {} ({})\n\r", script->number,
+            get_param_text(script->param[1]), script->param[0], script->text);
         break;
 
     case SCRIPT_TELEPORT_CHAR:
-        strcpy(buf, std::format( "[{}] SYS TELEPORT_CHAR    to room: {}, character: {} ({})\n\r", script->number,
-            script->param[0], get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] SYS TELEPORT_CHAR    to room: {}, character: {} ({})\n\r", script->number,
+            script->param[0], get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_TELEPORT_CHAR_X:
-        strcpy(buf, std::format( "[{}] SYS TELEPORT_CHAR_X  to room: {}, character: {} ({})\n\r", script->number,
-            script->param[0], get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] SYS TELEPORT_CHAR_X  to room: {}, character: {} ({})\n\r", script->number,
+            script->param[0], get_param_text(script->param[1]), script->text);
         break;
 
     case SCRIPT_TELEPORT_CHAR_XL:
-        strcpy(buf, std::format( "[{}] SYS TELEPORT_CHAR_XL room of: {}, character: {} ({})\n\r", script->number,
-            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text).c_str());
+        message = std::format( "[{}] SYS TELEPORT_CHAR_XL room of: {}, character: {} ({})\n\r", script->number,
+            get_param_text(script->param[0]), get_param_text(script->param[1]), script->text);
         break;
 
     default:
-        strcpy(buf, std::format( "[{}] ERROR: unknown command type\n\r", script->number).c_str());
+        message = std::format( "[{}] ERROR: unknown command type\n\r", script->number);
     } // switch
-    send_to_char(buf, ch);
+    send_to_char(message, ch);
 }
 
 // /50 - list all commands in a script

@@ -1106,6 +1106,11 @@ int load_room(struct char_data* ch, char* arg)
     // int i;
     int tmp, tmp2, tmp3, tmp4, number;
     char str[255], fname[80];
+    // Local scratch buffer for the room-file field-line reads below
+    // (fgets()/sscanf()) -- retired off the app-tier `buf` global
+    // (db_boot.cpp) ahead of this file joining rots_olc (Cluster B
+    // wave Task 3; cb-census.md section 5.6).
+    char local_buf[256];
     FILE* f;
     struct extra_descr_data* tmpdescr;
     struct affected_type* tmpaf;
@@ -1180,9 +1185,9 @@ int load_room(struct char_data* ch, char* arg)
             return -1;
         }
         get_text(f, &(SHAPE_ROOM(ch)->room->description));
-        fgets(buf, 255, f);
+        fgets(local_buf, 255, f);
         tmp = tmp2 = tmp3 = tmp4 = 0;
-        sscanf(buf, "%d %d %d %d", &tmp, &tmp2, &tmp3, &tmp4); /*????? What is it for, is unclear...*/
+        sscanf(local_buf, "%d %d %d %d", &tmp, &tmp2, &tmp3, &tmp4); /*????? What is it for, is unclear...*/
         SHAPE_ROOM(ch)
             ->room->room_flags
             = tmp2;
@@ -1209,8 +1214,8 @@ int load_room(struct char_data* ch, char* arg)
                 break;
 
             case 'F': /* room affect */
-                fgets(buf, 255, f);
-                sscanf(buf, "%d %d %d %d", &tmp, &tmp2, &tmp3, &tmp4);
+                fgets(local_buf, 255, f);
+                sscanf(local_buf, "%d %d %d %d", &tmp, &tmp2, &tmp3, &tmp4);
                 tmpaf = get_from_affected_type_pool();
                 tmpaf->type = tmp;
                 tmpaf->location = tmp2;

@@ -1444,7 +1444,8 @@ mobact edge. The driver homes with the engine it invokes, confirming the l4-seed
 "engine/driver pairing" rationale over a `rots_combat` DEFER-row promotion. `spec_pro.cpp`'s tier
 remains the one still-undecided instance of this same question.
 
-**The `one_mobile_activity` cross-edge — the codebase's first L3→L4 permanent inversion.**
+**The `one_mobile_activity` cross-edge — the codebase's first L3→L4 permanent inversion (a
+second joined it in the Cluster B wave — see "The Cluster B wave" section below).**
 `limits.cpp:1398` (inside the `SPELL_ACTIVITY` affect-processing case) calls `one_mobile_activity(i)`
 — defined in `mobact.cpp`. Once `limits` is `rots_combat` (L3) and `mobact` is `rots_script` (L4),
 this is an `L3 → L4` **upward** edge across a tier boundary the certified `combat < pathfind < script`
@@ -1646,6 +1647,26 @@ already: `gain_exp` (rots_combat/limits.cpp), `update_pos`/`raw_kill` (fight.cpp
 db_players.cpp), and the Task-1-relocated `perform_*`/`find_eq_pos` family (no site edit needed,
 signatures unchanged). Cleanup: 7 dead `ACMD(do_*)` forward decls plus the local `find_action`
 declaration deleted from `script.cpp`.
+
+**`call_trigger`'s dispatch became this codebase's second permanent L3→L4 inversion.**
+`script.cpp`'s `register_call_trigger_hook()` (`script.cpp:844`, calling
+`rots::combat::set_call_trigger_hook(call_trigger)` at `script.cpp:846`, registering the real
+`call_trigger()` body defined at `script.cpp:775`) was, before this wave, a legal app→lib downward
+registration — `script.cpp` was still `ROTS_SERVER_SOURCES`. Now that Task 4 has made `script.cpp`
+a `rots_script` (L4) member, that same registration is a legal `L4 → L3` downward call (the
+`mobact.cpp` precedent), but the *dispatch* direction is the inverse of what the registration
+direction suggests: `fight.cpp` (`rots_combat`, L3) calling `rots::combat::call_trigger()`
+(`combat_hooks.h`/`combat_hooks.cpp`) to reach the real body in `script.cpp` (L4) is an upward
+`L3 → L4` edge across a tier boundary that never moves — the same permanent-inversion shape as the
+behavior wave's `limits → mobact` hook (above), this codebase's second instance. `combat_hooks.h`'s
+app-other-trio banner (lines 330-336) and `fight.cpp`'s own `perform_give`/`perform_wear`
+relocation comments (around `fight.cpp:3272-3274`, echoed again near `fight.cpp:3358-3360`) still
+describe `call_trigger`'s owning TU as staying "app-compiled" / "app-tier permanently" — that is
+now stale. Those two src-comment corrections are tracked as sweep-backlog items (whole-branch
+review `cb-wholebranch-review.md` Issue 1) rather than applied here: editing `src/` mid-wave would
+restamp the i386 battery's per-commit completion markers while the finalization battery is
+running, so they are deferred to the next wave's sweep alongside Issue 9's stale
+`editor_hooks.{h,cpp}` banner.
 
 **Relocate candidates (Task 1), each a body-read verdict, not a default followed blindly.**
 `find_action` (act_soci.cpp) — **T0's one seam-beyond-the-brief's-list**: its body reads app-tier

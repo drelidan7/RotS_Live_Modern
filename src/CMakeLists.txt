@@ -598,14 +598,13 @@ set(ROTS_SCRIPT_SOURCES
 # Task 3, Step 2; see that set's own comment).
 # script.cpp LEFT this list for ROTS_SCRIPT_SOURCES above (Cluster B wave
 # Task 4, Step 1; see that set's own comment).
-# editor_hooks.cpp JOINS this list (Cluster B wave Task 1; cb-task-1-brief.md
-# Step 3): backing storage + dispatch for editor_hooks.h's string-editor-init
-# hook -- neither modify.cpp (its real-body owner, permanently app-tier) nor
-# the six shape*.cpp OLC editors (its future consumers, not yet a library)
-# give it a single natural home yet, the same "seam header, no owning TU"
-# shape combat_hooks.cpp/script_hooks.cpp landed with before their own
-# consumers promoted. A plain candidate to move into rots_olc once a later
-# Cluster B task creates that library and the shape family joins it.
+# editor_hooks.cpp LEFT this list for ROTS_OLC_SOURCES below (Cluster B wave
+# Task 4, Step 2; see that set's own comment -- the six shape*.cpp editors,
+# its only consumers, promote in the same commit, closing the "plain
+# candidate to move into rots_olc" this list's own prior comment predicted).
+# shapemdl.cpp/shapemob.cpp/shapeobj.cpp/shaperom.cpp/shapescript.cpp/
+# shapezon.cpp LEFT this list for ROTS_OLC_SOURCES below (Cluster B wave
+# Task 4, Step 2; see that set's own comment).
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -613,16 +612,69 @@ set(ROTS_SERVER_SOURCES
     boards.cpp
     color.cpp comm.cpp
     db_boot.cpp delayed_command_interpreter.cpp
-    editor_hooks.cpp
     handler.cpp interpre.cpp
     mage.cpp mail.cpp mob_csv_extract.cpp
     modify.cpp
     obj2html.cpp objsave.cpp
     pkill.cpp protocol.cpp
-    ranger.cpp savebench.cpp shapemdl.cpp shapemob.cpp
-    shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
+    ranger.cpp savebench.cpp
     shop.cpp signals.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
+)
+
+# L4 band, new top tier: OLC (online creation) editor layer (Cluster B wave
+# Task 4, Step 2; cb-task-4-brief.md; cb-census.md section 6's closure
+# verdict). The six shape*.cpp files are the world/mob/obj/room/script/zone
+# OLC editors (shapemdl/shapemob/shapeobj/shaperom/shapescript/shapezon --
+# each a `SHAPE_*` interactive numeric-menu editor over one entity type's
+# prototype data). shapemob.cpp is the intra-cluster hub: its
+# shape_center_obj/room/zone/mudlle/script fan-out (5 edges) plus the
+# clean_text/shape_standup/get_permission/get_text/find_mob fan-in from the
+# other five editors is exactly the "standalone promotion is impossible"
+# shape the intra-subset closure rule anticipates -- confirmed by Task 0's
+# full symbol census (cb-census.md section 3): all of it resolves INTRA-
+# rots_olc once the six co-migrate in ONE commit, so they do here.
+# shapemdl.cpp's mudlle_converter() call resolves plain DOWNWARD into
+# rots_script (mudlle.cpp) -- no seam needed. shapescript.cpp's
+# find_script_by_number() call and script.cpp's (now rots_script, Task 4
+# Step 1) get_param_text() call are the only script<->olc edges, and both
+# are one-directional olc->script after Step 1's relocation (see
+# ROTS_SCRIPT_SOURCES' own comment) -- the mutual edge the census set out to
+# verify is fully dissolved.
+#
+# editor_hooks.cpp JOINS HERE TOO -- a build-wiring necessity this task's own
+# linkcheck construction surfaces, not a new census finding: dispatch_
+# string_editor_init() (editor_hooks.h/.cpp)'s real body is registered by
+# modify.cpp (permanently app-tier, session-coupled), but its BACKING STORAGE
+# lived in ROTS_SERVER_SOURCES only because the six shape*.cpp editors --
+# its sole callers (converted onto this hook in Task 3) -- were not yet a
+# library themselves; editor_hooks.cpp's own file comment already named this
+# exact destination ("a plain candidate to join rots_olc once that library
+# exists and needs it"). Leaving it in ROTS_SERVER_SOURCES here would make
+# every rots_olc caller of dispatch_string_editor_init() a genuine
+# rots_olc -> app upward edge -- the identical "seam header, no owning TU
+# yet" shape script_hooks.cpp's own l4-seed-wave join resolved (see that
+# set's comment above) -- so it joins in this SAME commit, verified by this
+# task's own OlcLayerAcyclicity linkcheck (built green with editor_hooks.cpp
+# included; the non-vacuity probe further confirms the checker would have
+# caught it left out, see this library's rots_olc_linkcheck comment below).
+# modify.cpp's own set_string_editor_init_hook() registration call becomes a
+# legal app -> rots_olc downward call once this join lands.
+#
+# rots_olc PUBLIC-links RotS::script (mudlle_converter/find_script_by_number/
+# get_param_text) and, transitively through it, the full L3-and-below set
+# (pathfind/combat/world/persist/entity/core/platform) -- the same "list
+# every layer explicitly on the promoting library's own PUBLIC link line"
+# pattern rots_script/rots_pathfind use (not the linkcheck's own tighter
+# single-nearest-layer convention, see rots_olc_linkcheck's comment below).
+# rots_script may NEVER link RotS::olc (one-directional layer order,
+# platform < core < entity < persist < world < combat < pathfind < script <
+# olc < app) -- confirmed by Task 0's inbound-edge check (cb-census.md
+# section 5.7): zero library references any Cluster B symbol, so promoting
+# these seven TUs to the top of the L4 band creates no upward edge.
+set(ROTS_OLC_SOURCES
+    editor_hooks.cpp shapemdl.cpp shapemob.cpp shapeobj.cpp
+    shaperom.cpp shapescript.cpp shapezon.cpp
 )
 
 add_executable(ageland ${ROTS_SERVER_SOURCES})
@@ -934,6 +986,27 @@ target_link_libraries(rots_script PUBLIC rots_build_flags RotS::pathfind RotS::c
 # include root already flows transitively via RotS::pathfind's own PUBLIC
 # target_include_directories chain.
 
+# --- L4 band, new top tier: OLC (online creation) editor layer ------------------
+# (Cluster B wave Task 4, Step 2 -- lands after rots_script above because it
+# links it. See the ROTS_OLC_SOURCES comment above for the full membership
+# rationale, including editor_hooks.cpp's join.)
+add_library(rots_olc STATIC ${ROTS_OLC_SOURCES})
+add_library(RotS::olc ALIAS rots_olc)
+set_target_properties(rots_olc PROPERTIES CXX_EXTENSIONS OFF)
+# PUBLIC RotS::script + the full L3-and-below set: RotS::script resolves
+# mudlle_converter()/find_script_by_number()/get_param_text() (the mutual
+# edge Task 4 Step 1 resolved into a plain olc->script downward call) and,
+# transitively via RotS::script's own PUBLIC chain, every other legitimate
+# downward edge (RotS::pathfind/RotS::combat/RotS::world/RotS::persist/
+# RotS::entity/RotS::core/RotS::platform). Listed first to mirror
+# rots_script's own "nearest layer first" ordering. PUBLIC so all eight
+# layers' include roots flow transitively to any consumer that links only
+# RotS::olc.
+target_link_libraries(rots_olc PUBLIC rots_build_flags RotS::script RotS::pathfind RotS::combat RotS::world RotS::persist RotS::entity RotS::core RotS::platform)
+# No target_include_directories() of its own needed: every lower layer's
+# include root already flows transitively via RotS::script's own PUBLIC
+# target_include_directories chain.
+
 target_link_libraries(ageland PRIVATE
     RotS::platform
     RotS::core
@@ -943,6 +1016,7 @@ target_link_libraries(ageland PRIVATE
     RotS::combat
     RotS::pathfind
     RotS::script
+    RotS::olc
     rots_build_flags
     $<$<PLATFORM_ID:Windows>:ws2_32>
 )
@@ -1157,20 +1231,21 @@ if(ROTS_BUILD_TESTS)
     include(GoogleTest)
 
     # ageland_tests deliberately does NOT link rots_core/rots_entity/
-    # rots_persist/rots_world/rots_combat/rots_pathfind/rots_script
+    # rots_persist/rots_world/rots_combat/rots_pathfind/rots_script/rots_olc
     # (TESTING parity, same as the rots_platform pattern above): it keeps
     # compiling config.cpp/consts.cpp/output_seam.cpp, entity_lifecycle.cpp/
     # object_utils.cpp/environment_utils.cpp, db_players.cpp/
     # character_json.cpp/etc., (as of world-seed Task 5) db_world.cpp/
     # zone_load.cpp/weather.cpp, (as of combat-seed Task 1)
     # battle_mage_handler.cpp/skill_timer.cpp/weapon_master_handler.cpp/
-    # wild_fighting_handler.cpp, and (as of l4-seed Task 3) graph.cpp/
-    # mudlle.cpp/mudlle2.cpp directly via ROTS_CORE_SOURCES/
-    # ROTS_ENTITY_SOURCES/ROTS_PERSIST_SOURCES/ROTS_WORLD_SOURCES/
-    # ROTS_COMBAT_SOURCES/ROTS_PATHFIND_SOURCES/ROTS_SCRIPT_SOURCES instead
-    # (all now live only in those lists — see each set's own comment
-    # above).
-    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_ENTITY_SOURCES} ${ROTS_PERSIST_SOURCES} ${ROTS_WORLD_SOURCES} ${ROTS_COMBAT_SOURCES} ${ROTS_PATHFIND_SOURCES} ${ROTS_SCRIPT_SOURCES} ${ROTS_TEST_SOURCES})
+    # wild_fighting_handler.cpp, (as of l4-seed Task 3) graph.cpp/
+    # mudlle.cpp/mudlle2.cpp, and (as of Cluster B wave Task 4) editor_hooks.cpp/
+    # shapemdl.cpp/shapemob.cpp/shapeobj.cpp/shaperom.cpp/shapescript.cpp/
+    # shapezon.cpp directly via ROTS_CORE_SOURCES/ROTS_ENTITY_SOURCES/
+    # ROTS_PERSIST_SOURCES/ROTS_WORLD_SOURCES/ROTS_COMBAT_SOURCES/
+    # ROTS_PATHFIND_SOURCES/ROTS_SCRIPT_SOURCES/ROTS_OLC_SOURCES instead (all
+    # now live only in those lists — see each set's own comment above).
+    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_ENTITY_SOURCES} ${ROTS_PERSIST_SOURCES} ${ROTS_WORLD_SOURCES} ${ROTS_COMBAT_SOURCES} ${ROTS_PATHFIND_SOURCES} ${ROTS_SCRIPT_SOURCES} ${ROTS_OLC_SOURCES} ${ROTS_TEST_SOURCES})
 
     # Same C++ standard as ageland (see above) — required because these targets are
     # defined per-target here rather than via a project-wide CMAKE_CXX_STANDARD.
@@ -1630,6 +1705,52 @@ if(ROTS_BUILD_TESTS)
             LINK_DEPENDS "$<TARGET_FILE:rots_script>")
         if(BUILD_TESTING)
             add_test(NAME ScriptLayerAcyclicity COMMAND rots_script_linkcheck)
+        endif()
+
+        # Load-bearing OLC-layer acyclicity check (spec §11), mirroring the
+        # rots_script_linkcheck block above (Cluster B wave Task 4, Step 2 --
+        # the ninth *LayerAcyclicity check, the first above rots_script).
+        # rots_olc (editor_hooks.cpp + the six shape*.cpp OLC editors -- see
+        # the ROTS_OLC_SOURCES comment above) is verified to have no upward
+        # symbol references beyond its legal downward edges into rots_script,
+        # rots_pathfind, rots_combat, rots_world, rots_persist, rots_entity,
+        # rots_core, and rots_platform. RotS::script is the one library this
+        # checker normal-links directly (mirroring rots_pathfind_linkcheck's
+        # and rots_script_linkcheck's own "list just the one nearest layer,
+        # rely on its transitive PUBLIC chain for the rest" convention, not
+        # rots_combat_linkcheck's four-library list) -- RotS::script already
+        # carries all seven lower layers transitively via its own PUBLIC
+        # RotS::pathfind link (established above). The checker force-loads
+        # rots_olc itself (so every rots_olc symbol is pulled in and any
+        # OTHER unresolved reference fails the link) and normal-links
+        # RotS::script to resolve those legitimate lower-layer edges -- a
+        # strictly tighter guarantee than "any lower layer is allowed".
+        #
+        # NON-VACUITY: verified locally (not committed) by temporarily adding
+        # a call from shapemob.cpp into an app-tier-only symbol (do_shutdown's
+        # real body, act_wiz.cpp) bypassing the combat_command cell -- the
+        # checker's link FAILED with the expected undefined-symbol error,
+        # then passed again once reverted. See cb-task-4-report.md for the
+        # exact commands/output.
+        add_executable(rots_olc_linkcheck tests/olc_linkcheck_main.cpp)
+        target_link_libraries(rots_olc_linkcheck PRIVATE rots_build_flags RotS::script)
+        add_dependencies(rots_olc_linkcheck rots_olc)
+        if(APPLE)
+            target_link_options(rots_olc_linkcheck PRIVATE
+                -Wl,-force_load,$<TARGET_FILE:rots_olc>)
+        else()
+            target_link_options(rots_olc_linkcheck PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:rots_olc> -Wl,--no-whole-archive)
+        endif()
+        # LINK_DEPENDS: same rationale as rots_script_linkcheck above — the
+        # archive path only appears inside a raw linker flag string, invisible
+        # to CMake's normal target_link_libraries dependency tracking, so an
+        # incremental rebuild that changes only a rots_olc source needs this
+        # to force a relink instead of silently reusing a stale binary.
+        set_target_properties(rots_olc_linkcheck PROPERTIES
+            LINK_DEPENDS "$<TARGET_FILE:rots_olc>")
+        if(BUILD_TESTING)
+            add_test(NAME OlcLayerAcyclicity COMMAND rots_olc_linkcheck)
         endif()
     endif()
 endif()

@@ -300,3 +300,81 @@ resolves relocate-or-hook at the spell-family wave. Also enumerate the fuller ce
   or deferred — its failure narrows the wave to pathfind+zone rather than being out of scope. No
   int→double combat-math changes. No new
   smoke/determinism infrastructure — the combat-pilot harness carries forward informational.
+
+## As-built (Tasks 0-3; Task 4 is this docs pass; Task 5 finalization pending)
+
+**Status: GO, full scope delivered.** Every adjudication default in this design either held or
+overturned cleanly (below); the named collapse condition (`PERS`) did not fire; Cluster A's full
+3-TU scope and `zone.cpp` both landed. Eight libraries, eight `*LayerAcyclicity` linkchecks. ctest
+1398 → 1415 across Tasks 1-3 (T0 read-only). Full per-task evidence:
+`.superpowers/sdd/l4-task-{0,1,2,3}-report.md`; census `.superpowers/sdd/l4-census.md`.
+
+- **T0 OVERTURN 1 — `equip_char` is NOT entity-pure; the design's own default was wrong, and it
+  corrected a controller claim, not just a design-doc guess.** This design's problem statement
+  (above) states plainly: "the POISON coupling that makes the *pair* look combat-flavored lives in
+  `unequip_char`, **not** `equip_char` (combat-pilot census §E finding)" — attributed to a
+  controller-approved adjudication default, not merely an unverified assumption. T0's body-read
+  (`fight.cpp:3093-3155`) found `equip_char` carries its **own** `damage()`/`raw_kill()`
+  poison-coupling block, structurally identical to `unequip_char`'s. Tracing the claim to its actual
+  source (`pilot-census.md` §3.8) showed it was a **caller-side** observation ("`fight.cpp` calls
+  `unequip_char` only") misread as a body-content claim; §3.8 itself says both wrappers reference
+  `damage`/`raw_kill`. The opus review of T0 independently re-derived the same body-read and
+  confirmed the overturn was correct — this was a genuine correction of a prior wave's claim as it
+  had been carried into this design doc, not a routine "design said X, code said X, confirmed" check.
+  Consequence: `equip_char` falls to the named fallback (`world_hooks.h::dispatch_equip_char`,
+  registered by `fight.cpp`, unmoved) instead of relocating; neither half of the
+  `equip_char`/`unequip_char` pair splits after all (the design's own anticipated "acceptable split"
+  never happens, since nothing moves).
+- **T0 OVERTURN 2 — `pkill_get_good_fame`/`pkill_get_evil_fame` are NOT relocate-clean.** The design
+  called these "RELOCATE-CLEAN to `rots_persist` ... two-line accessors reading pkill's own static
+  ranking globals." T0 found `good_ranking`/`evil_ranking` are real, actively-mutated globals defined
+  in **`pkill.cpp` itself** (`ROTS_SERVER_SOURCES`, app-tier), not `pkill_json.cpp`
+  (`rots_persist`) — moving just the two accessors would compile in the final `ageland` link (the
+  linker resolves everything together) but would fail `PersistLayerAcyclicity` by design, since that
+  linkcheck force-loads `rots_persist` standalone against only its declared downward libraries. Falls
+  to the design's own named fallback: a `world_hooks.h` two-cell query-hook pair (int, safe-sentinel
+  `0` default), registered by `pkill.cpp` unmoved.
+- **CRLF map correction.** This design's Verification section claims "All four candidate files read
+  as plain LF at @b6f6b76." Measured (T0): `zone.cpp` is **pure CRLF** (703/703 lines); `graph.cpp`
+  (411/421), `mudlle.cpp` (1383/1385), `mudlle2.cpp` (475/477) are all **mixed CRLF+LF**. Every T1/T2
+  edit to all four used the Python binary-mode byte-edit method as a result — not a fallback for
+  files that happened to need it, but the mandatory method for the wave's entire scope. The same
+  discovery extended in transit to `utility.cpp`/`utils.h`/`db.h`/`pkill.cpp`/`act_obj2.cpp`/
+  `handler.h`/`handler.cpp`, none of which this design's four-file CRLF check ever covered.
+- **T3's storage-relocation adjudication.** T1 placed `dispatch_command_interpreter()`'s backing
+  storage in `interpre.cpp` (following this design's own Step 1 instruction, "backing storage +
+  dispatch in `interpre.cpp`"), which seemed consistent with the `assign_spell_pointers`/
+  `register_combat_command_dispatch` precedent this design cites. Once Task 2 converted
+  `mudlle.cpp`'s call site, that placement became a live `rots_script → app` upward edge — invisible
+  until `rots_script_linkcheck` first ran against it at Task 3 (two undefined symbols:
+  `dispatch_pers`/`dispatch_command_interpreter`). Adjudicated in-flight (not a STOP, since the fix
+  was mechanical and unambiguous): relocated both hooks' backing storage byte-verbatim into
+  `script_hooks.cpp` — which already held `dispatch_pers()`'s storage for the identical "seam header,
+  no single owning caller" reason — making it `rots_script`'s third member; `interpre.cpp` keeps only
+  the registrar. This design's own Step 1 text is the one place this design under-specified the
+  correct precedent (the `world_hooks.h`/`db_world.cpp` "storage lives in the *promoting* library"
+  shape, not the `assign_spell_pointers` shape it actually cited) — recorded here as the design
+  correction it is, not silently absorbed into the as-built without comment.
+- **The say-cell gap fill.** `combat_command::say` had been registered since the combat-seed wave
+  (predating this design by three waves) but had **zero** `issue_command()` callers anywhere in the
+  tree until Task 2's own 15 new call sites (graph ×2, mudlle ×11, mudlle2 ×2) — a genuine,
+  standing discriminator gap this design's Verification section's audit requirement caught, not a
+  new gap this wave introduced. Closed with the standard registered/unregistered pair.
+- **`is_empty` retirement.** Beyond this design's own scope (which only asked for a hook,
+  `dispatch_is_zone_populated`, real body registered by `comm.cpp`), Task 2 additionally retired
+  `zone.cpp`'s own `is_empty(int)` function body outright — not just its call sites — once a
+  tree-wide re-check confirmed zero other callers remained. A verified-safe cleanup beyond the
+  letter of the design, not a deviation from it.
+- **PERS confirmed; the collapse condition did not fire.** T0's body-read confirmed `PERS`'s own body
+  (`utility.cpp:915-961`) genuinely cannot relocate (its `CC_USE`/`CC_NORM` macros expand to
+  `color.cpp` state, real app-tier) — consistent with, not contradicting, the blocker-buster wave's
+  prior finding. The *forwarder* question, this design's actual scope, resolved cleanly as an
+  abort-tripwire class (`script_hooks.h`, per the design's own recommended home) — Cluster A's full
+  3-TU scope survived exactly as the design's non-collapse path anticipated.
+- **Everything else in this design held as specced**: the `command_interpreter` hook shape (void,
+  loud tripwire, `interpre.cpp` as original registrar); `do_wear`/`is_zone_populated` (cheap, one
+  call site each); `extract_char`'s re-home (mechanical, zero snag); the `put_to_txt_block_pool`
+  forwarder (one new symbol, safe-no-op PUT class); the `rots_pathfind`-before-`rots_script` commit
+  ordering; both linkchecks' shape (though their actual link lists lean on PUBLIC transitivity more
+  than this design's literal "mirroring `rots_combat`'s explicit downward list" text suggested — see
+  `docs/BUILD.md`'s "L4 band" subsection for the as-built link-set account).

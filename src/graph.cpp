@@ -25,6 +25,7 @@
 #include <iterator>
 #include <string>
 
+#include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
 #include "handler.h"
@@ -45,9 +46,6 @@ extern struct char_data* mob_proto; /* prototypes for mobs*/
 extern struct char_data* waiting_list;
 extern struct char_data* character_list;
 extern struct skill_data skills[];
-
-ACMD(do_say);
-ACMD(do_move);
 
 struct bfs_queue_struct {
     int room;
@@ -236,7 +234,7 @@ void hunt_victim(struct char_data* ch)
             found = 1;
 
     if (!found) {
-        do_say(ch, mutable_arg("Damn!  My prey is gone!!"), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, ch, mutable_arg("Damn!  My prey is gone!!"), 0, 0, 0);
         ch->specials.hunting = 0;
         return;
     }
@@ -250,12 +248,12 @@ void hunt_victim(struct char_data* ch)
         // function already uses two lines above (the "gone!!" branch), so
         // no strcpy/global scratch round-trip is needed. Output string
         // byte-identical.
-        do_say(ch, mutable_arg(std::format("Damn!  Lost {}!", HMHR(ch->specials.hunting))), 0, 0,
-            0);
+        rots::combat::issue_command(rots::combat::combat_command::say, ch,
+            mutable_arg(std::format("Damn!  Lost {}!", HMHR(ch->specials.hunting))), 0, 0, 0);
         ch->specials.hunting = 0;
         return;
     } else {
-        do_move(ch, mutable_arg(""), 0, dir + 1, 0);
+        rots::combat::issue_command(rots::combat::combat_command::move, ch, mutable_arg(""), 0, dir + 1, 0);
         if (ch->in_room == ch->specials.hunting->in_room)
             hit(ch, ch->specials.hunting, TYPE_UNDEFINED);
         return;

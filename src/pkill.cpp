@@ -891,25 +891,8 @@ pkill_get_leader_by_rank(int rank, int race)
     return ldr;
 }
 
-/*
- * Given a char_data structure, return the character's rank in
- * O(1) time.
- */
-int pkill_get_rank_by_character(struct char_data* c, bool totalRank)
-{
-    return pkill_get_totalrank_by_character_id(GET_INDEX(c), totalRank);
-}
-
-int pkill_get_totalrank_by_character_id(int idx, bool totalRank)
-{
-    extern struct player_index_element* player_table;
-    extern int top_of_p_table;
-
-    if (idx < 0 || idx > top_of_p_table)
-        return PKILL_UNRANKED;
-
-    if (totalRank)
-        return player_table[idx].totalrank;
-
-    return player_table[idx].rank;
-}
+// pkill_get_rank_by_character()/pkill_get_totalrank_by_character_id()
+// relocated verbatim to db_players.cpp (behavior wave Task 1; census
+// section 6.2 -- a genuine spec-adjudication gap, RELOCATE-CLEAN): both
+// read only player_table/top_of_p_table, already db_players.cpp's own
+// globals (rots_persist). Declarations unchanged (pkill.h).

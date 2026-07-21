@@ -1640,6 +1640,38 @@ unsigned char spllog_saves; /* 1: character saved, 0: character failed */
 short spllog_mage_level; /* the effective level of the caster */
 short spllog_save; /* the effective save computed in saves_spell */
 
+// saves_spell() relocated verbatim from spell_pa.cpp:180-200 (behavior wave
+// Task 1; CONTROLLER ADDENDUM item 1, OVERTURNING the spec's default L2
+// char_utils_combat.cpp destination; census section 7.3): its body writes
+// spllog_mage_level/spllog_save/spllog_saves immediately above -- rots_combat
+// (L3) globals -- and rots_entity (L2) does not PUBLIC-link RotS::combat, so
+// an L2 home would be an illegal upward write-dependency. Placed here
+// beside the storage it writes, the same "storage + writer/reader share a
+// home" shape as record_spell_damage() below. limits.cpp's (:1387) and
+// mage.cpp's (:2022) local forward declarations are unaffected -- linkage
+// doesn't care which TU defines the symbol.
+char saves_spell(struct char_data* ch, sh_int level, int bonus)
+{
+    int save;
+
+    /* positive saving_throw makes saving throw better! */
+    save = GET_SAVE(ch);
+    save += GET_LEVELA(ch) - level;
+    save += bonus;
+
+    save += GET_INT(ch) / 5;
+    if (GET_INT(ch) % 5)
+        save += (number(0, GET_INT(ch) % 5)) ? 1 : 0;
+
+    if (GET_RACE(ch) == RACE_HOBBIT)
+        save += 1;
+
+    spllog_mage_level = level;
+    spllog_save = save;
+
+    return (spllog_saves = (save > number(1, 20)));
+}
+
 // record_spell_damage() relocated verbatim from spell_pa.cpp:271-279
 // (combat-pilot wave Task 4a; pilot-census.md section 7.3), bundled
 // with the storage-move above -- its sole caller, damage(), is

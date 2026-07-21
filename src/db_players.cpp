@@ -221,6 +221,30 @@ int find_player_in_table(std::string_view name, int idnum)
     return i;
 }
 
+// pkill.cpp -- pkill_get_rank_by_character()/pkill_get_totalrank_by_
+// character_id() relocated verbatim (behavior wave Task 1, controller-
+// adjudicated relocation; census section 6.2, a genuine spec-adjudication
+// gap not itemized in this wave's spec prose): a pure player_table/
+// top_of_p_table index lookup, both already this file's own globals (see
+// above) -- the same "already this file's own storage" test PS Task 4's
+// find_player_in_table()/world_room_vnum() relocations already applied.
+// Declarations unchanged (pkill.h).
+int pkill_get_totalrank_by_character_id(int idx, bool totalRank)
+{
+    if (idx < 0 || idx > top_of_p_table)
+        return PKILL_UNRANKED;
+
+    if (totalRank)
+        return player_table[idx].totalrank;
+
+    return player_table[idx].rank;
+}
+
+int pkill_get_rank_by_character(struct char_data* c, bool totalRank)
+{
+    return pkill_get_totalrank_by_character_id(GET_INDEX(c), totalRank);
+}
+
 namespace {
 
 int find_player_table_index_by_name(std::string_view name)

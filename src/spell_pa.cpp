@@ -44,7 +44,9 @@ char* target_from_word(struct char_data*, char*, int, struct target_data*);
 int check_hallucinate(struct char_data*, struct char_data*);
 void report_wrong_target(struct char_data*, int, char);
 void affect_update_person(struct char_data*, int);
-char saves_spell(struct char_data*, sh_int, int);
+// saves_spell() forward declaration removed -- relocated to fight.cpp
+// (see this file's own relocation comment near its old body); this TU
+// never called it locally.
 bool new_saves_spell(const char_data* caster, const char_data* victim, int save_bonus);
 void one_mobile_activity(struct char_data*);
 void do_sense_magic(struct char_data*, int);
@@ -169,35 +171,25 @@ void do_sense_magic(char_data* caster, int spell_number)
 
 // spllog_saves/spllog_mage_level/spllog_save storage-moved to fight.cpp
 // (combat-pilot wave Task 4a; pilot-census.md section 7.3), alongside
-// record_spell_damage(), their sole reader. saves_spell()/
-// new_saves_spell() below keep WRITING to them (a legal downward write
-// into rots_combat storage once this file joins a future wave) via the
-// externs immediately below.
+// record_spell_damage(), their sole reader. new_saves_spell() below keeps
+// WRITING to them (a legal downward write into rots_combat storage once
+// this file joins a future wave) via the externs immediately below --
+// saves_spell() itself relocated to fight.cpp too (behavior wave Task 1;
+// see this file's own relocation comment further down), so it now writes
+// them as a same-TU access instead.
 extern unsigned char spllog_saves; /* 1: character saved, 0: character failed */
 extern short spllog_mage_level; /* the effective level of the caster */
 extern short spllog_save; /* the effective save computed in saves_spell */
 
-char saves_spell(struct char_data* ch, sh_int level, int bonus)
-{
-    int save;
-
-    /* positive saving_throw makes saving throw better! */
-    save = GET_SAVE(ch);
-    save += GET_LEVELA(ch) - level;
-    save += bonus;
-
-    save += GET_INT(ch) / 5;
-    if (GET_INT(ch) % 5)
-        save += (number(0, GET_INT(ch) % 5)) ? 1 : 0;
-
-    if (GET_RACE(ch) == RACE_HOBBIT)
-        save += 1;
-
-    spllog_mage_level = level;
-    spllog_save = save;
-
-    return (spllog_saves = (save > number(1, 20)));
-}
+// saves_spell() relocated verbatim to fight.cpp (behavior wave Task 1;
+// CONTROLLER ADDENDUM item 1, OVERTURNING the spec's default L2
+// char_utils_combat.cpp destination; census section 7.3): it writes
+// spllog_mage_level/spllog_save/spllog_saves, rots_combat (L3) globals
+// storage-moved to fight.cpp in the combat-pilot wave -- an L2 home would
+// be an illegal upward write-dependency (rots_entity does not PUBLIC-link
+// RotS::combat). This file has no remaining call site of its own (see the
+// removed local forward declaration below); limits.cpp's/mage.cpp's own
+// local forward declarations are unaffected.
 
 //============================================================================
 // Calculates the saving throw bonus of a character vs. Mage spells.

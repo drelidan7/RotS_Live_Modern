@@ -2100,3 +2100,72 @@ void register_room_vnum_hook()
 {
     rots::persist::set_room_vnum_hook(world_room_vnum);
 }
+
+// recalc_zone_power()/report_zone_power() relocated verbatim from
+// handler.cpp:762/:791 (behavior wave Task 1, CONFIRMED RELOCATE to
+// rots_world; census section 7.2): both read/write zone_table[]/
+// top_of_zone_table (this TU's own storage, via zone.h's extern
+// declarations already included above), read character_list (extern
+// declared at this file's own top, entity_lifecycle.cpp's storage) and
+// world[] (this file's own storage), and call char_power() (placement.cpp,
+// rots_entity, declared via handler.h, already included above) -- all
+// legal same-tier/downward reads for a rots_world home. Declarations
+// unchanged (handler.h).
+void recalc_zone_power()
+{
+    int tmp;
+    char_data* tmpch;
+
+    for (tmp = 0; tmp <= top_of_zone_table; tmp++) {
+        // nature_power is set from the zone files.
+        zone_table[tmp].white_power = 0;
+        zone_table[tmp].dark_power = 0;
+        zone_table[tmp].magi_power = 0;
+    }
+
+    for (tmpch = character_list; tmpch; tmpch = tmpch->next)
+        if (!IS_NPC(tmpch) && (tmpch->in_room != NOWHERE)) {
+            tmp = char_power(GET_LEVEL(tmpch));
+            if (RACE_GOOD(tmpch))
+                zone_table[world[tmpch->in_room].zone].white_power += tmp;
+            else if (RACE_EVIL(tmpch))
+                zone_table[world[tmpch->in_room].zone].dark_power += tmp;
+            else if (RACE_MAGI(tmpch))
+                zone_table[world[tmpch->in_room].zone].magi_power += tmp;
+        }
+}
+
+/*
+ * Indicates what side of the race war has the most influence
+ * over this zone; returns -1 for dominating evil, 1 for domi-
+ * nating good, 0 for neither.
+ */
+int report_zone_power(struct char_data* ch)
+{
+    struct zone_data* z;
+
+    z = &zone_table[world[ch->in_room].zone];
+
+    if (RACE_GOOD(ch)) {
+        if (((z->dark_power > char_power(z->level) * 3 / 2) && (z->dark_power > z->white_power * 3 / 2)))
+            return -1;
+        if (((z->magi_power > char_power(z->level) * 3 / 2) && (z->magi_power > z->white_power * 3 / 2)))
+            return -1;
+    }
+
+    else if (RACE_EVIL(ch)) {
+        if (((z->white_power > char_power(z->level) * 4) && (z->white_power > z->dark_power * 4)))
+            return 1;
+        if (((z->magi_power > char_power(z->level) * 4) && (z->magi_power > z->dark_power * 4)))
+            return -1;
+    }
+
+    else if (RACE_MAGI(ch)) {
+        if (((z->white_power > char_power(z->level) * 4) && (z->white_power > z->magi_power * 4)))
+            return 1;
+        if (((z->dark_power > char_power(z->level) * 4) && (z->dark_power > z->magi_power * 4)))
+            return -1;
+    }
+
+    return 0;
+}

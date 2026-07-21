@@ -206,15 +206,11 @@ void put_to_follow_type_pool(struct follow_type*);
 // affect_remove() relocated to entity_lifecycle.cpp (db-split Task 4b);
 // declaration unchanged in handler.h.
 
-void affect_remove_notify(struct char_data* ch, struct affected_type* af)
-{
-    extern const std::string_view spell_wear_off_msg[];
-
-    if (!spell_wear_off_msg[af->type].empty() && !PLR_FLAGGED(ch, PLR_WRITING))
-        vsend_to_char(ch, "%s\n", spell_wear_off_msg[af->type].data());
-
-    affect_remove(ch, af);
-}
+// affect_remove_notify() relocated verbatim to entity_lifecycle.cpp
+// (behavior wave Task 1, CONFIRMED RELOCATE-CLEAN to L2; census section
+// 7.1): zero upward dependency (spell_wear_off_msg[] is rots_core L1,
+// vsend_to_char() is rots_core L1, affect_remove() is this file's own
+// rots_entity home). Declaration unchanged (handler.h).
 
 /* Removes an affection from a room */
 
@@ -768,61 +764,10 @@ void stop_riding_all(char_data* mount)
             stop_riding(tmpch);
 }
 
-void recalc_zone_power()
-{
-    int tmp;
-    char_data* tmpch;
-
-    for (tmp = 0; tmp <= top_of_zone_table; tmp++) {
-        // nature_power is set from the zone files.
-        zone_table[tmp].white_power = 0;
-        zone_table[tmp].dark_power = 0;
-        zone_table[tmp].magi_power = 0;
-    }
-
-    for (tmpch = character_list; tmpch; tmpch = tmpch->next)
-        if (!IS_NPC(tmpch) && (tmpch->in_room != NOWHERE)) {
-            tmp = char_power(GET_LEVEL(tmpch));
-            if (RACE_GOOD(tmpch))
-                zone_table[world[tmpch->in_room].zone].white_power += tmp;
-            else if (RACE_EVIL(tmpch))
-                zone_table[world[tmpch->in_room].zone].dark_power += tmp;
-            else if (RACE_MAGI(tmpch))
-                zone_table[world[tmpch->in_room].zone].magi_power += tmp;
-        }
-}
-
-/*
- * Indicates what side of the race war has the most influence
- * over this zone; returns -1 for dominating evil, 1 for domi-
- * nating good, 0 for neither.
- */
-int report_zone_power(struct char_data* ch)
-{
-    struct zone_data* z;
-
-    z = &zone_table[world[ch->in_room].zone];
-
-    if (RACE_GOOD(ch)) {
-        if (((z->dark_power > char_power(z->level) * 3 / 2) && (z->dark_power > z->white_power * 3 / 2)))
-            return -1;
-        if (((z->magi_power > char_power(z->level) * 3 / 2) && (z->magi_power > z->white_power * 3 / 2)))
-            return -1;
-    }
-
-    else if (RACE_EVIL(ch)) {
-        if (((z->white_power > char_power(z->level) * 4) && (z->white_power > z->dark_power * 4)))
-            return 1;
-        if (((z->magi_power > char_power(z->level) * 4) && (z->magi_power > z->dark_power * 4)))
-            return -1;
-    }
-
-    else if (RACE_MAGI(ch)) {
-        if (((z->white_power > char_power(z->level) * 4) && (z->white_power > z->magi_power * 4)))
-            return 1;
-        if (((z->dark_power > char_power(z->level) * 4) && (z->dark_power > z->magi_power * 4)))
-            return -1;
-    }
-
-    return 0;
-}
+// recalc_zone_power()/report_zone_power() relocated verbatim to
+// db_world.cpp (behavior wave Task 1, CONFIRMED RELOCATE to rots_world;
+// census section 7.2): both read/write zone_table[]/top_of_zone_table
+// (zone_load.cpp, rots_world) and character_list/world[] (already
+// rots_entity/rots_world), and call char_power() (placement.cpp,
+// rots_entity) -- no L3-combat/entity coupling found that would bar a
+// world home. Declarations unchanged (handler.h).

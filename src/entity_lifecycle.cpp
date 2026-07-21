@@ -2550,6 +2550,22 @@ void affect_remove(struct char_data* ch, struct affected_type* af)
     affect_total(ch);
 }
 
+// affect_remove_notify() relocated verbatim from handler.cpp:209 (behavior
+// wave Task 1, CONFIRMED RELOCATE-CLEAN to L2; census section 7.1): its
+// body reads spell_wear_off_msg[] (consts.cpp, rots_core L1), calls
+// vsend_to_char() (output_seam, rots_core L1), and calls affect_remove()
+// (immediately above, already this file's own definition) -- all three
+// downward from L2. Declaration unchanged (handler.h).
+void affect_remove_notify(struct char_data* ch, struct affected_type* af)
+{
+    extern const std::string_view spell_wear_off_msg[];
+
+    if (!spell_wear_off_msg[af->type].empty() && !PLR_FLAGGED(ch, PLR_WRITING))
+        vsend_to_char(ch, "%s\n", spell_wear_off_msg[af->type].data());
+
+    affect_remove(ch, af);
+}
+
 /* Return if a char is affected by a spell (SPELL_XXX), NULL indicates not affected.
    start_affect is not used anywhere in the mud...*/
 affected_type* affected_by_spell(const char_data* ch, byte skill, affected_type* start_affect)

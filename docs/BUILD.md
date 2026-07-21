@@ -269,19 +269,22 @@ accident:
 ## Library layering & the foundation acyclicity check
 
 The source tree is being carved into layered static libraries (see
-`docs/superpowers/specs/2026-07-16-library-architecture-design.md`). As of the l4-seed wave,
-**eight** libraries exist and are linked into `ageland` — the original eight-library sketch's six
-lower layers, plus a new L4 orchestration/authoring band (`rots_pathfind`/`rots_script`) the sketch
-did not anticipate (see the spec's §3 REVISION and this doc's "L4 band" subsection below).
+`docs/superpowers/specs/2026-07-16-library-architecture-design.md`). As of the Cluster B wave,
+**nine** libraries exist and are linked into `ageland` — the original eight-library sketch's six
+lower layers, plus the L4 orchestration/authoring band the sketch did not anticipate, now three
+libraries deep: `rots_pathfind`/`rots_script` (l4-seed wave) and `rots_olc` (Cluster B wave — see
+the spec's §3 REVISION and this doc's "L4 band"/"The Cluster B wave" subsections below).
 `rots_commands`/`rots_app`, the sketch's own original L4/L5 rows, remain entirely app-compiled —
 not yet extracted, and not to be confused with the new, now-real L4 band below:
 
 ```
-┌─ L4  rots_pathfind   rots_script    (new orchestration/authoring band; pathfind < script,
-│                                       one sanctioned intra-band edge — see "L4 band" below)
+┌─ L4  rots_pathfind   rots_script   rots_olc   (orchestration/authoring band; pathfind < script <
+│                                                 olc, one sanctioned intra-band edge pathfind<-script
+│                                                 — see "L4 band"/"The Cluster B wave" below)
 ├─ L3  rots_persist   rots_world   rots_combat   (all three L3 peer domain libs now exist; each
 │                                                  seeded, none complete — certified stratified
-│                                                  persist < world < combat — see their sections below)
+│                                                  persist < world < combat < pathfind < script < olc
+│                                                  — see their sections below)
 ├─ L2  rots_entity    → entity/relationship operations over the data model
 ├─ L1  rots_core      → the (split-up) data model + const tables
 └─ L0  rots_platform  → OS/infra, zero game coupling
@@ -1536,6 +1539,171 @@ Task 3's final gate; `ConvertEquivalence` 17/17 both hosts throughout; both boot
 byte-identical at every commit (338 zone resets, zero STUB/tripwire warnings — matching the l4-seed
 wave's own baseline exactly). See `AGENTS.md`'s "Testing Guidelines" for the full reconciled
 per-task chain.
+
+### The Cluster B wave: `rots_olc` (7 TUs) joins the L4 band; `script.cpp` joins `rots_script` (5 TUs)
+
+Design: `docs/superpowers/specs/2026-07-21-cluster-b-olc-wave-design.md`. Plan:
+`docs/superpowers/plans/2026-07-21-cluster-b.md`. Census: `.superpowers/sdd/cb-census.md`
+(gitignored scratch). Task reports: `.superpowers/sdd/cb-task-{0,1,2,3,4}-report.md`. This wave
+promotes the world-growth census's Cluster B connected component — the runtime script driver
+(`script.cpp`) plus the six interactive OLC editors (`shapemdl.cpp`, `shapemob.cpp`, `shapeobj.cpp`,
+`shaperom.cpp`, `shapescript.cpp`, `shapezon.cpp`) — the heaviest single component the world-growth
+census found (`script.cpp` alone carried 20 blocking edges, more than any TU censused before it).
+Two membership outcomes, not one: `script.cpp` joins `rots_script` (4 → **5 TUs**); the six editors
+plus `editor_hooks.cpp` (a build-wiring necessity, not a census miss — see below) form a brand-new
+**`rots_olc`** static library (**7 TUs**) at the top of the L4 band. The certified layer order
+extends one more step: `platform < core < entity < persist < world < combat < pathfind < script <
+olc < app`. Nine libraries now exist, nine `*LayerAcyclicity` linkchecks. ctest 1446 → 1468 across
+the wave's four implementation tasks (T0 was read-only census).
+
+**The mutual-edge ruling — the fallback did NOT fire.** The design spec's own decision table made
+`script.cpp`'s destination conditional on one body-read: `script.cpp → get_param_text`
+(shapescript.cpp) and `shapescript.cpp → find_script_by_number` (script.cpp) formed a genuine mutual
+edge between the two candidate libraries, which the no-bidirectional-links invariant cannot allow
+either side to keep. T0's body-read of `get_param_text` (shapescript.cpp:2613) found a pure
+`int → const char*` switch over `SCRIPT_PARAM_*` constants (defined in the shared `script.h`) — zero
+editor state, zero `descriptor_data`/session coupling — so the spec's default RELOCATE disposition
+**holds**: Task 1 relocated `get_param_text` byte-verbatim into `script.cpp` (deleting
+`shapescript.cpp`'s local extern), which makes `shapescript.cpp → find_script_by_number` the only
+remaining edge and it resolves as a plain one-directional `rots_olc → rots_script` downward call
+once Task 4 lands both memberships. The `rots_olc`-fallback naming caveat the design spec asked to
+be recorded **does not apply** — `script.cpp` never rode into `rots_olc`.
+
+**`rots_olc` membership: 7 TUs, not the brief's literal 6.** `ROTS_OLC_SOURCES` is `editor_hooks.cpp
+shapemdl.cpp shapemob.cpp shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp`. The six
+`shape*.cpp` editors were always going to co-migrate in one commit — `shapemob.cpp` is the
+intra-cluster hub (`shape_center_*` fan-out to the other five; `clean_text`/`shape_standup`/
+`get_permission`/`get_text`/`find_mob` fan-in from four of them), the same "standalone promotion is
+impossible" shape the intra-subset closure rule anticipates. `editor_hooks.cpp` joining alongside
+them is Task 4's own build-wiring finding, not a fresh census gap: its `dispatch_string_editor_init`
+hook (below) is called only by the six editors, all newly `rots_olc` members, so leaving its backing
+storage in `ROTS_SERVER_SOURCES` would have made every one of those six calls a genuine
+`rots_olc → app` upward edge. `editor_hooks.cpp`'s own file comment (written in Task 1) had already
+named this exact destination — the identical shape to `script_hooks.cpp`'s own l4-seed-wave join
+(seam header, no single owning TU, resolved the moment its consumer promoted).
+
+**PUBLIC link set.** `rots_olc` PUBLIC-links `rots_build_flags RotS::script RotS::pathfind
+RotS::combat RotS::world RotS::persist RotS::entity RotS::core RotS::platform` — `RotS::script`
+nearest-first (for `mudlle_converter`/`find_script_by_number`/`get_param_text`, the last now
+in-lib), then the full L3-and-below set — mirroring `rots_script`'s/`rots_pathfind`'s own
+"list every layer explicitly" PUBLIC-link convention. `rots_script` never links `RotS::olc` (verified
+unchanged at its own CMakeLists.txt entry); `rots_olc` sits strictly above `rots_script`, never below
+or beside it.
+
+**`OlcLayerAcyclicity`, the ninth linkcheck.** Mirrors the eight existing checkers exactly:
+force-load `librots_olc.a`, normal-link only `RotS::script` (its transitive PUBLIC chain carries
+pathfind/combat/world/persist/entity/core/platform), fail the build on any other unresolved symbol.
+This is the same "list just the one nearest layer, rely on transitivity for the rest" convention
+`rots_pathfind_linkcheck`/`rots_script_linkcheck` introduced, not `rots_combat_linkcheck`'s
+four-library list. **Non-vacuity was proven positively, not just designed**: Task 4 planted a
+temporary probe (`extern void boot_db(); void __rots_olc_nonvacuity_probe() { boot_db(); }`) inside
+`shapemob.cpp` (Python byte-edit, `shapemob.cpp`'s mixed-CRLF profile preserved) — an app-tier-only
+symbol (`boot_db()`, `db_boot.cpp`) reached from inside the force-loaded `rots_olc` archive — and the
+checker's link **failed** with the expected undefined-symbol error; reverted (`git checkout --
+shapemob.cpp`, confirmed clean), and the checker passed again. The committed `CMakeLists.txt` comment
+originally mis-described this probe as a `do_shutdown`/`act_wiz.cpp` call (a Task 4 review Minor
+finding); this docs pass corrects the comment to name the actual probe (`boot_db()`/`db_boot.cpp`),
+per `cb-task-4-review.md`'s finding — no rebuild-affecting change.
+
+**Rider gate: closes at 2 of the pre-authorized ≤3, no auto-STOP.** `virt_assignmob` (called at
+`shapemob.cpp:1838`, targeting `spec_ass.cpp` — DEFER-row, still app-tier, same spec-proc-family drag
+as the behavior wave's `virt_program_number`) is the same-shape `script_hooks.h` abort-tripwire cell
+pattern, consuming the second of the parent spec's pre-authorized ≤3 same-shape edges
+(`virt_program_number` was #1). T0's full spec-proc sweep of all 7 Cluster B TUs found **no** third
+edge — one slot remains for a future wave.
+
+**New seams and cells landed consumer-free in Task 1, converted in Task 2/3.**
+- `combat_command` enum grows **26 → 29**: `action` (→ `do_action`, act_soci.cpp), `emote`
+  (→ `do_emote`, act_wiz.cpp), `shutdown` (→ `do_shutdown`, act_wiz.cpp — the confirmed-genuine
+  builder "quit and save" path; its discriminator registers a recording stub, never the real body,
+  per the no-death-test rule). `script.cpp`'s own `do_action`/`do_emote` calls and
+  `shapemob.cpp:2105`'s `do_shutdown` call convert onto these cells in Tasks 2/3.
+- `script_hooks.h::virt_assignmob` — see rider gate above.
+- `editor_hooks.{h,cpp}` — a **standalone header**, not an `output_seam.h` addition, per T0's
+  header-scope overturn: `output_seam.h`'s own file comment scopes it to `comm.cpp`'s send/act
+  sinks, and `string_add_init` (`modify.cpp`'s interactive multi-line editor state machine — writes
+  `d->str`/`d->max_str`/`d->len_str`, calls `send_to_char`) is session-coupled but a different kind
+  of seam entirely. One shared hook (`dispatch_string_editor_init`) breaks the edge for all six
+  editors; `modify.cpp` registers the real `string_add_init` body.
+- `output_seam.h`/`.cpp` gains `send_to_room_except` (`comm.cpp`'s real body renamed
+  `send_to_room_except_impl`) — the blocker-buster-style forwarder pattern's latest addition,
+  serving `script.cpp`'s two call sites with zero consumer-side edit needed (the plain symbol name
+  already resolves through the seam).
+
+**`script.cpp` conversions (Task 2), all 11 arg-shape-exact.** Combat-cell dispatches:
+`do_emote`/`do_flee`/`do_hit`/`do_say`/`do_action`/`do_gen_com`/`do_wear` all convert onto
+`rots::combat::issue_command(combat_command::*, ...)`. Hook dispatches: `find_action` (session-guard
+read before `SCRIPT_DO_SOCIAL`) → `rots::script::dispatch_find_action`; `extract_char` (1-arg) →
+`rots::entity::extract_char` (an existing hook the brief's own symbol list had omitted — T0 flagged
+it, T2 converted it, matching the `limits.cpp` precedent exactly); `char_from_room` (4 sites,
+TELEPORT_CHAR family) → `rots::entity::dispatch_char_from_room`; `pkill_get_good_fame`/
+`pkill_get_evil_fame` → `rots::world::dispatch_pkill_get_good_fame`/`dispatch_pkill_get_evil_fame`
+(the **existing l4-seed world hooks**, per T0's OVERTURN of the design spec's own "relocate to
+rots_persist" default — the backing globals, `good_ranking`/`evil_ranking`, live in `pkill.cpp`
+itself, app-tier, not `pkill_json.cpp`/`rots_persist`). No-conversion sites verified resolved
+already: `gain_exp` (rots_combat/limits.cpp), `update_pos`/`raw_kill` (fight.cpp),
+`set_call_trigger_hook` (combat_hooks.cpp), `pkill_get_rank_by_character` (rots_persist/
+db_players.cpp), and the Task-1-relocated `perform_*`/`find_eq_pos` family (no site edit needed,
+signatures unchanged). Cleanup: 7 dead `ACMD(do_*)` forward decls plus the local `find_action`
+declaration deleted from `script.cpp`.
+
+**Relocate candidates (Task 1), each a body-read verdict, not a default followed blindly.**
+`find_action` (act_soci.cpp) — **T0's one seam-beyond-the-brief's-list**: its body reads app-tier
+`soc_mess_list`, so the brief's default RELOCATE is overturned to an **int-returning SAFE-SENTINEL
+(−1) accessor hook**, the same class as the world pkill-fame accessors, not a new taxonomy.
+`find_eq_pos` (act_obj2.cpp) → relocated to `equipment.cpp` (`rots_entity`, L2). `perform_drop`/
+`perform_give` (act_obj1.cpp) and `perform_wear`/`perform_remove` (act_obj2.cpp) → relocated to
+`fight.cpp` (`rots_combat`, L3), each with its `call_trigger(...)` call converted to
+`rots::combat::call_trigger()` and its `buf` global-scratch usage retired to local `std::format`
+composition. **A genuine census miss, self-resolved same-task**: `perform_wear`'s three private
+file-local helpers — `wear_message`, `ologhai_item_restriction`, `beorning_item_restriction` — were
+invisible to the census's cross-TU `nm` method (same-TU calls at census time) but have **zero**
+callers anywhere else in the tree; leaving them in `act_obj2.cpp` while `perform_wear` moved to
+`rots_combat` would have been a real `rots_combat → app` upward edge, so all three moved alongside
+it, byte-verbatim, controller-ratified as a safe same-task resolution rather than a STOP.
+
+**Shape-family conversions (Task 3).** The shared `string_add_init` → `dispatch_string_editor_init`
+conversion landed at all six call sites (five inside each editor's own `DESCRCHANGE`/
+`SCRIPTDESCRCHANGE`-family macro body, one — `shapemdl.cpp`'s `edit_mudlle()` — a plain function, not
+a macro, despite the brief's blanket "macro bodies" framing). `shapemob.cpp`'s own two remaining
+edges converted: `virt_assignmob` (rider gate, above) and `do_shutdown` (the `shutdown` cell, above).
+`_buf` retirement (local-composition, no storage move): `shaperom.cpp`'s `load_room()` retires its
+two `fgets`/`sscanf` sites onto a function-local `char local_buf[256]`; `shapescript.cpp`'s
+`show_command()` retires all 72 `strcpy(buf, std::format(...).c_str())` case arms onto a
+function-local `std::string message`, verified 1:1 (72 opens matched by 72 closes) before and after.
+
+**CRLF discipline.** `shapescript.cpp` is the lone **pure-LF** file among the seven (0/2713 CRLF
+lines) — `get_param_text`'s LF-verbatim bytes landed inside mixed-CRLF `script.cpp` unmodified,
+per the census's own flagged wrinkle; `fight.cpp`/`equipment.cpp` are pure LF (not mixed), so the
+five `perform_*`/`find_eq_pos` moves were LF-**normalized** instead of carrying in a foreign
+line-ending species — a deliberate, documented difference from the `script.cpp` case, each choice
+preserving its destination file's own exclusive convention. Every other edited file (the five
+mixed-CRLF `shape*.cpp` editors, `act_obj1.cpp`/`act_obj2.cpp`, `script_hooks.h`, `combat_hooks.h`,
+`comm.cpp`/`comm.h`, `output_seam.h`/`.cpp`) was edited via Python byte-edits, never the `Edit`/
+`Write` tools — the formatter-hook conflict fired at least twice mid-wave (once against
+`combat_hooks.h`, once against `combat_hooks_tests.cpp`), each caught immediately via the
+PostToolUse notification, reverted with `git checkout --`, and redone byte-exact.
+
+**Test-count delta for this wave: 1446 → 1468** — Task 1 +19 (1446 → 1465: +6 combat_command
+action/emote/shutdown registration tests, +1 `virt_assignmob` hook, +1 `string_add_init` hook, +1
+`send_to_room_except` forwarder, +0 the pure-move `get_param_text` relocation, +2 `find_action`
+SAFE-SENTINEL pair, +4 `perform_drop`/`perform_give` coverage riders, +4
+`find_eq_pos`/`perform_wear`/`perform_remove` coverage riders — all five relocated functions were
+previously untested live code, closed per the standing coverage-gap rule), Task 2 +2 (1465 → 1467:
+the `gen_com` registered/unregistered discriminator pair — a genuine gap found by full-cell audit,
+despite `gen_com` being registered since the combat-trio/behavior waves, it had zero
+`issue_command()`-path tests until `script.cpp`'s own `SCRIPT_DO_YELL` conversion became its first
+real caller), Task 3 +0 (1467 unchanged: all three of `shapemob.cpp`'s own converted call shapes —
+`dispatch_string_editor_init`, `combat_command::shutdown`, `dispatch_virt_assignmob` — were already
+exercised by Task 1's own discriminator suite; a verified-zero coverage gap, not a skipped check),
+Task 4 +1 (1467 → 1468: `OlcLayerAcyclicity` itself; Task 4's `script.cpp` membership move is a pure
+CMakeLists.txt edit with zero source changes, since Task 2 had already relocated the mutual-edge
+symbol). All gate hosts (`macos-arm64`, `rots64`, `macos-arm64-asan` on new/rewritten test files)
+confirmed the running count at every task's final gate, with zero regressions; `ConvertEquivalence`
+17/17 both hosts throughout; both boot goldens byte-identical at every commit. Combat DEFER stays at
+**5** (`spec_ass`/`mage`/`spell_pa`/`ranger`/`spec_pro`) — none of Cluster B's 7 TUs were ever
+DEFER-row members, so the row is unaffected by this wave. See `AGENTS.md`'s "Testing Guidelines" for
+the full reconciled per-task chain.
 
 ### Pathed data-model includes
 

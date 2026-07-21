@@ -159,3 +159,73 @@ byte-edits for all existing `.cpp`/`.h` files (formatter-hook conflict). Docker 
 synchronously inside subagents (auto-backgrounded gates stall). i386 battery is
 finalization-only. Merge-when-green is an explicit, this-wave-only grant; no standing authority
 carries forward.
+
+## As-built (Tasks 0-4 complete; Task 5a docs, this section + sweep backlog; Task 5b finalization pending)
+
+**Status: both memberships landed, `OlcLayerAcyclicity` (the new ninth linkcheck) green first try,
+both hosts, zero census misses at any membership gate.** `script.cpp` → `rots_script` (4 → 5 TUs,
+commit `5b08068`); the six `shape*.cpp` editors + `editor_hooks.cpp` → new `rots_olc` (7 TUs, commit
+`749a590`). ctest 1446 → 1468 (T1 +19, T2 +2, T3 +0, T4 +1). Full per-task evidence:
+`.superpowers/sdd/cb-task-{0,1,2,3,4}-report.md`; census: `.superpowers/sdd/cb-census.md`.
+
+**The mutual-edge conditional resolved exactly as scoped — the `rots_olc` fallback never fired.**
+This design's own "Decision" section made `script.cpp`'s destination depend entirely on one
+body-read: RELOCATE `get_param_text` cleanly and `script.cpp` joins `rots_script`; find it
+editor-state-coupled and `script.cpp` rides into `rots_olc` instead (the honest fallback, naming
+caveat recorded). T0's read of `get_param_text` (`shapescript.cpp:2613`) found a pure
+`int → const char*` switch over `SCRIPT_PARAM_*` constants (shared `script.h`), zero
+`descriptor_data`/editor-state coupling — RELOCATE held. Task 1 moved it byte-verbatim into
+`script.cpp`; Task 4's membership commit needed zero source edits as a result — a pure
+`CMakeLists.txt` list move.
+
+**Task 0's one adjudication-table OVERTURN: `find_action`.** The table above defaulted it to
+RELOCATE alongside `find_eq_pos`/the `perform_*` quartet. Task 0's body-read found it reads app-tier
+`soc_mess_list` (`act_soci.cpp`) — falls to a SAFE-SENTINEL (−1) accessor hook instead, the same
+class as the l4-seed wave's `pkill_get_good_fame`/`pkill_get_evil_fame` OVERTURNs, not a new
+taxonomy. Every other adjudication-table default CONFIRMED exactly as specced: `string_add_init`
+(standalone `editor_hooks.h`, not `output_seam.h` — the header-scope overturn recorded in the
+Problem/evidence section above was itself confirmed, not merely proposed), `virt_assignmob`
+(rider 2/3), `do_emote`/`do_action`/`do_shutdown` (new cells 27-29), `find_eq_pos`/`perform_*`
+(RELOCATE), `pkill_get_evil_fame`/`pkill_get_good_fame` (RELOCATE — to the l4-seed world hooks, not
+`rots_persist`, per the l4-seed precedent this table already cited), `gain_exp`/`char_from_room`/
+`pkill_get_rank_by_character` (already resolved, confirmed only), `send_to_room_except`
+(output_seam forwarder), `shapemdl → mudlle_converter`/`script.cpp`'s combat-tier calls (legal
+downward edges, no work).
+
+**The rider gate closed at exactly 2, not the pre-authorized ceiling of 3.** `virt_assignmob`'s full
+enumeration (every call across all 7 Cluster B TUs cross-referenced against every function defined
+in `spec_ass.cpp`/`spec_pro.cpp`) found exactly the one edge this design anticipated
+(`shapemob.cpp:1838`) and no second/third/fourth edge of the same or a different shape. No
+auto-STOP fired. One slot remains for the still-undecided `spec_pro`/`spec_ass` pair's own eventual
+promotion.
+
+**One genuine census miss, self-resolved same-task, not a STOP.** `perform_wear`'s three file-local
+helpers (`wear_message`/`ologhai_item_restriction`/`beorning_item_restriction`) were invisible to
+the census's cross-TU `nm` method (their only caller was same-TU at census time). Task 1 found them
+while relocating `perform_wear`, confirmed zero other callers tree-wide, and moved all three
+alongside it into `fight.cpp` — the alternative (leaving them behind) would have been a real
+`rots_combat → app` upward edge. Flagged for controller review per the STOP-and-adjudicate contract
+rather than halted, since the resolution required no new architectural judgment and was
+mechanically `nm`-verified.
+
+**The CRLF risk this design flagged materialized exactly as anticipated, in both directions.**
+`shapescript.cpp` measured pure-LF (0/2713 CRLF lines) — the lone such file among the seven; every
+other touched file (the five other `shape*.cpp` editors, `script.cpp`, `act_obj1.cpp`/
+`act_obj2.cpp`, and every touched header/seam file) was mixed-CRLF, confirming the "do not assume
+LF" warning. `get_param_text`'s LF bytes landed verbatim inside mixed-CRLF `script.cpp`; the
+`perform_*`/`find_eq_pos` family instead LF-normalized into the pure-LF `fight.cpp`/`equipment.cpp` —
+two different resolutions of the same underlying rule (preserve the destination's own convention),
+not an inconsistency.
+
+**`do_shutdown`'s builder-path risk was honored exactly as scoped.** Its discriminator test uses a
+recording stub, never the real force-shutdown body — the registered/unregistered pair pattern, no
+death test. The non-vacuity probe for the new `OlcLayerAcyclicity` linkcheck used a different
+app-tier symbol (`boot_db()`, `db_boot.cpp`) instead of `do_shutdown`, since the checker's own
+CMakeLists.txt comment initially (incorrectly) named `do_shutdown`/`act_wiz.cpp` as the probe target —
+a Task 4 review Minor finding, corrected in this docs pass to match the actual evidence
+(`cb-task-4-report.md`).
+
+See `docs/BUILD.md`'s "The Cluster B wave" subsection (under "Library layering"),
+`docs/superpowers/specs/2026-07-16-library-architecture-design.md`'s §3 order string and "As-built
+(Cluster B wave, step 4 tenth slice)" note, and `docs/superpowers/combat-migration-playbook.md`'s
+"The Cluster B wave" section for the full cross-referenced account.

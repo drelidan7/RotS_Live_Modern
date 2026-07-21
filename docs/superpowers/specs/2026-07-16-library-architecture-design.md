@@ -79,10 +79,11 @@ original eight-library sketch did not anticipate.**
 | `rots_core` | L1 | 2 + split headers | `consts, config` + the carved-up data model (Section 5) (as-built: `consts.cpp` and `output_seam.cpp` joined `rots_core` in the entity-seed wave — see the resolved caveat below) |
 | `rots_entity` | L2 | 6 | `char_utils, object_utils, environment_utils, handler, utility, char_utils_combat` (as-built: 5 of 6 have joined `rots_entity` — `handler`/`utility` remain app-compiled, deferred with named/uncounted welds respectively — see caveat below) |
 | `rots_persist` | L3 | ~14 | `db_players` (from `db.cpp`), `objsave, boards, mail, pkill, character_json, objects_json, exploits_json, account_management (+6 #included fragments), account_cache, convert_exploits, convert_plrobjs, save_benchmark, savebench` |
-| `rots_world` | L3 | ~15 | `db_world` (from `db.cpp`), `shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle, mudlle2, graph, weather, mob_csv_extract, obj2html` (as-built: **4** of ~15 have joined `rots_world` — `db_world`/`weather`/the `zone_load` carved out of `zone` (world-seed wave) plus `zone.cpp` itself (its reset half, l4-seed wave — `zone` is now fully resolved, both halves in-lib) — **`mudlle`/`mudlle2`/`graph` did NOT join `rots_world` as this row's original sketch assumed**: the l4-seed wave found placing them here would force a `rots_world → rots_combat` link that collides with `rots_combat`'s own existing `rots_world` link (the codebase's first bidirectional L3-peer edge), so they became the new `rots_pathfind`/`rots_script` libraries instead, one band above L3 — see the §3 REVISION below — `shape*`/`script`/`mob_csv_extract`/`obj2html` remain app-compiled, deferred — see caveat below) |
+| `rots_world` | L3 | ~15 | `db_world` (from `db.cpp`), `shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle, mudlle2, graph, weather, mob_csv_extract, obj2html` (as-built: **4** of ~15 have joined `rots_world` — `db_world`/`weather`/the `zone_load` carved out of `zone` (world-seed wave) plus `zone.cpp` itself (its reset half, l4-seed wave — `zone` is now fully resolved, both halves in-lib) — **`mudlle`/`mudlle2`/`graph` did NOT join `rots_world` as this row's original sketch assumed**: the l4-seed wave found placing them here would force a `rots_world → rots_combat` link that collides with `rots_combat`'s own existing `rots_world` link (the codebase's first bidirectional L3-peer edge), so they became the new `rots_pathfind`/`rots_script` libraries instead, one band above L3 — see the §3 REVISION below — `script` did NOT join `rots_world` either — the Cluster B wave found it homes in `rots_script` instead (see that row below) — `shape*` (the six OLC editors) did NOT join `rots_world` as this row's original sketch assumed: the Cluster B wave stood them up as a new sibling `rots_olc` library instead (see that row below); `mob_csv_extract`/`obj2html` remain app-compiled, deferred — see caveat below) |
 | `rots_combat` | L3 | 16 | `fight, limits, skill_timer, mobact, ranger, clerics, mage, mystic, profs, spell_pa, spec_pro, spec_ass, battle_mage_handler, weapon_master_handler, wild_fighting_handler, olog_hai` (as-built: 10 of 16 original-sketch TUs have joined `rots_combat` — `skill_timer`/`battle_mage_handler`/`weapon_master_handler`/`wild_fighting_handler` (combat-seed wave), `clerics`/`fight` (combat-pilot wave, joint membership), `olog_hai`/`mystic`/`profs` (combat-trio wave, one membership commit — olog_hai and mystic each promoted **standalone**, closed over their own edges independently; `profs` rode as a census-gated rider whose one real coupling, `scale_guardian`/mystic.cpp, is a one-directional gate, not a cycle), and `limits` (behavior wave, a standard L3 DEFER-row promotion) — `profs`'s SEED-WITH-SEAM caveat is now RESOLVED and the remaining **5** (`mobact` excepted — see below — `ranger, mage, spell_pa, spec_pro, spec_ass`) DEFER, all still app-compiled; the blocker-buster wave also added two further TUs NOT in this row's original 16-TU sketch — `combat_hooks.cpp`/`visibility.cpp`, enabler infrastructure rather than DEFER-TU migrations — bringing `rots_combat` to 12 TUs total — see caveat below and §10's "combat-pilot wave, step 4 sixth slice" / "combat-trio wave, step 4 seventh slice" / "behavior wave, step 4 ninth slice" as-built notes. **`mobact` — the row's original sketch listed it here, but it did NOT join `rots_combat`**: the behavior wave's closure check found it homes in `rots_script` instead (see that row below and the §3 REVISION downstream note) — this is this document's first instance of an original-sketch TU resolving into a DIFFERENT row than the one it was originally assigned to.) |
 | `rots_pathfind` | **L4 (new band, lower)** | 1 | `graph` (pathfinding/hunting) — **NEW row, not part of this document's original eight-library sketch.** As-built (l4-seed wave): stood up standalone; its `hunt_victim()`/`hit()`/`get_char_vis()` edges into `rots_combat` are legal L4→L3 downward calls under the new band placement — see the §3 REVISION below. |
-| `rots_script` | **L4 (new band, upper)** | 2 (+1 seam TU) | `mudlle, mudlle2` (the mob-program/script engine) — **NEW row, not part of this document's original eight-library sketch.** As-built (l4-seed wave): stood up jointly (the 14-symbol `mudlle → mudlle2` edge is intra-band, not a cycle); `script_hooks.cpp` joined as a third member holding the `command_interpreter`/`PERS` hooks' backing storage (T3's mid-task relocation, `interpre.cpp` → `script_hooks.cpp`, once the linkcheck surfaced that storage as a live upward edge). PUBLIC-links `RotS::pathfind` — the one sanctioned intra-band edge (`find_first_step`). **Grown to 4 TUs by the behavior wave**: `mobact.cpp` — the `rots_combat` row's own original sketch TU (above) — joined here instead, answering the l4-seed wave's own downstream note (the driver homes with the engine it invokes: `intelligent()` intra-lib, `find_first_step()` downward to `rots_pathfind`, the twelve `do_*` up-calls downward to `rots_combat`'s existing 26-cell `combat_command` table, zero new link edge needed). See the §3 REVISION below. |
+| `rots_script` | **L4 (new band, upper)** | 2 (+1 seam TU) | `mudlle, mudlle2` (the mob-program/script engine) — **NEW row, not part of this document's original eight-library sketch.** As-built (l4-seed wave): stood up jointly (the 14-symbol `mudlle → mudlle2` edge is intra-band, not a cycle); `script_hooks.cpp` joined as a third member holding the `command_interpreter`/`PERS` hooks' backing storage (T3's mid-task relocation, `interpre.cpp` → `script_hooks.cpp`, once the linkcheck surfaced that storage as a live upward edge). PUBLIC-links `RotS::pathfind` — the one sanctioned intra-band edge (`find_first_step`). **Grown to 4 TUs by the behavior wave**: `mobact.cpp` — the `rots_combat` row's own original sketch TU (above) — joined here instead, answering the l4-seed wave's own downstream note (the driver homes with the engine it invokes: `intelligent()` intra-lib, `find_first_step()` downward to `rots_pathfind`, the twelve `do_*` up-calls downward to `rots_combat`'s existing 26-cell `combat_command` table, zero new link edge needed). **Grown to 5 TUs by the Cluster B wave**: `script.cpp` — the `rots_world` row's own original sketch TU (above) — joins here instead, the mutual-edge body-read (`get_param_text`, relocated out of `shapescript.cpp`) resolving it cleanly rather than into the new `rots_olc` sibling below. `rots_script` never links `RotS::olc` (one-directional; `rots_olc` sits strictly above it). See the §3 REVISION below. |
+| `rots_olc` | **L4 (new band, top)** | 7 | `shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon` (the world/mob/obj/room/script/zone OLC interactive editors) plus `editor_hooks.cpp` (backing storage for the shared `dispatch_string_editor_init` hook all six call, a build-wiring necessity — the identical shape to `script_hooks.cpp`'s own l4-seed-wave join) — **NEW row, not part of this document's original eight-library sketch; stood up by the Cluster B wave.** `shapemob.cpp` is the intra-cluster hub (`shape_center_*` fan-out, `clean_text`/`shape_standup`/`get_permission`/`get_text`/`find_mob` fan-in), so all six co-migrate in one commit — the intra-subset rule at full strength. PUBLIC-links `RotS::script` and, transitively, the full L3-and-below set; the ninth library, the ninth `*LayerAcyclicity` linkcheck (`OlcLayerAcyclicity`). |
 | `rots_commands` | L4 | 15 | `interpre, act_comm, act_info, act_move, act_obj1, act_obj2, act_offe, act_othe, act_soci, act_wiz, modify, delayed_command_interpreter, wait_functions, shop, ban` — **layer-label note (l4-seed wave): this row's "L4" is this document's ORIGINAL label, predating the l4-seed wave's new (and now real) L4 band above. Neither `rots_commands` nor `rots_app` (next row) has been extracted; both remain entirely app-compiled. See the §3 REVISION's "Layer-label note" for the renumbering this implies for whichever future wave extracts either.** |
 | `rots_app` | L5 | 6 | `comm, protocol, color, big_brother, signals, db_boot` (from `db.cpp`); `signals.cpp` calls up into game/session state (`descriptor_list`, `hupsig`, `unrestrict_game`) so it is app-layer, not foundation |
 
@@ -141,9 +142,14 @@ here so neither existing label is mistaken for already-reserved once real extrac
 **Certified layer order (l4-seed wave):**
 
 ```
-platform < core < entity < persist < world < combat < pathfind < script < app
-   L0       L1      L2        L3        L3      L3      L4-lower    L4-upper   (unstratified)
+platform < core < entity < persist < world < combat < pathfind < script < olc < app
+   L0       L1      L2        L3        L3      L3      L4-lower    L4-mid  L4-upper   (unstratified)
 ```
+
+**Updated 2026-07-21 (Cluster B wave):** the L4 band grows a third library, `rots_olc`, at its top —
+see "As-built (Cluster B wave, step 4 tenth slice)" below and `docs/BUILD.md`'s "The Cluster B wave"
+subsection for the full account. `rots_script` may never link `RotS::olc`; the no-bidirectional-links
+invariant (point 3 above) continues to hold.
 
 **Downstream notes, recorded here for whichever wave acts on them next (none scoped this wave):**
 
@@ -175,6 +181,17 @@ platform < core < entity < persist < world < combat < pathfind < script < app
   already dissolves via the existing `world_hooks.h::dispatch_mudlle_converter` seam, so Cluster B is
   independently schedulable — a future wave's own open question is whether it lands in `rots_script`
   alongside mudlle/mudlle2, or in a new sibling `rots_olc` library.
+  **ANSWERED 2026-07-21 (Cluster B wave)**: both — but split, not a single either/or outcome. The
+  `script.cpp ↔ get_param_text`/`find_script_by_number` mutual edge the census flagged as the
+  deciding body-read resolved cleanly (`get_param_text` is a pure switch, zero editor state), so
+  `script.cpp` itself joins `rots_script` (4 → 5 TUs) — the "lands in rots_script" branch. The six
+  `shape*.cpp` editors, whose intra-cluster hub (`shapemob.cpp`) made standalone promotion
+  impossible, form the new sibling `rots_olc` library after all — the "new library" branch — joined
+  by `editor_hooks.cpp` (a build-wiring necessity, not a fresh census finding). The `rots_olc`-naming
+  fallback this note anticipated (the runtime driver riding inside a library named for online
+  creation tools) never fires: `script.cpp` cleanly separates from the six editors. See
+  `docs/BUILD.md`'s "The Cluster B wave" subsection and `docs/superpowers/combat-migration-
+  playbook.md`'s "The Cluster B wave" section for the full account.
 - **`graph.cpp`'s BFS core is a possible future sink to `rots_world`**, if its `hunt_victim()`/`hit()`
   driver (the reason it sits at L4, above combat, in the first place) is ever separated from the pure
   pathfinding algorithm — recorded as a deferred option in the l4-seed design doc, not scoped or
@@ -973,6 +990,49 @@ carrying them: a second big_brother hook pair (`on_character_afked`/`on_corpse_d
 its backing storage already persist-tier). See `docs/BUILD.md`'s "The behavior wave" subsection and
 `docs/superpowers/combat-migration-playbook.md`'s "The behavior wave" section (mobact/limits rows
 now RESOLVED) for the full seam/relocation/STAYED-verdict account.
+
+**As-built (Cluster B wave, step 4 tenth slice):** the world-growth census's Cluster B connected
+component — `script.cpp` (20 blocking edges, the heaviest single TU censused to date) plus the six
+interactive OLC editors (`shapemdl`/`shapemob`/`shapeobj`/`shaperom`/`shapescript`/`shapezon.cpp`) —
+resolves into **two** membership outcomes, answering the §3 REVISION's own Cluster B downstream note
+above. `script.cpp` joins `rots_script` (4 → **5 TUs**): the mutual edge the census flagged as the
+deciding factor (`script.cpp → get_param_text` / `shapescript.cpp → find_script_by_number`)
+dissolved cleanly once T0's body-read confirmed `get_param_text` (`shapescript.cpp:2613`) is a pure
+`int → const char*` switch over `SCRIPT_PARAM_*` constants, zero editor state — the RELOCATE default
+held, and the `rots_olc`-fallback naming caveat this note anticipated never fires. The six editors,
+whose `shapemob.cpp` hub (`shape_center_*` fan-out; `clean_text`/`shape_standup`/`get_permission`/
+`get_text`/`find_mob` fan-in) makes standalone promotion impossible, co-migrate in one commit into a
+brand-new sibling library, **`rots_olc`** (7 TUs — the six editors plus `editor_hooks.cpp`, a
+build-wiring necessity rather than a fresh census miss: its `dispatch_string_editor_init` hook's
+sole callers are the six now-`rots_olc` editors, so its backing storage had to promote alongside
+them or create a genuine `rots_olc → app` upward edge). `rots_olc` sits at the very top of the L4
+band, PUBLIC-linking `RotS::script` and transitively the full L3-and-below set; `rots_script` never
+links `RotS::olc`. Nine libraries total now exist, nine `*LayerAcyclicity` linkchecks
+(`OlcLayerAcyclicity` new, non-vacuous by the same positive-PASS/negative-FAIL probe method as every
+prior linkcheck — a temporary `boot_db()`-calling probe planted in `shapemob.cpp` reproducibly failed
+the checker, then was reverted). ctest 1446→1468 across the wave's four implementation tasks (Task 0
+read-only census; Task 1 +19 seam/hook/coverage-rider tests; Task 2 +2, the genuine `gen_com`
+discriminator-audit gap; Task 3 +0, all converted call shapes already covered by Task 1's own suite;
+Task 4 +1, `OlcLayerAcyclicity` itself) — see `AGENTS.md`'s Testing Guidelines for the full
+reconciled chain.
+
+Task 0's census overturned one design-brief default with body-read evidence: **`find_action`**
+(`act_soci.cpp`) was expected to RELOCATE like `find_eq_pos`/the `perform_*` quartet, but its body
+reads app-tier `soc_mess_list` — falls to a SAFE-SENTINEL (−1) accessor hook instead, the same class
+as the l4-seed wave's `pkill_get_good_fame`/`pkill_get_evil_fame` OVERTURNs. `string_add_init`
+(`modify.cpp`'s interactive editor state machine, called by all six editors) needed its own
+standalone header (`editor_hooks.{h,cpp}`) rather than joining `output_seam.h`, whose own file
+comment scopes it to `comm.cpp`'s send/act sinks — a different kind of session coupling entirely.
+The rider gate (parent spec's pre-authorized ≤3 same-shape `script_hooks.h` spec-proc-dispatcher
+edges) closed at its second slot: `virt_assignmob` (`shapemob.cpp:1838` → `spec_ass.cpp`, same shape
+as the behavior wave's `virt_program_number`); T0's full spec-proc sweep of all 7 Cluster B TUs found
+no third edge. One genuine census miss surfaced only during relocation, not at census time:
+`perform_wear`'s three file-local helpers (`wear_message`/`ologhai_item_restriction`/
+`beorning_item_restriction`, invisible to the census's cross-TU `nm` method because their only
+caller was same-TU) moved alongside `perform_wear` into `fight.cpp`, confirmed zero other callers
+tree-wide. See `docs/BUILD.md`'s "The Cluster B wave" subsection and `docs/superpowers/combat-
+migration-playbook.md`'s "The Cluster B wave" section for the full seam/relocation/rider-gate
+account.
 
 ---
 

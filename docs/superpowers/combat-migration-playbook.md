@@ -995,3 +995,154 @@ wave's scope.
 - **Census misses at the linkcheck gate:** 0 — the third consecutive wave (after combat-trio and
   l4-seed) to land both memberships green on the first attempt.
 
+
+## The Cluster B wave: `script.cpp` → `rots_script`; the six `shape*.cpp` OLC editors → new `rots_olc`
+
+Design: `docs/superpowers/specs/2026-07-21-cluster-b-olc-wave-design.md`. Plan:
+`docs/superpowers/plans/2026-07-21-cluster-b.md`. Census: `.superpowers/sdd/cb-census.md`
+(gitignored scratch). Task reports: `.superpowers/sdd/cb-task-{0,1,2,3,4}-report.md`. This wave
+applies the recipe to the world-growth census's Cluster B connected component — the heaviest single
+TU the census has found (`script.cpp`, 20 blocking edges at the wave base) plus its six
+`shape*.cpp` OLC-editor siblings. Unlike every prior wave in this playbook, Cluster B produces
+**two** membership outcomes from one census, not one: `script.cpp` promotes into the *existing*
+`rots_script` library (4 → 5 TUs), while the six editors stand up a **brand-new** third L4-band
+library, `rots_olc` (7 TUs including `editor_hooks.cpp`), at the very top of the certified order —
+`platform < core < entity < persist < world < combat < pathfind < script < olc < app`.
+
+### The mutual-edge ruling — a design decision resolved by one body-read, not a coin flip
+
+The design spec built `script.cpp`'s membership question around a single conditional: `script.cpp`
+calls `get_param_text` (`shapescript.cpp`) and `shapescript.cpp` calls `find_script_by_number`
+(`script.cpp`) — a genuine mutual edge between the two candidate libraries that the
+no-bidirectional-links invariant cannot let either side keep as-is. The spec's own decision table
+made the outcome conditional on `get_param_text`'s body: RELOCATE it out of `shapescript.cpp` and
+`script.cpp` joins `rots_script` cleanly; find it inseparable from the editor's session state and
+`script.cpp` instead rides into `rots_olc` alongside `shapescript.cpp` (the "honest fallback," with
+a naming caveat recorded — a runtime script driver living inside a library named for online
+creation tools would be misleading). T0's body-read settled it in one look: `get_param_text` is a
+pure `int → const char*` switch over `SCRIPT_PARAM_*` constants defined in the shared `script.h`,
+touching zero `descriptor_data`/editor state. The RELOCATE default held; the fallback never fired.
+This is the cleanest instance in this playbook's history of a design-time conditional resolving
+exactly as scoped, with no adjudication needed beyond the one planned body-read.
+
+### `find_action` — a session-coupled body overturns the brief's own RELOCATE default
+
+The design spec listed `find_action` (`act_soci.cpp`) among the "relocate candidates needing
+body-reads," defaulting to RELOCATE like `find_eq_pos` and the `perform_*` quartet. T0's read found
+it reads app-tier `soc_mess_list` (the social-command table `act_soci.cpp` owns) — not
+session-coupled in the interactive-editor sense, but genuinely app-tier data all the same, so
+RELOCATE was overturned to a **SAFE-SENTINEL (−1) accessor hook** instead: the same class of seam
+the l4-seed wave's `pkill_get_good_fame`/`pkill_get_evil_fame` OVERTURNs already established for
+"trivial accessor body, app-tier backing data." Not a new taxonomy, not a STOP — a body-read
+finding the brief's own text hadn't anticipated, dispositioned the same way every prior wave's
+census misses were: within the existing seam vocabulary, confirmed cheap by construction.
+
+### `editor_hooks.{h,cpp}` — a standalone header, not an `output_seam.h` extension
+
+Every one of the six `shape*.cpp` editors calls `string_add_init(descriptor_data*, char**)`
+(`modify.cpp`'s interactive multi-line text-editor state machine — writes `d->str`/`d->max_str`/
+`d->len_str`, calls `send_to_char`). The design spec's own scoping evidence treated this as a
+plausible `output_seam.h` candidate (it takes a `descriptor_data*` and calls `send_to_char`,
+superficially similar to the blocker-buster extension's seven forwarders). T0 overturned this: the
+file comment at the top of `output_seam.h` explicitly scopes that header to `comm.cpp`'s send/act
+sinks — `string_add_init` is a `modify.cpp`-owned editor state machine, a different kind of session
+coupling entirely, not a comm.cpp output composition. One new, standalone header
+(`editor_hooks.h`/`.cpp`) carries the single shared hook (`dispatch_string_editor_init`) all six
+editors call; `modify.cpp` registers the real body. **Lesson**: a hook's superficial call-signature
+resemblance to an existing seam header is not sufficient grounds to fold it in — the header's own
+declared scope (recorded in its file comment) is binding, and this wave is the first data point of
+that comment being read literally enough to overturn a design-time default.
+
+### Rider gate: `virt_assignmob` closes slot 2 of 3, confirmed no third edge exists
+
+`virt_assignmob` (`shapemob.cpp:1838`, targeting `spec_ass.cpp`) is the same shape as the behavior
+wave's `virt_program_number`: a `void*`-returning spec-proc dispatcher whose body drags dozens of
+still-app `spec_ass`/`spec_pro` symbols, cannot relocate, and lands as a `script_hooks.h`
+abort-tripwire cell. The parent spec's pre-authorized rider gate (≤3 same-shape edges before an
+auto-STOP) had one slot already consumed by `virt_program_number` (behavior wave); this wave closes
+the second. **This wave went further than "count to 2" — T0 ran the full spec-proc sweep the
+behavior wave's own lesson called for** ("a future wave touching either TU should expect more
+same-shape edges... budget for the ceiling, not assume it starts fresh"): every call in all 7
+Cluster B TUs was cross-referenced against every `spec_ass.cpp`/`spec_pro.cpp` definition, and found
+**exactly one** such edge, not more. One slot remains open for spec_pro/spec_ass's own eventual
+promotion (the still-undecided pair this playbook's "L4-homing lesson" section flagged) — that
+future wave should not assume it starts fresh either; it will likely spend the last slot.
+
+### A genuine census miss, self-resolved same-task (not stopped on)
+
+The census's cross-TU `nm` method — reliable for cross-file edges — is structurally blind to
+same-TU-only helper functions: `perform_wear`'s three private helpers (`wear_message`,
+`ologhai_item_restriction`, `beorning_item_restriction`, all `act_obj2.cpp`-local at census time)
+never appeared in the per-symbol table, because their only callers were `act_obj2.cpp` itself.
+Task 1 found them only when actually moving `perform_wear` to `fight.cpp` (`rots_combat`) and
+confirming (by tree-wide grep) that all three have **zero** callers besides `perform_wear`. Leaving
+them behind in `act_obj2.cpp` while their sole caller promoted to `rots_combat` would have created a
+real `rots_combat → app` upward edge — not a hypothetical one. The implementer moved all three
+alongside `perform_wear`, byte-verbatim, flagging the finding for controller review rather than
+halting: the STOP contract's literal text ("any census miss → STOP") was read against its intent
+(surface unplanned architectural decisions, not block on mechanically-verifiable safe moves) — the
+alternative was strictly worse, required no new architectural judgment, and was independently
+`nm`-confirmed (single definition, zero orphaned declarations) before and after. **Lesson for
+future censuses**: cross-TU `nm` closure is necessarily incomplete for same-TU helper functions of a
+function about to be relocated — a targeted "does the function I'm about to move have any
+file-local helpers with no other callers" check belongs in the relocation step itself, not just the
+census step, for every future TU promotion in this family.
+
+### CRLF: two different resolutions for the same "foreign line-ending species" problem
+
+`shapescript.cpp` is Cluster B's lone pure-LF file (0/2713 lines); the other ten touched files
+(the five other `shape*.cpp` editors, `script.cpp`, `act_obj1.cpp`/`act_obj2.cpp`,
+`combat_hooks.h`/`script_hooks.h`/`comm.cpp`/`comm.h`/`output_seam.h`/`.cpp`) are mixed-CRLF.
+`get_param_text`'s relocation kept its LF bytes verbatim inside the mixed-CRLF destination
+(`script.cpp`) — introducing one LF-terminated function into an otherwise-CRLF file, matching the
+census's own recorded recommendation for that specific move. The `perform_*`/`find_eq_pos` family
+went the opposite way: their destination files (`fight.cpp`, `equipment.cpp`) are 100% pure LF, so
+the moved bodies were LF-**normalized** rather than carrying CRLF bytes into an exclusively-LF file.
+Both choices follow the same underlying rule — preserve the *destination* file's own dominant
+convention rather than the *source*'s — but they land on opposite outcomes because the two
+destinations have opposite conventions. Verified byte-level (CRLF/LF counts before and after) in
+both directions.
+
+### Cost markers (this wave, factual)
+
+- **Up-call sites converted:** 11 in `script.cpp` (`do_emote`/`do_flee`/`do_hit`/`do_say`/
+  `do_action`/`do_gen_com`/`do_wear` → `issue_command` cells; `find_action` → hook;
+  `extract_char`/`char_from_room` ×4 → existing entity hooks; `pkill_get_good_fame`/
+  `pkill_get_evil_fame` → existing l4-seed world hooks) + 6 in the shape family
+  (`string_add_init` ×6 → `dispatch_string_editor_init`) + 2 in `shapemob.cpp`
+  (`virt_assignmob`, `do_shutdown`).
+- **New cells/hooks/seams:** 3 new `combat_command` cells (`action`/`emote`/`shutdown`, 26 → 29);
+  `script_hooks.h::virt_assignmob` (rider 2/3); standalone `editor_hooks.{h,cpp}`
+  (`dispatch_string_editor_init`); `output_seam.h::send_to_room_except` forwarder;
+  `script_hooks.h::find_action` accessor hook (SAFE-SENTINEL −1).
+- **Relocations:** `get_param_text` (shapescript.cpp → script.cpp, the mutual-edge breaker);
+  `find_eq_pos` (act_obj2.cpp → equipment.cpp, L2); `perform_drop`/`perform_give`
+  (act_obj1.cpp → fight.cpp, L3); `perform_wear`/`perform_remove` (act_obj2.cpp → fight.cpp, L3)
+  plus the three nm-invisible `perform_wear` helpers (see "census miss" above).
+- **Scratch-buffer retirements:** `perform_drop`/`perform_give`/`perform_wear`/`perform_remove`'s
+  `buf` sites (local `std::format` composition); `shaperom.cpp`'s `load_room()` (function-local
+  `char local_buf[256]`); `shapescript.cpp`'s `show_command()` (function-local `std::string`
+  across all 72 case arms) — all local-composition, no storage-move.
+- **Dead-decl cleanup:** 7 unreferenced `ACMD(do_*)` forward decls plus `find_action`'s own local
+  declaration, deleted from `script.cpp`; `virt_assignmob`/`do_shutdown`'s local forward decls
+  deleted from `shapemob.cpp`.
+- **Tests added:** 22 across Tasks 1-2, 0 in Task 3, 1 in Task 4 (1446 → 1468): Task 1 +19 (6
+  combat_command registration tests, 1 `virt_assignmob` hook test, 1 `string_add_init` hook test,
+  1 `send_to_room_except` forwarder test, +0 for the pure-move `get_param_text` relocation, 2
+  `find_action` SAFE-SENTINEL pair, 8 coverage riders for the five previously-untested relocated
+  `perform_*`/`find_eq_pos` functions); Task 2 +2 (the `gen_com` discriminator-audit gap); Task 3
+  +0 (all three of `shapemob.cpp`'s converted call shapes already covered by Task 1's own suite —
+  a verified-zero, not a skipped check); Task 4 +1 (`OlcLayerAcyclicity` itself).
+- **Membership commits:** 2 (`script.cpp` → `rots_script`, a pure CMakeLists.txt move with zero
+  source edits since Task 2 had already relocated the mutual-edge symbol; the six-editor +
+  `editor_hooks.cpp` → new `rots_olc` library, one commit, the intra-subset rule at full
+  strength — `shapemob.cpp`'s hub fan-in/fan-out makes standalone promotion of any one editor
+  impossible). Both green first try, both hosts, zero census misses at the linkcheck gate — the
+  fourth consecutive wave (after combat-trio, l4-seed, behavior) to do so.
+- **New library, new linkcheck:** `rots_olc` (7 TUs) and `OlcLayerAcyclicity` — the ninth library,
+  the ninth linkcheck. `rots_olc`'s own non-vacuity proof (a temporary `boot_db()`-calling probe
+  planted in `shapemob.cpp`, reproducibly failing the checker, then reverted) mirrors the l4-seed
+  wave's `PathfindLayerAcyclicity`/`ScriptLayerAcyclicity` precedent exactly.
+- **Combat DEFER unaffected:** stays at **5** (`spec_ass`/`mage`/`spell_pa`/`ranger`/`spec_pro`) —
+  none of Cluster B's 7 TUs were ever DEFER-row members; this wave grew the L4 band, not
+  `rots_combat`.

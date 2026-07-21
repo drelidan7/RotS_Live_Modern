@@ -240,3 +240,170 @@ TEST(OutputSeamForwarders, SendToRoomExceptTwoDefaultsToANoOpWhenUnregistered)
         << "Expected an unregistered send_to_room_except_two sink to never reach world[], "
            "leaving every descriptor's output buffer untouched.";
 }
+
+// ---------------------------------------------------------------------------
+// Behavior-wave Task 1 accessors: close_socket()/no_specials_active()/
+// request_circle_shutdown() (census sections 9/10). CONSUMER-FREE this
+// task -- no mobact.cpp/limits.cpp call site converts yet -- same
+// "recording stub proves forward-then-tripwire" discriminator shape as this
+// file's put_to_txt_block_pool() suite above.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct RecordedCloseSocketCall {
+    descriptor_data* d = nullptr;
+    int drop_all = 0;
+    bool called = false;
+};
+
+RecordedCloseSocketCall g_recorded_close_socket_call;
+
+void recording_close_socket_stub(descriptor_data* d, int drop_all)
+{
+    g_recorded_close_socket_call = RecordedCloseSocketCall { d, drop_all, true };
+}
+
+class ScopedCloseSocketSink {
+public:
+    explicit ScopedCloseSocketSink(rots::output::close_socket_fn hook)
+    {
+        rots::output::Sinks sinks {};
+        sinks.close_socket = hook;
+        rots::output::set_sinks(sinks);
+    }
+
+    ~ScopedCloseSocketSink() { register_game_output_sinks(); }
+
+    ScopedCloseSocketSink(const ScopedCloseSocketSink&) = delete;
+    ScopedCloseSocketSink& operator=(const ScopedCloseSocketSink&) = delete;
+};
+
+bool g_no_specials_active_stub_return = false;
+bool g_no_specials_active_stub_called = false;
+
+bool recording_no_specials_active_stub()
+{
+    g_no_specials_active_stub_called = true;
+    return g_no_specials_active_stub_return;
+}
+
+class ScopedNoSpecialsActiveSink {
+public:
+    explicit ScopedNoSpecialsActiveSink(rots::output::no_specials_active_fn hook)
+    {
+        rots::output::Sinks sinks {};
+        sinks.no_specials_active = hook;
+        rots::output::set_sinks(sinks);
+    }
+
+    ~ScopedNoSpecialsActiveSink() { register_game_output_sinks(); }
+
+    ScopedNoSpecialsActiveSink(const ScopedNoSpecialsActiveSink&) = delete;
+    ScopedNoSpecialsActiveSink& operator=(const ScopedNoSpecialsActiveSink&) = delete;
+};
+
+bool g_request_circle_shutdown_stub_called = false;
+
+void recording_request_circle_shutdown_stub()
+{
+    g_request_circle_shutdown_stub_called = true;
+}
+
+class ScopedRequestCircleShutdownSink {
+public:
+    explicit ScopedRequestCircleShutdownSink(rots::output::request_circle_shutdown_fn hook)
+    {
+        rots::output::Sinks sinks {};
+        sinks.request_circle_shutdown = hook;
+        rots::output::set_sinks(sinks);
+    }
+
+    ~ScopedRequestCircleShutdownSink() { register_game_output_sinks(); }
+
+    ScopedRequestCircleShutdownSink(const ScopedRequestCircleShutdownSink&) = delete;
+    ScopedRequestCircleShutdownSink& operator=(const ScopedRequestCircleShutdownSink&) = delete;
+};
+
+} // namespace
+
+TEST(OutputSeamForwarders, CloseSocketReachesARegisteredStubWithArgsIntact)
+{
+    g_recorded_close_socket_call = RecordedCloseSocketCall {};
+    ScopedCloseSocketSink scoped(recording_close_socket_stub);
+    descriptor_data descriptor {};
+
+    close_socket(&descriptor, 1);
+
+    EXPECT_TRUE(g_recorded_close_socket_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_close_socket_call.d, &descriptor);
+    EXPECT_EQ(g_recorded_close_socket_call.drop_all, 1);
+}
+
+TEST(OutputSeamForwarders, CloseSocketDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_close_socket_call = RecordedCloseSocketCall {};
+    ScopedCloseSocketSink unregistered(nullptr);
+    descriptor_data descriptor {};
+
+    close_socket(&descriptor, 1);
+
+    EXPECT_FALSE(g_recorded_close_socket_call.called)
+        << "Expected an unregistered close_socket sink to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default "
+           "is a logged no-op, not a call to any stub.";
+}
+
+TEST(OutputSeamForwarders, NoSpecialsActiveReachesARegisteredStubAndForwardsReturnValue)
+{
+    g_no_specials_active_stub_called = false;
+    g_no_specials_active_stub_return = true;
+    ScopedNoSpecialsActiveSink scoped(recording_no_specials_active_stub);
+
+    const bool result = no_specials_active();
+
+    EXPECT_TRUE(g_no_specials_active_stub_called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_TRUE(result) << "Expected no_specials_active() to forward the stub's own return value.";
+}
+
+TEST(OutputSeamForwarders, NoSpecialsActiveDefaultsToPermissiveFalseWhenUnregistered)
+{
+    g_no_specials_active_stub_called = false;
+    ScopedNoSpecialsActiveSink unregistered(nullptr);
+
+    const bool result = no_specials_active();
+
+    EXPECT_FALSE(g_no_specials_active_stub_called)
+        << "Expected the (unrelated) stub's own called flag to stay untouched -- the real "
+           "forwarder never ran.";
+    EXPECT_FALSE(result)
+        << "Expected an unregistered no_specials_active sink to default to false (specials not "
+           "suppressed), matching the global's own pre-boot value.";
+}
+
+TEST(OutputSeamForwarders, RequestCircleShutdownReachesARegisteredStub)
+{
+    g_request_circle_shutdown_stub_called = false;
+    ScopedRequestCircleShutdownSink scoped(recording_request_circle_shutdown_stub);
+
+    request_circle_shutdown();
+
+    EXPECT_TRUE(g_request_circle_shutdown_stub_called)
+        << "Expected the registered stub to have been reached.";
+}
+
+TEST(OutputSeamForwarders, RequestCircleShutdownDefaultsToANoOpWhenUnregistered)
+{
+    g_request_circle_shutdown_stub_called = false;
+    ScopedRequestCircleShutdownSink unregistered(nullptr);
+
+    request_circle_shutdown();
+
+    EXPECT_FALSE(g_request_circle_shutdown_stub_called)
+        << "Expected an unregistered request_circle_shutdown sink to leave the (unrelated) "
+           "stub's own recording flag untouched -- the real forwarder never ran, and the "
+           "tripwire default is a logged no-op, not a call to any stub.";
+}
+

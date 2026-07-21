@@ -276,6 +276,13 @@ SocketType pnew_descriptor(SocketType s);
 int process_output(struct descriptor_data* t);
 int process_input(struct descriptor_data* t);
 void close_sockets(SocketType s);
+// close_socket_impl() forward-declared here (behavior wave Task 1): this
+// file's own internal close_socket(...) call sites (close_sockets() above
+// among them) now call this real body directly, rather than round-tripping
+// through output_seam.cpp's close_socket() forwarder -- see this file's
+// close_socket_impl() definition (below, near the other *_impl bodies) for
+// the full rationale.
+static void close_socket_impl(struct descriptor_data* d, int drop_all);
 void flush_queues(struct descriptor_data* d);
 int perform_subst(struct descriptor_data* t, char* orig, char* subst);
 void complete_delay(struct char_data* ch);
@@ -1153,7 +1160,7 @@ void game_loop(SocketType s)
                 if (FD_ISSET(point->descriptor, &exc_set)) {
                     FD_CLR(point->descriptor, &input_set);
                     FD_CLR(point->descriptor, &output_set);
-                    close_socket(point, FALSE);
+                    close_socket_impl(point, FALSE);
                 }
             }
         }
@@ -1164,7 +1171,7 @@ void game_loop(SocketType s)
             if (point->descriptor) {
                 if (FD_ISSET(point->descriptor, &input_set)) {
                     if (process_input(point) < 0) {
-                        close_socket(point, FALSE);
+                        close_socket_impl(point, FALSE);
                     }
                 }
             }
@@ -1252,7 +1259,7 @@ void game_loop(SocketType s)
             if (point->descriptor) {
                 if (FD_ISSET(point->descriptor, &output_set) && *(point->output)) {
                     if (process_output(point) < 0) {
-                        close_socket(point, FALSE);
+                        close_socket_impl(point, FALSE);
                     } else {
                         point->prompt_mode = 1;
                     }
@@ -1265,7 +1272,7 @@ void game_loop(SocketType s)
             next_to_process = point->next;
             if (point->descriptor) {
                 if (STATE(point) == CON_CLOSE) {
-                    close_socket(point, FALSE);
+                    close_socket_impl(point, FALSE);
                 }
             }
         }
@@ -1814,7 +1821,7 @@ SocketType pnew_descriptor(SocketType s)
     descriptor_list = pnewd;
 
     if (!pnewd->waiting_for_proxy_header && send_initial_login_output(pnewd) < 0) {
-        close_socket(pnewd, FALSE);
+        close_socket_impl(pnewd, FALSE);
         return (0);
     }
 
@@ -2163,13 +2170,13 @@ void close_sockets(SocketType s)
 {
     log("Closing all sockets.");
     while (descriptor_list) {
-        close_socket(descriptor_list);
+        close_socket_impl(descriptor_list, TRUE);
     }
 
     rots_net::close_socket(s);
 }
 
-void close_socket(descriptor_data* conn_descriptor, int drop_all)
+static void close_socket_impl(descriptor_data* conn_descriptor, int drop_all)
 {
     descriptor_data* tmp;
 
@@ -2659,6 +2666,20 @@ static void abort_delay_impl(char_data* wait_ch);
 // once from run_the_game(), immediately after register_mudlog_broadcast_sink()
 // and before boot_db(), so ageland never runs any output-path call with an
 // unregistered sink.
+// no_specials_active()/request_circle_shutdown() sinks (behavior wave Task
+// 1; output_seam.h's accessor pair, census sections 9/10): plain reads/
+// writes of this file's own no_specials/circle_shutdown globals (declared
+// above), registered below the same way close_socket_impl is.
+static bool no_specials_active_impl()
+{
+    return no_specials != 0;
+}
+
+static void request_circle_shutdown_impl()
+{
+    circle_shutdown = 1;
+}
+
 void register_game_output_sinks()
 {
     rots::output::Sinks sinks {};
@@ -2675,6 +2696,14 @@ void register_game_output_sinks()
     sinks.complete_delay = complete_delay_impl;
     sinks.get_txt_block_from_pool = get_from_txt_block_pool_impl;
     sinks.put_txt_block_to_pool = put_to_txt_block_pool_impl;
+    // behavior wave Task 1 additions (census sections 9/10/close_socket):
+    // close_socket_impl is this file's own renamed real close_socket() body
+    // (near the *_impl definitions above the close_sockets()/pnew_descriptor()
+    // call sites that now call it directly); no_specials_active_impl/
+    // request_circle_shutdown_impl are defined immediately above.
+    sinks.close_socket = close_socket_impl;
+    sinks.no_specials_active = no_specials_active_impl;
+    sinks.request_circle_shutdown = request_circle_shutdown_impl;
     rots::output::set_sinks(sinks);
 }
 

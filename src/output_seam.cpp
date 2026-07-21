@@ -246,3 +246,50 @@ void put_to_txt_block_pool(struct txt_block* pold)
         "rots::output: STUB put_to_txt_block_pool() called with no sink registered -- this "
         "should be unreachable once register_game_output_sinks() has run.");
 }
+
+// close_socket() (behavior wave Task 1) -- unlike the six void forwarders
+// above (which have always lived here), this one takes over a symbol
+// comm.cpp itself used to define AND call internally; comm.cpp's own real
+// body is renamed to close_socket_impl (registered as this seam's sink)
+// and its own internal call sites now call close_socket_impl directly,
+// mirroring how send_to_all() has no comm.cpp-internal caller of its own
+// plain-symbol form. Same null-safe "logged no-op" default as the six void
+// forwarders above.
+void close_socket(struct descriptor_data* d, int drop_all)
+{
+    if (g_sinks.close_socket) {
+        g_sinks.close_socket(d, drop_all);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::output: STUB close_socket() called with no sink registered -- this should be "
+        "unreachable once register_game_output_sinks() has run.");
+}
+
+// no_specials_active() (behavior wave Task 1) -- read accessor, safe
+// tripwire-logged `false` default (specials not suppressed, the same
+// permissive posture as the global's own pre-boot value).
+bool no_specials_active()
+{
+    if (g_sinks.no_specials_active) {
+        return g_sinks.no_specials_active();
+    }
+    rots::log::write_stderr(
+        "rots::output: STUB no_specials_active() called with no sink registered -- this should "
+        "be unreachable once register_game_output_sinks() has run.");
+    return false;
+}
+
+// request_circle_shutdown() (behavior wave Task 1) -- setter forwarder,
+// safe logged no-op default (a missed shutdown request under an
+// unregistered sink, not a crash).
+void request_circle_shutdown()
+{
+    if (g_sinks.request_circle_shutdown) {
+        g_sinks.request_circle_shutdown();
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::output: STUB request_circle_shutdown() called with no sink registered -- this "
+        "should be unreachable once register_game_output_sinks() has run.");
+}

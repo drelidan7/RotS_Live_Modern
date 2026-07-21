@@ -55,6 +55,16 @@ void send_to_sector(std::string_view message, int sector_type);
 /// Performs the legacy all-player delivery behavior for a bounded message.
 void perform_to_all(std::string_view message, struct char_data* character);
 void close_socket(struct descriptor_data* d, int drop_all = TRUE);
+
+// no_specials read accessor / circle_shutdown WRITE accessor
+// (output_seam.h; behavior wave Task 1; census sections 9/10). Both
+// forward through output_seam.cpp's Sinks the same way close_socket()
+// above does, letting a future combat-tier caller (mobact.cpp/
+// limits.cpp) read/request-shutdown without a direct comm.cpp global
+// reference. Real bodies registered by register_game_output_sinks()
+// below.
+bool no_specials_active();
+void request_circle_shutdown();
 void break_spell(struct char_data* ch);
 void abort_delay(char_data* wait_ch);
 void complete_delay(struct char_data* ch);

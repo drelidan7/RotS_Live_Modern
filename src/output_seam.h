@@ -49,6 +49,7 @@
 #include <string_view>
 
 struct char_data;
+struct descriptor_data;
 struct obj_data;
 struct txt_block;
 
@@ -119,6 +120,36 @@ using get_txt_block_from_pool_fn = txt_block* (*)(std::string_view line);
 // mudlle.cpp/mudlle2.cpp call sites are consumer-free this task anyway.
 using put_txt_block_to_pool_fn = void (*)(struct txt_block*);
 
+// close_socket(descriptor_data*, int) (comm.cpp; behavior wave Task 1;
+// census section 9) -- limits.cpp's future upward close_socket(character->
+// desc) call site (limits.cpp:609, consumer-free this task) is the edge
+// this forwarder inverts, the same "future combat-tier caller" shape as
+// send_to_all/break_spell above. comm.cpp keeps the real body (renamed to
+// close_socket_impl, since this seam takes over the plain close_socket
+// global symbol the way send_to_char/act/send_to_all etc. already do) --
+// descriptor_list/rots_net::close_socket are app-owned session state at
+// this seam's call site. Void, so the null-sink default is a SAFE logged
+// no-op (this header's dominant taxonomy), not the txt-block-pool GET
+// forwarder's abort-tripwire exception.
+using close_socket_fn = void (*)(struct descriptor_data* d, int drop_all);
+
+// no_specials read accessor (comm.cpp's no_specials global; census section
+// 10) -- mobact.cpp's future read-only reference (mobact.cpp:122,
+// `!no_specials`, consumer-free this task). Read accessor, NOT a
+// storage-move: the sole writer stays comm.cpp's own boot sequence
+// (comm.cpp:516). Bool return, so the null-sink default is a SAFE
+// tripwire-logged `false` (specials not suppressed -- the same permissive
+// posture as the global's own pre-boot default value), not an abort.
+using no_specials_active_fn = bool (*)();
+
+// circle_shutdown WRITE accessor (comm.cpp's circle_shutdown global;
+// census section 9) -- limits.cpp's future one write site (limits.cpp:656,
+// `circle_shutdown = 1;`, consumer-free this task). Setter forwarder, NOT
+// a storage-move -- act_wiz.cpp's own four write sites
+// (:1253/:1257x2/:1263/:1269) stay app-tier, unaffected. Void, so the
+// null-sink default is a SAFE logged no-op.
+using request_circle_shutdown_fn = void (*)();
+
 struct Sinks {
     send_to_char_fn send_to_char; // comm.cpp's desc-delivery body
     send_to_char_id_fn send_to_char_id; // comm.cpp's descriptor_list-walk body
@@ -133,6 +164,9 @@ struct Sinks {
     complete_delay_fn complete_delay; // comm.cpp's complete_delay_impl body
     get_txt_block_from_pool_fn get_txt_block_from_pool; // comm.cpp's get_from_txt_block_pool_impl(string_view) body
     put_txt_block_to_pool_fn put_txt_block_to_pool; // comm.cpp's put_to_txt_block_pool_impl body
+    close_socket_fn close_socket; // comm.cpp's close_socket_impl body
+    no_specials_active_fn no_specials_active; // comm.cpp's no_specials_active_impl body
+    request_circle_shutdown_fn request_circle_shutdown; // comm.cpp's request_circle_shutdown_impl body
 };
 
 // Installs the sinks the game-output forwarders (output_seam.cpp) call

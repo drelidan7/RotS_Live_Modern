@@ -213,8 +213,44 @@ set(ROTS_PERSIST_SOURCES
 # established (db_players.cpp's own upward edges into world/boot). This is
 # why rots_world PUBLIC-links RotS::persist below, in addition to
 # RotS::entity/RotS::core/RotS::platform.
+#
+# zone.cpp JOINS HERE (l4-seed wave Task 3, Step 1 -- census §6/§9c, fully
+# independent of the graph/mudlle/mudlle2 Cluster A carve, so it lands in its
+# own commit ahead of the two new L4 targets below). Its zone-file parse/load
+# half already left for zone_load.cpp in the world-seed wave (Task 4); this
+# is the reset half. zone.cpp's blocking edges were NOT link-resolved by
+# adding RotS::combat here -- the wave's no-bidirectional-peer-link rule
+# forbids that (rots_combat already PUBLIC-links RotS::world, so a
+# world -> combat link would be the codebase's first bidirectional L3-peer
+# edge). Instead, T1/T2 of this wave inverted every zone -> combat/app edge
+# through a hook ahead of this membership move, all via world_hooks.h (T1(b))
+# with the real bodies registered app/combat-side, then converted at the
+# call site in reset_zone()/zone_update() (T2(c)):
+#   - dispatch_do_wear / dispatch_is_zone_populated (loud-tripwire / TRUE
+#     safe-sentinel): real bodies stay app-side (act_obj2.cpp/comm.cpp).
+#   - dispatch_equip_char (loud tripwire): OVERTURNED from the design spec's
+#     relocate-to-rots_entity default -- equip_char()'s own poison-coupling
+#     block calls damage()/raw_kill() (rots_combat), so it is not
+#     entity-pure after all; fight.cpp registers the real body unmoved (a
+#     legal combat -> world downward registration). unequip_char stays put
+#     in fight.cpp/rots_combat as before.
+#   - dispatch_pkill_get_good_fame / dispatch_pkill_get_evil_fame (0
+#     safe-sentinel, hook pair): OVERTURNED from the design spec's
+#     relocate-to-rots_persist default -- good_ranking/evil_ranking live in
+#     app-tier pkill.cpp, so relocating just the accessors would fail
+#     PersistLayerAcyclicity; pkill.cpp registers both real bodies.
+# extract_char's existing combat_hooks.h inversion was separately RE-HOMED
+# down to L2 entity_hooks.h (T1(c)), one shared dispatch both the world and
+# combat L3 bands reach downward through; zone.cpp's is_empty() body (the
+# descriptor_list walk) was retired outright once dispatch_is_zone_populated
+# took over every call site (T2(c)). See l4-task-3-brief.md's Step 1 and the
+# design spec's zone adjudication section for the sketch this overturned.
+# zone.cpp needs no new PUBLIC link on rots_world below -- every edge it
+# carries now resolves into the four layers rots_world already links
+# (persist/entity/core/platform) or through a hook whose real body stays
+# app/combat-side.
 set(ROTS_WORLD_SOURCES
-    db_world.cpp zone_load.cpp weather.cpp
+    db_world.cpp zone.cpp zone_load.cpp weather.cpp
 )
 
 # L3 peer: combat layer (spec §3/§10 step 4; combat-seed wave Task 1 payoff).
@@ -345,7 +381,8 @@ set(ROTS_COMBAT_SOURCES
 # (combat-seed wave Task 1). clerics.cpp/fight.cpp LEFT this list for
 # ROTS_COMBAT_SOURCES above (combat-pilot wave Task 5, joint membership).
 # olog_hai.cpp/mystic.cpp/profs.cpp LEFT this list for ROTS_COMBAT_SOURCES
-# above (combat-trio wave Task 4).
+# above (combat-trio wave Task 4). zone.cpp LEFT this list for
+# ROTS_WORLD_SOURCES above (l4-seed wave Task 3, Step 1).
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -362,7 +399,6 @@ set(ROTS_SERVER_SOURCES
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
-    zone.cpp
 )
 
 add_executable(ageland ${ROTS_SERVER_SOURCES})

@@ -755,6 +755,17 @@ void run_the_game(sh_int port)
     // task -- converted for real in a later Cluster B task) with an
     // unregistered hook.
     register_virt_assignmob_hook();
+    // editor_hooks.h's string-editor-init hook (Cluster B wave Task 1;
+    // cb-task-1-brief.md Step 3), registered the same way and for the same
+    // reason: before boot_db(), so ageland never runs the six shape*.cpp
+    // OLC editors' future rots::editor::dispatch_string_editor_init() call
+    // sites (consumer-free this task -- converted for real in a later
+    // Cluster B task) with an unregistered hook. modify.cpp has no
+    // dedicated header, so its registrar is forward-declared locally here,
+    // mirroring this function's own register_one_mobile_activity_hook()
+    // declaration above.
+    void register_string_editor_init_hook();
+    register_string_editor_init_hook();
 
     log("Signal trapping.");
     signal_setup();

@@ -308,6 +308,16 @@ int main(int argc, char* argv[]) {
     // needs the registration call. Consumer-free this task; this call also
     // covers this wave's own seam test (script_hooks_tests.cpp).
     register_virt_assignmob_hook();
+    // editor_hooks.h's string-editor-init hook (Cluster B wave Task 1),
+    // registered for the same real-body-fidelity reason as the calls
+    // above: modify.cpp is already linked into both test binaries, so this
+    // only needs the registration call. Consumer-free this task; this call
+    // also covers this wave's own seam test (editor_hooks_tests.cpp).
+    // modify.cpp has no dedicated header, so its registrar is
+    // forward-declared locally here, mirroring
+    // register_one_mobile_activity_hook()'s own local declaration above.
+    void register_string_editor_init_hook();
+    register_string_editor_init_hook();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

@@ -18,6 +18,7 @@
 
 #include "comm.h"
 #include "db.h"
+#include "editor_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "mail.h"
@@ -216,6 +217,16 @@ void string_add_init(struct descriptor_data* d, char** str)
     }
     d->cur_str = d->len_str;
     SET_BIT(PLR_FLAGS(d->character), PLR_WRITING);
+}
+
+// Registers the real string_add_init(d, str) body above as
+// editor_hooks.h's matching hook (Cluster B wave Task 1;
+// cb-task-1-brief.md Step 3; cb-census.md section 5.1). Called once
+// from run_the_game()/gtest_main.cpp's main(), before boot_db() -- same
+// convention as this tree's other *_hooks.h registrars.
+void register_string_editor_init_hook()
+{
+    rots::editor::set_string_editor_init_hook(string_add_init);
 }
 
 void string_add_finish(struct descriptor_data* d)

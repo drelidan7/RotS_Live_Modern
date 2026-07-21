@@ -93,7 +93,7 @@ LDFLAGS = -lgtest -lpthread
 
 OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o boards_json.o char_utils.o char_utils_combat.o clerics.o clock.o color.o color_convert.o \
-	combat_hooks.o comm.o config.o consts.o output_seam.o containment.o convert_exploits.o convert_plrobjs.o crashsave_schedule.o db_boot.o db_players.o db_world.o delayed_command_interpreter.o entity_lifecycle.o equipment.o fight.o graph.o handler.o interpre.o environment_utils.o account_cache.o account_management.o character_json.o exploits_json.o json_utils.o objects_json.o \
+	combat_hooks.o comm.o config.o consts.o output_seam.o containment.o convert_exploits.o convert_plrobjs.o crashsave_schedule.o db_boot.o db_players.o db_world.o delayed_command_interpreter.o editor_hooks.o entity_lifecycle.o equipment.o fight.o graph.o handler.o interpre.o environment_utils.o account_cache.o account_management.o character_json.o exploits_json.o json_utils.o objects_json.o \
 	limits.o mail.o mail_json.o mystic.o mage.o mobact.o modify.o mudlle.o mudlle2.o mob_csv_extract.o obj2html.o object_utils.o obj_files.o objsave.o olog_hai.o\
 	pkill.o pkill_json.o placement.o player_file_finalize.o profs.o protocol.o ranger.o safe_template.o save_benchmark.o savebench.o script.o script_hooks.o shapemdl.o shapemob.o shapeobj.o shaperom.o shapezon.o shapescript.o shop.o \
 	signals.o skill_timer.o spec_ass.o spec_pro.o spell_pa.o utility.o visibility.o wait_functions.o weapon_master_handler.o  \
@@ -260,6 +260,8 @@ combat_hooks.o : ../combat_hooks.cpp ../combat_hooks.h
 	$(CXX) -c $(CXXFLAGS) ../combat_hooks.cpp
 script_hooks.o : ../script_hooks.cpp ../script_hooks.h
 	$(CXX) -c $(CXXFLAGS) ../script_hooks.cpp
+editor_hooks.o : ../editor_hooks.cpp ../editor_hooks.h
+	$(CXX) -c $(CXXFLAGS) ../editor_hooks.cpp
 objsave.o : ../objsave.cpp ../comm.h ../handler.h ../db.h ../interpre.h \
 	../utils.h ../spells.h
 	$(CXX) -c $(CXXFLAGS) ../objsave.cpp

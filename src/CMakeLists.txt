@@ -567,6 +567,14 @@ set(ROTS_SCRIPT_SOURCES
 # .superpowers/sdd/bw-task-3-brief.md; see that set's own comment).
 # mobact.cpp LEFT this list for ROTS_SCRIPT_SOURCES above (behavior wave
 # Task 3, Step 2; see that set's own comment).
+# editor_hooks.cpp JOINS this list (Cluster B wave Task 1; cb-task-1-brief.md
+# Step 3): backing storage + dispatch for editor_hooks.h's string-editor-init
+# hook -- neither modify.cpp (its real-body owner, permanently app-tier) nor
+# the six shape*.cpp OLC editors (its future consumers, not yet a library)
+# give it a single natural home yet, the same "seam header, no owning TU"
+# shape combat_hooks.cpp/script_hooks.cpp landed with before their own
+# consumers promoted. A plain candidate to move into rots_olc once a later
+# Cluster B task creates that library and the shape family joins it.
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -574,6 +582,7 @@ set(ROTS_SERVER_SOURCES
     boards.cpp
     color.cpp comm.cpp
     db_boot.cpp delayed_command_interpreter.cpp
+    editor_hooks.cpp
     handler.cpp interpre.cpp
     mage.cpp mail.cpp mob_csv_extract.cpp
     modify.cpp
@@ -1020,6 +1029,7 @@ if(ROTS_BUILD_TESTS)
         tests/damage_tests.cpp
         tests/db_loader_tests.cpp
         tests/db_save_roundtrip_tests.cpp
+        tests/editor_hooks_tests.cpp
         tests/entity_lifecycle_tests.cpp
         tests/exploits_json_tests.cpp
         tests/fight_proc_tests.cpp

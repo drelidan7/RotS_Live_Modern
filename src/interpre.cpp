@@ -2228,16 +2228,26 @@ void assign_command_pointers(void)
 // through this registration exactly like `flee`'s/`hide`'s cells already
 // break their own still-app-compiled owners' direct calls. Consumer-free at
 // landing time -- olog_hai.cpp's own call site converts in a later task.
+// STATUS UPDATE (Cluster B wave, Task 1): three more cells joined --
+// `action` (act_soci.cpp's do_action), `emote` (act_wiz.cpp's do_emote),
+// `shutdown` (act_wiz.cpp's do_shutdown) -- cb-task-1-brief.md Step 1;
+// cb-census.md section 5.3. Consumer-free at landing time: script.cpp's/
+// shapemob.cpp's own up-calls (`do_action(tmpch, curr->text, &tmpwtl, 0,
+// 0)`, `do_emote(tmpch, curr->text, 0, 36, 0)`,
+// `do_shutdown(ch, mutable_arg(""), 0, 0, SCMD_SHUTDOWN)`) convert in a
+// later Cluster B task. 29 cells total.
 void register_combat_command_dispatch()
 {
     using rots::combat::combat_command;
     using rots::combat::set_combat_command;
 
+    set_combat_command(combat_command::action, do_action); // act_soci.cpp
     set_combat_command(combat_command::ambush, do_ambush); // ranger.cpp
     set_combat_command(combat_command::assist, do_assist);
     set_combat_command(combat_command::cast, do_cast); // spell_pa.cpp
     set_combat_command(combat_command::close, do_close);
     set_combat_command(combat_command::dismount, do_dismount); // ranger.cpp
+    set_combat_command(combat_command::emote, do_emote); // act_wiz.cpp
     set_combat_command(combat_command::flee, do_flee);
     set_combat_command(combat_command::gen_com, do_gen_com);
     set_combat_command(combat_command::hide, do_hide); // ranger.cpp
@@ -2250,6 +2260,7 @@ void register_combat_command_dispatch()
     set_combat_command(combat_command::rescue, do_rescue);
     set_combat_command(combat_command::rest, do_rest);
     set_combat_command(combat_command::say, do_say);
+    set_combat_command(combat_command::shutdown, do_shutdown); // act_wiz.cpp
     set_combat_command(combat_command::sit, do_sit);
     set_combat_command(combat_command::sleep, do_sleep);
     set_combat_command(combat_command::stand, do_stand);

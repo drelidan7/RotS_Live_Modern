@@ -46,6 +46,7 @@
 //     needs ScopedTestWorld.
 #include "../combat_hooks.h"
 #include "../comm.h"
+#include "../db.h"
 #include "../handler.h"
 #include "../interpre.h"
 #include "../limits.h"
@@ -61,6 +62,8 @@
 
 #include <string>
 #include <string_view>
+
+extern social_messg* soc_mess_list;
 
 namespace {
 
@@ -1324,3 +1327,184 @@ TEST(CombatHooksCrashExtractObjs, DispatchDefaultsToANoOpWhenUnregistered)
            "is a logged no-op, not a call to any stub.";
 }
 
+// -----------------------------------------------------------------------
+// Cluster B wave Task 1: three new combat_command cells (action/emote/
+// shutdown; cb-task-1-brief.md Step 1; cb-census.md section 5.3).
+// CONSUMER-FREE this task -- script.cpp's/shapemob.cpp's own call sites do
+// not convert yet (that is a later Cluster B task); these pairs prove the
+// registered path reaches the real ACMD body (action/emote) or a stub
+// (shutdown, see its own comment below) and the unregistered path stays a
+// safe no-op, the same discriminator shape as this file's other cells.
+// -----------------------------------------------------------------------
+
+// do_action (act_soci.cpp) -- DISCRIMINATOR: the CMD_SOCIAL/subcmd-0 branch
+// with a zeroed social_messg (soc_mess_list swapped to point at a
+// stack-local instance, mirroring act_format_tests.cpp's
+// ActSoci.DoActionAllowsMissingNoArgumentMessages fixture exactly) bypasses
+// find_action()/social_parser() entirely -- act_nr comes straight from
+// wtl->subcmd, so this needs no social_list_top/soc_mess_list content at
+// all beyond the swapped pointer. With every social_messg field zeroed
+// (char_no_arg/others_no_arg both null, min_actor_position 0), do_action's
+// only observable output is the unconditional trailing "\n\r".
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoActionWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    social_messg social_message {};
+    social_messg* previous_social_message_list = soc_mess_list;
+    soc_mess_list = &social_message;
+    char_data character {};
+    waiting_type wtl {};
+    wtl.cmd = CMD_SOCIAL;
+    wtl.subcmd = 0;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::action, &character, mutable_arg(""), &wtl, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "\n\r")
+        << "Expected the real do_action body's no-victim branch to send its unconditional "
+           "trailing message.";
+
+    soc_mess_list = previous_social_message_list;
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenActionIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::action);
+    ScopedCapturingOutputSink capture;
+    social_messg social_message {};
+    social_messg* previous_social_message_list = soc_mess_list;
+    soc_mess_list = &social_message;
+    char_data character {};
+    waiting_type wtl {};
+    wtl.cmd = CMD_SOCIAL;
+    wtl.subcmd = 0;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::action, &character, mutable_arg(""), &wtl, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered action cell to leave send_to_char uncalled -- the real "
+           "do_action body never ran.";
+
+    soc_mess_list = previous_social_message_list;
+}
+
+// do_emote (act_wiz.cpp) -- DISCRIMINATOR: the empty-argument branch's
+// unconditional send_to_char("Yes.. But what?\n\r", ch) -- the cheapest
+// deterministic path through do_emote's real body (wtl is null, so the
+// TARGET_TEXT substitution never fires; argument is an empty mutable_arg,
+// so the leading-space skip loop and the `!*(argument+i)` guard fire
+// immediately). Message-only, no world[]/state needed.
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoEmoteWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::emote, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "Yes.. But what?\n\r")
+        << "Expected the real do_emote body's empty-argument branch to send its literal message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenEmoteIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::emote);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::emote, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered emote cell to leave send_to_char uncalled -- the real "
+           "do_emote body never ran.";
+}
+
+// do_shutdown (act_wiz.cpp) -- DESIGN-RISK (cb-census.md section 5.3):
+// do_shutdown's real body force-shuts-down the server, so unlike every
+// other cell in this table this pair NEVER invokes the genuine ACMD --
+// registering a recording stub (matching acmd_fn's fixed signature) proves
+// issue_command() reaches a registered handler with its arguments intact,
+// the same "recording stub, not the real body" shape as this file's
+// CombatHooksGainExp/CombatHooksCrashCrashsave suites above, adapted to
+// combat_command's enum-indexed dispatch instead of a single fn-ptr hook.
+
+namespace {
+
+struct RecordedShutdownCall {
+    char_data* ch = nullptr;
+    char* argument = nullptr;
+    waiting_type* wtl = nullptr;
+    int cmd = 0;
+    int subcmd = 0;
+    bool called = false;
+};
+
+RecordedShutdownCall g_recorded_shutdown_call;
+
+void recording_shutdown_stub(
+    char_data* ch, char* argument, waiting_type* wtl, int cmd, int subcmd)
+{
+    g_recorded_shutdown_call = RecordedShutdownCall { ch, argument, wtl, cmd, subcmd, true };
+}
+
+// Swaps combat_hooks.h's `shutdown` cell to a caller-supplied handler (the
+// recording stub above, or nullptr), then restores the REAL registration
+// via register_combat_command_dispatch() on destruction -- same
+// restore-via-real-registrar shape as ScopedUnregisteredCombatCommand,
+// generalized to accept a non-null stub since this cell's own discriminator
+// must never register the real do_shutdown body.
+class ScopedShutdownCommandOverride {
+public:
+    explicit ScopedShutdownCommandOverride(rots::combat::acmd_fn handler)
+    {
+        rots::combat::set_combat_command(rots::combat::combat_command::shutdown, handler);
+    }
+
+    ~ScopedShutdownCommandOverride() { register_combat_command_dispatch(); }
+
+    ScopedShutdownCommandOverride(const ScopedShutdownCommandOverride&) = delete;
+    ScopedShutdownCommandOverride& operator=(const ScopedShutdownCommandOverride&) = delete;
+};
+
+} // namespace
+
+TEST(CombatHooksDispatch, IssueCommandReachesARegisteredStubForShutdownWithArgsIntact)
+{
+    g_recorded_shutdown_call = RecordedShutdownCall {};
+    ScopedShutdownCommandOverride scoped(recording_shutdown_stub);
+    char_data character {};
+    char argument_text[] = "";
+    waiting_type wtl {};
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::shutdown, &character, argument_text, &wtl, 0, SCMD_SHUTDOWN);
+
+    EXPECT_TRUE(g_recorded_shutdown_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_shutdown_call.ch, &character);
+    EXPECT_EQ(g_recorded_shutdown_call.argument, argument_text);
+    EXPECT_EQ(g_recorded_shutdown_call.wtl, &wtl);
+    EXPECT_EQ(g_recorded_shutdown_call.cmd, 0);
+    EXPECT_EQ(g_recorded_shutdown_call.subcmd, SCMD_SHUTDOWN);
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenShutdownIsUnregistered)
+{
+    g_recorded_shutdown_call = RecordedShutdownCall {};
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::shutdown);
+    char_data character {};
+    char argument_text[] = "";
+    waiting_type wtl {};
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::shutdown, &character, argument_text, &wtl, 0, SCMD_SHUTDOWN);
+
+    EXPECT_FALSE(g_recorded_shutdown_call.called)
+        << "Expected an unregistered shutdown cell to leave the (unrelated) stub's own recording "
+           "flag untouched -- the real do_shutdown body never ran (and never will, in this "
+           "discriminator).";
+}

@@ -113,6 +113,14 @@ using acmd_fn = void (*)(char_data* ch, char* argument, waiting_type* wtl, int c
 // array; keep it last, and keep this list alphabetical for easy diffing
 // against the file comment's target list.
 enum class combat_command {
+    // 27th cell (Cluster B wave Task 1; cb-task-1-brief.md Step 1;
+    // cb-census.md section 5.3) -- real body is act_soci.cpp's
+    // ACMD(do_action), a still-app-compiled TU. script.cpp:1107's call
+    // (`do_action(tmpch, curr->text, &tmpwtl, 0, 0)`) is the up-call this
+    // cell inverts, the same "real body stays in its still-app owner" shape
+    // as `dismount`'s own do_dismount/ranger.cpp below. Alphabetically first
+    // (action < ambush).
+    action,
     ambush,
     assist,
     cast,
@@ -125,6 +133,13 @@ enum class combat_command {
     // do_flee/act_offe.cpp). Breaks olog_hai.cpp's one direct up-call to
     // do_dismount, its only genuine combat-peer edge (census section 1).
     dismount,
+    // 28th cell (Cluster B wave Task 1; cb-task-1-brief.md Step 1;
+    // cb-census.md section 5.3) -- real body is act_wiz.cpp's
+    // ACMD(do_emote), a still-app-compiled TU. script.cpp:964's call
+    // (`do_emote(tmpch, curr->text, 0, 36, 0)`) is the up-call this cell
+    // inverts, same shape as `action` above. Alphabetically between
+    // `dismount` and `flee`.
+    emote,
     flee,
     gen_com,
     hide,
@@ -137,6 +152,17 @@ enum class combat_command {
     rescue,
     rest,
     say,
+    // 29th cell (Cluster B wave Task 1; cb-task-1-brief.md Step 1;
+    // cb-census.md section 5.3) -- real body is act_wiz.cpp's
+    // ACMD(do_shutdown), a still-app-compiled TU. shapemob.cpp:2105's call
+    // (`do_shutdown(ch, mutable_arg(""), 0, 0, SCMD_SHUTDOWN)`) is the
+    // up-call this cell inverts, same shape as `action`/`emote` above.
+    // DESIGN-RISK NOTE (cb-census.md section 5.3): do_shutdown's real body
+    // force-shuts-down the server -- its own discriminator test MUST use a
+    // registered STUB (not the real ACMD) to prove dispatch, never invoking
+    // the genuine shutdown body; see combat_hooks_tests.cpp's own comment at
+    // its ShutdownCell suite. Alphabetically between `say` and `sit`.
+    shutdown,
     sit,
     sleep,
     stand,

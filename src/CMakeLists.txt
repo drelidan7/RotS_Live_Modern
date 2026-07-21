@@ -407,6 +407,71 @@ set(ROTS_PATHFIND_SOURCES
     graph.cpp
 )
 
+# L4 band, upper tier: script layer (spec §3/§10 step 4; the l4-seed
+# wave's second new library target, landing after rots_pathfind because it
+# links it). mudlle.cpp (l4-census.md §3: 44 resolved, 5 blocking) +
+# mudlle2.cpp (7 resolved, 3 blocking) are the mob-program/script engine,
+# named for the MECHANISM (designers author behaviors) and deliberately
+# NOT rots_ai -- the quest layer is slated for a future redesign and this
+# name must survive it (design spec). Both TUs land in ONE commit for
+# simplicity (mudlle2.cpp is a small helper file with no independent
+# reason to delay), not because a cycle forces joint membership.
+#
+# update_pos()/CAN_SEE() (mudlle.cpp, visibility.cpp/rots_combat) resolve
+# downward the same way graph.cpp's hit()/get_char_vis() do, once this
+# library sits above rots_combat. find_first_step() (mudlle.cpp:299 ->
+# graph.cpp:108) is the SANCTIONED rots_script -> rots_pathfind intra-band
+# edge -- the one-directional peer class the design spec compares to
+# db_world.cpp's world -> persist edge; rots_pathfind never references a
+# rots_script symbol (verified zero edges the other way, l4-census.md §6).
+# Every other blocking edge was cleared by Task 1's seams ahead of this
+# membership move and converted by Task 2: do_say (all 15 sites across
+# graph.cpp/mudlle.cpp/mudlle2.cpp, tallied together) -> the existing
+# combat_command::say cell (same downward path as graph.cpp above);
+# command_interpreter() (mudlle.cpp:862, the one live SPECIAL_LIST 'C'
+# call site -- the full player-command dispatcher, a script-issues-
+# commands inversion) -> the new script_hooks.h
+# dispatch_command_interpreter() hook, loud-tripwire default, registered
+# by interpre.cpp pre-boot; PERS (mudlle2.cpp) -> the new
+# script_hooks.h dispatch_pers() forwarder, abort-tripwire default (a
+# pointer-returning hook cannot safely return a usable default -- the
+# mudlle_converter precedent); put_to_txt_block_pool needed ZERO edit
+# (T1 already made the bare symbol an output_seam.cpp forwarder both
+# files already reached through comm.h); the _buf/_buf2 db_boot scratch
+# globals retired to locals in Task 1.
+#
+# world_hooks.h::dispatch_mudlle_converter (the shop-boot/mudlle-convert
+# hook the world-seed wave already established) keeps working with
+# mudlle.cpp now L4: the registrar (mudlle.cpp:1384) becomes an L4->L3
+# downward registration into RotS::world's hook table, and the dispatcher
+# (db_world.cpp:218, rots_world/L3) is unaffected -- neither direction
+# changes tier legality, confirmed at Task 0 (l4-task-0-report.md).
+#
+# script_hooks.cpp JOINS HERE TOO (Task 3's own Step 4 negative-probe
+# finding, adjudicated on the spot -- a genuine census miss, not scoped in
+# the brief's literal Step 3 text, resolved by relocation rather than a
+# stub). T1 placed dispatch_command_interpreter()'s backing storage inside
+# interpre.cpp itself (reasoning it was "the TU that already visits the
+# target"), but interpre.cpp stays app-tier permanently -- so the moment
+# mudlle.cpp's call site converted to
+# rots::script::dispatch_command_interpreter() in Task 2, that placement
+# became a live rots_script -> app upward edge, invisible until this
+# library actually existed to link-check against it.
+# rots_script_linkcheck caught it immediately (undefined symbols:
+# rots::script::dispatch_pers / rots::script::dispatch_command_interpreter).
+# Fix: RELOCATE both hooks' backing storage into script_hooks.cpp (which
+# already held dispatch_pers() since T1, for the identical "seam header, no
+# single owning caller" reason combat_hooks.cpp joined rots_combat) -- a
+# byte-verbatim body move, only interpre.cpp's register_command_interpreter_
+# hook() registrar stays behind (a legal app -> lib downward call). Now
+# BOTH script_hooks.h hooks' backing storage lives in one small,
+# entity-pure TU (reaches only rots::log/RotS::platform, opaque
+# char_data*/waiting_type* pointers never dereferenced) that joins this
+# library alongside its two callers.
+set(ROTS_SCRIPT_SOURCES
+    mudlle.cpp mudlle2.cpp script_hooks.cpp
+)
+
 # ageland's remaining app-layer sources (spec §3): combat, commands,
 # comm/session handling, and every TU not yet carved into a rots_* library.
 # db_world.cpp/zone_load.cpp/weather.cpp LEFT this list for
@@ -419,6 +484,9 @@ set(ROTS_PATHFIND_SOURCES
 # above (combat-trio wave Task 4). zone.cpp LEFT this list for
 # ROTS_WORLD_SOURCES above (l4-seed wave Task 3, Step 1). graph.cpp LEFT
 # this list for ROTS_PATHFIND_SOURCES above (l4-seed wave Task 3, Step 2).
+# mudlle.cpp/mudlle2.cpp/script_hooks.cpp LEFT this list for
+# ROTS_SCRIPT_SOURCES above (l4-seed wave Task 3, Step 3 -- script_hooks.cpp
+# is a Step-4 negative-probe finding, see that set's own comment).
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -428,10 +496,10 @@ set(ROTS_SERVER_SOURCES
     db_boot.cpp delayed_command_interpreter.cpp
     handler.cpp interpre.cpp
     limits.cpp mage.cpp mail.cpp mob_csv_extract.cpp
-    mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
+    mobact.cpp modify.cpp
     obj2html.cpp objsave.cpp
     pkill.cpp protocol.cpp
-    ranger.cpp savebench.cpp script.cpp script_hooks.cpp shapemdl.cpp shapemob.cpp
+    ranger.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
@@ -717,13 +785,34 @@ set_target_properties(rots_pathfind PROPERTIES CXX_EXTENSIONS OFF)
 # see the ROTS_PATHFIND_SOURCES comment above) -- mirroring rots_combat's
 # own explicit downward link list one tier up. PUBLIC so all six layers'
 # include roots flow transitively to any consumer that links only
-# RotS::pathfind (in particular RotS::script, a future commit, whose one
-# sanctioned intra-band edge is into this library).
+# RotS::pathfind (in particular RotS::script below, whose one sanctioned
+# intra-band edge is into this library).
 target_link_libraries(rots_pathfind PUBLIC rots_build_flags RotS::combat RotS::world RotS::persist RotS::entity RotS::core RotS::platform)
 # No target_include_directories() of its own needed: every lower layer's
 # include root already flows transitively via RotS::combat's own PUBLIC
 # target_include_directories chain (same "no target_include_directories of
 # its own needed" shape rots_world/rots_combat both established).
+
+# --- L4 band, upper tier: script layer ------------------------------------------
+# (l4-seed wave Task 3, Step 3 -- lands after rots_pathfind above because
+# it links it. See the ROTS_SCRIPT_SOURCES comment above for the full
+# membership rationale.)
+add_library(rots_script STATIC ${ROTS_SCRIPT_SOURCES})
+add_library(RotS::script ALIAS rots_script)
+set_target_properties(rots_script PROPERTIES CXX_EXTENSIONS OFF)
+# PUBLIC RotS::pathfind + the full L3 downward set: RotS::pathfind carries
+# the one SANCTIONED intra-band edge (find_first_step(), mudlle.cpp:299 ->
+# graph.cpp:108 -- see the ROTS_SCRIPT_SOURCES comment above), listed first
+# to mirror rots_pathfind's own "combat first" ordering (nearest layer
+# first). RotS::combat/RotS::world/RotS::persist/RotS::entity/RotS::core/
+# RotS::platform resolve mudlle.cpp's update_pos()/CAN_SEE() (rots_combat)
+# and every other legitimate downward edge. PUBLIC so all seven layers'
+# include roots flow transitively to any consumer that links only
+# RotS::script.
+target_link_libraries(rots_script PUBLIC rots_build_flags RotS::pathfind RotS::combat RotS::world RotS::persist RotS::entity RotS::core RotS::platform)
+# No target_include_directories() of its own needed: every lower layer's
+# include root already flows transitively via RotS::pathfind's own PUBLIC
+# target_include_directories chain.
 
 target_link_libraries(ageland PRIVATE
     RotS::platform
@@ -733,6 +822,7 @@ target_link_libraries(ageland PRIVATE
     RotS::world
     RotS::combat
     RotS::pathfind
+    RotS::script
     rots_build_flags
     $<$<PLATFORM_ID:Windows>:ws2_32>
 )
@@ -946,18 +1036,20 @@ if(ROTS_BUILD_TESTS)
     include(GoogleTest)
 
     # ageland_tests deliberately does NOT link rots_core/rots_entity/
-    # rots_persist/rots_world/rots_combat/rots_pathfind (TESTING parity, same
-    # as the rots_platform pattern above): it keeps compiling config.cpp/
-    # consts.cpp/output_seam.cpp, entity_lifecycle.cpp/object_utils.cpp/
-    # environment_utils.cpp, db_players.cpp/character_json.cpp/etc., (as of
-    # world-seed Task 5) db_world.cpp/zone_load.cpp/weather.cpp, (as of
-    # combat-seed Task 1) battle_mage_handler.cpp/skill_timer.cpp/
-    # weapon_master_handler.cpp/wild_fighting_handler.cpp, and (as of
-    # l4-seed Task 3) graph.cpp directly via ROTS_CORE_SOURCES/
+    # rots_persist/rots_world/rots_combat/rots_pathfind/rots_script
+    # (TESTING parity, same as the rots_platform pattern above): it keeps
+    # compiling config.cpp/consts.cpp/output_seam.cpp, entity_lifecycle.cpp/
+    # object_utils.cpp/environment_utils.cpp, db_players.cpp/
+    # character_json.cpp/etc., (as of world-seed Task 5) db_world.cpp/
+    # zone_load.cpp/weather.cpp, (as of combat-seed Task 1)
+    # battle_mage_handler.cpp/skill_timer.cpp/weapon_master_handler.cpp/
+    # wild_fighting_handler.cpp, and (as of l4-seed Task 3) graph.cpp/
+    # mudlle.cpp/mudlle2.cpp directly via ROTS_CORE_SOURCES/
     # ROTS_ENTITY_SOURCES/ROTS_PERSIST_SOURCES/ROTS_WORLD_SOURCES/
-    # ROTS_COMBAT_SOURCES/ROTS_PATHFIND_SOURCES instead (all now live only in
-    # those lists — see each set's own comment above).
-    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_ENTITY_SOURCES} ${ROTS_PERSIST_SOURCES} ${ROTS_WORLD_SOURCES} ${ROTS_COMBAT_SOURCES} ${ROTS_PATHFIND_SOURCES} ${ROTS_TEST_SOURCES})
+    # ROTS_COMBAT_SOURCES/ROTS_PATHFIND_SOURCES/ROTS_SCRIPT_SOURCES instead
+    # (all now live only in those lists — see each set's own comment
+    # above).
+    add_executable(ageland_tests ${ROTS_SERVER_SOURCES} ${ROTS_PLATFORM_SOURCES} ${ROTS_CORE_SOURCES} ${ROTS_ENTITY_SOURCES} ${ROTS_PERSIST_SOURCES} ${ROTS_WORLD_SOURCES} ${ROTS_COMBAT_SOURCES} ${ROTS_PATHFIND_SOURCES} ${ROTS_SCRIPT_SOURCES} ${ROTS_TEST_SOURCES})
 
     # Same C++ standard as ageland (see above) — required because these targets are
     # defined per-target here rather than via a project-wide CMAKE_CXX_STANDARD.
@@ -1368,6 +1460,49 @@ if(ROTS_BUILD_TESTS)
             LINK_DEPENDS "$<TARGET_FILE:rots_pathfind>")
         if(BUILD_TESTING)
             add_test(NAME PathfindLayerAcyclicity COMMAND rots_pathfind_linkcheck)
+        endif()
+
+        # Load-bearing script-layer acyclicity check (spec §11), mirroring
+        # the rots_pathfind_linkcheck block above (l4-seed wave Task 3, Step
+        # 3 -- the second L4-band linkcheck, landing after rots_pathfind's
+        # because rots_script links it). rots_script (mudlle.cpp +
+        # mudlle2.cpp -- see the ROTS_SCRIPT_SOURCES comment above) is
+        # verified to have no upward symbol references beyond its legal
+        # downward edges into rots_pathfind, rots_combat, rots_world,
+        # rots_persist, rots_entity, rots_core, and rots_platform.
+        # RotS::pathfind is the ONE sanctioned intra-band peer edge this
+        # checker exists to certify (find_first_step(), the same class of
+        # edge WorldLayerAcyclicity certifies for RotS::persist) --
+        # deliberately included on this checker's own normal-link list, not
+        # merely inherited, so a future accidental removal of the
+        # find_first_step() call wouldn't silently stop exercising this
+        # edge. RotS::combat/RotS::world/RotS::persist/RotS::entity/
+        # RotS::core/RotS::platform are not re-listed because RotS::pathfind
+        # already carries all six transitively (RotS::pathfind's own PUBLIC
+        # RotS::combat link, established above). The checker force-loads
+        # rots_script itself (so every rots_script symbol is pulled in and
+        # any OTHER unresolved reference fails the link) and normal-links
+        # RotS::pathfind to resolve those legitimate lower-layer/peer edges
+        # -- a strictly tighter guarantee than "any lower layer is allowed".
+        add_executable(rots_script_linkcheck tests/script_linkcheck_main.cpp)
+        target_link_libraries(rots_script_linkcheck PRIVATE rots_build_flags RotS::pathfind)
+        add_dependencies(rots_script_linkcheck rots_script)
+        if(APPLE)
+            target_link_options(rots_script_linkcheck PRIVATE
+                -Wl,-force_load,$<TARGET_FILE:rots_script>)
+        else()
+            target_link_options(rots_script_linkcheck PRIVATE
+                -Wl,--whole-archive $<TARGET_FILE:rots_script> -Wl,--no-whole-archive)
+        endif()
+        # LINK_DEPENDS: same rationale as rots_pathfind_linkcheck above — the
+        # archive path only appears inside a raw linker flag string, invisible
+        # to CMake's normal target_link_libraries dependency tracking, so an
+        # incremental rebuild that changes only a rots_script source needs
+        # this to force a relink instead of silently reusing a stale binary.
+        set_target_properties(rots_script_linkcheck PROPERTIES
+            LINK_DEPENDS "$<TARGET_FILE:rots_script>")
+        if(BUILD_TESTING)
+            add_test(NAME ScriptLayerAcyclicity COMMAND rots_script_linkcheck)
         endif()
     endif()
 endif()

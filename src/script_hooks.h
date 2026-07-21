@@ -1,28 +1,26 @@
 #pragma once
-// script_hooks.h -- dependency-inversion seam for rots_script's (the future
-// mudlle.cpp/mudlle2.cpp library, l4-seed spec) two upward edges into
-// app-tier TUs (spec Sec13 pattern, mirroring world_hooks.h/persist_hooks.h).
-// See each hook's comment below for the call site it replaces and why its
-// default is a deliberately loud logged tripwire (command_interpreter) or a
-// documented abort tripwire (PERS) -- l4-task-1-brief.md's CONTROLLER
-// ADDENDUM items 5 and l4-census.md sections 3.1/3.2 adjudicate both shapes.
-// CONSUMER-FREE at this task's landing: mudlle.cpp's/mudlle2.cpp's own call
-// sites do not convert yet (they still call command_interpreter()/PERS()
-// directly, a legal same-tier app call today) -- see this task's report for
-// the promotion order (rots_pathfind before rots_script, per the census's
-// Membership plan) that will make the conversion necessary.
+// script_hooks.h -- dependency-inversion seam for rots_script's
+// (mudlle.cpp/mudlle2.cpp, joined by script_hooks.cpp itself -- l4-seed
+// wave Task 3) two upward edges into app-tier TUs (spec Sec13 pattern,
+// mirroring world_hooks.h/persist_hooks.h). See each hook's comment below
+// for the call site it replaces and why its default is a deliberately loud
+// logged tripwire (command_interpreter) or a documented abort tripwire
+// (PERS) -- l4-task-1-brief.md's CONTROLLER ADDENDUM items 5 and
+// l4-census.md sections 3.1/3.2 adjudicate both shapes.
 //
-// Backing storage + dispatch for command_interpreter live in interpre.cpp
-// (l4-task-1-brief.md Step 1): that file already DEFINES command_interpreter
-// itself, the same "the TU that already visits the target hosts the
-// registrar" precedent as assign_spell_pointers()/
-// register_combat_command_dispatch() (interpre.cpp). Backing storage +
-// dispatch for PERS live in script_hooks.cpp instead: PERS's real body and
-// registrar are utility.cpp, a different owner than interpre.cpp, and
-// neither mudlle.cpp nor mudlle2.cpp (PERS's eventual caller) is being
-// converted this task -- so, like combat_hooks.cpp (a seam header with
-// several FUTURE callers rather than one owning TU), PERS gets its own small
-// backing-storage TU rather than folding into interpre.cpp's file.
+// Backing storage + dispatch for BOTH hooks live in script_hooks.cpp (see
+// that file's own banner comment for the full history): command_interpreter
+// moved there in Task 3 from its original T1 placement in interpre.cpp --
+// that file already DEFINES command_interpreter() itself and stays app-tier
+// permanently, so once mudlle.cpp's call site converted to
+// rots::script::dispatch_command_interpreter() in Task 2, the T1 placement
+// became a genuine rots_script -> app upward edge the moment mudlle.cpp
+// joined rots_script; caught by ScriptLayerAcyclicity's negative-probe
+// verification, not silently missed. PERS's backing storage has lived in
+// script_hooks.cpp since T1 (PERS's real body and registrar are
+// utility.cpp, a different owner, so it never had a single natural owning
+// TU -- the same "seam header, no single owning caller" shape as
+// combat_hooks.cpp/combat_hooks.h one tier down).
 
 struct char_data;
 struct waiting_type;

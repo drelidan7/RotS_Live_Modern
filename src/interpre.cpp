@@ -1423,47 +1423,23 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
         send_to_char("Huh?!?\n\r", ch);
 }
 
-// script_hooks.h's command_interpreter hook -- backing storage + dispatch
-// (l4-seed wave, Task 1; l4-task-1-brief.md Step 1). Lives here, not a
-// separate script_hooks.cpp, because this file already DEFINES
-// command_interpreter() above -- the same "the TU that already visits the
-// target hosts the registrar" precedent as
-// register_combat_command_dispatch() (this file, below). Registered from
+// script_hooks.h's command_interpreter hook -- REGISTRAR only. Backing
+// storage + dispatch (set_command_interpreter_hook()/
+// dispatch_command_interpreter()) RELOCATED to script_hooks.cpp in the
+// l4-seed wave's Task 3 membership move (l4-task-3-brief.md Step 3 --
+// script_hooks.cpp joins ROTS_SCRIPT_SOURCES alongside mudlle.cpp/
+// mudlle2.cpp, see that set's own comment): T1's original placement here
+// (this file already DEFINES command_interpreter() above, so it looked
+// like the natural "TU that already visits the target hosts the
+// registrar" precedent) turned out to be a genuine rots_script -> app
+// upward edge once mudlle.cpp's call site converted to
+// rots::script::dispatch_command_interpreter() in Task 2 -- caught by
+// ScriptLayerAcyclicity's own negative-probe verification at this task's
+// Step 4, not silently missed. Only the REGISTRAR (a legal app -> lib
+// downward call into script_hooks.h's public set_command_interpreter_hook()
+// API) stays here, mirroring register_extract_char_hook() (handler.cpp)
+// and register_combat_command_dispatch() (this file, below) -- called from
 // the existing pre-boot_db() boot sequence (run_the_game(), comm.cpp).
-namespace rots::script {
-
-namespace {
-// Backing storage for the registered command-interpreter hook
-// (register_command_interpreter_hook(), this file). Null until that
-// registration runs; the null default is a LOUD LOGGED TRIPWIRE + no-op
-// (see dispatch_command_interpreter() below) -- see script_hooks.h's
-// command_interpreter_fn comment for why this class, not abort.
-command_interpreter_fn g_command_interpreter_hook = nullptr;
-} // namespace
-
-void set_command_interpreter_hook(command_interpreter_fn hook)
-{
-    g_command_interpreter_hook = hook;
-}
-
-void dispatch_command_interpreter(char_data* ch, char* argument_chr, waiting_type* argument_wtl)
-{
-    if (g_command_interpreter_hook) {
-        g_command_interpreter_hook(ch, argument_chr, argument_wtl);
-        return;
-    }
-    rots::log::write_stderr(
-        "rots::script: STUB dispatch_command_interpreter() called with no handler registered -- "
-        "this should be unreachable once register_command_interpreter_hook() has run.");
-}
-
-} // namespace rots::script
-
-// Registers the real command_interpreter() body above as script_hooks.h's
-// command-interpreter hook (l4-seed wave, Task 1). Called once from
-// run_the_game(), before boot_db() -- same convention as
-// register_extract_char_hook() (handler.cpp) and this header's sibling
-// registrars.
 void register_command_interpreter_hook()
 {
     rots::script::set_command_interpreter_hook(command_interpreter);

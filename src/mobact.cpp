@@ -34,7 +34,6 @@ extern struct room_data world;
 extern int top_of_world;
 
 ACMD(do_move);
-ACMD(do_get);
 ACMD(do_rescue);
 ACMD(do_assist);
 ACMD(do_stand);
@@ -449,10 +448,15 @@ void register_one_mobile_activity_hook()
 // callers keep their own local externs (handler.cpp, interpre.cpp,
 // act_wiz.cpp) -- linkage doesn't care which TU defines the symbol.
 
+// ACMD(do_stand); duplicate forward decl RETIRED (behavior wave Task 1,
+// census section 5): identical to the declaration already at this
+// file's own top (:39, still used by call sites earlier in this file,
+// e.g. :204/:230/:251). do_sleep/do_rest/do_sit/do_wake below remain --
+// each is genuinely first-declared here and required by
+// enforce_position()'s switch immediately below.
 ACMD(do_sleep);
 ACMD(do_rest);
 ACMD(do_sit);
-ACMD(do_stand);
 ACMD(do_wake);
 
 void enforce_position(struct char_data* ch, int new_pos)

@@ -234,3 +234,69 @@ new data point for their eventual promotion (spec_ass now also owns a hook regis
   drops 7 → 5. `virt_program_number`'s inversion and `saves_spell`'s relocation are recorded data
   points for their eventual promotion.
 - No int→double combat-math changes; no new smoke/determinism infrastructure.
+
+## As-built (Tasks 0-3 complete; Task 4 docs, this section; Task 5 finalization pending)
+
+**Status: both memberships landed, both `CombatLayerAcyclicity`/`ScriptLayerAcyclicity` green first
+try, both hosts, zero census misses.** `limits.cpp` → `rots_combat` (11 → 12 TUs, commit `79dadb4`);
+`mobact.cpp` → `rots_script` (3 → 4 TUs, commit `5df751e`). DEFER drops **7 → 5** (`spec_ass`/`mage`/
+`spell_pa`/`ranger`/`spec_pro`). ctest 1415 → 1446 (Task 1 +19, Task 2 +12, Task 3 +0). Full
+per-task evidence: `.superpowers/sdd/bw-task-{0,1,2,3}-report.md`; census: `.superpowers/sdd/
+bw-census.md`.
+
+**Task 0's one OVERTURN of this design spec's own default: `saves_spell`.** The "Adjudication
+defaults" section above specced RELOCATE-CLEAN to L2 `char_utils_combat.cpp` (the `saves_power`
+five-pack precedent). Task 0's body read found `saves_spell()` writes `spllog_mage_level`/
+`spllog_save`/`spllog_saves` — globals storage-moved into `fight.cpp` (`rots_combat`, L3) back in
+the combat-pilot wave — and `rots_entity`'s own `CMakeLists.txt` link line does not PUBLIC-link
+`RotS::combat`; an L2 home would be an illegal upward write-dependency, the same class of violation
+the l4-census's `equip_char`/`pkill_get_good_fame` OVERTURNs already established. **Corrected
+disposition: RELOCATE to L3 `rots_combat`** (`fight.cpp`, beside the `spllog_*` storage it writes),
+not L2. Every other adjudication default CONFIRMED exactly as specced (`one_mobile_activity`,
+`virt_program_number`, `no_specials`, `char_from_room`, `recalc_zone_power`/`report_zone_power`,
+`affect_remove_notify`, `Crash_idlesave`/`Crash_extract_objs`, `close_socket`,
+`circle_shutdown`, `gain_exp` family, `_buf` retirement).
+
+**Two resurfaced spec-adjudication gaps.** This design spec's "Remaining real work" prose dropped two
+items that `combat-census.md`'s original `limits` row already carried, giving them no adjudication
+default: `game_rules::big_brother::on_character_afked`/`on_corpse_decayed` (limits.cpp, 2 call
+sites — no existing hook covered these two methods, only the pre-existing `target_valid_fn`/
+`character_died_fn` pair) and `pkill_get_rank_by_character` (limits.cpp:1252 — genuinely
+RELOCATE-CLEAN to `rots_persist`/`db_players.cpp`, since its backing storage was already
+persist-tier, unlike the l4-census's `pkill_get_good_fame`/`evil_fame` OVERTURN whose storage stayed
+app-tier). Task 0 dispositioned both (§6 of `bw-census.md`) before Task 1 built them; neither was
+STOP-class.
+
+**The rider gate closed at exactly 1, not the pre-authorized ceiling of 3.** `virt_program_number`'s
+full enumeration (every call `mobact.cpp` makes cross-referenced against every function defined in
+`spec_ass.cpp`/`spec_pro.cpp`) found exactly one same-shape edge (`mobact.cpp:64`/`:126`, both into
+`spec_ass.cpp:315`) and zero 2nd/3rd/4th edges of the same or a different shape. No auto-STOP fired.
+This is a genuine data point for `spec_ass`/`spec_pro`'s own eventual promotion (spec_ass's
+combat-peer=39 tally is dominated by spec_pro references) — the mechanism is proven at 1 of 3 uses,
+not exhausted.
+
+**Task 3's memberships landed first-try clean, both commits.** `limits.cpp`'s membership commit
+needed zero census misses — every up-call it carried had already been converted onto a hook/seam in
+Task 2, so the membership move was a pure `CMakeLists.txt` source-list edit. Same for `mobact.cpp`.
+This is the third consecutive wave (after combat-trio and l4-seed) to achieve a zero-census-miss
+membership gate, further validating the census → closure check → seams → conversions → membership →
+verification recipe order this playbook has followed since the combat-pilot wave's own STOP forced
+the restructure.
+
+**The STAYED verdict (Task 3's cleanup step).** The `gain_exp`/`gain_exp_regardless`/
+`remove_fame_war_bonuses` hooks and `limits.cpp`'s own self-registration were verified — by grep, not
+assumption — to still have live dispatch consumers even after `limits.cpp` became intra-lib with
+`fight.cpp`/`clerics.cpp`: `fight.cpp` (six call sites — `fight.cpp:936`/`1084`/`1086`/`1116`/
+`1330`/`1974`, correcting an in-file comment that said "five") and `clerics.cpp` (one site,
+`clerics.cpp:248`) still dispatch through `rots::combat::gain_exp()`-style calls rather than calling
+`limits.cpp`'s now-intra-lib globals directly. Per the plan's explicit rule ("if dispatch consumers
+remain, the hooks and registrations STAY; delete nothing"), Task 3's third commit is comment-only
+(four stale `combat_hooks.h` banners updated to document the finding, not a deletion). Converting
+`fight.cpp`'s/`clerics.cpp`'s call sites back to direct `limits.cpp` calls (now legal, since both
+sides are intra-lib) remains a deferred follow-on simplification, unchanged from this design spec's
+own "Out of scope" framing above.
+
+See `docs/BUILD.md`'s "The behavior wave" subsection (under "Library layering"),
+`docs/superpowers/specs/2026-07-16-library-architecture-design.md`'s §3 REVISION downstream note
+and §10 "step 4 ninth slice," and `docs/superpowers/combat-migration-playbook.md`'s "The behavior
+wave" section for the full cross-referenced account.

@@ -80,9 +80,9 @@ original eight-library sketch did not anticipate.**
 | `rots_entity` | L2 | 6 | `char_utils, object_utils, environment_utils, handler, utility, char_utils_combat` (as-built: 5 of 6 have joined `rots_entity` — `handler`/`utility` remain app-compiled, deferred with named/uncounted welds respectively — see caveat below) |
 | `rots_persist` | L3 | ~14 | `db_players` (from `db.cpp`), `objsave, boards, mail, pkill, character_json, objects_json, exploits_json, account_management (+6 #included fragments), account_cache, convert_exploits, convert_plrobjs, save_benchmark, savebench` |
 | `rots_world` | L3 | ~15 | `db_world` (from `db.cpp`), `shapemdl, shapemob, shapeobj, shaperom, shapescript, shapezon, zone, script, mudlle, mudlle2, graph, weather, mob_csv_extract, obj2html` (as-built: **4** of ~15 have joined `rots_world` — `db_world`/`weather`/the `zone_load` carved out of `zone` (world-seed wave) plus `zone.cpp` itself (its reset half, l4-seed wave — `zone` is now fully resolved, both halves in-lib) — **`mudlle`/`mudlle2`/`graph` did NOT join `rots_world` as this row's original sketch assumed**: the l4-seed wave found placing them here would force a `rots_world → rots_combat` link that collides with `rots_combat`'s own existing `rots_world` link (the codebase's first bidirectional L3-peer edge), so they became the new `rots_pathfind`/`rots_script` libraries instead, one band above L3 — see the §3 REVISION below — `shape*`/`script`/`mob_csv_extract`/`obj2html` remain app-compiled, deferred — see caveat below) |
-| `rots_combat` | L3 | 16 | `fight, limits, skill_timer, mobact, ranger, clerics, mage, mystic, profs, spell_pa, spec_pro, spec_ass, battle_mage_handler, weapon_master_handler, wild_fighting_handler, olog_hai` (as-built: 9 of 16 original-sketch TUs have joined `rots_combat` — `skill_timer`/`battle_mage_handler`/`weapon_master_handler`/`wild_fighting_handler` (combat-seed wave), `clerics`/`fight` (combat-pilot wave, joint membership), and `olog_hai`/`mystic`/`profs` (combat-trio wave, one membership commit — olog_hai and mystic each promoted **standalone**, closed over their own edges independently; `profs` rode as a census-gated rider whose one real coupling, `scale_guardian`/mystic.cpp, is a one-directional gate, not a cycle) — `profs`'s SEED-WITH-SEAM caveat is now RESOLVED and the remaining **7** (`limits, mobact, ranger, mage, spell_pa, spec_pro, spec_ass`) DEFER, all still app-compiled; the blocker-buster wave also added two further TUs NOT in this row's original 16-TU sketch — `combat_hooks.cpp`/`visibility.cpp`, enabler infrastructure rather than DEFER-TU migrations — bringing `rots_combat` to 11 TUs total — see caveat below and §10's "combat-pilot wave, step 4 sixth slice" / "combat-trio wave, step 4 seventh slice" as-built notes) |
+| `rots_combat` | L3 | 16 | `fight, limits, skill_timer, mobact, ranger, clerics, mage, mystic, profs, spell_pa, spec_pro, spec_ass, battle_mage_handler, weapon_master_handler, wild_fighting_handler, olog_hai` (as-built: 10 of 16 original-sketch TUs have joined `rots_combat` — `skill_timer`/`battle_mage_handler`/`weapon_master_handler`/`wild_fighting_handler` (combat-seed wave), `clerics`/`fight` (combat-pilot wave, joint membership), `olog_hai`/`mystic`/`profs` (combat-trio wave, one membership commit — olog_hai and mystic each promoted **standalone**, closed over their own edges independently; `profs` rode as a census-gated rider whose one real coupling, `scale_guardian`/mystic.cpp, is a one-directional gate, not a cycle), and `limits` (behavior wave, a standard L3 DEFER-row promotion) — `profs`'s SEED-WITH-SEAM caveat is now RESOLVED and the remaining **5** (`mobact` excepted — see below — `ranger, mage, spell_pa, spec_pro, spec_ass`) DEFER, all still app-compiled; the blocker-buster wave also added two further TUs NOT in this row's original 16-TU sketch — `combat_hooks.cpp`/`visibility.cpp`, enabler infrastructure rather than DEFER-TU migrations — bringing `rots_combat` to 12 TUs total — see caveat below and §10's "combat-pilot wave, step 4 sixth slice" / "combat-trio wave, step 4 seventh slice" / "behavior wave, step 4 ninth slice" as-built notes. **`mobact` — the row's original sketch listed it here, but it did NOT join `rots_combat`**: the behavior wave's closure check found it homes in `rots_script` instead (see that row below and the §3 REVISION downstream note) — this is this document's first instance of an original-sketch TU resolving into a DIFFERENT row than the one it was originally assigned to.) |
 | `rots_pathfind` | **L4 (new band, lower)** | 1 | `graph` (pathfinding/hunting) — **NEW row, not part of this document's original eight-library sketch.** As-built (l4-seed wave): stood up standalone; its `hunt_victim()`/`hit()`/`get_char_vis()` edges into `rots_combat` are legal L4→L3 downward calls under the new band placement — see the §3 REVISION below. |
-| `rots_script` | **L4 (new band, upper)** | 2 (+1 seam TU) | `mudlle, mudlle2` (the mob-program/script engine) — **NEW row, not part of this document's original eight-library sketch.** As-built (l4-seed wave): stood up jointly (the 14-symbol `mudlle → mudlle2` edge is intra-band, not a cycle); `script_hooks.cpp` joined as a third member holding the `command_interpreter`/`PERS` hooks' backing storage (T3's mid-task relocation, `interpre.cpp` → `script_hooks.cpp`, once the linkcheck surfaced that storage as a live upward edge). PUBLIC-links `RotS::pathfind` — the one sanctioned intra-band edge (`find_first_step`). See the §3 REVISION below. |
+| `rots_script` | **L4 (new band, upper)** | 2 (+1 seam TU) | `mudlle, mudlle2` (the mob-program/script engine) — **NEW row, not part of this document's original eight-library sketch.** As-built (l4-seed wave): stood up jointly (the 14-symbol `mudlle → mudlle2` edge is intra-band, not a cycle); `script_hooks.cpp` joined as a third member holding the `command_interpreter`/`PERS` hooks' backing storage (T3's mid-task relocation, `interpre.cpp` → `script_hooks.cpp`, once the linkcheck surfaced that storage as a live upward edge). PUBLIC-links `RotS::pathfind` — the one sanctioned intra-band edge (`find_first_step`). **Grown to 4 TUs by the behavior wave**: `mobact.cpp` — the `rots_combat` row's own original sketch TU (above) — joined here instead, answering the l4-seed wave's own downstream note (the driver homes with the engine it invokes: `intelligent()` intra-lib, `find_first_step()` downward to `rots_pathfind`, the twelve `do_*` up-calls downward to `rots_combat`'s existing 26-cell `combat_command` table, zero new link edge needed). See the §3 REVISION below. |
 | `rots_commands` | L4 | 15 | `interpre, act_comm, act_info, act_move, act_obj1, act_obj2, act_offe, act_othe, act_soci, act_wiz, modify, delayed_command_interpreter, wait_functions, shop, ban` — **layer-label note (l4-seed wave): this row's "L4" is this document's ORIGINAL label, predating the l4-seed wave's new (and now real) L4 band above. Neither `rots_commands` nor `rots_app` (next row) has been extracted; both remain entirely app-compiled. See the §3 REVISION's "Layer-label note" for the renumbering this implies for whichever future wave extracts either.** |
 | `rots_app` | L5 | 6 | `comm, protocol, color, big_brother, signals, db_boot` (from `db.cpp`); `signals.cpp` calls up into game/session state (`descriptor_list`, `hupsig`, `unrestrict_game`) so it is app-layer, not foundation |
 
@@ -156,6 +156,15 @@ platform < core < entity < persist < world < combat < pathfind < script < app
   those two edges; it does not mean `mobact`/`spec_pro` themselves must join the L4 band. Both may
   still land in `rots_combat` like any other DEFER-7 row — the tier decision is made when either
   actually promotes, against a fresh census.
+  **ANSWERED for `mobact` 2026-07-21 (behavior wave)**: its own promotion re-ran this exact closure
+  check and the answer is `rots_script` (L4-upper), not `rots_combat` — `intelligent()` resolved
+  intra-lib, `find_first_step()` downward to `rots_pathfind`, all twelve `do_*` up-calls downward to
+  `rots_combat`'s existing 26-cell table, zero new link edge needed. This is this document's first
+  confirmed case of an L4-band promotion for a DEFER-row TU rather than an ordinary `rots_combat`
+  membership — see the row table above (both the `rots_combat` and `rots_script` rows) and
+  `docs/BUILD.md`'s "The behavior wave" subsection for the full account. **`spec_pro.cpp`'s own tier
+  remains undecided** — the note's reasoning stands unchanged for it, and its own promotion is where
+  the question gets answered, not inherited from mobact's outcome.
 - **`ranger.cpp`'s lone `show_tracks` edge** (into `graph.cpp`/`rots_pathfind`, per the l4-seed design
   doc's problem statement) resolves relocate-or-hook the same way, whenever ranger's own combat-row
   promotion is scheduled (the `spell_pa` casting-family wave, per the playbook's per-TU cost table) —
@@ -922,6 +931,48 @@ the way `world_hooks.h`'s hooks do — adjudicated in-flight as a relocation (by
 `script_hooks.cpp`) rather than a stub, mirroring `rots_world`'s own Task 5 linkcheck-cascade precedent
 one tier up. See `docs/BUILD.md`'s "L4 band" subsection and `.superpowers/sdd/l4-task-{0,1,2,3}-report.md`
 for the full seam/adjudication/gate account.
+
+**As-built (behavior wave, step 4 ninth slice):** two owner-selected DEFER-row TUs promote into
+**different existing libraries** — `limits.cpp` (the tick/limits engine) joins `rots_combat` as an
+ordinary 12th-TU DEFER-row promotion; `mobact.cpp` (the mob-AI driver) joins `rots_script` instead
+of `rots_combat`, answering the §3 REVISION downstream note above. No new library target, no new
+linkcheck — `CombatLayerAcyclicity`/`ScriptLayerAcyclicity` are the membership gates, both green
+first try, both hosts, zero census misses. `rots_combat`'s DEFER row drops **7 → 5** (`spec_ass`/
+`mage`/`spell_pa`/`ranger`/`spec_pro`). ctest 1415→1446 across the wave's four implementation tasks
+(Task 0 read-only census; Task 1 +19 seam/hook/accessor tests; Task 2 +12, six genuine
+discriminator-audit gaps for long-registered-but-never-caller-tested `combat_command` cells; Task 3
++0, pure membership moves) — see `AGENTS.md`'s Testing Guidelines for the full reconciled chain.
+
+The wave's central architectural finding is `limits.cpp:1398`'s call into `one_mobile_activity()`
+(`mobact.cpp`): once `limits` is `rots_combat` (L3) and `mobact` is `rots_script` (L4), this is an
+`L3 → L4` **upward** edge across the certified `combat < pathfind < script` tier boundary (§3
+REVISION point 1), which — unlike every hook this document has recorded so far, each contingent on
+its two sides not sharing a library *yet* — can never resolve as a direct call regardless of either
+side's own future membership. It is this codebase's **first permanent cross-band inversion**: a new
+`combat_hooks.h::dispatch_one_mobile_activity` hook, storage in the dispatching library
+(`combat_hooks.cpp`, `rots_combat`) rather than the registering one (a deliberate departure from
+`world_hooks.h`'s "storage in the promoting library" precedent, since here the promoting/registering
+side is the tier that must never own the hook's storage), registered by `mobact.cpp` (legal `L4 →
+L3` downward registration), dispatched by `limits.cpp` (intra-lib post-promotion). Task 0's closure
+check confirmed it one-directional (zero limits-owned symbols anywhere in `mobact.cpp`), so the two
+memberships stayed independently gateable — the seam landed consumer-free in Task 1, and Task 3's
+two membership commits needed no ordering between them.
+
+The wave also fired the l4-seed design spec's own pre-authorized **rider gate** for the first time:
+`mobact.cpp`'s two calls into `virt_program_number()` (`spec_ass.cpp:315`, a `void*`-returning
+spec-proc dispatcher that cannot relocate) is exactly **one** same-shape edge, well under the
+pre-authorized ≤3-edge ceiling — a new `script_hooks.h::dispatch_virt_program_number` abort-tripwire
+cell, registered by `spec_ass.cpp`. One relocation-default OVERTURN: `saves_spell` (`spell_pa.cpp`)
+was expected RELOCATE-CLEAN to L2 (the `saves_power` five-pack precedent) but its body writes
+`fight.cpp`-owned (`rots_combat`, L3) globals, and `rots_entity` does not link `RotS::combat` — falls
+to RELOCATE to L3 `rots_combat` instead, the same class of OVERTURN as the l4-seed wave's own
+`equip_char`/`pkill_get_good_fame` findings. Two further relocations closed genuine
+spec-adjudication gaps the design spec's prose dropped despite `combat-census.md`'s original row
+carrying them: a second big_brother hook pair (`on_character_afked`/`on_corpse_decayed`) and
+`pkill_get_rank_by_character`/`pkill_get_totalrank_by_character_id` (relocated to `rots_persist`,
+its backing storage already persist-tier). See `docs/BUILD.md`'s "The behavior wave" subsection and
+`docs/superpowers/combat-migration-playbook.md`'s "The behavior wave" section (mobact/limits rows
+now RESOLVED) for the full seam/relocation/STAYED-verdict account.
 
 ---
 

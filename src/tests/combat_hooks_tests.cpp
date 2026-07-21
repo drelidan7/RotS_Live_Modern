@@ -409,6 +409,210 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenWakeIsUnregistered)
         << "Expected an unregistered wake cell to leave the character's position untouched.";
 }
 
+// do_assist (act_offe.cpp) -- DISCRIMINATOR: the very first statement --
+// `if (ch->specials.fighting) { send_to_char("You're already fighting!  How
+// can you assist someone else?\n\r", ch); return; }` -- fires on any
+// non-null specials.fighting pointer (never dereferenced on this branch, so
+// a self-pointer is enough), needing no world[]/wtl/argument parsing at
+// all. Message-only, so this uses ScopedCapturingOutputSink like do_hit/
+// do_flee above rather than a state-mutation assertion.
+// (behavior wave Task 2, bw-task-2-brief.md Step 4 -- one of six genuine
+// discriminator gaps mobact.cpp's newly-converted do_* cells surfaced: the
+// cell has been registered since the combat-hooks seam landed, but nothing
+// exercised it from the caller side until now, the same "long-registered
+// cell can still lack a caller-side discriminator" shape as the l4-seed
+// wave's own say-cell gap-fill.)
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoAssistWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials.fighting = &character;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::assist, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message,
+        "You're already fighting!  How can you assist someone else?\n\r")
+        << "Expected the real do_assist body's already-fighting branch to send its literal "
+           "message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenAssistIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::assist);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials.fighting = &character;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::assist, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered assist cell to leave send_to_char uncalled -- the real "
+           "do_assist body never ran.";
+}
+
+// do_rescue (act_offe.cpp) -- DISCRIMINATOR: the wtl-present branch's first
+// guard -- `if (wtl) { if ((wtl->targ1.type != TARGET_CHAR) || ...) {
+// send_to_char("Alas! You lost your victim.\n\r", ch); return; } }` -- a
+// zero-initialized waiting_type has targ1.type == 0 (TARGET_CHAR == 1, per
+// rots/core/types.h), so this fires immediately, before IS_SHADOW/
+// MOB_ORC_FRIEND/anything else is even reached (both are already false for
+// a zero-initialized char_data). Cheapest possible do_rescue discriminator:
+// no world[]/char lookup needed.
+// (behavior wave Task 2 gap-fill, see do_assist's comment above.)
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoRescueWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    waiting_type wtl {};
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::rescue, &character, mutable_arg(""), &wtl, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "Alas! You lost your victim.\n\r")
+        << "Expected the real do_rescue body's invalid-wtl-target branch to send its literal "
+           "message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenRescueIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::rescue);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    waiting_type wtl {};
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::rescue, &character, mutable_arg(""), &wtl, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered rescue cell to leave send_to_char uncalled -- the real "
+           "do_rescue body never ran.";
+}
+
+// do_wear (act_obj2.cpp) -- DISCRIMINATOR: the empty-argument branch's
+// `if (!*arg1) { send_to_char("Wear what?\n\r", ch); return; }`, the very
+// first check after argument_interpreter() splits an empty argument into
+// two empty tokens. Message-only, no world[]/inventory state needed.
+// (behavior wave Task 2 gap-fill, see do_assist's comment above.)
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoWearWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::wear, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "Wear what?\n\r")
+        << "Expected the real do_wear body's empty-argument branch to send its literal message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenWearIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::wear);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::wear, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered wear cell to leave send_to_char uncalled -- the real "
+           "do_wear body never ran.";
+}
+
+// do_sit/do_rest/do_sleep (act_move.cpp) -- DISCRIMINATOR: each one's
+// POSITION_STANDING case, the same state-mutation shape as do_stand/do_wake
+// above (GET_POS(ch) flips unconditionally; NOWHERE keeps each branch's
+// act(..., TO_ROOM, ...) calls a safe no-op, needing no ScopedTestWorld).
+// do_sleep's body also checks IS_RIDING(ch) before the switch -- false for
+// a zero-initialized character, so the switch is reached directly.
+// (behavior wave Task 2 gap-fill, see do_assist's comment above.)
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoSitWhenRegistered)
+{
+    char_data character {};
+    character.in_room = NOWHERE;
+    character.specials.position = POSITION_STANDING;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::sit, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(GET_POS(&character), POSITION_SITTING)
+        << "Expected the real do_sit body to sit the character down from standing.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenSitIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::sit);
+    char_data character {};
+    character.in_room = NOWHERE;
+    character.specials.position = POSITION_STANDING;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::sit, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(GET_POS(&character), POSITION_STANDING)
+        << "Expected an unregistered sit cell to leave the character's position untouched.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoRestWhenRegistered)
+{
+    char_data character {};
+    character.in_room = NOWHERE;
+    character.specials.position = POSITION_STANDING;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::rest, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(GET_POS(&character), POSITION_RESTING)
+        << "Expected the real do_rest body to sit the character down to rest from standing.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenRestIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::rest);
+    char_data character {};
+    character.in_room = NOWHERE;
+    character.specials.position = POSITION_STANDING;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::rest, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(GET_POS(&character), POSITION_STANDING)
+        << "Expected an unregistered rest cell to leave the character's position untouched.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoSleepWhenRegistered)
+{
+    char_data character {};
+    character.in_room = NOWHERE;
+    character.specials.position = POSITION_STANDING;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::sleep, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(GET_POS(&character), POSITION_SLEEPING)
+        << "Expected the real do_sleep body to lie the character down to sleep from standing.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenSleepIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::sleep);
+    char_data character {};
+    character.in_room = NOWHERE;
+    character.specials.position = POSITION_STANDING;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::sleep, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(GET_POS(&character), POSITION_STANDING)
+        << "Expected an unregistered sleep cell to leave the character's position untouched.";
+}
+
 // do_mental (clerics.cpp) -- DISCRIMINATOR: the PEACEROOM guard is the very
 // first statement in do_mental's body (byte-for-byte the same shape as
 // do_hit's own first guard above -- IS_SET(world[ch->in_room].room_flags,

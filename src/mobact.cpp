@@ -21,7 +21,6 @@
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
-#include "output_seam.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"

@@ -288,8 +288,9 @@ void remove_fame_war_bonuses(char_data* ch, affected_type* pkaff);
 // register_gain_exp_regardless_hook()/register_remove_fame_war_bonuses_
 // hook() registrar calls above and the real bodies they point at now
 // resolve INTRA-LIB (both live in rots_combat). This is NOT mere
-// self-registration eligible for removal, though: fight.cpp (five call
-// sites) and clerics.cpp (one call site) -- both already RotS::combat
+// self-registration eligible for removal, though: fight.cpp (SIX call
+// sites: fight.cpp:936/1084/1086/1116/1330/1974) and clerics.cpp (one
+// call site) -- both already RotS::combat
 // members since the combat-pilot wave -- still dispatch through
 // rots::combat::gain_exp()/gain_exp_regardless()/remove_fame_war_bonuses()
 // rather than calling limits.cpp's globals directly (verified by grep,

@@ -40,7 +40,6 @@ rots::combat::special_fn g_special_handler = nullptr;
 // combat_command's fixed ACMD signature. Null until each hook's own
 // per-owner registrar (handler.cpp/limits.cpp/objsave.cpp/script.cpp/
 // pkill.cpp) runs.
-rots::combat::extract_char_fn g_extract_char_hook = nullptr;
 rots::combat::gain_exp_fn g_gain_exp_hook = nullptr;
 rots::combat::gain_exp_regardless_fn g_gain_exp_regardless_hook = nullptr;
 rots::combat::remove_fame_war_bonuses_fn g_remove_fame_war_bonuses_hook = nullptr;
@@ -89,29 +88,9 @@ int call_special(
 }
 
 
-// extract_char() dispatch (Task 4b) -- see combat_hooks.h's extract_char_fn
-// comment for the sentinel-forward rationale.
-void set_extract_char_hook(extract_char_fn hook)
-{
-    g_extract_char_hook = hook;
-}
-
-void extract_char(char_data* ch, int new_room)
-{
-    if (g_extract_char_hook) {
-        g_extract_char_hook(ch, new_room);
-        return;
-    }
-    rots::log::write_stderr(
-        "rots::combat: STUB extract_char() called with no handler registered -- this should "
-        "be unreachable once register_extract_char_hook() has run.");
-}
-
-void extract_char(char_data* ch)
-{
-    extract_char(ch, -1);
-}
-
+// extract_char() dispatch RE-HOMED to entity_lifecycle.cpp (l4-seed wave,
+// Task 1; l4-task-1-brief.md Step 2a; l4-census.md section 3.4) -- see
+// entity_hooks.h's extract_char_fn comment for the full history.
 
 // gain_exp()/gain_exp_regardless()/remove_fame_war_bonuses() dispatch
 // (Task 4b) -- see combat_hooks.h's comments above for the HOOK-not-MOVE

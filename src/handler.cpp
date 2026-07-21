@@ -40,8 +40,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "combat_hooks.h"
 #include "comm.h"
+#include "entity_hooks.h"
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
@@ -651,13 +651,14 @@ void extract_char(struct char_data* ch, int new_room)
 }
 
 // Registers the real extract_char(ch, new_room) body above as
-// combat_hooks.h's extract_char hook (combat-pilot wave Task 4b;
-// pilot-census.md section 3.6). Called once from run_the_game(), before
+// entity_hooks.h's extract_char hook (RE-HOMED from combat_hooks.h,
+// l4-seed wave Task 1; l4-census.md section 3.4 -- originally landed
+// combat-pilot wave Task 4b). Called once from run_the_game(), before
 // boot_db() -- same convention as this file's other registrars (e.g.
 // register_poison_removal_hook() in fight.cpp).
 void register_extract_char_hook()
 {
-    rots::combat::set_extract_char_hook(extract_char);
+    rots::entity::set_extract_char_hook(extract_char);
 }
 
 /* ***********************************************************************

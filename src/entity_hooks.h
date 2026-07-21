@@ -51,6 +51,31 @@ void set_wild_attack_speed_multiplier_hook(wild_attack_speed_fn hook);
 using attacked_player_fn = void (*)(const char_data* attacker, const char_data* attacked);
 void set_attacked_player_hook(attacked_player_fn hook);
 
+// extract_char() (handler.h:197, handler.cpp:498/503; pilot-census.md
+// section 3.6; RE-HOMED from combat_hooks.h to this L2 header, l4-seed
+// wave Task 1, l4-task-1-brief.md Step 2a, l4-census.md section 3.4):
+// originally landed in rots_combat's own combat_hooks.h (combat-pilot wave
+// Task 4b) since fight.cpp was its only converted caller at the time. Both
+// rots_world (zone.cpp, once promoted) and rots_combat (fight.cpp) need
+// this same inversion, and both libraries already PUBLIC-link RotS::entity
+// (CMakeLists.txt), so the setter/dispatch/typedef move here rather than
+// staying combat-only -- a single L2 inversion genuinely shared by both L3
+// bands, matching this header's own file-comment charter. handler.cpp
+// defines two overloads that are really one body: the 1-arg form forwards
+// unconditionally to the 2-arg form with `new_room = -1` as a sentinel
+// (matching handler.h:197's own `int new_room = -1` default), so a SINGLE
+// registered fn-ptr carrying the 2-arg shape covers both call arities --
+// the dispatch overloads below reproduce that same forward exactly.
+// handler.cpp registers the real 2-arg body via register_extract_char_hook()
+// (handler.h/handler.cpp), an app-side registrar (handler.cpp stays
+// app-compiled) -- unchanged by this re-home, only its target namespace
+// changes. Tripwire default: a LOGGED no-op (void class, same taxonomy as
+// this header's set_attacked_player_hook()/set_poison_removal_hook() above).
+using extract_char_fn = void (*)(char_data* ch, int new_room);
+void set_extract_char_hook(extract_char_fn hook);
+void extract_char(char_data* ch, int new_room);
+void extract_char(char_data* ch);
+
 // target_data::cleanup()/operator=()'s txt-block pool traffic
 // (entity_lifecycle.cpp, relocated verbatim from interpre.cpp -- world-seed
 // Task 2). comm.cpp owns the actual pool (get_from_txt_block_pool/

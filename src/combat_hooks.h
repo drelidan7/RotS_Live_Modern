@@ -231,22 +231,13 @@ int call_special(
 // impossible -- see the migration playbook's "intra-subset rule").
 // -----------------------------------------------------------------------
 
-// extract_char() (handler.h:197, handler.cpp:498/503; pilot-census.md
-// section 3.6) -- handler.cpp defines two overloads that are really one
-// body: the 1-arg form forwards unconditionally to the 2-arg form with
-// `new_room = -1` as a sentinel (matching handler.h:197's own `int
-// new_room = -1` default), so a SINGLE registered fn-ptr carrying the
-// 2-arg shape covers both call arities -- the dispatch overloads below
-// reproduce that same forward exactly. handler.cpp registers the real
-// 2-arg body via register_extract_char_hook() (handler.h/handler.cpp), an
-// app-side registrar (handler.cpp stays app-compiled after this wave).
-// Tripwire default: a LOGGED no-op (void class, same taxonomy as
-// entity_hooks.h's set_attacked_player_hook()/set_poison_removal_hook()).
-using extract_char_fn = void (*)(char_data* ch, int new_room);
-void set_extract_char_hook(extract_char_fn hook);
-void extract_char(char_data* ch, int new_room);
-void extract_char(char_data* ch);
-
+// extract_char() RE-HOMED to entity_hooks.h (l4-seed wave, Task 1;
+// l4-task-1-brief.md Step 2a; l4-census.md section 3.4): both rots_world
+// and rots_combat need this inversion (rots_world already PUBLIC-links
+// RotS::entity), so the setter/dispatch/typedef moved to the shared L2
+// header rather than staying combat-only. See entity_hooks.h's own
+// extract_char_fn comment for the full history; fight.cpp's three call
+// sites now read rots::entity::extract_char(...).
 
 // gain_exp()/gain_exp_regardless() (limits.h:33-34, limits.cpp:413/437;
 // pilot-census.md section 7.4/7.5) -- gain_exp()'s own body only calls

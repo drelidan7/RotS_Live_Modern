@@ -166,6 +166,13 @@ wild_attack_speed_fn g_wild_attack_speed_multiplier_hook = nullptr;
 // (combat never runs before run_the_game's registrations in ageland).
 attacked_player_fn g_attacked_player_hook = nullptr;
 
+// Backing storage for the registered extract-char hook
+// (register_extract_char_hook(), handler.cpp; RE-HOMED from combat_hooks.cpp,
+// l4-seed wave Task 1 -- see entity_hooks.h's extract_char_fn comment for
+// the full history). Null until that registration runs; the null default
+// is a LOGGED no-op (see extract_char() below).
+extract_char_fn g_extract_char_hook = nullptr;
+
 // Backing storage for the registered target-valid hook
 // (register_target_valid_hook(), big_brother.cpp; combat-pilot wave Task 2).
 // Null until that registration runs; the null default is a tripwire log +
@@ -206,6 +213,11 @@ void set_wild_attack_speed_multiplier_hook(wild_attack_speed_fn hook)
 void set_attacked_player_hook(attacked_player_fn hook)
 {
     g_attacked_player_hook = hook;
+}
+
+void set_extract_char_hook(extract_char_fn hook)
+{
+    g_extract_char_hook = hook;
 }
 
 void set_target_valid_hook(target_valid_fn hook)
@@ -290,6 +302,36 @@ void dispatch_put_txt_block_to_pool(struct txt_block* block)
     abort();
 }
 } // namespace
+
+// extract_char() dispatch entry points (RE-HOMED from combat_hooks.cpp,
+// l4-seed wave Task 1; l4-census.md section 3.4) -- called from fight.cpp
+// (three converted call sites) and zone.cpp (once promoted), not this
+// file, so (like dispatch_wild_attack_speed_multiplier()/
+// dispatch_attacked_player() below) these need external linkage; unlike
+// this header's dispatch_*-prefixed hooks, these keep the plain
+// extract_char name -- moved byte-verbatim from combat_hooks.cpp, which
+// itself matched handler.h's real extract_char(ch, new_room = -1) shape.
+void extract_char(char_data* ch, int new_room)
+{
+    if (g_extract_char_hook) {
+        g_extract_char_hook(ch, new_room);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::entity: STUB extract_char() called with no handler registered -- this should "
+        "be unreachable once register_extract_char_hook() has run.");
+}
+
+void extract_char(char_data* ch)
+{
+    // Fully qualified (not a plain unqualified call): entity_lifecycle.cpp
+    // also sees handler.h's global ::extract_char(ch, new_room = -1)
+    // declaration, so an unqualified call here is ambiguous under ADL
+    // (char_data's associated global namespace pulls that overload in
+    // alongside this function's own rots::entity:: sibling). combat_hooks.cpp
+    // never hit this because it did not transitively include handler.h.
+    rots::entity::extract_char(ch, -1);
+}
 
 // Cross-TU dispatch for the wild-fighting attack-speed hook (called from
 // char_utils.cpp's get_energy_regen(); see entity_hooks.h). External linkage

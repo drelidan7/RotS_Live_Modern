@@ -978,15 +978,15 @@ void raw_kill(char_data* dead_man, char_data* killer, int attack_type)
         if (GET_LEVEL(dead_man) < LEVEL_IMMORT) {
             // Note, these are two different int arrays.
             dead_man->specials2.load_room = mortal_start_room[race];
-            rots::combat::extract_char(dead_man, r_mortal_start_room[race]);
+            rots::entity::extract_char(dead_man, r_mortal_start_room[race]);
         } else {
             dead_man->specials2.load_room = immort_start_room;
-            rots::combat::extract_char(dead_man, r_immort_start_room);
+            rots::entity::extract_char(dead_man, r_immort_start_room);
         }
 
         REMOVE_BIT(PLR_FLAGS(dead_man), PLR_WAS_KITTED);
     } else {
-        rots::combat::extract_char(dead_man);
+        rots::entity::extract_char(dead_man);
     }
 }
 

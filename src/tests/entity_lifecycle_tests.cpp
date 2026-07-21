@@ -1,5 +1,6 @@
 #include "../comm.h"
 #include "../entity_hooks.h"
+#include "../handler.h"
 #include "rots/core/character.h"
 #include "rots/core/types.h"
 
@@ -308,4 +309,102 @@ TEST(TargetDataPoolHooks, OperatorAssignReleasesThePreviousBlockBeforeAcquiringT
 
     destination.cleanup();
     EXPECT_EQ(pool.put_calls, 2);
+}
+
+// ---------------------------------------------------------------------------
+// extract_char() hook (RE-HOMED from combat_hooks.{h,cpp}/
+// combat_hooks_tests.cpp, l4-seed wave Task 1; l4-task-1-brief.md Step 2a;
+// l4-census.md section 3.4). Originally landed as CombatHooksExtractChar in
+// combat_hooks_tests.cpp (combat-pilot wave Task 4b); moved here verbatim
+// with rots::combat:: updated to rots::entity:: throughout, since
+// extract_char() itself moved from combat_hooks.h/.cpp to
+// entity_hooks.h/entity_lifecycle.cpp. CONSUMER-FREE at original landing --
+// fight.cpp's three call sites now dispatch through this hook for real
+// (combat-pilot wave Task 5); this re-home does not change that. Same
+// "registered stub receives args intact; unregistered default semantics
+// asserted" discriminator shape as this file's txt-block-pool suite above.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct RecordedExtractCharCall {
+    char_data* ch = nullptr;
+    int new_room = 0;
+    bool called = false;
+};
+
+RecordedExtractCharCall g_recorded_extract_char_call;
+
+void recording_extract_char_stub(char_data* ch, int new_room)
+{
+    g_recorded_extract_char_call = RecordedExtractCharCall { ch, new_room, true };
+}
+
+// Swaps entity_hooks.h's extract_char hook, then restores the REAL
+// handler.cpp forwarder via register_extract_char_hook() on destruction --
+// same restore-via-real-registrar shape as this tree's other Scoped*
+// fixtures.
+class ScopedExtractCharHook {
+public:
+    explicit ScopedExtractCharHook(rots::entity::extract_char_fn hook)
+    {
+        rots::entity::set_extract_char_hook(hook);
+    }
+
+    ~ScopedExtractCharHook() { register_extract_char_hook(); }
+
+    ScopedExtractCharHook(const ScopedExtractCharHook&) = delete;
+    ScopedExtractCharHook& operator=(const ScopedExtractCharHook&) = delete;
+};
+
+} // namespace
+
+// rots::entity::extract_char(ch, new_room) -- DISCRIMINATOR: a recording
+// stub proves the 2-arg dispatch overload forwards both arguments intact.
+
+TEST(ExtractCharHook, TwoArgDispatchReachesARegisteredStubWithArgsIntact)
+{
+    g_recorded_extract_char_call = RecordedExtractCharCall {};
+    ScopedExtractCharHook scoped(recording_extract_char_stub);
+    char_data character {};
+
+    rots::entity::extract_char(&character, 7);
+
+    EXPECT_TRUE(g_recorded_extract_char_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_extract_char_call.ch, &character);
+    EXPECT_EQ(g_recorded_extract_char_call.new_room, 7);
+}
+
+// DISCRIMINATOR: the 1-arg overload forwards to the 2-arg overload with the
+// -1 sentinel, mirroring handler.cpp's own extract_char(ch) ->
+// extract_char(ch, -1) forward exactly (pilot-census.md section 3.6).
+
+TEST(ExtractCharHook, OneArgDispatchForwardsWithNegativeOneSentinel)
+{
+    g_recorded_extract_char_call = RecordedExtractCharCall {};
+    ScopedExtractCharHook scoped(recording_extract_char_stub);
+    char_data character {};
+
+    rots::entity::extract_char(&character);
+
+    EXPECT_TRUE(g_recorded_extract_char_call.called);
+    EXPECT_EQ(g_recorded_extract_char_call.ch, &character);
+    EXPECT_EQ(g_recorded_extract_char_call.new_room, -1)
+        << "Expected the 1-arg overload to reach the stub with handler.h:197's own sentinel "
+           "default (-1), matching the real extract_char(ch) -> extract_char(ch, -1) forward.";
+}
+
+TEST(ExtractCharHook, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_extract_char_call = RecordedExtractCharCall {};
+    ScopedExtractCharHook unregistered(nullptr);
+    char_data character {};
+
+    rots::entity::extract_char(&character, 7);
+
+    EXPECT_FALSE(g_recorded_extract_char_call.called)
+        << "Expected an unregistered extract_char hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default "
+           "is a logged no-op, not a call to any stub.";
 }

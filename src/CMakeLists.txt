@@ -543,8 +543,37 @@ set(ROTS_PATHFIND_SOURCES
 # registration call into combat_hooks.h's setter once this join lands --
 # see combat_hooks.h's updated banner comment for the full post-membership
 # picture (Task 3 Step 5's cleanup/verification pass).
+#
+# script.cpp JOINS HERE (Cluster B wave Task 4, Step 1; cb-task-4-brief.md;
+# cb-census.md section 3's mutual-edge ruling). The one script<->shapescript
+# mutual edge -- get_param_text(int) (defined shapescript.cpp:2613, a pure
+# switch(param) over SCRIPT_PARAM_* constants with zero editor-state reads)
+# -- was RELOCATED byte-verbatim into script.cpp itself in Task 2 (see that
+# function's own comment in script.cpp), breaking the edge one-directionally:
+# shapescript.cpp's ~25 internal calls become a downward rots_olc ->
+# rots_script reference once the six shape*.cpp editors join rots_olc below,
+# and script.cpp needed no further seam for it (same-file, no cross-library
+# call at all once co-located). This is what makes script.cpp's LEAN
+# ROTS_SCRIPT_SOURCES membership (not a rots_olc fallback) the preferred
+# outcome; find_script_by_number() (script.cpp, external linkage) already
+# resolved downward under either outcome and needed no change. Every other
+# blocking edge Task 0's census found (18 app-tier + the 1 intra edge above)
+# was cleared by Task 1's seams and converted by Task 2: the 5 existing
+# combat_command cell reuses (gen_com/hit/say/flee/wear) plus 2 new cells
+# (action/emote); char_from_room (x4) and extract_char (x1) onto their
+# existing entity_hooks.h hooks; pkill_get_evil_fame/pkill_get_good_fame (x2)
+# onto their existing world_hooks.h hooks; send_to_room_except onto its new
+# output_seam.cpp forwarder; find_action onto its new script_hooks.h
+# accessor hook (script_hooks.cpp, already a member of this list); the
+# find_eq_pos/perform_drop/perform_give/perform_wear/perform_remove quintet
+# relocated ahead of this task into rots_entity/rots_combat respectively
+# (Task 2's own commits) so script.cpp calls them downward, not up.
+# gain_exp/update_pos/raw_kill/set_call_trigger_hook/pkill_get_rank_by_
+# character were already resolved downward by the behavior/l4-seed waves
+# (no Cluster B action needed). ScriptLayerAcyclicity confirms no residual
+# upward edge -- see rots_script_linkcheck below.
 set(ROTS_SCRIPT_SOURCES
-    mobact.cpp mudlle.cpp mudlle2.cpp script_hooks.cpp
+    mobact.cpp mudlle.cpp mudlle2.cpp script_hooks.cpp script.cpp
 )
 
 # ageland's remaining app-layer sources (spec §3): combat, commands,
@@ -567,6 +596,8 @@ set(ROTS_SCRIPT_SOURCES
 # .superpowers/sdd/bw-task-3-brief.md; see that set's own comment).
 # mobact.cpp LEFT this list for ROTS_SCRIPT_SOURCES above (behavior wave
 # Task 3, Step 2; see that set's own comment).
+# script.cpp LEFT this list for ROTS_SCRIPT_SOURCES above (Cluster B wave
+# Task 4, Step 1; see that set's own comment).
 # editor_hooks.cpp JOINS this list (Cluster B wave Task 1; cb-task-1-brief.md
 # Step 3): backing storage + dispatch for editor_hooks.h's string-editor-init
 # hook -- neither modify.cpp (its real-body owner, permanently app-tier) nor
@@ -588,7 +619,7 @@ set(ROTS_SERVER_SOURCES
     modify.cpp
     obj2html.cpp objsave.cpp
     pkill.cpp protocol.cpp
-    ranger.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
+    ranger.cpp savebench.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp

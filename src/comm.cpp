@@ -713,6 +713,25 @@ void run_the_game(sh_int port)
     register_is_zone_populated_hook();
     register_equip_char_hook();
     register_pkill_fame_hooks();
+    // entity_hooks.h's char-from-room hook (behavior wave Task 1),
+    // registered the same way and for the same reason: before boot_db(),
+    // so ageland never runs limits.cpp's future rots::entity::
+    // dispatch_char_from_room() call site (consumer-free this task --
+    // converted for real in a later behavior wave task) with an
+    // unregistered hook.
+    register_char_from_room_hook();
+    // combat_hooks.h's one_mobile_activity hook + Crash_idlesave/
+    // Crash_extract_objs sibling pair (behavior wave Task 1), registered
+    // the same way and for the same reason: before boot_db(), so ageland
+    // never runs limits.cpp's future rots::combat::dispatch_one_mobile_
+    // activity()/crash_idlesave()/crash_extract_objs() call sites
+    // (consumer-free this task) with an unregistered hook. mobact.cpp has
+    // no dedicated header, so its registrar is forward-declared locally
+    // here, mirroring this function's own signal_setup() declaration.
+    void register_one_mobile_activity_hook();
+    register_one_mobile_activity_hook();
+    register_crash_idlesave_hook();
+    register_crash_extract_objs_hook();
 
     log("Signal trapping.");
     signal_setup();

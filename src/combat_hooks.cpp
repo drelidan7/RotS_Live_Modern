@@ -197,4 +197,67 @@ void pkill_create(char_data* victim)
         "be unreachable once register_pkill_create_hook() has run.");
 }
 
+
+// Behavior-wave Task 1 hooks dispatch (see combat_hooks.h's own comments
+// above for each hook's rationale) -- backing storage follows the same
+// "plain global, null until its owner's registrar runs" convention as every
+// hook above.
+} // namespace rots::combat
+
+namespace {
+rots::combat::mobile_activity_fn g_one_mobile_activity_hook = nullptr;
+rots::combat::crash_idlesave_fn g_crash_idlesave_hook = nullptr;
+rots::combat::crash_extract_objs_fn g_crash_extract_objs_hook = nullptr;
+} // namespace
+
+namespace rots::combat {
+
+void set_one_mobile_activity_hook(mobile_activity_fn hook)
+{
+    g_one_mobile_activity_hook = hook;
+}
+
+void dispatch_one_mobile_activity(char_data* ch)
+{
+    if (g_one_mobile_activity_hook) {
+        g_one_mobile_activity_hook(ch);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB dispatch_one_mobile_activity() called with no handler registered -- "
+        "this should be unreachable once register_one_mobile_activity_hook() has run.");
+}
+
+void set_crash_idlesave_hook(crash_idlesave_fn hook)
+{
+    g_crash_idlesave_hook = hook;
+}
+
+void crash_idlesave(char_data* ch)
+{
+    if (g_crash_idlesave_hook) {
+        g_crash_idlesave_hook(ch);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB crash_idlesave() called with no handler registered -- this should "
+        "be unreachable once register_crash_idlesave_hook() has run.");
+}
+
+void set_crash_extract_objs_hook(crash_extract_objs_fn hook)
+{
+    g_crash_extract_objs_hook = hook;
+}
+
+void crash_extract_objs(obj_data* obj)
+{
+    if (g_crash_extract_objs_hook) {
+        g_crash_extract_objs_hook(obj);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB crash_extract_objs() called with no handler registered -- this "
+        "should be unreachable once register_crash_extract_objs_hook() has run.");
+}
+
 } // namespace rots::combat

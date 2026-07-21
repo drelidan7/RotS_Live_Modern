@@ -363,6 +363,15 @@ void char_from_room(struct char_data* ch)
     }
 }
 
+// Registers the real char_from_room(ch) body above as entity_hooks.h's
+// char-from-room hook (behavior wave Task 1; census section 11). Called
+// once from run_the_game(), before boot_db() -- same convention as this
+// file's other registrars (e.g. register_extract_char_hook() below).
+void register_char_from_room_hook()
+{
+    rots::entity::set_char_from_room_hook(char_from_room);
+}
+
 // char_to_room() relocated verbatim to placement.cpp (placement-seam Task 3,
 // census row char_to_room:716 / ADJUDICATE-1 Disposition A, binding): every
 // world[room] access below was originally unchecked (no bounds test in this

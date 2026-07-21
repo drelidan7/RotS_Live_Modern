@@ -193,6 +193,12 @@ struct char_data* get_char(std::string_view name);
 // branches on this instead of re-deriving either condition.
 bool detach_char_from_room(struct char_data* ch);
 void char_from_room(struct char_data* ch);
+
+// Registers handler.cpp's real char_from_room(ch) body above as
+// entity_hooks.h's char-from-room hook (behavior wave Task 1; census
+// section 11). Called once from run_the_game(), before boot_db() --
+// same convention as register_extract_char_hook() below.
+void register_char_from_room_hook();
 void char_to_room(struct char_data* ch, int room);
 void extract_char(struct char_data* ch, int new_room = -1);
 
@@ -269,6 +275,13 @@ void Crash_crashsave(struct char_data* ch, int rent_code = RENT_CRASH);
 // boot_db() -- same convention as register_extract_char_hook() above.
 void register_crash_crashsave_hook();
 void Crash_idlesave(struct char_data* ch);
+
+// Registers objsave.cpp's real Crash_idlesave(ch)/Crash_extract_objs(obj)
+// bodies as combat_hooks.h's matching sibling hooks (behavior wave
+// Task 1; census section 8). Called once from run_the_game(), before
+// boot_db() -- same convention as register_crash_crashsave_hook() above.
+void register_crash_idlesave_hook();
+void register_crash_extract_objs_hook();
 void Crash_save_all(void);
 FILE* Crash_get_file_by_name(std::string_view name, std::string_view mode);
 FILE* Crash_load(struct char_data* ch);

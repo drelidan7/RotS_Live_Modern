@@ -268,6 +268,29 @@ int main(int argc, char* argv[]) {
     register_is_zone_populated_hook();
     register_equip_char_hook();
     register_pkill_fame_hooks();
+    // entity_hooks.h's char-from-room hook (behavior wave Task 1),
+    // registered for the same real-body-fidelity reason as the calls
+    // above: without it this test process would silently exercise its
+    // tripwire-logged no-op default instead of handler.cpp's real body
+    // that ageland registers at boot -- handler.cpp is already linked into
+    // both test binaries, so this only needs the registration call.
+    // Consumer-free this task (limits.cpp's own call site doesn't convert
+    // yet); this call also covers this wave's own seam test
+    // (entity_lifecycle_tests.cpp), the same bridge-before-traffic posture
+    // as every other hook this file registers.
+    register_char_from_room_hook();
+    // combat_hooks.h's one_mobile_activity hook + Crash_idlesave/
+    // Crash_extract_objs sibling pair (behavior wave Task 1), registered
+    // for the same real-body-fidelity reason as the calls above:
+    // mobact.cpp/objsave.cpp are already linked into both test binaries,
+    // so this only needs the registration calls. Consumer-free this task;
+    // mobact.cpp has no dedicated header, so its registrar is
+    // forward-declared locally here (mirroring comm.cpp's own local
+    // declaration inside run_the_game()).
+    void register_one_mobile_activity_hook();
+    register_one_mobile_activity_hook();
+    register_crash_idlesave_hook();
+    register_crash_extract_objs_hook();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

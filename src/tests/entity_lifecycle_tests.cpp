@@ -408,3 +408,71 @@ TEST(ExtractCharHook, DispatchDefaultsToANoOpWhenUnregistered)
            "recording flag untouched -- the real forwarder never ran, and the tripwire default "
            "is a logged no-op, not a call to any stub.";
 }
+
+// ---------------------------------------------------------------------------
+// char_from_room() hook (behavior wave Task 1; census section 11).
+// CONSUMER-FREE this task -- no limits.cpp call site converts yet -- so
+// exercised directly against a recording stub, the same "registered stub
+// receives args intact; unregistered default semantics asserted"
+// discriminator shape as this file's extract_char() suite above.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct RecordedCharFromRoomCall {
+    char_data* ch = nullptr;
+    bool called = false;
+};
+
+RecordedCharFromRoomCall g_recorded_char_from_room_call;
+
+void recording_char_from_room_stub(char_data* ch)
+{
+    g_recorded_char_from_room_call = RecordedCharFromRoomCall { ch, true };
+}
+
+// Swaps entity_hooks.h's char-from-room hook, then restores the REAL
+// handler.cpp forwarder via register_char_from_room_hook() on destruction --
+// same restore-via-real-registrar shape as this file's ScopedExtractCharHook.
+class ScopedCharFromRoomHook {
+public:
+    explicit ScopedCharFromRoomHook(rots::entity::char_from_room_fn hook)
+    {
+        rots::entity::set_char_from_room_hook(hook);
+    }
+
+    ~ScopedCharFromRoomHook() { register_char_from_room_hook(); }
+
+    ScopedCharFromRoomHook(const ScopedCharFromRoomHook&) = delete;
+    ScopedCharFromRoomHook& operator=(const ScopedCharFromRoomHook&) = delete;
+};
+
+} // namespace
+
+TEST(CharFromRoomHook, DispatchReachesARegisteredStubWithArgIntact)
+{
+    g_recorded_char_from_room_call = RecordedCharFromRoomCall {};
+    ScopedCharFromRoomHook scoped(recording_char_from_room_stub);
+    char_data character {};
+
+    rots::entity::dispatch_char_from_room(&character);
+
+    EXPECT_TRUE(g_recorded_char_from_room_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_char_from_room_call.ch, &character);
+}
+
+TEST(CharFromRoomHook, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_char_from_room_call = RecordedCharFromRoomCall {};
+    ScopedCharFromRoomHook unregistered(nullptr);
+    char_data character {};
+
+    rots::entity::dispatch_char_from_room(&character);
+
+    EXPECT_FALSE(g_recorded_char_from_room_call.called)
+        << "Expected an unregistered char-from-room hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default "
+           "is a logged no-op, not a call to any stub.";
+}
+

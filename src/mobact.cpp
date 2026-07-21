@@ -16,6 +16,7 @@
 #include <string.h>
 
 #include "char_utils.h"
+#include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
 #include "handler.h"
@@ -423,6 +424,17 @@ void one_mobile_activity(char_data* ch)
             } /* mob memory */
         }
     } /* If IS_MOB(ch)  */
+}
+
+// Registers the real one_mobile_activity(ch) body above as
+// combat_hooks.h's matching hook (behavior wave Task 1; census
+// section 3). Called once from run_the_game()/gtest_main.cpp's
+// main(), before boot_db() -- registrar wiring only, no call-site
+// conversion yet: this file's own :61 self-call and limits.cpp's
+// :1398 call stay direct/unconverted this task.
+void register_one_mobile_activity_hook()
+{
+    rots::combat::set_one_mobile_activity_hook(one_mobile_activity);
 }
 
 // Mob-memory pool cluster (memory_rec_counter/memory_rec_pool/

@@ -193,6 +193,12 @@ character_died_fn g_character_died_hook = nullptr;
 // than a safe placeholder value.
 get_txt_block_fn g_get_txt_block_pool_hook = nullptr;
 put_txt_block_fn g_put_txt_block_pool_hook = nullptr;
+
+// Backing storage for the registered char-from-room hook
+// (register_char_from_room_hook(), handler.cpp; behavior wave Task 1).
+// Null until that registration runs; the null default is a LOGGED no-op
+// (see dispatch_char_from_room() below).
+char_from_room_fn g_char_from_room_hook = nullptr;
 } // namespace
 
 void set_char_teardown_hook(char_teardown_fn hook)
@@ -238,6 +244,11 @@ void set_get_txt_block_pool_hook(get_txt_block_fn hook)
 void set_put_txt_block_pool_hook(put_txt_block_fn hook)
 {
     g_put_txt_block_pool_hook = hook;
+}
+
+void set_char_from_room_hook(char_from_room_fn hook)
+{
+    g_char_from_room_hook = hook;
 }
 
 namespace {
@@ -389,6 +400,20 @@ void dispatch_character_died(char_data* dead_man, char_data* killer, obj_data* c
     rots::log::write_stderr(
         "rots::entity: STUB character-died hook called with no sink registered -- this should "
         "be unreachable once register_character_died_hook() has run.");
+}
+
+// Cross-TU dispatch for the char-from-room hook (called from limits.cpp
+// once promoted; behavior wave Task 1). External linkage, same reason as
+// dispatch_attacked_player() above.
+void dispatch_char_from_room(char_data* ch)
+{
+    if (g_char_from_room_hook) {
+        g_char_from_room_hook(ch);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::entity: STUB char-from-room hook called with no sink registered -- this should "
+        "be unreachable once register_char_from_room_hook() has run.");
 }
 
 } // namespace rots::entity

@@ -259,4 +259,20 @@ void set_character_died_hook(character_died_fn hook);
 bool dispatch_target_valid(char_data* attacker, const char_data* victim, int skill_id = kNoSkillId);
 void dispatch_character_died(char_data* dead_man, char_data* killer, obj_data* corpse);
 
+// char_from_room() (handler.cpp:349; behavior wave Task 1, census section
+// 11): limits.cpp's future upward char_from_room(character) call sites
+// (limits.cpp:582/:590, consumer-free this task) mirror this seam's
+// existing extract_char_fn shape exactly -- char_from_room()'s own body
+// calls stop_fighting() (fight.cpp, rots_combat, L3), which is what bars a
+// clean L2 body relocation (census confirms zero rots_world/rots_entity
+// caller, so the STOP-risk this hook's own census section flags does not
+// fire). handler.cpp keeps the real body and registers it via
+// register_char_from_room_hook() (handler.h/handler.cpp), the same
+// convention as register_extract_char_hook() above. Tripwire default: a
+// LOGGED no-op (void class, same taxonomy as set_attacked_player_hook()
+// above -- no dereference risk on a void-returning hook).
+using char_from_room_fn = void (*)(char_data* ch);
+void set_char_from_room_hook(char_from_room_fn hook);
+void dispatch_char_from_room(char_data* ch);
+
 }

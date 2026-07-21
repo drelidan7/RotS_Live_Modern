@@ -946,3 +946,177 @@ TEST(CombatHooksPkillCreate, DispatchDefaultsToANoOpWhenUnregistered)
            "recording flag untouched -- the real forwarder never ran, and the tripwire default "
            "is a logged no-op, not a call to any stub.";
 }
+
+// ---------------------------------------------------------------------------
+// Behavior-wave Task 1 hooks (one_mobile_activity + Crash_idlesave/
+// Crash_extract_objs sibling pair). CONSUMER-FREE this task -- no
+// mobact.cpp/limits.cpp call site converts yet -- same "recording stub
+// proves forward-then-tripwire" discriminator shape as the App-other-trio
+// suite above.
+// ---------------------------------------------------------------------------
+
+// mobact.cpp has no dedicated header (see combat_hooks.h's own comment);
+// forward-declared locally here, mirroring comm.cpp's/gtest_main.cpp's own
+// local declaration of this same registrar.
+void register_one_mobile_activity_hook();
+
+namespace {
+
+struct RecordedOneMobileActivityCall {
+    char_data* ch = nullptr;
+    bool called = false;
+};
+
+RecordedOneMobileActivityCall g_recorded_one_mobile_activity_call;
+
+void recording_one_mobile_activity_stub(char_data* ch)
+{
+    g_recorded_one_mobile_activity_call = RecordedOneMobileActivityCall { ch, true };
+}
+
+class ScopedOneMobileActivityHook {
+public:
+    explicit ScopedOneMobileActivityHook(rots::combat::mobile_activity_fn hook)
+    {
+        rots::combat::set_one_mobile_activity_hook(hook);
+    }
+
+    ~ScopedOneMobileActivityHook() { register_one_mobile_activity_hook(); }
+
+    ScopedOneMobileActivityHook(const ScopedOneMobileActivityHook&) = delete;
+    ScopedOneMobileActivityHook& operator=(const ScopedOneMobileActivityHook&) = delete;
+};
+
+struct RecordedCrashIdlesaveCall {
+    char_data* ch = nullptr;
+    bool called = false;
+};
+
+RecordedCrashIdlesaveCall g_recorded_crash_idlesave_call;
+
+void recording_crash_idlesave_stub(char_data* ch)
+{
+    g_recorded_crash_idlesave_call = RecordedCrashIdlesaveCall { ch, true };
+}
+
+class ScopedCrashIdlesaveHook {
+public:
+    explicit ScopedCrashIdlesaveHook(rots::combat::crash_idlesave_fn hook)
+    {
+        rots::combat::set_crash_idlesave_hook(hook);
+    }
+
+    ~ScopedCrashIdlesaveHook() { register_crash_idlesave_hook(); }
+
+    ScopedCrashIdlesaveHook(const ScopedCrashIdlesaveHook&) = delete;
+    ScopedCrashIdlesaveHook& operator=(const ScopedCrashIdlesaveHook&) = delete;
+};
+
+struct RecordedCrashExtractObjsCall {
+    obj_data* obj = nullptr;
+    bool called = false;
+};
+
+RecordedCrashExtractObjsCall g_recorded_crash_extract_objs_call;
+
+void recording_crash_extract_objs_stub(obj_data* obj)
+{
+    g_recorded_crash_extract_objs_call = RecordedCrashExtractObjsCall { obj, true };
+}
+
+class ScopedCrashExtractObjsHook {
+public:
+    explicit ScopedCrashExtractObjsHook(rots::combat::crash_extract_objs_fn hook)
+    {
+        rots::combat::set_crash_extract_objs_hook(hook);
+    }
+
+    ~ScopedCrashExtractObjsHook() { register_crash_extract_objs_hook(); }
+
+    ScopedCrashExtractObjsHook(const ScopedCrashExtractObjsHook&) = delete;
+    ScopedCrashExtractObjsHook& operator=(const ScopedCrashExtractObjsHook&) = delete;
+};
+
+} // namespace
+
+TEST(CombatHooksOneMobileActivity, DispatchReachesARegisteredStubWithArgIntact)
+{
+    g_recorded_one_mobile_activity_call = RecordedOneMobileActivityCall {};
+    ScopedOneMobileActivityHook scoped(recording_one_mobile_activity_stub);
+    char_data character {};
+
+    rots::combat::dispatch_one_mobile_activity(&character);
+
+    EXPECT_TRUE(g_recorded_one_mobile_activity_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_one_mobile_activity_call.ch, &character);
+}
+
+TEST(CombatHooksOneMobileActivity, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_one_mobile_activity_call = RecordedOneMobileActivityCall {};
+    ScopedOneMobileActivityHook unregistered(nullptr);
+    char_data character {};
+
+    rots::combat::dispatch_one_mobile_activity(&character);
+
+    EXPECT_FALSE(g_recorded_one_mobile_activity_call.called)
+        << "Expected an unregistered one_mobile_activity hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default "
+           "is a loud logged no-op, not a call to any stub.";
+}
+
+TEST(CombatHooksCrashIdlesave, DispatchReachesARegisteredStubWithArgIntact)
+{
+    g_recorded_crash_idlesave_call = RecordedCrashIdlesaveCall {};
+    ScopedCrashIdlesaveHook scoped(recording_crash_idlesave_stub);
+    char_data character {};
+
+    rots::combat::crash_idlesave(&character);
+
+    EXPECT_TRUE(g_recorded_crash_idlesave_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_crash_idlesave_call.ch, &character);
+}
+
+TEST(CombatHooksCrashIdlesave, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_crash_idlesave_call = RecordedCrashIdlesaveCall {};
+    ScopedCrashIdlesaveHook unregistered(nullptr);
+    char_data character {};
+
+    rots::combat::crash_idlesave(&character);
+
+    EXPECT_FALSE(g_recorded_crash_idlesave_call.called)
+        << "Expected an unregistered crash_idlesave hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default "
+           "is a logged no-op, not a call to any stub.";
+}
+
+TEST(CombatHooksCrashExtractObjs, DispatchReachesARegisteredStubWithArgIntact)
+{
+    g_recorded_crash_extract_objs_call = RecordedCrashExtractObjsCall {};
+    ScopedCrashExtractObjsHook scoped(recording_crash_extract_objs_stub);
+    obj_data object {};
+
+    rots::combat::crash_extract_objs(&object);
+
+    EXPECT_TRUE(g_recorded_crash_extract_objs_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_crash_extract_objs_call.obj, &object);
+}
+
+TEST(CombatHooksCrashExtractObjs, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_crash_extract_objs_call = RecordedCrashExtractObjsCall {};
+    ScopedCrashExtractObjsHook unregistered(nullptr);
+    obj_data object {};
+
+    rots::combat::crash_extract_objs(&object);
+
+    EXPECT_FALSE(g_recorded_crash_extract_objs_call.called)
+        << "Expected an unregistered crash_extract_objs hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default "
+           "is a logged no-op, not a call to any stub.";
+}
+

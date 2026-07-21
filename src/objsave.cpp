@@ -977,6 +977,21 @@ void register_crash_crashsave_hook()
     rots::combat::set_crash_crashsave_hook(Crash_crashsave);
 }
 
+// Registers the real Crash_idlesave()/Crash_extract_objs() bodies
+// (above/objsave.cpp:898) as combat_hooks.h's matching sibling hooks
+// (behavior wave Task 1; census section 8). Called once from
+// run_the_game(), before boot_db() -- same convention as
+// register_crash_crashsave_hook() above.
+void register_crash_idlesave_hook()
+{
+    rots::combat::set_crash_idlesave_hook(Crash_idlesave);
+}
+
+void register_crash_extract_objs_hook()
+{
+    rots::combat::set_crash_extract_objs_hook(Crash_extract_objs);
+}
+
 void Crash_idlesave(struct char_data* ch)
 {
     int j;

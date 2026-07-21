@@ -89,6 +89,7 @@
 #include "rots/persist/file_formats.h" // for the RENT_CRASH macro (crash_crashsave()'s rent_code default)
 
 struct char_data;
+struct obj_data;
 struct waiting_type;
 struct affected_type;
 
@@ -308,5 +309,55 @@ int call_trigger(int trigger_type, void* subject, void* subject2, void* subject3
 using pkill_create_fn = void (*)(char_data* victim);
 void set_pkill_create_hook(pkill_create_fn hook);
 void pkill_create(char_data* victim);
+
+
+// -----------------------------------------------------------------------
+// Behavior-wave Task 1 hooks (mobact.cpp -> rots_script / limits.cpp ->
+// rots_combat, .superpowers/sdd/bw-task-1-brief.md; census
+// .superpowers/sdd/bw-census.md). CONSUMER-FREE at landing time: neither
+// mobact.cpp nor limits.cpp joins a library this task, and no existing call
+// site converts -- both TUs stay app-compiled (ROTS_SERVER_SOURCES). Each
+// hook below only exists so a LATER task's call-site conversion has
+// somewhere legal to resolve downward into, the same posture Task 2's
+// combat_command table/special() pair had at their own landing time.
+// -----------------------------------------------------------------------
+
+// one_mobile_activity() (mobact.cpp:71; census section 3) -- limits.cpp's
+// SOLE external call site (limits.cpp:1398, inside the SPELL_ACTIVITY case
+// of the affect-processing switch: `one_mobile_activity(i);`) is the
+// one-directional cross-edge this hook inverts: mobact.cpp's own :61
+// self-call inside mobile_activity()'s loop stays a direct intra-file call
+// regardless of tier (census section 3 confirms zero mobact.cpp reference
+// to any limits-owned symbol, so this is a genuinely one-directional gate).
+// mobact.cpp registers the real body via its own register_one_mobile_
+// activity_hook() registrar (mobact.cpp; declared locally at each call
+// site, mirroring comm.cpp's own signal_setup()-shaped local forward
+// declaration -- mobact.cpp has no dedicated header), called once from
+// run_the_game()/gtest_main.cpp's main(), before boot_db() -- same
+// convention as every other *_hooks.h registrar. Tripwire default: a LOUD
+// LOGGED TRIPWIRE + no-op (void class; matches script_hooks.h's
+// command_interpreter_fn taxonomy -- there is no return value to safely
+// omit or dangerously fabricate, but an unregistered per-tick mob-activity
+// dispatch is still a real error worth logging loudly).
+using mobile_activity_fn = void (*)(char_data* ch);
+void set_one_mobile_activity_hook(mobile_activity_fn hook);
+void dispatch_one_mobile_activity(char_data* ch);
+
+// Crash_idlesave()/Crash_extract_objs() (objsave.cpp:980/:898; census
+// section 8) -- limits.cpp's check_idling() calls both (Crash_idlesave at
+// limits.cpp:596; Crash_extract_objs at limits.cpp:602/:606), mirroring the
+// existing Crash_crashsave hook exactly (same App-other-trio shape, same
+// owning TU, same registrar file). objsave.cpp registers both real bodies
+// via register_crash_idlesave_hook()/register_crash_extract_objs_hook()
+// (handler.h/objsave.cpp), riding the same registrar file as
+// register_crash_crashsave_hook() above. Tripwire default: LOGGED no-op
+// (void class, same taxonomy as crash_crashsave_fn above).
+using crash_idlesave_fn = void (*)(char_data* ch);
+void set_crash_idlesave_hook(crash_idlesave_fn hook);
+void crash_idlesave(char_data* ch);
+
+using crash_extract_objs_fn = void (*)(obj_data* obj);
+void set_crash_extract_objs_hook(crash_extract_objs_fn hook);
+void crash_extract_objs(obj_data* obj);
 
 } // namespace rots::combat

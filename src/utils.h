@@ -68,6 +68,13 @@ double number_d(double from, double to);
 
 struct time_info_data mud_time_passed(time_t, time_t);
 char* PERS(struct char_data*, struct char_data*, int, int);
+
+// Registers the real PERS() body above as script_hooks.h's PERS hook
+// (l4-seed wave, Task 1; l4-task-1-brief.md Step 2c; l4-census.md section
+// 3.2). Called once from run_the_game(), before boot_db() -- same
+// convention as this file's other registrars.
+void register_pers_hook();
+
 void retire(struct char_data*);
 void unretire(struct char_data*);
 struct char_data* find_playing_char(int);

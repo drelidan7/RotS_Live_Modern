@@ -49,6 +49,7 @@
 #include "handler.h"
 #include "interpre.h"
 #include "rots_rng.h"
+#include "script_hooks.h"
 #include "spells.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
@@ -960,6 +961,15 @@ char* PERS(struct char_data* target, struct char_data* observer,
         CAP(name);
 
     return name;
+}
+
+// Registers the real PERS() body above as script_hooks.h's PERS hook
+// (l4-seed wave, Task 1; l4-task-1-brief.md Step 2c; l4-census.md section
+// 3.2). Called once from run_the_game(), before boot_db() -- same
+// convention as this file's other registrars.
+void register_pers_hook()
+{
+    rots::script::set_pers_hook(PERS);
 }
 
 // has_alias() relocated to char_utils.cpp (placement-seam Task 5; census

@@ -691,6 +691,14 @@ void run_the_game(sh_int port)
     register_crash_crashsave_hook();
     register_call_trigger_hook();
     register_pkill_create_hook();
+    // script_hooks.h's command-interpreter/PERS hooks (l4-seed wave, Task 1),
+    // registered the same way and for the same reason: before boot_db(), so
+    // ageland never runs mudlle.cpp's/mudlle2.cpp's rots::script::
+    // dispatch_command_interpreter()/dispatch_pers() call sites (consumer-free
+    // this task -- converted for real in a later l4-seed task) with an
+    // unregistered hook.
+    register_command_interpreter_hook();
+    register_pers_hook();
 
     log("Signal trapping.");
     signal_setup();

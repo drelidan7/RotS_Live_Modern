@@ -4,6 +4,7 @@
 #include "../comm.h"
 #include "../db.h"
 #include "../handler.h"
+#include "../interpre.h"
 #include "../limits.h"
 #include "../mudlle.h"
 #include "../pkill.h"
@@ -239,6 +240,18 @@ int main(int argc, char* argv[]) {
     register_crash_crashsave_hook();
     register_call_trigger_hook();
     register_pkill_create_hook();
+    // script_hooks.h's command-interpreter/PERS hooks (l4-seed wave, Task 1),
+    // registered for the same real-body-fidelity reason as the calls above:
+    // without them this test process would silently exercise their
+    // tripwire-logged/abort-tripwire defaults instead of interpre.cpp's/
+    // utility.cpp's real bodies that ageland registers at boot -- both TUs
+    // are already linked into both test binaries, so this only needs the
+    // registration calls. Consumer-free this task (no mudlle.cpp/mudlle2.cpp
+    // call site converts yet); these calls also cover this wave's own seam
+    // tests (script_hooks_tests.cpp), the same bridge-before-traffic posture
+    // as every other hook this file registers.
+    register_command_interpreter_hook();
+    register_pers_hook();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

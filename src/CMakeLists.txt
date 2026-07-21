@@ -358,7 +358,7 @@ set(ROTS_SERVER_SOURCES
     mobact.cpp modify.cpp mudlle.cpp mudlle2.cpp
     obj2html.cpp objsave.cpp
     pkill.cpp protocol.cpp
-    ranger.cpp savebench.cpp script.cpp shapemdl.cpp shapemob.cpp
+    ranger.cpp savebench.cpp script.cpp script_hooks.cpp shapemdl.cpp shapemob.cpp
     shapeobj.cpp shaperom.cpp shapescript.cpp shapezon.cpp
     shop.cpp signals.cpp spec_ass.cpp
     spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
@@ -794,6 +794,7 @@ if(ROTS_BUILD_TESTS)
         tests/save_benchmark_tests.cpp
         tests/scoped_allocation_counter.cpp
         tests/scoped_allocation_counter_tests.cpp
+        tests/script_hooks_tests.cpp
         tests/shape_format_tests.cpp
         tests/shapemob_tests.cpp
         tests/skill_timer_tests.cpp

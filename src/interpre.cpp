@@ -36,7 +36,9 @@
 #include "pkill.h"
 #include "profs.h"
 #include "protos.h"
+#include "rots/platform/log.h"
 #include "savebench.h"
+#include "script_hooks.h"
 #include "spells.h"
 #include "rots/persist/file_formats.h"
 #include "rots/core/character.h"
@@ -1419,6 +1421,52 @@ void command_interpreter(struct char_data* ch, char* argument_chr,
         send_to_char("Sorry, but that command has yet to be implemented...\n\r", ch);
     else
         send_to_char("Huh?!?\n\r", ch);
+}
+
+// script_hooks.h's command_interpreter hook -- backing storage + dispatch
+// (l4-seed wave, Task 1; l4-task-1-brief.md Step 1). Lives here, not a
+// separate script_hooks.cpp, because this file already DEFINES
+// command_interpreter() above -- the same "the TU that already visits the
+// target hosts the registrar" precedent as
+// register_combat_command_dispatch() (this file, below). Registered from
+// the existing pre-boot_db() boot sequence (run_the_game(), comm.cpp).
+namespace rots::script {
+
+namespace {
+// Backing storage for the registered command-interpreter hook
+// (register_command_interpreter_hook(), this file). Null until that
+// registration runs; the null default is a LOUD LOGGED TRIPWIRE + no-op
+// (see dispatch_command_interpreter() below) -- see script_hooks.h's
+// command_interpreter_fn comment for why this class, not abort.
+command_interpreter_fn g_command_interpreter_hook = nullptr;
+} // namespace
+
+void set_command_interpreter_hook(command_interpreter_fn hook)
+{
+    g_command_interpreter_hook = hook;
+}
+
+void dispatch_command_interpreter(char_data* ch, char* argument_chr, waiting_type* argument_wtl)
+{
+    if (g_command_interpreter_hook) {
+        g_command_interpreter_hook(ch, argument_chr, argument_wtl);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::script: STUB dispatch_command_interpreter() called with no handler registered -- "
+        "this should be unreachable once register_command_interpreter_hook() has run.");
+}
+
+} // namespace rots::script
+
+// Registers the real command_interpreter() body above as script_hooks.h's
+// command-interpreter hook (l4-seed wave, Task 1). Called once from
+// run_the_game(), before boot_db() -- same convention as
+// register_extract_char_hook() (handler.cpp) and this header's sibling
+// registrars.
+void register_command_interpreter_hook()
+{
+    rots::script::set_command_interpreter_hook(command_interpreter);
 }
 
 void argument_interpreter(char* argument, char* first_arg, char* second_arg)

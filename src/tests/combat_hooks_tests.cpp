@@ -298,6 +298,49 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenMoveIsUnregistered)
            "do_move body never ran.";
 }
 
+// do_say (act_comm.cpp) -- DISCRIMINATOR: the IS_NPC(ch) && GET_INT(ch) < 6
+// guard is the very first statement in do_say's real body and returns before
+// touching world[]/wtl/anything else, so it needs no ScopedTestWorld at all --
+// the same "cheapest possible" shape as do_flee's/do_dismount's guards above.
+// A default-initialized char_data{} already has tmpabilities.intel == 0 (< 6);
+// only specials2.act needs MOB_ISNPC set. This cell's own real body
+// (interpre.cpp:2274, `set_combat_command(combat_command::say, do_say);`) had
+// zero issue_command() callers anywhere in the tree before the l4-seed wave's
+// Task 2 (l4-task-2-brief.md Step 1/2/3) converted graph.cpp's/mudlle.cpp's/
+// mudlle2.cpp's 14 direct do_say() call sites onto this cell -- this pair is
+// that task's Step 5 discriminator-audit gap-fill, mirroring do_move's own
+// pair (added when olog_hai.cpp became its first real consumer) for the same
+// "newly exercised, previously registered-but-uncalled" reason.
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoSayWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::say, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "You are too stupid to talk.\n\r")
+        << "Expected the real do_say body's low-intelligence-NPC guard to send its literal "
+           "message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenSayIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::say);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::say, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered say cell to leave send_to_char uncalled -- the real do_say "
+           "body never ran.";
+}
+
 // do_stand (act_move.cpp) -- DISCRIMINATOR: the POSITION_SITTING branch's
 // unconditional `GET_POS(ch) = POSITION_STANDING` (character.specials.fighting
 // is null, so the non-fighting arm of that branch's inner if/else runs) -- a

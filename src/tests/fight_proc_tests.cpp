@@ -17,6 +17,26 @@ bool is_victim_around(const char_data* character);
 // coverage-gap rule).
 int perform_drop(struct char_data* ch, struct obj_data* obj, sh_int RDR);
 void perform_give(struct char_data* ch, struct char_data* vict, struct obj_data* obj);
+// perform_wear()/perform_remove() (same task/census reference -- relocated
+// from act_obj2.cpp).
+void perform_wear(struct char_data* ch, struct obj_data* obj, int where, bool wearall = false);
+void perform_remove(struct char_data* ch, int pos);
+// placement_tests.cpp's own make_equipment_test_npc() lives in that file's
+// anonymous namespace (internal linkage), so it can't be forward-declared
+// and reused here -- this is a small local duplicate of the same fixture
+// shape, for the same reason that file documents: routes
+// attach_equipment()/detach_equipment()'s affect_total() around
+// recalc_abilities() (a much larger derived-stat engine no assertion here
+// needs), which perform_wear()/perform_remove() reach transitively through
+// equip_char()/unequip_char().
+char_data make_wear_remove_test_npc()
+{
+    char_data character {};
+    character.specials2.act |= MOB_ISNPC;
+    character.player.race = RACE_HUMAN;
+    character.player.level = 20;
+    return character;
+}
 bool can_double_hit(const char_data* character);
 bool does_double_hit_proc(const char_data* character);
 bool can_beorning_swipe(char_data* character);
@@ -348,4 +368,71 @@ TEST(PerformDropGive, PerformGiveTransfersObjectAndSendsMessages)
         << "Expected the giver's confirmation message.";
     EXPECT_NE(std::string(context.vict_descriptor.output).find("gives you"), std::string::npos)
         << "Expected the recipient's delivery message.";
+}
+
+// ---------------------------------------------------------------------------
+// perform_wear()/perform_remove() coverage riders (Cluster B wave Task 1;
+// cb-task-1-brief.md Step 6; cb-census.md section 5.4). Both were untested
+// live code before this relocation. NPC fixture (make_equipment_test_npc(),
+// placement_tests.cpp) keeps equip_char()/unequip_char()'s transitive
+// affect_total() call away from recalc_abilities()'s much larger derived-
+// stat engine -- see that file's own comment for the full rationale.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct WearRemoveTestContext {
+    char_data character = make_wear_remove_test_npc();
+    descriptor_data descriptor {};
+    obj_data item {};
+
+    WearRemoveTestContext()
+    {
+        descriptor.output = descriptor.small_outbuf;
+        descriptor.small_outbuf[0] = '\0';
+        descriptor.bufptr = 0;
+        descriptor.bufspace = SMALL_BUFSIZE - 1;
+        descriptor.connected = CON_PLYNG;
+        descriptor.character = &character;
+        character.desc = &descriptor;
+        character.in_room = 0;
+        character.specials.position = POSITION_STANDING;
+    }
+};
+
+} // namespace
+
+TEST(PerformWearRemove, PerformWearEquipsItemAndSendsMessages)
+{
+    ScopedTestWorld test_world(1);
+    WearRemoveTestContext context;
+    context.item.obj_flags.wear_flags = ITEM_WEAR_HEAD;
+    obj_to_char(&context.item, &context.character);
+
+    perform_wear(&context.character, &context.item, WEAR_HEAD);
+
+    EXPECT_EQ(context.character.equipment[WEAR_HEAD], &context.item)
+        << "Expected the item to land in the WEAR_HEAD equipment slot.";
+    EXPECT_EQ(context.character.carrying, nullptr)
+        << "Expected the item to leave the character's inventory.";
+    EXPECT_GT(std::string(context.descriptor.output).size(), 0u)
+        << "Expected a wear confirmation message.";
+}
+
+TEST(PerformWearRemove, PerformRemoveMovesEquippedItemToInventory)
+{
+    ScopedTestWorld test_world(1);
+    WearRemoveTestContext context;
+    context.item.obj_flags.wear_flags = ITEM_WEAR_HEAD;
+    context.character.equipment[WEAR_HEAD] = &context.item;
+    context.item.carried_by = &context.character;
+
+    perform_remove(&context.character, WEAR_HEAD);
+
+    EXPECT_EQ(context.character.equipment[WEAR_HEAD], nullptr)
+        << "Expected the WEAR_HEAD slot to clear.";
+    EXPECT_EQ(context.character.carrying, &context.item)
+        << "Expected the removed item to land back in the character's inventory.";
+    EXPECT_NE(std::string(context.descriptor.output).find("stop"), std::string::npos)
+        << "Expected the remove confirmation message (\"You stop using...\").";
 }

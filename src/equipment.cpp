@@ -58,9 +58,12 @@
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
+#include <format>
 
+#include "comm.h"
 #include "entity_hooks.h"
 #include "handler.h"
+#include "interpre.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
@@ -268,3 +271,79 @@ struct obj_data* detach_equipment(char_data* ch, int pos)
 
     return (obj);
 }
+
+// find_eq_pos() RELOCATED to equipment.cpp (rots_entity, L2; Cluster B
+// wave Task 1; cb-task-1-brief.md Step 6; cb-census.md section 5.4)
+// from act_obj2.cpp: a pure obj-field lookup (CAN_WEAR macro) plus one
+// send_to_char() on the invalid-body-part path -- entity-pure, no
+// world[]/combat dependency. act_obj2.cpp keeps a local forward
+// declaration (do_wear() still calls this downward).
+
+int find_eq_pos(struct char_data* ch, struct obj_data* obj, char* arg)
+{
+    int where = -1;
+
+    static const std::string_view keywords[] = {
+        "!RESERVED!",
+        "finger",
+        "!RESERVED!",
+        "neck",
+        "!RESERVED!",
+        "body",
+        "head",
+        "legs",
+        "feet",
+        "hands",
+        "arms",
+        "sheild",
+        "about",
+        "waist",
+        "wrist",
+        "!RESERVED!",
+        "!RESERVED!",
+        "!RESERVED!",
+        "back",
+        "!RESERVED!",
+        "!RESERVED!",
+        "belt",
+        "\n"
+    };
+
+    if (!arg || !*arg) {
+        if (CAN_WEAR(obj, ITEM_WEAR_FINGER))
+            where = WEAR_FINGER_R;
+        if (CAN_WEAR(obj, ITEM_WEAR_NECK))
+            where = WEAR_NECK_1;
+        if (CAN_WEAR(obj, ITEM_WEAR_BODY))
+            where = WEAR_BODY;
+        if (CAN_WEAR(obj, ITEM_WEAR_HEAD))
+            where = WEAR_HEAD;
+        if (CAN_WEAR(obj, ITEM_WEAR_LEGS))
+            where = WEAR_LEGS;
+        if (CAN_WEAR(obj, ITEM_WEAR_FEET))
+            where = WEAR_FEET;
+        if (CAN_WEAR(obj, ITEM_WEAR_HANDS))
+            where = WEAR_HANDS;
+        if (CAN_WEAR(obj, ITEM_WEAR_ARMS))
+            where = WEAR_ARMS;
+        if (CAN_WEAR(obj, ITEM_WEAR_SHIELD))
+            where = WEAR_SHIELD;
+        if (CAN_WEAR(obj, ITEM_WEAR_ABOUT))
+            where = WEAR_ABOUT;
+        if (CAN_WEAR(obj, ITEM_WEAR_WAISTE))
+            where = WEAR_WAISTE;
+        if (CAN_WEAR(obj, ITEM_WEAR_WRIST))
+            where = WEAR_WRIST_R;
+        if (CAN_WEAR(obj, ITEM_WEAR_BACK))
+            where = WEAR_BACK;
+        if (CAN_WEAR(obj, ITEM_WEAR_BELT))
+            where = WEAR_BELT_1;
+    } else {
+        if ((where = search_block(arg, keywords, FALSE)) < 0) {
+            send_to_char(std::format("'{}'?  What part of your body is THAT?\n\r", arg), ch);
+        }
+    }
+
+    return where;
+}
+

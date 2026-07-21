@@ -66,6 +66,11 @@
 extern sh_int encumb_table[MAX_WEAR];
 extern sh_int leg_encumb_table[MAX_WEAR];
 
+// find_eq_pos() (Cluster B wave Task 1; cb-task-1-brief.md Step 6;
+// cb-census.md section 5.4 -- relocated here from act_obj2.cpp, coverage-
+// gap rule: zero prior test coverage anywhere in the tree).
+int find_eq_pos(struct char_data* ch, struct obj_data* obj, char* arg);
+
 namespace {
 
 // Test-owned room/zone pair a stub resolver hook set hands back for every
@@ -945,4 +950,29 @@ TEST(DetachEquipmentTest, AttachThenDetachRoundTripsEncumbranceAndWeightToZero)
     EXPECT_EQ(character.specials.carry_weight, 0);
     EXPECT_EQ(character.points.dodge, 0);
     EXPECT_EQ(character.equipment[WEAR_BODY], nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// find_eq_pos() coverage riders (Cluster B wave Task 1; cb-task-1-brief.md
+// Step 6; cb-census.md section 5.4). Untested live code before this
+// relocation.
+// ---------------------------------------------------------------------------
+
+TEST(Equipment, FindEqPosAutoDetectsWearableSlotWhenArgIsEmpty)
+{
+    char_data ch {};
+    obj_data obj {};
+    obj.obj_flags.wear_flags = ITEM_WEAR_HEAD;
+
+    EXPECT_EQ(find_eq_pos(&ch, &obj, nullptr), WEAR_HEAD);
+}
+
+TEST(Equipment, FindEqPosResolvesAnExplicitBodyPartKeyword)
+{
+    char_data ch {};
+    obj_data obj {};
+    obj.obj_flags.wear_flags = ITEM_WEAR_HEAD;
+    char argument[] = "head";
+
+    EXPECT_EQ(find_eq_pos(&ch, &obj, argument), WEAR_HEAD);
 }

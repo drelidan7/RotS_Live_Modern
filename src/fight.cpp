@@ -3339,3 +3339,454 @@ void perform_give(struct char_data* ch, struct char_data* vict,
     rots::combat::call_trigger(ON_RECEIVE, vict, ch, obj);
 }
 
+// wear_message()/ologhai_item_restriction()/beorning_item_restriction()/
+// perform_wear()/perform_remove() RELOCATED to fight.cpp (rots_combat,
+// L3; Cluster B wave Task 1; cb-task-1-brief.md Step 6; cb-census.md
+// section 5.4) from act_obj2.cpp. perform_wear()'s equip_char() call and
+// perform_remove()'s unequip_char() call are both already fight.cpp-
+// resident (placement-seam wave). The first three functions are NOT in
+// the census's own per-symbol table -- a genuine census miss the nm-based
+// method could not see: they are perform_wear()'s own private helpers,
+// same-TU calls invisible to a cross-TU undefined-symbol scan, with ZERO
+// other caller anywhere in the tree (verified by grep) -- moving them
+// alongside their sole caller avoids the alternative (an actual upward
+// rots_combat -> app-tier edge if they stayed in act_obj2.cpp), so this is
+// a mechanical extension of the sanctioned relocation, not a new
+// architectural decision; flagged here per the STOP-and-adjudicate
+// contract for controller review. perform_wear()'s call_trigger(ON_WEAR,
+// ...) converts to the existing combat_hooks.h app-other-trio hook
+// (rots::combat::call_trigger()), same reason as perform_give() above.
+// act_obj2.cpp keeps local forward declarations (do_wear()/do_wield()/
+// do_grab()/do_remove() still call these downward). LF-NORMALIZED (see
+// this file's own perform_drop()/perform_give() banner comment above for
+// why, vs. script.cpp's LF-verbatim choice).
+
+void perform_remove(struct char_data* ch, int pos);
+
+void wear_message(struct char_data* ch, struct obj_data* obj, int where)
+{
+    const std::string_view wear_messages[][2] = {
+        { "$n lights $p and holds it.",
+            "You light $p and hold it." },
+
+        { "$n slides $p on to $s right ring finger.",
+            "You slide $p on to your right ring finger." },
+
+        { "$n slides $p on to $s left ring finger.",
+            "You slide $p on to your left ring finger." },
+
+        { "$n wears $p around $s neck.",
+            "You wear $p around your neck." },
+
+        { "$n wears $p around $s neck.",
+            "You wear $p around your neck." },
+
+        {
+            "$n wears $p on $s body.",
+            "You wear $p on your body.",
+        },
+
+        { "$n wears $p on $s head.",
+            "You wear $p on your head." },
+
+        { "$n puts $p on $s legs.",
+            "You put $p on your legs." },
+
+        { "$n wears $p on $s feet.",
+            "You wear $p on your feet." },
+
+        { "$n puts $p on $s hands.",
+            "You put $p on your hands." },
+
+        { "$n wears $p on $s arms.",
+            "You wear $p on your arms." },
+
+        { "$n straps $p around $s arm as a shield.",
+            "You start to use $p as a shield." },
+
+        { "$n wears $p about $s body.",
+            "You wear $p around your body." },
+
+        { "$n wears $p around $s waist.",
+            "You wear $p around your waist." },
+
+        { "$n puts $p on around $s right wrist.",
+            "You put $p on around your right wrist." },
+
+        { "$n puts $p on around $s left wrist.",
+            "You put $p on around your left wrist." },
+
+        { "$n wields $p.",
+            "You wield $p." },
+
+        { "$n grabs $p.",
+            "You grab $p." },
+
+        { "$n wears $p around $s back.",
+            "You wear $p around your back." },
+
+        { "$n fastens $p on $s belt.",
+            "You fasten $p on your belt." },
+
+        { "$n fastens $p on $s belt.",
+            "You fasten $p on your belt." },
+
+        { "$n fastens $p on $s belt.",
+            "You fasten $p on your belt." }
+    };
+
+    const std::string_view beorn_wear_messages[][2] = {
+        { "$n lights $p and holds it.",
+            "You light $p and hold it." },
+
+        { "$n slides $p on to $s right paw.",
+            "You slide $p on to your right paw." },
+
+        { "$n slides $p on to $s left paw.",
+            "You slide $p on to your left paw." },
+
+        { "$n wears $p around $s neck.",
+            "You wear $p around your neck." },
+
+        { "$n wears $p around $s neck.",
+            "You wear $p around your neck." },
+
+        {
+            "$n wears $p on $s body.",
+            "You wear $p on your body.",
+        },
+
+        { "$n wears $p on $s head.",
+            "You wear $p on your head." },
+
+        { "$n puts $p on $s hindlegs.",
+            "You put $p on your hindlegs." },
+
+        { "$n wears $p on $s hindfeet.",
+            "You wear $p on your hindfeet." },
+
+        { "$n puts $p on $s claws.",
+            "You put $p on your claws." },
+
+        { "$n wears $p on $s forelegs.",
+            "You wear $p on your forelegs." },
+
+        { "$n straps $p around $s arm as a shield.",
+            "You start to use $p as a shield." },
+
+        { "$n wears $p about $s body.",
+            "You wear $p around your body." },
+
+        { "$n wears $p around $s waist.",
+            "You wear $p around your waist." },
+
+        { "$n puts $p on around $s right wrist.",
+            "You put $p on around your right wrist." },
+
+        { "$n puts $p on around $s left wrist.",
+            "You put $p on around your left wrist." },
+
+        { "$n wields $p.",
+            "You wield $p." },
+
+        { "$n grabs $p.",
+            "You grab $p." },
+
+        { "$n wears $p around $s back.",
+            "You wear $p around your back." },
+
+        { "$n fastens $p on $s belt.",
+            "You fasten $p on your belt." },
+
+        { "$n fastens $p on $s belt.",
+            "You fasten $p on your belt." },
+
+        { "$n fastens $p on $s belt.",
+            "You fasten $p on your belt." }
+    };
+    if (GET_RACE(ch) == RACE_BEORNING) {
+        act(beorn_wear_messages[where][0], TRUE, ch, obj, 0, TO_ROOM);
+        act(beorn_wear_messages[where][1], FALSE, ch, obj, 0, TO_CHAR);
+    } else {
+        act(wear_messages[where][0], TRUE, ch, obj, 0, TO_ROOM);
+        act(wear_messages[where][1], FALSE, ch, obj, 0, TO_CHAR);
+    }
+}
+
+
+bool ologhai_item_restriction(char_data* character, obj_data* item)
+{
+    // Only Olog-Hais here
+    if (GET_RACE(character) != RACE_OLOGHAI) {
+        return false;
+    }
+
+    // Olog-Hais cannot wield small weapons, big hands and all.
+    if (CAN_WEAR(item, ITEM_WIELD) && (item && item->get_bulk() <= 3 && item->get_weight() <= LIGHT_WEAPON_WEIGHT_CUTOFF)) {
+        send_to_char("Your massive hands are unable to grasp the tiny weapon.\n\r", character);
+        return true;
+    }
+
+    return false;
+}
+
+
+bool beorning_item_restriction(char_data* character, obj_data* item)
+{
+    if (CAN_WEAR(item, ITEM_WEAR_SHIELD)) {
+        send_to_char("You cannot wear a shield.\n\r", character);
+        return false;
+    }
+
+    if (CAN_WEAR(item, ITEM_WEAR_BODY)) {
+        send_to_char("You cannot wear anything around your body.\n\r", character);
+        return false;
+    }
+
+    if (CAN_WEAR(item, ITEM_WEAR_LEGS)) {
+        send_to_char("You cannot wear anything around your hindlegs.\n\r", character);
+        return false;
+    }
+
+    if (CAN_WEAR(item, ITEM_WEAR_ARMS)) {
+        send_to_char("You cannot wear anything around your forelegs.\n\r", character);
+        return false;
+    }
+
+    if (CAN_WEAR(item, ITEM_HOLD)) {
+        send_to_char("You cannot hold anything.\n\r", character);
+        return false;
+    }
+
+    if (CAN_WEAR(item, ITEM_WEAR_HANDS)) {
+        send_to_char("You cannot wear anything on your claws.\n\r", character);
+        return false;
+    }
+
+    if (CAN_WEAR(item, ITEM_WIELD)) {
+        send_to_char("Sorry, bears can't wield weapons.\n\r", character);
+        return false;
+    }
+
+    if (CAN_WEAR(item, ITEM_WEAR_FEET)) {
+        send_to_char("You cannot wear anything on your hindfeet.\n\r", character);
+        return false;
+    }
+
+    if (armor_absorb(item) > 0) {
+        if (CAN_WEAR(item, ITEM_WEAR_BODY) || CAN_WEAR(item, ITEM_WEAR_HEAD) || CAN_WEAR(item, ITEM_WEAR_LEGS) || CAN_WEAR(item, ITEM_WEAR_ARMS)) {
+            send_to_char("You cannot wear armor.\n\r", character);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void perform_wear(char_data* character, obj_data* item, int item_slot, bool wearall = false)
+{
+    static int item_slots[] = {
+        ITEM_TAKE, ITEM_WEAR_FINGER, ITEM_WEAR_FINGER, ITEM_WEAR_NECK,
+        ITEM_WEAR_NECK, ITEM_WEAR_BODY, ITEM_WEAR_HEAD, ITEM_WEAR_LEGS,
+        ITEM_WEAR_FEET, ITEM_WEAR_HANDS, ITEM_WEAR_ARMS, ITEM_WEAR_SHIELD,
+        ITEM_WEAR_ABOUT, ITEM_WEAR_WAISTE, ITEM_WEAR_WRIST, ITEM_WEAR_WRIST,
+        ITEM_WIELD, ITEM_TAKE, ITEM_WEAR_BACK, ITEM_WEAR_BELT, ITEM_WEAR_BELT,
+        ITEM_WEAR_BELT
+    };
+
+    static const std::string_view already_wearing_messages[] = {
+        "You're already using a light.\n\r",
+        "YOU SHOULD NEVER SEE THIS MESSAGE.  PLEASE REPORT.\n\r",
+        "You're already wearing something on both of your ring fingers.\n\r",
+        "YOU SHOULD NEVER SEE THIS MESSAGE.  PLEASE REPORT.\n\r",
+        "You can't wear anything else around your neck.\n\r",
+        "You're already wearing something on your body.\n\r",
+        "You're already wearing something on your head.\n\r",
+        "You're already wearing something on your legs.\n\r",
+        "You're already wearing something on your feet.\n\r",
+        "You're already wearing something on your hands.\n\r",
+        "You're already wearing something on your arms.\n\r",
+        "You're already using a shield.\n\r",
+        "You're already wearing something about your body.\n\r",
+        "You already have something around your waist.\n\r",
+        "YOU SHOULD NEVER SEE THIS MESSAGE.  PLEASE REPORT.\n\r",
+        "You're already wearing something around both of your wrists.\n\r",
+        "You're already wielding a weapon.\n\r",
+        "You're already holding something.\n\r",
+        "You're already wearing something on your back.\n\r",
+        "YOU SHOULD NEVER SEE THIS MESSAGE.  PLEASE REPORT.\n\r",
+        "YOU SHOULD NEVER SEE THIS MESSAGE.  PLEASE REPORT.\n\r",
+        "There is no more room on your belt.\n\r"
+    };
+
+    static const std::string_view beorn_already_wearing_message[] = {
+        "You're already using a light.\n\r",
+        "YOU SHOULD NEVER SEE THIS MESSAGE.  PLEASE REPORT.\n\r",
+        "You're already wearing something on both of your paws.\n\r",
+        "YOU SHOULD NEVER SEE THIS MESSAGE.  PLEASE REPORT.\n\r",
+        "You can't wear anything else around your neck.\n\r",
+        "You're already wearing something on your body.\n\r",
+        "You're already wearing something on your head.\n\r",
+        "You're already wearing something on your hindlegs.\n\r",
+        "You're already wearing something on your hindfeet.\n\r",
+        "You're already wearing something on your claws.\n\r",
+        "You're already wearing something on your forelegs.\n\r",
+        "You're already using a shield.\n\r",
+        "You're already wearing something about your body.\n\r",
+        "You already have something around your waist.\n\r",
+        "YOU SHOULD NEVER SEE THIS MESSAGE.  PLEASE REPORT.\n\r",
+        "You're already wearing something around both of your wrists.\n\r",
+        "You're already wielding a weapon.\n\r",
+        "You're already holding something.\n\r",
+        "You're already wearing something on your back.\n\r",
+        "YOU SHOULD NEVER SEE THIS MESSAGE.  PLEASE REPORT.\n\r",
+        "YOU SHOULD NEVER SEE THIS MESSAGE.  PLEASE REPORT.\n\r",
+        "There is no more room on your belt.\n\r"
+    };
+
+    /*---------- Beorning item restriction here ----------*/
+    if (GET_RACE(character) == RACE_BEORNING) {
+        if (!beorning_item_restriction(character, item)) {
+            return;
+        }
+    }
+
+    if (ologhai_item_restriction(character, item)) {
+        return;
+    }
+
+    /* see if this is shield, and weapon is in two hands */
+    if ((GET_ITEM_TYPE(item) == ITEM_SHIELD) && IS_TWOHANDED(character) && character->equipment[WIELD]) {
+        send_to_char("You cannot wear a shield while wielding a weapon in two hands\n\r", character);
+        return;
+    }
+
+    /* first, make sure that the wear position is valid. */
+    if (!CAN_WEAR(item, item_slots[item_slot])) {
+        act("You can't wear $p there.", FALSE, character, item, 0, TO_CHAR);
+        return;
+    }
+
+    /* if this is a belt item, make sure the person is wearing a belt */
+    if ((item_slot == WEAR_BELT_1) && (!character->equipment[WEAR_WAISTE])) {
+        send_to_char("You are not wearing a belt to put that on.\n\r", character);
+        return;
+    }
+
+    if (!rots::combat::call_trigger(ON_WEAR, item, character, 0))
+        return;
+
+    /* for neck, finger, and wrist, try pos 2 if pos 1 is already full */
+    if ((item_slot == WEAR_FINGER_R) || (item_slot == WEAR_NECK_1) || (item_slot == WEAR_WRIST_R))
+        if (character->equipment[item_slot])
+            item_slot++;
+
+    /* for belt, try positions 2 and 3 if pos 1 is already full */
+    if (item_slot == WEAR_BELT_1)
+        if (character->equipment[item_slot])
+            item_slot++;
+    if (item_slot == WEAR_BELT_2)
+        if (character->equipment[item_slot])
+            item_slot++;
+
+    if (character->equipment[item_slot]) {
+        if (wearall == true) {
+            if (GET_RACE(character) == RACE_BEORNING) {
+                send_to_char(beorn_already_wearing_message[item_slot], character);
+            } else {
+                send_to_char(already_wearing_messages[item_slot], character);
+            }
+            return;
+        }
+        if (IS_CARRYING_N(character) >= CAN_CARRY_N(character)) {
+            send_to_char("Your hands are already full!\n\r", character);
+            return;
+        } else {
+            perform_remove(character, item_slot);
+        }
+    }
+
+    obj_from_char(item);
+    wear_message(character, item, item_slot);
+    equip_char(character, item, item_slot);
+}
+
+
+void perform_remove(struct char_data* ch, int pos)
+{
+    struct obj_data* obj;
+
+    if (!(obj = ch->equipment[pos])) {
+        log("Error in perform_remove: bad pos passed.");
+        return;
+    }
+
+    if (IS_CARRYING_N(ch) >= CAN_CARRY_N(ch))
+        act("$p: you can't carry that many items!", FALSE, ch, obj, 0, TO_CHAR);
+    else {
+        obj_to_char(unequip_char(ch, pos), ch);
+
+        act("You stop using $p.", FALSE, ch, obj, 0, TO_CHAR);
+        act("$n stops using $p.", TRUE, ch, obj, 0, TO_ROOM);
+
+        // If this is a "belt" (waist item) being removed:
+        // Check for items on the belt.  If there are any, they are removed as
+        // well.  If there's no room for the removed items, they fall to the
+        // ground.
+
+        if (pos == WEAR_WAISTE) {
+            if (ch->equipment[WEAR_BELT_1]) {
+                obj = ch->equipment[WEAR_BELT_1];
+
+                if (IS_CARRYING_N(ch) >= CAN_CARRY_N(ch)) {
+                    obj_to_room(unequip_char(ch, WEAR_BELT_1), ch->in_room);
+
+                    act("You can't carry that much; $p falls to the ground.", FALSE, ch, obj, 0, TO_CHAR);
+                    act("$p falls to the ground.", TRUE, ch, obj, 0, TO_ROOM);
+                } else {
+                    obj_to_char(unequip_char(ch, WEAR_BELT_1), ch);
+
+                    act("You stop using $p.", FALSE, ch, obj, 0, TO_CHAR);
+                    act("$n stops using $p.", TRUE, ch, obj, 0, TO_ROOM);
+                }
+            }
+
+            if (ch->equipment[WEAR_BELT_2]) {
+                obj = ch->equipment[WEAR_BELT_2];
+
+                if (IS_CARRYING_N(ch) >= CAN_CARRY_N(ch)) {
+                    obj_to_room(unequip_char(ch, WEAR_BELT_2), ch->in_room);
+
+                    act("You can't carry that much; $p falls to the ground.", FALSE, ch, obj, 0, TO_CHAR);
+                    act("$p falls to the ground.", TRUE, ch, obj, 0, TO_ROOM);
+                } else {
+                    obj_to_char(unequip_char(ch, WEAR_BELT_2), ch);
+
+                    act("You stop using $p.", FALSE, ch, obj, 0, TO_CHAR);
+                    act("$n stops using $p.", TRUE, ch, obj, 0, TO_ROOM);
+                }
+            }
+
+            if (ch->equipment[WEAR_BELT_3]) {
+                obj = ch->equipment[WEAR_BELT_3];
+
+                if (IS_CARRYING_N(ch) >= CAN_CARRY_N(ch)) {
+                    obj_to_room(unequip_char(ch, WEAR_BELT_3), ch->in_room);
+
+                    act("You can't carry that much; $p falls to the ground.", FALSE, ch, obj, 0, TO_CHAR);
+                    act("$p falls to the ground.", TRUE, ch, obj, 0, TO_ROOM);
+                } else {
+                    obj_to_char(unequip_char(ch, WEAR_BELT_3), ch);
+
+                    act("You stop using $p.", FALSE, ch, obj, 0, TO_CHAR);
+                    act("$n stops using $p.", TRUE, ch, obj, 0, TO_ROOM);
+                }
+            }
+        }
+
+        //      if (obj->obj_flags.type_flag == ITEM_LIGHT)
+        //	 if (obj->obj_flags.value[2] && obj->obj_flags.value[3])
+        //	    world[ch->in_room].light--;
+    }
+}
+

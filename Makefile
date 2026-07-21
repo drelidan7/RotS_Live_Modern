@@ -43,10 +43,11 @@ build: $(CMAKE_CACHE)
 # for rots_core_linkcheck, entity-seed for rots_entity_linkcheck,
 # persist-split PS Task 4 for rots_persist_linkcheck, world-seed Task 5
 # for rots_world_linkcheck, combat-seed Task 1 for rots_combat_linkcheck, and
-# l4-seed Task 3 for rots_pathfind_linkcheck/rots_script_linkcheck).
+# l4-seed Task 3 for rots_pathfind_linkcheck/rots_script_linkcheck, and
+# the cluster-b finalization battery for rots_olc_linkcheck).
 test: $(CMAKE_CACHE)
 	+$(CMAKE) -S $(SRC_DIR) -B $(BUILD_DIR)
-	+$(CMAKE) --build $(BUILD_DIR) --target ageland ageland_tests rots_platform_linkcheck rots_core_linkcheck rots_entity_linkcheck rots_persist_linkcheck rots_world_linkcheck rots_combat_linkcheck rots_pathfind_linkcheck rots_script_linkcheck -j16
+	+$(CMAKE) --build $(BUILD_DIR) --target ageland ageland_tests rots_platform_linkcheck rots_core_linkcheck rots_entity_linkcheck rots_persist_linkcheck rots_world_linkcheck rots_combat_linkcheck rots_pathfind_linkcheck rots_script_linkcheck rots_olc_linkcheck -j16
 	# cd + bare ctest, NOT `ctest --test-dir`: --test-dir needs CMake >= 3.20, and the
 	# i386 container ships ctest 3.18, which silently ignores the flag, looks for tests
 	# in the repo root, and reports "No tests were found!!!" with exit code 0.

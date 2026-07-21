@@ -7,14 +7,15 @@
 
 #include "comm.h" /* For TO_ROOM */
 #include "db.h" /* For buf2 and struct reset_com */
+#include "entity_hooks.h"
 #include "handler.h" /* For FOLLOW_MOVE */
-#include "pkill.h" /* For pkill_get_XXX_fame() */
 #include "rots/core/character.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/descriptor.h"
 #include "rots/core/types.h"
 #include "utils.h" /* For CREATE */
+#include "world_hooks.h"
 #include "zone.h"
 
 
@@ -54,8 +55,6 @@ void zone_update(void)
     static struct reset_q_type reset_q;
     void put_to_reset_q_pool(struct reset_q_element*);
     struct reset_q_element* get_from_reset_q_pool(void);
-    int is_empty(int);
-
     /*
      * The 4 constant comes from 4 passes per second.  This apparently
      * means that one minute has passed and is not accurate unless
@@ -79,13 +78,13 @@ void zone_update(void)
                 should_reset = 0;
                 break;
             case 1:
-                should_reset = is_empty(i) && zone_table[i].age >= zone_table[i].lifespan;
+                should_reset = !rots::world::dispatch_is_zone_populated(i) && zone_table[i].age >= zone_table[i].lifespan;
                 break;
             case 2:
                 should_reset = zone_table[i].age >= zone_table[i].lifespan;
                 break;
             case 3:
-                should_reset = (is_empty(i) && zone_table[i].age >= zone_table[i].lifespan) || zone_table[i].age >= zone_table[i].lifespan * 3;
+                should_reset = (!rots::world::dispatch_is_zone_populated(i) && zone_table[i].age >= zone_table[i].lifespan) || zone_table[i].age >= zone_table[i].lifespan * 3;
                 break;
             default:
                 should_reset = 0;
@@ -169,8 +168,6 @@ void zone_update(void)
  */
 int check_if_flag(int if_flag, int last_cmd, int last_mob, int last_obj, int zone)
 {
-    int is_empty(int);
-
     int require_last_cmd;
     int require_last_mob;
     int require_last_obj;
@@ -199,16 +196,16 @@ int check_if_flag(int if_flag, int last_cmd, int last_mob, int last_obj, int zon
         if (require_last_obj && last_obj == 1) {
             return 0;
         }
-        if (require_good_fame_lead && pkill_get_good_fame() > pkill_get_evil_fame()) {
+        if (require_good_fame_lead && rots::world::dispatch_pkill_get_good_fame() > rots::world::dispatch_pkill_get_evil_fame()) {
             return 0;
         }
-        if (require_evil_fame_lead && pkill_get_evil_fame() > pkill_get_good_fame()) {
+        if (require_evil_fame_lead && rots::world::dispatch_pkill_get_evil_fame() > rots::world::dispatch_pkill_get_good_fame()) {
             return 0;
         }
         if (require_sun_up && (weather_info.sunlight == SUN_LIGHT || weather_info.sunlight == SUN_RISE)) {
             return 0;
         }
-        if (require_players_in_zone && !is_empty(zone)) {
+        if (require_players_in_zone && rots::world::dispatch_is_zone_populated(zone)) {
             return 0;
         }
     } else {
@@ -221,16 +218,16 @@ int check_if_flag(int if_flag, int last_cmd, int last_mob, int last_obj, int zon
         if (require_last_obj && last_obj == 0) {
             return 0;
         }
-        if (require_good_fame_lead && pkill_get_good_fame() <= pkill_get_evil_fame()) {
+        if (require_good_fame_lead && rots::world::dispatch_pkill_get_good_fame() <= rots::world::dispatch_pkill_get_evil_fame()) {
             return 0;
         }
-        if (require_evil_fame_lead && pkill_get_evil_fame() <= pkill_get_good_fame()) {
+        if (require_evil_fame_lead && rots::world::dispatch_pkill_get_evil_fame() <= rots::world::dispatch_pkill_get_good_fame()) {
             return 0;
         }
         if (require_sun_up && (weather_info.sunlight == SUN_DARK || weather_info.sunlight == SUN_SET)) {
             return 0;
         }
-        if (require_players_in_zone && is_empty(zone)) {
+        if (require_players_in_zone && !rots::world::dispatch_is_zone_populated(zone)) {
             return 0;
         }
     }
@@ -261,11 +258,9 @@ void reset_zone(int zone)
     extern struct char_data* character_list;
     int set_exit_state(struct room_data*, int, int);
     void add_follower(struct char_data*, struct char_data*, int mode);
-    void extract_char(struct char_data*);
     void extract_obj(struct obj_data*);
     /* XXX: int used for room virtual number */
     void char_to_room(struct char_data*, int);
-    ACMD(do_wear);
 
     last_cmd = last_mob = last_obj = 0;
     mob = tmpmob = tmpch = NULL;
@@ -467,7 +462,7 @@ void reset_zone(int zone)
                     break;
                 case 10:
                     if (ZCMD.arg2 == 1 && last_mob && mob) {
-                        extract_char(mob);
+                        rots::entity::extract_char(mob);
                         mob = 0;
                         last_mob = 0;
                     } else if (ZCMD.arg2 == 2 && last_obj && obj) {
@@ -595,7 +590,7 @@ void reset_zone(int zone)
                     obj = read_object(ZCMD.arg7, REAL);
                     obj_to_char(obj, mob);
                 }
-                do_wear(mob, mutable_arg("all"), 0, 0, 0);
+                rots::world::dispatch_do_wear(mob);
                 last_cmd = 1;
                 last_obj = 0;
                 break;
@@ -609,7 +604,7 @@ void reset_zone(int zone)
                         last_cmd = 0;
                     } else {
                         obj = read_object(ZCMD.arg1, REAL);
-                        equip_char(mob, obj, ZCMD.arg2);
+                        rots::world::dispatch_equip_char(mob, obj, ZCMD.arg2);
                         last_cmd = 1;
                     }
                 } else
@@ -678,26 +673,4 @@ void put_to_reset_q_pool(struct reset_q_element* oldres)
 {
     oldres->next = reset_q_pool;
     reset_q_pool = oldres;
-}
-
-/*
- * For use in reset_zone; return TRUE if zone 'nr' is free
- * of players.
- *
- * XXX: This is a terrible name.  How would anyone casually
- * reading the code know that "is_empty" has anything to do
- * with a zone and the players in it?
- */
-int is_empty(int zone_nr)
-{
-    struct descriptor_data* i;
-    extern struct room_data world;
-    extern struct descriptor_data* descriptor_list;
-
-    for (i = descriptor_list; i; i = i->next)
-        if (!i->connected)
-            if (world[i->character->in_room].zone == zone_nr)
-                return 0;
-
-    return 1;
 }

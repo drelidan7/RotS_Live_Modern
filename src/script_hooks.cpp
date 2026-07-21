@@ -144,3 +144,32 @@ void dispatch_virt_assignmob(char_data* mob)
 }
 
 } // namespace rots::script
+
+namespace {
+// Backing storage for the registered find_action hook
+// (register_find_action_hook(), act_soci.cpp; Cluster B wave Task 1). Null
+// until that registration runs; the null default is a LOGGED SAFE-SENTINEL
+// -1 (see dispatch_find_action() below) -- see script_hooks.h's
+// find_action_fn comment for why this class, not abort.
+rots::script::find_action_fn g_find_action_hook = nullptr;
+} // namespace
+
+namespace rots::script {
+
+void set_find_action_hook(find_action_fn hook)
+{
+    g_find_action_hook = hook;
+}
+
+int dispatch_find_action(char* arg)
+{
+    if (g_find_action_hook) {
+        return g_find_action_hook(arg);
+    }
+    rots::log::write_stderr(
+        "rots::script: STUB dispatch_find_action() called with no handler registered -- this "
+        "should be unreachable once register_find_action_hook() has run.");
+    return -1;
+}
+
+} // namespace rots::script

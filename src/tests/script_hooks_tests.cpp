@@ -33,6 +33,12 @@
 
 #include <gtest/gtest.h>
 
+// act_soci.cpp has no dedicated header (see script_hooks.h's own
+// find_action_fn comment); forward-declared locally here, mirroring
+// comm.cpp's/gtest_main.cpp's own local declaration of this same
+// registrar.
+void register_find_action_hook();
+
 namespace {
 
 // Swaps script_hooks.h's command-interpreter hook, then restores the REAL
@@ -97,6 +103,24 @@ public:
     ScopedVirtAssignmobHook& operator=(const ScopedVirtAssignmobHook&) = delete;
 };
 
+// Same shape as ScopedVirtAssignmobHook above, for script_hooks.h's
+// find_action accessor hook (Cluster B wave Task 1; cb-task-1-brief.md
+// Step 6; cb-census.md section 5.4 -- the one seam beyond the brief's
+// explicit T1 list). Unlike the abort-tripwire hooks above, this one is
+// SAFE-SENTINEL class, so both halves are testable.
+class ScopedFindActionHook {
+public:
+    explicit ScopedFindActionHook(rots::script::find_action_fn hook)
+    {
+        rots::script::set_find_action_hook(hook);
+    }
+
+    ~ScopedFindActionHook() { register_find_action_hook(); }
+
+    ScopedFindActionHook(const ScopedFindActionHook&) = delete;
+    ScopedFindActionHook& operator=(const ScopedFindActionHook&) = delete;
+};
+
 struct RecordedCommandInterpreterCall {
     char_data* ch = nullptr;
     char* argument_chr = nullptr;
@@ -154,6 +178,19 @@ RecordedVirtAssignmobCall g_recorded_virt_assignmob_call;
 void recording_virt_assignmob_stub(char_data* mob)
 {
     g_recorded_virt_assignmob_call = RecordedVirtAssignmobCall { mob, true };
+}
+
+struct RecordedFindActionCall {
+    char* arg = nullptr;
+    bool called = false;
+};
+
+RecordedFindActionCall g_recorded_find_action_call;
+
+int recording_find_action_stub(char* arg)
+{
+    g_recorded_find_action_call = RecordedFindActionCall { arg, true };
+    return 5;
 }
 
 } // namespace
@@ -253,4 +290,38 @@ TEST(VirtAssignmobHook, DispatchReachesARegisteredStubWithArgIntact)
     EXPECT_TRUE(g_recorded_virt_assignmob_call.called)
         << "Expected the registered stub to have been reached.";
     EXPECT_EQ(g_recorded_virt_assignmob_call.mob, &mob);
+}
+
+// dispatch_find_action() (Cluster B wave Task 1; cb-task-1-brief.md
+// Step 6; cb-census.md section 5.4) -- DISCRIMINATOR: a recording stub
+// proves the dispatch wrapper forwards `arg` intact and returns the stub's
+// own value; the unregistered default is a SAFE SENTINEL (-1,
+// find_action()'s own "not found" return value), so BOTH halves are
+// testable, unlike this file's abort-tripwire cells above.
+
+TEST(FindActionHook, DispatchReachesARegisteredStubWithArgIntactAndForwardsReturnValue)
+{
+    g_recorded_find_action_call = RecordedFindActionCall {};
+    ScopedFindActionHook scoped(recording_find_action_stub);
+    char argument_text[] = "smile";
+
+    const int result = rots::script::dispatch_find_action(argument_text);
+
+    EXPECT_TRUE(g_recorded_find_action_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_find_action_call.arg, argument_text);
+    EXPECT_EQ(result, 5) << "Expected dispatch_find_action() to forward the stub's own return value.";
+}
+
+TEST(FindActionHook, DispatchDefaultsToSafeSentinelNegativeOneWhenUnregistered)
+{
+    ScopedFindActionHook unregistered(nullptr);
+    char argument_text[] = "smile";
+
+    const int result = rots::script::dispatch_find_action(argument_text);
+
+    EXPECT_EQ(result, -1)
+        << "Expected an unregistered find_action hook to default to -1 -- find_action()'s own "
+           "\"not found\" sentinel -- matching script.cpp's one call site's existing != -1 "
+           "validity guard exactly.";
 }

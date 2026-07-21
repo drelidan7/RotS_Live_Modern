@@ -766,6 +766,15 @@ void run_the_game(sh_int port)
     // declaration above.
     void register_string_editor_init_hook();
     register_string_editor_init_hook();
+    // script_hooks.h's find_action accessor hook (Cluster B wave Task 1;
+    // cb-task-1-brief.md Step 6; cb-census.md section 5.4), registered the
+    // same way and for the same reason: before boot_db(), so ageland never
+    // runs script.cpp's future rots::script::dispatch_find_action() call
+    // site (consumer-free this task -- converted for real in a later
+    // Cluster B task) with an unregistered hook. act_soci.cpp has no
+    // dedicated header, so its registrar is forward-declared locally here.
+    void register_find_action_hook();
+    register_find_action_hook();
 
     log("Signal trapping.");
     signal_setup();

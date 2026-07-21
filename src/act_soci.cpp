@@ -19,6 +19,7 @@
 #include "handler.h"
 #include "interpre.h"
 #include "rots_rng.h"
+#include "script_hooks.h"
 #include "spells.h"
 #include "rots/core/character.h"
 #include "rots/core/types.h"
@@ -212,6 +213,16 @@ int find_action(char* arg)
             bot = ++mid;
     }
     return -1;
+}
+
+// Registers the real find_action(arg) body above as script_hooks.h's
+// matching hook (Cluster B wave Task 1; cb-task-1-brief.md Step 6;
+// cb-census.md section 5.4). Called once from run_the_game()/
+// gtest_main.cpp's main(), before boot_db() -- same convention as this
+// tree's other *_hooks.h registrars.
+void register_find_action_hook()
+{
+    rots::script::set_find_action_hook(find_action);
 }
 
 char action_arg[MAX_INPUT_LENGTH];

@@ -108,4 +108,28 @@ using virt_assignmob_fn = void (*)(char_data* mob);
 void set_virt_assignmob_hook(virt_assignmob_fn hook);
 void dispatch_virt_assignmob(char_data* mob);
 
+// find_action() (act_soci.cpp:190; Cluster B wave Task 1; cb-task-1-brief.md
+// Step 6; cb-census.md section 5.4 -- the one seam beyond the brief's
+// explicit T1 list, within the brief's own anticipated "session-coupled
+// body -> hook" fallback, not a new taxonomy). script.cpp:1207's one call
+// site (`if ((tmpint = find_action(curr->text)) != -1) { ... }`) uses the
+// result only as a validity guard before do_action() (which re-derives the
+// social index itself). find_action()'s own body is a pure binary search
+// over act_soci.cpp's app-tier social table (soc_mess_list/
+// social_list_top) -- the table can't relocate (drags the whole social
+// system), so this inverts only the CALL, the same "hook, not relocate"
+// shape as this wave's pkill-fame/equip_char overturns (world_hooks.h).
+// act_soci.cpp registers the real body via register_find_action_hook(),
+// called once from run_the_game()/gtest_main.cpp's main(), before
+// boot_db(). SAFE-SENTINEL default: -1, find_action()'s own "not found"
+// return value -- with script.cpp's one call site comparing strictly
+// against -1, an unregistered hook degrades to "no valid social found,
+// skip the do_action() call", the identical behavior a real empty social
+// table produces. Same class as world_hooks.h's pkill_fame_query_fn pair,
+// not command_interpreter_fn's loud-tripwire class or pers_fn's abort
+// class -- both halves are safely testable.
+using find_action_fn = int (*)(char* arg);
+void set_find_action_hook(find_action_fn hook);
+int dispatch_find_action(char* arg);
+
 } // namespace rots::script

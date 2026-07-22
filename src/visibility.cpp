@@ -46,7 +46,12 @@
 // CAN_GO()/can_breathe()'s precedent in environment_utils.cpp). See
 // task-4-report.md for the exact before/after quote.
 
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+
 #include "char_utils.h"
+#include "color.h" /* For color_value_data/color_slot_data, get_color_sequence()'s move-in dependency */
 #include "comm.h"
 #include "db.h" /* For struct index_data (mob_index[]), get_guardian_type()'s move-in dependency */
 #include "entity_hooks.h" /* For dispatch_get_txt_block_from_pool(), target_from_word()'s pool dependency */
@@ -1166,4 +1171,158 @@ char* target_from_word(struct char_data* ch, char* argument, int mask, struct ta
 
     /* wrong target */
     return 0;
+}
+
+// ---------------------------------------------------------------------------
+// color_sequence[]/get_color_sequence() (+ their four file-local helpers)
+// relocated verbatim from color.cpp (spell-family closure wave Task 1;
+// sf-census.md section 4.1). spell_pa.cpp's do_sense_magic()-adjacent call
+// sites read color_sequence[]/call get_color_sequence() directly today via
+// color.h's CC_USE/CC_NORM/CC_FIX macros; once spell_pa.cpp promotes those
+// macro expansions become upward reads of color.cpp's (app-tier) storage,
+// which this move resolves. LIBRARY-READER SCAN (spell-family closure wave
+// Task 1, controller amendment item 3): grepped every current CC_USE/
+// CC_NORM/CC_FIX call site (color.h:65-70) across the tree -- all eight
+// (act_comm.cpp/act_info.cpp/act_wiz.cpp/color.cpp/comm.cpp/interpre.cpp/
+// spell_pa.cpp/utility.cpp) are still ROTS_SERVER_SOURCES (app-tier); ZERO
+// are members of any library (rots_core or otherwise). The amendment's
+// "storage/accessor home is rots_core, NOT rots_combat" branch therefore
+// does not fire; rots_combat (this file) is a legal destination. The four
+// helpers below keep their original internal (anonymous-namespace)
+// linkage -- get_color_sequence() is their only caller, same as in
+// color.cpp.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+    constexpr size_t kColorRenderBufferCount = 8;
+    constexpr size_t kColorRenderBufferSize = 96;
+
+    const char* ansi_background_sequence(int color_index)
+    {
+        static const std::string_view background_sequences[] = {
+            "\x1B[49m",
+            "\x1B[41m",
+            "\x1B[42m",
+            "\x1B[43m",
+            "\x1B[44m",
+            "\x1B[45m",
+            "\x1B[46m",
+            "\x1B[47m",
+            "\x1B[01m\x1B[41m",
+            "\x1B[01m\x1B[42m",
+            "\x1B[01m\x1B[43m",
+            "\x1B[01m\x1B[44m",
+            "\x1B[01m\x1B[45m",
+            "\x1B[01m\x1B[46m",
+            "\x1B[01m\x1B[47m",
+        };
+
+        if (color_index < 0 || color_index >= 15)
+            return "\x1B[49m";
+        return background_sequences[color_index].data();
+    }
+
+    void append_escape(char* buffer, size_t buffer_size, size_t* length,
+        std::string_view escape_sequence)
+    {
+        if (buffer == nullptr || buffer_size == 0 || length == nullptr)
+            return;
+
+        const size_t remaining = (*length < buffer_size) ? (buffer_size - *length) : 0;
+        if (remaining == 0)
+            return;
+
+        const size_t copied_length = std::min(escape_sequence.size(), remaining - 1);
+        std::memcpy(buffer + *length, escape_sequence.data(), copied_length);
+        *length += copied_length;
+        buffer[*length] = '\0';
+    }
+
+    void append_truecolor_escape(char* buffer, size_t buffer_size, size_t* length, bool foreground, const color_value_data& value)
+    {
+        if (buffer == nullptr || buffer_size == 0 || length == nullptr)
+            return;
+
+        const size_t remaining = (*length < buffer_size) ? (buffer_size - *length) : 0;
+        if (remaining == 0)
+            return;
+
+        const int written = snprintf(buffer + *length, remaining, "\x1B[%d;2;%u;%u;%um",
+            foreground ? 38 : 48,
+            static_cast<unsigned int>(value.red),
+            static_cast<unsigned int>(value.green),
+            static_cast<unsigned int>(value.blue));
+        if (written <= 0)
+            return;
+
+        *length += static_cast<size_t>(written);
+        if (*length >= buffer_size)
+            *length = buffer_size - 1;
+    }
+
+    bool has_non_default_background(const color_slot_data& slot)
+    {
+        return slot.background.mode != COLOR_VALUE_DEFAULT;
+    }
+
+} // namespace
+
+const std::string_view color_sequence[] = {
+    "\x1B[0m",
+    "\x1B[31m",
+    "\x1B[32m",
+    "\x1B[33m",
+    "\x1B[34m",
+    "\x1B[35m",
+    "\x1B[36m",
+    "\x1B[37m",
+    "\x1B[01m\x1B[31m",
+    "\x1B[01m\x1B[32m",
+    "\x1B[01m\x1B[33m",
+    "\x1B[01m\x1B[34m",
+    "\x1B[01m\x1B[35m",
+    "\x1B[01m\x1B[36m",
+    "\x1B[01m\x1B[37m",
+    ""
+};
+
+const char* get_color_sequence(struct char_data* ch, int col)
+{
+    static char render_buffers[kColorRenderBufferCount][kColorRenderBufferSize];
+    static size_t next_render_buffer = 0;
+
+    if (!ch || !ch->profs || col < 0 || col >= MAX_COLOR_FIELDS)
+        return "";
+
+    const color_slot_data& slot = ch->profs->color_settings[col];
+    const color_value_data& foreground = slot.foreground;
+    const color_value_data& background = slot.background;
+
+    const bool use_foreground = foreground.mode != COLOR_VALUE_DEFAULT || ch->profs->colors[col] != CNRM;
+    const bool use_background = has_non_default_background(slot);
+    if (!use_foreground && !use_background)
+        return "";
+
+    char* buffer = render_buffers[next_render_buffer];
+    next_render_buffer = (next_render_buffer + 1) % kColorRenderBufferCount;
+    buffer[0] = '\0';
+    size_t length = 0;
+
+    if (foreground.mode == COLOR_VALUE_TRUECOLOR) {
+        append_truecolor_escape(buffer, kColorRenderBufferSize, &length, true, foreground);
+    } else {
+        const int ansi_index = (foreground.mode == COLOR_VALUE_ANSI16)
+            ? static_cast<int>(foreground.ansi)
+            : static_cast<int>(ch->profs->colors[col]);
+        if (ansi_index != CNRM)
+            append_escape(buffer, kColorRenderBufferSize, &length, color_sequence[ansi_index]);
+    }
+
+    if (background.mode == COLOR_VALUE_TRUECOLOR)
+        append_truecolor_escape(buffer, kColorRenderBufferSize, &length, false, background);
+    else if (background.mode == COLOR_VALUE_ANSI16)
+        append_escape(buffer, kColorRenderBufferSize, &length, ansi_background_sequence(background.ansi));
+
+    return buffer;
 }

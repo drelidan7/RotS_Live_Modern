@@ -23,76 +23,19 @@
 
 namespace {
 
-    constexpr size_t kColorRenderBufferCount = 8;
-    constexpr size_t kColorRenderBufferSize = 96;
-
-    const char* ansi_background_sequence(int color_index)
-    {
-        static const std::string_view background_sequences[] = {
-            "\x1B[49m",
-            "\x1B[41m",
-            "\x1B[42m",
-            "\x1B[43m",
-            "\x1B[44m",
-            "\x1B[45m",
-            "\x1B[46m",
-            "\x1B[47m",
-            "\x1B[01m\x1B[41m",
-            "\x1B[01m\x1B[42m",
-            "\x1B[01m\x1B[43m",
-            "\x1B[01m\x1B[44m",
-            "\x1B[01m\x1B[45m",
-            "\x1B[01m\x1B[46m",
-            "\x1B[01m\x1B[47m",
-        };
-
-        if (color_index < 0 || color_index >= 15)
-            return "\x1B[49m";
-        return background_sequences[color_index].data();
-    }
-
-    void append_escape(char* buffer, size_t buffer_size, size_t* length,
-        std::string_view escape_sequence)
-    {
-        if (buffer == nullptr || buffer_size == 0 || length == nullptr)
-            return;
-
-        const size_t remaining = (*length < buffer_size) ? (buffer_size - *length) : 0;
-        if (remaining == 0)
-            return;
-
-        const size_t copied_length = std::min(escape_sequence.size(), remaining - 1);
-        std::memcpy(buffer + *length, escape_sequence.data(), copied_length);
-        *length += copied_length;
-        buffer[*length] = '\0';
-    }
-
-    void append_truecolor_escape(char* buffer, size_t buffer_size, size_t* length, bool foreground, const color_value_data& value)
-    {
-        if (buffer == nullptr || buffer_size == 0 || length == nullptr)
-            return;
-
-        const size_t remaining = (*length < buffer_size) ? (buffer_size - *length) : 0;
-        if (remaining == 0)
-            return;
-
-        const int written = snprintf(buffer + *length, remaining, "\x1B[%d;2;%u;%u;%um",
-            foreground ? 38 : 48,
-            static_cast<unsigned int>(value.red),
-            static_cast<unsigned int>(value.green),
-            static_cast<unsigned int>(value.blue));
-        if (written <= 0)
-            return;
-
-        *length += static_cast<size_t>(written);
-        if (*length >= buffer_size)
-            *length = buffer_size - 1;
-    }
-
-    bool has_non_default_background(const color_slot_data& slot)
-    {
-        return slot.background.mode != COLOR_VALUE_DEFAULT;
-    }
+// kColorRenderBufferCount/kColorRenderBufferSize/ansi_background_sequence()/
+// append_escape()/append_truecolor_escape()/has_non_default_background()
+// relocated verbatim to visibility.cpp (spell-family closure wave Task 1;
+// sf-census.md section 4.1), alongside color_sequence[]/get_color_sequence()
+// below -- their sole caller. Library-reader scan (CC_USE/CC_NORM/CC_FIX,
+// color.h:65-70) found ZERO existing library readers of these macros (every
+// current expansion site -- act_comm.cpp/act_info.cpp/act_wiz.cpp/color.cpp/
+// comm.cpp/interpre.cpp/spell_pa.cpp/utility.cpp -- is still app-tier), so
+// the controller's rots_core-floor amendment does not fire; rots_combat is
+// this move's legal destination. This file's remaining helpers
+// (parse_integer_token()/parse_rgb_triplet()/parse_hex_triplet()/
+// describe_color_value()/etc. below) are unrelated to get_color_sequence()
+// and stay here.
 
     bool parse_integer_token(std::string_view token, int* value)
     {
@@ -281,24 +224,12 @@ static void show_color_slot_summary(struct char_data* ch, int slot)
     send_to_char(buf, ch);
 }
 
-const std::string_view color_sequence[] = {
-    "\x1B[0m",
-    "\x1B[31m",
-    "\x1B[32m",
-    "\x1B[33m",
-    "\x1B[34m",
-    "\x1B[35m",
-    "\x1B[36m",
-    "\x1B[37m",
-    "\x1B[01m\x1B[31m",
-    "\x1B[01m\x1B[32m",
-    "\x1B[01m\x1B[33m",
-    "\x1B[01m\x1B[34m",
-    "\x1B[01m\x1B[35m",
-    "\x1B[01m\x1B[36m",
-    "\x1B[01m\x1B[37m",
-    ""
-};
+// color_sequence[] relocated verbatim to visibility.cpp (spell-family
+// closure wave Task 1; sf-census.md section 4.1), alongside its sole
+// reader get_color_sequence() below. Declared in color.h (unchanged);
+// CC_NORM/CC_FIX (color.h) still expand to a direct color_sequence[...]
+// read at every existing (still app-tier) call site, now resolving
+// downward into rots_combat instead of a same-TU definition.
 
 int find_color_field(std::string_view field_name)
 {
@@ -387,45 +318,13 @@ void clear_color_background(struct char_data* ch, int col)
     ch->profs->color_settings[col].background = color_value_data {};
 }
 
-const char* get_color_sequence(struct char_data* ch, int col)
-{
-    static char render_buffers[kColorRenderBufferCount][kColorRenderBufferSize];
-    static size_t next_render_buffer = 0;
-
-    if (!ch || !ch->profs || col < 0 || col >= MAX_COLOR_FIELDS)
-        return "";
-
-    const color_slot_data& slot = ch->profs->color_settings[col];
-    const color_value_data& foreground = slot.foreground;
-    const color_value_data& background = slot.background;
-
-    const bool use_foreground = foreground.mode != COLOR_VALUE_DEFAULT || ch->profs->colors[col] != CNRM;
-    const bool use_background = has_non_default_background(slot);
-    if (!use_foreground && !use_background)
-        return "";
-
-    char* buffer = render_buffers[next_render_buffer];
-    next_render_buffer = (next_render_buffer + 1) % kColorRenderBufferCount;
-    buffer[0] = '\0';
-    size_t length = 0;
-
-    if (foreground.mode == COLOR_VALUE_TRUECOLOR) {
-        append_truecolor_escape(buffer, kColorRenderBufferSize, &length, true, foreground);
-    } else {
-        const int ansi_index = (foreground.mode == COLOR_VALUE_ANSI16)
-            ? static_cast<int>(foreground.ansi)
-            : static_cast<int>(ch->profs->colors[col]);
-        if (ansi_index != CNRM)
-            append_escape(buffer, kColorRenderBufferSize, &length, color_sequence[ansi_index]);
-    }
-
-    if (background.mode == COLOR_VALUE_TRUECOLOR)
-        append_truecolor_escape(buffer, kColorRenderBufferSize, &length, false, background);
-    else if (background.mode == COLOR_VALUE_ANSI16)
-        append_escape(buffer, kColorRenderBufferSize, &length, ansi_background_sequence(background.ansi));
-
-    return buffer;
-}
+// get_color_sequence() relocated verbatim to visibility.cpp (spell-family
+// closure wave Task 1; sf-census.md section 4.1: presentation over
+// char_data's color_settings/profs fields, self-contained aside from the
+// helpers/array relocated alongside it). Declared in color.h (unchanged);
+// CC_USE (color.h) still expands to a direct get_color_sequence(ch, col)
+// call at every existing (still app-tier) call site, now resolving
+// downward into rots_combat instead of a same-TU call.
 
 /*
  * Give 'ch' the set of RotS default colors.

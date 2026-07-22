@@ -208,6 +208,13 @@ namespace {
 rots::combat::mobile_activity_fn g_one_mobile_activity_hook = nullptr;
 rots::combat::crash_idlesave_fn g_crash_idlesave_hook = nullptr;
 rots::combat::crash_extract_objs_fn g_crash_extract_objs_hook = nullptr;
+
+// Backing storage for the act_move.cpp/act_info.cpp display-and-movement
+// inversion trio (spell-family closure wave Task 1). Null until each
+// owner's registrar runs.
+rots::combat::check_simple_move_fn g_check_simple_move_hook = nullptr;
+rots::combat::list_char_to_char_fn g_list_char_to_char_hook = nullptr;
+rots::combat::do_identify_object_fn g_do_identify_object_hook = nullptr;
 } // namespace
 
 namespace rots::combat {
@@ -258,6 +265,58 @@ void crash_extract_objs(obj_data* obj)
     rots::log::write_stderr(
         "rots::combat: STUB crash_extract_objs() called with no handler registered -- this "
         "should be unreachable once register_crash_extract_objs_hook() has run.");
+}
+
+// act_move.cpp/act_info.cpp display-and-movement inversion trio dispatch
+// (spell-family closure wave Task 1) -- see combat_hooks.h's own comments
+// above for each hook's tripwire-default rationale.
+void set_check_simple_move_hook(check_simple_move_fn hook)
+{
+    g_check_simple_move_hook = hook;
+}
+
+int check_simple_move(char_data* ch, int cmd, int* mv_cost, int mode)
+{
+    if (g_check_simple_move_hook) {
+        return g_check_simple_move_hook(ch, cmd, mv_cost, mode);
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB check_simple_move() called with no handler registered -- defaulting "
+        "to 1 (\"intercepted, move blocked\") to avoid a falsely-permissive move; this should be "
+        "unreachable once register_check_simple_move_hook() has run.");
+    return 1;
+}
+
+void set_list_char_to_char_hook(list_char_to_char_fn hook)
+{
+    g_list_char_to_char_hook = hook;
+}
+
+void list_char_to_char(char_data* list, char_data* ch, int mode)
+{
+    if (g_list_char_to_char_hook) {
+        g_list_char_to_char_hook(list, ch, mode);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB list_char_to_char() called with no handler registered -- this "
+        "should be unreachable once register_list_char_to_char_hook() has run.");
+}
+
+void set_do_identify_object_hook(do_identify_object_fn hook)
+{
+    g_do_identify_object_hook = hook;
+}
+
+void do_identify_object(char_data* ch, obj_data* j)
+{
+    if (g_do_identify_object_hook) {
+        g_do_identify_object_hook(ch, j);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::combat: STUB do_identify_object() called with no handler registered -- this "
+        "should be unreachable once register_do_identify_object_hook() has run.");
 }
 
 } // namespace rots::combat

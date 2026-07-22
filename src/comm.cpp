@@ -736,6 +736,15 @@ void run_the_game(sh_int port)
     // game_rules::big_brother::instance().on_character_returned() call
     // (consumer-free this task) with an unregistered hook.
     register_character_returned_hook();
+    // combat_hooks.h's display-and-movement inversion trio (spell-family
+    // closure wave Task 1), registered the same way and for the same
+    // reason: before boot_db(), so ageland never runs ranger.cpp's/
+    // mage.cpp's upward check_simple_move()/list_char_to_char()/
+    // do_identify_object() call sites (consumer-free this task) with an
+    // unregistered hook.
+    register_check_simple_move_hook();
+    register_list_char_to_char_hook();
+    register_do_identify_object_hook();
     // combat_hooks.h's one_mobile_activity hook + Crash_idlesave/
     // Crash_extract_objs sibling pair (behavior wave Task 1), registered
     // the same way and for the same reason: before boot_db(), so ageland

@@ -22,6 +22,7 @@
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
+#include "combat_hooks.h"
 #include "limits.h"
 #include "pkill.h"
 #include "platform_compat.h"
@@ -1054,6 +1055,15 @@ void list_char_to_char(struct char_data* list, struct char_data* ch, int mode)
                     show_char_to_char(i, ch, 0);
             }
         }
+}
+
+// Registers the real list_char_to_char() body above as combat_hooks.h's
+// list_char_to_char hook (spell-family closure wave Task 1; sf-census.md
+// section 4.2). Called once from run_the_game(), before boot_db() -- same
+// convention as register_check_simple_move_hook() (act_move.cpp).
+void register_list_char_to_char_hook()
+{
+    rots::combat::set_list_char_to_char_hook(list_char_to_char);
 }
 
 /*
@@ -5067,6 +5077,17 @@ void do_identify_object(struct char_data* ch, struct obj_data* j)
         send_to_char("", ch);
 
     send_to_char("\r\n", ch);
+}
+
+// Registers the real do_identify_object() body above as combat_hooks.h's
+// do_identify_object hook (spell-family closure wave Task 1; sf-census.md
+// section 4.1, OVERTURNING the census's own literal RELOCATE label -- see
+// combat_hooks.h's own comment on this hook for the body-read evidence).
+// Called once from run_the_game(), before boot_db() -- same convention as
+// register_list_char_to_char_hook() above.
+void register_do_identify_object_hook()
+{
+    rots::combat::set_do_identify_object_hook(do_identify_object);
 }
 
 void do_details(char_data* character, char* argument, waiting_type* wait_list, int, int)

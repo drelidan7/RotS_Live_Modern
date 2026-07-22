@@ -98,6 +98,17 @@ void command_interpreter(struct char_data* ch, char* arg_chr, struct waiting_typ
 // convention as register_extract_char_hook() (handler.h).
 void register_command_interpreter_hook();
 
+// Registers act_move.cpp's/act_info.cpp's real check_simple_move()/
+// list_char_to_char()/do_identify_object() bodies as combat_hooks.h's
+// display-and-movement inversion trio (spell-family closure wave Task 1;
+// sf-census.md sections 4.2/4.3). Defined in act_move.cpp (the first)/
+// act_info.cpp (the latter two). Called once from run_the_game(), before
+// boot_db() -- same convention as register_command_interpreter_hook()
+// above.
+void register_check_simple_move_hook();
+void register_list_char_to_char_hook();
+void register_do_identify_object_hook();
+
 int search_block(char* arg, const std::string_view* list, char exact);
 int old_search_block(char* argument, int begin, unsigned int length,
     const std::string_view* list, int mode);

@@ -424,4 +424,68 @@ using crash_extract_objs_fn = void (*)(obj_data* obj);
 void set_crash_extract_objs_hook(crash_extract_objs_fn hook);
 void crash_extract_objs(obj_data* obj);
 
+// act_move.cpp/act_info.cpp display-and-movement inversion trio
+// (spell-family closure wave Task 1; sf-census.md sections 4.2/4.3, the
+// "hook-leaning" body-read findings): each real body stays in its owner
+// app-tier TU, UNCHANGED and still reachable by its own existing bare
+// global name (act_offe.cpp's/ranger.cpp's check_simple_move() calls,
+// act_info.cpp's own list_char_to_char() calls, mystic.cpp's dead
+// declaration) -- this mirrors entity_hooks.h's extract_char()/
+// char_from_room() shape (same base name, namespaced hook alongside an
+// untouched global real body), NOT combat_hooks.h's app-other-trio shape
+// above (whose hooks have zero pre-existing bare-name app callers to
+// preserve, so THEIR real bodies could safely rename/take over the plain
+// symbol the way close_socket_impl/msdp_room_update_impl do).
+//
+// check_simple_move() (act_move.cpp:136) -- ranger.cpp's future upward
+// check_simple_move(ch, attempt, &move_cost, SCMD_FLEE) call
+// (ranger.cpp:3603, consumer-free this task) is the edge this hook
+// inverts. Body-read (sf-census.md section 4.3) confirmed a clean ≤L3
+// floor (room_move_cost()/get_room_move_penalty() stay act_move.cpp-local;
+// can_swim()/has_critical_stat_damage() are already rots_entity/L2;
+// do_power_of_arda() is already rots_combat/L3), but its OWN body calls
+// the still-app-tier plain special()/call_trigger() global functions
+// directly -- converting THOSE two call sites is exactly the kind of
+// call-site surgery a HOOK avoids needing at all, so HOOK (not relocate)
+// is this task's disposition. int return: callers switch on 0-9 status
+// codes, so the safe unregistered default is a LOGGED tripwire returning 1
+// ("intercepted by specials, or something like that") -- every caller's
+// switch already treats 1 as "silently block this move," not a crash or a
+// falsely-permissive "move succeeded."
+using check_simple_move_fn = int (*)(char_data* ch, int cmd, int* mv_cost, int mode);
+void set_check_simple_move_hook(check_simple_move_fn hook);
+int check_simple_move(char_data* ch, int cmd, int* mv_cost, int mode);
+
+// list_char_to_char() (act_info.cpp:1037) -- mage.cpp's future upward
+// list_char_to_char(world[caster->in_room].people, caster, 0) call sites
+// (mage.cpp:631/:1999, consumer-free this task) are the edge this hook
+// inverts. Body-read (sf-census.md section 4.2) found it calls sibling
+// app-tier act_info.cpp display helpers (show_char_to_char/
+// show_mount_to_char/show_room_affection) -- relocating would drag that
+// whole display cluster, so HOOK (real body stays act_info.cpp) is this
+// task's disposition. Void return: LOGGED tripwire no-op (a missed room
+// listing, not a crash).
+using list_char_to_char_fn = void (*)(char_data* list, char_data* ch, int mode);
+void set_list_char_to_char_hook(list_char_to_char_fn hook);
+void list_char_to_char(char_data* list, char_data* ch, int mode);
+
+// do_identify_object() (act_info.cpp:4981) -- mage.cpp's future upward
+// do_identify_object(caster, obj) call (mage.cpp:857, consumer-free this
+// task) is the edge this hook inverts. sf-census.md's own body-read
+// disposition undercounted this one's drag (it lists only send_to_char/
+// std::format/sprintbit/nz as deps and calls it RELOCATE-clean); a fuller
+// body-read for this task found it ALSO calls four sibling app-tier
+// act_info.cpp display helpers (do_light_display/do_food_display/
+// do_weapon_display/do_flag_values_display) plus three file-local const
+// arrays (wear_messages/material_messages/item_messages, act_info.cpp:
+// 4535/4557/4577, internal linkage, read only by this function) --
+// the identical "relocating drags the whole display cluster" shape
+// list_char_to_char above already has. This is an OVERTURN of the
+// census's literal RELOCATE label to the same HOOK disposition it already
+// gave list_char_to_char, not a new taxonomy (see sf-task-1-report.md for
+// the full body-read evidence). Void return: LOGGED tripwire no-op.
+using do_identify_object_fn = void (*)(char_data* ch, obj_data* j);
+void set_do_identify_object_hook(do_identify_object_fn hook);
+void do_identify_object(char_data* ch, obj_data* j);
+
 } // namespace rots::combat

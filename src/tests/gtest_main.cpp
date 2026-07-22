@@ -291,6 +291,16 @@ int main(int argc, char* argv[]) {
     // call also covers this wave's own seam test
     // (big_brother_hooks_tests.cpp).
     register_character_returned_hook();
+    // combat_hooks.h's display-and-movement inversion trio (spell-family
+    // closure wave Task 1), registered for the same real-body-fidelity
+    // reason as the calls above: act_move.cpp/act_info.cpp are already
+    // linked into both test binaries, so this only needs the registration
+    // calls. Consumer-free this task (ranger.cpp's/mage.cpp's own call
+    // sites don't convert yet); these calls also cover this wave's own
+    // seam tests (combat_hooks_tests.cpp).
+    register_check_simple_move_hook();
+    register_list_char_to_char_hook();
+    register_do_identify_object_hook();
     // combat_hooks.h's one_mobile_activity hook + Crash_idlesave/
     // Crash_extract_objs sibling pair (behavior wave Task 1), registered
     // for the same real-body-fidelity reason as the calls above:

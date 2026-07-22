@@ -1373,6 +1373,202 @@ TEST(CombatHooksCrashExtractObjs, DispatchDefaultsToANoOpWhenUnregistered)
 }
 
 // -----------------------------------------------------------------------
+// act_move.cpp/act_info.cpp display-and-movement inversion trio
+// (spell-family closure wave Task 1; sf-census.md sections 4.2/4.3).
+// CONSUMER-FREE this task -- no ranger.cpp/mage.cpp call site converts
+// yet -- same "recording stub proves forward-then-tripwire" discriminator
+// shape as the pairs above. Unlike those hooks, these three have
+// pre-existing bare-name app-tier callers (act_offe.cpp/ranger.cpp/
+// act_info.cpp itself) whose real bodies stay UNCHANGED -- gtest_main.cpp
+// registers the real forwarders (register_check_simple_move_hook()/
+// register_list_char_to_char_hook()/register_do_identify_object_hook())
+// for the whole test binary, restored on scope exit here exactly like
+// every Scoped*Hook fixture above.
+// -----------------------------------------------------------------------
+
+namespace {
+
+struct RecordedCheckSimpleMoveCall {
+    char_data* ch = nullptr;
+    int cmd = 0;
+    int* mv_cost = nullptr;
+    int mode = 0;
+    bool called = false;
+};
+
+RecordedCheckSimpleMoveCall g_recorded_check_simple_move_call;
+
+int recording_check_simple_move_stub(char_data* ch, int cmd, int* mv_cost, int mode)
+{
+    g_recorded_check_simple_move_call = RecordedCheckSimpleMoveCall { ch, cmd, mv_cost, mode, true };
+    return 0;
+}
+
+class ScopedCheckSimpleMoveHook {
+public:
+    explicit ScopedCheckSimpleMoveHook(rots::combat::check_simple_move_fn hook)
+    {
+        rots::combat::set_check_simple_move_hook(hook);
+    }
+
+    ~ScopedCheckSimpleMoveHook() { register_check_simple_move_hook(); }
+
+    ScopedCheckSimpleMoveHook(const ScopedCheckSimpleMoveHook&) = delete;
+    ScopedCheckSimpleMoveHook& operator=(const ScopedCheckSimpleMoveHook&) = delete;
+};
+
+struct RecordedListCharToCharCall {
+    char_data* list = nullptr;
+    char_data* ch = nullptr;
+    int mode = 0;
+    bool called = false;
+};
+
+RecordedListCharToCharCall g_recorded_list_char_to_char_call;
+
+void recording_list_char_to_char_stub(char_data* list, char_data* ch, int mode)
+{
+    g_recorded_list_char_to_char_call = RecordedListCharToCharCall { list, ch, mode, true };
+}
+
+class ScopedListCharToCharHook {
+public:
+    explicit ScopedListCharToCharHook(rots::combat::list_char_to_char_fn hook)
+    {
+        rots::combat::set_list_char_to_char_hook(hook);
+    }
+
+    ~ScopedListCharToCharHook() { register_list_char_to_char_hook(); }
+
+    ScopedListCharToCharHook(const ScopedListCharToCharHook&) = delete;
+    ScopedListCharToCharHook& operator=(const ScopedListCharToCharHook&) = delete;
+};
+
+struct RecordedDoIdentifyObjectCall {
+    char_data* ch = nullptr;
+    obj_data* j = nullptr;
+    bool called = false;
+};
+
+RecordedDoIdentifyObjectCall g_recorded_do_identify_object_call;
+
+void recording_do_identify_object_stub(char_data* ch, obj_data* j)
+{
+    g_recorded_do_identify_object_call = RecordedDoIdentifyObjectCall { ch, j, true };
+}
+
+class ScopedDoIdentifyObjectHook {
+public:
+    explicit ScopedDoIdentifyObjectHook(rots::combat::do_identify_object_fn hook)
+    {
+        rots::combat::set_do_identify_object_hook(hook);
+    }
+
+    ~ScopedDoIdentifyObjectHook() { register_do_identify_object_hook(); }
+
+    ScopedDoIdentifyObjectHook(const ScopedDoIdentifyObjectHook&) = delete;
+    ScopedDoIdentifyObjectHook& operator=(const ScopedDoIdentifyObjectHook&) = delete;
+};
+
+} // namespace
+
+TEST(CombatHooksCheckSimpleMove, DispatchReachesARegisteredStubWithArgsIntact)
+{
+    g_recorded_check_simple_move_call = RecordedCheckSimpleMoveCall {};
+    ScopedCheckSimpleMoveHook scoped(recording_check_simple_move_stub);
+    char_data character {};
+    int mv_cost = 0;
+
+    const int result = rots::combat::check_simple_move(&character, 2, &mv_cost, 5);
+
+    EXPECT_TRUE(g_recorded_check_simple_move_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_check_simple_move_call.ch, &character);
+    EXPECT_EQ(g_recorded_check_simple_move_call.cmd, 2);
+    EXPECT_EQ(g_recorded_check_simple_move_call.mv_cost, &mv_cost);
+    EXPECT_EQ(g_recorded_check_simple_move_call.mode, 5);
+    EXPECT_EQ(result, 0) << "Expected check_simple_move() to forward the stub's own return value.";
+}
+
+TEST(CombatHooksCheckSimpleMove, DispatchDefaultsToABlockedMoveWhenUnregistered)
+{
+    g_recorded_check_simple_move_call = RecordedCheckSimpleMoveCall {};
+    ScopedCheckSimpleMoveHook unregistered(nullptr);
+    char_data character {};
+    int mv_cost = 0;
+
+    const int result = rots::combat::check_simple_move(&character, 2, &mv_cost, 5);
+
+    EXPECT_FALSE(g_recorded_check_simple_move_call.called)
+        << "Expected an unregistered check_simple_move hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran.";
+    EXPECT_EQ(result, 1)
+        << "Expected an unregistered check_simple_move hook to default to 1 (\"intercepted, move "
+           "blocked\"), not a falsely-permissive 0 (\"move succeeds\").";
+}
+
+TEST(CombatHooksListCharToChar, DispatchReachesARegisteredStubWithArgsIntact)
+{
+    g_recorded_list_char_to_char_call = RecordedListCharToCharCall {};
+    ScopedListCharToCharHook scoped(recording_list_char_to_char_stub);
+    char_data list_head {};
+    char_data viewer {};
+
+    rots::combat::list_char_to_char(&list_head, &viewer, 3);
+
+    EXPECT_TRUE(g_recorded_list_char_to_char_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_list_char_to_char_call.list, &list_head);
+    EXPECT_EQ(g_recorded_list_char_to_char_call.ch, &viewer);
+    EXPECT_EQ(g_recorded_list_char_to_char_call.mode, 3);
+}
+
+TEST(CombatHooksListCharToChar, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_list_char_to_char_call = RecordedListCharToCharCall {};
+    ScopedListCharToCharHook unregistered(nullptr);
+    char_data list_head {};
+    char_data viewer {};
+
+    rots::combat::list_char_to_char(&list_head, &viewer, 3);
+
+    EXPECT_FALSE(g_recorded_list_char_to_char_call.called)
+        << "Expected an unregistered list_char_to_char hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default is "
+           "a logged no-op, not a call to any stub.";
+}
+
+TEST(CombatHooksDoIdentifyObject, DispatchReachesARegisteredStubWithArgsIntact)
+{
+    g_recorded_do_identify_object_call = RecordedDoIdentifyObjectCall {};
+    ScopedDoIdentifyObjectHook scoped(recording_do_identify_object_stub);
+    char_data character {};
+    obj_data object {};
+
+    rots::combat::do_identify_object(&character, &object);
+
+    EXPECT_TRUE(g_recorded_do_identify_object_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_do_identify_object_call.ch, &character);
+    EXPECT_EQ(g_recorded_do_identify_object_call.j, &object);
+}
+
+TEST(CombatHooksDoIdentifyObject, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_do_identify_object_call = RecordedDoIdentifyObjectCall {};
+    ScopedDoIdentifyObjectHook unregistered(nullptr);
+    char_data character {};
+    obj_data object {};
+
+    rots::combat::do_identify_object(&character, &object);
+
+    EXPECT_FALSE(g_recorded_do_identify_object_call.called)
+        << "Expected an unregistered do_identify_object hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default is "
+           "a logged no-op, not a call to any stub.";
+}
+
+// -----------------------------------------------------------------------
 // Cluster B wave Task 1: three new combat_command cells (action/emote/
 // shutdown; cb-task-1-brief.md Step 1; cb-census.md section 5.3).
 // CONSUMER-FREE this task -- script.cpp's/shapemob.cpp's own call sites do

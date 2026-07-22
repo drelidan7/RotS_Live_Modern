@@ -18,6 +18,7 @@
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
+#include "combat_hooks.h"
 #include "protocol.h"
 #include "script.h"
 #include "spells.h"
@@ -276,6 +277,15 @@ int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
                 return 8;
 
     return 0;
+}
+
+// Registers the real check_simple_move() body above as combat_hooks.h's
+// check_simple_move hook (spell-family closure wave Task 1; sf-census.md
+// section 4.3). Called once from run_the_game(), before boot_db() -- same
+// convention as register_command_interpreter_hook() (interpre.h).
+void register_check_simple_move_hook()
+{
+    rots::combat::set_check_simple_move_hook(check_simple_move);
 }
 
 /*=================================================================================

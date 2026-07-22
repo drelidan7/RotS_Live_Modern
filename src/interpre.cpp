@@ -1130,40 +1130,12 @@ void register_command_interpreter_hook()
     rots::script::set_command_interpreter_hook(command_interpreter);
 }
 
-void argument_interpreter(char* argument, char* first_arg, char* second_arg)
-{
-    int look_at, begin;
-
-    begin = 0;
-
-    do {
-        /* Find first non blank */
-        for (; *(argument + begin) == ' '; begin++)
-            ;
-
-        /* Find length of first word */
-        for (look_at = 0; *(argument + begin + look_at) > ' '; look_at++)
-            /* Make all letters lower case, AND copy them to first_arg */
-            *(first_arg + look_at) = LOWER(*(argument + begin + look_at));
-
-        *(first_arg + look_at) = '\0';
-        begin += look_at;
-    } while (fill_word(first_arg));
-
-    do {
-        /* Find first non blank */
-        for (; *(argument + begin) == ' '; begin++)
-            ;
-
-        /* Find length of first word */
-        for (look_at = 0; *(argument + begin + look_at) > ' '; look_at++)
-            /* Make all letters lower case, AND copy them to second_arg */
-            *(second_arg + look_at) = LOWER(*(argument + begin + look_at));
-
-        *(second_arg + look_at) = '\0';
-        begin += look_at;
-    } while (fill_word(second_arg));
-}
+// argument_interpreter() relocated verbatim to rots_util.cpp (spell-family
+// closure wave Task 1; sf-census.md section 4.3: pure string tokenizer,
+// the one_argument()/fill_word() precedent -- LOWER(c) inlined to
+// lower_ascii()). Declaration unchanged (interpre.h:116); every caller
+// keeps resolving through that same header, now to a legal downward
+// L3/L4/app -> L0 call instead of a same-TU reference.
 
 int is_number(char* str)
 {

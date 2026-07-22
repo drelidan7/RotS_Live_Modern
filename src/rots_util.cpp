@@ -961,3 +961,48 @@ void half_chop(char* string, char* arg1, char* arg2)
     for (; (*arg2 = *string); string++, arg2++)
         ;
 }
+// argument_interpreter() relocated verbatim from interpre.cpp (spell-family
+// closure wave Task 1; sf-census.md section 4.3: pure string tokenizer,
+// no function-call dependency of its own beyond fill_word() -- already
+// this file's own peer above, the same one_argument() precedent this
+// file's own comment cites). Two LOWER(c) call sites inline to
+// lower_ascii() (this file's existing helper), the same precedent
+// one_argument()'s own relocation established above. Declaration unchanged
+// in interpre.h (interpre.h:116); every caller keeps resolving through
+// that same header.
+void argument_interpreter(char* argument, char* first_arg, char* second_arg)
+{
+    int look_at, begin;
+
+    begin = 0;
+
+    do {
+        /* Find first non blank */
+        for (; *(argument + begin) == ' '; begin++)
+            ;
+
+        /* Find length of first word */
+        for (look_at = 0; *(argument + begin + look_at) > ' '; look_at++)
+            // LOWER macro inlined as lower_ascii() -- see the anonymous
+            // namespace above.
+            *(first_arg + look_at) = lower_ascii(*(argument + begin + look_at));
+
+        *(first_arg + look_at) = '\0';
+        begin += look_at;
+    } while (fill_word(first_arg));
+
+    do {
+        /* Find first non blank */
+        for (; *(argument + begin) == ' '; begin++)
+            ;
+
+        /* Find length of first word */
+        for (look_at = 0; *(argument + begin + look_at) > ' '; look_at++)
+            // LOWER macro inlined as lower_ascii() -- see the anonymous
+            // namespace above.
+            *(second_arg + look_at) = lower_ascii(*(argument + begin + look_at));
+
+        *(second_arg + look_at) = '\0';
+        begin += look_at;
+    } while (fill_word(second_arg));
+}

@@ -1006,3 +1006,22 @@ void argument_interpreter(char* argument, char* first_arg, char* second_arg)
         begin += look_at;
     } while (fill_word(second_arg));
 }
+
+// is_number() relocated verbatim from interpre.cpp (spec-pair wave
+// Task 1; sp-census.md section 4/section 6 item 4): pure digit-scan,
+// zero deps -- the one_argument()/fill_word()/half_chop() precedent
+// above. Declaration unchanged in interpre.h (interpre.h:128); every
+// caller keeps resolving through that same header.
+int is_number(char* str)
+{
+    int look_at;
+
+    if (*str == '\0')
+        return (0);
+
+    for (look_at = 0; *(str + look_at) != '\0'; look_at++)
+        if ((*(str + look_at) < '0') || (*(str + look_at) > '9'))
+            return 0;
+
+    return 1;
+}

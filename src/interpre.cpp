@@ -1160,19 +1160,12 @@ void register_command_interpreter_hook()
 // keeps resolving through that same header, now to a legal downward
 // L3/L4/app -> L0 call instead of a same-TU reference.
 
-int is_number(char* str)
-{
-    int look_at;
-
-    if (*str == '\0')
-        return (0);
-
-    for (look_at = 0; *(str + look_at) != '\0'; look_at++)
-        if ((*(str + look_at) < '0') || (*(str + look_at) > '9'))
-            return 0;
-
-    return 1;
-}
+// is_number() relocated verbatim to rots_util.cpp (spec-pair wave
+// Task 1; sp-census.md section 4/section 6 item 4: pure digit-scan,
+// zero deps, the one_argument()/fill_word()/half_chop() precedent).
+// Declaration unchanged (interpre.h:128); every caller keeps resolving
+// through that same header, now to a legal downward L4/app -> L0 call
+// instead of a same-TU reference.
 
 int is_abbrev(std::string_view abbreviation, std::string_view word)
 /* determine if a given string is an abbreviation of another string */

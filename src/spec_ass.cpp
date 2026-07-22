@@ -29,8 +29,16 @@ struct obj_data generic_water;
 struct obj_data generic_poison;
 
 void boot_ferries();
-SPECIAL(postmaster);
-SPECIAL(receptionist);
+
+// spec-pair wave Task 3 (sp-task-3-brief.md Step 1; sp-census.md sections
+// 5.1/5.2): SPECIAL(postmaster)/SPECIAL(receptionist)/SPECIAL(gen_board)
+// forward decls RETIRED -- every direct address-of/fn-ptr reference to
+// these three app-tier SPECIAL() bodies (mail.cpp/objsave.cpp/boards.cpp)
+// now goes through rots::script::lookup_registered_special() (T1 seam,
+// script_hooks.h) instead of naming the symbol directly, so none of the
+// three is referenced by name in this file any more (spec_pro.cpp's own
+// do_*/ACMD retirement comment, this wave, is the direct precedent).
+
 SPECIAL(guild);
 SPECIAL(puff);
 SPECIAL(doorgod);
@@ -68,8 +76,6 @@ SPECIAL(ferry_captain);
 SPECIAL(dragon);
 SPECIAL(mob_magic_user_spec);
 
-SPECIAL(gen_board);
-
 SPECIAL(pet_shop);
 SPECIAL(kit_room);
 SPECIAL(room_temple);
@@ -85,10 +91,10 @@ SPECIAL(obj_willpower);
 /* assign special procedures to mobiles */
 void assign_mobiles(void)
 {
-    ASSIGNMOB(1105, receptionist);
+    ASSIGNMOB(1105, rots::script::lookup_registered_special(rots::script::registered_special::receptionist));
     ASSIGNMOB(1109, guild);
-    ASSIGNMOB(1118, postmaster);
-    ASSIGNMOB(1501, receptionist);
+    ASSIGNMOB(1118, rots::script::lookup_registered_special(rots::script::registered_special::postmaster));
+    ASSIGNMOB(1501, rots::script::lookup_registered_special(rots::script::registered_special::receptionist));
     ASSIGNMOB(1503, guild);
     ASSIGNMOB(1509, guild);
     ASSIGNMOB(1510, guild);
@@ -99,35 +105,35 @@ void assign_mobiles(void)
     ASSIGNMOB(4601, guild);
     ASSIGNMOB(4608, guild);
     ASSIGNMOB(4609, guild);
-    ASSIGNMOB(4612, receptionist);
+    ASSIGNMOB(4612, rots::script::lookup_registered_special(rots::script::registered_special::receptionist));
     ASSIGNMOB(5701, guild);
     ASSIGNMOB(6000, guild);
-    ASSIGNMOB(6003, receptionist);
-    ASSIGNMOB(6603, receptionist);
-    ASSIGNMOB(6604, receptionist); // haradrim innkeeper
+    ASSIGNMOB(6003, rots::script::lookup_registered_special(rots::script::registered_special::receptionist));
+    ASSIGNMOB(6603, rots::script::lookup_registered_special(rots::script::registered_special::receptionist));
+    ASSIGNMOB(6604, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // haradrim innkeeper
     ASSIGNMOB(9903, guild);
 
     ASSIGNMOB(10002, guild); // librarian -- languages
     ASSIGNMOB(10003, guild); // mage guild
-    ASSIGNMOB(10005, receptionist);
-    ASSIGNMOB(10013, receptionist);
-    ASSIGNMOB(10017, receptionist);
+    ASSIGNMOB(10005, rots::script::lookup_registered_special(rots::script::registered_special::receptionist));
+    ASSIGNMOB(10013, rots::script::lookup_registered_special(rots::script::registered_special::receptionist));
+    ASSIGNMOB(10017, rots::script::lookup_registered_special(rots::script::registered_special::receptionist));
     ASSIGNMOB(10021, guild); // mystic guild
-    ASSIGNMOB(10025, receptionist);
+    ASSIGNMOB(10025, rots::script::lookup_registered_special(rots::script::registered_special::receptionist));
     ASSIGNMOB(10042, guild); // warrior guild
     ASSIGNMOB(10054, guild); // Aroden -- ranger guild
 
-    ASSIGNMOB(13510, receptionist); // Fiddlers' Inn
+    ASSIGNMOB(13510, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // Fiddlers' Inn
 
     ASSIGNMOB(13600, guild); // Magus
-    ASSIGNMOB(13605, receptionist); // rent magus
+    ASSIGNMOB(13605, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // rent magus
 
     ASSIGNMOB(13703, guild); // mystic gm
     ASSIGNMOB(13704, guild); // warrior gm
     ASSIGNMOB(13705, guild); // ranger gm
-    ASSIGNMOB(13709, receptionist); // innkeeper
+    ASSIGNMOB(13709, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // innkeeper
 
-    ASSIGNMOB(14403, receptionist);
+    ASSIGNMOB(14403, rots::script::lookup_registered_special(rots::script::registered_special::receptionist));
     ASSIGNMOB(14409, guild); // mystic guild
     ASSIGNMOB(14415, guild); // mage guild
     ASSIGNMOB(14422, guild); // ranger guild
@@ -139,8 +145,8 @@ void assign_mobiles(void)
     ASSIGNMOB(3888, guild); // orc prisoner -- enchant/guardian guild
 
     // dale receptionists
-    ASSIGNMOB(15600, receptionist); // New Dale innkeper
-    ASSIGNMOB(16607, receptionist); // New Dale innkeper
+    ASSIGNMOB(15600, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // New Dale innkeper
+    ASSIGNMOB(16607, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // New Dale innkeper
 
     // elven halls guildmasters
     ASSIGNMOB(16899, guild); //  Elven hall ranger
@@ -148,21 +154,21 @@ void assign_mobiles(void)
     ASSIGNMOB(16802, guild); // Elven hall mage
 
     // elven halls receptionist
-    ASSIGNMOB(16896, receptionist); // Elven hall receptionist
+    ASSIGNMOB(16896, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // Elven hall receptionist
 
     // lonely mountain receptionists
-    ASSIGNMOB(3017, receptionist); // LM receptionist 1
-    ASSIGNMOB(3018, receptionist); // LM receptionist 2
-    ASSIGNMOB(3019, receptionist); // LM receptionist 3
-    ASSIGNMOB(3020, receptionist); // LM receptionist 4
+    ASSIGNMOB(3017, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // LM receptionist 1
+    ASSIGNMOB(3018, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // LM receptionist 2
+    ASSIGNMOB(3019, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // LM receptionist 3
+    ASSIGNMOB(3020, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // LM receptionist 4
 
     // New DG innkeepers
-    ASSIGNMOB(27531, receptionist); // Kurn the keeper (all dark races)
-    ASSIGNMOB(27530, receptionist); // Tsarkon the restless (orc and uruks)
-    ASSIGNMOB(27502, receptionist); // Gurm the Slab Warden (trolls)
-    ASSIGNMOB(27602, receptionist); // Strom, the Keeper (uruks)
-    ASSIGNMOB(27716, receptionist); // A Human Bed-Warden (harads)
-    ASSIGNMOB(27725, receptionist); // Gurakhnir (orcs)
+    ASSIGNMOB(27531, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // Kurn the keeper (all dark races)
+    ASSIGNMOB(27530, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // Tsarkon the restless (orc and uruks)
+    ASSIGNMOB(27502, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // Gurm the Slab Warden (trolls)
+    ASSIGNMOB(27602, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // Strom, the Keeper (uruks)
+    ASSIGNMOB(27716, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // A Human Bed-Warden (harads)
+    ASSIGNMOB(27725, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // Gurakhnir (orcs)
 
     // New DG guildmasters
     ASSIGNMOB(27532, guild); // old uruk ranger (orcs and uruks)
@@ -181,7 +187,7 @@ void assign_mobiles(void)
     ASSIGNMOB(28418, guild); // surka, the uruk ranger (uruks?)
 
     // goblin gate receptionist
-    ASSIGNMOB(32531, receptionist);
+    ASSIGNMOB(32531, rots::script::lookup_registered_special(rots::script::registered_special::receptionist));
 
     // goblin gate guildmasters
     ASSIGNMOB(32200, guild); // glass-eyed shaman
@@ -194,11 +200,11 @@ void assign_mobiles(void)
     ASSIGNMOB(10213, guild); // Karvok
     ASSIGNMOB(4647, guild); // Ungorod Swashbuckler
 
-    ASSIGNMOB(28473, receptionist); // temporary innkeeper in uruk mage tower
-    ASSIGNMOB(21343, receptionist); // tawarost receptionist
+    ASSIGNMOB(28473, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // temporary innkeeper in uruk mage tower
+    ASSIGNMOB(21343, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // tawarost receptionist
 
-    ASSIGNMOB(28640, receptionist); // glob, tentmaster
-    ASSIGNMOB(21344, receptionist); /*tawarost*/
+    ASSIGNMOB(28640, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // glob, tentmaster
+    ASSIGNMOB(21344, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); /*tawarost*/
     // ASSIGNMOB(1101, drake_one);
     ASSIGNMOB(2041, guild); // ALT RotS Puke
     ASSIGNMOB(2043, guild); // ALT RotS Uruk
@@ -208,9 +214,9 @@ void assign_mobiles(void)
     ASSIGNMOB(6605, guild);
 
     ASSIGNMOB(2012, dragon);
-    ASSIGNMOB(10312, receptionist); // Beorning Rent
+    ASSIGNMOB(10312, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // Beorning Rent
 
-    ASSIGNMOB(32800, receptionist); // Olog-Hai Rent
+    ASSIGNMOB(32800, rots::script::lookup_registered_special(rots::script::registered_special::receptionist)); // Olog-Hai Rent
 }
 
 /* assign special procedures to objects */
@@ -218,30 +224,30 @@ void assign_objects(void)
 {
     boot_ferries();
 
-    ASSIGNOBJ(1104, gen_board); /* social board */
-    ASSIGNOBJ(1105, gen_board); /* freeze board */
-    ASSIGNOBJ(1106, gen_board); /* immortal board */
-    ASSIGNOBJ(1107, gen_board); /* mortal board */
-    ASSIGNOBJ(1108, gen_board); /* mortal board */
-    ASSIGNOBJ(1109, gen_board); /* mortal board */
-    ASSIGNOBJ(1110, gen_board); /* mortal board */
-    ASSIGNOBJ(1111, gen_board); /* mortal board */
-    ASSIGNOBJ(1112, gen_board); /* mortal board */
-    ASSIGNOBJ(1113, gen_board); /* mortal board */
-    ASSIGNOBJ(1114, gen_board); /* mortal board */
-    ASSIGNOBJ(1116, gen_board); /* mortal board */
-    ASSIGNOBJ(1117, gen_board); /* mortal board */
-    ASSIGNOBJ(1118, gen_board); /* mortal board */
-    ASSIGNOBJ(1119, gen_board); /* mortal board */
-    ASSIGNOBJ(1127, gen_board); /* mortal board */
-    ASSIGNOBJ(1128, gen_board); /* mortal board */
-    ASSIGNOBJ(1129, gen_board); /* immortal board */
-    ASSIGNOBJ(1130, gen_board); /* mortal board */
-    ASSIGNOBJ(1131, gen_board); /* immortal board */
-    ASSIGNOBJ(1132, gen_board); /* mortal board */
-    ASSIGNOBJ(1133, gen_board); /* mortal board */
-    ASSIGNOBJ(1134, gen_board); /* immortal board */
-    ASSIGNOBJ(1135, gen_board); /* immortal board */
+    ASSIGNOBJ(1104, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* social board */
+    ASSIGNOBJ(1105, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* freeze board */
+    ASSIGNOBJ(1106, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* immortal board */
+    ASSIGNOBJ(1107, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1108, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1109, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1110, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1111, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1112, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1113, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1114, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1116, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1117, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1118, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1119, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1127, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1128, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1129, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* immortal board */
+    ASSIGNOBJ(1130, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1131, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* immortal board */
+    ASSIGNOBJ(1132, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1133, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* mortal board */
+    ASSIGNOBJ(1134, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* immortal board */
+    ASSIGNOBJ(1135, rots::script::lookup_registered_special(rots::script::registered_special::gen_board)); /* immortal board */
     ASSIGNOBJ(1121, ferry_boat);
 
     generic_water.obj_flags.type_flag = ITEM_FOUNTAIN;
@@ -375,7 +381,7 @@ void* virt_program_number(int number)
     case 28:
         return (void*)herald;
     case 29:
-        return (void*)postmaster;
+        return (void*)rots::script::lookup_registered_special(rots::script::registered_special::postmaster);
     case 30:
         return (void*)dragon;
     case 31:
@@ -471,7 +477,7 @@ special_func_ptr get_special_function(int number)
     case 28:
         return &herald;
     case 29:
-        return &postmaster;
+        return rots::script::lookup_registered_special(rots::script::registered_special::postmaster);
     case 30:
         return &dragon;
     case 31:

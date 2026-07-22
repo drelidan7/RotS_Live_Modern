@@ -762,6 +762,207 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenMentalIsUnregistered)
            "do_mental body never ran.";
 }
 
+// do_stat (act_info.cpp) -- DISCRIMINATOR: the GET_LEVEL(ch) < 6 guard is the
+// very first statement in do_stat's real body and returns before touching
+// wtl/world[]/anything else -- message-only, the same "cheapest possible"
+// shape as do_say's/do_gen_com's guards above. A default-initialized
+// char_data{} already has player.level == 0 (< 6). spec-pair wave Task 2
+// (sp-task-2-brief.md; sp-census.md section 4): SPECIAL(resetter)'s
+// do_stat(ch, ...) call (spec_pro.cpp) is this cell's first real
+// issue_command() caller anywhere in the tree, the recurring "newly
+// exercised, previously registered-but-uncalled" gap this wave's own census
+// flagged for the door/stat/tell cells.
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoStatWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.player.level = 0;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::stat, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message,
+        "Sorry, you are too young to know your stats.\n\r")
+        << "Expected the real do_stat body's low-level guard to send its literal message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenStatIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::stat);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.player.level = 0;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::stat, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered stat cell to leave send_to_char uncalled -- the real "
+           "do_stat body never ran.";
+}
+
+// do_tell (act_comm.cpp) -- DISCRIMINATOR: the IS_NPC(ch) && MOB_FLAGGED(ch,
+// MOB_PET) && !MOB_FLAGGED(ch, MOB_ORC_FRIEND) guard is the very first
+// statement in do_tell's real body -- message-only, no world[]/wtl touch, the
+// same "cheapest possible" shape as do_say's/do_gen_com's guards above.
+// spec-pair wave Task 2: SPECIAL(resetter)'s two do_tell(...) calls
+// (spec_pro.cpp) are this cell's first real issue_command() caller anywhere
+// in the tree.
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoTellWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC | MOB_PET;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::tell, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "Sorry, tamed mobiles can't do that.\n\r")
+        << "Expected the real do_tell body's tamed-pet guard to send its literal message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenTellIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::tell);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC | MOB_PET;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::tell, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered tell cell to leave send_to_char uncalled -- the real "
+           "do_tell body never ran.";
+}
+
+// do_lock/do_close/do_open/do_unlock (act_move.cpp) -- DISCRIMINATOR: all
+// four share the identical IS_SHADOW(ch) guard as their very first statement
+// (verified by reading act_move.cpp:978/1087/1222/1290), each sending the
+// identical literal "You are too insubstantial to do that.\n\r" -- the
+// cheapest deterministic path through all four bodies, message-only, no
+// world[] touch (unlike do_move's own dir_option[] read above). IS_SHADOW
+// expands to (IS_NPC(ch) && MOB_FLAGGED(ch, MOB_SHADOW)) for an NPC, so
+// specials2.act needs both MOB_ISNPC and MOB_SHADOW set. spec-pair wave Task
+// 2: SPECIAL(gatekeeper)'s/SPECIAL(gatekeeper2)'s/SPECIAL(gatekeeper_no_
+// knock)'s/SPECIAL(ar_tarthalon)'s/SPECIAL(vampire_killer)'s do_lock/
+// do_close/do_open/do_unlock(...) calls (spec_pro.cpp) are each of these
+// four cells' first real issue_command() caller anywhere in the tree.
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoLockWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC | MOB_SHADOW;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::lock, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "You are too insubstantial to do that.\n\r")
+        << "Expected the real do_lock body's shadow-form guard to send its literal message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenLockIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::lock);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC | MOB_SHADOW;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::lock, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered lock cell to leave send_to_char uncalled -- the real "
+           "do_lock body never ran.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoCloseWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC | MOB_SHADOW;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::close, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "You are too insubstantial to do that.\n\r")
+        << "Expected the real do_close body's shadow-form guard to send its literal message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenCloseIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::close);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC | MOB_SHADOW;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::close, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered close cell to leave send_to_char uncalled -- the real "
+           "do_close body never ran.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoOpenWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC | MOB_SHADOW;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::open, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "You are too insubstantial to do that.\n\r")
+        << "Expected the real do_open body's shadow-form guard to send its literal message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenOpenIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::open);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC | MOB_SHADOW;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::open, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered open cell to leave send_to_char uncalled -- the real "
+           "do_open body never ran.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoUnlockWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC | MOB_SHADOW;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::unlock, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "You are too insubstantial to do that.\n\r")
+        << "Expected the real do_unlock body's shadow-form guard to send its literal message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenUnlockIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::unlock);
+    ScopedCapturingOutputSink capture;
+    char_data character {};
+    character.specials2.act = MOB_ISNPC | MOB_SHADOW;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::unlock, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered unlock cell to leave send_to_char uncalled -- the real "
+           "do_unlock body never ran.";
+}
+
 // special() (interpre.h:99; combat-pilot wave Task 2, brief
 // .superpowers/sdd/pilot-task-2-brief.md, Step 3) -- a registered-hook seam,
 // NOT a 26th combat_command cell (see combat_hooks.h's special_fn comment

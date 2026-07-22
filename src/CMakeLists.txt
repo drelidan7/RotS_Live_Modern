@@ -275,8 +275,17 @@ set(ROTS_WORLD_SOURCES
 # deferred set in the same task (Step 2), but for ROTS_SCRIPT_SOURCES
 # rather than here -- it is a script-engine driver, not combat-tier (see
 # the ROTS_SCRIPT_SOURCES comment); the remaining 5 (spec_ass.cpp, mage.cpp,
-# spell_pa.cpp, ranger.cpp, spec_pro.cpp) stay DEFERRED per the census's
-# per-TU blocker analysis and stay in ROTS_SERVER_SOURCES below.
+# spell_pa.cpp, ranger.cpp, spec_pro.cpp) stayed DEFERRED at that point per
+# the census's per-TU blocker analysis. Amendment: mage.cpp/spell_pa.cpp/
+# ranger.cpp subsequently JOINED ROTS_COMBAT_SOURCES in the spell-family-
+# closure wave (Task 4, joint commit -- see that set's own comment below);
+# the final two, spec_ass.cpp and spec_pro.cpp, JOINED in the spec-pair
+# wave (Task 4, Step 1/Step 2), but their ruled tier is rots_script, not
+# rots_combat -- see the ROTS_SCRIPT_SOURCES comment above, not
+# ROTS_COMBAT_SOURCES below. **Combat DEFER reaches ZERO** (spec-pair
+# wave): every one of the original combat-row TUs the census sketch named
+# has now either joined ROTS_COMBAT_SOURCES or been ruled to a different
+# tier and joined there instead; none remain in ROTS_SERVER_SOURCES.
 #
 # wild_fighting_handler.cpp's register_attack_speed_multiplier_hook()/
 # register_wild_attack_speed_multiplier_hook() (entity_hooks.h pattern) are
@@ -652,9 +661,52 @@ set(ROTS_PATHFIND_SOURCES
 # change for this join. ScriptLayerAcyclicity confirms no residual upward
 # edge. combat DEFER count goes 2 -> 1 (spec_ass.cpp remains in
 # ROTS_SERVER_SOURCES below; joins in this same task's Step 2).
+#
+# spec_ass.cpp JOINS HERE (spec-pair wave Task 4, Step 2 --
+# .superpowers/sdd/sp-task-4-brief.md; sp-census.md sections 2/5): the
+# SPECIAL-procedure ASSIGNER/REGISTRAR half of the pair above -- the
+# ASSIGNMOB/ASSIGNOBJ table that hands spec_pro.cpp's bodies out as fn-ptrs,
+# plus the virt_program_number()/virt_assignmob()/virt_obj_program_number()/
+# virt_assignobj()/get_special_function() spec-proc dispatch switches
+# themselves. Its 39 edges into spec_pro.cpp (every ASSIGNMOB/ASSIGNOBJ
+# target and virt_* switch arm whose body lives there) are one-directional
+# (spec_pro -> spec_ass = 0, verified by nm both ways, section 2) and
+# dissolve to intra-`rots_script` calls now that spec_pro is already a
+# member (Step 1, this same task) -- this is why the pair promotes
+# SEQUENTIALLY, spec_pro first, rather than jointly: no cycle forces a
+# single commit. spec_ass.cpp's own set_virt_program_number_hook()/
+# set_virt_assignmob_hook() registrar calls (script_hooks.h) become
+# intra-lib registrations the same way, closing the third of the three
+# rots_combat-rejection edges the spec_pro comment above cited. The
+# registrar family (section 5.1/5.2) is the one genuinely new app-tier
+# coupling this join creates, all pre-seamed by Task 1: spec_ass.cpp's 25
+# `ASSIGNOBJ(..., gen_board)` references, its `ASSIGNMOB(1118, postmaster)`
+# plus two virt_program_number()/get_special_function() switch arms taking
+# `&postmaster`, and its many `ASSIGNMOB(..., receptionist)` innkeeper
+# references -- taking the address of boards.cpp's gen_board(), mail.cpp's
+# postmaster(), and objsave.cpp's receptionist(), all still app-compiled --
+# were converted in Task 3 onto `lookup_registered_special(registered_
+# special::{gen_board,postmaster,receptionist})`, an enum-keyed lookup with
+# a loud-tripwire unregistered default (never a silent null fn-ptr), each
+# owner registering its real address at boot via a named setter
+# (`register_gen_board_special()` et al., called from run_the_game()/
+# gtest_main.cpp's main() before boot_db(), the same convention as
+# register_virt_program_number_hook()). This is EXACTLY 3 registrar edges,
+# confirmed by nm with no 4th and no different-coupling-class edge found --
+# no auto-STOP, no new rider-gate slot consumed (the two void*
+# spec-proc dispatchers, virt_program_number/virt_assignmob, were ALREADY
+# registered hooks from the behavior wave/Cluster B and simply become
+# intra-lib here; virt_obj_program_number/get_special_function/
+# virt_assignobj are called only from app-tier, so they need no hook at
+# all). rots_world(7)/`log`(1, rots_platform) resolve downward for free.
+# **Combat DEFER reaches ZERO with this commit**: spec_ass.cpp/spec_pro.cpp
+# were the last two combat-row-sketch TUs remaining in ROTS_SERVER_SOURCES,
+# and both have now promoted -- to rots_script, per the driver-homes-
+# with-engine rule the mobact.cpp precedent established, not to
+# rots_combat. ScriptLayerAcyclicity confirms no residual upward edge.
 set(ROTS_SCRIPT_SOURCES
     mobact.cpp mudlle.cpp mudlle2.cpp script_hooks.cpp script.cpp
-    spec_pro.cpp
+    spec_ass.cpp spec_pro.cpp
 )
 
 # ageland's remaining app-layer sources (spec §3): combat, commands,
@@ -695,6 +747,14 @@ set(ROTS_SCRIPT_SOURCES
 # Task 4, Step 1; see that set's own comment). combat DEFER count goes 2 ->
 # 1 (spec_ass.cpp remains in ROTS_SERVER_SOURCES below; joins in this same
 # task's Step 2).
+# spec_ass.cpp LEFT this list for ROTS_SCRIPT_SOURCES above (spec-pair wave
+# Task 4, Step 2; see that set's own comment). **Combat DEFER reaches
+# ZERO** -- spec_ass.cpp and spec_pro.cpp were the last two combat-row TUs
+# the census sketch identified, and both have now promoted (to rots_script,
+# not rots_combat -- the driver-homes-with-engine rule). Every TU this
+# list's own history comments above have tracked as "DEFERRED" has now
+# either joined ROTS_COMBAT_SOURCES or been ruled to a different tier and
+# joined there instead.
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -708,7 +768,7 @@ set(ROTS_SERVER_SOURCES
     obj2html.cpp objsave.cpp
     pkill.cpp protocol.cpp
     savebench.cpp
-    shop.cpp signals.cpp spec_ass.cpp
+    shop.cpp signals.cpp
     utility.cpp wait_functions.cpp
 )
 

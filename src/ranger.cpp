@@ -28,7 +28,8 @@
 #include "utils.h"
 #include "zone.h" /* For zone_table */
 
-#include "big_brother.h"
+#include "combat_hooks.h"
+#include "entity_hooks.h"
 #include "char_utils.h"
 #include "char_utils_combat.h"
 
@@ -60,7 +61,6 @@ extern const std::string_view dirs[];
 extern void appear(struct char_data* ch);
 extern void check_break_prep(struct char_data*);
 extern void update_pos(struct char_data* victim);
-int check_simple_move(struct char_data* ch, int cmd, int* move_cost, int mode);
 int check_hallucinate(struct char_data* ch, struct char_data* victim);
 extern void say_spell(char_data* caster, int spell_index);
 
@@ -76,10 +76,7 @@ enum class Item : int {
 };
 }
 
-ACMD(do_move);
-ACMD(do_hit);
 ACMD(do_gen_com);
-ACMD(do_flee);
 
 ACMD(do_ride)
 {
@@ -208,8 +205,7 @@ ACMD(do_ride)
 ACMD(do_dismount)
 {
     if (ch == NULL) {
-        strcpy(buf, "Dismount called without a character.  Exiting.");
-        mudlog(buf, NRM, LEVEL_IMMORT, TRUE);
+        mudlog("Dismount called without a character.  Exiting.", NRM, LEVEL_IMMORT, TRUE);
         return;
     }
 
@@ -222,8 +218,7 @@ ACMD(do_dismount)
             if (IS_RIDDEN(mount)) {
                 were_rider = mount->mount_data.rider;
             } else {
-                strcpy(buf, std::format("Screwed mount {}, all be wary!", GET_NAME(mount)).c_str());
-                mudlog(buf, NRM, LEVEL_IMMORT, TRUE);
+                mudlog(std::format("Screwed mount {}, all be wary!", GET_NAME(mount)), NRM, LEVEL_IMMORT, TRUE);
                 were_rider = NULL;
             }
 
@@ -404,6 +399,7 @@ ACMD(do_gather_food)
             send_to_char("You are too tired for this right now.\n\r", ch);
             return;
         }
+        char arg[MAX_STRING_LENGTH];
         one_argument(argument, arg);
         GatherType = search_block(arg, gather_type, 0);
         if (GatherType == -1) { /*If we can't find an argument */
@@ -881,8 +877,7 @@ int ambush_calculate_damage(char_data* attacker, char_data* victim, int modifier
     }
 
     if (utils::is_pc(*attacker)) {
-        strcpy(buf, std::format("{} ambush damage of {:>3}.", GET_NAME(attacker), damage_dealt).c_str());
-        mudlog(buf, NRM, LEVEL_GRGOD, TRUE);
+        mudlog(std::format("{} ambush damage of {:>3}.", GET_NAME(attacker), damage_dealt), NRM, LEVEL_GRGOD, TRUE);
     }
 
     return damage_dealt;
@@ -946,8 +941,6 @@ ACMD(do_ambush)
         act("$n renouces $s sanctuary!", FALSE, ch, 0, 0, TO_ROOM);
     }
 
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-
     switch (subcmd) {
     case -1:
         abort_delay(ch);
@@ -962,7 +955,7 @@ ACMD(do_ambush)
         if (victim == NULL)
             return;
 
-        if (!bb_instance.is_target_valid(ch, victim)) {
+        if (!rots::entity::dispatch_target_valid(ch, victim)) {
             send_to_char("You feel the Gods looking down upon you, and protecting your target.  "
                          "You don't leave your cover.\r\n",
                 ch);
@@ -993,7 +986,7 @@ ACMD(do_ambush)
         if (victim == nullptr)
             return;
 
-        if (!bb_instance.is_target_valid(ch, victim)) {
+        if (!rots::entity::dispatch_target_valid(ch, victim)) {
             send_to_char("You feel the Gods looking down upon you, and protecting your target.  "
                          "You don't leave your cover.\r\n",
                 ch);
@@ -1175,8 +1168,6 @@ ACMD(do_trap)
     if (!is_valid_subcommand(*ch, subcmd, wtl))
         return;
 
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-
     /*
      * Subcommand callbacks:
      *  -1   Cancel the current trap.  See the SUPER HACK note in case 2 to
@@ -1280,10 +1271,10 @@ ACMD(do_trap)
         /* If player is afk remove flag and protection. Don't afk with trap set... */
         if (IS_SET(PLR_FLAGS(ch), PLR_ISAFK)) {
             REMOVE_BIT(PLR_FLAGS(ch), PLR_ISAFK);
-            bb_instance.on_character_returned(ch);
+            rots::entity::dispatch_character_returned(ch);
         }
 
-        if (!bb_instance.is_target_valid(ch, victim)) {
+        if (!rots::entity::dispatch_target_valid(ch, victim)) {
             send_to_char("You feel the Gods looking down upon you, and protecting your target.  "
                          "You remain in wait...\r\n",
                 ch);
@@ -1345,6 +1336,7 @@ ACMD(do_calm)
         abort_delay(ch);
         return;
     case 0:
+        char arg[MAX_STRING_LENGTH];
         one_argument(argument, arg);
         if (!(victim = get_char_room_vis(ch, arg))) {
             send_to_char("Calm who?\r\n", ch);
@@ -1359,8 +1351,7 @@ ACMD(do_calm)
         victim = (struct char_data*)wtl->targ1.ptr.ch;
         break;
     default:
-        strcpy(buf2, std::format("do_calm: illegal subcommand '{}'.\r\n", subcmd).c_str());
-        mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
+        mudlog(std::format("do_calm: illegal subcommand '{}'.\r\n", subcmd), NRM, LEVEL_IMMORT, TRUE);
         return;
     }
 
@@ -1417,18 +1408,16 @@ ACMD(do_calm)
             REMOVE_BIT(MOB_FLAGS(victim), MOB_AGGRESSIVE);
         } else {
             send_to_char("You fail to calm your target.\r\n", ch);
-            sscanf(ch->player.name, "%s", buf);
             tmpwtl.targ1.type = TARGET_CHAR;
             tmpwtl.targ1.ptr.ch = ch;
             tmpwtl.targ1.ch_num = ch->abs_number;
             tmpwtl.cmd = CMD_HIT;
-            do_hit(victim, buf, &tmpwtl, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::hit, victim, mutable_arg(ch->player.name), &tmpwtl, 0, 0);
         }
         break;
 
     default: /* Shouldn't ever happen */
-        strcpy(buf2, std::format("do_calm: illegal subcommand '{}'.\r\n", subcmd).c_str());
-        mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
+        mudlog(std::format("do_calm: illegal subcommand '{}'.\r\n", subcmd), NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
         return;
     }
@@ -1473,6 +1462,7 @@ ACMD(do_tame)
         return;
     }
     tame_skill = GET_SKILL(ch, SKILL_TAME) + GET_RAW_SKILL(ch, SKILL_ANIMALS) / 2;
+    char arg[MAX_STRING_LENGTH];
     one_argument(argument, arg);
     if (GET_MOVE(ch) < 60) {
         send_to_char("You are too exhausted.\r\n", ch);
@@ -1631,12 +1621,11 @@ ACMD(do_tame)
             }
         } else {
             send_to_char("You fail to tame your target.\r\n", ch);
-            sscanf(ch->player.name, "%s", buf);
             tmpwtl.targ1.type = TARGET_CHAR;
             tmpwtl.targ1.ptr.ch = ch;
             tmpwtl.targ1.ch_num = ch->abs_number;
             tmpwtl.cmd = CMD_HIT;
-            do_hit(victim, buf, &tmpwtl, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::hit, victim, mutable_arg(ch->player.name), &tmpwtl, 0, 0);
         }
         [[fallthrough]]; // intentional: case 1 always falls into default's abort_delay(),
                           // whether the tame attempt succeeded or failed.
@@ -1696,7 +1685,7 @@ ACMD(do_whistle)
                     if (GET_POS(tmpch) == POSITION_FIGHTING) {
                         /* in combat: just try to disengage this whistle; the
                          * normal recall runs next time it's whistled while not fighting */
-                        do_flee(tmpch, mutable_arg(""), 0, 0, 0);
+                        rots::combat::issue_command(rots::combat::combat_command::flee, tmpch, mutable_arg(""), 0, 0, 0);
                         continue;
                     }
 
@@ -1738,11 +1727,11 @@ ACMD(do_stalk)
 
     dir = wtl->targ1.ch_num;
 
-    if (special(ch, dir + 1, mutable_arg(""), SPECIAL_COMMAND, 0))
+    if (rots::combat::call_special(ch, dir + 1, mutable_arg(""), SPECIAL_COMMAND, 0))
         return;
 
     if (GET_KNOWLEDGE(ch, SKILL_STALK) <= 0) {
-        do_move(ch, argument, wtl, dir + 1, 0);
+        rots::combat::issue_command(rots::combat::combat_command::move, ch, argument, wtl, dir + 1, 0);
         return;
     }
 
@@ -2412,9 +2401,8 @@ void on_arrow_hit(char_data* archer, char_data* victim, obj_data* arrow)
     } else if (GET_SHOOTING(archer) == SHOOTING_SLOW) {
         damage_dealt = damage_dealt * 2;
     }
-    strcpy(buf, std::format("{} archery damage of {:>3} to {}.", GET_NAME(archer), damage_dealt,
-        GET_NAME(victim)).c_str());
-    mudlog(buf, NRM, LEVEL_GRGOD, TRUE);
+    mudlog(std::format("{} archery damage of {:>3} to {}.", GET_NAME(archer), damage_dealt,
+        GET_NAME(victim)), NRM, LEVEL_GRGOD, TRUE);
 
     damage(archer, victim, damage_dealt, SKILL_ARCHERY, hit_location);
 }
@@ -2533,6 +2521,7 @@ void on_arrow_miss(char_data* archer, char_data* victim, obj_data* arrow)
  */
 ACMD(do_shoot)
 {
+    char arg[MAX_STRING_LENGTH];
     one_argument(argument, arg);
 
     if (subcmd == -1) {
@@ -2550,8 +2539,7 @@ ACMD(do_shoot)
 
     char_data* victim = is_target_valid(ch, wtl);
 
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-    if (!bb_instance.is_target_valid(ch, victim)) {
+    if (!rots::entity::dispatch_target_valid(ch, victim)) {
         send_to_char("You feel the Gods looking down upon you, and protecting your target.  You "
                      "lower your bow.\r\n",
             ch);
@@ -2653,8 +2641,7 @@ ACMD(do_shoot)
         wtl->targ2.cleanup();
     } break;
     default:
-        strcpy(buf2, std::format("do_shoot: illegal subcommand '{}'.\r\n", subcmd).c_str());
-        mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
+        mudlog(std::format("do_shoot: illegal subcommand '{}'.\r\n", subcmd), NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
         break;
         ;
@@ -2866,13 +2853,13 @@ void do_scan(char_data* character, char*, waiting_type*, int, int)
                 for (i = world[character->in_room].people; i; i = i->next_in_room) {
                     if ((!((character == i) && (dis == 0))) && CAN_SEE(character, i)) {
                         if (dis > 0) {
-                            strcpy(buf, std::format("{:>33}: {}{}{}{}",
+                            act(std::format("{:>33}: {}{}{}{}",
                                 (IS_NPC(i) ? GET_NAME(i) : pc_star_types[i->player.race]),
                                 distance[dis],
                                 ((dis > 0) && (dir < (NUM_OF_DIRS - 2))) ? "to the " : "",
                                 (dis > 0) ? dirs[dir] : "",
-                                ((dis > 0) && (dir > (NUM_OF_DIRS - 3))) ? "wards" : "").c_str());
-                            act(buf, TRUE, character, 0, 0, TO_CHAR);
+                                ((dis > 0) && (dir > (NUM_OF_DIRS - 3))) ? "wards" : ""),
+                                TRUE, character, 0, 0, TO_CHAR);
                         }
                         found++;
                     }
@@ -3095,6 +3082,7 @@ int mark_calculate_wait(const char_data* marker)
 ==================================================================================*/
 ACMD(do_mark)
 {
+    char arg[MAX_STRING_LENGTH];
     one_argument(argument, arg);
 
     if (subcmd == -1) {
@@ -3112,8 +3100,7 @@ ACMD(do_mark)
 
     char_data* victim = is_targ_valid_mark(ch, wtl);
 
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-    if (!bb_instance.is_target_valid(ch, victim)) {
+    if (!rots::entity::dispatch_target_valid(ch, victim)) {
         send_to_char("You feel the Gods looking down upon you, and protecting your target.  You "
                      "lower your bow.\r\n",
             ch);
@@ -3176,8 +3163,7 @@ ACMD(do_mark)
         wtl->targ2.cleanup();
     } break;
     default:
-        strcpy(buf2, std::format("do_mark: illegal subcommand '{}'.\r\n", subcmd).c_str());
-        mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
+        mudlog(std::format("do_mark: illegal subcommand '{}'.\r\n", subcmd), NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
         break;
         ;
@@ -3337,6 +3323,7 @@ ACMD(do_blinding)
 {
     const int mana_cost = skills[SKILL_BLINDING].min_usesmana;
 
+    char arg[MAX_STRING_LENGTH];
     one_argument(argument, arg);
 
     if (subcmd == -1) {
@@ -3358,8 +3345,7 @@ ACMD(do_blinding)
         return;
     }
 
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-    if (!bb_instance.is_target_valid(ch, victim)) {
+    if (!rots::entity::dispatch_target_valid(ch, victim)) {
         send_to_char("You feel the Gods looking down upon you, and protecting your target.\r\n",
             ch);
         return;
@@ -3433,8 +3419,7 @@ ACMD(do_blinding)
     } break;
 
     default:
-        strcpy(buf2, std::format("do_blinding: illegal subcommand '{}'.\r\n", subcmd).c_str());
-        mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
+        mudlog(std::format("do_blinding: illegal subcommand '{}'.\r\n", subcmd), NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
         break;
         ;
@@ -3524,6 +3509,7 @@ ACMD(do_bendtime)
     const int mana_cost = ch->abilities.mana;
     const int move_cost = 100;
 
+    char arg[MAX_STRING_LENGTH];
     one_argument(argument, arg);
 
     if (subcmd == -1) {
@@ -3567,8 +3553,7 @@ ACMD(do_bendtime)
     } break;
 
     default: {
-        strcpy(buf2, std::format("do_bendtime: illegal subcommand '{}'.\r\n", subcmd).c_str());
-        mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
+        mudlog(std::format("do_bendtime: illegal subcommand '{}'.\r\n", subcmd), NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
     } break;
     }
@@ -3600,7 +3585,7 @@ void on_windblast_hit(char_data* ch)
         }
 
         if (res) {
-            die = check_simple_move(ch, attempt, &move_cost, SCMD_FLEE);
+            die = rots::combat::check_simple_move(ch, attempt, &move_cost, SCMD_FLEE);
 
             if (!die) {
                 if (ch->specials.fighting) {
@@ -3629,7 +3614,7 @@ void on_windblast_hit(char_data* ch)
                     char flee_dir[16];
                     strncpy(flee_dir, dirs[attempt].data(), sizeof(flee_dir) - 1);
                     flee_dir[sizeof(flee_dir) - 1] = '\0';
-                    do_move(ch, flee_dir, 0, attempt + 1, SCMD_FLEE);
+                    rots::combat::issue_command(rots::combat::combat_command::move, ch, flee_dir, 0, attempt + 1, SCMD_FLEE);
                 }
                 return;
             }
@@ -3656,14 +3641,12 @@ void on_windblast_success(char_data* ch, int mana_cost, int move_cost)
 
     dam_value = number(1, 30) + power_level;
 
-    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-
     send_to_char("Vile black wind eminates from you, slamming into all!\r\n", ch);
 
     for (tmpch = world[ch->in_room].people; tmpch; tmpch = tmpch_next) {
         tmpch_next = tmpch->next_in_room;
         if (tmpch != ch) {
-            if (!bb_instance.is_target_valid(ch, tmpch)) {
+            if (!rots::entity::dispatch_target_valid(ch, tmpch)) {
                 send_to_char(
                     "You feel the Gods looking down upon you, and protecting your target.\r\n", ch);
                 continue;
@@ -3695,6 +3678,7 @@ ACMD(do_windblast)
     const int mana_cost = skills[SKILL_BLINDING].min_usesmana;
     const int move_cost = 40;
 
+    char arg[MAX_STRING_LENGTH];
     one_argument(argument, arg);
 
     if (subcmd == -1) {
@@ -3731,8 +3715,7 @@ ACMD(do_windblast)
         }
     } break;
     default: {
-        strcpy(buf2, std::format("do_windblast: illegal subcommand '{}'.\r\n", subcmd).c_str());
-        mudlog(buf2, NRM, LEVEL_IMMORT, TRUE);
+        mudlog(std::format("do_windblast: illegal subcommand '{}'.\r\n", subcmd), NRM, LEVEL_IMMORT, TRUE);
         abort_delay(ch);
     } break;
     }

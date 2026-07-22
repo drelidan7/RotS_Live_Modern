@@ -1001,42 +1001,14 @@ ACMD(do_move)
     }
 }
 
-int find_door(struct char_data* ch, char* type, char* dir)
-{
-    int door;
-    const std::string_view dirs[] = { "north", "east", "south", "west", "up", "down", "\n" };
-
-    if (*dir) /* a direction was specified */ {
-        if ((door = search_block(dir, dirs, FALSE)) == -1) /* Partial Match */ {
-            send_to_char("That's not a direction.\n\r", ch);
-            return (-1);
-        }
-
-        if (EXIT(ch, door) && (EXIT(ch, door)->to_room != NOWHERE))
-            if (EXIT(ch, door)->keyword)
-                if (isname_nullable(type, EXIT(ch, door)->keyword))
-                    return (door);
-                else {
-                    send_to_char(std::format("I see no {} there.\n\r", type), ch);
-                    return (-1);
-                }
-            else
-                return (door);
-        else {
-            send_to_char("There is no passage in that direction.\n\r", ch);
-            return (-1);
-        }
-    } else /* try to locate the keyword */ {
-        for (door = 0; door < NUM_OF_DIRS; door++)
-            if (EXIT(ch, door) && (EXIT(ch, door)->to_room != NOWHERE))
-                if (EXIT(ch, door)->keyword)
-                    if (isname_nullable(type, EXIT(ch, door)->keyword))
-                        return (door);
-
-        send_to_char(std::format("I see no {} here.\n\r", type), ch);
-        return (-1);
-    }
-}
+// find_door() relocated verbatim to fight.cpp (spell-family closure wave
+// Task 1; sf-census.md section 4.3: RELOCATE-CLEAN -- deps
+// (search_block()/L0, isname_nullable()/L2, send_to_char()/L1 output
+// seam, EXIT() macro's world[] read/L3-world peer) all resolve downward
+// or intra-lib. Declaration unchanged (no shared header; every caller
+// uses a local extern -- this file's own four internal call sites below
+// now need one too, added at the top of this file).
+extern int find_door(struct char_data* ch, char* type, char* dir);
 
 ACMD(do_open)
 {

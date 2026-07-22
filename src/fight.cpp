@@ -3792,3 +3792,49 @@ void perform_remove(struct char_data* ch, int pos)
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// find_door() relocated verbatim from act_move.cpp (spell-family closure
+// wave Task 1; sf-census.md section 4.3). ranger.cpp's future upward
+// find_door(ch, type, dir) call (ranger.cpp:601, consumer-free this task)
+// is the edge this move resolves; act_move.cpp/act_offe.cpp keep calling
+// it via their own existing local extern declarations, now a legal
+// app->lib downward call instead of a same-TU/app-peer reference.
+// ---------------------------------------------------------------------------
+
+int find_door(struct char_data* ch, char* type, char* dir)
+{
+    int door;
+    const std::string_view dirs[] = { "north", "east", "south", "west", "up", "down", "\n" };
+
+    if (*dir) /* a direction was specified */ {
+        if ((door = search_block(dir, dirs, FALSE)) == -1) /* Partial Match */ {
+            send_to_char("That's not a direction.\n\r", ch);
+            return (-1);
+        }
+
+        if (EXIT(ch, door) && (EXIT(ch, door)->to_room != NOWHERE))
+            if (EXIT(ch, door)->keyword)
+                if (isname_nullable(type, EXIT(ch, door)->keyword))
+                    return (door);
+                else {
+                    send_to_char(std::format("I see no {} there.\n\r", type), ch);
+                    return (-1);
+                }
+            else
+                return (door);
+        else {
+            send_to_char("There is no passage in that direction.\n\r", ch);
+            return (-1);
+        }
+    } else /* try to locate the keyword */ {
+        for (door = 0; door < NUM_OF_DIRS; door++)
+            if (EXIT(ch, door) && (EXIT(ch, door)->to_room != NOWHERE))
+                if (EXIT(ch, door)->keyword)
+                    if (isname_nullable(type, EXIT(ch, door)->keyword))
+                        return (door);
+
+        send_to_char(std::format("I see no {} here.\n\r", type), ch);
+        return (-1);
+    }
+}

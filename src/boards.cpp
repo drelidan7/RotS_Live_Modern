@@ -77,6 +77,7 @@ Send comments, bug reports, help requests, etc. to Jeremy Elson
 #include "handler.h"
 #include "interpre.h"
 #include "json_utils.h"
+#include "script_hooks.h"
 #include "text_view.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
@@ -347,6 +348,15 @@ SPECIAL(gen_board)
         return 0;
         break;
     }
+}
+
+// Registers the real gen_board() body above as script_hooks.h's
+// registrar-lookup family (spec-pair wave Task 1; sp-census.md section
+// 5.2). Called once from run_the_game()/gtest_main.cpp's main(), before
+// boot_db() -- same convention as register_pers_hook() (utility.cpp).
+void register_gen_board_special()
+{
+    rots::script::set_registered_special(rots::script::registered_special::gen_board, gen_board);
 }
 
 void board_info_type::write_message(struct char_data* ch, char* arg, int num)

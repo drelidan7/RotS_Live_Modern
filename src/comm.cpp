@@ -790,6 +790,21 @@ void run_the_game(sh_int port)
     // dedicated header, so its registrar is forward-declared locally here.
     void register_find_action_hook();
     register_find_action_hook();
+    // script_hooks.h's spec-proc registrar-lookup family (spec-pair wave
+    // Task 1; sp-census.md section 5.2), registered the same way and for
+    // the same reason: before boot_db(), so ageland never runs
+    // spec_ass.cpp's future rots::script::lookup_registered_special() call
+    // sites (consumer-free this task -- converted for real in T3) with an
+    // unregistered hook. boards.cpp/mail.cpp/objsave.cpp have no dedicated
+    // headers, so their registrars are forward-declared locally here,
+    // mirroring this function's own register_find_action_hook() declaration
+    // above.
+    void register_gen_board_special();
+    register_gen_board_special();
+    void register_postmaster_special();
+    register_postmaster_special();
+    void register_receptionist_special();
+    register_receptionist_special();
 
     log("Signal trapping.");
     signal_setup();

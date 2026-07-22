@@ -34,6 +34,8 @@
 
 #include "rots/platform/log.h"
 
+#include <array>
+#include <cstddef>
 #include <cstdlib>
 
 namespace {
@@ -170,6 +172,42 @@ int dispatch_find_action(char* arg)
         "rots::script: STUB dispatch_find_action() called with no handler registered -- this "
         "should be unreachable once register_find_action_hook() has run.");
     return -1;
+}
+
+} // namespace rots::script
+
+namespace {
+
+// Backing storage for the three registered SPECIAL() fn-ptrs the
+// registrar-lookup family hands out (registered_special::gen_board/
+// postmaster/receptionist; spec-pair wave Task 1). Indexed by
+// registered_special; each slot is null until its owner's registrar runs
+// (register_gen_board_special()/register_postmaster_special()/
+// register_receptionist_special(), boards.cpp/mail.cpp/objsave.cpp). The
+// unregistered default is an abort tripwire (see
+// lookup_registered_special() below) -- see script_hooks.h's
+// registered_special comment for why this class, not a safe sentinel.
+std::array<rots::script::special_func_ptr, 3> g_registered_specials {};
+
+} // namespace
+
+namespace rots::script {
+
+void set_registered_special(registered_special key, special_func_ptr hook)
+{
+    g_registered_specials[static_cast<std::size_t>(key)] = hook;
+}
+
+special_func_ptr lookup_registered_special(registered_special key)
+{
+    special_func_ptr hook = g_registered_specials[static_cast<std::size_t>(key)];
+    if (hook) {
+        return hook;
+    }
+    rots::log::write_stderr(
+        "rots::script: FATAL lookup_registered_special() called with no handler registered for "
+        "the requested key -- this should be unreachable once every owner's registrar has run.");
+    std::abort();
 }
 
 } // namespace rots::script

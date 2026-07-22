@@ -26,6 +26,7 @@
 #include "interpre.h"
 #include "limits.h"
 #include "pkill.h"
+#include "script_hooks.h"
 #include "spells.h"
 #include "rots/persist/file_formats.h"
 #include "rots/core/character.h"
@@ -1460,6 +1461,16 @@ SPECIAL(receptionist)
         return FALSE;
 
     return gen_receptionist(ch, cmd, arg, RENT_FACTOR);
+}
+
+// Registers the real receptionist() body above as script_hooks.h's
+// registrar-lookup family (spec-pair wave Task 1; sp-census.md section
+// 5.2). Called once from run_the_game()/gtest_main.cpp's main(), before
+// boot_db() -- same convention as register_pers_hook() (utility.cpp).
+void register_receptionist_special()
+{
+    rots::script::set_registered_special(
+        rots::script::registered_special::receptionist, receptionist);
 }
 
 ACMD(do_rent)

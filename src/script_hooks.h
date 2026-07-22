@@ -27,6 +27,7 @@
 
 struct char_data;
 struct waiting_type;
+struct target_data;
 
 namespace rots::script {
 
@@ -131,5 +132,38 @@ void dispatch_virt_assignmob(char_data* mob);
 using find_action_fn = int (*)(char* arg);
 void set_find_action_hook(find_action_fn hook);
 int dispatch_find_action(char* arg);
+
+// The spec-proc registrar-lookup family (spec-pair wave Task 1; sp-census.md
+// section 5.2) -- the exactly-three SPECIAL() fn-ptrs spec_ass.cpp (T3,
+// consumer-free this task) hands out by address via ASSIGNMOB/ASSIGNOBJ and,
+// for postmaster, two virt_program_number()/get_special_function() switch
+// arms: gen_board (boards.cpp), postmaster (mail.cpp), receptionist
+// (objsave.cpp). The three owners span three unrelated app subsystems with
+// no single natural owning TU, but the CONSUMER is rots_script
+// (spec_ass.cpp) and this header is already the rots_script -> app
+// spec-proc inversion point (the virt_program_fn/virt_assignmob_fn cells
+// above) -- the identical taxonomy, so no new header (sp-census.md section
+// 5.2: "NO OVERTURN"). Each owner registers its real SPECIAL() body at boot
+// (register_gen_board_special()/register_postmaster_special()/
+// register_receptionist_special(), boards.cpp/mail.cpp/objsave.cpp), before
+// boot_db() -- same convention as this header's other registrars.
+// Abort-tripwire default (the PERS/virt_program_fn taxonomy above,
+// no-death-test convention): there is no safe placeholder SPECIAL(*) to
+// return -- a null fn-ptr silently assigned to {mob,obj}_index[].func would
+// be dispatched later by special()/command_interpreter and crash far from
+// the true cause (sp-census.md section 5.2's own explicit ruling: "no
+// silent-null path"). Untested-by-design for its unregistered path, same as
+// every other abort tripwire in this header (no death test); the registered
+// path per key is this hook's discriminator coverage.
+enum class registered_special {
+    gen_board,
+    postmaster,
+    receptionist,
+};
+
+using special_func_ptr = int (*)(char_data* host, char_data* character, int cmd, char* argument,
+    int callflag, waiting_type* wtl);
+void set_registered_special(registered_special key, special_func_ptr hook);
+special_func_ptr lookup_registered_special(registered_special key);
 
 } // namespace rots::script

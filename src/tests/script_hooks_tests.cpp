@@ -39,6 +39,13 @@
 // registrar.
 void register_find_action_hook();
 
+// boards.cpp/mail.cpp/objsave.cpp have no dedicated headers (see
+// script_hooks.h's own registered_special comment); forward-declared
+// locally here, mirroring register_find_action_hook() above.
+void register_gen_board_special();
+void register_postmaster_special();
+void register_receptionist_special();
+
 namespace {
 
 // Swaps script_hooks.h's command-interpreter hook, then restores the REAL
@@ -120,6 +127,69 @@ public:
     ScopedFindActionHook(const ScopedFindActionHook&) = delete;
     ScopedFindActionHook& operator=(const ScopedFindActionHook&) = delete;
 };
+
+// Swaps script_hooks.h's registered_special lookup family (spec-pair wave
+// Task 1; sp-census.md section 5.2) at one key, then restores the REAL
+// owner's registrar (register_gen_board_special()/
+// register_postmaster_special()/register_receptionist_special(),
+// boards.cpp/mail.cpp/objsave.cpp) on destruction, keyed by which slot
+// the test swapped -- same rationale as this file's other Scoped*
+// fixtures.
+class ScopedRegisteredSpecial {
+public:
+    ScopedRegisteredSpecial(rots::script::registered_special key,
+        rots::script::special_func_ptr hook)
+        : key_(key)
+    {
+        rots::script::set_registered_special(key_, hook);
+    }
+
+    ~ScopedRegisteredSpecial()
+    {
+        switch (key_) {
+        case rots::script::registered_special::gen_board:
+            register_gen_board_special();
+            break;
+        case rots::script::registered_special::postmaster:
+            register_postmaster_special();
+            break;
+        case rots::script::registered_special::receptionist:
+            register_receptionist_special();
+            break;
+        }
+    }
+
+    ScopedRegisteredSpecial(const ScopedRegisteredSpecial&) = delete;
+    ScopedRegisteredSpecial& operator=(const ScopedRegisteredSpecial&) = delete;
+
+private:
+    rots::script::registered_special key_; // Which slot to restore the real registrar for.
+};
+
+// Records the last recording_registered_special_stub() invocation, so a
+// test can assert lookup_registered_special() returned a fn-ptr that,
+// when called, forwards every SPECIAL() argument intact.
+struct RecordedRegisteredSpecialCall {
+    char_data* host = nullptr; // The spec-proc's host object, forwarded verbatim.
+    char_data* character = nullptr; // The acting character, forwarded verbatim.
+    int cmd = 0; // The triggering command index, forwarded verbatim.
+    char* argument = nullptr; // The raw command argument, forwarded verbatim.
+    int callflag = 0; // The SPECIAL_* callflag, forwarded verbatim.
+    waiting_type* wtl = nullptr; // The waiting-list slot, forwarded verbatim.
+    bool called = false; // Set true once the stub runs; lets a test assert non-invocation too.
+};
+
+// File-scope recording slot the stub writes into and each test resets before/after use.
+RecordedRegisteredSpecialCall g_recorded_registered_special_call;
+
+int recording_registered_special_stub(char_data* host, char_data* character, int cmd,
+    char* argument, int callflag, waiting_type* wtl)
+{
+    g_recorded_registered_special_call = RecordedRegisteredSpecialCall {
+        host, character, cmd, argument, callflag, wtl, true
+    };
+    return 42;
+}
 
 // Records the last dispatch_command_interpreter() forwarding, so a test can
 // assert the hook passed every argument through to the stub intact.
@@ -341,4 +411,89 @@ TEST(FindActionHook, DispatchDefaultsToSafeSentinelNegativeOneWhenUnregistered)
         << "Expected an unregistered find_action hook to default to -1 -- find_action()'s own "
            "\"not found\" sentinel -- matching script.cpp's one call site's existing != -1 "
            "validity guard exactly.";
+}
+
+// lookup_registered_special() -- DISCRIMINATOR per key: a recording stub
+// proves the lookup returns the exact fn-ptr its owner registered, and
+// that calling it forwards every SPECIAL() argument intact. No
+// unregistered-path test: this cell is the PERS/virt_program_fn
+// abort-tripwire class (sp-census.md section 5.2 -- "the PERS/
+// no-death-test dispatch-flag pattern"), untested-by-design for its
+// unregistered path, same as every other abort tripwire in this file (no
+// death test); the registered path per key is this hook's discriminator
+// coverage.
+
+TEST(RegisteredSpecialLookup, GenBoardKeyReturnsTheRegisteredStubWithArgsIntact)
+{
+    g_recorded_registered_special_call = RecordedRegisteredSpecialCall {};
+    ScopedRegisteredSpecial scoped(
+        rots::script::registered_special::gen_board, recording_registered_special_stub);
+    char_data host {};
+    char_data character {};
+    char argument[] = "";
+    waiting_type wtl {};
+
+    rots::script::special_func_ptr hook = rots::script::lookup_registered_special(
+        rots::script::registered_special::gen_board);
+    const int result = hook(&host, &character, 5, argument, SPECIAL_COMMAND, &wtl);
+
+    EXPECT_TRUE(g_recorded_registered_special_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_registered_special_call.host, &host);
+    EXPECT_EQ(g_recorded_registered_special_call.character, &character);
+    EXPECT_EQ(g_recorded_registered_special_call.cmd, 5);
+    EXPECT_EQ(g_recorded_registered_special_call.argument, argument);
+    EXPECT_EQ(g_recorded_registered_special_call.callflag, SPECIAL_COMMAND);
+    EXPECT_EQ(g_recorded_registered_special_call.wtl, &wtl);
+    EXPECT_EQ(result, 42) << "Expected lookup_registered_special() to return the stub itself.";
+}
+
+TEST(RegisteredSpecialLookup, PostmasterKeyReturnsTheRegisteredStubWithArgsIntact)
+{
+    g_recorded_registered_special_call = RecordedRegisteredSpecialCall {};
+    ScopedRegisteredSpecial scoped(
+        rots::script::registered_special::postmaster, recording_registered_special_stub);
+    char_data host {};
+    char_data character {};
+    char argument[] = "";
+    waiting_type wtl {};
+
+    rots::script::special_func_ptr hook = rots::script::lookup_registered_special(
+        rots::script::registered_special::postmaster);
+    const int result = hook(&host, &character, 7, argument, SPECIAL_COMMAND, &wtl);
+
+    EXPECT_TRUE(g_recorded_registered_special_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_registered_special_call.host, &host);
+    EXPECT_EQ(g_recorded_registered_special_call.character, &character);
+    EXPECT_EQ(g_recorded_registered_special_call.cmd, 7);
+    EXPECT_EQ(g_recorded_registered_special_call.argument, argument);
+    EXPECT_EQ(g_recorded_registered_special_call.callflag, SPECIAL_COMMAND);
+    EXPECT_EQ(g_recorded_registered_special_call.wtl, &wtl);
+    EXPECT_EQ(result, 42) << "Expected lookup_registered_special() to return the stub itself.";
+}
+
+TEST(RegisteredSpecialLookup, ReceptionistKeyReturnsTheRegisteredStubWithArgsIntact)
+{
+    g_recorded_registered_special_call = RecordedRegisteredSpecialCall {};
+    ScopedRegisteredSpecial scoped(
+        rots::script::registered_special::receptionist, recording_registered_special_stub);
+    char_data host {};
+    char_data character {};
+    char argument[] = "";
+    waiting_type wtl {};
+
+    rots::script::special_func_ptr hook = rots::script::lookup_registered_special(
+        rots::script::registered_special::receptionist);
+    const int result = hook(&host, &character, 9, argument, SPECIAL_COMMAND, &wtl);
+
+    EXPECT_TRUE(g_recorded_registered_special_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_registered_special_call.host, &host);
+    EXPECT_EQ(g_recorded_registered_special_call.character, &character);
+    EXPECT_EQ(g_recorded_registered_special_call.cmd, 9);
+    EXPECT_EQ(g_recorded_registered_special_call.argument, argument);
+    EXPECT_EQ(g_recorded_registered_special_call.callflag, SPECIAL_COMMAND);
+    EXPECT_EQ(g_recorded_registered_special_call.wtl, &wtl);
+    EXPECT_EQ(result, 42) << "Expected lookup_registered_special() to return the stub itself.";
 }

@@ -107,6 +107,7 @@ Send comments, bug reports, etc. to jelson@server.cs.jhu.edu
 #include "handler.h"
 #include "interpre.h"
 #include "json_utils.h"
+#include "script_hooks.h"
 #include "text_view.h"
 #include "mail.h"
 #include "rots/core/character.h"
@@ -503,6 +504,15 @@ SPECIAL(postmaster)
         return 0;
         break;
     }
+}
+
+// Registers the real postmaster() body above as script_hooks.h's
+// registrar-lookup family (spec-pair wave Task 1; sp-census.md section
+// 5.2). Called once from run_the_game()/gtest_main.cpp's main(), before
+// boot_db() -- same convention as register_pers_hook() (utility.cpp).
+void register_postmaster_special()
+{
+    rots::script::set_registered_special(rots::script::registered_special::postmaster, postmaster);
 }
 
 int mail_ok(struct char_data* ch)

@@ -345,6 +345,19 @@ int main(int argc, char* argv[]) {
     // forward-declared locally here.
     void register_find_action_hook();
     register_find_action_hook();
+    // script_hooks.h's spec-proc registrar-lookup family (spec-pair wave
+    // Task 1), registered for the same real-body-fidelity reason as the
+    // calls above: boards.cpp/mail.cpp/objsave.cpp are already linked into
+    // both test binaries, so this only needs the registration calls.
+    // Consumer-free this task; these calls also cover this wave's own seam
+    // tests (script_hooks_tests.cpp). No dedicated headers, so their
+    // registrars are forward-declared locally here.
+    void register_gen_board_special();
+    register_gen_board_special();
+    void register_postmaster_special();
+    register_postmaster_special();
+    void register_receptionist_special();
+    register_receptionist_special();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

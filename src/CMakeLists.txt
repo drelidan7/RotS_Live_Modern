@@ -614,8 +614,47 @@ set(ROTS_PATHFIND_SOURCES
 # character were already resolved downward by the behavior/l4-seed waves
 # (no Cluster B action needed). ScriptLayerAcyclicity confirms no residual
 # upward edge -- see rots_script_linkcheck below.
+# spec_pro.cpp JOINS HERE (spec-pair wave Task 4, Step 1 --
+# .superpowers/sdd/sp-task-4-brief.md; sp-census.md's tier-adjudication
+# verdict, section 3): the SPECIAL-procedure bodies (do_spec_hit/do_spec_
+# ambush/prog_do_hunter/the ASSIGNMOB/ASSIGNOBJ special() targets --
+# snake/gatekeeper/mob_cleric/guild/dragon/ferry_boat/ferry_captain/
+# boot_ferries/etc.) join their dispatch engine exactly the way mobact.cpp
+# joined this library above (behavior wave): the driver/engine pairing
+# extends one link further -- the spec-proc bodies home with the virt_*
+# dispatch machinery (mobact.cpp's virt_program_number()/spec_ass.cpp's
+# virt_assignmob(), the latter joining in this same task's Step 2) that
+# invokes them, not with rots_combat where their game-mechanic content
+# might otherwise suggest. The census ran the closure check under BOTH
+# candidate homes and found THREE irreducible upward edges under
+# rots_combat (L3) that all resolve downward/intra-lib once here (L4):
+# spec_pro's find_first_step(int,int) call (rots_pathfind/graph.cpp, an L4
+# peer -- a NEW L3->L4 permanent inversion under rots_combat); spec_pro's
+# command_interpreter() call, routed through the existing rots::script::
+# dispatch_command_interpreter() hook (script_hooks.cpp, already this
+# library's own seam -- intra-lib here, a second new inversion under
+# rots_combat); and spec_ass.cpp's set_virt_program_number_hook()/
+# set_virt_assignmob_hook() registrar calls (script_hooks.h, a third new
+# inversion under rots_combat -- intra-lib once spec_ass joins in Step 2).
+# Every other spec_pro edge was cleared ahead of this membership move:
+# Task 1 landed the registrar-lookup family (registered_special/
+# lookup_registered_special), the command_min_position()/target_check()
+# accessor-hook pair, and relocated is_number() to L0 rots_util.cpp; Task 2
+# converted all 14 app-tier do_* calls onto EXISTING combat_command cells
+# (gen_com/say/tell/look/stat/lock/close/open/unlock/move/wake/stand/wear/
+# hit -- ZERO new cells), extract_char onto the existing
+# rots::entity::extract_char hook, char_from_room onto its existing
+# entity_hooks.h hook, add_exploit_record onto rots::persist::
+# dispatch_exploit_capture, and _cmd_info's 9 read sites onto the new
+# command_min_position() accessor. The 19 rots_combat + entity(36)/
+# world(11)/core(14)/platform(11)/pathfind(1)/persist(1) downward edges all
+# land in libraries this set already PUBLIC-links below -- no link-list
+# change for this join. ScriptLayerAcyclicity confirms no residual upward
+# edge. combat DEFER count goes 2 -> 1 (spec_ass.cpp remains in
+# ROTS_SERVER_SOURCES below; joins in this same task's Step 2).
 set(ROTS_SCRIPT_SOURCES
     mobact.cpp mudlle.cpp mudlle2.cpp script_hooks.cpp script.cpp
+    spec_pro.cpp
 )
 
 # ageland's remaining app-layer sources (spec §3): combat, commands,
@@ -652,6 +691,10 @@ set(ROTS_SCRIPT_SOURCES
 # own comment -- the spell_pa.cpp<->mage.cpp bidirectional cycle plus
 # ranger.cpp's one-directional dependency on spell_pa.cpp force all three
 # into a single commit). combat DEFER now 2 (spec_ass.cpp/spec_pro.cpp).
+# spec_pro.cpp LEFT this list for ROTS_SCRIPT_SOURCES above (spec-pair wave
+# Task 4, Step 1; see that set's own comment). combat DEFER count goes 2 ->
+# 1 (spec_ass.cpp remains in ROTS_SERVER_SOURCES below; joins in this same
+# task's Step 2).
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -666,7 +709,7 @@ set(ROTS_SERVER_SOURCES
     pkill.cpp protocol.cpp
     savebench.cpp
     shop.cpp signals.cpp spec_ass.cpp
-    spec_pro.cpp utility.cpp wait_functions.cpp
+    utility.cpp wait_functions.cpp
 )
 
 # L4 band, new top tier: OLC (online creation) editor layer (Cluster B wave

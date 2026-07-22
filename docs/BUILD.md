@@ -1842,6 +1842,83 @@ byte-identical at every commit. See `AGENTS.md`'s "Testing Guidelines" for the f
 per-task chain; i386 finalization (Task 5b) is pending as of this docs pass and is reported
 separately once run.
 
+### The spec-pair wave: `spec_pro.cpp` then `spec_ass.cpp` join `rots_script` (7 TUs) — combat DEFER reaches 0
+
+Design: `docs/superpowers/specs/2026-07-21-spec-pair-design.md`. Census:
+`.superpowers/sdd/sp-census.md` (gitignored scratch). Task reports:
+`.superpowers/sdd/sp-task-{0,1,2,3,4}-report.md`. This is Wave B of the owner-approved combat-row
+completion program (Wave A was the spell-family closure wave above), run under the same
+**autonomous-spec-gate** and **merge-when-green** owner grants. It closes the playbook's last two
+DEFER rows — `spec_pro.cpp` (the spec-proc command-driver TU) and `spec_ass.cpp` (its SPECIAL
+assignment registrar) — as **two SEQUENTIAL commits** (spec_pro first, spec_ass second; the
+census found the pair's dependency one-directional — `spec_ass → spec_pro` = 39 edges,
+`spec_pro → spec_ass` = 0 — so no cycle forced a joint commit). Both land **not** in `rots_combat`
+but in `rots_script` (L4): `rots_script` grows 5 → **7 TUs**; no new library, no new linkcheck —
+`ScriptLayerAcyclicity` (both hosts) went green on the **first** build attempt at both commits, no
+bisection needed. **Combat DEFER reaches ZERO** — every TU the original combat-census sketch named
+has now either joined `ROTS_COMBAT_SOURCES` or been ruled to `rots_script` instead.
+
+**The tier ruling.** T0 ran the closure check under both `rots_combat` (L3) and `rots_script` (L4).
+Under `rots_combat`, three edges are irreducibly upward: `spec_pro`'s `find_first_step` call
+(`rots_pathfind`, L4), `spec_pro`'s `command_interpreter` hook (`rots_script`, L4), and `spec_ass`'s
+`set_virt_program_number_hook`/`set_virt_assignmob_hook` calls (`rots_script`, L4) — each would
+force a new permanent L3→L4 inversion (the `one_mobile_activity`-class edge the behavior wave
+introduced), three of them. Under `rots_script`, all three resolve downward or intra-lib. The
+ruling extends the behavior wave's mobact precedent ("the driver homes with the engine it invokes")
+one link further: the spec-proc bodies home with the `virt_*` dispatch machinery that invokes them,
+and their assigner (`spec_ass.cpp`) homes with them too.
+
+**The registrar-lookup family — a new seam taxonomy, pre-authorized at exactly 3 edges.**
+`spec_ass.cpp`'s only real app-tier coupling (beyond the 39 intra-pair edges to spec_pro, which
+dissolve intra-lib once spec_pro promotes first) is three pure address-of fn-ptr references into
+three app subsystems: `gen_board` (`boards.cpp`, 24 `ASSIGNOBJ` sites), `postmaster` (`mail.cpp`, 1
+`ASSIGNMOB` site + 2 switch arms), `receptionist` (`objsave.cpp`, 34 `ASSIGNMOB` sites) — none ever
+*called* inside spec_ass, only stored or cast/returned. Task 1 landed this consumer-free: an
+`enum class registered_special { gen_board, postmaster, receptionist }` +
+`lookup_registered_special(key)` + `set_registered_special(key, ptr)`, homed in `script_hooks.h`
+(already the `rots_script → app` spec-proc inversion header, no OVERTURN needed). **Unregistered
+lookup is an abort-tripwire, never a silent null fn-ptr** — a null spec-proc fn-ptr silently stored
+into `{mob,obj}_index[].func` would crash far from its cause when later dispatched. Confirmed
+exactly 3 edges by `nm`, no 4th, no auto-STOP. `_cmd_info` (9 read sites) and `target_check` (1
+call site) got their own new `script_hooks.h` hooks the same task — SAFE-SENTINEL class (default
+`0`/`POSITION_DEAD`, the `find_action`/pkill-fame accessor precedent), int-returning, **not**
+`void*` dispatchers, so neither consumes a rider-gate slot.
+
+**Rider gate: untouched, 2 of ≤3.** The two existing `void*` spec-proc dispatchers
+(`virt_program_number`/`virt_assignmob`) were already registered hooks from the behavior
+wave/Cluster B and become **intra-lib** once spec_ass joins `rots_script` — this wave consumes no
+new slot. `virt_obj_program_number`/`get_special_function`/`virt_assignobj` are called only from
+app-tier (no library dispatches them), so no hook was needed. **Zero new `combat_command` cells** —
+all 14 real `do_*` up-calls across spec_pro's 66 real call sites (`gen_com`/`say`/`tell`/`look`/
+`stat`/`lock`/`close`/`open`/`unlock`/`move`/`wake`/`stand`/`wear`/`hit`) map onto existing cells.
+
+**Other conversions (Tasks 2/3).** `is_number()` relocated byte-verbatim from `interpre.cpp` to L0
+`rots_util.cpp` (pure digit-scan, the `one_argument`/`half_chop` L0 precedent). `command_interpreter`/
+`extract_char`/`char_from_room`/`add_exploit_record` converted onto their already-existing
+`rots::script`/`rots::entity`/`rots::persist` hooks. `spec_pro.cpp`'s genuine global `_buf` retired
+to direct `std::format`/string-literal composition (8 call clusters). Dead-decl cleanup: 14
+now-unreferenced `ACMD(...)` forward decls plus the `do_drop`/`do_kick`/`do_pull` trio (confirmed
+zero call sites) retired from `spec_pro.cpp`; `SPECIAL(gen_board)`/`SPECIAL(postmaster)`/
+`SPECIAL(receptionist)` forward decls retired from `spec_ass.cpp` once their references converted
+onto the lookup family.
+
+**Test-count delta for this wave: 1487 → 1510.** Task 1 +11 (3 registrar-lookup tests, 4
+`command_min_position`/`target_check` accessor-hook tests, 4 `is_number` L0 relocation tests — a
+genuine coverage gap, zero prior `is_number` test existed anywhere). Task 2 +12 (six first-caller
+discriminator pairs — `stat`/`tell`/`lock`/`close`/`open`/`unlock` — the recurring `say`/`move`/
+`dismount`-class gap; the other eight converted cells already had prior-wave coverage). Task 3 +0
+(a discriminator audit of all three registrar-consumption shapes found T1's own tests already
+exercise the identical mechanism). Task 4 +0 (pure CMakeLists.txt membership moves, zero source
+edits). All gate hosts (`macos-arm64`, `rots64`, `macos-arm64-asan` on Tasks 1 and 2's new/rewritten
+test files) confirmed the running count at every task's final gate; `ConvertEquivalence` 17/17 both
+hosts throughout; both boot goldens byte-identical at every commit; `string_view_census.py --check`
+exit 0 throughout. See `docs/superpowers/combat-migration-playbook.md`'s "The spec-pair wave" and
+"THE COMBAT ROW IS CLOSED" sections for the full account, including the five-wave arc summary that
+closed all 11 combat-seed-wave DEFER TUs (plus the `profs` rider); see `AGENTS.md`'s "Testing
+Guidelines" for the reconciled per-task test chain, including this docs pass's fold-in of the
+Wave-A (spell-family closure) i386 finalization battery numbers, measured after this pass's own
+hygiene batch landed.
+
 ### Pathed data-model includes
 
 `rots_core` owns `target_include_directories(rots_core PUBLIC core/include)`: every consumer that

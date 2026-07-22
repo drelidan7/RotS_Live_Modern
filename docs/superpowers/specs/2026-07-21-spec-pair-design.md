@@ -102,3 +102,68 @@ reports/census in `.superpowers/sdd/` (`sp-` prefix, never committed). Python by
 existing `.cpp`/`.h`. Docker gates synchronous. i386 battery finalization-only. The owner's
 program grants cover this wave's spec/plan authorship and the CI-green merge; every auto-STOP
 named above still halts for the owner.
+
+## As-built (Tasks 0-4 complete; Task 5a docs + hygiene batch, this section; Task 5b finalization pending)
+
+**Status: both membership commits landed, `ScriptLayerAcyclicity` green on the first build
+attempt at each, both hosts, zero census misses at either gate.** `spec_pro.cpp` (commit
+`ba457c5`) then `spec_ass.cpp` (commit `b71b008`) → `rots_script`, SEQUENTIAL not joint (5 → 7
+TUs) — **not** `rots_combat`, per the tier ruling below. Combat DEFER drops **2 → 0 — the combat
+row is CLOSED.** ctest 1487 → 1498 (T1) → 1510 (T2) → 1510 (T3) → 1510 (T4). Full per-task
+evidence: `.superpowers/sdd/sp-task-{0,1,2,3,4}-report.md`; census: `.superpowers/sdd/sp-census.md`.
+
+**Every adjudication default in the Problem/evidence and Decision sections above CONFIRMED, no
+overturn.** The tier question resolved to `rots_script` (L4), REJECTING `rots_combat` (L3) on
+three irreducible upward edges (`spec_pro`'s `find_first_step`→`rots_pathfind`, `spec_pro`'s
+`command_interpreter` hook→`rots_script`, `spec_ass`'s `set_virt_program_number_hook`/
+`set_virt_assignmob_hook`→`rots_script`) that all resolve downward/intra-lib under `rots_script`
+instead — exactly the closure-check method the behavior wave used to settle `mobact`'s tier,
+extended one link further (the spec-proc bodies and their assigner home with the `virt_*`
+dispatch machinery mobact drives). Pair structure resolved ONE-DIRECTIONAL, not a cycle:
+`spec_ass → spec_pro` = 39 edges, `spec_pro → spec_ass` = 0 (verified `comm -12` empty both ways)
+— SEQUENTIAL promotion (spec_pro first) replaced the joint-commit pattern the plan's own worst
+case anticipated, matching the trio wave's own standalone-promotion precedent, not the
+clerics/fight or spell_pa/mage forced-joint shape. The registrar family confirmed **exactly 3**
+edges (`gen_board`/`postmaster`/`receptionist`), no 4th, no auto-STOP; homed in `script_hooks.h`
+with no OVERTURN (already the `rots_script → app` spec-proc inversion header). `_cmd_info` →
+the anticipated accessor-hook disposition (`command_min_position`, SAFE-SENTINEL, `script_hooks.h`).
+`target_check` → a new hook of the same class (not itemized by name in this design's own default
+list, but the identical taxonomy the census's own §5.3 anticipated as the fallback). `is_number` →
+RELOCATE-CLEAN to L0 `rots_util.cpp`, exactly as scoped. Rider gate: **untouched at 2 of ≤3** — the
+two existing `virt_program_number`/`virt_assignmob` `void*` dispatchers became intra-lib, consuming
+no new slot; zero new `void*`-dispatcher shape found anywhere. **Zero new `combat_command`
+cells** — all 14 real app-tier `do_*` symbols (66 real call sites) mapped onto existing cells, six
+of them (`stat`/`tell`/`lock`/`close`/`open`/`unlock`) gaining their first-ever real
+`issue_command()` caller, the recurring `say`/`move`/`dismount`-class first-caller discriminator
+gap, closed with 12 new tests in Task 2.
+
+**One disclosed, deliberate deviation from the brief's literal wording, not an adjudication
+error**: Task 1's report flags that the registrar-lookup family's unregistered path was left
+untested, following `sp-census.md` §5.2's own abort-tripwire classification and the binding
+no-death-test rule, rather than the brief's shorthand phrasing (which echoes language from the
+different, safely-testable SAFE-SENTINEL classes). Disclosed for owner review in the T1 report;
+not re-litigated in subsequent tasks.
+
+**Test-count delta: 1487 → 1510.** T1 +11 (3 registrar-lookup tests, 4 `command_min_position`/
+`target_check` accessor-hook tests, 4 `is_number` L0-relocation tests in a new
+`rots_util_tests.cpp` — a genuine coverage gap, zero prior `is_number` test existed anywhere), T2
++12 (six first-caller discriminator pairs, the `say`/`move`/`dismount`-class gap recurring), T3 +0
+(a discriminator audit of all three registrar-consumption shapes found T1's own tests already
+exercise the identical mechanism — zero genuine gap), T4 +0 (two pure CMakeLists.txt SEQUENTIAL
+membership moves, zero source edits). All gate hosts (`macos-arm64`, `rots64`,
+`macos-arm64-asan` on T1/T2's new/rewritten test files) confirmed the running count at every
+task's final gate; `ConvertEquivalence` 17/17 throughout; both boot goldens byte-identical at
+every commit; `string_view_census.py --check` exit 0 throughout. **i386 finalization (T5b) is
+pending as of this docs pass** — reported separately once the sequential battery runs. This same
+docs pass (Task 5a) also folds in the previously-pending Wave-A (spell-family closure) i386
+finalization battery: 1487/1487 via the ctest flow (standard 6 skips), monolithic 1455 passed + 23
+skipped = 1478 = 1487 − 9 ctest-only linkchecks (exact), boot golden matches — see
+`.superpowers/sdd/sf-i386-battery.log` and `AGENTS.md`'s "Testing Guidelines" for the reconciled
+chain, plus a small hygiene batch (stale comments/dead decls the spell-family closure and earlier
+waves left behind, none behavior-affecting — see `.superpowers/sdd/sp-task-5a-report.md`).
+
+See `docs/BUILD.md`'s "The spec-pair wave" subsection (under "Library layering"),
+`docs/superpowers/specs/2026-07-16-library-architecture-design.md`'s `rots_script` row and
+"As-built (spec-pair wave, step 4 twelfth slice)" note, and `docs/superpowers/combat-migration-
+playbook.md`'s "The spec-pair wave" and "THE COMBAT ROW IS CLOSED" sections (the full five-wave
+arc summary) for the complete cross-referenced account.

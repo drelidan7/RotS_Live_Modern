@@ -406,10 +406,52 @@ set(ROTS_WORLD_SOURCES
 # PUBLIC-linked below -- no link-list change for this join, confirmed via
 # `nm -uC` on the built archive (rots_combat_linkcheck load-bearing test,
 # below).
+#
+# spell_pa.cpp / mage.cpp / ranger.cpp JOIN HERE (spell-family closure wave
+# Task 4, sf-census.md's closure verdict + sf-task-4-brief.md's binding
+# controller addendum): the last three DEFERRED combat-row TUs, promoted in
+# ONE joint commit because spell_pa.cpp<->mage.cpp is a true file-level
+# bidirectional cycle (spell_pa's assign_spell_pointers() registrar
+# dispatches to 35 of mage.cpp's spell_*() implementations; mage.cpp calls
+# back into spell_pa.cpp's new_saves_spell() once) and ranger.cpp depends
+# one-directionally on spell_pa.cpp (say_spell()) -- per the intra-subset
+# closure rule, no one of the three can promote standalone without asking
+# CombatLayerAcyclicity to resolve an edge whose only implementation is
+# still app-tier. Every other upward edge Task 0's census found was cleared
+# by Tasks 1-3's seams/relocations/conversions ahead of this membership
+# move: is_target_valid (2-arg and 3-arg) onto the existing entity_hooks.h
+# target-valid hook; char_from_room onto its existing entity_hooks.h hook;
+# do_look x4/do_hit x2/do_flee/do_move x2 onto the existing
+# look/hit/flee/move combat_command cells; special() onto the existing
+# call_special() hook; on_character_returned onto a new third
+# entity_hooks.h big_brother notification hook (Task 1, consumer-free);
+# msdp_room_update and the descriptor_list-head broadcast onto new
+# output_seam.cpp forwarders (Task 1); report_wrong_target/
+# target_from_word/color_sequence[]+get_color_sequence() relocated
+# verbatim into visibility.cpp, find_door/prohibit_item_stay_zone_move
+# relocated into fight.cpp, and argument_interpreter relocated to L0
+# rots_util.cpp (all Task 1); check_simple_move/list_char_to_char/
+# do_identify_object routed onto Task 1's own hooks. show_tracks() --
+# the wave's marquee L3->L4 edge (ranger.cpp called into graph.cpp,
+# rots_pathfind) -- resolved via the census's Default A RELOCATE ruling,
+# not a hook: show_tracks()/track_desc()/water_track_desc() are
+# presentation over world/room data reachable from L3, not
+# pathfind-internal (no graph adjacency, no BFS, no find_first_step
+# state), so all three relocated verbatim to db_world.cpp/rots_world
+# (Task 1, sf-task-1-brief.md) -- ranger.cpp's call becomes intra-lib and
+# act_info.cpp's own show_tracks(ch, 0, 2) call stays legal app->lib
+# downward; no third permanent L3->L4 inversion this wave. Every
+# remaining downward edge lands in RotS::world/RotS::persist/
+# RotS::entity/RotS::core/RotS::platform/RotS::pathfind, already
+# PUBLIC-linked below -- no link-list change for this join, confirmed via
+# `nm -uC` on the built archive (rots_combat_linkcheck load-bearing test,
+# below). combat DEFER count goes 5 -> 2 (spec_ass.cpp/spec_pro.cpp
+# remain in ROTS_SERVER_SOURCES below).
 set(ROTS_COMBAT_SOURCES
     battle_mage_handler.cpp clerics.cpp combat_hooks.cpp fight.cpp
-    limits.cpp mystic.cpp olog_hai.cpp profs.cpp skill_timer.cpp
-    visibility.cpp weapon_master_handler.cpp wild_fighting_handler.cpp
+    limits.cpp mage.cpp mystic.cpp olog_hai.cpp profs.cpp ranger.cpp
+    skill_timer.cpp spell_pa.cpp visibility.cpp weapon_master_handler.cpp
+    wild_fighting_handler.cpp
 )
 
 # L4 band, lower tier: pathfind layer (spec §3/§10 step 4; the l4-seed
@@ -605,6 +647,11 @@ set(ROTS_SCRIPT_SOURCES
 # shapemdl.cpp/shapemob.cpp/shapeobj.cpp/shaperom.cpp/shapescript.cpp/
 # shapezon.cpp LEFT this list for ROTS_OLC_SOURCES below (Cluster B wave
 # Task 4, Step 2; see that set's own comment).
+# spell_pa.cpp/mage.cpp/ranger.cpp LEFT this list for ROTS_COMBAT_SOURCES
+# above (spell-family closure wave Task 4, joint membership; see that set's
+# own comment -- the spell_pa.cpp<->mage.cpp bidirectional cycle plus
+# ranger.cpp's one-directional dependency on spell_pa.cpp force all three
+# into a single commit). combat DEFER now 2 (spec_ass.cpp/spec_pro.cpp).
 set(ROTS_SERVER_SOURCES
     act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
     act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
@@ -613,13 +660,13 @@ set(ROTS_SERVER_SOURCES
     color.cpp comm.cpp
     db_boot.cpp delayed_command_interpreter.cpp
     handler.cpp interpre.cpp
-    mage.cpp mail.cpp mob_csv_extract.cpp
+    mail.cpp mob_csv_extract.cpp
     modify.cpp
     obj2html.cpp objsave.cpp
     pkill.cpp protocol.cpp
-    ranger.cpp savebench.cpp
+    savebench.cpp
     shop.cpp signals.cpp spec_ass.cpp
-    spec_pro.cpp spell_pa.cpp utility.cpp wait_functions.cpp
+    spec_pro.cpp utility.cpp wait_functions.cpp
 )
 
 # L4 band, new top tier: OLC (online creation) editor layer (Cluster B wave

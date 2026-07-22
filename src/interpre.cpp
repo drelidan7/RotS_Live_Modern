@@ -831,6 +831,29 @@ int target_check(struct char_data* ch, int cmd, struct target_data* t1,
     return 0;
 }
 
+// script_hooks.h's cmd_info[] accessor pair -- REGISTRARS + (for
+// command_min_position) real body (spec-pair wave Task 1; sp-census.md
+// section 5.3). command_min_position() is a one-line wrapper around this
+// file's own cmd_info[] table above; target_check() itself (immediately
+// above) already matches target_check_fn's signature exactly, so its
+// registrar just points at it directly -- the find_action_fn precedent
+// (act_soci.cpp's find_action() IS both the registered hook body and
+// hosts its own registrar).
+int command_min_position(int cmd)
+{
+    return cmd_info[cmd].minimum_position;
+}
+
+void register_command_min_position_hook()
+{
+    rots::script::set_command_min_position_hook(command_min_position);
+}
+
+void register_target_check_hook()
+{
+    rots::script::set_target_check_hook(target_check);
+}
+
 int target_parser(struct char_data* ch, int cmd, char* argument,
     struct target_data* t1, struct target_data* t2)
 {

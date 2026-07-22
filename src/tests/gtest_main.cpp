@@ -358,6 +358,14 @@ int main(int argc, char* argv[]) {
     register_postmaster_special();
     void register_receptionist_special();
     register_receptionist_special();
+    // script_hooks.h's command_min_position/target_check cmd_info[]
+    // accessor pair (spec-pair wave Task 1), registered for the same
+    // real-body-fidelity reason as the calls above: interpre.cpp is
+    // already linked into both test binaries, so this only needs the
+    // registration calls. Consumer-free this task; these calls also
+    // cover this wave's own seam tests (script_hooks_tests.cpp).
+    register_command_min_position_hook();
+    register_target_check_hook();
     ::testing::InitGoogleTest(&argc, argv);
     const int result = RUN_ALL_TESTS();
     rots_net::shutdown();

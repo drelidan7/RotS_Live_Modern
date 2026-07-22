@@ -211,3 +211,67 @@ special_func_ptr lookup_registered_special(registered_special key)
 }
 
 } // namespace rots::script
+
+namespace {
+
+// Backing storage for the registered command_min_position hook
+// (register_command_min_position_hook(), interpre.cpp; spec-pair wave
+// Task 1). Null until that registration runs; the null default is a SAFE
+// SENTINEL (POSITION_DEAD/0, see dispatch_command_min_position() below) --
+// see script_hooks.h's command_min_position_fn comment for why this
+// class, not abort.
+rots::script::command_min_position_fn g_command_min_position_hook = nullptr;
+
+} // namespace
+
+namespace rots::script {
+
+void set_command_min_position_hook(command_min_position_fn hook)
+{
+    g_command_min_position_hook = hook;
+}
+
+int dispatch_command_min_position(int cmd)
+{
+    if (g_command_min_position_hook) {
+        return g_command_min_position_hook(cmd);
+    }
+    rots::log::write_stderr(
+        "rots::script: STUB dispatch_command_min_position() called with no handler registered "
+        "-- this should be unreachable once register_command_min_position_hook() has run.");
+    return 0; // POSITION_DEAD -- see script_hooks.h's command_min_position_fn comment.
+}
+
+} // namespace rots::script
+
+namespace {
+
+// Backing storage for the registered target_check hook
+// (register_target_check_hook(), interpre.cpp; spec-pair wave Task 1).
+// Null until that registration runs; the null default is a SAFE
+// SENTINEL (0, see dispatch_target_check() below) -- see
+// script_hooks.h's target_check_fn comment for why this class, not
+// abort.
+rots::script::target_check_fn g_target_check_hook = nullptr;
+
+} // namespace
+
+namespace rots::script {
+
+void set_target_check_hook(target_check_fn hook)
+{
+    g_target_check_hook = hook;
+}
+
+int dispatch_target_check(char_data* ch, int cmd, target_data* t1, target_data* t2)
+{
+    if (g_target_check_hook) {
+        return g_target_check_hook(ch, cmd, t1, t2);
+    }
+    rots::log::write_stderr(
+        "rots::script: STUB dispatch_target_check() called with no handler registered -- this "
+        "should be unreachable once register_target_check_hook() has run.");
+    return 0; // target_check()'s own "invalid target" sentinel -- see script_hooks.h's comment.
+}
+
+} // namespace rots::script

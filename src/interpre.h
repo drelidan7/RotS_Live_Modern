@@ -98,6 +98,16 @@ void command_interpreter(struct char_data* ch, char* arg_chr, struct waiting_typ
 // convention as register_extract_char_hook() (handler.h).
 void register_command_interpreter_hook();
 
+// Registers interpre.cpp's real command_min_position()/target_check()
+// bodies as script_hooks.h's cmd_info[] accessor pair (spec-pair wave
+// Task 1; sp-census.md section 5.3 -- cmd_info[] cannot relocate, hosts
+// hundreds of app-tier do_* fn-ptrs, so both hooks invert only the
+// READ). Called once from run_the_game()/gtest_main.cpp's main(), before
+// boot_db() -- same convention as register_command_interpreter_hook()
+// above.
+void register_command_min_position_hook();
+void register_target_check_hook();
+
 // Registers act_move.cpp's/act_info.cpp's real check_simple_move()/
 // list_char_to_char()/do_identify_object() bodies as combat_hooks.h's
 // display-and-movement inversion trio (spell-family closure wave Task 1;

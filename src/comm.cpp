@@ -805,6 +805,15 @@ void run_the_game(sh_int port)
     register_postmaster_special();
     void register_receptionist_special();
     register_receptionist_special();
+    // script_hooks.h's command_min_position/target_check cmd_info[]
+    // accessor pair (spec-pair wave Task 1; sp-census.md section 5.3),
+    // registered the same way and for the same reason: before boot_db(),
+    // so ageland never runs spec_pro.cpp's future rots::script::dispatch_
+    // command_min_position()/dispatch_target_check() call sites
+    // (consumer-free this task -- converted for real in T2) with an
+    // unregistered hook.
+    register_command_min_position_hook();
+    register_target_check_hook();
 
     log("Signal trapping.");
     signal_setup();

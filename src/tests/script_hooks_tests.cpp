@@ -280,6 +280,74 @@ int recording_find_action_stub(char* arg)
     return 5;
 }
 
+// Same shape as ScopedFindActionHook above, for script_hooks.h's
+// command_min_position accessor hook (spec-pair wave Task 1;
+// sp-census.md section 5.3). SAFE-SENTINEL class like find_action_fn, so
+// both halves are testable.
+class ScopedCommandMinPositionHook {
+public:
+    explicit ScopedCommandMinPositionHook(rots::script::command_min_position_fn hook)
+    {
+        rots::script::set_command_min_position_hook(hook);
+    }
+
+    ~ScopedCommandMinPositionHook() { register_command_min_position_hook(); }
+
+    ScopedCommandMinPositionHook(const ScopedCommandMinPositionHook&) = delete;
+    ScopedCommandMinPositionHook& operator=(const ScopedCommandMinPositionHook&) = delete;
+};
+
+// Same shape as ScopedCommandMinPositionHook above, for script_hooks.h's
+// target_check hook (spec-pair wave Task 1; sp-census.md section 5.3).
+// SAFE-SENTINEL class, so both halves are testable.
+class ScopedTargetCheckHook {
+public:
+    explicit ScopedTargetCheckHook(rots::script::target_check_fn hook)
+    {
+        rots::script::set_target_check_hook(hook);
+    }
+
+    ~ScopedTargetCheckHook() { register_target_check_hook(); }
+
+    ScopedTargetCheckHook(const ScopedTargetCheckHook&) = delete;
+    ScopedTargetCheckHook& operator=(const ScopedTargetCheckHook&) = delete;
+};
+
+// Records the last dispatch_command_min_position() forwarding, so a test
+// can assert the cmd argument reached the stub intact.
+struct RecordedCommandMinPositionCall {
+    int cmd = 0; // The command index being queried, forwarded verbatim.
+    bool called = false; // Set true once the stub runs; lets a test assert non-invocation too.
+};
+
+// File-scope recording slot the stub writes into and each test resets before/after use.
+RecordedCommandMinPositionCall g_recorded_command_min_position_call;
+
+int recording_command_min_position_stub(int cmd)
+{
+    g_recorded_command_min_position_call = RecordedCommandMinPositionCall { cmd, true };
+    return 3;
+}
+
+// Records the last dispatch_target_check() forwarding, so a test can
+// assert ch/cmd/t1/t2 reached the stub intact.
+struct RecordedTargetCheckCall {
+    char_data* ch = nullptr; // The acting character, forwarded verbatim.
+    int cmd = 0; // The command index, forwarded verbatim.
+    target_data* t1 = nullptr; // The first target slot, forwarded verbatim.
+    target_data* t2 = nullptr; // The second target slot, forwarded verbatim.
+    bool called = false; // Set true once the stub runs; lets a test assert non-invocation too.
+};
+
+// File-scope recording slot the stub writes into and each test resets before/after use.
+RecordedTargetCheckCall g_recorded_target_check_call;
+
+int recording_target_check_stub(char_data* ch, int cmd, target_data* t1, target_data* t2)
+{
+    g_recorded_target_check_call = RecordedTargetCheckCall { ch, cmd, t1, t2, true };
+    return 1;
+}
+
 } // namespace
 
 // dispatch_command_interpreter() -- DISCRIMINATOR: a recording stub proves
@@ -496,4 +564,75 @@ TEST(RegisteredSpecialLookup, ReceptionistKeyReturnsTheRegisteredStubWithArgsInt
     EXPECT_EQ(g_recorded_registered_special_call.callflag, SPECIAL_COMMAND);
     EXPECT_EQ(g_recorded_registered_special_call.wtl, &wtl);
     EXPECT_EQ(result, 42) << "Expected lookup_registered_special() to return the stub itself.";
+}
+
+// dispatch_command_min_position() -- DISCRIMINATOR: a recording stub
+// proves the dispatch forwards cmd intact and returns the stub's own
+// value; the unregistered default is a SAFE SENTINEL (POSITION_DEAD/0),
+// so BOTH halves are testable, unlike this file's abort-tripwire cells
+// above.
+
+TEST(CommandMinPositionHook, DispatchReachesARegisteredStubWithArgIntactAndForwardsReturnValue)
+{
+    g_recorded_command_min_position_call = RecordedCommandMinPositionCall {};
+    ScopedCommandMinPositionHook scoped(recording_command_min_position_stub);
+
+    const int result = rots::script::dispatch_command_min_position(42);
+
+    EXPECT_TRUE(g_recorded_command_min_position_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_command_min_position_call.cmd, 42);
+    EXPECT_EQ(result, 3)
+        << "Expected dispatch_command_min_position() to forward the stub's own return value.";
+}
+
+TEST(CommandMinPositionHook, DispatchDefaultsToSafeSentinelPositionDeadWhenUnregistered)
+{
+    ScopedCommandMinPositionHook unregistered(nullptr);
+
+    const int result = rots::script::dispatch_command_min_position(42);
+
+    EXPECT_EQ(result, 0)
+        << "Expected an unregistered command_min_position hook to default to POSITION_DEAD (0) -- the least restrictive minimum position, so no command is ever spuriously blocked on "
+           "position grounds by an unregistered hook.";
+}
+
+// dispatch_target_check() -- DISCRIMINATOR: a recording stub proves the
+// dispatch forwards ch/cmd/t1/t2 intact and returns the stub's own
+// value; the unregistered default is a SAFE SENTINEL (0, target_check()'s
+// own real "invalid target" return value), so BOTH halves are testable.
+
+TEST(TargetCheckHook, DispatchReachesARegisteredStubWithArgsIntactAndForwardsReturnValue)
+{
+    g_recorded_target_check_call = RecordedTargetCheckCall {};
+    ScopedTargetCheckHook scoped(recording_target_check_stub);
+    char_data ch {};
+    target_data t1 {};
+    target_data t2 {};
+
+    const int result = rots::script::dispatch_target_check(&ch, 220, &t1, &t2);
+
+    EXPECT_TRUE(g_recorded_target_check_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_target_check_call.ch, &ch);
+    EXPECT_EQ(g_recorded_target_check_call.cmd, 220);
+    EXPECT_EQ(g_recorded_target_check_call.t1, &t1);
+    EXPECT_EQ(g_recorded_target_check_call.t2, &t2);
+    EXPECT_EQ(result, 1)
+        << "Expected dispatch_target_check() to forward the stub's own return value.";
+}
+
+TEST(TargetCheckHook, DispatchDefaultsToSafeSentinelZeroWhenUnregistered)
+{
+    ScopedTargetCheckHook unregistered(nullptr);
+    char_data ch {};
+    target_data t1 {};
+    target_data t2 {};
+
+    const int result = rots::script::dispatch_target_check(&ch, 220, &t1, &t2);
+
+    EXPECT_EQ(result, 0)
+        << "Expected an unregistered target_check hook to default to 0 -- target_check()'s own "
+           "\"invalid target\" sentinel, the identical behavior a real failed target check "
+           "produces.";
 }

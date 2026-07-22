@@ -166,4 +166,40 @@ using special_func_ptr = int (*)(char_data* host, char_data* character, int cmd,
 void set_registered_special(registered_special key, special_func_ptr hook);
 special_func_ptr lookup_registered_special(registered_special key);
 
+// interpre.cpp's cmd_info[] command-attribute-table couplings (spec-pair
+// wave Task 1; sp-census.md section 5.3) -- the same command subsystem
+// this header's own command_interpreter_fn hook above already inverts.
+// cmd_info[] itself cannot relocate (it references hundreds of app-tier
+// do_* fn-ptrs), so both hooks below invert only the READ; their real
+// bodies stay in interpre.cpp. interpre.cpp registers both at boot
+// (register_command_min_position_hook()/register_target_check_hook()),
+// before boot_db() -- same convention as this header's other registrars.
+
+// cmd_info[cmd].minimum_position accessor (9 read sites currently in
+// spec_pro.cpp, T2 consumer). SAFE-SENTINEL class -- the find_action_fn/
+// pkill_fame_query_fn accessor taxonomy sp-census.md section 5.3 cites by
+// name: default POSITION_DEAD (0), the least restrictive minimum
+// position, so an unregistered hook never spuriously blocks a command on
+// position grounds -- mirrors pkill_fame_query_fn's neutral-0 choice
+// (world_hooks.h: no natural NOWHERE-equivalent sentinel exists for a
+// position floor, so the value that can't win a comparison either way is
+// chosen). Both halves testable, unlike this header's abort-tripwire
+// cells above.
+using command_min_position_fn = int (*)(int cmd);
+void set_command_min_position_hook(command_min_position_fn hook);
+int dispatch_command_min_position(int cmd);
+
+// target_check(ch, cmd, t1, t2) (interpre.cpp:790; spec_pro.cpp:2750's
+// one call site, T2 consumer). Reads cmd_info[cmd].target_mask -- same
+// non-relocatable coupling as command_min_position above. SAFE-SENTINEL
+// class: default 0, target_check()'s OWN real "invalid target" return
+// value (interpre.cpp:790's body returns 0 on every failure path) -- an
+// unregistered hook degrades to "no valid target", the identical
+// behavior a real failed target check produces (the find_action_fn
+// precedent above: reusing the wrapped function's own natural failure
+// sentinel). Both halves testable.
+using target_check_fn = int (*)(char_data* ch, int cmd, target_data* t1, target_data* t2);
+void set_target_check_hook(target_check_fn hook);
+int dispatch_target_check(char_data* ch, int cmd, target_data* t1, target_data* t2);
+
 } // namespace rots::script

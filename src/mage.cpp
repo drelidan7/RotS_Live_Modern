@@ -11,6 +11,8 @@
 #include "char_utils.h"
 #include "comm.h"
 #include "db.h"
+#include "combat_hooks.h"
+#include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "platdef.h"
@@ -24,6 +26,7 @@
 #include "warrior_spec_handlers.h"
 #include "zone.h" /* For zone_table */
 #include <format>
+#include <string>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -142,10 +145,7 @@ extern const std::string_view sector_types[];
 /*
  * external functions
  */
-void list_char_to_char(struct char_data* list, struct char_data* caster, int mode);
 // void do_stat_object(struct char_data *caster, struct obj_data *j);
-ACMD(do_look);
-void do_identify_object(struct char_data*, struct obj_data*);
 
 char saves_spell(char_data* victim, sh_int caster_level, int bonus);
 bool new_saves_spell(const char_data* caster, const char_data* victim, int save_bonus);
@@ -628,7 +628,7 @@ ASPELL(spell_reveal_life)
     if (!found)
         send_to_char("The place seems empty.\n\r", caster);
     else
-        list_char_to_char(world[caster->in_room].people, caster, 0);
+        rots::combat::list_char_to_char(world[caster->in_room].people, caster, 0);
 }
 
 /*----------------------------------------------------------------------------------------------------------*/
@@ -828,12 +828,10 @@ ASPELL(spell_summon)
         act("$N appears in the room.", TRUE, caster, 0, victim, TO_CHAR);
         if (IS_RIDING(victim))
             stop_riding(victim);
-        char_from_room(victim);
+        rots::entity::dispatch_char_from_room(victim);
         char_to_room(victim, caster->in_room);
         act("$N summons you!", FALSE, victim, 0, caster, TO_CHAR);
-        do_look(victim, mutable_arg(""), 0, 0, 0);
-        extern void msdp_room_update(char_data * ch);
-
+        rots::combat::issue_command(rots::combat::combat_command::look, victim, mutable_arg(""), 0, 0, 0);
         msdp_room_update(victim);
     } else
         send_to_char("You failed.\n\r", caster);
@@ -854,7 +852,7 @@ ASPELL(spell_identify)
         return;
     }
 
-    do_identify_object(caster, obj);
+    rots::combat::do_identify_object(caster, obj);
     int level = get_mage_caster_level(caster);
     GET_MOVE(caster) = GET_MOVE(caster) - level;
 }
@@ -961,11 +959,9 @@ ASPELL(spell_blink)
         }
         send_to_char("The world spinned around you, and changed.\n\r", victim);
         act("$n disappeared in a flash of light.\n\r", TRUE, victim, 0, 0, TO_ROOM);
-        char_from_room(victim);
+        rots::entity::dispatch_char_from_room(victim);
         char_to_room(victim, room);
-        do_look(victim, mutable_arg(""), 0, 15, 0);
-        extern void msdp_room_update(char_data * ch);
-
+        rots::combat::issue_command(rots::combat::combat_command::look, victim, mutable_arg(""), 0, 15, 0);
         msdp_room_update(victim);
         act("$n appeared in a flash of light.\n\r", TRUE, victim, 0, 0, TO_ROOM);
     }
@@ -1144,15 +1140,13 @@ ASPELL(spell_relocate)
         stop_riding(caster);
         act("$n screams a shrill wail of pain, and suddenly disappears.\n\r",
             FALSE, caster, 0, 0, TO_ROOM);
-        char_from_room(caster);
+        rots::entity::dispatch_char_from_room(caster);
         char_to_room(caster, tmp);
         act("$n appears in an explosion of soft white light.\n\r",
             FALSE, caster, 0, 0, TO_ROOM);
         send_to_char("Pain fills your body, and your vision blurs. "
                      "You now stand elsewhere.\n\r",
             caster);
-        extern void msdp_room_update(char_data * ch);
-
         msdp_room_update(caster);
 
         /* Apply confuse and haze */
@@ -1182,7 +1176,7 @@ ASPELL(spell_relocate)
                 TRUE, caster, 0, 0, TO_CHAR);
             act("$n staggers, overcome by dizziness!", FALSE, caster, 0, 0, TO_ROOM);
         }
-        do_look(caster, mutable_arg(""), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::look, caster, mutable_arg(""), 0, 0, 0);
     }
 }
 
@@ -1272,12 +1266,12 @@ ASPELL(spell_beacon)
             }
 
             act("$n disappears in bright spectral halo.", FALSE, caster, 0, 0, TO_ROOM);
-            char_from_room(caster);
+            rots::entity::dispatch_char_from_room(caster);
             char_to_room(caster, oldaf->modifier);
             act("$n appears in bright spectral halo.", FALSE, caster, 0, 0, TO_ROOM);
 
             send_to_char("You return to your beacon!\n\r", caster);
-            do_look(caster, mutable_arg(""), 0, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::look, caster, mutable_arg(""), 0, 0, 0);
 
             affect_from_char(caster, SPELL_BEACON);
             return;
@@ -1704,7 +1698,7 @@ ASPELL(spell_earthquake)
                 act("$n loses balance and falls down!", TRUE, tmpch, 0, 0, TO_ROOM);
                 send_to_char("The earthquake throws you down!\n\r", tmpch);
                 stop_riding(tmpch);
-                char_from_room(tmpch);
+                rots::entity::dispatch_char_from_room(tmpch);
                 char_to_room(tmpch, crack);
                 act("$n falls in.", TRUE, tmpch, 0, 0, TO_ROOM);
                 tmpch->specials.position = POSITION_SITTING;
@@ -1996,7 +1990,7 @@ ASPELL(spell_word_of_sight)
     if (!found)
         send_to_char("The place seems empty.\n\r", caster);
     else
-        list_char_to_char(world[caster->in_room].people, caster, 0);
+        rots::combat::list_char_to_char(world[caster->in_room].people, caster, 0);
 }
 
 /*----------------------------------------------------------------------------------------------------------*/
@@ -2273,14 +2267,15 @@ ASPELL(spell_freeze)
 {
     if (IS_SET(EXIT(caster, digit)->exit_info, EX_CLOSED)) {
         /* Did they use "east", "west", etc. to target this direction? */
+        std::string freeze_msg;
         if (caster->delay.targ2.choice == TAR_DIR_WAY)
-            strcpy(buf, std::format("A thick sheet of hardened frost forms {}{}{}.\r\n",
+            freeze_msg = std::format("A thick sheet of hardened frost forms {}{}{}.\r\n",
                 digit != UP && digit != DOWN ? "to " : "", refer_dirs[digit],
-                digit != UP && digit != DOWN ? "" : " you").c_str());
+                digit != UP && digit != DOWN ? "" : " you");
         /* Or did they actually know the name of the door? */
         else if (caster->delay.targ2.choice == TAR_DIR_NAME)
-            strcpy(buf, std::format("The {} is frozen shut.\r\n", EXIT(caster, digit)->keyword).c_str());
-        send_to_room(buf, caster->in_room);
+            freeze_msg = std::format("The {} is frozen shut.\r\n", EXIT(caster, digit)->keyword);
+        send_to_room(freeze_msg, caster->in_room);
         return;
     } else
         send_to_char("You must first have a closed exit to cast upon.\r\n", caster);

@@ -55,6 +55,7 @@
 #include "../script.h"
 #include "../utils.h"
 #include "rots/core/character.h"
+#include "rots/core/descriptor.h"
 #include "rots/core/object.h"
 #include "test_world.h"
 
@@ -206,6 +207,56 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenFleeIsUnregistered)
         << "Expected an unregistered flee cell to leave send_to_char uncalled -- the real "
            "do_flee body never ran.";
 }
+// do_look (act_info.cpp) -- DISCRIMINATOR: the GET_POS(ch) < POSITION_SLEEPING
+// guard ("You can't see anything but stars!\n\r"), the cheapest deterministic
+// path through do_look's real body. Reaching it needs ch->desc to be a
+// non-null descriptor whose own `descriptor` field is truthy (do_look's very
+// first two statements are `if (!ch->desc) return;` / `if
+// (!ch->desc->descriptor) return;`, both silent early-outs -- without a real
+// descriptor fixture, this test could not tell "the real body ran and hit an
+// early guard" from "an unregistered cell no-op'd", since both look like
+// nothing happened). No ScopedTestWorld needed at all: the position guard
+// fires before any world[]/CAN_SEE() access, the same "cheapest branch"
+// shape as do_flee's TACTICS_BERSERK guard above. spell-family closure wave
+// Task 3: mage.cpp's do_look(...) calls (mage.cpp:834/966/1185/1280) are
+// this cell's first real issue_command() caller anywhere in the tree -- the
+// recurring say/move/dismount "first-caller pair" gap this wave's own
+// census flagged as likely for look/hit/move.
+
+TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoLookWhenRegistered)
+{
+    ScopedCapturingOutputSink capture;
+    descriptor_data desc {};
+    desc.descriptor = 1;
+    char_data character {};
+    character.desc = &desc;
+    character.specials.position = POSITION_STUNNED;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::look, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingOutputSink::last_message, "You can't see anything but stars!\n\r")
+        << "Expected the real do_look body's low-position guard to send its literal message.";
+}
+
+TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenLookIsUnregistered)
+{
+    ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::look);
+    ScopedCapturingOutputSink capture;
+    descriptor_data desc {};
+    desc.descriptor = 1;
+    char_data character {};
+    character.desc = &desc;
+    character.specials.position = POSITION_STUNNED;
+
+    rots::combat::issue_command(
+        rots::combat::combat_command::look, &character, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_TRUE(ScopedCapturingOutputSink::last_message.empty())
+        << "Expected an unregistered look cell to leave send_to_char uncalled -- the real "
+           "do_look body never ran.";
+}
+
 
 // do_dismount (ranger.cpp) -- DISCRIMINATOR: the IS_RIDING(ch)==false branch's
 // unconditional send_to_char("You are not riding anything.\n\r", ch) -- the

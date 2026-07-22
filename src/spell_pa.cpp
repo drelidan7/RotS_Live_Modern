@@ -28,8 +28,8 @@
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 
-#include "big_brother.h"
 #include "char_utils.h"
+#include "entity_hooks.h"
 
 extern struct char_data* fast_update_list;
 extern struct char_data* character_list;
@@ -607,8 +607,7 @@ ACMD(do_cast)
 
             // The spell is targeting a character.  Ensure that it's valid before continuing.
             if (tmpwtl.targ2.type == TARGET_CHAR && tmpwtl.targ2.ptr.ch) {
-                game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-                if (!bb_instance.is_target_valid(ch, tmpwtl.targ2.ptr.ch, spell_index)) {
+                if (!rots::entity::dispatch_target_valid(ch, tmpwtl.targ2.ptr.ch, spell_index)) {
                     send_to_char("You feel the Gods looking down upon you, and protecting your "
                                  "target.  Your lips falter.\r\n",
                         ch);
@@ -688,8 +687,7 @@ ACMD(do_cast)
         tar_char = wtl->targ2.ptr.ch;
 
         // The spell is targeting a character.  Ensure that it's valid before continuing.
-        game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
-        if (!bb_instance.is_target_valid(ch, tar_char, spell_index)) {
+        if (!rots::entity::dispatch_target_valid(ch, tar_char, spell_index)) {
             send_to_char("You feel the Gods looking down upon you, and protecting your target.  "
                          "Your lips falter.\r\n",
                 ch);

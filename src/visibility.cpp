@@ -1184,10 +1184,15 @@ char* target_from_word(struct char_data* ch, char* argument, int mask, struct ta
 // Task 1, controller amendment item 3): grepped every current CC_USE/
 // CC_NORM/CC_FIX call site (color.h:65-70) across the tree -- all eight
 // (act_comm.cpp/act_info.cpp/act_wiz.cpp/color.cpp/comm.cpp/interpre.cpp/
-// spell_pa.cpp/utility.cpp) are still ROTS_SERVER_SOURCES (app-tier); ZERO
-// are members of any library (rots_core or otherwise). The amendment's
-// "storage/accessor home is rots_core, NOT rots_combat" branch therefore
-// does not fire; rots_combat (this file) is a legal destination. The four
+// spell_pa.cpp/utility.cpp) were still ROTS_SERVER_SOURCES (app-tier) AT
+// THE TIME OF THE SCAN; ZERO were members of any library (rots_core or
+// otherwise). The amendment's "storage/accessor home is rots_core, NOT
+// rots_combat" branch therefore did not fire; rots_combat (this file) was
+// a legal destination. Snapshot stale as of the spec-pair wave (Task 5a
+// hygiene, sp-task-5a-brief.md Step 2): spell_pa.cpp itself joined
+// ROTS_COMBAT_SOURCES in the spell-family closure wave, so its CC_USE/
+// CC_NORM/CC_FIX call site is now an intra-lib reader of this file's
+// storage; the other seven listed sites remain app-tier. The four
 // helpers below keep their original internal (anonymous-namespace)
 // linkage -- get_color_sequence() is their only caller, same as in
 // color.cpp.

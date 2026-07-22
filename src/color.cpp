@@ -28,11 +28,17 @@ namespace {
 // relocated verbatim to visibility.cpp (spell-family closure wave Task 1;
 // sf-census.md section 4.1), alongside color_sequence[]/get_color_sequence()
 // below -- their sole caller. Library-reader scan (CC_USE/CC_NORM/CC_FIX,
-// color.h:65-70) found ZERO existing library readers of these macros (every
-// current expansion site -- act_comm.cpp/act_info.cpp/act_wiz.cpp/color.cpp/
-// comm.cpp/interpre.cpp/spell_pa.cpp/utility.cpp -- is still app-tier), so
-// the controller's rots_core-floor amendment does not fire; rots_combat is
-// this move's legal destination. This file's remaining helpers
+// color.h:65-70) found ZERO existing library readers of these macros AT THE
+// TIME OF THE SCAN (every current expansion site -- act_comm.cpp/
+// act_info.cpp/act_wiz.cpp/color.cpp/comm.cpp/interpre.cpp/spell_pa.cpp/
+// utility.cpp -- was still app-tier), so the controller's rots_core-floor
+// amendment did not fire; rots_combat was this move's legal destination.
+// Snapshot stale as of the spec-pair wave (Task 5a hygiene, sp-task-5a-
+// brief.md Step 2): spell_pa.cpp itself joined ROTS_COMBAT_SOURCES in the
+// spell-family closure wave, so its CC_USE/CC_NORM/CC_FIX expansion site is
+// now an intra-lib reader of this file's macros; the other seven listed
+// sites remain app-tier. Doesn't change the move's legality (rots_combat
+// still hosts an in-lib reader either way). This file's remaining helpers
 // (parse_integer_token()/parse_rgb_triplet()/parse_hex_triplet()/
 // describe_color_value()/etc. below) are unrelated to get_color_sequence()
 // and stay here.

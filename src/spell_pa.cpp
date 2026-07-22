@@ -31,7 +31,9 @@
 #include "char_utils.h"
 #include "entity_hooks.h"
 
-extern struct char_data* fast_update_list;
+// extern struct char_data* fast_update_list; RETIRED (spec-pair wave Task 5a
+// hygiene, sp-task-5a-brief.md Step 2): dead decl, zero references anywhere
+// in this file (confirmed by grep before deletion).
 extern struct char_data* character_list;
 extern struct char_data* waiting_list;
 extern struct skill_data skills[];
@@ -52,7 +54,10 @@ void appear(struct char_data*);
 void affect_update();
 void fast_update();
 
-ACMD(do_flee);
+// ACMD(do_flee); RETIRED (spec-pair wave Task 5a hygiene, sp-task-5a-
+// brief.md Step 2): dead forward decl, zero call sites anywhere in this
+// file (confirmed by grep before deletion); do_flee's real definition and
+// callers live in act_offe.cpp.
 
 void send_magic_room_message(char_data* caster, std::string_view message)
 {

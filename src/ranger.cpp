@@ -51,7 +51,9 @@ extern struct room_data world;
 extern struct skill_data skills[];
 extern int find_door(struct char_data* ch, char* type, char* dir);
 extern int get_followers_level(struct char_data*);
-extern int old_search_block(char*, int, unsigned int, const std::string_view*, int);
+// extern int old_search_block(...); RETIRED (spec-pair wave Task 5a hygiene,
+// sp-task-5a-brief.md Step 2): dead decl, zero references anywhere in this
+// file (confirmed by grep before deletion).
 extern int get_number(char** name);
 extern int get_real_stealth(struct char_data*);
 extern int rev_dir[];

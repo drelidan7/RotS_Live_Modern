@@ -56,7 +56,12 @@ extern byte language_skills[];
 extern struct char_data* character_list;
 extern struct char_data* combat_list;
 extern struct char_data* waiting_list; /* in db.cpp */
-extern struct command_info cmd_info[];
+// extern struct command_info cmd_info[]; RETIRED (spec-pair wave Task 5a
+// hygiene, sp-task-5a-brief.md Step 2; T2 review Minor finding): every
+// cmd_info[] read in this file converted to rots::script::dispatch_
+// command_min_position() in Task 2 (sp-task-2-report.md), leaving this
+// decl orphaned -- confirmed by grep before deletion (the file's only
+// other "cmd_info" mention is a prose comment, not code).
 extern struct descriptor_data* descriptor_list;
 extern struct index_data* mob_index;
 extern struct index_data* obj_index;

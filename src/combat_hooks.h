@@ -127,10 +127,13 @@ enum class combat_command {
     close,
     // 26th cell (combat-trio wave Task 1; trio-task-1-brief.md CONTROLLER
     // ADDENDUM item 3; combat-trio-census.md section 5.1) -- real body is
-    // ranger.cpp's ACMD(do_dismount), a still-app-compiled combat-row TU
-    // (ranger.cpp itself never needs to promote for this cell to work, the
-    // same "real body stays in its still-app owner" shape as `flee`'s own
-    // do_flee/act_offe.cpp). Breaks olog_hai.cpp's one direct up-call to
+    // ranger.cpp's ACMD(do_dismount). Comment corrected (spec-pair wave
+    // Task 5a hygiene, sp-task-5a-brief.md Step 2): ranger.cpp joined
+    // ROTS_COMBAT_SOURCES in the spell-family closure wave (rots_combat
+    // 12->15), so this cell's dispatch is now intra-lib, not an up-call
+    // into an app-tier TU -- the registered-hook cell itself is unchanged
+    // and still required (dispatch has no compile-time dependency on the
+    // callee's tier). Breaks olog_hai.cpp's one direct up-call to
     // do_dismount, its only genuine combat-peer edge (census section 1).
     dismount,
     // 28th cell (Cluster B wave Task 1; cb-task-1-brief.md Step 1;

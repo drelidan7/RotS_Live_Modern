@@ -467,58 +467,23 @@ int perform_move_mount(struct char_data* ch, int dir)
     return 1;
 }
 
-void parse_container_for_stay_zone(char_data* ch, obj_data* container, const int room)
-{
-    obj_data* next_item = nullptr;
-    for (obj_data* item = container->contains; item; item = next_item) {
-        next_item = item->next_content;
-
-        if (GET_ITEM_TYPE(item) == ITEM_CONTAINER) {
-            parse_container_for_stay_zone(ch, item, room);
-        }
-
-        if (IS_OBJ_STAT(item, ITEM_STAY_ZONE)) {
-            send_to_char(std::format("You drop {}.\n\r", OBJS(item, ch)), ch);
-            strcpy(buf, "$n drops $p.");
-            act(buf, TRUE, ch, item, 0, TO_ROOM);
-            obj_from_obj(item);
-            obj_to_room(item, room);
-        }
-    }
-};
-
-void prohibit_item_stay_zone_move(char_data* ch, int room)
-{
-    // Check for gear that character is wearing.
-    for (int gear_index = 0; gear_index < MAX_WEAR; gear_index++) {
-        obj_data* item = ch->equipment[gear_index];
-        if (item == nullptr) {
-            continue;
-        }
-
-        if (IS_OBJ_STAT(ch->equipment[gear_index], ITEM_STAY_ZONE)) {
-            obj_data* item = unequip_char(ch, gear_index);
-            obj_to_room(item, room);
-        }
-    }
-
-    // Check inventory of character.
-    obj_data* next_item = nullptr;
-    for (obj_data* item = ch->carrying; item; item = next_item) {
-        next_item = item->next_content;
-        if (GET_ITEM_TYPE(item) == ITEM_CONTAINER) {
-            parse_container_for_stay_zone(ch, item, room);
-        }
-
-        if (IS_OBJ_STAT(item, ITEM_STAY_ZONE)) {
-            send_to_char(std::format("You drop {}.\n\r", OBJS(item, ch)), ch);
-            strcpy(buf, "$n drops $p.");
-            act(buf, TRUE, ch, item, 0, TO_ROOM);
-            obj_from_char(item);
-            obj_to_room(item, room);
-        }
-    }
-}
+// parse_container_for_stay_zone()/prohibit_item_stay_zone_move() relocated
+// verbatim to fight.cpp (spell-family closure wave Task 1; sf-census.md
+// section 4.2: RELOCATE-CLEAN -- deps obj_to_room()/obj_from_char()/
+// obj_from_obj() (containment.cpp/L2), unequip_char() (equipment.cpp/L2),
+// act()/send_to_char() (output seam) all resolve downward once mage.cpp
+// promotes. One documented deviation from strict byte-for-byte text: the
+// two `strcpy(buf, "$n drops $p."); act(buf, ...)` pairs inline to a
+// direct `act("$n drops $p.", ...)` call -- the retired global scratch
+// buffer (db.h's extern char buf[MAX_STRING_LENGTH]) only ever held this
+// same compile-time-constant template with no per-call substitution, so
+// passing the literal directly is behavior-identical, not merely
+// local-composition (there is no per-call value to compose). See
+// fight.cpp's own copy of these two functions for the exact retrofit.
+// Declaration unchanged (no shared header; mage.cpp's own local extern is
+// unaffected; this file's own internal call site below needs one, added
+// at the top of this file).
+extern void prohibit_item_stay_zone_move(char_data* ch, int room);
 
 /*
  * Reduces the movement cost of rooms based on character race and sector type.

@@ -3838,3 +3838,74 @@ int find_door(struct char_data* ch, char* type, char* dir)
         return (-1);
     }
 }
+
+// ---------------------------------------------------------------------------
+// parse_container_for_stay_zone()/prohibit_item_stay_zone_move() relocated
+// verbatim from act_move.cpp (spell-family closure wave Task 1; sf-census.md
+// section 4.2). mage.cpp's future upward prohibit_item_stay_zone_move()
+// call sites (mage.cpp:811/:960/:1142, consumer-free this task) are the
+// edge this move resolves; act_move.cpp keeps calling it via its own
+// local extern declaration, now a legal app->lib downward call instead of
+// a same-TU reference.
+// ---------------------------------------------------------------------------
+
+void parse_container_for_stay_zone(char_data* ch, obj_data* container, const int room)
+{
+    obj_data* next_item = nullptr;
+    for (obj_data* item = container->contains; item; item = next_item) {
+        next_item = item->next_content;
+
+        if (GET_ITEM_TYPE(item) == ITEM_CONTAINER) {
+            parse_container_for_stay_zone(ch, item, room);
+        }
+
+        if (IS_OBJ_STAT(item, ITEM_STAY_ZONE)) {
+            send_to_char(std::format("You drop {}.\n\r", OBJS(item, ch)), ch);
+            // buf retirement (spell-family closure wave Task 1; sf-census.md
+            // section 4.2 "_buf" residual): the retired global scratch buffer
+            // only ever held this compile-time-constant template with no
+            // per-call substitution, so the literal is passed directly --
+            // behavior-identical, not merely local-composition.
+            act("$n drops $p.", TRUE, ch, item, 0, TO_ROOM);
+            obj_from_obj(item);
+            obj_to_room(item, room);
+        }
+    }
+};
+
+void prohibit_item_stay_zone_move(char_data* ch, int room)
+{
+    // Check for gear that character is wearing.
+    for (int gear_index = 0; gear_index < MAX_WEAR; gear_index++) {
+        obj_data* item = ch->equipment[gear_index];
+        if (item == nullptr) {
+            continue;
+        }
+
+        if (IS_OBJ_STAT(ch->equipment[gear_index], ITEM_STAY_ZONE)) {
+            obj_data* item = unequip_char(ch, gear_index);
+            obj_to_room(item, room);
+        }
+    }
+
+    // Check inventory of character.
+    obj_data* next_item = nullptr;
+    for (obj_data* item = ch->carrying; item; item = next_item) {
+        next_item = item->next_content;
+        if (GET_ITEM_TYPE(item) == ITEM_CONTAINER) {
+            parse_container_for_stay_zone(ch, item, room);
+        }
+
+        if (IS_OBJ_STAT(item, ITEM_STAY_ZONE)) {
+            send_to_char(std::format("You drop {}.\n\r", OBJS(item, ch)), ch);
+            // buf retirement (spell-family closure wave Task 1; sf-census.md
+            // section 4.2 "_buf" residual): the retired global scratch buffer
+            // only ever held this compile-time-constant template with no
+            // per-call substitution, so the literal is passed directly --
+            // behavior-identical, not merely local-composition.
+            act("$n drops $p.", TRUE, ch, item, 0, TO_ROOM);
+            obj_from_char(item);
+            obj_to_room(item, room);
+        }
+    }
+}

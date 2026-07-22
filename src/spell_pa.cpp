@@ -31,7 +31,6 @@
 #include "big_brother.h"
 #include "char_utils.h"
 
-extern struct descriptor_data* descriptor_list;
 extern struct char_data* fast_update_list;
 extern struct char_data* character_list;
 extern struct char_data* waiting_list;
@@ -87,15 +86,14 @@ void say_spell(char_data* caster, int spell_index)
         return;
     }
 
-    // Reset the buffer.
-    strcpy(buf, "");
-    if (GET_RACE(caster) != RACE_HARADRIM) {
-        strcpy(buf, std::format("$n utters a strange command, '{}'", spell_name).c_str());
-    } else {
-        strcpy(buf, std::format("$n utters a foreign command, '{}'", spell_name).c_str());
-    }
+    // Local composition retires the db_boot.cpp global scratch buffer `buf` (spell-family
+    // closure wave Task 2; sf-census.md section 4.1) -- an upward read of app-tier storage
+    // once this file promotes into rots_combat at Task 4.
+    const std::string message = (GET_RACE(caster) != RACE_HARADRIM)
+        ? std::format("$n utters a strange command, '{}'", spell_name)
+        : std::format("$n utters a foreign command, '{}'", spell_name);
 
-    send_magic_room_message(caster, buf);
+    send_magic_room_message(caster, message);
 }
 
 /*
@@ -110,7 +108,11 @@ void do_sense_magic(char_data* caster, int spell_number)
     if (skills[spell_number].type != PROF_MAGE || caster == NULL)
         return;
 
-    for (descriptor_data* player = descriptor_list; player; player = player->next) {
+    // descriptor_list walk converted onto the output_seam get_descriptor_list_head()
+    // read accessor (spell-family closure wave Task 2; sf-census.md section 4.1) --
+    // comm.cpp's descriptor_list storage never moves, this only replaces the raw
+    // extern read with the accessor comm.h already declares.
+    for (descriptor_data* player = get_descriptor_list_head(); player; player = player->next) {
         // Ignore disconnected players.
         if (player->connected == CON_PLYNG) {
             char_data* character = player->character;

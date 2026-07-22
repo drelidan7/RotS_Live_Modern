@@ -1726,6 +1726,122 @@ confirmed the running count at every task's final gate, with zero regressions; `
 DEFER-row members, so the row is unaffected by this wave. See `AGENTS.md`'s "Testing Guidelines" for
 the full reconciled per-task chain.
 
+### The spell-family closure wave: `spell_pa.cpp` + `mage.cpp` + `ranger.cpp` join `rots_combat` (15 TUs)
+
+Design: `docs/superpowers/specs/2026-07-21-spell-family-closure-design.md`. Plan:
+`docs/superpowers/plans/2026-07-21-spell-family.md`. Census: `.superpowers/sdd/sf-census.md`
+(gitignored scratch). Task reports: `.superpowers/sdd/sf-task-{0,1,2,3,4}-report.md`. This wave is
+Wave A of the owner-approved combat-row completion program (DEFER 5 → 0 across two back-to-back
+waves; Wave B, `spec_pro` → `spec_ass`, follows under the owner's autonomous-spec-gate +
+merge-when-green grants). It promotes the spell-casting registrar (`spell_pa.cpp`, the `do_cast`
+hub) together with its two closure partners (`mage.cpp`, `ranger.cpp`) in **one joint membership
+commit** — the migration playbook's own "Ambitious tier" row, the intra-subset rule at full scale.
+`rots_combat` grows from 12 to **15 TUs**; no new library, no new linkcheck —
+`CombatLayerAcyclicity` (both hosts) went green on the **first** build attempt, no bisection
+needed. Combat DEFER drops **5 → 2** (`spec_ass`/`spec_pro` remain).
+
+**The 76-peer re-derivation.** The playbook's stale `spell_pa` row cited combat-peer=76; T0's fresh
+`nm` census found those 76 had almost entirely dissolved already: **44 resolve into TUs already
+in `rots_combat`** (41 `spell_*` mystic implementations, 4 `battle_mage_handler::*` methods,
+`appear`/`check_hallucinate`/the `spllog_*` storage in `fight.cpp`, `waiting_list` in
+`clerics.cpp` — all free, prior-wave work), **35 are intra-family** (the `spell_*` mage
+implementations spell_pa's registrar dispatches to — dissolve the moment mage and spell_pa land
+in the same commit), leaving a genuine app-tier residual of **7 distinct symbols**. Mage's and
+ranger's own stale "combat-peer=7"/"combat-peer=9" rows reconciled the same way (mage: 7 residual
+beyond the 1 intra-family `new_saves_spell`; ranger: 12 residual beyond the 1 intra-family
+`say_spell` and the `show_tracks` edge below).
+
+**The joint-commit justification — a true bidirectional file-level cycle.** `spell_pa.cpp` and
+`mage.cpp` closed over each other: 35 `spell_pa → mage` dispatch edges (the registrar's
+`spell_pointer` table) against 1 `mage → spell_pa` back-edge (`new_saves_spell`). Per the
+intra-subset rule neither could promote standalone or even paired with one partner — both had to
+land in the same membership commit. `ranger.cpp → spell_pa.cpp` (`say_spell`) is one-directional
+(ranger depends on spell_pa, not the reverse), so ranger had to promote with or after spell_pa; a
+single joint commit of all three closed every intra-family edge at once. The inbound-edge check
+(every family-exported symbol against every library's undefined set) came back clean — no library
+anywhere references a spell_pa/mage/ranger symbol, so promoting the three creates zero
+reverse/upward edge.
+
+**`show_tracks` — the marquee L3→L4 edge — RULING: relocate down, no third permanent inversion.**
+`ranger.cpp`'s call into `show_tracks()` (`graph.cpp`, `rots_pathfind`, L4) was the wave's
+candidate for the codebase's third permanent L3→L4 inversion (after `limits → mobact` and
+`script.cpp`'s `call_trigger`). The body-read found it is presentation over L3-reachable
+world/room data (`world[]`, `room_track[]`, `mob_proto[]`, `pc_race_keywords`/`pc_star_types`,
+`GET_LEVEL`/`GET_SKILL`) plus two graph-internal string-switch helpers (`track_desc`/
+`water_track_desc`) — **no graph adjacency, no BFS, no `find_first_step` state** — so it is not
+pathfind-internal at all. Default A (RELOCATE) fires instead: `show_tracks`/`track_desc`/
+`water_track_desc` moved verbatim into `db_world.cpp` (`rots_world`), the data-owning tier, keeping
+`show_blood_trail` (which shares the two helpers and stays in `graph.cpp`) legal downward L4→L3.
+Both callers stay legal: `ranger.cpp`'s own call becomes intra-lib once ranger promotes, and
+`act_info.cpp`'s independent call (still app-tier) stays an ordinary app→L3 downward call. Per the
+hook-owner-promotion banner lesson (Cluster B wave), no "app-tier permanently"/inversion banner
+was written anywhere near this relocation — it is ordinary relocated presentation code, not a hook.
+
+**New hooks/forwarders (Task 1, consumer-free).** A **fourth** `entity_hooks.h` big_brother
+sibling, `on_character_returned` (`ranger.cpp`'s `big_brother.cpp:535` edge) — a T0 finding not in
+the design spec's default list, void, logged-no-op tripwire, joining the existing
+`on_character_died`/`on_character_afked`/`on_corpse_decayed` trio. `msdp_room_update`
+(`act_move.cpp`) became a new `output_seam` forwarder (real body renamed `_impl`). A new
+`get_descriptor_list_head()` `output_seam` read accessor exposes `comm.cpp`'s descriptor list for
+spell_pa's "sense nearby casting" broadcast (storage stays in `comm.cpp`). A new `combat_hooks.h`
+trio — `check_simple_move`/`list_char_to_char`/`do_identify_object` — follows the
+`extract_char`/`char_from_room` shape (real body stays unrenamed in its owner file, a
+separately-namespaced `rots::combat::*` hook sits alongside for library-side callers), not the
+`Crash_crashsave`-style symbol-takeover shape, since all three already had live bare-name app-tier
+callers to preserve. `do_identify_object` is a Task 1 overturn of the census's literal RELOCATE
+label (its body drags four sibling `act_info.cpp` display helpers and three file-local `const`
+arrays, the same "relocating drags the display cluster" shape already flagged for
+`list_char_to_char`) — HOOK, not RELOCATE, an already-authorized taxonomy, not a new one.
+
+**Relocations (Task 1, byte-verbatim, `nm`-verified downward).** `report_wrong_target`/
+`target_from_word` (`interpre.cpp` → `visibility.cpp`) — pure `send_to_char`/txt-pool-parse
+presentation. `argument_interpreter` (`interpre.cpp` → L0 `rots_util.cpp`) — a pure string
+tokenizer, the `one_argument`/`half_chop` L0 precedent. `find_door` (`act_move.cpp` →
+`fight.cpp`) — pure name→door parse/presentation. `color_sequence[]` + `get_color_sequence()`
+(`color.cpp` → `visibility.cpp`) — after a tree-wide reader scan confirmed every `CC_USE`/
+`CC_NORM`/`CC_FIX` expansion site is still app-tier, so `rots_combat` is a legal destination.
+`prohibit_item_stay_zone_move` + `parse_container_for_stay_zone` (`act_move.cpp` → `fight.cpp`).
+All six pass every `*LayerAcyclicity` linkcheck after each individual commit, not just at the end.
+
+**Call-site conversions (Tasks 2/3).** `spell_pa.cpp`'s `is_target_valid` (3-arg) →
+`rots::entity::dispatch_target_valid` (a Task 2 fix commit — the census's own "T2 convert"
+disposition was correct; an initial reading of the task prompt as deferring this specific
+conversion to Task 4 was an error, corrected before Task 3 began). `mage.cpp`: four `do_look`
+sites → `combat_command::look`; five `char_from_room` sites → the entity hook; `msdp_room_update`
+calls needed **zero** edit (only the now-redundant local `extern` deleted, since the forwarder
+takes over the plain global symbol); `_buf` retired to local `std::format` composition.
+`ranger.cpp`: `do_hit`×2/`do_flee`/`do_move`×2 → their existing cells; `special` →
+`rots::combat::call_special` (existing hook, **not** a rider-gate edge); `on_character_returned` →
+its new hook; `_arg`/`_buf`/`_buf2` retired (13 sites). Both TUs' intra-family calls
+(`new_saves_spell`/`saves_spell`, `say_spell`) were left as direct calls, verified unchanged —
+they dissolve for free the moment Task 4's joint commit lands.
+
+**Rider gate: untouched, 2 of ≤3.** A full sweep of all three TUs for spec-proc-dispatcher edges
+(`virt_program_number`/`virt_assignmob`/`command_interpreter`-class calls) found zero matches —
+`ranger.cpp`'s only `special`-shaped call resolves onto the existing `call_special` hook, not a new
+dispatcher. **Zero new `combat_command` cells** — every `do_*` up-call across all three TUs maps
+to one of the existing 29 cells (`do_look`×4→`look`, `do_hit`×2→`hit`, `do_flee`→`flee`,
+`do_move`×2→`move`).
+
+**Test-count delta for this wave: 1468 → 1487** — Task 1 +17 (2 `CharacterReturnedHook.*`, 4
+`msdp_room_update`/`descriptor_list_head` forwarder tests, 6 `check_simple_move`/
+`list_char_to_char`/`do_identify_object` hook tests, 5 in a new `visibility_tests.cpp` — the
+coverage-gap rider for `report_wrong_target`/`target_from_word`, which had zero prior coverage
+anywhere in the tree; the other five relocations added no tests, each a byte-verbatim move of code
+already exercised indirectly through the game's integration/boot paths), Task 2 +0 (a
+discriminator audit found zero genuine gaps — `get_descriptor_list_head`'s dispatch mechanism was
+already covered by Task 1's own pair; the `is_target_valid` fix commit dispatches onto the
+combat-pilot wave's already-tested hook), Task 3 +2 (the `look` cell's registered/unregistered
+pair — a genuine discriminator-audit gap, `mage.cpp`'s four `do_look` conversions are this cell's
+first real `issue_command()` caller anywhere in the tree, the recurring `say`/`move`/`gen_com`-class
+gap), Task 4 +0 (a pure CMakeLists.txt membership move, zero source edits — every up-call was
+already converted onto a hook/seam by Tasks 1-3). All gate hosts (`macos-arm64`, `rots64`,
+`macos-arm64-asan` on Tasks 1 and 3's new/rewritten test files) confirmed the running count at
+every task's final gate; `ConvertEquivalence` 17/17 both hosts throughout; both boot goldens
+byte-identical at every commit. See `AGENTS.md`'s "Testing Guidelines" for the full reconciled
+per-task chain; i386 finalization (Task 5b) is pending as of this docs pass and is reported
+separately once run.
+
 ### Pathed data-model includes
 
 `rots_core` owns `target_include_directories(rots_core PUBLIC core/include)`: every consumer that

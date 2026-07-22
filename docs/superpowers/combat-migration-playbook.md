@@ -1,22 +1,28 @@
 # Combat-row migration playbook
 
-**Status: FINALIZED**, now confirmed by a **third** application (the behavior wave —
-`limits.cpp` → `rots_combat` (11 → 12 TUs) + `mobact.cpp` → `rots_script` (3 → 4 TUs) —
-see "The behavior wave" section near the end of this document), following the
+**Status: FINALIZED**, now confirmed by a **fourth** application (the spell-family
+closure wave — `spell_pa.cpp` + `mage.cpp` + `ranger.cpp` → `rots_combat`, ONE joint
+membership commit, 12 → 15 TUs — see "The spell-family closure wave" section near the
+end of this document, the playbook's own "Ambitious tier" row: a true bidirectional
+file-level cycle, the intra-subset rule at full scale), following the **third**
+application (the behavior wave — `limits.cpp` → `rots_combat` (11 → 12 TUs) +
+`mobact.cpp` → `rots_script` (3 → 4 TUs) — see "The behavior wave" section) and the
 **second** application (the combat-trio wave — `olog_hai.cpp` + `mystic.cpp` +
 `profs.cpp`, `rots_combat` 8 → 11 TUs — see "The combat-trio wave" section). Originally
 recorded factually from the ACTUAL recipe the combat-pilot wave's tasks followed (Task
 6/7 of that wave — the docs-finalization task following Task 5, which landed
 `clerics.cpp` + `fight.cpp` joint membership, `rots_combat` 6 → 8 TUs) — not a
 prescriptive design written in advance — so a later wave repeating this pattern for one
-of the **5 remaining** `rots_combat` DEFER TUs (`spec_ass`/`mage`/`spell_pa`/`ranger`/
-`spec_pro` — `olog_hai`/`mystic`/`profs` joined in the combat-trio wave, `limits`
-joined in the behavior wave; `mobact` also resolved this wave but landed in
-`rots_script`, a different library, not a `rots_combat` DEFER-row promotion) can
-compare its own experience against **seven** real data points (clerics, fight,
-olog_hai, mystic, profs, limits, mobact) instead of zero, and can start from the
-per-TU cost table at the end of this document instead of re-deriving each row's
-blockers from scratch.
+of the **2 remaining** `rots_combat` DEFER TUs (`spec_ass`/`spec_pro` — `olog_hai`/
+`mystic`/`profs` joined in the combat-trio wave, `limits` joined in the behavior wave,
+`spell_pa`/`mage`/`ranger` joined in the spell-family closure wave; `mobact` also
+resolved but landed in `rots_script`, a different library, not a `rots_combat`
+DEFER-row promotion) can compare its own experience against **ten** real data points
+(clerics, fight, olog_hai, mystic, profs, limits, mobact, spell_pa, mage, ranger)
+instead of zero, and can start from the per-TU cost table at the end of this document
+instead of re-deriving each row's blockers from scratch. Wave B of the owner-approved
+combat-row completion program (`spec_pro` → `spec_ass`, DEFER 2 → 0) is the next and
+final application of this recipe against the `rots_combat` row.
 
 ## The finalized recipe (census → closure check → seams → moves → conversions → joint membership → verification)
 
@@ -593,11 +599,11 @@ this wave.
 | **olog_hai** | **RESOLVED (combat-trio wave, `rots_combat` 8→11).** L2-app=4 (`get_char_room_vis`/`CAN_SEE`/`get_real_OB`/`get_real_parry`); app-output=2 (`abort_delay`/`complete_delay`); app-command=2 (`do_move`/act_move, `one_argument`/interpre); app-session=5 (`_arg`/`_buf`/`_buf2`/`_waiting_list`/db_boot, `is_target_valid`) | **Actual, `nm`-confirmed at Task 0 (`combat-trio-census.md` §1): 41 total project symbols, 7 blocking, 34 non-blocking (count as corrected by the Task 0 review — do_dismount was double-counted in the census's first tally).** `do_move`→existing `move` cell (confirmed real call shape); `do_dismount`→**new 26th `dismount` cell** (the row's one and only genuine combat-peer edge, `do_dismount`→`ranger.cpp`, still app-compiled); `one_argument`→L0 `rots_util.cpp` (bundled with `fill_word`/`fill[]`; `half_chop` census'd independently, see "Half_chop unbundles" below); `is_target_valid` ×4 → the existing 2-arg big_brother hook; `_arg`/`_buf`/`_buf2` (10/3/5 genuine sites) → local-composition retirement; `_waiting_list` needed **zero** work — already resolved for free by the combat-pilot wave's `waiting_list` storage-move into `clerics.cpp`, already in-lib. | **Nothing remains open.** olog_hai joined `ROTS_COMBAT_SOURCES` in the Task 4 membership commit; `CombatLayerAcyclicity` green first try. | **Old cost-table "combat-peer=6" OVERTURNED to 1** — the fresh full-closure count found exactly one genuine still-app-DEFER-TU edge (`do_dismount`), not 6; the old figure was a pre-`nm` estimate the census's own "strong prior, not ground truth" caveat existed to catch. olog_hai closed **standalone** — zero intra-trio edges to mystic or profs, confirming this row genuinely was, as predicted, the closest to SEED-CLEAN of the 9. |
 | **mobact** | **RESOLVED (behavior wave, `rots_script` 3→4).** L2-app=2 (`CAN_SEE`/`CAN_SEE_OBJ`); app-output=1 (`_no_specials`/comm); app-command=12 (mob-AI `do_*` issuance); app-session=1 (`_buf`); app-other=2 (`find_first_step`/graph, `intelligent`/mudlle) | **Actual, `nm`-confirmed at Task 0 (`bw-census.md` §1/§5): 90 total project symbols, 37 resolve in-project, 15 app-tier blocking (12 `do_*` cells + `_buf` + `_no_specials` + `virt_program_number`).** Both L2-app edges (visibility family) resolved for free downward once mobact promotes; `find_first_step`/`intelligent` resolved downward/intra-lib (this wave answers the l4-seed downstream note's "still undecided" question: mobact's own tier is `rots_script`, decided by re-running the closure check at its own promotion, exactly as that note prescribed — the driver homes with the engine it invokes, not with `rots_combat`); all 12 `do_*` up-calls confirmed by name against the existing 26-cell `combat_command` table — **zero new cells needed**; `_no_specials` → `no_specials_active()` read accessor (`output_seam`); `_buf` → local composition at all 9 sites. **The wave's one genuine census miss**: `virt_program_number` (spec_ass.cpp:315, 2 call sites) — not itemized in the original combat-census row at all, a `void*`-returning spec-proc dispatcher that cannot relocate; inverted via a new `script_hooks.h` abort-tripwire cell, rider-gate count **1** (well under the pre-authorized ≤3 ceiling, no auto-STOP). | **Nothing remains open.** mobact joined `ROTS_SCRIPT_SOURCES` in Task 3's Step 2 membership commit; `ScriptLayerAcyclicity` green first try, both hosts. | **Confirms the l4-seed spec's own corollary**: mobact's `find_first_step`/`intelligent` edges resolved downward/intra-lib exactly as that wave's parent-spec §3 REVISION predicted, and mobact's own promotion (not the L4 band's mere existence) is what answered its tier — see "The behavior wave" section below, "The L4-homing lesson, fulfilled." |
 | **mystic** | **RESOLVED (combat-trio wave, `rots_combat` 8→11).** L2-app=6 (`add_follower`/`get_char_room_vis`/`stop_follower`/`stop_riding`/`CAN_SEE_OBJ`/`set_mental_delay`); app-output=1 (`send_to_room`); app-command=5 (interpre text-parse + `do_flee`+`remove_character_from_group`); app-session=1 (`_buf`) | **Actual, `nm`-confirmed at Task 0 (`combat-trio-census.md` §2): 58 total project symbols, 10 blocking, 48 non-blocking.** `do_flee`→existing `flee` cell; `half_chop`/`one_argument`→L0 `rots_util.cpp`; `add_follower`→L2 `entity_lifecycle.cpp` (census-confirmed zero handler-internal statics); `_buf` (1 genuine site)→local-composition retirement; **the wave's named primary STOP-risk, fully resolved**: 5 `spell_pa.cpp`-owned combat-peer edges (`saves_confuse`/`saves_insight`/`saves_leadership`/`saves_mystic`/`saves_poison`), never enumerated by name in the design spec's "combat-peer=8" estimate, all RELOCATE-CLEAN to L2 `char_utils_combat.cpp` via the `saves_power` precedent — see "The `saves_*` five-pack is L2-lateral, not L2-optional" below. | **Nothing remains open.** mystic joined `ROTS_COMBAT_SOURCES` in the Task 4 membership commit; `CombatLayerAcyclicity` green first try. | **Old cost-table "combat-peer=8" reconciled, not just re-derived**: 4 of the 8 (`damage_stat`/`restore_stat`→clerics.cpp, `damage`/`set_mental_delay`→fight.cpp) had already dissolved for free via the combat-pilot wave's `clerics`+`fight` joint promotion — the census's own closure check simply hadn't been re-run since. The remaining 5 (all `saves_*`, all `spell_pa.cpp`-owned) are the true residual. mystic closed **standalone** (zero edges to olog_hai; the one edge to profs runs the OTHER direction — profs depends on mystic, not vice versa) and its own promotion is what dissolves profs's `scale_guardian` rider condition (see profs row). |
-| **mage** | L2-app=3 (`char_from_room`/`report_zone_power`/`stop_riding`); app-output=2 (`break_spell`/`send_to_room`); app-command=5 (`do_look`/`do_identify_object`/`list_char_to_char`/act_info, `msdp_room_update`/`prohibit_item_stay_zone_move`/act_move — none are `do_*` ACMD cells, ordinary helper functions); app-session=1 (`_buf`) | `stop_riding`; both app-output edges | `char_from_room`/`report_zone_power` (no seam, still handler.cpp); all 5 app-command helpers (no seam — these are not ACMD dispatch targets, a different class of edge than `do_flee`/`do_stand`); `_buf` retirement | combat-peer=7 — part of the spell-casting family `spell_pa.cpp` binds together (see spell_pa row); mage cannot be assumed closeable independent of that hub without a fresh check |
+| **mage** | **RESOLVED (spell-family closure wave, `rots_combat` 12→15, joint commit).** L2-app=3 (`char_from_room`/`report_zone_power`/`stop_riding`); app-output=2 (`break_spell`/`send_to_room`); app-command=5 (`do_look`/`do_identify_object`/`list_char_to_char`/act_info, `msdp_room_update`/`prohibit_item_stay_zone_move`/act_move — none are `do_*` ACMD cells, ordinary helper functions); app-session=1 (`_buf`) | **Actual, `nm`-confirmed at Task 0 (`sf-census.md` §4.2): 118 total undefined symbols, 66 resolved in-project, 7 genuine app-tier residual beyond the 1 intra-family `new_saves_spell`** (`report_zone_power`/`stop_riding`/`break_spell`/`send_to_room` had already resolved downward by prior waves, reconciling the row stale). `char_from_room` → the existing L2 `entity_hooks.h` hook (5 sites, not the stale row's 1 — grep-confirmed); `do_look`×4 → the existing `look` cell (Task 3's genuine discriminator-audit gap — mage's own conversions are this cell's first real `issue_command()` caller anywhere, +2 tests); `do_identify_object` → a new `combat_hooks.h` HOOK (Task 1's overturn of the census's own RELOCATE label — its body drags 4 sibling `act_info.cpp` display helpers + 3 file-local const arrays); `list_char_to_char` → a new HOOK (same display-cluster shape); `msdp_room_update` → a new `output_seam` forwarder (call sites needed zero edit, only the redundant local `extern` deleted); `prohibit_item_stay_zone_move` → RELOCATE to `fight.cpp` (3 sites, not the row's stale 2); `_buf` retired to local `std::format` composition. | **Nothing remains open.** mage joined `ROTS_COMBAT_SOURCES` in the Task 4 joint membership commit; `CombatLayerAcyclicity` green first try, both hosts. | **Confirmed, not merely assumed**: mage's promotion required the full spell-casting family (spell_pa + ranger) landing in the SAME commit, per the true bidirectional `spell_pa↔mage` cycle (35 `spell_pa→mage` dispatch edges vs. 1 `mage→spell_pa` back-edge) — see "The spell-family closure wave" section below. |
 | **limits** | **RESOLVED (behavior wave, `rots_combat` 11→12).** L2-app=7 (`char_from_room`/`extract_char`/`extract_obj`/`recalc_zone_power`/`report_zone_power`/`affect_remove_notify`/`stop_riding`); app-output=4 (`send_to_all`/`send_to_room`/`close_socket`/`_circle_shutdown`); app-command=1 (`do_flee`); app-session=4 (`_buf`/`add_exploit_record`/big_brother×2); app-other=4 (objsave `Crash_*`×3/pkill) | **Actual, `nm`-confirmed at Task 0 (`bw-census.md` §1/§2): 144 total project symbols, 90 resolve in-project, 18 app-tier/cross-edge blocking (17 genuine app-tier items — the Task 0 review errata adds `saves_spell`, which resolves app-tier `spell_pa.cpp` and belongs in this bucket — + the `one_mobile_activity` cross-edge, tallied separately).** `extract_char` (hook), `extract_obj` (L2), `stop_riding` (L2), `send_to_all`/`send_to_room` already resolved cleanly (2 of 7 L2-app / 2 of 4 app-output confirmed pre-resolved, matching the spec's own claim); `do_flee` → the `flee` cell; `add_exploit_record` → the existing `persist_hooks.h` dispatch (call site converted this wave — the hook existed, but limits' own call was still plain); `is_target_valid`+`on_character_died` (2 of big_brother×2); `pkill_create` + `Crash_crashsave` (hook existed, call site converted). **5 remain genuinely app-tier and were newly seamed this wave**: `char_from_room` (new L2 `entity_hooks.h` hook — the STOP-risk enumerated across all 11 caller files, none `rots_world`/`rots_entity`, did NOT fire), `recalc_zone_power`/`report_zone_power` (RELOCATE to `rots_world`/`db_world.cpp`), `affect_remove_notify` (RELOCATE-CLEAN to L2 `entity_lifecycle.cpp`), `close_socket` (new `output_seam` forwarder, symbol takeover), `_circle_shutdown` (new setter forwarder, WRITE confirmed at limits.cpp:656). `Crash_idlesave`/`Crash_extract_objs` (2 new sibling `combat_hooks.h` cells, `Crash_*`×3 confirmed genuinely distinct). **Two genuine spec-adjudication gaps, not itemized in this wave's design-spec prose though present in this row**: the big_brother `on_character_afked`/`on_corpse_decayed` pair (new `entity_hooks.h`-style hook pair) and `pkill_get_rank_by_character` (RELOCATE-CLEAN to `rots_persist`/`db_players.cpp` — its backing storage was already persist-tier, unlike this row's original "pkill" framing anticipated). **`saves_spell`** — the design spec's own RELOCATE-CLEAN-to-L2 default **OVERTURNED**: its body writes `spllog_mage_level`/`spllog_save`/`spllog_saves`, `fight.cpp`-owned (`rots_combat`, L3) globals; `rots_entity` does not link `RotS::combat`, so falls to RELOCATE to L3 `rots_combat` (`fight.cpp`) instead, not L2. `gain_exp`/`gain_exp_regardless`/`remove_fame_war_bonuses` confirmed unchanged (limits.cpp is already the REGISTRAR for its own hooks, self-registration verified intact, dispatch names verified) — **the wave's cleanup-commit verdict was STAYED, not deleted**: `fight.cpp` (6 call sites, not the stale-comment "five") and `clerics.cpp` (1 site) still dispatch through the hooks rather than calling limits.cpp's now-intra-lib globals directly, so nothing could be removed — see "The STAYED verdict" below. `_buf` retirement (both files, genuine globals, zero local shadows). | **Nothing remains open.** limits joined `ROTS_COMBAT_SOURCES` in Task 3's Step 1 membership commit; `CombatLayerAcyclicity` green first try, both hosts — zero census misses, every up-call already converted onto a hook/seam by Task 2. | **The `one_mobile_activity` cross-edge (limits → mobact) is this wave's defining coupling, not a per-row closure-partner constraint in the usual sense** — see "The behavior wave" section below for the full permanent-inversion account (the codebase's first L3→L4 upward hook). |
-| **ranger** | L2-app=11 (`generic_find`/`get_char_room_vis`/`add_follower`/`obj_from_char`/`stop_*`/`CAN_SEE`/`get_real_OB`/`get_real_parry`); app-output=3 (`abort_delay`/`complete_delay`/`get_from_txt_block_pool`); app-command=9 (interpre parse + act_move door/move helpers); app-session=6 (db_boot globals + big_brother×2); app-other=1 (`show_tracks`/graph) | 10 of 11 L2-app edges (visibility family incl. `generic_find`; `stop_riding`/`stop_follower`; `obj_from_char`) — note `stop_hiding` itself, ranger's OWN symbol, already relocated OUT to `visibility.cpp` this wave, so ranger no longer defines it at all; all 3 app-output edges; `is_target_valid`+`on_character_died` (2 of the big_brother×2) | `add_follower` (no seam); the 9 app-command parse/door/move helpers (no seam — not ACMD cells); remaining db_boot globals (4 of the 6 app-session edges); `show_tracks` (no seam) | combat-peer=9 — ranger owns `do_trap` (the ACMD `check_break_prep`'s HOOK conversion already targets, resolved this wave) and is one of `spell_pa`'s 76-peer closure partners (see spell_pa row); do not assume ranger closes independent of that hub |
+| **ranger** | **RESOLVED (spell-family closure wave, `rots_combat` 12→15, joint commit).** L2-app=11 (`generic_find`/`get_char_room_vis`/`add_follower`/`obj_from_char`/`stop_*`/`CAN_SEE`/`get_real_OB`/`get_real_parry`); app-output=3 (`abort_delay`/`complete_delay`/`get_from_txt_block_pool`); app-command=9 (interpre parse + act_move door/move helpers); app-session=6 (db_boot globals + big_brother×2); app-other=1 (`show_tracks`/graph) | **Actual, `nm`-confirmed at Task 0 (`sf-census.md` §4.3): 167 total undefined symbols, 102 resolved in-project, 12 genuine app-tier residual beyond the 1 intra-family `say_spell` + `show_tracks`** (the visibility family/`check_break_prep`/`update_pos`/`stop_fighting`/`appear`/`check_hallucinate`/`damage`/`waiting_list` had already resolved downward by prior waves). `do_hit`×2/`do_flee`/`do_move`×2 → their existing cells; `is_target_valid` (2-arg, 7 sites) → the entity hook; `special` → the existing `call_special` hook (not a rider-gate edge); `on_character_returned` → a NEW 4th `entity_hooks.h` big_brother sibling (a T0 finding, not in the design spec's default list); `find_door` → RELOCATE to `fight.cpp`; `argument_interpreter` → RELOCATE to L0 `rots_util.cpp`; `check_simple_move` → a new `combat_hooks.h` HOOK; `show_tracks`+`track_desc`+`water_track_desc` → RELOCATE to `db_world.cpp` (Default A fires — presentation over L3-reachable world/room data, NOT pathfind-internal — no third permanent L3→L4 inversion); `_arg`/`_buf`/`_buf2` retired (3 genuine db_boot globals, not the row's stale ~4). | **Nothing remains open.** ranger joined `ROTS_COMBAT_SOURCES` in the Task 4 joint membership commit; `CombatLayerAcyclicity` green first try, both hosts. | **Confirmed**: ranger's one-directional dependency on spell_pa (`say_spell`) meant it had to promote with or after spell_pa; landing in the SAME joint commit as spell_pa+mage was simplest — see "The spell-family closure wave" section below. |
 | **spec_pro** | L2-app=11 (handler/utility find/extract/stop/CAN_SEE family); app-output=4 (`send_to_room`/`abort_delay`/`complete_delay`/`get_from_txt_block_pool`); app-command=19 (`command_interpreter`/`_cmd_info` + ~a dozen `do_*`); app-session=3 (`_buf`/`_waiting_list`/`add_exploit_record`); app-other=1 (`find_first_step`/graph) | Most of the L2-app=11 (extract_char hook, stop_family L2, visibility family in-lib — exact count needs re-derivation); all 4 app-output edges; `add_exploit_record` (persist_hooks) | `_cmd_info` (still no seam); the ~dozen `do_*` calls need re-verification against the 26-cell list (some of spec_pro's commands may not be among the 26, per combat_hooks.h's own file comment excluding names with "no direct call site... reachable only through the general command_interpreter" at table-build time — spec_pro is exactly the kind of TU that could create a new such call site); `_buf`/`_waiting_list` retirement | combat-peer=17 — **`command_interpreter()`/`find_first_step` are NO LONGER "no seam" gaps** as of the l4-seed wave: `command_interpreter()` now has a real registered hook (`script_hooks.h::dispatch_command_interpreter`, void, loud-tripwire default — the same shape `mudlle.cpp`'s own conversion used) and `find_first_step` resolves as a legal downward app→`rots_pathfind` call now that `graph.cpp` is a library; spec_pro's own promotion tier is still undecided (mobact's identical-shaped question was ANSWERED by the behavior wave — `rots_script`, not `rots_combat`, see the mobact row above — but spec_pro's own is not inherited from that outcome; see the l4-seed spec's downstream note, now updated by the behavior wave) — **the closure anchor for `spec_ass`** (spec_ass's row shows combat-peer=39, nearly all pointed at spec_pro); spec_pro is a command-driver TU in its own right (19 app-command edges, the largest of any row after mobact/ranger) and is unlikely to close without a dedicated command-dispatch investigation beyond the existing 26-cell table |
-| **spell_pa** | combat-peer=76 (ALL spell TUs + fight + ranger + battle_mage — the whole-row registrar/`do_cast` hub); app-output=3 (`descriptor_list`/`abort_delay`/`complete_delay`); app-command=2 (`report_wrong_target`/`target_from_word`/interpre); app-session=5 (`_buf`/`_waiting_list`/`_color_sequence`+`get_color_sequence`/color/`is_target_valid`) | 3 symbols moved out entirely this wave: `saves_power` (→ `char_utils_combat.cpp`, L2), `record_spell_damage` + its `spllog_*` storage (→ `fight.cpp`, in-lib), `check_break_prep` (→ `fight.cpp`, in-lib, its internal `do_trap` up-call already converts through the existing `trap` cell — no new hook needed); both `abort_delay`/`complete_delay`; `is_target_valid` | **The 76-peer count is this wave's untouched core** — spell_pa is the spell-casting registrar; nearly every remaining peer edge is a same-family cross-reference (mage/mystic/ranger/battle_mage's own spell-adjacent functions) that only dissolves once ALL of them are in the SAME promotion commit, per the intra-subset rule above; `descriptor_list`/`report_wrong_target`/`target_from_word`/`_buf`/`_waiting_list`/color-sequence globals all still open | **The single largest closure-partner constraint in the whole DEFER list.** Per the intra-subset rule, spell_pa cannot promote standalone or even paired with one partner — it needs the full spell-casting family (mage, mystic, ranger's casting-adjacent surface, battle_mage — already in-lib) closed simultaneously. This is architecturally the "Ambitious" tier the original combat-census flagged, not a single-wave pilot-style promotion; treat spell_pa as a multi-TU wave of its own, not a row in a per-TU table, when it is actually scheduled |
+| **spell_pa** | **RESOLVED (spell-family closure wave, `rots_combat` 12→15, joint commit).** combat-peer=76 (ALL spell TUs + fight + ranger + battle_mage — the whole-row registrar/`do_cast` hub); app-output=3 (`descriptor_list`/`abort_delay`/`complete_delay`); app-command=2 (`report_wrong_target`/`target_from_word`/interpre); app-session=5 (`_buf`/`_waiting_list`/`_color_sequence`+`get_color_sequence`/color/`is_target_valid`) | **Actual, `nm`-confirmed at Task 0 (`sf-census.md` §1/§2): 164 total undefined symbols, 111 resolved in-project. The stale combat-peer=76 re-derives to 44 already-in-lib (dissolve for free — 41 `spell_*` mystic implementations, 4 `battle_mage_handler` methods, `appear`/`check_hallucinate`/`spllog_*`/`waiting_list`) + 35 intra-family (the `spell_*` mage implementations spell_pa's registrar dispatches to — dissolve once mage lands in the same commit) + 7 genuine app-tier residual.** `is_target_valid` (3-arg) → `rots::entity::dispatch_target_valid` (a Task 2 fix commit, after an initial reading deferred it in error); `report_wrong_target`/`target_from_word` → RELOCATE to `visibility.cpp`; `descriptor_list` walk → a new `get_descriptor_list_head()` `output_seam` accessor; `color_sequence[]`+`get_color_sequence()` → RELOCATE to `visibility.cpp` (after a tree-wide reader scan confirmed every `CC_*` expansion site is still app-tier); `_buf` retired to local composition. | **Nothing remains open.** spell_pa joined `ROTS_COMBAT_SOURCES` in the Task 4 joint membership commit; `CombatLayerAcyclicity` green first try, both hosts. | **Confirmed as the wave's central justification, not merely predicted**: the true bidirectional `spell_pa↔mage` cycle (35 edges out via the registrar's dispatch table, 1 edge back via `new_saves_spell`) meant neither TU could promote standalone or paired with only one partner; `ranger`'s one-directional `say_spell` dependency on spell_pa meant it had to land with or after. All three closed in ONE joint commit — see "The spell-family closure wave" section below for the full account, including the `show_tracks` third-inversion ruling (relocate down, no inversion) and the new `on_character_returned` big_brother hook this wave's ranger census surfaced. |
 | **spec_ass** | combat-peer=39 (→ spec_pro); app-other=3 (`gen_board`/boards, `postmaster`/mail, `receptionist`/objsave — spec-proc fn-ptrs) | **Nothing** — this wave built no seam touching boards/mail/objsave spec-proc registration, and did not touch spec_pro | Everything: the 3 app-other spec-proc registrar edges need their own hook family (none built to date, a different taxonomy than any of this wave's seams — these are fn-ptr registrations INTO other subsystems, not up-calls out of spec_ass); the 39 combat-peer edges (dominated by spec_pro) | **Fully gated on spec_pro's own promotion** (see spec_pro row) — spec_ass is not independently schedulable; do not attempt it before spec_pro closes |
 | **profs** *(caveated SEED-WITH-SEAM in the original census — **RESOLVED, joined in the combat-trio wave as a census-gated rider, `rots_combat` 8→11**)* | L2-app=1 (`get_guardian_type`/utility); app-session=2 (`_buf`/`add_exploit_record`/db_boot); combat-peer=1 (`scale_guardian`/mystic → drags mystic) | **Actual, `nm`-confirmed at Task 0 (`combat-trio-census.md` §3): 16 total project symbols, 4 blocking, 12 non-blocking — an exact numeric match to the design spec's source-level prediction.** `get_guardian_type`→relocated into `rots_combat` itself (`visibility.cpp`), NOT L2 — its body reads `mob_index` (`db_world.cpp:95`, L3-world), so `rots_entity` genuinely cannot host it; `_buf` (2 genuine sites)→local-composition retirement; `add_exploit_record` ×8 → the existing `persist_hooks.h` `dispatch_exploit_capture` seam (zero new infrastructure, the identical seam `fight.cpp` already consumed). The `scale_guardian` rider condition FIRED via Path B (mystic's own membership dissolves the edge), NOT Path A — see below. | **Nothing remains open.** profs joined `ROTS_COMBAT_SOURCES` in the SAME Task 4 membership commit as olog_hai/mystic; `CombatLayerAcyclicity` green first try — `scale_guardian` resolved intra-lib automatically since both sides landed together. | **The rider row's own open question, answered**: `scale_guardian` (mystic.cpp:1584) is confirmed **NOT** standalone-relocatable — Task 0's body read found a same-file helper cluster of **6** functions (`set_guardian_stats`/`calc_guardian_hp`/`set_guardian_health`/`tweak_aggressive_guardian_stats`/`tweak_defensive_guardian_stats`/`tweak_mystic_guardian_stats`), not the design spec's stated "four" (`calc_guardian_hp`/`set_guardian_health` were omitted from its enumeration) — Path A (standalone relocation, the `saves_power` shape this row's own note speculated about) genuinely fails. Path B held instead: profs's dependency on mystic is a clean **one-directional gate**, not a cycle — see "The combat-trio wave" section below for why that distinction matters architecturally. Task 0 also found `scale_guardian` has a **second** external caller the design spec missed: `objsave.cpp:775` (mirroring its existing `get_guardian_type` call's local-`extern` idiom) — doesn't change the verdict, just the caller count. |
 
@@ -1146,3 +1152,173 @@ both directions.
 - **Combat DEFER unaffected:** stays at **5** (`spec_ass`/`mage`/`spell_pa`/`ranger`/`spec_pro`) —
   none of Cluster B's 7 TUs were ever DEFER-row members; this wave grew the L4 band, not
   `rots_combat`.
+
+## The spell-family closure wave: `spell_pa.cpp` + `mage.cpp` + `ranger.cpp` → `rots_combat` (ONE joint commit, 12 → 15 TUs)
+
+Design: `docs/superpowers/specs/2026-07-21-spell-family-closure-design.md`. Plan:
+`docs/superpowers/plans/2026-07-21-spell-family.md`. Census: `.superpowers/sdd/sf-census.md`
+(gitignored scratch). Task reports: `.superpowers/sdd/sf-task-{0,1,2,3,4}-report.md`. This wave
+applies the recipe to the playbook's own long-flagged "Ambitious tier" row — the spell-casting
+registrar (`spell_pa.cpp`) plus the two TUs its 76-peer count binds together (`mage.cpp`,
+`ranger.cpp`) — as ONE joint membership commit, not a per-TU sequence. `rots_combat` grows 12 → 15
+TUs; combat DEFER drops **5 → 2** (`spec_ass`/`spec_pro` remain, the last row before the DEFER
+list reaches 0 under Wave B of the owner-approved combat-row completion program).
+
+### The 76-peer count finally re-derived, not just flagged stale
+
+Every prior wave's per-TU cost table carried a standing warning that the `spell_pa` row's
+combat-peer=76 predated four merged waves and was "known-stale in the wave's favor." This wave is
+the first to actually re-run the `nm` closure check against it. The result matches the warning's
+own prediction almost exactly: **44 of the 76 peers had already dissolved into TUs `rots_combat`
+already contained** (41 `spell_*` mystic implementations from the combat-trio wave, 4
+`battle_mage_handler::*` methods, `appear`/`check_hallucinate`/the `spllog_*` storage in
+`fight.cpp`, `waiting_list` in `clerics.cpp`), **35 more are intra-family** (the `spell_*` mage
+implementations spell_pa's own registrar table dispatches to — these were never going to resolve
+independent of mage's own promotion), leaving a genuine app-tier residual of **7 distinct
+symbols**. The lesson from the combat-trio wave ("treat every RESOLVED mark as a strong prior, not
+ground truth") held again in the opposite direction from usual: the prior estimate wasn't wrong
+about the eventual difficulty, it was simply describing work three intervening waves had already
+done for free.
+
+### The joint-commit justification: a true bidirectional file-level cycle, not a one-directional gate
+
+Every prior wave's cross-TU coupling in this playbook was either intra-tier one-directional
+(`profs → mystic`'s `scale_guardian`, dissolving the moment mystic promoted) or a two-file cycle
+resolved by joint promotion (`clerics ↔ fight`). This wave's `spell_pa ↔ mage` edge is the same
+shape as `clerics ↔ fight` but with a lopsided edge count that makes the direction of dependency
+obvious: **35** `spell_pa → mage` dispatch edges (spell_pa's own `skills[].spell_pointer` table
+calling into mage's `spell_*` implementations) against **1** `mage → spell_pa` back-edge
+(`new_saves_spell`). Per the intra-subset rule, neither file could promote alone or paired with
+only one partner. `ranger.cpp`'s own edge into the family (`say_spell`, into spell_pa) is
+one-directional, not a cycle — ranger merely had to land with or after spell_pa, not necessarily in
+the same commit — but landing all three together in one commit was simplest and is what Task 4
+actually did. The inbound-edge check (every family-exported symbol intersected against every
+library's undefined-symbol set) came back **empty**: no library anywhere calls into spell_pa,
+mage, or ranger, so promoting all three creates zero reverse edge — the joint commit only had to
+satisfy the family's own internal cycle plus its genuine external residuals, not defend against
+any surprise caller.
+
+### `show_tracks` — RULING: RELOCATE DOWN, no third permanent inversion
+
+Every wave since the l4-seed wave has tracked this exact upward edge (`ranger.cpp`, `rots_combat`,
+L3, calling `show_tracks()` in `graph.cpp`, `rots_pathfind`, L4) as a candidate for this
+codebase's third permanent L3→L4 inversion, after `limits → mobact` (behavior wave) and
+`script.cpp`'s own `call_trigger` dispatch (Cluster B wave). Both those precedents were legal
+registration shapes for a hook the L4 owner would have to register. This wave's T0 body-read
+findings did not require that: `show_tracks`'s body (`graph.cpp:319-373`) reads `world[]`,
+`room_track[]`, `mob_proto[]`, `pc_race_keywords`/`pc_star_types`, and `GET_LEVEL`/`GET_SKILL` — all
+L3-reachable world/room data — plus two graph-internal string-switch helpers (`track_desc`/
+`water_track_desc`), with **zero graph adjacency, zero BFS traversal, zero `find_first_step`
+state**. It is presentation code over data ranger's own tier already owns, not pathfind-internal
+logic that merely happens to live in `graph.cpp`. Default A (RELOCATE) fires: the function plus
+its two helpers moved verbatim into `db_world.cpp` (`rots_world`, the tier that actually owns the
+data), leaving `show_blood_trail` (which shares the two helpers and does genuinely stay in
+`graph.cpp`) with a legal downward L4→L3 call to reach them. **Lesson for future waves**: not
+every upward-looking edge into a higher-numbered tier is architecturally inevitable — the
+`limits`/`script.cpp` precedents proved the hook mechanism works when a function is genuinely
+tier-internal, but this wave's body-read is the first to find a superficially-similar edge that
+was actually just misplaced presentation code, relocatable like any other. Per the hook-owner-
+promotion banner lesson (recorded when `call_trigger` went permanent), no "app-tier permanently" /
+inversion-style comment was written anywhere near this relocation, since none applies.
+
+### New hooks/forwarders landed consumer-free (Task 1)
+
+- **`on_character_returned`** — a **fourth** `entity_hooks.h` big_brother sibling (joining
+  `on_character_died`/`on_character_afked`/`on_corpse_decayed`). A genuine T0 finding not in the
+  design spec's own default disposition list: `ranger.cpp`'s edge into
+  `game_rules::big_brother::on_character_returned` (`big_brother.cpp:535`) had no existing hook.
+  Void, logged-no-op tripwire, registered by `big_brother.cpp` — the same cheap, precedented shape
+  as its three siblings, not a new taxonomy.
+- **`msdp_room_update`** — a new `output_seam` forwarder (`act_move.cpp`'s real body renamed
+  `_impl`), serving `mage.cpp`'s three call sites with zero call-site edit needed beyond deleting
+  the now-redundant local `extern`.
+- **`get_descriptor_list_head()`** — a new `output_seam` read accessor exposing `comm.cpp`'s
+  descriptor list for spell_pa's "sense nearby casting" broadcast; storage never leaves `comm.cpp`.
+- **The `check_simple_move`/`list_char_to_char`/`do_identify_object` trio** — a new
+  `combat_hooks.h` cluster following the `extract_char`/`char_from_room` shape (real body stays
+  unrenamed in its owner file; a separately-namespaced `rots::combat::*` hook sits alongside for
+  library-side callers) rather than the `Crash_crashsave`-style symbol-takeover shape, since all
+  three already had live bare-name app-tier callers whose call sites had to keep working unchanged.
+  **`do_identify_object` is a Task 1 overturn of the census's own literal RELOCATE label**: its
+  body was found to drag four sibling `act_info.cpp` display helpers plus three file-local `const`
+  arrays — the identical "relocating drags the display cluster" shape already flagged for
+  `list_char_to_char` — so it took the same already-authorized HOOK taxonomy instead. Not a STOP:
+  no new seam shape, no tier-boundary question, just a body-read correcting a census table cell.
+
+### Relocations (Task 1, byte-verbatim, `nm`-verified downward after landing)
+
+`report_wrong_target`/`target_from_word` (`interpre.cpp` → `visibility.cpp` — pure `send_to_char`/
+txt-pool-parse presentation). `argument_interpreter` (`interpre.cpp` → L0 `rots_util.cpp` — a pure
+string tokenizer, the `one_argument`/`half_chop` L0 precedent). `find_door` (`act_move.cpp` →
+`fight.cpp` — pure name→door parse/presentation). `color_sequence[]` + `get_color_sequence()`
+(`color.cpp` → `visibility.cpp` — a tree-wide reader scan of every `CC_USE`/`CC_NORM`/`CC_FIX`
+expansion site confirmed all eight are still app-tier, so `rots_combat` is a legal destination, no
+`rots_core` fallback needed). `prohibit_item_stay_zone_move` + `parse_container_for_stay_zone`
+(`act_move.cpp` → `fight.cpp`). `show_tracks`/`track_desc`/`water_track_desc` (`graph.cpp` →
+`db_world.cpp`, see above). Every relocation passed all nine `*LayerAcyclicity` linkchecks after
+its own individual commit, not just at the wave's end.
+
+### Rider gate untouched; zero new `combat_command` cells
+
+A full sweep of all three TUs for spec-proc-dispatcher edges (`virt_program_number`/
+`virt_assignmob`/`command_interpreter`-class calls) found **zero matches** — `ranger.cpp`'s only
+`special`-shaped call resolves onto the existing `call_special` hook, not a new dispatcher. The
+rider gate stays at **2 of ≤3**, untouched by this wave, one slot still open for Wave B. Every
+`do_*` up-call across all three TUs mapped onto one of the existing 29 `combat_command` cells
+(`do_look`×4→`look`, `do_hit`×2→`hit`, `do_flee`→`flee`, `do_move`×2→`move`) — **zero new cells**,
+continuing the "ZERO new cells" run that started with the l4-seed wave's `mobact.cpp`.
+
+### A controller-caught correction, not a self-caught one: `is_target_valid`
+
+Task 2's own report documents a genuine adjudication error, caught and fixed before Task 3 began
+rather than surfacing later: the task's own operative instructions listed `spell_pa.cpp`'s 3-arg
+`is_target_valid` call as already-resolved/zero-edit, reasoning that since `spell_pa.cpp` itself
+stayed app-tier through Task 2, a direct `big_brother::instance()` call was still legal — deferring
+the actual hook conversion to Task 4. That reasoning was wrong: Task 4 **is** the commit that
+promotes spell_pa.cpp into `rots_combat`, so leaving the direct call in place would have made it an
+upward L3→app edge the instant the CMakeLists move landed, failing `CombatLayerAcyclicity` at that
+exact point. A controller adjudication caught this before Task 3 started and a fix commit converted
+both `do_cast()` sites onto `rots::entity::dispatch_target_valid` (the same 3-arg
+`kNoSkillId`-sentinel shape `fight.cpp`'s own sites already used) ahead of the joint membership
+commit. **Lesson**: when a task's literal operative instructions conflict with a census's per-symbol
+disposition table, the conflict itself is worth flagging for adjudication rather than silently
+picking one side — this wave's Task 2 report did exactly that, and the adjudication resolved in the
+census's favor.
+
+### Cost markers (this wave, factual)
+
+- **Up-call/hook-site conversions:** `spell_pa.cpp` — `is_target_valid` (3-arg, 2 sites);
+  `descriptor_list` walk (1 site) → `get_descriptor_list_head()`; `_buf` (1 site) retired.
+  `mage.cpp` — `do_look`×4 → `look` cell; `char_from_room`×5 → entity hook; `list_char_to_char`×2/
+  `do_identify_object`×1 → their hooks; `msdp_room_update`×3 (extern-deletion only); `_buf`×1
+  retired. `ranger.cpp` — `do_hit`×2/`do_flee`×1/`do_move`×2 → their cells; `special`×1 → existing
+  `call_special` hook; `is_target_valid`×7 (2-arg) → entity hook; `on_character_returned`×1 → new
+  hook; `check_simple_move`×1 → new hook; `_arg`/`_buf`/`_buf2` (13 sites total) retired.
+- **New cells/hooks/seams:** 0 new `combat_command` cells; 1 new `entity_hooks.h` big_brother
+  sibling (`on_character_returned`); 1 new `output_seam` forwarder (`msdp_room_update`); 1 new
+  `output_seam` accessor (`get_descriptor_list_head`); 1 new `combat_hooks.h` trio
+  (`check_simple_move`/`list_char_to_char`/`do_identify_object`).
+- **Relocations:** 6 symbol groups (`report_wrong_target`+`target_from_word`;
+  `argument_interpreter`; `find_door`; `color_sequence[]`+`get_color_sequence()`;
+  `prohibit_item_stay_zone_move`+`parse_container_for_stay_zone`; `show_tracks`+`track_desc`+
+  `water_track_desc`), all byte-verbatim, all `nm`-confirmed downward.
+- **Tests added:** 19 across Tasks 1-3, 0 in Task 2/Task 4 (1468 → 1487): Task 1 +17 (2
+  `CharacterReturnedHook.*`, 4 `msdp_room_update`/`descriptor_list_head` forwarder tests, 6
+  `check_simple_move`/`list_char_to_char`/`do_identify_object` hook tests, 5 in a brand-new
+  `visibility_tests.cpp` — the coverage-gap rider for `report_wrong_target`/`target_from_word`,
+  which had zero prior test coverage anywhere in the tree before this wave); Task 2 +0 (a
+  discriminator audit found zero genuine gaps — the `is_target_valid` fix dispatches onto an
+  already-tested hook); Task 3 +2 (the `look` cell's registered/unregistered pair — a genuine gap,
+  mage's own `do_look` conversions are its first real `issue_command()` caller anywhere, the
+  recurring `say`/`move`/`gen_com`-class gap); Task 4 +0 (a pure CMakeLists.txt membership move,
+  zero source edits — every up-call was already converted onto a hook/seam by Tasks 1-3).
+- **Membership commits:** 1 (all three TUs, one commit — the joint-commit justification above).
+  `CombatLayerAcyclicity` green on the **first** build attempt, both hosts, zero bisection needed —
+  matching the run of clean first-try promotions this playbook has recorded since the combat-trio
+  wave (the combat-pilot wave's own two census misses, `gain_exp`/`waiting_list`, remain the sole
+  exception in this playbook's history).
+- **No new library, no new linkcheck**: `CombatLayerAcyclicity` (already existing) is the
+  membership gate; nine libraries, nine linkchecks, unchanged from the Cluster B wave.
+- **Combat DEFER drops 5 → 2** (`spec_ass`/`spec_pro` remain) — the last two rows before Wave B
+  (this wave's own §Wave B charter, under the owner's autonomous-spec-gate + merge-when-green
+  grants) closes the row to 0.

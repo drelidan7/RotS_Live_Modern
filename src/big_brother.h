@@ -169,4 +169,12 @@ void register_character_died_hook();
 void register_character_afked_hook();
 void register_corpse_decayed_hook();
 
+// Registers big_brother.cpp's real forwarder to
+// game_rules::big_brother::instance().on_character_returned() as
+// entity_hooks.h's character-returned hook (spell-family closure wave
+// Task 1; sf-census.md section 6). Called once from run_the_game(),
+// before boot_db() (same convention as register_character_afked_hook()/
+// register_corpse_decayed_hook() above).
+void register_character_returned_hook();
+
 #endif // Header Protection

@@ -207,6 +207,13 @@ char_from_room_fn g_char_from_room_hook = nullptr;
 // g_character_died_hook above).
 character_afked_fn g_character_afked_hook = nullptr;
 corpse_decayed_fn g_corpse_decayed_hook = nullptr;
+
+// Backing storage for the registered big_brother character-returned hook
+// (register_character_returned_hook(), big_brother.cpp; spell-family
+// closure wave Task 1). Null until that registration runs; the null
+// default is a LOGGED no-op (void return, same class as
+// g_character_afked_hook above).
+character_returned_fn g_character_returned_hook = nullptr;
 } // namespace
 
 void set_char_teardown_hook(char_teardown_fn hook)
@@ -267,6 +274,11 @@ void set_character_afked_hook(character_afked_fn hook)
 void set_corpse_decayed_hook(corpse_decayed_fn hook)
 {
     g_corpse_decayed_hook = hook;
+}
+
+void set_character_returned_hook(character_returned_fn hook)
+{
+    g_character_returned_hook = hook;
 }
 
 namespace {
@@ -457,6 +469,20 @@ void dispatch_corpse_decayed(obj_data* corpse)
     rots::log::write_stderr(
         "rots::entity: STUB corpse-decayed hook called with no sink registered -- this should "
         "be unreachable once register_corpse_decayed_hook() has run.");
+}
+
+// Cross-TU dispatch for the big_brother character-returned hook (called
+// from ranger.cpp once promoted; spell-family closure wave Task 1). External
+// linkage, same reason as dispatch_attacked_player() above.
+void dispatch_character_returned(const char_data* character)
+{
+    if (g_character_returned_hook) {
+        g_character_returned_hook(character);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::entity: STUB character-returned hook called with no sink registered -- this "
+        "should be unreachable once register_character_returned_hook() has run.");
 }
 
 } // namespace rots::entity

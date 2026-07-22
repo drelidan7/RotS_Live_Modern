@@ -283,6 +283,14 @@ int main(int argc, char* argv[]) {
     register_char_from_room_hook();
     register_character_afked_hook();
     register_corpse_decayed_hook();
+    // entity_hooks.h's character-returned hook (spell-family closure wave
+    // Task 1), registered for the same real-body-fidelity reason as the
+    // calls above: big_brother.cpp is already linked into both test
+    // binaries, so this only needs the registration call. Consumer-free
+    // this task (ranger.cpp's own call site doesn't convert yet); this
+    // call also covers this wave's own seam test
+    // (big_brother_hooks_tests.cpp).
+    register_character_returned_hook();
     // combat_hooks.h's one_mobile_activity hook + Crash_idlesave/
     // Crash_extract_objs sibling pair (behavior wave Task 1), registered
     // for the same real-body-fidelity reason as the calls above:

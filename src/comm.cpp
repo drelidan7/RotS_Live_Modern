@@ -730,6 +730,12 @@ void run_the_game(sh_int port)
     register_char_from_room_hook();
     register_character_afked_hook();
     register_corpse_decayed_hook();
+    // entity_hooks.h's character-returned hook (spell-family closure wave
+    // Task 1), registered the same way and for the same reason: before
+    // boot_db(), so ageland never runs ranger.cpp's do_trap()'s upward
+    // game_rules::big_brother::instance().on_character_returned() call
+    // (consumer-free this task) with an unregistered hook.
+    register_character_returned_hook();
     // combat_hooks.h's one_mobile_activity hook + Crash_idlesave/
     // Crash_extract_objs sibling pair (behavior wave Task 1), registered
     // the same way and for the same reason: before boot_db(), so ageland

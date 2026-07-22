@@ -761,3 +761,24 @@ void register_corpse_decayed_hook()
 {
     rots::entity::set_corpse_decayed_hook(corpse_decayed_hook_impl);
 }
+
+namespace {
+// entity_hooks.h's character-returned-notification hook implementation
+// (spell-family closure wave Task 1): ranger.cpp's do_trap() used to reach
+// game_rules::big_brother::instance() and call on_character_returned() on
+// it directly (an upward edge into this game-rules TU) when clearing a
+// player's PLR_ISAFK flag; this reproduces that same line, now behind the
+// hook.
+void character_returned_hook_impl(const char_data* character)
+{
+    game_rules::big_brother& bb_instance = game_rules::big_brother::instance();
+    bb_instance.on_character_returned(character);
+}
+} // namespace
+
+// Registers the hook above as entity_hooks.h's character-returned hook.
+// Called once from run_the_game(), before boot_db().
+void register_character_returned_hook()
+{
+    rots::entity::set_character_returned_hook(character_returned_hook_impl);
+}

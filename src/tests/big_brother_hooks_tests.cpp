@@ -245,6 +245,42 @@ void recording_corpse_decayed_stub(obj_data* corpse)
 
 } // namespace
 
+// ---------------------------------------------------------------------------
+// big_brother character-returned hook (spell-family closure wave Task 1;
+// sf-census.md section 6). CONSUMER-FREE this task -- no ranger.cpp call
+// site converts yet -- same "recording stub proves forward-then-tripwire"
+// discriminator shape as the pairs above.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+class ScopedCharacterReturnedHook {
+public:
+    explicit ScopedCharacterReturnedHook(rots::entity::character_returned_fn hook)
+    {
+        rots::entity::set_character_returned_hook(hook);
+    }
+
+    ~ScopedCharacterReturnedHook() { register_character_returned_hook(); }
+
+    ScopedCharacterReturnedHook(const ScopedCharacterReturnedHook&) = delete;
+    ScopedCharacterReturnedHook& operator=(const ScopedCharacterReturnedHook&) = delete;
+};
+
+struct RecordedCharacterReturnedCall {
+    const char_data* character = nullptr;
+    bool called = false;
+};
+
+RecordedCharacterReturnedCall g_recorded_character_returned_call;
+
+void recording_character_returned_stub(const char_data* character)
+{
+    g_recorded_character_returned_call = RecordedCharacterReturnedCall { character, true };
+}
+
+} // namespace
+
 TEST(CharacterAfkedHook, DispatchReachesARegisteredStubWithArgIntact)
 {
     g_recorded_character_afked_call = RecordedCharacterAfkedCall {};
@@ -295,6 +331,33 @@ TEST(CorpseDecayedHook, DispatchDefaultsToANoOpWhenUnregistered)
 
     EXPECT_FALSE(g_recorded_corpse_decayed_call.called)
         << "Expected an unregistered corpse-decayed hook to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default is "
+           "a logged no-op, not a call to any stub.";
+}
+
+TEST(CharacterReturnedHook, DispatchReachesARegisteredStubWithArgIntact)
+{
+    g_recorded_character_returned_call = RecordedCharacterReturnedCall {};
+    ScopedCharacterReturnedHook scoped(recording_character_returned_stub);
+    char_data character {};
+
+    rots::entity::dispatch_character_returned(&character);
+
+    EXPECT_TRUE(g_recorded_character_returned_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_character_returned_call.character, &character);
+}
+
+TEST(CharacterReturnedHook, DispatchDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_character_returned_call = RecordedCharacterReturnedCall {};
+    ScopedCharacterReturnedHook unregistered(nullptr);
+    char_data character {};
+
+    rots::entity::dispatch_character_returned(&character);
+
+    EXPECT_FALSE(g_recorded_character_returned_call.called)
+        << "Expected an unregistered character-returned hook to leave the (unrelated) stub's own "
            "recording flag untouched -- the real forwarder never ran, and the tripwire default is "
            "a logged no-op, not a call to any stub.";
 }

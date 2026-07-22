@@ -305,4 +305,22 @@ void set_corpse_decayed_hook(corpse_decayed_fn hook);
 void dispatch_character_afked(const char_data* character);
 void dispatch_corpse_decayed(obj_data* corpse);
 
+// big_brother's third notification method: on_character_returned() (spell-
+// family closure wave, Task 1; sf-census.md section 6/CONTROLLER item 2).
+// ranger.cpp's future upward game_rules::big_brother::instance().
+// on_character_returned() call (ranger.cpp:1283, consumer-free this task)
+// is the 4th sibling of this header's existing character_afked_fn/
+// corpse_decayed_fn pair (and character_died_fn before them) -- same
+// shape exactly: big_brother.cpp's real body (big_brother.cpp:535) is
+// self-contained (calls only its own remove_character_from_afk_set()
+// helper), so a bare const char_data* argument replays it verbatim.
+// big_brother.cpp registers the real forwarder via
+// register_character_returned_hook() (big_brother.h/big_brother.cpp),
+// riding the same registrar file as set_character_afked_hook()/
+// set_corpse_decayed_hook() above. Tripwire default: LOGGED no-op (void
+// class, same taxonomy as set_character_afked_hook()).
+using character_returned_fn = void (*)(const char_data* character);
+void set_character_returned_hook(character_returned_fn hook);
+void dispatch_character_returned(const char_data* character);
+
 }

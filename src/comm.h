@@ -65,6 +65,19 @@ void close_socket(struct descriptor_data* d, int drop_all = TRUE);
 // below.
 bool no_specials_active();
 void request_circle_shutdown();
+
+// msdp_room_update(char_data*) forwarder / descriptor_list-head read
+// accessor (output_seam.h; spell-family closure wave Task 1; sf-census.md
+// sections 4.1/4.2). msdp_room_update() takes over the plain global symbol
+// the same way close_socket() above does -- its real body stays
+// act_move.cpp's msdp_room_update_impl(), not this file's. get_descriptor_
+// list_head() is a read accessor over comm.cpp's own descriptor_list global
+// (storage never moves); both forward through output_seam.cpp's Sinks,
+// letting a future combat-tier caller (mage.cpp/spell_pa.cpp) reach them
+// without a direct comm.cpp/act_move.cpp global reference. Real bodies
+// registered by register_game_output_sinks() below.
+void msdp_room_update(struct char_data* ch);
+struct descriptor_data* get_descriptor_list_head();
 void break_spell(struct char_data* ch);
 void abort_delay(char_data* wait_ch);
 void complete_delay(struct char_data* ch);

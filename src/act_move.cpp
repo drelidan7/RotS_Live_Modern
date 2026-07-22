@@ -576,7 +576,12 @@ bool is_exit_valid(const room_direction_data room_direction)
     return true;
 }
 
-void msdp_room_update(char_data* ch)
+// msdp_room_update() renamed to msdp_room_update_impl (spell-family closure
+// wave Task 1; sf-census.md section 4.2): output_seam.h now owns the plain
+// `msdp_room_update` global symbol (mirroring close_socket_impl's own
+// takeover), registered by comm.cpp's register_game_output_sinks() to
+// forward here. This body is otherwise byte-identical.
+void msdp_room_update_impl(char_data* ch)
 {
     if (utils::is_npc(*ch)) {
         return;
@@ -956,7 +961,7 @@ ACMD(do_move)
             res_flag = perform_move_mount(ch->mount_data.mount, cmd);
         }
 
-        msdp_room_update(ch);
+        msdp_room_update_impl(ch);
 
         mounts = 0;
         if (IS_RIDING(ch))

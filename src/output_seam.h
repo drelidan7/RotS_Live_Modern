@@ -160,6 +160,42 @@ using no_specials_active_fn = bool (*)();
 // null-sink default is a SAFE logged no-op.
 using request_circle_shutdown_fn = void (*)();
 
+// msdp_room_update(char_data*) (act_move.cpp; spell-family closure wave
+// Task 1; sf-census.md section 4.2) -- mage.cpp's future upward
+// msdp_room_update(victim)/msdp_room_update(caster) call sites (mage.cpp:
+// 837/969/1156, each behind a local `extern void msdp_room_update(char_data
+// *ch);` forward declaration this seam lets T3 delete, consumer-free this
+// task) are the edge this forwarder inverts. Unlike this header's other
+// entries, the real body is NOT comm.cpp's own: it stays in act_move.cpp
+// (renamed to msdp_room_update_impl, the same "takes over the plain global
+// symbol" shape as close_socket_impl above), since it composes an MSDP
+// room-update packet from world[]/protocol state that is act_move.cpp's,
+// not comm.cpp's. comm.cpp still owns the REGISTRATION (register_game_
+// output_sinks(), the same pre-boot call site every other sink here uses)
+// -- it forward-declares msdp_room_update_impl and installs it as this
+// sink, so every existing plain-symbol caller (interpre.cpp:2840/:4150,
+// act_wiz.cpp:326, both still app-tier and unaffected by this seam) keeps
+// resolving to the identical real body through one extra indirection, the
+// same non-breaking-change shape send_to_char's own callers already have.
+// Void, so the null-sink default is a SAFE logged no-op (a missed MSDP
+// packet, not a crash).
+using msdp_room_update_fn = void (*)(char_data* ch);
+
+// descriptor_list HEAD read accessor (comm.cpp's descriptor_list global;
+// sf-census.md section 4.1) -- spell_pa.cpp's do_sense_magic() walks
+// descriptor_list directly today via a local `extern struct descriptor_data
+// *descriptor_list;` forward declaration (spell_pa.cpp:34); once spell_pa.cpp
+// promotes to rots_combat that raw extern becomes an illegal upward read of
+// comm.cpp's own session storage. Read accessor, NOT a storage-move --
+// descriptor_list's sole writer stays comm.cpp's own connection-accept/
+// close-socket bookkeeping; this seam only exposes the current head pointer,
+// letting a caller replay its existing `for (d = head; d; d = d->next)` walk
+// unchanged (descriptor_data's fields are reachable via structs.h from any
+// tier). Pointer return, so the null-sink default is a SAFE tripwire-logged
+// nullptr (an empty list -- the walk's own loop condition already treats
+// that as "no players", not a crash), not an abort.
+using descriptor_list_head_fn = descriptor_data* (*)();
+
 struct Sinks {
     send_to_char_fn send_to_char; // comm.cpp's desc-delivery body
     send_to_char_id_fn send_to_char_id; // comm.cpp's descriptor_list-walk body
@@ -178,6 +214,8 @@ struct Sinks {
     close_socket_fn close_socket; // comm.cpp's close_socket_impl body
     no_specials_active_fn no_specials_active; // comm.cpp's no_specials_active_impl body
     request_circle_shutdown_fn request_circle_shutdown; // comm.cpp's request_circle_shutdown_impl body
+    msdp_room_update_fn msdp_room_update; // act_move.cpp's msdp_room_update_impl body
+    descriptor_list_head_fn descriptor_list_head; // comm.cpp's descriptor_list_head_impl body
 };
 
 // Installs the sinks the game-output forwarders (output_seam.cpp) call

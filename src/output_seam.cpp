@@ -305,3 +305,36 @@ void request_circle_shutdown()
         "rots::output: STUB request_circle_shutdown() called with no sink registered -- this "
         "should be unreachable once register_game_output_sinks() has run.");
 }
+
+// msdp_room_update() (spell-family closure wave Task 1) -- unlike every
+// forwarder above, the real body is NOT comm.cpp's own: it stays
+// act_move.cpp's msdp_room_update_impl(), registered as this seam's sink
+// by comm.cpp's register_game_output_sinks() below. Safe logged no-op
+// default (a missed MSDP room-update packet under an unregistered sink,
+// not a crash).
+void msdp_room_update(char_data* ch)
+{
+    if (g_sinks.msdp_room_update) {
+        g_sinks.msdp_room_update(ch);
+        return;
+    }
+    rots::log::write_stderr(
+        "rots::output: STUB msdp_room_update() called with no sink registered -- this should be "
+        "unreachable once register_game_output_sinks() has run.");
+}
+
+// get_descriptor_list_head() (spell-family closure wave Task 1) -- read
+// accessor over comm.cpp's own descriptor_list global (storage never
+// moves). Pointer return, safe tripwire-logged nullptr default: an empty
+// list is a value every existing walk (`for (d = head; d; d = d->next)`)
+// already treats as "no players", not a crash.
+descriptor_data* get_descriptor_list_head()
+{
+    if (g_sinks.descriptor_list_head) {
+        return g_sinks.descriptor_list_head();
+    }
+    rots::log::write_stderr(
+        "rots::output: STUB get_descriptor_list_head() called with no sink registered -- this "
+        "should be unreachable once register_game_output_sinks() has run.");
+    return nullptr;
+}

@@ -435,3 +435,123 @@ TEST(OutputSeamForwarders, RequestCircleShutdownDefaultsToANoOpWhenUnregistered)
            "tripwire default is a logged no-op, not a call to any stub.";
 }
 
+// ---------------------------------------------------------------------------
+// msdp_room_update()/get_descriptor_list_head() (spell-family closure wave
+// Task 1; sf-census.md sections 4.1/4.2). CONSUMER-FREE this task -- no
+// mage.cpp/spell_pa.cpp call site converts yet -- same "recording stub
+// proves forward-then-tripwire" discriminator shape as the pairs above.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct RecordedMsdpRoomUpdateCall {
+    char_data* ch = nullptr;
+    bool called = false;
+};
+
+RecordedMsdpRoomUpdateCall g_recorded_msdp_room_update_call;
+
+void recording_msdp_room_update_stub(char_data* ch)
+{
+    g_recorded_msdp_room_update_call = RecordedMsdpRoomUpdateCall { ch, true };
+}
+
+class ScopedMsdpRoomUpdateSink {
+public:
+    explicit ScopedMsdpRoomUpdateSink(rots::output::msdp_room_update_fn hook)
+    {
+        rots::output::Sinks sinks {};
+        sinks.msdp_room_update = hook;
+        rots::output::set_sinks(sinks);
+    }
+
+    ~ScopedMsdpRoomUpdateSink() { register_game_output_sinks(); }
+
+    ScopedMsdpRoomUpdateSink(const ScopedMsdpRoomUpdateSink&) = delete;
+    ScopedMsdpRoomUpdateSink& operator=(const ScopedMsdpRoomUpdateSink&) = delete;
+};
+
+descriptor_data* g_descriptor_list_head_stub_return = nullptr;
+bool g_descriptor_list_head_stub_called = false;
+
+descriptor_data* recording_descriptor_list_head_stub()
+{
+    g_descriptor_list_head_stub_called = true;
+    return g_descriptor_list_head_stub_return;
+}
+
+class ScopedDescriptorListHeadSink {
+public:
+    explicit ScopedDescriptorListHeadSink(rots::output::descriptor_list_head_fn hook)
+    {
+        rots::output::Sinks sinks {};
+        sinks.descriptor_list_head = hook;
+        rots::output::set_sinks(sinks);
+    }
+
+    ~ScopedDescriptorListHeadSink() { register_game_output_sinks(); }
+
+    ScopedDescriptorListHeadSink(const ScopedDescriptorListHeadSink&) = delete;
+    ScopedDescriptorListHeadSink& operator=(const ScopedDescriptorListHeadSink&) = delete;
+};
+
+} // namespace
+
+TEST(OutputSeamForwarders, MsdpRoomUpdateReachesARegisteredStubWithArgIntact)
+{
+    g_recorded_msdp_room_update_call = RecordedMsdpRoomUpdateCall {};
+    ScopedMsdpRoomUpdateSink scoped(recording_msdp_room_update_stub);
+    char_data character {};
+
+    msdp_room_update(&character);
+
+    EXPECT_TRUE(g_recorded_msdp_room_update_call.called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(g_recorded_msdp_room_update_call.ch, &character);
+}
+
+TEST(OutputSeamForwarders, MsdpRoomUpdateDefaultsToANoOpWhenUnregistered)
+{
+    g_recorded_msdp_room_update_call = RecordedMsdpRoomUpdateCall {};
+    ScopedMsdpRoomUpdateSink unregistered(nullptr);
+    char_data character {};
+
+    msdp_room_update(&character);
+
+    EXPECT_FALSE(g_recorded_msdp_room_update_call.called)
+        << "Expected an unregistered msdp_room_update sink to leave the (unrelated) stub's own "
+           "recording flag untouched -- the real forwarder never ran, and the tripwire default "
+           "is a logged no-op, not a call to any stub.";
+}
+
+TEST(OutputSeamForwarders, DescriptorListHeadReachesARegisteredStubAndForwardsReturnValue)
+{
+    g_descriptor_list_head_stub_called = false;
+    descriptor_data sentinel {};
+    g_descriptor_list_head_stub_return = &sentinel;
+    ScopedDescriptorListHeadSink scoped(recording_descriptor_list_head_stub);
+
+    descriptor_data* result = get_descriptor_list_head();
+
+    EXPECT_TRUE(g_descriptor_list_head_stub_called)
+        << "Expected the registered stub to have been reached.";
+    EXPECT_EQ(result, &sentinel)
+        << "Expected get_descriptor_list_head() to forward the stub's own return value.";
+}
+
+TEST(OutputSeamForwarders, DescriptorListHeadDefaultsToNullptrWhenUnregistered)
+{
+    g_descriptor_list_head_stub_called = false;
+    ScopedDescriptorListHeadSink unregistered(nullptr);
+
+    descriptor_data* result = get_descriptor_list_head();
+
+    EXPECT_FALSE(g_descriptor_list_head_stub_called)
+        << "Expected the (unrelated) stub's own called flag to stay untouched -- the real "
+           "forwarder never ran.";
+    EXPECT_EQ(result, nullptr)
+        << "Expected an unregistered descriptor_list_head sink to default to nullptr (an empty "
+           "list), the same safe sentinel every existing head-walk loop already treats as "
+           "\"no players\".";
+}
+

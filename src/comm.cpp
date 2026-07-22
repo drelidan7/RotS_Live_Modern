@@ -2719,6 +2719,21 @@ static void request_circle_shutdown_impl()
     circle_shutdown = 1;
 }
 
+// msdp_room_update_impl (act_move.cpp; spell-family closure wave Task 1) --
+// forward-declared here so register_game_output_sinks() below can install
+// it as this seam's sink; the real body stays act_move.cpp's, not this
+// file's (unlike every _impl above, which are this file's own renamed
+// bodies).
+extern void msdp_room_update_impl(char_data* ch);
+
+// get_descriptor_list_head_impl() (spell-family closure wave Task 1) --
+// plain read accessor over this file's own descriptor_list global;
+// storage never moves.
+static descriptor_data* get_descriptor_list_head_impl()
+{
+    return descriptor_list;
+}
+
 void register_game_output_sinks()
 {
     rots::output::Sinks sinks {};
@@ -2744,6 +2759,12 @@ void register_game_output_sinks()
     sinks.close_socket = close_socket_impl;
     sinks.no_specials_active = no_specials_active_impl;
     sinks.request_circle_shutdown = request_circle_shutdown_impl;
+    // spell-family closure wave Task 1 additions (sf-census.md sections
+    // 4.1/4.2): msdp_room_update_impl is act_move.cpp's own renamed real
+    // msdp_room_update() body (forward-declared above);
+    // get_descriptor_list_head_impl is defined immediately above.
+    sinks.msdp_room_update = msdp_room_update_impl;
+    sinks.descriptor_list_head = get_descriptor_list_head_impl;
     rots::output::set_sinks(sinks);
 }
 

@@ -19,9 +19,12 @@ following Task 5, which landed `clerics.cpp` + `fight.cpp` joint membership,
 now closes with **twelve** real data points (clerics, fight, olog_hai, mystic, profs,
 limits, mobact, spell_pa, mage, ranger, spec_pro, spec_ass) instead of zero, and the
 per-TU cost table at the end of this document is fully RESOLVED — every row the
-original combat-census sketch named has either joined `ROTS_COMBAT_SOURCES` (14 TUs
-across five waves) or been ruled to a different tier and joined there instead
-(`mobact`/`spec_pro`/`spec_ass` → `rots_script`, per the driver-homes-with-engine rule).
+original combat-census sketch named has either joined `ROTS_COMBAT_SOURCES` (9 TUs
+across four waves — `clerics`/`fight`/`olog_hai`/`mystic`/`profs`/`limits`/`spell_pa`/
+`mage`/`ranger`, plus the 4 SEED-CLEAN + 2 blocker-buster enablers already resident = 15)
+or been ruled to a different tier and joined there instead (`mobact`/`spec_pro`/
+`spec_ass` → `rots_script`, per the driver-homes-with-engine rule, across 2 waves — the
+fifth wave, spec-pair, added zero TUs to `rots_combat` itself).
 **Combat DEFER: 0.** See "THE COMBAT ROW IS CLOSED" section near the end of this
 document for the full five-wave arc summary.
 

@@ -20,14 +20,18 @@
 #include <iostream>
 #include <regex>
 
+#include "combat_hooks.h"
 #include "comm.h"
 #include "db.h"
+#include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
 #include "limits.h"
+#include "persist_hooks.h"
 #include "platform_compat.h"
 #include "profs.h"
 #include "safe_template.h"
+#include "script_hooks.h"
 #include "spells.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
@@ -67,24 +71,19 @@ int find_first_step(int, int);
 
 ACMD(do_ambush);
 ACMD(do_hide);
-ACMD(do_say);
-ACMD(do_open);
-ACMD(do_close);
-ACMD(do_lock);
-ACMD(do_unlock);
-ACMD(do_look);
-ACMD(do_stand);
-ACMD(do_wake);
-ACMD(do_move);
-ACMD(do_drop);
-ACMD(do_hit);
 ACMD(do_cast);
-ACMD(do_gen_com);
-ACMD(do_tell);
-ACMD(do_pull);
-ACMD(do_wear);
-ACMD(do_kick);
-ACMD(do_stat);
+
+// spec-pair wave Task 2 (sp-task-2-brief.md Step 1; sp-census.md section 4):
+// do_say/do_open/do_close/do_lock/do_unlock/do_look/do_stand/do_wake/do_move/
+// do_hit/do_gen_com/do_tell/do_wear/do_stat forward decls RETIRED -- every
+// call site in this file now dispatches through the existing 26-cell
+// rots::combat::issue_command() table (combat_hooks.h) instead of calling
+// the ACMD symbol directly, so none of the fourteen is referenced by name
+// here any more (mobact.cpp/ranger.cpp precedent, behavior wave/combat-trio
+// wave). do_drop/do_kick/do_pull RETIRED too: bare forward decls with zero
+// call sites anywhere in this file (confirmed by grep before deletion), the
+// same dead-decl class combat_hooks.h's own file comment already documents
+// for this exact trio.
 
 struct social_type {
     char* cmd;
@@ -179,17 +178,17 @@ SPECIAL(guild) {
     }
 
     if (!WILL_TEACH(host, ch)) {
-        do_say(host, mutable_arg("Go away, I won't teach you anything!"), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Go away, I won't teach you anything!"), 0, 0, 0);
         return TRUE;
     }
 
     if (IS_SHADOW(ch)) {
-        do_say(host, mutable_arg("Ugh!  I'm not teaching YOU!"), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Ugh!  I'm not teaching YOU!"), 0, 0, 0);
         return TRUE;
     }
 
     if (!RP_RACE_CHECK(host, ch)) {
-        do_say(host, mutable_arg("Sorry, I can't teach you."), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Sorry, I can't teach you."), 0, 0, 0);
         return TRUE;
     }
 
@@ -705,8 +704,8 @@ SPECIAL(gatekeeper)
                 for (doordir = 0; doordir < NUM_OF_DIRS; doordir++)
                     if (EXIT(host, doordir))
                         if (IS_SET(EXIT(host, doordir)->exit_info, EX_ISDOOR) && EXIT(host, doordir)->keyword != NULL) {
-                            do_unlock(host, EXIT(host, doordir)->keyword, 0, 0, 0);
-                            do_open(host, EXIT(host, doordir)->keyword, 0, 0, 0);
+                            rots::combat::issue_command(rots::combat::combat_command::unlock, host, EXIT(host, doordir)->keyword, 0, 0, 0);
+                            rots::combat::issue_command(rots::combat::combat_command::open, host, EXIT(host, doordir)->keyword, 0, 0, 0);
                         }
 
             /* Keep them closed at night */
@@ -714,8 +713,8 @@ SPECIAL(gatekeeper)
                 for (doordir = 0; doordir < NUM_OF_DIRS; doordir++)
                     if (EXIT(host, doordir))
                         if (IS_SET(EXIT(host, doordir)->exit_info, EX_ISDOOR) && EXIT(host, doordir)->keyword != NULL) {
-                            do_close(host, EXIT(host, doordir)->keyword, 0, 0, 0);
-                            do_lock(host, EXIT(host, doordir)->keyword, 0, 0, 0);
+                            rots::combat::issue_command(rots::combat::combat_command::close, host, EXIT(host, doordir)->keyword, 0, 0, 0);
+                            rots::combat::issue_command(rots::combat::combat_command::lock, host, EXIT(host, doordir)->keyword, 0, 0, 0);
                         }
         }
 
@@ -723,7 +722,7 @@ SPECIAL(gatekeeper)
             return FALSE;
 
         if (!CAN_SEE(host, ch)) {
-            do_gen_com(host, mutable_arg("Who is out there?"), 0, 0, SCMD_YELL);
+            rots::combat::issue_command(rots::combat::combat_command::gen_com, host, mutable_arg("Who is out there?"), 0, 0, SCMD_YELL);
             return FALSE;
         }
 
@@ -739,7 +738,7 @@ SPECIAL(gatekeeper)
 
             if (!*arg || strncmp(arg, "open", 4)) {
                 if (number(1, 10) == 5)
-                    do_say(host, mutable_arg("Stop loitering here, I have a job to do."), 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Stop loitering here, I have a job to do."), 0, 0, 0);
                 return FALSE;
             }
 
@@ -755,7 +754,7 @@ SPECIAL(gatekeeper)
                         break;
 
             if (doordir == NUM_OF_DIRS) {
-                do_say(host, mutable_arg("There is nothing such to open."), 0, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("There is nothing such to open."), 0, 0, 0);
                 return FALSE;
             }
 
@@ -771,19 +770,19 @@ SPECIAL(gatekeeper)
     }
 
     if (!host->delay.cmd || !host->delay.subcmd) {
-        do_say(host, mutable_arg("Ugh, I forgot what I'm doing."), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Ugh, I forgot what I'm doing."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
 
     if (host->delay.targ2.ch_num == -1) {
-        do_say(host, mutable_arg("There is nothing like that here."), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("There is nothing like that here."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
 
     if (host->delay.targ2.ch_num == -2) {
-        do_say(host, mutable_arg("Ah, there is no door for me to open."), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Ah, there is no door for me to open."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
@@ -795,7 +794,7 @@ SPECIAL(gatekeeper)
 
     if (ch != NULL && IS_AGGR_TO(host, ch)) {
         rots_asprintf(&msg, "To arms! The enemy is at %s!", world[ch->in_room].name);
-        do_gen_com(host, msg, 0, 0, SCMD_YELL);
+        rots::combat::issue_command(rots::combat::combat_command::gen_com, host, msg, 0, 0, SCMD_YELL);
         free(msg);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
@@ -820,22 +819,22 @@ SPECIAL(gatekeeper)
 
     if (host->delay.subcmd == 2) {
         if (CAN_GO(host, doordir)) {
-            do_say(host, mutable_arg("Ah, the door is open. You are free to go."), 0, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Ah, the door is open. You are free to go."), 0, 0, 0);
             host->delay.cmd = host->delay.subcmd = 0;
             return FALSE;
         }
     }
 
     if (host->delay.subcmd == 1 || host->delay.subcmd == 2) {
-        do_unlock(host, EXIT(host, doordir)->keyword, 0, 0, 0);
-        do_open(host, EXIT(host, doordir)->keyword, 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::unlock, host, EXIT(host, doordir)->keyword, 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::open, host, EXIT(host, doordir)->keyword, 0, 0, 0);
         WAIT_STATE_FULL(host, 15, -1, 3, 30, 0, ch->abs_number, ch, 0, TARGET_CHAR);
         return FALSE;
     }
 
     if (host->delay.subcmd == 3) {
-        do_close(host, EXIT(host, doordir)->keyword, 0, 0, 0);
-        do_lock(host, EXIT(host, doordir)->keyword, 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::close, host, EXIT(host, doordir)->keyword, 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::lock, host, EXIT(host, doordir)->keyword, 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
@@ -871,16 +870,16 @@ SPECIAL(gatekeeper_no_knock)
                 for (doordir = 0; doordir < NUM_OF_DIRS; doordir++)
                     if (EXIT(host, doordir))
                         if (IS_SET(EXIT(host, doordir)->exit_info, EX_ISDOOR) && EXIT(host, doordir)->keyword != NULL) {
-                            do_unlock(host, EXIT(host, doordir)->keyword, 0, 0, 0);
-                            do_open(host, EXIT(host, doordir)->keyword, 0, 0, 0);
+                            rots::combat::issue_command(rots::combat::combat_command::unlock, host, EXIT(host, doordir)->keyword, 0, 0, 0);
+                            rots::combat::issue_command(rots::combat::combat_command::open, host, EXIT(host, doordir)->keyword, 0, 0, 0);
                         }
 
             if (weather_info.sunlight < SUN_RISE || weather_info.sunlight >= SUN_SET)
                 for (doordir = 0; doordir < NUM_OF_DIRS; doordir++)
                     if (EXIT(host, doordir))
                         if (IS_SET(EXIT(host, doordir)->exit_info, EX_ISDOOR) && EXIT(host, doordir)->keyword != NULL) {
-                            do_close(host, EXIT(host, doordir)->keyword, 0, 0, 0);
-                            do_lock(host, EXIT(host, doordir)->keyword, 0, 0, 0);
+                            rots::combat::issue_command(rots::combat::combat_command::close, host, EXIT(host, doordir)->keyword, 0, 0, 0);
+                            rots::combat::issue_command(rots::combat::combat_command::lock, host, EXIT(host, doordir)->keyword, 0, 0, 0);
                         }
         }
 
@@ -943,8 +942,8 @@ SPECIAL(gatekeeper2)
             for (doordir = 0; doordir < NUM_OF_DIRS; doordir++)
                 if (EXIT(host, doordir))
                     if (IS_SET(EXIT(host, doordir)->exit_info, EX_ISDOOR) && EXIT(host, doordir)->keyword != NULL) {
-                        do_close(host, EXIT(host, doordir)->keyword, 0, 0, 0);
-                        do_lock(host, EXIT(host, doordir)->keyword, 0, 0, 0);
+                        rots::combat::issue_command(rots::combat::combat_command::close, host, EXIT(host, doordir)->keyword, 0, 0, 0);
+                        rots::combat::issue_command(rots::combat::combat_command::lock, host, EXIT(host, doordir)->keyword, 0, 0, 0);
                     }
         }
 
@@ -954,7 +953,7 @@ SPECIAL(gatekeeper2)
 
         /* Don't trust someone you can't see */
         if (!CAN_SEE(host, ch)) {
-            do_gen_com(host, mutable_arg("Who is out there?"), 0, 0, SCMD_YELL);
+            rots::combat::issue_command(rots::combat::combat_command::gen_com, host, mutable_arg("Who is out there?"), 0, 0, SCMD_YELL);
 
             return FALSE;
         }
@@ -973,7 +972,7 @@ SPECIAL(gatekeeper2)
 
             if (!*arg || strncmp(arg, "open", 4)) {
                 if (number(1, 10) == 5)
-                    do_say(host, mutable_arg("Stop loitering here, I have a job to do."), 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Stop loitering here, I have a job to do."), 0, 0, 0);
                 return FALSE;
             }
 
@@ -988,7 +987,7 @@ SPECIAL(gatekeeper2)
                         break;
 
             if (doordir == NUM_OF_DIRS) {
-                do_say(host, mutable_arg("There is nothing such to open."), 0, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("There is nothing such to open."), 0, 0, 0);
                 return FALSE;
             }
 
@@ -1016,19 +1015,19 @@ SPECIAL(gatekeeper2)
      * bash (or anything else, for that matter)
      */
     if (!host->delay.cmd || !host->delay.subcmd) {
-        do_say(host, mutable_arg("Ugh, I forgot what I'm doing."), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Ugh, I forgot what I'm doing."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
 
     if (host->delay.targ2.ch_num == -1) {
-        do_say(host, mutable_arg("There is nothing like that here."), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("There is nothing like that here."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
 
     if (host->delay.targ2.ch_num == -2) {
-        do_say(host, mutable_arg("Ah, there is no door for me to open."), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Ah, there is no door for me to open."), 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
@@ -1040,7 +1039,7 @@ SPECIAL(gatekeeper2)
 
     if (ch && IS_AGGR_TO(host, ch)) {
         rots_asprintf(&msg, "To arms! The enemy is at %s!", world[ch->in_room].name);
-        do_gen_com(host, msg, 0, 0, SCMD_YELL);
+        rots::combat::issue_command(rots::combat::combat_command::gen_com, host, msg, 0, 0, SCMD_YELL);
         free(msg);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
@@ -1058,22 +1057,22 @@ SPECIAL(gatekeeper2)
 
     if (host->delay.subcmd == 2) {
         if (CAN_GO(host, doordir)) {
-            do_say(host, mutable_arg("Ah, the door is open. You are free to go."), 0, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Ah, the door is open. You are free to go."), 0, 0, 0);
             host->delay.cmd = host->delay.subcmd = 0;
             return FALSE;
         }
     }
 
     if (host->delay.subcmd == 1 || host->delay.subcmd == 2) {
-        do_unlock(host, EXIT(host, doordir)->keyword, 0, 0, 0);
-        do_open(host, EXIT(host, doordir)->keyword, 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::unlock, host, EXIT(host, doordir)->keyword, 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::open, host, EXIT(host, doordir)->keyword, 0, 0, 0);
         WAIT_STATE_FULL(host, 15, -1, 3, 30, 0, ch->abs_number, ch, 0, TARGET_CHAR);
         return FALSE;
     }
 
     if (host->delay.subcmd == 3) {
-        do_close(host, EXIT(host, doordir)->keyword, 0, 0, 0);
-        do_lock(host, EXIT(host, doordir)->keyword, 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::close, host, EXIT(host, doordir)->keyword, 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::lock, host, EXIT(host, doordir)->keyword, 0, 0, 0);
         host->delay.cmd = host->delay.subcmd = 0;
         return FALSE;
     }
@@ -1152,9 +1151,9 @@ void _recursive_move(struct char_data* ch, struct obj_data* hostobj)
 
     act("You entered $o.", FALSE, ch, hostobj, 0, TO_CHAR);
     act("$n enters $o.", TRUE, ch, hostobj, 0, TO_ROOM);
-    char_from_room(ch);
+    rots::entity::dispatch_char_from_room(ch);
     char_to_room(ch, ferry_boat_data[num].to_room[tmp]);
-    do_look(ch, mutable_arg(""), 0, 0, 0);
+    rots::combat::issue_command(rots::combat::combat_command::look, ch, mutable_arg(""), 0, 0, 0);
     act("$n comes aboard.", TRUE, ch, 0, 0, TO_ROOM);
     for (tmpfol = ch->followers; tmpfol; tmpfol = tmpfol->next)
         if (tmpfol->follower->in_room == was_in) {
@@ -1210,8 +1209,8 @@ SPECIAL(ferry_captain)
         return FALSE;
 
     if (GET_POS(host) < POSITION_FIGHTING) {
-        do_wake(host, mutable_arg(""), 0, 0, 0);
-        do_stand(host, mutable_arg(""), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::wake, host, mutable_arg(""), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::stand, host, mutable_arg(""), 0, 0, 0);
     }
     if (GET_POS(host) < POSITION_STANDING)
         return FALSE;
@@ -1229,7 +1228,7 @@ SPECIAL(ferry_captain)
 
     if (!ferryobj) {
         if (!number(0, 5))
-            do_say(host, mutable_arg("I wonder where my ship is?"), 0, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("I wonder where my ship is?"), 0, 0, 0);
         return FALSE;
     }
 
@@ -1243,7 +1242,7 @@ SPECIAL(ferry_captain)
 
     old_room = ferry_captain_data[num].cabin_route[ferry_captain_data[num].marker];
     if (old_room != host->in_room) {
-        char_from_room(host);
+        rots::entity::dispatch_char_from_room(host);
         char_to_room(host, old_room);
         act("$n steps out from the shadows.", TRUE, host, 0, 0, TO_ROOM);
     }
@@ -1622,18 +1621,15 @@ int pick_a_spell(int* spell_list, char_data* host)
 {
     if (spell_list[0] > 0) {
         if (has_alias(host, "spells")) {
-            strcpy(buf, "----------");
-            mudlog_aliased_mob(buf, host, "spells");
+            mudlog_aliased_mob("----------", host, "spells");
             for (int i = 1; i <= spell_list[0]; i++) {
-                strcpy(buf, std::format("Spell: {}", spell_list[i]).c_str());
-                mudlog_aliased_mob(buf, host, "spells");
+                mudlog_aliased_mob(std::format("Spell: {}", spell_list[i]), host, "spells");
             }
         }
         int chance = number(1, spell_list[0]);
         return spell_list[chance];
     } else {
-        strcpy(buf, "--- NO MAGE KEYWORDS FOUND ---");
-        mudlog_aliased_mob(buf, host, "spells");
+        mudlog_aliased_mob("--- NO MAGE KEYWORDS FOUND ---", host, "spells");
         return 0;
     }
 }
@@ -1649,8 +1645,7 @@ void add_spell_to_list(int* spell_list, int spell, char_data* host)
         }
     }
     if (found == 0) {
-        strcpy(buf, std::format("ADDING: {}", spell).c_str());
-        mudlog_aliased_mob(buf, host, "spells");
+        mudlog_aliased_mob(std::format("ADDING: {}", spell), host, "spells");
         spell_list[0] += 1;
         spell_list[spell_list[0]] = spell;
     }
@@ -1659,8 +1654,9 @@ void add_spell_to_list(int* spell_list, int spell, char_data* host)
 // fetch spells from hp bracket
 void get_spells(int* spell_list, int mage_type, int health, char_data* host)
 {
-    strcpy(buf, std::format("MType: {},    Spell_Tier: {}, Pct: {:.2f}", mage_type, health, percents[health]).c_str());
-    mudlog_aliased_mob(buf, host, "spells");
+    mudlog_aliased_mob(
+        std::format("MType: {},    Spell_Tier: {}, Pct: {:.2f}", mage_type, health, percents[health]),
+        host, "spells");
     for (int i = 0; i < indvidual_spells_length; i++) {
         if (new_spell_list[mage_type][health][i] != 0) {
             add_spell_to_list(spell_list, new_spell_list[mage_type][health][i], host);
@@ -1673,8 +1669,7 @@ void add_leveled_spell_to_list(int* spell_list, int spell, int mage_type, int cu
     std::string_view keyword, char_data* host, int min_level)
 {
     if (GET_LEVEL(host) >= min_level && mage_type == cur_mage_type && has_alias(host, keyword)) {
-        strcpy(buf, std::format("MType: {}    (HL_SPELL)", mage_type).c_str());
-        mudlog_aliased_mob(buf, host, "spells");
+        mudlog_aliased_mob(std::format("MType: {}    (HL_SPELL)", mage_type), host, "spells");
         add_spell_to_list(spell_list, spell, host);
     }
 }
@@ -1830,10 +1825,10 @@ SPECIAL(mob_magic_user_spec)
         return FALSE;
     }
 
-    strcpy(buf, std::format("PROG::MAGE    -> Tgt: {}, Spell: {}, TgtType: {}, InterruptCnt: {}, Hit%: {:.2f}",
-                       GET_NAME(target), spell_number, tgt, host->interrupt_count, current_health_pct)
-                       .c_str());
-    mudlog_debug_mob(buf, host);
+    mudlog_debug_mob(
+        std::format("PROG::MAGE    -> Tgt: {}, Spell: {}, TgtType: {}, InterruptCnt: {}, Hit%: {:.2f}",
+            GET_NAME(target), spell_number, tgt, host->interrupt_count, current_health_pct),
+        host);
 
     waiting_type wtl_base;
     wtl_base.cmd = CMD_CAST;
@@ -1905,7 +1900,7 @@ SPECIAL(mob_warrior)
     wtl_base.targ1.ch_num = tar_ch->abs_number;
     wtl_base.targ1.type = TARGET_CHAR;
     wtl_base.flg = 1;
-    command_interpreter(host, argptr, &wtl_base);
+    rots::script::dispatch_command_interpreter(host, argptr, &wtl_base);
     return FALSE;
 }
 
@@ -1972,7 +1967,7 @@ SPECIAL(mob_ranger)
         // char, skipping the ON_ENTER call for each in-between room,
         //   likely doesnt leave tracks in the middle rooms either, also it moves rather instantly
         //   since its looping in a single one_mobile_activity call
-        do_move(host, mutable_arg(""), &tmpwtl, (tmproom->room_track[mintmp].data & 7) + 1, 0);
+        rots::combat::issue_command(rots::combat::combat_command::move, host, mutable_arg(""), &tmpwtl, (tmproom->room_track[mintmp].data & 7) + 1, 0);
         tmpwtl.targ1.cleanup();
         return 0;
     }
@@ -1980,7 +1975,7 @@ SPECIAL(mob_ranger)
         tmpwtl.cmd = number(1, NUM_OF_DIRS);
         tmpwtl.subcmd = 0;
         if (CAN_GO(host, tmpwtl.cmd - 1))
-            do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
+            rots::combat::issue_command(rots::combat::combat_command::move, host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
     }
     return 0; // Because this isn't a 1: If the mob moves above, when it leaves this prog it can
@@ -2038,12 +2033,13 @@ void do_spec_hit(char_data* host, char_data* tmpch)
     } else {
         act("$n grins evilly and attacks $N!", FALSE, host, 0, tmpch, TO_ROOM);
     }
-    sscanf(tmpch->player.name, "%s", buf);
+    char hit_target_name[MAX_STRING_LENGTH];
+    sscanf(tmpch->player.name, "%s", hit_target_name);
     tmpwtl.targ1.type = TARGET_CHAR;
     tmpwtl.targ1.ptr.ch = tmpch;
     tmpwtl.targ1.ch_num = tmpch->abs_number;
     tmpwtl.cmd = CMD_HIT;
-    do_hit(host, buf, &tmpwtl, 0, 0);
+    rots::combat::issue_command(rots::combat::combat_command::hit, host, hit_target_name, &tmpwtl, 0, 0);
     host->spec_busy = false;
 }
 
@@ -2084,8 +2080,8 @@ SPECIAL(mob_ranger_new)
 
     const int wimpy_health_limit = GET_MAX_HIT(host) / 5;
     if (GET_HIT(host) <= wimpy_health_limit) {
-        strcpy(buf, std::format("WIMPY --> health: {}, wimpy: {}", GET_HIT(host), wimpy_health_limit).c_str());
-        mudlog_debug_mob(buf, host);
+        mudlog_debug_mob(
+            std::format("WIMPY --> health: {}, wimpy: {}", GET_HIT(host), wimpy_health_limit), host);
         is_wimpy = 1;
     }
 
@@ -2174,7 +2170,7 @@ SPECIAL(mob_ranger_new)
                     tmp = BFS_NO_PATH;
                 }
                 if (tmp >= 0) {
-                    do_move(ch, mutable_arg(""), 0, tmp + 1, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::move, ch, mutable_arg(""), 0, tmp + 1, 0);
                     if(has_alias(host, "p_hide")) {
                         do_hide(host, mutable_arg(""), 0, 0, 0);
                     }
@@ -2211,7 +2207,7 @@ SPECIAL(mob_ranger_new)
             if (mintmp < NUM_OF_TRACKS) {
                 tmpwtl.cmd = (tmproom->room_track[mintmp].data & 7) + 1;
                 tmpwtl.subcmd = 0;
-                do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
+                rots::combat::issue_command(rots::combat::combat_command::move, host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
                 if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) ||
                      IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) &&
                     host->delay.wait_value == 0 && has_alias(host, "p_hide")) {
@@ -2228,7 +2224,7 @@ SPECIAL(mob_ranger_new)
             tmpwtl.cmd = number(1, NUM_OF_DIRS);
             tmpwtl.subcmd = 0;
             if (CAN_GO(host, tmpwtl.cmd - 1)) {
-                do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, tmpwtl.subcmd);
+                rots::combat::issue_command(rots::combat::combat_command::move, host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, tmpwtl.subcmd);
                 if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) ||
                      IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) &&
                     host->delay.wait_value == 0 && has_alias(host, "p_hide")) {
@@ -2270,7 +2266,7 @@ SPECIAL(mob_jig)
 {
     int dance_desc;
 
-    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (cmd_info[cmd].minimum_position > POSITION_RESTING))) {
+    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (rots::script::dispatch_command_min_position(cmd) > POSITION_RESTING))) {
 
         if (cmd == CMD_JIG)
             return FALSE;
@@ -2290,8 +2286,7 @@ SPECIAL(mob_jig)
         return FALSE;
 
     dance_desc = number(0, 5);
-    strcpy(buf, std::format("$n {}.\r\n", dance_description[dance_desc][0]).c_str());
-    act(buf, TRUE, host, 0, 0, TO_ROOM);
+    act(std::format("$n {}.\r\n", dance_description[dance_desc][0]), TRUE, host, 0, 0, TO_ROOM);
     send_to_char(std::format("{}.\r\n", dance_description[dance_desc][1]), ch);
 
     return FALSE;
@@ -2314,7 +2309,7 @@ SPECIAL(block_exit) {
   int width, chance;
 
   if(callflag == SPECIAL_COMMAND && ch == host &&
-     cmd < 0 || cmd_info[cmd].minimum_position > POSITION_RESTING) {
+     cmd < 0 || rots::script::dispatch_command_min_position(cmd) > POSITION_RESTING) {
     if(cmd == CMD_BLOCK)
       return FALSE;
     if(!CAN_GO(ch, 0))
@@ -2360,7 +2355,7 @@ SPECIAL(block_exit_north)
 {
     int width, chance;
 
-    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (cmd_info[cmd].minimum_position > POSITION_RESTING))) {
+    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (rots::script::dispatch_command_min_position(cmd) > POSITION_RESTING))) {
 
         if (cmd == CMD_BLOCK)
             return FALSE;
@@ -2406,7 +2401,7 @@ SPECIAL(block_exit_east)
 {
     int width, chance;
 
-    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (cmd_info[cmd].minimum_position > POSITION_RESTING))) {
+    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (rots::script::dispatch_command_min_position(cmd) > POSITION_RESTING))) {
 
         if (cmd == CMD_BLOCK)
             return FALSE;
@@ -2451,7 +2446,7 @@ SPECIAL(block_exit_south)
 {
     int width, chance;
 
-    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (cmd_info[cmd].minimum_position > POSITION_RESTING))) {
+    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (rots::script::dispatch_command_min_position(cmd) > POSITION_RESTING))) {
 
         if (cmd == CMD_BLOCK)
             return FALSE;
@@ -2496,7 +2491,7 @@ SPECIAL(block_exit_west)
 {
     int width, chance;
 
-    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (cmd_info[cmd].minimum_position > POSITION_RESTING))) {
+    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (rots::script::dispatch_command_min_position(cmd) > POSITION_RESTING))) {
 
         if (cmd == CMD_BLOCK)
             return FALSE;
@@ -2541,7 +2536,7 @@ SPECIAL(block_exit_up)
 {
     int width, chance;
 
-    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (cmd_info[cmd].minimum_position > POSITION_RESTING))) {
+    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (rots::script::dispatch_command_min_position(cmd) > POSITION_RESTING))) {
 
         if (cmd == CMD_BLOCK)
             return FALSE;
@@ -2586,7 +2581,7 @@ SPECIAL(block_exit_down)
 {
     int width, chance;
 
-    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (cmd_info[cmd].minimum_position > POSITION_RESTING))) {
+    if ((callflag == SPECIAL_COMMAND) && (ch == host) && ((cmd < 0) || (rots::script::dispatch_command_min_position(cmd) > POSITION_RESTING))) {
 
         if (cmd == CMD_BLOCK)
             return FALSE;
@@ -2664,7 +2659,7 @@ SPECIAL(resetter)
                     "Sorry, you have exceeded the amount of times you can reroll statistics.");
                 wtltmp.cmd = CMD_TELL;
                 wtltmp.subcmd = 0;
-                do_tell(host, mutable_arg(""), &wtltmp, CMD_TELL, 0);
+                rots::combat::issue_command(rots::combat::combat_command::tell, host, mutable_arg(""), &wtltmp, CMD_TELL, 0);
                 wtltmp.targ2.cleanup();
                 return 0;
             }
@@ -2676,13 +2671,13 @@ SPECIAL(resetter)
             save_char(ch, NOWHERE, 0);
             reroll_count = 41 - ch->specials2.rerolls;
             send_to_char(std::format("You have {} reroll attempts left.\n\r", reroll_count), ch);
-            do_stat(ch, mutable_arg(""), 0, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::stat, ch, mutable_arg(""), 0, 0, 0);
             return 0;
         } else {
             wtltmp.targ2.type = TARGET_TEXT;
             wtltmp.targ2.ptr.text = get_from_txt_block_pool("Only level 6 characters may reroll statistics.");
             wtltmp.cmd = 0;
-            do_tell(host, mutable_arg(""), &wtltmp, CMD_TELL, 0);
+            rots::combat::issue_command(rots::combat::combat_command::tell, host, mutable_arg(""), &wtltmp, CMD_TELL, 0);
             wtltmp.targ2.cleanup();
             return 0;
         }
@@ -2694,7 +2689,7 @@ SPECIAL(resetter)
         wtltmp.targ2.ptr.text = get_from_txt_block_pool("You may ask me for a pracreset and rerolls.");
         wtltmp.cmd = CMD_TELL;
         wtltmp.subcmd = 0;
-        do_tell(host, mutable_arg(""), &wtltmp, CMD_TELL, 0);
+        rots::combat::issue_command(rots::combat::combat_command::tell, host, mutable_arg(""), &wtltmp, CMD_TELL, 0);
         wtltmp.targ2.cleanup();
         return 0;
     }
@@ -2721,14 +2716,17 @@ SPECIAL(react_trap)
 {
     struct waiting_type w;
     ACMD(do_trap);
-    int target_check(struct char_data*, int, struct target_data*, struct target_data*);
+    // int target_check(...) local extern RETIRED (spec-pair wave Task 2;
+    // sp-census.md section 5.3): the one call site below now dispatches
+    // through rots::script::dispatch_target_check() (script_hooks.h), whose
+    // real body stays interpre.cpp's own target_check().
 
     if (callflag != SPECIAL_COMMAND && callflag != SPECIAL_ENTER)
         return FALSE;
 
     /* See if they abandon their trap */
     if (callflag == SPECIAL_COMMAND) {
-        if (cmd_info[cmd].minimum_position > POSITION_SITTING && ch == host && cmd != CMD_TRAP)
+        if (rots::script::dispatch_command_min_position(cmd) > POSITION_SITTING && ch == host && cmd != CMD_TRAP)
             do_trap(host, mutable_arg(""), NULL, CMD_TRAP, -1);
         return FALSE;
     }
@@ -2747,7 +2745,7 @@ SPECIAL(react_trap)
      * Then I have to make the trap command not break the set
      * trap.  Can this be dealt with in do_trap()?
      */
-    target_check(host, CMD_TRAP, &w.targ1, &w.targ2);
+    rots::script::dispatch_target_check(host, CMD_TRAP, &w.targ1, &w.targ2);
     do_trap(host, mutable_arg(""), &w, CMD_TRAP, w.subcmd);
 
     return FALSE;
@@ -2766,14 +2764,14 @@ SPECIAL(ar_tarthalon)
         victim = get_char("balkazor");
         if (victim) {
             if (world[victim->in_room].number != 8483)
-                do_say(host, mutable_arg("Balkazor my sorcerer, I command you to aid me!"), 0, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Balkazor my sorcerer, I command you to aid me!"), 0, 0, 0);
             else
                 switch (number(0, 6)) {
                 case 4:
-                    do_say(host, mutable_arg("Turn these intruders to dust, my faithful wizard!"), 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Turn these intruders to dust, my faithful wizard!"), 0, 0, 0);
                     break;
                 case 5:
-                    do_say(host, mutable_arg("Balkazor, burn these infidels into eternity!"), 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Balkazor, burn these infidels into eternity!"), 0, 0, 0);
                     break;
                 }
         }
@@ -2781,16 +2779,16 @@ SPECIAL(ar_tarthalon)
         victim = get_char("karahaz");
         if (victim) {
             if (world[victim->in_room].number != 8483)
-                do_say(host, mutable_arg("Karahaz!  Master swordsman, Come!  Rid my tomb of these intruders!"),
+                rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Karahaz!  Master swordsman, Come!  Rid my tomb of these intruders!"),
                     0, 0, 0);
             else
                 switch (number(0, 6)) {
                 case 4:
-                    do_say(host, mutable_arg("Karahaz, may these mere mortals feel the power of your blade!"), 0,
+                    rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Karahaz, may these mere mortals feel the power of your blade!"), 0,
                         0, 0);
                     break;
                 case 5:
-                    do_say(host, mutable_arg("I require your service once again Karahaz - do not fail me."), 0,
+                    rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("I require your service once again Karahaz - do not fail me."), 0,
                         0, 0);
                     break;
                 }
@@ -2802,13 +2800,13 @@ SPECIAL(ar_tarthalon)
         switch (world[victim->in_room].number) {
         case 8484:
             tmpwtl.cmd = 3;
-            do_unlock(victim, mutable_arg("northdoor"), 0, 0, 0);
-            do_open(victim, mutable_arg("northdoor"), 0, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::unlock, victim, mutable_arg("northdoor"), 0, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::open, victim, mutable_arg("northdoor"), 0, 0, 0);
             break;
         case 8485:
             tmpwtl.cmd = 1;
-            do_unlock(victim, mutable_arg("southdoor"), 0, 0, 0);
-            do_open(victim, mutable_arg("southdoor"), 0, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::unlock, victim, mutable_arg("southdoor"), 0, 0, 0);
+            rots::combat::issue_command(rots::combat::combat_command::open, victim, mutable_arg("southdoor"), 0, 0, 0);
             break;
         case 8482:
             tmpwtl.cmd = 2;
@@ -2839,7 +2837,7 @@ SPECIAL(ar_tarthalon)
         }
         tmpwtl.subcmd = 0;
         if (CAN_GO(victim, tmpwtl.cmd - 1))
-            do_move(victim, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
+            rots::combat::issue_command(rots::combat::combat_command::move, victim, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
     }
 
@@ -2872,7 +2870,7 @@ SPECIAL(ghoul)
                     obj_from_char(mob->carrying);
                     extract_obj(obj);
                 }
-                extract_char(mob);
+                rots::entity::extract_char(mob);
             }
         }
         return 0;
@@ -3039,7 +3037,7 @@ SPECIAL(vampire_huntress)
         if (!to_room)
             return 0;
         act("$n flies away through the trees.", FALSE, host, 0, 0, TO_ROOM);
-        char_from_room(host);
+        rots::entity::dispatch_char_from_room(host);
         char_to_room(host, real_room(to_room));
         act("$n enters, her massive wings darkening the forest.", FALSE, host, 0, 0, TO_ROOM);
         tmpno = number(0, 2);
@@ -3055,12 +3053,12 @@ SPECIAL(vampire_huntress)
                     act("$n swoops down suddenly and you find yourself carried away!!", FALSE, host,
                         0, victim, TO_VICT);
                     act("$n is carried away by $N!!", FALSE, victim, 0, host, TO_ROOM);
-                    char_from_room(victim);
+                    rots::entity::dispatch_char_from_room(victim);
                     if (victim->player.race > 5)
                         char_to_room(victim, real_room(15399));
                     else
                         char_to_room(victim, real_room(15398));
-                    char_from_room(host);
+                    rots::entity::dispatch_char_from_room(host);
                     char_to_room(host, real_room(15379));
                     send_to_char("You are carried at great speed through the trees.\n\r\n", victim);
                     send_to_char("Branches and trees all flash past, and you are powerless to "
@@ -3092,7 +3090,7 @@ SPECIAL(vampire_huntress)
                     SET_BIT(room->dir_option[2]->exit_info, EX_CLOSED);
                     SET_BIT(room->dir_option[2]->exit_info, EX_LOCKED);
                     send_to_room("The iron door slams shut.\n\r\n", real_room(room->number));
-                    do_look(victim, mutable_arg(""), wtl, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::look, victim, mutable_arg(""), wtl, 0, 0);
                     WAIT_STATE_FULL(host, 200, 0, 0, 59, 0, 0, 0, AFF_WAITING, TARGET_NONE);
                 } else if (tmpno == 2 && GET_LEVEL(victim) < LEVEL_GOD)
                     hit(host, victim, TYPE_UNDEFINED);
@@ -3102,7 +3100,7 @@ SPECIAL(vampire_huntress)
     if (GET_POS(host) == POSITION_FIGHTING && GET_HIT(host) < GET_MAX_HIT(host) / 5) {
         stop_fighting(host);
         act("$n flaps her great wings, and flies away.", FALSE, host, 0, 0, TO_ROOM);
-        char_from_room(host);
+        rots::entity::dispatch_char_from_room(host);
         char_to_room(host, real_room(15379));
         for (tmpno = 0; tmpno < MAX_WEAR; tmpno++)
             if (host->equipment[tmpno])
@@ -3114,7 +3112,7 @@ SPECIAL(vampire_huntress)
         }
         mob = read_mobile(real_mobile(15302), REAL);
         GET_HIT(mob) = GET_HIT(host) * 3;
-        extract_char(host); // Gives a [room_data..] error presumably when it returns - strange...
+        rots::entity::extract_char(host); // Gives a [room_data..] error presumably when it returns - strange...
         char_to_room(mob, real_room(15379));
         if ((obj = read_object(6338, VIRT)))
             obj_to_char(obj, mob);
@@ -3124,11 +3122,11 @@ SPECIAL(vampire_huntress)
             obj_to_char(obj, mob);
         if ((obj = read_object(6510, VIRT)))
             obj_to_char(obj, mob);
-        do_wear(mob, mutable_arg("all"), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::wear, mob, mutable_arg("all"), 0, 0, 0);
         tmpwtl.subcmd = 0;
         tmpwtl.cmd = 6;
         if (CAN_GO(mob, tmpwtl.cmd - 1))
-            do_move(mob, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
+            rots::combat::issue_command(rots::combat::combat_command::move, mob, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
         host = mob; // Maybe this will avoid the error, pointing to the new mob - nope :-)
         return 1;
@@ -3153,15 +3151,15 @@ SPECIAL(thuringwethil)
             break;
 
     if (GET_HIT(host) <= 500) {
-        do_say(host, mutable_arg("Curse you all, I will remember this outrage!\n\r"), 0, 0, 0);
+        rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Curse you all, I will remember this outrage!\n\r"), 0, 0, 0);
         if (obj)
             act("$n hides her face from the glowing plate!", FALSE, host, 0, 0, TO_ROOM);
         for (tmpch = combat_list; tmpch; tmpch = tmpch->next_fighting)
             if ((tmpch->specials.fighting == host) && (!(IS_NPC(tmpch))))
-                add_exploit_record(EXPLOIT_ACHIEVEMENT, tmpch, 0, "Defeated the Pale Vampire");
+                rots::persist::dispatch_exploit_capture(EXPLOIT_ACHIEVEMENT, tmpch, 0, "Defeated the Pale Vampire");
         stop_fighting(host);
         act("$n seems to disappear, her clothing falls to the ground.", FALSE, host, 0, 0, TO_ROOM);
-        extract_char(host);
+        rots::entity::extract_char(host);
         return 1;
     }
 
@@ -3178,7 +3176,7 @@ SPECIAL(thuringwethil)
         affect_from_char(host, SPELL_CONFUSE);
     if (GET_POS(host) != POSITION_FIGHTING && GET_POS(host) != POSITION_RESTING && GET_HIT(host) == GET_MAX_HIT(host)) {
         act("$n melts away into the shadows.", FALSE, host, 0, 0, TO_ROOM);
-        char_from_room(host);
+        rots::entity::dispatch_char_from_room(host);
         char_to_room(host, real_room(15379));
         for (tmpno = 0; tmpno < MAX_WEAR; tmpno++)
             if (host->equipment[tmpno])
@@ -3188,7 +3186,7 @@ SPECIAL(thuringwethil)
             obj_from_char(host->carrying);
             extract_obj(obj);
         }
-        extract_char(host); // strange... extract works here with no room_data errors
+        rots::entity::extract_char(host); // strange... extract works here with no room_data errors
         victim = read_mobile(real_mobile(15301), REAL);
         char_to_room(victim, real_room(15379));
         /*    tmpwtl.cmd = 6;
@@ -3273,11 +3271,10 @@ SPECIAL(vampire_killer)
             "\n\rYou feel a moment of intense pain... as your numb body slumps to the floor.\n\r\n",
             victim);
         send_to_char("You are dead, sorry...\n\r", victim);
-        strcpy(buf, std::format("{} killed by {} at {}", GET_NAME(victim), GET_NAME(host),
-                           world[victim->in_room].name)
-                           .c_str());
-        mudlog(buf, BRF, LEVEL_GOD, TRUE);
-        add_exploit_record(EXPLOIT_MOBDEATH, victim, GET_IDNUM(host), GET_NAME(host));
+        mudlog(std::format("{} killed by {} at {}", GET_NAME(victim), GET_NAME(host),
+                  world[victim->in_room].name),
+            BRF, LEVEL_GOD, TRUE);
+        rots::persist::dispatch_exploit_capture(EXPLOIT_MOBDEATH, victim, GET_IDNUM(host), GET_NAME(host));
         raw_kill(victim, host, 0);
         return 0;
     }
@@ -3314,12 +3311,12 @@ SPECIAL(vampire_killer)
         tmpwtl.subcmd = 0;
         if (tmpwtl.cmd == 1) {
             if (IS_SET(room->dir_option[0]->exit_info, EX_CLOSED)) {
-                do_unlock(host, mutable_arg("irondoor"), 0, 0, 0);
-                do_open(host, mutable_arg("irondoor"), 0, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::unlock, host, mutable_arg("irondoor"), 0, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::open, host, mutable_arg("irondoor"), 0, 0, 0);
             }
         }
         if (CAN_GO(host, tmpwtl.cmd - 1))
-            do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
+            rots::combat::issue_command(rots::combat::combat_command::move, host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
         return 0;
     } else {
@@ -3346,8 +3343,8 @@ SPECIAL(vampire_killer)
             else {
                 room = &world[real_room(15396)];
                 if (IS_SET(room->dir_option[2]->exit_info, EX_CLOSED)) {
-                    do_unlock(host, mutable_arg("irondoor"), 0, 0, 0);
-                    do_open(host, mutable_arg("irondoor"), 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::unlock, host, mutable_arg("irondoor"), 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::open, host, mutable_arg("irondoor"), 0, 0, 0);
                 } else
                     tmpwtl.cmd = 3;
             }
@@ -3359,8 +3356,8 @@ SPECIAL(vampire_killer)
             else {
                 room = &world[real_room(15397)];
                 if (IS_SET(room->dir_option[2]->exit_info, EX_CLOSED)) {
-                    do_unlock(host, mutable_arg("irondoor"), 0, 0, 0);
-                    do_open(host, mutable_arg("irondoor"), 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::unlock, host, mutable_arg("irondoor"), 0, 0, 0);
+                    rots::combat::issue_command(rots::combat::combat_command::open, host, mutable_arg("irondoor"), 0, 0, 0);
                 } else
                     tmpwtl.cmd = 3;
             }
@@ -3371,7 +3368,7 @@ SPECIAL(vampire_killer)
         }
         tmpwtl.subcmd = 0;
         if (CAN_GO(host, tmpwtl.cmd - 1))
-            do_move(host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
+            rots::combat::issue_command(rots::combat::combat_command::move, host, mutable_arg(""), &tmpwtl, tmpwtl.cmd, 0);
         tmpwtl.targ1.cleanup();
     }
     return 0;
@@ -3475,7 +3472,7 @@ SPECIAL(reciter)
             if (*c == '+')
                 act((char*)(c + 1), TRUE, host, 0, 0, TO_ROOM);
             else
-                do_say(host, c, 0, 0, 0);
+                rots::combat::issue_command(rots::combat::combat_command::say, host, c, 0, 0, 0);
             *e = '\n';
             host->specials.recite_lines = e + 2; // it appears, asif each line is terminated by a two character combination
         } else
@@ -3557,7 +3554,7 @@ SPECIAL(herald)
         { std::string_view(nz(ch->player.name)), std::string_view(nz(ch->player.title)) },
         "notices someone new arrive.", "herald death_cry2");
     snprintf(hbuf, HERALD_LEN - 1, "%s", herald_line.c_str());
-    do_say(host, hbuf, 0, 0, 0);
+    rots::combat::issue_command(rots::combat::combat_command::say, host, hbuf, 0, 0, 0);
 
     return 0;
 }

@@ -1185,6 +1185,7 @@ if(ROTS_BUILD_TESTS)
         tests/test_random_utils_tests.cpp
         tests/text_view_tests.cpp
         tests/utility_format_tests.cpp
+        tests/visibility_tests.cpp
         tests/weapon_master_handler_tests.cpp
         tests/wild_fighting_handler_tests.cpp
         tests/world_hooks_tests.cpp

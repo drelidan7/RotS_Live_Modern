@@ -95,6 +95,15 @@ using put_txt_block_fn = void (*)(struct txt_block*);
 void set_get_txt_block_pool_hook(get_txt_block_fn hook);
 void set_put_txt_block_pool_hook(put_txt_block_fn hook);
 
+// Dispatch entry points for the two hooks above. Previously dispatched
+// only from entity_lifecycle.cpp itself, so no external-linkage
+// declaration existed; visibility.cpp's target_from_word() (spell-family
+// closure wave Task 1, relocated verbatim from interpre.cpp) is the first
+// other-TU caller, so both now need one here (defined in
+// entity_lifecycle.cpp, next to their backing storage, unchanged).
+struct txt_block* dispatch_get_txt_block_from_pool();
+void dispatch_put_txt_block_to_pool(struct txt_block* block);
+
 // Dispatch entry points for the two hooks above. Unlike this header's
 // existing two hooks -- each dispatched only from entity_lifecycle.cpp, the
 // same TU that owns their backing storage -- these are dispatched from

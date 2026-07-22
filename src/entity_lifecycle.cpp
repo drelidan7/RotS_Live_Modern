@@ -306,6 +306,8 @@ float dispatch_attack_speed_multiplier(char_data* character)
     return 1.0f;
 }
 
+} // namespace
+
 // target_data::cleanup()/operator=()'s txt-block-pool GET, dispatched
 // through the hook registered by register_txt_block_pool_hooks()
 // (comm.cpp). Unlike the float-returning hooks above, an unregistered hit
@@ -316,7 +318,12 @@ float dispatch_attack_speed_multiplier(char_data* character)
 // real pool function in run_the_game() before boot_db(), so ageland never
 // reaches this path; rots_convert links rots_entity but never copies a
 // TARGET_TEXT target (same class of "unreachable there too" as this
-// header's other tripwire hooks).
+// header's other tripwire hooks). MOVED OUT of the anonymous namespace
+// above (spell-family closure wave Task 1): visibility.cpp's
+// target_from_word() (relocated verbatim from interpre.cpp) is the first
+// other-TU caller, so this now needs external linkage, the same reason
+// dispatch_wild_attack_speed_multiplier()/dispatch_attacked_player() below
+// already have it.
 struct txt_block* dispatch_get_txt_block_from_pool()
 {
     if (g_get_txt_block_pool_hook) {
@@ -330,7 +337,12 @@ struct txt_block* dispatch_get_txt_block_from_pool()
 
 // target_data::cleanup()'s txt-block-pool PUT, dispatched through the same
 // hook pair for the same reason (a discarded-without-registration txt_block
-// would otherwise leak forever, silently, rather than fail loudly).
+// would otherwise leak forever, silently, rather than fail loudly). MOVED
+// OUT of the anonymous namespace above for the same reason as
+// dispatch_get_txt_block_from_pool() immediately above (currently
+// consumer-free -- no other-TU PUT caller exists yet this task -- but
+// moved alongside its GET sibling rather than split across two different
+// linkage classes).
 void dispatch_put_txt_block_to_pool(struct txt_block* block)
 {
     if (g_put_txt_block_pool_hook) {
@@ -342,7 +354,6 @@ void dispatch_put_txt_block_to_pool(struct txt_block* block)
         "should be unreachable once register_txt_block_pool_hooks() has run.");
     abort();
 }
-} // namespace
 
 // extract_char() dispatch entry points (RE-HOMED from combat_hooks.cpp,
 // l4-seed wave Task 1; l4-census.md section 3.4) -- called from fight.cpp

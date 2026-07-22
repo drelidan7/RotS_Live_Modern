@@ -49,6 +49,7 @@
 #include "char_utils.h"
 #include "comm.h"
 #include "db.h" /* For struct index_data (mob_index[]), get_guardian_type()'s move-in dependency */
+#include "entity_hooks.h" /* For dispatch_get_txt_block_from_pool(), target_from_word()'s pool dependency */
 #include "handler.h"
 #include "interpre.h"
 #include "spells.h"
@@ -79,6 +80,20 @@ extern int max_race_str[];
 // convention that file used (handler.cpp:68) and this file already uses
 // for object_list above (no shared header declares it either).
 extern struct char_data* character_list;
+
+// dirs[] (consts.cpp, L1 core data table): target_from_word()'s
+// TAR_DIR_WAY branch below reads it directly, the same local
+// extern-declaration convention every one of its other callers
+// (act_move.cpp/mystic.cpp/ranger.cpp/etc.) already uses (no shared
+// header declares it).
+extern const std::string_view dirs[];
+
+// world (db_world.cpp storage; room_data::operator[] provides the
+// bounds-checked indexing target_from_word()'s TAR_OBJ_ROOM branch below
+// reads through) -- same local extern-declaration convention every
+// rots_combat peer (clerics.cpp/mystic.cpp/fight.cpp/etc.) already uses
+// for this exact symbol (no shared header declares it).
+extern struct room_data world;
 
 /*
  * Can character see at all?
@@ -799,4 +814,356 @@ int get_guardian_type(int race_number, const char_data* in_guardian_mob)
     }
 
     return INVALID_GUARDIAN;
+}
+
+// ---------------------------------------------------------------------------
+// report_wrong_target()/target_from_word() relocated verbatim from
+// interpre.cpp (spell-family closure wave Task 1; sf-census.md section
+// 4.1). Both are target-argument parse/presentation helpers spell_pa.cpp's
+// is_target_valid()-adjacent call sites need once it promotes -- the same
+// domain as this file's own get_char_room_vis()/get_char_vis()/
+// generic_find() target-resolution family, just moved verbatim rather than
+// rewritten. interpre.cpp keeps calling them via its own existing (local,
+// header-less) declarations -- unaffected by this move, now a legal
+// app->lib downward call instead of a same-TU reference.
+// ---------------------------------------------------------------------------
+
+void report_wrong_target(struct char_data* ch, int mask, char has_arg)
+{
+    if (IS_SET(mask, TAR_TEXT_ALL)) {
+        send_to_char("Strange. Please report to gods what you just did (1).\n\r",
+            ch);
+        return;
+    }
+
+    /* first, some argument exists. */
+    if (has_arg) {
+        if (IS_SET(mask, TAR_TEXT)) {
+            send_to_char("Strange. You need a better argument for this.\n\r", ch);
+            return;
+        }
+
+        if (IS_SET(mask, TAR_ALL)) {
+            send_to_char("You need to do this to \"all\"\n\r", ch);
+            return;
+        }
+        /* recognizing gold - lame, but who cares */
+
+        if (IS_SET(mask, TAR_CHAR_WORLD)) {
+            send_to_char("Nobody by that name.\n\r", ch);
+            return;
+        }
+
+        if (IS_SET(mask, TAR_CHAR_ROOM)) {
+            send_to_char("Nobody here by that name.\n\r", ch);
+            return;
+        }
+
+        if (IS_SET(mask, TAR_FIGHT_VICT)) {
+            send_to_char("You need to fight somebody for this.\n\r", ch);
+            return;
+        }
+
+        if (IS_SET(mask, TAR_OBJ_ROOM)) {
+            send_to_char("Nothing here by that name.\n\r", ch);
+            return;
+        }
+
+        if (IS_SET(mask, TAR_OBJ_INV)) {
+            send_to_char("You don't have that.\n\r", ch);
+            return;
+        }
+
+        if (IS_SET(mask, TAR_OBJ_EQUIP)) {
+            send_to_char("You are not wearing that.\n\r", ch);
+            return;
+        }
+
+        if (IS_SET(mask, TAR_OBJ_WORLD)) {
+            send_to_char("There is nothing by that name.\n\r", ch);
+            return;
+        }
+
+        if (IS_SET(mask, TAR_GOLD)) {
+            send_to_char("You can do that with money only.\n\r", ch);
+            return;
+        }
+
+        if (IS_SET(mask, TAR_DIR_NAME)) {
+            send_to_char("Nothing here by that name.\n\r", ch);
+            return;
+        }
+
+        if (IS_SET(mask, TAR_DIR_WAY)) {
+            send_to_char("What direction is that?\n\r", ch);
+            return;
+        }
+
+        if (IS_SET(mask, TAR_SELF_ONLY)) {
+            send_to_char("You can do it to yourself only.\n\r", ch);
+            return;
+        }
+
+        if (IS_SET(mask, TAR_IGNORE)) {
+            send_to_char("Strange. Please report to gods what you just did (2).\n\r",
+                ch);
+            return;
+        }
+    } else { /* no argument */
+        if (IS_SET(mask, TAR_NONE_OK)) {
+            send_to_char("Strange. Please report to gods what you just did (3).\n\r", ch);
+            return;
+        }
+        if (IS_SET(mask, TAR_TEXT)) {
+            send_to_char("You need some argument here.\n\r", ch);
+            return;
+        }
+        if (IS_SET(mask, TAR_FIGHT_VICT)) {
+            send_to_char("Your victim is not here!\n\r", ch);
+            return;
+        }
+        if (IS_SET(mask, TAR_SELF) || IS_SET(mask, TAR_SELF_ONLY)) {
+            send_to_char("You can do that to self only.\n\r", ch);
+            return;
+        }
+        if (IS_SET(mask, TAR_IGNORE)) {
+            send_to_char("You need no argument here.\n\r", ch);
+            return;
+        }
+    }
+    send_to_char("You can not do it this way.\n\r", ch);
+    return;
+}
+
+char* target_from_word(struct char_data* ch, char* argument, int mask, struct target_data* t1)
+/*
+ * This one tries to take a target from argument string.
+ * Possible targets are determined from the mask argument.
+ * Returns the target in t1 and the remaining string as return value
+ */
+{
+    int tmp, arg_i, tmpvalue;
+    char word[MAX_INPUT_LENGTH];
+    struct char_data* tmpch;
+    struct obj_data* tmpobj;
+
+    /***************************************************
+    Okay, here we parse the argument line for two targets, if they are
+    there. Priority is, from the highest.
+    For no argument:
+    TAR_NONE_OK, TARGET_IGNORE
+    TAR_FIGHT_VICT
+    TAR_SELF, TARGET_SELF_ONLY
+
+    For some argument:
+    TAR_TEXT_ALL - sends the whole line as a text argument, as for narrate.
+    TAR_TEXT
+    TARGET_ALL
+    TAR_GOLD
+    TAR_CHAR_ROOM
+    TAR_CHAR_WORLD
+    TAR_OBJ_ROOM
+    TAR_OBJ_INV
+    TAR_OBJ_EQUIP
+    TAR_OBJ_WORLD
+    TAR_DIRECTION (NAME, then WAY)
+    TAR_VALUE
+    **************************************************/
+
+    arg_i = 0;
+    while (argument[arg_i] && (argument[arg_i] <= ' '))
+        arg_i++;
+    t1->ptr.other = 0;
+    t1->type = TARGET_NONE;
+    t1->choice = TAR_IGNORE;
+    t1->ch_num = 0;
+
+    if (IS_SET(mask, TAR_TEXT_ALL)) {
+        // get_from_txt_block_pool() (comm.cpp's real app-tier body) inlined
+        // to rots::entity::dispatch_get_txt_block_from_pool() -- the one
+        // documented deviation from strict byte-for-byte text this move
+        // makes (spell-family closure wave Task 1): comm.cpp's plain
+        // no-arg getter is not itself inverted, only reachable through
+        // entity_hooks.h's existing hook (world-seed Task 2), the same
+        // seam entity_lifecycle.cpp's target_data::operator=() already
+        // uses for this exact call.
+        t1->ptr.text = rots::entity::dispatch_get_txt_block_from_pool();
+        strcpy(GET_TARGET_TEXT(t1), argument + arg_i);
+        t1->type = TARGET_TEXT;
+        t1->choice = TAR_TEXT_ALL;
+        return argument + strlen(argument);
+    }
+
+    if (IS_SET(mask, TAR_IGNORE))
+        return argument + arg_i;
+
+    if (!argument[arg_i]) {
+        if (IS_SET(mask, TAR_NONE_OK))
+            return argument + arg_i;
+        else if (IS_SET(mask, TAR_FIGHT_VICT) && (ch->specials.fighting)) {
+            t1->ptr.ch = ch->specials.fighting;
+            t1->ch_num = ch->specials.fighting->abs_number;
+            t1->type = TARGET_CHAR;
+            t1->choice = TAR_FIGHT_VICT;
+            return argument + arg_i;
+        } else if (IS_SET(mask, TAR_SELF) || IS_SET(mask, TAR_SELF_ONLY)) {
+            t1->ptr.ch = ch;
+            t1->ch_num = ch->abs_number;
+            t1->type = TARGET_CHAR;
+            t1->choice = TAR_SELF;
+            return argument + arg_i;
+        }
+        if (IS_SET(mask, TAR_IGNORE))
+            return argument;
+
+        return 0;
+    }
+
+    /* some argument exists. parsing the first argument. */
+    tmpvalue = 0;
+    tmp = arg_i;
+    while (isdigit(argument[arg_i])) {
+        tmpvalue = tmpvalue * 10 + argument[arg_i] - (int)('0');
+        arg_i++;
+    }
+    if (argument[arg_i] == '.') {
+        arg_i = tmp;
+        tmpvalue = 0;
+    }
+
+    if (argument[arg_i] == '\'') {
+        for (tmp = 0, arg_i++; argument[arg_i] && (argument[arg_i] != '\'');
+            tmp++, arg_i++)
+            word[tmp] = argument[arg_i];
+        word[tmp] = 0;
+
+        if (argument[arg_i] == '\'')
+            arg_i++;
+    } else {
+        for (tmp = 0; argument[arg_i] && (argument[arg_i] > ' ');
+            tmp++, arg_i++)
+            word[tmp] = argument[arg_i];
+        word[tmp] = 0;
+    }
+
+    if (IS_SET(mask, TAR_TEXT)) {
+        t1->ptr.text = rots::entity::dispatch_get_txt_block_from_pool();
+        strcpy(GET_TARGET_TEXT(t1), word);
+        t1->type = TARGET_TEXT;
+        t1->choice = TAR_TEXT;
+        return argument + arg_i;
+    }
+    if (IS_SET(mask, TAR_ALL) && !strcmp(word, "all")) {
+        t1->type = TARGET_ALL;
+        t1->ch_num = 0;
+        t1->choice = TAR_ALL;
+        return argument + arg_i;
+    }
+    /* recognizing gold. lame */
+    if (IS_SET(mask, TAR_GOLD) && tmpvalue && !strcmp(word, "gold")) {
+        t1->type = TARGET_GOLD;
+        t1->ch_num = tmpvalue * COPP_IN_GOLD;
+        t1->choice = TAR_GOLD;
+        return argument + arg_i;
+    }
+    if (IS_SET(mask, TAR_GOLD) && tmpvalue && !strcmp(word, "silver")) {
+        t1->type = TARGET_GOLD;
+        t1->ch_num = tmpvalue * COPP_IN_SILV;
+        t1->choice = TAR_GOLD;
+        return argument + arg_i;
+    }
+    if (IS_SET(mask, TAR_GOLD) && tmpvalue && !strcmp(word, "copper")) {
+        t1->type = TARGET_GOLD;
+        t1->ch_num = tmpvalue;
+        t1->choice = TAR_GOLD;
+        return argument + arg_i;
+    }
+    if (IS_SET(mask, TAR_CHAR_ROOM)) {
+        tmpch = get_char_room_vis(ch, word, (IS_SET(mask, TAR_DARK_OK)) ? 1 : 0);
+        if (tmpch) {
+            t1->ptr.ch = tmpch;
+            t1->ch_num = tmpch->abs_number;
+            t1->type = TARGET_CHAR;
+            t1->choice = TAR_CHAR_ROOM;
+            return argument + arg_i;
+        }
+    }
+    if (IS_SET(mask, TAR_CHAR_WORLD)) {
+        tmpch = get_char_vis(ch, word, (IS_SET(mask, TAR_DARK_OK)) ? 1 : 0);
+        if (tmpch) {
+            t1->ptr.ch = tmpch;
+            t1->ch_num = tmpch->abs_number;
+            t1->choice = TAR_CHAR_WORLD;
+            t1->type = TARGET_CHAR;
+            return argument + arg_i;
+        }
+    }
+    if (IS_SET(mask, TAR_OBJ_ROOM)) {
+        tmpobj = get_obj_in_list(word, world[ch->in_room].contents);
+        if (tmpobj) {
+            t1->ptr.obj = tmpobj;
+            t1->ch_num = 0;
+            t1->type = TARGET_OBJ;
+            t1->choice = TAR_OBJ_ROOM;
+            return argument + arg_i;
+        }
+    }
+    if (IS_SET(mask, TAR_OBJ_INV)) {
+        tmpobj = get_obj_in_list(word, ch->carrying);
+        if (tmpobj) {
+            t1->ptr.obj = tmpobj;
+            t1->ch_num = 0;
+            t1->type = TARGET_OBJ;
+            t1->choice = TAR_OBJ_INV;
+            return argument + arg_i;
+        }
+    }
+    if (IS_SET(mask, TAR_OBJ_EQUIP)) {
+        for (tmp = 0; tmp < MAX_WEAR; tmp++)
+            if (ch->equipment[tmp] && isname_nullable(word, ch->equipment[tmp]->name)) {
+                t1->ptr.obj = ch->equipment[tmp];
+                t1->ch_num = 0;
+                t1->type = TARGET_OBJ;
+                t1->choice = TAR_OBJ_EQUIP;
+                return argument + arg_i;
+            }
+    }
+    if (IS_SET(mask, TAR_OBJ_WORLD)) {
+        tmpobj = get_obj(word);
+        if (tmpobj) {
+            t1->ptr.obj = tmpobj;
+            t1->ch_num = 0;
+            t1->type = TARGET_OBJ;
+            t1->choice = TAR_OBJ_WORLD;
+            return argument + arg_i;
+        }
+    }
+    if (IS_SET(mask, TAR_DIR_NAME)) {
+        for (tmp = 0; tmp < NUM_OF_DIRS; tmp++)
+            if (EXIT(ch, tmp) && !str_cmp_nullable(EXIT(ch, tmp)->keyword, word)) {
+                t1->ch_num = tmp;
+                t1->type = TARGET_DIR;
+                t1->choice = TAR_DIR_NAME;
+                return argument + arg_i;
+            }
+    }
+    if (IS_SET(mask, TAR_DIR_WAY)) {
+        for (tmp = 0; tmp < NUM_OF_DIRS; tmp++)
+            if (!strncmp(dirs[tmp].data(), word, strlen(word))) {
+                t1->ch_num = tmp;
+                t1->type = TARGET_DIR;
+                t1->choice = TAR_DIR_WAY;
+                return argument + arg_i;
+            }
+    }
+    if (IS_SET(mask, TAR_VALUE) && (isdigit(*word) || (*word == '-'))) {
+        tmp = atoi(word);
+        t1->ch_num = tmp;
+        t1->type = TARGET_VALUE;
+        t1->choice = TAR_VALUE;
+        return argument + arg_i;
+    }
+
+    /* wrong target */
+    return 0;
 }

@@ -1,13 +1,17 @@
 // editor_hooks.cpp -- backing storage + dispatch for editor_hooks.h's one
-// hook (Cluster B wave Task 1; cb-task-1-brief.md Step 3). modify.cpp
-// registers the real string_add_init() body (session-coupled, stays
-// app-compiled permanently); the six shape*.cpp editors are this hook's
-// future consumers, bound for the rots_olc library a later Cluster B task
-// creates -- neither side is this TU's single natural owner (the same
-// "seam header, no single owning caller" shape as combat_hooks.cpp/
-// script_hooks.cpp), so this file starts in ROTS_SERVER_SOURCES (app
-// layer) and is a plain candidate to join rots_olc once that library
-// exists and needs it -- see this file's own CMakeLists.txt placement.
+// hook (seam landed Cluster B wave Task 1; cb-task-1-brief.md Step 3).
+// modify.cpp registers the real string_add_init() body (session-coupled,
+// stays app-compiled permanently); the six shape*.cpp editors are this
+// hook's consumers. Neither side was this TU's single natural owner (the
+// same "seam header, no single owning caller" shape as combat_hooks.cpp/
+// script_hooks.cpp), so this file started in ROTS_SERVER_SOURCES (app
+// layer) at Task 1 landing time -- **as of Cluster B wave Task 4, this
+// file JOINED the new rots_olc library** alongside its six shape*.cpp
+// consumers (a build-wiring necessity, not a fresh census miss: leaving
+// this backing storage in ROTS_SERVER_SOURCES once every consumer
+// promoted would have made each of their calls a genuine
+// rots_olc -> app upward edge) -- see src/CMakeLists.txt's
+// ROTS_OLC_SOURCES entry.
 
 #include "editor_hooks.h"
 

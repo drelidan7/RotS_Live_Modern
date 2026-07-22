@@ -3270,9 +3270,12 @@ extern struct index_data* obj_index;
 // (standard `_buf` precedent, e.g. olog_hai.cpp's
 // generate_smash_dismount_messages()); perform_give()'s
 // call_trigger(ON_RECEIVE, ...) converts to the existing
-// combat_hooks.h app-other-trio hook (rots::combat::call_trigger()),
-// since call_trigger's real body (script.cpp) stays app-tier
-// permanently. LF-NORMALIZED: fight.cpp is 100% pure LF (unlike
+// combat_hooks.h app-other-trio hook (rots::combat::call_trigger());
+// call_trigger's real body (script.cpp) is now a rots_script (L4)
+// member (Cluster B wave Task 4), so this hook is the codebase's
+// second permanent L3->L4 inversion, not an app-tier-forever call
+// (see combat_hooks.h's own app-other-trio banner). LF-NORMALIZED:
+// fight.cpp is 100% pure LF (unlike
 // script.cpp's mixed-CRLF case), so the moved spans below are
 // converted from act_obj1.cpp's CRLF to match this file's own
 // exclusive convention rather than introducing mixed endings.
@@ -3357,7 +3360,8 @@ void perform_give(struct char_data* ch, struct char_data* vict,
 // architectural decision; flagged here per the STOP-and-adjudicate
 // contract for controller review. perform_wear()'s call_trigger(ON_WEAR,
 // ...) converts to the existing combat_hooks.h app-other-trio hook
-// (rots::combat::call_trigger()), same reason as perform_give() above.
+// (rots::combat::call_trigger()) -- the same permanent L3->L4
+// inversion as perform_give() above, not an app-tier-forever call.
 // act_obj2.cpp keeps local forward declarations (do_wear()/do_wield()/
 // do_grab()/do_remove() still call these downward). LF-NORMALIZED (see
 // this file's own perform_drop()/perform_give() banner comment above for

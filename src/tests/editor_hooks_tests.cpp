@@ -52,12 +52,15 @@ public:
     ScopedStringEditorInitHook& operator=(const ScopedStringEditorInitHook&) = delete;
 };
 
+// Records the last string_add_init() forwarding the dispatch_string_editor_init()
+// hook made, so a test can assert both arguments reached the registered stub intact.
 struct RecordedStringEditorInitCall {
-    descriptor_data* d = nullptr;
-    char** str = nullptr;
-    bool called = false;
+    descriptor_data* d = nullptr; // The editing session's descriptor, forwarded verbatim.
+    char** str = nullptr; // The target string-pointer slot being edited, forwarded verbatim.
+    bool called = false; // Set true once the stub runs; lets a test assert non-invocation too.
 };
 
+// File-scope recording slot the stub writes into and each test resets before/after use.
 RecordedStringEditorInitCall g_recorded_string_editor_init_call;
 
 void recording_string_editor_init_stub(descriptor_data* d, char** str)

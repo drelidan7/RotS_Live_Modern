@@ -329,11 +329,18 @@ void remove_fame_war_bonuses(char_data* ch, affected_type* pkaff);
 
 // App-other trio (pilot-census.md section 3.7) -- Crash_crashsave
 // (objsave.cpp), call_trigger (script.cpp), pkill_create (pkill.cpp). Each
-// owning TU stays app-compiled after this wave and registers its own real
-// body via its own per-owner registrar (Crash_crashsave:
-// register_crash_crashsave_hook(), handler.h/objsave.cpp; call_trigger:
-// register_call_trigger_hook(), script.h/script.cpp; pkill_create:
-// register_pkill_create_hook(), pkill.h/pkill.cpp).
+// owning TU registers its own real body via its own per-owner registrar
+// (Crash_crashsave: register_crash_crashsave_hook(), handler.h/objsave.cpp;
+// call_trigger: register_call_trigger_hook(), script.h/script.cpp;
+// pkill_create: register_pkill_create_hook(), pkill.h/pkill.cpp).
+// Crash_crashsave/pkill_create's owners (objsave.cpp/pkill.cpp) stay
+// app-compiled. call_trigger's owner (script.cpp) is NOT app-tier
+// anymore as of the Cluster B wave (joined rots_script, L4): fight.cpp
+// (rots_combat, L3; see its own perform_give()/perform_wear() relocation
+// banners) dispatching through this hook to reach script.cpp's real body
+// is now the codebase's second permanent L3->L4 inversion (after the
+// behavior wave's limits->mobact hook), not an app-tier-forever call --
+// see docs/BUILD.md's "The Cluster B wave" subsection.
 
 // Crash_crashsave() (handler.h:254, objsave.cpp:938) -- void return, no
 // tripwire-semantics concern (pilot-census.md section 3.7). Tripwire

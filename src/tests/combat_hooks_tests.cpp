@@ -1726,15 +1726,19 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenEmoteIsUnregistered)
 
 namespace {
 
+// Records the do_shutdown() ACMD arguments the recording stub last saw,
+// so a test can assert the shutdown cell's dispatch forwarded them intact
+// without ever invoking the real force-shutdown body (no-death-test rule).
 struct RecordedShutdownCall {
-    char_data* ch = nullptr;
-    char* argument = nullptr;
-    waiting_type* wtl = nullptr;
-    int cmd = 0;
-    int subcmd = 0;
-    bool called = false;
+    char_data* ch = nullptr; // The acting character, forwarded verbatim from issue_command().
+    char* argument = nullptr; // The raw command-line argument buffer, forwarded verbatim.
+    waiting_type* wtl = nullptr; // The waiting-list slot, forwarded verbatim.
+    int cmd = 0; // The command-table index issue_command() was called with.
+    int subcmd = 0; // The subcommand index issue_command() was called with.
+    bool called = false; // Set true once the stub runs; lets a test assert non-invocation too.
 };
 
+// File-scope recording slot the stub writes into and each test resets before/after use.
 RecordedShutdownCall g_recorded_shutdown_call;
 
 void recording_shutdown_stub(

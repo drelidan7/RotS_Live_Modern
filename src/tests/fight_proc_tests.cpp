@@ -248,12 +248,16 @@ TEST_F(PerformViolenceTest, FirstCallAfterResetTicksZeroDeltaInsteadOfEpochGarba
 
 namespace {
 
+// A minimal live ch/vict/obj triple wired up (descriptor, position, names)
+// so perform_drop()/perform_give() can run their full presentation path
+// (send_to_char()/act()) against real, non-null fields instead of a
+// zero-initialized struct that would trip an undefined-behavior read.
 struct ItemTransferTestContext {
-    char_data ch {};
-    descriptor_data ch_descriptor {};
-    char_data vict {};
-    descriptor_data vict_descriptor {};
-    obj_data obj {};
+    char_data ch {}; // The acting character (the dropper/giver); fields filled in below.
+    descriptor_data ch_descriptor {}; // ch's live descriptor, so its output buffer is inspectable.
+    char_data vict {}; // The give-target character; fields filled in below.
+    descriptor_data vict_descriptor {}; // vict's live descriptor, so its output buffer is inspectable.
+    obj_data obj {}; // The item being dropped/given; fields filled in below.
 
     ItemTransferTestContext()
     {
@@ -381,10 +385,13 @@ TEST(PerformDropGive, PerformGiveTransfersObjectAndSendsMessages)
 
 namespace {
 
+// A minimal live character/item pair wired up (descriptor, position) so
+// perform_wear()/perform_remove() can run their full presentation path
+// against real, non-null fields instead of a zero-initialized struct.
 struct WearRemoveTestContext {
-    char_data character = make_wear_remove_test_npc();
-    descriptor_data descriptor {};
-    obj_data item {};
+    char_data character = make_wear_remove_test_npc(); // The wearer/remover under test.
+    descriptor_data descriptor {}; // character's live descriptor, so its output buffer is inspectable.
+    obj_data item {}; // The item being worn/removed; individual tests set its wear flags.
 
     WearRemoveTestContext()
     {

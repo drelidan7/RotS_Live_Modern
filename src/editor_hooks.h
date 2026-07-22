@@ -20,12 +20,14 @@
 //
 // Backing storage + dispatch live in editor_hooks.cpp (not folded into
 // modify.cpp): modify.cpp stays app-compiled permanently (session-coupled),
-// while every consumer (the six shape*.cpp editors) is bound for the
-// rots_olc library (a later Cluster B task) -- mirroring script_hooks.cpp's
-// own PERS precedent (real body/registrar in one app-tier owner, backing
-// storage in a TU that can join the consumer's library once it promotes).
-// CONSUMER-FREE at this task's landing time: no shape*.cpp call site
-// converts yet.
+// while every consumer (the six shape*.cpp editors) joined the rots_olc
+// library (Cluster B wave Task 4) -- mirroring script_hooks.cpp's own PERS
+// precedent (real body/registrar in one app-tier owner, backing storage in
+// a TU that joined the consumer's library once it promoted).
+// editor_hooks.cpp itself joined rots_olc alongside its six consumers
+// (see editor_hooks.cpp's own file comment) -- this hook is no longer
+// consumer-free; all six shape*.cpp call sites converted in Cluster B
+// Task 3.
 
 struct descriptor_data;
 

@@ -121,13 +121,16 @@ public:
     ScopedFindActionHook& operator=(const ScopedFindActionHook&) = delete;
 };
 
+// Records the last dispatch_command_interpreter() forwarding, so a test can
+// assert the hook passed every argument through to the stub intact.
 struct RecordedCommandInterpreterCall {
-    char_data* ch = nullptr;
-    char* argument_chr = nullptr;
-    waiting_type* argument_wtl = nullptr;
-    bool called = false;
+    char_data* ch = nullptr; // The acting character, forwarded verbatim.
+    char* argument_chr = nullptr; // The raw command-line buffer, forwarded verbatim.
+    waiting_type* argument_wtl = nullptr; // The waiting-list slot, forwarded verbatim.
+    bool called = false; // Set true once the stub runs; lets a test assert non-invocation too.
 };
 
+// File-scope recording slot the stub writes into and each test resets before/after use.
 RecordedCommandInterpreterCall g_recorded_command_interpreter_call;
 
 void recording_command_interpreter_stub(char_data* ch, char* argument_chr,
@@ -136,15 +139,19 @@ void recording_command_interpreter_stub(char_data* ch, char* argument_chr,
     g_recorded_command_interpreter_call = RecordedCommandInterpreterCall { ch, argument_chr, argument_wtl, true };
 }
 
+// Records the last dispatch_pers() forwarding, so a test can assert every
+// PERS() argument reached the stub intact.
 struct RecordedPersCall {
-    char_data* target = nullptr;
-    char_data* observer = nullptr;
-    int capitalize = 0;
-    int force_visible = 0;
-    bool called = false;
+    char_data* target = nullptr; // The character being named, forwarded verbatim.
+    char_data* observer = nullptr; // The viewer PERS() is naming target for, forwarded verbatim.
+    int capitalize = 0; // The capitalize flag, forwarded verbatim.
+    int force_visible = 0; // The force-visible flag, forwarded verbatim.
+    bool called = false; // Set true once the stub runs; lets a test assert non-invocation too.
 };
 
+// File-scope recording slot the stub writes into and each test resets before/after use.
 RecordedPersCall g_recorded_pers_call;
+// The name string the recording stub returns in place of the real PERS() body.
 char g_pers_stub_name[] = "Stubbed Name";
 
 char* recording_pers_stub(char_data* target, char_data* observer, int capitalize,
@@ -154,12 +161,16 @@ char* recording_pers_stub(char_data* target, char_data* observer, int capitalize
     return g_pers_stub_name;
 }
 
+// Records the last dispatch_virt_program_number() forwarding, so a test can
+// assert the mob-program number reached the stub intact.
 struct RecordedVirtProgramNumberCall {
-    int number = 0;
-    bool called = false;
+    int number = 0; // The mob-program number, forwarded verbatim from the caller.
+    bool called = false; // Set true once the stub runs; lets a test assert non-invocation too.
 };
 
+// File-scope recording slot the stub writes into and each test resets before/after use.
 RecordedVirtProgramNumberCall g_recorded_virt_program_number_call;
+// A stable non-null address the stub returns as its void* placeholder.
 int g_virt_program_number_stub_marker = 0;
 
 void* recording_virt_program_number_stub(int number)
@@ -168,11 +179,14 @@ void* recording_virt_program_number_stub(int number)
     return &g_virt_program_number_stub_marker;
 }
 
+// Records the last dispatch_virt_assignmob() forwarding, so a test can
+// assert the mob pointer reached the stub intact.
 struct RecordedVirtAssignmobCall {
-    char_data* mob = nullptr;
-    bool called = false;
+    char_data* mob = nullptr; // The mob being assigned a spec-proc, forwarded verbatim.
+    bool called = false; // Set true once the stub runs; lets a test assert non-invocation too.
 };
 
+// File-scope recording slot the stub writes into and each test resets before/after use.
 RecordedVirtAssignmobCall g_recorded_virt_assignmob_call;
 
 void recording_virt_assignmob_stub(char_data* mob)
@@ -180,11 +194,14 @@ void recording_virt_assignmob_stub(char_data* mob)
     g_recorded_virt_assignmob_call = RecordedVirtAssignmobCall { mob, true };
 }
 
+// Records the last dispatch_find_action() forwarding, so a test can assert
+// the social-command argument reached the stub intact.
 struct RecordedFindActionCall {
-    char* arg = nullptr;
-    bool called = false;
+    char* arg = nullptr; // The social-command name being looked up, forwarded verbatim.
+    bool called = false; // Set true once the stub runs; lets a test assert non-invocation too.
 };
 
+// File-scope recording slot the stub writes into and each test resets before/after use.
 RecordedFindActionCall g_recorded_find_action_call;
 
 int recording_find_action_stub(char* arg)

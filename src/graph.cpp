@@ -260,117 +260,19 @@ void hunt_victim(struct char_data* ch)
     }
 }
 
-const char* track_desc(int track_age)
-{
-    switch (track_age) {
-    case 0:
-        return "fresh";
-    case 1:
-        return "very clear";
-    case 2:
-        return "clear";
-    case 3:
-    case 4:
-        return "quite clear";
-    case 5:
-    case 6:
-    case 7:
-        return "distinctive";
-    case 8:
-    case 9:
-    case 10:
-        return "weathering";
-    case 11:
-    case 12:
-    case 13:
-    case 14:
-    case 15:
-        return "weathered";
-    case 16:
-    case 17:
-    case 18:
-    case 19:
-    case 20:
-        return "very poor";
-    case 21:
-    case 22:
-    case 23:
-    case 24:
-        return "barely recognisable";
-    default:
-        return "unclear";
-    }
-}
-
-const char* water_track_desc(int track_age)
-{
-    switch (track_age) {
-    case 0:
-        return "very";
-    case 1:
-        return "quite";
-    case 2:
-        return "a little";
-    default:
-        return "hardly";
-    }
-}
-
-int show_tracks(char_data* ch, char* name, int mode)
-{
-    /*
-     * returns the number of tracks shown
-     * mode: 1 - full mode, all tracks and easier to find
-     *       2 - fast mode, fresh tracks only and harder to notice
-     */
-
-    int tmp, count, ch_num, chance_factor, tr_time, shall_show;
-    room_data* ch_room;
-    if (ch->in_room == NOWHERE)
-        return 0;
-    ch_room = &world[ch->in_room];
-    chance_factor = 0;
-
-    if (ch_room->sector_type == SECT_CITY)
-        chance_factor = -100;
-    if (GET_LEVEL(ch) >= LEVEL_IMMORT)
-        chance_factor = 200;
-
-    if (mode == 1)
-        chance_factor += 20;
-    if (mode == 2)
-        chance_factor -= 20;
-
-    std::string track_out;
-    for (tmp = 0, count = 0; tmp < NUM_OF_TRACKS; tmp++) {
-        ch_num = ch_room->room_track[tmp].char_number;
-        tr_time = ch_room->room_track[tmp].condition;
-        shall_show = (ch_num != 0) && ((mode == 1) || (tr_time < 3)) && (GET_SKILL(ch, SKILL_TRACK) + chance_factor - tr_time * 2 > number(0, 99));
-        if (shall_show && name && *name) {
-            if (ch_num > 0)
-                shall_show = isname_nullable(name, mob_proto[ch_num].player.name, 1);
-            else
-                shall_show = !str_cmp_nullable(name, pc_race_keywords[-ch_num].data());
-        }
-        if (shall_show) {
-            count++;
-            if (IS_WATER(ch->in_room))
-                track_out = std::format("The water looks {} disturbed to the {}.\n\r",
-                    water_track_desc(tr_time), dirs[ch_room->room_track[tmp].data & 7]);
-            else
-                std::format_to(std::back_inserter(track_out),
-                    "The tracks of {} lead {}.  Their condition is {}\n\r",
-                    (ch_num >= 0) ? mob_proto[ch_num].player.short_descr : pc_star_types[-ch_num],
-                    dirs[ch_room->room_track[tmp].data & 7], track_desc(tr_time));
-        }
-    }
-    if (count != 0) {
-        if (mode == 1)
-            send_to_char("You find some tracks of what went past here.\r\n", ch);
-        send_to_char(track_out, ch);
-    }
-    return count;
-}
+// track_desc()/water_track_desc()/show_tracks() relocated verbatim to
+// db_world.cpp (spell-family closure wave Task 1; sf-census.md section 5,
+// Default A: presentation over world/room state, not pathfind-internal --
+// no graph adjacency, no BFS, no find_first_step() state). show_blood_trail()
+// below shares track_desc()/water_track_desc() (moved alongside show_tracks()
+// per the census's helper-drag note), so both need a forward declaration
+// here -- its calls to them are now a legal L4->L3 downward reference,
+// not a same-TU call. ranger.cpp's future upward show_tracks(ch, argument, 1)
+// call (ranger.cpp:271, consumer-free this task) and act_info.cpp's own
+// show_tracks(ch, 0, 2) call (act_info.cpp:1629) both keep their existing
+// local extern declarations, now resolving downward instead of L4-internal.
+extern const char* track_desc(int track_age);
+extern const char* water_track_desc(int track_age);
 
 int show_blood_trail(struct char_data* ch, char* name, int mode)
 {

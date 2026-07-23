@@ -8,7 +8,7 @@
  *  CircleMUD is based on DikuMUD, Copyright (C) 1990, 1991.               *
  ************************************************************************ */
 
-#include "limits.h"
+#include "player_limits.h"
 #include "fp_policy.h"
 #include "combat_hooks.h"
 #include "comm.h"

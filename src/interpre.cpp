@@ -30,7 +30,7 @@
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
-#include "limits.h"
+#include "player_limits.h"
 #include "mail.h"
 #include "mob_csv_extract.h"
 #include "pkill.h"

@@ -31,7 +31,7 @@
 #include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
-#include "limits.h"
+#include "player_limits.h"
 #include "pkill.h"
 #include "protos.h"
 #include "safe_template.h"

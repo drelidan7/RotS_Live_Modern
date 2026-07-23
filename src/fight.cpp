@@ -22,7 +22,7 @@
 #include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
-#include "limits.h"
+#include "player_limits.h"
 #include "persist_hooks.h"
 #include "pkill.h"
 #include "platform_compat.h"

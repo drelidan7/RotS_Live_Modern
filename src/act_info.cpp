@@ -23,7 +23,7 @@
 #include "handler.h"
 #include "interpre.h"
 #include "combat_hooks.h"
-#include "limits.h"
+#include "player_limits.h"
 #include "pkill.h"
 #include "platform_compat.h"
 #include "script.h"

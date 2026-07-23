@@ -40,7 +40,7 @@
 #include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
-#include "limits.h"
+#include "player_limits.h"
 #include "mudlle.h"
 #include "output_seam.h"
 #include "pkill.h"

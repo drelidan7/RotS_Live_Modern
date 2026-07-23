@@ -29,7 +29,7 @@
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
-#include "limits.h"
+#include "player_limits.h"
 #include "profs.h"
 #include "spells.h"
 #include "rots/persist/file_formats.h"

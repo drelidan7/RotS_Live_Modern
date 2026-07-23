@@ -49,7 +49,7 @@
 #include "../db.h"
 #include "../handler.h"
 #include "../interpre.h"
-#include "../limits.h"
+#include "../player_limits.h"
 #include "../output_seam.h"
 #include "../pkill.h"
 #include "../script.h"

@@ -1,5 +1,5 @@
 #include "../char_utils.h"
-#include "../limits.h"
+#include "../player_limits.h"
 #include "../protocol.h"
 #include "../rots_net.h"
 #include "../world_hooks.h"

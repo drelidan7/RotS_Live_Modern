@@ -44,7 +44,7 @@
 #include "persist_hooks.h"
 #include "handler.h"
 #include "interpre.h"
-#include "limits.h"
+#include "player_limits.h"
 #include "mail.h"
 #include "mudlle.h"
 #include "pkill.h"

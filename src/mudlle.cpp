@@ -11,7 +11,7 @@
 #include "db.h"
 #include "handler.h"
 #include "interpre.h"
-#include "limits.h"
+#include "player_limits.h"
 #include "mudlle.h"
 #include "protos.h"
 #include "rots/core/character.h"

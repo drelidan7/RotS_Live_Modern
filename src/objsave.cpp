@@ -24,7 +24,7 @@
 #include "entity_hooks.h"
 #include "handler.h"
 #include "interpre.h"
-#include "limits.h"
+#include "player_limits.h"
 #include "pkill.h"
 #include "script_hooks.h"
 #include "spells.h"

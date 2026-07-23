@@ -283,7 +283,8 @@ field/return** through exactly ONE boundary call:
   at every site, with **no per-family exception table** (unlike the display-rounding table Phase 2
   of the Option C program sketched and never built — see below).
 - **Grep-clean by construction:** `grep -rn 'to_game_int' src/` finds every converted boundary
-  site; `grep -rn 'lround' src/` finds ONLY the helper's own definition — no bare `std::lround`,
+  site; `grep -rn 'lround' src/` finds matches only inside `src/fp_policy.h` (the helper and its
+  policy comment) — no bare `std::lround`,
   `(int)`/`int(...)`/`static_cast<int>` truncation exists at any converted call site.
 - **`sqrt` is in-policy**, not a banned transcendental — the deterministic subset above is
   `+ - * / sqrt`, double-only. The wave inlined `std::sqrt` directly into two double chains (the

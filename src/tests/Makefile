@@ -164,7 +164,6 @@ mail_json_tests.o : ../mail.h
 pod_persistence_json_tests.o : ../pkill.h ../db.h ../exploits_json.h ../account_management.h
 account_cache_tests.o : ../account_cache.h ../account_management.h
 crashsave_schedule_tests.o : ../crashsave_schedule.h
-clock_tests.o : ../clock.h
 json_perf_tests.o : ../json_utils.h ../character_json.h
 player_finalize_tests.o : ../player_file_finalize.h
 db_save_roundtrip_tests.o : test_world.h test_platform_compat.h ../db.h ../utils.h

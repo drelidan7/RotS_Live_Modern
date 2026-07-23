@@ -132,7 +132,7 @@ set(ROTS_PLATFORM_SOURCES
 # below and rots_core_linkcheck's matching update). It never dereferences a
 # game type: char_data*/obj_data* pass through opaquely.
 set(ROTS_CORE_SOURCES
-    config.cpp consts.cpp output_seam.cpp
+    core/config.cpp core/consts.cpp core/output_seam.cpp
 )
 
 # L2: entity layer (spec §3; entity-seed Task 6 payoff). entity_lifecycle.cpp/

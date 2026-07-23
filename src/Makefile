@@ -45,20 +45,47 @@ REQ_LDFLAGS  = -m32 -rdynamic
 # deleting/renaming one never breaks the build.
 DEPFLAGS = -MMD -MP
 
-# -idirafter .: appends src/ itself at the END of the GNU-family search
-# list (after the three leaf dirs above and any system dirs), so a TU
-# relocated into one of the vpath dirs below can still resolve its bare
-# quote-includes of flat shared headers ("utils.h", "comm.h", the hook/
-# seam headers). NOT -I. -- that would put src/ on the angle-bracket path
-# too and let src/limits.h shadow the system <limits.h> (see the identical
-# -idirafter treatment / rationale in src/tests/Makefile and
+# -iquote . -idirafter .: appends src/ itself to the GNU-family search
+# list TWICE, at two different priorities, so a TU relocated into one of
+# the vpath dirs below can still resolve its bare quote-includes of flat
+# shared headers ("utils.h", "comm.h", the hook/seam headers) while ALSO
+# keeping the system <limits.h>/#include_next chain intact. ORIGINALLY
+# -idirafter alone; the Task 2 core batch (physical-layout wave) found
+# that insufficient in either direction alone:
+#   - -idirafter alone (src/ at the very END, after system dirs) left a
+#     moved TU's bare `#include "db.h"` resolving to the macOS SDK's own
+#     legacy Berkeley-DB usr/include/db.h instead of the project's
+#     src/db.h.
+#   - -iquote alone (src/ checked right after the including file's own
+#     dir, fixing db.h) then broke the ORIGINAL <limits.h> concern this
+#     line already existed to prevent, but via an indirect path: on
+#     Linux/libstdc++, <thread> -> <stop_token> -> <semaphore> pulls in
+#     GCC's own syslimits.h, which does `#include_next <limits.h>` to
+#     reach glibc's real /usr/include/limits.h. Traced with `-H`: under
+#     -idirafter that #include_next lands on /usr/include/limits.h
+#     correctly; under -iquote ALONE it instead lands on src/'s own
+#     limits.h-named header -- #include_next's continuation position is
+#     sensitive to a directory's presence in the QUOTE list even when
+#     reached via an angle-bracket chain (a GCC quirk distinct from a
+#     plain fresh `#include <...>` lookup, which never puts src/ on the
+#     angle-bracket list under -iquote alone).
+# Using BOTH flags on the SAME directory resolves both: -iquote's earlier
+# position wins quote resolution, while -idirafter's tail position
+# preserves the #include_next protection. NOT -I. -- that would put src/
+# on the angle-bracket path unconditionally too and shadow <limits.h> for
+# a fresh lookup (see the identical rationale in src/tests/Makefile and
 # src/CMakeLists.txt's ageland_tests block). Zero effect while every
 # source still lives directly in src/: the compiler's own "directory of
 # the including file" entry (always first) resolves every flat header
-# before -idirafter . is ever consulted; this becomes load-bearing only
+# before either flag is ever consulted; this becomes load-bearing only
 # once a physical-layout-wave batch relocates a source into one of the
-# vpath dirs below (T1: build-system enablement only, zero files moved).
-ALL_CPPFLAGS = $(DEPFLAGS) -Icore/include -Ipersist/include -Iplatform/include -idirafter . $(CPPFLAGS)
+# vpath dirs below. (Separately, the physical-layout wave also renamed
+# src/limits.h to src/player_limits.h -- an owner-sanctioned, unrelated
+# fix for a deterministic MSVC UCRT <limits.h> collision; that removes
+# the original literal-name collision here too, but the #include_next
+# behavior above is independent of any particular header's name, so both
+# flags stay.)
+ALL_CPPFLAGS = $(DEPFLAGS) -Icore/include -Ipersist/include -Iplatform/include -iquote . -idirafter . $(CPPFLAGS)
 ALL_CXXFLAGS = $(REQ_CXXFLAGS) $(CXXFLAGS)
 ALL_LDFLAGS  = $(REQ_LDFLAGS) $(LDFLAGS)
 

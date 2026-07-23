@@ -974,25 +974,63 @@ target_link_options(rots_build_flags INTERFACE
 # still flat in src/): every future-moving product TU -- all nine
 # ROTS_*_SOURCES lists, ROTS_SERVER_SOURCES, and rots_convert's sole direct
 # source convert_main.cpp -- gets src/ appended to its GNU-family search list
-# via -idirafter, mirroring the ageland_tests treatment of ROTS_TEST_SOURCES
-# further below (see that block's comment for the full <limits.h>/
-# #include_next rationale). Source-file properties are directory-scoped, so
-# this ONE block covers every target that compiles these sources: the nine
-# rots_* libraries, ageland, rots_convert, AND ageland_tests (which compiles
-# the product sources directly rather than linking the RotS::* libraries --
-# see its own add_executable() above -- so it needs this reach for the
-# product sources too, not just its own ROTS_TEST_SOURCES). NOT
+# via BOTH -iquote and -idirafter (same directory, both flags), mirroring
+# the ageland_tests treatment of ROTS_TEST_SOURCES further below (see that
+# block's comment for the full <limits.h>/#include_next rationale).
+# ORIGINALLY -idirafter alone; the Task 2 core batch (physical-layout wave)
+# found that's insufficient in EITHER direction alone:
+#   - -idirafter alone (src/ appended at the very END of the search list,
+#     after even the built-in system dirs) left a moved TU's bare
+#     `#include "db.h"` (e.g. src/core/consts.cpp) resolving to the macOS
+#     SDK's own legacy Berkeley-DB usr/include/db.h instead of the
+#     project's src/db.h, since that SDK dir sits ahead of -idirafter's
+#     tail position.
+#   - -iquote alone (src/ checked right after the including file's own
+#     directory, before the angle/system chain -- which fixes the db.h
+#     case above) then broke the ORIGINAL <limits.h> concern this block
+#     already existed to prevent, but via an indirect path neither this
+#     wave nor the prior design anticipated: on Linux/libstdc++, <thread> ->
+#     <stop_token> -> <semaphore> pulls in GCC's own syslimits.h, which
+#     does `#include_next <limits.h>` to reach glibc's real
+#     /usr/include/limits.h (the definitions POSIX code like
+#     std::counting_semaphore's _POSIX_SEM_VALUE_MAX needs). Traced with
+#     `-H`: under -idirafter that #include_next correctly lands on
+#     /usr/include/limits.h; under -iquote ALONE it instead lands on
+#     src/'s own limits.h-named header -- #include_next's continuation
+#     position is sensitive to a directory's presence in the QUOTE list
+#     even when reached via an angle-bracket chain, a GCC quirk distinct
+#     from a plain fresh `#include <...>` lookup (which -v confirms never
+#     puts src/ on the angle-bracket list under -iquote alone).
+# Using BOTH flags on the SAME directory resolves both: -iquote's earlier
+# position wins quote resolution (db.h and any other moved-TU bare quote
+# include of a flat header), while -idirafter's tail position preserves
+# the #include_next protection the angle/system chain depends on. Verified
+# with raw compiler invocations matching the real flags.make command lines
+# on both rots64 (Debian trixie g++14) and native macOS (AppleClang) --
+# clean on both. (Separately, the physical-layout wave also renamed
+# src/limits.h to src/player_limits.h -- an owner-sanctioned, unrelated fix
+# for a DETERMINISTIC MSVC UCRT <limits.h> collision that no GNU-style
+# search-order flag can address; see the player_limits.h rename commit.
+# That rename removes the ORIGINAL literal-name collision on GNU-family
+# compilers too, but the #include_next behavior documented above is
+# independent of any particular header's name, so both flags stay.)
+# Source-file properties are directory-scoped, so this ONE block covers
+# every target that compiles these sources: the nine rots_* libraries,
+# ageland, rots_convert, AND ageland_tests (which compiles the product
+# sources directly rather than linking the RotS::* libraries -- see its
+# own add_executable() above -- so it needs this reach for the product
+# sources too, not just its own ROTS_TEST_SOURCES). NOT
 # target_include_directories(
 # ... PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}): that adds src/ to the
 # angle-bracket path too and shadows <limits.h> (see the ageland_tests
 # comment further below). Zero effect while every source still resides
 # directly in src/: a still-flat TU's own "directory of the including file" entry
-# (always first, before any -idirafter path) finds every flat header, so
-# -idirafter is never consulted -- this becomes load-bearing only once a
-# T2/T3 batch relocates a source into src/<lib>/ or src/app/. MSVC has no
-# -idirafter analogue; see the windows-msvc preset's INCLUDE environment
-# append in CMakePresets.json instead (pl-census.md Step 8 controller
-# ruling).
+# (always first, before either -iquote or -idirafter) finds every flat
+# header, so neither flag is ever consulted -- this becomes load-bearing
+# only once a T2/T3 batch relocates a source into src/<lib>/ or src/app/.
+# MSVC has no -idirafter/-iquote analogue; see the windows-msvc preset's
+# INCLUDE environment append in CMakePresets.json instead (pl-census.md
+# Step 8 controller ruling).
 set_source_files_properties(
     ${ROTS_PLATFORM_SOURCES}
     ${ROTS_CORE_SOURCES}
@@ -1006,7 +1044,7 @@ set_source_files_properties(
     ${ROTS_SERVER_SOURCES}
     convert_main.cpp
     PROPERTIES
-    COMPILE_OPTIONS "$<${ROTS_GNULIKE}:-idirafter;${CMAKE_CURRENT_SOURCE_DIR}>"
+    COMPILE_OPTIONS "$<${ROTS_GNULIKE}:-iquote;${CMAKE_CURRENT_SOURCE_DIR};-idirafter;${CMAKE_CURRENT_SOURCE_DIR}>"
 )
 
 # --- L0: foundation library --------------------------------------------------

@@ -187,10 +187,10 @@ set(ROTS_ENTITY_SOURCES
 # ROTS_SERVER_SOURCES below -- verified via `nm -uC` on the built archive,
 # see the rots_persist_linkcheck load-bearing test below.
 set(ROTS_PERSIST_SOURCES
-    account_cache.cpp account_management.cpp boards_json.cpp character_json.cpp
-    color_convert.cpp convert_exploits.cpp convert_plrobjs.cpp db_players.cpp
-    exploits_json.cpp mail_json.cpp objects_json.cpp obj_files.cpp
-    pkill_json.cpp save_benchmark.cpp
+    persist/account_cache.cpp persist/account_management.cpp persist/boards_json.cpp persist/character_json.cpp
+    persist/color_convert.cpp persist/convert_exploits.cpp persist/convert_plrobjs.cpp persist/db_players.cpp
+    persist/exploits_json.cpp persist/mail_json.cpp persist/objects_json.cpp persist/obj_files.cpp
+    persist/pkill_json.cpp persist/save_benchmark.cpp
 )
 
 # L3 peer: world layer (spec §3/§10 step 4; world-seed wave Task 5 payoff).

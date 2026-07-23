@@ -33,6 +33,7 @@
 // the full rationale.
 
 #include "platdef.h"
+#include "fp_policy.h"
 #include <ctype.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -1944,26 +1945,19 @@ extern struct skill_data skills[]; // consts.cpp -- affect_modify()'s APPLY_SPEL
 // Macros do not cross translation units, so this must be redefined here.
 #define MAX_MAUL_DODGE 50
 
-namespace {
-// Verbatim copy of profs.cpp's do_squareroot(int, char_data*) overload --
-// moved alongside recalc_abilities() (its only caller). Kept file-local
-// (anonymous namespace) so it does not collide at link time with
-// utility.cpp's separate, differently-implemented do_squareroot(int,
-// char_data*) overload (a pre-existing, unrelated same-signature function
-// used by a different call site in that TU).
-/*
- * This function returns 200 * sqrt(i).
- */
-inline int do_squareroot(int i, char_data*)
-{
-    return int(std::sqrt(i) * 200.0);
-}
-} // namespace
+// fp-interiors Task 2a: the file-local do_squareroot(int, char_data*)
+// overload (Verbatim copy of profs.cpp's do_squareroot(int, char_data*)
+// overload, moved here db-split Task 4b) was deleted here. It had exactly
+// one caller, recalc_abilities() below (an anonymous-namespace helper, so no
+// other TU could call it), and that call site was converted to an inline
+// std::sqrt() on a double per fpi-census.md's B6 controller ruling -- the
+// helper's own int-truncating tmp/100 argument was exactly the per-step
+// truncation this wave removes. The (unrelated, differently-implemented)
+// utility.cpp do_squareroot(int, char_data*) overload is untouched.
 
 /* This is called whenever some of person's stats/level change */
 void recalc_abilities(char_data* character)
 {
-    int tmp, tmp2, dex_speed;
     struct obj_data* weapon;
 
     if (!IS_NPC(character)) {
@@ -1974,23 +1968,44 @@ void recalc_abilities(char_data* character)
         character->abilities.dex = character->constabilities.dex;
         character->abilities.con = character->constabilities.con;
 
-        character->abilities.hit = 10 + std::min(LEVEL_MAX, GET_LEVEL(character)) + character->constabilities.hit * GET_CON(character) / 20 + (class_HP(character) * (GET_CON(character) + 20) / 14) * std::min(LEVEL_MAX * 100, (int)GET_MINI_LEVEL(character)) / 100000;
+        // B1 (fp-interiors, fpi-census.md): HP as one double chain, single
+        // rots::fp::to_game_int rounding. class_HP()'s own math is inlined
+        // here in double (controller ruling, option (b)) rather than calling
+        // the int-returning class_HP() -- that keeps the sqrt argument at
+        // full precision instead of going through class_HP()'s truncating
+        // int return. class_HP() itself is untouched: profs.cpp's
+        // stat_assigner tiebreak still calls the original int-returning
+        // function directly.
+        double hp_coofs_d = 3.0 * utils::get_prof_points(PROF_WARRIOR, *character) + 2.0 * utils::get_prof_points(PROF_RANGER, *character) + utils::get_prof_points(PROF_CLERIC, *character);
+        if (GET_RACE(character) == RACE_ORC) {
+            hp_coofs_d = hp_coofs_d * 4.0 / 7.0;
+        }
+        double class_hp_d = std::sqrt(hp_coofs_d) * 200.0;
+
+        double hit_d = 10.0 + std::min<double>(LEVEL_MAX, GET_LEVEL(character)) + character->constabilities.hit * GET_CON(character) / 20.0 + (class_hp_d * (GET_CON(character) + 20) / 14.0) * std::min<double>(LEVEL_MAX * 100, GET_MINI_LEVEL(character)) / 100000.0;
 
         // Characters specialized in defender get 10% bonus HP.
         if (utils::get_specialization(*character) == game_types::PS_Defender) {
-            character->abilities.hit += character->abilities.hit / 10;
+            hit_d += hit_d / 10.0;
         }
 
         // dirty test to see if this ranger change can work
-        character->abilities.hit = std::max(character->abilities.hit - (GET_RAW_SKILL(character, SKILL_STEALTH) * GET_LEVELA(character) + GET_RAW_SKILL(character, SKILL_STEALTH) * 3) / 33, 10);
+        hit_d = std::max(hit_d - (GET_RAW_SKILL(character, SKILL_STEALTH) * GET_LEVELA(character) + GET_RAW_SKILL(character, SKILL_STEALTH) * 3) / 33.0, 10.0);
+
+        character->abilities.hit = rots::fp::to_game_int(hit_d);
 
         character->tmpabilities.hit = std::min(character->tmpabilities.hit, character->abilities.hit);
 
-        character->abilities.mana = character->constabilities.mana + GET_INT(character) + GET_WILL(character) / 2 + GET_PROF_LEVEL(PROF_MAGE, character) * 2;
+        // B2: mana, one double chain, single round.
+        double mana_d = character->constabilities.mana + GET_INT(character) + GET_WILL(character) / 2.0 + GET_PROF_LEVEL(PROF_MAGE, character) * 2.0;
+        character->abilities.mana = rots::fp::to_game_int(mana_d);
 
         character->tmpabilities.mana = std::min(character->tmpabilities.mana, character->abilities.mana);
 
-        character->abilities.move = character->constabilities.move + GET_CON(character) + 20 + GET_PROF_LEVEL(PROF_RANGER, character) + GET_RAW_KNOWLEDGE(character, SKILL_TRAVELLING) / 4;
+        // B3: move, one double chain, single round; the flat +=15/+=50 race
+        // bonuses below stay exact int adds (census: not part of this chain).
+        double move_d = character->constabilities.move + GET_CON(character) + 20.0 + GET_PROF_LEVEL(PROF_RANGER, character) + GET_RAW_KNOWLEDGE(character, SKILL_TRAVELLING) / 4.0;
+        character->abilities.move = rots::fp::to_game_int(move_d);
 
         if ((GET_RACE(character) == RACE_WOOD) || GET_RACE(character) == RACE_HIGH)
             character->abilities.move += 15;
@@ -2011,41 +2026,66 @@ void recalc_abilities(char_data* character)
             }
 
             int bulk = weapon->get_bulk();
-            character->specials.null_speed = 3 * GET_DEX(character) + 2 * (GET_RAW_SKILL(character, SKILL_ATTACK) + GET_RAW_SKILL(character, SKILL_STEALTH) / 2) / 3 + 100;
 
-            character->specials.str_speed = GET_BAL_STR(character) * 2500000 / (GET_OBJ_WEIGHT(weapon) * (bulk + 3));
+            // B4: null_speed, one double chain, single round into the
+            // persistent int field (act_wiz.cpp/mob_csv_extract.cpp display
+            // consumers read the field). null_speed_d (full precision) is
+            // kept alongside for B6's harmonic mean.
+            double null_speed_d = 3.0 * GET_DEX(character) + 2.0 * (GET_RAW_SKILL(character, SKILL_ATTACK) + GET_RAW_SKILL(character, SKILL_STEALTH) / 2.0) / 3.0 + 100.0;
+            character->specials.null_speed = rots::fp::to_game_int(null_speed_d);
+
+            // B5: str_speed, one double chain (base * twohanded * dex-adjust
+            // max), single round into the persistent int field. str_speed_d
+            // is kept alongside for B6's harmonic mean.
+            double str_speed_d = GET_BAL_STR(character) * 2500000.0 / (GET_OBJ_WEIGHT(weapon) * (bulk + 3));
 
             if (IS_TWOHANDED(character)) {
-                character->specials.str_speed *= 2;
+                str_speed_d *= 2.0;
             }
 
             /* Dex adjustment by Fingol */
             if (bulk < 4) {
-                dex_speed = GET_DEX(character) * 2500000 / (GET_OBJ_WEIGHT(weapon) * (bulk + 3));
+                double dex_speed_d = GET_DEX(character) * 2500000.0 / (GET_OBJ_WEIGHT(weapon) * (bulk + 3));
 
-                tmp2 = (character->specials.str_speed * bulk / 5) + (dex_speed * (5 - bulk) / 5);
+                double tmp2_d = (str_speed_d * bulk / 5.0) + (dex_speed_d * (5 - bulk) / 5.0);
 
-                character->specials.str_speed = std::max(character->specials.str_speed, tmp2);
+                str_speed_d = std::max(str_speed_d, tmp2_d);
             }
 
-            tmp = 1000000;
-            tmp /= 1000000 / character->specials.str_speed + 1000000 / (character->specials.null_speed * character->specials.null_speed);
+            character->specials.str_speed = rots::fp::to_game_int(str_speed_d);
+
+            // B6: ENE_regen (weapon branch). The harmonic mean reads the
+            // pre-round doubles (str_speed_d/null_speed_d), not the rounded
+            // fields, so ENE_regen stays a single-rounding result. The
+            // do_squareroot() sqrt is inlined directly on the double
+            // (controller ruling, option (b)) instead of going through the
+            // int-argument do_squareroot() helper -- the tmp/100 argument
+            // truncation that helper took is exactly the per-step truncation
+            // this wave removes. The race bumps and the attack-speed
+            // multiplier (previously a separate post-round int *= float)
+            // fold into this same double chain before the single round.
+            double tmp_d = 1000000.0 / (1000000.0 / str_speed_d + 1000000.0 / (null_speed_d * null_speed_d));
 
             game_types::weapon_type w_type = weapon->get_weapon_type();
-            GET_ENE_REGEN(character) = do_squareroot(tmp / 100, character) / 20;
+            double ene_regen_d = std::sqrt(tmp_d / 100.0) * 200.0 / 20.0;
 
             // Custom energy regen based on race, etc.
             if (GET_RACE(character) == RACE_DWARF && weapon_skill_num(w_type) == SKILL_AXE) {
-                GET_ENE_REGEN(character) += std::min(GET_ENE_REGEN(character) / 10, 10);
+                ene_regen_d += std::min(ene_regen_d / 10.0, 10.0);
             } else if (GET_RACE(character) == RACE_HARADRIM && weapon_skill_num(w_type) == SKILL_SPEARS) {
-                GET_ENE_REGEN(character) += std::min(GET_ENE_REGEN(character) / 20, 20);
+                ene_regen_d += std::min(ene_regen_d / 20.0, 20.0);
             }
 
             // weapon masters get bonus attack speed with some weapons.
-            character->points.ENE_regen *= rots::entity::dispatch_attack_speed_multiplier(character);
+            ene_regen_d *= rots::entity::dispatch_attack_speed_multiplier(character);
+
+            GET_ENE_REGEN(character) = rots::fp::to_game_int(ene_regen_d);
 
         } else {
-            GET_ENE_REGEN(character) = 60 + 5 * GET_DEX(character);
+            // B7: no-weapon ENE_regen -- exact ints, the round is a no-op,
+            // but to_game_int is still applied for grep-uniformity (census).
+            double ene_regen_d = 60.0 + 5.0 * GET_DEX(character);
+            GET_ENE_REGEN(character) = rots::fp::to_game_int(ene_regen_d);
 
             /*---------------- Beornings get a different speed calc here -----------------*/
         }

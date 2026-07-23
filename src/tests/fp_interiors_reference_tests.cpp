@@ -47,9 +47,11 @@
 
 #include "../comm.h"
 #include "../fp_policy.h"
+#include "../spells.h"
 #include "../utils.h"
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
+#include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
@@ -520,6 +522,148 @@ TEST(EneRegenNoWeaponFamily, PairedBoundExact) {
 TEST(EneRegenNoWeaponFamily, ExactValue) {
     EXPECT_EQ(ene_regen_noweapon_int_reference(20), 160);
     EXPECT_EQ(rots::fp::to_game_int(ene_regen_noweapon_double_transcription(20)), 160);
+}
+
+// ===========================================================================
+// T2a -- live recalc_abilities() repointing. entity_lifecycle.cpp's
+// recalc_abilities() (B1-B7) now computes HP/mana/move/null_speed/str_speed/
+// ENE_regen in double, single-rounding through rots::fp::to_game_int at each
+// field write. These tests drive the REAL, converted production function on
+// a constructed char_data at the same vectors as the paired tests above and
+// assert equality with the (unchanged, test-local) double transcriptions --
+// per the task-2a brief ("add tests that drive the live recalc_abilities on
+// a constructed char_data ... and assert equality with the transcription").
+// The transcription/int-reference tests above are left as-is (T1's oracle).
+// ===========================================================================
+
+struct RecalcAbilitiesTestContext {
+    char_data character{};
+    char_prof_data profs{};
+
+    RecalcAbilitiesTestContext() {
+        character.profs = &profs;
+        // character.knowledge is an owning std::vector<byte> (RAII T3); size
+        // it to MAX_SKILLS the way clear_char() would for a PC, mirroring
+        // CharUtilsTestContext's fixture (char_utils_tests.cpp) -- this
+        // fixture never calls clear_char() either.
+        character.knowledge.assign(MAX_SKILLS, 0);
+        character.player.name = const_cast<char*>("player-name");
+        character.player.short_descr = const_cast<char*>("mob-name");
+        // player.race defaults to 0 (RACE_GOD); max_race_str[RACE_GOD] == 22
+        // (consts.cpp), so GET_BAL_STR(STR<=22) == GET_STR unchanged for
+        // every vector below (all use STR/BAL_STR == 20).
+    }
+};
+
+obj_data make_recalc_test_weapon(int weight, int bulk) {
+    obj_data weapon{};
+    weapon.obj_flags.weight = weight;
+    weapon.obj_flags.value[2] = bulk;
+    return weapon;
+}
+
+TEST(RecalcAbilitiesLive, NoWeaponBranchMatchesHpManaMoveAndEneRegenBoundaries) {
+    // Same vectors as HpFamily::ExactValueV1 (B1), ManaFamily::
+    // ExactValueEvenWillNoTruncation (B2), MoveFamily::
+    // ExactValueTravellingExactMultipleOfFour (B3), and EneRegenNoWeaponFamily
+    // ::ExactValue (B7) above -- one character, one recalc_abilities() call,
+    // all four no-weapon-reachable boundaries checked at once.
+    RecalcAbilitiesTestContext ctx;
+    ctx.character.player.level = 30;
+    ctx.character.tmpabilities.con = 20;
+    ctx.character.tmpabilities.intel = 13;
+    ctx.character.tmpabilities.wil = 10;
+    ctx.character.tmpabilities.dex = 20;
+    ctx.character.constabilities.hit = 100;
+    ctx.character.constabilities.mana = 10;
+    ctx.character.constabilities.move = 10;
+    ctx.profs.prof_coof[PROF_WARRIOR] = 100;
+    ctx.profs.prof_coof[PROF_RANGER] = 50;
+    ctx.profs.prof_coof[PROF_CLERIC] = 50;
+    ctx.character.specials2.mini_level = 3000;
+    ctx.character.knowledge[SKILL_TRAVELLING] = 8;
+
+    recalc_abilities(&ctx.character);
+
+    // B1 (HP): the OLD (pre-conversion) per-step-truncating code produced
+    // 503 (HpFamily::ExactValueV1's hp_int_reference, re-verified here); the
+    // converted double chain rounds the full-precision 503.654916... up to
+    // 504 -- the "~1 HP artifact" this wave's controller ruling flagged.
+    // Both assertions pin the live function to the NEW value and record
+    // that it genuinely differs from the frozen OLD reference (this is the
+    // task's RED/GREEN evidence vector: pre-conversion the live function
+    // returned 503 and this EXPECT_EQ(..., 504) would have failed).
+    const int class_hp = class_hp_int_reference(100, 50, 50, false);
+    const int old_hp_ref = hp_int_reference(30, 20, 100, class_hp, 3000, false, 0, 30);
+    EXPECT_EQ(old_hp_ref, 503);
+    EXPECT_NE(ctx.character.abilities.hit, old_hp_ref);
+    const double hp_dbl =
+        hp_family_double_transcription(30, 20, 100, 100, 50, 50, false, 3000, false, 0, 30);
+    EXPECT_EQ(ctx.character.abilities.hit, rots::fp::to_game_int(hp_dbl));
+    EXPECT_EQ(ctx.character.abilities.hit, 504);
+
+    // B2 (mana): WILL=10 is even, so int and double agree exactly (no
+    // drift) -- still repointed at the live function for parity.
+    EXPECT_EQ(ctx.character.abilities.mana,
+              rots::fp::to_game_int(mana_double_transcription(10, 13, 10, 0)));
+    EXPECT_EQ(ctx.character.abilities.mana, 28);
+
+    // B3 (move): TRAVELLING=8 -> 8/4=2 exactly, so int and double agree
+    // exactly (no drift) -- still repointed at the live function.
+    EXPECT_EQ(ctx.character.abilities.move,
+              rots::fp::to_game_int(move_double_transcription(10, 20, 0, 8)));
+    EXPECT_EQ(ctx.character.abilities.move, 52);
+
+    // B7 (no-weapon ENE_regen): exact ints both sides, round is a no-op.
+    EXPECT_EQ(GET_ENE_REGEN(&ctx.character),
+              rots::fp::to_game_int(ene_regen_noweapon_double_transcription(20)));
+    EXPECT_EQ(GET_ENE_REGEN(&ctx.character), 160);
+}
+
+TEST(RecalcAbilitiesLive, WeaponBranchMatchesNullSpeedStrSpeedAndEneRegenBoundaries) {
+    // Same vector as NullSpeedFamily::ExactValueV1 (B4) / StrSpeedFamily::
+    // ExactValueV1 (B5) / EneRegenWeaponFamily::ExactValueV1 (B6) above:
+    // DEX=20, ATTACK=100, STEALTH=0, BAL_STR=20, one-handed weapon
+    // weight=10/bulk=3, no race bump, no attack-speed-multiplier hook
+    // registered (defaults to 1.0f -- entity_lifecycle.cpp's
+    // dispatch_attack_speed_multiplier() STUB fallback).
+    RecalcAbilitiesTestContext ctx;
+    ctx.character.player.level = 30;
+    ctx.character.tmpabilities.con = 20;
+    ctx.character.tmpabilities.dex = 20;
+    ctx.character.tmpabilities.str = 20;
+    ctx.character.knowledge[SKILL_ATTACK] = 100;
+    obj_data weapon = make_recalc_test_weapon(/*weight=*/10, /*bulk=*/3);
+    ctx.character.equipment[WIELD] = &weapon;
+
+    recalc_abilities(&ctx.character);
+
+    // B4 (null_speed): the OLD int-truncating code gives 226
+    // (NullSpeedFamily::ExactValueV1); the double chain rounds the
+    // full-precision 226.666... up to 227 -- a second genuine drift point,
+    // matching the double transcription exactly.
+    const double null_speed_d = null_speed_double_transcription(20, 100, 0);
+    EXPECT_NE(ctx.character.specials.null_speed, null_speed_int_reference(20, 100, 0));
+    EXPECT_EQ(null_speed_int_reference(20, 100, 0), 226);
+    EXPECT_EQ(ctx.character.specials.null_speed, rots::fp::to_game_int(null_speed_d));
+    EXPECT_EQ(ctx.character.specials.null_speed, 227);
+
+    // B5 (str_speed): the max()-clamped fraction (.333...) rounds down both
+    // sides here -- no drift, but still proves the live field matches the
+    // double transcription exactly, not merely within the paired bound.
+    const double str_speed_d = str_speed_double_transcription(20, 10, 3, false, 20);
+    EXPECT_EQ(ctx.character.specials.str_speed, rots::fp::to_game_int(str_speed_d));
+    EXPECT_EQ(ctx.character.specials.str_speed, 833333);
+
+    // B6 (ENE_regen, weapon branch): the harmonic mean must read the
+    // PRE-ROUND doubles (str_speed_d/null_speed_d), not the just-rounded
+    // int fields above, to stay a single-rounding result -- exactly what
+    // ene_regen_weapon_double_transcription's own parameters are (per its
+    // banner comment). No race bump (race defaults to RACE_GOD, not
+    // DWARF/HARADRIM); multiplier defaults to 1.0 (unregistered hook).
+    const double ene_regen_d =
+        ene_regen_weapon_double_transcription(str_speed_d, null_speed_d, false, false, 1.0);
+    EXPECT_EQ(GET_ENE_REGEN(&ctx.character), rots::fp::to_game_int(ene_regen_d));
 }
 
 // ===========================================================================

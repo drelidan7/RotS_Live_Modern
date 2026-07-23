@@ -823,8 +823,8 @@ set(ROTS_SERVER_SOURCES
 # section 5.7): zero library references any Cluster B symbol, so promoting
 # these seven TUs to the top of the L4 band creates no upward edge.
 set(ROTS_OLC_SOURCES
-    editor_hooks.cpp shapemdl.cpp shapemob.cpp shapeobj.cpp
-    shaperom.cpp shapescript.cpp shapezon.cpp
+    olc/editor_hooks.cpp olc/shapemdl.cpp olc/shapemob.cpp olc/shapeobj.cpp
+    olc/shaperom.cpp olc/shapescript.cpp olc/shapezon.cpp
 )
 
 

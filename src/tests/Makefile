@@ -91,6 +91,17 @@ TEST_CXXFLAGS = $(CXXFLAGS) -idirafter ..
 # the static lib doesn't pull it in transitively on this toolchain, so link it explicitly.
 LDFLAGS = -lgtest -lpthread
 
+# vpath: lets the generic pattern rule below (and the historical
+# dependency-only lines further down) find a product .cpp that has moved
+# out of src/ into one of the nine library dirs or src/app/
+# (physical-layout wave). The leading ".." keeps a still-flat product
+# .cpp resolving exactly as before (cwd is src/tests/, so ".." is
+# src/); test .cpp live in cwd and are found before vpath is ever
+# consulted. INERT until a T2/T3 batch actually relocates a source.
+# OBJFILES/OBJS below stay bare basenames regardless of which dir vpath
+# finds the source in -- see the generic pattern rule's own comment.
+vpath %.cpp .. ../platform ../core ../entity ../persist ../world ../combat ../pathfind ../script ../olc ../app
+
 OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	act_othe.o act_soci.o act_wiz.o ban.o battle_mage_handler.o big_brother.o boards.o boards_json.o char_utils.o char_utils_combat.o clerics.o clock.o color.o color_convert.o \
 	combat_hooks.o comm.o config.o consts.o output_seam.o containment.o convert_exploits.o convert_plrobjs.o crashsave_schedule.o db_boot.o db_players.o db_world.o delayed_command_interpreter.o editor_hooks.o entity_lifecycle.o equipment.o fight.o graph.o handler.o interpre.o environment_utils.o account_cache.o account_management.o character_json.o exploits_json.o json_utils.o objects_json.o \
@@ -100,244 +111,21 @@ OBJFILES = act_comm.o act_info.o act_move.o act_obj1.o act_obj2.o act_offe.o \
 	wild_fighting_handler.o weather.o zone.o zone_load.o rots_rng.o rots_crypt.o rots_net.o rots_log.o rots_util.o
 
 
-# Dependencies for the main mud
-
-account_management.o : ../account_management.cpp ../account_management.h ../account_management_types.h ../account_management_identity.h ../account_management_storage.h ../account_management_assets.h ../account_management_migration.h ../account_management_presentation.h ../account_management_internal.cpp ../account_management_identity.cpp ../account_management_storage.cpp ../account_management_assets.cpp ../account_management_migration.cpp ../account_management_presentation.cpp ../json_utils.h
-	$(CXX) -c $(CXXFLAGS) ../account_management.cpp
-
-account_cache.o : ../account_cache.cpp ../account_cache.h ../account_management.h
-	$(CXX) -c $(CXXFLAGS) ../account_cache.cpp
-
-crashsave_schedule.o : ../crashsave_schedule.cpp ../crashsave_schedule.h
-	$(CXX) -c $(CXXFLAGS) ../crashsave_schedule.cpp
-
-player_file_finalize.o : ../player_file_finalize.cpp ../player_file_finalize.h
-	$(CXX) -c $(CXXFLAGS) ../player_file_finalize.cpp
-
-save_benchmark.o : ../save_benchmark.cpp ../save_benchmark.h ../account_cache.h ../account_management.h ../character_json.h ../db.h ../stopwatch.h
-	$(CXX) -c $(CXXFLAGS) ../save_benchmark.cpp
-
-savebench.o : ../savebench.cpp ../savebench.h ../save_benchmark.h ../account_management.h ../comm.h ../db.h ../utils.h
-	$(CXX) -c $(CXXFLAGS) ../savebench.cpp
-
-character_json.o : ../character_json.cpp ../character_json.h ../json_utils.h
-	$(CXX) -c $(CXXFLAGS) ../character_json.cpp
-
-exploits_json.o : ../exploits_json.cpp ../exploits_json.h ../json_utils.h ../db.h
-	$(CXX) -c $(CXXFLAGS) ../exploits_json.cpp
-
-json_utils.o : ../json_utils.cpp ../json_utils.h
-	$(CXX) -c $(CXXFLAGS) ../json_utils.cpp
-
-objects_json.o : ../objects_json.cpp ../objects_json.h ../json_utils.h
-	$(CXX) -c $(CXXFLAGS) ../objects_json.cpp
-
-clock.o : ../clock.cpp ../clock.h
-	$(CXX) -c $(CXXFLAGS) ../clock.cpp
-
-rots_log.o : ../rots_log.cpp ../platform/include/rots/platform/log.h ../text_view.h ../platdef.h
-	$(CXX) -c $(CXXFLAGS) ../rots_log.cpp
-
-rots_util.o : ../rots_util.cpp ../platdef.h ../platform_compat.h ../rots_rng.h ../text_view.h
-	$(CXX) -c $(CXXFLAGS) ../rots_util.cpp
-
-comm.o : ../comm.cpp ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h \
-	../limits.h ../clock.h
-	$(CXX) -c $(CXXFLAGS) $(COMMFLAGS) ../comm.cpp
-char_utils.o : ../char_utils.cpp ../base_utils.h ../char_utils.h ../object_utils.h \
-	../environment_utils.h ../handler.h
-	$(CXX) -c $(CXXFLAGS) ../char_utils.cpp
-environment_utils.o : ../environment_utils.cpp ../environment_utils.h
-	$(CXX) -c $(CXXFLAGS) ../environment_utils.cpp
-object_utils.o : ../object_utils.cpp ../object_utils.h
-	$(CXX) -c $(CXXFLAGS) ../object_utils.cpp
-char_utils_combat.o : ../char_utils_combat.cpp ../base_utils.h ../char_utils.h ../object_utils.h  ../comm.h ../char_utils_combat.h
-	$(CXX) -c $(CXXFLAGS) ../char_utils_combat.cpp
-big_brother.o : ../big_brother.cpp ../big_brother.h ../base_utils.h ../singleton.h
-	$(CXX) -c $(CXXFLAGS) ../big_brother.cpp
-battle_mage_handler.o : ../battle_mage_handler.cpp ../warrior_spec_handlers.h
-	$(CXX) -c $(CXXFLAGS) ../battle_mage_handler.cpp
-wild_fighting_handler.o : ../wild_fighting_handler.cpp ../warrior_spec_handlers.h
-	$(CXX) -c $(CXXFLAGS) ../wild_fighting_handler.cpp
-weapon_master_handler.o : ../weapon_master_handler.cpp ../warrior_spec_handlers.h
-	$(CXX) -c $(CXXFLAGS) ../weapon_master_handler.cpp
-skill_timer.o : ../skill_timer.cpp ../skill_timer.h ../singleton.h
-	$(CXX) -c $(CXXFLAGS) ../skill_timer.cpp
-visibility.o : ../visibility.cpp ../comm.h ../handler.h ../spells.h ../utils.h ../warrior_spec_handlers.h
-	$(CXX) -c $(CXXFLAGS) ../visibility.cpp
-olog_hai.o : ../olog_hai.cpp ../utils.h ../comm.h ../interpre.h ../handler.h \
-	../db.h ../spells.h ../limits.h
-	$(CXX) -c $(CXXFLAGS) ../olog_hai.cpp
-delayed_command_interpreter.o : ../delayed_command_interpreter.cpp ../delayed_command_interpreter.h
-	$(CXX) -c $(CXXFLAGS) ../delayed_command_interpreter.cpp
-wait_functions.o : ../wait_functions.cpp ../base_utils.h ../char_utils.h ../object_utils.h  ../comm.h
-	$(CXX) -c $(CXXFLAGS) ../wait_functions.cpp
-act_comm.o : ../act_comm.cpp ../utils.h ../comm.h ../interpre.h ../handler.h \
-	../db.h
-	$(CXX) -c $(CXXFLAGS) ../act_comm.cpp
-act_info.o : ../act_info.cpp ../utils.h ../comm.h ../interpre.h \
-	../handler.h ../db.h ../spells.h ../limits.h
-	$(CXX) -c $(CXXFLAGS) ../act_info.cpp
-act_move.o : ../act_move.cpp ../utils.h ../comm.h ../interpre.h \
-	../handler.h ../db.h ../spells.h
-	$(CXX) -c $(CXXFLAGS) ../act_move.cpp
-act_obj1.o : ../act_obj1.cpp ../utils.h ../comm.h ../interpre.h ../handler.h \
-	../db.h ../spells.h
-	$(CXX) -c $(CXXFLAGS) ../act_obj1.cpp
-act_obj2.o : ../act_obj2.cpp ../utils.h ../comm.h ../interpre.h ../handler.h \
-	../db.h ../spells.h ../limits.h
-	$(CXX) -c $(CXXFLAGS) ../act_obj2.cpp
-act_offe.o : ../act_offe.cpp ../utils.h ../comm.h ../interpre.h \
-	../handler.h ../db.h ../spells.h ../limits.h
-	$(CXX) -c $(CXXFLAGS) ../act_offe.cpp
-act_othe.o : ../act_othe.cpp ../utils.h ../comm.h ../interpre.h ../handler.h \
-	../db.h ../spells.h ../limits.h
-	$(CXX) -c $(CXXFLAGS) ../act_othe.cpp
-act_soci.o : ../act_soci.cpp ../utils.h ../comm.h ../interpre.h \
-	../handler.h ../db.h ../spells.h
-	$(CXX) -c $(CXXFLAGS) ../act_soci.cpp
-act_wiz.o : ../act_wiz.cpp ../utils.h ../comm.h ../interpre.h \
-	../handler.h ../db.h ../spells.h ../limits.h ../profs.h
-	$(CXX) -c $(CXXFLAGS) ../act_wiz.cpp
-handler.o : ../handler.cpp ../utils.h ../comm.h ../db.h ../handler.h ../interpre.h
-	$(CXX) -c $(CXXFLAGS) ../handler.cpp
-db_boot.o : ../db_boot.cpp ../utils.h ../db.h ../comm.h ../handler.h ../limits.h ../spells.h \
-        ../interpre.h ../big_brother.h ../skill_timer.h
-	$(CXX) -c $(CXXFLAGS) ../db_boot.cpp
-db_players.o : ../db_players.cpp ../utils.h ../db.h ../comm.h ../handler.h ../limits.h ../spells.h \
-        ../interpre.h ../big_brother.h ../skill_timer.h
-	$(CXX) -c $(CXXFLAGS) ../db_players.cpp
-db_world.o : ../db_world.cpp ../utils.h ../db.h ../comm.h ../handler.h ../limits.h ../spells.h \
-        ../interpre.h ../big_brother.h ../skill_timer.h
-	$(CXX) -c $(CXXFLAGS) ../db_world.cpp
-entity_lifecycle.o : ../entity_lifecycle.cpp ../utils.h ../db.h ../comm.h ../handler.h ../limits.h ../spells.h \
-        ../interpre.h ../big_brother.h ../skill_timer.h
-	$(CXX) -c $(CXXFLAGS) ../entity_lifecycle.cpp
-placement.o : ../placement.cpp ../entity_hooks.h ../handler.h ../utils.h
-	$(CXX) -c $(CXXFLAGS) ../placement.cpp
-containment.o : ../containment.cpp ../entity_hooks.h ../handler.h ../utils.h
-	$(CXX) -c $(CXXFLAGS) ../containment.cpp
-equipment.o : ../equipment.cpp ../entity_hooks.h ../handler.h ../utils.h
-	$(CXX) -c $(CXXFLAGS) ../equipment.cpp
-ban.o : ../ban.cpp ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h
-	$(CXX) -c $(CXXFLAGS) ../ban.cpp
-interpre.o : ../interpre.cpp ../comm.h ../interpre.h ../db.h ../utils.h \
-	../limits.h ../spells.h ../handler.h ../profs.h
-	$(CXX) -c $(CXXFLAGS) ../interpre.cpp
-utility.o : ../utility.cpp ../utils.h ../comm.h
-	$(CXX) -c $(CXXFLAGS) ../utility.cpp
-spec_ass.o : ../spec_ass.cpp ../db.h ../interpre.h ../utils.h
-	$(CXX) -c $(CXXFLAGS) ../spec_ass.cpp
-spec_pro.o : ../spec_pro.cpp ../utils.h ../comm.h ../interpre.h \
-	../handler.h ../db.h ../spells.h ../limits.h
-	$(CXX) -c $(CXXFLAGS) ../spec_pro.cpp
-limits.o : ../limits.cpp ../limits.h ../utils.h ../spells.h ../comm.h ../db.h ../handler.h          ../profs.h
-	$(CXX) -c $(CXXFLAGS) ../limits.cpp
-fight.o	: ../fight.cpp ../utils.h ../comm.h ../handler.h ../interpre.h ../db.h ../spells.h ../limits.h
-	$(CXX) -c $(CXXFLAGS) ../fight.cpp
-weather.o : ../weather.cpp ../utils.h ../comm.h ../handler.h ../interpre.h ../db.h
-	$(CXX) -c $(CXXFLAGS) ../weather.cpp
-shop.o : ../shop.cpp ../comm.h ../handler.h ../db.h ../interpre.h ../utils.h
-	$(CXX) -c $(CXXFLAGS) ../shop.cpp
-mystic.o : ../mystic.cpp ../utils.h ../comm.h ../spells.h ../handler.h ../limits.h \
-	../interpre.h ../db.h
-	$(CXX) -c $(CXXFLAGS) ../mystic.cpp
-mage.o  : ../mage.cpp ../utils.h ../comm.h ../spells.h ../handler.h ../limits.h \
-        ../interpre.h ../db.h
-	${CXX} -c ${CXXFLAGS} ../mage.cpp
-spell_pa.o : ../spell_pa.cpp ../utils.h ../comm.h ../db.h ../interpre.h \
-	../spells.h ../handler.h
-	$(CXX) -c $(CXXFLAGS) ../spell_pa.cpp
-mobact.o : ../mobact.cpp ../utils.h ../db.h ../comm.h ../interpre.h ../handler.h
-	$(CXX) -c $(CXXFLAGS) ../mobact.cpp
-modify.o : ../modify.cpp ../utils.h ../interpre.h ../handler.h ../db.h ../comm.h
-	$(CXX) -c $(CXXFLAGS) ../modify.cpp
-consts.o : ../consts.cpp ../limits.h
-	$(CXX) -c $(CXXFLAGS) ../consts.cpp
-output_seam.o : ../output_seam.cpp ../output_seam.h ../comm.h
-	$(CXX) -c $(CXXFLAGS) ../output_seam.cpp
-combat_hooks.o : ../combat_hooks.cpp ../combat_hooks.h
-	$(CXX) -c $(CXXFLAGS) ../combat_hooks.cpp
-script_hooks.o : ../script_hooks.cpp ../script_hooks.h
-	$(CXX) -c $(CXXFLAGS) ../script_hooks.cpp
-editor_hooks.o : ../editor_hooks.cpp ../editor_hooks.h
-	$(CXX) -c $(CXXFLAGS) ../editor_hooks.cpp
-objsave.o : ../objsave.cpp ../comm.h ../handler.h ../db.h ../interpre.h \
-	../utils.h ../spells.h
-	$(CXX) -c $(CXXFLAGS) ../objsave.cpp
-obj_files.o: ../obj_files.cpp ../handler.h ../db.h ../entity_hooks.h ../objects_json.h ../platform_compat.h ../text_view.h ../utils.h ../account_management.h
-	$(CXX) -c $(CXXFLAGS) ../obj_files.cpp
-boards.o : ../boards.cpp ../utils.h ../comm.h ../db.h ../boards.h ../interpre.h \
-	../handler.h ../json_utils.h
-	$(CXX) -c $(CXXFLAGS) ../boards.cpp
-boards_json.o: ../boards_json.cpp ../boards.h ../json_utils.h ../platform_compat.h ../text_view.h
-	$(CXX) -c $(CXXFLAGS) ../boards_json.cpp
-signals.o : ../signals.cpp ../utils.h
-	$(CXX) -c $(CXXFLAGS) ../signals.cpp
-graph.o : ../graph.cpp ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h \
-	../spells.h
-	$(CXX) -c $(CXXFLAGS) ../graph.cpp
-config.o : ../config.cpp
-	$(CXX) -c $(CXXFLAGS) ../config.cpp
-ranger.o : ../ranger.cpp ../utils.h ../comm.h ../interpre.h ../handler.h ../db.h\
-	 ../spells.h ../script.h
-	 $(CXX) -c $(CXXFLAGS) ../ranger.cpp
-script.o : ../script.cpp ../utils.h ../comm.h ../interpre.h ../protos.h ../script.h
-	$(CXX) -c $(CXXFLAGS) ../script.cpp
-shapemob.o : ../shapemob.cpp ../utils.h ../comm.h ../interpre.h ../protos.h
-	$(CXX) -c $(CXXFLAGS) ../shapemob.cpp
-shapeobj.o : ../shapeobj.cpp ../utils.h ../comm.h ../interpre.h ../protos.h
-	$(CXX) -c $(CXXFLAGS) ../shapeobj.cpp
-shaperom.o : ../shaperom.cpp ../utils.h ../comm.h ../interpre.h ../protos.h
-	$(CXX) -c $(CXXFLAGS) ../shaperom.cpp
-shapezon.o : ../shapezon.cpp ../utils.h ../comm.h ../interpre.h ../protos.h
-	$(CXX) -c $(CXXFLAGS) ../shapezon.cpp
-shapemdl.o : ../shapemdl.cpp ../utils.h ../comm.h ../interpre.h ../protos.h
-	$(CXX) -c $(CXXFLAGS) ../shapemdl.cpp
-shapescript.o : ../shapescript.cpp ../utils.h ../comm.h ../interpre.h ../protos.h
-	$(CXX) -c $(CXXFLAGS) ../shapescript.cpp
-mudlle.o   : ../mudlle.cpp ../utils.h ../comm.h ../interpre.h ../protos.h ../mudlle.h
-	$(CXX) -c $(CXXFLAGS) ../mudlle.cpp
-mudlle2.o   : ../mudlle2.cpp ../utils.h ../comm.h ../interpre.h ../protos.h ../mudlle.h
-	$(CXX) -c $(CXXFLAGS) ../mudlle2.cpp
-profs.o   : ../profs.cpp ../utils.h ../comm.h ../interpre.h ../limits.h ../profs.h ../comm.h
-	$(CXX) -c $(CXXFLAGS) ../profs.cpp
-clerics.o : ../clerics.cpp ../utils.h ../comm.h ../handler.h ../interpre.h ../db.h ../spells.h ../limits.h
-	$(CXX) -c $(CXXFLAGS) ../clerics.cpp
-mail.o    : ../mail.cpp ../utils.h ../comm.h ../interpre.h ../db.h ../handler.h ../mail.h ../json_utils.h
-	$(CXX) -c $(CXXFLAGS) ../mail.cpp
-mail_json.o: ../mail_json.cpp ../mail.h ../json_utils.h ../platform_compat.h ../text_view.h
-	$(CXX) -c $(CXXFLAGS) ../mail_json.cpp
-zone.o: ../zone.cpp ../zone.h ../utils.h
-	$(CXX) -c $(CXXFLAGS) ../zone.cpp
-zone_load.o: ../zone_load.cpp ../zone.h ../db.h ../utils.h
-	$(CXX) -c $(CXXFLAGS) ../zone_load.cpp
-color.o: ../color.cpp ../color.h
-	$(CXX) -c $(CXXFLAGS) ../color.cpp
-color_convert.o: ../color_convert.cpp ../color.h
-	$(CXX) -c $(CXXFLAGS) ../color_convert.cpp
-obj2html.o: ../obj2html.cpp
-	$(CXX) -c $(CXXFLAGS) ../obj2html.cpp
-mob_csv_extract.o: ../mob_csv_extract.cpp ../mob_csv_extract.h
-	$(CXX) -c $(CXXFLAGS) ../mob_csv_extract.cpp
-convert_plrobjs.o: ../convert_plrobjs.cpp ../convert_plrobjs.h ../objects_json.h
-	$(CXX) -c $(CXXFLAGS) ../convert_plrobjs.cpp
-convert_exploits.o: ../convert_exploits.cpp ../convert_exploits.h ../exploits_json.h
-	$(CXX) -c $(CXXFLAGS) ../convert_exploits.cpp
-pkill.o: ../pkill.cpp ../pkill.h ../json_utils.h
-	$(CXX) -c $(CXXFLAGS) ../pkill.cpp
-pkill_json.o: ../pkill_json.cpp ../pkill.h ../json_utils.h ../platform_compat.h ../text_view.h
-	$(CXX) -c $(CXXFLAGS) ../pkill_json.cpp
-protocol.o: ../protocol.cpp ../protocol.h
-	$(CXX) -c $(CXXFLAGS) ../protocol.cpp
-rots_rng.o : ../rots_rng.cpp ../rots_rng.h
-	$(CXX) -c $(CXXFLAGS) ../rots_rng.cpp
-rots_crypt.o : ../rots_crypt.cpp ../rots_crypt.h
-	$(CXX) -c $(CXXFLAGS) ../rots_crypt.cpp
-rots_net.o : ../rots_net.cpp ../rots_net.h ../platdef.h
-	$(CXX) -c $(CXXFLAGS) ../rots_net.cpp
-safe_template.o : ../safe_template.cpp ../safe_template.h
-	$(CXX) -c $(CXXFLAGS) ../safe_template.cpp
+# The ~89 explicit per-object product rules that used to live here
+# ("account_management.o : ../account_management.cpp ...") were removed
+# (physical-layout wave T1): each hand-written prerequisite list was a
+# verified SUBSET of what -MMD -MP already emits into the matching .d
+# file (see the CXXFLAGS comment above), and every one of those recipes
+# ran the plain compile ($(CXX) -c $(CXXFLAGS) ../foo.cpp) the generic
+# pattern rule below now performs for every product object that has no
+# explicit rule of its own. Product objects therefore now build via the
+# SAME pattern rule as test objects, on TEST_CXXFLAGS rather than plain
+# CXXFLAGS -- see that rule's own comment for why this is a proven
+# no-op while every product .cpp is still flat in src/. This is the
+# hardest parity surface T0's census flagged; see pl-census.md Step 5c
+# for the full redundancy verification (an explicit $(COMMFLAGS) in
+# comm.o's old recipe was undefined/empty -- a no-op -- and mage.o's
+# ${...} brace spelling was identical to $(...)).
 
 
 # rots_convert_equivalence_tests.cpp's ConvertEquivalence/PerRace.* suite shells out to the
@@ -388,7 +176,20 @@ tests: $(EXECUTABLE)
 $(EXECUTABLE): $(OBJFILES) $(OBJS)
 	$(CXX) $(CXXFLAGS) $(OBJFILES) $(OBJS) -o $(EXECUTABLE) $(LDFLAGS)
 
-.cpp.o:
+# Generic pattern rule (physical-layout wave T1; replaces the old-style
+# ".cpp.o:" suffix rule): builds every product AND test object alike.
+# TEST_CXXFLAGS carries "-idirafter ..", which is the reach a MOVED
+# product TU (found by the vpath entries above, now living in
+# "../<lib>/") needs to resolve flat shared headers in src/, and is a
+# proven no-op for a still-flat product TU (found directly in ".." =
+# src/): that TU's own file-dir ".." entry resolves "../utils.h" etc.
+# FIRST (implicit quote-dir search always precedes -idirafter), so the
+# END-of-list -idirafter .. is never consulted. Intra-library private
+# headers resolve the same way, via the found source's own dir (e.g.
+# "../entity/char_utils.cpp" -> quote-dir "../entity/"). No per-lib -I
+# needed; no test-file include edit; zero effect while every product
+# .cpp is still flat (this task moves zero files).
+%.o : %.cpp
 	$(CXX) $(TEST_CXXFLAGS) -c $< -o $@
 
 clean:

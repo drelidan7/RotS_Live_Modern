@@ -63,8 +63,11 @@
       "name": "windows-msvc",
       "displayName": "Windows MSVC (64-bit; required in CI)",
       "inherits": "base",
-      "generator": "Visual Studio 17 2022",
-      "architecture": { "value": "x64", "strategy": "set" },
+      "generator": "Ninja",
+      "architecture": { "value": "x64", "strategy": "external" },
+      "environment": {
+        "INCLUDE": "$penv{INCLUDE};${sourceDir}"
+      },
       "cacheVariables": {
         "ROTS_LEGACY_32BIT": "OFF",
         "ROTS_BUILD_TESTS": "ON"

@@ -827,6 +827,7 @@ set(ROTS_OLC_SOURCES
     shaperom.cpp shapescript.cpp shapezon.cpp
 )
 
+
 add_executable(ageland ${ROTS_SERVER_SOURCES})
 
 # Pathed data-model headers (spec §9a). ONLY these two leaf dirs go on the
@@ -969,6 +970,45 @@ target_compile_definitions(rots_build_flags INTERFACE
 target_link_options(rots_build_flags INTERFACE
     $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
 )
+# T1 physical-layout build-system enablement (inert while every file is
+# still flat in src/): every future-moving product TU -- all nine
+# ROTS_*_SOURCES lists, ROTS_SERVER_SOURCES, and rots_convert's sole direct
+# source convert_main.cpp -- gets src/ appended to its GNU-family search list
+# via -idirafter, mirroring the ageland_tests treatment of ROTS_TEST_SOURCES
+# further below (see that block's comment for the full <limits.h>/
+# #include_next rationale). Source-file properties are directory-scoped, so
+# this ONE block covers every target that compiles these sources: the nine
+# rots_* libraries, ageland, rots_convert, AND ageland_tests (which compiles
+# the product sources directly rather than linking the RotS::* libraries --
+# see its own add_executable() above -- so it needs this reach for the
+# product sources too, not just its own ROTS_TEST_SOURCES). NOT
+# target_include_directories(
+# ... PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}): that adds src/ to the
+# angle-bracket path too and shadows <limits.h> (see the ageland_tests
+# comment further below). Zero effect while every source still resides
+# directly in src/: a still-flat TU's own "directory of the including file" entry
+# (always first, before any -idirafter path) finds every flat header, so
+# -idirafter is never consulted -- this becomes load-bearing only once a
+# T2/T3 batch relocates a source into src/<lib>/ or src/app/. MSVC has no
+# -idirafter analogue; see the windows-msvc preset's INCLUDE environment
+# append in CMakePresets.json instead (pl-census.md Step 8 controller
+# ruling).
+set_source_files_properties(
+    ${ROTS_PLATFORM_SOURCES}
+    ${ROTS_CORE_SOURCES}
+    ${ROTS_ENTITY_SOURCES}
+    ${ROTS_PERSIST_SOURCES}
+    ${ROTS_WORLD_SOURCES}
+    ${ROTS_COMBAT_SOURCES}
+    ${ROTS_PATHFIND_SOURCES}
+    ${ROTS_SCRIPT_SOURCES}
+    ${ROTS_OLC_SOURCES}
+    ${ROTS_SERVER_SOURCES}
+    convert_main.cpp
+    PROPERTIES
+    COMPILE_OPTIONS "$<${ROTS_GNULIKE}:-idirafter;${CMAKE_CURRENT_SOURCE_DIR}>"
+)
+
 # --- L0: foundation library --------------------------------------------------
 add_library(rots_platform STATIC ${ROTS_PLATFORM_SOURCES})
 add_library(RotS::platform ALIAS rots_platform)

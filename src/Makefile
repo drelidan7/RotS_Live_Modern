@@ -45,11 +45,33 @@ REQ_LDFLAGS  = -m32 -rdynamic
 # deleting/renaming one never breaks the build.
 DEPFLAGS = -MMD -MP
 
-ALL_CPPFLAGS = $(DEPFLAGS) -Icore/include -Ipersist/include -Iplatform/include $(CPPFLAGS)
+# -idirafter .: appends src/ itself at the END of the GNU-family search
+# list (after the three leaf dirs above and any system dirs), so a TU
+# relocated into one of the vpath dirs below can still resolve its bare
+# quote-includes of flat shared headers ("utils.h", "comm.h", the hook/
+# seam headers). NOT -I. -- that would put src/ on the angle-bracket path
+# too and let src/limits.h shadow the system <limits.h> (see the identical
+# -idirafter treatment / rationale in src/tests/Makefile and
+# src/CMakeLists.txt's ageland_tests block). Zero effect while every
+# source still lives directly in src/: the compiler's own "directory of
+# the including file" entry (always first) resolves every flat header
+# before -idirafter . is ever consulted; this becomes load-bearing only
+# once a physical-layout-wave batch relocates a source into one of the
+# vpath dirs below (T1: build-system enablement only, zero files moved).
+ALL_CPPFLAGS = $(DEPFLAGS) -Icore/include -Ipersist/include -Iplatform/include -idirafter . $(CPPFLAGS)
 ALL_CXXFLAGS = $(REQ_CXXFLAGS) $(CXXFLAGS)
 ALL_LDFLAGS  = $(REQ_LDFLAGS) $(LDFLAGS)
 
 # --- Sources -----------------------------------------------------------------
+# vpath: lets the pattern rule below find a .cpp that has moved out of
+# src/ into one of the nine library dirs or app/ (physical-layout wave).
+# A file still directly in src/ (the current, still-flat state) is found
+# there first -- make always checks the current directory ahead of vpath
+# -- so this is INERT until a T2/T3 batch actually relocates a source.
+# OBJNAMES below stay bare basenames regardless of which dir vpath finds
+# the source in; see the pattern rule's own comment further below.
+vpath %.cpp platform core entity persist world combat pathfind script olc app
+
 # combat_manager.cpp was proven-dead code and was DELETED in Phase 4 Wave 1 (the
 # live melee path is fight.cpp::hit() — see AGENTS.md's dead-code section).
 # NOTE: char_utils_combat.cpp IS built — it defines live functions used by
@@ -108,9 +130,14 @@ clean:
 # account/savebench/finalize objects get correct dependency tracking for free
 # from the existing pattern rule + auto-generated .d files.
 
+# */*.cpp / */*.h: reach sources relocated into a library dir or app/
+# (physical-layout wave) alongside the still-flat top-level *.cpp/*.h; a
+# glob with no match (e.g. today, pre-move) expands to itself and
+# clang-format skips it with a harmless "no such file" — same behavior the
+# plain *.cpp glob already has on an empty tree.
 format:
-	clang-format -i -style=WebKit *.cpp
-	clang-format -i -style=WebKit *.h
+	clang-format -i -style=WebKit *.cpp */*.cpp
+	clang-format -i -style=WebKit *.h */*.h
 
 setup:
 	@mkdir -p ../bin ../log ../lib/misc \

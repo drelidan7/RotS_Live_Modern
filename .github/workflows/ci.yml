@@ -206,6 +206,17 @@ jobs:
         with:
           path: build/windows-msvc/_deps
           key: windows-msvc-gtest-${{ hashFiles('src/CMakeLists.txt') }}
+      # windows-msvc preset conversion (physical-layout wave T1, owner decision
+      # 2026-07-23): the configure preset now uses the Ninja generator (a
+      # true -idirafter analogue for MSVC needs an environment-ordered INCLUDE
+      # append, not a compile flag — see the preset's own INCLUDE comment) in
+      # place of the Visual Studio generator, so cl.exe/link.exe and the
+      # vcvars-populated INCLUDE/LIB/PATH must be on the job's environment
+      # BEFORE CMake configures. This step must run before Configure.
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - name: Configure
         run: cd src; cmake --preset windows-msvc
       - name: Build

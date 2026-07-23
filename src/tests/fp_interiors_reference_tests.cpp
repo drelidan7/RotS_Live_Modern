@@ -1333,6 +1333,308 @@ TEST(GetRealDodgeFamily, ExactValueV1) {
 }
 
 // ===========================================================================
+// Family 2 -- NPC-branch reference/transcription pairs for get_real_OB (B8),
+// get_real_parry (B9), and get_real_dodge (B10). T1 only transcribed the
+// player (!IS_NPC) branch of each function; the census (fpi-census.md Step 3,
+// B8-B10 rows) requires converting the NPC early returns too ("the same
+// rating boundary"), so T2b adds their reference/transcription pairs here,
+// same byte-verbatim/parameterized-input shape as every pair above.
+// ===========================================================================
+
+// visibility.cpp (get_real_OB NPC branch) -- byte-verbatim.
+int get_real_ob_npc_int_reference(int ob, int bal_str, int skill_penalty, int level,
+                                  bool is_confused, int confuse_modifier) {
+    int base_npc_ob = (ob + bal_str + 15 - skill_penalty + level / 2);
+    if (is_confused) {
+        base_npc_ob -= (confuse_modifier * 2 / 3);
+    }
+    return base_npc_ob;
+}
+
+double get_real_ob_npc_double_transcription(int ob, int bal_str, int skill_penalty, int level,
+                                            bool is_confused, int confuse_modifier) {
+    double base_npc_ob = ob + bal_str + 15.0 - skill_penalty + level / 2.0;
+    if (is_confused) {
+        base_npc_ob -= (confuse_modifier * 2.0) / 3.0;
+    }
+    return base_npc_ob;
+}
+
+TEST(GetRealObNpcFamily, PairedBoundNonConfused) {
+    // 1 eliminated division (LEVEL/2) + 1 = 2.
+    const int ref = get_real_ob_npc_int_reference(50, 20, 0, 31, false, 0);
+    const double dbl = get_real_ob_npc_double_transcription(50, 20, 0, 31, false, 0);
+    EXPECT_LE(std::abs(rots::fp::to_game_int(dbl) - ref), 2);
+}
+
+TEST(GetRealObNpcFamily, PairedBoundConfused) {
+    // Adds the confuse malus's /3: 2 divisions + 1 = 3.
+    const int ref = get_real_ob_npc_int_reference(50, 20, 0, 30, true, 10);
+    const double dbl = get_real_ob_npc_double_transcription(50, 20, 0, 30, true, 10);
+    EXPECT_LE(std::abs(rots::fp::to_game_int(dbl) - ref), 3);
+}
+
+TEST(GetRealObNpcFamily, ExactValueNonConfused) {
+    // Hand-derived: 50+20+15-0+31/2 = 85+15(int trunc) = 100. Double:
+    // 85.0+15.5 = 100.5 -> rounds to 101.
+    EXPECT_EQ(get_real_ob_npc_int_reference(50, 20, 0, 31, false, 0), 100);
+    EXPECT_EQ(rots::fp::to_game_int(get_real_ob_npc_double_transcription(50, 20, 0, 31, false, 0)),
+             101);
+}
+
+// visibility.cpp (get_real_parry NPC branch) -- byte-verbatim.
+int get_real_parry_npc_int_reference(int parry, int level, bool is_confused, int confuse_modifier) {
+    if (is_confused)
+        return (parry + level / 2 + 15) - (confuse_modifier * 2 / 3);
+    else
+        return (parry + level / 2 + 15);
+}
+
+double get_real_parry_npc_double_transcription(int parry, int level, bool is_confused,
+                                               int confuse_modifier) {
+    if (is_confused)
+        return (parry + level / 2.0 + 15.0) - (confuse_modifier * 2.0) / 3.0;
+    else
+        return (parry + level / 2.0 + 15.0);
+}
+
+TEST(GetRealParryNpcFamily, PairedBoundNonConfused) {
+    const int ref = get_real_parry_npc_int_reference(20, 31, false, 0);
+    const double dbl = get_real_parry_npc_double_transcription(20, 31, false, 0);
+    EXPECT_LE(std::abs(rots::fp::to_game_int(dbl) - ref), 2);
+}
+
+TEST(GetRealParryNpcFamily, PairedBoundConfused) {
+    const int ref = get_real_parry_npc_int_reference(20, 30, true, 10);
+    const double dbl = get_real_parry_npc_double_transcription(20, 30, true, 10);
+    EXPECT_LE(std::abs(rots::fp::to_game_int(dbl) - ref), 3);
+}
+
+TEST(GetRealParryNpcFamily, ExactValueNonConfused) {
+    // Hand-derived: 20+31/2(15,int)+15 = 50. Double: 20+15.5+15=50.5 -> 51.
+    EXPECT_EQ(get_real_parry_npc_int_reference(20, 31, false, 0), 50);
+    EXPECT_EQ(rots::fp::to_game_int(get_real_parry_npc_double_transcription(20, 31, false, 0)), 51);
+}
+
+// char_utils_combat.cpp (get_real_dodge NPC branch) -- byte-verbatim.
+int get_real_dodge_npc_int_reference(int dodge, int dex, int level, bool is_confused,
+                                     int confuse_modifier) {
+    if (is_confused)
+        return (dodge + dex - 5 + level / 2) - (confuse_modifier * 2 / 3);
+    else
+        return (dodge + dex - 5 + level / 2);
+}
+
+double get_real_dodge_npc_double_transcription(int dodge, int dex, int level, bool is_confused,
+                                               int confuse_modifier) {
+    if (is_confused)
+        return (dodge + dex - 5.0 + level / 2.0) - (confuse_modifier * 2.0) / 3.0;
+    else
+        return (dodge + dex - 5.0 + level / 2.0);
+}
+
+TEST(GetRealDodgeNpcFamily, PairedBoundNonConfused) {
+    const int ref = get_real_dodge_npc_int_reference(10, 20, 31, false, 0);
+    const double dbl = get_real_dodge_npc_double_transcription(10, 20, 31, false, 0);
+    EXPECT_LE(std::abs(rots::fp::to_game_int(dbl) - ref), 2);
+}
+
+TEST(GetRealDodgeNpcFamily, PairedBoundConfused) {
+    const int ref = get_real_dodge_npc_int_reference(10, 20, 30, true, 10);
+    const double dbl = get_real_dodge_npc_double_transcription(10, 20, 30, true, 10);
+    EXPECT_LE(std::abs(rots::fp::to_game_int(dbl) - ref), 3);
+}
+
+TEST(GetRealDodgeNpcFamily, ExactValueNonConfused) {
+    // Hand-derived: 10+20-5+31/2(15,int) = 40. Double: 10+20-5+15.5=40.5 -> 41.
+    EXPECT_EQ(get_real_dodge_npc_int_reference(10, 20, 31, false, 0), 40);
+    EXPECT_EQ(rots::fp::to_game_int(get_real_dodge_npc_double_transcription(10, 20, 31, false, 0)),
+             41);
+}
+
+// ===========================================================================
+// T2b -- live get_real_OB()/get_real_parry()/get_real_dodge() repointing.
+// visibility.cpp's get_real_OB()/get_real_parry() and char_utils_combat.cpp's
+// get_real_dodge() now compute in double, single-rounding through
+// rots::fp::to_game_int at every return (the player branch AND the NPC early
+// returns -- B8-B10). These tests drive the REAL, converted production
+// functions on a constructed char_data and assert equality with the
+// (unchanged, test-local) reference/transcription functions above -- same
+// shape as RecalcAbilitiesLive (T2a). Each function gets one NPC-branch test
+// and one player-branch test; every player-branch vector is chosen to route
+// through that function's EARLIEST return (get_real_OB/get_real_parry's
+// "no weapon and zero natural-attack knowledge" branch; get_real_dodge's
+// plain TACTICS_NORMAL path, which is its only reachable shape -- the
+// function has no early return) so neither CAN_SEE() (unreached before
+// get_real_OB/get_real_parry's early return; get_real_dodge never calls it
+// at all) nor a registered weapon needs to be constructed. The player-branch
+// assertions reuse T1's existing get_real_*_player_int_reference/
+// double_transcription functions directly (rather than adding new ones):
+// each already models its function's own early-return branch when passed
+// has_weapon=false/raw_knowledge_natural_attack==0, so the "early return"
+// vectors below are just those same functions evaluated at the fixture's
+// field values, with every parameter downstream of the early return passed
+// as an unused placeholder (0/false) since it can never be read.
+// ===========================================================================
+
+struct GetRealRatingTestContext {
+    // The character under test. Left otherwise blank; every formula input
+    // this section exercises is set explicitly per test on top of this
+    // baseline.
+    char_data character{};
+    // Backing storage for character.profs (GET_PROF_LEVEL reads
+    // profs->prof_level[...] for player characters).
+    char_prof_data profs{};
+
+    GetRealRatingTestContext() {
+        character.profs = &profs;
+        // character.knowledge is an owning std::vector<byte>; size it to
+        // MAX_SKILLS the way clear_char() would for a PC (matches
+        // RecalcAbilitiesTestContext's fixture, entity_lifecycle.cpp T2a) so
+        // GET_SKILL/GET_RAW_KNOWLEDGE reads are in-bounds and default to 0.
+        character.knowledge.assign(MAX_SKILLS, 0);
+        character.player.name = const_cast<char*>("player-name");
+        character.player.short_descr = const_cast<char*>("mob-name");
+        // BAL_STR must be nonzero: utils::get_skill_penalty()/
+        // get_dodge_penalty() both divide by get_bal_strength(), which
+        // returns tmpabilities.str verbatim while it is within the
+        // RACE_GOD/race-index-0 cap of 22 (player.race defaults to 0) -- a
+        // zero strength would divide by zero inside those real production
+        // sub-calls. With this set, and every specials/points encumbrance
+        // field left at its zero default, both penalty functions evaluate
+        // to exactly 0, matching every test below's assumption. Also feeds
+        // GET_BAL_STR(ch) directly for the formula's own offense-stat term.
+        character.tmpabilities.str = 20;
+    }
+};
+
+TEST(GetRealObLive, NpcBranchMatchesDoubleTranscription) {
+    GetRealRatingTestContext ctx;
+    ctx.character.specials2.act = MOB_ISNPC;
+    ctx.character.points.OB = 50;
+    ctx.character.player.level = 31;
+
+    const int old_ref = get_real_ob_npc_int_reference(50, 20, 0, 31, false, 0);
+    ASSERT_EQ(old_ref, 100);
+    const int live = get_real_OB(&ctx.character);
+    // RED evidence: pre-conversion, get_real_OB's NPC branch returned the
+    // OLD per-step-truncating 100; the converted double chain rounds the
+    // full-precision 100.5 up to 101.
+    EXPECT_NE(live, old_ref);
+    const double dbl = get_real_ob_npc_double_transcription(50, 20, 0, 31, false, 0);
+    EXPECT_EQ(live, rots::fp::to_game_int(dbl));
+    EXPECT_EQ(live, 101);
+}
+
+TEST(GetRealObLive, PlayerEarliestReturnMatchesDoubleTranscription) {
+    GetRealRatingTestContext ctx;
+    ctx.character.player.level = 29; // GET_LEVELA = min(29, LEVEL_MAX=30) = 29.
+    ctx.profs.prof_level[PROF_WARRIOR] = 30;
+    ctx.character.points.OB = 50;
+    // No weapon equipped; knowledge[SKILL_NATURAL_ATTACK] stays the
+    // fixture's zero default -- get_real_OB's earliest return
+    // ("!weapon && raw_knowledge_natural_attack == 0").
+
+    const int old_ref = get_real_ob_player_int_reference(
+        false, false, 0, false, 30, 0, 30, 20, 0, 29, 50, 0, 0, 0, 0, 0, false, false, 0, 0, 0,
+        TACTICS_NORMAL, 0, false, 0, 0, false, false, false, false, true);
+    ASSERT_EQ(old_ref, 158);
+    const int live = get_real_OB(&ctx.character);
+    // RED evidence: pre-conversion this returned 158; ob_bonus's own
+    // fractional remainder (177/2 = 88.5 in double vs. 88 int-truncated)
+    // rounds the converted chain up to 159.
+    EXPECT_NE(live, old_ref);
+    const double dbl = get_real_ob_player_double_transcription(
+        false, false, 0, false, 30, 0, 30, 20, 0, 29, 50, 0, 0, 0, 0, 0, false, false, 0, 0, 0,
+        TACTICS_NORMAL, 0, false, 0, 0, false, false, false, false, true);
+    EXPECT_EQ(live, rots::fp::to_game_int(dbl));
+    EXPECT_EQ(live, 159);
+}
+
+TEST(GetRealParryLive, NpcBranchMatchesDoubleTranscription) {
+    GetRealRatingTestContext ctx;
+    ctx.character.specials2.act = MOB_ISNPC;
+    ctx.character.points.parry = 20;
+    ctx.character.player.level = 31;
+
+    const int old_ref = get_real_parry_npc_int_reference(20, 31, false, 0);
+    ASSERT_EQ(old_ref, 50);
+    const int live = get_real_parry(&ctx.character);
+    EXPECT_NE(live, old_ref);
+    const double dbl = get_real_parry_npc_double_transcription(20, 31, false, 0);
+    EXPECT_EQ(live, rots::fp::to_game_int(dbl));
+    EXPECT_EQ(live, 51);
+}
+
+TEST(GetRealParryLive, PlayerEarliestReturnMatchesDoubleTranscription) {
+    GetRealRatingTestContext ctx;
+    ctx.character.player.level = 29; // min(30, level) = 29.
+    ctx.profs.prof_level[PROF_WARRIOR] = 30;
+    ctx.character.points.parry = 20;
+    // No weapon equipped; knowledge[SKILL_NATURAL_ATTACK] stays 0 --
+    // get_real_parry's earliest return ("!weapon &&
+    // raw_knowledge_natural_attack == 0").
+
+    const int old_ref = get_real_parry_player_int_reference(
+        20, 30, 29, 20, 0, false, 0, 0, 0, 0, false, false, 0, 0, 0, TACTICS_NORMAL, false, 0, 0,
+        false, false, false, false, true);
+    ASSERT_EQ(old_ref, 74);
+    const int live = get_real_parry(&ctx.character);
+    // RED evidence: pre-conversion this returned 74 (bonus/2 = 109/2 = 54
+    // int-truncated); the converted chain carries the .5 and rounds to 75.
+    EXPECT_NE(live, old_ref);
+    const double dbl = get_real_parry_player_double_transcription(
+        20, 30, 29, 20, 0, false, 0, 0, 0, 0, false, false, 0, 0, 0, TACTICS_NORMAL, false, 0, 0,
+        false, false, false, false, true);
+    EXPECT_EQ(live, rots::fp::to_game_int(dbl));
+    EXPECT_EQ(live, 75);
+}
+
+TEST(GetRealDodgeLive, NpcBranchMatchesDoubleTranscription) {
+    GetRealRatingTestContext ctx;
+    ctx.character.specials2.act = MOB_ISNPC;
+    ctx.character.points.dodge = 10;
+    ctx.character.tmpabilities.dex = 20;
+    ctx.character.player.level = 31;
+
+    const int old_ref = get_real_dodge_npc_int_reference(10, 20, 31, false, 0);
+    ASSERT_EQ(old_ref, 40);
+    const int live = get_real_dodge(&ctx.character);
+    EXPECT_NE(live, old_ref);
+    const double dbl = get_real_dodge_npc_double_transcription(10, 20, 31, false, 0);
+    EXPECT_EQ(live, rots::fp::to_game_int(dbl));
+    EXPECT_EQ(live, 41);
+}
+
+TEST(GetRealDodgeLive, PlayerNormalTacticsMatchesDoubleTranscription) {
+    GetRealRatingTestContext ctx;
+    ctx.character.knowledge[SKILL_DODGE] = 60;
+    ctx.character.knowledge[SKILL_STEALTH] = 40;
+    ctx.profs.prof_level[PROF_RANGER] = 20;
+    ctx.character.points.dodge = 10;
+    ctx.character.tmpabilities.dex = 20;
+    ctx.character.specials.tactics = TACTICS_NORMAL;
+    // get_real_dodge has no early return -- this is the function's only
+    // reachable shape for a non-Beorning, non-Berserk, non-confused,
+    // no-arda player, so no weapon/CAN_SEE plumbing is needed at all.
+
+    const int old_ref = get_real_dodge_player_int_reference(60, 40, 20, 0, false, TACTICS_NORMAL,
+                                                             false, 0, 0, false, false, false,
+                                                             false, 10, 20);
+    ASSERT_EQ(old_ref, 50);
+    const int live = get_real_dodge(&ctx.character);
+    // RED evidence: pre-conversion this returned 50 (the two inner
+    // divisions each truncate a fraction the double chain now carries
+    // through to the single terminal round); the converted chain rounds
+    // 50.5 up to 51.
+    EXPECT_NE(live, old_ref);
+    const double dbl = get_real_dodge_player_double_transcription(
+        60, 40, 20, 0, false, TACTICS_NORMAL, false, 0, 0, false, false, false, false, 10, 20);
+    EXPECT_EQ(live, rots::fp::to_game_int(dbl));
+    EXPECT_EQ(live, 51);
+}
+
+// ===========================================================================
 // Family 3 -- hit() core damage formula (B11). fight.cpp:2680,2688,2695.
 // damage_roll is taken post-weapon_master.do_on_damage_rolled(...) (an
 // unconverted sub-call) as a plain int input, matching the census.

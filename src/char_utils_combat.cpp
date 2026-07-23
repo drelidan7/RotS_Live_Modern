@@ -1,3 +1,4 @@
+#include "fp_policy.h"
 #include "char_utils_combat.h"
 #include "char_utils.h"
 #include "environment_utils.h"
@@ -383,54 +384,62 @@ int get_real_stealth(struct char_data* ch)
 
 int get_real_dodge(struct char_data* ch)
 {
-    int sun_mod = 0;
-
     if (IS_NPC(ch)) {
+        // B10 (fp-interiors, fpi-census.md): NPC-branch dodge rating as one
+        // double chain, single rots::fp::to_game_int rounding -- the same
+        // rating boundary as the player branch below, per the census's
+        // "keep the NPC early-returns as int-boundary to_game_int returns
+        // too" instruction.
         if (IS_AFFECTED(ch, AFF_CONFUSE))
-            return (GET_DODGE(ch) + GET_DEX(ch) - 5 + GET_LEVEL(ch) / 2) - (get_confuse_modifier(ch) * 2 / 3);
+            return rots::fp::to_game_int((GET_DODGE(ch) + GET_DEX(ch) - 5.0 + GET_LEVEL(ch) / 2.0) - (get_confuse_modifier(ch) * 2.0) / 3.0);
         else
-            return (GET_DODGE(ch) + GET_DEX(ch) - 5 + GET_LEVEL(ch) / 2);
+            return rots::fp::to_game_int(GET_DODGE(ch) + GET_DEX(ch) - 5.0 + GET_LEVEL(ch) / 2.0);
     }
 
-    int dodge = ((GET_SKILL(ch, SKILL_DODGE) + GET_SKILL(ch, SKILL_STEALTH) / 2 + 60) * GET_PROF_LEVEL(PROF_RANGER, ch) / 200 + (GET_SKILL(ch, SKILL_DODGE) + GET_SKILL(ch, SKILL_STEALTH) / 4) / 20);
-    dodge -= utils::get_dodge_penalty(*ch);
-    dodge += 3;
+    // B10: dodge as one double chain, single round at every switch-arm
+    // return below -- mirrors fp_interiors_reference_tests.cpp's
+    // get_real_dodge_player_double_transcription() operation-for-operation.
+    // utils::get_dodge_penalty()/get_power_of_arda()/get_confuse_modifier()
+    // stay int sub-calls, added into the chain as int-valued terms.
+    double dodge_d = ((GET_SKILL(ch, SKILL_DODGE) + GET_SKILL(ch, SKILL_STEALTH) / 2.0 + 60.0) * GET_PROF_LEVEL(PROF_RANGER, ch)) / 200.0 + (GET_SKILL(ch, SKILL_DODGE) + GET_SKILL(ch, SKILL_STEALTH) / 4.0) / 20.0;
+    dodge_d -= utils::get_dodge_penalty(*ch);
+    dodge_d += 3.0;
 
     if (GET_RACE(ch) == RACE_BEORNING) {
-        dodge += 20;
+        dodge_d += 20.0;
     }
 
     if (GET_TACTICS(ch) == TACTICS_BERSERK)
-        dodge /= 2;
+        dodge_d /= 2.0;
 
     if (IS_AFFECTED(ch, AFF_CONFUSE))
-        dodge -= (get_confuse_modifier(ch) * 2 / 3);
+        dodge_d -= (get_confuse_modifier(ch) * 2.0) / 3.0;
 
-    sun_mod = get_power_of_arda(ch);
+    int sun_mod = get_power_of_arda(ch);
     if (sun_mod) {
         if (GET_RACE(ch) == RACE_URUK)
-            dodge = dodge * 9 / 10 - sun_mod;
+            dodge_d = (dodge_d * 9.0) / 10.0 - sun_mod;
         if (GET_RACE(ch) == RACE_ORC)
-            dodge = dodge * 8 / 9 - sun_mod;
+            dodge_d = (dodge_d * 8.0) / 9.0 - sun_mod;
         if (GET_RACE(ch) == RACE_MAGUS)
-            dodge = dodge * 9 / 10 - sun_mod;
+            dodge_d = (dodge_d * 9.0) / 10.0 - sun_mod;
         if (GET_RACE(ch) == RACE_OLOGHAI)
-            dodge = dodge * 9 / 10 - sun_mod;
+            dodge_d = (dodge_d * 9.0) / 10.0 - sun_mod;
     }
 
     switch (GET_TACTICS(ch)) {
     case TACTICS_DEFENSIVE:
-        return (dodge + GET_DODGE(ch) + 6) + GET_DEX(ch);
+        return rots::fp::to_game_int((dodge_d + GET_DODGE(ch) + 6.0) + GET_DEX(ch));
     case TACTICS_CAREFUL:
-        return (dodge + GET_DODGE(ch) + 4) + GET_DEX(ch);
+        return rots::fp::to_game_int((dodge_d + GET_DODGE(ch) + 4.0) + GET_DEX(ch));
     case TACTICS_NORMAL:
-        return (dodge + GET_DODGE(ch)) + GET_DEX(ch);
+        return rots::fp::to_game_int((dodge_d + GET_DODGE(ch)) + GET_DEX(ch));
     case TACTICS_AGGRESSIVE:
-        return (dodge + GET_DODGE(ch) - 4) + GET_DEX(ch);
+        return rots::fp::to_game_int((dodge_d + GET_DODGE(ch) - 4.0) + GET_DEX(ch));
     case TACTICS_BERSERK:
-        return (dodge + GET_DODGE(ch) - 4) + GET_DEX(ch) / 2;
+        return rots::fp::to_game_int((dodge_d + GET_DODGE(ch) - 4.0) + GET_DEX(ch) / 2.0);
     default:
-        return (dodge + GET_DODGE(ch) + GET_DEX(ch));
+        return rots::fp::to_game_int(dodge_d + GET_DODGE(ch) + GET_DEX(ch));
     };
 }
 

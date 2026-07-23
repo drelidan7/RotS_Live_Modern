@@ -93,9 +93,9 @@ endif()
 # mudlog() moved the same wave, but into the existing rots_log.cpp (see that
 # file) since they're pure forwarders onto its write_stderr()/write().
 set(ROTS_PLATFORM_SOURCES
-    rots_net.cpp rots_crypt.cpp rots_rng.cpp clock.cpp
-    crashsave_schedule.cpp json_utils.cpp player_file_finalize.cpp
-    rots_log.cpp safe_template.cpp rots_util.cpp
+    platform/rots_net.cpp platform/rots_crypt.cpp platform/rots_rng.cpp platform/clock.cpp
+    platform/crashsave_schedule.cpp platform/json_utils.cpp platform/player_file_finalize.cpp
+    platform/rots_log.cpp platform/safe_template.cpp platform/rots_util.cpp
 )
 
 # L1: core data-model library (spec §3). config.cpp is pure data (config

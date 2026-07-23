@@ -250,7 +250,7 @@ set(ROTS_PERSIST_SOURCES
 # (persist/entity/core/platform) or through a hook whose real body stays
 # app/combat-side.
 set(ROTS_WORLD_SOURCES
-    db_world.cpp zone.cpp zone_load.cpp weather.cpp
+    world/db_world.cpp world/zone.cpp world/zone_load.cpp world/weather.cpp
 )
 
 # L3 peer: combat layer (spec §3/§10 step 4; combat-seed wave Task 1 payoff).

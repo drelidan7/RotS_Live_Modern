@@ -495,7 +495,7 @@ set(ROTS_COMBAT_SOURCES
 # hunt_victim()/hit() driver is ever separated from the BFS proper --
 # recorded as a follow-on option, not scoped here.
 set(ROTS_PATHFIND_SOURCES
-    graph.cpp
+    pathfind/graph.cpp
 )
 
 # L4 band, upper tier: script layer (spec §3/§10 step 4; the l4-seed

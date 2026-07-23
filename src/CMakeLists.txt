@@ -161,9 +161,9 @@ set(ROTS_CORE_SOURCES
 # compile -- see the rots_convert target's own comment below for why that
 # executable's source list shrinks to convert_main.cpp alone this task.
 set(ROTS_ENTITY_SOURCES
-    entity_lifecycle.cpp object_utils.cpp environment_utils.cpp
-    char_utils.cpp char_utils_combat.cpp
-    placement.cpp containment.cpp equipment.cpp
+    entity/entity_lifecycle.cpp entity/object_utils.cpp entity/environment_utils.cpp
+    entity/char_utils.cpp entity/char_utils_combat.cpp
+    entity/placement.cpp entity/containment.cpp entity/equipment.cpp
 )
 
 # L3: persist layer (spec §3/§10 step 4; persist-split PS Task 4 payoff).

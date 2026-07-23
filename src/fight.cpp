@@ -2518,24 +2518,27 @@ int get_evasion_malus(const char_data& attacker, const char_data& victim)
 
 int natural_attack_dam(struct char_data* attacker)
 {
-    int dam, level_factor, str_factor, warrior_factor;
-
     if (utils::get_skill(*attacker, SKILL_NATURAL_ATTACK) == 0)
-        return dam = BAREHANDED_DAMAGE * 10;
+        return BAREHANDED_DAMAGE * 10;
 
-    level_factor = GET_LEVEL(attacker);
-    level_factor = level_factor / 3;
-    warrior_factor = utils::get_prof_level(PROF_WARRIOR, *attacker);
-    str_factor = GET_STR(attacker);
-    dam = level_factor + str_factor + warrior_factor;
+    // B12 (fp-interiors, fpi-census.md): natural-attack damage as one double
+    // chain (level/3 + str + warrior_factor, then the wild/other-spec
+    // multiplier), single rots::fp::to_game_int rounding at return --
+    // retires the two (int)((double)dam * ...) casts the old code took.
+    // Mirrors fp_interiors_reference_tests.cpp's
+    // natural_attack_dam_double_transcription() operation-for-operation.
+    double level_factor = GET_LEVEL(attacker) / 3.0;
+    double warrior_factor = utils::get_prof_level(PROF_WARRIOR, *attacker);
+    double str_factor = GET_STR(attacker);
+    double dam = level_factor + str_factor + warrior_factor;
     if (utils::get_specialization(*attacker) != game_types::PS_LightFighting && GET_LEVEL(attacker) > 11) {
         if (utils::get_specialization(*attacker) == game_types::PS_WildFighting)
-            dam = (int)((double)dam * 0.75);
+            dam *= 0.75;
         else
-            dam = (int)((double)dam * 0.50);
+            dam *= 0.50;
     }
 
-    return dam;
+    return rots::fp::to_game_int(dam);
 }
 
 //============================================================================
@@ -2676,8 +2679,21 @@ void hit(char_data* ch, char_data* victim, int)
 
                 if (location)
                     location--;
+
+                // B11 (fp-interiors, fpi-census.md): core damage formula as
+                // one double chain -- the mob dam/=2 halving and the
+                // GET_DAMAGE add fold into the SAME chain as the final
+                // OB/damage_roll multiply, single rots::fp::to_game_int
+                // rounding at the dam= landing site below. Mirrors
+                // fp_interiors_reference_tests.cpp's
+                // hit_dam_double_transcription() operation-for-operation.
+                // The damage_roll RNG draw (number(0, 100)) and
+                // weapon_master.do_on_damage_rolled(...) stay EXACTLY as
+                // before -- an int draw taken first, converted to double
+                // only after, per the wave's RNG contract.
+                double dam_d = dam;
                 if (IS_NPC(ch))
-                    dam /= 2; /* mobs have weapon damage halved */
+                    dam_d /= 2.0; /* mobs have weapon damage halved */
 
                 /*
                  * 100 str would double damage, double effect for
@@ -2685,14 +2701,14 @@ void hit(char_data* ch, char_data* victim, int)
                  * OB bonus factored in, and mult. by number between
                  * 1 and 2, with  numbers close to 1 more probable
                  */
-                dam += GET_DAMAGE(ch) * 10;
+                dam_d += GET_DAMAGE(ch) * 10.0;
                 int damage_roll = number(0, 100);
 
                 // Weapon masters with axes have a chance to proc a second damage roll, using the better of the two.
                 damage_roll = weapon_master.do_on_damage_rolled(damage_roll, victim);
 
                 /* damage divided again by 10 */
-                dam = (dam * (OB + 100) * (10000 + (damage_roll * damage_roll) + (IS_TWOHANDED(ch) ? 2 : 1) * 133 * GET_BAL_STR(ch))) / 13300000;
+                dam = rots::fp::to_game_int(dam_d * (OB + 100) * (10000.0 + (damage_roll * damage_roll) + (IS_TWOHANDED(ch) ? 2 : 1) * 133.0 * GET_BAL_STR(ch)) / 13300000.0);
 
                 // Add in "specialization" damage before armor.
                 dam = check_find_weakness(ch, victim, dam);

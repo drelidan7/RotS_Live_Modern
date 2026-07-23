@@ -49,18 +49,32 @@
 #include "../fp_policy.h"
 #include "../spells.h"
 #include "../utils.h"
+#include "damage_test_context.h"
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
+#include "test_random_utils.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+
+// natural_attack_dam()/hit() (fight.cpp) have no declaring header anywhere
+// in the tree; forward-declared here at file (external) linkage so
+// NaturalAttackDamLive/HitDamLive below can call the real, converted
+// functions -- matching damage_tests.cpp's int damage(...) precedent.
+int natural_attack_dam(struct char_data* attacker);
+void hit(struct char_data* ch, struct char_data* victim, int type);
+
+// GET_BAL_STR (utils.h) reads this table directly; no header declares it
+// (defined in consts.cpp), matching the square_root[] precedent this file
+// already documents below.
+extern int max_race_str[];
 
 namespace {
 
@@ -1976,6 +1990,171 @@ TEST(DamCoefFamily, ExactValueV1NoOwner) {
     EXPECT_EQ(ref, 54);
     const double dbl = dam_coef_double_transcription(10, 0, 3, 1, 40, false, 0, 0, 10);
     EXPECT_EQ(rots::fp::to_game_int(dbl), 58);
+}
+
+// ===========================================================================
+// T2c -- live natural_attack_dam() repointing (B12). fight.cpp's
+// natural_attack_dam() now computes level/str/warrior_factor and the wild/
+// other-spec multiplier in double, single-rounding through
+// rots::fp::to_game_int at return. An IS_NPC attacker bypasses
+// GET_PROF_LEVEL's profs pointer entirely (GET_LEVEL is used directly, per
+// char_utils.cpp's get_prof_level()) and utils::get_specialization() always
+// resolves an IS_NPC() character to PS_None (entity_lifecycle.cpp), so only
+// the non-wild (*0.50) scaling branch is live-reachable from an NPC -- the
+// wild-fighting (*0.75) branch stays covered by NaturalAttackDamFamily's
+// PairedBoundV1Wild/ExactValueV1Wild paired tests above (T1's test-local
+// transcription; a PC specialization fixture is out of this task's scope).
+// natural_attack_dam() has no declaring header anywhere in the tree (only
+// its own TU and this test call it), matching the file-local pattern this
+// file already uses for do_squareroot().
+// ===========================================================================
+
+TEST(NaturalAttackDamLive, MatchesDoubleTranscriptionAtNonWildTruncationVector) {
+    char_data attacker{};
+    attacker.specials2.act = MOB_ISNPC;
+    attacker.player.level = 31;
+    attacker.tmpabilities.str = 20;
+
+    // Old (pre-conversion) code: level_factor=31/3=10 (int truncates from
+    // 10.333...); warrior_factor=GET_LEVEL=31 (IS_NPC bypasses profs);
+    // dam=10+20+31=61; not light-fighting (PS_None) and level>11, non-wild
+    // (PS_None != PS_WildFighting): dam=(int)(61.0*0.50)=(int)30.5=30.
+    ASSERT_EQ(natural_attack_dam_int_reference(true, 31, 31, 20, false, false), 30);
+
+    const int live = natural_attack_dam(&attacker);
+
+    // New: level_factor_d=31/3.0=10.333...; dam_d=10.333...+20+31=
+    // 61.333...; *0.50=30.6666... -> round-half-away-from-zero -> 31, a
+    // genuine +1 drift from the old truncating code (matching the double
+    // transcription exactly) -- the RED/GREEN evidence vector for B12.
+    const double dbl = natural_attack_dam_double_transcription(true, 31, 31, 20, false, false);
+    EXPECT_EQ(live, rots::fp::to_game_int(dbl));
+    EXPECT_EQ(live, 31);
+    EXPECT_NE(live, natural_attack_dam_int_reference(true, 31, 31, 20, false, false));
+}
+
+// ===========================================================================
+// T2c -- live get_weapon_damage() repointing (B13). char_utils_combat.cpp's
+// get_weapon_damage() now computes dam_coef (owner maluses through the
+// speed sub-chain and soft caps) in one double chain, single
+// rots::fp::to_game_int rounding at return. Same no-owner vector as
+// DamCoefFamily::ExactValueV1NoOwner above.
+// ===========================================================================
+
+TEST(GetWeaponDamageLive, MatchesDoubleTranscriptionAtNoOwnerVector) {
+    obj_data weapon{};
+    weapon.obj_flags.type_flag = ITEM_WEAPON;
+    weapon.obj_flags.value[0] = 10; // OB_coef
+    weapon.obj_flags.value[1] = 0;  // parry_coef
+    weapon.obj_flags.value[2] = 3;  // bulk
+    weapon.obj_flags.value[3] = 1;  // weapon type value[3] -- WT_UNUSED_2, matches no switch case
+    weapon.obj_flags.level = 40;
+    weapon.obj_flags.weight = 10;
+    // weapon.carried_by stays null -- exercises the no-owner branch.
+
+    // Old (pre-conversion) code produced 54 for this exact vector
+    // (DamCoefFamily::ExactValueV1NoOwner above).
+    ASSERT_EQ(dam_coef_int_reference(10, 0, 3, 1, 40, false, 0, 0, 10), 54);
+
+    const int live = get_weapon_damage(&weapon);
+
+    const double dbl = dam_coef_double_transcription(10, 0, 3, 1, 40, false, 0, 0, 10);
+    EXPECT_EQ(live, rots::fp::to_game_int(dbl));
+    EXPECT_EQ(live, 58);
+    EXPECT_NE(live, dam_coef_int_reference(10, 0, 3, 1, 40, false, 0, 0, 10));
+}
+
+// ===========================================================================
+// T2c -- live hit() core damage formula repointing (B11). fight.cpp's
+// hit() now folds the mob dam/=2 halving and the GET_DAMAGE add into the
+// SAME double chain as the final OB/damage_roll multiply, single
+// rots::fp::to_game_int rounding at the dam= landing site. hit() has no
+// prior live-driving test anywhere in the tree (census finding #1) and,
+// unlike get_real_OB()/get_weapon_damage(), is not independently callable
+// as a pure formula -- so this test drives it end-to-end through a real
+// combat round, using test_random_utils.h's deterministic-RNG seam
+// (push_test_random_value()) to pin every number()/number(int,int) draw
+// hit() and damage() take along the exercised path, and an IS_NPC
+// attacker/victim pair (DamageTestContext) so every downstream modifier
+// resolves to a verified no-op:
+//   - check_find_weakness(): skipped entirely for an IS_NPC attacker
+//     (its `if (!IS_NPC(ch))` guard, fight.cpp).
+//   - wild_fighting_effect()/heavy_fighting_effect()/weapon_master.
+//     get_total_damage()/weapon_master.ignores_shields(): each checks
+//     `spec != <its class>` first, and utils::get_specialization() always
+//     returns PS_None for an IS_NPC() character regardless of the profs
+//     pointer (entity_lifecycle.cpp), so all four short-circuit to a no-op
+//     with zero extra draws.
+//   - defender_effect()/frenzy_effect(): PS_None/not-frenzy, unchanged.
+//   - armor_effect(): the victim has no equipment in any slot (a
+//     zero-initialized char_data), so its `victim->equipment[location] !=
+//     NULL` guard returns the damage unchanged with zero draws.
+//   - the body-location number(1, 100) draw: skipped outright, since the
+//     victim's default bodytype (0) has bodyparts[0].bodyparts == 0
+//     (consts.cpp).
+// damage()'s own unconditional physical-resist roll (number(0, 2)) still
+// needs one pinned draw, but its outcome is a no-op either way: the victim
+// has no resistance/vulnerability flags set, so check_resistances()
+// (char_utils_combat.cpp) already returns 0 regardless of that roll.
+// The result: the FINAL victim HP delta damage() applies is EXACTLY the
+// B11 formula's rots::fp::to_game_int result -- this test observes the
+// boundary's real output through the live combat round.
+// ===========================================================================
+
+TEST(HitDamLive, MatchesDoubleTranscriptionThroughLiveCombatRound) {
+    DamageTestContext context;
+    clear_test_random_values();
+
+    context.attacker.tmpabilities.str = 20;
+    context.attacker.points.OB = 20;
+    context.attacker.points.damage = 0;
+    context.attacker.specials.ENERGY = 2000;
+
+    obj_data weapon{};
+    weapon.obj_flags.type_flag = ITEM_WEAPON;
+    weapon.obj_flags.value[0] = 10;
+    weapon.obj_flags.value[1] = 0;
+    weapon.obj_flags.value[2] = 3;
+    weapon.obj_flags.value[3] = 1;
+    weapon.obj_flags.level = 40;
+    weapon.obj_flags.weight = 10;
+    context.attacker.equipment[WIELD] = &weapon;
+
+    // Peek the same pure, side-effect-free sub-calls hit() itself reads
+    // (get_real_OB()/get_real_dodge()/get_weapon_damage() -- already have
+    // direct paired-test coverage above at B8/B10/B13) and mirror hit()'s
+    // own OB-adjustment arithmetic exactly, rather than hand-deriving
+    // get_real_OB()'s NPC-branch formula a second time here.
+    int ob = get_real_OB(&context.attacker);
+    ob += 1; // number(1, 55 + ob/4) with a hooked 0.0 draw always yields the range minimum, 1.
+    ob += 1; // += tmp, where tmp = number(1, 35) with a hooked 0.0 draw is 1.
+    ob -= ob / 8;
+    ob -= 40;
+    ob -= get_real_dodge(&context.victim); // evasion_malus is 0: victim is not AFF_EVASION.
+    // GET_CURRENT_PARRY(victim) defaults to 0, so hit()'s later
+    // `OB -= get_real_parry(victim) * GET_CURRENT_PARRY(victim) / 100;`
+    // subtracts exactly 0 regardless of get_real_parry()'s value.
+    ASSERT_GE(ob, 0) << "Test setup must keep OB non-negative to reach the "
+                        "hit-resolution branch instead of a dodge/evade/parry branch.";
+
+    const int dam_in = get_weapon_damage(&weapon);
+    ASSERT_EQ(dam_in, 58) << "Same no-owner vector as DamCoefFamily::ExactValueV1NoOwner / GetWeaponDamageLive.";
+
+    const double expected_dam_d = hit_dam_double_transcription(
+        dam_in, /*is_npc=*/true, /*get_damage=*/0, ob, /*damage_roll=*/50,
+        /*is_twohanded=*/false, GET_BAL_STR(&context.attacker));
+    const int expected_dam = rots::fp::to_game_int(expected_dam_d);
+
+    push_test_random_value(0.0);  // tmp = number(1, 35) -> 1.
+    push_test_random_value(0.0);  // OB += number(1, 55 + OB/4) -> +1.
+    push_test_random_value(0.50); // damage_roll = number(0, 100) -> 50 (the B11 boundary's own draw).
+    push_test_random_value(0.0);  // damage()'s unconditional physical-resist roll -- a no-op either way (no resistance/vulnerability flags set).
+
+    hit(&context.attacker, &context.victim, 0);
+    clear_test_random_values();
+
+    EXPECT_EQ(context.victim.tmpabilities.hit, 500 - expected_dam)
+        << "Expected the live combat round's HP delta to match the B11 double-chain formula exactly.";
 }
 
 } // namespace

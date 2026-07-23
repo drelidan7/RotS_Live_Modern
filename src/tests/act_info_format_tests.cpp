@@ -2884,6 +2884,19 @@ TEST(ActInfoObjectId, DoFlagValuesDisplayFormatsWeaponBonusRowsWithNegativeSpaci
 // (act_wiz.cpp, fight.cpp, ranger.cpp) binds to; Wave 2 Task 5 resolved the
 // "twin overload" question and found no live `const obj_data&` caller left
 // to worry about, so this call site needed no adaptation of its own.
+//
+// fp-interiors Task 2c (fpi-census.md's B13 boundary): get_weapon_damage()'s
+// dam_coef chain now computes in double with a single rots::fp::to_game_int
+// rounding at return, instead of per-step integer truncation. This is an
+// indirect caller the T0 census's grep (direct calls to the four converted
+// functions by name in src/tests/) did not enumerate -- do_weapon_display()
+// calls get_weapon_damage() internally, one level removed from this test's
+// own assertion. The 42/10 -> 44/10 shift for this exact vector is the same
+// documented rounding-drift class every other converted formula in this
+// wave produces (verified: pre-conversion this test asserted 42; the
+// live-driven B13 conversion changes it to 44), not a bug in the
+// conversion -- repointed here per the wave's standing drift-documentation
+// practice (see fpi-task-2c-report.md).
 TEST(ActInfoObjectId, DoWeaponDisplayFormatsWeaponTypeAndDamageRatingLine)
 {
     SoloCharacterContext context;
@@ -2902,7 +2915,7 @@ TEST(ActInfoObjectId, DoWeaponDisplayFormatsWeaponTypeAndDamageRatingLine)
 
     EXPECT_STREQ(context.descriptor.output,
         "The weapon you hold is a slashing weapon.\r\n"
-        "\n\rDamage Rating \t   42/10.\r\n");
+        "\n\rDamage Rating \t   44/10.\r\n");
 }
 
 // do_identify_object: end-to-end pin for an ITEM_TREASURE object (a type

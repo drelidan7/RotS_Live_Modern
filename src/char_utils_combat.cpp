@@ -162,9 +162,7 @@ int get_bow_weapon_damage(const obj_data& weapon)
 //============================================================================
 int get_weapon_damage(struct obj_data* obj)
 {
-    int parry_coef, OB_coef, dam_coef;
-    int tmp, bulk, str_speed, null_speed, ene_regen;
-    int obj_level, skill_type;
+    int bulk, skill_type;
     struct char_data* owner;
 
     if (GET_ITEM_TYPE(obj) != ITEM_WEAPON) {
@@ -177,11 +175,16 @@ int get_weapon_damage(struct obj_data* obj)
         return get_bow_weapon_damage(*obj);
     }
 
-    parry_coef = obj->obj_flags.value[1];
-    OB_coef = obj->obj_flags.value[0];
+    // B13 (fp-interiors, fpi-census.md): get_weapon_damage()'s full return
+    // chain (owner maluses through dam_coef through the speed sub-chain and
+    // soft caps) as one double chain, single rots::fp::to_game_int rounding
+    // at return. Mirrors fp_interiors_reference_tests.cpp's
+    // dam_coef_double_transcription() operation-for-operation.
+    double parry_coef = obj->obj_flags.value[1];
+    double OB_coef = obj->obj_flags.value[0];
     bulk = obj->obj_flags.value[2];
     skill_type = weapon_skill_num(obj->obj_flags.value[3]);
-    obj_level = obj->obj_flags.level;
+    double obj_level = obj->obj_flags.level;
     owner = obj->carried_by;
 
     /*
@@ -196,70 +199,74 @@ int get_weapon_damage(struct obj_data* obj)
      */
     if (owner != NULL) {
         /* Case (1) */
-        if (obj_level > (GET_LEVEL(owner) * 4 / 3 + 7))
-            obj_level -= (obj_level - GET_LEVEL(owner) * 4 / 3 - 7) * 2 / 3;
+        if (obj_level > (GET_LEVEL(owner) * 4.0 / 3.0 + 7.0))
+            obj_level -= (obj_level - GET_LEVEL(owner) * 4.0 / 3.0 - 7.0) * 2.0 / 3.0;
 
         /* Case (2): for skill=100, use full obj_level; skill=0, use obj_level/2 */
-        obj_level = obj_level * GET_SKILL(owner, skill_type) / 100;
+        obj_level = obj_level * GET_SKILL(owner, skill_type) / 100.0;
     }
 
     switch (obj->obj_flags.value[3]) {
     case 2: /* whip */
-        parry_coef += 8;
-        OB_coef -= 5;
+        parry_coef += 8.0;
+        OB_coef -= 5.0;
         break;
 
     case 3:
     case 4:
-        parry_coef -= 2;
+        parry_coef -= 2.0;
         break;
 
     case 6:
     case 7:
-        parry_coef += 3;
+        parry_coef += 3.0;
         break;
     }
 
-    if (parry_coef < -7)
-        parry_coef = parry_coef / 3 - 1; /* i.e. parry < -7 */
-    else if (parry_coef < 0)
-        parry_coef = parry_coef / 2;
+    if (parry_coef < -7.0)
+        parry_coef = parry_coef / 3.0 - 1.0; /* i.e. parry < -7 */
+    else if (parry_coef < 0.0)
+        parry_coef = parry_coef / 2.0;
 
-    if (parry_coef > 5)
-        parry_coef = parry_coef * 2 - 5;
+    if (parry_coef > 5.0)
+        parry_coef = parry_coef * 2.0 - 5.0;
 
-    if (OB_coef < -7)
-        OB_coef = OB_coef / 2 - 1;
-    else if (OB_coef < 0)
-        OB_coef = OB_coef * 2 / 3;
+    if (OB_coef < -7.0)
+        OB_coef = OB_coef / 2.0 - 1.0;
+    else if (OB_coef < 0.0)
+        OB_coef = OB_coef * 2.0 / 3.0;
 
-    if (OB_coef > 40)
-        OB_coef = 40; /* just against crashes */
+    if (OB_coef > 40.0)
+        OB_coef = 40.0; /* just against crashes */
 
     /* dam_coef is about 3000 on avg. low weapon */
-    dam_coef = (40 + obj_level - parry_coef) * (50 - OB_coef) * 4 / 3;
-    dam_coef = dam_coef * (20 - abs(bulk - 3)) / 20;
+    double dam_coef = (40.0 + obj_level - parry_coef) * (50.0 - OB_coef) * 4.0 / 3.0;
+    dam_coef = dam_coef * (20.0 - abs(bulk - 3)) / 20.0;
 
-    null_speed = 225;
+    double null_speed = 225.0;
     if (GET_OBJ_WEIGHT(obj) == 0)
         GET_OBJ_WEIGHT(obj) = 1;
 
     /* all equal damage in 2-hands, with 20 str 20 dex. 100% attack */
-    str_speed = 2 * 20 * 2500000 / (GET_OBJ_WEIGHT(obj) * (bulk + 3));
+    double str_speed = 2.0 * 20.0 * 2500000.0 / (GET_OBJ_WEIGHT(obj) * (bulk + 3));
 
-    tmp = (1000000 / (1000000 / str_speed + 1000000 / (null_speed * null_speed)));
+    double tmp = (1000000.0 / (1000000.0 / str_speed + 1000000.0 / (null_speed * null_speed)));
 
-    /* ene_regen is about 100 on average */
-    ene_regen = do_squareroot(tmp / 100, NULL) / 20;
-    dam_coef = dam_coef / ene_regen * 3;
+    /* ene_regen is about 100 on average. Controller ruling option (a):
+     * the table-interp do_squareroot() itself stays UNCHANGED and is
+     * called with the same truncated-int argument shape as the old code
+     * (tmp/100 truncation survives) -- only the truncation POINT moved
+     * later in the chain, per fpi-census.md's B13 STOP-note. */
+    double ene_regen = do_squareroot(static_cast<int>(tmp / 100.0), NULL) / 20.0;
+    dam_coef = dam_coef / ene_regen * 3.0;
 
-    if (dam_coef > 70)
-        dam_coef = 70 + (dam_coef - 70) * 3 / 4;
+    if (dam_coef > 70.0)
+        dam_coef = 70.0 + (dam_coef - 70.0) * 3.0 / 4.0;
 
-    if (dam_coef > 90)
-        dam_coef = 90 + (dam_coef - 90) * 3 / 4;
+    if (dam_coef > 90.0)
+        dam_coef = 90.0 + (dam_coef - 90.0) * 3.0 / 4.0;
 
-    return dam_coef; /* returning damage * 10 */
+    return rots::fp::to_game_int(dam_coef); /* returning damage * 10 */
 }
 
 int weight_coof(struct obj_data* obj)

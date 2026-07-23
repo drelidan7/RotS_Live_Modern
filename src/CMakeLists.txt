@@ -457,10 +457,10 @@ set(ROTS_WORLD_SOURCES
 # below). combat DEFER count goes 5 -> 2 (spec_ass.cpp/spec_pro.cpp
 # remain in ROTS_SERVER_SOURCES below).
 set(ROTS_COMBAT_SOURCES
-    battle_mage_handler.cpp clerics.cpp combat_hooks.cpp fight.cpp
-    limits.cpp mage.cpp mystic.cpp olog_hai.cpp profs.cpp ranger.cpp
-    skill_timer.cpp spell_pa.cpp visibility.cpp weapon_master_handler.cpp
-    wild_fighting_handler.cpp
+    combat/battle_mage_handler.cpp combat/clerics.cpp combat/combat_hooks.cpp combat/fight.cpp
+    combat/limits.cpp combat/mage.cpp combat/mystic.cpp combat/olog_hai.cpp combat/profs.cpp combat/ranger.cpp
+    combat/skill_timer.cpp combat/spell_pa.cpp combat/visibility.cpp combat/weapon_master_handler.cpp
+    combat/wild_fighting_handler.cpp
 )
 
 # L4 band, lower tier: pathfind layer (spec §3/§10 step 4; the l4-seed

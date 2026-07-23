@@ -705,8 +705,8 @@ set(ROTS_PATHFIND_SOURCES
 # with-engine rule the mobact.cpp precedent established, not to
 # rots_combat. ScriptLayerAcyclicity confirms no residual upward edge.
 set(ROTS_SCRIPT_SOURCES
-    mobact.cpp mudlle.cpp mudlle2.cpp script_hooks.cpp script.cpp
-    spec_ass.cpp spec_pro.cpp
+    script/mobact.cpp script/mudlle.cpp script/mudlle2.cpp script/script_hooks.cpp script/script.cpp
+    script/spec_ass.cpp script/spec_pro.cpp
 )
 
 # ageland's remaining app-layer sources (spec §3): combat, commands,

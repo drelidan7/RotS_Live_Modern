@@ -28,6 +28,21 @@ each with its own spec → plan → implementation cycle:
 
 Phases 2 and 3 get their own specs after Phase 1 ships.
 
+### Status update (2026-07-23)
+
+Phase 3's math (item 3 above) shipped **early**, ahead of Phase 2, as double-precision
+*interiors* with `int` storage unchanged — the fp-interiors wave
+(`docs/superpowers/specs/2026-07-22-fp-interiors-design.md`, branch `feat/fp-interiors`,
+2026-07-23). Four core-combat formula families (max-HP/vitals recalc, the OB/PB/DB rating trio,
+`fight.cpp::hit()`'s damage formula, and the speed/energy-regen chain) now compute in
+full-precision `double`, landing each result back into its unchanged `int` field/return through
+exactly one `rots::fp::to_game_int` (`std::lround`) boundary — see `docs/BUILD.md` "FP
+determinism" for the policy. **Phase 2 (double-precision storage + migration) remains blocked**,
+unchanged from this spec's original ordering, on player persistence becoming fully
+account-native JSON. The only benefit still waiting on Phase 2 is fractional carry across
+ticks/relogs — everything else Phase 3 promised (single-rounding combat math, eliminating the
+per-step truncation bias) is now live.
+
 ## Phase 1 goal
 
 Floating-point results are bit-identical across the full build matrix

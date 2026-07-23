@@ -266,6 +266,44 @@ accident:
   alters combat math, regenerate `combat_transcript_seed42.txt` with `UPDATE_GOLDENS=1` and say
   so in the commit message; unintentional drift is a bug in the change, not a golden to update.
 
+### Double-precision interiors, int storage (`to_game_int`)
+
+The fp-interiors wave (2026-07-23, branch `feat/fp-interiors`,
+`docs/superpowers/specs/2026-07-22-fp-interiors-design.md`) converted four core-combat formula
+families — `recalc_abilities` in full (HP/mana/move and str_speed/null_speed/ENE_regen,
+`entity_lifecycle.cpp`, `rots_entity`/L2), the OB/PB/DB rating trio (`get_real_OB`/`get_real_parry`,
+`visibility.cpp`, `rots_combat`/L3; `get_real_dodge`, `char_utils_combat.cpp`, `rots_entity`/L2),
+and `fight.cpp::hit()`'s core damage formula plus `natural_attack_dam` and `get_weapon_damage` in
+full (`fight.cpp`/`char_utils_combat.cpp`, `rots_combat`/L3) — from per-step integer truncation to
+full-precision `double` interiors, landing each result back in its **unchanged `int`
+field/return** through exactly ONE boundary call:
+
+- **`rots::fp::to_game_int(double) -> int`** (`src/fp_policy.h`,
+  `static_cast<int>(std::lround(value))`) is THE boundary helper — uniform `std::lround` rounding
+  at every site, with **no per-family exception table** (unlike the display-rounding table Phase 2
+  of the Option C program sketched and never built — see below).
+- **Grep-clean by construction:** `grep -rn 'to_game_int' src/` finds every converted boundary
+  site; `grep -rn 'lround' src/` finds ONLY the helper's own definition — no bare `std::lround`,
+  `(int)`/`int(...)`/`static_cast<int>` truncation exists at any converted call site.
+- **`sqrt` is in-policy**, not a banned transcendental — the deterministic subset above is
+  `+ - * / sqrt`, double-only. The wave inlined `std::sqrt` directly into two double chains (the
+  HP formula's `class_HP` term and the ENE_regen harmonic mean) rather than routing through the
+  old int-argument `do_squareroot` helper, removing a truncation that lived *inside* that helper's
+  argument. The entity-tier anonymous-namespace `do_squareroot(int, char_data*)`
+  (`entity_lifecycle.cpp`) that fed those two sites was **deleted** once its sole caller
+  (`recalc_abilities`) stopped calling it — left in place it would have tripped
+  `-Wunused-function` under `-Werror`. The **table-interpolation** `do_squareroot`
+  (`char_utils_combat.cpp`, a 171-entry lookup table — no `std::sqrt` call at all) is
+  **unchanged**: it is called identically by both the live code and the paired-reference test, so
+  replacing a table-interp approximation with real `sqrt` there was ruled out of this wave's scope
+  (a behavior-class change, not a precision change).
+- **Storage stays `int`.** Every `char_ability_data`/`char_point_data`/`char_data`/`char_file_u`
+  field, every save/load path, and every converted function's signature is unchanged — only the
+  formula *interiors* (locals/intermediates) became `double`. This is Phase 3 of the Option C
+  program (`docs/superpowers/specs/2026-07-15-phase1-fp-unification-design.md`) delivered
+  **without** Phase 2's storage change; Phase 2 (double-precision fields + migration) remains
+  deferred until player persistence is fully account-native JSON — see that spec's status note.
+
 ## Library layering & the foundation acyclicity check
 
 The source tree is being carved into layered static libraries (see

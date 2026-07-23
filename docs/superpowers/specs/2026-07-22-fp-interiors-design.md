@@ -128,3 +128,82 @@ census in `.superpowers/sdd/` (`fpi-` prefix, never committed). Python byte-edit
 existing `.cpp`/`.h`. Docker synchronous in subagents; battery finalization-only. **No merge
 authority: the wave ends at a CI-green PR + transcript diff for the owner's own review and
 merge.**
+
+## As-built (2026-07-23)
+
+**Location corrections (T0 census, superseding this spec's §Scope pointers):** family 1 is
+`recalc_abilities(char_data*)` in full (`entity_lifecycle.cpp:1964-2053`, `rots_entity`/L2) — the
+spec's "the `profs.cpp` recalc chain" pointer was stale; `profs.cpp:735` only *calls* it. Family
+4's spec pointer ("`utils::get_energy_regen`, `char_utils_combat.cpp:165`") was wrong on both
+counts: that address is `get_weapon_damage`, not `get_energy_regen`; the real
+`utils::get_energy_regen(const char_data&)` wrapper lives at `char_utils.cpp:1350` and was **not**
+touched — it merely re-reads the already-rounded `points.ENE_regen` field. The precision lives in
+two places instead: `recalc_abilities`'s `ENE_regen` setter (the persistent-field write) and
+`get_weapon_damage`'s own embedded speed sub-chain (a local scratch value feeding `dam_coef`).
+
+**T2 executed as three tasks, not the plan's four (census Step 8 ruling):** `recalc_abilities`
+is one function sharing control flow and locals between the HP/mana/move (family 1) and
+speed/energy (family 4) blocks, so splitting it across two tasks would have forced two tasks to
+edit the same hunks — the census merged them into **T2a** (`recalc_abilities` entirely, B1-B7).
+Similarly `get_weapon_damage` spans families 3 and 4 (its embedded speed sub-chain feeds
+`dam_coef`); the census assigned it wholly to **T2c** alongside `hit()`'s core damage and
+`natural_attack_dam` (B11-B13), rather than splitting it from its own dam_coef consumer. **T2b**
+owns the OB/PB/DB trio (B8-B10). Net: T2a/T2b/T2c, not T2a-T2d.
+
+**`do_squareroot` rulings (controller ruling + T2a as-built):** the entity-tier anonymous-namespace
+`do_squareroot(int, char_data*)` (`entity_lifecycle.cpp`) — the only `do_squareroot` overload
+feeding a converted chain via an int-truncating argument (B1's `class_HP` term, B6's ENE_regen
+harmonic mean) — was **deleted**. Its two call sites were replaced with `std::sqrt` inlined
+directly into the double chain (controller-ruling option (b): "compute `std::sqrt(<double expr>)`
+inline"); once the sole call site was gone, the anonymous-namespace function was dead and would
+have tripped `-Wunused-function` under `-Werror`, so removal was mandatory, not optional. The
+**table-interpolation** `do_squareroot` at `char_utils_combat.cpp:140` (a 171-entry lookup table,
+B13's helper — no `std::sqrt` call anywhere in its body) is **unchanged** (controller-ruling
+option (a)): it is called identically, with the same argument shape, by both the live
+`get_weapon_damage` code and its paired-reference test, so it cancels in the delta bound;
+replacing a table-interpolation approximation with real `sqrt` there would be a behavior-class
+change beyond this wave's remit. `sqrt` itself stays in-policy throughout (`fp_policy.h`'s
+deterministic subset is `+ - * / sqrt`, double-only) — neither ruling is a transcendental
+concession.
+
+**B13 AS-BUILT AMENDMENT (T2c review, ACCEPT-T1):** `get_weapon_damage`'s converted double chain
+includes the owner/coefficient maluses in full double precision (matching T1's committed
+`dam_coef_double_transcription`), not the narrower "maluses stay int" reading the census's B13 row
+and the controller-ruling scope note had sketched. The T2c review adjudicated this as more
+faithful to the wave's single-rounding goal, and hand-derivation confirmed the census's `<= 10`
+delta bound still holds under the full-double shape (the sole `has_owner` paired vector: int
+reference 39 vs. double-converted 44, margin 5 — the malus divergences each attenuate to < 1
+through the trailing `/ene_regen*3` term). Census, T1's tests, and the live code are mutually
+consistent under this amendment.
+
+**EXPECTED-DRIFT SET as built:** ONE existing assertion, not the census's originally-predicted
+empty set — `ActInfoObjectId.DoWeaponDisplayFormatsWeaponTypeAndDamageRatingLine` (indirect, via
+`do_weapon_display` → `get_weapon_damage`), repointed from `42/10` to `44/10` in T2c (`44`
+hand-verified independently, not read off a test run). T2c's review ran a transitive sweep of
+every indirect caller of the four families and found no other assertion drifts, closing the
+class. `CharacterizationCombatTest.DamageTranscriptSeed42` stayed **byte-identical**, as
+predicted: it drives `damage()` with a raw RNG draw and a hand-set victim HP, and `damage()`
+never reaches any of the four converted families.
+
+**T3 golden regen: verified no-op.** Running `UPDATE_GOLDENS=1` against
+`CharacterizationCombatTest.DamageTranscriptSeed42` produced **zero file changes** anywhere in the
+tree — no golden byte moved, no regen commit exists. The 32-bit `legacy_*_fixture.bin` goldens
+were untouched throughout, and both boot goldens stayed byte-identical at every task.
+
+**Transcript evidence:** the same-seed old-vs-new combat-smoke transcript diff
+(`.superpowers/sdd/fpi-transcript-diff.md`, uncommitted scratch attached to the PR) is
+**informational only** — capture rung (b): same-seed transcript drift is real under the shared
+`rots_rng` engine's real-time pulse-loop interleaving, proven on both the pre- and
+post-conversion binaries, so it is never a merge-gating comparison. The wave's actual
+deterministic-behavior evidence is T1/T2's **committed** paired-reference and exact-value tests —
+worked examples all shift by exactly +1 under the new single-rounding math: HP 503→504, parry
+91→92, dodge 48→49, hit-dam 13→14, natural-attack 33→34.
+
+**Test chain:** 1510 (spec-pair-wave baseline) → T1 +53 = 1563 → T2a +2 = 1565 → T2b +15 = 1580 →
+T2c +3 = 1583 → T3 +0 = **1583**, both hosts (macOS native, `rots64`); ASan clean at every
+test-touching task (T1, T2a, T2b, T2c); skips carried forward unchanged (75 macOS / 77 `rots64`).
+The i386 finalization battery is **pending T5** — not yet measured as of this docs task.
+
+**No merge:** per this spec's own owner decision, the wave ends at a CI-green PR presenting the
+transcript diff; there is no merge-when-green grant, and no merge happened as part of this wave's
+docs task.

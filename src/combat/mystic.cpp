@@ -610,12 +610,12 @@ ASPELL(spell_slow_digestion)
 ASPELL(spell_divination)
 {
     // Ensure that we have a valid caster and location.
-    if (caster == NULL || caster->in_room == NOWHERE)
+    if (caster == NULL || location_of(caster) == NOWHERE)
         return;
 
     char buff[1000];
 
-    const room_data& cur_room = world[caster->in_room];
+    const room_data& cur_room = *room_of(caster);
 
     strcpy(buff, "You feel confident about your location.\n\r");
     // buf retirement (combat-trio wave, Task 1; trio-task-1-brief.md Step
@@ -635,7 +635,7 @@ ASPELL(spell_divination)
     for (int dir = 0; dir < NUM_OF_DIRS; dir++) {
         room_direction_data* exit = cur_room.dir_option[dir];
         if (exit && exit->to_room != NOWHERE) {
-            const room_data& exit_room = world[exit->to_room];
+            const room_data& exit_room = *room_by_id_total(exit->to_room);
 
             found = true;
             strcpy(buff, std::format("{:>5}: to {} (#{})\n\r", dirs[dir], exit_room.name, exit_room.number).c_str());
@@ -668,10 +668,10 @@ ASPELL(spell_divination)
 
     strcpy(buff, "Living beings in the room:\n\r");
     if (cur_room.people) {
-        for (char_data* character = cur_room.people; character; character = character->next_in_room) {
+        for (char_data* character = cur_room.people; character; character = character->next_in_room) { // LS1-ALLOW: peek-ahead for list formatting
             if (caster->player.level >= GET_INVIS_LEV(character)) {
                 strcat(buff, GET_NAME(character));
-                if (character->next_in_room) {
+                if (character->next_in_room) { // LS1-ALLOW: peek-ahead for list formatting
                     strcat(buff, ", ");
                 } else {
                     strcat(buff, ".\n\r");
@@ -1001,7 +1001,7 @@ void cast_mass_spell(char_data* caster, void (*spell)(char_data* caster, char* a
 
     for (auto iter = caster->group->begin(); iter != caster->group->end(); ++iter) {
         char_data* group_member = *iter;
-        if (group_member->in_room == caster->in_room) {
+        if (location_of(group_member) == location_of(caster)) {
             spell(caster, nullptr, SPELL_TYPE_SPELL, group_member, nullptr, 0, 0);
         }
     }
@@ -1013,7 +1013,7 @@ ASPELL(spell_mass_regeneration)
         send_to_char("Only those who have mastered regeneration may cast this spell.\n\r", caster);
         return;
     }
-    send_to_room("The air hums as a powerful magic breathes life into all who stand within its embrace.\n\r", caster->in_room);
+    send_to_room("The air hums as a powerful magic breathes life into all who stand within its embrace.\n\r", location_of(caster));
     cast_mass_spell(caster, spell_regeneration);
 }
 
@@ -1023,7 +1023,7 @@ ASPELL(spell_mass_vitality)
         send_to_char("Only those who have mastered vitality may cast this spell.\n\r", caster);
         return;
     }
-    send_to_room("The air hums as a powerful magic breathes vitality into all who stand within its embrace.\n\r", caster->in_room);
+    send_to_room("The air hums as a powerful magic breathes vitality into all who stand within its embrace.\n\r", location_of(caster));
     cast_mass_spell(caster, spell_vitality);
 }
 
@@ -1033,7 +1033,7 @@ ASPELL(spell_mass_insight)
         send_to_char("Only those who have mastered insight may cast this spell.\n\r", caster);
         return;
     }
-    send_to_room("The air hums as a powerful magic brings insight into all who stand within its embrace.\n\r", caster->in_room);
+    send_to_room("The air hums as a powerful magic brings insight into all who stand within its embrace.\n\r", location_of(caster));
     cast_mass_spell(caster, spell_insight);
 }
 
@@ -1111,7 +1111,7 @@ ASPELL(spell_haze)
         af.location = SPELL_HAZE;
         af.bitvector = 0;
 
-        if ((oldaf = room_affected_by_spell(&world[caster->in_room], SPELL_HAZE))) {
+        if ((oldaf = room_affected_by_spell(room_of(caster), SPELL_HAZE))) {
             if (oldaf->duration < af.duration) {
                 oldaf->duration = af.duration;
             }
@@ -1120,7 +1120,7 @@ ASPELL(spell_haze)
                 oldaf->modifier = af.modifier;
             }
         } else {
-            affect_to_room(&world[caster->in_room], &af);
+            affect_to_room(room_of(caster), &af);
         }
 
         act("$n breathes out a disorientating mist.", TRUE, caster, 0, 0, TO_ROOM);
@@ -1247,14 +1247,14 @@ ASPELL(spell_poison)
         af.location = SPELL_POISON;
         af.bitvector = 0;
 
-        if ((oldaf = room_affected_by_spell(&world[caster->in_room], SPELL_POISON))) {
+        if ((oldaf = room_affected_by_spell(room_of(caster), SPELL_POISON))) {
             if (oldaf->duration < af.duration)
                 oldaf->duration = af.duration;
 
             if (oldaf->modifier < af.modifier)
                 oldaf->modifier = af.modifier;
         } else {
-            affect_to_room(&world[caster->in_room], &af);
+            affect_to_room(room_of(caster), &af);
         }
 
         act("$n breathes out a cloud of smoke.", TRUE, caster, 0, 0, TO_ROOM);
@@ -1294,10 +1294,9 @@ ASPELL(spell_poison)
 
 ASPELL(spell_terror)
 {
-    struct char_data* tmpch;
     struct affected_type af;
 
-    if (!caster || (caster->in_room == NOWHERE))
+    if (!caster || (location_of(caster) == NOWHERE))
         return;
 
     send_to_char("You breathe an icy, cold breath across the room.\n\r",
@@ -1307,7 +1306,7 @@ ASPELL(spell_terror)
     if (utils::get_specialization(*caster) == game_types::PS_Illusion) {
         level += 6;
     }
-    for (tmpch = world[caster->in_room].people; tmpch; tmpch = tmpch->next_in_room) {
+    for (auto* tmpch : rots::entity::occupants(room_of(caster))) {
         if ((tmpch != caster) && !affected_by_spell(tmpch, SPELL_FEAR)) {
             if (!saves_mystic(tmpch) && !saves_leadership(tmpch)) {
                 af.type = SPELL_FEAR;
@@ -1664,7 +1663,7 @@ ASPELL(spell_guardian)
     } else
         guardian_num = guardian_mob[GET_RACE(caster)][guardian_to_load];
 
-    if (caster->in_room == NOWHERE)
+    if (location_of(caster) == NOWHERE)
         return;
     for (tmpch = character_list; tmpch; tmpch = tmpch->next)
         if ((tmpch->master == caster) && utils::is_guardian(*tmpch))
@@ -1680,7 +1679,7 @@ ASPELL(spell_guardian)
         return;
     }
 
-    char_to_room(guardian, caster->in_room);
+    char_to_room(guardian, location_of(caster));
     act("$n appears with a flash.", FALSE, guardian, 0, 0, TO_ROOM);
     add_follower(guardian, caster, FOLLOW_MOVE);
     SET_BIT(guardian->specials.affected_by, AFF_CHARM);

@@ -106,7 +106,7 @@ extern struct room_data world;
  */
 int CAN_SEE(struct char_data* sub)
 {
-    if ((sub)->in_room == NOWHERE)
+    if (location_of(sub) == NOWHERE)
         return 0;
     if (IS_AFFECTED((sub), AFF_BLIND) || PLR_FLAGGED(sub, PLR_WRITING))
         return 0;
@@ -118,7 +118,7 @@ int CAN_SEE(struct char_data* sub)
     // resolved room pointer -- see the file banner's resolver-variant
     // note. room_is_dark mirrors IS_DARK(room) verbatim; room_is_outside
     // mirrors OUTSIDE(ch) verbatim.
-    room_data* r = room_by_id_total((sub)->in_room);
+    room_data* r = room_of(sub);
     bool room_is_dark = !r->light && (IS_SET(r->room_flags, DARK) || ((r->sector_type != SECT_INSIDE && r->sector_type != SECT_CITY) && (weather_info.sunlight == SUN_DARK)));
     bool room_is_outside = !IS_SET(r->room_flags, INDOORS);
 
@@ -423,7 +423,7 @@ struct obj_data* get_obj_vis(struct char_data* ch, char* name)
     /* scan room */
     // world[ch->in_room].contents (original, unchecked) -> room_by_id_total
     // per the BINDING addendum's resolver-variant rule (file banner above).
-    if ((i = get_obj_in_list_vis(ch, name, room_by_id_total(ch->in_room)->contents, 9999)))
+    if ((i = get_obj_in_list_vis(ch, name, room_of(ch)->contents, 9999)))
         return (i);
 
     strcpy(tmpname, name);
@@ -539,7 +539,7 @@ int CAN_SEE(struct char_data* sub, struct char_data* obj, int light_mode)
      * If you aren't in the same room as it, and it's an NPC,
      * you can't see it, unless it's the guardian angel.
      */
-    if (GET_LEVEL(sub) < LEVEL_IMMORT && sub->in_room != obj->in_room && IS_NPC(obj) && strcmp(GET_NAME(obj), "Guardian angel"))
+    if (GET_LEVEL(sub) < LEVEL_IMMORT && location_of(sub) != location_of(obj) && IS_NPC(obj) && strcmp(GET_NAME(obj), "Guardian angel"))
         return 0;
 
     if (IS_SHADOW(obj) || IS_SHADOW(sub)) {
@@ -575,9 +575,9 @@ int CAN_SEE(struct char_data* sub, struct char_data* obj, int light_mode)
             // obj_room_is_dark mirrors IS_DARK(room) verbatim (on obj's
             // room); sub_room_is_outside mirrors OUTSIDE(ch) verbatim (on
             // sub's room, which can differ from obj's for non-NPC targets).
-            room_data* obj_room = room_by_id_total((obj)->in_room);
+            room_data* obj_room = room_of(obj);
             bool obj_room_is_dark = !obj_room->light && (IS_SET(obj_room->room_flags, DARK) || ((obj_room->sector_type != SECT_INSIDE && obj_room->sector_type != SECT_CITY) && (weather_info.sunlight == SUN_DARK)));
-            room_data* sub_room = room_by_id_total((sub)->in_room);
+            room_data* sub_room = room_of(sub);
             bool sub_room_is_outside = !IS_SET(sub_room->room_flags, INDOORS);
 
             if (obj_room_is_dark && !IS_AFFECTED((sub), AFF_INFRARED) && !(!IS_NPC(sub) && PRF_FLAGGED((sub), PRF_HOLYLIGHT)) && !(sub_room_is_outside && IS_AFFECTED((sub), AFF_MOONVISION) && weather_info.moonlight))
@@ -616,7 +616,6 @@ int CAN_SEE(struct char_data* sub, struct char_data* obj, int light_mode)
 // get_char_vis have no world[] touch of their own.
 struct char_data* get_char_room_vis(struct char_data* ch, char* name, int dark_ok)
 {
-    struct char_data* i;
     int j, number, check;
     char tmpname[MAX_INPUT_LENGTH];
     char* tmp;
@@ -629,7 +628,9 @@ struct char_data* get_char_room_vis(struct char_data* ch, char* name, int dark_o
     j = 1;
     // world[ch->in_room].people (original, unchecked) -> room_by_id_total
     // per the BINDING addendum's resolver-variant rule (see banner above).
-    for (i = room_by_id_total(ch->in_room)->people; i && (j <= number); i = i->next_in_room) {
+    for (auto* i : rots::entity::occupants(room_of(ch))) {
+        if (j > number)
+            break;
 
         check = keyword_matches_char(ch, i, tmp);
         if (check)
@@ -785,7 +786,7 @@ int generic_find(char* arg, int bitvector, struct char_data* ch,
         // world[ch->in_room].contents (original, unchecked) -> room_by_id_total
         // per the BINDING addendum's resolver-variant rule (get_obj_vis()
         // above already establishes this exact substitution).
-        if ((*tar_obj = get_obj_in_list_vis(ch, name, room_by_id_total(ch->in_room)->contents, 9999))) {
+        if ((*tar_obj = get_obj_in_list_vis(ch, name, room_of(ch)->contents, 9999))) {
             return (FIND_OBJ_ROOM);
         }
     }
@@ -1119,7 +1120,7 @@ char* target_from_word(struct char_data* ch, char* argument, int mask, struct ta
         }
     }
     if (IS_SET(mask, TAR_OBJ_ROOM)) {
-        tmpobj = get_obj_in_list(word, world[ch->in_room].contents);
+        tmpobj = get_obj_in_list(word, room_of(ch)->contents);
         if (tmpobj) {
             t1->ptr.obj = tmpobj;
             t1->ch_num = 0;

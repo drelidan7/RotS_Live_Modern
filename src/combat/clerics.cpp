@@ -110,7 +110,7 @@ ACMD(do_mental)
     int tmp, damg, not_ready;
 
     /* Is this a peace room? */
-    if (IS_SET(world[ch->in_room].room_flags, PEACEROOM)) {
+    if (IS_SET(room_of(ch)->room_flags, PEACEROOM)) {
         send_to_char("A peaceful feeling overwhelms you, and you "
                      "cannot bring yourself to attack.\n\r",
             ch);
@@ -160,7 +160,7 @@ ACMD(do_mental)
         return;
     }
 
-    if (victim->in_room != ch->in_room) {
+    if (location_of(victim) != location_of(ch)) {
         send_to_char("Your victim disappeared!\n\r", ch);
         stop_fighting(ch);
         return;
@@ -293,7 +293,7 @@ ACMD(do_mental)
     if (!damage_result.will_die) {
         // The victim could have fled.  Check to see if the victim is still
         // in the same room as the attacker.
-        if (victim->in_room == ch->in_room && !victim->specials.fighting && IS_MENTAL(victim)) {
+        if (location_of(victim) == location_of(ch) && !victim->specials.fighting && IS_MENTAL(victim)) {
             set_fighting(victim, ch);
         }
     }

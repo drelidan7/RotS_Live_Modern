@@ -573,8 +573,8 @@ int check_idling(char_data* character)
     }
     if (character->specials.timer > 8) {
         // Pull a character into the void after 8 minutes.
-        if (character->specials.was_in_room == NOWHERE && character->in_room != NOWHERE) {
-            character->specials.was_in_room = character->in_room;
+        if (character->specials.was_in_room == NOWHERE && location_of(character) != NOWHERE) {
+            character->specials.was_in_room = location_of(character);
             if (character->specials.fighting) {
                 stop_fighting(character->specials.fighting);
                 stop_fighting(character);
@@ -593,11 +593,11 @@ int check_idling(char_data* character)
     // Disconnect a player after being idle for 28 minutes.
     if (character->specials.timer > 28) {
         if (character && !IS_NPC(character) && (character->specials.was_in_room != NOWHERE)) {
-            if (character->in_room != NOWHERE) {
+            if (location_of(character) != NOWHERE) {
                 rots::entity::dispatch_char_from_room(character);
             }
             char_to_room(character, character->specials.was_in_room);
-            save_char(character, world[character->specials.was_in_room].number, 0);
+            save_char(character, room_by_id_total(character->specials.was_in_room)->number, 0);
             character->specials.was_in_room = NOWHERE;
         }
         rots::combat::crash_idlesave(character);
@@ -810,9 +810,9 @@ void point_update(void)
             if (j->obj_flags.timer == 0) {
                 if (j->carried_by) {
                     act("$p decays in your hands.", FALSE, j->carried_by, j, 0, TO_CHAR);
-                } else if ((j->in_room != NOWHERE) && (world[j->in_room].people)) {
-                    act("$p decays into dust.", TRUE, world[j->in_room].people, j, 0, TO_ROOM);
-                    act("$p decays into dust.", TRUE, world[j->in_room].people, j, 0, TO_CHAR);
+                } else if ((j->in_room != NOWHERE) && (room_by_id_total(j->in_room)->people)) {
+                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->people, j, 0, TO_ROOM);
+                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->people, j, 0, TO_CHAR);
                 }
 
                 if (GET_ITEM_TYPE(j) == ITEM_CONTAINER) {
@@ -828,7 +828,7 @@ void point_update(void)
                         if (j->in_obj) {
                             obj_to_obj(jj, j->in_obj);
                         } else if (j->carried_by) {
-                            obj_to_room(jj, j->carried_by->in_room);
+                            obj_to_room(jj, location_of(j->carried_by));
                         } else if (j->in_room != NOWHERE) {
                             obj_to_room(jj, j->in_room);
                         } else {
@@ -858,7 +858,7 @@ void point_update(void)
                 if (j->carried_by) {
                     act("Your $o went out.", FALSE, j->carried_by, j, 0, TO_CHAR);
                     act("$n's $o went out.", TRUE, j->carried_by, j, 0, TO_ROOM);
-                    recount_light_room(j->carried_by->in_room);
+                    recount_light_room(location_of(j->carried_by));
                 } else if (j->in_room != NOWHERE) {
                     send_to_room(std::format("{} here went out.\n\r", j->short_description), j->in_room);
                     recount_light_room(j->in_room);
@@ -896,7 +896,7 @@ void update_room_tracks()
     int roomnum, tmp;
 
     for (roomnum = 0; roomnum <= top_of_world; roomnum++) {
-        tmproom = &world[roomnum];
+        tmproom = room_by_id_total(roomnum);
 
         for (tmp = 0; tmp < NUM_OF_TRACKS; tmp++)
             if (tmproom->room_track[tmp].data / 8 == time_info.hours) {
@@ -913,7 +913,7 @@ void update_bleed_tracks()
     int roomnum, tmp;
 
     for (roomnum = 0; roomnum <= top_of_world; roomnum++) {
-        tmproom = &world[roomnum];
+        tmproom = room_by_id_total(roomnum);
 
         for (tmp = 0; tmp < NUM_OF_BLOOD_TRAILS; tmp++)
             if (tmproom->bleed_track[tmp].data / 8 == time_info.hours) {
@@ -1007,7 +1007,7 @@ void finalize_new_character_start_state(struct char_data* ch)
     if (start_room_rnum < 0 || start_room_rnum > top_of_world)
         return;
 
-    ch->specials2.load_room = world[start_room_rnum].number;
+    ch->specials2.load_room = room_by_id_total(start_room_rnum)->number;
 }
 
 // Simply checks that a character can breathe in the room they are in.
@@ -1314,7 +1314,7 @@ void do_power_of_arda(char_data* ch)
         return;
     }
 
-    level = get_sun_level(ch->in_room);
+    level = get_sun_level(location_of(ch));
     maxlevel = level * 25; // so if you are in a shady room, the penalty can never be too high
     tmpaf = affected_by_spell(ch, SPELL_ARDA);
     if (level) {
@@ -1411,7 +1411,7 @@ void affect_update_person(struct char_data* i, int mode)
 
                 case SPELL_ASPHYXIATION:
                     int zone, under_water_zone, death_modifier;
-                    zone = world[i->in_room].zone;
+                    zone = room_of(i)->zone;
                     under_water_zone = 262;
                     death_modifier = zone == under_water_zone ? 80 : 40;
 
@@ -1491,7 +1491,7 @@ void affect_update_room(struct room_data* room)
 
                 if (1 /*skills[tmpaf->location].targets  & TAR_CHAR_ROOM*/) {
                     for (tmpch = room->people; tmpch; tmpch = next_tmpch) {
-                        next_tmpch = tmpch->next_in_room;
+                        next_tmpch = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via the room-affect spell_pointer callback)
 
                         /* 1 in 13 chance that a room spell won't do anything */
                         if (!(tmp = number(0, 12)) || (skills[tmpaf->location].is_fast && !number(0, 2))) {
@@ -1519,13 +1519,13 @@ void affect_update_room(struct room_data* room)
                     mudlog("no option for movement", NRM, LEVEL_GOD, FALSE);
                 } else if (room->dir_option[direction]->to_room != NOWHERE) {
                     roomnum = room->dir_option[direction]->to_room;
-                    if (!(room_affected_by_spell(&world[roomnum], SPELL_MIST_OF_BAAZUNGA))) {
+                    if (!(room_affected_by_spell(room_by_id_total(roomnum), SPELL_MIST_OF_BAAZUNGA))) {
                         if (tmpaf->modifier != 1)
                             REMOVE_BIT(room->room_flags, SHADOWY);
-                        if ((checkaf = room_affected_by_spell(&world[roomnum], SPELL_MIST_OF_BAAZUNGA))) {
+                        if ((checkaf = room_affected_by_spell(room_by_id_total(roomnum), SPELL_MIST_OF_BAAZUNGA))) {
                             mod = checkaf->modifier;
                             mudlog("WARNING LOMAN: Mist already in move to room", NRM, LEVEL_GOD, FALSE);
-                        } else if (IS_SET(world[roomnum].room_flags, SHADOWY))
+                        } else if (IS_SET(room_by_id_total(roomnum)->room_flags, SHADOWY))
                             mod = 1;
                         else
                             mod = 0;
@@ -1538,7 +1538,7 @@ void affect_update_room(struct room_data* room)
 
                         send_to_room(std::format("The mists drift {}.\n\r", dirs[direction]), room->number);
 
-                        affect_to_room(&world[roomnum], &newaf);
+                        affect_to_room(room_by_id_total(roomnum), &newaf);
                         affect_remove_room(room, tmpaf);
                     }
                 }

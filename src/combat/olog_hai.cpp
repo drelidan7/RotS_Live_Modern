@@ -64,7 +64,7 @@ bool is_skill_valid(char_data* ch, const int& skill_id)
         return false;
     }
 
-    const room_data& room = world[ch->in_room];
+    const room_data& room = *room_of(ch);
     if (utils::is_set(room.room_flags, (long)PEACEROOM)) {
         send_to_char("A peaceful feeling overwhelms you, and you cannot bring "
                      "yourself to attack.\r\n",
@@ -121,7 +121,7 @@ char_data* is_target_valid(char_data* attacker, waiting_type* target)
 
 bool is_target_in_room(char_data* attacker, char_data* victim)
 {
-    return attacker->in_room == victim->in_room;
+    return location_of(attacker) == location_of(victim);
 }
 
 char_data* is_smash_target_valid(char_data* attacker, waiting_type* target)
@@ -166,10 +166,9 @@ void do_sanctuary_check(char_data* ch)
 
 char_data* get_random_target(char_data* ch, char_data* original_victim)
 {
-    char_data* t;
     int num = 0;
-    for (t = world[ch->in_room].people; t != nullptr; t = t->next_in_room) {
-        if (t != ch && t != original_victim)
+    for (auto* occ : rots::entity::occupants(room_of(ch))) {
+        if (occ != ch && occ != original_victim)
             num++;
     }
 
@@ -178,15 +177,17 @@ char_data* get_random_target(char_data* ch, char_data* original_victim)
     }
 
     num = number(1, num);
-    for (t = world[ch->in_room].people; t != nullptr; t = t->next_in_room) {
-        if (t != ch && t != original_victim) {
+    char_data* found = nullptr;
+    for (auto* occ : rots::entity::occupants(room_of(ch))) {
+        if (occ != ch && occ != original_victim) {
             --num;
             if (!num) {
+                found = occ;
                 break;
             }
         }
     }
-    return t;
+    return found;
 }
 
 int get_base_skill_damage(char_data& olog_hai, int prob)
@@ -375,8 +376,8 @@ void room_target(char_data* ch, void (*skill_damage)(char_data* character, char_
     char_data* victim = nullptr;
     char_data* nxt_victim = nullptr;
     auto mount = ch->mount_data.mount;
-    for (victim = world[ch->in_room].people; victim; victim = nxt_victim) {
-        nxt_victim = victim->next_in_room;
+    for (victim = room_of(ch)->people; victim; victim = nxt_victim) {
+        nxt_victim = victim->next_in_room; // LS1-ALLOW: save-next (body extracts current node via skill_damage function-pointer callback)
         if (victim != ch && mount != victim) {
             skill_damage(ch, victim);
         }
@@ -461,10 +462,10 @@ ACMD(do_smash)
 
 bool is_direction_valid(char_data* ch, int cmd)
 {
-    if (!world[ch->in_room].dir_option[cmd]) {
+    if (!room_of(ch)->dir_option[cmd]) {
         send_to_char("You cannot go that way.\n\r", ch);
         return false;
-    } else if (world[ch->in_room].dir_option[cmd]->to_room == NOWHERE) {
+    } else if (room_of(ch)->dir_option[cmd]->to_room == NOWHERE) {
         send_to_char("You cannot go that way.\n\r", ch);
         return false;
     }
@@ -548,7 +549,6 @@ ACMD(do_overrun)
     }
     int total_moves = utils::get_prof_level(PROF_WARRIOR, *ch) / 8 + number(-1, 1);
     int dis;
-    char_data* tmpch = nullptr;
 
     // WARNING: Due to bug in overrun, we need to remove hunt aff
     // otherwise the olog-hai will hit the same target multiple times in a row.
@@ -562,7 +562,7 @@ ACMD(do_overrun)
         if (!CAN_GO(ch, cmd)) {
             break;
         }
-        for (tmpch = world[ch->in_room].people; tmpch; tmpch = tmpch->next_in_room) {
+        for (auto* tmpch : rots::entity::occupants(room_of(ch))) {
             if (tmpch->specials.fighting == ch) {
                 stop_fighting(tmpch);
             }

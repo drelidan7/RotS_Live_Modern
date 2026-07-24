@@ -61,13 +61,12 @@ void fast_update();
 
 void send_magic_room_message(char_data* caster, std::string_view message)
 {
-    if (caster == nullptr || caster->in_room < 0)
+    if (caster == nullptr || location_of(caster) < 0)
         return;
 
     message = rots::text::truncate_at_null(message);
 
-    const room_data& room = world[caster->in_room];
-    for (char_data* receiver = room.people; receiver; receiver = receiver->next_in_room) {
+    for (auto* receiver : rots::entity::occupants(room_of(caster))) {
         if (receiver == caster || GET_POS(receiver) <= POSITION_SLEEPING)
             continue;
 
@@ -125,12 +124,12 @@ void do_sense_magic(char_data* caster, int spell_number)
                 // Players that are writing or asleep can't sense anything.
                 if (!utils::is_player_flagged(*character, PLR_WRITING) && character->specials.position > POSITION_SLEEPING) {
                     if (utils::get_prof_level(PROF_MAGE, *character) >= MIN_MAGE_LEVEL_TO_SENSE) {
-                        int caster_room = caster->in_room;
-                        int character_room = character->in_room;
+                        int caster_room = location_of(caster);
+                        int character_room = location_of(character);
 
                         // Only send the message if characters are in different rooms within the
                         // same zone.
-                        if (caster_room != character_room && world[caster_room].zone == world[character_room].zone) {
+                        if (caster_room != character_room && room_by_id_total(caster_room)->zone == room_by_id_total(character_room)->zone) {
                             send_to_char("You sense a surge of unknown magic from nearby...\n\r",
                                 character);
                         }
@@ -486,7 +485,7 @@ ACMD(do_cast)
         return;
     }
 
-    if (IS_SET(world[ch->in_room].room_flags, PEACEROOM)) {
+    if (IS_SET(room_of(ch)->room_flags, PEACEROOM)) {
         send_to_char("Your lips falter and you cannot seem to find the words you seek.\n\r", ch);
         return;
     }
@@ -727,7 +726,7 @@ ACMD(do_cast)
         }
     } break;
     case TAR_CHAR_ROOM: {
-        if (tar_char->in_room != ch->in_room) {
+        if (location_of(tar_char) != location_of(ch)) {
             send_to_char("Your victim has fled.\n\r", ch);
             return;
         }
@@ -747,7 +746,7 @@ ACMD(do_cast)
         }
     } break;
     case TAR_OBJ_ROOM: {
-        if (tar_obj->in_room != ch->in_room) {
+        if (tar_obj->in_room != location_of(ch)) {
             send_to_char("Your target disappeared.\n\r", ch);
             return;
         }
@@ -769,7 +768,7 @@ ACMD(do_cast)
         tar_char = ch;
         break;
     case TAR_FIGHT_VICT: {
-        if ((tar_char != ch->specials.fighting) || (tar_char->in_room != ch->in_room)) {
+        if ((tar_char != ch->specials.fighting) || (location_of(tar_char) != location_of(ch))) {
             send_to_char("You could not find your opponent.\n\r", ch);
             return;
         }

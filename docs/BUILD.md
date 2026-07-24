@@ -713,6 +713,99 @@ trio paragraph records this final split (see below) — do not confuse it with t
 `utils::`-namespaced weather/room-arg trio from the `combat_manager` deletion, which is unrelated
 history.
 
+### Wave LS-1: Stage 1 library-tier location-read conversion (DONE)
+
+Design: `docs/superpowers/specs/2026-07-23-locationsystem-program-design.md` (the LocationSystem
+program's Wave LS-1, branch `arch/ls1-library-reads`, merge-when-green). The placement-seam wave
+above (Stage 1, scoped) centralized location *mutation* in `rots_entity` and seeded the read APIs
+`location_of`/`set_location`/`is_in_room` (`handler.h`/`placement.cpp`) plus an `occupants()` range
+that landed genuinely unused — no other TU could reach it, it was TU-local to `placement.cpp`. LS-1
+is the wave that made the read APIs load-bearing: every raw `->in_room` / `.in_room` / `world[...]`
+/ `next_in_room` **READ** inside `rots_entity`, `rots_persist`, `rots_world`, `rots_combat`,
+`rots_pathfind`, `rots_script`, and `rots_olc` — seven libraries; persist was ruled into scope
+alongside the plan's original six once its census found two real reads that would otherwise have
+been stranded — now routes through the Stage-1 Placement API instead of touching `char_data::in_room`
+/ `room_data`'s `operator[]` / the `next_in_room` intrusive list directly. Writes are untouched (LS-1
+is reads-only by design; `set_location` and the mutation core in `placement.cpp`/`containment.cpp`
+are the only place a location field is ever assigned). Zero behavior change throughout: the APIs wrap
+today's exact representation (zero-cost inlines), no struct/signature change, both boot goldens and
+the seed42 characterization golden stayed byte-identical at every one of the wave's ~20 commits.
+
+**API surface, as-built.** `location_of(ch)`/`room_by_id(id)`/`room_by_id_total(id)`/`zone_by_id`/
+`obj_index_by_id`/`set_location`/`is_in_room` were already load-bearing from the placement-seam wave.
+LS-1 added exactly two things, both consumer-free/TDD at landing, both in `rots_entity` (L2):
+`room_of(ch)` (Task 1, `61a97fc`) — a thin `room_by_id_total(location_of(ch))` convenience, justified
+by ~154-161 counted self-room `world[X->in_room]` sites, saving every caller the doubly-nested form;
+and giving `occupant_range`/`occupants()` a **public home in `handler.h`** plus a **const-room
+overload** (`const_occupant_range`/`occupants(const room_data*)`, Task 1b, `295db7e`) — the census's
+original T0 pass had ruled the const overload unjustified ("zero counted const-room walks"), but
+tranche A's own conversion work found a real one (`char_utils_combat.cpp`'s `get_engaged_characters`,
+which takes a `const room_data&`) the same task that found `occupants()` itself was unreachable
+outside `placement.cpp`. Moving it into `handler.h` pulled `rots/core/character.h`/`rots/core/room.h`
+into all 59 of `handler.h`'s consumers (an accepted, measured compile-header-weight cost — a full
+from-clean build on both hosts succeeded without incident).
+
+**The `world[id]` uniform-resolver ruling.** `room_data::operator[]` returns a `room_data&` with a
+graceful out-of-range fallback and never yields null; every existing `world[id]` read site was
+written against, and observes, that fallback. The census ruled **every** `world[...]` READ converts
+to `room_by_id_total(...)`, never `room_by_id(...)` — the nullptr-on-invalid resolver would silently
+narrow behavior at any site that previously got the fallback room, and the census found none that
+relied on absence-as-null. `room_by_id` is reserved for new code wanting absent-semantics; its
+appearance in an LS-1 conversion would have been a STOP signal (none fired).
+
+**The allow-list + `LS1-ALLOW` annotation scheme.** Two files are the ONE place raw location access
+legitimately remains after LS-1 — they ARE the representation the APIs wrap, not call sites that
+should route through it: `src/entity/placement.cpp` and `src/entity/containment.cpp` (whole-file
+exemption, named in `docs/superpowers/location-read-allowlist.md`). Every other legitimately-retained
+raw site (a write; an `obj_data::in_room` object-location read — out of the char-location charter,
+there is no `location_of(obj)`; a flagged cursor/splice/peek idiom the census's Step 4 families A-D
+enumerate; or a resolver's own backing-store body, e.g. `db_world.cpp`'s `room_by_id_impl`/
+`room_by_id_total_impl`/`room_data::operator[]`'s recursive fallback) carries a trailing
+`// LS1-ALLOW: <reason>` comment instead. A Family-F sub-class (Amendment 1 to the census) covers
+`next_in_room` walks that `break` on a match and read the found pointer *after* the loop — genuinely
+convertible, but only with a mandatory `found = nullptr` pre-init before the range-for, since three
+`spec_pro.cpp` sites relied on an *uninitialized* declaration reaching `nullptr` only by the raw
+for-loop's own init-expression running first; a naive conversion would have read uninitialized memory
+on the empty-room path.
+
+**The `LocationReadCensus` regression gate.** `tools/location_read_census.py` (Task 3, modeled on
+`tools/string_view_census.py`'s shape) asserts zero raw `->in_room`/`.in_room`/`world[`/
+`next_in_room` tokens remain across `src/{entity,persist,world,combat,pathfind,script,olc}/*.cpp`
+outside the two allow-listed files or an annotated line, with an eight-reason authorized list
+(`save-next`, `manual occupant-list splice`, `peek-ahead`, `manual first-match advance`,
+`in_room used as mutable room cursor`, `write`, `obj-location`, plus `resolver-impl` — a T3 addition
+for the three resolver-implementation lines). Comment/string-literal masking keeps English-text hits
+(`log("SYSERR: ch->in_room = NOWHERE ...")`) from tripping it. Registered as `ctest` `LocationReadCensus`
+in `src/CMakeLists.txt` (outside the `if(NOT MSVC)` linkcheck block — a pure Python scan needs no
+build target, so it runs on every preset including `windows-msvc`) and wired into the flat
+`src/tests/Makefile`'s `tests` recipe (the monolithic runner has no ctest layer to inherit it from) —
+both-build-system parity, per the standing rule. It is `ctest` #1618 as of this wave's HEAD.
+
+**The `utils.h` macro boundary (KNOWN, out of LS-1's reach — LS-3's work).** ~90 additional raw reads
+hide behind `src/utils.h` macros (`EXIT`/`OUTSIDE`/`IS_WATER`/`SUN_PENALTY` and similar expand to
+`world[(ch)->in_room]` at their call sites) — census-sanctioned out of LS-1's charter (the gate scans
+`.cpp` bodies, not header macro definitions, and a macro's *expansion* at a call site is textually
+indistinguishable from a hand-written read to the grep-based gate). These macro bodies are Wave LS-3's
+conversion work, not a gap in this wave's own exit criterion. `zone_table[...]` (~201 raw sites) is
+likewise explicitly out of the LS-1/LS-2 charter — `zone_by_id()` exists as its resolver, but the
+program's tracked triple and every success/exit criterion are `->in_room`/`world[...]`/`next_in_room`
+only; recorded so it is never later read as an oversight.
+
+**Test chain and reconciliation:** 1583 → T1 room_of +2 = 1585 → tranche A (entity/persist/world)
++8 (weather coverage rider) = 1593 → T1b +4 (const-occupants tests) = 1597 → tranche B (combat)
++5 (a controller-review-caught `spell_terror` coverage rider) = 1602 → tranche C (pathfind/spec_pro/
+mobact/script/olc) +15 = 1617 → T3 +1 (`LocationReadCensus` itself) = **1618** both hosts, ASan clean
+at every test-touching task, `ConvertEquivalence` 17/17 and `string_view_census.py --check` exit 0
+throughout, both boot goldens and the seed42 characterization golden byte-identical at every commit.
+See AGENTS.md's Testing Guidelines chain entry for the full per-commit citation and
+`.superpowers/sdd/ls1-census.md`/`ls1-task-{1,1b,2,3}-report.md` for the complete as-built account.
+No library-membership or `*LayerAcyclicity` change — the nine linkchecks stay nine; the combat row
+stays DONE. **The remaining arc:** LS-2 (app-tier read conversion — `src/app/*` plus test fixtures
+that poke `in_room` directly, same machinery, the exit criterion being the grep gate proving zero raw
+location access anywhere outside the allow-list) and LS-3 (the Stage 2 representation swap itself — a
+`LocationSystem` owned by `rots_entity`, `char_data` shedding `in_room`/`next_in_room`, `NOWHERE`
+retiring, OWNER-MERGES per the program spec's risk-split) are not yet started.
+
 ### Output seam and entity hooks: the last three app-layer edges into `rots_entity`
 
 Two dependency-inversion seams (spec §13 pattern) let `entity_lifecycle.cpp` keep calling

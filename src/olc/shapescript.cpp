@@ -1432,7 +1432,7 @@ void shape_center_script(struct char_data* ch, char* arg)
     if (IS_SET(SHAPE_SCRIPT(ch)->flags, SHAPE_CURRFLAG))
         SHAPE_SCRIPT(ch)
             ->cur_room
-            = world[ch->in_room].number;
+            = room_of(ch)->number;
 
     while (SHAPE_SCRIPT(ch)->editflag) // big loop
 

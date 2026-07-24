@@ -11,6 +11,7 @@
 #include "comm.h"
 #include "db.h"
 #include "editor_hooks.h"
+#include "handler.h"
 #include "interpre.h"
 #include "protos.h"
 #include "rots/core/character.h"
@@ -266,7 +267,7 @@ void new_mob(struct char_data* ch)
     strcpy(SHAPE_PROTO(ch)->proto->player.description, "golem\n\r");
     SHAPE_PROTO(ch)
         ->proto->in_room
-        = ch->in_room;
+        = location_of(ch);
     SHAPE_PROTO(ch)
         ->proto->specials2.pref
         = 0;
@@ -1989,7 +1990,7 @@ ACMD(do_shape)
             send_to_char("You start shaping a room.\n\r", ch);
             if (2 == sscanf(argument, "%s %s", tmp, tmp2))
                 if (!strncmp(tmp2, "current", strlen(tmp2)))
-                    strcpy(str, std::format("load {}", world[ch->in_room].number).c_str());
+                    strcpy(str, std::format("load {}", room_of(ch)->number).c_str());
             shape_center_room(ch, str);
             break;
         case SHAPE_ZONES:
@@ -2044,7 +2045,7 @@ ACMD(do_shape)
                 = ch->specials.position;
             if (2 == sscanf(argument, "%s %s", tmp, tmp2))
                 if (!strncmp(tmp2, "current", strlen(tmp2)))
-                    strcpy(str, std::format("load {}", world[ch->in_room].number / 100).c_str());
+                    strcpy(str, std::format("load {}", room_of(ch)->number / 100).c_str());
             shape_center_zone(ch, str);
             break;
         case SHAPE_SCRIPTS:

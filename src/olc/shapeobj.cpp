@@ -9,6 +9,7 @@
 #include "comm.h"
 #include "db.h"
 #include "editor_hooks.h"
+#include "handler.h"
 #include "interpre.h"
 #include "protos.h"
 #include "rots/core/character.h"
@@ -115,7 +116,7 @@ void new_obj(struct char_data* ch)
         = 0;
     SHAPE_OBJECT(ch)
         ->object->in_room
-        = ch->in_room;
+        = location_of(ch);
 }
 
 void list_object(struct char_data* ch, struct obj_data* obj); /* forward declaration */

@@ -236,7 +236,7 @@ void implement_room(struct char_data* ch)
         send_to_char("This room does not exist (yet). Maybe reboot will help.\n\r", ch);
         return;
     }
-    real = &(world[rnum]);
+    real = room_by_id_total(rnum);
     curr = SHAPE_ROOM(ch)->room;
 
     SUBST(name);

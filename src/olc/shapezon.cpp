@@ -730,7 +730,7 @@ void shape_center_zone(struct char_data* ch, char* arg)
     if (IS_SET(SHAPE_ZONE(ch)->flags, SHAPE_CURRFLAG))
         SHAPE_ZONE(ch)
             ->cur_room
-            = world[ch->in_room].number;
+            = room_of(ch)->number;
 
     while (SHAPE_ZONE(ch)->editflag)
 
@@ -2146,7 +2146,7 @@ void extra_coms_zone(struct char_data* ch, char* argument)
             SET_BIT(SHAPE_ZONE(ch)->flags, SHAPE_CURRFLAG);
             SHAPE_ZONE(ch)
                 ->cur_room
-                = world[ch->in_room].number;
+                = room_of(ch)->number;
             send_to_char("You will now see the listing of your room only.\n\r", ch);
         }
     }

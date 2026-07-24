@@ -43,11 +43,14 @@ CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -m
 # "utils.h" (etc.) to reach the product headers one directory up; mirrors
 # the -idirafter (NOT -iquote, NOT -I) that src/CMakeLists.txt uses for its
 # ROTS_TEST_SOURCES list. Never a bare -I..: that would ALSO add it to the
-# angle-bracket (<...>) search path, and src/player_limits.h (the game's player-
-# rank-constants header, unrelated to the standard C <limits.h>) would then
-# shadow the real system <limits.h> ahead of the toolchain's own path:
-# UCHAR_MAX/CHAR_BIT come up undeclared wherever a header does a bare
-# #include <limits.h> (libstdc++'s <climits> on some toolchains).
+# angle-bracket (<...>) search path, and historically src/limits.h (the
+# game's player-rank-constants header, unrelated to the standard C
+# <limits.h>) would then have shadowed the real system <limits.h> ahead of
+# the toolchain's own path: UCHAR_MAX/CHAR_BIT come up undeclared wherever a
+# header does a bare #include <limits.h> (libstdc++'s <climits> on some
+# toolchains). The physical-layout wave's rename to player_limits.h retired
+# that specific literal-name collision, but a bare -I.. still stays off the
+# table here.
 #
 # NOT plain -iquote either (Phase 4 Wave 1 Task 1, trixie/g++14 bump): GCC's
 # #include_next -- used internally by its own bundled <limits.h>/syslimits.h
@@ -60,14 +63,18 @@ CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -m
 # every tests/*.cpp via gtest.h -- newly pulls in <semaphore>
 # (std::counting_semaphore; unreachable pre-C++20, so this was invisible
 # under the old c++1z build), whose libstdc++ implementation needs
-# _POSIX_SEM_VALUE_MAX from glibc's <bits/posix1_lim.h>. With -iquote ..
-# (.. containing player_limits.h) on the FRONT of the merged list, GCC's
-# #include_next chain for <limits.h> walked into ../player_limits.h before ever
-# reaching glibc's real one, so posix1_lim.h never loaded and every test TU
-# failed with "'_POSIX_SEM_VALUE_MAX' was not declared" -- scoping the flag
-# to test-only compiles (as an earlier version of this comment/fix did)
-# does NOT help, because gtest.h itself is what triggers the chain, and
-# every test file includes it.
+# _POSIX_SEM_VALUE_MAX from glibc's <bits/posix1_lim.h>. At the time this
+# was diagnosed the header was still named ../limits.h (pre-rename); with
+# -iquote .. (.. containing that ../limits.h) on the FRONT of the merged
+# list, GCC's #include_next chain for <limits.h> walked into ../limits.h
+# before ever reaching glibc's real one, so posix1_lim.h never loaded and
+# every test TU failed with "'_POSIX_SEM_VALUE_MAX' was not declared" --
+# scoping the flag to test-only compiles (as an earlier version of this
+# comment/fix did) does NOT help, because gtest.h itself is what triggers
+# the chain, and every test file includes it. The physical-layout wave's
+# rename to player_limits.h now makes this scenario physically impossible
+# (#include_next's continuation for <limits.h> can only land on a file
+# literally named limits.h).
 #
 # -idirafter instead places .. at the very END of the merged list -- after
 # the standard system directories -- so #include_next resolves glibc's real
@@ -80,12 +87,15 @@ CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -m
 # relying on this path (interpre_account_menu_tests.cpp, the one test that
 # needs the project's own player_limits.h, uses the explicit "../player_limits.h" relative
 # form, unaffected either way); every product .cpp that bare-quote-includes
-# "player_limits.h" lives one directory up (in src/, not src/tests/), so it's built
-# via its own explicit OBJFILES rule using plain $(CXXFLAGS) (no -idirafter
-# needed at all -- its implicit "directory of the including file" quote
-# entry, always first on every compiler, already finds ../player_limits.h). This
-# is a build-flag fix only -- no file's resolved header set changes -- so it
-# cannot affect runtime behavior or goldens.
+# "player_limits.h" resolves it via its own directory's implicit quote-path
+# entry -- always first on every compiler, regardless of which dir vpath
+# found the source in (see the vpath comment below) -- and is built by the
+# SAME generic pattern rule as test objects, on TEST_CXXFLAGS, not a
+# separate explicit per-object rule (those ~89 rules were removed; see the
+# "explicit per-object product rules ... removed" note below the OBJFILES
+# list). So -idirafter .. is never consulted for this resolution either.
+# This is a build-flag fix only -- no file's resolved header set changes --
+# so it cannot affect runtime behavior or goldens.
 TEST_CXXFLAGS = $(CXXFLAGS) -idirafter ..
 # -lpthread: libgtest.a's ThreadLocal support needs pthread_{get,set}specific/key_*;
 # the static lib doesn't pull it in transitively on this toolchain, so link it explicitly.

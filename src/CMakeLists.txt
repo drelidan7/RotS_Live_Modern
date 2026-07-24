@@ -831,7 +831,9 @@ set(ROTS_OLC_SOURCES
 add_executable(ageland ${ROTS_SERVER_SOURCES})
 
 # Pathed data-model headers (spec §9a). ONLY these two leaf dirs go on the
-# include path — never src/ itself (src/player_limits.h would shadow <limits.h>).
+# include path — never src/ itself (historically src/limits.h would have
+# shadowed <limits.h>; the physical-layout wave's rename to player_limits.h
+# retired that specific hazard, but src/ still stays off this path).
 # They contain nothing but rots/, so they cannot shadow any system header.
 # core/include flows to ageland transitively via RotS::core's PUBLIC
 # target_include_directories (see the rots_core definition below);
@@ -1488,13 +1490,17 @@ if(ROTS_BUILD_TESTS)
     # also reach shared test fixtures via bare quoted includes ("damage_test_
     # context.h" etc.), so src/tests/ needs to be too. Never target_include_
     # directories()'s default -I for src/: that would ALSO add it to the
-    # angle-bracket <...> search path, and src/player_limits.h (a project header —
-    # player rank constants — unrelated to the standard C <limits.h>) would
-    # then shadow the real system <limits.h> ahead of the toolchain's own path.
-    # That's invisible under glibc/libstdc++ (CHAR_BIT etc. come from compiler
-    # builtins), but AppleClang's libc++ headers (<climits>, <string>,
-    # <bitset>, ...) do a bare `#include <limits.h>` and break with "use of
-    # undeclared identifier 'CHAR_BIT'" the moment src/ shadows it.
+    # angle-bracket <...> search path, and historically src/limits.h (a
+    # project header — player rank constants — unrelated to the standard C
+    # <limits.h>) would then have shadowed the real system <limits.h> ahead
+    # of the toolchain's own path. That was invisible under glibc/libstdc++
+    # (CHAR_BIT etc. come from compiler builtins), but AppleClang's libc++
+    # headers (<climits>, <string>, <bitset>, ...) do a bare
+    # `#include <limits.h>` and would have broken with "use of undeclared
+    # identifier 'CHAR_BIT'" the moment src/ shadowed it. The physical-layout
+    # wave's rename to player_limits.h retired that specific literal-name
+    # collision (only a file literally named limits.h can participate in a
+    # <limits.h> lookup), but src/ still stays off this angle-bracket path.
     #
     # src/tests/ is plain -iquote (no name collision there, so highest quote
     # priority is fine and simplest). src/ is -idirafter, NOT -iquote (Phase 4
@@ -1509,11 +1515,16 @@ if(ROTS_BUILD_TESTS)
     # both newly pull in <semaphore> (std::counting_semaphore; unreachable
     # pre-C++20, so this was invisible under the old c++17/c++1z build), whose
     # libstdc++ implementation needs _POSIX_SEM_VALUE_MAX from glibc's
-    # <bits/posix1_lim.h>. With src/ on the FRONT of the merged list via
-    # -iquote, GCC's #include_next chain for <limits.h> walked into
-    # src/player_limits.h before ever reaching glibc's real one, so posix1_lim.h
-    # never loaded and every test TU (they all pull in gtest.h) failed with
-    # "'_POSIX_SEM_VALUE_MAX' was not declared". -idirafter instead places
+    # <bits/posix1_lim.h>. At the time this was diagnosed the header was
+    # still named src/limits.h (pre-rename); with src/ on the FRONT of the
+    # merged list via -iquote, GCC's #include_next chain for <limits.h>
+    # walked into that src/limits.h before ever reaching glibc's real one,
+    # so posix1_lim.h never loaded and every test TU (they all pull in
+    # gtest.h) failed with "'_POSIX_SEM_VALUE_MAX' was not declared" — a
+    # scenario the physical-layout wave's rename to player_limits.h now
+    # makes physically impossible (#include_next's continuation for
+    # <limits.h> can only land on a file literally named limits.h).
+    # -idirafter instead places
     # src/ at the very END of the merged list -- after the standard system
     # directories -- so #include_next resolves glibc's real <limits.h> first
     # (found earlier, in its normal system-directory position) and only

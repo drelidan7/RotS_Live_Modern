@@ -157,14 +157,20 @@ clean:
 # account/savebench/finalize objects get correct dependency tracking for free
 # from the existing pattern rule + auto-generated .d files.
 
-# */*.cpp / */*.h: reach sources relocated into a library dir or app/
-# (physical-layout wave) alongside the still-flat top-level *.cpp/*.h; a
-# glob with no match (e.g. today, pre-move) expands to itself and
-# clang-format skips it with a harmless "no such file" — same behavior the
-# plain *.cpp glob already has on an empty tree.
+# Ten tier dirs (physical-layout wave): every production .cpp now lives in
+# one of these, and a handful also carry a private .h (see BUILD.md's
+# "Private-header-moves-with-its-library rule"). Several dirs (core, world,
+# combat, pathfind, script, olc) have zero .h files, so a plain */*.h glob
+# would pass a literal unmatched pattern to clang-format and abort the whole
+# recipe (this broke `make format` post-move: see AGENTS.md's whole-branch
+# review). `find -maxdepth 1` + `xargs -r` is empty-safe per dir and never
+# recurses into src/tests/, which must NOT be reformatted by this target.
+FORMAT_TIER_DIRS = platform core entity persist world combat pathfind script olc app
+
 format:
-	clang-format -i -style=WebKit *.cpp */*.cpp
-	clang-format -i -style=WebKit *.h */*.h
+	find $(FORMAT_TIER_DIRS) -maxdepth 1 \( -name '*.cpp' -o -name '*.h' \) -print0 \
+		| xargs -0 -r clang-format -i -style=WebKit
+	clang-format -i -style=WebKit *.h
 
 setup:
 	@mkdir -p ../bin ../log ../lib/misc \

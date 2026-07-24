@@ -264,7 +264,9 @@ the pervasive shared four (`utils.h`, `comm.h`, `db.h`, `handler.h`), the cross-
 headers (`combat_hooks.h`, `entity_hooks.h`, `output_seam.h`, `script_hooks.h`, `editor_hooks.h`,
 `persist_hooks.h`, `world_hooks.h`), and every other header with more than one tier of includer.
 `src/tests/` and the public `src/<lib>/include/rots/<lib>/` header trees are explicitly **out of
-scope** — neither moved, and no test file's `#include` directive changed.
+scope** — neither moved, and no test file's `#include` directive changed, except the four
+`../limits.h` → `../player_limits.h` rename sites in `src/tests/`, part of the sanctioned rename
+(see "The `<limits.h>` shadow and the `player_limits.h` rename" below).
 
 **Cross-boundary include resolution (the crux).** A moved TU's `#include` directives never
 changed. Its intra-library private header resolves via the compiler's implicit

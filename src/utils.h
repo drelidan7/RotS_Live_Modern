@@ -49,6 +49,17 @@ private:
 };
 
 extern struct weather_data weather_info;
+
+// LS-2 T2: the location macros below (IS_DARK/IS_SUNLIT_EXIT/IS_SHADOWY_EXIT/
+// SUN_PENALTY/OUTSIDE/EXIT/IS_WATER) expand to Stage-1 Placement API calls
+// instead of raw world[] indexing. Declared here (rather than #include
+// "handler.h") so utils.h stays include-light for its 75 consumers and gains
+// no new transitive weight; the canonical declarations live in handler.h and
+// these must stay byte-identical to them. struct room_data / struct char_data
+// are already forward-declared via rots/core/fwd.h (included above), so
+// incomplete types suffice here.
+struct room_data* room_by_id_total(int rnum);
+struct room_data* room_of(const struct char_data* ch);
 extern sh_int square_root[];
 extern char get_current_time_phase(); // returns the portion number of the tick
 extern int armor_absorb(struct obj_data* obj);
@@ -315,7 +326,7 @@ int has_program(char_data* host, int num);
 #define IS_AFFECTED(ch, skill) (IS_SET((ch)->specials.affected_by, (skill)))
 
 #define IS_DARK(room) (                                                                                                                                                                          \
-    !world[room].light && (IS_SET(world[room].room_flags, DARK) || ((world[room].sector_type != SECT_INSIDE && world[room].sector_type != SECT_CITY) && (/*weather_info.sunlight == SUN_SET ||*/ \
+    !room_by_id_total(room)->light && (IS_SET(room_by_id_total(room)->room_flags, DARK) || ((room_by_id_total(room)->sector_type != SECT_INSIDE && room_by_id_total(room)->sector_type != SECT_CITY) && (/*weather_info.sunlight == SUN_SET ||*/ \
                                                                         weather_info.sunlight == SUN_DARK))))
 
 #define IS_LIGHT(room) (!IS_DARK(room))
@@ -498,12 +509,12 @@ extern struct race_bodypart_data bodyparts[MAX_BODYTYPES];
 // If:  the adjacent room is not DARK, not INDOORS, and the exit is open or broken:
 // and if the adjacent room ain't shadowy either (loman)
 #define IS_SUNLIT_EXIT(cur_room, adj_room, door) \
-    ((weather_info.sunlight == SUN_LIGHT) && (!IS_SET(world[adj_room].room_flags, DARK)) && (!IS_SET(world[adj_room].room_flags, SHADOWY)) && (!IS_SET(world[adj_room].room_flags, INDOORS)) && ((!IS_SET(world[cur_room].dir_option[door]->exit_info, EX_CLOSED) || (IS_SET(world[cur_room].dir_option[door]->exit_info, EX_ISBROKEN)))))
+    ((weather_info.sunlight == SUN_LIGHT) && (!IS_SET(room_by_id_total(adj_room)->room_flags, DARK)) && (!IS_SET(room_by_id_total(adj_room)->room_flags, SHADOWY)) && (!IS_SET(room_by_id_total(adj_room)->room_flags, INDOORS)) && ((!IS_SET(room_by_id_total(cur_room)->dir_option[door]->exit_info, EX_CLOSED) || (IS_SET(room_by_id_total(cur_room)->dir_option[door]->exit_info, EX_ISBROKEN)))))
 
 #define IS_SHADOWY_EXIT(cur_room, adj_room, door) \
-    ((IS_SET(world[adj_room].room_flags, SHADOWY)) && (!IS_SET(world[cur_room].dir_option[door]->exit_info, EX_CLOSED)))
+    ((IS_SET(room_by_id_total(adj_room)->room_flags, SHADOWY)) && (!IS_SET(room_by_id_total(cur_room)->dir_option[door]->exit_info, EX_CLOSED)))
 
-#define SUN_PENALTY(ch) (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_OLOGHAI) || (GET_RACE(ch) == RACE_ORC) || (GET_RACE(ch) == RACE_MAGUS)) && OUTSIDE(ch) && (weather_info.sunlight == SUN_LIGHT) && (!IS_SET(world[ch->in_room].room_flags, DARK)) && (!IS_SET(world[ch->in_room].room_flags, SHADOWY)))
+#define SUN_PENALTY(ch) (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_OLOGHAI) || (GET_RACE(ch) == RACE_ORC) || (GET_RACE(ch) == RACE_MAGUS)) && OUTSIDE(ch) && (weather_info.sunlight == SUN_LIGHT) && (!IS_SET(room_of(ch)->room_flags, DARK)) && (!IS_SET(room_of(ch)->room_flags, SHADOWY)))
 #define EVIL_RACE(ch) ((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC) || (GET_RACE(ch) == RACE_MAGUS) || (GET_RACE(ch) == RACE_OLOGHAI) || (GET_RACE(ch) == RACE_HARADRIM))
 
 #define GET_OB(ch) ((ch)->points.OB)
@@ -705,9 +716,9 @@ int CAN_SEE_OBJ(char_data* sub, obj_data* obj);
 
 #define OBJN(obj, vict) (CAN_SEE_OBJ((vict), (obj)) ? fname((obj)->name) : "something")
 
-#define OUTSIDE(ch) (!IS_SET(world[(ch)->in_room].room_flags, INDOORS))
+#define OUTSIDE(ch) (!IS_SET(room_of((ch))->room_flags, INDOORS))
 
-#define EXIT(ch, door) (world[(ch)->in_room].dir_option[door])
+#define EXIT(ch, door) (room_of((ch))->dir_option[door])
 
 /* #define CAN_GO(ch, door) (EXIT(ch,door)  &&  (EXIT(ch,door)->to_room != NOWHERE) \
                           && (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED) || IS_SET(EXIT(ch, door)->exit_info, EX_ISBROKEN)) )
@@ -782,7 +793,7 @@ void set_mental_delay(char_data* ch, int value);
 void show_char_to_char(struct char_data* i, struct char_data* ch, int mode,
     char* pos_line = 0);
 
-#define IS_WATER(room) ((world[(room)].sector_type == SECT_WATER_SWIM) || (world[(room)].sector_type == SECT_WATER_NOSWIM) || (world[(room)].sector_type == SECT_UNDERWATER))
+#define IS_WATER(room) ((room_by_id_total((room))->sector_type == SECT_WATER_SWIM) || (room_by_id_total((room))->sector_type == SECT_WATER_NOSWIM) || (room_by_id_total((room))->sector_type == SECT_UNDERWATER))
 
 /* Returns the guardian type.  Returns GUARDIAN_INVALID if the mob is not a guardian. */
 int get_guardian_type(int race_number, const char_data* in_guardian_mob);

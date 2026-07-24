@@ -756,20 +756,20 @@ set(ROTS_SCRIPT_SOURCES
 # either joined ROTS_COMBAT_SOURCES or been ruled to a different tier and
 # joined there instead.
 set(ROTS_SERVER_SOURCES
-    act_comm.cpp act_info.cpp act_move.cpp act_obj1.cpp
-    act_obj2.cpp act_offe.cpp act_othe.cpp act_soci.cpp
-    act_wiz.cpp ban.cpp big_brother.cpp
-    boards.cpp
-    color.cpp comm.cpp
-    db_boot.cpp delayed_command_interpreter.cpp
-    handler.cpp interpre.cpp
-    mail.cpp mob_csv_extract.cpp
-    modify.cpp
-    obj2html.cpp objsave.cpp
-    pkill.cpp protocol.cpp
-    savebench.cpp
-    shop.cpp signals.cpp
-    utility.cpp wait_functions.cpp
+    app/act_comm.cpp app/act_info.cpp app/act_move.cpp app/act_obj1.cpp
+    app/act_obj2.cpp app/act_offe.cpp app/act_othe.cpp app/act_soci.cpp
+    app/act_wiz.cpp app/ban.cpp app/big_brother.cpp
+    app/boards.cpp
+    app/color.cpp app/comm.cpp
+    app/db_boot.cpp app/delayed_command_interpreter.cpp
+    app/handler.cpp app/interpre.cpp
+    app/mail.cpp app/mob_csv_extract.cpp
+    app/modify.cpp
+    app/obj2html.cpp app/objsave.cpp
+    app/pkill.cpp app/protocol.cpp
+    app/savebench.cpp
+    app/shop.cpp app/signals.cpp
+    app/utility.cpp app/wait_functions.cpp
 )
 
 # L4 band, new top tier: OLC (online creation) editor layer (Cluster B wave
@@ -1042,7 +1042,7 @@ set_source_files_properties(
     ${ROTS_SCRIPT_SOURCES}
     ${ROTS_OLC_SOURCES}
     ${ROTS_SERVER_SOURCES}
-    convert_main.cpp
+    app/convert_main.cpp
     PROPERTIES
     COMPILE_OPTIONS "$<${ROTS_GNULIKE}:-iquote;${CMAKE_CURRENT_SOURCE_DIR};-idirafter;${CMAKE_CURRENT_SOURCE_DIR}>"
 )
@@ -1300,7 +1300,7 @@ target_link_options(ageland PRIVATE
 # src/tests/Makefile, which compile same-directory only against a single
 # hand-maintained OBJFILES list per binary) -- see docs/BUILD.md.
 add_executable(rots_convert
-    convert_main.cpp
+    app/convert_main.cpp
 )
 set_target_properties(rots_convert PROPERTIES CXX_EXTENSIONS OFF)
 target_link_libraries(rots_convert PRIVATE

@@ -88,6 +88,11 @@ public:
     // Zone every stub zone_by_id() call returns; null until a test assigns
     // it.
     zone_data* zone = nullptr;
+    // Records the rnum most recently passed to test_room_by_id_total()
+    // below -- RoomOfTest (LS-1 Wave Task 1) uses this to confirm
+    // room_of(ch) forwards location_of(ch) as the resolver argument, not
+    // just that the two calls happen to return the same single-room stub.
+    int last_requested_rnum = NOWHERE;
 };
 
 // The fixture the file-scope trampoline functions below dispatch to; set by
@@ -100,7 +105,11 @@ StubWorldResolvers* g_active_resolvers = nullptr;
 
 room_data* test_room_by_id(int /*rnum*/) { return g_active_resolvers->room; }
 
-room_data* test_room_by_id_total(int /*rnum*/) { return g_active_resolvers->room; }
+room_data* test_room_by_id_total(int rnum)
+{
+    g_active_resolvers->last_requested_rnum = rnum;
+    return g_active_resolvers->room;
+}
 
 zone_data* test_zone_by_id(int /*znum*/) { return g_active_resolvers->zone; }
 
@@ -534,6 +543,61 @@ TEST(DetachCharFromRoomTest, DefensiveMissingNodePathStillDecrementsRoomLightPre
     EXPECT_FALSE(result);
     EXPECT_EQ(room.light, 2); // decremented despite the false return
     EXPECT_EQ(target.in_room, 5); // location itself still untouched
+}
+
+// ---------------------------------------------------------------------------
+// room_of(ch) (placement.cpp; declared in handler.h beside location_of()/
+// room_by_id_total()) -- LS-1 Wave Task 1, the census-justified API
+// completion (.superpowers/sdd/ls1-census.md Step 5: ~161 counted self-room
+// `world[X->in_room]` read sites the wave's T2 batches convert onto this
+// call). Consumer-free as landed -- no call site converts in this task, that
+// is T2's job; these two tests are the API's own TDD contract proof:
+// room_of(ch) == room_by_id_total(location_of(ch)), for both a placed
+// character and a NOWHERE/out-of-range one (never null -- the fallback
+// room_by_id_total() returns, not room_by_id()'s nullptr).
+// ---------------------------------------------------------------------------
+
+TEST(RoomOfTest, ReturnsTheSamePointerAsTheNestedFormForAPlacedCharacter)
+{
+    StubWorldResolvers resolvers;
+    room_data room = make_stub_room();
+    resolvers.room = &room;
+    ScopedWorldResolverHooks hooks(resolvers);
+
+    char_data character { };
+    character.in_room = 42;
+
+    room_data* const nested = room_by_id_total(location_of(&character));
+    room_data* const via_room_of = room_of(&character);
+
+    ASSERT_NE(via_room_of, nullptr);
+    EXPECT_EQ(via_room_of, nested);
+    EXPECT_EQ(via_room_of, &room);
+    // Confirms room_of() actually forwarded location_of(ch) to the resolver
+    // rather than happening to match through the stub's single-room return.
+    EXPECT_EQ(resolvers.last_requested_rnum, 42);
+}
+
+TEST(RoomOfTest, ReturnsTheFallbackPointerForANowhereCharacter)
+{
+    StubWorldResolvers resolvers;
+    // The stub's one room stands in for room_by_id_total()'s graceful
+    // out-of-range fallback (see entity_hooks.h's two-variant contract
+    // comment) -- the real resolver never returns null for any rnum,
+    // including NOWHERE, and room_of() must preserve that.
+    room_data room = make_stub_room();
+    resolvers.room = &room;
+    ScopedWorldResolverHooks hooks(resolvers);
+
+    char_data character { };
+    character.in_room = NOWHERE;
+
+    room_data* const nested = room_by_id_total(location_of(&character));
+    room_data* const via_room_of = room_of(&character);
+
+    ASSERT_NE(via_room_of, nullptr);
+    EXPECT_EQ(via_room_of, nested);
+    EXPECT_EQ(resolvers.last_requested_rnum, NOWHERE);
 }
 
 // ---------------------------------------------------------------------------

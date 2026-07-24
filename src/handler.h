@@ -73,6 +73,17 @@ int location_of(const struct char_data* ch);
 void set_location(struct char_data* ch, int rnum);
 bool is_in_room(const struct char_data* ch, int rnum);
 
+// LS-1 Wave Task 1 addition (.superpowers/sdd/ls1-census.md Step 5,
+// census-justified by ~161 counted self-room `world[X->in_room]` read
+// sites the wave's T2 conversions collapse onto this call). Self-room
+// convenience folding the ch->in_room read and the world[] resolve into
+// one call: returns room_by_id_total(location_of(ch)) -- never null,
+// preserving room_by_id_total()'s graceful out-of-range fallback rather
+// than room_by_id()'s nullptr-on-invalid contract. Defined in
+// placement.cpp. Consumer-free as landed -- T2's conversions are the
+// first callers.
+struct room_data* room_of(const struct char_data* ch);
+
 /* utility */
 struct obj_data* create_money(int amount);
 /// Returns whether bounded `query` matches a word in `name_list` using legacy prefix rules.

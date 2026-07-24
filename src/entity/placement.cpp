@@ -197,6 +197,20 @@ bool is_in_room(const char_data* ch, int rnum)
     return ch->in_room == rnum;
 }
 
+// Self-room convenience (LS-1 Wave Task 1; .superpowers/sdd/ls1-census.md
+// Step 5 -- census-justified by ~161 counted self-room
+// `world[X->in_room]` read sites the wave's T2 conversions collapse onto
+// this call). Thin wrapper folding the ch->in_room read and the world[]
+// resolve into one call; never null -- preserves room_by_id_total()'s
+// graceful out-of-range fallback rather than room_by_id()'s nullptr
+// contract, matching every existing self-room site's historical
+// behavior. Consumer-free as landed -- T2's conversions are the first
+// callers.
+room_data* room_of(const char_data* ch)
+{
+    return room_by_id_total(location_of(ch));
+}
+
 namespace rots::entity {
 
 // Range-for-capable wrapper over a room's intrusive occupant chain

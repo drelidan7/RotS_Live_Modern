@@ -550,7 +550,7 @@ void get_corpse_desc(struct obj_data* corpse, struct char_data* ch,
     default:
         strncpy(condition, "silent", BUF_LEN - 1);
     }
-    if (world[ch->in_room].sector_type == SECT_WATER_NOSWIM || world[ch->in_room].sector_type == SECT_WATER_SWIM || world[ch->in_room].sector_type == SECT_UNDERWATER)
+    if (room_of(ch)->sector_type == SECT_WATER_NOSWIM || room_of(ch)->sector_type == SECT_WATER_SWIM || room_of(ch)->sector_type == SECT_UNDERWATER)
         rots_asprintf(&(corpse->description), "The %s corpse of %s is floating here.",
             condition,
             IS_NPC(ch) ? GET_NAME(ch) : pc_star_types[GET_RACE(ch)].data());
@@ -585,7 +585,7 @@ void move_gold(struct char_data* ch, struct obj_data* object, int option)
                 obj_to_obj(money, object);
             } else {
                 money = create_money(GET_GOLD(ch));
-                obj_to_room(money, ch->in_room);
+                obj_to_room(money, location_of(ch));
             }
         }
     }
@@ -654,14 +654,14 @@ void remove_and_drop_object(char_data* character)
         // Do this here since cur_obj->next_content becomes invalid after the item gets
         // moved to the room.
         next_obj = cur_obj->next_content;
-        obj_to_room(cur_obj, character->in_room);
+        obj_to_room(cur_obj, location_of(character));
     }
     character->carrying = 0;
 
     for (int gear_index = 0; gear_index < MAX_WEAR; gear_index++) {
         if (character->equipment[gear_index]) {
             obj_data* item = unequip_char(character, gear_index);
-            obj_to_room(item, character->in_room);
+            obj_to_room(item, location_of(character));
         }
     }
 }
@@ -796,7 +796,7 @@ obj_data* make_physical_corpse(char_data* character, char_data* killer, int atta
     // remove_random_item(character, corpse); // To re-enable item decay, remove the comment before this line.
 
     /* moving the corpse into the room of our players death */
-    obj_to_room(corpse, character->in_room);
+    obj_to_room(corpse, location_of(character));
 
     return corpse;
 }
@@ -892,7 +892,7 @@ void death_cry(struct char_data* ch)
     }
 
     act(cry_msg, FALSE, ch, 0, 0, TO_ROOM);
-    was_in = ch->in_room;
+    was_in = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (save/restore around act() broadcast below; census Family D pattern, unlisted site)
 
     if (ch->player.death_cry2 && strcmp(ch->player.death_cry2, "(null)")) {
         cry_msg = ch->player.death_cry2;
@@ -901,9 +901,9 @@ void death_cry(struct char_data* ch)
     }
     for (door = 0; door < NUM_OF_DIRS; door++) {
         if (CAN_GO(ch, door)) {
-            ch->in_room = world[was_in].dir_option[door]->to_room;
+            ch->in_room = world[was_in].dir_option[door]->to_room; // LS1-ALLOW: in_room used as mutable room cursor
             act(cry_msg, FALSE, ch, 0, 0, TO_ROOM);
-            ch->in_room = was_in;
+            ch->in_room = was_in; // LS1-ALLOW: in_room used as mutable room cursor
         }
     }
 }
@@ -1045,7 +1045,7 @@ void die(char_data* dead_man, char_data* killer, int attack_type)
         }
 
         if (!IS_NPC(dead_man)) {
-            const room_data& death_room = world[dead_man->in_room];
+            const room_data& death_room = *room_of(dead_man);
             const char* room_name = death_room.name;
             if (MOB_FLAGGED(killer, MOB_PET)) {
                 vmudlog(BRF, "%s killed by %s (%s) at %s", GET_NAME(dead_man), GET_NAME(killer), GET_NAME(killer->master), room_name);
@@ -1176,8 +1176,8 @@ int exp_with_modifiers(char_data* character, char_data* dead_man, int base_exp)
         exp = exp * GET_DIFFICULTY(dead_man) / 100;
 
     /* east exp bonus:  8 is the river */
-    if (RACE_GOOD(character) && zone_table[world[character->in_room].zone].x > 8)
-        exp += exp * std::min(zone_table[world[character->in_room].zone].x - 8, 5) * 3 / 100;
+    if (RACE_GOOD(character) && zone_table[room_of(character)->zone].x > 8)
+        exp += exp * std::min(zone_table[room_of(character)->zone].x - 8, 5) * 3 / 100;
 
     /* TEMPORARY: */
     exp += 2 * exp / std::max(1, GET_LEVEL(character) - 1);
@@ -1195,7 +1195,7 @@ bool master_gets_credit(const char_data* character)
     return (MOB_FLAGGED(character, MOB_ORC_FRIEND)
                || MOB_FLAGGED(character, MOB_PET)
                || MOB_FLAGGED(character, MOB_GUARDIAN))
-        && character->in_room == character->master->in_room;
+        && location_of(character) == location_of(character->master);
 }
 }
 
@@ -1204,10 +1204,10 @@ void group_gain(char_data* killer, char_data* dead_man)
     if (killer == nullptr || dead_man == nullptr)
         return;
 
-    if (killer->in_room == NOWHERE)
+    if (location_of(killer) == NOWHERE)
         return;
 
-    if (killer->in_room != dead_man->in_room)
+    if (location_of(killer) != location_of(dead_man))
         return;
 
     char_vector involved_killers;
@@ -1231,8 +1231,7 @@ void group_gain(char_data* killer, char_data* dead_man)
     }
 
     // Collect everyone in the room who is fighting the person that died.
-    const room_data& death_room = world[dead_man->in_room];
-    for (char_data* character = death_room.people; character; character = character->next_in_room) {
+    for (auto* character : rots::entity::occupants(room_of(dead_man))) {
         if (character->specials.fighting == dead_man) {
             involved_killers.push_back(character);
             if (utils::is_pc(*character)) {
@@ -1245,7 +1244,7 @@ void group_gain(char_data* killer, char_data* dead_man)
         // Iterate over the group of each killer.
         if (local_killer->group) {
             for (auto groupee : *local_killer->group) {
-                if (groupee->in_room == dead_man->in_room) {
+                if (location_of(groupee) == location_of(dead_man)) {
                     if (utils::is_pc(*groupee)) {
                         player_killers.insert(groupee);
                     }
@@ -1263,7 +1262,7 @@ void group_gain(char_data* killer, char_data* dead_man)
                 // Master is in a different group than its pet.  Add credit to the master's group too.
                 if (master->group && (master->group != local_killer->group)) {
                     for (auto groupee : *master->group) {
-                        if (groupee->in_room == dead_man->in_room) {
+                        if (location_of(groupee) == location_of(dead_man)) {
                             if (utils::is_pc(*groupee)) {
                                 player_killers.insert(groupee);
                             }
@@ -1805,7 +1804,7 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
             if (IS_RIDING(victim) && (victim->mount_data.mount == attacker))
                 stop_riding(victim);
 
-            if (IS_NPC(attacker) && IS_NPC(victim) && victim->master && !number(0, 10) && IS_AFFECTED(victim, AFF_CHARM) && (victim->master->in_room == attacker->in_room)) {
+            if (IS_NPC(attacker) && IS_NPC(victim) && victim->master && !number(0, 10) && IS_AFFECTED(victim, AFF_CHARM) && (location_of(victim->master) == location_of(attacker))) {
                 if (attacker->specials.fighting)
                     stop_fighting(attacker);
                 hit(attacker, victim->master, TYPE_UNDEFINED);
@@ -2039,7 +2038,7 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
 
     if (!IS_NPC(victim) && !(victim->desc && victim->desc->descriptor) && (victim->specials.fighting) && GET_POS(victim) > POSITION_INCAP) {
         rots::combat::issue_command(rots::combat::combat_command::flee, victim, mutable_arg(""), 0, 0, 0);
-        victim->specials.was_in_room = victim->in_room;
+        victim->specials.was_in_room = location_of(victim);
     }
 
     if (!AWAKE(victim))
@@ -2049,7 +2048,7 @@ int damage(char_data* attacker, char_data* victim, int dam, int attacktype, int 
     if (GET_POS(victim) == POSITION_DEAD) {
         // Redirect the attacker as the pet's master if the master is in the same room as the pet.
         if (IS_NPC(attacker)) {
-            if (attacker->master && (MOB_FLAGGED(attacker, MOB_PET) || MOB_FLAGGED(attacker, MOB_ORC_FRIEND)) && attacker->master->in_room == attacker->in_room) {
+            if (attacker->master && (MOB_FLAGGED(attacker, MOB_PET) || MOB_FLAGGED(attacker, MOB_ORC_FRIEND)) && location_of(attacker->master) == location_of(attacker)) {
                 attacker = attacker->master;
             }
         }
@@ -2388,7 +2387,7 @@ int armor_effect(struct char_data* ch, struct char_data* victim,
                 send_to_char("OUCH! You hear a crunching sound and feel "
                              "a sharp pain.\n\r",
                     victim);
-                send_to_room_except_two("You hear a crunching sound.\n\r", ch->in_room, ch, victim);
+                send_to_room_except_two("You hear a crunching sound.\n\r", location_of(ch), ch, victim);
 
                 damage += damage_reduction * 2;
             }
@@ -2553,7 +2552,7 @@ void hit(char_data* ch, char_data* victim, int)
     waiting_type tmpwtl;
     extern race_bodypart_data bodyparts[16];
 
-    if (ch->in_room != victim->in_room) {
+    if (location_of(ch) != location_of(victim)) {
         log("SYSERR: NOT SAME ROOM WHEN FIGHTING!");
         return;
     }
@@ -2808,7 +2807,7 @@ void hit(char_data* ch, char_data* victim, int)
 
     if (!IS_NPC(victim) && !(victim->desc && victim->desc->descriptor) && victim->specials.fighting && GET_POS(victim) > POSITION_INCAP) {
         rots::combat::issue_command(rots::combat::combat_command::flee, victim, mutable_arg(""), 0, 0, 0);
-        victim->specials.was_in_room = victim->in_room;
+        victim->specials.was_in_room = location_of(victim);
     }
 }
 
@@ -2820,7 +2819,7 @@ bool is_victim_around(const char_data* character)
 
     // The character's enemy is no longer in the room (probably wimpied out).  Can't
     // attack an enemy that isn't there.
-    if (character->specials.fighting->in_room != character->in_room)
+    if (location_of(character->specials.fighting) != location_of(character))
         return false;
 
     return true;
@@ -2957,7 +2956,7 @@ void perform_violence(int)
             }
 
             if (fighter->specials.ENERGY > ENE_TO_HIT) {
-                if (AWAKE(fighter) && fighter->specials.fighting && (fighter->in_room == fighter->specials.fighting->in_room)) {
+                if (AWAKE(fighter) && fighter->specials.fighting && (location_of(fighter) == location_of(fighter->specials.fighting))) {
                     // Note:  Calling hit reduces the character's current energy.
                     sh_int current_energy = fighter->specials.ENERGY;
                     hit(fighter, fighter->specials.fighting, TYPE_UNDEFINED);
@@ -3160,7 +3159,7 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
     }
 
     if ((IS_OBJ_STAT(item, ITEM_ANTI_EVIL) && IS_EVIL(character)) || (IS_OBJ_STAT(item, ITEM_ANTI_GOOD) && IS_GOOD(character)) || (IS_OBJ_STAT(item, ITEM_ANTI_NEUTRAL) && IS_NEUTRAL(character))) {
-        if (character->in_room != NOWHERE) {
+        if (location_of(character) != NOWHERE) {
 
             act("You are zapped by $p and instantly drop it.", FALSE, character, item, 0, TO_CHAR);
             act("$n is zapped by $p and instantly drops it.", FALSE, character, item, 0, TO_ROOM);
@@ -3171,7 +3170,7 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
     }
 
     if ((IS_OBJ_STAT(item, ITEM_HARADRIM) && GET_RACE(character) != RACE_HARADRIM) || (IS_OBJ_STAT(item, ITEM_HUMAN) && GET_RACE(character) != RACE_HUMAN) || (IS_OBJ_STAT(item, ITEM_DWARF) && GET_RACE(character) != RACE_DWARF) || (IS_OBJ_STAT(item, ITEM_WOODELF) && GET_RACE(character) != RACE_WOOD) || (IS_OBJ_STAT(item, ITEM_HOBBIT) && GET_RACE(character) != RACE_HOBBIT) || (IS_OBJ_STAT(item, ITEM_BEORNING) && GET_RACE(character) != RACE_BEORNING) || (IS_OBJ_STAT(item, ITEM_URUK) && GET_RACE(character) != RACE_URUK) || (IS_OBJ_STAT(item, ITEM_ORC) && GET_RACE(character) != RACE_ORC) || (IS_OBJ_STAT(item, ITEM_MAGUS) && GET_RACE(character) != RACE_MAGUS) || (IS_OBJ_STAT(item, ITEM_OLOGHAI) && GET_RACE(character) != RACE_OLOGHAI)) {
-        if (character->in_room != NOWHERE) {
+        if (location_of(character) != NOWHERE) {
 
             act("You are zapped by $p and instantly drop it.", FALSE, character, item, 0, TO_CHAR);
             act("$n is zapped by $p and instantly drops it.", FALSE, character, item, 0, TO_ROOM);
@@ -3317,10 +3316,10 @@ int perform_drop(struct char_data* ch, struct obj_data* obj, sh_int)
         log(std::format("OBJ: {} drops {} ({}) at {} ({})", GET_NAME(ch),
             obj->short_description,
             (obj->item_number >= 0) ? obj_index[obj->item_number].virt : -1,
-            world[ch->in_room].name, world[ch->in_room].number));
+            room_of(ch)->name, room_of(ch)->number));
     }
 
-    obj_to_room(obj, ch->in_room);
+    obj_to_room(obj, location_of(ch));
     obj->obj_flags.timer = 60;
 
     return 0;
@@ -3761,7 +3760,7 @@ void perform_remove(struct char_data* ch, int pos)
                 obj = ch->equipment[WEAR_BELT_1];
 
                 if (IS_CARRYING_N(ch) >= CAN_CARRY_N(ch)) {
-                    obj_to_room(unequip_char(ch, WEAR_BELT_1), ch->in_room);
+                    obj_to_room(unequip_char(ch, WEAR_BELT_1), location_of(ch));
 
                     act("You can't carry that much; $p falls to the ground.", FALSE, ch, obj, 0, TO_CHAR);
                     act("$p falls to the ground.", TRUE, ch, obj, 0, TO_ROOM);
@@ -3777,7 +3776,7 @@ void perform_remove(struct char_data* ch, int pos)
                 obj = ch->equipment[WEAR_BELT_2];
 
                 if (IS_CARRYING_N(ch) >= CAN_CARRY_N(ch)) {
-                    obj_to_room(unequip_char(ch, WEAR_BELT_2), ch->in_room);
+                    obj_to_room(unequip_char(ch, WEAR_BELT_2), location_of(ch));
 
                     act("You can't carry that much; $p falls to the ground.", FALSE, ch, obj, 0, TO_CHAR);
                     act("$p falls to the ground.", TRUE, ch, obj, 0, TO_ROOM);
@@ -3793,7 +3792,7 @@ void perform_remove(struct char_data* ch, int pos)
                 obj = ch->equipment[WEAR_BELT_3];
 
                 if (IS_CARRYING_N(ch) >= CAN_CARRY_N(ch)) {
-                    obj_to_room(unequip_char(ch, WEAR_BELT_3), ch->in_room);
+                    obj_to_room(unequip_char(ch, WEAR_BELT_3), location_of(ch));
 
                     act("You can't carry that much; $p falls to the ground.", FALSE, ch, obj, 0, TO_CHAR);
                     act("$p falls to the ground.", TRUE, ch, obj, 0, TO_ROOM);

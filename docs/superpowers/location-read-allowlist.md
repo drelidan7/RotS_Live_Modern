@@ -20,3 +20,17 @@ of a whole-file exemption — see `.superpowers/sdd/ls1-census.md` Step 8 for th
 `zone_table[` is explicitly **not** a token this gate tracks (LS-1 census Discrepancy 2 — out of
 this program's charter; `zone_by_id()` exists but converting `zone_table[` call sites is not this
 wave's exit criterion).
+
+The eight accepted `LS1-ALLOW` reason prefixes (hardcoded in the script's
+`ALLOWED_REASON_PREFIXES`; any other reason fails `--check` as `invalid-reason`): `save-next`,
+`manual occupant-list splice`, `peek-ahead`, `manual first-match advance`,
+`in_room used as mutable room cursor`, `write`, `obj-location`, `resolver-impl`.
+
+**KNOWN BOUNDARY (census-sanctioned; LS-3's work — see the program spec's "The gate and the macro
+boundary"):** the gate scans `.cpp` bodies only. Raw reads hiding behind `src/utils.h` macros
+(`EXIT`/`OUTSIDE`/`IS_WATER`/`SUN_PENALTY` expand to `world[(ch)->in_room]` at their call sites —
+roughly 90 sites across the converted libraries) are invisible to it: the call site carries no
+literal token and headers are unscanned. A macro call site therefore reads as clean to this gate
+while still touching the raw representation one level down; LS-3's representation swap converts
+those macro bodies directly. Do not read this gate's green as "zero raw reads in the absolute" —
+it is "zero raw *literal-token* reads in library `.cpp` bodies outside this ledger."

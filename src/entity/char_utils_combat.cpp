@@ -34,7 +34,11 @@ std::vector<char_data*> get_engaged_characters(const char_data* character, const
     }
 
     // Add everyone in the room that is fighting the character to the list.
-    for (char_data* other = room.people; other; other = other->next_in_room) {
+    // LS1 T1b retrofit: const-room next_in_room walk -- was left raw in
+    // tranche A (ls1-task-2-report.md) because occupants() had no const
+    // overload for a const room_data& parameter; now converts onto the
+    // const occupants() overload added by this task.
+    for (const char_data* other : rots::entity::occupants(&room)) {
         if (other->specials.fighting == character) {
             if (seen_fighters.insert(other->specials.fighting).second) {
                 engaged_fighters.push_back(other->specials.fighting);

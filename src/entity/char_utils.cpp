@@ -1014,7 +1014,12 @@ bool can_carry_object(const char_data& character, const obj_data& object)
 //============================================================================
 bool can_see(const char_data& character, const weather_data& weather, const room_data& room)
 {
-    if (character.in_room == NOWHERE)
+    // LS1 T1b retrofit: dot-access char-location read (AMENDMENT 3 --
+    // ls1-census.md; tranche-A review Finding 1) -- was left raw because
+    // the LS-1 census's original re-grep only matched arrow access
+    // (->in_room), missing this const char_data& reference parameter's
+    // dot-access read.
+    if (location_of(&character) == NOWHERE)
         return false;
 
     if (is_affected_by(character, AFF_BLIND))

@@ -277,18 +277,23 @@ void reset_zone(int zone)
                 switch (ZCMD.arg1) {
                 case 0: /* Sets last_mob */
                     if (ZCMD.arg2 >= 0 || ZCMD.arg3 >= 0) {
-                        // LS1 T2: init read converted; the walk itself stays on
-                        // next_in_room -- rots::entity::occupants() is defined only
-                        // inside placement.cpp with no header declaration, so no other
-                        // TU can call it yet (see ls1-task-2-report.md). This is a
-                        // break+post-loop-read (Family F) walk that would otherwise
-                        // convert to occupants() with the pre-init recipe.
-                        for (tmp = 0, tmpmob = room_by_id_total(ZCMD.arg2)->people;
-                             tmpmob; tmpmob = tmpmob->next_in_room) {
-                            if (IS_NPC(tmpmob) && tmpmob->nr == ZCMD.arg3)
+                        // LS1 T1b: occupants() now has a public header
+                        // declaration (handler.h) -- retrofitting this
+                        // Family-F walk (break+post-loop-read;
+                        // ls1-census.md Amendment 1) per its pre-init
+                        // recipe. tmpmob is pre-initialized to nullptr
+                        // before the range-for so the post-loop `if
+                        // (tmpmob)` reproduces the original walk's
+                        // walked-off-the-end-leaves-null semantics.
+                        tmp = 0;
+                        tmpmob = nullptr;
+                        for (auto* occ : rots::entity::occupants(room_by_id_total(ZCMD.arg2))) {
+                            if (IS_NPC(occ) && occ->nr == ZCMD.arg3)
                                 tmp++;
-                            if (tmp >= ZCMD.arg4)
+                            if (tmp >= ZCMD.arg4) {
+                                tmpmob = occ;
                                 break;
+                            }
                         }
                         if (tmpmob) {
                             mob = tmpmob;
@@ -424,18 +429,23 @@ void reset_zone(int zone)
                     mob->specials.trophy_line = ZCMD.arg2;
                     break;
                 case 4: /* Set to follow */
-                    // LS1 T2: init read converted; the walk itself stays on
-                    // next_in_room -- rots::entity::occupants() is defined only
-                    // inside placement.cpp with no header declaration, so no other
-                    // TU can call it yet (see ls1-task-2-report.md). This is a
-                    // break+post-loop-read (Family F) walk that would otherwise
-                    // convert to occupants() with the pre-init recipe.
-                    tmpch = room_of(mob)->people;
-                    for (tmp = 0; tmpch; tmpch = tmpch->next_in_room) {
-                        if (IS_NPC(tmpch) && (tmpch->nr < 0 || tmpch->nr == ZCMD.arg3))
+                    // LS1 T1b: occupants() now has a public header
+                    // declaration (handler.h) -- retrofitting this
+                    // Family-F walk (break+post-loop-read;
+                    // ls1-census.md Amendment 1) per its pre-init
+                    // recipe. tmpch is pre-initialized to nullptr
+                    // before the range-for so the post-loop `if
+                    // (tmpch)` reproduces the original walk's
+                    // walked-off-the-end-leaves-null semantics.
+                    tmp = 0;
+                    tmpch = nullptr;
+                    for (auto* occ : rots::entity::occupants(room_of(mob))) {
+                        if (IS_NPC(occ) && (occ->nr < 0 || occ->nr == ZCMD.arg3))
                             tmp++;
-                        if (tmp == ZCMD.arg2)
+                        if (tmp == ZCMD.arg2) {
+                            tmpch = occ;
                             break;
+                        }
                     }
                     if (tmpch)
                         add_follower(mob, tmpch, FOLLOW_MOVE);

@@ -2,6 +2,9 @@
 #include "rots/core/character.h"
 #include "rots/core/types.h"
 #include "../utils.h"
+#include "../interpre.h"
+#include "damage_test_context.h"
+#include "test_random_utils.h"
 #include <gtest/gtest.h>
 
 // spec_pro.cpp has no header of its own for these internals -- forward
@@ -16,6 +19,21 @@
 // ch->knowledge[request] to the guildmaster's cap (returning true once the
 // cap is hit, so the batching loop stops early instead of over-learning).
 extern bool handle_pracs(char_data* host, char_data* ch, int request, int prog);
+
+// SPECIAL(dragon) -- LS-1 Tranche C coverage rider (ls1-census.md Step 7:
+// "the dragon save-next need[s] at least a characterization anchor"). Not
+// declared in any header (SPECIAL()-family functions are address-taken into
+// mob-spec tables, never called by name outside spec_pro.cpp itself), so
+// forward-declare with the raw SPECIAL() signature (interpre.h).
+extern int dragon(char_data* host, char_data* ch, int cmd, char* arg, int callflag,
+    waiting_type* wtl);
+
+// SPECIAL(healing_plant) -- same rider: the census also asks for coverage on
+// "the converted counting walks / self-room reads that touch reachable
+// logic," and healing_plant is the simplest live occupants()/room_of()
+// self-room walk in this file (no save-next, no splice, no cursor).
+extern int healing_plant(char_data* host, char_data* ch, int cmd, char* arg, int callflag,
+    waiting_type* wtl);
 
 // Real, compile-time-populated guild-teacher data (consts.cpp) -- guildmasters[0]
 // ("ALL SKILLS") caps skill index 1 at knowledge 100, which this suite uses as
@@ -108,4 +126,88 @@ TEST(HandlePracs, RepeatedCallsNeverDriveSpellsToLearnNegative) {
     }
 
     EXPECT_EQ(context.ch.specials2.spells_to_learn, 0);
+}
+
+namespace {
+
+// dragon()/healing_plant() both walk room occupants via
+// rots::entity::occupants(room_of(host)) post-conversion; DamageTestContext
+// (damage_test_context.h) already wires an attacker+victim pair into
+// world[room_number].people the same way the live occupant chain does, so it
+// doubles as this rider's room-occupant fixture even though its name is
+// damage-test-flavored.
+struct DragonBreathContext : DamageTestContext {
+    DragonBreathContext()
+    {
+        attacker.specials.position = POSITION_FIGHTING;
+        attacker.player.level = 20; // mob_level = GET_LEVEL(host) / 2 == 10 -> dice(10, 6), always >= 10 dmg.
+    }
+};
+
+} // namespace
+
+TEST(SpecProDragon, DamagesEveryOtherRoomOccupantButNotItself) {
+    DragonBreathContext context;
+    clear_test_random_values();
+    push_test_random_value(0.0); // number(0, 4) == 0 so the 20%-skip early-return isn't taken.
+
+    const int attacker_hit_before = context.attacker.tmpabilities.hit;
+    const int victim_hit_before = context.victim.tmpabilities.hit;
+
+    dragon(&context.attacker, nullptr, 0, nullptr, 0, nullptr);
+
+    EXPECT_EQ(context.attacker.tmpabilities.hit, attacker_hit_before)
+        << "dragon() must skip the host itself (tmpch != host) while walking room_of(host)'s occupants.";
+    EXPECT_LT(context.victim.tmpabilities.hit, victim_hit_before)
+        << "dragon() should apply dice(mob_level, 6) dragonsbreath damage to the other room occupant "
+        << "reached through the converted room_of(host)->people save-next walk.";
+
+    clear_test_random_values();
+}
+
+TEST(SpecProDragon, DoesNothingWhenTheHostIsNotFighting) {
+    DragonBreathContext context;
+    context.attacker.specials.position = POSITION_STANDING;
+
+    const int victim_hit_before = context.victim.tmpabilities.hit;
+
+    EXPECT_EQ(dragon(&context.attacker, nullptr, 0, nullptr, 0, nullptr), 0);
+    EXPECT_EQ(context.victim.tmpabilities.hit, victim_hit_before);
+}
+
+TEST(SpecProHealingPlant, HealsGoodOccupantsButSkipsTheHostItself) {
+    DamageTestContext context;
+    context.attacker.player.level = 20; // level = max(1, GET_LEVEL(host)/2) == 10 -> number(1, 10).
+    context.victim.specials2.alignment = 500; // IS_GOOD(victim): GET_ALIGNMENT(ch) >= 100.
+    context.victim.abilities.hit = 500;
+    context.victim.tmpabilities.hit = 100;
+    context.attacker.specials2.alignment = 500; // Good too, but must still be skipped (host == character).
+    const int attacker_hit_before = context.attacker.tmpabilities.hit;
+
+    clear_test_random_values();
+    push_test_random_value(0.5); // number(1, 10) -> 1 + int(0.5 * 10) == 6.
+
+    healing_plant(&context.attacker, nullptr, 0, nullptr, SPECIAL_SELF, nullptr);
+
+    EXPECT_EQ(context.victim.tmpabilities.hit, 106)
+        << "healing_plant() should heal a good-aligned occupant reached through the converted "
+        << "occupants(room_of(host)) walk by number(1, level).";
+    EXPECT_EQ(context.attacker.tmpabilities.hit, attacker_hit_before)
+        << "healing_plant() must skip the host itself (host != character) even though it is also good-aligned.";
+
+    clear_test_random_values();
+}
+
+TEST(SpecProHealingPlant, SkipsEvilOccupants) {
+    DamageTestContext context;
+    context.attacker.player.level = 20;
+    context.victim.specials2.alignment = -500; // Evil: IS_GOOD() is false.
+    context.victim.abilities.hit = 500;
+    context.victim.tmpabilities.hit = 100;
+    const int victim_hit_before = context.victim.tmpabilities.hit;
+
+    healing_plant(&context.attacker, nullptr, 0, nullptr, SPECIAL_SELF, nullptr);
+
+    EXPECT_EQ(context.victim.tmpabilities.hit, victim_hit_before)
+        << "healing_plant() should leave an evil-aligned occupant untouched.";
 }

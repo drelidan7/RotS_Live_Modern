@@ -409,11 +409,11 @@ SPECIAL(pet_shops)
     int pet_room;
     struct char_data* pet;
 
-    pet_room = ch->in_room + 1;
+    pet_room = location_of(ch);
 
     if (cmd == CMD_LIST) { /* List */
         send_to_char("Available pets are:\n\r", ch);
-        for (pet = world[pet_room].people; pet; pet = pet->next_in_room) {
+        for (auto* pet : rots::entity::occupants(room_by_id_total(pet_room))) {
             send_to_char(std::format("{:<20} - {}\n\r", pet->player.short_descr,
                                   money_message(3 * GET_EXP(pet)))
                                   ,
@@ -442,7 +442,7 @@ SPECIAL(pet_shops)
         GET_EXP(pet) = 0;
         SET_BIT(MOB_FLAGS(pet), MOB_PET);
 
-        char_to_room(pet, ch->in_room);
+        char_to_room(pet, location_of(ch));
         add_follower(pet, ch, FOLLOW_MOVE);
 
         /* Be certain that pet's can't get/carry/use/weild/wear items */
@@ -663,7 +663,7 @@ SPECIAL(snake)
     if (GET_POS(ch) != POSITION_FIGHTING)
         return FALSE;
 
-    if (host->specials.fighting && (host->specials.fighting->in_room == host->in_room) && (number(0, 42 - GET_LEVEL(host)) < std::min(1 + GET_LEVEL(host) / 4, 4))) {
+    if (host->specials.fighting && (location_of(host->specials.fighting) == location_of(host)) && (number(0, 42 - GET_LEVEL(host)) < std::min(1 + GET_LEVEL(host) / 4, 4))) {
         act("$n bites $N!", 1, host, 0, host->specials.fighting, TO_NOTVICT);
         act("$n bites you!", 1, host, 0, host->specials.fighting, TO_VICT);
         spell_poison(host, mutable_arg(""), SPELL_TYPE_SPELL, host->specials.fighting, 0, 0, 0);
@@ -798,7 +798,7 @@ SPECIAL(gatekeeper)
     doordir = host->delay.targ2.ch_num;
 
     if (ch != NULL && IS_AGGR_TO(host, ch)) {
-        rots_asprintf(&msg, "To arms! The enemy is at %s!", world[ch->in_room].name);
+        rots_asprintf(&msg, "To arms! The enemy is at %s!", room_of(ch)->name);
         rots::combat::issue_command(rots::combat::combat_command::gen_com, host, msg, 0, 0, SCMD_YELL);
         free(msg);
         host->delay.cmd = host->delay.subcmd = 0;
@@ -815,7 +815,7 @@ SPECIAL(gatekeeper)
     }
 
     /* Can these two acts be consolidated? */
-    if ((host->delay.subcmd == 1) && (ch->in_room == host->in_room)) {
+    if ((host->delay.subcmd == 1) && (location_of(ch) == location_of(host))) {
         act("$n shifts uncertainly and peers at $N.", FALSE, host, 0, ch, TO_NOTVICT);
         act("$n shifts uncertainly and peers at you.", FALSE, host, 0, ch, TO_VICT);
         host->delay.cmd = host->delay.subcmd = 0;
@@ -1043,7 +1043,7 @@ SPECIAL(gatekeeper2)
     doordir = host->delay.targ2.ch_num;
 
     if (ch && IS_AGGR_TO(host, ch)) {
-        rots_asprintf(&msg, "To arms! The enemy is at %s!", world[ch->in_room].name);
+        rots_asprintf(&msg, "To arms! The enemy is at %s!", room_of(ch)->name);
         rots::combat::issue_command(rots::combat::combat_command::gen_com, host, msg, 0, 0, SCMD_YELL);
         free(msg);
         host->delay.cmd = host->delay.subcmd = 0;
@@ -1053,7 +1053,7 @@ SPECIAL(gatekeeper2)
     if (ch != NULL && !RP_RACE_CHECK(host, ch))
         return FALSE;
 
-    if (host->delay.subcmd == 1 && ch->in_room == host->in_room) {
+    if (host->delay.subcmd == 1 && location_of(ch) == location_of(host)) {
         act("$n shifts uncertainly and peers at $N.", FALSE, host, 0, ch, TO_NOTVICT);
         act("$n shifts uncertainly and peers at you.", FALSE, host, 0, ch, TO_VICT);
         host->delay.cmd = host->delay.subcmd = 0;
@@ -1133,16 +1133,16 @@ void _recursive_move(struct char_data* ch, struct obj_data* hostobj)
 
     if (!ch || !hostobj)
         return;
-    if (ch->in_room != hostobj->in_room)
+    if (location_of(ch) != hostobj->in_room)
         return;
 
-    was_in = ch->in_room;
+    was_in = location_of(ch);
     num = hostobj->obj_flags.prog_number;
 
     if ((num < 0) || (num >= num_of_ferries))
         num = 0;
     for (tmp = 0; tmp < ferry_boat_data[num].length; tmp++)
-        if (ch->in_room == ferry_boat_data[num].from_room[tmp])
+        if (location_of(ch) == ferry_boat_data[num].from_room[tmp])
             break;
 
     if ((tmp == ferry_boat_data[num].length) || (ferry_boat_data[num].to_room[tmp] < 0)) {
@@ -1161,7 +1161,7 @@ void _recursive_move(struct char_data* ch, struct obj_data* hostobj)
     rots::combat::issue_command(rots::combat::combat_command::look, ch, mutable_arg(""), 0, 0, 0);
     act("$n comes aboard.", TRUE, ch, 0, 0, TO_ROOM);
     for (tmpfol = ch->followers; tmpfol; tmpfol = tmpfol->next)
-        if (tmpfol->follower->in_room == was_in) {
+        if (location_of(tmpfol->follower) == was_in) {
             if (IS_RIDING(tmpfol->follower)) {
                 send_to_char("You can not enter it riding.\n\r", tmpfol->follower);
                 act("ACK! $N could not follow you in.", FALSE, ch, 0, tmpfol->follower, TO_CHAR);
@@ -1178,7 +1178,7 @@ SPECIAL(ferry_boat)
     if ((cmd != CMD_ENTER) || !ch)
         return FALSE;
 
-    if (ch->in_room != hostobj->in_room)
+    if (location_of(ch) != hostobj->in_room)
         return FALSE;
     while (*arg && (*arg <= ' '))
         arg++;
@@ -1193,7 +1193,7 @@ SPECIAL(ferry_boat)
         num = 0;
 
     for (tmp = 0; tmp < ferry_boat_data[num].length; tmp++)
-        if (ch->in_room == ferry_boat_data[num].from_room[tmp])
+        if (location_of(ch) == ferry_boat_data[num].from_room[tmp])
             break;
 
     _recursive_move(ch, hostobj);
@@ -1210,7 +1210,7 @@ SPECIAL(ferry_captain)
     if ((num < 0) || (num >= num_of_captains))
         num = 0;
 
-    if (host->in_room == NOWHERE)
+    if (location_of(host) == NOWHERE)
         return FALSE;
 
     if (GET_POS(host) < POSITION_FIGHTING) {
@@ -1221,7 +1221,7 @@ SPECIAL(ferry_captain)
         return FALSE;
 
     tmp = ferry_captain_data[num].ferry_route[ferry_captain_data[num].marker];
-    for (ferryobj = world[tmp].contents; ferryobj; ferryobj = ferryobj->next_content) {
+    for (ferryobj = room_by_id_total(tmp)->contents; ferryobj; ferryobj = ferryobj->next_content) {
         if (ferryobj->item_number == ferry_captain_data[num].num_of_ferry)
             break;
     }
@@ -1246,17 +1246,17 @@ SPECIAL(ferry_captain)
     }
 
     old_room = ferry_captain_data[num].cabin_route[ferry_captain_data[num].marker];
-    if (old_room != host->in_room) {
+    if (old_room != location_of(host)) {
         rots::entity::dispatch_char_from_room(host);
         char_to_room(host, old_room);
         act("$n steps out from the shadows.", TRUE, host, 0, 0, TO_ROOM);
     }
 
     if ((ferry_captain_data[num].timer == 0) && (ferry_captain_data[num].stop_time[ferry_captain_data[num].marker] > 0)) {
-        tmp = host->in_room;
-        host->in_room = ferryobj->in_room;
+        tmp = host->in_room; // LS1-ALLOW: in_room used as mutable room cursor (ferry-captain outside-message save/restore)
+        host->in_room = ferryobj->in_room; // LS1-ALLOW: in_room used as mutable room cursor
         act(ferry_captain_data[num].leave_to_outside, FALSE, host, ferryobj, 0, TO_ROOM);
-        host->in_room = tmp;
+        host->in_room = tmp; // LS1-ALLOW: in_room used as mutable room cursor
         act(ferry_captain_data[num].leave_to_inside, FALSE, host, 0, 0, TO_ROOM);
     }
 
@@ -1266,10 +1266,10 @@ SPECIAL(ferry_captain)
 
     act(ferry_captain_data[num].move_out_inside, FALSE, host, ferryobj, 0, TO_ROOM);
 
-    tmp = host->in_room;
-    host->in_room = ferryobj->in_room;
+    tmp = host->in_room; // LS1-ALLOW: in_room used as mutable room cursor (ferry-captain outside-message save/restore)
+    host->in_room = ferryobj->in_room; // LS1-ALLOW: in_room used as mutable room cursor
     act(ferry_captain_data[num].move_out_outside, FALSE, host, ferryobj, 0, TO_ROOM);
-    host->in_room = tmp;
+    host->in_room = tmp; // LS1-ALLOW: in_room used as mutable room cursor
 
     obj_from_room(ferryobj);
 
@@ -1281,49 +1281,49 @@ SPECIAL(ferry_captain)
 
     if (new_room != old_room) {
         /* nobody should be in that room, but just in case they are...*/
-        for (tmpch = world[old_room].people; tmpch; tmpch = tmpch->next_in_room) {
-            if (!tmpch->next_in_room)
+        for (tmpch = world[old_room].people; tmpch; tmpch = tmpch->next_in_room) { // LS1-ALLOW: manual occupant-list splice (ferry relocation)
+            if (!tmpch->next_in_room) // LS1-ALLOW: manual occupant-list splice (ferry relocation)
                 break;
         }
         if (tmpch)
-            tmpch->next_in_room = world[new_room].people;
+            tmpch->next_in_room = world[new_room].people; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
         else
-            world[old_room].people = world[new_room].people;
-        for (tmpobj = world[old_room].contents; tmpobj; tmpobj = tmpobj->next_content)
+            world[old_room].people = world[new_room].people; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
+        for (tmpobj = world[old_room].contents; tmpobj; tmpobj = tmpobj->next_content) // LS1-ALLOW: manual occupant-list splice (ferry relocation)
             if (!tmpobj->next_content)
                 break;
         if (tmpobj)
-            tmpobj->next_content = world[new_room].contents;
+            tmpobj->next_content = world[new_room].contents; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
         else
-            world[old_room].contents = world[new_room].contents;
+            world[old_room].contents = world[new_room].contents; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
 
-        world[new_room].people = world[old_room].people;
-        world[old_room].people = 0;
-        world[new_room].contents = world[old_room].contents;
-        world[old_room].contents = 0;
+        world[new_room].people = world[old_room].people; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
+        world[old_room].people = 0; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
+        world[new_room].contents = world[old_room].contents; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
+        world[old_room].contents = 0; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
 
-        for (tmpch = world[new_room].people; tmpch; tmpch = tmpch->next_in_room) {
-            tmpch->in_room = new_room;
+        for (tmpch = world[new_room].people; tmpch; tmpch = tmpch->next_in_room) { // LS1-ALLOW: manual occupant-list splice (ferry relocation)
+            tmpch->in_room = new_room; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
         }
-        for (tmpobj = world[new_room].contents; tmpobj; tmpobj = tmpobj->next_content)
-            tmpobj->in_room = new_room;
+        for (tmpobj = world[new_room].contents; tmpobj; tmpobj = tmpobj->next_content) // LS1-ALLOW: manual occupant-list splice (ferry relocation)
+            tmpobj->in_room = new_room; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
     }
 
     ferry_captain_data[num].timer = ferry_captain_data[num].stop_time[ferry_captain_data[num].marker];
 
     if (ferry_captain_data[num].timer == 0) {
         act(ferry_captain_data[num].move_in_inside, TRUE, host, ferryobj, 0, TO_ROOM);
-        tmp = host->in_room;
-        host->in_room = ferryobj->in_room;
+        tmp = host->in_room; // LS1-ALLOW: in_room used as mutable room cursor (ferry-captain arrival-message save/restore)
+        host->in_room = ferryobj->in_room; // LS1-ALLOW: in_room used as mutable room cursor
         act(ferry_captain_data[num].move_in_outside, FALSE, host, ferryobj, 0, TO_ROOM);
-        host->in_room = tmp;
+        host->in_room = tmp; // LS1-ALLOW: in_room used as mutable room cursor
     } else {
         act(ferry_captain_data[num].arrive_to_inside, FALSE, host, ferryobj, 0, TO_ROOM);
 
-        tmp = host->in_room;
-        host->in_room = ferryobj->in_room;
+        tmp = host->in_room; // LS1-ALLOW: in_room used as mutable room cursor (ferry-captain arrival-message save/restore)
+        host->in_room = ferryobj->in_room; // LS1-ALLOW: in_room used as mutable room cursor
         act(ferry_captain_data[num].arrive_to_outside, FALSE, host, ferryobj, 0, TO_ROOM);
-        host->in_room = tmp;
+        host->in_room = tmp; // LS1-ALLOW: in_room used as mutable room cursor
     }
     return TRUE;
 }
@@ -1484,8 +1484,7 @@ char_data* choose_caster_target(char_data* caster)
     // group members of those characters.
     int valid_count = 0;
     char_data* target = caster->specials.fighting; // default target is the character the caster is engaged with
-    for (char_data* character = world[caster->in_room].people; character != nullptr;
-         character = character->next_in_room) {
+    for (auto* character : rots::entity::occupants(room_of(caster))) {
 
         if (!is_engaged_with_victim(character, caster)) {
             continue;
@@ -1505,7 +1504,7 @@ char_data* choose_caster_target(char_data* caster)
 
 SPECIAL(mob_cleric)
 {
-    if (callflag != SPECIAL_SELF || host->in_room == NOWHERE)
+    if (callflag != SPECIAL_SELF || location_of(host) == NOWHERE)
         return FALSE;
 
     if (host->delay.wait_value != 0 && host->delay.subcmd != 0) {
@@ -1539,7 +1538,7 @@ SPECIAL(mob_cleric)
 
 SPECIAL(mob_magic_user)
 {
-    if (callflag != SPECIAL_SELF || host->in_room == NOWHERE)
+    if (callflag != SPECIAL_SELF || location_of(host) == NOWHERE)
         return FALSE;
 
     if (host->delay.wait_value && host->delay.subcmd) {
@@ -1704,7 +1703,7 @@ void get_combat_spells(char_data* host, int* spell_list, double current_health_p
                 keyword, host, 40);
             add_leveled_spell_to_list(spell_list, SPELL_EARTHQUAKE, default_mage, mage_type,
                 keyword, host, 30);
-            if (OUTSIDE(host) && weather_info.sky[world[host->in_room].sector_type] == SKY_LIGHTNING) {
+            if (OUTSIDE(host) && weather_info.sky[room_of(host)->sector_type] == SKY_LIGHTNING) {
                 add_leveled_spell_to_list(spell_list, SPELL_LIGHTNING_STRIKE, lightning_mage,
                     mage_type, keyword, host, 35);
             }
@@ -1725,11 +1724,10 @@ SPECIAL(mob_magic_user_spec)
     // if (host->delay.wait_value && host->delay.subcmd) {
     const int bonus_to_cast = 20;
     int chance_to_cast = GET_LEVEL(host) + bonus_to_cast;
-    if ((host->delay.wait_value && host->delay.cmd) || callflag != SPECIAL_SELF || host->in_room == NOWHERE || (number(1 - 100) > chance_to_cast)) {
+    if ((host->delay.wait_value && host->delay.cmd) || callflag != SPECIAL_SELF || location_of(host) == NOWHERE || (number(1 - 100) > chance_to_cast)) {
         return FALSE;
     }
 
-    struct char_data* tmpch;
     char_data* target = nullptr;
     int spell_list[20]; // the first index is the count of spells
     int tgt = 0;
@@ -1772,7 +1770,7 @@ SPECIAL(mob_magic_user_spec)
         if (has_alias(host, "shield")) {
             if (!utils::is_affected_by_spell(*host, SPELL_SHIELD) && GET_MANA(host) > 12) {
                 if (number(1, 100) > 50) {
-                    for (tmpch = world[host->in_room].people; tmpch; tmpch = tmpch->next_in_room) {
+                    for (auto* tmpch : rots::entity::occupants(room_of(host))) {
                         if (tmpch->specials.fighting == host) {
                             // send_to_char("A blinding flash of light makes you dizzy.\n\r\n",
                             // tmpch); no message?? futile if p has react trig?
@@ -1865,16 +1863,16 @@ SPECIAL(mob_warrior)
 {
     waiting_type wtl_base;
     int com_num, num, tmp, kick_var;
-    char_data* tmpch;
     char_data* tar_ch;
     char arg1[] = "";
     char* argptr = arg1;
 
-    if ((callflag != SPECIAL_SELF) || (host->in_room == NOWHERE))
+    if ((callflag != SPECIAL_SELF) || (location_of(host) == NOWHERE))
         return FALSE;
 
-    for (num = 0, tmpch = world[ch->in_room].people; tmpch; tmpch = tmpch->next_in_room)
-        if (!IS_NPC(tmpch))
+    num = 0;
+    for (auto* counted : rots::entity::occupants(room_of(ch)))
+        if (!IS_NPC(counted))
             num++;
 
     if (!num)
@@ -1925,7 +1923,7 @@ SPECIAL(mob_ranger)
 
     memset((char*)&tmpwtl, 0, sizeof(waiting_type));
 
-    if (host->in_room == NOWHERE)
+    if (location_of(host) == NOWHERE)
         return 0;
     if ((callflag != SPECIAL_SELF) && (callflag != SPECIAL_ENTER))
         return 0;
@@ -1936,9 +1934,12 @@ SPECIAL(mob_ranger)
     if ((callflag == SPECIAL_ENTER) && ch && IS_AGGR_TO(host, ch))
         tmpch = ch;
     else if (callflag == SPECIAL_SELF) {
-        for (tmpch = world[host->in_room].people; tmpch; tmpch = tmpch->next_in_room)
-            if ((tmpch != host) && CAN_SEE(host, tmpch) && IS_AGGR_TO(host, tmpch))
+        for (auto* occ : rots::entity::occupants(room_of(host))) {
+            if ((occ != host) && CAN_SEE(host, occ) && IS_AGGR_TO(host, occ)) {
+                tmpch = occ;
                 break;
+            }
+        }
     }
     /* Ambush */
     if (tmpch) {
@@ -1955,7 +1956,7 @@ SPECIAL(mob_ranger)
     if ((((GET_POS(host) == POSITION_STANDING) && !GET_HIDING(host)) || IS_SET(ch->specials2.hide_flags, HIDING_SNUCK_IN)) && ch->delay.wait_value == 0)
         do_hide(host, mutable_arg(""), 0, 0, 0);
 
-    tmproom = &world[host->in_room];
+    tmproom = room_of(host);
     mintime = 999;
     mintmp = NUM_OF_TRACKS;
     for (tmp = 0; tmp < NUM_OF_TRACKS; tmp++) {
@@ -2071,7 +2072,7 @@ SPECIAL(mob_ranger_new)
 
     memset((char*)&tmpwtl, 0, sizeof(waiting_type));
 
-    if (host->in_room == NOWHERE)
+    if (location_of(host) == NOWHERE)
         return 0;
     if ((callflag != SPECIAL_SELF) && (callflag != SPECIAL_ENTER))
         return 0;
@@ -2106,8 +2107,9 @@ SPECIAL(mob_ranger_new)
             tmpch = ch;
         } else if (callflag == SPECIAL_SELF && !is_wimpy) {
             // should this pick a random target, instead of first? or if MOB_SWITCHING??
-            for (tmpch = world[host->in_room].people; tmpch; tmpch = tmpch->next_in_room) {
-                if (should_attack(host, tmpch)) {
+            for (auto* occ : rots::entity::occupants(room_of(host))) {
+                if (should_attack(host, occ)) {
+                    tmpch = occ;
                     break;
                 }
             }
@@ -2128,7 +2130,7 @@ SPECIAL(mob_ranger_new)
 
     // MOB_SWITCHING
     if (IS_SET(host->specials2.act, MOB_SWITCHING) && host->specials.fighting && !is_wimpy) {
-        for (tmpch = world[ch->in_room].people; tmpch; tmpch = tmpch->next_in_room) {
+        for (auto* tmpch : rots::entity::occupants(room_of(ch))) {
             // also tgt someone invis ??
             if (tmpch->specials.fighting == host && !number(0, 3) && should_attack(host, tmpch) && tmpch != host->specials.fighting) {
                 host->specials.fighting = tmpch;
@@ -2142,7 +2144,7 @@ SPECIAL(mob_ranger_new)
     if (prog_do_hunter(host, is_wimpy)) {
         vict = 0;
         for (names = ch->specials.memory; names && !vict; names = names->next_on_mob) {
-            if (names->enemy && char_exists(names->enemy_number) && (names->enemy->in_room == ch->in_room) && CAN_SEE(ch, names->enemy)) {
+            if (names->enemy && char_exists(names->enemy_number) && (location_of(names->enemy) == location_of(ch)) && CAN_SEE(ch, names->enemy)) {
                 vict = names->enemy;
             }
         }
@@ -2169,8 +2171,8 @@ SPECIAL(mob_ranger_new)
             }
 
             for (names = ch->specials.memory; names && !vict; names = names->next_on_mob) {
-                if (names->enemy && char_exists(names->enemy_number) && (names->enemy->in_room != NOWHERE) && (number(0, 100) > modifier)) {
-                    tmp = find_first_step(ch->in_room, names->enemy->in_room);
+                if (names->enemy && char_exists(names->enemy_number) && (location_of(names->enemy) != NOWHERE) && (number(0, 100) > modifier)) {
+                    tmp = find_first_step(location_of(ch), location_of(names->enemy));
                 } else {
                     tmp = BFS_NO_PATH;
                 }
@@ -2186,7 +2188,7 @@ SPECIAL(mob_ranger_new)
         }
     } /* mob memory/hunter */
 
-    tmproom = &world[host->in_room];
+    tmproom = room_of(host);
     mintime = 999;
     mintmp = NUM_OF_TRACKS;
     if (ch->delay.wait_value == 0 && is_not_engaged) {
@@ -2198,7 +2200,7 @@ SPECIAL(mob_ranger_new)
                 room_data exit_room;
 
                 if (CAN_GO(host, dir)) {
-                    exit_room = world[EXIT(host, dir)->to_room];
+                    exit_room = *room_by_id_total(EXIT(host, dir)->to_room);
                 }
 
                 if ((tmproom->room_track[tmp].char_number < 0) && ((racial_aggr & (1 << -tmproom->room_track[tmp].char_number)) || (is_aggressive && (1 << -tmproom->room_track[tmp].char_number) <= PLAYER_RACE_MAX)) && tmp2 < mintime && !IS_SET(exit_room.room_flags, NO_MOB)) {
@@ -2287,7 +2289,7 @@ SPECIAL(mob_jig)
         return FALSE;
     }
 
-    if ((callflag != SPECIAL_SELF) || (host->in_room == NOWHERE))
+    if ((callflag != SPECIAL_SELF) || (location_of(host) == NOWHERE))
         return FALSE;
 
     dance_desc = number(0, 5);
@@ -2376,12 +2378,12 @@ SPECIAL(block_exit_north)
     if ((callflag != SPECIAL_COMMAND) || (cmd != 1))
         return FALSE;
 
-    if (ch->in_room == NOWHERE) {
+    if (location_of(ch) == NOWHERE) {
         ch->specials.store_prog_number = 0;
         return FALSE;
     }
 
-    width = get_exit_width(&world[ch->in_room], 0);
+    width = get_exit_width(room_of(ch), 0);
     if (width <= 0) {
         ch->specials.store_prog_number = 0;
         return FALSE;
@@ -2422,12 +2424,12 @@ SPECIAL(block_exit_east)
     if ((callflag != SPECIAL_COMMAND) || (cmd != 2))
         return FALSE;
 
-    if (ch->in_room == NOWHERE) {
+    if (location_of(ch) == NOWHERE) {
         ch->specials.store_prog_number = 0;
         return FALSE;
     }
 
-    width = get_exit_width(&world[ch->in_room], 1);
+    width = get_exit_width(room_of(ch), 1);
     if (width <= 0) {
         ch->specials.store_prog_number = 0;
         return FALSE;
@@ -2467,12 +2469,12 @@ SPECIAL(block_exit_south)
     if ((callflag != SPECIAL_COMMAND) || (cmd != 3))
         return FALSE;
 
-    if (ch->in_room == NOWHERE) {
+    if (location_of(ch) == NOWHERE) {
         ch->specials.store_prog_number = 0;
         return FALSE;
     }
 
-    width = get_exit_width(&world[ch->in_room], 2);
+    width = get_exit_width(room_of(ch), 2);
     if (width <= 0) {
         ch->specials.store_prog_number = 0;
         return FALSE;
@@ -2512,12 +2514,12 @@ SPECIAL(block_exit_west)
     if ((callflag != SPECIAL_COMMAND) || (cmd != 4))
         return FALSE;
 
-    if (ch->in_room == NOWHERE) {
+    if (location_of(ch) == NOWHERE) {
         ch->specials.store_prog_number = 0;
         return FALSE;
     }
 
-    width = get_exit_width(&world[ch->in_room], 3);
+    width = get_exit_width(room_of(ch), 3);
     if (width <= 0) {
         ch->specials.store_prog_number = 0;
         return FALSE;
@@ -2557,12 +2559,12 @@ SPECIAL(block_exit_up)
     if ((callflag != SPECIAL_COMMAND) || (cmd != 5))
         return FALSE;
 
-    if (ch->in_room == NOWHERE) {
+    if (location_of(ch) == NOWHERE) {
         ch->specials.store_prog_number = 0;
         return FALSE;
     }
 
-    width = get_exit_width(&world[ch->in_room], 4);
+    width = get_exit_width(room_of(ch), 4);
     if (width <= 0) {
         ch->specials.store_prog_number = 0;
         return FALSE;
@@ -2602,12 +2604,12 @@ SPECIAL(block_exit_down)
     if ((callflag != SPECIAL_COMMAND) || (cmd != 6))
         return FALSE;
 
-    if (ch->in_room == NOWHERE) {
+    if (location_of(ch) == NOWHERE) {
         ch->specials.store_prog_number = 0;
         return FALSE;
     }
 
-    width = get_exit_width(&world[ch->in_room], 5);
+    width = get_exit_width(room_of(ch), 5);
     if (width <= 0) {
         ch->specials.store_prog_number = 0;
         return FALSE;
@@ -2768,7 +2770,7 @@ SPECIAL(ar_tarthalon)
     if (number(0, 1)) {
         victim = get_char("balkazor");
         if (victim) {
-            if (world[victim->in_room].number != 8483)
+            if (room_of(victim)->number != 8483)
                 rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Balkazor my sorcerer, I command you to aid me!"), 0, 0, 0);
             else
                 switch (number(0, 6)) {
@@ -2783,7 +2785,7 @@ SPECIAL(ar_tarthalon)
     } else {
         victim = get_char("karahaz");
         if (victim) {
-            if (world[victim->in_room].number != 8483)
+            if (room_of(victim)->number != 8483)
                 rots::combat::issue_command(rots::combat::combat_command::say, host, mutable_arg("Karahaz!  Master swordsman, Come!  Rid my tomb of these intruders!"),
                     0, 0, 0);
             else
@@ -2802,7 +2804,7 @@ SPECIAL(ar_tarthalon)
     if (!victim)
         return 0;
     if (GET_POS(victim) == POSITION_STANDING) {
-        switch (world[victim->in_room].number) {
+        switch (room_of(victim)->number) {
         case 8484:
             tmpwtl.cmd = 3;
             rots::combat::issue_command(rots::combat::combat_command::unlock, victim, mutable_arg("northdoor"), 0, 0, 0);
@@ -2890,7 +2892,7 @@ SPECIAL(ghoul)
         act("Decaying hands claw their way out of the ground as $n emerges.", TRUE, host, 0, 0,
             TO_ROOM);
         mob = read_mobile(real_mobile(15300), REAL);
-        char_to_room(mob, host->in_room);
+        char_to_room(mob, location_of(host));
         add_follower(mob, host, FOLLOW_MOVE);
     }
     return 0;
@@ -2915,8 +2917,8 @@ SPECIAL(dragon)
 
     dam_value = dice(mob_level, 6);
 
-    for (tmpch = world[host->in_room].people; tmpch; tmpch = tmpch_next) {
-        tmpch_next = tmpch->next_in_room;
+    for (tmpch = room_of(host)->people; tmpch; tmpch = tmpch_next) {
+        tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via damage)
         if (tmpch != host) {
             damage(host, tmpch, dam_value, SPELL_DRAGONSBREATH, 0);
         }
@@ -2934,10 +2936,10 @@ SPECIAL(vampire_huntress)
     room_data* room;
     // If she is too badly hurt in a fight, she will flee back to
     // her tower and change into human form and regenerate.  Once
-    if (host->in_room == NOWHERE) // healed she will once again assume bat form and hunt her
+    if (location_of(host) == NOWHERE) // healed she will once again assume bat form and hunt her
         return 0; // zone.  NB she returns to the safety of her tower during the
     if ((GET_POS(host) != POSITION_FIGHTING) && (!IS_SET(host->specials.affected_by, AFF_BASH))) { // day.
-        switch (world[host->in_room].number) {
+        switch (room_of(host)->number) {
         case 15375:
             to_room = 15374;
             break;
@@ -3048,9 +3050,12 @@ SPECIAL(vampire_huntress)
         tmpno = number(0, 2);
         if (tmpno) { // 33% she will fly off, 33% attack, 33% kidnap
             victim = 0;
-            for (victim = world[host->in_room].people; victim; victim = victim->next_in_room)
-                if ((victim != host) && CAN_SEE(host, victim) && !IS_NPC(victim))
+            for (auto* occ : rots::entity::occupants(room_of(host))) {
+                if ((occ != host) && CAN_SEE(host, occ) && !IS_NPC(occ)) {
+                    victim = occ;
                     break;
+                }
+            }
             if (victim && GET_LEVEL(victim) < LEVEL_GOD) {
                 if (tmpno == 1) {
                     if (IS_RIDING(victim))
@@ -3087,11 +3092,11 @@ SPECIAL(vampire_huntress)
                     act("$n seems to fall through the roof to land painfully on the floor.", FALSE,
                         victim, 0, 0, TO_ROOM);
                     GET_POS(victim) = POSITION_RESTING;
-                    room = &world[victim->in_room];
+                    room = room_of(victim);
                     SET_BIT(room->dir_option[0]->exit_info, EX_CLOSED);
                     SET_BIT(room->dir_option[0]->exit_info, EX_LOCKED);
                     send_to_room("The iron door slams shut.\n\r\n", real_room(room->number));
-                    room = &world[room->dir_option[0]->to_room];
+                    room = room_by_id_total(room->dir_option[0]->to_room);
                     SET_BIT(room->dir_option[2]->exit_info, EX_CLOSED);
                     SET_BIT(room->dir_option[2]->exit_info, EX_LOCKED);
                     send_to_room("The iron door slams shut.\n\r\n", real_room(room->number));
@@ -3151,7 +3156,7 @@ SPECIAL(thuringwethil)
     int tmpno;
     waiting_type tmpwtl;
 
-    for (obj = world[host->in_room].contents; obj; obj = obj->next_content)
+    for (obj = room_of(host)->contents; obj; obj = obj->next_content)
         if (obj->item_number == real_object(7640))
             break;
 
@@ -3207,19 +3212,18 @@ SPECIAL(thuringwethil)
 
 SPECIAL(vampire_doorkeep)
 {
-    struct char_data* victim;
     room_data *room, *room2;
     int close_it;
 
     close_it = 1;
-    room = &world[real_room(15345)];
-    room2 = &world[real_room(15355)];
-    for (victim = room->people; victim; victim = victim->next_in_room)
+    room = room_by_id_total(real_room(15345));
+    room2 = room_by_id_total(real_room(15355));
+    for (auto* victim : rots::entity::occupants(room))
         if ((victim != host) && CAN_SEE(host, victim) && !IS_NPC(victim))
             if (victim->equipment[WEAR_LIGHT])
                 if (victim->equipment[WEAR_LIGHT]->item_number == real_object(7008))
                     close_it = 0;
-    for (victim = room2->people; victim; victim = victim->next_in_room)
+    for (auto* victim : rots::entity::occupants(room2))
         if ((victim != host) && CAN_SEE(host, victim) && !IS_NPC(victim)) {
             if (victim->equipment[WEAR_LIGHT])
                 if (victim->equipment[WEAR_LIGHT]->item_number == real_object(7008))
@@ -3264,9 +3268,13 @@ SPECIAL(vampire_killer)
     int which_room;
     waiting_type tmpwtl;
 
-    for (victim = world[host->in_room].people; victim; victim = victim->next_in_room)
-        if ((victim != host) && CAN_SEE(host, victim) && !IS_NPC(victim))
+    victim = nullptr; // MANDATORY pre-init (was uninitialized -- census Family F UNINIT trap)
+    for (auto* occ : rots::entity::occupants(room_of(host))) {
+        if ((occ != host) && CAN_SEE(host, occ) && !IS_NPC(occ)) {
+            victim = occ;
             break;
+        }
+    }
     if (victim && victim != host) {
         if (number(0, 50)) // Give them a chance to get away...
             return 0;
@@ -3277,7 +3285,7 @@ SPECIAL(vampire_killer)
             victim);
         send_to_char("You are dead, sorry...\n\r", victim);
         mudlog(std::format("{} killed by {} at {}", GET_NAME(victim), GET_NAME(host),
-                  world[victim->in_room].name),
+                  room_of(victim)->name),
             BRF, LEVEL_GOD, TRUE);
         rots::persist::dispatch_exploit_capture(EXPLOIT_MOBDEATH, victim, GET_IDNUM(host), GET_NAME(host));
         raw_kill(victim, host, 0);
@@ -3286,18 +3294,26 @@ SPECIAL(vampire_killer)
 
     which_room = 0;
     tmpwtl.cmd = 0;
-    for (victim = world[real_room(15399)].people; victim; victim = victim->next_in_room)
-        if ((victim != host) && CAN_SEE(host, victim) && !IS_NPC(victim))
+    victim = nullptr; // MANDATORY pre-init (was uninitialized -- census Family F UNINIT trap)
+    for (auto* occ : rots::entity::occupants(room_by_id_total(real_room(15399)))) {
+        if ((occ != host) && CAN_SEE(host, occ) && !IS_NPC(occ)) {
+            victim = occ;
             break;
+        }
+    }
     if (victim)
         which_room = 1;
-    for (victim2 = world[real_room(15398)].people; victim2; victim2 = victim2->next_in_room)
-        if ((victim2 != host) && CAN_SEE(host, victim2) && !IS_NPC(victim2))
+    victim2 = nullptr; // MANDATORY pre-init (was uninitialized -- census Family F UNINIT trap)
+    for (auto* occ : rots::entity::occupants(room_by_id_total(real_room(15398)))) {
+        if ((occ != host) && CAN_SEE(host, occ) && !IS_NPC(occ)) {
+            victim2 = occ;
             break;
+        }
+    }
     if (victim2)
         which_room += 2;
     if (!which_room) {
-        switch (world[host->in_room].number) { // If nothing to bite, get out of the cell
+        switch (room_of(host)->number) { // If nothing to bite, get out of the cell
         case 15399:
             tmpwtl.cmd = 1;
             break;
@@ -3329,7 +3345,7 @@ SPECIAL(vampire_killer)
             return 0; // Slow him down a bit
         if (which_room == 3)
             which_room = number(1, 2); // If both whities and darkies are there 50% which
-        switch (world[host->in_room].number) { // one
+        switch (room_of(host)->number) { // one
         case 15395:
             tmpwtl.cmd = 2;
             break;
@@ -3346,7 +3362,7 @@ SPECIAL(vampire_killer)
             if (which_room == 1)
                 tmpwtl.cmd = 2;
             else {
-                room = &world[real_room(15396)];
+                room = room_by_id_total(real_room(15396));
                 if (IS_SET(room->dir_option[2]->exit_info, EX_CLOSED)) {
                     rots::combat::issue_command(rots::combat::combat_command::unlock, host, mutable_arg("irondoor"), 0, 0, 0);
                     rots::combat::issue_command(rots::combat::combat_command::open, host, mutable_arg("irondoor"), 0, 0, 0);
@@ -3359,7 +3375,7 @@ SPECIAL(vampire_killer)
             if (which_room == 2)
                 tmpwtl.cmd = 4;
             else {
-                room = &world[real_room(15397)];
+                room = room_by_id_total(real_room(15397));
                 if (IS_SET(room->dir_option[2]->exit_info, EX_CLOSED)) {
                     rots::combat::issue_command(rots::combat::combat_command::unlock, host, mutable_arg("irondoor"), 0, 0, 0);
                     rots::combat::issue_command(rots::combat::combat_command::open, host, mutable_arg("irondoor"), 0, 0, 0);
@@ -3386,8 +3402,7 @@ SPECIAL(healing_plant)
 
     int level = std::max(1, GET_LEVEL(host) / 2);
 
-    for (char_data* character = world[host->in_room].people; character != NULL;
-         character = character->next_in_room) {
+    for (auto* character : rots::entity::occupants(room_of(host))) {
         if (IS_GOOD(character) && host != character) {
             GET_HIT(character) = std::min(GET_MAX_HIT(character), GET_HIT(character) + number(1, level));
         }
@@ -3398,9 +3413,7 @@ SPECIAL(healing_plant)
 
 SPECIAL(vortex_elevator)
 { // For now, this little func serves the sole and only purpose ...
-    struct char_data* tmpchar; // of allowing me (Aggrippa) to play with it and learn the mechanics.
-    for (tmpchar = world[host->in_room].people; tmpchar;
-         tmpchar = tmpchar->next_in_room) // for all players present in the room ...
+    for (auto* tmpchar : rots::entity::occupants(room_of(host))) // for all players present in the room ...
         if (host != tmpchar) { // For all mobs in room, except vortex ...
             act("$n makes $N very dizzy!", TRUE, host, 0, tmpchar,
                 TO_NOTVICT); // Tell everybody that 'tmpchar' is dizzy
@@ -3444,7 +3457,7 @@ SPECIAL(wolf_summoner)
 
         RELEASE(wolf->player.death_cry2);
         wolf->player.death_cry2 = NULL;
-        char_to_room(wolf, host->in_room);
+        char_to_room(wolf, location_of(host));
         add_follower(wolf, host, FOLLOW_MOVE);
         // make wolf a follower
         if (host->specials.fighting) // always check you have a valid pointer.  Also

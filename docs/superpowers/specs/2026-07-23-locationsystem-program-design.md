@@ -104,8 +104,8 @@ equivalence evidence and the perf numbers; **the owner merges.**
 
 ## Wave LS-1 As-built
 
-Branch `arch/ls1-library-reads`, baseline master @`5db2b9e` (1583 tests). Merged as designed
-(merge-when-green); the combat row stays DONE (no library-membership or DEFER change). Full
+Branch `arch/ls1-library-reads`, baseline master @`5db2b9e` (1583 tests). Merges when green at T5
+(pending as of this docs task); the combat row stays DONE (no library-membership or DEFER change). Full
 process record: `.superpowers/sdd/ls1-census.md` (T0, three post-review amendments), `ls1-task-
 {1,1b,2,3}-report.md` (implementation), `ls1-global-constraints.md` (the plan). This section is
 the reconciled, load-bearing summary; the task reports are authoritative for byte-level detail.
@@ -118,7 +118,7 @@ narration:
 
 - **Amendment 1 — Flag Family F ("find-first-break" walks).** The original Step 4 flag taxonomy
   (save-next mutating walks, manual splices, peek-ahead, in-room-as-cursor) missed a fifth class:
-  a `next_in_room` walk that `break`s on a match and then reads the found pointer *after* the loop*.
+  a `next_in_room` walk that `break`s on a match and then reads the found pointer *after* the loop.
   These ARE mechanically convertible to a range-for, but not naively — the found variable is scoped
   inside a naive range-for, so the conversion needs an explicit `found = nullptr` pre-init before the
   loop. The review found the exact UB hazard this protects against: `spec_pro.cpp`'s

@@ -30,7 +30,7 @@ build matches how the live game behaves.
    repo is no longer publicly available. You need to obtain the world data and place it so
    that files exist at `lib/world/wld*`, `lib/world/mob*`, `lib/world/obj*`,
    `lib/world/zon*`, `lib/world/shp*`, etc. (The game `chdir`s into `lib/` at startup —
-   `src/comm.cpp` / `config.cpp:58 DFLT_DIR="lib"` — and reads the `world/...` prefixes from
+   `src/app/comm.cpp` / `src/core/config.cpp:58 DFLT_DIR="lib"` — and reads the `world/...` prefixes from
    `src/db.h`.)
 
    **If you have an old server backup**, use the importer to populate `lib/` from it:
@@ -106,7 +106,7 @@ The first character you create is auto-promoted to a level-100 Implementor.
 
 `make run` launches `./bin/ageland -p`. The `-p` flag means **"expect a proxy"** — the
 game then reads a 4-byte client-IP header from each new connection before anything else
-(`src/comm.cpp:1186`). That header is supplied by the Rust `proxy/` (WebSocket bridge).
+(`src/app/comm.cpp:1186`). That header is supplied by the Rust `proxy/` (WebSocket bridge).
 
 For plain `telnet` development, run **without** `-p` (as the helper's `boot` does), so the
 game falls back to `getpeername` for the client address. Only use `-p` if you also run the
@@ -232,6 +232,96 @@ regenerate — no container-generated files remain there.
 run (`docker compose build` + `docker compose run --rm rots ...`), so
 `rots-build-i386`/`rots-build-x64` are simply created empty on every run, the same as
 any other named volume on a fresh host.
+
+## Physical layout
+
+The physical-layout wave (`arch/physical-layout`, `docs/superpowers/specs/2026-07-23-physical-
+layout-design.md`) made the nine logical libraries (see "Library layering" below) and the app
+tier visible in the filesystem, matching their `CMakeLists.txt` build-list membership. It moved
+every production `.cpp`; it changed **zero** `#include` directives, zero object code, and zero
+test count (`1583` both hosts, frozen throughout).
+
+**`src/<lib>/` convention.** Each library's `.cpp` sources — and any private header it alone
+includes — now live directly in `src/<lib>/`, alongside that library's existing public-header
+tree `src/<lib>/include/rots/<lib>/` (unchanged by this wave, NOT touched, NOT a nested
+`<lib>/src/`): `src/platform/`, `src/core/`, `src/entity/`, `src/persist/`, `src/world/`,
+`src/combat/`, `src/pathfind/`, `src/script/`, `src/olc/`. The app-tier remainder (everything in
+`ROTS_SERVER_SOURCES` plus `rots_convert`'s sole direct source `convert_main.cpp`) lives in
+`src/app/`. Top-level `src/*.cpp` is now empty — every production `.cpp` has an explicit
+`src/<tier>/` home. `src/persist/` also carries 6 `account_management_*.cpp` unity fragments
+(`#include`d into `account_management.cpp`, no independent build-list entry).
+
+**Private-header-moves-with-its-library rule.** A header moved into `src/<lib>/` (or `src/app/`)
+iff *every* non-test includer resolves to that one tier; a header included by more than one
+tier, or by app plus a library, stays flat at top-level `src/` (test-tree includers don't count —
+satisfied via include paths, not by moving the header). Eight private headers moved this way:
+`clock.h` → `platform`; `environment_utils.h` → `entity`; `legacy_salvage.h`/`stopwatch.h` →
+`persist`; `delayed_command_interpreter.h`/`savebench.h`/`wait_functions.h` → `app`.
+`mob_csv_extract.h` was reclassified to **stay flat** mid-wave: a test file bare-quote-includes
+it as `"../mob_csv_extract.h"`, a directive no include-path change can satisfy once the header
+moves (only its `.cpp` moved, to `src/app/`). Fifty-eight headers stay flat at top-level `src/` —
+the pervasive shared four (`utils.h`, `comm.h`, `db.h`, `handler.h`), the cross-tier hook/seam
+headers (`combat_hooks.h`, `entity_hooks.h`, `output_seam.h`, `script_hooks.h`, `editor_hooks.h`,
+`persist_hooks.h`, `world_hooks.h`), and every other header with more than one tier of includer.
+`src/tests/` and the public `src/<lib>/include/rots/<lib>/` header trees are explicitly **out of
+scope** — neither moved, and no test file's `#include` directive changed.
+
+**Cross-boundary include resolution (the crux).** A moved TU's `#include` directives never
+changed. Its intra-library private header resolves via the compiler's implicit
+"directory-of-including-file" entry (now `src/<lib>/`) — no extra flag needed. Its flat shared
+headers (`"utils.h"`, `"comm.h"`, the hook/seam headers, …) need `src/` back on the search path,
+since a moved TU's own directory is no longer `src/`. GNU-family (`GNU`/`Clang`/`AppleClang`)
+compiles every product TU with **both** `-iquote <src>` and `-idirafter <src>` on the same
+directory (`src/CMakeLists.txt`'s `set_source_files_properties` block covering the nine
+`ROTS_*_SOURCES` lists + `ROTS_SERVER_SOURCES` + `convert_main.cpp`; `src/Makefile`'s
+`ALL_CPPFLAGS`). Two flags, not one, because each alone broke a real TU during the wave:
+- `-idirafter` alone (the original design) put `src/` at the very end of the search list, so a
+  moved TU's bare `#include "db.h"` fell through to macOS's own SDK `usr/include/db.h` (a legacy
+  Berkeley-DB compat header) before ever reaching `src/db.h`.
+- `-iquote` alone (the first proposed fix) put `src/` at the *front* of the list instead, which
+  fixed `db.h` but broke `comm.cpp` on Linux: libstdc++'s `<semaphore>` (pulled in by `<thread>`)
+  does `#include_next <limits.h>` to reach glibc's real `/usr/include/limits.h`, and GCC's
+  `#include_next` continuation is sensitive to a directory's presence anywhere in the *quote*
+  list, even for an angle-bracket chain — so it landed on `src/`'s own project header instead of
+  glibc's, breaking every TU that pulls in `<semaphore>`.
+
+Applying **both** flags to the same directory resolves both: `-iquote`'s earlier position wins
+quote-form resolution (fixes `db.h`); `-idirafter`'s tail position keeps the `#include_next`
+chain system-first (fixes the `<semaphore>`/`limits.h` regression). Verified clean on both
+`rots64` (Debian trixie g++14) and native macOS (AppleClang).
+
+**The `<limits.h>` shadow and the `player_limits.h` rename.** `src/limits.h` (a project header,
+player-rank constants) collided with the standard `<limits.h>` in two independent ways once `src/`
+had to sit on every moving TU's search path: the GCC `#include_next`/`<semaphore>` quirk above
+(GNU-family, fixed by the two-flag mechanism), and a **deterministic** MSVC UCRT shadow — MSVC has
+no `-idirafter` analogue, so any directory carrying `src/limits.h` (needed for the moved TUs'
+quote-includes of flat headers) is searched *ahead* of the UCRT `<limits.h>` for angle-bracket
+resolution, with no ordering that places it after. The owner sanctioned renaming `src/limits.h` →
+`src/player_limits.h` as the wave's **one** content-touching exception: 23 `#include` directive
+sites updated mechanically (19 `.cpp`/`.h` quote-includes under `src/`, 4 `"../limits.h"` test
+includes) — the 5 OLC `#include <limits.h>` angle-bracket includes (`shapeobj.cpp`, `shaperom.cpp`,
+`shapescript.cpp`, `shapemob.cpp`, `shapezon.cpp`) were left untouched, since they correctly mean
+the system header. `limits.cpp` kept its name (no collision for a `.cpp`; only the header moved).
+
+**MSVC mechanism.** `windows-msvc`'s CMake preset converts from the Visual Studio generator to
+**Ninja** (`architecture.strategy: "external"`, since Ninja has no `-A`), with a
+`Set up MSVC environment` CI step (`ilammy/msvc-dev-cmd`) running `vcvars` before configure, and
+`"environment": {"INCLUDE": "$penv{INCLUDE};<src abs>"}` in the preset — appending `src/` to the
+**end** of the inherited `INCLUDE` environment variable, true `-idirafter`-equivalent semantics
+(searched after every `/I` and after the vcvars-populated UCRT/STL dirs). `/external:I` was
+evaluated and rejected: it is searched *before* the system `INCLUDE`, so it would still shadow
+`<limits.h>` — the rename is what makes this mechanism safe at all.
+
+**Rename note for readers of `src/CMakeLists.txt`/`src/tests/Makefile` comments:** the long
+`-iquote`/`-idirafter` rationale comments in both files, and the pre-existing `ageland_tests`
+`-idirafter` comment predating this wave, now name the header `player_limits.h` throughout
+(updated as a comment-only docs-pass hygiene edit alongside this wave; object code unaffected).
+A few spots narrate the wave's own mid-flight discovery process in the past tense (e.g. the
+`db.h`/`<semaphore>` story above) and still say "limits.h" where that was the header's name at
+the moment being described — left as historical narration, not a stale current-state claim.
+
+See `docs/superpowers/specs/2026-07-23-physical-layout-design.md`'s **As-built** section for the
+full per-library manifest, the commit list, and the wave's verification numbers.
 
 ## FP determinism
 
@@ -2025,7 +2115,7 @@ the registration functions and gets each hook's null default instead.
 
 ## `rots_convert`: the persistence-boundary acid test
 
-`rots_convert` is a second executable (its own small `main()`, `src/convert_main.cpp`) that
+`rots_convert` is a second executable (its own small `main()`, `src/app/convert_main.cpp`) that
 performs legacy → modern character conversion **en masse, outside MUD execution** — spec §4b.
 As of entity-completion Task 3, it links:
 

@@ -1999,6 +1999,27 @@ if(ROTS_BUILD_TESTS)
             add_test(NAME OlcLayerAcyclicity COMMAND rots_olc_linkcheck)
         endif()
     endif()
+
+    # LS-1 (LocationSystem wave) grep gate: tools/location_read_census.py
+    # --check asserts the six converted libraries (src/{entity,persist,world,
+    # combat,pathfind,script,olc}) hold ZERO raw ->in_room / .in_room /
+    # world[ / next_in_room location reads outside the allow-list
+    # (docs/superpowers/location-read-allowlist.md) or an inline
+    # "// LS1-ALLOW: <reason>" annotation -- the wave's checked-in regression
+    # guard (T3), so a future edit can't silently reintroduce a raw read the
+    # Stage-1 Placement API (src/handler.h) was built to replace. A pure
+    # Python source-tree scan, unlike the linkchecks above -- registered
+    # OUTSIDE the "if(NOT MSVC)" block above so it runs on every preset,
+    # including windows-msvc. See ls1-census.md Step 8 / ls1-task-3-report.md
+    # for the full design and the annotation inventory.
+    find_package(Python3 COMPONENTS Interpreter)
+    if(BUILD_TESTING AND Python3_Interpreter_FOUND)
+        add_test(NAME LocationReadCensus
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../tools/location_read_census.py"
+                --check
+                --exceptions "${CMAKE_CURRENT_SOURCE_DIR}/../docs/superpowers/location-read-allowlist.md")
+    endif()
 endif()
 
 # --- Utility targets (ported from upstream/account-management) ----------------

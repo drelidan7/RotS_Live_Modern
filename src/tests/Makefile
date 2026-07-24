@@ -180,7 +180,16 @@ db_save_roundtrip_tests.o : test_world.h test_platform_compat.h ../db.h ../utils
 save_benchmark_tests.o : ../save_benchmark.h ../account_cache.h ../account_management.h ../character_json.h
 zone_tests.o : ../zone.h ../db.h
 
+# LS-1 grep gate (tools/location_read_census.py --check): a prerequisite-free
+# recipe step on this phony target (not a new OBJFILES/SRCS entry), so
+# `make tests` -- and therefore the i386-battery monolithic-runner flow
+# (`cd src/tests && make clean && make tests && ../../bin/tests`) -- exercises
+# it the same way `ctest` does for the CMake presets (src/CMakeLists.txt's
+# LocationReadCensus test). Runs after $(EXECUTABLE) is up to date; a
+# violation fails `make tests` before ../../bin/tests ever runs, matching
+# ctest's gate semantics. See ls1-census.md Step 8 / ls1-task-3-report.md.
 tests: $(EXECUTABLE)
+	python3 ../../tools/location_read_census.py --check
 
 $(EXECUTABLE): $(OBJFILES) $(OBJS)
 	$(CXX) $(CXXFLAGS) $(OBJFILES) $(OBJS) -o $(EXECUTABLE) $(LDFLAGS)

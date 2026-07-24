@@ -13,6 +13,7 @@
 
 #include "comm.h"
 #include "db.h"
+#include "handler.h"
 #include "interpre.h"
 #include "protocol.h"
 #include "rots/core/character.h"
@@ -305,9 +306,9 @@ int get_sun_level(int room)
 {
     int level;
 
-    if (weather_info.sunlight == SUN_DARK || IS_SET(world[room].room_flags, DARK) || world[room].sector_type == SECT_INSIDE)
+    if (weather_info.sunlight == SUN_DARK || IS_SET(room_by_id_total(room)->room_flags, DARK) || room_by_id_total(room)->sector_type == SECT_INSIDE)
         return 0;
-    switch (world[room].sector_type) {
+    switch (room_by_id_total(room)->sector_type) {
     case SECT_CITY:
     case SECT_FIELD:
     case SECT_HILLS:
@@ -328,13 +329,13 @@ int get_sun_level(int room)
         level = 0;
         break;
     }
-    if (weather_info.snow[world[room].sector_type])
+    if (weather_info.snow[room_by_id_total(room)->sector_type])
         level += 4;
-    if (weather_info.sky[world[room].sector_type] == SKY_CLOUDLESS)
+    if (weather_info.sky[room_by_id_total(room)->sector_type] == SKY_CLOUDLESS)
         level += 2;
-    if (weather_info.sky[world[room].sector_type] > SKY_CLOUDY)
+    if (weather_info.sky[room_by_id_total(room)->sector_type] > SKY_CLOUDY)
         level -= 1;
-    if IS_SET (world[room].room_flags, SHADOWY)
+    if IS_SET (room_by_id_total(room)->room_flags, SHADOWY)
         level /= 2;
     if (weather_info.sunlight == SUN_RISE || weather_info.sunlight == SUN_SET)
         level /= 2;
@@ -445,8 +446,8 @@ void weather_to_char(char_data* ch)
 {
     int sector_type, weather_type;
 
-    sector_type = world[ch->in_room].sector_type;
-    weather_type = weather_info.sky[world[ch->in_room].sector_type];
+    sector_type = room_of(ch)->sector_type;
+    weather_type = weather_info.sky[room_of(ch)->sector_type];
     if (OUTSIDE(ch))
         send_to_char(weather_messages[weather_type + 2][sector_type], ch);
     else
@@ -458,10 +459,9 @@ void age_bleed_tracks()
     room_data* tmproom;
     int roomnum, tmp;
     extern int top_of_world;
-    extern struct room_data world;
 
     for (roomnum = 0; roomnum <= top_of_world; roomnum++) {
-        tmproom = &world[roomnum];
+        tmproom = room_by_id_total(roomnum);
         for (tmp = 0; tmp < NUM_OF_BLOOD_TRAILS; tmp++) {
             tmproom->bleed_track[tmp].condition += (weather_info.snow[tmproom->sector_type] ? number(0, 1) : sector_age_value(tmproom->sector_type));
         }
@@ -473,10 +473,9 @@ void age_room_tracks()
     room_data* tmproom;
     int roomnum, tmp;
     extern int top_of_world;
-    extern struct room_data world;
 
     for (roomnum = 0; roomnum <= top_of_world; roomnum++) {
-        tmproom = &world[roomnum];
+        tmproom = room_by_id_total(roomnum);
         for (tmp = 0; tmp < NUM_OF_TRACKS; tmp++)
             tmproom->room_track[tmp].condition += (weather_info.snow[tmproom->sector_type] ? number(0, 1) : sector_age_value(tmproom->sector_type));
     }

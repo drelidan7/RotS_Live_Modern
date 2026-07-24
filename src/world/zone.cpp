@@ -252,7 +252,6 @@ void reset_zone(int zone)
     struct obj_data *obj, *obj_to, *tmpobj;
     extern int rev_dir[];
     extern int top_of_world;
-    extern struct room_data world;
     extern struct index_data* mob_index;
     extern struct index_data* obj_index;
     extern struct char_data* character_list;
@@ -278,7 +277,13 @@ void reset_zone(int zone)
                 switch (ZCMD.arg1) {
                 case 0: /* Sets last_mob */
                     if (ZCMD.arg2 >= 0 || ZCMD.arg3 >= 0) {
-                        for (tmp = 0, tmpmob = world[ZCMD.arg2].people;
+                        // LS1 T2: init read converted; the walk itself stays on
+                        // next_in_room -- rots::entity::occupants() is defined only
+                        // inside placement.cpp with no header declaration, so no other
+                        // TU can call it yet (see ls1-task-2-report.md). This is a
+                        // break+post-loop-read (Family F) walk that would otherwise
+                        // convert to occupants() with the pre-init recipe.
+                        for (tmp = 0, tmpmob = room_by_id_total(ZCMD.arg2)->people;
                              tmpmob; tmpmob = tmpmob->next_in_room) {
                             if (IS_NPC(tmpmob) && tmpmob->nr == ZCMD.arg3)
                                 tmp++;
@@ -296,7 +301,7 @@ void reset_zone(int zone)
                     break;
                 case 1: /* Sets last_obj from the room */
                     if (ZCMD.arg2 >= 0 || ZCMD.arg3 >= 0) {
-                        for (tmp = 0, tmpobj = world[ZCMD.arg2].contents;
+                        for (tmp = 0, tmpobj = room_by_id_total(ZCMD.arg2)->contents;
                              tmpobj; tmpobj = tmpobj->next_content) {
                             if (tmpobj->item_number == ZCMD.arg3)
                                 tmp++;
@@ -382,10 +387,10 @@ void reset_zone(int zone)
                     break;
                 case 6: /* Sets last_mob from the zone */
                     if (ZCMD.arg2 >= 0 || ZCMD.arg3 >= 0) {
-                        tmp2 = world[ZCMD.arg1].zone;
+                        tmp2 = room_by_id_total(ZCMD.arg1)->zone;
                         for (tmp = 0, tmpmob = character_list;
                              tmpmob; tmpmob = tmpmob->next) {
-                            if (IS_NPC(tmpmob) && tmpmob->nr == ZCMD.arg3 && tmpmob->in_room >= 0 && world[tmpmob->in_room].zone == tmp2)
+                            if (IS_NPC(tmpmob) && tmpmob->nr == ZCMD.arg3 && location_of(tmpmob) >= 0 && room_of(tmpmob)->zone == tmp2)
                                 tmp++;
                             if (tmp >= ZCMD.arg4)
                                 break;
@@ -419,7 +424,13 @@ void reset_zone(int zone)
                     mob->specials.trophy_line = ZCMD.arg2;
                     break;
                 case 4: /* Set to follow */
-                    tmpch = world[mob->in_room].people;
+                    // LS1 T2: init read converted; the walk itself stays on
+                    // next_in_room -- rots::entity::occupants() is defined only
+                    // inside placement.cpp with no header declaration, so no other
+                    // TU can call it yet (see ls1-task-2-report.md). This is a
+                    // break+post-loop-read (Family F) walk that would otherwise
+                    // convert to occupants() with the pre-init recipe.
+                    tmpch = room_of(mob)->people;
                     for (tmp = 0; tmpch; tmpch = tmpch->next_in_room) {
                         if (IS_NPC(tmpch) && (tmpch->nr < 0 || tmpch->nr == ZCMD.arg3))
                             tmp++;
@@ -504,7 +515,7 @@ void reset_zone(int zone)
             case 'O': /* read an object */
                 if ((!ZCMD.arg3 || obj_index[ZCMD.arg1].number < ZCMD.arg3) && (ZCMD.arg4 == 100 || ZCMD.arg4 > number(0, 99))) {
                     if (ZCMD.arg2 >= 0) {
-                        if (!ZCMD.arg5 || (count_obj_in_list(ZCMD.arg1, world[ZCMD.arg2].contents) < ZCMD.arg5)) {
+                        if (!ZCMD.arg5 || (count_obj_in_list(ZCMD.arg1, room_by_id_total(ZCMD.arg2)->contents) < ZCMD.arg5)) {
                             obj = read_object(ZCMD.arg1, REAL);
                             obj_to_room(obj, ZCMD.arg2);
                             last_cmd = last_obj = 1;
@@ -524,7 +535,7 @@ void reset_zone(int zone)
                 if (ZCMD.arg1 == NOWHERE || ZCMD.arg3 < 0)
                     obj_to = obj;
                 else
-                    obj_to = get_obj_in_list_num(ZCMD.arg3, world[ZCMD.arg1].contents);
+                    obj_to = get_obj_in_list_num(ZCMD.arg3, room_by_id_total(ZCMD.arg1)->contents);
                 if (!obj_to) {
                     last_cmd = 0;
                     break;
@@ -615,20 +626,20 @@ void reset_zone(int zone)
                     break;
                 if (ZCMD.arg2 < 0 || ZCMD.arg2 > 5)
                     break;
-                if (!world[ZCMD.arg1].dir_option[ZCMD.arg2])
+                if (!room_by_id_total(ZCMD.arg1)->dir_option[ZCMD.arg2])
                     break;
-                if (set_exit_state(&world[ZCMD.arg1], ZCMD.arg2, ZCMD.arg3))
+                if (set_exit_state(room_by_id_total(ZCMD.arg1), ZCMD.arg2, ZCMD.arg3))
                     last_cmd = 1;
                 else
                     last_cmd = 0;
-                tmp = world[ZCMD.arg1].dir_option[ZCMD.arg2]->to_room;
+                tmp = room_by_id_total(ZCMD.arg1)->dir_option[ZCMD.arg2]->to_room;
                 if (tmp == NOWHERE)
                     break;
-                if (!world[tmp].dir_option[rev_dir[ZCMD.arg2]])
+                if (!room_by_id_total(tmp)->dir_option[rev_dir[ZCMD.arg2]])
                     break;
-                if (world[tmp].dir_option[rev_dir[ZCMD.arg2]]->to_room != ZCMD.arg1)
+                if (room_by_id_total(tmp)->dir_option[rev_dir[ZCMD.arg2]]->to_room != ZCMD.arg1)
                     break;
-                set_exit_state(&world[tmp], rev_dir[ZCMD.arg2], ZCMD.arg3);
+                set_exit_state(room_by_id_total(tmp), rev_dir[ZCMD.arg2], ZCMD.arg3);
                 break;
             }
         } else {

@@ -675,12 +675,12 @@ void load_rooms(FILE* fl)
 
                 /* OBS: Assumes ordering of input rooms */
 
-                if (world[room_nr].number <= (zone ? zone_table[zone - 1].top : -1)) {
+                if (room_by_id_total(room_nr)->number <= (zone ? zone_table[zone - 1].top : -1)) {
                     fprintf(stderr, "Room nr %d is below zone top %d.\n", virt_nr,
                         (zone ? zone_table[zone - 1].number : -1));
                     exit(0);
                 }
-                while (world[room_nr].number > zone_table[zone].top)
+                while (room_by_id_total(room_nr)->number > zone_table[zone].top)
                     if (++zone > top_of_zone_table) {
                         fprintf(stderr, "Room %d is outside of any zone.\n", virt_nr);
                         exit(0);
@@ -693,7 +693,7 @@ void load_rooms(FILE* fl)
             world[room_nr].room_flags = tmp2;
             //	 fscanf(fl, " %d ", &tmp);
             world[room_nr].sector_type = tmp3;
-            if (world[room_nr].sector_type >= num_of_sector_types)
+            if (room_by_id_total(room_nr)->sector_type >= num_of_sector_types)
                 world[room_nr].sector_type = num_of_sector_types - 1;
             world[room_nr].level = tmp4;
 
@@ -702,13 +702,13 @@ void load_rooms(FILE* fl)
             world[room_nr].people = 0;
             world[room_nr].light = 0; /* Zero light sources */
 
-            if (world[room_nr].room_flags) {
+            if (room_by_id_total(room_nr)->room_flags) {
                 CREATE1(base_af, affected_type);
                 base_af->type = ROOMAFF_SPELL;
                 base_af->duration = -1;
                 base_af->modifier = 0;
                 base_af->location = SPELL_NONE;
-                base_af->bitvector = world[room_nr].room_flags | PERMAFFECT;
+                base_af->bitvector = room_by_id_total(room_nr)->room_flags | PERMAFFECT;
 
                 world[room_nr].affected = base_af;
                 base_af = 0;
@@ -728,7 +728,7 @@ void load_rooms(FILE* fl)
                     CREATE(new_descr, struct extra_descr_data, 1);
                     new_descr->keyword = fread_string(fl, error_label);
                     new_descr->description = fread_string(fl, error_label);
-                    new_descr->next = world[room_nr].ex_description;
+                    new_descr->next = room_by_id_total(room_nr)->ex_description;
                     world[room_nr].ex_description = new_descr;
 
                 } else if (*chk == 'F') /* extra description field */ {
@@ -740,8 +740,8 @@ void load_rooms(FILE* fl)
 
                     if (!aff_set) { /* putting the room to the affection list */
                         tmplist = pool_to_list(&affected_list, &affected_list_pool);
-                        tmplist->ptr.room = &world[room_nr];
-                        tmplist->number = world[room_nr].number;
+                        tmplist->ptr.room = room_by_id_total(room_nr);
+                        tmplist->number = room_by_id_total(room_nr)->number;
                         tmplist->type = TARGET_ROOM;
                         aff_set = 1;
                     }
@@ -752,7 +752,7 @@ void load_rooms(FILE* fl)
                     base_af->modifier = tmp3; // spell level
                     base_af->bitvector = tmp4 | PERMAFFECT; // what flags to set
 
-                    base_af->next = world[room_nr].affected;
+                    base_af->next = room_by_id_total(room_nr)->affected;
                     world[room_nr].affected = base_af;
 
                     base_af = 0;
@@ -780,24 +780,24 @@ void setup_dir(FILE* fl, int room, int dir)
     // door's two string fields.
     std::string error_label;
 
-    error_label = std::format("Room #{}, direction D{}", world[room].number, dir);
+    error_label = std::format("Room #{}, direction D{}", room_by_id_total(room)->number, dir);
 
     CREATE(world[room].dir_option[dir], struct room_direction_data, 1);
 
-    world[room].dir_option[dir]->general_description = fread_string(fl, error_label);
-    world[room].dir_option[dir]->keyword = fread_string(fl, error_label);
+    room_by_id_total(room)->dir_option[dir]->general_description = fread_string(fl, error_label);
+    room_by_id_total(room)->dir_option[dir]->keyword = fread_string(fl, error_label);
 
     fscanf(fl, " %d ", &tmp);
-    world[room].dir_option[dir]->exit_info = tmp;
+    room_by_id_total(room)->dir_option[dir]->exit_info = tmp;
 
     fscanf(fl, " %d ", &tmp);
-    world[room].dir_option[dir]->key = tmp;
+    room_by_id_total(room)->dir_option[dir]->key = tmp;
 
     fscanf(fl, " %d ", &tmp);
-    world[room].dir_option[dir]->to_room = tmp;
+    room_by_id_total(room)->dir_option[dir]->to_room = tmp;
 
     fscanf(fl, " %d ", &tmp);
-    world[room].dir_option[dir]->exit_width = tmp;
+    room_by_id_total(room)->dir_option[dir]->exit_width = tmp;
     /*UPDATE*/
 }
 
@@ -843,9 +843,9 @@ void renum_world(void)
 
     for (room = 0; room <= top_of_world; room++)
         for (door = 0; door <= 5; door++)
-            if (world[room].dir_option[door])
-                if (world[room].dir_option[door]->to_room != NOWHERE)
-                    world[room].dir_option[door]->to_room = real_room(world[room].dir_option[door]->to_room);
+            if (room_by_id_total(room)->dir_option[door])
+                if (room_by_id_total(room)->dir_option[door]->to_room != NOWHERE)
+                    room_by_id_total(room)->dir_option[door]->to_room = real_room(room_by_id_total(room)->dir_option[door]->to_room);
 }
 
 void symbol_to_map(int x, int y, int symb)
@@ -1741,7 +1741,7 @@ int real_room(int virt)
         mid = (bot + top) / 2;
 
         //      if ((world + mid)->number == virt)
-        if (world[mid].number == virt)
+        if (room_by_id_total(mid)->number == virt)
             return (mid);
         if (bot >= top) {
             if (!mini_mud && !new_mud && virt)
@@ -1749,7 +1749,7 @@ int real_room(int virt)
             return (-1);
         }
         //      if ((world + mid)->number > virt)
-        if (world[mid].number > virt)
+        if (room_by_id_total(mid)->number > virt)
             top = mid - 1;
         else
             bot = mid + 1;
@@ -1937,11 +1937,11 @@ void room_data::create_exit(int dir, int room, char connect)
         dir_option[dir]->exit_info = 0;
         dir_option[dir]->key = -1;
     }
-    dir_option[dir]->to_room = real_room(world[room].number);
+    dir_option[dir]->to_room = real_room(room_by_id_total(room)->number);
     //  printf("exit to room %d,
     //  %d\n",dir_option[dir]->to_room,world[room].number);
     if (connect && (room != this_room))
-        world[room].create_exit(rev_dir[dir], this_room, FALSE);
+        room_by_id_total(room)->create_exit(rev_dir[dir], this_room, FALSE);
     //  printf("create exift returns\n");
 }
 //************************************************************************
@@ -1962,7 +1962,7 @@ int room_data::create_room(int zone)
     for (place = 0; place < TOTAL_LENGTH; place++) {
         //    printf("create_room, checking %d:
         //    %d\n",place,(BASE_WORLD+place)->number);
-        if (world[place].number < 0)
+        if (room_by_id_total(place)->number < 0)
             break;
     }
 
@@ -1989,13 +1989,13 @@ int room_data::create_room(int zone)
             TOTAL_LENGTH += EXTENSION_SIZE;
         }
     } else
-        new_room = &world[place];
+        new_room = room_by_id_total(place);
 
     dummy_room_data(new_room);
     if (place == 0)
         new_room->number = 0;
     else
-        new_room->number = world[place - 1].number + 1;
+        new_room->number = room_by_id_total(place - 1)->number + 1;
 
     //  sprintf(mybuf,"created %d, %d",place, new_room->number);
     //  log(mybuf);
@@ -2098,7 +2098,7 @@ room_data& room_data::operator[](int i)
 // never touches world[] itself; see db.h for the declaration.
 int world_room_vnum(int room_index)
 {
-    return world[room_index].number;
+    return room_by_id_total(room_index)->number;
 }
 
 // Registers world_room_vnum() (above) as persist_hooks.h's room-vnum hook
@@ -2132,14 +2132,14 @@ void recalc_zone_power()
     }
 
     for (tmpch = character_list; tmpch; tmpch = tmpch->next)
-        if (!IS_NPC(tmpch) && (tmpch->in_room != NOWHERE)) {
+        if (!IS_NPC(tmpch) && (location_of(tmpch) != NOWHERE)) {
             tmp = char_power(GET_LEVEL(tmpch));
             if (RACE_GOOD(tmpch))
-                zone_table[world[tmpch->in_room].zone].white_power += tmp;
+                zone_table[room_of(tmpch)->zone].white_power += tmp;
             else if (RACE_EVIL(tmpch))
-                zone_table[world[tmpch->in_room].zone].dark_power += tmp;
+                zone_table[room_of(tmpch)->zone].dark_power += tmp;
             else if (RACE_MAGI(tmpch))
-                zone_table[world[tmpch->in_room].zone].magi_power += tmp;
+                zone_table[room_of(tmpch)->zone].magi_power += tmp;
         }
 }
 
@@ -2152,7 +2152,7 @@ int report_zone_power(struct char_data* ch)
 {
     struct zone_data* z;
 
-    z = &zone_table[world[ch->in_room].zone];
+    z = &zone_table[room_of(ch)->zone];
 
     if (RACE_GOOD(ch)) {
         if (((z->dark_power > char_power(z->level) * 3 / 2) && (z->dark_power > z->white_power * 3 / 2)))
@@ -2260,9 +2260,9 @@ int show_tracks(char_data* ch, char* name, int mode)
 
     int tmp, count, ch_num, chance_factor, tr_time, shall_show;
     room_data* ch_room;
-    if (ch->in_room == NOWHERE)
+    if (location_of(ch) == NOWHERE)
         return 0;
-    ch_room = &world[ch->in_room];
+    ch_room = room_of(ch);
     chance_factor = 0;
 
     if (ch_room->sector_type == SECT_CITY)
@@ -2288,7 +2288,7 @@ int show_tracks(char_data* ch, char* name, int mode)
         }
         if (shall_show) {
             count++;
-            if (IS_WATER(ch->in_room))
+            if (IS_WATER(location_of(ch)))
                 track_out = std::format("The water looks {} disturbed to the {}.\n\r",
                     water_track_desc(tr_time), dirs[ch_room->room_track[tmp].data & 7]);
             else

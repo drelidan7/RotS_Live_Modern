@@ -150,6 +150,17 @@ public:
     {
     }
 
+    // Seeds the walked chain directly at an arbitrary occupant (LS-2
+    // Wave Task 1; .superpowers/sdd/ls2-census.md R8) instead of a
+    // room's head pointer -- reproduces the legacy `for (i = head; i;
+    // i = i->next_in_room)` idiom verbatim: head itself is the first
+    // element yielded. A null head yields an empty range, matching
+    // occupant_range(room_data*)'s null-room behavior above.
+    explicit occupant_range(char_data* head)
+        : first_(head)
+    {
+    }
+
     iterator begin() const { return iterator(first_); }
     iterator end() const { return iterator(nullptr); }
 
@@ -165,6 +176,26 @@ private:
 inline occupant_range occupants(room_data* room)
 {
     return occupant_range(room);
+}
+
+// Returns a range-for-capable view over the next_in_room chain
+// starting AT head itself -- head is the first element yielded -- as
+// opposed to occupants(room_data*) above, which always starts at
+// room->people. LS-2 Wave Task 1 (.superpowers/sdd/ls2-census.md R8):
+// closes the list_char_to_char() (act_info.cpp) / act_impl() (comm.cpp)
+// gap -- both walk forward from an arbitrary char_data* head that is
+// not necessarily a room's occupant-chain head -- with one shared API
+// instead of a two-site allow-reason. Same lazy-++ semantics as
+// occupants(room_data*): each ++ reads node_->next_in_room at
+// increment time, NOT a save-next-first mutation-safe idiom -- a walk
+// that relocates the current node mid-iteration is NOT convertible to
+// this. A null head yields an empty range. L1 field wrapper -- no hook
+// needed, see occupant_range's own comment. Consumer-free as landed --
+// later batches are the first callers. Defined in handler.h (no
+// separate TU, matching occupants(room_data*) above).
+inline occupant_range occupants_from(char_data* head)
+{
+    return occupant_range(head);
 }
 
 // const counterpart (LS-1 Wave Task 1b; .superpowers/sdd/ls1-census.md's

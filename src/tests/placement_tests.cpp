@@ -1126,3 +1126,100 @@ TEST(OccupantsTest, ConstOverloadYieldsTheSameSequenceAsTheNonConstOverload)
         EXPECT_EQ(const_walk[i], non_const_walk[i]);
     }
 }
+
+// ---------------------------------------------------------------------------
+// rots::entity::occupants_from() (LS-2 Wave Task 1; .superpowers/sdd/
+// ls2-census.md R8). Closes A1's list_char_to_char() (act_info.cpp:1043)
+// and A2's act_impl() (comm.cpp:2710) gap with one shared API rather than
+// minting a two-site allow-reason: a range-for view over the next_in_room
+// chain starting AT an arbitrary char_data* head -- head is the FIRST
+// element yielded, reproducing the legacy `for (i = head; i; i =
+// i->next_in_room)` idiom verbatim (as opposed to occupants(room), which
+// always starts at room->people). Reuses occupant_range's existing
+// iterator unchanged via a second constructor that seeds first_ directly
+// from head; no new iterator, no duplicated advance/dereference/
+// inequality logic. Consumer-free as landed -- T2's later batches are the
+// first callers.
+// ---------------------------------------------------------------------------
+
+TEST(OccupantsFromTest, YieldsEmptyRangeForNullHead)
+{
+    int count = 0;
+    for (char_data* occ : rots::entity::occupants_from(static_cast<char_data*>(nullptr))) {
+        (void)occ;
+        ++count;
+    }
+
+    EXPECT_EQ(count, 0);
+}
+
+TEST(OccupantsFromTest, WalksTheChainFromHeadInOrderHeadIncluded)
+{
+    char_data first { };
+    char_data second { };
+    char_data third { };
+    first.next_in_room = &second;
+    second.next_in_room = &third;
+    third.next_in_room = nullptr;
+
+    std::vector<char_data*> collected;
+    for (char_data* occ : rots::entity::occupants_from(&first)) {
+        collected.push_back(occ);
+    }
+
+    EXPECT_EQ(collected, (std::vector<char_data*> { &first, &second, &third }));
+}
+
+TEST(OccupantsFromTest, SingleElementChainYieldsOnlyHead)
+{
+    char_data only { };
+    only.next_in_room = nullptr;
+
+    std::vector<char_data*> collected;
+    for (char_data* occ : rots::entity::occupants_from(&only)) {
+        collected.push_back(occ);
+    }
+
+    EXPECT_EQ(collected, (std::vector<char_data*> { &only }));
+}
+
+TEST(OccupantsFromTest, StartingMidChainVisitsOnlyThatElementAndItsSuccessors)
+{
+    char_data first { };
+    char_data second { };
+    char_data third { };
+    first.next_in_room = &second;
+    second.next_in_room = &third;
+    third.next_in_room = nullptr;
+
+    // Mirrors act_impl()'s TO_ROOM/TO_NOTVICT shape: the head passed in is
+    // already mid-chain (not necessarily room->people), so the range must
+    // visit exactly that element and its successors -- never "first".
+    std::vector<char_data*> collected;
+    for (char_data* occ : rots::entity::occupants_from(&second)) {
+        collected.push_back(occ);
+    }
+
+    EXPECT_EQ(collected, (std::vector<char_data*> { &second, &third }));
+}
+
+TEST(OccupantsFromTest, EarlyReturnFromWithinTheRangeForIsSafe)
+{
+    char_data first { };
+    char_data second { };
+    first.next_in_room = &second;
+    second.next_in_room = nullptr;
+
+    // Mirrors act_impl()'s TO_VICT/TO_CHAR shape: the function returns
+    // from inside the loop body after handling exactly one element,
+    // abandoning the range-for before it reaches end() -- legal, and must
+    // not observe or touch anything past the returned-from element.
+    auto find_first = [](char_data* head) -> char_data* {
+        for (char_data* occ : rots::entity::occupants_from(head)) {
+            return occ;
+        }
+        return nullptr;
+    };
+
+    EXPECT_EQ(find_first(&first), &first);
+}

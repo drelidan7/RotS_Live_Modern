@@ -533,7 +533,7 @@ void reset_zone(int zone)
                             last_cmd = last_obj = 0;
                     } else {
                         obj = read_object(ZCMD.arg1, REAL);
-                        obj->in_room = NOWHERE;
+                        obj->in_room = NOWHERE; // LS1-ALLOW: obj-location
                         last_cmd = 1;
                     }
                 } else {

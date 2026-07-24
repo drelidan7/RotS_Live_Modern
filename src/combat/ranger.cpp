@@ -2772,7 +2772,7 @@ void do_recover(char_data* character, char*, waiting_type*, int, int)
                 if (arrow_container) {
                     obj_from_obj(arrow);
                 }
-                if (arrow->in_room >= 0) {
+                if (arrow->in_room >= 0) { // LS1-ALLOW: obj-location
                     obj_from_room(arrow);
                 }
                 obj_to_char(arrow, character);

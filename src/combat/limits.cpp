@@ -810,9 +810,9 @@ void point_update(void)
             if (j->obj_flags.timer == 0) {
                 if (j->carried_by) {
                     act("$p decays in your hands.", FALSE, j->carried_by, j, 0, TO_CHAR);
-                } else if ((j->in_room != NOWHERE) && (room_by_id_total(j->in_room)->people)) {
-                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->people, j, 0, TO_ROOM);
-                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->people, j, 0, TO_CHAR);
+                } else if ((j->in_room != NOWHERE) && (room_by_id_total(j->in_room)->people)) { // LS1-ALLOW: obj-location
+                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->people, j, 0, TO_ROOM); // LS1-ALLOW: obj-location
+                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->people, j, 0, TO_CHAR); // LS1-ALLOW: obj-location
                 }
 
                 if (GET_ITEM_TYPE(j) == ITEM_CONTAINER) {
@@ -829,8 +829,8 @@ void point_update(void)
                             obj_to_obj(jj, j->in_obj);
                         } else if (j->carried_by) {
                             obj_to_room(jj, location_of(j->carried_by));
-                        } else if (j->in_room != NOWHERE) {
-                            obj_to_room(jj, j->in_room);
+                        } else if (j->in_room != NOWHERE) { // LS1-ALLOW: obj-location
+                            obj_to_room(jj, j->in_room); // LS1-ALLOW: obj-location
                         } else {
                             log("SYSERR: OBJ DECAYED IN NOWHERE (limits.c)!!!");
                         }
@@ -859,9 +859,9 @@ void point_update(void)
                     act("Your $o went out.", FALSE, j->carried_by, j, 0, TO_CHAR);
                     act("$n's $o went out.", TRUE, j->carried_by, j, 0, TO_ROOM);
                     recount_light_room(location_of(j->carried_by));
-                } else if (j->in_room != NOWHERE) {
-                    send_to_room(std::format("{} here went out.\n\r", j->short_description), j->in_room);
-                    recount_light_room(j->in_room);
+                } else if (j->in_room != NOWHERE) { // LS1-ALLOW: obj-location
+                    send_to_room(std::format("{} here went out.\n\r", j->short_description), j->in_room); // LS1-ALLOW: obj-location
+                    recount_light_room(j->in_room); // LS1-ALLOW: obj-location
                 }
                 extract_obj(j);
             } else if ((j->obj_flags.value[2] < 3) && (j->obj_flags.value[2] >= 0) && (j->obj_flags.value[3] > 0)) {
@@ -871,12 +871,12 @@ void point_update(void)
                     act("Your $o flickers weakly.", FALSE, j->carried_by, j, 0, TO_CHAR);
                     act("$n's $o flickers weakly.", TRUE, j->carried_by, j, 0, TO_ROOM);
                     //	  recount_light_room(j->carried_by->in_room);
-                } else if (j->in_room != NOWHERE) {
-                    send_to_room(std::format("{} here flickers weakly.\n\r", j->short_description), j->in_room);
+                } else if (j->in_room != NOWHERE) { // LS1-ALLOW: obj-location
+                    send_to_room(std::format("{} here flickers weakly.\n\r", j->short_description), j->in_room); // LS1-ALLOW: obj-location
                     //	  recount_light_room(j->in_room);
                 }
             }
-        } else if ((GET_ITEM_TYPE(j) == ITEM_CONTAINER) && (!j->obj_flags.value[3]) && (!j->carried_by) && (j->in_room != NOWHERE)) {
+        } else if ((GET_ITEM_TYPE(j) == ITEM_CONTAINER) && (!j->obj_flags.value[3]) && (!j->carried_by) && (j->in_room != NOWHERE)) { // LS1-ALLOW: obj-location
             /* the object is not a corpse, and is on the ground... */
             /* restoring its closed/locked state */
             if (!(j->obj_flags.value[1] & CONT_CLOSED) && (j->obj_flags.value[4] & CONT_CLOSED))

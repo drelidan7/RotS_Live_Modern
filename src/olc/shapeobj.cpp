@@ -115,7 +115,7 @@ void new_obj(struct char_data* ch)
         ->object->contains
         = 0;
     SHAPE_OBJECT(ch)
-        ->object->in_room
+        ->object->in_room // LS1-ALLOW: obj-location
         = location_of(ch);
 }
 

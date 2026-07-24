@@ -1671,14 +1671,14 @@ ASPELL(spell_earthquake)
             room_of(caster)->create_exit(DOWN, crack);
 
             RELEASE(room_by_id_total(crack)->name);
-            world[crack].name = str_dup("Deep Crevice");
+            world[crack].name = str_dup("Deep Crevice"); // LS1-ALLOW: write
             RELEASE(room_by_id_total(crack)->description);
-            world[crack].description = str_dup(
+            world[crack].description = str_dup( // LS1-ALLOW: write
                 "   The crevice is deep, dark and looks unsafe. The walls of fresh broken\n\r"
                 "rock are uneven and still crumbling. Some powerful disaster must have \n\r"
                 "torn the ground here recently.\n\r");
-            world[crack].sector_type = SECT_CRACK;
-            world[crack].room_flags = cur_room->room_flags;
+            world[crack].sector_type = SECT_CRACK; // LS1-ALLOW: write
+            world[crack].room_flags = cur_room->room_flags; // LS1-ALLOW: write
             act("The ground is cracked under your feet!", FALSE, caster, 0, 0, TO_ROOM);
             send_to_char("Your spell cracks the ground open!\n\r", caster);
         }

@@ -779,7 +779,7 @@ void reset_char(struct char_data* ch)
     ch->carrying = 0;
     ch->next = 0;
     ch->next_fighting = 0;
-    ch->next_in_room = 0;
+    ch->next_in_room = 0; // LS1-ALLOW: write
     ch->specials.fighting = 0;
     ch->specials.position = POSITION_STANDING;
     ch->specials.default_pos = POSITION_STANDING;
@@ -821,7 +821,7 @@ void clear_char(struct char_data* ch, int mode)
     memset(ch->profs->colors, CNRM, sizeof(ch->profs->colors[0]) * MAX_COLOR_FIELDS);
 
     ch->specials.alias = 0;
-    ch->in_room = NOWHERE;
+    ch->in_room = NOWHERE; // LS1-ALLOW: write
     ch->specials.was_in_room = NOWHERE;
     ch->specials.position = POSITION_STANDING;
     ch->specials.default_pos = POSITION_STANDING;
@@ -852,7 +852,7 @@ void clear_object(struct obj_data* obj)
     memset((char*)obj, 0, (size_t)sizeof(struct obj_data));
 
     obj->item_number = -1;
-    obj->in_room = NOWHERE;
+    obj->in_room = NOWHERE; // LS1-ALLOW: obj-location
     obj->obj_flags.timer = -1;
     obj->obj_flags.script_info = 0;
 }

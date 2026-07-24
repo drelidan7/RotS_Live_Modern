@@ -266,7 +266,7 @@ void new_mob(struct char_data* ch)
     CREATE(SHAPE_PROTO(ch)->proto->player.description, char, 8);
     strcpy(SHAPE_PROTO(ch)->proto->player.description, "golem\n\r");
     SHAPE_PROTO(ch)
-        ->proto->in_room
+        ->proto->in_room // LS1-ALLOW: write
         = location_of(ch);
     SHAPE_PROTO(ch)
         ->proto->specials2.pref

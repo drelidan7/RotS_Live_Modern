@@ -1373,7 +1373,7 @@ void store_to_char(struct char_file_u* st, struct char_data* ch)
             affect_to_char(ch, &st->affected[i]);
     }
 
-    ch->in_room = GET_LOADROOM(ch);
+    ch->in_room = GET_LOADROOM(ch); // LS1-ALLOW: write
 
     affect_total(ch);
 

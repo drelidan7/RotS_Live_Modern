@@ -1133,7 +1133,7 @@ void _recursive_move(struct char_data* ch, struct obj_data* hostobj)
 
     if (!ch || !hostobj)
         return;
-    if (location_of(ch) != hostobj->in_room)
+    if (location_of(ch) != hostobj->in_room) // LS1-ALLOW: obj-location
         return;
 
     was_in = location_of(ch);
@@ -1178,7 +1178,7 @@ SPECIAL(ferry_boat)
     if ((cmd != CMD_ENTER) || !ch)
         return FALSE;
 
-    if (location_of(ch) != hostobj->in_room)
+    if (location_of(ch) != hostobj->in_room) // LS1-ALLOW: obj-location
         return FALSE;
     while (*arg && (*arg <= ' '))
         arg++;

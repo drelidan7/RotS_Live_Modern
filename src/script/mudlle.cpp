@@ -287,7 +287,7 @@ void int_tostack(struct char_data* host, char* arg, int cmd,
         if (tmpch)
             value = location_of(tmpch);
         else if (tmpobj)
-            value = tmpobj->in_room;
+            value = tmpobj->in_room; // LS1-ALLOW: obj-location
         break;
 
     case 'R':

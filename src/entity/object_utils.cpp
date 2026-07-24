@@ -408,7 +408,7 @@ void extract_obj(struct obj_data* obj)
 {
     struct obj_data *temp1, *temp2;
 
-    if (obj->in_room != NOWHERE)
+    if (obj->in_room != NOWHERE) // LS1-ALLOW: obj-location
         obj_from_room(obj);
     else if (obj->carried_by)
         obj_from_char(obj);

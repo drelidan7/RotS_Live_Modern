@@ -1606,7 +1606,7 @@ int run_script(struct info_script* info, struct script_data* position)
                 tmpobj = get_obj_param(curr->param[0], info);
                 tmprm = get_room_param(curr->param[1], info);
                 if (tmpobj && tmprm)
-                    if ((tmpobj->in_room >= 0) ? room_by_id_total(tmpobj->in_room)->number : 0 == tmprm->number)
+                    if ((tmpobj->in_room >= 0) ? room_by_id_total(tmpobj->in_room)->number : 0 == tmprm->number) // LS1-ALLOW: obj-location
                         obj_from_room(tmpobj);
             }
             curr = curr->next;

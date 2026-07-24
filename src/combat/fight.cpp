@@ -727,7 +727,7 @@ obj_data* make_physical_corpse(char_data* character, char_data* killer, int atta
         corpse->next = object_list;
         object_list = corpse;
         corpse->item_number = NOWHERE;
-        corpse->in_room = NOWHERE;
+        corpse->in_room = NOWHERE; // LS1-ALLOW: obj-location
         corpse->name = str_dup("corpse");
 
         /* We call this function to retrieve our corpse "type"*/
@@ -3153,7 +3153,7 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
         return;
     }
 
-    if (item->in_room != NOWHERE) {
+    if (item->in_room != NOWHERE) { // LS1-ALLOW: obj-location
         log("SYSERR: EQUIP: Obj is in_room when equip.");
         return;
     }

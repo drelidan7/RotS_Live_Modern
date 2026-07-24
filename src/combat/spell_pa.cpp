@@ -746,7 +746,7 @@ ACMD(do_cast)
         }
     } break;
     case TAR_OBJ_ROOM: {
-        if (tar_obj->in_room != location_of(ch)) {
+        if (tar_obj->in_room != location_of(ch)) { // LS1-ALLOW: obj-location
             send_to_char("Your target disappeared.\n\r", ch);
             return;
         }

@@ -286,7 +286,7 @@ room_data* room_by_id_impl(int rnum)
     // ::-qualified: unqualified `world` inside `namespace rots::world`
     // resolves to the enclosing namespace itself (name collision with the
     // global room_data `world` object), not the global variable.
-    return &::world[rnum];
+    return &::world[rnum]; // LS1-ALLOW: resolver-impl (room_by_id/room_by_id_total's own backing store -- this literal world[] access IS the Stage-1 resolver implementation, not a caller)
 }
 
 // room_by_id_impl's TOTAL counterpart: delegates straight to
@@ -300,7 +300,7 @@ room_data* room_by_id_impl(int rnum)
 // silently narrow it into a crash for such a caller instead.
 room_data* room_by_id_total_impl(int rnum)
 {
-    return &::world[rnum];
+    return &::world[rnum]; // LS1-ALLOW: resolver-impl (room_by_id/room_by_id_total's own backing store -- this literal world[] access IS the Stage-1 resolver implementation, not a caller)
 }
 
 // obj_index_by_id_impl: bounds-checked, nullptr for an out-of-range id, the
@@ -664,9 +664,9 @@ void load_rooms(FILE* fl)
         //	printf("room %d:%s.flag=%d.\n",virt_nr, temp,(*temp2 != '$'));
 
         if ((flag = (*temp2 != '$'))) { /* a new record to be read */
-            world[room_nr].number = virt_nr;
-            world[room_nr].name = temp2;
-            world[room_nr].description = fread_string(fl, error_label);
+            world[room_nr].number = virt_nr; // LS1-ALLOW: write
+            world[room_nr].name = temp2; // LS1-ALLOW: write
+            world[room_nr].description = fread_string(fl, error_label); // LS1-ALLOW: write
             fgets(line_buf, 255, fl);
             tmp = tmp2 = tmp3 = tmp4 = 0;
             if (top_of_zone_table >= 0) {
@@ -685,22 +685,22 @@ void load_rooms(FILE* fl)
                         fprintf(stderr, "Room %d is outside of any zone.\n", virt_nr);
                         exit(0);
                     }
-                world[room_nr].zone = zone;
+                world[room_nr].zone = zone; // LS1-ALLOW: write
             } else
                 sscanf(line_buf, "%d %d %d", &tmp2, &tmp3, &tmp4);
 
             //	 fscanf(fl, " %d ", &tmp);
-            world[room_nr].room_flags = tmp2;
+            world[room_nr].room_flags = tmp2; // LS1-ALLOW: write
             //	 fscanf(fl, " %d ", &tmp);
-            world[room_nr].sector_type = tmp3;
+            world[room_nr].sector_type = tmp3; // LS1-ALLOW: write
             if (room_by_id_total(room_nr)->sector_type >= num_of_sector_types)
-                world[room_nr].sector_type = num_of_sector_types - 1;
-            world[room_nr].level = tmp4;
+                world[room_nr].sector_type = num_of_sector_types - 1; // LS1-ALLOW: write
+            world[room_nr].level = tmp4; // LS1-ALLOW: write
 
-            world[room_nr].funct = 0;
-            world[room_nr].contents = 0;
-            world[room_nr].people = 0;
-            world[room_nr].light = 0; /* Zero light sources */
+            world[room_nr].funct = 0; // LS1-ALLOW: write
+            world[room_nr].contents = 0; // LS1-ALLOW: write
+            world[room_nr].people = 0; // LS1-ALLOW: write
+            world[room_nr].light = 0; /* Zero light sources */ // LS1-ALLOW: write
 
             if (room_by_id_total(room_nr)->room_flags) {
                 CREATE1(base_af, affected_type);
@@ -710,13 +710,13 @@ void load_rooms(FILE* fl)
                 base_af->location = SPELL_NONE;
                 base_af->bitvector = room_by_id_total(room_nr)->room_flags | PERMAFFECT;
 
-                world[room_nr].affected = base_af;
+                world[room_nr].affected = base_af; // LS1-ALLOW: write
                 base_af = 0;
             }
             for (tmp = 0; tmp <= 5; tmp++)
-                world[room_nr].dir_option[tmp] = 0;
+                world[room_nr].dir_option[tmp] = 0; // LS1-ALLOW: write
 
-            world[room_nr].ex_description = 0;
+            world[room_nr].ex_description = 0; // LS1-ALLOW: write
             aff_set = 0;
 
             for (;;) {
@@ -729,7 +729,7 @@ void load_rooms(FILE* fl)
                     new_descr->keyword = fread_string(fl, error_label);
                     new_descr->description = fread_string(fl, error_label);
                     new_descr->next = room_by_id_total(room_nr)->ex_description;
-                    world[room_nr].ex_description = new_descr;
+                    world[room_nr].ex_description = new_descr; // LS1-ALLOW: write
 
                 } else if (*chk == 'F') /* extra description field */ {
 
@@ -753,7 +753,7 @@ void load_rooms(FILE* fl)
                     base_af->bitvector = tmp4 | PERMAFFECT; // what flags to set
 
                     base_af->next = room_by_id_total(room_nr)->affected;
-                    world[room_nr].affected = base_af;
+                    world[room_nr].affected = base_af; // LS1-ALLOW: write
 
                     base_af = 0;
 
@@ -782,7 +782,7 @@ void setup_dir(FILE* fl, int room, int dir)
 
     error_label = std::format("Room #{}, direction D{}", room_by_id_total(room)->number, dir);
 
-    CREATE(world[room].dir_option[dir], struct room_direction_data, 1);
+    CREATE(world[room].dir_option[dir], struct room_direction_data, 1); // LS1-ALLOW: write
 
     room_by_id_total(room)->dir_option[dir]->general_description = fread_string(fl, error_label);
     room_by_id_total(room)->dir_option[dir]->keyword = fread_string(fl, error_label);
@@ -1061,7 +1061,7 @@ struct char_data* read_mobile(int nr, int type)
 
     *mob = mob_proto[i];
 
-    mob->in_room = NOWHERE;
+    mob->in_room = NOWHERE; // LS1-ALLOW: write
 
     mob->abilities.hit = number(mob->tmpabilities.hit, mob->abilities.hit);
 
@@ -1502,7 +1502,7 @@ void load_objects(FILE* obj_f)
                 obj_proto[i].affected[j].modifier = 0;
             }
 
-            obj_proto[i].in_room = NOWHERE;
+            obj_proto[i].in_room = NOWHERE; // LS1-ALLOW: obj-location
             obj_proto[i].next_content = 0;
             obj_proto[i].carried_by = 0;
             obj_proto[i].in_obj = 0;
@@ -2083,7 +2083,7 @@ room_data& room_data::operator[](int i)
             if (i == r_immort_start_room)
                 exit(0);
             else
-                return world[r_immort_start_room];
+                return world[r_immort_start_room]; // LS1-ALLOW: resolver-impl (room_data::operator[]'s own recursive out-of-range fallback -- this literal world[] access IS the operator[] implementation the Stage-1 API wraps)
         }
         //    printf("return, offse=%d\n",offset);
         return *(ext->extension_world + offset);

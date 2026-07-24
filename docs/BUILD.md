@@ -254,7 +254,7 @@ tree `src/<lib>/include/rots/<lib>/` (unchanged by this wave, NOT touched, NOT a
 **Private-header-moves-with-its-library rule.** A header moved into `src/<lib>/` (or `src/app/`)
 iff *every* non-test includer resolves to that one tier; a header included by more than one
 tier, or by app plus a library, stays flat at top-level `src/` (test-tree includers don't count —
-satisfied via include paths, not by moving the header). Eight private headers moved this way:
+satisfied via include paths, not by moving the header). Seven private headers moved this way:
 `clock.h` → `platform`; `environment_utils.h` → `entity`; `legacy_salvage.h`/`stopwatch.h` →
 `persist`; `delayed_command_interpreter.h`/`savebench.h`/`wait_functions.h` → `app`.
 `mob_csv_extract.h` was reclassified to **stay flat** mid-wave: a test file bare-quote-includes

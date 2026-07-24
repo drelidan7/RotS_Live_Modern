@@ -710,17 +710,17 @@ room_data* get_room_param(int param, info_script* info)
 
     case SCRIPT_PARAM_CH1_ROOM:
         if (info->ch[0])
-            return &world[info->ch[0]->in_room];
+            return room_of(info->ch[0]);
         else
             return 0;
     case SCRIPT_PARAM_CH2_ROOM:
         if (info->ch[1])
-            return &world[info->ch[1]->in_room];
+            return room_of(info->ch[1]);
         else
             return 0;
     case SCRIPT_PARAM_CH3_ROOM:
         if (info->ch[2])
-            return &world[info->ch[2]->in_room];
+            return room_of(info->ch[2]);
         else
             return 0;
     default:
@@ -849,25 +849,39 @@ void register_call_trigger_hook()
 int trigger_room_event(int trigger_type, room_data* room, char_data* ch)
 {
     int return_value = 1;
-    char_data* tmpch;
     obj_data* tmpobj;
 
     switch (trigger_type) {
 
     case ON_BEFORE_ENTER:
 
-        for (tmpch = room->people; tmpch && return_value; tmpch = tmpch->next_in_room)
+        for (auto* tmpch : rots::entity::occupants(room)) {
+            // Same `tmpch && return_value` compound-condition guard as the ON_ENTER
+            // case below.
+            if (!return_value) {
+                break;
+            }
             if (tmpch != ch)
                 return_value = trigger_before_char_enter(tmpch, ch, room);
+        }
 
         break;
 
     case ON_ENTER:
         if (!(return_value = trigger_room_enter(room, ch)))
             return_value = 0;
-        for (tmpch = room->people; tmpch && return_value; tmpch = tmpch->next_in_room)
+        for (auto* tmpch : rots::entity::occupants(room)) {
+            // Reproduces the original `tmpch && return_value` loop condition: stop
+            // before considering any further occupant once a prior trigger_char_enter()
+            // call has already denied entry (return_value == 0), matching the original
+            // for-loop stopping one iteration earlier than a naive occupants() walk would
+            // (a later occupant's trigger could otherwise silently overwrite return_value).
+            if (!return_value) {
+                break;
+            }
             if (tmpch != ch)
                 return_value = trigger_char_enter(tmpch, ch, room);
+        }
         for (tmpobj = room->contents; tmpobj && return_value; tmpobj = tmpobj->next_content)
             return_value = trigger_object_event(ON_ENTER, tmpobj, ch);
         break;
@@ -1202,7 +1216,7 @@ int run_script(struct info_script* info, struct script_data* position)
                 if ((tmpint = rots::script::dispatch_find_action(curr->text)) != -1) {
                     tmpch = get_char_param(curr->param[0], info);
                     tmpch2 = get_char_param(curr->param[1], info);
-                    if ((tmpch2) && (tmpch2->in_room == tmpch->in_room)) {
+                    if ((tmpch2) && (location_of(tmpch2) == location_of(tmpch))) {
                         tmpwtl.targ1.ptr.ch = tmpch2;
                         tmpwtl.targ1.type = TARGET_CHAR;
                         tmpwtl.targ1.ch_num = tmpwtl.targ1.ptr.ch->abs_number;
@@ -1592,7 +1606,7 @@ int run_script(struct info_script* info, struct script_data* position)
                 tmpobj = get_obj_param(curr->param[0], info);
                 tmprm = get_room_param(curr->param[1], info);
                 if (tmpobj && tmprm)
-                    if ((tmpobj->in_room >= 0) ? world[tmpobj->in_room].number : 0 == tmprm->number)
+                    if ((tmpobj->in_room >= 0) ? room_by_id_total(tmpobj->in_room)->number : 0 == tmprm->number)
                         obj_from_room(tmpobj);
             }
             curr = curr->next;
@@ -1712,7 +1726,7 @@ int run_script(struct info_script* info, struct script_data* position)
                 tmprm = get_room_param(curr->param[2], info);
                 if (set_exit_state(tmprm, curr->param[0], curr->param[1])) {
                     tmpint = tmprm->dir_option[curr->param[0]]->to_room;
-                    tmprm2 = &world[tmpint];
+                    tmprm2 = room_by_id_total(tmpint);
                     if ((tmprm2) && (tmprm2->dir_option[rev_dir[curr->param[0]]]) && (tmprm2->dir_option[rev_dir[curr->param[0]]]->to_room == real_room(tmprm->number)))
                         set_exit_state(tmprm2, rev_dir[curr->param[0]], curr->param[1]);
                 }
@@ -1771,7 +1785,7 @@ int run_script(struct info_script* info, struct script_data* position)
                         next_fol = k->next;
                         if (!IS_NPC(k->follower))
                             continue;
-                        if (k->follower->in_room != tmpch->in_room)
+                        if (location_of(k->follower) != location_of(tmpch))
                             continue;
                         rots::entity::dispatch_char_from_room(k->follower);
                         char_to_room(k->follower, tmpint);

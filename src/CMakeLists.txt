@@ -1409,6 +1409,7 @@ if(ROTS_BUILD_TESTS)
         tests/scoped_allocation_counter.cpp
         tests/scoped_allocation_counter_tests.cpp
         tests/script_hooks_tests.cpp
+        tests/script_tests.cpp
         tests/shape_format_tests.cpp
         tests/shapemob_tests.cpp
         tests/skill_timer_tests.cpp

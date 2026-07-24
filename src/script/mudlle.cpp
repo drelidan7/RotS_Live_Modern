@@ -150,7 +150,7 @@ void service_commands(struct char_data* host, char* arg, int,
         else if (tmp == TARGET_ROOM) {
             tmp = real_room(SPECIAL_LIST(host).ptr.room->number);
             if (tmp < top_of_world)
-                TO_LIST(host, &world[tmp + 1], TARGET_ROOM);
+                TO_LIST(host, room_by_id_total(tmp + 1), TARGET_ROOM);
             else
                 TO_LIST(host, 0, SPECIAL_NULL);
         } else
@@ -160,17 +160,17 @@ void service_commands(struct char_data* host, char* arg, int,
     case 'n': /* get the next (local) char */
         tmp = SPECIAL_LIST_TYPE(host);
         if (tmp == TARGET_CHAR)
-            TO_LIST(host, SPECIAL_LIST(host).ptr.ch->next_in_room, TARGET_CHAR);
+            TO_LIST(host, SPECIAL_LIST(host).ptr.ch->next_in_room, TARGET_CHAR); // LS1-ALLOW: manual first-match advance
         else if (tmp == TARGET_OBJ)
             TO_LIST(host, SPECIAL_LIST(host).ptr.obj->next_content, TARGET_OBJ);
         else if (tmp == TARGET_ROOM) {
             tmp2 = SPECIAL_LIST(host).ptr.room->zone;
             for (tmp = real_room(SPECIAL_LIST(host).ptr.room->number) + 1;
-                 (tmp <= top_of_world) && world[tmp].zone != tmp2;
+                 (tmp <= top_of_world) && room_by_id_total(tmp)->zone != tmp2;
                  tmp++)
                 ;
             if (tmp <= top_of_world)
-                TO_LIST(host, &world[tmp], TARGET_ROOM);
+                TO_LIST(host, room_by_id_total(tmp), TARGET_ROOM);
             else
                 TO_LIST(host, 0, SPECIAL_NULL);
         } else
@@ -285,7 +285,7 @@ void int_tostack(struct char_data* host, char* arg, int cmd,
                 tmpch = tmpobj->carried_by;
         }
         if (tmpch)
-            value = tmpch->in_room;
+            value = location_of(tmpch);
         else if (tmpobj)
             value = tmpobj->in_room;
         break;
@@ -297,7 +297,7 @@ void int_tostack(struct char_data* host, char* arg, int cmd,
 
     case 'P':
         tmp = FROM_STACK(host);
-        value = find_first_step(host->in_room, tmp) + 1;
+        value = find_first_step(location_of(host), tmp) + 1;
         break;
 
     case '=':
@@ -416,8 +416,8 @@ void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
 
     case 'r': // a room the host is in
         //    TO_LIST(host, world+host->in_room, TARGET_ROOM);
-        if (host->in_room >= 0) {
-            TO_LIST(host, &world[host->in_room], TARGET_ROOM);
+        if (location_of(host) >= 0) {
+            TO_LIST(host, room_of(host), TARGET_ROOM);
             TO_STACK(host, 1);
         } else {
             TO_LIST(host, 0, SPECIAL_NULL);
@@ -428,7 +428,7 @@ void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
     case 'R': // the room by number taken from stack
         tmpvar = FROM_STACK(host);
         if ((tmpvar >= 0) && (tmpvar <= top_of_world)) {
-            TO_LIST(host, &world[tmpvar], TARGET_ROOM);
+            TO_LIST(host, room_by_id_total(tmpvar), TARGET_ROOM);
             TO_STACK(host, 1);
         } else {
             TO_LIST(host, 0, SPECIAL_NULL);
@@ -447,10 +447,10 @@ void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
         break;
 
     case 'c': /* first char in room, not self*/
-        tmpch = world[host->in_room].people;
+        tmpch = world[host->in_room].people; // LS1-ALLOW: manual first-match advance
         while ((tmpch == host) || !CAN_SEE(host, tmpch)) {
-            if (tmpch->next_in_room)
-                tmpch = tmpch->next_in_room;
+            if (tmpch->next_in_room) // LS1-ALLOW: manual first-match advance
+                tmpch = tmpch->next_in_room; // LS1-ALLOW: manual first-match advance
             else
                 tmpch = 0;
         }
@@ -464,10 +464,10 @@ void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
         break;
 
     case 'C': /* first char in room, not self, not NPC*/
-        tmpch = world[host->in_room].people;
+        tmpch = world[host->in_room].people; // LS1-ALLOW: manual first-match advance
         while (tmpch && ((tmpch == host) || !CAN_SEE(host, tmpch) || IS_NPC(tmpch))) {
-            if (tmpch->next_in_room)
-                tmpch = tmpch->next_in_room;
+            if (tmpch->next_in_room) // LS1-ALLOW: manual first-match advance
+                tmpch = tmpch->next_in_room; // LS1-ALLOW: manual first-match advance
             else
                 tmpch = 0;
         }

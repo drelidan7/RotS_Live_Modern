@@ -124,7 +124,7 @@ int apply_spell_damage(char_data* caster, char_data* victim, int damage_dealt, i
 
 bool different_zone(int was_in, int to_room)
 {
-    return world[was_in].zone != world[to_room].zone;
+    return room_by_id_total(was_in)->zone != room_by_id_total(to_room)->zone;
 }
 
 /*
@@ -235,7 +235,7 @@ int loclife_add_rooms(loclife_coord room, loclife_coord* roomlist,
     count = 0;
 
     for (dmp = 0; dmp < NUM_OF_DIRS; dmp++) {
-        exptr = world[room.number].dir_option[dirarray[dmp]];
+        exptr = room_by_id_total(room.number)->dir_option[dirarray[dmp]];
 
         if (exptr) {
             if (!(IS_SET(exptr->exit_info, EX_CLOSED) && IS_SET(exptr->exit_info, EX_DOORISHEAVY)) && (exptr->to_room != NOWHERE) && (exptr->to_room != room_not)) {
@@ -448,13 +448,12 @@ std::string_view loclife_dir_convert(loclife_coord rm)
  */
 ASPELL(spell_locate_living)
 {
-    struct char_data* mobs;
     int isscanned[255];
     int tmp, tmp2, roomnum, num, notscanned, bigcount, roomrange, mobrange;
     loclife_coord roomlist[255];
     loclife_coord new_room;
 
-    if (caster->in_room == NOWHERE)
+    if (location_of(caster) == NOWHERE)
         return;
 
     for (tmp = 0; tmp < 255; tmp++)
@@ -465,10 +464,10 @@ ASPELL(spell_locate_living)
     roomrange = 5 + level / 3;
     mobrange = 2 + level / 3;
 
-    new_room.number = caster->in_room;
+    new_room.number = location_of(caster);
     new_room.n = new_room.e = new_room.u = 0;
     notscanned = loclife_add_rooms(new_room, roomlist, &roomnum,
-        caster->in_room);
+        location_of(caster));
 
     bigcount = 0;
     while ((notscanned > 0) && (bigcount < 255) && (roomnum < roomrange)) {
@@ -478,7 +477,7 @@ ASPELL(spell_locate_living)
                 tmp2++;
 
         isscanned[tmp] = 1;
-        notscanned += -1 + loclife_add_rooms(roomlist[tmp], roomlist, &roomnum, caster->in_room);
+        notscanned += -1 + loclife_add_rooms(roomlist[tmp], roomlist, &roomnum, location_of(caster));
         bigcount++;
     }
 
@@ -487,18 +486,18 @@ ASPELL(spell_locate_living)
     [[maybe_unused]] int caster_level = get_mage_caster_level(caster);
     bigcount = 0;
     for (tmp = 0; (tmp < roomnum) && (bigcount < mobrange); tmp++) {
-        mobs = world[roomlist[tmp].number].people;
-        while (mobs && (bigcount < mobrange)) {
+        for (auto* mobs : rots::entity::occupants(room_by_id_total(roomlist[tmp].number))) {
+            if (bigcount >= mobrange)
+                break;
             if (!new_saves_spell(caster, mobs, 0)) {
                 send_to_char(std::format("{} at {} to the {}.\n\r",
                     (IS_NPC(mobs) ? GET_NAME(mobs) : pc_star_types[mobs->player.race]),
-                    world[roomlist[tmp].number].name,
+                    room_by_id_total(roomlist[tmp].number)->name,
                     loclife_dir_convert(roomlist[tmp]))
                                  ,
                     caster);
             }
             bigcount++;
-            mobs = mobs->next_in_room;
         }
     }
     if (bigcount)
@@ -587,10 +586,9 @@ ASPELL(spell_detect_evil)
 
 ASPELL(spell_reveal_life)
 {
-    struct char_data* hider;
-    int found, hider_bonus;
+    int found = 0, hider_bonus;
 
-    if (caster->in_room == NOWHERE)
+    if (location_of(caster) == NOWHERE)
         return;
 
     act("Suddenly, a flash of intense light floods your surroundings.", TRUE, caster, 0, 0, TO_ROOM);
@@ -598,8 +596,7 @@ ASPELL(spell_reveal_life)
 
     int level = get_mage_caster_level(caster);
 
-    for (hider = world[caster->in_room].people, found = 0; hider;
-         hider = hider->next_in_room) {
+    for (auto* hider : rots::entity::occupants(room_of(caster))) {
         if (hider != caster) {
             if (GET_HIDING(hider) > 0) {
                 hider_bonus = GET_HIDING(hider) / 25;
@@ -628,7 +625,7 @@ ASPELL(spell_reveal_life)
     if (!found)
         send_to_char("The place seems empty.\n\r", caster);
     else
-        rots::combat::list_char_to_char(world[caster->in_room].people, caster, 0);
+        rots::combat::list_char_to_char(room_of(caster)->people, caster, 0);
 }
 
 /*----------------------------------------------------------------------------------------------------------*/
@@ -676,19 +673,18 @@ ASPELL(spell_shield)
 
 ASPELL(spell_flash)
 {
-    char_data* tmpch;
     affected_type* tmpaf;
     affected_type newaf;
     int afflevel, maxlevel;
 
-    if (caster->in_room < 0)
+    if (location_of(caster) < 0)
         return;
 
     // Result intentionally unused here -- call kept for its number()-driven RNG draw
     // (Phase 5 T5 RNG discipline: never remove/reorder a live number() call).
     [[maybe_unused]] int caster_level = get_mage_caster_level(caster);
 
-    for (tmpch = world[caster->in_room].people; tmpch; tmpch = tmpch->next_in_room) {
+    for (auto* tmpch : rots::entity::occupants(room_of(caster))) {
         if (tmpch != caster)
             send_to_char("A blinding flash of light makes you dizzy.\n\r", tmpch);
         if (tmpch->specials.fighting)
@@ -775,7 +771,7 @@ ASPELL(spell_summon)
 
     if (!victim)
         return;
-    if (caster->in_room == NOWHERE)
+    if (location_of(caster) == NOWHERE)
         return;
 
     if (IS_NPC(victim)) {
@@ -788,12 +784,12 @@ ASPELL(spell_summon)
         return;
     }
 
-    if (victim->in_room == caster->in_room) {
+    if (location_of(victim) == location_of(caster)) {
         act("$E is already here.\n\r", FALSE, caster, 0, victim, TO_CHAR);
         return;
     }
 
-    if ((GET_POS(victim) == POSITION_FIGHTING) || (IS_SET(world[caster->in_room].room_flags, NO_TELEPORT)) || (PRF_FLAGGED(victim, PRF_SUMMONABLE)) || (GET_LEVEL(victim) >= LEVEL_IMMORT)) {
+    if ((GET_POS(victim) == POSITION_FIGHTING) || (IS_SET(room_of(caster)->room_flags, NO_TELEPORT)) || (PRF_FLAGGED(victim, PRF_SUMMONABLE)) || (GET_LEVEL(victim) >= LEVEL_IMMORT)) {
         send_to_char("You failed.\n\r", caster);
         return;
     }
@@ -804,17 +800,17 @@ ASPELL(spell_summon)
         return;
     }
 
-    was_in = victim->in_room;
-    to_room = caster->in_room;
+    was_in = location_of(victim);
+    to_room = location_of(caster);
 
     if (different_zone(was_in, to_room)) {
         prohibit_item_stay_zone_move(victim, was_in);
     }
 
-    ch_x = zone_table[world[caster->in_room].zone].x;
-    ch_y = zone_table[world[caster->in_room].zone].y;
-    v_x = zone_table[world[victim->in_room].zone].x;
-    v_y = zone_table[world[victim->in_room].zone].y;
+    ch_x = zone_table[room_of(caster)->zone].x;
+    ch_y = zone_table[room_of(caster)->zone].y;
+    v_x = zone_table[room_of(victim)->zone].x;
+    v_y = zone_table[room_of(victim)->zone].y;
     dist = ((ch_x - v_x) ^ 2) + ((ch_y - v_y) ^ 2);
 
     int save_bonus = dist;
@@ -829,7 +825,7 @@ ASPELL(spell_summon)
         if (IS_RIDING(victim))
             stop_riding(victim);
         rots::entity::dispatch_char_from_room(victim);
-        char_to_room(victim, caster->in_room);
+        char_to_room(victim, location_of(caster));
         act("$N summons you!", FALSE, victim, 0, caster, TO_CHAR);
         rots::combat::issue_command(rots::combat::combat_command::look, victim, mutable_arg(""), 0, 0, 0);
         msdp_room_update(victim);
@@ -892,13 +888,13 @@ int random_exit(int room)
         ex_rooms[tmp] = 0;
 
     for (tmp = 0, num = 0; tmp < NUM_OF_DIRS; tmp++)
-        if (world[room].dir_option[tmp])
-            if ((world[room].dir_option[tmp]->to_room != NOWHERE) && ((!IS_SET(world[room].dir_option[tmp]->exit_info, EX_DOORISHEAVY)) || (!IS_SET(world[room].dir_option[tmp]->exit_info, EX_CLOSED))) && !IS_SET(world[room].dir_option[tmp]->exit_info, EX_NOBLINK)) {
+        if (room_by_id_total(room)->dir_option[tmp])
+            if ((room_by_id_total(room)->dir_option[tmp]->to_room != NOWHERE) && ((!IS_SET(room_by_id_total(room)->dir_option[tmp]->exit_info, EX_DOORISHEAVY)) || (!IS_SET(room_by_id_total(room)->dir_option[tmp]->exit_info, EX_CLOSED))) && !IS_SET(room_by_id_total(room)->dir_option[tmp]->exit_info, EX_NOBLINK)) {
 
-                romfl = world[world[room].dir_option[tmp]->to_room].room_flags;
+                romfl = room_by_id_total(room_by_id_total(room)->dir_option[tmp]->to_room)->room_flags;
 
                 if (!IS_SET(romfl, DEATH) && !IS_SET(romfl, NO_MAGIC) && !IS_SET(romfl, SECURITYROOM)) {
-                    ex_rooms[num] = world[room].dir_option[tmp]->to_room;
+                    ex_rooms[num] = room_by_id_total(room)->dir_option[tmp]->to_room;
                     num++;
                 }
             }
@@ -924,8 +920,8 @@ ASPELL(spell_blink)
     if (!victim)
         victim = caster;
 
-    was_in = victim->in_room;
-    room = victim->in_room;
+    was_in = location_of(victim);
+    room = location_of(victim);
     fail = 0;
 
     if (GET_SPEC(caster) == PLRSPEC_TELE)
@@ -943,7 +939,7 @@ ASPELL(spell_blink)
     if (room == NOWHERE)
         fail = 1;
 
-    if (IS_SET(world[room].room_flags, NO_TELEPORT)) {
+    if (IS_SET(room_by_id_total(room)->room_flags, NO_TELEPORT)) {
         // Oops, this is a NO_TELEPORT room, we fail.
         fail = 1;
     }
@@ -999,11 +995,11 @@ ASPELL(spell_relocate)
     struct room_data* room;
     struct affected_type af;
 
-    if (caster->in_room == NOWHERE)
+    if (location_of(caster) == NOWHERE)
         return;
 
-    zon_start = world[caster->in_room].zone;
-    was_in = caster->in_room;
+    zon_start = room_of(caster)->zone;
+    was_in = location_of(caster);
     x = zone_table[zon_start].x;
     y = zone_table[zon_start].y;
     del_x = del_y = 0;
@@ -1078,7 +1074,7 @@ ASPELL(spell_relocate)
             break;
 
         for (tmp = 0; tmp <= top_of_world; tmp++) {
-            room = &world[tmp];
+            room = room_by_id_total(tmp);
             if ((room->zone == zon_target) && is_teleportation_room_valid(room)) {
                 for (tmp2 = 0; tmp2 < NUM_OF_DIRS; tmp2++)
                     if (room->dir_option[tmp2])
@@ -1116,7 +1112,7 @@ ASPELL(spell_relocate)
             }
         }
         for (tmp = 0; tmp <= top_of_world; tmp++) {
-            room = &world[tmp];
+            room = room_by_id_total(tmp);
             if ((room->zone == zon_target) && is_teleportation_room_valid(room)) {
                 for (tmp2 = 0; tmp2 < NUM_OF_DIRS; tmp2++)
                     if (room->dir_option[tmp2])
@@ -1212,7 +1208,7 @@ ASPELL(spell_beacon)
 
     if (mode == 1) { // Setting the beacone
 
-        if (IS_SET(world[caster->in_room].room_flags, NO_TELEPORT)) {
+        if (IS_SET(room_of(caster)->room_flags, NO_TELEPORT)) {
             send_to_char("You cannot seem to set your beacon here.\n\r", caster);
             return;
         }
@@ -1227,7 +1223,7 @@ ASPELL(spell_beacon)
         int level = get_mage_caster_level(caster);
         newaf.type = SPELL_BEACON;
         newaf.duration = level;
-        newaf.modifier = caster->in_room;
+        newaf.modifier = location_of(caster);
         newaf.location = 0;
         newaf.bitvector = 0;
 
@@ -1253,8 +1249,8 @@ ASPELL(spell_beacon)
             affect_from_char(caster, SPELL_BEACON);
             return;
         } else {
-            room_data* to_room = &world[oldaf->modifier];
-            zone_data* old_zone = &zone_table[world[caster->in_room].zone];
+            room_data* to_room = room_by_id_total(oldaf->modifier);
+            zone_data* old_zone = &zone_table[room_of(caster)->zone];
             zone_data* new_zone = &zone_table[to_room->zone];
 
             int distance = (old_zone->x - new_zone->x) * (old_zone->x - new_zone->x) + (old_zone->y - new_zone->y) * (old_zone->y - new_zone->y);
@@ -1573,10 +1569,7 @@ ASPELL(spell_cone_of_cold)
     strcpy(buf2, std::format("You feel a sudden wave of cold coming from {}.\n\r",
         refer_dirs[rev_dir[digit]]).c_str());
 
-    struct char_data* tmpch;
-    for (tmpch = world[EXIT(caster, digit)->to_room].people;
-         tmpch;
-         tmpch = tmpch->next_in_room) {
+    for (auto* tmpch : rots::entity::occupants(room_by_id_total(EXIT(caster, digit)->to_room))) {
         int save_bonus = get_save_bonus(*caster, *tmpch, game_types::PS_Fire, game_types::PS_Cold);
         bool saved = new_saves_spell(caster, tmpch, save_bonus);
         if (saved) {
@@ -1612,9 +1605,9 @@ ASPELL(spell_earthquake)
 
     if (!caster)
         return;
-    if (caster->in_room == NOWHERE)
+    if (location_of(caster) == NOWHERE)
         return;
-    cur_room = &world[caster->in_room];
+    cur_room = room_of(caster);
 
     int level = get_mage_caster_level(caster);
     crack_chance = 1;
@@ -1639,8 +1632,8 @@ ASPELL(spell_earthquake)
     if (crack_chance)
         dam_value /= 2;
 
-    for (tmpch = world[caster->in_room].people; tmpch; tmpch = tmpch_next) {
-        tmpch_next = tmpch->next_in_room;
+    for (tmpch = room_of(caster)->people; tmpch; tmpch = tmpch_next) {
+        tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
         if (tmpch != caster) {
             bool saved = new_saves_spell(caster, tmpch, 0);
             if (saved) {
@@ -1662,24 +1655,24 @@ ASPELL(spell_earthquake)
                     act("The way down crashes open!", FALSE, caster, 0, 0, TO_ROOM);
                     send_to_char("The way down crashes open!\n\r", caster);
                     cur_room->dir_option[DOWN]->exit_info = 0;
-                    if (world[crack].dir_option[UP] && (world[crack].dir_option[UP]->to_room == caster->in_room) && world[crack].dir_option[UP]->exit_info) {
-                        tmp = caster->in_room;
-                        caster->in_room = crack;
+                    if (world[crack].dir_option[UP] && (world[crack].dir_option[UP]->to_room == caster->in_room) && world[crack].dir_option[UP]->exit_info) { // LS1-ALLOW: in_room used as mutable room cursor (crack-creation save/restore around act())
+                        tmp = caster->in_room; // LS1-ALLOW: in_room used as mutable room cursor
+                        caster->in_room = crack; // LS1-ALLOW: in_room used as mutable room cursor
                         act("The way up crashes open!", FALSE, caster, 0, 0, TO_ROOM);
-                        world[crack].dir_option[UP]->exit_info = 0;
-                        caster->in_room = tmp;
+                        world[crack].dir_option[UP]->exit_info = 0; // LS1-ALLOW: in_room used as mutable room cursor
+                        caster->in_room = tmp; // LS1-ALLOW: in_room used as mutable room cursor
                     }
                 }
             }
         }
         /* no room there, so create one */
         else {
-            crack = world.create_room(world[caster->in_room].zone);
-            world[caster->in_room].create_exit(DOWN, crack);
+            crack = world.create_room(room_of(caster)->zone);
+            room_of(caster)->create_exit(DOWN, crack);
 
-            RELEASE(world[crack].name);
+            RELEASE(room_by_id_total(crack)->name);
             world[crack].name = str_dup("Deep Crevice");
-            RELEASE(world[crack].description);
+            RELEASE(room_by_id_total(crack)->description);
             world[crack].description = str_dup(
                 "   The crevice is deep, dark and looks unsafe. The walls of fresh broken\n\r"
                 "rock are uneven and still crumbling. Some powerful disaster must have \n\r"
@@ -1693,7 +1686,7 @@ ASPELL(spell_earthquake)
         /* deal out the damage */
         for (tmpch = cur_room->people; tmpch; tmpch = tmpch_next) {
             bool saved = new_saves_spell(caster, tmpch, tmpch->tmpabilities.dex / 4);
-            tmpch_next = tmpch->next_in_room;
+            tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via char_to_room)
             if ((!saved && (tmpch != caster)) || (!number(0, 1))) {
                 act("$n loses balance and falls down!", TRUE, tmpch, 0, 0, TO_ROOM);
                 send_to_char("The earthquake throws you down!\n\r", tmpch);
@@ -1735,7 +1728,7 @@ ASPELL(spell_lightning_strike)
         return;
     }
 
-    if (weather_info.sky[world[caster->in_room].sector_type] != SKY_LIGHTNING) {
+    if (weather_info.sky[room_of(caster)->sector_type] != SKY_LIGHTNING) {
         if (utils::get_specialization(*caster) == (int)game_types::PS_Lightning) {
             send_to_char("You manage to create some lightning, but the effect is reduced.\n\r", caster);
             dam = dam * 4 / 5;
@@ -1821,7 +1814,7 @@ bool is_friendly_taget(const char_data* caster, const char_data* victim)
 
 ASPELL(spell_fireball)
 {
-    if (caster->in_room == NOWHERE)
+    if (location_of(caster) == NOWHERE)
         return;
 
     int fireball_damage = 30 + number(1, get_magic_power(caster)) / 2 + number(1, get_magic_power(caster)) / 2 + number(1, get_magic_power(caster)) / 2;
@@ -1847,8 +1840,8 @@ ASPELL(spell_fireball)
     }
 
     char_data* next_character = nullptr;
-    for (char_data* potential_victim = world[caster->in_room].people; potential_victim; potential_victim = next_character) {
-        next_character = potential_victim->next_in_room;
+    for (char_data* potential_victim = room_of(caster)->people; potential_victim; potential_victim = next_character) {
+        next_character = potential_victim->next_in_room; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
         if (potential_victim == caster || potential_victim == victim)
             continue;
 
@@ -1950,10 +1943,9 @@ ASPELL(spell_leach)
  */
 ASPELL(spell_word_of_sight)
 {
-    struct char_data* hider;
-    int found, hider_bonus;
+    int found = 0, hider_bonus;
 
-    if (caster->in_room == NOWHERE)
+    if (location_of(caster) == NOWHERE)
         return;
 
     act("A presence seeks the area, searching for souls.", TRUE, caster, 0, 0, TO_ROOM);
@@ -1962,8 +1954,7 @@ ASPELL(spell_word_of_sight)
 
     int level = get_mage_caster_level(caster);
 
-    for (hider = world[caster->in_room].people, found = 0; hider;
-         hider = hider->next_in_room) {
+    for (auto* hider : rots::entity::occupants(room_of(caster))) {
         if (hider != caster) {
             if (GET_HIDING(hider) > 0) {
                 hider_bonus = GET_HIDING(hider) / 30;
@@ -1990,7 +1981,7 @@ ASPELL(spell_word_of_sight)
     if (!found)
         send_to_char("The place seems empty.\n\r", caster);
     else
-        rots::combat::list_char_to_char(world[caster->in_room].people, caster, 0);
+        rots::combat::list_char_to_char(room_of(caster)->people, caster, 0);
 }
 
 /*----------------------------------------------------------------------------------------------------------*/
@@ -1999,14 +1990,13 @@ ASPELL(spell_word_of_sight)
  */
 ASPELL(spell_word_of_shock)
 {
-    struct char_data* tmpch;
 
-    if (caster->in_room < 0)
+    if (location_of(caster) < 0)
         return;
 
     int caster_level = get_mage_caster_level(caster);
 
-    for (tmpch = world[caster->in_room].people; tmpch; tmpch = tmpch->next_in_room) {
+    for (auto* tmpch : rots::entity::occupants(room_of(caster))) {
         if (tmpch != caster)
             send_to_char("An assault on your mind leaves you reeling.\n\r", tmpch);
         if (tmpch->specials.fighting)
@@ -2094,14 +2084,14 @@ ASPELL(spell_word_of_agony)
  */
 ASPELL(spell_shout_of_pain)
 {
-    if (!caster || caster->in_room == NOWHERE)
+    if (!caster || location_of(caster) == NOWHERE)
         return;
 
     int dam_value = number(1, 50) + get_magic_power(caster) / 2;
 
     char_data* tmpch_next = NULL;
-    for (char_data* tmpch = world[caster->in_room].people; tmpch; tmpch = tmpch_next) {
-        tmpch_next = tmpch->next_in_room;
+    for (char_data* tmpch = room_of(caster)->people; tmpch; tmpch = tmpch_next) {
+        tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
         if (tmpch != caster) {
             bool saved = new_saves_spell(caster, tmpch, 0);
             if (saved) {
@@ -2178,8 +2168,8 @@ ASPELL(spell_blaze)
         send_to_char("You breathe out fire.\n\r", caster);
 
         /* Damage everyone in the room */
-        for (tmpch = world[caster->in_room].people; tmpch; tmpch = tmpch_next) {
-            tmpch_next = tmpch->next_in_room;
+        for (tmpch = room_of(caster)->people; tmpch; tmpch = tmpch_next) {
+            tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
 
             // friends don't burn friends, at first...
             if (is_friendly_taget(caster, tmpch)) {
@@ -2207,13 +2197,13 @@ ASPELL(spell_blaze)
         af.modifier = level;
         af.location = SPELL_BLAZE;
         af.bitvector = 0;
-        if ((oldaf = room_affected_by_spell(&world[caster->in_room], SPELL_BLAZE))) {
+        if ((oldaf = room_affected_by_spell(room_of(caster), SPELL_BLAZE))) {
             if (oldaf->duration < af.duration)
                 oldaf->duration = af.duration;
             if (oldaf->modifier < af.modifier)
                 oldaf->modifier = af.modifier;
         } else
-            affect_to_room(&world[caster->in_room], &af);
+            affect_to_room(room_of(caster), &af);
 
         act("The area suddenly bursts into a roaring firestorm!",
             FALSE, caster, 0, 0, TO_ROOM);
@@ -2275,7 +2265,7 @@ ASPELL(spell_freeze)
         /* Or did they actually know the name of the door? */
         else if (caster->delay.targ2.choice == TAR_DIR_NAME)
             freeze_msg = std::format("The {} is frozen shut.\r\n", EXIT(caster, digit)->keyword);
-        send_to_room(freeze_msg, caster->in_room);
+        send_to_room(freeze_msg, location_of(caster));
         return;
     } else
         send_to_char("You must first have a closed exit to cast upon.\r\n", caster);
@@ -2308,7 +2298,7 @@ ASPELL(spell_mist_of_baazunga)
     if (!caster)
         return;
 
-    room = &world[caster->in_room];
+    room = room_of(caster);
     if ((oldaf = room_affected_by_spell(room, SPELL_MIST_OF_BAAZUNGA)))
         modifier = oldaf->modifier;
     else {
@@ -2326,7 +2316,7 @@ ASPELL(spell_mist_of_baazunga)
     af.bitvector = 0;
 
     /* Apply the full spell to main room */
-    if ((oldaf = room_affected_by_spell(&world[caster->in_room],
+    if ((oldaf = room_affected_by_spell(room_of(caster),
              SPELL_MIST_OF_BAAZUNGA))) {
         if (oldaf->duration < af.duration)
             oldaf->duration = af.duration;
@@ -2339,7 +2329,7 @@ ASPELL(spell_mist_of_baazunga)
          * send_to_char("You breathe out dark mists.\n\r", caster);
          */
     } else {
-        affect_to_room(&world[caster->in_room], &af);
+        affect_to_room(room_of(caster), &af);
         act("$n breathes out dark mists.", TRUE, caster, 0, 0, TO_ROOM);
         send_to_char("You breathe out dark mists.\n\r", caster);
     }
@@ -2350,10 +2340,10 @@ ASPELL(spell_mist_of_baazunga)
             if (room->dir_option[direction]->to_room != NOWHERE) {
                 roomnum = room->dir_option[direction]->to_room;
 
-                if ((oldaf = room_affected_by_spell(&world[roomnum],
+                if ((oldaf = room_affected_by_spell(room_by_id_total(roomnum),
                          SPELL_MIST_OF_BAAZUNGA)))
                     mod = oldaf->modifier;
-                else if (IS_SET(world[roomnum].room_flags, SHADOWY))
+                else if (IS_SET(room_by_id_total(roomnum)->room_flags, SHADOWY))
                     mod = 1;
                 else
                     mod = 0;
@@ -2364,12 +2354,12 @@ ASPELL(spell_mist_of_baazunga)
                 af2.location = SPELL_MIST_OF_BAAZUNGA;
                 af2.bitvector = 0;
 
-                if ((oldaf = room_affected_by_spell(&world[roomnum],
+                if ((oldaf = room_affected_by_spell(room_by_id_total(roomnum),
                          SPELL_MIST_OF_BAAZUNGA))) {
                     if (oldaf->duration < af.duration)
                         oldaf->duration = af.duration;
                 } else
-                    affect_to_room(&world[roomnum], &af2);
+                    affect_to_room(room_by_id_total(roomnum), &af2);
             }
         }
     }
@@ -2444,7 +2434,7 @@ ASPELL(spell_expose_elements)
     elemental_spec_data* spec_data = caster->extra_specialization_data.get_mage_spec();
     spec_data->exposed_target = victim;
 
-    const room_data& current_room = world[caster->in_room];
+    const room_data& current_room = *room_of(caster);
     int weather_type = weather_info.sky[current_room.sector_type];
 
     switch (caster_spec) {

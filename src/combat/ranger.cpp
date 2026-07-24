@@ -106,7 +106,7 @@ ACMD(do_ride)
     mountch = 0;
     if (!*argument) {
         for (tmpfol = ch->followers; tmpfol; tmpfol = tmpfol->next) {
-            if (char_exists(tmpfol->fol_number) && tmpfol->follower->in_room == ch->in_room && IS_NPC(tmpfol->follower) && IS_SET(tmpfol->follower->specials2.act, MOB_MOUNT)) {
+            if (char_exists(tmpfol->fol_number) && location_of(tmpfol->follower) == location_of(ch) && IS_NPC(tmpfol->follower) && IS_SET(tmpfol->follower->specials2.act, MOB_MOUNT)) {
                 break;
             }
         }
@@ -252,7 +252,7 @@ ACMD(do_track)
         }
         if (wtl && (wtl->targ1.type == TARGET_TEXT))
             argument = wtl->targ1.ptr.text->text;
-        if (IS_WATER(ch->in_room)) {
+        if (IS_WATER(location_of(ch))) {
             send_to_char("You can't track in water!\n\r", ch);
             return;
         }
@@ -323,7 +323,7 @@ int check_gather_conditions(struct char_data* ch, int percent, int gather_type)
     /*
      * Checks our sector conditions (if any)
      */
-    switch (world[ch->in_room].sector_type) {
+    switch (room_of(ch)->sector_type) {
     case SECT_INSIDE:
         send_to_char("You can not gather herbs inside!\n\r", ch);
         return FALSE;
@@ -389,7 +389,7 @@ ACMD(do_gather_food)
 
     percent = GET_SKILL(ch, SKILL_GATHER_FOOD);
     /* This is where we get our sector bonus */
-    percent += sector_variables[world[ch->in_room].sector_type];
+    percent += sector_variables[room_of(ch)->sector_type];
 
     switch (subcmd) {
     case -1:
@@ -625,8 +625,8 @@ ACMD(do_pick)
              * of the door also
              */
             if ((other_room = EXIT(ch, door)->to_room) != NOWHERE)
-                if ((back = world[other_room].dir_option[rev_dir[door]]) != NULL)
-                    if (back->to_room == ch->in_room)
+                if ((back = room_by_id_total(other_room)->dir_option[rev_dir[door]]) != NULL)
+                    if (back->to_room == location_of(ch))
                         REMOVE_BIT(back->exit_info, EX_LOCKED);
         }
     }
@@ -772,7 +772,7 @@ struct char_data* ambush_get_valid_victim(struct char_data* ch, struct waiting_t
     }
 
     /* Can happen for TARGET_CHAR */
-    if (ch->in_room != victim->in_room) {
+    if (location_of(ch) != location_of(victim)) {
         send_to_char("Your victim is no longer here.\r\n", ch);
         return nullptr;
     }
@@ -903,7 +903,7 @@ ACMD(do_ambush)
         return;
     }
 
-    if (IS_SET(world[ch->in_room].room_flags, PEACEROOM)) {
+    if (IS_SET(room_of(ch)->room_flags, PEACEROOM)) {
         send_to_char("A peaceful feeling overwhelms you, and you cannot bring"
                      " yourself to attack.\n\r",
             ch);
@@ -1393,7 +1393,7 @@ ACMD(do_calm)
 
         break;
     case 1:
-        if (ch->in_room != victim->in_room) {
+        if (location_of(ch) != location_of(victim)) {
             send_to_char("You target is not here any longer.\r\n", ch);
             return;
         }
@@ -1560,7 +1560,7 @@ ACMD(do_tame)
             return;
         }
 
-        if (ch->in_room != victim->in_room) {
+        if (location_of(ch) != location_of(victim)) {
             send_to_char("You target is not here any longer.\r\n", ch);
             return;
         }
@@ -1644,8 +1644,8 @@ ACMD(do_whistle)
     struct room_data* rm;
     struct char_data* tmpch;
 
-    cur_room_num = ch->in_room;
-    zone_num = world[cur_room_num].zone;
+    cur_room_num = location_of(ch);
+    zone_num = room_by_id_total(cur_room_num)->zone;
 
     if (IS_SHADOW(ch)) {
         send_to_char("You need to breathe to whistle!\r\n", ch);
@@ -1666,12 +1666,12 @@ ACMD(do_whistle)
         }
         send_to_char("You whistle powerfully.\r\n", ch);
         for (rm_num = 0; rm_num <= top_of_world; rm_num++) {
-            rm = &world[rm_num];
+            rm = room_by_id_total(rm_num);
 
             if (rm->zone != zone_num)
                 continue;
 
-            ch->in_room = rm_num;
+            ch->in_room = rm_num; // LS1-ALLOW: in_room used as mutable room cursor (zone-wide whistle broadcast)
 
             if (rm_num == cur_room_num)
                 act("$n whistles powerfully.", FALSE, ch, 0, 0, TO_ROOM);
@@ -1681,7 +1681,7 @@ ACMD(do_whistle)
             struct char_data *next_tmpch;
 
             for (tmpch = rm->people; tmpch; tmpch = next_tmpch) {
-                next_tmpch = tmpch->next_in_room;
+                next_tmpch = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via issue_command(flee))
 
                 if (MOB_FLAGGED(tmpch, MOB_PET) && (tmpch->master == ch)) {
                     if (GET_POS(tmpch) == POSITION_FIGHTING) {
@@ -1709,7 +1709,7 @@ ACMD(do_whistle)
                 }
             }
         }
-        ch->in_room = cur_room_num;
+        ch->in_room = cur_room_num; // LS1-ALLOW: in_room used as mutable room cursor
     }
 }
 
@@ -1747,7 +1747,7 @@ ACMD(do_stalk)
         return;
     }
 
-    if (world[ch->in_room].sector_type == SECT_WATER_NOSWIM) {
+    if (room_of(ch)->sector_type == SECT_WATER_NOSWIM) {
         send_to_char("Water keeps no tracks.\n\r", ch);
         return;
     }
@@ -1795,7 +1795,7 @@ ACMD(do_cover)
         return;
     }
 
-    tmproom = &world[ch->in_room];
+    tmproom = room_of(ch);
 
     for (tmp = 0; tmp < NUM_OF_TRACKS; tmp++) {
         if (tmproom->room_track[tmp].char_number != 0 && GET_KNOWLEDGE(ch, SKILL_STALK) * 2 > number(1, 100)) {
@@ -1860,9 +1860,10 @@ void snuck_in(struct char_data* ch)
     }
     SET_BIT(ch->specials2.hide_flags, HIDING_SNUCK_IN);
 
-    char_data* observer = NULL;
-    for (observer = world[ch->in_room].people; observer; observer = observer->next_in_room) {
-        if (observer != ch && CAN_SEE(ch, observer)) {
+    char_data* observer = nullptr;
+    for (auto* occ : rots::entity::occupants(room_of(ch))) {
+        if (occ != ch && CAN_SEE(ch, occ)) {
+            observer = occ;
             break;
         }
     }
@@ -1919,11 +1920,13 @@ void snuck_in(struct char_data* ch)
  */
 void snuck_out(struct char_data* ch)
 {
-    struct char_data* t;
+    char_data* t = nullptr;
 
-    for (t = world[ch->in_room].people; t; t = t->next_in_room)
-        if (t != ch && CAN_SEE(ch, t))
+    for (auto* occ : rots::entity::occupants(room_of(ch)))
+        if (occ != ch && CAN_SEE(ch, occ)) {
+            t = occ;
             break;
+        }
     if (t)
         send_to_char("You seem to have left without raising any alarm.\r\n", ch);
 }
@@ -2275,7 +2278,7 @@ bool can_ch_shoot(char_data* archer)
         }
     }
 
-    const room_data& room = world[archer->in_room];
+    const room_data& room = *room_of(archer);
     if (is_set(room.room_flags, (long)PEACEROOM)) {
         send_to_char("A peaceful feeling overwhelms you, and you cannot bring"
                      " yourself to attack.\r\n",
@@ -2360,7 +2363,7 @@ char_data* is_target_valid(char_data* archer, waiting_type* target)
         }
     }
 
-    if (archer->in_room != victim->in_room) {
+    if (location_of(archer) != location_of(victim)) {
         send_to_char("Your victim is no longer here.\r\n", archer);
         return nullptr;
     }
@@ -2415,7 +2418,7 @@ void on_arrow_hit(char_data* archer, char_data* victim, obj_data* arrow)
 //============================================================================
 void change_arrow_target(char_data* archer, char_data* victim, obj_data* arrow)
 {
-    const room_data& room = world[archer->in_room];
+    const room_data& room = *room_of(archer);
 
     // Get the list of people that are in-combat with the victim, and
     // ensure that the archer isn't in the list of potential targets.
@@ -2436,7 +2439,7 @@ void change_arrow_target(char_data* archer, char_data* victim, obj_data* arrow)
 
     // If there aren't any targets, have the arrow fall into the room.
     if (potential_targets.empty()) {
-        do_move_arrow_to_room(archer, arrow, archer->in_room);
+        do_move_arrow_to_room(archer, arrow, location_of(archer));
     } else {
         int target_roll = number(0, potential_targets.size() - 1);
         char_data* new_victim = potential_targets.at(target_roll);
@@ -2492,7 +2495,7 @@ int get_arrow_landing_location(const room_data& room)
 //============================================================================
 void on_arrow_miss(char_data* archer, char_data* victim, obj_data* arrow)
 {
-    const room_data& room = world[archer->in_room];
+    const room_data& room = *room_of(archer);
 
     double roll = number();
     roll -= 0.20;
@@ -2501,7 +2504,7 @@ void on_arrow_miss(char_data* archer, char_data* victim, obj_data* arrow)
         return;
     }
 
-    int arrow_landing_location = archer->in_room;
+    int arrow_landing_location = location_of(archer);
 
     roll -= 0.01;
     if (roll <= 0) {
@@ -2597,7 +2600,7 @@ ACMD(do_shoot)
             return;
         }
 
-        if (ch->in_room != victim->in_room) {
+        if (location_of(ch) != location_of(victim)) {
             send_to_char("Your target is not here any longer\r\n", ch);
             return;
         }
@@ -2693,7 +2696,7 @@ void get_tagged_arrows(const char_data* character, obj_data* obj_list,
 //============================================================================
 void get_room_tagged_arrows(const char_data* character, std::vector<obj_data*>& arrows)
 {
-    const room_data& room = world[character->in_room];
+    const room_data& room = *room_of(character);
     obj_data* obj_list = room.contents;
 
     return get_tagged_arrows(character, obj_list, arrows);
@@ -2705,7 +2708,7 @@ void get_room_tagged_arrows(const char_data* character, std::vector<obj_data*>& 
 //============================================================================
 void get_corpse_tagged_arrows(const char_data* character, std::vector<obj_data*>& arrows)
 {
-    const room_data& room = world[character->in_room];
+    const room_data& room = *room_of(character);
     obj_data* obj_list = room.contents;
 
     // Iterate through items in the list.
@@ -2847,12 +2850,12 @@ void do_scan(char_data* character, char*, waiting_type*, int, int)
     if (GET_LEVEL(character) < LEVEL_IMMORT)
         GET_MOVE(character) -= 3;
 
-    is_in = character->in_room;
+    is_in = character->in_room; // LS1-ALLOW: in_room used as mutable room cursor (quick-scan adjacent rooms)
     for (dir = 0; dir < NUM_OF_DIRS; dir++) {
-        character->in_room = is_in;
+        character->in_room = is_in; // LS1-ALLOW: in_room used as mutable room cursor
         for (dis = 0; dis <= maxdis; dis++) {
             if (((dis == 0) && (dir == 0)) || (dis > 0)) {
-                for (i = world[character->in_room].people; i; i = i->next_in_room) {
+                for (i = world[character->in_room].people; i; i = i->next_in_room) { // LS1-ALLOW: in_room used as mutable room cursor
                     if ((!((character == i) && (dis == 0))) && CAN_SEE(character, i)) {
                         if (dis > 0) {
                             act(std::format("{:>33}: {}{}{}{}",
@@ -2867,15 +2870,15 @@ void do_scan(char_data* character, char*, waiting_type*, int, int)
                     }
                 }
             }
-            if (!CAN_GO(character, dir) || (world[character->in_room].dir_option[dir]->to_room == is_in) || (IS_SET(EXIT(character, dir)->exit_info, EX_NO_LOOK)))
+            if (!CAN_GO(character, dir) || (world[character->in_room].dir_option[dir]->to_room == is_in) || (IS_SET(EXIT(character, dir)->exit_info, EX_NO_LOOK))) // LS1-ALLOW: in_room used as mutable room cursor
                 break;
             else
-                character->in_room = world[character->in_room].dir_option[dir]->to_room;
+                character->in_room = world[character->in_room].dir_option[dir]->to_room; // LS1-ALLOW: in_room used as mutable room cursor
         }
     }
     if (found == 0)
         act("Nobody anywhere near you.", TRUE, character, 0, 0, TO_CHAR);
-    character->in_room = is_in;
+    character->in_room = is_in; // LS1-ALLOW: in_room used as mutable room cursor
 }
 
 /*=================================================================================
@@ -2995,7 +2998,7 @@ bool can_ch_mark(char_data* ch)
         return false;
     }
 
-    if (IS_SET(world[ch->in_room].room_flags, PEACEROOM)) {
+    if (IS_SET(room_of(ch)->room_flags, PEACEROOM)) {
         send_to_char(
             "A peaceful feeling overwhelms you, and you cannot bring yourself to attack.\r\n", ch);
         return false;
@@ -3036,7 +3039,7 @@ char_data* is_targ_valid_mark(char_data* marker, waiting_type* target)
         }
     }
 
-    if (marker->in_room != victim->in_room) {
+    if (location_of(marker) != location_of(victim)) {
         send_to_char("Your victim is no longer here.\r\n", marker);
         return NULL;
     }
@@ -3144,7 +3147,7 @@ ACMD(do_mark)
             return;
         }
 
-        if (ch->in_room != victim->in_room) {
+        if (location_of(ch) != location_of(victim)) {
             send_to_char("Your target is not here any longer.\r\n", ch);
             return;
         }
@@ -3174,7 +3177,7 @@ ACMD(do_mark)
 
 bool can_ch_blind(char_data* ch, int mana_cost)
 {
-    const room_data& room = world[ch->in_room];
+    const room_data& room = *room_of(ch);
     obj_data* dust = NULL;
 
     if (GET_RACE(ch) != RACE_HARADRIM) {
@@ -3248,7 +3251,7 @@ char_data* is_targ_blind_valid(char_data* ch, waiting_type* target)
         }
     }
 
-    if (ch->in_room != victim->in_room) {
+    if (location_of(ch) != location_of(victim)) {
         send_to_char("Your victim is no longer here.\r\n", ch);
         return NULL;
     }
@@ -3387,7 +3390,7 @@ ACMD(do_blinding)
             return;
         }
 
-        if (ch->in_room != victim->in_room) {
+        if (location_of(ch) != location_of(victim)) {
             send_to_char("Your victim is no longer here.\r\n", ch);
             return;
         }
@@ -3430,7 +3433,7 @@ ACMD(do_blinding)
 
 bool can_harad_use_skill(char_data* ch, int mana_cost, int move_cost, int skill)
 {
-    const room_data& room = world[ch->in_room];
+    const room_data& room = *room_of(ch);
     if (GET_RACE(ch) != RACE_HARADRIM) {
         send_to_char("Unrecognized command.\r\n", ch);
         return false;
@@ -3564,7 +3567,6 @@ ACMD(do_bendtime)
 void on_windblast_hit(char_data* ch)
 {
     int i, attempt, res, die, move_cost = 0;
-    struct char_data* tmpch;
     stop_riding(ch);
     if (GET_TACTICS(ch) == TACTICS_BERSERK) {
         send_to_char("You stand your ground against the blast of thunderous force!", ch);
@@ -3580,9 +3582,9 @@ void on_windblast_hit(char_data* ch)
         res = CAN_GO(ch, attempt) && !IS_SET(EXIT(ch, attempt)->exit_info, EX_NOFLEE) && !IS_SET(EXIT(ch, attempt)->exit_info, EX_NOWALK);
 
         if (res) {
-            res = !IS_SET(world[EXIT(ch, attempt)->to_room].room_flags, DEATH);
+            res = !IS_SET(room_by_id_total(EXIT(ch, attempt)->to_room)->room_flags, DEATH);
             if (IS_NPC(ch)) {
-                res = res && ((!IS_SET(ch->specials2.act, MOB_STAY_ZONE) || (world[EXIT(ch, attempt)->to_room].zone == world[ch->in_room].zone)) && (!IS_SET(ch->specials2.act, MOB_STAY_TYPE) || (world[EXIT(ch, attempt)->to_room].sector_type == world[ch->in_room].sector_type)));
+                res = res && ((!IS_SET(ch->specials2.act, MOB_STAY_ZONE) || (room_by_id_total(EXIT(ch, attempt)->to_room)->zone == room_of(ch)->zone)) && (!IS_SET(ch->specials2.act, MOB_STAY_TYPE) || (room_by_id_total(EXIT(ch, attempt)->to_room)->sector_type == room_of(ch)->sector_type)));
             }
         }
 
@@ -3591,7 +3593,7 @@ void on_windblast_hit(char_data* ch)
 
             if (!die) {
                 if (ch->specials.fighting) {
-                    for (tmpch = world[ch->in_room].people; tmpch; tmpch = tmpch->next_in_room) {
+                    for (auto* tmpch : rots::entity::occupants(room_of(ch))) {
                         if (tmpch->specials.fighting == ch) {
                             stop_fighting(tmpch);
                         }
@@ -3636,7 +3638,7 @@ void on_windblast_success(char_data* ch, int mana_cost, int move_cost)
     GET_MANA(ch) -= mana_cost;
     GET_MOVE(ch) -= move_cost;
 
-    if (ch->in_room == NOWHERE)
+    if (location_of(ch) == NOWHERE)
         return;
 
     power_level = utils::get_prof_level(PROF_RANGER, *ch) / 2;
@@ -3645,8 +3647,8 @@ void on_windblast_success(char_data* ch, int mana_cost, int move_cost)
 
     send_to_char("Vile black wind eminates from you, slamming into all!\r\n", ch);
 
-    for (tmpch = world[ch->in_room].people; tmpch; tmpch = tmpch_next) {
-        tmpch_next = tmpch->next_in_room;
+    for (tmpch = room_of(ch)->people; tmpch; tmpch = tmpch_next) {
+        tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via damage)
         if (tmpch != ch) {
             if (!rots::entity::dispatch_target_valid(ch, tmpch)) {
                 send_to_char(

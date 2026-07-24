@@ -1377,6 +1377,7 @@ if(ROTS_BUILD_TESTS)
         tests/llp64_probe_tests.cpp
         tests/mage_tests.cpp
         tests/mail_json_tests.cpp
+        tests/mobact_tests.cpp
         tests/mystic_tests.cpp
         tests/obj_flag_data_tests.cpp
         tests/ObjFlagDataBuilder.cpp

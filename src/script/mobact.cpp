@@ -74,7 +74,7 @@ void mobile_activity(void)
 void one_mobile_activity(char_data* ch)
 {
     int door, found, max, tmp, is_passive;
-    struct char_data *tmp_ch, *tmpch, *vict;
+    struct char_data *tmp_ch, *vict;
     struct obj_data *obj, *best_obj, *inside, *next_obj;
     struct waiting_type wtl;
     struct memory_rec* names;
@@ -88,16 +88,16 @@ void one_mobile_activity(char_data* ch)
     if (!IS_NPC(ch))
         return;
 
-    if ((ch->in_room < 0) || (ch->in_room > top_of_world)) {
+    if ((location_of(ch) < 0) || (location_of(ch) > top_of_world)) {
         const std::string out_of_range_message = std::format("mobile_act called for {} in {}.",
-            GET_NAME(ch), ch->in_room);
+            GET_NAME(ch), location_of(ch));
         mudlog(out_of_range_message, NRM, LEVEL_IMPL, FALSE);
         return;
     }
 
     is_passive = 0;
     if (MOB_FLAGGED(ch, MOB_PET) && !utils::is_guardian(*ch) && ch->master && char_exists(ch->master_number)) {
-        if (ch->in_room == ch->master->in_room) {
+        if (location_of(ch) == location_of(ch->master)) {
             is_passive = 1;
         }
     }
@@ -158,9 +158,9 @@ void one_mobile_activity(char_data* ch)
         }
 
         /* mob - helper */
-        const room_data& room = world[ch->in_room];
+        room_data* room = room_of(ch);
         if (AWAKE(ch) && IS_SET(ch->specials2.act, MOB_HELPER) && !ch->specials.fighting) {
-            for (char_data* ally = room.people; ally; ally = ally->next_in_room) {
+            for (auto* ally : rots::entity::occupants(room)) {
                 // Don't assist allies that you are aggressive to.
                 if (IS_AGGR_TO(ch, ally))
                     continue;
@@ -199,7 +199,7 @@ void one_mobile_activity(char_data* ch)
         }
 
         /* bodyguard - follower */
-        if (AWAKE(ch) && IS_SET(ch->specials2.act, MOB_BODYGUARD) && ch->master && (ch->master->in_room == ch->in_room)) {
+        if (AWAKE(ch) && IS_SET(ch->specials2.act, MOB_BODYGUARD) && ch->master && (location_of(ch->master) == location_of(ch))) {
 
             if (GET_POS(ch) < POSITION_FIGHTING)
                 rots::combat::issue_command(rots::combat::combat_command::stand, ch, mutable_arg(""), 0, 0, 0);
@@ -249,7 +249,7 @@ void one_mobile_activity(char_data* ch)
         /* Assistant mob.  They always assist their master if their master is fighting
          * and they are not. */
         if (AWAKE(ch) && IS_SET(ch->specials2.act, MOB_ASSISTANT) && ch->master) {
-            if (ch->master->in_room == ch->in_room && ch->master->specials.fighting && ch->specials.fighting == NULL) {
+            if (location_of(ch->master) == location_of(ch) && ch->master->specials.fighting && ch->specials.fighting == NULL) {
                 if (CAN_SEE(ch, ch->master)) {
                     if (GET_POS(ch) < POSITION_FIGHTING) {
                         rots::combat::issue_command(rots::combat::combat_command::stand, ch, mutable_arg(""), NULL, 0, 0);
@@ -266,14 +266,13 @@ void one_mobile_activity(char_data* ch)
 
         /* Guardians, special case */
         if (utils::is_guardian(*ch) && ch->master && ch->specials.fighting) {
-            if (ch->master->in_room != ch->in_room) {
+            if (location_of(ch->master) != location_of(ch)) {
                 rots::combat::issue_command(rots::combat::combat_command::flee, ch, mutable_arg(""), NULL, 0, 0);
             }
         }
 
         if (ch->specials.fighting && (GET_POS(ch) > POSITION_SITTING) && (IS_SET(ch->specials2.act, MOB_SWITCHING) || IS_SET(ch->specials2.act, MOB_SHADOW))) {
-            for (tmpch = world[ch->in_room].people; tmpch;
-                 tmpch = tmpch->next_in_room)
+            for (auto* tmpch : rots::entity::occupants(room_of(ch)))
                 if ((tmpch->specials.fighting == ch) && !number(0, 3) && CAN_SEE(ch, tmpch) && (tmpch != ch->specials.fighting)) {
                     ch->specials.fighting = tmpch;
                     act("$n turns to fight $N!", TRUE, ch, 0, tmpch, TO_ROOM);
@@ -283,8 +282,8 @@ void one_mobile_activity(char_data* ch)
 
         if (AWAKE(ch) && !(ch->specials.fighting)) {
             if (IS_SET(ch->specials2.act, MOB_SCAVENGER)) { /* if scavenger */
-                if (world[ch->in_room].contents && !number(0, 5)) {
-                    for (max = 1, best_obj = 0, obj = world[ch->in_room].contents;
+                if (room_of(ch)->contents && !number(0, 5)) {
+                    for (max = 1, best_obj = 0, obj = room_of(ch)->contents;
                          obj; obj = obj->next_content) {
                         if (CAN_GET_OBJ(ch, obj)) {
                             if (obj->obj_flags.cost > max) {
@@ -313,12 +312,12 @@ void one_mobile_activity(char_data* ch)
                 }
             } /* Scavenger */
 
-            if (!IS_SET(ch->specials2.act, MOB_SENTINEL) && (GET_POS(ch) == POSITION_STANDING) && (!ch->master) && ((door = number(0, 45)) < NUM_OF_DIRS) && CAN_GO(ch, door) && !IS_SET(world[EXIT(ch, door)->to_room].room_flags, NO_MOB) && !IS_SET(world[EXIT(ch, door)->to_room].room_flags, DEATH)) {
+            if (!IS_SET(ch->specials2.act, MOB_SENTINEL) && (GET_POS(ch) == POSITION_STANDING) && (!ch->master) && ((door = number(0, 45)) < NUM_OF_DIRS) && CAN_GO(ch, door) && !IS_SET(room_by_id_total(EXIT(ch, door)->to_room)->room_flags, NO_MOB) && !IS_SET(room_by_id_total(EXIT(ch, door)->to_room)->room_flags, DEATH)) {
                 if (ch->specials.last_direction == door)
                     ch->specials.last_direction = -1;
                 else {
                     /* checking for STAY flags */
-                    if ((!IS_SET(ch->specials2.act, MOB_STAY_ZONE) || (world[EXIT(ch, door)->to_room].zone == world[ch->in_room].zone)) && (!IS_SET(ch->specials2.act, MOB_STAY_TYPE) || (world[EXIT(ch, door)->to_room].sector_type == world[ch->in_room].sector_type))) {
+                    if ((!IS_SET(ch->specials2.act, MOB_STAY_ZONE) || (room_by_id_total(EXIT(ch, door)->to_room)->zone == room_of(ch)->zone)) && (!IS_SET(ch->specials2.act, MOB_STAY_TYPE) || (room_by_id_total(EXIT(ch, door)->to_room)->sector_type == room_of(ch)->sector_type))) {
                         ch->specials.last_direction = door;
                         rots::combat::issue_command(rots::combat::combat_command::move, ch, mutable_arg(""), 0, ++door, 0);
                     }
@@ -327,18 +326,20 @@ void one_mobile_activity(char_data* ch)
 
             /* Here go Race aggressions */
             if (ch->specials2.pref) {
-                for (tmp_ch = world[ch->in_room].people; tmp_ch;
-                     tmp_ch = tmp_ch->next_in_room)
-                    if ((ch != tmp_ch) && (!IS_SET(ch->specials2.act, MOB_MOUNT)) && IS_AGGR_TO(ch, tmp_ch) && CAN_SEE(ch, tmp_ch)) {
+                tmp_ch = nullptr; // MANDATORY pre-init (census Family F recipe)
+                for (auto* occ : rots::entity::occupants(room_of(ch))) {
+                    if ((ch != occ) && (!IS_SET(ch->specials2.act, MOB_MOUNT)) && IS_AGGR_TO(ch, occ) && CAN_SEE(ch, occ)) {
                         char hit_target_name[MAX_STRING_LENGTH];
-                        sscanf(tmp_ch->player.name, "%s", hit_target_name);
+                        sscanf(occ->player.name, "%s", hit_target_name);
                         wtl.targ1.type = TARGET_CHAR;
-                        wtl.targ1.ptr.ch = tmp_ch;
-                        wtl.targ1.ch_num = tmp_ch->abs_number;
+                        wtl.targ1.ptr.ch = occ;
+                        wtl.targ1.ch_num = occ->abs_number;
                         wtl.cmd = CMD_HIT;
                         rots::combat::issue_command(rots::combat::combat_command::hit, ch, hit_target_name, &wtl, 0, 0);
+                        tmp_ch = occ;
                         break;
                     }
+                }
                 if (tmp_ch)
                     return; // continue;
             }
@@ -347,8 +348,16 @@ void one_mobile_activity(char_data* ch)
             if (IS_SET(ch->specials2.act, MOB_AGGRESSIVE) && (!IS_SET(ch->specials2.act, MOB_MOUNT))) {
                 found = FALSE;
                 vict = 0;
-                for (tmp_ch = world[ch->in_room].people; tmp_ch && !found;
-                     tmp_ch = tmp_ch->next_in_room) {
+                for (auto* tmp_ch : rots::entity::occupants(room_of(ch))) {
+                    // Reproduces the original `tmp_ch && !found` loop condition: the
+                    // MOB_SWITCHING branch below never sets found (it keeps scanning the
+                    // whole room, reservoir-sampling among matches); the non-switching
+                    // branch sets found=TRUE and must stop before considering any later
+                    // occupant, matching the original for-loop stopping one iteration
+                    // earlier than a naive occupants() walk would.
+                    if (found) {
+                        break;
+                    }
                     if (!IS_NPC(tmp_ch) && CAN_SEE(ch, tmp_ch) && !PRF_FLAGGED(tmp_ch, PRF_NOHASSLE)) {
                         if (!IS_SET(ch->specials2.act, MOB_WIMPY) || !AWAKE(tmp_ch)) {
                             if ((IS_SET(ch->specials2.act, MOB_AGGRESSIVE_EVIL) && IS_EVIL(tmp_ch)) || (IS_SET(ch->specials2.act, MOB_AGGRESSIVE_GOOD) && IS_GOOD(tmp_ch)) || (IS_SET(ch->specials2.act, MOB_AGGRESSIVE_NEUTRAL) && IS_NEUTRAL(tmp_ch)) || (!IS_SET(ch->specials2.act, MOB_AGGRESSIVE_EVIL) && !IS_SET(ch->specials2.act, MOB_AGGRESSIVE_NEUTRAL) && !IS_SET(ch->specials2.act, MOB_AGGRESSIVE_GOOD))) {
@@ -391,7 +400,7 @@ void one_mobile_activity(char_data* ch)
                 vict = 0;
                 for (names = ch->specials.memory; names && !vict;
                      names = names->next_on_mob) {
-                    if (names->enemy && char_exists(names->enemy_number) && (names->enemy->in_room == ch->in_room) && CAN_SEE(ch, names->enemy))
+                    if (names->enemy && char_exists(names->enemy_number) && (location_of(names->enemy) == location_of(ch)) && CAN_SEE(ch, names->enemy))
                         vict = names->enemy;
                 }
 
@@ -419,8 +428,8 @@ void one_mobile_activity(char_data* ch)
 
                     for (names = ch->specials.memory; names && !vict;
                          names = names->next_on_mob) {
-                        if (names->enemy && char_exists(names->enemy_number) && (names->enemy->in_room != NOWHERE) && (number(0, 100) > modifier)) // confuse modifier...
-                            tmp = find_first_step(ch->in_room, names->enemy->in_room);
+                        if (names->enemy && char_exists(names->enemy_number) && (location_of(names->enemy) != NOWHERE) && (number(0, 100) > modifier)) // confuse modifier...
+                            tmp = find_first_step(location_of(ch), location_of(names->enemy));
                         else
                             tmp = BFS_NO_PATH;
                         if (tmp >= 0) { // found the way, moving there

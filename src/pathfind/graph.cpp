@@ -67,7 +67,7 @@ static struct room_data *queue_head = 0, *queue_tail = 0;
 #define IS_CLOSED(x, y) (IS_SET((x)->dir_option[(y)]->exit_info, EX_CLOSED))
 #endif
 
-#define VALID_EDGE(x, y) ((x)->dir_option[(y)] && (TOROOM(x, y) != NOWHERE) && (!IS_CLOSED(x, y)) && (!IS_MARKED(&world[TOROOM(x, y)])))
+#define VALID_EDGE(x, y) ((x)->dir_option[(y)] && (TOROOM(x, y) != NOWHERE) && (!IS_CLOSED(x, y)) && (!IS_MARKED(room_by_id_total(TOROOM(x, y)))))
 
 void bfs_enqueue(room_data* room, char dir)
 {
@@ -119,10 +119,10 @@ int find_first_step(int src, int target)
 
     /* clear marks first */
     for (curr_room = 0; curr_room <= top_of_world; curr_room++)
-        UNMARK(&world[curr_room]);
+        UNMARK(room_by_id_total(curr_room));
 
-    src_room = &world[src];
-    target_room = &world[target];
+    src_room = room_by_id_total(src);
+    target_room = room_by_id_total(target);
     MARK(src_room);
 
     /*
@@ -131,8 +131,8 @@ int find_first_step(int src, int target)
      */
     for (curr_dir = 0; curr_dir < NUM_OF_DIRS; curr_dir++)
         if (VALID_EDGE(src_room, curr_dir)) {
-            MARK(&world[(int)TOROOM(src_room, curr_dir)]);
-            bfs_enqueue(&world[(int)TOROOM(src_room, curr_dir)], curr_dir);
+            MARK(room_by_id_total((int)TOROOM(src_room, curr_dir)));
+            bfs_enqueue(room_by_id_total((int)TOROOM(src_room, curr_dir)), curr_dir);
         }
 
     /* now, do the classic BFS. */
@@ -144,8 +144,8 @@ int find_first_step(int src, int target)
         } else {
             for (curr_dir = 0; curr_dir < NUM_OF_DIRS; curr_dir++)
                 if (VALID_EDGE(queue_head, curr_dir)) {
-                    MARK(&world[TOROOM(queue_head, curr_dir)]);
-                    bfs_enqueue(&world[TOROOM(queue_head, curr_dir)],
+                    MARK(room_by_id_total(TOROOM(queue_head, curr_dir)));
+                    bfs_enqueue(room_by_id_total(TOROOM(queue_head, curr_dir)),
                         queue_head->bfs_dir);
                 }
             bfs_dequeue();
@@ -182,7 +182,7 @@ ACMD(do_wiztrack)
         return;
     }
 
-    dir = find_first_step(ch->in_room, vict->in_room);
+    dir = find_first_step(location_of(ch), location_of(vict));
     switch (dir) {
     case BFS_ERROR:
         send_to_char("Hmm.. something seems to be wrong.\r\n", ch);
@@ -239,7 +239,7 @@ void hunt_victim(struct char_data* ch)
         return;
     }
 
-    dir = find_first_step(ch->in_room, ch->specials.hunting->in_room);
+    dir = find_first_step(location_of(ch), location_of(ch->specials.hunting));
     if (dir < 0) {
         // buf retirement (l4-seed wave, Task 1; l4-census.md section 3.7 /
         // l4-task-1-brief.md CONTROLLER ADDENDUM item 4). LOCAL-COMPOSITION
@@ -254,7 +254,7 @@ void hunt_victim(struct char_data* ch)
         return;
     } else {
         rots::combat::issue_command(rots::combat::combat_command::move, ch, mutable_arg(""), 0, dir + 1, 0);
-        if (ch->in_room == ch->specials.hunting->in_room)
+        if (location_of(ch) == location_of(ch->specials.hunting))
             hit(ch, ch->specials.hunting, TYPE_UNDEFINED);
         return;
     }
@@ -278,11 +278,11 @@ int show_blood_trail(struct char_data* ch, char* name, int mode)
 {
     int tmp, count, chance_factor, ch_num, tr_time, shall_show;
     room_data* ch_room;
-    if (ch->in_room == NOWHERE) {
+    if (location_of(ch) == NOWHERE) {
         return 0;
     }
 
-    ch_room = &world[ch->in_room];
+    ch_room = room_of(ch);
     chance_factor = 0;
 
     if (ch_room->sector_type == SECT_CITY) {
@@ -314,7 +314,7 @@ int show_blood_trail(struct char_data* ch, char* name, int mode)
 
         if (shall_show) {
             count++;
-            if (IS_WATER(ch->in_room)) {
+            if (IS_WATER(location_of(ch))) {
                 blood_out = std::format("The water looks {} disturbed to the {}.\n\r",
                     water_track_desc(tr_time), dirs[ch_room->bleed_track[tmp].data & 7]);
             } else {

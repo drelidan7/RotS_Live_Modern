@@ -831,7 +831,7 @@ set(ROTS_OLC_SOURCES
 add_executable(ageland ${ROTS_SERVER_SOURCES})
 
 # Pathed data-model headers (spec §9a). ONLY these two leaf dirs go on the
-# include path — never src/ itself (src/limits.h would shadow <limits.h>).
+# include path — never src/ itself (src/player_limits.h would shadow <limits.h>).
 # They contain nothing but rots/, so they cannot shadow any system header.
 # core/include flows to ageland transitively via RotS::core's PUBLIC
 # target_include_directories (see the rots_core definition below);
@@ -1488,7 +1488,7 @@ if(ROTS_BUILD_TESTS)
     # also reach shared test fixtures via bare quoted includes ("damage_test_
     # context.h" etc.), so src/tests/ needs to be too. Never target_include_
     # directories()'s default -I for src/: that would ALSO add it to the
-    # angle-bracket <...> search path, and src/limits.h (a project header —
+    # angle-bracket <...> search path, and src/player_limits.h (a project header —
     # player rank constants — unrelated to the standard C <limits.h>) would
     # then shadow the real system <limits.h> ahead of the toolchain's own path.
     # That's invisible under glibc/libstdc++ (CHAR_BIT etc. come from compiler
@@ -1511,24 +1511,24 @@ if(ROTS_BUILD_TESTS)
     # libstdc++ implementation needs _POSIX_SEM_VALUE_MAX from glibc's
     # <bits/posix1_lim.h>. With src/ on the FRONT of the merged list via
     # -iquote, GCC's #include_next chain for <limits.h> walked into
-    # src/limits.h before ever reaching glibc's real one, so posix1_lim.h
+    # src/player_limits.h before ever reaching glibc's real one, so posix1_lim.h
     # never loaded and every test TU (they all pull in gtest.h) failed with
     # "'_POSIX_SEM_VALUE_MAX' was not declared". -idirafter instead places
     # src/ at the very END of the merged list -- after the standard system
     # directories -- so #include_next resolves glibc's real <limits.h> first
     # (found earlier, in its normal system-directory position) and only
-    # falls through to src/limits.h for a bare quoted include that nothing
+    # falls through to src/player_limits.h for a bare quoted include that nothing
     # else on the list satisfies (i.e. still works as a same-priority-as-
     # before fallback for genuine project headers: no other directory on the
     # list has an "act_info.h", "utils.h", etc., so ordering never mattered
-    # for those). No test source bare-quote-includes "limits.h" relying on
+    # for those). No test source bare-quote-includes "player_limits.h" relying on
     # this path specifically (the one test file that reaches the project's
-    # own limits.h -- interpre_account_menu_tests.cpp -- uses the explicit
-    # "../limits.h" relative form, which resolves directly off the including
+    # own player_limits.h -- interpre_account_menu_tests.cpp -- uses the explicit
+    # "../player_limits.h" relative form, which resolves directly off the including
     # file's own directory and is unaffected either way); every product .cpp
-    # that bare-quote-includes "limits.h" lives IN src/, so its own implicit
+    # that bare-quote-includes "player_limits.h" lives IN src/, so its own implicit
     # "directory of the including file" quote entry (always first, before any
-    # -iquote/-idirafter path, on every compiler) finds src/limits.h
+    # -iquote/-idirafter path, on every compiler) finds src/player_limits.h
     # regardless of this flag. This is a build-flag fix only -- no file's
     # resolved header set changes -- so it cannot affect runtime behavior or
     # goldens.

@@ -43,7 +43,7 @@ CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -m
 # "utils.h" (etc.) to reach the product headers one directory up; mirrors
 # the -idirafter (NOT -iquote, NOT -I) that src/CMakeLists.txt uses for its
 # ROTS_TEST_SOURCES list. Never a bare -I..: that would ALSO add it to the
-# angle-bracket (<...>) search path, and src/limits.h (the game's player-
+# angle-bracket (<...>) search path, and src/player_limits.h (the game's player-
 # rank-constants header, unrelated to the standard C <limits.h>) would then
 # shadow the real system <limits.h> ahead of the toolchain's own path:
 # UCHAR_MAX/CHAR_BIT come up undeclared wherever a header does a bare
@@ -61,8 +61,8 @@ CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -m
 # (std::counting_semaphore; unreachable pre-C++20, so this was invisible
 # under the old c++1z build), whose libstdc++ implementation needs
 # _POSIX_SEM_VALUE_MAX from glibc's <bits/posix1_lim.h>. With -iquote ..
-# (.. containing limits.h) on the FRONT of the merged list, GCC's
-# #include_next chain for <limits.h> walked into ../limits.h before ever
+# (.. containing player_limits.h) on the FRONT of the merged list, GCC's
+# #include_next chain for <limits.h> walked into ../player_limits.h before ever
 # reaching glibc's real one, so posix1_lim.h never loaded and every test TU
 # failed with "'_POSIX_SEM_VALUE_MAX' was not declared" -- scoping the flag
 # to test-only compiles (as an earlier version of this comment/fix did)
@@ -72,18 +72,18 @@ CXXFLAGS = -std=c++20 -Wall -Wextra -Werror -D TESTING -D_FILE_OFFSET_BITS=64 -m
 # -idirafter instead places .. at the very END of the merged list -- after
 # the standard system directories -- so #include_next resolves glibc's real
 # <limits.h> first (found earlier, in its normal system-directory position)
-# and only falls through to ../limits.h for a bare quoted include that
+# and only falls through to ../player_limits.h for a bare quoted include that
 # nothing else on the list satisfies (i.e. still works as a same-priority-
 # as-before fallback for genuine product headers: no other directory on the
 # list has an "account_management_assets.h", "utils.h", etc., so ordering
-# never mattered for those). No test source bare-quote-includes "limits.h"
+# never mattered for those). No test source bare-quote-includes "player_limits.h"
 # relying on this path (interpre_account_menu_tests.cpp, the one test that
-# needs the project's own limits.h, uses the explicit "../limits.h" relative
+# needs the project's own player_limits.h, uses the explicit "../player_limits.h" relative
 # form, unaffected either way); every product .cpp that bare-quote-includes
-# "limits.h" lives one directory up (in src/, not src/tests/), so it's built
+# "player_limits.h" lives one directory up (in src/, not src/tests/), so it's built
 # via its own explicit OBJFILES rule using plain $(CXXFLAGS) (no -idirafter
 # needed at all -- its implicit "directory of the including file" quote
-# entry, always first on every compiler, already finds ../limits.h). This
+# entry, always first on every compiler, already finds ../player_limits.h). This
 # is a build-flag fix only -- no file's resolved header set changes -- so it
 # cannot affect runtime behavior or goldens.
 TEST_CXXFLAGS = $(CXXFLAGS) -idirafter ..

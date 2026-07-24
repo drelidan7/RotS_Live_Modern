@@ -1921,8 +1921,8 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
 
     /* if load_room isn't anywhere, but they are somewhere, we'll set
      * load_room to that somewhere */
-    if ((load_room == NOWHERE) && (ch->in_room != NOWHERE))
-        load_room = rots::persist::dispatch_room_vnum(ch->in_room);
+    if ((load_room == NOWHERE) && (location_of(ch) != NOWHERE))
+        load_room = rots::persist::dispatch_room_vnum(location_of(ch));
 
     ch->specials2.load_room = load_room;
 

@@ -15,6 +15,15 @@
 #include "rots/core/fwd.h"
 #include "rots/persist/file_formats.h" /* For the RENT_CRASH macro */
 #include "objects_json.h" /* For ObjectSaveData (account-backed object staging) */
+// LS-1 Wave Task 1b: full room_data/char_data definitions, needed by the
+// occupants()/room_of() namespace rots::entity block below, whose inline
+// member bodies dereference room_data::people/char_data::next_in_room --
+// fwd.h's pointer-only forward declarations are not enough once field
+// access happens inside this header itself. Both are self-contained
+// (only depend on fwd.h/types.h -- no include-cycle risk back to
+// handler.h).
+#include "rots/core/character.h"
+#include "rots/core/room.h"
 
 #include <string_view>
 
@@ -83,6 +92,144 @@ bool is_in_room(const struct char_data* ch, int rnum);
 // placement.cpp. Consumer-free as landed -- T2's conversions are the
 // first callers.
 struct room_data* room_of(const struct char_data* ch);
+
+// LS-1 Wave Task 1b addition (.superpowers/sdd/ls1-task-1b-report.md).
+// occupant_range/occupants() moved verbatim from entity/placement.cpp,
+// where it landed inline (TU-local, no header declaration) in the
+// placement-seam wave -- no other TU could call it despite the LS-1
+// census's conversion recipe (.superpowers/sdd/ls1-census.md Step 3)
+// naming it as the target for every next_in_room walk conversion;
+// tranche A's own T2 report ("wave-level infrastructure gap") flagged
+// this as the wave's blocking follow-up. Range-for-capable wrapper over
+// a room's intrusive occupant chain (room_data::people /
+// char_data::next_in_room walk) -- the spec's occupants(room) Stage-1
+// API entry. Body is byte-identical to the placement.cpp original;
+// still namespace rots::entity, still defined in placement.cpp.
+namespace rots::entity {
+
+// Minimal forward iterator over the next_in_room chain -- only the
+// operations range-for needs (dereference, prefix increment,
+// inequality). No existing range/iterator idiom lives elsewhere in
+// rots_entity to extend instead, per the placement-seam Task 1 brief's
+// precedent search.
+class occupant_range {
+public:
+    class iterator {
+    public:
+        // Current chain node; nullptr is the end-of-chain sentinel,
+        // mirroring the legacy `for (; tmpch; tmpch = tmpch->next_in_room)`
+        // walks' own null-terminated-list convention.
+        explicit iterator(char_data* node)
+            : node_(node)
+        {
+        }
+
+        char_data* operator*() const { return node_; }
+
+        iterator& operator++()
+        {
+            node_ = node_->next_in_room;
+            return *this;
+        }
+
+        bool operator!=(const iterator& other) const
+        {
+            return node_ != other.node_;
+        }
+
+    private:
+        // Chain node this iterator currently refers to.
+        char_data* node_;
+    };
+
+    // Snapshots room's occupant-chain head at construction time (matching
+    // the legacy walks' own single-read-then-follow-next behavior); a null
+    // room yields an empty range.
+    explicit occupant_range(room_data* room)
+        : first_(room ? room->people : nullptr)
+    {
+    }
+
+    iterator begin() const { return iterator(first_); }
+    iterator end() const { return iterator(nullptr); }
+
+private:
+    // Head of the walked chain at construction time; iteration follows
+    // next_in_room from here.
+    char_data* first_;
+};
+
+// Returns a range-for-capable view of room's occupants. L1 field wrapper --
+// no hook needed, see occupant_range's own comment. Defined in
+// placement.cpp.
+inline occupant_range occupants(room_data* room)
+{
+    return occupant_range(room);
+}
+
+// const counterpart (LS-1 Wave Task 1b; .superpowers/sdd/ls1-census.md's
+// Step 5 "0 counted const-room walks" ruling was wrong by one -- the
+// tranche-A review found char_utils_combat.cpp's get_engaged_characters()
+// walks a `const room_data&` and was left raw for want of this overload).
+// Same lazy-++ semantics as occupant_range above, mirrored with const
+// types throughout; yields const char_data* so a caller holding only a
+// const room_data* cannot mutate an occupant through this view.
+class const_occupant_range {
+public:
+    class iterator {
+    public:
+        // Current chain node; nullptr is the end-of-chain sentinel (see
+        // occupant_range::iterator above).
+        explicit iterator(const char_data* node)
+            : node_(node)
+        {
+        }
+
+        const char_data* operator*() const { return node_; }
+
+        iterator& operator++()
+        {
+            node_ = node_->next_in_room;
+            return *this;
+        }
+
+        bool operator!=(const iterator& other) const
+        {
+            return node_ != other.node_;
+        }
+
+    private:
+        // Chain node this iterator currently refers to.
+        const char_data* node_;
+    };
+
+    // Snapshots room's occupant-chain head at construction time; a null
+    // room yields an empty range (see occupant_range's own comment).
+    explicit const_occupant_range(const room_data* room)
+        : first_(room ? room->people : nullptr)
+    {
+    }
+
+    iterator begin() const { return iterator(first_); }
+    iterator end() const { return iterator(nullptr); }
+
+private:
+    // Head of the walked chain at construction time; iteration follows
+    // next_in_room from here.
+    const char_data* first_;
+};
+
+// Returns a const range-for-capable view of room's occupants, for a
+// caller that only has a const room_data*/room_data& (e.g.
+// get_engaged_characters()'s `const room_data&` parameter). Overload
+// resolution prefers the non-const occupants() above whenever the
+// argument is a non-const room_data*.
+inline const_occupant_range occupants(const room_data* room)
+{
+    return const_occupant_range(room);
+}
+
+} // namespace rots::entity
 
 /* utility */
 struct obj_data* create_money(int amount);

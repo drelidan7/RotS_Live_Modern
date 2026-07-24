@@ -211,78 +211,13 @@ room_data* room_of(const char_data* ch)
     return room_by_id_total(location_of(ch));
 }
 
-namespace rots::entity {
-
-// Range-for-capable wrapper over a room's intrusive occupant chain
-// (room_data::people / char_data::next_in_room walk) -- the spec's
-// occupants(room) Stage-1 API entry. Unused as landed: char_power's/
-// recount_light_room's/get_char_room's own occupant walks stayed verbatim
-// inline loops (per the brief's "MOVE verbatim" -- only their world[]
-// accesses became room_by_id() calls), and Task 3's
-// detach_char_from_room()/char_to_room() primitives (placement.cpp) also
-// landed with their own verbatim inline next_in_room loops rather than
-// this range (see those functions below). Kept as an unused Stage-1 API
-// surface -- not deleted -- pending the game-wide call-site-conversion /
-// Stage-2 wave that would migrate existing next_in_room walks onto it.
-class occupant_range {
-public:
-    // Minimal forward iterator over the next_in_room chain -- only the
-    // operations range-for needs (dereference, prefix increment,
-    // inequality). No existing range/iterator idiom lives elsewhere in
-    // rots_entity to extend instead, per the brief's precedent search.
-    class iterator {
-    public:
-        // Current chain node; nullptr is the end-of-chain sentinel,
-        // mirroring the legacy `for (; tmpch; tmpch = tmpch->next_in_room)`
-        // walks' own null-terminated-list convention.
-        explicit iterator(char_data* node)
-            : node_(node)
-        {
-        }
-
-        char_data* operator*() const { return node_; }
-
-        iterator& operator++()
-        {
-            node_ = node_->next_in_room;
-            return *this;
-        }
-
-        bool operator!=(const iterator& other) const
-        {
-            return node_ != other.node_;
-        }
-
-    private:
-        // Chain node this iterator currently refers to.
-        char_data* node_;
-    };
-
-    // Snapshots room's occupant-chain head at construction time (matching
-    // the legacy walks' own single-read-then-follow-next behavior); a null
-    // room yields an empty range.
-    explicit occupant_range(room_data* room)
-        : first_(room ? room->people : nullptr)
-    {
-    }
-
-    iterator begin() const { return iterator(first_); }
-    iterator end() const { return iterator(nullptr); }
-
-private:
-    // Head of the walked chain at construction time; iteration follows
-    // next_in_room from here.
-    char_data* first_;
-};
-
-// Returns a range-for-capable view of room's occupants. L1 field wrapper --
-// no hook needed, see occupant_range's own comment.
-inline occupant_range occupants(room_data* room)
-{
-    return occupant_range(room);
-}
-
-} // namespace rots::entity
+// occupant_range/const_occupant_range/occupants() (both overloads) moved
+// verbatim into handler.h (LS-1 Wave Task 1b; .superpowers/sdd/
+// ls1-task-1b-report.md) so every TU reachable through handler.h can
+// call occupants() -- previously TU-local to this file, per Stage-1's
+// own "Unused as landed" comment history. No duplicate definition
+// remains here; this file still includes handler.h (above) so its own
+// callers below are unaffected.
 
 /************************************************************************
  *  Functions relocated verbatim from handler.cpp (placement-seam Task 1; *

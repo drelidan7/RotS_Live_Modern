@@ -1040,3 +1040,89 @@ TEST(Equipment, FindEqPosResolvesAnExplicitBodyPartKeyword)
 
     EXPECT_EQ(find_eq_pos(&ch, &obj, argument), WEAR_HEAD);
 }
+
+// ---------------------------------------------------------------------------
+// rots::entity::occupants() (LS-1 Wave Task 1b; .superpowers/sdd/
+// ls1-task-1b-report.md). occupant_range/occupants() previously lived only
+// inside placement.cpp (TU-local, no header declaration -- see
+// ls1-task-2-report.md's "wave-level infrastructure gap" finding) so no
+// other TU could call it despite the census's conversion recipe naming it
+// as the target for every next_in_room walk. This task moves the class into
+// handler.h (still namespace rots::entity) and adds a const overload
+// (occupants(const room_data*), yielding const char_data* -- the tranche-A
+// review's Finding for char_utils_combat.cpp's get_engaged_characters(),
+// which walks a const room_data& and was left raw for want of exactly this
+// overload). These tests are the API's own TDD contract proof, consumer-
+// free otherwise: an empty range for a null room (both overloads), and the
+// const overload yielding the identical pointer sequence as the non-const
+// overload over the same chain -- lazy ++ semantics unchanged either way.
+// ---------------------------------------------------------------------------
+
+TEST(OccupantsTest, YieldsEmptyRangeForNullRoom)
+{
+    int count = 0;
+    for (char_data* occ : rots::entity::occupants(static_cast<room_data*>(nullptr))) {
+        (void)occ;
+        ++count;
+    }
+
+    EXPECT_EQ(count, 0);
+}
+
+TEST(OccupantsTest, ConstOverloadYieldsEmptyRangeForNullRoom)
+{
+    int count = 0;
+    for (const char_data* occ : rots::entity::occupants(static_cast<const room_data*>(nullptr))) {
+        (void)occ;
+        ++count;
+    }
+
+    EXPECT_EQ(count, 0);
+}
+
+TEST(OccupantsTest, WalksTheOccupantChainInOrder)
+{
+    room_data room = make_stub_room();
+    char_data first { };
+    char_data second { };
+    char_data third { };
+    first.next_in_room = &second;
+    second.next_in_room = &third;
+    third.next_in_room = nullptr;
+    room.people = &first;
+
+    std::vector<char_data*> collected;
+    for (char_data* occ : rots::entity::occupants(&room)) {
+        collected.push_back(occ);
+    }
+
+    EXPECT_EQ(collected, (std::vector<char_data*> { &first, &second, &third }));
+}
+
+TEST(OccupantsTest, ConstOverloadYieldsTheSameSequenceAsTheNonConstOverload)
+{
+    room_data room = make_stub_room();
+    char_data first { };
+    char_data second { };
+    char_data third { };
+    first.next_in_room = &second;
+    second.next_in_room = &third;
+    third.next_in_room = nullptr;
+    room.people = &first;
+
+    std::vector<char_data*> non_const_walk;
+    for (char_data* occ : rots::entity::occupants(&room)) {
+        non_const_walk.push_back(occ);
+    }
+
+    const room_data& const_room = room;
+    std::vector<const char_data*> const_walk;
+    for (const char_data* occ : rots::entity::occupants(&const_room)) {
+        const_walk.push_back(occ);
+    }
+
+    ASSERT_EQ(const_walk.size(), non_const_walk.size());
+    for (size_t i = 0; i < const_walk.size(); ++i) {
+        EXPECT_EQ(const_walk[i], non_const_walk[i]);
+    }
+}

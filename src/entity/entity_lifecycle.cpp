@@ -3168,7 +3168,7 @@ void stop_follower(struct char_data* ch, int mode)
             ch->damage_details.reset();
         } else {
             act("You stop following $N.", FALSE, ch, 0, ch->master, TO_CHAR);
-            if (ch->in_room == ch->master->in_room) {
+            if (location_of(ch) == location_of(ch->master)) {
                 act("$n stops following $N.", FALSE, ch, 0, ch->master, TO_NOTVICT);
             }
             act("$n stops following you.", FALSE, ch, 0, ch->master, TO_VICT);
@@ -3205,7 +3205,7 @@ void stop_follower(struct char_data* ch, int mode)
             return;
 
         act("You stop following $N.", FALSE, ch, 0, ch->master, TO_CHAR);
-        if (ch->in_room == ch->master->in_room)
+        if (location_of(ch) == location_of(ch->master))
             act("$n stops following $N.", FALSE, ch, 0, ch->master, TO_NOTVICT);
         act("$n stops following you.", FALSE, ch, 0, ch->master, TO_VICT);
 

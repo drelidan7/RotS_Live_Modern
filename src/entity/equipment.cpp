@@ -163,10 +163,10 @@ EquipAttachOutcome attach_equipment(char_data* ch, obj_data* obj, int pos)
         SET_DODGE(ch) += obj->obj_flags.value[0];
         SET_PARRY(ch) += obj->obj_flags.value[1];
     } else if (GET_ITEM_TYPE(obj) == ITEM_LIGHT) {
-        if ((ch->in_room != NOWHERE) && (obj->obj_flags.value[2] != 0)) {
+        if ((location_of(ch) != NOWHERE) && (obj->obj_flags.value[2] != 0)) {
             if (obj->obj_flags.value[3] == 0)
                 obj->obj_flags.value[3] = 1;
-            room_by_id_total(ch->in_room)->light++;
+            room_of(ch)->light++;
         }
     }
 
@@ -255,10 +255,10 @@ struct obj_data* detach_equipment(char_data* ch, int pos)
         SET_PARRY(ch) -= obj->obj_flags.value[1];
 
     } else if (GET_ITEM_TYPE(obj) == ITEM_LIGHT) {
-        if ((ch->in_room != NOWHERE) && (obj->obj_flags.value[2] != 0) && (obj->obj_flags.value[3] != 0)) {
+        if ((location_of(ch) != NOWHERE) && (obj->obj_flags.value[2] != 0) && (obj->obj_flags.value[3] != 0)) {
             if (obj->obj_flags.value[3] > 0)
                 obj->obj_flags.value[3] = 0;
-            room_by_id_total(ch->in_room)->light--;
+            room_of(ch)->light--;
         }
     }
 

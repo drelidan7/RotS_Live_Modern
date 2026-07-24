@@ -334,7 +334,7 @@ int get_real_stealth(struct char_data* ch)
             percent += GET_SKILL(ch, SKILL_SNEAK) / 20;
     }
 
-    room_data* r = room_by_id_total(ch->in_room);
+    room_data* r = room_of(ch);
     switch (r->sector_type) {
     case SECT_INSIDE:
         percent -= 20;

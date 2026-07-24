@@ -1642,7 +1642,7 @@ void group_data::get_pcs_in_room(char_vector& pc_vec, int room_number) const
 {
     for (const_char_iter iter = members.begin(); iter != members.end(); ++iter) {
         char_data* character = *iter;
-        if (utils::is_pc(*character) && character->in_room == room_number) {
+        if (utils::is_pc(*character) && location_of(character) == room_number) {
             pc_vec.push_back(character);
         }
     }

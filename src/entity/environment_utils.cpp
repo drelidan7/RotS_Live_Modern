@@ -133,7 +133,7 @@ int get_exit_width(struct room_data* room, int dir)
 /* moved from utils.h */
 int CAN_GO(struct char_data* ch, int door)
 {
-    room_data* r = room_by_id_total(ch->in_room);
+    room_data* r = room_of(ch);
     if ((r->dir_option[door] && (r->dir_option[door]->to_room != NOWHERE)) && (!(IS_SHADOW(ch) ? (IS_SET(r->dir_option[door]->exit_info, EX_DOORISHEAVY) && IS_SET(r->dir_option[door]->exit_info, EX_CLOSED)) : IS_SET(r->dir_option[door]->exit_info, EX_CLOSED)) || IS_SET(r->dir_option[door]->exit_info, EX_ISBROKEN)))
         return 1;
 
@@ -145,7 +145,7 @@ int can_breathe(struct char_data* ch)
     int result;
 
     result = 1;
-    room_data* r = room_by_id_total(ch->in_room);
+    room_data* r = room_of(ch);
     if (r->sector_type == SECT_UNDERWATER) {
         result = 0;
         if (IS_AFFECTED(ch, AFF_BREATHE) || IS_SHADOW(ch) || (GET_RACE(ch) == RACE_UNDEAD))

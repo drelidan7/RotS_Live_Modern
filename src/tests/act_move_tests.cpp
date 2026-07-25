@@ -1,8 +1,11 @@
 #include "../combat_hooks.h"
+#include "../comm.h"
 #include "../handler.h"
 #include "../interpre.h"
+#include "../output_seam.h"
 #include "../utils.h"
 #include "rots/core/character.h"
+#include "rots/core/descriptor.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "test_world.h"
@@ -227,3 +230,293 @@ TEST(SetBloodTrailTest, WritesConvertedRoomsBleedTrackSlotForNpcCaller) {
 // act_wiz_format_tests.cpp's/act_info_format_tests.cpp's own established
 // "Deliberately NOT unit-tested here" convention for genuinely
 // fixture-hostile functions.
+
+// -----------------------------------------------------------------------
+// Commit 2 riders (do_pull, do_open, do_enter/do_leave). do_move's own two
+// walk conversions (act_move.cpp :760/:815, M4) are deliberately NOT
+// separately unit-tested here (documented exclusion, not an oversight):
+// they are the IDENTICAL `rots::entity::occupants(room_of(ch))` range-for
+// shape CheckSimpleMoveTest's pair above already proves correct twice over
+// (positive block + positive pass-through), and a do_move-specific fixture
+// would additionally need do_look()'s full room-render dependencies (do_move
+// unconditionally calls do_look() after every successful relocation) on top
+// of check_simple_move's own already-substantial requirements -- a
+// materially higher cost than CheckSimpleMoveTestContext for proving the
+// same conversion pattern a third time. do_close/do_lock/do_unlock's
+// reciprocal-door conversions (M5 remainder) are also deliberately NOT
+// separately tested: DoOpenAnnouncesToTheOtherSideOfAReciprocalDoor below
+// proves the identical `room_by_id_total(other_room)->dir_option[...]` +
+// `location_of(ch)` pair those three share verbatim, matching the census's
+// own explicit guidance ("one test suffices for do_open; the other three...
+// can be covered by diff review + the boot golden"). Both deferrals are
+// witnessed by scripts/boot-golden.sh at every commit.
+// -----------------------------------------------------------------------
+
+ACMD(do_pull);
+ACMD(do_open);
+ACMD(do_enter);
+ACMD(do_leave);
+
+namespace {
+
+// Real (non-socket) descriptor output buffer -- act_wiz_tests.cpp's
+// established make_descriptor()/`.output = .small_outbuf` pattern, needed
+// here because do_pull's/do_open's room-broadcast messages route through
+// send_to_room() (comm.cpp's send_to_room_impl walking world[room].people
+// via occupant->desc), not the simpler send_to_char() seam a capturing
+// sink alone could intercept.
+descriptor_data make_output_descriptor() {
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    return descriptor;
+}
+
+// Minimal send_to_char() capturing sink (mirrors combat_hooks_tests.cpp's
+// ScopedCapturingOutputSink, redefined locally since that class is
+// TU-local to its own anonymous namespace) -- used by the do_enter/
+// do_leave riders below, whose pinned messages route through
+// send_to_char(), not send_to_room().
+class ScopedCapturingSendToCharSink {
+  public:
+    ScopedCapturingSendToCharSink() {
+        last_message.clear();
+        rots::output::Sinks sinks{};
+        sinks.send_to_char = &capture;
+        rots::output::set_sinks(sinks);
+    }
+
+    ~ScopedCapturingSendToCharSink() { register_game_output_sinks(); }
+
+    ScopedCapturingSendToCharSink(const ScopedCapturingSendToCharSink &) = delete;
+    ScopedCapturingSendToCharSink &operator=(const ScopedCapturingSendToCharSink &) = delete;
+
+    static std::string last_message;
+
+  private:
+    static void capture(std::string_view message, char_data *) {
+        last_message = std::string(message);
+    }
+};
+
+std::string ScopedCapturingSendToCharSink::last_message;
+
+} // namespace
+
+// -----------------------------------------------------------------------
+// do_pull (act_move.cpp:1795) -- M1, the task brief's HIGHEST PRIORITY
+// rider: both resolver traps (:1838's `room = room_by_id_total(room_num);`
+// and :1874's `next_room = room_by_id_total(next_room_num);`, each
+// replacing a raw `&world[...]`) were completely untested before this
+// task -- a mistaken room_by_id() substitution at either site would
+// silently swap the working door-toggle path for the "$P seems to be
+// broken." early return under exactly the single-room-world conditions
+// many suites in this tree already use (per ls2-global-constraints.md's
+// room_by_id() ban rationale). Both tests below drive the SAME lever
+// object through both resolver sites in one call each.
+// -----------------------------------------------------------------------
+
+TEST(DoPullTest, LeverInPullersOwnRoomTogglesDoorWithoutRumblingMessage) {
+    ScopedTestWorld test_world{1};
+    room_direction_data lever_exit{};
+    lever_exit.exit_info = 0; // not closed -- this pull SETs EX_CLOSED
+    lever_exit.keyword = const_cast<char *>("lever");
+    lever_exit.to_room = -1; // NOWHERE -- the reciprocal-side is a no-op here
+    world[0].dir_option[NORTH] = &lever_exit;
+    world[0].number = 9001;
+
+    obj_data lever{};
+    lever.in_room = 0;
+    lever.obj_flags.type_flag = ITEM_LEVER;
+    lever.obj_flags.value[0] = 9001; // real_room()'s target vnum
+    lever.obj_flags.value[1] = NORTH;
+
+    descriptor_data descriptor = make_output_descriptor();
+    char_data ch{};
+    ch.in_room = 0;
+    ch.desc = &descriptor;
+    world[0].people = &ch;
+
+    waiting_type wtl{};
+    wtl.targ1.type = TARGET_OBJ;
+    wtl.targ1.ptr.obj = &lever;
+
+    do_pull(&ch, mutable_arg(""), &wtl, 0, 0);
+
+    world[0].people = nullptr;
+
+    const std::string output(descriptor.output);
+    EXPECT_NE(output.find("closes slowly"), std::string::npos)
+        << "Expected the :1838 room_by_id_total(room_num) conversion to resolve the lever's "
+           "own room and toggle its exit's EX_CLOSED bit, sending \"closes slowly\" there: "
+        << output;
+    EXPECT_EQ(output.find("rumbling"), std::string::npos)
+        << "Expected NO rumbling message: the puller's room and the lever's target room are "
+           "the same (:1855's `location_of(ch) != room_num` must be false): "
+        << output;
+}
+
+TEST(DoPullTest, LeverInADifferentRoomAnnouncesRumblingAndTogglesBothSidesReciprocally) {
+    ScopedTestWorld test_world{2};
+
+    // The lever lives in room 1, controlling room 1's NORTH exit back to
+    // room 0 -- exercises BOTH resolver traps: :1838 resolves room 1 (the
+    // lever's own room), :1874 resolves room 0 (the reciprocal side, via
+    // room 1's NORTH exit's to_room).
+    room_direction_data lever_exit{};
+    lever_exit.exit_info = EX_CLOSED; // starts closed -- this pull OPENS it
+    lever_exit.keyword = const_cast<char *>("lever");
+    lever_exit.to_room = 0;
+    world[1].dir_option[NORTH] = &lever_exit;
+    world[1].number = 9002;
+
+    // room 0's reciprocal SOUTH exit (rev_dir[NORTH] == SOUTH) back to
+    // room 1 -- lets the reciprocal-side toggle run to completion instead
+    // of early-returning at act_move.cpp's `!next_room->dir_option[...]`
+    // guard.
+    room_direction_data reciprocal_exit{};
+    reciprocal_exit.exit_info = 0; // not closed -- reciprocal pull CLOSES it
+    reciprocal_exit.keyword = const_cast<char *>("door");
+    reciprocal_exit.to_room = 1;
+    world[0].dir_option[SOUTH] = &reciprocal_exit;
+
+    obj_data lever{};
+    lever.in_room = 0; // co-located with the puller (act_move.cpp:1814's own check)
+    lever.obj_flags.type_flag = ITEM_LEVER;
+    lever.obj_flags.value[0] = 9002;
+    lever.obj_flags.value[1] = NORTH;
+
+    descriptor_data puller_descriptor = make_output_descriptor();
+    char_data ch{};
+    ch.in_room = 0;
+    ch.desc = &puller_descriptor;
+    world[0].people = &ch;
+
+    descriptor_data bystander_descriptor = make_output_descriptor();
+    char_data bystander{};
+    bystander.in_room = 1;
+    bystander.desc = &bystander_descriptor;
+    world[1].people = &bystander;
+
+    waiting_type wtl{};
+    wtl.targ1.type = TARGET_OBJ;
+    wtl.targ1.ptr.obj = &lever;
+
+    do_pull(&ch, mutable_arg(""), &wtl, 0, 0);
+
+    world[0].people = nullptr;
+    world[1].people = nullptr;
+
+    const std::string bystander_output(bystander_descriptor.output);
+    EXPECT_NE(bystander_output.find("opens slowly"), std::string::npos)
+        << "Expected room 1's occupant (co-located with the lever's target room, via :1838's "
+           "conversion) to see the door open: "
+        << bystander_output;
+
+    const std::string puller_output(puller_descriptor.output);
+    EXPECT_NE(puller_output.find("rumbling"), std::string::npos)
+        << "Expected the puller (:1856's `send_to_room(..., location_of(ch))`) to hear "
+           "rumbling, since the puller's room (0) differs from the lever's room (1): "
+        << puller_output;
+    EXPECT_NE(puller_output.find("opens slowly"), std::string::npos)
+        << "Expected the :1874 room_by_id_total(next_room_num) conversion to resolve room 0 "
+           "(the reciprocal side) and toggle ITS exit too -- the reciprocal branch mirrors "
+           "would_open unconditionally (`... || would_open`), so it also OPENS here, reaching "
+           "the puller (also in room 0) with \"opens slowly\": "
+        << puller_output;
+}
+
+// -----------------------------------------------------------------------
+// do_open (act_move.cpp:978) -- M5. Proves the door-family's shared
+// reciprocal-door shape (room_by_id_total(other_room)->dir_option[...] +
+// location_of(ch)) that do_close/do_lock/do_unlock (M5 remainder,
+// deliberately not separately tested, see the block comment above)
+// repeat verbatim.
+// -----------------------------------------------------------------------
+
+TEST(DoOpenTest, AnnouncesToTheOtherSideOfAReciprocalDoor) {
+    ScopedTestWorld test_world{2};
+
+    room_direction_data near_exit{};
+    near_exit.exit_info = EX_ISDOOR | EX_CLOSED;
+    near_exit.keyword = const_cast<char *>("door");
+    near_exit.to_room = 1;
+    world[0].dir_option[NORTH] = &near_exit;
+
+    room_direction_data far_exit{};
+    far_exit.exit_info = EX_ISDOOR | EX_CLOSED;
+    far_exit.keyword = const_cast<char *>("door");
+    far_exit.to_room = 0; // must equal location_of(ch) for the reciprocal branch to fire
+    world[1].dir_option[SOUTH] = &far_exit;
+
+    descriptor_data bystander_descriptor = make_output_descriptor();
+    char_data bystander{};
+    bystander.in_room = 1;
+    bystander.desc = &bystander_descriptor;
+    world[1].people = &bystander;
+
+    char_data ch{};
+    ch.in_room = 0;
+    ch.specials2.act = 0; // not IS_SHADOW
+
+    waiting_type wtl{};
+    wtl.targ1.type = TARGET_DIR;
+    wtl.targ1.ch_num = NORTH;
+
+    do_open(&ch, mutable_arg(""), &wtl, 0, 0);
+
+    world[1].people = nullptr;
+
+    EXPECT_FALSE(IS_SET(near_exit.exit_info, EX_CLOSED))
+        << "Expected do_open's own side to open (unrelated to this task's conversion, a "
+           "sanity check that the fixture actually reached the door-toggle branch).";
+    EXPECT_FALSE(IS_SET(far_exit.exit_info, EX_CLOSED))
+        << "Expected the :1057 room_by_id_total(other_room) conversion to resolve room 1 and "
+           "the :1058 location_of(ch) conversion to match it against room 0, opening the "
+           "reciprocal side too.";
+
+    const std::string bystander_output(bystander_descriptor.output);
+    EXPECT_NE(bystander_output.find("is opened from the other side"), std::string::npos)
+        << "Expected room 1's occupant to see the reciprocal-open message: " << bystander_output;
+}
+
+// -----------------------------------------------------------------------
+// do_enter/do_leave (act_move.cpp:1361/:1393) -- M6. Both pinned at their
+// cheapest deterministic branch (the static already-indoors/already-
+// outside message), matching the census's "2 cheap tests" framing; the
+// "find an entrance and move" branches recurse into do_move (M4's own
+// deferred territory) and are not repeated here.
+// -----------------------------------------------------------------------
+
+TEST(DoEnterTest, RefusesWhenAlreadyIndoors) {
+    ScopedTestWorld test_world{1};
+    world[0].room_flags = INDOORS;
+
+    char_data ch{};
+    ch.in_room = 0;
+
+    ScopedCapturingSendToCharSink capture;
+    do_enter(&ch, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingSendToCharSink::last_message, "You are already indoors.\n\r")
+        << "Expected the :1376 room_of(ch)->room_flags conversion to read room[0]'s INDOORS "
+           "flag correctly.";
+}
+
+TEST(DoLeaveTest, RefusesWhenAlreadyOutside) {
+    ScopedTestWorld test_world{1};
+    world[0].room_flags = 0; // not INDOORS
+
+    char_data ch{};
+    ch.in_room = 0;
+
+    ScopedCapturingSendToCharSink capture;
+    do_leave(&ch, mutable_arg(""), nullptr, 0, 0);
+
+    EXPECT_EQ(ScopedCapturingSendToCharSink::last_message,
+              "You are outside.. where do you want to go?\n\r")
+        << "Expected the :1415 room_of(ch)->room_flags conversion to read room[0]'s (default, "
+           "non-INDOORS) flags correctly.";
+}

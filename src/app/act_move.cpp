@@ -627,7 +627,6 @@ ACMD(do_move)
     int was_in, res_flag, to_room, tmp, need_move, tmp_move;
     char is_death, is_fol;
     struct follow_type *k, *next_dude;
-    struct char_data* tmpvict;
     follow_type fol_people;
     waiting_type tmpwtl;
     int mounts;
@@ -651,10 +650,10 @@ ACMD(do_move)
         return;
     }
 
-    if (!world[ch->in_room].dir_option[cmd]) {
+    if (!room_of(ch)->dir_option[cmd]) {
         send_to_char("You cannot go that way.\n\r", ch);
         return;
-    } else if (world[ch->in_room].dir_option[cmd]->to_room == NOWHERE) {
+    } else if (room_of(ch)->dir_option[cmd]->to_room == NOWHERE) {
         send_to_char("You cannot go that way.\n\r", ch);
         return;
     } else { /* Direction is possible */
@@ -684,7 +683,7 @@ ACMD(do_move)
             send_to_char("You cannot go that way.\n\r", ch);
             return;
         }
-        if (IS_AFFECTED(ch, AFF_CHARM) && (ch->master) && (ch->in_room == ch->master->in_room) && (subcmd != SCMD_FOLLOW && subcmd != SCMD_FLEE)) {
+        if (IS_AFFECTED(ch, AFF_CHARM) && (ch->master) && (location_of(ch) == location_of(ch->master)) && (subcmd != SCMD_FOLLOW && subcmd != SCMD_FLEE)) {
             send_to_char("The thought of leaving your master makes you weep.\n\r", ch);
             act("$n bursts into tears.", FALSE, ch, 0, 0, TO_ROOM);
             return;
@@ -693,10 +692,10 @@ ACMD(do_move)
         // Exit does exist, trying to move there
 
         to_room = EXIT(ch, cmd)->to_room;
-        is_death = IS_SET(world[to_room].room_flags, DEATH);
-        was_in = ch->in_room;
+        is_death = IS_SET(room_by_id_total(to_room)->room_flags, DEATH);
+        was_in = location_of(ch);
 
-        bool different_zone = world[was_in].zone != world[to_room].zone;
+        bool different_zone = room_by_id_total(was_in)->zone != room_by_id_total(to_room)->zone;
 
         if (!IS_RIDING(ch)) {
             res_flag = check_simple_move(ch, cmd, &need_move, subcmd);
@@ -745,7 +744,7 @@ ACMD(do_move)
             if (is_fol) {
                 for (k = &fol_people; k; k = next_dude) {
                     next_dude = k->next;
-                    if ((was_in == k->follower->in_room) && (GET_POS(k->follower) >= POSITION_STANDING) && (IS_NPC(k->follower) && MOB_FLAGGED(k->follower, MOB_ORC_FRIEND) && MOB_FLAGGED(k->follower, MOB_PET)) && (number(1, 100) > 50)) {
+                    if ((was_in == location_of(k->follower)) && (GET_POS(k->follower) >= POSITION_STANDING) && (IS_NPC(k->follower) && MOB_FLAGGED(k->follower, MOB_ORC_FRIEND) && MOB_FLAGGED(k->follower, MOB_PET)) && (number(1, 100) > 50)) {
                         // act("$n moves ahead of you.", FALSE, k->follower, 0, ch, TO_VICT);
                         memset((char*)&tmpwtl, 0, sizeof(waiting_type));
                         tmpwtl.cmd = cmd + 1;
@@ -757,8 +756,7 @@ ACMD(do_move)
 
             if (!IS_AFFECTED(ch, AFF_SNEAK) || (subcmd == SCMD_FLEE) || number(0, 125) > GET_SKILL(ch, SKILL_SNEAK) + get_real_stealth(ch)) {
                 strcpy(buf2, std::format(" leaves {}.", dirs[cmd]).c_str());
-                for (tmpvict = world[ch->in_room].people; tmpvict;
-                     tmpvict = tmpvict->next_in_room) {
+                for (auto* tmpvict : rots::entity::occupants(room_of(ch))) {
                     if ((ch == tmpvict) || !CAN_SEE(tmpvict, ch) || ((ch->master == tmpvict) && IS_NPC(ch) && MOB_FLAGGED(ch, MOB_ORC_FRIEND)))
                         continue;
                     show_char_to_char(ch, tmpvict, 0, buf2);
@@ -768,7 +766,7 @@ ACMD(do_move)
                 need_move *= 1.50;
             }
 
-            const auto room_type = world[ch->in_room].sector_type;
+            const auto room_type = room_of(ch)->sector_type;
             const auto race = ch->player.race;
 
             need_move = racial_movement_reduction(room_type, race, need_move);
@@ -788,12 +786,12 @@ ACMD(do_move)
 
                 if (tmp >= 0) {
                     if (IS_NPC(ch))
-                        world[ch->in_room].room_track[tmp].char_number = ch->nr;
+                        room_of(ch)->room_track[tmp].char_number = ch->nr;
                     else
-                        world[ch->in_room].room_track[tmp].char_number = -GET_RACE(ch);
+                        room_of(ch)->room_track[tmp].char_number = -GET_RACE(ch);
 
-                    world[ch->in_room].room_track[tmp].data = time_info.hours * 8 + cmd;
-                    world[ch->in_room].room_track[tmp].condition = 0;
+                    room_of(ch)->room_track[tmp].data = time_info.hours * 8 + cmd;
+                    room_of(ch)->room_track[tmp].condition = 0;
                 }
             }
 
@@ -812,8 +810,7 @@ ACMD(do_move)
             GET_MOVE(ch) -= need_move;
             if (!IS_AFFECTED(ch, AFF_SNEAK) || (subcmd == SCMD_FLEE) || number(0, 100) > GET_SKILL(ch, SKILL_SNEAK) + get_real_stealth(ch) - 25) {
                 strcpy(buf2, std::format(" enters from {}.", refer_dirs[rev_dir[cmd]]).c_str());
-                for (tmpvict = world[ch->in_room].people; tmpvict;
-                     tmpvict = tmpvict->next_in_room) {
+                for (auto* tmpvict : rots::entity::occupants(room_of(ch))) {
                     if ((tmpvict == ch) || !CAN_SEE(tmpvict, ch))
                         continue;
                     if (!PRF_FLAGGED(ch, PRF_SPAM) && (subcmd == SCMD_FOLLOW) && ch->master && ((tmpvict->master == ch->master) || (tmpvict == ch->master)))
@@ -827,7 +824,7 @@ ACMD(do_move)
                 special(ch, rev_dir[cmd] + 1, mutable_arg(""), SPECIAL_ENTER, 0);
             }
 
-            call_trigger(ON_ENTER, (void*)&world[ch->in_room], (void*)ch, 0);
+            call_trigger(ON_ENTER, (void*)room_of(ch), (void*)ch, 0);
 
             if (is_death)
                 raw_kill(ch, NULL, 0);
@@ -916,7 +913,7 @@ ACMD(do_move)
             if (is_fol) {
                 for (k = &fol_people; k; k = next_dude) {
                     next_dude = k->next;
-                    if ((was_in == k->follower->in_room) && (GET_POS(k->follower) >= POSITION_STANDING) && (IS_NPC(k->follower) && MOB_FLAGGED(k->follower, MOB_ORC_FRIEND) && MOB_FLAGGED(k->follower, MOB_PET)) && (number(1, 100) > 50)) {
+                    if ((was_in == location_of(k->follower)) && (GET_POS(k->follower) >= POSITION_STANDING) && (IS_NPC(k->follower) && MOB_FLAGGED(k->follower, MOB_ORC_FRIEND) && MOB_FLAGGED(k->follower, MOB_PET)) && (number(1, 100) > 50)) {
                         // act("$n moves ahead of you.", FALSE, k->follower, 0, ch, TO_VICT);
                         memset((char*)&tmpwtl, 0, sizeof(waiting_type));
                         tmpwtl.cmd = cmd + 1;
@@ -942,7 +939,7 @@ ACMD(do_move)
         if (is_fol) { /* If success move followers */
             for (k = &fol_people; k; k = next_dude) {
                 next_dude = k->next;
-                if ((was_in == k->follower->in_room) && (GET_POS(k->follower) >= POSITION_STANDING)) {
+                if ((was_in == location_of(k->follower)) && (GET_POS(k->follower) >= POSITION_STANDING)) {
                     //	  act("You follow $N.\n\r", FALSE, k->follower, 0, ch, TO_CHAR);
 
                     memset((char*)&tmpwtl, 0, sizeof(waiting_type));
@@ -1054,8 +1051,8 @@ ACMD(do_open)
             send_to_char("Ok.\n\r", ch);
             /* now for opening the OTHER side of the door! */
             if ((other_room = EXIT(ch, door)->to_room) != NOWHERE)
-                if ((back = world[other_room].dir_option[rev_dir[door]]))
-                    if (back->to_room == ch->in_room) {
+                if ((back = room_by_id_total(other_room)->dir_option[rev_dir[door]]))
+                    if (back->to_room == location_of(ch)) {
                         REMOVE_BIT(back->exit_info, EX_CLOSED);
                         if (back->keyword) {
                             send_to_room(std::format("The {} is opened from the other side.\n\r", fname(back->keyword)), EXIT(ch, door)->to_room);
@@ -1162,8 +1159,8 @@ ACMD(do_close)
             send_to_char("Ok.\n\r", ch);
             /* now for closing the other side, too */
             if ((other_room = EXIT(ch, door)->to_room) != NOWHERE)
-                if ((back = world[other_room].dir_option[rev_dir[door]]))
-                    if ((back->to_room == ch->in_room) && IS_SET(back->exit_info, EX_ISDOOR)) {
+                if ((back = room_by_id_total(other_room)->dir_option[rev_dir[door]]))
+                    if ((back->to_room == location_of(ch)) && IS_SET(back->exit_info, EX_ISDOOR)) {
                         SET_BIT(back->exit_info, EX_CLOSED);
                         if (back->keyword) {
                             send_to_room(std::format("The {} closes quietly.\n\r", back->keyword), EXIT(ch, door)->to_room);
@@ -1278,8 +1275,8 @@ ACMD(do_lock)
             send_to_char("*Click*\n\r", ch);
             /* now for locking the other side, too */
             if ((other_room = EXIT(ch, door)->to_room) != NOWHERE)
-                if ((back = world[other_room].dir_option[rev_dir[door]]))
-                    if ((back->to_room == ch->in_room) && IS_SET(back->exit_info, EX_ISDOOR))
+                if ((back = room_by_id_total(other_room)->dir_option[rev_dir[door]]))
+                    if ((back->to_room == location_of(ch)) && IS_SET(back->exit_info, EX_ISDOOR))
                         SET_BIT(back->exit_info, EX_LOCKED);
         }
     }
@@ -1348,8 +1345,8 @@ ACMD(do_unlock)
             check_break_key(has_key(ch, EXIT(ch, door)->key), ch);
             /* now for unlocking the other side, too */
             if ((other_room = EXIT(ch, door)->to_room) != NOWHERE)
-                if ((back = world[other_room].dir_option[rev_dir[door]]))
-                    if (back->to_room == ch->in_room)
+                if ((back = room_by_id_total(other_room)->dir_option[rev_dir[door]]))
+                    if (back->to_room == location_of(ch))
                         REMOVE_BIT(back->exit_info, EX_LOCKED);
         }
     }
@@ -1373,14 +1370,14 @@ ACMD(do_enter)
                         return;
                     }
         send_to_char(std::format("There is no {} here.\n\r", static_cast<const char*>(buf)), ch);
-    } else if (IS_SET(world[ch->in_room].room_flags, INDOORS))
+    } else if (IS_SET(room_of(ch)->room_flags, INDOORS))
         send_to_char("You are already indoors.\n\r", ch);
     else {
         /* try to locate an entrance */
         for (door = 0; door < NUM_OF_DIRS; door++)
             if (EXIT(ch, door))
                 if (EXIT(ch, door)->to_room != NOWHERE)
-                    if (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED) && IS_SET(world[EXIT(ch, door)->to_room].room_flags, INDOORS)) {
+                    if (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED) && IS_SET(room_by_id_total(EXIT(ch, door)->to_room)->room_flags, INDOORS)) {
                         do_move(ch, mutable_arg(""), wtl, ++door, 0);
                         return;
                     }
@@ -1412,13 +1409,13 @@ ACMD(do_leave)
         return;
     }
 
-    if (!IS_SET(world[ch->in_room].room_flags, INDOORS))
+    if (!IS_SET(room_of(ch)->room_flags, INDOORS))
         send_to_char("You are outside.. where do you want to go?\n\r", ch);
     else {
         for (door = 0; door < NUM_OF_DIRS; door++)
             if (EXIT(ch, door))
                 if (EXIT(ch, door)->to_room != NOWHERE)
-                    if (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED) && !IS_SET(world[EXIT(ch, door)->to_room].room_flags, INDOORS)) {
+                    if (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED) && !IS_SET(room_by_id_total(EXIT(ch, door)->to_room)->room_flags, INDOORS)) {
                         do_move(ch, mutable_arg(""), wtl, ++door, 0);
                         return;
                     }
@@ -1811,7 +1808,7 @@ ACMD(do_pull)
 
     obj = wtl->targ1.ptr.obj;
 
-    if (obj->in_room != ch->in_room) {
+    if (obj->in_room != location_of(ch)) { // LS1-ALLOW: obj-location
         send_to_char("It is not here.\n\r", ch);
         return;
     }
@@ -1835,7 +1832,7 @@ ACMD(do_pull)
         exit_num = -1;
 
     if (room_num >= 0)
-        room = &world[room_num];
+        room = room_by_id_total(room_num);
     else
         room = 0;
 
@@ -1852,8 +1849,8 @@ ACMD(do_pull)
 
         would_open = 1;
 
-        if (ch->in_room != room_num) {
-            send_to_room("You hear low rumbling in the distance.\n\r", ch->in_room);
+        if (location_of(ch) != room_num) {
+            send_to_room("You hear low rumbling in the distance.\n\r", location_of(ch));
         }
     } else {
         SET_BIT(room->dir_option[exit_num]->exit_info, EX_CLOSED);
@@ -1861,8 +1858,8 @@ ACMD(do_pull)
 
         would_open = 0;
 
-        if (ch->in_room != room_num) {
-            send_to_room("You hear low rumbling in the distance.\n\r", ch->in_room);
+        if (location_of(ch) != room_num) {
+            send_to_room("You hear low rumbling in the distance.\n\r", location_of(ch));
         }
     }
 
@@ -1871,7 +1868,7 @@ ACMD(do_pull)
     next_room_num = room->dir_option[exit_num]->to_room;
 
     if (next_room_num >= 0)
-        next_room = &world[next_room_num];
+        next_room = room_by_id_total(next_room_num);
     else
         next_room = 0;
 

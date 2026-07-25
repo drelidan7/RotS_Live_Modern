@@ -57,7 +57,6 @@
  ******************************************************************************/
 
 #include "comm.h"
-#include "handler.h" // LS-2 Wave Task T3a: room_of() for broadcast_weather_msdp_update
 #include "rots_net.h"
 #include "text_view.h"
 #include "rots/core/character.h"

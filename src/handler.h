@@ -128,7 +128,7 @@ public:
 
         iterator& operator++()
         {
-            node_ = node_->next_in_room;
+            node_ = node_->next_in_room; // LS1-ALLOW: representation-impl (occupant_range::iterator::operator++ -- the Stage-1 API body itself, walking the raw chain it wraps)
             return *this;
         }
 
@@ -220,7 +220,7 @@ public:
 
         iterator& operator++()
         {
-            node_ = node_->next_in_room;
+            node_ = node_->next_in_room; // LS1-ALLOW: representation-impl (const_occupant_range::iterator::operator++ -- the Stage-1 API body itself, walking the raw chain it wraps)
             return *this;
         }
 

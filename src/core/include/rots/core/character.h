@@ -855,7 +855,7 @@ public:
     struct obj_data* carrying; /* Head of list                  */
     struct descriptor_data* desc; /* NULL for mobiles              */
 
-    struct char_data* next_in_room; /* For room->people - list         */
+    struct char_data* next_in_room; /* For room->people - list         */ // LS1-ALLOW: representation-decl (the intrusive occupant-chain field itself -- not a call site, so it can never "convert"; this is the field LS-3 deletes)
     struct char_data* next; /* For either monster or ppl-list  */
     struct char_data* next_fighting; /* For fighting list               */
     struct char_data* next_fast_update; /* For fast-update list            */

@@ -2009,18 +2009,24 @@ if(ROTS_BUILD_TESTS)
         endif()
     endif()
 
-    # LS-1 (LocationSystem wave) grep gate: tools/location_read_census.py
-    # --check asserts the six converted libraries (src/{entity,persist,world,
-    # combat,pathfind,script,olc}) hold ZERO raw ->in_room / .in_room /
-    # world[ / next_in_room location reads outside the allow-list
+    # LocationSystem Stage-1 grep gate: tools/location_read_census.py --check
+    # asserts that ALL of production src/ (recursive, .cpp/.h/.hpp -- the
+    # nine libraries, src/app, and every header, src/tests excluded pending
+    # wave LS-3a) holds ZERO raw ->in_room / .in_room / world[ /
+    # next_in_room location reads outside the allow-list
     # (docs/superpowers/location-read-allowlist.md) or an inline
-    # "// LS1-ALLOW: <reason>" annotation -- the wave's checked-in regression
-    # guard (T3), so a future edit can't silently reintroduce a raw read the
-    # Stage-1 Placement API (src/handler.h) was built to replace. A pure
-    # Python source-tree scan, unlike the linkchecks above -- registered
-    # OUTSIDE the "if(NOT MSVC)" block above so it runs on every preset,
-    # including windows-msvc. See ls1-census.md Step 8 / ls1-task-3-report.md
-    # for the full design and the annotation inventory.
+    # "// LS1-ALLOW: <reason>" annotation -- the checked-in regression guard
+    # LS-1 T3 stood up for its seven-library, .cpp-only scope and LS-2 T5
+    # widened tree-wide, so a future edit can't silently reintroduce a raw
+    # read the Stage-1 Placement API (src/handler.h) was built to replace.
+    # Neither this invocation nor src/tests/Makefile's passes a positional
+    # path, so both pick up the script's scope automatically whenever it
+    # changes. A pure Python source-tree scan, unlike the linkchecks above
+    # -- registered OUTSIDE the "if(NOT MSVC)" block above so it runs on
+    # every preset, including windows-msvc. See ls1-census.md Step 8 and
+    # ls2-census.md / ls2-census-b.md PART 3 for the full design, and
+    # ls1-task-3-report.md / ls2-task-5-report.md for the annotation
+    # inventory.
     find_package(Python3 COMPONENTS Interpreter)
     if(BUILD_TESTING AND Python3_Interpreter_FOUND)
         add_test(NAME LocationReadCensus

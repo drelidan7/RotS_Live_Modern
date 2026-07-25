@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
-"""Inventory raw char-location representation access in the LS-1 library tier.
+"""Inventory raw char-location representation access across production `src/`.
 
-Wave LS-1 routes every raw ``->in_room`` / ``.in_room`` / ``world[`` /
+Wave LS-1 routed every raw ``->in_room`` / ``.in_room`` / ``world[`` /
 ``next_in_room`` READ inside the six source-bearing libraries (plus
 ``persist``) through the Stage-1 Placement API (``location_of``/
 ``room_by_id``/``room_by_id_total``/``occupants`` -- see ``src/handler.h``).
-This census is the checked-in regression gate (T3 of the LS-1 plan): it
-flags any raw token outside the census-named allow-list file set or an
-inline ``// LS1-ALLOW: <reason>`` annotation. Modeled on
+Wave LS-2 widened the scan tree-wide -- recursive over ``src/**`` for
+``.cpp``/``.h``/``.hpp``, headers included -- so the program's Stage-1 exit
+criterion ("raw location representation access exists ONLY inside the
+allow-listed representation-owner set") is mechanically true for all of
+production `src/`, not just the seven library directories. `src/tests` is
+deliberately excluded via ``DEFERRED_DIRS`` below, pending wave LS-3a.
+This census is the checked-in regression gate (LS-1 T3, widened by LS-2
+T5): it flags any raw token outside the census-named allow-list file set or
+an inline ``// LS1-ALLOW: <reason>`` annotation ("LS1" names LocationSystem
+Stage 1, which spans both LS-1 and LS-2 -- see the ledger doc). Modeled on
 ``tools/string_view_census.py`` (rglob discovery, comment/string masking,
 ``--check`` mode, non-zero exit on violation) -- see
-``.superpowers/sdd/ls1-census.md`` Step 8 for the full design and
+``.superpowers/sdd/ls1-census.md`` Step 8 and ``.superpowers/sdd/ls2-census.md``
+/ ``ls2-census-b.md`` PART 3 for the full design, and
 ``docs/superpowers/location-read-allowlist.md`` for the allow-listed file
 set this script reads via ``--exceptions``.
 """
@@ -21,7 +29,18 @@ import re
 import sys
 
 
-LIBRARY_DIRS = ("entity", "persist", "world", "combat", "pathfind", "script", "olc")
+# LS-2 R2/A-2 (.superpowers/sdd/ls2-census.md): `src/tests` is a WRITES
+# problem (fixture construction -- char-location writes, occupant-chain
+# splices, world[] assignment targets), not a READS problem, and this wave
+# is reads-only. Wave LS-3a owns the test-fixture helper that will let the
+# test tier join the scan for real; until then it is a named, gate-visible
+# deferral -- deliberately NOT a ledger row, since a ledger row would
+# assert tests are a permanent representation owner, which is false.
+# `--check` prints how many deferred-dir files went unscanned so the
+# deferral stays visible rather than silent (see main()).
+DEFERRED_DIRS = ("tests",)
+
+SOURCE_SUFFIXES = (".cpp", ".h", ".hpp")
 
 # Token patterns, applied to COMMENT/STRING-MASKED text (so a token living
 # inside a comment or a log()/mudlog() string literal never trips the gate).
@@ -44,9 +63,15 @@ ANNOTATION_PATTERN = re.compile(r"LS1-ALLOW:\s*(.*?)\s*(?:\*/\s*)?$")
 # `resolver-impl` -- a T3-added class for the two library files, db_world.cpp
 # room_by_id_impl/room_by_id_total_impl and room_data::operator[]'s own
 # recursive fallback, whose literal world[] access IS the Stage-1 resolver
-# implementation itself, not a caller; see task-3 report). A line's
-# annotation must start with one of these -- an empty or off-list reason is
-# still a violation, so the gate can't be defeated with a bare
+# implementation itself, not a caller; see task-3 report -- and, as of LS-2
+# T5, three more (ls2-census.md R9): `representation-decl`/
+# `representation-impl` for header sites that ARE the representation (a
+# struct field declaration; the occupant_range/const_occupant_range
+# iterators' own operator++ bodies) rather than a call site, and
+# `not-a-location` for an `in_room`-named field that isn't a char location
+# at all (`shop_data::in_room` is a shop VNUM, not a character's room). A
+# line's annotation must start with one of these -- an empty or off-list
+# reason is still a violation, so the gate can't be defeated with a bare
 # `// LS1-ALLOW`.
 ALLOWED_REASON_PREFIXES = (
     "save-next",
@@ -57,6 +82,9 @@ ALLOWED_REASON_PREFIXES = (
     "write",
     "obj-location",
     "resolver-impl",
+    "representation-decl",
+    "representation-impl",
+    "not-a-location",
 )
 
 RAW_STRING_PATTERN = re.compile(r'(?:u8|u|U|L)?R"([^ ()\\\t\r\n]{0,16})\(')
@@ -139,26 +167,43 @@ def load_allow_listed_files(exception_path, repository_root):
     return allow_listed
 
 
-def source_files(search_paths, repository_root):
-    """Yield eligible library .cpp files in deterministic path order.
+def is_under_deferred_dir(candidate_path, repository_root):
+    """Return whether candidate_path sits under a `src/<DEFERRED_DIRS>` tree."""
+    try:
+        relative_path = candidate_path.relative_to(repository_root)
+    except ValueError:
+        return False
+    return (
+        len(relative_path.parts) >= 2
+        and relative_path.parts[0] == "src"
+        and relative_path.parts[1] in DEFERRED_DIRS
+    )
 
-    Non-recursive per library directory (`src/<dir>/*.cpp`, not `**/*.cpp`)
-    -- the LS-1 plan's six libraries plus persist are each a flat directory
-    of translation units; `src/app` is explicitly out of scope this wave
-    (LS-2 extends the gate there), and headers are out of scope per the
-    census's Step 8 ruling (a `.cpp`-only sweep).
+
+def source_files(search_paths, repository_root):
+    """Return (scanned, deferred) eligible C++ source/header files, recursively.
+
+    LS-2 widened this from the LS-1 seven-library, `.cpp`-only,
+    non-recursive sweep (`src/<dir>/*.cpp`) to a recursive `src/**` sweep
+    over `SOURCE_SUFFIXES` -- `src/app` and every header come into scope
+    for the first time, and no directory is ever a blind spot again absent
+    an explicit, named deferral. `src/tests` is that one named deferral
+    (`DEFERRED_DIRS`, R2/A-2): its matching files are collected separately
+    and reported by the caller, never silently dropped from the sweep.
     """
     discovered = set()
+    deferred = set()
     for search_path in search_paths:
         resolved = search_path if search_path.is_absolute() else repository_root / search_path
-        if resolved.is_file():
-            if resolved.suffix == ".cpp":
-                discovered.add(resolved)
-            continue
-        for candidate in sorted(resolved.glob("*.cpp")):
-            if candidate.is_file():
-                discovered.add(candidate)
-    return sorted(discovered)
+        candidates = [resolved] if resolved.is_file() else sorted(resolved.rglob("*"))
+        for candidate in candidates:
+            if not candidate.is_file() or candidate.suffix not in SOURCE_SUFFIXES:
+                continue
+            if is_under_deferred_dir(candidate, repository_root):
+                deferred.add(candidate)
+                continue
+            discovered.add(candidate)
+    return sorted(discovered), sorted(deferred)
 
 
 def findings_for_file(source_path, repository_root, allow_listed_files):
@@ -187,7 +232,18 @@ def findings_for_file(source_path, repository_root, allow_listed_files):
             continue
 
         raw_line = raw_lines[line_index]
-        annotation_match = ANNOTATION_PATTERN.search(raw_line) if ANNOTATION_MARKER in raw_line else None
+        # R4 (ls2-global-constraints.md): a `\`-continued macro line's
+        # trailing backslash is stripped before matching. C++ translation
+        # phase 2 (line splicing on `\`) runs before phase 3 (comment
+        # stripping), so a `//` annotation on such a line would be a
+        # compile error -- the required form there is a block comment
+        # BEFORE the backslash (`/* LS1-ALLOW: ... */ \`). Stripping the
+        # backslash first also keeps the captured reason text free of the
+        # trailing `*/ \` tail.
+        match_source = raw_line.rstrip()
+        if match_source.endswith("\\"):
+            match_source = match_source[:-1].rstrip()
+        annotation_match = ANNOTATION_PATTERN.search(match_source) if ANNOTATION_MARKER in match_source else None
         if annotation_match is not None:
             reason_text = annotation_match.group(1)
             if any(reason_text.startswith(prefix) for prefix in ALLOWED_REASON_PREFIXES):
@@ -213,7 +269,7 @@ def main():
     """Print every raw hit and, in --check mode, fail on un-annotated ones."""
     arguments = parse_arguments()
     repository_root = arguments.root.resolve()
-    search_paths = arguments.paths or [repository_root / "src" / library for library in LIBRARY_DIRS]
+    search_paths = arguments.paths or [repository_root / "src"]
     exception_path = (
         arguments.exceptions
         if arguments.exceptions is not None
@@ -221,8 +277,15 @@ def main():
     )
     allow_listed_files = load_allow_listed_files(exception_path, repository_root)
 
+    scanned_files, deferred_files = source_files(search_paths, repository_root)
+    deferred_dir_list = ", ".join(f"src/{name}" for name in DEFERRED_DIRS)
+    print(
+        f"[deferred] {len(deferred_files)} file(s) under {deferred_dir_list} unscanned "
+        "this wave (LS-2 R2/A-2 -- retired by wave LS-3a)."
+    )
+
     violations = []
-    for source_path in source_files(search_paths, repository_root):
+    for source_path in scanned_files:
         for line_number, token, raw_line, reason in findings_for_file(
             source_path, repository_root, allow_listed_files
         ):

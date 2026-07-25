@@ -87,7 +87,7 @@ typedef int (*special_func)(char_data* host, char_data* character, int cmd, char
 #define ASSIGNROOM(room, fname)                   \
     {                                             \
         if (real_room(room) >= 0)                 \
-            world[real_room(room)].funct = fname; \
+            world[real_room(room)].funct = fname; /* LS1-ALLOW: write (ASSIGNROOM stores a special-proc fn-ptr into a room; mirrors db_world.cpp:700's world[room_nr].funct = 0 write) */ \
     }
 
 void command_interpreter(struct char_data* ch, char* arg_chr, struct waiting_type* arg_wtl = 0);

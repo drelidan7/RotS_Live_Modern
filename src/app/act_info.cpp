@@ -636,7 +636,7 @@ void get_char_position_line(struct char_data* ch, struct char_data* i, char* str
                 if (i->specials.fighting == ch)
                     strcat(str, "YOU!");
                 else {
-                    if (i->in_room == i->specials.fighting->in_room)
+                    if (location_of(i) == location_of(i->specials.fighting))
                         strcat(buf, PERS(i->specials.fighting, ch, FALSE, FALSE));
                     else
                         strcat(buf, "SOMEONE WHO ALREADY LEFT! *BUG*!");
@@ -816,7 +816,7 @@ void show_mount_to_char(struct char_data* mount, struct char_data* viewer,
                     if (current_rider->specials.fighting == viewer)
                         strcat(buf, "YOU");
                     else {
-                        if (current_rider->in_room == current_rider->specials.fighting->in_room) {
+                        if (location_of(current_rider) == location_of(current_rider->specials.fighting)) {
                             strcat(buf,
                                 PERS(current_rider->specials.fighting, viewer, FALSE, FALSE));
                             if (color)
@@ -1037,10 +1037,9 @@ void show_char_to_char(struct char_data* i, struct char_data* ch, int mode, char
 
 void list_char_to_char(struct char_data* list, struct char_data* ch, int mode)
 {
-    struct char_data* i;
     int should_show;
 
-    for (i = list; i; i = i->next_in_room)
+    for (auto* i : rots::entity::occupants_from(list))
         if (ch != i) {
             should_show = 1;
             if (IS_RIDING(i))
@@ -1149,7 +1148,7 @@ void show_room_weather(char* str, struct char_data* ch)
     // (also flagged by -Wrestrict for the same reason); composing into a
     // temporary std::string first and strcpy()'ing the result in removes
     // that hazard while producing identical bytes.
-    if (weather_info.snow[world[ch->in_room].sector_type])
+    if (weather_info.snow[room_of(ch)->sector_type])
         strcpy(str, std::format("{}Snow lies upon the ground.\n\r", str).c_str());
 }
 
@@ -1192,7 +1191,7 @@ ACMD(do_look)
         return;
     } else if (!CAN_SEE(ch)) {
         send_to_char("It is pitch black...\n\r", ch);
-        list_char_to_char(world[ch->in_room].people, ch, 0);
+        list_char_to_char(room_of(ch)->people, ch, 0);
         return;
     }
 
@@ -1226,22 +1225,22 @@ ACMD(do_look)
                 if (subcmd == SCMD_LOOK_EXAM) {
                     send_to_char(
                         std::format("To the {} you see:\n\r", keywords[keyword_no]), ch);
-                    tmp = ch->in_room;
-                    ch->in_room = EXIT(ch, keyword_no)->to_room;
+                    tmp = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (look-exam adjacent-room render)
+                    ch->in_room = EXIT(ch, keyword_no)->to_room; // LS1-ALLOW: in_room used as mutable room cursor (look-exam adjacent-room render)
 
                     /* Darkies can't see room contents or description if it's sunny */
                     if (SUN_PENALTY(ch)) {
                         send_to_char(
-                            std::format("{}\n\r", nz(world[ch->in_room].name)), ch);
+                            std::format("{}\n\r", nz(world[ch->in_room].name)), ch); // LS1-ALLOW: in_room used as mutable room cursor (look-exam adjacent-room render)
                         send_to_char("The power of light makes it hard to see.\n\r", ch);
-                        ch->in_room = tmp;
+                        ch->in_room = tmp; // LS1-ALLOW: in_room used as mutable room cursor (look-exam adjacent-room render)
                         return;
                     }
-                    if (ch->in_room != NOWHERE)
+                    if (ch->in_room != NOWHERE) // LS1-ALLOW: in_room used as mutable room cursor (look-exam adjacent-room render)
                         do_look(ch, mutable_arg(""), wtl, 15, 0);
                     else
                         send_to_char("You see nothing special.\n\r", ch);
-                    ch->in_room = tmp;
+                    ch->in_room = tmp; // LS1-ALLOW: in_room used as mutable room cursor (look-exam adjacent-room render)
                 } else {
                     /* They typed look <dir>; look renders the exit's description */
                     std::string exit_message;
@@ -1258,7 +1257,7 @@ ACMD(do_look)
                         else
                             exit_message = std::format("To the {} you see {}.\n\r",
                                 keywords[keyword_no],
-                                nz(world[EXIT(ch, keyword_no)->to_room].name));
+                                nz(room_by_id_total(EXIT(ch, keyword_no)->to_room)->name));
                     }
                     send_to_char(exit_message, ch);
                 }
@@ -1357,14 +1356,15 @@ ACMD(do_look)
 
             /* Nothing found, maybe they're looking at someone in the room? */
             if (tmp != -1) {
-                tmp_char = world[ch->in_room].people;
+                tmp_char = nullptr; // MANDATORY pre-init -- do NOT omit (Family-F: the range-for below never assigns tmp_char on the no-match/empty-room path)
 
                 /* Search the room manually if search_block failed */
-                while (tmp_char)
-                    if ((tmp_char->player.race == tmp) && (tmp_char != ch) && (IS_NPC(tmp_char) || other_side(ch, tmp_char)) && CAN_SEE(ch, tmp_char))
+                for (auto* occ : rots::entity::occupants(room_of(ch))) {
+                    if ((occ->player.race == tmp) && (occ != ch) && (IS_NPC(occ) || other_side(ch, occ)) && CAN_SEE(ch, occ)) {
+                        tmp_char = occ;
                         break;
-                    else
-                        tmp_char = tmp_char->next_in_room;
+                    }
+                }
 
                 if (!tmp_char) /* No one was found */
                     tmp = -1;
@@ -1406,7 +1406,7 @@ ACMD(do_look)
 
             /* Still nothing; maybe an extra description in the room? */
             if (!found) {
-                tmp_desc = find_ex_description(arg2, world[ch->in_room].ex_description);
+                tmp_desc = find_ex_description(arg2, room_of(ch)->ex_description);
                 if (tmp_desc) {
                     page_string_borrowed(ch->desc, tmp_desc);
                     return; /* RETURN SINCE IT WAS A ROOM DESCRIPTION */
@@ -1440,7 +1440,7 @@ ACMD(do_look)
 
             /* Ok.. how about an object lying around in the room? */
             if (!found)
-                for (tmp_object = world[ch->in_room].contents; tmp_object && !found;
+                for (tmp_object = room_of(ch)->contents; tmp_object && !found;
                     tmp_object = tmp_object->next_content)
                     if (CAN_SEE_OBJ(ch, tmp_object)) {
                         tmp_desc = find_ex_description(arg2, tmp_object->ex_description);
@@ -1468,12 +1468,12 @@ ACMD(do_look)
         // the full reasoning (aliasing-dependent helper web, no unit
         // tests, single hottest player command).
         strcpy(buf2, CC_USE(ch, COLOR_ROOM));
-        strcat(buf2, world[ch->in_room].name);
+        strcat(buf2, room_of(ch)->name);
         if (PRF_FLAGGED(ch, PRF_ROOMFLAGS)) {
-            if (world[ch->in_room].room_flags == BFS_MARK)
+            if (room_of(ch)->room_flags == BFS_MARK)
                 strcpy(buf, "NOFLAGS");
             else
-                sprintbit((long)world[ch->in_room].room_flags, room_bits, buf, 0);
+                sprintbit((long)room_of(ch)->room_flags, room_bits, buf, 0);
             // The old sprintf(buf2, "%s...", buf2, ...) self-referenced buf2
             // as both destination and source (an sprintf-overlap antipattern
             // that happens to work because glibc reads %s's source before
@@ -1484,19 +1484,19 @@ ACMD(do_look)
             // globals per the libc++/libstdc++ char[N]-to-std::format rule.
             strcpy(buf2,
                 std::format("{} (#{}) [ {}, {}]", static_cast<const char*>(buf2),
-                    world[ch->in_room].number, sector_types[world[ch->in_room].sector_type],
+                    room_of(ch)->number, sector_types[room_of(ch)->sector_type],
                     static_cast<const char*>(buf))
                     .c_str());
         } else if (PRF_FLAGGED(ch, PRF_ADVANCED_VIEW)) {
-            if (IS_SET(world[ch->in_room].room_flags, HIDE_VNUM)) {
+            if (IS_SET(room_of(ch)->room_flags, HIDE_VNUM)) {
                 strcpy(buf2,
                     std::format("{} (??\?) [ {} ]", static_cast<const char*>(buf2),
-                        sector_types[world[ch->in_room].sector_type])
+                        sector_types[room_of(ch)->sector_type])
                         .c_str());
             } else {
                 strcpy(buf2,
                     std::format("{} (#{}) [ {} ]", static_cast<const char*>(buf2),
-                        world[ch->in_room].number, sector_types[world[ch->in_room].sector_type])
+                        room_of(ch)->number, sector_types[room_of(ch)->sector_type])
                         .c_str());
             }
         }
@@ -1510,13 +1510,13 @@ ACMD(do_look)
             /* exit_choice 1 means nothing special */
             exit_choice = 1;
 
-            if (world[ch->in_room].dir_option[i])
-                if (world[ch->in_room].dir_option[i]->to_room != NOWHERE) {
+            if (room_of(ch)->dir_option[i])
+                if (room_of(ch)->dir_option[i]->to_room != NOWHERE) {
                     /* Are there any closed and non-broken doors? */
-                    if (IS_SET(world[ch->in_room].dir_option[i]->exit_info, EX_CLOSED) && !IS_SET(world[ch->in_room].dir_option[i]->exit_info, EX_ISBROKEN)) {
+                    if (IS_SET(room_of(ch)->dir_option[i]->exit_info, EX_CLOSED) && !IS_SET(room_of(ch)->dir_option[i]->exit_info, EX_ISBROKEN)) {
                         exit_choice = 2; /* Denotes a normal, closed door */
 
-                        if (IS_SET(world[ch->in_room].dir_option[i]->exit_info, EX_ISHIDDEN)) {
+                        if (IS_SET(room_of(ch)->dir_option[i]->exit_info, EX_ISHIDDEN)) {
                             if (ch->player.level < LEVEL_GOD)
                                 exit_choice = 0; /* An Immortal sees hidden doors */
                             else
@@ -1527,7 +1527,7 @@ ACMD(do_look)
                      * exit_choice 4 means that you cannot walk into this
                      * exit.  This is used for windows, mainly.
                      */
-                    else if (IS_SET(world[ch->in_room].dir_option[i]->exit_info, EX_NOWALK)) {
+                    else if (IS_SET(room_of(ch)->dir_option[i]->exit_info, EX_NOWALK)) {
                         if (ch->player.level >= LEVEL_GOD)
                             exit_choice = 4;
                         else
@@ -1538,7 +1538,7 @@ ACMD(do_look)
                      * exit_choice 5 means a darkie is looking at an exit which
                      * leads to a sunlit room
                      */
-                    if (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC) || (GET_RACE(ch) == RACE_MAGUS) || (GET_RACE(ch) == RACE_OLOGHAI)) && IS_SUNLIT_EXIT(ch->in_room, world[ch->in_room].dir_option[i]->to_room, i))
+                    if (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC) || (GET_RACE(ch) == RACE_MAGUS) || (GET_RACE(ch) == RACE_OLOGHAI)) && IS_SUNLIT_EXIT(location_of(ch), room_of(ch)->dir_option[i]->to_room, i))
                         if (exit_choice != 4)
                             exit_choice = 5;
 
@@ -1547,7 +1547,7 @@ ACMD(do_look)
                      * leads to a shadowy room, AND the sun is shining in that
                      * room.
                      */
-                    if (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC) || (GET_RACE(ch) == RACE_MAGUS) || (GET_RACE(ch) == RACE_OLOGHAI)) && IS_SHADOWY_EXIT(ch->in_room, world[ch->in_room].dir_option[i]->to_room, i) && weather_info.sunlight == SUN_LIGHT)
+                    if (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC) || (GET_RACE(ch) == RACE_MAGUS) || (GET_RACE(ch) == RACE_OLOGHAI)) && IS_SHADOWY_EXIT(location_of(ch), room_of(ch)->dir_option[i]->to_room, i) && weather_info.sunlight == SUN_LIGHT)
                         if (exit_choice != 4)
                             exit_choice = 6;
 
@@ -1605,13 +1605,13 @@ ACMD(do_look)
         if (PRF_FLAGGED(ch, PRF_SPAM)) {
             if (!PRF_FLAGGED(ch, PRF_BRIEF) || (cmd == CMD_LOOK)) {
                 strcat(buf2, CC_USE(ch, COLOR_DESC));
-                strcat(buf2, world[ch->in_room].description);
+                strcat(buf2, room_of(ch)->description);
             }
         }
         strcat(buf2, CC_NORM(ch).data());
 
         /* Any affections in the room */
-        for (tmpaf = world[ch->in_room].affected; tmpaf; tmpaf = tmpaf->next)
+        for (tmpaf = room_of(ch)->affected; tmpaf; tmpaf = tmpaf->next)
             show_room_affection(buf2, tmpaf, 0);
 
         show_room_weather(buf2, ch); /* A weather-related string */
@@ -1619,11 +1619,11 @@ ACMD(do_look)
 
         /* Now list the objects in the room */
         send_to_char(CC_USE(ch, COLOR_OBJ), ch);
-        list_obj_to_char(world[ch->in_room].contents, ch, 0, false);
+        list_obj_to_char(room_of(ch)->contents, ch, 0, false);
         send_to_char(CC_NORM(ch), ch);
 
         /* Now list the people in the room */
-        list_char_to_char(world[ch->in_room].people, ch, subcmd);
+        list_char_to_char(room_of(ch)->people, ch, subcmd);
 
         show_blood_trail(ch, 0, 1);
 
@@ -1721,35 +1721,35 @@ ACMD(do_exits)
                 if (!tmp && (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED) || IS_SET(EXIT(ch, door)->exit_info, EX_ISBROKEN))) {
                     if (GET_LEVEL(ch) >= LEVEL_IMMORT) {
                         std::format_to(std::back_inserter(out), "{:<7} - [{:>7}][w:{:>2}] {}\n\r",
-                            exits[door], world[EXIT(ch, door)->to_room].number,
-                            EXIT(ch, door)->exit_width, nz(world[EXIT(ch, door)->to_room].name));
+                            exits[door], room_by_id_total(EXIT(ch, door)->to_room)->number,
+                            EXIT(ch, door)->exit_width, nz(room_by_id_total(EXIT(ch, door)->to_room)->name));
                     } else {
-                        tmp = ch->in_room;
-                        ch->in_room = EXIT(ch, door)->to_room;
+                        tmp = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (mortal exit-name render)
+                        ch->in_room = EXIT(ch, door)->to_room; // LS1-ALLOW: in_room used as mutable room cursor (mortal exit-name render)
                         if (!CAN_SEE(ch) && !PRF_FLAGGED(ch, PRF_HOLYLIGHT)) {
                             std::format_to(std::back_inserter(out), "{:<7} - Too dark to tell\n\r",
-                                (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(tmp, ch->in_room, door))
+                                (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(tmp, ch->in_room, door)) // LS1-ALLOW: in_room used as mutable room cursor (mortal exit-name render)
                                     ? sun_exits[door]
                                     : exits[door]);
                         } else {
                             std::format_to(std::back_inserter(out), "{:<7} - {}\n\r",
-                                (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(tmp, ch->in_room, door))
+                                (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(tmp, ch->in_room, door)) // LS1-ALLOW: in_room used as mutable room cursor (mortal exit-name render)
                                     ? sun_exits[door]
                                     : exits[door],
-                                nz(world[ch->in_room].name));
+                                nz(world[ch->in_room].name)); // LS1-ALLOW: in_room used as mutable room cursor (mortal exit-name render)
                         }
-                        ch->in_room = tmp;
+                        ch->in_room = tmp; // LS1-ALLOW: in_room used as mutable room cursor (mortal exit-name render)
                     }
                 } else {
                     if (!IS_SET(EXIT(ch, door)->exit_info, EX_ISHIDDEN)) {
                         std::format_to(std::back_inserter(out), "{:<7} - Closed {}\n\r",
-                            (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(ch->in_room, ch->in_room, door))
+                            (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(location_of(ch), location_of(ch), door))
                                 ? sun_exits[door]
                                 : exits[door],
                             nz(EXIT(ch, door)->keyword));
                     } else if (ch->player.level >= LEVEL_GOD)
                         std::format_to(std::back_inserter(out), "{:<7} - *Hidden* {}\n\r",
-                            (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(ch->in_room, ch->in_room, door))
+                            (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(location_of(ch), location_of(ch), door))
                                 ? sun_exits[door]
                                 : exits[door],
                             nz(EXIT(ch, door)->keyword));

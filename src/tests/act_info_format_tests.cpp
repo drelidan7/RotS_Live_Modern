@@ -1082,6 +1082,41 @@ TEST(ActInfoPerception, DoReadComposesAtPrefixedArgumentForDoLookDelegate)
     EXPECT_STREQ(context.descriptor.output, "You do not see that here.\n\r");
 }
 
+// ---------------------------------------------------------------------------
+// do_look case 7 "look at <race>" (act_info.cpp:1353) -- LS-2 Wave Task T3b
+// coverage rider (ls2-census.md's G1, the batch's highest-priority rider):
+// the Family-F room-occupant race scan converted from the raw
+// `tmp_char = world[ch->in_room].people; while (tmp_char) ...` walk to a
+// `tmp_char = nullptr;` pre-init followed by a `rots::entity::occupants()`
+// range-for. This is the negative control -- the actual regression net for
+// the Family-F pre-init; the positive-match sibling lives further down in
+// this file (ActInfoDisplayCluster's section), since it needs
+// DisplayClusterContext, declared later.
+// ---------------------------------------------------------------------------
+
+// RoomCharacterContext's only room occupant is the looker itself, so the
+// range-for's `occ != ch` guard excludes every element the walk visits and
+// the loop ends having never assigned tmp_char -- exactly the empty-room/
+// no-match path the LS-1 `vampire_killer` lesson says a naive range-for
+// conversion silently breaks (reading whatever `tmp_char` last held instead
+// of observing "no match"). "dwarf" is a real pc_race_keywords entry (so
+// search_block finds tmp != -1 and the converted loop actually RUNS, rather
+// than being skipped by the :1359 `if (tmp != -1)` guard), and with no
+// matching occupant/ex_description/equipment/inventory/room-content keyword
+// either, do_look falls all the way through to case 7's final
+// "You do not see that here.\n\r" literal -- which also proves the
+// mandatory-per-the-recipe `if (!tmp_char) tmp = -1;` reset still fires
+// correctly on the pre-initialized (never-assigned) value.
+TEST(ActInfoPerception, DoLookAtRaceFindsNoMatchInSingleOccupantRoom)
+{
+    RoomCharacterContext context;
+    context.character.specials.position = POSITION_STANDING;
+
+    do_look(&context.character, const_cast<char*>("at dwarf"), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "You do not see that here.\n\r");
+}
+
 // do_examine on a carried drink container pins the "in %s" conversion
 // (act_info.cpp:1512) that composes do_examine's own delegate call to
 // do_look's "look in" case -- exercised end-to-end: do_examine's own
@@ -1628,6 +1663,40 @@ TEST(ActInfoDisplayCluster, ListCharToCharSkipsViewerAndShowsOtherRoomOccupants)
     EXPECT_STREQ(context.viewer_descriptor.output, "A quiet onlooker stands here.\r\n\n\r");
 }
 
+// Positive-match sibling of ActInfoPerception's DoLookAtRaceFindsNoMatchIn-
+// SingleOccupantRoom above -- a second, race-matching occupant is found
+// mid-walk and the range-for's `break` (mirroring the raw loop's own
+// `break`) stops iteration and leaves tmp_char pointing at it. Reusing
+// DisplayClusterContext (viewer + target sharing room 0, viewer has
+// PRF_HOLYLIGHT so CAN_SEE never blocks on room light): target is
+// retargeted to an NPC dwarf so the found branch's
+// `(IS_NPC(tmp_char) || other_side(ch, tmp_char))` gate passes without
+// depending on race-war side logic. do_look then calls
+// show_char_to_char(tmp_char, ch, 1) and returns -- the exact byte-for-byte
+// composition (PERS()/health-diagnose/equipment-list text) was captured
+// from a real run against this fixture (see the T3b task report for the
+// transcript) rather than hand-derived, matching this suite's own
+// established characterization-test authoring convention.
+TEST(ActInfoPerception, DoLookAtRaceFindsMatchingOccupantMidWalk)
+{
+    DisplayClusterContext context;
+    SET_BIT(context.target.specials2.act, MOB_ISNPC);
+    context.target.player.race = RACE_DWARF;
+    context.target.player.short_descr = const_cast<char*>("a dwarf");
+    context.viewer.specials.position = POSITION_STANDING;
+
+    do_look(&context.viewer, const_cast<char*>("at dwarf"), nullptr, 0, 0);
+
+    // Captured from a real run against this fixture (see the T3b task
+    // report): "it" is act()'s pronoun substitution for an NPC with no
+    // player.sex set (defaults to neuter); $n's mid-string position (after
+    // the literal "\n\r" prefix) means act() leaves it lowercase.
+    EXPECT_STREQ(context.viewer_descriptor.output,
+        "You see nothing special about it.\n\r"
+        "A dwarf is dying.\n\r \n\r"
+        "a dwarf is using:\n\r Nothing.\n\r");
+}
+
 // ---------------------------------------------------------------------------
 // show_mount_to_char (act_info.cpp:719) -- no sprintf of its own; pinned as
 // the aliasing web's regression net (it accumulates directly into the
@@ -1740,6 +1809,85 @@ TEST(ActInfoDisplayCluster, ShowMountToCharDelegatesToShowCharToCharWhenNoVisibl
     show_mount_to_char(&mount, &context.viewer, " riding on ", " riding on ", FALSE);
 
     EXPECT_STREQ(context.viewer_descriptor.output, "A riderless pony is standing here.\n\r");
+}
+
+// LS-2 Wave Task T3b coverage rider (ls2-census.md G6) -- the
+// POSITION_FIGHTING branch's opponent-lookup, converted from raw
+// `current_rider->in_room == current_rider->specials.fighting->in_room`
+// (act_info.cpp:819) to `location_of(current_rider) ==
+// location_of(current_rider->specials.fighting)`. Two tests pin both
+// sides of that comparison: `target' (DisplayClusterContext's second PC)
+// rides the mount and fights `opponent', a third character either in the
+// same room (names them via PERS()) or a different one (the legacy
+// "SOMEONE THAT ALREADY LEFT! *BUG*" fallback).
+TEST(ActInfoDisplayCluster, ShowMountToCharFightingRiderNamesOpponentInSameRoom)
+{
+    DisplayClusterContext context;
+    context.target.player.name = const_cast<char*>("Frodo");
+    context.target.specials.position = POSITION_FIGHTING;
+    context.target.specials.default_pos = POSITION_STANDING;
+
+    char_data mount {};
+    clear_char(&mount, MOB_VOID);
+    ScopedClearCharFields mount_cleanup { mount };
+    mount.in_room = 0;
+    SET_BIT(mount.specials2.act, MOB_ISNPC);
+    mount.player.short_descr = const_cast<char*>("a horse");
+    mount.mount_data.rider = &context.target;
+    mount.mount_data.rider_number = 9003;
+    context.target.mount_data.next_rider = nullptr;
+    context.target.mount_data.next_rider_number = 0;
+    set_char_exists(9003);
+
+    char_data opponent {};
+    clear_char(&opponent, MOB_VOID);
+    ScopedClearCharFields opponent_cleanup { opponent };
+    opponent.in_room = 0; // same room as the fighting rider -> PERS() branch
+    opponent.player.name = const_cast<char*>("Villain");
+    context.target.specials.fighting = &opponent;
+
+    show_mount_to_char(&mount, &context.viewer, " riding on ", " riding on ", FALSE);
+
+    remove_char_exists(9003);
+
+    // Captured from a real run against this fixture (see the T3b task report).
+    EXPECT_STREQ(context.viewer_descriptor.output,
+        "Frodo is here, fighting Villain, riding on a horse.\n\r");
+}
+
+TEST(ActInfoDisplayCluster, ShowMountToCharFightingRiderShowsBugMessageWhenOpponentInDifferentRoom)
+{
+    DisplayClusterContext context;
+    context.target.player.name = const_cast<char*>("Frodo");
+    context.target.specials.position = POSITION_FIGHTING;
+    context.target.specials.default_pos = POSITION_STANDING;
+
+    char_data mount {};
+    clear_char(&mount, MOB_VOID);
+    ScopedClearCharFields mount_cleanup { mount };
+    mount.in_room = 0;
+    SET_BIT(mount.specials2.act, MOB_ISNPC);
+    mount.player.short_descr = const_cast<char*>("a horse");
+    mount.mount_data.rider = &context.target;
+    mount.mount_data.rider_number = 9004;
+    context.target.mount_data.next_rider = nullptr;
+    context.target.mount_data.next_rider_number = 0;
+    set_char_exists(9004);
+
+    char_data opponent {};
+    clear_char(&opponent, MOB_VOID);
+    ScopedClearCharFields opponent_cleanup { opponent };
+    opponent.in_room = 999; // a different room -> the *BUG* fallback branch
+    opponent.player.name = const_cast<char*>("Villain");
+    context.target.specials.fighting = &opponent;
+
+    show_mount_to_char(&mount, &context.viewer, " riding on ", " riding on ", FALSE);
+
+    remove_char_exists(9004);
+
+    // Captured from a real run against this fixture (see the T3b task report).
+    EXPECT_STREQ(context.viewer_descriptor.output,
+        "Frodo is here, fighting SOMEONE THAT ALREADY LEFT! *BUG*, riding on a horse.\n\r");
 }
 
 // ---------------------------------------------------------------------------

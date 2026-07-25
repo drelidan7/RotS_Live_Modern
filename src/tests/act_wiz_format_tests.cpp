@@ -2060,6 +2060,53 @@ TEST(ActWizWorldManip, DoAtRejectsPrivateRoomWithTwoOrMoreOccupants)
         "There's a private conversation going on in that room.\n\r");
 }
 
+// LS-2 T4 follow-up (ls2-task-3a-review.md IM-4): the census's W1 `:232`
+// deferral was not genuine -- find_target_room() is externally linked and
+// already forward-declared above, directly callable with no
+// command_interpreter() involvement (unlike do_at's own success path,
+// which genuinely is entangled with it -- see W6, still out of scope).
+// This is also the one conversion in find_target_room() on a DIFFERENT
+// subject (location_of(target_mob), not ch) -- the site where a
+// copy-paste substitution error (silently reading location_of(ch)
+// instead) would actually be possible and undetected by every other rider
+// in this suite, all of which resolve via the numeric-room-number branch.
+// The target is deliberately placed in a room DIFFERENT from the caller's
+// (rather than IM-4's own minimal room-0 suggestion) so a wrong-subject
+// substitution would be observable: if find_target_room() silently used
+// location_of(ch) instead, this test would see 0 (the caller's room), not
+// 1 (the target's own room).
+TEST(ActWizWorldManip, FindTargetRoomResolvesToTheNamedTargetsOwnRoomNotTheCallers)
+{
+    ScopedTestWorld test_world(2);
+    test_world.room().number = 100; // caller's own room (world[0]).
+    world[1].number = 200; // target's room -- deliberately different.
+    world[1].room_flags = 0; // not GODROOM/SECURITYROOM/PRIVATE.
+    world[1].light = 1; // CAN_SEE()'s darkness check reads the TARGET's room here.
+
+    SoloCharacterContext context;
+    context.character.in_room = 0;
+
+    char_data target { };
+    clear_char(&target, MOB_VOID);
+    // Releases target.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep convention).
+    ScopedClearCharFields target_cleanup { target };
+    target.player.name = const_cast<char*>("Sam");
+    target.player.race = RACE_HUMAN;
+    target.in_room = 1;
+    target.next = character_list;
+    character_list = &target;
+
+    char argument[] = "Sam";
+    const int location = find_target_room(&context.character, argument);
+
+    character_list = target.next;
+
+    EXPECT_EQ(location, 1)
+        << "Expected the get_char_vis(ch, roomstr) branch to resolve to the TARGET's own room "
+           "(location_of(target_mob)), not the caller's room 0.";
+}
+
 
 // do_goto: pins the invalid-target error line (no world mutation). Shares
 // find_target_room() with do_at above.

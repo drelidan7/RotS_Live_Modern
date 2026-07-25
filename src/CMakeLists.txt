@@ -1343,6 +1343,8 @@ if(ROTS_BUILD_TESTS)
         tests/act_format_tests.cpp
         tests/act_info_format_tests.cpp
         tests/act_move_tests.cpp
+        tests/act_obj1_tests.cpp
+        tests/act_obj2_tests.cpp
         tests/act_offe_tests.cpp
         tests/act_wiz_format_tests.cpp
         tests/act_wiz_tests.cpp

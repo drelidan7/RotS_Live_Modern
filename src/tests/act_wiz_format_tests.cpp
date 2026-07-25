@@ -82,6 +82,7 @@ ACMD(do_load);
 ACMD(do_purge);
 ACMD(do_zreset);
 ACMD(do_force);
+ACMD(do_rehash);
 ACMD(do_advance);
 ACMD(do_restore);
 ACMD(do_invis);
@@ -117,6 +118,8 @@ extern int global_release_flag;
 extern struct player_index_element* player_table;
 extern int top_of_p_table;
 extern struct descriptor_data* descriptor_list;
+extern universal_list* affected_list;
+extern universal_list* affected_list_pool;
 
 int find_target_room(struct char_data* ch, char* rawroomstr);
 void do_stat_room(struct char_data* ch);
@@ -2268,6 +2271,115 @@ TEST(ActWizWorldManip, DoForceReportsNoSuchVictim)
     char argument[] = "NoSuchVictim quit";
     do_force(&context.character, argument, nullptr, 0, 0);
     EXPECT_EQ(std::string(context.descriptor.output), "No-one by that name here...\n\r");
+}
+
+// LS-2 T4 follow-up (ls2-task-3a-review.md MI-6/F5, the W7 do_force soft
+// deferral): the deferral reasoned do_force's "room" branch is entangled
+// with command_interpreter() end-to-end -- true for the branch's SUCCESS
+// case, but the converted line itself (act_wiz.cpp:2049,
+// `location_of(i->character) == location_of(ch)`) is a FILTER a descriptor
+// in a different room never gets past, observable with zero
+// command_interpreter() dispatch.
+TEST(ActWizWorldManip, DoForceRoomExcludesADescriptorInADifferentRoomBeforeAnyDispatch)
+{
+    ScopedTestWorld test_world(2);
+    SoloCharacterContext context;
+    context.character.player.name = const_cast<char*>("Gandalf");
+    context.character.player.level = LEVEL_IMPL;
+    context.character.in_room = 0;
+
+    char_data other_room_character { };
+    clear_char(&other_room_character, MOB_VOID);
+    // Releases other_room_character.profs/skills/knowledge (clear_char()
+    // heap allocations) at scope exit (Phase 5 T6 leak sweep convention).
+    ScopedClearCharFields other_room_character_cleanup { other_room_character };
+    other_room_character.player.name = const_cast<char*>("Bystander");
+    other_room_character.player.level = 1;
+    other_room_character.in_room = 1; // a DIFFERENT room from the caller's.
+
+    descriptor_data other_room_descriptor { };
+    reset_capturing_descriptor(other_room_descriptor, &other_room_character);
+    other_room_character.desc = &other_room_descriptor;
+
+    descriptor_data* saved_descriptor_list = descriptor_list;
+    other_room_descriptor.next = nullptr;
+    descriptor_list = &other_room_descriptor;
+
+    char room_argument[] = "room quit";
+    do_force(&context.character, room_argument, nullptr, 0, 0);
+
+    descriptor_list = saved_descriptor_list;
+
+    EXPECT_EQ(std::string(other_room_descriptor.output), "")
+        << "Expected the converted location_of(i->character) == location_of(ch) filter to "
+           "exclude a descriptor in a different room before either the forced message or "
+           "command_interpreter() dispatch fires: "
+        << other_room_descriptor.output;
+}
+
+// LS-2 T4 follow-up (ls2-task-3a-review.md MI-7/F5, the W4 do_rehash soft
+// deferral): "no established RAII reset fixture anywhere in the tree" was
+// literally true, but do_rehash's own opening four lines (act_wiz.cpp:
+// 4002-4005, `while (affected_list) from_list_to_pool(&affected_list,
+// &affected_list_pool, affected_list);`) ARE that reset idiom -- reused
+// here as this test's own teardown. Exercises the converted room-walk
+// (act_wiz.cpp:4020-4034, `room_by_id_total(num)->affected` /
+// `room_by_id_total(num)->number`): a room with a non-permanent room
+// affect must be collected into the rebuilt affected_list as a TARGET_ROOM
+// entry: a room with only a PERMAFFECT-bitted affect must not be.
+TEST(ActWizWorldManip, DoRehashCollectsRoomsWithNonPermanentAffectsAndSkipsPermsOnlyRooms)
+{
+    ScopedTestWorld test_world(2);
+    SoloCharacterContext context;
+    context.character.player.name = const_cast<char*>("Gandalf");
+    context.character.player.level = LEVEL_IMPL;
+
+    affected_type non_perm_affect { };
+    non_perm_affect.bitvector = 0; // NOT PERMAFFECT -> perms_only becomes false.
+    non_perm_affect.type = 0;
+    non_perm_affect.location = 0;
+    non_perm_affect.next = nullptr;
+    world[0].affected = &non_perm_affect;
+
+    affected_type perm_affect { };
+    perm_affect.bitvector = PERMAFFECT;
+    perm_affect.type = 0; // not ROOMAFF_SPELL, so the second perms_only check stays false too.
+    perm_affect.location = 0;
+    perm_affect.next = nullptr;
+    world[1].affected = &perm_affect;
+
+    char argument[] = "";
+    do_rehash(&context.character, argument, nullptr, 0, 0);
+
+    bool found_non_perm_room = false;
+    bool found_perms_only_room = false;
+    for (universal_list* entry = affected_list; entry; entry = entry->next)
+    {
+        if (entry->type == TARGET_ROOM && entry->ptr.room == &world[0])
+        {
+            found_non_perm_room = true;
+        }
+        if (entry->type == TARGET_ROOM && entry->ptr.room == &world[1])
+        {
+            found_perms_only_room = true;
+        }
+    }
+
+    // do_rehash()'s own drain idiom, reused as this test's teardown so the
+    // heap nodes it CREATE1()'d don't leak (ASan) or survive into a later
+    // test/the monolithic runner.
+    while (affected_list)
+    {
+        from_list_to_pool(&affected_list, &affected_list_pool, affected_list);
+    }
+    world[0].affected = nullptr;
+    world[1].affected = nullptr;
+
+    EXPECT_TRUE(found_non_perm_room)
+        << "Expected the non-permanent room affect to mark world[0] perms_only=false, adding "
+           "it via the converted room_by_id_total(num) resolver.";
+    EXPECT_FALSE(found_perms_only_room)
+        << "Expected the PERMAFFECT-only room to stay perms_only=true and NOT be added.";
 }
 
 // ---------------------------------------------------------------------------

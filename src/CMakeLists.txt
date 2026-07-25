@@ -1374,6 +1374,7 @@ if(ROTS_BUILD_TESTS)
         tests/fp_interiors_reference_tests.cpp
         tests/gtest_main.cpp
         tests/interpre_account_menu_tests.cpp
+        tests/interpre_special_tests.cpp
         tests/json_perf_tests.cpp
         tests/json_utils_tests.cpp
         tests/llp64_probe_tests.cpp

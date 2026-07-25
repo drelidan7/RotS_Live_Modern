@@ -708,3 +708,97 @@ TEST(ActTokenExpansion, AcceptsATemporaryFormattedMessage)
 
     EXPECT_STREQ(context.actor_descriptor.output, "Temporary 42\n\r");
 }
+
+// ---------------------------------------------------------------------------
+// clean_expose_elements() (LS-2 Wave Task T3d rider: ls2-task-3d-report.md --
+// zero prior coverage anywhere in src/tests/ before this). Not declared in
+// any header (comm.cpp-internal maintenance sweep, called only from
+// game_loop's pulse loop) -- forward-declared here the same way this file's
+// convert_string/act_impl-adjacent helpers are, per the header-less-product-
+// helper convention spec_pro_tests.cpp/mage_tests.cpp already use.
+void clean_expose_elements();
+
+namespace {
+
+// RAII wrapper around track_specialized_mage()/untrack_specialized_mage()
+// (utils.h, forwarded through output_seam.h's registered comm.cpp bodies --
+// register_game_output_sinks() wires the real bodies in gtest_main.cpp's
+// global setup). Mandatory: specialized_mages is a comm.cpp-owned
+// process-wide std::vector<char_data*>, so a test that tracks a
+// stack-local char_data MUST untrack it before the stack unwinds, or a
+// later suite's own clean_expose_elements()/track call walks a dangling
+// pointer -- the exact class of cross-suite state pollution test_world.h's
+// own top-of-file comment documents for the monolithic runner.
+class ScopedSpecializedMage {
+public:
+    explicit ScopedSpecializedMage(char_data* mage)
+        : mage_(mage)
+    {
+        track_specialized_mage(mage_);
+    }
+
+    ~ScopedSpecializedMage() { untrack_specialized_mage(mage_); }
+
+    ScopedSpecializedMage(const ScopedSpecializedMage&) = delete;
+    ScopedSpecializedMage& operator=(const ScopedSpecializedMage&) = delete;
+
+private:
+    char_data* mage_;
+};
+
+} // namespace
+
+// Exercises the converted self-room read (location_of(mage)/room_of-style
+// room_by_id_total(room_number)) and the converted const_occupant_range walk
+// (act_offe.cpp:858) together: the exposed target is still present in the
+// mage's room, so clean_expose_elements() must leave the specialization
+// bookkeeping untouched and send no message.
+TEST(CleanExposeElements, LeavesExposedTargetIntactWhenStillPresentInRoom)
+{
+    RoomPairContext context;
+    char_prof_data actor_profs {};
+    context.actor.profs = &actor_profs;
+    actor_profs.specialization = static_cast<int>(game_types::PS_Cold);
+    context.actor.extra_specialization_data.set(context.actor);
+    elemental_spec_data* spec_data = context.actor.extra_specialization_data.get_mage_spec();
+    ASSERT_NE(spec_data, nullptr) << "PS_Cold must construct an elemental_spec_data-derived spec.";
+    spec_data->exposed_target = &context.victim;
+
+    ScopedSpecializedMage tracked(&context.actor);
+
+    clean_expose_elements();
+
+    EXPECT_EQ(spec_data->exposed_target, &context.victim)
+        << "The converted occupants() walk must still find the target in the mage's own room.";
+    EXPECT_STREQ(context.actor_descriptor.output, "")
+        << "No 'no longer vulnerable' message when the target is still present.";
+}
+
+// The exposed target has left the mage's room (the room now holds only the
+// mage): the converted walk must find nothing, triggering the reset() +
+// notification path.
+TEST(CleanExposeElements, ResetsAndNotifiesWhenExposedTargetHasLeftTheRoom)
+{
+    RoomPairContext context;
+    char_prof_data actor_profs {};
+    context.actor.profs = &actor_profs;
+    actor_profs.specialization = static_cast<int>(game_types::PS_Cold);
+    context.actor.extra_specialization_data.set(context.actor);
+    elemental_spec_data* spec_data = context.actor.extra_specialization_data.get_mage_spec();
+    ASSERT_NE(spec_data, nullptr) << "PS_Cold must construct an elemental_spec_data-derived spec.";
+
+    // A target that is NOT linked into room 0's occupant chain (RoomPairContext
+    // only chains actor -> victim); using a wholly separate char_data proves
+    // the walk is a real search, not a tautology against context.victim.
+    char_data departed_target {};
+    spec_data->exposed_target = &departed_target;
+
+    ScopedSpecializedMage tracked(&context.actor);
+
+    clean_expose_elements();
+
+    EXPECT_EQ(spec_data->exposed_target, nullptr)
+        << "spec_data->reset() must clear exposed_target once the walk finds no match.";
+    EXPECT_STREQ(context.actor_descriptor.output,
+        "Your target is no longer vulnerable to your spells.\r\n");
+}

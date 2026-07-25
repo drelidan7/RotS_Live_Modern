@@ -851,12 +851,11 @@ void clean_expose_elements()
             if (spec_data->exposed_target) {
                 // The mage has cast 'expose elements' on a target.  If that target is no longer
                 // in the room, remove this.
-                int room_number = mage->in_room;
-                const room_data& current_room = world[room_number];
+                int room_number = location_of(mage);
+                const room_data& current_room = *room_by_id_total(room_number);
 
                 bool found_target = false;
-                for (char_data* person = current_room.people; person;
-                    person = person->next_in_room) {
+                for (const auto* person : rots::entity::occupants(&current_room)) {
                     if (person == spec_data->exposed_target) {
                         found_target = true;
                         break;
@@ -1015,7 +1014,7 @@ void msdp_update()
             continue;
         }
 
-        if (desc->character->in_room < 0 || desc->character->in_room > top_of_world) {
+        if (location_of(desc->character) < 0 || location_of(desc->character) > top_of_world) {
             continue;
         }
 
@@ -1028,8 +1027,8 @@ void msdp_update()
         MSDPSetNumber(desc, eMSDP_HEALTH, GET_HIT(desc->character));
         MSDPSetNumber(desc, eMSDP_HEALTH_MAX, GET_MAX_HIT(desc->character));
 
-        MSDPSetString(desc, eMSDP_ROOM_NAME, world[desc->character->in_room].name);
-        MSDPSetNumber(desc, eMSDP_ROOM_VNUM, world[desc->character->in_room].number);
+        MSDPSetString(desc, eMSDP_ROOM_NAME, room_of(desc->character)->name);
+        MSDPSetNumber(desc, eMSDP_ROOM_VNUM, room_of(desc->character)->number);
         MSDPSetNumber(desc, eMSDP_LEVEL, GET_LEVEL(desc->character));
         MSDPSetNumber(desc, eMSDP_MANA, GET_MANA(desc->character));
         MSDPSetNumber(desc, eMSDP_MANA_MAX, GET_MAX_MANA(desc->character));
@@ -1078,7 +1077,7 @@ void msdp_update()
         MSDPSetNumber(desc, eMDSP_STAMINA_REGENERATION, (int)mana_gain(desc->character));
         MSDPSetNumber(desc, eMDSP_MOVEMENT_REGENERATION, (int)move_gain(desc->character));
 
-        auto sector_type = world[desc->character->in_room].sector_type;
+        auto sector_type = room_of(desc->character)->sector_type;
         auto weather_type = weather_info.sky[sector_type];
         // const std::string_view , matching weather.cpp's definition exactly (MSVC's
         // decorated names encode the element type, so the old non-const
@@ -1286,7 +1285,7 @@ void game_loop(SocketType s)
 
                 if (tmpflag && (get_from_q(&point->input, comm))) {
                     if (point->character && !IS_NPC(point->character) && point->connected == CON_PLYNG && point->character->specials.was_in_room != NOWHERE) {
-                        if (point->character->in_room != NOWHERE) {
+                        if (location_of(point->character) != NOWHERE) {
                             char_from_room(point->character);
                         }
 
@@ -1622,7 +1621,7 @@ bool zone_is_populated(int zone_nr)
 {
     for (descriptor_data* connection = descriptor_list; connection; connection = connection->next)
         if (!connection->connected)
-            if (world[connection->character->in_room].zone == zone_nr)
+            if (room_of(connection->character)->zone == zone_nr)
                 return true;
 
     return false;
@@ -2407,10 +2406,10 @@ void send_to_outdoor(std::string_view message, int mode)
 {
     for (descriptor_data* connection = descriptor_list; connection;
         connection = connection->next) {
-        if (!connection->connected && (connection->character->in_room != NOWHERE)) {
+        if (!connection->connected && (location_of(connection->character) != NOWHERE)) {
             if ((OUTSIDE(connection->character)
                     && ((mode != OUTDOORS_LIGHT)
-                        || !IS_SET(world[connection->character->in_room].room_flags, DARK)))
+                        || !IS_SET(room_of(connection->character)->room_flags, DARK)))
                 && (connection->character->specials.position > POSITION_SLEEPING)
                 && (!PLR_FLAGGED(connection->character, PLR_WRITING))) {
                 SEND_TO_Q(message, connection);
@@ -2427,8 +2426,8 @@ void send_to_sector(std::string_view message, int sector_type)
     }
     for (descriptor_data* connection = descriptor_list; connection;
         connection = connection->next) {
-        if (!connection->connected && (connection->character->in_room != NOWHERE)) {
-            if ((world[connection->character->in_room].sector_type == sector_type)
+        if (!connection->connected && (location_of(connection->character) != NOWHERE)) {
+            if ((room_of(connection->character)->sector_type == sector_type)
                 && (connection->character->specials.position > POSITION_SLEEPING)
                 && (!PLR_FLAGGED(connection->character, PLR_WRITING))
                 && OUTSIDE(connection->character)) {
@@ -2450,8 +2449,7 @@ void send_to_except(std::string_view message, char_data* excluded_character)
 
 static void send_to_room_impl(std::string_view message, int room)
 {
-    for (char_data* occupant = world[room].people; occupant;
-        occupant = occupant->next_in_room) {
+    for (auto* occupant : rots::entity::occupants(room_by_id_total(room))) {
         if (occupant->desc) {
             SEND_TO_Q(message, occupant->desc);
         }
@@ -2466,8 +2464,7 @@ static void send_to_room_impl(std::string_view message, int room)
 // symbol script.cpp's two call sites already call unchanged.
 static void send_to_room_except_impl(std::string_view message, int room, char_data* excluded_character)
 {
-    for (char_data* occupant = world[room].people; occupant;
-        occupant = occupant->next_in_room) {
+    for (auto* occupant : rots::entity::occupants(room_by_id_total(room))) {
         if (occupant != excluded_character && occupant->desc) {
             SEND_TO_Q(message, occupant->desc);
         }
@@ -2477,8 +2474,7 @@ static void send_to_room_except_impl(std::string_view message, int room, char_da
 static void send_to_room_except_two_impl(std::string_view message, int room,
     char_data* excluded_first, char_data* excluded_second)
 {
-    for (char_data* occupant = world[room].people; occupant;
-        occupant = occupant->next_in_room) {
+    for (auto* occupant : rots::entity::occupants(room_by_id_total(room))) {
         if (occupant != excluded_first && occupant != excluded_second && occupant->desc) {
             SEND_TO_Q(message, occupant->desc);
         }
@@ -2698,20 +2694,20 @@ static void act_impl(std::string_view str, int hide_invisible, struct char_data*
     else {
         if (type == TO_CHAR)
             to = ch;
-        else if (ch && ch->in_room != NOWHERE)
-            to = world[ch->in_room].people;
-        else if (obj && obj->in_room != NOWHERE)
-            to = world[obj->in_room].people;
+        else if (ch && location_of(ch) != NOWHERE)
+            to = room_of(ch)->people;
+        else if (obj && obj->in_room != NOWHERE) // LS1-ALLOW: obj-location
+            to = room_by_id_total(obj->in_room)->people; // LS1-ALLOW: obj-location
     }
 
     if (!to)
         return;
     //   printf("act(%s) called, to=%p\n",str, to);
-    for (; to; to = to->next_in_room) {
-        if (to->desc && (to != ch || type == TO_CHAR) && (CAN_SEE(to, ch) || !hide_invisible) && (AWAKE(to) || type == TO_VICT) && !PLR_FLAGGED(to, PLR_WRITING) && !(type == TO_NOTVICT && to == (struct char_data*)vict_obj) && (!spam_only || PRF_FLAGGED(to, PRF_SPAM))) {
-            convert_string(str, hide_invisible, ch, obj, vict_obj, to, buf);
+    for (auto* recipient : rots::entity::occupants_from(to)) {
+        if (recipient->desc && (recipient != ch || type == TO_CHAR) && (CAN_SEE(recipient, ch) || !hide_invisible) && (AWAKE(recipient) || type == TO_VICT) && !PLR_FLAGGED(recipient, PLR_WRITING) && !(type == TO_NOTVICT && recipient == (struct char_data*)vict_obj) && (!spam_only || PRF_FLAGGED(recipient, PRF_SPAM))) {
+            convert_string(str, hide_invisible, ch, obj, vict_obj, recipient, buf);
             if (*buf != '\0')
-                SEND_TO_Q(buf, to->desc);
+                SEND_TO_Q(buf, recipient->desc);
         }
         if ((type == TO_VICT) || (type == TO_CHAR))
             return;

@@ -726,13 +726,13 @@ int target_check_one(struct char_data* ch, int mask, struct target_data* t1)
             return TAR_SELF;
 
         if (IS_SET(mask, TAR_FIGHT_VICT) && (t1->ptr.ch == ch->specials.fighting)
-            && (t1->ptr.ch->in_room == ch->in_room))
+            && (location_of(t1->ptr.ch) == location_of(ch)))
             return TAR_FIGHT_VICT;
 
         if (!CAN_SEE(ch, t1->ptr.ch, (IS_SET(mask, TAR_DARK_OK)) ? 1 : 0) && (t1->ptr.ch != ch))
             return 0;
 
-        if (IS_SET(mask, TAR_CHAR_ROOM) && (t1->ptr.ch->in_room == ch->in_room))
+        if (IS_SET(mask, TAR_CHAR_ROOM) && (location_of(t1->ptr.ch) == location_of(ch)))
             return TAR_CHAR_ROOM;
 
         if (IS_SET(mask, TAR_CHAR_WORLD))
@@ -745,7 +745,7 @@ int target_check_one(struct char_data* ch, int mask, struct target_data* t1)
         if (!t1->ptr.obj)
             return 0;
 
-        if (IS_SET(mask, TAR_OBJ_ROOM) && (t1->ptr.obj->in_room == ch->in_room))
+        if (IS_SET(mask, TAR_OBJ_ROOM) && (t1->ptr.obj->in_room == location_of(ch))) // LS1-ALLOW: obj-location
             return TAR_OBJ_ROOM;
         if (IS_SET(mask, TAR_OBJ_EQUIP)) {
             for (tmp = 0; tmp < MAX_WEAR; tmp++)
@@ -1247,17 +1247,16 @@ int special(struct char_data* ch, int cmd, char* arg, int callflag,
     struct waiting_type* wtl, int in_room)
 {
     struct obj_data* i;
-    struct char_data* k;
     int j, remote_mode;
     struct char_data* tmpch;
 
-    if (in_room != ch->in_room)
+    if (in_room != location_of(ch))
         remote_mode = 1;
     else
         remote_mode = 0;
 
     if (in_room == NOWHERE) {
-        in_room = ch->in_room;
+        in_room = location_of(ch);
         remote_mode = 0;
     }
 
@@ -1330,8 +1329,8 @@ int special(struct char_data* ch, int cmd, char* arg, int callflag,
     }
 
     /* special in room? */
-    if ((void*)(world[in_room].funct))
-        if ((*world[in_room].funct)(ch, ch, cmd, arg, callflag, 0))
+    if ((void*)(room_by_id_total(in_room)->funct))
+        if ((*room_by_id_total(in_room)->funct)(ch, ch, cmd, arg, callflag, 0))
             return (1);
 
     if (!remote_mode) {
@@ -1349,12 +1348,12 @@ int special(struct char_data* ch, int cmd, char* arg, int callflag,
     }
 
     /* special in mobile present? */
-    for (k = world[in_room].people; k; k = k->next_in_room)
+    for (auto* k : rots::entity::occupants(room_by_id_total(in_room)))
         if (activate_char_special(k, ch, cmd, arg, callflag, wtl, in_room))
             return 1;
 
     /* special in object present? */
-    for (i = world[in_room].contents; i; i = i->next_content)
+    for (i = room_by_id_total(in_room)->contents; i; i = i->next_content)
         if (i->item_number >= 0)
             if (obj_index[i->item_number].func)
                 if ((*obj_index[i->item_number].func)((struct char_data*)(i), ch,
@@ -3794,7 +3793,7 @@ void nanny(struct descriptor_data* d, char* arg)
             // endnew
             reset_char(d->character);
             load_character(d->character); // new function in objsave
-            save_char(d->character, d->character->in_room, 0);
+            save_char(d->character, location_of(d->character), 0);
             STATE(d) = CON_PLYNG;
             report_news(d->character);
             report_mail(d->character);

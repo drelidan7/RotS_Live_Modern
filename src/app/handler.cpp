@@ -526,22 +526,22 @@ void extract_char(struct char_data* ch, int new_room)
 
     if (ch->carrying) {
         /* transfer ch's objects to room */
-        if (ch->in_room != NOWHERE) {
-            if (world[ch->in_room].contents) /* room nonempty */ {
+        if (location_of(ch) != NOWHERE) {
+            if (room_of(ch)->contents) /* room nonempty */ {
                 /* locate tail of room-contents */
-                for (i = world[ch->in_room].contents; i->next_content;
+                for (i = room_of(ch)->contents; i->next_content;
                      i = i->next_content)
                     ;
 
                 /* append ch's stuff to room-contents */
                 i->next_content = ch->carrying;
             } else
-                world[ch->in_room].contents = ch->carrying;
+                world[ch->in_room].contents = ch->carrying; // LS1-ALLOW: write
 
             /* connect the stuff to the room */
             for (i = ch->carrying; i; i = i->next_content) {
                 i->carried_by = 0;
-                i->in_room = ch->in_room;
+                i->in_room = location_of(ch); // LS1-ALLOW: obj-location
             }
             ch->carrying = 0;
         } else {
@@ -571,9 +571,9 @@ void extract_char(struct char_data* ch, int new_room)
     else
         k2->delay.next = ch->delay.next;
     /* Must remove from room before removing the equipment! */
-    if (ch->in_room != NOWHERE) {
-        was_in = ch->in_room;
-        ch->specials2.load_room = world[ch->in_room].number;
+    if (location_of(ch) != NOWHERE) {
+        was_in = location_of(ch);
+        ch->specials2.load_room = room_of(ch)->number;
         char_from_room(ch);
 
         /* clear equipment_list */
@@ -613,7 +613,7 @@ void extract_char(struct char_data* ch, int new_room)
         if (ch->desc->original) {
             do_return(ch, mutable_arg(""), 0, 0, 0);
         } else
-            save_char(ch, (new_room < 0) ? ((was_in == NOWHERE) ? -1 : world[was_in].number) : new_room, 0);
+            save_char(ch, (new_room < 0) ? ((was_in == NOWHERE) ? -1 : room_by_id_total(was_in)->number) : new_room, 0);
     }
 
     if (IS_NPC(ch)) {

@@ -2906,7 +2906,6 @@ void broadcast_weather_msdp_update(rots::world::weather_msdp_kind kind)
 {
     extern struct descriptor_data* descriptor_list;
     extern struct time_info_data time_info;
-    extern struct room_data world;
     extern const std::string_view weather_messages[8][13];
     extern std::string strip_trailing_line_break(std::string_view text);
 

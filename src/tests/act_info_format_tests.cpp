@@ -154,6 +154,13 @@ void list_char_to_char(struct char_data* list, struct char_data* ch, int mode);
 void show_room_affection(char* str, struct affected_type* aff, int mode);
 void show_room_weather(char* str, struct char_data* ch);
 
+// perform_mortal_where (act_info.cpp:2585) is a plain (non-ACMD, non-
+// static) helper reached via do_where's level-based dispatch -- not
+// declared in any shared header, so it gets its own forward declaration
+// here, same convention as the buf-aliasing cluster above (LS-2 Wave
+// Task T3b coverage rider, ls2-census.md G3).
+void perform_mortal_where(struct char_data* ch, char* arg);
+
 void clear_char(struct char_data* ch, int mode);
 
 // Process globals ActInfoWorldSocial's fixtures stamp directly (db.cpp/
@@ -930,6 +937,43 @@ TEST(ActInfoPerception, DoSearchCase1SendsSearchAnnouncementToRoomBystander)
     const std::string output(context.bystander_descriptor.output);
     EXPECT_NE(output.find("searches for something to the north."), std::string::npos)
         << "actual output: " << output;
+}
+
+// LS-2 Wave Task T3b coverage rider (ls2-census.md G2) -- do_search case 2
+// (the "uncover hiding" scan), converted from the raw
+// `for (tmpch = world[ch->in_room].people; tmpch; tmpch = tmpch->next_in_room)`
+// walk (act_info.cpp:3689) to a `rots::entity::occupants(room_of(ch))`
+// range-for -- this file's only `next_in_room` WALK conversion (as
+// opposed to the file's many single-read `world[ch->in_room].field`
+// mechanical sites). knowledge[SKILL_SEARCH] == 200 plus the MIN(200, ...)
+// clamp in the production formula guarantees uncover_skill's minimum
+// possible number(a, b) draw (== a == 200) always exceeds a small
+// hide_value, keeping both tests deterministic without seeding rots_rng.
+TEST(ActInfoPerception, DoSearchCaseTwoUncoversHiddenOccupantAndClearsHideValue)
+{
+    RoomWithBystanderContext context;
+    context.actor.knowledge[SKILL_SEARCH] = 200;
+    context.bystander.specials.hide_value = 50;
+
+    do_search(&context.actor, const_cast<char*>(""), nullptr, 0, 2);
+
+    const std::string output(context.actor_descriptor.output);
+    EXPECT_NE(output.find("You uncovered"), std::string::npos) << output;
+    EXPECT_EQ(context.bystander.specials.hide_value, 0);
+}
+
+// Negative control -- with nobody hiding (hide_value == 0 on every
+// occupant, the RoomWithBystanderContext default), the walk finds no
+// match anywhere in the room and search_res stays 0, pinning the
+// fallback "You haven't found anything suspicious." literal.
+TEST(ActInfoPerception, DoSearchCaseTwoReportsNothingSuspiciousWhenNoOneIsHiding)
+{
+    RoomWithBystanderContext context;
+    context.actor.knowledge[SKILL_SEARCH] = 200;
+
+    do_search(&context.actor, const_cast<char*>(""), nullptr, 0, 2);
+
+    EXPECT_STREQ(context.actor_descriptor.output, "You haven't found anything suspicious.\n\r");
 }
 
 // ---------------------------------------------------------------------------
@@ -2774,6 +2818,94 @@ TEST(ActInfoWorldSocial, DoWhoFormatsHeaderDashlineAndFooterCountForTwoPlayers)
         << context.viewer_descriptor.output;
     EXPECT_TRUE(strstr(context.viewer_descriptor.output, "\n\r2 characters displayed.\n\r") != nullptr)
         << context.viewer_descriptor.output;
+}
+
+// LS-2 Wave Task T3b coverage rider (ls2-census.md G4) -- the "who -z"/
+// "who -r" filters, converted from raw `world[ch->in_room].zone`/
+// `tch->in_room != ch->in_room` (act_info.cpp:2490/2493) to
+// `room_of(ch)->zone`/`location_of(tch) != location_of(ch)`. Each test
+// drives `other' through both sides of the comparison (same room/zone as
+// `viewer', then a different one) via two do_who calls with the capturing
+// descriptor reset between them, proving both the inclusion and the
+// exclusion path of the converted guard.
+TEST(ActInfoWorldSocial, DoWhoZoneFilterIncludesOnlySameZoneOccupant)
+{
+    WhoDescriptorListContext context;
+    ScopedTestWorld test_world { 2 };
+    const int saved_zone0 = world[0].zone;
+    const int saved_zone1 = world[1].zone;
+    world[0].zone = 7;
+    world[1].zone = 12;
+    context.viewer.in_room = 0;
+    context.other.in_room = 0;
+
+    do_who(&context.viewer, const_cast<char*>("-z"), nullptr, 0, 0);
+    {
+        const std::string same_zone_output(context.viewer_descriptor.output);
+        EXPECT_NE(same_zone_output.find("Other"), std::string::npos) << same_zone_output;
+    }
+
+    reset_capturing_descriptor(context.viewer_descriptor, &context.viewer);
+    context.other.in_room = 1;
+    do_who(&context.viewer, const_cast<char*>("-z"), nullptr, 0, 0);
+    const std::string different_zone_output(context.viewer_descriptor.output);
+    EXPECT_EQ(different_zone_output.find("Other"), std::string::npos) << different_zone_output;
+
+    context.viewer.in_room = NOWHERE;
+    context.other.in_room = NOWHERE;
+    world[0].zone = saved_zone0;
+    world[1].zone = saved_zone1;
+}
+
+TEST(ActInfoWorldSocial, DoWhoRoomFilterIncludesOnlySameRoomOccupant)
+{
+    WhoDescriptorListContext context;
+    ScopedTestWorld test_world { 2 };
+    context.viewer.in_room = 0;
+    context.other.in_room = 0;
+
+    do_who(&context.viewer, const_cast<char*>("-r"), nullptr, 0, 0);
+    {
+        const std::string same_room_output(context.viewer_descriptor.output);
+        EXPECT_NE(same_room_output.find("Other"), std::string::npos) << same_room_output;
+    }
+
+    reset_capturing_descriptor(context.viewer_descriptor, &context.viewer);
+    context.other.in_room = 1;
+    do_who(&context.viewer, const_cast<char*>("-r"), nullptr, 0, 0);
+    const std::string different_room_output(context.viewer_descriptor.output);
+    EXPECT_EQ(different_room_output.find("Other"), std::string::npos) << different_room_output;
+
+    context.viewer.in_room = NOWHERE;
+    context.other.in_room = NOWHERE;
+}
+
+// LS-2 Wave Task T3b coverage rider (ls2-census.md G3, partial -- see the
+// task report for the deferred perform_immort_where / "arg given" branch
+// rows and their hazards) -- perform_mortal_where's own zone-match guard
+// (act_info.cpp:2792), converted from raw `world[ch->in_room].zone ==
+// world[i->in_room].zone` to `room_of(ch)->zone == room_of(i)->zone`,
+// exercised end-to-end through the function's raw Family-D lighting-probe
+// cursor swap (act_info.cpp:2793-2801, kept raw/annotated -- unconverted
+// by this wave, see the LS1-ALLOW comments at those lines) that sits
+// directly downstream of it.
+TEST(ActInfoWorldSocial, PerformMortalWhereListsSameZoneOccupantViaDescriptorList)
+{
+    WhoDescriptorListContext context;
+    ScopedTestWorld test_world { 2 };
+    const int saved_zone0 = world[0].zone;
+    world[0].zone = 3;
+    context.viewer.in_room = 0;
+    context.other.in_room = 0;
+
+    perform_mortal_where(&context.viewer, const_cast<char*>(""));
+
+    const std::string output(context.viewer_descriptor.output);
+    EXPECT_NE(output.find("Other"), std::string::npos) << output;
+
+    context.viewer.in_room = NOWHERE;
+    context.other.in_room = NOWHERE;
+    world[0].zone = saved_zone0;
 }
 
 // ---------------------------------------------------------------------------

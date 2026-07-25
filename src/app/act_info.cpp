@@ -1944,7 +1944,7 @@ ACMD(do_info)
      * staging buffer bridges add_move_report()'s legacy char-pointer +
      * strcat() signature into the std::string accumulation (transform idiom
      * catalog item 3), same shape as do_score's weapon-master interop below. */
-    tmp = room_move_cost(ch, &world[ch->in_room]);
+    tmp = room_move_cost(ch, room_of(ch));
     char move_report_stage[MAX_STRING_LENGTH];
     move_report_stage[0] = '\0';
     add_move_report(tmp, move_report_stage);
@@ -2203,7 +2203,7 @@ ACMD(do_weather)
     extern int get_season();
     void weather_to_char(char_data * ch);
 
-    if (ch->in_room == NOWHERE)
+    if (location_of(ch) == NOWHERE)
         return;
 
     weather_to_char(ch);
@@ -2487,10 +2487,10 @@ ACMD(do_who)
         if ((GET_LEVEL(ch) < GET_INVIS_LEV(tch)) || GET_LEVEL(tch) < low || GET_LEVEL(tch) > high)
             continue;
         /* we're doing a who -z, and tch isn't in the zone */
-        if (localwho && world[ch->in_room].zone != world[tch->in_room].zone)
+        if (localwho && room_of(ch)->zone != room_of(tch)->zone)
             continue;
         /* we're doing a who -r, and tch isn't in the room */
-        if (who_room && (tch->in_room != ch->in_room))
+        if (who_room && (location_of(tch) != location_of(ch)))
             continue;
         /*   who -w, and tch isn't a whitie */
         if (who_whitie && !(GET_RACE(tch) == RACE_WOOD || GET_RACE(tch) == RACE_DWARF || GET_RACE(tch) == RACE_HOBBIT || GET_RACE(tch) == RACE_HUMAN || GET_RACE(tch) == RACE_BEORNING))
@@ -2789,27 +2789,27 @@ void perform_mortal_where(struct char_data* ch, char* arg)
         for (d = descriptor_list; d; d = d->next)
             if (!d->connected) {
                 i = (d->original ? d->original : d->character);
-                if (i && CAN_SEE(ch, i) && (i->in_room != NOWHERE) && !other_side(ch, i) && (world[ch->in_room].zone == world[i->in_room].zone)) {
-                    tmploc = ch->in_room;
-                    ch->in_room = i->in_room;
+                if (i && CAN_SEE(ch, i) && (location_of(i) != NOWHERE) && !other_side(ch, i) && (room_of(ch)->zone == room_of(i)->zone)) {
+                    tmploc = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
+                    ch->in_room = i->in_room; // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
                     // ch->in_room is temporarily swapped to i->in_room so
                     // CAN_SEE(ch) evaluates lighting for i's room -- compose
                     // the line before restoring tmploc, matching the
                     // original sprintf-then-restore-then-send order exactly.
                     std::string line = std::format(
-                        "{:<20} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere");
-                    ch->in_room = tmploc;
+                        "{:<20} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere"); // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
+                    ch->in_room = tmploc; // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
                     send_to_char(line, ch);
                 }
             }
     } else { /* print only FIRST char, not all. */
         for (i = character_list; i; i = i->next)
-            if ((i->in_room != NOWHERE) && (!IS_NPC(i)) && (world[i->in_room].zone == world[ch->in_room].zone) && (world[i->in_room].level == world[ch->in_room].level) && CAN_SEE(ch, i) && (!other_side(ch, i)) && isname_nullable(arg, i->player.name)) {
-                tmploc = ch->in_room;
-                ch->in_room = i->in_room;
+            if ((location_of(i) != NOWHERE) && (!IS_NPC(i)) && (room_of(i)->zone == room_of(ch)->zone) && (room_of(i)->level == room_of(ch)->level) && CAN_SEE(ch, i) && (!other_side(ch, i)) && isname_nullable(arg, i->player.name)) {
+                tmploc = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
+                ch->in_room = i->in_room; // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
                 std::string line = std::format(
-                    "{:<25} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere");
-                ch->in_room = tmploc;
+                    "{:<25} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere"); // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
+                ch->in_room = tmploc; // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
                 send_to_char(line, ch);
                 return;
             }
@@ -2830,26 +2830,26 @@ void perform_immort_where(struct char_data* ch, char* arg)
         for (d = descriptor_list; d; d = d->next)
             if (!d->connected) {
                 i = (d->original ? d->original : d->character);
-                if (i && CAN_SEE(ch, i) && (i->in_room != NOWHERE)) {
+                if (i && CAN_SEE(ch, i) && (location_of(i) != NOWHERE)) {
                     if (d->original)
                         send_to_char(std::format("{:<20} - [{:5}] {} (in {})\n\r", GET_NAME(i),
-                                         world[d->character->in_room].number, world[d->character->in_room].name,
+                                         room_of(d->character)->number, room_of(d->character)->name,
                                          GET_NAME(d->character))
                                          ,
                             ch);
                     else
                         send_to_char(std::format("{:<20} - [{:5}] {}\n\r", GET_NAME(i),
-                                         world[i->in_room].number, world[i->in_room].name)
+                                         room_of(i)->number, room_of(i)->name)
                                          ,
                             ch);
                 }
             }
     } else {
         for (i = character_list; i; i = i->next)
-            if (CAN_SEE(ch, i) && i->in_room != NOWHERE && (isname_nullable(arg, i->player.name) || mob_index[i->nr].virt == atoi(arg))) {
+            if (CAN_SEE(ch, i) && location_of(i) != NOWHERE && (isname_nullable(arg, i->player.name) || mob_index[i->nr].virt == atoi(arg))) {
                 found = 1;
                 send_to_char(std::format("{:3}. {:<25} - [{:5}] {}\n\r", ++num, GET_NAME(i),
-                                 world[i->in_room].number, world[i->in_room].name)
+                                 room_of(i)->number, room_of(i)->name)
                                  ,
                     ch);
             }
@@ -2860,8 +2860,8 @@ void perform_immort_where(struct char_data* ch, char* arg)
                 tmp = NOWHERE;
                 tmpobj = 0;
                 i = 0;
-                if (k->in_room != NOWHERE)
-                    tmp = k->in_room;
+                if (k->in_room != NOWHERE) // LS1-ALLOW: obj-location
+                    tmp = k->in_room; // LS1-ALLOW: obj-location
                 else if (k->carried_by)
                     i = k->carried_by;
                 else if (k->in_obj)
@@ -2874,9 +2874,9 @@ void perform_immort_where(struct char_data* ch, char* arg)
                     if (tmpobj->carried_by)
                         i = tmpobj->carried_by;
                     else {
-                        tmp = tmpobj->in_room;
+                        tmp = tmpobj->in_room; // LS1-ALLOW: obj-location
                         send_to_char(std::format("{:3}. {:<25} - [{:5}] >> Stored in {}\n\r", ++num,
-                                         k->short_description, tmp < 0 ? tmp : world[tmp].number,
+                                         k->short_description, tmp < 0 ? tmp : room_by_id_total(tmp)->number,
                                          tmpobj ? tmpobj->short_description : "Something")
                                          ,
                             ch);
@@ -2885,16 +2885,16 @@ void perform_immort_where(struct char_data* ch, char* arg)
                 if (i) {
                     if (!CAN_SEE(ch, i)) /* Save wizinvis */
                         continue;
-                    tmp = i->in_room;
+                    tmp = location_of(i);
                     send_to_char(std::format("{:3}. {:<25} - [{:5}] >> Carried by {}\n\r", ++num,
-                                     k->short_description, tmp < 0 ? tmp : world[tmp].number,
+                                     k->short_description, tmp < 0 ? tmp : room_by_id_total(tmp)->number,
                                      i ? GET_NAME(i) : "Somebody")
                                      ,
                         ch);
                 }
                 if (!tmpobj && !i) {
                     send_to_char(std::format("{:3}. {:<25} - [{:5}] {}\n\r", ++num, k->short_description,
-                                     tmp < 0 ? tmp : world[tmp].number, tmp < 0 ? "Nowhere" : world[tmp].name)
+                                     tmp < 0 ? tmp : room_by_id_total(tmp)->number, tmp < 0 ? "Nowhere" : room_by_id_total(tmp)->name)
                                      ,
                         ch);
                 }
@@ -3516,7 +3516,7 @@ ACMD(do_map)
     char tmpch;
     int zone;
 
-    zone = world[ch->in_room].zone;
+    zone = room_of(ch)->zone;
     tmpch = zone_table[zone].symbol;
 
     /*
@@ -3585,7 +3585,7 @@ ACMD(do_small_map)
     char tmpch;
     int zone;
 
-    zone = world[ch->in_room].zone;
+    zone = room_of(ch)->zone;
     tmpch = zone_table[zone].symbol;
 
     symbol_to_map(zone_table[zone].x, zone_table[zone].y, 'X');
@@ -3601,9 +3601,8 @@ ACMD(do_search)
 {
     int tmp = 0, len, skill, search_res, uncover_skill;
     struct room_direction_data* ex;
-    struct char_data* tmpch;
 
-    if (ch->in_room == NOWHERE)
+    if (location_of(ch) == NOWHERE)
         return;
 
     if (IS_NPC(ch) && IS_AFFECTED(ch, AFF_CHARM)) {
@@ -3641,7 +3640,7 @@ ACMD(do_search)
 
     case 1:
         tmp = wtl->flg;
-        ex = world[ch->in_room].dir_option[tmp];
+        ex = room_of(ch)->dir_option[tmp];
 
         // `buf` is reused downstream (handed to act()) -- idiom 2.
         strcpy(buf, std::format("$n searches for something to {}.", refer_dirs[tmp]).c_str());
@@ -3686,7 +3685,7 @@ ACMD(do_search)
         uncover_skill = MIN(200, (int)((float)(GET_SKILL(ch, SKILL_SEARCH) + see_hiding(ch)) * 1.50));
         uncover_skill = number(uncover_skill, uncover_skill * 7 / 6);
         search_res = 0;
-        for (tmpch = world[ch->in_room].people; tmpch; tmpch = tmpch->next_in_room) {
+        for (auto* tmpch : rots::entity::occupants(room_of(ch))) {
             tmp = GET_HIDING(tmpch);
             GET_HIDING(tmpch) = 0;
             if (tmp && (tmpch != ch) && (uncover_skill > tmp) && CAN_SEE(ch, tmpch)) {

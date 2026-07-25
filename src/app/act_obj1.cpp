@@ -300,7 +300,7 @@ int perform_get_from_room(char_data* character, obj_data* item)
             snprintf(buf, MAX_STRING_LENGTH, "OBJ: %s gets %s (%d) at %s (%d)", GET_NAME(character),
                 item->short_description,
                 (item->item_number >= 0) ? obj_index[item->item_number].virt : -1,
-                world[character->in_room].name, world[character->in_room].number);
+                room_of(character)->name, room_of(character)->number);
             log(buf);
         }
         if (!IS_NPC(character)) {
@@ -321,7 +321,7 @@ void get_from_room(struct char_data* ch, char* arg)
     dotmode = find_all_dots(arg);
 
     if (dotmode == FIND_ALL) {
-        for (obj = world[ch->in_room].contents; obj; obj = next_obj) {
+        for (obj = room_of(ch)->contents; obj; obj = next_obj) {
             next_obj = obj->next_content;
             if (CAN_SEE_OBJ(ch, obj)) {
                 found = 1;
@@ -335,7 +335,7 @@ void get_from_room(struct char_data* ch, char* arg)
             send_to_char("Get all of what?\n\r", ch);
             return;
         }
-        if (!(obj = get_obj_in_list_vis(ch, arg, world[ch->in_room].contents, 9999))) {
+        if (!(obj = get_obj_in_list_vis(ch, arg, room_of(ch)->contents, 9999))) {
             send_to_char(std::format("You don't see any {}s here.\n\r", arg), ch);
         } else
             while (obj) {
@@ -344,7 +344,7 @@ void get_from_room(struct char_data* ch, char* arg)
                 obj = next_obj;
             }
     } else {
-        if (!(obj = get_obj_in_list_vis(ch, arg, world[ch->in_room].contents, 9999))) {
+        if (!(obj = get_obj_in_list_vis(ch, arg, room_of(ch)->contents, 9999))) {
             send_to_char(std::format("You don't see {} {} here.\n\r", AN(arg), arg), ch);
         } else
             perform_get_from_room(ch, obj);
@@ -377,7 +377,7 @@ ACMD(do_get)
                             found = 1;
                             get_from_container(ch, cont, arg1, FIND_OBJ_INV);
                         }
-                    for (cont = world[ch->in_room].contents; cont; cont = cont->next_content)
+                    for (cont = room_of(ch)->contents; cont; cont = cont->next_content)
                         if (CAN_SEE_OBJ(ch, cont) && GET_ITEM_TYPE(cont) == ITEM_CONTAINER) {
                             found = 1;
                             get_from_container(ch, cont, arg1, FIND_OBJ_ROOM);
@@ -400,7 +400,7 @@ ACMD(do_get)
                             get_from_container(ch, cont, arg1, FIND_OBJ_INV);
                         cont = next_cont;
                     }
-                    cont = get_obj_in_list_vis(ch, arg2, world[ch->in_room].contents, 9999);
+                    cont = get_obj_in_list_vis(ch, arg2, room_of(ch)->contents, 9999);
                     while (cont) {
                         found = 1;
                         next_cont = get_obj_in_list_vis(ch, arg2, cont->next_content, 9999);
@@ -446,7 +446,7 @@ void perform_drop_gold(struct char_data* ch, int amount, sh_int)
         obj = create_money(amount);
         send_to_char("You drop some money.\n\r", ch);
         act("$n drops some money.", FALSE, ch, 0, 0, TO_ROOM);
-        obj_to_room(obj, ch->in_room);
+        obj_to_room(obj, location_of(ch));
         GET_GOLD(ch) -= amount;
         snprintf(buf, MAX_STRING_LENGTH, "OBJ: %s drops %d coins", GET_NAME(ch),
             amount);
@@ -665,13 +665,13 @@ ACMD(do_butcher)
         argument++;
 
     if (!*argument) {
-        obj = get_obj_in_list_vis(ch, "corpse", world[ch->in_room].contents, 9999);
+        obj = get_obj_in_list_vis(ch, "corpse", room_of(ch)->contents, 9999);
         if (!obj) {
             send_to_char("You see no corpse here.\n\r", ch);
             return;
         }
     } else {
-        obj = get_obj_in_list_vis(ch, argument, world[ch->in_room].contents, 9999);
+        obj = get_obj_in_list_vis(ch, argument, room_of(ch)->contents, 9999);
         if (!obj) {
             if (subcmd == SCMD_BUTCHER)
                 send_to_char("What do you want to butcher?\n\r", ch);
@@ -845,7 +845,7 @@ obj_data* load_scalp(int number)
     clear_object(scalp);
 
     scalp->item_number = real_object(generic_scalp);
-    scalp->in_room = NOWHERE;
+    scalp->in_room = NOWHERE; // LS1-ALLOW: obj-location
 
     scalp->obj_flags.type_flag = ITEM_TRASH;
     scalp->obj_flags.wear_flags = ITEM_TAKE | ITEM_WEAR_BELT;

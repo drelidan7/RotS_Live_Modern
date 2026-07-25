@@ -40,7 +40,7 @@ void weight_change_object(struct obj_data* obj, int weight)
     struct obj_data* tmp_obj;
     struct char_data* tmp_ch;
 
-    if (obj->in_room != NOWHERE) {
+    if (obj->in_room != NOWHERE) { // LS1-ALLOW: obj-location
         GET_OBJ_WEIGHT(obj) += weight;
     } else if ((tmp_ch = obj->carried_by)) {
         obj_from_char(obj);
@@ -103,10 +103,10 @@ ACMD(do_drink)
 
     temp = 0;
 
-    if (!strcmp(arg, "water") && IS_SET(world[ch->in_room].room_flags, DRINK_WATER | DRINK_POISON)) {
-        if (IS_SET(world[ch->in_room].room_flags, DRINK_WATER))
+    if (!strcmp(arg, "water") && IS_SET(room_of(ch)->room_flags, DRINK_WATER | DRINK_POISON)) {
+        if (IS_SET(room_of(ch)->room_flags, DRINK_WATER))
             temp = &generic_water;
-        if (IS_SET(world[ch->in_room].room_flags, DRINK_POISON))
+        if (IS_SET(room_of(ch)->room_flags, DRINK_POISON))
             temp = &generic_poison;
         if (!temp) {
             act("You can't find it!", FALSE, ch, 0, 0, TO_CHAR);
@@ -115,7 +115,7 @@ ACMD(do_drink)
     } else {
 
         if (!(temp = get_obj_in_list_vis(ch, arg, ch->carrying, 9999))) {
-            if (!(temp = get_obj_in_list_vis(ch, arg, world[ch->in_room].contents, 9999))) {
+            if (!(temp = get_obj_in_list_vis(ch, arg, room_of(ch)->contents, 9999))) {
                 act("You can't find it!", FALSE, ch, 0, 0, TO_CHAR);
                 return;
             } else
@@ -234,7 +234,7 @@ ACMD(do_eat)
     }
 
     if (!(food = get_obj_in_list_vis(ch, arg, ch->carrying, 9999)))
-        if (!(food = get_obj_in_list_vis(ch, arg, world[ch->in_room].contents, 9999))) {
+        if (!(food = get_obj_in_list_vis(ch, arg, room_of(ch)->contents, 9999))) {
             send_to_char("You don't seem to have any.\n\r", ch);
             return;
         }
@@ -318,15 +318,15 @@ ACMD(do_pour)
             return;
         }
 
-        if (IS_SET(world[ch->in_room].room_flags, DRINK_WATER | DRINK_POISON) && !strcmp(arg1, "water")) {
-            if (IS_SET(world[ch->in_room].room_flags, DRINK_WATER))
+        if (IS_SET(room_of(ch)->room_flags, DRINK_WATER | DRINK_POISON) && !strcmp(arg1, "water")) {
+            if (IS_SET(room_of(ch)->room_flags, DRINK_WATER))
                 from_obj = &generic_water;
             else
                 from_obj = &generic_poison;
             gener = 1;
         } else {
             gener = 0;
-            if (!(from_obj = get_obj_in_list_vis(ch, arg1, world[ch->in_room].contents, 9999))) {
+            if (!(from_obj = get_obj_in_list_vis(ch, arg1, room_of(ch)->contents, 9999))) {
                 if (!(from_obj = get_obj_in_list_vis(ch, arg1, ch->carrying, 9999))) {
                     act("You can't find it!", FALSE, ch, 0, 0, TO_CHAR);
                     return;
@@ -691,7 +691,7 @@ ACMD(do_light)
     int i;
     obj_data* torch;
 
-    if (ch->in_room == NOWHERE)
+    if (location_of(ch) == NOWHERE)
         return;
 
     one_argument(argument, arg);
@@ -701,7 +701,7 @@ ACMD(do_light)
     if (!*arg)
         torch = ch->equipment[WEAR_LIGHT];
     else {
-        torch = get_obj_in_list_vis(ch, arg, world[ch->in_room].contents, 9999);
+        torch = get_obj_in_list_vis(ch, arg, room_of(ch)->contents, 9999);
         if (!torch)
             for (i = 0; i < MAX_WEAR; i++)
                 if (ch->equipment[i] && CAN_SEE_OBJ(ch, ch->equipment[i]) && isname_nullable(arg, ch->equipment[i]->name, 0)) {
@@ -723,7 +723,7 @@ ACMD(do_light)
         return;
     }
     torch->obj_flags.value[3] = 1;
-    world[ch->in_room].light++;
+    world[ch->in_room].light++; // LS1-ALLOW: write
 
     act("You light $p.", FALSE, ch, torch, 0, TO_CHAR);
     act("$n lights $p.", FALSE, ch, torch, 0, TO_ROOM);
@@ -733,7 +733,7 @@ ACMD(do_blowout)
     int i;
     obj_data* torch;
 
-    if (ch->in_room == NOWHERE)
+    if (location_of(ch) == NOWHERE)
         return;
 
     one_argument(argument, arg);
@@ -749,7 +749,7 @@ ACMD(do_blowout)
                 break;
             }
         if (!torch)
-            torch = get_obj_in_list_vis(ch, arg, world[ch->in_room].contents, 9999);
+            torch = get_obj_in_list_vis(ch, arg, room_of(ch)->contents, 9999);
     }
 
     if (!torch) {
@@ -766,7 +766,7 @@ ACMD(do_blowout)
         return;
     }
     torch->obj_flags.value[3] = 0;
-    world[ch->in_room].light--;
+    world[ch->in_room].light--; // LS1-ALLOW: write
 
     act("You blow $p out.", FALSE, ch, torch, 0, TO_CHAR);
     act("$n blows $p out.", FALSE, ch, torch, 0, TO_ROOM);

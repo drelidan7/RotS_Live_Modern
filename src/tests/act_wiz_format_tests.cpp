@@ -1786,6 +1786,45 @@ TEST(ActWizInspection, DoShowFormatsZoneMissingArgumentBranch)
     EXPECT_EQ(std::string(viewer.descriptor.output), "Show which zone?\n\r");
 }
 
+// LS-2 Wave Task T3a riders (census W3): do_show's "death" (case 6) and
+// "godrooms" (case 7) branches, both converted this task
+// (world[i].room_flags/.zone/.number/.name -> room_by_id_total(i)->...).
+// Both loops bound on `i < top_of_world` (not `<=` -- a pre-existing
+// legacy quirk, unrelated to and untouched by this conversion), so a
+// 2-room ScopedTestWorld (top_of_world == 1) is required for the loop to
+// examine room 0 at all; a 1-room world would skip it entirely.
+TEST(ActWizInspection, DoShowFormatsDeathTrapsListForRoomWithDeathFlag)
+{
+    ScopedTestWorld test_world(2);
+    test_world.room().number = 4242;
+    test_world.room().room_flags = DEATH;
+    SoloCharacterContext viewer;
+    viewer.character.player.level = LEVEL_IMPL;
+    char argument[] = "death";
+    do_show(&viewer.character, argument, nullptr, 0, 0);
+    const std::string output = viewer.descriptor.output;
+    EXPECT_NE(output.find("Death Traps"), std::string::npos) << output;
+    EXPECT_NE(output.find(" 1: [ 4242] The Testing Meadow\n\r"), std::string::npos) << output;
+}
+
+TEST(ActWizInspection, DoShowFormatsGodroomsListForZoneZeroRoom)
+{
+    // room 0 of a fresh ScopedTestWorld already defaults to zone 0
+    // (dummy_room_data()) -- matching GOD_ROOMS_ZONE's hardcoded 0 -- set
+    // explicitly anyway so the test does not rely on that default.
+    ScopedTestWorld test_world(2);
+    test_world.room().number = 4243;
+    test_world.room().zone = 0;
+    SoloCharacterContext viewer;
+    viewer.character.player.level = LEVEL_IMPL;
+    char argument[] = "godrooms";
+    do_show(&viewer.character, argument, nullptr, 0, 0);
+    const std::string output = viewer.descriptor.output;
+    EXPECT_NE(output.find("Godrooms"), std::string::npos) << output;
+    EXPECT_NE(output.find(" 0: [ 4243] The Testing Meadow\n\r"), std::string::npos) << output;
+}
+
+
 TEST(ActWizInspection, DoShowFormatsAliasesListLine)
 {
     // get_char_vis()'s CAN_SEE() check reads room light state via world[] --
@@ -1957,6 +1996,71 @@ TEST(ActWizWorldManip, DoAtRejectsUnknownRoomNumber)
         << context.descriptor.output;
 }
 
+// LS-2 Wave Task T3a rider (census W1): find_target_room()'s three
+// room-flag rejection branches (act_wiz.cpp:246/251/257-258), all
+// converted world[location] -> room_by_id_total(location) this task.
+// Each rejection returns from find_target_room() BEFORE do_at() reaches
+// char_from_room()/char_to_room()/command_interpreter(), so these three
+// are safe to unit-test directly (no world mutation, no command
+// dispatch) -- unlike do_at's success path, deliberately NOT covered
+// here; see this suite's own header comment above (world/session
+// mutation via command_interpreter() is out of scope) for the identical
+// reasoning that already excludes do_at's success path.
+TEST(ActWizWorldManip, DoAtRejectsGodroomForLowLevelViewer)
+{
+    ScopedTestWorld test_world;
+    SoloCharacterContext context;
+    context.character.player.level = 50; // below LEVEL_GOD (93)
+    test_world.room().number = 500;
+    test_world.room().room_flags = GODROOM;
+    char argument[] = "500 look";
+    do_at(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output),
+        "You are not godly enough to use that room!\n\r");
+}
+
+TEST(ActWizWorldManip, DoAtRejectsSecurityroomForLowLevelViewer)
+{
+    ScopedTestWorld test_world;
+    SoloCharacterContext context;
+    context.character.player.level = 50; // below LEVEL_GRGOD (97)
+    test_world.room().number = 500;
+    test_world.room().room_flags = SECURITYROOM;
+    char argument[] = "500 look";
+    do_at(&context.character, argument, nullptr, 0, 0);
+    EXPECT_EQ(std::string(context.descriptor.output),
+        "That is a security room! Talk to Implementor or GRGOD, if you need access.\n\r");
+}
+
+TEST(ActWizWorldManip, DoAtRejectsPrivateRoomWithTwoOrMoreOccupants)
+{
+    // Characterizes the kept-raw peek-ahead site (act_wiz.cpp:257-258,
+    // `// LS1-ALLOW: peek-ahead (two-or-more-occupants test)`) as well as
+    // the converted PRIVATE room_flags read on the line above it.
+    ScopedTestWorld test_world;
+    SoloCharacterContext context;
+    context.character.player.level = 50; // below LEVEL_GRGOD (97)
+    test_world.room().number = 500;
+    test_world.room().room_flags = PRIVATE;
+    char_data first_occupant { };
+    clear_char(&first_occupant, MOB_VOID);
+    // Releases first_occupant.profs/skills/knowledge (clear_char() heap
+    // allocations) at scope exit (Phase 5 T6 leak sweep convention).
+    ScopedClearCharFields first_occupant_cleanup { first_occupant };
+    char_data second_occupant { };
+    clear_char(&second_occupant, MOB_VOID);
+    ScopedClearCharFields second_occupant_cleanup { second_occupant };
+    first_occupant.next_in_room = &second_occupant;
+    second_occupant.next_in_room = nullptr;
+    test_world.room().people = &first_occupant;
+    char argument[] = "500 look";
+    do_at(&context.character, argument, nullptr, 0, 0);
+    test_world.room().people = nullptr;
+    EXPECT_EQ(std::string(context.descriptor.output),
+        "There's a private conversation going on in that room.\n\r");
+}
+
+
 // do_goto: pins the invalid-target error line (no world mutation). Shares
 // find_target_room() with do_at above.
 TEST(ActWizWorldManip, DoGotoRejectsUnknownRoomWithErrorLine)
@@ -2065,6 +2169,33 @@ TEST(ActWizWorldManip, DoZresetReportsInvalidZoneNumber)
     do_zreset(&context.character, argument, nullptr, 0, 0);
     EXPECT_EQ(std::string(context.descriptor.output), "Invalid zone number.\n\r");
 }
+
+// LS-2 Wave Task T3a rider (census W7, do_zreset half): the `arg == '.'`
+// branch's `i = room_of(ch)->zone;` (act_wiz.cpp:2186, converted this
+// task from `i = world[ch->in_room].zone;`). reset_zone(i) then runs for
+// real, but the fabricated zone's cmdno defaults to 0 (ScopedZoneTable's
+// `zone_data[1] { }` value-init), so its command loop is a genuine no-op
+// -- safe to exercise directly, unlike do_zreset's other reset_zone()
+// callers which need a populated zone command list.
+TEST(ActWizWorldManip, DoZresetResolvesCallersOwnZoneWithDotArgument)
+{
+    ScopedZoneTable zone_table_scope(3);
+    ScopedTestWorld test_world;
+    SoloCharacterContext context;
+    context.character.in_room = 0;
+    // do_zreset's success tail unconditionally composes GET_NAME(ch) into
+    // the mudlog() line below (mirrors DoForceRejectsMissingNameOrCommand's
+    // identical fixture note) -- SoloCharacterContext leaves player.name
+    // null, which std::format() cannot format.
+    context.character.player.name = const_cast<char*>("Gandalf");
+    test_world.room().zone = 0; // matches the ScopedZoneTable entry's index
+    char argument[] = ".";
+    do_zreset(&context.character, argument, nullptr, 0, 0);
+    EXPECT_NE(std::string(context.descriptor.output).find("Reset zone 0: The Testing Zone.\n\r"),
+        std::string::npos)
+        << context.descriptor.output;
+}
+
 
 TEST(ActWizWorldManip, DoForceRejectsMissingNameOrCommand)
 {
@@ -2628,6 +2759,27 @@ TEST(ActWizPlayerAdmin, DoRegisterReportsUnknownTypeFallback)
     EXPECT_EQ(std::string(context.descriptor.output),
         "You can see register for mobile, object, player, script or room only.\n\r");
 }
+
+// LS-2 Wave Task T3a rider (census W5): do_register's "room" branch
+// (act_wiz.cpp:3729/3732/3733, converted world[tmp].{zone,number,name}
+// -> room_by_id_total(tmp)->{...} this task; the zone_table[...] index
+// itself is untouched, out of this program's charter). Needs a
+// ScopedZoneTable entry whose vnum matches the requested zone argument
+// AND a room whose .zone field indexes back into that same table entry.
+TEST(ActWizPlayerAdmin, DoRegisterListsMatchingRoomForRoomBranch)
+{
+    ScopedZoneTable zone_table_scope(7);
+    ScopedTestWorld test_world;
+    SoloCharacterContext context;
+    test_world.room().zone = 0; // indexes the ScopedZoneTable entry above
+    test_world.room().number = 4200;
+    char argument[] = "room 7";
+    do_register(&context.character, argument, nullptr, 0, 0);
+    const std::string output = context.descriptor.output;
+    EXPECT_NE(output.find(" 4200:"), std::string::npos) << output;
+    EXPECT_NE(output.find("The Testing Meadow"), std::string::npos) << output;
+}
+
 
 // ---------------------------------------------------------------------------
 // do_setfree (act_wiz.cpp:3812)

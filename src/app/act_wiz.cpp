@@ -182,9 +182,8 @@ ACMD(do_send)
 ACMD(do_echo)
 {
     int i;
-    char_data* tmpch;
 
-    if (/*IS_NPC(ch) ||*/ ch->in_room == NOWHERE)
+    if (/*IS_NPC(ch) ||*/ location_of(ch) == NOWHERE)
         return;
 
     for (i = 0; *(argument + i) == ' '; i++)
@@ -195,7 +194,7 @@ ACMD(do_echo)
     else {
         strcpy(buf, std::format("{}\n\r", argument + i).c_str());
         //      send_to_room_except(buf, ch->in_room, ch);
-        for (tmpch = world[ch->in_room].people; tmpch; tmpch = tmpch->next_in_room)
+        for (auto* tmpch : rots::entity::occupants(room_of(ch)))
             if (tmpch != ch)
                 send_to_char(buf, tmpch);
 
@@ -229,10 +228,10 @@ int find_target_room(struct char_data* ch, char* rawroomstr)
             return NOWHERE;
         }
     } else if ((target_mob = get_char_vis(ch, roomstr)))
-        location = target_mob->in_room;
+        location = location_of(target_mob);
     else if ((target_obj = get_obj_vis(ch, roomstr))) {
-        if (target_obj->in_room != NOWHERE)
-            location = target_obj->in_room;
+        if (target_obj->in_room != NOWHERE) // LS1-ALLOW: obj-location
+            location = target_obj->in_room; // LS1-ALLOW: obj-location
         else {
             send_to_char("That object is not available.\n\r", ch);
             return NOWHERE;
@@ -243,19 +242,19 @@ int find_target_room(struct char_data* ch, char* rawroomstr)
     }
 
     /* a location has been found. */
-    if (IS_SET(world[location].room_flags, GODROOM) && GET_LEVEL(ch) < LEVEL_GOD) {
+    if (IS_SET(room_by_id_total(location)->room_flags, GODROOM) && GET_LEVEL(ch) < LEVEL_GOD) {
         send_to_char("You are not godly enough to use that room!\n\r", ch);
         return NOWHERE;
     }
 
-    if (IS_SET(world[location].room_flags, SECURITYROOM) && GET_LEVEL(ch) < LEVEL_GRGOD) {
+    if (IS_SET(room_by_id_total(location)->room_flags, SECURITYROOM) && GET_LEVEL(ch) < LEVEL_GRGOD) {
         send_to_char(
             "That is a security room! Talk to Implementor or GRGOD, if you need access.\n\r", ch);
         return NOWHERE;
     }
 
-    if (IS_SET(world[location].room_flags, PRIVATE) && GET_LEVEL(ch) < LEVEL_GRGOD)
-        if (world[location].people && world[location].people->next_in_room) {
+    if (IS_SET(room_by_id_total(location)->room_flags, PRIVATE) && GET_LEVEL(ch) < LEVEL_GRGOD)
+        if (world[location].people && world[location].people->next_in_room) { // LS1-ALLOW: peek-ahead (two-or-more-occupants test)
             send_to_char("There's a private conversation going on in that room.\n\r", ch);
             return NOWHERE;
         }
@@ -281,7 +280,7 @@ ACMD(do_at)
         return;
 
     /* a location has been found. */
-    original_loc = ch->in_room;
+    original_loc = location_of(ch);
     if (original_loc != location) {
         char_from_room(ch);
         char_to_room(ch, location);
@@ -289,7 +288,7 @@ ACMD(do_at)
     command_interpreter(ch, command);
 
     /* check if the guy's still there */
-    if (ch->in_room == location) {
+    if (location_of(ch) == location) {
         char_from_room(ch);
         char_to_room(ch, original_loc);
     }
@@ -351,7 +350,7 @@ ACMD(do_trans)
             if (IS_RIDING(victim))
                 stop_riding(victim);
             char_from_room(victim);
-            char_to_room(victim, ch->in_room);
+            char_to_room(victim, location_of(ch));
             act("$n arrives from a puff of smoke.", FALSE, victim, 0, 0, TO_ROOM);
             act("$n has transferred you!", FALSE, ch, 0, victim, TO_VICT);
             do_look(victim, mutable_arg(""), wtl, 0, 0);
@@ -364,7 +363,7 @@ ACMD(do_trans)
                 if (IS_RIDING(victim))
                     stop_riding(victim);
                 char_from_room(victim);
-                char_to_room(victim, ch->in_room);
+                char_to_room(victim, location_of(ch));
                 act("$n arrives from a puff of smoke.", FALSE, victim, 0, 0, TO_ROOM);
                 act("$n has transferred you!", FALSE, ch, 0, victim, TO_VICT);
                 do_look(victim, mutable_arg(""), wtl, 0, 0);
@@ -430,7 +429,7 @@ ACMD(do_vnum)
 void do_stat_room(struct char_data* ch)
 {
     struct extra_descr_data* desc;
-    struct room_data* rm = &world[ch->in_room];
+    struct room_data* rm = room_of(ch);
     int i, found = 0;
     struct obj_data* j = 0;
     struct char_data* k = 0;
@@ -447,7 +446,7 @@ void do_stat_room(struct char_data* ch)
 
     sprinttype(rm->sector_type, sector_types, buf2);
     send_to_char(std::format("Zone: [{:3}], VNum: [{:5}], RNum: [{:5}], Type: {}\n\r", rm->zone,
-                     rm->number, ch->in_room, static_cast<const char*>(buf2))
+                     rm->number, location_of(ch), static_cast<const char*>(buf2))
                      ,
         ch);
 
@@ -478,7 +477,7 @@ void do_stat_room(struct char_data* ch)
 
     {
         std::string line = std::format("Chars present:{}", CC_USE(ch, COLOR_CHAR));
-        for (found = 0, k = rm->people; k; k = k->next_in_room) {
+        for (found = 0, k = rm->people; k; k = k->next_in_room) { // LS1-ALLOW: peek-ahead for list formatting
             if (!CAN_SEE(ch, k))
                 continue;
             std::format_to(std::back_inserter(line), "{} {}({})", found++ ? "," : "", GET_NAME(k),
@@ -487,7 +486,7 @@ void do_stat_room(struct char_data* ch)
                 std::format_to(std::back_inserter(line), " [{}]", mob_index[k->nr].virt);
             }
             if (line.size() >= 62) {
-                line += k->next_in_room ? ",\n\r" : "\n\r";
+                line += k->next_in_room ? ",\n\r" : "\n\r"; // LS1-ALLOW: peek-ahead for list formatting
                 send_to_char(line, ch);
                 line.clear();
                 found = 0;
@@ -535,7 +534,7 @@ void do_stat_room(struct char_data* ch)
         if (rm->dir_option[i]) {
             const std::string to_room_text = (rm->dir_option[i]->to_room == NOWHERE)
                 ? " NONE"
-                : std::format("{:5}", world[rm->dir_option[i]->to_room].number);
+                : std::format("{:5}", room_by_id_total(rm->dir_option[i]->to_room)->number);
             sprintbit(rm->dir_option[i]->exit_info, exit_bits, buf2, 0);
             send_to_char(
                 std::format("Exit {:<5}:  To: [{}], Key: [{:5}], Keywrd: {}, Type: {}\n\r ",
@@ -621,10 +620,10 @@ void do_stat_object(struct char_data* ch, struct obj_data* j)
     send_to_char(std::format("Script number: {}\n\r", j->obj_flags.script_number), ch);
 
     std::string location_line = "In room: ";
-    if (j->in_room == NOWHERE)
+    if (j->in_room == NOWHERE) // LS1-ALLOW: obj-location
         location_line += "Nowhere";
     else
-        std::format_to(std::back_inserter(location_line), "{}", world[j->in_room].number);
+        std::format_to(std::back_inserter(location_line), "{}", room_by_id_total(j->in_room)->number); // LS1-ALLOW: obj-location
     location_line += ", In object: ";
     location_line += j->in_obj ? j->in_obj->short_description : "None";
     location_line += ", Carried by: ";
@@ -781,7 +780,7 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
     send_to_char(
         std::format("{} {} '{}'  IDNum: [{:5}], Player table index: [{}], In room [{:5}]\n\r",
             sex_label, (!IS_NPC(k) ? "PC" : (!IS_MOB(k) ? "NPC" : "MOB")), GET_NAME(k),
-            GET_IDNUM(k), GET_INDEX(k), (k->in_room < 0) ? -1 : world[k->in_room].number)
+            GET_IDNUM(k), GET_INDEX(k), (location_of(k) < 0) ? -1 : room_of(k)->number)
             ,
         ch);
 
@@ -1094,7 +1093,7 @@ ACMD(do_zone)
     zonnum = 0;
     zonnum = atoi(argument);
     if (zonnum == 0)
-        zonnum = (int)(world[ch->in_room].number) / 100;
+        zonnum = (int)(room_of(ch)->number) / 100;
 
     for (tmp = 0; (tmp <= top_of_zone_table) && (zone_table[tmp].number != zonnum); tmp++)
         ;
@@ -1410,7 +1409,7 @@ ACMD(do_load)
         }
         mob = read_mobile(r_num, REAL);
         //      printf("mob created %p, %s\n",mob, GET_NAME(mob));
-        char_to_room(mob, ch->in_room);
+        char_to_room(mob, location_of(ch));
         act("$n makes a quaint, magical gesture with one hand.", TRUE, ch, 0, 0, TO_ROOM);
         act("$n has created $N!", FALSE, ch, 0, mob, TO_ROOM);
         act("You create $N.", FALSE, ch, 0, mob, TO_CHAR);
@@ -1461,9 +1460,9 @@ ACMD(do_vstat)
             return;
         }
         mob = read_mobile(r_num, REAL);
-        mob->in_room = ch->in_room;
+        mob->in_room = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (vstat scratch placement)
         do_stat_character(ch, mob);
-        mob->in_room = NOWHERE;
+        mob->in_room = NOWHERE; // LS1-ALLOW: in_room used as mutable room cursor (vstat scratch placement)
         extract_char(mob);
     } else if (is_abbrev(buf, "obj")) {
         if ((r_num = real_object(number)) < 0) {
@@ -1485,23 +1484,23 @@ ACMD(do_purge)
     struct affected_type *tmpaf, *next_tmpaf;
     int my_zone, tmp;
 
-    if (IS_NPC(ch) || (ch->in_room == NOWHERE))
+    if (IS_NPC(ch) || (location_of(ch) == NOWHERE))
         return;
 
     one_argument(argument, buf);
 
     if (!strcmp(buf, "zone")) {
-        my_zone = world[ch->in_room].zone;
+        my_zone = room_of(ch)->zone;
 
         for (vict = character_list; vict; vict = next_v) {
             next_v = vict->next;
-            if (IS_NPC(vict) && (vict->in_room != NOWHERE) && (world[vict->in_room].zone == my_zone))
+            if (IS_NPC(vict) && (location_of(vict) != NOWHERE) && (room_of(vict)->zone == my_zone))
                 extract_char(vict);
         }
 
         for (obj = object_list; obj; obj = next_o) {
             next_o = obj->next;
-            if ((obj->in_room != NOWHERE) && (world[obj->in_room].zone == my_zone))
+            if ((obj->in_room != NOWHERE) && (room_by_id_total(obj->in_room)->zone == my_zone)) // LS1-ALLOW: obj-location
                 extract_obj(obj);
         }
         strcpy(buf,
@@ -1546,7 +1545,7 @@ ACMD(do_purge)
                 }
                 extract_char(vict);
             }
-        } else if ((obj = get_obj_in_list_vis(ch, buf, world[ch->in_room].contents, 9999))) {
+        } else if ((obj = get_obj_in_list_vis(ch, buf, room_of(ch)->contents, 9999))) {
             act("$n destroys $p.", FALSE, ch, obj, 0, TO_ROOM);
             extract_obj(obj);
         } else {
@@ -1562,23 +1561,23 @@ ACMD(do_purge)
         }
 
         act("$n gestures... You are surrounded by scorching flames!", FALSE, ch, 0, 0, TO_ROOM);
-        send_to_room("The world seems a little cleaner.\n\r", ch->in_room);
+        send_to_room("The world seems a little cleaner.\n\r", location_of(ch));
 
-        for (vict = world[ch->in_room].people; vict; vict = next_v) {
-            next_v = vict->next_in_room;
+        for (vict = room_of(ch)->people; vict; vict = next_v) {
+            next_v = vict->next_in_room; // LS1-ALLOW: save-next (body extracts current node via extract_char)
             if (IS_NPC(vict))
                 extract_char(vict);
         }
 
-        for (obj = world[ch->in_room].contents; obj; obj = next_o) {
+        for (obj = room_of(ch)->contents; obj; obj = next_o) {
             next_o = obj->next_content;
             extract_obj(obj);
         }
 
-        for (tmpaf = world[ch->in_room].affected; tmpaf; tmpaf = next_tmpaf) {
+        for (tmpaf = room_of(ch)->affected; tmpaf; tmpaf = next_tmpaf) {
             next_tmpaf = tmpaf->next;
             if (!IS_SET(tmpaf->bitvector, PERMAFFECT))
-                affect_remove_room(&world[ch->in_room], tmpaf);
+                affect_remove_room(room_of(ch), tmpaf);
         }
     }
 }
@@ -2046,7 +2045,7 @@ ACMD(do_force)
             log(buf);
         }
         for (i = descriptor_list; i; i = i->next)
-            if (i->character != ch && !i->connected && i->character->in_room == ch->in_room) {
+            if (i->character != ch && !i->connected && location_of(i->character) == location_of(ch)) {
                 vict = i->character;
                 if (GET_LEVEL(ch) > GET_LEVEL(vict)) {
                     if (CAN_SEE(vict, ch) && GET_LEVEL(ch) < LEVEL_IMPL)
@@ -2183,7 +2182,7 @@ ACMD(do_zreset)
         send_to_char("Reset world.\n\r", ch);
         return;
     } else if (*arg == '.')
-        i = world[ch->in_room].zone;
+        i = room_of(ch)->zone;
     else {
         j = atoi(arg);
         for (i = 0; i <= top_of_zone_table; i++)
@@ -2507,7 +2506,7 @@ ACMD(do_show)
     case 1: /* zone */
         /* tightened up by JE 4/6/93 */
         if (self)
-            print_zone_to_buf(buf, world[ch->in_room].zone);
+            print_zone_to_buf(buf, room_of(ch)->zone);
         else if (is_number(value)) {
             for (j = atoi(value), i = 0; zone_table[i].number != j && i <= top_of_zone_table; i++)
                 ;
@@ -2612,9 +2611,9 @@ ACMD(do_show)
         std::string death_traps = "Death Traps\n\r-----------\n\r";
         death_traps.reserve(2048);
         for (i = 0, j = 0; i < top_of_world; i++)
-            if (IS_SET(world[i].room_flags, DEATH))
+            if (IS_SET(room_by_id_total(i)->room_flags, DEATH))
                 std::format_to(std::back_inserter(death_traps), "{:2}: [{:5}] {}\n\r",
-                    ++j, world[i].number, world[i].name);
+                    ++j, room_by_id_total(i)->number, room_by_id_total(i)->name);
         send_to_char(death_traps, ch);
         break;
     }
@@ -2623,9 +2622,9 @@ ACMD(do_show)
         std::string godrooms = "Godrooms\n\r--------------------------\n\r";
         godrooms.reserve(2048);
         for (i = 0, j = 0; i < top_of_world; i++)
-            if (world[i].zone == GOD_ROOMS_ZONE)
+            if (room_by_id_total(i)->zone == GOD_ROOMS_ZONE)
                 std::format_to(std::back_inserter(godrooms), "{:2}: [{:5}] {}\n\r",
-                    j++, world[i].number, world[i].name);
+                    j++, room_by_id_total(i)->number, room_by_id_total(i)->name);
         send_to_char(godrooms, ch);
         break;
     }
@@ -3245,7 +3244,7 @@ ACMD(do_wizset)
 
     if (is_file) {
         char_to_store(vict, &tmp_store);
-        save_char(vict, vict->in_room, 0);
+        save_char(vict, location_of(vict), 0);
         free_char(cbuf);
         send_to_char("Saved in file.\n\r", ch);
     }
@@ -3676,7 +3675,7 @@ ACMD(do_register)
     if (isdigit(*arg2))
         zonnum = atoi(arg2);
     if (!*arg2)
-        zonnum = world[ch->in_room].number / 100;
+        zonnum = room_of(ch)->number / 100;
     if (!*arg1 || !zonnum) {
         send_to_char("Usage: register <room|mobile|object> [zone number].\n\r", ch);
         return;
@@ -3726,11 +3725,11 @@ ACMD(do_register)
     if (!strncmp("room", arg1, strlen(arg1))) {
         sw = 1;
         for (tmp = 0; tmp <= top_of_world; tmp++) {
-            vn = zone_table[world[tmp].zone].number;
+            vn = zone_table[room_by_id_total(tmp)->zone].number;
             //      if(vn/100 > zonnum) return;
             if (vn == zonnum) {
-                send_to_char(std::format("{:5}: {:<30}{}", world[tmp].number,
-                                 nz(static_cast<const char*>(world[tmp].name)),
+                send_to_char(std::format("{:5}: {:<30}{}", room_by_id_total(tmp)->number,
+                                 nz(static_cast<const char*>(room_by_id_total(tmp)->name)),
                                  (sw) ? "| " : "\n\r")
                                  ,
                     ch);
@@ -4020,7 +4019,7 @@ ACMD(do_rehash)
 
     for (num = 0; num <= top_of_world; num++) {
         perms_only = 1;
-        for (tmpaf = world[num].affected; tmpaf; tmpaf = tmpaf->next) {
+        for (tmpaf = room_by_id_total(num)->affected; tmpaf; tmpaf = tmpaf->next) {
             if (!IS_SET(tmpaf->bitvector, PERMAFFECT))
                 perms_only = 0;
 
@@ -4030,8 +4029,8 @@ ACMD(do_rehash)
 
         if (!perms_only) {
             tmplist = pool_to_list(&affected_list, &affected_list_pool);
-            tmplist->ptr.room = &world[num];
-            tmplist->number = world[num].number;
+            tmplist->ptr.room = room_by_id_total(num);
+            tmplist->number = room_by_id_total(num)->number;
             tmplist->type = TARGET_ROOM;
 
             count2++;

@@ -768,10 +768,10 @@ convertible, but only with a mandatory `found = nullptr` pre-init before the ran
 for-loop's own init-expression running first; a naive conversion would have read uninitialized memory
 on the empty-room path.
 
-**The `LocationReadCensus` regression gate.** `tools/location_read_census.py` (Task 3, modeled on
-`tools/string_view_census.py`'s shape) asserts zero raw `->in_room`/`.in_room`/`world[`/
-`next_in_room` tokens remain across `src/{entity,persist,world,combat,pathfind,script,olc}/*.cpp`
-outside the two allow-listed files or an annotated line, with an eight-reason authorized list
+**The `LocationReadCensus` regression gate, as LS-1 shipped it.** `tools/location_read_census.py`
+(Task 3, modeled on `tools/string_view_census.py`'s shape) asserted zero raw `->in_room`/`.in_room`/
+`world[`/`next_in_room` tokens remained across `src/{entity,persist,world,combat,pathfind,script,olc}
+/*.cpp` outside the two allow-listed files or an annotated line, with an eight-reason authorized list
 (`save-next`, `manual occupant-list splice`, `peek-ahead`, `manual first-match advance`,
 `in_room used as mutable room cursor`, `write`, `obj-location`, plus `resolver-impl` — a T3 addition
 for the three resolver-implementation lines). Comment/string-literal masking keeps English-text hits
@@ -779,17 +779,49 @@ for the three resolver-implementation lines). Comment/string-literal masking kee
 in `src/CMakeLists.txt` (outside the `if(NOT MSVC)` linkcheck block — a pure Python scan needs no
 build target, so it runs on every preset including `windows-msvc`) and wired into the flat
 `src/tests/Makefile`'s `tests` recipe (the monolithic runner has no ctest layer to inherit it from) —
-both-build-system parity, per the standing rule. It is `ctest` #1618 as of this wave's HEAD.
+both-build-system parity, per the standing rule. It was `ctest` #1618 as of LS-1's own HEAD.
 
-**The `utils.h` macro boundary (KNOWN, out of LS-1's reach — LS-3's work).** ~90 additional raw reads
-hide behind `src/utils.h` macros (`EXIT`/`OUTSIDE`/`IS_WATER`/`SUN_PENALTY` and similar expand to
-`world[(ch)->in_room]` at their call sites) — census-sanctioned out of LS-1's charter (the gate scans
-`.cpp` bodies, not header macro definitions, and a macro's *expansion* at a call site is textually
-indistinguishable from a hand-written read to the grep-based gate). These macro bodies are Wave LS-3's
-conversion work, not a gap in this wave's own exit criterion. `zone_table[...]` (~201 raw sites) is
-likewise explicitly out of the LS-1/LS-2 charter — `zone_by_id()` exists as its resolver, but the
-program's tracked triple and every success/exit criterion are `->in_room`/`world[...]`/`next_in_room`
-only; recorded so it is never later read as an oversight.
+**Widened to tree-wide by the LS-2 wave's Task T5 (`src/tests` deferred, not covered).** The scan is
+no longer the seven source-bearing library directories: `source_files()` now recurses over all of
+`src/**` (`.cpp`/`.h`/`.hpp`), scanning production code — the nine libraries, `src/app/*.cpp`, and
+every flat/public shared header — and partitioning out `src/tests` via a named `DEFERRED_DIRS =
+("tests",)` module constant (not a hard-coded, un-greppable exclusion, and not a ledger row — R2/A-2
+ruled a whole-file allow-list row would misrepresent the tier as a permanent representation owner
+when it is a deliberate, temporary deferral). Every run prints a one-line notice
+(`[deferred] N file(s) under src/tests unscanned this wave (LS-2 R2/A-2 -- retired by wave LS-3a).`)
+so the deferral is visible rather than silent; a self-test proves an unannotated raw `->in_room` sitting
+in an existing `src/tests` file produces zero violation output while the identical line in `src/app`
+or a header fails. Neither `src/CMakeLists.txt`'s `add_test` invocation nor `src/tests/Makefile`'s
+`tests` recipe needed a functional edit — both already passed no positional search path, so the
+default-scope change was picked up automatically; both got a comment-only update instead, so the
+in-repo description of the gate's scope never lies. The authorized-reason list grew eight → **eleven**:
+`representation-decl` (the field declarations themselves, `character.h:858`), `representation-impl`
+(the `occupant_range`/`const_occupant_range` iterators' own `operator++` bodies, `handler.h:131`/
+`:223`), and `not-a-location` (an `in_room` field that is not a char location at all —
+`shop_data::in_room`, a shop VNUM). It is `ctest` #1689 as of the LS-2 wave's HEAD (was #1618 at LS-1's own HEAD);
+see `docs/superpowers/specs/2026-07-23-locationsystem-program-design.md`'s Wave LS-2 As-built section
+and `docs/superpowers/location-read-allowlist.md` for the full account.
+
+**The `utils.h` macro boundary — CLOSED by the LS-2 wave's Task T2 (was KNOWN/OPEN at LS-1's HEAD).**
+LS-1 left ~90 library-scoped raw reads hiding behind `src/utils.h` macros census-sanctioned out of its
+own charter (the gate scans `.cpp` bodies, not header macro definitions, and a macro's *expansion* at
+a call site is textually indistinguishable from a hand-written read to the grep-based gate). LS-2's T2
+converted **seven** macro bodies in one commit (`a1e7673`) — `IS_DARK`, `IS_SUNLIT_EXIT`,
+`IS_SHADOWY_EXIT`, `SUN_PENALTY`, `OUTSIDE`, `EXIT`, `IS_WATER` — replacing every `world[X]` inside
+them with exactly one `room_by_id_total`/`room_of` resolver call (never `room_by_id`, per the standing
+ban below), deliberately **without hoisting**: `room_data::operator[]` mudlogs (and can `exit(0)`) on
+an out-of-range index, so collapsing a macro's N reads into one cached local would silently drop N-1
+mudlogs — an observable behavior change in a zero-behavior-change wave. `IS_LIGHT`/`IS_SUNLIT` needed
+no edit at all: neither references `world` directly, both inherit the fix by delegating to `IS_DARK`.
+The fix is two forward declarations (`room_by_id_total`, `room_of`) added to `utils.h` itself, **not**
+an `#include "handler.h"` — zero transitive weight on a 75-consumer header, and it keeps the L2 Stage-1
+API invisible from L1 `src/core/consts.cpp`. **282 call sites tree-wide (181 app + 101 library + 0
+tests) inherit Stage-1 routing with zero calling-code edits** — `EXIT` alone accounts for 250 of them.
+`zone_table[...]` remains explicitly out of both LS-1's and LS-2's charter — `zone_by_id()` exists as
+its resolver, but the program's tracked triple and every success/exit criterion are `->in_room`/
+`world[...]`/`next_in_room` only; a fresh tree-wide count at LS-2's baseline is **268** sites (LS-1's
+own "~201" was a six-library-scoped figure, a different base, not an error) — recorded so it is never
+later read as an oversight.
 
 **Test chain and reconciliation:** 1583 → T1 room_of +2 = 1585 → tranche A (entity/persist/world)
 +8 (weather coverage rider) = 1593 → T1b +4 (const-occupants tests) = 1597 → tranche B (combat)
@@ -800,11 +832,17 @@ throughout, both boot goldens and the seed42 characterization golden byte-identi
 See AGENTS.md's Testing Guidelines chain entry for the full per-commit citation and
 `.superpowers/sdd/ls1-census.md`/`ls1-task-{1,1b,2,3}-report.md` for the complete as-built account.
 No library-membership or `*LayerAcyclicity` change — the nine linkchecks stay nine; the combat row
-stays DONE. **The remaining arc:** LS-2 (app-tier read conversion — `src/app/*` plus test fixtures
-that poke `in_room` directly, same machinery, the exit criterion being the grep gate proving zero raw
-location access anywhere outside the allow-list) and LS-3 (the Stage 2 representation swap itself — a
-`LocationSystem` owned by `rots_entity`, `char_data` shedding `in_room`/`next_in_room`, `NOWHERE`
-retiring, OWNER-MERGES per the program spec's risk-split) are not yet started.
+stays DONE. **The remaining arc, updated:** LS-2 (app/header-tier read conversion plus the `utils.h`
+macro-boundary closure) has since landed — see `docs/superpowers/specs/2026-07-23-locationsystem-
+program-design.md`'s Wave LS-2 As-built section and this doc's own updated gate/macro-boundary
+paragraphs above. The program's original single Wave LS-3 split in two during LS-2 (controller
+decomposition under the owner's autonomy grant, `.superpowers/sdd/ls2-global-constraints.md`
+"Revised program shape"): **LS-3a**, the mutation wave (production writes, the `src/tests` tier's
+25 genuine reads plus its fixture-construction writes behind a two-entry-point test helper,
+`was_in_room`, and every `NOWHERE` site characterization-pinned), and **LS-3b**, the Stage 2 representation
+swap itself (a `LocationSystem` owned by `rots_entity`, `char_data` shedding `in_room`/`next_in_room`,
+`NOWHERE` retiring, OWNER-MERGES per the program spec's risk-split) — neither started as of this
+docs task.
 
 ### Output seam and entity hooks: the last three app-layer edges into `rots_entity`
 

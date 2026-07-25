@@ -758,7 +758,7 @@ ACMD(do_split)
     }
 
     char_vector split_group;
-    ch->group->get_pcs_in_room(split_group, ch->in_room);
+    ch->group->get_pcs_in_room(split_group, location_of(ch));
     int share_count = (int)split_group.size();
     if (share_count == 1) {
         send_to_char("You have no one to split with.\n\r", ch);
@@ -1818,8 +1818,8 @@ ACMD(do_knock)
 
                     room = EXIT(ch, tmp)->to_room;
                     if (room != NOWHERE) {
-                        oldroom = ch->in_room;
-                        ch->in_room = room;
+                        oldroom = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (knock: save/restore around the adjacent-room act()/special() broadcast)
+                        ch->in_room = room; // LS1-ALLOW: in_room used as mutable room cursor (knock: save/restore around the adjacent-room act()/special() broadcast)
                         if (EXIT(ch, rev_dir[tmp])) {
                             if (IS_SET(EXIT(ch, rev_dir[tmp])->exit_info, EX_ISDOOR) && EXIT(ch, rev_dir[tmp])->keyword) {
                                 strcpy(str, std::format("You hear a knock on the {}.\n",
@@ -1839,7 +1839,7 @@ ACMD(do_knock)
                         ch->delay.targ1.type = TARGET_OTHER;
                         ch->delay.targ1.ch_num = rev_dir[tmp];
                         special(ch, CMD_KNOCK, argument, SPECIAL_NONE, 0);
-                        ch->in_room = oldroom;
+                        ch->in_room = oldroom; // LS1-ALLOW: in_room used as mutable room cursor (knock: save/restore around the adjacent-room act()/special() broadcast)
                     }
 
                     return;
@@ -2023,7 +2023,7 @@ ACMD(do_fish)
     percent = GET_SKILL(ch, SKILL_GATHER_FOOD);
     move_use = 25 - percent / 5;
 
-    cur_room = &world[ch->in_room];
+    cur_room = room_of(ch);
 
     fish = real_object(fish);
     tmpobj = read_object(fish, REAL);

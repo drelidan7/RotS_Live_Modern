@@ -101,7 +101,6 @@ void say_to_char(struct char_data* speaker, struct char_data* aud,
 ACMD(do_say)
 {
     int i;
-    struct char_data* s;
     char* talk_line;
 
     if (IS_NPC(ch) && (GET_INT(ch) < 6)) {
@@ -119,7 +118,7 @@ ACMD(do_say)
     if (!*talk_line)
         send_to_char("Yes, but WHAT do you want to say?\n\r", ch);
     else {
-        for (s = world[ch->in_room].people; s; s = s->next_in_room)
+        for (auto* s : rots::entity::occupants(room_of(ch)))
             if (s->desc && s->desc->descriptor && s != ch && GET_POS(s) > POSITION_SLEEPING && !PLR_FLAGGED(s, PLR_WRITING))
                 say_to_char(ch, s, "$CS", "say", "", talk_line, FALSE);
 
@@ -130,7 +129,7 @@ ACMD(do_say)
         } else
             send_to_char("Ok.\n\r", ch);
 
-        for (s = world[ch->in_room].people; s; s = s->next_in_room)
+        for (auto* s : rots::entity::occupants(room_of(ch)))
             if (IS_NPC(s) && (s != ch))
                 call_trigger(ON_HEAR_SAY, s, ch, talk_line);
     }
@@ -180,7 +179,7 @@ ACMD(do_gsay)
 
         // Other people in the room hear this as well.
         strcpy(buf, std::format("$CS$n says '{}'\n\r", argument + message_index).c_str());
-        for (char_data* bystander = world[ch->in_room].people; bystander; bystander = bystander->next_in_room) {
+        for (auto* bystander : rots::entity::occupants(room_of(ch))) {
             if (group != bystander->group && utils::is_pc(*bystander)) {
                 act(buf, FALSE, ch, 0, bystander, TO_VICT);
             }
@@ -625,7 +624,7 @@ ACMD(do_gen_com)
 
             switch (subcmd) {
             case SCMD_YELL: /* Go to all in zone */
-                if (world[ch->in_room].zone != world[i->character->in_room].zone)
+                if (room_of(ch)->zone != room_of(i->character)->zone)
                     continue;
                 say_to_char(ch, i->character, color,
                     com_msgs[subcmd][1], "", argument, FALSE);
@@ -654,9 +653,9 @@ ACMD(do_gen_com)
     /* XXX: This REALLY needs to be replaced with something more efficient */
     if (subcmd == SCMD_YELL) {
         // triggering specials in other rooms now...
-        myzone = world[ch->in_room].zone;
+        myzone = room_of(ch)->zone;
         for (tmp = 0; tmp <= top_of_world; tmp++) {
-            tmproom = &world[tmp];
+            tmproom = room_by_id_total(tmp);
             if (tmproom->zone == myzone)
                 special(ch, CMD_YELL, argument, SPECIAL_COMMAND, wtl, tmp);
         }

@@ -117,3 +117,135 @@ TEST(TriggerRoomEvent, EnterWalksAllUnscriptedOccupantsAndReturnsOne) {
         << "Expected the converted occupants(room) walk (ON_ENTER case) to reach every occupant "
            "and leave return_value at its initial 1.";
 }
+
+
+// -----------------------------------------------------------------------
+// LS-2 T4-legacy follow-up (ls2-global-constraints.md's "Inherited test
+// debt" section, item 1; ls1-wholebranch-review.md C.1): the denial edge
+// (return_value == 0) neither RoomTriggerContext test above can reach,
+// pinned via a REAL attached script -- run_script() interprets a hand-built
+// script_data chain directly (no mudlle source/bytecode compiler involved;
+// same technique poison_notification_tests.cpp's PoisonRemovalScriptTest
+// already established for a different script.cpp entry point), and
+// script_table/top_of_script_table (no header declares either -- forward-
+// declared locally here, matching script.cpp's/act_wiz.cpp's own
+// precedent) are temporarily pointed at a single fabricated entry.
+//
+// The two tests below don't just prove the denial return value -- they
+// prove the `if (!return_value) break;` guard the LS-1 conversion added
+// (replacing the original raw for-loop's own `tmpch && return_value`
+// condition) actually STOPS the walk: occupant_a's script denies first,
+// and occupant_b (deliberately UNSCRIPTED, script_number == 0) sits right
+// behind it in the chain. If the guard were ever dropped, the walk would
+// keep going, reach occupant_b, and trigger_before_char_enter()/
+// trigger_char_enter()'s own early "no script -> return 1" path would
+// SILENTLY OVERWRITE return_value back to 1 (allow) -- exactly the failure
+// mode the guard exists to prevent, and exactly what these tests would
+// catch (they'd observe a 1, not a 0).
+
+extern struct script_head* script_table;
+extern int top_of_script_table;
+
+namespace {
+
+// trigger_marker_type: ON_BEFORE_ENTER or ON_ENTER -- the "section header"
+// script_data node char_has_script() scans for; the real command to run
+// starts at its ->next (script.cpp's own scan-then-run-successor shape,
+// see trigger_before_char_enter()/trigger_char_enter()).
+struct ScriptedDenialContext {
+    ScopedTestWorld test_world{1};
+    char_data actor{};
+    char_data occupant_a{}; // scripted: denies via SCRIPT_RETURN_FALSE.
+    char_data occupant_b{}; // deliberately UNSCRIPTED -- must never be consulted.
+
+    script_data trigger_marker{};
+    script_data return_false_command{};
+    script_head scripted_entry{};
+
+    struct script_head* previous_script_table = nullptr;
+    int previous_top_of_script_table = 0;
+
+    static constexpr int kScriptNumber = 90001; // arbitrary vnum, unique to this fixture.
+
+    explicit ScriptedDenialContext(int trigger_marker_type)
+    {
+        top_of_world = 0;
+        actor.in_room = 0;
+
+        occupant_a.in_room = 0;
+        occupant_a.specials.script_number = kScriptNumber;
+        occupant_a.next_in_room = &occupant_b;
+
+        occupant_b.in_room = 0;
+        occupant_b.specials.script_number = 0; // unscripted -- char_has_script() must find nothing.
+        occupant_b.next_in_room = nullptr;
+
+        world[0].people = &occupant_a;
+
+        trigger_marker.command_type = trigger_marker_type;
+        trigger_marker.next = &return_false_command;
+        return_false_command.command_type = SCRIPT_RETURN_FALSE;
+        return_false_command.next = nullptr;
+
+        scripted_entry.number = kScriptNumber;
+        scripted_entry.name = nullptr;
+        scripted_entry.virt_num = 0;
+        scripted_entry.description = nullptr;
+        scripted_entry.host = nullptr;
+        scripted_entry.script = &trigger_marker;
+
+        previous_script_table = script_table;
+        previous_top_of_script_table = top_of_script_table;
+        script_table = &scripted_entry;
+        top_of_script_table = 0;
+    }
+
+    ~ScriptedDenialContext()
+    {
+        script_table = previous_script_table;
+        top_of_script_table = previous_top_of_script_table;
+        RELEASE(occupant_a.specials.script_info);
+        RELEASE(occupant_b.specials.script_info);
+        world[0].people = nullptr;
+        occupant_a.next_in_room = nullptr;
+    }
+};
+
+} // namespace
+
+TEST(TriggerRoomEvent, BeforeEnterStopsAtTheFirstDenyingOccupantAndReturnsZero) {
+    ScriptedDenialContext context(ON_BEFORE_ENTER);
+
+    EXPECT_EQ(trigger_room_event(ON_BEFORE_ENTER, &world[0], &context.actor), 0)
+        << "Expected occupant_a's attached SCRIPT_RETURN_FALSE script to deny entry.";
+}
+
+TEST(TriggerRoomEvent, BeforeEnterNeverConsultsAnOccupantAfterADenial) {
+    ScriptedDenialContext context(ON_BEFORE_ENTER);
+
+    const int result = trigger_room_event(ON_BEFORE_ENTER, &world[0], &context.actor);
+
+    EXPECT_EQ(result, 0)
+        << "If the `if (!return_value) break;` guard were ever dropped, the walk would continue "
+           "to occupant_b (unscripted -- trigger_before_char_enter()'s own early 'no script' path "
+           "unconditionally returns 1) and silently overwrite return_value back to 1. Observing 0 "
+           "here proves the walk stopped at occupant_a and never reached occupant_b.";
+}
+
+TEST(TriggerRoomEvent, EnterStopsAtTheFirstDenyingOccupantAndReturnsZero) {
+    ScriptedDenialContext context(ON_ENTER);
+
+    EXPECT_EQ(trigger_room_event(ON_ENTER, &world[0], &context.actor), 0)
+        << "Expected occupant_a's attached SCRIPT_RETURN_FALSE script to deny entry (ON_ENTER case, "
+           "reached before the trailing object-trigger loop).";
+}
+
+TEST(TriggerRoomEvent, EnterNeverConsultsAnOccupantAfterADenial) {
+    ScriptedDenialContext context(ON_ENTER);
+
+    const int result = trigger_room_event(ON_ENTER, &world[0], &context.actor);
+
+    EXPECT_EQ(result, 0)
+        << "Same guard-regression check as the ON_BEFORE_ENTER case above, for ON_ENTER's "
+           "trigger_char_enter() walk.";
+}

@@ -59,7 +59,7 @@ ACMD(do_hit)
     struct char_data* victim;
 
     // is this a peace room?  - Seether
-    if (IS_SET(world[ch->in_room].room_flags, PEACEROOM)) {
+    if (IS_SET(room_of(ch)->room_flags, PEACEROOM)) {
         send_to_char("A peaceful feeling overwhelms you, and you cannot bring "
                      "yourself to attack.\n\r",
             ch);
@@ -83,7 +83,7 @@ ACMD(do_hit)
     else if (*arg)
         victim = get_char_room_vis(ch, arg);
 
-    if (victim && CAN_SEE(ch, victim) && (victim->in_room == ch->in_room)) {
+    if (victim && CAN_SEE(ch, victim) && (location_of(victim) == location_of(ch))) {
         if (victim == ch) {
             send_to_char("You hit yourself...OUCH!.\n\r", ch);
             act("$n hits $mself, and says OUCH!", FALSE, ch, 0, victim, TO_ROOM);
@@ -163,8 +163,8 @@ bool should_assist_master(char_data* ch)
         return false;
     }
 
-    auto master_in_room = master->in_room;
-    auto ch_in_room = ch->in_room;
+    auto master_in_room = location_of(master);
+    auto ch_in_room = location_of(ch);
 
     return master_in_room == ch_in_room;
 }
@@ -185,7 +185,7 @@ ACMD(do_assist)
         helpee = get_char_room_vis(ch, arg);
     else if ((wtl->targ1.type == TARGET_CHAR) && char_exists(wtl->targ1.ch_num)) {
         helpee = wtl->targ1.ptr.ch;
-        if (helpee && helpee->in_room != ch->in_room)
+        if (helpee && location_of(helpee) != location_of(ch))
             helpee = 0;
     } else
         helpee = 0;
@@ -315,10 +315,10 @@ ACMD(do_order)
             strcpy(buf, "$n issues an order.");
             act(buf, FALSE, ch, 0, victim, TO_ROOM);
 
-            org_room = ch->in_room;
+            org_room = location_of(ch);
 
             for (k = ch->followers; k; k = k->next) {
-                if (org_room == k->follower->in_room)
+                if (org_room == location_of(k->follower))
                     if (IS_AFFECTED(k->follower, AFF_CHARM) && !utils::is_guardian(*k->follower)) {
                         found = TRUE;
                         command_interpreter(k->follower, message);
@@ -336,7 +336,6 @@ ACMD(do_order)
 ACMD(do_flee)
 {
     int i, attempt, loose, die, res, move_cost;
-    struct char_data* tmpch;
     void gain_exp(struct char_data*, int);
 
     if (GET_TACTICS(ch) == TACTICS_BERSERK) {
@@ -355,9 +354,9 @@ ACMD(do_flee)
         res = CAN_GO(ch, attempt) && !IS_SET(EXIT(ch, attempt)->exit_info, EX_NOFLEE) && !IS_SET(EXIT(ch, attempt)->exit_info, EX_NOWALK);
 
         if (res) {
-            res = !IS_SET(world[EXIT(ch, attempt)->to_room].room_flags, DEATH);
+            res = !IS_SET(room_by_id_total(EXIT(ch, attempt)->to_room)->room_flags, DEATH);
             if (IS_NPC(ch)) {
-                res = res && ((!IS_SET(ch->specials2.act, MOB_STAY_ZONE) || (world[EXIT(ch, attempt)->to_room].zone == world[ch->in_room].zone)) && (!IS_SET(ch->specials2.act, MOB_STAY_TYPE) || (world[EXIT(ch, attempt)->to_room].sector_type == world[ch->in_room].sector_type)));
+                res = res && ((!IS_SET(ch->specials2.act, MOB_STAY_ZONE) || (room_by_id_total(EXIT(ch, attempt)->to_room)->zone == room_of(ch)->zone)) && (!IS_SET(ch->specials2.act, MOB_STAY_TYPE) || (room_by_id_total(EXIT(ch, attempt)->to_room)->sector_type == room_of(ch)->sector_type)));
             }
         }
 
@@ -393,7 +392,7 @@ ACMD(do_flee)
 
                     /* disengaging now moved into char_from_room  **********/
                     //	  if (ch->specials.fighting->specials.fighting == ch)
-                    for (tmpch = world[ch->in_room].people; tmpch; tmpch = tmpch->next_in_room)
+                    for (auto* tmpch : rots::entity::occupants(room_of(ch)))
                         if (tmpch->specials.fighting == ch)
                             stop_fighting(tmpch);
                     stop_fighting(ch);
@@ -461,7 +460,7 @@ ACMD(do_bash)
         }
 
         if (victim) {
-            if (IS_SET(world[ch->in_room].room_flags, PEACEROOM)) {
+            if (IS_SET(room_of(ch)->room_flags, PEACEROOM)) {
                 send_to_char("A peaceful feeling overwhelms you, and you "
                              "cannot bring yourself to attack.\n\r",
                     ch);
@@ -536,7 +535,7 @@ ACMD(do_bash)
             send_to_char("Bash who?\n\r", ch);
             return;
         }
-        if (ch->in_room != victim->in_room) {
+        if (location_of(ch) != location_of(victim)) {
             send_to_char("You target is not here any longer\n\r", ch);
             return;
         }
@@ -662,8 +661,8 @@ ACMD(do_bash)
         strcpy(buf, std::format("The {} crashes open! $n falls through it.\n\r", nz(EXIT(ch, door)->keyword)).c_str());
         act(buf, TRUE, ch, 0, 0, TO_ROOM);
         if ((other_room = EXIT(ch, door)->to_room) != NOWHERE) {
-            if ((back = world[other_room].dir_option[rev_dir[door]]))
-                if (back->to_room == ch->in_room) {
+            if ((back = room_by_id_total(other_room)->dir_option[rev_dir[door]]))
+                if (back->to_room == location_of(ch)) {
                     SET_BIT(back->exit_info, EX_ISBROKEN);
                     REMOVE_BIT(back->exit_info, EX_CLOSED | EX_LOCKED);
                     if (back->keyword) {
@@ -712,7 +711,7 @@ ACMD(do_rescue)
 
     int room_message = 1;
 
-    struct char_data *victim, *tmp_ch;
+    struct char_data *victim, *tmp_ch = nullptr;
     byte percent, prob, shadow_flag;
 
     if (IS_SHADOW(ch)) {
@@ -727,7 +726,7 @@ ACMD(do_rescue)
     }
 
     if (wtl) {
-        if ((wtl->targ1.type != TARGET_CHAR) || !char_exists(wtl->targ1.ch_num) || wtl->targ1.ptr.ch->in_room != ch->in_room) {
+        if ((wtl->targ1.type != TARGET_CHAR) || !char_exists(wtl->targ1.ch_num) || location_of(wtl->targ1.ptr.ch) != location_of(ch)) {
             send_to_char("Alas! You lost your victim.\n\r", ch);
             return;
         }
@@ -752,10 +751,13 @@ ACMD(do_rescue)
 
     shadow_flag = IS_SHADOW(ch);
 
-    for (tmp_ch = world[ch->in_room].people;
-         tmp_ch && ((tmp_ch->specials.fighting != victim) || (shadow_flag && !IS_SHADOW(tmp_ch)) || (!shadow_flag && IS_NPC(tmp_ch) && IS_SHADOW(tmp_ch)));
-         tmp_ch = tmp_ch->next_in_room)
-        ;
+    for (auto* occ : rots::entity::occupants(room_of(ch))) {
+        if (!((occ->specials.fighting != victim) || (shadow_flag && !IS_SHADOW(occ))
+                || (!shadow_flag && IS_NPC(occ) && IS_SHADOW(occ)))) {
+            tmp_ch = occ;
+            break;
+        }
+    }
 
     if (!tmp_ch) {
         if (!shadow_flag)
@@ -836,7 +838,7 @@ ACMD(do_kick)
     else
         return;
 
-    if (IS_SET(world[ch->in_room].room_flags, PEACEROOM)) {
+    if (IS_SET(room_of(ch)->room_flags, PEACEROOM)) {
         send_to_char("A peaceful feeling overwhelms you, "
                      "and you cannot bring yourself to attack.\n\r",
             ch);
@@ -874,7 +876,7 @@ ACMD(do_kick)
         return;
     }
 
-    if (victim->in_room != ch->in_room) {
+    if (location_of(victim) != location_of(ch)) {
         if (attacktype == SKILL_KICK)
             send_to_char("Kick who?\n\r", ch);
         else
@@ -1031,7 +1033,7 @@ bool can_bear_skill(char_data* ch, int skill)
         return false;
     }
 
-    const room_data& room = world[ch->in_room];
+    const room_data& room = *room_of(ch);
     if (is_set(room.room_flags, (long)PEACEROOM)) {
         send_to_char(
             "A peaceful feeling overwhelms you, and you cannot bring yourself to attack.\r\n", ch);
@@ -1079,7 +1081,7 @@ char_data* is_rend_targ_valid(char_data* render, waiting_type* target)
         }
     }
 
-    if (render->in_room != victim->in_room) {
+    if (location_of(render) != location_of(victim)) {
         send_to_char("Your victim is no longer here.\r\n", render);
         return NULL;
     }
@@ -1170,7 +1172,7 @@ char_data* is_bite_targ_valid(char_data* biter, waiting_type* target)
         }
     }
 
-    if (biter->in_room != victim->in_room) {
+    if (location_of(biter) != location_of(victim)) {
         send_to_char("Your victim is no longer here.\r\n", biter);
         return NULL;
     }
@@ -1256,7 +1258,7 @@ char_data* is_maul_targ_valid(char_data* mauler, waiting_type* target)
         }
     }
 
-    if (mauler->in_room != victim->in_room) {
+    if (location_of(mauler) != location_of(victim)) {
         send_to_char("Your victim is no longer here.\r\n", mauler);
         return NULL;
     }

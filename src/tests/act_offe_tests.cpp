@@ -37,6 +37,13 @@ ACMD(do_rescue);
 // fight_proc_tests.cpp's own `extern char_data* combat_list;` /
 // save-and-restore convention (that file's PerformViolenceTest fixture).
 extern char_data *combat_list;
+// do_rescue's set_fighting()/delay path can also link a character into the
+// process-wide waiting_list (comm.cpp's delayed-command list). This fixture's
+// char_data are stack-local, so a stale entry left behind outlives its storage
+// and the NEXT test to walk waiting_list dereferences freed stack memory --
+// see abort_delay_impl(), comm.cpp:2847-2848. Saved/restored exactly like
+// combat_list above (olog_hai_tests.cpp sets the same precedent).
+extern char_data *waiting_list;
 
 namespace {
 
@@ -65,9 +72,12 @@ struct DoRescueContext {
     descriptor_data ch_descriptor{};
     char_data *original_people = nullptr;
     char_data *original_combat_list;
+    char_data *original_waiting_list;
 
-    DoRescueContext() : original_combat_list(combat_list) {
+    DoRescueContext()
+        : original_combat_list(combat_list), original_waiting_list(waiting_list) {
         combat_list = nullptr;
+        waiting_list = nullptr;
         clear_test_random_values();
 
         reset_capturing_descriptor(ch_descriptor, &ch);
@@ -100,7 +110,13 @@ struct DoRescueContext {
         victim.specials.fighting = nullptr;
         ch.next_fighting = nullptr;
         victim.next_fighting = nullptr;
+        ch.delay.next = nullptr;
+        victim.delay.next = nullptr;
         combat_list = original_combat_list;
+        // Restoring the head drops every entry added during the test --
+        // including the test body's own stack-local tmp_ch, which this
+        // fixture has no handle on.
+        waiting_list = original_waiting_list;
 
         test_world.room().people = original_people;
         ch.next_in_room = nullptr;

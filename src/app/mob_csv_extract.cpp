@@ -221,12 +221,12 @@ ACMD(do_mob_csv_extract)
         if (!mob) {
             continue;
         }
-        mob->in_room = ch->in_room;
+        mob->in_room = location_of(ch); // LS1-ALLOW: write
 
         std::string mob_stat = mob_csv_extract::generate_npc_stat(mob);
         mob_csv.write_to_file(ch, mob_stat);
 
-        mob->in_room = NOWHERE;
+        mob->in_room = NOWHERE; // LS1-ALLOW: write
         extract_char(mob);
     }
 

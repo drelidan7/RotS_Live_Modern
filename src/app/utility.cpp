@@ -246,7 +246,7 @@ void log_death_trap(struct char_data* ch)
     //   extern struct room_data world;
 
     std::string message = std::format("{} hit death trap #{} ({})", GET_NAME(ch),
-        world[ch->in_room].number, world[ch->in_room].name);
+        room_of(ch)->number, room_of(ch)->name);
     mudlog(message, BRF, LEVEL_IMMORT, TRUE);
 }
 

@@ -135,7 +135,7 @@ board_info_type* find_board(struct char_data* ch)
 {
     struct obj_data* obj;
     int i;
-    for (obj = world[ch->in_room].contents; obj; obj = obj->next_content)
+    for (obj = room_of(ch)->contents; obj; obj = obj->next_content)
         for (i = 0; i < NUM_OF_BOARDS; i++) {
             //       printf("boards are, real:%d, virt:%d\n",G_RNUM(board_info[i]),
             //	      G_VNUM(board_info[i]));

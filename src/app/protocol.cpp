@@ -57,6 +57,7 @@
  ******************************************************************************/
 
 #include "comm.h"
+#include "handler.h" // LS-2 Wave Task T3a: room_of() for broadcast_weather_msdp_update
 #include "rots_net.h"
 #include "text_view.h"
 #include "rots/core/character.h"
@@ -2927,7 +2928,7 @@ void broadcast_weather_msdp_update(rots::world::weather_msdp_kind kind)
             MSDPSend(desc, eMSDP_WORLD_TIME);
             break;
         case rots::world::weather_msdp_kind::weather: {
-            auto sector_type = world[desc->character->in_room].sector_type;
+            auto sector_type = room_of(desc->character)->sector_type;
             auto weather_type = weather_info.sky[sector_type];
             if (OUTSIDE(desc->character)) {
                 MSDPSetString(desc, eMDSP_WEATHER,

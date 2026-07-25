@@ -1362,6 +1362,7 @@ if(ROTS_BUILD_TESTS)
         tests/cpp20_format_smoke_tests.cpp
         tests/crashsave_schedule_tests.cpp
         tests/damage_tests.cpp
+        tests/db_boot_tests.cpp
         tests/db_loader_tests.cpp
         tests/db_save_roundtrip_tests.cpp
         tests/editor_hooks_tests.cpp

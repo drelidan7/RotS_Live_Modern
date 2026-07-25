@@ -560,11 +560,9 @@ void write_exploits(char_data* ch, exploit_record* record);
 
 void record_crime(char_data* criminal, char_data* victim, int crime, int wit_type)
 {
-    struct char_data* tmpchar;
-
     if (IS_NPC(victim) || (GET_LEVEL(victim) >= LEVEL_IMMORT) || (IS_NPC(criminal)))
         return;
-    for (tmpchar = world[victim->in_room].people; tmpchar; tmpchar = tmpchar->next_in_room) {
+    for (auto* tmpchar : rots::entity::occupants(room_of(victim))) {
         if ((tmpchar == criminal) || (IS_NPC(tmpchar)) || (GET_LEVEL(tmpchar) >= LEVEL_IMMORT))
             continue;
         add_crime(criminal->specials2.idnum, victim->specials2.idnum, tmpchar->specials2.idnum,

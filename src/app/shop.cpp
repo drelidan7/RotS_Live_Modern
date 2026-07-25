@@ -103,8 +103,8 @@ void closing_time(struct char_data* keeper)
 
     act("$n tells you 'I am closing. Please leave now.'",
         FALSE, keeper, 0, 0, TO_ROOM);
-    for (tmpch = world[keeper->in_room].people; tmpch; tmpch = next_patron) {
-        next_patron = tmpch->next_in_room;
+    for (tmpch = room_of(keeper)->people; tmpch; tmpch = next_patron) {
+        next_patron = tmpch->next_in_room; // LS1-ALLOW: save-next (body relocates the current node via char_from_room/char_to_room)
         if (tmpch != keeper) {
             act("$n pushed you out.", TRUE, keeper, 0, tmpch, TO_VICT);
             char_from_room(tmpch);
@@ -222,8 +222,8 @@ int has_already(struct obj_data* item, int shop_nr)
     int temp;
     struct obj_data* tobj;
 
-    if (world[shop_index[shop_nr].stock_room].contents)
-        for (temp = 1, tobj = world[shop_index[shop_nr].stock_room].contents;
+    if (room_by_id_total(shop_index[shop_nr].stock_room)->contents)
+        for (temp = 1, tobj = room_by_id_total(shop_index[shop_nr].stock_room)->contents;
              tobj; tobj = tobj->next_content, temp++)
             if ((tobj->item_number == item->item_number) && (tobj->obj_flags.level < 20))
                 return TRUE;
@@ -253,7 +253,7 @@ void shopping_buy(char* arg, struct char_data* ch,
     else
         objnum = 9999;
     // printf("argm=%s, objnum=%d\n",argm,objnum);
-    if (!(temp1 = get_obj_in_list_vis(ch, argm, world[shop_index[shop_nr].stock_room].contents, objnum))) {
+    if (!(temp1 = get_obj_in_list_vis(ch, argm, room_by_id_total(shop_index[shop_nr].stock_room)->contents, objnum))) {
         // no_such_item1/2, missing_cash1/2, do_not_buy, message_buy/sell are
         // builder shop-file strings (structs.h-adjacent shop_data fields) --
         // validate before expanding, same reasoning as death_cry2 above.
@@ -483,8 +483,8 @@ void shopping_list(char* arg, struct char_data* ch,
 
     strcpy(buf, "You can buy:\n\r");
     found_obj = FALSE;
-    if (world[shop_index[shop_nr].stock_room].contents)
-        for (count = 1, temp1 = world[shop_index[shop_nr].stock_room].contents;
+    if (room_by_id_total(shop_index[shop_nr].stock_room)->contents)
+        for (count = 1, temp1 = room_by_id_total(shop_index[shop_nr].stock_room)->contents;
              temp1; temp1 = temp1->next_content, count++)
             if ((CAN_SEE_OBJ(ch, temp1)) && (temp1->obj_flags.cost > 0)) {
 
@@ -585,25 +585,25 @@ SPECIAL(shop_keeper)
         shop_index[shop_nr].is_open = 0;
     }
 
-    if ((cmd == CMD_BUY) && (ch->in_room == real_room(shop_index[shop_nr].in_room))) { /* Buy */
+    if ((cmd == CMD_BUY) && (location_of(ch) == real_room(shop_index[shop_nr].in_room))) { /* Buy */ // LS1-ALLOW: not-a-location (shop_data::in_room is a shop vnum, not a char location)
 
         shopping_buy(arg, ch, keeper, shop_nr);
         return (TRUE);
     }
 
-    if ((cmd == CMD_SELL) && (ch->in_room == real_room(shop_index[shop_nr].in_room))) { /* Sell */
+    if ((cmd == CMD_SELL) && (location_of(ch) == real_room(shop_index[shop_nr].in_room))) { /* Sell */ // LS1-ALLOW: not-a-location (shop_data::in_room is a shop vnum, not a char location)
 
         shopping_sell(arg, ch, keeper, shop_nr);
         return (TRUE);
     }
 
-    if ((cmd == CMD_VALUE) && (ch->in_room == real_room(shop_index[shop_nr].in_room))) { /* value */
+    if ((cmd == CMD_VALUE) && (location_of(ch) == real_room(shop_index[shop_nr].in_room))) { /* value */ // LS1-ALLOW: not-a-location (shop_data::in_room is a shop vnum, not a char location)
 
         shopping_value(arg, ch, keeper, shop_nr);
         return (TRUE);
     }
 
-    if ((cmd == CMD_LIST) && (ch->in_room == real_room(shop_index[shop_nr].in_room))) { /* List */
+    if ((cmd == CMD_LIST) && (location_of(ch) == real_room(shop_index[shop_nr].in_room))) { /* List */ // LS1-ALLOW: not-a-location (shop_data::in_room is a shop vnum, not a char location)
 
         shopping_list(arg, ch, keeper, shop_nr);
         return (TRUE);
@@ -679,7 +679,7 @@ void boot_the_shops(FILE* shop_f, char* filename)
             shop_index[number_of_shops].keeper = real_mobile(shop_index[number_of_shops].keeper);
 
             fscanf(shop_f, "%d", &shop_index[number_of_shops].material);
-            fscanf(shop_f, "%d", &shop_index[number_of_shops].in_room);
+            fscanf(shop_f, "%d", &shop_index[number_of_shops].in_room); // LS1-ALLOW: not-a-location (shop_data::in_room is a shop vnum, not a char location)
             fscanf(shop_f, "%d", &shop_index[number_of_shops].stock_room);
             fscanf(shop_f, "%d", &shop_index[number_of_shops].open1);
             fscanf(shop_f, "%d", &shop_index[number_of_shops].close1);

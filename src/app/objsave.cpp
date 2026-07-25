@@ -491,8 +491,8 @@ void load_character(struct char_data* ch)
     extern struct char_data* character_list;
     FILE* fp;
 
-    if (ch->in_room == NOWHERE)
-        ch->in_room = ch->specials2.load_room;
+    if (location_of(ch) == NOWHERE)
+        ch->in_room = ch->specials2.load_room; // LS1-ALLOW: write
 
     fp = Crash_load(ch);
 
@@ -537,9 +537,9 @@ int calc_load_room(struct char_data* ch, int load_result)
         if (PLR_FLAGGED(ch, PLR_FROZEN))
             load_room = r_frozen_start_room;
         else {
-            if (ch->in_room == NOWHERE)
+            if (location_of(ch) == NOWHERE)
                 load_room = r_mortal_start_room[GET_RACE(ch)];
-            else if ((load_room = real_room(ch->in_room)) < 0)
+            else if ((load_room = real_room(location_of(ch))) < 0)
                 load_room = r_mortal_start_room[GET_RACE(ch)];
 
             /* Look through maze mappings. If ch was in a maze room
@@ -553,7 +553,7 @@ int calc_load_room(struct char_data* ch, int load_result)
         }
     }
 
-    if ((load_result == RENT_CRASH) && (ch->in_room >= EXTENSION_ROOM_HEAD))
+    if ((load_result == RENT_CRASH) && (location_of(ch) >= EXTENSION_ROOM_HEAD))
         log("Error: objsave.cc tried to load in room > EXTENSION_ROOM_HEAD");
     if (GET_RACE(ch) == 0)
         load_room = r_immort_start_room;
@@ -644,7 +644,7 @@ void Crash_collect_followers(struct char_data* ch, std::vector<objects_json::Fol
         next_fol = k->next;
         if (!IS_NPC(k->follower))
             continue;
-        if (k->follower->in_room != ch->in_room)
+        if (location_of(k->follower) != location_of(ch))
             continue;
 
         objects_json::FollowerData follower;
@@ -707,7 +707,7 @@ void Crash_follower_load(struct char_data* ch, const objects_json::ObjectSaveDat
         if ((tmp = real_mobile(fol_elem.fol_vnum)) < 0)
             break;
         mob = read_mobile(tmp, REAL);
-        char_to_room(mob, ch->in_room);
+        char_to_room(mob, location_of(ch));
 
         for (const objects_json::ObjectRecord& object : fol_elem.objects) {
             if (object.wear_pos > MAX_WEAR || object.wear_pos < 0)
@@ -799,7 +799,7 @@ void Crash_follower_load(struct char_data* ch, const objects_json::ObjectSaveDat
         add_follower(mob, ch, FOLLOW_MOVE);
         if ((tmp = real_mobile(fol_elem.mount_vnum)) > 0) {
             mount = read_mobile(tmp, REAL);
-            char_to_room(mount, ch->in_room);
+            char_to_room(mount, location_of(ch));
             add_follower(mount, mob, FOLLOW_MOVE);
         }
     }
@@ -1211,7 +1211,6 @@ int gen_receptionist(struct char_data* ch, int cmd, char* arg, int mode)
     char tmpname[MAX_NAME_LENGTH + 1];
     static long retirer = 0, namechanger = 0;
     struct char_data* recep = 0;
-    struct char_data* tch;
     int save_room;
     const std::string_view action_tabel[9] = { "smile ", "twiddle ", "think ", "frown ", "glare ", "pout ", "sneeze ", "stare ", "yawn " };
     long rent_deadline;
@@ -1225,9 +1224,12 @@ int gen_receptionist(struct char_data* ch, int cmd, char* arg, int mode)
     if ((!ch->desc) || IS_NPC(ch))
         return (FALSE);
 
-    for (tch = world[ch->in_room].people; (tch) && (!recep); tch = tch->next_in_room)
-        if (IS_MOB(tch) && (mob_index[tch->nr].func == receptionist))
+    for (auto* tch : rots::entity::occupants(room_of(ch))) {
+        if (IS_MOB(tch) && (mob_index[tch->nr].func == receptionist)) {
             recep = tch;
+            break;
+        }
+    }
     if (!recep) {
         log("SYSERR: Fubar'd receptionist.");
         return FALSE;
@@ -1443,10 +1445,10 @@ int gen_receptionist(struct char_data* ch, int cmd, char* arg, int mode)
 
         mudlog(buf, NRM, (sh_int)MAX(LEVEL_IMMORT, GET_INVIS_LEV(ch)), TRUE);
         act("$n helps $N into $S private chamber.", FALSE, recep, 0, ch, TO_NOTVICT);
-        save_room = ch->in_room;
+        save_room = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (post-extract VNUM stash for save_char)
         extract_char(ch);
-        ch->in_room = world[save_room].number;
-        save_char(ch, ch->in_room, 0);
+        ch->in_room = world[save_room].number; // LS1-ALLOW: in_room used as mutable room cursor (post-extract VNUM stash for save_char)
+        save_char(ch, ch->in_room, 0); // LS1-ALLOW: in_room used as mutable room cursor (post-extract VNUM stash for save_char)
     } else { /* Offer */
         Crash_offer_rent(ch, recep, mode, TRUE);
         act("$N gives $n an offer.", FALSE, ch, 0, recep, TO_ROOM);
@@ -1506,10 +1508,10 @@ ACMD(do_rent)
 
     mudlog(buf, NRM, (sh_int)MAX(LEVEL_IMMORT, GET_INVIS_LEV(ch)), TRUE);
 
-    save_room = ch->in_room;
+    save_room = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (post-extract VNUM stash for save_char)
     extract_char(ch);
-    ch->in_room = world[save_room].number;
-    save_char(ch, ch->in_room, 0);
+    ch->in_room = world[save_room].number; // LS1-ALLOW: in_room used as mutable room cursor (post-extract VNUM stash for save_char)
+    save_char(ch, ch->in_room, 0); // LS1-ALLOW: in_room used as mutable room cursor (post-extract VNUM stash for save_char)
 }
 
 void Crash_save_all(void)

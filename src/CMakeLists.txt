@@ -1390,6 +1390,7 @@ if(ROTS_BUILD_TESTS)
         tests/objects_json_layout_tests.cpp
         tests/objects_json_tests.cpp
         tests/objsave_json_tests.cpp
+        tests/objsave_tests.cpp
         tests/olog_hai_tests.cpp
         tests/output_seam_forwarders_tests.cpp
         tests/pathfind_tests.cpp
@@ -1417,6 +1418,7 @@ if(ROTS_BUILD_TESTS)
         tests/script_tests.cpp
         tests/shape_format_tests.cpp
         tests/shapemob_tests.cpp
+        tests/shop_tests.cpp
         tests/skill_timer_tests.cpp
         tests/spec_pro_tests.cpp
         tests/spell_pa_tests.cpp

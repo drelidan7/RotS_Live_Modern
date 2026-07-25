@@ -10,6 +10,7 @@
 #include "rots/core/types.h"
 #include "../utils.h"
 #include "test_char_cleanup.h"
+#include "test_world.h"
 
 // IAC/DO/WILL/TELOPT_TTYPE: from <arpa/telnet.h> on POSIX; that header does
 // not exist on Windows, where platdef.h hand-declares the same fixed RFC
@@ -48,6 +49,13 @@ void clear_char(struct char_data* ch, int mode);
 void broadcast_weather_msdp_update(rots::world::weather_msdp_kind kind);
 void msdp_update();
 int get_percent_absorb(char_data* character);
+// act_move.cpp's msdp_room_update_impl(), forward-declared here (like
+// msdp_update()/broadcast_weather_msdp_update() above) so the coverage
+// riders below (LS-2 Wave Task T3c) can call the real body directly,
+// bypassing the output_seam.h dispatcher -- MsdpRoomUpdateSink
+// (output_seam_forwarders_tests.cpp) already covers the seam forwarder
+// itself with a recording stub and never enters this body.
+void msdp_room_update_impl(char_data* ch);
 
 namespace protocol_testing {
 void write_packet(descriptor_t* descriptor, std::string_view packet);
@@ -2011,6 +2019,92 @@ TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSendsIndoorAndOutdoorWeather)
         "Above the fields, not a cloud can be seen in the sky.");
     EXPECT_EQ(outdoor_context.read_output(),
         expected_msdp_pair("WEATHER", "Above the fields, not a cloud can be seen in the sky."));
+}
+
+// -----------------------------------------------------------------------
+// msdp_room_update_impl (act_move.cpp:559) -- LS-2 Wave Task T3c coverage
+// riders (M3). This is a DIFFERENT function from msdp_update() above
+// (comm.cpp) -- coincidentally similar in shape but a separate body with
+// its own independent world[]/->in_room reads, previously reached by no
+// test at all: the pre-existing MsdpUpdate* tests above exercise
+// comm.cpp's msdp_update(), and MsdpRoomUpdateSink (output_seam_forwarders_
+// tests.cpp) only exercises the seam forwarder with a recording stub, never
+// entering this body. Forward-declared here (a plain, non-header-declared
+// helper act_move.cpp exposes to the seam only via a function pointer, see
+// output_seam.h/comm.cpp's register_game_output_sinks()).
+//
+// NOTE on the guard at act_move.cpp:566 (converted from `ch->in_room >= 0`
+// to `location_of(ch) >= 0`): this reads as an INVERTED early-return (the
+// full-packet body below only runs when the character's room is NEGATIVE)
+// -- census-flagged "inverted-looking guard preserved verbatim"
+// (ls2-census-a1.md Sec 2b, act_move.cpp:569). LS-2 is a zero-behavior-
+// change wave: this is pre-existing production behavior, not something
+// this task's conversion introduces or may "fix". The two riders below
+// pin both sides of it byte-for-byte as it already stood before this
+// task's conversion.
+// -----------------------------------------------------------------------
+
+TEST(MSDPProtocol, RoomUpdateImplSetsRoomNameVnumExitsAndTerrainWhenLocationIsNegative)
+{
+    ScopedTestWorld test_world { 2 };
+    room_direction_data north_exit {};
+    north_exit.exit_info = 0;
+    north_exit.to_room = 1;
+    world[0].dir_option[NORTH] = &north_exit;
+    world[0].number = 3005;
+    world[1].number = 3006;
+
+    ProtocolDescriptor context;
+    context.character.desc = &context.descriptor;
+    // Negative, but deliberately NOT NOWHERE (-1) -- act_move.cpp:593's
+    // inner-loop `location_of(ch) == NOWHERE` guard would otherwise break
+    // out of the exits scan before touching dir_option[NORTH] at all,
+    // leaving the :605 room_by_id_total(room_direction.to_room) conversion
+    // this test targets unreached.
+    context.character.in_room = -2;
+    enable_msdp_reports(context.descriptor.pProtocol,
+        { eMSDP_ROOM_NAME, eMSDP_ROOM_VNUM, eMSDP_ROOM_EXITS, eMSDP_ROOM });
+
+    msdp_room_update_impl(&context.character);
+
+    EXPECT_STREQ(context.descriptor.pProtocol->pVariables[eMSDP_ROOM_NAME]->pValueString,
+        "The Testing Meadow")
+        << "Expected act_move.cpp:573's room_of(ch->desc->character)->name conversion to read "
+           "room[0]'s ScopedTestWorld-assigned name.";
+    EXPECT_EQ(context.descriptor.pProtocol->pVariables[eMSDP_ROOM_VNUM]->ValueInt, 3005)
+        << "Expected act_move.cpp:574's room_of(ch->desc->character)->number conversion to read "
+           "room[0]'s vnum.";
+
+    const std::string exits(context.descriptor.pProtocol->pVariables[eMSDP_ROOM_EXITS]->pValueString);
+    EXPECT_NE(exits.find('n'), std::string::npos)
+        << "Expected the north exit (room[0].dir_option[NORTH], resolved through act_move.cpp:"
+           "601's room_of(ch)->dir_option[exits] conversion) to be reported: " << exits;
+
+    const std::string room_table(context.descriptor.pProtocol->pVariables[eMSDP_ROOM]->pValueString);
+    EXPECT_NE(room_table.find("3006"), std::string::npos)
+        << "Expected act_move.cpp:605's room_by_id_total(room_direction.to_room)->number "
+           "conversion to embed the NORTH exit's target room[1]'s vnum in the composed table: "
+           << room_table;
+    EXPECT_NE(room_table.find("Floor"), std::string::npos)
+        << "Expected act_move.cpp:616's sector_types[room_of(ch)->sector_type] conversion to "
+           "embed room[0]'s (default sector_type 0 == \"Floor\") terrain name: " << room_table;
+}
+
+TEST(MSDPProtocol, RoomUpdateImplIsANoOpWhenCharacterHasAnOrdinaryNonNegativeLocation)
+{
+    ScopedTestWorld test_world { 1 };
+    ProtocolDescriptor context;
+    context.character.desc = &context.descriptor;
+    context.character.in_room = 0; // the ordinary case: a valid, non-negative room
+    enable_msdp_reports(context.descriptor.pProtocol, { eMSDP_ROOM_NAME, eMSDP_ROOM_VNUM });
+
+    msdp_room_update_impl(&context.character);
+
+    EXPECT_FALSE(context.descriptor.pProtocol->pVariables[eMSDP_ROOM_NAME]->bDirty)
+        << "Expected act_move.cpp:566's converted location_of(ch) >= 0 guard to return before "
+           "any MSDPSet* call, exactly as the pre-conversion ch->in_room >= 0 guard did, for "
+           "every character in an ordinary (non-negative) room.";
+    EXPECT_STREQ(context.descriptor.pProtocol->pVariables[eMSDP_ROOM_NAME]->pValueString, "");
 }
 
 } // namespace

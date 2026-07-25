@@ -155,7 +155,6 @@ int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
   */
 {
     int need_movement;
-    struct char_data* tmpch;
     struct room_data *room_to, *room_from;
 
     if (mode != SCMD_MOVING)
@@ -165,7 +164,7 @@ int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
     if ((GET_POS(ch) < POSITION_FIGHTING) || (PLR_FLAGGED(ch, PLR_WRITING)))
         return 1;
 
-    room_from = &world[ch->in_room];
+    room_from = room_of(ch);
 
     if (!room_from->dir_option[cmd])
         return 1;
@@ -174,7 +173,7 @@ int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
     if (ch->delay.wait_value > 0)
         return 1;
 
-    room_to = &world[room_from->dir_option[cmd]->to_room];
+    room_to = room_by_id_total(room_from->dir_option[cmd]->to_room);
     if (!room_to)
         return 1;
 
@@ -260,9 +259,9 @@ int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
         }
         if (IS_SET(EXIT(ch, cmd)->exit_info, EX_NORIDE))
             return 7;
-        if (IS_SET(world[world[ch->in_room].dir_option[cmd]->to_room].room_flags, INDOORS))
+        if (IS_SET(room_by_id_total(room_of(ch)->dir_option[cmd]->to_room)->room_flags, INDOORS))
             return 7;
-        if (IS_SET(world[world[ch->in_room].dir_option[cmd]->to_room].room_flags, NORIDE))
+        if (IS_SET(room_by_id_total(room_of(ch)->dir_option[cmd]->to_room)->room_flags, NORIDE))
             return 7;
         else if ((mode != SCMD_CARRIED) && ((ch->mount_data.mount)->mount_data.rider != ch))
             return 6;
@@ -270,8 +269,7 @@ int check_simple_move(struct char_data* ch, int cmd, int* mv_cost, int mode)
 
     // Checking for race_guard mobs in the room the ch wants to move to
 
-    for (tmpch = world[world[ch->in_room].dir_option[cmd]->to_room].people; tmpch;
-         tmpch = tmpch->next_in_room)
+    for (auto* tmpch : rots::entity::occupants(room_by_id_total(room_of(ch)->dir_option[cmd]->to_room)))
         if (IS_NPC(tmpch) && MOB_FLAGGED(tmpch, MOB_RACE_GUARD))
             if ((GET_RACE(ch) != GET_RACE(tmpch)) && !IS_NPC(ch))
                 return 8;
@@ -300,13 +298,13 @@ void set_blood_trail(struct char_data* ch, int dir)
     if ((utils::is_npc(*ch) || (utils::get_race(*ch) != RACE_GOD))) {
         tmp = number(0, NUM_OF_BLOOD_TRAILS - 1);
         if (utils::is_npc(*ch)) {
-            world[ch->in_room].bleed_track[tmp].char_number = ch->nr;
+            room_of(ch)->bleed_track[tmp].char_number = ch->nr;
         } else {
-            world[ch->in_room].bleed_track[tmp].char_number = -GET_RACE(ch);
+            room_of(ch)->bleed_track[tmp].char_number = -GET_RACE(ch);
         }
 
-        world[ch->in_room].bleed_track[tmp].data = time_info.hours * 8 + dir;
-        world[ch->in_room].bleed_track[tmp].condition = 0;
+        room_of(ch)->bleed_track[tmp].data = time_info.hours * 8 + dir;
+        room_of(ch)->bleed_track[tmp].condition = 0;
     }
 }
 
@@ -320,7 +318,7 @@ void set_blood_trail(struct char_data* ch, int dir)
  */
 int perform_move_mount(struct char_data* ch, int dir)
 {
-    char_data *tmpch, *tmpch2, *tmpvict;
+    char_data *tmpch, *tmpch2;
     int was_in, new_room, num2, is_death, move_cost, tmp, should_show;
     char buff[1000];
     char buff2[1000];
@@ -336,9 +334,9 @@ int perform_move_mount(struct char_data* ch, int dir)
     }
 
     new_room = EXIT(ch, dir)->to_room;
-    was_in = ch->in_room;
+    was_in = location_of(ch);
 
-    is_death = IS_SET(world[new_room].room_flags, DEATH);
+    is_death = IS_SET(room_by_id_total(new_room)->room_flags, DEATH);
 
     /* supposedly, the primary rider has already passed special() */
     special(ch->mount_data.rider, dir + 1, mutable_arg(""), SPECIAL_COMMAND, 0);
@@ -348,7 +346,7 @@ int perform_move_mount(struct char_data* ch, int dir)
          char_exists(num2) && tmpch;
          num2 = ch->mount_data.next_rider_number, tmpch = tmpch->mount_data.next_rider) {
 
-        if (tmpch->in_room != ch->in_room)
+        if (location_of(tmpch) != location_of(ch))
             stop_riding(tmpch);
 
         if ((tmp = check_simple_move(tmpch, dir, &move_cost, SCMD_CARRIED))) {
@@ -380,7 +378,7 @@ int perform_move_mount(struct char_data* ch, int dir)
     strcpy(buff, std::format(" leaving {}, riding on ", dirs[dir]).c_str());
     strcpy(buff2, std::format(" leaving {}, riding on ", dirs[dir]).c_str());
 
-    for (tmpvict = world[was_in].people; tmpvict; tmpvict = tmpvict->next_in_room) {
+    for (auto* tmpvict : rots::entity::occupants(room_by_id_total(was_in))) {
 
         if ((tmpvict == ch) || (tmpvict->mount_data.mount == ch))
             continue;
@@ -405,12 +403,12 @@ int perform_move_mount(struct char_data* ch, int dir)
     if ((IS_NPC(ch) || (GET_RACE(ch) != RACE_GOD)) && !(IS_AFFECTED(ch, AFF_FLYING))) {
         tmp = number(0, NUM_OF_TRACKS - 1);
         if (IS_NPC(ch))
-            world[ch->in_room].room_track[tmp].char_number = ch->nr;
+            room_of(ch)->room_track[tmp].char_number = ch->nr;
         else
-            world[ch->in_room].room_track[tmp].char_number = -GET_RACE(ch);
+            room_of(ch)->room_track[tmp].char_number = -GET_RACE(ch);
 
-        world[ch->in_room].room_track[tmp].data = time_info.hours * 8 + dir;
-        world[ch->in_room].room_track[tmp].condition = 0;
+        room_of(ch)->room_track[tmp].data = time_info.hours * 8 + dir;
+        room_of(ch)->room_track[tmp].condition = 0;
     }
 
     if (utils::is_affected_by_spell(*ch, SKILL_MARK)) {
@@ -435,7 +433,7 @@ int perform_move_mount(struct char_data* ch, int dir)
     strcpy(buff, std::format(" entering from {}, riding on ", refer_dirs[rev_dir[dir]]).c_str());
     strcpy(buff2, std::format(" entering from {}, riding on ", refer_dirs[rev_dir[dir]]).c_str());
 
-    for (tmpvict = world[new_room].people; tmpvict; tmpvict = tmpvict->next_in_room) {
+    for (auto* tmpvict : rots::entity::occupants(room_by_id_total(new_room))) {
 
         should_show = 1;
 
@@ -457,12 +455,12 @@ int perform_move_mount(struct char_data* ch, int dir)
 
         special(tmpch, rev_dir[dir] + 1, mutable_arg(""), SPECIAL_ENTER, 0);
 
-        call_trigger(ON_ENTER, (void*)&world[tmpch->in_room], (void*)tmpch, 0);
+        call_trigger(ON_ENTER, (void*)room_of(tmpch), (void*)tmpch, 0);
     }
     if (special(ch, rev_dir[dir] + 1, mutable_arg(""), SPECIAL_ENTER, 0))
         return 0;
 
-    call_trigger(ON_ENTER, (void*)&world[ch->in_room], (void*)ch, 0);
+    call_trigger(ON_ENTER, (void*)room_of(ch), (void*)ch, 0);
 
     return 1;
 }
@@ -566,22 +564,22 @@ void msdp_room_update_impl(char_data* ch)
         return;
     }
 
-    if (ch->in_room >= 0) {
+    if (location_of(ch) >= 0) {
         return;
     }
 
-    MSDPSetString(ch->desc, eMSDP_ROOM_NAME, world[ch->desc->character->in_room].name);
-    MSDPSetNumber(ch->desc, eMSDP_ROOM_VNUM, world[ch->desc->character->in_room].number);
+    MSDPSetString(ch->desc, eMSDP_ROOM_NAME, room_of(ch->desc->character)->name);
+    MSDPSetNumber(ch->desc, eMSDP_ROOM_VNUM, room_of(ch->desc->character)->number);
 
     std::string msdp_room = {};
     msdp_room += (char)MSDP_VAR;
     msdp_room += "VNUM";
     msdp_room += (char)MSDP_VAL;
-    msdp_room += std::to_string(world[ch->in_room].number);
+    msdp_room += std::to_string(room_of(ch)->number);
     msdp_room += (char)MSDP_VAR;
     msdp_room += "NAME";
     msdp_room += (char)MSDP_VAL;
-    msdp_room += MSDPSanitizeValue(world[ch->in_room].name);
+    msdp_room += MSDPSanitizeValue(room_of(ch)->name);
     msdp_room += (char)MSDP_VAR;
     msdp_room += "EXITS";
     msdp_room += (char)MSDP_VAL;
@@ -590,19 +588,19 @@ void msdp_room_update_impl(char_data* ch)
     const std::string direction[NUM_OF_DIRS] = { "n", "e", "s", "w", "u", "d" };
 
     for (int exits = 0; exits < NUM_OF_DIRS; exits++) {
-        if (ch->in_room == NOWHERE) {
+        if (location_of(ch) == NOWHERE) {
             break;
         }
 
-        if (world[ch->in_room].dir_option[exits] == nullptr) {
+        if (room_of(ch)->dir_option[exits] == nullptr) {
             continue;
         }
 
-        const room_direction_data room_direction = *world[ch->in_room].dir_option[exits];
+        const room_direction_data room_direction = *room_of(ch)->dir_option[exits];
 
         if (is_exit_valid(room_direction)) {
             msdp_room += (char)MSDP_VAL;
-            msdp_room += std::to_string(world[room_direction.to_room].number);
+            msdp_room += std::to_string(room_by_id_total(room_direction.to_room)->number);
             exits_names += (char)MSDP_VAL;
             exits_names += direction[exits];
         }
@@ -613,7 +611,7 @@ void msdp_room_update_impl(char_data* ch)
     msdp_room += (char)MSDP_VAL;
 
     extern const std::string_view sector_types[];
-    msdp_room += sector_types[world[ch->in_room].sector_type];
+    msdp_room += sector_types[room_of(ch)->sector_type];
 
     // Room exits need to be sent first before anything else
     MSDPSetArray(ch->desc, eMSDP_ROOM_EXITS, exits_names);

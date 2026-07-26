@@ -90,7 +90,7 @@ ALLOWED_REASON_PREFIXES = (
 RAW_STRING_PATTERN = re.compile(r'(?:u8|u|U|L)?R"([^ ()\\\t\r\n]{0,16})\(')
 
 
-def mask_comments_and_string_literals(source_text):
+def mask_comments_and_string_literals(source_text, mask_comments=True):
     """Blank out comment and string/char-literal CONTENTS, keep newlines/length.
 
     Unlike string_view_census's masker (which skips over literals only to
@@ -99,6 +99,17 @@ def mask_comments_and_string_literals(source_text):
     log()/mudlog() calls in this tree embed strings like
     "SYSERR: ch->in_room = NOWHERE ..." that must never trip the gate.
     Line/column positions are preserved 1:1 so line numbers stay valid.
+
+    mask_comments=False switches to a STRINGS-ONLY mode (I1 fix,
+    ls2-wholebranch-review-fable.md): comment SPANS are still recognized and
+    skipped whole (so an apostrophe inside a comment is never mistaken for
+    the start of a char literal), but their contents are left un-blanked --
+    real `LS1-ALLOW:` annotations live in comments, so this is what the
+    annotation search (findings_for_file) scans against instead of the raw
+    line. String/char-literal contents are still blanked in both modes, so
+    an `LS1-ALLOW:` marker sitting inside a string literal (rather than a
+    comment) is blanked out here too and can no longer be mistaken for a
+    real annotation.
     """
     n = len(source_text)
     masked = list(source_text)
@@ -107,16 +118,18 @@ def mask_comments_and_string_literals(source_text):
         if source_text.startswith("//", i):
             end = source_text.find("\n", i)
             end = n if end < 0 else end
-            for k in range(i, end):
-                masked[k] = " "
+            if mask_comments:
+                for k in range(i, end):
+                    masked[k] = " "
             i = end
             continue
         if source_text.startswith("/*", i):
             end = source_text.find("*/", i + 2)
             end = n if end < 0 else end + 2
-            for k in range(i, end):
-                if masked[k] != "\n":
-                    masked[k] = " "
+            if mask_comments:
+                for k in range(i, end):
+                    if masked[k] != "\n":
+                        masked[k] = " "
             i = end
             continue
         raw_match = RAW_STRING_PATTERN.match(source_text, i)
@@ -218,8 +231,17 @@ def findings_for_file(source_path, repository_root, allow_listed_files):
 
     raw_text = source_path.read_text(encoding="utf-8", errors="replace")
     masked_text = mask_comments_and_string_literals(raw_text)
+    # I1 fix (ls2-wholebranch-review-fable.md): the annotation search below
+    # must run against a STRINGS-ONLY-masked variant (comments intact,
+    # string/char-literal contents blanked) rather than the raw line -- a
+    # bare raw-line search lets an `LS1-ALLOW:` marker sitting inside a
+    # string-literal ARGUMENT (e.g. a mudlog() call) silence a real raw
+    # token on the same line, since that marker is not actually an
+    # annotation at all.
+    annotation_source_text = mask_comments_and_string_literals(raw_text, mask_comments=False)
     raw_lines = raw_text.split("\n")
     masked_lines = masked_text.split("\n")
+    annotation_source_lines = annotation_source_text.split("\n")
 
     findings = []
     for line_index, masked_line in enumerate(masked_lines):
@@ -240,13 +262,21 @@ def findings_for_file(source_path, repository_root, allow_listed_files):
         # BEFORE the backslash (`/* LS1-ALLOW: ... */ \`). Stripping the
         # backslash first also keeps the captured reason text free of the
         # trailing `*/ \` tail.
-        match_source = raw_line.rstrip()
+        match_source = annotation_source_lines[line_index].rstrip()
         if match_source.endswith("\\"):
             match_source = match_source[:-1].rstrip()
         annotation_match = ANNOTATION_PATTERN.search(match_source) if ANNOTATION_MARKER in match_source else None
         if annotation_match is not None:
             reason_text = annotation_match.group(1)
-            if any(reason_text.startswith(prefix) for prefix in ALLOWED_REASON_PREFIXES):
+            # I2 fix (ls2-wholebranch-review-fable.md): require the
+            # authorized prefix to be followed by end-of-string, a space, or
+            # an opening paren -- a bare `startswith` let any EXTENSION of an
+            # authorized prefix through (e.g. "writeable-anything-i-like"
+            # passing because it starts with "write").
+            if any(
+                re.match(rf"{re.escape(prefix)}($|[ (])", reason_text)
+                for prefix in ALLOWED_REASON_PREFIXES
+            ):
                 continue
             findings.append((line_index + 1, matched_token, raw_line.strip(), "invalid-reason"))
             continue

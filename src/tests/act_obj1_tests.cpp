@@ -116,10 +116,18 @@ obj_data make_takeable_object(const char *name, const char *short_description) {
 
 } // namespace
 
-// perform_get_from_room() -- the OBJ-log line (:303) reads room_of(character)
-// for the room's name/number; item.touched == 1 and a non-FOOD/DRINKCON type
-// (both true by default here) are what gate that line, so this test's own
-// setup already reaches the converted read every time it runs.
+// perform_get_from_room() -- item.touched == 1 and a non-FOOD/DRINKCON type
+// (both true by default here) make this fixture reach the OBJ-log line
+// (:303, `room_of(character)->name`/`->number`), so a broken conversion
+// there that null-derefs or mudlogs on an out-of-range room would still
+// crash/abort this test. O-I4 (LS-2 whole-branch review, Opus): none of
+// the three assertions below observe log()'s output, though -- log()
+// (rots_log.cpp) writes straight to stderr with no Sink-style capture seam
+// the way mudlog() has, so this test does NOT positively pin that read's
+// correctness (a resolver silently pointed at the WRONG room would pass
+// here unnoticed); it only proves the read doesn't crash. The three real
+// assertions below come entirely from obj_from_room()/obj_to_char(),
+// independent of the log line.
 TEST(PerformGetFromRoom, MovesTheItemFromTheRoomIntoTheCharactersInventory) {
     ActObj1Context context;
     obj_data item = make_takeable_object("sword blade", "a plain sword");
@@ -249,5 +257,58 @@ TEST(DoButcher, ReportsNoCorpseWhenNoneIsPresentInTheRoom) {
     EXPECT_NE(context.output().find("You see no corpse here"), std::string_view::npos)
         << "Expected the converted room_of(ch)->contents resolver to find nothing in an empty "
            "room: "
+        << context.output();
+}
+
+namespace {
+
+// Shared by both O-I4 positive controls below: a minimal corpse object
+// whose butcher_item == 0 reaches the earliest possible success message
+// ("There is nothing of value on it.", act_obj1.cpp:693) without needing a
+// populated obj_index/real_object() table (this test binary has neither).
+obj_data make_valueless_corpse() {
+    obj_data corpse = make_takeable_object("corpse deer", "the corpse of a deer");
+    corpse.obj_flags.type_flag = ITEM_CONTAINER;
+    corpse.obj_flags.value[3] = 1; // do_butcher's "is this actually a corpse" gate (:683).
+    corpse.obj_flags.butcher_item = 0;
+    corpse.in_room = 0;
+    corpse.next_content = nullptr;
+    return corpse;
+}
+
+} // namespace
+
+// O-I4 (LS-2 whole-branch review, Opus): the negative control above can't
+// distinguish a correctly-wired :668 resolver from a broken or deleted one
+// -- both leave `obj` null and produce the identical "You see no corpse
+// here" message. This positive control gives the no-argument path a real
+// corpse to find.
+TEST(DoButcher, FindsTheCorpseInTheRoomWhenNoArgumentIsGiven) {
+    ActObj1Context context;
+    obj_data corpse = make_valueless_corpse();
+    world[0].contents = &corpse;
+
+    do_butcher(&context.ch, mutable_arg(""), nullptr, 0, SCMD_BUTCHER);
+
+    EXPECT_NE(context.output().find("There is nothing of value on it"), std::string_view::npos)
+        << "Expected the converted room_of(ch)->contents resolver (act_obj1.cpp:668) to find "
+           "the corpse via the no-argument path, then reach the butcher_item == 0 guard: "
+        << context.output();
+}
+
+// O-I4's second resolver: :674, the WITH-argument path -- entirely
+// untested before this task (the file's only other do_butcher test drives
+// the no-argument branch exclusively).
+TEST(DoButcher, FindsTheNamedCorpseInTheRoomWhenAnArgumentIsGiven) {
+    ActObj1Context context;
+    obj_data corpse = make_valueless_corpse();
+    world[0].contents = &corpse;
+
+    do_butcher(&context.ch, mutable_arg("corpse"), nullptr, 0, SCMD_BUTCHER);
+
+    EXPECT_NE(context.output().find("There is nothing of value on it"), std::string_view::npos)
+        << "Expected the converted room_of(ch)->contents resolver (act_obj1.cpp:674) to find "
+           "the named corpse via the with-argument path, then reach the butcher_item == 0 "
+           "guard: "
         << context.output();
 }

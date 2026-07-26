@@ -180,6 +180,37 @@ TEST(DoEat, ReportsNothingToEatWhenNoFoodIsAnywhere) {
         << context.output();
 }
 
+// O-I4 (LS-2 whole-branch review, Opus): the negative control above can't
+// distinguish a correctly-wired room_of(ch)->contents fallback from a
+// broken or deleted one -- both leave `food` null and produce the
+// identical "don't seem to have any" message. This positive control gives
+// the room a real food object the fallback (:237) must find once
+// ch->carrying's own search (checked first, :236) comes up empty.
+TEST(DoEat, TastesFoodFoundInTheRoomWhenNoneIsCarried) {
+    ActObj2Context context;
+    obj_data bread{};
+    bread.item_number = -1;
+    bread.name = const_cast<char *>("bread");
+    bread.short_description = const_cast<char *>("a loaf of bread");
+    bread.obj_flags.type_flag = ITEM_FOOD;
+    // SCMD_TASTE decrements value[0] and only extracts the object once that
+    // decrement reaches zero (act_obj2.cpp:290) -- kept above 1 so this
+    // object (a stack obj_data with a string-literal name, not a
+    // str_dup()'d heap string) is never handed to extract_obj()/free_obj().
+    bread.obj_flags.value[0] = 5;
+    bread.in_room = 0;
+    bread.next_content = nullptr;
+    world[0].contents = &bread;
+
+    do_eat(&context.ch, mutable_arg("bread"), nullptr, 0, SCMD_TASTE);
+
+    EXPECT_NE(context.output().find("You nibble a little bit of"), std::string_view::npos)
+        << "Expected ch->carrying's search to fail, then the converted room_of(ch)->contents "
+           "fallback (act_obj2.cpp:237) to find the room's food object: "
+        << context.output();
+    EXPECT_EQ(world[0].contents, &bread) << "SCMD_TASTE should not have extracted the object.";
+}
+
 // do_pour()'s room-flag read (:321) plus object-search fallback (:329) --
 // same shape as do_drink's, exercised on a different subcmd/function.
 TEST(DoPour, ReportsCannotFindWhenNoWaterFlagAndNoObjectAnywhere) {
@@ -193,6 +224,47 @@ TEST(DoPour, ReportsCannotFindWhenNoWaterFlagAndNoObjectAnywhere) {
         << "Expected the room-flag read to see neither bit set, then the room_of(ch)->contents "
            "search to find nothing: "
         << context.output();
+}
+
+// O-I4 (LS-2 whole-branch review, Opus): the negative control above can't
+// distinguish a correctly-wired room_of(ch)->contents fallback from a
+// broken or deleted one at EITHER converted site (:321's room-flag read or
+// :329's object search) -- both leave from_obj null and produce the
+// identical "You can't find it!" message. This positive control keeps
+// room_flags at 0 (so :321 must correctly see neither DRINK_WATER nor
+// DRINK_POISON and fall through, rather than routing into the
+// generic_water/generic_poison branch) and gives :329's fallback a real
+// ITEM_DRINKCON object to find.
+TEST(DoPour, PoursFromADrinkContainerFoundInTheRoomWhenNoWaterFlagIsSet) {
+    ActObj2Context context;
+    world[0].room_flags = 0; // neither DRINK_WATER nor DRINK_POISON -- :321 must fall through.
+
+    obj_data waterskin{};
+    waterskin.item_number = -1;
+    // Deliberately the single word "water", not "waterskin": isname()
+    // (entity_lifecycle.cpp) forces a FULL word match for any query of
+    // length 5 (like "water"), so a query that is only a PREFIX of a
+    // longer single word ("waterskin") does not match at all -- and, once
+    // matching, this also keeps the name space-free, so
+    // name_from_drinkcon() (act_obj2.cpp:58-72, called by the "pour ...
+    // out" branch below), which frees obj->name when it finds a space, is
+    // a no-op instead of freeing this string-literal (not str_dup()'d)
+    // pointer.
+    waterskin.name = const_cast<char *>("water");
+    waterskin.short_description = const_cast<char *>("a leather waterskin of water");
+    waterskin.obj_flags.type_flag = ITEM_DRINKCON;
+    waterskin.obj_flags.value[1] = 5; // has liquid -- :375's "The $p is empty." guard.
+    waterskin.in_room = 0;
+    waterskin.next_content = nullptr;
+    world[0].contents = &waterskin;
+
+    do_pour(&context.ch, mutable_arg("water out"), nullptr, 0, SCMD_POUR);
+
+    EXPECT_NE(context.output().find("You empty"), std::string_view::npos)
+        << "Expected the room-flag read (room_of(ch)->room_flags) to see neither bit set, then "
+           "the room_of(ch)->contents fallback (act_obj2.cpp:329) to find the waterskin: "
+        << context.output();
+    EXPECT_EQ(waterskin.obj_flags.value[1], 0) << "Expected the found container to have been emptied.";
 }
 
 // do_light() (:694/:704/:726) -- torch found via the converted

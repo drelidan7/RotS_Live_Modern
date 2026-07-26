@@ -532,5 +532,30 @@ from. ASan clean at every task that touched a new/rewritten test file (T1, T3a, 
 `ConvertEquivalence` 17/17 and both census scripts (`location_read_census.py`/`string_view_census.py`)
 exit 0 throughout; both boot goldens and the seed42 characterization golden byte-identical at every
 commit. Skips carried forward unchanged from the LS-1 wave: 75 (macOS) / 77 (`rots64`) — no LS-2 task
-touched a POSIX/32-bit-fixture-gated test. **The i386 finalization battery is PENDING T7** — no
-numbers are recorded here until it is measured, per the standing no-invented-numbers rule.
+touched a POSIX/32-bit-fixture-gated test. **The i386 finalization battery is measured** (`log/i386-battery/`,
+`step1-20260725T162134Z.log`/`step2-20260725T164047Z.log`/`step3-20260725T170331Z.log`, run at
+commit `2afaee9`): **1689 total / 6 skips** via the ctest flow, reconciling exactly against the
+monolithic runner (1656 passed + 23 skipped = 1679 of 1689 gtest-visible cases; the remaining 10 are
+the CMake ctest-only checks — nine acyclicity linkchecks plus `LocationReadCensus`; 23 − 17
+monolithic-only `PerRace/ConvertEquivalence.*` skips leaves the identical 6-test remainder both
+ways), boot golden matches — the standing reconciliation method, twelfth consecutive wave.
+
+**The battery caught the wave's one real defect, on a class the ctest flow structurally cannot
+see.** Its first run died with `qemu: uncaught target signal 11` after 1054 tests, inside a
+*pre-existing* test (`InterpreAccountMenu.ExtractCharReturnsAccountBackedCharactersToAccountAwareMenu`).
+Reproduced natively — the all-in-one-process run segfaulted at a *different* test
+(`CharacterizationCombatTest.DamageTranscriptSeed42`, after 602 tests), which is the signature of
+cross-test global-state corruption: the crash site is merely whoever walks the corrupted list first
+under a given ordering. Bisected by gtest filter to T3d's own
+`DoRescue.FindsTheFighterAndRescuesTheVictimWhenSomeoneIsFightingThem`; `lldb` pinned the fault at
+`comm.cpp:2848` in `abort_delay_impl()`, dereferencing a **stack address** still linked into the
+process-global `waiting_list` after its scope ended. `DoRescueContext` already saved and restored
+`combat_list` for precisely this hazard — nothing covered `waiting_list`, which `do_rescue`'s path
+also links into. Fixed symmetrically in `2afaee9` (restoring the head drops every entry added during
+the test, including the test body's own stack-local `tmp_ch` the fixture has no handle on).
+
+**The standing lesson, recorded for LS-3a** (which adds many more tests touching global game state):
+ctest was green at **1689/1689 throughout**. It runs each test in its own process, so a leaked
+pointer into a global list never outlives anything. Only the single-process monolithic runner can
+catch this class — which is exactly why AGENTS.md refuses to tolerate a monolithic SIGSEGV, and why
+a green per-test suite is not evidence of fixture hygiene.

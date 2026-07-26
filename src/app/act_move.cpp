@@ -964,7 +964,7 @@ ACMD(do_move)
 // find_door() relocated verbatim to fight.cpp (spell-family closure wave
 // Task 1; sf-census.md section 4.3: RELOCATE-CLEAN -- deps
 // (search_block()/L0, isname_nullable()/L2, send_to_char()/L1 output
-// seam, EXIT() macro's world[] read/L3-world peer) all resolve downward
+// seam, EXIT() macro's room resolve -- a raw world[] read until LS-2 T2/L3-world peer) all resolve downward
 // or intra-lib. Declaration unchanged (no shared header; every caller
 // uses a local extern -- this file's own four internal call sites below
 // now need one too, added at the top of this file).

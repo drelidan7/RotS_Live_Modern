@@ -89,7 +89,10 @@ bool is_water_room(const room_data& room)
 // utility.cpp, separated there by other already-relocated functions'
 // comments, but belong together here). CAN_GO()/can_breathe() are the
 // batch's two resolver-dependent movers: CAN_GO()'s EXIT(ch,door) macro
-// (utils.h: `#define EXIT(ch, door) (world[(ch)->in_room].dir_option[door])`)
+// (utils.h; its body at the time of this batch was
+// `#define EXIT(ch, door) (world[(ch)->in_room].dir_option[door])` -- LS-2 T2 has
+// since converted it to `room_of((ch))->dir_option[door]`, so this quote is
+// HISTORICAL and no longer describes the macro)
 // and can_breathe()'s two world[ch->in_room].sector_type reads are both
 // unchecked in their original bodies (no bounds test anywhere) -- per the
 // BINDING addendum's resolver-variant rule, both hoist a single

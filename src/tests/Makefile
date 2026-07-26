@@ -196,6 +196,7 @@ zone_tests.o : ../zone.h ../db.h
 # ls2-census.md / ls2-census-b.md PART 3 / ls2-task-5-report.md.
 tests: $(EXECUTABLE)
 	python3 ../../tools/location_read_census.py --check
+	python3 ../../tools/location_read_census.py --self-test
 
 $(EXECUTABLE): $(OBJFILES) $(OBJS)
 	$(CXX) $(CXXFLAGS) $(OBJFILES) $(OBJS) -o $(EXECUTABLE) $(LDFLAGS)

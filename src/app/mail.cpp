@@ -120,7 +120,11 @@ void postmaster_send_mail(struct char_data* ch, int cmd, char* arg, char_data* h
 void postmaster_check_mail(struct char_data* ch, int cmd, char* arg, char_data* host);
 void postmaster_receive_mail(struct char_data* ch, int cmd, char* arg, char_data* host);
 
-extern struct room_data* world;
+// NOTE: this TU previously declared `extern struct room_data* world;` -- a POINTER,
+// while db_world.cpp:93 defines `struct room_data world;`, an OBJECT. That is an ODR
+// mismatch, harmless here only because the symbol was never used in this file. Removed
+// rather than corrected (LS-2 whole-branch review, Opus M12a): nothing in mail.cpp
+// reads the world table, so the right fix is to not declare it at all.
 extern struct index_data* mob_index;
 extern struct obj_data* object_list;
 extern int no_mail;

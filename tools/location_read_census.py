@@ -63,7 +63,12 @@ DEFERRED_DIRS = ("tests",)
 # before it could be mistaken for ordinary tree churn.
 MINIMUM_SCANNED_FILE_COUNT = 100
 
-SOURCE_SUFFIXES = (".cpp", ".h", ".hpp")
+SOURCE_SUFFIXES = (".cpp", ".h", ".hpp", ".cc", ".cxx", ".c", ".inl", ".ipp")
+# Widened past the original (".cpp", ".h", ".hpp") after the LS-2 whole-branch
+# review (Fable M4): the tuple was closed-world, so a future .cc/.cxx/.inl/.ipp
+# file would have escaped the sweep SILENTLY -- the one failure mode this gate
+# must never have. Zero such files exist under production src/ today, so this
+# is pure future-proofing and changes no current result.
 
 # Token patterns, applied to COMMENT/STRING-MASKED text (so a token living
 # inside a comment or a log()/mudlog() string literal never trips the gate).
@@ -189,14 +194,41 @@ def mask_comments_and_string_literals(source_text, mask_comments=True):
     return "".join(masked)
 
 
+# The ledger's canonical allow-list table must open with exactly this header
+# row. Only rows belonging to THAT table become whole-file exemptions.
+ALLOW_LIST_TABLE_HEADER = "| Path | Reason |"
+
+
 def load_allow_listed_files(exception_path, repository_root):
-    """Parse the doc-side allow-list table's Path column into a path set."""
+    """Parse ONLY the ledger's canonical allow-list table into a path set.
+
+    Hardened after the LS-2 whole-branch review (Opus M10). The original
+    loader promoted **any** markdown table row in the ledger whose first cell
+    was backticked into a WHOLE-FILE exemption, regardless of which table it
+    sat in -- so a future "informational appendix" table containing a row like
+    ``| `src/app/victim.cpp` | 5 | write |`` would have silently exempted that
+    file from the program's fail-closed exit criterion. The reviewer
+    demonstrated exactly that. The doc is prose-heavy and gaining a table is a
+    plausible edit, so this parses only rows inside the table introduced by
+    ALLOW_LIST_TABLE_HEADER, and stops at the first line that is not a table
+    row -- an appendix table elsewhere in the file is now inert.
+    """
     if not exception_path.exists():
         return set()
     allow_listed = set()
     row_pattern = re.compile(r"^\|\s*`([^`]+)`\s*\|")
+    inside_canonical_table = False
     for line in exception_path.read_text(encoding="utf-8").splitlines():
-        row_match = row_pattern.match(line.strip())
+        stripped = line.strip()
+        if not inside_canonical_table:
+            if stripped == ALLOW_LIST_TABLE_HEADER:
+                inside_canonical_table = True
+            continue
+        if stripped.startswith("|") and set(stripped) <= set("|- :"):
+            continue  # the header's own separator row
+        if not stripped.startswith("|"):
+            break  # table ended; anything past here is not an exemption
+        row_match = row_pattern.match(stripped)
         if row_match is None:
             continue
         allow_listed.add(pathlib.PurePosixPath(row_match.group(1)).as_posix())
@@ -308,11 +340,108 @@ def findings_for_file(source_path, repository_root, allow_listed_files):
     return findings
 
 
+# ---------------------------------------------------------------------------
+# Permanent, checked-in self-test (LS-2 whole-branch review, Fable M3).
+#
+# T5 originally proved this gate's five directions by probe-and-revert: it
+# injected violations into real tree files, ran --check, then reverted. That
+# proved the gate worked THAT DAY and left nothing behind to re-prove it on
+# regression -- while docs/BUILD.md described the self-test in the present
+# tense, implying a standing check that did not exist. This mode is that
+# standing check. It builds a synthetic tree in a temp directory and never
+# touches the repository, so it is safe to run from any working state.
+# ---------------------------------------------------------------------------
+
+SELF_TEST_LEDGER = """# synthetic ledger
+
+| Path | Reason |
+| --- | --- |
+| `src/owner/owned.cpp` | representation owner |
+
+Prose between tables.
+
+| Path | Count | Note |
+| --- | --- | --- |
+| `src/app/appendix.cpp` | 5 | an informational appendix row, NOT an exemption |
+"""
+
+SELF_TEST_CASES = (
+    ("unannotated", "int a = ch->in_room;\n", 1),
+    ("bogus-reason", "int a = ch->in_room; // LS1-ALLOW: not-an-authorized-reason\n", 1),
+    ("valid-trailing", "int a = ch->in_room; // LS1-ALLOW: write (a real one)\n", 0),
+    ("valid-continuation", "#define M(ch) \\\n    (ch)->in_room /* LS1-ALLOW: write (macro) */\n", 0),
+    # I1: an LS1-ALLOW living inside a STRING LITERAL must not exempt the line.
+    ("string-literal-bypass", 'int a = ch->in_room; log("LS1-ALLOW: write");\n', 1),
+    # I2: a reason that merely PREFIXES an authorized one must not pass.
+    ("prefix-extension-bypass", "int a = ch->in_room; // LS1-ALLOW: writeable-anything\n", 1),
+)
+
+
+def run_self_test():
+    """Prove the gate still fails in every direction it must. Returns exit code."""
+    import tempfile
+
+    failures = []
+    with tempfile.TemporaryDirectory() as temporary_root:
+        root = pathlib.Path(temporary_root)
+        ledger = root / "ledger.md"
+        ledger.write_text(SELF_TEST_LEDGER, encoding="utf-8")
+        allow_listed = load_allow_listed_files(ledger, root)
+
+        # M10: only the canonical table's row is an exemption.
+        if "src/owner/owned.cpp" not in allow_listed:
+            failures.append("M10: canonical allow-list row was NOT honored")
+        if "src/app/appendix.cpp" in allow_listed:
+            failures.append("M10: an appendix table row WAS promoted to a whole-file exemption")
+
+        source_dir = root / "src" / "probe"
+        source_dir.mkdir(parents=True)
+        for name, body, expected_violations in SELF_TEST_CASES:
+            probe = source_dir / f"{name}.cpp"
+            probe.write_text(body, encoding="utf-8")
+            found = len(findings_for_file(probe, root, allow_listed))
+            if found != expected_violations:
+                failures.append(
+                    f"{name}: expected {expected_violations} violation(s), got {found}"
+                )
+            probe.unlink()
+
+        # A whole-file exemption really does silence its file.
+        owner_dir = root / "src" / "owner"
+        owner_dir.mkdir(parents=True)
+        owned = owner_dir / "owned.cpp"
+        owned.write_text("int a = ch->in_room;\n", encoding="utf-8")
+        if findings_for_file(owned, root, allow_listed):
+            failures.append("allow-listed file was still flagged")
+        # ...and removing it from the ledger un-silences it.
+        if not findings_for_file(owned, root, set()):
+            failures.append("removing the ledger row did NOT re-flag the file")
+
+        # DEFERRED_DIRS files are collected separately, never scanned silently.
+        deferred_dir = root / "src" / DEFERRED_DIRS[0]
+        deferred_dir.mkdir(parents=True)
+        (deferred_dir / "fixture.cpp").write_text("int a = ch->in_room;\n", encoding="utf-8")
+        scanned, deferred = source_files([root / "src"], root)
+        if not any(path.name == "fixture.cpp" for path in deferred):
+            failures.append("a DEFERRED_DIRS file was not reported as deferred")
+        if any(path.name == "fixture.cpp" for path in scanned):
+            failures.append("a DEFERRED_DIRS file leaked into the scanned set")
+
+    for failure in failures:
+        print(f"self-test FAILED: {failure}", file=sys.stderr)
+    if failures:
+        return 1
+    print("location_read_census self-test: all directions pass")
+    return 0
+
+
 def parse_arguments():
     """Parse command-line census configuration."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("paths", nargs="*", type=pathlib.Path)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--self-test", action="store_true",
+                        help="prove the gate still fails in every direction it must")
     parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path(__file__).parents[1])
     parser.add_argument("--exceptions", type=pathlib.Path)
     return parser.parse_args()
@@ -321,6 +450,8 @@ def parse_arguments():
 def main():
     """Print every raw hit and, in --check mode, fail on un-annotated ones."""
     arguments = parse_arguments()
+    if arguments.self_test:
+        return run_self_test()
     repository_root = arguments.root.resolve()
     search_paths = arguments.paths or [repository_root / "src"]
     exception_path = (

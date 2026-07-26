@@ -2034,6 +2034,18 @@ if(ROTS_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/../tools/location_read_census.py"
                 --check
                 --exceptions "${CMAKE_CURRENT_SOURCE_DIR}/../docs/superpowers/location-read-allowlist.md")
+        # The gate's own regression test (LS-2 whole-branch review, Fable M3).
+        # LocationReadCensus above proves the TREE is clean; this proves the
+        # GATE still fails in every direction it must -- unannotated token,
+        # bogus reason, an LS1-ALLOW hiding inside a string literal, a reason
+        # that merely prefixes an authorized one, an appendix ledger table
+        # masquerading as the allow-list, and a deferred-dir file leaking into
+        # the scanned set. T5 proved those by probe-and-revert, which left
+        # nothing behind to re-prove them; this does, on every preset.
+        add_test(NAME LocationReadCensusSelfTest
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_CURRENT_SOURCE_DIR}/../tools/location_read_census.py"
+                --self-test)
     endif()
 endif()
 

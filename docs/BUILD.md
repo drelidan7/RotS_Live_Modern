@@ -789,9 +789,16 @@ every flat/public shared header — and partitioning out `src/tests` via a named
 ruled a whole-file allow-list row would misrepresent the tier as a permanent representation owner
 when it is a deliberate, temporary deferral). Every run prints a one-line notice
 (`[deferred] N file(s) under src/tests unscanned this wave (LS-2 R2/A-2 -- retired by wave LS-3a).`)
-so the deferral is visible rather than silent; a self-test proves an unannotated raw `->in_room` sitting
-in an existing `src/tests` file produces zero violation output while the identical line in `src/app`
-or a header fails. Neither `src/CMakeLists.txt`'s `add_test` invocation nor `src/tests/Makefile`'s
+so the deferral is visible rather than silent. The gate's own regression test is checked in and
+registered as **`LocationReadCensusSelfTest`** (ctest, every preset, plus the flat
+`src/tests/Makefile` `tests` recipe): `location_read_census.py --self-test` builds a synthetic
+tree in a temp directory — it never touches the repository — and asserts the gate still FAILS in
+every direction it must: an unannotated token, a bogus reason, an `LS1-ALLOW` hiding inside a
+string literal, a reason that merely prefixes an authorized one, an appendix ledger table
+masquerading as the allow-list, and a deferred-dir file leaking into the scanned set. LS-2's T5
+originally proved those five directions by probe-and-revert, which proved the gate worked that day
+and left nothing behind to re-prove it on regression while this paragraph described it in the
+present tense (whole-branch review, Fable M3); the standing test closes that gap. Neither `src/CMakeLists.txt`'s `add_test` invocation nor `src/tests/Makefile`'s
 `tests` recipe needed a functional edit — both already passed no positional search path, so the
 default-scope change was picked up automatically; both got a comment-only update instead, so the
 in-repo description of the gate's scope never lies. The authorized-reason list grew eight → **eleven**:
@@ -819,8 +826,13 @@ API invisible from L1 `src/core/consts.cpp`. **282 call sites tree-wide (181 app
 tests) inherit Stage-1 routing with zero calling-code edits** — `EXIT` alone accounts for 250 of them.
 `zone_table[...]` remains explicitly out of both LS-1's and LS-2's charter — `zone_by_id()` exists as
 its resolver, but the program's tracked triple and every success/exit criterion are `->in_room`/
-`world[...]`/`next_in_room` only; a fresh tree-wide count at LS-2's baseline is **268** sites (LS-1's
-own "~201" was a six-library-scoped figure, a different base, not an error) — recorded so it is never
+`world[...]`/`next_in_room` only; a fresh count at LS-2's HEAD is **268 comment/string-masked occurrences across all of `src/**`**,
+or **185 masked occurrences in production code alone** (`src/**` minus `src/tests`; 235 raw
+occurrences / 204 raw lines there). The base matters and was previously unstated — the
+whole-branch review (Opus M5) could not reproduce a bare "268" against any single obvious
+basis, which is precisely the failure mode this sentence exists to prevent, since LS-1's own
+"~201" was a six-library-scoped figure — a different base, not an error. **LS-3's planning
+figure is the production one (185 masked), not 268.** — recorded so it is never
 later read as an oversight.
 
 **Test chain and reconciliation:** 1583 → T1 room_of +2 = 1585 → tranche A (entity/persist/world)

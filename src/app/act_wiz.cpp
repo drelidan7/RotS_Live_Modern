@@ -483,7 +483,7 @@ void do_stat_room(struct char_data* ch)
 
     {
         std::string line = std::format("Chars present:{}", CC_USE(ch, COLOR_CHAR));
-        for (found = 0, k = rm->people; k; k = k->next_in_room) { // LS1-ALLOW: peek-ahead for list formatting
+        for (found = 0, k = rm->people; k; k = k->next_in_room) { // LS1-ALLOW: peek-ahead -- this line's token is the walk ADVANCE; the walk is kept raw because the body peeks at k->next_in_room below (matches mystic.cpp:671)
             if (!CAN_SEE(ch, k))
                 continue;
             std::format_to(std::back_inserter(line), "{} {}({})", found++ ? "," : "", GET_NAME(k),

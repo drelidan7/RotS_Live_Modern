@@ -63,7 +63,6 @@ struct ActObj1Context {
     char_data ch{};
     descriptor_data ch_descriptor{};
     char_data *original_people = nullptr;
-    char_data *original_contents_owner = nullptr;
     // Site 6 (LS-2 whole-branch review B1): world[0].light is never reset by
     // ScopedTestWorld's reuse branch -- saved here, restored in the dtor
     // below, so it doesn't leak into a later test sharing this process's
@@ -225,6 +224,18 @@ TEST(PerformDropGold, CreatesTheGoldObjectInTheDroppersOwnRoom) {
     EXPECT_EQ(GET_ITEM_TYPE(world[0].contents), ITEM_MONEY);
     EXPECT_EQ(world[0].contents->obj_flags.value[0], 25);
     EXPECT_EQ(context.ch.points.gold, 75);
+
+    // O-I1 (LS-2 whole-branch review, Opus): create_money() (object_utils.cpp)
+    // splices the new heap obj_data into the process-global object_list;
+    // ActObj1Context's dtor unconditionally nulls world[0].contents, which
+    // would orphan this object from the room while object_list still holds
+    // it -- arming a nullptr deref in obj_from_room()'s unchecked search
+    // cursor the next time anything walks object_list (e.g. `do_purge
+    // zone`). extract_obj() removes it from the room's contents list, from
+    // object_list, and frees it (item_number == -1 here, so its
+    // obj_index_by_id() decrement is correctly skipped, same as every other
+    // object this file constructs).
+    extract_obj(world[0].contents);
 }
 
 // do_butcher()'s corpse-search resolver (:668, `get_obj_in_list_vis(ch,

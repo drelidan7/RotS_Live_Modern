@@ -1807,6 +1807,12 @@ TEST(ActWizInspection, DoShowFormatsZoneMissingArgumentBranch)
 TEST(ActWizInspection, DoShowFormatsDeathTrapsListForRoomWithDeathFlag)
 {
     ScopedTestWorld test_world(2);
+    // O-I2 remainder (LS-2 whole-branch review, Opus): number/room_flags
+    // are not reset by ScopedTestWorld's reuse branch -- captured here and
+    // restored at the tail so a later monolithic-runner test sharing this
+    // process's world[0] never inherits a stray DEATH flag.
+    const int original_number = test_world.room().number;
+    const long original_room_flags = test_world.room().room_flags;
     test_world.room().number = 4242;
     test_world.room().room_flags = DEATH;
     SoloCharacterContext viewer;
@@ -1816,6 +1822,8 @@ TEST(ActWizInspection, DoShowFormatsDeathTrapsListForRoomWithDeathFlag)
     const std::string output = viewer.descriptor.output;
     EXPECT_NE(output.find("Death Traps"), std::string::npos) << output;
     EXPECT_NE(output.find(" 1: [ 4242] The Testing Meadow\n\r"), std::string::npos) << output;
+    test_world.room().number = original_number;
+    test_world.room().room_flags = original_room_flags;
 }
 
 TEST(ActWizInspection, DoShowFormatsGodroomsListForZoneZeroRoom)
@@ -1824,6 +1832,10 @@ TEST(ActWizInspection, DoShowFormatsGodroomsListForZoneZeroRoom)
     // (dummy_room_data()) -- matching GOD_ROOMS_ZONE's hardcoded 0 -- set
     // explicitly anyway so the test does not rely on that default.
     ScopedTestWorld test_world(2);
+    // O-I2 remainder: number/zone captured/restored, same reasoning as the
+    // DEATH test above.
+    const int original_number = test_world.room().number;
+    const int original_zone = test_world.room().zone;
     test_world.room().number = 4243;
     test_world.room().zone = 0;
     SoloCharacterContext viewer;
@@ -1833,6 +1845,8 @@ TEST(ActWizInspection, DoShowFormatsGodroomsListForZoneZeroRoom)
     const std::string output = viewer.descriptor.output;
     EXPECT_NE(output.find("Godrooms"), std::string::npos) << output;
     EXPECT_NE(output.find(" 0: [ 4243] The Testing Meadow\n\r"), std::string::npos) << output;
+    test_world.room().number = original_number;
+    test_world.room().zone = original_zone;
 }
 
 
@@ -2020,6 +2034,10 @@ TEST(ActWizWorldManip, DoAtRejectsUnknownRoomNumber)
 TEST(ActWizWorldManip, DoAtRejectsGodroomForLowLevelViewer)
 {
     ScopedTestWorld test_world;
+    // O-I2 remainder: number/room_flags captured/restored, same reasoning
+    // as DoShowFormatsDeathTrapsListForRoomWithDeathFlag above.
+    const int original_number = test_world.room().number;
+    const long original_room_flags = test_world.room().room_flags;
     SoloCharacterContext context;
     context.character.player.level = 50; // below LEVEL_GOD (93)
     test_world.room().number = 500;
@@ -2028,11 +2046,17 @@ TEST(ActWizWorldManip, DoAtRejectsGodroomForLowLevelViewer)
     do_at(&context.character, argument, nullptr, 0, 0);
     EXPECT_EQ(std::string(context.descriptor.output),
         "You are not godly enough to use that room!\n\r");
+    test_world.room().number = original_number;
+    test_world.room().room_flags = original_room_flags;
 }
 
 TEST(ActWizWorldManip, DoAtRejectsSecurityroomForLowLevelViewer)
 {
     ScopedTestWorld test_world;
+    // O-I2 remainder: number/room_flags captured/restored, same reasoning
+    // as DoShowFormatsDeathTrapsListForRoomWithDeathFlag above.
+    const int original_number = test_world.room().number;
+    const long original_room_flags = test_world.room().room_flags;
     SoloCharacterContext context;
     context.character.player.level = 50; // below LEVEL_GRGOD (97)
     test_world.room().number = 500;
@@ -2041,6 +2065,8 @@ TEST(ActWizWorldManip, DoAtRejectsSecurityroomForLowLevelViewer)
     do_at(&context.character, argument, nullptr, 0, 0);
     EXPECT_EQ(std::string(context.descriptor.output),
         "That is a security room! Talk to Implementor or GRGOD, if you need access.\n\r");
+    test_world.room().number = original_number;
+    test_world.room().room_flags = original_room_flags;
 }
 
 TEST(ActWizWorldManip, DoAtRejectsPrivateRoomWithTwoOrMoreOccupants)
@@ -2049,6 +2075,10 @@ TEST(ActWizWorldManip, DoAtRejectsPrivateRoomWithTwoOrMoreOccupants)
     // `// LS1-ALLOW: peek-ahead (two-or-more-occupants test)`) as well as
     // the converted PRIVATE room_flags read on the line above it.
     ScopedTestWorld test_world;
+    // O-I2 remainder: number/room_flags captured/restored, same reasoning
+    // as DoShowFormatsDeathTrapsListForRoomWithDeathFlag above.
+    const int original_number = test_world.room().number;
+    const long original_room_flags = test_world.room().room_flags;
     SoloCharacterContext context;
     context.character.player.level = 50; // below LEVEL_GRGOD (97)
     test_world.room().number = 500;
@@ -2069,6 +2099,8 @@ TEST(ActWizWorldManip, DoAtRejectsPrivateRoomWithTwoOrMoreOccupants)
     test_world.room().people = nullptr;
     EXPECT_EQ(std::string(context.descriptor.output),
         "There's a private conversation going on in that room.\n\r");
+    test_world.room().number = original_number;
+    test_world.room().room_flags = original_room_flags;
 }
 
 // LS-2 T4 follow-up (ls2-task-3a-review.md IM-4): the census's W1 `:232`
@@ -2089,6 +2121,13 @@ TEST(ActWizWorldManip, DoAtRejectsPrivateRoomWithTwoOrMoreOccupants)
 TEST(ActWizWorldManip, FindTargetRoomResolvesToTheNamedTargetsOwnRoomNotTheCallers)
 {
     ScopedTestWorld test_world(2);
+    // O-I2 remainder: world[0]/world[1]'s number/room_flags/light are not
+    // reset by ScopedTestWorld's reuse branch -- captured here and restored
+    // at the tail, same reasoning as the other O-I2 sites in this file.
+    const int original_number0 = test_world.room().number;
+    const int original_number1 = world[1].number;
+    const long original_room_flags1 = world[1].room_flags;
+    const byte original_light1 = world[1].light;
     test_world.room().number = 100; // caller's own room (world[0]).
     world[1].number = 200; // target's room -- deliberately different.
     world[1].room_flags = 0; // not GODROOM/SECURITYROOM/PRIVATE.
@@ -2116,6 +2155,11 @@ TEST(ActWizWorldManip, FindTargetRoomResolvesToTheNamedTargetsOwnRoomNotTheCalle
     EXPECT_EQ(location, 1)
         << "Expected the get_char_vis(ch, roomstr) branch to resolve to the TARGET's own room "
            "(location_of(target_mob)), not the caller's room 0.";
+
+    test_world.room().number = original_number0;
+    world[1].number = original_number1;
+    world[1].room_flags = original_room_flags1;
+    world[1].light = original_light1;
 }
 
 

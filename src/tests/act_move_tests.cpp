@@ -119,6 +119,12 @@ struct CheckSimpleMoveTestContext {
     }
 
     ~CheckSimpleMoveTestContext() {
+        // The ctor's per-direction reset loop guarantees dir_option[NORTH] was
+        // nullptr before this fixture pointed it at exit_to_room1 (a fixture
+        // member about to be destroyed); null it back out here so no later
+        // test sharing this process's world[] can walk into a dangling
+        // pointer (LS-2 whole-branch review B1, site 1).
+        world[0].dir_option[NORTH] = nullptr;
         world[0].people = nullptr;
         world[1].people = nullptr;
     }
@@ -329,6 +335,10 @@ std::string ScopedCapturingSendToCharSink::last_message;
 
 TEST(DoPullTest, LeverInPullersOwnRoomTogglesDoorWithoutRumblingMessage) {
     ScopedTestWorld test_world{1};
+    // Site 2 (LS-2 whole-branch review B1): captured before this test points
+    // the slot/vnum at itself, so both can be restored at the tail below.
+    room_direction_data *const original_dir_option_north = world[0].dir_option[NORTH];
+    const int original_room_number = world[0].number;
     room_direction_data lever_exit{};
     lever_exit.exit_info = 0; // not closed -- this pull SETs EX_CLOSED
     lever_exit.keyword = const_cast<char *>("lever");
@@ -356,6 +366,12 @@ TEST(DoPullTest, LeverInPullersOwnRoomTogglesDoorWithoutRumblingMessage) {
     do_pull(&ch, mutable_arg(""), &wtl, 0, 0);
 
     world[0].people = nullptr;
+    // Site 2 (LS-2 whole-branch review B1): lever_exit is a function-local
+    // about to go out of scope -- restore the slot it dangled from, plus
+    // the vnum this test stamped, so neither leaks into a later test
+    // sharing this process's world[].
+    world[0].dir_option[NORTH] = original_dir_option_north;
+    world[0].number = original_room_number;
 
     const std::string output(descriptor.output);
     EXPECT_NE(output.find("closes slowly"), std::string::npos)
@@ -370,6 +386,12 @@ TEST(DoPullTest, LeverInPullersOwnRoomTogglesDoorWithoutRumblingMessage) {
 
 TEST(DoPullTest, LeverInADifferentRoomAnnouncesRumblingAndTogglesBothSidesReciprocally) {
     ScopedTestWorld test_world{2};
+    // Site 3 (LS-2 whole-branch review B1): captured before this test points
+    // the slots/vnum at itself, so all three can be restored at the tail
+    // below.
+    room_direction_data *const original_room1_dir_north = world[1].dir_option[NORTH];
+    const int original_room1_number = world[1].number;
+    room_direction_data *const original_room0_dir_south = world[0].dir_option[SOUTH];
 
     // The lever lives in room 1, controlling room 1's NORTH exit back to
     // room 0 -- exercises BOTH resolver traps: :1838 resolves room 1 (the
@@ -420,6 +442,13 @@ TEST(DoPullTest, LeverInADifferentRoomAnnouncesRumblingAndTogglesBothSidesRecipr
 
     world[0].people = nullptr;
     world[1].people = nullptr;
+    // Site 3 (LS-2 whole-branch review B1): lever_exit/reciprocal_exit are
+    // function-locals about to go out of scope -- restore both dir_option
+    // slots plus the vnum this test stamped, so neither leaks into a later
+    // test sharing this process's world[].
+    world[1].dir_option[NORTH] = original_room1_dir_north;
+    world[1].number = original_room1_number;
+    world[0].dir_option[SOUTH] = original_room0_dir_south;
 
     const std::string bystander_output(bystander_descriptor.output);
     EXPECT_NE(bystander_output.find("opens slowly"), std::string::npos)
@@ -450,6 +479,10 @@ TEST(DoPullTest, LeverInADifferentRoomAnnouncesRumblingAndTogglesBothSidesRecipr
 
 TEST(DoOpenTest, AnnouncesToTheOtherSideOfAReciprocalDoor) {
     ScopedTestWorld test_world{2};
+    // Site 4 (LS-2 whole-branch review B1): captured before this test points
+    // both slots at itself, so both can be restored at the tail below.
+    room_direction_data *const original_room0_dir_north = world[0].dir_option[NORTH];
+    room_direction_data *const original_room1_dir_south = world[1].dir_option[SOUTH];
 
     room_direction_data near_exit{};
     near_exit.exit_info = EX_ISDOOR | EX_CLOSED;
@@ -481,6 +514,12 @@ TEST(DoOpenTest, AnnouncesToTheOtherSideOfAReciprocalDoor) {
     do_open(&ch, mutable_arg(""), &wtl, 0, 0);
 
     world[1].people = nullptr;
+    // Site 4 (LS-2 whole-branch review B1): near_exit/far_exit are
+    // function-locals about to go out of scope -- restore both dir_option
+    // slots so neither dangles into a later test sharing this process's
+    // world[].
+    world[0].dir_option[NORTH] = original_room0_dir_north;
+    world[1].dir_option[SOUTH] = original_room1_dir_south;
 
     EXPECT_FALSE(IS_SET(near_exit.exit_info, EX_CLOSED))
         << "Expected do_open's own side to open (unrelated to this task's conversion, a "
@@ -505,6 +544,10 @@ TEST(DoOpenTest, AnnouncesToTheOtherSideOfAReciprocalDoor) {
 
 TEST(DoEnterTest, RefusesWhenAlreadyIndoors) {
     ScopedTestWorld test_world{1};
+    // Site 5 (LS-2 whole-branch review B1): captured before this test
+    // overwrites room_flags, restored at the tail below -- RoomStatContext
+    // has no fixture here to do it for us.
+    const long original_room_flags = world[0].room_flags;
     world[0].room_flags = INDOORS;
 
     char_data ch{};
@@ -516,6 +559,8 @@ TEST(DoEnterTest, RefusesWhenAlreadyIndoors) {
     EXPECT_EQ(ScopedCapturingSendToCharSink::last_message, "You are already indoors.\n\r")
         << "Expected the :1376 room_of(ch)->room_flags conversion to read room[0]'s INDOORS "
            "flag correctly.";
+
+    world[0].room_flags = original_room_flags;
 }
 
 TEST(DoLeaveTest, RefusesWhenAlreadyOutside) {

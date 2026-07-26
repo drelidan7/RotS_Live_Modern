@@ -469,12 +469,20 @@ TEST(ActWizInspection, StatRoomFormatsSpecProcFlagsLineWithNoFunctAndNoFlags)
 TEST(ActWizInspection, StatRoomFormatsLevelLightsLine)
 {
     RoomStatContext context;
+    // Site 7 (LS-2 whole-branch review B1): RoomStatContext's own ctor/dtor
+    // do not manage level/light (see its definition above), so this test
+    // saves and restores them itself rather than leaking into a later test
+    // sharing this process's world[0].
+    const byte original_level = context.test_world.room().level;
+    const byte original_light = context.test_world.room().light;
     context.test_world.room().level = 3;
     context.test_world.room().light = 2;
     do_stat_room(&context.character);
     EXPECT_NE(std::string(context.descriptor.output).find("Level: 3, No. of lights: 2\n\r"),
         std::string::npos)
         << context.descriptor.output;
+    context.test_world.room().level = original_level;
+    context.test_world.room().light = original_light;
 }
 
 TEST(ActWizInspection, StatRoomFormatsDescriptionNoneFallback)

@@ -60,8 +60,16 @@ struct ActObj2Context {
     char_data ch{};
     descriptor_data ch_descriptor{};
     char_data *original_people = nullptr;
+    // Site 6 (LS-2 whole-branch review B1): world[0].light is never reset by
+    // ScopedTestWorld's reuse branch -- saved here, restored in the dtor
+    // below, so it doesn't leak into a later test sharing this process's
+    // world[0]. This also closes the DoLight test's own residual
+    // increment: the dtor restores unconditionally, regardless of what
+    // value light was left at.
+    byte original_light = 0;
 
     ActObj2Context() {
+        original_light = world[0].light;
         world[0].light = 1; // CAN_SEE()'s/CAN_SEE_OBJ()'s darkness check.
         world[0].room_flags = 0;
         original_people = world[0].people;
@@ -79,6 +87,7 @@ struct ActObj2Context {
     }
 
     ~ActObj2Context() {
+        world[0].light = original_light;
         world[0].people = original_people;
         world[0].contents = nullptr;
         world[0].room_flags = 0;

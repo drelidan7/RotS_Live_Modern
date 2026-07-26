@@ -2047,6 +2047,14 @@ TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSendsIndoorAndOutdoorWeather)
 TEST(MSDPProtocol, RoomUpdateImplSetsRoomNameVnumExitsAndTerrainWhenLocationIsNegative)
 {
     ScopedTestWorld test_world { 2 };
+    // Site 9 (LS-2 whole-branch review B1, second-reviewer addendum):
+    // ScopedMSDPTestRoom (used by sibling tests in this file) leaks a
+    // permanent BASE_WORLD, so this ScopedTestWorld{2} takes the reuse
+    // branch, whose destructor only clears world[0].people -- captured here,
+    // restored at the tail below, so north_exit (a function-local about to
+    // go out of scope) doesn't leak a dangling pointer into a later test
+    // sharing this process's world[].
+    room_direction_data* const original_room0_dir_north = world[0].dir_option[NORTH];
     room_direction_data north_exit {};
     north_exit.exit_info = 0;
     north_exit.to_room = 1;
@@ -2088,6 +2096,8 @@ TEST(MSDPProtocol, RoomUpdateImplSetsRoomNameVnumExitsAndTerrainWhenLocationIsNe
     EXPECT_NE(room_table.find("Floor"), std::string::npos)
         << "Expected act_move.cpp:616's sector_types[room_of(ch)->sector_type] conversion to "
            "embed room[0]'s (default sector_type 0 == \"Floor\") terrain name: " << room_table;
+
+    world[0].dir_option[NORTH] = original_room0_dir_north;
 }
 
 TEST(MSDPProtocol, RoomUpdateImplIsANoOpWhenCharacterHasAnOrdinaryNonNegativeLocation)

@@ -1382,6 +1382,7 @@ if(ROTS_BUILD_TESTS)
         tests/json_perf_tests.cpp
         tests/json_utils_tests.cpp
         tests/llp64_probe_tests.cpp
+        tests/load_room_placement_tests.cpp
         tests/mage_tests.cpp
         tests/mail_json_tests.cpp
         tests/mobact_tests.cpp

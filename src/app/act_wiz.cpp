@@ -254,7 +254,13 @@ int find_target_room(struct char_data* ch, char* rawroomstr)
     }
 
     if (IS_SET(room_by_id_total(location)->room_flags, PRIVATE) && GET_LEVEL(ch) < LEVEL_GRGOD)
-        if (world[location].people && world[location].people->next_in_room) { // LS1-ALLOW: peek-ahead (two-or-more-occupants test)
+        // O-I5 (LS-2 whole-branch review, Opus): these two world[location]
+        // reads were left raw under an annotation whose "peek-ahead" reason
+        // legitimately covers only the ->next_in_room read, not the two
+        // room resolves -- corrected to convert them (resolve count stays
+        // at 2, no hoist, matching the three sibling room_by_id_total(location)
+        // reads immediately above).
+        if (room_by_id_total(location)->people && room_by_id_total(location)->people->next_in_room) { // LS1-ALLOW: peek-ahead (two-or-more-occupants test)
             send_to_char("There's a private conversation going on in that room.\n\r", ch);
             return NOWHERE;
         }

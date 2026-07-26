@@ -9,8 +9,18 @@ Wave LS-2 widened the scan tree-wide -- recursive over ``src/**`` for
 ``.cpp``/``.h``/``.hpp``, headers included -- so the program's Stage-1 exit
 criterion ("raw location representation access exists ONLY inside the
 allow-listed representation-owner set") is mechanically true for all of
-production `src/`, not just the seven library directories. `src/tests` is
-deliberately excluded via ``DEFERRED_DIRS`` below, pending wave LS-3a.
+production `src/` **for the four tracked tokens** (``->in_room`` /
+``.in_room`` / ``world[`` / ``next_in_room``) -- not for every conceivable
+form of raw representation access. `src/tests` is deliberately excluded via
+``DEFERRED_DIRS`` below, pending wave LS-3a. Three more exclusions are
+deliberate and this script cannot see them at all, since none is one of the
+four tracked tokens: ``room_data::people``/``.people`` direct occupant-chain
+access, ``char_data::was_in_room`` (a second parallel location store), and
+the ``&world``/``get_world()`` singleton handoff (``db_boot.cpp``,
+``src/singleton.h``). All three are named LS-3 inputs, not oversights --
+see ``docs/superpowers/specs/2026-07-23-locationsystem-program-design.md``'s
+own As-built "out of LS-2's charter" list for the full account (O-I8,
+``ls2-wholebranch-review-opus.md``).
 This census is the checked-in regression gate (LS-1 T3, widened by LS-2
 T5): it flags any raw token outside the census-named allow-list file set or
 an inline ``// LS1-ALLOW: <reason>`` annotation ("LS1" names LocationSystem
@@ -39,6 +49,19 @@ import sys
 # `--check` prints how many deferred-dir files went unscanned so the
 # deferral stays visible rather than silent (see main()).
 DEFERRED_DIRS = ("tests",)
+
+# O-I7 (LS-2 whole-branch review, Opus): source_files() returns an empty
+# scan for a nonexistent search path with no error of its own (`rglob` on a
+# missing directory yields nothing), and main() had no floor check -- a bad
+# `--root`, a moved/renamed directory, or a typo in a positional path
+# argument silently turned this gate's fail-closed exit criterion GREEN
+# instead of RED. 100 is well below the real production count at the time
+# this floor was added (181 scanned files -- see AGENTS.md's LS-2 chain
+# entry and ls2-wholebranch-review-opus.md), giving headroom for legitimate
+# future file-count drift (deletions, moves, an LS-3a scope change) while
+# remaining far above zero, so a genuine path break is still caught long
+# before it could be mistaken for ordinary tree churn.
+MINIMUM_SCANNED_FILE_COUNT = 100
 
 SOURCE_SUFFIXES = (".cpp", ".h", ".hpp")
 
@@ -308,6 +331,23 @@ def main():
     allow_listed_files = load_allow_listed_files(exception_path, repository_root)
 
     scanned_files, deferred_files = source_files(search_paths, repository_root)
+
+    # O-I7: fail closed, unconditionally (not just under --check), the
+    # moment the scan itself looks broken -- a zero-or-near-zero scanned
+    # count is far more likely to mean a bad --root/search path than a
+    # genuine shrink of production src/, and printing only the (technically
+    # true) "[deferred] 0 file(s)..." notice below would read as good news.
+    if len(scanned_files) < MINIMUM_SCANNED_FILE_COUNT:
+        print(
+            f"error: only {len(scanned_files)} file(s) scanned under "
+            f"{[str(path) for path in search_paths]!r} (root {repository_root}) -- expected at "
+            f"least {MINIMUM_SCANNED_FILE_COUNT}. This almost always means a broken --root, a "
+            "moved/renamed directory, or a typo'd positional path argument, not a genuine "
+            "shrink of production src/ -- fix the invocation rather than lowering this floor.",
+            file=sys.stderr,
+        )
+        return 1
+
     deferred_dir_list = ", ".join(f"src/{name}" for name in DEFERRED_DIRS)
     print(
         f"[deferred] {len(deferred_files)} file(s) under {deferred_dir_list} unscanned "

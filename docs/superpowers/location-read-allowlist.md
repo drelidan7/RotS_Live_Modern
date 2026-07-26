@@ -15,8 +15,16 @@ the Stage-1 Placement API (`location_of`/`room_by_id`/`room_by_id_total`/`occupa
 `src/**` for `.cpp`/`.h`/`.hpp` — `src/app` and every header are in scope for the first time,
 alongside the seven libraries LS-1 already covered — so the program's Stage-1 exit criterion ("raw
 location representation access exists ONLY inside the allow-listed representation-owner set") is
-mechanically true for all of production `src/`, not a hand-picked directory list. `src/tests` is the
-one deliberate exception (see "The `src/tests` deferral" below).
+mechanically true for all of production `src/`, not a hand-picked directory list — **for the four
+tracked tokens** this gate scans (`->in_room` / `.in_room` / `world[` / `next_in_room`), not for
+every conceivable form of raw representation access (O-I8,
+`.superpowers/sdd/ls2-wholebranch-review-opus.md`). `src/tests` is one deliberate exception (see "The
+`src/tests` deferral" below); three more are untracked by construction, since none is one of the four
+tokens — `room_data::people`/`.people` direct occupant-chain access, `char_data::was_in_room` (a
+second parallel location store), and the `&world`/`get_world()` singleton handoff (`db_boot.cpp`,
+`src/singleton.h`). All three are named LS-3 inputs recorded in
+`docs/superpowers/specs/2026-07-23-locationsystem-program-design.md`'s own As-built "out of LS-2's
+charter" list, not oversights this ledger silently omitted.
 
 The files below are the ONE place raw location access legitimately remains as a **whole-file**
 exemption: they ARE the representation the Placement API wraps, not call sites that should route

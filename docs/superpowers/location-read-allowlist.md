@@ -36,6 +36,7 @@ exemption — see `.superpowers/sdd/ls1-census.md` Step 8 and `.superpowers/sdd/
 the full design, `.superpowers/sdd/ls1-task-3-report.md` for the LS-1 annotation inventory, and
 `.superpowers/sdd/ls2-task-{3a,3b,3c,3d}-report.md` for the LS-2 app-tier inventory.
 
+<!-- LOCATION-READ-ALLOWLIST-TABLE -->
 | Path | Reason |
 | --- | --- |
 | `src/entity/placement.cpp` | representation-owner — defines `location_of`/`set_location`/`is_in_room`/`occupants`/the `room_by_id`/`room_by_id_total`/`zone_by_id`/`obj_index_by_id` resolvers, and the char-to-room/room-to-char attach/detach mutation primitives themselves. |

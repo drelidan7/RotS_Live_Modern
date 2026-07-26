@@ -477,9 +477,14 @@ Recorded as a boundary, not an omission — every item below is a named LS-3 inp
   can re-add them to its write inventory by hand.
 - **`zone_table[...]`** — out of both LS-1's and LS-2's charter throughout; `zone_by_id()` exists as
   its resolver, but the program's tracked triple is `->in_room`/`world[...]`/`next_in_room` only.
-  Fresh tree-wide count at LS-2's baseline: **268** sites (`src/world` 126, `src/app` 51, `src/olc`
-  38, `src/tests` 33, `src/combat` 17, `src/script` 3) — LS-1's own doc cited "~201" as a six-library
-  figure, a different (narrower) base, not an error.
+  Fresh count at LS-2's HEAD, **basis: comment/string-masked OCCURRENCES across all `src/**`** =
+  **268** (`src/world` 126, `src/app` 51, `src/olc` 38, `src/tests` 33, `src/combat` 17, `src/script`
+  3). Subtracting `src/tests` (33) gives **235 production masked occurrences — that is LS-3's
+  planning figure**, and it is the number `docs/BUILD.md`'s basis matrix bolds. LS-1's own doc cited
+  "~201" as a six-library figure, a different (narrower) base, not an error. **State the basis
+  whenever quoting any of these**: the LS-2 follow-up quoted "185 production occurrences" when 185 is
+  production masked *lines*, and adversarial review caught it — twice in the same sentence's history,
+  which is why both documents now carry an explicit basis.
 - **`NOWHERE` retirement.** Every `location_of(ch) == NOWHERE` comparison is a mechanical read and
   already converts; the sentinel's *deletion* is LS-3b's strict-equivalence job. Fresh count: 253
   total (178 production + 75 tests). Two sites are **public default arguments**, not merely body

@@ -826,14 +826,23 @@ API invisible from L1 `src/core/consts.cpp`. **282 call sites tree-wide (181 app
 tests) inherit Stage-1 routing with zero calling-code edits** — `EXIT` alone accounts for 250 of them.
 `zone_table[...]` remains explicitly out of both LS-1's and LS-2's charter — `zone_by_id()` exists as
 its resolver, but the program's tracked triple and every success/exit criterion are `->in_room`/
-`world[...]`/`next_in_room` only; a fresh count at LS-2's HEAD is **268 comment/string-masked occurrences across all of `src/**`**,
-or **185 masked occurrences in production code alone** (`src/**` minus `src/tests`; 235 raw
-occurrences / 204 raw lines there). The base matters and was previously unstated — the
-whole-branch review (Opus M5) could not reproduce a bare "268" against any single obvious
-basis, which is precisely the failure mode this sentence exists to prevent, since LS-1's own
-"~201" was a six-library-scoped figure — a different base, not an error. **LS-3's planning
-figure is the production one (185 masked), not 268.** — recorded so it is never
-later read as an oversight.
+`world[...]`/`next_in_room` only; a fresh count at LS-2's HEAD, with every basis named explicitly because a bare figure here is
+exactly what caused this correction twice:
+
+| basis | lines | occurrences |
+| --- | ---: | ---: |
+| production (`src/**` minus `src/tests`), comment/string-masked | **185** | **235** |
+| production, raw (comments and strings included) | 204 | 257 |
+| all `src/**`, masked | 218 | **268** |
+| all `src/**`, raw | 239 | 292 |
+
+**LS-3's planning figure is production/masked/occurrences = 235.** LS-1's own "~201" was a
+six-library-scoped figure — a different base, not an error — and this table exists so no successor
+inherits an unlabelled number. (The first attempt at this correction, in the LS-2 follow-up, shifted
+the labels one category — quoting 185 as production *occurrences* when it is production *lines*, and
+235 as *raw* when it is *masked* — and was itself caught in adversarial review. Hence the matrix
+rather than a sentence.) All of it is recorded so the out-of-charter status is never later read
+as an oversight.
 
 **Test chain and reconciliation:** 1583 → T1 room_of +2 = 1585 → tranche A (entity/persist/world)
 +8 (weather coverage rider) = 1593 → T1b +4 (const-occupants tests) = 1597 → tranche B (combat)

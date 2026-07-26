@@ -194,8 +194,15 @@ def mask_comments_and_string_literals(source_text, mask_comments=True):
     return "".join(masked)
 
 
-# The ledger's canonical allow-list table must open with exactly this header
-# row. Only rows belonging to THAT table become whole-file exemptions.
+# The ledger's canonical allow-list table must be introduced by this exact
+# marker line, and the marker must appear EXACTLY ONCE. A bare header row is
+# not a sufficient anchor: the LS-2 follow-up's first attempt keyed off
+# `| Path | Reason |` and was still defeatable by placing a table carrying
+# that same header ABOVE the real one (first match wins), including inside a
+# fenced code block used as documentation -- if such a table also carried the
+# two genuine owner rows, the gate stayed GREEN with an extra file silently
+# exempted. Found in adversarial review of the follow-up itself.
+ALLOW_LIST_TABLE_MARKER = "<!-- LOCATION-READ-ALLOWLIST-TABLE -->"
 ALLOW_LIST_TABLE_HEADER = "| Path | Reason |"
 
 
@@ -215,14 +222,47 @@ def load_allow_listed_files(exception_path, repository_root):
     """
     if not exception_path.exists():
         return set()
+    lines = exception_path.read_text(encoding="utf-8").splitlines()
+
+    # Fenced code blocks are documentation, never data -- a worked example of
+    # the table format must not be parsed as the table itself.
+    in_fence = False
+    live_lines = []
+    for line in lines:
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence:
+            live_lines.append(line)
+
+    marker_count = sum(1 for line in live_lines if line.strip() == ALLOW_LIST_TABLE_MARKER)
+    if marker_count != 1:
+        raise SystemExit(
+            f"error: {exception_path} must contain the allow-list marker "
+            f"{ALLOW_LIST_TABLE_MARKER!r} exactly once outside any fenced code block "
+            f"(found {marker_count}). The marker is what makes the canonical table "
+            "unambiguous; without it a second table could silently exempt files."
+        )
+
     allow_listed = set()
     row_pattern = re.compile(r"^\|\s*`([^`]+)`\s*\|")
-    inside_canonical_table = False
-    for line in exception_path.read_text(encoding="utf-8").splitlines():
+    state = "before-marker"
+    for line in live_lines:
         stripped = line.strip()
-        if not inside_canonical_table:
-            if stripped == ALLOW_LIST_TABLE_HEADER:
-                inside_canonical_table = True
+        if state == "before-marker":
+            if stripped == ALLOW_LIST_TABLE_MARKER:
+                state = "awaiting-header"
+            continue
+        if state == "awaiting-header":
+            if not stripped:
+                continue
+            if stripped != ALLOW_LIST_TABLE_HEADER:
+                raise SystemExit(
+                    f"error: {exception_path}: the line after "
+                    f"{ALLOW_LIST_TABLE_MARKER!r} must be {ALLOW_LIST_TABLE_HEADER!r}, "
+                    f"got {stripped!r}."
+                )
+            state = "in-table"
             continue
         if stripped.startswith("|") and set(stripped) <= set("|- :"):
             continue  # the header's own separator row
@@ -231,7 +271,12 @@ def load_allow_listed_files(exception_path, repository_root):
         row_match = row_pattern.match(stripped)
         if row_match is None:
             continue
-        allow_listed.add(pathlib.PurePosixPath(row_match.group(1)).as_posix())
+        candidate = pathlib.PurePosixPath(row_match.group(1)).as_posix()
+        if ".." in pathlib.PurePosixPath(candidate).parts:
+            raise SystemExit(
+                f"error: {exception_path}: allow-list path {candidate!r} escapes the tree."
+            )
+        allow_listed.add(candidate)
     return allow_listed
 
 
@@ -262,7 +307,14 @@ def source_files(search_paths, repository_root):
     discovered = set()
     deferred = set()
     for search_path in search_paths:
-        resolved = search_path if search_path.is_absolute() else repository_root / search_path
+        # .resolve() on BOTH sides or neither: repository_root is resolved by
+        # main(), so an unresolved candidate here makes relative_to() raise and
+        # silently defeats BOTH the allow-list and the DEFERRED_DIRS check. On
+        # macOS that fires for any path under /var (-> /private/var), i.e. every
+        # temp dir -- which is exactly how the gate's own self-test caught it.
+        # It fails closed (flags an exempt file rather than exempting a real
+        # one), but it is still wrong.
+        resolved = (search_path if search_path.is_absolute() else repository_root / search_path).resolve()
         candidates = [resolved] if resolved.is_file() else sorted(resolved.rglob("*"))
         for candidate in candidates:
             if not candidate.is_file() or candidate.suffix not in SOURCE_SUFFIXES:
@@ -354,27 +406,71 @@ def findings_for_file(source_path, repository_root, allow_listed_files):
 
 SELF_TEST_LEDGER = """# synthetic ledger
 
+An example of the format, in a fence -- must NOT be parsed as the table:
+
+```
+<!-- LOCATION-READ-ALLOWLIST-TABLE -->
+| Path | Reason |
+| --- | --- |
+| `src/app/fenced.cpp` | a documented example, not an exemption |
+```
+
+| Path | Reason |
+| --- | --- |
+| `src/app/decoy.cpp` | a table ABOVE the marker, carrying the canonical header |
+
+<!-- LOCATION-READ-ALLOWLIST-TABLE -->
 | Path | Reason |
 | --- | --- |
 | `src/owner/owned.cpp` | representation owner |
-
-Prose between tables.
 
 | Path | Count | Note |
 | --- | --- | --- |
 | `src/app/appendix.cpp` | 5 | an informational appendix row, NOT an exemption |
 """
 
+# (source body, expected --check exit code). Each runs the REAL gate end to
+# end via main(), not a predicate in isolation -- the follow-up review's I2
+# found the first version never invoked main() at all, so sabotaging the
+# `if arguments.check and violations:` line (a gate that can never fail) went
+# undetected. Anything that breaks the path from "file on disk" to "non-zero
+# exit" must now be caught here.
 SELF_TEST_CASES = (
     ("unannotated", "int a = ch->in_room;\n", 1),
     ("bogus-reason", "int a = ch->in_room; // LS1-ALLOW: not-an-authorized-reason\n", 1),
     ("valid-trailing", "int a = ch->in_room; // LS1-ALLOW: write (a real one)\n", 0),
     ("valid-continuation", "#define M(ch) \\\n    (ch)->in_room /* LS1-ALLOW: write (macro) */\n", 0),
-    # I1: an LS1-ALLOW living inside a STRING LITERAL must not exempt the line.
-    ("string-literal-bypass", 'int a = ch->in_room; log("LS1-ALLOW: write");\n', 1),
-    # I2: a reason that merely PREFIXES an authorized one must not pass.
+    # The trailing " ok" matters: with `log("LS1-ALLOW: write");` the reason text
+    # ends `write");`, which the I2 prefix-boundary check rejects on its own --
+    # so that probe passed whether or not the I1 string-masking fix was present,
+    # i.e. it was vacuous against the one direction it names. `write ok` is a
+    # VALID reason, so this line can only be flagged by I1's masking. (Found in
+    # adversarial review of this very self-test -- F1.)
+    ("string-literal-bypass", 'int a = ch->in_room; log("LS1-ALLOW: write ok");\n', 1),
     ("prefix-extension-bypass", "int a = ch->in_room; // LS1-ALLOW: writeable-anything\n", 1),
+    # Pins R4's trailing-`*/` stripping specifically. With a space before the
+    # `*/` the captured reason is "write (macro) */", which the I2 boundary
+    # check accepts anyway (prefix + space) -- so the continuation probe above
+    # does NOT pin the stripping. Here `*/` abuts the prefix, so without the
+    # stripping the reason reads "write*/" and is rejected as invalid.
+    ("r4-abutting-block-comment", "int a = ch->in_room; /* LS1-ALLOW: write*/\n", 0),
+    ("comment-masked-token", "// int a = ch->in_room; -- a comment, not code\n", 0),
+    ("world-token", "room_data& r = world[3];\n", 1),
+    ("next-in-room-token", "for (c = head; c; c = c->next_in_room) {}\n", 1),
+    ("dot-access-token", "int a = character.in_room;\n", 1),
 )
+
+
+def _run_gate(root, ledger, padding_files):
+    """Invoke the REAL gate (subprocess, full main()) against a synthetic tree."""
+    import subprocess
+
+    completed = subprocess.run(
+        [sys.executable, str(pathlib.Path(__file__).resolve()), "--check",
+         "--root", str(root), "--exceptions", str(ledger), str(root / "src")],
+        capture_output=True, text=True,
+    )
+    return completed.returncode, completed.stdout + completed.stderr
 
 
 def run_self_test():
@@ -386,52 +482,75 @@ def run_self_test():
         root = pathlib.Path(temporary_root)
         ledger = root / "ledger.md"
         ledger.write_text(SELF_TEST_LEDGER, encoding="utf-8")
-        allow_listed = load_allow_listed_files(ledger, root)
-
-        # M10: only the canonical table's row is an exemption.
-        if "src/owner/owned.cpp" not in allow_listed:
-            failures.append("M10: canonical allow-list row was NOT honored")
-        if "src/app/appendix.cpp" in allow_listed:
-            failures.append("M10: an appendix table row WAS promoted to a whole-file exemption")
 
         source_dir = root / "src" / "probe"
         source_dir.mkdir(parents=True)
-        for name, body, expected_violations in SELF_TEST_CASES:
-            probe = source_dir / f"{name}.cpp"
-            probe.write_text(body, encoding="utf-8")
-            found = len(findings_for_file(probe, root, allow_listed))
-            if found != expected_violations:
-                failures.append(
-                    f"{name}: expected {expected_violations} violation(s), got {found}"
-                )
-            probe.unlink()
+        # The floor check (O-I7) requires a realistic file count, so pad with
+        # clean files. This also proves the floor does not fire spuriously.
+        for index in range(MINIMUM_SCANNED_FILE_COUNT + 5):
+            (source_dir / f"pad{index}.cpp").write_text("int clean = 0;\n", encoding="utf-8")
 
-        # A whole-file exemption really does silence its file.
+        allow_listed = load_allow_listed_files(ledger, root)
+        # M10, all three shapes: fenced example, table above the marker, and a
+        # differently-headed appendix below it. Only the marked table counts.
+        if "src/owner/owned.cpp" not in allow_listed:
+            failures.append("M10: the marked allow-list row was NOT honored")
+        for smuggled in ("src/app/fenced.cpp", "src/app/decoy.cpp", "src/app/appendix.cpp"):
+            if smuggled in allow_listed:
+                failures.append(f"M10: {smuggled} was smuggled in as a whole-file exemption")
+
+        probe = source_dir / "probe.cpp"
+        for name, body, expected_exit in SELF_TEST_CASES:
+            probe.write_text(body, encoding="utf-8")
+            actual_exit, output = _run_gate(root, ledger, None)
+            if actual_exit != expected_exit:
+                failures.append(
+                    f"{name}: expected gate exit {expected_exit}, got {actual_exit}\n{output}"
+                )
+        probe.unlink()
+
+        # A whole-file exemption silences its file end to end...
         owner_dir = root / "src" / "owner"
         owner_dir.mkdir(parents=True)
-        owned = owner_dir / "owned.cpp"
-        owned.write_text("int a = ch->in_room;\n", encoding="utf-8")
-        if findings_for_file(owned, root, allow_listed):
-            failures.append("allow-listed file was still flagged")
-        # ...and removing it from the ledger un-silences it.
-        if not findings_for_file(owned, root, set()):
+        (owner_dir / "owned.cpp").write_text("int a = ch->in_room;\n", encoding="utf-8")
+        exit_code, output = _run_gate(root, ledger, None)
+        if exit_code != 0:
+            failures.append(f"allow-listed file was still flagged by the gate\n{output}")
+        # ...and an unmarked ledger un-silences it.
+        bare = root / "bare.md"
+        bare.write_text("<!-- LOCATION-READ-ALLOWLIST-TABLE -->\n| Path | Reason |\n| --- | --- |\n",
+                        encoding="utf-8")
+        exit_code, _ = _run_gate(root, bare, None)
+        if exit_code == 0:
             failures.append("removing the ledger row did NOT re-flag the file")
+
+        # The O-I7 floor must fire when the scan is broken.
+        empty = root / "empty"
+        empty.mkdir()
+        import subprocess
+        floor = subprocess.run(
+            [sys.executable, str(pathlib.Path(__file__).resolve()), "--check",
+             "--root", str(root), "--exceptions", str(ledger), str(empty)],
+            capture_output=True, text=True,
+        )
+        if floor.returncode == 0:
+            failures.append("the scanned-file floor did NOT fire on an empty scan")
 
         # DEFERRED_DIRS files are collected separately, never scanned silently.
         deferred_dir = root / "src" / DEFERRED_DIRS[0]
         deferred_dir.mkdir(parents=True)
         (deferred_dir / "fixture.cpp").write_text("int a = ch->in_room;\n", encoding="utf-8")
-        scanned, deferred = source_files([root / "src"], root)
-        if not any(path.name == "fixture.cpp" for path in deferred):
-            failures.append("a DEFERRED_DIRS file was not reported as deferred")
-        if any(path.name == "fixture.cpp" for path in scanned):
-            failures.append("a DEFERRED_DIRS file leaked into the scanned set")
+        exit_code, output = _run_gate(root, ledger, None)
+        if exit_code != 0:
+            failures.append(f"a DEFERRED_DIRS file was scanned instead of deferred\n{output}")
+        if "[deferred] 1 file(s)" not in output:
+            failures.append(f"the deferred notice did not report the deferred file\n{output}")
 
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("location_read_census self-test: all directions pass")
+    print("location_read_census self-test: all directions pass (gate invoked end to end)")
     return 0
 
 

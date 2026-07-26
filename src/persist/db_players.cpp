@@ -2566,7 +2566,17 @@ void add_crime(int criminal, int victim, int witness, int crime, int wit_type)
             find_player_in_table("", witness)))
         return;
     CREATE(tmprecord, crime_record_type, num_of_crimes + 1);
-    memcpy(tmprecord, crime_record, num_of_crimes * sizeof(crime_record_type));
+    // Guarded: on the first crime after boot num_of_crimes is 0 and
+    // crime_record is still null. memcpy() declares both pointers nonnull,
+    // so passing null is undefined behavior EVEN for a zero byte count --
+    // UBSan flags it ("null pointer passed as argument 2, which is declared
+    // to never be null") on the linux-x64 ASan+UBSan CI leg. Copying zero
+    // bytes was already a no-op, so this guard is behavior-preserving; it
+    // only removes the UB. Pre-existing latent defect, first exercised by
+    // db_boot_tests.cpp's record_crime coverage (LS-2 T3a), which is the
+    // first caller ever to reach add_crime() with an empty crime table.
+    if (num_of_crimes > 0)
+        memcpy(tmprecord, crime_record, num_of_crimes * sizeof(crime_record_type));
     RELEASE(crime_record);
     crime_record = tmprecord;
 

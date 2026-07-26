@@ -265,13 +265,22 @@ namespace {
 // send_to_room() (comm.cpp's send_to_room_impl walking world[room].people
 // via occupant->desc), not the simpler send_to_char() seam a capturing
 // sink alone could intercept.
-descriptor_data make_output_descriptor() {
-    descriptor_data descriptor{};
+// Initializes IN PLACE, by reference -- deliberately NOT a value-returning
+// factory. descriptor_data::output points at the SAME object's small_outbuf,
+// so returning such an object by value is only correct if the compiler
+// applies NRVO; NRVO is OPTIONAL (C++17 guarantees copy elision only for
+// prvalue temporaries, not for a named local returned by value). GCC and
+// Clang elide here, which made a value-returning factory pass on macOS and
+// linux-x64; MSVC copies, leaving `output` dangling into the destroyed
+// temporary -- observed on CI as shredded, NUL-interleaved captures like
+// "\0^A\0\0\0ever \0\0\0...ly." instead of "The lever closes slowly.".
+// act_wiz_format_tests.cpp's reset_capturing_descriptor() takes a reference
+// for exactly this reason; this mirrors it.
+void init_output_descriptor(descriptor_data &descriptor) {
     descriptor.output = descriptor.small_outbuf;
     descriptor.small_outbuf[0] = '\0';
     descriptor.bufptr = 0;
     descriptor.bufspace = SMALL_BUFSIZE - 1;
-    return descriptor;
 }
 
 // Minimal send_to_char() capturing sink (mirrors combat_hooks_tests.cpp's
@@ -333,7 +342,8 @@ TEST(DoPullTest, LeverInPullersOwnRoomTogglesDoorWithoutRumblingMessage) {
     lever.obj_flags.value[0] = 9001; // real_room()'s target vnum
     lever.obj_flags.value[1] = NORTH;
 
-    descriptor_data descriptor = make_output_descriptor();
+    descriptor_data descriptor{};
+    init_output_descriptor(descriptor);
     char_data ch{};
     ch.in_room = 0;
     ch.desc = &descriptor;
@@ -388,13 +398,15 @@ TEST(DoPullTest, LeverInADifferentRoomAnnouncesRumblingAndTogglesBothSidesRecipr
     lever.obj_flags.value[0] = 9002;
     lever.obj_flags.value[1] = NORTH;
 
-    descriptor_data puller_descriptor = make_output_descriptor();
+    descriptor_data puller_descriptor{};
+    init_output_descriptor(puller_descriptor);
     char_data ch{};
     ch.in_room = 0;
     ch.desc = &puller_descriptor;
     world[0].people = &ch;
 
-    descriptor_data bystander_descriptor = make_output_descriptor();
+    descriptor_data bystander_descriptor{};
+    init_output_descriptor(bystander_descriptor);
     char_data bystander{};
     bystander.in_room = 1;
     bystander.desc = &bystander_descriptor;
@@ -451,7 +463,8 @@ TEST(DoOpenTest, AnnouncesToTheOtherSideOfAReciprocalDoor) {
     far_exit.to_room = 0; // must equal location_of(ch) for the reciprocal branch to fire
     world[1].dir_option[SOUTH] = &far_exit;
 
-    descriptor_data bystander_descriptor = make_output_descriptor();
+    descriptor_data bystander_descriptor{};
+    init_output_descriptor(bystander_descriptor);
     char_data bystander{};
     bystander.in_room = 1;
     bystander.desc = &bystander_descriptor;

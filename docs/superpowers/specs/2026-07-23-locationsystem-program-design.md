@@ -540,6 +540,47 @@ the CMake ctest-only checks — nine acyclicity linkchecks plus `LocationReadCen
 monolithic-only `PerRace/ConvertEquivalence.*` skips leaves the identical 6-test remainder both
 ways), boot golden matches — the standing reconciliation method, twelfth consecutive wave.
 
+### Finalization repairs — what the gates found AFTER the wave went green
+
+LS-2's per-task gates were green at 1689/1689 on three hosts with every golden byte-identical. Three
+independent later checks each still found something, which is the wave's most transferable result:
+
+1. **The i386 battery's monolithic runner** — the `DoRescue` `waiting_list` leak described above
+   (`2afaee9`). Invisible to ctest by construction.
+2. **The CI matrix** (`0732846`) — two defects neither macOS, `rots64`, nor i386 could see.
+   *Windows/MSVC:* a test helper returned a `descriptor_data` **by value** whose `output` member
+   pointed at the same object's `small_outbuf`; that is correct only under NRVO, and **NRVO is
+   optional** (C++17 guarantees copy elision for prvalue temporaries, not for a named local returned
+   by value). GCC and Clang elide, MSVC copies, leaving `output` dangling — CI captured the shredded
+   result verbatim. *Linux UBSan:* `add_crime()`'s `memcpy(dst, crime_record, 0)` with
+   `crime_record == nullptr` — UB even at zero length, because `memcpy` declares both pointers
+   `nonnull`. That one is a **pre-existing production defect**; LS-2's new `record_crime` coverage is
+   simply the first caller ever to reach `add_crime()` with an empty crime table. It is also the
+   wave's only production change outside the conversions themselves.
+3. **The two adversarial whole-branch reviews** (Opus 5 and Fable 5, independent, neither seeing the
+   other). **They returned different blockers** — Fable found eight fixtures leaving shared `world[]`
+   state unrestored, Opus found a ninth in `protocol_tests.cpp` that Fable's sweep missed. Five of
+   the nine were dangling stack pointers in `world[].dir_option[]`; one was demonstrated as a live
+   SIGSEGV during the fix. Opus additionally found **five or six vacuous tests** — tests that pass
+   with the code they name deleted — two of which three separate documents cited as *closing* LS-1's
+   inherited Family-F debt. The true figure was **2 of 6 sites pinned**; batch 2 raised it to 4 of 6
+   with positive controls verified by sabotage-and-revert, and the remaining two
+   (`vampire_killer`'s self-room site and `vampire_huntress`) were re-deferred with their cost
+   recorded rather than left as a false claim of closure.
+
+Both reviewers also found the gate itself defeatable three ways — an `LS1-ALLOW` inside a string
+literal, a reason that merely *prefixes* an authorized one, and a scan that **exits 0 when it finds
+zero files** (a path break turning the program's fail-closed exit criterion green). All three closed.
+
+**The lesson worth carrying to LS-3a:** a green per-test suite is not evidence of fixture hygiene,
+and a passing test is not evidence that anything is pinned. ctest gives every test its own process,
+so leaked pointers never outlive anything; and a test written against a function's "nothing found"
+path passes whether the code under it is correct, wrong, or absent. Fable's control experiment —
+excluding all 71 branch-new tests and still producing 32 failures and a SIGSEGV under
+`--gtest_shuffle` — established that the residual corpus-wide fragility is **pre-existing**, rooted
+in `ScopedTestWorld`'s reuse branch whose "known-good state" contract comment is false. LS-2 removed
+its own nine contributions; **the structural reset and the corpus sweep are named LS-3a inputs.**
+
 **The battery caught the wave's one real defect, on a class the ctest flow structurally cannot
 see.** Its first run died with `qemu: uncaught target signal 11` after 1054 tests, inside a
 *pre-existing* test (`InterpreAccountMenu.ExtractCharReturnsAccountBackedCharactersToAccountAwareMenu`).

@@ -435,33 +435,59 @@ namespace {
 // fixed-room loops (:3298 over real_room(15399), :3307 over
 // real_room(15398)).
 //
-// Each of the three rooms gets an NPC bystander rather than being left
-// literally empty, so the test proves each walk reads REAL occupant data
-// through its resolver (self-room -> room_of(host); fixed rooms ->
-// room_by_id_total(real_room(vnum))) and correctly applies the
-// `!IS_NPC()` filter, not merely that an empty range-for is a no-op. Room
-// 15399 is deliberately placed at world index 2 == top_of_world: per
+// O-I3 (LS-2 whole-branch review, Opus): the negative-control test below
+// used to be the ONLY test here, and it drove every one of the three walks
+// to "nothing found" -- so it passed identically whether the walks read
+// the right rooms, the wrong rooms, or were deleted outright, pinning
+// nothing. Two of the three (:3298/:3307, the fixed-room walks) now ALSO
+// have a positive control each (below): each gives exactly one fixed room
+// a PC bystander (excluded by neither CAN_SEE() nor !IS_NPC()) and forces
+// the found branch's own "slow him down" gate (number(0, 10)) to 0,
+// observing the resulting issue_command(move, ...) dispatch through a
+// recording hook on the `move` combat_command cell -- the same technique
+// ScopedRecordingSpecProHitHook already uses for mob_ranger_new below,
+// applied to the cell this found branch actually dispatches through (not
+// `hit`).
+//
+// The self-room walk's (:3272) FOUND outcome remains out of scope: its
+// success path calls the real raw_kill() (corpse creation, save_char(),
+// crash_crashsave() -- file writes and the full PC-death machinery).
+// CharacterizationCombatTest.DamageTranscriptSeed42
+// (characterization_combat_tests.cpp) shows what safely driving that path
+// costs -- a fabricated mob_index slot, global_release_flag=0,
+// character_list wiring, register_npc_char()/remove_char_exists()
+// bookkeeping, and a placement-new reconstruction of the stack victim
+// after free_char() runs on it -- disproportionate to this coverage
+// follow-up. Re-deferred with this cost recorded, matching the ruling's
+// own "4 of 6 sites pinned; the other two re-deferred with cost recorded"
+// fallback (ls2-review-adjudication.md O-I3; the sixth site is
+// vampire_huntress's own found path, re-deferred below for a different
+// reason).
+//
+// Each of the three rooms still gets an NPC bystander in the (unmodified)
+// negative control below, so it still proves each walk reads REAL
+// occupant data through its resolver (self-room -> room_of(host); fixed
+// rooms -> room_by_id_total(real_room(vnum))) and correctly applies the
+// `!IS_NPC()` filter when nobody eligible is present -- now the genuine
+// negative half of a discriminator pair for the two fixed-room sites,
+// rather than the whole story for all three. Room 15399 is deliberately
+// placed at world index 2 == top_of_world: per
 // ls2-global-constraints.md's room_by_id() ban rationale,
 // room_by_id_impl rejects `rnum >= top_of_world` (a graceful
 // room_by_id_total() fallback would not), so a regression that
 // substituted the banned room_by_id() for either fixed-room site would
 // crash THIS fixture rather than pass silently.
 //
-// Driving any of the three walks to its FOUND outcome is deliberately out
-// of scope for this follow-up: the self-room bite's success path calls the
-// real raw_kill() (corpse creation, save_char(), crash_crashsave() -- file
-// writes and the full PC-death machinery), and the two fixed-room walks'
-// success path falls into the `else` branch's CAN_GO()/
-// issue_command(move) door-state machinery -- both pull in subsystems
-// entirely unrelated to the location-read conversion this follow-up is
-// pinning. See the T4 report for the full cost accounting.
-//
-// Host's own room number is deliberately NOT 15398/15399: the
-// `if (!which_room)` block's `case 15399:`/`case 15398:` arms set
-// `tmpwtl.cmd = 1`, and the immediately following `if (tmpwtl.cmd == 1)`
-// dereferences the function-local `room_data* room = 0;` (never assigned
-// on this path) -- a pre-existing, out-of-scope latent null-deref this
-// fixture must simply avoid triggering, not fix.
+// Host's own room number is deliberately NOT 15398/15399 in the negative
+// control (the two new positive controls below use 15395 instead -- a
+// DIFFERENT case in the found branch's own switch, chosen so its
+// `tmpwtl.cmd = 2` maps to a plain, side-effect-free direction (EAST) with
+// no nested door-state block): the `if (!which_room)` block's
+// `case 15399:`/`case 15398:` arms set `tmpwtl.cmd = 1`, and the
+// immediately following `if (tmpwtl.cmd == 1)` dereferences the
+// function-local `room_data* room = 0;` (never assigned on this path) --
+// a pre-existing, out-of-scope latent null-deref this fixture must simply
+// avoid triggering, not fix.
 // -----------------------------------------------------------------------
 
 struct VampireKillerContext {
@@ -498,6 +524,17 @@ struct VampireKillerContext {
         host.specials2.act = MOB_ISNPC;
         host.player.name = host_name;
         host.player.short_descr = host_name; // GET_NAME() reads short_descr for NPCs (IS_NPC(host)).
+        // O-I3 fixture fix: char_data{}'s zero-initialized specials.position
+        // defaults to POSITION_DEAD (0), and CAN_SEE()'s own
+        // `GET_POS(sub) <= POSITION_SLEEPING` gate (visibility.cpp) returns 0
+        // for EVERY occupant a "dead" host looks at -- masking the walk's
+        // `!IS_NPC()` filter behind an unconditional CAN_SEE() failure
+        // instead of exercising it. VampireHuntressContext already sets this
+        // (POSITION_STANDING, required to even enter vampire_huntress's own
+        // wander block); vampire_killer has no GET_POS(host) check of its
+        // own, so this is a pure visibility-fixture fix with no effect on
+        // which branch the function takes.
+        host.specials.position = POSITION_STANDING;
         host.in_room = 0;
         host.next_in_room = &bystander_home;
 
@@ -537,6 +574,39 @@ struct VampireKillerContext {
     }
 };
 
+// O-I3 positive-control infrastructure: the found branch (spec_pro.cpp
+// :3343-3395) dispatches through issue_command(move, ...), not hit, so it
+// needs its own recording hook rather than reusing
+// ScopedRecordingSpecProHitHook -- same technique (a stub substituted for a
+// combat_hooks.h dispatch cell via set_combat_command(), restored via
+// register_combat_command_dispatch() on scope exit), different cell.
+struct RecordedSpecProMoveCall {
+    char_data* ch = nullptr;
+    int cmd = 0;
+    bool called = false;
+};
+
+RecordedSpecProMoveCall g_recorded_spec_pro_move_call;
+
+void recording_spec_pro_move_stub(char_data* ch, char* /*argument*/, waiting_type* /*wtl*/,
+    int cmd, int /*subcmd*/)
+{
+    g_recorded_spec_pro_move_call = RecordedSpecProMoveCall{ ch, cmd, true };
+}
+
+struct ScopedRecordingSpecProMoveHook {
+    ScopedRecordingSpecProMoveHook()
+    {
+        rots::combat::set_combat_command(
+            rots::combat::combat_command::move, recording_spec_pro_move_stub);
+    }
+
+    ~ScopedRecordingSpecProMoveHook() { register_combat_command_dispatch(); }
+
+    ScopedRecordingSpecProMoveHook(const ScopedRecordingSpecProMoveHook&) = delete;
+    ScopedRecordingSpecProMoveHook& operator=(const ScopedRecordingSpecProMoveHook&) = delete;
+};
+
 } // namespace
 
 TEST(SpecProVampireKiller, ExcludesNpcBystandersInAllThreeRoomsAndTakesNoAction) {
@@ -560,6 +630,96 @@ TEST(SpecProVampireKiller, ExcludesNpcBystandersInAllThreeRoomsAndTakesNoAction)
     clear_test_random_values();
 }
 
+// O-I3 positive control #1: room 15399's bystander becomes a PC, so the
+// :3298 walk (`room_by_id_total(real_room(15399))`) sets victim/which_room=1
+// instead of leaving them at their Family-F pre-init. Room 15398 keeps its
+// NPC bystander (which_room stays 1, not 3, so the `number(1, 2)`
+// tie-break draw is never reached -- one fewer random value to stage).
+TEST(SpecProVampireKiller, FindsAndDispatchesMoveWhenRoom15399HasAnEligibleVictim) {
+    VampireKillerContext context;
+    context.bystander_15399.specials2.act = 0; // PC now -- not excluded by !IS_NPC().
+
+    // Host's own room must match one of the found branch's switch cases
+    // (spec_pro.cpp:3348-3389) to reach a deterministic, defined direction
+    // instead of the `default: tmpwtl.cmd = 0;` arm, whose
+    // `CAN_GO(host, tmpwtl.cmd - 1)` would read dir_option[-1] (UB) --
+    // 15395 -> tmpwtl.cmd = 2 (EAST; see room.h's NORTH=0/EAST=1/...).
+    // VampireKillerContext's own dtor restores world[0].number from
+    // original_number[0], captured before its constructor's own `= 1`
+    // assignment, so this override is safe to leave unrestored here.
+    world[0].number = 15395;
+
+    // CAN_GO() needs a real, open exit at EAST or the found branch's
+    // dispatch would be silently skipped (indistinguishable from "not
+    // found" again) -- a stack room_direction_data, explicitly nulled
+    // below before the context that owns world[0] is torn down (the O-I2
+    // dangling-stack-exit-pointer discipline this branch's fixtures now
+    // follow throughout).
+    room_direction_data* const original_dir_option_east = world[0].dir_option[EAST];
+    room_direction_data east_exit{};
+    east_exit.exit_info = 0; // not closed/broken.
+    east_exit.to_room = 0; // never actually taken -- the move hook below intercepts the
+                            // dispatch before the real do_move() body would run.
+    world[0].dir_option[EAST] = &east_exit;
+
+    ScopedRecordingSpecProMoveHook hook;
+    g_recorded_spec_pro_move_call = RecordedSpecProMoveCall{};
+
+    clear_test_random_values();
+    push_test_random_value(0.0); // number(0, 10) in the found branch ("slow him down a bit") must
+                                  // be 0 or the function returns before reaching CAN_GO().
+
+    const int result =
+        vampire_killer(&context.host, &context.host, 0, mutable_arg(""), SPECIAL_SELF, nullptr);
+
+    world[0].dir_option[EAST] = original_dir_option_east;
+    clear_test_random_values();
+
+    EXPECT_EQ(result, 0);
+    EXPECT_TRUE(g_recorded_spec_pro_move_call.called)
+        << "Expected the converted room_by_id_total(real_room(15399)) walk (:3298) to find the "
+           "PC bystander, set which_room=1, and dispatch issue_command(move, ...) once the "
+           "\"slow him down\" gate rolled 0.";
+    EXPECT_EQ(g_recorded_spec_pro_move_call.ch, &context.host);
+    EXPECT_EQ(g_recorded_spec_pro_move_call.cmd, 2);
+}
+
+// O-I3 positive control #2: the mirror image of the test above, pinning
+// the OTHER fixed-room walk (:3307, `room_by_id_total(real_room(15398))`,
+// `victim2`/which_room += 2). Room 15399 keeps its NPC bystander this time.
+TEST(SpecProVampireKiller, FindsAndDispatchesMoveWhenRoom15398HasAnEligibleVictim) {
+    VampireKillerContext context;
+    context.bystander_15398.specials2.act = 0; // PC now -- not excluded by !IS_NPC().
+
+    world[0].number = 15395; // Same reasoning as the room-15399 positive control above.
+
+    room_direction_data* const original_dir_option_east = world[0].dir_option[EAST];
+    room_direction_data east_exit{};
+    east_exit.exit_info = 0;
+    east_exit.to_room = 0;
+    world[0].dir_option[EAST] = &east_exit;
+
+    ScopedRecordingSpecProMoveHook hook;
+    g_recorded_spec_pro_move_call = RecordedSpecProMoveCall{};
+
+    clear_test_random_values();
+    push_test_random_value(0.0); // number(0, 10) must be 0, same gate as above.
+
+    const int result =
+        vampire_killer(&context.host, &context.host, 0, mutable_arg(""), SPECIAL_SELF, nullptr);
+
+    world[0].dir_option[EAST] = original_dir_option_east;
+    clear_test_random_values();
+
+    EXPECT_EQ(result, 0);
+    EXPECT_TRUE(g_recorded_spec_pro_move_call.called)
+        << "Expected the converted room_by_id_total(real_room(15398)) walk (:3307) to find the "
+           "PC bystander, set which_room=2, and dispatch issue_command(move, ...) once the "
+           "\"slow him down\" gate rolled 0.";
+    EXPECT_EQ(g_recorded_spec_pro_move_call.ch, &context.host);
+    EXPECT_EQ(g_recorded_spec_pro_move_call.cmd, 2);
+}
+
 namespace {
 
 // -----------------------------------------------------------------------
@@ -572,13 +732,39 @@ namespace {
 // override fires after -- and replaces -- whatever the preceding
 // room-number switch computed).
 //
-// The destination room gets an NPC bystander (rather than being left
-// empty) so the test proves the post-move walk reads the REAL destination
-// room's occupant chain through room_of(host) and correctly applies the
-// `!IS_NPC()` filter. Driving to the FOUND outcome is out of scope: tmpno
-// == 1 is a multi-room kidnap sequence (door state across two more rooms)
-// and tmpno == 2 calls the real melee hit() -- both unrelated to the
-// location-read conversion under test. See the T4 report.
+// O-I3 (LS-2 whole-branch review, Opus): both assertions the test below
+// makes are produced by the wander block's char_to_room() call, which runs
+// BEFORE and INDEPENDENTLY of this walk -- so as written it passes with
+// the walk deleted, pinning nothing about the `!IS_NPC()` filter its own
+// name claims. Unlike vampire_killer's two fixed-room sites above, this
+// one is confirmed GENUINELY INFEASIBLE to positive-control at proportional
+// cost, re-deferred per the ruling's fallback (ls2-review-adjudication.md
+// O-I3) rather than fixed -- both of the walk's two "found" sub-paths were
+// checked directly against the source (spec_pro.cpp):
+//   - tmpno == 2 calls the real hit(host, victim, TYPE_UNDEFINED) --
+//     dead code as reached from here: hit()'s own first gate,
+//     `if (GET_POS(ch) < POSITION_FIGHTING) return;` (fight.cpp:2560-2561),
+//     always fires, because the day/night wander block this walk lives in
+//     requires `GET_POS(host) != POSITION_FIGHTING` just to run
+//     (spec_pro.cpp:2941) and nothing between there and the hit() call
+//     raises host's position. The call executes and returns with ZERO
+//     observable effect (no message, no state change) regardless of
+//     whether victim was found -- there is no side effect to assert on.
+//   - tmpno == 1 (the kidnap branch) genuinely has observable side
+//     effects, but reaching them safely needs a THIRD room graph (the
+//     victim's post-kidnap destination -- 15399 or 15398 depending on
+//     victim->player.race -- must itself have a valid dir_option[0] whose
+//     to_room has a valid dir_option[2], both SET_BIT()'d unconditionally
+//     with no null guard) and ends in WAIT_STATE_FULL(host, ...) -- the
+//     exact stack-char_data-into-global-waiting_list splice `2afaee9`
+//     bisected out of an unrelated test, on a fixture built for THIS
+//     follow-up, at a cost this coverage rider cannot justify.
+// The destination room still gets an NPC bystander below (rather than
+// being left empty), which is worth keeping: it does still prove the
+// wander block's post-move room_of(host) resolver reaches a REAL
+// destination room's occupant chain, even though it cannot additionally
+// prove the `!IS_NPC()` filter without one of the two infeasible paths
+// above. See the T4 report for the original scoping call.
 // -----------------------------------------------------------------------
 
 struct VampireHuntressContext {

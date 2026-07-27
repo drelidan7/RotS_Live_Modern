@@ -77,18 +77,19 @@ void ensure_test_world(int minimum_room_number) {
     // run first under --gtest_shuffle.
     static ScopedTestWorld shared_world(kMageTestWorldRoomCount);
 
-    // ScopedTestWorld's dummy_room_data() pass (like create_bulk()'s own)
-    // doesn't touch funct/bfs_dir/bfs_next -- room_data's constructor
-    // (db.cpp) leaves those as heap garbage. This suite's original
-    // hand-rolled bootstrap explicitly zeroed them for every room it
-    // touched (loclife_add_rooms/random_exit's room-graph walk reads
-    // them), so preserve that here; cheap enough to just redo on every
-    // call rather than gate behind the static's one-time init.
-    for (int room = 0; room < kMageTestWorldRoomCount; ++room) {
-        world[room].funct = nullptr;
-        world[room].bfs_dir = 0;
-        world[room].bfs_next = nullptr;
-    }
+    // A hand-rolled loop zeroing funct/bfs_dir/bfs_next for every room used to
+    // live here, because neither room_data's constructor nor
+    // dummy_room_data() touches those three and they were therefore heap
+    // garbage. LS-3a T1 Stage B moved that zeroing into ScopedTestWorld's own
+    // reset_all_rooms(), which runs in BOTH constructor branches -- so
+    // shared_world's one-time construction above already covers every room in
+    // the allocation, and re-doing it per call bought nothing.
+    //
+    // (The retired loop's comment justified itself with
+    // "loclife_add_rooms/random_exit's room-graph walk reads them". That was
+    // factually false -- neither function touches funct/bfs_dir/bfs_next. The
+    // real consumer is find_first_step(), whose BFS uses bfs_dir/bfs_next as
+    // scratch state across every room in [0, top_of_world].)
 
     if (top_of_world < minimum_room_number) {
         top_of_world = minimum_room_number;

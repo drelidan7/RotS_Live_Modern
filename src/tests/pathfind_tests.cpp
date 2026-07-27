@@ -32,26 +32,20 @@ constexpr int kPathfindTestWorldRoomCount = 3;
 // find_first_step()'s BFS walks every room in [0, top_of_world] via
 // world[curr_room] each call (the UNMARK(room_by_id_total(curr_room))
 // clear-marks loop), so every room in range must be a real, initialized
-// room -- not just the three this suite wires exits between. dummy_room_data
-// (ScopedTestWorld's per-room init) zeroes dir_option/room_flags but leaves
-// bfs_dir/bfs_next/funct as heap garbage (same gap mage_tests.cpp's
-// ensure_test_world documents), so zero those explicitly for every room
-// find_first_step's clear-marks loop will touch.
+// room -- not just the three this suite wires exits between.
+// ScopedTestWorld's reset_all_rooms() guarantees exactly that for the whole
+// allocation, in either constructor branch: dummy_room_data() zeroes
+// dir_option[]/room_flags, and LS-3a T1 Stage B added the bfs_dir/bfs_next/
+// funct zeroing that neither dummy_room_data() nor room_data's constructor
+// does. A hand-rolled loop re-zeroing all five per room used to stand here;
+// it is now redundant with the fixture member below and has been retired.
+// Only the two non-default exits this suite actually needs are installed.
 struct PathfindTestWorld {
     ScopedTestWorld scoped_world{kPathfindTestWorldRoomCount};
     room_direction_data room0_north{};
     room_direction_data room1_north{};
 
     PathfindTestWorld() {
-        for (int room = 0; room < kPathfindTestWorldRoomCount; ++room) {
-            world[room].bfs_dir = 0;
-            world[room].bfs_next = nullptr;
-            world[room].funct = nullptr;
-            world[room].room_flags = 0;
-            for (int dir = 0; dir < NUM_OF_DIRS; ++dir) {
-                world[room].dir_option[dir] = nullptr;
-            }
-        }
         top_of_world = kPathfindTestWorldRoomCount - 1;
 
         room0_north.exit_info = 0;

@@ -378,23 +378,24 @@ struct RoomStatContext {
         // ScopedZoneTable's zone 0) -- pin it to room 0 of zone 0 so it
         // resolves against this fixture's ScopedZoneTable entry.
         test_world.room().number = 0;
-        // room_data's own constructor (db.cpp) only sets number/zone/level/
-        // name/description/affected -- funct/room_flags/ex_description/
-        // dir_option[] are left as indeterminate bytes from the underlying
-        // `new room_data[]` allocation. A plain macOS build's allocator
-        // happened to hand back zeroed pages every time (so `rm->funct`/
-        // `rm->room_flags` read as null/0 "by luck"), but macOS ASan's
-        // allocator does not: it surfaced as SpecProc reading "Exists"
-        // instead of "No" under `-fsanitize=address` (Task 5 ASan gate).
-        // Zeroing explicitly here removes the reliance on incidental
-        // allocator behavior for every RoomStatContext-based test, and
-        // guards do_stat_room's `for (i = 0; i < NUM_OF_DIRS; i++) if
-        // (rm->dir_option[i])` loop against dereferencing garbage pointers.
-        test_world.room().funct = nullptr;
-        test_world.room().room_flags = 0;
-        test_world.room().ex_description = nullptr;
-        for (int direction = 0; direction < NUM_OF_DIRS; direction++)
-            test_world.room().dir_option[direction] = nullptr;
+        // funct/room_flags/ex_description/dir_option[] used to be zeroed by
+        // hand right here. room_data's own constructor (db.cpp) sets only
+        // number/zone/level/name/description/affected, so all four were
+        // indeterminate bytes from the underlying `new room_data[]`
+        // allocation. A plain macOS build's allocator happened to hand back
+        // zeroed pages every time (so `rm->funct`/`rm->room_flags` read as
+        // null/0 "by luck"), but macOS ASan's allocator does not: it surfaced
+        // as do_stat_room reporting SpecProc "Exists" instead of "No" under
+        // `-fsanitize=address` (Task 5 ASan gate), and left do_stat_room's
+        // `for (i = 0; i < NUM_OF_DIRS; i++) if (rm->dir_option[i])` loop
+        // dereferencing garbage pointers.
+        //
+        // ScopedTestWorld now owns that guarantee for every room in the world,
+        // in both constructor branches: dummy_room_data() covers room_flags/
+        // ex_description/dir_option[], and LS-3a T1 Stage B added the .funct
+        // zeroing (this very failure is the case it cites). The hand-rolled
+        // block is retired as redundant -- but the history above is why the
+        // reset must keep doing it.
         character.in_room = 0;
         character.next_in_room = nullptr;
         test_world.room().people = &character;

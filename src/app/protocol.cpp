@@ -2907,6 +2907,12 @@ void broadcast_weather_msdp_update(rots::world::weather_msdp_kind kind)
     extern struct time_info_data time_info;
     extern const std::string_view weather_messages[8][13];
     extern std::string strip_trailing_line_break(std::string_view text);
+    // The Stage-1 location read the R20 guard below needs. Declared locally
+    // rather than by including handler.h: this TU already reaches room_of()
+    // through utils.h's own forward declaration (utils.h:62, the LS-2
+    // precedent for exactly this) and pulls in no placement header, so a
+    // matching one-line declaration keeps the include graph unchanged.
+    int location_of(const struct char_data* ch);
 
     for (auto desc = descriptor_list; desc; desc = desc->next) {
         if (!desc->character || IS_NPC(desc->character)) {
@@ -2926,6 +2932,26 @@ void broadcast_weather_msdp_update(rots::world::weather_msdp_kind kind)
             MSDPSend(desc, eMSDP_WORLD_TIME);
             break;
         case rots::world::weather_msdp_kind::weather: {
+            // R20 (LS-3a T2 tranche 2e-beta; T0b-1's reader table). This
+            // walker had NO location guard at all, unlike its sibling
+            // msdp_update() (comm.cpp:1017), and this arm is the only one
+            // that reads the room. A character parked at the character menu
+            // -- anyone between extract_char() and re-entry, plus the whole
+            // login/rent window -- has no location, so room_of() resolved
+            // world[-1], which room_data::operator[] answers with a mudlog
+            // ("world[] called for negative room number.") and a room-0
+            // FALLBACK: every weather tick told every menu-sitter about room
+            // 0's weather and wrote a line to the log doing it. Skipping them
+            // is the fix; it also keeps the channel from becoming a per-pulse
+            // mudlog storm once LS-3b makes absence the normal answer here.
+            // Deliberately `< 0` only, not msdp_update()'s `< 0 ||
+            // > top_of_world`: the range half would additionally silence
+            // weather for anyone in an EXTENSION room (indices above
+            // top_of_world), which is not this rider's business.
+            if (location_of(desc->character) < 0) {
+                continue;
+            }
+
             auto sector_type = room_of(desc->character)->sector_type;
             auto weather_type = weather_info.sky[sector_type];
             if (OUTSIDE(desc->character)) {

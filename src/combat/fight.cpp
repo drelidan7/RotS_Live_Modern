@@ -3172,7 +3172,25 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
     }
 
     if ((IS_OBJ_STAT(item, ITEM_ANTI_EVIL) && IS_EVIL(character)) || (IS_OBJ_STAT(item, ITEM_ANTI_GOOD) && IS_GOOD(character)) || (IS_OBJ_STAT(item, ITEM_ANTI_NEUTRAL) && IS_NEUTRAL(character))) {
-        if (location_of(character) != NOWHERE) {
+        // THE ONE PLACE A MECHANICAL LOCATION CONVERSION WOULD BE WRONG
+        // (LS-3a T0b-1, readers R9/R10). This guard does not ask "where is
+        // this character?" -- it asks "is there a room to narrate the zap
+        // in?", and its else-arm merely logs. Under LS-3b, equip_char() runs
+        // mid-Crash_load with the character not yet placed, so a single-term
+        // location test would go FALSE there and fall through to the log --
+        // leaving a zapped item EQUIPPED on a character it is forbidden to,
+        // a real regression, permanently persisted by the very rent-load that
+        // produced it.
+        //
+        // TODAY THIS IS PROVABLY A NO-OP, and deliberately so. location_of()
+        // and peek_load_room_vnum() are both literally `return ch->in_room;`
+        // (placement.cpp:182-184 and :214-216) -- the VNUM channel does not
+        // have its own store until LS-3b -- so the added term is the same
+        // expression as the first and `A != NOWHERE || A != NOWHERE` reduces
+        // to `A != NOWHERE`. Nothing about today's behavior changes; the
+        // guard is written now, beside the reasoning that justifies it,
+        // rather than left for LS-3b to rediscover from a regression report.
+        if ((location_of(character) != NOWHERE) || (peek_load_room_vnum(character) != NOWHERE)) {
 
             act("You are zapped by $p and instantly drop it.", FALSE, character, item, 0, TO_CHAR);
             act("$n is zapped by $p and instantly drops it.", FALSE, character, item, 0, TO_ROOM);
@@ -3183,7 +3201,12 @@ void equip_char(char_data* character, obj_data* item, int item_slot)
     }
 
     if ((IS_OBJ_STAT(item, ITEM_HARADRIM) && GET_RACE(character) != RACE_HARADRIM) || (IS_OBJ_STAT(item, ITEM_HUMAN) && GET_RACE(character) != RACE_HUMAN) || (IS_OBJ_STAT(item, ITEM_DWARF) && GET_RACE(character) != RACE_DWARF) || (IS_OBJ_STAT(item, ITEM_WOODELF) && GET_RACE(character) != RACE_WOOD) || (IS_OBJ_STAT(item, ITEM_HOBBIT) && GET_RACE(character) != RACE_HOBBIT) || (IS_OBJ_STAT(item, ITEM_BEORNING) && GET_RACE(character) != RACE_BEORNING) || (IS_OBJ_STAT(item, ITEM_URUK) && GET_RACE(character) != RACE_URUK) || (IS_OBJ_STAT(item, ITEM_ORC) && GET_RACE(character) != RACE_ORC) || (IS_OBJ_STAT(item, ITEM_MAGUS) && GET_RACE(character) != RACE_MAGUS) || (IS_OBJ_STAT(item, ITEM_OLOGHAI) && GET_RACE(character) != RACE_OLOGHAI)) {
-        if (location_of(character) != NOWHERE) {
+        // Same two-term guard, same derivation, as the anti-alignment arm
+        // above (LS-3a T0b-1 readers R9/R10): a no-op today because
+        // location_of() and peek_load_room_vnum() read the same field, and
+        // the thing that keeps a race-restricted item from staying EQUIPPED
+        // on a forbidden wearer once LS-3b splits them.
+        if ((location_of(character) != NOWHERE) || (peek_load_room_vnum(character) != NOWHERE)) {
 
             act("You are zapped by $p and instantly drop it.", FALSE, character, item, 0, TO_CHAR);
             act("$n is zapped by $p and instantly drops it.", FALSE, character, item, 0, TO_ROOM);

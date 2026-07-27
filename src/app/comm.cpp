@@ -848,7 +848,21 @@ void clean_expose_elements()
         char_data* mage = *iter;
         if (mage->extra_specialization_data.is_mage_spec()) {
             elemental_spec_data* spec_data = mage->extra_specialization_data.get_mage_spec();
-            if (spec_data->exposed_target) {
+            // R21 (LS-3a T2 tranche 2e-beta; T0b-1's reader table). This
+            // walker runs every fast-update pulse over a process-wide roster
+            // and had NO location guard: a mage parked at the character menu
+            // (or anywhere in the login/rent window) has no location, so
+            // room_by_id_total() resolved world[-1] -- a mudlog plus
+            // room_data::operator[]'s room-0 FALLBACK -- and the occupant
+            // walk then searched ROOM 0 for the exposed target, cancelling a
+            // spell that had nothing to do with room 0 and logging a line
+            // per pulse while doing it.
+            //
+            // Written as a positive guard rather than the `continue` its
+            // sibling protocol.cpp walker uses, because THIS loop advances
+            // its iterator inside the body (the else-arm erases instead):
+            // a `continue` here would skip the ++iter and spin forever.
+            if (spec_data->exposed_target && (location_of(mage) >= 0)) {
                 // The mage has cast 'expose elements' on a target.  If that target is no longer
                 // in the room, remove this.
                 int room_number = location_of(mage);

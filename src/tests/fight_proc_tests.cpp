@@ -337,6 +337,14 @@ TEST(PerformDropGive, PerformDropMovesObjectToRoomAndSendsMessages)
         << "Expected the object to land in the room's contents list.";
     EXPECT_NE(std::string(context.ch_descriptor.output).find("You drop"), std::string::npos)
         << "Expected the successful-drop message.";
+
+    // Fixture hygiene: perform_drop spliced the STACK obj_data into the
+    // process-global world[0].contents chain, and neither this context nor
+    // ~ScopedTestWorld clears contents -- leaving a dangling pointer that
+    // later suites dereference (the deterministic shuffle SIGSEGV and the
+    // DoLookCaseEightExitMark* failures; LS-3a batch 0, R-D2). Unlink with
+    // the production inverse, which also resets in_room/next_content.
+    obj_from_room(&context.obj);
 }
 
 TEST(PerformDropGive, PerformGiveRefusesAndKeepsObjectWhenItemIsNodrop)

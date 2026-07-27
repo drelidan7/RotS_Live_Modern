@@ -260,6 +260,35 @@ inline const_occupant_range occupants(const room_data* room)
     return const_occupant_range(room);
 }
 
+// Returns room's first occupant, or nullptr when the room is empty (or the
+// room pointer itself is null, matching occupant_range(room_data*)'s own
+// null-room contract above). LS-3a Wave T1 (.superpowers/sdd/
+// ls3a-global-constraints.md ruling R-C6): the wave's one census-justified
+// API addition, for seven production act()-ANCHOR sites that want *any*
+// occupant to hang a room-wide message on rather than a walk --
+// db_world.cpp:1563/1572/1579/1586/1594 (door open/close/lock/unlock/break
+// messages) and limits.cpp:814/815 (object decay). Each of those reads
+// room->people straight into a local and null-tests it, which occupants(room)
+// can only express as a one-iteration loop. The complementary occupant_range
+// ::empty() was ruled YAGNI in the same breath (three sites, all already
+// spelled `begin() != end()`). The head is re-read on every call, never
+// cached -- same live-read semantics as occupant_range's constructors. L1
+// field wrapper -- no hook needed, see occupant_range's own comment.
+// Consumer-free as landed -- T2's conversions are the first callers.
+inline char_data* first_occupant(room_data* room)
+{
+    return room ? room->people : nullptr; // LS1-ALLOW: representation-impl (first_occupant -- the Stage-1 API body itself, reading the raw chain head it wraps)
+}
+
+// const counterpart, mirroring occupants(const room_data*) above: a caller
+// holding only a const room_data*/room_data& gets a const char_data* back and
+// so cannot mutate an occupant through this accessor. Overload resolution
+// prefers the non-const form whenever the argument is a non-const room_data*.
+inline const char_data* first_occupant(const room_data* room)
+{
+    return room ? room->people : nullptr; // LS1-ALLOW: representation-impl (first_occupant const overload -- the Stage-1 API body itself, reading the raw chain head it wraps)
+}
+
 } // namespace rots::entity
 
 /* utility */

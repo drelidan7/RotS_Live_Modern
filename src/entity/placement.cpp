@@ -197,6 +197,25 @@ bool is_in_room(const char_data* ch, int rnum)
     return ch->in_room == rnum;
 }
 
+// The VNUM channel (LS-3a Wave T2 tranche 2e; rulings R-A2 / AM-1 /
+// R-T0b-3) -- see handler.h for the full account of the overload these two
+// names discriminate. TODAY both are aliases over the same field
+// location_of()/set_location() wrap, which is why peek returns whatever
+// that field already holds even when nothing stashed into it; LS-3b gives
+// the channel its own storage HERE, and every call site stays unchanged.
+// Bare field access on both sides: no occupant-chain, light or zone-power
+// bookkeeping (the stash runs at points where the character is deliberately
+// in no room at all), and no resolver hook, so both stay rots_convert-safe.
+void stash_load_room_vnum(char_data* ch, int vnum)
+{
+    ch->in_room = vnum; // LS1-ALLOW: representation-impl (VNUM-channel stash -- LS-3b re-points this to a dedicated store)
+}
+
+int peek_load_room_vnum(const char_data* ch)
+{
+    return ch->in_room; // LS1-ALLOW: representation-impl (VNUM-channel peek -- LS-3b re-points this to a dedicated store)
+}
+
 // Self-room convenience (LS-1 Wave Task 1; .superpowers/sdd/ls1-census.md
 // Step 5 -- census-justified by ~161 counted self-room
 // `world[X->in_room]` read sites the wave's T2 conversions collapse onto

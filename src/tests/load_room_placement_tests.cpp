@@ -95,6 +95,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <string>
 
@@ -104,6 +105,7 @@
 // gen_receptionist() and spec_pro_tests.cpp uses for the SPECIAL() family.
 int calc_load_room(struct char_data *ch, int load_result);
 void Crash_follower_load(struct char_data *ch, const objects_json::ObjectSaveData &data);
+FILE *Crash_load(struct char_data *character);
 void Emergency_save(void);
 
 // Process globals with no shared-header declaration, mirroring the local
@@ -320,6 +322,39 @@ class ScopedFollowerPrototype {
     index_data *m_previous_mob_index;
     char_data *m_previous_mob_proto;
     int m_previous_top_of_mobt;
+};
+
+// Scoped equivalent of ageland's own `-d <dir>` startup option: the game
+// resolves every persistence path relative to the data directory it chdir()s
+// into at startup (run_the_game, comm.cpp -- std::filesystem::current_path
+// on startup_options.dir, default "lib"), so pointing the process working
+// directory at a temp dir for one test's lifetime gives the REAL save/load
+// code an isolated on-disk lib layout with zero production changes.
+// Restores the previous working directory on scope exit -- including on a
+// mid-test fatal ASSERT -- because cwd is process-global and every other
+// suite's relative paths (characterization goldens, fixtures) resolve
+// against it.
+class ScopedWorkingDirectory {
+  public:
+    explicit ScopedWorkingDirectory(const std::filesystem::path &target)
+        : m_previous(std::filesystem::current_path()) {
+        std::filesystem::current_path(target);
+    }
+
+    ~ScopedWorkingDirectory() {
+        // error_code overload: a destructor must not throw. If the restore
+        // ever failed, later suites' relative-path opens would fail loudly.
+        std::error_code restore_error;
+        std::filesystem::current_path(m_previous, restore_error);
+    }
+
+    ScopedWorkingDirectory(const ScopedWorkingDirectory &) = delete;
+    ScopedWorkingDirectory &operator=(const ScopedWorkingDirectory &) = delete;
+
+  private:
+    // The launch-time working directory every other suite's relative paths
+    // resolve against; restored verbatim on scope exit.
+    std::filesystem::path m_previous;
 };
 
 // Installs a substitute player_table for the duration of a test and restores
@@ -849,4 +884,103 @@ TEST(LoadRoomPersistence, EmergencySavePersistsTheStartRoomVnumNotItsRnum) {
 
     descriptor_list = previous_descriptor_list;
     RELEASE(player.player.name);
+}
+
+// ---------------------------------------------------------------------------
+// End to end -- bytes on disk through the REAL Crash_load() to occupant chains
+// ---------------------------------------------------------------------------
+
+// Closes the one seam the LoadRoomChain tests above leave open: they replay
+// load_character()/Crash_load()'s statement sequence rather than calling
+// them, so the ordering claim (calc_load_room runs before the follower load)
+// and the follower-file half of the round trip were source reads. This test
+// drives the whole load path for real: a Crash_follower_save-shaped record
+// goes through the real write_player_objects_json() serializer into a real
+// plrobjs/ bucket on disk (in a temp data dir, via ScopedWorkingDirectory --
+// the test-scoped equivalent of ageland's `-d`), and the REAL Crash_load()
+// then finds the file, deserializes it, runs the real calc_load_room, and
+// places the follower; the owner is placed exactly as load_character() does
+// (objsave.cpp:502). Rent header: RENT_RENTED at time(now) with
+// net_cost_per_hour 0, so the rent formula charges 0 and the load proceeds
+// with equipment intact (the divergent rent arms are out of scope here --
+// this test pins placement, not rent accounting).
+//
+// Non-vacuity: proved by sabotage-and-revert -- re-introducing the pre-fix
+// `location_of(ch)` read at objsave.cpp:718 makes exactly this test (and the
+// two replay-based placement tests) fail with the follower stranded in
+// world[35]; see the commit message for the run record.
+TEST(LoadRoomEndToEnd, RealCrashLoadPlacesPersistedFollowerWithItsOwner) {
+    ScopedVnumWorld fixture_world;
+    ScopedStartRooms fixture_start_rooms;
+    ScopedFollowerPrototype fixture_follower_prototype;
+
+    char path_template[] = "/tmp/rots-loadroom-e2e-XXXXXX";
+    char *created_path = rots_mkdtemp(path_template);
+    ASSERT_NE(created_path, nullptr);
+    const std::filesystem::path temp_data_dir = created_path;
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+    // Starts with 'e' so player_object_bucket_path() files it under the
+    // A-E bucket created below.
+    RELEASE(player.player.name);
+    CREATE(player.player.name, char, strlen("endtoendchr") + 1);
+    strcpy(player.player.name, "endtoendchr");
+
+    char_data *follower = nullptr;
+    {
+        ScopedWorkingDirectory scoped_data_dir{temp_data_dir};
+        std::error_code mkdir_error;
+        ASSERT_TRUE(std::filesystem::create_directories("plrobjs/A-E", mkdir_error))
+            << mkdir_error.message();
+
+        // SAVE SIDE: the record shape Crash_follower_save persists for one
+        // plain charmed follower, through the real serializer, onto disk.
+        objects_json::ObjectSaveData save_data = make_single_follower_save();
+        save_data.rent.rentcode = RENT_RENTED;
+        save_data.rent.time = static_cast<int>(time(nullptr));
+        save_data.rent.net_cost_per_hour = 0;
+        std::string write_error;
+        ASSERT_TRUE(write_player_objects_json(GET_NAME(&player), save_data, &write_error))
+            << write_error;
+
+        // LOAD SIDE: what store_to_char leaves behind (the raw persisted
+        // VNUM in in_room), then the real Crash_load(), then the owner
+        // placement exactly as load_character() performs it.
+        player.specials2.load_room = kOwnerVnum;
+        player.in_room = GET_LOADROOM(&player); // LS1-ALLOW: replay of db_players.cpp:1376
+
+        FILE *load_handle = Crash_load(&player);
+        // Crash_load's return is only a truthy success signal (a tmpfile
+        // handle); close it as load_character does. Not asserted non-null:
+        // std::tmpfile() can legitimately fail (and log) on locked-down
+        // hosts while the load itself succeeded.
+        if (load_handle != nullptr)
+            fclose(load_handle);
+
+        char_to_room(&player, player.specials2.load_room);
+        follower = (player.followers != nullptr) ? player.followers->follower : nullptr;
+    }
+
+    ASSERT_NE(follower, nullptr)
+        << "the real Crash_load did not spawn the follower persisted to disk";
+
+    // Owner and the disk-loaded follower share the resolved rnum...
+    EXPECT_EQ(location_of(&player), kOwnerRnum);
+    EXPECT_EQ(location_of(follower), kOwnerRnum);
+
+    // ...confirmed by the occupant chain (follower placed first, tail
+    // append puts the owner behind him), and the pre-fix wrong slot
+    // (world[vnum-as-index]) stays empty.
+    EXPECT_EQ(world[kOwnerRnum].people, follower);
+    EXPECT_EQ(follower->next_in_room, &player);
+    EXPECT_EQ(player.next_in_room, nullptr);
+    EXPECT_EQ(world[kOwnerVnum].people, nullptr);
+
+    release_spawned_follower(follower);
+    RELEASE(player.player.name);
+    // After ScopedWorkingDirectory restored the cwd (its scope closed
+    // above), the temp data dir can be removed by absolute path.
+    std::filesystem::remove_all(temp_data_dir);
 }

@@ -4,9 +4,17 @@
 #include "../utils.h"
 #include "../interpre.h"
 #include "../combat_hooks.h"
+#include "rots/core/descriptor.h"
+#include "rots/core/object.h"
 #include "damage_test_context.h"
+#include "test_placement.h"
 #include "test_random_utils.h"
 #include <gtest/gtest.h>
+
+#include <cstdio>
+#include <cstring>
+#include <initializer_list>
+#include <optional>
 
 // spec_pro.cpp has no header of its own for these internals -- forward
 // declare the symbols this suite exercises directly, mirroring the pattern
@@ -834,4 +842,535 @@ TEST(SpecProVampireHuntress, ExcludesAnNpcBystanderInTheDestinationRoomAfterTheN
            "moved the host into the destination room before the converted occupants(room_of("
            "host)) walk ran.";
     clear_test_random_values();
+}
+
+// ---------------------------------------------------------------------------
+// SPECIAL(ferry_captain) -- LS-3a T2 tranche 2c CHARACTERIZATION (ruling R-A5,
+// .superpowers/sdd/ls3a-global-constraints.md; census A sections 3.1/5.2/6.4).
+//
+// ferry_captain() owns the ONLY manual bulk occupant-chain splice left in
+// production (the `if (new_room != old_room)` block, spec_pro.cpp) and had ZERO
+// test coverage anywhere in the tree. R-A5 requires that behavior pinned BEFORE
+// any conversion touches it: these tests land first and are then re-run
+// UNCHANGED against (a) the eight routed cursor writes and (b) the
+// relocate_all_occupants()/relocate_all_contents() encapsulation, as the proof
+// that neither changed behavior.
+//
+// THESE TESTS DRIVE THE REAL SPECIAL, not a replayed statement sequence: every
+// precondition on the path to the splice is satisfiable from a fixture (see
+// FerryCaptainContext below), so nothing about the block's reachability is
+// assumed. What the fixture deliberately does NOT cover, because none of the
+// three reaches the splice:
+//   * the `old_room != location_of(host)` re-seat arm (dispatch_char_from_room
+//     + char_to_room + act) -- the fixture starts the captain already in the
+//     current cabin, which is the steady state on every tick after the first;
+//   * the object_list fallback scan for a ferry object that is in no room;
+//   * the "I wonder where my ship is?" no-ferry-found arm.
+//
+// THE PINNED CONTRACT -- what the splice does today, and what commit 3's
+// relocate_all_occupants()/relocate_all_contents() must reproduce exactly:
+//   1. Combined chain ORDER is source-then-destination: the source room's
+//      occupants keep their relative order and are followed by whatever the
+//      destination room already held.
+//   2. The combined chain is published at the destination room; the source
+//      room's chain head is nulled.
+//   3. EVERY member of the combined chain -- including the destination's
+//      pre-existing occupants, for whom it is a no-op -- has its location
+//      re-stamped to the destination room.
+//   4. Objects follow the identical rule through room_data::contents /
+//      obj_data::next_content / obj_data::in_room.
+//   5. An EMPTY source room degrades to "destination chain untouched, source
+//      stays empty" (the `if (tmpch)` / `if (tmpobj)` ELSE arms), and a
+//      character whose location field says the source room but which is not
+//      LINKED into its chain is not relocated at all.
+//   6. NO light bookkeeping and NO zone white/dark-power bookkeeping happens --
+//      the splice is deliberately not char_to_room()/detach_char_from_room().
+//   7. The captain rides along: it is an occupant of the source cabin, so the
+//      same splice relocates it, and the trailing cursor block's restore leaves
+//      its location at the DESTINATION cabin rather than at a ferry dock.
+//
+// THE CURSOR IDIOM is pinned by observation, not by inspection (ruling R-T2-1:
+// riders must assert cursor-DEPENDENT behavior). ferry_captain() renders four
+// pairs of messages, one "inside" the cabin and one "outside" at the ferry
+// object's dock; the outside half only reaches the dock because the captain's
+// location field is temporarily pointed at the ferry between the act() call and
+// its restore. This fixture puts a capturing descriptor on a cabin occupant AND
+// on an occupant of EACH dock, and asserts every message landed in exactly the
+// room the cursor aimed it at -- including the fact that the two LEADING pairs
+// render at the OLD dock while the two TRAILING ones render at the NEW dock,
+// because obj_from_room()/obj_to_room() move the ferry in between. A
+// neutralized cursor write sends an "outside" text to the cabin instead; a
+// neutralized restore strands the captain at a dock (contract item 7).
+// ---------------------------------------------------------------------------
+
+// ferry_captain()'s route/message table (consts.cpp). Whole-struct saved and
+// restored per test, so the process-global entry the real game boots with is
+// never left mutated for a later test in the monolithic runner.
+extern int num_of_captains;
+extern ferry_captain_type ferry_captain_data[];
+
+// SPECIAL(ferry_captain) -- not declared in any header (same SPECIAL()-family
+// reasoning as dragon/healing_plant/vampire_killer above).
+extern int ferry_captain(char_data* host, char_data* ch, int cmd, char* arg, int callflag,
+    waiting_type* wtl);
+
+namespace {
+
+// Four real world[] rooms: the cabin the captain and passengers start in, the
+// cabin they end in, and the two docks the ferry object itself occupies before
+// and after the move. The cabins are the splice's source/destination; the docks
+// exist so the cursor blocks have DIFFERENT rooms to render into, which is what
+// makes the cursor observable at all.
+constexpr int kFerrySourceCabin = 0;
+constexpr int kFerryDestinationCabin = 1;
+constexpr int kFerrySourceDock = 2;
+constexpr int kFerryDestinationDock = 3;
+
+// obj_data::item_number the captain matches its ferry object on
+// (ferry_captain_type::num_of_ferry). Arbitrary, but distinct from the
+// zero-initialized item_number of every other object in the fixture, so the
+// lookup cannot succeed by accident.
+constexpr int kFerryItemNumber = 4242;
+
+// Deliberately distinct, nonzero starting light levels: contract item 6 pins
+// that the splice performs NO light bookkeeping, which is only observable
+// against a value a recount would move.
+constexpr int kSourceCabinLight = 3;
+constexpr int kDestinationCabinLight = 5;
+
+// The eight message slots, one recognizable literal each, with NO act() code
+// ($n/$o) in any of them: convert_string() copies such text through verbatim,
+// so every buffer assertion below is a plain substring test and none of them
+// depends on PERS()/CAN_SEE() rendering. "-OUT" texts are the ones a cursor
+// block renders at the ferry's dock; "-IN" texts render in the cabin. No
+// literal here is a substring of any other.
+constexpr const char* kLeaveOutside = "FERRY-LEAVE-OUT";
+constexpr const char* kLeaveInside = "FERRY-LEAVE-IN";
+constexpr const char* kArriveOutside = "FERRY-ARRIVE-OUT";
+constexpr const char* kArriveInside = "FERRY-ARRIVE-IN";
+constexpr const char* kMoveOutOutside = "FERRY-MOVEOUT-OUT";
+constexpr const char* kMoveOutInside = "FERRY-MOVEOUT-IN";
+constexpr const char* kMoveInOutside = "FERRY-MOVEIN-OUT";
+constexpr const char* kMoveInInside = "FERRY-MOVEIN-IN";
+
+// Which occupants each cabin starts with. The captain is ALWAYS located in the
+// source cabin (ferry_captain() re-seats it there otherwise), but kEmptySource
+// leaves it out of that room's occupant CHAIN -- the only way to reach the
+// splice's `if (tmpch)`/`if (tmpobj)` else arms, which are otherwise
+// unreachable through this SPECIAL precisely because the captain is normally
+// linked in. Contract item 5 is pinned from that deliberately constructed
+// state; commit 3's API tests exercise the same arms directly.
+enum class FerryCabinLayout {
+    kLoadedSourceAndDestination,
+    kLoadedSourceEmptyDestination,
+    kEmptySourceLoadedDestination,
+};
+
+// Points a descriptor's output at its OWN small_outbuf so act() output can be
+// read back. Mirrors act_wiz_format_tests.cpp/act_format_tests.cpp's helper of
+// the same name, INCLUDING its critical in-place-mutation contract:
+// descriptor_data::output is a self-pointer into the same object's
+// small_outbuf[], so a version returning descriptor_data by value would leave
+// `output` aimed at a destroyed temporary's buffer.
+void reset_capturing_descriptor(descriptor_data& descriptor, char_data* character)
+{
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = 0; // CON_PLYNG
+    descriptor.character = character;
+}
+
+// Copies one message literal into a ferry_captain_type's fixed char[255] slot.
+void set_ferry_message(char (&slot)[255], const char* text)
+{
+    std::snprintf(slot, sizeof(slot), "%s", text);
+}
+
+bool buffer_contains(const descriptor_data& descriptor, const char* needle)
+{
+    return std::strstr(descriptor.small_outbuf, needle) != nullptr;
+}
+
+// Everything ferry_captain() reads on its way to the splice, wired so the
+// function reaches that block on a single call with cmd == 0:
+//   * the captain is STANDING (both position gates) and already located in
+//     cabin_route[marker], so the re-seat arm is skipped;
+//   * timer == 0 and stop_time[marker] > 0, so the leave_to_* cursor pair runs;
+//   * the ferry object is findable in ferry_route[marker]'s contents, so both
+//     the object_list fallback and the "where is my ship" arm are skipped;
+//   * length == 2, so marker advances 0 -> 1 and source/destination differ.
+//
+// Occupant chains are published through ScopedRoomOccupants (test_placement.h,
+// LS-3a T1): head-first in the order given, set_location()-stamped, and fully
+// unlinked on teardown -- the fixture-hygiene rule, which matters especially
+// here because the splice relinks process-global rooms behind the fixture's
+// back.
+struct FerryCaptainContext {
+    ScopedTestWorld test_world { 4 };
+
+    // char_to_room()/detach_char_from_room() dereference zone_by_id(r->zone)
+    // unconditionally for a non-NPC character. Nothing on this fixture's path
+    // calls either -- which is exactly contract item 6's point -- so this table
+    // is both standing insurance and the instrument that makes "no zone
+    // bookkeeping" measurable: its counters start at zero and must still be
+    // zero afterwards.
+    ScopedZoneTableOwner zone_table_owner;
+
+    char_data captain {};
+    char_data passenger {}; // carries the cabin-side capturing descriptor.
+    char_data stowaway {};
+    char_data resident {}; // already in the DESTINATION cabin before the move.
+    char_data source_dock_watcher {};
+    char_data destination_dock_watcher {};
+
+    descriptor_data cabin_descriptor {};
+    descriptor_data source_dock_descriptor {};
+    descriptor_data destination_dock_descriptor {};
+
+    obj_data ferry {};
+    obj_data cargo_first {};
+    obj_data cargo_second {};
+    obj_data crate {}; // already in the DESTINATION cabin before the move.
+
+    char captain_name[16] = "test_captain";
+    char passenger_name[16] = "test_rider";
+    char stowaway_name[16] = "test_stowaway";
+    char resident_name[16] = "test_resident";
+    char source_watcher_name[16] = "test_dockhand";
+    char destination_watcher_name[16] = "test_porter";
+
+    // The process-global route/message entry, restored verbatim on teardown.
+    ferry_captain_type saved_captain_data {};
+
+    // Emplaced in the constructor BODY rather than the member-initializer list:
+    // the occupant set varies by layout, and an initializer_list returned from
+    // a helper would dangle (its backing array does not outlive the
+    // full-expression). ScopedRoomOccupants copies the list into its own vector,
+    // so emplacing from a literal here is safe.
+    std::optional<ScopedRoomOccupants> source_cabin;
+    std::optional<ScopedRoomOccupants> destination_cabin;
+    std::optional<ScopedRoomOccupants> source_dock;
+    std::optional<ScopedRoomOccupants> destination_dock;
+
+    // destination_stop_time selects which trailing message arm runs: 0 takes
+    // the move_in_* arm (timer == 0), nonzero takes the arrive_to_* arm. Both
+    // arms carry their own cursor pair, so each is worth pinning.
+    explicit FerryCaptainContext(
+        FerryCabinLayout layout = FerryCabinLayout::kLoadedSourceAndDestination,
+        int destination_stop_time = 0)
+    {
+        world[kFerrySourceCabin].light = kSourceCabinLight;
+        world[kFerryDestinationCabin].light = kDestinationCabinLight;
+
+        captain.specials2.act = MOB_ISNPC;
+        captain.player.name = captain_name;
+        captain.player.short_descr = captain_name;
+        captain.specials.position = POSITION_STANDING; // both position gates.
+        captain.specials.store_prog_number = 0; // ferry_captain_data[0].
+
+        // Non-NPC with a RACE_GOOD race (GET_RACE in [1, 9], utils.h):
+        // char_to_room()'s zone white_power block only runs for a non-NPC of a
+        // good or evil race, so these are what WOULD move
+        // zone_table[0].white_power if the splice ever grew the bookkeeping
+        // contract item 6 pins it as not having.
+        passenger.player.name = passenger_name;
+        passenger.player.race = 1;
+        passenger.specials.position = POSITION_STANDING; // AWAKE(), act() gate.
+        reset_capturing_descriptor(cabin_descriptor, &passenger);
+        passenger.desc = &cabin_descriptor;
+
+        stowaway.player.name = stowaway_name;
+        stowaway.player.race = 1;
+        stowaway.specials.position = POSITION_STANDING;
+
+        resident.specials2.act = MOB_ISNPC;
+        resident.player.name = resident_name;
+        resident.player.short_descr = resident_name;
+        resident.specials.position = POSITION_STANDING;
+
+        source_dock_watcher.player.name = source_watcher_name;
+        source_dock_watcher.player.race = 1;
+        source_dock_watcher.specials.position = POSITION_STANDING;
+        reset_capturing_descriptor(source_dock_descriptor, &source_dock_watcher);
+        source_dock_watcher.desc = &source_dock_descriptor;
+
+        destination_dock_watcher.player.name = destination_watcher_name;
+        destination_dock_watcher.player.race = 1;
+        destination_dock_watcher.specials.position = POSITION_STANDING;
+        reset_capturing_descriptor(destination_dock_descriptor, &destination_dock_watcher);
+        destination_dock_watcher.desc = &destination_dock_descriptor;
+
+        switch (layout) {
+        case FerryCabinLayout::kLoadedSourceAndDestination:
+            source_cabin.emplace(&world[kFerrySourceCabin], kFerrySourceCabin,
+                std::initializer_list<char_data*> { &captain, &passenger, &stowaway });
+            destination_cabin.emplace(&world[kFerryDestinationCabin], kFerryDestinationCabin,
+                std::initializer_list<char_data*> { &resident });
+            break;
+        case FerryCabinLayout::kLoadedSourceEmptyDestination:
+            source_cabin.emplace(&world[kFerrySourceCabin], kFerrySourceCabin,
+                std::initializer_list<char_data*> { &captain, &passenger, &stowaway });
+            destination_cabin.emplace(&world[kFerryDestinationCabin], kFerryDestinationCabin,
+                std::initializer_list<char_data*> {});
+            break;
+        case FerryCabinLayout::kEmptySourceLoadedDestination:
+            source_cabin.emplace(&world[kFerrySourceCabin], kFerrySourceCabin,
+                std::initializer_list<char_data*> {});
+            destination_cabin.emplace(&world[kFerryDestinationCabin], kFerryDestinationCabin,
+                std::initializer_list<char_data*> { &resident });
+            // Located in the source cabin (ferry_captain() would otherwise
+            // re-seat it there through char_to_room()) but deliberately NOT
+            // linked into its chain -- see FerryCabinLayout's own comment.
+            set_location(&captain, kFerrySourceCabin);
+            break;
+        }
+
+        source_dock.emplace(&world[kFerrySourceDock], kFerrySourceDock,
+            std::initializer_list<char_data*> { &source_dock_watcher });
+        destination_dock.emplace(&world[kFerryDestinationDock], kFerryDestinationDock,
+            std::initializer_list<char_data*> { &destination_dock_watcher });
+
+        ferry.item_number = kFerryItemNumber;
+        ferry.in_room = kFerrySourceDock;
+        world[kFerrySourceDock].contents = &ferry;
+
+        saved_captain_data = ferry_captain_data[0];
+
+        ferry_captain_type& route = ferry_captain_data[0];
+        route = ferry_captain_type {};
+        route.num_of_ferry = kFerryItemNumber;
+        route.length = 2;
+        route.marker = 0;
+        route.timer = 0;
+        route.ferry_route[0] = kFerrySourceDock;
+        route.ferry_route[1] = kFerryDestinationDock;
+        route.cabin_route[0] = kFerrySourceCabin;
+        route.cabin_route[1] = kFerryDestinationCabin;
+        route.stop_time[0] = 1; // > 0 -> the leave_to_* cursor pair runs.
+        route.stop_time[1] = destination_stop_time;
+        set_ferry_message(route.leave_to_outside, kLeaveOutside);
+        set_ferry_message(route.leave_to_inside, kLeaveInside);
+        set_ferry_message(route.arrive_to_outside, kArriveOutside);
+        set_ferry_message(route.arrive_to_inside, kArriveInside);
+        set_ferry_message(route.move_out_outside, kMoveOutOutside);
+        set_ferry_message(route.move_out_inside, kMoveOutInside);
+        set_ferry_message(route.move_in_outside, kMoveInOutside);
+        set_ferry_message(route.move_in_inside, kMoveInInside);
+    }
+
+    ~FerryCaptainContext()
+    {
+        ferry_captain_data[0] = saved_captain_data;
+
+        // The object chains have no ScopedRoomOccupants equivalent (the Stage-1
+        // API is char-side only), so unlink them by hand: every one of these is
+        // a stack object the fixture linked into a process-global room.
+        for (int room = kFerrySourceCabin; room <= kFerryDestinationDock; ++room) {
+            world[room].contents = nullptr;
+        }
+        ferry.next_content = nullptr;
+        cargo_first.next_content = nullptr;
+        cargo_second.next_content = nullptr;
+        crate.next_content = nullptr;
+
+        // kEmptySourceLoadedDestination stamps this by hand above, so no
+        // ScopedRoomOccupants takes it back out.
+        set_location(&captain, NOWHERE);
+    }
+
+    FerryCaptainContext(const FerryCaptainContext&) = delete;
+    FerryCaptainContext& operator=(const FerryCaptainContext&) = delete;
+
+    // Links cargo_first -> cargo_second as the source cabin's contents. Called
+    // from a test body rather than the constructor so the empty-source case can
+    // skip it entirely.
+    void load_source_cabin_contents()
+    {
+        cargo_first.in_room = kFerrySourceCabin;
+        cargo_first.next_content = &cargo_second;
+        cargo_second.in_room = kFerrySourceCabin;
+        cargo_second.next_content = nullptr;
+        world[kFerrySourceCabin].contents = &cargo_first;
+    }
+
+    void load_destination_cabin_contents()
+    {
+        crate.in_room = kFerryDestinationCabin;
+        crate.next_content = nullptr;
+        world[kFerryDestinationCabin].contents = &crate;
+    }
+
+    // One tick of the captain's route, on the SPECIAL()'s real signature.
+    int tick()
+    {
+        return ferry_captain(&captain, nullptr, 0, mutable_arg(""), SPECIAL_SELF, nullptr);
+    }
+};
+
+} // namespace
+
+TEST(SpecProFerryCaptain, SplicesTheSourceCabinChainAheadOfTheDestinationsAndRestampsEveryMember) {
+    FerryCaptainContext context;
+    context.load_source_cabin_contents();
+    context.load_destination_cabin_contents();
+
+    EXPECT_EQ(context.tick(), TRUE);
+
+    // Contract items 1/2: source-then-destination order, published at the
+    // destination, source head nulled.
+    EXPECT_EQ(world[kFerryDestinationCabin].people, &context.captain);
+    EXPECT_EQ(context.captain.next_in_room, &context.passenger);
+    EXPECT_EQ(context.passenger.next_in_room, &context.stowaway);
+    EXPECT_EQ(context.stowaway.next_in_room, &context.resident)
+        << "The destination's pre-existing occupants are appended AFTER the arriving chain, not "
+           "before it -- the splice walks the source chain to its tail and links the destination's "
+           "old head onto it.";
+    EXPECT_EQ(context.resident.next_in_room, nullptr);
+    EXPECT_EQ(world[kFerrySourceCabin].people, nullptr);
+
+    // Contract items 3/7: every member re-stamped, including the destination's
+    // own resident (a no-op for it) and the captain (whose trailing cursor
+    // block restores it here rather than to a dock).
+    EXPECT_EQ(location_of(&context.captain), kFerryDestinationCabin);
+    EXPECT_EQ(location_of(&context.passenger), kFerryDestinationCabin);
+    EXPECT_EQ(location_of(&context.stowaway), kFerryDestinationCabin);
+    EXPECT_EQ(location_of(&context.resident), kFerryDestinationCabin);
+
+    // Contract item 4: the object half follows the identical rule.
+    EXPECT_EQ(world[kFerryDestinationCabin].contents, &context.cargo_first);
+    EXPECT_EQ(context.cargo_first.next_content, &context.cargo_second);
+    EXPECT_EQ(context.cargo_second.next_content, &context.crate);
+    EXPECT_EQ(context.crate.next_content, nullptr);
+    EXPECT_EQ(world[kFerrySourceCabin].contents, nullptr);
+    EXPECT_EQ(context.cargo_first.in_room, kFerryDestinationCabin);
+    EXPECT_EQ(context.cargo_second.in_room, kFerryDestinationCabin);
+    EXPECT_EQ(context.crate.in_room, kFerryDestinationCabin);
+}
+
+TEST(SpecProFerryCaptain, MovesTheFerryObjectToTheNextDockAndAdvancesTheRouteMarker) {
+    FerryCaptainContext context;
+
+    EXPECT_EQ(context.tick(), TRUE);
+
+    EXPECT_EQ(context.ferry.in_room, kFerryDestinationDock);
+    EXPECT_EQ(world[kFerryDestinationDock].contents, &context.ferry);
+    EXPECT_EQ(world[kFerrySourceDock].contents, nullptr);
+    EXPECT_EQ(ferry_captain_data[0].marker, 1);
+    EXPECT_EQ(ferry_captain_data[0].timer, 0)
+        << "timer is reloaded from stop_time[] at the NEW marker, which this fixture leaves at 0.";
+}
+
+TEST(SpecProFerryCaptain, PerformsNoLightOrZonePowerBookkeepingWhileRelocatingTheCabin) {
+    FerryCaptainContext context;
+    context.load_source_cabin_contents();
+    context.load_destination_cabin_contents();
+
+    EXPECT_EQ(context.tick(), TRUE);
+
+    // Contract item 6. char_to_room()/detach_char_from_room() would have moved
+    // both of these; the manual splice deliberately moves neither, which is the
+    // single most load-bearing difference between it and the real primitives.
+    EXPECT_EQ(world[kFerrySourceCabin].light, kSourceCabinLight);
+    EXPECT_EQ(world[kFerryDestinationCabin].light, kDestinationCabinLight);
+    EXPECT_EQ(context.zone_table_owner.zone().white_power, 0)
+        << "Two of the relocated occupants are non-NPC RACE_GOOD characters, so char_to_room() "
+           "would have credited their char_power() to the destination zone.";
+    EXPECT_EQ(context.zone_table_owner.zone().dark_power, 0);
+}
+
+TEST(SpecProFerryCaptain, RendersEachMessagePairsOutsideHalfAtTheFerrysDockAndInsideHalfInTheCabin) {
+    FerryCaptainContext context;
+
+    EXPECT_EQ(context.tick(), TRUE);
+
+    // The two LEADING pairs render while the ferry is still at the source dock.
+    EXPECT_TRUE(buffer_contains(context.source_dock_descriptor, kLeaveOutside))
+        << "leave_to_outside only reaches the dock because the cursor write points the captain's "
+           "location at the ferry object for the duration of that act() call.";
+    EXPECT_TRUE(buffer_contains(context.source_dock_descriptor, kMoveOutOutside));
+
+    // The two TRAILING ones render after obj_from_room()/obj_to_room() have
+    // moved the ferry, so they land at the DESTINATION dock instead.
+    EXPECT_FALSE(buffer_contains(context.source_dock_descriptor, kMoveInOutside));
+    EXPECT_TRUE(buffer_contains(context.destination_dock_descriptor, kMoveInOutside));
+    EXPECT_FALSE(buffer_contains(context.destination_dock_descriptor, kLeaveOutside));
+    EXPECT_FALSE(buffer_contains(context.destination_dock_descriptor, kMoveOutOutside));
+
+    // The cabin sees only the "inside" half of each pair -- the cursor restore
+    // is what keeps the outside texts out of this buffer.
+    EXPECT_TRUE(buffer_contains(context.cabin_descriptor, kLeaveInside));
+    EXPECT_TRUE(buffer_contains(context.cabin_descriptor, kMoveOutInside));
+    EXPECT_FALSE(buffer_contains(context.cabin_descriptor, kLeaveOutside));
+    EXPECT_FALSE(buffer_contains(context.cabin_descriptor, kMoveOutOutside));
+    EXPECT_FALSE(buffer_contains(context.cabin_descriptor, kMoveInOutside));
+    EXPECT_FALSE(buffer_contains(context.source_dock_descriptor, kLeaveInside));
+    EXPECT_FALSE(buffer_contains(context.source_dock_descriptor, kMoveOutInside));
+}
+
+TEST(SpecProFerryCaptain, TakesTheArriveArmAndStillRestoresTheCaptainToTheDestinationCabin) {
+    // stop_time[1] != 0 leaves timer nonzero after the reload, selecting the
+    // arrive_to_* arm instead of the move_in_* one. Both arms carry a cursor
+    // pair; this pins the other one.
+    FerryCaptainContext context(FerryCabinLayout::kLoadedSourceAndDestination, 5);
+
+    EXPECT_EQ(context.tick(), TRUE);
+
+    EXPECT_EQ(ferry_captain_data[0].timer, 5);
+    EXPECT_TRUE(buffer_contains(context.destination_dock_descriptor, kArriveOutside));
+    EXPECT_FALSE(buffer_contains(context.destination_dock_descriptor, kMoveInOutside));
+    EXPECT_TRUE(buffer_contains(context.cabin_descriptor, kArriveInside));
+    EXPECT_FALSE(buffer_contains(context.cabin_descriptor, kArriveOutside));
+    EXPECT_EQ(location_of(&context.captain), kFerryDestinationCabin)
+        << "Contract item 7: the arrive arm's trailing cursor restore must put the captain back "
+           "in the cabin the splice moved it to, not leave it at the ferry's dock.";
+}
+
+TEST(SpecProFerryCaptain, MovesTheWholeSourceChainIntoAnEmptyDestinationCabinAndTerminatesIt) {
+    FerryCaptainContext context(FerryCabinLayout::kLoadedSourceEmptyDestination);
+    context.load_source_cabin_contents();
+
+    EXPECT_EQ(context.tick(), TRUE);
+
+    EXPECT_EQ(world[kFerryDestinationCabin].people, &context.captain);
+    EXPECT_EQ(context.captain.next_in_room, &context.passenger);
+    EXPECT_EQ(context.passenger.next_in_room, &context.stowaway);
+    EXPECT_EQ(context.stowaway.next_in_room, nullptr)
+        << "With nothing already in the destination, the arriving chain's tail keeps its null "
+           "terminator rather than being linked onto a pre-existing head.";
+    EXPECT_EQ(world[kFerrySourceCabin].people, nullptr);
+    EXPECT_EQ(location_of(&context.stowaway), kFerryDestinationCabin);
+
+    EXPECT_EQ(world[kFerryDestinationCabin].contents, &context.cargo_first);
+    EXPECT_EQ(context.cargo_second.next_content, nullptr);
+    EXPECT_EQ(world[kFerrySourceCabin].contents, nullptr);
+    EXPECT_EQ(context.cargo_second.in_room, kFerryDestinationCabin);
+}
+
+TEST(SpecProFerryCaptain, LeavesADestinationCabinIntactWhenTheSourceCabinsChainIsEmpty) {
+    // Contract item 5, the `if (tmpch)`/`if (tmpobj)` ELSE arms. See
+    // FerryCabinLayout's comment for why this state has to be constructed
+    // rather than reached: production always links the captain into the source
+    // cabin's chain, so the else arms are dead through this SPECIAL -- but
+    // commit 3's relocate_all_occupants()/relocate_all_contents() must still
+    // reproduce them, and this is the anchor for that.
+    FerryCaptainContext context(FerryCabinLayout::kEmptySourceLoadedDestination);
+    context.load_destination_cabin_contents();
+
+    EXPECT_EQ(context.tick(), TRUE);
+
+    EXPECT_EQ(world[kFerryDestinationCabin].people, &context.resident);
+    EXPECT_EQ(context.resident.next_in_room, nullptr);
+    EXPECT_EQ(location_of(&context.resident), kFerryDestinationCabin);
+    EXPECT_EQ(world[kFerrySourceCabin].people, nullptr);
+
+    EXPECT_EQ(world[kFerryDestinationCabin].contents, &context.crate);
+    EXPECT_EQ(context.crate.next_content, nullptr);
+    EXPECT_EQ(world[kFerrySourceCabin].contents, nullptr);
+
+    EXPECT_EQ(location_of(&context.captain), kFerrySourceCabin)
+        << "A character whose location field names the source room but which is not LINKED into "
+           "its occupant chain is not relocated: the splice walks the chain, and the trailing "
+           "cursor block restores whatever location the captain already had.";
 }

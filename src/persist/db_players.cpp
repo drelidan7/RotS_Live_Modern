@@ -1373,7 +1373,23 @@ void store_to_char(struct char_file_u* st, struct char_data* ch)
             affect_to_char(ch, &st->affected[i]);
     }
 
-    ch->in_room = GET_LOADROOM(ch); // LS1-ALLOW: write
+    // W1, THE VNUM CHANNEL'S FIRST STASH (LS-3a T2e; rulings R-A2/AM-1).
+    // GET_LOADROOM is ch->specials2.load_room, just copied verbatim off
+    // disk -- a room VNUM, not a world[] index. It is deposited here
+    // UNINTERPRETED and stays that way until calc_load_room() runs
+    // real_room() over it (objsave.cpp:542). Routing it through
+    // set_location() would have been byte-identical today and a silent
+    // corruption the moment LS-3b gives locations their own store; the
+    // stash name is what keeps the two apart. Hook-free, which matters
+    // here specifically: store_to_char() is on rots_convert's path,
+    // where an unregistered world resolver is a tripwire abort().
+    //
+    // ORDERING INTENT FOR LS-3b (T0b-1): once the stores are separate
+    // this site should ALSO leave the location explicitly NOWHERE.
+    // Today the two are one field, so the stash already achieves that
+    // and a second write would be dead code -- the instruction is
+    // recorded rather than implemented.
+    stash_load_room_vnum(ch, GET_LOADROOM(ch));
 
     affect_total(ch);
 

@@ -544,8 +544,8 @@ void release_spawned_follower(char_data *mob) {
 // No real_room() is applied on either line: whatever lands in the field is
 // the on-disk integer, uninterpreted.
 void replay_load_character_guard(char_data &player) {
-    if (location_of(&player) == NOWHERE)
-        player.in_room = player.specials2.load_room; // LS1-ALLOW: replay of objsave.cpp:495
+    if (peek_load_room_vnum(&player) == NOWHERE)
+        stash_load_room_vnum(&player, player.specials2.load_room);
 }
 
 char_data *run_load_placement_chain(char_data &player, const objects_json::ObjectSaveData &data,

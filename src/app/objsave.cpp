@@ -1478,10 +1478,17 @@ int gen_receptionist(struct char_data* ch, int cmd, char* arg, int mode)
 
         mudlog(buf, NRM, (sh_int)MAX(LEVEL_IMMORT, GET_INVIS_LEV(ch)), TRUE);
         act("$n helps $N into $S private chamber.", FALSE, recep, 0, ch, TO_NOTVICT);
-        save_room = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (post-extract VNUM stash for save_char)
+        // A genuine location read, still an RNUM: NOT a channel member,
+        // so it does not convert (ruling T0b-4's non-member list).
+        save_room = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (pre-extract rnum capture)
         extract_char(ch);
-        ch->in_room = world[save_room].number; // LS1-ALLOW: in_room used as mutable room cursor (post-extract VNUM stash for save_char)
-        save_char(ch, ch->in_room, 0); // LS1-ALLOW: in_room used as mutable room cursor (post-extract VNUM stash for save_char)
+        // W3 and its ONLY consumer, converted TOGETHER because AM-1
+        // requires it: extract_char() has just cleared the location, so a
+        // stash routed to a separate store while save_char() still read
+        // the raw field would persist load_room = NOWHERE for every
+        // renting player -- observed by no golden, test or gate.
+        stash_load_room_vnum(ch, room_by_id_total(save_room)->number);
+        save_char(ch, peek_load_room_vnum(ch), 0);
     } else { /* Offer */
         Crash_offer_rent(ch, recep, mode, TRUE);
         act("$N gives $n an offer.", FALSE, ch, 0, recep, TO_ROOM);
@@ -1541,10 +1548,17 @@ ACMD(do_rent)
 
     mudlog(buf, NRM, (sh_int)MAX(LEVEL_IMMORT, GET_INVIS_LEV(ch)), TRUE);
 
-    save_room = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (post-extract VNUM stash for save_char)
+    // Same shapes as gen_receptionist's pair above, inside do_rent --
+    // which returns unconditionally at its top ("Field-rent is
+    // disabled"), so none of this is reachable and none of it can be
+    // tested end to end. Converted anyway, for uniformity: leaving one
+    // copy of the protocol on the raw field is exactly how LS-3b would
+    // later re-enable do_rent onto a silently broken stash. Deleting it
+    // instead would be an unreviewed behavior claim, out of charter.
+    save_room = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (pre-extract rnum capture)
     extract_char(ch);
-    ch->in_room = world[save_room].number; // LS1-ALLOW: in_room used as mutable room cursor (post-extract VNUM stash for save_char)
-    save_char(ch, ch->in_room, 0); // LS1-ALLOW: in_room used as mutable room cursor (post-extract VNUM stash for save_char)
+    stash_load_room_vnum(ch, room_by_id_total(save_room)->number);
+    save_char(ch, peek_load_room_vnum(ch), 0);
 }
 
 void Crash_save_all(void)

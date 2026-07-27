@@ -1939,6 +1939,26 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
      * load_room to that somewhere */
     if ((load_room == NOWHERE) && (location_of(ch) != NOWHERE))
         load_room = rots::persist::dispatch_room_vnum(location_of(ch));
+    // R23 (LS-3a T2e; T0b-1's reader table): the same fail-safe for the
+    // VNUM CHANNEL. A caller can reach save_char() with no load_room and
+    // no location but with a room still stashed in the channel -- the
+    // rent path is one statement away from exactly that shape -- and
+    // persisting NOWHERE there sends the character to the racial start
+    // room on the next login. The stashed VNUM needs no conversion: it
+    // is already vnum-shaped, unlike the arm above, which runs an rnum
+    // through dispatch_room_vnum().
+    //
+    // THIS ARM IS UNREACHABLE TODAY, DELIBERATELY AND PROVABLY. Channel
+    // and location are still one field, so peek_load_room_vnum(ch) ==
+    // location_of(ch) exactly; whenever control reaches this `else if`,
+    // either load_room != NOWHERE (first term false) or location_of(ch)
+    // == NOWHERE, in which case peek is NOWHERE too (second term false).
+    // It arms ITSELF the moment LS-3b gives the channel its own store,
+    // which is the only moment it could ever have been written
+    // correctly -- and it is written now, beside the arm it mirrors,
+    // rather than left for LS-3b to rediscover from the same evidence.
+    else if ((load_room == NOWHERE) && (peek_load_room_vnum(ch) != NOWHERE))
+        load_room = peek_load_room_vnum(ch);
 
     ch->specials2.load_room = load_room;
 

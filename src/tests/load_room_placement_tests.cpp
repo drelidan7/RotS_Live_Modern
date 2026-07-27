@@ -99,6 +99,7 @@
 
 #include "../db.h"
 #include "../handler.h"
+#include "../interpre.h"
 #include "../objects_json.h"
 #include "../utils.h"
 #include "../zone.h"
@@ -148,8 +149,24 @@ extern int top_of_zone_table;
 extern int top_of_p_table;
 extern struct player_index_element *player_table;
 extern struct descriptor_data *descriptor_list;
+// The two process-global rosters extract_char() walks and re-links
+// (handler.cpp:495-496 declares them the same local-extern way). Saved and
+// restored by ScopedGlobalCharacterLists below -- a stack char_data left on
+// either one outlives its frame, which is the leak class the LS-2 finalization
+// battery caught as a monolithic-runner SIGSEGV.
+extern struct char_data *combat_list;
+extern struct char_data *waiting_list;
+// The VNUM sibling of r_mortal_start_room[] above. db_world.cpp:814-815
+// derives the rnum array from this one with real_room() and CLAMPS to 0 on a
+// miss, so the two can name different rooms; the death-save rider test below
+// reproduces that divergence.
+extern int mortal_start_room[];
 
 void clear_char(struct char_data *ch, int mode);
+
+// act_wiz.cpp exports do_wizset() only by linkage, like the objsave.cpp trio
+// above; declared here with the ACMD signature act_wiz_format_tests.cpp uses.
+ACMD(do_wizset);
 
 namespace {
 
@@ -420,6 +437,42 @@ class ScopedPlayerTable {
     // Prior process-global table pointer/bound, restored verbatim on exit.
     player_index_element *m_previous_table;
     int m_previous_top;
+};
+
+// THE FIXTURE-HYGIENE RULE, applied to the three rosters extract_char() and
+// do_wizset() touch. extract_char() unlinks its argument from character_list
+// (and abort()s if it is not there), rewrites waiting_list around it, and
+// walks combat_list stopping fights -- and its waiting_list surgery
+// (handler.cpp:563-570) writes THROUGH the last element when the character is
+// not on the list, so a roster another suite left populated would be
+// corrupted by a test that never touches it. Everything this fixture guards is
+// a process global whose entries here are stack char_data, so all three are
+// restored verbatim on scope exit, including on a mid-test fatal ASSERT.
+class ScopedGlobalCharacterLists {
+  public:
+    ScopedGlobalCharacterLists()
+        : m_previous_character_list(character_list), m_previous_combat_list(combat_list),
+          m_previous_waiting_list(waiting_list) {
+        character_list = nullptr;
+        combat_list = nullptr;
+        waiting_list = nullptr;
+    }
+
+    ~ScopedGlobalCharacterLists() {
+        character_list = m_previous_character_list;
+        combat_list = m_previous_combat_list;
+        waiting_list = m_previous_waiting_list;
+    }
+
+    ScopedGlobalCharacterLists(const ScopedGlobalCharacterLists &) = delete;
+    ScopedGlobalCharacterLists &operator=(const ScopedGlobalCharacterLists &) = delete;
+
+  private:
+    // Prior heads of the three rosters, restored verbatim at scope exit so no
+    // later suite in the monolithic runner observes this fixture's entries.
+    char_data *m_previous_character_list;
+    char_data *m_previous_combat_list;
+    char_data *m_previous_waiting_list;
 };
 
 // A mortal player who survives every guard in calc_load_room() without
@@ -1475,4 +1528,610 @@ TEST(LoadRoomEndToEnd, RealCrashLoadPlacesPersistedFollowerWithItsOwner) {
     // After ScopedWorkingDirectory restored the cwd (its scope closed
     // above), the temp data dir can be removed by absolute path.
     std::filesystem::remove_all(temp_data_dir);
+}
+
+// ---------------------------------------------------------------------------
+// THE O-2 RIDER SET -- the four rnum-persisting save_char sites
+// ---------------------------------------------------------------------------
+//
+// LS-3a is otherwise a zero-behavior-change wave. Owner ruling O-2 folds ONE
+// named exception into it: the save_char() call sites that hand the persisted
+// `specials2.load_room` field an RNUM, when every reader of that field (and
+// the on-disk format itself) treats it as a room VNUM. The round-trip test
+// above (TextRoundTripPreservesWhateverIntegerTheCallerPassed) is why that is
+// a bug and not a convention: save_char()'s explicit arm applies NO
+// conversion, so an rnum-passing call site silently persists an rnum, and the
+// next login runs it through real_room() as though it were a vnum.
+//
+// T0b-1's rider table names four sites; the tests below pin all four in their
+// FIXED shape. Each test states its own red-first evidence (the value the
+// unfixed line produced) in its comment, and the commit message carries the
+// verbatim failure output.
+//
+// WHY ROWS 2 AND 3 SHARE A COMMIT (recorded here because it also bounds what
+// row 2 can be tested with): raw_kill()'s save (fight.cpp, row 2) is followed,
+// in the same function, by extract_char()'s own save (handler.cpp, row 3),
+// and BOTH stamp ch->specials2.load_room. The later write wins, so row 2's
+// argument is unobservable through any end state -- no test that drives
+// raw_kill() can attribute a value to it. That is why row 2 is pinned by
+// replaying its own statement (the shape below), while row 3 IS driven
+// through the real extract_char(). Converting one without the other would
+// leave a test observing the wrong row.
+
+// ROW 1 -- interpre.cpp:3796, the post-login save, NORMAL arm.
+//
+// nanny()'s CON_SLCT '1' handler saves the character immediately after
+// load_character() has placed them, and load_character() places by RNUM
+// (objsave.cpp:502, char_to_room(ch, calc_load_room(...))). The unfixed line
+// handed that rnum straight to save_char()'s explicit arm.
+//
+// FIXED SHAPE: save_char(d->character, NOWHERE, 0) -- not
+// room_by_id_total(location_of(...))->number. For a placed character the two
+// are the same value (save_char's NOWHERE arm runs the identical room-vnum
+// hook over the identical location); they diverge only for a character with
+// no location, which the next test pins and which is the whole reason NOWHERE
+// is the right shape.
+//
+// RED-FIRST: with the unfixed statement (save_char(&player,
+// location_of(&player), 0)) this test failed on its first assertion, 3 (the
+// RNUM) against the expected 35 (the VNUM) -- the rnum-shaped failure.
+//
+// SCOPE -- replayed, not driven, and why. nanny()'s '1' arm continues into
+// report_news()/report_mail()/send_to_char(WELC_MESSG)/ProtocolCreate()/
+// ProtocolNegotiate()/msdp_room_update()/do_look()/update_memory_list(), none
+// of which this process can satisfy (WELC_MESSG is a boot-loaded global text
+// buffer; the protocol negotiation writes a live socket). The character state
+// this test builds IS produced by production, though: the persisted VNUM is
+// stashed by the same replay_load_character_guard() the chain tests use, and
+// the placement rnum comes from the REAL calc_load_room().
+TEST(LoadRoomRider, PostLoginSavePersistsTheLoginRoomVnumNotItsRnum) {
+    ScopedVnumWorld fixture_world;
+    ScopedStartRooms fixture_start_rooms;
+    ScopedPlayerTable fixture_player_table{nullptr};
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+    RELEASE(player.player.name);
+    CREATE(player.player.name, char, strlen("postloginchr") + 1);
+    strcpy(player.player.name, "postloginchr");
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &player;
+    descriptor.next = nullptr;
+    player.desc = &descriptor;
+
+    // The state load_character() leaves behind at the moment nanny() saves:
+    // the raw persisted VNUM in the channel, resolved to an RNUM by the real
+    // calc_load_room(), and the character placed at that rnum.
+    player.specials2.load_room = kOwnerVnum;
+    replay_load_character_guard(player);
+    player.specials2.load_room = calc_load_room(&player, RENT_RENTED);
+    ASSERT_EQ(player.specials2.load_room, kOwnerRnum);
+    char_to_room(&player, player.specials2.load_room);
+    ASSERT_EQ(location_of(&player), kOwnerRnum);
+
+    // Sentinel distinct from both the rnum and the vnum, so the assertions
+    // prove save_char() actually wrote the field.
+    player.specials2.load_room = -12345;
+
+    // interpre.cpp:3796's own statement, in its fixed shape.
+    save_char(&player, NOWHERE, 0);
+
+    EXPECT_EQ(GET_LOADROOM(&player), kOwnerVnum);
+    EXPECT_NE(GET_LOADROOM(&player), kOwnerRnum);
+    EXPECT_NE(GET_LOADROOM(&player), -12345);
+    EXPECT_NE(strstr(descriptor.small_outbuf, "you are not being saved"), nullptr)
+        << "save_char did not take the empty-player-table early return; "
+        << "output: " << descriptor.small_outbuf;
+
+    char_from_room(&player);
+    RELEASE(player.player.name);
+}
+
+// ROW 1 -- the arm that DECIDES the shape (T0b-1 finding S10).
+//
+// calc_load_room()'s "bugged character" arm (objsave.cpp:588-589) sits AFTER
+// the `if (load_room < 0)` clamp above it and is itself
+// `real_room(r_bugged_start_room)` -- a global spelled as an RNUM handed to a
+// VNUM lookup. So it can return -1, and load_character() then calls
+// char_to_room(ch, -1) on the ordinary login path. Ruling R-C2 describes what
+// that produces: room_by_id_total(-1) hits operator[]'s room-0 fallback, so
+// the character is spliced into ROOM 0's occupant chain while the location
+// field says NOWHERE -- a torn state, reproduced here through production
+// rather than asserted into existence.
+//
+// THE JUSTIFICATION FOR `NOWHERE`: in that state save_char(ch, NOWHERE, 0)
+// persists NOWHERE, which sends the character to their racial start room on
+// the next login (calc_load_room's own first mortal arm). The rejected
+// mechanical conversion, room_by_id_total(location_of(ch))->number, would
+// instead resolve through the SAME room-0 fallback and persist world[0]'s
+// vnum -- silently relocating a bugged character to whatever room happens to
+// sit at index 0. Both values are asserted below.
+//
+// This arm is NOT red against the pre-fix line: location_of(&player) IS
+// NOWHERE here, so the unfixed statement passed NOWHERE too and agreed. It is
+// red against the rejected alternative, which is what it exists to rule out
+// (sabotage-proven -- see the commit message).
+TEST(LoadRoomRider, PostLoginSaveLeavesABuggedCharacterNowhereInsteadOfRelocatingThemToWorldZero) {
+    ScopedVnumWorld fixture_world;
+    ScopedStartRooms fixture_start_rooms;
+    ScopedPlayerTable fixture_player_table{nullptr};
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+    RELEASE(player.player.name);
+    CREATE(player.player.name, char, strlen("buggedchr") + 1);
+    strcpy(player.player.name, "buggedchr");
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &player;
+    descriptor.next = nullptr;
+    player.desc = &descriptor;
+
+    // A vnum no room in this fixture carries (the stamped vnums are 5..55),
+    // so real_room() misses and the bugged arm yields -1. ScopedStartRooms
+    // restores the global, and its mini_mud = 1 keeps real_room()'s
+    // "does not exist in database" line off stderr.
+    r_bugged_start_room = 999999;
+
+    // Below calc_load_room()'s bugged-character floor (str >= 1).
+    player.abilities.str = 0;
+    player.tmpabilities.str = 0;
+
+    player.specials2.load_room = kOwnerVnum;
+    replay_load_character_guard(player);
+    const int computed_load_room = calc_load_room(&player, RENT_RENTED);
+    ASSERT_EQ(computed_load_room, NOWHERE) << "calc_load_room's bugged arm did not return -1";
+
+    // load_character (objsave.cpp:502) with that value: R-C2's torn state.
+    char_to_room(&player, computed_load_room);
+    ASSERT_EQ(location_of(&player), NOWHERE) << "the field should say nowhere";
+    ASSERT_EQ(world[0].people, &player) << "...while the chain says room 0";
+
+    player.specials2.load_room = -12345;
+
+    save_char(&player, NOWHERE, 0);
+
+    // What the fixed line persists.
+    EXPECT_EQ(GET_LOADROOM(&player), NOWHERE);
+    EXPECT_NE(GET_LOADROOM(&player), -12345);
+
+    // ...and what the rejected mechanical conversion WOULD have persisted:
+    // world[0]'s vnum, an unrelated real room.
+    EXPECT_EQ(room_by_id_total(location_of(&player))->number, room_vnum_for(0));
+    EXPECT_NE(room_by_id_total(location_of(&player))->number, NOWHERE);
+
+    EXPECT_NE(strstr(descriptor.small_outbuf, "you are not being saved"), nullptr)
+        << "output: " << descriptor.small_outbuf;
+
+    // char_from_room() early-returns on in_room == NOWHERE (placement.cpp:
+    // 398-402) -- exactly the leak half of R-C2's torn state -- so it would
+    // NOT unsplice this character. Undo the splice by hand, or the stack
+    // char_data outlives its entry in a process-global chain.
+    world[0].people = nullptr;
+    RELEASE(player.player.name);
+}
+
+// ROW 2 -- fight.cpp:948, raw_kill()'s death save.
+//
+// The unfixed line passed r_mortal_start_room[GET_RACE(dead_man)] -- an RNUM
+// (db_world.cpp:814 computes it with real_room()) -- straight into
+// save_char()'s explicit arm.
+//
+// FIXED SHAPE: room_by_id_total(r_mortal_start_room[race])->number. NOT
+// mortal_start_room[race], the sibling VNUM array: db_world.cpp:814-815 CLAMPS
+// r_mortal_start_room[tmp] to 0 when real_room(mortal_start_room[tmp]) misses,
+// so after a boot with a missing start room the two arrays name different
+// rooms and only the resolver-derived expression names the room the rest of
+// raw_kill() actually sends the corpse's owner to. That divergence is
+// reproduced below rather than argued.
+//
+// RED-FIRST: with the unfixed argument this test failed with 0 (the rnum)
+// against the expected 5 (the vnum).
+//
+// SCOPE -- replayed, not driven, and why (the "say what you stubbed" rule).
+// See the section header: extract_char()'s own save, eleven lines later in
+// the same function, overwrites this stamp unconditionally, so raw_kill()
+// cannot be driven to observe THIS line's argument. What the replay does not
+// cover: that raw_kill() reaches the line at all for a given death (it is
+// inside `if (!IS_NPC(dead_man))`), and the surrounding corpse/affect
+// teardown. Neither touches load_room.
+TEST(LoadRoomRider, DeathSavePersistsTheRacialStartRoomVnumNotItsRnum) {
+    ScopedVnumWorld fixture_world;
+    // r_mortal_start_room[every race] = rnum 0, whose room carries vnum 5.
+    ScopedStartRooms fixture_start_rooms;
+    ScopedPlayerTable fixture_player_table{nullptr};
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+    RELEASE(player.player.name);
+    CREATE(player.player.name, char, strlen("deathsavechr") + 1);
+    strcpy(player.player.name, "deathsavechr");
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &player;
+    descriptor.next = nullptr;
+    player.desc = &descriptor;
+
+    const int race = GET_RACE(&player);
+    ASSERT_EQ(r_mortal_start_room[race], ScopedStartRooms::kRacialStartRnum);
+
+    // The clamp hazard, made concrete: point the VNUM array at a room that is
+    // NOT the one r_mortal_start_room[] indexes, exactly as a boot-time
+    // real_room() miss would leave things (db_world.cpp:815 forces the rnum to
+    // 0 while the vnum array keeps whatever the config named).
+    const int previous_mortal_start_room = mortal_start_room[race];
+    mortal_start_room[race] = kOwnerVnum;
+
+    player.specials2.load_room = -12345;
+
+    // fight.cpp:948's own statement, in its fixed shape.
+    save_char(&player, room_by_id_total(r_mortal_start_room[race])->number, 0);
+
+    // The start room's VNUM...
+    EXPECT_EQ(GET_LOADROOM(&player), room_vnum_for(ScopedStartRooms::kRacialStartRnum));
+    // ...not its rnum (what the unfixed line passed)...
+    EXPECT_NE(GET_LOADROOM(&player), ScopedStartRooms::kRacialStartRnum);
+    // ...and not the sibling VNUM array's entry, which the clamp has made
+    // disagree.
+    EXPECT_NE(GET_LOADROOM(&player), mortal_start_room[race]);
+    EXPECT_NE(GET_LOADROOM(&player), -12345);
+    EXPECT_NE(strstr(descriptor.small_outbuf, "you are not being saved"), nullptr)
+        << "output: " << descriptor.small_outbuf;
+
+    mortal_start_room[race] = previous_mortal_start_room;
+    RELEASE(player.player.name);
+}
+
+// ROW 3 -- handler.cpp:616, extract_char()'s own save. DRIVEN, not replayed.
+//
+// The ternary's `new_room < 0` arm already resolved its rnum to a vnum
+// (room_by_id_total(was_in)->number); the `>= 0` arm passed new_room raw. Its
+// two production callers are fight.cpp:981/:984 (raw_kill's respawn), which
+// pass r_mortal_start_room[race] / r_immort_start_room -- RNUMs both.
+//
+// FIXED SHAPE: room_by_id_total(new_room)->number, symmetric with the arm
+// beside it.
+//
+// RED-FIRST: this test failed with 1 (the destination RNUM) against the
+// expected 15 (its VNUM).
+//
+// The three distinct numbers this fixture uses are deliberate: the character
+// dies in rnum 3 / vnum 35, is re-placed at rnum 1 / vnum 15, and the field
+// starts at a -12345 sentinel. extract_char() itself pre-stamps load_room with
+// the ORIGIN room's vnum (handler.cpp:573) before saving, so an assertion that
+// only ruled out the sentinel would pass on the origin room's value.
+TEST(LoadRoomRider, ExtractCharToARoomPersistsTheDestinationRoomVnumNotItsRnum) {
+    ScopedVnumWorld fixture_world;
+    ScopedPlayerTable fixture_player_table{nullptr};
+    ScopedGlobalCharacterLists fixture_lists;
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+    RELEASE(player.player.name);
+    CREATE(player.player.name, char, strlen("extractchr") + 1);
+    strcpy(player.player.name, "extractchr");
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &player;
+    descriptor.next = nullptr;
+    // Non-zero: extract_char() reads ch->desc->descriptor as "is there still a
+    // socket behind this character?" (handler.cpp:592/:635). A zero here would
+    // send the character down the close_socket() arm instead of the
+    // re-placement arm this test is about. Never written to -- no I/O runs.
+    descriptor.descriptor = 1;
+    // NOT a switched immortal: with desc->original set, extract_char() takes
+    // do_return() and never reaches the save at all (handler.cpp:613-614).
+    descriptor.original = nullptr;
+    player.desc = &descriptor;
+
+    char_to_room(&player, kOwnerRnum);
+    ASSERT_EQ(location_of(&player), kOwnerRnum);
+
+    player.specials2.load_room = -12345;
+
+    constexpr int kRespawnRnum = 1;
+    extract_char(&player, kRespawnRnum);
+
+    // The destination room's VNUM...
+    EXPECT_EQ(GET_LOADROOM(&player), room_vnum_for(kRespawnRnum));
+    // ...not its rnum (what the unfixed arm passed)...
+    EXPECT_NE(GET_LOADROOM(&player), kRespawnRnum);
+    // ...and not the origin room's vnum, which handler.cpp:573 pre-stamped.
+    EXPECT_NE(GET_LOADROOM(&player), kOwnerVnum);
+    EXPECT_NE(GET_LOADROOM(&player), -12345);
+
+    // ...and the character really was re-placed by the arm under test.
+    EXPECT_EQ(location_of(&player), kRespawnRnum);
+
+    char_from_room(&player);
+    RELEASE(player.player.name);
+}
+
+// ROW 3's SIBLING ARM -- the regression guard. `new_room < 0` already
+// persisted a vnum before this tranche; this pins that it still does, so the
+// symmetric edit above cannot be "simplified" into a single raw-rnum
+// expression later. Driven through the same real extract_char().
+//
+// This arm also unlinks the character from character_list and parks the
+// descriptor at the character menu (handler.cpp:596-608, :645-647), which is
+// why it needs the character ON that list first: extract_char() abort()s
+// outright when it cannot find its argument there.
+TEST(LoadRoomRider, ExtractCharWithoutADestinationStillPersistsTheOriginRoomVnum) {
+    ScopedVnumWorld fixture_world;
+    ScopedPlayerTable fixture_player_table{nullptr};
+    ScopedGlobalCharacterLists fixture_lists;
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+    RELEASE(player.player.name);
+    CREATE(player.player.name, char, strlen("extractnochr") + 1);
+    strcpy(player.player.name, "extractnochr");
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &player;
+    descriptor.next = nullptr;
+    descriptor.descriptor = 1;
+    descriptor.original = nullptr;
+    player.desc = &descriptor;
+
+    player.next = nullptr;
+    character_list = &player;
+
+    char_to_room(&player, kOwnerRnum);
+    player.specials2.load_room = -12345;
+
+    extract_char(&player, NOWHERE);
+
+    // The room they were standing in, as a VNUM.
+    EXPECT_EQ(GET_LOADROOM(&player), kOwnerVnum);
+    EXPECT_NE(GET_LOADROOM(&player), kOwnerRnum);
+    EXPECT_NE(GET_LOADROOM(&player), -12345);
+    // ...and they are no longer anywhere.
+    EXPECT_EQ(location_of(&player), NOWHERE);
+
+    RELEASE(player.player.name);
+}
+
+
+// ROW 4(a) -- act_wiz.cpp:3253, the `wizset file` save. DRIVEN end to end:
+// the real do_wizset() is-file funnel, over a real player file on disk in a
+// test-scoped data directory, with the value read back through the real
+// load_char().
+//
+// WHAT THE SITE IS (T0b-1 called the census's classification of it the
+// loudest misclassification in the set). is_file forces vict == cbuf: a
+// character just materialised by store_to_char(), who is in no room and on no
+// list, and whose location field therefore holds the RAW PERSISTED VNUM, not
+// an rnum. The line is a correct pass-through of that vnum -- it only READS
+// like a location because the channel and the location are the same field
+// today. The mechanical conversion the other three rows took,
+// room_by_id_total(location_of(vict))->number, would CORRUPT every one of
+// these saves: in this fixture that expression resolves world[35], a
+// create_bulk() filler room whose number is -1.
+//
+// FIXED SHAPE: peek_load_room_vnum(vict) -- byte-identical today (same field),
+// but it names the channel, so LS-3b re-points it with the rest of the
+// channel instead of silently persisting a location-store miss.
+//
+// COVERAGE GAP, closed here: nothing in the tree drove `wizset file` past its
+// early guards (act_wiz_format_tests.cpp reaches only the usage/NPC/lookup
+// rejections), so neither this save nor the file round trip behind it had any
+// coverage at all. The field this test sets ("brief") is deliberately
+// unrelated to rooms -- what is under test is what the save persists for an
+// offline character, not what the field did.
+TEST(LoadRoomRider, WizsetFileSavePersistsTheChannelVnumNotAResolvedRoomNumber) {
+    ScopedVnumWorld fixture_world;
+    ScopedGlobalCharacterLists fixture_lists;
+
+    char path_template[] = "/tmp/rots-loadroom-wizset-XXXXXX";
+    char *created_path = rots_mkdtemp(path_template);
+    ASSERT_NE(created_path, nullptr);
+    const std::filesystem::path temp_data_dir = created_path;
+
+    {
+        ScopedWorkingDirectory scoped_data_dir{temp_data_dir};
+        std::error_code mkdir_error;
+        // save_player() (db_players.cpp:1848) buckets by first letter and
+        // stages through players/temp, so both directories must exist.
+        ASSERT_TRUE(std::filesystem::create_directories("players/U-Z", mkdir_error))
+            << mkdir_error.message();
+
+        // A real, loadable player file whose persisted load_room is the room
+        // VNUM 35 -- the value store_to_char() will deposit in the channel.
+        {
+            char_data writer{};
+            make_mortal_player(writer);
+            ScopedClearCharFields writer_cleanup{writer};
+            descriptor_data writer_descriptor{};
+            snprintf(writer_descriptor.pwd, sizeof(writer_descriptor.pwd), "%s", "WizSetPw");
+            snprintf(writer_descriptor.host, sizeof(writer_descriptor.host), "%s", "wizset.test");
+            writer.desc = &writer_descriptor;
+            RELEASE(writer.player.name);
+            CREATE(writer.player.name, char, strlen("wizsetchr") + 1);
+            strcpy(writer.player.name, "wizsetchr");
+            ASSERT_TRUE(write_player_text(&writer, kOwnerVnum, "players/U-Z/wizsetchr"));
+            RELEASE(writer.player.title);
+            RELEASE(writer.player.description);
+            RELEASE(writer.player.name);
+        }
+
+        // load_char() resolves the name through player_table's ch_file, and
+        // save_player() rewrites that same entry with the versioned name it
+        // finalizes -- so the read-back below sees whatever the save wrote.
+        ScopedPlayerTable fixture_player_table{"wizsetchr"};
+        strcpy(player_table[0].ch_file, "players/U-Z/wizsetchr");
+
+        char_data immortal{};
+        make_mortal_player(immortal);
+        ScopedClearCharFields immortal_cleanup{immortal};
+        immortal.player.level = LEVEL_IMPL;
+        RELEASE(immortal.player.name);
+        CREATE(immortal.player.name, char, strlen("wizsetimm") + 1);
+        strcpy(immortal.player.name, "wizsetimm");
+
+        descriptor_data immortal_descriptor{};
+        immortal_descriptor.output = immortal_descriptor.small_outbuf;
+        immortal_descriptor.small_outbuf[0] = '\0';
+        immortal_descriptor.bufptr = 0;
+        immortal_descriptor.bufspace = SMALL_BUFSIZE - 1;
+        immortal_descriptor.connected = CON_PLYNG;
+        immortal_descriptor.character = &immortal;
+        immortal_descriptor.next = nullptr;
+        immortal.desc = &immortal_descriptor;
+        char_to_room(&immortal, kOwnerRnum);
+
+        char argument[] = "file wizsetchr brief on";
+        do_wizset(&immortal, argument, nullptr, 0, 0);
+
+        ASSERT_NE(strstr(immortal_descriptor.small_outbuf, "Saved in file."), nullptr)
+            << "do_wizset did not reach its is_file save; output: "
+            << immortal_descriptor.small_outbuf;
+
+        // THE ASSERTION: the persisted value is the VNUM the offline character
+        // carried in the channel, passed through verbatim.
+        char reload_name[] = "wizsetchr";
+        char_file_u reloaded{};
+        ASSERT_GE(load_char(reload_name, &reloaded), 0)
+            << "the saved player file could not be re-read";
+        EXPECT_EQ(reloaded.specials2.load_room, kOwnerVnum);
+        // ...not what a mechanical location resolve would have produced. The
+        // filler room at index 35 carries dummy_room_data()'s number, -1, so
+        // that conversion is observably distinct from a correct pass-through.
+        EXPECT_NE(reloaded.specials2.load_room, world[kOwnerVnum].number);
+        EXPECT_NE(reloaded.specials2.load_room, NOWHERE);
+
+        // ...and the offline character was never placed anywhere: no room's
+        // occupant chain gained him, and nothing indexed by his raw VNUM did
+        // either.
+        EXPECT_EQ(world[kOwnerRnum].people, &immortal);
+        EXPECT_EQ(immortal.next_in_room, nullptr);
+        EXPECT_EQ(world[kOwnerVnum].people, nullptr);
+
+        char_from_room(&immortal);
+        RELEASE(immortal.player.name);
+    }
+
+    std::filesystem::remove_all(temp_data_dir);
+}
+
+// ROW 4(b) -- and the reason it cannot be driven. CHARACTERIZATION of a
+// SHADOWED FIELD, found while writing the test this replaces.
+//
+// do_wizset()'s field lookup is a PREFIX match over its table in declaration
+// order (act_wiz.cpp:2897-2899, `strncmp(field, fields[l].cmd, strlen(field))`
+// with a break on the first hit). Entry 35 is "roomflag" and entry 36 is
+// "room" -- so every spelling of "room" the parser can be handed matches
+// "roomflag" FIRST, and case 36 is unreachable through the only command that
+// indexes this table (`fields[]` at act_wiz.cpp:2740 has exactly one consumer,
+// controller-verified by grep). This test pins that: `wizset <victim> room on`
+// toggles the victim's PRF_ROOMFLAGS and does NOT move him.
+//
+// CONSEQUENCE FOR THE RIDER, stated plainly rather than papered over: rider
+// row 4(b)'s is_file branch (stash the typed VNUM, skip char_from_room/
+// char_to_room) IS applied in this commit -- it removes a real defect class
+// from the tree (an offline character spliced into a live room's occupant
+// chain and then free_char()'d eleven lines later, plus R16's wrong-room light
+// decrement) and it removes the app tier's last raw placement call on a VNUM
+// -- but it is UNTESTABLE behavior, because no input reaches it. It is not
+// covered by a test that pretends otherwise. If the shadowing is ever fixed
+// (renaming entry 36, or reordering the table), THIS test fails first and
+// says so, which is the point.
+TEST(LoadRoomRider, WizsetRoomFieldIsShadowedByRoomflagSoTheRoomArmIsUnreachable) {
+    ScopedVnumWorld fixture_world;
+    ScopedGlobalCharacterLists fixture_lists;
+    ScopedPlayerTable fixture_player_table{"wizsetvict"};
+
+    char_data immortal{};
+    make_mortal_player(immortal);
+    ScopedClearCharFields immortal_cleanup{immortal};
+    immortal.player.level = LEVEL_IMPL;
+    RELEASE(immortal.player.name);
+    CREATE(immortal.player.name, char, strlen("wizsetimm2") + 1);
+    strcpy(immortal.player.name, "wizsetimm2");
+
+    descriptor_data immortal_descriptor{};
+    immortal_descriptor.output = immortal_descriptor.small_outbuf;
+    immortal_descriptor.small_outbuf[0] = '\0';
+    immortal_descriptor.bufptr = 0;
+    immortal_descriptor.bufspace = SMALL_BUFSIZE - 1;
+    immortal_descriptor.connected = CON_PLYNG;
+    immortal_descriptor.character = &immortal;
+    immortal_descriptor.next = nullptr;
+    immortal.desc = &immortal_descriptor;
+
+    char_data victim{};
+    make_mortal_player(victim);
+    ScopedClearCharFields victim_cleanup{victim};
+    RELEASE(victim.player.name);
+    CREATE(victim.player.name, char, strlen("wizsetvict") + 1);
+    strcpy(victim.player.name, "wizsetvict");
+
+    descriptor_data victim_descriptor{};
+    victim_descriptor.output = victim_descriptor.small_outbuf;
+    victim_descriptor.small_outbuf[0] = '\0';
+    victim_descriptor.bufptr = 0;
+    victim_descriptor.bufspace = SMALL_BUFSIZE - 1;
+    victim_descriptor.connected = CON_PLYNG;
+    victim_descriptor.character = &victim;
+    victim_descriptor.next = nullptr;
+    victim.desc = &victim_descriptor;
+
+    // get_char_vis() walks character_list; both must be on it, and in the same
+    // room so the immortal can see the victim.
+    immortal.next = &victim;
+    victim.next = nullptr;
+    character_list = &immortal;
+
+    char_to_room(&immortal, kOwnerRnum);
+    char_to_room(&victim, kOwnerRnum);
+    ASSERT_FALSE(PRF_FLAGGED(&victim, PRF_ROOMFLAGS));
+
+    char argument[] = "wizsetvict room on";
+    do_wizset(&immortal, argument, nullptr, 0, 0);
+
+    // "room" selected entry 35, "roomflag" -- the reply names it (CAP()'d by
+    // do_wizset's own BINARY-field reply path, hence the leading capital)...
+    EXPECT_NE(strstr(immortal_descriptor.small_outbuf, "Roomflag ON"), nullptr)
+        << "output: " << immortal_descriptor.small_outbuf;
+    // ...it really toggled that preference...
+    EXPECT_TRUE(PRF_FLAGGED(&victim, PRF_ROOMFLAGS));
+    // ...and case 36 never ran: the victim did not move.
+    EXPECT_EQ(location_of(&victim), kOwnerRnum);
+    EXPECT_EQ(world[1].people, nullptr);
+
+    char_from_room(&victim);
+    char_from_room(&immortal);
+    RELEASE(immortal.player.name);
+    RELEASE(victim.player.name);
 }

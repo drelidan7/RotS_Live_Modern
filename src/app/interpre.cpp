@@ -3793,7 +3793,23 @@ void nanny(struct descriptor_data* d, char* arg)
             // endnew
             reset_char(d->character);
             load_character(d->character); // new function in objsave
-            save_char(d->character, location_of(d->character), 0);
+            // O-2 RIDER (LS-3a T2 tranche 2e-beta, T0b-1 rider row 1): NOWHERE,
+            // not location_of(d->character). load_character() has just placed
+            // this character by RNUM (objsave.cpp:502), and save_char()'s
+            // explicit arm persists its argument with NO conversion -- so the
+            // old shape wrote an rnum into a field the on-disk format, and
+            // calc_load_room()'s own real_room() call, both read as a VNUM.
+            // NOWHERE hands the work to save_char()'s first fallback arm,
+            // which runs the room-vnum hook over the same location: identical
+            // for a placed character, and strictly better for one who is not.
+            // calc_load_room() can return -1 (its bugged-character arm sits
+            // after the clamp above it, objsave.cpp:588-589), so char_to_room()
+            // may have left this character with no location at all; NOWHERE
+            // then persists -1 and the next login routes them cleanly to their
+            // racial start room, whereas room_by_id_total(location_of(...))
+            // ->number would resolve through operator[]'s room-0 fallback and
+            // relocate them to whatever room sits at index 0.
+            save_char(d->character, NOWHERE, 0);
             STATE(d) = CON_PLYNG;
             report_news(d->character);
             report_mail(d->character);

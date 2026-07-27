@@ -945,7 +945,20 @@ void raw_kill(char_data* dead_man, char_data* killer, int attack_type)
 
     if (!IS_NPC(dead_man)) {
         int race = GET_RACE(dead_man);
-        save_char(dead_man, r_mortal_start_room[race], 0);
+        // O-2 RIDER (LS-3a T2 tranche 2e-beta, T0b-1 rider row 2):
+        // r_mortal_start_room[] is an RNUM array (db_world.cpp:814 derives it
+        // with real_room()), and save_char()'s explicit arm persists its
+        // argument verbatim -- so this line used to write an rnum into a field
+        // that is read back as a VNUM. Resolved through room_by_id_total()
+        // rather than through the sibling VNUM array mortal_start_room[]:
+        // db_world.cpp:814-815 CLAMPS r_mortal_start_room[tmp] to 0 when the
+        // vnum lookup misses, after which the two arrays name different rooms
+        // and only the resolver-derived number names the room the rest of this
+        // function actually sends the character to. Lands in the same commit as
+        // extract_char()'s own save (handler.cpp:616), which overwrites this
+        // stamp eleven lines below -- converting either alone would leave a
+        // test observing the wrong one.
+        save_char(dead_man, room_by_id_total(r_mortal_start_room[race])->number, 0);
         rots::combat::crash_crashsave(dead_man);
 
         // The player was killed by another player (probably).

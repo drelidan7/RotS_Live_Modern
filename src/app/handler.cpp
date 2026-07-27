@@ -613,7 +613,16 @@ void extract_char(struct char_data* ch, int new_room)
         if (ch->desc->original) {
             do_return(ch, mutable_arg(""), 0, 0, 0);
         } else
-            save_char(ch, (new_room < 0) ? ((was_in == NOWHERE) ? -1 : room_by_id_total(was_in)->number) : new_room, 0);
+            // O-2 RIDER (LS-3a T2 tranche 2e-beta, T0b-1 rider row 3): the
+            // `new_room >= 0` arm now resolves its room id to a VNUM, exactly
+            // as the `< 0` arm beside it already did. save_char()'s explicit
+            // arm persists its argument with no conversion, and this arm's two
+            // production callers (fight.cpp:981/:984, raw_kill's respawn) pass
+            // r_mortal_start_room[]/r_immort_start_room -- RNUMs both -- so the
+            // unfixed shape wrote an rnum into a field read back as a VNUM.
+            // Lands in the same commit as fight.cpp:948, whose save this one
+            // supersedes.
+            save_char(ch, (new_room < 0) ? ((was_in == NOWHERE) ? -1 : room_by_id_total(was_in)->number) : room_by_id_total(new_room)->number, 0);
     }
 
     if (IS_NPC(ch)) {

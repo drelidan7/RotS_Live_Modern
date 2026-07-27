@@ -2508,3 +2508,91 @@ TEST(CleanExposeElementsGuard, StillCancelsForAMageWhoIsInARoomAndCannotSeeTheTa
     world[kOwnerRnum].people = nullptr;
     set_location(&mage, NOWHERE);
 }
+
+// R7/R8 END TO END -- the rent-load ordering, over the REAL world[] table,
+// with the REAL equip_char()/char_to_room()/unequip_char(). A NAMED O-2
+// BEHAVIOR CHANGE (LS-3a T2 tranche 2e-beta).
+//
+// THE DEFECT, as it stood: Crash_load() equips every worn item
+// (objsave.cpp:439) while store_to_char() has left the raw persisted room VNUM
+// in the location field and the character is in no room at all. The ITEM_LIGHT
+// arm of attach_equipment() believed that integer and did world[VNUM].light++
+// -- on a large world, a real and completely unrelated room. The matching
+// decrement arrives later against the room the character is actually placed
+// in, so the wrong room keeps its +1 FOREVER, once per rent-load of a lit
+// light source, silently.
+//
+// This test walks the whole sequence and checks the counter at each step,
+// including the closing balance: after the character unequips, both rooms are
+// back at zero. Against the unfixed code the vnum-indexed room was left at 1
+// (see the commit message for the run record).
+//
+// The two rooms are deliberately DISTINCT and both real: rnum 3 is where the
+// character is placed, index 35 is the slot the persisted vnum 35 indexes --
+// a create_bulk() filler room in this fixture, exactly as a stale vnum lands
+// in a real room on the live world.
+TEST(LoadRoomRider, RentLoadingALitLightBumpsOnlyTheRoomTheCharacterIsPlacedIn) {
+    ScopedVnumWorld fixture_world;
+    ScopedGlobalCharacterLists fixture_lists;
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &player;
+    descriptor.next = nullptr;
+    player.desc = &descriptor;
+
+    obj_data lamp{};
+    lamp.obj_flags.type_flag = ITEM_LIGHT;
+    lamp.obj_flags.weight = 1;
+    lamp.obj_flags.value[2] = 10; // fuel
+    lamp.obj_flags.value[3] = 0;  // not yet lit
+    lamp.in_room = NOWHERE;       // LS1-ALLOW: obj-location (fixture init)
+    lamp.name = str_dup("lamp");
+    lamp.short_description = str_dup("a brass lamp");
+    lamp.description = str_dup("A brass lamp lies here.");
+
+    // THE LOAD WINDOW: what store_to_char (db_players.cpp:1376) leaves behind
+    // -- the raw persisted VNUM, no placement of any kind.
+    player.specials2.load_room = kOwnerVnum;
+    stash_load_room_vnum(&player, GET_LOADROOM(&player));
+    ASSERT_EQ(world[kOwnerVnum].light, 0);
+    ASSERT_EQ(world[kOwnerRnum].light, 0);
+
+    // objsave.cpp:439 -- Crash_load's equip loop, mid-window.
+    equip_char(&player, &lamp, WEAR_LIGHT);
+
+    EXPECT_EQ(player.equipment[WEAR_LIGHT], &lamp);
+    // Normalized to ON, so the placement below can count it...
+    EXPECT_EQ(lamp.obj_flags.value[3], 1);
+    // ...and the room the stale vnum indexed was left alone. THIS is the fix.
+    EXPECT_EQ(world[kOwnerVnum].light, 0);
+
+    // objsave.cpp:511 -- load_character places the player, and char_to_room's
+    // own equipment sweep (placement.cpp:349-353) counts the lamp, once, at
+    // the room that actually has him.
+    char_to_room(&player, kOwnerRnum);
+    EXPECT_EQ(world[kOwnerRnum].light, 1);
+    EXPECT_EQ(world[kOwnerVnum].light, 0);
+
+    // ...and the books balance: the later decrement has something to cancel.
+    unequip_char(&player, WEAR_LIGHT);
+    EXPECT_EQ(world[kOwnerRnum].light, 0);
+    EXPECT_EQ(world[kOwnerVnum].light, 0);
+
+    if (lamp.carried_by != nullptr)
+        obj_from_char(&lamp);
+    if (player.equipment[WEAR_LIGHT] == &lamp)
+        unequip_char(&player, WEAR_LIGHT);
+    RELEASE(lamp.name);
+    RELEASE(lamp.short_description);
+    RELEASE(lamp.description);
+    char_from_room(&player);
+}

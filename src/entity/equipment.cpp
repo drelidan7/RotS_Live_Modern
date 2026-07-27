@@ -111,6 +111,48 @@ extern int max_race_str[];
 // not a second evaluation reachable from two different places the way the
 // wrapper's old re-check was). The wrapper branches on this value instead
 // of re-deriving either the HOLD guard or the WEAPON-type test.
+namespace {
+
+// R7/R8 (LS-3a T2 tranche 2e-beta; T0b-1's reader table). Answers "is this
+// character actually LINKED INTO this room?", which is not the same question
+// as "does this character's location field hold a room id?" -- and during the
+// login/rent window the two answers differ, which is the whole bug the
+// ITEM_LIGHT arm below carried.
+//
+// WHY A CHAIN WALK IS THE ONLY DISCRIMINATOR AVAILABLE TODAY. char_to_room()
+// (placement.cpp:332-349) does two things: it splices ch into room->people AND
+// it writes ch->in_room. Until LS-3b splits the VNUM channel out of that field,
+// the field alone cannot tell a placed character from a mid-load one -- both
+// hold a non-NOWHERE integer -- so the occupant chain is the only remaining
+// witness. There is no O(1) form of this question: `ch->next_in_room != nullptr
+// || room->people == ch` is wrong for the TAIL occupant of a multi-occupant
+// room, which would silently stop bumping the light for real wearers.
+//
+// COST, measured rather than assumed (the brief's explicit requirement).
+// equip_char() has four production call sites -- objsave.cpp:439 (Crash_load,
+// per worn item), objsave.cpp:752 (follower equip), zone.cpp:628 (zone reset
+// 'E'), fight.cpp:3760 (the wear path) -- and this walk runs at NONE of them
+// unless the item is an ITEM_LIGHT with fuel, i.e. one wear slot's worth of a
+// minority item type. Its bound is the occupant count of a single room (one to
+// a few dozen), and at the one high-volume site (boot-time zone resets) the mob
+// has just been placed into a nearly empty room. Nothing here is on a per-pulse
+// or per-round path.
+//
+// AFTER LS-3b this helper is redundant, not wrong: location_of() will report
+// absent during the load window and the outer guard will already have skipped.
+// Delete it then; do not delete it now.
+bool is_linked_into_room(const room_data* room, const char_data* ch)
+{
+    for (const char_data* occupant : rots::entity::occupants(room)) {
+        if (occupant == ch)
+            return true;
+    }
+
+    return false;
+}
+
+} // namespace
+
 EquipAttachOutcome attach_equipment(char_data* ch, obj_data* obj, int pos)
 {
     ch->equipment[pos] = obj;
@@ -166,7 +208,39 @@ EquipAttachOutcome attach_equipment(char_data* ch, obj_data* obj, int pos)
         if ((location_of(ch) != NOWHERE) && (obj->obj_flags.value[2] != 0)) {
             if (obj->obj_flags.value[3] == 0)
                 obj->obj_flags.value[3] = 1;
-            room_of(ch)->light++;
+
+            // R7/R8 (LS-3a T2 tranche 2e-beta) -- A NAMED O-2 BEHAVIOR CHANGE,
+            // and a bug fix. Crash_load() equips every worn item (objsave.cpp:
+            // 439) while ch->in_room still holds the RAW PERSISTED VNUM and the
+            // character is in no room at all, so this line used to do
+            // world[vnum].light++ on an unrelated live room -- permanently, on
+            // every rent-load of a lit light source, because the matching
+            // decrement in detach_equipment() below later fires against the
+            // room the character is REALLY in. On a large world the stale vnum
+            // indexes a real slot, so the corruption is silent.
+            //
+            // The correctly-lit room is not lost by skipping this: char_to_room()
+            // (placement.cpp:349-353) runs its own equipment sweep and bumps the
+            // light for every value[2] && value[3] item the character wears, at
+            // the room it actually places them in. The value[3] normalization
+            // above stays OUTSIDE this guard precisely so that sweep still sees
+            // the light as ON.
+            //
+            // Exactly ONE resolver call, as before: room_of(ch) is dispatched
+            // once and reused, so room_data::operator[]'s mudlog/fallback
+            // behavior for an out-of-range id is unchanged in count and in kind
+            // (the no-hoisting rule bars collapsing N calls into 1; this is
+            // still 1). See is_linked_into_room() above for why the occupant
+            // chain is the discriminator and what it costs.
+            //
+            // detach_equipment()'s mirror image below is deliberately NOT given
+            // the same treatment: its four production callers were audited and
+            // none can run during the load window (objsave.cpp:853 and :1086 are
+            // extract_followers()/Crash_rentsave(), both on characters still in
+            // a room), so the attach/detach pair stays balanced.
+            room_data* room = room_of(ch);
+            if (is_linked_into_room(room, ch))
+                room->light++;
         }
     }
 

@@ -1229,6 +1229,13 @@ TEST(AttachEquipmentTest, InvokesAffectModifyAndAffectTotalForTheItemsOwnAffects
     EXPECT_EQ(character.points.OB, 9);
 }
 
+// EXPECTED DRIFT, LS-3a T2 tranche 2e-beta (R7/R8): this test previously set
+// only character.in_room and left room.people null -- a state no production
+// path produces for a placed character, since char_to_room() always splices
+// AND stamps. The ITEM_LIGHT arm now asks the occupant chain rather than the
+// location field alone (see equipment.cpp's is_linked_into_room()), so the
+// fixture is corrected to build the state it always meant: a character who is
+// really IN the room. The assertions are unchanged.
 TEST(AttachEquipmentTest, LightSlotTurnsOnAndIncrementsRoomLightWhenCharacterIsInARoom)
 {
     StubWorldResolvers resolvers;
@@ -1239,6 +1246,8 @@ TEST(AttachEquipmentTest, LightSlotTurnsOnAndIncrementsRoomLightWhenCharacterIsI
 
     char_data character = make_equipment_test_npc();
     character.in_room = 1;
+    character.next_in_room = nullptr;
+    room.people = &character;
     obj_data lamp { };
     lamp.obj_flags.type_flag = ITEM_LIGHT;
     lamp.obj_flags.weight = 2;
@@ -1249,6 +1258,82 @@ TEST(AttachEquipmentTest, LightSlotTurnsOnAndIncrementsRoomLightWhenCharacterIsI
 
     EXPECT_EQ(lamp.obj_flags.value[3], 1); // turned on
     EXPECT_EQ(room.light, 1);
+}
+
+// The same wearer, one place further down a multi-occupant chain: the TAIL
+// occupant still gets the bump. This exists because the cheap O(1) shapes of
+// "is this character in this room?" (`ch->next_in_room != nullptr ||
+// room->people == ch`) are all wrong for exactly this character, and a
+// regression to one of them would be invisible to the single-occupant test
+// above.
+TEST(AttachEquipmentTest, LightSlotIncrementsRoomLightForTheTailOccupantOfACrowdedRoom)
+{
+    StubWorldResolvers resolvers;
+    room_data room = make_stub_room();
+    room.light = 0;
+    resolvers.room = &room;
+    ScopedWorldResolverHooks hooks(resolvers);
+
+    char_data bystander = make_equipment_test_npc();
+    char_data character = make_equipment_test_npc();
+    bystander.in_room = 1;
+    character.in_room = 1;
+    room.people = &bystander;
+    bystander.next_in_room = &character;
+    character.next_in_room = nullptr;
+
+    obj_data lamp { };
+    lamp.obj_flags.type_flag = ITEM_LIGHT;
+    lamp.obj_flags.weight = 2;
+    lamp.obj_flags.value[2] = 10;
+    lamp.obj_flags.value[3] = 0;
+
+    attach_equipment(&character, &lamp, WEAR_LIGHT);
+
+    EXPECT_EQ(lamp.obj_flags.value[3], 1);
+    EXPECT_EQ(room.light, 1);
+}
+
+// R7/R8, the fix itself (LS-3a T2 tranche 2e-beta -- A NAMED O-2 BEHAVIOR
+// CHANGE). THE LOAD WINDOW: Crash_load() equips every worn item while
+// ch->in_room still holds the raw persisted room VNUM and the character is in
+// no room's occupant chain at all. The old guard saw a non-NOWHERE integer,
+// believed it, and did world[vnum].light++ on an unrelated live room --
+// permanently, on every rent-load of a lit light source, because the matching
+// decrement later fires against the room the character is really in.
+//
+// The light is NOT lost: value[3] is still normalized to ON here (asserted
+// below), which is exactly what char_to_room()'s own equipment sweep needs in
+// order to bump the RIGHT room a moment later. CharToRoomTest.IncrementsRoom
+// LightForAnEquippedLitLightSource above pins that other half.
+TEST(AttachEquipmentTest, LightSlotDoesNotBumpTheRoomForACharacterWhoIsNotInItsOccupantChain)
+{
+    StubWorldResolvers resolvers;
+    room_data room = make_stub_room();
+    room.light = 0;
+    // Nobody is in this room -- the mid-Crash_load shape, where the stale VNUM
+    // in the location field happens to index a real, occupied-by-someone-else
+    // room on a large world.
+    room.people = nullptr;
+    resolvers.room = &room;
+    ScopedWorldResolverHooks hooks(resolvers);
+
+    char_data character = make_equipment_test_npc();
+    character.in_room = 1; // a raw persisted VNUM at this point, not an index
+    character.next_in_room = nullptr;
+
+    obj_data lamp { };
+    lamp.obj_flags.type_flag = ITEM_LIGHT;
+    lamp.obj_flags.weight = 2;
+    lamp.obj_flags.value[2] = 10;
+    lamp.obj_flags.value[3] = 0;
+
+    attach_equipment(&character, &lamp, WEAR_LIGHT);
+
+    // Turned ON, so char_to_room()'s sweep will count it at the real room...
+    EXPECT_EQ(lamp.obj_flags.value[3], 1);
+    // ...and the room the stale value pointed at was left alone.
+    EXPECT_EQ(room.light, 0);
 }
 
 TEST(AttachEquipmentTest, LightSlotHasNoRoomEffectWhenCharacterIsNowhere)

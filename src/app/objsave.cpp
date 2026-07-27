@@ -693,9 +693,9 @@ void Crash_collect_followers(struct char_data* ch, std::vector<objects_json::Fol
 // Applies decoded follower data (from JSON, legacy binary, or account-staged
 // data -- source no longer matters by this point) to the character,
 // spawning each follower mob and its equipment. Mirrors the old
-// Crash_follower_load(ch, fp) body exactly, just iterating
+// Crash_follower_load(ch, fp) body, just iterating
 // `data.followers`/`follower.objects` vectors instead of reading a FILE*
-// stream.
+// stream -- except the placement-index fix commented inside the loop.
 void Crash_follower_load(struct char_data* ch, const objects_json::ObjectSaveData& data)
 {
     struct char_data *mob, *mount;
@@ -707,7 +707,15 @@ void Crash_follower_load(struct char_data* ch, const objects_json::ObjectSaveDat
         if ((tmp = real_mobile(fol_elem.fol_vnum)) < 0)
             break;
         mob = read_mobile(tmp, REAL);
-        char_to_room(mob, location_of(ch));
+        // Place the follower at the rnum calc_load_room() already resolved
+        // (stashed in specials2.load_room at the top of this load) -- the
+        // same index the owner is about to be placed at by
+        // load_character(). location_of(ch) here still holds the RAW
+        // persisted load_room, a VNUM on the ordinary quit/rent path;
+        // using it as a world[] index sent followers to world[vnum] while
+        // the owner went to world[real_room(vnum)]. See
+        // load_room_placement_tests.cpp.
+        char_to_room(mob, ch->specials2.load_room);
 
         for (const objects_json::ObjectRecord& object : fol_elem.objects) {
             if (object.wear_pos > MAX_WEAR || object.wear_pos < 0)
@@ -799,7 +807,9 @@ void Crash_follower_load(struct char_data* ch, const objects_json::ObjectSaveDat
         add_follower(mob, ch, FOLLOW_MOVE);
         if ((tmp = real_mobile(fol_elem.mount_vnum)) > 0) {
             mount = read_mobile(tmp, REAL);
-            char_to_room(mount, location_of(ch));
+            // Same resolved-rnum placement as the follower above -- not
+            // the raw persisted value still sitting in in_room.
+            char_to_room(mount, ch->specials2.load_room);
             add_follower(mount, mob, FOLLOW_MOVE);
         }
     }
@@ -1543,7 +1553,17 @@ void Emergency_save(void)
     for (d = descriptor_list; d; d = d->next) {
         if ((d->connected == CON_PLYNG) && !IS_NPC(d->character)) {
             Crash_crashsave(d->character);
-            save_char(d->character, r_mortal_start_room[GET_RACE(d->character)], 0);
+            // save_char() persists its argument verbatim, and the on-disk
+            // contract for specials2.load_room is a room VNUM ("THE
+            // LOAD-ROOM CHECKPOINT", convert_main.cpp).
+            // r_mortal_start_room[] holds RNUMs (db_world.cpp:129), so
+            // convert before persisting: an rnum on disk sends the next
+            // login through real_room(rnum), which lands in whatever
+            // unrelated room carries that vnum (or falls back to the start
+            // room) -- and Emergency_save runs exactly when no 30-second
+            // autosave will follow to rewrite the field.
+            save_char(d->character,
+                room_by_id_total(r_mortal_start_room[GET_RACE(d->character)])->number, 0);
         }
     }
 }

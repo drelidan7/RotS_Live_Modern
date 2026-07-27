@@ -17,6 +17,7 @@
 #include "rots/core/character.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
+#include "test_placement.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
@@ -43,15 +44,28 @@ struct ClosingTimeContext {
     char_data keeper{};
     char_data patron_one{};
     char_data patron_two{};
-    char_data *original_people = nullptr;
+
+    // One helper per room (LS-3a T3 idiom rule 10, test_placement.h): room 0
+    // publishes keeper -> patron_one -> patron_two, the exact head-first order
+    // this fixture used to build by hand, and room 1 publishes EMPTY -- the
+    // explicitly-empty-room shape, standing in for the `world[room].people =
+    // nullptr` the constructor loop below used to do for both rooms. Room 1's
+    // helper is declared LAST so it unwinds FIRST, putting room 1's head back
+    // before room 0's helper takes the three characters closing_time()
+    // relocated there back out; between them they also retire the dtor's own
+    // `world[1].people = nullptr` and its three unlinks, and they additionally
+    // unlink patron_two from patron_one, which the hand-rolled teardown left
+    // linked.
+    ScopedRoomOccupants room0_occupants{
+        &test_world.room(), 0, {&keeper, &patron_one, &patron_two}};
+    ScopedRoomOccupants room1_occupants{room_by_id_total(1), 1, {}};
 
     ClosingTimeContext() {
         for (int room = 0; room < 2; ++room) {
-            world[room].room_flags = 0;
-            world[room].sector_type = 0;
-            world[room].people = nullptr;
+            room_by_id_total(room)->room_flags = 0;
+            room_by_id_total(room)->sector_type = 0;
             for (int dir = 0; dir < NUM_OF_DIRS; ++dir) {
-                world[room].dir_option[dir] = nullptr;
+                room_by_id_total(room)->dir_option[dir] = nullptr;
             }
         }
 
@@ -69,17 +83,7 @@ struct ClosingTimeContext {
         exit_to_room1.exit_info = EX_ISDOOR;
         exit_to_room1.to_room = 1;
         exit_to_room1.keyword = const_cast<char *>("door");
-        world[0].dir_option[door_direction] = &exit_to_room1;
-
-        original_people = test_world.room().people;
-
-        keeper.in_room = 0;
-        patron_one.in_room = 0;
-        patron_two.in_room = 0;
-        keeper.next_in_room = &patron_one;
-        patron_one.next_in_room = &patron_two;
-        patron_two.next_in_room = nullptr;
-        test_world.room().people = &keeper;
+        room_by_id_total(0)->dir_option[door_direction] = &exit_to_room1;
 
         // player.race stays at its value-initialized default (0): neither
         // RACE_GOOD nor RACE_EVIL of GET_RACE(ch)==0 is true, so
@@ -89,16 +93,11 @@ struct ClosingTimeContext {
         // dereference zone_by_id()'s nullptr-on-invalid-zone result.
     }
 
+    // Only the stack exit pointer is left to clear by hand: both rooms' heads,
+    // all three unlinks and all three NOWHERE de-locations are the two
+    // ScopedRoomOccupants members, which unwind immediately after this body.
     ~ClosingTimeContext() {
-        test_world.room().people = original_people;
-        world[0].dir_option[door_direction] = nullptr;
-        world[1].people = nullptr;
-        keeper.next_in_room = nullptr;
-        patron_one.next_in_room = nullptr;
-        patron_two.next_in_room = nullptr;
-        keeper.in_room = NOWHERE;
-        patron_one.in_room = NOWHERE;
-        patron_two.in_room = NOWHERE;
+        room_by_id_total(0)->dir_option[door_direction] = nullptr;
     }
 };
 

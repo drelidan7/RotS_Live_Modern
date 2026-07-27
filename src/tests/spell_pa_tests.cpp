@@ -6,6 +6,7 @@
 #include "rots/core/types.h"
 #include "../utils.h"
 #include "test_char_cleanup.h"
+#include "test_placement.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
@@ -31,12 +32,6 @@ descriptor_data make_descriptor()
     descriptor.bufptr = 0;
     descriptor.bufspace = SMALL_BUFSIZE - 1;
     return descriptor;
-}
-
-void attach_character_to_room(char_data* character, int room_rnum, char_data* next_in_room)
-{
-    character->in_room = room_rnum;
-    character->next_in_room = next_in_room;
 }
 
 void initialize_player_character(char_data* character, const char* name)
@@ -76,9 +71,13 @@ TEST(SpellParser, SaySpellUsesMagicColorForColorEnabledObservers)
     SET_BIT(PRF_FLAGS(&observer), PRF_COLOR);
     set_colornum(&observer, COLOR_MAGIC, CBBLU);
 
-    attach_character_to_room(&observer, 0, nullptr);
-    attach_character_to_room(&caster, 0, &observer);
-    world[0].people = &caster;
+    // Caster at the head, observer behind it -- the chain the two
+    // attach_character_to_room() calls plus the world[0].people write used to
+    // build by hand, in the same order (LS-3a T3, test_placement.h). Declared
+    // after initialize_player_character(), whose clear_char() would otherwise
+    // wipe both the link and the location (idiom rule 9), and after the two
+    // ScopedClearCharFields so it unwinds before them.
+    ScopedRoomOccupants occupants { &test_world.room(), 0, { &caster, &observer } };
 
     say_spell(&caster, SPELL_MAGIC_MISSILE);
 
@@ -117,9 +116,13 @@ TEST(SpellParser, MagicRoomMessageOmitsColorCodesForObserversWithoutColorEnabled
     REMOVE_BIT(PRF_FLAGS(&observer), PRF_COLOR);
     set_colornum(&observer, COLOR_MAGIC, CBBLU);
 
-    attach_character_to_room(&observer, 0, nullptr);
-    attach_character_to_room(&caster, 0, &observer);
-    world[0].people = &caster;
+    // Caster at the head, observer behind it -- the chain the two
+    // attach_character_to_room() calls plus the world[0].people write used to
+    // build by hand, in the same order (LS-3a T3, test_placement.h). Declared
+    // after initialize_player_character(), whose clear_char() would otherwise
+    // wipe both the link and the location (idiom rule 9), and after the two
+    // ScopedClearCharFields so it unwinds before them.
+    ScopedRoomOccupants occupants { &test_world.room(), 0, { &caster, &observer } };
 
     send_magic_room_message(&caster, "$n begins quietly muttering some strange, powerful words.\n\r");
 
@@ -144,9 +147,13 @@ TEST(SpellParser, MagicRoomMessageAcceptsBoundedTextAndStopsAtEmbeddedNull)
     ScopedClearCharFields observer_cleanup { observer };
     observer.desc = &observer_descriptor;
 
-    attach_character_to_room(&observer, 0, nullptr);
-    attach_character_to_room(&caster, 0, &observer);
-    world[0].people = &caster;
+    // Caster at the head, observer behind it -- the chain the two
+    // attach_character_to_room() calls plus the world[0].people write used to
+    // build by hand, in the same order (LS-3a T3, test_placement.h). Declared
+    // after initialize_player_character(), whose clear_char() would otherwise
+    // wipe both the link and the location (idiom rule 9), and after the two
+    // ScopedClearCharFields so it unwinds before them.
+    ScopedRoomOccupants occupants { &test_world.room(), 0, { &caster, &observer } };
 
     const std::array<char, 20> message {
         '$', 'n', ' ', 'c', 'a', 's', 't', 's', '.', '\n', '\r', '\0',

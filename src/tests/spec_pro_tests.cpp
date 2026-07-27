@@ -101,9 +101,9 @@ struct GuildPracticeContext {
         // handle_pracs()'s act(..., TO_NOTVICT) call resolves its recipient
         // list via world[host->in_room].people (comm.cpp::act()) whenever
         // host->in_room != NOWHERE; this suite has no world/room fixture, so
-        // pin host.in_room to NOWHERE to keep act() on its early "no
+        // pin host's location to NOWHERE to keep act() on its early "no
         // recipient" return instead of indexing an unallocated world[].
-        host.in_room = NOWHERE;
+        set_location(&host, NOWHERE);
     }
 };
 
@@ -260,10 +260,16 @@ struct MobRangerContext {
     char_data occupant{};
     char host_name[16] = "test_ranger";
     char occupant_name[16] = "test_target";
+    // host at the head, its ambush target behind it -- the head-first chain
+    // this fixture used to publish by hand, and the order the converted
+    // occupants(room_of(host)) walk visits them in (LS-3a T3,
+    // test_placement.h). Declared LAST so it unwinds before the characters it
+    // manages and before the ScopedTestWorld whose room it points into.
+    ScopedRoomOccupants occupants{&test_world.room(), 0, {&host, &occupant}};
 
     MobRangerContext()
     {
-        world[0].light = 1; // Unlit rooms fail CAN_SEE's darkness check.
+        room_by_id_total(0)->light = 1; // Unlit rooms fail CAN_SEE's darkness check.
         host.specials2.act = MOB_ISNPC;
         host.player.name = host_name;
         // POSITION_FIGHTING skips the `GET_POS(host) < POSITION_FIGHTING ->
@@ -272,21 +278,15 @@ struct MobRangerContext {
         // wander-movement block (both well past the ambush check) out of
         // this rider's reach.
         host.specials.position = POSITION_FIGHTING;
-        host.in_room = 0;
-        host.next_in_room = &occupant;
 
         occupant.player.name = occupant_name;
-        occupant.in_room = 0;
-        occupant.next_in_room = nullptr;
-
-        world[0].people = &host;
     }
 
-    ~MobRangerContext()
-    {
-        world[0].people = nullptr;
-        host.next_in_room = nullptr;
-    }
+    // The head reset and the unlink this destructor used to perform are now
+    // `occupants`, which unwinds immediately after it -- and it restores the
+    // SAVED head rather than hard-nulling, which ScopedTestWorld's reset makes
+    // byte-identical here.
+    ~MobRangerContext() = default;
 };
 
 } // namespace
@@ -368,11 +368,13 @@ struct MobRangerNewContext {
     // branch reset .light at construction, so this now also serves to undo the
     // value this fixture forces on.
     byte original_light = 0;
+    // host at the head, its mark behind it -- as in MobRangerContext above.
+    ScopedRoomOccupants occupants{&test_world.room(), 0, {&host, &occupant}};
 
     MobRangerNewContext()
     {
-        original_light = world[0].light;
-        world[0].light = 1;
+        original_light = room_by_id_total(0)->light;
+        room_by_id_total(0)->light = 1;
         // MOB_SENTINEL keeps the unrelated final wander-movement block
         // (:2230, past every path this rider drives) out of reach
         // regardless of position.
@@ -381,21 +383,16 @@ struct MobRangerNewContext {
         host.specials.position = POSITION_FIGHTING;
         host.abilities.hit = 500;
         host.tmpabilities.hit = 500; // well above wimpy_health_limit (max/5) -- is_wimpy stays 0.
-        host.in_room = 0;
-        host.next_in_room = &occupant;
 
         occupant.player.name = occupant_name;
-        occupant.in_room = 0;
-        occupant.next_in_room = nullptr;
-
-        world[0].people = &host;
     }
 
+    // The light restore is not location state and stays here; the head reset
+    // and the unlink are `occupants`, which unwinds immediately after this
+    // body -- same order as before.
     ~MobRangerNewContext()
     {
-        world[0].light = original_light;
-        world[0].people = nullptr;
-        host.next_in_room = nullptr;
+        room_by_id_total(0)->light = original_light;
     }
 };
 
@@ -517,20 +514,30 @@ struct VampireKillerContext {
     // as the only cross-test guard.
     int original_number[3] = { 0, 0, 0 };
     byte original_light[3] = { 0, 0, 0 };
+    // One helper per room (LS-3a T3 idiom rule 10, test_placement.h), in the
+    // order this fixture used to publish them by hand: room 0 gets
+    // host -> bystander_home (host-first, the order vampire_killer's self-room
+    // walk sees), and the two fixed rooms each get their single bystander.
+    // Declared LAST so they unwind before the characters they manage and
+    // before the ScopedTestWorld whose rooms they point into; the destructor
+    // body's number/light restores still run first, exactly as before.
+    ScopedRoomOccupants room0_occupants{&test_world.room(), 0, {&host, &bystander_home}};
+    ScopedRoomOccupants room2_occupants{room_by_id_total(2), 2, {&bystander_15399}};
+    ScopedRoomOccupants room1_occupants{room_by_id_total(1), 1, {&bystander_15398}};
 
     VampireKillerContext()
     {
         for (int room = 0; room < 3; ++room) {
-            original_number[room] = world[room].number;
-            original_light[room] = world[room].light;
+            original_number[room] = room_by_id_total(room)->number;
+            original_light[room] = room_by_id_total(room)->light;
         }
 
-        world[0].number = 1; // host's own room -- NOT 15398/15399, see block comment above.
-        world[1].number = 15398;
-        world[2].number = 15399; // == top_of_world -- see the room_by_id() ban note above.
-        world[0].light = 1;
-        world[1].light = 1;
-        world[2].light = 1;
+        room_by_id_total(0)->number = 1; // host's own room -- NOT 15398/15399, see block comment above.
+        room_by_id_total(1)->number = 15398;
+        room_by_id_total(2)->number = 15399; // == top_of_world -- see the room_by_id() ban note above.
+        room_by_id_total(0)->light = 1;
+        room_by_id_total(1)->light = 1;
+        room_by_id_total(2)->light = 1;
 
         host.specials2.act = MOB_ISNPC;
         host.player.name = host_name;
@@ -546,42 +553,26 @@ struct VampireKillerContext {
         // own, so this is a pure visibility-fixture fix with no effect on
         // which branch the function takes.
         host.specials.position = POSITION_STANDING;
-        host.in_room = 0;
-        host.next_in_room = &bystander_home;
 
         bystander_home.specials2.act = MOB_ISNPC; // excluded by the walk's `!IS_NPC()` filter.
         bystander_home.player.name = bystander_home_name;
         bystander_home.player.short_descr = bystander_home_name;
-        bystander_home.in_room = 0;
-        bystander_home.next_in_room = nullptr;
-        world[0].people = &host;
 
         bystander_15399.specials2.act = MOB_ISNPC;
         bystander_15399.player.name = bystander_15399_name;
         bystander_15399.player.short_descr = bystander_15399_name;
-        bystander_15399.in_room = 2;
-        bystander_15399.next_in_room = nullptr;
-        world[2].people = &bystander_15399;
 
         bystander_15398.specials2.act = MOB_ISNPC;
         bystander_15398.player.name = bystander_15398_name;
         bystander_15398.player.short_descr = bystander_15398_name;
-        bystander_15398.in_room = 1;
-        bystander_15398.next_in_room = nullptr;
-        world[1].people = &bystander_15398;
     }
 
     ~VampireKillerContext()
     {
         for (int room = 0; room < 3; ++room) {
-            world[room].number = original_number[room];
-            world[room].light = original_light[room];
+            room_by_id_total(room)->number = original_number[room];
+            room_by_id_total(room)->light = original_light[room];
         }
-
-        world[0].people = nullptr;
-        world[1].people = nullptr;
-        world[2].people = nullptr;
-        host.next_in_room = nullptr;
     }
 };
 
@@ -635,7 +626,7 @@ TEST(SpecProVampireKiller, ExcludesNpcBystandersInAllThreeRoomsAndTakesNoAction)
         vampire_killer(&context.host, &context.host, 0, mutable_arg(""), SPECIAL_SELF, nullptr);
 
     EXPECT_EQ(result, 0);
-    EXPECT_EQ(context.host.in_room, 0)
+    EXPECT_EQ(location_of(&context.host), 0)
         << "The host should never have moved -- all three walks correctly found no eligible "
            "(non-NPC) victim in any of the three rooms.";
     clear_test_random_values();
@@ -658,7 +649,7 @@ TEST(SpecProVampireKiller, FindsAndDispatchesMoveWhenRoom15399HasAnEligibleVicti
     // VampireKillerContext's own dtor restores world[0].number from
     // original_number[0], captured before its constructor's own `= 1`
     // assignment, so this override is safe to leave unrestored here.
-    world[0].number = 15395;
+    room_by_id_total(0)->number = 15395;
 
     // CAN_GO() needs a real, open exit at EAST or the found branch's
     // dispatch would be silently skipped (indistinguishable from "not
@@ -666,12 +657,12 @@ TEST(SpecProVampireKiller, FindsAndDispatchesMoveWhenRoom15399HasAnEligibleVicti
     // below before the context that owns world[0] is torn down (the O-I2
     // dangling-stack-exit-pointer discipline this branch's fixtures now
     // follow throughout).
-    room_direction_data* const original_dir_option_east = world[0].dir_option[EAST];
+    room_direction_data* const original_dir_option_east = room_by_id_total(0)->dir_option[EAST];
     room_direction_data east_exit{};
     east_exit.exit_info = 0; // not closed/broken.
     east_exit.to_room = 0; // never actually taken -- the move hook below intercepts the
                             // dispatch before the real do_move() body would run.
-    world[0].dir_option[EAST] = &east_exit;
+    room_by_id_total(0)->dir_option[EAST] = &east_exit;
 
     ScopedRecordingSpecProMoveHook hook;
     g_recorded_spec_pro_move_call = RecordedSpecProMoveCall{};
@@ -683,7 +674,7 @@ TEST(SpecProVampireKiller, FindsAndDispatchesMoveWhenRoom15399HasAnEligibleVicti
     const int result =
         vampire_killer(&context.host, &context.host, 0, mutable_arg(""), SPECIAL_SELF, nullptr);
 
-    world[0].dir_option[EAST] = original_dir_option_east;
+    room_by_id_total(0)->dir_option[EAST] = original_dir_option_east;
     clear_test_random_values();
 
     EXPECT_EQ(result, 0);
@@ -702,13 +693,13 @@ TEST(SpecProVampireKiller, FindsAndDispatchesMoveWhenRoom15398HasAnEligibleVicti
     VampireKillerContext context;
     context.bystander_15398.specials2.act = 0; // PC now -- not excluded by !IS_NPC().
 
-    world[0].number = 15395; // Same reasoning as the room-15399 positive control above.
+    room_by_id_total(0)->number = 15395; // Same reasoning as the room-15399 positive control above.
 
-    room_direction_data* const original_dir_option_east = world[0].dir_option[EAST];
+    room_direction_data* const original_dir_option_east = room_by_id_total(0)->dir_option[EAST];
     room_direction_data east_exit{};
     east_exit.exit_info = 0;
     east_exit.to_room = 0;
-    world[0].dir_option[EAST] = &east_exit;
+    room_by_id_total(0)->dir_option[EAST] = &east_exit;
 
     ScopedRecordingSpecProMoveHook hook;
     g_recorded_spec_pro_move_call = RecordedSpecProMoveCall{};
@@ -719,7 +710,7 @@ TEST(SpecProVampireKiller, FindsAndDispatchesMoveWhenRoom15398HasAnEligibleVicti
     const int result =
         vampire_killer(&context.host, &context.host, 0, mutable_arg(""), SPECIAL_SELF, nullptr);
 
-    world[0].dir_option[EAST] = original_dir_option_east;
+    room_by_id_total(0)->dir_option[EAST] = original_dir_option_east;
     clear_test_random_values();
 
     EXPECT_EQ(result, 0);
@@ -785,16 +776,25 @@ struct VampireHuntressContext {
     char host_name[16] = "test_huntress";
     char bystander_name[16] = "test_watchman";
     int saved_sunlight = 0;
+    // One helper per room (idiom rule 10): host alone in its starting room,
+    // the NPC bystander alone in the destination the wander block moves host
+    // into. The destination's helper is declared LAST so it unwinds FIRST,
+    // putting room 1's head back before room 0's helper takes host -- whom
+    // char_to_room() re-seated into room 1's chain mid-test -- back out. It
+    // also unlinks the bystander, which the hand-rolled teardown left pointing
+    // at host, and de-locates host to NOWHERE, which it never did.
+    ScopedRoomOccupants room0_occupants{&test_world.room(), 0, {&host}};
+    ScopedRoomOccupants room1_occupants{room_by_id_total(1), 1, {&bystander}};
 
     VampireHuntressContext()
     {
         saved_sunlight = weather_info.sunlight;
         weather_info.sunlight = SUN_RISE;
 
-        world[0].number = 1; // host's starting room -- arbitrary (SUN_RISE overrides to_room).
-        world[1].number = 15379; // real_room(15379) destination -- == top_of_world.
-        world[0].light = 1;
-        world[1].light = 1;
+        room_by_id_total(0)->number = 1; // host's starting room -- arbitrary (SUN_RISE overrides to_room).
+        room_by_id_total(1)->number = 15379; // real_room(15379) destination -- == top_of_world.
+        room_by_id_total(0)->light = 1;
+        room_by_id_total(1)->light = 1;
 
         host.specials2.act = MOB_ISNPC;
         host.player.name = host_name;
@@ -802,24 +802,18 @@ struct VampireHuntressContext {
         // Must NOT be POSITION_FIGHTING (required to enter the day/night
         // wander block at all: `GET_POS(host) != POSITION_FIGHTING`).
         host.specials.position = POSITION_STANDING;
-        host.in_room = 0;
-        host.next_in_room = nullptr;
-        world[0].people = &host;
 
         bystander.specials2.act = MOB_ISNPC; // excluded by the walk's `!IS_NPC()` filter.
         bystander.player.name = bystander_name;
         bystander.player.short_descr = bystander_name;
-        bystander.in_room = 1;
-        bystander.next_in_room = nullptr;
-        world[1].people = &bystander;
     }
 
+    // The weather restore is not location state and stays here; both rooms'
+    // heads and the unlinks are the two ScopedRoomOccupants members, which
+    // unwind immediately after this body.
     ~VampireHuntressContext()
     {
         weather_info.sunlight = saved_sunlight;
-        world[0].people = nullptr;
-        world[1].people = nullptr;
-        host.next_in_room = nullptr;
     }
 };
 
@@ -837,7 +831,7 @@ TEST(SpecProVampireHuntress, ExcludesAnNpcBystanderInTheDestinationRoomAfterTheN
         &context.host, nullptr, 0, mutable_arg(""), SPECIAL_SELF, nullptr);
 
     EXPECT_EQ(result, 0);
-    EXPECT_EQ(context.host.in_room, 1)
+    EXPECT_EQ(location_of(&context.host), 1)
         << "Expected the day/night wander block's real_room(15379)/char_to_room() call to have "
            "moved the host into the destination room before the converted occupants(room_of("
            "host)) walk ran.";
@@ -1061,8 +1055,8 @@ struct FerryCaptainContext {
         FerryCabinLayout layout = FerryCabinLayout::kLoadedSourceAndDestination,
         int destination_stop_time = 0)
     {
-        world[kFerrySourceCabin].light = kSourceCabinLight;
-        world[kFerryDestinationCabin].light = kDestinationCabinLight;
+        room_by_id_total(kFerrySourceCabin)->light = kSourceCabinLight;
+        room_by_id_total(kFerryDestinationCabin)->light = kDestinationCabinLight;
 
         captain.specials2.act = MOB_ISNPC;
         captain.player.name = captain_name;
@@ -1104,21 +1098,21 @@ struct FerryCaptainContext {
 
         switch (layout) {
         case FerryCabinLayout::kLoadedSourceAndDestination:
-            source_cabin.emplace(&world[kFerrySourceCabin], kFerrySourceCabin,
+            source_cabin.emplace(room_by_id_total(kFerrySourceCabin), kFerrySourceCabin,
                 std::initializer_list<char_data*> { &captain, &passenger, &stowaway });
-            destination_cabin.emplace(&world[kFerryDestinationCabin], kFerryDestinationCabin,
+            destination_cabin.emplace(room_by_id_total(kFerryDestinationCabin), kFerryDestinationCabin,
                 std::initializer_list<char_data*> { &resident });
             break;
         case FerryCabinLayout::kLoadedSourceEmptyDestination:
-            source_cabin.emplace(&world[kFerrySourceCabin], kFerrySourceCabin,
+            source_cabin.emplace(room_by_id_total(kFerrySourceCabin), kFerrySourceCabin,
                 std::initializer_list<char_data*> { &captain, &passenger, &stowaway });
-            destination_cabin.emplace(&world[kFerryDestinationCabin], kFerryDestinationCabin,
+            destination_cabin.emplace(room_by_id_total(kFerryDestinationCabin), kFerryDestinationCabin,
                 std::initializer_list<char_data*> {});
             break;
         case FerryCabinLayout::kEmptySourceLoadedDestination:
-            source_cabin.emplace(&world[kFerrySourceCabin], kFerrySourceCabin,
+            source_cabin.emplace(room_by_id_total(kFerrySourceCabin), kFerrySourceCabin,
                 std::initializer_list<char_data*> {});
-            destination_cabin.emplace(&world[kFerryDestinationCabin], kFerryDestinationCabin,
+            destination_cabin.emplace(room_by_id_total(kFerryDestinationCabin), kFerryDestinationCabin,
                 std::initializer_list<char_data*> { &resident });
             // Located in the source cabin (ferry_captain() would otherwise
             // re-seat it there through char_to_room()) but deliberately NOT
@@ -1127,14 +1121,14 @@ struct FerryCaptainContext {
             break;
         }
 
-        source_dock.emplace(&world[kFerrySourceDock], kFerrySourceDock,
+        source_dock.emplace(room_by_id_total(kFerrySourceDock), kFerrySourceDock,
             std::initializer_list<char_data*> { &source_dock_watcher });
-        destination_dock.emplace(&world[kFerryDestinationDock], kFerryDestinationDock,
+        destination_dock.emplace(room_by_id_total(kFerryDestinationDock), kFerryDestinationDock,
             std::initializer_list<char_data*> { &destination_dock_watcher });
 
         ferry.item_number = kFerryItemNumber;
-        ferry.in_room = kFerrySourceDock;
-        world[kFerrySourceDock].contents = &ferry;
+        ferry.in_room = kFerrySourceDock;  // LS1-ALLOW: obj-location
+        room_by_id_total(kFerrySourceDock)->contents = &ferry;
 
         saved_captain_data = ferry_captain_data[0];
 
@@ -1168,7 +1162,7 @@ struct FerryCaptainContext {
         // API is char-side only), so unlink them by hand: every one of these is
         // a stack object the fixture linked into a process-global room.
         for (int room = kFerrySourceCabin; room <= kFerryDestinationDock; ++room) {
-            world[room].contents = nullptr;
+            room_by_id_total(room)->contents = nullptr;
         }
         ferry.next_content = nullptr;
         cargo_first.next_content = nullptr;
@@ -1188,18 +1182,18 @@ struct FerryCaptainContext {
     // skip it entirely.
     void load_source_cabin_contents()
     {
-        cargo_first.in_room = kFerrySourceCabin;
+        cargo_first.in_room = kFerrySourceCabin;  // LS1-ALLOW: obj-location
         cargo_first.next_content = &cargo_second;
-        cargo_second.in_room = kFerrySourceCabin;
+        cargo_second.in_room = kFerrySourceCabin;  // LS1-ALLOW: obj-location
         cargo_second.next_content = nullptr;
-        world[kFerrySourceCabin].contents = &cargo_first;
+        room_by_id_total(kFerrySourceCabin)->contents = &cargo_first;
     }
 
     void load_destination_cabin_contents()
     {
-        crate.in_room = kFerryDestinationCabin;
+        crate.in_room = kFerryDestinationCabin;  // LS1-ALLOW: obj-location
         crate.next_content = nullptr;
-        world[kFerryDestinationCabin].contents = &crate;
+        room_by_id_total(kFerryDestinationCabin)->contents = &crate;
     }
 
     // One tick of the captain's route, on the SPECIAL()'s real signature.
@@ -1220,7 +1214,7 @@ TEST(SpecProFerryCaptain, SplicesTheSourceCabinChainAheadOfTheDestinationsAndRes
 
     // Contract items 1/2: source-then-destination order, published at the
     // destination, source head nulled.
-    EXPECT_EQ(world[kFerryDestinationCabin].people, &context.captain);
+    EXPECT_EQ(room_by_id_total(kFerryDestinationCabin)->people, &context.captain);
     EXPECT_EQ(context.captain.next_in_room, &context.passenger);
     EXPECT_EQ(context.passenger.next_in_room, &context.stowaway);
     EXPECT_EQ(context.stowaway.next_in_room, &context.resident)
@@ -1228,7 +1222,7 @@ TEST(SpecProFerryCaptain, SplicesTheSourceCabinChainAheadOfTheDestinationsAndRes
            "before it -- the splice walks the source chain to its tail and links the destination's "
            "old head onto it.";
     EXPECT_EQ(context.resident.next_in_room, nullptr);
-    EXPECT_EQ(world[kFerrySourceCabin].people, nullptr);
+    EXPECT_EQ(room_by_id_total(kFerrySourceCabin)->people, nullptr);
 
     // Contract items 3/7: every member re-stamped, including the destination's
     // own resident (a no-op for it) and the captain (whose trailing cursor
@@ -1239,14 +1233,14 @@ TEST(SpecProFerryCaptain, SplicesTheSourceCabinChainAheadOfTheDestinationsAndRes
     EXPECT_EQ(location_of(&context.resident), kFerryDestinationCabin);
 
     // Contract item 4: the object half follows the identical rule.
-    EXPECT_EQ(world[kFerryDestinationCabin].contents, &context.cargo_first);
+    EXPECT_EQ(room_by_id_total(kFerryDestinationCabin)->contents, &context.cargo_first);
     EXPECT_EQ(context.cargo_first.next_content, &context.cargo_second);
     EXPECT_EQ(context.cargo_second.next_content, &context.crate);
     EXPECT_EQ(context.crate.next_content, nullptr);
-    EXPECT_EQ(world[kFerrySourceCabin].contents, nullptr);
-    EXPECT_EQ(context.cargo_first.in_room, kFerryDestinationCabin);
-    EXPECT_EQ(context.cargo_second.in_room, kFerryDestinationCabin);
-    EXPECT_EQ(context.crate.in_room, kFerryDestinationCabin);
+    EXPECT_EQ(room_by_id_total(kFerrySourceCabin)->contents, nullptr);
+    EXPECT_EQ(context.cargo_first.in_room, kFerryDestinationCabin);  // LS1-ALLOW: obj-location
+    EXPECT_EQ(context.cargo_second.in_room, kFerryDestinationCabin);  // LS1-ALLOW: obj-location
+    EXPECT_EQ(context.crate.in_room, kFerryDestinationCabin);  // LS1-ALLOW: obj-location
 }
 
 TEST(SpecProFerryCaptain, MovesTheFerryObjectToTheNextDockAndAdvancesTheRouteMarker) {
@@ -1254,9 +1248,9 @@ TEST(SpecProFerryCaptain, MovesTheFerryObjectToTheNextDockAndAdvancesTheRouteMar
 
     EXPECT_EQ(context.tick(), TRUE);
 
-    EXPECT_EQ(context.ferry.in_room, kFerryDestinationDock);
-    EXPECT_EQ(world[kFerryDestinationDock].contents, &context.ferry);
-    EXPECT_EQ(world[kFerrySourceDock].contents, nullptr);
+    EXPECT_EQ(context.ferry.in_room, kFerryDestinationDock);  // LS1-ALLOW: obj-location
+    EXPECT_EQ(room_by_id_total(kFerryDestinationDock)->contents, &context.ferry);
+    EXPECT_EQ(room_by_id_total(kFerrySourceDock)->contents, nullptr);
     EXPECT_EQ(ferry_captain_data[0].marker, 1);
     EXPECT_EQ(ferry_captain_data[0].timer, 0)
         << "timer is reloaded from stop_time[] at the NEW marker, which this fixture leaves at 0.";
@@ -1272,8 +1266,8 @@ TEST(SpecProFerryCaptain, PerformsNoLightOrZonePowerBookkeepingWhileRelocatingTh
     // Contract item 6. char_to_room()/detach_char_from_room() would have moved
     // both of these; the manual splice deliberately moves neither, which is the
     // single most load-bearing difference between it and the real primitives.
-    EXPECT_EQ(world[kFerrySourceCabin].light, kSourceCabinLight);
-    EXPECT_EQ(world[kFerryDestinationCabin].light, kDestinationCabinLight);
+    EXPECT_EQ(room_by_id_total(kFerrySourceCabin)->light, kSourceCabinLight);
+    EXPECT_EQ(room_by_id_total(kFerryDestinationCabin)->light, kDestinationCabinLight);
     EXPECT_EQ(context.zone_table_owner.zone().white_power, 0)
         << "Two of the relocated occupants are non-NPC RACE_GOOD characters, so char_to_room() "
            "would have credited their char_power() to the destination zone.";
@@ -1333,19 +1327,19 @@ TEST(SpecProFerryCaptain, MovesTheWholeSourceChainIntoAnEmptyDestinationCabinAnd
 
     EXPECT_EQ(context.tick(), TRUE);
 
-    EXPECT_EQ(world[kFerryDestinationCabin].people, &context.captain);
+    EXPECT_EQ(room_by_id_total(kFerryDestinationCabin)->people, &context.captain);
     EXPECT_EQ(context.captain.next_in_room, &context.passenger);
     EXPECT_EQ(context.passenger.next_in_room, &context.stowaway);
     EXPECT_EQ(context.stowaway.next_in_room, nullptr)
         << "With nothing already in the destination, the arriving chain's tail keeps its null "
            "terminator rather than being linked onto a pre-existing head.";
-    EXPECT_EQ(world[kFerrySourceCabin].people, nullptr);
+    EXPECT_EQ(room_by_id_total(kFerrySourceCabin)->people, nullptr);
     EXPECT_EQ(location_of(&context.stowaway), kFerryDestinationCabin);
 
-    EXPECT_EQ(world[kFerryDestinationCabin].contents, &context.cargo_first);
+    EXPECT_EQ(room_by_id_total(kFerryDestinationCabin)->contents, &context.cargo_first);
     EXPECT_EQ(context.cargo_second.next_content, nullptr);
-    EXPECT_EQ(world[kFerrySourceCabin].contents, nullptr);
-    EXPECT_EQ(context.cargo_second.in_room, kFerryDestinationCabin);
+    EXPECT_EQ(room_by_id_total(kFerrySourceCabin)->contents, nullptr);
+    EXPECT_EQ(context.cargo_second.in_room, kFerryDestinationCabin);  // LS1-ALLOW: obj-location
 }
 
 TEST(SpecProFerryCaptain, LeavesADestinationCabinIntactWhenTheSourceCabinsChainIsEmpty) {
@@ -1360,14 +1354,14 @@ TEST(SpecProFerryCaptain, LeavesADestinationCabinIntactWhenTheSourceCabinsChainI
 
     EXPECT_EQ(context.tick(), TRUE);
 
-    EXPECT_EQ(world[kFerryDestinationCabin].people, &context.resident);
+    EXPECT_EQ(room_by_id_total(kFerryDestinationCabin)->people, &context.resident);
     EXPECT_EQ(context.resident.next_in_room, nullptr);
     EXPECT_EQ(location_of(&context.resident), kFerryDestinationCabin);
-    EXPECT_EQ(world[kFerrySourceCabin].people, nullptr);
+    EXPECT_EQ(room_by_id_total(kFerrySourceCabin)->people, nullptr);
 
-    EXPECT_EQ(world[kFerryDestinationCabin].contents, &context.crate);
+    EXPECT_EQ(room_by_id_total(kFerryDestinationCabin)->contents, &context.crate);
     EXPECT_EQ(context.crate.next_content, nullptr);
-    EXPECT_EQ(world[kFerrySourceCabin].contents, nullptr);
+    EXPECT_EQ(room_by_id_total(kFerrySourceCabin)->contents, nullptr);
 
     EXPECT_EQ(location_of(&context.captain), kFerrySourceCabin)
         << "A character whose location field names the source room but which is not LINKED into "

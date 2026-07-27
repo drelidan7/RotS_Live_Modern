@@ -480,20 +480,59 @@ SELF_TEST_CASES = (
     # does NOT pin the stripping. Here `*/` abuts the prefix, so without the
     # stripping the reason reads "write*/" and is rejected as invalid.
     ("r4-abutting-block-comment", "int a = ch->in_room; /* LS1-ALLOW: write*/\n", 0),
+    # Pins R4's BACKSLASH stripping -- the other half of the R4 handling, and
+    # until LS-3a T4 it was pinned by nothing. The `valid-continuation` case
+    # above puts the token on the line AFTER the backslash, so the stripping
+    # never runs for it; a `#define` whose annotation and trailing backslash
+    # share the token's own line is the only shape that exercises it. The `*/`
+    # must ABUT the reason for the same reason `r4-abutting-block-comment`
+    # does: with a space before it the captured reason is "write */ \\", which
+    # the I2 prefix-boundary check accepts anyway. Abutting, an unstripped
+    # line captures "write*/ \\" and is rejected, so only the stripping can
+    # make this exit 0. (Verified by sabotage: deleting the two stripping
+    # lines turns this case, and only this case, red -- the same sabotage was
+    # a no-op against the LS-2 self-test that first claimed to cover it.)
+    ("r4-backslash-continuation",
+     "#define M(ch) (ch)->in_room /* LS1-ALLOW: write*/ \\\n    + 1\n", 0),
     ("comment-masked-token", "// int a = ch->in_room; -- a comment, not code\n", 0),
     ("world-token", "room_data& r = world[3];\n", 1),
     ("next-in-room-token", "for (c = head; c; c = c->next_in_room) {}\n", 1),
     ("dot-access-token", "int a = character.in_room;\n", 1),
+    # --- the FIFTH token, LS-3a T4 (ruling R-B6). Both spellings must fire,
+    # the masker and the annotation path must still apply to it, the two
+    # over-match shapes must NOT fire, and -- the AM-5 claim, which is the
+    # whole reason no multi-line matcher was written -- a clang-format-split
+    # write must be visible from its TOKEN line alone (src/olc/shaperom.cpp:
+    # 157/:1284 are exactly this shape).
+    ("people-arrow-token", "char_data* head = room->people;\n", 1),
+    ("people-dot-token", "char_data* head = room.people;\n", 1),
+    ("people-annotated", "room->people = 0; // LS1-ALLOW: write\n", 0),
+    ("people-comment-masked", "// room->people is the chain head -- prose, not code\n", 0),
+    ("people-split-write-flagged", "SHAPE_ROOM(ch)\n    ->room->people\n    = 0;\n", 1),
+    ("people-split-write-annotated",
+     "SHAPE_ROOM(ch)\n    ->room->people // LS1-ALLOW: write (split)\n    = 0;\n", 0),
+    # Over-match guards: the pattern anchors on the `->`/`.` immediately
+    # before the field name and ends on a word boundary, so neither a longer
+    # field name that merely ENDS in the token nor a longer word that starts
+    # with it may trip the gate.
+    ("people-longer-field-not-matched", "int n = tribe.peoples;\n", 0),
+    ("people-prefixed-field-not-matched", "int n = clan->mypeople;\n", 0),
 )
 
 
-def _run_gate(root, ledger, padding_files):
-    """Invoke the REAL gate (subprocess, full main()) against a synthetic tree."""
+def _run_gate(root, ledger, scan_path=None):
+    """Invoke the REAL gate (subprocess, full main()) against a synthetic tree.
+
+    scan_path defaults to the synthetic tree's own `src`; the floor probes
+    pass their own directory instead so they can control the scanned count
+    exactly.
+    """
     import subprocess
 
     completed = subprocess.run(
         [sys.executable, str(pathlib.Path(__file__).resolve()), "--check",
-         "--root", str(root), "--exceptions", str(ledger), str(root / "src")],
+         "--root", str(root), "--exceptions", str(ledger),
+         str(scan_path if scan_path is not None else root / "src")],
         capture_output=True, text=True,
     )
     return completed.returncode, completed.stdout + completed.stderr
@@ -504,6 +543,21 @@ def run_self_test():
     import tempfile
 
     failures = []
+
+    # The floor's VALUE, pinned as a literal on purpose (LS-3a T4). Every
+    # other floor probe below spends MINIMUM_SCANNED_FILE_COUNT symbolically,
+    # so all of them move with the constant and none of them notices it being
+    # lowered -- the exact vacuity a floor check must not have, since lowering
+    # it is how this gate would be quietly defeated. T4 set it to 250 against
+    # a 307-file scan; raising it later is fine and needs this literal raised
+    # with it, which is the deliberate second edit.
+    if MINIMUM_SCANNED_FILE_COUNT < 250:
+        failures.append(
+            f"MINIMUM_SCANNED_FILE_COUNT is {MINIMUM_SCANNED_FILE_COUNT}, below the 250 that "
+            "LS-3a T4 set when src/tests joined the scan -- a lowered floor lets a broken scan "
+            "path pass as a clean tree."
+        )
+
     with tempfile.TemporaryDirectory() as temporary_root:
         root = pathlib.Path(temporary_root)
         ledger = root / "ledger.md"
@@ -553,14 +607,35 @@ def run_self_test():
         # The O-I7 floor must fire when the scan is broken.
         empty = root / "empty"
         empty.mkdir()
-        import subprocess
-        floor = subprocess.run(
-            [sys.executable, str(pathlib.Path(__file__).resolve()), "--check",
-             "--root", str(root), "--exceptions", str(ledger), str(empty)],
-            capture_output=True, text=True,
-        )
-        if floor.returncode == 0:
-            failures.append("the scanned-file floor did NOT fire on an empty scan")
+        exit_code, output = _run_gate(root, ledger, empty)
+        if exit_code == 0:
+            failures.append(f"the scanned-file floor did NOT fire on an empty scan\n{output}")
+
+        # ...and it must sit at MINIMUM_SCANNED_FILE_COUNT *exactly* (LS-3a
+        # T4). The empty-scan case above only proves SOME floor exists; it
+        # passes just as happily with the constant left at any stale value.
+        # This pins the boundary in both directions, so a future wave that
+        # widens the scan has to move the constant deliberately, and a wave
+        # that silently narrows the scan back trips it. Both probe files are
+        # clean, so only the floor can decide these two exits.
+        boundary = root / "boundary"
+        boundary.mkdir()
+        for index in range(MINIMUM_SCANNED_FILE_COUNT - 1):
+            (boundary / f"pad{index}.cpp").write_text("int clean = 0;\n", encoding="utf-8")
+        exit_code, output = _run_gate(root, ledger, boundary)
+        if exit_code == 0:
+            failures.append(
+                f"the floor did NOT fire one file BELOW MINIMUM_SCANNED_FILE_COUNT "
+                f"({MINIMUM_SCANNED_FILE_COUNT})\n{output}"
+            )
+        (boundary / "one_more.cpp").write_text("int clean = 0;\n", encoding="utf-8")
+        exit_code, output = _run_gate(root, ledger, boundary)
+        if exit_code != 0:
+            failures.append(
+                f"the floor fired AT MINIMUM_SCANNED_FILE_COUNT "
+                f"({MINIMUM_SCANNED_FILE_COUNT}) -- it must be a minimum, not an exclusive "
+                f"bound\n{output}"
+            )
 
         # `src/tests` is IN SCOPE (LS-3a T4, ruling R-B8). This probe is the
         # direct inverse of the one it replaces: LS-2's self-test asserted a
@@ -580,6 +655,15 @@ def run_self_test():
             )
         if "[deferred]" in output:
             failures.append(f"the retired deferral notice is still printed\n{output}")
+        # ...and the complement: bringing the tier into scope must not have
+        # been done by blanket-failing it. The same file, annotated, passes,
+        # so a test-tier author has a working escape hatch and this probe is
+        # a real discriminator rather than a file that can never be green.
+        (tests_dir / "fixture.cpp").write_text(
+            "ch->in_room = 3; // LS1-ALLOW: write\n", encoding="utf-8")
+        exit_code, output = _run_gate(root, ledger)
+        if exit_code != 0:
+            failures.append(f"an ANNOTATED src/tests file was still flagged\n{output}")
 
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)

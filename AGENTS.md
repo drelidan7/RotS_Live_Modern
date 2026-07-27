@@ -29,12 +29,20 @@
   poison, and vice versa; see `docs/BUILD.md` "Container build isolation".
 - proxy/: Rust workspace member (`cargo` crate) for proxy/CLI utilities.
 - tools/: repository-maintenance Python scripts, each with a matching `ctest`/flat-Makefile gate
-  (`string_view_census.py`, `location_read_census.py`). As of the LS-2 wave, `location_read_census.py`
-  scans tree-wide production `src/**` (`.cpp`/`.h`/`.hpp`, all nine libraries plus `src/app/` and the
-  flat/public shared headers) for raw location-representation access outside the Stage-1 Placement
-  API; `src/tests/` is excluded via a named `DEFERRED_DIRS` constant with a visible per-run notice
-  (not a silent skip), deferred to wave LS-3a. See docs/BUILD.md's "Library layering" location note
-  and `docs/superpowers/location-read-allowlist.md`.
+  (`string_view_census.py`, `location_read_census.py`). As of the **LS-3a wave (T4)**,
+  `location_read_census.py` scans the **whole** `src/**` tree recursively (`.cpp`/`.h`/`.hpp` and the
+  rest of `SOURCE_SUFFIXES`) — all nine libraries, `src/app/`, the flat/public shared headers **and
+  `src/tests/`** — for raw location-representation access outside the Stage-1 Placement API. **No
+  directory is excluded, for any reason**: LS-2's `DEFERRED_DIRS` constant, its `[deferred] N
+  file(s)` notice and the whole directory-exclusion mechanism were deleted when the test tier joined
+  the scan (ruling R-B8), so a future wave cannot re-open a blind spot by adding a name to a tuple;
+  `--check` prints `[scanned] N file(s)` instead. The tracked token set is **five**, not four —
+  `->in_room` / `.in_room` / `world[` / `next_in_room` / **`->people`/`.people`** (the occupant
+  chain's head, ruling R-B6) — and the authorized `LS1-ALLOW` reason list stays at **eleven**
+  prefixes (ruling R-B7 minted none). The gate is deliberately **line-based** and does no
+  read-vs-write classification of its own; the annotation carries it. `MINIMUM_SCANNED_FILE_COUNT` is
+  **250** against a 307-file scan. See docs/BUILD.md's "Library layering" location note and
+  `docs/superpowers/location-read-allowlist.md`.
 - release-notes/, game design docs/, code documentation/: Docs and release history.
 
 ## Build, Test, and Development Commands

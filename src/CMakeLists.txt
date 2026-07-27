@@ -2011,10 +2011,11 @@ if(ROTS_BUILD_TESTS)
     endif()
 
     # LocationSystem Stage-1 grep gate: tools/location_read_census.py --check
-    # asserts that ALL of production src/ (recursive, .cpp/.h/.hpp -- the
-    # nine libraries, src/app, and every header, src/tests excluded pending
-    # wave LS-3a) holds ZERO raw ->in_room / .in_room / world[ /
-    # next_in_room location reads outside the allow-list
+    # asserts that ALL of src/ (recursive, .cpp/.h/.hpp -- the nine
+    # libraries, src/app, every header, AND src/tests, whose LS-2-era
+    # deferral wave LS-3a T4 retired along with the whole directory-
+    # exclusion mechanism) holds ZERO raw ->in_room / .in_room / world[ /
+    # next_in_room / ->people location reads or writes outside the allow-list
     # (docs/superpowers/location-read-allowlist.md) or an inline
     # "// LS1-ALLOW: <reason>" annotation -- the checked-in regression guard
     # LS-1 T3 stood up for its seven-library, .cpp-only scope and LS-2 T5
@@ -2040,9 +2041,13 @@ if(ROTS_BUILD_TESTS)
         # GATE still fails in every direction it must -- unannotated token,
         # bogus reason, an LS1-ALLOW hiding inside a string literal, a reason
         # that merely prefixes an authorized one, an appendix ledger table
-        # masquerading as the allow-list, and a deferred-dir file leaking into
-        # the scanned set. T5 proved those by probe-and-revert, which left
-        # nothing behind to re-prove them; this does, on every preset.
+        # masquerading as the allow-list, both `.people` spellings plus a
+        # clang-format-split write and the two over-match shapes that must
+        # NOT fire, a src/tests file (scanned when unannotated, clean when
+        # annotated -- the retired deferral's inverse), and the scanned-file
+        # floor, at its exact boundary and at its literal value. T5 proved
+        # the first set by probe-and-revert, which left nothing behind to
+        # re-prove them; this does, on every preset.
         add_test(NAME LocationReadCensusSelfTest
             COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/../tools/location_read_census.py"

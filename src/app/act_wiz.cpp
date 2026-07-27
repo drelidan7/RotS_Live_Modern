@@ -783,10 +783,17 @@ void do_stat_character(struct char_data* ch, struct char_data* k)
         break;
     }
 
+    // R12 (LS-3a T2e; T0b-1's reader table). `stat file <name>` inspects an
+    // OFFLINE character whose in_room is mid-VNUM-channel -- it holds the
+    // persisted load room, not a location. When there is no location to
+    // report, report what IS known instead of a bare -1. Byte-identical
+    // today (channel and location still share the field, so this arm is
+    // only reachable with a negative value and NOWHERE is the only negative
+    // in practice); it becomes a real improvement once LS-3b splits them.
     send_to_char(
         std::format("{} {} '{}'  IDNum: [{:5}], Player table index: [{}], In room [{:5}]\n\r",
             sex_label, (!IS_NPC(k) ? "PC" : (!IS_MOB(k) ? "NPC" : "MOB")), GET_NAME(k),
-            GET_IDNUM(k), GET_INDEX(k), (location_of(k) < 0) ? -1 : room_of(k)->number)
+            GET_IDNUM(k), GET_INDEX(k), (location_of(k) < 0) ? peek_load_room_vnum(k) : room_of(k)->number)
             ,
         ch);
 

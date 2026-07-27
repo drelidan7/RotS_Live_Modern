@@ -491,8 +491,17 @@ void load_character(struct char_data* ch)
     extern struct char_data* character_list;
     FILE* fp;
 
-    if (location_of(ch) == NOWHERE)
-        ch->in_room = ch->specials2.load_room; // LS1-ALLOW: write
+    // The VNUM channel's entry read and its second write (W2), NOT an
+    // "is this character placed?" absence test (ruling T0b-4). By the
+    // time this runs, store_to_char() (db_players.cpp:1376) has already
+    // stashed the persisted integer for a character who came through the
+    // ordinary login; this pair performs that stash for one who did not.
+    // Left reading a real location store, a map-backed location_of()
+    // would report absent for EVERY logging-in character, the guard
+    // would fire unconditionally, and the persisted VNUM would be pushed
+    // into the location store with no char_to_room() -- every login.
+    if (peek_load_room_vnum(ch) == NOWHERE)
+        stash_load_room_vnum(ch, ch->specials2.load_room);
 
     fp = Crash_load(ch);
 
@@ -537,9 +546,19 @@ int calc_load_room(struct char_data* ch, int load_result)
         if (PLR_FLAGGED(ch, PLR_FROZEN))
             load_room = r_frozen_start_room;
         else {
-            if (location_of(ch) == NOWHERE)
+            // R2, the channel read T0b-1 called the most dangerous line
+            // in the set: left on location_of() it sends EVERY login to
+            // the racial start room once LS-3b splits the stores. NOT
+            // interchangeable with old_room (:522) -- the equip_lost
+            // path above rewrites specials2.load_room to an RNUM while
+            // the channel still holds the VNUM.
+            if (peek_load_room_vnum(ch) == NOWHERE)
                 load_room = r_mortal_start_room[GET_RACE(ch)];
-            else if ((load_room = real_room(location_of(ch))) < 0)
+            // real_room() over the channel is the strongest proof the
+            // field is carrying a VNUM at this point: an rnum would
+            // never be handed to a vnum->rnum lookup. Same old_room
+            // non-interchangeability as the arm above.
+            else if ((load_room = real_room(peek_load_room_vnum(ch))) < 0)
                 load_room = r_mortal_start_room[GET_RACE(ch)];
 
             /* Look through maze mappings. If ch was in a maze room
@@ -553,7 +572,11 @@ int calc_load_room(struct char_data* ch, int load_result)
         }
     }
 
-    if ((load_result == RENT_CRASH) && (location_of(ch) >= EXTENSION_ROOM_HEAD))
+    // A live, coherent, LOG-ONLY range test over the channel:
+    // EXTENSION_ROOM_HEAD is VNUM space (db_world.cpp assigns it to
+    // room_data::number; extension rooms carry vnums 100001+), so this
+    // only makes sense against the channel, never against an rnum.
+    if ((load_result == RENT_CRASH) && (peek_load_room_vnum(ch) >= EXTENSION_ROOM_HEAD))
         log("Error: objsave.cc tried to load in room > EXTENSION_ROOM_HEAD");
     if (GET_RACE(ch) == 0)
         load_room = r_immort_start_room;

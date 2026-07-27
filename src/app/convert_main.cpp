@@ -40,41 +40,61 @@
 // need to change with it.
 //
 // THE LOAD-ROOM CHECKPOINT (read this before touching the save_char call
-// below): store_to_char() sets `ch->in_room = GET_LOADROOM(ch)` --
-// GET_LOADROOM expands to `ch->specials2.load_room`, which was just copied
-// verbatim from the on-disk record (char_file_u::specials2.load_room). That
-// field is persisted as a room VNUM (see db_players.cpp's
+// below): store_to_char() calls `stash_load_room_vnum(ch, GET_LOADROOM(ch))`
+// -- GET_LOADROOM expands to `ch->specials2.load_room`, which was just
+// copied verbatim from the on-disk record (char_file_u::specials2.load_room).
+// That field is persisted as a room VNUM (see db_players.cpp's
 // write_player_text(): `fprintf(pf, "load_room   %d\n",
-// chd.specials2.load_room)`), NOT a world[] array index -- so immediately
-// after store_to_char(), ch->in_room momentarily holds a VNUM masquerading
-// as the world[]-index-shaped field. That is a pre-existing legacy quirk
-// (see objsave.cpp's calc_load_room()/load_character(), which are the code
-// paths that actually convert it to a real world[] index via real_room()
-// before ever using it as one) -- rots_convert never reaches that code, so
-// it never matters here.
+// chd.specials2.load_room)`), NOT a world[] array index.
 //
-// save_char()'s guard is: `if ((load_room == NOWHERE) && (ch->in_room !=
-// NOWHERE)) load_room = world_room_vnum(ch->in_room);` -- i.e. it ONLY
-// dereferences ch->in_room as a world[] index (via the world_room_vnum()
-// seam) when the CALLER passes load_room == NOWHERE while the character
-// is (as far as save_char can tell) "somewhere". The live MUD's own
-// just-loaded-not-yet-in-world call sites (interpre.cpp:3112, 3126, 3363 --
+// Until wave LS-3a that line was a bare `ch->in_room = GET_LOADROOM(ch)`,
+// and this comment described it as such. The write now goes through the
+// named VNUM channel (stash_load_room_vnum/peek_load_room_vnum, declared in
+// handler.h, bodies in entity/placement.cpp) -- but the channel and the
+// location still SHARE STORAGE today (both bodies are `ch->in_room`), so
+// the underlying quirk is unchanged: immediately after store_to_char(),
+// ch->in_room momentarily holds a VNUM masquerading as the
+// world[]-index-shaped field. The channel is a NAMING split, not a storage
+// split, and that is the whole point -- LS-3b re-points one named pair at a
+// dedicated store instead of having to rediscover this overload, which is
+// silent and would otherwise have persisted a wrong load_room for every
+// renting player. Read and write this value through the channel, never
+// through set_location(). Note also that stash/peek are HOOK-FREE, which is
+// load-bearing right here: store_to_char() is on rots_convert's path, where
+// the world resolvers (room_by_id*/room_of/zone_by_id) dispatch through an
+// unregistered hook whose default is a tripwire abort().
+//
+// The VNUM is converted to a real world[] index via real_room() by
+// objsave.cpp's calc_load_room()/load_character() before it is ever used as
+// one -- rots_convert never reaches that code, so it never matters here.
+//
+// save_char()'s guard is: `if ((load_room == NOWHERE) && (location_of(ch) !=
+// NOWHERE)) load_room = dispatch_room_vnum(location_of(ch));` -- i.e. it
+// ONLY dereferences the character's location as a world[] index (via the
+// world_room_vnum() seam) when the CALLER passes load_room == NOWHERE while
+// the character is (as far as save_char can tell) "somewhere". The live
+// MUD's own just-loaded-not-yet-in-world call sites (interpre.cpp:3112, 3126, 3363 --
 // the account-character-selection/login-verification paths, the closest
 // live analogue to what this converter does) all pass
 // `d->character->specials2.load_room` EXPLICITLY as the load_room argument,
 // not NOWHERE. This driver matches that exact convention below. Since
-// store_to_char() already set ch->in_room to that same
-// ch->specials2.load_room value, passing it again as the explicit load_room
-// argument means `load_room == ch->in_room` always holds at the guard --
-// so the guard's `load_room == NOWHERE` and `ch->in_room != NOWHERE`
+// store_to_char() already stashed that same ch->specials2.load_room value,
+// passing it again as the explicit load_room argument means
+// `load_room == peek_load_room_vnum(ch)` always holds at the guard -- so the
+// guard's `load_room == NOWHERE` and `location_of(ch) != NOWHERE`
 // branches can never BOTH be true (they would require the same value to be
-// simultaneously NOWHERE and not-NOWHERE). world_room_vnum() is therefore
-// PROVABLY UNREACHABLE from this call site, for every character, not just
-// well-formed ones -- see persist_hooks.h's dispatch_room_vnum() and its
-// null default (a loud, never-supposed-to-fire tripwire log + NOWHERE, not
-// a silent behavioral substitute); the world_room_vnum() stub that used to
-// live in convert_stubs.cpp was deleted in persist-split PS Task 4 when the
-// direct call was inverted into that hook.
+// simultaneously NOWHERE and not-NOWHERE). LS-3a's sibling fail-safe arm
+// (`else if ((load_room == NOWHERE) && (peek_load_room_vnum(ch) !=
+// NOWHERE))`, added for LS-3b) is unreachable from here for exactly the
+// same reason, and for one more: while the channel and the location share
+// storage, peek is NOWHERE precisely when location_of() is.
+// world_room_vnum() is therefore PROVABLY UNREACHABLE from this call site,
+// for every character, not just well-formed ones -- see persist_hooks.h's
+// dispatch_room_vnum() and its null default (a loud, never-supposed-to-fire
+// tripwire log + NOWHERE, not a silent behavioral substitute); the
+// world_room_vnum() stub that used to live in convert_stubs.cpp was deleted
+// in persist-split PS Task 4 when the direct call was inverted into that
+// hook.
 //
 // save_char() also refuses to save entirely when `IS_NPC(ch) ||
 // !ch->desc` (both true for a converter-loaded PC with no live session).

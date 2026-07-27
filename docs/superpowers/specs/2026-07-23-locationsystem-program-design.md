@@ -102,6 +102,11 @@ equivalence evidence and the perf numbers; **the owner merges.**
 3. Every gate green at every step: the program never leaves the tree in a state where a
    revert is harder than a fix-forward.
 
+> **AMENDED 2026-07-27 (wave LS-3a, T5, ruling R-C3):** two clauses of criterion 2 — "`NOWHERE` is
+> gone from the tree" and "the `world[NOWHERE]` indexing hazard retires" — are FALSE as written.
+> They are left standing above as the planning-time record; the corrected criteria are in the
+> **Wave LS-3a As-built** section at the end of this document.
+
 ## Wave LS-1 As-built
 
 Branch `arch/ls1-library-reads`, baseline master @`5db2b9e` (1583 tests). Merges when green at T5
@@ -605,3 +610,100 @@ ctest was green at **1689/1689 throughout**. It runs each test in its own proces
 pointer into a global list never outlives anything. Only the single-process monolithic runner can
 catch this class — which is exactly why AGENTS.md refuses to tolerate a monolithic SIGSEGV, and why
 a green per-test suite is not evidence of fixture hygiene.
+
+## Wave LS-3a As-built
+
+Branch `arch/ls3a-mutation`, baseline master @`ce753f5` (**1704** tests — PR #24's load-path bugfix
+moved the baseline off `ca901fc`/1696 mid-planning, ruling O-1). Merge-when-green under the owner's
+standing grant; the combat row stays DONE and no library-membership or `*LayerAcyclicity` change
+occurred — the nine linkchecks stay nine. Full process record: `.superpowers/sdd/ls3a-global-constraints.md`
+(the plan and every ruling `R-A*`/`R-B*`/`R-C*`/`R-D*`/`AM-*`/`O-*`), `ls3a-census-{a,b,c,d}.md` plus
+`ls3a-census-review.md` (T0 and the adversarial census review that returned **28** amendments — LS-1's
+took 3, LS-2's took 11 — five of them blockers, three of which overturned controller rulings),
+`ls3a-t0b-findings.md` (the T0b targeted re-census, its rulings, and the complete per-task landing
+record), and `ls3a-wave-summary.md` (the closing one-page record for the finalization reviewers).
+Those documents are authoritative for byte-level detail; this section and docs/BUILD.md's
+"Wave LS-3a" subsection are the reconciled summary.
+
+### AMENDMENT (2026-07-27, LS-3a T5, ruling R-C3): two clauses of Success criterion 2 are FALSE as written
+
+Recorded as an amendment, not an edit — the criteria above stand exactly as written so the record of
+what was believed at planning time survives. Both false clauses live in criterion 2.
+
+**(a) As written: "`NOWHERE` is gone from the tree."** FALSE. Census C measured **175** production
+`NOWHERE` sites and found **106 of them survive by design**: exit-graph `to_room` values,
+`obj_data` object locations, persistence sentinels, and scratch room ids. `NOWHERE` is not a
+character-location detail — it is the tree's generic "no room id" sentinel, and the swap owns only
+the subset meaning "this character has no location." The site count is also the wrong unit: **two**
+public default arguments spell it (`combat_hooks.h:249`, `interpre.h:128`) and a **third** spells it
+as a bare `-1` literal that escapes a `NOWHERE` grep entirely (`handler.h:392`'s
+`extract_char(char_data* ch, int new_room = -1)`, ruling R-C4) — retiring it there is a *signature*
+change, not a token substitution. Compounding it, this spec's (and every prior document's) "four
+`in_room` fields" list is **incomplete: there are SIX location stores, two of them PERSISTED** —
+`char_data::in_room`, `obj_data::in_room`, `shop_data::in_room` (a shop VNUM, not a location at
+all), `char_data::was_in_room`, the persisted `char_special2_data::load_room` (R-A2/AM-1: it rides
+*inside* `char_data::in_room` across an eight-window login/rent protocol, which is why LS-3a built
+the VNUM channel), and `affected_type::modifier` under `SPELL_BEACON` (AM-3: a room **rnum** in the
+save format, with its own range-based absence test and its own unguarded `char_to_room(ch, -1)`
+path — no census named it until the T0 review).
+**CORRECTED (a):** *After LS-3b, `char_data` carries no location field and no `NOWHERE` comparison
+anywhere in the tree observes a **character's** location; every surviving `NOWHERE` is an
+exit-graph, object-location, persistence, or scratch-room-id sentinel, enumerated in census C. The
+two `NOWHERE` default arguments and the one bare `-1` default argument are each converted or
+explicitly retained with a recorded reason. All six location stores are dispositioned — swapped,
+left as-is, or migrated — and the two persisted ones (`specials2.load_room`, the `SPELL_BEACON`
+modifier) are covered by an explicit save-format decision, because a room id in the save format
+cannot be swapped by a code change alone.*
+
+**(b) As written: "the `world[NOWHERE]` indexing hazard retires."** FALSE. The hazard is not in
+`char_data` and the swap does not touch it: it lives in `room_data::operator[]` over the **room
+table**, whose out-of-range fallback (mudlog, return `world[0]`, and it can `exit(0)`) every
+existing call site was written against and observes. Strict equivalence — this program's owner-set
+policy — positively *requires* preserving it. Retiring it is a separate campaign over ~274
+`room_of()` and ~218 `EXIT()` sites that nothing currently scopes. LS-3a re-confirmed the same
+constraint from the other direction: its conversions were forbidden to hoist a resolver call,
+because collapsing N `operator[]` reads into one cached local silently drops N−1 mudlogs.
+**CORRECTED (b):** *After LS-3b, no code path can reach `room_data::operator[]` with an index
+derived from a **character's absent location** — absence is representable in the `LocationSystem`
+without an integer that indexes the room table. `operator[]`'s out-of-range fallback is itself
+PRESERVED byte-for-byte (strict equivalence requires it), and its retirement is explicitly OUT of
+the LocationSystem program's scope; if it is ever wanted it is a separate campaign over the ~274
+`room_of()` + ~218 `EXIT()` sites, scoped by its own census.*
+
+Criteria 1 and 3 stand as written. Criterion 1 (the grep gate) is met, and the gate has been
+strengthened three times since it shipped — see docs/BUILD.md's gate paragraphs.
+
+### What LS-3a landed, and its ONE exception to zero behavior change
+
+Mutation is routed: every bare `ch->in_room = X` outside the two allow-listed owner files
+(`src/entity/placement.cpp`, `src/entity/containment.cpp`) now goes through `set_location()`, the
+test tier's 828 masked representation sites collapse into a single allow-listed helper header, and
+the `LocationReadCensus` gate's `src/tests` deferral is retired against a five-token, 307-file,
+whole-tree scan. `char_data::in_room`'s VNUM overload — a persisted room VNUM riding in the location
+field across the login/rent protocol, which LS-3b would have broken **silently** — is de-overloaded
+behind a named `stash_load_room_vnum`/`peek_load_room_vnum` channel. Full account: docs/BUILD.md's
+"Wave LS-3a" subsection, which also carries the enumerated LS-3b input list.
+
+**The exception (owner ruling O-2):** LS-3a is NOT strictly zero-behavior-change, unlike LS-1 and
+LS-2. The owner folded a set of location-correctness fixes into the VNUM tranche as a flagged rider:
+four `save_char` call sites that persisted an **rnum** into a VNUM-typed save field, two async
+walkers that read a location with no guard at all, and a rent-load `ITEM_LIGHT` bump that
+incremented the **wrong** room's light counter on every rent-load of a lit item. Each landed
+red-first or sabotage-proven; each is named in the wave summary's rider inventory. Goldens still
+never regenerated: both boot goldens and the seed42 characterization golden stayed byte-identical at
+every commit of the wave, and the rider set was chosen so that none of it is golden-observable.
+
+### Reconciled chain
+
+1704 → batch 0 `40bce59b` +0 → T1 `7fb741a8`+0/`e45363c2`+0/`242fef4e`+13/`c1c64497`+8/`f2b876bd`+11
+= 1736 → T2a `43b3fdfc` +0 → T2b `ef0a6dfa` +0 → T2c `4980ba1d`+7/`0d0745a5`+0/`430035d3`+12 (+ docs
+rider `551fa375`+0) = 1755 → T2d `385a4c62`+0/`01f2aac8`+0/`762c15a1`+4 = 1759 → T2e-alpha
+`61e45680`+9/`f26f5af4`+8/`19ebffbe`+0/`5bc808b8`+2 = 1778 → T2e-beta `50b53a40`+7/`8c7f5936`+6/
+`bb395562`+3 = **1794** → T3 (eight commits, `8e6b5972`..`68b3ff63`) +0 → T4 (`dd6ea5da`/`92a8c5a0`)
++0 = **1794**. Per-task: T1 **+32**, T2 **+58**, T3/T4 **+0** each (both are migrations — T3 froze
+counts and assertions deliberately, and its non-vacuity evidence is 30-plus sabotage probes rather
+than new tests). macOS-native monolithic single-process run: 1783 ran / 1708 passed / 75 skipped,
+exit 0; 1794 − 1783 = the eleven CMake ctest-only checks (nine `*LayerAcyclicity` linkchecks +
+`LocationReadCensus` + `LocationReadCensusSelfTest`). Per owner ruling O-4 the `rots64` leg, both
+boot goldens, `make smoke-account` (still MANDATORY, ruling R-A2), the i386 battery, and the six-job
+CI matrix all run ONCE at T6 finalization; their numbers are recorded there, not here.

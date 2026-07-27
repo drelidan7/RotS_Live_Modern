@@ -886,12 +886,182 @@ macro-boundary closure) has since landed — see `docs/superpowers/specs/2026-07
 program-design.md`'s Wave LS-2 As-built section and this doc's own updated gate/macro-boundary
 paragraphs above. The program's original single Wave LS-3 split in two during LS-2 (controller
 decomposition under the owner's autonomy grant, `.superpowers/sdd/ls2-global-constraints.md`
-"Revised program shape"): **LS-3a**, the mutation wave (production writes, the `src/tests` tier's
-25 genuine reads plus its fixture-construction writes behind a two-entry-point test helper,
-`was_in_room`, and every `NOWHERE` site characterization-pinned), and **LS-3b**, the Stage 2 representation
-swap itself (a `LocationSystem` owned by `rots_entity`, `char_data` shedding `in_room`/`next_in_room`,
-`NOWHERE` retiring, OWNER-MERGES per the program spec's risk-split) — neither started as of this
-docs task.
+"Revised program shape"): **LS-3a**, the mutation wave (production writes, the whole `src/tests`
+tier behind one allow-listed fixture helper, `was_in_room`, the `char_data::in_room` VNUM overload,
+and the gate's `src/tests` deferral) — **DONE, see the next subsection** — and **LS-3b**, the Stage 2
+representation swap itself (a `LocationSystem` owned by `rots_entity`, `char_data` shedding
+`in_room`/`next_in_room`, `NOWHERE` retiring, OWNER-MERGES per the program spec's risk-split), not
+started. The LS-3a subsection below carries LS-3b's enumerated input list.
+
+### Wave LS-3a: Stage 1 mutation conversion, and the `src/tests` deferral retired (DONE)
+
+Branch `arch/ls3a-mutation`, baseline master @`ce753f5` (1704 tests), merge-when-green. LS-1 and
+LS-2 routed every location **READ** through the Stage-1 Placement API; LS-3a does the same for
+**MUTATION** and closes the gate's last deliberate blind spot. After this wave nothing outside
+`rots_entity`'s placement/containment core touches the location representation at all — read or
+write, production or test — which is precisely what reduces LS-3b (the representation swap) to a
+bounded change inside `placement.cpp` + `char_data`. Process record:
+`.superpowers/sdd/ls3a-global-constraints.md` (plan + every ruling), `ls3a-census-{a,b,c,d}.md` +
+`ls3a-census-review.md` (T0 and its 28-amendment adversarial review), `ls3a-t0b-findings.md` (the
+T0b re-census and the per-task landing record), `ls3a-wave-summary.md` (the closing record).
+
+**Mutation, as routed.** Every bare `ch->in_room = X` outside the two allow-listed owner files now
+goes through `set_location(ch, X)`, and the only code that assigns a location field directly is the
+mutation core itself (`src/entity/placement.cpp`, `src/entity/containment.cpp`). Ruling R-A1 is why
+that is a byte-identical substitution rather than a risky one: `set_location()` is literally
+`ch->in_room = rnum;` and nothing else — no occupant-chain, light, or zone-power bookkeeping — while
+the bookkeeping movers `char_to_room`/`detach_char_from_room` assign the field *directly* and never
+call it, so the feared double-apply hazard does not exist. It is also **hook-free**, which makes it
+the ONE location API safe on a `rots_convert`-reachable path (`room_by_id*`/`room_of`/`zone_by_id`
+dispatch through a hook whose unregistered default is a tripwire `abort()` that no link check
+catches). The production conversions landed in tranches: 20 app/combat-tier "cursor" save/restore
+sites (`act_info`/`act_othe`/`fight`/`ranger`/`mage`), `ferry_captain`'s 8, and 7 lifecycle/scratch
+writes — plus the VNUM channel and the O-2 rider set below.
+
+**Two new mutation APIs, both census-justified, both consumer-free/TDD at landing.**
+`relocate_all_occupants()`/`relocate_all_contents()` (declared in `handler.h`, bodies in
+`placement.cpp`/`containment.cpp`, ruling R-A6) encapsulate production's **only** manual bulk
+occupant splice — `ferry_captain`'s — so LS-3b re-points one function instead of rewriting a
+hand-rolled chain walk; accepted on shape, not on a site count of 1. `first_occupant(room)` (ruling
+R-C6) is the chain-HEAD accessor for `act()` anchors that want *any* occupant rather than a walk; it
+went 0 → 24 production callers the moment T4 made `->people` a tracked token. Both `set_location`
+and `is_in_room` had **zero callers and zero tests** anywhere in the tree before this wave (ruling
+R-A3) — T2 would have created 35+ first callers of a completely unproven API — so T1 landed TDD
+tests for both first, each proven non-vacuous by sabotage-and-revert, including a pin that
+`set_location` touches *nothing* but the location field (chain, light, zone power untouched; no
+resolver dispatch). Ruling R-B2 refused a test-tier `test_set_location` alias: `set_location()`
+already is it, and an alias would let the two drift and hide the test tier from the swap.
+
+**The VNUM channel: `char_data::in_room` was overloaded, and LS-3b would have broken it SILENTLY.**
+`char_data::in_room` does not always hold a room rnum. Across an eight-window login/rent protocol it
+holds a room **VNUM** — `store_to_char()` copies the persisted `specials2.load_room` straight into
+it, and `calc_load_room()` runs `real_room()` over it before any use as an index. Ruling R-A2 (as
+superseded by review amendment AM-1) de-overloads it in LS-3a rather than leaving it for LS-3b:
+`stash_load_room_vnum(ch, vnum)` / `peek_load_room_vnum(ch)` (`handler.h`, bodies in
+`placement.cpp`) are now the channel, at 4 writes and 6 canonical reads. **They still share storage
+with the location today** — both bodies are `ch->in_room`, annotated `representation-impl` — so this
+is a *naming* split, not a storage split; its entire value is that LS-3b re-points one named pair
+instead of rediscovering the overload. AM-1 is why: `objsave.cpp`'s writes and their consumers are
+the same statement pair (`ch->in_room = world[save_room].number;` then `save_char(ch, ch->in_room, 0)`),
+**both already carried `LS1-ALLOW` annotations, so the gate stays green either way** — converting a
+write without its consumer would have persisted `load_room = NOWHERE` for every renting player, seen
+by no test, no golden, and no gate. Each write and its consumer therefore converted in the SAME
+commit, behind characterization tests landed FIRST for the three previously unpinned sites. T0b's
+own re-census found the reader set was open: **fourteen** further mid-window readers (R7-R23) that no
+census had named, including one — `fight.cpp`'s anti-align/race zap guards (R9/R10) — where a
+mechanical conversion would have been a **regression**, and which is therefore written today as the
+two-term guard LS-3b needs, a provable no-op while the stores are shared. `save_char()` carries the
+matching fail-safe arm (R23), also provably unreachable today and also written now, beside the arm
+it mirrors, rather than left for LS-3b to re-derive.
+
+**The O-2 rider: this wave is NOT strictly zero-behavior-change, and that is deliberate.** Unlike
+LS-1 and LS-2, LS-3a carries an owner-approved flagged rider set (ruling O-2) of location-correctness
+fixes, folded into the VNUM tranche because that is where the evidence and the `make smoke-account`
+gate already were. Every one landed red-first or sabotage-proven, and none of it is golden-observable
+— both boot goldens and the seed42 characterization golden stayed byte-identical at every commit:
+(1) **four `save_char` sites persisted an rnum into a VNUM-typed save field** (`interpre.cpp:3796`,
+`fight.cpp:948`, `handler.cpp:616`'s `new_room >= 0` arm, `act_wiz.cpp:3253`) — each now persists a
+VNUM, sabotage quantifying the rejected mechanical shapes as persisting `world[0]`'s vnum or `-1`
+(measured wizset-file corruption); (2) **`wizset file`'s field-36 arm stashes and skips** the
+`char_from_room`/`char_to_room` pair it used to run on a raw VNUM — which also removes a dangling
+`char_data*` left in `world[i].people` by the following `free_char()`, the LS-2 finalization class;
+(3) **R20/R21**: two async walkers (`protocol.cpp`'s `broadcast_weather_msdp_update`, `comm.cpp`'s
+`clean_expose_elements`) had **no location guard at all** and gained one — without it they mudlog per
+menu-sitter once the stores split, a boot-golden drift risk; (4) **R7/R8**: `attach_equipment`'s
+`ITEM_LIGHT` arm incremented the **wrong room's** light counter on every rent-load of a lit item (the
+later unequip decrements the correct one — a live, persistent counter corruption), now gated on an
+`is_linked_into_room` occupant-chain witness; (5) **R9/R10 and R23** are armed no-ops as described
+above. Two dead-code removals rode along: the dead `get_world()`/`m_world` singleton pair (R-C8) and
+a dead `SPECIAL(block_exit)` block in `spec_pro.cpp` hiding an unannotated raw read.
+
+**The test tier: 828 sites into one allow-listed header.** Census B measured **828 masked
+representation sites across 800 lines in 36 files** in `src/tests` (LS-2 measured 517/470/31 — LS-2's
+own coverage work grew it). T3 migrated them behind `src/tests/test_placement.h` (new, header-only,
+whole-file allow-listed): `ScopedRoomOccupants` publishes an occupant chain **head-first** and
+`set_location`-stamped, with full RAII restore, and deliberately does **not** call `char_to_room()`
+(ruling R-B3 — it dispatches `zone_by_id()` into a `zone_table` that is nullptr in nearly every
+fixture, and it appends at the *tail* where 22 fixtures publish at the head, which would flip the
+occupant order those tests assert on); `ScopedZoneTableOwner` stands up the zone table any new
+`char_to_room`-with-a-PC test needs. The four T3 tranches took 162 → 0, 374 → 32, 199 → 17, and
+67 → 2 raw sites, and its closing tree-wide sweep — run with the gate's own masker over all 126
+test files — turned up a 61-site file that appears in no census at all because it postdates them
+(`load_room_placement_tests.cpp`, PR #24's). The residual is exactly `obj_data::in_room` (out of the char-location charter,
+there is no `location_of(obj)`) plus 14 occupant-chain SHAPE assertion lines no Stage-1 API
+expresses. Counts and assertions were **frozen** through all of T3 — a migration that changed a test
+outcome would be a bug — so its non-vacuity evidence is 29-plus sabotage probes, each RED-named,
+restored, and `cmp`-verified, not new tests.
+
+`ScopedTestWorld` also got the structural reset LS-2's finalization named as an LS-3a input: its
+contract comment was false (the reuse branch healed only `name`/`description`/`people`, leaving 16 of
+20 `room_data` fields dirty process-wide), and the resulting shuffle fragility was measurable. At
+`ce753f5` the standing six-seed gate (`--gtest_shuffle --gtest_repeat=3`, seeds
+`1/42/1234/98940/20260726/777`) was **4 crashes, 2 failing, 0 clean**. Batch 0 — a three-line fixture
+fix unlinking a stack `obj_data` from `world[0].contents` — took it to **0 crashes**; T1's Stage A
+(reuse/own parity reset) and Stage B (zeroing the four fields *neither* branch initialized) took it
+to **0 failures on all six seeds**, and it stayed there for every subsequent commit of the wave. Per
+ruling R-D7 that gate remains a **delta** gate, never a clean bill: the 30-seed sweep population was
+never re-measured, so no claim is made beyond the six seeds.
+
+**The gate, as LS-3a left it.** Five tracked tokens, whole-tree scan, no exclusion mechanism, floor
+250 against 307 scanned files — the full account is in the "Five tokens and a whole-tree sweep"
+paragraph above. `LocationReadCensus` and `LocationReadCensusSelfTest` remain the two ctest-only
+location checks (11 ctest-only checks total with the nine `*LayerAcyclicity` linkchecks), on every
+preset plus the flat `src/tests/Makefile` `tests` recipe.
+
+**LS-3b's enumerated input list** (recorded here per ruling R-T0b-4(c) so the swap wave starts from
+evidence rather than re-derivation; every item is a *finding*, not work LS-3a left half-done):
+
+- **`free_char()`/`free_obj()` perform NO location unregistration** (`entity_lifecycle.cpp:623-712`,
+  `:730-766` — no `char_from_room`, no `character_list`/`object_list` unlink). Harmless while the
+  location lives *in* the freed struct; under a pointer-keyed map every free leaks an entry keyed by
+  a freed pointer and the next same-address allocation inherits a stale location. `remove_char_exists`
+  is the existing registry-teardown precedent to ride beside. **Blocking input.**
+- **`obj_to_proto()` never adds its object to `object_list`** (`utility.cpp:588-708`; `read_object`
+  and `make_physical_corpse` do) — live player-carried objects exist outside the global list. A
+  pre-existing production defect; it must be known before LS-3b picks a registration point.
+- **`shapeobj.cpp:44`/`:1094` — the object-side `CREATE1` twins** (no `clear_object`, `in_room == 0`
+  by calloc, no token anywhere). The token-invisible birth class is **17 production sites (P1-P17)**,
+  not the census's 2 or the review's 5; the macro-hidden half is entirely `CREATE`/`CREATE1`'s
+  zero-fill, which yields **room 0, never `NOWHERE`**, at every use site.
+- **`specials2.load_room` is itself overloaded, in the opposite direction**: a VNUM on disk, which
+  `objsave.cpp:469` overwrites with an **RNUM**, which PR #24's follower/mount placement
+  (`objsave.cpp:718`/`:812`) then consumes *as* an rnum, before the next `save_char` restores its
+  VNUM-ness. A future "fix" that reads the field as a VNUM re-breaks follower placement.
+- **The `SPELL_BEACON` persisted modifier** (`mage.cpp:1216-1266`): `affected_type::modifier` holds a
+  room **rnum**, is written to the playerfile via `db_players.cpp:690`, has its own range-based
+  absence test, and carries an unguarded `char_to_room(ch, -1)` path. A room id in the save format —
+  the swap must preserve or migrate it.
+- **The torn-state owner decision (R-C2), a STOP before LS-3b begins.** `char_to_room(ch, NOWHERE)`
+  today splices `ch` into **room 0**'s chain and increments room 0's light and zone power, then sets
+  the field to `NOWHERE`; `detach_char_from_room` early-returns on `NOWHERE`, so it never unsplices
+  and never decrements. **The chain says room 0, the field says nowhere** — representable only
+  because there are two independent stores, reachable at ≥12 unguarded call sites. The options are
+  (a) keep two stores, (b) single map plus a narrow amendment to strict equivalence permitting the
+  torn state to be fixed (controller's recommendation), or (c) guard the call sites — none free.
+- **The order-pinning ledger correction.** Census B's order-pinning table is **optimistic on 7 of
+  its 10 rows**: what the tree actually pins is the occupant chain's **room binding**, not its
+  order — inverting the order goes green across all 1794 tests. **The seed42 characterization golden
+  is NOT an occupant-order witness.** Genuinely order-pinned: `mystic`'s RNG draw, `mobact`'s
+  first-match-wins, `olog_hai`'s nested room-target chain.
+- **Two more not-a-witness findings**, same class, recorded so LS-3b does not misread a green test as
+  coverage: `poison_notification`'s location wiring is pinned by nothing (it passes unlinked and
+  unlocated), and `prompt_format`'s five location writes are pinned by nothing (`PRF_HOLYLIGHT`
+  short-circuits the room consult).
+- **Cheap guards ruled into LS-3a that did NOT land**, carried forward honestly rather than claimed:
+  `room_data`'s constructor still initializes only 6 of ~20 members (array-new rooms hold garbage
+  `people`/`contents` heads until the boot loader rescues each), and the three stack `char_data x;`
+  declarations (`boards.cpp:742`, `pkill.cpp:83`/`:374`) still default-initialize to an
+  indeterminate location — UB on any read today, a wild map key later. Each is a one-to-three-line
+  fix.
+
+**Reconciled chain:** 1704 → T1 +32 (`242fef4e`+13/`c1c64497`+8/`f2b876bd`+11; the batch-0 and
+`ScopedTestWorld` commits add none) = 1736 → T2 +58 (`4980ba1d`+7/`430035d3`+12/`762c15a1`+4/
+`61e45680`+9/`f26f5af4`+8/`5bc808b8`+2/`50b53a40`+7/`8c7f5936`+6/`bb395562`+3) = **1794** → T3 +0
+(eight migration commits) → T4 +0 (two gate commits) = **1794**. See AGENTS.md's Testing Guidelines
+chain entry for the full per-commit citation. No library-membership or `*LayerAcyclicity` change —
+the nine linkchecks stay nine; the combat row stays DONE. Per owner ruling O-4 the `rots64` leg, both
+boot goldens, `make smoke-account` (MANDATORY, ruling R-A2 — it moved to finalization, it did not
+disappear), the i386 battery, and the six-job CI matrix all run ONCE at T6 finalization.
 
 ### Output seam and entity hooks: the last three app-layer edges into `rots_entity`
 

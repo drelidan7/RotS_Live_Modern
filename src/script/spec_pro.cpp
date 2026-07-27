@@ -1202,8 +1202,7 @@ SPECIAL(ferry_boat)
 
 SPECIAL(ferry_captain)
 {
-    struct obj_data *tmpobj, *ferryobj;
-    struct char_data* tmpch;
+    struct obj_data* ferryobj;
     int tmp, num, new_room, old_room;
 
     num = host->specials.store_prog_number;
@@ -1281,32 +1280,16 @@ SPECIAL(ferry_captain)
 
     if (new_room != old_room) {
         /* nobody should be in that room, but just in case they are...*/
-        for (tmpch = world[old_room].people; tmpch; tmpch = tmpch->next_in_room) { // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-            if (!tmpch->next_in_room) // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-                break;
-        }
-        if (tmpch)
-            tmpch->next_in_room = world[new_room].people; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-        else
-            world[old_room].people = world[new_room].people; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-        for (tmpobj = world[old_room].contents; tmpobj; tmpobj = tmpobj->next_content) // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-            if (!tmpobj->next_content)
-                break;
-        if (tmpobj)
-            tmpobj->next_content = world[new_room].contents; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-        else
-            world[old_room].contents = world[new_room].contents; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-
-        world[new_room].people = world[old_room].people; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-        world[old_room].people = 0; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-        world[new_room].contents = world[old_room].contents; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-        world[old_room].contents = 0; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-
-        for (tmpch = world[new_room].people; tmpch; tmpch = tmpch->next_in_room) { // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-            tmpch->in_room = new_room; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-        }
-        for (tmpobj = world[new_room].contents; tmpobj; tmpobj = tmpobj->next_content) // LS1-ALLOW: manual occupant-list splice (ferry relocation)
-            tmpobj->in_room = new_room; // LS1-ALLOW: manual occupant-list splice (ferry relocation)
+        //
+        // LS-3a T2c (ruling R-A6): the ~20-line manual occupant/contents
+        // splice that used to sit here -- the only hand-rolled char-chain
+        // splice left in production -- moved verbatim into the representation
+        // owners (entity/placement.cpp and entity/containment.cpp; see
+        // handler.h for the contract). This guard stays: the primitives
+        // early-return on from == to, but reproducing the original call
+        // site exactly costs nothing and keeps the two independent.
+        relocate_all_occupants(old_room, new_room);
+        relocate_all_contents(old_room, new_room);
     }
 
     ferry_captain_data[num].timer = ferry_captain_data[num].stop_time[ferry_captain_data[num].marker];

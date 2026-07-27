@@ -59,6 +59,9 @@
 
 #include <gtest/gtest.h>
 
+#include <initializer_list>
+#include <map>
+
 // encumb_table[]/leg_encumb_table[] (consts.cpp, L1 core data table) -- same
 // local extern-declaration pattern equipment.cpp itself uses (no shared
 // header declares them); needed here so the encumbrance-delta tests can
@@ -95,6 +98,23 @@ public:
     // room_of(ch) forwards location_of(ch) as the resolver argument, not
     // just that the two calls happen to return the same single-room stub.
     int last_requested_rnum = NOWHERE;
+
+    // Per-id dispatch, the extension this class's own comment above
+    // anticipated ("a future multi-room candidate can extend this class if
+    // that changes"). LS-3a T2c's relocate_all_occupants()/
+    // relocate_all_contents() tests are that candidate: they are the first in
+    // this file that need TWO distinct rooms resolvable at the same time, one
+    // per id. Left EMPTY by every pre-existing fixture, in which case
+    // resolve() falls straight back to `room` above -- so no existing test's
+    // behavior changes.
+    std::map<int, room_data*> rooms_by_id;
+
+    // The single resolution point all three room trampolines below share.
+    room_data* resolve(int rnum)
+    {
+        const auto entry = rooms_by_id.find(rnum);
+        return entry != rooms_by_id.end() ? entry->second : room;
+    }
 };
 
 // The fixture the file-scope trampoline functions below dispatch to; set by
@@ -105,12 +125,12 @@ public:
 // g_active_pool).
 StubWorldResolvers* g_active_resolvers = nullptr;
 
-room_data* test_room_by_id(int /*rnum*/) { return g_active_resolvers->room; }
+room_data* test_room_by_id(int rnum) { return g_active_resolvers->resolve(rnum); }
 
 room_data* test_room_by_id_total(int rnum)
 {
     g_active_resolvers->last_requested_rnum = rnum;
-    return g_active_resolvers->room;
+    return g_active_resolvers->resolve(rnum);
 }
 
 zone_data* test_zone_by_id(int /*znum*/) { return g_active_resolvers->zone; }
@@ -1812,4 +1832,359 @@ TEST(ScopedZoneTableOwnerTest, LetsCharToRoomAccountZonePowerForANonNpcWithoutCr
     EXPECT_EQ(zone_guard.zone().white_power, 0);
     EXPECT_EQ(location_of(&player), NOWHERE);
     EXPECT_EQ(rots::entity::first_occupant(&world_guard.room()), nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// relocate_all_occupants() / relocate_all_contents() -- LS-3a T2c, ruling R-A6
+// (.superpowers/sdd/ls3a-global-constraints.md; census A section 5.2).
+//
+// These two primitives encapsulate the bulk room-to-room splice that was
+// hand-rolled inside spec_pro.cpp's ferry_captain(): the ONLY manual char-chain
+// splice left in production, and the one block whose semantics were wholly
+// representation-dependent. Moving it into the representation owners is what
+// lets LS-3b re-point ONE function instead of rewriting a hand-rolled loop.
+//
+// THE CONTRACT THESE TESTS PIN IS THE ONE COMMIT 1 CHARACTERIZED against the
+// real ferry_captain() (SpecProFerryCaptain.*, spec_pro_tests.cpp) -- items 1-6
+// of that suite's own contract list, restated here per half:
+//   1. combined chain order is SOURCE-then-DESTINATION;
+//   2. it is published at the destination, source head nulled;
+//   3. every member is re-stamped to the destination -- including the
+//      destination's own pre-existing members, for whom it is a no-op;
+//   4. objects follow the identical rule through room_data::contents /
+//      obj_data::next_content / obj_data::in_room;
+//   5. an empty source degrades to "destination chain untouched, source stays
+//      empty";
+//   6. NO light bookkeeping and NO zone white/dark-power bookkeeping -- these
+//      are deliberately NOT char_to_room()/detach_char_from_room().
+// The seventh (the same-room early return) is NEW: see its test below.
+//
+// Every room these tests hand the resolvers is a stack room_data, and every
+// character/object is a stack fixture, so nothing here links anything into a
+// process-global chain -- THE FIXTURE-HYGIENE RULE is satisfied structurally
+// rather than by teardown.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The two room ids the per-id stub resolver dispatch above is keyed on. Values
+// are arbitrary and deliberately non-adjacent and non-zero: the primitives pass
+// their `to_room` argument straight through as the re-stamped location, so a
+// body that stamped an index it derived some other way would still look right
+// against 0/1.
+constexpr int kSourceRoomId = 11;
+constexpr int kDestinationRoomId = 27;
+
+// A char_data with only the fields these primitives read or write set. The
+// primitives touch nothing else (no equipment walk, no affect handling, no
+// level/race read -- that is contract item 6's whole point), so a fuller
+// fixture would assert nothing extra.
+struct RelocationCharacters {
+    char_data first {};
+    char_data second {};
+    char_data third {};
+    char_data resident {}; // starts in the DESTINATION room.
+};
+
+struct RelocationObjects {
+    obj_data first {};
+    obj_data second {};
+    obj_data crate {}; // starts in the DESTINATION room.
+};
+
+// Publishes `occupants` as `room`'s chain, head-first in the order given, each
+// stamped with `room_id`. The ScopedRoomOccupants shape (test_placement.h)
+// without the RAII half: these rooms are stack fixtures, so there is nothing
+// process-global to restore.
+void publish_chain(room_data& room, int room_id, std::initializer_list<char_data*> occupants)
+{
+    char_data* previous = nullptr;
+    for (char_data* occupant : occupants) {
+        if (previous == nullptr) {
+            room.people = occupant; // LS1-ALLOW: representation-impl (test fixture -- publishing the chain head)
+        } else {
+            previous->next_in_room = occupant; // LS1-ALLOW: representation-impl (test fixture -- linking the chain in the order given)
+        }
+        set_location(occupant, room_id);
+        previous = occupant;
+    }
+    if (previous == nullptr) {
+        room.people = nullptr; // LS1-ALLOW: representation-impl (test fixture -- an empty occupant set publishes an empty chain)
+    } else {
+        previous->next_in_room = nullptr; // LS1-ALLOW: representation-impl (test fixture -- terminating the published chain)
+    }
+}
+
+void publish_contents(room_data& room, int room_id, std::initializer_list<obj_data*> objects)
+{
+    obj_data* previous = nullptr;
+    for (obj_data* object : objects) {
+        if (previous == nullptr) {
+            room.contents = object;
+        } else {
+            previous->next_content = object;
+        }
+        object->in_room = room_id; // LS1-ALLOW: obj-location (test fixture -- obj_data::in_room, not a character location)
+        previous = object;
+    }
+    if (previous == nullptr) {
+        room.contents = nullptr;
+    } else {
+        previous->next_content = nullptr;
+    }
+}
+
+// Source + destination rooms wired into the stub resolvers under the two ids
+// above, plus a zone every zone_by_id() call resolves to. The zone exists only
+// so contract item 6 is measurable: neither primitive calls zone_by_id(), and
+// a test asserting counters that could not move otherwise would prove nothing.
+struct RelocationContext {
+    room_data source = make_stub_room();
+    room_data destination = make_stub_room();
+    zone_data zone = make_stub_zone();
+    StubWorldResolvers resolvers;
+
+    RelocationContext()
+    {
+        resolvers.room = &source; // fallback for any unmapped id.
+        resolvers.zone = &zone;
+        resolvers.rooms_by_id[kSourceRoomId] = &source;
+        resolvers.rooms_by_id[kDestinationRoomId] = &destination;
+        source.light = 3;
+        destination.light = 5;
+    }
+};
+
+} // namespace
+
+TEST(RelocateAllOccupants, MovesTheSourceChainAheadOfTheDestinationsExistingOccupants) {
+    RelocationContext context;
+    RelocationCharacters characters;
+    ScopedWorldResolverHooks hooks(context.resolvers);
+
+    publish_chain(context.source, kSourceRoomId,
+        { &characters.first, &characters.second, &characters.third });
+    publish_chain(context.destination, kDestinationRoomId, { &characters.resident });
+
+    relocate_all_occupants(kSourceRoomId, kDestinationRoomId);
+
+    // Contract items 1/2.
+    EXPECT_EQ(context.destination.people, &characters.first);
+    EXPECT_EQ(characters.first.next_in_room, &characters.second);
+    EXPECT_EQ(characters.second.next_in_room, &characters.third);
+    EXPECT_EQ(characters.third.next_in_room, &characters.resident)
+        << "MERGE ORDER IS THE CONTRACT: the arriving chain keeps its relative order and the "
+           "destination's pre-existing occupants are appended AFTER it, matching what "
+           "SpecProFerryCaptain.SplicesTheSourceCabinChainAheadOfTheDestinationsAndRestampsEveryMember "
+           "characterized against the real ferry_captain().";
+    EXPECT_EQ(characters.resident.next_in_room, nullptr);
+    EXPECT_EQ(context.source.people, nullptr);
+}
+
+TEST(RelocateAllOccupants, RestampsEveryMergedMemberIncludingTheDestinationsOwn) {
+    RelocationContext context;
+    RelocationCharacters characters;
+    ScopedWorldResolverHooks hooks(context.resolvers);
+
+    publish_chain(context.source, kSourceRoomId,
+        { &characters.first, &characters.second, &characters.third });
+    publish_chain(context.destination, kDestinationRoomId, { &characters.resident });
+
+    relocate_all_occupants(kSourceRoomId, kDestinationRoomId);
+
+    // Contract item 3. The resident's stamp is a no-op, but the walk covers it,
+    // and the ferry's own splice covered it the same way.
+    EXPECT_EQ(location_of(&characters.first), kDestinationRoomId);
+    EXPECT_EQ(location_of(&characters.second), kDestinationRoomId);
+    EXPECT_EQ(location_of(&characters.third), kDestinationRoomId);
+    EXPECT_EQ(location_of(&characters.resident), kDestinationRoomId);
+}
+
+TEST(RelocateAllOccupants, MovesTheWholeChainIntoAnEmptyDestinationAndKeepsItsTerminator) {
+    RelocationContext context;
+    RelocationCharacters characters;
+    ScopedWorldResolverHooks hooks(context.resolvers);
+
+    publish_chain(context.source, kSourceRoomId, { &characters.first, &characters.second });
+    publish_chain(context.destination, kDestinationRoomId, { });
+
+    relocate_all_occupants(kSourceRoomId, kDestinationRoomId);
+
+    EXPECT_EQ(context.destination.people, &characters.first);
+    EXPECT_EQ(characters.first.next_in_room, &characters.second);
+    EXPECT_EQ(characters.second.next_in_room, nullptr)
+        << "With nothing already at the destination the arriving tail keeps its null terminator "
+           "rather than being linked onto a pre-existing head.";
+    EXPECT_EQ(context.source.people, nullptr);
+    EXPECT_EQ(location_of(&characters.second), kDestinationRoomId);
+}
+
+TEST(RelocateAllOccupants, LeavesTheDestinationChainIntactWhenTheSourceIsEmpty) {
+    RelocationContext context;
+    RelocationCharacters characters;
+    ScopedWorldResolverHooks hooks(context.resolvers);
+
+    publish_chain(context.source, kSourceRoomId, { });
+    publish_chain(context.destination, kDestinationRoomId, { &characters.resident });
+
+    relocate_all_occupants(kSourceRoomId, kDestinationRoomId);
+
+    // Contract item 5, the `if (tmpch)` ELSE arm -- the arm
+    // SpecProFerryCaptain.LeavesADestinationCabinIntactWhenTheSourceCabinsChainIsEmpty
+    // had to construct a deliberately unlinked captain to reach through the
+    // real SPECIAL, and which this primitive test reaches directly.
+    EXPECT_EQ(context.destination.people, &characters.resident);
+    EXPECT_EQ(characters.resident.next_in_room, nullptr);
+    EXPECT_EQ(location_of(&characters.resident), kDestinationRoomId);
+    EXPECT_EQ(context.source.people, nullptr);
+}
+
+TEST(RelocateAllOccupants, LeavesTheRoomUntouchedWhenSourceAndDestinationAreTheSameRoom) {
+    RelocationContext context;
+    RelocationCharacters characters;
+    ScopedWorldResolverHooks hooks(context.resolvers);
+
+    publish_chain(context.source, kSourceRoomId, { &characters.first, &characters.second });
+
+    relocate_all_occupants(kSourceRoomId, kSourceRoomId);
+
+    // NEW behavior, not characterized behavior, and deliberately unreachable
+    // from the only production caller: ferry_captain() keeps its own
+    // `if (new_room != old_room)` guard, exactly as before. Without this early
+    // return the splice would link the chain's own tail back onto its own head
+    // and then null the room -- a cycle plus a lost chain. Making the primitive
+    // total closes that footgun inside the representation owner instead of
+    // leaving it for LS-3b to trip over.
+    EXPECT_EQ(context.source.people, &characters.first);
+    EXPECT_EQ(characters.first.next_in_room, &characters.second);
+    EXPECT_EQ(characters.second.next_in_room, nullptr);
+    EXPECT_EQ(location_of(&characters.first), kSourceRoomId);
+}
+
+TEST(RelocateAllOccupants, PerformsNoLightOrZonePowerBookkeeping) {
+    RelocationContext context;
+    RelocationCharacters characters;
+    ScopedWorldResolverHooks hooks(context.resolvers);
+
+    // Non-NPC with a RACE_GOOD race (GET_RACE in [1, 9], utils.h): this is what
+    // char_to_room()/detach_char_from_room() would credit to a zone.
+    characters.first.player.race = 1;
+    characters.second.player.race = 1;
+    publish_chain(context.source, kSourceRoomId, { &characters.first, &characters.second });
+    publish_chain(context.destination, kDestinationRoomId, { });
+
+    relocate_all_occupants(kSourceRoomId, kDestinationRoomId);
+
+    // Contract item 6 -- the single most load-bearing difference between this
+    // primitive and the real char_to_room()/detach_char_from_room() pair.
+    EXPECT_EQ(context.source.light, 3);
+    EXPECT_EQ(context.destination.light, 5);
+    EXPECT_EQ(context.zone.white_power, 0);
+    EXPECT_EQ(context.zone.dark_power, 0);
+}
+
+TEST(RelocateAllContents, MovesTheSourceContentsAheadOfTheDestinationsExisting) {
+    RelocationContext context;
+    RelocationObjects objects;
+    ScopedWorldResolverHooks hooks(context.resolvers);
+
+    publish_contents(context.source, kSourceRoomId, { &objects.first, &objects.second });
+    publish_contents(context.destination, kDestinationRoomId, { &objects.crate });
+
+    relocate_all_contents(kSourceRoomId, kDestinationRoomId);
+
+    // Contract items 1/2/4 -- the object half, same merge order.
+    EXPECT_EQ(context.destination.contents, &objects.first);
+    EXPECT_EQ(objects.first.next_content, &objects.second);
+    EXPECT_EQ(objects.second.next_content, &objects.crate);
+    EXPECT_EQ(objects.crate.next_content, nullptr);
+    EXPECT_EQ(context.source.contents, nullptr);
+}
+
+TEST(RelocateAllContents, RestampsEveryMergedObjectIncludingTheDestinationsOwn) {
+    RelocationContext context;
+    RelocationObjects objects;
+    ScopedWorldResolverHooks hooks(context.resolvers);
+
+    publish_contents(context.source, kSourceRoomId, { &objects.first, &objects.second });
+    publish_contents(context.destination, kDestinationRoomId, { &objects.crate });
+
+    relocate_all_contents(kSourceRoomId, kDestinationRoomId);
+
+    // Contract items 3/4. obj_data::in_room is the object-location field, a
+    // different representation from char_data::in_room -- read raw here.
+    EXPECT_EQ(objects.first.in_room, kDestinationRoomId); // LS1-ALLOW: obj-location
+    EXPECT_EQ(objects.second.in_room, kDestinationRoomId); // LS1-ALLOW: obj-location
+    EXPECT_EQ(objects.crate.in_room, kDestinationRoomId); // LS1-ALLOW: obj-location
+}
+
+TEST(RelocateAllContents, MovesTheWholeChainIntoAnEmptyDestinationAndKeepsItsTerminator) {
+    RelocationContext context;
+    RelocationObjects objects;
+    ScopedWorldResolverHooks hooks(context.resolvers);
+
+    publish_contents(context.source, kSourceRoomId, { &objects.first, &objects.second });
+    publish_contents(context.destination, kDestinationRoomId, { });
+
+    relocate_all_contents(kSourceRoomId, kDestinationRoomId);
+
+    EXPECT_EQ(context.destination.contents, &objects.first);
+    EXPECT_EQ(objects.second.next_content, nullptr);
+    EXPECT_EQ(context.source.contents, nullptr);
+    EXPECT_EQ(objects.second.in_room, kDestinationRoomId); // LS1-ALLOW: obj-location
+}
+
+TEST(RelocateAllContents, LeavesTheDestinationChainIntactWhenTheSourceIsEmpty) {
+    RelocationContext context;
+    RelocationObjects objects;
+    ScopedWorldResolverHooks hooks(context.resolvers);
+
+    publish_contents(context.source, kSourceRoomId, { });
+    publish_contents(context.destination, kDestinationRoomId, { &objects.crate });
+
+    relocate_all_contents(kSourceRoomId, kDestinationRoomId);
+
+    // Contract item 5, the `if (tmpobj)` ELSE arm.
+    EXPECT_EQ(context.destination.contents, &objects.crate);
+    EXPECT_EQ(objects.crate.next_content, nullptr);
+    EXPECT_EQ(objects.crate.in_room, kDestinationRoomId); // LS1-ALLOW: obj-location
+    EXPECT_EQ(context.source.contents, nullptr);
+}
+
+TEST(RelocateAllContents, LeavesTheRoomUntouchedWhenSourceAndDestinationAreTheSameRoom) {
+    RelocationContext context;
+    RelocationObjects objects;
+    ScopedWorldResolverHooks hooks(context.resolvers);
+
+    publish_contents(context.source, kSourceRoomId, { &objects.first, &objects.second });
+
+    relocate_all_contents(kSourceRoomId, kSourceRoomId);
+
+    // Same NEW same-room early return as relocate_all_occupants() above, and
+    // equally unreachable from ferry_captain(), which keeps its own guard.
+    EXPECT_EQ(context.source.contents, &objects.first);
+    EXPECT_EQ(objects.first.next_content, &objects.second);
+    EXPECT_EQ(objects.second.next_content, nullptr);
+    EXPECT_EQ(objects.first.in_room, kSourceRoomId); // LS1-ALLOW: obj-location
+}
+
+TEST(RelocateAllContents, PerformsNoLightBookkeeping) {
+    RelocationContext context;
+    RelocationObjects objects;
+    ScopedWorldResolverHooks hooks(context.resolvers);
+
+    // A lit ITEM_LIGHT: obj_to_room()/obj_from_room() (this file's own
+    // containment.cpp neighbours) would move a room's .light for exactly this
+    // object. The bulk move deliberately does not, which is contract item 6's
+    // object half.
+    objects.first.obj_flags.type_flag = ITEM_LIGHT;
+    objects.first.obj_flags.value[2] = 1;
+    objects.first.obj_flags.value[3] = 1;
+    publish_contents(context.source, kSourceRoomId, { &objects.first });
+    publish_contents(context.destination, kDestinationRoomId, { });
+
+    relocate_all_contents(kSourceRoomId, kDestinationRoomId);
+
+    EXPECT_EQ(context.source.light, 3);
+    EXPECT_EQ(context.destination.light, 5);
 }

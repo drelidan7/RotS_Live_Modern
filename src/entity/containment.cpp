@@ -183,6 +183,52 @@ void obj_from_room(struct obj_data* object)
     object->next_content = 0;
 }
 
+/* move every object in one room's contents onto another room's, in bulk */
+//
+// relocate_all_contents() (LS-3a T2c; ruling R-A6, .superpowers/sdd/
+// ls3a-global-constraints.md; census A sections 5.2/6.4) -- the OBJECT half of
+// the bulk splice ferry_captain() (script/spec_pro.cpp) used to hand-roll
+// inline, the mirror of placement.cpp's relocate_all_occupants(). handler.h
+// carries the full contract; placement.cpp's own comment on the occupant half
+// carries the body notes, all of which apply here unchanged: no resolver
+// hoisting (one room_by_id_total() per ORIGINAL `world[...]` access, same
+// order), the first walk's break-on-the-tail peek-ahead reproduced verbatim,
+// the re-stamp walk reproduced verbatim, and the split of the ORIGINAL's
+// interleaved char/object statements into two functions being behavior-
+// identical because the two halves touch disjoint, non-aliasing fields.
+//
+// obj_data::in_room is the OBJECT-location representation (LS-3a's
+// `obj-location` class), a different field from the char_data::in_room LS-3b
+// will swap; it is written directly here for the same reason obj_to_room()/
+// obj_from_room() above do -- this file is that representation's owner.
+//
+// DELIBERATELY NO light bookkeeping, unlike obj_to_room()/obj_from_room()
+// directly above, which move room_data::light for a lit ITEM_LIGHT. The
+// ferry's splice never did that accounting, and reproducing it byte-for-byte
+// is the whole point of this extraction.
+void relocate_all_contents(int from_room, int to_room)
+{
+    struct obj_data* tmpobj;
+
+    // Same one addition, and the same reasoning, as relocate_all_occupants().
+    if (from_room == to_room)
+        return;
+
+    for (tmpobj = room_by_id_total(from_room)->contents; tmpobj; tmpobj = tmpobj->next_content) // LS1-ALLOW: representation-impl
+        if (!tmpobj->next_content)
+            break;
+    if (tmpobj)
+        tmpobj->next_content = room_by_id_total(to_room)->contents; // LS1-ALLOW: representation-impl
+    else
+        room_by_id_total(from_room)->contents = room_by_id_total(to_room)->contents; // LS1-ALLOW: representation-impl
+
+    room_by_id_total(to_room)->contents = room_by_id_total(from_room)->contents; // LS1-ALLOW: representation-impl
+    room_by_id_total(from_room)->contents = 0; // LS1-ALLOW: representation-impl
+
+    for (tmpobj = room_by_id_total(to_room)->contents; tmpobj; tmpobj = tmpobj->next_content) // LS1-ALLOW: representation-impl
+        tmpobj->in_room = to_room; // LS1-ALLOW: obj-location (representation-impl -- this file owns obj_data::in_room)
+}
+
 /* put an object in an object (quaint)  */
 void obj_to_obj(obj_data* item, obj_data* container, char change_weight)
 {

@@ -993,8 +993,8 @@ TEST(LoadRoomChain, FollowerLandsInTheSameRoomAsItsOwnerWhenLoadRoomHoldsAVnum) 
     // :499) and char_to_room() appends at the TAIL, so the follower heads
     // the chain with the owner behind him.
     EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kOwnerRnum)), follower);
-    EXPECT_EQ(follower->next_in_room, &player);
-    EXPECT_EQ(player.next_in_room, nullptr);
+    EXPECT_EQ(follower->next_in_room, &player); // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
+    EXPECT_EQ(player.next_in_room, nullptr); // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
 
     // The slot the raw vnum-as-index misplacement used to land in (index 35,
     // a dummy room with vnum -1 that real_room() can never return) stays
@@ -1087,7 +1087,7 @@ TEST(LoadRoomChain, RnumShapedLoadRoomSendsOwnerAndFollowerToTheStartRoomTogethe
     // appends at the tail, so the follower heads the chain with the owner
     // behind him; the logged-out-from room stays empty.
     EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(ScopedStartRooms::kRacialStartRnum)), follower);
-    EXPECT_EQ(follower->next_in_room, &player);
+    EXPECT_EQ(follower->next_in_room, &player); // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
     EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kOwnerRnum)), nullptr);
 
     release_spawned_follower(follower);
@@ -1553,8 +1553,8 @@ TEST(LoadRoomEndToEnd, RealCrashLoadPlacesPersistedFollowerWithItsOwner) {
     // append puts the owner behind him), and the pre-fix wrong slot
     // (world[vnum-as-index]) stays empty.
     EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kOwnerRnum)), follower);
-    EXPECT_EQ(follower->next_in_room, &player);
-    EXPECT_EQ(player.next_in_room, nullptr);
+    EXPECT_EQ(follower->next_in_room, &player); // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
+    EXPECT_EQ(player.next_in_room, nullptr); // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
     EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kOwnerVnum)), nullptr);
 
     release_spawned_follower(follower);
@@ -2069,7 +2069,7 @@ TEST(LoadRoomRider, WizsetFileSavePersistsTheChannelVnumNotAResolvedRoomNumber) 
         // occupant chain gained him, and nothing indexed by his raw VNUM did
         // either.
         EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kOwnerRnum)), &immortal);
-        EXPECT_EQ(immortal.next_in_room, nullptr);
+        EXPECT_EQ(immortal.next_in_room, nullptr); // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
         EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kOwnerVnum)), nullptr);
 
         char_from_room(&immortal);

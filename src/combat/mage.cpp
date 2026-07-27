@@ -625,7 +625,7 @@ ASPELL(spell_reveal_life)
     if (!found)
         send_to_char("The place seems empty.\n\r", caster);
     else
-        rots::combat::list_char_to_char(room_of(caster)->people, caster, 0);
+        rots::combat::list_char_to_char(rots::entity::first_occupant(room_of(caster)), caster, 0);
 }
 
 /*----------------------------------------------------------------------------------------------------------*/
@@ -966,7 +966,7 @@ ASPELL(spell_blink)
 bool is_teleportation_room_valid(room_data* room)
 {
     // Don't teleport the caster into a room with people
-    if (room->people)
+    if (rots::entity::first_occupant(room))
         return false;
 
     // Don't kill the caster with a death room
@@ -1632,7 +1632,7 @@ ASPELL(spell_earthquake)
     if (crack_chance)
         dam_value /= 2;
 
-    for (tmpch = room_of(caster)->people; tmpch; tmpch = tmpch_next) {
+    for (tmpch = rots::entity::first_occupant(room_of(caster)); tmpch; tmpch = tmpch_next) {
         tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
         if (tmpch != caster) {
             bool saved = new_saves_spell(caster, tmpch, 0);
@@ -1684,7 +1684,7 @@ ASPELL(spell_earthquake)
         }
 
         /* deal out the damage */
-        for (tmpch = cur_room->people; tmpch; tmpch = tmpch_next) {
+        for (tmpch = rots::entity::first_occupant(cur_room); tmpch; tmpch = tmpch_next) {
             bool saved = new_saves_spell(caster, tmpch, tmpch->tmpabilities.dex / 4);
             tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via char_to_room)
             if ((!saved && (tmpch != caster)) || (!number(0, 1))) {
@@ -1840,7 +1840,7 @@ ASPELL(spell_fireball)
     }
 
     char_data* next_character = nullptr;
-    for (char_data* potential_victim = room_of(caster)->people; potential_victim; potential_victim = next_character) {
+    for (char_data* potential_victim = rots::entity::first_occupant(room_of(caster)); potential_victim; potential_victim = next_character) {
         next_character = potential_victim->next_in_room; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
         if (potential_victim == caster || potential_victim == victim)
             continue;
@@ -1981,7 +1981,7 @@ ASPELL(spell_word_of_sight)
     if (!found)
         send_to_char("The place seems empty.\n\r", caster);
     else
-        rots::combat::list_char_to_char(room_of(caster)->people, caster, 0);
+        rots::combat::list_char_to_char(rots::entity::first_occupant(room_of(caster)), caster, 0);
 }
 
 /*----------------------------------------------------------------------------------------------------------*/
@@ -2090,7 +2090,7 @@ ASPELL(spell_shout_of_pain)
     int dam_value = number(1, 50) + get_magic_power(caster) / 2;
 
     char_data* tmpch_next = NULL;
-    for (char_data* tmpch = room_of(caster)->people; tmpch; tmpch = tmpch_next) {
+    for (char_data* tmpch = rots::entity::first_occupant(room_of(caster)); tmpch; tmpch = tmpch_next) {
         tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
         if (tmpch != caster) {
             bool saved = new_saves_spell(caster, tmpch, 0);
@@ -2168,7 +2168,7 @@ ASPELL(spell_blaze)
         send_to_char("You breathe out fire.\n\r", caster);
 
         /* Damage everyone in the room */
-        for (tmpch = room_of(caster)->people; tmpch; tmpch = tmpch_next) {
+        for (tmpch = rots::entity::first_occupant(room_of(caster)); tmpch; tmpch = tmpch_next) {
             tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
 
             // friends don't burn friends, at first...

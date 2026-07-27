@@ -1680,7 +1680,7 @@ ACMD(do_whistle)
 
             struct char_data *next_tmpch;
 
-            for (tmpch = rm->people; tmpch; tmpch = next_tmpch) {
+            for (tmpch = rots::entity::first_occupant(rm); tmpch; tmpch = next_tmpch) {
                 next_tmpch = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via issue_command(flee))
 
                 if (MOB_FLAGGED(tmpch, MOB_PET) && (tmpch->master == ch)) {
@@ -3647,7 +3647,7 @@ void on_windblast_success(char_data* ch, int mana_cost, int move_cost)
 
     send_to_char("Vile black wind eminates from you, slamming into all!\r\n", ch);
 
-    for (tmpch = room_of(ch)->people; tmpch; tmpch = tmpch_next) {
+    for (tmpch = rots::entity::first_occupant(room_of(ch)); tmpch; tmpch = tmpch_next) {
         tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via damage)
         if (tmpch != ch) {
             if (!rots::entity::dispatch_target_valid(ch, tmpch)) {

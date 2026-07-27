@@ -9,21 +9,25 @@ Wave LS-2 widened the scan tree-wide -- recursive over ``src/**`` for
 ``.cpp``/``.h``/``.hpp``, headers included -- so the program's Stage-1 exit
 criterion ("raw location representation access exists ONLY inside the
 allow-listed representation-owner set") is mechanically true for all of
-production `src/` **for the four tracked tokens** (``->in_room`` /
-``.in_room`` / ``world[`` / ``next_in_room``) -- not for every conceivable
-form of raw representation access. `src/tests` is deliberately excluded via
-``DEFERRED_DIRS`` below, pending wave LS-3a. Three more exclusions are
-deliberate and this script cannot see them at all, since none is one of the
-four tracked tokens: ``room_data::people``/``.people`` direct occupant-chain
-access, ``char_data::was_in_room`` (a second parallel location store), and
-the ``&world``/``get_world()`` singleton handoff (``db_boot.cpp``,
-``src/singleton.h``). All three are named LS-3 inputs, not oversights --
-see ``docs/superpowers/specs/2026-07-23-locationsystem-program-design.md``'s
+production `src/`. Wave LS-3a (T4) closed the last two structural gaps in
+that claim: ``->people``/``.people`` -- direct occupant-chain-head access --
+became the **fifth** tracked token, and the ``src/tests`` deferral was
+retired, so the tree is now swept **whole**, tests included, with no
+directory excluded for any reason. What remains untracked is one named
+exclusion, and this script cannot see it at all since it is not one of the
+five tokens: ``char_data::was_in_room``, a second parallel location store.
+(The LS-2-era list named two more that no longer apply: ``.people`` is now
+tracked, and ``get_world()`` was DELETED outright in LS-3a T2 tranche 2d as
+a zero-caller dead-code rider -- only the ``&world`` array-address handoff
+in ``db_boot.cpp``/``src/singleton.h`` survives it, and that hands over the
+table as a whole rather than reading a character's location.)
+``was_in_room`` is a named LS-3b input, not an oversight -- see
+``docs/superpowers/specs/2026-07-23-locationsystem-program-design.md``'s
 own As-built "out of LS-2's charter" list for the full account (O-I8,
 ``ls2-wholebranch-review-opus.md``).
 This census is the checked-in regression gate (LS-1 T3, widened by LS-2
-T5): it flags any raw token outside the census-named allow-list file set or
-an inline ``// LS1-ALLOW: <reason>`` annotation ("LS1" names LocationSystem
+T5 and again by LS-3a T4): it flags any raw token outside the census-named
+allow-list file set or an inline ``// LS1-ALLOW: <reason>`` annotation ("LS1" names LocationSystem
 Stage 1, which spans both LS-1 and LS-2 -- see the ledger doc). Modeled on
 ``tools/string_view_census.py`` (rglob discovery, comment/string masking,
 ``--check`` mode, non-zero exit on violation) -- see
@@ -39,16 +43,19 @@ import re
 import sys
 
 
-# LS-2 R2/A-2 (.superpowers/sdd/ls2-census.md): `src/tests` is a WRITES
-# problem (fixture construction -- char-location writes, occupant-chain
-# splices, world[] assignment targets), not a READS problem, and this wave
-# is reads-only. Wave LS-3a owns the test-fixture helper that will let the
-# test tier join the scan for real; until then it is a named, gate-visible
-# deferral -- deliberately NOT a ledger row, since a ledger row would
-# assert tests are a permanent representation owner, which is false.
-# `--check` prints how many deferred-dir files went unscanned so the
-# deferral stays visible rather than silent (see main()).
-DEFERRED_DIRS = ("tests",)
+# LS-2's `DEFERRED_DIRS = ("tests",)` constant is RETIRED (LS-3a T4, ruling
+# R-B8). LS-2 R2/A-2 had deferred `src/tests` because the tier is 95% a
+# WRITES problem (fixture construction -- char-location writes, occupant-
+# chain splices, world[] assignment targets) and LS-2 was reads-only; the
+# deferral was deliberately NOT a ledger row, since a ledger row would
+# assert tests are a permanent representation owner, which is false. LS-3a
+# is the mutation wave: T1 built the test-tier fixture helper
+# (`src/tests/test_placement.h`'s ScopedRoomOccupants) and T3 migrated the
+# whole tier onto it, so the deferral has nothing left to defer. There is
+# no directory-exclusion mechanism in this script any more -- deliberately,
+# so a future wave cannot re-introduce a blind spot by adding a name to a
+# tuple. The three test-tier representation OWNERS take ordinary whole-file
+# ledger rows instead, visible in the same table as the production owners.
 
 # O-I7 (LS-2 whole-branch review, Opus): source_files() returns an empty
 # scan for a nonexistent search path with no error of its own (`rglob` on a
@@ -58,10 +65,14 @@ DEFERRED_DIRS = ("tests",)
 # instead of RED. 100 is well below the real production count at the time
 # this floor was added (181 scanned files -- see AGENTS.md's LS-2 chain
 # entry and ls2-wholebranch-review-opus.md), giving headroom for legitimate
-# future file-count drift (deletions, moves, an LS-3a scope change) while
-# remaining far above zero, so a genuine path break is still caught long
-# before it could be mistaken for ordinary tree churn.
-MINIMUM_SCANNED_FILE_COUNT = 100
+# future file-count drift (deletions, moves, a scope change) while remaining
+# far above zero, so a genuine path break is still caught long before it
+# could be mistaken for ordinary tree churn. LS-3a T4 raised it 100 -> 250
+# (R-B8) when retiring the `src/tests` deferral took the scanned count from
+# 181 to 307: a floor left at 100 would have gone on passing even if the
+# entire newly-added test tier silently dropped back out of the sweep, which
+# is precisely the regression this wave must make impossible.
+MINIMUM_SCANNED_FILE_COUNT = 250
 
 SOURCE_SUFFIXES = (".cpp", ".h", ".hpp", ".cc", ".cxx", ".c", ".inl", ".ipp")
 # Widened past the original (".cpp", ".h", ".hpp") after the LS-2 whole-branch
@@ -77,11 +88,38 @@ SOURCE_SUFFIXES = (".cpp", ".h", ".hpp", ".cc", ".cxx", ".c", ".inl", ".ipp")
 # in_room patterns (the character right after `->`/`.` is `n`, not `i`) and
 # excludes `was_in_room` too (the character right after `.` is `w`, not
 # `i`) without any special-cased substring denylist (Amendment 3).
+#
+# `->people`/`.people` is the FIFTH token, added by LS-3a T4 (ruling R-B6).
+# It is the occupant chain's HEAD -- the other half of the same intrusive
+# list `next_in_room` walks -- and without it a green gate was misleading.
+# Measured at the commit that added it: 56 production lines and 68 test-tier
+# lines carried the token, and 29 production lines were neither annotated nor
+# inside an allow-listed owner -- including the `occupant_range`/
+# `const_occupant_range` constructors in src/handler.h, whose own
+# `operator++` siblings had been annotated since LS-2 (ruling R-C7). Of the
+# 29, twenty-four were chain-HEAD reads that converted outright to the
+# Stage-1 `first_occupant()` accessor (ruling R-C6's own named set among
+# them); the remaining five are two header API bodies and three writes.
+#
+# READ-VS-WRITE: this gate does NOT classify a hit as a read or a write, and
+# never has -- it reports token PRESENCE on a line and requires either a
+# whole-file ledger row or a per-line `LS1-ALLOW: <reason>` annotation whose
+# reason carries that classification. That matters most for `.people`,
+# because clang-format splits some assignments across lines: src/olc/
+# shaperom.cpp:157/:1284 put `->room->people` on one line and its `= 0;` on
+# the NEXT, so a classifier keying off `=` on the token's own line would
+# call those reads. They are writes, they are annotated `write`, and the
+# annotation -- not any inference by this script -- is what carries the
+# truth. The gate stays strictly line-based on purpose (ruling AM-5
+# WITHDREW a proposed multi-line matcher: it would have put the per-line
+# annotation contract at risk to re-derive what the annotation already
+# states, and the token alone is enough to make the split write visible).
 TOKEN_PATTERNS = (
     ("->in_room", re.compile(r"->in_room\b")),
     (".in_room", re.compile(r"\.in_room\b")),
     ("world[", re.compile(r"\bworld\[")),
     ("next_in_room", re.compile(r"\bnext_in_room\b")),
+    ("people", re.compile(r"(?:->|\.)people\b")),
 )
 
 ANNOTATION_MARKER = "LS1-ALLOW"
@@ -100,7 +138,12 @@ ANNOTATION_PATTERN = re.compile(r"LS1-ALLOW:\s*(.*?)\s*(?:\*/\s*)?$")
 # at all (`shop_data::in_room` is a shop VNUM, not a character's room). A
 # line's annotation must start with one of these -- an empty or off-list
 # reason is still a violation, so the gate can't be defeated with a bare
-# `// LS1-ALLOW`.
+# `// LS1-ALLOW`. LS-3a T4 minted NO new prefix (ruling R-B7 -- the count
+# stays ELEVEN); it widened what `representation-impl` covers to a third
+# class its wording already fits, the occupant-chain SHAPE assertions in
+# `src/tests/spec_pro_tests.cpp`/`load_room_placement_tests.cpp` that pin
+# raw `next_in_room` links because no Stage-1 API expresses a tail walk.
+# See docs/superpowers/location-read-allowlist.md for the full definition.
 ALLOWED_REASON_PREFIXES = (
     "save-next",
     "manual occupant-list splice",
@@ -280,37 +323,23 @@ def load_allow_listed_files(exception_path, repository_root):
     return allow_listed
 
 
-def is_under_deferred_dir(candidate_path, repository_root):
-    """Return whether candidate_path sits under a `src/<DEFERRED_DIRS>` tree."""
-    try:
-        relative_path = candidate_path.relative_to(repository_root)
-    except ValueError:
-        return False
-    return (
-        len(relative_path.parts) >= 2
-        and relative_path.parts[0] == "src"
-        and relative_path.parts[1] in DEFERRED_DIRS
-    )
-
-
 def source_files(search_paths, repository_root):
-    """Return (scanned, deferred) eligible C++ source/header files, recursively.
+    """Return every eligible C++ source/header file under search_paths, recursively.
 
     LS-2 widened this from the LS-1 seven-library, `.cpp`-only,
     non-recursive sweep (`src/<dir>/*.cpp`) to a recursive `src/**` sweep
-    over `SOURCE_SUFFIXES` -- `src/app` and every header come into scope
-    for the first time, and no directory is ever a blind spot again absent
-    an explicit, named deferral. `src/tests` is that one named deferral
-    (`DEFERRED_DIRS`, R2/A-2): its matching files are collected separately
-    and reported by the caller, never silently dropped from the sweep.
+    over `SOURCE_SUFFIXES` -- `src/app` and every header came into scope
+    for the first time -- leaving exactly one named deferral, `src/tests`.
+    LS-3a T4 retired that deferral (R-B8): the sweep is now unconditional
+    over everything it discovers, so there is no longer any way for a file
+    with a matching suffix to sit inside the searched tree and go unread.
     """
     discovered = set()
-    deferred = set()
     for search_path in search_paths:
         # .resolve() on BOTH sides or neither: repository_root is resolved by
         # main(), so an unresolved candidate here makes relative_to() raise and
-        # silently defeats BOTH the allow-list and the DEFERRED_DIRS check. On
-        # macOS that fires for any path under /var (-> /private/var), i.e. every
+        # silently defeats the allow-list lookup below. On macOS that fires
+        # for any path under /var (-> /private/var), i.e. every
         # temp dir -- which is exactly how the gate's own self-test caught it.
         # It fails closed (flags an exempt file rather than exempting a real
         # one), but it is still wrong.
@@ -319,11 +348,8 @@ def source_files(search_paths, repository_root):
         for candidate in candidates:
             if not candidate.is_file() or candidate.suffix not in SOURCE_SUFFIXES:
                 continue
-            if is_under_deferred_dir(candidate, repository_root):
-                deferred.add(candidate)
-                continue
             discovered.add(candidate)
-    return sorted(discovered), sorted(deferred)
+    return sorted(discovered)
 
 
 def findings_for_file(source_path, repository_root, allow_listed_files):
@@ -536,15 +562,24 @@ def run_self_test():
         if floor.returncode == 0:
             failures.append("the scanned-file floor did NOT fire on an empty scan")
 
-        # DEFERRED_DIRS files are collected separately, never scanned silently.
-        deferred_dir = root / "src" / DEFERRED_DIRS[0]
-        deferred_dir.mkdir(parents=True)
-        (deferred_dir / "fixture.cpp").write_text("int a = ch->in_room;\n", encoding="utf-8")
+        # `src/tests` is IN SCOPE (LS-3a T4, ruling R-B8). This probe is the
+        # direct inverse of the one it replaces: LS-2's self-test asserted a
+        # `src/tests` file was deferred and its notice printed, and this one
+        # asserts the same file is now scanned and flagged like any other.
+        # It is what goes red if a future edit re-introduces ANY directory-
+        # exclusion mechanism, and it deliberately probes a WRITE, since the
+        # write half of the representation is exactly what the test tier is
+        # made of and what LS-2's deferral was granted for.
+        tests_dir = root / "src" / "tests"
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "fixture.cpp").write_text("ch->in_room = 3;\n", encoding="utf-8")
         exit_code, output = _run_gate(root, ledger, None)
-        if exit_code != 0:
-            failures.append(f"a DEFERRED_DIRS file was scanned instead of deferred\n{output}")
-        if "[deferred] 1 file(s)" not in output:
-            failures.append(f"the deferred notice did not report the deferred file\n{output}")
+        if exit_code == 0:
+            failures.append(
+                f"a src/tests file went unscanned -- the retired deferral is back\n{output}"
+            )
+        if "[deferred]" in output:
+            failures.append(f"the retired deferral notice is still printed\n{output}")
 
     for failure in failures:
         print(f"self-test FAILED: {failure}", file=sys.stderr)
@@ -580,13 +615,13 @@ def main():
     )
     allow_listed_files = load_allow_listed_files(exception_path, repository_root)
 
-    scanned_files, deferred_files = source_files(search_paths, repository_root)
+    scanned_files = source_files(search_paths, repository_root)
 
     # O-I7: fail closed, unconditionally (not just under --check), the
     # moment the scan itself looks broken -- a zero-or-near-zero scanned
     # count is far more likely to mean a bad --root/search path than a
-    # genuine shrink of production src/, and printing only the (technically
-    # true) "[deferred] 0 file(s)..." notice below would read as good news.
+    # genuine shrink of the tree, and printing only the (technically true)
+    # "[scanned] 0 file(s)..." notice below would read as good news.
     if len(scanned_files) < MINIMUM_SCANNED_FILE_COUNT:
         print(
             f"error: only {len(scanned_files)} file(s) scanned under "
@@ -598,11 +633,8 @@ def main():
         )
         return 1
 
-    deferred_dir_list = ", ".join(f"src/{name}" for name in DEFERRED_DIRS)
-    print(
-        f"[deferred] {len(deferred_files)} file(s) under {deferred_dir_list} unscanned "
-        "this wave (LS-2 R2/A-2 -- retired by wave LS-3a)."
-    )
+    print(f"[scanned] {len(scanned_files)} file(s) under {[str(path) for path in search_paths]!r} "
+          "-- the whole production tree plus src/tests; no directory is excluded.")
 
     violations = []
     for source_path in scanned_files:

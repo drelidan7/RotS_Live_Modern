@@ -1191,7 +1191,7 @@ ACMD(do_look)
         return;
     } else if (!CAN_SEE(ch)) {
         send_to_char("It is pitch black...\n\r", ch);
-        list_char_to_char(room_of(ch)->people, ch, 0);
+        list_char_to_char(rots::entity::first_occupant(room_of(ch)), ch, 0);
         return;
     }
 
@@ -1623,7 +1623,7 @@ ACMD(do_look)
         send_to_char(CC_NORM(ch), ch);
 
         /* Now list the people in the room */
-        list_char_to_char(room_of(ch)->people, ch, subcmd);
+        list_char_to_char(rots::entity::first_occupant(room_of(ch)), ch, subcmd);
 
         show_blood_trail(ch, 0, 1);
 

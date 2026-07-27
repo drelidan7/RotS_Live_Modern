@@ -2862,7 +2862,7 @@ SPECIAL(dragon)
 
     dam_value = dice(mob_level, 6);
 
-    for (tmpch = room_of(host)->people; tmpch; tmpch = tmpch_next) {
+    for (tmpch = rots::entity::first_occupant(room_of(host)); tmpch; tmpch = tmpch_next) {
         tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via damage)
         if (tmpch != host) {
             damage(host, tmpch, dam_value, SPELL_DRAGONSBREATH, 0);

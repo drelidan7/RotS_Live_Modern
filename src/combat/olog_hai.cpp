@@ -376,7 +376,7 @@ void room_target(char_data* ch, void (*skill_damage)(char_data* character, char_
     char_data* victim = nullptr;
     char_data* nxt_victim = nullptr;
     auto mount = ch->mount_data.mount;
-    for (victim = room_of(ch)->people; victim; victim = nxt_victim) {
+    for (victim = rots::entity::first_occupant(room_of(ch)); victim; victim = nxt_victim) {
         nxt_victim = victim->next_in_room; // LS1-ALLOW: save-next (body extracts current node via skill_damage function-pointer callback)
         if (victim != ch && mount != victim) {
             skill_damage(ch, victim);

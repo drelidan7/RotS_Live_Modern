@@ -1560,7 +1560,7 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
     tmp2 = (tmp & ~door_mask) | (tmp2 & door_mask);
     if (IS_SET(tmp, EX_ISBROKEN)) {
         msg = std::format("The {} blurs briefly.", nz(room->dir_option[dir]->keyword));
-        tmpmob = room->people;
+        tmpmob = rots::entity::first_occupant(room);
         if (tmpmob) {
             act(msg, FALSE, tmpmob, 0, 0, TO_ROOM);
             act(msg, FALSE, tmpmob, 0, 0, TO_CHAR);
@@ -1569,21 +1569,21 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
     }
     if (IS_SET(tmp2, EX_CLOSED) && !IS_SET(tmp, EX_CLOSED)) {
         msg = std::format("The {} closes quietly.", nz(room->dir_option[dir]->keyword));
-        tmpmob = room->people;
+        tmpmob = rots::entity::first_occupant(room);
         if (tmpmob) {
             act(msg, FALSE, tmpmob, 0, 0, TO_ROOM);
             act(msg, FALSE, tmpmob, 0, 0, TO_CHAR);
         }
     }
     if (IS_SET(tmp2, EX_LOCKED) && !IS_SET(tmp, EX_LOCKED)) {
-        tmpmob = room->people;
+        tmpmob = rots::entity::first_occupant(room);
         if (tmpmob) {
             act("You hear a sound of a lock snapping shut.", FALSE, tmpmob, 0, 0, TO_ROOM);
             act("You hear a sound of a lock snapping shut.", FALSE, tmpmob, 0, 0, TO_CHAR);
         }
     }
     if (!IS_SET(tmp2, EX_LOCKED) && IS_SET(tmp, EX_LOCKED)) {
-        tmpmob = room->people;
+        tmpmob = rots::entity::first_occupant(room);
         if (tmpmob) {
             act("You hear a sound of a key turning..", FALSE, tmpmob, 0, 0, TO_ROOM);
             act("You hear a sound of a key turning..", FALSE, tmpmob, 0, 0, TO_CHAR);
@@ -1591,7 +1591,7 @@ int set_exit_state(struct room_data* room, int dir, int newstate)
     }
     if (!IS_SET(tmp2, EX_CLOSED) && IS_SET(tmp, EX_CLOSED)) {
         msg = std::format("{} opens quietly.", nz(room->dir_option[dir]->keyword));
-        tmpmob = room->people;
+        tmpmob = rots::entity::first_occupant(room);
         if (tmpmob) {
             act(msg, FALSE, tmpmob, 0, 0, TO_ROOM);
             act(msg, FALSE, tmpmob, 0, 0, TO_CHAR);
@@ -1886,7 +1886,7 @@ void dummy_room_data(room_data* room)
     room->description = str_dup("\n\r");
     room->ex_description = 0;
     room->contents = 0;
-    room->people = 0;
+    room->people = 0; // LS1-ALLOW: write
 
     for (tmp = 0; tmp < NUM_OF_DIRS; tmp++) {
         room->dir_option[tmp] = 0;

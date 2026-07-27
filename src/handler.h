@@ -172,7 +172,7 @@ public:
     // the legacy walks' own single-read-then-follow-next behavior); a null
     // room yields an empty range.
     explicit occupant_range(room_data* room)
-        : first_(room ? room->people : nullptr)
+        : first_(room ? room->people : nullptr) // LS1-ALLOW: representation-impl (occupant_range's own constructor -- the Stage-1 API body itself, snapshotting the raw chain head it wraps, exactly as its operator++ sibling walks it)
     {
     }
 
@@ -263,7 +263,7 @@ public:
     // Snapshots room's occupant-chain head at construction time; a null
     // room yields an empty range (see occupant_range's own comment).
     explicit const_occupant_range(const room_data* room)
-        : first_(room ? room->people : nullptr)
+        : first_(room ? room->people : nullptr) // LS1-ALLOW: representation-impl (const_occupant_range's own constructor -- the Stage-1 API body itself, snapshotting the raw chain head it wraps, exactly as its operator++ sibling walks it)
     {
     }
 

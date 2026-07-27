@@ -35,9 +35,11 @@
 #include "../utils.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
+#include "test_placement.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
+#include <optional>
 
 // run_script() (script.cpp) has no header declaration anywhere in the tree --
 // every existing caller is script.cpp itself (trigger_char_damage() and its
@@ -75,12 +77,18 @@ protected:
     ScopedTestWorld test_world;
     char_data character {};
     char character_name[24] = "test_poison_wearer";
-    char_data* original_people = nullptr;
+    // The room's one-character occupant chain, published for the fixture's
+    // lifetime and taken back out in TearDown() -- the hand-rolled
+    // original_people save/restore plus the in_room/next_in_room writes this
+    // fixture used to carry (LS-3a T3, test_placement.h). A std::optional
+    // because a gtest SetUp()/TearDown() pair has no constructor body to hold
+    // a plain member's lifetime, and the room only exists once SetUp() has
+    // pinned top_of_world.
+    std::optional<ScopedRoomOccupants> occupants;
 
     void SetUp() override
     {
         top_of_world = room_number;
-        original_people = world[room_number].people;
 
         character.specials2.act = MOB_ISNPC;
         character.player.short_descr = character_name;
@@ -92,17 +100,18 @@ protected:
         character.tmpabilities.mana = 100;
         character.specials.position = POSITION_FIGHTING;
         character.specials.fighting = &character;
-        character.in_room = room_number;
-        character.next_in_room = nullptr;
-        world[room_number].people = &character;
+
+        occupants.emplace(room_by_id_total(room_number), room_number,
+            std::initializer_list<char_data*> { &character });
     }
 
     void TearDown() override
     {
-        world[room_number].people = original_people;
-        character.next_in_room = nullptr;
+        // The chain-head restore, the unlink and the NOWHERE de-location this
+        // used to write are `occupants`; everything else here is non-location
+        // state the fixture still owns.
+        occupants.reset();
         character.specials.fighting = nullptr;
-        character.in_room = NOWHERE;
         combat_list = nullptr;
         combat_next_dude = nullptr;
     }

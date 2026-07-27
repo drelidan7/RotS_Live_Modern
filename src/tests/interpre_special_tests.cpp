@@ -14,6 +14,7 @@
 #include "../utils.h"
 #include "rots/core/character.h"
 #include "rots/core/types.h"
+#include "test_placement.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
@@ -90,32 +91,34 @@ struct SpecialDispatchContext {
     ScopedRecordingMobIndex mob_index_scope;
     char_data ch{};
     char_data mob_occupant{};
-    char_data *original_people = nullptr;
+
+    // ch at the head, the spec-bearing mob behind it -- exactly the
+    // head-first order this fixture used to publish by hand, and the order
+    // rots::entity::occupants(room_by_id_total(in_room)) walks them in
+    // (LS-3a T3, test_placement.h). Declared LAST so it unwinds first, before
+    // the characters it manages and before the ScopedTestWorld whose room it
+    // points into. Its constructor stamps both locations through
+    // set_location(), so this fixture no longer writes in_room or
+    // next_in_room anywhere.
+    ScopedRoomOccupants occupants{&test_world.room(), 0, {&ch, &mob_occupant}};
 
     SpecialDispatchContext() {
         g_room_funct_call = RecordedCall{};
         g_mob_spec_call = RecordedCall{};
 
-        original_people = test_world.room().people;
         test_world.room().funct = &recording_room_funct;
 
-        ch.in_room = 0;
-        mob_occupant.in_room = 0;
         mob_occupant.specials2.act = MOB_ISNPC | MOB_SPEC;
         mob_occupant.nr = 0; // indexes mob_index_scope's single fabricated entry
-
-        ch.next_in_room = &mob_occupant;
-        mob_occupant.next_in_room = nullptr;
-        test_world.room().people = &ch;
     }
 
+    // The room's funct reset stays here -- it is not location state, and this
+    // suite's fixtures are deliberately restore-everything (it is where the
+    // pre-batch-0 cross-suite SIGSEGV lived). The chain-head restore, the two
+    // unlinks and the two NOWHERE de-locations are now `occupants`, which
+    // unwinds immediately after this body runs.
     ~SpecialDispatchContext() {
-        test_world.room().people = original_people;
         test_world.room().funct = nullptr;
-        ch.next_in_room = nullptr;
-        mob_occupant.next_in_room = nullptr;
-        ch.in_room = NOWHERE;
-        mob_occupant.in_room = NOWHERE;
     }
 };
 
@@ -139,10 +142,7 @@ TEST(InterpreSpecial, DispatchesBothTheRoomFunctAndTheRoomOccupantMobSpec) {
 TEST(InterpreSpecial, ReturnsZeroWhenNeitherTheRoomNorAnyOccupantConsumesTheEvent) {
     ScopedTestWorld test_world;
     char_data ch{};
-    ch.in_room = 0;
-    ch.next_in_room = nullptr;
-    char_data *original_people = test_world.room().people;
-    test_world.room().people = &ch;
+    ScopedRoomOccupants occupants{&test_world.room(), 0, {&ch}};
     test_world.room().funct = nullptr;
 
     waiting_type wtl{};
@@ -151,7 +151,4 @@ TEST(InterpreSpecial, ReturnsZeroWhenNeitherTheRoomNorAnyOccupantConsumesTheEven
     EXPECT_EQ(result, 0)
         << "No registered room funct and no matching occupant spec-proc -- special() must "
            "return the tripwire-free 0 (\"nothing consumed the event\").";
-
-    test_world.room().people = original_people;
-    ch.in_room = NOWHERE;
 }

@@ -5,6 +5,7 @@
 #include "rots/core/descriptor.h"
 #include "rots/core/types.h"
 #include "test_char_cleanup.h"
+#include "test_placement.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
@@ -212,8 +213,7 @@ TEST(CommOutput, SendToRoomForwardsBoundedViewsAndEmbeddedNullSemantics)
 {
     ScopedTestWorld test_world;
     ConnectedCharacterContext recipient;
-    test_world.room().people = &recipient.character;
-    recipient.character.in_room = 0;
+    ScopedRoomOccupants occupants { &test_world.room(), 0, { &recipient.character } };
 
     expect_bounded_and_embedded_null_output(
         [](std::string_view message) { send_to_room(message, 0); }, recipient.descriptor);
@@ -224,8 +224,7 @@ TEST(CommOutput, SendToRoomExceptForwardsBoundedViewsAndEmbeddedNullSemantics)
     ScopedTestWorld test_world;
     ConnectedCharacterContext recipient;
     ConnectedCharacterContext excluded;
-    test_world.room().people = &recipient.character;
-    recipient.character.in_room = 0;
+    ScopedRoomOccupants occupants { &test_world.room(), 0, { &recipient.character } };
 
     expect_bounded_and_embedded_null_output(
         [&excluded](std::string_view message) {
@@ -240,8 +239,7 @@ TEST(CommOutput, SendToRoomExceptTwoForwardsBoundedViewsAndEmbeddedNullSemantics
     ConnectedCharacterContext recipient;
     ConnectedCharacterContext excluded_first;
     ConnectedCharacterContext excluded_second;
-    test_world.room().people = &recipient.character;
-    recipient.character.in_room = 0;
+    ScopedRoomOccupants occupants { &test_world.room(), 0, { &recipient.character } };
 
     expect_bounded_and_embedded_null_output(
         [&excluded_first, &excluded_second](std::string_view message) {
@@ -256,7 +254,7 @@ TEST(CommOutput, SendToOutdoorForwardsBoundedViewsAndEmbeddedNullSemantics)
     ScopedDescriptorListReset descriptor_list_reset;
     ScopedTestWorld test_world;
     ConnectedCharacterContext recipient;
-    recipient.character.in_room = 0;
+    set_location(&recipient.character, 0);
     recipient.character.specials.position = POSITION_STANDING;
     descriptor_list = &recipient.descriptor;
 
@@ -271,7 +269,7 @@ TEST(CommOutput, SendToSectorForwardsBoundedViewsAndEmbeddedNullSemantics)
     ConnectedCharacterContext recipient;
     constexpr int sector_type = 3;
     test_world.room().sector_type = sector_type;
-    recipient.character.in_room = 0;
+    set_location(&recipient.character, 0);
     recipient.character.specials.position = POSITION_STANDING;
     descriptor_list = &recipient.descriptor;
 

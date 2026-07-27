@@ -781,7 +781,8 @@ build target, so it runs on every preset including `windows-msvc`) and wired int
 `src/tests/Makefile`'s `tests` recipe (the monolithic runner has no ctest layer to inherit it from) —
 both-build-system parity, per the standing rule. It was `ctest` #1618 as of LS-1's own HEAD.
 
-**Widened to tree-wide by the LS-2 wave's Task T5 (`src/tests` deferred, not covered).** The scan is
+**Widened to tree-wide by the LS-2 wave's Task T5 (`src/tests` deferred at the time — see the
+LS-3a T4 subsection below, which retired that deferral).** The scan is
 no longer the seven source-bearing library directories: `source_files()` now recurses over all of
 `src/**` (`.cpp`/`.h`/`.hpp`), scanning production code — the nine libraries, `src/app/*.cpp`, and
 every flat/public shared header — and partitioning out `src/tests` via a named `DEFERRED_DIRS =
@@ -798,7 +799,8 @@ string literal, a reason that merely prefixes an authorized one, an appendix led
 masquerading as the allow-list, and a deferred-dir file leaking into the scanned set. LS-2's T5
 originally proved those five directions by probe-and-revert, which proved the gate worked that day
 and left nothing behind to re-prove it on regression while this paragraph described it in the
-present tense (whole-branch review, Fable M3); the standing test closes that gap. Neither `src/CMakeLists.txt`'s `add_test` invocation nor `src/tests/Makefile`'s
+present tense (whole-branch review, Fable M3); the standing test closes that gap. (The deferred-dir
+direction was replaced by its own inverse in LS-3a T4, below.) Neither `src/CMakeLists.txt`'s `add_test` invocation nor `src/tests/Makefile`'s
 `tests` recipe needed a functional edit — both already passed no positional search path, so the
 default-scope change was picked up automatically; both got a comment-only update instead, so the
 in-repo description of the gate's scope never lies. The authorized-reason list grew eight → **eleven**:
@@ -808,6 +810,32 @@ in-repo description of the gate's scope never lies. The authorized-reason list g
 `shop_data::in_room`, a shop VNUM). It is `ctest` #1689 as of the LS-2 wave's HEAD (was #1618 at LS-1's own HEAD);
 see `docs/superpowers/specs/2026-07-23-locationsystem-program-design.md`'s Wave LS-2 As-built section
 and `docs/superpowers/location-read-allowlist.md` for the full account.
+
+**Five tokens and a whole-tree sweep — the LS-3a wave's Task T4.** Two structural gaps in the
+LS-2 claim closed together, because either alone leaves a green gate that lies.
+`->people`/`.people` — the occupant chain's HEAD, the other half of the intrusive list
+`next_in_room` walks — became the **fifth tracked token** (ruling R-B6), and the `src/tests`
+deferral was **retired** (R-B8): `DEFERRED_DIRS`, `is_under_deferred_dir()` and the `[deferred] N
+file(s)` notice are *deleted*, not emptied, so there is no directory-exclusion mechanism left for a
+future wave to re-open a blind spot with; `--check` prints `[scanned] N file(s)` instead, and
+`MINIMUM_SCANNED_FILE_COUNT` rose 100 → **250** against a scan that went 181 → **307** files. The
+authorized-reason list stayed at **eleven** (R-B7 minted none, and specifically did not create the
+pre-reserved `test-fixture`); `representation-impl` simply widened to a third class its wording
+already fits — occupant-chain SHAPE assertions, the 14 test lines that pin raw `next_in_room` links
+because no Stage-1 API expresses a tail walk. The gate is deliberately **line-based** and performs no
+read-vs-write classification of its own (ruling AM-5 withdrew a proposed multi-line matcher): where
+clang-format split a write across lines (`src/olc/shaperom.cpp:157`/`:1284`, token on one line and
+`= 0;` on the next), the token line alone makes it visible and the annotation — not any inference by
+the script — records that it is a write. Of the 29 newly-visible unannotated production sites, 24
+were chain-HEAD reads that converted outright to the Stage-1 `first_occupant()` accessor LS-3a T1 had
+landed consumer-free for exactly that purpose (R-C6), leaving `src/handler.h`'s two range
+constructors (`representation-impl`, R-C7) and three writes. `LocationReadCensusSelfTest` grew to
+match: both `.people` spellings, the split write flagged and annotated, the two over-match shapes
+that must NOT fire, the retired deferral's inverse (an unannotated `src/tests` write is flagged; the
+same file annotated is clean), the floor at its exact boundary *and* at its literal value — the
+symbolic probes all move with the constant and none of them would notice it being lowered — and a
+case pinning R4's backslash stripping, which the LS-2-era suite claimed to cover but did not (the
+sabotage that should have proved it was a no-op against that suite; it is red against this one).
 
 **The `utils.h` macro boundary — CLOSED by the LS-2 wave's Task T2 (was KNOWN/OPEN at LS-1's HEAD).**
 LS-1 left ~90 library-scoped raw reads hiding behind `src/utils.h` macros census-sanctioned out of its

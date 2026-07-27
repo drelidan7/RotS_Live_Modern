@@ -191,9 +191,14 @@ zone_tests.o : ../zone.h ../db.h
 # invocation passes no positional path (default --root/--exceptions only),
 # so it scans whatever tools/location_read_census.py's own default scope
 # is -- LS-1's seven libraries, then LS-2 T5's tree-wide src/** sweep
-# (src/tests excluded pending LS-3a) -- with no edit needed here when that
-# scope changes. See ls1-census.md Step 8 / ls1-task-3-report.md and
-# ls2-census.md / ls2-census-b.md PART 3 / ls2-task-5-report.md.
+# (src/tests deferred), and as of LS-3a T4 the WHOLE src/** tree with
+# src/tests included and no directory excluded at all -- with no edit
+# needed here when that scope changes. Note this recipe builds and runs
+# THIS directory's own sources, which the gate now scans too: a raw
+# location token added to a test file fails `make tests` exactly as one
+# added to production code does. See ls1-census.md Step 8 /
+# ls1-task-3-report.md, ls2-census.md / ls2-census-b.md PART 3 /
+# ls2-task-5-report.md, and ls3a-global-constraints.md R-B6/R-B8.
 tests: $(EXECUTABLE)
 	python3 ../../tools/location_read_census.py --check
 	python3 ../../tools/location_read_census.py --self-test

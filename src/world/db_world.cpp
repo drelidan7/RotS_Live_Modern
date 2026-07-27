@@ -1876,6 +1876,23 @@ room_data::room_data()
     name = 0;
     description = 0;
     affected = NULL;
+    // LS-3a R-T0b-4(b)/S4: the remaining members were historically left
+    // indeterminate by this constructor (only the boot loader or
+    // dummy_room_data() rescued them), which made every never-loaded
+    // world[] slot hold garbage occupant/contents heads and let garbage
+    // funct fire under ASan. Deterministic zero-init closes the class.
+    sector_type = 0;
+    room_flags = 0;
+    light = 0;
+    alignment = 0;
+    ex_description = 0;
+    contents = 0;
+    people = 0; // LS1-ALLOW: write
+    funct = 0;
+    bfs_dir = 0;
+    bfs_next = 0;
+    for (int door = 0; door < NUM_OF_DIRS; door++)
+        dir_option[door] = 0;
 }
 
 void dummy_room_data(room_data* room)

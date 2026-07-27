@@ -739,7 +739,7 @@ int board_info_type::remove_msg(struct char_data* ch, char* arg)
 
 void board_info_type::flush_board()
 {
-    char_data dummy;
+    char_data dummy {}; // value-init: in_room/next_in_room were indeterminate (LS-3a R-T0b-4(b)/P13)
     char str[100];
     // Fixed-lifetime buffer for the throwaway "system" poster name below: dummy.player.name
     // is a genuinely-mutable char* elsewhere (owns dynamically allocated player names), so it

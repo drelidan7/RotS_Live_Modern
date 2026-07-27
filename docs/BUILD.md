@@ -1047,12 +1047,11 @@ evidence rather than re-derivation; every item is a *finding*, not work LS-3a le
   coverage: `poison_notification`'s location wiring is pinned by nothing (it passes unlinked and
   unlocated), and `prompt_format`'s five location writes are pinned by nothing (`PRF_HOLYLIGHT`
   short-circuits the room consult).
-- **Cheap guards ruled into LS-3a that did NOT land**, carried forward honestly rather than claimed:
-  `room_data`'s constructor still initializes only 6 of ~20 members (array-new rooms hold garbage
-  `people`/`contents` heads until the boot loader rescues each), and the three stack `char_data x;`
-  declarations (`boards.cpp:742`, `pkill.cpp:83`/`:374`) still default-initialize to an
-  indeterminate location — UB on any read today, a wild map key later. Each is a one-to-three-line
-  fix.
+- **The R-T0b-4(b) cheap-guard riders LANDED at wave close** (the T5 docs pass first found them
+  missing; the controller landed them the same day): `room_data`'s constructor now zero-initializes
+  every member (never-loaded `world[]` slots no longer hold garbage `people`/`contents`/`funct`),
+  and the three stack `char_data` declarations (`boards.cpp:742`, `pkill.cpp:83`/`:374`) are
+  value-initialized (`{}`), retiring the indeterminate-location UB.
 
 **Reconciled chain:** 1704 → T1 +32 (`242fef4e`+13/`c1c64497`+8/`f2b876bd`+11; the batch-0 and
 `ScopedTestWorld` commits add none) = 1736 → T2 +58 (`4980ba1d`+7/`430035d3`+12/`762c15a1`+4/

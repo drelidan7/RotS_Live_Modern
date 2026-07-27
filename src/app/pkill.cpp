@@ -80,7 +80,7 @@ RANKING total_ranking = { NULL, 0, 0, 0 };
  */
 int __pkill_side(int race)
 {
-    struct char_data c;
+    struct char_data c {}; // value-init: previously indeterminate (LS-3a R-T0b-4(b)/P14)
 
     /* Use a dummy structure so we can use the RACE_GOOD macro */
     GET_RACE(&c) = race;
@@ -371,7 +371,7 @@ void pkill_update_rank(long idx)
 long pkill_update_character_by_id(long idnum, int points)
 {
     int idx;
-    struct char_data c;
+    struct char_data c {}; // value-init: previously indeterminate (LS-3a R-T0b-4(b)/P15)
     extern struct player_index_element* player_table;
 
     /* Update the killer's player table entry */

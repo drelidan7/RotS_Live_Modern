@@ -171,6 +171,9 @@ extern struct player_index_element* player_table;
 extern int top_of_p_table;
 extern struct descriptor_data* descriptor_list;
 extern char* help;
+// perform_mortal_where's named-argument branch walks this list, not
+// descriptor_list (act_info.cpp) -- see MortalWhereNamedTargetContext.
+extern struct char_data* character_list;
 
 namespace {
 
@@ -667,6 +670,123 @@ struct WhoDescriptorListContext {
     }
 };
 
+// LS-3a Wave T2 tranche 2d coverage rider (ruling R-T2-1). Fixture for
+// perform_mortal_where's NAMED-ARGUMENT branch (act_info.cpp's `else` arm),
+// which no test in the tree entered before this one: every prior test passes
+// an empty arg and takes the descriptor-list arm instead. The named arm walks
+// the process-global character_list and, for the matched target, runs the
+// lighting-probe cursor idiom -- save the viewer's location, set_location()
+// the viewer into the TARGET's room, evaluate CAN_SEE(ch) there, restore.
+//
+// The fixture's whole point is to make that cursor move OBSERVABLE. It seats
+// the viewer in room 0 and the target in room 1, and leaves the two rooms'
+// lighting independently settable, so a test can put the viewer somewhere
+// dark and the target somewhere lit: with the cursor working the probe reads
+// the TARGET's room and renders its name, and with the cursor neutralized it
+// reads the VIEWER's dark room and renders "Somewhere" instead. The one-arg
+// CAN_SEE (visibility.cpp) keys off room_of(sub), which is exactly the field
+// the cursor moves; the two-arg CAN_SEE guarding the walk keys off the
+// TARGET's room, so a dark viewer room does not filter the target out.
+//
+// Room 1 is stamped SECT_INSIDE with no DARK bit and no light count, so
+// IS_DARK(1) is false regardless of weather_info.sunlight -- no ScopedSunlight
+// needed for determinism. Both rooms get the same zone and level because the
+// branch's own guard requires it.
+//
+// THE FIXTURE-HYGIENE RULE: the two characters are stack objects spliced onto
+// the process-global character_list, so the destructor unsplices them and puts
+// the previous head back. ctest cannot see a leak like that (one process per
+// test); the monolithic ./ageland_tests runner can, and has, three times in
+// LS-2.
+struct MortalWhereNamedTargetContext {
+    static constexpr int viewer_room = 0;
+    static constexpr int target_room = 1;
+
+    ScopedTestWorld test_world { 2 };
+    char_data viewer {};
+    char_data target {};
+    descriptor_data viewer_descriptor {};
+    // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
+    // leak sweep): both characters are clear_char()'d, so both need one.
+    ScopedClearCharFields viewer_cleanup { viewer };
+    ScopedClearCharFields target_cleanup { target };
+    ScopedDescriptorLargeOutbufReturn viewer_descriptor_large_outbuf_cleanup { viewer_descriptor };
+
+    // The process-global character_list head in effect before this fixture
+    // spliced its two stack characters on; restored in the destructor.
+    char_data* saved_character_list = nullptr;
+    // world[0]/world[1]'s zone and level as found, put back on teardown --
+    // the rooms are shared process state that outlives this scope.
+    int saved_viewer_room_zone = 0;
+    int saved_target_room_zone = 0;
+    int saved_viewer_room_level = 0;
+    int saved_target_room_level = 0;
+
+    MortalWhereNamedTargetContext()
+    {
+        clear_char(&viewer, MOB_VOID);
+        clear_char(&target, MOB_VOID);
+        reset_capturing_descriptor(viewer_descriptor, &viewer);
+        viewer.desc = &viewer_descriptor;
+
+        viewer.player.name = const_cast<char*>("Viewer");
+        target.player.name = const_cast<char*>("Findme");
+        viewer.player.race = RACE_HUMAN;
+        target.player.race = RACE_HUMAN;
+        // Mortal: perform_mortal_where is only reached below LEVEL_IMMORT, and
+        // the two-arg CAN_SEE has an immortal shortcut this fixture must not
+        // take.
+        viewer.player.level = 1;
+        target.player.level = 1;
+        viewer.specials.position = POSITION_STANDING;
+        target.specials.position = POSITION_STANDING;
+
+        saved_viewer_room_zone = world[viewer_room].zone;
+        saved_target_room_zone = world[target_room].zone;
+        saved_viewer_room_level = world[viewer_room].level;
+        saved_target_room_level = world[target_room].level;
+        world[viewer_room].zone = 3;
+        world[target_room].zone = 3;
+        world[viewer_room].level = 0;
+        world[target_room].level = 0;
+
+        // Same free-then-str_dup room-1 stamp TwoRoomLookContext uses, and the
+        // same reason: the rendered line must name a room that is unmistakably
+        // NOT the viewer's own "The Testing Meadow".
+        std::free(world[target_room].name);
+        world[target_room].name = str_dup("A Northern Clearing");
+        world[target_room].room_flags = 0;
+        world[target_room].light = 0;
+        world[target_room].sector_type = 0; // SECT_INSIDE: IS_DARK keys off DARK only
+
+        // The Placement API, not a bare field write (LS-3a ruling R-B2).
+        set_location(&viewer, viewer_room);
+        set_location(&target, target_room);
+
+        saved_character_list = character_list;
+        target.next = saved_character_list;
+        viewer.next = &target;
+        character_list = &viewer;
+    }
+
+    ~MortalWhereNamedTargetContext()
+    {
+        character_list = saved_character_list;
+        viewer.next = nullptr;
+        target.next = nullptr;
+
+        set_location(&viewer, NOWHERE);
+        set_location(&target, NOWHERE);
+
+        world[viewer_room].room_flags = 0;
+        world[target_room].room_flags = 0;
+        world[viewer_room].zone = saved_viewer_room_zone;
+        world[target_room].zone = saved_target_room_zone;
+        world[viewer_room].level = saved_viewer_room_level;
+        world[target_room].level = saved_target_room_level;
+    }
+};
+
 // Per-file copy of act_wiz_tests.cpp's TemporaryDirectory (Phase 4 Wave 3
 // Task 4 -- do_exploits/print_exploits needs a real, throwaway
 // "<root>/exploits/<bucket>/" directory to read a legacy .exploits binary
@@ -857,6 +977,47 @@ TEST(ActInfoPerception, DoExitsFormatsSunlitExitMarkerForOrcUnderSunlight)
 TEST(ActInfoPerception, DoExitsSendsNoneLineWhenNoExitsConfigured)
 {
     RoomCharacterContext context;
+
+    do_exits(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "Obvious exits:\n\r None.\n\r");
+}
+
+// LS-3a Wave T2 tranche 2d coverage rider (ruling R-T2-1). The mortal
+// open-exit line above (DoExitsFormatsOpenExitRoomNameForMortal) pins the
+// FORMAT of that line but nothing about the cursor idiom that produces it:
+// RoomWithExitContext's exit is a self-loop back into room 0, so the source
+// room and the destination room are the same room and the same name comes out
+// either way. Tranche 2a's implementer probe confirmed it empirically --
+// neutralizing the cursor write left that test, and the whole suite, green.
+//
+// This is the missing discriminator. TwoRoomLookContext gives the viewer a
+// real NORTH exit from room 0 ("The Testing Meadow") into room 1 ("A Northern
+// Clearing"), so the name do_exits prints is decided entirely by where the
+// cursor is standing when it reads world[ch->in_room].name: the destination
+// with the cursor working, the viewer's own room without it.
+TEST(ActInfoPerception, DoExitsMortalLineNamesTheDestinationRoomNotTheViewersOwn)
+{
+    TwoRoomLookContext context;
+
+    do_exits(&context.character, const_cast<char*>(""), nullptr, 0, 0);
+
+    EXPECT_STREQ(context.descriptor.output, "Obvious exits:\n\rNorth   - A Northern Clearing\n\r");
+
+    // Stated separately from the byte-exact assertion above so the failure
+    // message says WHICH room leaked in when the cursor stops moving.
+    const std::string output(context.descriptor.output);
+    EXPECT_EQ(output.find("The Testing Meadow"), std::string::npos)
+        << "do_exits named the viewer's own room, so the exit cursor never moved: " << output;
+}
+
+// Control for the test above: with the exit removed the walk produces no line
+// at all, so the room name in that test demonstrably comes from the exit walk
+// (and its cursor swap) rather than from any surrounding render.
+TEST(ActInfoPerception, DoExitsMortalWalkEmitsNoLineWhenTheExitIsAbsent)
+{
+    TwoRoomLookContext context;
+    context.test_world.room().dir_option[TwoRoomLookContext::door_direction] = nullptr;
 
     do_exits(&context.character, const_cast<char*>(""), nullptr, 0, 0);
 
@@ -2910,6 +3071,51 @@ TEST(ActInfoWorldSocial, PerformMortalWhereListsSameZoneOccupantViaDescriptorLis
     context.viewer.in_room = NOWHERE;
     context.other.in_room = NOWHERE;
     world[0].zone = saved_zone0;
+}
+
+// LS-3a Wave T2 tranche 2d coverage riders (ruling R-T2-1) --
+// perform_mortal_where's NAMED-ARGUMENT branch (act_info.cpp's `else` arm),
+// which nothing in the tree entered before now: the test above and every
+// other caller pass an empty arg, so `!*arg` takes the other arm and the
+// named arm's own cursor swap was never executed by a test at all.
+//
+// The idiom under test: the branch parks the viewer's location, set_location()s
+// the viewer into the matched target's room, evaluates the one-arg CAN_SEE()
+// there, and restores. Which room that probe reads is the only thing the
+// cursor decides -- so the fixture puts the viewer in a DARK room and the
+// target in a lit one. Working cursor: the probe reads the target's lit room
+// and the line names it. Neutralized cursor: the probe reads the viewer's dark
+// room and the line says "Somewhere". Both assertions below flip together, in
+// opposite directions, which is what makes this a discriminator rather than
+// another test that merely runs the code.
+TEST(ActInfoWorldSocial, PerformMortalWhereNamedTargetProbesLightingInTheTargetsRoom)
+{
+    MortalWhereNamedTargetContext context;
+    // The VIEWER's room goes dark; the target's room stays lit.
+    context.test_world.room().room_flags = DARK;
+
+    perform_mortal_where(&context.viewer, const_cast<char*>("Findme"));
+
+    const std::string output(context.viewer_descriptor.output);
+    EXPECT_NE(output.find("Findme"), std::string::npos)
+        << "the named target was not matched at all: " << output;
+    EXPECT_NE(output.find("A Northern Clearing"), std::string::npos)
+        << "the lighting probe did not run in the target's room: " << output;
+    EXPECT_EQ(output.find("Somewhere"), std::string::npos)
+        << "the lighting probe ran in the viewer's dark room, so the cursor never moved: " << output;
+}
+
+// Control for the test above: with no matching name the branch falls through
+// its whole walk to the not-found reply, so the rendered room name in that
+// test demonstrably comes from the matched target's own line.
+TEST(ActInfoWorldSocial, PerformMortalWhereNamedTargetReportsNoOneWhenNoNameMatches)
+{
+    MortalWhereNamedTargetContext context;
+    context.test_world.room().room_flags = DARK;
+
+    perform_mortal_where(&context.viewer, const_cast<char*>("Nobody"));
+
+    EXPECT_STREQ(context.viewer_descriptor.output, "No-one around by that name.\n\r");
 }
 
 // ---------------------------------------------------------------------------

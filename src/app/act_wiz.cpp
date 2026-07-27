@@ -3086,6 +3086,34 @@ ACMD(do_wizset)
             send_to_char("No room exists with that number.\n\r", ch);
             return;
         }
+        // O-2 RIDER (LS-3a T2 tranche 2e-beta, T0b-1 rider row 4b): an OFFLINE
+        // victim is never placed. Under is_file, vict == cbuf -- a character
+        // loaded from disk who is in no room, on no list, and whose location
+        // field carries the raw persisted VNUM -- and free_char(cbuf) releases
+        // him a dozen lines below. The old unconditional pair therefore ran
+        // char_from_room() over a VNUM-as-index (decrementing an unrelated live
+        // room's light counter for any lit worn item, T0b-1's R16) and then
+        // spliced a soon-to-be-freed char_data into a live room's occupant
+        // chain, leaving a dangling pointer there -- the same class the LS-2
+        // finalization spent three commits closing. All the command needs for a
+        // file victim is the typed room in the channel, which is exactly what
+        // the save at the bottom of this function consumes.
+        //
+        // The in-game arm below is unchanged: a live victim is really moved,
+        // with all of char_from_room()/char_to_room()'s bookkeeping.
+        //
+        // UNREACHABLE AS WRITTEN, and knowingly so (see
+        // load_room_placement_tests.cpp's WizsetRoomFieldIsShadowedByRoomflag
+        // SoTheRoomArmIsUnreachable): the field lookup at :2897 is a prefix
+        // match in declaration order, entry 35 is "roomflag", and this entry is
+        // "room" -- so no spelling of "room" ever selects case 36. The fix
+        // lands anyway because it removes the defect class from the tree and
+        // the app tier's last raw placement call on a VNUM; it is not covered
+        // by a test, because no input reaches it.
+        if (is_file) {
+            stash_load_room_vnum(vict, value);
+            break;
+        }
         if (IS_RIDING(vict))
             stop_riding(vict);
         char_from_room(vict);
@@ -3257,7 +3285,18 @@ ACMD(do_wizset)
 
     if (is_file) {
         char_to_store(vict, &tmp_store);
-        save_char(vict, location_of(vict), 0);
+        // O-2 RIDER (LS-3a T2 tranche 2e-beta, T0b-1 rider row 4a): THE VNUM
+        // CHANNEL, not a location. is_file forces vict == cbuf, a character
+        // store_to_char() just materialised who is in no room and on no list,
+        // so this field holds the RAW PERSISTED VNUM -- passing it straight to
+        // save_char() is already correct. Byte-identical today (channel and
+        // location are still the same field), but naming the channel is what
+        // makes LS-3b re-point this line with the rest of the channel instead
+        // of leaving it reading a location store that reports absent for every
+        // offline character. Emphatically NOT the room_by_id_total(location_of
+        // (vict))->number conversion the other three rider rows took: that
+        // would resolve a VNUM as an index and corrupt every wizset-file save.
+        save_char(vict, peek_load_room_vnum(vict), 0);
         free_char(cbuf);
         send_to_char("Saved in file.\n\r", ch);
     }

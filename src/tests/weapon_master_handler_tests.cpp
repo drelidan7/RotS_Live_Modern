@@ -1,4 +1,5 @@
 #include "../warrior_spec_handlers.h"
+#include "../handler.h"
 #include "../utils.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
@@ -316,7 +317,7 @@ TEST_F(WeaponMasterProcTest, SwordProcRegainsEnergyWhenSlashProcSucceeds) {
     // not when this test runs alone, e.g. under ctest's one-process-per-test
     // isolation). Setting NOWHERE makes act()'s TO_ROOM branch a no-op, which
     // is all this test needs -- it only asserts on the ENERGY side effect.
-    context.character.in_room = NOWHERE;
+    set_location(&context.character, NOWHERE);
     player_spec::weapon_master_handler handler(&context.character, &context.weapon);
 
     push_test_random_value(0.0);

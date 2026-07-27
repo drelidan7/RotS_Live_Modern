@@ -64,9 +64,9 @@ struct FightProcTestContext {
         // MAX_SKILLS zeros the same way clear_char() would for a PC, since
         // this fixture never calls clear_char().
         attacker.skills.assign(MAX_SKILLS, 0);
-        attacker.in_room = 1001;
+        set_location(&attacker, 1001);
 
-        victim.in_room = 1001;
+        set_location(&victim, 1001);
         attacker.specials.fighting = &victim;
 
         weapon.obj_flags.type_flag = ITEM_WEAPON;
@@ -94,7 +94,7 @@ TEST(FightHelpers, ReportsVictimAsMissingWhenCombatTargetIsNull) {
 
 TEST(FightHelpers, ReportsVictimAsMissingWhenTargetLeavesTheRoom) {
     FightProcTestContext context;
-    context.victim.in_room = 2002;
+    set_location(&context.victim, 2002);
 
     EXPECT_FALSE(is_victim_around(&context.attacker))
         << "Expected victim checks to fail when the target is no longer in the same room.";
@@ -167,7 +167,7 @@ TEST(FightHelpers, RequiresBeorningRaceForSwipe) {
 TEST(FightHelpers, RequiresNearbyVictimForBeorningSwipe) {
     FightProcTestContext context;
     context.attacker.player.race = RACE_BEORNING;
-    context.victim.in_room = 2002;
+    set_location(&context.victim, 2002);
 
     EXPECT_FALSE(can_beorning_swipe(&context.attacker))
         << "Expected beorning swipe to require the fighting target to remain nearby.";
@@ -268,7 +268,7 @@ struct ItemTransferTestContext {
         ch_descriptor.connected = CON_PLYNG;
         ch_descriptor.character = &ch;
         ch.desc = &ch_descriptor;
-        ch.in_room = 0;
+        set_location(&ch, 0);
         // GET_NAME(ch) (utils.h) reads player.name directly for a non-NPC
         // char_data -- a null name would feed std::format() (perform_drop's/
         // perform_give's OBJ-log line) a null const char*, undefined
@@ -287,7 +287,7 @@ struct ItemTransferTestContext {
         vict_descriptor.connected = CON_PLYNG;
         vict_descriptor.character = &vict;
         vict.desc = &vict_descriptor;
-        vict.in_room = 0;
+        set_location(&vict, 0);
         vict.player.name = const_cast<char*>("Samwise");
         vict.specials.position = POSITION_STANDING;
 
@@ -410,7 +410,7 @@ struct WearRemoveTestContext {
         descriptor.connected = CON_PLYNG;
         descriptor.character = &character;
         character.desc = &descriptor;
-        character.in_room = 0;
+        set_location(&character, 0);
         character.specials.position = POSITION_STANDING;
     }
 };

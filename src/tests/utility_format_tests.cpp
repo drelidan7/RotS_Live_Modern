@@ -14,6 +14,7 @@
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
 #include "../comm.h"
+#include "../handler.h"
 #include "../utils.h"
 #include "test_world.h"
 
@@ -242,7 +243,7 @@ TEST(UtilityFormat, LogDeathTrapReportsCharacterNameRoomNumberAndName)
     char_data victim {};
     victim.specials2.act = 0; // PC, not NPC -- GET_NAME resolves to player.name
     victim.player.name = const_cast<char*>("Frodo");
-    victim.in_room = 0;
+    set_location(&victim, 0);
 
     log_death_trap(&victim);
 

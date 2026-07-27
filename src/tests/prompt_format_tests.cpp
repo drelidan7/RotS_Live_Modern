@@ -296,14 +296,14 @@ TEST(PromptFormat, CombatOpponentRendersOpponentName)
     // opponent's name rather than "someone"; both HUMAN so other_side() is 0
     // and PERS uses GET_NAME, not the enemy race-star form.
     SET_BIT(context.character.specials2.pref, PRF_HOLYLIGHT);
-    context.character.in_room = 0;
+    set_location(&context.character, 0);
     context.character.tmpabilities.move = 20;
     context.character.specials.position = POSITION_FIGHTING;
 
     char_data opponent {};
     opponent.player.race = RACE_HUMAN;
     opponent.player.name = const_cast<char*>("Sauron");
-    opponent.in_room = 0;
+    set_location(&opponent, 0);
     opponent.specials.position = POSITION_FIGHTING;
     opponent.abilities.hit = 100;
     opponent.tmpabilities.hit = 45;
@@ -328,21 +328,21 @@ TEST(PromptFormat, CombatTankAndOpponentRenderBothNames)
     PromptContext context;
     SET_BIT(context.character.specials2.pref, PRF_PROMPT);
     SET_BIT(context.character.specials2.pref, PRF_HOLYLIGHT);
-    context.character.in_room = 0;
+    set_location(&context.character, 0);
     context.character.tmpabilities.move = 20;
     context.character.specials.position = POSITION_FIGHTING;
 
     char_data tank {};
     tank.player.race = RACE_HUMAN;
     tank.player.name = const_cast<char*>("Gandalf");
-    tank.in_room = 0;
+    set_location(&tank, 0);
     tank.abilities.hit = 100;
     tank.tmpabilities.hit = 70;
 
     char_data opponent {};
     opponent.player.race = RACE_HUMAN;
     opponent.player.name = const_cast<char*>("Sauron");
-    opponent.in_room = 0;
+    set_location(&opponent, 0);
     opponent.abilities.hit = 100;
     opponent.tmpabilities.hit = 45;
     // Opponent fights the tank, not this character.

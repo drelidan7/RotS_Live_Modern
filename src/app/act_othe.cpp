@@ -1819,7 +1819,7 @@ ACMD(do_knock)
                     room = EXIT(ch, tmp)->to_room;
                     if (room != NOWHERE) {
                         oldroom = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (knock: save/restore around the adjacent-room act()/special() broadcast)
-                        ch->in_room = room; // LS1-ALLOW: in_room used as mutable room cursor (knock: save/restore around the adjacent-room act()/special() broadcast)
+                        set_location(ch, room); // LS1-ALLOW: in_room used as mutable room cursor (knock: save/restore around the adjacent-room act()/special() broadcast)
                         if (EXIT(ch, rev_dir[tmp])) {
                             if (IS_SET(EXIT(ch, rev_dir[tmp])->exit_info, EX_ISDOOR) && EXIT(ch, rev_dir[tmp])->keyword) {
                                 strcpy(str, std::format("You hear a knock on the {}.\n",
@@ -1839,7 +1839,7 @@ ACMD(do_knock)
                         ch->delay.targ1.type = TARGET_OTHER;
                         ch->delay.targ1.ch_num = rev_dir[tmp];
                         special(ch, CMD_KNOCK, argument, SPECIAL_NONE, 0);
-                        ch->in_room = oldroom; // LS1-ALLOW: in_room used as mutable room cursor (knock: save/restore around the adjacent-room act()/special() broadcast)
+                        set_location(ch, oldroom); // LS1-ALLOW: in_room used as mutable room cursor (knock: save/restore around the adjacent-room act()/special() broadcast)
                     }
 
                     return;

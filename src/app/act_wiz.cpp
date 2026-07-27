@@ -1466,9 +1466,9 @@ ACMD(do_vstat)
             return;
         }
         mob = read_mobile(r_num, REAL);
-        mob->in_room = location_of(ch); // LS1-ALLOW: write (vstat scratch placement; RHS is a genuine location read -- shapemob new_mob precedent)
+        set_location(mob, location_of(ch)); // LS1-ALLOW: write (vstat scratch placement; RHS is a genuine location read -- shapemob new_mob precedent)
         do_stat_character(ch, mob);
-        mob->in_room = NOWHERE; // LS1-ALLOW: write (vstat scratch placement teardown)
+        set_location(mob, NOWHERE); // LS1-ALLOW: write (vstat scratch placement teardown)
         extract_char(mob);
     } else if (is_abbrev(buf, "obj")) {
         if ((r_num = real_object(number)) < 0) {

@@ -149,7 +149,7 @@ TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoHitWhenRegistered)
     test_world.room().room_flags = 0;
     ScopedCapturingOutputSink capture;
     char_data character {};
-    character.in_room = 0;
+    set_location(&character, 0);
 
     rots::combat::issue_command(
         rots::combat::combat_command::hit, &character, mutable_arg(""), nullptr, 0, 0);
@@ -165,7 +165,7 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenHitIsUnregistered)
     ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::hit);
     ScopedCapturingOutputSink capture;
     char_data character {};
-    character.in_room = 0;
+    set_location(&character, 0);
 
     rots::combat::issue_command(
         rots::combat::combat_command::hit, &character, mutable_arg(""), nullptr, 0, 0);
@@ -326,7 +326,7 @@ TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoMoveWhenRegistered)
     test_world.room().dir_option[0] = nullptr;
     ScopedCapturingOutputSink capture;
     char_data character {};
-    character.in_room = 0;
+    set_location(&character, 0);
 
     rots::combat::issue_command(
         rots::combat::combat_command::move, &character, mutable_arg(""), nullptr, 1, 0);
@@ -342,7 +342,7 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenMoveIsUnregistered)
     ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::move);
     ScopedCapturingOutputSink capture;
     char_data character {};
-    character.in_room = 0;
+    set_location(&character, 0);
 
     rots::combat::issue_command(
         rots::combat::combat_command::move, &character, mutable_arg(""), nullptr, 1, 0);
@@ -450,7 +450,7 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenGenComIsUnregistered)
 TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoStandWhenRegistered)
 {
     char_data character {};
-    character.in_room = NOWHERE;
+    set_location(&character, NOWHERE);
     character.specials.position = POSITION_SITTING;
     character.specials.fighting = nullptr;
 
@@ -465,7 +465,7 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenStandIsUnregistered)
 {
     ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::stand);
     char_data character {};
-    character.in_room = NOWHERE;
+    set_location(&character, NOWHERE);
     character.specials.position = POSITION_SITTING;
     character.specials.fighting = nullptr;
 
@@ -484,7 +484,7 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenStandIsUnregistered)
 TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoWakeWhenRegistered)
 {
     char_data character {};
-    character.in_room = NOWHERE;
+    set_location(&character, NOWHERE);
     character.specials.position = POSITION_SLEEPING;
 
     rots::combat::issue_command(
@@ -498,7 +498,7 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenWakeIsUnregistered)
 {
     ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::wake);
     char_data character {};
-    character.in_room = NOWHERE;
+    set_location(&character, NOWHERE);
     character.specials.position = POSITION_SLEEPING;
 
     rots::combat::issue_command(
@@ -634,7 +634,7 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenWearIsUnregistered)
 TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoSitWhenRegistered)
 {
     char_data character {};
-    character.in_room = NOWHERE;
+    set_location(&character, NOWHERE);
     character.specials.position = POSITION_STANDING;
 
     rots::combat::issue_command(
@@ -648,7 +648,7 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenSitIsUnregistered)
 {
     ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::sit);
     char_data character {};
-    character.in_room = NOWHERE;
+    set_location(&character, NOWHERE);
     character.specials.position = POSITION_STANDING;
 
     rots::combat::issue_command(
@@ -661,7 +661,7 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenSitIsUnregistered)
 TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoRestWhenRegistered)
 {
     char_data character {};
-    character.in_room = NOWHERE;
+    set_location(&character, NOWHERE);
     character.specials.position = POSITION_STANDING;
 
     rots::combat::issue_command(
@@ -675,7 +675,7 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenRestIsUnregistered)
 {
     ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::rest);
     char_data character {};
-    character.in_room = NOWHERE;
+    set_location(&character, NOWHERE);
     character.specials.position = POSITION_STANDING;
 
     rots::combat::issue_command(
@@ -688,7 +688,7 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenRestIsUnregistered)
 TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoSleepWhenRegistered)
 {
     char_data character {};
-    character.in_room = NOWHERE;
+    set_location(&character, NOWHERE);
     character.specials.position = POSITION_STANDING;
 
     rots::combat::issue_command(
@@ -702,7 +702,7 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenSleepIsUnregistered)
 {
     ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::sleep);
     char_data character {};
-    character.in_room = NOWHERE;
+    set_location(&character, NOWHERE);
     character.specials.position = POSITION_STANDING;
 
     rots::combat::issue_command(
@@ -735,7 +735,7 @@ TEST(CombatHooksDispatch, IssueCommandReachesTheRealDoMentalWhenRegistered)
     test_world.room().room_flags = PEACEROOM;
     ScopedCapturingOutputSink capture;
     char_data character {};
-    character.in_room = 0;
+    set_location(&character, 0);
 
     rots::combat::issue_command(
         rots::combat::combat_command::mental, &character, mutable_arg(""), nullptr, 0, 0);
@@ -752,7 +752,7 @@ TEST(CombatHooksDispatch, IssueCommandDefaultsToANoOpWhenMentalIsUnregistered)
     ScopedUnregisteredCombatCommand unregistered(rots::combat::combat_command::mental);
     ScopedCapturingOutputSink capture;
     char_data character {};
-    character.in_room = 0;
+    set_location(&character, 0);
 
     rots::combat::issue_command(
         rots::combat::combat_command::mental, &character, mutable_arg(""), nullptr, 0, 0);
@@ -1034,7 +1034,7 @@ TEST(CombatHooksSpecial, CallSpecialReachesARegisteredStubWithAllArgsIntact)
     EXPECT_EQ(g_recorded_special_call.arg, argument_text);
     EXPECT_EQ(g_recorded_special_call.callflag, SPECIAL_TARGET);
     EXPECT_EQ(g_recorded_special_call.wtl, &wtl);
-    EXPECT_EQ(g_recorded_special_call.in_room, 42)
+    EXPECT_EQ(g_recorded_special_call.in_room, 42) // LS1-ALLOW: not-a-location (RecordedSpecialCall::in_room is this file's own recorder capturing special()'s int in_room parameter, interpre.h:99 -- not a character location)
         << "Expected the explicit in_room argument to reach the stub unchanged.";
     EXPECT_EQ(result, 42) << "Expected call_special() to forward the stub's return value.";
 }
@@ -1048,7 +1048,7 @@ TEST(CombatHooksSpecial, CallSpecialOmittedInRoomArgumentDefaultsToNowhereLikeIn
 
     rots::combat::call_special(&character, 0, mutable_arg(""), 0, &wtl);
 
-    EXPECT_EQ(g_recorded_special_call.in_room, NOWHERE)
+    EXPECT_EQ(g_recorded_special_call.in_room, NOWHERE) // LS1-ALLOW: not-a-location (RecordedSpecialCall::in_room is this file's own recorder capturing special()'s int in_room parameter, interpre.h:99 -- not a character location)
         << "Expected call_special()'s own in_room default to mirror interpre.h:99's "
            "`int in_room = NOWHERE` default exactly.";
 }

@@ -1,4 +1,5 @@
 #include "../char_utils.h"
+#include "../handler.h"
 #include "../player_limits.h"
 #include "../protocol.h"
 #include "../rots_net.h"
@@ -262,7 +263,7 @@ public:
 
         m_top_of_world = top_of_world;
         top_of_world = 0;
-        room_data& room = world[0];
+        room_data& room = *room_by_id_total(0);
         m_number = room.number;
         m_name = room.name;
         m_description = room.description;
@@ -288,7 +289,7 @@ public:
     ~ScopedMSDPTestRoom()
     {
         top_of_world = m_top_of_world;
-        room_data& room = world[0];
+        room_data& room = *room_by_id_total(0);
         room.number = m_number;
         // Free what this fixture str_dup()'d in the constructor before putting
         // the saved originals back; the saved pointers are owned by whoever
@@ -337,7 +338,7 @@ void initialize_msdp_player(char_data* character, const char* name, int room = 0
     character->player.name = strdup(name);
     character->player.level = 10;
     character->player.race = RACE_HUMAN;
-    character->in_room = room;
+    set_location(character, room);
     character->abilities.hit = 150;
     character->tmpabilities.hit = 125;
     character->abilities.mana = 110;
@@ -1496,7 +1497,7 @@ TEST(MSDPProtocol, MsdpUpdateSkipsInvalidDescriptorsWithoutStoppingList)
     // allocations) at scope exit (Phase 5 T6 leak sweep).
     ScopedClearCharFields missing_protocol_character_cleanup { missing_protocol_character };
     missing_protocol_character.player.name = strdup("NoProtocol");
-    missing_protocol_character.in_room = 0;
+    set_location(&missing_protocol_character, 0);
     missing_protocol.character = &missing_protocol_character;
 
     initialize_msdp_player(&npc_context.character, "IgnoredNpc");
@@ -1504,7 +1505,7 @@ TEST(MSDPProtocol, MsdpUpdateSkipsInvalidDescriptorsWithoutStoppingList)
     npc_context.character.player.short_descr = strdup("ignored npc");
 
     initialize_msdp_player(&nowhere_context.character, "Nowhere");
-    nowhere_context.character.in_room = NOWHERE;
+    set_location(&nowhere_context.character, NOWHERE);
 
     initialize_msdp_player(&valid_context.character, "Updated");
     enable_msdp_reports(valid_context.descriptor.pProtocol, { eMSDP_CHARACTER_NAME, eMSDP_HEALTH });
@@ -1751,8 +1752,8 @@ TEST(MSDPProtocol, MsdpUpdateEmitsIndoorAndOutdoorWeather)
         expected_msdp_pair("WEATHER", "You can have no feeling about the weather here."));
     EXPECT_FALSE(indoor_context.descriptor.pProtocol->pVariables[eMDSP_WEATHER]->bDirty);
 
-    world[0].room_flags = 0;
-    world[0].sector_type = SECT_FIELD;
+    room_by_id_total(0)->room_flags = 0;
+    room_by_id_total(0)->sector_type = SECT_FIELD;
     ScopedSectorWeather field_weather(SECT_FIELD, SKY_CLOUDLESS);
     initialize_msdp_player(&outdoor_context.character, "Outdoor");
     enable_msdp_reports(outdoor_context.descriptor.pProtocol, { eMDSP_WEATHER });
@@ -1962,7 +1963,7 @@ TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSkipsInvalidDescriptorsAndSendsWorl
     // char_data fixtures).
     ScopedClearCharFields missing_protocol_character_cleanup { missing_protocol_character };
     missing_protocol_character.player.name = strdup("NoProtocol");
-    missing_protocol_character.in_room = 0;
+    set_location(&missing_protocol_character, 0);
     missing_protocol.character = &missing_protocol_character;
 
     initialize_msdp_player(&npc_context.character, "IgnoredNpc");
@@ -2019,8 +2020,8 @@ TEST(MSDPProtocol, BroadcastWeatherMsdpUpdateSendsIndoorAndOutdoorWeather)
     EXPECT_EQ(indoor_context.read_output(),
         expected_msdp_pair("WEATHER", "You can have no feeling about the weather here."));
 
-    world[0].room_flags = 0;
-    world[0].sector_type = SECT_FIELD;
+    room_by_id_total(0)->room_flags = 0;
+    room_by_id_total(0)->sector_type = SECT_FIELD;
     ScopedSectorWeather field_weather(SECT_FIELD, SKY_CLOUDLESS);
     initialize_msdp_player(&outdoor_context.character, "Outdoor");
     enable_msdp_reports(outdoor_context.descriptor.pProtocol, { eMDSP_WEATHER }); // pattern parity only, see above
@@ -2071,13 +2072,14 @@ TEST(MSDPProtocol, RoomUpdateImplSetsRoomNameVnumExitsAndTerrainWhenLocationIsNe
     // Since LS-3a T1 Stage A both branches leave the same per-room state, and
     // the next ScopedTestWorld construction would clear the slot anyway --
     // this restore keeps the window closed in between.
-    room_direction_data* const original_room0_dir_north = world[0].dir_option[NORTH];
+    room_direction_data* const original_room0_dir_north
+        = room_by_id_total(0)->dir_option[NORTH];
     room_direction_data north_exit {};
     north_exit.exit_info = 0;
     north_exit.to_room = 1;
-    world[0].dir_option[NORTH] = &north_exit;
-    world[0].number = 3005;
-    world[1].number = 3006;
+    room_by_id_total(0)->dir_option[NORTH] = &north_exit;
+    room_by_id_total(0)->number = 3005;
+    room_by_id_total(1)->number = 3006;
 
     ProtocolDescriptor context;
     context.character.desc = &context.descriptor;
@@ -2086,7 +2088,7 @@ TEST(MSDPProtocol, RoomUpdateImplSetsRoomNameVnumExitsAndTerrainWhenLocationIsNe
     // out of the exits scan before touching dir_option[NORTH] at all,
     // leaving the :605 room_by_id_total(room_direction.to_room) conversion
     // this test targets unreached.
-    context.character.in_room = -2;
+    set_location(&context.character, -2);
     enable_msdp_reports(context.descriptor.pProtocol,
         { eMSDP_ROOM_NAME, eMSDP_ROOM_VNUM, eMSDP_ROOM_EXITS, eMSDP_ROOM });
 
@@ -2114,7 +2116,7 @@ TEST(MSDPProtocol, RoomUpdateImplSetsRoomNameVnumExitsAndTerrainWhenLocationIsNe
         << "Expected act_move.cpp:616's sector_types[room_of(ch)->sector_type] conversion to "
            "embed room[0]'s (default sector_type 0 == \"Floor\") terrain name: " << room_table;
 
-    world[0].dir_option[NORTH] = original_room0_dir_north;
+    room_by_id_total(0)->dir_option[NORTH] = original_room0_dir_north;
 }
 
 TEST(MSDPProtocol, RoomUpdateImplIsANoOpWhenCharacterHasAnOrdinaryNonNegativeLocation)
@@ -2122,7 +2124,7 @@ TEST(MSDPProtocol, RoomUpdateImplIsANoOpWhenCharacterHasAnOrdinaryNonNegativeLoc
     ScopedTestWorld test_world { 1 };
     ProtocolDescriptor context;
     context.character.desc = &context.descriptor;
-    context.character.in_room = 0; // the ordinary case: a valid, non-negative room
+    set_location(&context.character, 0); // the ordinary case: a valid, non-negative room
     enable_msdp_reports(context.descriptor.pProtocol, { eMSDP_ROOM_NAME, eMSDP_ROOM_VNUM });
 
     msdp_room_update_impl(&context.character);

@@ -28,6 +28,7 @@
 // ProcSucceeds test documents for the identical reason.
 #include "../char_utils.h"
 #include "../entity_hooks.h"
+#include "../handler.h"
 #include "../utils.h"
 #include "../warrior_spec_handlers.h"
 #include "rots/core/character.h"
@@ -59,7 +60,7 @@ struct WildFightingTestContext {
         character.player.level = LEVEL_MAX;
         // See the file header comment: keeps every TO_ROOM act() call in the
         // methods under test a safe no-op instead of indexing world[].
-        character.in_room = NOWHERE;
+        set_location(&character, NOWHERE);
     }
 };
 

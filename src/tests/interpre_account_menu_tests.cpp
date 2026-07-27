@@ -1137,7 +1137,7 @@ TEST(InterpreAccountMenu, UnlockSelectAllowsOneDifferentLinkedCharacterSelection
     linkless_legolas->player.name = strdup("legolas");
     linkless_legolas->player.level = 45;
     linkless_legolas->specials2.idnum = 5252;
-    linkless_legolas->in_room = 0;
+    set_location(linkless_legolas, 0);
     linkless_legolas->next = nullptr;
     character_list = linkless_legolas;
 
@@ -2115,7 +2115,7 @@ TEST(InterpreAccountMenu, SelectingSameLinklessActiveCharacterReconnectsExisting
     active_descriptor->connected = CON_LINKLS;
     active_descriptor->descriptor = 0;
     char_data* active_character = attach_active_character(active_descriptor, "aragorn", 95, 4242);
-    active_character->in_room = 0;
+    set_location(active_character, 0);
     register_pc_char(active_character);
     active_character->next = nullptr;
     character_list = active_character;
@@ -2180,7 +2180,7 @@ TEST(InterpreAccountMenu, SelectingSameActivePlayingCharacterUsurpsExistingDescr
     active_descriptor.connected = CON_PLYNG;
     active_descriptor.descriptor = 7;
     char_data* active_character = attach_active_character(&active_descriptor, "aragorn", 95, 4242);
-    active_character->in_room = 0;
+    set_location(active_character, 0);
     register_pc_char(active_character);
     active_character->next = nullptr;
     character_list = active_character;
@@ -2340,7 +2340,7 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenAnyA
     descriptor.character->player.name = strdup("legolas");
     descriptor.character->player.level = 45;
     descriptor.character->specials2.idnum = 6262;
-    descriptor.character->in_room = 0;
+    set_location(descriptor.character, 0);
     descriptor.character->desc = &descriptor;
     descriptor.pos = 2;
     std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
@@ -2425,7 +2425,7 @@ TEST(InterpreAccountMenu, StaleAccountBackedCharacterMenuAllowsSelectionWhenLink
     descriptor.character->player.name = strdup("legolas");
     descriptor.character->player.level = 45;
     descriptor.character->specials2.idnum = 6262;
-    descriptor.character->in_room = 0;
+    set_location(descriptor.character, 0);
     descriptor.character->desc = &descriptor;
     descriptor.pos = 2;
     std::snprintf(descriptor.host, sizeof(descriptor.host), "%s", "127.0.0.1");
@@ -5042,7 +5042,7 @@ TEST(InterpreAccountMenu, IntroduceCharForAccountBackedCharactersAvoidsLegacyFil
     ASSERT_NE(fp, nullptr);
     EXPECT_EQ(std::fclose(fp), 0);
     EXPECT_EQ(loaded_character->specials2.load_room, 0);
-    EXPECT_EQ(world[loaded_character->specials2.load_room].number, 1200);
+    EXPECT_EQ(room_by_id_total(loaded_character->specials2.load_room)->number, 1200);
     EXPECT_EQ(loaded_character->specials2.rawPerception, get_naked_perception(loaded_character));
     EXPECT_EQ(loaded_character->specials2.perception, get_naked_perception(loaded_character));
     EXPECT_FALSE(std::filesystem::exists("players"));
@@ -5396,7 +5396,7 @@ TEST(InterpreAccountMenu, AdvanceLevelStillPersistsWhenAccountOwnershipLookupFai
     descriptor.character->player.level = 2;
     descriptor.character->specials2.idnum = 4242;
     descriptor.character->player.race = RACE_HUMAN;
-    descriptor.character->in_room = NOWHERE;
+    set_location(descriptor.character, NOWHERE);
     descriptor.character->specials2.load_room = NOWHERE;
     descriptor.pos = create_entry(descriptor.character->player.name);
 

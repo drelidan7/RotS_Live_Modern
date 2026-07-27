@@ -400,14 +400,14 @@ TEST(CharUtils, BlocksVisionWhenCharacterIsNowhereBlindOrWriting) {
     room.sector_type = SECT_CITY;
 
     CharUtilsTestContext nowhere_context;
-    nowhere_context.character.in_room = NOWHERE;
+    set_location(&nowhere_context.character, NOWHERE);
 
     CharUtilsTestContext blind_context;
-    blind_context.character.in_room = 1;
+    set_location(&blind_context.character, 1);
     blind_context.character.specials.affected_by = AFF_BLIND;
 
     CharUtilsTestContext writing_context;
-    writing_context.character.in_room = 1;
+    set_location(&writing_context.character, 1);
     writing_context.character.specials2.act = PLR_WRITING;
 
     EXPECT_FALSE(utils::can_see(nowhere_context.character, weather, room));
@@ -421,7 +421,7 @@ TEST(CharUtils, ShadowCharactersCanSeeButOnlyRecognizeMagicObjects) {
     room.sector_type = SECT_CITY;
 
     CharUtilsTestContext context;
-    context.character.in_room = 1;
+    set_location(&context.character, 1);
     context.character.specials2.act = PLR_ISSHADOW;
 
     obj_data mundane = make_object(ITEM_ARMOR);
@@ -446,7 +446,7 @@ TEST(CharUtils, DetectInvisibleAllowsCharactersToSeeInvisibleObjects) {
     room.sector_type = SECT_CITY;
 
     CharUtilsTestContext context;
-    context.character.in_room = 1;
+    set_location(&context.character, 1);
     context.character.specials.affected_by = AFF_DETECT_INVISIBLE;
 
     obj_data invisible = make_object(ITEM_ARMOR);
@@ -465,7 +465,7 @@ TEST(CharUtils, CanGetObjectRequiresTakeFlagCarryCapacityAndVisibility) {
     room.sector_type = SECT_CITY;
 
     CharUtilsTestContext context;
-    context.character.in_room = 1;
+    set_location(&context.character, 1);
     context.character.tmpabilities.str = 10;
     context.character.tmpabilities.dex = 8;
     context.character.player.level = 10;
@@ -672,9 +672,9 @@ TEST(GroupData, ManagesMembershipPcCountsAndRoomFiltering) {
     CharUtilsTestContext pc_member_context;
     CharUtilsTestContext npc_member_context;
 
-    leader_context.character.in_room = 10;
-    pc_member_context.character.in_room = 10;
-    npc_member_context.character.in_room = 20;
+    set_location(&leader_context.character, 10);
+    set_location(&pc_member_context.character, 10);
+    set_location(&npc_member_context.character, 20);
     npc_member_context.character.specials2.act = MOB_ISNPC;
 
     group_data group(&leader_context.character);
@@ -782,7 +782,7 @@ TEST(GameplayKeywordLookup, ShopObjectSelectionAcceptsBoundedNamesAndStopsAtEmbe
 {
     ScopedTestWorld test_world;
     CharUtilsTestContext character_context;
-    character_context.character.in_room = 0;
+    set_location(&character_context.character, 0);
     SET_BIT(character_context.character.specials2.pref, PRF_HOLYLIGHT);
 
     obj_data shop_object {};

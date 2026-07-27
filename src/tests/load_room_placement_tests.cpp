@@ -76,6 +76,26 @@
 // none of them can pass vacuously. The Q1 tests (calc_load_room never writes
 // in_room) and the Q2 tests (save_char persists its argument verbatim outside
 // the NOWHERE arm) pin behavior the fix deliberately did NOT change.
+//
+// LS-3a WAVE T2 TRANCHE 2e ADDENDUM (rulings R-A2 / AM-1 / R-T0b-3). The
+// chain above is also THE VNUM CHANNEL -- in_room carrying a room VNUM rather
+// than a world[] index across this whole protocol. Before that tranche, three
+// of the channel's sites were pinned by nothing anywhere in the tree:
+// objsave.cpp:494 (the entry read), :495 (its write), and :556 (the
+// extension-room crash-load notice). R-A2 requires characterization FIRST, so
+// the Q1b/Q1c sections below landed before any conversion, together with
+// AM-1's mandatory persisted-value test for the OTHER end of the channel --
+// gen_receptionist()'s rent stash (objsave.cpp:1458-1461), whose write and
+// whose single consumer must convert in the same commit or LS-3b silently
+// persists load_room = NOWHERE for every renting player.
+//
+// The replay of :494-:495 now lives in ONE place,
+// replay_load_character_guard() below, shared by the direct
+// characterization tests and by run_load_placement_chain(). Its statements
+// track production: when tranche 2e routed the production lines onto
+// stash_load_room_vnum()/peek_load_room_vnum(), the replay was routed with
+// them in the same commit, so this file keeps saying what the code does
+// rather than what it used to do.
 
 #include "../db.h"
 #include "../handler.h"
@@ -508,11 +528,30 @@ void release_spawned_follower(char_data *mob) {
 //
 // Returns the follower the chain spawned (nullptr if none), so the caller can
 // assert on where it landed and then release it.
+// (A) load_character()'s own two-line preamble, objsave.cpp:494-495,
+// replayed verbatim. Factored out of run_load_placement_chain() below (LS-3a
+// Wave T2 tranche 2e) so the direct :494/:495 characterization tests and the
+// whole-chain tests exercise ONE copy of the replay rather than two that can
+// drift apart.
+//
+// WHAT THESE TWO LINES ARE. :494 READS the VNUM channel and :495 WRITES it --
+// they are not an "is this character placed?" absence test, however much the
+// NOWHERE comparison looks like one (ruling T0b-4, which overturned a census
+// that had classified them by token shape). By the time load_character()
+// runs, store_to_char() (db_players.cpp:1376) has already deposited the raw
+// persisted integer into the same field; :494 asks whether that deposit
+// happened, and :495 performs it for the character it did not happen for.
+// No real_room() is applied on either line: whatever lands in the field is
+// the on-disk integer, uninterpreted.
+void replay_load_character_guard(char_data &player) {
+    if (location_of(&player) == NOWHERE)
+        player.in_room = player.specials2.load_room; // LS1-ALLOW: replay of objsave.cpp:495
+}
+
 char_data *run_load_placement_chain(char_data &player, const objects_json::ObjectSaveData &data,
                                     int rent_code) {
     // (A) load_character, objsave.cpp:494-495.
-    if (location_of(&player) == NOWHERE)
-        player.in_room = player.specials2.load_room; // LS1-ALLOW: replay of objsave.cpp:495
+    replay_load_character_guard(player);
 
     // (B) Crash_load, objsave.cpp:469 -- the rnum the PLAYER will be placed at.
     player.specials2.load_room = calc_load_room(&player, rent_code);
@@ -575,6 +614,257 @@ TEST(LoadRoomChain, CalcLoadRoomLeavesInRoomHoldingTheRawPersistedValue) {
 // regression guards now: they drive the real production functions and FAIL
 // if the follower loader ever reads location_of(ch) again (proved red
 // against the unfixed code).
+
+// ---------------------------------------------------------------------------
+// Q1b -- objsave.cpp:494-495, load_character()'s guard and write
+//
+// LS-3a Wave T2 tranche 2e, ruling R-A2 (characterization lands BEFORE the
+// conversion) and R-T0b-3 (these were two of THREE channel sites nothing in
+// the tree pinned; :556 below is the third).
+//
+// WHY THEY WERE UNPINNED AND WHY IT MATTERED. A census had read :494's
+// `location_of(ch) == NOWHERE` as an ordinary absence test and :495 as dead.
+// T0b-4 overturned both: the pair is the VNUM channel's entry read and its
+// second write. If :494 were left reading a real location store after LS-3b
+// splits the two, a map-backed location_of() would return absent for EVERY
+// logging-in character, the guard would fire unconditionally, and the
+// persisted VNUM would be pushed into the location store with no
+// char_to_room() -- on every single login, silently.
+//
+// The tests below drive the real calc_load_room()/char_to_room() through
+// run_load_placement_chain()'s replay (see this file's SCOPE note for what a
+// replay does and does not cover). load_character() itself is not called: it
+// is gated on Crash_load()'s rent-file I/O and on act(...TO_ROOM) over a
+// booted world, and it prepends its argument to the process-global
+// character_list with no unwind -- the LS-2 finalization leak class. What is
+// therefore NOT covered here: that :494/:495 really are the first two
+// statements of load_character() (a source read), and the object-restore loop
+// between them and the follower load (which touches neither field).
+// ---------------------------------------------------------------------------
+
+// The discriminating half of the guard: a character who ALREADY has a
+// location must not have it clobbered by the persisted value. This is the
+// W-A2 re-entry window (a character re-entering the game from the menu with
+// in_room still set), and it is the ONLY arm in which the guard's presence is
+// observable at all -- delete the `if` and this test fails, because in_room
+// would be overwritten with the raw persisted VNUM.
+//
+// The other guard-false arm, the ordinary login, is deliberately NOT given a
+// test of its own: store_to_char() (db_players.cpp:1376) has already copied
+// specials2.load_room into in_room by then, so the two are equal, the guard
+// is false, and even if it fired the write would be a self-assignment. No
+// sabotage of either line can turn such a test red, and a test that cannot
+// fail is not coverage (the vacuous-test class the LS-2 whole-branch review
+// caught in finding O-I3). It is recorded here in prose instead.
+TEST(LoadRoomChain, LoadCharacterGuardLeavesAnAlreadyPlacedCharacterAlone) {
+    ScopedVnumWorld fixture_world;
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+
+    // An RNUM in in_room (a real location) and a different VNUM on disk.
+    player.in_room = kOwnerRnum; // LS1-ALLOW: fixture init
+    player.specials2.load_room = kOwnerVnum;
+
+    replay_load_character_guard(player);
+
+    EXPECT_EQ(location_of(&player), kOwnerRnum);
+    EXPECT_NE(location_of(&player), kOwnerVnum);
+    // The persisted field is not touched either way.
+    EXPECT_EQ(GET_LOADROOM(&player), kOwnerVnum);
+}
+
+// The ordinary login arm, recorded for what it is: a NO-OP. store_to_char()
+// (db_players.cpp:1376) has already copied specials2.load_room into in_room,
+// so the two are equal when load_character() runs; the guard is false, and
+// even if it fired the write would be a self-assignment. This test cannot
+// fail for a defect in either line and is not claimed to -- it is here
+// because it is the state the live login path actually presents, and because
+// the NEXT test is only meaningful against it.
+// The write arm: a character with NO location at all (the fresh /
+// account-backed path, where store_to_char()'s deposit never happened) gets
+// the persisted integer copied in RAW. No real_room(), no normalization --
+// which is the whole reason calc_load_room() has to convert it a moment
+// later, and the reason a vnum-shaped and an rnum-shaped save are
+// indistinguishable at this point.
+TEST(LoadRoomChain, LoadCharacterGuardCopiesThePersistedIntegerRawWhenThereIsNoLocation) {
+    ScopedVnumWorld fixture_world;
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+
+    player.in_room = NOWHERE; // LS1-ALLOW: fixture init
+    player.specials2.load_room = kOwnerVnum;
+
+    replay_load_character_guard(player);
+
+    EXPECT_EQ(location_of(&player), kOwnerVnum);
+    // Raw, not converted: real_room(35) is 3 in this world, and 3 is NOT what
+    // landed in the field.
+    EXPECT_NE(location_of(&player), kOwnerRnum);
+    EXPECT_EQ(real_room(kOwnerVnum), kOwnerRnum);
+}
+
+// :495 IS NOT DEAD -- the executable form of T0b-4's ruling. With the write,
+// a locationless character with a persisted VNUM lands in that room; without
+// it, calc_load_room()'s `location_of(ch) == NOWHERE` arm fires instead and
+// sends them to the racial start room. Delete the write from
+// replay_load_character_guard() and this test fails with exactly that split.
+TEST(LoadRoomChain, LoadCharacterGuardWriteDecidesWhereALocationlessCharacterLands) {
+    ScopedVnumWorld fixture_world;
+    ScopedStartRooms fixture_start_rooms;
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+
+    player.in_room = NOWHERE; // LS1-ALLOW: fixture init
+    player.specials2.load_room = kOwnerVnum;
+    // The two outcomes must be distinguishable for this test to mean
+    // anything: room 3 is not the racial start room 0.
+    ASSERT_NE(kOwnerRnum, ScopedStartRooms::kRacialStartRnum);
+
+    const objects_json::ObjectSaveData no_objects{};
+    run_load_placement_chain(player, no_objects, RENT_RENTED);
+
+    EXPECT_EQ(location_of(&player), kOwnerRnum);
+    EXPECT_NE(location_of(&player), ScopedStartRooms::kRacialStartRnum);
+}
+
+// ...and the case that explains why NO golden, test or gate ever observed
+// :495 in twenty years: for a genuinely fresh character the persisted room IS
+// the racial start room, so real_room(startVNUM) and the
+// r_mortal_start_room[] fallback are the SAME number and the write is
+// outcome-neutral by pure value coincidence (T0b-4's phrase). The site is
+// live and reachable; its effect is simply invisible on the only path that
+// normally reaches it.
+TEST(LoadRoomChain, LoadCharacterGuardWriteIsOutcomeNeutralForAFreshStartRoomCharacter) {
+    ScopedVnumWorld fixture_world;
+    ScopedStartRooms fixture_start_rooms;
+
+    const int start_room_vnum = room_vnum_for(ScopedStartRooms::kRacialStartRnum);
+
+    // Path 1 -- WITH the write: the guard fires, the persisted start-room
+    // VNUM lands in the channel, and calc_load_room() converts it.
+    char_data with_write{};
+    make_mortal_player(with_write);
+    ScopedClearCharFields with_write_cleanup{with_write};
+    with_write.in_room = NOWHERE; // LS1-ALLOW: fixture init
+    with_write.specials2.load_room = start_room_vnum;
+    replay_load_character_guard(with_write);
+    ASSERT_EQ(location_of(&with_write), start_room_vnum);
+    const int room_with_write = calc_load_room(&with_write, RENT_RENTED);
+
+    // Path 2 -- WITHOUT it: the channel stays NOWHERE, so calc_load_room()
+    // takes its own `location_of(ch) == NOWHERE` arm and falls back to
+    // r_mortal_start_room[] instead.
+    char_data without_write{};
+    make_mortal_player(without_write);
+    ScopedClearCharFields without_write_cleanup{without_write};
+    without_write.in_room = NOWHERE; // LS1-ALLOW: fixture init
+    without_write.specials2.load_room = start_room_vnum;
+    ASSERT_EQ(location_of(&without_write), NOWHERE);
+    const int room_without_write = calc_load_room(&without_write, RENT_RENTED);
+
+    // ...and the two arms COMPUTE THE SAME ANSWER. Asserted as an equality
+    // between two live results rather than against a constant, so it fails if
+    // either arm changes -- unlike a bare "lands in room 0", which would
+    // survive any sabotage at all.
+    EXPECT_EQ(room_with_write, room_without_write);
+    EXPECT_EQ(room_with_write, ScopedStartRooms::kRacialStartRnum);
+}
+
+// ---------------------------------------------------------------------------
+// Q1c -- objsave.cpp:556, the extension-room crash-load notice
+//
+// The third previously unpinned channel site (R-T0b-3). It is a LOG-ONLY
+// range test over the channel, and EXTENSION_ROOM_HEAD is VNUM space:
+// db_world.cpp assigns it to room_data::number, and extension rooms carry
+// vnums 100001 and up. A census had proposed deleting it as incoherent; it is
+// coherent, live, and stays -- so the tests below pin both halves of what it
+// does (emit the notice) and does not do (change where anyone lands).
+//
+// The notice goes through log(), which writes straight to stderr rather than
+// through rots::log's mudlog sink, so it is captured with gtest's own
+// CaptureStderr -- the same idiom utility_format_tests.cpp uses. mini_mud is
+// 1 under ScopedStartRooms, which suppresses real_room()'s own
+// "does not exist in database" line, so the capture holds only what this site
+// wrote.
+// ---------------------------------------------------------------------------
+
+TEST(LoadRoomChain, CalcLoadRoomLogsTheExtensionRoomNoticeOnACrashLoadWithoutChangingTheResult) {
+    ScopedVnumWorld fixture_world;
+    ScopedStartRooms fixture_start_rooms;
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+
+    // The channel holds an extension-room VNUM; the persisted field holds an
+    // ordinary one (calc_load_room reads them from two different places --
+    // :522 takes old_room from specials2.load_room, the range test at :556
+    // takes its operand from the channel).
+    player.specials2.load_room = kOwnerVnum;
+    player.in_room = EXTENSION_ROOM_HEAD; // LS1-ALLOW: replay of db_players.cpp:1376
+
+    testing::internal::CaptureStderr();
+    const int load_room = calc_load_room(&player, RENT_CRASH);
+    const std::string captured = testing::internal::GetCapturedStderr();
+
+    EXPECT_NE(captured.find("tried to load in room > EXTENSION_ROOM_HEAD"), std::string::npos)
+        << "stderr: " << captured;
+    // LOG-ONLY: no room in this world carries vnum 100000, so real_room()
+    // misses and the ordinary racial-start-room fallback decides the result.
+    // The notice changed nothing.
+    EXPECT_EQ(load_room, ScopedStartRooms::kRacialStartRnum);
+}
+
+TEST(LoadRoomChain, CalcLoadRoomIsSilentJustBelowTheExtensionRoomThreshold) {
+    ScopedVnumWorld fixture_world;
+    ScopedStartRooms fixture_start_rooms;
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+
+    player.specials2.load_room = kOwnerVnum;
+    // One below the threshold: same crash rent code, same (missing) room, so
+    // the ONLY difference from the test above is which side of >= the channel
+    // value falls on.
+    player.in_room = EXTENSION_ROOM_HEAD - 1; // LS1-ALLOW: replay of db_players.cpp:1376
+
+    testing::internal::CaptureStderr();
+    const int load_room = calc_load_room(&player, RENT_CRASH);
+    const std::string captured = testing::internal::GetCapturedStderr();
+
+    EXPECT_EQ(captured.find("tried to load in room > EXTENSION_ROOM_HEAD"), std::string::npos)
+        << "stderr: " << captured;
+    EXPECT_EQ(load_room, ScopedStartRooms::kRacialStartRnum);
+}
+
+TEST(LoadRoomChain, CalcLoadRoomIsSilentForAnExtensionRoomVnumOnANonCrashLoad) {
+    ScopedVnumWorld fixture_world;
+    ScopedStartRooms fixture_start_rooms;
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+
+    player.specials2.load_room = kOwnerVnum;
+    player.in_room = EXTENSION_ROOM_HEAD; // LS1-ALLOW: replay of db_players.cpp:1376
+
+    testing::internal::CaptureStderr();
+    // The other half of the && : an ordinary rent code silences the notice
+    // for the very same channel value.
+    const int load_room = calc_load_room(&player, RENT_RENTED);
+    const std::string captured = testing::internal::GetCapturedStderr();
+
+    EXPECT_EQ(captured.find("tried to load in room > EXTENSION_ROOM_HEAD"), std::string::npos)
+        << "stderr: " << captured;
+    EXPECT_EQ(load_room, ScopedStartRooms::kRacialStartRnum);
+}
 
 // ---------------------------------------------------------------------------
 // Q3 -- does a follower end up in the same room as its owner?
@@ -883,6 +1173,111 @@ TEST(LoadRoomPersistence, EmergencySavePersistsTheStartRoomVnumNotItsRnum) {
         << "output: " << descriptor.small_outbuf;
 
     descriptor_list = previous_descriptor_list;
+    RELEASE(player.player.name);
+}
+
+// AM-1's mandatory persisted-value characterization for the OTHER end of the
+// VNUM channel: the rent stash (objsave.cpp:1458-1461, gen_receptionist()).
+//
+// THE PROTOCOL. :1458 captures save_room from in_room while it is still a
+// genuine location (an RNUM). :1459 extracts the character, which clears that
+// location. :1460 then re-uses the very same field as a scratch slot for the
+// room's VNUM, and :1461 hands that VNUM to save_char() -- the only consumer
+// the write has. AM-1's ruling is that the write and its consumer must convert
+// in the SAME commit: convert only the write and save_char() would read a
+// post-extract in_room (NOWHERE), and LS-3b would then persist
+// load_room = NOWHERE for EVERY renting player, unobserved by any golden,
+// test or gate. This test is the observation AM-1 asks for -- what value
+// reaches the persisted field.
+//
+// OBSERVATION POINT (the EmergencySave test's pattern, immediately below):
+// with an empty player_table, save_char() stamps ch->specials2.load_room with
+// its load_room argument (db_players.cpp:1927) and THEN takes its "you are not
+// being saved" early return (:1939-1943) -- so the stamped field is exactly
+// the value that would have been persisted, and no player-file I/O runs. The
+// early return is asserted, not assumed.
+//
+// SCOPE -- what this replays rather than drives, and why (the "say what you
+// stubbed" rule). gen_receptionist() is reachable from a test (objsave_tests
+// .cpp drives its occupant walk), but reaching :1458 needs the full rent
+// funnel: a receptionist mob whose mob_index[].func matches, an AWAKE and
+// CAN_SEE-passing pair, matching races through five racial gates, and
+// Crash_offer_rent() >= 0 -- which returns -1 unless the character is
+// carrying a rentable object. Past that, extract_char() aborts outright if
+// its argument is not linked into the process-global character_list. The
+// four statements are therefore replayed here, calling the REAL
+// char_from_room()/room_by_id_total()/save_char() in the real order.
+//
+// RECORDED WHILE WRITING THIS TEST (finding S9's mechanism, made concrete):
+// on the ORDINARY rent path :1460/:1461 are redundant -- extract_char() has
+// already called save_char(ch, room_by_id_total(was_in)->number, 0) itself
+// (handler.cpp:616) with the identical value. They are load-bearing only for
+// a SWITCHED IMMORTAL renting, where desc->original is set and extract_char()
+// takes do_return() instead (handler.cpp:613-614). A test that drove the real
+// gen_receptionist() on the ordinary path could still catch a wrong value
+// here -- :1461 writes last and last write wins -- but it could not attribute
+// it, which is worth knowing before anyone "simplifies" these two lines away.
+TEST(LoadRoomPersistence, TheRentStashChainPersistsTheRoomVnumNotItsRnum) {
+    ScopedVnumWorld fixture_world;
+    ScopedPlayerTable fixture_player_table{nullptr};
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+    RELEASE(player.player.name);
+    CREATE(player.player.name, char, strlen("rentstashchr") + 1);
+    strcpy(player.player.name, "rentstashchr");
+
+    // save_char() requires a descriptor (it logs and returns for a character
+    // without one); the capturing shape lets the early-return assertion below
+    // read what it sent.
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &player;
+    descriptor.next = nullptr;
+    player.desc = &descriptor;
+
+    // Sentinel distinct from both the rnum and the vnum, so the assertions
+    // prove the chain actually wrote the field.
+    player.specials2.load_room = -12345;
+
+    char_to_room(&player, kOwnerRnum);
+    ASSERT_EQ(location_of(&player), kOwnerRnum);
+
+    // :1458 -- a genuine location read, still an RNUM here. This line is NOT
+    // a channel member and does not convert.
+    const int save_room = location_of(&player);
+    ASSERT_EQ(save_room, kOwnerRnum);
+
+    // :1459 -- extract_char()'s location half. The real extract_char() also
+    // unlinks from character_list, saves, and parks the descriptor at
+    // CON_SLCT; only the location clearing matters to the next two lines,
+    // and it is what makes them necessary.
+    char_from_room(&player);
+    ASSERT_EQ(location_of(&player), NOWHERE);
+
+    // :1460 -- the stash: the room's VNUM into the now-vacant field.
+    player.in_room = room_by_id_total(save_room)->number; // LS1-ALLOW: replay of objsave.cpp:1460
+    // :1461 -- the only consumer of that write.
+    save_char(&player, player.in_room, 0); // LS1-ALLOW: replay of objsave.cpp:1461
+
+    // THE ASSERTION AM-1 ASKS FOR: the persisted value is the room's VNUM...
+    EXPECT_EQ(GET_LOADROOM(&player), kOwnerVnum);
+    // ...not the rnum the character was standing at, and not the sentinel.
+    EXPECT_NE(GET_LOADROOM(&player), kOwnerRnum);
+    EXPECT_NE(GET_LOADROOM(&player), -12345);
+    // ...and not NOWHERE, which is what a write converted apart from its
+    // consumer would have persisted for every renting player.
+    EXPECT_NE(GET_LOADROOM(&player), NOWHERE);
+
+    EXPECT_NE(strstr(descriptor.small_outbuf, "you are not being saved"), nullptr)
+        << "save_char did not take the empty-player-table early return; "
+        << "output: " << descriptor.small_outbuf;
+
     RELEASE(player.player.name);
 }
 

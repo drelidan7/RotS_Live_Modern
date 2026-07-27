@@ -82,6 +82,32 @@ int location_of(const struct char_data* ch);
 void set_location(struct char_data* ch, int rnum);
 bool is_in_room(const struct char_data* ch, int rnum);
 
+// LS-3a Wave T2 tranche 2e addition (rulings R-A2 / AM-1 / R-T0b-3): THE
+// VNUM CHANNEL. char_data::in_room is OVERLOADED -- normally a world[]
+// index (an rnum), but across one cross-function login/rent protocol it
+// instead carries a room VNUM: the raw persisted integer store_to_char()
+// copies out of specials2.load_room (persist/db_players.cpp:1376), and the
+// integer gen_receptionist() re-stashes after extract_char() purely so the
+// next line's save_char() can consume it (app/objsave.cpp:1460-1461).
+// app/convert_main.cpp:43-54 documents the quirk in prose.
+//
+// These two names DISCRIMINATE that channel from a real location. Today
+// they are thin aliases over the same char_data::in_room field
+// location_of()/set_location() wrap -- zero behavior change -- so the
+// channel still INHERITS whatever that field holds, which objsave.cpp:494's
+// guard depends on. LS-3b re-points the pair at a dedicated store without
+// touching a single call site; had the channel been routed bare through
+// set_location() instead, that swap would have silently persisted a wrong
+// load_room for every renting player (AM-1).
+//
+// Hook-free, like location_of()/set_location()/is_in_room() and unlike
+// room_by_id*()/room_of()/zone_by_id(): no entity_hooks.h resolver
+// dispatch, so both are safe on the rots_convert-reachable store_to_char()
+// path where an unregistered world resolver is a tripwire abort() (the R-A1
+// corollary). Defined in placement.cpp.
+void stash_load_room_vnum(struct char_data* ch, int vnum);
+int peek_load_room_vnum(const struct char_data* ch);
+
 // LS-1 Wave Task 1 addition (.superpowers/sdd/ls1-census.md Step 5,
 // census-justified by ~161 counted self-room `world[X->in_room]` read
 // sites the wave's T2 conversions collapse onto this call). Self-room

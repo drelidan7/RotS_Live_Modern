@@ -846,6 +846,218 @@ TEST(IsInRoomTest, ReadsThroughAConstCharacterPointer)
 }
 
 // ---------------------------------------------------------------------------
+// stash_load_room_vnum(ch, vnum) / peek_load_room_vnum(ch) (placement.cpp;
+// declared in handler.h beside location_of()/set_location()) -- LS-3a Wave
+// T2 tranche 2e, rulings R-A2 / AM-1 / R-T0b-3. THE VNUM CHANNEL.
+//
+// WHY THIS PAIR EXISTS. char_data::in_room is OVERLOADED. Normally it holds a
+// world[] index (an rnum), but across one specific cross-function protocol it
+// holds a room VNUM instead: the raw integer store_to_char() copies out of the
+// persisted specials2.load_room field (db_players.cpp:1376), and the integer
+// gen_receptionist() re-stashes after extract_char() purely so the very next
+// line's save_char() can consume it (objsave.cpp:1460-1461).
+// app/convert_main.cpp:43-54 has documented the quirk in prose for years.
+// LS-3b gives location storage its own home, and a mechanical swap would take
+// the channel along with it -- persisting a wrong load_room for every renting
+// player, observed by no golden, no test, and no gate (ruling AM-1).
+//
+// SO THE NAMES ARE THE POINT, NOT THE BODIES. Today both functions are thin
+// aliases over the very same char_data::in_room field location_of()/
+// set_location() wrap: zero behavior change, and hook-free (no entity_hooks.h
+// resolver dispatch at all), so they are rots_convert-safe exactly as
+// set_location() is, per the R-A1 corollary. LS-3b re-points the pair at a
+// dedicated store without touching a single call site.
+//
+// THE ALIASING IS ITSELF PART OF TODAY'S CONTRACT, and is pinned below by
+// SharesItsStorageWithTheLocationFieldToday and
+// PeekInheritsWhateverTheLocationFieldAlreadyHolds. That is deliberate and
+// load-bearing: store_to_char()'s write at db_players.cpp:1376 IS the
+// channel's first stash, and objsave.cpp:494's guard reads the channel before
+// anything in that function has stashed into it -- so "peek returns whatever
+// the field already holds" is behavior the LS-3a conversions ride on. When
+// LS-3b splits the two stores, those two tests are the ones that must be
+// deliberately rewritten. They are the marker, not an accident.
+//
+// Storage is asserted against the raw ch->in_room field rather than through
+// peek_load_room_vnum(), so a defect in the writer cannot be masked by a
+// matching defect in the reader; separate round-trip tests then pin the two
+// against each other. Raw field access is this TU's standing convention (see
+// the SetLocationTest section above).
+// ---------------------------------------------------------------------------
+
+TEST(LoadRoomVnumChannelTest, StoresAVnumShapedValueExactly)
+{
+    // The ordinary shape on disk: a room VNUM, deliberately far from any
+    // plausible rnum in this process (which owns a one-room fixture world).
+    char_data character { };
+    character.in_room = 3;
+
+    stash_load_room_vnum(&character, 3001);
+
+    EXPECT_EQ(character.in_room, 3001);
+}
+
+TEST(LoadRoomVnumChannelTest, StoresAnRnumShapedValueExactly)
+{
+    // The channel does NOT validate or normalize: several live save sites
+    // still hand save_char() an rnum where its contract wants a vnum
+    // (LoadRoomPersistence.TextRoundTripPreservesWhateverIntegerTheCallerPassed
+    // pins that end to end), so a small rnum-shaped integer reaches the stash
+    // on the next login and must survive verbatim.
+    char_data character { };
+    character.in_room = 3001;
+
+    stash_load_room_vnum(&character, 3);
+
+    EXPECT_EQ(character.in_room, 3);
+}
+
+TEST(LoadRoomVnumChannelTest, StoresNowhereExactly)
+{
+    // NOWHERE is the channel's own absence value, and objsave.cpp:494/:540
+    // both test for it explicitly -- so it must round-trip as an ordinary
+    // value, not be special-cased away.
+    char_data character { };
+    character.in_room = 3001;
+
+    stash_load_room_vnum(&character, NOWHERE);
+
+    EXPECT_EQ(character.in_room, NOWHERE);
+    EXPECT_EQ(character.in_room, -1);
+}
+
+TEST(LoadRoomVnumChannelTest, OverwritesThePreviousStashRatherThanAccumulating)
+{
+    char_data character { };
+
+    stash_load_room_vnum(&character, 3001);
+    stash_load_room_vnum(&character, 3002);
+
+    EXPECT_EQ(character.in_room, 3002);
+}
+
+TEST(LoadRoomVnumChannelTest, PeekObservesTheStashedValueForEveryShape)
+{
+    // The round trip the whole channel exists to make re-pointable in one
+    // place: every value shape the protocol can carry, written and read back
+    // through the pair rather than through the field.
+    for (const int stashed : { 3001, 3, 0, NOWHERE }) {
+        char_data character { };
+        character.in_room = -12345;
+
+        stash_load_room_vnum(&character, stashed);
+
+        EXPECT_EQ(peek_load_room_vnum(&character), stashed);
+    }
+}
+
+TEST(LoadRoomVnumChannelTest, PeekInheritsWhateverTheLocationFieldAlreadyHolds)
+{
+    // LOAD-BEARING, and the first of the two tests LS-3b must deliberately
+    // rewrite. Nothing in this test ever calls stash_load_room_vnum(): the
+    // channel simply INHERITS the current value of the field it shares today.
+    // That is exactly what objsave.cpp:494's guard depends on -- by the time
+    // load_character() runs, store_to_char() (db_players.cpp:1376) has
+    // already deposited the persisted integer, and the guard's job is to read
+    // it back. A peek that returned a private, never-written store instead
+    // would report NOWHERE for every logging-in character and push the
+    // persisted VNUM into the location store on every single login (the
+    // hazard T0b-4 named).
+    char_data character { };
+    character.in_room = 3001;
+
+    EXPECT_EQ(peek_load_room_vnum(&character), 3001);
+
+    character.in_room = NOWHERE;
+
+    EXPECT_EQ(peek_load_room_vnum(&character), NOWHERE);
+}
+
+TEST(LoadRoomVnumChannelTest, SharesItsStorageWithTheLocationFieldToday)
+{
+    // The second of the two LS-3b markers, stated in both directions: today
+    // the channel and the location share one field, so a stash is visible to
+    // location_of() and a set_location() is visible to peek. THIS TEST IS
+    // EXPECTED TO FAIL, AND TO BE REWRITTEN, WHEN LS-3b SPLITS THE STORES --
+    // that failure is the point. It is here so the split cannot happen
+    // silently, and so any accidental de-aliasing before LS-3b is caught by a
+    // named test instead of by a corrupted playerfile.
+    char_data character { };
+
+    stash_load_room_vnum(&character, 3001);
+    EXPECT_EQ(location_of(&character), 3001);
+
+    set_location(&character, 7);
+    EXPECT_EQ(peek_load_room_vnum(&character), 7);
+}
+
+TEST(LoadRoomVnumChannelTest, StashTouchesNothingButTheChannelField)
+{
+    // The SetLocationTest.TouchesNothingButTheLocationField shape: prove the
+    // stash is a BARE WRITE. It matters twice over here -- the channel is
+    // stashed at points where the character is deliberately NOT in a room
+    // (objsave.cpp:1460 runs after extract_char()), so any hidden
+    // occupant-chain, light, or zone-power bookkeeping would corrupt live
+    // world state from a code path that has no business touching it; and the
+    // no-resolver-dispatch assertion is the rots_convert-safety property
+    // (R-A1's corollary), since store_to_char() is on the converter's path
+    // where an unregistered world resolver is a tripwire abort().
+    StubWorldResolvers resolvers;
+    room_data room = make_stub_room();
+    room.light = 3;
+    zone_data zone = make_stub_zone();
+    zone.white_power = 100;
+    zone.dark_power = 50;
+    resolvers.room = &room;
+    resolvers.zone = &zone;
+    ScopedWorldResolverHooks hooks(resolvers);
+
+    char_data head { };
+    head.player.race = RACE_HUMAN;
+    head.player.level = 20;
+    char_data stasher { };
+    stasher.player.race = RACE_HUMAN;
+    stasher.player.level = 20;
+    room.people = &head;
+    head.next_in_room = &stasher;
+    stasher.next_in_room = nullptr;
+    head.in_room = 7;
+    stasher.in_room = 7;
+
+    stash_load_room_vnum(&stasher, 3001);
+
+    EXPECT_EQ(stasher.in_room, 3001);
+    // Occupant chain: untouched in both directions.
+    EXPECT_EQ(room.people, &head);
+    EXPECT_EQ(head.next_in_room, &stasher);
+    EXPECT_EQ(stasher.next_in_room, nullptr);
+    // The neighbour's own location: untouched.
+    EXPECT_EQ(head.in_room, 7);
+    // Room light and zone power: untouched.
+    EXPECT_EQ(room.light, 3);
+    EXPECT_EQ(zone.white_power, 100);
+    EXPECT_EQ(zone.dark_power, 50);
+    // And no world resolver was dispatched: last_requested_rnum still holds
+    // StubWorldResolvers' untouched default, where a single
+    // room_by_id_total() call inside the stash would have replaced it.
+    EXPECT_EQ(resolvers.last_requested_rnum, NOWHERE);
+}
+
+TEST(LoadRoomVnumChannelTest, PeekReadsThroughAConstCharacterPointer)
+{
+    // peek_load_room_vnum() takes `const char_data*` while
+    // stash_load_room_vnum() takes a mutable one -- the same split
+    // location_of()/set_location() carry. Binding the reader through a const
+    // pointer here is the compile-time proof: act_wiz.cpp's do_stat_character
+    // and the calc_load_room() reads only ever need to ASK what is stashed.
+    char_data character { };
+    stash_load_room_vnum(&character, 3001);
+    const char_data* const observer = &character;
+
+    EXPECT_EQ(peek_load_room_vnum(observer), 3001);
+}
+
+// ---------------------------------------------------------------------------
 // attach_equipment() (equipment.cpp) -- census row equip_char:815, the SPLIT
 // primitive half of equip_char(). Candidates: slot assignment,
 // encumbrance/weight deltas, per-arm stat mutation (ARMOR/WEAPON/SHIELD/

@@ -1176,6 +1176,103 @@ TEST(LoadRoomPersistence, EmergencySavePersistsTheStartRoomVnumNotItsRnum) {
     RELEASE(player.player.name);
 }
 
+// save_char()'s NOWHERE fallback, FIRST ARM (db_players.cpp:1940-1941) --
+// the shape every ordinary quit/rent/autosave uses: `save_char(ch, NOWHERE,
+// 0)`, meaning "work out the load room from where they are standing". The
+// arm runs the registered room-vnum hook over the location, so an RNUM in
+// in_room becomes a VNUM on disk.
+//
+// COVERAGE GAP, closed here: LoadRoomPersistence.TheNowhereSavePathConverts
+// InRoomToAVnum (above) asserts world_room_vnum()'s own behavior, not
+// save_char()'s use of it -- nothing in the tree drove this arm. It surfaced
+// while sabotage-proving R23 below: corrupting the fallback region left all
+// 1776 tests green.
+TEST(LoadRoomPersistence, NowhereSaveResolvesTheCharactersLocationToItsRoomVnum) {
+    ScopedVnumWorld fixture_world;
+    ScopedPlayerTable fixture_player_table{nullptr};
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+    RELEASE(player.player.name);
+    CREATE(player.player.name, char, strlen("nowheresavechr") + 1);
+    strcpy(player.player.name, "nowheresavechr");
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &player;
+    descriptor.next = nullptr;
+    player.desc = &descriptor;
+
+    player.specials2.load_room = -12345;
+    char_to_room(&player, kOwnerRnum);
+
+    save_char(&player, NOWHERE, 0);
+
+    // The room's VNUM, not the rnum the character was standing at.
+    EXPECT_EQ(GET_LOADROOM(&player), kOwnerVnum);
+    EXPECT_NE(GET_LOADROOM(&player), kOwnerRnum);
+    EXPECT_NE(GET_LOADROOM(&player), NOWHERE);
+    EXPECT_NE(strstr(descriptor.small_outbuf, "you are not being saved"), nullptr)
+        << "output: " << descriptor.small_outbuf;
+
+    char_from_room(&player);
+    RELEASE(player.player.name);
+}
+
+// ...and the fallback's OTHER outcome, which is also R23's marker. A
+// character with neither an explicit load_room nor a location persists
+// NOWHERE. R23 adds a second arm that would rescue exactly this case FROM THE
+// VNUM CHANNEL -- but the channel and the location are still the same field,
+// so when this test's character has no location it has no stash either, the
+// arm cannot fire, and NOWHERE is still what reaches the field.
+//
+// THIS TEST IS AN LS-3b MARKER, like the two in placement_tests.cpp's channel
+// suite: the moment LS-3b gives the channel its own store, a character in
+// this shape WITH something stashed will start persisting the stash instead,
+// and this test must be revisited rather than silently satisfied. It is
+// written against a character with nothing stashed, so it states today's
+// behavior exactly and fails if the fallback region is broadened (proved by
+// sabotage -- see the commit message).
+TEST(LoadRoomPersistence, NowhereSaveWithNoLocationAndNoStashPersistsNowhere) {
+    ScopedVnumWorld fixture_world;
+    ScopedPlayerTable fixture_player_table{nullptr};
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+    RELEASE(player.player.name);
+    CREATE(player.player.name, char, strlen("nostashchr") + 1);
+    strcpy(player.player.name, "nostashchr");
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &player;
+    descriptor.next = nullptr;
+    player.desc = &descriptor;
+
+    player.specials2.load_room = -12345;
+    ASSERT_EQ(location_of(&player), NOWHERE);
+    ASSERT_EQ(peek_load_room_vnum(&player), NOWHERE);
+
+    save_char(&player, NOWHERE, 0);
+
+    EXPECT_EQ(GET_LOADROOM(&player), NOWHERE);
+    EXPECT_NE(GET_LOADROOM(&player), -12345);
+    EXPECT_NE(strstr(descriptor.small_outbuf, "you are not being saved"), nullptr)
+        << "output: " << descriptor.small_outbuf;
+
+    RELEASE(player.player.name);
+}
+
 // AM-1's mandatory persisted-value characterization for the OTHER end of the
 // VNUM channel: the rent stash (objsave.cpp:1458-1461, gen_receptionist()).
 //
@@ -1261,9 +1358,9 @@ TEST(LoadRoomPersistence, TheRentStashChainPersistsTheRoomVnumNotItsRnum) {
     ASSERT_EQ(location_of(&player), NOWHERE);
 
     // :1460 -- the stash: the room's VNUM into the now-vacant field.
-    player.in_room = room_by_id_total(save_room)->number; // LS1-ALLOW: replay of objsave.cpp:1460
-    // :1461 -- the only consumer of that write.
-    save_char(&player, player.in_room, 0); // LS1-ALLOW: replay of objsave.cpp:1461
+    stash_load_room_vnum(&player, room_by_id_total(save_room)->number);
+    // :1484 -- the only consumer of that write.
+    save_char(&player, peek_load_room_vnum(&player), 0);
 
     // THE ASSERTION AM-1 ASKS FOR: the persisted value is the room's VNUM...
     EXPECT_EQ(GET_LOADROOM(&player), kOwnerVnum);

@@ -58,6 +58,7 @@
 #include "rots/core/character.h"
 #include "rots/core/room.h"
 #include "test_char_cleanup.h"
+#include "test_placement.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
@@ -287,22 +288,19 @@ TEST(DbBootRecordCrime, RecordsTheVictimAndEachEligibleThirdPartyOccupantAsWitne
     TestPc witness(20, 3);
     TestNpc bystander(1);
 
-    // Manually splice all four into room 0's occupant chain -- the walk
+    // All four in room 0's occupant chain, in this order -- the walk
     // record_crime's conversion now runs is
     // rots::entity::occupants(room_of(victim)) (handler.h), which reads
     // room->people/char_data::next_in_room exactly like the original raw
     // walk did, so the fixture only needs the chain itself, not
     // char_to_room()'s unrelated zone-power/light bookkeeping.
-    room_data& room = test_world.room();
-    room.people = &criminal.character;
-    criminal.character.next_in_room = &victim.character;
-    victim.character.next_in_room = &witness.character;
-    witness.character.next_in_room = &bystander.character;
-    bystander.character.next_in_room = nullptr;
-    criminal.character.in_room = 0;
-    victim.character.in_room = 0;
-    witness.character.in_room = 0;
-    bystander.character.in_room = 0;
+    // ScopedRoomOccupants (LS-3a T3, test_placement.h) publishes exactly
+    // that chain and stamps each location via set_location(); declared
+    // after the four characters so it unwinds -- and takes them back out --
+    // while they are all still alive.
+    ScopedRoomOccupants occupants { &test_world.room(), 0,
+        { &criminal.character, &victim.character, &witness.character,
+            &bystander.character } };
 
     const int crimes_before = num_of_crimes;
 
@@ -330,14 +328,8 @@ TEST(DbBootRecordCrime, ExcludesAnNpcBystanderFromTheWitnessWalk)
     TestPc victim(25, 2);
     TestNpc bystander(1);
 
-    room_data& room = test_world.room();
-    room.people = &criminal.character;
-    criminal.character.next_in_room = &victim.character;
-    victim.character.next_in_room = &bystander.character;
-    bystander.character.next_in_room = nullptr;
-    criminal.character.in_room = 0;
-    victim.character.in_room = 0;
-    bystander.character.in_room = 0;
+    ScopedRoomOccupants occupants { &test_world.room(), 0,
+        { &criminal.character, &victim.character, &bystander.character } };
 
     const int crimes_before = num_of_crimes;
 

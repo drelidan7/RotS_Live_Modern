@@ -36,6 +36,7 @@
 #include "../script.h"
 #include "rots/core/character.h"
 #include "rots/core/room.h"
+#include "test_placement.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
@@ -51,12 +52,12 @@ namespace {
 TEST(GetRoomParam, Chn1RoomReturnsTheCharactersOwnRoomViaRoomOf) {
     ScopedTestWorld test_world{2};
     char_data character{};
-    character.in_room = 1;
+    set_location(&character, 1);
 
     info_script info{};
     info.ch[0] = &character;
 
-    EXPECT_EQ(get_room_param(SCRIPT_PARAM_CH1_ROOM, &info), &world[1])
+    EXPECT_EQ(get_room_param(SCRIPT_PARAM_CH1_ROOM, &info), room_by_id_total(1))
         << "Expected the SCRIPT_PARAM_CH1_ROOM case's converted room_of(info->ch[0]) to resolve "
            "to the character's own room, matching world[character.in_room] byte-for-byte.";
 }
@@ -73,31 +74,30 @@ struct RoomTriggerContext {
     char_data actor{};
     char_data occupant_a{};
     char_data occupant_b{};
-    char_data *original_people = nullptr;
+
+    // Room 0's occupant chain: occupant_a then occupant_b, the order the
+    // converted occupants(room) walk visits them in (LS-3a T3,
+    // test_placement.h). Declared last so it unwinds before the characters
+    // it manages and the ScopedTestWorld it points into. `actor` is
+    // deliberately NOT a member of the chain -- it is the character being
+    // moved INTO the room, so it is located, not published.
+    ScopedRoomOccupants occupants { &test_world.room(), 0, { &occupant_a, &occupant_b } };
 
     RoomTriggerContext() {
         top_of_world = 0;
-        original_people = world[0].people;
 
-        actor.in_room = 0;
+        set_location(&actor, 0);
         // Zero-initialized specials.script_number on both occupants means
         // char_has_script() finds nothing for either ON_BEFORE_ENTER or
         // ON_ENTER, so trigger_before_char_enter()/trigger_char_enter() take
         // their own `if (!(script_position = char_has_script(...)))`-false
         // early return of 1 without running any script -- deterministic,
         // no mudlle VM required.
-        occupant_a.in_room = 0;
-        occupant_b.in_room = 0;
-        occupant_a.next_in_room = &occupant_b;
-        occupant_b.next_in_room = nullptr;
-        world[0].people = &occupant_a;
     }
 
-    ~RoomTriggerContext() {
-        world[0].people = original_people;
-        occupant_a.next_in_room = nullptr;
-        occupant_b.next_in_room = nullptr;
-    }
+    // The head restore and both unlinks this destructor used to do are
+    // `occupants`, which unwinds on its own -- nothing is left to do here.
+    ~RoomTriggerContext() = default;
 };
 
 } // namespace
@@ -105,7 +105,7 @@ struct RoomTriggerContext {
 TEST(TriggerRoomEvent, BeforeEnterWalksAllUnscriptedOccupantsAndReturnsOne) {
     RoomTriggerContext context;
 
-    EXPECT_EQ(trigger_room_event(ON_BEFORE_ENTER, &world[0], &context.actor), 1)
+    EXPECT_EQ(trigger_room_event(ON_BEFORE_ENTER, room_by_id_total(0), &context.actor), 1)
         << "Expected the converted occupants(room) walk to reach every occupant (neither of which "
            "has an attached script) and leave return_value at its initial 1.";
 }
@@ -113,7 +113,7 @@ TEST(TriggerRoomEvent, BeforeEnterWalksAllUnscriptedOccupantsAndReturnsOne) {
 TEST(TriggerRoomEvent, EnterWalksAllUnscriptedOccupantsAndReturnsOne) {
     RoomTriggerContext context;
 
-    EXPECT_EQ(trigger_room_event(ON_ENTER, &world[0], &context.actor), 1)
+    EXPECT_EQ(trigger_room_event(ON_ENTER, room_by_id_total(0), &context.actor), 1)
         << "Expected the converted occupants(room) walk (ON_ENTER case) to reach every occupant "
            "and leave return_value at its initial 1.";
 }
@@ -158,6 +158,13 @@ struct ScriptedDenialContext {
     char_data occupant_a{}; // scripted: denies via SCRIPT_RETURN_FALSE.
     char_data occupant_b{}; // deliberately UNSCRIPTED -- must never be consulted.
 
+    // Room 0's occupant chain: the denying occupant_a FIRST, with the
+    // unscripted occupant_b right behind it -- that order is the whole
+    // point of the two guard-regression tests below (LS-3a T3,
+    // test_placement.h). Declared before the script_table members so it
+    // unwinds after them, and after the characters so it unwinds first.
+    ScopedRoomOccupants occupants { &test_world.room(), 0, { &occupant_a, &occupant_b } };
+
     script_data trigger_marker{};
     script_data return_false_command{};
     script_head scripted_entry{};
@@ -170,17 +177,10 @@ struct ScriptedDenialContext {
     explicit ScriptedDenialContext(int trigger_marker_type)
     {
         top_of_world = 0;
-        actor.in_room = 0;
+        set_location(&actor, 0);
 
-        occupant_a.in_room = 0;
         occupant_a.specials.script_number = kScriptNumber;
-        occupant_a.next_in_room = &occupant_b;
-
-        occupant_b.in_room = 0;
         occupant_b.specials.script_number = 0; // unscripted -- char_has_script() must find nothing.
-        occupant_b.next_in_room = nullptr;
-
-        world[0].people = &occupant_a;
 
         trigger_marker.command_type = trigger_marker_type;
         trigger_marker.next = &return_false_command;
@@ -206,8 +206,10 @@ struct ScriptedDenialContext {
         top_of_script_table = previous_top_of_script_table;
         RELEASE(occupant_a.specials.script_info);
         RELEASE(occupant_b.specials.script_info);
-        world[0].people = nullptr;
-        occupant_a.next_in_room = nullptr;
+        // The head restore and the unlink this body used to do are
+        // `occupants`, which unwinds right after it. ScopedTestWorld leaves
+        // room 0's head null on construction, so restoring the SAVED head is
+        // byte-identical to the `people = nullptr` this used to write.
     }
 };
 
@@ -216,14 +218,14 @@ struct ScriptedDenialContext {
 TEST(TriggerRoomEvent, BeforeEnterStopsAtTheFirstDenyingOccupantAndReturnsZero) {
     ScriptedDenialContext context(ON_BEFORE_ENTER);
 
-    EXPECT_EQ(trigger_room_event(ON_BEFORE_ENTER, &world[0], &context.actor), 0)
+    EXPECT_EQ(trigger_room_event(ON_BEFORE_ENTER, room_by_id_total(0), &context.actor), 0)
         << "Expected occupant_a's attached SCRIPT_RETURN_FALSE script to deny entry.";
 }
 
 TEST(TriggerRoomEvent, BeforeEnterNeverConsultsAnOccupantAfterADenial) {
     ScriptedDenialContext context(ON_BEFORE_ENTER);
 
-    const int result = trigger_room_event(ON_BEFORE_ENTER, &world[0], &context.actor);
+    const int result = trigger_room_event(ON_BEFORE_ENTER, room_by_id_total(0), &context.actor);
 
     EXPECT_EQ(result, 0)
         << "If the `if (!return_value) break;` guard were ever dropped, the walk would continue "
@@ -235,7 +237,7 @@ TEST(TriggerRoomEvent, BeforeEnterNeverConsultsAnOccupantAfterADenial) {
 TEST(TriggerRoomEvent, EnterStopsAtTheFirstDenyingOccupantAndReturnsZero) {
     ScriptedDenialContext context(ON_ENTER);
 
-    EXPECT_EQ(trigger_room_event(ON_ENTER, &world[0], &context.actor), 0)
+    EXPECT_EQ(trigger_room_event(ON_ENTER, room_by_id_total(0), &context.actor), 0)
         << "Expected occupant_a's attached SCRIPT_RETURN_FALSE script to deny entry (ON_ENTER case, "
            "reached before the trailing object-trigger loop).";
 }
@@ -243,7 +245,7 @@ TEST(TriggerRoomEvent, EnterStopsAtTheFirstDenyingOccupantAndReturnsZero) {
 TEST(TriggerRoomEvent, EnterNeverConsultsAnOccupantAfterADenial) {
     ScriptedDenialContext context(ON_ENTER);
 
-    const int result = trigger_room_event(ON_ENTER, &world[0], &context.actor);
+    const int result = trigger_room_event(ON_ENTER, room_by_id_total(0), &context.actor);
 
     EXPECT_EQ(result, 0)
         << "Same guard-regression check as the ON_BEFORE_ENTER case above, for ON_ENTER's "

@@ -1446,3 +1446,131 @@ TEST(OccupantsFromTest, EarlyReturnFromWithinTheRangeForIsSafe)
 
     EXPECT_EQ(find_first(&first), &first);
 }
+
+// ---------------------------------------------------------------------------
+// rots::entity::first_occupant() (LS-3a Wave T1; ruling R-C6, the wave's ONE
+// census-justified new API). Returns a room's first occupant, or nullptr when
+// the room is empty -- the shape seven production act()-ANCHOR sites want,
+// where the code needs *any* occupant to hang a room-wide message on rather
+// than a walk: db_world.cpp:1563/1572/1579/1586/1594 (open/close/lock/unlock/
+// break door messages) and limits.cpp:814/815 (object decay). Each of those
+// reads room->people straight into a local and then null-tests it, which
+// occupants(room) cannot express without a one-iteration loop. Consumer-free
+// as landed -- T2 converts the seven sites; nothing calls this yet.
+//
+// An empty()/size() on occupant_range was ruled YAGNI in the same breath
+// (three sites, all already spelled `begin() != end()`), so this is the only
+// addition to the occupant surface this wave.
+//
+// Contract mirrors occupant_range's own: a null room yields "no occupant"
+// rather than a dereference, and the read is LIVE -- the head is re-read on
+// every call, never cached.
+// ---------------------------------------------------------------------------
+
+TEST(FirstOccupantTest, ReturnsNullptrForAnEmptyRoom)
+{
+    room_data room = make_stub_room();
+
+    EXPECT_EQ(rots::entity::first_occupant(&room), nullptr);
+}
+
+TEST(FirstOccupantTest, ReturnsNullptrForANullRoom)
+{
+    // Matches occupant_range(room_data*)'s null-room contract (an empty
+    // range there, "no occupant" here) rather than dereferencing.
+    EXPECT_EQ(rots::entity::first_occupant(static_cast<room_data*>(nullptr)), nullptr);
+}
+
+TEST(FirstOccupantTest, ReturnsTheOnlyOccupantOfASingleOccupantRoom)
+{
+    room_data room = make_stub_room();
+    char_data only { };
+    only.next_in_room = nullptr;
+    room.people = &only;
+
+    EXPECT_EQ(rots::entity::first_occupant(&room), &only);
+}
+
+TEST(FirstOccupantTest, ReturnsTheHeadOfAMultiOccupantChainNotTheTail)
+{
+    room_data room = make_stub_room();
+    char_data head { };
+    char_data middle { };
+    char_data tail { };
+    room.people = &head;
+    head.next_in_room = &middle;
+    middle.next_in_room = &tail;
+    tail.next_in_room = nullptr;
+
+    EXPECT_EQ(rots::entity::first_occupant(&room), &head);
+}
+
+TEST(FirstOccupantTest, AgreesWithTheFirstElementOccupantsYields)
+{
+    // Ordering consistency with the sibling API: whichever occupant a walk
+    // would visit first is the one this returns, so a converted act() anchor
+    // addresses the same character the room's chain has always named.
+    room_data room = make_stub_room();
+    char_data head { };
+    char_data second { };
+    room.people = &head;
+    head.next_in_room = &second;
+    second.next_in_room = nullptr;
+
+    char_data* walked_first = nullptr;
+    for (char_data* occ : rots::entity::occupants(&room)) {
+        walked_first = occ;
+        break;
+    }
+
+    EXPECT_EQ(rots::entity::first_occupant(&room), walked_first);
+    EXPECT_EQ(walked_first, &head);
+}
+
+TEST(FirstOccupantTest, ReReadsTheHeadRatherThanCachingIt)
+{
+    // The seven production anchors read room->people at the moment they need
+    // it, after arbitrary intervening work; a head-prepend between two calls
+    // must therefore be visible to the second.
+    room_data room = make_stub_room();
+    char_data original { };
+    room.people = &original;
+    original.next_in_room = nullptr;
+
+    ASSERT_EQ(rots::entity::first_occupant(&room), &original);
+
+    char_data newcomer { };
+    newcomer.next_in_room = &original;
+    room.people = &newcomer;
+
+    EXPECT_EQ(rots::entity::first_occupant(&room), &newcomer);
+}
+
+TEST(FirstOccupantTest, ConstOverloadYieldsTheSameOccupantAsTheNonConstOverload)
+{
+    // const counterpart, mirroring occupants(const room_data*): a caller
+    // holding only a const room gets a const char_data* back, so it cannot
+    // mutate an occupant through this accessor. Overload resolution prefers
+    // the non-const form for a non-const argument.
+    room_data room = make_stub_room();
+    char_data head { };
+    char_data second { };
+    room.people = &head;
+    head.next_in_room = &second;
+    second.next_in_room = nullptr;
+
+    const room_data* const const_room = &room;
+    const char_data* const via_const = rots::entity::first_occupant(const_room);
+
+    EXPECT_EQ(via_const, &head);
+    EXPECT_EQ(via_const, rots::entity::first_occupant(&room));
+}
+
+TEST(FirstOccupantTest, ConstOverloadReturnsNullptrForAnEmptyOrNullRoom)
+{
+    room_data room = make_stub_room();
+    const room_data* const const_room = &room;
+
+    EXPECT_EQ(rots::entity::first_occupant(const_room), nullptr);
+    EXPECT_EQ(rots::entity::first_occupant(static_cast<const room_data*>(nullptr)), nullptr);
+}

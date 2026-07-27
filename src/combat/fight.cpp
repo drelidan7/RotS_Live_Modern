@@ -901,9 +901,9 @@ void death_cry(struct char_data* ch)
     }
     for (door = 0; door < NUM_OF_DIRS; door++) {
         if (CAN_GO(ch, door)) {
-            ch->in_room = world[was_in].dir_option[door]->to_room; // LS1-ALLOW: in_room used as mutable room cursor
+            set_location(ch, room_by_id_total(was_in)->dir_option[door]->to_room); // LS1-ALLOW: in_room used as mutable room cursor
             act(cry_msg, FALSE, ch, 0, 0, TO_ROOM);
-            ch->in_room = was_in; // LS1-ALLOW: in_room used as mutable room cursor
+            set_location(ch, was_in); // LS1-ALLOW: in_room used as mutable room cursor
         }
     }
 }

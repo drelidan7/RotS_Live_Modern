@@ -1657,10 +1657,10 @@ ASPELL(spell_earthquake)
                     cur_room->dir_option[DOWN]->exit_info = 0;
                     if (world[crack].dir_option[UP] && (world[crack].dir_option[UP]->to_room == caster->in_room) && world[crack].dir_option[UP]->exit_info) { // LS1-ALLOW: in_room used as mutable room cursor (crack-creation save/restore around act())
                         tmp = caster->in_room; // LS1-ALLOW: in_room used as mutable room cursor
-                        caster->in_room = crack; // LS1-ALLOW: in_room used as mutable room cursor
+                        set_location(caster, crack); // LS1-ALLOW: in_room used as mutable room cursor
                         act("The way up crashes open!", FALSE, caster, 0, 0, TO_ROOM);
                         world[crack].dir_option[UP]->exit_info = 0; // LS1-ALLOW: in_room used as mutable room cursor
-                        caster->in_room = tmp; // LS1-ALLOW: in_room used as mutable room cursor
+                        set_location(caster, tmp); // LS1-ALLOW: in_room used as mutable room cursor
                     }
                 }
             }

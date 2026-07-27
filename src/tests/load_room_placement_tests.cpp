@@ -24,16 +24,25 @@
 //                             `load_room = real_room(location_of(ch))`.
 //                             It never writes ch->in_room.
 //   objsave.cpp:477        Crash_load: Crash_follower_load(ch, data)
-//   objsave.cpp:710          Crash_follower_load: char_to_room(mob,   location_of(ch))
-//   objsave.cpp:802          Crash_follower_load: char_to_room(mount, location_of(ch))
-//                            -- BOTH read in_room, which still holds the RAW
-//                               persisted value, NOT the rnum computed at :469.
+//   objsave.cpp:710          Crash_follower_load: char_to_room(mob,   ch->specials2.load_room)
+//   objsave.cpp:802          Crash_follower_load: char_to_room(mount, ch->specials2.load_room)
+//                            -- both use the rnum computed at :469, the same
+//                               index the player is about to be placed at.
+//                               They MUST NOT read location_of(ch): in_room
+//                               still holds the RAW persisted value here (a
+//                               VNUM on the ordinary quit/rent path), and
+//                               using it as a world[] index was the
+//                               historical follower-misplacement bug whose
+//                               fix this file pins.
 //   objsave.cpp:499      load_character (C): char_to_room(ch, ch->specials2.load_room)
-//                        -- the PLAYER is placed at the rnum from :469.
+//                        -- the PLAYER is placed at the same rnum.
 //
-// So the two char_to_room() calls receive DIFFERENT indices whenever
-// `real_room(persisted) != persisted`. char_to_room (placement.cpp:313)
-// treats its argument as a world[] index (an rnum) in both cases.
+// So owner and followers receive the SAME index. char_to_room
+// (placement.cpp:313) treats its argument as a world[] index (an rnum) in
+// both cases -- which is why the historical code, which passed
+// location_of(ch) for followers, sent them to world[vnum] while the owner
+// went to world[real_room(vnum)] whenever `real_room(persisted) != persisted`
+// (the normal condition on any real world).
 //
 // FIXTURE DESIGN -- WHY VNUM != RNUM MATTERS: a test world whose room
 // numbers happen to equal their indices cannot see this bug at all; the two
@@ -59,8 +68,14 @@
 // cost, and the ordering itself (that :469 precedes :477, and that neither
 // writes in_room) is a source-read, not something these tests prove.
 //
-// CHARACTERIZATION ONLY: no production behavior is changed by this file. It
-// pins what the code does today, including the parts that look wrong.
+// HISTORY: this file first landed as pure characterization of the PRE-FIX
+// behavior (owner and follower diverging; Emergency_save persisting an rnum).
+// The follower/mount placement fix and the Emergency_save vnum fix flipped
+// the divergence tests to the expectations below; each flipped or added test
+// was run RED against the unfixed production code before the fix landed, so
+// none of them can pass vacuously. The Q1 tests (calc_load_room never writes
+// in_room) and the Q2 tests (save_char persists its argument verbatim outside
+// the NOWHERE arm) pin behavior the fix deliberately did NOT change.
 
 #include "../db.h"
 #include "../handler.h"
@@ -89,6 +104,7 @@
 // gen_receptionist() and spec_pro_tests.cpp uses for the SPECIAL() family.
 int calc_load_room(struct char_data *ch, int load_result);
 void Crash_follower_load(struct char_data *ch, const objects_json::ObjectSaveData &data);
+void Emergency_save(void);
 
 // Process globals with no shared-header declaration, mirroring the local
 // extern convention their own production TUs use (objsave.cpp:76 for
@@ -109,6 +125,7 @@ extern struct zone_data *zone_table;
 extern int top_of_zone_table;
 extern int top_of_p_table;
 extern struct player_index_element *player_table;
+extern struct descriptor_data *descriptor_list;
 
 void clear_char(struct char_data *ch, int mode);
 
@@ -466,41 +483,30 @@ TEST(LoadRoomChain, CalcLoadRoomLeavesInRoomHoldingTheRawPersistedValue) {
     EXPECT_NE(computed_load_room, location_of(&player));
 }
 
-// The same observation stated as the placement-argument pair, so a regression
-// that made calc_load_room() write in_room (or made the follower loader read
-// specials2.load_room) is caught by name.
-TEST(LoadRoomChain, FollowerPlacementArgumentIsTheVnumWhileOwnerPlacementArgumentIsTheRnum) {
-    ScopedVnumWorld fixture_world;
-    ScopedStartRooms fixture_start_rooms;
-
-    char_data player{};
-    make_mortal_player(player);
-    ScopedClearCharFields player_cleanup{player};
-
-    player.specials2.load_room = kOwnerVnum;
-    player.in_room = GET_LOADROOM(&player); // LS1-ALLOW: replay of db_players.cpp:1376
-
-    player.specials2.load_room = calc_load_room(&player, RENT_RENTED);
-
-    // objsave.cpp:710/:802 pass this to char_to_room().
-    const int follower_placement_argument = location_of(&player);
-    // objsave.cpp:499 passes this to char_to_room().
-    const int owner_placement_argument = player.specials2.load_room;
-
-    EXPECT_EQ(follower_placement_argument, kOwnerVnum);
-    EXPECT_EQ(owner_placement_argument, kOwnerRnum);
-    EXPECT_NE(follower_placement_argument, owner_placement_argument);
-}
+// NOTE: this file's pre-fix revision had a second Q1 test here
+// (FollowerPlacementArgumentIsTheVnumWhileOwnerPlacementArgumentIsTheRnum)
+// that mirrored the two DIFFERENT expressions the production code passed to
+// char_to_room(). After the fix both placements pass the SAME expression
+// (ch->specials2.load_room), so the mirror collapsed to comparing a value
+// with itself -- unfailable, and therefore deleted rather than kept as a
+// vacuous test. The end-to-end placement tests below are the named
+// regression guards now: they drive the real production functions and FAIL
+// if the follower loader ever reads location_of(ch) again (proved red
+// against the unfixed code).
 
 // ---------------------------------------------------------------------------
-// Q3 -- does a follower actually end up in a different room from its owner?
+// Q3 -- does a follower end up in the same room as its owner?
 // ---------------------------------------------------------------------------
 
 // The marquee test: drives the REAL Crash_follower_load() and the REAL
 // char_to_room() through the chain's real ordering, with a load_room holding
 // the room VNUM that save_char(ch, NOWHERE, 0) persists on every ordinary
-// quit/rent/autosave. Owner and follower land in DIFFERENT rooms.
-TEST(LoadRoomChain, FollowerLandsInADifferentRoomThanItsOwnerWhenLoadRoomHoldsAVnum) {
+// quit/rent/autosave. Owner and follower land in the SAME room. Before the
+// fix, the follower loader read the raw vnum out of in_room and used it as a
+// world[] index, sending the follower to world[35] while the owner went to
+// world[3] -- this test failed with exactly that split against the unfixed
+// code, so it cannot pass vacuously.
+TEST(LoadRoomChain, FollowerLandsInTheSameRoomAsItsOwnerWhenLoadRoomHoldsAVnum) {
     ScopedVnumWorld fixture_world;
     ScopedStartRooms fixture_start_rooms;
     ScopedFollowerPrototype fixture_follower_prototype;
@@ -519,21 +525,22 @@ TEST(LoadRoomChain, FollowerLandsInADifferentRoomThanItsOwnerWhenLoadRoomHoldsAV
 
     ASSERT_NE(follower, nullptr) << "Crash_follower_load did not spawn the fixture follower";
 
-    // The owner is placed at the rnum calc_load_room() computed.
+    // Both are placed at the rnum calc_load_room() computed.
     EXPECT_EQ(location_of(&player), kOwnerRnum);
-    // The follower is placed at the raw vnum, used as a world[] index.
-    EXPECT_EQ(location_of(follower), kOwnerVnum);
-    EXPECT_NE(location_of(&player), location_of(follower));
+    EXPECT_EQ(location_of(follower), kOwnerRnum);
 
-    // And they really are two distinct, separately-addressable rooms: the
-    // owner is in the room whose vnum is 35, the follower is in the slot at
-    // index 35 (a dummy room with vnum -1 that real_room() can never return).
-    EXPECT_EQ(world[kOwnerRnum].number, kOwnerVnum);
-    EXPECT_NE(world[kOwnerVnum].number, kOwnerVnum);
+    // Occupant list confirms the placement rather than just the in_room
+    // fields: the follower was placed first (objsave.cpp:477 runs before
+    // :499) and char_to_room() appends at the TAIL, so the follower heads
+    // the chain with the owner behind him.
+    EXPECT_EQ(world[kOwnerRnum].people, follower);
+    EXPECT_EQ(follower->next_in_room, &player);
+    EXPECT_EQ(player.next_in_room, nullptr);
 
-    // Occupant lists confirm the placement rather than just the in_room field.
-    EXPECT_EQ(world[kOwnerRnum].people, &player);
-    EXPECT_EQ(world[kOwnerVnum].people, follower);
+    // The slot the raw vnum-as-index misplacement used to land in (index 35,
+    // a dummy room with vnum -1 that real_room() can never return) stays
+    // empty.
+    EXPECT_EQ(world[kOwnerVnum].people, nullptr);
 
     release_spawned_follower(follower);
 }
@@ -576,16 +583,19 @@ TEST(LoadRoomChain, FollowerAndOwnerLandTogetherWhenTheVnumHappensToEqualItsRnum
 // Q4 -- the other reachable precondition: a load_room holding an RNUM
 // ---------------------------------------------------------------------------
 
-// Several live call sites pass an RNUM where save_char()'s contract wants a
-// VNUM (interpre.cpp:3796 `save_char(d->character, location_of(d->character), 0)`
-// runs immediately after load_character() has set in_room to an rnum;
-// fight.cpp:948 and objsave.cpp:1546 pass r_mortal_start_room[], documented
-// "rnum of mortal start room" at db_world.cpp:129). This test characterizes
-// what the chain then does on the NEXT login: real_room() cannot find a room
-// whose VNUM equals that rnum, so the owner is banished to the racial start
-// room -- while the follower, reading the raw value as an index, lands in the
-// room the player was actually standing in.
-TEST(LoadRoomChain, RnumShapedLoadRoomSendsOwnerToTheStartRoomAndFollowerToTheOldRoom) {
+// Several live call sites still pass an RNUM where save_char()'s contract
+// wants a VNUM (interpre.cpp:3796 `save_char(d->character,
+// location_of(d->character), 0)` runs immediately after load_character() has
+// set in_room to an rnum; fight.cpp:948 passes r_mortal_start_room[],
+// documented "rnum of mortal start room" at db_world.cpp:129 -- see the
+// EmergencySave test below for the one such site this fix wave corrected).
+// This test pins what the chain does on the NEXT login after an rnum reached
+// disk: real_room() cannot find a room whose VNUM equals that rnum, so
+// calc_load_room() falls back to the racial start room -- and the follower
+// comes along to the SAME room. Before the fix the follower was left standing
+// in the room the player logged out of (the raw value read as an index); this
+// test failed with exactly that split against the unfixed code.
+TEST(LoadRoomChain, RnumShapedLoadRoomSendsOwnerAndFollowerToTheStartRoomTogether) {
     ScopedVnumWorld fixture_world;
     ScopedStartRooms fixture_start_rooms;
     ScopedFollowerPrototype fixture_follower_prototype;
@@ -609,10 +619,17 @@ TEST(LoadRoomChain, RnumShapedLoadRoomSendsOwnerToTheStartRoomAndFollowerToTheOl
     // calc_load_room()'s `else if ((load_room = real_room(location_of(ch))) < 0)`
     // arm fires: the owner goes to the racial start room, not where he was.
     EXPECT_EQ(location_of(&player), ScopedStartRooms::kRacialStartRnum);
-    // The follower is placed at index 3 -- which, for an rnum-shaped save, is
-    // exactly the room the player logged out from.
-    EXPECT_EQ(location_of(follower), kOwnerRnum);
-    EXPECT_NE(location_of(&player), location_of(follower));
+    // ...and the follower is placed at the same resolved rnum, not at the raw
+    // index (which for an rnum-shaped save is the room the player logged out
+    // from -- where the pre-fix code stranded him).
+    EXPECT_EQ(location_of(follower), ScopedStartRooms::kRacialStartRnum);
+
+    // Occupant lists: the follower was placed first and char_to_room()
+    // appends at the tail, so the follower heads the chain with the owner
+    // behind him; the logged-out-from room stays empty.
+    EXPECT_EQ(world[ScopedStartRooms::kRacialStartRnum].people, follower);
+    EXPECT_EQ(follower->next_in_room, &player);
+    EXPECT_EQ(world[kOwnerRnum].people, nullptr);
 
     release_spawned_follower(follower);
 }
@@ -716,4 +733,87 @@ TEST(LoadRoomPersistence, TextRoundTripPreservesWhateverIntegerTheCallerPassed) 
     delete[] player_table;
     player_table = previous_player_table;
     top_of_p_table = previous_top_of_p_table;
+}
+
+// Emergency_save() (objsave.cpp:1540) runs on the signal-driven shutdown
+// paths (signals.cpp) -- exactly when NO 30-second autosave will follow to
+// rewrite the field -- and historically passed r_mortal_start_room[] (an
+// RNUM, db_world.cpp:129) straight into save_char(), whose explicit arm
+// persists its argument verbatim (proved by the round-trip test above). That
+// put an rnum on disk permanently. This test drives the REAL Emergency_save()
+// over a fixture descriptor list and asserts the value it now hands
+// save_char() is the start room's VNUM.
+//
+// Observation point: with an empty player_table, save_char() takes its "you
+// are not being saved" early return (db_players.cpp:1939-1943) AFTER stamping
+// ch->specials2.load_room with its load_room argument (db_players.cpp:1927)
+// -- so the stamped field IS the value that would have been persisted, and no
+// player-file I/O runs. Crash_crashsave()'s object write fails gracefully
+// (and writes nothing) because no plrobjs/ directory exists under the test
+// working directory. This test failed against the unfixed code (stamped 0,
+// the rnum, instead of 5, the vnum), so it cannot pass vacuously.
+TEST(LoadRoomPersistence, EmergencySavePersistsTheStartRoomVnumNotItsRnum) {
+    ScopedVnumWorld fixture_world;
+    // r_mortal_start_room[every race] = rnum 0, whose room carries vnum 5 --
+    // rnum and vnum deliberately distinct so the assertion can tell them
+    // apart.
+    ScopedStartRooms fixture_start_rooms;
+
+    // save_char() resolves the name against player_table; an empty table
+    // (top_of_p_table == -1, loop body never runs) forces the early-return
+    // path described above without reading the table pointer.
+    player_index_element *previous_player_table = player_table;
+    const int previous_top_of_p_table = top_of_p_table;
+    player_table = nullptr;
+    top_of_p_table = -1;
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+    RELEASE(player.player.name);
+    CREATE(player.player.name, char, strlen("emrgsavechr") + 1);
+    strcpy(player.player.name, "emrgsavechr");
+
+    // The capturing-descriptor shape from comm_output_tests.cpp: queued
+    // output lands in small_outbuf, no network connection involved.
+    // CON_PLYNG satisfies both Emergency_save()'s own gate and
+    // send_to_char()'s connected check.
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &player;
+    descriptor.next = nullptr;
+    player.desc = &descriptor;
+
+    // Install a descriptor list containing ONLY the fixture descriptor, so
+    // Emergency_save() cannot touch anything another suite may have left in
+    // the global list; restored below.
+    descriptor_data *previous_descriptor_list = descriptor_list;
+    descriptor_list = &descriptor;
+
+    // Sentinel distinct from both the rnum (0) and the vnum (5), so the
+    // assertion proves Emergency_save() actually wrote the field.
+    player.specials2.load_room = -12345;
+
+    Emergency_save();
+
+    // The persisted value is the start room's VNUM...
+    EXPECT_EQ(GET_LOADROOM(&player), room_vnum_for(ScopedStartRooms::kRacialStartRnum));
+    // ...not its rnum (what the pre-fix code passed).
+    EXPECT_NE(GET_LOADROOM(&player), ScopedStartRooms::kRacialStartRnum);
+
+    // Confirm save_char() took the expected early-return path (the stamped
+    // field above is therefore the would-be-persisted value, and no player
+    // file was written).
+    EXPECT_NE(strstr(descriptor.small_outbuf, "you are not being saved"), nullptr)
+        << "save_char did not take the empty-player-table early return; "
+        << "output: " << descriptor.small_outbuf;
+
+    descriptor_list = previous_descriptor_list;
+    player_table = previous_player_table;
+    top_of_p_table = previous_top_of_p_table;
+    RELEASE(player.player.name);
 }

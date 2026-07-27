@@ -1061,7 +1061,7 @@ struct char_data* read_mobile(int nr, int type)
 
     *mob = mob_proto[i];
 
-    mob->in_room = NOWHERE; // LS1-ALLOW: write
+    set_location(mob, NOWHERE); // LS1-ALLOW: write
 
     mob->abilities.hit = number(mob->tmpabilities.hit, mob->abilities.hit);
 

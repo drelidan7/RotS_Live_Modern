@@ -785,7 +785,7 @@ void reset_char(struct char_data* ch)
     ch->specials.default_pos = POSITION_STANDING;
     ch->specials.carry_weight = 0;
     ch->specials.carry_items = 0;
-    ch->specials.was_in_room = -1;
+    ch->specials.was_in_room = NOWHERE;
 
     if (GET_HIT(ch) <= 0)
         GET_HIT(ch) = 1;
@@ -821,7 +821,7 @@ void clear_char(struct char_data* ch, int mode)
     memset(ch->profs->colors, CNRM, sizeof(ch->profs->colors[0]) * MAX_COLOR_FIELDS);
 
     ch->specials.alias = 0;
-    ch->in_room = NOWHERE; // LS1-ALLOW: write
+    set_location(ch, NOWHERE); // LS1-ALLOW: write
     ch->specials.was_in_room = NOWHERE;
     ch->specials.position = POSITION_STANDING;
     ch->specials.default_pos = POSITION_STANDING;

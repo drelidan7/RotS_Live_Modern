@@ -11,6 +11,7 @@
 // a small multi-room graph so every converted macro expansion actually
 // runs, closing the gap the census flagged.
 
+#include "../handler.h"
 #include "rots/core/character.h"
 #include "rots/core/room.h"
 #include "test_world.h"
@@ -50,11 +51,11 @@ struct PathfindTestWorld {
 
         room0_north.exit_info = 0;
         room0_north.to_room = 1;
-        world[0].dir_option[NORTH] = &room0_north;
+        room_by_id_total(0)->dir_option[NORTH] = &room0_north;
 
         room1_north.exit_info = 0;
         room1_north.to_room = 2;
-        world[1].dir_option[NORTH] = &room1_north;
+        room_by_id_total(1)->dir_option[NORTH] = &room1_north;
     }
 };
 
@@ -92,7 +93,7 @@ TEST(FindFirstStep, ReturnsNoPathWhenTargetIsUnreachable) {
     // Room 2 has no outbound exit back, and nothing else in the graph
     // reaches it except via room 1 -- sever that one edge so room 2 is
     // isolated, then ask for a path FROM the isolated room.
-    world[1].dir_option[NORTH] = nullptr;
+    room_by_id_total(1)->dir_option[NORTH] = nullptr;
 
     EXPECT_EQ(find_first_step(0, 2), BFS_NO_PATH);
 }

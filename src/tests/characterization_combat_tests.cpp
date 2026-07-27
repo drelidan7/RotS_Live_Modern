@@ -235,9 +235,9 @@ TEST_F(CharacterizationCombatTest, DamageTranscriptSeed42) {
     // objects between the kill and here, so the corpse is at the head of
     // both lists when it exists. Handed to TearDown() (corpse_to_free) for
     // the actual deallocation.
-    obj_data *corpse = world[DamageTestContext::room_number].contents;
+    obj_data *corpse = room_by_id_total(DamageTestContext::room_number)->contents;
     if (corpse != nullptr && corpse == object_list) {
-        world[DamageTestContext::room_number].contents = corpse->next_content;
+        room_by_id_total(DamageTestContext::room_number)->contents = corpse->next_content;
         object_list = corpse->next;
         corpse_to_free = corpse;
     }

@@ -50,6 +50,8 @@
 #include "../handler.h"
 #include "../utils.h"
 #include "../zone.h"
+#include "test_placement.h"
+#include "test_world.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
@@ -1573,4 +1575,241 @@ TEST(FirstOccupantTest, ConstOverloadReturnsNullptrForAnEmptyOrNullRoom)
 
     EXPECT_EQ(rots::entity::first_occupant(const_room), nullptr);
     EXPECT_EQ(rots::entity::first_occupant(static_cast<const room_data*>(nullptr)), nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// src/tests/test_placement.h -- the shared location fixtures (LS-3a Wave T1;
+// rulings R-B1/R-B3). Both helpers land consumer-free apart from these tests:
+// T3's 23-file test-tier migration is what collapses onto them, and T2's new
+// tests are the first production-side users of ScopedZoneTableOwner.
+//
+// ScopedRoomOccupants publishes an ordered occupant chain directly, WITHOUT
+// char_to_room() (R-B3): char_to_room() would segfault on a non-NPC for want
+// of a zone table, and it appends at the tail where all 22 fixtures this
+// replaces publish at the head. ScopedZoneTableOwner is the other side of
+// that coin -- the fixture a test needs precisely WHEN it wants the real
+// char_to_room()/detach_char_from_room() bookkeeping with a PC.
+// ---------------------------------------------------------------------------
+
+TEST(ScopedRoomOccupantsTest, PublishesTheGivenCharactersInTheOrderGiven)
+{
+    room_data room = make_stub_room();
+    char_data first { };
+    char_data second { };
+    char_data third { };
+
+    ScopedRoomOccupants occupants(&room, 4, { &first, &second, &third });
+
+    // The published chain is what the Stage-1 walk APIs see, in the order the
+    // constructor was given -- first argument is the head.
+    std::vector<char_data*> collected;
+    for (char_data* occ : rots::entity::occupants(&room)) {
+        collected.push_back(occ);
+    }
+
+    EXPECT_EQ(collected, (std::vector<char_data*> { &first, &second, &third }));
+    EXPECT_EQ(rots::entity::first_occupant(&room), &first);
+}
+
+TEST(ScopedRoomOccupantsTest, StampsTheGivenRoomIdOnEveryPublishedCharacter)
+{
+    room_data room = make_stub_room();
+    char_data first { };
+    char_data second { };
+    first.in_room = NOWHERE;
+    second.in_room = 99; // a stale location the fixture must overwrite
+
+    ScopedRoomOccupants occupants(&room, 4, { &first, &second });
+
+    EXPECT_TRUE(is_in_room(&first, 4));
+    EXPECT_TRUE(is_in_room(&second, 4));
+}
+
+TEST(ScopedRoomOccupantsTest, TerminatesThePublishedChainEvenIfTheCharacterCameInLinked)
+{
+    room_data room = make_stub_room();
+    char_data only { };
+    char_data stale { };
+    only.next_in_room = &stale; // left over from an earlier scope
+
+    ScopedRoomOccupants occupants(&room, 1, { &only });
+
+    EXPECT_EQ(room.people, &only);
+    EXPECT_EQ(only.next_in_room, nullptr);
+}
+
+TEST(ScopedRoomOccupantsTest, PublishesAnEmptyChainForAnEmptyOccupantSet)
+{
+    room_data room = make_stub_room();
+    char_data resident { };
+    room.people = &resident;
+    resident.next_in_room = nullptr;
+
+    {
+        ScopedRoomOccupants occupants(&room, 1, { });
+
+        EXPECT_EQ(rots::entity::first_occupant(&room), nullptr);
+    }
+
+    EXPECT_EQ(room.people, &resident);
+}
+
+TEST(ScopedRoomOccupantsTest, RestoresAPreExistingOccupantChainOnDestruction)
+{
+    room_data room = make_stub_room();
+    char_data resident_head { };
+    char_data resident_tail { };
+    room.people = &resident_head;
+    resident_head.next_in_room = &resident_tail;
+    resident_tail.next_in_room = nullptr;
+    resident_head.in_room = 1;
+    resident_tail.in_room = 1;
+
+    char_data visitor { };
+    {
+        ScopedRoomOccupants occupants(&room, 1, { &visitor });
+        ASSERT_EQ(room.people, &visitor);
+    }
+
+    // The displaced chain comes back verbatim -- head, internal linkage, and
+    // terminator -- and the residents' own locations were never touched: this
+    // fixture shadows a chain, it does not relocate anybody.
+    EXPECT_EQ(room.people, &resident_head);
+    EXPECT_EQ(resident_head.next_in_room, &resident_tail);
+    EXPECT_EQ(resident_tail.next_in_room, nullptr);
+    EXPECT_EQ(location_of(&resident_head), 1);
+    EXPECT_EQ(location_of(&resident_tail), 1);
+}
+
+TEST(ScopedRoomOccupantsTest, UnlinksAndClearsEveryManagedCharacterOnDestruction)
+{
+    room_data room = make_stub_room();
+    char_data first { };
+    char_data second { };
+
+    {
+        ScopedRoomOccupants occupants(&room, 4, { &first, &second });
+        ASSERT_EQ(first.next_in_room, &second);
+    }
+
+    // THE FIXTURE-HYGIENE RULE: nothing this fixture published may outlive the
+    // scope, either linked into the room's chain or still claiming to be in
+    // the room. ctest is structurally blind to that class of leak -- every
+    // test runs in its own process -- so the helper has to close it by
+    // construction, not by each caller remembering.
+    EXPECT_EQ(room.people, nullptr);
+    EXPECT_EQ(first.next_in_room, nullptr);
+    EXPECT_EQ(second.next_in_room, nullptr);
+    EXPECT_EQ(location_of(&first), NOWHERE);
+    EXPECT_EQ(location_of(&second), NOWHERE);
+}
+
+TEST(ScopedRoomOccupantsTest, PublishesANonNpcWithALitLightWithoutZoneTableOrLightBookkeeping)
+{
+    // Ruling R-B3, both halves in one test. This character is a non-NPC
+    // carrying a lit light source, and NO zone table is installed: char_to_room()
+    // would dereference zone_by_id(0) -- nullptr here -- for the zone-power
+    // block, and would increment room.light. The fixture does neither, and it
+    // publishes at the HEAD where char_to_room() appends at the tail (the
+    // resident below would still be room.people after a char_to_room() call).
+    room_data room = make_stub_room();
+    room.light = 0;
+
+    char_data resident { };
+    resident.specials2.act |= MOB_ISNPC;
+    room.people = &resident;
+    resident.next_in_room = nullptr;
+
+    char_data player { };
+    player.player.race = RACE_HUMAN;
+    player.player.level = 20;
+    obj_data lamp { };
+    lamp.obj_flags.type_flag = ITEM_LIGHT;
+    lamp.obj_flags.value[2] = 5; // fuel remaining
+    lamp.obj_flags.value[3] = 1; // ON
+    player.equipment[WEAR_LIGHT] = &lamp;
+
+    ScopedRoomOccupants occupants(&room, 3, { &player });
+
+    EXPECT_EQ(room.people, &player);
+    EXPECT_EQ(room.light, 0);
+    EXPECT_TRUE(is_in_room(&player, 3));
+}
+
+TEST(ScopedZoneTableOwnerTest, MakesZoneByIdResolveTheOwnedZone)
+{
+    ScopedZoneTableOwner zone_guard;
+
+    ASSERT_NE(zone_by_id(0), nullptr);
+    EXPECT_EQ(zone_by_id(0), &zone_guard.zone());
+    EXPECT_EQ(zone_by_id(0)->number, 0);
+    EXPECT_EQ(zone_guard.zone().white_power, 0);
+    EXPECT_EQ(zone_guard.zone().dark_power, 0);
+}
+
+TEST(ScopedZoneTableOwnerTest, AddressesExactlyOneZoneBecauseTopOfZoneTableIsACount)
+{
+    ScopedZoneTableOwner zone_guard;
+
+    // zone_by_id_impl() bounds-checks with `znum >= top_of_zone_table`, i.e.
+    // it reads the global as a COUNT -- the opposite of top_of_world's
+    // inclusive convention next door. 1 makes exactly zone 0 addressable; a 0
+    // would resolve nothing at all, which is the trap this fixture exists to
+    // keep out of every caller.
+    EXPECT_EQ(top_of_zone_table, 1);
+    EXPECT_NE(zone_by_id(0), nullptr);
+    EXPECT_EQ(zone_by_id(1), nullptr);
+    EXPECT_EQ(zone_by_id(-1), nullptr);
+}
+
+TEST(ScopedZoneTableOwnerTest, RestoresThePreviousZoneTableOnDestruction)
+{
+    zone_data* const table_before = zone_table;
+    const int top_before = top_of_zone_table;
+
+    {
+        ScopedZoneTableOwner zone_guard;
+        ASSERT_NE(zone_table, table_before);
+        ASSERT_EQ(top_of_zone_table, 1);
+    }
+
+    EXPECT_EQ(zone_table, table_before);
+    EXPECT_EQ(top_of_zone_table, top_before);
+}
+
+TEST(ScopedZoneTableOwnerTest, LetsCharToRoomAccountZonePowerForANonNpcWithoutCrashing)
+{
+    // The marquee case: the real primitives, the real world[] and zone_table,
+    // and a PC. Without the zone-table owner this test segfaults inside
+    // char_to_room()'s `zone_by_id(r->zone)->white_power += tmp` -- that is the
+    // whole reason the fixture exists, and why T2's new char_to_room() tests
+    // are required to stand one up.
+    ScopedTestWorld world_guard;
+    ScopedZoneTableOwner zone_guard;
+
+    world_guard.room().zone = 0;
+
+    char_data player { };
+    player.player.race = RACE_HUMAN; // RACE_GOOD -> white_power
+    player.player.level = 20;
+    ASSERT_FALSE(IS_NPC(&player));
+
+    const int expected_power = char_power(player.player.level);
+    ASSERT_GT(expected_power, 0);
+
+    char_to_room(&player, 0);
+
+    EXPECT_TRUE(is_in_room(&player, 0));
+    EXPECT_EQ(rots::entity::first_occupant(&world_guard.room()), &player);
+    EXPECT_EQ(zone_guard.zone().white_power, expected_power);
+    EXPECT_EQ(zone_guard.zone().dark_power, 0);
+
+    // `player` is a stack char_data that a production call linked into the
+    // process-global world[0].people, so it comes back out through the real
+    // primitive (THE FIXTURE-HYGIENE RULE) -- which doubles as proof that the
+    // zone accounting this fixture makes reachable is symmetric.
+    EXPECT_TRUE(detach_char_from_room(&player));
+    EXPECT_EQ(zone_guard.zone().white_power, 0);
+    EXPECT_EQ(location_of(&player), NOWHERE);
+    EXPECT_EQ(rots::entity::first_occupant(&world_guard.room()), nullptr);
 }

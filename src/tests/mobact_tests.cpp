@@ -31,9 +31,12 @@
 #include "../utils.h"
 #include "rots/core/character.h"
 #include "rots/core/room.h"
+#include "test_placement.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
+
+#include <optional>
 
 void one_mobile_activity(char_data *ch);
 
@@ -83,14 +86,22 @@ struct MobactTestContext {
     char_data occupant_b{};
     char occupant_a_name[16] = "occupant_a";
     char occupant_b_name[16] = "occupant_b";
-    char_data *original_people = nullptr;
+
+    // Room 0's occupant chain, re-published by the seed_* helpers below
+    // (LS-3a T3, test_placement.h). An optional rather than a plain member
+    // because the chain's membership is per-test: the constructor emplaces
+    // an EMPTY one (which saves the room's prior head and publishes an empty
+    // chain, exactly what the raw save-then-null pair used to do), and each
+    // seed_* re-emplaces over it -- destroying the previous instance, which
+    // restores that same saved head, before the new one saves it again.
+    // Declared last so it unwinds before the characters it manages.
+    std::optional<ScopedRoomOccupants> occupants;
 
     MobactTestContext() {
         top_of_world = 0;
-        world[0].room_flags = 0;
-        world[0].light = 1; // Unlit rooms fail CAN_SEE's darkness check.
-        original_people = world[0].people;
-        world[0].people = nullptr;
+        room_by_id_total(0)->room_flags = 0;
+        room_by_id_total(0)->light = 1; // Unlit rooms fail CAN_SEE's darkness check.
+        occupants.emplace(room_by_id_total(0), 0, std::initializer_list<char_data*> {});
 
         // Common ch setup every test in this file needs: a plain awake NPC,
         // not fighting, no master/pet/guardian entanglements, MOB_SENTINEL
@@ -99,38 +110,35 @@ struct MobactTestContext {
         ch.specials2.act = MOB_ISNPC | MOB_SENTINEL;
         ch.specials.position = POSITION_STANDING;
         ch.player.level = 20;
-        ch.in_room = 0;
+        // `ch` is deliberately NOT one of its own room's occupants (see the
+        // struct comment), so it is located, not published.
+        set_location(&ch, 0);
 
         occupant_a.player.name = occupant_a_name;
         occupant_a.player.short_descr = occupant_a_name;
         occupant_a.specials.position = POSITION_STANDING;
-        occupant_a.in_room = 0;
 
         occupant_b.player.name = occupant_b_name;
         occupant_b.player.short_descr = occupant_b_name;
         occupant_b.specials.position = POSITION_STANDING;
-        occupant_b.in_room = 0;
     }
 
     // Wires occupant_a then occupant_b (in that order) into world[0]'s
     // occupant chain -- occupant_a is therefore the FIRST candidate any
     // converted forward walk over room_of(ch)'s occupants reaches.
     void seed_two_occupants() {
-        occupant_a.next_in_room = &occupant_b;
-        occupant_b.next_in_room = nullptr;
-        world[0].people = &occupant_a;
+        occupants.emplace(room_by_id_total(0), 0,
+                          std::initializer_list<char_data*> { &occupant_a, &occupant_b });
     }
 
     void seed_one_occupant() {
-        occupant_a.next_in_room = nullptr;
-        world[0].people = &occupant_a;
+        occupants.emplace(room_by_id_total(0), 0,
+                          std::initializer_list<char_data*> { &occupant_a });
     }
 
-    ~MobactTestContext() {
-        world[0].people = original_people;
-        occupant_a.next_in_room = nullptr;
-        occupant_b.next_in_room = nullptr;
-    }
+    // The head restore and both unlinks this destructor used to do are
+    // `occupants`, which unwinds on its own -- nothing is left to do here.
+    ~MobactTestContext() = default;
 };
 
 } // namespace

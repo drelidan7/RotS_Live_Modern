@@ -1671,7 +1671,7 @@ ACMD(do_whistle)
             if (rm->zone != zone_num)
                 continue;
 
-            ch->in_room = rm_num; // LS1-ALLOW: in_room used as mutable room cursor (zone-wide whistle broadcast)
+            set_location(ch, rm_num); // LS1-ALLOW: in_room used as mutable room cursor (zone-wide whistle broadcast)
 
             if (rm_num == cur_room_num)
                 act("$n whistles powerfully.", FALSE, ch, 0, 0, TO_ROOM);
@@ -1709,7 +1709,7 @@ ACMD(do_whistle)
                 }
             }
         }
-        ch->in_room = cur_room_num; // LS1-ALLOW: in_room used as mutable room cursor
+        set_location(ch, cur_room_num); // LS1-ALLOW: in_room used as mutable room cursor
     }
 }
 
@@ -2852,7 +2852,7 @@ void do_scan(char_data* character, char*, waiting_type*, int, int)
 
     is_in = character->in_room; // LS1-ALLOW: in_room used as mutable room cursor (quick-scan adjacent rooms)
     for (dir = 0; dir < NUM_OF_DIRS; dir++) {
-        character->in_room = is_in; // LS1-ALLOW: in_room used as mutable room cursor
+        set_location(character, is_in); // LS1-ALLOW: in_room used as mutable room cursor
         for (dis = 0; dis <= maxdis; dis++) {
             if (((dis == 0) && (dir == 0)) || (dis > 0)) {
                 for (i = world[character->in_room].people; i; i = i->next_in_room) { // LS1-ALLOW: in_room used as mutable room cursor
@@ -2873,12 +2873,12 @@ void do_scan(char_data* character, char*, waiting_type*, int, int)
             if (!CAN_GO(character, dir) || (world[character->in_room].dir_option[dir]->to_room == is_in) || (IS_SET(EXIT(character, dir)->exit_info, EX_NO_LOOK))) // LS1-ALLOW: in_room used as mutable room cursor
                 break;
             else
-                character->in_room = world[character->in_room].dir_option[dir]->to_room; // LS1-ALLOW: in_room used as mutable room cursor
+                set_location(character, room_of(character)->dir_option[dir]->to_room); // LS1-ALLOW: in_room used as mutable room cursor
         }
     }
     if (found == 0)
         act("Nobody anywhere near you.", TRUE, character, 0, 0, TO_CHAR);
-    character->in_room = is_in; // LS1-ALLOW: in_room used as mutable room cursor
+    set_location(character, is_in); // LS1-ALLOW: in_room used as mutable room cursor
 }
 
 /*=================================================================================

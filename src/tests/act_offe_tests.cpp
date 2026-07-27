@@ -21,6 +21,7 @@
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
 #include "rots/core/types.h"
+#include "test_placement.h"
 #include "test_random_utils.h"
 #include "test_world.h"
 
@@ -70,9 +71,18 @@ struct DoRescueContext {
     char_data ch{};
     char_data victim{};
     descriptor_data ch_descriptor{};
-    char_data *original_people = nullptr;
     char_data *original_combat_list;
     char_data *original_waiting_list;
+
+    // The occupant chain: rescuer at the head, victim behind it -- the same
+    // head-first order this fixture published by hand before LS-3a T3
+    // (test_placement.h). A test that needs a third character in the room
+    // restates the WHOLE chain in a NESTED ScopedRoomOccupants rather than
+    // re-pointing a link (the pilot's idiom rule 4). Declared LAST so it
+    // unwinds before the characters it manages and before the ScopedTestWorld
+    // whose room it points into; its constructor stamps both locations
+    // through set_location(), so this fixture writes in_room nowhere.
+    ScopedRoomOccupants occupants{&test_world.room(), 0, {&ch, &victim}};
 
     DoRescueContext()
         : original_combat_list(combat_list), original_waiting_list(waiting_list) {
@@ -82,14 +92,6 @@ struct DoRescueContext {
 
         reset_capturing_descriptor(ch_descriptor, &ch);
         ch.desc = &ch_descriptor;
-
-        original_people = test_world.room().people;
-
-        ch.in_room = 0;
-        victim.in_room = 0;
-        ch.next_in_room = &victim;
-        victim.next_in_room = nullptr;
-        test_world.room().people = &ch;
 
         ch.player.race = RACE_HUMAN;
         ch.player.name = const_cast<char *>("Rescuer");
@@ -118,11 +120,9 @@ struct DoRescueContext {
         // fixture has no handle on.
         waiting_list = original_waiting_list;
 
-        test_world.room().people = original_people;
-        ch.next_in_room = nullptr;
-        victim.next_in_room = nullptr;
-        ch.in_room = NOWHERE;
-        victim.in_room = NOWHERE;
+        // The chain-head restore, the two unlinks and the two NOWHERE
+        // de-locations this body used to perform are now `occupants`, which
+        // unwinds right after it.
         clear_test_random_values();
     }
 };
@@ -142,9 +142,17 @@ constexpr int kVictimAbsNumber = 9301;
 TEST(DoRescue, FindsTheFighterAndRescuesTheVictimWhenSomeoneIsFightingThem) {
     DoRescueContext context;
     char_data tmp_ch{};
-    tmp_ch.in_room = 0;
-    context.victim.next_in_room = &tmp_ch;
-    tmp_ch.next_in_room = nullptr;
+    // A mid-test chain extension is a NESTED ScopedRoomOccupants restating the
+    // WHOLE chain (rescuer, victim, fighter), not a re-pointed link -- the
+    // pilot's idiom rule 4. Declared after tmp_ch so it unwinds first, which
+    // is also what takes the stack char_data back out of the process-global
+    // room's occupant chain (THE FIXTURE-HYGIENE RULE); the enclosing
+    // fixture's own helper then restores the pre-test head. The enclosing
+    // destructor resolves its room through the ScopedTestWorld it owns, not
+    // through room_of(&member), so the nested unwind's NOWHERE parking cannot
+    // mislead it.
+    ScopedRoomOccupants occupants{
+        &context.test_world.room(), 0, {&context.ch, &context.victim, &tmp_ch}};
     tmp_ch.specials.fighting = &context.victim;
 
     // percent = number(1, 101) must not exceed prob = GET_SKILL(ch,

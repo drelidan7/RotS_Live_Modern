@@ -25,6 +25,7 @@
 #include "rots/core/descriptor.h"
 #include "rots/core/object.h"
 #include "rots/core/types.h"
+#include "test_placement.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
@@ -62,8 +63,7 @@ struct ActObj1Context {
     ScopedTestWorld test_world{1};
     char_data ch{};
     descriptor_data ch_descriptor{};
-    char_data *original_people = nullptr;
-    // Site 6 (LS-2 whole-branch review B1): world[0].light is saved here and
+    // Site 6 (LS-2 whole-branch review B1): room 0's light is saved here and
     // restored in the dtor below so it doesn't leak into a later test sharing
     // this process's world[0]. LS-3a T1 Stage A made ScopedTestWorld's reuse
     // branch reset .light (with the rest of the room) at construction, so this
@@ -71,16 +71,19 @@ struct ActObj1Context {
     // covers the value this fixture itself forces on just below.
     byte original_light = 0;
 
+    // The room's single occupant (LS-3a T3, test_placement.h). Declared LAST
+    // so it unwinds before the character it manages and before the
+    // ScopedTestWorld whose room it points into; its constructor stamps the
+    // location through set_location(), so this fixture no longer writes
+    // in_room anywhere.
+    ScopedRoomOccupants occupants{room_by_id_total(0), 0, {&ch}};
+
     ActObj1Context() {
-        original_light = world[0].light;
-        world[0].light = 1; // CAN_SEE()'s/CAN_SEE_OBJ()'s darkness check.
-        original_people = world[0].people;
+        original_light = room_by_id_total(0)->light;
+        room_by_id_total(0)->light = 1; // CAN_SEE()'s/CAN_SEE_OBJ()'s darkness check.
 
         reset_capturing_descriptor(ch_descriptor, &ch);
         ch.desc = &ch_descriptor;
-        ch.in_room = 0;
-        ch.next_in_room = nullptr;
-        world[0].people = &ch;
 
         ch.player.race = RACE_HUMAN;
         ch.player.name = const_cast<char *>("Getter");
@@ -91,11 +94,11 @@ struct ActObj1Context {
     }
 
     ~ActObj1Context() {
-        world[0].light = original_light;
-        world[0].people = original_people;
-        world[0].contents = nullptr;
-        ch.next_in_room = nullptr;
-        ch.in_room = NOWHERE;
+        // The chain-head restore, the unlink and the NOWHERE de-location this
+        // body used to perform are now `occupants`, which unwinds right after
+        // it; the light/contents/carrying restores stay here.
+        room_by_id_total(0)->light = original_light;
+        room_by_id_total(0)->contents = nullptr;
         ch.carrying = nullptr;
     }
 
@@ -134,16 +137,16 @@ TEST(PerformGetFromRoom, MovesTheItemFromTheRoomIntoTheCharactersInventory) {
     ActObj1Context context;
     obj_data item = make_takeable_object("sword blade", "a plain sword");
     item.touched = 1;
-    item.in_room = 0;
+    item.in_room = 0; // LS1-ALLOW: obj-location
     item.next_content = nullptr;
-    world[0].contents = &item;
+    room_by_id_total(0)->contents = &item;
 
     const int result = perform_get_from_room(&context.ch, &item);
 
     EXPECT_EQ(result, 1);
     EXPECT_EQ(context.ch.carrying, &item)
         << "Expected can_take_obj()'s pass to route through obj_from_room()/obj_to_char().";
-    EXPECT_EQ(world[0].contents, nullptr)
+    EXPECT_EQ(room_by_id_total(0)->contents, nullptr)
         << "Expected the item to have left the room's contents list.";
 }
 
@@ -154,15 +157,15 @@ TEST(GetFromRoom, WithAllArgumentPicksUpEveryVisibleObjectInTheRoom) {
     ActObj1Context context;
     obj_data first = make_takeable_object("dagger blade", "a dagger");
     obj_data second = make_takeable_object("pouch leather", "a pouch");
-    first.in_room = 0;
-    second.in_room = 0;
+    first.in_room = 0; // LS1-ALLOW: obj-location
+    second.in_room = 0; // LS1-ALLOW: obj-location
     first.next_content = &second;
     second.next_content = nullptr;
-    world[0].contents = &first;
+    room_by_id_total(0)->contents = &first;
 
     get_from_room(&context.ch, mutable_arg("all"));
 
-    EXPECT_EQ(world[0].contents, nullptr) << "Expected the room's converted room_of(ch)->contents "
+    EXPECT_EQ(room_by_id_total(0)->contents, nullptr) << "Expected the room's converted room_of(ch)->contents "
                                              "walk to reach and pick up every object.";
     bool has_first = false, has_second = false;
     for (obj_data *carried = context.ch.carrying; carried; carried = carried->next_content) {
@@ -175,7 +178,7 @@ TEST(GetFromRoom, WithAllArgumentPicksUpEveryVisibleObjectInTheRoom) {
 
 TEST(GetFromRoom, ReportsNothingHereWhenTheRoomIsEmpty) {
     ActObj1Context context;
-    world[0].contents = nullptr;
+    room_by_id_total(0)->contents = nullptr;
 
     get_from_room(&context.ch, mutable_arg("all"));
 
@@ -192,9 +195,9 @@ TEST(DoGet, ReportsNoContainersWhenNoneArePresentInTheRoom) {
     ActObj1Context context;
     obj_data non_container = make_takeable_object("rock granite", "a rock");
     non_container.obj_flags.type_flag = ITEM_TRASH; // present, visible, but NOT a container.
-    non_container.in_room = 0;
+    non_container.in_room = 0; // LS1-ALLOW: obj-location
     non_container.next_content = nullptr;
-    world[0].contents = &non_container;
+    room_by_id_total(0)->contents = &non_container;
 
     do_get(&context.ch, mutable_arg("sword all"), nullptr, 0, 0);
 
@@ -208,9 +211,9 @@ TEST(DoGet, FindsAContainerAmongRoomContentsAndStopsReportingNoContainers) {
     ActObj1Context context;
     obj_data container = make_takeable_object("chest wooden", "a wooden chest");
     container.obj_flags.type_flag = ITEM_CONTAINER;
-    container.in_room = 0;
+    container.in_room = 0; // LS1-ALLOW: obj-location
     container.next_content = nullptr;
-    world[0].contents = &container;
+    room_by_id_total(0)->contents = &container;
 
     do_get(&context.ch, mutable_arg("sword all"), nullptr, 0, 0);
 
@@ -224,15 +227,15 @@ TEST(DoGet, FindsAContainerAmongRoomContentsAndStopsReportingNoContainers) {
 TEST(PerformDropGold, CreatesTheGoldObjectInTheDroppersOwnRoom) {
     ActObj1Context context;
     context.ch.points.gold = 100;
-    world[0].contents = nullptr;
+    room_by_id_total(0)->contents = nullptr;
 
     perform_drop_gold(&context.ch, 25, 0);
 
-    ASSERT_NE(world[0].contents, nullptr)
+    ASSERT_NE(room_by_id_total(0)->contents, nullptr)
         << "Expected obj_to_room(obj, location_of(ch)) to place the new money object into the "
            "dropper's own room's contents list.";
-    EXPECT_EQ(GET_ITEM_TYPE(world[0].contents), ITEM_MONEY);
-    EXPECT_EQ(world[0].contents->obj_flags.value[0], 25);
+    EXPECT_EQ(GET_ITEM_TYPE(room_by_id_total(0)->contents), ITEM_MONEY);
+    EXPECT_EQ(room_by_id_total(0)->contents->obj_flags.value[0], 25);
     EXPECT_EQ(context.ch.points.gold, 75);
 
     // O-I1 (LS-2 whole-branch review, Opus): create_money() (object_utils.cpp)
@@ -245,14 +248,14 @@ TEST(PerformDropGold, CreatesTheGoldObjectInTheDroppersOwnRoom) {
     // object_list, and frees it (item_number == -1 here, so its
     // obj_index_by_id() decrement is correctly skipped, same as every other
     // object this file constructs).
-    extract_obj(world[0].contents);
+    extract_obj(room_by_id_total(0)->contents);
 }
 
 // do_butcher()'s corpse-search resolver (:668, `get_obj_in_list_vis(ch,
 // "corpse", room_of(ch)->contents, 9999)`, the no-argument path).
 TEST(DoButcher, ReportsNoCorpseWhenNoneIsPresentInTheRoom) {
     ActObj1Context context;
-    world[0].contents = nullptr;
+    room_by_id_total(0)->contents = nullptr;
 
     do_butcher(&context.ch, mutable_arg(""), nullptr, 0, SCMD_BUTCHER);
 
@@ -273,7 +276,7 @@ obj_data make_valueless_corpse() {
     corpse.obj_flags.type_flag = ITEM_CONTAINER;
     corpse.obj_flags.value[3] = 1; // do_butcher's "is this actually a corpse" gate (:683).
     corpse.obj_flags.butcher_item = 0;
-    corpse.in_room = 0;
+    corpse.in_room = 0; // LS1-ALLOW: obj-location
     corpse.next_content = nullptr;
     return corpse;
 }
@@ -288,7 +291,7 @@ obj_data make_valueless_corpse() {
 TEST(DoButcher, FindsTheCorpseInTheRoomWhenNoArgumentIsGiven) {
     ActObj1Context context;
     obj_data corpse = make_valueless_corpse();
-    world[0].contents = &corpse;
+    room_by_id_total(0)->contents = &corpse;
 
     do_butcher(&context.ch, mutable_arg(""), nullptr, 0, SCMD_BUTCHER);
 
@@ -304,7 +307,7 @@ TEST(DoButcher, FindsTheCorpseInTheRoomWhenNoArgumentIsGiven) {
 TEST(DoButcher, FindsTheNamedCorpseInTheRoomWhenAnArgumentIsGiven) {
     ActObj1Context context;
     obj_data corpse = make_valueless_corpse();
-    world[0].contents = &corpse;
+    room_by_id_total(0)->contents = &corpse;
 
     do_butcher(&context.ch, mutable_arg("corpse"), nullptr, 0, SCMD_BUTCHER);
 

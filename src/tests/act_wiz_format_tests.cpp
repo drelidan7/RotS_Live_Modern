@@ -10,6 +10,7 @@
 #include "../utils.h"
 #include "../zone.h"
 #include "test_char_cleanup.h"
+#include "test_placement.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
@@ -21,6 +22,7 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <optional>
 #include <string>
 
 // Characterization tests for Phase 4 Wave 3 Task 5 (Chunk W1 -- act_wiz.cpp
@@ -355,10 +357,18 @@ struct RoomStatContext {
     ScopedTestWorld test_world;
     char_data character { };
     descriptor_data descriptor { };
-    char_data* original_people = nullptr;
     // Releases character.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
     ScopedClearCharFields character_cleanup { character };
+    // The room's single occupant (LS-3a T3, test_placement.h). std::optional
+    // rather than a plain member because clear_char() -- called in the
+    // constructor BODY -- placement-news the character and then
+    // set_location(ch, NOWHERE), so a plain member constructed before the body
+    // would have both its chain link and its location silently wiped; it is
+    // emplace()d below at exactly the point the raw publication used to sit.
+    // Declared LAST so it unwinds first. Tests that add a SECOND occupant do
+    // it with a NESTED helper restating the whole chain (idiom rule 4).
+    std::optional<ScopedRoomOccupants> occupants;
 
     RoomStatContext()
     {
@@ -370,7 +380,6 @@ struct RoomStatContext {
         character.player.level = LEVEL_AREAGOD;
         character.player.name = const_cast<char*>("Gandalf"); // viewer is listed in "Chars present"
 
-        original_people = test_world.room().people;
         // room_data::create_bulk() stamps this single-room world's only
         // index with EXTENSION_ROOM_HEAD (act_wiz.cpp's do_stat_room /
         // do_zone / Check_zone_authority compute their zone number as
@@ -396,16 +405,13 @@ struct RoomStatContext {
         // zeroing (this very failure is the case it cites). The hand-rolled
         // block is retired as redundant -- but the history above is why the
         // reset must keep doing it.
-        character.in_room = 0;
-        character.next_in_room = nullptr;
-        test_world.room().people = &character;
+        occupants.emplace(
+            &test_world.room(), 0, std::initializer_list<char_data*> { &character });
     }
 
-    ~RoomStatContext()
-    {
-        test_world.room().people = original_people;
-        character.in_room = NOWHERE;
-    }
+    // The chain-head restore and the NOWHERE de-location this destructor used
+    // to perform are now `occupants`, which unwinds immediately after it.
+    ~RoomStatContext() = default;
 };
 
 std::string strip_trailing_newline(const std::string& value)
@@ -523,12 +529,17 @@ TEST(ActWizInspection, StatRoomFormatsCharsPresentLineForSecondPc)
     // allocations) at scope exit (Phase 5 T6 leak sweep).
     ScopedClearCharFields bystander_cleanup { bystander };
     bystander.player.name = const_cast<char*>("Legolas");
-    bystander.in_room = 0;
-    bystander.next_in_room = context.test_world.room().people;
-    context.test_world.room().people = &bystander;
+    // THE PUSH-AT-HEAD ORDER IS THE POINT of this test's fixture: the
+    // bystander is prepended AHEAD of the fixture's own character, so
+    // do_stat_room's "Chars present" walk meets it first. A mid-test chain
+    // rewire becomes a NESTED ScopedRoomOccupants restating the WHOLE chain in
+    // that same order (idiom rule 4), never a re-pointed link; its unwind is
+    // what replaces the two hand-rolled restore lines that used to sit between
+    // do_stat_room() and the assertion below.
+    ScopedRoomOccupants bystander_at_head {
+        &context.test_world.room(), 0, { &bystander, &context.character }
+    };
     do_stat_room(&context.character);
-    context.test_world.room().people = &context.character;
-    context.character.next_in_room = nullptr;
     const std::string output = context.descriptor.output;
     EXPECT_NE(output.find("Legolas(PC)"), std::string::npos) << output;
 }
@@ -544,13 +555,13 @@ TEST(ActWizInspection, StatRoomFormatsCharsPresentLineForMob)
     ScopedClearCharFields mob_cleanup { mob };
     mob.specials2.act = MOB_ISNPC;
     mob.nr = 0;
-    mob.in_room = 0;
     mob.player.short_descr = const_cast<char*>("Bilbo");
-    mob.next_in_room = context.test_world.room().people;
-    context.test_world.room().people = &mob;
+    // See the SecondPc test above: same push-at-head shape, same nested
+    // whole-chain restatement.
+    ScopedRoomOccupants mob_at_head {
+        &context.test_world.room(), 0, { &mob, &context.character }
+    };
     do_stat_room(&context.character);
-    context.test_world.room().people = &context.character;
-    context.character.next_in_room = nullptr;
     const std::string output = context.descriptor.output;
     EXPECT_NE(output.find("Bilbo(MOB) [1234]"), std::string::npos) << output;
 }
@@ -588,7 +599,7 @@ TEST(ActWizInspection, StatRoomFormatsContentsLineWithVnumForHighLevelViewer)
     obj_data object { };
     object.short_description = const_cast<char*>("a shining sword");
     object.item_number = 0;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     context.test_world.room().contents = &object;
     do_stat_room(&context.character);
     context.test_world.room().contents = nullptr;
@@ -627,7 +638,7 @@ TEST(ActWizInspection, StatRoomFormatsExitLineWithRealDestinationKeywordAndDescr
     exit.key = 100;
     exit.keyword = const_cast<char*>("gate");
     exit.general_description = const_cast<char*>("A heavy iron gate.\n\r");
-    world[1].number = 100;
+    room_by_id_total(1)->number = 100;
     context.test_world.room().dir_option[0] = &exit; // NORTH
     do_stat_room(&context.character);
     context.test_world.room().dir_option[0] = nullptr;
@@ -657,7 +668,7 @@ TEST(ActWizInspection, DoStatObjectFormatsNameAliasesWithShortDescriptionAndColo
     object.short_description = const_cast<char*>("a gleaming blade");
     object.name = const_cast<char*>("blade sword");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     do_stat_object(&context.character, &object);
     const std::string output = context.descriptor.output;
     EXPECT_NE(output.find("Name: '"), std::string::npos) << output;
@@ -674,7 +685,7 @@ TEST(ActWizInspection, DoStatObjectFormatsNameAliasesNoneFallbackWithoutColor)
     object.short_description = nullptr;
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     do_stat_object(&context.character, &object);
     const std::string output = context.descriptor.output;
     EXPECT_NE(output.find("Name: '<None>', Aliases: widget\n\r"), std::string::npos) << output;
@@ -688,7 +699,7 @@ TEST(ActWizInspection, DoStatObjectFormatsVnumRnumTypeSpecProcNoneBranch)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     do_stat_object(&context.character, &object);
     const std::string output = context.descriptor.output;
     EXPECT_NE(output.find("VNum: ["), std::string::npos) << output;
@@ -704,7 +715,7 @@ TEST(ActWizInspection, DoStatObjectFormatsVnumRnumTypeSpecProcExistsBranch)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = 0;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     do_stat_object(&context.character, &object);
     const std::string output = context.descriptor.output;
     EXPECT_NE(output.find("VNum: ["), std::string::npos) << output;
@@ -721,7 +732,7 @@ TEST(ActWizInspection, DoStatObjectFormatsLDesNoneFallback)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1; // no obj_index entry: virt 0, SpecProc "None" branch
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     do_stat_object(&context.character, &object);
     EXPECT_TRUE(strstr(context.descriptor.small_outbuf, "L-Des: None\n\r") != nullptr)
         << context.descriptor.small_outbuf;
@@ -733,7 +744,7 @@ TEST(ActWizInspection, DoStatObjectFormatsLDesWhenPresent)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     object.description = const_cast<char*>("A finely wrought widget lies here.");
     do_stat_object(&context.character, &object);
     EXPECT_NE(std::string(context.descriptor.output)
@@ -748,7 +759,7 @@ TEST(ActWizInspection, DoStatObjectFormatsExtraDescsLineWithNoneKeywordFallback)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     extra_descr_data desc { };
     desc.keyword = nullptr;
     desc.next = nullptr;
@@ -765,7 +776,7 @@ TEST(ActWizInspection, DoStatObjectFormatsWearSetCharExtraFlagLinesWithNoFlags)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     object.obj_flags.wear_flags = 0;
     object.obj_flags.bitvector = 0;
     object.obj_flags.extra_flags = 0;
@@ -782,7 +793,7 @@ TEST(ActWizInspection, DoStatObjectFormatsMaterialUnknownFallback)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     object.obj_flags.material = -5;
     do_stat_object(&context.character, &object);
     EXPECT_NE(std::string(context.descriptor.output).find("Material: Unknown\n\r"),
@@ -796,7 +807,7 @@ TEST(ActWizInspection, DoStatObjectFormatsWeightValueCostLevelTimerLine)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     object.obj_flags.weight = 7;
     object.obj_flags.cost = 250;
     object.obj_flags.cost_per_day = 3;
@@ -815,7 +826,7 @@ TEST(ActWizInspection, DoStatObjectFormatsScriptNumberLine)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     object.obj_flags.script_number = 77;
     do_stat_object(&context.character, &object);
     EXPECT_NE(std::string(context.descriptor.output).find("Script number: 77\n\r"),
@@ -829,7 +840,7 @@ TEST(ActWizInspection, DoStatObjectFormatsLocationLineWithNowhereNoneNobodyFallb
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     object.in_obj = nullptr;
     object.carried_by = nullptr;
     object.loaded_by = 0;
@@ -854,7 +865,7 @@ TEST(ActWizInspection, DoStatObjectFormatsLocationLineWithRealRoomObjectAndCarri
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = 0;
+    object.in_room = 0; // LS1-ALLOW: obj-location
     object.in_obj = &container;
     object.carried_by = &context.character;
     context.character.player.name = const_cast<char*>("Frodo");
@@ -871,7 +882,7 @@ TEST(ActWizInspection, DoStatObjectFormatsWeaponValuesLine)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     object.obj_flags.type_flag = ITEM_WEAPON;
     object.obj_flags.value[0] = 10;
     object.obj_flags.value[1] = 5;
@@ -891,7 +902,7 @@ TEST(ActWizInspection, DoStatObjectFormatsDefaultValuesLine)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     object.obj_flags.type_flag = 0;
     object.obj_flags.value[0] = 1;
     object.obj_flags.value[1] = 2;
@@ -913,7 +924,7 @@ TEST(ActWizInspection, DoStatObjectFormatsContentsLine)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     object.contains = &nested;
     do_stat_object(&context.character, &object);
     EXPECT_NE(std::string(context.descriptor.output).find("Contents: a small key"),
@@ -927,7 +938,7 @@ TEST(ActWizInspection, DoStatObjectFormatsAffectionsNoneLine)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     do_stat_object(&context.character, &object);
     EXPECT_NE(std::string(context.descriptor.output).find("\n\rAffections: None\n\r"),
         std::string::npos)
@@ -940,7 +951,7 @@ TEST(ActWizInspection, DoStatObjectFormatsAffectionsWithModifierLine)
     obj_data object { };
     object.name = const_cast<char*>("widget");
     object.item_number = -1;
-    object.in_room = NOWHERE;
+    object.in_room = NOWHERE; // LS1-ALLOW: obj-location
     object.affected[0].modifier = 3;
     object.affected[0].location = 0;
     do_stat_object(&context.character, &object);
@@ -987,7 +998,7 @@ TEST(ActWizInspection, StatCharacterFormatsHeaderLineForPc)
     PcTargetContext target;
     target.character.player.name = const_cast<char*>("Aragorn");
     target.character.specials2.idnum = 4242;
-    target.character.in_room = NOWHERE;
+    set_location(&target.character, NOWHERE);
     do_stat_character(&viewer.character, &target.character);
     const std::string output = viewer.descriptor.output;
     EXPECT_NE(output.find(" PC 'Aragorn'  IDNum: [ 4242]"), std::string::npos) << output;
@@ -1860,14 +1871,14 @@ TEST(ActWizInspection, DoShowFormatsAliasesListLine)
     ScopedTestWorld test_world;
     SoloCharacterContext viewer;
     viewer.character.player.level = LEVEL_IMPL;
-    viewer.character.in_room = 0;
+    set_location(&viewer.character, 0);
     char_data target { };
     clear_char(&target, MOB_VOID);
     // Releases target.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
     ScopedClearCharFields target_cleanup { target };
     target.player.name = const_cast<char*>("Sam");
-    target.in_room = 0;
+    set_location(&target, 0);
     target.next = character_list;
     character_list = &target;
 
@@ -1903,14 +1914,14 @@ TEST(ActWizInspection, DoShowFormatsAliasesNoneDefinedLine)
     ScopedTestWorld test_world;
     SoloCharacterContext viewer;
     viewer.character.player.level = LEVEL_IMPL;
-    viewer.character.in_room = 0;
+    set_location(&viewer.character, 0);
     char_data target { };
     clear_char(&target, MOB_VOID);
     // Releases target.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
     ScopedClearCharFields target_cleanup { target };
     target.player.name = const_cast<char*>("Sam");
-    target.in_room = 0;
+    set_location(&target, 0);
     target.next = character_list;
     character_list = &target;
     target.specials.alias = nullptr;
@@ -2093,12 +2104,21 @@ TEST(ActWizWorldManip, DoAtRejectsPrivateRoomWithTwoOrMoreOccupants)
     char_data second_occupant { };
     clear_char(&second_occupant, MOB_VOID);
     ScopedClearCharFields second_occupant_cleanup { second_occupant };
-    first_occupant.next_in_room = &second_occupant;
-    second_occupant.next_in_room = nullptr;
-    test_world.room().people = &first_occupant;
+    // NAMED DIVERGENCE (LS-3a T0b-3 surprise S5, which flagged this exact
+    // fixture as belonging to the wave's expected-drift set): the hand-rolled
+    // chain this replaces linked both characters into room 0 while leaving
+    // their location fields at the NOWHERE clear_char() had just written --
+    // the one genuinely INCONSISTENT chain/field state in the test tier, not a
+    // room-0 zero-residue coincidence. ScopedRoomOccupants necessarily stamps
+    // the location it publishes into, so both now hold room 0, agreeing with
+    // the chain. find_target_room's PRIVATE guard reads only the chain
+    // (`room->people && room->people->next_in_room`), so the assertion below
+    // is unaffected -- verified, not assumed.
+    ScopedRoomOccupants room_occupants {
+        &test_world.room(), 0, { &first_occupant, &second_occupant }
+    };
     char argument[] = "500 look";
     do_at(&context.character, argument, nullptr, 0, 0);
-    test_world.room().people = nullptr;
     EXPECT_EQ(std::string(context.descriptor.output),
         "There's a private conversation going on in that room.\n\r");
     test_world.room().number = original_number;
@@ -2127,16 +2147,16 @@ TEST(ActWizWorldManip, FindTargetRoomResolvesToTheNamedTargetsOwnRoomNotTheCalle
     // captured here and restored at the tail, same reasoning (and the same
     // Stage A note) as the other O-I2 sites in this file.
     const int original_number0 = test_world.room().number;
-    const int original_number1 = world[1].number;
-    const long original_room_flags1 = world[1].room_flags;
-    const byte original_light1 = world[1].light;
+    const int original_number1 = room_by_id_total(1)->number;
+    const long original_room_flags1 = room_by_id_total(1)->room_flags;
+    const byte original_light1 = room_by_id_total(1)->light;
     test_world.room().number = 100; // caller's own room (world[0]).
-    world[1].number = 200; // target's room -- deliberately different.
-    world[1].room_flags = 0; // not GODROOM/SECURITYROOM/PRIVATE.
-    world[1].light = 1; // CAN_SEE()'s darkness check reads the TARGET's room here.
+    room_by_id_total(1)->number = 200; // target's room -- deliberately different.
+    room_by_id_total(1)->room_flags = 0; // not GODROOM/SECURITYROOM/PRIVATE.
+    room_by_id_total(1)->light = 1; // CAN_SEE()'s darkness check reads the TARGET's room here.
 
     SoloCharacterContext context;
-    context.character.in_room = 0;
+    set_location(&context.character, 0);
 
     char_data target { };
     clear_char(&target, MOB_VOID);
@@ -2145,7 +2165,7 @@ TEST(ActWizWorldManip, FindTargetRoomResolvesToTheNamedTargetsOwnRoomNotTheCalle
     ScopedClearCharFields target_cleanup { target };
     target.player.name = const_cast<char*>("Sam");
     target.player.race = RACE_HUMAN;
-    target.in_room = 1;
+    set_location(&target, 1);
     target.next = character_list;
     character_list = &target;
 
@@ -2159,9 +2179,9 @@ TEST(ActWizWorldManip, FindTargetRoomResolvesToTheNamedTargetsOwnRoomNotTheCalle
            "(location_of(target_mob)), not the caller's room 0.";
 
     test_world.room().number = original_number0;
-    world[1].number = original_number1;
-    world[1].room_flags = original_room_flags1;
-    world[1].light = original_light1;
+    room_by_id_total(1)->number = original_number1;
+    room_by_id_total(1)->room_flags = original_room_flags1;
+    room_by_id_total(1)->light = original_light1;
 }
 
 
@@ -2230,7 +2250,7 @@ TEST(ActWizWorldManip, DoPurgeReportsUnknownTarget)
 {
     ScopedTestWorld test_world;
     SoloCharacterContext context;
-    context.character.in_room = 0;
+    set_location(&context.character, 0);
     char argument[] = "NoSuchCreatureOrObject";
     do_purge(&context.character, argument, nullptr, 0, 0);
     EXPECT_EQ(std::string(context.descriptor.output),
@@ -2286,7 +2306,7 @@ TEST(ActWizWorldManip, DoZresetResolvesCallersOwnZoneWithDotArgument)
     ScopedZoneTable zone_table_scope(3);
     ScopedTestWorld test_world;
     SoloCharacterContext context;
-    context.character.in_room = 0;
+    set_location(&context.character, 0);
     // do_zreset's success tail unconditionally composes GET_NAME(ch) into
     // the mudlog() line below (mirrors DoForceRejectsMissingNameOrCommand's
     // identical fixture note) -- SoloCharacterContext leaves player.name
@@ -2321,7 +2341,7 @@ TEST(ActWizWorldManip, DoForceReportsNoSuchVictim)
     ScopedTestWorld test_world;
     SoloCharacterContext context;
     context.character.player.name = const_cast<char*>("Gandalf");
-    context.character.in_room = 0;
+    set_location(&context.character, 0);
     char argument[] = "NoSuchVictim quit";
     do_force(&context.character, argument, nullptr, 0, 0);
     EXPECT_EQ(std::string(context.descriptor.output), "No-one by that name here...\n\r");
@@ -2340,7 +2360,7 @@ TEST(ActWizWorldManip, DoForceRoomExcludesADescriptorInADifferentRoomBeforeAnyDi
     SoloCharacterContext context;
     context.character.player.name = const_cast<char*>("Gandalf");
     context.character.player.level = LEVEL_IMPL;
-    context.character.in_room = 0;
+    set_location(&context.character, 0);
 
     char_data other_room_character { };
     clear_char(&other_room_character, MOB_VOID);
@@ -2349,7 +2369,7 @@ TEST(ActWizWorldManip, DoForceRoomExcludesADescriptorInADifferentRoomBeforeAnyDi
     ScopedClearCharFields other_room_character_cleanup { other_room_character };
     other_room_character.player.name = const_cast<char*>("Bystander");
     other_room_character.player.level = 1;
-    other_room_character.in_room = 1; // a DIFFERENT room from the caller's.
+    set_location(&other_room_character, 1); // a DIFFERENT room from the caller's.
 
     descriptor_data other_room_descriptor { };
     reset_capturing_descriptor(other_room_descriptor, &other_room_character);
@@ -2393,14 +2413,14 @@ TEST(ActWizWorldManip, DoRehashCollectsRoomsWithNonPermanentAffectsAndSkipsPerms
     non_perm_affect.type = 0;
     non_perm_affect.location = 0;
     non_perm_affect.next = nullptr;
-    world[0].affected = &non_perm_affect;
+    room_by_id_total(0)->affected = &non_perm_affect;
 
     affected_type perm_affect { };
     perm_affect.bitvector = PERMAFFECT;
     perm_affect.type = 0; // not ROOMAFF_SPELL, so the second perms_only check stays false too.
     perm_affect.location = 0;
     perm_affect.next = nullptr;
-    world[1].affected = &perm_affect;
+    room_by_id_total(1)->affected = &perm_affect;
 
     char argument[] = "";
     do_rehash(&context.character, argument, nullptr, 0, 0);
@@ -2409,11 +2429,11 @@ TEST(ActWizWorldManip, DoRehashCollectsRoomsWithNonPermanentAffectsAndSkipsPerms
     bool found_perms_only_room = false;
     for (universal_list* entry = affected_list; entry; entry = entry->next)
     {
-        if (entry->type == TARGET_ROOM && entry->ptr.room == &world[0])
+        if (entry->type == TARGET_ROOM && entry->ptr.room == room_by_id_total(0))
         {
             found_non_perm_room = true;
         }
-        if (entry->type == TARGET_ROOM && entry->ptr.room == &world[1])
+        if (entry->type == TARGET_ROOM && entry->ptr.room == room_by_id_total(1))
         {
             found_perms_only_room = true;
         }
@@ -2426,8 +2446,8 @@ TEST(ActWizWorldManip, DoRehashCollectsRoomsWithNonPermanentAffectsAndSkipsPerms
     {
         from_list_to_pool(&affected_list, &affected_list_pool, affected_list);
     }
-    world[0].affected = nullptr;
-    world[1].affected = nullptr;
+    room_by_id_total(0)->affected = nullptr;
+    room_by_id_total(1)->affected = nullptr;
 
     EXPECT_TRUE(found_non_perm_room)
         << "Expected the non-permanent room affect to mark world[0] perms_only=false, adding "
@@ -2693,7 +2713,7 @@ TEST(ActWizPlayerAdmin, DoAdvanceReportsTargetNotFound)
 {
     ScopedTestWorld test_world;
     SoloCharacterContext context;
-    context.character.in_room = 0;
+    set_location(&context.character, 0);
     char argument[] = "NoSuchVictim";
     do_advance(&context.character, argument, nullptr, 0, 0);
     EXPECT_EQ(std::string(context.descriptor.output), "That player is not here.\n\r");
@@ -2864,7 +2884,7 @@ TEST(ActWizPlayerAdmin, DoWizutilReportsTargetNotFound)
 {
     ScopedTestWorld test_world;
     SoloCharacterContext context;
-    context.character.in_room = 0;
+    set_location(&context.character, 0);
     char argument[] = "NoSuchVictim";
     do_wizutil(&context.character, argument, nullptr, 0, SCMD_FREEZE);
     EXPECT_EQ(std::string(context.descriptor.output), "There is no such player.\n\r");
@@ -2916,7 +2936,7 @@ TEST(ActWizPlayerAdmin, DoWizsetReportsNoSuchCreatureForDefaultLookup)
 {
     ScopedTestWorld test_world;
     SoloCharacterContext context;
-    context.character.in_room = 0;
+    set_location(&context.character, 0);
     char argument[] = "NoSuchCreature field on";
     do_wizset(&context.character, argument, nullptr, 0, 0);
     EXPECT_EQ(std::string(context.descriptor.output), "There is no such creature.\n\r");
@@ -2956,7 +2976,7 @@ TEST(ActWizPlayerAdmin, DoRegisterReportsUsageWhenNoTypeOrZoneGiven)
 {
     ScopedTestWorld test_world;
     SoloCharacterContext context;
-    context.character.in_room = 0;
+    set_location(&context.character, 0);
     char argument[] = "";
     do_register(&context.character, argument, nullptr, 0, 0);
     EXPECT_EQ(std::string(context.descriptor.output), "Usage: register <room|mobile|object> [zone number].\n\r");
@@ -3109,11 +3129,15 @@ struct RoomPairContext {
     char_data victim { };
     descriptor_data actor_descriptor { };
     descriptor_data victim_descriptor { };
-    char_data* original_people = nullptr;
     // Releases actor/victim.profs/skills/knowledge (clear_char() heap
     // allocations) at scope exit (Phase 5 T6 leak sweep).
     ScopedClearCharFields actor_cleanup { actor };
     ScopedClearCharFields victim_cleanup { victim };
+    // Actor at the head, victim behind it -- the head-first order this fixture
+    // published by hand. See RoomStatContext's `occupants` comment for why
+    // this is a std::optional emplace()d in the constructor body rather than a
+    // plain member (clear_char() runs there and would otherwise undo it).
+    std::optional<ScopedRoomOccupants> occupants;
 
     RoomPairContext()
     {
@@ -3122,13 +3146,8 @@ struct RoomPairContext {
         reset_capturing_descriptor(actor_descriptor, &actor);
         reset_capturing_descriptor(victim_descriptor, &victim);
 
-        original_people = test_world.room().people;
-
-        actor.in_room = 0;
-        victim.in_room = 0;
-        actor.next_in_room = &victim;
-        victim.next_in_room = nullptr;
-        test_world.room().people = &actor;
+        occupants.emplace(&test_world.room(), 0,
+            std::initializer_list<char_data*> { &actor, &victim });
 
         actor.specials.position = POSITION_STANDING;
         victim.specials.position = POSITION_STANDING;
@@ -3143,14 +3162,9 @@ struct RoomPairContext {
         victim.desc = &victim_descriptor;
     }
 
-    ~RoomPairContext()
-    {
-        test_world.room().people = original_people;
-        actor.next_in_room = nullptr;
-        victim.next_in_room = nullptr;
-        actor.in_room = NOWHERE;
-        victim.in_room = NOWHERE;
-    }
+    // The chain-head restore, the two unlinks and the two NOWHERE
+    // de-locations this destructor used to perform are now `occupants`.
+    ~RoomPairContext() = default;
 };
 
 // Mirrors act_wiz_tests.cpp's ScopedDescriptorList (Phase 4 Wave 1) minus the
@@ -3395,7 +3409,7 @@ TEST(ActWizComm,
     descriptor_data actor_descriptor { };
     reset_capturing_descriptor(actor_descriptor, &actor);
     actor.desc = &actor_descriptor;
-    actor.in_room = 0;
+    set_location(&actor, 0);
     actor.player.name = const_cast<char*>("Gandalf");
     actor.player.level = LEVEL_IMMORT;
     actor.specials.position = POSITION_STANDING;

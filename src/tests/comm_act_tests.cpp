@@ -10,6 +10,7 @@
 #include "rots/core/types.h"
 #include "../utils.h"
 #include "test_char_cleanup.h"
+#include "test_placement.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
@@ -101,20 +102,19 @@ struct RoomPairContext {
     char_data victim { };
     descriptor_data actor_descriptor { };
     descriptor_data victim_descriptor { };
-    char_data* original_people = nullptr;
+
+    // The occupant chain: actor at the head, victim behind it -- exactly the
+    // head-first order this fixture used to publish by hand (LS-3a T3,
+    // test_placement.h). Declared LAST so it unwinds before the characters it
+    // manages and before the ScopedTestWorld whose room it points into. Its
+    // constructor stamps both locations through set_location(), so this
+    // fixture no longer writes in_room or next_in_room anywhere.
+    ScopedRoomOccupants occupants { &test_world.room(), 0, { &actor, &victim } };
 
     RoomPairContext()
     {
         reset_capturing_descriptor(actor_descriptor, &actor);
         reset_capturing_descriptor(victim_descriptor, &victim);
-
-        original_people = test_world.room().people;
-
-        actor.in_room = 0;
-        victim.in_room = 0;
-        actor.next_in_room = &victim;
-        victim.next_in_room = nullptr;
-        test_world.room().people = &actor;
 
         actor.specials.position = POSITION_STANDING;
         victim.specials.position = POSITION_STANDING;
@@ -126,14 +126,12 @@ struct RoomPairContext {
         victim.desc = &victim_descriptor;
     }
 
-    ~RoomPairContext()
-    {
-        test_world.room().people = original_people;
-        actor.next_in_room = nullptr;
-        victim.next_in_room = nullptr;
-        actor.in_room = NOWHERE;
-        victim.in_room = NOWHERE;
-    }
+    // The chain-head restore, the two unlinks and the two NOWHERE
+    // de-locations this destructor used to perform are now `occupants`, which
+    // unwinds immediately after it. ScopedTestWorld leaves room 0's head null
+    // at construction, so restoring the SAVED head is byte-identical to the
+    // `people = original_people` this used to write.
+    ~RoomPairContext() = default;
 };
 
 // A single PC with a fully-allocated profs block (via clear_char(), which
@@ -548,9 +546,10 @@ TEST(ActTokenExpansion, ActToRoomDeliversToOthersButNotActor)
 
 // TO_NOTVICT excludes BOTH ch (actor) and vict_obj (victim); only a third
 // bystander in the room receives the message. RoomPairContext only wires up
-// two occupants, so a bystander is chained on locally; the context's own
-// destructor already unconditionally resets both actor.next_in_room and
-// victim.next_in_room, so no extra teardown is needed for this local link.
+// two occupants, so a bystander joins the chain locally -- as a NESTED
+// ScopedRoomOccupants restating the WHOLE chain (LS-3a T3 idiom rule 4),
+// which unwinds before the context's own helper and hands room 0 back exactly
+// as RoomPairContext published it.
 TEST(ActTokenExpansion, ActToNotVictExcludesBothActorAndVictim)
 {
     RoomPairContext context;
@@ -559,21 +558,19 @@ TEST(ActTokenExpansion, ActToNotVictExcludesBothActorAndVictim)
     char_data bystander { };
     descriptor_data bystander_descriptor { };
     reset_capturing_descriptor(bystander_descriptor, &bystander);
-    bystander.in_room = 0;
     bystander.specials.position = POSITION_STANDING;
     bystander.player.race = RACE_HUMAN;
     bystander.desc = &bystander_descriptor;
 
-    context.victim.next_in_room = &bystander;
-    bystander.next_in_room = nullptr;
+    ScopedRoomOccupants occupants {
+        &context.test_world.room(), 0, { &context.actor, &context.victim, &bystander }
+    };
 
     act("$n announces something.", FALSE, &context.actor, nullptr, &context.victim, TO_NOTVICT, 0);
 
     EXPECT_STREQ(bystander_descriptor.output, "Actor announces something.\n\r");
     EXPECT_STREQ(context.victim_descriptor.output, "");
     EXPECT_STREQ(context.actor_descriptor.output, "");
-
-    bystander.in_room = NOWHERE;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,10 +1,12 @@
 #include "../spells.h"
 #include "../utils.h"
 #include "rots/core/character.h"
+#include "test_placement.h"
 #include "test_random_utils.h"
 #include "test_world.h"
 #include <algorithm>
 #include <gtest/gtest.h>
+#include <optional>
 
 int get_mage_caster_level(const char_data *caster);
 int get_magic_power(const char_data *caster);
@@ -105,13 +107,13 @@ struct ZoneGuard {
     ZoneGuard(int first_room, int second_room)
         : room_a(first_room), room_b(second_room), original_zone_a(0), original_zone_b(0) {
         ensure_test_world(std::max(first_room, second_room));
-        original_zone_a = world[first_room].zone;
-        original_zone_b = world[second_room].zone;
+        original_zone_a = room_by_id_total(first_room)->zone;
+        original_zone_b = room_by_id_total(second_room)->zone;
     }
 
     ~ZoneGuard() {
-        world[room_a].zone = original_zone_a;
-        world[room_b].zone = original_zone_b;
+        room_by_id_total(room_a)->zone = original_zone_a;
+        room_by_id_total(room_b)->zone = original_zone_b;
     }
 };
 
@@ -119,24 +121,33 @@ struct RoomExitGuard {
     int room_number;
     room_direction_data *original_exits[NUM_OF_DIRS]{};
     long original_room_flags = 0;
-    char_data *original_people = nullptr;
+    // Publishes the guarded room's occupant chain as EMPTY for the guard's
+    // lifetime and restores whatever head was there on unwind -- the
+    // hand-rolled original_people save/restore this guard used to carry
+    // (LS-3a T3, test_placement.h). A std::optional because the room it points
+    // at only exists once the constructor body's ensure_test_world() has run;
+    // it is destroyed AFTER the destructor body, so the exits and room_flags
+    // still go back first, exactly as before. random_exit() -- the only
+    // function these guards fence -- reads dir_option/room_flags/to_room and
+    // never the occupant chain, and ScopedTestWorld's reset leaves every room's
+    // head null anyway, so publishing empty is inert here.
+    std::optional<ScopedRoomOccupants> occupants;
 
     explicit RoomExitGuard(int room)
-        : room_number(room), original_room_flags(0), original_people(nullptr) {
+        : room_number(room), original_room_flags(0) {
         ensure_test_world(room);
-        original_room_flags = world[room].room_flags;
-        original_people = world[room].people;
+        original_room_flags = room_by_id_total(room)->room_flags;
         for (int i = 0; i < NUM_OF_DIRS; ++i) {
-            original_exits[i] = world[room].dir_option[i];
+            original_exits[i] = room_by_id_total(room)->dir_option[i];
         }
+        occupants.emplace(room_by_id_total(room), room, std::initializer_list<char_data *>{});
     }
 
     ~RoomExitGuard() {
         for (int i = 0; i < NUM_OF_DIRS; ++i) {
-            world[room_number].dir_option[i] = original_exits[i];
+            room_by_id_total(room_number)->dir_option[i] = original_exits[i];
         }
-        world[room_number].room_flags = original_room_flags;
-        world[room_number].people = original_people;
+        room_by_id_total(room_number)->room_flags = original_room_flags;
     }
 };
 
@@ -178,8 +189,8 @@ struct MageTestContext {
         victim.tmpabilities.hit = 500;
         caster.specials.position = POSITION_STANDING;
         victim.specials.position = POSITION_STANDING;
-        caster.in_room = 7;
-        victim.in_room = 7;
+        set_location(&caster, 7);
+        set_location(&victim, 7);
     }
 
     void prepare_for_spell_damage() {
@@ -347,12 +358,12 @@ TEST(MageHelpers, VictimSavingThrowUsesSpellPenetrationAndPlayerLevelAdjustment)
 TEST(MageHelpers, DifferentZoneReflectsCurrentWorldZoneNumbers) {
     ZoneGuard zone_guard(7, 8);
 
-    world[7].zone = 12;
-    world[8].zone = 12;
+    room_by_id_total(7)->zone = 12;
+    room_by_id_total(8)->zone = 12;
     EXPECT_FALSE(different_zone(7, 8))
         << "Expected rooms in the same zone to report that they are not in different zones.";
 
-    world[8].zone = 13;
+    room_by_id_total(8)->zone = 13;
     EXPECT_TRUE(different_zone(7, 8))
         << "Expected rooms with different zone numbers to report that they are in different zones.";
 }
@@ -367,12 +378,12 @@ TEST_F(MageProcTest, RandomExitFallsBackToSameRoomWhenNoBlinkableExitsExist) {
     RoomExitGuard destination_guard(8);
     room_direction_data blocked_exit{};
     for (int i = 0; i < NUM_OF_DIRS; ++i) {
-        world[7].dir_option[i] = nullptr;
+        room_by_id_total(7)->dir_option[i] = nullptr;
     }
     blocked_exit.to_room = 8;
     blocked_exit.exit_info = EX_NOBLINK;
-    world[7].dir_option[NORTH] = &blocked_exit;
-    world[8].room_flags = 0;
+    room_by_id_total(7)->dir_option[NORTH] = &blocked_exit;
+    room_by_id_total(8)->room_flags = 0;
 
     EXPECT_EQ(random_exit(7), 7) << "Expected random_exit to leave the caster in place when every "
                                     "exit is excluded from blinking.";
@@ -386,14 +397,14 @@ TEST_F(MageProcTest, RandomExitChoosesAmongEligibleExitsUsingQueuedRandomRolls) 
     room_direction_data east_exit{};
 
     for (int i = 0; i < NUM_OF_DIRS; ++i) {
-        world[7].dir_option[i] = nullptr;
+        room_by_id_total(7)->dir_option[i] = nullptr;
     }
     north_exit.to_room = 8;
     east_exit.to_room = 9;
-    world[7].dir_option[NORTH] = &north_exit;
-    world[7].dir_option[EAST] = &east_exit;
-    world[8].room_flags = 0;
-    world[9].room_flags = 0;
+    room_by_id_total(7)->dir_option[NORTH] = &north_exit;
+    room_by_id_total(7)->dir_option[EAST] = &east_exit;
+    room_by_id_total(8)->room_flags = 0;
+    room_by_id_total(9)->room_flags = 0;
 
     push_test_random_value(0.0);
     EXPECT_EQ(random_exit(7), 8)
@@ -408,11 +419,21 @@ TEST(MageHelpers, TeleportationRoomValidationRejectsOccupiedAndRestrictedRooms) 
     room_data test_room{};
     char_data occupant{};
 
-    test_room.people = &occupant;
-    EXPECT_FALSE(is_teleportation_room_valid(&test_room))
-        << "Expected occupied rooms to be invalid teleportation destinations.";
+    // A stack stub room, not a world[] room, so it has no rnum to stamp: the
+    // occupant's location id stays 0 -- the value char_data{} already gave it,
+    // and one is_teleportation_room_valid() never reads (it looks only at
+    // room->people and room->room_flags). The nested scope reproduces the
+    // hand-rolled `test_room.people = nullptr;` that used to follow the first
+    // assertion: the helper's unwind puts the head back, and the empty helper
+    // below re-publishes an empty chain for the flag cases (LS-3a T3,
+    // test_placement.h).
+    {
+        ScopedRoomOccupants occupied{&test_room, 0, {&occupant}};
+        EXPECT_FALSE(is_teleportation_room_valid(&test_room))
+            << "Expected occupied rooms to be invalid teleportation destinations.";
+    }
 
-    test_room.people = nullptr;
+    ScopedRoomOccupants empty{&test_room, 0, {}};
     test_room.room_flags = DEATH;
     EXPECT_FALSE(is_teleportation_room_valid(&test_room))
         << "Expected death rooms to be invalid teleportation destinations.";
@@ -433,7 +454,7 @@ TEST(MageHelpers, TeleportationRoomValidationRejectsOccupiedAndRestrictedRooms) 
 TEST(MageHelpers, TeleportationRoomValidationAcceptsEmptyOrdinaryRooms) {
     room_data test_room{};
     test_room.room_flags = 0;
-    test_room.people = nullptr;
+    ScopedRoomOccupants empty{&test_room, 0, {}};
 
     EXPECT_TRUE(is_teleportation_room_valid(&test_room))
         << "Expected empty rooms without teleport restrictions to be valid teleportation "
@@ -672,15 +693,15 @@ TEST_F(MageProcTest, LocateLifeAddsReachableRoomsWithUpdatedCoordinates) {
     int roomnum = 0;
 
     for (int i = 0; i < NUM_OF_DIRS; ++i) {
-        world[7].dir_option[i] = nullptr;
+        room_by_id_total(7)->dir_option[i] = nullptr;
     }
 
     north_exit.to_room = 8;
     east_exit.to_room = 9;
     down_exit.to_room = 10;
-    world[7].dir_option[NORTH] = &north_exit;
-    world[7].dir_option[EAST] = &east_exit;
-    world[7].dir_option[DOWN] = &down_exit;
+    room_by_id_total(7)->dir_option[NORTH] = &north_exit;
+    room_by_id_total(7)->dir_option[EAST] = &east_exit;
+    room_by_id_total(7)->dir_option[DOWN] = &down_exit;
 
     EXPECT_EQ(loclife_add_rooms(origin, roomlist, &roomnum, NOWHERE), 3)
         << "Expected locate-life room expansion to add each reachable adjacent room once.";
@@ -718,7 +739,7 @@ TEST_F(MageProcTest, LocateLifeSkipsBlockedDuplicateAndExcludedRooms) {
     int roomnum = 1;
 
     for (int i = 0; i < NUM_OF_DIRS; ++i) {
-        world[7].dir_option[i] = nullptr;
+        room_by_id_total(7)->dir_option[i] = nullptr;
     }
 
     roomlist[0].number = 8;
@@ -728,10 +749,10 @@ TEST_F(MageProcTest, LocateLifeSkipsBlockedDuplicateAndExcludedRooms) {
     south_exit.to_room = 12;
     west_exit.to_room = 13;
 
-    world[7].dir_option[NORTH] = &north_exit; // duplicate
-    world[7].dir_option[EAST] = &east_exit;   // blocked
-    world[7].dir_option[SOUTH] = &south_exit; // excluded
-    world[7].dir_option[WEST] = &west_exit;   // valid
+    room_by_id_total(7)->dir_option[NORTH] = &north_exit; // duplicate
+    room_by_id_total(7)->dir_option[EAST] = &east_exit;   // blocked
+    room_by_id_total(7)->dir_option[SOUTH] = &south_exit; // excluded
+    room_by_id_total(7)->dir_option[WEST] = &west_exit;   // valid
 
     EXPECT_EQ(loclife_add_rooms(origin, roomlist, &roomnum, 12), 1)
         << "Expected locate-life room expansion to skip duplicates, excluded rooms, and heavy "

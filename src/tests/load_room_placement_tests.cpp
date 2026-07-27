@@ -14,9 +14,9 @@
 //   db_players.cpp:1376  store_to_char: ch->in_room = GET_LOADROOM(ch)
 //                        -- the raw persisted integer lands in in_room
 //                           UNINTERPRETED (no real_room(), no vnum->rnum).
-//   objsave.cpp:492-493  load_character (A): if (location_of(ch) == NOWHERE)
+//   objsave.cpp:494-495  load_character (A): if (location_of(ch) == NOWHERE)
 //                                              ch->in_room = ch->specials2.load_room;
-//   objsave.cpp:495      load_character (B): fp = Crash_load(ch);
+//   objsave.cpp:497      load_character (B): fp = Crash_load(ch);
 //   objsave.cpp:469        Crash_load: ch->specials2.load_room =
 //                                        calc_load_room(ch, rentcode)
 //                          -- calc_load_room (objsave.cpp:512+) returns an
@@ -24,8 +24,8 @@
 //                             `load_room = real_room(location_of(ch))`.
 //                             It never writes ch->in_room.
 //   objsave.cpp:477        Crash_load: Crash_follower_load(ch, data)
-//   objsave.cpp:710          Crash_follower_load: char_to_room(mob,   ch->specials2.load_room)
-//   objsave.cpp:802          Crash_follower_load: char_to_room(mount, ch->specials2.load_room)
+//   objsave.cpp:718          Crash_follower_load: char_to_room(mob,   ch->specials2.load_room)
+//   objsave.cpp:812          Crash_follower_load: char_to_room(mount, ch->specials2.load_room)
 //                            -- both use the rnum computed at :469, the same
 //                               index the player is about to be placed at.
 //                               They MUST NOT read location_of(ch): in_room
@@ -34,7 +34,7 @@
 //                               using it as a world[] index was the
 //                               historical follower-misplacement bug whose
 //                               fix this file pins.
-//   objsave.cpp:499      load_character (C): char_to_room(ch, ch->specials2.load_room)
+//   objsave.cpp:502      load_character (C): char_to_room(ch, ch->specials2.load_room)
 //                        -- the PLAYER is placed at the same rnum.
 //
 // So owner and followers receive the SAME index. char_to_room
@@ -322,6 +322,51 @@ class ScopedFollowerPrototype {
     int m_previous_top_of_mobt;
 };
 
+// Installs a substitute player_table for the duration of a test and restores
+// the previous table on scope exit -- INCLUDING on a mid-test fatal ASSERT.
+// The round-trip test originally hand-rolled this save/restore, which a
+// failing ASSERT_* would have skipped (it returns from the test body),
+// leaking the fixture table into every later suite in the monolithic runner.
+class ScopedPlayerTable {
+  public:
+    // Installs a one-entry table holding `name`; pass nullptr for an EMPTY
+    // table (top_of_p_table == -1, so save_char()'s lookup loop never runs
+    // and its "not being saved" early return fires -- the shape the
+    // Emergency_save test relies on).
+    explicit ScopedPlayerTable(const char *name)
+        : m_previous_table(player_table), m_previous_top(top_of_p_table) {
+        if (name != nullptr) {
+            m_owned_table = new player_index_element[1]{};
+            m_owned_table[0].name = strdup(name);
+            player_table = m_owned_table;
+            top_of_p_table = 0;
+        } else {
+            player_table = nullptr;
+            top_of_p_table = -1;
+        }
+    }
+
+    ~ScopedPlayerTable() {
+        if (m_owned_table != nullptr) {
+            free(m_owned_table[0].name);
+            delete[] m_owned_table;
+        }
+        player_table = m_previous_table;
+        top_of_p_table = m_previous_top;
+    }
+
+    ScopedPlayerTable(const ScopedPlayerTable &) = delete;
+    ScopedPlayerTable &operator=(const ScopedPlayerTable &) = delete;
+
+  private:
+    // The substitute one-entry table this fixture owns (null in empty mode);
+    // freed together with its strdup'd name on scope exit.
+    player_index_element *m_owned_table = nullptr;
+    // Prior process-global table pointer/bound, restored verbatim on exit.
+    player_index_element *m_previous_table;
+    int m_previous_top;
+};
+
 // A mortal player who survives every guard in calc_load_room() without
 // tripping one of its overrides: level in [1, LEVEL_IMMORT), race != 0 (race
 // 0 forces the immort start room), no PLR_FROZEN/PLR_LOADROOM/PLR_INVSTART,
@@ -430,18 +475,19 @@ void release_spawned_follower(char_data *mob) {
 // assert on where it landed and then release it.
 char_data *run_load_placement_chain(char_data &player, const objects_json::ObjectSaveData &data,
                                     int rent_code) {
-    // (A) load_character, objsave.cpp:492-493.
+    // (A) load_character, objsave.cpp:494-495.
     if (location_of(&player) == NOWHERE)
-        player.in_room = player.specials2.load_room; // LS1-ALLOW: replay of objsave.cpp:493
+        player.in_room = player.specials2.load_room; // LS1-ALLOW: replay of objsave.cpp:495
 
     // (B) Crash_load, objsave.cpp:469 -- the rnum the PLAYER will be placed at.
     player.specials2.load_room = calc_load_room(&player, rent_code);
 
-    // (B) Crash_load, objsave.cpp:477 -- places followers at location_of(ch).
+    // (B) Crash_load, objsave.cpp:477 -- places followers at the same
+    // resolved rnum (the placement-index fix this file pins).
     Crash_follower_load(&player, data);
     char_data *spawned = (player.followers != nullptr) ? player.followers->follower : nullptr;
 
-    // (C) load_character, objsave.cpp:499 -- places the PLAYER.
+    // (C) load_character, objsave.cpp:502 -- places the PLAYER.
     char_to_room(&player, player.specials2.load_room);
 
     return spawned;
@@ -454,11 +500,12 @@ char_data *run_load_placement_chain(char_data &player, const objects_json::Objec
 // ---------------------------------------------------------------------------
 
 // calc_load_room() (objsave.cpp:512) converts the persisted load_room to an
-// rnum for its RETURN VALUE only; it never writes ch->in_room. So the value
-// Crash_follower_load() reads one line later (objsave.cpp:710's
-// `char_to_room(mob, location_of(ch))`) is still the RAW persisted integer
-// store_to_char() deposited at db_players.cpp:1376 -- not the rnum the player
-// is about to be placed at.
+// rnum for its RETURN VALUE only; it never writes ch->in_room. So in_room
+// still holds the RAW persisted integer store_to_char() deposited at
+// db_players.cpp:1376 when Crash_follower_load() runs -- which is exactly
+// why the follower placement (objsave.cpp:718/:812) must read
+// ch->specials2.load_room and must NOT read location_of(ch), as the pre-fix
+// code did.
 TEST(LoadRoomChain, CalcLoadRoomLeavesInRoomHoldingTheRawPersistedValue) {
     ScopedVnumWorld fixture_world;
     ScopedStartRooms fixture_start_rooms;
@@ -661,11 +708,7 @@ TEST(LoadRoomPersistence, TextRoundTripPreservesWhateverIntegerTheCallerPassed) 
 
     // load_player_from_text() resolves the name against player_table before
     // parsing; one entry is all it needs.
-    player_index_element *previous_player_table = player_table;
-    const int previous_top_of_p_table = top_of_p_table;
-    player_table = new player_index_element[1]{};
-    player_table[0].name = strdup("loadroomchr");
-    top_of_p_table = 0;
+    ScopedPlayerTable fixture_player_table{"loadroomchr"};
 
     char path_template[] = "/tmp/rots-loadroom-roundtrip-XXXXXX";
     char *created_path = rots_mkdtemp(path_template);
@@ -728,14 +771,9 @@ TEST(LoadRoomPersistence, TextRoundTripPreservesWhateverIntegerTheCallerPassed) 
 
     std::filesystem::remove(scratch);
     std::filesystem::remove(temp_dir);
-
-    free(player_table[0].name);
-    delete[] player_table;
-    player_table = previous_player_table;
-    top_of_p_table = previous_top_of_p_table;
 }
 
-// Emergency_save() (objsave.cpp:1540) runs on the signal-driven shutdown
+// Emergency_save() (objsave.cpp:1550) runs on the signal-driven shutdown
 // paths (signals.cpp) -- exactly when NO 30-second autosave will follow to
 // rewrite the field -- and historically passed r_mortal_start_room[] (an
 // RNUM, db_world.cpp:129) straight into save_char(), whose explicit arm
@@ -762,10 +800,7 @@ TEST(LoadRoomPersistence, EmergencySavePersistsTheStartRoomVnumNotItsRnum) {
     // save_char() resolves the name against player_table; an empty table
     // (top_of_p_table == -1, loop body never runs) forces the early-return
     // path described above without reading the table pointer.
-    player_index_element *previous_player_table = player_table;
-    const int previous_top_of_p_table = top_of_p_table;
-    player_table = nullptr;
-    top_of_p_table = -1;
+    ScopedPlayerTable fixture_player_table{nullptr};
 
     char_data player{};
     make_mortal_player(player);
@@ -813,7 +848,5 @@ TEST(LoadRoomPersistence, EmergencySavePersistsTheStartRoomVnumNotItsRnum) {
         << "output: " << descriptor.small_outbuf;
 
     descriptor_list = previous_descriptor_list;
-    player_table = previous_player_table;
-    top_of_p_table = previous_top_of_p_table;
     RELEASE(player.player.name);
 }

@@ -601,6 +601,229 @@ TEST(RoomOfTest, ReturnsTheFallbackPointerForANowhereCharacter)
 }
 
 // ---------------------------------------------------------------------------
+// set_location(ch, rnum) / is_in_room(ch, rnum) (placement.cpp; declared in
+// handler.h beside location_of()/room_of()) -- LS-3a Wave T1, ruling R-A3.
+// Both have had ZERO callers and ZERO tests anywhere in the tree since the
+// placement-seam wave landed them, and T2 is about to give set_location()
+// 35+ first callers, so these are the API's own TDD contract proof BEFORE
+// any conversion rides on it (the occupants_from() shape from LS-2 T1).
+//
+// The contract being pinned (R-A1, controller-verified exhaustively over all
+// 40 T2 candidate sites): set_location() is a BARE FIELD WRITE -- literally
+// `ch->in_room = rnum;` and nothing else. No occupant-chain linkage, no room
+// light bookkeeping, no zone white/dark-power bookkeeping, and -- unlike
+// room_of()/room_by_id()/room_by_id_total()/zone_by_id() -- no dispatch
+// through an entity_hooks.h resolver at all. That hook-free property is the
+// R-A1 corollary making set_location() the ONE location API safe on a
+// rots_convert-reachable path, where the world resolvers' unregistered
+// default is a tripwire abort() no link check catches. It is also why every
+// bare `ch->in_room = X` that T2 converts is a byte-identical substitution
+// rather than a double-apply hazard: the bookkeeping movers char_to_room()
+// and detach_char_from_room() assign the field DIRECTLY (placement.cpp) and
+// never route through this wrapper.
+//
+// Storage is asserted against the raw ch->in_room field rather than through
+// location_of(), so a defect in the writer cannot be masked by a matching
+// defect in the reader; separate round-trip tests then pin the two against
+// each other. Raw field access is this TU's standing convention -- it is the
+// representation owner's own test file (see the CharToRoomTest/RoomOfTest
+// sections above).
+// ---------------------------------------------------------------------------
+
+TEST(SetLocationTest, StoresAPositiveRoomIdExactly)
+{
+    char_data character { };
+    character.in_room = 3;
+
+    set_location(&character, 42);
+
+    EXPECT_EQ(character.in_room, 42);
+}
+
+TEST(SetLocationTest, StoresZeroExactly)
+{
+    // Room 0 is a real, routinely occupied room (it is the single-room
+    // fixture world every suite in this binary shares), so a zero id must
+    // survive as a value and not be treated as "unset".
+    char_data character { };
+    character.in_room = 42;
+
+    set_location(&character, 0);
+
+    EXPECT_EQ(character.in_room, 0);
+}
+
+TEST(SetLocationTest, StoresNowhereExactly)
+{
+    // NOWHERE is the absence sentinel (-1) every T2 site that clears a
+    // location writes; detach_char_from_room() stamps the same value.
+    char_data character { };
+    character.in_room = 42;
+
+    set_location(&character, NOWHERE);
+
+    EXPECT_EQ(character.in_room, NOWHERE);
+    EXPECT_EQ(character.in_room, -1);
+}
+
+TEST(SetLocationTest, OverwritesThePreviousLocationRatherThanAccumulating)
+{
+    char_data character { };
+
+    set_location(&character, 5);
+    set_location(&character, 9);
+
+    EXPECT_EQ(character.in_room, 9);
+}
+
+TEST(SetLocationTest, TouchesNothingButTheLocationField)
+{
+    StubWorldResolvers resolvers;
+    room_data room = make_stub_room();
+    room.light = 3;
+    zone_data zone = make_stub_zone();
+    zone.white_power = 100;
+    zone.dark_power = 50;
+    resolvers.room = &room;
+    resolvers.zone = &zone;
+    ScopedWorldResolverHooks hooks(resolvers);
+
+    // A fully linked, non-NPC good-race occupant chain -- exactly the state
+    // char_to_room()/detach_char_from_room() maintain -- so any stray
+    // bookkeeping hiding inside set_location() would be visible here as a
+    // chain, light, or zone-power delta.
+    char_data head { };
+    head.player.race = RACE_HUMAN;
+    head.player.level = 20;
+    char_data mover { };
+    mover.player.race = RACE_HUMAN;
+    mover.player.level = 20;
+    room.people = &head;
+    head.next_in_room = &mover;
+    mover.next_in_room = nullptr;
+    head.in_room = 7;
+    mover.in_room = 7;
+
+    set_location(&mover, 9);
+
+    EXPECT_EQ(mover.in_room, 9);
+    // Occupant chain: untouched in both directions -- the mover is still
+    // linked into the room it no longer claims to be in (that torn state is
+    // precisely what makes this a bare write and NOT a mover).
+    EXPECT_EQ(room.people, &head);
+    EXPECT_EQ(head.next_in_room, &mover);
+    EXPECT_EQ(mover.next_in_room, nullptr);
+    // The neighbour's own location: untouched.
+    EXPECT_EQ(head.in_room, 7);
+    // Room light and zone power: untouched (char_to_room()/
+    // detach_char_from_room() own both; this wrapper owns neither).
+    EXPECT_EQ(room.light, 3);
+    EXPECT_EQ(zone.white_power, 100);
+    EXPECT_EQ(zone.dark_power, 50);
+    // And no world resolver was dispatched at all: last_requested_rnum still
+    // holds StubWorldResolvers' untouched default, where a single
+    // room_by_id_total() call inside set_location() would have replaced it
+    // with 9. This is the hook-free property R-A1's rots_convert corollary
+    // depends on.
+    EXPECT_EQ(resolvers.last_requested_rnum, NOWHERE);
+}
+
+TEST(SetLocationTest, IsImmediatelyObservedByLocationOfAndIsInRoom)
+{
+    char_data character { };
+
+    set_location(&character, 17);
+
+    EXPECT_EQ(location_of(&character), 17);
+    EXPECT_TRUE(is_in_room(&character, 17));
+}
+
+TEST(SetLocationTest, NowhereRoundTripsThroughLocationOfAndIsInRoom)
+{
+    char_data character { };
+    character.in_room = 4;
+
+    set_location(&character, NOWHERE);
+
+    EXPECT_EQ(location_of(&character), NOWHERE);
+    EXPECT_TRUE(is_in_room(&character, NOWHERE));
+    EXPECT_FALSE(is_in_room(&character, 4));
+}
+
+TEST(IsInRoomTest, TrueForTheRoomTheCharacterIsIn)
+{
+    char_data character { };
+    character.in_room = 12;
+
+    EXPECT_TRUE(is_in_room(&character, 12));
+}
+
+TEST(IsInRoomTest, FalseForADifferentRoom)
+{
+    char_data character { };
+    character.in_room = 12;
+
+    EXPECT_FALSE(is_in_room(&character, 13));
+    EXPECT_FALSE(is_in_room(&character, 11));
+    EXPECT_FALSE(is_in_room(&character, 0));
+}
+
+TEST(IsInRoomTest, FalseForARealRoomWhenTheCharacterIsNowhere)
+{
+    char_data character { };
+    character.in_room = NOWHERE;
+
+    EXPECT_FALSE(is_in_room(&character, 0));
+    EXPECT_FALSE(is_in_room(&character, 12));
+}
+
+TEST(IsInRoomTest, TrueForNowhereWhenTheCharacterIsNowhere)
+{
+    // `is_in_room(ch, NOWHERE)` is the absence test spelled positively; it
+    // must discriminate on the sentinel like any other id, not special-case
+    // it away.
+    char_data character { };
+    character.in_room = NOWHERE;
+
+    EXPECT_TRUE(is_in_room(&character, NOWHERE));
+}
+
+TEST(IsInRoomTest, MatchesExactlyOneRoomIdAcrossAProbedRange)
+{
+    // Equality, not a range/sign/truthiness test: over a probe sweep that
+    // spans the absence sentinel, room 0, and the character's own room,
+    // exactly one id may answer true.
+    char_data character { };
+    character.in_room = 5;
+
+    int matches = 0;
+    for (int rnum = NOWHERE; rnum <= 10; ++rnum) {
+        if (is_in_room(&character, rnum)) {
+            ++matches;
+            EXPECT_EQ(rnum, 5);
+        }
+    }
+
+    EXPECT_EQ(matches, 1);
+}
+
+TEST(IsInRoomTest, ReadsThroughAConstCharacterPointer)
+{
+    // location_of()/is_in_room() both take `const char_data*` (handler.h)
+    // while set_location() takes a mutable one; binding the readers through
+    // a const pointer here is the compile-time proof of that split, so a
+    // caller holding only a const view can still ask where a character is
+    // without being handed the ability to move them.
+    char_data character { };
+    set_location(&character, 12);
+    const char_data* const observer = &character;
+
+    EXPECT_EQ(location_of(observer), 12);
+    EXPECT_TRUE(is_in_room(observer, 12));
+    EXPECT_FALSE(is_in_room(observer, 13));
+}
+
+// ---------------------------------------------------------------------------
 // attach_equipment() (equipment.cpp) -- census row equip_char:815, the SPLIT
 // primitive half of equip_char(). Candidates: slot assignment,
 // encumbrance/weight deltas, per-arm stat mutation (ARMOR/WEAPON/SHIELD/

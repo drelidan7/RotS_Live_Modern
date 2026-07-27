@@ -14,6 +14,7 @@
 #include "rots/core/descriptor.h"
 #include "rots/core/object.h"
 #include "rots/core/types.h"
+#include "test_placement.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
@@ -59,8 +60,7 @@ struct ActObj2Context {
     ScopedTestWorld test_world{1};
     char_data ch{};
     descriptor_data ch_descriptor{};
-    char_data *original_people = nullptr;
-    // Site 6 (LS-2 whole-branch review B1): world[0].light is saved here and
+    // Site 6 (LS-2 whole-branch review B1): room 0's light is saved here and
     // restored in the dtor below so it doesn't leak into a later test sharing
     // this process's world[0], and so the DoLight test's own residual
     // increment is undone regardless of what value light was left at. LS-3a T1
@@ -69,17 +69,20 @@ struct ActObj2Context {
     // well.
     byte original_light = 0;
 
+    // The room's single occupant (LS-3a T3, test_placement.h). Declared LAST
+    // so it unwinds before the character it manages and before the
+    // ScopedTestWorld whose room it points into; its constructor stamps the
+    // location through set_location(), so this fixture no longer writes
+    // in_room anywhere.
+    ScopedRoomOccupants occupants{room_by_id_total(0), 0, {&ch}};
+
     ActObj2Context() {
-        original_light = world[0].light;
-        world[0].light = 1; // CAN_SEE()'s/CAN_SEE_OBJ()'s darkness check.
-        world[0].room_flags = 0;
-        original_people = world[0].people;
+        original_light = room_by_id_total(0)->light;
+        room_by_id_total(0)->light = 1; // CAN_SEE()'s/CAN_SEE_OBJ()'s darkness check.
+        room_by_id_total(0)->room_flags = 0;
 
         reset_capturing_descriptor(ch_descriptor, &ch);
         ch.desc = &ch_descriptor;
-        ch.in_room = 0;
-        ch.next_in_room = nullptr;
-        world[0].people = &ch;
 
         ch.player.race = RACE_HUMAN;
         ch.player.name = const_cast<char *>("Drinker");
@@ -88,12 +91,12 @@ struct ActObj2Context {
     }
 
     ~ActObj2Context() {
-        world[0].light = original_light;
-        world[0].people = original_people;
-        world[0].contents = nullptr;
-        world[0].room_flags = 0;
-        ch.next_in_room = nullptr;
-        ch.in_room = NOWHERE;
+        // The chain-head restore, the unlink and the NOWHERE de-location this
+        // body used to perform are now `occupants`, which unwinds right after
+        // it; the light/contents/room_flags/carrying restores stay here.
+        room_by_id_total(0)->light = original_light;
+        room_by_id_total(0)->contents = nullptr;
+        room_by_id_total(0)->room_flags = 0;
         ch.carrying = nullptr;
     }
 
@@ -118,7 +121,7 @@ obj_data make_light_source(const char *name, const char *short_description) {
 TEST(WeightChangeObject, AdjustsWeightDirectlyWhenTheObjectIsInARoom) {
     obj_data item{};
     item.item_number = -1;
-    item.in_room = 0; // != NOWHERE.
+    item.in_room = 0; // LS1-ALLOW: obj-location -- != NOWHERE.
     item.carried_by = nullptr;
     item.in_obj = nullptr;
     item.obj_flags.weight = 10;
@@ -135,8 +138,8 @@ TEST(WeightChangeObject, AdjustsWeightDirectlyWhenTheObjectIsInARoom) {
 // `get_obj_in_list_vis(ch, arg, room_of(ch)->contents, 9999)`).
 TEST(DoDrink, ReportsCannotFindWhenNoWaterFlagAndNoObjectAnywhere) {
     ActObj2Context context;
-    world[0].room_flags = 0; // no DRINK_WATER/DRINK_POISON.
-    world[0].contents = nullptr;
+    room_by_id_total(0)->room_flags = 0; // no DRINK_WATER/DRINK_POISON.
+    room_by_id_total(0)->contents = nullptr;
 
     do_drink(&context.ch, mutable_arg("water"), nullptr, 0, SCMD_DRINK);
 
@@ -148,7 +151,7 @@ TEST(DoDrink, ReportsCannotFindWhenNoWaterFlagAndNoObjectAnywhere) {
 
 TEST(DoDrink, DrinksGenericWaterWhenTheRoomHasTheDrinkWaterFlag) {
     ActObj2Context context;
-    world[0].room_flags = DRINK_WATER;
+    room_by_id_total(0)->room_flags = DRINK_WATER;
 
     // generic_water is a process-wide singleton this test does not own --
     // snapshot and restore the whole object around the call.
@@ -171,7 +174,7 @@ TEST(DoDrink, DrinksGenericWaterWhenTheRoomHasTheDrinkWaterFlag) {
 // do_eat()'s object-search fallback (:237, same shape as do_drink's :118).
 TEST(DoEat, ReportsNothingToEatWhenNoFoodIsAnywhere) {
     ActObj2Context context;
-    world[0].contents = nullptr;
+    room_by_id_total(0)->contents = nullptr;
 
     do_eat(&context.ch, mutable_arg("bread"), nullptr, 0, SCMD_EAT);
 
@@ -199,9 +202,9 @@ TEST(DoEat, TastesFoodFoundInTheRoomWhenNoneIsCarried) {
     // object (a stack obj_data with a string-literal name, not a
     // str_dup()'d heap string) is never handed to extract_obj()/free_obj().
     bread.obj_flags.value[0] = 5;
-    bread.in_room = 0;
+    bread.in_room = 0; // LS1-ALLOW: obj-location
     bread.next_content = nullptr;
-    world[0].contents = &bread;
+    room_by_id_total(0)->contents = &bread;
 
     do_eat(&context.ch, mutable_arg("bread"), nullptr, 0, SCMD_TASTE);
 
@@ -209,15 +212,15 @@ TEST(DoEat, TastesFoodFoundInTheRoomWhenNoneIsCarried) {
         << "Expected ch->carrying's search to fail, then the converted room_of(ch)->contents "
            "fallback (act_obj2.cpp:237) to find the room's food object: "
         << context.output();
-    EXPECT_EQ(world[0].contents, &bread) << "SCMD_TASTE should not have extracted the object.";
+    EXPECT_EQ(room_by_id_total(0)->contents, &bread) << "SCMD_TASTE should not have extracted the object.";
 }
 
 // do_pour()'s room-flag read (:321) plus object-search fallback (:329) --
 // same shape as do_drink's, exercised on a different subcmd/function.
 TEST(DoPour, ReportsCannotFindWhenNoWaterFlagAndNoObjectAnywhere) {
     ActObj2Context context;
-    world[0].room_flags = 0;
-    world[0].contents = nullptr;
+    room_by_id_total(0)->room_flags = 0;
+    room_by_id_total(0)->contents = nullptr;
 
     do_pour(&context.ch, mutable_arg("water"), nullptr, 0, SCMD_POUR);
 
@@ -238,7 +241,7 @@ TEST(DoPour, ReportsCannotFindWhenNoWaterFlagAndNoObjectAnywhere) {
 // ITEM_DRINKCON object to find.
 TEST(DoPour, PoursFromADrinkContainerFoundInTheRoomWhenNoWaterFlagIsSet) {
     ActObj2Context context;
-    world[0].room_flags = 0; // neither DRINK_WATER nor DRINK_POISON -- :321 must fall through.
+    room_by_id_total(0)->room_flags = 0; // neither DRINK_WATER nor DRINK_POISON -- :321 must fall through.
 
     obj_data waterskin{};
     waterskin.item_number = -1;
@@ -255,9 +258,9 @@ TEST(DoPour, PoursFromADrinkContainerFoundInTheRoomWhenNoWaterFlagIsSet) {
     waterskin.short_description = const_cast<char *>("a leather waterskin of water");
     waterskin.obj_flags.type_flag = ITEM_DRINKCON;
     waterskin.obj_flags.value[1] = 5; // has liquid -- :375's "The $p is empty." guard.
-    waterskin.in_room = 0;
+    waterskin.in_room = 0; // LS1-ALLOW: obj-location
     waterskin.next_content = nullptr;
-    world[0].contents = &waterskin;
+    room_by_id_total(0)->contents = &waterskin;
 
     do_pour(&context.ch, mutable_arg("water out"), nullptr, 0, SCMD_POUR);
 
@@ -274,22 +277,22 @@ TEST(DoPour, PoursFromADrinkContainerFoundInTheRoomWhenNoWaterFlagIsSet) {
 TEST(DoLight, LightsATorchFoundInTheRoomAndIncrementsRoomLight) {
     ActObj2Context context;
     obj_data torch = make_light_source("torch wooden", "a wooden torch");
-    torch.in_room = 0;
+    torch.in_room = 0; // LS1-ALLOW: obj-location
     torch.next_content = nullptr;
-    world[0].contents = &torch;
-    const int light_before = world[0].light;
+    room_by_id_total(0)->contents = &torch;
+    const int light_before = room_by_id_total(0)->light;
 
     do_light(&context.ch, mutable_arg("torch"), nullptr, 0, 0);
 
     EXPECT_EQ(torch.obj_flags.value[3], 1) << "Expected the torch to end up lit.";
-    EXPECT_EQ(world[0].light, light_before + 1)
+    EXPECT_EQ(room_by_id_total(0)->light, light_before + 1)
         << "Expected the kept-raw world[ch->in_room].light++ write to fire once the converted "
            "resolver found the torch.";
 }
 
 TEST(DoLight, ReportsNothingToLightWhenNoTorchIsPresent) {
     ActObj2Context context;
-    world[0].contents = nullptr;
+    room_by_id_total(0)->contents = nullptr;
 
     do_light(&context.ch, mutable_arg("torch"), nullptr, 0, 0);
 
@@ -305,15 +308,15 @@ TEST(DoBlowout, ExtinguishesALitTorchFoundInTheRoomAndDecrementsRoomLight) {
     ActObj2Context context;
     obj_data torch = make_light_source("torch wooden", "a wooden torch");
     torch.obj_flags.value[3] = 1; // already lit.
-    torch.in_room = 0;
+    torch.in_room = 0; // LS1-ALLOW: obj-location
     torch.next_content = nullptr;
-    world[0].contents = &torch;
-    world[0].light = 1; // matches the lit torch (do_light() would have incremented it).
+    room_by_id_total(0)->contents = &torch;
+    room_by_id_total(0)->light = 1; // matches the lit torch (do_light() would have incremented it).
 
     do_blowout(&context.ch, mutable_arg("torch"), nullptr, 0, 0);
 
     EXPECT_EQ(torch.obj_flags.value[3], 0) << "Expected the torch to end up unlit.";
-    EXPECT_EQ(world[0].light, 0)
+    EXPECT_EQ(room_by_id_total(0)->light, 0)
         << "Expected the kept-raw world[ch->in_room].light-- write to fire once the converted "
            "resolver found the torch.";
 }

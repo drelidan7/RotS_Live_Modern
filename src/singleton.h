@@ -77,19 +77,23 @@ public:
 protected:
     world_singleton()
         : m_weather(0)
-        , m_world(0)
     {
     }
-    world_singleton(const weather_data* weather, const room_data* world)
+    // The room-table pointer is accepted and deliberately ignored. create()'s
+    // (weather, world) shape is fixed by four call sites (db_boot.cpp's boot
+    // pair, gtest_main.cpp, act_info_format_tests.cpp), but nothing ever read
+    // the pointer back out: the m_world member and its get_world() accessor
+    // were written, never called, and are deleted here (LS-3a constraint
+    // R-C8). The parameter stays, unnamed, so the shape is unchanged and
+    // -Wunused-parameter has nothing to say.
+    world_singleton(const weather_data* weather, const room_data*)
         : m_weather(weather)
-        , m_world(world)
     {
     }
 
     virtual ~world_singleton() { }
 
     const weather_data& get_weather() const { return *m_weather; }
-    const room_data* get_world() const { return m_world; }
 
     virtual void on_instance_destroyed() {};
     virtual void on_instance_not_created() {};
@@ -112,5 +116,4 @@ private:
     inline static bool m_bDestroyed = false;
 
     const weather_data* m_weather;
-    const room_data* m_world;
 };

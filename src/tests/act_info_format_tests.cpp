@@ -504,8 +504,8 @@ struct RoomWithBystanderContext {
 // idempotent -- they just re-point the pointer at the same
 // already-constructed instance; this is NOT modeling boot's real
 // weather_info/world wiring (do_affections's own reads -- m_skill_timer,
-// is_target_looting()'s corpse map -- never touch get_weather()/
-// get_world()), just satisfying instance()'s non-null precondition.
+// is_target_looting()'s corpse map -- never touch get_weather()), just
+// satisfying instance()'s non-null precondition.
 void ensure_skill_timer_created()
 {
     game_timer::skill_timer::create(weather_info, nullptr);

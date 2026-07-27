@@ -388,7 +388,9 @@ TEST(DoPullTest, LeverInADifferentRoomAnnouncesRumblingAndTogglesBothSidesRecipr
     ScopedTestWorld test_world{2};
     // Site 3 (LS-2 whole-branch review B1): captured before this test points
     // the slots/vnum at itself, so all three can be restored at the tail
-    // below.
+    // below. Since LS-3a T1 Stage A the next ScopedTestWorld construction also
+    // clears dir_option[]/.number for every room, so this restore is what
+    // keeps the dangling window closed in between rather than the only guard.
     room_direction_data *const original_room1_dir_north = world[1].dir_option[NORTH];
     const int original_room1_number = world[1].number;
     room_direction_data *const original_room0_dir_south = world[0].dir_option[SOUTH];

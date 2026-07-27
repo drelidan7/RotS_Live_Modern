@@ -211,17 +211,17 @@ class ScopedVnumWorld {
     ScopedVnumWorld()
         : m_previous_zone_table(zone_table), m_previous_top_of_zone_table(top_of_zone_table) {
         for (int rnum = 0; rnum < kRoomCount; ++rnum) {
-            world[rnum].number = room_vnum_for(rnum);
-            world[rnum].zone = 0;
-            world[rnum].people = nullptr;
-            world[rnum].light = 0;
+            room_by_id_total(rnum)->number = room_vnum_for(rnum);
+            room_by_id_total(rnum)->zone = 0;
+            room_by_id_total(rnum)->people = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
+            room_by_id_total(rnum)->light = 0;
         }
         // The slot a vnum-as-index misplacement lands in. create_bulk()
         // dummy_room_data()-initialized it (number == -1, so real_room() can
         // never return it), but its occupant list is reset here so an
         // assertion about who ended up there starts from a known state.
-        world[kOwnerVnum].people = nullptr;
-        world[kOwnerVnum].zone = 0;
+        room_by_id_total(kOwnerVnum)->people = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
+        room_by_id_total(kOwnerVnum)->zone = 0;
 
         zone_table = new zone_data[1]{};
         zone_table[0].number = 0;
@@ -235,8 +235,8 @@ class ScopedVnumWorld {
 
     ~ScopedVnumWorld() {
         for (int rnum = 0; rnum < kRoomCount; ++rnum)
-            world[rnum].people = nullptr;
-        world[kOwnerVnum].people = nullptr;
+            room_by_id_total(rnum)->people = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
+        room_by_id_total(kOwnerVnum)->people = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
 
         delete[] zone_table;
         zone_table = m_previous_zone_table;
@@ -335,7 +335,7 @@ class ScopedFollowerPrototype {
         m_prototype_storage[0].tmpabilities = m_prototype_storage[0].abilities;
         m_prototype_storage[0].player.level = 5;
         m_prototype_storage[0].specials.store_prog_number = 0;
-        m_prototype_storage[0].in_room = NOWHERE; // LS1-ALLOW: fixture init
+        set_location(&m_prototype_storage[0], NOWHERE);
 
         m_index_storage = new index_data[1]{};
         m_index_storage[0].virt = kFollowerMobVnum;
@@ -525,8 +525,8 @@ void make_mortal_player(char_data &player) {
     player.constabilities = player.abilities;
     player.points.spirit = 0;
     player.specials2.act = 0; // not IS_NPC; no PLR_* flags set
-    player.in_room = NOWHERE; // LS1-ALLOW: fixture init
-    player.next_in_room = nullptr;
+    set_location(&player, NOWHERE);
+    player.next_in_room = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
     player.followers = nullptr;
     player.master = nullptr;
 }
@@ -558,15 +558,15 @@ void release_spawned_follower(char_data *mob) {
     if (mob->master != nullptr)
         stop_follower(mob, FOLLOW_MOVE);
 
-    if (mob->in_room != NOWHERE) {             // LS1-ALLOW: fixture teardown
-        room_data &room = world[mob->in_room]; // LS1-ALLOW: fixture teardown
-        if (room.people == mob) {
-            room.people = mob->next_in_room;
+    if (location_of(mob) != NOWHERE) {
+        room_data &room = *room_of(mob);
+        if (room.people == mob) { // LS1-ALLOW: manual occupant-list splice
+            room.people = mob->next_in_room; // LS1-ALLOW: manual occupant-list splice
         } else {
-            for (char_data *occupant = room.people; occupant != nullptr;
-                 occupant = occupant->next_in_room) {
-                if (occupant->next_in_room == mob) {
-                    occupant->next_in_room = mob->next_in_room;
+            for (char_data *occupant = room.people; occupant != nullptr; // LS1-ALLOW: manual occupant-list splice
+                 occupant = occupant->next_in_room) { // LS1-ALLOW: manual occupant-list splice
+                if (occupant->next_in_room == mob) { // LS1-ALLOW: manual occupant-list splice
+                    occupant->next_in_room = mob->next_in_room; // LS1-ALLOW: manual occupant-list splice
                     break;
                 }
             }
@@ -678,7 +678,7 @@ TEST(LoadRoomChain, CalcLoadRoomLeavesInRoomHoldingTheRawPersistedValue) {
     // Exactly what store_to_char (db_players.cpp:1376) leaves behind for a
     // character whose on-disk load_room is the room VNUM 35.
     player.specials2.load_room = kOwnerVnum;
-    player.in_room = GET_LOADROOM(&player); // LS1-ALLOW: replay of db_players.cpp:1376
+    stash_load_room_vnum(&player, GET_LOADROOM(&player));
     ASSERT_EQ(location_of(&player), kOwnerVnum);
 
     const int computed_load_room = calc_load_room(&player, RENT_RENTED);
@@ -751,7 +751,7 @@ TEST(LoadRoomChain, LoadCharacterGuardLeavesAnAlreadyPlacedCharacterAlone) {
     ScopedClearCharFields player_cleanup{player};
 
     // An RNUM in in_room (a real location) and a different VNUM on disk.
-    player.in_room = kOwnerRnum; // LS1-ALLOW: fixture init
+    set_location(&player, kOwnerRnum);
     player.specials2.load_room = kOwnerVnum;
 
     replay_load_character_guard(player);
@@ -782,7 +782,7 @@ TEST(LoadRoomChain, LoadCharacterGuardCopiesThePersistedIntegerRawWhenThereIsNoL
     make_mortal_player(player);
     ScopedClearCharFields player_cleanup{player};
 
-    player.in_room = NOWHERE; // LS1-ALLOW: fixture init
+    set_location(&player, NOWHERE);
     player.specials2.load_room = kOwnerVnum;
 
     replay_load_character_guard(player);
@@ -807,7 +807,7 @@ TEST(LoadRoomChain, LoadCharacterGuardWriteDecidesWhereALocationlessCharacterLan
     make_mortal_player(player);
     ScopedClearCharFields player_cleanup{player};
 
-    player.in_room = NOWHERE; // LS1-ALLOW: fixture init
+    set_location(&player, NOWHERE);
     player.specials2.load_room = kOwnerVnum;
     // The two outcomes must be distinguishable for this test to mean
     // anything: room 3 is not the racial start room 0.
@@ -838,7 +838,7 @@ TEST(LoadRoomChain, LoadCharacterGuardWriteIsOutcomeNeutralForAFreshStartRoomCha
     char_data with_write{};
     make_mortal_player(with_write);
     ScopedClearCharFields with_write_cleanup{with_write};
-    with_write.in_room = NOWHERE; // LS1-ALLOW: fixture init
+    set_location(&with_write, NOWHERE);
     with_write.specials2.load_room = start_room_vnum;
     replay_load_character_guard(with_write);
     ASSERT_EQ(location_of(&with_write), start_room_vnum);
@@ -850,7 +850,7 @@ TEST(LoadRoomChain, LoadCharacterGuardWriteIsOutcomeNeutralForAFreshStartRoomCha
     char_data without_write{};
     make_mortal_player(without_write);
     ScopedClearCharFields without_write_cleanup{without_write};
-    without_write.in_room = NOWHERE; // LS1-ALLOW: fixture init
+    set_location(&without_write, NOWHERE);
     without_write.specials2.load_room = start_room_vnum;
     ASSERT_EQ(location_of(&without_write), NOWHERE);
     const int room_without_write = calc_load_room(&without_write, RENT_RENTED);
@@ -894,7 +894,7 @@ TEST(LoadRoomChain, CalcLoadRoomLogsTheExtensionRoomNoticeOnACrashLoadWithoutCha
     // :522 takes old_room from specials2.load_room, the range test at :556
     // takes its operand from the channel).
     player.specials2.load_room = kOwnerVnum;
-    player.in_room = EXTENSION_ROOM_HEAD; // LS1-ALLOW: replay of db_players.cpp:1376
+    stash_load_room_vnum(&player, EXTENSION_ROOM_HEAD);
 
     testing::internal::CaptureStderr();
     const int load_room = calc_load_room(&player, RENT_CRASH);
@@ -920,7 +920,7 @@ TEST(LoadRoomChain, CalcLoadRoomIsSilentJustBelowTheExtensionRoomThreshold) {
     // One below the threshold: same crash rent code, same (missing) room, so
     // the ONLY difference from the test above is which side of >= the channel
     // value falls on.
-    player.in_room = EXTENSION_ROOM_HEAD - 1; // LS1-ALLOW: replay of db_players.cpp:1376
+    stash_load_room_vnum(&player, EXTENSION_ROOM_HEAD - 1);
 
     testing::internal::CaptureStderr();
     const int load_room = calc_load_room(&player, RENT_CRASH);
@@ -940,7 +940,7 @@ TEST(LoadRoomChain, CalcLoadRoomIsSilentForAnExtensionRoomVnumOnANonCrashLoad) {
     ScopedClearCharFields player_cleanup{player};
 
     player.specials2.load_room = kOwnerVnum;
-    player.in_room = EXTENSION_ROOM_HEAD; // LS1-ALLOW: replay of db_players.cpp:1376
+    stash_load_room_vnum(&player, EXTENSION_ROOM_HEAD);
 
     testing::internal::CaptureStderr();
     // The other half of the && : an ordinary rent code silences the notice
@@ -977,7 +977,7 @@ TEST(LoadRoomChain, FollowerLandsInTheSameRoomAsItsOwnerWhenLoadRoomHoldsAVnum) 
     // The ordinary case: load_room holds a room VNUM (see the Q2 tests below
     // for why that is what the NOWHERE save path writes).
     player.specials2.load_room = kOwnerVnum;
-    player.in_room = GET_LOADROOM(&player); // LS1-ALLOW: replay of db_players.cpp:1376
+    stash_load_room_vnum(&player, GET_LOADROOM(&player));
 
     const objects_json::ObjectSaveData save_data = make_single_follower_save();
     char_data *follower = run_load_placement_chain(player, save_data, RENT_RENTED);
@@ -992,14 +992,14 @@ TEST(LoadRoomChain, FollowerLandsInTheSameRoomAsItsOwnerWhenLoadRoomHoldsAVnum) 
     // fields: the follower was placed first (objsave.cpp:477 runs before
     // :499) and char_to_room() appends at the TAIL, so the follower heads
     // the chain with the owner behind him.
-    EXPECT_EQ(world[kOwnerRnum].people, follower);
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kOwnerRnum)), follower);
     EXPECT_EQ(follower->next_in_room, &player);
     EXPECT_EQ(player.next_in_room, nullptr);
 
     // The slot the raw vnum-as-index misplacement used to land in (index 35,
     // a dummy room with vnum -1 that real_room() can never return) stays
     // empty.
-    EXPECT_EQ(world[kOwnerVnum].people, nullptr);
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kOwnerVnum)), nullptr);
 
     release_spawned_follower(follower);
 }
@@ -1016,16 +1016,16 @@ TEST(LoadRoomChain, FollowerAndOwnerLandTogetherWhenTheVnumHappensToEqualItsRnum
 
     // Re-stamp the fixture world so room index 2 also has vnum 2 (numbers
     // stay ascending: 0, 1, 2, 35, 45, 55), making real_room(2) == 2.
-    world[0].number = 0;
-    world[1].number = 1;
-    world[2].number = 2;
+    room_by_id_total(0)->number = 0;
+    room_by_id_total(1)->number = 1;
+    room_by_id_total(2)->number = 2;
 
     char_data player{};
     make_mortal_player(player);
     ScopedClearCharFields player_cleanup{player};
 
     player.specials2.load_room = 2;
-    player.in_room = GET_LOADROOM(&player); // LS1-ALLOW: replay of db_players.cpp:1376
+    stash_load_room_vnum(&player, GET_LOADROOM(&player));
 
     const objects_json::ObjectSaveData save_data = make_single_follower_save();
     char_data *follower = run_load_placement_chain(player, save_data, RENT_RENTED);
@@ -1065,7 +1065,7 @@ TEST(LoadRoomChain, RnumShapedLoadRoomSendsOwnerAndFollowerToTheStartRoomTogethe
 
     // An RNUM in the field, as the rnum-passing save sites above persist it.
     player.specials2.load_room = kOwnerRnum;
-    player.in_room = GET_LOADROOM(&player); // LS1-ALLOW: replay of db_players.cpp:1376
+    stash_load_room_vnum(&player, GET_LOADROOM(&player));
 
     // No room in this world has VNUM 3 (they are 5, 15, 25, 35, 45, 55).
     ASSERT_EQ(real_room(kOwnerRnum), -1);
@@ -1086,9 +1086,9 @@ TEST(LoadRoomChain, RnumShapedLoadRoomSendsOwnerAndFollowerToTheStartRoomTogethe
     // Occupant lists: the follower was placed first and char_to_room()
     // appends at the tail, so the follower heads the chain with the owner
     // behind him; the logged-out-from room stays empty.
-    EXPECT_EQ(world[ScopedStartRooms::kRacialStartRnum].people, follower);
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(ScopedStartRooms::kRacialStartRnum)), follower);
     EXPECT_EQ(follower->next_in_room, &player);
-    EXPECT_EQ(world[kOwnerRnum].people, nullptr);
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kOwnerRnum)), nullptr);
 
     release_spawned_follower(follower);
 }
@@ -1528,7 +1528,7 @@ TEST(LoadRoomEndToEnd, RealCrashLoadPlacesPersistedFollowerWithItsOwner) {
         // VNUM in in_room), then the real Crash_load(), then the owner
         // placement exactly as load_character() performs it.
         player.specials2.load_room = kOwnerVnum;
-        player.in_room = GET_LOADROOM(&player); // LS1-ALLOW: replay of db_players.cpp:1376
+        stash_load_room_vnum(&player, GET_LOADROOM(&player));
 
         FILE *load_handle = Crash_load(&player);
         // Crash_load's return is only a truthy success signal (a tmpfile
@@ -1552,10 +1552,10 @@ TEST(LoadRoomEndToEnd, RealCrashLoadPlacesPersistedFollowerWithItsOwner) {
     // ...confirmed by the occupant chain (follower placed first, tail
     // append puts the owner behind him), and the pre-fix wrong slot
     // (world[vnum-as-index]) stays empty.
-    EXPECT_EQ(world[kOwnerRnum].people, follower);
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kOwnerRnum)), follower);
     EXPECT_EQ(follower->next_in_room, &player);
     EXPECT_EQ(player.next_in_room, nullptr);
-    EXPECT_EQ(world[kOwnerVnum].people, nullptr);
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kOwnerVnum)), nullptr);
 
     release_spawned_follower(follower);
     RELEASE(player.player.name);
@@ -1732,7 +1732,7 @@ TEST(LoadRoomRider, PostLoginSaveLeavesABuggedCharacterNowhereInsteadOfRelocatin
     // load_character (objsave.cpp:502) with that value: R-C2's torn state.
     char_to_room(&player, computed_load_room);
     ASSERT_EQ(location_of(&player), NOWHERE) << "the field should say nowhere";
-    ASSERT_EQ(world[0].people, &player) << "...while the chain says room 0";
+    ASSERT_EQ(rots::entity::first_occupant(room_by_id_total(0)), &player) << "...while the chain says room 0";
 
     player.specials2.load_room = -12345;
 
@@ -1754,7 +1754,7 @@ TEST(LoadRoomRider, PostLoginSaveLeavesABuggedCharacterNowhereInsteadOfRelocatin
     // 398-402) -- exactly the leak half of R-C2's torn state -- so it would
     // NOT unsplice this character. Undo the splice by hand, or the stack
     // char_data outlives its entry in a process-global chain.
-    world[0].people = nullptr;
+    room_by_id_total(0)->people = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
     RELEASE(player.player.name);
 }
 
@@ -2062,15 +2062,15 @@ TEST(LoadRoomRider, WizsetFileSavePersistsTheChannelVnumNotAResolvedRoomNumber) 
         // ...not what a mechanical location resolve would have produced. The
         // filler room at index 35 carries dummy_room_data()'s number, -1, so
         // that conversion is observably distinct from a correct pass-through.
-        EXPECT_NE(reloaded.specials2.load_room, world[kOwnerVnum].number);
+        EXPECT_NE(reloaded.specials2.load_room, room_by_id_total(kOwnerVnum)->number);
         EXPECT_NE(reloaded.specials2.load_room, NOWHERE);
 
         // ...and the offline character was never placed anywhere: no room's
         // occupant chain gained him, and nothing indexed by his raw VNUM did
         // either.
-        EXPECT_EQ(world[kOwnerRnum].people, &immortal);
+        EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kOwnerRnum)), &immortal);
         EXPECT_EQ(immortal.next_in_room, nullptr);
-        EXPECT_EQ(world[kOwnerVnum].people, nullptr);
+        EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kOwnerVnum)), nullptr);
 
         char_from_room(&immortal);
         RELEASE(immortal.player.name);
@@ -2162,7 +2162,7 @@ TEST(LoadRoomRider, WizsetRoomFieldIsShadowedByRoomflagSoTheRoomArmIsUnreachable
     EXPECT_TRUE(PRF_FLAGGED(&victim, PRF_ROOMFLAGS));
     // ...and case 36 never ran: the victim did not move.
     EXPECT_EQ(location_of(&victim), kOwnerRnum);
-    EXPECT_EQ(world[1].people, nullptr);
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(1)), nullptr);
 
     char_from_room(&victim);
     char_from_room(&immortal);
@@ -2490,8 +2490,8 @@ TEST(CleanExposeElementsGuard, StillCancelsForAMageWhoIsInARoomAndCannotSeeTheTa
     // power and light accounting for a character the test never finishes
     // wiring up. set_location() plus the chain is exactly what the walk reads.
     set_location(&mage, kOwnerRnum);
-    mage.next_in_room = nullptr;
-    world[kOwnerRnum].people = &mage;
+    mage.next_in_room = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
+    room_by_id_total(kOwnerRnum)->people = &mage; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
 
     char_data absent_target{};
     spec_data->exposed_target = &absent_target;
@@ -2505,7 +2505,7 @@ TEST(CleanExposeElementsGuard, StillCancelsForAMageWhoIsInARoomAndCannotSeeTheTa
     EXPECT_STREQ(descriptor.small_outbuf,
                  "Your target is no longer vulnerable to your spells.\r\n");
 
-    world[kOwnerRnum].people = nullptr;
+    room_by_id_total(kOwnerRnum)->people = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
     set_location(&mage, NOWHERE);
 }
 
@@ -2563,8 +2563,8 @@ TEST(LoadRoomRider, RentLoadingALitLightBumpsOnlyTheRoomTheCharacterIsPlacedIn) 
     // -- the raw persisted VNUM, no placement of any kind.
     player.specials2.load_room = kOwnerVnum;
     stash_load_room_vnum(&player, GET_LOADROOM(&player));
-    ASSERT_EQ(world[kOwnerVnum].light, 0);
-    ASSERT_EQ(world[kOwnerRnum].light, 0);
+    ASSERT_EQ(room_by_id_total(kOwnerVnum)->light, 0);
+    ASSERT_EQ(room_by_id_total(kOwnerRnum)->light, 0);
 
     // objsave.cpp:439 -- Crash_load's equip loop, mid-window.
     equip_char(&player, &lamp, WEAR_LIGHT);
@@ -2573,19 +2573,19 @@ TEST(LoadRoomRider, RentLoadingALitLightBumpsOnlyTheRoomTheCharacterIsPlacedIn) 
     // Normalized to ON, so the placement below can count it...
     EXPECT_EQ(lamp.obj_flags.value[3], 1);
     // ...and the room the stale vnum indexed was left alone. THIS is the fix.
-    EXPECT_EQ(world[kOwnerVnum].light, 0);
+    EXPECT_EQ(room_by_id_total(kOwnerVnum)->light, 0);
 
     // objsave.cpp:511 -- load_character places the player, and char_to_room's
     // own equipment sweep (placement.cpp:349-353) counts the lamp, once, at
     // the room that actually has him.
     char_to_room(&player, kOwnerRnum);
-    EXPECT_EQ(world[kOwnerRnum].light, 1);
-    EXPECT_EQ(world[kOwnerVnum].light, 0);
+    EXPECT_EQ(room_by_id_total(kOwnerRnum)->light, 1);
+    EXPECT_EQ(room_by_id_total(kOwnerVnum)->light, 0);
 
     // ...and the books balance: the later decrement has something to cancel.
     unequip_char(&player, WEAR_LIGHT);
-    EXPECT_EQ(world[kOwnerRnum].light, 0);
-    EXPECT_EQ(world[kOwnerVnum].light, 0);
+    EXPECT_EQ(room_by_id_total(kOwnerRnum)->light, 0);
+    EXPECT_EQ(room_by_id_total(kOwnerVnum)->light, 0);
 
     if (lamp.carried_by != nullptr)
         obj_from_char(&lamp);

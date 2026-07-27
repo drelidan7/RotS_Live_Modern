@@ -28,6 +28,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <string_view>
@@ -270,8 +271,15 @@ public:
         m_light = room.light;
 
         room.number = 3001;
-        room.name = const_cast<char*>("MSDP Test Room");
-        room.description = const_cast<char*>("A room used for MSDP update tests.\n\r");
+        // str_dup()'d, not string literals: ScopedTestWorld's reuse branch
+        // free()s world[].name/.description for every room it resets (LS-3a
+        // T1 Stage A), and this fixture leaves a permanent BASE_WORLD behind
+        // for later suites in the monolithic runner to reuse. Installing a
+        // literal here would put an unfreeable pointer where a free() is
+        // entitled to run. The destructor below frees these two before
+        // restoring the saved originals.
+        room.name = str_dup("MSDP Test Room");
+        room.description = str_dup("A room used for MSDP update tests.\n\r");
         room.room_flags = INDOORS;
         room.sector_type = SECT_INSIDE;
         room.light = 0;
@@ -282,6 +290,11 @@ public:
         top_of_world = m_top_of_world;
         room_data& room = world[0];
         room.number = m_number;
+        // Free what this fixture str_dup()'d in the constructor before putting
+        // the saved originals back; the saved pointers are owned by whoever
+        // installed them (ScopedTestWorld / dummy_room_data) and are not ours.
+        std::free(room.name);
+        std::free(room.description);
         room.name = m_name;
         room.description = m_description;
         room.room_flags = m_room_flags;
@@ -2048,12 +2061,16 @@ TEST(MSDPProtocol, RoomUpdateImplSetsRoomNameVnumExitsAndTerrainWhenLocationIsNe
 {
     ScopedTestWorld test_world { 2 };
     // Site 9 (LS-2 whole-branch review B1, second-reviewer addendum):
-    // ScopedMSDPTestRoom (used by sibling tests in this file) leaks a
-    // permanent BASE_WORLD, so this ScopedTestWorld{2} takes the reuse
-    // branch, whose destructor only clears world[0].people -- captured here,
-    // restored at the tail below, so north_exit (a function-local about to
-    // go out of scope) doesn't leak a dangling pointer into a later test
-    // sharing this process's world[].
+    // north_exit is a function-local about to go out of scope, so world[0]'s
+    // NORTH slot is captured here and restored at the tail below rather than
+    // left dangling for a later test sharing this process's world[].
+    // Which ScopedTestWorld branch runs differs by runner: under ctest each
+    // test is its own process, so this construction OWNS the world; in the
+    // monolithic binary ScopedMSDPTestRoom (used by sibling tests in this
+    // file) has already leaked a permanent BASE_WORLD, so it REUSES one.
+    // Since LS-3a T1 Stage A both branches leave the same per-room state, and
+    // the next ScopedTestWorld construction would clear the slot anyway --
+    // this restore keeps the window closed in between.
     room_direction_data* const original_room0_dir_north = world[0].dir_option[NORTH];
     room_direction_data north_exit {};
     north_exit.exit_info = 0;

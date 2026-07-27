@@ -63,10 +63,12 @@ struct ActObj1Context {
     char_data ch{};
     descriptor_data ch_descriptor{};
     char_data *original_people = nullptr;
-    // Site 6 (LS-2 whole-branch review B1): world[0].light is never reset by
-    // ScopedTestWorld's reuse branch -- saved here, restored in the dtor
-    // below, so it doesn't leak into a later test sharing this process's
-    // world[0].
+    // Site 6 (LS-2 whole-branch review B1): world[0].light is saved here and
+    // restored in the dtor below so it doesn't leak into a later test sharing
+    // this process's world[0]. LS-3a T1 Stage A made ScopedTestWorld's reuse
+    // branch reset .light (with the rest of the room) at construction, so this
+    // save/restore is now belt-and-braces rather than the only guard: it also
+    // covers the value this fixture itself forces on just below.
     byte original_light = 0;
 
     ActObj1Context() {

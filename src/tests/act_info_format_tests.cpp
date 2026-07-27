@@ -362,8 +362,10 @@ struct RoomWithExitContext {
         test_world.room().people = original_people;
         test_world.room().dir_option[door_direction] = nullptr;
         // Tests set DARK on the shared room 0 (do_exits's "Too dark to
-        // tell" branch); clear it so later suites in the monolithic runner
-        // see the flag state ScopedTestWorld's reuse branch assumes.
+        // tell" branch); clear it here as well as at the next
+        // ScopedTestWorld construction (LS-3a T1 Stage A's reuse-branch reset
+        // zeroes .room_flags), so the flag never outlives this scope even for
+        // code that reaches world[0] without constructing one.
         test_world.room().room_flags = 0;
         character.in_room = NOWHERE;
     }
@@ -374,9 +376,11 @@ struct RoomWithExitContext {
 // do_look bails out at its "It is pitch black..." gate) while the exit's
 // target room is dark -- impossible with a self-loop exit. Room 1 is
 // stamped with a known name (mirroring ScopedTestWorld's own free-then-
-// str_dup room-0 pattern, since the reuse branch guarantees nothing about
-// room 1's contents) and explicitly cleared flags/light/sector so
-// IS_DARK(1) is driven only by the DARK bit a test chooses to set.
+// str_dup room-0 pattern; since LS-3a T1 Stage A the reuse branch does
+// dummy_room_data() room 1, so it arrives named "New room" with cleared
+// flags/light/sector, but this fixture keeps stamping them explicitly rather
+// than depending on that default) so IS_DARK(1) is driven only by the DARK
+// bit a test chooses to set.
 // exit.general_description is a non-null empty string: unlike do_exits,
 // do_look's direction cases dereference it unconditionally (real world
 // data always allocates it; a default-constructed fixture exit does not).

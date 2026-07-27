@@ -45,10 +45,14 @@ constexpr int kMageTestWorldRoomCount = 33;
 // in the worst reuse case (a single-room create_bulk(1) another suite ran
 // first), so keeping the count within EXTENSION_SIZE guarantees every room
 // this suite touches is a real, initialized room even when ScopedTestWorld
-// reuses a world it didn't allocate. Mirrors damage_test_context.h's
-// compile-time guard on its single-room reliance; complements the runtime
-// assert in ScopedTestWorld's reuse branch (test_world.h). Bump both the
-// world and this bound together if a future test needs a higher room number.
+// reuses a world it didn't allocate. (Since LS-3a T1 Stage A the reuse branch
+// re-initializes all of [0, room_data::BASE_LENGTH] itself, so this bound is
+// no longer load-bearing for INITIALIZATION; it still is for staying in bounds
+// of a possibly-smaller reused allocation, which is exactly what the runtime
+// assert in ScopedTestWorld's reuse branch checks.) Mirrors
+// damage_test_context.h's compile-time guard on its single-room reliance. Bump
+// both the world and this bound together if a future test needs a higher room
+// number.
 static_assert(kMageTestWorldRoomCount <= EXTENSION_SIZE,
     "mage_tests' shared world must fit inside create_bulk()'s "
     "dummy-initialized EXTENSION_SIZE window");

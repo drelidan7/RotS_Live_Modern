@@ -22,15 +22,19 @@ struct DamageTestContext {
     // dummy_room_data()-initialized room. That holds for every allocation
     // path that can own the world here: ScopedTestWorld's create_bulk(1)
     // dummy-initializes indices [0, EXTENSION_SIZE - 1] outright (its
-    // trailing-extension loop starts at amount - 1 == 0), and any world a
-    // different suite allocated first covers at least that same trailing
-    // range. The static_assert pins the reliance so a future room_number
-    // bump can't silently walk past the guaranteed-initialized range.
+    // trailing-extension loop starts at amount - 1 == 0), and since LS-3a T1
+    // Stage A the reuse branch dummy-initializes EVERY room in
+    // [0, room_data::BASE_LENGTH] -- so a world a different suite allocated
+    // first is fully covered too, not merely in its trailing range. The
+    // static_assert pins the reliance so a future room_number bump can't
+    // silently walk past the guaranteed-initialized range.
     // (Historical context: an earlier revision re-ran dummy_room_data()
     // over rooms [0, room_number] here "just in case", but that clobbered
     // and leaked the name/description strings ScopedTestWorld had just
     // installed in room 0 on every construction — the exact leak class
-    // this fixture exists to kill. Do not reintroduce it.)
+    // this fixture exists to kill. Do not reintroduce it here; Stage A's
+    // reset is the sanctioned form, because it free()s before it dummies and
+    // runs BEFORE room 0's canonical strings are re-installed.)
     static_assert(room_number < EXTENSION_SIZE - 1,
         "room_number must stay inside the range create_bulk(1) dummy-initializes");
 

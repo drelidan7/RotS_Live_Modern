@@ -1807,10 +1807,11 @@ TEST(ActWizInspection, DoShowFormatsZoneMissingArgumentBranch)
 TEST(ActWizInspection, DoShowFormatsDeathTrapsListForRoomWithDeathFlag)
 {
     ScopedTestWorld test_world(2);
-    // O-I2 remainder (LS-2 whole-branch review, Opus): number/room_flags
-    // are not reset by ScopedTestWorld's reuse branch -- captured here and
-    // restored at the tail so a later monolithic-runner test sharing this
-    // process's world[0] never inherits a stray DEATH flag.
+    // O-I2 remainder (LS-2 whole-branch review, Opus): number/room_flags are
+    // captured here and restored at the tail so a later monolithic-runner test
+    // sharing this process's world[0] never inherits a stray DEATH flag.
+    // LS-3a T1 Stage A made ScopedTestWorld's reuse branch reset both fields
+    // at construction as well, so this pairing is now defence in depth.
     const int original_number = test_world.room().number;
     const long original_room_flags = test_world.room().room_flags;
     test_world.room().number = 4242;
@@ -1832,8 +1833,8 @@ TEST(ActWizInspection, DoShowFormatsGodroomsListForZoneZeroRoom)
     // (dummy_room_data()) -- matching GOD_ROOMS_ZONE's hardcoded 0 -- set
     // explicitly anyway so the test does not rely on that default.
     ScopedTestWorld test_world(2);
-    // O-I2 remainder: number/zone captured/restored, same reasoning as the
-    // DEATH test above.
+    // O-I2 remainder: number/zone captured/restored, same reasoning (and the
+    // same Stage A note) as the DEATH test above.
     const int original_number = test_world.room().number;
     const int original_zone = test_world.room().zone;
     test_world.room().number = 4243;
@@ -2121,9 +2122,9 @@ TEST(ActWizWorldManip, DoAtRejectsPrivateRoomWithTwoOrMoreOccupants)
 TEST(ActWizWorldManip, FindTargetRoomResolvesToTheNamedTargetsOwnRoomNotTheCallers)
 {
     ScopedTestWorld test_world(2);
-    // O-I2 remainder: world[0]/world[1]'s number/room_flags/light are not
-    // reset by ScopedTestWorld's reuse branch -- captured here and restored
-    // at the tail, same reasoning as the other O-I2 sites in this file.
+    // O-I2 remainder: world[0]/world[1]'s number/room_flags/light are
+    // captured here and restored at the tail, same reasoning (and the same
+    // Stage A note) as the other O-I2 sites in this file.
     const int original_number0 = test_world.room().number;
     const int original_number1 = world[1].number;
     const long original_room_flags1 = world[1].room_flags;

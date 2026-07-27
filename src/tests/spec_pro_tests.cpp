@@ -354,10 +354,11 @@ struct MobRangerNewContext {
     char_data occupant{};
     char host_name[16] = "test_stabber";
     char occupant_name[16] = "test_mark";
-    // Site 8 (LS-2 whole-branch review B1): world[0].light is never reset by
-    // ScopedTestWorld's reuse branch -- saved here, restored in the dtor
-    // below, so it doesn't leak into a later test sharing this process's
-    // world[0].
+    // Site 8 (LS-2 whole-branch review B1): world[0].light is saved here and
+    // restored in the dtor below so it doesn't leak into a later test sharing
+    // this process's world[0]. LS-3a T1 Stage A made ScopedTestWorld's reuse
+    // branch reset .light at construction, so this now also serves to undo the
+    // value this fixture forces on.
     byte original_light = 0;
 
     MobRangerNewContext()
@@ -501,9 +502,11 @@ struct VampireKillerContext {
     char bystander_15399_name[16] = "test_guard_a";
     char bystander_15398_name[16] = "test_guard_b";
     // Site 8 (LS-2 whole-branch review B1): world[0..2].number/.light are
-    // never reset by ScopedTestWorld's reuse branch -- saved here, restored
-    // in the dtor below, so neither leaks into a later test sharing this
-    // process's world[].
+    // saved here and restored in the dtor below so neither leaks into a later
+    // test sharing this process's world[]. LS-3a T1 Stage A made
+    // ScopedTestWorld's reuse branch reset both fields at construction, so
+    // these restores now undo this fixture's own writes rather than standing
+    // as the only cross-test guard.
     int original_number[3] = { 0, 0, 0 };
     byte original_light[3] = { 0, 0, 0 };
 

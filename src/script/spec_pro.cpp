@@ -1254,9 +1254,9 @@ SPECIAL(ferry_captain)
 
     if ((ferry_captain_data[num].timer == 0) && (ferry_captain_data[num].stop_time[ferry_captain_data[num].marker] > 0)) {
         tmp = host->in_room; // LS1-ALLOW: in_room used as mutable room cursor (ferry-captain outside-message save/restore)
-        host->in_room = ferryobj->in_room; // LS1-ALLOW: in_room used as mutable room cursor
+        set_location(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed)
         act(ferry_captain_data[num].leave_to_outside, FALSE, host, ferryobj, 0, TO_ROOM);
-        host->in_room = tmp; // LS1-ALLOW: in_room used as mutable room cursor
+        set_location(host, tmp); // LS1-ALLOW: in_room used as mutable room cursor
         act(ferry_captain_data[num].leave_to_inside, FALSE, host, 0, 0, TO_ROOM);
     }
 
@@ -1267,9 +1267,9 @@ SPECIAL(ferry_captain)
     act(ferry_captain_data[num].move_out_inside, FALSE, host, ferryobj, 0, TO_ROOM);
 
     tmp = host->in_room; // LS1-ALLOW: in_room used as mutable room cursor (ferry-captain outside-message save/restore)
-    host->in_room = ferryobj->in_room; // LS1-ALLOW: in_room used as mutable room cursor
+    set_location(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed)
     act(ferry_captain_data[num].move_out_outside, FALSE, host, ferryobj, 0, TO_ROOM);
-    host->in_room = tmp; // LS1-ALLOW: in_room used as mutable room cursor
+    set_location(host, tmp); // LS1-ALLOW: in_room used as mutable room cursor
 
     obj_from_room(ferryobj);
 
@@ -1314,16 +1314,16 @@ SPECIAL(ferry_captain)
     if (ferry_captain_data[num].timer == 0) {
         act(ferry_captain_data[num].move_in_inside, TRUE, host, ferryobj, 0, TO_ROOM);
         tmp = host->in_room; // LS1-ALLOW: in_room used as mutable room cursor (ferry-captain arrival-message save/restore)
-        host->in_room = ferryobj->in_room; // LS1-ALLOW: in_room used as mutable room cursor
+        set_location(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed)
         act(ferry_captain_data[num].move_in_outside, FALSE, host, ferryobj, 0, TO_ROOM);
-        host->in_room = tmp; // LS1-ALLOW: in_room used as mutable room cursor
+        set_location(host, tmp); // LS1-ALLOW: in_room used as mutable room cursor
     } else {
         act(ferry_captain_data[num].arrive_to_inside, FALSE, host, ferryobj, 0, TO_ROOM);
 
         tmp = host->in_room; // LS1-ALLOW: in_room used as mutable room cursor (ferry-captain arrival-message save/restore)
-        host->in_room = ferryobj->in_room; // LS1-ALLOW: in_room used as mutable room cursor
+        set_location(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed)
         act(ferry_captain_data[num].arrive_to_outside, FALSE, host, ferryobj, 0, TO_ROOM);
-        host->in_room = tmp; // LS1-ALLOW: in_room used as mutable room cursor
+        set_location(host, tmp); // LS1-ALLOW: in_room used as mutable room cursor
     }
     return TRUE;
 }
@@ -2302,61 +2302,23 @@ SPECIAL(mob_jig)
 int get_exit_width(room_data* room, int exit);
 
 /*
- * Well in answer to Vakaurs' prayers i've removed
- * our six block_exit functions and replaced them
- * with one.
+ * A unified SPECIAL(block_exit) taking a direction argument was written to
+ * replace the six per-direction copies below ("in answer to Vakaurs' prayers"),
+ * but was never enabled: it sat commented out here, and only the six are
+ * compiled and assignable to mobs.
+ *
+ * LS-3a T2c DELETED that dead source (ruling R-C8, ls3a-global-constraints.md).
+ * Being inside a comment, its world[ch->in_room] read was masked from
+ * tools/location_read_census.py, so the gate could never have seen it -- it
+ * would have re-entered the tree unconverted the moment anyone uncommented it.
+ * Nothing referenced it (verified tree-wide: the only other block_exit
+ * spellings are the six block_exit_<dir> functions below and their
+ * spec_ass.cpp registrar entries); recover it from history if it is ever
+ * wanted.
  */
 
 #define BLOCK_CHANCE(host, ch, width) \
     (((GET_SKILL(host, SKILL_BLOCK) + 110) / (1 + width) / (CAN_SEE(host, ch) ? 1 : 2) / (GET_POS(host) < POSITION_STANDING ? 3 : 1) - 3 * width) * GET_WEIGHT(host) / (GET_WEIGHT(ch) + 10 * GET_DEX(ch)))
-
-/*
-SPECIAL(block_exit) {
-
-  int width, chance;
-
-  if(callflag == SPECIAL_COMMAND && ch == host &&
-     cmd < 0 || rots::script::dispatch_command_min_position(cmd) > POSITION_RESTING) {
-    if(cmd == CMD_BLOCK)
-      return FALSE;
-    if(!CAN_GO(ch, 0))
-      return FALSE;
-    ch->specials.store_prog_number = 0;
-    act("$n stopped blocking the way north.",TRUE, ch, 0, 0, TO_ROOM);
-    send_to_char("You stopped blocking the way north.\n\r",ch);
-    return FALSE;
-  }
-
-  if((callflag != SPECIAL_COMMAND) || (cmd != host->specials2.rp_flag + 1))
-    return FALSE;
-
-  if(ch->in_room == NOWHERE) {
-    ch->specials.store_prog_number = 0;
-    return FALSE;
-  }
-
-  width = get_exit_width(&world[ch->in_room], host->specials2.rp_flag);
-  if(width <= 0){
-    ch->specials.store_prog_number = 0;
-    return FALSE;
-  }
-
-  chance = BLOCK_CHANCE(host, ch, width);
-
-  if(number(1,100) < chance){
-    act("$n tried to slip north past $N but could not.", TRUE, ch, 0, host, TO_NOTVICT);
-    act("$n tried to move north past you, but failed.", FALSE, ch, 0, host, TO_VICT);
-    act("$N blocks your way north.", FALSE, ch, 0, host, TO_CHAR);
-    return TRUE;
-  }
-  else{
-    act("$n slips north past $N.", TRUE, ch, 0, host, TO_NOTVICT);
-    act("$n slips north past you.", FALSE, ch, 0, host, TO_VICT);
-    act("You slip north past $N.", FALSE, ch, 0, host, TO_CHAR);
-    return FALSE;
-  }
-}
-*/
 
 SPECIAL(block_exit_north)
 {

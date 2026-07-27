@@ -101,10 +101,13 @@
 #include "../handler.h"
 #include "../interpre.h"
 #include "../objects_json.h"
+#include "../protocol.h"
 #include "../utils.h"
+#include "../world_hooks.h"
 #include "../zone.h"
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
+#include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
 #include "test_char_cleanup.h"
@@ -167,6 +170,14 @@ void clear_char(struct char_data *ch, int mode);
 // act_wiz.cpp exports do_wizset() only by linkage, like the objsave.cpp trio
 // above; declared here with the ACMD signature act_wiz_format_tests.cpp uses.
 ACMD(do_wizset);
+
+// The two async walkers the mid-window guard tests below drive. Neither is
+// declared in a shared header (protocol.cpp's is reached in production only
+// through world_hooks.h's weather hook, comm.cpp's only from the pulse loop);
+// forward-declared here exactly as protocol_tests.cpp and comm_act_tests.cpp
+// already declare them for their own suites.
+void broadcast_weather_msdp_update(rots::world::weather_msdp_kind kind);
+void clean_expose_elements();
 
 namespace {
 
@@ -473,6 +484,29 @@ class ScopedGlobalCharacterLists {
     char_data *m_previous_character_list;
     char_data *m_previous_combat_list;
     char_data *m_previous_waiting_list;
+};
+
+// specialized_mages is a comm.cpp-owned process-wide std::vector<char_data*>,
+// and clean_expose_elements() walks it every fast-update pulse. A test that
+// tracks a stack char_data MUST untrack it before the stack unwinds or a later
+// suite dereferences a dangling pointer -- the same RAII comm_act_tests.cpp's
+// ScopedSpecializedMage provides for its own suite. (T0b-1's finding S7 records
+// that PRODUCTION has no such untracking step on the `stat file`/`wizset file`
+// paths; that is a pre-existing bug, out of this wave's charter, not something
+// this fixture works around.)
+class ScopedTrackedMage {
+  public:
+    explicit ScopedTrackedMage(char_data *mage) : m_mage(mage) { track_specialized_mage(m_mage); }
+
+    ~ScopedTrackedMage() { untrack_specialized_mage(m_mage); }
+
+    ScopedTrackedMage(const ScopedTrackedMage &) = delete;
+    ScopedTrackedMage &operator=(const ScopedTrackedMage &) = delete;
+
+  private:
+    // The character this fixture added to the process-wide roster; removed
+    // again on scope exit, including on a mid-test fatal ASSERT.
+    char_data *m_mage;
 };
 
 // A mortal player who survives every guard in calc_load_room() without
@@ -2134,4 +2168,343 @@ TEST(LoadRoomRider, WizsetRoomFieldIsShadowedByRoomflagSoTheRoomArmIsUnreachable
     char_from_room(&immortal);
     RELEASE(immortal.player.name);
     RELEASE(victim.player.name);
+}
+
+// ---------------------------------------------------------------------------
+// THE MID-WINDOW GUARDS (LS-3a T2 tranche 2e-beta, T0b-1 readers R9/R10 and
+// R20/R21)
+// ---------------------------------------------------------------------------
+//
+// Three production sites read a character's location during the login/rent
+// window -- the stretch where char_data::in_room carries a persisted room
+// VNUM rather than a world[] index, or nothing at all. Two of them (the
+// equip_char zap guards) would BREAK when LS-3b makes absence the honest
+// answer there; two of them (the async walkers) are wrong TODAY and produce a
+// mudlog per pulse per menu-sitter while being so.
+//
+// The equip_char pair is a provable no-op at this commit and is pinned by
+// characterization: what these tests assert is exactly what the tree did
+// before the guard changed, so the guard cannot have altered it. The two
+// walkers DO change behavior, for characters with no location only, and each
+// is pinned by an assertion that fails when its guard is removed (recorded in
+// the commit message).
+
+// R9/R10 -- equip_char()'s anti-alignment zap. CHARACTERIZATION: a forbidden
+// item is dropped into the wearer's INVENTORY, never left equipped, and the
+// wearer and the room are both told. The guard around that behavior gained a
+// second term this commit ((location_of(ch) != NOWHERE) ||
+// (peek_load_room_vnum(ch) != NOWHERE)); today the two terms are the same
+// expression over the same field, so this pins the same behavior before and
+// after -- which is the claim the no-op derivation makes, stated as a test
+// rather than only as a comment.
+TEST(EquipCharZapGuard, AntiEvilItemLandsInInventoryNotOnAnEvilWearer) {
+    ScopedVnumWorld fixture_world;
+    ScopedGlobalCharacterLists fixture_lists;
+
+    char_data wearer{};
+    make_mortal_player(wearer);
+    ScopedClearCharFields wearer_cleanup{wearer};
+    GET_ALIGNMENT(&wearer) = -1000; // IS_EVIL: alignment <= -100
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &wearer;
+    descriptor.next = nullptr;
+    wearer.desc = &descriptor;
+    wearer.specials.position = POSITION_STANDING;
+
+    char_to_room(&wearer, kOwnerRnum);
+
+    obj_data holy_symbol{};
+    holy_symbol.obj_flags.type_flag = ITEM_ARMOR;
+    holy_symbol.obj_flags.extra_flags = ITEM_ANTI_EVIL;
+    holy_symbol.obj_flags.weight = 1;
+    holy_symbol.in_room = NOWHERE; // LS1-ALLOW: obj-location (fixture init)
+    holy_symbol.name = str_dup("symbol");
+    holy_symbol.short_description = str_dup("a holy symbol");
+    holy_symbol.description = str_dup("A holy symbol lies here.");
+
+    equip_char(&wearer, &holy_symbol, WEAR_BODY);
+
+    // Zapped: not worn...
+    EXPECT_EQ(wearer.equipment[WEAR_BODY], nullptr);
+    // ...but carried, which is what the comment beside obj_to_char() promises
+    // ("changed to drop in inventory instead of ground").
+    EXPECT_EQ(wearer.carrying, &holy_symbol);
+    EXPECT_EQ(holy_symbol.carried_by, &wearer);
+    EXPECT_EQ(holy_symbol.in_room, NOWHERE); // LS1-ALLOW: obj-location
+    // ...and the wearer was told.
+    EXPECT_NE(strstr(descriptor.small_outbuf, "You are zapped by"), nullptr)
+        << "output: " << descriptor.small_outbuf;
+
+    // Outcome-independent teardown: whichever of the two homes the item ended
+    // up in is undone, so an assertion failure above reports as a failure
+    // rather than as a crash in this cleanup.
+    if (holy_symbol.carried_by != nullptr)
+        obj_from_char(&holy_symbol);
+    if (wearer.equipment[WEAR_BODY] == &holy_symbol)
+        unequip_char(&wearer, WEAR_BODY);
+    RELEASE(holy_symbol.name);
+    RELEASE(holy_symbol.short_description);
+    RELEASE(holy_symbol.description);
+    char_from_room(&wearer);
+}
+
+// The CONTROL: the same item on a wearer the restriction does not apply to is
+// equipped normally. Without this, the test above would pass just as well
+// against an equip_char() that refused to equip anything at all.
+TEST(EquipCharZapGuard, TheSameItemIsWornNormallyByANonEvilWearer) {
+    ScopedVnumWorld fixture_world;
+    ScopedGlobalCharacterLists fixture_lists;
+
+    char_data wearer{};
+    make_mortal_player(wearer);
+    ScopedClearCharFields wearer_cleanup{wearer};
+    GET_ALIGNMENT(&wearer) = 0; // IS_NEUTRAL, and the item is ANTI_EVIL only
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &wearer;
+    descriptor.next = nullptr;
+    wearer.desc = &descriptor;
+    wearer.specials.position = POSITION_STANDING;
+
+    char_to_room(&wearer, kOwnerRnum);
+
+    obj_data holy_symbol{};
+    holy_symbol.obj_flags.type_flag = ITEM_ARMOR;
+    holy_symbol.obj_flags.extra_flags = ITEM_ANTI_EVIL;
+    holy_symbol.obj_flags.weight = 1;
+    holy_symbol.in_room = NOWHERE; // LS1-ALLOW: obj-location (fixture init)
+    holy_symbol.name = str_dup("symbol");
+    holy_symbol.short_description = str_dup("a holy symbol");
+    holy_symbol.description = str_dup("A holy symbol lies here.");
+
+    equip_char(&wearer, &holy_symbol, WEAR_BODY);
+
+    EXPECT_EQ(wearer.equipment[WEAR_BODY], &holy_symbol);
+    EXPECT_EQ(wearer.carrying, nullptr);
+    EXPECT_EQ(strstr(descriptor.small_outbuf, "You are zapped by"), nullptr)
+        << "output: " << descriptor.small_outbuf;
+
+    // Outcome-independent teardown, as above.
+    if (wearer.equipment[WEAR_BODY] == &holy_symbol)
+        unequip_char(&wearer, WEAR_BODY);
+    if (holy_symbol.carried_by != nullptr)
+        obj_from_char(&holy_symbol);
+    RELEASE(holy_symbol.name);
+    RELEASE(holy_symbol.short_description);
+    RELEASE(holy_symbol.description);
+    char_from_room(&wearer);
+}
+
+// R20 -- broadcast_weather_msdp_update() (protocol.cpp). This walker had no
+// location guard at all, and its weather arm is the only one that reads the
+// room. A character parked at the character menu has none, so room_of()
+// resolved world[-1]: room_data::operator[] answers that with a mudlog and a
+// room-0 FALLBACK, so the menu-sitter was told about room 0's weather, every
+// tick, with a log line each time.
+//
+// TWO OBSERVABLES, because either alone would be weak: the MSDP variable must
+// stay at the sentinel this test writes (proving the walker never reached
+// MSDPSetString), and stderr must carry no operator[] complaint (proving the
+// room was never resolved). PRF_MSDP is deliberately NOT set, so MSDPSend()
+// takes its own early return (protocol.cpp:1251) and no socket write is
+// attempted from a fixture descriptor with no socket.
+//
+// Non-vacuity: removing the guard makes BOTH assertions fail -- see the
+// commit message for the run record.
+TEST(WeatherBroadcastGuard, SkipsACharacterWithNoLocationInsteadOfReadingRoomZero) {
+    ScopedVnumWorld fixture_world;
+
+    char_data menu_sitter{};
+    make_mortal_player(menu_sitter);
+    ScopedClearCharFields menu_sitter_cleanup{menu_sitter};
+    ASSERT_EQ(location_of(&menu_sitter), NOWHERE)
+        << "the fixture character must start with no location -- that IS the case under test";
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &menu_sitter;
+    descriptor.next = nullptr;
+    descriptor.pProtocol = ProtocolCreate();
+    menu_sitter.desc = &descriptor;
+
+    MSDPSetString(&descriptor, eMDSP_WEATHER, "sentinel weather");
+
+    descriptor_data *previous_descriptor_list = descriptor_list;
+    descriptor_list = &descriptor;
+
+    testing::internal::CaptureStderr();
+    broadcast_weather_msdp_update(rots::world::weather_msdp_kind::weather);
+    const std::string captured = testing::internal::GetCapturedStderr();
+
+    descriptor_list = previous_descriptor_list;
+
+    EXPECT_STREQ(descriptor.pProtocol->pVariables[eMDSP_WEATHER]->pValueString,
+                 "sentinel weather")
+        << "the walker sent weather to a character who is not in any room";
+    EXPECT_EQ(captured.find("world[] called for negative room number"), std::string::npos)
+        << "stderr: " << captured;
+
+    ProtocolDestroy(descriptor.pProtocol);
+    descriptor.pProtocol = nullptr;
+}
+
+// The CONTROL: a character who IS in a room still receives the broadcast, so
+// the guard above cannot have silenced the walker outright.
+TEST(WeatherBroadcastGuard, StillBroadcastsToACharacterWhoIsInARoom) {
+    ScopedVnumWorld fixture_world;
+    ScopedGlobalCharacterLists fixture_lists;
+
+    char_data resident{};
+    make_mortal_player(resident);
+    ScopedClearCharFields resident_cleanup{resident};
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &resident;
+    descriptor.next = nullptr;
+    descriptor.pProtocol = ProtocolCreate();
+    resident.desc = &descriptor;
+
+    char_to_room(&resident, kOwnerRnum);
+    MSDPSetString(&descriptor, eMDSP_WEATHER, "sentinel weather");
+
+    descriptor_data *previous_descriptor_list = descriptor_list;
+    descriptor_list = &descriptor;
+
+    broadcast_weather_msdp_update(rots::world::weather_msdp_kind::weather);
+
+    descriptor_list = previous_descriptor_list;
+
+    EXPECT_STRNE(descriptor.pProtocol->pVariables[eMDSP_WEATHER]->pValueString,
+                 "sentinel weather")
+        << "a placed character stopped receiving weather -- the guard is too broad";
+
+    ProtocolDestroy(descriptor.pProtocol);
+    descriptor.pProtocol = nullptr;
+    char_from_room(&resident);
+}
+
+// R21 -- clean_expose_elements() (comm.cpp), the same defect in the
+// fast-update pulse loop. A mage with no location had his exposed-elements
+// target searched for in ROOM 0 (operator[]'s fallback for world[-1]), so a
+// spell cast anywhere else was cancelled the moment its caster hit the
+// character menu -- with a mudlog per pulse while he sat there.
+//
+// The target here is deliberately in NO room's occupant chain: that is the
+// shape that makes the unguarded walk reach its reset()/notify arm, so the
+// assertions below distinguish "skipped the mage" from "searched and found".
+TEST(CleanExposeElementsGuard, SkipsAMageWithNoLocationInsteadOfSearchingRoomZero) {
+    ScopedVnumWorld fixture_world;
+
+    // A raw char_data, NOT make_mortal_player(): the mage-spec block needs
+    // ch->profs to point at a caller-owned char_prof_data, and clear_char()
+    // would have CREATE1()d one that ScopedClearCharFields then frees -- a
+    // free() of this stack object.
+    char_data mage{};
+    char_prof_data mage_profs{};
+    mage.profs = &mage_profs;
+    mage.player.race = RACE_HUMAN;
+    mage.player.level = 20;
+    mage_profs.specialization = static_cast<int>(game_types::PS_Cold);
+    mage.extra_specialization_data.set(mage);
+    elemental_spec_data *spec_data = mage.extra_specialization_data.get_mage_spec();
+    ASSERT_NE(spec_data, nullptr);
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &mage;
+    descriptor.next = nullptr;
+    mage.desc = &descriptor;
+
+    // No location: the menu-sitter shape.
+    set_location(&mage, NOWHERE);
+
+    // A target in no room's chain at all -- the shape the unguarded walk
+    // would have failed to find in room 0, and then cancelled.
+    char_data absent_target{};
+    spec_data->exposed_target = &absent_target;
+
+    ScopedTrackedMage tracked{&mage};
+
+    testing::internal::CaptureStderr();
+    clean_expose_elements();
+    const std::string captured = testing::internal::GetCapturedStderr();
+
+    EXPECT_EQ(spec_data->exposed_target, &absent_target)
+        << "a mage with no location had his expose-elements target cancelled by a room-0 search";
+    EXPECT_STREQ(descriptor.small_outbuf, "");
+    EXPECT_EQ(captured.find("world[] called for negative room number"), std::string::npos)
+        << "stderr: " << captured;
+}
+
+// The CONTROL: a mage who IS in a room still gets the sweep, target absent
+// from his room, so the guard cannot have disabled the maintenance pass.
+TEST(CleanExposeElementsGuard, StillCancelsForAMageWhoIsInARoomAndCannotSeeTheTarget) {
+    ScopedVnumWorld fixture_world;
+
+    char_data mage{};
+    char_prof_data mage_profs{};
+    mage.profs = &mage_profs;
+    mage.player.race = RACE_HUMAN;
+    mage.player.level = 20;
+    mage_profs.specialization = static_cast<int>(game_types::PS_Cold);
+    mage.extra_specialization_data.set(mage);
+    elemental_spec_data *spec_data = mage.extra_specialization_data.get_mage_spec();
+    ASSERT_NE(spec_data, nullptr);
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &mage;
+    descriptor.next = nullptr;
+    mage.desc = &descriptor;
+
+    // Placed by hand rather than by char_to_room(): this fixture's char_data
+    // is raw (no clear_char()), and char_to_room() would charge its zone
+    // power and light accounting for a character the test never finishes
+    // wiring up. set_location() plus the chain is exactly what the walk reads.
+    set_location(&mage, kOwnerRnum);
+    mage.next_in_room = nullptr;
+    world[kOwnerRnum].people = &mage;
+
+    char_data absent_target{};
+    spec_data->exposed_target = &absent_target;
+
+    ScopedTrackedMage tracked{&mage};
+
+    clean_expose_elements();
+
+    EXPECT_EQ(spec_data->exposed_target, nullptr)
+        << "the sweep no longer runs for a placed mage -- the guard is too broad";
+    EXPECT_STREQ(descriptor.small_outbuf,
+                 "Your target is no longer vulnerable to your spells.\r\n");
+
+    world[kOwnerRnum].people = nullptr;
+    set_location(&mage, NOWHERE);
 }

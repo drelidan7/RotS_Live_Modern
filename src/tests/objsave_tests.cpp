@@ -13,6 +13,7 @@
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
 #include "rots/core/types.h"
+#include "test_placement.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
@@ -59,23 +60,24 @@ struct GenReceptionistContext {
     ScopedTestWorld test_world;
     char_data ch{};
     descriptor_data ch_descriptor{};
-    char_data *original_people = nullptr;
+
+    // The renter alone in room 0 -- the chain this fixture used to publish by
+    // hand (LS-3a T3, test_placement.h). Declared LAST so it unwinds before
+    // the character it manages and before the ScopedTestWorld whose room it
+    // points into; its constructor stamps the location through
+    // set_location(), so this fixture no longer writes in_room or
+    // next_in_room anywhere.
+    ScopedRoomOccupants occupants{&test_world.room(), 0, {&ch}};
 
     GenReceptionistContext() {
         reset_capturing_descriptor(ch_descriptor, &ch);
         ch.desc = &ch_descriptor;
-
-        original_people = test_world.room().people;
-        ch.in_room = 0;
-        ch.next_in_room = nullptr;
-        test_world.room().people = &ch;
     }
 
-    ~GenReceptionistContext() {
-        test_world.room().people = original_people;
-        ch.next_in_room = nullptr;
-        ch.in_room = NOWHERE;
-    }
+    // The chain-head restore, the unlink and the NOWHERE de-location this
+    // destructor used to perform are now `occupants`, which unwinds
+    // immediately after it.
+    ~GenReceptionistContext() = default;
 };
 
 // Swaps mob_index for a single fabricated entry pointing at the REAL
@@ -116,11 +118,9 @@ TEST(GenReceptionist, FindsTheRegisteredReceptionistMobAndProceedsPastTheWalk) {
     ScopedReceptionistMobIndex mob_index_scope;
 
     char_data recep{};
-    recep.in_room = 0;
     recep.specials2.act = MOB_ISNPC;
     recep.nr = 0; // indexes mob_index_scope's single fabricated entry
-    context.ch.next_in_room = &recep;
-    recep.next_in_room = nullptr;
+    ScopedRoomOccupants occupants{&context.test_world.room(), 0, {&context.ch, &recep}};
 
     const int result = gen_receptionist(&context.ch, CMD_RENT, mutable_arg(""), 0);
 
@@ -128,8 +128,6 @@ TEST(GenReceptionist, FindsTheRegisteredReceptionistMobAndProceedsPastTheWalk) {
         << "Expected the converted occupants(room_of(ch)) walk to find recep and reach the "
            "!AWAKE(recep) guard immediately past it.";
     EXPECT_EQ(result, TRUE);
-
-    recep.in_room = NOWHERE;
 }
 
 // (b) NOT FOUND: the room holds only ch -- no mob at all, let alone one

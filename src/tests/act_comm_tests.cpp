@@ -13,6 +13,7 @@
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
 #include "rots/core/types.h"
+#include "test_placement.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
@@ -54,19 +55,18 @@ struct DoSayContext {
     char_data listener{};
     descriptor_data speaker_descriptor{};
     descriptor_data listener_descriptor{};
-    char_data *original_people = nullptr;
+
+    // The occupant chain: speaker at the head, listener behind it -- exactly
+    // the head-first order this fixture used to publish by hand (LS-3a T3,
+    // test_placement.h). Declared LAST so it unwinds before the characters it
+    // manages and before the ScopedTestWorld whose room it points into. Its
+    // constructor stamps both locations through set_location(), so this
+    // fixture no longer writes in_room anywhere.
+    ScopedRoomOccupants occupants{&test_world.room(), 0, {&speaker, &listener}};
 
     DoSayContext() {
         reset_capturing_descriptor(speaker_descriptor, &speaker);
         reset_capturing_descriptor(listener_descriptor, &listener);
-
-        original_people = test_world.room().people;
-
-        speaker.in_room = 0;
-        listener.in_room = 0;
-        speaker.next_in_room = &listener;
-        listener.next_in_room = nullptr;
-        test_world.room().people = &speaker;
 
         // say_to_char()'s delivery gate (via act()'s TO_CHAR path) requires
         // AWAKE(to) (GET_POS(to) > POSITION_SLEEPING); value-initialized
@@ -78,13 +78,12 @@ struct DoSayContext {
         listener.desc = &listener_descriptor;
     }
 
-    ~DoSayContext() {
-        test_world.room().people = original_people;
-        speaker.next_in_room = nullptr;
-        listener.next_in_room = nullptr;
-        speaker.in_room = NOWHERE;
-        listener.in_room = NOWHERE;
-    }
+    // The chain-head restore, the two unlinks and the two NOWHERE
+    // de-locations this destructor used to perform are now `occupants`, which
+    // unwinds immediately after it. ScopedTestWorld leaves room 0's head null
+    // at construction, so restoring the SAVED head is byte-identical to the
+    // `people = original_people` this used to write.
+    ~DoSayContext() = default;
 };
 
 } // namespace

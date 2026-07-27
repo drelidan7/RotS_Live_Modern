@@ -10,6 +10,7 @@
 #include "../utils.h"
 #include "scoped_allocation_counter.h"
 #include "test_char_cleanup.h"
+#include "test_placement.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
@@ -137,20 +138,20 @@ struct RoomPairContext {
     // heap-allocated large_outbuf block (Phase 5 T6 leak sweep).
     ScopedDescriptorLargeOutbufReturn actor_large_outbuf_cleanup { actor_descriptor };
     ScopedDescriptorLargeOutbufReturn victim_large_outbuf_cleanup { victim_descriptor };
-    char_data* original_people = nullptr;
+
+    // The occupant chain: actor at the head, victim behind it -- the same
+    // head-first order this fixture published by hand before LS-3a T3
+    // (test_placement.h), which is the order act()'s TO_ROOM/TO_NOTVICT
+    // delivery visits recipients in. Declared LAST so it unwinds before the
+    // characters it manages and before the ScopedTestWorld whose room it
+    // points into; its constructor stamps both locations through
+    // set_location(), so this fixture no longer writes in_room anywhere.
+    ScopedRoomOccupants occupants { &test_world.room(), 0, { &actor, &victim } };
 
     RoomPairContext()
     {
         reset_capturing_descriptor(actor_descriptor, &actor);
         reset_capturing_descriptor(victim_descriptor, &victim);
-
-        original_people = test_world.room().people;
-
-        actor.in_room = 0;
-        victim.in_room = 0;
-        actor.next_in_room = &victim;
-        victim.next_in_room = nullptr;
-        test_world.room().people = &actor;
 
         actor.specials.position = POSITION_STANDING;
         victim.specials.position = POSITION_STANDING;
@@ -162,14 +163,11 @@ struct RoomPairContext {
         victim.desc = &victim_descriptor;
     }
 
-    ~RoomPairContext()
-    {
-        test_world.room().people = original_people;
-        actor.next_in_room = nullptr;
-        victim.next_in_room = nullptr;
-        actor.in_room = NOWHERE;
-        victim.in_room = NOWHERE;
-    }
+    // The chain-head restore, the two unlinks and the two NOWHERE
+    // de-locations this destructor used to perform are now `occupants`, which
+    // unwinds immediately after it (ScopedTestWorld leaves room 0's head null
+    // at construction, so restoring the SAVED head writes the same value).
+    ~RoomPairContext() = default;
 };
 
 // A single character with one exit configured (EXIT(ch, door)), for
@@ -184,17 +182,17 @@ struct DoorContext {
     char_data character {};
     descriptor_data descriptor {};
     room_direction_data exit {};
-    char_data* original_people = nullptr;
+
+    // The room's single occupant. Declared LAST so it unwinds before the
+    // character it manages and before the ScopedTestWorld whose room it points
+    // into; its constructor stamps the location through set_location(), so
+    // this fixture no longer writes in_room anywhere.
+    ScopedRoomOccupants occupants { &test_world.room(), 0, { &character } };
 
     DoorContext()
     {
         reset_capturing_descriptor(descriptor, &character);
 
-        original_people = test_world.room().people;
-
-        character.in_room = 0;
-        character.next_in_room = nullptr;
-        test_world.room().people = &character;
         test_world.room().dir_option[door_direction] = &exit;
 
         character.specials.position = POSITION_STANDING;
@@ -204,9 +202,10 @@ struct DoorContext {
 
     ~DoorContext()
     {
-        test_world.room().people = original_people;
+        // Only the exit slot is left to restore by hand: the chain-head
+        // restore and the NOWHERE de-location are `occupants`, which unwinds
+        // right after this body runs.
         test_world.room().dir_option[door_direction] = nullptr;
-        character.in_room = NOWHERE;
     }
 };
 

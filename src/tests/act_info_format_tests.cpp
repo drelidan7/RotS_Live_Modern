@@ -14,6 +14,7 @@
 #include "../utils.h"
 #include "ObjFlagDataBuilder.h"
 #include "test_char_cleanup.h"
+#include "test_placement.h"
 #include "test_platform_compat.h"
 #include "test_world.h"
 
@@ -24,6 +25,7 @@
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -277,13 +279,20 @@ struct RoomCharacterContext {
     ScopedTestWorld test_world;
     char_data character {};
     descriptor_data descriptor {};
-    char_data* original_people = nullptr;
     // Releases character.profs (clear_char() heap allocation) when this
     // context goes out of scope (Phase 5 T6 leak sweep); character.skills/
     // character.knowledge are owning std::vector<byte> members (RAII T3) that
     // release themselves automatically when `character` goes out of scope.
     ScopedClearCharFields character_cleanup { character };
     ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
+    // The room's single occupant (LS-3a T3, test_placement.h). std::optional
+    // rather than a plain member because clear_char() -- called in the
+    // constructor BODY -- placement-news the character and would wipe both the
+    // location set_location() stamps and the chain link; the helper is
+    // emplace()d below at exactly the point the raw publication used to sit.
+    // Declared LAST so it unwinds first, before the character it manages and
+    // before the ScopedTestWorld whose room it points into.
+    std::optional<ScopedRoomOccupants> occupants;
 
     RoomCharacterContext()
     {
@@ -297,21 +306,17 @@ struct RoomCharacterContext {
         // interpre_account_menu_tests.cpp's descriptor fixtures do.
         descriptor.descriptor = 7;
 
-        original_people = test_world.room().people;
-        character.in_room = 0;
-        character.next_in_room = nullptr;
-        test_world.room().people = &character;
+        occupants.emplace(
+            &test_world.room(), 0, std::initializer_list<char_data*> { &character });
 
         character.specials.position = POSITION_STANDING;
         character.player.race = RACE_HUMAN;
         character.desc = &descriptor;
     }
 
-    ~RoomCharacterContext()
-    {
-        test_world.room().people = original_people;
-        character.in_room = NOWHERE;
-    }
+    // The chain-head restore and the NOWHERE de-location this destructor used
+    // to perform are now `occupants`, which unwinds immediately after it.
+    ~RoomCharacterContext() = default;
 };
 
 // RoomCharacterContext plus one configured NORTH exit, mirroring
@@ -327,11 +332,14 @@ struct RoomWithExitContext {
     char_data character {};
     descriptor_data descriptor {};
     room_direction_data exit {};
-    char_data* original_people = nullptr;
     // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
     // leak sweep).
     ScopedClearCharFields character_cleanup { character };
     ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
+    // See RoomCharacterContext's `occupants` comment: std::optional because
+    // clear_char() runs in the constructor body, emplace()d below where the
+    // raw publication used to sit, declared last so it unwinds first.
+    std::optional<ScopedRoomOccupants> occupants;
 
     RoomWithExitContext()
     {
@@ -340,10 +348,8 @@ struct RoomWithExitContext {
         // See RoomCharacterContext's comment: do_look requires a non-zero fd.
         descriptor.descriptor = 7;
 
-        original_people = test_world.room().people;
-        character.in_room = 0;
-        character.next_in_room = nullptr;
-        test_world.room().people = &character;
+        occupants.emplace(
+            &test_world.room(), 0, std::initializer_list<char_data*> { &character });
         test_world.room().dir_option[door_direction] = &exit;
         exit.to_room = 0;
 
@@ -362,7 +368,9 @@ struct RoomWithExitContext {
 
     ~RoomWithExitContext()
     {
-        test_world.room().people = original_people;
+        // Only the exit slot and the DARK flag are left to restore by hand:
+        // the chain-head restore and the NOWHERE de-location are `occupants`,
+        // which unwinds right after this body runs.
         test_world.room().dir_option[door_direction] = nullptr;
         // Tests set DARK on the shared room 0 (do_exits's "Too dark to
         // tell" branch); clear it here as well as at the next
@@ -370,7 +378,6 @@ struct RoomWithExitContext {
         // zeroes .room_flags), so the flag never outlives this scope even for
         // code that reaches world[0] without constructing one.
         test_world.room().room_flags = 0;
-        character.in_room = NOWHERE;
     }
 };
 
@@ -394,11 +401,14 @@ struct TwoRoomLookContext {
     char_data character {};
     descriptor_data descriptor {};
     room_direction_data exit {};
-    char_data* original_people = nullptr;
     // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
     // leak sweep).
     ScopedClearCharFields character_cleanup { character };
     ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
+    // See RoomCharacterContext's `occupants` comment: std::optional because
+    // clear_char() runs in the constructor body, emplace()d below where the
+    // raw publication used to sit, declared last so it unwinds first.
+    std::optional<ScopedRoomOccupants> occupants;
 
     TwoRoomLookContext()
     {
@@ -407,19 +417,17 @@ struct TwoRoomLookContext {
         // See RoomCharacterContext's comment: do_look requires a non-zero fd.
         descriptor.descriptor = 7;
 
-        original_people = test_world.room().people;
-        character.in_room = 0;
-        character.next_in_room = nullptr;
-        test_world.room().people = &character;
+        occupants.emplace(
+            &test_world.room(), 0, std::initializer_list<char_data*> { &character });
         test_world.room().dir_option[door_direction] = &exit;
         exit.to_room = 1;
         exit.general_description = const_cast<char*>("");
 
-        std::free(world[1].name);
-        world[1].name = str_dup("A Northern Clearing");
-        world[1].room_flags = 0;
-        world[1].light = 0;
-        world[1].sector_type = 0; // SECT_INSIDE: IS_DARK() then keys off DARK only
+        std::free(room_by_id_total(1)->name);
+        room_by_id_total(1)->name = str_dup("A Northern Clearing");
+        room_by_id_total(1)->room_flags = 0;
+        room_by_id_total(1)->light = 0;
+        room_by_id_total(1)->sector_type = 0; // SECT_INSIDE: IS_DARK() keys off DARK only
 
         character.specials.position = POSITION_STANDING;
         character.player.race = RACE_HUMAN;
@@ -429,10 +437,11 @@ struct TwoRoomLookContext {
 
     ~TwoRoomLookContext()
     {
-        world[1].room_flags = 0;
-        test_world.room().people = original_people;
+        // Room 1's flags and the exit slot are all that is left to restore by
+        // hand: the chain-head restore and the NOWHERE de-location are
+        // `occupants`, which unwinds right after this body runs.
+        room_by_id_total(1)->room_flags = 0;
         test_world.room().dir_option[door_direction] = nullptr;
-        character.in_room = NOWHERE;
     }
 };
 
@@ -447,13 +456,18 @@ struct RoomWithBystanderContext {
     char_data bystander {};
     descriptor_data actor_descriptor {};
     descriptor_data bystander_descriptor {};
-    char_data* original_people = nullptr;
     // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
     // leak sweep).
     ScopedClearCharFields actor_cleanup { actor };
     ScopedClearCharFields bystander_cleanup { bystander };
     ScopedDescriptorLargeOutbufReturn actor_descriptor_large_outbuf_cleanup { actor_descriptor };
     ScopedDescriptorLargeOutbufReturn bystander_descriptor_large_outbuf_cleanup { bystander_descriptor };
+    // Actor at the head, bystander behind it -- the head-first order this
+    // fixture published by hand, and the order act()'s TO_ROOM delivery walks.
+    // See RoomCharacterContext's `occupants` comment for why this is a
+    // std::optional emplace()d in the constructor body rather than a plain
+    // member (clear_char() would otherwise undo it).
+    std::optional<ScopedRoomOccupants> occupants;
 
     RoomWithBystanderContext()
     {
@@ -464,12 +478,8 @@ struct RoomWithBystanderContext {
         actor_descriptor.descriptor = 7;
         bystander_descriptor.descriptor = 7;
 
-        original_people = test_world.room().people;
-        actor.in_room = 0;
-        bystander.in_room = 0;
-        actor.next_in_room = &bystander;
-        bystander.next_in_room = nullptr;
-        test_world.room().people = &actor;
+        occupants.emplace(&test_world.room(), 0,
+            std::initializer_list<char_data*> { &actor, &bystander });
 
         actor.specials.position = POSITION_STANDING;
         bystander.specials.position = POSITION_STANDING;
@@ -481,14 +491,9 @@ struct RoomWithBystanderContext {
         bystander.desc = &bystander_descriptor;
     }
 
-    ~RoomWithBystanderContext()
-    {
-        test_world.room().people = original_people;
-        actor.next_in_room = nullptr;
-        bystander.next_in_room = nullptr;
-        actor.in_room = NOWHERE;
-        bystander.in_room = NOWHERE;
-    }
+    // The chain-head restore, the two unlinks and the two NOWHERE
+    // de-locations this destructor used to perform are now `occupants`.
+    ~RoomWithBystanderContext() = default;
 };
 
 // Ensures game_timer::skill_timer's AND game_rules::big_brother's
@@ -741,23 +746,23 @@ struct MortalWhereNamedTargetContext {
         viewer.specials.position = POSITION_STANDING;
         target.specials.position = POSITION_STANDING;
 
-        saved_viewer_room_zone = world[viewer_room].zone;
-        saved_target_room_zone = world[target_room].zone;
-        saved_viewer_room_level = world[viewer_room].level;
-        saved_target_room_level = world[target_room].level;
-        world[viewer_room].zone = 3;
-        world[target_room].zone = 3;
-        world[viewer_room].level = 0;
-        world[target_room].level = 0;
+        saved_viewer_room_zone = room_by_id_total(viewer_room)->zone;
+        saved_target_room_zone = room_by_id_total(target_room)->zone;
+        saved_viewer_room_level = room_by_id_total(viewer_room)->level;
+        saved_target_room_level = room_by_id_total(target_room)->level;
+        room_by_id_total(viewer_room)->zone = 3;
+        room_by_id_total(target_room)->zone = 3;
+        room_by_id_total(viewer_room)->level = 0;
+        room_by_id_total(target_room)->level = 0;
 
         // Same free-then-str_dup room-1 stamp TwoRoomLookContext uses, and the
         // same reason: the rendered line must name a room that is unmistakably
         // NOT the viewer's own "The Testing Meadow".
-        std::free(world[target_room].name);
-        world[target_room].name = str_dup("A Northern Clearing");
-        world[target_room].room_flags = 0;
-        world[target_room].light = 0;
-        world[target_room].sector_type = 0; // SECT_INSIDE: IS_DARK keys off DARK only
+        std::free(room_by_id_total(target_room)->name);
+        room_by_id_total(target_room)->name = str_dup("A Northern Clearing");
+        room_by_id_total(target_room)->room_flags = 0;
+        room_by_id_total(target_room)->light = 0;
+        room_by_id_total(target_room)->sector_type = 0; // SECT_INSIDE: IS_DARK keys off DARK
 
         // The Placement API, not a bare field write (LS-3a ruling R-B2).
         set_location(&viewer, viewer_room);
@@ -778,12 +783,12 @@ struct MortalWhereNamedTargetContext {
         set_location(&viewer, NOWHERE);
         set_location(&target, NOWHERE);
 
-        world[viewer_room].room_flags = 0;
-        world[target_room].room_flags = 0;
-        world[viewer_room].zone = saved_viewer_room_zone;
-        world[target_room].zone = saved_target_room_zone;
-        world[viewer_room].level = saved_viewer_room_level;
-        world[target_room].level = saved_target_room_level;
+        room_by_id_total(viewer_room)->room_flags = 0;
+        room_by_id_total(target_room)->room_flags = 0;
+        room_by_id_total(viewer_room)->zone = saved_viewer_room_zone;
+        room_by_id_total(target_room)->zone = saved_target_room_zone;
+        room_by_id_total(viewer_room)->level = saved_viewer_room_level;
+        room_by_id_total(target_room)->level = saved_target_room_level;
     }
 };
 
@@ -1177,7 +1182,7 @@ TEST(ActInfoPerception, DoLookDirectionExamFormatsHeaderAndRoomNameUnderSunPenal
 TEST(ActInfoPerception, DoLookDirectionFormatsTooDarkMessageWhenTargetRoomIsDark)
 {
     TwoRoomLookContext context;
-    world[1].room_flags = DARK;
+    room_by_id_total(1)->room_flags = DARK;
 
     do_look(&context.character, const_cast<char*>("north"), nullptr, 0, 0);
 
@@ -1442,12 +1447,17 @@ struct DisplayClusterContext {
     char_data target {};
     descriptor_data viewer_descriptor {};
     descriptor_data target_descriptor {};
-    char_data* original_people = nullptr;
     // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
     // leak sweep).
     ScopedClearCharFields viewer_cleanup { viewer };
     ScopedClearCharFields target_cleanup { target };
     ScopedDescriptorLargeOutbufReturn viewer_descriptor_large_outbuf_cleanup { viewer_descriptor };
+    // Viewer at the head, target behind it -- the head-first order this
+    // fixture published by hand, and the order list_char_to_char()'s walk
+    // visits. See RoomCharacterContext's `occupants` comment for why this is a
+    // std::optional emplace()d in the constructor body (clear_char() runs
+    // there and would otherwise undo it).
+    std::optional<ScopedRoomOccupants> occupants;
 
     DisplayClusterContext()
     {
@@ -1458,12 +1468,8 @@ struct DisplayClusterContext {
         viewer_descriptor.descriptor = 7;
         target_descriptor.descriptor = 7;
 
-        original_people = test_world.room().people;
-        viewer.in_room = 0;
-        target.in_room = 0;
-        viewer.next_in_room = &target;
-        target.next_in_room = nullptr;
-        test_world.room().people = &viewer;
+        occupants.emplace(&test_world.room(), 0,
+            std::initializer_list<char_data*> { &viewer, &target });
 
         viewer.specials.position = POSITION_STANDING;
         viewer.player.race = RACE_HUMAN;
@@ -1482,12 +1488,9 @@ struct DisplayClusterContext {
         target.desc = &target_descriptor;
     }
 
-    ~DisplayClusterContext()
-    {
-        test_world.room().people = original_people;
-        viewer.in_room = NOWHERE;
-        target.in_room = NOWHERE;
-    }
+    // The chain-head restore and the two NOWHERE de-locations this destructor
+    // used to perform are now `occupants`.
+    ~DisplayClusterContext() = default;
 };
 
 // Saves/restores weather_info.snow[sector] around a show_room_weather test
@@ -1525,11 +1528,14 @@ struct ExitMarkTwoRoomContext {
     char_data character {};
     descriptor_data descriptor {};
     room_direction_data exit {};
-    char_data* original_people = nullptr;
     // See RoomCharacterContext's ScopedClearCharFields comment (Phase 5 T6
     // leak sweep).
     ScopedClearCharFields character_cleanup { character };
     ScopedDescriptorLargeOutbufReturn descriptor_large_outbuf_cleanup { descriptor };
+    // See RoomCharacterContext's `occupants` comment: std::optional because
+    // clear_char() runs in the constructor body, emplace()d below where the
+    // raw publication used to sit, declared last so it unwinds first.
+    std::optional<ScopedRoomOccupants> occupants;
 
     ExitMarkTwoRoomContext()
     {
@@ -1538,10 +1544,8 @@ struct ExitMarkTwoRoomContext {
         // See RoomCharacterContext's comment: do_look requires a non-zero fd.
         descriptor.descriptor = 7;
 
-        original_people = test_world.room().people;
-        character.in_room = 0;
-        character.next_in_room = nullptr;
-        test_world.room().people = &character;
+        occupants.emplace(
+            &test_world.room(), 0, std::initializer_list<char_data*> { &character });
         test_world.room().dir_option[door_direction] = &exit;
         test_world.room().room_flags = INDOORS;
         exit.to_room = 1;
@@ -1550,9 +1554,9 @@ struct ExitMarkTwoRoomContext {
         // zeroed bleed_track.
         std::memset(&test_world.room().bleed_track, 0, sizeof(test_world.room().bleed_track));
 
-        world[1].room_flags = 0;
-        world[1].light = 0;
-        world[1].sector_type = 0;
+        room_by_id_total(1)->room_flags = 0;
+        room_by_id_total(1)->light = 0;
+        room_by_id_total(1)->sector_type = 0;
 
         character.specials.position = POSITION_STANDING;
         character.player.race = RACE_HUMAN;
@@ -1562,11 +1566,12 @@ struct ExitMarkTwoRoomContext {
 
     ~ExitMarkTwoRoomContext()
     {
-        world[1].room_flags = 0;
-        test_world.room().people = original_people;
+        // Room flags and the exit slot are all that is left to restore by
+        // hand: the chain-head restore and the NOWHERE de-location are
+        // `occupants`, which unwinds right after this body runs.
+        room_by_id_total(1)->room_flags = 0;
         test_world.room().dir_option[door_direction] = nullptr;
         test_world.room().room_flags = 0;
-        character.in_room = NOWHERE;
     }
 };
 
@@ -1867,7 +1872,8 @@ TEST(ActInfoDisplayCluster, ListCharToCharSkipsViewerAndShowsOtherRoomOccupants)
     context.target.specials.position = POSITION_STANDING;
     context.target.specials.default_pos = POSITION_STANDING;
 
-    list_char_to_char(context.test_world.room().people, &context.viewer, 0);
+    list_char_to_char(
+        rots::entity::first_occupant(&context.test_world.room()), &context.viewer, 0);
 
     EXPECT_STREQ(context.viewer_descriptor.output, "A quiet onlooker stands here.\r\n\n\r");
 }
@@ -1924,7 +1930,7 @@ TEST(ActInfoDisplayCluster, ShowMountToCharFormatsSingleSelfRiderLine)
     // as a room mismatch against the viewer's room 0 and returns false
     // before HOLYLIGHT ever gets consulted, so this must be re-homed to
     // room 0 same as DisplayClusterContext does for viewer/target.
-    mount.in_room = 0;
+    set_location(&mount, 0);
     SET_BIT(mount.specials2.act, MOB_ISNPC);
     mount.player.short_descr = const_cast<char*>("a horse");
 
@@ -1958,7 +1964,7 @@ TEST(ActInfoDisplayCluster, ShowMountToCharUsesBoundedSingleRiderText)
     char_data mount {};
     clear_char(&mount, MOB_VOID);
     ScopedClearCharFields mount_cleanup { mount };
-    mount.in_room = 0;
+    set_location(&mount, 0);
     SET_BIT(mount.specials2.act, MOB_ISNPC);
     mount.player.short_descr = const_cast<char*>("a horse");
     mount.mount_data.rider = &context.target;
@@ -2008,8 +2014,8 @@ TEST(ActInfoDisplayCluster, ShowMountToCharDelegatesToShowCharToCharWhenNoVisibl
     char_data mount {};
     clear_char(&mount, MOB_VOID);
     ScopedClearCharFields mount_cleanup { mount };
-    // See the self-rider test above: clear_char() leaves in_room at NOWHERE.
-    mount.in_room = 0;
+    // See the self-rider test above: clear_char() leaves the location NOWHERE.
+    set_location(&mount, 0);
     SET_BIT(mount.specials2.act, MOB_ISNPC);
     mount.player.short_descr = const_cast<char*>("a riderless pony");
     mount.specials.position = POSITION_STANDING;
@@ -2039,7 +2045,7 @@ TEST(ActInfoDisplayCluster, ShowMountToCharFightingRiderNamesOpponentInSameRoom)
     char_data mount {};
     clear_char(&mount, MOB_VOID);
     ScopedClearCharFields mount_cleanup { mount };
-    mount.in_room = 0;
+    set_location(&mount, 0);
     SET_BIT(mount.specials2.act, MOB_ISNPC);
     mount.player.short_descr = const_cast<char*>("a horse");
     mount.mount_data.rider = &context.target;
@@ -2051,7 +2057,7 @@ TEST(ActInfoDisplayCluster, ShowMountToCharFightingRiderNamesOpponentInSameRoom)
     char_data opponent {};
     clear_char(&opponent, MOB_VOID);
     ScopedClearCharFields opponent_cleanup { opponent };
-    opponent.in_room = 0; // same room as the fighting rider -> PERS() branch
+    set_location(&opponent, 0); // same room as the fighting rider -> PERS() branch
     opponent.player.name = const_cast<char*>("Villain");
     context.target.specials.fighting = &opponent;
 
@@ -2074,7 +2080,7 @@ TEST(ActInfoDisplayCluster, ShowMountToCharFightingRiderShowsBugMessageWhenOppon
     char_data mount {};
     clear_char(&mount, MOB_VOID);
     ScopedClearCharFields mount_cleanup { mount };
-    mount.in_room = 0;
+    set_location(&mount, 0);
     SET_BIT(mount.specials2.act, MOB_ISNPC);
     mount.player.short_descr = const_cast<char*>("a horse");
     mount.mount_data.rider = &context.target;
@@ -2086,7 +2092,7 @@ TEST(ActInfoDisplayCluster, ShowMountToCharFightingRiderShowsBugMessageWhenOppon
     char_data opponent {};
     clear_char(&opponent, MOB_VOID);
     ScopedClearCharFields opponent_cleanup { opponent };
-    opponent.in_room = 999; // a different room -> the *BUG* fallback branch
+    set_location(&opponent, 999); // a different room -> the *BUG* fallback branch
     opponent.player.name = const_cast<char*>("Villain");
     context.target.specials.fighting = &opponent;
 
@@ -2249,7 +2255,7 @@ TEST(ActInfoDisplayCluster, DoLookCaseEightExitMarkShowsShadowyMarkerForOrc)
 {
     ExitMarkTwoRoomContext context;
     context.character.player.race = RACE_ORC;
-    world[1].room_flags = SHADOWY;
+    room_by_id_total(1)->room_flags = SHADOWY;
     ScopedSunlight sunlight(SUN_LIGHT);
 
     do_look(&context.character, const_cast<char*>(""), nullptr, 0, 0);
@@ -2997,12 +3003,12 @@ TEST(ActInfoWorldSocial, DoWhoZoneFilterIncludesOnlySameZoneOccupant)
 {
     WhoDescriptorListContext context;
     ScopedTestWorld test_world { 2 };
-    const int saved_zone0 = world[0].zone;
-    const int saved_zone1 = world[1].zone;
-    world[0].zone = 7;
-    world[1].zone = 12;
-    context.viewer.in_room = 0;
-    context.other.in_room = 0;
+    const int saved_zone0 = room_by_id_total(0)->zone;
+    const int saved_zone1 = room_by_id_total(1)->zone;
+    room_by_id_total(0)->zone = 7;
+    room_by_id_total(1)->zone = 12;
+    set_location(&context.viewer, 0);
+    set_location(&context.other, 0);
 
     do_who(&context.viewer, const_cast<char*>("-z"), nullptr, 0, 0);
     {
@@ -3011,23 +3017,23 @@ TEST(ActInfoWorldSocial, DoWhoZoneFilterIncludesOnlySameZoneOccupant)
     }
 
     reset_capturing_descriptor(context.viewer_descriptor, &context.viewer);
-    context.other.in_room = 1;
+    set_location(&context.other, 1);
     do_who(&context.viewer, const_cast<char*>("-z"), nullptr, 0, 0);
     const std::string different_zone_output(context.viewer_descriptor.output);
     EXPECT_EQ(different_zone_output.find("Other"), std::string::npos) << different_zone_output;
 
-    context.viewer.in_room = NOWHERE;
-    context.other.in_room = NOWHERE;
-    world[0].zone = saved_zone0;
-    world[1].zone = saved_zone1;
+    set_location(&context.viewer, NOWHERE);
+    set_location(&context.other, NOWHERE);
+    room_by_id_total(0)->zone = saved_zone0;
+    room_by_id_total(1)->zone = saved_zone1;
 }
 
 TEST(ActInfoWorldSocial, DoWhoRoomFilterIncludesOnlySameRoomOccupant)
 {
     WhoDescriptorListContext context;
     ScopedTestWorld test_world { 2 };
-    context.viewer.in_room = 0;
-    context.other.in_room = 0;
+    set_location(&context.viewer, 0);
+    set_location(&context.other, 0);
 
     do_who(&context.viewer, const_cast<char*>("-r"), nullptr, 0, 0);
     {
@@ -3036,13 +3042,13 @@ TEST(ActInfoWorldSocial, DoWhoRoomFilterIncludesOnlySameRoomOccupant)
     }
 
     reset_capturing_descriptor(context.viewer_descriptor, &context.viewer);
-    context.other.in_room = 1;
+    set_location(&context.other, 1);
     do_who(&context.viewer, const_cast<char*>("-r"), nullptr, 0, 0);
     const std::string different_room_output(context.viewer_descriptor.output);
     EXPECT_EQ(different_room_output.find("Other"), std::string::npos) << different_room_output;
 
-    context.viewer.in_room = NOWHERE;
-    context.other.in_room = NOWHERE;
+    set_location(&context.viewer, NOWHERE);
+    set_location(&context.other, NOWHERE);
 }
 
 // LS-2 Wave Task T3b coverage rider (ls2-census.md G3, partial -- see the
@@ -3058,19 +3064,19 @@ TEST(ActInfoWorldSocial, PerformMortalWhereListsSameZoneOccupantViaDescriptorLis
 {
     WhoDescriptorListContext context;
     ScopedTestWorld test_world { 2 };
-    const int saved_zone0 = world[0].zone;
-    world[0].zone = 3;
-    context.viewer.in_room = 0;
-    context.other.in_room = 0;
+    const int saved_zone0 = room_by_id_total(0)->zone;
+    room_by_id_total(0)->zone = 3;
+    set_location(&context.viewer, 0);
+    set_location(&context.other, 0);
 
     perform_mortal_where(&context.viewer, const_cast<char*>(""));
 
     const std::string output(context.viewer_descriptor.output);
     EXPECT_NE(output.find("Other"), std::string::npos) << output;
 
-    context.viewer.in_room = NOWHERE;
-    context.other.in_room = NOWHERE;
-    world[0].zone = saved_zone0;
+    set_location(&context.viewer, NOWHERE);
+    set_location(&context.other, NOWHERE);
+    room_by_id_total(0)->zone = saved_zone0;
 }
 
 // LS-3a Wave T2 tranche 2d coverage riders (ruling R-T2-1) --

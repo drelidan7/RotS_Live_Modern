@@ -418,3 +418,64 @@ bool detach_char_from_room(char_data* ch)
     ch->next_in_room = 0;
     return true;
 }
+
+/* move every occupant of one room's chain onto another room's, in bulk */
+//
+// relocate_all_occupants() (LS-3a T2c; ruling R-A6, .superpowers/sdd/
+// ls3a-global-constraints.md; census A sections 5.2/6.4) -- the occupant half
+// of the bulk splice ferry_captain() (script/spec_pro.cpp) used to hand-roll
+// inline, the only manual char-chain splice that was left in production,
+// lifted here statement-for-statement. handler.h carries the full contract;
+// these are the notes that matter to the BODY:
+//
+//  * NO RESOLVER HOISTING (LS-3a's standing constraint): every one of the
+//    ORIGINAL's `world[old_room]`/`world[new_room]` accesses becomes exactly
+//    one room_by_id_total() call, in the same order. room_data::operator[]
+//    mudlogs for an out-of-range id, so collapsing N accesses into one hoisted
+//    `room_data* r` -- the shape char_to_room()/detach_char_from_room() above
+//    use, where the id is read once anyway -- would silently drop N-1 of those
+//    side effects here. Assignment's RHS is sequenced before its LHS (C++17),
+//    in the original exactly as here, so the call ORDER matches too.
+//  * The first walk BREAKS ON THE TAIL -- a peek-ahead that exits with tmpch
+//    pointing AT the last node rather than past it. That is precisely why
+//    census A section 6.4 ruled this block not convertible to occupants();
+//    reproduced verbatim.
+//  * The third walk re-stamps each node's location mid-walk, reading
+//    next_in_room before the stamp -- also reproduced verbatim.
+//  * ch->in_room is written directly rather than through set_location(): this
+//    file IS the representation owner (docs/superpowers/
+//    location-read-allowlist.md), and char_to_room() above writes the same
+//    field the same way.
+//  * Splitting the ORIGINAL's INTERLEAVED char/object statements into this
+//    function and containment.cpp's relocate_all_contents() is behavior-
+//    identical: the two halves touch disjoint fields (people/next_in_room/
+//    char_data::in_room versus contents/next_content/obj_data::in_room) with
+//    no aliasing between them, so neither half can observe the other's
+//    ordering.
+void relocate_all_occupants(int from_room, int to_room)
+{
+    struct char_data* tmpch;
+
+    // The ONE addition to the lifted body, and unreachable from the sole
+    // production caller -- ferry_captain() keeps its own
+    // `if (new_room != old_room)` guard. Without it the walk below would link
+    // the chain's own tail onto its own head (a cycle) and then null the room.
+    if (from_room == to_room)
+        return;
+
+    for (tmpch = room_by_id_total(from_room)->people; tmpch; tmpch = tmpch->next_in_room) { // LS1-ALLOW: representation-impl
+        if (!tmpch->next_in_room) // LS1-ALLOW: representation-impl
+            break;
+    }
+    if (tmpch)
+        tmpch->next_in_room = room_by_id_total(to_room)->people; // LS1-ALLOW: representation-impl
+    else
+        room_by_id_total(from_room)->people = room_by_id_total(to_room)->people; // LS1-ALLOW: representation-impl
+
+    room_by_id_total(to_room)->people = room_by_id_total(from_room)->people; // LS1-ALLOW: representation-impl
+    room_by_id_total(from_room)->people = 0; // LS1-ALLOW: representation-impl
+
+    for (tmpch = room_by_id_total(to_room)->people; tmpch; tmpch = tmpch->next_in_room) { // LS1-ALLOW: representation-impl
+        tmpch->in_room = to_room; // LS1-ALLOW: representation-impl
+    }
+}

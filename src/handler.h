@@ -418,6 +418,38 @@ void char_from_room(struct char_data* ch);
 // same convention as register_extract_char_hook() below.
 void register_char_from_room_hook();
 void char_to_room(struct char_data* ch, int room);
+
+// relocate_all_occupants() / relocate_all_contents() (LS-3a T2c; ruling R-A6,
+// .superpowers/sdd/ls3a-global-constraints.md; census A section 5.2). The bulk
+// room-to-room splice that ferry_captain() (script/spec_pro.cpp) used to
+// hand-roll -- the only manual char-chain splice left in production -- lifted
+// verbatim into the representation owners: the occupant half into
+// entity/placement.cpp beside char_to_room()/detach_char_from_room(), the
+// object half into entity/containment.cpp beside obj_to_room()/obj_from_room().
+// Encapsulating it is what lets LS-3b re-point ONE function instead of
+// rewriting a hand-rolled loop over the raw chain.
+//
+// CONTRACT (characterized first against the real ferry_captain() --
+// SpecProFerryCaptain.*, src/tests/spec_pro_tests.cpp -- then re-pinned per
+// half by RelocateAllOccupants.*/RelocateAllContents.* in
+// src/tests/placement_tests.cpp):
+//   * every member of from_room's chain moves to to_room, keeping its relative
+//     order, and to_room's PRE-EXISTING members are appended AFTER it;
+//   * from_room's chain head is nulled;
+//   * every member of the merged chain is re-stamped to to_room, including
+//     to_room's own (a no-op for them);
+//   * an empty from_room leaves to_room's chain untouched;
+//   * DELIBERATELY NO light and NO zone white/dark-power bookkeeping -- these
+//     are NOT char_to_room()/detach_char_from_room(), and the ferry never did
+//     that accounting. A caller that wants it must use the real primitives.
+//   * from_room == to_room is an early return (the ONE addition to the lifted
+//     body, unreachable from ferry_captain(), which keeps its own
+//     `if (new_room != old_room)` guard: without it the splice would link a
+//     chain's tail onto its own head and then null the room).
+// Ids, not pointers, are the parameters -- the Stage-1 API's public currency,
+// and what the re-stamp writes.
+void relocate_all_occupants(int from_room, int to_room);
+void relocate_all_contents(int from_room, int to_room);
 void extract_char(struct char_data* ch, int new_room = -1);
 
 // Registers handler.cpp's real extract_char(ch, new_room) body as

@@ -8,6 +8,7 @@
 #include "rots/core/descriptor.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
+#include "test_placement.h"
 #include "test_world.h"
 
 #include <gtest/gtest.h>
@@ -67,21 +68,31 @@ struct CheckSimpleMoveTestContext {
     char_data ch{};
     char_data guard{};
 
+    // Room 0 is published EMPTY -- the mover is LOCATED there (set_location in
+    // the constructor body) but was never linked into its occupant chain, and
+    // still is not -- while room 1 holds the single race guard the converted
+    // destination walk has to find. Both declared LAST so they unwind before
+    // the characters they manage and before the ScopedTestWorld whose rooms
+    // they point into. The room-1 helper stamps the guard's location through
+    // set_location(); together they replace the ctor loop's per-room
+    // `people = nullptr` and both of the destructor's own null-outs.
+    ScopedRoomOccupants room0_occupants{room_by_id_total(0), 0, {}};
+    ScopedRoomOccupants room1_occupants{room_by_id_total(1), 1, {&guard}};
+
     CheckSimpleMoveTestContext() {
         top_of_world = 1;
 
         for (int room = 0; room < 2; ++room) {
-            world[room].room_flags = 0;
-            world[room].sector_type = 0;
-            world[room].people = nullptr;
+            room_by_id_total(room)->room_flags = 0;
+            room_by_id_total(room)->sector_type = 0;
             for (int dir = 0; dir < NUM_OF_DIRS; ++dir) {
-                world[room].dir_option[dir] = nullptr;
+                room_by_id_total(room)->dir_option[dir] = nullptr;
             }
         }
 
         exit_to_room1.exit_info = 0;
         exit_to_room1.to_room = 1;
-        world[0].dir_option[NORTH] = &exit_to_room1;
+        room_by_id_total(0)->dir_option[NORTH] = &exit_to_room1;
 
         // A plain, non-mounted, non-shadow PC mover -- the race guard's
         // `!IS_NPC(ch)` half of act_move.cpp:276's condition requires a
@@ -106,16 +117,13 @@ struct CheckSimpleMoveTestContext {
         // "too exhausted" early return, case 3) never fires and the walk is
         // actually reached.
         ch.tmpabilities.move = 10000;
-        ch.in_room = 0;
+        set_location(&ch, 0);
 
         // The race-guard occupant of the destination room, of a different
         // race than ch by default (RACE_DWARF vs. RACE_HUMAN).
         guard.specials2.act = MOB_ISNPC | MOB_RACE_GUARD;
         guard.specials.position = POSITION_STANDING;
         guard.player.race = RACE_DWARF;
-        guard.in_room = 1;
-        guard.next_in_room = nullptr;
-        world[1].people = &guard;
     }
 
     ~CheckSimpleMoveTestContext() {
@@ -124,9 +132,7 @@ struct CheckSimpleMoveTestContext {
         // member about to be destroyed); null it back out here so no later
         // test sharing this process's world[] can walk into a dangling
         // pointer (LS-2 whole-branch review B1, site 1).
-        world[0].dir_option[NORTH] = nullptr;
-        world[0].people = nullptr;
-        world[1].people = nullptr;
+        room_by_id_total(0)->dir_option[NORTH] = nullptr;
     }
 };
 
@@ -189,7 +195,7 @@ TEST(SetBloodTrailTest, WritesConvertedRoomsBleedTrackSlotForNpcCaller) {
     ch.specials2.act = MOB_ISNPC;
     ch.player.race = RACE_HUMAN;
     ch.nr = 4242;
-    ch.in_room = 0;
+    set_location(&ch, 0);
 
     const int previous_hours = time_info.hours;
     time_info.hours = 5;
@@ -202,7 +208,7 @@ TEST(SetBloodTrailTest, WritesConvertedRoomsBleedTrackSlotForNpcCaller) {
 
     bool found = false;
     for (int slot = 0; slot < NUM_OF_BLOOD_TRAILS; ++slot) {
-        const room_bleed_data &entry = world[0].bleed_track[slot];
+        const room_bleed_data &entry = room_by_id_total(0)->bleed_track[slot];
         if (entry.data == expected_data) {
             found = true;
             EXPECT_EQ(entry.char_number, ch.nr)
@@ -337,17 +343,17 @@ TEST(DoPullTest, LeverInPullersOwnRoomTogglesDoorWithoutRumblingMessage) {
     ScopedTestWorld test_world{1};
     // Site 2 (LS-2 whole-branch review B1): captured before this test points
     // the slot/vnum at itself, so both can be restored at the tail below.
-    room_direction_data *const original_dir_option_north = world[0].dir_option[NORTH];
-    const int original_room_number = world[0].number;
+    room_direction_data *const original_dir_option_north = room_by_id_total(0)->dir_option[NORTH];
+    const int original_room_number = room_by_id_total(0)->number;
     room_direction_data lever_exit{};
     lever_exit.exit_info = 0; // not closed -- this pull SETs EX_CLOSED
     lever_exit.keyword = const_cast<char *>("lever");
     lever_exit.to_room = -1; // NOWHERE -- the reciprocal-side is a no-op here
-    world[0].dir_option[NORTH] = &lever_exit;
-    world[0].number = 9001;
+    room_by_id_total(0)->dir_option[NORTH] = &lever_exit;
+    room_by_id_total(0)->number = 9001;
 
     obj_data lever{};
-    lever.in_room = 0;
+    lever.in_room = 0; // LS1-ALLOW: obj-location
     lever.obj_flags.type_flag = ITEM_LEVER;
     lever.obj_flags.value[0] = 9001; // real_room()'s target vnum
     lever.obj_flags.value[1] = NORTH;
@@ -355,9 +361,12 @@ TEST(DoPullTest, LeverInPullersOwnRoomTogglesDoorWithoutRumblingMessage) {
     descriptor_data descriptor{};
     init_output_descriptor(descriptor);
     char_data ch{};
-    ch.in_room = 0;
     ch.desc = &descriptor;
-    world[0].people = &ch;
+    // Publishes the puller as room 0's only occupant and stamps its location
+    // through set_location(); the `world[0].people = nullptr` that used to sit
+    // after the do_pull() call below is now this guard's own unwind, which
+    // also unlinks the stack char_data (LS-3a T3, test_placement.h).
+    ScopedRoomOccupants occupants{room_by_id_total(0), 0, {&ch}};
 
     waiting_type wtl{};
     wtl.targ1.type = TARGET_OBJ;
@@ -365,13 +374,12 @@ TEST(DoPullTest, LeverInPullersOwnRoomTogglesDoorWithoutRumblingMessage) {
 
     do_pull(&ch, mutable_arg(""), &wtl, 0, 0);
 
-    world[0].people = nullptr;
     // Site 2 (LS-2 whole-branch review B1): lever_exit is a function-local
     // about to go out of scope -- restore the slot it dangled from, plus
     // the vnum this test stamped, so neither leaks into a later test
     // sharing this process's world[].
-    world[0].dir_option[NORTH] = original_dir_option_north;
-    world[0].number = original_room_number;
+    room_by_id_total(0)->dir_option[NORTH] = original_dir_option_north;
+    room_by_id_total(0)->number = original_room_number;
 
     const std::string output(descriptor.output);
     EXPECT_NE(output.find("closes slowly"), std::string::npos)
@@ -391,9 +399,9 @@ TEST(DoPullTest, LeverInADifferentRoomAnnouncesRumblingAndTogglesBothSidesRecipr
     // below. Since LS-3a T1 Stage A the next ScopedTestWorld construction also
     // clears dir_option[]/.number for every room, so this restore is what
     // keeps the dangling window closed in between rather than the only guard.
-    room_direction_data *const original_room1_dir_north = world[1].dir_option[NORTH];
-    const int original_room1_number = world[1].number;
-    room_direction_data *const original_room0_dir_south = world[0].dir_option[SOUTH];
+    room_direction_data *const original_room1_dir_north = room_by_id_total(1)->dir_option[NORTH];
+    const int original_room1_number = room_by_id_total(1)->number;
+    room_direction_data *const original_room0_dir_south = room_by_id_total(0)->dir_option[SOUTH];
 
     // The lever lives in room 1, controlling room 1's NORTH exit back to
     // room 0 -- exercises BOTH resolver traps: :1838 resolves room 1 (the
@@ -403,8 +411,8 @@ TEST(DoPullTest, LeverInADifferentRoomAnnouncesRumblingAndTogglesBothSidesRecipr
     lever_exit.exit_info = EX_CLOSED; // starts closed -- this pull OPENS it
     lever_exit.keyword = const_cast<char *>("lever");
     lever_exit.to_room = 0;
-    world[1].dir_option[NORTH] = &lever_exit;
-    world[1].number = 9002;
+    room_by_id_total(1)->dir_option[NORTH] = &lever_exit;
+    room_by_id_total(1)->number = 9002;
 
     // room 0's reciprocal SOUTH exit (rev_dir[NORTH] == SOUTH) back to
     // room 1 -- lets the reciprocal-side toggle run to completion instead
@@ -414,10 +422,10 @@ TEST(DoPullTest, LeverInADifferentRoomAnnouncesRumblingAndTogglesBothSidesRecipr
     reciprocal_exit.exit_info = 0; // not closed -- reciprocal pull CLOSES it
     reciprocal_exit.keyword = const_cast<char *>("door");
     reciprocal_exit.to_room = 1;
-    world[0].dir_option[SOUTH] = &reciprocal_exit;
+    room_by_id_total(0)->dir_option[SOUTH] = &reciprocal_exit;
 
     obj_data lever{};
-    lever.in_room = 0; // co-located with the puller (act_move.cpp:1814's own check)
+    lever.in_room = 0; // LS1-ALLOW: obj-location (co-located with the puller, act_move.cpp:1814)
     lever.obj_flags.type_flag = ITEM_LEVER;
     lever.obj_flags.value[0] = 9002;
     lever.obj_flags.value[1] = NORTH;
@@ -425,16 +433,19 @@ TEST(DoPullTest, LeverInADifferentRoomAnnouncesRumblingAndTogglesBothSidesRecipr
     descriptor_data puller_descriptor{};
     init_output_descriptor(puller_descriptor);
     char_data ch{};
-    ch.in_room = 0;
     ch.desc = &puller_descriptor;
-    world[0].people = &ch;
 
     descriptor_data bystander_descriptor{};
     init_output_descriptor(bystander_descriptor);
     char_data bystander{};
-    bystander.in_room = 1;
     bystander.desc = &bystander_descriptor;
-    world[1].people = &bystander;
+
+    // One guard per room: the puller alone in room 0, the bystander alone in
+    // room 1. Both stamp their character's location through set_location() and
+    // both take it back out on unwind, replacing the two
+    // `world[N].people = nullptr` lines that used to follow do_pull().
+    ScopedRoomOccupants room0_occupants{room_by_id_total(0), 0, {&ch}};
+    ScopedRoomOccupants room1_occupants{room_by_id_total(1), 1, {&bystander}};
 
     waiting_type wtl{};
     wtl.targ1.type = TARGET_OBJ;
@@ -442,15 +453,13 @@ TEST(DoPullTest, LeverInADifferentRoomAnnouncesRumblingAndTogglesBothSidesRecipr
 
     do_pull(&ch, mutable_arg(""), &wtl, 0, 0);
 
-    world[0].people = nullptr;
-    world[1].people = nullptr;
     // Site 3 (LS-2 whole-branch review B1): lever_exit/reciprocal_exit are
     // function-locals about to go out of scope -- restore both dir_option
     // slots plus the vnum this test stamped, so neither leaks into a later
     // test sharing this process's world[].
-    world[1].dir_option[NORTH] = original_room1_dir_north;
-    world[1].number = original_room1_number;
-    world[0].dir_option[SOUTH] = original_room0_dir_south;
+    room_by_id_total(1)->dir_option[NORTH] = original_room1_dir_north;
+    room_by_id_total(1)->number = original_room1_number;
+    room_by_id_total(0)->dir_option[SOUTH] = original_room0_dir_south;
 
     const std::string bystander_output(bystander_descriptor.output);
     EXPECT_NE(bystander_output.find("opens slowly"), std::string::npos)
@@ -483,31 +492,34 @@ TEST(DoOpenTest, AnnouncesToTheOtherSideOfAReciprocalDoor) {
     ScopedTestWorld test_world{2};
     // Site 4 (LS-2 whole-branch review B1): captured before this test points
     // both slots at itself, so both can be restored at the tail below.
-    room_direction_data *const original_room0_dir_north = world[0].dir_option[NORTH];
-    room_direction_data *const original_room1_dir_south = world[1].dir_option[SOUTH];
+    room_direction_data *const original_room0_dir_north = room_by_id_total(0)->dir_option[NORTH];
+    room_direction_data *const original_room1_dir_south = room_by_id_total(1)->dir_option[SOUTH];
 
     room_direction_data near_exit{};
     near_exit.exit_info = EX_ISDOOR | EX_CLOSED;
     near_exit.keyword = const_cast<char *>("door");
     near_exit.to_room = 1;
-    world[0].dir_option[NORTH] = &near_exit;
+    room_by_id_total(0)->dir_option[NORTH] = &near_exit;
 
     room_direction_data far_exit{};
     far_exit.exit_info = EX_ISDOOR | EX_CLOSED;
     far_exit.keyword = const_cast<char *>("door");
     far_exit.to_room = 0; // must equal location_of(ch) for the reciprocal branch to fire
-    world[1].dir_option[SOUTH] = &far_exit;
+    room_by_id_total(1)->dir_option[SOUTH] = &far_exit;
 
     descriptor_data bystander_descriptor{};
     init_output_descriptor(bystander_descriptor);
     char_data bystander{};
-    bystander.in_room = 1;
     bystander.desc = &bystander_descriptor;
-    world[1].people = &bystander;
 
     char_data ch{};
-    ch.in_room = 0;
+    set_location(&ch, 0); // the opener is located in room 0, never chained into it
     ch.specials2.act = 0; // not IS_SHADOW
+
+    // The reciprocal-open message's only recipient, alone in room 1; the
+    // `world[1].people = nullptr` that used to follow do_open() is this
+    // guard's own unwind.
+    ScopedRoomOccupants room1_occupants{room_by_id_total(1), 1, {&bystander}};
 
     waiting_type wtl{};
     wtl.targ1.type = TARGET_DIR;
@@ -515,13 +527,12 @@ TEST(DoOpenTest, AnnouncesToTheOtherSideOfAReciprocalDoor) {
 
     do_open(&ch, mutable_arg(""), &wtl, 0, 0);
 
-    world[1].people = nullptr;
     // Site 4 (LS-2 whole-branch review B1): near_exit/far_exit are
     // function-locals about to go out of scope -- restore both dir_option
     // slots so neither dangles into a later test sharing this process's
     // world[].
-    world[0].dir_option[NORTH] = original_room0_dir_north;
-    world[1].dir_option[SOUTH] = original_room1_dir_south;
+    room_by_id_total(0)->dir_option[NORTH] = original_room0_dir_north;
+    room_by_id_total(1)->dir_option[SOUTH] = original_room1_dir_south;
 
     EXPECT_FALSE(IS_SET(near_exit.exit_info, EX_CLOSED))
         << "Expected do_open's own side to open (unrelated to this task's conversion, a "
@@ -549,11 +560,11 @@ TEST(DoEnterTest, RefusesWhenAlreadyIndoors) {
     // Site 5 (LS-2 whole-branch review B1): captured before this test
     // overwrites room_flags, restored at the tail below -- RoomStatContext
     // has no fixture here to do it for us.
-    const long original_room_flags = world[0].room_flags;
-    world[0].room_flags = INDOORS;
+    const long original_room_flags = room_by_id_total(0)->room_flags;
+    room_by_id_total(0)->room_flags = INDOORS;
 
     char_data ch{};
-    ch.in_room = 0;
+    set_location(&ch, 0);
 
     ScopedCapturingSendToCharSink capture;
     do_enter(&ch, mutable_arg(""), nullptr, 0, 0);
@@ -562,15 +573,15 @@ TEST(DoEnterTest, RefusesWhenAlreadyIndoors) {
         << "Expected the :1376 room_of(ch)->room_flags conversion to read room[0]'s INDOORS "
            "flag correctly.";
 
-    world[0].room_flags = original_room_flags;
+    room_by_id_total(0)->room_flags = original_room_flags;
 }
 
 TEST(DoLeaveTest, RefusesWhenAlreadyOutside) {
     ScopedTestWorld test_world{1};
-    world[0].room_flags = 0; // not INDOORS
+    room_by_id_total(0)->room_flags = 0; // not INDOORS
 
     char_data ch{};
-    ch.in_room = 0;
+    set_location(&ch, 0);
 
     ScopedCapturingSendToCharSink capture;
     do_leave(&ch, mutable_arg(""), nullptr, 0, 0);

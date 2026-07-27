@@ -54,6 +54,7 @@
 #include "rots/core/character.h"
 #include "rots/core/descriptor.h"
 #include "rots/core/room.h"
+#include "test_placement.h"
 #include "test_random_utils.h"
 #include "test_world.h"
 
@@ -97,6 +98,16 @@ struct MysticTerrorContext {
     descriptor_data victim_saves_descriptor {};
     char caster_short_descr[24] = "A grim mystic";
 
+    // Occupant chain: caster (skipped by the walk's tmpch != caster guard),
+    // then victim_fails, then victim_saves -- THIS EXACT ORDER is what pins
+    // the RNG-draw sequence every test below queues, so it is now stated
+    // once, as the helper's argument order (LS-3a T3, test_placement.h).
+    // Declared last so it unwinds before the characters it manages and the
+    // ScopedTestWorld it points into. Its constructor stamps all three
+    // locations via set_location(), so this fixture writes in_room nowhere.
+    ScopedRoomOccupants occupants { &test_world.room(), 0,
+        { &caster, &victim_fails, &victim_saves } };
+
     MysticTerrorContext()
     {
         reset_capturing_descriptor(caster_descriptor, &caster);
@@ -123,7 +134,6 @@ struct MysticTerrorContext {
         caster.player.short_descr = caster_short_descr;
         caster.specials.position = POSITION_STANDING;
         caster.tmpabilities.wil = 0;
-        caster.in_room = 0;
         caster.desc = &caster_descriptor;
 
         victim_fails.specials2.act = MOB_ISNPC;
@@ -131,7 +141,6 @@ struct MysticTerrorContext {
         victim_fails.player.race = RACE_HUMAN;
         victim_fails.specials.position = POSITION_STANDING;
         victim_fails.specials2.perception = 0;
-        victim_fails.in_room = 0;
         victim_fails.desc = &victim_fails_descriptor;
 
         victim_saves.specials2.act = MOB_ISNPC;
@@ -139,27 +148,17 @@ struct MysticTerrorContext {
         victim_saves.player.race = RACE_HUMAN;
         victim_saves.specials.position = POSITION_STANDING;
         victim_saves.specials2.perception = 100;
-        victim_saves.in_room = 0;
         victim_saves.desc = &victim_saves_descriptor;
 
-        // Occupant chain: caster (skipped by tmpch != caster), then
-        // victim_fails, then victim_saves -- this exact order is what pins
-        // the RNG-draw sequence the tests below queue.
-        test_world.room().people = &caster;
-        caster.next_in_room = &victim_fails;
-        victim_fails.next_in_room = &victim_saves;
-        victim_saves.next_in_room = nullptr;
     }
 
     ~MysticTerrorContext()
     {
-        test_world.room().people = nullptr;
-        caster.next_in_room = nullptr;
-        victim_fails.next_in_room = nullptr;
-        victim_saves.next_in_room = nullptr;
-        caster.in_room = NOWHERE;
-        victim_fails.in_room = NOWHERE;
-        victim_saves.in_room = NOWHERE;
+        // The chain head restore, the three unlinks and the three NOWHERE
+        // de-locations this body used to do are now `occupants`, which
+        // unwinds right after it. ScopedTestWorld leaves room 0's head null
+        // on construction, so restoring the SAVED head is byte-identical to
+        // the `people = nullptr` this used to write.
         clear_test_random_values();
     }
 };
@@ -250,7 +249,7 @@ TEST(MysticSpellTerror, DoesNotMessageOrAffectTheCasterItself)
 TEST(MysticSpellTerror, ReturnsImmediatelyWhenCasterHasNoRoom)
 {
     MysticTerrorContext context;
-    context.caster.in_room = NOWHERE;
+    set_location(&context.caster, NOWHERE);
 
     // No queued RNG values at all: if the NOWHERE guard didn't return
     // early, the walk would starve test_random_utils.h's queue and the

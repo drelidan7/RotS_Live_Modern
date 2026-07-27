@@ -5,8 +5,11 @@
 #include "rots/core/character.h"
 #include "rots/core/object.h"
 #include "rots/core/room.h"
+#include "test_placement.h"
 #include "test_random_utils.h"
 #include <gtest/gtest.h>
+
+#include <optional>
 
 namespace olog_hai {
 int get_prob_skill(char_data* attacker, char_data* victim, int skill);
@@ -52,6 +55,14 @@ void record_target(char_data*, char_data* victim)
 }
 
 struct OlogHaiTestContext {
+    // The room every character in this fixture stands in. Named, and used
+    // to resolve the room in the constructor/destructor below, so that
+    // teardown never depends on where a character HAPPENS to be by then --
+    // a test that publishes its own nested ScopedRoomOccupants leaves the
+    // attacker parked at NOWHERE when that nested scope unwinds, and a
+    // room_of(&attacker) here would then restore room 0 instead of room 7.
+    static constexpr int room_number = 7;
+
     char_data attacker{};
     char_data original_victim{};
     char_data extra_target{};
@@ -62,10 +73,19 @@ struct OlogHaiTestContext {
     obj_data weapon{};
     waiting_type target{};
     long original_room_flags = 0;
-    char_data* original_room_people = nullptr;
     // Saved so the destructor can restore the shared room's light level after
     // the fixture forces it on (see constructor).
     int original_room_light = 0;
+
+    // Publishes attacker -> original_victim -> extra_target as room
+    // `room_number`'s occupant chain, in exactly that order (the overrun /
+    // sweep / room-target tests below all assert on it), and takes them back
+    // out on teardown (LS-3a T3, test_placement.h). It is an optional, not a
+    // plain member, because the constructor body has to make sure the world
+    // EXISTS before room `room_number` can be resolved at all -- a member
+    // would be constructed before that runs. Declared last so it unwinds
+    // first, while the characters it manages are all still alive.
+    std::optional<ScopedRoomOccupants> occupants;
 
     OlogHaiTestContext()
     {
@@ -86,7 +106,6 @@ struct OlogHaiTestContext {
         // would for a PC, since this fixture never calls clear_char().
         attacker.skills.assign(MAX_SKILLS, 0);
         attacker.knowledge.assign(MAX_SKILLS, 0);
-        attacker.in_room = 7;
         // Zero-initialized position is POSITION_DEAD, and CAN_SEE() reports
         // blindness for anyone at or below POSITION_SLEEPING — stand everyone
         // up so visibility-based target resolution can be exercised.
@@ -99,30 +118,25 @@ struct OlogHaiTestContext {
         attacker.points.parry = 4;
         attacker.points.dodge = 3;
 
-        original_victim.in_room = 7;
         original_victim.specials.position = POSITION_STANDING;
         original_victim.tmpabilities.dex = 12;
         original_victim.points.dodge = 8;
         original_victim.points.parry = 6;
-        extra_target.in_room = 7;
         extra_target.specials.position = POSITION_STANDING;
-        mount.in_room = 7;
+        set_location(&mount, room_number);
         mount.specials.position = POSITION_STANDING;
 
-        attacker.next_in_room = &original_victim;
-        original_victim.next_in_room = &extra_target;
-        extra_target.next_in_room = nullptr;
+        occupants.emplace(room_by_id_total(room_number), room_number,
+            std::initializer_list<char_data*> { &attacker, &original_victim, &extra_target });
 
-        original_room_flags = world[attacker.in_room].room_flags;
-        original_room_people = world[attacker.in_room].people;
-        original_room_light = world[attacker.in_room].light;
-        world[attacker.in_room].room_flags = 0;
-        world[attacker.in_room].people = &attacker;
+        original_room_flags = room_by_id_total(room_number)->room_flags;
+        original_room_light = room_by_id_total(room_number)->light;
+        room_by_id_total(room_number)->room_flags = 0;
         // Light the room: visibility helpers (get_char_room_vis / CAN_SEE) treat
         // an unlit room as pitch dark (weather_info.sunlight is SUN_DARK in the
         // zero-initialized test environment), which would make every target
         // lookup fail for reasons unrelated to the logic under test.
-        world[attacker.in_room].light = 1;
+        room_by_id_total(room_number)->light = 1;
 
         weapon.obj_flags.type_flag = ITEM_WEAPON;
         attacker.equipment[WIELD] = &weapon;
@@ -142,9 +156,10 @@ struct OlogHaiTestContext {
         if (mount.abs_number) {
             remove_char_exists(mount.abs_number);
         }
-        world[attacker.in_room].room_flags = original_room_flags;
-        world[attacker.in_room].people = original_room_people;
-        world[attacker.in_room].light = original_room_light;
+        room_by_id_total(room_number)->room_flags = original_room_flags;
+        room_by_id_total(room_number)->light = original_room_light;
+        // The room's saved occupant head, the three unlinks and the three
+        // de-locations are `occupants`, which unwinds right after this body.
     }
 };
 
@@ -174,14 +189,19 @@ TEST(OlogHaiHelpers, DetectsWhetherTargetRemainsInSameRoom) {
 
     EXPECT_TRUE(olog_hai::is_target_in_room(&context.attacker, &context.original_victim));
 
-    context.original_victim.in_room = 8;
+    set_location(&context.original_victim, 8);
     EXPECT_FALSE(olog_hai::is_target_in_room(&context.attacker, &context.original_victim));
 }
 
 TEST_F(OlogHaiProcTest, ReturnsOriginalVictimWhenNoAlternateTargetsExist) {
     OlogHaiTestContext context;
-    context.attacker.next_in_room = &context.original_victim;
-    context.original_victim.next_in_room = nullptr;
+    // Re-publish the room with the extra target removed, so the attacker has
+    // nobody but the original victim to fall back to. A nested
+    // ScopedRoomOccupants states the whole chain rather than re-pointing one
+    // link by hand; it restores the fixture's own chain head on the way out.
+    ScopedRoomOccupants only_the_original_victim { room_by_id_total(context.room_number),
+        context.room_number,
+        std::initializer_list<char_data*> { &context.attacker, &context.original_victim } };
 
     EXPECT_EQ(olog_hai::get_random_target(&context.attacker, &context.original_victim), &context.original_victim)
         << "Expected random target selection to fall back to the original victim when no one else is present.";
@@ -233,7 +253,7 @@ TEST(OlogHaiHelpers, RejectsSkillUseForShadowCharacters) {
 TEST(OlogHaiHelpers, RejectsSkillUseInPeaceRooms) {
     OlogHaiTestContext context;
     context.attacker.knowledge[SKILL_SMASH] = 50;
-    world[context.attacker.in_room].room_flags = PEACEROOM;
+    room_of(&context.attacker)->room_flags = PEACEROOM;
 
     EXPECT_FALSE(olog_hai::is_skill_valid(&context.attacker, SKILL_SMASH))
         << "Expected olog-hai skills to be blocked in peace rooms.";
@@ -334,7 +354,7 @@ TEST(OlogHaiHelpers, RejectsSmashTargetWhenVictimLeftTheRoom) {
     context.target.targ1.type = TARGET_CHAR;
     context.target.targ1.ptr.ch = &context.original_victim;
     context.target.targ1.ch_num = 43;
-    context.original_victim.in_room = 8;
+    set_location(&context.original_victim, 8);
     set_char_exists(43);
 
     EXPECT_EQ(olog_hai::is_smash_target_valid(&context.attacker, &context.target), nullptr)
@@ -500,8 +520,12 @@ TEST(OlogHaiHelpers, RoomTargetSkipsAttackerAndMountedCreature) {
     context.mount.abs_number = 45;
     set_char_exists(45);
 
-    context.extra_target.next_in_room = &context.mount;
-    context.mount.next_in_room = nullptr;
+    // Same room, same order, with the mount appended -- room_target() must
+    // walk past both the attacker (itself) and the mount.
+    ScopedRoomOccupants with_the_mount { room_by_id_total(context.room_number),
+        context.room_number,
+        std::initializer_list<char_data*> { &context.attacker, &context.original_victim,
+            &context.extra_target, &context.mount } };
 
     olog_hai::room_target(&context.attacker, &record_target);
 
@@ -513,68 +537,68 @@ TEST(OlogHaiHelpers, RoomTargetSkipsAttackerAndMountedCreature) {
 
 TEST(OlogHaiHelpers, DirectionValidationRejectsMissingExit) {
     OlogHaiTestContext context;
-    auto* original_exit = world[context.attacker.in_room].dir_option[NORTH];
-    world[context.attacker.in_room].dir_option[NORTH] = nullptr;
+    auto* original_exit = room_of(&context.attacker)->dir_option[NORTH];
+    room_of(&context.attacker)->dir_option[NORTH] = nullptr;
 
     EXPECT_FALSE(is_direction_valid(&context.attacker, NORTH))
         << "Expected direction validation to fail when no exit exists in the requested direction.";
 
-    world[context.attacker.in_room].dir_option[NORTH] = original_exit;
+    room_of(&context.attacker)->dir_option[NORTH] = original_exit;
 }
 
 TEST(OlogHaiHelpers, DirectionValidationRejectsNowhereExit) {
     OlogHaiTestContext context;
     room_direction_data north_exit{};
-    auto* original_exit = world[context.attacker.in_room].dir_option[NORTH];
+    auto* original_exit = room_of(&context.attacker)->dir_option[NORTH];
     north_exit.to_room = NOWHERE;
-    world[context.attacker.in_room].dir_option[NORTH] = &north_exit;
+    room_of(&context.attacker)->dir_option[NORTH] = &north_exit;
 
     EXPECT_FALSE(is_direction_valid(&context.attacker, NORTH))
         << "Expected direction validation to fail when the exit leads nowhere.";
 
-    world[context.attacker.in_room].dir_option[NORTH] = original_exit;
+    room_of(&context.attacker)->dir_option[NORTH] = original_exit;
 }
 
 TEST(OlogHaiHelpers, DirectionValidationRejectsHiddenClosedExitWithoutHolylight) {
     OlogHaiTestContext context;
     room_direction_data north_exit{};
-    auto* original_exit = world[context.attacker.in_room].dir_option[NORTH];
+    auto* original_exit = room_of(&context.attacker)->dir_option[NORTH];
     north_exit.to_room = 8;
     north_exit.exit_info = EX_CLOSED | EX_ISHIDDEN;
-    world[context.attacker.in_room].dir_option[NORTH] = &north_exit;
+    room_of(&context.attacker)->dir_option[NORTH] = &north_exit;
 
     EXPECT_FALSE(is_direction_valid(&context.attacker, NORTH))
         << "Expected hidden closed exits to be treated as unavailable for characters without holylight.";
 
-    world[context.attacker.in_room].dir_option[NORTH] = original_exit;
+    room_of(&context.attacker)->dir_option[NORTH] = original_exit;
 }
 
 TEST(OlogHaiHelpers, DirectionValidationReportsClosedKeywordForVisibleDoor) {
     OlogHaiTestContext context;
     room_direction_data north_exit{};
-    auto* original_exit = world[context.attacker.in_room].dir_option[NORTH];
+    auto* original_exit = room_of(&context.attacker)->dir_option[NORTH];
     char door_keyword[] = "oak door";
     north_exit.to_room = 8;
     north_exit.exit_info = EX_CLOSED;
     north_exit.keyword = door_keyword;
-    world[context.attacker.in_room].dir_option[NORTH] = &north_exit;
+    room_of(&context.attacker)->dir_option[NORTH] = &north_exit;
 
     EXPECT_FALSE(is_direction_valid(&context.attacker, NORTH))
         << "Expected visible closed exits with keywords to be rejected by direction validation.";
 
-    world[context.attacker.in_room].dir_option[NORTH] = original_exit;
+    room_of(&context.attacker)->dir_option[NORTH] = original_exit;
 }
 
 TEST(OlogHaiHelpers, DirectionValidationAllowsOpenExitToReachableRoom) {
     OlogHaiTestContext context;
     room_direction_data north_exit{};
-    auto* original_exit = world[context.attacker.in_room].dir_option[NORTH];
+    auto* original_exit = room_of(&context.attacker)->dir_option[NORTH];
     north_exit.to_room = 8;
     north_exit.exit_info = 0;
-    world[context.attacker.in_room].dir_option[NORTH] = &north_exit;
+    room_of(&context.attacker)->dir_option[NORTH] = &north_exit;
 
     EXPECT_TRUE(is_direction_valid(&context.attacker, NORTH))
         << "Expected direction validation to accept an open exit leading to a real room.";
 
-    world[context.attacker.in_room].dir_option[NORTH] = original_exit;
+    room_of(&context.attacker)->dir_option[NORTH] = original_exit;
 }

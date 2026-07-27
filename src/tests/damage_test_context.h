@@ -7,6 +7,7 @@
 #include "../spells.h"
 #include "../utils.h"
 #include "rots/core/character.h"
+#include "test_placement.h"
 #include "test_world.h"
 
 extern room_data world;
@@ -51,7 +52,18 @@ struct DamageTestContext {
     affected_type victim_secondary_affect{};
     char attacker_name[16] = "test_attacker";
     char victim_name[16] = "test_victim";
-    char_data* original_people = nullptr;
+
+    // Publishes attacker-then-victim as room `room_number`'s occupant chain
+    // for the fixture's lifetime and takes both back out again on teardown
+    // (LS-3a T3, test_placement.h) -- the head-first order this fixture has
+    // always pinned, and which CharacterizationCombatTest.DamageTranscript
+    // Seed42 depends on. Declared LAST so it unwinds FIRST, while both the
+    // characters it manages and the ScopedTestWorld it points into are still
+    // alive; ScopedTestWorld is declared first for the same reason from the
+    // other end. Its own constructor stamps both locations via
+    // set_location(), so this fixture writes char_data::in_room nowhere.
+    ScopedRoomOccupants occupants { room_by_id_total(room_number), room_number,
+        { &attacker, &victim } };
 
     DamageTestContext()
     {
@@ -61,7 +73,6 @@ struct DamageTestContext {
         // conditional grow: the old `if (top_of_world < room_number)` gate
         // was meaningless here since the member ctor made it always-true.
         top_of_world = room_number;
-        original_people = world[room_number].people;
 
         attacker.specials2.act = MOB_ISNPC;
         victim.specials2.act = MOB_ISNPC;
@@ -86,23 +97,15 @@ struct DamageTestContext {
         victim.specials.position = POSITION_FIGHTING;
         attacker.specials.fighting = &victim;
         victim.specials.fighting = &attacker;
-
-        attacker.in_room = room_number;
-        victim.in_room = room_number;
-        attacker.next_in_room = &victim;
-        victim.next_in_room = nullptr;
-        world[room_number].people = &attacker;
     }
 
     ~DamageTestContext()
     {
-        world[room_number].people = original_people;
-        attacker.next_in_room = nullptr;
-        victim.next_in_room = nullptr;
+        // Everything else this destructor used to do -- restoring the room's
+        // saved occupant head, unlinking both characters and parking them at
+        // NOWHERE -- is now `occupants`, which unwinds right after this body.
         attacker.specials.fighting = nullptr;
         victim.specials.fighting = nullptr;
-        attacker.in_room = NOWHERE;
-        victim.in_room = NOWHERE;
     }
 
     void add_victim_affect(affected_type& affect, int type, int duration, int modifier = 0,

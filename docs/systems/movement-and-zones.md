@@ -366,9 +366,9 @@ easier to slip past, a heavier guard (relative to the passer's weight+dexterity)
 effectively, and the guard blocks *worse*, not better, in either of two cases: when the guard can't
 see the passer (an invisible/hidden mover divides the chance by 2), or when the guard itself isn't
 standing (a sitting/resting guard divides its own chance by 3). Both cases favor the passer slipping
-through, the opposite of "helping the guard." A near-identical unified `SPECIAL(block_exit)`
-taking a direction argument exists but is **commented out** (`:2316-2374`) — only the six
-per-direction copies are compiled and assignable to mobs.
+through, the opposite of "helping the guard." (A near-identical unified `SPECIAL(block_exit)`
+taking a direction argument existed for years as a commented-out block; wave LS-3a deleted it as
+dead code — only the six per-direction copies are compiled and assignable to mobs.)
 
 ### 6.4 Levers (`do_pull`, `act_move.cpp:1855`)
 `ITEM_LEVER` objects toggle a specific room's exit (`value[0]`=room vnum, `value[1]`=direction) via

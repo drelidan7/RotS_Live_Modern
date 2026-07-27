@@ -1576,7 +1576,7 @@ ACMD(do_purge)
         act("$n gestures... You are surrounded by scorching flames!", FALSE, ch, 0, 0, TO_ROOM);
         send_to_room("The world seems a little cleaner.\n\r", location_of(ch));
 
-        for (vict = room_of(ch)->people; vict; vict = next_v) {
+        for (vict = rots::entity::first_occupant(room_of(ch)); vict; vict = next_v) {
             next_v = vict->next_in_room; // LS1-ALLOW: save-next (body extracts current node via extract_char)
             if (IS_NPC(vict))
                 extract_char(vict);

@@ -1214,15 +1214,15 @@ TEST(SpecProFerryCaptain, SplicesTheSourceCabinChainAheadOfTheDestinationsAndRes
 
     // Contract items 1/2: source-then-destination order, published at the
     // destination, source head nulled.
-    EXPECT_EQ(room_by_id_total(kFerryDestinationCabin)->people, &context.captain);
-    EXPECT_EQ(context.captain.next_in_room, &context.passenger);
-    EXPECT_EQ(context.passenger.next_in_room, &context.stowaway);
-    EXPECT_EQ(context.stowaway.next_in_room, &context.resident)
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kFerryDestinationCabin)), &context.captain);
+    EXPECT_EQ(context.captain.next_in_room, &context.passenger); // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
+    EXPECT_EQ(context.passenger.next_in_room, &context.stowaway); // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
+    EXPECT_EQ(context.stowaway.next_in_room, &context.resident) // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
         << "The destination's pre-existing occupants are appended AFTER the arriving chain, not "
            "before it -- the splice walks the source chain to its tail and links the destination's "
            "old head onto it.";
-    EXPECT_EQ(context.resident.next_in_room, nullptr);
-    EXPECT_EQ(room_by_id_total(kFerrySourceCabin)->people, nullptr);
+    EXPECT_EQ(context.resident.next_in_room, nullptr); // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kFerrySourceCabin)), nullptr);
 
     // Contract items 3/7: every member re-stamped, including the destination's
     // own resident (a no-op for it) and the captain (whose trailing cursor
@@ -1327,13 +1327,13 @@ TEST(SpecProFerryCaptain, MovesTheWholeSourceChainIntoAnEmptyDestinationCabinAnd
 
     EXPECT_EQ(context.tick(), TRUE);
 
-    EXPECT_EQ(room_by_id_total(kFerryDestinationCabin)->people, &context.captain);
-    EXPECT_EQ(context.captain.next_in_room, &context.passenger);
-    EXPECT_EQ(context.passenger.next_in_room, &context.stowaway);
-    EXPECT_EQ(context.stowaway.next_in_room, nullptr)
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kFerryDestinationCabin)), &context.captain);
+    EXPECT_EQ(context.captain.next_in_room, &context.passenger); // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
+    EXPECT_EQ(context.passenger.next_in_room, &context.stowaway); // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
+    EXPECT_EQ(context.stowaway.next_in_room, nullptr) // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
         << "With nothing already in the destination, the arriving chain's tail keeps its null "
            "terminator rather than being linked onto a pre-existing head.";
-    EXPECT_EQ(room_by_id_total(kFerrySourceCabin)->people, nullptr);
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kFerrySourceCabin)), nullptr);
     EXPECT_EQ(location_of(&context.stowaway), kFerryDestinationCabin);
 
     EXPECT_EQ(room_by_id_total(kFerryDestinationCabin)->contents, &context.cargo_first);
@@ -1354,10 +1354,10 @@ TEST(SpecProFerryCaptain, LeavesADestinationCabinIntactWhenTheSourceCabinsChainI
 
     EXPECT_EQ(context.tick(), TRUE);
 
-    EXPECT_EQ(room_by_id_total(kFerryDestinationCabin)->people, &context.resident);
-    EXPECT_EQ(context.resident.next_in_room, nullptr);
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kFerryDestinationCabin)), &context.resident);
+    EXPECT_EQ(context.resident.next_in_room, nullptr); // LS1-ALLOW: representation-impl (occupant-chain SHAPE assertion -- pins the raw next_in_room links themselves, the one property no Stage-1 API expresses and the exact property LS-3b rewrites)
     EXPECT_EQ(location_of(&context.resident), kFerryDestinationCabin);
-    EXPECT_EQ(room_by_id_total(kFerrySourceCabin)->people, nullptr);
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(kFerrySourceCabin)), nullptr);
 
     EXPECT_EQ(room_by_id_total(kFerryDestinationCabin)->contents, &context.crate);
     EXPECT_EQ(context.crate.next_content, nullptr);

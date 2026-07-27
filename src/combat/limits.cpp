@@ -1490,7 +1490,7 @@ void affect_update_room(struct room_data* room)
                         SET_BIT(room->room_flags, SHADOWY);
 
                 if (1 /*skills[tmpaf->location].targets  & TAR_CHAR_ROOM*/) {
-                    for (tmpch = room->people; tmpch; tmpch = next_tmpch) {
+                    for (tmpch = rots::entity::first_occupant(room); tmpch; tmpch = next_tmpch) {
                         next_tmpch = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via the room-affect spell_pointer callback)
 
                         /* 1 in 13 chance that a room spell won't do anything */

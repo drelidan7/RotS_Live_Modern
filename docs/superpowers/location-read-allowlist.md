@@ -237,3 +237,27 @@ location tokens and needs no ledger entry or annotation of its own. Do not read 
 `--check` as evidence this class of indirection can never recur — it is exactly what the header
 sweep (§ above) now stands watch over: any future edit that reintroduces a raw `world[]`/`->in_room`
 into a macro body, or any other header, trips the gate the same way a `.cpp` body would.
+
+## The compile-time absence assertion — corrected criterion (a)'s mechanical witness
+
+This gate can only see PRESENCE: every one of its eight tokens flags a raw spelling wherever one
+exists. It structurally cannot see an ABSENCE, so a clean `--check` alone never proved that
+`char_data::in_room` / `char_data::next_in_room` / `room_data::people` are actually gone rather than
+merely unused. **LS-3b T8** closed that gap with a compile-time check, not a gate line:
+`src/entity/placement.cpp` defines three C++20 concepts (`HasPublicInRoomMember<T>`,
+`HasPublicNextInRoomMember<T>`, `HasPublicPeopleMember<T>`, each a `requires(T instance) { ... }`
+expression naming the retired member) and three `static_assert`s that fail the **build** if any
+concept is ever satisfied for `char_data`/`room_data` — i.e. if the old public spelling is ever
+reintroduced. A `requires`-expression is SFINAE-friendly: when the named member does not exist the
+expression is ill-formed and the concept is simply `false`, never a hard error, which is exactly the
+"quiet while absent, loud the instant it comes back" behavior the witness needs.
+
+It lives in `placement.cpp` rather than a standalone test executable for two reasons: that file is
+already a whole-file `LS1-ALLOW` exemption, so the literal `.in_room`/`.next_in_room`/`.people`
+probe spellings inside the `requires`-expressions need no per-line annotation of their own; and
+`rots_entity` is an always-built target on every preset (host, container, MSVC, sanitizer), so the
+witness can never be silently skipped by an optional test target going unbuilt. It adds **no** new
+ctest entry — a reintroduction is a compile failure, caught by every build gate this repository
+already runs, not a new named check to remember to run. See `.superpowers/sdd/ls3b-t8-report.md` for
+the sabotage proof (a decoy member added for each of the three fields in turn, each reddening its own
+`static_assert` with a named, readable error, then restored).

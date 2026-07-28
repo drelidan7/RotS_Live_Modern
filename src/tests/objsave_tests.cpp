@@ -120,6 +120,10 @@ TEST(GenReceptionist, FindsTheRegisteredReceptionistMobAndProceedsPastTheWalk) {
     char_data recep{};
     recep.specials2.act = MOB_ISNPC;
     recep.nr = 0; // indexes mob_index_scope's single fabricated entry
+    // SHADOWS the context's own single-occupant chain ({&context.ch}) with a
+    // nested ScopedRoomOccupants restating the WHOLE chain plus recep, rather
+    // than re-pointing one link by hand (LS-3a T3 idiom rule 4) -- it
+    // restores the context's chain head on the way out.
     ScopedRoomOccupants occupants{&context.test_world.room(), 0, {&context.ch, &recep}};
 
     const int result = gen_receptionist(&context.ch, CMD_RENT, mutable_arg(""), 0);

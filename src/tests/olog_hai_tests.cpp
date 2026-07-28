@@ -196,9 +196,13 @@ TEST(OlogHaiHelpers, DetectsWhetherTargetRemainsInSameRoom) {
 TEST_F(OlogHaiProcTest, ReturnsOriginalVictimWhenNoAlternateTargetsExist) {
     OlogHaiTestContext context;
     // Re-publish the room with the extra target removed, so the attacker has
-    // nobody but the original victim to fall back to. A nested
-    // ScopedRoomOccupants states the whole chain rather than re-pointing one
-    // link by hand; it restores the fixture's own chain head on the way out.
+    // nobody but the original victim to fall back to. This SHRINKS the
+    // fixture's chain (fewer occupants than OlogHaiTestContext already
+    // published) -- an append-style primitive could never remove
+    // extra_target, only a shadow-replacing publish can, which is exactly
+    // why this is a nested ScopedRoomOccupants restating the WHOLE chain
+    // rather than re-pointing one link by hand (LS-3a T3 idiom rule 4); it
+    // restores the fixture's own chain head on the way out.
     ScopedRoomOccupants only_the_original_victim { room_by_id_total(context.room_number),
         context.room_number,
         std::initializer_list<char_data*> { &context.attacker, &context.original_victim } };

@@ -1353,6 +1353,7 @@ if(ROTS_BUILD_TESTS)
         tests/act_obj1_tests.cpp
         tests/act_obj2_tests.cpp
         tests/act_offe_tests.cpp
+        tests/act_othe_tests.cpp
         tests/act_wiz_format_tests.cpp
         tests/act_wiz_tests.cpp
         tests/battle_mage_handler_tests.cpp
@@ -1413,6 +1414,7 @@ if(ROTS_BUILD_TESTS)
         tests/poison_notification_tests.cpp
         tests/prompt_format_tests.cpp
         tests/protocol_tests.cpp
+        tests/ranger_tests.cpp
         tests/render_cursor_tests.cpp
         tests/rng_seed_tests.cpp
         tests/rots_asprintf_tests.cpp

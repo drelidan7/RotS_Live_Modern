@@ -569,3 +569,226 @@ TEST(PointUpdateInvisibleAnchorGate, HeadVisibilityGatesDeliveryAndInversionFlip
     character_list = previous_character_list;
     global_release_flag = previous_global_release_flag;
 }
+
+// ---------------------------------------------------------------------------
+// LS-3b Task 1, Commit 2 (census-review F18 / census B S7, promoted from
+// "recommend" to "required"): recalc_zone_power()/report_zone_power()/
+// recount_light_room() had ZERO test coverage anywhere in the tree before
+// this commit (`grep -rn "recalc_zone_power\|report_zone_power\|
+// recount_light_room" src/tests` returned no hits). Given F3 (the goldens
+// cannot witness zone power or light either), these three ARE the wave's
+// only regression net for the O-5 amendment's D2/D3 deltas -- the amendment
+// itself is NOT implemented by this task (that is a later tranche), so
+// every test below pins TODAY's values; a future split's diff against these
+// tests is exactly the intended signal.
+// ---------------------------------------------------------------------------
+
+// recalc_zone_power() -- src/world/db_world.cpp:2139
+TEST(RecalcZonePowerTest, AggregatesNonNpcPowerByRaceAndExcludesNowhereCharacters) {
+    ScopedTestWorld test_world;
+    room_by_id_total(0)->zone = 0;
+
+    ScopedSingleZoneTable zone_table_scope;
+    // Pre-seed with stale nonzero values: recalc_zone_power's own first loop
+    // (`for (tmp = 0; tmp <= top_of_zone_table; tmp++) { zone_table[tmp].
+    // white_power = 0; ...}`) must overwrite these, not merely add to them.
+    zone_table_scope.owned_zone.white_power = 999;
+    zone_table_scope.owned_zone.dark_power = 999;
+    zone_table_scope.owned_zone.magi_power = 999;
+    zone_table_scope.owned_zone.level = 10;
+
+    char_data *previous_character_list = character_list;
+
+    char_data good_char{};
+    char_data evil_char{};
+    char_data magi_char{};
+    char_data nowhere_char{};
+    ScopedClearCharFields good_cleanup{good_char};
+    ScopedClearCharFields evil_cleanup{evil_char};
+    ScopedClearCharFields magi_cleanup{magi_char};
+    ScopedClearCharFields nowhere_cleanup{nowhere_char};
+    clear_char(&good_char, MOB_VOID);
+    clear_char(&evil_char, MOB_VOID);
+    clear_char(&magi_char, MOB_VOID);
+    clear_char(&nowhere_char, MOB_VOID);
+    good_char.player.race = RACE_HUMAN;    // good: GET_RACE in (0, 10)
+    evil_char.player.race = RACE_URUK;     // evil: GET_RACE > 10
+    magi_char.player.race = RACE_MAGUS;    // GET_RACE == 15 -- see the note below
+    nowhere_char.player.race = RACE_HUMAN; // same race as good_char, on purpose
+    good_char.player.level = 10;
+    evil_char.player.level = 10;
+    magi_char.player.level = 10;
+    nowhere_char.player.level = 10;
+    set_location(&good_char, 0);
+    set_location(&evil_char, 0);
+    set_location(&magi_char, 0);
+    set_location(&nowhere_char, NOWHERE); // the filter under test
+
+    good_char.next = &evil_char;
+    evil_char.next = &magi_char;
+    magi_char.next = &nowhere_char;
+    nowhere_char.next = nullptr;
+    character_list = &good_char;
+
+    recalc_zone_power();
+
+    const int expected = char_power(10);
+    EXPECT_EQ(zone_table_scope.owned_zone.white_power, expected)
+        << "Expected only good_char's power to count toward white_power -- "
+           "nowhere_char shares its race but is NOWHERE-located.";
+    // recalc_zone_power()'s race dispatch is `if (RACE_GOOD) ... else if
+    // (RACE_EVIL) ... else if (RACE_MAGI) ...`, and RACE_EVIL(ch) is simply
+    // `GET_RACE(ch) > 10` -- true for RACE_MAGUS (15) and RACE_HARADRIM (18)
+    // as well as every genuinely evil race, since RACE_MAGI only ever
+    // matches those same two values. With today's race constants the
+    // RACE_EVIL arm therefore always claims a "magi" character before the
+    // RACE_MAGI arm is ever reached: magi_char's power lands in dark_power
+    // alongside evil_char's, and magi_power stays 0. This is a genuine,
+    // pin-worthy characteristic of TODAY's function (not a defect this task
+    // is fixing) -- a future change to either the race dispatch or the race
+    // constants would show up here as a diff.
+    EXPECT_EQ(zone_table_scope.owned_zone.dark_power, expected * 2)
+        << "Expected evil_char AND magi_char to both land in dark_power -- "
+           "RACE_EVIL's plain \"> 10\" test claims magi_char before the "
+           "RACE_MAGI arm is ever reached.";
+    EXPECT_EQ(zone_table_scope.owned_zone.magi_power, 0)
+        << "Expected magi_power to stay 0: no race constant in the tree "
+           "reaches recalc_zone_power's RACE_MAGI arm without first "
+           "satisfying RACE_EVIL.";
+
+    character_list = previous_character_list;
+}
+
+// report_zone_power() -- src/world/db_world.cpp:2168
+TEST(ReportZonePowerTest, GoodRaceCharacterDetectsDarkPowerDomination) {
+    ScopedTestWorld test_world;
+    room_by_id_total(0)->zone = 0;
+    ScopedSingleZoneTable zone_table_scope;
+    zone_table_scope.owned_zone.level = 10;
+    const int power = char_power(10);
+    zone_table_scope.owned_zone.dark_power = (power * 3 / 2) + 1;
+    zone_table_scope.owned_zone.white_power = 0;
+    zone_table_scope.owned_zone.magi_power = 0;
+
+    char_data character{};
+    ScopedClearCharFields character_cleanup{character};
+    clear_char(&character, MOB_VOID);
+    character.player.race = RACE_HUMAN;
+    set_location(&character, 0);
+
+    EXPECT_EQ(report_zone_power(&character), -1);
+}
+
+TEST(ReportZonePowerTest, GoodRaceCharacterReturnsZeroWhenNoSideDominates) {
+    ScopedTestWorld test_world;
+    room_by_id_total(0)->zone = 0;
+    ScopedSingleZoneTable zone_table_scope;
+    zone_table_scope.owned_zone.level = 10;
+    zone_table_scope.owned_zone.dark_power = 0;
+    zone_table_scope.owned_zone.white_power = 0;
+    zone_table_scope.owned_zone.magi_power = 0;
+
+    char_data character{};
+    ScopedClearCharFields character_cleanup{character};
+    clear_char(&character, MOB_VOID);
+    character.player.race = RACE_HUMAN;
+    set_location(&character, 0);
+
+    EXPECT_EQ(report_zone_power(&character), 0);
+}
+
+TEST(ReportZonePowerTest, EvilRaceCharacterDetectsWhitePowerDomination) {
+    ScopedTestWorld test_world;
+    room_by_id_total(0)->zone = 0;
+    ScopedSingleZoneTable zone_table_scope;
+    zone_table_scope.owned_zone.level = 10;
+    const int power = char_power(10);
+    zone_table_scope.owned_zone.white_power = (power * 4) + 1;
+    zone_table_scope.owned_zone.dark_power = 0;
+    zone_table_scope.owned_zone.magi_power = 0;
+
+    char_data character{};
+    ScopedClearCharFields character_cleanup{character};
+    clear_char(&character, MOB_VOID);
+    character.player.race = RACE_URUK;
+    set_location(&character, 0);
+
+    EXPECT_EQ(report_zone_power(&character), 1);
+}
+
+// Pins a real asymmetry in today's thresholds: an evil-race character whose
+// zone's MAGI power dominates gets -1 (the same value as dark-power
+// domination for a good-race character), NOT +1 -- report_zone_power's
+// RACE_EVIL branch's magi_power arm returns -1 unconditionally. Whether that
+// is intentional is out of this task's scope; the point is to pin it so a
+// future change to this function shows its diff here.
+TEST(ReportZonePowerTest, EvilRaceCharacterDetectsMagiPowerDominationAndReturnsNegativeOne) {
+    ScopedTestWorld test_world;
+    room_by_id_total(0)->zone = 0;
+    ScopedSingleZoneTable zone_table_scope;
+    zone_table_scope.owned_zone.level = 10;
+    const int power = char_power(10);
+    zone_table_scope.owned_zone.magi_power = (power * 4) + 1;
+    zone_table_scope.owned_zone.dark_power = 0;
+    zone_table_scope.owned_zone.white_power = 0;
+
+    char_data character{};
+    ScopedClearCharFields character_cleanup{character};
+    clear_char(&character, MOB_VOID);
+    character.player.race = RACE_URUK;
+    set_location(&character, 0);
+
+    EXPECT_EQ(report_zone_power(&character), -1);
+}
+
+// recount_light_room() -- src/entity/placement.cpp:258
+TEST(RecountLightRoomTest,
+     AbsoluteRecomputeCountsWornAndGroundLightSourcesAndOverwritesStaleValue) {
+    // recount_light_room() resolves through room_by_id() (NOT
+    // room_by_id_total()), whose bounds check is `rnum >= top_of_world`
+    // (EXCLUSIVE -- room_by_id_impl's own comment: reproduces this
+    // function's original guard, which deliberately excludes the "dummy"
+    // room allocated at index top_of_world). A single-room world
+    // (room_count == 1, ScopedTestWorld's default) sets top_of_world == 0,
+    // which makes room 0 ITSELF the excluded dummy index -- room_by_id(0)
+    // would return nullptr and the function would silently no-op. Two
+    // rooms puts room 0 safely below top_of_world (1).
+    ScopedTestWorld test_world{2};
+    // Stale value from a previous state: the function must OVERWRITE this
+    // with a fresh absolute count, not add to it. room_data::light is a
+    // `byte`, so the stale marker must fit in [0, 255].
+    room_by_id_total(0)->light = 200;
+
+    char_data wearer{};
+    ScopedClearCharFields wearer_cleanup{wearer};
+    clear_char(&wearer, MOB_VOID);
+    obj_data worn_light{};
+    worn_light.obj_flags.type_flag = ITEM_LIGHT;
+    worn_light.obj_flags.value[2] = 1; // fuel remaining
+    worn_light.obj_flags.value[3] = 1; // lit
+    wearer.equipment[WIELD] = &worn_light;
+
+    obj_data ground_light_lit{};
+    ground_light_lit.obj_flags.type_flag = ITEM_LIGHT;
+    ground_light_lit.obj_flags.value[2] = 1;
+    ground_light_lit.obj_flags.value[3] = 1;
+    obj_data ground_light_unlit{};
+    ground_light_unlit.obj_flags.type_flag = ITEM_LIGHT;
+    ground_light_unlit.obj_flags.value[2] = 1;
+    ground_light_unlit.obj_flags.value[3] = 0; // NOT lit -- must not count
+    ground_light_lit.next_content = &ground_light_unlit;
+    ground_light_unlit.next_content = nullptr;
+    room_by_id_total(0)->contents = &ground_light_lit;
+
+    {
+        ScopedRoomOccupants occupants{room_by_id_total(0), 0, {&wearer}};
+        recount_light_room(0);
+    }
+
+    room_by_id_total(0)->contents = nullptr;
+
+    EXPECT_EQ(room_by_id_total(0)->light, 2)
+        << "Expected exactly 2 light sources counted: the worn lit light plus "
+           "the ground's lit light (the unlit ground light must not count), "
+           "overwriting the stale 200.";
+}

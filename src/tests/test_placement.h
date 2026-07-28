@@ -42,7 +42,9 @@
 #include "rots/core/room.h"
 #include "rots/core/types.h"
 
+#include <algorithm>
 #include <initializer_list>
+#include <utility>
 #include <vector>
 
 // Publishes an ordered set of characters as a room's occupant chain for the
@@ -75,6 +77,30 @@
 // room_data that lives on the stack and is not in world[] at all, so there is
 // no rnum to recover from it, and room_data::number is a VNUM even when there
 // is one.
+//
+// WHAT THE DESTRUCTOR CAN AND CANNOT KNOW (review-2 F4, a future-author trap).
+// This fixture owns ONE room's chain: it snapshots that chain at construction
+// and puts it back, node for node and link for link, at destruction. It has no
+// handle on any OTHER room and no way to observe a move, so the exact hazard is
+// this: a managed character that was ALSO part of the displaced chain, and is
+// then GENUINELY RELOCATED mid-scope (char_to_room()/detach_char_from_room()
+// into another room, or a hand-rolled equivalent). The unwind re-publishes it
+// into THIS room's restored chain and re-stamps its location here -- while the
+// room it actually moved to still links it -- leaving one character in two
+// chains. The destructor cannot detect that, because its own snapshot is the
+// only state it compares against.
+//
+// A managed character that was NOT in the displaced chain is safe to relocate:
+// the unwind unlinks it and stamps NOWHERE, which is what it already did. That
+// is why the two in-tree fixtures whose subjects really do move mid-scope --
+// shop_tests.cpp's ClosingTimeContext (closing_time() evicts both patrons into
+// room 1) and spec_pro_tests.cpp's VampireHuntressContext (the wander block
+// char_to_room()s the host into room 1) -- are unaffected: both declare their
+// helpers after a ScopedTestWorld, whose reset leaves every room's chain empty,
+// so nothing is displaced and the re-stamp branch never runs. A future fixture
+// that publishes over a NON-empty chain and then moves one of those same
+// characters is the one that would break, and should end this scope first (or
+// nest a second helper restating the whole chain -- the pilot's idiom rule 4).
 class ScopedRoomOccupants
 {
 public:
@@ -86,6 +112,30 @@ public:
         , m_saved_people(room->people) // LS1-ALLOW: representation-impl (fixture helper -- saving the chain head it is about to displace)
         , m_occupants(occupants)
     {
+        // Snapshot the displaced chain BEFORE any of the writes below -- every
+        // node AND the link it carried. Saving only the head is not enough,
+        // and that shortfall was live: when one of the characters this fixture
+        // manages is ALSO part of the chain being displaced (the nested
+        // whole-chain-restatement idiom produces exactly that -- see
+        // act_wiz_format_tests.cpp's StatRoomFormatsCharsPresentLine* and
+        // act_offe_tests.cpp's DoRescue suite), the loop below overwrites that
+        // character's next_in_room, so a destructor that restored only the head
+        // handed back a chain TRUNCATED at the first managed member.
+        for (char_data* resident = m_saved_people; resident != nullptr;)
+        {
+            // Defensive: a chain that loops back on itself would never
+            // terminate. Nothing in this binary builds one, and stopping is
+            // strictly better than hanging the whole suite if something does.
+            if (was_displaced(resident))
+            {
+                break;
+            }
+
+            char_data* const following = resident->next_in_room; // LS1-ALLOW: representation-impl (fixture helper -- snapshotting a displaced link before the publish below overwrites it)
+            m_displaced.push_back({ resident, following });
+            resident = following;
+        }
+
         char_data* previous = nullptr;
         for (char_data* occupant : m_occupants)
         {
@@ -117,13 +167,35 @@ public:
     {
         m_room->people = m_saved_people; // LS1-ALLOW: representation-impl (fixture helper -- restoring the displaced chain head verbatim)
 
+        // ...and the links THROUGH it, which the publish loop overwrote for
+        // every managed character that was already in this chain. Without this
+        // the restored chain stops dead at the first such character.
+        for (const std::pair<char_data*, char_data*>& link : m_displaced)
+        {
+            link.first->next_in_room = link.second; // LS1-ALLOW: representation-impl (fixture helper -- restoring a displaced link verbatim)
+        }
+
         // Unlink every managed character, so nothing this fixture published can
         // outlive the scope inside a process-global room's chain (THE
         // FIXTURE-HYGIENE RULE). NOWHERE, not the room id: a character this
         // fixture has taken back out is nowhere, which is what
         // detach_char_from_room() also stamps.
+        //
+        // EXCEPT a character that was in the displaced chain to begin with.
+        // This fixture SHADOWS a chain, it does not relocate anybody, so such a
+        // character was in this room before the scope and is back in it now --
+        // the restore above re-published it. Stamping NOWHERE there produced a
+        // character linked into a room while claiming to be nowhere, which is
+        // precisely the torn state this whole wave exists to make
+        // unrepresentable.
         for (char_data* occupant : m_occupants)
         {
+            if (was_displaced(occupant))
+            {
+                set_location(occupant, m_room_id);
+                continue;
+            }
+
             occupant->next_in_room = nullptr; // LS1-ALLOW: representation-impl (fixture helper -- unlinking a managed character on teardown)
             set_location(occupant, NOWHERE);
         }
@@ -133,6 +205,16 @@ public:
     ScopedRoomOccupants& operator=(const ScopedRoomOccupants&) = delete;
 
 private:
+    // True when `character` was part of the chain this fixture displaced at
+    // construction -- the one question both the constructor's cycle guard and
+    // the destructor's re-stamp decision turn on.
+    bool was_displaced(const char_data* character) const
+    {
+        return std::any_of(m_displaced.begin(), m_displaced.end(),
+            [character](const std::pair<char_data*, char_data*>& link) {
+                return link.first == character;
+            });
+    }
     // The room whose occupant chain this fixture owns for its lifetime: the
     // target of every publish in the constructor and of the restore in the
     // destructor. Never null (a null room has no chain to own).
@@ -152,6 +234,12 @@ private:
     // the std::initializer_list itself, whose backing array does not outlive the
     // constructor's full-expression; the destructor walks this to unlink each.
     std::vector<char_data*> m_occupants;
+
+    // The displaced chain as it stood at construction: each node paired with
+    // the next_in_room it carried then. The destructor replays it to put the
+    // chain back link-for-link, and membership in it is what tells the
+    // destructor a managed character belongs to this room rather than nowhere.
+    std::vector<std::pair<char_data*, char_data*>> m_displaced;
 };
 
 // Stands up a one-zone zone_table for the duration of a scope, and restores
@@ -190,11 +278,12 @@ class ScopedZoneTableOwner
 {
 public:
     explicit ScopedZoneTableOwner(int zone_number = 0)
-        : m_previous_zone_table(zone_table)
+        : m_owned_table(new zone_data[1] { })
+        , m_previous_zone_table(zone_table)
         , m_previous_top_of_zone_table(top_of_zone_table)
     {
-        zone_table = new zone_data[1] { };
-        zone_table[0].number = zone_number;
+        m_owned_table[0].number = zone_number;
+        zone_table = m_owned_table;
 
         // A COUNT of addressable zones, not a top index -- see the class
         // comment above. One zone, so 1.
@@ -203,7 +292,15 @@ public:
 
     ~ScopedZoneTableOwner()
     {
-        delete[] zone_table;
+        // Delete the allocation THIS FIXTURE MADE, not whatever the global
+        // happens to point at now (review-2 F3). The two are the same thing
+        // only as long as no test body reassigns zone_table inside the scope;
+        // when one does, `delete[] zone_table` frees a table this fixture never
+        // owned -- a double free waiting on that table's real owner -- and
+        // leaks its own. Owning the pointer makes the destructor correct
+        // regardless of what the global was left pointing at, and the restore
+        // below then puts the global back the way it was found either way.
+        delete[] m_owned_table;
         zone_table = m_previous_zone_table;
         top_of_zone_table = m_previous_top_of_zone_table;
     }
@@ -213,10 +310,16 @@ public:
 
     // The single zone this fixture owns -- the one zone_by_id(0) resolves to.
     // Value-initialized apart from .number, so name/description/map are null;
-    // a test that needs them stamps them here itself.
-    zone_data& zone() { return zone_table[0]; }
+    // a test that needs them stamps them here itself. Reads the fixture's OWN
+    // table rather than the global, for the same reason the destructor does.
+    zone_data& zone() { return m_owned_table[0]; }
 
 private:
+    // The one-zone table this fixture allocated and installed; the destructor
+    // deletes exactly this and nothing else. Held separately from the global
+    // so a test body reassigning zone_table mid-scope cannot redirect the
+    // delete onto somebody else's allocation.
+    zone_data* m_owned_table;
     // Whatever zone_table pointed at before this fixture ran (nullptr in a
     // freshly started process), restored verbatim on destruction so no later
     // test in the monolithic runner sees this fixture's table.

@@ -1754,6 +1754,13 @@ int append_proto(struct char_data* ch, char* arg)
     return i1;
 }
 
+// DEAD (LS-3b Task 1, census-review M9 / census A S-A8): commented-out
+// code, invisible to tools/location_read_census.py's line-based scan
+// because it is inside a block comment. Contains a CREATE(), a
+// character_list splice, and a raw world[room_number].people head-insert.
+// Not a defect -- kept as a zero-risk hygiene banner so a future reader
+// (or grep-driven agent) auditing "where does a character enter
+// character_list?" does not mistake this for live code.
 /*void animate_mob(struct char_data * ch){
   struct char_data * mob;
   int room_number=1;

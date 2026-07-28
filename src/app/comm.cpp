@@ -2711,7 +2711,7 @@ static void act_impl(std::string_view str, int hide_invisible, struct char_data*
         else if (ch && location_of(ch) != NOWHERE)
             to = rots::entity::first_occupant(room_of(ch));
         else if (obj && obj->in_room != NOWHERE) // LS1-ALLOW: obj-location
-            to = room_by_id_total(obj->in_room)->people; // LS1-ALLOW: obj-location
+            to = room_by_id_total(obj->in_room)->people; // LS1-ALLOW: obj-location (and the chain-HEAD read of that room -- act()'s delivery walk starts here)
     }
 
     if (!to)

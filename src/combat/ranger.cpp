@@ -2855,7 +2855,7 @@ void do_scan(char_data* character, char*, waiting_type*, int, int)
         set_location(character, is_in); // LS1-ALLOW: in_room used as mutable room cursor
         for (dis = 0; dis <= maxdis; dis++) {
             if (((dis == 0) && (dir == 0)) || (dis > 0)) {
-                for (i = world[character->in_room].people; i; i = i->next_in_room) { // LS1-ALLOW: in_room used as mutable room cursor
+                for (i = world[character->in_room].people; i; i = i->next_in_room) { // LS1-ALLOW: in_room used as mutable room cursor (and the chain-HEAD read plus tail-walk advance over that cursor room's occupants)
                     if ((!((character == i) && (dis == 0))) && CAN_SEE(character, i)) {
                         if (dis > 0) {
                             act(std::format("{:>33}: {}{}{}{}",

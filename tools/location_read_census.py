@@ -35,6 +35,32 @@ Stage 1, which spans both LS-1 and LS-2 -- see the ledger doc). Modeled on
 / ``ls2-census-b.md`` PART 3 for the full design, and
 ``docs/superpowers/location-read-allowlist.md`` for the allow-listed file
 set this script reads via ``--exceptions``.
+
+TWO LIMITS ARE KNOWN AND DELIBERATE (LS-3a follow-up PR, review-1 F3/F4):
+
+*Multi-line spellings stay latent.* The matcher is strictly line-based, so a
+token split across a physical line break -- ``ch->`` with ``in_room`` alone on
+the next line, or an identifier split by a backslash-continuation
+(``next_in_`` / ``room``) -- is invisible to it. Ruling AM-5 WITHDREW a proposed
+multi-line matcher: re-deriving across lines what the per-line annotation
+contract already states would put that contract at risk, for a shape nothing in
+this tree produces (``clang-format`` breaks BEFORE a ``->``, which leaves the
+token whole on the following line -- and that line IS matched; the
+``people-split-write-flagged`` self-test case pins exactly that). What the
+follow-up did close is every *line-feasible* spelling -- see TOKEN_PATTERNS.
+
+*Annotations are line-scoped, not token-scoped.* One ``// LS1-ALLOW: <reason>``
+silences every tracked token on its line, so a line carrying two tokens of
+different character (``room_by_id_total(obj->in_room)->people`` -- an object
+location AND an occupant-chain head read) is covered by whichever single reason
+its author wrote. Enforcing one-token-per-annotated-line was MEASURED and
+rejected: 21 annotated lines tree-wide carry two or more distinct tokens, and
+splitting them would churn live expressions to restate what the reason already
+says. The follow-up instead hand-audited all 21 and reworded the five whose
+reason was silent on a materially different second token (the F13 precedent set
+at ``src/combat/mystic.cpp:671``). The limit itself is pinned by the
+``multi-token-line-scoped-annotation`` self-test case, so it stays a documented
+property rather than an accident.
 """
 
 import argparse
@@ -114,12 +140,33 @@ SOURCE_SUFFIXES = (".cpp", ".h", ".hpp", ".cc", ".cxx", ".c", ".inl", ".ipp")
 # WITHDREW a proposed multi-line matcher: it would have put the per-line
 # annotation contract at risk to re-derive what the annotation already
 # states, and the token alone is enough to make the split write visible).
+#
+# LINE-FEASIBLE SPELLINGS (LS-3a follow-up, review-1 F3). The three accessor
+# patterns tolerate whitespace around the accessor (``ch-> in_room``,
+# ``room . people`` -- what a hand edit or an unusual formatting run leaves
+# behind), and ``::`` adds qualified / member-pointer access
+# (``&char_data::in_room``, ``&room_data::people``), which reaches the
+# representation with no object at all. ``next_in_room`` needed no widening:
+# ``\bnext_in_room\b``'s leading word boundary already matches after ``::``
+# (``:`` is a non-word character) -- the ``qualified-next_in_room`` self-test
+# case pins that rather than leaving it to inspection.
+#
+# The ``\s*`` widen cannot over-match, and this is why: ``\.`` followed by
+# optional whitespace and the LITERAL field name is a member access in every
+# C++ spelling there is. A decimal literal (``1.5``) fails it on the digit, an
+# ellipsis (``...)``) fails it on the punctuation, and the bare word ``in_room``
+# elsewhere on the line has no accessor before it -- all three are pinned green
+# in the self-test. The anchoring discipline is unchanged, so ``was_in_room`` /
+# ``next_in_room`` still cannot trip the ``.in_room`` pattern (the character
+# after the accessor is ``w`` / ``n``) and ``peoples`` / ``mypeople`` still
+# cannot trip the ``people`` one.
 TOKEN_PATTERNS = (
-    ("->in_room", re.compile(r"->in_room\b")),
-    (".in_room", re.compile(r"\.in_room\b")),
+    ("->in_room", re.compile(r"->\s*in_room\b")),
+    (".in_room", re.compile(r"\.\s*in_room\b")),
+    ("::in_room", re.compile(r"::\s*in_room\b")),
     ("world[", re.compile(r"\bworld\s*\[")),
     ("next_in_room", re.compile(r"\bnext_in_room\b")),
-    ("people", re.compile(r"(?:->|\.)people\b")),
+    ("people", re.compile(r"(?:->|\.|::)\s*people\b")),
 )
 
 ANNOTATION_MARKER = "LS1-ALLOW"
@@ -553,6 +600,43 @@ SELF_TEST_CASES = (
     # with it may trip the gate.
     ("people-longer-field-not-matched", "int n = tribe.peoples;\n", 0),
     ("people-prefixed-field-not-matched", "int n = clan->mypeople;\n", 0),
+    # --- the LINE-FEASIBLE SPELLINGS (LS-3a follow-up, review-1 F3). Each
+    # reaches the representation exactly as the canonical spelling does. SIX
+    # of the seven were invisible to this gate before the widen -- measured by
+    # running each body against the pre-widen patterns, where all six matched
+    # nothing. The seventh, `qualified-next_in_room`, already matched (the
+    # `\b` boundary), and is here to PIN that rather than to close a gap.
+    ("arrow-spaced-in_room", "int a = ch-> in_room;\n", 1),
+    ("dot-spaced-in_room", "int a = character . in_room;\n", 1),
+    ("qualified-in_room", "auto member = &char_data::in_room;\n", 1),
+    ("qualified-next_in_room", "auto member = &char_data::next_in_room;\n", 1),
+    ("qualified-people", "auto member = &room_data::people;\n", 1),
+    ("arrow-spaced-people", "char_data* head = room-> people;\n", 1),
+    ("dot-spaced-people", "char_data* head = room . people;\n", 1),
+    # Over-match controls for that widen, both deliberately CODE-level: the
+    # risky text sits in live code, not in a comment, so comment masking
+    # cannot be what makes them green -- only the pattern's own discipline
+    # can. Each pairs a real non-accessor dot (a decimal literal; an ellipsis)
+    # with the bare word `in_room` LATER ON THE SAME LINE, which is exactly
+    # what a widen from `\s*` to any looser inter-token class would swallow.
+    # (A first draft used `// in_room mentioned in prose` and an
+    # `in_room_total` identifier; sabotaging the pattern to `\.[^;]*in_room\b`
+    # left both green -- the `;` and the `\b` did the work, not the widen, so
+    # they proved nothing. These bodies go RED under that same sabotage
+    # extended past the semicolon, which is the property a control needs.)
+    ("float-not-an-accessor", "double ratio = 1.5; int in_room = 0;\n", 0),
+    ("ellipsis-not-an-accessor",
+     "void trace(const char* fmt, ...); int in_room = 0;\n", 0),
+    # --- the LINE-SCOPED ANNOTATION limit (review-1 F4), pinned as the
+    # documented behavior it is: ONE reason silences EVERY token on its line.
+    # This body is `src/app/comm.cpp:2714` verbatim -- two tokens of different
+    # character (an object location and an occupant-chain head read) under a
+    # single `obj-location` reason. Measured at 21 such lines tree-wide when
+    # this was written; enforcement was considered and rejected (see the module
+    # docstring for the measurement and the reasoning). A future wave that
+    # enforces token-scoping must invert this case DELIBERATELY.
+    ("multi-token-line-scoped-annotation",
+     "to = room_by_id_total(obj->in_room)->people; // LS1-ALLOW: obj-location\n", 0),
 )
 
 

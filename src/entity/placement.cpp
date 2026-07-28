@@ -122,6 +122,60 @@
                   * fields; zone_table[]/top_of_zone_table themselves stay untouched
                   * (rots_world, L3 -- only the resolver dispatch reaches them). */
 
+namespace {
+// ==========================================================================
+// THE COMPILE-TIME ABSENCE ASSERTION (LS-3b T8) -- the mechanical witness for
+// corrected criterion (a)'s first clause: "char_data carries no location
+// field [observable outside the placement core]" (R-3b-A's private-handle
+// reading; see the invariant block above). tools/location_read_census.py can
+// only see PRESENCE -- its tracked tokens flag a raw spelling wherever one
+// exists. It structurally cannot see an ABSENCE, so nothing in that gate can
+// prove the OLD public members are actually gone rather than merely unused.
+// This block is that proof, expressed so a future reintroduction fails the
+// BUILD rather than merely tripping a grep line.
+//
+// A C++20 requires-expression is SFINAE-friendly by construction: when the
+// named member does not exist on T, the expression inside the braces is
+// simply ill-formed and the requires-expression evaluates to false -- never
+// a hard compile error. That is exactly the property this witness needs:
+// gracefully false while the field stays privatized (today's, correct,
+// state), loud -- a static_assert failure, i.e. a build break -- the instant
+// a future edit reintroduces the old public spelling.
+//
+// Housed HERE, not in a standalone test TU, for two reasons: (1)
+// src/entity/placement.cpp is the representation owner, a whole-file
+// LS1-ALLOW exemption (docs/superpowers/location-read-allowlist.md), so the
+// literal `.in_room`/`.next_in_room`/`.people` spellings the detection idiom
+// below must write to probe for the member need no per-line annotation --
+// this file's exemption already covers them; (2) this TU is part of
+// ROTS_ENTITY_SOURCES, an always-built target on every preset (host,
+// container, MSVC, sanitizer) -- unlike an opt-in ctest executable, this
+// witness can never be silently skipped by a target going unbuilt or a
+// `-DBUILD_TESTING=OFF` configure.
+template <typename T>
+concept HasPublicInRoomMember = requires(T instance) { instance.in_room; };
+
+template <typename T>
+concept HasPublicNextInRoomMember = requires(T instance) { instance.next_in_room; };
+
+template <typename T>
+concept HasPublicPeopleMember = requires(T instance) { instance.people; };
+
+static_assert(!HasPublicInRoomMember<char_data>,
+    "char_data::in_room has been reintroduced. LS-3b T5 privatized this field behind "
+    "char_data::ls_location_id_ (LocationSystem's private handle, R-3b-A) -- route through "
+    "location_of()/set_location() instead of restoring the public member.");
+static_assert(!HasPublicNextInRoomMember<char_data>,
+    "char_data::next_in_room has been reintroduced. LS-3b T5 privatized this field behind "
+    "char_data::ls_next_in_room_ -- route through the Stage-1 occupant API "
+    "(occupants()/first_occupant()) instead of restoring the public member.");
+static_assert(!HasPublicPeopleMember<room_data>,
+    "room_data::people has been reintroduced. LS-3b T5 privatized this field behind "
+    "room_data::ls_first_occupant_ -- route through first_occupant()/occupants() instead of "
+    "restoring the public member.");
+} // namespace
+// ==========================================================================
+
 namespace rots::entity {
 
 namespace {

@@ -13,6 +13,7 @@
 #include "../interpre.h"
 #include "../utils.h"
 #include "rots/core/character.h"
+#include "rots/core/object.h"
 #include "rots/core/types.h"
 #include "test_placement.h"
 #include "test_world.h"
@@ -27,6 +28,10 @@
 // it (`new index_data[1]{}`, `mob_index[0].func`), unlike the two mirrored
 // sites which only ever passed the pointer around.
 extern struct index_data *mob_index;
+// obj_index likewise has no header declaration anywhere in the tree (see the
+// mob_index comment above) -- forward-declared for the same reason, needed by
+// this file's F8 remote_mode coverage rider (ScopedRecordingObjIndex below).
+extern struct index_data *obj_index;
 
 namespace {
 
@@ -36,6 +41,40 @@ struct RecordedCall {
 
 RecordedCall g_room_funct_call;
 RecordedCall g_mob_spec_call;
+
+RecordedCall g_obj_spec_call;
+
+// Carried-item spec-proc stub: records that it fired. Used to prove F8's
+// remote_mode gate (interpre.cpp special(), the `if (in_room !=
+// location_of(ch))` computation) actually skips the caller's own
+// equipment/inventory dispatch -- not merely that nothing else fired.
+SPECIAL(recording_obj_spec) {
+    g_obj_spec_call.called = true;
+    return 1;
+}
+
+// Swaps the process-global obj_index for a single fabricated entry whose
+// func is this file's recording stub, restoring the prior table on scope
+// exit -- mirrors ScopedRecordingMobIndex above, object-side.
+class ScopedRecordingObjIndex {
+  public:
+    ScopedRecordingObjIndex() : previous_(obj_index) {
+        obj_index = new index_data[1]{};
+        obj_index[0].virt = 200;
+        obj_index[0].func = &recording_obj_spec;
+    }
+
+    ~ScopedRecordingObjIndex() {
+        delete[] obj_index;
+        obj_index = previous_;
+    }
+
+    ScopedRecordingObjIndex(const ScopedRecordingObjIndex &) = delete;
+    ScopedRecordingObjIndex &operator=(const ScopedRecordingObjIndex &) = delete;
+
+  private:
+    index_data *previous_;
+};
 
 // Room spec-proc stub: records that it fired and returns 0 (does NOT
 // consume the event), so special() falls through to the occupant walk
@@ -151,4 +190,74 @@ TEST(InterpreSpecial, ReturnsZeroWhenNeitherTheRoomNorAnyOccupantConsumesTheEven
     EXPECT_EQ(result, 0)
         << "No registered room funct and no matching occupant spec-proc -- special() must "
            "return the tripwire-free 0 (\"nothing consumed the event\").";
+}
+
+// ---------------------------------------------------------------------------
+// F8 coverage riders (ls3b-global-constraints.md T7; ls3b-census-review.md
+// F8): interpre.cpp's special() tests a character's ABSENCE twice against
+// the (possibly-substituted) in_room value -- the `remote_mode` computation
+// at :1253 and the early `return FALSE` at :1263 -- and neither had a
+// dedicated test anywhere in the tree before this rider (the suite above
+// only drives special() for a character who HAS a location). Both are
+// RETAINED-signature behaviors (interpre.h's own T7 comment), so these pin
+// the body's meaning, not a code change.
+// ---------------------------------------------------------------------------
+
+TEST(InterpreSpecial, RemoteModeSkipsTheCallersEquipmentAndInventoryForAnAbsentCharacterGivenAnExplicitRoom) {
+    // F8's FIRST absence-derived behavior: `if (in_room != location_of(ch))
+    // remote_mode = 1;` runs BEFORE the NOWHERE-default substitution, so an
+    // explicit, non-default room (act_comm.cpp's do_yell zone loop is the
+    // one production caller that ever passes one) for an absent character
+    // sets remote_mode = 1 -- which then gates OFF the caller's own
+    // equipment/inventory spec-proc dispatch (interpre.cpp:1336-1348). Room
+    // funct and room occupants stay empty so only the equipment/inventory
+    // gate can produce a call.
+    ScopedTestWorld test_world;
+    ScopedRecordingObjIndex obj_index_scope;
+    char_data ch{};
+    set_location(&ch, NOWHERE);
+    test_world.room().funct = nullptr;
+
+    obj_data carried{};
+    carried.item_number = 0;
+    carried.next_content = nullptr;
+    ch.carrying = &carried;
+
+    g_obj_spec_call = RecordedCall{};
+
+    waiting_type wtl{};
+    const int result = special(&ch, 0, mutable_arg(""), SPECIAL_COMMAND, &wtl, 0);
+
+    EXPECT_FALSE(g_obj_spec_call.called)
+        << "Expected remote_mode = 1 (explicit room 0 != the absent character's NOWHERE "
+           "location) to skip the inventory spec-proc dispatch entirely.";
+    EXPECT_EQ(result, 0);
+
+    ch.carrying = nullptr;
+}
+
+TEST(InterpreSpecial, AbsentCharacterEarlyReturnsFalseWithoutDispatchingAnything) {
+    // F8's SECOND absence-derived behavior: called with the default
+    // (unspecified) room for a character with no location at all, special()
+    // substitutes in_room = location_of(ch) = NOWHERE and then takes the
+    // `if (in_room == NOWHERE) return FALSE;` arm at :1263 -- BEFORE ever
+    // resolving room_by_id_total(in_room) or dispatching to the room funct,
+    // any occupant, or any object. The room funct is wired to a stub that
+    // WOULD fire if the early return did not intercept first.
+    ScopedTestWorld test_world;
+    char_data ch{};
+    set_location(&ch, NOWHERE);
+    test_world.room().funct = &recording_room_funct;
+    g_room_funct_call = RecordedCall{};
+
+    waiting_type wtl{};
+    const int result = special(&ch, 0, mutable_arg(""), SPECIAL_COMMAND, &wtl);
+
+    EXPECT_EQ(result, 0)
+        << "Expected an absent character with no explicit room to take the early NOWHERE "
+           "return, not fall through to any dispatch.";
+    EXPECT_FALSE(g_room_funct_call.called)
+        << "The early return must fire strictly before the room-funct dispatch is attempted.";
+
+    test_world.room().funct = nullptr;
 }

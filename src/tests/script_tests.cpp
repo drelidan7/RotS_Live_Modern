@@ -159,9 +159,11 @@ struct ScriptedDenialContext {
     char_data occupant_b{}; // deliberately UNSCRIPTED -- must never be consulted.
 
     // Room 0's occupant chain: the denying occupant_a FIRST, with the
-    // unscripted occupant_b right behind it -- that order is the whole
-    // point of the two guard-regression tests below (LS-3a T3,
-    // test_placement.h). Declared before the script_table members so it
+    // unscripted occupant_b right behind it -- the original fixture's
+    // order, preserved verbatim. NOTE (measured, LS-3a T3-1 probe):
+    // inverting this order still yields a denial, so the tests below pin
+    // the ROOM BINDING and the denial outcome, not the walk order (LS-3a
+    // T3, test_placement.h). Declared before the script_table members so it
     // unwinds after them, and after the characters so it unwinds first.
     ScopedRoomOccupants occupants { &test_world.room(), 0, { &occupant_a, &occupant_b } };
 

@@ -266,8 +266,11 @@ private:
                 reset_room.bleed_track[trail] = room_bleed_data{};
             }
 
-            // Set by NEITHER room_data's constructor nor dummy_room_data()
-            // (LS-3a T1 Stage B). In an owning construction these are raw
+            // Historically set by NEITHER room_data's constructor nor
+            // dummy_room_data() (LS-3a T1 Stage B; the T5b rider later
+            // completed the constructor, so an owning construction is now
+            // deterministic and this reset is the REUSE branch's guarantee
+            // plus defence in depth). Before that, these were raw
             // bytes from `new room_data[]`; a plain macOS build's allocator
             // happens to hand back zeroed pages, but macOS ASan's does not --
             // act_wiz_format_tests.cpp's RoomStatContext hit exactly that as

@@ -288,7 +288,10 @@ TEST(DbBootRecordCrime, RecordsTheVictimAndEachEligibleThirdPartyOccupantAsWitne
     TestPc witness(20, 3);
     TestNpc bystander(1);
 
-    // All four in room 0's occupant chain, in this order -- the walk
+    // All four in room 0's occupant chain, in the order the original
+    // fixture built (preserved verbatim; measured T3-1 probe: reordering
+    // is green -- record_crime counts witnesses, it does not rank them,
+    // so the suite pins the ROOM BINDING, not this order) -- the walk
     // record_crime's conversion now runs is
     // rots::entity::occupants(room_of(victim)) (handler.h), which reads
     // room->people/char_data::next_in_room exactly like the original raw

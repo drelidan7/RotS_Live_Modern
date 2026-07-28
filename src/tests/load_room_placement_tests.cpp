@@ -214,14 +214,14 @@ class ScopedVnumWorld {
         for (int rnum = 0; rnum < kRoomCount; ++rnum) {
             room_by_id_total(rnum)->number = room_vnum_for(rnum);
             room_by_id_total(rnum)->zone = 0;
-            room_by_id_total(rnum)->people = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
+            clear_room_occupants(room_by_id_total(rnum));
             room_by_id_total(rnum)->light = 0;
         }
         // The slot a vnum-as-index misplacement lands in. create_bulk()
         // dummy_room_data()-initialized it (number == -1, so real_room() can
         // never return it), but its occupant list is reset here so an
         // assertion about who ended up there starts from a known state.
-        room_by_id_total(kOwnerVnum)->people = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
+        clear_room_occupants(room_by_id_total(kOwnerVnum));
         room_by_id_total(kOwnerVnum)->zone = 0;
 
         zone_table = new zone_data[1]{};
@@ -236,8 +236,8 @@ class ScopedVnumWorld {
 
     ~ScopedVnumWorld() {
         for (int rnum = 0; rnum < kRoomCount; ++rnum)
-            room_by_id_total(rnum)->people = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
-        room_by_id_total(kOwnerVnum)->people = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
+            clear_room_occupants(room_by_id_total(rnum));
+        clear_room_occupants(room_by_id_total(kOwnerVnum));
 
         delete[] zone_table;
         zone_table = m_previous_zone_table;
@@ -527,7 +527,7 @@ void make_mortal_player(char_data &player) {
     player.points.spirit = 0;
     player.specials2.act = 0; // not IS_NPC; no PLR_* flags set
     set_location(&player, NOWHERE);
-    player.next_in_room = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
+    reset_occupant_link(&player);
     player.followers = nullptr;
     player.master = nullptr;
 }
@@ -560,18 +560,7 @@ void release_spawned_follower(char_data *mob) {
         stop_follower(mob, FOLLOW_MOVE);
 
     if (location_of(mob) != NOWHERE) {
-        room_data &room = *room_of(mob);
-        if (room.people == mob) { // LS1-ALLOW: manual occupant-list splice
-            room.people = mob->next_in_room; // LS1-ALLOW: manual occupant-list splice
-        } else {
-            for (char_data *occupant = room.people; occupant != nullptr; // LS1-ALLOW: manual occupant-list splice
-                 occupant = occupant->next_in_room) { // LS1-ALLOW: manual occupant-list splice
-                if (occupant->next_in_room == mob) { // LS1-ALLOW: manual occupant-list splice
-                    occupant->next_in_room = mob->next_in_room; // LS1-ALLOW: manual occupant-list splice
-                    break;
-                }
-            }
-        }
+        unlink_from_occupant_chain(*room_of(mob), mob);
     }
 
     if (character_list == mob) {
@@ -1751,7 +1740,7 @@ TEST(LoadRoomRider, PostLoginSaveLeavesABuggedCharacterNowhereInsteadOfRelocatin
     // 398-402) -- exactly the leak half of R-C2's torn state -- so it would
     // NOT unsplice this character. Undo the splice by hand, or the stack
     // char_data outlives its entry in a process-global chain.
-    room_by_id_total(0)->people = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
+    unlink_from_occupant_chain(*room_by_id_total(0), &player);
     RELEASE(player.player.name);
 }
 
@@ -2539,13 +2528,12 @@ TEST(CleanExposeElementsGuard, StillCancelsForAMageWhoIsInARoomAndCannotSeeTheTa
     descriptor.next = nullptr;
     mage.desc = &descriptor;
 
-    // Placed by hand rather than by char_to_room(): this fixture's char_data
-    // is raw (no clear_char()), and char_to_room() would charge its zone
-    // power and light accounting for a character the test never finishes
-    // wiring up. set_location() plus the chain is exactly what the walk reads.
-    set_location(&mage, kOwnerRnum);
-    mage.next_in_room = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
-    room_by_id_total(kOwnerRnum)->people = &mage; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
+    // Placed via ScopedRoomOccupants rather than char_to_room(): this
+    // fixture's char_data is raw (no clear_char()), and char_to_room() would
+    // charge its zone power and light accounting for a character the test
+    // never finishes wiring up. The fixture's set_location() call plus the
+    // chain it publishes is exactly what the walk reads.
+    ScopedRoomOccupants occupant_fixture{room_by_id_total(kOwnerRnum), kOwnerRnum, {&mage}};
 
     char_data absent_target{};
     spec_data->exposed_target = &absent_target;
@@ -2558,9 +2546,6 @@ TEST(CleanExposeElementsGuard, StillCancelsForAMageWhoIsInARoomAndCannotSeeTheTa
         << "the sweep no longer runs for a placed mage -- the guard is too broad";
     EXPECT_STREQ(descriptor.small_outbuf,
                  "Your target is no longer vulnerable to your spells.\r\n");
-
-    room_by_id_total(kOwnerRnum)->people = nullptr; // LS1-ALLOW: representation-impl (fixture-owned occupant-chain head; the Stage-1 API exposes no chain mutator this wave)
-    set_location(&mage, NOWHERE);
 }
 
 // R7/R8 END TO END -- the rent-load ordering, over the REAL world[] table,

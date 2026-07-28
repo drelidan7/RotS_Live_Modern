@@ -25,6 +25,7 @@
 #include "rots/core/room.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
+#include "rots/entity/render_cursor.h"
 #include "utils.h"
 #include "zone.h" /* For zone_table */
 
@@ -1665,13 +1666,19 @@ ACMD(do_whistle)
             return;
         }
         send_to_char("You whistle powerfully.\r\n", ch);
+        // ls3b T2: one ScopedRenderLocation held across the whole zone scan
+        // (contract in rots/entity/render_cursor.h), retargeted per room --
+        // reproduces the manual per-iteration set_location(ch, rm_num) write
+        // exactly; the destructor's restore at the closing brace below
+        // replaces the removed trailing set_location(ch, cur_room_num).
+        rots::entity::ScopedRenderLocation whistle_cursor(ch, cur_room_num);
         for (rm_num = 0; rm_num <= top_of_world; rm_num++) {
             rm = room_by_id_total(rm_num);
 
             if (rm->zone != zone_num)
                 continue;
 
-            set_location(ch, rm_num); // LS1-ALLOW: in_room used as mutable room cursor (zone-wide whistle broadcast)
+            whistle_cursor.retarget(rm_num);
 
             if (rm_num == cur_room_num)
                 act("$n whistles powerfully.", FALSE, ch, 0, 0, TO_ROOM);
@@ -1709,7 +1716,6 @@ ACMD(do_whistle)
                 }
             }
         }
-        set_location(ch, cur_room_num); // LS1-ALLOW: in_room used as mutable room cursor
     }
 }
 
@@ -2808,7 +2814,6 @@ void do_recover(char_data* character, char*, waiting_type*, int, int)
 ==================================================================================*/
 void do_scan(char_data* character, char*, waiting_type*, int, int)
 {
-    struct char_data* i;
     int is_in, dir, dis, maxdis, found = 0;
 
     const std::string_view distance[] = {
@@ -2850,12 +2855,20 @@ void do_scan(char_data* character, char*, waiting_type*, int, int)
     if (GET_LEVEL(character) < LEVEL_IMMORT)
         GET_MOVE(character) -= 3;
 
-    is_in = character->in_room; // LS1-ALLOW: in_room used as mutable room cursor (quick-scan adjacent rooms)
+    is_in = location_of(character);
+    // ls3b T2: one ScopedRenderLocation held across both scan loops AND the
+    // trailing "Nobody anywhere near you" message below (contract in
+    // rots/entity/render_cursor.h) -- the destructor's restore fires at
+    // this function's closing brace, exactly where the removed trailing
+    // set_location(character, is_in) used to run, so that message keeps
+    // rendering from whatever room the scan last spoofed, byte-for-byte as
+    // before.
+    rots::entity::ScopedRenderLocation scan_cursor(character, is_in);
     for (dir = 0; dir < NUM_OF_DIRS; dir++) {
-        set_location(character, is_in); // LS1-ALLOW: in_room used as mutable room cursor
+        scan_cursor.retarget(is_in);
         for (dis = 0; dis <= maxdis; dis++) {
             if (((dis == 0) && (dir == 0)) || (dis > 0)) {
-                for (i = world[character->in_room].people; i; i = i->next_in_room) { // LS1-ALLOW: in_room used as mutable room cursor (and the chain-HEAD read plus tail-walk advance over that cursor room's occupants)
+                for (auto* i : rots::entity::occupants(room_of(character))) {
                     if ((!((character == i) && (dis == 0))) && CAN_SEE(character, i)) {
                         if (dis > 0) {
                             act(std::format("{:>33}: {}{}{}{}",
@@ -2870,15 +2883,14 @@ void do_scan(char_data* character, char*, waiting_type*, int, int)
                     }
                 }
             }
-            if (!CAN_GO(character, dir) || (world[character->in_room].dir_option[dir]->to_room == is_in) || (IS_SET(EXIT(character, dir)->exit_info, EX_NO_LOOK))) // LS1-ALLOW: in_room used as mutable room cursor
+            if (!CAN_GO(character, dir) || (room_of(character)->dir_option[dir]->to_room == is_in) || (IS_SET(EXIT(character, dir)->exit_info, EX_NO_LOOK)))
                 break;
             else
-                set_location(character, room_of(character)->dir_option[dir]->to_room); // LS1-ALLOW: in_room used as mutable room cursor
+                scan_cursor.retarget(room_of(character)->dir_option[dir]->to_room);
         }
     }
     if (found == 0)
         act("Nobody anywhere near you.", TRUE, character, 0, 0, TO_CHAR);
-    set_location(character, is_in); // LS1-ALLOW: in_room used as mutable room cursor
 }
 
 /*=================================================================================

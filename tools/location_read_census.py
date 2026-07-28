@@ -186,17 +186,20 @@ ANNOTATION_PATTERN = re.compile(r"LS1-ALLOW:\s*(.*?)\s*(?:\*/\s*)?$")
 # line's annotation must start with one of these -- an empty or off-list
 # reason is still a violation, so the gate can't be defeated with a bare
 # `// LS1-ALLOW`. LS-3a T4 minted NO new prefix (ruling R-B7 -- the count
-# stays ELEVEN); it widened what `representation-impl` covers to a third
+# stayed ELEVEN); it widened what `representation-impl` covers to a third
 # class its wording already fits, the occupant-chain SHAPE assertions in
 # `src/tests/spec_pro_tests.cpp`/`load_room_placement_tests.cpp` that pin
 # raw `next_in_room` links because no Stage-1 API expresses a tail walk.
-# See docs/superpowers/location-read-allowlist.md for the full definition.
+# LS-3b T2 RETIRED `in_room used as mutable room cursor` (the fail-closed
+# burndown rule, .superpowers/sdd/ls3b-global-constraints.md): its last
+# production line converted onto rots::entity::ScopedRenderLocation in the
+# same commit that removed it here, so the count is now TEN. See
+# docs/superpowers/location-read-allowlist.md for the full definition.
 ALLOWED_REASON_PREFIXES = (
     "save-next",
     "manual occupant-list splice",
     "peek-ahead",
     "manual first-match advance",
-    "in_room used as mutable room cursor",
     "write",
     "obj-location",
     "resolver-impl",

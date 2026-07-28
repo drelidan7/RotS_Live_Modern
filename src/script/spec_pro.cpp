@@ -38,6 +38,7 @@
 #include "rots/core/room.h"
 #include "rots/core/descriptor.h"
 #include "rots/core/types.h"
+#include "rots/entity/render_cursor.h"
 #include "utils.h"
 
 #include "char_utils.h"
@@ -1252,10 +1253,14 @@ SPECIAL(ferry_captain)
     }
 
     if ((ferry_captain_data[num].timer == 0) && (ferry_captain_data[num].stop_time[ferry_captain_data[num].marker] > 0)) {
-        tmp = host->in_room; // LS1-ALLOW: in_room used as mutable room cursor (ferry-captain outside-message save/restore)
-        set_location(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed)
+        // ls3b T2: ScopedRenderLocation reproduces the manual
+        // save/write/restore idiom byte-for-byte (contract in
+        // rots/entity/render_cursor.h) -- destructor restores host at the
+        // closing brace below, exactly where the removed
+        // set_location(host, tmp) used to run.
+        rots::entity::ScopedRenderLocation ferry_cursor(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed through ScopedRenderLocation)
         act(ferry_captain_data[num].leave_to_outside, FALSE, host, ferryobj, 0, TO_ROOM);
-        set_location(host, tmp); // LS1-ALLOW: in_room used as mutable room cursor
+        ferry_cursor.restore();
         act(ferry_captain_data[num].leave_to_inside, FALSE, host, 0, 0, TO_ROOM);
     }
 
@@ -1265,10 +1270,13 @@ SPECIAL(ferry_captain)
 
     act(ferry_captain_data[num].move_out_inside, FALSE, host, ferryobj, 0, TO_ROOM);
 
-    tmp = host->in_room; // LS1-ALLOW: in_room used as mutable room cursor (ferry-captain outside-message save/restore)
-    set_location(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed)
-    act(ferry_captain_data[num].move_out_outside, FALSE, host, ferryobj, 0, TO_ROOM);
-    set_location(host, tmp); // LS1-ALLOW: in_room used as mutable room cursor
+    {
+        // ls3b T2: ScopedRenderLocation reproduces the manual
+        // save/write/restore idiom byte-for-byte (contract in
+        // rots/entity/render_cursor.h).
+        rots::entity::ScopedRenderLocation ferry_cursor(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed through ScopedRenderLocation)
+        act(ferry_captain_data[num].move_out_outside, FALSE, host, ferryobj, 0, TO_ROOM);
+    }
 
     obj_from_room(ferryobj);
 
@@ -1296,17 +1304,23 @@ SPECIAL(ferry_captain)
 
     if (ferry_captain_data[num].timer == 0) {
         act(ferry_captain_data[num].move_in_inside, TRUE, host, ferryobj, 0, TO_ROOM);
-        tmp = host->in_room; // LS1-ALLOW: in_room used as mutable room cursor (ferry-captain arrival-message save/restore)
-        set_location(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed)
-        act(ferry_captain_data[num].move_in_outside, FALSE, host, ferryobj, 0, TO_ROOM);
-        set_location(host, tmp); // LS1-ALLOW: in_room used as mutable room cursor
+        {
+            // ls3b T2: ScopedRenderLocation reproduces the manual
+            // save/write/restore idiom byte-for-byte (contract in
+            // rots/entity/render_cursor.h).
+            rots::entity::ScopedRenderLocation ferry_cursor(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed through ScopedRenderLocation)
+            act(ferry_captain_data[num].move_in_outside, FALSE, host, ferryobj, 0, TO_ROOM);
+        }
     } else {
         act(ferry_captain_data[num].arrive_to_inside, FALSE, host, ferryobj, 0, TO_ROOM);
 
-        tmp = host->in_room; // LS1-ALLOW: in_room used as mutable room cursor (ferry-captain arrival-message save/restore)
-        set_location(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed)
+        // ls3b T2: ScopedRenderLocation reproduces the manual
+        // save/write/restore idiom byte-for-byte (contract in
+        // rots/entity/render_cursor.h) -- destructor restores host at the
+        // closing brace below, exactly where the removed
+        // set_location(host, tmp) used to run.
+        rots::entity::ScopedRenderLocation ferry_cursor(host, ferryobj->in_room); // LS1-ALLOW: obj-location (obj_data::in_room rnum on the RHS; the LHS is the ferry-captain message cursor, now routed through ScopedRenderLocation)
         act(ferry_captain_data[num].arrive_to_outside, FALSE, host, ferryobj, 0, TO_ROOM);
-        set_location(host, tmp); // LS1-ALLOW: in_room used as mutable room cursor
     }
     return TRUE;
 }

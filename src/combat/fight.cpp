@@ -34,6 +34,7 @@
 #include "rots/core/room.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
+#include "rots/entity/render_cursor.h"
 #include "text_view.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
@@ -892,18 +893,26 @@ void death_cry(struct char_data* ch)
     }
 
     act(cry_msg, FALSE, ch, 0, 0, TO_ROOM);
-    was_in = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (save/restore around act() broadcast below; census Family D pattern, unlisted site)
+    was_in = location_of(ch);
 
     if (ch->player.death_cry2 && strcmp(ch->player.death_cry2, "(null)")) {
         cry_msg = ch->player.death_cry2;
     } else {
         cry_msg = std::format("Your blood freezes as you hear {}'s death cry.", (IS_NPC(ch)) ? "someone" : GET_NAME(ch));
     }
+    // ls3b T2: one ScopedRenderLocation held across the per-door loop
+    // (contract in rots/entity/render_cursor.h), retargeted to each door's
+    // destination then back to was_in every iteration -- reproduces the
+    // manual per-iteration write/restore pair exactly (CAN_GO(ch, door) for
+    // the NEXT door must see ch's REAL room, matching today's behavior of
+    // restoring before the next iteration's guard is evaluated). On the
+    // damage/seed42 characterization path: byte-identical, no reordering.
+    rots::entity::ScopedRenderLocation death_cry_cursor(ch, was_in);
     for (door = 0; door < NUM_OF_DIRS; door++) {
         if (CAN_GO(ch, door)) {
-            set_location(ch, room_by_id_total(was_in)->dir_option[door]->to_room); // LS1-ALLOW: in_room used as mutable room cursor
+            death_cry_cursor.retarget(room_by_id_total(was_in)->dir_option[door]->to_room);
             act(cry_msg, FALSE, ch, 0, 0, TO_ROOM);
-            set_location(ch, was_in); // LS1-ALLOW: in_room used as mutable room cursor
+            death_cry_cursor.retarget(was_in);
         }
     }
 }

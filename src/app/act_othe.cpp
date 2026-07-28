@@ -32,6 +32,7 @@
 #include "player_limits.h"
 #include "profs.h"
 #include "spells.h"
+#include "rots/entity/render_cursor.h"
 #include "rots/persist/file_formats.h"
 #include "rots/core/character.h"
 #include "rots/core/object.h"
@@ -1790,7 +1791,7 @@ ACMD(do_next)
 
 ACMD(do_knock)
 {
-    int tmp, room, oldroom;
+    int tmp, room;
     char str[200];
 
     if (IS_SHADOW(ch)) {
@@ -1818,8 +1819,13 @@ ACMD(do_knock)
 
                     room = EXIT(ch, tmp)->to_room;
                     if (room != NOWHERE) {
-                        oldroom = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (knock: save/restore around the adjacent-room act()/special() broadcast)
-                        set_location(ch, room); // LS1-ALLOW: in_room used as mutable room cursor (knock: save/restore around the adjacent-room act()/special() broadcast)
+                        // ls3b T2: ScopedRenderLocation reproduces the manual
+                        // save/write/restore idiom byte-for-byte (contract in
+                        // rots/entity/render_cursor.h) -- destructor restores
+                        // ch to its real room at the closing brace below,
+                        // exactly where the removed set_location(ch, oldroom)
+                        // used to run.
+                        rots::entity::ScopedRenderLocation knock_cursor(ch, room);
                         if (EXIT(ch, rev_dir[tmp])) {
                             if (IS_SET(EXIT(ch, rev_dir[tmp])->exit_info, EX_ISDOOR) && EXIT(ch, rev_dir[tmp])->keyword) {
                                 strcpy(str, std::format("You hear a knock on the {}.\n",
@@ -1839,7 +1845,6 @@ ACMD(do_knock)
                         ch->delay.targ1.type = TARGET_OTHER;
                         ch->delay.targ1.ch_num = rev_dir[tmp];
                         special(ch, CMD_KNOCK, argument, SPECIAL_NONE, 0);
-                        set_location(ch, oldroom); // LS1-ALLOW: in_room used as mutable room cursor (knock: save/restore around the adjacent-room act()/special() broadcast)
                     }
 
                     return;

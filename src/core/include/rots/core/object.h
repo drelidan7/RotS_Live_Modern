@@ -154,6 +154,14 @@ public:
 
 public:
     int item_number; /* Where in data-base               */
+    // ls3b T7 store disposition (ls3b-global-constraints.md; census D
+    // section 2.1): OUT of the char-only LocationSystem swap, recorded on
+    // four independent grounds -- scale (96 annotated obj-location lines),
+    // object location is tri-state (room/carried/nested, not a flat map
+    // like a character's), no persistence pressure (obj_file_elem carries
+    // no room field), and clear_object()'s whole-struct memset (a store
+    // handle here would leak an entry per object). Stays an int rnum with
+    // NOWHERE sentinel; deferred to a future wave with its own census.
     int in_room; /* In what room -1 when conta/carr  */
 
     struct obj_flag_data obj_flags; /* Object information               */

@@ -645,6 +645,17 @@ private:
  */
 struct char_special2_data {
     long idnum; /* player's idnum			*/
+    // ls3b T7 store disposition (ls3b-global-constraints.md; census D
+    // section 2.2): PRESERVED as a persisted room VNUM -- migrating the
+    // save format was rejected (rnums shift across world reloads, the
+    // text/JSON key is human-readable, and calc_load_room()'s real_room()
+    // calls would all have to invert). The in-memory stash/peek channel
+    // this field used to alias now has its OWN, non-persisted storage --
+    // char_special_data::ls_load_room_vnum_ (character.h) -- so this field
+    // holds only what it always held on disk: a VNUM, read at login and
+    // overwritten with an rnum for the placement window (objsave.cpp's
+    // calc_load_room()/Crash_load()); the two meanings never overlap in
+    // time, only in storage.
     int load_room; /* Which room to place char in		*/
     int spells_to_learn; /* How many can you learn yet this level*/
     int alignment; /* +-1000 for alignments          */
@@ -693,6 +704,18 @@ struct affected_type {
     char time_phase; /* when exactly in the tick it was cast  */
     /*  is set in affect_to_char, room */
 
+    // ls3b T7 store disposition (ls3b-global-constraints.md; census D
+    // section 2.3; owner ruling O-7): under SPELL_BEACON this field PRESERVES
+    // a room rnum -- a VNUM cannot fit this sh_int (VNUMs run past
+    // top_of_world; extension rooms start at EXTENSION_ROOM_HEAD = 100000),
+    // so widening it is rejected, not merely deferred. mage.cpp's
+    // spell_beacon() now guards BOTH ends: the write arm refuses to store a
+    // value that overflows the sh_int, and the read/recall arm's range test
+    // is two-sided (`< 0 || > top_of_world`), so a corrupt or absent beacon
+    // always takes the spell's failure arm instead of ever reaching an
+    // unguarded placement. For every OTHER affect type this field is an
+    // ability delta, not a room id -- the disposition above is
+    // SPELL_BEACON-specific.
     sh_int modifier; /* This is added to apropriate ability     */
     sh_int location; /* Tells which ability to change(APPLY_XXX)*/
     long bitvector; /* Tells which bits to set (AFF_XXX)       */

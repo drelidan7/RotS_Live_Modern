@@ -154,7 +154,7 @@ int new_room(struct char_data* ch, int number)
         ->room->contents
         = 0;
     SHAPE_ROOM(ch)
-        ->room->people // LS1-ALLOW: write (the `= 0;` sits on the NEXT line -- clang-format split this assignment; this gate is line-based, so the annotation carries the classification)
+        ->room->ls_first_occupant_ // LS1-ALLOW: write (the `= 0;` sits on the NEXT line -- clang-format split this assignment; this gate is line-based, so the annotation carries the classification)
         = 0;
     SHAPE_ROOM(ch)
         ->room->light
@@ -1281,7 +1281,7 @@ int load_room(struct char_data* ch, char* arg)
             ->room->contents
             = 0;
         SHAPE_ROOM(ch)
-            ->room->people // LS1-ALLOW: write (split assignment -- see shaperom.cpp:157)
+            ->room->ls_first_occupant_ // LS1-ALLOW: write (split assignment -- see shaperom.cpp:157)
             = 0;
         SHAPE_ROOM(ch)
             ->room->light

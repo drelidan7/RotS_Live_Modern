@@ -1634,7 +1634,7 @@ ASPELL(spell_earthquake)
         dam_value /= 2;
 
     for (tmpch = rots::entity::first_occupant(room_of(caster)); tmpch; tmpch = tmpch_next) {
-        tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
+        tmpch_next = tmpch->ls_next_in_room_; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
         if (tmpch != caster) {
             bool saved = new_saves_spell(caster, tmpch, 0);
             if (saved) {
@@ -1690,7 +1690,7 @@ ASPELL(spell_earthquake)
         /* deal out the damage */
         for (tmpch = rots::entity::first_occupant(cur_room); tmpch; tmpch = tmpch_next) {
             bool saved = new_saves_spell(caster, tmpch, tmpch->tmpabilities.dex / 4);
-            tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via char_to_room)
+            tmpch_next = tmpch->ls_next_in_room_; // LS1-ALLOW: save-next (body extracts current node via char_to_room)
             if ((!saved && (tmpch != caster)) || (!number(0, 1))) {
                 act("$n loses balance and falls down!", TRUE, tmpch, 0, 0, TO_ROOM);
                 send_to_char("The earthquake throws you down!\n\r", tmpch);
@@ -1845,7 +1845,7 @@ ASPELL(spell_fireball)
 
     char_data* next_character = nullptr;
     for (char_data* potential_victim = rots::entity::first_occupant(room_of(caster)); potential_victim; potential_victim = next_character) {
-        next_character = potential_victim->next_in_room; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
+        next_character = potential_victim->ls_next_in_room_; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
         if (potential_victim == caster || potential_victim == victim)
             continue;
 
@@ -2095,7 +2095,7 @@ ASPELL(spell_shout_of_pain)
 
     char_data* tmpch_next = NULL;
     for (char_data* tmpch = rots::entity::first_occupant(room_of(caster)); tmpch; tmpch = tmpch_next) {
-        tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
+        tmpch_next = tmpch->ls_next_in_room_; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
         if (tmpch != caster) {
             bool saved = new_saves_spell(caster, tmpch, 0);
             if (saved) {
@@ -2173,7 +2173,7 @@ ASPELL(spell_blaze)
 
         /* Damage everyone in the room */
         for (tmpch = rots::entity::first_occupant(room_of(caster)); tmpch; tmpch = tmpch_next) {
-            tmpch_next = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
+            tmpch_next = tmpch->ls_next_in_room_; // LS1-ALLOW: save-next (body extracts current node via apply_spell_damage)
 
             // friends don't burn friends, at first...
             if (is_friendly_taget(caster, tmpch)) {

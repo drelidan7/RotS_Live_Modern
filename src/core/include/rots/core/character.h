@@ -332,6 +332,19 @@ struct char_special_data {
     int timer; /* Timer for update                        */
     int was_in_room; /* storage of location for linkdead people */
 
+    // The persisted-load_room VNUM channel's OWN storage (LS-3b T5 -- the
+    // store split that gives stash_load_room_vnum()/peek_load_room_vnum()
+    // (placement.cpp) a home of their own instead of aliasing the location
+    // field). Holds the room VNUM read from the player file during the
+    // login/rent window: a VNUM, never an rnum, and never a location.
+    // NOWHERE means "nothing stashed", and the initializer below is what
+    // makes that true at every birth -- zero-initialised storage would read
+    // as room vnum 0 and arm objsave.cpp's re-stash guard backwards. It
+    // lives in char_special_data, the NON-persisted sibling of
+    // char_special2_data (census D section 4), so it costs no save-format
+    // change and never reaches char_file_u.
+    int ls_load_room_vnum_ = NOWHERE;
+
     int ENERGY; /* current energy */
     sh_int current_parry; /*parry currently affected by 'parry split' */
 
@@ -825,7 +838,20 @@ public:
     int abs_number; /* bit number in the control array */
     int player_index; /* Index in player table */
     int nr; /* monster nr (pos in file)      */
-    int in_room; /* Location                      */
+    // LocationSystem PRIVATE STORE (LS-3b T5; ruling R-3b-A -- keying is
+    // the private handle, not an external map). The character's location as
+    // a room rnum, or NOWHERE (-1) when the character is linked into no room
+    // at all. The `ls_` prefix and trailing underscore advertise that this
+    // is the placement core's implementation detail: READ it through
+    // location_of(ch), WRITE it only through set_location()/char_to_room()/
+    // detach_char_from_room() (src/entity/placement.cpp). THE INVARIANT the
+    // core maintains: ls_location_id_ == NOWHERE implies this character is
+    // in NO room's occupant chain -- see placement.cpp's own header block
+    // for the full statement (including the render-cursor exception, which
+    // spoofs a REAL room id and never NOWHERE). Type, size and position are
+    // deliberately identical to the `int in_room` this renames: the i386
+    // struct layout must not move.
+    int ls_location_id_;
 
     struct char_player_data player; /* Normal data                   */
     struct char_ability_data abilities; /* Max. Abilities                 */
@@ -855,7 +881,13 @@ public:
     struct obj_data* carrying; /* Head of list                  */
     struct descriptor_data* desc; /* NULL for mobiles              */
 
-    struct char_data* next_in_room; /* For room->people - list         */ // LS1-ALLOW: representation-decl (the intrusive occupant-chain field itself -- not a call site, so it can never "convert"; this is the field LS-3 deletes)
+    // LocationSystem PRIVATE STORE (LS-3b T5): the intrusive occupant
+    // chain's forward link -- the store's OWN implementation of "who else is
+    // in this room", walked from room_data::ls_first_occupant_. Meaningful
+    // only while ls_location_id_ names a room; the placement core is its
+    // only writer. Reach occupants through occupants()/occupants_from()/
+    // first_occupant() (handler.h), never through this member.
+    struct char_data* ls_next_in_room_; // LS1-ALLOW: representation-decl (the intrusive occupant-chain field itself -- not a call site, so it can never "convert"; this is the store's private chain link)
     struct char_data* next; /* For either monster or ppl-list  */
     struct char_data* next_fighting; /* For fighting list               */
     struct char_data* next_fast_update; /* For fast-update list            */

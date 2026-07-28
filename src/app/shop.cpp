@@ -104,7 +104,7 @@ void closing_time(struct char_data* keeper)
     act("$n tells you 'I am closing. Please leave now.'",
         FALSE, keeper, 0, 0, TO_ROOM);
     for (tmpch = rots::entity::first_occupant(room_of(keeper)); tmpch; tmpch = next_patron) {
-        next_patron = tmpch->next_in_room; // LS1-ALLOW: save-next (body relocates the current node via char_from_room/char_to_room)
+        next_patron = tmpch->ls_next_in_room_; // LS1-ALLOW: save-next (body relocates the current node via char_from_room/char_to_room)
         if (tmpch != keeper) {
             act("$n pushed you out.", TRUE, keeper, 0, tmpch, TO_VICT);
             char_from_room(tmpch);

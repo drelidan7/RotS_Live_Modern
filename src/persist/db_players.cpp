@@ -1384,12 +1384,23 @@ void store_to_char(struct char_file_u* st, struct char_data* ch)
     // here specifically: store_to_char() is on rots_convert's path,
     // where an unregistered world resolver is a tripwire abort().
     //
-    // ORDERING INTENT FOR LS-3b (T0b-1): once the stores are separate
-    // this site should ALSO leave the location explicitly NOWHERE.
-    // Today the two are one field, so the stash already achieves that
-    // and a second write would be dead code -- the instruction is
-    // recorded rather than implemented.
+    // ORDERING OBLIGATION, DISCHARGED (LS-3b T5). The instruction recorded
+    // here by LS-3a -- "once the stores are separate this site should ALSO
+    // leave the location explicitly NOWHERE" -- is now implemented, in the
+    // order it was recorded: stash first, then state the absence. Before
+    // the split the stash itself achieved this by aliasing, which is why
+    // the second write would have been dead code and was not written.
+    //
+    // IT IS NOT DEAD NOW, AND IT IS THE POINT OF THE WHOLE SPLIT. A
+    // character loaded here has not been placed in any room -- the menu
+    // sitter never will be, and the logging-in one is placed later by
+    // load_character()'s char_to_room(). Saying so explicitly is what makes
+    // location_of() answer NOWHERE for them, which is what makes
+    // msdp_update(), broadcast_weather_msdp_update() and
+    // clean_expose_elements() skip them instead of reading an unrelated
+    // room out of the world table (review findings F6 and F19).
     stash_load_room_vnum(ch, GET_LOADROOM(ch));
+    set_location(ch, NOWHERE);
 
     affect_total(ch);
 
@@ -1948,15 +1959,13 @@ void save_char(struct char_data* ch, int load_room, int notify_char)
     // is already vnum-shaped, unlike the arm above, which runs an rnum
     // through dispatch_room_vnum().
     //
-    // THIS ARM IS UNREACHABLE TODAY, DELIBERATELY AND PROVABLY. Channel
-    // and location are still one field, so peek_load_room_vnum(ch) ==
-    // location_of(ch) exactly; whenever control reaches this `else if`,
-    // either load_room != NOWHERE (first term false) or location_of(ch)
-    // == NOWHERE, in which case peek is NOWHERE too (second term false).
-    // It arms ITSELF the moment LS-3b gives the channel its own store,
-    // which is the only moment it could ever have been written
-    // correctly -- and it is written now, beside the arm it mirrors,
-    // rather than left for LS-3b to rediscover from the same evidence.
+    // THIS ARM IS LIVE AS OF LS-3b T5 (the store split). It was written by
+    // LS-3a as a provable no-op -- channel and location were one field, so
+    // whenever control reached this `else if` either the first term was
+    // false or peek was NOWHERE with location_of -- and it armed ITSELF
+    // the moment the channel got its own storage, which is the only
+    // moment it could ever have been written correctly. Pinned by
+    // SaveCharChannelFallback.* in load_room_placement_tests.cpp.
     else if ((load_room == NOWHERE) && (peek_load_room_vnum(ch) != NOWHERE))
         load_room = peek_load_room_vnum(ch);
 

@@ -57,6 +57,52 @@
 // unchecked historical behavior was genuine UB, so nullptr is a strict
 // improvement there rather than a narrowing).
 
+//
+// ==========================================================================
+// THE LOCATION INVARIANT (LS-3b T5 -- the store split; owner ruling O-5,
+// controller ruling R-3b-A). This file is the LocationSystem: it owns
+// char_data::ls_location_id_ (the location), char_data::ls_next_in_room_ /
+// room_data::ls_first_occupant_ (the occupant chain that is the store's own
+// private implementation), and char_special_data::ls_load_room_vnum_ (the
+// persisted-VNUM channel's separate storage). Nothing outside this file,
+// containment.cpp, handler.h's occupant_range/first_occupant API bodies and
+// src/tests/test_placement.h may name those members; everything else goes
+// through location_of()/set_location()/room_of()/occupants()/
+// first_occupant()/is_in_room()/stash_load_room_vnum()/
+// peek_load_room_vnum().
+//
+// THE INVARIANT, stated so it can be enforced and tested:
+//
+//   location_of(ch) == NOWHERE  ==>  ch is linked into NO room's occupant
+//                                    chain, anywhere in the world.
+//   location_of(ch) == r (a room id)
+//                              ==>  ch is linked into exactly world[r]'s
+//                                   chain, and into no other.
+//
+// DIRECTION (binding, from the settled torn-state investigation): the chain
+// FOLLOWS the field, never the other way round. char_to_room() and
+// detach_char_from_room() below are the only functions that link or unlink,
+// and each writes the field and the chain together.
+//
+// WHAT MAKES THE FIRST HALF ESTABLISHABLE (owner ruling O-5, the narrow
+// amendment to strict equivalence): char_to_room(ch, NOWHERE) no longer
+// splices ch into room 0 (room_data::operator[]'s out-of-range fallback) and
+// no longer bumps that room's light or its zone's power counters. NOWHERE
+// now means what it says -- linked nowhere. Before this commit the call left
+// a TORN state (chain said room 0, field said nowhere) that made
+// detach_char_from_room()'s early return leak a chain entry, let
+// extract_char() free a still-linked character (census B's D5), and let a
+// re-placement truncate room 0's chain (census B's D6/S8).
+//
+// THE ONE EXCEPTION, and why it cannot break the half that matters:
+// ScopedRenderLocation (the cursor family, LS-3b T2) deliberately spoofs the
+// field for the duration of a render window without moving the character,
+// so the SECOND half above does not hold inside such a window. It spoofs a
+// REAL room id and never NOWHERE, so the FIRST half -- the one every
+// absence guard, every teardown path and this file's own early returns rely
+// on -- holds unconditionally.
+// ==========================================================================
+
 #include "platdef.h"
 #include <cstdlib>
 #include <cstring>
@@ -182,39 +228,57 @@ index_data* obj_index_by_id(int item_number)
 
 int location_of(const char_data* ch)
 {
-    return ch->in_room;
+    return ch->ls_location_id_;
 }
 
 void set_location(char_data* ch, int rnum)
 {
-    // List linkage (room->people / ch->next_in_room) stays the call sites'
-    // responsibility this wave (spec Stage 1 scope) -- this wrapper only
-    // assigns the scalar id, mirroring the field it replaces.
-    ch->in_room = rnum;
+    // A BARE FIELD WRITE, and deliberately still one after the store split:
+    // this is the render-cursor primitive (ScopedRenderLocation) and the
+    // scratch/sentinel writer, not a relocation. Linking and unlinking are
+    // char_to_room()/detach_char_from_room()'s job -- see the invariant
+    // block at the top of this file for why writing a REAL room id here
+    // (the cursor case) cannot break the absence half of the invariant.
+    ch->ls_location_id_ = rnum;
 }
 
 bool is_in_room(const char_data* ch, int rnum)
 {
-    return ch->in_room == rnum;
+    return ch->ls_location_id_ == rnum;
 }
 
 // The VNUM channel (LS-3a Wave T2 tranche 2e; rulings R-A2 / AM-1 /
 // R-T0b-3) -- see handler.h for the full account of the overload these two
-// names discriminate. TODAY both are aliases over the same field
-// location_of()/set_location() wrap, which is why peek returns whatever
-// that field already holds even when nothing stashed into it; LS-3b gives
-// the channel its own storage HERE, and every call site stays unchanged.
+// names discriminate. THE STORE SPLIT LANDED HERE (LS-3b T5): the channel
+// now has its own storage, char_special_data::ls_load_room_vnum_ -- the
+// NON-persisted sibling of char_special2_data (census D section 4), so no
+// save format moved -- and stops aliasing the location field
+// location_of()/set_location() wrap. NO CALL SITE CHANGED: that was the
+// whole point of naming the channel separately in LS-3a.
+//
+// WHAT THE SPLIT FIXES, in one sentence: a character sitting at the
+// selection menu, or anywhere in the login/rent window, used to have the
+// persisted room VNUM sitting in the field every absence guard reads, so
+// location_of() answered with a plausible-looking room id for somebody who
+// is in no room at all. Now it answers NOWHERE (see the three in-range
+// leaks this closes: comm.cpp's msdp_update(), protocol.cpp's
+// broadcast_weather_msdp_update(), comm.cpp's clean_expose_elements()).
+//
+// NOWHERE means "nothing stashed" -- char_special_data's own initializer
+// establishes that at every birth, so peek() is total for a character that
+// never went through store_to_char().
+//
 // Bare field access on both sides: no occupant-chain, light or zone-power
 // bookkeeping (the stash runs at points where the character is deliberately
 // in no room at all), and no resolver hook, so both stay rots_convert-safe.
 void stash_load_room_vnum(char_data* ch, int vnum)
 {
-    ch->in_room = vnum; // LS1-ALLOW: representation-impl (VNUM-channel stash -- LS-3b re-points this to a dedicated store)
+    ch->specials.ls_load_room_vnum_ = vnum;
 }
 
 int peek_load_room_vnum(const char_data* ch)
 {
-    return ch->in_room; // LS1-ALLOW: representation-impl (VNUM-channel peek -- LS-3b re-points this to a dedicated store)
+    return ch->specials.ls_load_room_vnum_;
 }
 
 // Self-room convenience (LS-1 Wave Task 1; .superpowers/sdd/ls1-census.md
@@ -308,7 +372,7 @@ void recount_light_room(int room)
         return;
 
     count = 0;
-    for (tmpch = r->people; tmpch; tmpch = tmpch->next_in_room)
+    for (tmpch = r->ls_first_occupant_; tmpch; tmpch = tmpch->ls_next_in_room_)
         for (tmp = 0; tmp < MAX_WEAR; tmp++)
             if (tmpch->equipment[tmp])
                 if (tmpch->equipment[tmp]->obj_flags.type_flag == ITEM_LIGHT)
@@ -335,7 +399,7 @@ struct char_data* get_char_room(char* name, int room)
     if (!(number = get_number(&tmp)))
         return (0);
 
-    for (i = room_by_id_total(room)->people, j = 1; i && (j <= number); i = i->next_in_room)
+    for (i = room_by_id_total(room)->ls_first_occupant_, j = 1; i && (j <= number); i = i->ls_next_in_room_)
         if (isname_nullable(tmp, i->player.name)) {
             if (j == number)
                 return (i);
@@ -376,18 +440,56 @@ void char_to_room(struct char_data* ch, int room)
     struct char_data* tmpch;
     int tmp;
 
+    // THE RESOLVER CALL IS PRESERVED UNCONDITIONALLY (census B section 2.4/S4
+    // as restated by review finding F17 -- binding). It is made here, once,
+    // for every argument including NOWHERE, exactly as before the O-5
+    // amendment below. BOTH of its side effects are load-bearing and
+    // neither may be short-circuited: room_data::operator[] mudlogs
+    // "world[] called for negative room number." at LEVEL_GOD for i < 0
+    // (db_world.cpp), and it abort()s when BASE_WORLD is unallocated, which
+    // is what makes a fixture with no ScopedTestWorld fail loudly instead of
+    // quietly passing. "Optimising away the resolve for the NOWHERE case"
+    // would silently drop an operator-visible god-channel line and a
+    // process-level tripwire that nobody asked to lose.
     room_data* r = room_by_id_total(room);
 
-    /* append ch to the room's list */
-    if (!r->people)
-        r->people = ch;
-    else {
-        for (tmpch = r->people; tmpch->next_in_room; tmpch = tmpch->next_in_room)
-            ;
-        tmpch->next_in_room = ch;
+    // THE O-5 AMENDMENT (owner ruling, 2026-07-28; the single narrow
+    // amendment to strict equivalence this wave carries). NOWHERE means
+    // LINKED NOWHERE: no splice into the fallback room's occupant chain, no
+    // light bump, no zone-power bump. Only the location field is written,
+    // and it is written to the ORIGINAL argument, exactly as the unamended
+    // body did.
+    //
+    // WHAT IS DELIBERATELY *NOT* DONE HERE, and why. The unamended body ran
+    // `ch->next_in_room = 0;` on every path, including this one. That write
+    // is census B's S8 chain-truncation hazard: for a character who is still
+    // linked into some room's chain, zeroing the forward link orphans every
+    // occupant behind it. Under the invariant at the top of this file the
+    // NOWHERE path must not touch a chain at all, so the write does not
+    // survive here in any form. (For a character who is genuinely unlinked
+    // the write was a no-op anyway -- it is not a lost hygiene step.)
+    //
+    // The flagged, tested observable deltas this produces are census B's
+    // D1 (room-0 occupant walkers no longer see the character), D2 (room 0's
+    // light no longer gains a permanent leaked +1) and D3 (the zone-power
+    // spike, wiped within ~60s by recalc_zone_power's absolute rebuild
+    // either way). What it retires is D5 (extract_char freeing a character
+    // still spliced into room 0 -- a use-after-free) and D6/S8 above.
+    if (room == NOWHERE) {
+        ch->ls_location_id_ = room;
+        return;
     }
-    ch->next_in_room = 0;
-    ch->in_room = room;
+
+    /* append ch to the room's list */
+    if (!r->ls_first_occupant_)
+        r->ls_first_occupant_ = ch;
+    else {
+        for (tmpch = r->ls_first_occupant_; tmpch->ls_next_in_room_; tmpch = tmpch->ls_next_in_room_)
+            ;
+        tmpch->ls_next_in_room_ = ch;
+    }
+    ch->ls_next_in_room_ = 0;
+    ch->ls_location_id_ = room;
 
     /* do they have a light? */
     for (tmp = 0; tmp < MAX_WEAR; tmp++)
@@ -437,13 +539,13 @@ bool detach_char_from_room(char_data* ch)
 {
     struct char_data* i;
     int tmp;
-    if (ch->in_room == NOWHERE) {
+    if (ch->ls_location_id_ == NOWHERE) {
         //      log("SYSERR: NOWHERE extracting char from room (handler.c, char_from_room)");
         //      exit(1);
         return false; // he's already nowehre
     }
 
-    room_data* r = room_by_id_total(ch->in_room);
+    room_data* r = room_by_id_total(ch->ls_location_id_);
 
     for (tmp = 0; tmp < MAX_WEAR; tmp++)
         if (ch->equipment[tmp])
@@ -451,18 +553,18 @@ bool detach_char_from_room(char_data* ch)
                 if (ch->equipment[tmp]->obj_flags.value[2] && (ch->equipment[tmp]->obj_flags.value[3])) /* Light is ON */
                     r->light--;
 
-    if (ch == r->people) /* head of list */
-        r->people = ch->next_in_room;
+    if (ch == r->ls_first_occupant_) /* head of list */
+        r->ls_first_occupant_ = ch->ls_next_in_room_;
 
     else /* locate the previous element */ {
-        for (i = r->people;
-             i && (i->next_in_room != ch); i = i->next_in_room)
+        for (i = r->ls_first_occupant_;
+             i && (i->ls_next_in_room_ != ch); i = i->ls_next_in_room_)
             ;
 
         if (!i)
             return false;
 
-        i->next_in_room = ch->next_in_room;
+        i->ls_next_in_room_ = ch->ls_next_in_room_;
     }
 
     tmp = char_power(GET_LEVEL(ch));
@@ -475,8 +577,8 @@ bool detach_char_from_room(char_data* ch)
             zone_by_id(r->zone)->dark_power -= tmp;
     }
 
-    ch->in_room = NOWHERE;
-    ch->next_in_room = 0;
+    ch->ls_location_id_ = NOWHERE;
+    ch->ls_next_in_room_ = 0;
     return true;
 }
 
@@ -530,19 +632,19 @@ void relocate_all_occupants(int from_room, int to_room)
     if (from_room == to_room)
         return;
 
-    for (tmpch = room_by_id_total(from_room)->people; tmpch; tmpch = tmpch->next_in_room) { // LS1-ALLOW: representation-impl
-        if (!tmpch->next_in_room) // LS1-ALLOW: representation-impl
+    for (tmpch = room_by_id_total(from_room)->ls_first_occupant_; tmpch; tmpch = tmpch->ls_next_in_room_) { // LS1-ALLOW: representation-impl
+        if (!tmpch->ls_next_in_room_) // LS1-ALLOW: representation-impl
             break;
     }
     if (tmpch)
-        tmpch->next_in_room = room_by_id_total(to_room)->people; // LS1-ALLOW: representation-impl
+        tmpch->ls_next_in_room_ = room_by_id_total(to_room)->ls_first_occupant_; // LS1-ALLOW: representation-impl
     else
-        room_by_id_total(from_room)->people = room_by_id_total(to_room)->people; // LS1-ALLOW: representation-impl
+        room_by_id_total(from_room)->ls_first_occupant_ = room_by_id_total(to_room)->ls_first_occupant_; // LS1-ALLOW: representation-impl
 
-    room_by_id_total(to_room)->people = room_by_id_total(from_room)->people; // LS1-ALLOW: representation-impl
-    room_by_id_total(from_room)->people = 0; // LS1-ALLOW: representation-impl
+    room_by_id_total(to_room)->ls_first_occupant_ = room_by_id_total(from_room)->ls_first_occupant_; // LS1-ALLOW: representation-impl
+    room_by_id_total(from_room)->ls_first_occupant_ = 0; // LS1-ALLOW: representation-impl
 
-    for (tmpch = room_by_id_total(to_room)->people; tmpch; tmpch = tmpch->next_in_room) { // LS1-ALLOW: representation-impl
-        tmpch->in_room = to_room; // LS1-ALLOW: representation-impl
+    for (tmpch = room_by_id_total(to_room)->ls_first_occupant_; tmpch; tmpch = tmpch->ls_next_in_room_) { // LS1-ALLOW: representation-impl
+        tmpch->ls_location_id_ = to_room; // LS1-ALLOW: representation-impl
     }
 }

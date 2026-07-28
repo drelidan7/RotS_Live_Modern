@@ -668,10 +668,10 @@ ASPELL(spell_divination)
 
     strcpy(buff, "Living beings in the room:\n\r");
     if (rots::entity::first_occupant(&cur_room)) {
-        for (char_data* character = cur_room.people; character; character = character->next_in_room) { // LS1-ALLOW: peek-ahead (chain-head read + lookahead walk for list formatting)
+        for (char_data* character = cur_room.ls_first_occupant_; character; character = character->ls_next_in_room_) { // LS1-ALLOW: peek-ahead (chain-head read + lookahead walk for list formatting)
             if (caster->player.level >= GET_INVIS_LEV(character)) {
                 strcat(buff, GET_NAME(character));
-                if (character->next_in_room) { // LS1-ALLOW: peek-ahead for list formatting
+                if (character->ls_next_in_room_) { // LS1-ALLOW: peek-ahead for list formatting
                     strcat(buff, ", ");
                 } else {
                     strcat(buff, ".\n\r");

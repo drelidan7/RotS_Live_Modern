@@ -482,7 +482,7 @@ void stop_fighting_him(struct char_data* ch);
 
 void extract_char(struct char_data* ch)
 {
-    return extract_char(ch, -1);
+    return extract_char(ch, kNoRespawnRoom);
 }
 
 void extract_char(struct char_data* ch, int new_room)

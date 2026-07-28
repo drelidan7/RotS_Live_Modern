@@ -383,7 +383,7 @@ void extract_char(char_data* ch)
     // (char_data's associated global namespace pulls that overload in
     // alongside this function's own rots::entity:: sibling). combat_hooks.cpp
     // never hit this because it did not transitively include handler.h.
-    rots::entity::extract_char(ch, -1);
+    rots::entity::extract_char(ch, kNoRespawnRoom);
 }
 
 // Cross-TU dispatch for the wild-fighting attack-speed hook (called from

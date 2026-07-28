@@ -1953,6 +1953,11 @@ TEST(LoadRoomRider, ExtractCharToARoomPersistsTheDestinationRoomVnumNotItsRnum) 
 // descriptor at the character menu (handler.cpp:596-608, :645-647), which is
 // why it needs the character ON that list first: extract_char() abort()s
 // outright when it cannot find its argument there.
+//
+// ls3b T7: the "no destination" argument below now spells
+// handler.h's kNoRespawnRoom, not NOWHERE -- a pure spelling fix (R-C4):
+// the two were numerically identical but semantically unrelated, and this
+// call site was the one place in the tree still conflating them.
 TEST(LoadRoomRider, ExtractCharWithoutADestinationStillPersistsTheOriginRoomVnum) {
     ScopedVnumWorld fixture_world;
     ScopedPlayerTable fixture_player_table{nullptr};
@@ -1983,7 +1988,7 @@ TEST(LoadRoomRider, ExtractCharWithoutADestinationStillPersistsTheOriginRoomVnum
     char_to_room(&player, kOwnerRnum);
     player.specials2.load_room = -12345;
 
-    extract_char(&player, NOWHERE);
+    extract_char(&player, kNoRespawnRoom);
 
     // The room they were standing in, as a VNUM.
     EXPECT_EQ(GET_LOADROOM(&player), kOwnerVnum);

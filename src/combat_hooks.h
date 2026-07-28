@@ -245,6 +245,13 @@ void set_special_handler(special_fn handler);
 // sequence (see issue_command()'s own tripwire comment above for the exact
 // ordering) -- the same "real safety net, not a theoretical placeholder"
 // posture that comment now documents.
+// ls3b T7 disposition (ls3b-global-constraints.md; census D section 3.1):
+// RETAINED as-is. `in_room` is an optional ROOM-ID PARAMETER -- "unspecified,
+// substitute ch's own room" -- not an observation of a character's location,
+// so it is a legitimate surviving NOWHERE under corrected criterion (a).
+// Mirrors interpre.h's special() by contract (see that declaration's own
+// T7 comment); changing one without the other would break the
+// "in_room = NOWHERE" call-site equivalence the comment above documents.
 int call_special(
     char_data* ch, int cmd, char* arg, int callflag, waiting_type* wtl, int in_room = NOWHERE);
 

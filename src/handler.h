@@ -476,7 +476,20 @@ void char_to_room(struct char_data* ch, int room);
 // and what the re-stamp writes.
 void relocate_all_occupants(int from_room, int to_room);
 void relocate_all_contents(int from_room, int to_room);
-void extract_char(struct char_data* ch, int new_room = -1);
+
+// ls3b T7 disposition (ls3b-global-constraints.md; census D section 3.3;
+// ruling R-C4): extract_char()'s `new_room` sentinel is a RESPAWN-
+// DESTINATION room rnum, not a character's location -- consumed at
+// handler.cpp's `new_room < 0` ("pull from character_list, this character
+// is being destroyed, not respawned") and its `(new_room < 0) ? ... :
+// room_by_id_total(new_room)->number` save-VNUM branch. It was previously
+// spelled as a bare `-1`, numerically identical to but semantically
+// UNRELATED to NOWHERE -- do NOT reuse NOWHERE here, that would re-conflate
+// a respawn destination with a character's absent location, the exact
+// confusion this wave exists to end. A pure spelling change: no caller's
+// behavior moves.
+inline constexpr int kNoRespawnRoom = -1;
+void extract_char(struct char_data* ch, int new_room = kNoRespawnRoom);
 
 // Registers handler.cpp's real extract_char(ch, new_room) body as
 // entity_hooks.h's extract_char hook (originally combat_hooks.h,

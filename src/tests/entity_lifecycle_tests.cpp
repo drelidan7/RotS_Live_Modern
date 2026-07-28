@@ -376,11 +376,14 @@ TEST(ExtractCharHook, TwoArgDispatchReachesARegisteredStubWithArgsIntact)
     EXPECT_EQ(g_recorded_extract_char_call.new_room, 7);
 }
 
-// DISCRIMINATOR: the 1-arg overload forwards to the 2-arg overload with the
-// -1 sentinel, mirroring handler.cpp's own extract_char(ch) ->
-// extract_char(ch, -1) forward exactly (pilot-census.md section 3.6).
+// DISCRIMINATOR: the 1-arg overload forwards to the 2-arg overload with
+// handler.h's kNoRespawnRoom sentinel, mirroring handler.cpp's own
+// extract_char(ch) -> extract_char(ch, kNoRespawnRoom) forward exactly
+// (pilot-census.md section 3.6). ls3b T7 (ruling R-C4): the sentinel used
+// to be a bare -1 (numerically identical to, but semantically unrelated
+// to, NOWHERE); this discriminator now names it.
 
-TEST(ExtractCharHook, OneArgDispatchForwardsWithNegativeOneSentinel)
+TEST(ExtractCharHook, OneArgDispatchForwardsWithTheNoRespawnRoomSentinel)
 {
     g_recorded_extract_char_call = RecordedExtractCharCall {};
     ScopedExtractCharHook scoped(recording_extract_char_stub);
@@ -390,9 +393,10 @@ TEST(ExtractCharHook, OneArgDispatchForwardsWithNegativeOneSentinel)
 
     EXPECT_TRUE(g_recorded_extract_char_call.called);
     EXPECT_EQ(g_recorded_extract_char_call.ch, &character);
-    EXPECT_EQ(g_recorded_extract_char_call.new_room, -1)
-        << "Expected the 1-arg overload to reach the stub with handler.h:197's own sentinel "
-           "default (-1), matching the real extract_char(ch) -> extract_char(ch, -1) forward.";
+    EXPECT_EQ(g_recorded_extract_char_call.new_room, kNoRespawnRoom)
+        << "Expected the 1-arg overload to reach the stub with handler.h's kNoRespawnRoom "
+           "sentinel default, matching the real extract_char(ch) -> "
+           "extract_char(ch, kNoRespawnRoom) forward.";
 }
 
 TEST(ExtractCharHook, DispatchDefaultsToANoOpWhenUnregistered)

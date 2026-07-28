@@ -124,6 +124,16 @@ int old_search_block(char* argument, int begin, unsigned int length,
     const std::string_view* list, int mode);
 char lower(char c);
 void argument_interpreter(char* argument, char* first_arg, char* second_arg);
+// ls3b T7 disposition (ls3b-global-constraints.md; census D section 3.2;
+// census-review.md F8): RETAINED. `in_room` is an optional room-id
+// parameter -- NOWHERE here means "unspecified, substitute ch's own room"
+// -- a legitimate surviving NOWHERE under corrected criterion (a); mirrors
+// combat_hooks.h's call_special() by contract. What DOES change is the
+// BODY's re-expression: interpre.cpp's special() tests a character's
+// absence twice against the substituted value (F8's two sites -- the
+// `remote_mode` computation and the early `return FALSE`), both pinned by
+// InterpreSpecial.RemoteMode*/AbsentCharacterEarlyReturn* coverage riders
+// (interpre_special_tests.cpp).
 int special(struct char_data* ch, int cmd, char* arg, int callflag, waiting_type* wtl,
     int in_room = NOWHERE);
 int activate_char_special(char_data* k, char_data* ch, int cmd, char* arg, int callflag,

@@ -707,3 +707,219 @@ exit 0; 1794 − 1783 = the eleven CMake ctest-only checks (nine `*LayerAcyclici
 `LocationReadCensus` + `LocationReadCensusSelfTest`). Per owner ruling O-4 the `rots64` leg, both
 boot goldens, `make smoke-account` (still MANDATORY, ruling R-A2), the i386 battery, and the six-job
 CI matrix all run ONCE at T6 finalization; their numbers are recorded there, not here.
+
+## Wave LS-3b As-built
+
+Branch `arch/ls3b-swap`, baseline master @`1c4f2e6` (**1801** tests — LS-3a + PR #26 + PR #27 +
+the docs fold-back all merged, every finalization leg measured green per AGENTS.md's chain entry).
+Full process record: `.superpowers/sdd/ls3b-global-constraints.md` (the kickoff seed + the T0
+CLOSE-OUT with rulings O-5/O-6/O-7/R-3b-A/B/C/D), `ls3b-census-{a,b,c,d}.md` +
+`ls3b-census-review.md` (T0 and its 34-amendment adversarial review — 5 BLOCKER/16 IMPORTANT/13
+MINOR, three census recommendations overturned), and `ls3b-t{1,2,3,4,5,6,7,8}-report.md` (the
+per-task landing record this section reconciles against). Those documents are authoritative for
+byte-level detail; this section and docs/BUILD.md's "Wave LS-3b" subsection are the reconciled
+summary.
+
+### (a) O-6: a SECOND amendment to corrected criterion (b), owner-approved 2026-07-28
+
+LS-3a's own R-C3 amendment (above) already corrected criterion (b) once. The census review's F1
+found the corrected text still unsatisfiable inside this wave's own declared scope: `room_of()` is,
+verbatim, `room_by_id_total(location_of(ch))` (`src/entity/placement.cpp:228-231`), and both T0
+censuses independently required `location_of()` to keep its plain `int`/`NOWHERE` contract (the
+`location_of` cost is the largest call-site population in the tree — 264 sites — and a
+representation change there was never budgeted). Measured at HEAD: **279 production `room_of(`
+call sites** and **264 production `location_of(` call sites**; every one of the 279 still reaches
+`room_data::operator[](-1)` for an absent character, and the tree pins that fallback
+*deliberately*: `RoomOfTest.ReturnsTheFallbackPointerForANowhereCharacter`
+(`src/tests/placement_tests.cpp:603-617`) exists precisely to hold it. The corrected-once text —
+"no code path can reach `room_data::operator[]` with an index derived from a character's absent
+location" — is therefore false as written the moment `room_of()` is called on an absent character,
+which is every existing call site's contract.
+
+**Owner ruling O-6 (2026-07-28, decided in session), closing F1/R-3b-1:** criterion (b) is amended
+a second time, to option (b1). Quoted verbatim from the ruling:
+
+> *no code path can reach `room_data::operator[]` with an index derived from a character's absent
+> location EXCEPT through `room_of()`, whose room-0 fallback is itself preserved behavior*
+
+— consistent with criterion (b)'s own "fallback preserved byte-for-byte" clause.
+`RoomOfTest.ReturnsTheFallbackPointerForANowhereCharacter` continues to pin it, unchanged by this
+wave. Options (b2) (a nullable `room_of_or_null()` + a per-site campaign) and (b3) (a narrower
+"only the stored representation" reading) were considered and rejected — both are a second wave's
+worth of work the owner declined to fold into this one.
+
+### (b) Criterion (a) satisfied under the spec's own private-handle option
+
+Criterion (a), as corrected by R-C3, requires *"`char_data` carries no location field... observed
+anywhere in the tree."* T5 privatized the three location-bearing members by rename rather than
+deletion (`char_data::in_room` → `char_data::ls_location_id_`, `char_data::next_in_room` →
+`char_data::ls_next_in_room_`, `room_data::people` → `room_data::ls_first_occupant_`) — the
+program spec's own delegated "or keeps only a private handle" option. Ruling **R-3b-A** records the
+consequence: criterion (a)'s "no location field" clause is satisfied under the reading **"no
+location field OBSERVABLE outside the placement core"**, not "no location field exists at all."
+T8 gave that reading a mechanical, compiler-enforced witness rather than leaving it a documentation
+claim: three C++20 `requires`-expression concepts (`HasPublicInRoomMember<char_data>`,
+`HasPublicNextInRoomMember<char_data>`, `HasPublicPeopleMember<room_data>`) plus three
+`static_assert`s, landed in `src/entity/placement.cpp` (already a whole-file `LS1-ALLOW`
+exemption, and `rots_entity` is an always-built target on every preset). The assertions are quiet
+today (the public spellings do not exist) and become a **named, readable build error** — not merely
+a build break — the instant a future edit reintroduces `char_data::in_room` or the other two public
+spellings; T8 proved this with three independent decoy-member probes, each producing the expected
+diagnostic before being reverted.
+
+### (c) The O-5 amendment's landed rider inventory
+
+O-5 chose option (b) — single store + a narrow, flagged amendment to strict equivalence — over
+keeping two stores or guarding every call site. T5's inventory (`ls3b-t5-report.md` §2) landed 12
+distinct observable deltas, each with its own test and sabotage proof, plus one correction to a
+review finding (F20) discovered during landing:
+
+1. **D1** — a `NOWHERE`-placed character is no longer in the fallback room's chain →
+   `CharToRoomTest.NowhereLinksTheCharacterIntoNoRoomAtAll`.
+2. **D2/D3** — the fallback room's light/zone-power counters no longer take a leaked bump →
+   `CharToRoomTest.NowhereDoesNotBumpTheFallbackRoomsLightOrItsZonePower`.
+3. **D5 retired** (extract-time use-after-free) →
+   `ExtractCharTeardown.ExtractingANowherePlacedCharacterLeavesEveryRoomChainIntact`.
+4. **D6/S8 retired** (chain truncation on re-placement) →
+   `CharToRoomTest.NowhereDoesNotTruncateAChainTheCharacterIsStillPartOf`.
+5. **F6** — menu sitters stop receiving MSDP entirely for an in-range stashed VNUM →
+   `MSDPProtocol.MsdpUpdateSkipsAMenuSitterCarryingAnInRangeStashedVnum`.
+6. **F19/R20** — menu sitters stop receiving another room's weather →
+   `WeatherBroadcastGuard.SkipsAMenuSitterCarryingAnInRangeStashedVnum`.
+7. **F19/R21 (a state-corruption fix)** — a mage in the login/rent window no longer has a live
+   expose-elements spell cancelled by a search of an unrelated room →
+   `CleanExposeElementsGuard.SkipsAMageCarryingAnInRangeStashedVnum`.
+8. **R9 armed** — an anti-alignment rent-loaded item can no longer stay equipped on a forbidden
+   wearer → `EquipCharZapGuard.AntiEvilItemLandsInInventoryWhenOnlyTheStashedVnumIsSet`.
+9. **R10 armed** — same for race-restricted items →
+   `EquipCharZapGuard.RaceRestrictedItemLandsInInventoryWhenOnlyTheStashedVnumIsSet`.
+10. **R23 armed** — `save_char()` persists the stashed VNUM instead of `NOWHERE` when there is no
+    `load_room` and no location, so the player returns to the room they left rather than their
+    racial start room → `SaveCharChannelFallback.PersistsTheStashedVnumWhenThereIsNoLoadRoomAndNoLocation`
+    (+ its negative control).
+11. **LS-3a rider R12 becomes real** — `stat <char>` reports the stashed room VNUM rather than an
+    unrelated room's number → `ActWizInspection.StatCharacterReportsTheStashedRoomVnumForACharacterInTheLoginWindow`.
+12. **`store_to_char()` postcondition** — the character it fills in is explicitly nowhere →
+    `LoadRoomPersistence.TextRoundTripPreservesWhateverIntegerTheCallerPassed` (strengthened).
+
+**Rider 13, a correction discovered during landing, not part of the original 12:** review finding
+F20 claimed the split removes a resolver call from the rent-load equipment path but leaves the
+lighting *outcome* unchanged. Measured, that was false — the `value[3]` fuel/ON normalization lived
+*inside* the one-term `location_of(ch) != NOWHERE` guard, which pre-split was really asking "does
+this field carry anything at all," so left one-term the split would have silently stopped
+normalizing every rent-loaded lamp. Fixed to the two-term shape
+`(location_of(ch) != NOWHERE) || (peek_load_room_vnum(ch) != NOWHERE)` (the same shape as R9/R10),
+pinned by `LoadRoomRider.RentLoadingALitLightBumpsOnlyTheRoomTheCharacterIsPlacedIn` +
+`AttachEquipmentTest.LightSlotHasNoRoomEffectWhenCharacterIsNowhere`. Every one of the 13 deltas is
+non-golden-observable: both boot goldens and the seed42 characterization golden stayed
+byte-identical at every commit of the wave, satisfying O-5's binding condition.
+
+### (d) The keying ruling (R-3b-A) and its evidence headline
+
+The program spec left keying — shed the location fields entirely behind an external registry, or
+keep a private handle — as a T0 ruling. The census review's Table 2 decided it for the private
+handle (Option H): H is immune to K1/K2/K3 (freed-key reuse, address-reuse, the 542 test-tier stack
+locals — all of which **hit** an external pointer-keyed map); K10 shows `location_of`'s 264 sites
+and `room_of`'s 279 sites keep a field-load cost under H, where an external map's hash probe is an
+unbudgeted perf risk on the tree's two hottest location-reading populations; K13 —
+`occupants_from` survives for free; K8 is the codebase's own precedent, 1-for-1 against external
+pointer-keyed registries (`specialized_mages` dangled until commit `7f4ffaa8`). Option D (a
+destructor hook) was ruled DEAD outright: placement-new-over-live-object, copy-assignment, and a
+hard `-Wdeprecated-copy-dtor` build failure under `-Werror`. Under the private handle, **no
+unregistration mechanism is owed at all** — the store dies with the struct — which retires the
+`free_char()`/`free_obj()` non-unregistration finding (LS-3a's own enumerated LS-3b input #1) as a
+non-issue rather than a fix.
+
+### (e) The cursor family: `ScopedRenderLocation` (ruling R-3b-B)
+
+The census review's Table 1 found the definitive cursor inventory to be **35** production
+`set_location()` call sites — not the 47 (a LINE count, not a site count) or 31 either prior census
+claimed — decomposing to **28 cursor** + **4 `NOWHERE` sentinel** + **3 scratch-placement-with-a-
+live-rnum**, of which **31 needed disposition**. T2 landed `rots::entity::ScopedRenderLocation`
+(new `rots_entity` public header, `src/entity/include/rots/entity/render_cursor.h`) — an RAII
+scoped cursor that captures the restore target, writes a spoofed room for the render window's
+duration, and restores on scope exit — and converted all 28 cursor sites across 10 windows
+(`act_othe`/`act_info`/`fight`/`ranger`/`mage`/`spec_pro`) onto it, including the death-cry window
+that sits directly on the seed42 damage path (re-verified byte-identical). Of the 3
+scratch-with-live-rnum sites: `act_wiz.cpp:1476`/`mob_csv_extract.cpp:224` convert as
+byte-identical substitutions (the mob is provably never room-linked in the window, per
+`read_mobile()`'s own unconditional `NOWHERE` re-stamp); `shapemob.cpp:268` (P3/P4/P8) — flagged by
+the review as never restored and whole-struct-copied into `mob_proto[]` — was investigated
+exhaustively (every `mob_proto[]` consumer, every `SHAPE_PROTO(ch)->proto` access, every
+`character_list` splice site) and the stale live-rnum stamp proven unobservable in every path;
+converted to `NOWHERE` and pinned by two characterization tests, one of which drives the real
+`read_mobile()`. The cursor family's own persistence-spoof hazard (F15: a read taken inside the
+window, including a capture into a persisted field, sees the spoofed room) is reproduced exactly,
+not fixed — `ScopedRenderLocation`'s contract states this explicitly.
+
+### (f) O-7: the SPELL_BEACON disposition and the `sh_int` arithmetic
+
+`affected_type::modifier` (a `sh_int`) holds a room rnum under `SPELL_BEACON`, persisted via
+`db_players.cpp:690`. **Owner ruling O-7 (2026-07-28)**: PRESERVE the rnum save format —
+**permanently closed**, not deferred — because VNUMs run to 34999 and extension rooms begin at
+`EXTENSION_ROOM_HEAD = 100000`, both routinely exceeding a `sh_int`'s range and both needing to fit
+the same shared, polymorphic `modifier` field every other affect type also uses; a VNUM migration
+is arithmetically impossible in this format, not merely inconvenient. The wave adds a **mandatory
+two-sided range guard** at `mage.cpp`'s `ASPELL(spell_beacon)`: the WRITE arm now refuses to install
+a beacon (rather than silently wrapping the modifier) when the caster's location overflows
+`sh_int`, and the READ arm's existing high-side (`> top_of_world`) "beacon corrupted" guard gains a
+low-side (`< 0`) term, closing the previously-unguarded `char_to_room(caster, -1)` path — exactly
+the class of hazard O-5 exists to retire, found living in a second, independent location. Both arms
+are sabotage-proven and pinned (`SpellBeaconTest.*`, 4 tests); today's overflow is recorded as a
+defect being fixed, an O-2-precedent flagged rider, not a feature preserved.
+
+### (g) The perf verdict
+
+T3 built a payload-dereference-corrected, mutation-arm-augmented benchmark harness
+(`src/location_benchmark.h`/`src/entity/location_benchmark.cpp`) per the census review's F14, and
+captured a pre-swap baseline (`.superpowers/sdd/ls3b-perf-baseline.md`) with ratified thresholds
+from a measured-variance study (5 independent runs, two 5-run boot-time batches). Every ratified
+threshold was met after T5's split:
+
+| metric | threshold | measured ratio |
+|---|---|---|
+| M1 occupant-chain iteration (`pointer_walk`/`payload_walk`, occ. 1/8/64) | ≤ 1.10× | 0.947×–1.060× |
+| M2 lookup (`location_of_walk`/`room_of_walk`) | ≤ 1.10× | 0.923×–1.000× |
+| M0 `place_then_remove_cycle` (occ. 1/8/64) | ≤ 1.25× | 0.672×–1.000× |
+| M4 boot time (median of ≥5 runs) | ≤ 1.05× | 1.0088× |
+
+Every correctness self-check (checksums, resolved-room counts) held before and after. M0's four
+single-op sub-arms (`tail_insert`/`unlink_head`/`unlink_middle`/`unlink_tail`) remain
+**advisory-only**, per the baseline's own finding that they are dominated by this host's ~41.7 ns
+clock-tick quantization (peak-to-peak noise up to 97.6%) rather than being genuinely unstable
+primitives — every post-split value still sits on the same tick multiples the baseline documented,
+nowhere near an order-of-magnitude shift. No threshold was breached and no change in the
+occupancy-vs-cost curve's shape was observed — the expected result, since the intrusive occupant
+chain survives unmodified as the private handle's own internal implementation, so only constant
+factors could move.
+
+### (h) What this wave deliberately did NOT do
+
+- **`obj_data::in_room` stays out of scope.** Object locations were never part of this wave's
+  char-location charter (T0's scope section named this explicitly); the `obj-location` gate prefix
+  keeps its full population (99 lines at T8's final audit), untouched.
+- **`room_data::operator[]`'s out-of-range fallback is PRESERVED, not retired, and stays out of
+  the program**, per O-6's amended criterion (b) itself: the fallback (mudlog + return `world[0]`)
+  is the criterion's own explicit exception, not a gap this wave left open. Retiring it remains a
+  separate campaign over the ~274 `room_of()` + ~218 `EXIT()` sites LS-3a's own R-C3 amendment
+  already scoped out — nothing in LS-3b widens that boundary.
+- **`obj_to_proto()`'s `object_list` registration gap** (LS-3a's enumerated input #2) is a
+  pre-existing production defect outside this wave's char-only charter; it is restated, not fixed,
+  for a future object-tier wave to pick up.
+
+### Reconciled chain
+
+1801 → T1 `dbb165be`+6/`712a0640`+6 (T1b `71d70fcc`+0) = **1813** → T2 `f49fa799`+8/`e23d78e6`+3/
+`1787c7b9`+0/`c9c01016`+2 = **1826** → T3 `445e61a5`+4/`8d2cca8d`+0 = **1830** → T4 `47492483`+0/
+`b56f1e56`+0 = **1830** → T5 `accccb95`+13 = **1843** → T6 `6c171d2f`+0 = **1843** → T7
+`4c6e23ca`+4/`8b655c9a`+2/`d42c6e41`+0 = **1849** → T8 `5cd9ab5c`+0/`5b6bfa9b`+0/`61d8613d`+0 =
+**1849**. Per-task: T1 **+12**, T2 **+13**, T3 **+4**, T4/T6/T8 **+0** each, T5 **+13**, T7 **+6**.
+See AGENTS.md's Testing Guidelines chain entry for per-commit gate citations. Per the wave's
+adopted O-4-precedent cadence, `rots64` at final HEAD, both boot goldens, `make smoke-account`, the
+i386 battery, and the six-job CI matrix are **not yet measured** at this docs commit — they are
+owed at T9 finalization. The controller ran two `rots64` spot-gates mid-wave (at T2's and T5's own
+HEADs, both matching macOS exactly — `.superpowers/sdd/ls3b-controller-gate-log.md`), which is not
+a substitute for the full finalization leg. No library-membership or `*LayerAcyclicity` change —
+the nine linkchecks stay nine; the combat row stays DONE. This is the program's **second** wave
+that is not strictly zero-behavior-change (owner rulings O-5/O-6/O-7), following LS-3a's O-2
+precedent: every observable delta is named, tested, and confirmed non-golden-observable.

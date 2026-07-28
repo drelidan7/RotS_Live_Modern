@@ -330,6 +330,13 @@ struct char_special_data {
 
     byte carry_items; /* Number of items carried                 */
     int timer; /* Timer for update                        */
+    // ls3b T7 store disposition (ls3b-global-constraints.md; census D
+    // section 2, row 4; ruling R-C5): LEFT AS A PLAIN `int` rnum sentinel,
+    // not a second LocationSystem entry. It is a linkdead STASH -- the
+    // character is genuinely in no room while it holds a value -- with a
+    // closed provenance (every write tree-wide is either NOWHERE or a live
+    // location_of() read) and no persistence (this struct never reaches
+    // char_file_u).
     int was_in_room; /* storage of location for linkdead people */
 
     // The persisted-load_room VNUM channel's OWN storage (LS-3b T5 -- the

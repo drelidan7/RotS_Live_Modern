@@ -39,6 +39,11 @@ ACMD(do_look);
 
 extern struct index_data* mob_index;
 
+// ls3b T7 store disposition (ls3b-global-constraints.md; census D
+// section 2, row 3): shop_data::in_room is a NOT-A-LOCATION shop VNUM
+// (the shop's location in the world file), never a character's
+// location -- see the LS1-ALLOW: not-a-location annotations below.
+// LEFT AS-IS; no representation change owed.
 struct shop_data {
     int producing[MAX_PROD]; /* Which item to produce (virtual)      */
     int profit_buy; /* Factor to multiply cost with.        */

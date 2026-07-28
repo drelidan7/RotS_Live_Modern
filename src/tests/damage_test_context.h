@@ -55,9 +55,12 @@ struct DamageTestContext {
 
     // Publishes attacker-then-victim as room `room_number`'s occupant chain
     // for the fixture's lifetime and takes both back out again on teardown
-    // (LS-3a T3, test_placement.h) -- the head-first order this fixture has
-    // always pinned, and which CharacterizationCombatTest.DamageTranscript
-    // Seed42 depends on. Declared LAST so it unwinds FIRST, while both the
+    // (LS-3a T3, test_placement.h) -- the same head-first order the
+    // original fixture built, preserved verbatim. NOTE (measured, LS-3a
+    // T3-1 probe): inverting this order leaves all 1794 tests green
+    // INCLUDING CharacterizationCombatTest.DamageTranscriptSeed42 -- the
+    // golden pins the ROOM BINDING, not the occupant order; do not read it
+    // as an order witness. Declared LAST so it unwinds FIRST, while both the
     // characters it manages and the ScopedTestWorld it points into are still
     // alive; ScopedTestWorld is declared first for the same reason from the
     // other end. Its own constructor stamps both locations via

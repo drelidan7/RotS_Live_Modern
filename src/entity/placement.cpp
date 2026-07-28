@@ -454,7 +454,13 @@ bool detach_char_from_room(char_data* ch)
 //    `room_data* r` -- the shape char_to_room()/detach_char_from_room() above
 //    use, where the id is read once anyway -- would silently drop N-1 of those
 //    side effects here. Assignment's RHS is sequenced before its LHS (C++17),
-//    in the original exactly as here, so the call ORDER matches too.
+//    in the original exactly as here. PRECISION (LS-3a review F10): the
+//    per-statement call MULTISET matches the original exactly (6 from / 6
+//    to); the interleaved SEQUENCE differs where the original alternated
+//    char and object statements that now live in the two split functions.
+//    That difference is state-invisible (disjoint fields) and observable
+//    only through operator[]'s out-of-range mudlog ORDERING when BOTH ids
+//    are invalid -- unreachable from the sole caller, recorded honestly.
 //  * The first walk BREAKS ON THE TAIL -- a peek-ahead that exits with tmpch
 //    pointing AT the last node rather than past it. That is precisely why
 //    census A section 6.4 ruled this block not convertible to occupants();

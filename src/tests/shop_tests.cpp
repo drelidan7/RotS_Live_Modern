@@ -53,9 +53,10 @@ struct ClosingTimeContext {
     // helper is declared LAST so it unwinds FIRST, putting room 1's head back
     // before room 0's helper takes the three characters closing_time()
     // relocated there back out; between them they also retire the dtor's own
-    // `world[1].people = nullptr` and its three unlinks, and they additionally
-    // unlink patron_two from patron_one, which the hand-rolled teardown left
-    // linked.
+    // `world[1].people = nullptr` and its three unlinks. (CORRECTED, LS-3a
+    // review F18: the hand-rolled teardown ALSO nulled all three
+    // next_in_room links -- the migration is exactly equivalent, not an
+    // improvement over it.)
     ScopedRoomOccupants room0_occupants{
         &test_world.room(), 0, {&keeper, &patron_one, &patron_two}};
     ScopedRoomOccupants room1_occupants{room_by_id_total(1), 1, {}};

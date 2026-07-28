@@ -1480,7 +1480,7 @@ int gen_receptionist(struct char_data* ch, int cmd, char* arg, int mode)
         act("$n helps $N into $S private chamber.", FALSE, recep, 0, ch, TO_NOTVICT);
         // A genuine location read, still an RNUM: NOT a channel member,
         // so it does not convert (ruling T0b-4's non-member list).
-        save_room = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (pre-extract rnum capture)
+        save_room = location_of(ch); // pre-extract rnum capture (review F12: a genuine location read, via the API)
         extract_char(ch);
         // W3 and its ONLY consumer, converted TOGETHER because AM-1
         // requires it: extract_char() has just cleared the location, so a
@@ -1555,7 +1555,7 @@ ACMD(do_rent)
     // copy of the protocol on the raw field is exactly how LS-3b would
     // later re-enable do_rent onto a silently broken stash. Deleting it
     // instead would be an unreviewed behavior claim, out of charter.
-    save_room = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (pre-extract rnum capture)
+    save_room = location_of(ch); // pre-extract rnum capture (review F12: a genuine location read, via the API)
     extract_char(ch);
     stash_load_room_vnum(ch, room_by_id_total(save_room)->number);
     save_char(ch, peek_load_room_vnum(ch), 0);

@@ -117,7 +117,7 @@ SOURCE_SUFFIXES = (".cpp", ".h", ".hpp", ".cc", ".cxx", ".c", ".inl", ".ipp")
 TOKEN_PATTERNS = (
     ("->in_room", re.compile(r"->in_room\b")),
     (".in_room", re.compile(r"\.in_room\b")),
-    ("world[", re.compile(r"\bworld\[")),
+    ("world[", re.compile(r"\bworld\s*\[")),
     ("next_in_room", re.compile(r"\bnext_in_room\b")),
     ("people", re.compile(r"(?:->|\.)people\b")),
 )
@@ -218,15 +218,35 @@ def mask_comments_and_string_literals(source_text, mask_comments=True):
         character = source_text[i]
         if character in "\"'":
             quote = character
+            # C++14 digit separators (1'700'000'000) put bare apostrophes in
+            # CODE. An apostrophe directly preceded by a digit is a separator,
+            # not a char-literal opener -- treating it as one opened a silent,
+            # unbounded blind window over following code (LS-3a review F1:
+            # an odd separator count swallowed real tokens up to the next
+            # apostrophe anywhere later in the file).
+            if quote == "'" and i > 0 and source_text[i - 1].isdigit():
+                i += 1
+                continue
             j = i + 1
+            terminated = False
             while j < n:
                 if source_text[j] == "\\":
                     j += 2
                     continue
+                if source_text[j] == "\n":
+                    # A char/string literal cannot contain an unescaped
+                    # newline (an escaped one was consumed above), so an
+                    # unterminated scan is NOT a literal: abandon instead of
+                    # blanking arbitrary following lines (review F1).
+                    break
                 if source_text[j] == quote:
                     j += 1
+                    terminated = True
                     break
                 j += 1
+            if not terminated:
+                i += 1
+                continue
             end = min(j, n)
             for k in range(i, end):
                 if masked[k] != "\n":
@@ -498,6 +518,22 @@ SELF_TEST_CASES = (
     ("world-token", "room_data& r = world[3];\n", 1),
     ("next-in-room-token", "for (c = head; c; c = c->next_in_room) {}\n", 1),
     ("dot-access-token", "int a = character.in_room;\n", 1),
+    # C++14 digit separators must not open a blind window over following
+    # code (review F1: an odd apostrophe count swallowed everything to the
+    # next apostrophe -- this case has THREE separators, the shape that was
+    # live in-tree at act_wiz_format_tests.cpp:1410).
+    ("digit-separator-blind-window",
+     "long t = 1'700'000'000;\nint a = ch->in_room;\n", 1),
+    ("digit-separator-benign", "long t = 1'700'000'000;\nint b = t;\n", 0),
+    # A genuine char literal containing a token spelling must STAY masked
+    # after the F1 fix (the newline-abandon must not unmask real literals).
+    ("char-literal-still-masked", "char c = '.'; log(\"x.in_room y\");\n", 0),
+    # Whitespace between world and [ must not defeat the subscript token
+    # (review #2 F1).
+    ("world-spaced-subscript", "room_data& r = world [3];\n", 1),
+    # Suffix coverage: the same unannotated token in a HEADER must be
+    # flagged -- proves .h files are scanned (review F2: undetected before).
+    ("header-suffix-scanned", "int a = ch->in_room;\n", 1, "probe.h"),
     # --- the FIFTH token, LS-3a T4 (ruling R-B6). Both spellings must fire,
     # the masker and the annotation path must still apply to it, the two
     # over-match shapes must NOT fire, and -- the AM-5 claim, which is the
@@ -579,15 +615,26 @@ def run_self_test():
             if smuggled in allow_listed:
                 failures.append(f"M10: {smuggled} was smuggled in as a whole-file exemption")
 
-        probe = source_dir / "probe.cpp"
-        for name, body, expected_exit in SELF_TEST_CASES:
+        # Cases are (name, body, expected_exit[, filename]). The optional
+        # filename lets a case probe suffix coverage (review F2: every probe
+        # was probe.cpp, so dropping .h from SOURCE_SUFFIXES was undetected
+        # except by the accidental floor trip).
+        default_probe = source_dir / "probe.cpp"
+        for case in SELF_TEST_CASES:
+            name, body, expected_exit = case[0], case[1], case[2]
+            probe = source_dir / (case[3] if len(case) > 3 else "probe.cpp")
             probe.write_text(body, encoding="utf-8")
             actual_exit, output = _run_gate(root, ledger, None)
             if actual_exit != expected_exit:
                 failures.append(
                     f"{name}: expected gate exit {expected_exit}, got {actual_exit}\n{output}"
                 )
-        probe.unlink()
+            if probe != default_probe:
+                probe.unlink()
+            else:
+                probe.write_text("", encoding="utf-8")
+        if default_probe.exists():
+            default_probe.unlink()
 
         # A whole-file exemption silences its file end to end...
         owner_dir = root / "src" / "owner"

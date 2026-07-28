@@ -1,3 +1,4 @@
+#include "../char_utils.h"
 #include "../color.h"
 #include "../comm.h"
 #include "../db.h"
@@ -16,11 +17,13 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstring>
 #include <format>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <vector>
 
 // Characterization tests for Phase 4 Wave 4 Task 5 (comm.cpp's convert_string,
 // the hand-rolled $-token scanner every act()-routed message flows through).
@@ -715,6 +718,15 @@ TEST(ActTokenExpansion, AcceptsATemporaryFormattedMessage)
 // helper convention spec_pro_tests.cpp/mage_tests.cpp already use.
 void clean_expose_elements();
 
+// comm.cpp:578's process-wide mage roster itself -- the storage
+// clean_expose_elements() sweeps every PULSE_FAST_UPDATE and that
+// track_specialized_mage()/untrack_specialized_mage() maintain. Like
+// clean_expose_elements() above it has no header home, so it is
+// forward-declared here under the same header-less-product-helper convention;
+// the teardown tests at the end of this file must observe roster MEMBERSHIP
+// directly, and no seam exposes that.
+extern std::vector<char_data*> specialized_mages;
+
 namespace {
 
 // RAII wrapper around track_specialized_mage()/untrack_specialized_mage()
@@ -742,6 +754,43 @@ public:
 private:
     char_data* mage_;
 };
+
+// Whole-roster save/restore, per the fixture-hygiene rule. ScopedSpecializedMage
+// above balances ONE track with ONE untrack, which is enough for a test that
+// only ever tracks; the teardown tests below deliberately drive a path that (in
+// the RED phase, before the free_char() fix) LEAKS an entry the test itself
+// cannot name a matching untrack for. Restoring the whole vector is what keeps
+// such a failure from handing a dangling char_data* to the next suite's
+// clean_expose_elements() in the single-process monolithic runner -- exactly the
+// cross-suite pollution class test_world.h's top-of-file comment documents.
+class ScopedMageRosterState {
+public:
+    ScopedMageRosterState()
+        : saved_(specialized_mages)
+    {
+    }
+
+    ~ScopedMageRosterState() { specialized_mages = saved_; }
+
+    ScopedMageRosterState(const ScopedMageRosterState&) = delete;
+    ScopedMageRosterState& operator=(const ScopedMageRosterState&) = delete;
+
+private:
+    // Roster contents captured at construction and written back at
+    // destruction, so a test that leaks (or over-erases) an entry cannot
+    // outlive its own scope.
+    std::vector<char_data*> saved_;
+};
+
+// Pointer-identity membership test against the roster. Compares POINTER VALUES
+// only -- never dereferences -- so it stays valid (and ASan-quiet) when asked
+// about a character that has already been torn down, which is the whole point
+// of the two tests below.
+bool roster_contains(const char_data* character)
+{
+    return std::find(specialized_mages.begin(), specialized_mages.end(), character)
+        != specialized_mages.end();
+}
 
 } // namespace
 
@@ -798,4 +847,86 @@ TEST(CleanExposeElements, ResetsAndNotifiesWhenExposedTargetHasLeftTheRoom)
         << "spec_data->reset() must clear exposed_target once the walk finds no match.";
     EXPECT_STREQ(context.actor_descriptor.output,
         "Your target is no longer vulnerable to your spells.\r\n");
+}
+
+// ---------------------------------------------------------------------------
+// specialized_mages roster teardown (fix/specialized-mages-roster).
+//
+// store_to_char() (db_players.cpp:1356-1358) -> utils::set_specialization()
+// (entity_lifecycle.cpp:1603) -> track_specialized_mage() pushes a raw
+// char_data* onto comm.cpp's process-global roster. Before this branch NOTHING
+// removed it on teardown: free_char() (entity_lifecycle.cpp:623) ran
+// dispatch_char_teardown() (staged object bytes only) and ~char_data() ->
+// ~specialization_data() (character.h:660, frees current_spec_info only),
+// neither of which touches the roster. Every teardown of a mage-spec character
+// therefore left a DANGLING pointer in a live global that
+// clean_expose_elements() (comm.cpp:845) dereferences every PULSE_FAST_UPDATE
+// -- reachable from `stat file <mage>` (act_wiz.cpp:1198's char_data_ptr) and
+// `wizset file` (act_wiz.cpp:2869/3300's free_char(cbuf)) among others.
+// ---------------------------------------------------------------------------
+
+// The leak itself, driven through the production allocation/teardown pair:
+// make_char_data(MOB_VOID) is exactly what `stat file` uses, and letting the
+// char_data_ptr go releases through free_char_deleter -> free_char() (db.h:139).
+// utils::set_specialization() is the real registration path store_to_char()
+// takes, not a hand-rolled track_specialized_mage() call.
+TEST(SpecializedMageRoster, FreeCharRemovesTheCharacterFromTheRoster)
+{
+    ScopedMageRosterState roster_guard;
+
+    char_data_ptr mage = make_char_data(MOB_VOID);
+    ASSERT_NE(mage->profs, nullptr)
+        << "clear_char(MOB_VOID) must allocate profs -- set_specialization() no-ops without it.";
+    ASSERT_FALSE(IS_NPC(mage.get()))
+        << "MOB_VOID must leave MOB_ISNPC clear -- set_specialization() no-ops on an NPC.";
+
+    utils::set_specialization(*mage, game_types::PS_Cold);
+
+    char_data* const released = mage.get();
+    ASSERT_TRUE(roster_contains(released))
+        << "A mage specialization must register the character on the roster.";
+
+    mage.reset();
+
+    EXPECT_FALSE(roster_contains(released))
+        << "free_char() must untrack the character; otherwise the roster holds a dangling "
+           "char_data* that clean_expose_elements() dereferences every fast-update pulse.";
+}
+
+// The consequence: the real clean_expose_elements() sweep running AFTER a
+// mage-spec character has been torn down. Pre-fix this dereferences the freed
+// character (`mage->extra_specialization_data.is_mage_spec()`, comm.cpp:848) --
+// a use-after-free under ASan. A SURVIVING mage is kept on the roster
+// throughout, so the test cannot pass merely by the roster being empty: the
+// sweep must still do its real work on the survivor.
+TEST(SpecializedMageRoster, CleanExposeElementsSweepsCleanlyAfterAMageIsTornDown)
+{
+    ScopedMageRosterState roster_guard;
+
+    RoomPairContext context;
+    char_prof_data survivor_profs {};
+    context.actor.profs = &survivor_profs;
+    survivor_profs.specialization = static_cast<int>(game_types::PS_Cold);
+    context.actor.extra_specialization_data.set(context.actor);
+    elemental_spec_data* survivor_spec = context.actor.extra_specialization_data.get_mage_spec();
+    ASSERT_NE(survivor_spec, nullptr) << "PS_Cold must construct an elemental_spec_data.";
+    survivor_spec->exposed_target = &context.victim;
+    ScopedSpecializedMage survivor(&context.actor);
+
+    char_data_ptr departing = make_char_data(MOB_VOID);
+    ASSERT_NE(departing->profs, nullptr);
+    utils::set_specialization(*departing, game_types::PS_Fire);
+    char_data* const departed = departing.get();
+    ASSERT_TRUE(roster_contains(departed));
+
+    departing.reset();
+
+    clean_expose_elements();
+
+    EXPECT_FALSE(roster_contains(departed))
+        << "The torn-down character must not survive on the roster the sweep walks.";
+    EXPECT_EQ(survivor_spec->exposed_target, &context.victim)
+        << "The sweep must still do its real work: the survivor's present target stays exposed.";
+    EXPECT_STREQ(context.actor_descriptor.output, "")
+        << "No 'no longer vulnerable' message -- the survivor's target never left the room.";
 }

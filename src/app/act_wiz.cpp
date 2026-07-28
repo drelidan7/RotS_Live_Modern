@@ -2808,6 +2808,11 @@ ACMD(do_wizset)
     int i, l, tmp;
     struct char_data* vict = 0;
     struct char_data* cbuf = 0;
+    // Owns the `wizset file` scratch character for the whole function, so it
+    // is released on EVERY exit path. Matches do_stat_character's `stat file`
+    // sibling (act_wiz.cpp:1198) exactly; see the is_file block below for the
+    // leaks this closes. Null on every other path, where cbuf stays 0.
+    char_data_ptr file_victim;
     struct char_file_u tmp_store;
     struct descriptor_data descr;
     char field[MAX_INPUT_LENGTH], name[MAX_INPUT_LENGTH];
@@ -2861,12 +2866,29 @@ ACMD(do_wizset)
             player_i = -1;
 
     } else if (is_file) {
-        CREATE(cbuf, struct char_data, 1);
-        clear_char(cbuf, MOB_VOID);
+        // RAII, matching `stat file` (act_wiz.cpp:1198): a clean-scope
+        // character materialised purely to edit and re-save, never linked into
+        // any people-list or character_list, so a single-owner char_data_ptr
+        // fits and make_char_data() performs the same CREATE + clear_char pair
+        // this used to write by hand.
+        //
+        // It closes two PRE-EXISTING leaks that the raw shape had. The
+        // load-failure arm below did `RELEASE(cbuf)`, which frees the struct
+        // shell only and leaks the profs allocation plus the skills/knowledge
+        // vectors clear_char(MOB_VOID) had just made -- the same defect the
+        // `stat file` conversion fixed on its own failure arm. Larger, and
+        // undocumented until now: TWENTY early `return`s between here and the
+        // is_file save at the end of this function leaked the WHOLE character,
+        // profs and vectors and shell alike, one for every permission, field
+        // and value rejection an immortal can hit. free_char() is also the
+        // roster-safe teardown as of the specialized_mages fix (7f4ffaa8): it
+        // untracks a mage-spec character that store_to_char() below pushed onto
+        // comm.cpp's global roster, which RELEASE() never did.
+        file_victim = make_char_data(MOB_VOID);
+        cbuf = file_victim.get();
         if ((player_i = load_char(name, &tmp_store)) > -1) {
             store_to_char(&tmp_store, cbuf);
             if (GET_LEVEL(cbuf) >= GET_LEVEL(ch)) {
-                free_char(cbuf);
                 send_to_char("Sorry, you can't do that.\n\r", ch);
                 return;
             }
@@ -2877,7 +2899,6 @@ ACMD(do_wizset)
             cbuf->desc = &descr;
             vict = cbuf;
         } else {
-            RELEASE(cbuf);
             send_to_char("There is no such player.\n\r", ch);
             return;
         }
@@ -3089,8 +3110,8 @@ ACMD(do_wizset)
         // O-2 RIDER (LS-3a T2 tranche 2e-beta, T0b-1 rider row 4b): an OFFLINE
         // victim is never placed. Under is_file, vict == cbuf -- a character
         // loaded from disk who is in no room, on no list, and whose location
-        // field carries the raw persisted VNUM -- and free_char(cbuf) releases
-        // him a dozen lines below. The old unconditional pair therefore ran
+        // field carries the raw persisted VNUM -- and the file_victim handle
+        // releases him when this function returns. The old unconditional pair therefore ran
         // char_from_room() over a VNUM-as-index (decrementing an unrelated live
         // room's light counter for any lit worn item, T0b-1's R16) and then
         // spliced a soon-to-be-freed char_data into a live room's occupant
@@ -3297,7 +3318,11 @@ ACMD(do_wizset)
         // (vict))->number conversion the other three rider rows took: that
         // would resolve a VNUM as an index and corrupt every wizset-file save.
         save_char(vict, peek_load_room_vnum(vict), 0);
-        free_char(cbuf);
+        // file_victim releases cbuf when this function returns, a few
+        // statements later than the free_char() that used to sit here. Nothing
+        // between the two reads the character -- send_to_char() writes to ch --
+        // and every other exit path now gets the same release, which is the
+        // point of the handle.
         send_to_char("Saved in file.\n\r", ch);
     }
 }

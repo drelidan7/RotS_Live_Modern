@@ -2079,6 +2079,64 @@ TEST(LoadRoomRider, WizsetFileSavePersistsTheChannelVnumNotAResolvedRoomNumber) 
     std::filesystem::remove_all(temp_data_dir);
 }
 
+// THE LOAD-FAILURE ARM of the same funnel (LS-3a follow-up). It lives here
+// rather than in act_wiz_format_tests.cpp because this file owns the only
+// harness in the tree that reaches `wizset file` past its early guards at all.
+//
+// WHAT IT PINS: do_wizset()'s is_file block materialises a scratch character
+// BEFORE it knows whether the player file loads, so the failure arm has to
+// release it. That arm used to `RELEASE(cbuf)` -- struct shell only, leaking
+// the profs allocation and the skills/knowledge vectors clear_char(MOB_VOID)
+// had made -- and is now a char_data_ptr released on every exit path, the same
+// shape `stat file` (act_wiz.cpp:1198) took for the identical defect.
+//
+// WHAT IT CANNOT PIN: the leak itself. LeakSanitizer does not run on macOS
+// arm64 (the host this was developed on), so there is no assertion available
+// here that goes red on a leak; the pre-fix code passes this test. It pins the
+// arm's OBSERVABLE behavior -- the message, the early return, and that the
+// release path runs clean under ASan -- and the leak fix rides on the code
+// read plus the sanitize-linux CI leg, which does have LSan.
+TEST(LoadRoomRider, WizsetFileReportsNoSuchPlayerAndReleasesTheScratchCharacter) {
+    ScopedVnumWorld fixture_world;
+    ScopedGlobalCharacterLists fixture_lists;
+    // A player table holding SOMEBODY, so the miss below is a genuine
+    // name-lookup failure rather than an empty-table shortcut.
+    ScopedPlayerTable fixture_player_table{"wizsetchr"};
+
+    char_data immortal{};
+    make_mortal_player(immortal);
+    ScopedClearCharFields immortal_cleanup{immortal};
+    immortal.player.level = LEVEL_IMPL;
+    RELEASE(immortal.player.name);
+    CREATE(immortal.player.name, char, strlen("wizsetimm") + 1);
+    strcpy(immortal.player.name, "wizsetimm");
+
+    descriptor_data immortal_descriptor{};
+    immortal_descriptor.output = immortal_descriptor.small_outbuf;
+    immortal_descriptor.small_outbuf[0] = '\0';
+    immortal_descriptor.bufptr = 0;
+    immortal_descriptor.bufspace = SMALL_BUFSIZE - 1;
+    immortal_descriptor.connected = CON_PLYNG;
+    immortal_descriptor.character = &immortal;
+    immortal_descriptor.next = nullptr;
+    immortal.desc = &immortal_descriptor;
+    char_to_room(&immortal, kOwnerRnum);
+
+    char argument[] = "file ghostwizsetname brief on";
+    do_wizset(&immortal, argument, nullptr, 0, 0);
+
+    EXPECT_NE(strstr(immortal_descriptor.small_outbuf, "There is no such player."), nullptr)
+        << "Expected do_wizset's is_file load-failure arm; output: "
+        << immortal_descriptor.small_outbuf;
+    // The arm returns immediately -- it must not fall through to the field
+    // edit or the save.
+    EXPECT_EQ(strstr(immortal_descriptor.small_outbuf, "Saved in file."), nullptr)
+        << immortal_descriptor.small_outbuf;
+
+    char_from_room(&immortal);
+    RELEASE(immortal.player.name);
+}
+
 // ROW 4(b) -- and the reason it cannot be driven. CHARACTERIZATION of a
 // SHADOWED FIELD, found while writing the test this replaces.
 //

@@ -160,10 +160,21 @@ set(ROTS_CORE_SOURCES
 # transitively through RotS::entity instead of a second same-executable
 # compile -- see the rots_convert target's own comment below for why that
 # executable's source list shrinks to convert_main.cpp alone this task.
+#
+# entity/location_benchmark.cpp JOINS HERE (LS-3b T3, the perf-harness wave
+# task; .superpowers/sdd/ls3b-global-constraints.md, ls3b-t3-report.md):
+# consumer-free -- only location_benchmark_tests.cpp calls it -- and lives
+# beside placement.cpp/equipment.cpp because it exercises the real
+# char_to_room()/detach_char_from_room()/occupants()/location_of()/room_of()
+# primitives directly (an intra-library reference, no new dependency),
+# measuring the CURRENT intrusive-chain representation so the wave's T5
+# store swap has a pre-swap baseline to compare against
+# (.superpowers/sdd/ls3b-perf-baseline.md).
 set(ROTS_ENTITY_SOURCES
     entity/entity_lifecycle.cpp entity/object_utils.cpp entity/environment_utils.cpp
     entity/char_utils.cpp entity/char_utils_combat.cpp
     entity/placement.cpp entity/containment.cpp entity/equipment.cpp
+    entity/location_benchmark.cpp
 )
 
 # L3: persist layer (spec §3/§10 step 4; persist-split PS Task 4 payoff).
@@ -1391,6 +1402,7 @@ if(ROTS_BUILD_TESTS)
         tests/json_utils_tests.cpp
         tests/llp64_probe_tests.cpp
         tests/load_room_placement_tests.cpp
+        tests/location_benchmark_tests.cpp
         tests/mage_tests.cpp
         tests/mail_json_tests.cpp
         tests/mobact_tests.cpp

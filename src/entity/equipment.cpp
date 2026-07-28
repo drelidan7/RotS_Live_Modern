@@ -111,47 +111,21 @@ extern int max_race_str[];
 // not a second evaluation reachable from two different places the way the
 // wrapper's old re-check was). The wrapper branches on this value instead
 // of re-deriving either the HOLD guard or the WEAPON-type test.
-namespace {
-
-// R7/R8 (LS-3a T2 tranche 2e-beta; T0b-1's reader table). Answers "is this
-// character actually LINKED INTO this room?", which is not the same question
-// as "does this character's location field hold a room id?" -- and during the
-// login/rent window the two answers differ, which is the whole bug the
-// ITEM_LIGHT arm below carried.
+// M6 (LS-3b T5): the anonymous-namespace helper is_linked_into_room() USED TO
+// LIVE HERE, and this commit deletes it. It existed because, before the store
+// split, char_data's location field carried the persisted room VNUM all the
+// way through Crash_load()'s per-item equip loop, so the field alone could not
+// tell a placed character from a mid-load one and an occupant-chain walk was
+// the only discriminator left. Its own in-source comment scheduled its
+// deletion for exactly this moment ("AFTER LS-3b this helper is redundant,
+// not wrong ... Delete it then; do not delete it now").
 //
-// WHY A CHAIN WALK IS THE ONLY DISCRIMINATOR AVAILABLE TODAY. char_to_room()
-// (placement.cpp:332-349) does two things: it splices ch into room->people AND
-// it writes ch->in_room. Until LS-3b splits the VNUM channel out of that field,
-// the field alone cannot tell a placed character from a mid-load one -- both
-// hold a non-NOWHERE integer -- so the occupant chain is the only remaining
-// witness. There is no O(1) form of this question: `ch->next_in_room != nullptr
-// || room->people == ch` is wrong for the TAIL occupant of a multi-occupant
-// room, which would silently stop bumping the light for real wearers.
-//
-// COST, measured rather than assumed (the brief's explicit requirement).
-// equip_char() has four production call sites -- objsave.cpp:439 (Crash_load,
-// per worn item), objsave.cpp:752 (follower equip), zone.cpp:628 (zone reset
-// 'E'), fight.cpp:3760 (the wear path) -- and this walk runs at NONE of them
-// unless the item is an ITEM_LIGHT with fuel, i.e. one wear slot's worth of a
-// minority item type. Its bound is the occupant count of a single room (one to
-// a few dozen), and at the one high-volume site (boot-time zone resets) the mob
-// has just been placed into a nearly empty room. Nothing here is on a per-pulse
-// or per-round path.
-//
-// AFTER LS-3b this helper is redundant, not wrong: location_of() will report
-// absent during the load window and the outer guard will already have skipped.
-// Delete it then; do not delete it now.
-bool is_linked_into_room(const room_data* room, const char_data* ch)
-{
-    for (const char_data* occupant : rots::entity::occupants(room)) {
-        if (occupant == ch)
-            return true;
-    }
-
-    return false;
-}
-
-} // namespace
+// It is redundant now because the invariant holds (see placement.cpp's header
+// block): location_of(ch) == NOWHERE if and only if ch is in no room's chain.
+// During the login/rent window the persisted VNUM sits in the channel, not in
+// the location field, so the ITEM_LIGHT arm's outer `location_of(ch) !=
+// NOWHERE` guard already skips every case the walk was there to catch. The
+// deletion is the cheapest proof the split closed R7/R8.
 
 EquipAttachOutcome attach_equipment(char_data* ch, obj_data* obj, int pos)
 {
@@ -205,7 +179,23 @@ EquipAttachOutcome attach_equipment(char_data* ch, obj_data* obj, int pos)
         SET_DODGE(ch) += obj->obj_flags.value[0];
         SET_PARRY(ch) += obj->obj_flags.value[1];
     } else if (GET_ITEM_TYPE(obj) == ITEM_LIGHT) {
-        if ((location_of(ch) != NOWHERE) && (obj->obj_flags.value[2] != 0)) {
+        // THE OUTER PREDICATE IS TWO-TERM AS OF LS-3b T5, and the second term is
+        // not decoration -- it is the byte-faithful translation of the ONE-term
+        // predicate this arm used to carry. Before the store split the single
+        // field held EITHER a location OR the persisted VNUM the login window
+        // stashed there, so `location_of(ch) != NOWHERE` was really asking "is
+        // this field carrying anything at all?", and it was TRUE for every one
+        // of equip_char()'s four call sites including Crash_load()'s per-item
+        // loop. Left one-term after the split it would have gone false for the
+        // whole load window and silently stopped lighting rent-loaded lamps: the
+        // value[3] normalization below would not run, and char_to_room()'s own
+        // sweep only counts `value[2] && value[3]` items, so the light would
+        // never come back on at the room the character is really placed in.
+        // (Review finding F20 asserted the lighting OUTCOME was unchanged by the
+        // split; measured here, that is true only with this term present.)
+        // Same shape, same reason, as equip_char()'s own R9/R10 zap guards.
+        if (((location_of(ch) != NOWHERE) || (peek_load_room_vnum(ch) != NOWHERE))
+            && (obj->obj_flags.value[2] != 0)) {
             if (obj->obj_flags.value[3] == 0)
                 obj->obj_flags.value[3] = 1;
 
@@ -220,27 +210,38 @@ EquipAttachOutcome attach_equipment(char_data* ch, obj_data* obj, int pos)
             // indexes a real slot, so the corruption is silent.
             //
             // The correctly-lit room is not lost by skipping this: char_to_room()
-            // (placement.cpp:349-353) runs its own equipment sweep and bumps the
-            // light for every value[2] && value[3] item the character wears, at
-            // the room it actually places them in. The value[3] normalization
-            // above stays OUTSIDE this guard precisely so that sweep still sees
-            // the light as ON.
+            // runs its own equipment sweep and bumps the light for every
+            // value[2] && value[3] item the character wears, at the room it
+            // actually places them in -- which is exactly why the value[3]
+            // normalization above must stay OUTSIDE this guard, and why LS-3b T5
+            // hoisted it there.
             //
-            // Exactly ONE resolver call, as before: room_of(ch) is dispatched
-            // once and reused, so room_data::operator[]'s mudlog/fallback
-            // behavior for an out-of-range id is unchanged in count and in kind
-            // (the no-hoisting rule bars collapsing N calls into 1; this is
-            // still 1). See is_linked_into_room() above for why the occupant
-            // chain is the discriminator and what it costs.
+            // Exactly ONE resolver call, as before and as after M6: room_of(ch)
+            // is dispatched once, so room_data::operator[]'s mudlog/fallback
+            // behavior for an out-of-range id is unchanged in count and in kind.
+            //
+            // M6 (LS-3b T5): the is_linked_into_room() second gate that used to
+            // sit between this resolve and the bump is GONE -- see the block
+            // above the function for why the outer guard is now sufficient.
+            // F20's ledger entry belongs to this arm: during Crash_load() the
+            // outer guard now fails, so this resolver dispatch (and, for an
+            // out-of-range persisted VNUM, its LEVEL_GRGOD "room outside the
+            // world" mudlog) no longer happens once per lit worn item per
+            // login. The lighting OUTCOME is unchanged: char_to_room() runs its
+            // own equipment sweep at the room the character is really placed in.
             //
             // detach_equipment()'s mirror image below is deliberately NOT given
             // the same treatment: its four production callers were audited and
             // none can run during the load window (objsave.cpp:853 and :1086 are
             // extract_followers()/Crash_rentsave(), both on characters still in
             // a room), so the attach/detach pair stays balanced.
-            room_data* room = room_of(ch);
-            if (is_linked_into_room(room, ch))
-                room->light++;
+            // THE BUMP, unlike the normalization above, is one-term on purpose:
+            // it must happen only for a character genuinely IN the room, which
+            // by the invariant (placement.cpp's header block) is exactly
+            // `location_of(ch) != NOWHERE`. That equivalence is what retired
+            // is_linked_into_room() -- see M6 above.
+            if (location_of(ch) != NOWHERE)
+                room_of(ch)->light++;
         }
     }
 

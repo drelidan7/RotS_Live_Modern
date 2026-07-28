@@ -154,7 +154,7 @@ public:
 
         iterator& operator++()
         {
-            node_ = node_->next_in_room; // LS1-ALLOW: representation-impl (occupant_range::iterator::operator++ -- the Stage-1 API body itself, walking the raw chain it wraps)
+            node_ = node_->ls_next_in_room_; // LS1-ALLOW: representation-impl (occupant_range::iterator::operator++ -- the Stage-1 API body itself, walking the raw chain it wraps)
             return *this;
         }
 
@@ -172,7 +172,7 @@ public:
     // the legacy walks' own single-read-then-follow-next behavior); a null
     // room yields an empty range.
     explicit occupant_range(room_data* room)
-        : first_(room ? room->people : nullptr) // LS1-ALLOW: representation-impl (occupant_range's own constructor -- the Stage-1 API body itself, snapshotting the raw chain head it wraps, exactly as its operator++ sibling walks it)
+        : first_(room ? room->ls_first_occupant_ : nullptr) // LS1-ALLOW: representation-impl (occupant_range's own constructor -- the Stage-1 API body itself, snapshotting the raw chain head it wraps, exactly as its operator++ sibling walks it)
     {
     }
 
@@ -246,7 +246,7 @@ public:
 
         iterator& operator++()
         {
-            node_ = node_->next_in_room; // LS1-ALLOW: representation-impl (const_occupant_range::iterator::operator++ -- the Stage-1 API body itself, walking the raw chain it wraps)
+            node_ = node_->ls_next_in_room_; // LS1-ALLOW: representation-impl (const_occupant_range::iterator::operator++ -- the Stage-1 API body itself, walking the raw chain it wraps)
             return *this;
         }
 
@@ -263,7 +263,7 @@ public:
     // Snapshots room's occupant-chain head at construction time; a null
     // room yields an empty range (see occupant_range's own comment).
     explicit const_occupant_range(const room_data* room)
-        : first_(room ? room->people : nullptr) // LS1-ALLOW: representation-impl (const_occupant_range's own constructor -- the Stage-1 API body itself, snapshotting the raw chain head it wraps, exactly as its operator++ sibling walks it)
+        : first_(room ? room->ls_first_occupant_ : nullptr) // LS1-ALLOW: representation-impl (const_occupant_range's own constructor -- the Stage-1 API body itself, snapshotting the raw chain head it wraps, exactly as its operator++ sibling walks it)
     {
     }
 
@@ -303,7 +303,7 @@ inline const_occupant_range occupants(const room_data* room)
 // Consumer-free as landed -- T2's conversions are the first callers.
 inline char_data* first_occupant(room_data* room)
 {
-    return room ? room->people : nullptr; // LS1-ALLOW: representation-impl (first_occupant -- the Stage-1 API body itself, reading the raw chain head it wraps)
+    return room ? room->ls_first_occupant_ : nullptr; // LS1-ALLOW: representation-impl (first_occupant -- the Stage-1 API body itself, reading the raw chain head it wraps)
 }
 
 // const counterpart, mirroring occupants(const room_data*) above: a caller
@@ -312,7 +312,7 @@ inline char_data* first_occupant(room_data* room)
 // prefers the non-const form whenever the argument is a non-const room_data*.
 inline const char_data* first_occupant(const room_data* room)
 {
-    return room ? room->people : nullptr; // LS1-ALLOW: representation-impl (first_occupant const overload -- the Stage-1 API body itself, reading the raw chain head it wraps)
+    return room ? room->ls_first_occupant_ : nullptr; // LS1-ALLOW: representation-impl (first_occupant const overload -- the Stage-1 API body itself, reading the raw chain head it wraps)
 }
 
 } // namespace rots::entity

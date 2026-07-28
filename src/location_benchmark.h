@@ -40,7 +40,7 @@ namespace locbench {
 // Update this string in the SAME commit that lands the store swap (T5) --
 // never edit it to make an old report look newer, and never edit it
 // without also re-running the baseline/comparison capture.
-inline constexpr std::string_view kRepresentationTag = "intrusive-dual-store-pre-swap";
+inline constexpr std::string_view kRepresentationTag = "private-handle-post-split";
 
 // One timed measurement: `iterations` operations are performed inside each
 // of `repetitions` independently-timed spans (repetitions clamped to >= 5

@@ -657,7 +657,7 @@ char_data *run_load_placement_chain(char_data &player, const objects_json::Objec
 // why the follower placement (objsave.cpp:718/:812) must read
 // ch->specials2.load_room and must NOT read location_of(ch), as the pre-fix
 // code did.
-TEST(LoadRoomChain, CalcLoadRoomLeavesInRoomHoldingTheRawPersistedValue) {
+TEST(LoadRoomChain, CalcLoadRoomLeavesTheChannelHoldingTheRawPersistedValue) {
     ScopedVnumWorld fixture_world;
     ScopedStartRooms fixture_start_rooms;
 
@@ -669,14 +669,17 @@ TEST(LoadRoomChain, CalcLoadRoomLeavesInRoomHoldingTheRawPersistedValue) {
     // character whose on-disk load_room is the room VNUM 35.
     player.specials2.load_room = kOwnerVnum;
     stash_load_room_vnum(&player, GET_LOADROOM(&player));
-    ASSERT_EQ(location_of(&player), kOwnerVnum);
+    // Read back through the CHANNEL, not through location_of(): since the
+    // LS-3b store split (ls3b T5) the stash has its own storage and the
+    // character's location stays absent for the whole load window.
+    ASSERT_EQ(peek_load_room_vnum(&player), kOwnerVnum);
 
     const int computed_load_room = calc_load_room(&player, RENT_RENTED);
 
     // The return value is an RNUM: real_room(35) == 3 in this world.
     EXPECT_EQ(computed_load_room, kOwnerRnum);
-    // ...but in_room was not touched, so the follower loader still sees 35.
-    EXPECT_EQ(location_of(&player), kOwnerVnum);
+    // ...but the CHANNEL was not touched, so the follower loader still sees 35.
+    EXPECT_EQ(peek_load_room_vnum(&player), kOwnerVnum);
     // The two indices the chain's two char_to_room() calls will receive.
     EXPECT_NE(computed_load_room, location_of(&player));
 }
@@ -777,11 +780,14 @@ TEST(LoadRoomChain, LoadCharacterGuardCopiesThePersistedIntegerRawWhenThereIsNoL
 
     replay_load_character_guard(player);
 
-    EXPECT_EQ(location_of(&player), kOwnerVnum);
+    EXPECT_EQ(peek_load_room_vnum(&player), kOwnerVnum);
     // Raw, not converted: real_room(35) is 3 in this world, and 3 is NOT what
-    // landed in the field.
-    EXPECT_NE(location_of(&player), kOwnerRnum);
+    // landed in the channel.
+    EXPECT_NE(peek_load_room_vnum(&player), kOwnerRnum);
     EXPECT_EQ(real_room(kOwnerVnum), kOwnerRnum);
+    // And since the LS-3b store split the write lands in the channel ALONE:
+    // the character is still, correctly, nowhere.
+    EXPECT_EQ(location_of(&player), NOWHERE);
 }
 
 // :495 IS NOT DEAD -- the executable form of T0b-4's ruling. With the write,
@@ -831,7 +837,7 @@ TEST(LoadRoomChain, LoadCharacterGuardWriteIsOutcomeNeutralForAFreshStartRoomCha
     set_location(&with_write, NOWHERE);
     with_write.specials2.load_room = start_room_vnum;
     replay_load_character_guard(with_write);
-    ASSERT_EQ(location_of(&with_write), start_room_vnum);
+    ASSERT_EQ(peek_load_room_vnum(&with_write), start_room_vnum);
     const int room_with_write = calc_load_room(&with_write, RENT_RENTED);
 
     // Path 2 -- WITHOUT it: the channel stays NOWHERE, so calc_load_room()
@@ -1154,14 +1160,30 @@ TEST(LoadRoomPersistence, TextRoundTripPreservesWhateverIntegerTheCallerPassed) 
         // Verbatim through the round trip -- no vnum/rnum normalization.
         EXPECT_EQ(reloaded.specials2.load_room, persisted_value);
 
-        // ...and store_to_char (db_players.cpp:1376) copies it straight into
-        // in_room, which is the value Crash_follower_load reads.
+        // ...and store_to_char (db_players.cpp) copies it straight into the
+        // VNUM CHANNEL, which is the value calc_load_room() reads. Since the
+        // LS-3b store split the same call also states the character's absence
+        // explicitly (its discharged ordering obligation), so the location and
+        // the channel are asserted separately below.
         char_data reader{};
         clear_char(&reader, MOB_VOID);
         ScopedClearCharFields reader_cleanup{reader};
         ScopedStoreToCharFields reader_store_cleanup{reader};
+        // A deliberately non-absent starting location, so the assertion below
+        // is not satisfied by clear_char()'s own NOWHERE. store_to_char()'s
+        // POSTCONDITION since the LS-3b store split is that the character it
+        // fills in is explicitly nowhere -- the ordering obligation LS-3a
+        // recorded at that site and this commit discharged. Every production
+        // caller happens to pass a freshly clear_char()'d character, so this
+        // is the only place the postcondition is observable; that is exactly
+        // why it is pinned here rather than argued.
+        set_location(&reader, 12345);
+
         store_to_char(&reloaded, &reader);
-        EXPECT_EQ(location_of(&reader), persisted_value);
+        EXPECT_EQ(peek_load_room_vnum(&reader), persisted_value);
+        EXPECT_EQ(location_of(&reader), NOWHERE)
+            << "store_to_char() left a stale location on a character it just "
+               "filled in from the player file";
         EXPECT_EQ(GET_LOADROOM(&reader), persisted_value);
 
         RELEASE(writer.player.title);
@@ -1661,10 +1683,20 @@ TEST(LoadRoomRider, PostLoginSavePersistsTheLoginRoomVnumNotItsRnum) {
 // `real_room(r_bugged_start_room)` -- a global spelled as an RNUM handed to a
 // VNUM lookup. So it can return -1, and load_character() then calls
 // char_to_room(ch, -1) on the ordinary login path. Ruling R-C2 describes what
-// that produces: room_by_id_total(-1) hits operator[]'s room-0 fallback, so
-// the character is spliced into ROOM 0's occupant chain while the location
-// field says NOWHERE -- a torn state, reproduced here through production
-// rather than asserted into existence.
+// that produced, UNTIL LS-3b T5: room_by_id_total(-1) hit operator[]'s room-0
+// fallback, so the character was spliced into ROOM 0's occupant chain while
+// the location field said NOWHERE -- a torn state, reproduced here through
+// production rather than asserted into existence.
+//
+// THE ASSERTION BELOW IS INVERTED AS OF LS-3b T5, under owner ruling O-5, and
+// the inversion is deliberately the wave's flagship witness: same fixture,
+// same production call, opposite expectation. char_to_room(ch, NOWHERE) now
+// performs NO splice, NO light bump and NO zone-power bump -- NOWHERE means
+// linked nowhere -- so room 0's chain stays empty and the character is
+// genuinely absent rather than half-present. What the amendment buys is on
+// display two paragraphs down: the hand-undo this test used to need at the
+// end (because char_from_room() early-returns for a torn character and would
+// have left a stack char_data in a process-global chain) is now a no-op.
 //
 // THE JUSTIFICATION FOR `NOWHERE`: in that state save_char(ch, NOWHERE, 0)
 // persists NOWHERE, which sends the character to their racial start room on
@@ -1678,7 +1710,7 @@ TEST(LoadRoomRider, PostLoginSavePersistsTheLoginRoomVnumNotItsRnum) {
 // NOWHERE here, so the unfixed statement passed NOWHERE too and agreed. It is
 // red against the rejected alternative, which is what it exists to rule out
 // (sabotage-proven -- see the commit message).
-TEST(LoadRoomRider, PostLoginSaveLeavesABuggedCharacterNowhereInsteadOfRelocatingThemToWorldZero) {
+TEST(LoadRoomRider, PostLoginSaveLeavesABuggedCharacterNowhereAndLinksThemIntoNoRoomAtAll) {
     ScopedVnumWorld fixture_world;
     ScopedStartRooms fixture_start_rooms;
     ScopedPlayerTable fixture_player_table{nullptr};
@@ -1715,18 +1747,35 @@ TEST(LoadRoomRider, PostLoginSaveLeavesABuggedCharacterNowhereInsteadOfRelocatin
     const int computed_load_room = calc_load_room(&player, RENT_RENTED);
     ASSERT_EQ(computed_load_room, NOWHERE) << "calc_load_room's bugged arm did not return -1";
 
-    // load_character (objsave.cpp:502) with that value: R-C2's torn state.
+    // load_character (objsave.cpp:502) with that value. Before LS-3b T5 this
+    // produced R-C2's torn state; under owner ruling O-5's amendment it
+    // produces a genuinely absent character.
     char_to_room(&player, computed_load_room);
     ASSERT_EQ(location_of(&player), NOWHERE) << "the field should say nowhere";
-    ASSERT_EQ(rots::entity::first_occupant(room_by_id_total(0)), &player) << "...while the chain says room 0";
+    ASSERT_EQ(rots::entity::first_occupant(room_by_id_total(0)), nullptr)
+        << "...and so should the chain: NOWHERE means linked nowhere (O-5)";
 
     player.specials2.load_room = -12345;
 
     save_char(&player, NOWHERE, 0);
 
-    // What the fixed line persists.
-    EXPECT_EQ(GET_LOADROOM(&player), NOWHERE);
+    // WHAT save_char() PERSISTS, and this changed at LS-3b T5 -- it is the
+    // R23 fail-safe arming, and this test is one of its witnesses. Both of
+    // save_char()'s fallback arms are reached with load_room == NOWHERE: the
+    // first (location-derived) is skipped because the character really is
+    // nowhere, and the SECOND -- `peek_load_room_vnum(ch) != NOWHERE`, written
+    // by LS-3a as a provable no-op because channel and location were then one
+    // field -- now fires and persists the VNUM the login stashed. Before the
+    // split it persisted NOWHERE, which is what sends a character to their
+    // racial start room on the next login; R23 exists precisely to stop that
+    // when a real room is still known. SaveCharChannelFallback.* below pins
+    // the arm directly, in isolation.
+    EXPECT_EQ(GET_LOADROOM(&player), kOwnerVnum);
     EXPECT_NE(GET_LOADROOM(&player), -12345);
+    // ...and still NOT the rejected mechanical conversion's value -- world[0]'s
+    // vnum, reached through the room-0 fallback -- which is the discrimination
+    // this test was written for and which the R23 arm does not disturb.
+    EXPECT_NE(GET_LOADROOM(&player), room_vnum_for(0));
 
     // ...and what the rejected mechanical conversion WOULD have persisted:
     // world[0]'s vnum, an unrelated real room.
@@ -1736,10 +1785,13 @@ TEST(LoadRoomRider, PostLoginSaveLeavesABuggedCharacterNowhereInsteadOfRelocatin
     EXPECT_NE(strstr(descriptor.small_outbuf, "you are not being saved"), nullptr)
         << "output: " << descriptor.small_outbuf;
 
-    // char_from_room() early-returns on in_room == NOWHERE (placement.cpp:
-    // 398-402) -- exactly the leak half of R-C2's torn state -- so it would
-    // NOT unsplice this character. Undo the splice by hand, or the stack
-    // char_data outlives its entry in a process-global chain.
+    // RETAINED AS BELT-AND-BRACES, AND NOW A NO-OP (census B section 4.1's own
+    // disposition for this line). Before LS-3b T5 this hand-undo was
+    // mandatory: char_from_room() early-returns for a character whose field
+    // says NOWHERE, so the splice above would have outlived this stack
+    // char_data inside a process-global chain. Under O-5 there is no splice to
+    // undo, and the call below walks an empty chain and finds nothing. It
+    // stays so that the fixture is correct whichever way a future change goes.
     unlink_from_occupant_chain(*room_by_id_total(0), &player);
     RELEASE(player.player.name);
 }
@@ -2349,6 +2401,291 @@ TEST(EquipCharZapGuard, TheSameItemIsWornNormallyByANonEvilWearer) {
     char_from_room(&wearer);
 }
 
+// ===========================================================================
+// R9/R10 ARMED (LS-3b T5 -- the store split; census B S5's "can only be
+// witnessed in the split commit" rule).
+//
+// equip_char()'s two zap arms (fight.cpp) guard on
+//     (location_of(character) != NOWHERE) || (peek_load_room_vnum(character) != NOWHERE)
+// LS-3a wrote that second term as a deliberate no-op -- the two functions read
+// one field, so `A != X || A != X` reduced to one term -- and said in the
+// source that it would arm itself the instant LS-3b gave the channel its own
+// store. It has. These two tests are the discriminators that could not be
+// written before this commit, one per arm.
+//
+// THE SHAPE UNDER TEST is the real one: mid-Crash_load, the character has no
+// location at all (objsave.cpp equips every worn item before char_to_room()
+// runs) and the persisted room VNUM is sitting in the channel. With both
+// terms, the zap fires and the forbidden item lands in inventory. With only
+// the first, the guard goes FALSE, control falls through to the else-arm's
+// log(), and the item is EQUIPPED on a character forbidden to wear it --
+// which the very rent-load that produced it then persists. That is the
+// regression these tests exist to catch, and it is exactly what they report
+// when the second term is deleted (see the commit message's sabotage log).
+// ===========================================================================
+
+TEST(EquipCharZapGuard, AntiEvilItemLandsInInventoryWhenOnlyTheStashedVnumIsSet) {
+    ScopedVnumWorld fixture_world;
+    ScopedGlobalCharacterLists fixture_lists;
+
+    char_data wearer{};
+    make_mortal_player(wearer);
+    ScopedClearCharFields wearer_cleanup{wearer};
+    GET_ALIGNMENT(&wearer) = -1000; // IS_EVIL: alignment <= -100
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &wearer;
+    descriptor.next = nullptr;
+    wearer.desc = &descriptor;
+    wearer.specials.position = POSITION_STANDING;
+
+    // The load window, exactly as production carries it since the split: no
+    // location, the persisted VNUM in the channel. NOT char_to_room().
+    set_location(&wearer, NOWHERE);
+    stash_load_room_vnum(&wearer, kOwnerVnum);
+    ASSERT_EQ(location_of(&wearer), NOWHERE)
+        << "the first guard term must be FALSE, or this test proves nothing";
+    ASSERT_NE(peek_load_room_vnum(&wearer), NOWHERE);
+
+    obj_data holy_symbol{};
+    holy_symbol.obj_flags.type_flag = ITEM_ARMOR;
+    holy_symbol.obj_flags.extra_flags = ITEM_ANTI_EVIL;
+    holy_symbol.obj_flags.weight = 1;
+    holy_symbol.in_room = NOWHERE; // LS1-ALLOW: obj-location (fixture init)
+    holy_symbol.name = str_dup("symbol");
+    holy_symbol.short_description = str_dup("a holy symbol");
+    holy_symbol.description = str_dup("A holy symbol lies here.");
+
+    equip_char(&wearer, &holy_symbol, WEAR_BODY);
+
+    EXPECT_EQ(wearer.equipment[WEAR_BODY], nullptr)
+        << "a rent-loaded anti-evil item stayed EQUIPPED on an evil wearer";
+    EXPECT_EQ(wearer.carrying, &holy_symbol);
+    EXPECT_EQ(holy_symbol.carried_by, &wearer);
+
+    if (holy_symbol.carried_by != nullptr)
+        obj_from_char(&holy_symbol);
+    if (wearer.equipment[WEAR_BODY] == &holy_symbol)
+        unequip_char(&wearer, WEAR_BODY);
+    RELEASE(holy_symbol.name);
+    RELEASE(holy_symbol.short_description);
+    RELEASE(holy_symbol.description);
+}
+
+TEST(EquipCharZapGuard, RaceRestrictedItemLandsInInventoryWhenOnlyTheStashedVnumIsSet) {
+    // The second arm (fight.cpp's race-restricted zap), same derivation. It
+    // needs its own test because it is a separate `if` with its own copy of
+    // the two-term guard -- deleting the second term from one arm leaves the
+    // other green.
+    ScopedVnumWorld fixture_world;
+    ScopedGlobalCharacterLists fixture_lists;
+
+    char_data wearer{};
+    make_mortal_player(wearer);
+    ScopedClearCharFields wearer_cleanup{wearer};
+    wearer.player.race = RACE_HUMAN;
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &wearer;
+    descriptor.next = nullptr;
+    wearer.desc = &descriptor;
+    wearer.specials.position = POSITION_STANDING;
+
+    set_location(&wearer, NOWHERE);
+    stash_load_room_vnum(&wearer, kOwnerVnum);
+
+    obj_data dwarven_mail{};
+    dwarven_mail.obj_flags.type_flag = ITEM_ARMOR;
+    dwarven_mail.obj_flags.extra_flags = ITEM_DWARF; // human wearer: forbidden
+    dwarven_mail.obj_flags.weight = 1;
+    dwarven_mail.in_room = NOWHERE; // LS1-ALLOW: obj-location (fixture init)
+    dwarven_mail.name = str_dup("mail");
+    dwarven_mail.short_description = str_dup("a suit of dwarven mail");
+    dwarven_mail.description = str_dup("A suit of dwarven mail lies here.");
+
+    equip_char(&wearer, &dwarven_mail, WEAR_BODY);
+
+    EXPECT_EQ(wearer.equipment[WEAR_BODY], nullptr)
+        << "a rent-loaded race-restricted item stayed EQUIPPED on a forbidden wearer";
+    EXPECT_EQ(wearer.carrying, &dwarven_mail);
+
+    if (dwarven_mail.carried_by != nullptr)
+        obj_from_char(&dwarven_mail);
+    if (wearer.equipment[WEAR_BODY] == &dwarven_mail)
+        unequip_char(&wearer, WEAR_BODY);
+    RELEASE(dwarven_mail.name);
+    RELEASE(dwarven_mail.short_description);
+    RELEASE(dwarven_mail.description);
+}
+
+// ===========================================================================
+// R23 ARMED (LS-3b T5). save_char()'s second fail-safe arm
+// (db_players.cpp) -- `(load_room == NOWHERE) && (peek_load_room_vnum(ch) !=
+// NOWHERE)` -- was written by LS-3a as a provably unreachable else-if, for the
+// same reason R9/R10 were no-ops: channel and location were one field, so
+// whenever control reached it either the first term was false or the peek was
+// NOWHERE too. The store split makes it reachable, and these two tests are its
+// first witnesses.
+// ===========================================================================
+
+TEST(SaveCharChannelFallback, PersistsTheStashedVnumWhenThereIsNoLoadRoomAndNoLocation) {
+    ScopedVnumWorld fixture_world;
+    ScopedStartRooms fixture_start_rooms;
+    ScopedPlayerTable fixture_player_table{nullptr};
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+    RELEASE(player.player.name);
+    CREATE(player.player.name, char, strlen("channelchr") + 1);
+    strcpy(player.player.name, "channelchr");
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &player;
+    descriptor.next = nullptr;
+    player.desc = &descriptor;
+
+    // Both of save_char()'s preconditions for the SECOND arm: no explicit
+    // load_room from the caller, no location on the character, and a real room
+    // still known through the channel.
+    set_location(&player, NOWHERE);
+    stash_load_room_vnum(&player, kOwnerVnum);
+    player.specials2.load_room = -12345; // must be overwritten, not inherited
+
+    save_char(&player, NOWHERE, 0);
+
+    EXPECT_EQ(GET_LOADROOM(&player), kOwnerVnum)
+        << "the channel fail-safe did not fire: this character would come back "
+           "at their racial start room instead of the room they left";
+    EXPECT_NE(GET_LOADROOM(&player), -12345);
+
+    RELEASE(player.player.name);
+}
+
+TEST(SaveCharChannelFallback, PersistsNowhereWhenNeitherALocationNorAStashIsAvailable) {
+    // The CONTROL, and the reason the arm is an `else if` and not an
+    // unconditional assignment: with nothing stashed either, NOWHERE is still
+    // what gets persisted, which is what sends the character to their racial
+    // start room -- the designed behavior for a character whose room is
+    // genuinely unknown. A fail-safe that invented a room here would be worse
+    // than the bug it fixes.
+    ScopedVnumWorld fixture_world;
+    ScopedStartRooms fixture_start_rooms;
+    ScopedPlayerTable fixture_player_table{nullptr};
+
+    char_data player{};
+    make_mortal_player(player);
+    ScopedClearCharFields player_cleanup{player};
+    RELEASE(player.player.name);
+    CREATE(player.player.name, char, strlen("nochanchr") + 1);
+    strcpy(player.player.name, "nochanchr");
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &player;
+    descriptor.next = nullptr;
+    player.desc = &descriptor;
+
+    set_location(&player, NOWHERE);
+    ASSERT_EQ(peek_load_room_vnum(&player), NOWHERE)
+        << "make_mortal_player must leave the channel empty for this control";
+    player.specials2.load_room = -12345;
+
+    save_char(&player, NOWHERE, 0);
+
+    EXPECT_EQ(GET_LOADROOM(&player), NOWHERE);
+
+    RELEASE(player.player.name);
+}
+
+// ===========================================================================
+// TEARDOWN UNDER THE INVARIANT (LS-3b T5 -- mechanism (3) of ruling R-3b-A,
+// and the retirement witness for census B's D5 use-after-free).
+//
+// free_char() performs NO location unregistration, and under the private
+// handle that is CORRECT rather than lucky: the store dies with the struct.
+// What made it dangerous before this commit was the TORN state -- review
+// finding F4: extract_char() gates its unsplice on `location_of(ch) !=
+// NOWHERE` (handler.cpp), and a character whose field said NOWHERE while the
+// chain still held it took the else arm, was never unspliced, and reached
+// free_char() with a process-global chain still pointing at it.
+//
+// The amendment makes that state unproducible, and this test is the executable
+// form of that claim: place a character NOWHERE through the real production
+// call, extract them through the real extract_char(), and assert the fallback
+// room's chain is intact and empty afterwards. The heap allocation is
+// deliberate -- extract_char() reaches free_char() on this path, so a stack
+// char_data could not be used, and ASan is the second observer here.
+// ===========================================================================
+
+TEST(ExtractCharTeardown, ExtractingANowherePlacedCharacterLeavesEveryRoomChainIntact) {
+    ScopedVnumWorld fixture_world;
+    ScopedStartRooms fixture_start_rooms;
+    ScopedGlobalCharacterLists fixture_lists;
+
+    // A bystander who really is in room 0, published through the real
+    // char_to_room(), so the test can tell "the chain is intact" from "the
+    // chain is empty because nothing was ever in it".
+    char_data bystander{};
+    make_mortal_player(bystander);
+    ScopedClearCharFields bystander_cleanup{bystander};
+    bystander.specials2.act |= MOB_ISNPC; // no descriptor, no save path
+    char_to_room(&bystander, 0);
+    ASSERT_EQ(rots::entity::first_occupant(room_by_id_total(0)), &bystander);
+
+    // The character under test: an NPC, so extract_char() takes the arm that
+    // ends in free_char(). Heap-allocated exactly as production allocates it.
+    char_data* doomed = nullptr;
+    CREATE(doomed, char_data, 1);
+    clear_char(doomed, MOB_ISNPC);
+    doomed->player.name = str_dup("doomed");
+    doomed->player.short_descr = str_dup("a doomed mob");
+    doomed->nr = -1;
+    doomed->next = character_list;
+    character_list = doomed;
+
+    // The production call that used to produce the torn state.
+    char_to_room(doomed, NOWHERE);
+    ASSERT_EQ(location_of(doomed), NOWHERE);
+    ASSERT_EQ(rots::entity::first_occupant(room_by_id_total(0)), &bystander)
+        << "the NOWHERE placement spliced into the fallback room -- the torn "
+           "state this test exists to prove is gone";
+
+    extract_char(doomed); // reaches free_char(): `doomed` is dangling after this
+
+    // Room 0's chain is exactly what it was: the bystander, and nothing that
+    // used to be `doomed`. Before the amendment the freed pointer was still
+    // linked here, and walking the chain was a use-after-free.
+    EXPECT_EQ(rots::entity::first_occupant(room_by_id_total(0)), &bystander);
+    int occupants_seen = 0;
+    for (char_data* occupant : rots::entity::occupants(room_by_id_total(0))) {
+        (void)occupant;
+        ++occupants_seen;
+    }
+    EXPECT_EQ(occupants_seen, 1) << "room 0's chain gained or lost a member";
+
+    char_from_room(&bystander);
+}
+
 // R20 -- broadcast_weather_msdp_update() (protocol.cpp). This walker had no
 // location guard at all, and its weather arm is the only one that reads the
 // room. A character parked at the character menu has none, so room_of()
@@ -2503,6 +2840,63 @@ TEST(CleanExposeElementsGuard, SkipsAMageWithNoLocationInsteadOfSearchingRoomZer
         << "stderr: " << captured;
 }
 
+// ===========================================================================
+// F19 -- THE SAME IN-RANGE STASHED-VNUM LEAK AT THE OTHER TWO WALKERS,
+// CLOSED BY THE STORE SPLIT (LS-3b T5).
+//
+// The LS-3a R20/R21 guards above are one-sided (`< 0` / `>= 0`), so before the
+// split they caught only the menu sitter whose persisted room VNUM happened to
+// read negative. A stashed VNUM of any non-negative size PASSED both of them,
+// and the walkers then used it as a world index. Review finding F19 filed both
+// sites; each gets a paired test here, and R21's is the one that matters most
+// because it destroys live spell state rather than merely reporting the wrong
+// room.
+// ===========================================================================
+
+TEST(WeatherBroadcastGuard, SkipsAMenuSitterCarryingAnInRangeStashedVnum) {
+    ScopedVnumWorld fixture_world;
+
+    char_data menu_sitter{};
+    make_mortal_player(menu_sitter);
+    ScopedClearCharFields menu_sitter_cleanup{menu_sitter};
+
+    // The post-split menu-sitter shape: no location, an IN-RANGE persisted
+    // VNUM in the channel. kOwnerVnum is a real room in this fixture world, so
+    // before the split this descriptor received THAT room's weather every tick
+    // -- the guard's `< 0` half cannot see it.
+    set_location(&menu_sitter, NOWHERE);
+    stash_load_room_vnum(&menu_sitter, kOwnerVnum);
+    ASSERT_GE(peek_load_room_vnum(&menu_sitter), 0);
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &menu_sitter;
+    descriptor.next = nullptr;
+    descriptor.pProtocol = ProtocolCreate();
+    menu_sitter.desc = &descriptor;
+
+    MSDPSetString(&descriptor, eMDSP_WEATHER, "sentinel weather");
+
+    descriptor_data *previous_descriptor_list = descriptor_list;
+    descriptor_list = &descriptor;
+
+    broadcast_weather_msdp_update(rots::world::weather_msdp_kind::weather);
+
+    descriptor_list = previous_descriptor_list;
+
+    EXPECT_STREQ(descriptor.pProtocol->pVariables[eMDSP_WEATHER]->pValueString,
+                 "sentinel weather")
+        << "a menu sitter was told about the weather in a room read out of the "
+           "world table with a persisted VNUM used as an index";
+
+    ProtocolDestroy(descriptor.pProtocol);
+    descriptor.pProtocol = nullptr;
+}
+
 // The CONTROL: a mage who IS in a room still gets the sweep, target absent
 // from his room, so the guard cannot have disabled the maintenance pass.
 TEST(CleanExposeElementsGuard, StillCancelsForAMageWhoIsInARoomAndCannotSeeTheTarget) {
@@ -2546,6 +2940,61 @@ TEST(CleanExposeElementsGuard, StillCancelsForAMageWhoIsInARoomAndCannotSeeTheTa
         << "the sweep no longer runs for a placed mage -- the guard is too broad";
     EXPECT_STREQ(descriptor.small_outbuf,
                  "Your target is no longer vulnerable to your spells.\r\n");
+}
+
+// F19's STATE-DESTROYING case, and the sharpest single argument for the store
+// split. clean_expose_elements() runs every fast-update pulse over the
+// process-wide specialized_mages roster, which every LOADED character joins --
+// so rent-window and menu-sitting mages are on it. Its guard is `>= 0`, so
+// before the split a mage carrying an in-range persisted VNUM passed it, the
+// walk searched an UNRELATED room for the exposed target, failed to find it,
+// told the mage "Your target is no longer vulnerable to your spells." and
+// called spec_data->reset(). That is a live spell cancelled by a login, not a
+// display glitch -- which is why it is named in the PR body as a
+// state-corruption fix.
+TEST(CleanExposeElementsGuard, SkipsAMageCarryingAnInRangeStashedVnum) {
+    ScopedVnumWorld fixture_world;
+
+    char_data mage{};
+    char_prof_data mage_profs{};
+    mage.profs = &mage_profs;
+    mage.player.race = RACE_HUMAN;
+    mage.player.level = 20;
+    mage_profs.specialization = static_cast<int>(game_types::PS_Cold);
+    mage.extra_specialization_data.set(mage);
+    elemental_spec_data *spec_data = mage.extra_specialization_data.get_mage_spec();
+    ASSERT_NE(spec_data, nullptr);
+
+    descriptor_data descriptor{};
+    descriptor.output = descriptor.small_outbuf;
+    descriptor.small_outbuf[0] = '\0';
+    descriptor.bufptr = 0;
+    descriptor.bufspace = SMALL_BUFSIZE - 1;
+    descriptor.connected = CON_PLYNG;
+    descriptor.character = &mage;
+    descriptor.next = nullptr;
+    mage.desc = &descriptor;
+
+    // No location, an IN-RANGE persisted VNUM in the channel: the shape the
+    // one-sided `>= 0` guard cannot catch on its own.
+    set_location(&mage, NOWHERE);
+    stash_load_room_vnum(&mage, kOwnerVnum);
+    ASSERT_GE(peek_load_room_vnum(&mage), 0);
+
+    // The target is somewhere the mage's real room is not -- and the room the
+    // stashed VNUM names is deliberately NOT where the target is, so an
+    // unguarded walk finds nothing and cancels.
+    char_data absent_target{};
+    spec_data->exposed_target = &absent_target;
+
+    ScopedTrackedMage tracked{&mage};
+
+    clean_expose_elements();
+
+    EXPECT_EQ(spec_data->exposed_target, &absent_target)
+        << "a mage in the login/rent window had a live spell cancelled by a "
+           "search of the room his persisted VNUM happened to index";
+    EXPECT_STREQ(descriptor.small_outbuf, "");
 }
 
 // R7/R8 END TO END -- the rent-load ordering, over the REAL world[] table,

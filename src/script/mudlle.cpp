@@ -160,7 +160,7 @@ void service_commands(struct char_data* host, char* arg, int,
     case 'n': /* get the next (local) char */
         tmp = SPECIAL_LIST_TYPE(host);
         if (tmp == TARGET_CHAR)
-            TO_LIST(host, SPECIAL_LIST(host).ptr.ch->next_in_room, TARGET_CHAR); // LS1-ALLOW: manual first-match advance
+            TO_LIST(host, SPECIAL_LIST(host).ptr.ch->ls_next_in_room_, TARGET_CHAR); // LS1-ALLOW: manual first-match advance
         else if (tmp == TARGET_OBJ)
             TO_LIST(host, SPECIAL_LIST(host).ptr.obj->next_content, TARGET_OBJ);
         else if (tmp == TARGET_ROOM) {
@@ -447,10 +447,10 @@ void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
         break;
 
     case 'c': /* first char in room, not self*/
-        tmpch = world[host->in_room].people; // LS1-ALLOW: manual first-match advance
+        tmpch = world[host->ls_location_id_].ls_first_occupant_; // LS1-ALLOW: manual first-match advance
         while ((tmpch == host) || !CAN_SEE(host, tmpch)) {
-            if (tmpch->next_in_room) // LS1-ALLOW: manual first-match advance
-                tmpch = tmpch->next_in_room; // LS1-ALLOW: manual first-match advance
+            if (tmpch->ls_next_in_room_) // LS1-ALLOW: manual first-match advance
+                tmpch = tmpch->ls_next_in_room_; // LS1-ALLOW: manual first-match advance
             else
                 tmpch = 0;
         }
@@ -464,10 +464,10 @@ void int_tolist(struct char_data* host, struct char_data* ch, char* cmdline,
         break;
 
     case 'C': /* first char in room, not self, not NPC*/
-        tmpch = world[host->in_room].people; // LS1-ALLOW: manual first-match advance
+        tmpch = world[host->ls_location_id_].ls_first_occupant_; // LS1-ALLOW: manual first-match advance
         while (tmpch && ((tmpch == host) || !CAN_SEE(host, tmpch) || IS_NPC(tmpch))) {
-            if (tmpch->next_in_room) // LS1-ALLOW: manual first-match advance
-                tmpch = tmpch->next_in_room; // LS1-ALLOW: manual first-match advance
+            if (tmpch->ls_next_in_room_) // LS1-ALLOW: manual first-match advance
+                tmpch = tmpch->ls_next_in_room_; // LS1-ALLOW: manual first-match advance
             else
                 tmpch = 0;
         }

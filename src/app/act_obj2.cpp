@@ -723,7 +723,7 @@ ACMD(do_light)
         return;
     }
     torch->obj_flags.value[3] = 1;
-    world[ch->in_room].light++; // LS1-ALLOW: write
+    world[ch->ls_location_id_].light++; // LS1-ALLOW: write
 
     act("You light $p.", FALSE, ch, torch, 0, TO_CHAR);
     act("$n lights $p.", FALSE, ch, torch, 0, TO_ROOM);
@@ -766,7 +766,7 @@ ACMD(do_blowout)
         return;
     }
     torch->obj_flags.value[3] = 0;
-    world[ch->in_room].light--; // LS1-ALLOW: write
+    world[ch->ls_location_id_].light--; // LS1-ALLOW: write
 
     act("You blow $p out.", FALSE, ch, torch, 0, TO_CHAR);
     act("$n blows $p out.", FALSE, ch, torch, 0, TO_ROOM);

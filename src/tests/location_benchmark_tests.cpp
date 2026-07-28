@@ -68,7 +68,7 @@ TEST(LocationBenchmark, RunBenchmarkReportsExpectedShapeChecksumsAndRestoresWorl
         << error;
 
     EXPECT_EQ(report.representation_tag, locbench::kRepresentationTag);
-    EXPECT_EQ(std::string(locbench::kRepresentationTag), "intrusive-dual-store-pre-swap");
+    EXPECT_EQ(std::string(locbench::kRepresentationTag), "private-handle-post-split");
 
     // --- M0: mutation ---
     ASSERT_EQ(report.mutation.size(), kTestOccupancyPoints.size());
@@ -162,7 +162,7 @@ TEST(LocationBenchmark, FormatReportEmitsRepresentationTagAndRowCounts) {
         << error;
 
     const std::string text = locbench::format_report(report);
-    EXPECT_NE(text.find("representation_tag=intrusive-dual-store-pre-swap"), std::string::npos);
+    EXPECT_NE(text.find("representation_tag=private-handle-post-split"), std::string::npos);
     EXPECT_NE(text.find("mutation.count=3"), std::string::npos);
     EXPECT_NE(text.find("iteration.count=3"), std::string::npos);
     EXPECT_NE(text.find("lookup.count=1"), std::string::npos);

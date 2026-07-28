@@ -164,12 +164,12 @@ public:
         std::free(room.description);
         room.name = str_dup("The Testing Meadow");
         room.description = str_dup("A quiet room used for account-menu tests.\n\r");
-        room.people = nullptr;
+        room.ls_first_occupant_ = nullptr;
     }
 
     ~ScopedTestWorld()
     {
-        world[0].people = nullptr;
+        world[0].ls_first_occupant_ = nullptr;
 
         if (owns_world_)
         {

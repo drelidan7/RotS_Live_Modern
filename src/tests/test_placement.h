@@ -112,7 +112,7 @@ public:
     ScopedRoomOccupants(room_data* room, int room_id, std::initializer_list<char_data*> occupants)
         : m_room(room)
         , m_room_id(room_id)
-        , m_saved_people(room->people) // LS1-ALLOW: representation-impl (fixture helper -- saving the chain head it is about to displace)
+        , m_saved_people(room->ls_first_occupant_) // LS1-ALLOW: representation-impl (fixture helper -- saving the chain head it is about to displace)
         , m_occupants(occupants)
     {
         // Snapshot the displaced chain BEFORE any of the writes below -- every
@@ -134,7 +134,7 @@ public:
                 break;
             }
 
-            char_data* const following = resident->next_in_room; // LS1-ALLOW: representation-impl (fixture helper -- snapshotting a displaced link before the publish below overwrites it)
+            char_data* const following = resident->ls_next_in_room_; // LS1-ALLOW: representation-impl (fixture helper -- snapshotting a displaced link before the publish below overwrites it)
             m_displaced.push_back({ resident, following });
             resident = following;
         }
@@ -144,11 +144,11 @@ public:
         {
             if (previous == nullptr)
             {
-                m_room->people = occupant; // LS1-ALLOW: representation-impl (fixture helper -- publishing the chain head, the idiom char_to_room() cannot express here per R-B3)
+                m_room->ls_first_occupant_ = occupant; // LS1-ALLOW: representation-impl (fixture helper -- publishing the chain head, the idiom char_to_room() cannot express here per R-B3)
             }
             else
             {
-                previous->next_in_room = occupant; // LS1-ALLOW: representation-impl (fixture helper -- linking the chain in the order given)
+                previous->ls_next_in_room_ = occupant; // LS1-ALLOW: representation-impl (fixture helper -- linking the chain in the order given)
             }
 
             // The Placement API, not a bare field write: R-B2.
@@ -158,24 +158,24 @@ public:
 
         if (previous == nullptr)
         {
-            m_room->people = nullptr; // LS1-ALLOW: representation-impl (fixture helper -- empty occupant set publishes an empty chain)
+            m_room->ls_first_occupant_ = nullptr; // LS1-ALLOW: representation-impl (fixture helper -- empty occupant set publishes an empty chain)
         }
         else
         {
-            previous->next_in_room = nullptr; // LS1-ALLOW: representation-impl (fixture helper -- terminating the published chain)
+            previous->ls_next_in_room_ = nullptr; // LS1-ALLOW: representation-impl (fixture helper -- terminating the published chain)
         }
     }
 
     ~ScopedRoomOccupants()
     {
-        m_room->people = m_saved_people; // LS1-ALLOW: representation-impl (fixture helper -- restoring the displaced chain head verbatim)
+        m_room->ls_first_occupant_ = m_saved_people; // LS1-ALLOW: representation-impl (fixture helper -- restoring the displaced chain head verbatim)
 
         // ...and the links THROUGH it, which the publish loop overwrote for
         // every managed character that was already in this chain. Without this
         // the restored chain stops dead at the first such character.
         for (const std::pair<char_data*, char_data*>& link : m_displaced)
         {
-            link.first->next_in_room = link.second; // LS1-ALLOW: representation-impl (fixture helper -- restoring a displaced link verbatim)
+            link.first->ls_next_in_room_ = link.second; // LS1-ALLOW: representation-impl (fixture helper -- restoring a displaced link verbatim)
         }
 
         // Unlink every managed character, so nothing this fixture published can
@@ -199,7 +199,7 @@ public:
                 continue;
             }
 
-            occupant->next_in_room = nullptr; // LS1-ALLOW: representation-impl (fixture helper -- unlinking a managed character on teardown)
+            occupant->ls_next_in_room_ = nullptr; // LS1-ALLOW: representation-impl (fixture helper -- unlinking a managed character on teardown)
             set_location(occupant, NOWHERE);
         }
     }
@@ -294,7 +294,7 @@ inline void assert_room_chain_is(const room_data* room, std::initializer_list<co
             return; // already diverged -- walking further only adds noise
         }
 
-        actual = actual->next_in_room; // LS1-ALLOW: representation-impl (sequence-shape assertion helper -- walking the chain it pins)
+        actual = actual->ls_next_in_room_; // LS1-ALLOW: representation-impl (sequence-shape assertion helper -- walking the chain it pins)
         ++position;
     }
 
@@ -307,7 +307,7 @@ inline void assert_room_chain_is(const room_data* room, std::initializer_list<co
 // above; see the block comment before it for why the two stay separate.
 inline void assert_occupant_link(const char_data* predecessor, const char_data* expected_successor)
 {
-    EXPECT_EQ(predecessor->next_in_room, expected_successor); // LS1-ALLOW: representation-impl (sequence-shape assertion helper -- pins one occupant-chain link)
+    EXPECT_EQ(predecessor->ls_next_in_room_, expected_successor); // LS1-ALLOW: representation-impl (sequence-shape assertion helper -- pins one occupant-chain link)
 }
 
 // ---------------------------------------------------------------------------
@@ -323,7 +323,7 @@ inline void assert_occupant_link(const char_data* predecessor, const char_data* 
 // kRoomCount+1 rooms per construction/destruction).
 inline void clear_room_occupants(room_data* room)
 {
-    room->people = nullptr; // LS1-ALLOW: representation-impl (fixture helper -- bulk reset, no character to unlink)
+    room->ls_first_occupant_ = nullptr; // LS1-ALLOW: representation-impl (fixture helper -- bulk reset, no character to unlink)
 }
 
 // Resets a character's own next_in_room link to null -- for a character that
@@ -333,7 +333,7 @@ inline void clear_room_occupants(room_data* room)
 // rather than whatever clear_char() happened to leave there.
 inline void reset_occupant_link(char_data* ch)
 {
-    ch->next_in_room = nullptr; // LS1-ALLOW: representation-impl (fixture helper -- a character not yet linked into any chain gets a known-clean next pointer)
+    ch->ls_next_in_room_ = nullptr; // LS1-ALLOW: representation-impl (fixture helper -- a character not yet linked into any chain gets a known-clean next pointer)
 }
 
 // Unlinks `ch` from the occupant chain of the room it is CURRENTLY linked
@@ -351,18 +351,18 @@ inline void reset_occupant_link(char_data* ch)
 // every call site below does.
 inline void unlink_from_occupant_chain(room_data& room, char_data* ch)
 {
-    if (room.people == ch) // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
+    if (room.ls_first_occupant_ == ch) // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
     {
-        room.people = ch->next_in_room; // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
+        room.ls_first_occupant_ = ch->ls_next_in_room_; // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
         return;
     }
 
-    for (char_data* occupant = room.people; occupant != nullptr; // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
-         occupant = occupant->next_in_room) // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
+    for (char_data* occupant = room.ls_first_occupant_; occupant != nullptr; // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
+         occupant = occupant->ls_next_in_room_) // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
     {
-        if (occupant->next_in_room == ch) // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
+        if (occupant->ls_next_in_room_ == ch) // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
         {
-            occupant->next_in_room = ch->next_in_room; // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
+            occupant->ls_next_in_room_ = ch->ls_next_in_room_; // LS1-ALLOW: manual occupant-list splice (test-tier teardown unlink, no light/zone bookkeeping by design)
             return;
         }
     }

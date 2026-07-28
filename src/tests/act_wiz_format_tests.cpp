@@ -1005,6 +1005,32 @@ TEST(ActWizInspection, StatCharacterFormatsHeaderLineForPc)
     EXPECT_NE(output.find("In room [   -1]"), std::string::npos) << output;
 }
 
+// LS-3a's rider R12 becomes a real improvement at LS-3b T5 (the store split),
+// and this is its first witness. The header line reports
+// `(location_of(k) < 0) ? peek_load_room_vnum(k) : room_of(k)->number`. Before
+// the split the two accessors read one field, so a character in the login/rent
+// window had the persisted VNUM in the LOCATION, took the `room_of()` branch,
+// and the immortal was shown the number of whatever unrelated room that VNUM
+// happened to index. Now the location reads absent, the channel branch is
+// taken, and the immortal is shown the room the character will actually come
+// back to. Operator-visible, so it is named in the wave's flagged rider list.
+TEST(ActWizInspection, StatCharacterReportsTheStashedRoomVnumForACharacterInTheLoginWindow)
+{
+    SoloCharacterContext viewer;
+    PcTargetContext target;
+    target.character.player.name = const_cast<char*>("Aragorn");
+    target.character.specials2.idnum = 4242;
+    // The login-window shape: no location, the persisted room VNUM stashed.
+    set_location(&target.character, NOWHERE);
+    stash_load_room_vnum(&target.character, 3001);
+
+    do_stat_character(&viewer.character, &target.character);
+
+    const std::string output = viewer.descriptor.output;
+    EXPECT_NE(output.find("In room [ 3001]"), std::string::npos) << output;
+    EXPECT_EQ(output.find("In room [   -1]"), std::string::npos) << output;
+}
+
 TEST(ActWizInspection, StatCharacterFormatsHeaderAndAliasLinesForMob)
 {
     SoloCharacterContext viewer;

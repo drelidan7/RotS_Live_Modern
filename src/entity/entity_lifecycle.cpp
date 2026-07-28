@@ -814,7 +814,7 @@ void reset_char(struct char_data* ch)
     ch->carrying = 0;
     ch->next = 0;
     ch->next_fighting = 0;
-    ch->next_in_room = 0; // LS1-ALLOW: write
+    ch->ls_next_in_room_ = 0; // LS1-ALLOW: write
     ch->specials.fighting = 0;
     ch->specials.position = POSITION_STANDING;
     ch->specials.default_pos = POSITION_STANDING;
@@ -851,6 +851,18 @@ void clear_char(struct char_data* ch, int mode)
      * leak — but it's not the shape this function's placement-new was written for,
      * and isn't a pattern to extend to types where re-construction over a live
      * object could leak or double-free.) */
+    // MECHANISM (2) OF R-3b-A (LS-3b T5): the placement-new below is what
+    // keeps the location invariant true across a char_data reuse. It
+    // value-initializes the store's private members -- ls_location_id_ to 0
+    // and ls_next_in_room_ to null -- and set_location(ch, NOWHERE) a few
+    // lines down then states the absence properly. THE PRECONDITION, which
+    // every caller was audited against for LS-3b: `ch` must not be linked
+    // into any room's occupant chain. Running this over a LINKED character
+    // would leave that room's chain pointing at a character who now claims
+    // to be nowhere -- the torn state the wave exists to retire. Audit
+    // result at HEAD: all five production callers (interpre.cpp x3 on fresh
+    // CREATE'd storage, db_world.cpp's mob_proto loop, make_char_data())
+    // pass unlinked characters, and so does every test caller.
     new (ch) char_data();
     CREATE1(ch->profs, char_prof_data);
     memset(ch->profs->colors, CNRM, sizeof(ch->profs->colors[0]) * MAX_COLOR_FIELDS);

@@ -699,7 +699,7 @@ void load_rooms(FILE* fl)
 
             world[room_nr].funct = 0; // LS1-ALLOW: write
             world[room_nr].contents = 0; // LS1-ALLOW: write
-            world[room_nr].people = 0; // LS1-ALLOW: write
+            world[room_nr].ls_first_occupant_ = 0; // LS1-ALLOW: write
             world[room_nr].light = 0; /* Zero light sources */ // LS1-ALLOW: write
 
             if (room_by_id_total(room_nr)->room_flags) {
@@ -1887,7 +1887,7 @@ room_data::room_data()
     alignment = 0;
     ex_description = 0;
     contents = 0;
-    people = 0; // LS1-ALLOW: write
+    ls_first_occupant_ = 0; // LS1-ALLOW: write (room_data's own constructor -- the store's private chain head)
     funct = 0;
     bfs_dir = 0;
     bfs_next = 0;
@@ -1903,7 +1903,7 @@ void dummy_room_data(room_data* room)
     room->description = str_dup("\n\r");
     room->ex_description = 0;
     room->contents = 0;
-    room->people = 0; // LS1-ALLOW: write
+    room->ls_first_occupant_ = 0; // LS1-ALLOW: write
 
     for (tmp = 0; tmp < NUM_OF_DIRS; tmp++) {
         room->dir_option[tmp] = 0;

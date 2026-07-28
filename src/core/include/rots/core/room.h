@@ -117,7 +117,13 @@ struct room_data {
     int (*funct)(struct char_data*, struct char_data*, int, char*, int, waiting_type*);
     /* special procedure, check SPECIAL in interpre.h      */
     struct obj_data* contents; /* List of items in room              */
-    struct char_data* people; /* List of NPC / PC in room           */
+    // LocationSystem PRIVATE STORE (LS-3b T5): head of this room's intrusive
+    // occupant chain, linked forward through char_data::ls_next_in_room_.
+    // Read it through first_occupant(room)/occupants(room) (handler.h);
+    // only the placement core (src/entity/placement.cpp, containment.cpp)
+    // and the test-tier fixture helper (src/tests/test_placement.h) write
+    // it. Type, size and position are identical to the `people` it renames.
+    struct char_data* ls_first_occupant_; /* List of NPC / PC in room */
 
     struct affected_type* affected; /* room affects */
 

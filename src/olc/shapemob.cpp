@@ -1824,6 +1824,19 @@ void implement_proto(struct char_data* ch)
      * member's own operator=, which for damage_details/extra_specialization_data
      * performs a well-defined deep copy instead of a byte-for-byte stomp. */
     *proto = *SHAPE_PROTO(ch)->proto;
+    // MECHANISM (1) OF R-3b-A, DISCHARGED HERE (LS-3b T5): an explicit
+    // location reset after a whole-struct char_data copy. Under the private
+    // handle the copy carries the SOURCE's location and occupant-chain link,
+    // so a copy whose source were linked into a room would leave two
+    // char_data claiming one chain position -- the invariant's whole subject.
+    // This copy's source is unplaced at HEAD (new_mob() stamps NOWHERE at its
+    // own site since LS-3b T2, and the mob-file load path never places its
+    // prototype), so the reset is belt-and-braces rather than a fix -- which
+    // is exactly why it is written down instead of argued: a future editor
+    // session that placed its prototype would otherwise inject a live rnum
+    // into mob_proto[number] silently. read_mobile() re-stamps NOWHERE
+    // downstream too (db_world.cpp); this closes the class at the copy.
+    set_location(proto, NOWHERE); // LS1-ALLOW: write
     /*    if(proto->player.name) RELEASE(proto->player.name);
   if(proto->player.short_descr) RELEASE(proto->player.short_descr);
   if(proto->player.long_descr) RELEASE(proto->player.long_descr);

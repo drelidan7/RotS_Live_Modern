@@ -261,7 +261,7 @@ int find_target_room(struct char_data* ch, char* rawroomstr)
         // room resolves -- corrected to convert them (resolve count stays
         // at 2, no hoist, matching the three sibling room_by_id_total(location)
         // reads immediately above).
-        if (room_by_id_total(location)->people && room_by_id_total(location)->people->next_in_room) { // LS1-ALLOW: peek-ahead (two-or-more-occupants test)
+        if (room_by_id_total(location)->ls_first_occupant_ && room_by_id_total(location)->ls_first_occupant_->ls_next_in_room_) { // LS1-ALLOW: peek-ahead (two-or-more-occupants test)
             send_to_char("There's a private conversation going on in that room.\n\r", ch);
             return NOWHERE;
         }
@@ -484,7 +484,7 @@ void do_stat_room(struct char_data* ch)
 
     {
         std::string line = std::format("Chars present:{}", CC_USE(ch, COLOR_CHAR));
-        for (found = 0, k = rm->people; k; k = k->next_in_room) { // LS1-ALLOW: peek-ahead -- this line's token is the walk ADVANCE; the walk is kept raw because the body peeks at k->next_in_room below (matches mystic.cpp:671)
+        for (found = 0, k = rm->ls_first_occupant_; k; k = k->ls_next_in_room_) { // LS1-ALLOW: peek-ahead -- this line's token is the walk ADVANCE; the walk is kept raw because the body peeks at k->next_in_room below (matches mystic.cpp:671)
             if (!CAN_SEE(ch, k))
                 continue;
             std::format_to(std::back_inserter(line), "{} {}({})", found++ ? "," : "", GET_NAME(k),
@@ -493,7 +493,7 @@ void do_stat_room(struct char_data* ch)
                 std::format_to(std::back_inserter(line), " [{}]", mob_index[k->nr].virt);
             }
             if (line.size() >= 62) {
-                line += k->next_in_room ? ",\n\r" : "\n\r"; // LS1-ALLOW: peek-ahead for list formatting
+                line += k->ls_next_in_room_ ? ",\n\r" : "\n\r"; // LS1-ALLOW: peek-ahead for list formatting
                 send_to_char(line, ch);
                 line.clear();
                 found = 0;
@@ -1586,7 +1586,7 @@ ACMD(do_purge)
         send_to_room("The world seems a little cleaner.\n\r", location_of(ch));
 
         for (vict = rots::entity::first_occupant(room_of(ch)); vict; vict = next_v) {
-            next_v = vict->next_in_room; // LS1-ALLOW: save-next (body extracts current node via extract_char)
+            next_v = vict->ls_next_in_room_; // LS1-ALLOW: save-next (body extracts current node via extract_char)
             if (IS_NPC(vict))
                 extract_char(vict);
         }

@@ -810,9 +810,9 @@ void point_update(void)
             if (j->obj_flags.timer == 0) {
                 if (j->carried_by) {
                     act("$p decays in your hands.", FALSE, j->carried_by, j, 0, TO_CHAR);
-                } else if ((j->in_room != NOWHERE) && (room_by_id_total(j->in_room)->people)) { // LS1-ALLOW: obj-location (and the chain-HEAD read of that room -- the is-anyone-here test)
-                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->people, j, 0, TO_ROOM); // LS1-ALLOW: obj-location (and the chain-HEAD read of that room -- act()'s anchor character)
-                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->people, j, 0, TO_CHAR); // LS1-ALLOW: obj-location (and the chain-HEAD read of that room -- act()'s anchor character)
+                } else if ((j->in_room != NOWHERE) && (room_by_id_total(j->in_room)->ls_first_occupant_)) { // LS1-ALLOW: obj-location (and the chain-HEAD read of that room -- the is-anyone-here test)
+                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->ls_first_occupant_, j, 0, TO_ROOM); // LS1-ALLOW: obj-location (and the chain-HEAD read of that room -- act()'s anchor character)
+                    act("$p decays into dust.", TRUE, room_by_id_total(j->in_room)->ls_first_occupant_, j, 0, TO_CHAR); // LS1-ALLOW: obj-location (and the chain-HEAD read of that room -- act()'s anchor character)
                 }
 
                 if (GET_ITEM_TYPE(j) == ITEM_CONTAINER) {
@@ -1491,7 +1491,7 @@ void affect_update_room(struct room_data* room)
 
                 if (1 /*skills[tmpaf->location].targets  & TAR_CHAR_ROOM*/) {
                     for (tmpch = rots::entity::first_occupant(room); tmpch; tmpch = next_tmpch) {
-                        next_tmpch = tmpch->next_in_room; // LS1-ALLOW: save-next (body extracts current node via the room-affect spell_pointer callback)
+                        next_tmpch = tmpch->ls_next_in_room_; // LS1-ALLOW: save-next (body extracts current node via the room-affect spell_pointer callback)
 
                         /* 1 in 13 chance that a room spell won't do anything */
                         if (!(tmp = number(0, 12)) || (skills[tmpaf->location].is_fast && !number(0, 2))) {

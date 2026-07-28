@@ -536,7 +536,7 @@ void extract_char(struct char_data* ch, int new_room)
                 /* append ch's stuff to room-contents */
                 i->next_content = ch->carrying;
             } else
-                world[ch->in_room].contents = ch->carrying; // LS1-ALLOW: write
+                world[ch->ls_location_id_].contents = ch->carrying; // LS1-ALLOW: write
 
             /* connect the stuff to the room */
             for (i = ch->carrying; i; i = i->next_content) {
@@ -571,6 +571,18 @@ void extract_char(struct char_data* ch, int new_room)
     else
         k2->delay.next = ch->delay.next;
     /* Must remove from room before removing the equipment! */
+    // THIS FIELD-ONLY GATE IS CORRECT AS OF LS-3b T5 (the store split and
+    // owner ruling O-5's amendment), and it was NOT correct before. Review
+    // finding F4: a TORN character -- location field NOWHERE, occupant chain
+    // still room 0, which is exactly what char_to_room(ch, NOWHERE) used to
+    // produce -- took the else arm below, was never unspliced, and then
+    // reached free_char() further down while a process-global chain still
+    // pointed at it (census B's D5 use-after-free). Under the invariant
+    // (placement.cpp's header block) NOWHERE now means linked nowhere, so
+    // "the field says absent" and "there is nothing to unsplice" are the same
+    // statement, and free_char()'s lack of any location unregistration is
+    // correct rather than lucky. Pinned by ExtractCharTeardown.* in
+    // load_room_placement_tests.cpp.
     if (location_of(ch) != NOWHERE) {
         was_in = location_of(ch);
         ch->specials2.load_room = room_of(ch)->number;

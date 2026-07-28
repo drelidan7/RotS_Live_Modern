@@ -1622,6 +1622,98 @@ TEST(MSDPProtocol, MsdpUpdateSkipsOutOfRangeRoomsWithoutStoppingList)
             + expected_msdp_pair("ROOM_VNUM", "3001"));
 }
 
+// THE IN-RANGE STASHED-VNUM LEAK (review-2 F2, broadened by LS-3b review
+// finding F6), CLOSED BY THE STORE SPLIT -- LS-3b T5. This is the half of
+// msdp_update()'s guard the test above could never reach.
+//
+// THE DEFECT. A descriptor sitting at the character-selection menu keeps its
+// d->character, and msdp_update() walks every descriptor unconditionally, four
+// times a second, checking only `!desc->character`, `IS_NPC`, `!pProtocol` and
+// the room RANGE. Before the split, store_to_char() deposited the persisted
+// room VNUM in the very field location_of() reads, so a menu sitter whose last
+// room's vnum happened to be <= top_of_world sailed through the range test and
+// the walker then used that VNUM as an rnum: ROOM_NAME and ROOM_VNUM described
+// a real but completely unrelated room, refreshed 4x/second, for as long as
+// they sat there. The `< 0` half of the guard never saw it, which is why the
+// existing out-of-range test above is green and this class still leaked.
+//
+// WHY IT IS CLOSED NOW, mechanically: the channel has its own storage, so
+// store_to_char() no longer writes the location, location_of() answers NOWHERE
+// for every offline/menu character, and the guard's existing `< 0` half fires.
+// No new guard, no new hook, no call-site change -- exactly as census B
+// section 5 predicted, and this test is the "pin it, do not assume it" that
+// deliverable asked for.
+//
+// F6: BOTH HALVES ARE ASSERTED, because the delta is broader than "the wrong
+// room name". The skipped loop body sets fourteen-plus MSDP variables, so what
+// changes for a menu sitter is that they stop receiving MSDP ENTIRELY, where
+// today they receive correct vitals alongside a wrong room. The vitals half is
+// asserted here so the PR's flagged-rider list is backed by a test and not by
+// a reading of the loop.
+//
+// NOTE ON "IN RANGE": ScopedMSDPTestRoom builds a one-room world and sets
+// top_of_world to 0, so 0 is the only in-range value there is. That is not a
+// weakness of the test -- it is precisely the class the `< 0` half cannot
+// catch, which is the whole subject.
+TEST(MSDPProtocol, MsdpUpdateSkipsAMenuSitterCarryingAnInRangeStashedVnum)
+{
+    ScopedDescriptorList descriptor_list_scope;
+    ScopedMSDPTestRoom room_scope;
+    ProtocolDescriptor menu_sitter;
+    ProtocolDescriptor valid_context;
+
+    initialize_msdp_player(&menu_sitter.character, "MenuSitter");
+    initialize_msdp_player(&valid_context.character, "StillUpdated");
+
+    // The state store_to_char() leaves a menu sitter in since the split: no
+    // location, the persisted room VNUM in the channel. The VNUM chosen is
+    // in range for this fixture's world, so the guard's range half cannot be
+    // what skips this descriptor.
+    set_location(&menu_sitter.character, NOWHERE);
+    stash_load_room_vnum(&menu_sitter.character, 0);
+    ASSERT_GE(peek_load_room_vnum(&menu_sitter.character), 0);
+    ASSERT_LE(peek_load_room_vnum(&menu_sitter.character), top_of_world);
+
+    enable_msdp_reports(menu_sitter.descriptor.pProtocol,
+        { eMSDP_CHARACTER_NAME, eMSDP_ROOM_NAME, eMSDP_ROOM_VNUM, eMSDP_HEALTH, eMSDP_LEVEL });
+    enable_msdp_reports(valid_context.descriptor.pProtocol,
+        { eMSDP_CHARACTER_NAME, eMSDP_ROOM_NAME, eMSDP_ROOM_VNUM });
+
+    MSDPSetString(&menu_sitter.descriptor, eMSDP_ROOM_NAME, "stale room name");
+    // The numeric variables carry their sentinel in ValueInt, not in
+    // pValueString (MSDPSetNumber/protocol.h) -- asserting the string side of
+    // a numeric variable would compare two nulls and prove nothing.
+    MSDPSetNumber(&menu_sitter.descriptor, eMSDP_ROOM_VNUM, -4242);
+    MSDPSetNumber(&menu_sitter.descriptor, eMSDP_HEALTH, -4243);
+    MSDPSetNumber(&menu_sitter.descriptor, eMSDP_LEVEL, -4244);
+
+    menu_sitter.descriptor.next = &valid_context.descriptor;
+    descriptor_list = &menu_sitter.descriptor;
+
+    msdp_update();
+
+    // The room half -- the original review-2 F2 finding.
+    EXPECT_STREQ(menu_sitter.descriptor.pProtocol->pVariables[eMSDP_ROOM_NAME]->pValueString,
+        "stale room name")
+        << "a menu sitter was told about an unrelated room, read out of the world "
+           "table with a persisted VNUM used as an index";
+    EXPECT_EQ(menu_sitter.descriptor.pProtocol->pVariables[eMSDP_ROOM_VNUM]->ValueInt, -4242);
+    // The F6 half -- the vitals go too, and that is a user-visible change on a
+    // live protocol, named in the flagged rider set.
+    EXPECT_EQ(menu_sitter.descriptor.pProtocol->pVariables[eMSDP_HEALTH]->ValueInt, -4243);
+    EXPECT_EQ(menu_sitter.descriptor.pProtocol->pVariables[eMSDP_LEVEL]->ValueInt, -4244);
+    EXPECT_STREQ(menu_sitter.descriptor.pProtocol->pVariables[eMSDP_CHARACTER_NAME]->pValueString,
+        "");
+    EXPECT_EQ(menu_sitter.read_output(), "");
+
+    // ...and the walker did not stop: the descriptor behind the skipped one is
+    // still served, which is what makes this a skip and not an early return.
+    EXPECT_EQ(valid_context.read_output(),
+        expected_msdp_pair("CHARACTER_NAME", "StillUpdated")
+            + expected_msdp_pair("ROOM_NAME", "MSDP Test Room")
+            + expected_msdp_pair("ROOM_VNUM", "3001"));
+}
+
 TEST(MSDPProtocol, MsdpUpdateEmitsMinimalPlayerState)
 {
     ScopedDescriptorList descriptor_list_scope;

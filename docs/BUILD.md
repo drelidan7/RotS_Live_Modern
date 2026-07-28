@@ -1031,6 +1031,17 @@ evidence rather than re-derivation; every item is a *finding*, not work LS-3a le
   room **rnum**, is written to the playerfile via `db_players.cpp:690`, has its own range-based
   absence test, and carries an unguarded `char_to_room(ch, -1)` path. A room id in the save format —
   the swap must preserve or migrate it.
+- **`msdp_update()`'s range guard does NOT close the wrong-room MSDP leak — only its out-of-range
+  half** (`comm.cpp:1031`, recorded per the LS-3a whole-branch review #2's F2, verified in code).
+  The guard is `location_of(desc->character) < 0 || > top_of_world`, and the rider that motivated it
+  (R20/R21) reasoned about menu-sitters whose field reads negative. But a character at the character
+  menu carries a **stashed load_room VNUM** in that same overloaded field, and a VNUM that happens to
+  land in `[0, top_of_world]` passes the guard and is then consumed as an **rnum index** — so that
+  menu-sitter still gets some other room's MSDP, every pulse, today. It is not a regression and not
+  something LS-3a left half-done: it is the overload itself, and it becomes correct for free when
+  LS-3b splits the stores and the location store answers "absent" for every offline character.
+  **Do not read the R20/R21 riders as having closed this**; the guard they added is necessary and
+  insufficient, and a future reader auditing "are the MSDP walkers safe now?" needs that stated.
 - **The torn-state owner decision (R-C2), a STOP before LS-3b begins.** `char_to_room(ch, NOWHERE)`
   today splices `ch` into **room 0**'s chain and increments room 0's light and zone power, then sets
   the field to `NOWHERE`; `detach_char_from_room` early-returns on `NOWHERE`, so it never unsplices

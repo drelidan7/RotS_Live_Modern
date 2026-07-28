@@ -535,6 +535,42 @@ TEST(OlogHaiHelpers, RoomTargetSkipsAttackerAndMountedCreature) {
     EXPECT_EQ(targeted_victims[1], &context.extra_target);
 }
 
+// LS-3b Task 1 (ls3b-global-constraints.md's T0 CLOSE-OUT, ruling R-3b-C /
+// census-review F10): extends the order pin above from "here is TODAY's
+// order" to a genuine order-INVERSION witness -- the wave's occupant-order
+// regression net needs proof that a chain-order change actually flips
+// room_target()'s visit order, since no golden can see this drift
+// (census-review F3: scripts/boot-golden.sh's normalize() is an allow-list
+// that can never admit an occupant-order/count line, and the seed42
+// characterization golden has zero location references). Same fixture,
+// same three real occupants, only original_victim/extra_target swapped in
+// the published chain -- the recorded visit order must swap right along
+// with them.
+TEST(OlogHaiHelpers, RoomTargetVisitOrderFollowsChainOrderNotWhichCharacterIsWhich) {
+    OlogHaiTestContext context;
+    clear_targeted_victims();
+    context.attacker.mount_data.mount = &context.mount;
+    context.attacker.mount_data.mount_number = 45;
+    context.mount.abs_number = 45;
+    set_char_exists(45);
+
+    // Same three real occupants and the mount as the test above, chain
+    // order REVERSED for the two non-attacker, non-mount occupants.
+    ScopedRoomOccupants reversed_order { room_by_id_total(context.room_number),
+        context.room_number,
+        std::initializer_list<char_data*> { &context.attacker, &context.extra_target,
+            &context.original_victim, &context.mount } };
+
+    olog_hai::room_target(&context.attacker, &record_target);
+
+    ASSERT_EQ(targeted_victim_count, 2)
+        << "Expected room targeting to visit each non-attacker, non-mount room occupant exactly once.";
+    EXPECT_EQ(targeted_victims[0], &context.extra_target)
+        << "Expected the chain-order inversion (extra_target now precedes "
+           "original_victim) to flip room_target()'s visit order.";
+    EXPECT_EQ(targeted_victims[1], &context.original_victim);
+}
+
 TEST(OlogHaiHelpers, DirectionValidationRejectsMissingExit) {
     OlogHaiTestContext context;
     auto* original_exit = room_of(&context.attacker)->dir_option[NORTH];

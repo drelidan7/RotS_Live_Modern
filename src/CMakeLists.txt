@@ -1394,6 +1394,7 @@ if(ROTS_BUILD_TESTS)
         tests/objects_json_tests.cpp
         tests/objsave_json_tests.cpp
         tests/objsave_tests.cpp
+        tests/occupant_order_tests.cpp
         tests/olog_hai_tests.cpp
         tests/output_seam_forwarders_tests.cpp
         tests/pathfind_tests.cpp

@@ -624,6 +624,41 @@ void free_char(struct char_data* ch)
 {
     rots::entity::dispatch_char_teardown(ch);
 
+    // Drop the character from comm.cpp's process-global `specialized_mages`
+    // roster before its storage goes away. set_specialization() (below) pushes
+    // a raw char_data* onto that roster for every mage specialization -- and
+    // store_to_char() calls set_specialization() for EVERY character loaded
+    // from a player file -- but nothing used to take it back off: neither
+    // dispatch_char_teardown() above (which clears staged object bytes only)
+    // nor ~char_data() -> ~specialization_data() (character.h, which frees
+    // current_spec_info only) touches the roster. Every teardown of a
+    // mage-spec character therefore left a DANGLING pointer in a live global
+    // that clean_expose_elements() dereferences every PULSE_FAST_UPDATE.
+    // Reachable from `stat file <mage>` and `wizset file` (act_wiz.cpp), which
+    // materialise a character purely to inspect it and then discard it, and
+    // equally from ordinary logout/extract_char teardown -- every one of those
+    // paths funnels through this function.
+    //
+    // untrack_specialized_mage() is an rots_core (L0) output_seam forwarder
+    // declared in utils.h, so calling it from rots_entity (L2) is a DOWNWARD
+    // edge -- the very same one set_specialization() already makes further
+    // down this file. The roster and its real untrack body stay app-tier in
+    // comm.cpp, reached through the registered sink.
+    //
+    // Gated on is_mage_spec() for exact symmetry with set_specialization(),
+    // which is the roster's ONLY producer tree-wide: an entry exists if and
+    // only if is_mage_spec() held when it was pushed, and set_specialization()
+    // untracks before anything can make it stop holding. The gate has to be
+    // read HERE, ahead of the ~char_data() at the bottom of this function,
+    // because specialization_data::reset() clears current_spec. Gating also
+    // keeps this from emitting an output_seam STUB line for every non-mage
+    // teardown in rots_convert, where no output sinks are ever registered --
+    // with the gate, an untrack STUB line can only appear where the matching
+    // track STUB line already did.
+    if (ch->extra_specialization_data.is_mage_spec()) {
+        untrack_specialized_mage(ch);
+    }
+
     // RAII T6a: this function frees the char_data storage with a raw free()
     // (RELEASE(ch), below). Historically it ALSO ran ~char_data()'s work by
     // hand -- per-member reset()/move-assign-empty of every heap-owning member

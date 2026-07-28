@@ -42,6 +42,7 @@
 #include "rots/core/descriptor.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
+#include "rots/entity/render_cursor.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 #include "zone.h"
@@ -1473,9 +1474,17 @@ ACMD(do_vstat)
             return;
         }
         mob = read_mobile(r_num, REAL);
-        set_location(mob, location_of(ch)); // LS1-ALLOW: write (vstat scratch placement; RHS is a genuine location read -- shapemob new_mob precedent)
-        do_stat_character(ch, mob);
-        set_location(mob, NOWHERE); // LS1-ALLOW: write (vstat scratch placement teardown)
+        // ls3b T2 (Table 1c scratch trio): read_mobile() always stamps
+        // NOWHERE just before this (db_world.cpp:1064) and mob is never
+        // room-linked anywhere in this window (no char_to_room call exists
+        // between the read_mobile() above and the extract_char() below), so
+        // ScopedRenderLocation's constructor captures that NOWHERE as its
+        // restore target -- the destructor's restore is byte-identical to
+        // the removed explicit set_location(mob, NOWHERE) teardown line.
+        {
+            rots::entity::ScopedRenderLocation vstat_cursor(mob, location_of(ch));
+            do_stat_character(ch, mob);
+        }
         extract_char(mob);
     } else if (is_abbrev(buf, "obj")) {
         if ((r_num = real_object(number)) < 0) {

@@ -5,6 +5,7 @@
 #include "handler.h"
 #include "rots/core/character.h"
 #include "rots/core/types.h"
+#include "rots/entity/render_cursor.h"
 #include "text_view.h"
 #include "utils.h"
 #include <filesystem>
@@ -221,12 +222,18 @@ ACMD(do_mob_csv_extract)
         if (!mob) {
             continue;
         }
-        set_location(mob, location_of(ch)); // LS1-ALLOW: write
-
-        std::string mob_stat = mob_csv_extract::generate_npc_stat(mob);
-        mob_csv.write_to_file(ch, mob_stat);
-
-        set_location(mob, NOWHERE); // LS1-ALLOW: write
+        // ls3b T2 (Table 1c scratch trio): read_mobile() always stamps
+        // NOWHERE just before this (db_world.cpp:1064) and mob is never
+        // room-linked anywhere in this window (no char_to_room call exists
+        // between the read_mobile() above and the extract_char() below), so
+        // ScopedRenderLocation's constructor captures that NOWHERE as its
+        // restore target -- the destructor's restore is byte-identical to
+        // the removed explicit set_location(mob, NOWHERE) teardown line.
+        {
+            rots::entity::ScopedRenderLocation csv_cursor(mob, location_of(ch));
+            std::string mob_stat = mob_csv_extract::generate_npc_stat(mob);
+            mob_csv.write_to_file(ch, mob_stat);
+        }
         extract_char(mob);
     }
 

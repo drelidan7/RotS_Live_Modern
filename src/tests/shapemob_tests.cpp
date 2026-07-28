@@ -1,9 +1,12 @@
+#include "../db.h"
+#include "../handler.h"
 #include "../protos.h"
 #include "rots/core/character.h"
 #include "../utils.h"
 #include "test_char_cleanup.h"
 #include <gtest/gtest.h>
 
+#include <cstdlib>
 #include <new>
 
 // Phase 2b final-review fix wave, Critical 1: src/shapemob.cpp's new_mob() and the
@@ -27,6 +30,12 @@ extern void implement_proto(struct char_data* ch);
 extern void clear_char(struct char_data* ch, int mode);
 extern struct char_data* mob_proto;
 extern int num_of_programs;
+// The read_mobile()-driven test below's globals (mirrors
+// load_room_placement_tests.cpp's ScopedFollowerPrototype -- that class
+// lives in that file's own anonymous namespace, unreachable from here).
+extern struct index_data* mob_index;
+extern int top_of_mobt;
+extern struct char_data* character_list;
 
 namespace {
 
@@ -118,4 +127,152 @@ TEST(ShapeMob, ImplementProtoCopiesMobProtoWithoutCorruptingItsDamageMap)
     spawned = mob_proto[0];
 
     SUCCEED();
+}
+
+// LS-3b Wave T2 (ruling R-3b-B; ls3b-census-review.md Table 1c / F2 / F11 --
+// P3/P4/P8). Evidence backing the shapemob.cpp:268 disposition: no reader
+// anywhere in the tree (product or test) dereferences a mob_proto[] entry's
+// `.in_room` -- confirmed by an exhaustive grep of every mob_proto[
+// consumer (act_obj1.cpp/act_wiz.cpp/ban.cpp/db_world.cpp/graph.cpp; none
+// read `.in_room`) -- and shapemob.cpp's OWN editor functions (list_proto,
+// list_simple_proto, implement_proto) never read
+// SHAPE_PROTO(ch)->proto->in_room either. The only path that turns a
+// mob_proto[] slot into a live, placeable char_data is read_mobile()
+// (db_world.cpp), which unconditionally re-stamps NOWHERE
+// (`set_location(mob, NOWHERE);`, db_world.cpp:1064) BEFORE anything else
+// touches the freshly copied mob -- so whatever new_mob() stamped into the
+// proto's `in_room` at construction is provably unobservable downstream.
+// This pair proves that claim two ways: the first pins the fixed
+// production value directly; the second proves the FULLY SPAWNED mob's
+// location is identical regardless of what the proto held, i.e. the
+// characterization the disposition calls for.
+
+TEST(ShapeMob, NewMobStampsTheProtoAtNowhereRegardlessOfTheEditorsRoom)
+{
+    ShapeMobGlobalsGuard globals_guard;
+
+    struct char_data editor;
+    clear_char(&editor, MOB_VOID);
+    ScopedClearCharFields editor_cleanup { editor };
+
+    // The editing immortal stands in a real, non-trivial room -- new_mob()
+    // must not carry that room into the prototype it creates.
+    set_location(&editor, 42);
+
+    struct shape_proto sp {
+    };
+    editor.temp = &sp;
+
+    new_mob(&editor);
+    ASSERT_NE(sp.proto, nullptr);
+
+    EXPECT_EQ(location_of(sp.proto), NOWHERE);
+
+    // new_mob() CREATE1()s+placement-news sp.proto itself (not a mob_proto[]
+    // slot) -- release it the same way implement_proto()'s real callers
+    // eventually do, so this test leaks neither the char_data nor its heap
+    // fields (player.name/short_descr/long_descr/description, all
+    // CREATE()'d above).
+    RELEASE(sp.proto->player.name);
+    RELEASE(sp.proto->player.short_descr);
+    RELEASE(sp.proto->player.long_descr);
+    RELEASE(sp.proto->player.description);
+    sp.proto->~char_data();
+    RELEASE(sp.proto);
+}
+
+TEST(ShapeMob, ImplementProtoAndReadMobileSpawnAnIdenticallyLocationlessMobRegardlessOfTheProtoStamp)
+{
+    ShapeMobGlobalsGuard globals_guard;
+    // mob_index/top_of_mobt/character_list also get faked out for this test
+    // -- restored the same RAII way, mirroring
+    // load_room_placement_tests.cpp's ScopedFollowerPrototype (this file's
+    // TU can't reach that class directly -- it lives in that file's own
+    // anonymous namespace -- so the minimal slice this test needs is
+    // duplicated here rather than shared, matching this file's existing
+    // convention of small per-TU test-only helpers).
+    struct index_data* const previous_mob_index = mob_index;
+    const int previous_top_of_mobt = top_of_mobt;
+    struct char_data* const previous_character_list = character_list;
+
+    struct char_data fake_mob_proto[1];
+    clear_char(&fake_mob_proto[0], MOB_ISNPC);
+    ScopedClearCharFields fake_mob_proto_cleanup { fake_mob_proto[0] };
+    mob_proto = fake_mob_proto;
+    num_of_programs = -1;
+
+    struct index_data fake_mob_index[1] {};
+    fake_mob_index[0].virt = 0;
+    fake_mob_index[0].number = 0;
+    fake_mob_index[0].func = nullptr;
+    mob_index = fake_mob_index;
+    top_of_mobt = 0;
+
+    struct char_data editor;
+    clear_char(&editor, MOB_VOID);
+    ScopedClearCharFields editor_cleanup { editor };
+
+    // Deliberately stamps the proto with a LIVE, non-trivial room -- the
+    // pre-fix shape this test's name says is now unobservable. Bypasses
+    // new_mob() (which as of this commit always stamps NOWHERE) to
+    // reproduce the OLD stamp directly, so this test's invariance claim
+    // does not depend on new_mob()'s own fix holding.
+    struct char_data proto_storage;
+    new (&proto_storage) char_data();
+    proto_storage.player.name = const_cast<char*>("golem");
+    proto_storage.player.short_descr = const_cast<char*>("golem");
+    proto_storage.player.long_descr = const_cast<char*>("golem");
+    proto_storage.player.description = const_cast<char*>("golem\n\r");
+    proto_storage.specials2.act = MOB_ISNPC;
+    proto_storage.nr = 0;
+    // Non-zero abilities so read_mobile()'s "stats fixed" mudlog path stays
+    // quiet and get_naked_perception()/get_naked_willpower() read sane
+    // values (mirrors ScopedFollowerPrototype's own setup).
+    proto_storage.abilities.str = 100;
+    proto_storage.abilities.intel = 100;
+    proto_storage.abilities.wil = 100;
+    proto_storage.abilities.dex = 100;
+    proto_storage.abilities.con = 100;
+    proto_storage.abilities.lea = 100;
+    proto_storage.abilities.hit = 100;
+    proto_storage.tmpabilities = proto_storage.abilities;
+    proto_storage.player.level = 5;
+    set_location(&proto_storage, 42); // the live-rnum stamp under test
+
+    struct shape_proto sp {
+    };
+    sp.proto = &proto_storage;
+    sp.flags = SHAPE_PROTO_LOADED;
+    sp.permission = 1;
+    editor.temp = &sp;
+
+    implement_proto(&editor);
+    // mob_proto[0].in_room now holds whatever proto_storage's did (42,
+    // reproducing the pre-fix shape).
+
+    // Drives the REAL read_mobile() (db_world.cpp) against that slot --
+    // type REAL uses the index directly, no real_mobile() lookup needed.
+    // This is the characterization the disposition calls for: a genuinely
+    // SPAWNED mob's location must be NOWHERE regardless of what the proto
+    // it was copied from held.
+    struct char_data* spawned = read_mobile(0, REAL);
+    ASSERT_NE(spawned, nullptr);
+
+    EXPECT_EQ(location_of(spawned), NOWHERE);
+
+    // Unwinds everything read_mobile() did: the character_list prepend and
+    // the process-global char_exists bit register_npc_char() set (mirrors
+    // load_room_placement_tests.cpp's release_spawned_follower(); spawned
+    // was never room-linked, so there is no occupant chain to unlink here).
+    // NOT RELEASE(spawned->profs): read_mobile()'s `*mob = mob_proto[i]` is
+    // a copy-assignment, so spawned SHARES proto_storage's profs allocation
+    // (proto_storage never allocated one -- clear_char() was never run on
+    // it -- so there is nothing to double-free either way).
+    remove_char_exists(spawned->abs_number);
+    spawned->~char_data();
+    std::free(spawned);
+
+    character_list = previous_character_list;
+    mob_index = previous_mob_index;
+    top_of_mobt = previous_top_of_mobt;
 }

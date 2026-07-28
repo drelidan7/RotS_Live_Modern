@@ -179,7 +179,7 @@ private:
 room_data make_stub_room()
 {
     room_data room;
-    room.ls_first_occupant_ = nullptr;
+    clear_room_occupants(&room);
     room.contents = nullptr;
     room.light = 0;
     return room;
@@ -240,9 +240,8 @@ TEST(CharToRoomTest, AppendsToEmptyRoomAndSetsOccupantLinkage)
 
     char_to_room(&character, 42);
 
-    EXPECT_EQ(room.ls_first_occupant_, &character);
-    EXPECT_EQ(character.ls_next_in_room_, nullptr);
-    EXPECT_EQ(character.ls_location_id_, 42);
+    assert_room_chain_is(&room, { &character });
+    EXPECT_EQ(location_of(&character), 42);
 }
 
 TEST(CharToRoomTest, AppendsToTailPreservingExistingOccupantOrder)
@@ -266,10 +265,7 @@ TEST(CharToRoomTest, AppendsToTailPreservingExistingOccupantOrder)
 
     // Head unchanged, and the walk-to-tail append lands after `second` --
     // the existing chain's relative order is undisturbed.
-    EXPECT_EQ(room.ls_first_occupant_, &first);
-    EXPECT_EQ(first.ls_next_in_room_, &second);
-    EXPECT_EQ(second.ls_next_in_room_, &newcomer);
-    EXPECT_EQ(newcomer.ls_next_in_room_, nullptr);
+    assert_room_chain_is(&room, { &first, &second, &newcomer });
 }
 
 TEST(CharToRoomTest, IncrementsRoomLightForAnEquippedLitLightSource)
@@ -523,14 +519,14 @@ TEST(DetachCharFromRoomTest, ReturnsFalseAndMutatesNothingWhenAlreadyNowhere)
     // real (unregistered-for-this-test-process... actually registered, but
     // untouched) resolver is never dispatched.
     char_data character { };
-    character.ls_location_id_ = NOWHERE;
-    character.ls_next_in_room_ = nullptr;
+    set_location(&character, NOWHERE);
+    character.ls_next_in_room_ = nullptr; // LS1-ALLOW: representation-impl (no Stage-1 write API for an isolated character's own link -- see this file's retained-raw section banner)
 
     const bool result = detach_char_from_room(&character);
 
     EXPECT_FALSE(result);
-    EXPECT_EQ(character.ls_location_id_, NOWHERE);
-    EXPECT_EQ(character.ls_next_in_room_, nullptr);
+    EXPECT_EQ(location_of(&character), NOWHERE);
+    assert_occupant_link(&character, nullptr);
 }
 
 TEST(DetachCharFromRoomTest, RemovesHeadOfListAndClearsLinkage)
@@ -542,17 +538,23 @@ TEST(DetachCharFromRoomTest, RemovesHeadOfListAndClearsLinkage)
 
     char_data target { };
     char_data tail { };
-    room.ls_first_occupant_ = &target;
-    target.ls_next_in_room_ = &tail;
-    tail.ls_next_in_room_ = nullptr;
-    target.ls_location_id_ = 9;
+    room.ls_first_occupant_ = &target; // LS1-ALLOW: representation-impl (constructing the pre-existing chain char_to_room()/detach_char_from_room() must walk -- no Stage-1 write API publishes an arbitrary raw topology)
+    target.ls_next_in_room_ = &tail; // LS1-ALLOW: representation-impl (same)
+    tail.ls_next_in_room_ = nullptr; // LS1-ALLOW: representation-impl (same)
+    set_location(&target, 9);
 
     const bool result = detach_char_from_room(&target);
 
     EXPECT_TRUE(result);
-    EXPECT_EQ(room.ls_first_occupant_, &tail);
-    EXPECT_EQ(target.ls_location_id_, NOWHERE);
-    EXPECT_EQ(target.ls_next_in_room_, nullptr);
+    // Only the room's head moved (to `tail`); the original test never
+    // asserted tail's own terminator here, so this stays a standalone
+    // first_occupant() check rather than assert_room_chain_is() (which
+    // would also assert tail->next == nullptr -- a check the raw version
+    // never made, and adding it now would not "fail on exactly the same
+    // states as before").
+    EXPECT_EQ(rots::entity::first_occupant(&room), &tail);
+    EXPECT_EQ(location_of(&target), NOWHERE);
+    assert_occupant_link(&target, nullptr);
 }
 
 TEST(DetachCharFromRoomTest, RemovesMiddleOfListPreservingNeighborLinks)
@@ -565,20 +567,20 @@ TEST(DetachCharFromRoomTest, RemovesMiddleOfListPreservingNeighborLinks)
     char_data head { };
     char_data target { };
     char_data tail { };
-    room.ls_first_occupant_ = &head;
-    head.ls_next_in_room_ = &target;
-    target.ls_next_in_room_ = &tail;
-    tail.ls_next_in_room_ = nullptr;
-    target.ls_location_id_ = 3;
+    room.ls_first_occupant_ = &head; // LS1-ALLOW: representation-impl (constructing the pre-existing 3-node chain detach_char_from_room() must walk)
+    head.ls_next_in_room_ = &target; // LS1-ALLOW: representation-impl (same)
+    target.ls_next_in_room_ = &tail; // LS1-ALLOW: representation-impl (same)
+    tail.ls_next_in_room_ = nullptr; // LS1-ALLOW: representation-impl (same)
+    set_location(&target, 3);
 
     const bool result = detach_char_from_room(&target);
 
     EXPECT_TRUE(result);
-    EXPECT_EQ(room.ls_first_occupant_, &head); // head untouched
-    EXPECT_EQ(head.ls_next_in_room_, &tail); // target bypassed
-    EXPECT_EQ(tail.ls_next_in_room_, nullptr); // tail's own link untouched
-    EXPECT_EQ(target.ls_location_id_, NOWHERE);
-    EXPECT_EQ(target.ls_next_in_room_, nullptr);
+    // head untouched, target bypassed, tail's own link untouched -- all
+    // three conditions the raw version checked, folded into one call.
+    assert_room_chain_is(&room, { &head, &tail });
+    EXPECT_EQ(location_of(&target), NOWHERE);
+    assert_occupant_link(&target, nullptr);
 }
 
 TEST(DetachCharFromRoomTest, DecrementsRoomLightWhenTheDetachedCharacterHadALitLight)
@@ -590,8 +592,8 @@ TEST(DetachCharFromRoomTest, DecrementsRoomLightWhenTheDetachedCharacterHadALitL
     ScopedWorldResolverHooks hooks(resolvers);
 
     char_data target { };
-    room.ls_first_occupant_ = &target;
-    target.ls_location_id_ = 1;
+    room.ls_first_occupant_ = &target; // LS1-ALLOW: representation-impl (single-node chain detach_char_from_room() must walk)
+    set_location(&target, 1);
     obj_data light { };
     light.obj_flags.type_flag = ITEM_LIGHT;
     light.obj_flags.value[2] = 5;
@@ -615,8 +617,8 @@ TEST(DetachCharFromRoomTest, DecrementsZoneDarkPowerForAnEvilRaceCharacter)
     char_data target { };
     target.player.race = RACE_URUK;
     target.player.level = 20;
-    room.ls_first_occupant_ = &target;
-    target.ls_location_id_ = 1;
+    room.ls_first_occupant_ = &target; // LS1-ALLOW: representation-impl (single-node chain detach_char_from_room() must walk)
+    set_location(&target, 1);
 
     ASSERT_TRUE(detach_char_from_room(&target));
 
@@ -636,25 +638,26 @@ TEST(DetachCharFromRoomTest, DefensiveMissingNodeReturnsFalseWithoutListOrLocati
     // next_in_room chain -- the defensive `if (!i) return false;` path
     // (placement.cpp) that has no equivalent in the head-of-list branch.
     char_data other { };
-    room.ls_first_occupant_ = &other;
-    other.ls_next_in_room_ = nullptr;
+    room.ls_first_occupant_ = &other; // LS1-ALLOW: representation-impl (the room's only REAL occupant -- `target` below deliberately is not linked into this chain)
+    other.ls_next_in_room_ = nullptr; // LS1-ALLOW: representation-impl (same)
 
     char_data target { };
-    target.ls_location_id_ = 5;
-    target.ls_next_in_room_ = nullptr;
+    set_location(&target, 5);
+    target.ls_next_in_room_ = nullptr; // LS1-ALLOW: representation-impl (no Stage-1 write API for an isolated character's own link)
 
     const bool result = detach_char_from_room(&target);
 
     EXPECT_FALSE(result);
-    EXPECT_EQ(room.ls_first_occupant_, &other);
-    EXPECT_EQ(other.ls_next_in_room_, nullptr);
+    // The room's real occupant chain is untouched -- {other}, exactly one
+    // element, `other`'s own terminator unchanged.
+    assert_room_chain_is(&room, { &other });
     // The high-value "false means nothing happened" guarantee for the
     // list/location fields specifically -- unlike the NOWHERE path above,
     // this defensive path does NOT roll back everything (see the sibling
     // test immediately below); it is specifically the occupant-chain link
     // and ch->in_room/next_in_room that stay untouched.
-    EXPECT_EQ(target.ls_location_id_, 5);
-    EXPECT_EQ(target.ls_next_in_room_, nullptr);
+    EXPECT_EQ(location_of(&target), 5);
+    assert_occupant_link(&target, nullptr);
 }
 
 TEST(DetachCharFromRoomTest, DefensiveMissingNodePathStillDecrementsRoomLightPreExistingQuirk)
@@ -678,11 +681,11 @@ TEST(DetachCharFromRoomTest, DefensiveMissingNodePathStillDecrementsRoomLightPre
     ScopedWorldResolverHooks hooks(resolvers);
 
     char_data other { };
-    room.ls_first_occupant_ = &other;
-    other.ls_next_in_room_ = nullptr;
+    room.ls_first_occupant_ = &other; // LS1-ALLOW: representation-impl (the room's only REAL occupant -- `target` below is deliberately not linked)
+    other.ls_next_in_room_ = nullptr; // LS1-ALLOW: representation-impl (same)
 
     char_data target { };
-    target.ls_location_id_ = 5;
+    set_location(&target, 5);
     obj_data light { };
     light.obj_flags.type_flag = ITEM_LIGHT;
     light.obj_flags.value[2] = 5;
@@ -693,7 +696,7 @@ TEST(DetachCharFromRoomTest, DefensiveMissingNodePathStillDecrementsRoomLightPre
 
     EXPECT_FALSE(result);
     EXPECT_EQ(room.light, 2); // decremented despite the false return
-    EXPECT_EQ(target.ls_location_id_, 5); // location itself still untouched
+    EXPECT_EQ(location_of(&target), 5); // location itself still untouched
 }
 
 // ---------------------------------------------------------------------------
@@ -716,7 +719,7 @@ TEST(RoomOfTest, ReturnsTheSamePointerAsTheNestedFormForAPlacedCharacter)
     ScopedWorldResolverHooks hooks(resolvers);
 
     char_data character { };
-    character.ls_location_id_ = 42;
+    set_location(&character, 42);
 
     room_data* const nested = room_by_id_total(location_of(&character));
     room_data* const via_room_of = room_of(&character);
@@ -741,7 +744,7 @@ TEST(RoomOfTest, ReturnsTheFallbackPointerForANowhereCharacter)
     ScopedWorldResolverHooks hooks(resolvers);
 
     char_data character { };
-    character.ls_location_id_ = NOWHERE;
+    set_location(&character, NOWHERE);
 
     room_data* const nested = room_by_id_total(location_of(&character));
     room_data* const via_room_of = room_of(&character);
@@ -1404,9 +1407,7 @@ TEST(AttachEquipmentTest, LightSlotTurnsOnAndIncrementsRoomLightWhenCharacterIsI
     ScopedWorldResolverHooks hooks(resolvers);
 
     char_data character = make_equipment_test_npc();
-    character.ls_location_id_ = 1;
-    character.ls_next_in_room_ = nullptr;
-    room.ls_first_occupant_ = &character;
+    ScopedRoomOccupants occupant(&room, 1, { &character });
     obj_data lamp { };
     lamp.obj_flags.type_flag = ITEM_LIGHT;
     lamp.obj_flags.weight = 2;
@@ -1435,11 +1436,7 @@ TEST(AttachEquipmentTest, LightSlotIncrementsRoomLightForTheTailOccupantOfACrowd
 
     char_data bystander = make_equipment_test_npc();
     char_data character = make_equipment_test_npc();
-    bystander.ls_location_id_ = 1;
-    character.ls_location_id_ = 1;
-    room.ls_first_occupant_ = &bystander;
-    bystander.ls_next_in_room_ = &character;
-    character.ls_next_in_room_ = nullptr;
+    ScopedRoomOccupants occupants(&room, 1, { &bystander, &character });
 
     obj_data lamp { };
     lamp.obj_flags.type_flag = ITEM_LIGHT;
@@ -1481,9 +1478,11 @@ TEST(AttachEquipmentTest, LightSlotIncrementsRoomLightForTheTailOccupantOfACrowd
 TEST(AttachEquipmentTest, LightSlotDoesNotBumpAnyRoomForACharacterStillInTheLoadWindow)
 {
     StubWorldResolvers resolvers;
+    // make_stub_room() already starts the room with no occupant; no
+    // additional write is needed to establish that (confirmed by reading
+    // make_stub_room()'s own body above).
     room_data room = make_stub_room();
     room.light = 0;
-    room.ls_first_occupant_ = nullptr;
     resolvers.room = &room;
     ScopedWorldResolverHooks hooks(resolvers);
 
@@ -1654,7 +1653,7 @@ TEST(DetachEquipmentTest, LightSlotTurnsOffAndDecrementsRoomLightWhenItWasOn)
     ScopedWorldResolverHooks hooks(resolvers);
 
     char_data character = make_equipment_test_npc();
-    character.ls_location_id_ = 1;
+    set_location(&character, 1);
     obj_data lamp { };
     lamp.obj_flags.type_flag = ITEM_LIGHT;
     lamp.obj_flags.value[2] = 10;
@@ -1677,7 +1676,7 @@ TEST(DetachEquipmentTest, LightSlotDoesNotDecrementRoomLightWhenAlreadyOff)
     ScopedWorldResolverHooks hooks(resolvers);
 
     char_data character = make_equipment_test_npc();
-    character.ls_location_id_ = 1;
+    set_location(&character, 1);
     obj_data lamp { };
     lamp.obj_flags.type_flag = ITEM_LIGHT;
     lamp.obj_flags.value[2] = 10;
@@ -2131,8 +2130,7 @@ TEST(ScopedRoomOccupantsTest, TerminatesThePublishedChainEvenIfTheCharacterCameI
 
     ScopedRoomOccupants occupants(&room, 1, { &only });
 
-    EXPECT_EQ(room.ls_first_occupant_, &only);
-    EXPECT_EQ(only.ls_next_in_room_, nullptr);
+    assert_room_chain_is(&room, { &only });
 }
 
 TEST(ScopedRoomOccupantsTest, PublishesAnEmptyChainForAnEmptyOccupantSet)
@@ -2148,7 +2146,7 @@ TEST(ScopedRoomOccupantsTest, PublishesAnEmptyChainForAnEmptyOccupantSet)
         EXPECT_EQ(rots::entity::first_occupant(&room), nullptr);
     }
 
-    EXPECT_EQ(room.ls_first_occupant_, &resident);
+    EXPECT_EQ(rots::entity::first_occupant(&room), &resident);
 }
 
 TEST(ScopedRoomOccupantsTest, RestoresAPreExistingOccupantChainOnDestruction)
@@ -2165,15 +2163,13 @@ TEST(ScopedRoomOccupantsTest, RestoresAPreExistingOccupantChainOnDestruction)
     char_data visitor { };
     {
         ScopedRoomOccupants occupants(&room, 1, { &visitor });
-        ASSERT_EQ(room.ls_first_occupant_, &visitor);
+        ASSERT_EQ(rots::entity::first_occupant(&room), &visitor);
     }
 
     // The displaced chain comes back verbatim -- head, internal linkage, and
     // terminator -- and the residents' own locations were never touched: this
     // fixture shadows a chain, it does not relocate anybody.
-    EXPECT_EQ(room.ls_first_occupant_, &resident_head);
-    EXPECT_EQ(resident_head.ls_next_in_room_, &resident_tail);
-    EXPECT_EQ(resident_tail.ls_next_in_room_, nullptr);
+    assert_room_chain_is(&room, { &resident_head, &resident_tail });
     EXPECT_EQ(location_of(&resident_head), 1);
     EXPECT_EQ(location_of(&resident_tail), 1);
 }
@@ -2186,7 +2182,7 @@ TEST(ScopedRoomOccupantsTest, UnlinksAndClearsEveryManagedCharacterOnDestruction
 
     {
         ScopedRoomOccupants occupants(&room, 4, { &first, &second });
-        ASSERT_EQ(first.ls_next_in_room_, &second);
+        assert_occupant_link(&first, &second);
     }
 
     // THE FIXTURE-HYGIENE RULE: nothing this fixture published may outlive the
@@ -2194,9 +2190,9 @@ TEST(ScopedRoomOccupantsTest, UnlinksAndClearsEveryManagedCharacterOnDestruction
     // the room. ctest is structurally blind to that class of leak -- every
     // test runs in its own process -- so the helper has to close it by
     // construction, not by each caller remembering.
-    EXPECT_EQ(room.ls_first_occupant_, nullptr);
-    EXPECT_EQ(first.ls_next_in_room_, nullptr);
-    EXPECT_EQ(second.ls_next_in_room_, nullptr);
+    assert_room_chain_is(&room, { });
+    assert_occupant_link(&first, nullptr);
+    assert_occupant_link(&second, nullptr);
     EXPECT_EQ(location_of(&first), NOWHERE);
     EXPECT_EQ(location_of(&second), NOWHERE);
 }
@@ -2228,7 +2224,7 @@ TEST(ScopedRoomOccupantsTest, PublishesANonNpcWithALitLightWithoutZoneTableOrLig
 
     ScopedRoomOccupants occupants(&room, 3, { &player });
 
-    EXPECT_EQ(room.ls_first_occupant_, &player);
+    EXPECT_EQ(rots::entity::first_occupant(&room), &player);
     EXPECT_EQ(room.light, 0);
     EXPECT_TRUE(is_in_room(&player, 3));
 }
@@ -2247,18 +2243,17 @@ TEST(ScopedRoomOccupantsTest, RestampsAManagedCharacterThatWasAlreadyInTheDispla
     char_data resident { };
 
     ScopedRoomOccupants outer(&room, 6, { &resident });
-    ASSERT_EQ(room.ls_first_occupant_, &resident);
+    ASSERT_EQ(rots::entity::first_occupant(&room), &resident);
 
     {
         char_data visitor { };
         ScopedRoomOccupants inner(&room, 6, { &visitor, &resident });
-        ASSERT_EQ(room.ls_first_occupant_, &visitor);
-        ASSERT_EQ(visitor.ls_next_in_room_, &resident);
+        ASSERT_EQ(rots::entity::first_occupant(&room), &visitor);
+        assert_occupant_link(&visitor, &resident);
     }
 
     // The displaced chain is back...
-    EXPECT_EQ(room.ls_first_occupant_, &resident);
-    EXPECT_EQ(resident.ls_next_in_room_, nullptr);
+    assert_room_chain_is(&room, { &resident });
     // ...and the character it is made of still says it is in the room.
     EXPECT_EQ(location_of(&resident), 6);
     EXPECT_TRUE(is_in_room(&resident, 6));
@@ -2283,8 +2278,12 @@ TEST(ScopedRoomOccupantsTest, RestoresLinksThroughAManagedCharacterInsteadOfTrun
     {
         char_data visitor { };
         ScopedRoomOccupants occupants(&room, 2, { &visitor, &middle });
-        ASSERT_EQ(room.ls_first_occupant_, &visitor);
-        ASSERT_EQ(middle.ls_next_in_room_, nullptr); // the link the publish overwrote
+        // The raw version never asserted visitor->next == middle here, so
+        // this stays two standalone checks rather than one
+        // assert_room_chain_is() call (which would also assert that link --
+        // an assertion the original did not make).
+        ASSERT_EQ(rots::entity::first_occupant(&room), &visitor);
+        assert_occupant_link(&middle, nullptr); // the link the publish overwrote
     }
 
     std::vector<char_data*> collected;
@@ -2534,17 +2533,14 @@ TEST(RelocateAllOccupants, MovesTheSourceChainAheadOfTheDestinationsExistingOccu
 
     relocate_all_occupants(kSourceRoomId, kDestinationRoomId);
 
-    // Contract items 1/2.
-    EXPECT_EQ(context.destination.ls_first_occupant_, &characters.first);
-    EXPECT_EQ(characters.first.ls_next_in_room_, &characters.second);
-    EXPECT_EQ(characters.second.ls_next_in_room_, &characters.third);
-    EXPECT_EQ(characters.third.ls_next_in_room_, &characters.resident)
-        << "MERGE ORDER IS THE CONTRACT: the arriving chain keeps its relative order and the "
-           "destination's pre-existing occupants are appended AFTER it, matching what "
-           "SpecProFerryCaptain.SplicesTheSourceCabinChainAheadOfTheDestinationsAndRestampsEveryMember "
-           "characterized against the real ferry_captain().";
-    EXPECT_EQ(characters.resident.ls_next_in_room_, nullptr);
-    EXPECT_EQ(context.source.ls_first_occupant_, nullptr);
+    // Contract items 1/2. MERGE ORDER IS THE CONTRACT: the arriving chain
+    // keeps its relative order and the destination's pre-existing occupants
+    // are appended AFTER it, matching what
+    // SpecProFerryCaptain.SplicesTheSourceCabinChainAheadOfTheDestinationsAndRestampsEveryMember
+    // characterized against the real ferry_captain().
+    assert_room_chain_is(&context.destination,
+        { &characters.first, &characters.second, &characters.third, &characters.resident });
+    assert_room_chain_is(&context.source, { });
 }
 
 TEST(RelocateAllOccupants, RestampsEveryMergedMemberIncludingTheDestinationsOwn) {
@@ -2576,12 +2572,10 @@ TEST(RelocateAllOccupants, MovesTheWholeChainIntoAnEmptyDestinationAndKeepsItsTe
 
     relocate_all_occupants(kSourceRoomId, kDestinationRoomId);
 
-    EXPECT_EQ(context.destination.ls_first_occupant_, &characters.first);
-    EXPECT_EQ(characters.first.ls_next_in_room_, &characters.second);
-    EXPECT_EQ(characters.second.ls_next_in_room_, nullptr)
-        << "With nothing already at the destination the arriving tail keeps its null terminator "
-           "rather than being linked onto a pre-existing head.";
-    EXPECT_EQ(context.source.ls_first_occupant_, nullptr);
+    // With nothing already at the destination the arriving tail keeps its
+    // null terminator rather than being linked onto a pre-existing head.
+    assert_room_chain_is(&context.destination, { &characters.first, &characters.second });
+    assert_room_chain_is(&context.source, { });
     EXPECT_EQ(location_of(&characters.second), kDestinationRoomId);
 }
 
@@ -2599,10 +2593,9 @@ TEST(RelocateAllOccupants, LeavesTheDestinationChainIntactWhenTheSourceIsEmpty) 
     // SpecProFerryCaptain.LeavesADestinationCabinIntactWhenTheSourceCabinsChainIsEmpty
     // had to construct a deliberately unlinked captain to reach through the
     // real SPECIAL, and which this primitive test reaches directly.
-    EXPECT_EQ(context.destination.ls_first_occupant_, &characters.resident);
-    EXPECT_EQ(characters.resident.ls_next_in_room_, nullptr);
+    assert_room_chain_is(&context.destination, { &characters.resident });
     EXPECT_EQ(location_of(&characters.resident), kDestinationRoomId);
-    EXPECT_EQ(context.source.ls_first_occupant_, nullptr);
+    assert_room_chain_is(&context.source, { });
 }
 
 TEST(RelocateAllOccupants, LeavesTheRoomUntouchedWhenSourceAndDestinationAreTheSameRoom) {
@@ -2621,9 +2614,7 @@ TEST(RelocateAllOccupants, LeavesTheRoomUntouchedWhenSourceAndDestinationAreTheS
     // and then null the room -- a cycle plus a lost chain. Making the primitive
     // total closes that footgun inside the representation owner instead of
     // leaving it for LS-3b to trip over.
-    EXPECT_EQ(context.source.ls_first_occupant_, &characters.first);
-    EXPECT_EQ(characters.first.ls_next_in_room_, &characters.second);
-    EXPECT_EQ(characters.second.ls_next_in_room_, nullptr);
+    assert_room_chain_is(&context.source, { &characters.first, &characters.second });
     EXPECT_EQ(location_of(&characters.first), kSourceRoomId);
 }
 

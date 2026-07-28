@@ -1011,6 +1011,32 @@ preset plus the flat `src/tests/Makefile` `tests` recipe.
 **LS-3b's enumerated input list** (recorded here per ruling R-T0b-4(c) so the swap wave starts from
 evidence rather than re-derivation; every item is a *finding*, not work LS-3a left half-done):
 
+**LS-3b has landed** (branch `arch/ls3b-swap`, see the "Wave LS-3b" subsection below for the full
+account). Each item's disposition, one line apiece:
+
+1. `free_char()`/`free_obj()` non-unregistration -- **closed-by-T5**: the private-handle keying
+   ruling (R-3b-A) means no unregistration mechanism is owed at all; the store dies with the struct.
+2. `obj_to_proto()`'s `object_list` gap -- **out-of-scope-recorded**: `obj_data` locations stayed
+   outside this wave's char-only charter; the pre-existing defect is restated, not fixed.
+3. The 17-site token-invisible birth class (P1-P17) -- **partially-closed-by-T1b/T2**: the three
+   char-adjacent scratch sites (`act_wiz.cpp`, `mob_csv_extract.cpp`, `shapemob.cpp:268`) converted
+   in T2; the object-side P-sites stay out of scope with item 2.
+4. `specials2.load_room`'s opposite-direction overload -- **closed-by-T5**: the stash channel moved
+   to its own non-persisted `char_special_data::ls_load_room_vnum_` storage; zero call sites changed.
+5. The `SPELL_BEACON` persisted modifier -- **closed-by-T7**: ruling O-7, rnum save format preserved
+   PERMANENTLY (arithmetic reason), a mandatory two-sided range guard added.
+6. The msdp in-range stashed-VNUM leak (review-2 F2) -- **closed-by-T5**: the O-5 rider inventory's
+   rows 5-7 (F6/F19/R20/R21), each pinned by a dedicated test.
+7. The torn-state owner decision (R-C2) -- **closed-by-owner-ruling-O-5**: option (b), single store +
+   a narrow, flagged amendment to strict equivalence; landed by T5.
+8. The order-pinning ledger correction -- **closed-by-T1**: the mandatory pre-swap order-net tranche
+   pins exactly the genuinely order-sensitive consumers this finding named.
+9. The two not-a-witness findings (`poison_notification`/`prompt_format`) -- **out-of-scope-recorded**:
+   nothing production reads to break; restated as still true for any future wave.
+
+(Item 10, the R-T0b-4(b) cheap-guard riders, LANDED at LS-3a's own wave close -- see below -- and
+was never an LS-3b input.)
+
 - **`free_char()`/`free_obj()` perform NO location unregistration** (`entity_lifecycle.cpp:623-712`,
   `:730-766` — no `char_from_room`, no `character_list`/`object_list` unlink). Harmless while the
   location lives *in* the freed struct; under a pointer-keyed map every free leaks an entry keyed by
@@ -1072,6 +1098,116 @@ chain entry for the full per-commit citation. No library-membership or `*LayerAc
 the nine linkchecks stay nine; the combat row stays DONE. Per owner ruling O-4 the `rots64` leg, both
 boot goldens, `make smoke-account` (MANDATORY, ruling R-A2 — it moved to finalization, it did not
 disappear), the i386 battery, and the six-job CI matrix all run ONCE at T6 finalization.
+
+### Wave LS-3b: Stage 2 representation swap -- the private-handle store (DONE)
+
+Branch `arch/ls3b-swap`, baseline master @`1c4f2e6` (1801 tests), merge-when-green under the
+owner's standing grant. Where LS-3a made every location READ and MUTATION outside
+`rots_entity`'s placement/containment core go through the Stage-1 Placement API, LS-3b is the
+representation swap that API was built to absorb: `char_data::in_room`/`next_in_room` and
+`room_data::people` are no longer public struct members a caller could name even by accident.
+Process record: `.superpowers/sdd/ls3b-global-constraints.md` (the kickoff seed + the T0
+CLOSE-OUT closing rulings O-5/O-6/O-7/R-3b-A/B/C/D), `ls3b-census-{a,b,c,d}.md` +
+`ls3b-census-review.md` (T0 and its 34-amendment adversarial review), `ls3b-perf-baseline.md`
+(the pre-swap perf capture), and `ls3b-t{1..8}-report.md` (the per-task landing record). See
+docs/superpowers/specs/2026-07-23-locationsystem-program-design.md's "Wave LS-3b As-built"
+section for the full criteria/rulings account; this subsection is the mechanics summary.
+
+**The private-handle store (ruling R-3b-A).** The program spec left char_data's keying question
+open -- shed the location fields entirely behind an external pointer-keyed registry, or keep a
+private handle -- as a T0 ruling. The census review's evidence (Table 2) decided it for the
+handle: an external map is hit by freed-key reuse, address reuse, and the 542 test-tier stack
+locals, all of which the handle is immune to by construction; the map's hash probe would also add
+cost to `location_of`'s 264 and `room_of`'s 279 call sites, the tree's two hottest
+location-reading populations, where the handle keeps a plain field load. T5 landed the rename in
+one commit:
+
+| before | after | declared in |
+|---|---|---|
+| `char_data::in_room` | `char_data::ls_location_id_` | `src/core/include/rots/core/character.h` |
+| `char_data::next_in_room` | `char_data::ls_next_in_room_` | same |
+| `room_data::people` | `room_data::ls_first_occupant_` | `src/core/include/rots/core/room.h` |
+
+Types, sizes, and member order are unchanged -- the i386 `legacy_*_fixture.bin` layout does not
+move (nothing persists these three members directly). The rename was driven compiler-first: every
+TU was re-run with `-fsyntax-only -ferror-limit=0` and only compiler-flagged positions were
+rewritten, closing at 310 re-spellings across 22 files with zero guessed sites.
+
+**The invariant**, stated at the top of `src/entity/placement.cpp` (the sole non-test owner of
+the three fields, alongside `containment.cpp`):
+
+> `location_of(ch) == NOWHERE` implies `ch` is linked into no room's occupant chain, anywhere.
+> `location_of(ch) == r` implies `ch` is linked into exactly `world[r]`'s chain and no other.
+> Direction: chain follows field, never field follows chain.
+
+This is the O-5 amendment (below) made structural: `char_to_room(ch, NOWHERE)` now performs no
+splice and no light/zone-power bump, only the field write, retiring the torn state (chain says
+room 0, field says nowhere) ruling R-C2 put to the owner as a pre-swap STOP.
+
+**The stash-channel storage split.** LS-3a's `stash_load_room_vnum()`/`peek_load_room_vnum()`
+channel shared storage with the location field by naming alone; T5 gave it its own,
+non-persisted sibling storage, `char_special_data::ls_load_room_vnum_` (default `NOWHERE`) --
+zero call sites changed, which is exactly what the LS-3a channel was built to make possible. The
+split is what makes a menu sitter's location genuinely absent rather than merely re-labeled,
+closing the msdp/weather/expose-elements in-range-VNUM leaks (review-2 F2 and F19) for real.
+
+**The O-5 amendment's flagged-rider inventory.** T5's single split commit lands 12 distinct
+observable deltas plus one correction (rider 13, an ITEM_LIGHT normalization fix caught while
+landing) -- each with a dedicated test and sabotage proof, none golden-observable. See the spec
+doc's "Wave LS-3b As-built" §(c) for the full 13-row table; `ls3b-t5-report.md` §2 for the
+byte-level detail.
+
+**The gate's post-split token model.** T5's rename left every existing `LS1-ALLOW` annotation
+comment in place, but T8 found the gate's own regex no longer matched any of the three renamed
+spellings anywhere in the tree (`\bnext_in_room\b` does not match inside `ls_next_in_room_` --
+the character before the substring is `_`, not a word boundary) -- a true green from the check no
+longer applying to anything, not a bug. T8 closed it:
+
+- **Tokens: five -> eight**, per the established counting convention (the accessor-spelling
+  variants of one field count as one token, matching how the LS-3a "five, not four" narrative
+  above already counts `->in_room`/`.in_room`/`world[`/`next_in_room`/`people`). The three new
+  bare-word patterns, `ls_location_id_`/`ls_next_in_room_`/`ls_first_occupant_`, are chosen
+  bare-word (not accessor-anchored) so they also catch a field's own DECLARATION, which is exactly
+  where the gate's cold run found its only two real violations (`character.h:861`, `room.h:126` --
+  both fixed with a `representation-decl` annotation). `next_in_room`/`people` survive unchanged,
+  now pure reintroduction tripwires rather than live markers, since neither matches any of the
+  three renamed spellings.
+- **Prefixes: eleven -> nine.** LS-3b T2 retired `in_room used as mutable room cursor` (its last
+  production line converted onto `ScopedRenderLocation` in the same commit); T8 retired `manual
+  occupant-list splice` (zero production lines since at least the T0 census; its six surviving
+  instances sit inside a whole-file-exempt test helper, so the retirement changes nothing
+  observable, only tightens the ledger).
+- **Floor: 250 -> 300.** Re-verified against a 315-file scan (headroom had shrunk from the LS-3a
+  T4-era 57 files to 8); raised to restore proportional headroom.
+- **The T8 self-test: 35 -> 47 cases** (net +12), covering the three new tokens' unannotated/
+  annotated pairs, the bare-declaration catch, the `::`-qualified case, two over-match guards
+  (prefixed/suffixed identifiers), and the retired-prefix rejection -- every new case
+  sabotage-proven RED before being restored green.
+- **The compile-time absence assertion (criterion (a)'s witness).** Three C++20
+  `requires`-expression concepts plus three `static_assert`s in `src/entity/placement.cpp` fire a
+  named, readable build error the instant a future edit reintroduces `char_data::in_room`,
+  `char_data::next_in_room`, or `room_data::people` as a public member -- proven with three
+  independent decoy-member probes, each producing the expected diagnostic. This adds no new
+  `ctest` entry (a build-time witness, not a test); ctest counts are identical across every
+  T8 commit.
+
+See `docs/superpowers/location-read-allowlist.md` for the full per-prefix disposition table and
+`.superpowers/sdd/ls3b-t8-report.md` for the byte-level audit.
+
+**Reconciled chain:** 1801 -> T1 +12 (`dbb165be`+6/`712a0640`+6; T1b `71d70fcc`+0) = **1813** ->
+T2 +13 (`f49fa799`+8/`e23d78e6`+3/`1787c7b9`+0/`c9c01016`+2) = **1826** -> T3 +4 (`445e61a5`+4/
+`8d2cca8d`+0) = **1830** -> T4 +0 (`47492483`+0/`b56f1e56`+0) = **1830** -> T5 +13 (`accccb95`) =
+**1843** -> T6 +0 (`6c171d2f`) = **1843** -> T7 +6 (`4c6e23ca`+4/`8b655c9a`+2/`d42c6e41`+0) =
+**1849** -> T8 +0 (`5cd9ab5c`+0/`5b6bfa9b`+0/`61d8613d`+0) = **1849**. See AGENTS.md's Testing
+Guidelines chain entry for the full per-commit gate citation. No library-membership or
+`*LayerAcyclicity` change -- the nine linkchecks stay nine; the combat row stays DONE. This is the
+program's second not-strictly-zero-behavior-change wave (owner rulings O-5/O-6/O-7, following
+LS-3a's O-2 precedent). Per the wave's adopted O-4-precedent cadence, the `rots64` leg at final
+HEAD, both boot goldens, `make smoke-account` (MANDATORY -- the split is squarely on the
+login/rent path), the i386 battery, and the six-job CI matrix are **not yet measured** as of this
+docs commit; they are owed at T9 finalization. The controller ran two `rots64` spot-gates
+mid-wave (T2's and T5's own HEADs, both matching macOS exactly --
+`.superpowers/sdd/ls3b-controller-gate-log.md`), which does not substitute for the T9 leg.
 
 ### Output seam and entity hooks: the last three app-layer edges into `rots_entity`
 

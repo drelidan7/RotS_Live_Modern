@@ -67,6 +67,7 @@
 #include "rots/core/object.h"
 #include "rots/core/room.h"
 #include "rots/core/types.h"
+#include "rots/entity/render_cursor.h"
 #include "rots/platform/log.h"
 #include "utils.h"
 #include "zone.h" /* For zone_data's full definition -- zone_by_id() (entity_hooks.h)
@@ -237,6 +238,47 @@ room_data* room_of(const char_data* ch)
 // own "Unused as landed" comment history. No duplicate definition
 // remains here; this file still includes handler.h (above) so its own
 // callers below are unaffected.
+
+/************************************************************************
+ *  LS-3b Wave T2 (ruling R-3b-B): ScopedRenderLocation, the cursor-family *
+ *  API. Contract lives in rots/entity/render_cursor.h -- this is a thin  *
+ *  RAII wrapper over the same location_of()/set_location() pair the      *
+ *  manual save/write/restore idiom already calls, so it inherits their   *
+ *  exact behavior (bare field access pre-swap; T5's internal store swap  *
+ *  is transparent here since neither function's signature or contract   *
+ *  changes).                                                             *
+ ************************************************************************/
+
+namespace rots::entity {
+
+ScopedRenderLocation::ScopedRenderLocation(char_data* ch, int room_id)
+    : ch_(ch)
+    , saved_location_(location_of(ch))
+    , restored_(false)
+{
+    set_location(ch_, room_id);
+}
+
+ScopedRenderLocation::~ScopedRenderLocation()
+{
+    restore();
+}
+
+void ScopedRenderLocation::retarget(int room_id)
+{
+    set_location(ch_, room_id);
+}
+
+void ScopedRenderLocation::restore()
+{
+    if (restored_) {
+        return;
+    }
+    set_location(ch_, saved_location_);
+    restored_ = true;
+}
+
+} // namespace rots::entity
 
 /************************************************************************
  *  Functions relocated verbatim from handler.cpp (placement-seam Task 1; *

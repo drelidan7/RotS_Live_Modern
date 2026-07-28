@@ -1096,6 +1096,13 @@ target_link_libraries(rots_entity PUBLIC rots_build_flags RotS::core RotS::platf
 # path transitively; ageland/rots_convert already carry persist/include on
 # their own target_include_directories below.
 target_include_directories(rots_entity PRIVATE persist/include)
+# LS-3b Wave T2 (ruling R-3b-B): rots_entity's first real public header --
+# ScopedRenderLocation (rots/entity/render_cursor.h), the cursor-family API.
+# PUBLIC so every consumer that links RotS::entity (directly or
+# transitively -- rots_combat, rots_script, rots_olc, and ageland itself)
+# can #include "rots/entity/render_cursor.h" without its own
+# target_include_directories entry.
+target_include_directories(rots_entity PUBLIC entity/include)
 
 # --- L3: persist layer ---------------------------------------------------------
 add_library(rots_persist STATIC ${ROTS_PERSIST_SOURCES})
@@ -1406,6 +1413,7 @@ if(ROTS_BUILD_TESTS)
         tests/poison_notification_tests.cpp
         tests/prompt_format_tests.cpp
         tests/protocol_tests.cpp
+        tests/render_cursor_tests.cpp
         tests/rng_seed_tests.cpp
         tests/rots_asprintf_tests.cpp
         tests/rots_convert_equivalence_tests.cpp
@@ -1574,7 +1582,7 @@ if(ROTS_BUILD_TESTS)
     # above ROTS_PLATFORM_SOURCES' add_executable line), so it needs this on
     # its own include path too, rather than inheriting it transitively via
     # target_link_libraries the way ageland does through RotS::platform.
-    target_include_directories(ageland_tests PRIVATE core/include persist/include platform/include)
+    target_include_directories(ageland_tests PRIVATE core/include persist/include platform/include entity/include)
     target_compile_options(ageland_tests PRIVATE
         $<$<BOOL:${ROTS_LEGACY_32BIT}>:-m32>
         ${ROTS_FP_OPTIONS}

@@ -79,24 +79,27 @@ reader must not have to reverse-engineer that from the absence of a row.
 this program's charter; `zone_by_id()` exists but converting `zone_table[` call sites is not this
 wave's exit criterion).
 
-## The eleven accepted `LS1-ALLOW` reason prefixes
+## The ten accepted `LS1-ALLOW` reason prefixes
 
 Hardcoded in the script's `ALLOWED_REASON_PREFIXES`; any other reason fails `--check` as
 `invalid-reason` (self-tested — an off-list reason trips the gate even when a whole-file exemption
 or a well-formed annotation is present elsewhere in the same file). LS-1 minted the first eight; LS-2
-T5 added the last three (`.superpowers/sdd/ls2-census.md` R9). **LS-3a T4 minted none** — ruling
-R-B7 held the count at eleven when `src/tests` and the `.people` token joined the scan, and the
-pre-reserved `test-fixture` prefix was deliberately NOT created; every surviving test-tier site fits
-an existing prefix:
+T5 added three more (`.superpowers/sdd/ls2-census.md` R9), for eleven. **LS-3a T4 minted none** —
+ruling R-B7 held the count at eleven when `src/tests` and the `.people` token joined the scan, and
+the pre-reserved `test-fixture` prefix was deliberately NOT created; every surviving test-tier site
+fit an existing prefix. **LS-3b T2 RETIRED `in_room used as mutable room cursor`** (the fail-closed
+burndown rule adopted by `.superpowers/sdd/ls3b-global-constraints.md`): its last 28 production
+lines converted onto `rots::entity::ScopedRenderLocation` (ruling R-3b-B) in the same commit that
+removed the prefix from `ALLOWED_REASON_PREFIXES`, bringing the count to ten. Historical note, kept
+for readers of earlier wave records: that retired prefix covered Family D — `in_room` temporarily
+stashed with a **different kind of value** (a VNUM, not a location index) between two calls, never a
+genuine location read/write pair.
 
 - `save-next` — a save-next-then-advance idiom whose body relocates the current node.
 - `manual occupant-list splice` — hand-rolled chain surgery outside the Placement API's own
   mutation primitives.
 - `peek-ahead` — a lookahead read that doesn't drive the walk itself.
 - `manual first-match advance` — a find-first idiom with its own early-exit shape.
-- `in_room used as mutable room cursor` — Family D: `in_room` temporarily stashed with a
-  **different kind of value** (a VNUM, not a location index) between two calls, never a genuine
-  location read/write pair.
 - `write` — any raw assignment into the representation. LS-2 was reads-only, so every write stayed
   raw by design; LS-3a routes the *convertible* ones through `set_location()`, and this prefix now
   marks what legitimately remains — fresh-room initialization (`src/world/db_world.cpp:702`/`:1889`)

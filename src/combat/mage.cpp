@@ -22,6 +22,7 @@
 #include "rots/core/room.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
+#include "rots/entity/render_cursor.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
 #include "zone.h" /* For zone_table */
@@ -1598,7 +1599,7 @@ ASPELL(spell_cone_of_cold)
 
 ASPELL(spell_earthquake)
 {
-    int dam_value, crack_chance, tmp;
+    int dam_value, crack_chance;
     struct char_data *tmpch, *tmpch_next;
     room_data* cur_room;
     int crack;
@@ -1655,12 +1656,15 @@ ASPELL(spell_earthquake)
                     act("The way down crashes open!", FALSE, caster, 0, 0, TO_ROOM);
                     send_to_char("The way down crashes open!\n\r", caster);
                     cur_room->dir_option[DOWN]->exit_info = 0;
-                    if (world[crack].dir_option[UP] && (world[crack].dir_option[UP]->to_room == caster->in_room) && world[crack].dir_option[UP]->exit_info) { // LS1-ALLOW: in_room used as mutable room cursor (crack-creation save/restore around act())
-                        tmp = caster->in_room; // LS1-ALLOW: in_room used as mutable room cursor
-                        set_location(caster, crack); // LS1-ALLOW: in_room used as mutable room cursor
+                    if (room_by_id_total(crack)->dir_option[UP] && (room_by_id_total(crack)->dir_option[UP]->to_room == location_of(caster)) && room_by_id_total(crack)->dir_option[UP]->exit_info) {
+                        // ls3b T2: ScopedRenderLocation reproduces the manual
+                        // save/write/restore idiom byte-for-byte (contract in
+                        // rots/entity/render_cursor.h) -- destructor restores
+                        // caster at the closing brace below, exactly where
+                        // the removed set_location(caster, tmp) used to run.
+                        rots::entity::ScopedRenderLocation crack_cursor(caster, crack);
                         act("The way up crashes open!", FALSE, caster, 0, 0, TO_ROOM);
-                        world[crack].dir_option[UP]->exit_info = 0; // LS1-ALLOW: in_room used as mutable room cursor
-                        set_location(caster, tmp); // LS1-ALLOW: in_room used as mutable room cursor
+                        room_by_id_total(crack)->dir_option[UP]->exit_info = 0;
                     }
                 }
             }

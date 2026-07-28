@@ -36,6 +36,7 @@
 #include "rots/core/descriptor.h"
 #include "rots/core/tables.h"
 #include "rots/core/types.h"
+#include "rots/entity/render_cursor.h"
 #include "text_view.h"
 #include "utils.h"
 #include "warrior_spec_handlers.h"
@@ -1225,22 +1226,26 @@ ACMD(do_look)
                 if (subcmd == SCMD_LOOK_EXAM) {
                     send_to_char(
                         std::format("To the {} you see:\n\r", keywords[keyword_no]), ch);
-                    tmp = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (look-exam adjacent-room render)
-                    set_location(ch, EXIT(ch, keyword_no)->to_room); // LS1-ALLOW: in_room used as mutable room cursor (look-exam adjacent-room render)
+                    // ls3b T2: ScopedRenderLocation reproduces the manual
+                    // save/write/restore idiom byte-for-byte (contract in
+                    // rots/entity/render_cursor.h). This window has TWO exit
+                    // points below (the early `return` and the normal fall
+                    // through to the closing brace) -- RAII scope exit
+                    // restores ch on EITHER path, replacing both removed
+                    // explicit set_location(ch, tmp) calls.
+                    rots::entity::ScopedRenderLocation look_exam_cursor(ch, EXIT(ch, keyword_no)->to_room);
 
                     /* Darkies can't see room contents or description if it's sunny */
                     if (SUN_PENALTY(ch)) {
                         send_to_char(
-                            std::format("{}\n\r", nz(world[ch->in_room].name)), ch); // LS1-ALLOW: in_room used as mutable room cursor (look-exam adjacent-room render)
+                            std::format("{}\n\r", nz(room_of(ch)->name)), ch);
                         send_to_char("The power of light makes it hard to see.\n\r", ch);
-                        set_location(ch, tmp); // LS1-ALLOW: in_room used as mutable room cursor (look-exam adjacent-room render)
                         return;
                     }
-                    if (ch->in_room != NOWHERE) // LS1-ALLOW: in_room used as mutable room cursor (look-exam adjacent-room render)
+                    if (location_of(ch) != NOWHERE)
                         do_look(ch, mutable_arg(""), wtl, 15, 0);
                     else
                         send_to_char("You see nothing special.\n\r", ch);
-                    set_location(ch, tmp); // LS1-ALLOW: in_room used as mutable room cursor (look-exam adjacent-room render)
                 } else {
                     /* They typed look <dir>; look renders the exit's description */
                     std::string exit_message;
@@ -1724,21 +1729,28 @@ ACMD(do_exits)
                             exits[door], room_by_id_total(EXIT(ch, door)->to_room)->number,
                             EXIT(ch, door)->exit_width, nz(room_by_id_total(EXIT(ch, door)->to_room)->name));
                     } else {
-                        tmp = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (mortal exit-name render)
-                        set_location(ch, EXIT(ch, door)->to_room); // LS1-ALLOW: in_room used as mutable room cursor (mortal exit-name render)
+                        // ls3b T2: real_room captures ch's actual room BEFORE
+                        // the cursor spoofs it -- IS_SUNLIT_EXIT's first
+                        // argument needs the real room's OWN exit (cur_room),
+                        // not the adjacent one the cursor renders. Same value
+                        // ScopedRenderLocation's own constructor captures
+                        // internally for its restore; the second read is
+                        // redundant but harmless (nothing mutates ch's
+                        // location between the two).
+                        const int real_room = location_of(ch);
+                        rots::entity::ScopedRenderLocation exit_cursor(ch, EXIT(ch, door)->to_room);
                         if (!CAN_SEE(ch) && !PRF_FLAGGED(ch, PRF_HOLYLIGHT)) {
                             std::format_to(std::back_inserter(out), "{:<7} - Too dark to tell\n\r",
-                                (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(tmp, ch->in_room, door)) // LS1-ALLOW: in_room used as mutable room cursor (mortal exit-name render)
+                                (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(real_room, location_of(ch), door))
                                     ? sun_exits[door]
                                     : exits[door]);
                         } else {
                             std::format_to(std::back_inserter(out), "{:<7} - {}\n\r",
-                                (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(tmp, ch->in_room, door)) // LS1-ALLOW: in_room used as mutable room cursor (mortal exit-name render)
+                                (((GET_RACE(ch) == RACE_URUK) || (GET_RACE(ch) == RACE_ORC)) && IS_SUNLIT_EXIT(real_room, location_of(ch), door))
                                     ? sun_exits[door]
                                     : exits[door],
-                                nz(world[ch->in_room].name)); // LS1-ALLOW: in_room used as mutable room cursor (mortal exit-name render)
+                                nz(room_of(ch)->name));
                         }
-                        set_location(ch, tmp); // LS1-ALLOW: in_room used as mutable room cursor (mortal exit-name render)
                     }
                 } else {
                     if (!IS_SET(EXIT(ch, door)->exit_info, EX_ISHIDDEN)) {
@@ -2780,7 +2792,6 @@ ACMD(do_gen_ps)
 
 void perform_mortal_where(struct char_data* ch, char* arg)
 {
-    int tmploc;
     struct char_data* i;
     struct descriptor_data* d;
 
@@ -2790,26 +2801,28 @@ void perform_mortal_where(struct char_data* ch, char* arg)
             if (!d->connected) {
                 i = (d->original ? d->original : d->character);
                 if (i && CAN_SEE(ch, i) && (location_of(i) != NOWHERE) && !other_side(ch, i) && (room_of(ch)->zone == room_of(i)->zone)) {
-                    tmploc = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
-                    set_location(ch, location_of(i)); // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
-                    // ch->in_room is temporarily swapped to i->in_room so
-                    // CAN_SEE(ch) evaluates lighting for i's room -- compose
-                    // the line before restoring tmploc, matching the
-                    // original sprintf-then-restore-then-send order exactly.
+                    // ls3b T2: ScopedRenderLocation reproduces the manual
+                    // save/write/restore idiom byte-for-byte (contract in
+                    // rots/entity/render_cursor.h) -- ch's location is
+                    // temporarily spoofed to i's so CAN_SEE(ch) evaluates
+                    // lighting for i's room; compose the line before the
+                    // destructor restores it at the closing brace below,
+                    // matching the original sprintf-then-restore-then-send
+                    // order exactly.
+                    rots::entity::ScopedRenderLocation where_cursor(ch, location_of(i));
                     std::string line = std::format(
-                        "{:<20} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere"); // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
-                    set_location(ch, tmploc); // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
+                        "{:<20} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? room_of(i)->name : "Somewhere");
                     send_to_char(line, ch);
                 }
             }
     } else { /* print only FIRST char, not all. */
         for (i = character_list; i; i = i->next)
             if ((location_of(i) != NOWHERE) && (!IS_NPC(i)) && (room_of(i)->zone == room_of(ch)->zone) && (room_of(i)->level == room_of(ch)->level) && CAN_SEE(ch, i) && (!other_side(ch, i)) && isname_nullable(arg, i->player.name)) {
-                tmploc = ch->in_room; // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
-                set_location(ch, location_of(i)); // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
+                // ls3b T2: same ScopedRenderLocation shape as the loop
+                // above -- construct/destruct per matching candidate.
+                rots::entity::ScopedRenderLocation where_cursor(ch, location_of(i));
                 std::string line = std::format(
-                    "{:<25} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? world[i->in_room].name : "Somewhere"); // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
-                set_location(ch, tmploc); // LS1-ALLOW: in_room used as mutable room cursor (where-listing lighting probe)
+                    "{:<25} - {}\n\r", GET_NAME(i), (CAN_SEE(ch)) ? room_of(i)->name : "Somewhere");
                 send_to_char(line, ch);
                 return;
             }
